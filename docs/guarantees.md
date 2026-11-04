@@ -3,7 +3,9 @@
 This list is the conformance record. A program that stays inside ISO C
 runs the same under rcc as under any conforming compiler. Where
 ISO C says "undefined", this list says what happens. Each entry gives
-the ISO paragraph (ISO/IEC 9899:2024, N3220 numbering), the promise,
+the ISO paragraph, cited from C23 (ISO/IEC 9899:2024, N3220
+numbering) where the text is there, and from an earlier edition only
+where it is not; draft 1 needed no earlier edition. Then the promise,
 the machine behaviour the promise names, the IR that delivers it, and
 what the optimizer loses.
 
