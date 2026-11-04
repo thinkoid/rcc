@@ -196,16 +196,25 @@ with many block-scoped locals that have their address taken.
 ## Control
 
 **G13. Operands are evaluated left to right, arguments too, and an
-operand's side effects complete before the next operand starts.** ISO
-6.5.1p2, p3: unsequenced side effects are undefined; argument order is
-unspecified. Promise: `i = i++ + ++i` has one value and this list says
-which. Machine: nothing; this is emission order. IR: emitted in that
-order; LLVM reorders only where unobservable. Lost: nothing at the IR
-level; the ABI occasionally wants one more register move. Note: K&R
-left the order open on purpose, so the compiler could choose the
-cheaper one. That cost is gone on a register machine with LLVM behind
-the front end. **Decision:** include it; it is the one promise ISO
-withholds that costs nothing.
+operand's side effects complete before the next operand starts.**
+ISO 6.5.1p2, p3: unsequenced side effects on one object are
+undefined; the order of evaluation of operands and of arguments is
+unspecified. These are two things. For the side effects the machine
+does something definite, whatever the emitted code does, and the
+compiler has no licence to reason from "cannot happen". For the
+order there is no machine behaviour to copy: the source does not say
+and the IR must, so the front end decides at every site whether the
+list says so or not. This is the one promise on the list that fixes
+a choice the machine never made. The choice is between an order
+written down once, which the programmer can read, and an order
+chosen silently per site, which is K&R's position (section 2.12:
+neither operand order nor argument order is specified; the PDP-11
+compiler pushed arguments right to left) and ISO's. Control means
+the written order. Left to right is the natural order of the writing
+system and needs no explanation. Promise: `i = i++ + ++i` has one
+value, and the order says which. IR: emitted in that order; LLVM
+reorders only where unobservable. Lost: nothing at the IR level; the
+ABI occasionally wants one more register move.
 
 **G14. A loop runs until its condition says stop.** ISO 6.8.6.1p4:
 a loop without observable effects may be assumed to terminate.

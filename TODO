@@ -18,9 +18,10 @@ git keeps them.
 The promises in =docs/guarantees.md=, draft 1. The entries are the
 decisions the draft marks, the measurements that inform them, and one
 verification. The entry number is the guarantee it belongs to. G4, G5,
-G8 and G11 are decided: the target's division instruction, =freeze=
-with no value of the compiler's own, the integer round trip for
-pointer arithmetic, and align what you can prove.
+G8, G11 and G13 are decided: the target's division instruction,
+=freeze= with no value of the compiler's own, the integer round trip
+for pointer arithmetic, align what you can prove, and left to right
+as the written order.
 
 ** TODO G8: price the round trip
 
@@ -35,17 +36,6 @@ Fix: measure once the front end emits pointer arithmetic.
 Check: the corpus compiled with the round trip everywhere, then with
 "gep what you can prove", and what the vectorizer and alias analysis
 still do in each.
-
-** TODO G13: left-to-right evaluation stays
-
-Left-to-right evaluation departs from K&R, who left the order open so
-the compiler could choose the cheaper one. The draft includes it as
-the one promise ISO withholds that costs nothing with LLVM behind.
-
-Fix: confirm the promise stays.
-
-Check: the argument order costs nothing beyond a register move on
-x86-64 and aarch64.
 
 ** TODO Calls through a mismatched function type
 
