@@ -24,7 +24,9 @@ three probes are at the end.
 is undefined. Promise: `+`, `-`, `*`, unary `-`, `++`, `--` on signed
 types compute modulo 2^N; `-INT_MIN` is `INT_MIN`. Machine: two's
 complement add, sub, mul discard the carry. IR: `add`, `sub`, `mul`,
-`shl` without `nsw`. Lost: `a + 1 > a` is `a != INT_MAX` instead of
+`shl` without `nsw`. The one exception is the quotient `INT_MIN /
+-1`, which follows G4: the target's instruction, wrapping on aarch64
+and faulting on x86. Lost: `a + 1 > a` is `a != INT_MAX` instead of
 `1`; induction variables lose the no-wrap fact that strength reduction
 and vectorization rest on. Mitigation: machine-width indices, `!=`
 loop tests, and the grant (G15).
@@ -47,18 +49,23 @@ both targets. Rejected alternative: a count at or beyond the width
 yields 0 or the sign; that needs a compare and a select on every
 target and no machine does it.
 
-**G4. Division by zero traps; `INT_MIN / -1` is `INT_MIN`, `INT_MIN %
--1` is 0.** ISO 6.5.6p6, p7. Machine: x86 `idiv` faults on both;
-aarch64 `sdiv` returns 0 for a zero divisor and wraps on `INT_MIN /
--1`, no fault. The two targets disagree, so one of them pays whatever
-is promised. IR: `sdiv` and `srem` are undefined in LLVM on both
-cases, so the front end guards: a zero divisor branches to
-`llvm.trap`; a `-1` divisor is replaced by `1` and the quotient
-negated (`sub 0, a`, which wraps per G1). Lost: two compares and a
-branch per division with a non-constant divisor. The one promise that
-costs on the fast path where ISO costs nothing. **Decision:** trap
-(x86-native, the SIGFPE every Unix programmer expects) or 0
-(aarch64-native). Draft says trap.
+**G4. Division does what the target's division instruction does.**
+ISO 6.5.6p6, p7: a zero divisor is undefined, and so is a quotient
+that does not fit. Promise: the result of `/` and `%` is the result of
+the target's integer division instruction, on every operand. The
+compiler adds no decision of its own. Machine: x86 `idiv` faults on a
+zero divisor and on `INT_MIN / -1`; aarch64 `sdiv` yields 0 for a
+zero divisor and wraps on `INT_MIN / -1`, no fault. The program does
+what the machine it runs on does. IR: LLVM's `sdiv` and `srem` are
+undefined on both cases, so the mid-end would otherwise reason from
+"the divisor is not zero" and delete checks or hoist the division.
+The front end guards every division with a non-constant divisor: a
+compare and a branch, and in the cold branch the target's behaviour
+reproduced (aarch64: quotient 0, remainder the dividend; x86: the
+division executed as is, so the fault happens). A constant divisor
+needs no guard. Lost: the compare and branch, the same on every
+target. Rejected: inline assembly for the division itself, which
+blocks constant folding and strength reduction.
 
 **G5. An uninitialized object holds a value.** ISO 6.3.2.1p2: reading
 an uninitialized automatic whose address is never taken is undefined;

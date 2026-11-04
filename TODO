@@ -17,21 +17,9 @@ git keeps them.
 
 The promises in =docs/guarantees.md=, draft 1. The entries are the
 decisions the draft marks, the measurements that inform them, and one
-verification. The entry number is the guarantee it belongs to.
-
-** TODO G4: division by zero, trap or zero
-
-The draft promises a trap. The aarch64 =sdiv= returns 0 for a zero
-divisor and wraps on =INT_MIN / -1=; the x86 =idiv= faults on both.
-One target pays a guard whichever way the promise goes, and the guard
-is two compares and a branch per division with a non-constant
-divisor, the one promise that costs on the fast path where ISO costs
-nothing.
-
-Fix: decide trap or 0; record the choice and the losing target's cost
-in G4.
-
-Check: the guard's cost on a division-heavy loop, both targets.
+verification. The entry number is the guarantee it belongs to. G4 is
+decided: the target's division instruction, no decision of the
+compiler's own.
 
 ** TODO G5: uninitialized reads, freeze or zero-init
 
