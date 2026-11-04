@@ -1,40 +1,115 @@
-rcc queue. Top entry first. Entry shape: the fact, Fix, Check.
+# -*- mode: org -*-
+#+TITLE: The queue for rcc
+#+STARTUP: overview
+#+OPTIONS: toc:nil ^:nil
+#+TODO: TODO WAITING | DONE
 
-1. G4: division by zero is promised as a trap, but the aarch64 sdiv
-   returns 0 and x86 idiv faults, so one target pays a guard either
-   way. Fix: decide trap or 0, record it in docs/guarantees.md.
-   Check: the guard's cost on a division-heavy loop, both targets.
+The queue, one chapter per part of the tree, in the order the work is
+wanted; within a chapter, priority order top first. Each entry states
+the fact, the fix and the check that settles it. A =WAITING= entry is
+investigated and reported and waits on its owner; it leaves when the
+fix it waits for lands and its check passes. Finished entries leave;
+git keeps them.
 
-2. G5: an uninitialized read is promised stable, delivered by freeze
-   on every load of an automatic; the alternative is zero-init at
-   entry. Fix: decide after measuring. Check: the IR of the corpus
-   with freeze versus with zero stores, and what -O2 leaves of each.
+#+TOC: headlines 2
 
-3. G8 tier (c): cross-object pointer arithmetic without an integer
-   round trip is not promised, because LLVM's provenance rule makes
-   the access undefined. Fix: measure before deciding. Check: the
-   corpus with every gep emitted as inttoptr (add (ptrtoint p), n),
-   and what alias analysis still does.
+* Guarantees
 
-4. G8 tier (b) rests on the LangRef rule that a pointer from inttoptr
-   is based on every pointer that contributed to the integer. Fix:
-   verify the wording against the LangRef of the installed LLVM.
-   Check: the quoted sentence in docs/guarantees.md matches.
+The promises in =docs/guarantees.md=, draft 1. The entries are the
+decisions the draft marks, the measurements that inform them, and one
+verification. The entry number is the guarantee it belongs to.
 
-5. G11: a cast-derived pointer carries align 1, a declared object its
-   natural alignment; the alternative is natural alignment everywhere.
-   Fix: decide. Check: a loop over a cast-derived pointer, whether
-   -O2 still vectorizes with align 1.
+** TODO G4: division by zero, trap or zero
 
-6. G13: left-to-right evaluation departs from K&R, who left the order
-   open. Fix: confirm the promise stays. Check: the argument order
-   costs nothing beyond a register move on x86-64 and aarch64.
+The draft promises a trap. The aarch64 =sdiv= returns 0 for a zero
+divisor and wraps on =INT_MIN / -1=; the x86 =idiv= faults on both.
+One target pays a guard whichever way the promise goes, and the guard
+is two compares and a branch per division with a non-constant
+divisor, the one promise that costs on the fast path where ISO costs
+nothing.
 
-7. Calls through a mismatched function type are left out of the list
-   as not deliverable past the ABI. Fix: decide whether a partial
-   promise (indirect calls only) is worth writing. Check: what
-   instcombine does to a direct call through a cast.
+Fix: decide trap or 0; record the choice and the losing target's cost
+in G4.
 
-8. The guarantees document is about twice the one page it was meant
-   to be. Fix: cut to one page once entries 1 to 7 are decided.
-   Check: wc -w under 1000.
+Check: the guard's cost on a division-heavy loop, both targets.
+
+** TODO G5: uninitialized reads, freeze or zero-init
+
+The draft promises a stable value, delivered by =freeze= on every load
+of an automatic. The alternative is a zero store per automatic at
+entry, the stronger promise "it is 0", what
+=-ftrivial-auto-var-init=zero= ships.
+
+Fix: decide after measuring.
+
+Check: the IR of the corpus with =freeze= versus with zero stores, and
+what =-O2= leaves of each.
+
+** TODO G8 tier (c): cross-object pointer arithmetic
+
+The draft does not promise =p + (q - p)= reaching =q='s object with
+pointer arithmetic alone, because a =getelementptr= result is based
+on its base pointer and LLVM makes the access undefined, =inbounds=
+or not. Delivering the promise means every pointer add becomes
+=inttoptr (add (ptrtoint p), n)=.
+
+Fix: measure before deciding.
+
+Check: the corpus with every =gep= emitted as the integer round trip,
+and what alias analysis still does.
+
+** TODO G8 tier (b): verify the LangRef provenance rule
+
+Tier (b) rests on the rule that a pointer from =inttoptr= is based on
+every pointer that contributed to the integer. Quoted from memory in
+the draft.
+
+Fix: verify the wording against the LangRef of the installed LLVM.
+
+Check: the sentence in G8 matches the LangRef, pointer aliasing rules.
+
+** TODO G11: alignment on cast-derived pointers
+
+The draft rule: an access through a pointer that came from a cast or
+from integer arithmetic carries =align 1=; an access through a
+declared object carries the natural alignment. The alternative is
+natural alignment everywhere, which licenses LLVM to fold alignment
+tests and is the weaker promise.
+
+Fix: decide.
+
+Check: a loop over a cast-derived pointer, whether =-O2= still
+vectorizes under =align 1=.
+
+** TODO G13: left-to-right evaluation stays
+
+Left-to-right evaluation departs from K&R, who left the order open so
+the compiler could choose the cheaper one. The draft includes it as
+the one promise ISO withholds that costs nothing with LLVM behind.
+
+Fix: confirm the promise stays.
+
+Check: the argument order costs nothing beyond a register move on
+x86-64 and aarch64.
+
+** TODO Calls through a mismatched function type
+
+Left out of the list as not deliverable past the ABI: the call goes
+out per the pointer's type, and =instcombine= rewrites a direct call
+through a cast when it thinks it safe.
+
+Fix: decide whether a partial promise, indirect calls only, is worth
+writing.
+
+Check: what =instcombine= does to a direct call through a cast.
+
+* Documents
+
+** TODO The guarantees document is twice its intended length
+
+Draft 1 is about 2000 words; the record was meant to be one page.
+The length is in the decisions and the ISO citations.
+
+Fix: cut to one page once the Guarantees chapter is decided.
+
+Check: =wc -w= under 1000.
