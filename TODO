@@ -1,0 +1,40 @@
+rcc queue. Top entry first. Entry shape: the fact, Fix, Check.
+
+1. G4: division by zero is promised as a trap, but the aarch64 sdiv
+   returns 0 and x86 idiv faults, so one target pays a guard either
+   way. Fix: decide trap or 0, record it in docs/guarantees.md.
+   Check: the guard's cost on a division-heavy loop, both targets.
+
+2. G5: an uninitialized read is promised stable, delivered by freeze
+   on every load of an automatic; the alternative is zero-init at
+   entry. Fix: decide after measuring. Check: the IR of the corpus
+   with freeze versus with zero stores, and what -O2 leaves of each.
+
+3. G8 tier (c): cross-object pointer arithmetic without an integer
+   round trip is not promised, because LLVM's provenance rule makes
+   the access undefined. Fix: measure before deciding. Check: the
+   corpus with every gep emitted as inttoptr (add (ptrtoint p), n),
+   and what alias analysis still does.
+
+4. G8 tier (b) rests on the LangRef rule that a pointer from inttoptr
+   is based on every pointer that contributed to the integer. Fix:
+   verify the wording against the LangRef of the installed LLVM.
+   Check: the quoted sentence in docs/guarantees.md matches.
+
+5. G11: a cast-derived pointer carries align 1, a declared object its
+   natural alignment; the alternative is natural alignment everywhere.
+   Fix: decide. Check: a loop over a cast-derived pointer, whether
+   -O2 still vectorizes with align 1.
+
+6. G13: left-to-right evaluation departs from K&R, who left the order
+   open. Fix: confirm the promise stays. Check: the argument order
+   costs nothing beyond a register move on x86-64 and aarch64.
+
+7. Calls through a mismatched function type are left out of the list
+   as not deliverable past the ABI. Fix: decide whether a partial
+   promise (indirect calls only) is worth writing. Check: what
+   instcombine does to a direct call through a cast.
+
+8. The guarantees document is about twice the one page it was meant
+   to be. Fix: cut to one page once entries 1 to 7 are decided.
+   Check: wc -w under 1000.
