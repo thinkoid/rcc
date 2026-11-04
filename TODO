@@ -23,26 +23,18 @@ with no value of the compiler's own, and align what you can prove.
 
 ** TODO G8 tier (c): cross-object pointer arithmetic
 
-The draft does not promise =p + (q - p)= reaching =q='s object with
-pointer arithmetic alone, because a =getelementptr= result is based
-on its base pointer and LLVM makes the access undefined, =inbounds=
-or not. Delivering the promise means every pointer add becomes
-=inttoptr (add (ptrtoint p), n)=.
+The draft promises tiers (a) and (b) and leaves (c), =p + (q - p)=
+reaching =q='s object with pointer arithmetic alone, open. The
+LangRef rule is verified and probe 4 shows the fold. Delivering (c)
+means the integer round trip for every pointer add the front end
+cannot prove stays inside a declared object, which takes alias
+analysis and loop vectorization with it on those loops.
 
-Fix: measure before deciding.
+Fix: measure, then decide whether (c) is the default.
 
-Check: the corpus with every =gep= emitted as the integer round trip,
-and what alias analysis still does.
-
-** TODO G8 tier (b): verify the LangRef provenance rule
-
-Tier (b) rests on the rule that a pointer from =inttoptr= is based on
-every pointer that contributed to the integer. Quoted from memory in
-the draft.
-
-Fix: verify the wording against the LangRef of the installed LLVM.
-
-Check: the sentence in G8 matches the LangRef, pointer aliasing rules.
+Check: the corpus compiled with the round trip everywhere, then with
+"gep what you can prove", and what the vectorizer and alias analysis
+still do in each.
 
 ** TODO G13: left-to-right evaluation stays
 

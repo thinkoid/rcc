@@ -101,26 +101,46 @@ pointers, which LLVM already defines as address comparison. Lost:
 nothing beyond G6.
 
 **G8. A load reads the bytes at the address.** Which object the bytes
-belong to is not the compiler's concern. ISO: 6.5.7p9 ("provided they
-exist"); provenance is the subject of TS 6010. LLVM has its own
-provenance: a `getelementptr` result is "based on" its base pointer,
-and a load through a pointer not based on the object it reaches is
-undefined in LLVM with or without `inbounds`. Only the integer round
-trip launders it: a pointer from `inttoptr` is based on every pointer
-that contributed to the integer. So the promise comes in tiers:
+belong to is not the compiler's concern. ISO 6.5.7p9: `p + n` is
+defined only within "the same array object", "provided they exist";
+provenance is the subject of TS 6010. LLVM has its own provenance,
+LangRef, Pointer Aliasing Rules: "A pointer value formed from a
+scalar `getelementptr` operation is based on the pointer-typed
+operand of the `getelementptr`"; "A pointer value formed by an
+`inttoptr` is based on all pointer values that contribute (directly
+or indirectly) to the computation of the pointer's value"; and,
+under Allocated Objects, "If a pointer that is not based on the
+object tries to read or write to the object, it is undefined
+behavior." The gep rule says nothing about `inbounds`: withholding
+the flag removes the no-wrap promise, not the object. Probe 4 shows
+the fold. So the promise comes in tiers:
 
 - (a) Arithmetic that stays inside the object the pointer came from:
   plain `getelementptr`, honoured, alias analysis unimpaired.
 - (b) Crossing objects through an integer in the source (`uintptr_t`
   arithmetic): `ptrtoint`, `inttoptr`, honoured by LLVM's rule.
 - (c) Crossing objects with pointer arithmetic alone (`p + (q - p)`
-  used to reach `q`'s object): honoured only if every pointer add is
-  emitted as the integer round trip, which makes alias analysis give
-  up on nearly all pointer arithmetic.
+  used to reach `q`'s object): honoured only if the pointer add is
+  emitted as `inttoptr (add (ptrtoint p), n)`.
 
-**Decision:** draft promises (a) and (b). (c) is the first measurement
-of the project: the corpus compiled both ways, and what the optimizer
-loses when every `gep` is `inttoptr (add (ptrtoint p), n)`.
+Delivering (c) costs in three parts: alias analysis cannot decompose
+an `inttoptr` result, so a load through one may alias any object
+whose address has escaped; scalar evolution does not model
+`inttoptr`, so loop access analysis cannot prove the dependences a
+vectorizer needs, and a loop over `a[i]` with the index as the round
+trip does not vectorize; and the front end can keep the plain gep
+only where it can prove the arithmetic stays inside a declared object
+(a constant index within a declared array, a member through a
+declared object): gep what you can prove, the sibling of G11.
+Everything else takes the round trip, and the programmer buys the
+optimizer back per site: `restrict` for aliasing, the grant (G15) for
+bounds.
+
+**Open:** (a) and (b) are promised. (c) is the principle, and the
+first measurement of the project decides whether it is the default:
+the corpus compiled with the round trip everywhere, then with "gep
+what you can prove", and what the vectorizer and alias analysis
+still do in each.
 
 **G9. An access through a null pointer is performed at address 0.**
 ISO 6.5.4.2p4. Machine: page 0 is unmapped on every target we care
@@ -250,3 +270,9 @@ diffed, is the pin. The first corpus entry per guarantee is the
    it folds to `icmp sgt i64 %n, 0`.
 3. G1: `(a + 1 > a) ? 1 : 0` folds to `a != INT_MAX`; with `nsw` it
    folds to `1`.
+4. G8: two allocas `a` and `b`, a store of 3 to `b`'s address
+   computed from `a` by the address difference, then a load of `b`.
+   With the address as `getelementptr i8, ptr %a, %d` the function
+   folds to `ret 2`, the earlier store to `b`, the store through the
+   gep kept beside it; with the address as `inttoptr (add (ptrtoint
+   %a), %d)` it folds to `ret 3`.
