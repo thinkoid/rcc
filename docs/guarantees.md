@@ -70,19 +70,18 @@ blocks constant folding and strength reduction.
 **G5. An uninitialized object holds a value.** ISO 6.3.2.1p2: reading
 an uninitialized automatic whose address is never taken is undefined;
 otherwise the representation is indeterminate. Promise: the object
-holds some value of its type, the same on every read until it is
-written. Not a particular value. Machine: the register or stack slot
-holds what was there. IR: the front end never writes `undef` or
-`poison` and never emits `noundef` on parameters or returns. After
-mem2reg a read before any write becomes `undef` anyway, and LLVM may
-give `undef` a different value at each use; `freeze` pins it. Lost:
-`freeze` blocks some folds through the value it pins. **Decision:**
-`freeze` every load of an automatic (folds away where LLVM can prove
-the value defined; measure the residue), or zero-initialize every
-automatic at entry (the stronger promise "it is 0", one store per
-variable, mostly deleted by dead-store elimination; what
-`-ftrivial-auto-var-init=zero` ships). Draft says `freeze`; the
-measurement decides.
+holds some value of its type, and every read yields that value until
+a write touches it. Which value is not promised, and the compiler
+does not choose one. Machine: the register or stack slot holds what
+was there. IR: the front end never writes `undef` or `poison` and
+never emits `noundef` on parameters or returns. After mem2reg a read
+before any write becomes `undef` anyway, and LLVM may give `undef` a
+different value at each use; `freeze` on every load of an automatic
+pins it to one. LLVM folds the `freeze` away where it can prove the
+value defined. Lost: the folds `freeze` blocks on the loads it does
+not fold away; measured, not guessed. Rejected: a zero store per
+automatic at entry, what `-ftrivial-auto-var-init=zero` ships. It is
+a value the compiler invents.
 
 ## Pointers and memory
 

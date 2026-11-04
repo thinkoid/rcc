@@ -17,21 +17,9 @@ git keeps them.
 
 The promises in =docs/guarantees.md=, draft 1. The entries are the
 decisions the draft marks, the measurements that inform them, and one
-verification. The entry number is the guarantee it belongs to. G4 is
-decided: the target's division instruction, no decision of the
-compiler's own.
-
-** TODO G5: uninitialized reads, freeze or zero-init
-
-The draft promises a stable value, delivered by =freeze= on every load
-of an automatic. The alternative is a zero store per automatic at
-entry, the stronger promise "it is 0", what
-=-ftrivial-auto-var-init=zero= ships.
-
-Fix: decide after measuring.
-
-Check: the IR of the corpus with =freeze= versus with zero stores, and
-what =-O2= leaves of each.
+verification. The entry number is the guarantee it belongs to. G4 and G5
+are decided: the target's division instruction, and =freeze= with no
+value of the compiler's own.
 
 ** TODO G8 tier (c): cross-object pointer arithmetic
 
