@@ -136,11 +136,14 @@ Everything else takes the round trip, and the programmer buys the
 optimizer back per site: `restrict` for aliasing, the grant (G15) for
 bounds.
 
-**Open:** (a) and (b) are promised. (c) is the principle, and the
-first measurement of the project decides whether it is the default:
-the corpus compiled with the round trip everywhere, then with "gep
-what you can prove", and what the vectorizer and alias analysis
-still do in each.
+All three tiers are promised. (c) is the premise of the list, and
+the measurement prices it rather than decides it: the corpus
+compiled with the round trip everywhere, then with "gep what you can
+prove", and what the vectorizer and alias analysis still do in each,
+is the published cost. "Gep what you can prove" weakens nothing:
+arithmetic that provably stays inside one object cannot reach
+another, so the plain gep and the round trip mean the same thing
+there.
 
 **G9. An access through a null pointer is performed at address 0.**
 ISO 6.5.4.2p4. Machine: page 0 is unmapped on every target we care

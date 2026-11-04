@@ -17,20 +17,20 @@ git keeps them.
 
 The promises in =docs/guarantees.md=, draft 1. The entries are the
 decisions the draft marks, the measurements that inform them, and one
-verification. The entry number is the guarantee it belongs to. G4, G5
-and G11 are decided: the target's division instruction, =freeze=
-with no value of the compiler's own, and align what you can prove.
+verification. The entry number is the guarantee it belongs to. G4, G5,
+G8 and G11 are decided: the target's division instruction, =freeze=
+with no value of the compiler's own, the integer round trip for
+pointer arithmetic, and align what you can prove.
 
-** TODO G8 tier (c): cross-object pointer arithmetic
+** TODO G8: price the round trip
 
-The draft promises tiers (a) and (b) and leaves (c), =p + (q - p)=
-reaching =q='s object with pointer arithmetic alone, open. The
-LangRef rule is verified and probe 4 shows the fold. Delivering (c)
-means the integer round trip for every pointer add the front end
-cannot prove stays inside a declared object, which takes alias
-analysis and loop vectorization with it on those loops.
+All three tiers of G8 are promised; the pointer add is the integer
+round trip wherever the front end cannot prove the arithmetic stays
+inside a declared object. The cost to alias analysis and loop
+vectorization is the project's first published number, not a vote
+on the promise. Needs code.
 
-Fix: measure, then decide whether (c) is the default.
+Fix: measure once the front end emits pointer arithmetic.
 
 Check: the corpus compiled with the round trip everywhere, then with
 "gep what you can prove", and what the vectorizer and alias analysis
