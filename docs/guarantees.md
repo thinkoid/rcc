@@ -141,17 +141,25 @@ reordered. `restrict` gives it back per site (`noalias` on the
 parameter is emitted for `restrict` and nothing else).
 
 **G11. A misaligned access is performed.** ISO 6.3.2.3p7: converting
-to a pointer type with stricter alignment is undefined. Machine: x86
-tolerates any alignment for ordinary loads; aarch64 tolerates it for
-ordinary loads and faults for exclusive and some SIMD forms. IR: the
-`align` on a load is a fact LLVM reasons from (it folds `(uintptr_t)p
-& 3` and selects aligned vector moves). Draft rule: an access through
-a pointer that came from a cast or from integer arithmetic carries
-`align 1`; an access through a declared object or a pointer to one
-carries the natural alignment. Lost: aligned vector loads in loops
-over cast-derived pointers. **Decision:** the rule above, or natural
-alignment everywhere and "the machine does what it does" (which
-licenses LLVM to fold alignment tests and is a weaker promise).
+to a pointer type with stricter alignment is undefined. Promise: the
+access happens at the address, and the machine does what it does.
+Machine: x86 performs ordinary loads and stores at any alignment, at
+a penalty across a cache line; aarch64 performs them in normal memory
+and faults only for exclusives, device memory and the stack pointer.
+IR: the `align` on a load or store is a promise LLVM reasons from
+(it folds `(uintptr_t)p & 3`, feeds known bits, and picks aligned
+vector moves), and overestimating it is undefined behaviour in the
+LangRef. Rule: align what you can prove. An access to a declared
+object, or to a member reached through one, carries the natural
+alignment, which the ABI makes true. An access through a pointer of
+unknown origin, a parameter, a cast, an integer, carries `align 1`.
+Lost: the alignment-arithmetic folds; on a strict-alignment target
+(not ours) an `align 1` word access becomes byte loads. Scalar
+accesses on x86-64 and aarch64 are the same instruction either way,
+and vectorized loops over a pointer parameter already use unaligned
+vector moves under clang, which can prove no more than the scalar
+alignment. Rejected: natural alignment everywhere, a promise the
+front end has no grounds to make.
 
 **G12. A local's storage is one stack slot for the whole activation.**
 ISO 6.2.4p2: a pointer to an object past its lifetime is
@@ -219,7 +227,7 @@ of emitted IR:
 | `inbounds`, `nusw`, `nuw` on `getelementptr` | G6 |
 | `nonnull`, `dereferenceable`, `!nonnull`; function without `null_pointer_is_valid` | G9 |
 | `!tbaa`; `noalias` except from `restrict` | G10 |
-| `!range`, `!align` metadata | G5, G11 |
+| `!range`, `!align` metadata; `align` above what the front end can prove | G5, G11 |
 | `llvm.lifetime.start`, `llvm.lifetime.end` | G12 |
 | `mustprogress`, `willreturn`, `llvm.loop.mustprogress` | G14 |
 

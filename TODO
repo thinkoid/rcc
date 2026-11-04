@@ -17,9 +17,9 @@ git keeps them.
 
 The promises in =docs/guarantees.md=, draft 1. The entries are the
 decisions the draft marks, the measurements that inform them, and one
-verification. The entry number is the guarantee it belongs to. G4 and G5
-are decided: the target's division instruction, and =freeze= with no
-value of the compiler's own.
+verification. The entry number is the guarantee it belongs to. G4, G5
+and G11 are decided: the target's division instruction, =freeze=
+with no value of the compiler's own, and align what you can prove.
 
 ** TODO G8 tier (c): cross-object pointer arithmetic
 
@@ -43,19 +43,6 @@ the draft.
 Fix: verify the wording against the LangRef of the installed LLVM.
 
 Check: the sentence in G8 matches the LangRef, pointer aliasing rules.
-
-** TODO G11: alignment on cast-derived pointers
-
-The draft rule: an access through a pointer that came from a cast or
-from integer arithmetic carries =align 1=; an access through a
-declared object carries the natural alignment. The alternative is
-natural alignment everywhere, which licenses LLVM to fold alignment
-tests and is the weaker promise.
-
-Fix: decide.
-
-Check: a loop over a cast-derived pointer, whether =-O2= still
-vectorizes under =align 1=.
 
 ** TODO G13: left-to-right evaluation stays
 
