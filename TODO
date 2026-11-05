@@ -15,71 +15,134 @@ git keeps them.
 
 * Guarantees
 
-The promises in =docs/guarantees.md=, draft 1. The entries are the
-decisions the draft marks, the measurements that inform them, and one
-verification. The entry number is the guarantee it belongs to. G4, G5,
-G8, G11, G13 and G16 are decided: the target's division instruction,
-=freeze= with no value of the compiler's own, the integer round trip
-for pointer arithmetic, align what you can prove, left to right as
-the written order, and the call goes out as written.
+The promises in =docs/guarantees.md=. The entry number is the
+guarantee it belongs to. All sixteen are decided; under the literal
+pipeline the guard of G4, the round trip of G8 and the laundering of
+G16 are no longer emitted, because nothing between the source and the
+instruction reasons about the program.
 
-** TODO G8: price the round trip
+** WAITING G15: the grant has nothing to grant
 
-All three tiers of G8 are promised; the pointer add is the integer
-round trip wherever the front end cannot prove the arithmetic stays
-inside a declared object. The cost to alias analysis and loop
-vectorization is the project's first published number, not a vote
-on the promise. Needs code.
+Under the literal back end no pass reads =nsw=, =nuw= or =inbounds=,
+so a per-declaration grant changes nothing. The entry is marked
+parked in the list and the attribute name stays reserved.
 
-Fix: measure once the front end emits pointer arithmetic.
+Fix: withdraw G15 from the list, or keep it reserved for a second
+pipeline that runs an optimizer under the grants. Owner's call.
 
-Check: the corpus compiled with the round trip everywhere, then with
-"gep what you can prove", and what the vectorizer and alias analysis
-still do in each.
+Check: the list says one or the other.
 
-** TODO G4: the x86 cold side still contains an undefined sdiv
+* Cost model
 
-The rationale says the cold branch of the guard executes the
-division as is on x86, so the fault happens. The instruction in that
-branch is LLVM's =sdiv=, undefined on a zero divisor, and the mid-end
-may delete the branch that leads only to it; the guard would then
-guard nothing. The rationale rejected inline assembly for the
-division itself, not for the cold side. Division with a non-constant
-divisor is outside the first slice until this is settled.
+The record in =docs/cost.md=: what each construct compiles to under
+the literal pipeline, =llc= with FastISel and the rewriting passes
+off.
 
-The same hole opens with a constant divisor: "a constant divisor
-needs no guard" (the rationale, and the table row) is false for a
-constant 0 on any division and for a constant -1 on a signed one,
-since LLVM folds =sdiv x, 0= to poison and =sdiv INT_MIN, -1= is
-undefined. The emitter refuses those constants until the guard
-lands; a literal behind a cast counts as non-constant to it.
+** TODO The cost corpus: assembly pins per row
 
-Fix: decide the cold side on x86: an inline-asm =idiv=, or a trap
-the list names. Record it in the rationale, and narrow "a constant
-divisor needs no guard" to a constant that is neither 0 nor -1.
+The cost model has no check. Each row of its table wants a
+one-construct program whose assembly is pinned, so a change in the
+emitter, the flag table or the LLVM version shows as a diff; the
+hidden =llc= options are not a stable interface and an upgrade is
+exactly when they move.
 
-Check: a probe under =opt -O2=: the guard with a plain =sdiv= in the
-cold branch, and whether the branch survives.
+Fix: =tests/cost/<row>.c= with a pinned =.s= per program, the oracle
+script running =rcc -S= then =llc= with the flag table to assembly,
+and =--pin= adopting them as it adopts the IR.
 
-* Tree
+Check: =make test= diffs the assembly of every row, and a deliberate
+flag removal (=-disable-machine-cse= off) shows as a failed row.
 
-** TODO A compound assignment has no type to compute in
+** TODO =a + b= comes out as =lea=
 
-=assign_t= with an operator is computed in the lhs type by the
-emitter. C computes =lhs op rhs= in the type the usual arithmetic
-conversions give and converts the result back (6.5.17.3p3): =int i;
-i /= 2u= divides unsigned, =char c; c <<= 9= masks the count with
-31, not 7. Right in the first slice, where every operand is =int=;
-wrong the moment =char=, =short= or =unsigned= meet it. The emitter
-throws when the two operand types differ.
+FastISel emits an IR =add= as the x86 three-operand =lea= when the
+result goes to a third register, and =a + 0= as =lea= with a zero
+displacement. It is an addition in the machine's own three-operand
+form, not a fold, but it is not spelled =add=. The cost-model row
+says so; whether that is acceptable is a decision.
 
-Fix: either a computation type on =assign_t= that the parser fills
-and the emitter casts into and out of, or the parser lowering a
-compound assignment through explicit casts once the lvalue can be
-evaluated once (a dereference with side effects cannot be
-duplicated).
+Fix: accept and keep the row as written, or find the point in the
+two-address pass that converts and whether a switch exists.
 
-Check: =unsigned u = 3; int i = -7; i /= u;= gives what clang gives.
+Check: the cost corpus row for =a + b=.
+
+** TODO Pointer difference costs a division
+
+G6 lowers =p - q= to =ptrtoint=, =sub=, =sdiv= by the element size,
+and the literal selector makes that an =idiv=, even for a power of
+two. The programmer has no way to write the shift in C. Either the
+cost model accepts the division as the written meaning of =p - q=, or
+the front end is allowed one strength reduction here, stated as such.
+
+Fix: decide, record in =cost.md=, emit accordingly when pointers
+land.
+
+Check: the cost corpus row for pointer difference.
+
+** TODO =register=: the programmer's lever on the allocator
+
+Every local lives in its stack slot and is loaded and stored at each
+use, which is Ritchie's model without the keyword. =register= should
+mean the variable is an SSA value with no slot, so the allocator
+keeps it in a register across the function. That is phi placement in
+the front end for a variable assigned in branches and loops.
+
+Fix: parse =register=; emit those locals as SSA values, placing phis
+by the standard single-pass construction; refuse =&= on them as ISO
+does.
+
+Check: a loop counter declared =register= has no =mov= to the stack
+in its loop; the same loop without the keyword has two.
+
+** TODO The performance leg of the oracle
+
+The thesis is measurable: a program written for a literal compiler,
+with =register= and the strength reductions done by hand, against the
+same program under =clang -O2=. The oracle has no leg for it.
+
+Fix: a small benchmark corpus with a hand-tuned rcc version and a
+plain version per program, timed under both compilers; the numbers
+recorded in =cost.md=.
+
+Check: the table exists and each row names the programs and the
+runs.
+
+* Tests
+
+** TODO The oracle's time limit cannot tell 124 from a timeout
+
+GNU =timeout= exits 124 for a run it stopped and passes the program's
+own status otherwise, so a program that exits 124 by itself is
+recorded as =timeout=. And =timeout= sends SIGTERM, which a program
+may ignore; =timeout -k= would follow with SIGKILL.
+
+Fix: =timeout -k 1 10=, and a corpus rule that no program exits 124.
+
+Check: a program that ignores SIGTERM ends its row.
+
+** TODO A G14 corpus program needs a non-constant condition
+
+=for (;;);= hangs under =clang -O2= as well: C11 6.8.5p6 exempts a
+loop whose controlling expression is constant from the
+forward-progress assumption. The divergence G14 promises shows only
+on a loop like =while (x);= with =x= a non-volatile object the loop
+never writes.
+
+Fix: write that program as the G14 entry, expected =timeout= under
+rcc and 0 under clang.
+
+Check: the oracle row.
+
+** TODO A failed =llc= under =-c= may leave a partial object
+
+With =-c=, =llc= writes straight to the output path. If it fails
+after opening the file, the path holds a partial object that a
+later =make= would take for a good one. Unchecked.
+
+Fix: write to a temporary beside the output and rename on success,
+or confirm =llc= removes its output on failure.
+
+Check: a fake =llc= that writes then exits 7 leaves no output file.
 
 * Parser
 
@@ -114,16 +177,3 @@ Fix: add the two token kinds, lex the literals with their escapes,
 and let the parser say `not yet` until the emitter writes them.
 
 Check: `return "x";` fails in the parser, at the literal, as not yet.
-
-* Tests
-
-** TODO The oracle has no time limit
-
-A corpus program that loops forever stops the run; G14 makes such a
-program a legitimate corpus entry (`for (;;);` hangs by promise).
-`timeout` is coreutils, not POSIX, and the script is POSIX sh.
-
-Fix: run each program under `timeout` when it is on the path, and
-record a killed run as its own status in the table.
-
-Check: a corpus program that hangs ends the row, not the run.

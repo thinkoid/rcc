@@ -1,0 +1,144 @@
+# rcc: the cost model
+
+What each construct compiles to. `guarantees.md` says what a program
+means where ISO C says nothing; this page says what it costs, on
+every construct. The two together are the contract: the compiler
+does what the source says, and only that.
+
+## 0. tl;dr
+
+- The instruction written is the instruction executed. `x / 4`
+  divides; `x >>= 2` shifts; `a + 0` adds. Choosing between them is
+  the programmer's job, and the compiler never second-guesses it.
+- The compiler decides three things of its own: which register
+  holds a value, the one-to-one machine form of each IR instruction,
+  and the calling convention. Nothing else.
+- The back end is LLVM's `llc` with FastISel and every rewriting
+  pass switched off. The flag table is in `main.cc`; chapter 2 lists
+  it with what each flag holds back.
+- A computation whose result is unused is not emitted. That is the
+  selector's own rule and has no switch.
+- Locals live in memory, one stack slot each, for the whole call.
+  `register` is not honoured yet; when it is, it will be the
+  programmer's lever on the allocator.
+
+## 1. The rule
+
+The front end emits one IR instruction per operation in the source,
+in the written order, and the back end selects one machine
+instruction, or the machine's fixed sequence, per IR instruction.
+Between the two, nothing reasons about the program.
+
+What the compiler may do:
+
+- Allocate registers. Which value lives where, and when a value is
+  spilled, is the allocator's. A local declared in the source lives
+  in its own stack slot regardless.
+- Select the machine form. An IR `add` is an x86 `add`, or the
+  three-operand `lea` when the result goes to a third register; a
+  32-bit signed division is `cltd; idivl`; a comparison is `cmp` and
+  a `setcc` or a conditional jump. The form is fixed per instruction
+  and target, and listed in chapter 3.
+- Follow the calling convention: argument registers, the stack
+  frame, callee-saved registers.
+
+What the compiler never does:
+
+- Fold. `a + 0` is an add, `x * 3` is a multiply, `x / 4` is a
+  division, `a == a` is a compare.
+- Move. A loop-invariant expression is computed every iteration. A
+  constant used in a loop is materialized in the loop.
+- Merge. The same expression written twice is computed twice.
+- Reorder. Instructions come out in the written order; blocks come
+  out in the written order.
+- Delete. Except an instruction whose result nothing reads, which
+  the selector drops; see chapter 4.
+- Convert a branch to a conditional move or the reverse.
+
+## 2. The pipeline
+
+`llc`, LLVM 23.1.3, with the flags below. Most are hidden options,
+not a stable interface; a new LLVM is checked against chapter 5
+before the version in `main.cc` is bumped.
+
+| Flag | What it holds back |
+|---|---|
+| `-O1` | the real register allocator; `-O0` allows only the fast one, which spills across every block |
+| `-fast-isel` | FastISel: the instruction written is the instruction selected; no folding of `a + 0`, `x * 3`, `x / 4` |
+| `-fast-isel-abort=3` | never fall back to the folding selector; fail loudly instead |
+| `-relocation-model=pic` | clang links position-independent executables |
+| `-disable-cgp` | no IR rewriting before selection |
+| `-disable-lsr` | no loop strength reduction |
+| `-disable-constant-hoisting` | constants stay where they are written |
+| `-disable-machine-licm` | nothing moves out of a loop |
+| `-disable-machine-cse` | nothing is computed once that was written twice |
+| `-disable-machine-sink`, `-disable-postra-machine-sink` | nothing moves down a branch |
+| `-disable-machine-dce` | no dead-instruction removal past the selector's own |
+| `-disable-peephole` | no instruction rewriting |
+| `-disable-x86-lea-opt` | no `lea` rewriting |
+| `-disable-x86-domain-reassignment` | no domain changes |
+| `-disable-early-ifcvt` | no branch to conditional move |
+| `-x86-cmov-converter=false` | no conditional move to branch |
+| `-enable-misched=false` | no reordering |
+| `-disable-copyprop` | no copy propagation |
+| `-disable-branch-fold` | branches stay as written |
+| `-disable-tail-duplicate`, `-disable-early-taildup` | no block duplication |
+| `-disable-block-placement` | blocks stay in the written order |
+| `-disable-post-ra` | no post-allocation scheduling |
+| `-no-stack-coloring` | one slot per local, never shared |
+
+Why `-O1` and not `-O0`: LLVM ties its register allocators to the
+level. At `-O0` only the fast allocator is permitted, and it spills
+every value to the stack at every block boundary, so a loop reloads
+its counter and its parameters from memory each iteration. At `-O1`
+the greedy allocator runs, and with FastISel forced and the passes
+above held back, the selection is as literal as at `-O0` and the
+registers are real. One pass has no switch, the machine combiner; on
+the probes it did nothing to a literal chain of adds and multiplies.
+
+## 3. What each construct compiles to
+
+x86-64; aarch64 rows to follow when the target is wired.
+
+| Source | IR | Machine |
+|---|---|---|
+| a local | `alloca`, a load at each read, a store at each write | a stack slot, `mov` in and out |
+| a parameter | stored to its slot at entry, loaded at each read | the argument register, then the slot |
+| `a + b`, `a - b` | `add`, `sub` | `add`, `sub`, or `lea` for a three-operand add |
+| `a * b` | `mul` | `imul` |
+| `a / b`, `a % b` | `sdiv`, `srem`, `udiv`, `urem` | `cltd; idivl` or `xorl %edx; divl`; the quotient from `eax`, the remainder from `edx` |
+| `a << n`, `a >> n` | `shl`, `ashr`, `lshr` | `shl`, `sar`, `shr` by `cl`; the count masked by the instruction |
+| `a < b` and the rest | `icmp`, `zext` | `cmp`, `setcc`, `and $1` |
+| `a && b`, `a \|\| b` | branches, `phi` | `test`, conditional jumps |
+| `a ? b : c` | branches, `phi` | `test`, conditional jumps |
+| `if`, `while`, `for` | `icmp ne 0`, `br` | `cmp` or `test`, conditional and unconditional jumps |
+| `f(a, b)` | `call` | the convention's argument moves, `call` |
+| `(T) a` | `trunc`, `sext`, `zext`, or nothing | `movsx`, `movzx`, or nothing |
+| `a += b` | load, convert, op, convert, store | the row of the op, between a load and a store |
+
+## 4. What the machine does on its own
+
+- **An unused result is not computed.** FastISel skips an IR
+  instruction whose result nothing reads and which has no side
+  effect. `a + 0;` as a statement emits nothing. A division with an
+  unused result emits nothing, so it cannot fault. This is the one
+  departure from "the instruction written is the instruction
+  executed", and it has no switch.
+- **Locals are memory.** Every local is loaded before use and
+  stored after assignment, every time. Temporaries within an
+  expression are registers. The allocator may spill a temporary
+  across a call or a block.
+- **The frame.** The prologue and epilogue, callee-saved registers,
+  stack alignment, the red zone for a leaf's locals: the convention's,
+  not the source's. No frame pointer is kept.
+- **Unreachable blocks are dropped.** The emitter opens a block after
+  every `return` for whatever follows; when nothing does, `llc`
+  removes it, and no flag keeps it. Code the source cannot reach is
+  not code.
+
+## 5. Verification
+
+The oracle's pin is the IR; the cost model's pin is the assembly. A
+corpus of one-construct programs under `tests/cost/`, each with the
+instructions its row names, checked by the oracle script, is the
+check for this page and for an LLVM upgrade. Not built yet; queued.

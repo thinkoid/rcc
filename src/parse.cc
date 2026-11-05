@@ -249,18 +249,6 @@ require_modifiable_lvalue(const token_t &at, const expr_t &e)
         fail(at, "expression is not assignable");
 }
 
-// The guard G4 promises for a non-constant divisor is not settled, so
-// the subset divides by integer constants alone, and not by zero.
-void
-require_constant_divisor(const token_t &at, const expr_t &divisor)
-{
-    if (!is< literal_t >(divisor))
-        not_yet(at, "division by a non-constant divisor");
-
-    if (as< literal_t >(divisor).value == 0)
-        not_yet(at, "division by constant zero");
-}
-
 //
 // typed operators
 //
@@ -1201,13 +1189,14 @@ expression(parser_t &p)
     return e;
 }
 
-// The right operand is converted to the type of the left, which is the
-// type of the whole, 6.5.17.1p3, 6.5.17.2p2.  A compound assignment is
-// the same shape with its operator set, and the emitter computes it in
-// the type of the left operand.  That coarsens 6.5.17.3p4, which
-// computes E1 op E2 in the common type: for char and short, and for an
-// int against a long or an unsigned operand, a division, a right shift
-// or a shift by the width or more can differ from the C result.
+// The type of the whole is the type of the left operand, 6.5.17.1p3,
+// 6.5.17.2p2, and a plain assignment converts the right operand to it.
+// E1 op= E2 is E1 = E1 op (E2) with E1 evaluated once, 6.5.17.3p4: the
+// operation is computed in the common type of the usual arithmetic
+// conversions, or in the promoted left type for a shift, 6.5.8p3, so
+// the right operand goes to that type here, a shift count included, as
+// in the shift production.  The emitter takes the loaded left operand
+// into it and the result back to the left type.
 expr_t
 assignment_expression(parser_t &p)
 {
@@ -1221,17 +1210,22 @@ assignment_expression(parser_t &p)
     expr_t rhs = assignment_expression(p);
     require_value(op, rhs);
 
+    const type_t t = lhs.type;
+
     std::optional< binary_op_t > compound;
-    if (op.kind != tok_t::assign)
+    type_t common = t;
+    if (op.kind != tok_t::assign) {
         compound = binary_operator(op.kind);
 
-    if (compound == binary_op_t::div || compound == binary_op_t::rem)
-        require_constant_divisor(op, rhs);
+        if (compound == binary_op_t::shl || compound == binary_op_t::shr)
+            common = promoted(t);
+        else
+            common = common_type(t, rhs.type);
+    }
 
-    const type_t t = lhs.type;
-    rhs = convert_to(std::move(rhs), t);
+    rhs = convert_to(std::move(rhs), common);
 
-    return expr_t { t, assign_t { compound, box(std::move(lhs)),
+    return expr_t { t, assign_t { compound, common, box(std::move(lhs)),
                                   box(std::move(rhs)) } };
 }
 
@@ -1381,7 +1375,6 @@ additive_expression(parser_t &p)
     return e;
 }
 
-// The divisor is checked as written, before any conversion wraps it.
 expr_t
 multiplicative_expression(parser_t &p)
 {
@@ -1389,12 +1382,7 @@ multiplicative_expression(parser_t &p)
 
     while (next_is(p, { tok_t::star, tok_t::slash, tok_t::percent })) {
         const token_t &op = advance(p);
-
-        expr_t rhs = cast_expression(p);
-        if (op.kind != tok_t::star)
-            require_constant_divisor(op, rhs);
-
-        e = arithmetic(op, std::move(e), std::move(rhs));
+        e = arithmetic(op, std::move(e), cast_expression(p));
     }
 
     return e;

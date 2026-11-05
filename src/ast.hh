@@ -94,11 +94,16 @@ struct binary_t
     expr_ptr_t lhs, rhs;
 };
 
-// Plain assignment has no op; a compound assignment carries the
-// operator it applies before the store.
+// Plain assignment has no op, and common is the lhs type.  A compound
+// assignment carries the operator and the type the operation is
+// computed in, the usual arithmetic conversions of the two operands
+// (6.5.17.3p4), or the promoted lhs type for a shift; the parser
+// converts the rhs to it, and the emitter converts the loaded lhs
+// into it and the result back to the lhs type.
 struct assign_t
 {
     std::optional< binary_op_t > op;
+    type_t common;
     expr_ptr_t lhs, rhs;
 };
 
@@ -109,7 +114,8 @@ struct call_t
 };
 
 // A conversion, explicit or inserted by the parser; the target type
-// is the expression's.  The emitter converts nothing on its own.
+// is the expression's.  The emitter converts nothing on its own,
+// except the two conversions a compound assignment names.
 struct cast_t
 {
     expr_ptr_t arg;

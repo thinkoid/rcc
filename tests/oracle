@@ -1,17 +1,22 @@
 #!/bin/sh
 ########################################################################
 #
-# The oracle: the same program under clang -O2 and under rcc, on the
-# corpus of divergence programs.  Where the two differ is the output
-# of the experiment.
+# The oracle: the same program under the optimizer, clang -O2, and
+# under the literal machine, rcc, on the corpus of divergence
+# programs.  Where the two differ is the output of the experiment.
 #
-# Each program tests/corpus/<name>.c is built by ./rcc -O2 and by
-# clang -O2, and each build is run with no arguments and no standard
-# input.  The two exit statuses are compared with the program's row
-# in tests/corpus/expected.  The IR rcc writes with -S is diffed
-# against the pin, tests/corpus/<name>.ll.  A row passes when both
-# statuses match the table and the pin matches the IR; a program
-# without a row or without a pin fails.
+# Each program tests/corpus/<name>.c is built by ./rcc, which has no
+# optimization levels, and by clang -O2, and each build is run with
+# no arguments and no standard input.  The two exit statuses are
+# compared with the program's row in tests/corpus/expected.  The IR
+# rcc writes with -S is diffed against the pin, tests/corpus/<name>.ll.
+# A row passes when both statuses match the table and the pin matches
+# the IR; a program without a row or without a pin fails.
+#
+# A program may hang by promise, so each run has a time limit of 10
+# seconds when timeout(1) is on the path.  A run it stops, status 124,
+# shows as "timeout", and a row that expects "timeout" passes on it.
+# Without timeout the script says so once and runs without a limit.
 #
 # The script prints a table, one row per program, and a summary, and
 # exits 0 when every row passed, 1 otherwise.  It runs from the tree
@@ -22,7 +27,8 @@
 #
 # tests/corpus/expected holds one line per program: its name, the
 # exit status of the rcc build and that of the clang build, separated
-# by spaces.  A # starts a comment.
+# by spaces.  A status is a number, or "timeout" for a run stopped at
+# the time limit.  A # starts a comment.
 #
 ########################################################################
 #
@@ -78,6 +84,12 @@ measured=$workdir/measured
 # the shown status of a program that did not build
 unbuilt=unbuilt
 
+# the seconds a program may run, the status timeout(1) gives when it
+# stops one, and the status shown for it
+time_limit=10
+timeout_status=124
+timed_out=timeout
+
 # byte order for the sorted corpus, and diagnostics in one language
 LC_ALL=C
 export LC_ALL
@@ -87,6 +99,9 @@ export LC_ALL
 
 # with --pin, the run is adopted as the pins and the expected statuses
 pin=0
+
+# 1 when timeout(1) is on the path and each run has the time limit
+limited=0
 
 # the rows of the table, and the rows that passed
 programs=0
@@ -124,6 +139,19 @@ check_tree()
 
 
 ##########
+# find_timeout(): sets limited to 1 when timeout(1) is on the path, and
+# says once that the runs have no time limit otherwise
+find_timeout()
+{
+    if command -v timeout > /dev/null 2>&1; then
+        limited=1
+    else
+        echo "$myname: no timeout on the path; programs run without a limit" >&2
+    fi
+}
+
+
+##########
 # logged(): runs a command with its standard output and standard error
 # appended to the log after a "### <command>:" line, and its status
 # after the output; reports the command's status as its own
@@ -142,22 +170,36 @@ logged()
 
 
 ##########
-# measure(): builds a program with the given compiler at -O2 and runs
-# it with no arguments and no standard input; prints the program's
-# exit status, or "unbuilt" when the build failed
+# measure(): builds a program with the compiler command that follows
+# the source and the executable, then runs it with no arguments and no
+# standard input, under the time limit when there is one; prints the
+# program's exit status, "timeout" when the limit stopped it, or
+# "unbuilt" when the build failed
 measure()
 {
-    compiler=$1
-    source=$2
-    exe=$3
+    source=$1
+    exe=$2
+    shift 2
 
-    if ! logged "$compiler" -O2 -o "$exe" "$source"; then
+    if ! logged "$@" -o "$exe" "$source"; then
         echo "$unbuilt"
         return 1
     fi
 
-    logged "$exe" < /dev/null
-    echo $?
+    if [ "$limited" -eq 0 ]; then
+        logged "$exe" < /dev/null
+        echo $?
+        return 0
+    fi
+
+    logged timeout "$time_limit" "$exe" < /dev/null
+    status=$?
+
+    if [ "$status" -eq "$timeout_status" ]; then
+        echo "$timed_out"
+    else
+        echo "$status"
+    fi
 }
 
 
@@ -231,8 +273,8 @@ check_program()
     # an output left by an earlier run must not stand in for this one's
     rm -f "$stem.rcc" "$stem.clang" "$stem.ll"
 
-    rcc_status=$(measure ./rcc "$source" "$stem.rcc")
-    clang_status=$(measure clang "$source" "$stem.clang")
+    rcc_status=$(measure "$source" "$stem.rcc" ./rcc)
+    clang_status=$(measure "$source" "$stem.clang" clang -O2)
     pin_state=$(check_pin "$name")
 
     echo "$name $rcc_status $clang_status" >> "$measured"
@@ -374,6 +416,9 @@ done
 
 # without the tree root and a built rcc there is nothing to run
 check_tree || exit 2
+
+# without timeout(1) the runs go on, unlimited
+find_timeout
 
 # the work directory is kept; the log and the measurements start over
 if ! mkdir -p "$workdir" || ! : > "$log" || ! : > "$measured"; then

@@ -13,17 +13,25 @@ optimizer loses.
 
 ## Design
 
+- A literal compiler. The instruction written is the instruction
+  executed: `x / 4` divides, `a + 0` adds, a loop-invariant is
+  computed every iteration. Choosing the cheaper form is the
+  programmer's job, and the compiler never second-guesses it.
+  `docs/cost.md` says what each construct compiles to.
 - Own tree. LLVM is a dependency, not a fork.
-- Textual IR out. `clang` assembles and links. No build-time
-  dependency beyond an installed LLVM.
-- Each guarantee is a flag or metadata the front end withholds: no
-  `nsw`, no `inbounds`, no `!tbaa`, and so on. The full list is the
-  last table of the guarantees document.
+- Textual IR out. `llc` selects instructions one for one and
+  allocates registers, with every rewriting pass switched off;
+  `clang` links. No build-time dependency beyond an installed LLVM.
+- Each guarantee is delivered by emitting the plain instruction and
+  nothing in between. The front end withholds every flag an
+  optimizer would reason from: no `nsw`, no `inbounds`, no `!tbaa`.
+  The full list is the last table of the guarantees document.
 
 ## Method
 
 - The guarantees list is the conformance record, written before the
-  code.
+  code. The cost model is its companion, written as the pipeline was
+  settled.
 - The oracle: the same program under `clang -O2` and under `rcc`, on
   a corpus of the known divergence cases. Where they differ is the
   experiment's output.
@@ -31,7 +39,7 @@ optimizer loses.
 
 ## Status
 
-The first slice: `int`, the scalar operators, `if`, `while`, `for`,
-`return`, calls. The shape is `docs/shape.md`; `make` builds `rcc`,
-`make test` runs the oracle over `tests/corpus/`. The queue is
-`TODO`.
+The first slice: the integer types, the scalar operators, `if`,
+`while`, `for`, `return`, calls, through the literal pipeline. The
+shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs the
+oracle over `tests/corpus/`. The queue is `TODO`.

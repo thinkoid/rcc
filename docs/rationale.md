@@ -23,6 +23,14 @@ mistake, and the compiler has no standing to help.
 Checked on LLVM 23.1.3, `opt -O2` on hand-written IR. The
 probes are at the end.
 
+Draft 1 assumed the IR would be handed to LLVM's optimizer, and the
+guard of G4, the round trip of G8 and the laundering of G16 were
+designed to survive it. The pipeline since became literal (`cost.md`,
+`shape.md` chapter 1): no optimizer runs, those three mechanisms are
+not emitted, and the arguments below stand as the record of what the
+optimizer would have done to the plain instruction, which is why it
+does not run.
+
 ## Integers
 
 **G1. Signed arithmetic wraps.** ISO 6.5.1p5: an exceptional condition

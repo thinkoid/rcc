@@ -279,27 +279,10 @@ literal(const literal_t &l, const type_t &t)
     return { std::to_string(normalized(l.value, width)), ir_type(t) };
 }
 
-// G4 waits for its guard: until it lands, a division or remainder is
-// emitted only by a literal divisor LLVM defines on every dividend.
-// Zero and a signed -1 are not such divisors, constant or not.
-void
-check_divisor(binary_op_t op, const expr_t &rhs)
-{
-    if (op != binary_op_t::div && op != binary_op_t::rem)
-        return;
-
-    if (!is< literal_t >(rhs))
-        throw std::logic_error("emit: a division by a non-literal divisor");
-
-    const auto &t = integer(rhs.type);
-    const auto d = normalized(as< literal_t >(rhs).value, t.width);
-    if (d == 0 || (t.is_signed && d == -1))
-        throw std::logic_error("emit: a division by a literal 0 or -1");
-}
-
-// G3: the count is taken modulo the width, so the shift LLVM sees is
-// in range and never poison.  No nsw, nuw or exact: a signed left
-// shift wraps, a right shift drops the bits it shifts out.
+// G3: the count is masked by the instruction on x86 and on aarch64,
+// which is G3's promise; the front end adds nothing.  No nsw, nuw or
+// exact: a signed left shift wraps, a right shift drops the bits it
+// shifts out.
 value_t
 shift(state_t &s,
       binary_op_t op,
@@ -310,15 +293,12 @@ shift(state_t &s,
     if (r.type != l.type)
         throw std::logic_error("emit: a shift count of another width");
 
-    const auto count =
-        yield(s, l.type, std::format("and {}, {}", typed(r), t.width - 1));
-
     const auto *mnemonic = op == binary_op_t::shl ? "shl" :
                            t.is_signed            ? "ashr" :
                                                     "lshr";
 
     return yield(s, l.type,
-                 std::format("{} {}, {}", mnemonic, typed(l), count.name));
+                 std::format("{} {}, {}", mnemonic, typed(l), r.name));
 }
 
 // An arithmetic, bitwise or shift operator on two values of one
@@ -338,7 +318,10 @@ apply(state_t &s,
     case binary_op_t::sub: return yield(s, l.type, "sub " + operands);
     case binary_op_t::mul: return yield(s, l.type, "mul " + operands);
 
-    // no exact; check_divisor has let only a defined divisor through
+    // G4: the instruction the machine has, a fault on x86 for a zero
+    // divisor or INT_MIN / -1, defined results on aarch64; no guard,
+    // because nothing between here and the instruction reasons about
+    // the divisor.  No exact.
     case binary_op_t::div:
         return yield(s, l.type, (t.is_signed ? "sdiv " : "udiv ") + operands);
     case binary_op_t::rem:
@@ -442,8 +425,6 @@ binary(state_t &s, const binary_t &b, const type_t &t)
     default: break;
     }
 
-    check_divisor(b.op, *b.rhs);
-
     // G13: the left operand's code before the right's
     const auto l = rvalue(s, *b.lhs);
     const auto r = rvalue(s, *b.rhs);
@@ -509,21 +490,38 @@ unary(state_t &s, const unary_t &u, const type_t &t)
     throw std::logic_error("emit: an unknown unary operator");
 }
 
+// An integer conversion of a value of type from.  A change of
+// signedness alone is no instruction.
+value_t
+convert(state_t &s, const value_t &v, const type_t &from, const type_t &to)
+{
+    const auto &source = integer(from);
+    const auto &into = integer(to);
+    if (into.width == source.width)
+        return v;
+
+    const auto type = ir_type(to);
+
+    // G2: narrowing keeps the low bits, read as two's complement
+    if (into.width < source.width)
+        return yield(s, type, std::format("trunc {} to {}", typed(v), type));
+
+    const auto *widening = source.is_signed ? "sext" : "zext";
+
+    return yield(s, type, std::format("{} {} to {}", widening, typed(v), type));
+}
+
 // Plain or compound assignment; its value is the value stored.  A
-// compound one computes in the left operand's type, so the right
-// operand must already have it.
+// compound one computes in the common type the parser chose, which
+// the right operand already has: the old value goes into it, and the
+// result back to the left operand's type before the store.
 value_t
 assign(state_t &s, const assign_t &a)
 {
     const auto &lhs = *a.lhs;
 
-    if (a.op) {
-        check_divisor(*a.op, *a.rhs);
-
-        if (!(a.rhs->type == lhs.type))
-            throw std::logic_error(
-                "emit: a compound assignment across two types");
-    }
+    if (!(a.rhs->type == a.common))
+        throw std::logic_error("emit: an assignment across two types");
 
     // G13: the lvalue before the rvalue, and the old value before the
     // right operand of a compound assignment
@@ -532,8 +530,11 @@ assign(state_t &s, const assign_t &a)
     value_t v;
     if (a.op) {
         const auto old = load(s, addr, lhs.type);
+        const auto l = convert(s, old, lhs.type, a.common);
         const auto r = rvalue(s, *a.rhs);
-        v = apply(s, *a.op, old, r, integer(lhs.type));
+
+        const auto result = apply(s, *a.op, l, r, integer(a.common));
+        v = convert(s, result, a.common, lhs.type);
     }
     else
         v = rvalue(s, *a.rhs);
@@ -543,8 +544,7 @@ assign(state_t &s, const assign_t &a)
     return v;
 }
 
-// An integer conversion, or a discard to void.  A change of signedness
-// alone is no instruction.
+// An integer conversion, or a discard to void.
 value_t
 cast(state_t &s, const cast_t &c, const type_t &to)
 {
@@ -552,19 +552,7 @@ cast(state_t &s, const cast_t &c, const type_t &to)
     if (is< void_t >(to))
         return { "", "void" };
 
-    const auto &from = integer(c.arg->type);
-    const auto &into = integer(to);
-    if (into.width == from.width)
-        return v;
-
-    const auto type = ir_type(to);
-
-    // G2: narrowing keeps the low bits, read as two's complement
-    if (into.width < from.width)
-        return yield(s, type, std::format("trunc {} to {}", typed(v), type));
-
-    const auto *widening = from.is_signed ? "sext" : "zext";
-    return yield(s, type, std::format("{} {} to {}", widening, typed(v), type));
+    return convert(s, v, c.arg->type, to);
 }
 
 // The function a call names: a name, or a name the parser decayed to
