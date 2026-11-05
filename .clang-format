@@ -1,0 +1,90 @@
+# The layout of the tree, as clang-format can express it.
+#
+# Borrowed from stdcxx: its brace, indentation and line-breaking
+# rules. Token spacing is ypdf's: no space before a call's
+# parentheses or a subscript, spaces inside angle brackets, a
+# continuation line ends with the operator. Format the lines you add
+# (clang-format-region in Emacs, or git clang-format on the hunks).
+#
+# Needs clang-format 19 or later.
+
+Language: Cpp
+Standard: c++20
+BasedOnStyle: WebKit
+
+# indentation
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ContinuationIndentWidth: 4
+ConstructorInitializerIndentWidth: 4
+AccessModifierOffset: -4
+IndentCaseLabels: false
+NamespaceIndentation: None
+IndentPPDirectives: AfterHash
+PPIndentWidth: 2
+
+# line length and blank lines
+ColumnLimit: 80
+MaxEmptyLinesToKeep: 2
+# the rule is narrower than the option: no blank line after the brace
+# of an if, for, while or switch; a function body keeps its own layout
+KeepEmptyLinesAtTheStartOfBlocks: true
+EmptyLineAfterAccessModifier: Always
+EmptyLineBeforeAccessModifier: Always
+
+# braces: classes and function definitions on their own line,
+# control statements cuddled, else and catch on their own line
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterClass: true
+  AfterStruct: true
+  AfterUnion: true
+  AfterEnum: false
+  AfterFunction: true
+  AfterNamespace: false
+  AfterControlStatement: Never
+  AfterExternBlock: false
+  BeforeElse: true
+  BeforeCatch: true
+  IndentBraces: false
+  SplitEmptyFunction: true
+  SplitEmptyRecord: true
+
+# declarations and definitions
+BreakAfterReturnType: TopLevelDefinitions
+BreakTemplateDeclarations: Yes
+BreakConstructorInitializers: BeforeColon
+AlignAfterOpenBracket: Align
+BinPackParameters: false
+BinPackArguments: true
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortCaseLabelsOnASingleLine: true
+
+# spacing
+SpaceBeforeParens: ControlStatements
+SpaceBeforeSquareBrackets: false
+SpaceBeforeInheritanceColon: false
+SpaceAfterTemplateKeyword: false
+SpacesInAngles: Always
+SpacesBeforeTrailingComments: 1
+DerivePointerAlignment: true
+PointerAlignment: Right
+ReferenceAlignment: Pointer
+Cpp11BracedListStyle: false
+
+# operators: a continuation line ends with the operator
+BreakBeforeBinaryOperators: None
+AlignOperands: Align
+
+# alignment the tree keeps by hand; leave it alone
+AlignConsecutiveMacros: Consecutive
+AlignEscapedNewlines: Left
+AlignTrailingComments:
+  Kind: Leave
+ReflowComments: false
+FixNamespaceComments: false
+SortIncludes: Never
