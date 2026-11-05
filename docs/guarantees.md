@@ -87,13 +87,11 @@ the machine never made; the written order is the order.
 (;;);` hangs. IR: no `mustprogress`, `willreturn` or
 `llvm.loop.mustprogress`.
 
-**G15. The grant.** A per-declaration attribute (`_Nowrap`,
-provisional) on an integer or pointer variable says arithmetic on it
-does not wrap and stays in bounds. IR: `nsw`, `nuw`, `inbounds` on
-operations whose result is stored to that object, nowhere else. A wrong
-grant costs the ISO cost, at one named place. Parked: under the literal
-back end nothing reads a flag, so there is nothing to grant; the
-attribute stays reserved for the day there is.
+**G15. Withdrawn.** The number is reserved. It was the grant: a
+per-declaration attribute by which the programmer handed an
+optimizer `nsw` and `inbounds` on one variable. Under the literal
+back end nothing reads a flag, so there was nothing to grant.
+`rationale.md` keeps the design.
 
 **G16. A call goes out as written.** 6.5.3.3p7, 6.3.2.3p8. The
 arguments are passed as the call site's type says, per the ABI, and the
@@ -125,4 +123,4 @@ as a document, and for the day the IR is fed to an optimizer.
 | `llvm.lifetime.start`, `llvm.lifetime.end` | G12 |
 | `mustprogress`, `willreturn`, `llvm.loop.mustprogress` | G14 |
 
-The grant (G15) is the one exception.
+The grant that was G15 would have been the one exception.

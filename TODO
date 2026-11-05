@@ -16,21 +16,11 @@ git keeps them.
 * Guarantees
 
 The promises in =docs/guarantees.md=. The entry number is the
-guarantee it belongs to. All sixteen are decided; under the literal
-pipeline the guard of G4, the round trip of G8 and the laundering of
-G16 are no longer emitted, because nothing between the source and the
-instruction reasons about the program.
-
-** WAITING G15: the grant has nothing to grant
-
-Under the literal back end no pass reads =nsw=, =nuw= or =inbounds=,
-so a per-declaration grant changes nothing. The entry is marked
-parked in the list and the attribute name stays reserved.
-
-Fix: withdraw G15 from the list, or keep it reserved for a second
-pipeline that runs an optimizer under the grants. Owner's call.
-
-Check: the list says one or the other.
+guarantee it belongs to. All are decided; G15 is withdrawn with its
+number reserved; under the literal pipeline the guard of G4, the
+round trip of G8 and the laundering of G16 are no longer emitted,
+because nothing between the source and the instruction reasons about
+the program.
 
 * Cost model
 
@@ -52,32 +42,6 @@ and =--pin= adopting them as it adopts the IR.
 
 Check: =make test= diffs the assembly of every row, and a deliberate
 flag removal (=-disable-machine-cse= off) shows as a failed row.
-
-** TODO =a + b= comes out as =lea=
-
-FastISel emits an IR =add= as the x86 three-operand =lea= when the
-result goes to a third register, and =a + 0= as =lea= with a zero
-displacement. It is an addition in the machine's own three-operand
-form, not a fold, but it is not spelled =add=. The cost-model row
-says so; whether that is acceptable is a decision.
-
-Fix: accept and keep the row as written, or find the point in the
-two-address pass that converts and whether a switch exists.
-
-Check: the cost corpus row for =a + b=.
-
-** TODO Pointer difference costs a division
-
-G6 lowers =p - q= to =ptrtoint=, =sub=, =sdiv= by the element size,
-and the literal selector makes that an =idiv=, even for a power of
-two. The programmer has no way to write the shift in C. Either the
-cost model accepts the division as the written meaning of =p - q=, or
-the front end is allowed one strength reduction here, stated as such.
-
-Fix: decide, record in =cost.md=, emit accordingly when pointers
-land.
-
-Check: the cost corpus row for pointer difference.
 
 ** TODO =register=: the programmer's lever on the allocator
 

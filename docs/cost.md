@@ -35,7 +35,8 @@ What the compiler may do:
   spilled, is the allocator's. A local declared in the source lives
   in its own stack slot regardless.
 - Select the machine form. An IR `add` is an x86 `add`, or the
-  three-operand `lea` when the result goes to a third register; a
+  three-operand `lea` when the result goes to a third register, the
+  same addition in the encoding that spares a copy, not a fold; a
   32-bit signed division is `cltd; idivl`; a comparison is `cmp` and
   a `setcc` or a conditional jump. The form is fixed per instruction
   and target, and listed in chapter 3.
@@ -115,6 +116,7 @@ x86-64; aarch64 rows to follow when the target is wired.
 | `f(a, b)` | `call` | the convention's argument moves, `call` |
 | `(T) a` | `trunc`, `sext`, `zext`, or nothing | `movsx`, `movzx`, or nothing |
 | `a += b` | load, convert, op, convert, store | the row of the op, between a load and a store |
+| `p - q` | `ptrtoint`, `sub`, `sdiv` by the element size | `sub`, `cltq`, `idivq`; a division even for a size of 4, since G6 promises any two pointers and a shift would floor where the division truncates; `(char *) p - (char *) q` is the cheap spelling |
 
 ## 4. What the machine does on its own
 
