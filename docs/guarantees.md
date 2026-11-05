@@ -16,7 +16,7 @@ mistakes". The answer: a sanitizer catches mistakes; a promise is not a
 mistake, and the compiler has no standing to help.
 
 Checked on LLVM 23.1.3, `opt -O2` on hand-written IR. The
-three probes are at the end.
+probes are at the end.
 
 ## Integers
 
@@ -230,15 +230,43 @@ does not wrap and stays in bounds. The front end emits `nsw`, `nuw`,
 nowhere else. The programmer grants per site; the default stays the
 promise; the cost of a wrong grant is the ISO cost, at one named place.
 
+**G16. A call goes out as written.** ISO 6.5.3.3p7: a function "defined
+with a type that is not compatible with the type (of the expression)
+pointed to by the expression that denotes the called function" is
+undefined to call; 6.3.2.3p8 says the same of a converted pointer.
+Promise: the arguments are passed as the call site's type says, per the
+ABI, and the call is made. What lands there and what the callee does
+with it is another business. If the call writes into the kernel, that
+is what was asked. Nothing is added, dropped or rewritten. Machine: the
+caller lays out the registers and slots the call site's type assigns
+and jumps; the callee reads the ones its own type names; nothing checks
+that the two agree. An extra argument is ignored, a missing one reads
+what the register held, a wider one is read in its low part, a `void`
+callee called for a value yields what the return register held. IR: the
+`call` names the call site's function type. The LangRef says the type
+"shall be the signature of the function being called" and attaches no
+consequence to a mismatch; instcombine (`transformConstExprCastCall`)
+rewrites a direct call to a visible callee of another type when the
+operands cast losslessly: extra arguments are dropped, missing ones are
+added as `getNullValue`, a value of the compiler's own (probe 5).
+Indirect calls are left as written, but inlining makes indirect calls
+direct, so the source cannot tell which calls are safe. Rule: where the
+call site's type differs from the callee's declared type in the module,
+the front end launders the callee through an empty inline asm, `call
+ptr asm "", "=r,0"(ptr @g)`, and calls through the result. The
+optimizer sees an opaque pointer; the linker sees the symbol. Where the
+types agree, including a callee declared only in another unit, nothing
+changes. Lost: at those sites only, an address load and an indirect
+call instead of a direct one, and no inlining there. Rejected: a
+promise for indirect calls only, since inlining decides which calls
+stay indirect, not the source; and leaving the rewrite, since the zero
+is a value the compiler invents, G5's objection.
+
 ## Not in this list
 
 - Implementation-defined behaviour is fixed per target in a separate
   table (`char` signedness, widths, bit-field layout, `>>` of
   negatives is in G3). Not promises, just fixed.
-- Calls through a mismatched function type (ISO 6.5.3.3p7). The call
-  goes out per the ABI of the pointer's type. What the callee makes of
-  it is the callee's affair and not deliverable past the ABI; LLVM
-  rewrites a direct call through a cast when it thinks it safe. Open.
 - Library undefined behaviour (overlapping `strcpy`, bad `printf`
   formats): the library's, not the compiler's.
 - Threads and the memory model: out of scope for now.
@@ -262,6 +290,7 @@ of emitted IR:
 | `!range`, `!align` metadata; `align` above what the front end can prove | G5, G11 |
 | `llvm.lifetime.start`, `llvm.lifetime.end` | G12 |
 | `mustprogress`, `willreturn`, `llvm.loop.mustprogress` | G14 |
+| a direct `call` whose function type differs from the callee's | G16 |
 
 The grant (G15) is the one exception, and it is written in the source.
 
@@ -288,3 +317,13 @@ diffed, is the pin. The first corpus entry per guarantee is the
    folds to `ret 2`, the earlier store to `b`, the store through the
    gep kept beside it; with the address as `inttoptr (add (ptrtoint
    %a), %d)` it folds to `ret 3`.
+5. G16: direct calls to a visible `i32 g(i32)`. With an extra
+   argument the call is rewritten to `g(1)`; with none, to `g(0)`;
+   with an `i64` argument, and a call expecting a value from a `void`
+   callee, left as written. An indirect call through a parameter is
+   left as written in every shape; the same call in a helper inlined
+   with `@g` as the argument folds to `ret i32 0`. With `@g` passed
+   through `call ptr asm "", "=r,0"` the call survives as an indirect
+   call. A module that only declares `g` with the call site's type
+   sees no rewrite: the mismatch is visible only beside the
+   definition, or under LTO.
