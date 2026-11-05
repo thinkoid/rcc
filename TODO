@@ -141,3 +141,26 @@ Fix: add the two token kinds, lex the literals with their escapes,
 and let the parser say `not yet` until the emitter writes them.
 
 Check: `return "x";` fails in the parser, at the literal, as not yet.
+
+* Emitter
+
+** TODO Parameters and returns narrower than int
+
+A function with a `char` or `short` parameter does not compile:
+FastISel cannot lower an `i8` or `i16` argument, and
+`-fast-isel-abort=3` makes that fatal. At abort level 1 the other
+selector lowers the arguments and the body stays literal, but that
+level also lets calls and terminators fall back silently. A `char`
+return is emitted as `define i8` with no `signext`/`zeroext`, so a
+clang-compiled caller, which assumes the callee extended, may read
+garbage above the low byte.
+
+Fix: pass and return every integer narrower than `int` as `i32` in
+the IR signature, converting at the boundary (the register is 32
+bits wide either way, and K&R's default promotions said the same);
+abort level 3 stays. Or abort level 1 with
+`-fast-isel-report-on-fallback` turned into a failure by the driver.
+
+Check: `char f(char c) { return c / 4; }` compiles, and a
+clang-compiled caller of it gets the right value; the cost corpus
+gains the row.

@@ -1,0 +1,376 @@
+#!/bin/sh
+########################################################################
+#
+# The cost corpus: what the machine runs for each construct of the
+# cost model, docs/cost.md, pinned as a disassembly.  The oracle pins
+# the IR; this script pins the instructions llc selects from it.
+#
+# Each program tests/cost/<name>.c holds one construct, one rule or
+# one flag of the cost model.  It is built by ./rcc -c, and the object
+# is disassembled by objdump with its relocations, without the raw
+# bytes and without the addresses, so the listing diffs as text.  The
+# listing, from the
+# "Disassembly of section .text:" line on, is diffed against the pin,
+# tests/cost/<name>.s.  A row passes when the program built and the
+# listing matches the pin; a program without a pin fails.
+#
+# A change in the emitter, in the flag table of src/main.cc or in the
+# installed LLVM shows as a diff in the rows it touches, and the diff
+# is in the log.
+#
+# The script prints a table, one row per program, and a summary, and
+# exits 0 when every row passed, 1 otherwise.  It runs from the tree
+# root with ./rcc built, as make test runs it.  The objects, their
+# listings and the log of every command stay in build/cost; each
+# command's output in the log follows a "### <command>:" line and
+# ends with a "### status <n>" line.
+#
+########################################################################
+#
+# USAGE:
+#
+#     tests/costs [ --pin ] [ --help ]
+#
+# OPTIONS:
+#
+#     --pin
+#         Adopts the run.  Copies the listing of every program over
+#         its pin and prints, for each, whether the pin is new,
+#         changed or the same.  A program that did not build is left
+#         as it was.  Exits 0 when every program was adopted, 1
+#         otherwise.  It is how a new program enters the corpus, after
+#         a human has read its listing against its row of the cost
+#         model.
+#
+#     --help
+#         Prints the usage and exits.
+#
+# EXAMPLES:
+#
+#     tests/costs
+#
+#     Builds, disassembles and diffs every program in the corpus,
+#     prints the table and the summary, and keeps the log in
+#     build/cost/log.
+#
+#     tests/costs --pin
+#
+#     The same run, then the pins are made to match it.
+#
+########################################################################
+
+##########
+# global constants
+
+# the name of the script, in diagnostics
+myname=${0##*/}
+
+# the corpus: the programs and their pinned listings
+corpus=tests/cost
+
+# the work directory, kept between runs and removed by make clean
+workdir=build/cost
+
+# the log of every command
+log=$workdir/log
+
+# the line of objdump's output the listing starts at
+text_start='Disassembly of section .text:'
+
+# byte order for the sorted corpus, and diagnostics in one language
+LC_ALL=C
+export LC_ALL
+
+##########
+# global variables
+
+# with --pin, the run is adopted as the pins
+pin=0
+
+# the rows of the table, and the rows that passed
+programs=0
+passed=0
+
+
+##########
+# usage(): prints the usage
+usage()
+{
+    echo "usage: $0 [ --pin ] [ --help ]"
+    echo
+    echo "    --pin   adopt the run: rewrite the pinned listings"
+    echo "    --help  print this usage"
+}
+
+
+##########
+# check_tree(): reports 0 when the script runs from the tree root with
+# rcc built and objdump on the path, and says what is missing otherwise
+check_tree()
+{
+    if [ ! -d "$corpus" ]; then
+        echo "$myname: no $corpus here; run from the tree root" >&2
+        return 1
+    fi
+
+    if [ ! -x ./rcc ]; then
+        echo "$myname: no ./rcc; run make first" >&2
+        return 1
+    fi
+
+    if ! command -v objdump > /dev/null 2>&1; then
+        echo "$myname: no objdump on the path" >&2
+        return 1
+    fi
+
+    return 0
+}
+
+
+##########
+# logged(): runs a command with its standard output and standard error
+# appended to the log after a "### <command>:" line, and its status
+# after the output; reports the command's status as its own
+logged()
+{
+    echo "### $*:" >> "$log"
+
+    "$@" >> "$log" 2>&1
+    status=$?
+
+    echo "### status $status" >> "$log"
+    echo >> "$log"
+
+    return $status
+}
+
+
+##########
+# disassemble(): disassembles an object into a file, without the raw
+# bytes and the addresses, and keeps the listing from the start of the
+# text section on in a second file; objdump's diagnostics and status
+# go to the log; reports 1 when objdump failed or wrote no text
+# section, 0 otherwise
+disassemble()
+{
+    obj=$1
+    dump=$2
+    listing=$3
+
+    echo "### objdump -d -r --no-show-raw-insn --no-addresses $obj > $dump:" \
+        >> "$log"
+
+    objdump -d -r --no-show-raw-insn --no-addresses "$obj" > "$dump" 2>> "$log"
+    status=$?
+
+    echo "### status $status" >> "$log"
+    echo >> "$log"
+
+    if [ "$status" -ne 0 ]; then
+        return 1
+    fi
+
+    if ! sed -n "/^$text_start/,\$p" "$dump" > "$listing"; then
+        return 1
+    fi
+
+    if [ ! -s "$listing" ]; then
+        echo "$myname: no text section in $obj" >> "$log"
+        echo >> "$log"
+        return 1
+    fi
+
+    return 0
+}
+
+
+##########
+# build(): builds one program with rcc -c and disassembles the object
+# into its listing; prints "built", or "unbuilt" when either step
+# failed
+build()
+{
+    name=$1
+
+    stem=$workdir/$name
+
+    if ! logged ./rcc -c -o "$stem.o" "$corpus/$name.c"; then
+        echo unbuilt
+        return 1
+    fi
+
+    if ! disassemble "$stem.o" "$stem.objdump" "$stem.s"; then
+        echo unbuilt
+        return 1
+    fi
+
+    echo built
+}
+
+
+##########
+# check_pin(): diffs the listing of one program against its pin;
+# prints "pin ok", "pin differs" or "no pin"
+check_pin()
+{
+    name=$1
+
+    pin_file=$corpus/$name.s
+    listing=$workdir/$name.s
+
+    # a program that did not build has no listing, and the diff below
+    # reports the difference
+    if [ ! -e "$pin_file" ]; then
+        echo "no pin"
+    elif logged diff -u "$pin_file" "$listing"; then
+        echo "pin ok"
+    else
+        echo "pin differs"
+    fi
+}
+
+
+##########
+# print_row(): prints one row of the table
+print_row()
+{
+    name=$1
+    build_state=$2
+    pin_state=$3
+    verdict=$4
+
+    printf '%-20s %-8s %-12s %s\n' \
+        "$name" "$build_state" "$pin_state" "$verdict"
+}
+
+
+##########
+# check_program(): builds and disassembles one program, diffs its
+# listing against the pin and prints its row; reports 0 when the row
+# passed, 1 when it failed
+check_program()
+{
+    name=$1
+
+    stem=$workdir/$name
+
+    # an output left by an earlier run must not stand in for this one's
+    rm -f "$stem.o" "$stem.objdump" "$stem.s"
+
+    build_state=$(build "$name")
+    pin_state=$(check_pin "$name")
+
+    if [ "$build_state" = built ] && [ "$pin_state" = "pin ok" ]; then
+        verdict=pass
+    else
+        verdict=FAIL
+    fi
+
+    print_row "$name" "$build_state" "$pin_state" "$verdict"
+
+    [ "$verdict" = pass ]
+}
+
+
+##########
+# adopt_pins(): copies the listing of the run over the pin of every
+# program, printing for each pin whether it is new, changed or the
+# same; reports 1 when a program has no listing or a pin could not be
+# written, 0 otherwise
+adopt_pins()
+{
+    result=0
+
+    for source in "$corpus"/*.c; do
+        [ -e "$source" ] || continue
+
+        name=${source##*/}
+        name=${name%.c}
+
+        pin_file=$corpus/$name.s
+        listing=$workdir/$name.s
+
+        if [ ! -s "$listing" ]; then
+            echo "$name: no listing, pin left as it was"
+            result=1
+        elif [ ! -e "$pin_file" ]; then
+            cp "$listing" "$pin_file" && echo "pinned $pin_file (new)" ||
+                result=1
+        elif ! cmp -s "$pin_file" "$listing"; then
+            cp "$listing" "$pin_file" && echo "pinned $pin_file (changed)" ||
+                result=1
+        else
+            echo "pinned $pin_file (same)"
+        fi
+    done
+
+    return $result
+}
+
+
+##########
+# main body of script
+
+# process command line options
+for arg in "$@"; do
+    case "$arg" in
+        --pin)  # adopt the run as the pins
+            pin=1
+            ;;
+
+        --help)  # print the usage and stop
+            usage
+            exit 0
+            ;;
+
+        *)  # anything else is a usage error
+            usage >&2
+            exit 2
+            ;;
+    esac
+done
+
+# without the tree root, a built rcc and objdump there is nothing to run
+check_tree || exit 2
+
+# the work directory is kept; the log starts over
+if ! mkdir -p "$workdir" || ! : > "$log"; then
+    echo "$myname: cannot write in $workdir" >&2
+    exit 2
+fi
+
+echo "### running $0 $*" >> "$log"
+echo >> "$log"
+
+print_row program build pin result
+
+# one row per program in sorted order; a failed row does not stop the run
+for source in "$corpus"/*.c; do
+    [ -e "$source" ] || continue
+
+    name=${source##*/}
+    name=${name%.c}
+
+    programs=$((programs + 1))
+    if check_program "$name"; then
+        passed=$((passed + 1))
+    fi
+done
+
+if [ "$programs" -eq 0 ]; then
+    echo "$myname: no programs in $corpus" >&2
+    exit 1
+fi
+
+echo
+echo "$passed of $programs passed; the log is $log"
+
+# with --pin, the exit status is the adoption's, not the run's
+if [ "$pin" -ne 0 ]; then
+    echo
+    adopt_pins
+    exit $?
+fi
+
+[ "$passed" -eq "$programs" ]
+exit $?

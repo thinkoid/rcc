@@ -64,7 +64,7 @@ before the version in `main.cc` is bumped.
 
 | Flag | What it holds back |
 |---|---|
-| `-O1` | the real register allocator; `-O0` allows only the fast one, which spills across every block |
+| `-O1` | the real register allocator; `-O0` allows only the fast one, which spills across every block. `llc`'s own default is `-O2`; the corpus tells the two apart on no row, and `-O1` is written so the level is stated, not inherited |
 | `-fast-isel` | FastISel: the instruction written is the instruction selected; no folding of `a + 0`, `x * 3`, `x / 4` |
 | `-fast-isel-abort=3` | never fall back to the folding selector; fail loudly instead |
 | `-relocation-model=pic` | clang links position-independent executables |
@@ -107,14 +107,14 @@ x86-64; aarch64 rows to follow when the target is wired.
 | a parameter | stored to its slot at entry, loaded at each read | the argument register, then the slot |
 | `a + b`, `a - b` | `add`, `sub` | `add`, `sub`, or `lea` for a three-operand add |
 | `a * b` | `mul` | `imul` |
-| `a / b`, `a % b` | `sdiv`, `srem`, `udiv`, `urem` | `cltd; idivl` or `xorl %edx; divl`; the quotient from `eax`, the remainder from `edx` |
+| `a / b`, `a % b` | `sdiv`, `srem`, `udiv`, `urem` | `cltd; idiv` or `xor %edx; div`; the quotient from `eax`, the remainder from `edx` |
 | `a << n`, `a >> n` | `shl`, `ashr`, `lshr` | `shl`, `sar`, `shr` by `cl`; the count masked by the instruction |
-| `a < b` and the rest | `icmp`, `zext` | `cmp`, `setcc`, `and $1` |
-| `a && b`, `a \|\| b` | branches, `phi` | `test`, conditional jumps |
-| `a ? b : c` | branches, `phi` | `test`, conditional jumps |
-| `if`, `while`, `for` | `icmp ne 0`, `br` | `cmp` or `test`, conditional and unconditional jumps |
+| `a < b` and the rest | `icmp`, `zext` | `cmp`, `setcc`, `and $1`, `movzbl`; used as a condition, the value is then compared with 0 again, since the tree holds an `int` and the emitter tests it as one |
+| `a && b`, `a \|\| b` | branches, `phi` | `cmp $0`, conditional jumps; the short-circuit value set before the jump |
+| `a ? b : c` | branches, `phi` | `cmp $0`, conditional jumps; never `cmov` |
+| `if`, `while`, `for` | `icmp ne 0`, `br` | `cmp $0`, conditional and unconditional jumps, blocks in the written order |
 | `f(a, b)` | `call` | the convention's argument moves, `call` |
-| `(T) a` | `trunc`, `sext`, `zext`, or nothing | `movsx`, `movzx`, or nothing |
+| `(T) a` | `trunc`, `sext`, `zext`, or nothing | `movsbl`, `movzbl`, `cltq`, or nothing; a `char` load is `movzbl` from the slot and then the extension, two instructions |
 | `a += b` | load, convert, op, convert, store | the row of the op, between a load and a store |
 | `p - q` | `ptrtoint`, `sub`, `sdiv` by the element size | `sub`, `cltq`, `idivq`; a division even for a size of 4, since G6 promises any two pointers and a shift would floor where the division truncates; `(char *) p - (char *) q` is the cheap spelling |
 
@@ -140,7 +140,40 @@ x86-64; aarch64 rows to follow when the target is wired.
 
 ## 5. Verification
 
-The oracle's pin is the IR; the cost model's pin is the assembly. A
-corpus of one-construct programs under `tests/cost/`, each with the
-instructions its row names, checked by the oracle script, is the
-check for this page and for an LLVM upgrade. Not built yet; queued.
+The oracle pins the IR; `tests/costs`, which `make test` runs after
+it, pins the machine code. Each program under `tests/cost/` is one
+row of chapter 3, one rule of chapters 1 and 4, or one flag of
+chapter 2, and its opening comment says what its listing must show.
+The pin beside it, `<name>.s`, is the object's disassembly by
+`objdump -d --no-show-raw-insn --no-addresses`, from the `.text`
+line on, relocations included so a call names its callee. A row
+passes when the fresh listing equals the pin; the diff of a failed
+row is in `build/cost/log`. A new or changed listing is read by hand
+against its row before `tests/costs --pin` adopts it. An LLVM
+upgrade is checked by running the corpus under the new `llc`: a row
+that differs names the construct whose cost moved.
+
+Which rows catch which flag, measured by dropping one flag at a
+time:
+
+| Flag dropped | Rows that change |
+|---|---|
+| `-fast-isel` with its abort | add-zero, mul-three, div-four, div-seven, twice |
+| `-disable-cgp` | cgp, early-taildup |
+| `-disable-constant-hoisting` | constant-hoisting |
+| `-disable-machine-licm` | constant-in-loop, invariant |
+| `-disable-machine-cse` | twice |
+| `-disable-machine-sink` | logical |
+| `-disable-branch-fold` | block-order, cgp, early-taildup, if |
+| `-disable-tail-duplicate` | conditional, early-taildup, if, select |
+| `-disable-early-taildup` | early-taildup |
+| `-disable-block-placement` | ten rows |
+
+The other flags change no listing the first slice can produce:
+`-disable-lsr` because locals are memory and there is no induction
+variable to reduce; `-no-stack-coloring` because no lifetime marker
+is emitted; `-relocation-model=pic` because it shows only in
+relocations; the rest because the pass has nothing to do on these
+constructs, or is off by default on x86. They stay in the table:
+each holds back a pass that exists, and a later slice may give it
+something to do.

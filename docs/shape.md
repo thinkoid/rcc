@@ -185,6 +185,8 @@ compile database, and three lines of make, a shell script and
     src/main.cc       the driver, and the back end's flag table
     tests/oracle      the oracle script
     tests/corpus/     the divergence programs, their pinned .ll
+    tests/costs       the cost corpus script
+    tests/cost/       one program per cost-model row, its pinned listing
 
 ## 10. The first slice
 

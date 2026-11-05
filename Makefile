@@ -18,6 +18,7 @@ build:
 
 test: rcc
 	tests/oracle
+	tests/costs
 
 clean:
 	rm -rf build rcc
