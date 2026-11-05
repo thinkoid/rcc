@@ -115,6 +115,7 @@ x86-64; aarch64 rows to follow when the target is wired.
 | `if`, `while`, `for` | `icmp ne 0`, `br` | `cmp $0`, conditional and unconditional jumps, blocks in the written order |
 | `f(a, b)` | `call` | the convention's argument moves, `call` |
 | `(T) a` | `trunc`, `sext`, `zext`, or nothing | `movsbl`, `movzbl`, `cltq`, or nothing; a `char` load is `movzbl` from the slot and then the extension, two instructions |
+| a `char` or `short` parameter or result | `i32` in the signature, `trunc` at entry, `sext`/`zext` before `ret` and before the call, `trunc` after it | a byte or word store at entry, `movsbl`/`movzbl` or `movswl`/`movzwl` before the call and before `ret` |
 | `a += b` | load, convert, op, convert, store | the row of the op, between a load and a store |
 | `p - q` | `ptrtoint`, `sub`, `sdiv` by the element size | `sub`, `cltq`, `idivq`; a division even for a size of 4, since G6 promises any two pointers and a shift would floor where the division truncates; `(char *) p - (char *) q` is the cheap spelling |
 
@@ -127,9 +128,10 @@ x86-64; aarch64 rows to follow when the target is wired.
   departure from "the instruction written is the instruction
   executed", and it has no switch.
 - **Locals are memory.** Every local is loaded before use and
-  stored after assignment, every time. Temporaries within an
-  expression are registers. The allocator may spill a temporary
-  across a call or a block.
+  stored after assignment, every time. A narrow parameter's slot is
+  its C width, though the parameter arrives in 32 bits. Temporaries
+  within an expression are registers. The allocator may spill a
+  temporary across a call or a block.
 - **The frame.** The prologue and epilogue, callee-saved registers,
   stack alignment, the red zone for a leaf's locals: the convention's,
   not the source's. No frame pointer is kept.

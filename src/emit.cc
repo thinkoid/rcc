@@ -63,6 +63,19 @@ integer(const type_t &t)
     return as< int_t >(t);
 }
 
+// The type a parameter or a result travels as across a call: an
+// integer narrower than 32 bits as the 32-bit one of its signedness,
+// every other type as itself.  The slot keeps the C type; only the
+// signature and the register carry this one.
+type_t
+passed(const type_t &t)
+{
+    if (!is< int_t >(t) || as< int_t >(t).width >= 32)
+        return t;
+
+    return make_int(32, as< int_t >(t).is_signed);
+}
+
 std::string ir_type(const type_t &);
 
 // The parameter list of a function type as LLVM spells it, the
@@ -73,7 +86,7 @@ param_list(const function_t &f)
     std::string list;
 
     for (const auto &p : f.params)
-        list += (list.empty() ? "" : ", ") + ir_type(*p);
+        list += (list.empty() ? "" : ", ") + ir_type(passed(*p));
 
     if (f.variadic)
         list += list.empty() ? "..." : ", ...";
@@ -96,7 +109,8 @@ ir_type(const type_t &t)
 
     if (is< function_t >(t)) {
         const auto &f = as< function_t >(t);
-        return std::format("{} ({})", ir_type(*f.result), param_list(f));
+        return std::format("{} ({})", ir_type(passed(*f.result)),
+                           param_list(f));
     }
 
     throw std::logic_error("emit: an array type");
@@ -579,15 +593,28 @@ call(state_t &s, const call_t &c)
     const auto &callee = callee_of(c);
     const auto &f = as< function_t >(callee.type);
 
-    // G13: every argument, in order, before the call
+    // G13: every argument, in order, before the call.  Each already has
+    // its parameter's type, and one past the parameters its promoted
+    // type, which the check holds the parser to.
     std::string args;
-    for (const auto &arg : c.args)
-        args += (args.empty() ? "" : ", ") + typed(rvalue(s, arg));
+    for (std::size_t i = 0; i < c.args.size(); ++i) {
+        const auto &arg = c.args[i];
+
+        const auto param =
+            i < f.params.size() ? *f.params[i] : passed(arg.type);
+        if (!(arg.type == param))
+            throw std::logic_error("emit: an argument unlike its parameter");
+
+        // a narrow argument goes out extended to 32 bits, 6.5.3.3p6's
+        // default argument promotion applied to every parameter
+        const auto v = convert(s, rvalue(s, arg), arg.type, passed(arg.type));
+        args += (args.empty() ? "" : ", ") + typed(v);
+    }
 
     // G16: where the call site's type will differ from the callee's,
     // the callee goes through `call ptr asm "", "=r,0"` here, and the
     // call is made through the laundered pointer.
-    const auto result = ir_type(*f.result);
+    const auto result = ir_type(passed(*f.result));
     const auto callee_type =
         f.variadic ? std::format("{} ({})", result, param_list(f)) : result;
 
@@ -601,7 +628,11 @@ call(state_t &s, const call_t &c)
         return { "", "void" };
     }
 
-    return yield(s, result, text);
+    // the upper bits of a narrow result are the callee's, never
+    // trusted: the value is the low bits, in the result's C type
+    const auto returned = yield(s, result, text);
+
+    return convert(s, returned, passed(*f.result), *f.result);
 }
 
 value_t
@@ -771,8 +802,12 @@ for_stmt(state_t &s, const for_t &f)
 void
 return_stmt(state_t &s, const return_t &r)
 {
-    if (r.value)
-        terminate(s, "ret " + typed(rvalue(s, *r.value)));
+    if (r.value) {
+        // the register is 32 bits wide, and a narrow result fills it,
+        // extended by its signedness, so the caller trusts no upper bit
+        const auto v = rvalue(s, *r.value);
+        terminate(s, "ret " + typed(convert(s, v, s.result, passed(s.result))));
+    }
     else
         terminate(s, "ret void");
 
@@ -839,10 +874,11 @@ finish(state_t &s)
     if (is< void_t >(s.result))
         terminate(s, "ret void");
     else if (s.function == "main")
-        terminate(s, std::format("ret {} 0", ir_type(s.result)));
+        terminate(s, std::format("ret {} 0", ir_type(passed(s.result))));
     else {
+        // extended to 32 bits as return_stmt extends a written result
         const auto v = load(s, { "%ret.indeterminate", "ptr" }, s.result);
-        terminate(s, "ret " + typed(v));
+        terminate(s, "ret " + typed(convert(s, v, s.result, passed(s.result))));
     }
 }
 
@@ -863,13 +899,13 @@ signature(state_t &s, const function_decl_t &fd)
     std::string params;
     for (std::size_t i = 0; i < fd.params.size(); ++i)
         params += std::format("{}{} %p.{}", params.empty() ? "" : ", ",
-                              ir_type(fd.params[i]->type), i);
+                              ir_type(passed(fd.params[i]->type)), i);
 
     if (f.variadic)
         params += params.empty() ? "..." : ", ...";
 
     s.out << std::format("define {} @{}({}) null_pointer_is_valid {{\n",
-                         ir_type(*f.result), fd.sym->name, params);
+                         ir_type(passed(*f.result)), fd.sym->name, params);
 }
 
 // The entry block's prologue: every slot, then each parameter stored
@@ -893,10 +929,15 @@ prologue(state_t &s, const function_decl_t &fd)
         line(s, std::format("%ret.indeterminate = alloca {}, align {}",
                             ir_type(s.result), alignment_of(s.result)));
 
+    // FastISel cannot lower a narrow argument, so it arrives as i32,
+    // and only its low bits are the value the caller converted
     for (std::size_t i = 0; i < fd.params.size(); ++i) {
         const auto *p = fd.params[i];
-        store(s, { std::format("%p.{}", i), ir_type(p->type) },
-              { s.slots.at(p), "ptr" }, p->type);
+        const auto wide = passed(p->type);
+
+        const value_t incoming { std::format("%p.{}", i), ir_type(wide) };
+        const auto v = convert(s, incoming, wide, p->type);
+        store(s, v, { s.slots.at(p), "ptr" }, p->type);
     }
 }
 
@@ -927,13 +968,13 @@ declaration(state_t &s, const function_decl_t &fd)
 {
     const auto &f = as< function_t >(fd.sym->type);
 
-    s.out << std::format("declare {} @{}({})\n", ir_type(*f.result),
+    s.out << std::format("declare {} @{}({})\n", ir_type(passed(*f.result)),
                          fd.sym->name, param_list(f));
 }
 
 } // namespace
 
-// No target triple, no datalayout, no module attributes: clang
+// No target triple, no datalayout, no module attributes: llc
 // supplies the host's when it reads the file.
 void
 emit(const unit_t &unit, std::ostream &out)
