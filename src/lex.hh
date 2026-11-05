@@ -112,7 +112,8 @@ struct token_t
 
 // The whole preprocessed text as tokens, ending in one eof.  The file
 // name is the location of the first line until a line marker says
-// otherwise.  Throws error_t on a character no token starts with.
+// otherwise.  Throws error_t on a character no token starts with, a
+// malformed constant, or a malformed line marker.
 std::vector< token_t > tokenize(std::string_view source, std::string_view file);
 
 } // namespace rcc

@@ -76,8 +76,9 @@ PointerAlignment: Right
 ReferenceAlignment: Pointer
 Cpp11BracedListStyle: false
 
-# operators: a continuation line ends with the operator
+# operators: a continuation line ends with the operator, ?: included
 BreakBeforeBinaryOperators: None
+BreakBeforeTernaryOperators: false
 AlignOperands: Align
 
 # alignment the tree keeps by hand; leave it alone

@@ -1,0 +1,3 @@
+# One line per program in tests/corpus: its name, the exit status of
+# the program built by rcc, and that of the program built by clang -O2.
+g1-add-compare 0 1

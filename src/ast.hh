@@ -148,9 +148,16 @@ as(const expr_t &e)
     return std::get< T >(e.v);
 }
 
-// A name or a dereference; the two the emitter can take the address
-// of.
-bool is_lvalue(const expr_t &);
+// The name of an object or a dereference; the two the emitter can
+// take the address of.  A function's name is not an object (6.3.2.1p1).
+inline bool
+is_lvalue(const expr_t &e)
+{
+    if (is< name_t >(e))
+        return as< name_t >(e).sym->storage != storage_t::function;
+
+    return is< unary_t >(e) && as< unary_t >(e).op == unary_op_t::deref;
+}
 
 // statements
 

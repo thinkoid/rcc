@@ -36,3 +36,94 @@ Fix: measure once the front end emits pointer arithmetic.
 Check: the corpus compiled with the round trip everywhere, then with
 "gep what you can prove", and what the vectorizer and alias analysis
 still do in each.
+
+** TODO G4: the x86 cold side still contains an undefined sdiv
+
+The rationale says the cold branch of the guard executes the
+division as is on x86, so the fault happens. The instruction in that
+branch is LLVM's =sdiv=, undefined on a zero divisor, and the mid-end
+may delete the branch that leads only to it; the guard would then
+guard nothing. The rationale rejected inline assembly for the
+division itself, not for the cold side. Division with a non-constant
+divisor is outside the first slice until this is settled.
+
+The same hole opens with a constant divisor: "a constant divisor
+needs no guard" (the rationale, and the table row) is false for a
+constant 0 on any division and for a constant -1 on a signed one,
+since LLVM folds =sdiv x, 0= to poison and =sdiv INT_MIN, -1= is
+undefined. The emitter refuses those constants until the guard
+lands; a literal behind a cast counts as non-constant to it.
+
+Fix: decide the cold side on x86: an inline-asm =idiv=, or a trap
+the list names. Record it in the rationale, and narrow "a constant
+divisor needs no guard" to a constant that is neither 0 nor -1.
+
+Check: a probe under =opt -O2=: the guard with a plain =sdiv= in the
+cold branch, and whether the branch survives.
+
+* Tree
+
+** TODO A compound assignment has no type to compute in
+
+=assign_t= with an operator is computed in the lhs type by the
+emitter. C computes =lhs op rhs= in the type the usual arithmetic
+conversions give and converts the result back (6.5.17.3p3): =int i;
+i /= 2u= divides unsigned, =char c; c <<= 9= masks the count with
+31, not 7. Right in the first slice, where every operand is =int=;
+wrong the moment =char=, =short= or =unsigned= meet it. The emitter
+throws when the two operand types differ.
+
+Fix: either a computation type on =assign_t= that the parser fills
+and the emitter casts into and out of, or the parser lowering a
+compound assignment through explicit casts once the lvalue can be
+evaluated once (a dereference with side effects cannot be
+duplicated).
+
+Check: =unsigned u = 3; int i = -7; i /= u;= gives what clang gives.
+
+* Parser
+
+** TODO GNU extensions in system headers reach the parser as identifiers
+
+`clang -E` of a program that includes `stdio.h` or most other glibc
+headers leaves `__attribute__`, `__extension__`, `__restrict`,
+`__inline`, `__asm__` and their arguments in the text; the lexer
+hands them over as identifiers and the parser refuses the first.
+`limits.h` has none, so the first slice does not meet them. Any
+corpus program that calls into libc will. The same family: `_Bool`,
+`bool`, `inline` and every keyword outside =tok_t= arrive as
+identifiers and fail as undeclared names rather than as `not yet`.
+
+Fix: decide between skipping the extensions in the parser (an
+attribute and its parenthesized argument list dropped, the others
+dropped as words) and preprocessing with a flag set that hides them.
+A probe says which headers need what.
+
+Check: `#include <stdio.h>` followed by an empty `main` parses.
+
+* Lexer
+
+** TODO String and character literals die with the generic error
+
+The lexer has no token kinds for them, so a program with `"x"` or
+`'x'` fails as "unexpected character" instead of `not yet: string
+literal`. The second slice needs both kinds anyway (G8's probes
+print).
+
+Fix: add the two token kinds, lex the literals with their escapes,
+and let the parser say `not yet` until the emitter writes them.
+
+Check: `return "x";` fails in the parser, at the literal, as not yet.
+
+* Tests
+
+** TODO The oracle has no time limit
+
+A corpus program that loops forever stops the run; G14 makes such a
+program a legitimate corpus entry (`for (;;);` hangs by promise).
+`timeout` is coreutils, not POSIX, and the script is POSIX sh.
+
+Fix: run each program under `timeout` when it is on the path, and
+record a killed run as its own status in the table.
+
+Check: a corpus program that hangs ends the row, not the run.

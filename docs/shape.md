@@ -31,7 +31,10 @@ file.
 The preprocessor is external. ISO defines it completely, nothing in
 the guarantees touches it, and V7's `cc` ran `cpp | c0` the same way.
 The lexer reads the `# line "file"` markers `clang -E` leaves, so
-diagnostics name the source, not the preprocessed text.
+diagnostics name the source file and line. The column is the
+column in the preprocessed text: after a macro use on the line it
+drifts from the source, and `clang -E` carries nothing to correct
+it.
 
 ## 2. The lexer
 
@@ -122,19 +125,26 @@ and reads what is not there.
 
 ## 7. Errors
 
-The first error is fatal: `file:line:column: message`, exit status 1.
-The parser throws `error_t` with the token's location; `main` catches
-it and prints. Recovery is the complexity dropped first, and nothing
+The first error is fatal: `file:line:column: error: message`, the
+form clang and Emacs agree on, exit status 1. The lexer or the
+parser throws `error_t` with the location in hand; the driver
+catches it and prints. Recovery is the complexity dropped first, and nothing
 in the method needs it: the corpus is correct programs.
 
 ## 8. The driver
 
 `rcc [-O<n>] [-S] [-c] [-o out] file.c`. `-S` stops at the `.ll`,
 the way `cc -S` stops at assembly: the IR is rcc's assembly, and
-the pinned `.ll` in the corpus is what `-S` wrote. `-O` goes
-through to `clang` and defaults to `-O2`, since the experiment is
-what survives the optimizer. Processes are spawned by fork and
-exec, never `system`.
+the pinned `.ll` in the corpus is what `-S` wrote. `-c` stops at
+the object. The default output is `a.out`, `<stem>.o` or
+`<stem>.ll`. `-O` goes through to `clang` and defaults to `-O2`,
+since the experiment is what survives the optimizer. Processes are
+spawned by fork and exec, never `system`; the temporary `.ll` is
+removed on every way out.
+
+Exit status: 0; 1 for a diagnosed error or a failed system call; 2
+for a usage error; 3 for an internal error, a tree shape the
+emitter does not handle; clang's own status when clang fails.
 
 ## 9. The build and the layout
 

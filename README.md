@@ -31,4 +31,7 @@ optimizer loses.
 
 ## Status
 
-No code yet. The queue is `TODO`.
+The first slice: `int`, the scalar operators, `if`, `while`, `for`,
+`return`, calls. The shape is `docs/shape.md`; `make` builds `rcc`,
+`make test` runs the oracle over `tests/corpus/`. The queue is
+`TODO`.

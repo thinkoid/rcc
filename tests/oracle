@@ -1,0 +1,424 @@
+#!/bin/sh
+########################################################################
+#
+# The oracle: the same program under clang -O2 and under rcc, on the
+# corpus of divergence programs.  Where the two differ is the output
+# of the experiment.
+#
+# Each program tests/corpus/<name>.c is built by ./rcc -O2 and by
+# clang -O2, and each build is run with no arguments and no standard
+# input.  The two exit statuses are compared with the program's row
+# in tests/corpus/expected.  The IR rcc writes with -S is diffed
+# against the pin, tests/corpus/<name>.ll.  A row passes when both
+# statuses match the table and the pin matches the IR; a program
+# without a row or without a pin fails.
+#
+# The script prints a table, one row per program, and a summary, and
+# exits 0 when every row passed, 1 otherwise.  It runs from the tree
+# root with ./rcc built, as make test runs it.  The programs, their
+# IR and the log of every command stay in build/oracle; each command's
+# output in the log follows a "### <command>:" line and ends with a
+# "### status <n>" line.
+#
+# tests/corpus/expected holds one line per program: its name, the
+# exit status of the rcc build and that of the clang build, separated
+# by spaces.  A # starts a comment.
+#
+########################################################################
+#
+# USAGE:
+#
+#     tests/oracle [ --pin ] [ --help ]
+#
+# OPTIONS:
+#
+#     --pin
+#         Adopts the run.  Copies the IR of every program over its
+#         pin, and rewrites the status columns of tests/corpus/expected
+#         from the measured statuses, printing what changed in each.
+#         A program that did not build, or wrote no IR, is left as it
+#         was.  Exits 0 when every program was adopted, 1 otherwise.
+#         It is how a new program enters the corpus, after a human
+#         has read its IR and its statuses.
+#
+#     --help
+#         Prints the usage and exits.
+#
+# EXAMPLES:
+#
+#     tests/oracle
+#
+#     Builds, runs and diffs every program in the corpus, prints the
+#     table and the summary, and keeps the log in build/oracle/log.
+#
+#     tests/oracle --pin
+#
+#     The same run, then the pins and tests/corpus/expected are made
+#     to match it.
+#
+########################################################################
+
+##########
+# global constants
+
+# the name of the script, in diagnostics
+myname=${0##*/}
+
+# the corpus and the table of the statuses each program should give
+corpus=tests/corpus
+expected=$corpus/expected
+
+# the work directory, kept between runs and removed by make clean
+workdir=build/oracle
+
+# the log of every command, and the statuses each program gave
+log=$workdir/log
+measured=$workdir/measured
+
+# the shown status of a program that did not build
+unbuilt=unbuilt
+
+# byte order for the sorted corpus, and diagnostics in one language
+LC_ALL=C
+export LC_ALL
+
+##########
+# global variables
+
+# with --pin, the run is adopted as the pins and the expected statuses
+pin=0
+
+# the rows of the table, and the rows that passed
+programs=0
+passed=0
+
+
+##########
+# usage(): prints the usage
+usage()
+{
+    echo "usage: $0 [ --pin ] [ --help ]"
+    echo
+    echo "    --pin   adopt the run: rewrite the pins and the expected statuses"
+    echo "    --help  print this usage"
+}
+
+
+##########
+# check_tree(): reports 0 when the script runs from the tree root with
+# rcc built, and says what is missing otherwise
+check_tree()
+{
+    if [ ! -d "$corpus" ]; then
+        echo "$myname: no $corpus here; run from the tree root" >&2
+        return 1
+    fi
+
+    if [ ! -x ./rcc ]; then
+        echo "$myname: no ./rcc; run make first" >&2
+        return 1
+    fi
+
+    return 0
+}
+
+
+##########
+# logged(): runs a command with its standard output and standard error
+# appended to the log after a "### <command>:" line, and its status
+# after the output; reports the command's status as its own
+logged()
+{
+    echo "### $*:" >> "$log"
+
+    "$@" >> "$log" 2>&1
+    status=$?
+
+    echo "### status $status" >> "$log"
+    echo >> "$log"
+
+    return $status
+}
+
+
+##########
+# measure(): builds a program with the given compiler at -O2 and runs
+# it with no arguments and no standard input; prints the program's
+# exit status, or "unbuilt" when the build failed
+measure()
+{
+    compiler=$1
+    source=$2
+    exe=$3
+
+    if ! logged "$compiler" -O2 -o "$exe" "$source"; then
+        echo "$unbuilt"
+        return 1
+    fi
+
+    logged "$exe" < /dev/null
+    echo $?
+}
+
+
+##########
+# check_pin(): writes the program's IR with rcc -S and diffs it against
+# the pin; prints "pin ok", "pin differs" or "no pin"
+check_pin()
+{
+    name=$1
+
+    pin_file=$corpus/$name.ll
+    ir_file=$workdir/$name.ll
+
+    # a failure leaves no IR, and the diff below reports the difference
+    logged ./rcc -S -o "$ir_file" "$corpus/$name.c"
+
+    if [ ! -e "$pin_file" ]; then
+        echo "no pin"
+    elif logged diff -u "$pin_file" "$ir_file"; then
+        echo "pin ok"
+    else
+        echo "pin differs"
+    fi
+}
+
+
+##########
+# expected_of(): prints the two expected statuses of a program, space
+# separated, or nothing when expected has no row for it
+expected_of()
+{
+    name=$1
+
+    if [ ! -r "$expected" ]; then
+        return 0
+    fi
+
+    awk -v name="$name" '
+        { sub(/#.*/, "") }
+        $1 == name { print $2, $3; exit }
+    ' "$expected"
+}
+
+
+##########
+# print_row(): prints one row of the table
+print_row()
+{
+    name=$1
+    rcc_status=$2
+    clang_status=$3
+    pin_state=$4
+    verdict=$5
+
+    printf '%-24s %-8s %-8s %-12s %s\n' \
+        "$name" "$rcc_status" "$clang_status" "$pin_state" "$verdict"
+}
+
+
+##########
+# check_program(): builds and runs one program both ways, diffs its IR
+# against the pin, records its statuses and prints its row; reports 0
+# when the row passed, 1 when it failed
+check_program()
+{
+    name=$1
+
+    source=$corpus/$name.c
+    stem=$workdir/$name
+
+    # an output left by an earlier run must not stand in for this one's
+    rm -f "$stem.rcc" "$stem.clang" "$stem.ll"
+
+    rcc_status=$(measure ./rcc "$source" "$stem.rcc")
+    clang_status=$(measure clang "$source" "$stem.clang")
+    pin_state=$(check_pin "$name")
+
+    echo "$name $rcc_status $clang_status" >> "$measured"
+
+    want=$(expected_of "$name")
+
+    if [ -z "$want" ]; then
+        verdict="FAIL (no row in $expected)"
+    elif [ "$want" != "$rcc_status $clang_status" ]; then
+        verdict="FAIL (expected $want)"
+    elif [ "$pin_state" != "pin ok" ]; then
+        verdict=FAIL
+    else
+        verdict=pass
+    fi
+
+    print_row "$name" "$rcc_status" "$clang_status" "$pin_state" "$verdict"
+
+    [ "$verdict" = pass ]
+}
+
+
+##########
+# adopt_pins(): copies the IR of the run over the pin of every program,
+# printing each pin it made or changed; reports 1 when a program wrote
+# no IR or a pin could not be written, 0 otherwise
+adopt_pins()
+{
+    result=0
+
+    for source in "$corpus"/*.c; do
+        [ -e "$source" ] || continue
+
+        name=${source##*/}
+        name=${name%.c}
+
+        pin_file=$corpus/$name.ll
+        ir_file=$workdir/$name.ll
+
+        if [ ! -e "$ir_file" ]; then
+            echo "$name: no IR, pin left as it was"
+            result=1
+        elif [ ! -e "$pin_file" ]; then
+            cp "$ir_file" "$pin_file" && echo "pinned $pin_file (new)" ||
+                result=1
+        elif ! cmp -s "$pin_file" "$ir_file"; then
+            cp "$ir_file" "$pin_file" && echo "pinned $pin_file (changed)" ||
+                result=1
+        fi
+    done
+
+    return $result
+}
+
+
+##########
+# adopt_expected(): rewrites the status columns of the expected table
+# from the measured statuses and prints the change as a diff; comments
+# and the order of the rows stay, a program new to the table is
+# appended, a row whose program left the corpus goes, and a program
+# that did not build keeps its row; reports 1 when a program could
+# not be adopted or the table could not be written, 0 otherwise
+adopt_expected()
+{
+    result=0
+    new=$workdir/expected
+
+    if grep -q " $unbuilt" "$measured"; then
+        echo "$expected: a program that did not build keeps its row"
+        result=1
+    fi
+
+    # the table may not exist yet; an empty one gains every row
+    if [ ! -e "$expected" ]; then
+        : > "$expected" || return 1
+    fi
+
+    awk -v unbuilt="$unbuilt" '
+        FILENAME == ARGV[1] {
+            order[++n] = $1
+            known[$1] = 1
+            if ($2 != unbuilt && $3 != unbuilt)
+                row[$1] = $1 " " $2 " " $3
+            next
+        }
+        {
+            c = index($0, "#")
+            data = c ? substr($0, 1, c - 1) : $0
+            comment = c ? " " substr($0, c) : ""
+        }
+        split(data, f) == 0 { print; next }
+        !(f[1] in known) { next }
+        {
+            seen[f[1]] = 1
+            if (f[1] in row)
+                print row[f[1]] comment
+            else
+                print
+        }
+        END {
+            for (i = 1; i <= n; i++)
+                if (!(order[i] in seen) && (order[i] in row))
+                    print row[order[i]]
+        }
+    ' "$measured" "$expected" > "$new" || return 1
+
+    if cmp -s "$expected" "$new"; then
+        echo "$expected unchanged"
+    else
+        diff -u "$expected" "$new"
+        cp "$new" "$expected" || return 1
+    fi
+
+    return $result
+}
+
+
+##########
+# main body of script
+
+# process command line options
+for arg in "$@"; do
+    case "$arg" in
+        --pin)  # adopt the run as the pins and the expected statuses
+            pin=1
+            ;;
+
+        --help)  # print the usage and stop
+            usage
+            exit 0
+            ;;
+
+        *)  # anything else is a usage error
+            usage >&2
+            exit 2
+            ;;
+    esac
+done
+
+# without the tree root and a built rcc there is nothing to run
+check_tree || exit 2
+
+# the work directory is kept; the log and the measurements start over
+if ! mkdir -p "$workdir" || ! : > "$log" || ! : > "$measured"; then
+    echo "$myname: cannot write in $workdir" >&2
+    exit 2
+fi
+
+echo "### running $0 $*" >> "$log"
+echo >> "$log"
+
+print_row program rcc clang pin result
+
+# one row per program in sorted order; a failed row does not stop the run
+for source in "$corpus"/*.c; do
+    [ -e "$source" ] || continue
+
+    name=${source##*/}
+    name=${name%.c}
+
+    programs=$((programs + 1))
+    if check_program "$name"; then
+        passed=$((passed + 1))
+    fi
+done
+
+if [ "$programs" -eq 0 ]; then
+    echo "$myname: no programs in $corpus" >&2
+    exit 1
+fi
+
+echo
+echo "$passed of $programs passed; the log is $log"
+
+# with --pin, the exit status is the adoption's, not the run's
+if [ "$pin" -ne 0 ]; then
+    echo
+    adopt_pins
+    pins_status=$?
+
+    adopt_expected
+    expected_status=$?
+
+    [ "$pins_status" -eq 0 ] && [ "$expected_status" -eq 0 ]
+    exit $?
+fi
+
+[ "$passed" -eq "$programs" ]
+exit $?

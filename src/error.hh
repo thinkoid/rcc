@@ -1,7 +1,7 @@
 // -*- mode: c++; -*-
 
-// The one diagnostic: where and what.  Thrown by the parser at the
-// first error, caught and printed by the driver.  There is no
+// The one diagnostic: where and what.  Thrown by the lexer or the
+// parser at the first error, caught and printed by the driver.  There is no
 // recovery and no second error.
 
 #pragma once
