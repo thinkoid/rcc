@@ -36,15 +36,3 @@ Fix: measure once the front end emits pointer arithmetic.
 Check: the corpus compiled with the round trip everywhere, then with
 "gep what you can prove", and what the vectorizer and alias analysis
 still do in each.
-
-* Documents
-
-** TODO The guarantees document is three times its intended length
-
-Draft 1 is about 3100 words; the record was meant to be one page.
-The length is in the decisions and the ISO citations. The chapter
-is decided; the entry left in it waits on code.
-
-Fix: cut to one page.
-
-Check: =wc -w= under 1000.
