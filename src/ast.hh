@@ -21,7 +21,10 @@ namespace rcc {
 
 // A declared name.  The unit owns every symbol in a deque, so a
 // pointer to one is stable for the life of the unit.  The IR name is
-// the emitter's business and is not kept here.
+// the emitter's business and is not kept here.  A local or parameter
+// declared register has no slot: its value is an SSA name, so & on it
+// is refused (6.5.4.2p1) and an array so declared is not yet
+// (6.3.2.1p3).
 enum class storage_t { local, parameter, global, function };
 
 struct symbol_t
@@ -29,6 +32,7 @@ struct symbol_t
     std::string name;
     type_t type;
     storage_t storage;
+    bool in_register;
 };
 
 // expressions

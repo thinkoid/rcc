@@ -131,10 +131,20 @@ instruction per operation in the source, with nothing added and
 nothing left out. The rules:
 
 - Every local and parameter is an `alloca` in the entry block, every
-  read a load, every write a store. The front end builds no SSA. A
-  local lives in its slot for the whole activation (G12), which is
-  also what `register` will one day change, for the locals it
-  names.
+  read a load, every write a store. A local lives in its slot for the
+  whole activation (G12).
+- A local or parameter declared `register` has no slot. Its value is
+  an SSA name carried in a map along the walk, every read the name
+  and every write a new one; a register parameter is the argument
+  itself. The joins the grammar makes are the only places a `phi`
+  appears: after the two arms of `if`, `?:`, `&&` and `||`, one for
+  each register variable whose name differs between the arms; and at
+  a loop header, one for each register variable the body assigns,
+  found by a scan of the body before the header is written, its
+  back-edge operand filled in when the latch is. A register variable
+  declared without an initializer holds `freeze T undef` from its
+  declaration on, the one `undef` the front end writes (G5): a value
+  the compiler did not choose, the same at every read.
 - Two entry points: `rvalue(expr)` yields the value, `lvalue(expr)`
   yields the address. Both return a value handle: the IR register or
   constant, and its IR type.

@@ -671,7 +671,7 @@ declare(parser_t &p, const token_t &name, type_t t, storage_t storage)
         fail(name, "redefinition of " + quoted(name.text));
 
     const symbol_t &sym = p.unit.symbols.emplace_back(
-        symbol_t { std::string(name.text), std::move(t), storage });
+        symbol_t { std::string(name.text), std::move(t), storage, false });
     scope.emplace(sym.name, &sym);
 
     return &sym;
@@ -936,7 +936,7 @@ declare_function(parser_t &p, const declarator_t &d)
     }
 
     const symbol_t &sym = p.unit.symbols.emplace_back(
-        symbol_t { std::string(name), t, storage_t::function });
+        symbol_t { std::string(name), t, storage_t::function, false });
     file_scope.emplace(sym.name, &sym);
     p.unit.functions.push_back(function_decl_t { &sym, { }, std::nullopt });
 
