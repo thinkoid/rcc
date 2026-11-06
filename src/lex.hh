@@ -7,6 +7,7 @@
 
 #include "error.hh"
 
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -16,6 +17,8 @@ enum class tok_t {
     eof,
     identifier,
     integer,
+    character,
+    string,
 
     // keywords, C89 and restrict
     kw_auto,
@@ -101,8 +104,9 @@ enum class tok_t {
     comma
 };
 
-// The spelling is a view into the source; an integer token's value is
-// read from it by the parser.
+// The spelling is a view into the source, the quotes included for a
+// character constant or a string literal; an integer token's value is
+// read from it by the parser, a literal's by the two functions below.
 struct token_t
 {
     tok_t kind;
@@ -115,5 +119,13 @@ struct token_t
 // otherwise.  Throws error_t on a character no token starts with, a
 // malformed constant, or a malformed line marker.
 std::vector< token_t > tokenize(std::string_view source, std::string_view file);
+
+// The bytes of a string literal token, escapes applied, the quotes and
+// the terminating zero left out; and the value of a character
+// constant, an int (6.4.4.4p10).  Neither fails: tokenize() refused
+// every malformed escape, and a constant of more than one character
+// is not yet.
+std::string string_bytes(const token_t &);
+int character_value(const token_t &);
 
 } // namespace rcc

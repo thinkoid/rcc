@@ -52,7 +52,11 @@ tokens. A token is a kind, its spelling as a view into the source,
 and a location. The lexer keeps no state and knows no names: an
 identifier is an identifier, and whether it names a type is the
 parser's question, answered by scope lookup. A vector gives the
-parser arbitrary lookahead for free.
+parser arbitrary lookahead for free. A string or character token
+keeps its spelling, quotes and escapes included; two functions
+beside `tokenize` yield the bytes of a string and the value of a
+character constant, and cannot fail, because the lexer refused every
+malformed escape when it made the token.
 
 ## 3. The types
 
@@ -64,19 +68,29 @@ bits. The edges from a type to the types it names are
 `shared_ptr< const type_t >`: a type is never written after it is
 made, so sharing is invisible and copying a type is cheap. Equality
 is structural, through the edges. No interning; a table of types is
-an optimization taken when it is measured.
+an optimization taken when it is measured. The size and the
+alignment of a type are the type's, `size_of` and `align_of`, the
+x86-64 ABI's numbers; the parser folds `sizeof` from them and the
+emitter writes `alloca` and `align` from them.
 
 ## 4. The tree
 
 Three sums.
 
-- `expr_t`: a type and a node. The nodes are integer literal, name,
-  unary, binary, assignment, call, cast, conditional. A name holds a
-  non-owning pointer to its symbol. Whether an expression is an
-  lvalue follows from its node (the name of an object, a
-  dereference), it is not stored. A compound assignment carries the
-  type it is computed in, the usual arithmetic conversions of its
-  operands.
+- `expr_t`: a type and a node. The nodes are integer or character
+  literal, name, string literal, unary, binary, assignment, call,
+  cast, conditional. A name holds a non-owning pointer to its
+  symbol. A string literal holds its bytes and is typed `char [N +
+  1]`. Whether an expression is an lvalue follows from its node (the
+  name of an object, a string literal, a dereference), it is not
+  stored. A compound assignment carries the type it is computed in,
+  the usual arithmetic conversions of its operands. Pointer
+  arithmetic is a binary add or sub of the pointer's type with the
+  integer operand widened to 64 bits in its own signedness; the
+  difference of two
+  pointers is a binary sub of type `long`; a subscript is a
+  dereference of an add, as 6.5.3.2p2 defines it; `sizeof` is an
+  integer literal the parser folded.
 - `stmt_t`: expression, declaration, block, if, while, for, return.
   A `for` carries its init as a statement, so a declaration in the
   init costs nothing.
@@ -135,6 +149,18 @@ nothing left out. The rules:
   carries no `inbounds`; division and shifts are the plain
   instruction, whatever the operands, because what the machine does
   with them is the promise (G1, G3, G4, G6).
+- A pointer plus an integer is `getelementptr` of the pointee type
+  without `inbounds`; two pointers subtract as `ptrtoint`, `sub` and
+  `sdiv` by the element size, the division left out for a size of 1
+  (G6). Pointers compare with `icmp` on `ptr` (G7). A pointer to
+  integer cast is `ptrtoint`, the reverse `inttoptr`, pointer to
+  pointer nothing.
+- An access carries the natural alignment when its address is a
+  declared object, or an element of a declared array, reached with
+  no cast between; every other access, through a parameter, a
+  pointer value or a cast, carries `align 1` (G11).
+- A string literal is a `private global` array of `i8`, one per
+  literal written, neither `constant` nor `unnamed_addr` (G17).
 - The IR names of symbols are the emitter's, kept in a side table
   from symbol to name; the tree is not written after parsing.
 
@@ -188,22 +214,32 @@ compile database, and three lines of make, a shell script and
     tests/costs       the cost corpus script
     tests/cost/       one program per cost-model row, its pinned listing
 
-## 10. The first slice
+## 10. The slices
 
-The subset probe 3 needs: `int` and the other integer types,
-locals with initializers, parameters, the arithmetic, comparison,
-logical and assignment operators, `if`, `while`, `for`, `return`,
-calls to functions declared or defined in the file. The milestone
-program computes `a + 1 > a` at `INT_MAX` and returns it as the
-exit status: 0 under rcc, 1 under `clang -O2`. No pointers, no
-strings, no `printf`.
+The first slice is the subset probe 3 needs: `int` and the other
+integer types, locals with initializers, parameters, the arithmetic,
+comparison, logical and assignment operators, `if`, `while`, `for`,
+`return`, calls to functions declared or defined in the file. The
+milestone program computes `a + 1 > a` at `INT_MAX` and returns it
+as the exit status: 0 under rcc, 1 under `clang -O2`.
 
-The second slice is pointers, which brings G6, G7, G8 and G11 and
-their probes, and string literals.
+The second slice is pointers and string literals, which brings G6,
+G7, G8, G11 and G17 and their probes: pointer declarators and `void
+*`, `&` and `*`, arrays of constant size as locals and as parameters
+adjusted to pointers, subscripts, decay, casts with a type name, the
+null pointer constant, a pointer as a condition, `++`, `--`, `+=`
+and `-=` on pointers, `p + n`, `p - q` and pointer comparison,
+`sizeof`, string and character literals with their escapes and
+adjacent concatenation, and `const` accepted and dropped, since the
+type is the machine's view. The oracle stays on exit statuses: a
+string probe returns a byte of the string.
 
 ## 11. Not yet
 
-Structs, unions, enums, globals, string literals, `switch`, `goto`,
-`sizeof`, type names in casts, typedefs, `static`, `register`,
+Structs, unions, enums, global variables, brace initializers and
+`char s[] = "..."`, function pointers, wide and `u8` strings,
+`volatile` (it has IR meaning, `load volatile`, and the selector
+drops an unused plain load, so it needs the type model, not a drop),
+`restrict`, `switch`, `goto`, typedefs, `static`, `register`,
 floating point. Each arrives when a probe needs it. The preprocessor
 stays external for good.

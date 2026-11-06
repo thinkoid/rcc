@@ -7,6 +7,7 @@
 #include "type.hh"
 
 #include <algorithm>
+#include <stdexcept>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -109,6 +110,37 @@ make_function(type_t result, std::vector< type_t > params, bool variadic)
 
     return type_t { function_t { share(std::move(result)), std::move(edges),
                                  variadic } };
+}
+
+// An array of unknown size has no size; asking is the caller's error.
+long
+size_of(const type_t &t)
+{
+    if (is< int_t >(t))
+        return as< int_t >(t).width / 8;
+
+    if (is< pointer_t >(t))
+        return 8;
+
+    if (is< array_t >(t) && as< array_t >(t).count >= 0)
+        return as< array_t >(t).count * size_of(*as< array_t >(t).element);
+
+    throw std::logic_error("size_of: a type without a size");
+}
+
+int
+align_of(const type_t &t)
+{
+    if (is< int_t >(t))
+        return as< int_t >(t).width / 8;
+
+    if (is< pointer_t >(t))
+        return 8;
+
+    if (is< array_t >(t))
+        return align_of(*as< array_t >(t).element);
+
+    throw std::logic_error("align_of: a type without an alignment");
 }
 
 } // namespace rcc

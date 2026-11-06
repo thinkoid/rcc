@@ -70,6 +70,13 @@ as(const type_t &t)
 // Structural: two pointer types are equal when their pointees are.
 bool operator==(const type_t &, const type_t &);
 
+// The size and the alignment in bytes, the x86-64 ABI's: an integer
+// its width, a pointer 8, an array its count times its element's and
+// its element's alignment.  A void or function type has neither;
+// asking throws.
+long size_of(const type_t &);
+int align_of(const type_t &);
+
 type_t make_void();
 type_t make_int(int width, bool is_signed);
 type_t make_pointer(type_t pointee);

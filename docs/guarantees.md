@@ -100,6 +100,15 @@ Nothing is added, dropped or rewritten. IR: the call, with the call
 site's type. Nothing between the source and the instruction rewrites
 a call.
 
+## Storage
+
+**G17. A string literal is a writable object.** 6.4.5p7. Each literal
+written is its own array of static storage, distinct from every other
+literal however spelled, and a store through a pointer into it writes
+the byte, as under Ritchie's compiler. IR: `private global [N x i8]`,
+neither `constant` nor `unnamed_addr`, so nothing marks it read-only
+and nothing may merge it.
+
 ## Not in this list
 
 Implementation-defined behaviour, fixed per target in a separate
@@ -122,5 +131,6 @@ as a document, and for the day the IR is fed to an optimizer.
 | `!range`, `!align`; `align` beyond what is proven | G5, G11 |
 | `llvm.lifetime.start`, `llvm.lifetime.end` | G12 |
 | `mustprogress`, `willreturn`, `llvm.loop.mustprogress` | G14 |
+| `constant`, `unnamed_addr` on a string literal | G17 |
 
 The grant that was G15 would have been the one exception.

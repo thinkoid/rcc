@@ -71,7 +71,7 @@ enum class binary_op_t {
     comma
 };
 
-// An integer constant; its type is the expression's.
+// An integer or character constant; its type is the expression's.
 struct literal_t
 {
     long long value;
@@ -82,12 +82,29 @@ struct name_t
     const symbol_t *sym;
 };
 
+// A string literal: adjacent tokens concatenated and escapes applied,
+// without the terminating zero, which the type counts; the type is
+// char [N + 1].  An object of static storage, one per literal written,
+// and writable (G17).
+struct string_t
+{
+    std::string bytes;
+};
+
+// addr yields a pointer to its lvalue operand; deref is the lvalue
+// its pointer operand names.  A subscript is a deref of an add,
+// 6.5.3.2p2.
 struct unary_t
 {
     unary_op_t op;
     expr_ptr_t arg;
 };
 
+// A pointer and an integer add or subtract as a binary add or sub of
+// the pointer's type, the integer operand promoted and then widened
+// to 64 bits in its own signedness by the parser, so an unsigned
+// index never reads as negative (G6).  Two pointers subtract to long.
+// A comparison of two pointers compares addresses (G7).
 struct binary_t
 {
     binary_op_t op;
@@ -115,7 +132,10 @@ struct call_t
 
 // A conversion, explicit or inserted by the parser; the target type
 // is the expression's.  The emitter converts nothing on its own,
-// except the two conversions a compound assignment names.
+// except the two conversions a compound assignment names.  Pointer to
+// pointer is no instruction; pointer to integer and back are ptrtoint
+// and inttoptr.  Array and function decay are casts too: the pointer
+// to the first element, or to the function.
 struct cast_t
 {
     expr_ptr_t arg;
@@ -131,6 +151,7 @@ struct expr_t
     type_t type;
     std::variant< literal_t,
                   name_t,
+                  string_t,
                   unary_t,
                   binary_t,
                   assign_t,
@@ -154,13 +175,17 @@ as(const expr_t &e)
     return std::get< T >(e.v);
 }
 
-// The name of an object or a dereference; the two the emitter can
-// take the address of.  A function's name is not an object (6.3.2.1p1).
+// The name of an object, a string literal or a dereference; the three
+// the emitter can take the address of.  A function's name is not an
+// object (6.3.2.1p1).
 inline bool
 is_lvalue(const expr_t &e)
 {
     if (is< name_t >(e))
         return as< name_t >(e).sym->storage != storage_t::function;
+
+    if (is< string_t >(e))
+        return true;
 
     return is< unary_t >(e) && as< unary_t >(e).op == unary_op_t::deref;
 }
