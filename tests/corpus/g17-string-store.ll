@@ -8,18 +8,15 @@ entry:
     store ptr @.str.0, ptr %s.2, align 8
     %t1 = load ptr, ptr %s.2, align 8
     %t2 = freeze ptr %t1
-    %t3 = sext i32 0 to i64
-    %t4 = getelementptr i8, ptr %t2, i64 %t3
-    %t5 = trunc i32 122 to i8
-    store i8 %t5, ptr %t4, align 1
-    %t6 = load ptr, ptr %s.2, align 8
-    %t7 = freeze ptr %t6
-    %t8 = sext i32 0 to i64
-    %t9 = getelementptr i8, ptr %t7, i64 %t8
-    %t10 = load i8, ptr %t9, align 1
-    %t11 = freeze i8 %t10
-    %t12 = sext i8 %t11 to i32
-    ret i32 %t12
+    %t3 = getelementptr i8, ptr %t2, i64 0
+    store i8 122, ptr %t3, align 1
+    %t4 = load ptr, ptr %s.2, align 8
+    %t5 = freeze ptr %t4
+    %t6 = getelementptr i8, ptr %t5, i64 0
+    %t7 = load i8, ptr %t6, align 1
+    %t8 = freeze i8 %t7
+    %t9 = sext i8 %t8 to i32
+    ret i32 %t9
 
 after.ret.1:
     ret i32 0

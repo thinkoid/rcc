@@ -38,20 +38,19 @@ for.step.1:
     br label %for.cond.1
 
 for.end.1:
-    %t19 = sext i32 1 to i64
-    %t20 = getelementptr i8, ptr %c.2, i64 %t19
-    %t21 = load i32, ptr %t20, align 1
-    %t22 = freeze i32 %t21
-    store i32 %t22, ptr %v.4, align 4
-    %t23 = load i32, ptr %v.4, align 4
-    %t24 = freeze i32 %t23
-    %t25 = ashr i32 %t24, 24
-    %t26 = mul i32 %t25, 10
-    %t27 = load i32, ptr %v.4, align 4
-    %t28 = freeze i32 %t27
-    %t29 = and i32 %t28, 255
-    %t30 = add i32 %t26, %t29
-    ret i32 %t30
+    %t19 = getelementptr i8, ptr %c.2, i64 1
+    %t20 = load i32, ptr %t19, align 1
+    %t21 = freeze i32 %t20
+    store i32 %t21, ptr %v.4, align 4
+    %t22 = load i32, ptr %v.4, align 4
+    %t23 = freeze i32 %t22
+    %t24 = ashr i32 %t23, 24
+    %t25 = mul i32 %t24, 10
+    %t26 = load i32, ptr %v.4, align 4
+    %t27 = freeze i32 %t26
+    %t28 = and i32 %t27, 255
+    %t29 = add i32 %t25, %t28
+    ret i32 %t29
 
 after.ret.2:
     ret i32 0

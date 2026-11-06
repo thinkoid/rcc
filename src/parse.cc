@@ -219,11 +219,18 @@ box(stmt_t s)
 // The one place a conversion enters the tree.  An expression already
 // of the type passes through, so no inserted cast converts a type to
 // itself; only a cast the source writes may, since it yields no lvalue.
+// An integer constant takes the type itself: the source wrote a
+// constant, not a conversion, and the machine has no instruction that
+// widens an immediate; the emitter writes it modulo 2^N (G2), which
+// is what the conversion would have done.
 expr_t
 convert_to(expr_t e, const type_t &t)
 {
     if (e.type == t)
         return e;
+
+    if (is< literal_t >(e) && is< int_t >(e.type) && is< int_t >(t))
+        return expr_t { t, as< literal_t >(e) };
 
     return expr_t { t, cast_t { box(std::move(e)) } };
 }

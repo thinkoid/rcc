@@ -5,8 +5,6 @@ Disassembly of section .text:
 			R_X86_64_PC32	.data-0x4
 	mov    %rax,-0x10(%rsp)
 	mov    -0x10(%rsp),%rax
-	mov    $0x1,%ecx
-	movslq %ecx,%rcx
-	movzbl (%rax,%rcx,1),%eax
+	movzbl 0x1(%rax),%eax
 	movsbl %al,%eax
 	ret

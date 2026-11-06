@@ -6,12 +6,10 @@ Disassembly of section .text:
 	add    $0x4,%rax
 	mov    %rax,-0x10(%rsp)
 	mov    -0x10(%rsp),%rax
-	mov    $0x2,%ecx
-	movslq %ecx,%rcx
-	xor    %edx,%edx
-	sub    %rcx,%rdx
-	shl    $0x2,%rdx
-	add    %rax,%rdx
-	mov    %rdx,-0x10(%rsp)
+	xor    %ecx,%ecx
+	sub    $0x2,%rcx
+	shl    $0x2,%rcx
+	add    %rax,%rcx
+	mov    %rcx,-0x10(%rsp)
 	mov    -0x10(%rsp),%rax
 	ret

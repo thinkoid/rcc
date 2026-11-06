@@ -57,25 +57,6 @@ The record in =docs/cost.md=: what each construct compiles to under
 the literal pipeline, =llc= with FastISel and the rewriting passes
 off.
 
-** WAITING A converted constant is converted at run time
-
-An integer constant under an implicit conversion is a cast node over
-the literal, and the emitter writes the conversion as an instruction:
-=p -= 2= is =sext i32 2 to i64=, then =sub i64 0=, then the gep, six
-machine instructions, where =++p= writes the =i64= constant and costs
-one =add=; =long x = 2= is =mov $2= and =cltq= the same way. The
-programmer wrote a constant, not a conversion, and the machine has
-no instruction for widening an immediate.
-
-Fix, if wanted: the parser retypes an integer literal under an
-implicit conversion instead of wrapping it, so the emitter writes
-the constant in the target type; an explicit cast of a constant
-stays a node. Waits on the decision whether retyping a literal is
-the compiler's own.
-
-Check: =p -= 2= in =tests/cost/ptr-step.s= is one =sub= or =add= of
-the scaled constant; the =(T) a= row is unchanged for a variable.
-
 ** TODO =register=: the programmer's lever on the allocator
 
 Every local lives in its stack slot and is loaded and stored at each
