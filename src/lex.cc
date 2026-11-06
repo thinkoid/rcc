@@ -6,6 +6,7 @@
 
 #include "lex.hh"
 
+#include <algorithm>
 #include <charconv>
 #include <cstddef>
 #include <format>
@@ -163,6 +164,14 @@ describe(char c)
         return std::format("'{}'", c);
 
     return std::format("{:#04x}", u);
+}
+
+// A construct of C outside the subset this lexer takes, said as the
+// parser says it.
+[[noreturn]] void
+not_yet(const location_t &where, std::string_view construct)
+{
+    fail(where, "not yet: " + std::string(construct));
 }
 
 // The token of the given length at the current position.  A token
@@ -436,6 +445,153 @@ number(state_t &st)
     return take(st, tok_t::integer, end - st.pos);
 }
 
+// The value of a simple escape sequence, 6.4.4.5p3, p8, or -1 when
+// the character after the backslash names none.
+int
+simple_escape(char c)
+{
+    switch (c) {
+    case '\'':
+    case '"':
+    case '?':
+    case '\\': return c;
+    case 'a': return '\a';
+    case 'b': return '\b';
+    case 'f': return '\f';
+    case 'n': return '\n';
+    case 'r': return '\r';
+    case 't': return '\t';
+    case 'v': return '\v';
+    default: return -1;
+    }
+}
+
+int
+hex_digit_value(char c)
+{
+    if (is_digit(c))
+        return c - '0';
+
+    return (c | 0x20) - 'a' + 10;
+}
+
+// One character of a literal and the position after it.
+struct char_t
+{
+    int value;
+    std::size_t end;
+};
+
+// The character at i in the spelling of a literal, whose escapes
+// tokenize() has checked.  An octal escape takes at most three digits
+// and a hexadecimal one every hex digit that follows, 6.4.4.5p7; a
+// hexadecimal value stops growing once it is past a byte, so a long run
+// of digits cannot overflow.
+char_t
+next_char(std::string_view s, std::size_t i)
+{
+    const auto byte_at = [&](std::size_t k) {
+        return k < s.size() ? s[k] : '\0';
+    };
+
+    if (s[i] != '\\')
+        return { static_cast< unsigned char >(s[i]), i + 1 };
+
+    const char c = byte_at(i + 1);
+    if (const int value = simple_escape(c); value >= 0)
+        return { value, i + 2 };
+
+    int value = 0;
+
+    if (is_octal_digit(c)) {
+        std::size_t k = i + 1;
+        for (; k < i + 4 && is_octal_digit(byte_at(k)); ++k)
+            value = value * 8 + (s[k] - '0');
+
+        return { value, k };
+    }
+
+    std::size_t k = i + 2;
+    for (; is_hex_digit(byte_at(k)); ++k)
+        value = std::min(value * 16 + hex_digit_value(s[k]), 0x100);
+
+    return { value, k };
+}
+
+// The escape sequence whose backslash is at i, checked against the
+// grammar of 6.4.4.5p1 and the range of p9: an octal or hexadecimal
+// value must fit an unsigned char.  Returns the position after it.
+std::size_t
+escape_end(const state_t &st, std::size_t i)
+{
+    const location_t where = location_of(st, i);
+    const char c = at(st, i + 1);
+
+    if (c == 'u' || c == 'U')
+        not_yet(where, "universal character name");
+
+    if (c == 'x' && !is_hex_digit(at(st, i + 2)))
+        fail(where, "\\x used with no following hex digits");
+
+    if (simple_escape(c) < 0 && !is_octal_digit(c) && c != 'x')
+        fail(where, std::format("unknown escape sequence: '\\' followed by {}",
+                                describe(c)));
+
+    const char_t ch = next_char(st.source, i);
+    if (ch.value > 0xff)
+        fail(where, std::format("{} escape sequence out of range",
+                                c == 'x' ? "hex" : "octal"));
+
+    return ch.end;
+}
+
+// A character constant or a string literal, quote to quote, 6.4.4.5p1,
+// 6.4.5p1.  Neither spans a line, and every escape is checked here, so
+// the decoding functions below cannot fail.  A character constant
+// holds one character: none is an error, and the value of more than
+// one is implementation-defined, 6.4.4.5p11, outside the subset.
+token_t
+literal(state_t &st, tok_t kind)
+{
+    const char quote = st.source[st.pos];
+    const location_t where = location_of(st, st.pos);
+
+    std::size_t i = st.pos + 1;
+    int count = 0;
+
+    for (char c = at(st, i); c != quote; c = at(st, i), ++count) {
+        if (c == '\n' || i >= st.source.size())
+            fail(where, std::format("missing terminating {} character", quote));
+
+        i = c == '\\' && at(st, i + 1) != '\n' ? escape_end(st, i) : i + 1;
+    }
+
+    if (kind == tok_t::character && count == 0)
+        fail(where, "empty character constant");
+
+    if (kind == tok_t::character && count > 1)
+        not_yet(where, "multi-character constant");
+
+    return take(st, kind, i + 1 - st.pos);
+}
+
+// The length of an encoding prefix at the current position, u8, u, U
+// or L right before a quote, 6.4.4.5p1, 6.4.5p1; 0 when there is none.
+std::size_t
+encoding_prefix_length(const state_t &st)
+{
+    const auto is_quote = [](char c) { return c == '\'' || c == '"'; };
+    const char c = at(st, st.pos);
+
+    if (c == 'u' && at(st, st.pos + 1) == '8' && is_quote(at(st, st.pos + 2)))
+        return 2;
+
+    if ((c == 'u' || c == 'U' || c == 'L') && is_quote(at(st, st.pos + 1)))
+        return 1;
+
+    return 0;
+}
+
 // The longest punctuator at the current position.  A '.' before a
 // digit is the start of a floating constant, not a member access.
 token_t
@@ -465,8 +621,18 @@ tokenize(std::string_view source, std::string_view file)
     for (skip_blanks(st); st.pos < source.size(); skip_blanks(st)) {
         const char c = source[st.pos];
 
+        // a line marker's file name is quoted too, but the marker is
+        // taken whole before a quote can open a string
         if (c == '#' && starts_line(st))
             line_marker(st);
+        else if (const std::size_t n = encoding_prefix_length(st); n > 0)
+            not_yet(
+                location_of(st, st.pos),
+                std::format("encoding prefix '{}'", source.substr(st.pos, n)));
+        else if (c == '\'')
+            tokens.push_back(literal(st, tok_t::character));
+        else if (c == '"')
+            tokens.push_back(literal(st, tok_t::string));
         else if (is_ident_start(c))
             tokens.push_back(identifier(st));
         else if (is_digit(c))
@@ -478,6 +644,32 @@ tokenize(std::string_view source, std::string_view file)
     tokens.push_back(take(st, tok_t::eof, 0));
 
     return tokens;
+}
+
+// The spelling between the quotes, decoded; no zero is appended.
+std::string
+string_bytes(const token_t &t)
+{
+    const std::string_view body = t.text.substr(1, t.text.size() - 2);
+
+    std::string bytes;
+    for (std::size_t i = 0; i < body.size();) {
+        const char_t c = next_char(body, i);
+        bytes.push_back(static_cast< char >(c.value));
+        i = c.end;
+    }
+
+    return bytes;
+}
+
+// The value of a char object holding the character, converted to int,
+// 6.4.4.5p11.  char is signed on x86-64, so '\xff' is -1.
+int
+character_value(const token_t &t)
+{
+    const char_t c = next_char(t.text, 1);
+
+    return static_cast< signed char >(c.value);
 }
 
 } // namespace rcc

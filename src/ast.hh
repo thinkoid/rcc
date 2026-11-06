@@ -116,7 +116,9 @@ struct binary_t
 // computed in, the usual arithmetic conversions of the two operands
 // (6.5.17.3p4), or the promoted lhs type for a shift; the parser
 // converts the rhs to it, and the emitter converts the loaded lhs
-// into it and the result back to the lhs type.
+// into it and the result back to the lhs type.  On a pointer, += and
+// -= carry the pointer type as common and the rhs widened to 64 bits
+// as for binary +, and the emitter steps the pointer by it.
 struct assign_t
 {
     std::optional< binary_op_t > op;
@@ -134,8 +136,10 @@ struct call_t
 // is the expression's.  The emitter converts nothing on its own,
 // except the two conversions a compound assignment names.  Pointer to
 // pointer is no instruction; pointer to integer and back are ptrtoint
-// and inttoptr.  Array and function decay are casts too: the pointer
-// to the first element, or to the function.
+// and inttoptr.  Array decay is a cast too, to the pointer to the
+// first element; a function decays nowhere yet.  An explicit cast is a
+// node even to the operand's own type, since a cast is never an
+// lvalue (6.5.5p6); the emitter makes nothing of it.
 struct cast_t
 {
     expr_ptr_t arg;

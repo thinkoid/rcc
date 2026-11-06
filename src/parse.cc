@@ -45,13 +45,14 @@ struct parameter_t
     const token_t *name;
 };
 
-// A declarator in the subset: a name, and a parameter list when it
+// A declarator in the subset: a name, absent only from a parameter,
+// the type it gives the name, and the parameters as written when it
 // declares a function.
 struct declarator_t
 {
     const token_t *name;
+    type_t type;
     std::optional< std::vector< parameter_t > > params;
-    bool variadic;
 };
 
 //
@@ -141,6 +142,38 @@ int_type()
     return make_int(32, true);
 }
 
+// char is signed on x86-64; long is the 64-bit signed type, and
+// unsigned long the type of sizeof, 6.5.4.4p5.
+type_t
+char_type()
+{
+    return make_int(8, true);
+}
+
+type_t
+long_type()
+{
+    return make_int(64, true);
+}
+
+type_t
+size_type()
+{
+    return make_int(64, false);
+}
+
+const type_t &
+pointee_of(const type_t &t)
+{
+    return *as< pointer_t >(t).pointee;
+}
+
+bool
+is_void_pointer(const type_t &t)
+{
+    return is< pointer_t >(t) && is< void_t >(pointee_of(t));
+}
+
 // The integer promotions, 6.3.1.1p2: every type narrower than int
 // converts to int, which holds all of its values, signed or not.
 type_t
@@ -184,7 +217,8 @@ box(stmt_t s)
 }
 
 // The one place a conversion enters the tree.  An expression already
-// of the type passes through, so no cast converts a type to itself.
+// of the type passes through, so no inserted cast converts a type to
+// itself; only a cast the source writes may, since it yields no lvalue.
 expr_t
 convert_to(expr_t e, const type_t &t)
 {
@@ -198,6 +232,18 @@ expr_t
 promote(expr_t e)
 {
     const type_t t = promoted(e.type);
+
+    return convert_to(std::move(e), t);
+}
+
+// An integer operand of pointer arithmetic: promoted and then widened
+// to 64 bits in its own signedness, in one cast, as an operand of the
+// usual arithmetic conversions goes; an unsigned index never reads as
+// negative (G6).
+expr_t
+widened_index(expr_t e)
+{
+    const type_t t = make_int(64, as< int_t >(promoted(e.type)).is_signed);
 
     return convert_to(std::move(e), t);
 }
@@ -220,9 +266,10 @@ arithmetic_conversions(expr_t &lhs, expr_t &rhs)
 // operand checks
 //
 
-// Every value in the subset is an integer: the checks below are the
-// constraints that remain once pointers are out, a void expression and
-// a function designator where a value is wanted.
+// A value in the subset is an integer or a pointer to an object.  A
+// function's name stands only as the callee of a call: function
+// pointers are outside the subset, so a function designator where a
+// value is wanted is not yet, and a void expression is an error.
 void
 require_not_function(const token_t &at, const expr_t &e)
 {
@@ -240,13 +287,142 @@ require_value(const token_t &at, const expr_t &e)
         fail(at, "void expression used as a value");
 }
 
-// 6.5.17.1p2, 6.5.3.5p1, 6.5.4.1p1: a name of an integer object; a
-// function name is an lvalue to is_lvalue, but not a modifiable one.
+// 6.5.17.1p2, 6.5.3.5p1, 6.5.4.1p1: an lvalue of integer or pointer
+// type.  An array is an lvalue but not a modifiable one, 6.3.2.1p1.
 void
 require_modifiable_lvalue(const token_t &at, const expr_t &e)
 {
-    if (!is_lvalue(e) || !is< int_t >(e.type))
+    if (!is_lvalue(e) || !(is< int_t >(e.type) || is< pointer_t >(e.type)))
         fail(at, "expression is not assignable");
+}
+
+// Array decay, 6.3.2.1p3: but as the operand of sizeof or of unary &,
+// an array becomes a pointer to its first element, a cast the emitter
+// reads as that address.  Lvalue conversion, p2, is the emitter's load
+// and needs no node.
+expr_t
+decayed(expr_t e)
+{
+    if (!is< array_t >(e.type))
+        return e;
+
+    type_t t = make_pointer(*as< array_t >(e.type).element);
+
+    return expr_t { std::move(t), cast_t { box(std::move(e)) } };
+}
+
+// An operand whose value is used: not void, not a function, and
+// decayed, so it is a scalar.
+expr_t
+rvalue(const token_t &at, expr_t e)
+{
+    require_value(at, e);
+
+    return decayed(std::move(e));
+}
+
+// The operands that must be integers: of the arithmetic operators but
+// + and -, 6.5.6p2, 6.5.8p2, 6.5.11p2, 6.5.12p2, 6.5.13p2, and of unary
+// - and ~, 6.5.4.3p1.
+void
+require_integer(const token_t &op, const expr_t &e)
+{
+    if (is< pointer_t >(e.type))
+        fail(op, "operand of " + quoted(op.text) + " is a pointer");
+}
+
+// Pointer arithmetic, ++ and -- included, needs a pointer to a
+// complete object type, 6.5.7p2, p3: not void, which GNU C would take
+// as a byte, and not a function.
+void
+require_object_pointee(const token_t &op, const type_t &t)
+{
+    if (is< void_t >(pointee_of(t)))
+        fail(op, "arithmetic on a pointer to void");
+
+    if (is< function_t >(pointee_of(t)))
+        fail(op, "arithmetic on a pointer to a function");
+}
+
+//
+// pointer conversions
+//
+
+bool
+is_zero_literal(const expr_t &e)
+{
+    return is< literal_t >(e) && is< int_t >(e.type) &&
+           as< literal_t >(e).value == 0;
+}
+
+// An integer constant expression of value 0, or one cast to void *,
+// 6.3.2.3p3.  The integer constant expressions of the subset are its
+// literals.
+bool
+is_null_pointer_constant(const expr_t &e)
+{
+    if (is< cast_t >(e) && is_void_pointer(e.type))
+        return is_zero_literal(*as< cast_t >(e).arg);
+
+    return is_zero_literal(e);
+}
+
+// The conversion as if by assignment, of a value to the type of an
+// object: the right operand of =, an initializer, an argument, a value
+// returned.  The constraints are those of simple assignment,
+// 6.5.17.2p1: integers convert to each other; a pointer takes a pointer
+// of its own type, a pointer to void and an object pointer convert
+// either way, and a null pointer constant converts to any pointer.  An
+// integer and a pointer meet only through a cast, 6.5.5p3.
+expr_t
+assignment_conversion(const token_t &at, expr_t e, const type_t &t)
+{
+    e = rvalue(at, std::move(e));
+
+    const bool to_pointer = is< pointer_t >(t);
+    const bool from_pointer = is< pointer_t >(e.type);
+
+    if (to_pointer && !from_pointer && !is_null_pointer_constant(e))
+        fail(at, "incompatible integer to pointer conversion");
+
+    if (!to_pointer && from_pointer)
+        fail(at, "incompatible pointer to integer conversion");
+
+    if (to_pointer && from_pointer && !(e.type == t) && !is_void_pointer(t) &&
+        !is_void_pointer(e.type))
+        fail(at, "incompatible pointer types");
+
+    return convert_to(std::move(e), t);
+}
+
+// Two values, at least one a pointer, brought to one pointer type, as
+// == and != and the arms of ?: take them, 6.5.10p2, p6, 6.5.16p3, p7:
+// pointers of one type stay as they are, a pointer to void and an
+// object pointer meet at void *, and a null pointer constant goes to
+// the other operand's type.  False when none of the three applies.
+bool
+common_pointer(expr_t &lhs, expr_t &rhs)
+{
+    const bool lp = is< pointer_t >(lhs.type);
+    const bool rp = is< pointer_t >(rhs.type);
+
+    type_t t = lp ? lhs.type : rhs.type;
+
+    if (lp && rp && !(lhs.type == rhs.type)) {
+        if (!is_void_pointer(lhs.type) && !is_void_pointer(rhs.type))
+            return false;
+
+        t = make_pointer(make_void());
+    }
+    else if (!lp && !is_null_pointer_constant(lhs))
+        return false;
+    else if (!rp && !is_null_pointer_constant(rhs))
+        return false;
+
+    lhs = convert_to(std::move(lhs), t);
+    rhs = convert_to(std::move(rhs), t);
+
+    return true;
 }
 
 //
@@ -315,13 +491,17 @@ make_binary(binary_op_t op, type_t t, expr_t lhs, expr_t rhs)
                     binary_t { op, box(std::move(lhs)), box(std::move(rhs)) } };
 }
 
-// * / % + - & ^ |: the usual arithmetic conversions, and the result in
-// the common type (6.5.6p4, 6.5.7p5, 6.5.11p3, 6.5.12p3, 6.5.13p3).
+// * / % & ^ |, and + - on two integers: the usual arithmetic
+// conversions, and the result in the common type (6.5.6p4, 6.5.7p5,
+// 6.5.11p3, 6.5.12p3, 6.5.13p3).
 expr_t
 arithmetic(const token_t &op, expr_t lhs, expr_t rhs)
 {
-    require_value(op, lhs);
-    require_value(op, rhs);
+    lhs = rvalue(op, std::move(lhs));
+    rhs = rvalue(op, std::move(rhs));
+
+    require_integer(op, lhs);
+    require_integer(op, rhs);
 
     const type_t t = arithmetic_conversions(lhs, rhs);
 
@@ -329,27 +509,108 @@ arithmetic(const token_t &op, expr_t lhs, expr_t rhs)
                        std::move(rhs));
 }
 
-// < > <= >= == !=: the operands in their common type, the result an
-// int (6.5.9p4, p7; 6.5.10p5).
+// + with a pointer, 6.5.7p2, p9: a pointer and an integer in either
+// order, the result of the pointer's type.  The tree keeps the order
+// written: the emitter evaluates left to right (G13), whichever side
+// the pointer is on.
+expr_t
+addition(const token_t &op, expr_t lhs, expr_t rhs)
+{
+    lhs = rvalue(op, std::move(lhs));
+    rhs = rvalue(op, std::move(rhs));
+
+    const bool lp = is< pointer_t >(lhs.type);
+    const bool rp = is< pointer_t >(rhs.type);
+
+    if (!lp && !rp)
+        return arithmetic(op, std::move(lhs), std::move(rhs));
+
+    if (lp && rp)
+        fail(op, "cannot add two pointers");
+
+    const type_t t = lp ? lhs.type : rhs.type;
+    require_object_pointee(op, t);
+
+    if (lp)
+        rhs = widened_index(std::move(rhs));
+    else
+        lhs = widened_index(std::move(lhs));
+
+    return make_binary(binary_op_t::add, t, std::move(lhs), std::move(rhs));
+}
+
+// - with a pointer, 6.5.7p3, p9, p10: a pointer less an integer has
+// the pointer's type, and two pointers to one complete object type
+// subtract to long, ptrdiff_t on LP64.  The type is the machine's
+// view, so no qualifier is left to tell two compatible pointee types
+// apart.
+expr_t
+subtraction(const token_t &op, expr_t lhs, expr_t rhs)
+{
+    lhs = rvalue(op, std::move(lhs));
+    rhs = rvalue(op, std::move(rhs));
+
+    const bool lp = is< pointer_t >(lhs.type);
+    const bool rp = is< pointer_t >(rhs.type);
+
+    if (!lp && !rp)
+        return arithmetic(op, std::move(lhs), std::move(rhs));
+
+    if (!lp)
+        fail(op, "cannot subtract a pointer from an integer");
+
+    if (rp && !(lhs.type == rhs.type))
+        fail(op, "subtraction of pointers to different types");
+
+    require_object_pointee(op, lhs.type);
+
+    if (rp)
+        return make_binary(binary_op_t::sub, long_type(), std::move(lhs),
+                           std::move(rhs));
+
+    const type_t t = lhs.type;
+    rhs = widened_index(std::move(rhs));
+
+    return make_binary(binary_op_t::sub, t, std::move(lhs), std::move(rhs));
+}
+
+// < > <= >= == !=: the result an int (6.5.9p7, 6.5.10p4), integer
+// operands in their common type (6.5.9p4, 6.5.10p5).  Pointers compare
+// as addresses (G7): a relational operator takes two pointers of one
+// type, 6.5.9p2, and == and != what common_pointer() brings to one,
+// 6.5.10p2.  A pointer and any other integer meet only through a cast.
 expr_t
 comparison(const token_t &op, expr_t lhs, expr_t rhs)
 {
-    require_value(op, lhs);
-    require_value(op, rhs);
+    lhs = rvalue(op, std::move(lhs));
+    rhs = rvalue(op, std::move(rhs));
 
-    arithmetic_conversions(lhs, rhs);
+    const bool lp = is< pointer_t >(lhs.type);
+    const bool rp = is< pointer_t >(rhs.type);
+    const bool equality = op.kind == tok_t::eq || op.kind == tok_t::ne;
+
+    if (!lp && !rp)
+        arithmetic_conversions(lhs, rhs);
+    else if (equality && !common_pointer(lhs, rhs))
+        fail(op, lp && rp ? "comparison of distinct pointer types" :
+                            "comparison between pointer and integer");
+    else if (!equality && !(lp && rp))
+        fail(op, "comparison between pointer and integer");
+    else if (!equality && !(lhs.type == rhs.type))
+        fail(op, "comparison of distinct pointer types");
 
     return make_binary(binary_operator(op.kind), int_type(), std::move(lhs),
                        std::move(rhs));
 }
 
-// && ||: an int (6.5.14p3, 6.5.15p3).  The operands stay as they are;
-// the emitter compares each against zero in its own type.
+// && ||: an int (6.5.14p3, 6.5.15p3).  The operands are scalars and
+// stay as they are, 6.5.14p2, 6.5.15p2; the emitter compares each
+// against zero in its own type, a pointer against null.
 expr_t
 logical(const token_t &op, expr_t lhs, expr_t rhs)
 {
-    require_value(op, lhs);
-    require_value(op, rhs);
+    lhs = rvalue(op, std::move(lhs));
+    rhs = rvalue(op, std::move(rhs));
 
     return make_binary(binary_operator(op.kind), int_type(), std::move(lhs),
                        std::move(rhs));
@@ -363,8 +624,11 @@ logical(const token_t &op, expr_t lhs, expr_t rhs)
 expr_t
 shift(const token_t &op, expr_t lhs, expr_t rhs)
 {
-    require_value(op, lhs);
-    require_value(op, rhs);
+    lhs = rvalue(op, std::move(lhs));
+    rhs = rvalue(op, std::move(rhs));
+
+    require_integer(op, lhs);
+    require_integer(op, rhs);
 
     lhs = promote(std::move(lhs));
     const type_t t = lhs.type;
@@ -548,11 +812,14 @@ integer_constant(const token_t &t)
 //
 
 void external_declaration(parser_t &);
-void function_definition(parser_t &, const type_t &, const declarator_t &);
+void function_definition(parser_t &, const declarator_t &);
 type_t declaration_specifiers(parser_t &);
-declarator_t declarator(parser_t &);
-void parameter_type_list(parser_t &, declarator_t &);
+declarator_t declarator(parser_t &, const type_t &, bool abstract = false);
+type_t pointer(parser_t &, type_t);
+type_t array_declarator(parser_t &, const type_t &);
+bool parameter_type_list(parser_t &, std::vector< parameter_t > &);
 parameter_t parameter_declaration(parser_t &);
+type_t type_name(parser_t &);
 std::vector< stmt_t > declaration(parser_t &);
 stmt_t init_declarator(parser_t &, const type_t &);
 
@@ -581,6 +848,7 @@ expr_t additive_expression(parser_t &);
 expr_t multiplicative_expression(parser_t &);
 expr_t cast_expression(parser_t &);
 expr_t unary_expression(parser_t &);
+expr_t sizeof_expression(parser_t &);
 expr_t postfix_expression(parser_t &);
 std::vector< expr_t > argument_expression_list(parser_t &, const symbol_t &);
 expr_t primary_expression(parser_t &);
@@ -626,18 +894,6 @@ translation_unit(parser_t &p)
         external_declaration(p);
 }
 
-// The function type a declarator names, with the base type as its
-// result.
-type_t
-function_type(const type_t &result, const declarator_t &d)
-{
-    std::vector< type_t > params;
-    for (const parameter_t &param : *d.params)
-        params.push_back(param.type);
-
-    return make_function(result, std::move(params), d.variadic);
-}
-
 // A prototype's parameters share one scope, 6.7.1p4, even when no
 // body follows to use the names.
 void
@@ -655,11 +911,11 @@ check_parameter_names(const declarator_t &d)
 // which must name the same type (6.2.7p2).  Returns the index of its
 // entry in the unit's functions.
 std::size_t
-declare_function(parser_t &p, const type_t &result, const declarator_t &d)
+declare_function(parser_t &p, const declarator_t &d)
 {
     check_parameter_names(d);
 
-    const type_t t = function_type(result, d);
+    const type_t &t = d.type;
     const std::string_view name = d.name->text;
 
     auto &file_scope = p.scopes.front();
@@ -687,23 +943,23 @@ external_declaration(parser_t &p)
 {
     const type_t base = declaration_specifiers(p);
 
-    declarator_t d = declarator(p);
+    declarator_t d = declarator(p, base);
     if (!d.params)
         not_yet(*d.name, "global variable");
 
     if (peek(p).kind == tok_t::lbrace) {
-        function_definition(p, base, d);
+        function_definition(p, d);
         return;
     }
 
-    declare_function(p, base, d);
+    declare_function(p, d);
 
     while (accept(p, tok_t::comma)) {
-        d = declarator(p);
+        d = declarator(p, base);
         if (!d.params)
             not_yet(*d.name, "global variable");
 
-        declare_function(p, base, d);
+        declare_function(p, d);
     }
 
     expect(p, tok_t::semicolon, "expected ';' after top level declarator");
@@ -713,13 +969,13 @@ external_declaration(parser_t &p)
 // 6.8.3p2, so a local cannot redeclare a parameter there; the body's
 // items are parsed into the parameter scope directly.
 void
-function_definition(parser_t &p, const type_t &result, const declarator_t &d)
+function_definition(parser_t &p, const declarator_t &d)
 {
-    const std::size_t index = declare_function(p, result, d);
+    const std::size_t index = declare_function(p, d);
     if (p.unit.functions[index].body)
         fail(*d.name, "redefinition of " + quoted(d.name->text));
 
-    p.result = result;
+    p.result = *as< function_t >(d.type).result;
     p.scopes.emplace_back();
 
     std::vector< const symbol_t * > params;
@@ -746,17 +1002,21 @@ function_definition(parser_t &p, const type_t &result, const declarator_t &d)
 // The type specifiers in any valid order and combination, 6.7.3.1p2.
 // The tree keeps no spelling: char and signed char are one type, long
 // and long long another.  Each keyword is checked against the ones
-// before it, so an error names the keyword that breaks the set.
+// before it, so an error names the keyword that breaks the set.  const
+// may stand anywhere among them, once or more, 6.7.4.1p6, and is
+// dropped: the type is the machine's view.
 type_t
 declaration_specifiers(parser_t &p)
 {
     int n_void = 0, n_char = 0, n_short = 0, n_int = 0, n_long = 0;
     int n_signed = 0, n_unsigned = 0;
-
-    const token_t &start = peek(p);
+    bool any = false;
 
     for (;;) {
         const token_t &t = peek(p);
+
+        if (accept(p, tok_t::kw_const))
+            continue;
 
         bool bad = n_void > 0;
         switch (t.kind) {
@@ -786,7 +1046,6 @@ declaration_specifiers(parser_t &p)
             bad = bad || n_signed || n_unsigned;
             ++(t.kind == tok_t::kw_signed ? n_signed : n_unsigned);
             break;
-        case tok_t::kw_const:
         case tok_t::kw_volatile:
         case tok_t::kw_restrict: not_yet(t, "type qualifier " + quoted(t.text));
         case tok_t::kw_auto:
@@ -800,7 +1059,7 @@ declaration_specifiers(parser_t &p)
         case tok_t::kw_float:
         case tok_t::kw_double: not_yet(t, "floating type " + quoted(t.text));
         default:
-            if (&t == &start)
+            if (!any)
                 fail(t, "expected a type specifier");
 
             if (n_void)
@@ -818,89 +1077,206 @@ declaration_specifiers(parser_t &p)
                         " with the type specifiers before it");
 
         advance(p);
+        any = true;
     }
 }
 
-// An identifier, and a parameter list after it for a function.
+// The pointers, then an identifier, then array suffixes or a parameter
+// list; the name is left out only in a parameter, which may be
+// abstract.  The pointers bind to the base type, so int *f(void) is a
+// function returning a pointer.  An array of functions and a function
+// returning an array or a function are errors, 6.7.7.3p1, 6.7.7.4p1;
+// a parenthesized declarator, which would let the two nest the other
+// way, is not yet.
 declarator_t
-declarator(parser_t &p)
+declarator(parser_t &p, const type_t &base, bool abstract)
 {
-    if (peek(p).kind == tok_t::star)
-        not_yet(peek(p), "pointer declarator");
-
-    if (peek(p).kind == tok_t::lparen)
-        not_yet(peek(p), "parenthesized declarator");
-
-    const token_t &name = expect(p, tok_t::identifier, "expected identifier");
-    declarator_t d { &name, std::nullopt, false };
-
-    if (peek(p).kind == tok_t::lbracket)
-        not_yet(peek(p), "array declarator");
-
-    if (accept(p, tok_t::lparen))
-        parameter_type_list(p, d);
-
-    return d;
-}
-
-// (void), (), or parameters with an optional trailing ", ...".  An
-// empty list is (void) in C23, 6.7.7.4p13; before C23 it declared a
-// function without a prototype, which this parser does not take.
-void
-parameter_type_list(parser_t &p, declarator_t &d)
-{
-    d.params.emplace();
-
-    if (accept(p, tok_t::rparen))
-        return;
-
-    if (peek(p).kind == tok_t::kw_void && peek(p, 1).kind == tok_t::rparen) {
-        advance(p);
-        advance(p);
-        return;
-    }
-
-    do {
-        if (peek(p).kind == tok_t::ellipsis) {
-            if (d.params->empty())
-                not_yet(peek(p), "variadic function without named parameters");
-
-            advance(p);
-            d.variadic = true;
-            break;
-        }
-
-        d.params->push_back(parameter_declaration(p));
-    } while (accept(p, tok_t::comma));
-
-    expect(p, tok_t::rparen, "expected ')' after parameter list");
-}
-
-// Specifiers and an optional name.  void stands only alone, as (void),
-// 6.7.7.4p9.
-parameter_t
-parameter_declaration(parser_t &p)
-{
-    const token_t &start = peek(p);
-
-    const type_t t = declaration_specifiers(p);
-    if (is< void_t >(t))
-        fail(start, "'void' must be the only parameter");
-
-    if (peek(p).kind == tok_t::star)
-        not_yet(peek(p), "pointer declarator");
+    const type_t t = pointer(p, base);
 
     if (peek(p).kind == tok_t::lparen)
         not_yet(peek(p), "parenthesized declarator");
 
     const token_t *name = nullptr;
-    if (peek(p).kind == tok_t::identifier)
-        name = &advance(p);
+    if (!abstract || peek(p).kind == tok_t::identifier)
+        name = &expect(p, tok_t::identifier, "expected identifier");
+
+    declarator_t d { name, t, std::nullopt };
+
+    if (peek(p).kind == tok_t::lbracket) {
+        d.type = array_declarator(p, t);
+
+        if (peek(p).kind == tok_t::lparen)
+            fail(peek(p), "array element type cannot be a function");
+    }
+    else if (accept(p, tok_t::lparen)) {
+        std::vector< parameter_t > params;
+        const bool variadic = parameter_type_list(p, params);
+
+        if (peek(p).kind == tok_t::lbracket)
+            fail(peek(p), "function cannot return an array");
+
+        if (peek(p).kind == tok_t::lparen)
+            fail(peek(p), "function cannot return a function");
+
+        std::vector< type_t > types;
+        for (const parameter_t &param : params)
+            types.push_back(param.type);
+
+        d.type = make_function(t, std::move(types), variadic);
+        d.params = std::move(params);
+    }
+
+    return d;
+}
+
+// Each '*' derives a pointer to the type so far, 6.7.7.2p1.  A const
+// after it qualifies the pointer and is dropped, as in the specifiers.
+type_t
+pointer(parser_t &p, type_t t)
+{
+    while (accept(p, tok_t::star)) {
+        t = make_pointer(std::move(t));
+
+        for (;;) {
+            const token_t &q = peek(p);
+            if (q.kind == tok_t::kw_volatile || q.kind == tok_t::kw_restrict)
+                not_yet(q, "type qualifier " + quoted(q.text));
+
+            if (!accept(p, tok_t::kw_const))
+                break;
+        }
+    }
+
+    return t;
+}
+
+// One or more [N], N an integer constant greater than zero, or [] for
+// an array of unknown size, 6.7.7.3p1, p4.  The suffixes nest from the
+// right: int a[2][3] is an array of two arrays of three ints.  An
+// element must be a complete type, so only the first suffix may leave
+// its size out, and the caller decides whether it may.
+type_t
+array_declarator(parser_t &p, const type_t &element)
+{
+    std::vector< std::pair< const token_t *, long > > suffixes;
+
+    while (peek(p).kind == tok_t::lbracket) {
+        const token_t &open = advance(p);
+
+        long count = -1;
+        if (peek(p).kind == tok_t::integer &&
+            peek(p, 1).kind == tok_t::rbracket) {
+            const token_t &size = advance(p);
+
+            const long long value =
+                as< literal_t >(integer_constant(size)).value;
+            if (value == 0)
+                fail(size, "array size must be greater than zero");
+
+            // an unsigned constant past LONG_MAX reads as negative
+            count = value < 0 ? std::numeric_limits< long >::max() : value;
+        }
+        else if (peek(p).kind != tok_t::rbracket)
+            not_yet(peek(p), "array size other than an integer constant");
+
+        expect(p, tok_t::rbracket, "expected ']'");
+        suffixes.emplace_back(&open, count);
+    }
+
+    type_t t = element;
+
+    for (auto it = suffixes.rbegin(); it != suffixes.rend(); ++it) {
+        const auto [open, count] = *it;
+
+        if (is< void_t >(t) || (is< array_t >(t) && as< array_t >(t).count < 0))
+            fail(*open, "array has incomplete element type");
+
+        if (count >= 0 &&
+            count > std::numeric_limits< long >::max() / size_of(t))
+            fail(*open, "array is too large");
+
+        t = make_array(std::move(t), count);
+    }
+
+    return t;
+}
+
+// (void), (), or parameters with an optional trailing ", ...", which
+// makes the function variadic, the value returned.  An empty list is
+// (void) in C23, 6.7.7.4p13; before C23 it declared a function without
+// a prototype, which this parser does not take.
+bool
+parameter_type_list(parser_t &p, std::vector< parameter_t > &params)
+{
+    if (accept(p, tok_t::rparen))
+        return false;
+
+    if (peek(p).kind == tok_t::kw_void && peek(p, 1).kind == tok_t::rparen) {
+        advance(p);
+        advance(p);
+        return false;
+    }
+
+    bool variadic = false;
+
+    do {
+        if (peek(p).kind == tok_t::ellipsis) {
+            if (params.empty())
+                not_yet(peek(p), "variadic function without named parameters");
+
+            advance(p);
+            variadic = true;
+            break;
+        }
+
+        params.push_back(parameter_declaration(p));
+    } while (accept(p, tok_t::comma));
+
+    expect(p, tok_t::rparen, "expected ')' after parameter list");
+
+    return variadic;
+}
+
+// Specifiers and a declarator, whose name is optional.  void stands
+// only alone, as (void), 6.7.7.4p9.  A parameter of array type is
+// adjusted to a pointer to the element, 6.7.7.4p6, so its size may be
+// left out; one of function type would be adjusted to a function
+// pointer, p7, which is not yet.
+parameter_t
+parameter_declaration(parser_t &p)
+{
+    const token_t &start = peek(p);
+
+    const type_t base = declaration_specifiers(p);
+    const declarator_t d = declarator(p, base, true);
+
+    if (is< void_t >(d.type))
+        fail(start, "'void' must be the only parameter");
+
+    if (d.params)
+        not_yet(d.name ? *d.name : start, "parameter of function type");
+
+    type_t t = d.type;
+    if (is< array_t >(t))
+        t = make_pointer(*as< array_t >(t).element);
+
+    return parameter_t { std::move(t), &start, d.name };
+}
+
+// Specifiers and an abstract declarator of '*'s, each perhaps const,
+// 6.7.8p1; the array and function abstract declarators are not yet.
+type_t
+type_name(parser_t &p)
+{
+    const type_t t = pointer(p, declaration_specifiers(p));
 
     if (peek(p).kind == tok_t::lbracket)
-        not_yet(peek(p), "array declarator");
+        not_yet(peek(p), "array type name");
 
-    return parameter_t { t, &start, name };
+    if (peek(p).kind == tok_t::lparen)
+        not_yet(peek(p), "parenthesized or function type name");
+
+    return t;
 }
 
 // A block-scope declaration: one declaration statement per declarator,
@@ -922,27 +1298,36 @@ declaration(parser_t &p)
 
 // The name is in scope from the end of its declarator, 6.2.1p7, so an
 // initializer sees the object it initializes.  The initializer is
-// converted as by assignment, 6.7.11p12.
+// converted as by assignment, 6.7.11p12.  An object's type must be
+// complete, 6.7.1p8, so an array needs its size; any initializer of an
+// array, and a brace initializer of anything, is not yet.
 stmt_t
 init_declarator(parser_t &p, const type_t &base)
 {
-    const declarator_t d = declarator(p);
+    const declarator_t d = declarator(p, base);
     if (d.params)
         not_yet(*d.name, "function declaration at block scope");
 
-    if (is< void_t >(base))
+    if (is< void_t >(d.type))
         fail(*d.name, "variable " + quoted(d.name->text) + " has type void");
 
-    decl_stmt_t decl { declare(p, *d.name, base, storage_t::local),
+    if (is< array_t >(d.type) && peek(p).kind == tok_t::assign)
+        not_yet(peek(p), "array initializer");
+
+    if (is< array_t >(d.type) && as< array_t >(d.type).count < 0)
+        fail(*d.name, "array size missing in " + quoted(d.name->text));
+
+    decl_stmt_t decl { declare(p, *d.name, d.type, storage_t::local),
                        std::nullopt };
 
     if (peek(p).kind == tok_t::assign) {
         const token_t &op = advance(p);
 
-        expr_t init = assignment_expression(p);
-        require_value(op, init);
+        if (peek(p).kind == tok_t::lbrace)
+            not_yet(peek(p), "brace initializer");
 
-        decl.init = convert_to(std::move(init), base);
+        expr_t init = assignment_expression(p);
+        decl.init = assignment_conversion(op, std::move(init), d.type);
     }
 
     return stmt_t { std::move(decl) };
@@ -1028,11 +1413,11 @@ expression_statement(parser_t &p)
 
     expect(p, tok_t::semicolon, "expected ';' after expression");
 
-    return stmt_t { expr_stmt_t { std::move(e) } };
+    return stmt_t { expr_stmt_t { decayed(std::move(e)) } };
 }
 
-// The condition stays in its own type; the emitter compares it against
-// zero, 6.8.5.2p2.
+// The condition stays in its own type, an integer or a pointer; the
+// emitter compares it against zero, 6.8.5.2p2.
 stmt_t
 selection_statement(parser_t &p)
 {
@@ -1043,8 +1428,7 @@ selection_statement(parser_t &p)
     expect(p, tok_t::lparen, "expected '(' after 'if'");
 
     const token_t &start = peek(p);
-    expr_t cond = expression(p);
-    require_value(start, cond);
+    expr_t cond = rvalue(start, expression(p));
 
     expect(p, tok_t::rparen, "expected ')' after condition");
 
@@ -1074,8 +1458,7 @@ while_statement(parser_t &p)
     expect(p, tok_t::lparen, "expected '(' after 'while'");
 
     const token_t &start = peek(p);
-    expr_t cond = expression(p);
-    require_value(start, cond);
+    expr_t cond = rvalue(start, expression(p));
 
     expect(p, tok_t::rparen, "expected ')' after condition");
 
@@ -1111,16 +1494,17 @@ for_statement(parser_t &p)
 
     if (peek(p).kind != tok_t::semicolon) {
         const token_t &start = peek(p);
-        loop.cond = expression(p);
-        require_value(start, *loop.cond);
+        loop.cond = rvalue(start, expression(p));
     }
 
     expect(p, tok_t::semicolon, "expected ';' after for condition");
 
     if (peek(p).kind != tok_t::rparen) {
         const token_t &start = peek(p);
-        loop.step = expression(p);
-        require_not_function(start, *loop.step);
+        expr_t step = expression(p);
+        require_not_function(start, step);
+
+        loop.step = decayed(std::move(step));
     }
 
     expect(p, tok_t::rparen, "expected ')' after for clauses");
@@ -1151,8 +1535,7 @@ jump_statement(parser_t &p)
         if (is< void_t >(p.result))
             fail(keyword, "void function should not return a value");
 
-        require_value(start, value);
-        ret.value = convert_to(std::move(value), p.result);
+        ret.value = assignment_conversion(start, std::move(value), p.result);
     }
     else if (!is< void_t >(p.result))
         fail(keyword, "non-void function should return a value");
@@ -1167,9 +1550,9 @@ jump_statement(parser_t &p)
 //
 
 // The left operand is evaluated for its effect and may be void, 6.5.18p2;
-// the result is the right operand's type and value.  A function name
-// is refused on either side, which keeps every function-typed
-// expression a name_t.
+// the result is the right operand's type and value, an array decayed.
+// A function name is refused on either side, which keeps every
+// function-typed expression a name_t.
 expr_t
 expression(parser_t &p)
 {
@@ -1178,9 +1561,11 @@ expression(parser_t &p)
     while (peek(p).kind == tok_t::comma) {
         const token_t &op = advance(p);
         require_not_function(op, e);
+        e = decayed(std::move(e));
 
         expr_t rhs = assignment_expression(p);
         require_not_function(op, rhs);
+        rhs = decayed(std::move(rhs));
 
         const type_t t = rhs.type;
         e = make_binary(binary_op_t::comma, t, std::move(e), std::move(rhs));
@@ -1190,13 +1575,15 @@ expression(parser_t &p)
 }
 
 // The type of the whole is the type of the left operand, 6.5.17.1p3,
-// 6.5.17.2p2, and a plain assignment converts the right operand to it.
-// E1 op= E2 is E1 = E1 op (E2) with E1 evaluated once, 6.5.17.3p4: the
-// operation is computed in the common type of the usual arithmetic
-// conversions, or in the promoted left type for a shift, 6.5.8p3, so
-// the right operand goes to that type here, a shift count included, as
-// in the shift production.  The emitter takes the loaded left operand
-// into it and the result back to the left type.
+// 6.5.17.2p2, and a plain assignment converts the right operand to it
+// as by assignment.  E1 op= E2 is E1 = E1 op (E2) with E1 evaluated
+// once, 6.5.17.3p4: the operation is computed in the common type of the
+// usual arithmetic conversions, or in the promoted left type for a
+// shift, 6.5.8p3, so the right operand goes to that type here, a shift
+// count included, as in the shift production.  The emitter takes the
+// loaded left operand into it and the result back to the left type.  A
+// pointer takes += and -= only, 6.5.17.3p1, computed in the pointer's
+// type with the right operand widened as for p + n.
 expr_t
 assignment_expression(parser_t &p)
 {
@@ -1208,29 +1595,48 @@ assignment_expression(parser_t &p)
     require_modifiable_lvalue(op, lhs);
 
     expr_t rhs = assignment_expression(p);
-    require_value(op, rhs);
-
     const type_t t = lhs.type;
 
-    std::optional< binary_op_t > compound;
-    type_t common = t;
-    if (op.kind != tok_t::assign) {
-        compound = binary_operator(op.kind);
+    if (op.kind == tok_t::assign) {
+        rhs = assignment_conversion(op, std::move(rhs), t);
 
+        return expr_t { t, assign_t { std::nullopt, t, box(std::move(lhs)),
+                                      box(std::move(rhs)) } };
+    }
+
+    rhs = rvalue(op, std::move(rhs));
+    require_integer(op, rhs);
+
+    const binary_op_t compound = binary_operator(op.kind);
+    const bool additive =
+        compound == binary_op_t::add || compound == binary_op_t::sub;
+
+    type_t common = t;
+    if (is< pointer_t >(t)) {
+        if (!additive)
+            require_integer(op, lhs);
+
+        require_object_pointee(op, t);
+        rhs = widened_index(std::move(rhs));
+    }
+    else {
         if (compound == binary_op_t::shl || compound == binary_op_t::shr)
             common = promoted(t);
         else
             common = common_type(t, rhs.type);
-    }
 
-    rhs = convert_to(std::move(rhs), common);
+        rhs = convert_to(std::move(rhs), common);
+    }
 
     return expr_t { t, assign_t { compound, common, box(std::move(lhs)),
                                   box(std::move(rhs)) } };
 }
 
-// The condition stays as it is; the arms go to their common type,
-// 6.5.16p6.  Two void arms are valid C, outside the subset for now.
+// The condition is a scalar and stays as it is, 6.5.16p2; the arms go
+// to their common type, 6.5.16p6, or two pointers to the one
+// common_pointer() finds, p7.  A pointer and an integer other than a
+// null pointer constant do not meet, p3.  Two void arms are valid C,
+// outside the subset for now.
 expr_t
 conditional_expression(parser_t &p)
 {
@@ -1239,7 +1645,7 @@ conditional_expression(parser_t &p)
         return cond;
 
     const token_t &op = advance(p);
-    require_value(op, cond);
+    cond = rvalue(op, std::move(cond));
 
     expr_t yes = expression(p);
     expect(p, tok_t::colon, "expected ':' in conditional expression");
@@ -1248,10 +1654,19 @@ conditional_expression(parser_t &p)
     if (is< void_t >(yes.type) && is< void_t >(no.type))
         not_yet(op, "conditional with void operands");
 
-    require_value(op, yes);
-    require_value(op, no);
+    yes = rvalue(op, std::move(yes));
+    no = rvalue(op, std::move(no));
 
-    const type_t t = arithmetic_conversions(yes, no);
+    const bool pointers = is< pointer_t >(yes.type) && is< pointer_t >(no.type);
+
+    if (!is< pointer_t >(yes.type) && !is< pointer_t >(no.type))
+        arithmetic_conversions(yes, no);
+    else if (!common_pointer(yes, no))
+        fail(op, pointers ?
+                     "pointer type mismatch in conditional expression" :
+                     "pointer/integer type mismatch in conditional expression");
+
+    const type_t t = yes.type;
 
     return expr_t { t,
                     conditional_t { box(std::move(cond)), box(std::move(yes)),
@@ -1369,7 +1784,11 @@ additive_expression(parser_t &p)
 
     while (next_is(p, { tok_t::plus, tok_t::minus })) {
         const token_t &op = advance(p);
-        e = arithmetic(op, std::move(e), multiplicative_expression(p));
+
+        expr_t rhs = multiplicative_expression(p);
+        e = op.kind == tok_t::plus ?
+                addition(op, std::move(e), std::move(rhs)) :
+                subtraction(op, std::move(e), std::move(rhs));
     }
 
     return e;
@@ -1389,19 +1808,83 @@ multiplicative_expression(parser_t &p)
 }
 
 // A parenthesized type name starts a cast; anything else in
-// parentheses is a primary expression.
+// parentheses is a primary expression.  Without typedefs the token
+// after the parenthesis decides.
+bool
+starts_type_name(const parser_t &p)
+{
+    return peek(p).kind == tok_t::lparen &&
+           is_declaration_start(peek(p, 1).kind);
+}
+
+// The type name is void or a scalar, 6.5.5p2: to void the operand is
+// discarded, whatever its type; to a scalar it converts from a scalar,
+// integer and pointer either way, 6.3.2.3p5, p6, and pointer to
+// pointer, p1, p7.  A cast yields no lvalue, 6.5.5p6 and its footnote,
+// so a cast to the operand's own type is still a node.
 expr_t
 cast_expression(parser_t &p)
 {
-    if (peek(p).kind == tok_t::lparen && is_declaration_start(peek(p, 1).kind))
-        not_yet(peek(p), "cast");
+    if (!starts_type_name(p))
+        return unary_expression(p);
 
-    return unary_expression(p);
+    const token_t &open = advance(p);
+    const type_t t = type_name(p);
+    expect(p, tok_t::rparen, "expected ')' after type name");
+
+    expr_t arg = cast_expression(p);
+
+    if (is< void_t >(t)) {
+        require_not_function(open, arg);
+        return convert_to(decayed(std::move(arg)), t);
+    }
+
+    if (!is< int_t >(t) && !is< pointer_t >(t))
+        fail(open, "cast to a type that is not a scalar");
+
+    arg = rvalue(open, std::move(arg));
+
+    return expr_t { t, cast_t { box(std::move(arg)) } };
+}
+
+// Prefix and postfix ++ and -- on a pointer step it by one element,
+// 6.5.4.1p2, 6.5.3.5p2, so the pointee is an object type as for p + 1.
+void
+require_steppable(const token_t &op, const expr_t &e)
+{
+    require_modifiable_lvalue(op, e);
+
+    if (is< pointer_t >(e.type))
+        require_object_pointee(op, e.type);
+}
+
+// *E: the operand a pointer, after decay; the result the lvalue it
+// points to, of the pointee type, 6.5.4.2p2, p4.  A void pointee
+// designates nothing to read, and a function pointer is not in the
+// subset.
+expr_t
+indirection(const token_t &op, expr_t arg)
+{
+    arg = rvalue(op, std::move(arg));
+    if (!is< pointer_t >(arg.type))
+        fail(op, "indirection requires a pointer operand");
+
+    const type_t t = pointee_of(arg.type);
+
+    if (is< void_t >(t))
+        fail(op, "indirection through a pointer to void");
+
+    if (is< function_t >(t))
+        not_yet(op, "indirection through a function pointer");
+
+    return expr_t { t, unary_t { unary_op_t::deref, box(std::move(arg)) } };
 }
 
 // - and ~ promote their operand and have its promoted type, 6.5.4.3p3,
-// p4; ! is an int, its operand left as it is, p5.  Prefix ++ and --
-// have the type of their lvalue operand, 6.5.4.1.
+// p4; ! is an int, its scalar operand left as it is, p5.  Prefix ++ and
+// -- have the type of their lvalue operand, 6.5.4.1.  & takes an
+// lvalue, which does not decay, and yields a pointer to its type,
+// 6.5.4.2p1, p3.
 expr_t
 unary_expression(parser_t &p)
 {
@@ -1413,7 +1896,7 @@ unary_expression(parser_t &p)
         advance(p);
 
         expr_t arg = unary_expression(p);
-        require_modifiable_lvalue(op, arg);
+        require_steppable(op, arg);
 
         const type_t t = arg.type;
         const unary_op_t u =
@@ -1425,8 +1908,8 @@ unary_expression(parser_t &p)
     case tok_t::tilde: {
         advance(p);
 
-        expr_t arg = cast_expression(p);
-        require_value(op, arg);
+        expr_t arg = rvalue(op, cast_expression(p));
+        require_integer(op, arg);
 
         arg = promote(std::move(arg));
         const type_t t = arg.type;
@@ -1438,22 +1921,67 @@ unary_expression(parser_t &p)
     case tok_t::bang: {
         advance(p);
 
-        expr_t arg = cast_expression(p);
-        require_value(op, arg);
+        expr_t arg = rvalue(op, cast_expression(p));
 
         return expr_t { int_type(),
                         unary_t { unary_op_t::log_not, box(std::move(arg)) } };
     }
+    case tok_t::amp: {
+        advance(p);
+
+        expr_t arg = cast_expression(p);
+        require_not_function(op, arg);
+
+        if (!is_lvalue(arg))
+            fail(op, "cannot take the address of an rvalue");
+
+        type_t t = make_pointer(arg.type);
+
+        return expr_t { std::move(t),
+                        unary_t { unary_op_t::addr, box(std::move(arg)) } };
+    }
+    case tok_t::star: advance(p); return indirection(op, cast_expression(p));
+    case tok_t::kw_sizeof: return sizeof_expression(p);
     case tok_t::plus: not_yet(op, "unary +");
-    case tok_t::amp: not_yet(op, "address-of operator");
-    case tok_t::star: not_yet(op, "indirection operator");
-    case tok_t::kw_sizeof: not_yet(op, "sizeof");
     default: return postfix_expression(p);
     }
 }
 
+// sizeof E or sizeof (T), folded here to a constant of type unsigned
+// long, size_t on LP64, 6.5.4.4p2, p5.  The operand expression is typed
+// and dropped, never evaluated, and does not decay, so the size of an
+// array is the whole array's, p4.  A function, void, and an array of
+// unknown size have no size, p1.
+expr_t
+sizeof_expression(parser_t &p)
+{
+    const token_t &op = advance(p);
+
+    type_t t = make_void();
+    if (starts_type_name(p)) {
+        advance(p);
+        t = type_name(p);
+        expect(p, tok_t::rparen, "expected ')' after type name");
+    }
+    else
+        t = unary_expression(p).type;
+
+    if (is< void_t >(t))
+        fail(op, "invalid application of 'sizeof' to a void type");
+
+    if (is< function_t >(t))
+        fail(op, "invalid application of 'sizeof' to a function type");
+
+    if (is< array_t >(t) && as< array_t >(t).count < 0)
+        fail(op, "invalid application of 'sizeof' to an array of unknown size");
+
+    return expr_t { size_type(), literal_t { size_of(t) } };
+}
+
 // A call names its function directly, 6.5.3.3p5 gives its type; postfix
-// ++ and -- have the type of their lvalue operand, 6.5.3.5.
+// ++ and -- have the type of their lvalue operand, 6.5.3.5.  E1[E2] is
+// *((E1)+(E2)), 6.5.3.2p2, and is built as exactly that tree, so the
+// pointer may be either operand.
 expr_t
 postfix_expression(parser_t &p)
 {
@@ -1484,7 +2012,7 @@ postfix_expression(parser_t &p)
         case tok_t::inc:
         case tok_t::dec: {
             advance(p);
-            require_modifiable_lvalue(op, e);
+            require_steppable(op, e);
 
             const type_t t = e.type;
             const unary_op_t u = op.kind == tok_t::inc ? unary_op_t::post_inc :
@@ -1493,7 +2021,20 @@ postfix_expression(parser_t &p)
             e = expr_t { t, unary_t { u, box(std::move(e)) } };
             break;
         }
-        case tok_t::lbracket: not_yet(op, "array subscript");
+        case tok_t::lbracket: {
+            advance(p);
+
+            expr_t index = expression(p);
+            expect(p, tok_t::rbracket, "expected ']' after subscript");
+
+            e = rvalue(op, std::move(e));
+            index = rvalue(op, std::move(index));
+            if (!is< pointer_t >(e.type) && !is< pointer_t >(index.type))
+                fail(op, "subscripted value is not an array or a pointer");
+
+            e = indirection(op, addition(op, std::move(e), std::move(index)));
+            break;
+        }
         case tok_t::dot:
         case tok_t::arrow: not_yet(op, "member access");
         default: return e;
@@ -1503,7 +2044,8 @@ postfix_expression(parser_t &p)
 
 // Each argument is converted to its parameter's type as if by
 // assignment; past the parameters of a variadic function, the default
-// argument promotions apply, 6.5.3.3p6.  The count must agree, p2.
+// argument promotions apply to an integer, and a pointer passes as it
+// is, 6.5.3.3p6.  The count must agree, p2.
 std::vector< expr_t >
 argument_expression_list(parser_t &p, const symbol_t &fn)
 {
@@ -1515,14 +2057,14 @@ argument_expression_list(parser_t &p, const symbol_t &fn)
         do {
             const token_t &start = peek(p);
 
-            expr_t arg = assignment_expression(p);
-            require_value(start, arg);
+            expr_t arg = rvalue(start, assignment_expression(p));
 
             if (args.size() < type.params.size())
-                arg = convert_to(std::move(arg), *type.params[args.size()]);
-            else if (type.variadic)
+                arg = assignment_conversion(start, std::move(arg),
+                                            *type.params[args.size()]);
+            else if (type.variadic && is< int_t >(arg.type))
                 arg = promote(std::move(arg));
-            else
+            else if (!type.variadic)
                 fail(start,
                      "too many arguments to function " + quoted(fn.name));
 
@@ -1537,7 +2079,9 @@ argument_expression_list(parser_t &p, const symbol_t &fn)
 }
 
 // A name must be declared, 6.5.2p2; parentheses leave the expression
-// as it is, an lvalue included, p6.
+// as it is, an lvalue included, p6.  A character constant is an int,
+// 6.4.4.5p11.  Adjacent string literals are one, 6.4.5p5, an array of
+// char one longer than its bytes for the zero appended, p6.
 expr_t
 primary_expression(parser_t &p)
 {
@@ -1554,6 +2098,18 @@ primary_expression(parser_t &p)
         return expr_t { sym->type, name_t { sym } };
     }
     case tok_t::integer: advance(p); return integer_constant(t);
+    case tok_t::character:
+        advance(p);
+        return expr_t { int_type(), literal_t { character_value(t) } };
+    case tok_t::string: {
+        std::string bytes;
+        while (peek(p).kind == tok_t::string)
+            bytes += string_bytes(advance(p));
+
+        type_t type = make_array(char_type(), long(bytes.size()) + 1);
+
+        return expr_t { std::move(type), string_t { std::move(bytes) } };
+    }
     case tok_t::lparen: {
         advance(p);
 
