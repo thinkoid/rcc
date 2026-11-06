@@ -4,11 +4,12 @@
 // docs/guarantees.md is an instruction written here or a flag never
 // written here; a comment names the promise where an instruction
 // delivers one.  The emitter diagnoses nothing: a construct outside
-// the first slice throws logic_error, since the parser makes none.
+// the second slice throws logic_error, since the parser makes none.
 
 #include "emit.hh"
 
 #include <format>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -28,12 +29,24 @@ struct value_t
     std::string type;
 };
 
-// The state of one module's emission.  Everything but the stream is
-// reset per definition, so the names in a function depend on that
-// function alone and the pinned text diffs cleanly.
+// An address and the alignment proven of it, in bytes (G11).
+struct address_t
+{
+    std::string name;
+    int align;
+};
+
+// The state of one module's emission.  Everything but the stream and
+// the string literals is reset per definition, so the names in a
+// function depend on that function alone, and on the count of literals
+// before it, and the pinned text diffs cleanly.
 struct state_t
 {
     std::ostream &out;
+
+    // G17: one global's definition per literal, numbered in the order
+    // the literals are emitted, written ahead of the functions
+    std::vector< std::string > strings { };
 
     std::unordered_map< const symbol_t *, std::string > slots { };
 
@@ -53,7 +66,7 @@ void statement(state_t &, const stmt_t &);
 
 // types
 
-// The integer type of an operand; nothing else is in the first slice.
+// The integer type of an operand that is not a pointer.
 const int_t &
 integer(const type_t &t)
 {
@@ -94,7 +107,9 @@ param_list(const function_t &f)
     return list;
 }
 
-// The IR spelling of a type.  An array has no value in the first slice.
+// The IR spelling of a type.  An array is the type of a slot, of a
+// string's global, or the element of a step through a pointer to one;
+// no value has it.
 std::string
 ir_type(const type_t &t)
 {
@@ -113,14 +128,11 @@ ir_type(const type_t &t)
                            param_list(f));
     }
 
-    throw std::logic_error("emit: an array type");
-}
+    const auto &a = as< array_t >(t);
+    if (a.count < 0)
+        throw std::logic_error("emit: an array of unknown size");
 
-// G11: a declared object carries its natural alignment and no more.
-int
-alignment_of(const type_t &t)
-{
-    return integer(t).width / 8;
+    return std::format("[{} x {}]", a.count, ir_type(*a.element));
 }
 
 // A constant of N bits as LLVM reads it: the value modulo 2^N, written
@@ -213,66 +225,154 @@ next_label(state_t &s)
 
 // memory
 
-// G11: natural alignment.  G12: the slot lives for the whole
-// activation; no llvm.lifetime.start or end is ever written.
+// G11: a declared object carries its natural alignment and no more.
+// G12: the slot lives for the whole activation; no llvm.lifetime.start
+// or end is ever written.
 void
 allocate(state_t &s, const symbol_t *sym)
 {
     auto name = std::format("%{}.{}", sym->name, s.slot_names++);
     line(s, std::format("{} = alloca {}, align {}", name, ir_type(sym->type),
-                        alignment_of(sym->type)));
+                        align_of(sym->type)));
 
     s.slots.emplace(sym, std::move(name));
 }
 
-// G5: every read of a slot is frozen, so a slot never written reads
-// as some value of its type, the same at every read; never undef or
-// poison, and the load carries no !range and no noundef.
+// A local's or a parameter's slot, of its natural alignment (G11).
+address_t
+slot(const state_t &s, const symbol_t *sym)
+{
+    return { s.slots.at(sym), align_of(sym->type) };
+}
+
+// G11, shape.md chapter 6: the alignment an access through the lvalue
+// carries, which is what its address is proven to have.  A declared
+// object and a string have their own.  A dereference has the one of
+// the address it starts from, through any pointer arithmetic, whose
+// element stride keeps it: a decayed array, the element's, or &x, x's.
+// Every other address carries 1: a pointer variable, a cast, a call,
+// an assignment, a conditional, a load, a pointer of unknown origin.
+int
+alignment_of(const expr_t &e)
+{
+    if (!is< unary_t >(e))
+        return align_of(e.type);
+
+    const expr_t *p = as< unary_t >(e).arg.get();
+    while (is< binary_t >(*p) && is< pointer_t >(p->type) &&
+           as< binary_t >(*p).op != binary_op_t::comma) {
+        const auto &b = as< binary_t >(*p);
+        p = is< pointer_t >(b.lhs->type) ? b.lhs.get() : b.rhs.get();
+    }
+
+    if (is< cast_t >(*p) && is< array_t >(as< cast_t >(*p).arg->type))
+        return alignment_of(*as< cast_t >(*p).arg);
+
+    if (is< unary_t >(*p) && as< unary_t >(*p).op == unary_op_t::addr)
+        return alignment_of(*as< unary_t >(*p).arg);
+
+    return 1;
+}
+
+// G5: every read is frozen, so a slot never written reads as some
+// value of its type, the same at every read; never undef or poison,
+// and the load carries no !range and no noundef.  A read through a
+// pointer is frozen too, since the pointer may name such a slot.  G11:
+// the alignment proven of the address.
 value_t
-load(state_t &s, const value_t &addr, const type_t &t)
+load(state_t &s, const address_t &addr, const type_t &t)
 {
     const auto type = ir_type(t);
 
-    const auto raw = yield(s, type,
-                           std::format("load {}, ptr {}, align {}", type,
-                                       addr.name, alignment_of(t)));
+    const auto raw = yield(
+        s, type,
+        std::format("load {}, ptr {}, align {}", type, addr.name, addr.align));
 
     return yield(s, type, std::format("freeze {} {}", type, raw.name));
 }
 
-// G10: no !tbaa.  G11: natural alignment.
+// G10: no !tbaa.  G11: the alignment proven of the address.
 void
-store(state_t &s, const value_t &v, const value_t &addr, const type_t &t)
+store(state_t &s, const value_t &v, const address_t &addr)
 {
     line(s, std::format("store {}, ptr {}, align {}", typed(v), addr.name,
-                        alignment_of(t)));
+                        addr.align));
+}
+
+// The bytes of a string literal as LLVM's c"..." spells them, the
+// terminating zero included: printable ASCII as itself, but for the
+// quote and the backslash, and every other byte as \XX.
+std::string
+escaped(std::string_view bytes)
+{
+    std::string text;
+
+    for (const unsigned char c : bytes) {
+        if (c >= 0x20 && c < 0x7f && c != '"' && c != '\\')
+            text += static_cast< char >(c);
+        else
+            text += std::format("\\{:02X}", c);
+    }
+
+    return text + "\\00";
+}
+
+// G17: each literal written is its own array of static storage, a
+// private global, neither constant nor unnamed_addr, so nothing marks
+// it read-only and nothing merges it with another.  Returns its name.
+std::string
+string_literal(state_t &s, const string_t &str, const type_t &t)
+{
+    auto name = std::format("@.str.{}", s.strings.size());
+    s.strings.push_back(std::format("{} = private global {} c\"{}\", align {}",
+                                    name, ir_type(t), escaped(str.bytes),
+                                    align_of(t)));
+
+    return name;
 }
 
 // expressions
 
-// The address of an object.  Only a local or a parameter has one in
-// the first slice.
-value_t
+// The address of an lvalue: a local's or a parameter's slot, a
+// string's global, or the pointer a dereference reads, 6.5.4.2p4.
+address_t
 lvalue(state_t &s, const expr_t &e)
 {
+    if (is< string_t >(e))
+        return { string_literal(s, as< string_t >(e), e.type),
+                 alignment_of(e) };
+
+    if (is< unary_t >(e) && as< unary_t >(e).op == unary_op_t::deref)
+        return { rvalue(s, *as< unary_t >(e).arg).name, alignment_of(e) };
+
     if (!is< name_t >(e))
-        throw std::logic_error("emit: an lvalue other than a name");
+        throw std::logic_error("emit: an lvalue other than a name, a string "
+                               "or a dereference");
 
     const auto *sym = as< name_t >(e).sym;
     if (sym->storage != storage_t::local &&
         sym->storage != storage_t::parameter)
         throw std::logic_error("emit: a global or function as an object");
 
-    return { s.slots.at(sym), "ptr" };
+    return slot(s, sym);
 }
 
-// A scalar as a condition: unequal to zero.
+// The zero a scalar is compared with as a truth value: 0, or the null
+// pointer for a pointer, 6.3.2.3p3.
+std::string_view
+zero_of(const value_t &v)
+{
+    return v.type == "ptr" ? "null" : "0";
+}
+
+// A scalar as a condition: unequal to zero.  G7: a pointer is compared
+// with null as an address.
 value_t
 test(state_t &s, const expr_t &e)
 {
     const auto v = rvalue(s, e);
 
-    return yield(s, "i1", std::format("icmp ne {}, 0", typed(v)));
+    return yield(s, "i1", std::format("icmp ne {}, {}", typed(v), zero_of(v)));
 }
 
 // A truth value widened to the expression's type, int for every
@@ -370,15 +470,16 @@ is_comparison(binary_op_t op)
 
 // A relational or equality operator.  The predicate follows the
 // operands' signedness, which the parser's conversions made common.
+// G7: two pointers compare as addresses, unsigned.
 value_t
 compare(state_t &s,
         binary_op_t op,
         const value_t &l,
         const value_t &r,
-        const int_t &t,
+        const type_t &operands,
         const type_t &result)
 {
-    const bool sign = t.is_signed;
+    const bool sign = !is< pointer_t >(operands) && integer(operands).is_signed;
 
     const char *predicate = nullptr;
     switch (op) {
@@ -429,6 +530,73 @@ logical(state_t &s, const binary_t &b, const type_t &result)
     return widen(s, bit, result);
 }
 
+// G6: the address p + n * sizeof (T), modulo 2^64.  No inbounds, nusw
+// or nuw: the address computed is the address, inside an object or
+// not, wrapped or not.
+value_t
+stepped(state_t &s, const value_t &p, const value_t &n, const type_t &pointee)
+{
+    return yield(s, "ptr",
+                 std::format("getelementptr {}, ptr {}, {}", ir_type(pointee),
+                             p.name, typed(n)));
+}
+
+// p + n or p - n, n an i64.  The subtraction is the operation written,
+// so n is negated first, then stepped by; G1: no nsw on the negation.
+value_t
+offset(state_t &s,
+       binary_op_t op,
+       const value_t &p,
+       const value_t &n,
+       const type_t &pointee)
+{
+    if (op == binary_op_t::add)
+        return stepped(s, p, n, pointee);
+
+    const auto minus =
+        yield(s, n.type, std::format("sub {} 0, {}", n.type, n.name));
+
+    return stepped(s, p, minus, pointee);
+}
+
+// A pointer and an integer, p + n, n + p or p - n, the integer widened
+// to 64 bits by the parser.  G13: the operands in the order written,
+// whichever side the pointer is on.
+value_t
+pointer_arithmetic(state_t &s, const binary_t &b, const type_t &t)
+{
+    const auto l = rvalue(s, *b.lhs);
+    const auto r = rvalue(s, *b.rhs);
+
+    const bool left = is< pointer_t >(b.lhs->type);
+
+    return offset(s, b.op, left ? l : r, left ? r : l,
+                  *as< pointer_t >(t).pointee);
+}
+
+// p - q.  G6: the address difference divided by the element size, for
+// any two pointers; sdiv without exact, as G4 divides, and no division
+// for a size of 1.
+value_t
+difference(state_t &s, const binary_t &b)
+{
+    const auto l = rvalue(s, *b.lhs);
+    const auto r = rvalue(s, *b.rhs);
+
+    const auto left =
+        yield(s, "i64", std::format("ptrtoint {} to i64", typed(l)));
+    const auto right =
+        yield(s, "i64", std::format("ptrtoint {} to i64", typed(r)));
+    const auto bytes =
+        yield(s, "i64", std::format("sub i64 {}, {}", left.name, right.name));
+
+    const auto size = size_of(*as< pointer_t >(b.lhs->type).pointee);
+    if (size == 1)
+        return bytes;
+
+    return yield(s, "i64", std::format("sdiv i64 {}, {}", bytes.name, size));
+}
+
 value_t
 binary(state_t &s, const binary_t &b, const type_t &t)
 {
@@ -439,19 +607,25 @@ binary(state_t &s, const binary_t &b, const type_t &t)
     default: break;
     }
 
+    if (is< pointer_t >(t))
+        return pointer_arithmetic(s, b, t);
+
+    if (b.op == binary_op_t::sub && is< pointer_t >(b.lhs->type))
+        return difference(s, b);
+
     // G13: the left operand's code before the right's
     const auto l = rvalue(s, *b.lhs);
     const auto r = rvalue(s, *b.rhs);
 
-    const auto &operands = integer(b.lhs->type);
     if (is_comparison(b.op))
-        return compare(s, b.op, l, r, operands, t);
+        return compare(s, b.op, l, r, b.lhs->type, t);
 
-    return apply(s, b.op, l, r, operands);
+    return apply(s, b.op, l, r, integer(b.lhs->type));
 }
 
-// ++ and --, either side.  G1: the add or sub of 1 wraps.  Prefix
-// yields the stored value, postfix the one loaded.
+// ++ and --, either side.  G1: the add or sub of 1 wraps; G6: a pointer
+// steps by one element either way.  Prefix yields the stored value,
+// postfix the one loaded.
 value_t
 step(state_t &s, const unary_t &u)
 {
@@ -461,9 +635,13 @@ step(state_t &s, const unary_t &u)
     const auto old = load(s, addr, arg.type);
 
     const bool up = u.op == unary_op_t::pre_inc || u.op == unary_op_t::post_inc;
-    const auto now = yield(
-        s, old.type, std::format("{} {}, 1", up ? "add" : "sub", typed(old)));
-    store(s, now, addr, arg.type);
+    const auto now =
+        is< pointer_t >(arg.type) ?
+            stepped(s, old, { up ? "1" : "-1", "i64" },
+                    *as< pointer_t >(arg.type).pointee) :
+            yield(s, old.type,
+                  std::format("{} {}, 1", up ? "add" : "sub", typed(old)));
+    store(s, now, addr);
 
     const bool prefix =
         u.op == unary_op_t::pre_inc || u.op == unary_op_t::pre_dec;
@@ -488,7 +666,8 @@ unary(state_t &s, const unary_t &u, const type_t &t)
 
     case unary_op_t::log_not: {
         const auto v = rvalue(s, *u.arg);
-        const auto bit = yield(s, "i1", std::format("icmp eq {}, 0", typed(v)));
+        const auto bit =
+            yield(s, "i1", std::format("icmp eq {}, {}", typed(v), zero_of(v)));
         return widen(s, bit, t);
     }
 
@@ -497,18 +676,25 @@ unary(state_t &s, const unary_t &u, const type_t &t)
     case unary_op_t::post_inc:
     case unary_op_t::post_dec: return step(s, u);
 
-    case unary_op_t::addr: throw std::logic_error("emit: unary &");
-    case unary_op_t::deref: throw std::logic_error("emit: unary *");
+    // the lvalue's address, nothing read
+    case unary_op_t::addr: return { lvalue(s, *u.arg).name, "ptr" };
+
+    // rvalue() reads it as the lvalue it is
+    case unary_op_t::deref: throw std::logic_error("emit: unary * as a value");
     }
 
     throw std::logic_error("emit: an unknown unary operator");
 }
 
 // An integer conversion of a value of type from.  A change of
-// signedness alone is no instruction.
+// signedness alone is no instruction, nor is a value already of the
+// type, a pointer included.
 value_t
 convert(state_t &s, const value_t &v, const type_t &from, const type_t &to)
 {
+    if (from == to)
+        return v;
+
     const auto &source = integer(from);
     const auto &into = integer(to);
     if (into.width == source.width)
@@ -528,13 +714,17 @@ convert(state_t &s, const value_t &v, const type_t &from, const type_t &to)
 // Plain or compound assignment; its value is the value stored.  A
 // compound one computes in the common type the parser chose, which
 // the right operand already has: the old value goes into it, and the
-// result back to the left operand's type before the store.
+// result back to the left operand's type before the store.  A pointer's
+// += and -= step it by the right operand, an i64 as for p + n, and
+// convert nothing.
 value_t
 assign(state_t &s, const assign_t &a)
 {
     const auto &lhs = *a.lhs;
+    const bool steps = a.op && is< pointer_t >(lhs.type);
 
-    if (!(a.rhs->type == a.common))
+    if (steps ? !(a.common == lhs.type) || integer(a.rhs->type).width != 64 :
+                !(a.rhs->type == a.common))
         throw std::logic_error("emit: an assignment across two types");
 
     // G13: the lvalue before the rvalue, and the old value before the
@@ -542,7 +732,13 @@ assign(state_t &s, const assign_t &a)
     const auto addr = lvalue(s, lhs);
 
     value_t v;
-    if (a.op) {
+    if (steps) {
+        const auto old = load(s, addr, lhs.type);
+        const auto n = rvalue(s, *a.rhs);
+
+        v = offset(s, *a.op, old, n, *as< pointer_t >(lhs.type).pointee);
+    }
+    else if (a.op) {
         const auto old = load(s, addr, lhs.type);
         const auto l = convert(s, old, lhs.type, a.common);
         const auto r = rvalue(s, *a.rhs);
@@ -553,36 +749,67 @@ assign(state_t &s, const assign_t &a)
     else
         v = rvalue(s, *a.rhs);
 
-    store(s, v, addr, lhs.type);
+    store(s, v, addr);
 
     return v;
 }
 
-// An integer conversion, or a discard to void.
+// A conversion by the operand's type and the target's: a discard to
+// void, the decay of an array, a pointer to or from an integer, an
+// integer conversion; to the same type, or pointer to pointer, no
+// instruction.
 value_t
 cast(state_t &s, const cast_t &c, const type_t &to)
 {
-    const auto v = rvalue(s, *c.arg);
-    if (is< void_t >(to))
-        return { "", "void" };
+    const auto &arg = *c.arg;
 
-    return convert(s, v, c.arg->type, to);
+    if (is< void_t >(to)) {
+        rvalue(s, arg);
+        return { "", "void" };
+    }
+
+    // 6.3.2.1p3: the address of the array is its first element's
+    if (is< array_t >(arg.type))
+        return { lvalue(s, arg).name, "ptr" };
+
+    // 6.3.2.3p3: the literal 0 as a pointer is the null pointer, and
+    // stays one through void *, pointer to pointer
+    if (is< pointer_t >(to) && is< literal_t >(arg) &&
+        as< literal_t >(arg).value == 0)
+        return { "null", "ptr" };
+
+    const auto v = rvalue(s, arg);
+
+    if (is< pointer_t >(arg.type) && is< pointer_t >(to))
+        return v;
+
+    // G2: an integer narrower than the pointer takes its low bits
+    if (is< pointer_t >(arg.type)) {
+        const auto type = ir_type(to);
+        return yield(s, type, std::format("ptrtoint {} to {}", typed(v), type));
+    }
+
+    // 6.3.2.3p5: the integer is widened to 64 bits in its own
+    // signedness first, as the platform's compiler does
+    if (is< pointer_t >(to)) {
+        const auto wide =
+            convert(s, v, arg.type, make_int(64, integer(arg.type).is_signed));
+        return yield(s, "ptr", std::format("inttoptr {} to ptr", typed(wide)));
+    }
+
+    return convert(s, v, arg.type, to);
 }
 
-// The function a call names: a name, or a name the parser decayed to
-// a pointer.  An indirect call is not in the first slice.
+// The function a call names; the parser keeps the callee a name and
+// never decays it.  An indirect call is not in the slice.
 const symbol_t &
 callee_of(const call_t &c)
 {
-    const expr_t *e = c.callee.get();
-    if (is< cast_t >(*e))
-        e = as< cast_t >(*e).arg.get();
-
-    if (!is< name_t >(*e) ||
-        as< name_t >(*e).sym->storage != storage_t::function)
+    const auto &e = *c.callee;
+    if (!is< name_t >(e) || as< name_t >(e).sym->storage != storage_t::function)
         throw std::logic_error("emit: an indirect call");
 
-    return *as< name_t >(*e).sym;
+    return *as< name_t >(e).sym;
 }
 
 // A direct call.  The callee's type is the call site's: the parser
@@ -665,18 +892,19 @@ conditional(state_t &s, const conditional_t &c, const type_t &t)
                              from_yes, no.name, from_no));
 }
 
-// The value of an expression, its code written first.  A pointer value
-// is not in the first slice.
+// The value of an expression, its code written first.  No value has an
+// array type: the parser decays every array it reads, 6.3.2.1p3.
 value_t
 rvalue(state_t &s, const expr_t &e)
 {
-    if (is< pointer_t >(e.type))
-        throw std::logic_error("emit: a pointer-typed expression");
+    if (is< array_t >(e.type))
+        throw std::logic_error("emit: an array-typed value");
 
     if (is< literal_t >(e))
         return literal(as< literal_t >(e), e.type);
 
-    if (is< name_t >(e))
+    // the read of an object, named or pointed to, 6.3.2.1p2
+    if (is< name_t >(e) || is_lvalue(e))
         return load(s, lvalue(s, e), e.type);
 
     if (is< unary_t >(e))
@@ -712,7 +940,7 @@ void
 decl_stmt(state_t &s, const decl_stmt_t &d)
 {
     if (d.init)
-        store(s, rvalue(s, *d.init), { s.slots.at(d.sym), "ptr" }, d.sym->type);
+        store(s, rvalue(s, *d.init), slot(s, d.sym));
 }
 
 void
@@ -877,7 +1105,8 @@ finish(state_t &s)
         terminate(s, std::format("ret {} 0", ir_type(passed(s.result))));
     else {
         // extended to 32 bits as return_stmt extends a written result
-        const auto v = load(s, { "%ret.indeterminate", "ptr" }, s.result);
+        const auto v =
+            load(s, { "%ret.indeterminate", align_of(s.result) }, s.result);
         terminate(s, "ret " + typed(convert(s, v, s.result, passed(s.result))));
     }
 }
@@ -927,7 +1156,7 @@ prologue(state_t &s, const function_decl_t &fd)
 
     if (needs_return_slot(s))
         line(s, std::format("%ret.indeterminate = alloca {}, align {}",
-                            ir_type(s.result), alignment_of(s.result)));
+                            ir_type(s.result), align_of(s.result)));
 
     // FastISel cannot lower a narrow argument, so it arrives as i32,
     // and only its low bits are the value the caller converted
@@ -937,7 +1166,7 @@ prologue(state_t &s, const function_decl_t &fd)
 
         const value_t incoming { std::format("%p.{}", i), ir_type(wide) };
         const auto v = convert(s, incoming, wide, p->type);
-        store(s, v, { s.slots.at(p), "ptr" }, p->type);
+        store(s, v, slot(s, p));
     }
 }
 
@@ -975,23 +1204,34 @@ declaration(state_t &s, const function_decl_t &fd)
 } // namespace
 
 // No target triple, no datalayout, no module attributes: llc
-// supplies the host's when it reads the file.
+// supplies the host's when it reads the file.  The functions go
+// through a buffer, so the string literals they name are written
+// first and the IR reads top down.
 void
 emit(const unit_t &unit, std::ostream &out)
 {
-    state_t s { .out = out };
+    std::ostringstream functions;
+    state_t s { .out = functions };
 
     for (std::size_t i = 0; i < unit.functions.size(); ++i) {
         const auto &fd = unit.functions[i];
 
         if (i > 0)
-            out << '\n';
+            functions << '\n';
 
         if (fd.body)
             function(s, fd);
         else
             declaration(s, fd);
     }
+
+    for (const auto &definition : s.strings)
+        out << definition << '\n';
+
+    if (!s.strings.empty())
+        out << '\n';
+
+    out << functions.str();
 }
 
 } // namespace rcc

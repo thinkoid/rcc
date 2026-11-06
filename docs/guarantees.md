@@ -59,7 +59,7 @@ computed.
 
 **G9. An access through a null pointer is performed at address 0.**
 6.5.4.2p4. A fault, or the bytes at 0 where it is mapped. IR:
-`null_pointer_is_valid` on every function; no `nonnull`, no
+`null_pointer_is_valid` on every definition; no `nonnull`, no
 `dereferenceable`.
 
 **G10. Memory is bytes.** 6.5.1p7 and the union rules. A load through

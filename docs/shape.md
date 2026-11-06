@@ -143,7 +143,7 @@ nothing left out. The rules:
 - Every load from an alloca is `freeze`d (G5). The literal back end
   lowers a `freeze` to nothing; it is there for the IR, which is a
   document people read.
-- Every function is `null_pointer_is_valid` (G9), for the same
+- Every definition is `null_pointer_is_valid` (G9), for the same
   reason.
 - `add`, `sub`, `mul`, `shl` carry no `nsw`, `nuw`; `getelementptr`
   carries no `inbounds`; division and shifts are the plain
