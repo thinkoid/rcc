@@ -117,7 +117,15 @@ x86-64; aarch64 rows to follow when the target is wired.
 | `(T) a` | `trunc`, `sext`, `zext`, or nothing | `movsbl`, `movzbl`, `cltq`, or nothing; a `char` load is `movzbl` from the slot and then the extension, two instructions |
 | a `char` or `short` parameter or result | `i32` in the signature, `trunc` at entry, `sext`/`zext` before `ret` and before the call, `trunc` after it | a byte or word store at entry, `movsbl`/`movzbl` or `movswl`/`movzwl` before the call and before `ret` |
 | `a += b` | load, convert, op, convert, store | the row of the op, between a load and a store |
-| `p - q` | `ptrtoint`, `sub`, `sdiv` by the element size | `sub`, `cltq`, `idivq`; a division even for a size of 4, since G6 promises any two pointers and a shift would floor where the division truncates; `(char *) p - (char *) q` is the cheap spelling |
+| `p + n`, `p - n`, `a[i]` | `sext` of the index to 64 bits, `getelementptr` of the pointee type; for `p - n`, the index negated with `sub 0` first | feeding a load or a store, the access's scaled-index address, `(%rax,%rcx,4)`, for a size of 1, 2, 4 or 8; on its own, `shl` for a power-of-two size or `imul` for any other, then `add`; the negation of `p - n` is `xor` and `sub`; a constant index is widened at run time too, `mov $n` and `movslq` |
+| `++p`, `--p`, `p++`, `p--` | `getelementptr` by the `i64` constant 1 or -1 | `add` of the size, `add $0x4` or `add $-0x4` |
+| `p - q` | `ptrtoint`, `sub`, `sdiv` by the element size | `sub`, `cqto`, a 64-bit `idiv`; a division even for a size of 4, since G6 promises any two pointers and a shift would floor where the division truncates; for a size of 1 no division, so `(char *) p - (char *) q` is the cheap spelling |
+| `p < q` and the rest | `icmp ult`, `ugt`, `ule`, `uge`, `eq`, `ne` on `ptr`, `zext` | `cmp` of the 64-bit addresses, an unsigned `setcc`, `setb` for `<`, then `and $1`, `movzbl` |
+| `if (p)`, `p == 0` | `icmp ne` or `eq` against `null` | `cmp $0x0` and the jump or the `setcc`; as a condition, one comparison, since the pointer's own compare is the condition |
+| `*p` | `load`, `store`; `align 1` unless the address is a declared object (G11) | `mov` through the register; x86 has one `mov` for every alignment |
+| `&x` | the `alloca` | `lea` of the slot |
+| `(T *) p`, `(long) p`, `(T *) l` | nothing, `ptrtoint`, `inttoptr`; an `int` extended with `sext` first | nothing; `cltq` for an `int` |
+| `"abc"` | a `private global` array of `i8`, neither `constant` nor `unnamed_addr` (G17); its address | a rip-relative `lea`, relocated against `.data`, since a private global has no symbol; the bytes in `.data`, writable |
 
 ## 4. What the machine does on its own
 
@@ -132,6 +140,16 @@ x86-64; aarch64 rows to follow when the target is wired.
   its C width, though the parameter arrives in 32 bits. Temporaries
   within an expression are registers. The allocator may spill a
   temporary across a call or a block.
+- **An access computes its own address.** A `getelementptr` that
+  feeds a load or a store is selected as the access's address, base,
+  index and scale, `(%rax,%rcx,4)`, when the element size is 1, 2, 4
+  or 8; the slot's offset of a local array is the displacement. A
+  `getelementptr` that feeds anything else, or has another size, is
+  computed on its own: the index scaled by `shl` for a power of two
+  and by `imul` otherwise, then an `add`. Either form is the machine
+  form of one IR instruction, as `lea` is of an `add`, not a fold:
+  the scaled add is still performed, by the access itself, and
+  nothing is simplified away.
 - **The frame.** The prologue and epilogue, callee-saved registers,
   stack alignment, the red zone for a leaf's locals: the convention's,
   not the source's. No frame pointer is kept.
@@ -160,7 +178,8 @@ time:
 
 | Flag dropped | Rows that change |
 |---|---|
-| `-fast-isel` with its abort | add-zero, mul-three, div-four, div-seven, twice |
+| `-fast-isel` with its abort | every row but unused |
+| `-relocation-model=pic` | string |
 | `-disable-cgp` | cgp, early-taildup |
 | `-disable-constant-hoisting` | constant-hoisting |
 | `-disable-machine-licm` | constant-in-loop, invariant |
@@ -171,11 +190,17 @@ time:
 | `-disable-early-taildup` | early-taildup |
 | `-disable-block-placement` | ten rows |
 
-The other flags change no listing the first slice can produce:
-`-disable-lsr` because locals are memory and there is no induction
-variable to reduce; `-no-stack-coloring` because no lifetime marker
-is emitted; `-relocation-model=pic` because it shows only in
-relocations; the rest because the pass has nothing to do on these
-constructs, or is off by default on x86. They stay in the table:
-each holds back a pass that exists, and a later slice may give it
-something to do.
+Without FastISel, the folding selector forwards a stored local to
+its next read and merges operations, so nearly every listing
+shrinks; unused is the one row it leaves alone. Without
+`-relocation-model=pic`, the literal's address in string is a
+`movabs` with an absolute relocation.
+
+The other flags change no listing the corpus can produce:
+`-disable-lsr` because locals are memory, so even a pointer walk has
+no induction variable in a register to reduce; `-no-stack-coloring`
+because no lifetime marker is emitted, so no two slots may share
+(the G12 oracle program shows the sharing under `clang -O2`); the
+rest because the pass has nothing to do on these constructs, or is
+off by default on x86. They stay in the table: each holds back a
+pass that exists, and a later slice may give it something to do.

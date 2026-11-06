@@ -22,11 +22,59 @@ round trip of G8 and the laundering of G16 are no longer emitted,
 because nothing between the source and the instruction reasons about
 the program.
 
+** TODO G7's "Lost" in the rationale misses the equality fold
+
+=rationale.md= says G7 loses "nothing beyond G6". The corpus says
+otherwise: =clang -O2= folds =&a + 1 == &b= to false for two distinct
+locals, the one-past-the-end address included, where rcc compares the
+addresses and finds them equal (=tests/corpus/g7-ptr-equal.c=, 1
+under rcc, 0 under clang). A relational compare of the two is not
+folded.
+
+Fix: the Lost clause of G7 names the equality fold between distinct
+objects, with the corpus program as its probe.
+
+Check: the rationale's G7 names the fold and the program.
+
+** TODO The rationale has no G17
+
+=guarantees.md= has G17, the writable string literal, and its row in
+the never-emitted table; =rationale.md= has neither, so the promise
+has no recorded argument, alternatives or probe. The corpus has the
+probe: =clang -O2= folds the load from a literal to its initializer
+and drops the store (=tests/corpus/g17-string-store.c=, 122 under
+rcc, 97 under clang).
+
+Fix: a Storage section in the rationale with G17: the ISO paragraph,
+the promise, the IR, what is lost (equal literals merged, the
+read-only section, the fold of a load from a literal), and the probe.
+
+Check: the rationale has a G17 entry and the table row.
+
 * Cost model
 
 The record in =docs/cost.md=: what each construct compiles to under
 the literal pipeline, =llc= with FastISel and the rewriting passes
 off.
+
+** WAITING A converted constant is converted at run time
+
+An integer constant under an implicit conversion is a cast node over
+the literal, and the emitter writes the conversion as an instruction:
+=p -= 2= is =sext i32 2 to i64=, then =sub i64 0=, then the gep, six
+machine instructions, where =++p= writes the =i64= constant and costs
+one =add=; =long x = 2= is =mov $2= and =cltq= the same way. The
+programmer wrote a constant, not a conversion, and the machine has
+no instruction for widening an immediate.
+
+Fix, if wanted: the parser retypes an integer literal under an
+implicit conversion instead of wrapping it, so the emitter writes
+the constant in the target type; an explicit cast of a constant
+stays a node. Waits on the decision whether retyping a literal is
+the compiler's own.
+
+Check: =p -= 2= in =tests/cost/ptr-step.s= is one =sub= or =add= of
+the scaled constant; the =(T) a= row is unchanged for a variable.
 
 ** TODO =register=: the programmer's lever on the allocator
 
@@ -42,6 +90,21 @@ does.
 
 Check: a loop counter declared =register= has no =mov= to the stack
 in its loop; the same loop without the keyword has two.
+
+** TODO A function whose every path returns still gets the indeterminate slot
+
+=needs_return_slot= allocates =%ret.indeterminate= in every non-void
+function but =main=, for the value a fall off the end returns (G5).
+A function whose last top-level statement is a =return= cannot fall
+off the end, so its slot is a dead =alloca=, eight bytes of frame per
+such function.
+
+Fix: no slot when the body's last statement is a =return=; the
+syntactic test is enough, since the slot is read only by the fall-off
+path =finish= writes.
+
+Check: =int f(void) { return 1; }= has no =ret.indeterminate= in its
+IR; a function ending in an =if= without =else= still has one.
 
 ** TODO The performance leg of the oracle
 
@@ -68,6 +131,31 @@ may ignore; =timeout -k= would follow with SIGKILL.
 Fix: =timeout -k 1 10=, and a corpus rule that no program exits 124.
 
 Check: a program that ignores SIGTERM ends its row.
+
+** TODO A signal death records as 128 + n, like an exit with 128 + n
+
+A program killed by signal n is recorded as 128 + n: =timeout= dies
+of the child's signal, and the shell reports 128 + n. So the G9
+program's SIGSEGV is the row's 139, and a program that exits 139 by
+itself records the same.
+
+Fix: show a status above 128 by its signal name, =SEGV= from =kill
+-l=, in the table and in =expected=, and a corpus rule that no
+program exits above 128.
+
+Check: the =g9-null-load= row reads =SEGV= and passes.
+
+** TODO A signal death leaves a core file in /tmp
+
+The oracle runs each program with the caller's core limit. Where it is
+unlimited and =core_pattern= is =/tmp/core.%e.%p.%s=, as on this
+machine, every run of =g9-null-load= under rcc leaves a core of about
+290 KB in =/tmp=, and =timeout= says "the monitored command dumped
+core" in the log.
+
+Fix: =ulimit -c 0= in the script before the runs.
+
+Check: =make test= leaves no new =/tmp/core.*=.
 
 ** TODO A G14 corpus program needs a non-constant condition
 
@@ -105,7 +193,38 @@ or confirm =llc= removes its output on failure.
 
 Check: a fake =llc= that writes then exits 7 leaves no output file.
 
+* Emitter
+
+** TODO The object names the temporary IR file, so no two builds match
+
+The IR has no =source_filename=, so =llc= names the module after the
+file it reads, the driver's temporary =rcc-XXXXXX.ll=. The object's
+file symbol is that name (=objdump -t= shows =rcc-BRXkWH.ll=), and two
+=rcc -c= builds of the same source differ in it.
+
+Fix: the emitter writes ~source_filename = "<the .c path>"~ at the
+top of the IR.
+
+Check: two =rcc -c= builds of =tests/cost/local.c= compare equal with
+=cmp=, and =objdump -t= names the =.c= file.
+
 * Parser
+
+** TODO Assignment to a const object is not diagnosed
+
+The parser accepts =const= and drops it: the type is the machine's
+view and carries no qualifier. So =const int c = 1; c = 2;= compiles,
+though 6.5.17.1p2 requires a modifiable lvalue and 6.3.2.1p1 excludes
+a const-qualified one; a conforming compiler must diagnose it. The
+same silence covers a =const= pointee assigned through, and a
+=T *= initialized from a =const T *=.
+
+Fix: qualifiers on the symbol and on the pointee, checked by
+=require_modifiable_lvalue= and by the assignment conversion; the
+type itself stays unqualified.
+
+Check: the three programs above fail with a diagnostic; =const= in
+every other position still parses.
 
 ** TODO GNU extensions in system headers reach the parser as identifiers
 
@@ -126,16 +245,4 @@ A probe says which headers need what.
 Check: `#include <stdio.h>` followed by an empty `main` parses.
 
 * Lexer
-
-** TODO String and character literals die with the generic error
-
-The lexer has no token kinds for them, so a program with `"x"` or
-`'x'` fails as "unexpected character" instead of `not yet: string
-literal`. The second slice needs both kinds anyway (G8's probes
-print).
-
-Fix: add the two token kinds, lex the literals with their escapes,
-and let the parser say `not yet` until the emitter writes them.
-
-Check: `return "x";` fails in the parser, at the literal, as not yet.
 

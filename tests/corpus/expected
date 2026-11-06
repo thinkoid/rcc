@@ -1,4 +1,12 @@
 # One line per program in tests/corpus: its name, the exit status of
 # the program built by rcc, and that of the program built by clang -O2.
 # A status is a number, or timeout for a run stopped at the time limit.
+# A run killed by signal n shows as 128 + n: 139 for SIGSEGV.
 g1-add-compare 0 1
+g11-misaligned 52 52
+g12-block-slot 5 9
+g17-string-store 122 97
+g6-ptr-wrap 0 1
+g7-ptr-equal 1 0
+g8-cross-object 3 2
+g9-null-load 139 5
