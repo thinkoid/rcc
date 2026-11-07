@@ -8,6 +8,7 @@
 
 #include "emit.hh"
 
+#include <algorithm>
 #include <format>
 #include <sstream>
 #include <stdexcept>
@@ -36,13 +37,15 @@ struct address_t
     int align;
 };
 
-// The state of one module's emission.  Everything but the stream and
-// the string literals is reset per definition, so the names in a
-// function depend on that function alone, and on the count of literals
-// before it, and the pinned text diffs cleanly.
+// The state of one module's emission.  Everything but the stream, the
+// string literals and the patch counter is reset per definition, so
+// the names in a function depend on that function alone, and on the
+// count of literals before it, and the pinned text diffs cleanly.
 struct state_t
 {
-    std::ostream &out;
+    // the functions' text, a buffer: a loop header's phi is patched
+    // in place once its latch is written
+    std::ostringstream &out;
 
     // G17: one global's definition per literal, numbered in the order
     // the literals are emitted, written ahead of the functions
@@ -50,9 +53,17 @@ struct state_t
 
     std::unordered_map< const symbol_t *, std::string > slots { };
 
+    // the register variables, parameters first, in declaration order,
+    // which is the order their phis take; and the current SSA name of
+    // each, which every write replaces and every join or loop header
+    // merges with a phi
+    std::vector< const symbol_t * > registers { };
+    std::unordered_map< const symbol_t *, std::string > names { };
+
     int temps = 0;
     int labels = 0;
     int slot_names = 0;
+    int patches = 0;
 
     type_t result { };
     std::string function { };
@@ -166,16 +177,38 @@ line(state_t &s, std::string_view text)
     s.out << "    " << text << '\n';
 }
 
+// An instruction that defines name, which is the value.
+value_t
+named(state_t &s, std::string name, std::string type, std::string_view text)
+{
+    s.out << std::format("    {} = {}\n", name, text);
+
+    return { std::move(name), std::move(type) };
+}
+
 // An instruction that yields a value.  The register is the next
 // temporary, never LLVM's implicit numbering, so no block or value
 // needs a number the reader has to count.
 value_t
 yield(state_t &s, std::string type, std::string_view text)
 {
-    auto name = std::format("%t{}", ++s.temps);
-    s.out << std::format("    {} = {}\n", name, text);
+    return named(s, std::format("%t{}", ++s.temps), std::move(type), text);
+}
 
-    return { std::move(name), std::move(type) };
+// A phi's back-edge operand is known only when the latch is written:
+// the header carries a placeholder, replaced here, once.
+void
+patch(state_t &s, std::string_view placeholder, std::string_view text)
+{
+    auto buffer = s.out.str();
+
+    const auto at = buffer.find(placeholder);
+    if (at == std::string::npos)
+        throw std::logic_error("emit: a latch without its header's phi");
+    buffer.replace(at, placeholder.size(), text);
+
+    s.out.str(std::move(buffer));
+    s.out.seekp(0, std::ios_base::end);
 }
 
 void
@@ -225,13 +258,27 @@ next_label(state_t &s)
 
 // memory
 
+// A name for sym from the one counter, so a slot, a parameter, a phi
+// and a frozen undef never collide.
+std::string
+name_for(state_t &s, const symbol_t *sym)
+{
+    return std::format("%{}.{}", sym->name, s.slot_names++);
+}
+
 // G11: a declared object carries its natural alignment and no more.
 // G12: the slot lives for the whole activation; no llvm.lifetime.start
-// or end is ever written.
+// or end is ever written.  A register variable has no slot: it is
+// listed instead.
 void
 allocate(state_t &s, const symbol_t *sym)
 {
-    auto name = std::format("%{}.{}", sym->name, s.slot_names++);
+    if (sym->in_register) {
+        s.registers.push_back(sym);
+        return;
+    }
+
+    auto name = name_for(s, sym);
     line(s, std::format("{} = alloca {}, align {}", name, ir_type(sym->type),
                         align_of(sym->type)));
 
@@ -354,7 +401,126 @@ lvalue(state_t &s, const expr_t &e)
         sym->storage != storage_t::parameter)
         throw std::logic_error("emit: a global or function as an object");
 
+    // 6.5.4.2p1: the parser refuses & on it, and nothing else may ask
+    if (sym->in_register)
+        throw std::logic_error("emit: the address of a register variable");
+
     return slot(s, sym);
+}
+
+// Where a read or a write of an lvalue lands: the register variable it
+// names, which has no address, or else its address.
+struct place_t
+{
+    const symbol_t *reg;
+    address_t addr;
+};
+
+place_t
+place(const state_t &s, const symbol_t *sym)
+{
+    if (sym->in_register)
+        return { sym, { } };
+
+    return { nullptr, slot(s, sym) };
+}
+
+place_t
+place(state_t &s, const expr_t &e)
+{
+    if (is< name_t >(e) && as< name_t >(e).sym->in_register)
+        return { as< name_t >(e).sym, { } };
+
+    return { nullptr, lvalue(s, e) };
+}
+
+value_t indeterminate(state_t &, const symbol_t *);
+
+// The value at a place: a register variable's current name, no
+// instruction, or a frozen load of the address (G5).  A register
+// variable is in scope from the end of its declarator, 6.2.1p7, so
+// its initializer may read it; that read, before any write, makes the
+// frozen undef the declaration would have.
+value_t
+read(state_t &s, const place_t &at, const type_t &t)
+{
+    if (at.reg) {
+        auto it = s.names.find(at.reg);
+        if (it == s.names.end())
+            it = s.names.emplace(at.reg, indeterminate(s, at.reg).name).first;
+
+        return { it->second, ir_type(t) };
+    }
+
+    return load(s, at.addr, t);
+}
+
+// A write to a place: the value is the register variable's name from
+// here on, no instruction, or it is stored at the address.
+void
+write(state_t &s, const value_t &v, const place_t &at)
+{
+    if (at.reg)
+        s.names.insert_or_assign(at.reg, v.name);
+    else
+        store(s, v, at.addr);
+}
+
+// G5: a register variable declared without an initializer holds a
+// value of its type the compiler did not choose, the same at every
+// read; this freeze of undef is the one undef the front end writes,
+// and the name it makes is the variable's until a write.
+value_t
+indeterminate(state_t &s, const symbol_t *sym)
+{
+    const auto type = ir_type(sym->type);
+
+    return named(s, name_for(s, sym), type,
+                 std::format("freeze {} undef", type));
+}
+
+// One arm of a join: the names at its end, and the block it ended in,
+// which branches to the join's block.
+struct arm_t
+{
+    std::unordered_map< const symbol_t *, std::string > names;
+    std::string block;
+};
+
+arm_t
+arm(const state_t &s)
+{
+    return { s.names, s.block };
+}
+
+// The join of two arms, at the top of the block just opened: one phi
+// per register variable whose name differs between them, in
+// declaration order.  A variable in one arm only was declared there
+// and is out of scope.  A return in an arm ends it in a dead block
+// that still branches here, so every arm has an operand.
+void
+join(state_t &s, const arm_t &a, const arm_t &b)
+{
+    s.names.clear();
+
+    for (const auto *sym : s.registers) {
+        const auto x = a.names.find(sym);
+        const auto y = b.names.find(sym);
+        if (x == a.names.end() || y == b.names.end())
+            continue;
+
+        if (x->second == y->second) {
+            s.names.emplace(sym, x->second);
+            continue;
+        }
+
+        const auto type = ir_type(sym->type);
+        const auto v = named(s, name_for(s, sym), type,
+                             std::format("phi {} [ {}, %{} ], [ {}, %{} ]",
+                                         type, x->second, a.block, y->second,
+                                         b.block));
+        s.names.emplace(sym, v.name);
+    }
 }
 
 // The zero a scalar is compared with as a truth value: 0, or the null
@@ -511,7 +677,7 @@ logical(state_t &s, const binary_t &b, const type_t &result)
     const auto end_label = std::format("{}.end.{}", stem, n);
 
     const auto l = test(s, *b.lhs);
-    const auto from_lhs = s.block;
+    const auto from_lhs = arm(s);
     if (is_and)
         branch(s, l, rhs_label, end_label);
     else
@@ -519,13 +685,15 @@ logical(state_t &s, const binary_t &b, const type_t &result)
 
     open(s, rhs_label);
     const auto r = test(s, *b.rhs);
-    const auto from_rhs = s.block;
+    const auto from_rhs = arm(s);
 
     open(s, end_label);
+    join(s, from_lhs, from_rhs);
     const auto bit = yield(s, "i1",
                            std::format("phi i1 [ {}, %{} ], [ {}, %{} ]",
-                                       is_and ? "false" : "true", from_lhs,
-                                       r.name, from_rhs));
+                                       is_and ? "false" : "true",
+                                       from_lhs.block, r.name,
+                                       from_rhs.block));
 
     return widen(s, bit, result);
 }
@@ -631,8 +799,8 @@ step(state_t &s, const unary_t &u)
 {
     const auto &arg = *u.arg;
 
-    const auto addr = lvalue(s, arg);
-    const auto old = load(s, addr, arg.type);
+    const auto at = place(s, arg);
+    const auto old = read(s, at, arg.type);
 
     const bool up = u.op == unary_op_t::pre_inc || u.op == unary_op_t::post_inc;
     const auto now =
@@ -641,7 +809,7 @@ step(state_t &s, const unary_t &u)
                     *as< pointer_t >(arg.type).pointee) :
             yield(s, old.type,
                   std::format("{} {}, 1", up ? "add" : "sub", typed(old)));
-    store(s, now, addr);
+    write(s, now, at);
 
     const bool prefix =
         u.op == unary_op_t::pre_inc || u.op == unary_op_t::pre_dec;
@@ -729,17 +897,17 @@ assign(state_t &s, const assign_t &a)
 
     // G13: the lvalue before the rvalue, and the old value before the
     // right operand of a compound assignment
-    const auto addr = lvalue(s, lhs);
+    const auto at = place(s, lhs);
 
     value_t v;
     if (steps) {
-        const auto old = load(s, addr, lhs.type);
+        const auto old = read(s, at, lhs.type);
         const auto n = rvalue(s, *a.rhs);
 
         v = offset(s, *a.op, old, n, *as< pointer_t >(lhs.type).pointee);
     }
     else if (a.op) {
-        const auto old = load(s, addr, lhs.type);
+        const auto old = read(s, at, lhs.type);
         const auto l = convert(s, old, lhs.type, a.common);
         const auto r = rvalue(s, *a.rhs);
 
@@ -749,7 +917,7 @@ assign(state_t &s, const assign_t &a)
     else
         v = rvalue(s, *a.rhs);
 
-    store(s, v, addr);
+    write(s, v, at);
 
     return v;
 }
@@ -873,23 +1041,28 @@ conditional(state_t &s, const conditional_t &c, const type_t &t)
     const auto cond = test(s, *c.cond);
     branch(s, cond, true_label, false_label);
 
+    // both arms start from the names after the condition
+    const auto before = s.names;
+
     open(s, true_label);
     const auto yes = rvalue(s, *c.yes);
-    const auto from_yes = s.block;
+    const auto from_yes = arm(s);
     jump(s, end_label);
 
     open(s, false_label);
+    s.names = before;
     const auto no = rvalue(s, *c.no);
-    const auto from_no = s.block;
+    const auto from_no = arm(s);
 
     open(s, end_label);
+    join(s, from_yes, from_no);
     if (is< void_t >(t))
         return { "", "void" };
 
     const auto type = ir_type(t);
     return yield(s, type,
                  std::format("phi {} [ {}, %{} ], [ {}, %{} ]", type, yes.name,
-                             from_yes, no.name, from_no));
+                             from_yes.block, no.name, from_no.block));
 }
 
 // The value of an expression, its code written first.  No value has an
@@ -905,7 +1078,7 @@ rvalue(state_t &s, const expr_t &e)
 
     // the read of an object, named or pointed to, 6.3.2.1p2
     if (is< name_t >(e) || is_lvalue(e))
-        return load(s, lvalue(s, e), e.type);
+        return read(s, place(s, e), e.type);
 
     if (is< unary_t >(e))
         return unary(s, as< unary_t >(e), e.type);
@@ -935,12 +1108,15 @@ expr_stmt(state_t &s, const expr_stmt_t &x)
 }
 
 // The slot is in the entry block already.  G5: without an initializer
-// nothing is stored; the slot holds what it holds.
+// nothing is stored; the slot holds what it holds.  A register
+// variable's name is its initializer's value, or a frozen undef.
 void
 decl_stmt(state_t &s, const decl_stmt_t &d)
 {
     if (d.init)
-        store(s, rvalue(s, *d.init), slot(s, d.sym));
+        write(s, rvalue(s, *d.init), place(s, d.sym));
+    else if (d.sym->in_register)
+        write(s, indeterminate(s, d.sym), place(s, d.sym));
 }
 
 void
@@ -959,22 +1135,167 @@ if_stmt(state_t &s, const if_t &i)
     const auto end_label = std::format("if.end.{}", n);
 
     const auto c = test(s, i.cond);
+
+    // without an else, the branch's own block is the second arm
+    auto from_no = arm(s);
     branch(s, c, then_label, i.no ? else_label : end_label);
 
     open(s, then_label);
     statement(s, *i.yes);
+    const auto from_yes = arm(s);
     jump(s, end_label);
 
     if (i.no) {
         open(s, else_label);
+        s.names = from_no.names;
         statement(s, *i.no);
+        from_no = arm(s);
     }
 
     open(s, end_label);
+    join(s, from_yes, from_no);
+}
+
+// The register variables an expression assigns, by =, a compound
+// assignment, ++ or --, at any depth, each listed once: those a loop
+// needs a phi for at its header.
+void
+assigned_in(const expr_t &e, std::vector< const symbol_t * > &assigned)
+{
+    const auto note = [&](const expr_t &target) {
+        if (!is< name_t >(target))
+            return;
+
+        const auto *sym = as< name_t >(target).sym;
+        if (sym->in_register &&
+            std::find(assigned.begin(), assigned.end(), sym) == assigned.end())
+            assigned.push_back(sym);
+    };
+
+    if (is< unary_t >(e)) {
+        const auto &u = as< unary_t >(e);
+        if (u.op == unary_op_t::pre_inc || u.op == unary_op_t::pre_dec ||
+            u.op == unary_op_t::post_inc || u.op == unary_op_t::post_dec)
+            note(*u.arg);
+        assigned_in(*u.arg, assigned);
+    }
+    else if (is< binary_t >(e)) {
+        assigned_in(*as< binary_t >(e).lhs, assigned);
+        assigned_in(*as< binary_t >(e).rhs, assigned);
+    }
+    else if (is< assign_t >(e)) {
+        const auto &a = as< assign_t >(e);
+        note(*a.lhs);
+        assigned_in(*a.lhs, assigned);
+        assigned_in(*a.rhs, assigned);
+    }
+    else if (is< call_t >(e)) {
+        for (const auto &arg : as< call_t >(e).args)
+            assigned_in(arg, assigned);
+    }
+    else if (is< cast_t >(e))
+        assigned_in(*as< cast_t >(e).arg, assigned);
+    else if (is< conditional_t >(e)) {
+        const auto &c = as< conditional_t >(e);
+        assigned_in(*c.cond, assigned);
+        assigned_in(*c.yes, assigned);
+        assigned_in(*c.no, assigned);
+    }
+}
+
+void
+assigned_in(const stmt_t &st, std::vector< const symbol_t * > &assigned)
+{
+    if (is< expr_stmt_t >(st)) {
+        if (const auto &x = as< expr_stmt_t >(st); x.e)
+            assigned_in(*x.e, assigned);
+    }
+    else if (is< decl_stmt_t >(st)) {
+        if (const auto &d = as< decl_stmt_t >(st); d.init)
+            assigned_in(*d.init, assigned);
+    }
+    else if (is< block_t >(st)) {
+        for (const auto &inner : as< block_t >(st).body)
+            assigned_in(inner, assigned);
+    }
+    else if (is< if_t >(st)) {
+        const auto &i = as< if_t >(st);
+        assigned_in(i.cond, assigned);
+        assigned_in(*i.yes, assigned);
+        if (i.no)
+            assigned_in(*i.no, assigned);
+    }
+    else if (is< while_t >(st)) {
+        const auto &w = as< while_t >(st);
+        assigned_in(w.cond, assigned);
+        assigned_in(*w.body, assigned);
+    }
+    else if (is< for_t >(st)) {
+        const auto &f = as< for_t >(st);
+        if (f.init)
+            assigned_in(*f.init, assigned);
+        if (f.cond)
+            assigned_in(*f.cond, assigned);
+        if (f.step)
+            assigned_in(*f.step, assigned);
+        assigned_in(*f.body, assigned);
+    }
+    else if (const auto &r = as< return_t >(st); r.value)
+        assigned_in(*r.value, assigned);
+}
+
+// A phi at a loop header, waiting for its back-edge operand.
+struct header_phi_t
+{
+    const symbol_t *sym;
+    std::string placeholder;
+};
+
+// The phis at a loop header, just opened: one per register variable in
+// the map that the loop assigns, in declaration order, whose
+// preheader operand is the variable's name on entry and whose
+// back-edge operand is a placeholder until the latch is written.  Each
+// is the variable's name from here on.
+std::vector< header_phi_t >
+header(state_t &s,
+       const std::vector< const symbol_t * > &assigned,
+       const std::string &preheader)
+{
+    std::vector< header_phi_t > phis;
+
+    for (const auto *sym : s.registers) {
+        const auto it = s.names.find(sym);
+        if (it == s.names.end() ||
+            std::find(assigned.begin(), assigned.end(), sym) == assigned.end())
+            continue;
+
+        const auto type = ir_type(sym->type);
+        const auto placeholder = std::format("<back edge {}>", ++s.patches);
+        const auto v = named(s, name_for(s, sym), type,
+                             std::format("phi {} [ {}, %{} ], {}", type,
+                                         it->second, preheader, placeholder));
+
+        it->second = v.name;
+        phis.push_back({ sym, placeholder });
+    }
+
+    return phis;
+}
+
+// The latch, the block about to branch back to the header: each phi's
+// back-edge operand is the variable's name here, from this block.
+void
+latch(state_t &s, const std::vector< header_phi_t > &phis)
+{
+    for (const auto &phi : phis)
+        patch(s, phi.placeholder,
+              std::format("[ {}, %{} ]", s.names.at(phi.sym), s.block));
 }
 
 // G14: the loop runs until its condition says stop; no mustprogress,
-// no willreturn, no loop metadata.
+// no willreturn, no loop metadata.  The register variables the loop
+// assigns get their phis at the header, and the exit keeps the names
+// the condition left, since the condition may assign.
 void
 while_stmt(state_t &s, const while_t &w)
 {
@@ -983,19 +1304,29 @@ while_stmt(state_t &s, const while_t &w)
     const auto body_label = std::format("while.body.{}", n);
     const auto end_label = std::format("while.end.{}", n);
 
+    std::vector< const symbol_t * > assigned;
+    assigned_in(w.cond, assigned);
+    assigned_in(*w.body, assigned);
+
+    const auto preheader = s.block;
     open(s, cond_label);
+    const auto phis = header(s, assigned, preheader);
     const auto c = test(s, w.cond);
+    const auto exit = s.names;
     branch(s, c, body_label, end_label);
 
     open(s, body_label);
     statement(s, *w.body);
+    latch(s, phis);
     jump(s, cond_label);
 
     open(s, end_label);
+    s.names = exit;
 }
 
 // G14, as for while.  A for without a condition branches to its body
-// unconditionally and ends only by a return.
+// unconditionally and ends only by a return; its end block keeps the
+// header's names, and nothing reaches it.
 void
 for_stmt(state_t &s, const for_t &f)
 {
@@ -1008,11 +1339,21 @@ for_stmt(state_t &s, const for_t &f)
     if (f.init)
         statement(s, *f.init);
 
+    std::vector< const symbol_t * > assigned;
+    if (f.cond)
+        assigned_in(*f.cond, assigned);
+    assigned_in(*f.body, assigned);
+    if (f.step)
+        assigned_in(*f.step, assigned);
+
+    const auto preheader = s.block;
     open(s, cond_label);
+    const auto phis = header(s, assigned, preheader);
     if (f.cond) {
         const auto c = test(s, *f.cond);
         branch(s, c, body_label, end_label);
     }
+    const auto exit = s.names;
 
     open(s, body_label);
     statement(s, *f.body);
@@ -1020,9 +1361,11 @@ for_stmt(state_t &s, const for_t &f)
     open(s, step_label);
     if (f.step)
         rvalue(s, *f.step);
+    latch(s, phis);
     jump(s, cond_label);
 
     open(s, end_label);
+    s.names = exit;
 }
 
 // A return ends its block; what follows it goes in a fresh block, so
@@ -1159,14 +1502,15 @@ prologue(state_t &s, const function_decl_t &fd)
                             ir_type(s.result), align_of(s.result)));
 
     // FastISel cannot lower a narrow argument, so it arrives as i32,
-    // and only its low bits are the value the caller converted
+    // and only its low bits are the value the caller converted.  A
+    // register parameter is the argument itself, converted once.
     for (std::size_t i = 0; i < fd.params.size(); ++i) {
         const auto *p = fd.params[i];
         const auto wide = passed(p->type);
 
         const value_t incoming { std::format("%p.{}", i), ir_type(wide) };
         const auto v = convert(s, incoming, wide, p->type);
-        store(s, v, slot(s, p));
+        write(s, v, place(s, p));
     }
 }
 
@@ -1176,6 +1520,8 @@ void
 function(state_t &s, const function_decl_t &fd)
 {
     s.slots.clear();
+    s.registers.clear();
+    s.names.clear();
     s.temps = 0;
     s.labels = 0;
     s.result = *as< function_t >(fd.sym->type).result;

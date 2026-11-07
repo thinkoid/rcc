@@ -37,12 +37,22 @@ struct parser_t
     type_t result;
 };
 
-// A parameter as written: its type, and its name token when it has one.
+// The declaration specifiers: the type, and the register token when
+// one was written, for the caller to accept or refuse in its context.
+struct specifiers_t
+{
+    type_t type;
+    const token_t *in_register;
+};
+
+// A parameter as written: its type, its name token when it has one,
+// and whether it was declared register.
 struct parameter_t
 {
     type_t type;
     const token_t *start;
     const token_t *name;
+    bool in_register;
 };
 
 // A declarator in the subset: a name, absent only from a parameter,
@@ -664,14 +674,18 @@ lookup(const parser_t &p, std::string_view name)
 // map's key views the symbol's own name, which the deque keeps in
 // place.
 const symbol_t *
-declare(parser_t &p, const token_t &name, type_t t, storage_t storage)
+declare(parser_t &p,
+        const token_t &name,
+        type_t t,
+        storage_t storage,
+        bool in_register)
 {
     auto &scope = p.scopes.back();
     if (scope.contains(name.text))
         fail(name, "redefinition of " + quoted(name.text));
 
-    const symbol_t &sym = p.unit.symbols.emplace_back(
-        symbol_t { std::string(name.text), std::move(t), storage, false });
+    const symbol_t &sym = p.unit.symbols.emplace_back(symbol_t {
+        std::string(name.text), std::move(t), storage, in_register });
     scope.emplace(sym.name, &sym);
 
     return &sym;
@@ -820,7 +834,7 @@ integer_constant(const token_t &t)
 
 void external_declaration(parser_t &);
 void function_definition(parser_t &, const declarator_t &);
-type_t declaration_specifiers(parser_t &);
+specifiers_t declaration_specifiers(parser_t &);
 declarator_t declarator(parser_t &, const type_t &, bool abstract = false);
 type_t pointer(parser_t &, type_t);
 type_t array_declarator(parser_t &, const type_t &);
@@ -828,7 +842,7 @@ bool parameter_type_list(parser_t &, std::vector< parameter_t > &);
 parameter_t parameter_declaration(parser_t &);
 type_t type_name(parser_t &);
 std::vector< stmt_t > declaration(parser_t &);
-stmt_t init_declarator(parser_t &, const type_t &);
+stmt_t init_declarator(parser_t &, const specifiers_t &);
 
 stmt_t statement(parser_t &);
 block_t compound_statement(parser_t &);
@@ -948,7 +962,14 @@ declare_function(parser_t &p, const declarator_t &d)
 void
 external_declaration(parser_t &p)
 {
-    const type_t base = declaration_specifiers(p);
+    const specifiers_t spec = declaration_specifiers(p);
+
+    // 6.9.1p2: register shall not appear in an external declaration
+    if (spec.in_register)
+        fail(*spec.in_register, quoted(spec.in_register->text) +
+                                    " in an external declaration");
+
+    const type_t &base = spec.type;
 
     declarator_t d = declarator(p, base);
     if (!d.params)
@@ -990,8 +1011,8 @@ function_definition(parser_t &p, const declarator_t &d)
         if (!param.name)
             fail(*param.start, "parameter name omitted");
 
-        params.push_back(
-            declare(p, *param.name, param.type, storage_t::parameter));
+        params.push_back(declare(p, *param.name, param.type,
+                                 storage_t::parameter, param.in_register));
     }
 
     block_t body;
@@ -1011,19 +1032,34 @@ function_definition(parser_t &p, const declarator_t &d)
 // and long long another.  Each keyword is checked against the ones
 // before it, so an error names the keyword that breaks the set.  const
 // may stand anywhere among them, once or more, 6.7.4.1p6, and is
-// dropped: the type is the machine's view.
-type_t
+// dropped: the type is the machine's view.  register may stand
+// anywhere too, once, 6.7.2p2, and is reported to the caller, since
+// what it may qualify depends on where the declaration is.
+specifiers_t
 declaration_specifiers(parser_t &p)
 {
     int n_void = 0, n_char = 0, n_short = 0, n_int = 0, n_long = 0;
     int n_signed = 0, n_unsigned = 0;
     bool any = false;
 
+    const token_t *in_register = nullptr;
+
     for (;;) {
         const token_t &t = peek(p);
 
         if (accept(p, tok_t::kw_const))
             continue;
+
+        if (t.kind == tok_t::kw_register) {
+            // 6.7.2p2: at most one storage-class specifier
+            if (in_register)
+                fail(t, "cannot combine " + quoted(t.text) +
+                            " with the storage class before it");
+
+            in_register = &t;
+            advance(p);
+            continue;
+        }
 
         bool bad = n_void > 0;
         switch (t.kind) {
@@ -1056,7 +1092,6 @@ declaration_specifiers(parser_t &p)
         case tok_t::kw_volatile:
         case tok_t::kw_restrict: not_yet(t, "type qualifier " + quoted(t.text));
         case tok_t::kw_auto:
-        case tok_t::kw_register:
         case tok_t::kw_static:
         case tok_t::kw_extern:
         case tok_t::kw_typedef: not_yet(t, "storage class " + quoted(t.text));
@@ -1070,13 +1105,14 @@ declaration_specifiers(parser_t &p)
                 fail(t, "expected a type specifier");
 
             if (n_void)
-                return make_void();
+                return { make_void(), in_register };
 
-            return make_int(n_char  ? 8 :
-                            n_short ? 16 :
-                            n_long  ? 64 :
-                                      32,
-                            n_unsigned == 0);
+            return { make_int(n_char  ? 8 :
+                              n_short ? 16 :
+                              n_long  ? 64 :
+                                        32,
+                              n_unsigned == 0),
+                     in_register };
         }
 
         if (bad)
@@ -1254,8 +1290,8 @@ parameter_declaration(parser_t &p)
 {
     const token_t &start = peek(p);
 
-    const type_t base = declaration_specifiers(p);
-    const declarator_t d = declarator(p, base, true);
+    const specifiers_t spec = declaration_specifiers(p);
+    const declarator_t d = declarator(p, spec.type, true);
 
     if (is< void_t >(d.type))
         fail(start, "'void' must be the only parameter");
@@ -1263,11 +1299,14 @@ parameter_declaration(parser_t &p)
     if (d.params)
         not_yet(d.name ? *d.name : start, "parameter of function type");
 
+    // a register parameter of array type is a register pointer, since
+    // the adjustment comes first
     type_t t = d.type;
     if (is< array_t >(t))
         t = make_pointer(*as< array_t >(t).element);
 
-    return parameter_t { std::move(t), &start, d.name };
+    return parameter_t { std::move(t), &start, d.name,
+                         spec.in_register != nullptr };
 }
 
 // Specifiers and an abstract declarator of '*'s, each perhaps const,
@@ -1275,7 +1314,14 @@ parameter_declaration(parser_t &p)
 type_t
 type_name(parser_t &p)
 {
-    const type_t t = pointer(p, declaration_specifiers(p));
+    const specifiers_t spec = declaration_specifiers(p);
+
+    // 6.7.8p1: a specifier-qualifier list, no storage class
+    if (spec.in_register)
+        fail(*spec.in_register,
+             quoted(spec.in_register->text) + " in a type name");
+
+    const type_t t = pointer(p, spec.type);
 
     if (peek(p).kind == tok_t::lbracket)
         not_yet(peek(p), "array type name");
@@ -1291,11 +1337,11 @@ type_name(parser_t &p)
 std::vector< stmt_t >
 declaration(parser_t &p)
 {
-    const type_t base = declaration_specifiers(p);
+    const specifiers_t spec = declaration_specifiers(p);
 
     std::vector< stmt_t > decls;
     do
-        decls.push_back(init_declarator(p, base));
+        decls.push_back(init_declarator(p, spec));
     while (accept(p, tok_t::comma));
 
     expect(p, tok_t::semicolon, "expected ';' at end of declaration");
@@ -1307,16 +1353,21 @@ declaration(parser_t &p)
 // initializer sees the object it initializes.  The initializer is
 // converted as by assignment, 6.7.11p12.  An object's type must be
 // complete, 6.7.1p8, so an array needs its size; any initializer of an
-// array, and a brace initializer of anything, is not yet.
+// array, and a brace initializer of anything, is not yet.  A register
+// array is not yet either: its decay is undefined, 6.3.2.1p3, and it
+// has no slot to decay to.
 stmt_t
-init_declarator(parser_t &p, const type_t &base)
+init_declarator(parser_t &p, const specifiers_t &spec)
 {
-    const declarator_t d = declarator(p, base);
+    const declarator_t d = declarator(p, spec.type);
     if (d.params)
         not_yet(*d.name, "function declaration at block scope");
 
     if (is< void_t >(d.type))
         fail(*d.name, "variable " + quoted(d.name->text) + " has type void");
+
+    if (is< array_t >(d.type) && spec.in_register)
+        not_yet(*d.name, "register array " + quoted(d.name->text));
 
     if (is< array_t >(d.type) && peek(p).kind == tok_t::assign)
         not_yet(peek(p), "array initializer");
@@ -1324,7 +1375,8 @@ init_declarator(parser_t &p, const type_t &base)
     if (is< array_t >(d.type) && as< array_t >(d.type).count < 0)
         fail(*d.name, "array size missing in " + quoted(d.name->text));
 
-    decl_stmt_t decl { declare(p, *d.name, d.type, storage_t::local),
+    decl_stmt_t decl { declare(p, *d.name, d.type, storage_t::local,
+                               spec.in_register != nullptr),
                        std::nullopt };
 
     if (peek(p).kind == tok_t::assign) {
@@ -1941,6 +1993,13 @@ unary_expression(parser_t &p)
 
         if (!is_lvalue(arg))
             fail(op, "cannot take the address of an rvalue");
+
+        // 6.5.4.2p1: not an object declared register, which has no
+        // address
+        if (is< name_t >(arg) && as< name_t >(arg).sym->in_register)
+            fail(op, "cannot take the address of " +
+                         quoted(as< name_t >(arg).sym->name) +
+                         ", declared register");
 
         type_t t = make_pointer(arg.type);
 

@@ -60,17 +60,37 @@ off.
 ** TODO =register=: the programmer's lever on the allocator
 
 Every local lives in its stack slot and is loaded and stored at each
-use, which is Ritchie's model without the keyword. =register= should
-mean the variable is an SSA value with no slot, so the allocator
-keeps it in a register across the function. That is phi placement in
-the front end for a variable assigned in branches and loops.
+use, which is Ritchie's model without the keyword. =register= means
+the variable is an SSA value with no slot, so the allocator keeps it
+in a register across the function: phis at the joins the grammar
+makes, and at a loop header for what the loop assigns.
 
-Fix: parse =register=; emit those locals as SSA values, placing phis
-by the standard single-pass construction; refuse =&= on them as ISO
-does.
+Done in the tree, uncommitted: the parser takes =register= at block
+scope and in a parameter list, refuses it at file scope (6.9.1p2)
+and in a type name, refuses =&= on such a variable (6.5.4.2p1) and a
+register array (6.3.2.1p3, not yet); the emitter carries the current
+name of each register variable, joins with a phi per variable whose
+name differs between two arms, writes a loop header's phis from a
+scan of the loop and patches the back edge at the latch; an
+uninitialized one, or one read in its own initializer (6.2.1p7), is
+one =freeze T undef=. Check passed: =sum= with =register= on its
+parameter, its sum and its counter has no stack operand at all;
+=tests/cost/for.c= unchanged.
 
-Check: a loop counter declared =register= has no =mov= to the stack
-in its loop; the same loop without the keyword has two.
+Left, the corpus and docs step:
+- cost rows: a register loop counter, a register parameter;
+- oracle program for G5: =register int x; return x == x;=;
+- cost.md: the =register= row, and the tl;dr sentence that says the
+  keyword is not honoured yet;
+- guarantees.md: G5's delivery clause for a register variable, and
+  the =undef= row of the never-emitted table amended for the one
+  sanctioned =freeze T undef=;
+- shape.md chapter 6: an arm ending in =return= ends in a dead block
+  that still branches to the join, so every arm gives an operand; the
+  self-read of 6.2.1p7.
+
+When =break= and =continue= arrive, a loop's end block gets several
+predecessors: the two-arm join generalizes to n arms then.
 
 ** TODO A function whose every path returns still gets the indeterminate slot
 
