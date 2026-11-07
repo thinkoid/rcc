@@ -234,6 +234,7 @@ compile database, and three lines of make, a shell script and
     docs/rationale.md   the reasoning behind draft 1 of the guarantees
     docs/findings.md    what the measurement found, explained from the ground up
     docs/backend.md     the design of rcc's own back end, x86-64 first
+    docs/llvm.md        the LLVM sprint: the literal pipeline, where its judgment showed, why it left
     src/lex.hh .cc    tokens and tokenize()
     src/type.hh .cc   type_t, constructors, equality
     src/ast.hh        the tree
