@@ -527,6 +527,24 @@ join(state_t &s, const arm_t &a, const arm_t &b)
     }
 }
 
+// An icmp of l with the operand named right, of l's type.  FastISel
+// folds a compare of one value with itself to its answer, so a right
+// operand of l's name is frozen first: the freeze of a value that is
+// not poison is the value, and the operands are two.
+value_t
+icmp(state_t &s,
+     std::string_view predicate,
+     const value_t &l,
+     std::string_view right)
+{
+    std::string r(right);
+    if (l.name == right)
+        r = yield(s, l.type, std::format("freeze {} {}", l.type, right)).name;
+
+    return yield(s, "i1",
+                 std::format("icmp {} {}, {}", predicate, typed(l), r));
+}
+
 // The zero a scalar is compared with as a truth value: 0, or the null
 // pointer for a pointer, 6.3.2.3p3.
 std::string_view
@@ -542,7 +560,7 @@ test(state_t &s, const expr_t &e)
 {
     const auto v = rvalue(s, e);
 
-    return yield(s, "i1", std::format("icmp ne {}, {}", typed(v), zero_of(v)));
+    return icmp(s, "ne", v, zero_of(v));
 }
 
 // A truth value widened to the expression's type, int for every
@@ -640,10 +658,7 @@ is_comparison(binary_op_t op)
 
 // A relational or equality operator.  The predicate follows the
 // operands' signedness, which the parser's conversions made common.
-// G7: two pointers compare as addresses, unsigned.  FastISel folds a
-// compare of one value with itself to its answer, so two operands of
-// one name, a register variable or a constant, become two values by a
-// freeze of the right one, which the selector lowers to a copy.
+// G7: two pointers compare as addresses, unsigned.
 value_t
 compare(state_t &s,
         binary_op_t op,
@@ -664,12 +679,7 @@ compare(state_t &s,
     default: predicate = "ne"; break;
     }
 
-    const auto right =
-        l.name == r.name ? yield(s, r.type, "freeze " + typed(r)) : r;
-
-    const auto bit =
-        yield(s, "i1",
-              std::format("icmp {} {}, {}", predicate, typed(l), right.name));
+    const auto bit = icmp(s, predicate, l, r.name);
 
     return widen(s, bit, result);
 }
@@ -845,8 +855,7 @@ unary(state_t &s, const unary_t &u, const type_t &t)
 
     case unary_op_t::log_not: {
         const auto v = rvalue(s, *u.arg);
-        const auto bit =
-            yield(s, "i1", std::format("icmp eq {}, {}", typed(v), zero_of(v)));
+        const auto bit = icmp(s, "eq", v, zero_of(v));
         return widen(s, bit, t);
     }
 

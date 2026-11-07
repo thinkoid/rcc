@@ -57,23 +57,6 @@ The record in =docs/cost.md=: what each construct compiles to under
 the literal pipeline, =llc= with FastISel and the rewriting passes
 off.
 
-** TODO A test of the constant 0 is folded
-
-The emitter tests a condition with =icmp ne= against 0, and =!= with
-=icmp eq= against 0. When the operand is the constant 0, or a null
-pointer constant, the two operands are one IR value, and FastISel
-folds the compare to its answer. =if (0)= is an unconditional jump,
-and its body is dropped as unreachable; =!0= is =mov $0x1,%al= with
-no =cmp=. =compare()= freezes one of two equal operands; =test()= and
-the =!= of =unary()= do not.
-
-Fix: the same =freeze= where =test()= and =!= build their =icmp=,
-when the operand is the zero it is compared with; one helper for the
-three sites.
-
-Check: a cost row with =if (0)= and =!0= whose listing shows a =cmp=
-for each.
-
 ** TODO A function whose every path returns still gets the indeterminate slot
 
 =needs_return_slot= allocates =%ret.indeterminate= in every non-void

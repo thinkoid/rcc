@@ -115,7 +115,7 @@ x86-64; aarch64 rows to follow when the target is wired.
 | `a < b` and the rest | `icmp`, `zext`; two operands of one name, a `register` variable or a constant, the right one `freeze`d first (`register-compare`) | `cmp`, `setcc`, `and $1`, `movzbl`; used as a condition, the value is then compared with 0 again, since the tree holds an `int` and the emitter tests it as one; the `freeze` is nothing for a register, one `mov` for a constant |
 | `a && b`, `a \|\| b` | branches, `phi` | `cmp $0`, conditional jumps; the short-circuit value set before the jump |
 | `a ? b : c` | branches, `phi` | `cmp $0`, conditional jumps; never `cmov` |
-| `if`, `while`, `for` | `icmp ne 0`, `br` | `cmp $0`, conditional and unconditional jumps, blocks in the written order |
+| `if`, `while`, `for` | `icmp ne 0`, `br`; a condition of the constant 0, the 0 `freeze`d first (`zero-test`) | `cmp $0`, conditional and unconditional jumps, blocks in the written order; for the constant 0, a `cmp` of two registers each cleared by an `xor` |
 | `f(a, b)` | `call` | the convention's argument moves, `call` |
 | `(T) a` | `trunc`, `sext`, `zext`, or nothing | `movsbl`, `movzbl`, `cltq`, or nothing; a `char` load is `movzbl` from the slot and then the extension, two instructions |
 | a `char` or `short` parameter or result | `i32` in the signature, `trunc` at entry, `sext`/`zext` before `ret` and before the call, `trunc` after it | a byte or word store at entry, `movsbl`/`movzbl` or `movswl`/`movzwl` before the call and before `ret` |
@@ -150,8 +150,11 @@ x86-64; aarch64 rows to follow when the target is wired.
   two operands have one name, so the operands differ and the `cmp` is
   emitted. The `freeze` is a `COPY`: for a register the allocator
   merges it away, `cmp %eax,%eax`; a constant takes one `mov` into a
-  second register. A test of the constant 0 as a condition, `if (0)`
-  or `!0`, compares 0 with 0 and is still folded.
+  second register. A comparison, a condition and `!` write their
+  `icmp` through one helper, so a test of a constant is a compare
+  too: `if (0)` and `!0` compare 0 with a frozen 0, a `cmp` of two
+  registers each cleared by an `xor`, and the body of the `if` is
+  kept (`zero-test`).
 - **Locals are memory.** Every local is loaded before use and
   stored after assignment, every time. A narrow parameter's slot is
   its C width, though the parameter arrives in 32 bits. A `register`
@@ -206,12 +209,12 @@ time:
 | `-disable-cgp` | cgp, early-taildup |
 | `-disable-constant-hoisting` | constant-hoisting |
 | `-disable-machine-licm` | constant-in-loop, invariant |
-| `-disable-machine-cse` | twice |
+| `-disable-machine-cse` | twice, zero-test |
 | `-disable-machine-sink` | logical |
 | `-disable-branch-fold` | block-order, cgp, early-taildup, if, register-undef |
 | `-disable-tail-duplicate` | conditional, early-taildup, if, select |
 | `-disable-early-taildup` | early-taildup |
-| `-disable-block-placement` | ten rows |
+| `-disable-block-placement` | twelve rows |
 
 Without FastISel, the folding selector forwards a stored local to
 its next read and merges operations, so nearly every listing

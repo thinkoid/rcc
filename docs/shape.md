@@ -158,8 +158,10 @@ nothing left out. The rules:
   constant, and its IR type.
 - Operands are emitted left to right (G13). Short-circuit operators
   branch; the result joins in a `phi`.
-- A comparison whose two operands have one name, a register variable
-  read twice or two equal constants, freezes its right operand first.
+- Every `icmp` is written by one helper: a comparison, a condition
+  tested against zero, and `!`. When its two operands have one name,
+  a register variable read twice, two equal constants, or the
+  constant 0 or `null` tested, it freezes the right operand first.
   FastISel folds a compare of one value with itself to its answer;
   the `freeze` makes the operands two values, and the compare is
   emitted.
