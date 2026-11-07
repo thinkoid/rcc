@@ -13,6 +13,94 @@ git keeps them.
 
 #+TOC: headlines 2
 
+* The back end
+
+The direction of this branch. rcc drops LLVM's code generator and
+writes x86-64 assembly itself; the system cc assembles, links and
+preprocesses. The reasons are =docs/findings.md=, the design is
+=docs/backend.md=. LLVM stays where it benefits and is rewritten where
+it has to be fought. The entries below are the slices, in order; the
+chapters after this one hold the LLVM-era queue, and each says what
+leaves with the pipeline.
+
+** TODO The design document
+
+=docs/backend.md=: the model, the target and its convention, the
+register discipline, the frame, expressions, conditions and control,
+calls, what each guarantee compiles to, statics and literals,
+verification, the plan and the open calls.
+
+Fix: the document, read and its open calls decided.
+
+Check: every open call in its last chapter has an answer recorded.
+
+** TODO Slice 1 of the back end: integers, control, calls
+
+The mirror of the first slice under LLVM: the integer types, the
+scalar operators, =if=, =while=, =for=, =return= and calls, as x86-64
+assembly from the tree, through a code generator that owns the
+registers. Every local in its slot, parameters stored at entry, the
+register stack for expressions, jump code for conditions, the System V
+convention at calls.
+
+Fix: =src/gen.cc= (or the name the design settles) beside =emit.cc=,
+selected by a driver flag until the LLVM path is retired.
+
+Check: the integer programs of =tests/corpus= give their expected
+statuses through the new back end, and the integer rows of the cost
+corpus are re-pinned as =rcc -S= text read against =backend.md=.
+
+** TODO Slice 2 of the back end: pointers and strings
+
+Pointers and =void *=, arrays as locals and parameters, subscripts as
+scaled-index addressing, =&= as =lea=, pointer arithmetic and
+comparison, casts, =sizeof=, string and character literals in =.data=
+(G17), rip-relative addressing.
+
+Check: the pointer programs of the corpus and the pointer rows of the
+cost corpus, as for slice 1.
+
+** TODO Slice 3 of the back end: register variables
+
+=register= locals and parameters in the callee-saved registers, in
+declaration order, a block's registers freed at its end; a register
+parameter moved from its argument register at entry; saved and
+restored in the prologue and epilogue. No slot, no =phi=, no join:
+the variable is its register. G5 for a register variable is the
+register's content, unwritten until the first write.
+
+Check: =register-loop=, =register-compare=, =register-undef= and
+=g5-register-undef= under the new back end.
+
+** TODO Retire the LLVM pipeline
+
+When the corpus and the cost corpus pass through the new back end:
+=emit.cc= and the flag table of =main.cc= leave; =-S= writes
+assembly; =-c= runs the system cc on it; =llc= is no longer run.
+=cost.md= chapters 2, 4 and 5 leave with it, chapter 3 is the table
+the back end was written from, =guarantees.md='s IR clauses become
+instruction clauses, =shape.md= describes the new pipeline, and
+=findings.md= closes with what became of its five.
+
+Check: =make test= green with no =llc= on the machine's path.
+
+** TODO Redo the measurement
+
+=make bench= under the new back end. The tuned programs declare more
+=register= variables than the callee-saved set holds (matmul's =main=
+ten, collatz seven, sieve six); the first of each block take the
+registers and the rest take slots, and the numbers move. The
+movement is a result about the model, and the tuned sources may be
+re-tuned to the set, as a PDP-11 programmer tuned to three.
+
+Check: chapter 6 re-recorded, with the register count per program.
+
+** TODO aarch64
+
+A second instruction table and the AAPCS64 convention: =x0= to =x7=
+for arguments, =x19= to =x28= callee-saved, ten register variables.
+After x86-64 is whole.
+
 * Guarantees
 
 The promises in =docs/guarantees.md=. The entry number is the
@@ -55,7 +143,12 @@ Check: the rationale has a G17 entry and the table row.
 
 The record in =docs/cost.md=: what each construct compiles to under
 the literal pipeline, =llc= with FastISel and the rewriting passes
-off.
+off. The entries below the first are the findings of the measurement
+(=docs/findings.md=); they are facts about LLVM's code generator and
+leave with it when the pipeline is retired. Under the back end of
+=docs/backend.md= a multiply is =imul=, a constant is an immediate, a
+register variable is a register, and a negative constant is folded in
+the parser.
 
 ** TODO A function whose every path returns still gets the indeterminate slot
 
@@ -219,6 +312,11 @@ or confirm =llc= removes its output on failure.
 Check: a fake =llc= that writes then exits 7 leaves no output file.
 
 * Emitter
+
+The IR emitter leaves with the LLVM pipeline. The three entries below
+leave with it: the first two are properties of the IR, and the third,
+the join of register variables, has no counterpart when a register
+variable is a fixed register.
 
 ** TODO The object names the temporary IR file, so no two builds match
 

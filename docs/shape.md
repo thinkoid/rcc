@@ -5,6 +5,11 @@ The parts, what each owns, and where they meet. The headers under
 
 ## 0. tl;dr
 
+- This branch replaces the back end. `backend.md` is the design: rcc
+  writes x86-64 assembly and owns its registers, and the system cc
+  assembles and links. Chapters 1, 6 and 8 below describe the LLVM
+  pipeline the tree still compiles through, until the new back end
+  lands and they are rewritten.
 - Five parts in a line: preprocessor (external), lexer, parser,
   emitter, back end (external). One tree between parser and emitter,
   typed as it is built.

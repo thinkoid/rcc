@@ -18,14 +18,17 @@ optimizer loses.
   computed every iteration. Choosing the cheaper form is the
   programmer's job, and the compiler never second-guesses it.
   `docs/cost.md` says what each construct compiles to.
-- Own tree. LLVM is a dependency, not a fork.
-- Textual IR out. `llc` selects instructions one for one and
-  allocates registers, with every rewriting pass switched off;
-  `clang` links. No build-time dependency beyond an installed LLVM.
+- Own tree, own back end. rcc writes x86-64 assembly from the tree
+  and owns its registers, in Ritchie's model: every local in its
+  stack slot, `register` variables in the callee-saved registers,
+  expressions in the rest. The system cc preprocesses, assembles and
+  links. This is the direction of the `native` branch; the design is
+  `docs/backend.md`, and the reasons are `docs/findings.md`. Until
+  it lands, the tree compiles through LLVM's `llc` with FastISel and
+  every rewriting pass switched off, and `docs/cost.md` records what
+  that pipeline did on its own.
 - Each guarantee is delivered by emitting the plain instruction and
-  nothing in between. The front end withholds every flag an
-  optimizer would reason from: no `nsw`, no `inbounds`, no `!tbaa`.
-  The full list is the last table of the guarantees document.
+  nothing in between.
 
 ## Method
 
@@ -49,7 +52,9 @@ The first slice: the integer types, the scalar operators, `if`,
 second slice: pointers and `void *`, arrays as locals and
 parameters, subscripts, `&` and `*`, pointer arithmetic and
 comparison, casts, `sizeof`, and string and character literals.
-Then `register`, honoured: a variable that is never stored. The shape is
+Then `register`, honoured: a variable that is never stored. Then the
+measurement, and the change of direction it led to: the `native`
+branch replaces the LLVM back end with rcc's own. The shape is
 `docs/shape.md`; `make` builds `rcc`, `make test` runs the oracle
 over `tests/corpus/` and the cost corpus over `tests/cost/`, and
 `make bench` times the benchmark corpus of `tests/perf/`. The queue
