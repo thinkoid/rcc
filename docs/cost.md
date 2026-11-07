@@ -18,9 +18,10 @@ does what the source says, and only that.
   it with what each flag holds back.
 - A computation whose result is unused is not emitted. That is the
   selector's own rule and has no switch.
-- Locals live in memory, one stack slot each, for the whole call.
-  `register` is not honoured yet; when it is, it will be the
-  programmer's lever on the allocator.
+- Locals live in memory, one stack slot each, for the whole call. A
+  local or parameter declared `register` has no slot: it is an SSA
+  value, and the allocator keeps it in a register. The keyword is
+  the programmer's lever on the allocator.
 
 ## 1. The rule
 
@@ -33,7 +34,7 @@ What the compiler may do:
 
 - Allocate registers. Which value lives where, and when a value is
   spilled, is the allocator's. A local declared in the source lives
-  in its own stack slot regardless.
+  in its own stack slot regardless, unless it is declared `register`.
 - Select the machine form. An IR `add` is an x86 `add`, or the
   three-operand `lea` when the result goes to a third register, the
   same addition in the encoding that spares a copy, not a fold; a
@@ -105,6 +106,8 @@ x86-64; aarch64 rows to follow when the target is wired.
 |---|---|---|
 | a local | `alloca`, a load at each read, a store at each write | a stack slot, `mov` in and out |
 | a parameter | stored to its slot at entry, loaded at each read | the argument register, then the slot |
+| a `register` local | the value itself, no `alloca`, no load, no store; a `phi` at a join or a loop header | a register, no `mov` to or from the stack; across a loop, the same register |
+| a `register` parameter | the argument itself | the argument register, as it arrived |
 | `a + b`, `a - b` | `add`, `sub` | `add`, `sub`, or `lea` for a three-operand add |
 | `a * b` | `mul` | `imul` |
 | `a / b`, `a % b` | `sdiv`, `srem`, `udiv`, `urem` | `cltd; idiv` or `xor %edx; div`; the quotient from `eax`, the remainder from `edx` |
@@ -138,9 +141,11 @@ x86-64; aarch64 rows to follow when the target is wired.
   executed", and it has no switch.
 - **Locals are memory.** Every local is loaded before use and
   stored after assignment, every time. A narrow parameter's slot is
-  its C width, though the parameter arrives in 32 bits. Temporaries
-  within an expression are registers. The allocator may spill a
-  temporary across a call or a block.
+  its C width, though the parameter arrives in 32 bits. A `register`
+  local or parameter is the exception: it has no slot and lives in a
+  register, spilled as a temporary is. Temporaries within an
+  expression are registers. The allocator may spill a temporary
+  across a call or a block.
 - **An access computes its own address.** A `getelementptr` that
   feeds a load or a store is selected as the access's address, base,
   index and scale, `(%rax,%rcx,4)`, when the element size is 1, 2, 4
@@ -198,8 +203,10 @@ shrinks; unused is the one row it leaves alone. Without
 `movabs` with an absolute relocation.
 
 The other flags change no listing the corpus can produce:
-`-disable-lsr` because locals are memory, so even a pointer walk has
-no induction variable in a register to reduce; `-no-stack-coloring`
+`-disable-lsr` because a counter in a slot is no induction variable,
+and a `register` counter that feeds a compare and an add, never an
+address, gives the pass nothing to reduce (the `register` loop row
+is the same with the flag dropped); `-no-stack-coloring`
 because no lifetime marker is emitted, so no two slots may share
 (the G12 oracle program shows the sharing under `clang -O2`); the
 rest because the pass has nothing to do on these constructs, or is

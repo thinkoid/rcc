@@ -34,9 +34,16 @@ divisor.
 
 **G5. An uninitialized object holds a value.** 6.3.2.1p2. Some value of
 its type, the same at every read until a write; which one, the compiler
-does not choose. IR: no `undef`, `poison` or `noundef`; `freeze` on
-every load of an automatic, which the literal selector lowers to
-nothing.
+does not choose. IR: no `poison` or `noundef`; `freeze` on every load
+of an automatic, which the literal selector lowers to nothing. A
+`register` variable has no slot to load from: it is `freeze T undef`
+once, at its declaration, or at a read in its own initializer
+(6.2.1p7), the one `undef` the front end writes, and that value is
+the variable's at every read until a write. The selector does not yet
+keep that value: it lowers `freeze undef` to an implicit definition
+the allocator need not preserve, so two reads may differ. Queued;
+until it is fixed, G5 holds for a register variable only through an
+initializer.
 
 ## Pointers and memory
 
@@ -124,7 +131,7 @@ as a document, and for the day the IR is fed to an optimizer.
 |---|---|
 | `nsw`, `nuw` on `add`, `sub`, `mul`, `shl` | G1, G3 |
 | `exact` on `sdiv`, `udiv`, `ashr`, `lshr` | G3, G6 |
-| `undef`, `poison`, `noundef` | G5 |
+| `poison`, `noundef`; `undef` except as the operand of a `register` variable's one `freeze` | G5 |
 | `inbounds`, `nusw`, `nuw` on `getelementptr` | G6 |
 | `nonnull`, `dereferenceable`; no `null_pointer_is_valid` | G9 |
 | `!tbaa`; `noalias` except from `restrict` | G10 |

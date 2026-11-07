@@ -141,10 +141,14 @@ nothing left out. The rules:
   each register variable whose name differs between the arms; and at
   a loop header, one for each register variable the body assigns,
   found by a scan of the body before the header is written, its
-  back-edge operand filled in when the latch is. A register variable
-  declared without an initializer holds `freeze T undef` from its
-  declaration on, the one `undef` the front end writes (G5): a value
-  the compiler did not choose, the same at every read.
+  back-edge operand filled in when the latch is. An arm ending in
+  `return` ends in a dead block that still branches to the join, so
+  every arm gives the `phi` an operand. A register variable declared
+  without an initializer holds `freeze T undef` from its declaration
+  on, the one `undef` the front end writes (G5): a value the compiler
+  did not choose, the same at every read. The variable is in scope
+  from the end of its declarator (6.2.1p7), so its initializer may
+  read it; that read makes the frozen undef.
 - Two entry points: `rvalue(expr)` yields the value, `lvalue(expr)`
   yields the address. Both return a value handle: the IR register or
   constant, and its IR type.
@@ -250,6 +254,6 @@ Structs, unions, enums, global variables, brace initializers and
 `char s[] = "..."`, function pointers, wide and `u8` strings,
 `volatile` (it has IR meaning, `load volatile`, and the selector
 drops an unused plain load, so it needs the type model, not a drop),
-`restrict`, `switch`, `goto`, typedefs, `static`, `register`,
-floating point. Each arrives when a probe needs it. The preprocessor
-stays external for good.
+`restrict`, `switch`, `goto`, typedefs, `static`, a `register`
+array (6.3.2.1p3), floating point. Each arrives when a probe needs
+it. The preprocessor stays external for good.

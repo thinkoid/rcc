@@ -22,6 +22,29 @@ round trip of G8 and the laundering of G16 are no longer emitted,
 because nothing between the source and the instruction reasons about
 the program.
 
+** TODO G5 is not delivered for a register variable
+
+A register variable declared without an initializer is one =freeze T
+undef= in the IR, so the IR holds one value at every read. The
+literal selector does not keep it: FastISel selects =freeze undef= as
+an =IMPLICIT_DEF=, the allocator marks every read of it =undef= and
+keeps nothing live between the reads, so each read is whatever the
+assigned register holds at that point. =register int x; if (x < 10)
+return 1; if (x >= 10) return 2; return 3;= returns 3 under rcc and 2
+under =clang -O2=: the two reads of =x= saw two values, where G5
+promises one. A slot local is not affected: its reads are loads of
+the bytes in the slot, and the =freeze= the selector drops costs it
+nothing.
+
+Fix: a value the back end must keep. One candidate: a register
+variable without an initializer reads an uninitialized slot once, at
+its declaration, =load= and =freeze= like any local, and the loaded
+value is its name from there on; one slot, read once, and the
+contract kept.
+
+Check: the program above returns 1 or 2, never 3, under rcc;
+=tests/corpus/g5-register-undef= still passes.
+
 ** TODO G7's "Lost" in the rationale misses the equality fold
 
 =rationale.md= says G7 loses "nothing beyond G6". The corpus says
@@ -57,40 +80,23 @@ The record in =docs/cost.md=: what each construct compiles to under
 the literal pipeline, =llc= with FastISel and the rewriting passes
 off.
 
-** TODO =register=: the programmer's lever on the allocator
+** TODO FastISel folds a compare of one SSA value with itself
 
-Every local lives in its stack slot and is loaded and stored at each
-use, which is Ritchie's model without the keyword. =register= means
-the variable is an SSA value with no slot, so the allocator keeps it
-in a register across the function: phis at the joins the grammar
-makes, and at a loop header for what the loop assigns.
+FastISel folds an =icmp= whose two operands are the same value to its
+constant answer, and no =llc= option names the fold. The emitter
+reads a slot local twice as two loads, two values, so =a == a= on a
+local is a compare, as chapter 1 of =cost.md= says. A register
+variable is one SSA name at both reads, so =x == x= on one is
+=mov $0x1,%al= and no =cmp=; =tests/corpus/g5-register-undef= shows
+it, and its status 1 is the fold's as much as the compare's.
 
-Done in the tree, uncommitted: the parser takes =register= at block
-scope and in a parameter list, refuses it at file scope (6.9.1p2)
-and in a type name, refuses =&= on such a variable (6.5.4.2p1) and a
-register array (6.3.2.1p3, not yet); the emitter carries the current
-name of each register variable, joins with a phi per variable whose
-name differs between two arms, writes a loop header's phis from a
-scan of the loop and patches the back edge at the latch; an
-uninitialized one, or one read in its own initializer (6.2.1p7), is
-one =freeze T undef=. Check passed: =sum= with =register= on its
-parameter, its sum and its counter has no stack operand at all;
-=tests/cost/for.c= unchanged.
+Fix: decide whether the fold is a departure to record in chapter 4 of
+=cost.md= beside the unused result, or one to defeat: a =freeze= of
+one operand makes the two operands differ in the IR, and the selector
+lowers it to nothing.
 
-Left, the corpus and docs step:
-- cost rows: a register loop counter, a register parameter;
-- oracle program for G5: =register int x; return x == x;=;
-- cost.md: the =register= row, and the tl;dr sentence that says the
-  keyword is not honoured yet;
-- guarantees.md: G5's delivery clause for a register variable, and
-  the =undef= row of the never-emitted table amended for the one
-  sanctioned =freeze T undef=;
-- shape.md chapter 6: an arm ending in =return= ends in a dead block
-  that still branches to the join, so every arm gives an operand; the
-  self-read of 6.2.1p7.
-
-When =break= and =continue= arrive, a loop's end block gets several
-predecessors: the two-arm join generalizes to n arms then.
+Check: a cost row, =register int x = n; return x == x;=, whose
+listing shows what was decided.
 
 ** TODO A function whose every path returns still gets the indeterminate slot
 
@@ -208,6 +214,17 @@ top of the IR.
 
 Check: two =rcc -c= builds of =tests/cost/local.c= compare equal with
 =cmp=, and =objdump -t= names the =.c= file.
+
+** TODO A loop's end block with several predecessors
+
+When =break= and =continue= arrive, a loop's end block gets several
+predecessors: the two-arm join of the register variables generalizes
+to n arms then.
+
+Fix: =join= over a list of arms.
+
+Check: a register variable assigned before a =break= has that value
+after the loop.
 
 * Parser
 

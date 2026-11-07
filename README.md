@@ -43,7 +43,8 @@ The first slice: the integer types, the scalar operators, `if`,
 `while`, `for`, `return`, calls, through the literal pipeline. The
 second slice: pointers and `void *`, arrays as locals and
 parameters, subscripts, `&` and `*`, pointer arithmetic and
-comparison, casts, `sizeof`, and string and character literals. The
-shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs the
-oracle over `tests/corpus/` and the cost corpus over `tests/cost/`.
-The queue is `TODO`.
+comparison, casts, `sizeof`, and string and character literals.
+Then `register`, honoured: a variable with no slot. The shape is
+`docs/shape.md`; `make` builds `rcc`, `make test` runs the oracle
+over `tests/corpus/` and the cost corpus over `tests/cost/`. The
+queue is `TODO`.

@@ -10,3 +10,4 @@ g6-ptr-wrap 0 1
 g7-ptr-equal 1 0
 g8-cross-object 3 2
 g9-null-load 139 5
+g5-register-undef 1 0
