@@ -36,6 +36,11 @@ optimizer loses.
   a corpus of the known divergence cases. Where they differ is the
   experiment's output.
 - The pin: the IR text per test program, diffed.
+- The measurement: each program of a small benchmark corpus, as
+  written and as tuned by hand for a literal compiler, timed under
+  `clang -O2` and under `rcc`. How far the literal machine lands from
+  the optimizer, and how much of the gap the programmer closes, is
+  chapter 6 of `docs/cost.md`.
 
 ## Status
 
@@ -46,5 +51,6 @@ parameters, subscripts, `&` and `*`, pointer arithmetic and
 comparison, casts, `sizeof`, and string and character literals.
 Then `register`, honoured: a variable that is never stored. The shape is
 `docs/shape.md`; `make` builds `rcc`, `make test` runs the oracle
-over `tests/corpus/` and the cost corpus over `tests/cost/`. The
-queue is `TODO`.
+over `tests/corpus/` and the cost corpus over `tests/cost/`, and
+`make bench` times the benchmark corpus of `tests/perf/`. The queue
+is `TODO`.

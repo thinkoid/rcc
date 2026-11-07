@@ -72,18 +72,77 @@ path =finish= writes.
 Check: =int f(void) { return 1; }= has no =ret.indeterminate= in its
 IR; a function ending in an =if= without =else= still has one.
 
-** TODO The performance leg of the oracle
+** TODO The selector rewrites a multiply and an unsigned division by a power of two
 
-The thesis is measurable: a program written for a literal compiler,
-with =register= and the strength reductions done by hand, against the
-same program under =clang -O2=. The oracle has no leg for it.
+FastISel turns a =mul= by a power of two into =shl=, a =udiv= by one
+into =shr= and a =urem= by one into =and= (=FastISel::fastEmit_ri_=
+and =FastISel::selectBinaryOp=, =FastISel.cpp=); no option gates it.
+So =x * 4= is =shl $0x2= for any =x=, and for an unsigned =x=, =x /
+4= is =shr $0x2= and =x % 4= is =and $0x3=. A signed division or
+remainder by a power of two stays =cltd; idiv=, as =div-four= pins.
+Chapter 1 says =x / 4= is a division, and chapter 3 gives =imul= and
+=div= for every operand; neither holds for these three, and no cost
+row covers them. =tests/perf/collatz.c= declares its value signed so
+that its halving divides.
 
-Fix: a small benchmark corpus with a hand-tuned rcc version and a
-plain version per program, timed under both compilers; the numbers
-recorded in =cost.md=.
+Fix: decide between the emitter freezing a power-of-two constant
+operand of =mul=, =udiv= and =urem=, as it freezes the constant of a
+compare, so the instruction written is selected, and recording the
+rewrite in chapter 4 as the selector's own rule, with chapters 1 and
+3 qualified.
 
-Check: the table exists and each row names the programs and the
-runs.
+Check: cost rows for =x * 4=, unsigned =x / 4= and unsigned =x % 4=
+pin =imul=, =div= and =div=, or pin the rewrite chapter 4 records.
+
+** TODO A pass with no switch drops a constant already in its register
+
+=machine-latecleanup=, after register allocation, removes an
+instruction that loads an immediate into a register already holding
+that immediate on every path to it; =llc= 23.1.3 has no option to
+disable it. In =tests/perf/collatz.c=, =x % 2= loads 2 into =rcx= for
+its =idiv=, and =x / 2= in the next block divides by that =rcx= with
+no =mov= of its own: =llc -print-after-all= shows two =MOV32ri64 2=
+up to that pass and one after it. Chapter 2 names the machine
+combiner as the one pass without a switch, and chapter 1 says the
+same expression written twice is computed twice.
+
+Fix: name the pass in chapter 2 and its effect in chapter 4, with a
+cost row of one constant used in two blocks, the first dominating
+the second.
+
+Check: the row's pin shows one =mov= of the constant, and chapter 2
+names both passes.
+
+** TODO Chapter 3 has no row for unary minus and complement
+
+C has no negative constant: =-1= is unary minus applied to 1, and the
+emitter writes it as =sub i32 0, 1=, then a =sext= where the type is
+wider. So =long x = -1= is =xor=, =sub= and =cltq= where =long x = 2=
+is one =movq $2=, and =p[-1]= negates and extends the 1 at each
+access where =p[1]= is a displacement. Chapter 3 has no row for =-a=
+or =~a=, and its constant row reads as if every constant costs
+nothing.
+
+Fix: a row for =-a= and =~a= that says a negative constant is a
+negation at run time, with a cost program.
+
+Check: the row and its pin.
+
+** TODO A register pointer to a local array is a lea at each use
+
+A local array's address is a frame index to the selector, and a
+=register= variable initialized with it is that address itself, since
+a register variable is its SSA value. The selector materializes it
+with a =lea= from =rsp= at each use, inside a loop too: in a loop,
+=p != first= with =register int *first = a;= is a =lea= and a =cmp=,
+the same as =p != a=. Chapter 3's row for a =register= local says "a
+register".
+
+Fix: the =register= row of chapter 3 says that a register variable
+holding a local's address is a =lea= at each use, with a cost
+program.
+
+Check: the row and its pin.
 
 * Tests
 
@@ -220,6 +279,23 @@ dropped as words) and preprocessing with a flag set that hides them.
 A probe says which headers need what.
 
 Check: `#include <stdio.h>` followed by an empty `main` parses.
+
+** TODO An array size must be one integer literal
+
+The parser takes an array size only as a lone integer token: =int
+a[96 * 96];= fails with "not yet: array size other than an integer
+constant", though an integer constant expression of any form makes a
+fixed-size array, 6.7.7.3p4. A macro that expands to a literal works;
+one that expands to an expression does not. =tests/perf/matmul.c=
+writes its size out as 9216.
+
+Fix: evaluate an integer constant expression for the size: the
+integer constants and character constants, the arithmetic, shift,
+bitwise, relational, logical and conditional operators on them,
+casts to an integer type, and =sizeof=.
+
+Check: =int a[96 * 96];= has 9216 elements in the IR, and =int a[n];=
+with =n= a variable is still refused.
 
 * Lexer
 

@@ -1,5 +1,5 @@
-# rcc: build, test, clean.  GNU make; the dependency files and the
-# pattern rules are GNU.
+# rcc: build, test, bench, clean.  GNU make; the dependency files and
+# the pattern rules are GNU.
 
 CXX      = clang++
 CXXFLAGS = -std=c++20 -Wall -Wextra -g -MMD -MP
@@ -20,8 +20,11 @@ test: rcc
 	tests/oracle
 	tests/costs
 
+bench: rcc
+	tests/bench
+
 clean:
 	rm -rf build rcc
 
 -include $(OBJ:.o=.d)
-.PHONY: test clean
+.PHONY: test bench clean

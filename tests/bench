@@ -1,0 +1,428 @@
+#!/bin/bash
+########################################################################
+#
+# The performance leg of the oracle: how far a literal machine lands
+# from the optimizer, and how much of that gap the programmer closes
+# by hand.  The oracle compares what a program means under the two
+# compilers; this script compares what it costs.
+#
+# Each program in tests/perf comes as two sources, <name>.c, the plain
+# program, and <name>-tuned.c, the same program written for a literal
+# compiler: register on the hot variables, pointer walks instead of
+# subscripts, != loop ends, invariants hoisted and shifts for powers of
+# two, by hand.  Each program is built four times, the binaries kept
+# in build/perf:
+#
+#     clang -O2 <name>.c         the plain source under the optimizer,
+#                                the baseline
+#     rcc <name>.c               the plain source under rcc: what
+#                                literalness costs an unmodified
+#                                program
+#     rcc <name>-tuned.c         the tuned source under rcc: the
+#                                thesis number
+#     clang -O2 <name>-tuned.c   the tuned source under the optimizer:
+#                                whether hand tuning hurts it
+#
+# Each build is run once for its exit status, and a row whose four
+# statuses differ is refused: a tuned source that computes something
+# else is a bug in the corpus.  Then each build is timed five times
+# with the shell's time keyword, and the least user CPU time is kept.
+# Every run is under timeout(1) at 120 seconds; a run it stops fails
+# the row.
+#
+# The script prints a table, one row per program, each build's cell
+# the time in milliseconds and, in parentheses, its ratio to the
+# baseline, and a summary.  The numbers are bound to the machine, so
+# nothing is pinned.  It exits 0 when every row built and agreed on
+# its exit status, 1 otherwise.  It runs from the tree root with ./rcc
+# built, as make bench runs it.  The binaries and the log of every
+# command stay in build/perf; each command's output in the log follows
+# a "### <command>:" line and ends with a "### status <n>" line.
+#
+########################################################################
+#
+# USAGE:
+#
+#     tests/bench [ --help ]
+#
+# OPTIONS:
+#
+#     --help
+#         Prints the usage and exits.
+#
+# EXAMPLES:
+#
+#     tests/bench
+#
+#     Builds, checks and times every program in the corpus, prints
+#     the table and the summary, and keeps the log in build/perf/log.
+#
+########################################################################
+
+##########
+# global constants
+
+# the name of the script, in diagnostics
+myname=${0##*/}
+
+# the corpus: each program as <name>.c and <name>-tuned.c
+corpus=tests/perf
+
+# the work directory, kept between runs and removed by make clean
+workdir=build/perf
+
+# the log of every command
+log=$workdir/log
+
+# the seconds a run may take, and the status timeout(1) gives when it
+# stops one
+time_limit=120
+timeout_status=124
+
+# the timed runs per build; the least is kept
+runs=5
+
+# the time keyword prints the user CPU seconds, to the millisecond
+TIMEFORMAT=%3U
+
+# byte order for the sorted corpus, and diagnostics in one language
+LC_ALL=C
+export LC_ALL
+
+##########
+# global variables
+
+# the rows of the table, and the rows that built and agreed
+programs=0
+agreed=0
+
+# set by measure(): the build's least user time in milliseconds, or a
+# word saying why there is none
+ms=
+
+
+##########
+# usage(): prints the usage
+usage()
+{
+    echo "usage: $0 [ --help ]"
+    echo
+    echo "    --help  print this usage"
+}
+
+
+##########
+# check_tree(): reports 0 when the script runs from the tree root with
+# rcc built and clang and timeout on the path, and says what is
+# missing otherwise
+check_tree()
+{
+    if [ ! -d "$corpus" ]; then
+        echo "$myname: no $corpus here; run from the tree root" >&2
+        return 1
+    fi
+
+    if [ ! -x ./rcc ]; then
+        echo "$myname: no ./rcc; run make first" >&2
+        return 1
+    fi
+
+    for tool in clang timeout; do
+        if ! command -v "$tool" > /dev/null 2>&1; then
+            echo "$myname: no $tool on the path" >&2
+            return 1
+        fi
+    done
+
+    return 0
+}
+
+
+##########
+# logged(): runs a command with its standard output and standard error
+# appended to the log after a "### <command>:" line, and its status
+# after the output; reports the command's status as its own
+logged()
+{
+    echo "### $*:" >> "$log"
+
+    "$@" >> "$log" 2>&1
+    local status=$?
+
+    echo "### status $status" >> "$log"
+    echo >> "$log"
+
+    return $status
+}
+
+
+##########
+# build(): builds the four binaries of one program; reports 1 when
+# any of them failed to build, 0 otherwise
+build()
+{
+    local name=$1
+    local stem=$workdir/$name
+    local result=0
+
+    logged clang -O2 -o "$stem.clang" "$corpus/$name.c" || result=1
+    logged ./rcc -o "$stem.rcc" "$corpus/$name.c" || result=1
+    logged ./rcc -o "$stem-tuned.rcc" "$corpus/$name-tuned.c" ||
+        result=1
+    logged clang -O2 -o "$stem-tuned.clang" "$corpus/$name-tuned.c" ||
+        result=1
+
+    return $result
+}
+
+
+##########
+# run_status(): runs one binary under the time limit and prints its
+# exit status, or "timeout" when the limit stopped it
+run_status()
+{
+    local exe=$1
+
+    logged timeout "$time_limit" "$exe" < /dev/null
+    local status=$?
+
+    if [ "$status" -eq "$timeout_status" ]; then
+        echo timeout
+    else
+        echo "$status"
+    fi
+}
+
+
+##########
+# timed(): runs one binary under the time limit with the time keyword,
+# the program's output to the log and the time to a file; reports the
+# program's status as its own
+timed()
+{
+    local exe=$1
+    local time_file=$2
+
+    echo "### time timeout $time_limit $exe:" >> "$log"
+
+    { time timeout "$time_limit" "$exe" < /dev/null >> "$log" 2>&1 ; } \
+        2> "$time_file"
+    local status=$?
+
+    cat "$time_file" >> "$log"
+    echo "### status $status" >> "$log"
+    echo >> "$log"
+
+    return $status
+}
+
+
+##########
+# to_ms(): prints the seconds the time keyword wrote, 0.123, as
+# milliseconds, 123; reports 1 when the text is not of that form
+to_ms()
+{
+    local seconds=$1
+
+    if [[ ! "$seconds" =~ ^[0-9]+\.[0-9]{3}$ ]]; then
+        return 1
+    fi
+
+    echo $((10#${seconds/./}))
+}
+
+
+##########
+# measure(): times one binary $runs times and sets ms to the least
+# user time in milliseconds; sets ms to "timeout" when a run was
+# stopped by the limit, "status <n>" when a run's status differs from
+# the expected one, "notime" when the time is unreadable; reports 0
+# when ms is a time, 1 otherwise
+measure()
+{
+    local exe=$1
+    local want=$2
+    local time_file=$exe.time
+    local least=
+    local run t status
+
+    for ((run = 0; run < runs; ++run)); do
+        timed "$exe" "$time_file"
+        status=$?
+
+        if [ "$status" -eq "$timeout_status" ]; then
+            ms=timeout
+            return 1
+        fi
+
+        if [ "$status" -ne "$want" ]; then
+            ms="status $status"
+            return 1
+        fi
+
+        if ! t=$(to_ms "$(cat "$time_file")"); then
+            ms=notime
+            return 1
+        fi
+
+        if [ -z "$least" ] || [ "$t" -lt "$least" ]; then
+            least=$t
+        fi
+    done
+
+    ms=$least
+    return 0
+}
+
+
+##########
+# cell(): prints one cell of the table, the time and its ratio to the
+# baseline at two decimals, rounded; a baseline of 0 ms has no ratio
+cell()
+{
+    local t=$1
+    local base=$2
+
+    if [ "$base" -eq 0 ]; then
+        echo "$t (-)"
+        return
+    fi
+
+    # the ratio in hundredths, rounded half up
+    local hundredths=$(( (t * 200 + base) / (2 * base) ))
+
+    printf '%d (%d.%02d)\n' \
+        "$t" $((hundredths / 100)) $((hundredths % 100))
+}
+
+
+##########
+# print_row(): prints one row of the table, the program and four
+# cells
+print_row()
+{
+    printf '%-10s %-20s %-20s %-20s %s\n' "$@"
+}
+
+
+##########
+# print_failure(): prints the row of a program that failed, and why
+print_failure()
+{
+    printf '%-10s %s\n' "$1" "$2"
+}
+
+
+##########
+# check_program(): builds one program four times, refuses the row
+# unless the four builds agree on their exit status, times each and
+# prints the row; reports 0 when the row built and agreed, 1 otherwise
+check_program()
+{
+    local name=$1
+    local stem=$workdir/$name
+    local exes="$stem.clang $stem.rcc $stem-tuned.rcc $stem-tuned.clang"
+    local exe statuses status
+
+    # a binary left by an earlier run must not stand in for this one's
+    rm -f $exes
+
+    if ! build "$name"; then
+        print_failure "$name" unbuilt
+        return 1
+    fi
+
+    statuses=
+    for exe in $exes; do
+        statuses="$statuses $(run_status "$exe")"
+    done
+    statuses=${statuses# }
+
+    # the four statuses, each a number, the same
+    set -- $statuses
+    status=$1
+    if [ "$status" = timeout ] || [ "$statuses" != "$1 $1 $1 $1" ]; then
+        print_failure "$name" "statuses differ or timed out: $statuses"
+        return 1
+    fi
+
+    local cells=() base=
+    for exe in $exes; do
+        if ! measure "$exe" "$status"; then
+            print_failure "$name" "${exe##*/}: $ms"
+            return 1
+        fi
+
+        [ -n "$base" ] || base=$ms
+        cells+=("$(cell "$ms" "$base")")
+    done
+
+    print_row "$name" "${cells[@]}"
+    return 0
+}
+
+
+##########
+# main body of script
+
+# process command line options
+for arg in "$@"; do
+    case "$arg" in
+        --help)  # print the usage and stop
+            usage
+            exit 0
+            ;;
+
+        *)  # anything else is a usage error
+            usage >&2
+            exit 2
+            ;;
+    esac
+done
+
+# without the tree root, a built rcc, clang and timeout there is
+# nothing to run
+check_tree || exit 2
+
+# the work directory is kept; the log starts over
+if ! mkdir -p "$workdir" || ! : > "$log"; then
+    echo "$myname: cannot write in $workdir" >&2
+    exit 2
+fi
+
+echo "### running $0 $*" >> "$log"
+echo >> "$log"
+
+print_row program "clang -O2 <name>.c" "rcc <name>.c" \
+    "rcc <name>-tuned.c" "clang -O2 <name>-tuned.c"
+
+# one row per program in sorted order, the tuned sources skipped as
+# programs; a failed row does not stop the run
+for source in "$corpus"/*.c; do
+    [ -e "$source" ] || continue
+
+    name=${source##*/}
+    name=${name%.c}
+
+    case "$name" in
+        *-tuned)
+            continue
+            ;;
+    esac
+
+    programs=$((programs + 1))
+    if check_program "$name"; then
+        agreed=$((agreed + 1))
+    fi
+done
+
+if [ "$programs" -eq 0 ]; then
+    echo "$myname: no programs in $corpus" >&2
+    exit 1
+fi
+
+echo
+echo "$agreed of $programs built and agreed; the log is $log"
+
+[ "$agreed" -eq "$programs" ]
+exit $?

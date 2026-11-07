@@ -222,7 +222,7 @@ whole; meson would add dependency scanning, a test runner and a
 compile database, and three lines of make, a shell script and
 `compile_flags.txt` cover the three.
 
-    Makefile          build, test, clean
+    Makefile          build, test, bench, clean
     compile_flags.txt what clangd needs
     docs/guarantees.md  the meaning: what happens where ISO C says nothing
     docs/cost.md        the cost: what each construct compiles to
@@ -238,6 +238,8 @@ compile database, and three lines of make, a shell script and
     tests/corpus/     the divergence programs, their pinned .ll
     tests/costs       the cost corpus script
     tests/cost/       one program per cost-model row, its pinned listing
+    tests/bench       the measurement script
+    tests/perf/       the benchmark programs, plain and tuned
 
 ## 10. The slices
 
