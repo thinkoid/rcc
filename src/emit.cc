@@ -258,8 +258,8 @@ next_label(state_t &s)
 
 // memory
 
-// A name for sym from the one counter, so a slot, a parameter, a phi
-// and a frozen undef never collide.
+// A name for sym from the one counter, so a slot, a parameter and a
+// phi never collide.
 std::string
 name_for(state_t &s, const symbol_t *sym)
 {
@@ -268,15 +268,17 @@ name_for(state_t &s, const symbol_t *sym)
 
 // G11: a declared object carries its natural alignment and no more.
 // G12: the slot lives for the whole activation; no llvm.lifetime.start
-// or end is ever written.  A register variable has no slot: it is
-// listed instead.
+// or end is ever written.  A register variable is listed instead, and
+// has a slot only when it may be read unwritten: one nothing writes,
+// for indeterminate() to read (G5).
 void
-allocate(state_t &s, const symbol_t *sym)
+allocate(state_t &s, const symbol_t *sym, bool unwritten)
 {
-    if (sym->in_register) {
+    if (sym->in_register)
         s.registers.push_back(sym);
+
+    if (sym->in_register && !unwritten)
         return;
-    }
 
     auto name = name_for(s, sym);
     line(s, std::format("{} = alloca {}, align {}", name, ir_type(sym->type),
@@ -439,8 +441,8 @@ value_t indeterminate(state_t &, const symbol_t *);
 // The value at a place: a register variable's current name, no
 // instruction, or a frozen load of the address (G5).  A register
 // variable is in scope from the end of its declarator, 6.2.1p7, so
-// its initializer may read it; that read, before any write, makes the
-// frozen undef the declaration would have.
+// its initializer may read it; that read, before any write, is the
+// one read of its unwritten slot.
 value_t
 read(state_t &s, const place_t &at, const type_t &t)
 {
@@ -466,17 +468,19 @@ write(state_t &s, const value_t &v, const place_t &at)
         store(s, v, at.addr);
 }
 
-// G5: a register variable declared without an initializer holds a
+// G5, 6.3.2.1p2: a register variable read before any write holds a
 // value of its type the compiler did not choose, the same at every
-// read; this freeze of undef is the one undef the front end writes,
-// and the name it makes is the variable's until a write.
+// read.  It is one frozen load of a slot nothing writes, and the value
+// is the variable's name until a write; a freeze of undef would be an
+// implicit definition, which the allocator need not keep.
 value_t
 indeterminate(state_t &s, const symbol_t *sym)
 {
-    const auto type = ir_type(sym->type);
+    if (!s.slots.contains(sym))
+        throw std::logic_error("emit: a register variable read unwritten "
+                               "without its slot");
 
-    return named(s, name_for(s, sym), type,
-                 std::format("freeze {} undef", type));
+    return load(s, slot(s, sym), sym->type);
 }
 
 // One arm of a join: the names at its end, and the block it ended in,
@@ -636,7 +640,10 @@ is_comparison(binary_op_t op)
 
 // A relational or equality operator.  The predicate follows the
 // operands' signedness, which the parser's conversions made common.
-// G7: two pointers compare as addresses, unsigned.
+// G7: two pointers compare as addresses, unsigned.  FastISel folds a
+// compare of one value with itself to its answer, so two operands of
+// one name, a register variable or a constant, become two values by a
+// freeze of the right one, which the selector lowers to a copy.
 value_t
 compare(state_t &s,
         binary_op_t op,
@@ -657,8 +664,12 @@ compare(state_t &s,
     default: predicate = "ne"; break;
     }
 
-    const auto bit = yield(
-        s, "i1", std::format("icmp {} {}, {}", predicate, typed(l), r.name));
+    const auto right =
+        l.name == r.name ? yield(s, r.type, "freeze " + typed(r)) : r;
+
+    const auto bit =
+        yield(s, "i1",
+              std::format("icmp {} {}, {}", predicate, typed(l), right.name));
 
     return widen(s, bit, result);
 }
@@ -1109,7 +1120,8 @@ expr_stmt(state_t &s, const expr_stmt_t &x)
 
 // The slot is in the entry block already.  G5: without an initializer
 // nothing is stored; the slot holds what it holds.  A register
-// variable's name is its initializer's value, or a frozen undef.
+// variable's name is its initializer's value, or the one read of its
+// unwritten slot.
 void
 decl_stmt(state_t &s, const decl_stmt_t &d)
 {
@@ -1406,13 +1418,14 @@ statement(state_t &s, const stmt_t &st)
 
 // functions
 
-// Every local the statement declares, at any depth, in source order.
-// G12: each gets one slot in the entry block for the whole activation.
+// Every declaration of a local the statement holds, at any depth, in
+// source order.  G12: each gets one slot in the entry block for the
+// whole activation.
 void
-collect_locals(const stmt_t &st, std::vector< const symbol_t * > &locals)
+collect_locals(const stmt_t &st, std::vector< const decl_stmt_t * > &locals)
 {
     if (is< decl_stmt_t >(st))
-        locals.push_back(as< decl_stmt_t >(st).sym);
+        locals.push_back(&as< decl_stmt_t >(st));
     else if (is< block_t >(st)) {
         for (const auto &inner : as< block_t >(st).body)
             collect_locals(inner, locals);
@@ -1431,6 +1444,48 @@ collect_locals(const stmt_t &st, std::vector< const symbol_t * > &locals)
             collect_locals(*f.init, locals);
         collect_locals(*f.body, locals);
     }
+}
+
+// Whether an expression names sym, at any depth.
+bool
+mentions(const expr_t &e, const symbol_t *sym)
+{
+    const auto in = [&](const expr_t &inner) { return mentions(inner, sym); };
+
+    if (is< name_t >(e))
+        return as< name_t >(e).sym == sym;
+
+    if (is< unary_t >(e))
+        return in(*as< unary_t >(e).arg);
+
+    if (is< binary_t >(e))
+        return in(*as< binary_t >(e).lhs) || in(*as< binary_t >(e).rhs);
+
+    if (is< assign_t >(e))
+        return in(*as< assign_t >(e).lhs) || in(*as< assign_t >(e).rhs);
+
+    if (is< call_t >(e))
+        return std::ranges::any_of(as< call_t >(e).args, in);
+
+    if (is< cast_t >(e))
+        return in(*as< cast_t >(e).arg);
+
+    if (is< conditional_t >(e)) {
+        const auto &c = as< conditional_t >(e);
+        return in(*c.cond) || in(*c.yes) || in(*c.no);
+    }
+
+    return false;
+}
+
+// G5: whether a local is a register variable that may be read before
+// any write, one declared without an initializer, or one whose
+// initializer names it, 6.2.1p7.  A name that is only assigned there
+// counts too; its slot is then never read.
+bool
+read_unwritten(const decl_stmt_t &d)
+{
+    return d.sym->in_register && (!d.init || mentions(*d.init, d.sym));
 }
 
 // A function that falls off its end.  5.1.2.2.3: main returns 0.
@@ -1487,15 +1542,16 @@ prologue(state_t &s, const function_decl_t &fd)
 {
     s.out << "entry:\n";
 
+    // A parameter is written at entry, so a register one needs no slot.
     s.slot_names = static_cast< int >(fd.params.size());
     for (const auto *p : fd.params)
-        allocate(s, p);
+        allocate(s, p, false);
 
-    std::vector< const symbol_t * > locals;
+    std::vector< const decl_stmt_t * > locals;
     for (const auto &st : fd.body->body)
         collect_locals(st, locals);
-    for (const auto *sym : locals)
-        allocate(s, sym);
+    for (const auto *d : locals)
+        allocate(s, d->sym, read_unwritten(*d));
 
     if (needs_return_slot(s))
         line(s, std::format("%ret.indeterminate = alloca {}, align {}",
