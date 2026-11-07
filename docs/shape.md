@@ -133,7 +133,7 @@ nothing left out. The rules:
 - Every local and parameter is an `alloca` in the entry block, every
   read a load, every write a store. A local lives in its slot for the
   whole activation (G12).
-- A local or parameter declared `register` has no slot. Its value is
+- A `register` local or parameter is never stored. Its value is
   an SSA name carried in a map along the walk, every read the name
   and every write a new one; a register parameter is the argument
   itself. The joins the grammar makes are the only places a `phi`
@@ -144,16 +144,25 @@ nothing left out. The rules:
   back-edge operand filled in when the latch is. An arm ending in
   `return` ends in a dead block that still branches to the join, so
   every arm gives the `phi` an operand. A register variable declared
-  without an initializer holds `freeze T undef` from its declaration
-  on, the one `undef` the front end writes (G5): a value the compiler
-  did not choose, the same at every read. The variable is in scope
-  from the end of its declarator (6.2.1p7), so its initializer may
-  read it; that read makes the frozen undef.
+  without an initializer has one slot in the entry block, never
+  written, and its declaration reads it once, `load` and `freeze`;
+  the value is the variable's from there on (G5): a value the
+  compiler did not choose, the same at every read. A `freeze T undef`
+  would not do: the selector makes it an implicit definition, which
+  the allocator need not keep between two reads. The variable is in
+  scope from the end of its declarator (6.2.1p7), so its initializer
+  may read it; an initializer that names it gets the slot too, and
+  its first read is the one load.
 - Two entry points: `rvalue(expr)` yields the value, `lvalue(expr)`
   yields the address. Both return a value handle: the IR register or
   constant, and its IR type.
 - Operands are emitted left to right (G13). Short-circuit operators
   branch; the result joins in a `phi`.
+- A comparison whose two operands have one name, a register variable
+  read twice or two equal constants, freezes its right operand first.
+  FastISel folds a compare of one value with itself to its answer;
+  the `freeze` makes the operands two values, and the compare is
+  emitted.
 - Every load from an alloca is `freeze`d (G5). The literal back end
   lowers a `freeze` to nothing; it is there for the IR, which is a
   document people read.

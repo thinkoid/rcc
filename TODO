@@ -22,29 +22,6 @@ round trip of G8 and the laundering of G16 are no longer emitted,
 because nothing between the source and the instruction reasons about
 the program.
 
-** TODO G5 is not delivered for a register variable
-
-A register variable declared without an initializer is one =freeze T
-undef= in the IR, so the IR holds one value at every read. The
-literal selector does not keep it: FastISel selects =freeze undef= as
-an =IMPLICIT_DEF=, the allocator marks every read of it =undef= and
-keeps nothing live between the reads, so each read is whatever the
-assigned register holds at that point. =register int x; if (x < 10)
-return 1; if (x >= 10) return 2; return 3;= returns 3 under rcc and 2
-under =clang -O2=: the two reads of =x= saw two values, where G5
-promises one. A slot local is not affected: its reads are loads of
-the bytes in the slot, and the =freeze= the selector drops costs it
-nothing.
-
-Fix: a value the back end must keep. One candidate: a register
-variable without an initializer reads an uninitialized slot once, at
-its declaration, =load= and =freeze= like any local, and the loaded
-value is its name from there on; one slot, read once, and the
-contract kept.
-
-Check: the program above returns 1 or 2, never 3, under rcc;
-=tests/corpus/g5-register-undef= still passes.
-
 ** TODO G7's "Lost" in the rationale misses the equality fold
 
 =rationale.md= says G7 loses "nothing beyond G6". The corpus says
@@ -80,23 +57,22 @@ The record in =docs/cost.md=: what each construct compiles to under
 the literal pipeline, =llc= with FastISel and the rewriting passes
 off.
 
-** TODO FastISel folds a compare of one SSA value with itself
+** TODO A test of the constant 0 is folded
 
-FastISel folds an =icmp= whose two operands are the same value to its
-constant answer, and no =llc= option names the fold. The emitter
-reads a slot local twice as two loads, two values, so =a == a= on a
-local is a compare, as chapter 1 of =cost.md= says. A register
-variable is one SSA name at both reads, so =x == x= on one is
-=mov $0x1,%al= and no =cmp=; =tests/corpus/g5-register-undef= shows
-it, and its status 1 is the fold's as much as the compare's.
+The emitter tests a condition with =icmp ne= against 0, and =!= with
+=icmp eq= against 0. When the operand is the constant 0, or a null
+pointer constant, the two operands are one IR value, and FastISel
+folds the compare to its answer. =if (0)= is an unconditional jump,
+and its body is dropped as unreachable; =!0= is =mov $0x1,%al= with
+no =cmp=. =compare()= freezes one of two equal operands; =test()= and
+the =!= of =unary()= do not.
 
-Fix: decide whether the fold is a departure to record in chapter 4 of
-=cost.md= beside the unused result, or one to defeat: a =freeze= of
-one operand makes the two operands differ in the IR, and the selector
-lowers it to nothing.
+Fix: the same =freeze= where =test()= and =!= build their =icmp=,
+when the operand is the zero it is compared with; one helper for the
+three sites.
 
-Check: a cost row, =register int x = n; return x == x;=, whose
-listing shows what was decided.
+Check: a cost row with =if (0)= and =!0= whose listing shows a =cmp=
+for each.
 
 ** TODO A function whose every path returns still gets the indeterminate slot
 
