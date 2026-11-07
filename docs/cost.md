@@ -358,3 +358,9 @@ steps a register and returns one `sub`, and `copy` loads each byte
 once, stores it and tests it. The `idiv` of `n / 2` in `main` is a
 `sar`. The ratio falls from 8.43 to 2.70. `clang -O2` turns `length`
 into a call of `strlen` in both its builds.
+
+Reading the listings for this chapter turned up five facts about the
+pipeline that the chapters above do not record, two of them against
+what chapter 1 and chapter 2 say. `findings.md` explains each from
+the ground up, with the listings, the LLVM source and the choice it
+leaves open; `TODO` holds the entries.

@@ -227,6 +227,7 @@ compile database, and three lines of make, a shell script and
     docs/guarantees.md  the meaning: what happens where ISO C says nothing
     docs/cost.md        the cost: what each construct compiles to
     docs/rationale.md   the reasoning behind draft 1 of the guarantees
+    docs/findings.md    what the measurement found, explained from the ground up
     src/lex.hh .cc    tokens and tokenize()
     src/type.hh .cc   type_t, constructors, equality
     src/ast.hh        the tree
