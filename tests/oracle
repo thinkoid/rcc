@@ -13,6 +13,15 @@
 # A row passes when both statuses match the table and the pin matches
 # the IR; a program without a row or without a pin fails.
 #
+# With --native rcc builds through its own back end, c1, until the
+# LLVM pipeline is retired and it is the only one: the rcc build is
+# ./rcc -native, the text diffed is the assembly ./rcc -native -S
+# writes, its pin is tests/corpus/native/<name>.s, and the work
+# directory build/oracle-native; tests/corpus/expected is shared,
+# since the statuses are the same promise.  Under c1's first slice
+# every pointer, string or register program is unbuilt and its row
+# fails, as expected until slices 2 and 3.
+#
 # A program may hang by promise, so each run has a time limit of 10
 # seconds when timeout(1) is on the path.  A run it stops, status 124,
 # shows as "timeout", and a row that expects "timeout" passes on it.
@@ -34,12 +43,18 @@
 #
 # USAGE:
 #
-#     tests/oracle [ --pin ] [ --help ]
+#     tests/oracle [ --native ] [ --pin ] [ --help ]
 #
 # OPTIONS:
 #
+#     --native
+#         Builds rcc's side through its own back end, c1, and diffs
+#         the assembly it writes against the pins of
+#         tests/corpus/native.
+#
 #     --pin
-#         Adopts the run.  Copies the IR of every program over its
+#         Adopts the run.  Copies the IR, or with --native the
+#         assembly, of every program over its
 #         pin, and rewrites the status columns of tests/corpus/expected
 #         from the measured statuses, printing what changed in each.
 #         A program that did not build, or wrote no IR, is left as it
@@ -62,6 +77,11 @@
 #     The same run, then the pins and tests/corpus/expected are made
 #     to match it.
 #
+#     tests/oracle --native
+#
+#     Builds the rcc side of every program through c1, runs and diffs
+#     it, and keeps the log in build/oracle-native/log.
+#
 ########################################################################
 
 ##########
@@ -73,13 +93,6 @@ myname=${0##*/}
 # the corpus and the table of the statuses each program should give
 corpus=tests/corpus
 expected=$corpus/expected
-
-# the work directory, kept between runs and removed by make clean
-workdir=build/oracle
-
-# the log of every command, and the statuses each program gave
-log=$workdir/log
-measured=$workdir/measured
 
 # the shown status of a program that did not build
 unbuilt=unbuilt
@@ -100,6 +113,21 @@ export LC_ALL
 # with --pin, the run is adopted as the pins and the expected statuses
 pin=0
 
+# with --native, rcc's side is built through c1; the pins are its
+# assembly in their own directory, and the work directory is its own
+native=0
+
+# the directory of the pins and their suffix: the IR, or c1's assembly
+pins=$corpus
+text=ll
+
+# the work directory, kept between runs and removed by make clean
+workdir=build/oracle
+
+# the log of every command, and the statuses each program gave
+log=$workdir/log
+measured=$workdir/measured
+
 # 1 when timeout(1) is on the path and each run has the time limit
 limited=0
 
@@ -112,10 +140,11 @@ passed=0
 # usage(): prints the usage
 usage()
 {
-    echo "usage: $0 [ --pin ] [ --help ]"
+    echo "usage: $0 [ --native ] [ --pin ] [ --help ]"
     echo
-    echo "    --pin   adopt the run: rewrite the pins and the expected statuses"
-    echo "    --help  print this usage"
+    echo "    --native  build rcc's side through its own back end, against its pins"
+    echo "    --pin     adopt the run: rewrite the pins and the expected statuses"
+    echo "    --help    print this usage"
 }
 
 
@@ -204,17 +233,22 @@ measure()
 
 
 ##########
-# check_pin(): writes the program's IR with rcc -S and diffs it against
-# the pin; prints "pin ok", "pin differs" or "no pin"
+# check_pin(): writes the program's IR with rcc -S, or its assembly
+# with rcc -native -S, and diffs it against the pin; prints "pin ok",
+# "pin differs" or "no pin"
 check_pin()
 {
     name=$1
 
-    pin_file=$corpus/$name.ll
-    ir_file=$workdir/$name.ll
+    pin_file=$pins/$name.$text
+    ir_file=$workdir/$name.$text
 
-    # a failure leaves no IR, and the diff below reports the difference
-    logged ./rcc -S -o "$ir_file" "$corpus/$name.c"
+    # a failure leaves no text, and the diff below reports the difference
+    if [ "$native" -eq 0 ]; then
+        logged ./rcc -S -o "$ir_file" "$corpus/$name.c"
+    else
+        logged ./rcc -native -S -o "$ir_file" "$corpus/$name.c"
+    fi
 
     if [ ! -e "$pin_file" ]; then
         echo "no pin"
@@ -261,7 +295,7 @@ print_row()
 
 ##########
 # check_program(): builds and runs one program both ways, diffs its IR
-# against the pin, records its statuses and prints its row; reports 0
+# or its assembly against the pin, records its statuses and prints its row; reports 0
 # when the row passed, 1 when it failed
 check_program()
 {
@@ -271,9 +305,13 @@ check_program()
     stem=$workdir/$name
 
     # an output left by an earlier run must not stand in for this one's
-    rm -f "$stem.rcc" "$stem.clang" "$stem.ll"
+    rm -f "$stem.rcc" "$stem.clang" "$stem.$text"
 
-    rcc_status=$(measure "$source" "$stem.rcc" ./rcc)
+    if [ "$native" -eq 0 ]; then
+        rcc_status=$(measure "$source" "$stem.rcc" ./rcc)
+    else
+        rcc_status=$(measure "$source" "$stem.rcc" ./rcc -native)
+    fi
     clang_status=$(measure "$source" "$stem.clang" clang -O2)
     pin_state=$(check_pin "$name")
 
@@ -298,12 +336,19 @@ check_program()
 
 
 ##########
-# adopt_pins(): copies the IR of the run over the pin of every program,
-# printing each pin it made or changed; reports 1 when a program wrote
-# no IR or a pin could not be written, 0 otherwise
+# adopt_pins(): copies the IR, or the assembly, of the run over the pin
+# of every program, printing each pin it made or changed; reports 1
+# when a program wrote no text or a pin could not be written, 0
+# otherwise
 adopt_pins()
 {
     result=0
+
+    # the native pins' directory may not exist yet
+    if ! mkdir -p "$pins"; then
+        echo "$myname: cannot make $pins" >&2
+        return 1
+    fi
 
     for source in "$corpus"/*.c; do
         [ -e "$source" ] || continue
@@ -311,11 +356,11 @@ adopt_pins()
         name=${source##*/}
         name=${name%.c}
 
-        pin_file=$corpus/$name.ll
-        ir_file=$workdir/$name.ll
+        pin_file=$pins/$name.$text
+        ir_file=$workdir/$name.$text
 
         if [ ! -e "$ir_file" ]; then
-            echo "$name: no IR, pin left as it was"
+            echo "$name: no text, pin left as it was"
             result=1
         elif [ ! -e "$pin_file" ]; then
             cp "$ir_file" "$pin_file" && echo "pinned $pin_file (new)" ||
@@ -398,6 +443,15 @@ adopt_expected()
 # process command line options
 for arg in "$@"; do
     case "$arg" in
+        --native)  # build rcc's side through c1, against the native pins
+            native=1
+            pins=$corpus/native
+            text=s
+            workdir=build/oracle-native
+            log=$workdir/log
+            measured=$workdir/measured
+            ;;
+
         --pin)  # adopt the run as the pins and the expected statuses
             pin=1
             ;;

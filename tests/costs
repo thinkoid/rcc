@@ -18,6 +18,14 @@
 # installed LLVM shows as a diff in the rows it touches, and the diff
 # is in the log.
 #
+# With --native the corpus is built through rcc's own back end, c1,
+# until the LLVM pipeline is retired and it is the only one.  Each
+# program is written by ./rcc -native -S, and the text is assembled by
+# clang -c to prove that it assembles; the listing is that text, with
+# no objdump.  Its pin is tests/cost/native/<name>.s and the work
+# directory build/cost-native.  A program c1 does not handle yet
+# fails as unbuilt.
+#
 # The script prints a table, one row per program, and a summary, and
 # exits 0 when every row passed, 1 otherwise.  It runs from the tree
 # root with ./rcc built, as make test runs it.  The objects, their
@@ -29,9 +37,13 @@
 #
 # USAGE:
 #
-#     tests/costs [ --pin ] [ --help ]
+#     tests/costs [ --native ] [ --pin ] [ --help ]
 #
 # OPTIONS:
+#
+#     --native
+#         Builds through rcc's own back end, c1, and diffs the
+#         assembly it writes against the pins of tests/cost/native.
 #
 #     --pin
 #         Adopts the run.  Copies the listing of every program over
@@ -57,6 +69,11 @@
 #
 #     The same run, then the pins are made to match it.
 #
+#     tests/costs --native
+#
+#     Writes, assembles and diffs every program through c1, and keeps
+#     the log in build/cost-native/log.
+#
 ########################################################################
 
 ##########
@@ -67,12 +84,6 @@ myname=${0##*/}
 
 # the corpus: the programs and their pinned listings
 corpus=tests/cost
-
-# the work directory, kept between runs and removed by make clean
-workdir=build/cost
-
-# the log of every command
-log=$workdir/log
 
 # the line of objdump's output the listing starts at
 text_start='Disassembly of section .text:'
@@ -87,6 +98,18 @@ export LC_ALL
 # with --pin, the run is adopted as the pins
 pin=0
 
+# with --native, the build is c1's; the pins and the work directory
+# are the native ones
+native=0
+
+# the directory of the pins, and the work directory, kept between runs
+# and removed by make clean
+pins=$corpus
+workdir=build/cost
+
+# the log of every command
+log=$workdir/log
+
 # the rows of the table, and the rows that passed
 programs=0
 passed=0
@@ -96,16 +119,18 @@ passed=0
 # usage(): prints the usage
 usage()
 {
-    echo "usage: $0 [ --pin ] [ --help ]"
+    echo "usage: $0 [ --native ] [ --pin ] [ --help ]"
     echo
-    echo "    --pin   adopt the run: rewrite the pinned listings"
-    echo "    --help  print this usage"
+    echo "    --native  build through rcc's own back end, against its pins"
+    echo "    --pin     adopt the run: rewrite the pinned listings"
+    echo "    --help    print this usage"
 }
 
 
 ##########
 # check_tree(): reports 0 when the script runs from the tree root with
-# rcc built and objdump on the path, and says what is missing otherwise
+# rcc built and, except with --native, objdump on the path, and says what
+# is missing otherwise
 check_tree()
 {
     if [ ! -d "$corpus" ]; then
@@ -118,7 +143,7 @@ check_tree()
         return 1
     fi
 
-    if ! command -v objdump > /dev/null 2>&1; then
+    if [ "$native" -eq 0 ] && ! command -v objdump > /dev/null 2>&1; then
         echo "$myname: no objdump on the path" >&2
         return 1
     fi
@@ -209,13 +234,39 @@ build()
 
 
 ##########
+# build_native(): writes one program's assembly with rcc -native -S,
+# which is its listing, and assembles it with clang -c; prints "built",
+# or "unbuilt" when either step failed, and then leaves no listing, so
+# that text which did not assemble is never adopted as a pin
+build_native()
+{
+    name=$1
+
+    stem=$workdir/$name
+
+    if ! logged ./rcc -native -S -o "$stem.s" "$corpus/$name.c"; then
+        echo unbuilt
+        return 1
+    fi
+
+    if ! logged clang -c "$stem.s" -o "$stem.o"; then
+        rm -f "$stem.s"
+        echo unbuilt
+        return 1
+    fi
+
+    echo built
+}
+
+
+##########
 # check_pin(): diffs the listing of one program against its pin;
 # prints "pin ok", "pin differs" or "no pin"
 check_pin()
 {
     name=$1
 
-    pin_file=$corpus/$name.s
+    pin_file=$pins/$name.s
     listing=$workdir/$name.s
 
     # a program that did not build has no listing, and the diff below
@@ -245,9 +296,9 @@ print_row()
 
 
 ##########
-# check_program(): builds and disassembles one program, diffs its
-# listing against the pin and prints its row; reports 0 when the row
-# passed, 1 when it failed
+# check_program(): builds one program into its listing, by objdump or
+# with --native as c1's text, diffs the listing against the pin and
+# prints its row; reports 0 when the row passed, 1 when it failed
 check_program()
 {
     name=$1
@@ -257,7 +308,11 @@ check_program()
     # an output left by an earlier run must not stand in for this one's
     rm -f "$stem.o" "$stem.objdump" "$stem.s"
 
-    build_state=$(build "$name")
+    if [ "$native" -eq 0 ]; then
+        build_state=$(build "$name")
+    else
+        build_state=$(build_native "$name")
+    fi
     pin_state=$(check_pin "$name")
 
     if [ "$build_state" = built ] && [ "$pin_state" = "pin ok" ]; then
@@ -281,13 +336,19 @@ adopt_pins()
 {
     result=0
 
+    # the native pins' directory may not exist yet
+    if ! mkdir -p "$pins"; then
+        echo "$myname: cannot make $pins" >&2
+        return 1
+    fi
+
     for source in "$corpus"/*.c; do
         [ -e "$source" ] || continue
 
         name=${source##*/}
         name=${name%.c}
 
-        pin_file=$corpus/$name.s
+        pin_file=$pins/$name.s
         listing=$workdir/$name.s
 
         if [ ! -s "$listing" ]; then
@@ -314,6 +375,13 @@ adopt_pins()
 # process command line options
 for arg in "$@"; do
     case "$arg" in
+        --native)  # build through c1, against the native pins
+            native=1
+            pins=$corpus/native
+            workdir=build/cost-native
+            log=$workdir/log
+            ;;
+
         --pin)  # adopt the run as the pins
             pin=1
             ;;
@@ -330,7 +398,8 @@ for arg in "$@"; do
     esac
 done
 
-# without the tree root, a built rcc and objdump there is nothing to run
+# without the tree root, a built rcc and, for objdump's listings,
+# objdump there is nothing to run
 check_tree || exit 2
 
 # the work directory is kept; the log starts over

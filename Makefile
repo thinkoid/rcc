@@ -20,6 +20,10 @@ test: rcc
 	tests/oracle
 	tests/costs
 
+test-native: rcc
+	tests/oracle --native
+	tests/costs --native
+
 bench: rcc
 	tests/bench
 
@@ -27,4 +31,4 @@ clean:
 	rm -rf build rcc
 
 -include $(OBJ:.o=.d)
-.PHONY: test bench clean
+.PHONY: test test-native bench clean
