@@ -24,29 +24,19 @@ it has to be fought. The entries below are the slices, in order; the
 chapters after this one hold the LLVM-era queue, and each says what
 leaves with the pipeline.
 
-** TODO Slice 3 of the back end: register variables
-
-=register= locals and parameters in the callee-saved registers, in
-declaration order, a block's registers freed at its end; a register
-parameter moved from its argument register at entry; saved and
-restored in the prologue and epilogue. No slot, no =phi=, no join:
-the variable is its register. G5 for a register variable is the
-register's content, unwritten until the first write.
-
-Check: =register-loop=, =register-compare=, =register-parameter=,
-=register-undef= and =g5-register-undef= under the new back end.
-
 ** TODO Retire the LLVM pipeline
 
-When the corpus and the cost corpus pass through the new back end:
-=emit.cc= and the flag table of =main.cc= leave; =-S= writes
-assembly; =-c= runs the system cc on it; =llc= is no longer run.
+Every program of the corpus and of the cost corpus passes through
+the new back end, so the old one can go: =emit.cc= and the flag table
+of =main.cc= leave; =-S= writes assembly; =-c= runs the system cc on
+it; =llc= is no longer run.
 =cost.md= chapters 2, 4 and 5 leave with it, chapter 3 is the table
 the back end was written from, =guarantees.md='s IR clauses become
 instruction clauses, =shape.md= describes the new pipeline, and
 =findings.md= closes with what became of its five. The header
-comments of the cost programs, which describe the LLVM listings, are
-rewritten for the native ones; the pins of =tests/corpus/native/= and
+comments of the cost programs and of the corpus programs that
+describe the LLVM listings or the IR are rewritten for the native
+ones; the pins of =tests/corpus/native/= and
 =tests/cost/native/= move up a directory over the LLVM pins; the
 =--native= mode leaves the two scripts, and =test-native= becomes
 =test=.
@@ -55,15 +45,41 @@ Check: =make test= green with no =llc= on the machine's path.
 
 ** TODO Redo the measurement
 
-=make bench= under the new back end. The tuned programs declare more
-=register= variables than the five the discipline holds (matmul's
-=main= ten, collatz seven, sieve six); the first five of each
-function take the registers and the rest take slots, with a warning,
-and the numbers move. The
-movement is a result about the model, and the tuned sources may be
-re-tuned to the set, as a PDP-11 programmer tuned to three.
+=make bench= under the new back end. Compiled with =-native=,
+=collatz-tuned= warns twice, for =x= and =steps=, and =matmul-tuned=
+five times, for =pc=, =bcol=, =pa=, =pb= and =s=; those seven take
+slots. =sieve-tuned=, =fib-tuned=, =sort-tuned= and =strings-tuned=
+warn not at all: sieve declares six, but its two loops are sibling
+blocks, so never more than five are live at once. The numbers move.
+The movement is a result about the model, and the tuned sources may
+be re-tuned to the set, as a PDP-11 programmer tuned to three.
 
-Check: chapter 6 re-recorded, with the register count per program.
+Check: chapter 6 of =cost.md= re-recorded, with the register count
+per program.
+
+** TODO The sixth register's price is counted by declarations
+
+=design-calls.md= 2.2 prices a sixth register from the =register=
+variables each tuned =main= declares. But c0 counts the variables
+live at once: a block's variables leave the count at its end. The
+warnings follow the live count, so sieve, which declares six and
+holds at most five live, gets none. Three sentences thus rest
+on the wrong count:
+
+- 2.2: "with five, sieve loses one too", where sieve loses none;
+- 3.2: "four of six =main= functions exceed five", where two do by
+  the live count, matmul and collatz, and three by declarations;
+- 2.2, 2.3 and =backend.md= 13.1: the sixth register "was worth one
+  variable in one program of six". By the live count it keeps one
+  more variable out of a slot in each of matmul and collatz, and
+  fits no program whole that five do not.
+
+Fix: 2.2's table gains the most live at once per function, and the
+sentences that price the sixth register are restated from it; 2.3's
+conclusion is re-read against the restated price.
+
+Check: no sentence of the two documents counts a sixth register
+variable by declarations where the rule counts the live ones.
 
 ** TODO aarch64
 
@@ -323,6 +339,34 @@ rcc and 0 under clang.
 
 Check: the oracle row.
 
+** TODO The register rows pin only part of c1's register rules
+
+The five programs that declare =register= pin the registers in
+declaration order, the pushes with their unwind offsets, a register
+parameter's move from its argument register, a read as an operand, a
+copy before an instruction that writes, an assignment, a constant's
+immediate, and G5's unwritten register. No program of either corpus
+shows the rest of =backend.md= chapter 4, so a change to any of these
+shows in no pin:
+
+- a compound assignment or a =++= on the register in place, =addl $1,
+  %r13d=;
+- a narrow register variable: the extending store =movsbl %al,
+  %ebx=, the re-extension after a step, and an unwritten one's
+  extension at its declaration;
+- the copy of a held read before a write, =i + i++=, and before the
+  paths of =&&=, =||= and =?:= (G13);
+- a register parameter past the sixth, loaded from its stack slot,
+  and the order of the moves and the stores among mixed parameters;
+- the epilogue's =leaq -8k(%rbp), %rsp= before the pops, which only a
+  function with pushes and a =subq= writes;
+- the sixth live variable in a slot, and a later block taking =rbx=
+  again.
+
+Fix: a cost program for each, with its two pins until retirement.
+
+Check: perturbing each rule in =c1.cc= turns a row red.
+
 ** TODO =-o -= names a file, not standard output
 
 =rcc -S -o -= writes a file called =-= in the working directory. Every
@@ -378,6 +422,23 @@ Check: a register variable assigned before a =break= has that value
 after the loop.
 
 * Parser
+
+** TODO A warning recorded before an error is never printed
+
+The parser records a warning in the unit, and the driver prints the
+unit's warnings only after a successful parse. =error_t= ends the
+parse at the first error, so the unit and its warnings are lost with
+the exception. Thus =&k= on a sixth register variable reports the
+error alone: the warning that put =k= in a slot was recorded at its
+declaration, before the error, and is never printed.
+
+Fix: the driver prints the warnings the parser recorded before the
+error too. Since the unit is lost with the exception, the warnings
+need a home the exception does not destroy, such as a list the
+driver passes to the parser.
+
+Check: =int f(void) { register int a, b, c, d, e, k; return *&k; }=
+prints the warning at =k= and then the error at =&=, exit status 1.
 
 ** TODO Assignment to a const object is not diagnosed
 

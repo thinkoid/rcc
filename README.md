@@ -54,11 +54,13 @@ parameters, subscripts, `&` and `*`, pointer arithmetic and
 comparison, casts, `sizeof`, and string and character literals.
 Then `register`, honoured: a variable that is never stored. Then the
 measurement, and the change of direction it led to: the `native`
-branch replaces the LLVM back end with rcc's own. Its first two
-slices have landed, selected by `-native`: the integer types, control
-and calls, then pointers, arrays and string literals. Register
-variables are the third slice; the LLVM path stays the default until
-it is retired. The shape is `docs/shape.md`; `make` builds `rcc`,
+branch replaces the LLVM back end with rcc's own. Its three slices
+have landed, selected by `-native`: the integer types, control and
+calls; pointers, arrays and string literals; register variables.
+Every program of both corpora builds under `-native`. What remains
+is the retirement of the LLVM pipeline, which stays the default until
+then, and after it the measurement redone. The shape is
+`docs/shape.md`; `make` builds `rcc`,
 `make test` runs the oracle over `tests/corpus/` and the cost corpus
 over `tests/cost/`, `make test-native` runs both through the new back
 end, and `make bench` times the benchmark corpus of `tests/perf/`.

@@ -209,7 +209,7 @@ nothing in the method needs it: the corpus is correct programs.
 
 ## 8. The driver
 
-`rcc [-native] [-S] [-c] [-o out] file.c`. `-S` stops at the `.ll`,
+`rcc [-native] [-w] [-S] [-c] [-o out] file.c`. `-S` stops at the `.ll`,
 the way `cc -S` stops at assembly: the IR is rcc's assembly, and the
 pinned `.ll` in the corpus is what `-S` wrote. `-c` stops at the object,
 which `llc` wrote. The default output is `a.out`, `<stem>.o` or
@@ -219,6 +219,13 @@ own code generator, c1 (`backend.md`): `-S` writes its assembly,
 `<stem>.s`, `-c` assembles it with `clang -c`, and a link runs
 `clang`. Processes are spawned by fork and exec, never `system`;
 the temporary files are removed on every way out.
+
+A warning does not stop the translation. The parser records it in
+the unit, and the driver prints the unit's warnings after a
+successful parse, on standard error in the error's format, `warning`
+in place of `error`. `-w` silences them, and no warning changes the
+exit status. The one warning is a sixth live `register` variable's,
+which takes a slot (`backend.md` chapter 4).
 
 Exit status: 0; 1 for a diagnosed error or a failed system call; 2
 for a usage error; 3 for an internal error, a tree shape the
@@ -247,7 +254,7 @@ compile database, and three lines of make, a shell script and
     src/parse.hh .cc  parse()
     src/emit.hh .cc   emit()
     src/c1.hh .cc     generate(), the code generator, under -native
-    src/error.hh      error_t
+    src/error.hh      error_t and warning_t
     src/main.cc       the driver, and the back end's flag table
     tests/oracle      the oracle script
     tests/corpus/     the divergence programs, their pinned .ll
@@ -278,10 +285,10 @@ adjacent concatenation, and `const` accepted and dropped, since the
 type is the machine's view. The oracle stays on exit statuses: a
 string probe returns a byte of the string.
 
-c1 is written in the same slices. Its first two have landed: under
-`-native` every program of the corpus and of the cost corpus builds
-and matches its pin, but `g5-register-undef` and the four `register-`
-cost programs, which wait for the third slice, `register` variables.
+c1 is written in the same two slices and a third, `register`
+variables in the five callee-saved registers (`backend.md` chapter
+4). The three have landed: under `-native` every program of the
+corpus and of the cost corpus builds and matches its pin.
 
 ## 11. Not yet
 

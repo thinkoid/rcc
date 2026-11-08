@@ -15,7 +15,7 @@ govern. The last chapter lists the calls still open; the queue,
 - Ritchie's machine on x86-64. Every local lives in its stack slot,
   off the frame pointer. A `register` variable lives in one of five
   callee-saved registers, by declaration order, and is nothing but
-  that register; the sixth declared takes a slot and a warning.
+  that register; a sixth live at once takes a slot and a warning.
   Expressions are evaluated left to right in the caller-saved
   registers, used as a stack. Conditions are jumps. An argument is a
   hidden local of its call.
@@ -200,12 +200,16 @@ the five gets a slot and is an ordinary local, as 6.7.2p12 allows
 implementation-defined"), and as the PDP-11 did with the fourth; the
 compiler says so with a warning, `register variable 'k' in a stack
 slot: the five registers are taken`, which a conforming program may
-receive and a `-w`-style switch silences. The extent is recorded in
+receive and `-w` silences. The extent is recorded in
 the cost model, as 4p10 asks (`design-calls.md` chapter 3).
 
 A `register` parameter is moved from its argument register to its
 callee-saved register in the prologue, one `mov`; the argument
-register is caller-saved and would not survive the first call.
+register is caller-saved and would not survive the first call. A
+`register` parameter past the sixth arrived on the stack and is
+loaded from its slot above the return address into its register. The
+moves and the ordinary parameters' stores are written in parameter
+order.
 
 A register variable is nothing but its register. No slot, no load,
 no store, no `phi`, no join of arms, no patching of a loop's back
@@ -214,8 +218,34 @@ is the register as an operand. G5 for a register variable needs no
 unwritten slot any more: before its first write the register holds
 whatever the prologue left in it, and nothing writes the register
 until the program does, so every read before the first write sees
-the same value. The function's epilogue restores every register of
-the set the function used, from the pushes of its prologue.
+the same value. The one exception is an unwritten `char`, `short` or
+`unsigned` variable: the representation below claims more bits than
+the type has, so its declaration extends the register in place,
+`movsbl %bl, %ebx` for a `char`. The value of the type, in the low
+bits, is unchanged. The function's epilogue restores every register
+of the set the function used, from the pushes of its prologue.
+
+The register holds the variable's value extended by its signedness
+to 32 bits, by the width rule of chapter 6.3: an `unsigned` written
+at 32 bits is valid to 64, and a `long` or a pointer is the register
+whole. A `register char` is thus its `movsbl`-extended value, as the
+PDP-11's `movb` into a register sign-extended.
+
+A read is the register as an operand where the instruction only
+reads it: `cmpl %ebx, %r13d`. Where the instruction would write its
+destination, the register is first copied into an expression
+register, `movl %ebx, %eax; subl %r12d, %eax`, so the variable does
+not change. An assignment is the `mov` into the register: a constant
+is the immediate, `movl $0, %r12d`, and a narrow store is the
+extending `mov`, `movsbl %al, %ebx`. A compound assignment and `++`
+or `--` operate on the register in place, `addl $1, %r13d`, and a
+narrow one is re-extended after.
+
+A read still held when its variable is written would see the new
+value, but G13 promises the old one. So every held read of the
+variable is copied into an expression register before the write, and
+before the two paths of `&&`, `||` or `?:` when a path writes it;
+`i + i++` thus adds the old `i` to itself.
 
 **The frame pointer: `rbp`.** Pushed and set in every function's
 prologue, leaf included, restored by `leave`. Every slot is a
@@ -246,7 +276,12 @@ A function's frame holds, from high addresses to low:
    it, and everything below is addressed as a negative displacement
    off `rbp`.
 3. The register-variable registers the function uses, pushed in the
-   prologue, popped in reverse in the epilogue.
+   prologue, popped in reverse in the epilogue. Each push carries its
+   place in the unwind table, `.cfi_offset %rbx, -24` for the first
+   and 8 lower for each next. The registers pushed are the register
+   parameters and the most register variables the body has live at
+   once, counted from the tree before the body is generated, since
+   the slots lie below them.
 4. One slot per local and per parameter, each of its type's size at
    its type's alignment, in declaration order, every block's locals
    included, none shared: G12, "a local's storage is one stack slot
@@ -266,18 +301,22 @@ A function's frame holds, from high addresses to low:
    8), sized by the deepest expression in the function.
 
 The slots are assigned as the generator meets them, each at the next
-offset below the last; their total is the frame's size, written
-into the prologue's `sub $N,%rsp` after the body is generated and
-rounded up so that `rsp` is a multiple of 16 at every `call` the
-function makes. A function that makes no call puts a frame of up to
-128 bytes in the red zone and writes no `sub`: the ABI reserves the
+offset below the last; the first lies below the pushes, at
+`-8k - size` with `k` registers pushed. Their total is the frame's size,
+written into the prologue's `sub $N,%rsp` after the body is generated
+and rounded up so that `rsp` is a multiple of 16 at every `call` the
+function makes: `8k + N` is a multiple of 16. A function that makes
+no call puts a frame of up to 128 bytes in the red zone and writes no
+`sub`; the 128 are measured from `rsp` after the pushes, so a leaf's
+pushes do not count against them. The ABI reserves the
 128 bytes below `rsp` for exactly this (`design-calls.md` chapter
 5), and every leaf pin of `tests/cost` shows the shape. A leaf with
 a larger frame writes the `sub`, as any other function does. The
 prologue is `push %rbp; mov %rsp,%rbp`, then the pushes of 3, then
-the `sub` if any; the one epilogue at `.Lret` pops the registers of
-3 and ends in `leave; .cfi_def_cfa %rsp, 8; ret` (`leave` is `mov
-%rbp,%rsp; pop %rbp`).
+the `sub` if any; the one epilogue at `.Lret` writes `leaq
+-8k(%rbp), %rsp` when the prologue wrote a `sub`, so that `rsp` is
+back at the pushes, then pops the registers of 3 and ends in `leave;
+.cfi_def_cfa %rsp, 8; ret` (`leave` is `mov %rbp,%rsp; pop %rbp`).
 The prologue carries `.cfi_startproc`, `.cfi_def_cfa_offset 16`,
 `.cfi_offset %rbp, -16` and `.cfi_def_cfa_register %rbp`, and the
 function `.cfi_endproc`, so that an unwinder has the table and a
@@ -332,7 +371,7 @@ promotion casts before any operator sees them, as today.
 |---|---|---|
 | a constant | an immediate operand, or `mov $c, L` when it must be held; `movabsq $c, L` for a 64-bit constant no 32-bit immediate holds | integer constant expressions folded in the parser, chapter 6.4 |
 | a local, a parameter | `mov slot(%rbp), L` | a `char` is `movsbl` or `movzbl`, a `short` `movswl` or `movzwl` |
-| a `register` variable | the register, as an operand | no instruction |
+| a `register` variable | the register, as an operand the instruction reads; copied into `L`, `mov reg, L`, where the instruction writes `L` | no instruction for a read |
 | a static | `mov sym(%rip), L` | PC-relative, chapter 10 |
 | `a + b`, `a - b` | `add R, L`, `sub R, L` | G1: the machine wraps |
 | `a * b` | `imul R, L` | G1; the same instruction for signed and unsigned, since the low bits agree |
@@ -343,7 +382,7 @@ promotion casts before any operator sees them, as today.
 | `!a` | `cmp $0, L`; `sete %Lb`; `movzbl %Lb, L` | as a value; as a condition, chapter 7 |
 | `a < b` and the rest, as a value | `cmp R, L`; `setcc %Lb`; `movzbl %Lb, L` | `setl`, `setle`, `setg`, `setge`, `sete`, `setne` signed; `setb`, `setbe`, `seta`, `setae` unsigned and for pointers (G7) |
 | `a && b`, `a \|\| b`, `a ? b : c`, as a value | jump code of chapter 7 into `L`, with `mov $0, L` and `mov $1, L` on the arms | no `setcc` chain |
-| `x = e` | `mov L, slot` or `mov L, reg`; the value stays in `L` | a `char` store is `movb %Lb` |
+| `x = e` | `mov L, slot` or `mov L, reg`, or the immediate for a constant; the value stays in `L` | a `char` store is `movb %Lb` |
 | `x op= e` | the load row, the op row, the store row | |
 | `++x`, `x++`, `--x`, `x--` | the load, `add $1` or `sub $1`, the store; the post forms keep the old value in another register | `add $size` for a pointer |
 | `(T) a` | `movslq L, L64` for `int` to `long`, `movsbl` or `movzbl` from `Lb` for `char` to `int`, each only when `L` is not already valid to the new width (the width rule below); nothing for `long` to `int` (the 32-bit name is the value); nothing between pointer types; an integer to a pointer as to `unsigned long`, so `movslq` for an `int` (6.3.2.3p5); nothing for a pointer to `long` or `int` | G2: truncation is reading the low bits |
@@ -580,7 +619,7 @@ draft of those clauses.
 | G2 narrowing truncates | a narrow store `movb`, `movw`, `movl`, or the narrower register name; nothing is computed |
 | G3 shifts | `shl`, `sar`, `shr` by `cl` or an immediate: the instruction masks the count to the width |
 | G4 division is the instruction's | `idiv`, `div`: `#DE` on a zero divisor and on `INT_MIN / -1`, by the machine |
-| G5 an uninitialized object holds a value | a slot's bytes, or a register's content, unwritten until the program writes; nothing in the generator touches either |
+| G5 an uninitialized object holds a value | a slot's bytes, or a register's content, unwritten until the program writes; nothing in the generator touches either, but for the extension of an unwritten `char`, `short` or `unsigned` register variable in its own register, which leaves the value of its type as it was |
 | G6 pointer arithmetic is address arithmetic | `lea`, `add`, `sub` on 64-bit registers, `imul` by the size; `p - q` is `sub`, `cqto`, `idiv` |
 | G7 pointer comparison is address comparison | `cmp` of 64-bit registers, the unsigned `jcc` and `setcc` |
 | G8 a load reads the bytes at the address | `mov (L), L`, whatever computed `L` |
@@ -630,7 +669,9 @@ folds, generates assembly text, and then runs `cc -c` on it for `-c`
 and `cc` for a link. `-S` writes the assembly, to a file or to
 standard output for `-o -`, as every cc does. No `llc`, no IR, no
 flag table. The `# line "file"` markers of the preprocessor still
-give the diagnostics their positions.
+give the diagnostics their positions. The one warning, chapter 4's
+for a sixth live `register` variable, is printed in the error's
+format and changes no exit status; `-w` silences it.
 
 Until the LLVM pipeline is retired, the driver's `-native` selects
 c1: `rcc -native -S` writes the assembly, `-native -c` assembles it
@@ -663,14 +704,17 @@ the parser, 3300 of the tree's 5700 lines, are untouched.
   into libc, `printf` with `al` set, and it passes under `--native`.
   A `clang`-compiled `main` calling rcc code, and an rcc `main`
   calling `clang`-compiled code, were run as probes outside the tree
-  in both slices, with the statuses of the all-`clang` build.
-- **The measurement**, `tests/bench`: redone. The tuned programs
-  declare more `register` variables than five in `main` (matmul ten,
-  collatz seven, sieve six, sort five); the sixth and later take
-  slots, the numbers move, and the movement is recorded as a result
-  about the model. Then the tuned sources may be re-tuned to five, as
-  a PDP-11 programmer tuned to three, and the chapter re-recorded
-  with the register count per program.
+  in the first two slices, with the statuses of the all-`clang` build.
+- **The measurement**, `tests/bench`: redone. The most `register`
+  variables live at once in each tuned program: matmul's `main` ten,
+  collatz's seven, sieve's and sort's five, strings' four, and `fib`
+  three. The sixth and later take slots, each with its warning:
+  matmul's five and collatz's two. Sieve declares six, but its two
+  loops are sibling blocks, so it gets no warning. The numbers move,
+  and the movement is recorded as a result about the model. Then the
+  tuned sources may be re-tuned to five, as a PDP-11 programmer tuned
+  to three, and the chapter re-recorded with the register count per
+  program.
 
 ## 13. The calls
 

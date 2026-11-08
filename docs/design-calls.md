@@ -199,9 +199,10 @@ default, naming the variable and the count.
 The table of 2.2: in the tuned programs, written by a programmer who
 knew the LLVM pipeline would honour every `register`, four of six
 `main` functions exceed five. Under the discipline, matmul's `main`
-has five variables in slots, collatz's two, sieve's one, and the
-measurement moves. If the compiler says nothing, the programmer learns
-it from the listing or the timing, or not at all; a programmer who
+has five variables in slots and collatz's two, while sieve's six are
+never more than five live at once, and the measurement moves. If the
+compiler says nothing, the programmer learns it from the listing or
+the timing, or not at all; a programmer who
 wrote `register` on a loop's variable and got a slot has asked for a
 thing and been refused in silence.
 
