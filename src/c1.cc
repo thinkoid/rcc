@@ -1151,8 +1151,9 @@ divide(state_t &s, binary_op_t op, value_t l, value_t r, const int_t &t)
 
 // G3: the instruction masks the count to the width, and nothing else
 // does.  A constant count is the immediate, its low 8 bits, which is
-// what the instruction encodes; a variable one goes to cl, a value
-// held in rcx moving out first (chapter 6.5), a register variable
+// what the instruction encodes; a variable one goes to cl, at the
+// count's own width, which the parser leaves at its promoted type, a
+// value held in rcx moving out first (chapter 6.5), a register variable
 // copied there.
 value_t
 shift(state_t &s, binary_op_t op, value_t l, const expr_t &rhs, const int_t &t)
@@ -1186,7 +1187,7 @@ shift(state_t &s, binary_op_t op, value_t l, const expr_t &rhs, const int_t &t)
         if (fixed(s, r))
             copy(s, r, rcx);
         else
-            move(s, right, rcx, width);
+            move(s, right, rcx, operation_width(rhs.type));
     }
 
     insn(s, sized(stem, width), { "%cl", reg(left, width) });
@@ -1744,10 +1745,12 @@ assign(state_t &s, const assign_t &a)
 {
     const auto &t = integer(a.lhs->type);
     const bool stepped = a.op && is< pointer_t >(a.lhs->type);
+    const bool shifted =
+        a.op && (*a.op == binary_op_t::shl || *a.op == binary_op_t::shr);
 
-    // the parser converted the right operand to the common type, or
-    // widened it to 64 bits for a pointer
-    if (!stepped && !(a.rhs->type == a.common))
+    // the parser converted the right operand to the common type, widened
+    // it to 64 bits for a pointer, or promoted a shift count on its own
+    if (!stepped && !shifted && !(a.rhs->type == a.common))
         throw std::logic_error("c1: an assignment across two types");
 
     if (const auto *sym = register_variable(*a.lhs))

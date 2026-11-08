@@ -18,7 +18,6 @@ main:
 	movq	-32(%rbp), %rax
 	movl	-4(%rbp), %ecx
 	addl	$2, %ecx
-	movslq	%ecx, %rcx
 	shrq	%cl, %rax
 	movq	%rax, -40(%rbp)
 	movq	-24(%rbp), %rax

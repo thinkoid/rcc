@@ -900,11 +900,10 @@ logical(const token_t &op, expr_t lhs, expr_t rhs)
                        std::move(rhs));
 }
 
-// << >>: the type of the promoted left operand, 6.5.8p3.  The count is
-// promoted on its own there, and then goes to the width of the shifted
-// operand as well, because the emitter converts nothing and an IR shift
-// takes one type.  The narrowing loses nothing G3 keeps: the count is
-// taken modulo the width, which divides 2^32.
+// << >>: the type of the promoted left operand, 6.5.8p3.  The integer
+// promotions are performed on each operand on its own there, so the
+// count keeps its promoted type; the instruction reads only its low
+// bits, in cl (G3).
 expr_t
 shift(const token_t &op, expr_t lhs, expr_t rhs)
 {
@@ -915,8 +914,8 @@ shift(const token_t &op, expr_t lhs, expr_t rhs)
     require_integer(op, rhs);
 
     lhs = promote(std::move(lhs));
+    rhs = promote(std::move(rhs));
     const type_t t = lhs.type;
-    rhs = convert_to(std::move(rhs), t);
 
     return make_binary(binary_operator(op.kind), t, std::move(lhs),
                        std::move(rhs));
@@ -1951,12 +1950,12 @@ expression(parser_t &p)
 // 6.5.17.2p2, and a plain assignment converts the right operand to it
 // as by assignment.  E1 op= E2 is E1 = E1 op (E2) with E1 evaluated
 // once, 6.5.17.3p4: the operation is computed in the common type of the
-// usual arithmetic conversions, or in the promoted left type for a
-// shift, 6.5.8p3, so the right operand goes to that type here, a shift
-// count included, as in the shift production.  The emitter takes the
-// loaded left operand into it and the result back to the left type.  A
-// pointer takes += and -= only, 6.5.17.3p1, computed in the pointer's
-// type with the right operand widened as for p + n.
+// usual arithmetic conversions, so the right operand goes to that type
+// here, or in the promoted left type for a shift, 6.5.8p3, where the
+// count is promoted on its own, as in the shift production.  The
+// emitter takes the loaded left operand into it and the result back to
+// the left type.  A pointer takes += and -= only, 6.5.17.3p1, computed
+// in the pointer's type with the right operand widened as for p + n.
 expr_t
 assignment_expression(parser_t &p)
 {
@@ -1993,12 +1992,14 @@ assignment_expression(parser_t &p)
         rhs = widened_index(std::move(rhs));
     }
     else {
-        if (compound == binary_op_t::shl || compound == binary_op_t::shr)
+        if (compound == binary_op_t::shl || compound == binary_op_t::shr) {
             common = promoted(t);
-        else
+            rhs = promote(std::move(rhs));
+        }
+        else {
             common = common_type(t, rhs.type);
-
-        rhs = convert_to(std::move(rhs), common);
+            rhs = convert_to(std::move(rhs), common);
+        }
     }
 
     return expr_t { t, assign_t { compound, common, box(std::move(lhs)),
