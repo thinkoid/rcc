@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include "error.hh"
 #include "type.hh"
 
 #include <deque>
@@ -22,9 +23,13 @@ namespace rcc {
 // A declared name.  The unit owns every symbol in a deque, so a
 // pointer to one is stable for the life of the unit.  The IR name is
 // the emitter's business and is not kept here.  A local or parameter
-// declared register has no slot: its value is an SSA name, so & on it
-// is refused (6.5.4.2p1) and an array so declared is not yet
-// (6.3.2.1p3).
+// declared register has no slot: its value is an SSA name or a
+// machine register.  declared_register is the keyword as written: & on
+// such an object is refused whether or not it got a register
+// (6.5.4.2p1), and an array so declared is not yet (6.3.2.1p3).
+// in_register is the parser's assignment: a register declaration met
+// with five register variables live is an ordinary local, with a
+// warning.
 enum class storage_t { local, parameter, global, function };
 
 struct symbol_t
@@ -32,6 +37,7 @@ struct symbol_t
     std::string name;
     type_t type;
     storage_t storage;
+    bool declared_register;
     bool in_register;
 };
 
@@ -286,10 +292,13 @@ struct function_decl_t
     std::optional< block_t > body;
 };
 
+// The warnings in the order the parser met them; the unit compiles
+// whatever they say.
 struct unit_t
 {
     std::deque< symbol_t > symbols;
     std::vector< function_decl_t > functions;
+    std::vector< warning_t > warnings;
 };
 
 } // namespace rcc

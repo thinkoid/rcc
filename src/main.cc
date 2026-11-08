@@ -83,7 +83,8 @@ const char *const llc_flags[] = {
     "-no-stack-coloring",               // one slot per local, never shared
 };
 
-constexpr const char *usage = "usage: rcc [-native] [-S|-c] [-o out] file.c";
+constexpr const char *usage =
+    "usage: rcc [-native] [-w] [-S|-c] [-o out] file.c";
 
 // The last thing the driver makes: the IR, an object, or an executable.
 // Under -native, the first is the assembly.
@@ -93,6 +94,7 @@ struct options_t
 {
     stage_t stage = stage_t::executable;
     bool native = false;
+    bool warnings = true;
     std::string out;
     std::string file;
 };
@@ -146,6 +148,8 @@ options_from(int argc, char **argv)
             to_ir = true;
         else if (arg == "-native")
             opts.native = true;
+        else if (arg == "-w")
+            opts.warnings = false;
         else if (arg == "-c")
             to_object = true;
         else if (arg == "-o" && i + 1 < argc)
@@ -389,12 +393,18 @@ private:
     std::string m_path;
 };
 
-// The one diagnostic, in cc's format.
+// A diagnostic in cc's format, an error or a warning.
+void
+report(const location_t &where, std::string_view kind, std::string_view what)
+{
+    std::cerr << where.file << ':' << where.line << ':' << where.column << ": "
+              << kind << ": " << what << '\n';
+}
+
 void
 report(const error_t &e)
 {
-    std::cerr << e.where.file << ':' << e.where.line << ':' << e.where.column
-              << ": error: " << e.what << '\n';
+    report(e.where, "error", e.what);
 }
 
 // Runs llc on the IR file with the literal flag set, writing the
@@ -447,9 +457,10 @@ assemble_native(const options_t &opts, std::string_view text)
 
 // The pipeline: preprocess, tokenize, parse, emit, then the IR file or
 // llc and clang; under -native, generate, then the assembly file or
-// clang.  Returns rcc's exit status.  An error_t names its file by a
-// view into the preprocessed text, so it is reported in this frame,
-// while the text is alive.
+// clang.  Returns rcc's exit status, which no warning changes; -w
+// silences the warnings.  A diagnostic names its file by a view into
+// the preprocessed text, so it is reported in this frame, while the
+// text is alive.
 int
 drive(const options_t &opts)
 {
@@ -461,6 +472,10 @@ drive(const options_t &opts)
     try {
         const auto tokens = tokenize(pp.text, opts.file);
         const auto unit = parse(tokens);
+        if (opts.warnings)
+            for (const auto &w : unit.warnings)
+                report(w.where, "warning", w.what);
+
         if (opts.native)
             generate(unit, opts.file, ir);
         else

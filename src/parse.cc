@@ -936,10 +936,32 @@ lookup(const parser_t &p, std::string_view name)
     return nullptr;
 }
 
+// The registers a function's register variables live in, the five
+// callee-saved ones of docs/backend.md chapter 4.
+constexpr int register_variables = 5;
+
+// The register variables live at this point of the function: those of
+// the scopes open, the parameters' among them.  A scope's variables
+// leave the count when the scope is popped.
+int
+live_registers(const parser_t &p)
+{
+    int live = 0;
+    for (const auto &scope : p.scopes)
+        for (const auto &[name, sym] : scope)
+            if (sym->in_register)
+                ++live;
+
+    return live;
+}
+
 // A new object in the innermost scope.  Without linkage a name is
 // declared once per scope (6.7.1p4); an inner scope may shadow it.  The
 // map's key views the symbol's own name, which the deque keeps in
-// place.
+// place.  A register declaration met with five register variables live
+// declares an ordinary object, with a warning: the extent to which the
+// suggestion is effective is implementation-defined, 6.7.2p12, so the
+// program is conforming and compiles.
 const symbol_t *
 declare(parser_t &p,
         const token_t &name,
@@ -951,8 +973,18 @@ declare(parser_t &p,
     if (scope.contains(name.text))
         fail(name, "redefinition of " + quoted(name.text));
 
-    const symbol_t &sym = p.unit.symbols.emplace_back(symbol_t {
-        std::string(name.text), std::move(t), storage, in_register });
+    const bool declared_register = in_register;
+    if (in_register && live_registers(p) == register_variables) {
+        p.unit.warnings.push_back(
+            { name.where, "register variable " + quoted(name.text) +
+                              " in a stack slot: the five registers are "
+                              "taken" });
+        in_register = false;
+    }
+
+    const symbol_t &sym = p.unit.symbols.emplace_back(
+        symbol_t { std::string(name.text), std::move(t), storage,
+                   declared_register, in_register });
     scope.emplace(sym.name, &sym);
 
     return &sym;
@@ -1217,7 +1249,7 @@ declare_function(parser_t &p, const declarator_t &d)
     }
 
     const symbol_t &sym = p.unit.symbols.emplace_back(
-        symbol_t { std::string(name), t, storage_t::function, false });
+        symbol_t { std::string(name), t, storage_t::function, false, false });
     file_scope.emplace(sym.name, &sym);
     p.unit.functions.push_back(function_decl_t { &sym, { }, std::nullopt });
 
@@ -2292,9 +2324,10 @@ unary_expression(parser_t &p)
         if (!is_lvalue(arg))
             fail(op, "cannot take the address of an rvalue");
 
-        // 6.5.4.2p1: not an object declared register, which has no
-        // address
-        if (is< name_t >(arg) && as< name_t >(arg).sym->in_register)
+        // 6.5.4.2p1: not an object declared register, whether or not it
+        // got a register; its footnote says addressable storage does not
+        // make the address computable
+        if (is< name_t >(arg) && as< name_t >(arg).sym->declared_register)
             fail(op, "cannot take the address of " +
                          quoted(as< name_t >(arg).sym->name) +
                          ", declared register");
