@@ -255,7 +255,10 @@ A function's frame holds, from high addresses to low:
    from the slot, as under the LLVM pipeline ("a parameter is written
    at entry"). A parameter that arrived on the stack has its slot
    where the caller put it, above the return address, at a positive
-   displacement off `rbp`.
+   displacement off `rbp`. A local array's slot is its size at its
+   element's alignment, its displacement the array's lowest address;
+   the ABI's alignment of 16 for an array of 16 bytes or more is not
+   applied, since nothing rcc writes relies on it.
 5. One slot per argument of each call the function makes, the hidden
    locals of chapter 8, allocated as the call is met.
 6. The spill area for expression values when the nine registers are
@@ -266,13 +269,15 @@ The slots are assigned as the generator meets them, each at the next
 offset below the last; their total is the frame's size, written
 into the prologue's `sub $N,%rsp` after the body is generated and
 rounded up so that `rsp` is a multiple of 16 at every `call` the
-function makes. A function that makes no call puts its slots in the
-red zone and writes no `sub`: the ABI reserves the 128 bytes below
-`rsp` for exactly this (`design-calls.md` chapter 5), and every leaf
-pin of `tests/cost` shows the shape. The prologue is `push %rbp; mov
-%rsp,%rbp`, then the pushes of 3, then the `sub` if any; the one
-epilogue at `.Lret` pops the registers of 3 and ends in `leave;
-.cfi_def_cfa %rsp, 8; ret` (`leave` is `mov %rbp,%rsp; pop %rbp`).
+function makes. A function that makes no call puts a frame of up to
+128 bytes in the red zone and writes no `sub`: the ABI reserves the
+128 bytes below `rsp` for exactly this (`design-calls.md` chapter
+5), and every leaf pin of `tests/cost` shows the shape. A leaf with
+a larger frame writes the `sub`, as any other function does. The
+prologue is `push %rbp; mov %rsp,%rbp`, then the pushes of 3, then
+the `sub` if any; the one epilogue at `.Lret` pops the registers of
+3 and ends in `leave; .cfi_def_cfa %rsp, 8; ret` (`leave` is `mov
+%rbp,%rsp; pop %rbp`).
 The prologue carries `.cfi_startproc`, `.cfi_def_cfa_offset 16`,
 `.cfi_offset %rbp, -16` and `.cfi_def_cfa_register %rbp`, and the
 function `.cfi_endproc`, so that an unwinder has the table and a
@@ -341,15 +346,17 @@ promotion casts before any operator sees them, as today.
 | `x = e` | `mov L, slot` or `mov L, reg`; the value stays in `L` | a `char` store is `movb %Lb` |
 | `x op= e` | the load row, the op row, the store row | |
 | `++x`, `x++`, `--x`, `x--` | the load, `add $1` or `sub $1`, the store; the post forms keep the old value in another register | `add $size` for a pointer |
-| `(T) a` | `movslq L, L64` for `int` to `long`, `movsbl` or `movzbl` from `Lb` for `char` to `int`, each only when `L` is not already valid to the new width (the width rule below); nothing for `long` to `int` (the 32-bit name is the value); nothing between pointer types | G2: truncation is reading the low bits |
+| `(T) a` | `movslq L, L64` for `int` to `long`, `movsbl` or `movzbl` from `Lb` for `char` to `int`, each only when `L` is not already valid to the new width (the width rule below); nothing for `long` to `int` (the 32-bit name is the value); nothing between pointer types; an integer to a pointer as to `unsigned long`, so `movslq` for an `int` (6.3.2.3p5); nothing for a pointer to `long` or `int` | G2: truncation is reading the low bits |
 | `&x` | `lea slot(%rbp), L` or `lea sym(%rip), L` | refused on a `register` variable, 6.5.4.2p1 |
-| `*p` | `mov (L), L` | G8, G9, G10, G11: one `mov`, any address |
-| `p[i]` | `movslq` of the index; `mov (L,R,s), L` for a size of 1, 2, 4 or 8 | one instruction, the machine's addressing form; a constant index is a displacement |
-| `p + n`, `p - n` | `movslq` of `n`; `lea (L,R,s), L` or `imul $size, R; add R, L` | G6; `sub` for `p - n` |
-| `p - q` | `sub R, L`; `cqto`; `idiv` by the size | G6: a division, not a shift, since any two pointers |
+| `*p` | `mov (L), L` at the pointee's width and extension: `movsbl`, `movzbl`, `movswl`, `movzwl`, `movl`, `movq` | G8, G9, G10, G11: one `mov`, any address |
+| `p[i]`, `a[i]` | `mov (L,R,s), L` for a size of 1, 2, 4 or 8, the pointer in `L` (`lea slot(%rbp), L` for a local array), the index in `R`; a constant index is the displacement `c*s(L)` | one instruction, the machine's addressing form; the index is 64 bits by the parser's cast, written by the width rule: `movslq` for an `int`, nothing for an `unsigned` or a `long` |
+| `p[i]` of another size | the `p + n` row, and the sum is the base `L` of the access | only an array has such a size: `m[i][j]` on `int m[2][3]` is `imul $12`, `add`, then `(L,R,4)` |
+| `&p[i]`, `&*p` | `lea (L,R,s), L`; `&*p` is `p`, no instruction | one instruction, the addressing form, where 6.5.4.2p3's "as if `+`" would spell the same address as the `p + n` row |
+| `p + n`, `p - n` | `+`: `add R, L` for a size of 1, `lea (L,R,s), L` for 2, 4 or 8, `imul $s, R, R; add R, L` for any other; `-`: `sub R, L` for 1, `imul $s, R, R; sub R, L` for any other; a constant `n` is the immediate, `add $c*s, L` or `sub $c*s, L` | G6; the index widened as for `p[i]` |
+| `p - q` | `sub R, L`; for a size other than 1, `mov $s, R; cqto; idiv R`, the result from `rax` | G6: a division, not a shift, since any two pointers; the size is held in a register, since `idiv` takes no immediate; a size of 1 is the `sub` alone |
+| `a`, `"abc"`, `m[i]` as pointers | `lea slot(%rbp), L`; `lea .Ls<n>(%rip), L`; an element of array type, its address by the `&p[i]` row, or by the `p + n` row for a size that is not a scale (12 bytes: `imul $12`) | 6.3.2.1p3: an array decays to its address; a literal's bytes in `.data`, chapter 10 |
 | `f(a, b)` | chapter 8 | |
 | `sizeof` | an immediate | folded in the parser |
-| `"abc"` | `lea .Ls3(%rip), L` | the bytes in `.data`, chapter 10 |
 
 A `char` or `short` lvalue is loaded with the extending `mov` of its
 signedness and stored with the narrow `mov`; that is the whole of
@@ -366,8 +373,9 @@ signedness. The instruction that wrote the register sets it:
   at 32 bits is valid to 64 and an `int` to 32;
 - a narrowing cast writes nothing and leaves the bits above its
   width stale;
-- a call's result is valid to 32: the callee extends a narrow
-  result, and above 32 bits the convention promises nothing.
+- a call's result is valid to 32, or to 64 for a `long` or pointer
+  result, since the callee extends a narrow result and a 64-bit
+  result is written whole.
 
 A widening cast writes its `movs` or `movz` only when the value is
 not already valid to the new width: `(int) c` after the load of `c`
@@ -403,7 +411,7 @@ constant expression is the spelling of a number, which ISO C says
 "can be evaluated during translation" (6.6p2) and which Ritchie's
 `c0` evaluated. So `-1` is the immediate `$-1`, `p[-1]` is the
 displacement `-4(L)`, and `int a[96 * 96]` has 9216 elements. This
-closes findings 3 and 4 of `findings.md`, and the evaluator is not
+closes findings 4 and 5 of `findings.md`, and the evaluator is not
 an addition: the size of an array (6.7.7.3p4), the label of a `case`
 (6.8.5.3p3) and every expression in a static initializer (6.7.11p5)
 require one, and the last of these cannot compile without it, since
@@ -573,7 +581,7 @@ draft of those clauses.
 | G3 shifts | `shl`, `sar`, `shr` by `cl` or an immediate: the instruction masks the count to the width |
 | G4 division is the instruction's | `idiv`, `div`: `#DE` on a zero divisor and on `INT_MIN / -1`, by the machine |
 | G5 an uninitialized object holds a value | a slot's bytes, or a register's content, unwritten until the program writes; nothing in the generator touches either |
-| G6 pointer arithmetic is address arithmetic | `lea`, `add`, `sub` on 64-bit registers; `p - q` is `sub`, `cqto`, `idiv` |
+| G6 pointer arithmetic is address arithmetic | `lea`, `add`, `sub` on 64-bit registers, `imul` by the size; `p - q` is `sub`, `cqto`, `idiv` |
 | G7 pointer comparison is address comparison | `cmp` of 64-bit registers, the unsigned `jcc` and `setcc` |
 | G8 a load reads the bytes at the address | `mov (L), L`, whatever computed `L` |
 | G9 null access at address 0 | the same `mov`; the machine faults or reads page zero |
@@ -596,10 +604,19 @@ A translation unit's output is one assembly file with a `.text`
 section for its functions and a `.data` section for its objects
 with static storage. A string literal is a labeled array of bytes in
 `.data`, one label per literal written, never merged, never in
-`.rodata`: G17. Its address is `lea .Ls3(%rip), L`. A static
-variable is a labeled area in `.data` or `.bss` with its initializer
-or its zeros, reached the same way. A function is `.globl` and
-`.type f, @function` unless `static`, and ends with `.size`.
+`.rodata`: G17. The label is `.Ls<n>`, numbered from 0 in the order
+the literals are met, by a counter of its own in each file; two equal
+literals written twice are two labels. The bytes are one `.string`
+directive, which appends the terminating zero (6.4.5p6): printable
+ASCII as itself with `"` and `\` escaped, `\n`, `\t` and `\r` as the C
+escapes, and every other byte as a three-digit octal escape. All the
+literals of a file are one `.data` block after its last function,
+before the note section, with no alignment directive, since a `char`
+array aligns to 1. A literal's address is `lea .Ls<n>(%rip), L`. A
+static variable is a labeled area in `.data` or `.bss` with its
+initializer or its zeros, reached the same way. A function is
+`.globl` and `.type f, @function` unless `static`, and ends with
+`.size`.
 
 Every address is PC-relative (`sym(%rip)`) and every external call
 goes through the PLT, so the object links into a position-independent
@@ -642,10 +659,11 @@ the parser, 3300 of the tree's 5700 lines, are untouched.
   test-native` runs; the LLVM pins keep their places, and `make
   test` runs them. At retirement the native pins move up a
   directory and replace them.
-- **The ABI**: a corpus program that calls into libc (`puts`,
-  `strlen`, `printf` with `al` set) and one that is called from a
-  `clang`-compiled `main`, exit status compared. New, and the first
-  thing to pass.
+- **The ABI**: `g12-block-slot` is the corpus program that calls
+  into libc, `printf` with `al` set, and it passes under `--native`.
+  A `clang`-compiled `main` calling rcc code, and an rcc `main`
+  calling `clang`-compiled code, were run as probes outside the tree
+  in both slices, with the statuses of the all-`clang` build.
 - **The measurement**, `tests/bench`: redone. The tuned programs
   declare more `register` variables than five in `main` (matmul ten,
   collatz seven, sieve six, sort five); the sixth and later take

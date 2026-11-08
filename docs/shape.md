@@ -165,8 +165,10 @@ nothing left out. The rules:
   branch; the result joins in a `phi`.
 - Every `icmp` is written by one helper: a comparison, a condition
   tested against zero, and `!`. When its two operands have one name,
-  a register variable read twice, two equal constants, or the
+  a register variable read twice, two equal pointer constants, or the
   constant 0 or `null` tested, it freezes the right operand first.
+  Two integer constants never reach it, since the parser folds their
+  comparison.
   FastISel folds a compare of one value with itself to its answer;
   the `freeze` makes the operands two values, and the compare is
   emitted.
@@ -275,6 +277,11 @@ and `-=` on pointers, `p + n`, `p - q` and pointer comparison,
 adjacent concatenation, and `const` accepted and dropped, since the
 type is the machine's view. The oracle stays on exit statuses: a
 string probe returns a byte of the string.
+
+c1 is written in the same slices. Its first two have landed: under
+`-native` every program of the corpus and of the cost corpus builds
+and matches its pin, but `g5-register-undef` and the four `register-`
+cost programs, which wait for the third slice, `register` variables.
 
 ## 11. Not yet
 

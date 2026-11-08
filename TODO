@@ -24,16 +24,6 @@ it has to be fought. The entries below are the slices, in order; the
 chapters after this one hold the LLVM-era queue, and each says what
 leaves with the pipeline.
 
-** TODO Slice 2 of the back end: pointers and strings
-
-Pointers and =void *=, arrays as locals and parameters, subscripts as
-scaled-index addressing, =&= as =lea=, pointer arithmetic and
-comparison, casts, =sizeof=, string and character literals in =.data=
-(G17), rip-relative addressing.
-
-Check: the pointer programs of the corpus and the pointer rows of the
-cost corpus, as for slice 1.
-
 ** TODO Slice 3 of the back end: register variables
 
 =register= locals and parameters in the callee-saved registers, in
@@ -43,8 +33,8 @@ restored in the prologue and epilogue. No slot, no =phi=, no join:
 the variable is its register. G5 for a register variable is the
 register's content, unwritten until the first write.
 
-Check: =register-loop=, =register-compare=, =register-undef= and
-=g5-register-undef= under the new back end.
+Check: =register-loop=, =register-compare=, =register-parameter=,
+=register-undef= and =g5-register-undef= under the new back end.
 
 ** TODO Retire the LLVM pipeline
 
@@ -220,21 +210,69 @@ program.
 
 Check: the row and its pin.
 
+** TODO The flag tables name two rows that no longer witness their flag
+
+=llvm.md= 3.5 and =cost.md= chapter 5 map each =llc= flag to the cost
+rows whose pins change when the flag is dropped. They name =invariant=
+under =-disable-machine-licm= and =twice= under
+=-disable-machine-cse=. The parser now folds =12 * 34= to 408, so
+neither program holds a constant instruction for machine LICM to move
+out of the loop or for machine CSE to merge; dropping either flag
+leaves both pins as they are (=llc= 23.1.4, probed outside the tree).
+Each flag keeps one witness: =constant-in-loop='s =movabs= for LICM,
+and for CSE =zero-test='s =never()=, whose =if (0)= is a =cmp= of two
+registers each cleared by an =xor=. The two programs' header comments
+already say they have no witness; the tables do not. This leaves with
+the pipeline.
+
+Fix: the two tables drop =invariant= and =twice=, or each program
+regains a witness with a constant the selector must hold in a
+register: a constant divisor, since =idiv= takes no immediate.
+
+Check: dropping each flag changes every row the two tables name for
+it.
+
+** TODO The LLVM-era documents describe the unfolded constants
+
+The parser folds integer constant expressions, so a negative constant
+is an immediate, an array size is any integer constant expression,
+and a comparison or a =!= of integer constants is a constant. Three
+documents of the LLVM pipeline still describe the parser before the
+evaluator, and leave or are rewritten with the pipeline:
+
+- =cost.md= chapter 3: the =a < b= row freezes "a constant" among
+  the operands of one name, but the parser folds a comparison of two
+  integer constants, so only two pointer constants, =(int *) 0 ==
+  (int *) 0=, still reach the row; the implicit-conversion row says
+  =(long) 2= is the =(T) a= row, where it is now a =long= constant.
+- =cost.md= chapter 4, the compare fold: "=if (0)= and =!0= compare
+  0 with a frozen 0"; =!0= is now the constant 1, as =zero-test=
+  pins.
+- =findings.md= chapter 0: a negative constant "is computed at run
+  time", and an array size "must be a single integer token".
+- =findings.md= 4.2: the IR =sub i32 0, 1= and the listings'
+  =xor=, =sub=, =cltq= are the parser's old output.
+- =findings.md= 4.3: the constant row "is true of =2= and false of
+  =-1="; it is now true of both.
+- =findings.md= 4.4: "the operators of 6.6p8", where 6.6p3 restricts
+  the operators and p8 lists the operands; and the evaluator
+  "diagnoses [overflow] rather than wrapping", where it wraps and
+  refuses the wrapped value only where 6.6p4 governs, the array size.
+- =findings.md= 5.2: the message "not yet: array size other than an
+  integer constant", which the parser no longer writes.
+- =findings.md= chapter 7: "The parser does no constant evaluation".
+- =findings.md= chapter 8: findings 4 and 5 "land together with the
+  evaluator", which has landed.
+- =llvm.md= 5.4: "=!0= to a constant", a fold of an =icmp= the
+  emitter no longer writes for =!0=.
+
+Fix: at retirement, when =findings.md= closes with what became of its
+five and =cost.md='s chapters 2, 4 and 5 leave; =findings.md= 4.4's
+citation is corrected then too.
+
+Check: no sentence of the three documents names an unfolded constant.
+
 * Tests
-
-** TODO The variadic =al= path is unexercised
-
-c1 writes =movl $0, %eax= before the =call= of a variadic function,
-the upper bound of the vector registers the arguments use
-(=backend.md= 3.2 and chapter 8). Nothing runs it: no corpus program
-calls a variadic function under =-native=, and no cost program does.
-
-Fix: an integer-only probe, a =clang=-compiled =int sum(int n, ...)=
-called from an rcc =main=, or the =printf= program of =backend.md=
-chapter 12 once strings exist, in slice 2.
-
-Check: the probe's exit status under =rcc -native= equals that of the
-all-=clang= build.
 
 ** TODO The oracle's time limit cannot tell 124 from a timeout
 
@@ -375,6 +413,48 @@ A probe says which headers need what.
 
 Check: `#include <stdio.h>` followed by an empty `main` parses.
 
+** TODO A parameter's array size cannot name an earlier parameter
+
+=int f(int n, int a[n])= fails with "'n' undeclared". Before the
+evaluator, any size but one integer token was a not-yet; the size is
+now parsed as an expression, and the name in it is looked up. The
+parser declares a definition's parameters only after the whole
+declarator, in =function_definition=, and a prototype's never, so no
+parameter is in scope inside the list. The program is valid C: =n='s
+scope begins just after its declarator (6.2.1p7), and a definition's
+parameter list has block scope (6.2.1p4). The size changes nothing:
+6.7.7.4p6 adjusts the parameter to a pointer, and at prototype scope
+6.7.7.3p5 treats a size that is not an integer constant expression as
+=*=.
+
+Fix: a scope opened at the parameter list, each parameter declared as
+its declarator completes, which a definition keeps as its body's
+scope; a parameter's size that is not an integer constant expression
+taken as =*=. In a definition this skips the evaluation of the size
+that 6.7.7.3p5 asks for, which only a size with a side effect shows.
+
+Check: =int f(int n, int a[n]) { return a[0]; }= compiles, and
+under =-native= to the listing of =int f(int n, int *a)=; =int g(int
+n) { int a[n]; }= is still the variable-length not-yet.
+
+** TODO A =(void *) 0= arm makes =?:= a =void *=
+
+=c ? (void *) 0 : p= with =p= an =int *= has type =void *= in the
+tree, so =*(c ? (void *) 0 : p)= fails with "indirection through a
+pointer to void". 6.5.16p7 gives the result the type of the other
+operand when one operand is a null pointer constant, and =(void *) 0=
+is one (6.3.2.3p3); the result is an =int *=. =common_pointer()=
+asks whether an operand is a null pointer constant only when it is
+not a pointer. Two pointers of different types thus meet at =void *=
+whenever one is a =void *=, which is p7's rule for a pointer to void
+that is not a null pointer constant.
+
+Fix: in =common_pointer()=, a null pointer constant takes the other
+operand's type before the rule for =void *= applies.
+
+Check: =int f(int c, int *p) { return *(c ? (void *) 0 : p); }=
+compiles; =c ? v : p= with =v= a =void *= variable is still =void *=.
+
 ** TODO The operand of =!= is not promoted
 
 =!E= is defined as =(0==E)= (6.5.4.3p5), and the equality operator
@@ -389,6 +469,22 @@ then writes =cmpl=.
 
 Check: the listing of =!c= on a =char= under =-native= is the load
 =movsbl= and =cmpl $0=.
+
+** TODO A shift count is widened to the shifted operand's type
+
+=shift()= converts the promoted count to the type of the promoted
+left operand, because an IR shift takes one type for both. 6.5.8p3
+promotes each operand on its own and asks nothing more. Under
+=-native= the cast is an instruction: in =g6-ptr-wrap=, =ones >> (argc
++ 2)= on an =unsigned long= writes =movslq %ecx, %rcx= before =shrq
+%cl, %rax=, and the shift reads =cl= alone. The row of =backend.md=
+6.3 for =a << b= names no extension of the count.
+
+Fix: at retirement, the count keeps its promoted type, and c1 moves it
+to =rcx= at its own width; until then the extension is the cost of the
+IR's shift, and the 6.3 row says so.
+
+Check: =g6-ptr-wrap='s native pin has no =movslq= before =shrq=.
 
 * Lexer
 
