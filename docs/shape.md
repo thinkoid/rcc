@@ -235,6 +235,7 @@ compile database, and three lines of make, a shell script and
     docs/findings.md    what the measurement found, explained from the ground up
     docs/backend.md     the design of rcc's own back end, x86-64 first
     docs/llvm.md        the LLVM sprint: the literal pipeline, where its judgment showed, why it left
+    docs/design-calls.md  the back end's open calls, weighed one by one
     src/lex.hh .cc    tokens and tokenize()
     src/type.hh .cc   type_t, constructors, equality
     src/ast.hh        the tree
