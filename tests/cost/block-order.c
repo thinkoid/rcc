@@ -1,9 +1,9 @@
-/* Chapter 1, no reordering; chapter 2, -disable-block-placement.
-   Blocks come out in the written order.  The then-block returns from
-   inside the loop, so a layout pass takes it for the unlikely exit
-   and moves it after the loop.  The listing must show the je past the
-   then-block, the mov of 1 and the ret, and only then the increment
-   and the jump back. */
+/* cost.md chapter 1, no reordering: blocks come out in the written
+   order.  The then-block returns from inside the loop.  The listing
+   must show the test i < n at the top and its jge to the block after
+   the loop, the compare of i with a and its jne past the then-block,
+   the then-block's movl $1, %eax and jmp to the epilogue label, and
+   only then the increment and the jmp back to the test. */
 int block_order(int a, int n)
 {
     int i = 0;

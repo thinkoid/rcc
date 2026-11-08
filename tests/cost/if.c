@@ -1,8 +1,8 @@
-/* Chapter 3, if: the condition compared with 0, a conditional jump
-   past the then-block, an unconditional jump past the else-block.
-   The listing must show the cmp and setl of a < b, its value compared
-   with 0, the je, the then-block's store, the jmp over the
-   else-block, and the else-block's store. */
+/* backend.md 7.2, if, and 7.1, jump code: the condition is a compare
+   and a jump, with no value.  The listing must show a < b as
+   cmpl %ecx, %eax and a jge past the then-block, no setl, the
+   then-block's store of a to x's slot and its jmp over the
+   else-block, and the else-block's store of b. */
 int choose(int a, int b)
 {
     int x;

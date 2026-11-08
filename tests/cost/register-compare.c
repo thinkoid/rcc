@@ -1,8 +1,9 @@
-/* Chapter 4, a compare of one value with itself: x == x on a register
-   variable, one SSA name at both reads.  FastISel folds such a compare
-   to its answer; the emitter freezes the right operand, so the two
-   operands are two values.  The listing must show a cmp and a sete,
-   not a constant, and nothing for the freeze. */
+/* backend.md chapter 4, a read of a register variable is the register
+   as an operand: x == x on a register variable.  The listing must
+   show rbx pushed in the prologue and popped in the epilogue, n, an
+   ordinary parameter, stored to -12(%rbp) below the push, loaded and
+   moved into ebx, then cmpl %ebx, %ebx with the register as both
+   operands, sete and movzbl: a compare, not its answer. */
 int same(int n)
 {
     register int x = n;

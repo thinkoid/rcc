@@ -1,7 +1,8 @@
-/* Chapter 3, p + n; chapter 4, a stride that is not a power of two.
-   m[i] on int m[2][3] is a row of 12 bytes, taken as a pointer: the
-   listing must show the index widened with cltq, scaled by
-   imul $0xc and added to the array's address from lea. */
+/* backend.md 6.3, m[i] as a pointer, of a size that is not a scale.
+   m[i] on int m[2][3] is a row of 12 bytes, taken as a pointer.  The
+   listing must show the array's address from leaq -28(%rbp), %rax,
+   the index widened with movslq %ecx, %rcx, scaled by
+   imulq $12, %rcx, %rcx and added with addq %rcx, %rax. */
 int *row(int i)
 {
     int m[2][3];

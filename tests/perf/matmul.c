@@ -6,9 +6,8 @@
    and folds c into a checksum.  The exit status is the checksum,
    folded to a byte.  This is the plain version: every variable is a
    slot local, and every access computes its index from i, j, k and n.
-   SIZE is n * n written out, since rcc takes an array size only as
-   one integer constant.  matmul-tuned.c is the same program written
-   for a literal compiler. */
+   SIZE is n * n written out.  matmul-tuned.c is the same program
+   written for a literal compiler. */
 #define SIZE 9216
 #define REPS 1200
 

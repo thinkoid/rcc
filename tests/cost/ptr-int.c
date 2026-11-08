@@ -1,8 +1,8 @@
-/* Chapter 3, pointer casts: ptrtoint and inttoptr at 64 bits are no
-   instruction, an int is widened first.  The listing must show
-   to_long() and from_long() as a mov to the slot and a mov back,
-   nothing between; and from_int() widening the int with cltq, the
-   sext of the int to 64 bits before the inttoptr. */
+/* backend.md 6.3, (T) a between a pointer and an integer: nothing at
+   64 bits, and an int widened first.  The listing must show to_long()
+   and from_long() as rdi stored to the slot with movq and loaded back
+   into rax, nothing between; and from_int() widening the int with
+   movslq %eax, %rax. */
 long to_long(int *p)
 {
     return (long) p;

@@ -1,6 +1,7 @@
-/* Chapter 3, a + b and a - b: add, sub, or lea for a three-operand
-   add.  The listing must show one add or lea in add() and one sub in
-   sub(), and nothing else between the loads and the return. */
+/* backend.md 6.3, a + b and a - b: add and sub.  The listing must
+   show a loaded into eax and b into ecx, then addl %ecx, %eax in
+   add() and subl %ecx, %eax in sub(), and nothing else between the
+   loads and the jmp to the epilogue label. */
 int add(int a, int b)
 {
     return a + b;
