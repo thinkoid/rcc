@@ -1,24 +1,39 @@
-Disassembly of section .text:
-
-<constant_in_loop>:
-	mov    %rdi,-0x18(%rsp)
-	mov    %esi,-0xc(%rsp)
-	movl   $0x0,-0x1c(%rsp)
-	mov    -0x1c(%rsp),%eax
-	mov    -0xc(%rsp),%ecx
-	cmp    %ecx,%eax
-	setl   %al
-	and    $0x1,%al
-	movzbl %al,%eax
-	cmp    $0x0,%eax
-	je     <constant_in_loop+0x4c>
-	mov    -0x18(%rsp),%rax
-	movabs $0x123456789abcdef,%rcx
-	add    %rax,%rcx
-	mov    %rcx,-0x18(%rsp)
-	mov    -0x1c(%rsp),%eax
-	add    $0x1,%eax
-	mov    %eax,-0x1c(%rsp)
-	jmp    <constant_in_loop+0x11>
-	mov    -0x18(%rsp),%rax
+	.file	"constant-in-loop.c"
+	.text
+	.globl	constant_in_loop
+	.type	constant_in_loop, @function
+constant_in_loop:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movl	$0, %eax
+	movl	%eax, -16(%rbp)
+.L2:
+	movl	-16(%rbp), %eax
+	movl	-12(%rbp), %ecx
+	cmpl	%ecx, %eax
+	jge	.L4
+	movq	-8(%rbp), %rax
+	movabsq	$81985529216486895, %rcx
+	addq	%rcx, %rax
+	movq	%rax, -8(%rbp)
+.L3:
+	movl	-16(%rbp), %eax
+	addl	$1, %eax
+	movl	%eax, -16(%rbp)
+	jmp	.L2
+.L4:
+	movq	-8(%rbp), %rax
+	jmp	.L1
+.L1:
+	leave
+	.cfi_def_cfa %rsp, 8
 	ret
+	.cfi_endproc
+	.size	constant_in_loop, .-constant_in_loop
+	.section	.note.GNU-stack,"",@progbits

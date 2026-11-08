@@ -7,7 +7,7 @@
 // slices: integers, control and calls; pointers, arrays and string
 // literals; register variables.  A construct of a later slice throws
 // logic_error("c1: not yet: ..."), and a tree the parser cannot make
-// throws logic_error("c1: ..."), as emit.cc does.
+// throws logic_error("c1: ...").
 
 #include "c1.hh"
 

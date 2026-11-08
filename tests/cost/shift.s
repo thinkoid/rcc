@@ -1,29 +1,66 @@
-Disassembly of section .text:
-
-<shl>:
-	mov    %edi,-0x8(%rsp)
-	mov    %esi,-0xc(%rsp)
-	mov    -0x8(%rsp),%eax
-	mov    -0xc(%rsp),%ecx
-	shl    %cl,%eax
+	.file	"shift.c"
+	.text
+	.globl	shl
+	.type	shl, @function
+shl:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	movl	-4(%rbp), %eax
+	movl	-8(%rbp), %ecx
+	shll	%cl, %eax
+	jmp	.L1
+.L1:
+	leave
+	.cfi_def_cfa %rsp, 8
 	ret
-	cs nopw 0x0(%rax,%rax,1)
-	nopl   (%rax)
-
-<sar>:
-	mov    %edi,-0x8(%rsp)
-	mov    %esi,-0xc(%rsp)
-	mov    -0x8(%rsp),%eax
-	mov    -0xc(%rsp),%ecx
-	sar    %cl,%eax
+	.cfi_endproc
+	.size	shl, .-shl
+	.globl	sar
+	.type	sar, @function
+sar:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	movl	-4(%rbp), %eax
+	movl	-8(%rbp), %ecx
+	sarl	%cl, %eax
+	jmp	.L2
+.L2:
+	leave
+	.cfi_def_cfa %rsp, 8
 	ret
-	cs nopw 0x0(%rax,%rax,1)
-	nopl   (%rax)
-
-<shr>:
-	mov    %edi,-0x8(%rsp)
-	mov    %esi,-0xc(%rsp)
-	mov    -0x8(%rsp),%eax
-	mov    -0xc(%rsp),%ecx
-	shr    %cl,%eax
+	.cfi_endproc
+	.size	sar, .-sar
+	.globl	shr
+	.type	shr, @function
+shr:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	movl	-4(%rbp), %eax
+	movl	-8(%rbp), %ecx
+	shrl	%cl, %eax
+	jmp	.L3
+.L3:
+	leave
+	.cfi_def_cfa %rsp, 8
 	ret
+	.cfi_endproc
+	.size	shr, .-shr
+	.section	.note.GNU-stack,"",@progbits

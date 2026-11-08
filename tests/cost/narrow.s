@@ -1,39 +1,73 @@
-Disassembly of section .text:
-
-<f>:
-	mov    %dil,-0x5(%rsp)
-	mov    %si,-0x4(%rsp)
-	movzbl -0x5(%rsp),%eax
-	movsbl %al,%eax
-	mov    $0x4,%ecx
+	.file	"narrow.c"
+	.text
+	.globl	f
+	.type	f, @function
+f:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movb	%dil, -1(%rbp)
+	movw	%si, -4(%rbp)
+	movsbl	-1(%rbp), %eax
+	movl	$4, %ecx
 	cltd
-	idiv   %ecx
-	movzwl -0x4(%rsp),%ecx
-	movswl %cx,%ecx
-	add    %eax,%ecx
-	movsbl %cl,%eax
+	idivl	%ecx
+	movswl	-4(%rbp), %ecx
+	addl	%ecx, %eax
+	movsbl	%al, %eax
+	jmp	.L1
+.L1:
+	leave
+	.cfi_def_cfa %rsp, 8
 	ret
-	nopl   0x0(%rax,%rax,1)
-
-<g>:
-	mov    %dil,-0x2(%rsp)
-	movzbl -0x2(%rsp),%eax
-	movzbl %al,%eax
-	add    $0x1,%eax
-	movzbl %al,%eax
+	.cfi_endproc
+	.size	f, .-f
+	.globl	g
+	.type	g, @function
+g:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movb	%dil, -1(%rbp)
+	movzbl	-1(%rbp), %eax
+	addl	$1, %eax
+	movzbl	%al, %eax
+	jmp	.L2
+.L2:
+	leave
+	.cfi_def_cfa %rsp, 8
 	ret
-	cs nopw 0x0(%rax,%rax,1)
-	xchg   %ax,%ax
-
-<h>:
-	push   %rax
-	mov    %edi,(%rsp)
-	mov    (%rsp),%eax
-	movsbl %al,%edi
-	mov    (%rsp),%eax
-	movswl %ax,%esi
-	call   <h+0x15>
-			R_X86_64_PLT32	f-0x4
-	movsbl %al,%eax
-	pop    %rcx
+	.cfi_endproc
+	.size	g, .-g
+	.globl	h
+	.type	h, @function
+h:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$16, %rsp
+	movl	%edi, -4(%rbp)
+	movl	-4(%rbp), %eax
+	movb	%al, -5(%rbp)
+	movl	-4(%rbp), %eax
+	movw	%ax, -8(%rbp)
+	movsbl	-5(%rbp), %edi
+	movswl	-8(%rbp), %esi
+	call	f@PLT
+	jmp	.L3
+.L3:
+	leave
+	.cfi_def_cfa %rsp, 8
 	ret
+	.cfi_endproc
+	.size	h, .-h
+	.section	.note.GNU-stack,"",@progbits

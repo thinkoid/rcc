@@ -1,12 +1,26 @@
-Disassembly of section .text:
-
-<gep>:
-	mov    %edi,-0x24(%rsp)
-	mov    -0x24(%rsp),%eax
-	cltq
-	lea    -0x18(%rsp),%rcx
-	shl    $0x2,%rax
-	add    %rcx,%rax
-	mov    %rax,-0x20(%rsp)
-	mov    -0x20(%rsp),%rax
+	.file	"gep.c"
+	.text
+	.globl	gep
+	.type	gep, @function
+gep:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	leaq	-20(%rbp), %rax
+	movl	-4(%rbp), %ecx
+	movslq	%ecx, %rcx
+	leaq	(%rax,%rcx,4), %rax
+	movq	%rax, -32(%rbp)
+	movq	-32(%rbp), %rax
+	jmp	.L1
+.L1:
+	leave
+	.cfi_def_cfa %rsp, 8
 	ret
+	.cfi_endproc
+	.size	gep, .-gep
+	.section	.note.GNU-stack,"",@progbits

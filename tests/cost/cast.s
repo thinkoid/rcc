@@ -1,33 +1,70 @@
-Disassembly of section .text:
-
-<signed_>:
-	mov    %edi,-0x14(%rsp)
-	mov    -0x14(%rsp),%eax
-	mov    %al,-0x19(%rsp)
-	movzbl -0x19(%rsp),%eax
-	movsbl %al,%eax
-	mov    %eax,-0x18(%rsp)
-	mov    -0x18(%rsp),%eax
-	cltq
-	mov    %rax,-0x10(%rsp)
-	mov    -0x10(%rsp),%rax
+	.file	"cast.c"
+	.text
+	.globl	signed_
+	.type	signed_, @function
+signed_:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	-4(%rbp), %eax
+	movb	%al, -5(%rbp)
+	movsbl	-5(%rbp), %eax
+	movl	%eax, -12(%rbp)
+	movl	-12(%rbp), %eax
+	movslq	%eax, %rax
+	movq	%rax, -24(%rbp)
+	movq	-24(%rbp), %rax
+	jmp	.L1
+.L1:
+	leave
+	.cfi_def_cfa %rsp, 8
 	ret
-	nopl   0x0(%rax)
-
-<unsigned_>:
-	mov    %edi,-0x8(%rsp)
-	mov    -0x8(%rsp),%eax
-	mov    %al,-0xd(%rsp)
-	movzbl -0xd(%rsp),%eax
-	movzbl %al,%eax
-	mov    %eax,-0xc(%rsp)
-	mov    -0xc(%rsp),%eax
+	.cfi_endproc
+	.size	signed_, .-signed_
+	.globl	unsigned_
+	.type	unsigned_, @function
+unsigned_:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	-4(%rbp), %eax
+	movb	%al, -5(%rbp)
+	movzbl	-5(%rbp), %eax
+	movl	%eax, -12(%rbp)
+	movl	-12(%rbp), %eax
+	jmp	.L2
+.L2:
+	leave
+	.cfi_def_cfa %rsp, 8
 	ret
-	nopl   (%rax)
-
-<same>:
-	mov    %edi,-0x8(%rsp)
-	mov    -0x8(%rsp),%eax
-	mov    %eax,-0xc(%rsp)
-	mov    -0xc(%rsp),%eax
+	.cfi_endproc
+	.size	unsigned_, .-unsigned_
+	.globl	same
+	.type	same, @function
+same:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	-4(%rbp), %eax
+	movl	%eax, -8(%rbp)
+	movl	-8(%rbp), %eax
+	jmp	.L3
+.L3:
+	leave
+	.cfi_def_cfa %rsp, 8
 	ret
+	.cfi_endproc
+	.size	same, .-same
+	.section	.note.GNU-stack,"",@progbits

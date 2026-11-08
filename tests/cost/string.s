@@ -1,10 +1,26 @@
-Disassembly of section .text:
-
-<second>:
-	lea    0x0(%rip),%rax        # <second+0x7>
-			R_X86_64_PC32	.data-0x4
-	mov    %rax,-0x10(%rsp)
-	mov    -0x10(%rsp),%rax
-	movzbl 0x1(%rax),%eax
-	movsbl %al,%eax
+	.file	"string.c"
+	.text
+	.globl	second
+	.type	second, @function
+second:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	leaq	.Ls0(%rip), %rax
+	movq	%rax, -8(%rbp)
+	movq	-8(%rbp), %rax
+	movsbl	1(%rax), %eax
+	jmp	.L1
+.L1:
+	leave
+	.cfi_def_cfa %rsp, 8
 	ret
+	.cfi_endproc
+	.size	second, .-second
+	.data
+.Ls0:
+	.string	"abc"
+	.section	.note.GNU-stack,"",@progbits

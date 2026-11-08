@@ -1,27 +1,63 @@
-Disassembly of section .text:
-
-<div_busy>:
-	mov    %edi,-0x8(%rsp)
-	mov    %esi,-0xc(%rsp)
-	mov    %edx,-0x10(%rsp)
-	mov    -0x8(%rsp),%ecx
-	mov    -0xc(%rsp),%eax
-	mov    -0x10(%rsp),%esi
+	.file	"div-busy.c"
+	.text
+	.globl	div_busy
+	.type	div_busy, @function
+div_busy:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	movl	%edx, -12(%rbp)
+	movl	-4(%rbp), %eax
+	movl	-8(%rbp), %ecx
+	movl	-12(%rbp), %edx
+	movq	%rdx, %rsi
+	movq	%rax, %rdi
+	movl	%ecx, %eax
 	cltd
-	idiv   %esi
-	add    %ecx,%eax
+	idivl	%esi
+	movl	%eax, %ecx
+	addl	%ecx, %edi
+	movl	%edi, %eax
+	jmp	.L1
+.L1:
+	leave
+	.cfi_def_cfa %rsp, 8
 	ret
-	xchg   %ax,%ax
-
-<rem_busy>:
-	mov    %edi,-0x8(%rsp)
-	mov    %esi,-0xc(%rsp)
-	mov    %edx,-0x10(%rsp)
-	mov    -0x8(%rsp),%ecx
-	mov    -0xc(%rsp),%eax
-	mov    -0x10(%rsp),%esi
+	.cfi_endproc
+	.size	div_busy, .-div_busy
+	.globl	rem_busy
+	.type	rem_busy, @function
+rem_busy:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	movl	%edx, -12(%rbp)
+	movl	-4(%rbp), %eax
+	movl	-8(%rbp), %ecx
+	movl	-12(%rbp), %edx
+	movq	%rdx, %rsi
+	movq	%rax, %rdi
+	movl	%ecx, %eax
 	cltd
-	idiv   %esi
-	add    %edx,%ecx
-	mov    %ecx,%eax
+	idivl	%esi
+	movl	%edx, %ecx
+	addl	%ecx, %edi
+	movl	%edi, %eax
+	jmp	.L2
+.L2:
+	leave
+	.cfi_def_cfa %rsp, 8
 	ret
+	.cfi_endproc
+	.size	rem_busy, .-rem_busy
+	.section	.note.GNU-stack,"",@progbits
