@@ -5,20 +5,17 @@ The parts, what each owns, and where they meet. The headers under
 
 ## 0. tl;dr
 
-- This branch replaces the back end. `backend.md` is the design: rcc
-  writes x86-64 assembly and owns its registers, and the system cc
-  assembles and links. Chapters 1, 6 and 8 below describe the LLVM
-  pipeline the tree still compiles through, until the new back end
-  lands and they are rewritten.
-- Five parts in a line: preprocessor (external), lexer, parser,
-  emitter, back end (external). One tree between parser and emitter,
-  typed as it is built.
+- Six parts in a line: preprocessor (external), lexer, parser,
+  generator, assembler and linker (external). One tree between parser
+  and generator, typed as it is built. The generator is c1, rcc's own
+  back end, and `backend.md` is its design; `llvm.md` records the
+  LLVM pipeline it replaced.
 - rcc is a literal compiler. The instruction written is the
-  instruction executed. The front end emits exactly what the source
-  says, and the back end is LLVM's literal instruction selector with
-  every rewriting pass switched off; LLVM's register allocator is the
-  one thing it is asked to do well. `cost.md` is the record of what
-  each construct compiles to.
+  instruction executed. c1 writes the instruction of `backend.md`'s
+  table for each operator of the tree, in the written order, and owns
+  the registers by the discipline of `backend.md` chapter 4; nothing
+  between the tree and the assembler reasons about the program.
+  `cost.md` is the record of what each construct compiles to.
 - The guarantees in `guarantees.md` are the meaning half: what a
   program denotes where ISO C says nothing. Under a literal back end
   most of them are the machine's own behaviour, reached by writing
@@ -27,20 +24,22 @@ The parts, what each owns, and where they meet. The headers under
   for a fixed arity and `vector` for a list. Types are values,
   compared structurally.
 - The first error is fatal. No recovery.
-- GNU make, one executable, a flat `src/`. The test is the oracle
-  script over `tests/corpus/`.
+- GNU make, one executable, a flat `src/`. The test is two scripts,
+  the oracle over `tests/corpus/` and the cost corpus over
+  `tests/cost/`, each diffing the assembly `rcc -S` writes against
+  its pin.
 
 ## 1. The pipeline
 
 `rcc file.c` runs `clang -E` on the file, tokenizes the result,
-parses it into one tree per translation unit, writes the tree as
-LLVM IR text, hands the `.ll` file to `llc` for instruction
-selection and register allocation, and to `clang` to link. The
-front end touches LLVM only through the IR file, and LLVM's
-optimizer is never run: no mid-end pass, and no machine-level pass
-that rewrites, moves, merges or deletes an instruction. The flag set
-that holds it to that is the table in `main.cc` and chapter 2 of
-`cost.md`.
+parses it into one tree per translation unit, prints the warnings,
+and generates x86-64 assembly from the tree into a buffer. With `-S`
+the buffer is written to the output. Otherwise it goes to a
+temporary `.s`, which `clang -c` assembles into the object for `-c`,
+and which `clang` assembles and links into an executable without
+it. LLVM is what any cc is to a compiler that writes assembly:
+`clang -E` preprocesses, `clang -c` assembles, `clang` links. There
+is no IR, and nothing optimizes the program on the way.
 
 The preprocessor is external. ISO defines it completely, nothing in
 the guarantees touches it, and V7's `cc` ran `cpp | c0` the same way.
@@ -75,8 +74,8 @@ made, so sharing is invisible and copying a type is cheap. Equality
 is structural, through the edges. No interning; a table of types is
 an optimization taken when it is measured. The size and the
 alignment of a type are the type's, `size_of` and `align_of`, the
-x86-64 ABI's numbers; the parser folds `sizeof` from them and the
-emitter writes `alloca` and `align` from them.
+x86-64 ABI's numbers; the parser folds `sizeof` from them and c1
+sizes and aligns the slots from them.
 
 ## 4. The tree
 
@@ -107,14 +106,14 @@ Three sums.
 A symbol is a name, a type and a storage: local, parameter, global,
 function. Scopes live in the parser and die with it; after parsing
 there are only symbols. The tree carries no source locations: the
-parser diagnoses with the token in hand, and the emitter diagnoses
-nothing.
+parser diagnoses with the token in hand, and the generator
+diagnoses nothing.
 
-Every conversion is a cast node the parser inserted. The emitter
+Every conversion is a cast node the parser inserted. The generator
 converts nothing on its own; when it sees an operand, the operand
 already has the type the operation needs. The one exception is
 named in the tree: a compound assignment carries the type it is
-computed in, and the emitter converts the loaded lhs into it and
+computed in, and the generator converts the loaded lhs into it and
 the result back, because the lhs is evaluated once and cannot be
 wrapped in a cast node twice. The type rules of C live in one
 place, the parser's conversion functions.
@@ -129,75 +128,57 @@ assignment conversion, lvalue conversion, function and array decay.
 One pass, one tree. A separate type-check pass would be a second
 tree and a second walk for no invariant the compiler needs.
 
-## 6. The emitter
+## 6. The generator
 
-`emit(unit, out)` walks the tree and writes `.ll` text, one IR
-instruction per operation in the source, with nothing added and
-nothing left out. The rules:
+`generate(unit, file, out)` walks the tree and writes x86-64 assembly
+text in AT&T syntax, one instruction, or the machine's fixed
+sequence, per operator, with nothing added and nothing left out.
+`file` is the source's name, for the `.file` directive. The rules,
+each the code of a `backend.md` chapter:
 
-- Every local and parameter is an `alloca` in the entry block, every
-  read a load, every write a store. A local lives in its slot for the
-  whole activation (G12).
-- A `register` local or parameter is never stored. Its value is
-  an SSA name carried in a map along the walk, every read the name
-  and every write a new one; a register parameter is the argument
-  itself. The joins the grammar makes are the only places a `phi`
-  appears: after the two arms of `if`, `?:`, `&&` and `||`, one for
-  each register variable whose name differs between the arms; and at
-  a loop header, one for each register variable the body assigns,
-  found by a scan of the body before the header is written, its
-  back-edge operand filled in when the latch is. An arm ending in
-  `return` ends in a dead block that still branches to the join, so
-  every arm gives the `phi` an operand. A register variable declared
-  without an initializer has one slot in the entry block, never
-  written, and its declaration reads it once, `load` and `freeze`;
-  the value is the variable's from there on (G5): a value the
-  compiler did not choose, the same at every read. A `freeze T undef`
-  would not do: the selector makes it an implicit definition, which
-  the allocator need not keep between two reads. The variable is in
-  scope from the end of its declarator (6.2.1p7), so its initializer
-  may read it; an initializer that names it gets the slot too, and
-  its first read is the one load.
-- Two entry points: `rvalue(expr)` yields the value, `lvalue(expr)`
-  yields the address. Both return a value handle: the IR register or
-  constant, and its IR type.
-- Operands are emitted left to right (G13). Short-circuit operators
-  branch; the result joins in a `phi`.
-- Every `icmp` is written by one helper: a comparison, a condition
-  tested against zero, and `!`. When its two operands have one name,
-  a register variable read twice, two equal pointer constants, or the
-  constant 0 or `null` tested, it freezes the right operand first.
-  Two integer constants never reach it, since the parser folds their
-  comparison.
-  FastISel folds a compare of one value with itself to its answer;
-  the `freeze` makes the operands two values, and the compare is
-  emitted.
-- Every load from an alloca is `freeze`d (G5). The literal back end
-  lowers a `freeze` to nothing; it is there for the IR, which is a
-  document people read.
-- Every definition is `null_pointer_is_valid` (G9), for the same
-  reason.
-- `add`, `sub`, `mul`, `shl` carry no `nsw`, `nuw`; `getelementptr`
-  carries no `inbounds`; division and shifts are the plain
-  instruction, whatever the operands, because what the machine does
-  with them is the promise (G1, G3, G4, G6).
-- A pointer plus an integer is `getelementptr` of the pointee type
-  without `inbounds`; two pointers subtract as `ptrtoint`, `sub` and
-  `sdiv` by the element size, the division left out for a size of 1
-  (G6). Pointers compare with `icmp` on `ptr` (G7). A pointer to
-  integer cast is `ptrtoint`, the reverse `inttoptr`, pointer to
-  pointer nothing.
-- An access carries the natural alignment when its address is a
-  declared object, or an element of a declared array, reached with
-  no cast between; every other access, through a parameter, a
-  pointer value or a cast, carries `align 1` (G11).
-- A string literal is a `private global` array of `i8`, one per
-  literal written, neither `constant` nor `unnamed_addr` (G17).
-- The IR names of symbols are the emitter's, kept in a side table
-  from symbol to name; the tree is not written after parsing.
+- The state is per function, reset at each definition: the slots,
+  the held values, the register variables, the frame's size. Only
+  the label numbers and the string literals run across the file.
+- Every local and parameter not declared `register` has a slot off
+  `rbp`, assigned at its declaration, none shared; every read is a
+  load and every write a store (chapter 5, G12).
+- A held value carries its register and its width: the width to
+  which the register's bits are the value extended by its type's
+  signedness, set by the instruction that wrote it. A widening cast
+  that finds the value already valid to its width writes nothing
+  (6.3, the width rule).
+- A new value takes the lowest free of the nine caller-saved
+  registers. When none is free, the oldest held value is spilled to
+  a slot and reloaded when it is consumed (chapter 4, 6.2). A
+  division or a variable shift first moves the values out of the
+  registers it pins (6.5); a call first spills every held value
+  (chapter 8).
+- A `register` variable takes the next free of the five callee-saved
+  registers, by declaration order, and gives it back at the end of
+  its block (chapter 4). Its read is a fixed value: the register
+  itself, never spilled, freed or written. An instruction that would
+  write its destination works on a copy, and a held read is copied
+  before the variable is written, so the read keeps the old value
+  (G13). The registers the prologue pushes are counted from the tree
+  before the body, since the slots lie below them.
+- Two entry points: `rvalue(e)` yields the value in a register, and
+  `cbranch(e, label, sense)` jumps on its truth and yields no value
+  (chapter 7). `!`, `&&` and `||` are the shape of the jumps; any
+  other condition is its value compared with 0 at its own width.
+- An lvalue is an `address_t`: a slot off `rbp`, a label off `rip`,
+  or a held base with a displacement or with a held index scaled by
+  1, 2, 4 or 8. It is the operand of the one `mov` that reads or
+  writes the object (6.3, G8 to G11).
+- Operands are generated left to right, and a commutative operator's
+  operands are not swapped (6.1, G13).
+- The body is written into a buffer. The prologue is written after
+  it, once the frame's size is known, then the body and the one
+  epilogue (chapter 5).
+- The string literals are one `.data` block after the last function,
+  one label per literal written, never merged (chapter 10, G17).
 
-A reader checking a promise opens `emit.cc`, finds the instruction,
-and reads what is not there.
+A reader checking a promise opens `c1.cc`, finds the function that
+writes the row, and reads what is not there.
 
 ## 7. Errors
 
@@ -209,16 +190,14 @@ nothing in the method needs it: the corpus is correct programs.
 
 ## 8. The driver
 
-`rcc [-native] [-w] [-S] [-c] [-o out] file.c`. `-S` stops at the `.ll`,
-the way `cc -S` stops at assembly: the IR is rcc's assembly, and the
-pinned `.ll` in the corpus is what `-S` wrote. `-c` stops at the object,
-which `llc` wrote. The default output is `a.out`, `<stem>.o` or
-`<stem>.ll`. There is no `-O`: there is one pipeline, and it is
-literal. Until the LLVM pipeline is retired, `-native` selects rcc's
-own code generator, c1 (`backend.md`): `-S` writes its assembly,
-`<stem>.s`, `-c` assembles it with `clang -c`, and a link runs
-`clang`. Processes are spawned by fork and exec, never `system`;
-the temporary files are removed on every way out.
+`rcc [-w] [-S|-c] [-o out] file.c`. `-S` stops at the assembly, and
+the pins of both corpora are what `-S` wrote. `-c` stops at the
+object, which `clang -c` assembled. Without either, `clang` links an
+executable. The default output is `<stem>.s`, `<stem>.o` or `a.out`.
+There is no `-O`: there is one pipeline, and it is literal, so `-O`
+is an unknown option and a usage error. Processes are spawned by fork
+and exec, never `system`; the temporary `.s` of `-c` and of a link is
+removed on every way out.
 
 A warning does not stop the translation. The parser records it in
 the unit, and the driver prints the unit's warnings after a
@@ -228,9 +207,8 @@ exit status. The one warning is a sixth live `register` variable's,
 which takes a slot (`backend.md` chapter 4).
 
 Exit status: 0; 1 for a diagnosed error or a failed system call; 2
-for a usage error; 3 for an internal error, a tree shape the
-emitter or c1 does not handle; `llc`'s or `clang`'s own status when
-one of them fails.
+for a usage error; 3 for an internal error, a construct c1 does not
+handle yet; `clang`'s own status when it fails.
 
 ## 9. The build and the layout
 
@@ -239,7 +217,7 @@ whole; meson would add dependency scanning, a test runner and a
 compile database, and three lines of make, a shell script and
 `compile_flags.txt` cover the three.
 
-    Makefile          build, test, test-native, bench, clean
+    Makefile          build, test, bench, clean
     compile_flags.txt what clangd needs
     docs/guarantees.md  the meaning: what happens where ISO C says nothing
     docs/cost.md        the cost: what each construct compiles to
@@ -252,50 +230,50 @@ compile database, and three lines of make, a shell script and
     src/type.hh .cc   type_t, constructors, equality
     src/ast.hh        the tree
     src/parse.hh .cc  parse()
-    src/emit.hh .cc   emit()
-    src/c1.hh .cc     generate(), the code generator, under -native
+    src/c1.hh .cc     generate(), the code generator
     src/error.hh      error_t and warning_t
-    src/main.cc       the driver, and the back end's flag table
+    src/main.cc       the driver
     tests/oracle      the oracle script
-    tests/corpus/     the divergence programs, their pinned .ll
-    tests/corpus/native/  their pinned .s under -native
+    tests/corpus/     the divergence programs, their pinned .s
     tests/costs       the cost corpus script
-    tests/cost/       one program per cost-model row, its pinned listing
-    tests/cost/native/  its pinned .s under -native
+    tests/cost/       one program per cost-model row, its pinned .s
     tests/bench       the measurement script
     tests/perf/       the benchmark programs, plain and tuned
 
 ## 10. The slices
 
-The first slice is the subset probe 3 needs: `int` and the other
+The first slice was the subset probe 3 needed: `int` and the other
 integer types, locals with initializers, parameters, the arithmetic,
 comparison, logical and assignment operators, `if`, `while`, `for`,
 `return`, calls to functions declared or defined in the file. The
 milestone program computes `a + 1 > a` at `INT_MAX` and returns it
 as the exit status: 0 under rcc, 1 under `clang -O2`.
 
-The second slice is pointers and string literals, which brings G6,
-G7, G8, G11 and G17 and their probes: pointer declarators and `void
+The second slice was pointers and string literals, which brought
+G6, G7, G8, G11 and G17 and their probes: pointer declarators and `void
 *`, `&` and `*`, arrays of constant size as locals and as parameters
 adjusted to pointers, subscripts, decay, casts with a type name, the
 null pointer constant, a pointer as a condition, `++`, `--`, `+=`
 and `-=` on pointers, `p + n`, `p - q` and pointer comparison,
 `sizeof`, string and character literals with their escapes and
 adjacent concatenation, and `const` accepted and dropped, since the
-type is the machine's view. The oracle stays on exit statuses: a
+type is the machine's view. The oracle stayed on exit statuses: a
 string probe returns a byte of the string.
 
-c1 is written in the same two slices and a third, `register`
+Both slices first compiled through the LLVM pipeline (`llvm.md`).
+c1 was written in the same two slices and a third, `register`
 variables in the five callee-saved registers (`backend.md` chapter
-4). The three have landed: under `-native` every program of the
-corpus and of the cost corpus builds and matches its pin.
+4). When the three had landed and every program of the corpus and
+of the cost corpus built through c1 and matched its pin, the LLVM
+pipeline was retired.
 
 ## 11. Not yet
 
 Structs, unions, enums, global variables, brace initializers and
 `char s[] = "..."`, function pointers, wide and `u8` strings,
-`volatile` (it has IR meaning, `load volatile`, and the selector
-drops an unused plain load, so it needs the type model, not a drop),
+`volatile` (c1 writes every access it meets, an unused one
+included, so the access needs nothing more; the qualifier waits for
+the type model, as `const`'s checks do),
 `restrict`, `switch`, `goto`, typedefs, `static`, a `register`
 array (6.3.2.1p3), floating point. Each arrives when a probe needs
 it. The preprocessor stays external for good.

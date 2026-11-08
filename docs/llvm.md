@@ -8,9 +8,10 @@ measurement said, the three ways out that were weighed, and why the
 back end is now rcc's own (`backend.md`). It is written as a
 tutorial, in the register of `findings.md`, for a reader who knows C
 and has seen assembly but has not been inside a code generator. It
-keeps what the sprint taught, so that when the LLVM pipeline leaves
-the tree its knowledge does not leave with it: chapters 2, 4 and 5
-of `cost.md` live here from then on.
+keeps what the sprint taught, so that the knowledge did not leave the
+tree with the LLVM pipeline: the cost model's flag table, its
+chapter on what the machine did on its own and its verification by
+flags live here, in chapters 3 and 5.
 
 ## 0. tl;dr
 
@@ -84,8 +85,9 @@ stays inside its object, `!tbaa` says two accesses of different types
 do not alias, `poison` says a value may be anything. Each guarantee
 of the list is the absence of one of them: G1 is `add` without `nsw`,
 G6 is `getelementptr` without `inbounds`, G10 is no `!tbaa`, G5 is
-`freeze` instead of `poison`. The never-emitted table at the end of
-`guarantees.md` is this call written out. The first plan was to emit
+`freeze` instead of `poison`. The never-emitted table, at the end of
+`guarantees.md` until the retirement and of `rationale.md` still, is
+this call written out. The first plan was to emit
 that IR and hand it to `opt -O2`: an optimizer that reasons only from
 what it is told, told nothing, would be a conforming compiler for
 rcc's promises. G15, since withdrawn, was the complement: a
@@ -264,6 +266,10 @@ address gives the pass nothing to reduce. `-no-stack-coloring`
 changed nothing because no lifetime marker was ever emitted, so no
 two slots could share. Without `-relocation-model=pic` the string
 literal's address became a `movabs` with an absolute relocation.
+The parser's folding of constant expressions later removed the
+witnesses of `invariant` and `twice`, whose `12 * 34` became the
+immediate 408, so neither row changed any more when its flag was
+dropped; the table is the measurement as it was run.
 
 ### 3.6 The three things the compiler may do
 
@@ -327,7 +333,7 @@ driver loop (`SelectionDAGISel.cpp`, `isFoldedOrDeadInstruction`)
 walks a block bottom-up and skips an instruction that writes no
 memory, is no terminator, and whose result no later instruction has
 asked for, before FastISel sees it; there is no switch. This was
-recorded in chapter 4 of the cost model as the one departure from
+recorded in the cost model as the one departure from
 "the instruction written is the instruction executed", and left
 there: nothing a programmer writes for its effect is affected, and
 the alternative, a fake use of every result, would have cost an
@@ -372,16 +378,19 @@ costs one `mov` for a constant. Cost row `register-compare`.
 
 ### 5.4 The same fold on a test of 0
 
-`if (0)` compiled to an unconditional jump and `!0` to a constant:
-the emitter's test of a condition and its `!` compare the value with
-0, and when the value is the constant 0 the two operands are one
-`Value*` again. The three sites that write an `icmp`, a comparison,
-a condition and `!`, were given one helper that applies the same
-freeze, so a test of a constant is a compare too: `cmp` of two
-registers each cleared by an `xor`, and the body of the `if` kept.
-Cost row `zero-test`. Under the new back end the code for a constant
-condition is the code for a condition, an immediate loaded and
-compared, and nothing looks at its value.
+`if (0)` compiled to an unconditional jump and, before the parser
+folded constant expressions, `!0` to a constant: the emitter's test
+of a condition and its `!` compared the value with 0, and when the
+value was the constant 0 the two operands were one `Value*` again. The
+three sites that write an `icmp`, a comparison, a condition and `!`,
+were given one helper that applies the same freeze, so a test of a
+constant is a compare too: `cmp` of two registers each cleared by an
+`xor`, and the body of the `if` kept. Cost row `zero-test`. Once the
+parser folded constant expressions, `!0` was the constant 1 before any
+IR was written, and only `if (0)` still reached the helper. Under the
+new back end the code for a constant condition is the code for a
+condition, an immediate loaded and compared, and nothing looks at its
+value.
 
 ### 5.5 A condition is materialized
 
@@ -418,8 +427,8 @@ into a register that already holds it on every path. Its source
 declares no `cl::opt`. In the Collatz step, the second `idiv` by 2
 divided by the `ecx` loaded for the first, across a branch. This is
 "which register holds a value" and was arguable as inside the three
-things, but it also meant chapter 2's "one pass has no switch, the
-machine combiner" was wrong in count, and that the count could grow
+things, but it also meant the flag table's "one pass has no switch,
+the machine combiner" was wrong in count, and that the count could grow
 with any release. `findings.md` chapter 3.
 
 ### 5.8 The allocator rematerializes a frame address
@@ -460,7 +469,7 @@ it to 1.3 to 4.4, and cost the optimizer nothing. The gap that
 remained was in the places the pipeline chose: sort's 4.4 is the
 materialized condition of 5.5, matmul's 3.3 is the slot loads of the
 locals the programmer did not declare `register`. The measurement
-is chapter 6 of `cost.md`; its purpose, to say how far a literal
+is chapter 4 of `cost.md`; its purpose, to say how far a literal
 machine lands from the optimizer and how much of the gap the
 programmer closes by hand, is served, and it will be redone under
 the new back end.
@@ -534,7 +543,7 @@ assembly: `cpp`, `as`, `ld`. Those have no opinion about the program.
 The sprint was not a detour. Four things it produced are the ground
 the new back end stands on.
 
-- **The map of where judgment hides.** Chapter 4 of `cost.md` and
+- **The map of where judgment hides.** Chapter 5 here and
   `findings.md` are, together, a written account of what a modern
   code generator does to a program even when told to do nothing: the
   selector's convenience rewrites, the switchless passes, the
@@ -559,12 +568,23 @@ the new back end stands on.
 
 ## 10. The record
 
-When the LLVM pipeline is retired from the tree: chapters 2, 4 and
-5 of `cost.md` leave, and their content is chapters 3 and 5 here;
-chapter 3 of `cost.md` is rewritten from the new pins; the IR
-clauses of `guarantees.md` become instruction clauses; `shape.md`'s
-pipeline, emitter and driver chapters are rewritten; `findings.md`
-stays as the detailed record of the five findings and closes with
-what became of them; `rationale.md` stays as the argument for the
-guarantees, whose probes of what `clang -O2` does are the reason
-there are guarantees at all. Git keeps the emitter.
+At the retirement of the LLVM pipeline:
+
+- the emitter, `emit.cc`, and the flag table of `main.cc` left the
+  tree; `-S` writes c1's assembly, and `llc` is no longer run;
+- the cost model's flag table, its chapter on what the machine did
+  on its own and its verification by flags left `cost.md`, and their
+  content is chapters 3 and 5 here;
+- the table of `cost.md` was rewritten from c1's pins;
+- the IR clauses of `guarantees.md` became instruction clauses;
+- `shape.md`'s pipeline, emitter and driver chapters were rewritten;
+- the pins of c1 moved up a directory over the LLVM pins, the two
+  scripts lost their `--native` mode, and `make test` runs both
+  corpora through c1;
+- `findings.md` stayed as the detailed record of the five findings,
+  and closes with what became of them;
+- `rationale.md` stayed as the argument for the guarantees, whose
+  probes of what `clang -O2` does are the reason there are guarantees
+  at all.
+
+Git keeps the emitter.

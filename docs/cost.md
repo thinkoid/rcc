@@ -10,41 +10,49 @@ does what the source says, and only that.
 - The instruction written is the instruction executed. `x / 4`
   divides; `x >>= 2` shifts; `a + 0` adds. Choosing between them is
   the programmer's job, and the compiler never second-guesses it.
-- The compiler decides three things of its own: which register
-  holds a value, the one-to-one machine form of each IR instruction,
-  and the calling convention. Nothing else.
-- The back end is LLVM's `llc` with FastISel and every rewriting
-  pass switched off. The flag table is in `main.cc`; chapter 2 lists
-  it with what each flag holds back.
-- A computation whose result is unused is not emitted. That is the
-  selector's own rule and has no switch.
+- The compiler decides three things of its own: the register that
+  holds a value, by the discipline of `backend.md` chapter 4; the
+  machine form of each operator, by the table of chapter 2; and the
+  calling convention, System V AMD64. Nothing else.
+- Every statement is written, its value used or not. `a + 0;` adds
+  and `a / b;` divides, and the division can fault.
 - Locals live in memory, one stack slot each, for the whole call. A
-  local or parameter declared `register` is never stored: it is an
-  SSA value, and the allocator keeps it in a register. The keyword is
-  the programmer's lever on the allocator.
-- Chapter 6 measures what the costs add up to: on six programs, the
-  plain source runs 1.49 to 8.43 times as long under rcc as under
-  `clang -O2`, and the source tuned by hand for rcc 1.33 to 4.40
-  times.
+  local or parameter declared `register` lives in one of five
+  callee-saved registers, `rbx` and `r12` to `r15`, and is never
+  stored. A sixth live at once takes a slot, with a warning. The
+  keyword is the allocation, as it was on the PDP-11.
+- Chapter 4 holds the measurement as it was run under the LLVM
+  pipeline: the plain source ran 1.49 to 8.43 times as long under rcc
+  as under `clang -O2`, and the source tuned by hand for rcc 1.33 to
+  4.40 times. The queue's "Redo the measurement" runs it under c1.
 
 ## 1. The rule
 
-The front end emits one IR instruction per operation in the source,
-in the written order, and the back end selects one machine
-instruction, or the machine's fixed sequence, per IR instruction.
-Between the two, nothing reasons about the program.
+c1 writes the instruction for each operator of the tree, in the
+written order: one machine instruction, or the machine's fixed
+sequence, per operator (`backend.md` 6.1). Between the parser and the
+assembler, nothing reasons about the program. The parser folds an
+integer constant expression to the number it spells, since it is a
+spelling and not an operation on data (`backend.md` 6.4); a variable
+never folds.
 
 What the compiler may do:
 
-- Allocate registers. Which value lives where, and when a value is
-  spilled, is the allocator's. A local declared in the source lives
-  in its own stack slot regardless, unless it is declared `register`.
-- Select the machine form. An IR `add` is an x86 `add`, or the
-  three-operand `lea` when the result goes to a third register, the
-  same addition in the encoding that spares a copy, not a fold; a
-  32-bit signed division is `cltd; idivl`; a comparison is `cmp` and
-  a `setcc` or a conditional jump. The form is fixed per instruction
-  and target, and listed in chapter 3.
+- Allocate registers, by the discipline, not by an allocator. A
+  `register` variable takes the next free one of the five at its
+  declaration and keeps it to the end of its block. An expression
+  value takes the lowest free one of the nine caller-saved registers,
+  and when none is free the oldest held value is spilled
+  (`backend.md` chapter 4 and 6.2). A local declared in the source
+  lives in its own stack slot regardless, unless it is declared
+  `register`. The extent to which `register` is effective, which
+  6.7.2p12 leaves implementation-defined and 4p10 asks to be
+  documented, is five variables live at once.
+- Select the machine form, by the table. A `+` is an `add`; a 32-bit
+  signed division is `cltd; idivl`; a comparison is `cmp` and a
+  `setcc` for a value, `cmp` and a conditional jump for a condition;
+  a subscript is the access's scaled-index address, `(%rax,%rcx,4)`.
+  The form is fixed per operator and target, and listed in chapter 2.
 - Follow the calling convention: argument registers, the stack
   frame, callee-saved registers.
 
@@ -57,187 +65,90 @@ What the compiler never does:
 - Merge. The same expression written twice is computed twice.
 - Reorder. Instructions come out in the written order; blocks come
   out in the written order.
-- Delete. Except an instruction whose result nothing reads, which
-  the selector drops; see chapter 4.
+- Delete. Nothing: a statement whose value is unused is computed,
+  and every `return` jumps to the epilogue, the last one included.
 - Convert a branch to a conditional move or the reverse.
 
-## 2. The pipeline
+## 2. What each construct compiles to
 
-`llc`, LLVM 23.1.3, with the flags below. Most are hidden options,
-not a stable interface; a new LLVM is checked against chapter 5
-before the version in `main.cc` is bumped.
+x86-64; aarch64 rows to follow when the target is wired. Each row is
+the form c1 writes, in the text of the pin of the cost program named
+in its last column, whose opening comment says what its listing must
+show. A row with no program is stated from `backend.md` 6.3; no pin
+shows it yet.
 
-| Flag | What it holds back |
-|---|---|
-| `-O1` | the real register allocator; `-O0` allows only the fast one, which spills across every block. `llc`'s own default is `-O2`; the corpus tells the two apart on no row, and `-O1` is written so the level is stated, not inherited |
-| `-fast-isel` | FastISel: the instruction written is the instruction selected; no folding of `a + 0`, `x * 3`, `x / 4` |
-| `-fast-isel-abort=3` | never fall back to the folding selector; fail loudly instead |
-| `-relocation-model=pic` | clang links position-independent executables |
-| `-disable-cgp` | no IR rewriting before selection |
-| `-disable-lsr` | no loop strength reduction |
-| `-disable-constant-hoisting` | constants stay where they are written |
-| `-disable-machine-licm` | nothing moves out of a loop |
-| `-disable-machine-cse` | nothing is computed once that was written twice |
-| `-disable-machine-sink`, `-disable-postra-machine-sink` | nothing moves down a branch |
-| `-disable-machine-dce` | no dead-instruction removal past the selector's own |
-| `-disable-peephole` | no instruction rewriting |
-| `-disable-x86-lea-opt` | no `lea` rewriting |
-| `-disable-x86-domain-reassignment` | no domain changes |
-| `-disable-early-ifcvt` | no branch to conditional move |
-| `-x86-cmov-converter=false` | no conditional move to branch |
-| `-enable-misched=false` | no reordering |
-| `-disable-copyprop` | no copy propagation |
-| `-disable-branch-fold` | branches stay as written |
-| `-disable-tail-duplicate`, `-disable-early-taildup` | no block duplication |
-| `-disable-block-placement` | blocks stay in the written order |
-| `-disable-post-ra` | no post-allocation scheduling |
-| `-no-stack-coloring` | one slot per local, never shared |
-
-Why `-O1` and not `-O0`: LLVM ties its register allocators to the
-level. At `-O0` only the fast allocator is permitted, and it spills
-every value to the stack at every block boundary, so a loop reloads
-its counter and its parameters from memory each iteration. At `-O1`
-the greedy allocator runs, and with FastISel forced and the passes
-above held back, the selection is as literal as at `-O0` and the
-registers are real. One pass has no switch, the machine combiner; on
-the probes it did nothing to a literal chain of adds and multiplies.
-
-## 3. What each construct compiles to
-
-x86-64; aarch64 rows to follow when the target is wired.
-
-| Source | IR | Machine |
+| Source | Machine | Program |
 |---|---|---|
-| a local | `alloca`, a load at each read, a store at each write | a stack slot, `mov` in and out |
-| a parameter | stored to its slot at entry, loaded at each read | the argument register, then the slot |
-| a `register` local | the value itself, no `alloca`, no load, no store; a `phi` at a join or a loop header; without an initializer, one `alloca` never written and one `load` and `freeze` at the declaration (`register-undef`) | a register, no `mov` to or from the stack; across a loop, the same register; without an initializer, one `mov` from the frame at the declaration |
-| a `register` parameter | the argument itself | the argument register, as it arrived |
-| `a + b`, `a - b` | `add`, `sub` | `add`, `sub`, or `lea` for a three-operand add |
-| `a * b` | `mul` | `imul` |
-| `a / b`, `a % b` | `sdiv`, `srem`, `udiv`, `urem` | `cltd; idiv` or `xor %edx; div`; the quotient from `eax`, the remainder from `edx` |
-| `a << n`, `a >> n` | `shl`, `ashr`, `lshr` | `shl`, `sar`, `shr` by `cl`; the count masked by the instruction |
-| `a < b` and the rest | `icmp`, `zext`; two operands of one name, a `register` variable or a constant, the right one `freeze`d first (`register-compare`) | `cmp`, `setcc`, `and $1`, `movzbl`; used as a condition, the value is then compared with 0 again, since the tree holds an `int` and the emitter tests it as one; the `freeze` is nothing for a register, one `mov` for a constant |
-| `a && b`, `a \|\| b` | branches, `phi` | `cmp $0`, conditional jumps; the short-circuit value set before the jump |
-| `a ? b : c` | branches, `phi` | `cmp $0`, conditional jumps; never `cmov` |
-| `if`, `while`, `for` | `icmp ne 0`, `br`; a condition of the constant 0, the 0 `freeze`d first (`zero-test`) | `cmp $0`, conditional and unconditional jumps, blocks in the written order; for the constant 0, a `cmp` of two registers each cleared by an `xor` |
-| `f(a, b)` | `call` | the convention's argument moves, `call` |
-| `(T) a` | `trunc`, `sext`, `zext`, or nothing | `movsbl`, `movzbl`, `cltq`, or nothing; a `char` load is `movzbl` from the slot and then the extension, two instructions |
-| a `char` or `short` parameter or result | `i32` in the signature, `trunc` at entry, `sext`/`zext` before `ret` and before the call, `trunc` after it | a byte or word store at entry, `movsbl`/`movzbl` or `movswl`/`movzwl` before the call and before `ret` |
-| `a += b` | load, convert, op, convert, store | the row of the op, between a load and a store |
-| `p + n`, `p - n`, `a[i]` | `sext` of the index to 64 bits, `getelementptr` of the pointee type; for `p - n`, the index negated with `sub 0` first; a constant index is an `i64` constant | feeding a load or a store, the access's scaled-index address, `(%rax,%rcx,4)`, for a size of 1, 2, 4 or 8, and a constant index the displacement, `0x1(%rax)`; on its own, `shl` for a power-of-two size or `imul` for any other, then `add`; the negation of `p - n` is `xor` and `sub`, of a constant too |
-| a constant under an implicit conversion | the constant in the target type, no instruction | an immediate of the width; `long x = 2` is one `movq $2`; an explicit cast of a constant, `(long) 2`, is the `(T) a` row |
-| `++p`, `--p`, `p++`, `p--` | `getelementptr` by the `i64` constant 1 or -1 | `add` of the size, `add $0x4` or `add $-0x4` |
-| `p - q` | `ptrtoint`, `sub`, `sdiv` by the element size | `sub`, `cqto`, a 64-bit `idiv`; a division even for a size of 4, since G6 promises any two pointers and a shift would floor where the division truncates; for a size of 1 no division, so `(char *) p - (char *) q` is the cheap spelling |
-| `p < q` and the rest | `icmp ult`, `ugt`, `ule`, `uge`, `eq`, `ne` on `ptr`, `zext` | `cmp` of the 64-bit addresses, an unsigned `setcc`, `setb` for `<`, then `and $1`, `movzbl` |
-| `if (p)`, `p == 0` | `icmp ne` or `eq` against `null` | `cmp $0x0` and the jump or the `setcc`; as a condition, one comparison, since the pointer's own compare is the condition |
-| `*p` | `load`, `store`; `align 1` unless the address is a declared object (G11) | `mov` through the register; x86 has one `mov` for every alignment |
-| `&x` | the `alloca` | `lea` of the slot |
-| `(T *) p`, `(long) p`, `(T *) l` | nothing, `ptrtoint`, `inttoptr`; an `int` extended with `sext` first | nothing; `cltq` for an `int` |
-| `"abc"` | a `private global` array of `i8`, neither `constant` nor `unnamed_addr` (G17); its address | a rip-relative `lea`, relocated against `.data`, since a private global has no symbol; the bytes in `.data`, writable |
+| a local | a slot of its own off `rbp` for the whole call; a load at each read, `movl -8(%rbp), %eax`, and a store at each write, `movl %eax, -8(%rbp)`; a constant stored is held in a register first, `movl $0, %eax` | `local`, `while` |
+| a parameter | its argument register stored to its slot in the prologue, `movl %edi, -4(%rbp)`; then the local's row | `parameter` |
+| a `register` local | the next of `rbx`, `r12` to `r15`, by declaration order, pushed after `rbp` in the prologue and popped before `leave`; no slot, no load, no store; a read is the register as an operand, `cmpl %ebx, %r13d`; an instruction that writes its destination works on a copy, `movl %r12d, %eax; addl %r13d, %eax`, and the assignment moves the result back, `movl %eax, %r12d`; a constant assigned is the immediate, `movl $0, %r12d`; across a loop, the same register | `register-loop` |
+| a `register` local without an initializer | the register as the prologue left it; nothing writes it until the program does, so every read sees one value (G5) | `register-undef` |
+| a `register` parameter | moved from its argument register to its register in the prologue, `movl %edi, %ebx`; then the register | `register-parameter` |
+| the frame | `pushq %rbp; movq %rsp, %rbp` in every function and `leave` in the one epilogue; a function that calls nothing keeps its slots in the red zone below `rsp` and writes no `sub`; one that calls subtracts its frame, rounded so that `rsp` is a multiple of 16 at the `call`, `subq $16, %rsp` | `local`, `call` |
+| `a + b`, `a - b` | `addl %ecx, %eax`, `subl %ecx, %eax`; the left operand's register is the result's | `add-sub`, `parameter` |
+| `a + 0` | `addl $0, %eax`: a constant operand is the immediate, whatever its value | `add-zero` |
+| `a * b` | `imull %ecx, %eax`; by a constant, `imull $3, %eax, %eax` | `mul`, `mul-three` |
+| `a / b`, `a % b` | `cltd; idivl %ecx` signed, `xorl %edx, %edx; divl %ecx` unsigned; the quotient in `eax`, the remainder moved from `edx`, `movl %edx, %eax` | `div-rem`, `udiv-urem` |
+| `x / 4`, `x / 7` | the divisor held in a register, `movl $4, %ecx`, since `idiv` takes no immediate, then `cltd; idivl %ecx`; no shift, no multiply by a magic constant | `div-four`, `div-seven` |
+| `a + b / c`, a division with `rax` and `rdx` busy | the values held there moved out to free registers, `movq %rdx, %rsi; movq %rax, %rdi`, the dividend moved into `eax`, then `cltd; idivl %esi` (`backend.md` 6.5) | `div-busy` |
+| `a << n`, `a >> n` | the count in `ecx`, `shll %cl, %eax`, `sarl %cl, %eax`, `shrl %cl, %eax`; the instruction masks the count | `shift` |
+| `a < b` and the rest, as a value | `cmpl %ecx, %eax; setl %al; movzbl %al, %eax`, `sete` for `==`; no jump | `compare` |
+| `x == x` on a `register` variable | `cmpl %ebx, %ebx`: the compare is written | `register-compare` |
+| `a < b` as a condition | `cmpl %ecx, %eax` and a jump on the inverse to the else label, `jge .L2`; no value | `if` |
+| `a && b`, `a \|\| b` | jump code: each operand compared with 0, `cmpl $0, %eax`, and a jump, `je .L2` for `&&`, `jne` past the right operand for `\|\|`; as a value, `movl $1, %eax` and `movl $0, %eax` on the two paths | `logical` |
+| `a ? b : c` | the condition by jump code, `cmpl $0, %eax; je .L2`, each arm into `eax`, a `jmp` past the second arm; never `cmov` | `conditional`, `select` |
+| `if`, `while`, `for` | the condition by jump code at the top, where it is written, blocks in the written order; a loop jumps back from its bottom, `jmp .L2`, and `for`'s step has its own label before the jump; an empty arm is still tested, `je .L2` to the label that follows it; a join that holds only the jump back stays one block | `if`, `while`, `for`, `block-order`, `cgp`, `early-taildup` |
+| `if (0)`, `!0` | `if (0)` is a test, `movl $0, %eax; cmpl $0, %eax; je .L2`, and the body is kept; `!0` is the constant 1, folded in the parser | `zero-test` |
+| `return e` | `e` into `eax`, then `jmp .L1` to the one epilogue, the last statement included | every program |
+| a statement whose value is unused | written: `a + 0;` is `addl $0, %eax`, `a / b;` is `cltd; idivl %ecx`, and the division can fault | `unused` |
+| `f(a, b)` | each argument evaluated into a register and stored to a slot of its own, `movl %eax, -12(%rbp)`; the slots loaded into `edi`, `esi` and on; `call f@PLT`; the result in `eax` | `call` |
+| a seventh and an eighth argument | pushed from their slots right to left, a narrow one loaded into `eax` and pushed from `rax`, `movl -28(%rbp), %eax; pushq %rax`; `subq $8, %rsp` first for an odd count; the bytes added back after the call, `addq $16, %rsp` | `stack-args` |
+| `(T) a` | `int` to `long`, `movslq %eax, %rax`; `char` to `int` after the extending load, nothing; `int` to `unsigned`, nothing; to `char`, the narrow store `movb %al, -5(%rbp)`, and the next read is the extending load, `movsbl -5(%rbp), %eax` or `movzbl` | `cast` |
+| a `char` or `short` parameter or result | stored at its width in the prologue, `movb %dil, -1(%rbp)`, `movw %si, -4(%rbp)`, and loaded with its extension, `movsbl`, `movswl`; a result not already valid to 32 bits extended before the jump to the epilogue, `movsbl %al, %eax`, `movzbl %al, %eax`; an argument stored at its width and loaded extended into its register, `movsbl -5(%rbp), %edi` | `narrow` |
+| `a += b` | the load, the op, the store; on a `char`, the extending load `movsbl -9(%rbp), %eax`, the op in `int`, the narrow store `movb %al, -9(%rbp)` | `compound` |
+| a constant | the immediate, `addl $408, %eax`, a constant expression folded first, `12 * 34` to 408; a 64-bit constant no 32-bit immediate holds is `movabsq $81985529216486895, %rcx` where it is written, in a loop at every iteration | `constant-hoisting`, `constant-in-loop` |
+| a constant under an implicit conversion | the constant in the target type, an immediate of its width, held and stored: `long x = 2` is `movq $2, %rax`, `long x = -1` is `movq $-1, %rax`; `(long) 2` is the same `long` constant | |
+| a loop-invariant expression | computed every iteration: `a / b` in the body is its two loads and its `idivl`, and `12 * 34` its `addl $408` | `invariant` |
+| an expression written twice | computed twice: `a * b + a * b` is two `imull`, and `12 * 34 + 12 * 34` two `addl $408` | `twice` |
+| more held values than nine registers | the oldest held value spilled, `movq %rax, -32(%rbp)`, and reloaded when it is consumed, `movq -32(%rbp), %rax` | `spill` |
+| `p + n`, `m[i]` as a pointer | the index widened to 64 bits, `movslq %ecx, %rcx`, then `leaq (%rax,%rcx,4), %rax` for a size of 2, 4 or 8, and `imulq $12, %rcx, %rcx; addq %rcx, %rax` for a size that is not a scale | `gep`, `gep-stride` |
+| `p - n` | the index widened, `imulq $4, %rcx, %rcx; subq %rcx, %rax`; for a size of 1, the `sub` alone | |
+| `++p`, `--p`, `p += 2`, `p -= 2` | `addq $4, %rax`, `subq $8, %rax`: the size times the constant, an immediate | `ptr-step` |
+| `a[i]`, `p[i]` | the access's own address: the array's `leaq -24(%rbp), %rax`, the index widened, `movslq %ecx, %rcx`, then `movl (%rax,%rcx,4), %eax` or `movl %edx, (%rax,%rcx,4)`; a constant index is the displacement, `movsbl 1(%rax), %eax` | `subscript`, `string` |
+| `p - q` | `subq %rcx, %rax`; for a size other than 1, `movq $4, %rcx; cqto; idivq %rcx`, a division even for a size of 4, since G6 promises any two pointers and a shift would floor where the division truncates; for a size of 1 the `sub` alone, so `(char *) p - (char *) q` is the cheap spelling | `ptr-diff`, `ptr-diff-char` |
+| `p < q` and the rest | `cmpq %rcx, %rax`, the unsigned `setb %al`, `movzbl %al, %eax` | `ptr-compare` |
+| `if (p)`, `p == 0` | `cmpq $0, %rax`, then `je` as a condition, or `sete %al; movzbl %al, %eax` as a value | `ptr-null` |
+| `*p` | `movl (%rax), %eax`, `movl %ecx, (%rax)`; x86 has one `mov` for every alignment | `deref` |
+| `&x` | `leaq -8(%rbp), %rax` | `address-of` |
+| `(T *) p`, `(long) p`, `(T *) l` | nothing; `movslq %eax, %rax` for an `int` | `ptr-int`, `void-pointer` |
+| `"abc"` | `leaq .Ls0(%rip), %rax`; the bytes a `.string` under a label of their own in `.data`, writable, after the last function | `string` |
 
-## 4. What the machine does on its own
+## 3. Verification
 
-- **An unused result is not computed.** FastISel skips an IR
-  instruction whose result nothing reads and which has no side
-  effect. `a + 0;` as a statement emits nothing. A division with an
-  unused result emits nothing, so it cannot fault. This is the one
-  departure from "the instruction written is the instruction
-  executed", and it has no switch.
-- **A compare of one value with itself is folded.** FastISel rewrites
-  an `icmp` whose two operands are one IR value to its answer
-  (`FastISel::optimizeCmpPredicate`, `FastISel.cpp`). The x86
-  selector then emits a constant for the value and an unconditional
-  jump for a branch (`X86FastISel::X86SelectCmp` and
-  `X86FastISel::X86SelectBranch`, `X86FastISel.cpp`). No option gates
-  it. A slot local escapes it: its two reads are two loads, two
-  values. The emitter freezes the right operand of a compare whose
-  two operands have one name, so the operands differ and the `cmp` is
-  emitted. The `freeze` is a `COPY`: for a register the allocator
-  merges it away, `cmp %eax,%eax`; a constant takes one `mov` into a
-  second register. A comparison, a condition and `!` write their
-  `icmp` through one helper, so a test of a constant is a compare
-  too: `if (0)` and `!0` compare 0 with a frozen 0, a `cmp` of two
-  registers each cleared by an `xor`, and the body of the `if` is
-  kept (`zero-test`).
-- **Locals are memory.** Every local is loaded before use and
-  stored after assignment, every time. A narrow parameter's slot is
-  its C width, though the parameter arrives in 32 bits. A `register`
-  local or parameter is the exception: it is never stored and lives
-  in a register, spilled as a temporary is. A `register` local that
-  may be read before a write costs one frame slot, never written, and
-  one load at its declaration: a value defined by nothing would be an
-  implicit definition, which the allocator need not keep between two
-  reads, so each read could see another register (G5). Temporaries
-  within an expression are registers. The allocator may spill a
-  temporary across a call or a block.
-- **An access computes its own address.** A `getelementptr` that
-  feeds a load or a store is selected as the access's address, base,
-  index and scale, `(%rax,%rcx,4)`, when the element size is 1, 2, 4
-  or 8; the slot's offset of a local array is the displacement. A
-  `getelementptr` that feeds anything else, or has another size, is
-  computed on its own: the index scaled by `shl` for a power of two
-  and by `imul` otherwise, then an `add`. Either form is the machine
-  form of one IR instruction, as `lea` is of an `add`, not a fold:
-  the scaled add is still performed, by the access itself, and
-  nothing is simplified away.
-- **The frame.** The prologue and epilogue, callee-saved registers,
-  stack alignment, the red zone for a leaf's locals: the convention's,
-  not the source's. No frame pointer is kept.
-- **Unreachable blocks are dropped.** The emitter opens a block after
-  every `return` for whatever follows; when nothing does, `llc`
-  removes it, and no flag keeps it. Code the source cannot reach is
-  not code.
+Two scripts, both run by `make test`. `tests/oracle` runs first: it
+builds each divergence program of `tests/corpus/` under `clang -O2`
+and under `./rcc`, compares the exit statuses with
+`tests/corpus/expected`, and diffs the assembly `./rcc -S` writes
+against the pin, `tests/corpus/<name>.s`. `tests/costs` runs after
+it and pins this page.
 
-## 5. Verification
+Each program under `tests/cost/` is one row of chapter 2 or one rule
+of chapter 1, and its opening comment says what its listing must
+show. The pin beside it, `<name>.s`, is the text `./rcc -S` writes,
+whole. The script assembles each listing with `clang -c`, to prove
+that it assembles. A row passes when the fresh listing equals the
+pin; the diff of a failed row is in `build/cost/log`. A new or
+changed listing is read by hand against its row of chapter 2 before
+`tests/costs --pin` adopts it. A change to `c1.cc` that moves a cost
+thus shows as a red row, and the row names the construct whose cost
+moved.
 
-The oracle pins the IR; `tests/costs`, which `make test` runs after
-it, pins the machine code. Each program under `tests/cost/` is one
-row of chapter 3, one rule of chapters 1 and 4, or one flag of
-chapter 2, and its opening comment says what its listing must show.
-The pin beside it, `<name>.s`, is the object's disassembly by
-`objdump -d --no-show-raw-insn --no-addresses`, from the `.text`
-line on, relocations included so a call names its callee. A row
-passes when the fresh listing equals the pin; the diff of a failed
-row is in `build/cost/log`. A new or changed listing is read by hand
-against its row before `tests/costs --pin` adopts it. An LLVM
-upgrade is checked by running the corpus under the new `llc`: a row
-that differs names the construct whose cost moved.
+## 4. The measurement
 
-Which rows catch which flag, measured by dropping one flag at a
-time:
-
-| Flag dropped | Rows that change |
-|---|---|
-| `-fast-isel` with its abort | every row but unused |
-| `-relocation-model=pic` | string |
-| `-disable-cgp` | cgp, early-taildup |
-| `-disable-constant-hoisting` | constant-hoisting |
-| `-disable-machine-licm` | constant-in-loop, invariant |
-| `-disable-machine-cse` | twice, zero-test |
-| `-disable-machine-sink` | logical |
-| `-disable-branch-fold` | block-order, cgp, early-taildup, if, register-undef |
-| `-disable-tail-duplicate` | conditional, early-taildup, if, select |
-| `-disable-early-taildup` | early-taildup |
-| `-disable-block-placement` | twelve rows |
-
-Without FastISel, the folding selector forwards a stored local to
-its next read and merges operations, so nearly every listing
-shrinks; unused is the one row it leaves alone. Without
-`-relocation-model=pic`, the literal's address in string is a
-`movabs` with an absolute relocation.
-
-The other flags change no listing the corpus can produce:
-`-disable-lsr` because a counter in a slot is no induction variable,
-and a `register` counter that feeds a compare and an add, never an
-address, gives the pass nothing to reduce (the `register` loop row
-is the same with the flag dropped); `-no-stack-coloring`
-because no lifetime marker is emitted, so no two slots may share
-(the G12 oracle program shows the sharing under `clang -O2`); the
-rest because the pass has nothing to do on these constructs, or is
-off by default on x86. They stay in the table: each holds back a
-pass that exists, and a later slice may give it something to do.
-
-## 6. The measurement
+The numbers of this chapter were measured under the LLVM pipeline,
+on 2026-11-07, and the notes on each program read that pipeline's
+listings, not c1's (`llvm.md` records the pipeline). They stand until
+the queue's "Redo the measurement" runs `make bench` under c1.
 
 The measurement says how far a literal machine lands from the
 optimizer, and how much of that gap the programmer closes by hand.
@@ -290,8 +201,9 @@ long as the plain one.
 **collatz.** The tuned source tests the parity with `& 1` and halves
 with `>> 1`, where the plain one writes `% 2` and `/ 2`. The value is
 a signed `long`, so only the programmer knows it is never negative;
-an unsigned value would not show the division, since the selector
-rewrites an unsigned `/` and `%` by a power of two on its own. The
+an unsigned value would not have shown the division, since that
+pipeline's selector rewrote an unsigned `/` and `%` by a power of two
+on its own (`findings.md` chapter 2). The
 step loop of `rcc collatz.c` has an `idiv` for the test and a second
 on the even path, and moves the value and the count to and from their
 slots. The step loop of `rcc collatz-tuned.c` has an `and $0x1` and a
@@ -342,7 +254,7 @@ operand and one load of the element, at a displacement of -4 from q.
 Of the 23 instructions an iteration runs, 17 are the two tests and
 the `&&` that joins them: each test sets a byte, masks and widens it,
 and the joined value is masked, widened and compared with 0 once more
-(the `a && b` row of chapter 3). One more is a `lea` of the array's
+(`llvm.md` 5.5). One more is a `lea` of the array's
 address for the test `p != a`. The ratio falls from 5.94 to 4.40, the
 least fall in the table after fib.
 
@@ -359,8 +271,8 @@ once, stores it and tests it. The `idiv` of `n / 2` in `main` is a
 `sar`. The ratio falls from 8.43 to 2.70. `clang -O2` turns `length`
 into a call of `strlen` in both its builds.
 
-Reading the listings for this chapter turned up five facts about the
-pipeline that the chapters above do not record, two of them against
-what chapter 1 and chapter 2 say. `findings.md` explains each from
-the ground up, with the listings, the LLVM source and the choice it
-leaves open; `TODO` holds the entries.
+Reading the listings for this chapter turned up five facts about
+that pipeline that the cost model did not record, two of them
+against what its rule and its flag table said. `findings.md` explains
+each from the ground up, with the listings, the LLVM source and the
+choice it left open, and closes with what became of each under c1.

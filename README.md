@@ -8,8 +8,8 @@ undefined.
 The name says where it comes from. The syntax stays near ISO C, so
 existing programs compile; the promises are the project. They are
 listed in `docs/guarantees.md`: each names the ISO paragraph, the
-machine behaviour promised, the IR that delivers it, and what the
-optimizer loses.
+machine behaviour promised, the instruction that delivers it, and
+what the optimizer loses.
 
 ## Design
 
@@ -22,11 +22,10 @@ optimizer loses.
   and owns its registers, in Ritchie's model: every local in its
   stack slot, `register` variables in the callee-saved registers,
   expressions in the rest. The system cc preprocesses, assembles and
-  links. This is the direction of the `native` branch; the design is
-  `docs/backend.md`, and the reasons are `docs/findings.md`. Until
-  it lands, the tree compiles through LLVM's `llc` with FastISel and
-  every rewriting pass switched off, and `docs/cost.md` records what
-  that pipeline did on its own.
+  links. The design is `docs/backend.md`, and the reasons are
+  `docs/findings.md`. The tree compiled through LLVM's `llc` with
+  FastISel and every rewriting pass switched off until c1 replaced
+  it; `docs/llvm.md` is the record of that pipeline.
 - Each guarantee is delivered by emitting the plain instruction and
   nothing in between.
 
@@ -38,12 +37,12 @@ optimizer loses.
 - The oracle: the same program under `clang -O2` and under `rcc`, on
   a corpus of the known divergence cases. Where they differ is the
   experiment's output.
-- The pin: the IR text per test program, diffed.
+- The pin: the assembly text per test program, diffed.
 - The measurement: each program of a small benchmark corpus, as
   written and as tuned by hand for a literal compiler, timed under
   `clang -O2` and under `rcc`. How far the literal machine lands from
   the optimizer, and how much of the gap the programmer closes, is
-  chapter 6 of `docs/cost.md`.
+  chapter 4 of `docs/cost.md`.
 
 ## Status
 
@@ -53,15 +52,13 @@ second slice: pointers and `void *`, arrays as locals and
 parameters, subscripts, `&` and `*`, pointer arithmetic and
 comparison, casts, `sizeof`, and string and character literals.
 Then `register`, honoured: a variable that is never stored. Then the
-measurement, and the change of direction it led to: the `native`
-branch replaces the LLVM back end with rcc's own. Its three slices
-have landed, selected by `-native`: the integer types, control and
-calls; pointers, arrays and string literals; register variables.
-Every program of both corpora builds under `-native`. What remains
-is the retirement of the LLVM pipeline, which stays the default until
-then, and after it the measurement redone. The shape is
-`docs/shape.md`; `make` builds `rcc`,
-`make test` runs the oracle over `tests/corpus/` and the cost corpus
-over `tests/cost/`, `make test-native` runs both through the new back
-end, and `make bench` times the benchmark corpus of `tests/perf/`.
+measurement, and the change of direction it led to: rcc's own back
+end, c1, in place of LLVM's. Its three slices landed: the integer
+types, control and calls; pointers, arrays and string literals;
+register variables. Then the LLVM pipeline was retired, and c1 is
+the only back end. What remains is the measurement redone under c1.
+The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
+the oracle over `tests/corpus/` and the cost corpus over
+`tests/cost/`, both through c1, and `make bench` times the benchmark
+corpus of `tests/perf/`.
 The queue is `TODO`.

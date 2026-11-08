@@ -33,24 +33,23 @@ govern. The last chapter lists the calls still open; the queue,
   nothing.
 - The six calls the first draft left open are weighed in
   `design-calls.md` and made; chapter 13 records them.
-- The oracle is unchanged. The cost pins become the assembly rcc
+- The oracle is unchanged. The cost pins are the assembly rcc
   writes. The measurement is redone under the register discipline.
-- LLVM leaves the tree. Its one lasting contribution is chapter 4 of
-  `cost.md` and `findings.md`: the written record of where a modern
-  code generator's judgment hides, which this design was drawn
-  against.
+- LLVM left the tree. Its one lasting contribution is `llvm.md` and
+  `findings.md`: the written record of where a modern code
+  generator's judgment hides, which this design was drawn against.
 
 ## 1. Why
 
-`cost.md` chapter 2 holds LLVM's code generator to a literal
-pipeline with twenty-one switches. `findings.md` records what the
-switches do not reach: the selector's own strength reduction, a
-switchless pass, an allocator that rematerializes a constant or a
-frame address wherever it likes. Each is small. Together they say
-the tool has a judgment of its own that no option removes, because
-no one who wrote it wanted a literal compiler. Defending the thesis
-against the tool is a maintenance stream that grows with every LLVM
-release; writing the back end makes the thesis a table.
+`cost.md` held LLVM's code generator to a literal pipeline with
+twenty-one switches, the flag table that `llvm.md` 3.4 now records.
+`findings.md` records what the switches did not reach: the selector's
+own strength reduction, a switchless pass, an allocator that
+rematerializes a constant or a frame address wherever it likes. Each is
+small. Together they say the tool has a judgment of its own that no
+option removes, because no one who wrote it wanted a literal compiler.
+Defending the thesis against the tool is a maintenance stream that grows
+with every LLVM release; writing the back end makes the thesis a table.
 
 The charter says "using LLVM to bring early C's machine-oriented
 programming model to modern targets". The model is the point and
@@ -119,10 +118,11 @@ never materialized a 0 or 1: `if (a < b)` was a compare and a
 conditional branch to the else label, and `if (a && b)` was two
 compares and two branches. This is the distinction the LLVM pipeline
 could not make for rcc, because the tree holds an `int` for every
-condition and the IR had to materialize it: `cost.md` chapter 3's
-"used as a condition, the value is then compared with 0 again", the
-`setcc`, `and $1`, `movzbl`, `cmp $0` chain that is 17 of the 23
-instructions in sort's inner loop. Chapter 7 is `cbranch`.
+condition and the IR had to materialize it: that pipeline's cost
+row said "used as a condition, the value is then compared with 0
+again", the `setcc`, `and $1`, `movzbl`, `cmp $0` chain that was 17
+of the 23 instructions in sort's inner loop (`llvm.md` 5.5). Chapter
+7 is `cbranch`.
 
 ## 3. Background: x86-64 and its convention
 
@@ -287,8 +287,7 @@ A function's frame holds, from high addresses to low:
    included, none shared: G12, "a local's storage is one stack slot
    for the whole activation". A parameter's slot receives the
    argument register in the prologue, so every later read is a load
-   from the slot, as under the LLVM pipeline ("a parameter is written
-   at entry"). A parameter that arrived on the stack has its slot
+   from the slot. A parameter that arrived on the stack has its slot
    where the caller put it, above the return address, at a positive
    displacement off `rbp`. A local array's slot is its size at its
    element's alignment, its displacement the array's lowest address;
@@ -382,7 +381,7 @@ promotion casts before any operator sees them, as today.
 | `!a` | `cmp $0, L`; `sete %Lb`; `movzbl %Lb, L` | as a value; as a condition, chapter 7 |
 | `a < b` and the rest, as a value | `cmp R, L`; `setcc %Lb`; `movzbl %Lb, L` | `setl`, `setle`, `setg`, `setge`, `sete`, `setne` signed; `setb`, `setbe`, `seta`, `setae` unsigned and for pointers (G7) |
 | `a && b`, `a \|\| b`, `a ? b : c`, as a value | jump code of chapter 7 into `L`, with `mov $0, L` and `mov $1, L` on the arms | no `setcc` chain |
-| `x = e` | `mov L, slot` or `mov L, reg`, or the immediate for a constant; the value stays in `L` | a `char` store is `movb %Lb` |
+| `x = e` | `mov L, slot` or `mov L, reg`, the value staying in `L`; a constant goes as the immediate straight into a register variable only, `movl $0, %r12d`; into memory it goes by `mov $c, L` and the store, `movl $0, %eax; movl %eax, -12(%rbp)`, and the one-instruction store is queued (`TODO`, the effect context) | a `char` store is `movb %Lb` |
 | `x op= e` | the load row, the op row, the store row | |
 | `++x`, `x++`, `--x`, `x--` | the load, `add $1` or `sub $1`, the store; the post forms keep the old value in another register | `add $size` for a pointer |
 | `(T) a` | `movslq L, L64` for `int` to `long`, `movsbl` or `movzbl` from `Lb` for `char` to `int`, each only when `L` is not already valid to the new width (the width rule below); nothing for `long` to `int` (the 32-bit name is the value); nothing between pointer types; an integer to a pointer as to `unsigned long`, so `movslq` for an `int` (6.3.2.3p5); nothing for a pointer to `long` or `int` | G2: truncation is reading the low bits |
@@ -477,8 +476,8 @@ place, the instruction is written, the result is moved into `L`, and
 the displaced values stay where they went; the generator's map of
 which value is in which register is updated and nothing else cares.
 Every instruction written is a real move of a real value and shows
-in the listing; the cost model's division row will say what a
-division costs when `rax` or `rdx` is busy.
+in the listing; the cost model's row for a division with `rax` and
+`rdx` busy says what it costs (`div-busy`).
 
 ## 7. Conditions and control
 
@@ -542,10 +541,15 @@ the promotion is queued.
   G5's "some value of its type"; the `%ret.indeterminate` slot of the
   IR pipeline is gone. `main` is the exception: reaching its closing
   `}` returns 0 (5.1.2.3.4p1), so `main` writes `movl $0, %eax`
-  before the epilogue unless its last statement is a `return`.
+  before the epilogue unless its last statement is a `return`. A
+  `void` function whose last statement is not a `return` falls into
+  the epilogue's label, with no `jmp`.
 - Blocks and labels are written in source order. A label is `.L`
-  and a function-local number; the labels of a function are unique
-  and nothing is reordered after them.
+  and a number, which the code counts through the file today, so the
+  labels of a file are unique; the first a function takes is its
+  epilogue's, `.L1` in the first function and `.L2` in a second that
+  has no other label. A per-function count, `.L<function>.<n>`, is
+  queued (`TODO`). Nothing is reordered after the labels.
 
 ## 8. Calls
 
@@ -574,9 +578,9 @@ call sequence.
    pushed from `rax`, `movl -28(%rbp), %eax; pushq %rax`. The first
    six are loaded from their slots into `rdi`, `rsi`, `rdx`, `rcx`,
    `r8`, `r9`, a narrower one extended to 32 bits by the load. `al`
-   is set to 0 for a variadic callee. `call f@PLT`, every call
-   through the PLT, chapter 10. The pushed bytes and the pad are
-   added back.
+   is set to 0 for a variadic callee, `movl $0, %eax`. `call f@PLT`,
+   every call through the PLT, chapter 10. The pushed bytes and the pad
+   are added back.
 4. The result is in `rax`; it is moved into the lowest free
    expression register, and the values of step 1 are reloaded from
    their spill slots as the enclosing expression consumes them.
@@ -595,8 +599,8 @@ A `char` or `short` argument to a parameter of that type keeps the
 parameter's type: it is stored to its slot at its width and extended
 to 32 bits by the load into its register (`movsbl -5(%rbp), %edi`).
 A `char` or `short` result is extended by the callee before `ret`,
-as the ABI's "the callee extends" and the IR pipeline's row both
-say, and the caller reads 32 bits of it. G16: the call is made
+as the ABI's "the callee extends" says and the IR pipeline's row
+said, and the caller reads 32 bits of it. G16: the call is made
 with the call site's types and the convention's registers, and
 nothing is added, dropped or rewritten.
 
@@ -609,9 +613,8 @@ chapter 5, `ret`.
 
 ## 9. What each guarantee compiles to
 
-The "IR:" clause of each guarantee in `guarantees.md` becomes an
-instruction clause when the back end lands. The table here is the
-draft of those clauses.
+The instruction clause of each guarantee in `guarantees.md` is its
+row here, in the guarantee's voice.
 
 | Guarantee | Instruction |
 |---|---|
@@ -632,10 +635,11 @@ draft of those clauses.
 | G16 a call goes out as written | chapter 8 |
 | G17 a string literal is writable | `.data`, chapter 10 |
 
-G15 stays withdrawn. The never-emitted table of `guarantees.md`,
-the IR flags the front end withheld from an optimizer that never
-ran, has no counterpart: there is no IR, and there is nothing to
-withhold from `as`.
+G15 stays withdrawn. The never-emitted table, the IR flags the
+front end withheld from an optimizer that never ran, has no
+counterpart: there is no IR, and there is nothing to withhold from
+`as`. `rationale.md` keeps the table as the record of the
+argument.
 
 ## 10. Statics and literals
 
@@ -664,44 +668,33 @@ and into a fixed one as well.
 
 ## 11. The driver and the pipeline
 
-`rcc file.c` runs the system `cpp` (or `cc -E`), tokenizes, parses,
-folds, generates assembly text, and then runs `cc -c` on it for `-c`
-and `cc` for a link. `-S` writes the assembly, to a file or to
-standard output for `-o -`, as every cc does. No `llc`, no IR, no
-flag table. The `# line "file"` markers of the preprocessor still
-give the diagnostics their positions. The one warning, chapter 4's
-for a sixth live `register` variable, is printed in the error's
-format and changes no exit status; `-w` silences it.
-
-Until the LLVM pipeline is retired, the driver's `-native` selects
-c1: `rcc -native -S` writes the assembly, `-native -c` assembles it
-with the system cc, and a link links it. Without the flag the LLVM
-path runs as before.
-
-`shape.md`'s chapters on the pipeline, the emitter and the driver
-are rewritten when this lands; the lexer, the types, the tree and
-the parser, 3300 of the tree's 5700 lines, are untouched.
+`rcc file.c` runs the system cc's preprocessor, tokenizes, parses,
+folds, generates assembly text, and then runs the system cc's
+assembler on it for `-c` and its linker for a link; the system cc is
+`clang`, which the driver runs as `clang -E`, `clang -c` and `clang`.
+`-S` writes the assembly to a file; standard output for `-o -`, as
+every cc does, is queued (`TODO`). No `llc`, no IR, no flag table. The
+`# line "file"` markers of the preprocessor still give the diagnostics
+their positions. The one warning, chapter 4's for a sixth live
+`register` variable, is printed in the error's format and changes no
+exit status; `-w` silences it.
 
 ## 12. Verification
 
 - **The oracle**, `tests/oracle` over `tests/corpus`: the same
-  program under `clang -O2` and under `rcc`, exit statuses compared.
-  Unchanged in script and in expectation; the corpus's `.ll` pins
-  become `.s` pins of `rcc -S`.
+  program under `clang -O2` and under `rcc`, exit statuses compared,
+  and the text `rcc -S` writes diffed against the program's pin.
 - **The cost corpus**, `tests/costs` over `tests/cost`: the pin of
-  each program becomes the text `rcc -S` writes, and the script
-  assembles it with `cc -c` to prove that it assembles. No `objdump`,
-  no relocations to strip. The rows are re-pinned one by one against
-  this document's table, and the document's chapter 3 of `cost.md`
-  is rewritten from the pins.
-- **Where the pins live**: until retirement, the `.s` pins are under
-  `tests/corpus/native/` and `tests/cost/native/`, written by
-  `tests/oracle --native` and `tests/costs --native`, which `make
-  test-native` runs; the LLVM pins keep their places, and `make
-  test` runs them. At retirement the native pins move up a
-  directory and replace them.
+  each program is the text `rcc -S` writes, and the script assembles
+  it with `clang -c` to prove that it assembles. Each pin is read by
+  hand against this document's table before it is adopted, and
+  chapter 2 of `cost.md` is written from the pins.
+- **Where the pins live**: beside their programs,
+  `tests/corpus/<name>.s` and `tests/cost/<name>.s`, written by
+  `tests/oracle --pin` and `tests/costs --pin`; `make test` runs both
+  scripts.
 - **The ABI**: `g12-block-slot` is the corpus program that calls
-  into libc, `printf` with `al` set, and it passes under `--native`.
+  into libc, `printf` with `al` set, and it passes.
   A `clang`-compiled `main` calling rcc code, and an rcc `main`
   calling `clang`-compiled code, were run as probes outside the tree
   in the first two slices, with the statuses of the all-`clang` build.

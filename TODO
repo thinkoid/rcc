@@ -15,47 +15,28 @@ git keeps them.
 
 * The back end
 
-The direction of this branch. rcc drops LLVM's code generator and
-writes x86-64 assembly itself; the system cc assembles, links and
-preprocesses. The reasons are =docs/findings.md= and =docs/llvm.md=,
-the design is =docs/backend.md= with its calls made in
-=docs/design-calls.md=. LLVM stays where it benefits and is rewritten where
-it has to be fought. The entries below are the slices, in order; the
-chapters after this one hold the LLVM-era queue, and each says what
-leaves with the pipeline.
-
-** TODO Retire the LLVM pipeline
-
-Every program of the corpus and of the cost corpus passes through
-the new back end, so the old one can go: =emit.cc= and the flag table
-of =main.cc= leave; =-S= writes assembly; =-c= runs the system cc on
-it; =llc= is no longer run.
-=cost.md= chapters 2, 4 and 5 leave with it, chapter 3 is the table
-the back end was written from, =guarantees.md='s IR clauses become
-instruction clauses, =shape.md= describes the new pipeline, and
-=findings.md= closes with what became of its five. The header
-comments of the cost programs and of the corpus programs that
-describe the LLVM listings or the IR are rewritten for the native
-ones; the pins of =tests/corpus/native/= and
-=tests/cost/native/= move up a directory over the LLVM pins; the
-=--native= mode leaves the two scripts, and =test-native= becomes
-=test=.
-
-Check: =make test= green with no =llc= on the machine's path.
+The direction is taken: c1 is rcc's only back end, it writes x86-64
+assembly itself, and the system cc preprocesses, assembles and
+links. The reasons are =docs/findings.md= and =docs/llvm.md=, the
+design is =docs/backend.md= with its calls made in
+=docs/design-calls.md=. The chapter holds the measurement to redo,
+the records of the design to correct, c1's own changes and defects,
+and the second target.
 
 ** TODO Redo the measurement
 
-=make bench= under the new back end. Compiled with =-native=,
-=collatz-tuned= warns twice, for =x= and =steps=, and =matmul-tuned=
-five times, for =pc=, =bcol=, =pa=, =pb= and =s=; those seven take
-slots. =sieve-tuned=, =fib-tuned=, =sort-tuned= and =strings-tuned=
-warn not at all: sieve declares six, but its two loops are sibling
-blocks, so never more than five are live at once. The numbers move.
-The movement is a result about the model, and the tuned sources may
-be re-tuned to the set, as a PDP-11 programmer tuned to three.
+=make bench= under c1. Compiled with c1, =collatz-tuned= warns
+twice, for =x= and =steps=, and =matmul-tuned= five times, for =pc=,
+=bcol=, =pa=, =pb= and =s=; those seven take slots. =sieve-tuned=,
+=fib-tuned=, =sort-tuned= and =strings-tuned= warn not at all: sieve
+declares six, but its two loops are sibling blocks, so never more than
+five are live at once. The numbers move. The movement is a result about
+the model, and the tuned sources may be re-tuned to the set, as a PDP-11
+programmer tuned to three.
 
-Check: chapter 6 of =cost.md= re-recorded, with the register count
-per program.
+Check: chapter 4 of =cost.md= re-recorded, with the register count
+per program, and its opening sentence on the LLVM-era numbers
+gone.
 
 ** TODO The sixth register's price is counted by declarations
 
@@ -81,6 +62,80 @@ conclusion is re-read against the restated price.
 Check: no sentence of the two documents counts a sixth register
 variable by declarations where the rule counts the live ones.
 
+** TODO =design-calls.md= calls the record of the register extent future
+
+=design-calls.md= 3.2 says the five-register extent "can be written
+in the cost model, and it will be", and chapter 7 lists "the
+implementation-defined extent of =register= recorded as five and the
+warning" among the changes "when it is rewritten from the new pins".
+=cost.md= chapter 1 now records the extent, as 6.7.2p12 leaves it to
+the implementation and 4p10 asks, so both sentences describe as
+pending what is done.
+
+Fix: the two sentences say the cost model records the extent, and
+point at =cost.md= chapter 1.
+
+Check: no sentence of =design-calls.md= calls the record of the
+extent future.
+
+** TODO Labels are numbered through the file, not per function
+
+c1's label counter runs through the file: =add-sub= has =.L1= in
+=add()= and =.L2= in =sub()=, and =invariant_constant()= starts at
+=.L5=. An added label in one function thus renumbers every later
+function's labels, and a change to one function moves every pin that
+holds another; 17 of the 60 pins hold more than one function. A =.L=
+symbol must be unique in the assembly file, so a per-function count
+needs the function's name in the label: =.L<function>.<n>=,
+=.Lsum.1=. =backend.md= 7.2 says the count runs through the file
+today and points here.
+
+Fix: that label form, the counter reset at each function; the
+epilogue's label is =.L<function>.1=; 7.2 states the form.
+
+Check: the 17 pins re-adopted, every other pin unchanged.
+
+** TODO A constant is stored through a register
+
+c1 stores a constant to a slot through a register, =movl $0, %eax;
+movl %eax, -12(%rbp)= (34 stores in 13 pins), and =g17='s byte store
+likewise, =movl $122, %ecx; movb %cl, (%rax)=, where x86 stores an
+immediate in one instruction, =movl $0, -12(%rbp)=. The register is
+taken because =rvalue()= yields every value in a register, and the
+assignment's own value may be wanted by an enclosing expression. The
+=x = e= row of =backend.md= 6.3 says the immediate goes directly only
+into a register variable, and points here.
+
+Fix: an effect context, as Ritchie's c1 had its =efftab= beside
+=regtab= and =cctab=: =effect(e)= as a third entry beside =rvalue()=
+and =cbranch()=, used for an expression statement, a declaration's
+initializer and =for='s init and step. In it an assignment of a
+literal to a slot or through a pointer writes =mov $c, dst= at the
+type's width (=movb=, =movw=, =movl=, or =movq= for a constant that a
+sign-extended 32-bit immediate holds; a wider =long= still goes
+through =movabsq=) and holds nothing. In a value context, =a = b =
+5=, the constant is loaded into a register as today. The 6.3 row is
+restated.
+
+Check: the 13 pins re-adopted, and no pin holds a =mov $c, reg=
+followed by a store of that register; =a = b = 5= still loads the
+constant once.
+
+** TODO A shift's reloaded left operand lands in =rcx=
+
+In a variable shift whose left operand is reloaded after a call,
+=int c(int); long w(long a, int n) { return a << c(n); }=,
+=operands()= reloads the left operand avoiding only the count's
+register, so it lands in =rcx=, and =shift()= then moves it straight
+out again for the count: =movq -24(%rbp), %rcx; movq %rcx, %rdx=
+before =shlq %cl, %rdx=. The =mov= is a real move of a real value,
+but one the generator made for itself.
+
+Fix: for a shift, the left operand's reload also avoids =rcx=.
+
+Check: the probe loses the =movq %rcx, %rdx=, and the 51 cost pins
+are unchanged.
+
 ** TODO aarch64
 
 A second instruction table and the AAPCS64 convention: =x0= to =x7=
@@ -91,10 +146,10 @@ After x86-64 is whole.
 
 The promises in =docs/guarantees.md=. The entry number is the
 guarantee it belongs to. All are decided; G15 is withdrawn with its
-number reserved; under the literal pipeline the guard of G4, the
-round trip of G8 and the laundering of G16 are no longer emitted,
-because nothing between the source and the instruction reasons about
-the program.
+number reserved. c1 writes none of the guard of G4, the round trip
+of G8 and the laundering of G16, which draft 1 designed against an
+optimizer, because nothing between the source and the instruction
+reasons about the program.
 
 ** TODO G7's "Lost" in the rationale misses the equality fold
 
@@ -112,12 +167,12 @@ Check: the rationale's G7 names the fold and the program.
 
 ** TODO The rationale has no G17
 
-=guarantees.md= has G17, the writable string literal, and its row in
-the never-emitted table; =rationale.md= has neither, so the promise
-has no recorded argument, alternatives or probe. The corpus has the
-probe: =clang -O2= folds the load from a literal to its initializer
-and drops the store (=tests/corpus/g17-string-store.c=, 122 under
-rcc, 97 under clang).
+=guarantees.md= has G17, the writable string literal; =rationale.md=
+has neither a G17 entry nor its row in the never-emitted table, so
+the promise has no recorded argument, alternatives or probe. The corpus
+has the probe: =clang -O2= folds the load from a literal to its
+initializer and drops the store (=tests/corpus/g17-string-store.c=, 122
+under rcc, 97 under clang).
 
 Fix: a Storage section in the rationale with G17: the ISO paragraph,
 the promise, the IR, what is lost (equal literals merged, the
@@ -128,165 +183,39 @@ Check: the rationale has a G17 entry and the table row.
 * Cost model
 
 The record in =docs/cost.md=: what each construct compiles to under
-the literal pipeline, =llc= with FastISel and the rewriting passes
-off. The entries below the first are the findings of the measurement
-(=docs/findings.md=); they are facts about LLVM's code generator and
-leave with it when the pipeline is retired. Under the back end of
-=docs/backend.md= a multiply is =imul=, a constant is an immediate, a
-register variable is a register, and a negative constant is folded in
-the parser.
+c1, its table written from the pins of =tests/cost/=. The findings of
+the measurement (=docs/findings.md=) were facts about LLVM's code
+generator and left with it; that page's chapter 8 says what became
+of each. The entries below are rows the table lacks.
 
-** TODO A function whose every path returns still gets the indeterminate slot
+** TODO No row pins a multiply or an unsigned division by a power of two
 
-=needs_return_slot= allocates =%ret.indeterminate= in every non-void
-function but =main=, for the value a fall off the end returns (G5).
-A function whose last top-level statement is a =return= cannot fall
-off the end, so its slot is a dead =alloca=, eight bytes of frame per
-such function.
+c1 writes =x * 4= as =imull $4, %eax, %eax=, and an unsigned =x / 4=
+and =x % 4= as =movl $4, %ecx; xorl %edx, %edx; divl %ecx=, the
+remainder then moved from =edx= (=backend.md= 6.4). This is the
+thesis's answer to finding 2 of =findings.md=, the selector's
+strength reduction. But no cost program pins the three: =mul-three=
+multiplies by 3 and =div-four= divides a signed value, so a change to
+c1 that turned the three into a shift or a mask would show in no
+row.
 
-Fix: no slot when the body's last statement is a =return=; the
-syntactic test is enough, since the slot is read only by the fall-off
-path =finish= writes.
-
-Check: =int f(void) { return 1; }= has no =ret.indeterminate= in its
-IR; a function ending in an =if= without =else= still has one.
-
-** TODO The selector rewrites a multiply and an unsigned division by a power of two
-
-FastISel turns a =mul= by a power of two into =shl=, a =udiv= by one
-into =shr= and a =urem= by one into =and= (=FastISel::fastEmit_ri_=
-and =FastISel::selectBinaryOp=, =FastISel.cpp=); no option gates it.
-So =x * 4= is =shl $0x2= for any =x=, and for an unsigned =x=, =x /
-4= is =shr $0x2= and =x % 4= is =and $0x3=. A signed division or
-remainder by a power of two stays =cltd; idiv=, as =div-four= pins.
-Chapter 1 says =x / 4= is a division, and chapter 3 gives =imul= and
-=div= for every operand; neither holds for these three, and no cost
-row covers them. =tests/perf/collatz.c= declares its value signed so
-that its halving divides.
-
-Fix: decide between the emitter freezing a power-of-two constant
-operand of =mul=, =udiv= and =urem=, as it freezes the constant of a
-compare, so the instruction written is selected, and recording the
-rewrite in chapter 4 as the selector's own rule, with chapters 1 and
-3 qualified.
-
-Check: cost rows for =x * 4=, unsigned =x / 4= and unsigned =x % 4=
-pin =imul=, =div= and =div=, or pin the rewrite chapter 4 records.
-
-** TODO A pass with no switch drops a constant already in its register
-
-=machine-latecleanup=, after register allocation, removes an
-instruction that loads an immediate into a register already holding
-that immediate on every path to it; =llc= 23.1.3 has no option to
-disable it. In =tests/perf/collatz.c=, =x % 2= loads 2 into =rcx= for
-its =idiv=, and =x / 2= in the next block divides by that =rcx= with
-no =mov= of its own: =llc -print-after-all= shows two =MOV32ri64 2=
-up to that pass and one after it. Chapter 2 names the machine
-combiner as the one pass without a switch, and chapter 1 says the
-same expression written twice is computed twice.
-
-Fix: name the pass in chapter 2 and its effect in chapter 4, with a
-cost row of one constant used in two blocks, the first dominating
-the second.
-
-Check: the row's pin shows one =mov= of the constant, and chapter 2
-names both passes.
-
-** TODO Chapter 3 has no row for unary minus and complement
-
-Chapter 3 has no row for =-a= or =~a=. A negative constant is not
-one of them: the parser folds =-1= to a constant, so =long x = -1= is
-one store of an immediate, as =long x = 2= is, and =p[-1]= is a
-displacement. On a variable the two operators are instructions.
-Under the LLVM pipeline =-a= is =sub 0, a=, which FastISel selects as
-an =xor= that clears a second register and a =sub= from it, and =~a=
-is =xor $0xffffffff=; under =-native= they are =neg= and =not=, the
-row of =backend.md= 6.3.
-
-Fix: a row for =-a= and =~a=, with a cost program. Chapter 3 is the
-table that stays when the pipeline is retired, so the program is
-worth its native pin; its LLVM pin shows the two-instruction negation
-and leaves with the pipeline.
-
-Check: the row and its pins.
-
-** TODO A register pointer to a local array is a lea at each use
-
-A local array's address is a frame index to the selector, and a
-=register= variable initialized with it is that address itself, since
-a register variable is its SSA value. The selector materializes it
-with a =lea= from =rsp= at each use, inside a loop too: in a loop,
-=p != first= with =register int *first = a;= is a =lea= and a =cmp=,
-the same as =p != a=. Chapter 3's row for a =register= local says "a
-register".
-
-Fix: the =register= row of chapter 3 says that a register variable
-holding a local's address is a =lea= at each use, with a cost
-program.
+Fix: a cost program pinning =imull $4=, the =movl $4= into a
+register and the =divl= of the unsigned division and remainder.
 
 Check: the row and its pin.
 
-** TODO The flag tables name two rows that no longer witness their flag
+** TODO Chapter 2 has no row for unary minus and complement
 
-=llvm.md= 3.5 and =cost.md= chapter 5 map each =llc= flag to the cost
-rows whose pins change when the flag is dropped. They name =invariant=
-under =-disable-machine-licm= and =twice= under
-=-disable-machine-cse=. The parser now folds =12 * 34= to 408, so
-neither program holds a constant instruction for machine LICM to move
-out of the loop or for machine CSE to merge; dropping either flag
-leaves both pins as they are (=llc= 23.1.4, probed outside the tree).
-Each flag keeps one witness: =constant-in-loop='s =movabs= for LICM,
-and for CSE =zero-test='s =never()=, whose =if (0)= is a =cmp= of two
-registers each cleared by an =xor=. The two programs' header comments
-already say they have no witness; the tables do not. This leaves with
-the pipeline.
+Chapter 2 of =cost.md= has no row for =-a= or =~a=. A negative
+constant is not one of them: the parser folds =-1= to a constant, so
+=long x = -1= is =movq $-1, %rax= and the store, as =long x = 2= is
+=movq $2, %rax=, and =p[-1]= is a displacement. On a variable the two
+operators are instructions, =negl %eax= and =notl %eax=, the row of
+=backend.md= 6.3.
 
-Fix: the two tables drop =invariant= and =twice=, or each program
-regains a witness with a constant the selector must hold in a
-register: a constant divisor, since =idiv= takes no immediate.
+Fix: a row for =-a= and =~a=, with a cost program.
 
-Check: dropping each flag changes every row the two tables name for
-it.
-
-** TODO The LLVM-era documents describe the unfolded constants
-
-The parser folds integer constant expressions, so a negative constant
-is an immediate, an array size is any integer constant expression,
-and a comparison or a =!= of integer constants is a constant. Three
-documents of the LLVM pipeline still describe the parser before the
-evaluator, and leave or are rewritten with the pipeline:
-
-- =cost.md= chapter 3: the =a < b= row freezes "a constant" among
-  the operands of one name, but the parser folds a comparison of two
-  integer constants, so only two pointer constants, =(int *) 0 ==
-  (int *) 0=, still reach the row; the implicit-conversion row says
-  =(long) 2= is the =(T) a= row, where it is now a =long= constant.
-- =cost.md= chapter 4, the compare fold: "=if (0)= and =!0= compare
-  0 with a frozen 0"; =!0= is now the constant 1, as =zero-test=
-  pins.
-- =findings.md= chapter 0: a negative constant "is computed at run
-  time", and an array size "must be a single integer token".
-- =findings.md= 4.2: the IR =sub i32 0, 1= and the listings'
-  =xor=, =sub=, =cltq= are the parser's old output.
-- =findings.md= 4.3: the constant row "is true of =2= and false of
-  =-1="; it is now true of both.
-- =findings.md= 4.4: "the operators of 6.6p8", where 6.6p3 restricts
-  the operators and p8 lists the operands; and the evaluator
-  "diagnoses [overflow] rather than wrapping", where it wraps and
-  refuses the wrapped value only where 6.6p4 governs, the array size.
-- =findings.md= 5.2: the message "not yet: array size other than an
-  integer constant", which the parser no longer writes.
-- =findings.md= chapter 7: "The parser does no constant evaluation".
-- =findings.md= chapter 8: findings 4 and 5 "land together with the
-  evaluator", which has landed.
-- =llvm.md= 5.4: "=!0= to a constant", a fold of an =icmp= the
-  emitter no longer writes for =!0=.
-
-Fix: at retirement, when =findings.md= closes with what became of its
-five and =cost.md='s chapters 2, 4 and 5 leave; =findings.md= 4.4's
-citation is corrected then too.
-
-Check: no sentence of the three documents names an unfolded constant.
+Check: the row and its pin.
 
 * Tests
 
@@ -363,63 +292,21 @@ shows in no pin:
 - the sixth live variable in a slot, and a later block taking =rbx=
   again.
 
-Fix: a cost program for each, with its two pins until retirement.
+Fix: a cost program for each, with its pin.
 
 Check: perturbing each rule in =c1.cc= turns a row red.
 
 ** TODO =-o -= names a file, not standard output
 
 =rcc -S -o -= writes a file called =-= in the working directory. Every
-cc reads =-o -= as standard output for =-S=, and a reader of the IR
-expects it.
+cc reads =-o -= as standard output for =-S=, and a reader of the
+assembly expects it.
 
 Fix: with =-S=, an output of =-= writes the text to standard output;
 with =-c= or a link it stays a usage error.
 
-Check: =rcc -S -o - x.c | head -1= prints the first line of the IR
-and leaves no file.
-
-** TODO A failed =llc= under =-c= may leave a partial object
-
-With =-c=, =llc= writes straight to the output path. If it fails
-after opening the file, the path holds a partial object that a
-later =make= would take for a good one. Unchecked.
-
-Fix: write to a temporary beside the output and rename on success,
-or confirm =llc= removes its output on failure.
-
-Check: a fake =llc= that writes then exits 7 leaves no output file.
-
-* Emitter
-
-The IR emitter leaves with the LLVM pipeline. The three entries below
-leave with it: the first two are properties of the IR, and the third,
-the join of register variables, has no counterpart when a register
-variable is a fixed register.
-
-** TODO The object names the temporary IR file, so no two builds match
-
-The IR has no =source_filename=, so =llc= names the module after the
-file it reads, the driver's temporary =rcc-XXXXXX.ll=. The object's
-file symbol is that name (=objdump -t= shows =rcc-BRXkWH.ll=), and two
-=rcc -c= builds of the same source differ in it.
-
-Fix: the emitter writes ~source_filename = "<the .c path>"~ at the
-top of the IR.
-
-Check: two =rcc -c= builds of =tests/cost/local.c= compare equal with
-=cmp=, and =objdump -t= names the =.c= file.
-
-** TODO A loop's end block with several predecessors
-
-When =break= and =continue= arrive, a loop's end block gets several
-predecessors: the two-arm join of the register variables generalizes
-to n arms then.
-
-Fix: =join= over a list of arms.
-
-Check: a register variable assigned before a =break= has that value
-after the loop.
+Check: =rcc -S -o - x.c | head -1= prints the first line of the
+assembly and leaves no file.
 
 * Parser
 
@@ -494,9 +381,9 @@ scope; a parameter's size that is not an integer constant expression
 taken as =*=. In a definition this skips the evaluation of the size
 that 6.7.7.3p5 asks for, which only a size with a side effect shows.
 
-Check: =int f(int n, int a[n]) { return a[0]; }= compiles, and
-under =-native= to the listing of =int f(int n, int *a)=; =int g(int
-n) { int a[n]; }= is still the variable-length not-yet.
+Check: =int f(int n, int a[n]) { return a[0]; }= compiles to the
+listing of =int f(int n, int *a)=; =int g(int n) { int a[n]; }= is
+still the variable-length not-yet.
 
 ** TODO A =(void *) 0= arm makes =?:= a =void *=
 
@@ -528,24 +415,8 @@ operation is on an =int=.
 Fix: the parser inserts the promotion cast on the operand of =!=; c1
 then writes =cmpl=.
 
-Check: the listing of =!c= on a =char= under =-native= is the load
-=movsbl= and =cmpl $0=.
-
-** TODO A shift count is widened to the shifted operand's type
-
-=shift()= converts the promoted count to the type of the promoted
-left operand, because an IR shift takes one type for both. 6.5.8p3
-promotes each operand on its own and asks nothing more. Under
-=-native= the cast is an instruction: in =g6-ptr-wrap=, =ones >> (argc
-+ 2)= on an =unsigned long= writes =movslq %ecx, %rcx= before =shrq
-%cl, %rax=, and the shift reads =cl= alone. The row of =backend.md=
-6.3 for =a << b= names no extension of the count.
-
-Fix: at retirement, the count keeps its promoted type, and c1 moves it
-to =rcx= at its own width; until then the extension is the cost of the
-IR's shift, and the 6.3 row says so.
-
-Check: =g6-ptr-wrap='s native pin has no =movslq= before =shrq=.
+Check: the listing of =!c= on a =char= is the load =movsbl= and
+=cmpl $0=.
 
 * Lexer
 
