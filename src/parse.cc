@@ -407,9 +407,9 @@ require_modifiable_lvalue(const token_t &at, const expr_t &e)
 }
 
 // Array decay, 6.3.2.1p3: but as the operand of sizeof or of unary &,
-// an array becomes a pointer to its first element, a cast the emitter
-// reads as that address.  Lvalue conversion, p2, is the emitter's load
-// and needs no node.
+// an array becomes a pointer to its first element, a cast c1 reads as
+// that address.  Lvalue conversion, p2, is c1's load and needs no
+// node.
 expr_t
 decayed(expr_t e)
 {
@@ -795,8 +795,8 @@ arithmetic(const token_t &op, expr_t lhs, expr_t rhs)
 
 // + with a pointer, 6.5.7p2, p9: a pointer and an integer in either
 // order, the result of the pointer's type.  The tree keeps the order
-// written: the emitter evaluates left to right (G13), whichever side
-// the pointer is on.
+// written: c1 evaluates left to right (G13), whichever side the
+// pointer is on.
 expr_t
 addition(const token_t &op, expr_t lhs, expr_t rhs)
 {
@@ -888,8 +888,8 @@ comparison(const token_t &op, expr_t lhs, expr_t rhs)
 }
 
 // && ||: an int (6.5.14p3, 6.5.15p3).  The operands are scalars and
-// stay as they are, 6.5.14p2, 6.5.15p2; the emitter compares each
-// against zero in its own type, a pointer against null.
+// stay as they are, 6.5.14p2, 6.5.15p2; c1 compares each against zero
+// in its own type, a pointer against null.
 expr_t
 logical(const token_t &op, expr_t lhs, expr_t rhs)
 {
@@ -1788,8 +1788,8 @@ expression_statement(parser_t &p)
     return stmt_t { expr_stmt_t { decayed(std::move(e)) } };
 }
 
-// The condition stays in its own type, an integer or a pointer; the
-// emitter compares it against zero, 6.8.5.2p2.
+// The condition stays in its own type, an integer or a pointer; c1
+// compares it against zero, 6.8.5.2p2.
 stmt_t
 selection_statement(parser_t &p)
 {
@@ -1952,10 +1952,10 @@ expression(parser_t &p)
 // once, 6.5.17.3p4: the operation is computed in the common type of the
 // usual arithmetic conversions, so the right operand goes to that type
 // here, or in the promoted left type for a shift, 6.5.8p3, where the
-// count is promoted on its own, as in the shift production.  The
-// emitter takes the loaded left operand into it and the result back to
-// the left type.  A pointer takes += and -= only, 6.5.17.3p1, computed
-// in the pointer's type with the right operand widened as for p + n.
+// count is promoted on its own, as in the shift production.  c1 takes
+// the loaded left operand into it and the result back to the left
+// type.  A pointer takes += and -= only, 6.5.17.3p1, computed in the
+// pointer's type with the right operand widened as for p + n.
 expr_t
 assignment_expression(parser_t &p)
 {
