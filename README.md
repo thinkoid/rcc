@@ -54,8 +54,11 @@ parameters, subscripts, `&` and `*`, pointer arithmetic and
 comparison, casts, `sizeof`, and string and character literals.
 Then `register`, honoured: a variable that is never stored. Then the
 measurement, and the change of direction it led to: the `native`
-branch replaces the LLVM back end with rcc's own. The shape is
-`docs/shape.md`; `make` builds `rcc`, `make test` runs the oracle
-over `tests/corpus/` and the cost corpus over `tests/cost/`, and
-`make bench` times the benchmark corpus of `tests/perf/`. The queue
-is `TODO`.
+branch replaces the LLVM back end with rcc's own. Its first slice
+has landed, the integer types, control and calls, selected by
+`-native`; the LLVM path stays the default until it is retired. The
+shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs the
+oracle over `tests/corpus/` and the cost corpus over `tests/cost/`,
+`make test-native` runs both through the new back end, and `make
+bench` times the benchmark corpus of `tests/perf/`. The queue is
+`TODO`.

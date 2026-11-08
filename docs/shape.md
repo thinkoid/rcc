@@ -207,18 +207,21 @@ nothing in the method needs it: the corpus is correct programs.
 
 ## 8. The driver
 
-`rcc [-S] [-c] [-o out] file.c`. `-S` stops at the `.ll`, the way
-`cc -S` stops at assembly: the IR is rcc's assembly, and the pinned
-`.ll` in the corpus is what `-S` wrote. `-c` stops at the object,
+`rcc [-native] [-S] [-c] [-o out] file.c`. `-S` stops at the `.ll`,
+the way `cc -S` stops at assembly: the IR is rcc's assembly, and the
+pinned `.ll` in the corpus is what `-S` wrote. `-c` stops at the object,
 which `llc` wrote. The default output is `a.out`, `<stem>.o` or
 `<stem>.ll`. There is no `-O`: there is one pipeline, and it is
-literal. Processes are spawned by fork and exec, never `system`;
+literal. Until the LLVM pipeline is retired, `-native` selects rcc's
+own code generator, c1 (`backend.md`): `-S` writes its assembly,
+`<stem>.s`, `-c` assembles it with `clang -c`, and a link runs
+`clang`. Processes are spawned by fork and exec, never `system`;
 the temporary files are removed on every way out.
 
 Exit status: 0; 1 for a diagnosed error or a failed system call; 2
 for a usage error; 3 for an internal error, a tree shape the
-emitter does not handle; `llc`'s or `clang`'s own status when one of
-them fails.
+emitter or c1 does not handle; `llc`'s or `clang`'s own status when
+one of them fails.
 
 ## 9. The build and the layout
 
@@ -227,7 +230,7 @@ whole; meson would add dependency scanning, a test runner and a
 compile database, and three lines of make, a shell script and
 `compile_flags.txt` cover the three.
 
-    Makefile          build, test, bench, clean
+    Makefile          build, test, test-native, bench, clean
     compile_flags.txt what clangd needs
     docs/guarantees.md  the meaning: what happens where ISO C says nothing
     docs/cost.md        the cost: what each construct compiles to
@@ -241,12 +244,15 @@ compile database, and three lines of make, a shell script and
     src/ast.hh        the tree
     src/parse.hh .cc  parse()
     src/emit.hh .cc   emit()
+    src/c1.hh .cc     generate(), the code generator, under -native
     src/error.hh      error_t
     src/main.cc       the driver, and the back end's flag table
     tests/oracle      the oracle script
     tests/corpus/     the divergence programs, their pinned .ll
+    tests/corpus/native/  their pinned .s under -native
     tests/costs       the cost corpus script
     tests/cost/       one program per cost-model row, its pinned listing
+    tests/cost/native/  its pinned .s under -native
     tests/bench       the measurement script
     tests/perf/       the benchmark programs, plain and tuned
 

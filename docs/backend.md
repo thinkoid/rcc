@@ -181,7 +181,7 @@ left operand is the register of the result.
 rcc writes AT&T syntax, which `as` reads and `objdump` prints:
 source first, destination last, `%` before a register, `$` before an
 immediate, `(%rax,%rcx,4)` for a base, an index and a scale,
-`-8(%rsp)` for a base and a displacement, `sym(%rip)` for a
+`-8(%rbp)` for a base and a displacement, `sym(%rip)` for a
 PC-relative address. The suffix (`l`, `q`, `b`, `w`) gives the
 width where no register operand does.
 
@@ -271,12 +271,16 @@ red zone and writes no `sub`: the ABI reserves the 128 bytes below
 `rsp` for exactly this (`design-calls.md` chapter 5), and every leaf
 pin of `tests/cost` shows the shape. The prologue is `push %rbp; mov
 %rsp,%rbp`, then the pushes of 3, then the `sub` if any; the one
-epilogue at `.Lret` pops the registers of 3 and ends in `leave; ret`
-(`leave` is `mov %rbp,%rsp; pop %rbp`). The prologue carries
-`.cfi_startproc`, `.cfi_def_cfa_offset 16`, `.cfi_offset %rbp, -16`
-and `.cfi_def_cfa_register %rbp`, and the function `.cfi_endproc`,
-so that an unwinder has the table and a debugger that wants the
-chain has the chain.
+epilogue at `.Lret` pops the registers of 3 and ends in `leave;
+.cfi_def_cfa %rsp, 8; ret` (`leave` is `mov %rbp,%rsp; pop %rbp`).
+The prologue carries `.cfi_startproc`, `.cfi_def_cfa_offset 16`,
+`.cfi_offset %rbp, -16` and `.cfi_def_cfa_register %rbp`, and the
+function `.cfi_endproc`, so that an unwinder has the table and a
+debugger that wants the chain has the chain. The directive after
+`leave` is part of the table: `leave` restores the caller's `rbp`,
+the canonical frame address is `rsp + 8` from there to `ret`, and
+without the directive the table still computes it from `rbp`, which
+is wrong between `leave` and `ret`.
 
 ## 6. Expressions
 
@@ -304,8 +308,8 @@ of the right child when the left is a value that must be held, or
 the depth of the left child, whichever is larger. When a value must
 be held and no register is free, the oldest held value is stored to
 the next spill slot of the frame and its register reused; when the
-spilled value is consumed it is reloaded into the register freed by
-the consumer's other operand. The same slots take a value held
+spilled value is consumed it is reloaded, all 8 bytes, into the
+lowest free register, with `movq`. The same slots take a value held
 across a call (chapter 8). The generator counts spill slots as it
 goes, and the frame of chapter 5 is sized after the body is
 generated. Nine registers hold any expression a programmer writes;
@@ -321,8 +325,8 @@ promotion casts before any operator sees them, as today.
 
 | Source | Instruction | Note |
 |---|---|---|
-| a constant | an immediate operand, or `mov $c, L` when it must be held | integer constant expressions folded in the parser, chapter 6.4 |
-| a local, a parameter | `mov slot(%rsp), L` | a `char` is `movsbl` or `movzbl`, a `short` `movswl` or `movzwl` |
+| a constant | an immediate operand, or `mov $c, L` when it must be held; `movabsq $c, L` for a 64-bit constant no 32-bit immediate holds | integer constant expressions folded in the parser, chapter 6.4 |
+| a local, a parameter | `mov slot(%rbp), L` | a `char` is `movsbl` or `movzbl`, a `short` `movswl` or `movzwl` |
 | a `register` variable | the register, as an operand | no instruction |
 | a static | `mov sym(%rip), L` | PC-relative, chapter 10 |
 | `a + b`, `a - b` | `add R, L`, `sub R, L` | G1: the machine wraps |
@@ -337,8 +341,8 @@ promotion casts before any operator sees them, as today.
 | `x = e` | `mov L, slot` or `mov L, reg`; the value stays in `L` | a `char` store is `movb %Lb` |
 | `x op= e` | the load row, the op row, the store row | |
 | `++x`, `x++`, `--x`, `x--` | the load, `add $1` or `sub $1`, the store; the post forms keep the old value in another register | `add $size` for a pointer |
-| `(T) a` | `movslq L, L64` for `int` to `long`; nothing for `long` to `int` (the 32-bit name is the value); `movsbl`, `movzbl` for a narrowing store's reload; nothing between pointer types | G2: truncation is reading the low bits |
-| `&x` | `lea slot(%rsp), L` or `lea sym(%rip), L` | refused on a `register` variable, 6.5.4.2p1 |
+| `(T) a` | `movslq L, L64` for `int` to `long`, `movsbl` or `movzbl` from `Lb` for `char` to `int`, each only when `L` is not already valid to the new width (the width rule below); nothing for `long` to `int` (the 32-bit name is the value); nothing between pointer types | G2: truncation is reading the low bits |
+| `&x` | `lea slot(%rbp), L` or `lea sym(%rip), L` | refused on a `register` variable, 6.5.4.2p1 |
 | `*p` | `mov (L), L` | G8, G9, G10, G11: one `mov`, any address |
 | `p[i]` | `movslq` of the index; `mov (L,R,s), L` for a size of 1, 2, 4 or 8 | one instruction, the machine's addressing form; a constant index is a displacement |
 | `p + n`, `p - n` | `movslq` of `n`; `lea (L,R,s), L` or `imul $size, R; add R, L` | G6; `sub` for `p - n` |
@@ -351,6 +355,34 @@ A `char` or `short` lvalue is loaded with the extending `mov` of its
 signedness and stored with the narrow `mov`; that is the whole of
 narrowing and widening on x86, where under the IR pipeline it was
 `trunc`, `sext` and `zext` nodes.
+
+The width rule. Each held value carries a width: the width to which
+its register's bits are the value extended by its type's
+signedness. The instruction that wrote the register sets it:
+
+- a load of a `char` or `short` leaves it valid to 32;
+- a 32-bit write clears the upper half, which is the extension of an
+  unsigned value and not of a signed one, so an `unsigned` written
+  at 32 bits is valid to 64 and an `int` to 32;
+- a narrowing cast writes nothing and leaves the bits above its
+  width stale;
+- a call's result is valid to 32: the callee extends a narrow
+  result, and above 32 bits the convention promises nothing.
+
+A widening cast writes its `movs` or `movz` only when the value is
+not already valid to the new width: `(int) c` after the load of `c`
+writes nothing, `(long) i` is `movslq`. A `return` of a `char` or a
+`short` extends `eax` by the same test, so `return c / 4 + s` in a
+function returning `char` ends in `movsbl %al, %eax`. This is
+knowledge of what the generator's own instruction left in the
+register, not of the program's data. The PDP-11 compiler had the
+same knowledge built in: its `movb` into a register sign-extended,
+and a `char` to `int` conversion of a register value cost nothing.
+
+`&&`, `||` and `?:` evaluated for a value spill every held value
+first, as a call does (chapter 8). Each has two paths into one
+register, and with nothing held, both paths leave the register map
+as they found it, whatever their operands do.
 
 ### 6.4 Constants
 
@@ -421,6 +453,15 @@ otherwise, without producing a value:
   the `zero-test` row pins today. The code for a constant condition
   is the code for a condition; nothing looks at the value.
 
+A condition is tested at its operand's own width: `if (c)` on a
+`char` is `cmpb $0, %al`. The standard's test is that the operand
+"compares unequal to 0" (6.8.5.2p2 for `if`, 6.5.14p3 for `&&`,
+6.5.15p3 for `||`), and it names no promotion. `!E` is defined as
+`(0==E)` (6.5.4.3p5), which does promote, since `==` converts its
+operands. The parser does not insert that promotion yet, and c1
+compares `!c` at the `char`'s width too; the result is the same, and
+the promotion is queued.
+
 ### 7.2 Statements
 
 - `if (e) s1 else s2`: `cbranch(e, .Lelse, 0); s1; jmp .Lend;
@@ -437,10 +478,18 @@ otherwise, without producing a value:
   `cmov`: the arm not chosen is not evaluated (6.5.16p5), and the
   jump says so.
 - `return e`: `e` into `L`, `mov L, %eax` if `L` is not `rax`, `jmp
-  .Lret`, where `.Lret` is the one epilogue. A fall off the end of a
+  .Lret`, where `.Lret` is the one epilogue (a name in this
+  document; the listing numbers it `.L<n>`, the first label a
+  function takes). `return` jumps to the epilogue every time, the
+  last statement of the body included: the
+  jump to the next instruction is what the statement says, and
+  removing it was the optional peephole pass's (`c2`) work on the
+  PDP-11, which rcc has no counterpart of. A fall off the end of a
   non-`void` function reaches `.Lret` with `rax` as it is, which is
   G5's "some value of its type"; the `%ret.indeterminate` slot of the
-  IR pipeline is gone.
+  IR pipeline is gone. `main` is the exception: reaching its closing
+  `}` returns 0 (5.1.2.3.4p1), so `main` writes `movl $0, %eax`
+  before the epilogue unless its last statement is a `return`.
 - Blocks and labels are written in source order. A label is `.L`
   and a function-local number; the labels of a function are unique
   and nothing is reordered after them.
@@ -465,12 +514,16 @@ call sequence.
 3. The call sequence. If the arguments past the sixth are an odd
    number, `sub $8,%rsp`, so that the `call` lands on a multiple of
    16. The arguments past the sixth are pushed from their slots right
-   to left, `pushq -40(%rbp)`, one instruction each, so that the
-   seventh is lowest, as the ABI wants (3.2.3). The first six are
-   loaded from their slots into `rdi`, `rsi`, `rdx`, `rcx`, `r8`,
-   `r9`. `al` is set to 0 for a variadic callee. `call f` (`call
-   f@PLT` when linking a position-independent executable). The
-   pushed bytes and the pad are added back.
+   to left, so that the seventh is lowest, as the ABI wants (3.2.3):
+   an 8-byte slot in one instruction, `pushq -40(%rbp)`. A slot
+   narrower than 8 bytes is not pushed directly, since `pushq` would
+   read the bytes above it: it is loaded, extended, into `eax` and
+   pushed from `rax`, `movl -28(%rbp), %eax; pushq %rax`. The first
+   six are loaded from their slots into `rdi`, `rsi`, `rdx`, `rcx`,
+   `r8`, `r9`, a narrower one extended to 32 bits by the load. `al`
+   is set to 0 for a variadic callee. `call f@PLT`, every call
+   through the PLT, chapter 10. The pushed bytes and the pad are
+   added back.
 4. The result is in `rax`; it is moved into the lowest free
    expression register, and the values of step 1 are reloaded from
    their spill slots as the enclosing expression consumes them.
@@ -485,10 +538,12 @@ register, which needs a look-ahead and a parallel move
 a variable or a constant can be added as a measured step if the
 measurement says the store and the load matter.
 
-A `char` or `short` argument is extended to `int` by the parser's
-promotion cast before it is stored, and a `char` or `short` result
-is extended by the callee before `ret`, as the ABI's "the callee
-extends" and the IR pipeline's row both say. G16: the call is made
+A `char` or `short` argument to a parameter of that type keeps the
+parameter's type: it is stored to its slot at its width and extended
+to 32 bits by the load into its register (`movsbl -5(%rbp), %edi`).
+A `char` or `short` result is extended by the callee before `ret`,
+as the ABI's "the callee extends" and the IR pipeline's row both
+say, and the caller reads 32 bits of it. G16: the call is made
 with the call site's types and the convention's registers, and
 nothing is added, dropped or rewritten.
 
@@ -496,7 +551,8 @@ The callee's prologue: `push %rbp; mov %rsp,%rbp`, push the
 register-variable registers it uses, `sub` its frame unless it is a
 leaf in the red zone, store each parameter's argument register to its
 slot or move it to its callee-saved register if `register`. The
-epilogue at `.Lret`: pop the registers, `leave`, `ret`.
+epilogue at `.Lret`: pop the registers, `leave`, the directive of
+chapter 5, `ret`.
 
 ## 9. What each guarantee compiles to
 
@@ -553,6 +609,11 @@ standard output for `-o -`, as every cc does. No `llc`, no IR, no
 flag table. The `# line "file"` markers of the preprocessor still
 give the diagnostics their positions.
 
+Until the LLVM pipeline is retired, the driver's `-native` selects
+c1: `rcc -native -S` writes the assembly, `-native -c` assembles it
+with the system cc, and a link links it. Without the flag the LLVM
+path runs as before.
+
 `shape.md`'s chapters on the pipeline, the emitter and the driver
 are rewritten when this lands; the lexer, the types, the tree and
 the parser, 3300 of the tree's 5700 lines, are untouched.
@@ -569,6 +630,12 @@ the parser, 3300 of the tree's 5700 lines, are untouched.
   no relocations to strip. The rows are re-pinned one by one against
   this document's table, and the document's chapter 3 of `cost.md`
   is rewritten from the pins.
+- **Where the pins live**: until retirement, the `.s` pins are under
+  `tests/corpus/native/` and `tests/cost/native/`, written by
+  `tests/oracle --native` and `tests/costs --native`, which `make
+  test-native` runs; the LLVM pins keep their places, and `make
+  test` runs them. At retirement the native pins move up a
+  directory and replace them.
 - **The ABI**: a corpus program that calls into libc (`puts`,
   `strlen`, `printf` with `al` set) and one that is called from a
   `clang`-compiled `main`, exit status compared. New, and the first

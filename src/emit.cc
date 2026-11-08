@@ -1497,7 +1497,7 @@ read_unwritten(const decl_stmt_t &d)
     return d.sym->in_register && (!d.init || mentions(*d.init, d.sym));
 }
 
-// A function that falls off its end.  5.1.2.2.3: main returns 0.
+// A function that falls off its end.  5.1.2.3.4: main returns 0.
 // Another non-void function returns what an unwritten slot holds; G5:
 // a value of the type, not one the compiler chose.
 void

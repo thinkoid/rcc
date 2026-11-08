@@ -24,22 +24,6 @@ it has to be fought. The entries below are the slices, in order; the
 chapters after this one hold the LLVM-era queue, and each says what
 leaves with the pipeline.
 
-** TODO Slice 1 of the back end: integers, control, calls
-
-The mirror of the first slice under LLVM: the integer types, the
-scalar operators, =if=, =while=, =for=, =return= and calls, as x86-64
-assembly from the tree, through a code generator that owns the
-registers. Every local in its slot, parameters stored at entry, the
-register stack for expressions, jump code for conditions, the System V
-convention at calls.
-
-Fix: =src/c1.cc= and =src/c1.hh= beside =emit.cc=, selected by a
-driver flag until the LLVM path is retired.
-
-Check: the integer programs of =tests/corpus= give their expected
-statuses through the new back end, and the integer rows of the cost
-corpus are re-pinned as =rcc -S= text read against =backend.md=.
-
 ** TODO Slice 2 of the back end: pointers and strings
 
 Pointers and =void *=, arrays as locals and parameters, subscripts as
@@ -70,7 +54,12 @@ assembly; =-c= runs the system cc on it; =llc= is no longer run.
 =cost.md= chapters 2, 4 and 5 leave with it, chapter 3 is the table
 the back end was written from, =guarantees.md='s IR clauses become
 instruction clauses, =shape.md= describes the new pipeline, and
-=findings.md= closes with what became of its five.
+=findings.md= closes with what became of its five. The header
+comments of the cost programs, which describe the LLVM listings, are
+rewritten for the native ones; the pins of =tests/corpus/native/= and
+=tests/cost/native/= move up a directory over the LLVM pins; the
+=--native= mode leaves the two scripts, and =test-native= becomes
+=test=.
 
 Check: =make test= green with no =llc= on the machine's path.
 
@@ -230,6 +219,20 @@ Check: the row and its pin.
 
 * Tests
 
+** TODO The variadic =al= path is unexercised
+
+c1 writes =movl $0, %eax= before the =call= of a variadic function,
+the upper bound of the vector registers the arguments use
+(=backend.md= 3.2 and chapter 8). Nothing runs it: no corpus program
+calls a variadic function under =-native=, and no cost program does.
+
+Fix: an integer-only probe, a =clang=-compiled =int sum(int n, ...)=
+called from an rcc =main=, or the =printf= program of =backend.md=
+chapter 12 once strings exist, in slice 2.
+
+Check: the probe's exit status under =rcc -native= equals that of the
+all-=clang= build.
+
 ** TODO The oracle's time limit cannot tell 124 from a timeout
 
 GNU =timeout= exits 124 for a run it stopped and passes the program's
@@ -369,22 +372,48 @@ A probe says which headers need what.
 
 Check: `#include <stdio.h>` followed by an empty `main` parses.
 
-** TODO An array size must be one integer literal
+** TODO Integer constant expressions are not folded
 
-The parser takes an array size only as a lone integer token: =int
-a[96 * 96];= fails with "not yet: array size other than an integer
-constant", though an integer constant expression of any form makes a
-fixed-size array, 6.7.7.3p4. A macro that expands to a literal works;
-one that expands to an expression does not. =tests/perf/matmul.c=
-writes its size out as 9216.
+The parser has no evaluator of integer constant expressions, which
+=backend.md= 6.4 and design call 3 put there, and it shows in four
+places. An array size must be one integer token: =int a[96 * 96];=
+fails with "not yet: array size other than an integer constant",
+though an integer constant expression of any form makes an array that
+is not a variable length array, 6.7.7.3p4; =tests/perf/matmul.c=
+writes its size out as 9216. Under =-native=, =-1= is =movl $1= and
+=negl=; =INT_MAX - 1= is =movl $2147483647= and =subl $1=
+(=tests/corpus/native/g1-add-compare.s=); =12 * 34= is =movl $12=
+and =imull $34= (=tests/cost/native/twice.s= and =invariant.s=). And
+=backend.md= 6.4 says "the operators of 6.6p8": 6.6p8 lists the
+operands an integer constant expression may have, and 6.6p3 the
+operators it may not contain.
 
-Fix: evaluate an integer constant expression for the size: the
-integer constants and character constants, the arithmetic, shift,
-bitwise, relational, logical and conditional operators on them,
-casts to an integer type, and =sizeof=.
+Fix: the evaluator of =backend.md= 6.4 in the parser: integer and
+character constants, the operators 6.6p3 does not exclude applied to
+them, casts to integer types, and =sizeof=, which are the operands
+6.6p8 allows; a variable never folds. The array size takes its value,
+and a folded expression is a literal in the tree. 6.4's sentence
+names 6.6p3 for the operators and 6.6p8 for the operands.
 
-Check: =int a[96 * 96];= has 9216 elements in the IR, and =int a[n];=
-with =n= a variable is still refused.
+Check: under =-native=, =-1= is =movl $-1=, =INT_MAX - 1= is =movl
+$2147483646= and =12 * 34= is the immediate 408; =int a[96 * 96];=
+has 9216 elements, and =int a[n];= with =n= a variable is still
+refused.
+
+** TODO The operand of =!= is not promoted
+
+=!E= is defined as =(0==E)= (6.5.4.3p5), and the equality operator
+promotes a =char= operand to =int=. The parser builds =!c= on the
+unpromoted =char=, and c1 compares it at the =char='s width, =cmpb
+$0=. The result is the same, 0 or 1, but the tree does not say what
+the standard says, and the listing shows a byte compare where the
+operation is on an =int=.
+
+Fix: the parser inserts the promotion cast on the operand of =!=; c1
+then writes =cmpl=.
+
+Check: the listing of =!c= on a =char= under =-native= is the load
+=movsbl= and =cmpl $0=.
 
 * Lexer
 
