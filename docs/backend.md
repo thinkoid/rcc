@@ -12,11 +12,13 @@ govern. The last chapter lists the calls still open; the queue,
 
 ## 0. tl;dr
 
-- Ritchie's machine on x86-64. Every local lives in its stack slot.
-  A `register` variable lives in one of the callee-saved registers,
-  by declaration order, and is nothing but that register. Expressions
-  are evaluated left to right in the caller-saved registers, used as
-  a stack. Conditions are jumps.
+- Ritchie's machine on x86-64. Every local lives in its stack slot,
+  off the frame pointer. A `register` variable lives in one of five
+  callee-saved registers, by declaration order, and is nothing but
+  that register; the sixth declared takes a slot and a warning.
+  Expressions are evaluated left to right in the caller-saved
+  registers, used as a stack. Conditions are jumps. An argument is a
+  hidden local of its call.
 - The instruction written is the instruction in our table. No
   selector rewrites it, no allocator rematerializes it, no late pass
   tidies it. The five findings of `findings.md` have no place to
@@ -25,8 +27,12 @@ govern. The last chapter lists the calls still open; the queue,
   rcc's objects link with anyone's and call libc.
 - Each guarantee is delivered by one instruction of the table, named
   in chapter 9.
-- Integer constant expressions are folded in the parser. A constant
-  is an immediate; `-1` costs nothing.
+- Integer constant expressions are folded in the parser, which
+  needs the evaluator anyway for array sizes, `case` labels and
+  static initializers. A constant is an immediate; `-1` costs
+  nothing.
+- The six calls the first draft left open are weighed in
+  `design-calls.md` and made; chapter 13 records them.
 - The oracle is unchanged. The cost pins become the assembly rcc
   writes. The measurement is redone under the register discipline.
 - LLVM leaves the tree. Its one lasting contribution is chapter 4 of
@@ -181,23 +187,21 @@ width where no register operand does.
 
 ## 4. The register discipline
 
-Fifteen registers, three classes, fixed at design time.
+Sixteen registers, four classes, fixed at design time.
 
-**Register variables: `rbx`, `r12`, `r13`, `r14`, `r15`, and
-`rbp`.** The callee-saved set. A function's `register` variables
-take them in order of declaration; the first declared gets `rbx`.
-A variable keeps its register until its block ends, and a variable
-declared in an inner block may take a register that an earlier
-block's variable has released, so sibling blocks share. A
-`register` variable beyond the set gets a slot and is an ordinary
-local, as 6.7.2p12 allows ("the extent to which such suggestions are
-effective is implementation-defined"), and as the PDP-11 did with
-the fourth. The compiler says so with a note when asked (`-v`), and
-otherwise silently. `rbp` is in the set because rcc's frames are of
-fixed size (no `alloca`, no variable length arrays) and are addressed
-off `rsp`, so no frame pointer is needed; the `.cfi` directives give
-a debugger the frame instead. This is the sixth register and the
-first open call of chapter 13.
+**Register variables: `rbx`, `r12`, `r13`, `r14`, `r15`.** Five of
+the callee-saved set. A function's `register` variables take them
+in order of declaration; the first declared gets `rbx`. A variable
+keeps its register until its block ends, and a variable declared in
+an inner block may take a register that an earlier block's variable
+has released, so sibling blocks share. A `register` variable beyond
+the five gets a slot and is an ordinary local, as 6.7.2p12 allows
+("the extent to which such suggestions are effective is
+implementation-defined"), and as the PDP-11 did with the fourth; the
+compiler says so with a warning, `register variable 'k' in a stack
+slot: the five registers are taken`, which a conforming program may
+receive and a `-w`-style switch silences. The extent is recorded in
+the cost model, as 4p10 asks (`design-calls.md` chapter 3).
 
 A `register` parameter is moved from its argument register to its
 callee-saved register in the prologue, one `mov`; the argument
@@ -212,6 +216,15 @@ whatever the prologue left in it, and nothing writes the register
 until the program does, so every read before the first write sees
 the same value. The function's epilogue restores every register of
 the set the function used, from the pushes of its prologue.
+
+**The frame pointer: `rbp`.** Pushed and set in every function's
+prologue, leaf included, restored by `leave`. Every slot is a
+displacement off it, known the moment the slot is declared, whatever
+the frame comes to hold below; `rsp` may move inside a body, for
+the pushes of a call, without disturbing an offset. The sixth
+callee-saved register was weighed as a sixth register variable and
+the frame pointer won on what the generator has to know
+(`design-calls.md` chapter 2).
 
 **Expression registers: `rax`, `rcx`, `rdx`, `rsi`, `rdi`, `r8`,
 `r9`, `r10`, `r11`.** The caller-saved set, nine registers, used as
@@ -229,35 +242,41 @@ chapter 6 and chapter 8 say how the generator moves around them.
 A function's frame holds, from high addresses to low:
 
 1. The return address, pushed by `call`.
-2. The callee-saved registers the function uses, pushed in the
+2. The caller's `rbp`, pushed by the prologue; `rbp` then points at
+   it, and everything below is addressed as a negative displacement
+   off `rbp`.
+3. The register-variable registers the function uses, pushed in the
    prologue, popped in reverse in the epilogue.
-3. One slot per local and per parameter, each of its type's size at
+4. One slot per local and per parameter, each of its type's size at
    its type's alignment, in declaration order, every block's locals
    included, none shared: G12, "a local's storage is one stack slot
    for the whole activation". A parameter's slot receives the
    argument register in the prologue, so every later read is a load
    from the slot, as under the LLVM pipeline ("a parameter is written
    at entry"). A parameter that arrived on the stack has its slot
-   where the caller put it, above the return address.
-4. The spill area for expression values when the nine registers are
-   exhausted (chapter 6), sized by the deepest expression in the
-   function.
+   where the caller put it, above the return address, at a positive
+   displacement off `rbp`.
+5. One slot per argument of each call the function makes, the hidden
+   locals of chapter 8, allocated as the call is met.
+6. The spill area for expression values when the nine registers are
+   exhausted (chapter 6) and for values held across a call (chapter
+   8), sized by the deepest expression in the function.
 
-The frame's size is rounded up so that `rsp` is a multiple of 16 at
-every `call` the function makes. A function that makes no call puts
-its slots in the red zone and never moves `rsp`, which is what the
-LLVM pipeline's listings show today (`-0x8(%rsp)` with no `sub`),
-and what every `tests/cost` pin is written against. A function that
-calls subtracts the frame once in the prologue and adds it back once
-in the epilogue. Every slot is addressed as a displacement off
-`rsp`, which is constant within the body since nothing pushes inside
-it except the spill of a value around a call (chapter 8), and that
-is accounted for.
-
-The prologue and epilogue carry `.cfi_startproc`, `.cfi_def_cfa_offset`
-after each push and the `sub`, `.cfi_offset` for each saved
-register, and `.cfi_endproc`, so that a debugger and an unwinder
-find the frame without a frame pointer.
+The slots are assigned as the generator meets them, each at the next
+offset below the last; their total is the frame's size, written
+into the prologue's `sub $N,%rsp` after the body is generated and
+rounded up so that `rsp` is a multiple of 16 at every `call` the
+function makes. A function that makes no call puts its slots in the
+red zone and writes no `sub`: the ABI reserves the 128 bytes below
+`rsp` for exactly this (`design-calls.md` chapter 5), and every leaf
+pin of `tests/cost` shows the shape. The prologue is `push %rbp; mov
+%rsp,%rbp`, then the pushes of 3, then the `sub` if any; the one
+epilogue at `.Lret` pops the registers of 3 and ends in `leave; ret`
+(`leave` is `mov %rbp,%rsp; pop %rbp`). The prologue carries
+`.cfi_startproc`, `.cfi_def_cfa_offset 16`, `.cfi_offset %rbp, -16`
+and `.cfi_def_cfa_register %rbp`, and the function `.cfi_endproc`,
+so that an unwinder has the table and a debugger that wants the
+chain has the chain.
 
 ## 6. Expressions
 
@@ -286,7 +305,8 @@ the depth of the left child, whichever is larger. When a value must
 be held and no register is free, the oldest held value is stored to
 the next spill slot of the frame and its register reused; when the
 spilled value is consumed it is reloaded into the register freed by
-the consumer's other operand. The generator counts spill slots as it
+the consumer's other operand. The same slots take a value held
+across a call (chapter 8). The generator counts spill slots as it
 goes, and the frame of chapter 5 is sized after the body is
 generated. Nine registers hold any expression a programmer writes;
 the path is exercised by one cost program of ten nested right
@@ -345,8 +365,12 @@ constant expression is the spelling of a number, which ISO C says
 "can be evaluated during translation" (6.6p2) and which Ritchie's
 `c0` evaluated. So `-1` is the immediate `$-1`, `p[-1]` is the
 displacement `-4(L)`, and `int a[96 * 96]` has 9216 elements. This
-closes findings 3 and 4 of `findings.md` as the design, subject to
-the call in chapter 13.
+closes findings 3 and 4 of `findings.md`, and the evaluator is not
+an addition: the size of an array (6.7.7.3p4), the label of a `case`
+(6.8.5.3p3) and every expression in a static initializer (6.7.11p5)
+require one, and the last of these cannot compile without it, since
+there is no instruction to compute a static's initial bytes at
+(`design-calls.md` chapter 4).
 
 A constant operand of an arithmetic instruction is an immediate when
 the instruction has an immediate form, which on x86-64 every one of
@@ -423,37 +447,56 @@ otherwise, without producing a value:
 
 ## 8. Calls
 
-`f(a1, ..., an)`, with the arguments evaluated left to right (G13):
+`f(a1, ..., an)`, with the arguments evaluated left to right (G13).
+Every argument is a hidden local of the call: a slot of its own in
+the frame, written as the argument is evaluated and read back by the
+call sequence.
 
-1. Every expression register holding a live value is pushed
-   (chapter 6's held values, the ones below this call in the tree).
-   The pushes are counted toward the alignment.
-2. Each argument in turn is generated into a register by chapter 6
-   and pushed, so the stack holds `a1` ... `an` with `an` on top.
-   Arguments are generated in source order, and each is complete
-   before the next begins.
-3. The first six are popped into `r9` ... `rdi` in reverse, so
-   `a1` lands in `rdi`; arguments past the sixth stay on the stack in
-   the right-to-left order the ABI wants, which the pushes in source
-   order have produced.
-4. `rsp` is brought to a multiple of 16 by a `sub` the prologue has
-   already accounted for, `al` is set to 0 for a variadic callee,
-   and `call f` is written (`call f@PLT` when linking a
-   position-independent executable).
-5. The result is in `rax`; it is moved into the lowest free
-   expression register and the pushed live values are popped back.
+1. Every expression register holding a value of the enclosing
+   expression (`x` in `x + f(a, b)`) is stored to a spill slot; the
+   register is freed. Nothing is held in a register from here to the
+   `call`.
+2. Each argument in turn is evaluated into a register by chapter 6,
+   as the initializer of a local would be, and stored to its argument
+   slot, `mov L, -24(%rbp)`. Arguments are evaluated in source order,
+   each complete before the next begins, and a call inside an
+   argument finds every expression register free and clobbers
+   nothing that matters.
+3. The call sequence. If the arguments past the sixth are an odd
+   number, `sub $8,%rsp`, so that the `call` lands on a multiple of
+   16. The arguments past the sixth are pushed from their slots right
+   to left, `pushq -40(%rbp)`, one instruction each, so that the
+   seventh is lowest, as the ABI wants (3.2.3). The first six are
+   loaded from their slots into `rdi`, `rsi`, `rdx`, `rcx`, `r8`,
+   `r9`. `al` is set to 0 for a variadic callee. `call f` (`call
+   f@PLT` when linking a position-independent executable). The
+   pushed bytes and the pad are added back.
+4. The result is in `rax`; it is moved into the lowest free
+   expression register, and the values of step 1 are reloaded from
+   their spill slots as the enclosing expression consumes them.
+
+The shape costs one store and one load per argument, the same count
+as a push and a pop, and it is the model applied to arguments: a
+value the programmer did not put in a register lives in memory, and
+the listing shows it. It was chosen over pushes, which put the
+eighth argument below the seventh, and over a direct move into the
+register, which needs a look-ahead and a parallel move
+(`design-calls.md` chapter 6). A direct path for an argument that is
+a variable or a constant can be added as a measured step if the
+measurement says the store and the load matter.
 
 A `char` or `short` argument is extended to `int` by the parser's
-promotion cast before it is pushed, and a `char` or `short` result
+promotion cast before it is stored, and a `char` or `short` result
 is extended by the callee before `ret`, as the ABI's "the callee
 extends" and the IR pipeline's row both say. G16: the call is made
 with the call site's types and the convention's registers, and
 nothing is added, dropped or rewritten.
 
-The callee's prologue: push the callee-saved registers it uses,
-`sub` its frame, store each parameter's argument register to its
+The callee's prologue: `push %rbp; mov %rsp,%rbp`, push the
+register-variable registers it uses, `sub` its frame unless it is a
+leaf in the red zone, store each parameter's argument register to its
 slot or move it to its callee-saved register if `register`. The
-epilogue at `.Lret`: `add` the frame, pop the registers, `ret`.
+epilogue at `.Lret`: pop the registers, `leave`, `ret`.
 
 ## 9. What each guarantee compiles to
 
@@ -531,37 +574,36 @@ the parser, 3300 of the tree's 5700 lines, are untouched.
   `clang`-compiled `main`, exit status compared. New, and the first
   thing to pass.
 - **The measurement**, `tests/bench`: redone. The tuned programs
-  declare more `register` variables than six in `main` (matmul ten,
-  collatz seven, sieve six); the seventh and later take slots, the
-  numbers move, and the movement is recorded as a result about the
-  model. Then the tuned sources may be re-tuned to six, as a PDP-11
-  programmer tuned to three, and the chapter re-recorded with the
-  register count per program.
+  declare more `register` variables than five in `main` (matmul ten,
+  collatz seven, sieve six, sort five); the sixth and later take
+  slots, the numbers move, and the movement is recorded as a result
+  about the model. Then the tuned sources may be re-tuned to five, as
+  a PDP-11 programmer tuned to three, and the chapter re-recorded
+  with the register count per program.
 
-## 13. Open calls
+## 13. The calls
 
-1. **`rbp` in the register-variable set.** Six variables with no
-   frame pointer and `.cfi` directives, or five with `rbp` as the
-   frame pointer for the comfort of a debugger without unwind
-   tables. The design above says six.
-2. **The seventh `register` variable.** A slot silently, as the
-   standard allows and the PDP-11 did; a slot with a note under
-   `-v`; or a diagnostic, so that the programmer knows the loop is
-   not in registers. The design above says a slot, with a note under
-   `-v`.
-3. **Folding in the parser.** Integer constant expressions only, as
-   chapter 6.4 says; or none, so that `-1` subtracts and the cost
-   model says so. The design above says fold.
-4. **Leaf functions in the red zone.** Yes, as the LLVM pipeline did
-   and the pins show; or every function moves `rsp`, for one shape of
-   prologue. The design above says yes.
-5. **Argument evaluation through pushes.** Each argument pushed as
-   generated, then popped into its register, two instructions per
-   argument but one rule for any count and any held values; or the
-   first six generated straight into their registers when nothing is
-   held and no argument contains a call, with the push path for the
-   rest. The design above says pushes, for the one rule; the cost
-   model will say what a call costs, and the second form can be
-   added as a measured step.
-6. **The name.** `src/gen.cc` for the generator and `src/x86.hh` for
-   the table, or one file. Settled by the slice-1 worker's brief.
+Six were open in the first draft of this page. `design-calls.md`
+weighs the first five one chapter each; the answers:
+
+1. **`rbp`** is the frame pointer in every function, and the
+   register variables are five. A slot's offset is known at its
+   declaration, the prologue is one shape, the debugger needs
+   nothing from us; the sixth register was worth one variable in one
+   program of six.
+2. **The sixth `register` variable** takes a slot, with a warning by
+   default. The extent is implementation-defined (6.7.2p12) and
+   documented (4p10); a lever that silently does nothing is not a
+   lever.
+3. **Integer constant expressions are folded** in c0, constants
+   only. The evaluator is required regardless by the array size, the
+   `case` label and the static initializer.
+4. **A leaf keeps its slots in the red zone** and writes no `sub`;
+   the ABI reserves the 128 bytes for it, and every leaf pin shows
+   the shape.
+5. **Every argument is a hidden local of its call**, stored to a slot
+   as evaluated; the call sequence pushes the stack arguments from
+   their slots right to left and loads the first six. The first
+   draft's pushes put the eighth argument below the seventh.
+6. **The names.** The front end is c0, the generator is c1:
+   `src/c1.cc` and `src/c1.hh`.

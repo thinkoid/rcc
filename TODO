@@ -17,22 +17,12 @@ git keeps them.
 
 The direction of this branch. rcc drops LLVM's code generator and
 writes x86-64 assembly itself; the system cc assembles, links and
-preprocesses. The reasons are =docs/findings.md=, the design is
-=docs/backend.md=. LLVM stays where it benefits and is rewritten where
+preprocesses. The reasons are =docs/findings.md= and =docs/llvm.md=,
+the design is =docs/backend.md= with its calls made in
+=docs/design-calls.md=. LLVM stays where it benefits and is rewritten where
 it has to be fought. The entries below are the slices, in order; the
 chapters after this one hold the LLVM-era queue, and each says what
 leaves with the pipeline.
-
-** TODO The design document
-
-=docs/backend.md=: the model, the target and its convention, the
-register discipline, the frame, expressions, conditions and control,
-calls, what each guarantee compiles to, statics and literals,
-verification, the plan and the open calls.
-
-Fix: the document, read and its open calls decided.
-
-Check: every open call in its last chapter has an answer recorded.
 
 ** TODO Slice 1 of the back end: integers, control, calls
 
@@ -43,8 +33,8 @@ registers. Every local in its slot, parameters stored at entry, the
 register stack for expressions, jump code for conditions, the System V
 convention at calls.
 
-Fix: =src/gen.cc= (or the name the design settles) beside =emit.cc=,
-selected by a driver flag until the LLVM path is retired.
+Fix: =src/c1.cc= and =src/c1.hh= beside =emit.cc=, selected by a
+driver flag until the LLVM path is retired.
 
 Check: the integer programs of =tests/corpus= give their expected
 statuses through the new back end, and the integer rows of the cost
@@ -87,9 +77,10 @@ Check: =make test= green with no =llc= on the machine's path.
 ** TODO Redo the measurement
 
 =make bench= under the new back end. The tuned programs declare more
-=register= variables than the callee-saved set holds (matmul's =main=
-ten, collatz seven, sieve six); the first of each block take the
-registers and the rest take slots, and the numbers move. The
+=register= variables than the five the discipline holds (matmul's
+=main= ten, collatz seven, sieve six); the first five of each
+function take the registers and the rest take slots, with a warning,
+and the numbers move. The
 movement is a result about the model, and the tuned sources may be
 re-tuned to the set, as a PDP-11 programmer tuned to three.
 
