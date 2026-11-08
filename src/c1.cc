@@ -2,9 +2,10 @@
 
 // c1, the code generator: the typed tree in, x86-64 assembly text out,
 // AT&T syntax for the system assembler.  docs/backend.md is the
-// design; its chapters 4 to 8 are what this file implements, and each
-// function names the row it writes.  This is the first slice:
-// integers, control and calls.  A construct of a later slice throws
+// design; its chapters 4 to 8 and 10 are what this file implements,
+// and each function names the row it writes.  These are the first two
+// slices: integers, control and calls; pointers, arrays and string
+// literals.  A construct of a later slice throws
 // logic_error("c1: not yet: ..."), and a tree the parser cannot make
 // throws logic_error("c1: ..."), as emit.cc does.
 
@@ -68,6 +69,10 @@ struct state_t
     std::ostream &out;
     int labels = 0;
 
+    // the bytes of each string literal met, in order; the index is the
+    // number of its label
+    std::vector< std::string > strings { };
+
     std::ostringstream body { };
 
     // each local's and parameter's displacement off rbp
@@ -97,13 +102,22 @@ not_yet(std::string_view what)
 
 // types
 
-// The integer type of an operand.  A pointer or an array is the next
-// slice; anything else the parser does not make.
+// The integer type of an operand.  A pointer is a 64-bit unsigned
+// quantity to the machine, so its integer view is unsigned long's: the
+// width rule, the suffixes and the unsigned conditions of G7 apply to
+// it unchanged.  An array is never a value, since the parser decays
+// every array it reads, 6.3.2.1p3; anything else the parser does not
+// make.
 const int_t &
 integer(const type_t &t)
 {
-    if (is< pointer_t >(t) || is< array_t >(t))
-        not_yet("a pointer or an array");
+    static constexpr int_t address_view { 64, false };
+
+    if (is< pointer_t >(t))
+        return address_view;
+
+    if (is< array_t >(t))
+        throw std::logic_error("c1: an array as a value");
 
     if (!is< int_t >(t))
         throw std::logic_error("c1: a non-integer operand");
@@ -157,6 +171,35 @@ bool
 fits_imm32(long long value)
 {
     return value >= INT32_MIN && value <= INT32_MAX;
+}
+
+// The size of the object a pointer points to, the stride of its
+// arithmetic, 6.5.7p9.  It is an immediate of add, imul and mov, so it
+// must fit 32 bits.
+long
+stride(const type_t &pointer)
+{
+    const long size = size_of(*as< pointer_t >(pointer).pointee);
+    if (!fits_imm32(size))
+        not_yet("an element of 2 GiB or more");
+
+    return size;
+}
+
+// Whether a size is a scale of the machine's addressing form.
+bool
+is_scale(long size)
+{
+    return size == 1 || size == 2 || size == 4 || size == 8;
+}
+
+// A constant index times the size, modulo 2^64: G6, the address
+// arithmetic wraps.
+long long
+scaled(long long index, long size)
+{
+    return static_cast< long long >(static_cast< unsigned long long >(index) *
+                                    static_cast< unsigned long long >(size));
 }
 
 // The width a value is valid to after an instruction writes it at
@@ -289,13 +332,13 @@ slot_of(const state_t &s, const symbol_t *sym)
     return it->second;
 }
 
-// The local or parameter an lvalue names.  A dereference is the next
-// slice, a register variable the one after, a global later still.
+// The local or parameter a name designates.  A register variable is
+// the next slice, a global a later one.
 const symbol_t *
 object_of(const expr_t &e)
 {
     if (!is< name_t >(e))
-        not_yet("an lvalue other than a name");
+        throw std::logic_error("c1: an lvalue the parser does not make");
 
     const auto *sym = as< name_t >(e).sym;
     if (sym->storage == storage_t::function)
@@ -332,12 +375,12 @@ extension(const int_t &from, int to)
              to };
 }
 
-// The store row: the narrow mov of the slot's width; G2, the low bytes
-// of the register are the value.
+// The store row: the narrow mov of the destination's width; G2, the
+// low bytes of the register are the value.
 void
-store(state_t &s, reg_t r, int displacement, int width)
+store(state_t &s, reg_t r, std::string_view to, int width)
 {
-    insn(s, sized("mov", width), { reg(r, width), at(displacement) });
+    insn(s, sized("mov", width), { reg(r, width), to });
 }
 
 // the register stack
@@ -496,10 +539,202 @@ operands(state_t &s, value_t l, value_t r)
     return { left, right };
 }
 
-// expressions
-
 value_t rvalue(state_t &, const expr_t &);
 void cbranch(state_t &, const expr_t &, int label, bool sense);
+
+// addresses
+
+// An lvalue's address as the operand of the instruction that reads or
+// writes it: a slot off rbp, a label off rip, or the machine's
+// addressing form, a held base with a displacement or with a held
+// index scaled by 1, 2, 4 or 8.  The access consumes the values.
+struct address_t
+{
+    value_t base { };
+    value_t index { };
+    long scale = 1;
+    long long displacement = 0;
+    std::string label { };
+};
+
+address_t
+slot_address(int displacement)
+{
+    return { .displacement = displacement };
+}
+
+// The registers an address's values are in, for a take or a reload to
+// stay clear of.
+unsigned
+registers_of(const state_t &s, const address_t &a)
+{
+    unsigned held = 0;
+    for (const auto v : { a.base, a.index })
+        if (v.id >= 0 && s.values[v.id].reg >= 0)
+            held |= bit(static_cast< reg_t >(s.values[v.id].reg));
+
+    return held;
+}
+
+// The address in AT&T syntax, d(B,I,s).  A spilled base or index is
+// reloaded first, outside avoid and outside the other's register.
+std::string
+operand(state_t &s, const address_t &a, unsigned avoid = 0)
+{
+    if (!a.label.empty())
+        return std::format("{}(%rip)", a.label);
+
+    if (a.base.id < 0)
+        return at(static_cast< int >(a.displacement));
+
+    avoid |= registers_of(s, a);
+
+    std::string index;
+    if (a.index.id >= 0) {
+        const reg_t r = reg_of(s, a.index, avoid);
+        avoid |= bit(r);
+        index = std::format(",{},{}", reg(r, 64), a.scale);
+    }
+
+    const reg_t base = reg_of(s, a.base, avoid);
+    const auto displacement =
+        a.displacement != 0 ? std::to_string(a.displacement) : std::string();
+
+    return std::format("{}({}{})", displacement, reg(base, 64), index);
+}
+
+// The address is consumed: its registers are free.
+void
+release(state_t &s, const address_t &a)
+{
+    release(s, a.base);
+    release(s, a.index);
+}
+
+// The load row, 6.3.2.1p2: the value at an address into a register at
+// a width of 32 or 64, a char or a short by the extending mov of its
+// signedness.  G8 to G11: one mov, whatever computed the address and
+// however it is aligned.  The address is consumed first, so the value
+// takes the lowest free register, the left operand's: mov (L,R,s), L.
+value_t
+load(state_t &s, const address_t &a, const int_t &t, int width)
+{
+    const auto [mnemonic, into] = extension(t, width);
+
+    const auto from = operand(s, a);
+    release(s, a);
+
+    const auto v = fresh(s, written(into, t.is_signed));
+    insn(s, mnemonic, { from, reg(reg_of(s, v), into) });
+
+    return v;
+}
+
+// The load row of a read-modify-write, a compound assignment or a ++
+// or --: the address stays held for the store through it, since E1 is
+// evaluated once, 6.5.17.3p4.
+value_t
+fetch(state_t &s, const address_t &a, const int_t &t, int width)
+{
+    const auto [mnemonic, into] = extension(t, width);
+
+    const auto from = operand(s, a);
+    const auto v = fresh(s, written(into, t.is_signed), registers_of(s, a));
+    insn(s, mnemonic, { from, reg(reg_of(s, v), into) });
+
+    return v;
+}
+
+// The store row through an address, at the lvalue's width.  The
+// address stays held, for the caller to consume.
+void
+store(state_t &s, value_t v, const address_t &a, int width)
+{
+    const reg_t r = reg_of(s, v, registers_of(s, a));
+    store(s, r, operand(s, a, bit(r)), width);
+}
+
+// The address as a value, valid to 64: the leaq of the operand form,
+// where the load would have been a mov.  A base alone is its own
+// value, so &*p is p and no instruction, 6.5.4.2p3.
+value_t
+address_of(state_t &s, const address_t &a)
+{
+    if (a.base.id >= 0 && a.index.id < 0 && a.displacement == 0)
+        return a.base;
+
+    const auto from = operand(s, a);
+    release(s, a);
+
+    const auto v = fresh(s, 64);
+    insn(s, "leaq", { from, reg(reg_of(s, v), 64) });
+
+    return v;
+}
+
+// A string literal's array, 6.4.5p6: one per literal met, in the order
+// met, never merged with an equal one, which 6.4.5p7 leaves
+// unspecified, and writable (G17).  generate() writes them to .data.
+std::string
+string_label(state_t &s, const string_t &str)
+{
+    const auto label = std::format(".Ls{}", s.strings.size());
+    s.strings.push_back(str.bytes);
+
+    return label;
+}
+
+// The address a dereference designates, 6.5.4.2p4, of an object of
+// type pointee: the addressing row.  An add of a pointer and an
+// integer, the shape of a subscript (6.5.3.2p2), is the machine's
+// addressing form when the size is a scale: the pointer the base, the
+// integer the index, each generated in the order written (G13); a
+// constant index is the displacement c * size when it fits 32 bits.
+// Any other pointer, an add of another size included, is computed into
+// a register and is the base; nothing looks through a cast.
+address_t
+pointed(state_t &s, const expr_t &p, const type_t &pointee)
+{
+    const long size = size_of(pointee);
+
+    if (!is_scale(size) || !is< binary_t >(p) ||
+        as< binary_t >(p).op != binary_op_t::add)
+        return { .base = rvalue(s, p) };
+
+    const auto &b = as< binary_t >(p);
+    const bool left = is< pointer_t >(b.lhs->type);
+    const auto &pointer = left ? *b.lhs : *b.rhs;
+    const auto &index = left ? *b.rhs : *b.lhs;
+
+    if (is< literal_t >(index)) {
+        const auto d = scaled(as< literal_t >(index).value, size);
+        if (fits_imm32(d))
+            return { .base = rvalue(s, pointer), .displacement = d };
+    }
+
+    const auto l = rvalue(s, *b.lhs);
+    const auto r = rvalue(s, *b.rhs);
+
+    return { .base = left ? l : r, .index = left ? r : l, .scale = size };
+}
+
+// The address of an lvalue: a local's or a parameter's slot, a string
+// literal's label, or what a dereference designates.  It serves &,
+// array decay, loads and stores alike, so the addressing row is
+// written once.
+address_t
+address(state_t &s, const expr_t &e)
+{
+    if (is< string_t >(e))
+        return { .label = string_label(s, as< string_t >(e)) };
+
+    if (is< unary_t >(e) && as< unary_t >(e).op == unary_op_t::deref)
+        return pointed(s, *as< unary_t >(e).arg, e.type);
+
+    return slot_address(slot_of(s, object_of(e)));
+}
+
+// expressions
 
 // Whether e is a constant the instruction can take as an immediate: x86
 // immediates are 32 bits, sign-extended in a 64-bit operation.
@@ -540,20 +775,6 @@ literal(state_t &s, const literal_t &l, const type_t &t)
     return v;
 }
 
-// The read of a local or a parameter, 6.3.2.1p2, into a new register
-// at a width of 32 or 64: a char or a short by the extending mov of
-// its signedness.
-value_t
-load(state_t &s, int displacement, const int_t &t, int width)
-{
-    const auto [mnemonic, into] = extension(t, width);
-
-    const auto v = fresh(s, written(into, t.is_signed));
-    insn(s, mnemonic, { at(displacement), reg(reg_of(s, v), into) });
-
-    return v;
-}
-
 const char *
 arithmetic_mnemonic(binary_op_t op)
 {
@@ -575,13 +796,13 @@ arithmetic_mnemonic(binary_op_t op)
 // is in a register even when it is a constant.  The dividend goes to
 // rax and rdx is cleared or sign-filled; a value held in either, or a
 // divisor there, moves out first (chapter 6.5).  The quotient or the
-// remainder comes back into L.
+// remainder comes back into L.  The divisor r is held, generated by
+// the caller.
 value_t
-divide(state_t &s, binary_op_t op, value_t l, const expr_t &rhs, const int_t &t)
+divide(state_t &s, binary_op_t op, value_t l, value_t r, const int_t &t)
 {
     const int width = t.width;
 
-    const auto r = rvalue(s, rhs);
     auto [left, right] = operands(s, l, r);
 
     const unsigned pinned = bit(rax) | bit(rdx);
@@ -669,7 +890,7 @@ arithmetic(
     const int width = operation_width(t);
 
     if (op == binary_op_t::div || op == binary_op_t::rem)
-        return divide(s, op, l, rhs, integer(t));
+        return divide(s, op, l, rvalue(s, rhs), integer(t));
 
     if (op == binary_op_t::shl || op == binary_op_t::shr)
         return shift(s, op, l, rhs, integer(t));
@@ -697,6 +918,109 @@ arithmetic(
     wrote(s, l, width, integer(t).is_signed);
 
     return l;
+}
+
+// The arithmetic row of p + n, n + p and p - n, 6.5.7p9, both values
+// held and the result in L.  G6: the address plus or minus n times
+// the size, modulo 2^64.  A size of 1 is add or sub; + with another
+// scale is one leaq (P,N,s); - with a scale, and either with any other
+// size, multiplies the index by the size first.  L and R are as the
+// source wrote the operands: n + p has the index in L.
+value_t
+offset(state_t &s,
+       binary_op_t op,
+       value_t l,
+       value_t r,
+       long size,
+       bool pointer_first)
+{
+    const auto mnemonic = op == binary_op_t::add ? "addq" : "subq";
+
+    if (size != 1 && op == binary_op_t::add && is_scale(size))
+        return address_of(s, { .base = pointer_first ? l : r,
+                               .index = pointer_first ? r : l,
+                               .scale = size });
+
+    const auto [left, right] = operands(s, l, r);
+
+    if (size != 1) {
+        const auto index = reg(pointer_first ? right : left, 64);
+        insn(s, "imulq", { imm(size), index, index });
+    }
+
+    insn(s, mnemonic, { reg(right, 64), reg(left, 64) });
+
+    release(s, r);
+    wrote(s, l, 64, false);
+
+    return l;
+}
+
+// p + n and p - n with the pointer held in l and n not yet generated,
+// and p += n and p -= n on the loaded pointer.  A constant n is the
+// immediate c * size, or, when no 32-bit immediate holds the product,
+// the product held in a register; the parser retyped a constant index
+// to 64 bits, so p += 2 on an int * is addq $8.
+value_t
+displaced(state_t &s, binary_op_t op, value_t l, const expr_t &n, long size)
+{
+    if (!is< literal_t >(n))
+        return offset(s, op, l, rvalue(s, n), size, true);
+
+    const auto d = scaled(as< literal_t >(n).value, size);
+
+    if (fits_imm32(d)) {
+        insn(s, op == binary_op_t::add ? "addq" : "subq",
+             { imm(d), reg(reg_of(s, l), 64) });
+        wrote(s, l, 64, false);
+        return l;
+    }
+
+    const auto r = fresh(s, 64);
+    insn(s, "movabsq", { imm(d), reg(reg_of(s, r), 64) });
+
+    return offset(s, op, l, r, 1, true);
+}
+
+// A binary + or - of the pointer type t: the pointer and the integer,
+// the integer widened to 64 bits by the parser, in the order written
+// (G13).
+value_t
+pointer_arithmetic(state_t &s, const binary_t &b, const type_t &t)
+{
+    const long size = stride(t);
+    const auto l = rvalue(s, *b.lhs);
+
+    if (is< pointer_t >(b.lhs->type))
+        return displaced(s, b.op, l, *b.rhs, size);
+
+    return offset(s, b.op, l, rvalue(s, *b.rhs), size, false);
+}
+
+// p - q, 6.5.7p10: the difference of the addresses divided by the size,
+// a long.  G6: a division, idivq by the size held in a register, not a
+// shift, since the two pointers are any two addresses; a size of 1 is
+// the subq alone.
+value_t
+difference(state_t &s, const binary_t &b)
+{
+    const long size = stride(b.lhs->type);
+
+    const auto l = rvalue(s, *b.lhs);
+    const auto r = rvalue(s, *b.rhs);
+    const auto [left, right] = operands(s, l, r);
+    insn(s, "subq", { reg(right, 64), reg(left, 64) });
+
+    release(s, r);
+    wrote(s, l, 64, true);
+
+    if (size == 1)
+        return l;
+
+    const auto d = fresh(s, 64);
+    insn(s, "movq", { imm(size), reg(reg_of(s, d), 64) });
+
+    return divide(s, binary_op_t::div, l, d, int_t { 64, true });
 }
 
 bool
@@ -729,7 +1053,7 @@ inverse(binary_op_t op)
 
 // The condition code of a comparison, the suffix of jcc and setcc:
 // signed or unsigned by the operands' type, which the parser's
-// conversions made common.
+// conversions made common; a pointer's is unsigned, G7.
 std::string_view
 condition(binary_op_t op, bool is_signed)
 {
@@ -878,25 +1202,33 @@ binary(state_t &s, const expr_t &e)
     if (is_comparison(b.op))
         return comparison(s, b);
 
+    if (is< pointer_t >(e.type))
+        return pointer_arithmetic(s, b, e.type);
+
+    if (is< pointer_t >(b.lhs->type))
+        return difference(s, b);
+
     // G13: the left operand first, held while the right one is generated
     const auto l = rvalue(s, *b.lhs);
 
     return arithmetic(s, b.op, l, *b.rhs, e.type);
 }
 
-// ++ and --, either side: the load, add or sub of 1, the store; G1, the
-// machine wraps.  A char or a short is loaded extended to 32 bits and
-// its low bytes stored, so no operator sees 8 or 16 bits.  The postfix
-// forms copy the old value to another register first and yield it.
+// ++ and --, either side: the address once, the load, add or sub of 1,
+// or of the size for a pointer (6.5.4.1p2, 6.5.3.5p2), the store
+// through the same address; G1, the machine wraps.  A char or a short
+// is loaded extended to 32 bits and its low bytes stored, so no
+// operator sees 8 or 16 bits.  The postfix forms copy the old value to
+// another register first and yield it.
 value_t
 step(state_t &s, const unary_t &u)
 {
-    const auto *sym = object_of(*u.arg);
     const auto &t = integer(u.arg->type);
-    const int displacement = slot_of(s, sym);
     const int width = std::max(32, t.width);
+    const long amount = is< pointer_t >(u.arg->type) ? stride(u.arg->type) : 1;
 
-    const auto l = load(s, displacement, t, width);
+    const auto place = address(s, *u.arg);
+    const auto l = fetch(s, place, t, width);
     const reg_t r = reg_of(s, l);
 
     const bool up = u.op == unary_op_t::pre_inc || u.op == unary_op_t::post_inc;
@@ -905,13 +1237,14 @@ step(state_t &s, const unary_t &u)
 
     value_t old;
     if (post) {
-        old = fresh(s, s.values[l.id].valid, bit(r));
+        old = fresh(s, s.values[l.id].valid, bit(r) | registers_of(s, place));
         insn(s, sized("mov", width),
              { reg(r, width), reg(reg_of(s, old), width) });
     }
 
-    insn(s, sized(up ? "add" : "sub", width), { imm(1), reg(r, width) });
-    store(s, r, displacement, t.width);
+    insn(s, sized(up ? "add" : "sub", width), { imm(amount), reg(r, width) });
+    store(s, l, place, t.width);
+    release(s, place);
     s.values[l.id].valid = std::min(written(width, t.is_signed), t.width);
 
     if (!post)
@@ -945,6 +1278,7 @@ unary(state_t &s, const unary_t &u, const type_t &t)
         insn(s, sized("cmp", width), { imm(0), reg(r, width) });
         insn(s, "sete", { reg(r, 8) });
         insn(s, "movzbl", { reg(r, 8), reg(r, 32) });
+        wrote(s, v, 32, true);
         return v;
     }
 
@@ -953,38 +1287,52 @@ unary(state_t &s, const unary_t &u, const type_t &t)
     case unary_op_t::post_inc:
     case unary_op_t::post_dec: return step(s, u);
 
-    case unary_op_t::addr: not_yet("unary &");
-    case unary_op_t::deref: not_yet("unary *");
+    case unary_op_t::addr: return address_of(s, address(s, *u.arg));
+
+    case unary_op_t::deref: {
+        const auto &type = integer(t);
+        return load(s, pointed(s, *u.arg, t), type, std::max(32, type.width));
+    }
     }
 
     throw std::logic_error("c1: an unknown unary operator");
 }
 
 // Plain or compound assignment; its value is the value stored, the low
-// bytes of L.  A compound one loads the old value before the right
-// operand is evaluated (G13), extended into the common type the parser
-// chose, 6.5.17.3p4, and stores the result's low bytes back (G2).
+// bytes of L.  The lvalue's address comes first (G13) and is held
+// across the right operand.  A compound one loads the old value before
+// the right operand is evaluated, extended into the common type the
+// parser chose, 6.5.17.3p4, and stores the result's low bytes back
+// through the same address (G2); p += n and p -= n step the pointer by
+// n times the size.
 value_t
 assign(state_t &s, const assign_t &a)
 {
-    const auto *sym = object_of(*a.lhs);
     const auto &t = integer(a.lhs->type);
-    const int displacement = slot_of(s, sym);
+    const bool stepped = a.op && is< pointer_t >(a.lhs->type);
 
-    if (!(a.rhs->type == a.common))
+    // the parser converted the right operand to the common type, or
+    // widened it to 64 bits for a pointer
+    if (!stepped && !(a.rhs->type == a.common))
         throw std::logic_error("c1: an assignment across two types");
+
+    const auto place = address(s, *a.lhs);
 
     if (!a.op) {
         const auto v = rvalue(s, *a.rhs);
-        store(s, reg_of(s, v), displacement, t.width);
+        store(s, v, place, t.width);
+        release(s, place);
         return v;
     }
 
     // the value of the expression has the lvalue's type: the bits
     // above its width are the operation's, not the value's extension
-    const auto l = load(s, displacement, t, operation_width(a.common));
-    const auto v = arithmetic(s, *a.op, l, *a.rhs, a.common);
-    store(s, reg_of(s, v), displacement, t.width);
+    const auto l = fetch(s, place, t, operation_width(a.common));
+    const auto v = stepped ?
+                       displaced(s, *a.op, l, *a.rhs, stride(a.lhs->type)) :
+                       arithmetic(s, *a.op, l, *a.rhs, a.common);
+    store(s, v, place, t.width);
+    release(s, place);
     s.values[v.id].valid = std::min(s.values[v.id].valid, t.width);
 
     return v;
@@ -994,8 +1342,11 @@ assign(state_t &s, const assign_t &a)
 // register name is the value; widening extends by the operand's
 // signedness, and only when the register is not already valid to the
 // new width, as it is after the load of a char or a 32-bit write of an
-// unsigned value.  A change of signedness alone is nothing.  A cast to
-// void discards the value.
+// unsigned value.  A change of signedness alone is nothing.  A pointer
+// is its integer view, so pointer to pointer is nothing, an integer
+// widens to a pointer by its own signedness (6.3.2.3p5), and a pointer
+// narrows to an integer by its low bits (p6).  An array decays to its
+// address, 6.3.2.1p3.  A cast to void discards the value.
 value_t
 cast(state_t &s, const cast_t &c, const type_t &to)
 {
@@ -1003,6 +1354,9 @@ cast(state_t &s, const cast_t &c, const type_t &to)
         release(s, rvalue(s, *c.arg));
         return { };
     }
+
+    if (is< array_t >(c.arg->type))
+        return address_of(s, address(s, *c.arg));
 
     const auto &from = integer(c.arg->type);
     const auto &into = integer(to);
@@ -1049,10 +1403,6 @@ call(state_t &s, const call_t &c, const type_t &t)
     const auto &callee = callee_of(c);
     const auto &f = as< function_t >(callee.type);
 
-    // a pointer result is the next slice
-    if (!is< void_t >(t))
-        integer(t);
-
     spill_all(s);
 
     std::vector< std::pair< int, int_t > > slots;
@@ -1066,7 +1416,7 @@ call(state_t &s, const call_t &c, const type_t &t)
         const auto v = rvalue(s, arg);
         const int displacement =
             allocate(s, size_of(arg.type), align_of(arg.type));
-        store(s, reg_of(s, v), displacement, type.width);
+        store(s, reg_of(s, v), at(displacement), type.width);
         release(s, v);
 
         slots.emplace_back(displacement, type);
@@ -1126,24 +1476,21 @@ call(state_t &s, const call_t &c, const type_t &t)
 }
 
 // The value of an expression in a register, its code written first.
-// No value has a pointer or array type in this slice.
+// An array is never a value: the parser decays it, 6.3.2.1p3, and a
+// string literal is an array.
 value_t
 rvalue(state_t &s, const expr_t &e)
 {
-    if (is< pointer_t >(e.type) || is< array_t >(e.type))
-        not_yet("a pointer or an array");
+    if (is< array_t >(e.type))
+        throw std::logic_error("c1: an array as a value");
 
     if (is< literal_t >(e))
         return literal(s, as< literal_t >(e), e.type);
 
     if (is< name_t >(e)) {
-        const auto *sym = object_of(e);
         const auto &t = integer(e.type);
-        return load(s, slot_of(s, sym), t, std::max(32, t.width));
+        return load(s, address(s, e), t, std::max(32, t.width));
     }
-
-    if (is< string_t >(e))
-        not_yet("a string literal");
 
     if (is< unary_t >(e))
         return unary(s, as< unary_t >(e), e.type);
@@ -1167,8 +1514,8 @@ rvalue(state_t &s, const expr_t &e)
 // false (!sense), a fall through otherwise, and no value.  A comparison
 // is cmp and jcc; ! flips the sense; && and || are the shape of the
 // short circuit, 6.5.14p4, 6.5.15p4, the right operand not reached when
-// the left decides.  Any other scalar, a constant included, is its
-// value compared with 0 at its own width.
+// the left decides.  Any other scalar, a constant or a pointer
+// included, is its value compared with 0 at its own width.
 void
 cbranch(state_t &s, const expr_t &e, int label, bool sense)
 {
@@ -1231,7 +1578,9 @@ expr_stmt(state_t &s, const expr_stmt_t &x)
 // G12: the slot is taken where the declaration is met, one for the
 // whole activation, and before the initializer, whose scope already
 // holds the name, 6.2.1p7.  G5: without an initializer nothing is
-// stored; the slot holds what it holds.
+// stored; the slot holds what it holds.  An array's slot is at the
+// type's alignment, chapter 5, and its displacement is the array's
+// lowest address, the elements upward from it.
 void
 decl_stmt(state_t &s, const decl_stmt_t &d)
 {
@@ -1239,7 +1588,6 @@ decl_stmt(state_t &s, const decl_stmt_t &d)
     if (sym->in_register)
         not_yet("a register variable");
 
-    const auto &t = integer(sym->type);
     const int displacement =
         allocate(s, size_of(sym->type), align_of(sym->type));
     s.slots.emplace(sym, displacement);
@@ -1247,8 +1595,9 @@ decl_stmt(state_t &s, const decl_stmt_t &d)
     if (!d.init)
         return;
 
+    const auto &t = integer(sym->type);
     const auto v = rvalue(s, *d.init);
-    store(s, reg_of(s, v), displacement, t.width);
+    store(s, reg_of(s, v), at(displacement), t.width);
     release(s, v);
 }
 
@@ -1404,7 +1753,7 @@ parameters(state_t &s, const function_decl_t &fd)
         const int displacement =
             allocate(s, size_of(p->type), align_of(p->type));
         s.slots.emplace(p, displacement);
-        store(s, argument_registers[i], displacement, t.width);
+        store(s, argument_registers[i], at(displacement), t.width);
     }
 }
 
@@ -1443,11 +1792,6 @@ function(state_t &s, const function_decl_t &fd)
     s.function = fd.sym->name;
     s.ret = new_label(s);
     s.terminated = false;
-
-    // a pointer result is the next slice
-    const auto &result = *as< function_t >(fd.sym->type).result;
-    if (!is< void_t >(result))
-        integer(result);
 
     parameters(s, fd);
     block_stmt(s, *fd.body);
@@ -1493,11 +1837,57 @@ quoted_file(std::string_view file)
     return text + '"';
 }
 
+// A string literal's bytes as the operand of .string: printable ASCII
+// as itself but " and \ escaped, a newline, a tab and a return as the
+// C escapes the assembler reads, every other byte a three-digit octal
+// escape.  The directive appends the terminating zero, 6.4.5p6.
+std::string
+quoted_bytes(std::string_view bytes)
+{
+    std::string text = "\"";
+    for (const char c : bytes) {
+        const auto byte = static_cast< unsigned char >(c);
+
+        if (c == '\n' || c == '\t' || c == '\r') {
+            text += c == '\n' ? "\\n" : c == '\t' ? "\\t" : "\\r";
+            continue;
+        }
+
+        if (byte < 0x20 || byte > 0x7e) {
+            text += std::format("\\{:03o}", byte);
+            continue;
+        }
+
+        if (c == '"' || c == '\\')
+            text += '\\';
+        text += c;
+    }
+
+    return text + '"';
+}
+
+// Chapter 10: the string literals, each its own labeled array in .data,
+// never .rodata and never merged (G17), with no alignment directive,
+// since a char array aligns to 1.
+void
+literals(const state_t &s)
+{
+    if (s.strings.empty())
+        return;
+
+    s.out << "\t.data\n";
+
+    for (std::size_t i = 0; i < s.strings.size(); ++i)
+        s.out << std::format(".Ls{}:\n\t.string\t{}\n", i,
+                             quoted_bytes(s.strings[i]));
+}
+
 } // namespace
 
 // The functions the unit defines, in order; one it only declares
 // writes nothing, since the assembler leaves its symbol to the link.
-// The note section marks the stack not executable.
+// The string literals follow the last function.  The note section
+// marks the stack not executable.
 void
 generate(const unit_t &unit, std::string_view file, std::ostream &out)
 {
@@ -1508,6 +1898,8 @@ generate(const unit_t &unit, std::string_view file, std::ostream &out)
     for (const auto &fd : unit.functions)
         if (fd.body)
             function(s, fd);
+
+    literals(s);
 
     out << "\t.section\t.note.GNU-stack,\"\",@progbits\n";
 }
