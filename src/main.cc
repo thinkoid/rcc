@@ -6,8 +6,11 @@
 // instruction, and clang links the object.  Nothing optimizes on the
 // way: the code that comes out is the code that was written.  The
 // processes are spawned by fork and exec, never through a shell, so
-// no argument is reinterpreted on the way.
+// no argument is reinterpreted on the way.  With -native, rcc's own
+// code generator writes assembly in place of the IR, and clang
+// assembles it and links; no llc runs.
 
+#include "c1.hh"
 #include "emit.hh"
 #include "error.hh"
 #include "lex.hh"
@@ -80,14 +83,16 @@ const char *const llc_flags[] = {
     "-no-stack-coloring",               // one slot per local, never shared
 };
 
-constexpr const char *usage = "usage: rcc [-S|-c] [-o out] file.c";
+constexpr const char *usage = "usage: rcc [-native] [-S|-c] [-o out] file.c";
 
 // The last thing the driver makes: the IR, an object, or an executable.
+// Under -native, the first is the assembly.
 enum class stage_t { ir, object, executable };
 
 struct options_t
 {
     stage_t stage = stage_t::executable;
+    bool native = false;
     std::string out;
     std::string file;
 };
@@ -107,17 +112,21 @@ throw_system_error(int err, std::string_view what)
     throw std::system_error(err, std::generic_category(), std::string(what));
 }
 
-// cc's defaults: the IR and the object are named after the input and
-// land in the current directory; the executable is a.out.
+// cc's defaults: the IR, the assembly and the object are named after
+// the input and land in the current directory; the executable is
+// a.out.
 std::string
-default_output(stage_t stage, const std::string &file)
+default_output(const options_t &opts)
 {
-    if (stage == stage_t::executable)
+    if (opts.stage == stage_t::executable)
         return "a.out";
 
-    const auto stem = std::filesystem::path(file).stem().string();
+    const auto stem = std::filesystem::path(opts.file).stem().string();
 
-    return stem + (stage == stage_t::ir ? ".ll" : ".o");
+    if (opts.stage == stage_t::object)
+        return stem + ".o";
+
+    return stem + (opts.native ? ".s" : ".ll");
 }
 
 // The command line, or nothing when it is a usage error: an unknown
@@ -135,6 +144,8 @@ options_from(int argc, char **argv)
 
         if (arg == "-S")
             to_ir = true;
+        else if (arg == "-native")
+            opts.native = true;
         else if (arg == "-c")
             to_object = true;
         else if (arg == "-o" && i + 1 < argc)
@@ -154,7 +165,7 @@ options_from(int argc, char **argv)
         opts.stage = stage_t::object;
 
     if (opts.out.empty())
-        opts.out = default_output(opts.stage, opts.file);
+        opts.out = default_output(opts);
 
     return opts;
 }
@@ -327,7 +338,7 @@ write_file(const std::string &path, std::string_view text)
 // The name mkstemps fills in: under $TMPDIR when it is set, /tmp
 // otherwise.  The suffix keeps the file's kind visible: .ll for the
 // IR llc reads, .o for the object clang links, which clang takes for
-// linker input by that suffix.
+// linker input by that suffix, .s for the assembly clang assembles.
 std::string
 temp_template(std::string_view suffix)
 {
@@ -338,9 +349,10 @@ temp_template(std::string_view suffix)
     return std::string(dir) + "/rcc-XXXXXX" + std::string(suffix);
 }
 
-// A temporary file: the IR for llc, or the empty place llc writes the
-// object into for clang to link.  It is removed when the object dies,
-// on every path out of the scope that made it, exceptions included.
+// A temporary file: the IR for llc, the empty place llc writes the
+// object into for clang to link, or the assembly for clang.  It is
+// removed when the object dies, on every path out of the scope that
+// made it, exceptions included.
 class temp_file_t
 {
 public:
@@ -420,10 +432,24 @@ assemble(const options_t &opts, std::string_view ir)
     return run({ clang, obj.path(), "-o", opts.out });
 }
 
+// Hands the assembly to clang to assemble into the object and, without
+// -c, to link; returns clang's exit status.
+int
+assemble_native(const options_t &opts, std::string_view text)
+{
+    const temp_file_t s(".s", text);
+
+    if (opts.stage == stage_t::object)
+        return run({ clang, "-c", s.path(), "-o", opts.out });
+
+    return run({ clang, s.path(), "-o", opts.out });
+}
+
 // The pipeline: preprocess, tokenize, parse, emit, then the IR file or
-// llc and clang.  Returns rcc's exit status.  An error_t names its
-// file by a view into the preprocessed text, so it is reported in
-// this frame, while the text is alive.
+// llc and clang; under -native, generate, then the assembly file or
+// clang.  Returns rcc's exit status.  An error_t names its file by a
+// view into the preprocessed text, so it is reported in this frame,
+// while the text is alive.
 int
 drive(const options_t &opts)
 {
@@ -435,7 +461,10 @@ drive(const options_t &opts)
     try {
         const auto tokens = tokenize(pp.text, opts.file);
         const auto unit = parse(tokens);
-        emit(unit, ir);
+        if (opts.native)
+            generate(unit, opts.file, ir);
+        else
+            emit(unit, ir);
     }
     catch (const error_t &e) {
         report(e);
@@ -446,6 +475,9 @@ drive(const options_t &opts)
         write_file(opts.out, ir.str());
         return 0;
     }
+
+    if (opts.native)
+        return assemble_native(opts, ir.str());
 
     return assemble(opts, ir.str());
 }
