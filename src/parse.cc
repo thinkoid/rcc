@@ -2325,8 +2325,8 @@ unary_expression(parser_t &p)
             fail(op, "cannot take the address of an rvalue");
 
         // 6.5.4.2p1: not an object declared register, whether or not it
-        // got a register; its footnote says addressable storage does not
-        // make the address computable
+        // got a register: 6.7.2p12's footnote says that addressable
+        // storage does not make the address computable
         if (is< name_t >(arg) && as< name_t >(arg).sym->declared_register)
             fail(op, "cannot take the address of " +
                          quoted(as< name_t >(arg).sym->name) +
