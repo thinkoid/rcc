@@ -11,8 +11,8 @@ to_long:
 	.cfi_def_cfa_register %rbp
 	movq	%rdi, -8(%rbp)
 	movq	-8(%rbp), %rax
-	jmp	.L1
-.L1:
+	jmp	.Lto_long.1
+.Lto_long.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret
@@ -29,8 +29,8 @@ from_long:
 	.cfi_def_cfa_register %rbp
 	movq	%rdi, -8(%rbp)
 	movq	-8(%rbp), %rax
-	jmp	.L2
-.L2:
+	jmp	.Lfrom_long.1
+.Lfrom_long.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret
@@ -48,8 +48,8 @@ from_int:
 	movl	%edi, -4(%rbp)
 	movl	-4(%rbp), %eax
 	movslq	%eax, %rax
-	jmp	.L3
-.L3:
+	jmp	.Lfrom_int.1
+.Lfrom_int.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

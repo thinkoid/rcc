@@ -18,8 +18,8 @@ unused:
 	cltd
 	idivl	%ecx
 	movl	$0, %eax
-	jmp	.L1
-.L1:
+	jmp	.Lunused.1
+.Lunused.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

@@ -14,8 +14,8 @@ add:
 	movl	-4(%rbp), %eax
 	movl	-8(%rbp), %ecx
 	addl	%ecx, %eax
-	jmp	.L1
-.L1:
+	jmp	.Ladd.1
+.Ladd.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret
@@ -35,8 +35,8 @@ sub:
 	movl	-4(%rbp), %eax
 	movl	-8(%rbp), %ecx
 	subl	%ecx, %eax
-	jmp	.L2
-.L2:
+	jmp	.Lsub.1
+.Lsub.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

@@ -14,17 +14,17 @@ choose:
 	movl	-4(%rbp), %eax
 	movl	-8(%rbp), %ecx
 	cmpl	%ecx, %eax
-	jge	.L2
+	jge	.Lchoose.2
 	movl	-4(%rbp), %eax
 	movl	%eax, -12(%rbp)
-	jmp	.L3
-.L2:
+	jmp	.Lchoose.3
+.Lchoose.2:
 	movl	-8(%rbp), %eax
 	movl	%eax, -12(%rbp)
-.L3:
+.Lchoose.3:
 	movl	-12(%rbp), %eax
-	jmp	.L1
-.L1:
+	jmp	.Lchoose.1
+.Lchoose.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

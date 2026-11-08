@@ -16,8 +16,8 @@ local:
 	addl	$1, %eax
 	movl	%eax, -8(%rbp)
 	movl	-8(%rbp), %eax
-	jmp	.L1
-.L1:
+	jmp	.Llocal.1
+.Llocal.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

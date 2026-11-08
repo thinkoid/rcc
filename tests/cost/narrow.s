@@ -18,8 +18,8 @@ f:
 	movswl	-4(%rbp), %ecx
 	addl	%ecx, %eax
 	movsbl	%al, %eax
-	jmp	.L1
-.L1:
+	jmp	.Lf.1
+.Lf.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret
@@ -38,8 +38,8 @@ g:
 	movzbl	-1(%rbp), %eax
 	addl	$1, %eax
 	movzbl	%al, %eax
-	jmp	.L2
-.L2:
+	jmp	.Lg.1
+.Lg.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret
@@ -63,8 +63,8 @@ h:
 	movsbl	-5(%rbp), %edi
 	movswl	-8(%rbp), %esi
 	call	f@PLT
-	jmp	.L3
-.L3:
+	jmp	.Lh.1
+.Lh.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

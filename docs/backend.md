@@ -531,7 +531,7 @@ the promotion is queued.
   jump says so.
 - `return e`: `e` into `L`, `mov L, %eax` if `L` is not `rax`, `jmp
   .Lret`, where `.Lret` is the one epilogue (a name in this
-  document; the listing numbers it `.L<n>`, the first label a
+  document; the listing names it `.L<function>.1`, the first label a
   function takes). `return` jumps to the epilogue every time, the
   last statement of the body included: the
   jump to the next instruction is what the statement says, and
@@ -544,12 +544,12 @@ the promotion is queued.
   before the epilogue unless its last statement is a `return`. A
   `void` function whose last statement is not a `return` falls into
   the epilogue's label, with no `jmp`.
-- Blocks and labels are written in source order. A label is `.L`
-  and a number, which the code counts through the file today, so the
-  labels of a file are unique; the first a function takes is its
-  epilogue's, `.L1` in the first function and `.L2` in a second that
-  has no other label. A per-function count, `.L<function>.<n>`, is
-  queued (`TODO`). Nothing is reordered after the labels.
+- Blocks and labels are written in source order. A label is `.L`,
+  the function's name and a number counted from 1 in each function,
+  `.L<function>.<n>`, `.Lsum.1`. The name keeps the labels of a file
+  unique, since an identifier holds no dot. The first label a
+  function takes is its epilogue's, `.L<function>.1`. Nothing is
+  reordered after the labels.
 
 ## 8. Calls
 

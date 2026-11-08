@@ -15,8 +15,8 @@ udiv:
 	movl	-8(%rbp), %ecx
 	xorl	%edx, %edx
 	divl	%ecx
-	jmp	.L1
-.L1:
+	jmp	.Ludiv.1
+.Ludiv.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret
@@ -38,8 +38,8 @@ urem:
 	xorl	%edx, %edx
 	divl	%ecx
 	movl	%edx, %eax
-	jmp	.L2
-.L2:
+	jmp	.Lurem.1
+.Lurem.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

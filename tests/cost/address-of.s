@@ -16,8 +16,8 @@ address:
 	movq	%rax, -16(%rbp)
 	movq	-16(%rbp), %rax
 	movl	(%rax), %eax
-	jmp	.L1
-.L1:
+	jmp	.Laddress.1
+.Laddress.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

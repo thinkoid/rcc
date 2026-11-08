@@ -18,8 +18,8 @@ compound:
 	addl	%ecx, %eax
 	movl	%eax, -12(%rbp)
 	movl	-12(%rbp), %eax
-	jmp	.L1
-.L1:
+	jmp	.Lcompound.1
+.Lcompound.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret
@@ -43,8 +43,8 @@ narrow:
 	addl	%ecx, %eax
 	movb	%al, -9(%rbp)
 	movsbl	-9(%rbp), %eax
-	jmp	.L2
-.L2:
+	jmp	.Lnarrow.1
+.Lnarrow.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

@@ -26,8 +26,8 @@ main:
 	movl	$3, %ecx
 	movl	%ecx, (%rax)
 	movl	-12(%rbp), %eax
-	jmp	.L1
-.L1:
+	jmp	.Lmain.1
+.Lmain.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

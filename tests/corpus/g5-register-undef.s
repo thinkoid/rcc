@@ -14,8 +14,8 @@ main:
 	cmpl	%ebx, %ebx
 	sete	%al
 	movzbl	%al, %eax
-	jmp	.L1
-.L1:
+	jmp	.Lmain.1
+.Lmain.1:
 	popq	%rbx
 	leave
 	.cfi_def_cfa %rsp, 8

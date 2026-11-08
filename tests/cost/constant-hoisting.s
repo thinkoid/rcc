@@ -18,8 +18,8 @@ two_constants:
 	addq	%rcx, %rax
 	movabsq	$81985529216486903, %rcx
 	addq	%rcx, %rax
-	jmp	.L1
-.L1:
+	jmp	.Ltwo_constants.1
+.Ltwo_constants.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

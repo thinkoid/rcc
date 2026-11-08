@@ -16,8 +16,8 @@ gep:
 	leaq	(%rax,%rcx,4), %rax
 	movq	%rax, -32(%rbp)
 	movq	-32(%rbp), %rax
-	jmp	.L1
-.L1:
+	jmp	.Lgep.1
+.Lgep.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

@@ -11,13 +11,13 @@ never:
 	.cfi_def_cfa_register %rbp
 	movl	$0, %eax
 	cmpl	$0, %eax
-	je	.L2
+	je	.Lnever.2
 	movl	$1, %eax
-	jmp	.L1
-.L2:
+	jmp	.Lnever.1
+.Lnever.2:
 	movl	$2, %eax
-	jmp	.L1
-.L1:
+	jmp	.Lnever.1
+.Lnever.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret
@@ -33,8 +33,8 @@ not_zero:
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register %rbp
 	movl	$1, %eax
-	jmp	.L3
-.L3:
+	jmp	.Lnot_zero.1
+.Lnot_zero.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

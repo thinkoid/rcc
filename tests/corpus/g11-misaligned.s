@@ -12,10 +12,10 @@ main:
 	movl	%edi, -4(%rbp)
 	movl	$0, %eax
 	movl	%eax, -16(%rbp)
-.L2:
+.Lmain.2:
 	movl	-16(%rbp), %eax
 	cmpl	$8, %eax
-	jge	.L4
+	jge	.Lmain.4
 	leaq	-12(%rbp), %rax
 	movl	-16(%rbp), %ecx
 	movslq	%ecx, %rcx
@@ -23,13 +23,13 @@ main:
 	movl	-4(%rbp), %esi
 	addl	%esi, %edx
 	movb	%dl, (%rax,%rcx,1)
-.L3:
+.Lmain.3:
 	movl	-16(%rbp), %eax
 	movl	%eax, %ecx
 	addl	$1, %eax
 	movl	%eax, -16(%rbp)
-	jmp	.L2
-.L4:
+	jmp	.Lmain.2
+.Lmain.4:
 	leaq	-12(%rbp), %rax
 	addq	$1, %rax
 	movl	(%rax), %eax
@@ -40,8 +40,8 @@ main:
 	movl	-20(%rbp), %ecx
 	andl	$255, %ecx
 	addl	%ecx, %eax
-	jmp	.L1
-.L1:
+	jmp	.Lmain.1
+.Lmain.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

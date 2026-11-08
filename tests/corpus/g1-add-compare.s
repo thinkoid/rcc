@@ -20,8 +20,8 @@ main:
 	cmpl	%ecx, %eax
 	setg	%al
 	movzbl	%al, %eax
-	jmp	.L1
-.L1:
+	jmp	.Lmain.1
+.Lmain.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

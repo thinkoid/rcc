@@ -35,8 +35,8 @@ seven:
 	movl	-24(%rbp), %r9d
 	call	f7@PLT
 	addq	$16, %rsp
-	jmp	.L1
-.L1:
+	jmp	.Lseven.1
+.Lseven.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret
@@ -80,8 +80,8 @@ eight:
 	movl	-24(%rbp), %r9d
 	call	f8@PLT
 	addq	$16, %rsp
-	jmp	.L2
-.L2:
+	jmp	.Leight.1
+.Leight.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

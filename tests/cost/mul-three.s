@@ -12,8 +12,8 @@ mul_three:
 	movl	%edi, -4(%rbp)
 	movl	-4(%rbp), %eax
 	imull	$3, %eax, %eax
-	jmp	.L1
-.L1:
+	jmp	.Lmul_three.1
+.Lmul_three.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

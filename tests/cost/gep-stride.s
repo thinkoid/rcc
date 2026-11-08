@@ -17,8 +17,8 @@ row:
 	addq	%rcx, %rax
 	movq	%rax, -40(%rbp)
 	movq	-40(%rbp), %rax
-	jmp	.L1
-.L1:
+	jmp	.Lrow.1
+.Lrow.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

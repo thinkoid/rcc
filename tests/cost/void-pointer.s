@@ -15,8 +15,8 @@ round:
 	movq	-16(%rbp), %rax
 	movq	%rax, -24(%rbp)
 	movq	-24(%rbp), %rax
-	jmp	.L1
-.L1:
+	jmp	.Lround.1
+.Lround.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

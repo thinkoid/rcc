@@ -16,8 +16,8 @@ parameter:
 	subl	%ecx, %eax
 	movl	-4(%rbp), %ecx
 	addl	%ecx, %eax
-	jmp	.L1
-.L1:
+	jmp	.Lparameter.1
+.Lparameter.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

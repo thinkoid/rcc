@@ -12,8 +12,8 @@ add_zero:
 	movl	%edi, -4(%rbp)
 	movl	-4(%rbp), %eax
 	addl	$0, %eax
-	jmp	.L1
-.L1:
+	jmp	.Ladd_zero.1
+.Ladd_zero.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

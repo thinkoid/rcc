@@ -137,8 +137,8 @@ sequence, per operator, with nothing added and nothing left out.
 each the code of a `backend.md` chapter:
 
 - The state is per function, reset at each definition: the slots,
-  the held values, the register variables, the frame's size. Only
-  the label numbers and the string literals run across the file.
+  the held values, the register variables, the frame's size, the
+  label numbers. Only the string literals run across the file.
 - Every local and parameter not declared `register` has a slot off
   `rbp`, assigned at its declaration, none shared; every read is a
   load and every write a store (chapter 5, G12).

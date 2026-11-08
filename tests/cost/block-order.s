@@ -13,26 +13,26 @@ block_order:
 	movl	%esi, -8(%rbp)
 	movl	$0, %eax
 	movl	%eax, -12(%rbp)
-.L2:
+.Lblock_order.2:
 	movl	-12(%rbp), %eax
 	movl	-8(%rbp), %ecx
 	cmpl	%ecx, %eax
-	jge	.L3
+	jge	.Lblock_order.3
 	movl	-12(%rbp), %eax
 	movl	-4(%rbp), %ecx
 	cmpl	%ecx, %eax
-	jne	.L4
+	jne	.Lblock_order.4
 	movl	$1, %eax
-	jmp	.L1
-.L4:
+	jmp	.Lblock_order.1
+.Lblock_order.4:
 	movl	-12(%rbp), %eax
 	addl	$1, %eax
 	movl	%eax, -12(%rbp)
-	jmp	.L2
-.L3:
+	jmp	.Lblock_order.2
+.Lblock_order.3:
 	movl	$0, %eax
-	jmp	.L1
-.L1:
+	jmp	.Lblock_order.1
+.Lblock_order.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

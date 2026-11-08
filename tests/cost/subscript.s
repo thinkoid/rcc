@@ -20,8 +20,8 @@ subscript:
 	movl	-4(%rbp), %ecx
 	movslq	%ecx, %rcx
 	movl	(%rax,%rcx,4), %eax
-	jmp	.L1
-.L1:
+	jmp	.Lsubscript.1
+.Lsubscript.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

@@ -14,17 +14,17 @@ empty_if:
 	movl	%eax, -8(%rbp)
 	movl	-4(%rbp), %eax
 	cmpl	$0, %eax
-	je	.L2
-.L2:
+	je	.Lempty_if.2
+.Lempty_if.2:
 	movl	-4(%rbp), %eax
 	cmpl	$1, %eax
-	jle	.L3
+	jle	.Lempty_if.3
 	movl	$1, %eax
 	movl	%eax, -8(%rbp)
-.L3:
+.Lempty_if.3:
 	movl	-8(%rbp), %eax
-	jmp	.L1
-.L1:
+	jmp	.Lempty_if.1
+.Lempty_if.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

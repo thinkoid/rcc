@@ -12,8 +12,8 @@ load:
 	movq	%rdi, -8(%rbp)
 	movq	-8(%rbp), %rax
 	movl	(%rax), %eax
-	jmp	.L1
-.L1:
+	jmp	.Lload.1
+.Lload.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret
@@ -33,7 +33,7 @@ store:
 	movq	-8(%rbp), %rax
 	movl	-12(%rbp), %ecx
 	movl	%ecx, (%rax)
-.L2:
+.Lstore.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

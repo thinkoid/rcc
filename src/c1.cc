@@ -86,13 +86,13 @@ struct value_t
     int id = -1;
 };
 
-// The state of one file's generation.  The labels are numbered across
-// the file; everything else is reset per function.  The body is a
-// buffer, since the prologue's frame size is known only after it.
+// The state of one file's generation.  The string literals are
+// numbered across the file; everything else is reset per function, the
+// label count included.  The body is a buffer, since the prologue's
+// frame size is known only after it.
 struct state_t
 {
     std::ostream &out;
-    int labels = 0;
 
     // the bytes of each string literal met, in order; the index is the
     // number of its label
@@ -127,6 +127,7 @@ struct state_t
     int in_place = -1;
 
     std::string function { };
+    int labels = 0;
     int ret = 0;
     bool terminated = false;
 };
@@ -300,10 +301,12 @@ imm(long long value)
     return std::format("${}", value);
 }
 
+// A label of the function, chapter 7.2: .L, the function's name and
+// the number, .Lsum.1.
 std::string
-label_name(int n)
+label_name(const state_t &s, int n)
 {
-    return std::format(".L{}", n);
+    return std::format(".L{}.{}", s.function, n);
 }
 
 // writing
@@ -326,8 +329,9 @@ insn(state_t &s,
     s.body << '\n';
 }
 
-// Labels are numbered across the file, the epilogue's included, so
-// no two functions' .L labels collide.
+// Labels are counted per function, the epilogue's first.  The
+// function's name in the label keeps the file's labels unique, since an
+// identifier holds no dot.
 int
 new_label(state_t &s)
 {
@@ -337,14 +341,14 @@ new_label(state_t &s)
 void
 place_label(state_t &s, int n)
 {
-    s.body << label_name(n) << ":\n";
+    s.body << label_name(s, n) << ":\n";
     s.terminated = false;
 }
 
 void
 jump(state_t &s, int n)
 {
-    insn(s, "jmp", { label_name(n) });
+    insn(s, "jmp", { label_name(s, n) });
     s.terminated = true;
 }
 
@@ -1972,7 +1976,7 @@ cbranch(state_t &s, const expr_t &e, int label, bool sense)
 
             const auto op = sense ? b.op : inverse(b.op);
             insn(s, std::format("j{}", condition(op, is_signed)),
-                 { label_name(label) });
+                 { label_name(s, label) });
             return;
         }
 
@@ -2000,7 +2004,7 @@ cbranch(state_t &s, const expr_t &e, int label, bool sense)
     insn(s, sized("cmp", width), { imm(0), reg(reg_of(s, v), width) });
     release(s, v);
 
-    insn(s, sense ? "jne" : "je", { label_name(label) });
+    insn(s, sense ? "jne" : "je", { label_name(s, label) });
 }
 
 // statements
@@ -2356,7 +2360,7 @@ prologue(state_t &s, int size, bool sub)
 void
 epilogue(state_t &s, bool sub)
 {
-    s.out << label_name(s.ret) << ":\n";
+    s.out << label_name(s, s.ret) << ":\n";
 
     if (sub && s.pushes > 0)
         s.out << std::format("\tleaq\t{}, %rsp\n", at(-8 * s.pushes));
@@ -2392,6 +2396,7 @@ function(state_t &s, const function_decl_t &fd)
     s.in_place = -1;
     s.frame = 8 * s.pushes;
     s.function = fd.sym->name;
+    s.labels = 0;
     s.ret = new_label(s);
     s.terminated = false;
 

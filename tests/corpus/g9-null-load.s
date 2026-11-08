@@ -12,14 +12,14 @@ main:
 	movl	%edi, -4(%rbp)
 	movl	-4(%rbp), %eax
 	cmpl	$1, %eax
-	jne	.L2
+	jne	.Lmain.2
 	movq	$0, %rax
 	movl	(%rax), %eax
-	jmp	.L1
-.L2:
+	jmp	.Lmain.1
+.Lmain.2:
 	movl	$5, %eax
-	jmp	.L1
-.L1:
+	jmp	.Lmain.1
+.Lmain.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

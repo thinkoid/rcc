@@ -17,8 +17,8 @@ main:
 	movb	%cl, (%rax)
 	movq	-16(%rbp), %rax
 	movsbl	(%rax), %eax
-	jmp	.L1
-.L1:
+	jmp	.Lmain.1
+.Lmain.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

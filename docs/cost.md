@@ -94,12 +94,12 @@ shows it yet.
 | `a << n`, `a >> n` | the count in `ecx`, `shll %cl, %eax`, `sarl %cl, %eax`, `shrl %cl, %eax`; the instruction masks the count | `shift` |
 | `a < b` and the rest, as a value | `cmpl %ecx, %eax; setl %al; movzbl %al, %eax`, `sete` for `==`; no jump | `compare` |
 | `x == x` on a `register` variable | `cmpl %ebx, %ebx`: the compare is written | `register-compare` |
-| `a < b` as a condition | `cmpl %ecx, %eax` and a jump on the inverse to the else label, `jge .L2`; no value | `if` |
-| `a && b`, `a \|\| b` | jump code: each operand compared with 0, `cmpl $0, %eax`, and a jump, `je .L2` for `&&`, `jne` past the right operand for `\|\|`; as a value, `movl $1, %eax` and `movl $0, %eax` on the two paths | `logical` |
-| `a ? b : c` | the condition by jump code, `cmpl $0, %eax; je .L2`, each arm into `eax`, a `jmp` past the second arm; never `cmov` | `conditional`, `select` |
-| `if`, `while`, `for` | the condition by jump code at the top, where it is written, blocks in the written order; a loop jumps back from its bottom, `jmp .L2`, and `for`'s step has its own label before the jump; an empty arm is still tested, `je .L2` to the label that follows it; a join that holds only the jump back stays one block | `if`, `while`, `for`, `block-order`, `cgp`, `early-taildup` |
-| `if (0)`, `!0` | `if (0)` is a test, `movl $0, %eax; cmpl $0, %eax; je .L2`, and the body is kept; `!0` is the constant 1, folded in the parser | `zero-test` |
-| `return e` | `e` into `eax`, then `jmp .L1` to the one epilogue, the last statement included | every program |
+| `a < b` as a condition | `cmpl %ecx, %eax` and a jump on the inverse to the else label, `jge .Lchoose.2`; no value | `if` |
+| `a && b`, `a \|\| b` | jump code: each operand compared with 0, `cmpl $0, %eax`, and a jump, `je .Lboth.2` for `&&`, `jne` past the right operand for `\|\|`; as a value, `movl $1, %eax` and `movl $0, %eax` on the two paths | `logical` |
+| `a ? b : c` | the condition by jump code, `cmpl $0, %eax; je .Lconditional.2`, each arm into `eax`, a `jmp` past the second arm; never `cmov` | `conditional`, `select` |
+| `if`, `while`, `for` | the condition by jump code at the top, where it is written, blocks in the written order; a loop jumps back from its bottom, `jmp .Lcount.2` in `while`, and `for`'s step has its own label before the jump; an empty arm is still tested, `je .Lempty_if.2` to the label that follows it in `cgp`; a join that holds only the jump back stays one block | `if`, `while`, `for`, `block-order`, `cgp`, `early-taildup` |
+| `if (0)`, `!0` | `if (0)` is a test, `movl $0, %eax; cmpl $0, %eax; je .Lnever.2`, and the body is kept; `!0` is the constant 1, folded in the parser | `zero-test` |
+| `return e` | `e` into `eax`, then `jmp .L<function>.1` to the one epilogue, `jmp .Lsum.1` in `for`, the last statement included | every program |
 | a statement whose value is unused | written: `a + 0;` is `addl $0, %eax`, `a / b;` is `cltd; idivl %ecx`, and the division can fault | `unused` |
 | `f(a, b)` | each argument evaluated into a register and stored to a slot of its own, `movl %eax, -12(%rbp)`; the slots loaded into `edi`, `esi` and on; `call f@PLT`; the result in `eax` | `call` |
 | a seventh and an eighth argument | pushed from their slots right to left, a narrow one loaded into `eax` and pushed from `rax`, `movl -28(%rbp), %eax; pushq %rax`; `subq $8, %rsp` first for an odd count; the bytes added back after the call, `addq $16, %rsp` | `stack-args` |

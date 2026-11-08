@@ -14,8 +14,8 @@ mul:
 	movl	-4(%rbp), %eax
 	movl	-8(%rbp), %ecx
 	imull	%ecx, %eax
-	jmp	.L1
-.L1:
+	jmp	.Lmul.1
+.Lmul.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

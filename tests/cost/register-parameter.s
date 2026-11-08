@@ -18,8 +18,8 @@ parameter:
 	movl	%ebx, %eax
 	subl	%r12d, %eax
 	addl	%ebx, %eax
-	jmp	.L1
-.L1:
+	jmp	.Lparameter.1
+.Lparameter.1:
 	popq	%r12
 	popq	%rbx
 	leave

@@ -18,8 +18,8 @@ signed_:
 	movslq	%eax, %rax
 	movq	%rax, -24(%rbp)
 	movq	-24(%rbp), %rax
-	jmp	.L1
-.L1:
+	jmp	.Lsigned_.1
+.Lsigned_.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret
@@ -40,8 +40,8 @@ unsigned_:
 	movzbl	-5(%rbp), %eax
 	movl	%eax, -12(%rbp)
 	movl	-12(%rbp), %eax
-	jmp	.L2
-.L2:
+	jmp	.Lunsigned_.1
+.Lunsigned_.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret
@@ -60,8 +60,8 @@ same:
 	movl	-4(%rbp), %eax
 	movl	%eax, -8(%rbp)
 	movl	-8(%rbp), %eax
-	jmp	.L3
-.L3:
+	jmp	.Lsame.1
+.Lsame.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

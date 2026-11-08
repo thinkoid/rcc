@@ -16,8 +16,8 @@ less:
 	cmpl	%ecx, %eax
 	setl	%al
 	movzbl	%al, %eax
-	jmp	.L1
-.L1:
+	jmp	.Lless.1
+.Lless.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret
@@ -39,8 +39,8 @@ equal:
 	cmpl	%ecx, %eax
 	sete	%al
 	movzbl	%al, %eax
-	jmp	.L2
-.L2:
+	jmp	.Lequal.1
+.Lequal.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

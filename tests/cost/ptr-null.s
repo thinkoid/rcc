@@ -12,13 +12,13 @@ test:
 	movq	%rdi, -8(%rbp)
 	movq	-8(%rbp), %rax
 	cmpq	$0, %rax
-	je	.L2
+	je	.Ltest.2
 	movl	$1, %eax
-	jmp	.L1
-.L2:
+	jmp	.Ltest.1
+.Ltest.2:
 	movl	$0, %eax
-	jmp	.L1
-.L1:
+	jmp	.Ltest.1
+.Ltest.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret
@@ -38,8 +38,8 @@ equal:
 	cmpq	$0, %rax
 	sete	%al
 	movzbl	%al, %eax
-	jmp	.L3
-.L3:
+	jmp	.Lequal.1
+.Lequal.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

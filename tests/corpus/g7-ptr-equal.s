@@ -23,8 +23,8 @@ main:
 	sete	%cl
 	movzbl	%cl, %ecx
 	addl	%ecx, %eax
-	jmp	.L1
-.L1:
+	jmp	.Lmain.1
+.Lmain.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

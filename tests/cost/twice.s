@@ -18,8 +18,8 @@ twice:
 	movl	-8(%rbp), %edx
 	imull	%edx, %ecx
 	addl	%ecx, %eax
-	jmp	.L1
-.L1:
+	jmp	.Ltwice.1
+.Ltwice.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret
@@ -38,8 +38,8 @@ twice_constant:
 	movl	-4(%rbp), %eax
 	addl	$408, %eax
 	addl	$408, %eax
-	jmp	.L2
-.L2:
+	jmp	.Ltwice_constant.1
+.Ltwice_constant.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

@@ -13,17 +13,17 @@ both:
 	movl	%esi, -8(%rbp)
 	movl	-4(%rbp), %eax
 	cmpl	$0, %eax
-	je	.L2
+	je	.Lboth.2
 	movl	-8(%rbp), %eax
 	cmpl	$0, %eax
-	je	.L2
+	je	.Lboth.2
 	movl	$1, %eax
-	jmp	.L3
-.L2:
+	jmp	.Lboth.3
+.Lboth.2:
 	movl	$0, %eax
-.L3:
-	jmp	.L1
-.L1:
+.Lboth.3:
+	jmp	.Lboth.1
+.Lboth.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret
@@ -42,18 +42,18 @@ either:
 	movl	%esi, -8(%rbp)
 	movl	-4(%rbp), %eax
 	cmpl	$0, %eax
-	jne	.L7
+	jne	.Leither.4
 	movl	-8(%rbp), %eax
 	cmpl	$0, %eax
-	je	.L5
-.L7:
+	je	.Leither.2
+.Leither.4:
 	movl	$1, %eax
-	jmp	.L6
-.L5:
+	jmp	.Leither.3
+.Leither.2:
 	movl	$0, %eax
-.L6:
-	jmp	.L4
-.L4:
+.Leither.3:
+	jmp	.Leither.1
+.Leither.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

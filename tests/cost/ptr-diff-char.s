@@ -14,8 +14,8 @@ diff:
 	movq	-8(%rbp), %rax
 	movq	-16(%rbp), %rcx
 	subq	%rcx, %rax
-	jmp	.L1
-.L1:
+	jmp	.Ldiff.1
+.Ldiff.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

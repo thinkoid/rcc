@@ -41,8 +41,8 @@ spill:
 	movq	-32(%rbp), %rcx
 	subl	%eax, %ecx
 	movl	%ecx, %eax
-	jmp	.L1
-.L1:
+	jmp	.Lspill.1
+.Lspill.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

@@ -18,21 +18,21 @@ sum:
 	movl	%edi, %ebx
 	movl	$0, %r12d
 	movl	$0, %r13d
-.L2:
+.Lsum.2:
 	cmpl	%ebx, %r13d
-	jge	.L4
+	jge	.Lsum.4
 	movl	%r12d, %eax
 	addl	%r13d, %eax
 	movl	%eax, %r12d
-.L3:
+.Lsum.3:
 	movl	%r13d, %eax
 	addl	$1, %eax
 	movl	%eax, %r13d
-	jmp	.L2
-.L4:
+	jmp	.Lsum.2
+.Lsum.4:
 	movl	%r12d, %eax
-	jmp	.L1
-.L1:
+	jmp	.Lsum.1
+.Lsum.1:
 	popq	%r13
 	popq	%r12
 	popq	%rbx

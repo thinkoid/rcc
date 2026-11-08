@@ -12,19 +12,19 @@ count:
 	movl	%edi, -4(%rbp)
 	movl	$0, %eax
 	movl	%eax, -8(%rbp)
-.L2:
+.Lcount.2:
 	movl	-8(%rbp), %eax
 	movl	-4(%rbp), %ecx
 	cmpl	%ecx, %eax
-	jge	.L3
+	jge	.Lcount.3
 	movl	-8(%rbp), %eax
 	addl	$1, %eax
 	movl	%eax, -8(%rbp)
-	jmp	.L2
-.L3:
+	jmp	.Lcount.2
+.Lcount.3:
 	movl	-8(%rbp), %eax
-	jmp	.L1
-.L1:
+	jmp	.Lcount.1
+.Lcount.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

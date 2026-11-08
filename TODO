@@ -78,23 +78,6 @@ point at =cost.md= chapter 1.
 Check: no sentence of =design-calls.md= calls the record of the
 extent future.
 
-** TODO Labels are numbered through the file, not per function
-
-c1's label counter runs through the file: =add-sub= has =.L1= in
-=add()= and =.L2= in =sub()=, and =invariant_constant()= starts at
-=.L5=. An added label in one function thus renumbers every later
-function's labels, and a change to one function moves every pin that
-holds another; 17 of the 60 pins hold more than one function. A =.L=
-symbol must be unique in the assembly file, so a per-function count
-needs the function's name in the label: =.L<function>.<n>=,
-=.Lsum.1=. =backend.md= 7.2 says the count runs through the file
-today and points here.
-
-Fix: that label form, the counter reset at each function; the
-epilogue's label is =.L<function>.1=; 7.2 states the form.
-
-Check: the 17 pins re-adopted, every other pin unchanged.
-
 ** TODO A constant is stored through a register
 
 c1 stores a constant to a slot through a register, =movl $0, %eax;

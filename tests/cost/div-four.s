@@ -14,8 +14,8 @@ div_four:
 	movl	$4, %ecx
 	cltd
 	idivl	%ecx
-	jmp	.L1
-.L1:
+	jmp	.Ldiv_four.1
+.Ldiv_four.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

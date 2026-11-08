@@ -19,8 +19,8 @@ call:
 	movl	-12(%rbp), %edi
 	movl	-16(%rbp), %esi
 	call	f@PLT
-	jmp	.L1
-.L1:
+	jmp	.Lcall.1
+.Lcall.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

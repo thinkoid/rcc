@@ -13,8 +13,8 @@ second:
 	movq	%rax, -8(%rbp)
 	movq	-8(%rbp), %rax
 	movsbl	1(%rax), %eax
-	jmp	.L1
-.L1:
+	jmp	.Lsecond.1
+.Lsecond.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

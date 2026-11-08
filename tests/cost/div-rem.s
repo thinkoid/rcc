@@ -15,8 +15,8 @@ sdiv:
 	movl	-8(%rbp), %ecx
 	cltd
 	idivl	%ecx
-	jmp	.L1
-.L1:
+	jmp	.Lsdiv.1
+.Lsdiv.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret
@@ -38,8 +38,8 @@ srem:
 	cltd
 	idivl	%ecx
 	movl	%edx, %eax
-	jmp	.L2
-.L2:
+	jmp	.Lsrem.1
+.Lsrem.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

@@ -17,8 +17,8 @@ step:
 	subq	$8, %rax
 	movq	%rax, -8(%rbp)
 	movq	-8(%rbp), %rax
-	jmp	.L1
-.L1:
+	jmp	.Lstep.1
+.Lstep.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

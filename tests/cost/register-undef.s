@@ -12,18 +12,18 @@ which:
 	pushq	%rbx
 	.cfi_offset %rbx, -24
 	cmpl	$10, %ebx
-	jge	.L2
+	jge	.Lwhich.2
 	movl	$1, %eax
-	jmp	.L1
-.L2:
+	jmp	.Lwhich.1
+.Lwhich.2:
 	cmpl	$10, %ebx
-	jl	.L3
+	jl	.Lwhich.3
 	movl	$2, %eax
-	jmp	.L1
-.L3:
+	jmp	.Lwhich.1
+.Lwhich.3:
 	movl	$3, %eax
-	jmp	.L1
-.L1:
+	jmp	.Lwhich.1
+.Lwhich.1:
 	popq	%rbx
 	leave
 	.cfi_def_cfa %rsp, 8

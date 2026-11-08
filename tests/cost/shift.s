@@ -14,8 +14,8 @@ shl:
 	movl	-4(%rbp), %eax
 	movl	-8(%rbp), %ecx
 	shll	%cl, %eax
-	jmp	.L1
-.L1:
+	jmp	.Lshl.1
+.Lshl.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret
@@ -35,8 +35,8 @@ sar:
 	movl	-4(%rbp), %eax
 	movl	-8(%rbp), %ecx
 	sarl	%cl, %eax
-	jmp	.L2
-.L2:
+	jmp	.Lsar.1
+.Lsar.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret
@@ -56,8 +56,8 @@ shr:
 	movl	-4(%rbp), %eax
 	movl	-8(%rbp), %ecx
 	shrl	%cl, %eax
-	jmp	.L3
-.L3:
+	jmp	.Lshr.1
+.Lshr.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

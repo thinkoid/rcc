@@ -14,14 +14,14 @@ conditional:
 	movl	%edx, -12(%rbp)
 	movl	-4(%rbp), %eax
 	cmpl	$0, %eax
-	je	.L2
+	je	.Lconditional.2
 	movl	-8(%rbp), %eax
-	jmp	.L3
-.L2:
+	jmp	.Lconditional.3
+.Lconditional.2:
 	movl	-12(%rbp), %eax
-.L3:
-	jmp	.L1
-.L1:
+.Lconditional.3:
+	jmp	.Lconditional.1
+.Lconditional.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret

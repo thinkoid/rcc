@@ -23,8 +23,8 @@ div_busy:
 	movl	%eax, %ecx
 	addl	%ecx, %edi
 	movl	%edi, %eax
-	jmp	.L1
-.L1:
+	jmp	.Ldiv_busy.1
+.Ldiv_busy.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret
@@ -53,8 +53,8 @@ rem_busy:
 	movl	%edx, %ecx
 	addl	%ecx, %edi
 	movl	%edi, %eax
-	jmp	.L2
-.L2:
+	jmp	.Lrem_busy.1
+.Lrem_busy.1:
 	leave
 	.cfi_def_cfa %rsp, 8
 	ret
