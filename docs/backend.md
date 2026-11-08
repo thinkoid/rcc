@@ -386,12 +386,18 @@ as they found it, whatever their operands do.
 
 ### 6.4 Constants
 
-The parser folds integer constant expressions: the operators of
-6.6p8 on integer constants, character constants, `sizeof` and casts
-to integer types, with the type the expression has in C and the
-value it has there, and a diagnostic for a value outside the type's
-range (6.6p4). A variable never folds: `x * 1` multiplies, `x - x`
-subtracts, `x + 0` adds. The rule "the instruction written is the
+The parser folds integer constant expressions: the operators 6.6p3
+does not exclude, applied to the operands 6.6p8 allows, which are
+integer constants, character constants, `sizeof` and casts to
+integer types, with the type the expression has in C and the value
+the instruction would compute: a signed result the type cannot hold
+wraps (G1), a shift count is masked (G3), and a division with no
+value, by zero or of the most negative value by -1, is left unfolded
+for the instruction to trap on (G4), so folding changes no program.
+6.6p4, which makes an out-of-range constant expression a constraint
+violation, governs where the grammar requires one, the size of an
+array, and the wrapped value is refused there. A variable never
+folds: `x * 1` multiplies, `x - x` subtracts, `x + 0` adds. The rule "the instruction written is the
 instruction executed" is about operations on the program's data; a
 constant expression is the spelling of a number, which ISO C says
 "can be evaluated during translation" (6.6p2) and which Ritchie's

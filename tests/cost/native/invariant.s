@@ -66,9 +66,7 @@ invariant_constant:
 	cmpl	%ecx, %eax
 	jge	.L8
 	movl	-8(%rbp), %eax
-	movl	$12, %ecx
-	imull	$34, %ecx, %ecx
-	addl	%ecx, %eax
+	addl	$408, %eax
 	movl	%eax, -8(%rbp)
 .L7:
 	movl	-12(%rbp), %eax

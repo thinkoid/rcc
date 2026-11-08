@@ -226,21 +226,114 @@ box(stmt_t s)
     return std::make_unique< stmt_t >(std::move(s));
 }
 
+//
+// constant values
+//
+
+// A literal holds the value of its type: in the type's range, but for
+// a 64-bit unsigned value past LLONG_MAX, which the long long holds as
+// its bits.  The evaluator reads it exactly, in a type wide enough for
+// any value of any operand and any sum or product of two signed ones.
+using exact_t = __int128;
+
+bool
+is_integer_constant(const expr_t &e)
+{
+    return is< literal_t >(e) && is< int_t >(e.type);
+}
+
+exact_t
+exact_value(const expr_t &e)
+{
+    const long long v = as< literal_t >(e).value;
+    const int_t &t = as< int_t >(e.type);
+
+    if (t.width == 64 && !t.is_signed)
+        return static_cast< unsigned long long >(v);
+
+    return v;
+}
+
+// The bits of a constant of integer type, the operand of the bitwise
+// operators and of every unsigned operation.
+unsigned long long
+bits_of(const expr_t &e)
+{
+    return static_cast< unsigned long long >(as< literal_t >(e).value);
+}
+
+// The low N bits of a value, read in a type of width N: the conversion
+// of 6.3.1.3p2 to an unsigned type, and of 6.3.1.3p3 to a signed one,
+// which rcc defines so (G2).  A value the type holds is unchanged, p1.
+long long
+wrapped(exact_t v, const int_t &t)
+{
+    auto bits = static_cast< unsigned long long >(v);
+
+    if (t.width < 64) {
+        const auto mask = (1ull << t.width) - 1;
+        const auto sign = 1ull << (t.width - 1);
+
+        bits &= mask;
+        if (t.is_signed && (bits & sign))
+            bits |= ~mask;
+    }
+
+    return static_cast< long long >(bits);
+}
+
+expr_t
+constant_of(const type_t &t, exact_t v)
+{
+    return expr_t { t, literal_t { wrapped(v, as< int_t >(t)) } };
+}
+
+// Whether the conversion of e to t is a constant: an integer constant
+// to an integer type, or to a pointer type, an address constant
+// (6.6p11); a pointer constant to another pointer type.  A pointer
+// constant to an integer is a conversion no integer constant expression
+// contains, 6.6p8, and stays a cast.
+bool
+converts_to_constant(const expr_t &e, const type_t &t)
+{
+    if (!is< literal_t >(e))
+        return false;
+
+    if (is< int_t >(e.type))
+        return is< int_t >(t) || is< pointer_t >(t);
+
+    return is< pointer_t >(e.type) && is< pointer_t >(t);
+}
+
+// The constant a conversion yields: an integer by 6.3.1.3; a pointer
+// from an integer widened to 64 bits in its own signedness, 6.3.2.3p5,
+// as the platform's compiler converts, so 0 is the null pointer; a
+// pointer from a pointer unchanged, a null one null, 6.3.2.3p4.  The
+// long long of an integer literal is that widening already: a signed
+// value sign-extended, an unsigned one zero-extended or its own bits.
+expr_t
+converted_constant(const expr_t &e, const type_t &t)
+{
+    if (is< pointer_t >(t))
+        return expr_t { t, as< literal_t >(e) };
+
+    return constant_of(t, exact_value(e));
+}
+
 // The one place a conversion enters the tree.  An expression already
 // of the type passes through, so no inserted cast converts a type to
 // itself; only a cast the source writes may, since it yields no lvalue.
-// An integer constant takes the type itself: the source wrote a
-// constant, not a conversion, and the machine has no instruction that
-// widens an immediate; the emitter writes it modulo 2^N (G2), which
-// is what the conversion would have done.
+// A constant converted is the constant of the new type: the source
+// wrote a number, not a conversion, so a char constant of 300 does not
+// exist and the tree holds 44, as the conversion would have computed.
 expr_t
 convert_to(expr_t e, const type_t &t)
 {
     if (e.type == t)
         return e;
 
-    if (is< literal_t >(e) && is< int_t >(e.type) && is< int_t >(t))
-        return expr_t { t, as< literal_t >(e) };
+    if (converts_to_constant(e, t))
+        return converted_constant(e, t);
 
     return expr_t { t, cast_t { box(std::move(e)) } };
 }
@@ -365,23 +458,19 @@ require_object_pointee(const token_t &op, const type_t &t)
 // pointer conversions
 //
 
-bool
-is_zero_literal(const expr_t &e)
-{
-    return is< literal_t >(e) && is< int_t >(e.type) &&
-           as< literal_t >(e).value == 0;
-}
-
 // An integer constant expression of value 0, or one cast to void *,
-// 6.3.2.3p3.  The integer constant expressions of the subset are its
-// literals.
+// 6.3.2.3p3.  The parser folds every integer constant expression to a
+// literal, and the cast of one to a pointer type to a literal of that
+// type, so the two are an integer literal 0 and a void * literal 0.
+// A literal 0 of another pointer type, (int *) 0, is a null pointer
+// but not a null pointer constant.
 bool
 is_null_pointer_constant(const expr_t &e)
 {
-    if (is< cast_t >(e) && is_void_pointer(e.type))
-        return is_zero_literal(*as< cast_t >(e).arg);
+    if (!is< literal_t >(e) || as< literal_t >(e).value != 0)
+        return false;
 
-    return is_zero_literal(e);
+    return is< int_t >(e.type) || is_void_pointer(e.type);
 }
 
 // The conversion as if by assignment, of a value to the type of an
@@ -443,6 +532,177 @@ common_pointer(expr_t &lhs, expr_t &rhs)
 }
 
 //
+// integer constant expressions
+//
+
+// The evaluator of backend.md 6.4.  A node built on integer constants
+// alone, under an operator 6.6p3 does not exclude, is replaced by the
+// constant of its type, the type C gives the node, holding the value C
+// gives it.  The operands are those of 6.6p8: integer and character
+// constants, sizeof and casts of constants, each a literal by the time
+// its parent is built.  A node with any other operand is left as built,
+// so x * 1 multiplies and x - x subtracts.  The constant is the value
+// the instruction would compute, so folding changes no program: a
+// signed result the type cannot hold wraps (G1), a shift count is
+// masked (G3), and a division with no value is left to the instruction
+// (G4).  6.6p4, which makes an out-of-range constant expression a
+// constraint violation, applies where the grammar requires a constant
+// expression, the array size, and the wrapped value is refused there.
+
+template< typename T >
+T
+arithmetic_result(binary_op_t op, T a, T b)
+{
+    switch (op) {
+    case binary_op_t::add: return a + b;
+    case binary_op_t::sub: return a - b;
+    case binary_op_t::mul: return a * b;
+    case binary_op_t::div: return a / b;
+    default: return a % b;
+    }
+}
+
+// Whether a division has a value: not by zero, 6.5.6p6, and not with a
+// quotient the type cannot hold, p7, which on the machine is the one
+// case of the most negative value divided by -1; the remainder of that
+// division has no value either.  Such a node is left as built and the
+// instruction traps at run time (G4).
+bool
+divides(const int_t &t, const expr_t &lhs, const expr_t &rhs)
+{
+    if (exact_value(rhs) == 0)
+        return false;
+
+    const auto most_negative = -(exact_t(1) << (t.width - 1));
+
+    return !(t.is_signed && exact_value(lhs) == most_negative &&
+             exact_value(rhs) == -1);
+}
+
+// * / % + - in the operands' common type.  Unsigned arithmetic is
+// modulo 2^N, 6.2.5p11; a signed sum, difference or product wraps as
+// the instruction does (G1), where 6.5p5 leaves it undefined.
+// Division truncates, 6.5.6p7.
+std::optional< expr_t >
+folded_arithmetic(binary_op_t op,
+                  const type_t &t,
+                  const expr_t &lhs,
+                  const expr_t &rhs)
+{
+    const int_t &type = as< int_t >(t);
+
+    const bool division = op == binary_op_t::div || op == binary_op_t::rem;
+    if (division && !divides(type, lhs, rhs))
+        return std::nullopt;
+
+    if (!type.is_signed)
+        return constant_of(t,
+                           arithmetic_result(op, bits_of(lhs), bits_of(rhs)));
+
+    return constant_of(
+        t, arithmetic_result(op, exact_value(lhs), exact_value(rhs)));
+}
+
+// << >> by a count taken modulo the width of the promoted left operand,
+// as the instruction masks it (G3): 6.5.8p3 leaves a count that is
+// negative or not less than the width undefined, and the constant is
+// what the instruction computes.  A left shift is of the bits and
+// wraps, G3, where 6.5.8p4 leaves a signed result the type cannot hold
+// undefined.  A signed right shift is arithmetic, G3, the
+// implementation's choice for a negative value by 6.5.8p5.
+expr_t
+folded_shift(binary_op_t op,
+             const type_t &t,
+             const expr_t &lhs,
+             const expr_t &rhs)
+{
+    const int_t &type = as< int_t >(t);
+    const auto count = bits_of(rhs) & unsigned(type.width - 1);
+
+    if (op == binary_op_t::shl)
+        return constant_of(t, bits_of(lhs) << count);
+
+    if (type.is_signed)
+        return constant_of(t, as< literal_t >(lhs).value >> count);
+
+    return constant_of(t, bits_of(lhs) >> count);
+}
+
+// & ^ | on the bits, which every value of the type has, 6.5.11p4,
+// 6.5.12p4, 6.5.13p4.
+expr_t
+folded_bitwise(binary_op_t op,
+               const type_t &t,
+               const expr_t &lhs,
+               const expr_t &rhs)
+{
+    const auto a = bits_of(lhs);
+    const auto b = bits_of(rhs);
+
+    switch (op) {
+    case binary_op_t::bit_and: return constant_of(t, a & b);
+    case binary_op_t::bit_xor: return constant_of(t, a ^ b);
+    default: return constant_of(t, a | b);
+    }
+}
+
+// < > <= >= == != on the values in their common type, && || on each
+// operand against zero, 6.5.14p3, 6.5.15p3: 1 or 0, an int.
+bool
+truth_of(binary_op_t op, exact_t a, exact_t b)
+{
+    switch (op) {
+    case binary_op_t::lt: return a < b;
+    case binary_op_t::gt: return a > b;
+    case binary_op_t::le: return a <= b;
+    case binary_op_t::ge: return a >= b;
+    case binary_op_t::eq: return a == b;
+    case binary_op_t::ne: return a != b;
+    case binary_op_t::log_and: return a != 0 && b != 0;
+    default: return a != 0 || b != 0;
+    }
+}
+
+// The constant a binary node of two integer constants, of type t, folds
+// to, or nothing for a division with no value.  The comma is excluded
+// by 6.6p3 and never reaches here.
+std::optional< expr_t >
+folded_binary(binary_op_t op,
+              const type_t &t,
+              const expr_t &lhs,
+              const expr_t &rhs)
+{
+    switch (op) {
+    case binary_op_t::add:
+    case binary_op_t::sub:
+    case binary_op_t::mul:
+    case binary_op_t::div:
+    case binary_op_t::rem: return folded_arithmetic(op, t, lhs, rhs);
+    case binary_op_t::shl:
+    case binary_op_t::shr: return folded_shift(op, t, lhs, rhs);
+    case binary_op_t::bit_and:
+    case binary_op_t::bit_xor:
+    case binary_op_t::bit_or: return folded_bitwise(op, t, lhs, rhs);
+    default:
+        return constant_of(t, truth_of(op, exact_value(lhs), exact_value(rhs)));
+    }
+}
+
+// Unary - and ~ on a promoted integer constant, 6.5.4.3p3, p4: the
+// negative modulo 2^N, as the instruction computes it (G1 for the most
+// negative value, 6.2.5p11 for an unsigned one); the complement of the
+// bits.  ! is 1 for a constant equal to 0 and 0 otherwise, an int, p5.
+expr_t
+folded_unary(unary_op_t op, const type_t &t, const expr_t &arg)
+{
+    switch (op) {
+    case unary_op_t::neg: return constant_of(t, -exact_value(arg));
+    case unary_op_t::bit_not: return constant_of(t, ~bits_of(arg));
+    default: return constant_of(t, exact_value(arg) == 0);
+    }
+}
+
+//
 // typed operators
 //
 
@@ -501,9 +761,16 @@ is_assignment_operator(tok_t kind)
     }
 }
 
+// A binary node, or the constant it folds to when both operands are
+// integer constants and the operation has a value.
 expr_t
 make_binary(binary_op_t op, type_t t, expr_t lhs, expr_t rhs)
 {
+    if (op != binary_op_t::comma && is_integer_constant(lhs) &&
+        is_integer_constant(rhs))
+        if (auto folded = folded_binary(op, t, lhs, rhs))
+            return std::move(*folded);
+
     return expr_t { std::move(t),
                     binary_t { op, box(std::move(lhs)), box(std::move(rhs)) } };
 }
@@ -966,8 +1233,8 @@ external_declaration(parser_t &p)
 
     // 6.9.1p2: register shall not appear in an external declaration
     if (spec.in_register)
-        fail(*spec.in_register, quoted(spec.in_register->text) +
-                                    " in an external declaration");
+        fail(*spec.in_register,
+             quoted(spec.in_register->text) + " in an external declaration");
 
     const type_t &base = spec.type;
 
@@ -1193,11 +1460,34 @@ pointer(parser_t &p, type_t t)
     return t;
 }
 
-// One or more [N], N an integer constant greater than zero, or [] for
-// an array of unknown size, 6.7.7.3p1, p4.  The suffixes nest from the
-// right: int a[2][3] is an array of two arrays of three ints.  An
-// element must be a complete type, so only the first suffix may leave
-// its size out, and the caller decides whether it may.
+// The count of an array, from its size: an expression of integer type,
+// 6.7.7.3p1, which for an array that is not a variable length array is
+// an integer constant expression, p4, folded by now to a literal; any
+// other size makes a variable length array.  A constant size is
+// greater than zero, p1.  An unsigned size past LONG_MAX is LONG_MAX,
+// which no element size lets through as an array's size.
+long
+array_count(const token_t &at, const expr_t &size)
+{
+    if (!is< int_t >(size.type))
+        fail(at, "size of array has non-integer type");
+
+    if (!is< literal_t >(size))
+        not_yet(at, "variable length array");
+
+    const exact_t value = exact_value(size);
+    if (value <= 0)
+        fail(at, "array size must be greater than zero");
+
+    return long(std::min< exact_t >(value, std::numeric_limits< long >::max()));
+}
+
+// One or more [N], N an integer constant expression, or [] for an array
+// of unknown size, 6.7.7.3p1, p4.  The size is an assignment-expression
+// in the grammar, 6.7.7.1p1.  The suffixes nest from the right: int
+// a[2][3] is an array of two arrays of three ints.  An element must be
+// a complete type, so only the first suffix may leave its size out, and
+// the caller decides whether it may.
 type_t
 array_declarator(parser_t &p, const type_t &element)
 {
@@ -1207,20 +1497,12 @@ array_declarator(parser_t &p, const type_t &element)
         const token_t &open = advance(p);
 
         long count = -1;
-        if (peek(p).kind == tok_t::integer &&
-            peek(p, 1).kind == tok_t::rbracket) {
-            const token_t &size = advance(p);
+        if (peek(p).kind != tok_t::rbracket) {
+            const token_t &start = peek(p);
 
-            const long long value =
-                as< literal_t >(integer_constant(size)).value;
-            if (value == 0)
-                fail(size, "array size must be greater than zero");
-
-            // an unsigned constant past LONG_MAX reads as negative
-            count = value < 0 ? std::numeric_limits< long >::max() : value;
+            const expr_t size = rvalue(start, assignment_expression(p));
+            count = array_count(start, size);
         }
-        else if (peek(p).kind != tok_t::rbracket)
-            not_yet(peek(p), "array size other than an integer constant");
 
         expect(p, tok_t::rbracket, "expected ']'");
         suffixes.emplace_back(&open, count);
@@ -1695,7 +1977,8 @@ assignment_expression(parser_t &p)
 // to their common type, 6.5.16p6, or two pointers to the one
 // common_pointer() finds, p7.  A pointer and an integer other than a
 // null pointer constant do not meet, p3.  Two void arms are valid C,
-// outside the subset for now.
+// outside the subset for now.  On a constant condition and two
+// constant arms, the node is the arm the condition selects, p5.
 expr_t
 conditional_expression(parser_t &p)
 {
@@ -1726,6 +2009,10 @@ conditional_expression(parser_t &p)
                      "pointer/integer type mismatch in conditional expression");
 
     const type_t t = yes.type;
+
+    if (is_integer_constant(cond) && is_integer_constant(yes) &&
+        is_integer_constant(no))
+        return exact_value(cond) != 0 ? std::move(yes) : std::move(no);
 
     return expr_t { t,
                     conditional_t { box(std::move(cond)), box(std::move(yes)),
@@ -1880,7 +2167,9 @@ starts_type_name(const parser_t &p)
 // discarded, whatever its type; to a scalar it converts from a scalar,
 // integer and pointer either way, 6.3.2.3p5, p6, and pointer to
 // pointer, p1, p7.  A cast yields no lvalue, 6.5.5p6 and its footnote,
-// so a cast to the operand's own type is still a node.
+// so a cast to the operand's own type is still a node.  A constant cast
+// to an integer or a pointer type is the constant converted_constant()
+// gives, which is not an lvalue either.
 expr_t
 cast_expression(parser_t &p)
 {
@@ -1902,6 +2191,9 @@ cast_expression(parser_t &p)
         fail(open, "cast to a type that is not a scalar");
 
     arg = rvalue(open, std::move(arg));
+
+    if (converts_to_constant(arg, t))
+        return converted_constant(arg, t);
 
     return expr_t { t, cast_t { box(std::move(arg)) } };
 }
@@ -1943,7 +2235,7 @@ indirection(const token_t &op, expr_t arg)
 // p4; ! is an int, its scalar operand left as it is, p5.  Prefix ++ and
 // -- have the type of their lvalue operand, 6.5.4.1.  & takes an
 // lvalue, which does not decay, and yields a pointer to its type,
-// 6.5.4.2p1, p3.
+// 6.5.4.2p1, p3.  - ~ and ! on an integer constant are a constant.
 expr_t
 unary_expression(parser_t &p)
 {
@@ -1975,12 +2267,18 @@ unary_expression(parser_t &p)
         const unary_op_t u =
             op.kind == tok_t::minus ? unary_op_t::neg : unary_op_t::bit_not;
 
+        if (is_integer_constant(arg))
+            return folded_unary(u, t, arg);
+
         return expr_t { t, unary_t { u, box(std::move(arg)) } };
     }
     case tok_t::bang: {
         advance(p);
 
         expr_t arg = rvalue(op, cast_expression(p));
+
+        if (is_integer_constant(arg))
+            return folded_unary(unary_op_t::log_not, int_type(), arg);
 
         return expr_t { int_type(),
                         unary_t { unary_op_t::log_not, box(std::move(arg)) } };

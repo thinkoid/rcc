@@ -17,10 +17,6 @@ Disassembly of section .text:
 <twice_constant>:
 	mov    %edi,-0x8(%rsp)
 	mov    -0x8(%rsp),%eax
-	mov    $0x22,%ecx
-	imul   $0xc,%ecx,%ecx
-	add    %eax,%ecx
-	mov    $0x22,%eax
-	imul   $0xc,%eax,%eax
-	add    %ecx,%eax
+	add    $0x198,%eax
+	add    $0x198,%eax
 	ret

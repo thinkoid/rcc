@@ -573,9 +573,18 @@ widen(state_t &s, const value_t &bit, const type_t &t)
     return yield(s, type, std::format("zext i1 {} to {}", bit.name, type));
 }
 
+// A constant of pointer type is the null pointer for 0, 6.3.2.3p3, and
+// otherwise the address its integer converted to, 6.3.2.3p5, which the
+// parser has widened to 64 bits.
 value_t
 literal(const literal_t &l, const type_t &t)
 {
+    if (is< pointer_t >(t))
+        return { l.value == 0 ?
+                     std::string("null") :
+                     std::format("inttoptr (i64 {} to ptr)", l.value),
+                 "ptr" };
+
     const auto width = integer(t).width;
 
     return { std::to_string(normalized(l.value, width)), ir_type(t) };
@@ -959,12 +968,6 @@ cast(state_t &s, const cast_t &c, const type_t &to)
     // 6.3.2.1p3: the address of the array is its first element's
     if (is< array_t >(arg.type))
         return { lvalue(s, arg).name, "ptr" };
-
-    // 6.3.2.3p3: the literal 0 as a pointer is the null pointer, and
-    // stays one through void *, pointer to pointer
-    if (is< pointer_t >(to) && is< literal_t >(arg) &&
-        as< literal_t >(arg).value == 0)
-        return { "null", "ptr" };
 
     const auto v = rvalue(s, arg);
 

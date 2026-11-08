@@ -9,14 +9,8 @@ Disassembly of section .text:
 	ret
 	mov    $0x2,%eax
 	ret
-	cs nopw 0x0(%rax,%rax,1)
-	xchg   %ax,%ax
+	nopl   0x0(%rax)
 
 <not_zero>:
-	xor    %eax,%eax
-	xor    %ecx,%ecx
-	cmp    %eax,%ecx
-	sete   %al
-	and    $0x1,%al
-	movzbl %al,%eax
+	mov    $0x1,%eax
 	ret

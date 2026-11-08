@@ -36,12 +36,8 @@ twice_constant:
 	.cfi_def_cfa_register %rbp
 	movl	%edi, -4(%rbp)
 	movl	-4(%rbp), %eax
-	movl	$12, %ecx
-	imull	$34, %ecx, %ecx
-	addl	%ecx, %eax
-	movl	$12, %ecx
-	imull	$34, %ecx, %ecx
-	addl	%ecx, %eax
+	addl	$408, %eax
+	addl	$408, %eax
 	jmp	.L2
 .L2:
 	leave

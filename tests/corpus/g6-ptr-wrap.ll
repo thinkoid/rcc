@@ -10,27 +10,25 @@ entry:
     %t1 = load ptr, ptr %argv.3, align 8
     %t2 = freeze ptr %t1
     store ptr %t2, ptr %p.4, align 8
-    %t3 = sub i32 0, 1
-    %t4 = sext i32 %t3 to i64
-    store i64 %t4, ptr %ones.5, align 8
-    %t5 = load i64, ptr %ones.5, align 8
-    %t6 = freeze i64 %t5
-    %t7 = load i32, ptr %argc.2, align 4
-    %t8 = freeze i32 %t7
-    %t9 = add i32 %t8, 2
-    %t10 = sext i32 %t9 to i64
-    %t11 = lshr i64 %t6, %t10
-    store i64 %t11, ptr %n.6, align 8
+    store i64 -1, ptr %ones.5, align 8
+    %t3 = load i64, ptr %ones.5, align 8
+    %t4 = freeze i64 %t3
+    %t5 = load i32, ptr %argc.2, align 4
+    %t6 = freeze i32 %t5
+    %t7 = add i32 %t6, 2
+    %t8 = sext i32 %t7 to i64
+    %t9 = lshr i64 %t4, %t8
+    store i64 %t9, ptr %n.6, align 8
+    %t10 = load ptr, ptr %p.4, align 8
+    %t11 = freeze ptr %t10
     %t12 = load ptr, ptr %p.4, align 8
     %t13 = freeze ptr %t12
-    %t14 = load ptr, ptr %p.4, align 8
-    %t15 = freeze ptr %t14
-    %t16 = load i64, ptr %n.6, align 8
-    %t17 = freeze i64 %t16
-    %t18 = getelementptr ptr, ptr %t15, i64 %t17
-    %t19 = icmp ult ptr %t13, %t18
-    %t20 = zext i1 %t19 to i32
-    ret i32 %t20
+    %t14 = load i64, ptr %n.6, align 8
+    %t15 = freeze i64 %t14
+    %t16 = getelementptr ptr, ptr %t13, i64 %t15
+    %t17 = icmp ult ptr %t11, %t16
+    %t18 = zext i1 %t17 to i32
+    ret i32 %t18
 
 after.ret.1:
     ret i32 0

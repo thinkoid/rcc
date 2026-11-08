@@ -300,6 +300,16 @@ size, the `case` label and the static initializer require. The cost
 model's constant row then reads as it should: a constant is an
 immediate.
 
+One sentence of 4.3 was revised when the evaluator landed: an
+out-of-range result is not diagnosed but wraps, as G1 makes the
+instruction wrap, and a division with no value stays unfolded for G4's
+trap. The fold is the spelling of a number only while the number is
+the one the instruction computes; `2147483647 + 1` in an ordinary
+expression is the run-time overflow of 6.5p5, which G1 defines, and
+not the constant expression of 6.6p4, which the grammar names only
+where it requires one. There, in an array size, the wrapped value is
+refused.
+
 ## 5. Call 4: the red zone
 
 ### 5.1 The terms

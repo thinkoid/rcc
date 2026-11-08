@@ -2,10 +2,11 @@
    loop-invariant expression is computed every iteration.  The listing
    of invariant() must show the loads of a and b, cltd and idiv inside
    the loop, between the test at the top and the jump back.  Its
-   operands are loads, so machine LICM would leave it in place anyway;
-   the flag shows in invariant_constant(), whose 12 * 34 has constant
-   operands: the listing must show the mov of 34 and the imul by 12
-   inside the loop, and machine LICM would move the mov before it. */
+   operands are loads, so machine LICM would leave it in place anyway.
+   In invariant_constant(), 12 * 34 is an integer constant expression,
+   folded in the parser to 408: the listing must show the add of the
+   immediate 0x198 inside the loop and no mov or imul, so nothing is
+   left for machine LICM to move and the flag has no witness here. */
 int invariant(int a, int b, int n)
 {
     int s = 0;

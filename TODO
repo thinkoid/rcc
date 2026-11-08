@@ -188,18 +188,21 @@ names both passes.
 
 ** TODO Chapter 3 has no row for unary minus and complement
 
-C has no negative constant: =-1= is unary minus applied to 1, and the
-emitter writes it as =sub i32 0, 1=, then a =sext= where the type is
-wider. So =long x = -1= is =xor=, =sub= and =cltq= where =long x = 2=
-is one =movq $2=, and =p[-1]= negates and extends the 1 at each
-access where =p[1]= is a displacement. Chapter 3 has no row for =-a=
-or =~a=, and its constant row reads as if every constant costs
-nothing.
+Chapter 3 has no row for =-a= or =~a=. A negative constant is not
+one of them: the parser folds =-1= to a constant, so =long x = -1= is
+one store of an immediate, as =long x = 2= is, and =p[-1]= is a
+displacement. On a variable the two operators are instructions.
+Under the LLVM pipeline =-a= is =sub 0, a=, which FastISel selects as
+an =xor= that clears a second register and a =sub= from it, and =~a=
+is =xor $0xffffffff=; under =-native= they are =neg= and =not=, the
+row of =backend.md= 6.3.
 
-Fix: a row for =-a= and =~a= that says a negative constant is a
-negation at run time, with a cost program.
+Fix: a row for =-a= and =~a=, with a cost program. Chapter 3 is the
+table that stays when the pipeline is retired, so the program is
+worth its native pin; its LLVM pin shows the two-instruction negation
+and leaves with the pipeline.
 
-Check: the row and its pin.
+Check: the row and its pins.
 
 ** TODO A register pointer to a local array is a lea at each use
 
@@ -371,34 +374,6 @@ dropped as words) and preprocessing with a flag set that hides them.
 A probe says which headers need what.
 
 Check: `#include <stdio.h>` followed by an empty `main` parses.
-
-** TODO Integer constant expressions are not folded
-
-The parser has no evaluator of integer constant expressions, which
-=backend.md= 6.4 and design call 3 put there, and it shows in four
-places. An array size must be one integer token: =int a[96 * 96];=
-fails with "not yet: array size other than an integer constant",
-though an integer constant expression of any form makes an array that
-is not a variable length array, 6.7.7.3p4; =tests/perf/matmul.c=
-writes its size out as 9216. Under =-native=, =-1= is =movl $1= and
-=negl=; =INT_MAX - 1= is =movl $2147483647= and =subl $1=
-(=tests/corpus/native/g1-add-compare.s=); =12 * 34= is =movl $12=
-and =imull $34= (=tests/cost/native/twice.s= and =invariant.s=). And
-=backend.md= 6.4 says "the operators of 6.6p8": 6.6p8 lists the
-operands an integer constant expression may have, and 6.6p3 the
-operators it may not contain.
-
-Fix: the evaluator of =backend.md= 6.4 in the parser: integer and
-character constants, the operators 6.6p3 does not exclude applied to
-them, casts to integer types, and =sizeof=, which are the operands
-6.6p8 allows; a variable never folds. The array size takes its value,
-and a folded expression is a literal in the tree. 6.4's sentence
-names 6.6p3 for the operators and 6.6p8 for the operands.
-
-Check: under =-native=, =-1= is =movl $-1=, =INT_MAX - 1= is =movl
-$2147483646= and =12 * 34= is the immediate 408; =int a[96 * 96];=
-has 9216 elements, and =int a[n];= with =n= a variable is still
-refused.
 
 ** TODO The operand of =!= is not promoted
 

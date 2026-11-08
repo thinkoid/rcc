@@ -32,10 +32,7 @@ not_zero:
 	.cfi_offset %rbp, -16
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register %rbp
-	movl	$0, %eax
-	cmpl	$0, %eax
-	sete	%al
-	movzbl	%al, %eax
+	movl	$1, %eax
 	jmp	.L3
 .L3:
 	leave

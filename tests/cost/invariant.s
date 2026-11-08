@@ -40,12 +40,10 @@ Disassembly of section .text:
 	and    $0x1,%al
 	movzbl %al,%eax
 	cmp    $0x0,%eax
-	je     <invariant_constant+0x4a>
+	je     <invariant_constant+0x45>
 	mov    -0xc(%rsp),%eax
-	mov    $0x22,%ecx
-	imul   $0xc,%ecx,%ecx
-	add    %eax,%ecx
-	mov    %ecx,-0xc(%rsp)
+	add    $0x198,%eax
+	mov    %eax,-0xc(%rsp)
 	mov    -0x10(%rsp),%eax
 	add    $0x1,%eax
 	mov    %eax,-0x10(%rsp)
