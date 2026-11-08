@@ -18,9 +18,9 @@
 # ./rcc -native, the text diffed is the assembly ./rcc -native -S
 # writes, its pin is tests/corpus/native/<name>.s, and the work
 # directory build/oracle-native; tests/corpus/expected is shared,
-# since the statuses are the same promise.  Under c1's first slice
-# every pointer, string or register program is unbuilt and its row
-# fails, as expected until slices 2 and 3.
+# since the statuses are the same promise.  Until c1's third slice,
+# register variables, a program that declares one is unbuilt and its
+# row fails, as expected.
 #
 # A program may hang by promise, so each run has a time limit of 10
 # seconds when timeout(1) is on the path.  A run it stops, status 124,
