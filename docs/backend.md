@@ -475,9 +475,14 @@ live value other than the operand is exchanged with a free register
 place, the instruction is written, the result is moved into `L`, and
 the displaced values stay where they went; the generator's map of
 which value is in which register is updated and nothing else cares.
-Every instruction written is a real move of a real value and shows
-in the listing; the cost model's row for a division with `rax` and
-`rdx` busy says what it costs (`div-busy`).
+A shift's count is generated with `rax` held out of the choice, in
+the value and the effect context alike, so its load takes `rcx` when
+it is free, and a left operand reloaded from its spill slot avoids
+`rcx`; a division or a call inside the count keeps its own pin, and
+the moves remain for a value that is already elsewhere. Every
+instruction written is a real move of a real value and shows in the
+listing; the cost model's row for a division with `rax` and `rdx`
+busy says what it costs (`div-busy`).
 
 ### 6.6 The effect context
 

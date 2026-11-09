@@ -126,6 +126,10 @@ struct state_t
     // operation writes in place
     int in_place = -1;
 
+    // the registers take() leaves for last while a value meant for a
+    // pinned register is generated, so it lands there
+    unsigned reserved = 0;
+
     std::string function { };
     int labels = 0;
     int ret = 0;
@@ -470,15 +474,17 @@ spill_all(state_t &s)
             spill(s, static_cast< reg_t >(r));
 }
 
-// A register for a value: the lowest free one outside avoid, or, when
-// every one is held, the register of the oldest held value outside
-// avoid, which is spilled first.
+// A register for a value: the lowest free one outside avoid and
+// s.reserved, else the lowest free one outside avoid, or, when every
+// one is held, the register of the oldest held value outside avoid,
+// which is spilled first.  The reservation is an avoidance, not a pin.
 reg_t
 take(state_t &s, unsigned avoid)
 {
-    for (int r = 0; r < register_count; ++r)
-        if (s.owner[r] < 0 && !(avoid & bit(static_cast< reg_t >(r))))
-            return static_cast< reg_t >(r);
+    for (const unsigned out : { avoid | s.reserved, avoid })
+        for (int r = 0; r < register_count; ++r)
+            if (s.owner[r] < 0 && !(out & bit(static_cast< reg_t >(r))))
+                return static_cast< reg_t >(r);
 
     int victim = -1;
     for (int r = 0; r < register_count; ++r) {
@@ -1189,7 +1195,11 @@ divide(state_t &s, binary_op_t op, value_t l, value_t r, const int_t &t)
 // what the instruction encodes; a variable one goes to cl, at the
 // count's own width, which the parser leaves at its promoted type, a
 // value held in rcx moving out first (chapter 6.5), a register variable
-// copied there.
+// copied there.  The count's register is chosen knowing the
+// instruction wants cl: rax is reserved while the count is generated,
+// so its load takes rcx when it is free, and a reloaded left operand
+// avoids rcx; the moves of chapter 6.5 remain for a value that is
+// already there.
 const char *
 shift_mnemonic(binary_op_t op, bool is_signed)
 {
@@ -1210,9 +1220,15 @@ shift(state_t &s, binary_op_t op, value_t l, const expr_t &rhs, const int_t &t)
         return l;
     }
 
+    const unsigned reserved = s.reserved;
+    s.reserved |= bit(rax);
     const auto r = rvalue(s, rhs);
-    auto [left, right] = operands(s, l, r);
-    left = writable(s, l, bit(right) | bit(rcx));
+    s.reserved = reserved;
+
+    const int held = s.values[l.id].reg;
+    const reg_t right =
+        reg_of(s, r, held >= 0 ? bit(static_cast< reg_t >(held)) : 0);
+    reg_t left = writable(s, l, bit(right) | bit(rcx));
 
     if (left == rcx) {
         const reg_t to = take(s, bit(rcx) | bit(right));
@@ -1965,14 +1981,50 @@ call(state_t &s, const call_t &c, const type_t &t)
     return hold(s, rax, std::max(32, integer(t).width));
 }
 
+// Whether the instruction written for e has a pin of its own: a call,
+// whose result is in rax (chapter 8), or a division, chapter 6.5's pin
+// on rax and rdx: / and %, /= and %=, and p - q for a size other than
+// 1.
+bool
+pinned(const expr_t &e)
+{
+    if (is< call_t >(e))
+        return true;
+
+    if (is< assign_t >(e)) {
+        const auto &op = as< assign_t >(e).op;
+        return op && (*op == binary_op_t::div || *op == binary_op_t::rem);
+    }
+
+    if (!is< binary_t >(e))
+        return false;
+
+    const auto &b = as< binary_t >(e);
+    if (b.op == binary_op_t::div || b.op == binary_op_t::rem)
+        return true;
+
+    return b.op == binary_op_t::sub && !is< pointer_t >(e.type) &&
+           is< pointer_t >(b.lhs->type) && stride(b.lhs->type) != 1;
+}
+
 // The value of an expression in a register, its code written first.
 // An array is never a value: the parser decays it, 6.3.2.1p3, and a
-// string literal is an array.
+// string literal is an array.  A call or a division keeps its own pin:
+// its operands are generated outside an outer reservation, since the
+// pin, not the outer wish, decides where its result is written.
 value_t
 rvalue(state_t &s, const expr_t &e)
 {
     if (is< array_t >(e.type))
         throw std::logic_error("c1: an array as a value");
+
+    if (s.reserved && pinned(e)) {
+        const unsigned reserved = std::exchange(s.reserved, 0u);
+        const auto v = rvalue(s, e);
+        s.reserved = reserved;
+
+        return v;
+    }
 
     if (is< literal_t >(e))
         return literal(s, as< literal_t >(e), e.type);
@@ -2113,7 +2165,10 @@ arithmetic_on(state_t &s,
 // for shift(); sar for a signed object and shr for an unsigned one.
 // G3: the instruction masks the count to 5 bits at 8, 16 and 32 bits,
 // as the promoted operation does, and the low bits of its result are
-// the narrow shift's.
+// the narrow shift's.  The count's register is chosen knowing the
+// instruction wants cl: rax is reserved while the count is generated,
+// so its load takes rcx when it is free, and the moves of chapter 6.5
+// remain for a count that is already elsewhere.
 void
 shift_on(state_t &s,
          binary_op_t op,
@@ -2129,7 +2184,11 @@ shift_on(state_t &s,
         return;
     }
 
+    const unsigned reserved = s.reserved;
+    s.reserved |= bit(rax);
     const auto r = rvalue(s, rhs);
+    s.reserved = reserved;
+
     const unsigned held = registers_of(s, place);
     const reg_t right = reg_of(s, r, held);
 
