@@ -6,10 +6,10 @@
    exit status is the total, folded to a byte.  This is the plain
    version: every variable is a slot local, and the parity test is a
    remainder and the halving a division, by 2 both.  The value is a
-   signed long, so both are divisions; the selector rewrites an
-   unsigned division or remainder by a power of two on its own.
-   collatz-tuned.c is the same program written for a literal
-   compiler. */
+   signed long here and in collatz-tuned.c: x / 2 and x >> 1 differ
+   for a negative value, so the tuned version's shift rests on what
+   the programmer knows.  collatz-tuned.c is the same program written
+   for a literal compiler. */
 #define COUNT 1000
 #define REPS 3000
 

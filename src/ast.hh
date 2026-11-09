@@ -1,13 +1,14 @@
 // -*- mode: c++; -*-
 
-// The tree between the parser and the emitter.  Three sums:
-// expressions, statements, and the unit that owns the symbols.  The
-// parser builds it typed and the emitter reads it; nothing writes it
-// after parsing.  Recursion edges are unique_ptr for a fixed arity
-// and vector for a list.
+// The tree between the parser and c1, the code generator.  Three
+// sums: expressions, statements, and the unit that owns the symbols.
+// The parser builds it typed and c1 reads it; nothing writes it after
+// parsing.  Recursion edges are unique_ptr for a fixed arity and
+// vector for a list.
 
 #pragma once
 
+#include "error.hh"
 #include "type.hh"
 
 #include <deque>
@@ -20,11 +21,16 @@
 namespace rcc {
 
 // A declared name.  The unit owns every symbol in a deque, so a
-// pointer to one is stable for the life of the unit.  The IR name is
-// the emitter's business and is not kept here.  A local or parameter
-// declared register has no slot: its value is an SSA name, so & on it
-// is refused (6.5.4.2p1) and an array so declared is not yet
-// (6.3.2.1p3).
+// pointer to one is stable for the life of the unit.  Where an object
+// lives, its slot or its register, is c1's business and is not kept
+// here.  A local or parameter the parser gives a register, in_register
+// below, has no slot: c1 keeps it in a callee-saved register.
+// declared_register is the keyword as written: & on such an object is
+// refused whether or not it got a register (6.5.4.2p1), and an array
+// so declared is not yet (6.3.2.1p3).
+// in_register is the parser's assignment: a register declaration met
+// with five register variables live is an ordinary local, with a
+// warning.
 enum class storage_t { local, parameter, global, function };
 
 struct symbol_t
@@ -32,6 +38,7 @@ struct symbol_t
     std::string name;
     type_t type;
     storage_t storage;
+    bool declared_register;
     bool in_register;
 };
 
@@ -118,11 +125,12 @@ struct binary_t
 // Plain assignment has no op, and common is the lhs type.  A compound
 // assignment carries the operator and the type the operation is
 // computed in, the usual arithmetic conversions of the two operands
-// (6.5.17.3p4), or the promoted lhs type for a shift; the parser
-// converts the rhs to it, and the emitter converts the loaded lhs
-// into it and the result back to the lhs type.  On a pointer, += and
-// -= carry the pointer type as common and the rhs widened to 64 bits
-// as for binary +, and the emitter steps the pointer by it.
+// (6.5.17.3p4), or the promoted lhs type for a shift.  The parser
+// converts the rhs to it, but a shift count, which it promotes on its
+// own (6.5.8p3); c1 converts the loaded lhs into it and the result
+// back to the lhs type.  On a pointer, += and -= carry the pointer type
+// as common and the rhs widened to 64 bits as for binary +, and c1
+// steps the pointer by it.
 struct assign_t
 {
     std::optional< binary_op_t > op;
@@ -137,13 +145,13 @@ struct call_t
 };
 
 // A conversion, explicit or inserted by the parser; the target type
-// is the expression's.  The emitter converts nothing on its own,
-// except the two conversions a compound assignment names.  Pointer to
-// pointer is no instruction; pointer to integer and back are ptrtoint
-// and inttoptr.  Array decay is a cast too, to the pointer to the
-// first element; a function decays nowhere yet.  An explicit cast is a
-// node even to the operand's own type, since a cast is never an
-// lvalue (6.5.5p6); the emitter makes nothing of it.
+// is the expression's.  c1 converts nothing on its own, except the
+// two conversions a compound assignment names.  Pointer to pointer is
+// no instruction; a pointer converts to an integer and back as an
+// unsigned long, its integer view in c1.  Array decay is a cast too,
+// to the pointer to the first element; a function decays nowhere yet.
+// An explicit cast is a node even to the operand's own type, since a
+// cast is never an lvalue (6.5.5p6); c1 makes nothing of it.
 struct cast_t
 {
     expr_ptr_t arg;
@@ -184,8 +192,9 @@ as(const expr_t &e)
 }
 
 // The name of an object, a string literal or a dereference; the three
-// the emitter can take the address of.  A function's name is not an
-// object (6.3.2.1p1).
+// c1 takes the address of: a local's slot, a string's label, or what
+// the dereferenced pointer designates; a global's is a later slice.  A
+// function's name is not an object (6.3.2.1p1).
 inline bool
 is_lvalue(const expr_t &e)
 {
@@ -277,8 +286,8 @@ as(const stmt_t &s)
 // the unit
 
 // One per function symbol.  A body is present when the unit defines
-// the function; a declaration alone has none, and the emitter writes
-// a declare for it.
+// the function; a declaration alone has none, and c1 writes nothing
+// for it: a call names the symbol, and the linker resolves it.
 struct function_decl_t
 {
     const symbol_t *sym;
@@ -286,10 +295,13 @@ struct function_decl_t
     std::optional< block_t > body;
 };
 
+// The warnings in the order the parser met them; the unit compiles
+// whatever they say.
 struct unit_t
 {
     std::deque< symbol_t > symbols;
     std::vector< function_decl_t > functions;
+    std::vector< warning_t > warnings;
 };
 
 } // namespace rcc

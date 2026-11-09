@@ -1,14 +1,14 @@
 // -*- mode: c++; -*-
 
 // The driver: rcc's command line, and the processes it runs.  clang
-// preprocesses the input before the front end.  After it, llc turns
-// the IR the front end wrote into an object, instruction for
-// instruction, and clang links the object.  Nothing optimizes on the
-// way: the code that comes out is the code that was written.  The
-// processes are spawned by fork and exec, never through a shell, so
-// no argument is reinterpreted on the way.
+// preprocesses the input before the front end.  After it, c1 writes
+// the assembly, instruction for instruction, and clang assembles it
+// and links the object.  Nothing optimizes on the way: the code that
+// comes out is the code that was written.  The processes are spawned
+// by fork and exec, never through a shell, so no argument is
+// reinterpreted on the way.
 
-#include "emit.hh"
+#include "c1.hh"
 #include "error.hh"
 #include "lex.hh"
 #include "parse.hh"
@@ -34,60 +34,19 @@ namespace rcc {
 
 namespace {
 
-// The programs rcc runs, found on PATH.
+// The program rcc runs, found on PATH.
 constexpr const char *clang = "clang";
-constexpr const char *llc = "llc";
 
-// The flags llc runs with.  FastISel selects each IR instruction on
-// its own, the real register allocator assigns the registers, and
-// every machine pass that would rewrite, move, merge or drop an
-// instruction is off.  Most are hidden options, not a stable
-// interface: the set is verified on LLVM 23.1.3, and a later llc that
-// renames or drops one refuses it as an unknown option.
-const char *const llc_flags[] = {
-    "-O1",                              // the real register allocator; -O0
-                                        // allows only the fast one, which
-                                        // spills across every block
-    "-fast-isel",                       // the instruction written is the one
-                                        // selected; no folding of a + 0,
-                                        // x * 3, x / 4
-    "-fast-isel-abort=3",               // never fall back to the folding
-                                        // selector; fail loudly instead
-    "-relocation-model=pic",            // clang links position-independent
-                                        // executables
-    "-disable-cgp",                     // no IR rewriting before selection
-    "-disable-lsr",                     // no loop strength reduction
-    "-disable-constant-hoisting",       // constants stay where written
-    "-disable-machine-licm",            // nothing moves out of a loop
-    "-disable-machine-cse",             // nothing written twice is computed
-                                        // once
-    "-disable-machine-sink",            // nothing moves down a branch
-    "-disable-postra-machine-sink",     // nor after register allocation
-    "-disable-machine-dce",             // FastISel already drops an unused
-                                        // result; this covers the rest
-    "-disable-peephole",                // no instruction rewriting
-    "-disable-x86-lea-opt",             // no lea rewriting
-    "-disable-x86-domain-reassignment", // no domain changes
-    "-disable-early-ifcvt",             // no branch to conditional move
-    "-x86-cmov-converter=false",        // no conditional move to branch
-    "-enable-misched=false",            // no reordering
-    "-disable-copyprop",                // no copy propagation
-    "-disable-branch-fold",             // branches stay as written
-    "-disable-tail-duplicate",          // no block duplication
-    "-disable-early-taildup",           // nor early
-    "-disable-block-placement",         // blocks stay in the written order
-    "-disable-post-ra",                 // no post-allocation scheduling
-    "-no-stack-coloring",               // one slot per local, never shared
-};
+constexpr const char *usage = "usage: rcc [-w] [-S|-c] [-o out] file.c";
 
-constexpr const char *usage = "usage: rcc [-S|-c] [-o out] file.c";
-
-// The last thing the driver makes: the IR, an object, or an executable.
-enum class stage_t { ir, object, executable };
+// The last thing the driver makes: the assembly, an object, or an
+// executable.
+enum class stage_t { assembly, object, executable };
 
 struct options_t
 {
     stage_t stage = stage_t::executable;
+    bool warnings = true;
     std::string out;
     std::string file;
 };
@@ -107,17 +66,20 @@ throw_system_error(int err, std::string_view what)
     throw std::system_error(err, std::generic_category(), std::string(what));
 }
 
-// cc's defaults: the IR and the object are named after the input and
-// land in the current directory; the executable is a.out.
+// cc's defaults: the assembly and the object are named after the
+// input and land in the current directory; the executable is a.out.
 std::string
-default_output(stage_t stage, const std::string &file)
+default_output(const options_t &opts)
 {
-    if (stage == stage_t::executable)
+    if (opts.stage == stage_t::executable)
         return "a.out";
 
-    const auto stem = std::filesystem::path(file).stem().string();
+    const auto stem = std::filesystem::path(opts.file).stem().string();
 
-    return stem + (stage == stage_t::ir ? ".ll" : ".o");
+    if (opts.stage == stage_t::object)
+        return stem + ".o";
+
+    return stem + ".s";
 }
 
 // The command line, or nothing when it is a usage error: an unknown
@@ -128,13 +90,15 @@ std::optional< options_t >
 options_from(int argc, char **argv)
 {
     options_t opts;
-    bool to_ir = false, to_object = false;
+    bool to_assembly = false, to_object = false;
 
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg = argv[i];
 
         if (arg == "-S")
-            to_ir = true;
+            to_assembly = true;
+        else if (arg == "-w")
+            opts.warnings = false;
         else if (arg == "-c")
             to_object = true;
         else if (arg == "-o" && i + 1 < argc)
@@ -145,16 +109,16 @@ options_from(int argc, char **argv)
             opts.file = arg;
     }
 
-    if (opts.file.empty() || (to_ir && to_object))
+    if (opts.file.empty() || (to_assembly && to_object))
         return std::nullopt;
 
-    if (to_ir)
-        opts.stage = stage_t::ir;
+    if (to_assembly)
+        opts.stage = stage_t::assembly;
     else if (to_object)
         opts.stage = stage_t::object;
 
     if (opts.out.empty())
-        opts.out = default_output(opts.stage, opts.file);
+        opts.out = default_output(opts);
 
     return opts;
 }
@@ -314,7 +278,7 @@ run(const std::vector< std::string > &args)
     return wait_for(pid);
 }
 
-// Writes the IR where -S asked for it, replacing any file there.
+// Writes the assembly where -S asked for it, replacing any file there.
 void
 write_file(const std::string &path, std::string_view text)
 {
@@ -325,9 +289,9 @@ write_file(const std::string &path, std::string_view text)
 }
 
 // The name mkstemps fills in: under $TMPDIR when it is set, /tmp
-// otherwise.  The suffix keeps the file's kind visible: .ll for the
-// IR llc reads, .o for the object clang links, which clang takes for
-// linker input by that suffix.
+// otherwise.  The suffix keeps the file's kind visible: .s, for the
+// assembly clang assembles, which clang takes for assembler input by
+// that suffix.
 std::string
 temp_template(std::string_view suffix)
 {
@@ -338,14 +302,14 @@ temp_template(std::string_view suffix)
     return std::string(dir) + "/rcc-XXXXXX" + std::string(suffix);
 }
 
-// A temporary file: the IR for llc, or the empty place llc writes the
-// object into for clang to link.  It is removed when the object dies,
-// on every path out of the scope that made it, exceptions included.
+// A temporary file: the assembly for clang.  It is removed when the
+// object dies, on every path out of the scope that made it,
+// exceptions included.
 class temp_file_t
 {
 public:
 
-    explicit temp_file_t(std::string_view suffix, std::string_view text = { })
+    explicit temp_file_t(std::string_view suffix, std::string_view text)
         : m_path(temp_template(suffix))
     {
         const int fd = ::mkstemps(m_path.data(), suffix.size());
@@ -377,53 +341,38 @@ private:
     std::string m_path;
 };
 
-// The one diagnostic, in cc's format.
+// A diagnostic in cc's format, an error or a warning.
+void
+report(const location_t &where, std::string_view kind, std::string_view what)
+{
+    std::cerr << where.file << ':' << where.line << ':' << where.column << ": "
+              << kind << ": " << what << '\n';
+}
+
 void
 report(const error_t &e)
 {
-    std::cerr << e.where.file << ':' << e.where.line << ':' << e.where.column
-              << ": error: " << e.what << '\n';
+    report(e.where, "error", e.what);
 }
 
-// Runs llc on the IR file with the literal flag set, writing the
-// object; returns llc's exit status.  The IR names no target triple,
-// so llc selects for its default, the host.
+// Hands the assembly to clang to assemble into the object and, without
+// -c, to link; returns clang's exit status.
 int
-write_object(const std::string &ll, const std::string &obj)
+assemble(const options_t &opts, std::string_view text)
 {
-    std::vector< std::string > args = { llc };
-    for (const char *flag : llc_flags)
-        args.push_back(flag);
-    args.insert(args.end(), { "-filetype=obj", "-o", obj, ll });
-
-    return run(args);
-}
-
-// Hands the IR to llc to make the object and, without -c, the object
-// to clang to link; returns the status of llc when it failed or made
-// the output, clang's otherwise.  clang only links: the object is
-// final, and nothing it is told could change an instruction.
-int
-assemble(const options_t &opts, std::string_view ir)
-{
-    const temp_file_t ll(".ll", ir);
+    const temp_file_t s(".s", text);
 
     if (opts.stage == stage_t::object)
-        return write_object(ll.path(), opts.out);
+        return run({ clang, "-c", s.path(), "-o", opts.out });
 
-    const temp_file_t obj(".o");
-
-    const int status = write_object(ll.path(), obj.path());
-    if (status != 0)
-        return status;
-
-    return run({ clang, obj.path(), "-o", opts.out });
+    return run({ clang, s.path(), "-o", opts.out });
 }
 
-// The pipeline: preprocess, tokenize, parse, emit, then the IR file or
-// llc and clang.  Returns rcc's exit status.  An error_t names its
-// file by a view into the preprocessed text, so it is reported in
-// this frame, while the text is alive.
+// The pipeline: preprocess, tokenize, parse, generate, then the
+// assembly file or clang.  Returns rcc's exit status, which no warning
+// changes; -w silences the warnings.  A diagnostic names its file by a
+// view into the preprocessed text, so it is reported in this frame,
+// while the text is alive.
 int
 drive(const options_t &opts)
 {
@@ -431,33 +380,37 @@ drive(const options_t &opts)
     if (pp.status != 0)
         return pp.status;
 
-    std::ostringstream ir;
+    std::ostringstream assembly;
     try {
         const auto tokens = tokenize(pp.text, opts.file);
         const auto unit = parse(tokens);
-        emit(unit, ir);
+        if (opts.warnings)
+            for (const auto &w : unit.warnings)
+                report(w.where, "warning", w.what);
+
+        generate(unit, opts.file, assembly);
     }
     catch (const error_t &e) {
         report(e);
         return 1;
     }
 
-    if (opts.stage == stage_t::ir) {
-        write_file(opts.out, ir.str());
+    if (opts.stage == stage_t::assembly) {
+        write_file(opts.out, assembly.str());
         return 0;
     }
 
-    return assemble(opts, ir.str());
+    return assemble(opts, assembly.str());
 }
 
 } // namespace
 
 } // namespace rcc
 
-// Exit status: clang's or llc's own when it failed or made the output;
-// 1 for an error in the source or a failed system call; 2 for a usage
-// error; 3 for an internal error, which includes a construct the front
-// end does not handle yet.
+// Exit status: clang's own when it failed or made the output; 1 for an
+// error in the source or a failed system call; 2 for a usage error; 3
+// for an internal error, which includes a construct c1 does not handle
+// yet.
 int
 main(int argc, char **argv)
 {

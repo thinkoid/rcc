@@ -1,7 +1,8 @@
-/* Chapter 3, a ? b : c: branches and conditional jumps.  The listing
-   must show a compared with 0, a je to the block that loads c, the
-   block that loads b and jumps past it, and the two joining at the
-   ret. */
+/* backend.md 7.2, e ? a : b for its value: jump code, never cmov.
+   The listing must show a compared with cmpl $0, %eax, a je to the
+   arm that loads c, the arm that loads b into the same eax and jumps
+   past it, the two joining at the jmp to the epilogue label, and no
+   cmov. */
 int conditional(int a, int b, int c)
 {
     return a ? b : c;

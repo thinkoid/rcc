@@ -1,21 +1,48 @@
-Disassembly of section .text:
-
-<test>:
-	mov    %rdi,-0x10(%rsp)
-	mov    -0x10(%rsp),%rax
-	cmp    $0x0,%rax
-	je     <test+0x16>
-	mov    $0x1,%eax
+	.file	"ptr-null.c"
+	.text
+	.globl	test
+	.type	test, @function
+test:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	-8(%rbp), %rax
+	cmpq	$0, %rax
+	je	.Ltest.2
+	movl	$1, %eax
+	jmp	.Ltest.1
+.Ltest.2:
+	movl	$0, %eax
+	jmp	.Ltest.1
+.Ltest.1:
+	leave
+	.cfi_def_cfa %rsp, 8
 	ret
-	xor    %eax,%eax
+	.cfi_endproc
+	.size	test, .-test
+	.globl	equal
+	.type	equal, @function
+equal:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	-8(%rbp), %rax
+	cmpq	$0, %rax
+	sete	%al
+	movzbl	%al, %eax
+	jmp	.Lequal.1
+.Lequal.1:
+	leave
+	.cfi_def_cfa %rsp, 8
 	ret
-	nopl   0x0(%rax)
-
-<equal>:
-	mov    %rdi,-0x10(%rsp)
-	mov    -0x10(%rsp),%rax
-	cmp    $0x0,%rax
-	sete   %al
-	and    $0x1,%al
-	movzbl %al,%eax
-	ret
+	.cfi_endproc
+	.size	equal, .-equal
+	.section	.note.GNU-stack,"",@progbits

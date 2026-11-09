@@ -1,24 +1,39 @@
-Disassembly of section .text:
-
-<sum>:
-	mov    %edi,-0x8(%rsp)
-	movl   $0x0,-0xc(%rsp)
-	movl   $0x0,-0x10(%rsp)
-	mov    -0x10(%rsp),%eax
-	mov    -0x8(%rsp),%ecx
-	cmp    %ecx,%eax
-	setl   %al
-	and    $0x1,%al
-	movzbl %al,%eax
-	cmp    $0x0,%eax
-	je     <sum+0x46>
-	mov    -0xc(%rsp),%eax
-	mov    -0x10(%rsp),%ecx
-	add    %eax,%ecx
-	mov    %ecx,-0xc(%rsp)
-	mov    -0x10(%rsp),%eax
-	add    $0x1,%eax
-	mov    %eax,-0x10(%rsp)
-	jmp    <sum+0x14>
-	mov    -0xc(%rsp),%eax
+	.file	"for.c"
+	.text
+	.globl	sum
+	.type	sum, @function
+sum:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	$0, -8(%rbp)
+	movl	$0, -12(%rbp)
+	.p2align 5
+.Lsum.2:
+	movl	-12(%rbp), %eax
+	movl	-4(%rbp), %ecx
+	cmpl	%ecx, %eax
+	jge	.Lsum.4
+	movl	-8(%rbp), %eax
+	movl	-12(%rbp), %ecx
+	addl	%ecx, %eax
+	movl	%eax, -8(%rbp)
+.Lsum.3:
+	movl	-12(%rbp), %eax
+	addl	$1, %eax
+	movl	%eax, -12(%rbp)
+	jmp	.Lsum.2
+.Lsum.4:
+	movl	-8(%rbp), %eax
+	jmp	.Lsum.1
+.Lsum.1:
+	leave
+	.cfi_def_cfa %rsp, 8
 	ret
+	.cfi_endproc
+	.size	sum, .-sum
+	.section	.note.GNU-stack,"",@progbits

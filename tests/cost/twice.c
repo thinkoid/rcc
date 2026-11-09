@@ -1,11 +1,9 @@
-/* Chapter 1, no merging; chapter 2, -disable-machine-cse.  The same
-   expression written twice is computed twice.  The listing of twice()
-   must show two loads of a, two of b, two imul and the add of the two
-   products.  Each read is a load of its own, so machine CSE would see
-   two different products there anyway; the flag shows in
-   twice_constant(), whose 12 * 34 has constant operands: the listing
-   must show the mov of 34 and the imul by 12 twice, and machine CSE
-   would drop the second pair. */
+/* cost.md chapter 1, no merging: the same expression written twice is
+   computed twice.  The listing of twice() must show two loads of a,
+   two of b, two imull and the addl %ecx, %eax of the two products.
+   In twice_constant(), 12 * 34 is an integer constant expression,
+   folded in the parser to 408 (backend.md 6.4): the listing must show
+   two addl $408, %eax, one per product written, and no imul. */
 int twice(int a, int b)
 {
     return a * b + a * b;

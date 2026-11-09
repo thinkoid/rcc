@@ -1,8 +1,9 @@
-/* Chapter 3, p + n; chapter 4, a standalone gep.  a + i stored to a
-   pointer variable feeds no load, so the gep is selected on its own:
-   the listing must show the index widened with cltq, the array's
-   address taken with lea, the index scaled by shl $0x2 and added to
-   it, and the sum stored to p's slot. */
+/* backend.md 6.3, p + n for an element of 4 bytes: the lea of the
+   addressing form.  a + i is stored to a pointer variable and feeds
+   no load.  The listing must show the array's address taken with
+   leaq -20(%rbp), %rax, i loaded and widened with movslq %ecx, %rcx,
+   the sum formed by leaq (%rax,%rcx,4), %rax, and the sum stored to
+   p's slot with movq. */
 int *gep(int i)
 {
     int a[4];

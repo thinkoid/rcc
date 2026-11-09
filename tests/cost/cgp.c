@@ -1,8 +1,8 @@
-/* Chapter 1, no deleting; chapter 2, -disable-cgp.  An if with an
-   empty body is still a test and a branch.  The listing must show a
-   loaded and compared with 0, a je and a jmp to the same place, and
-   only then the second if; CodeGenPrepare would remove the empty
-   block and the test with it. */
+/* backend.md 7.2, if: an if with an empty body is still a test and a
+   branch.  The listing must show a loaded, compared with
+   cmpl $0, %eax and a je to the label that follows at once, and only
+   then the second if, a compared with cmpl $1, %eax and a jle past
+   the store of 1 to x's slot. */
 int empty_if(int a)
 {
     int x = 0;

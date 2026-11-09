@@ -1,11 +1,10 @@
-/* Chapter 3, a string literal: a private global array, not constant
-   (G17).  The listing must show the literal's address taken with a
-   rip-relative lea whose relocation is against .data, the section,
-   since a private global has no symbol in the object; the address
-   stored to s's slot and loaded back; the byte loaded with movzbl
-   through 0x1(%rax), the constant index as the displacement, and
-   sign-extended with movsbl.  objdump -h shows the literal in .data,
-   without READONLY: a writable section. */
+/* backend.md chapter 10, a string literal: a labeled array of bytes
+   in .data, writable (G17).  The listing must show the literal's
+   address taken with leaq .Ls0(%rip), %rax, stored to s's slot and
+   loaded back; the byte loaded and sign-extended in one
+   movsbl 1(%rax), %eax, the constant index as the displacement; and
+   the literal after the function, under .data, as .Ls0 and its
+   .string, in no read-only section. */
 int second(void)
 {
     char *s = "abc";

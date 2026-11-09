@@ -1,15 +1,15 @@
 # rcc
 
-An experimental descendant of Ritchie's C compiler, using LLVM to
-bring early C's machine-oriented programming model to modern targets,
-with explicit guarantees for selected operations that ISO C leaves
-undefined.
+An experimental descendant of Ritchie's C compiler, with its own
+back end, bringing early C's machine-oriented programming model to
+modern targets, with explicit guarantees for selected operations
+that ISO C leaves undefined.
 
 The name says where it comes from. The syntax stays near ISO C, so
 existing programs compile; the promises are the project. They are
 listed in `docs/guarantees.md`: each names the ISO paragraph, the
-machine behaviour promised, the IR that delivers it, and what the
-optimizer loses.
+machine behaviour promised, the instruction that delivers it, and
+what the optimizer loses.
 
 ## Design
 
@@ -18,14 +18,16 @@ optimizer loses.
   computed every iteration. Choosing the cheaper form is the
   programmer's job, and the compiler never second-guesses it.
   `docs/cost.md` says what each construct compiles to.
-- Own tree. LLVM is a dependency, not a fork.
-- Textual IR out. `llc` selects instructions one for one and
-  allocates registers, with every rewriting pass switched off;
-  `clang` links. No build-time dependency beyond an installed LLVM.
+- Own tree, own back end. rcc writes x86-64 assembly from the tree
+  and owns its registers, in Ritchie's model: every local in its
+  stack slot, `register` variables in the callee-saved registers,
+  expressions in the rest. The system cc preprocesses, assembles and
+  links. The design is `docs/backend.md`, and the reasons are
+  `docs/findings.md`. The tree compiled through LLVM's `llc` with
+  FastISel and every rewriting pass switched off until c1 replaced
+  it; `docs/llvm.md` is the record of that pipeline.
 - Each guarantee is delivered by emitting the plain instruction and
-  nothing in between. The front end withholds every flag an
-  optimizer would reason from: no `nsw`, no `inbounds`, no `!tbaa`.
-  The full list is the last table of the guarantees document.
+  nothing in between.
 
 ## Method
 
@@ -35,12 +37,12 @@ optimizer loses.
 - The oracle: the same program under `clang -O2` and under `rcc`, on
   a corpus of the known divergence cases. Where they differ is the
   experiment's output.
-- The pin: the IR text per test program, diffed.
+- The pin: the assembly text per test program, diffed.
 - The measurement: each program of a small benchmark corpus, as
   written and as tuned by hand for a literal compiler, timed under
   `clang -O2` and under `rcc`. How far the literal machine lands from
   the optimizer, and how much of the gap the programmer closes, is
-  chapter 6 of `docs/cost.md`.
+  chapter 4 of `docs/cost.md`.
 
 ## Status
 
@@ -49,8 +51,14 @@ The first slice: the integer types, the scalar operators, `if`,
 second slice: pointers and `void *`, arrays as locals and
 parameters, subscripts, `&` and `*`, pointer arithmetic and
 comparison, casts, `sizeof`, and string and character literals.
-Then `register`, honoured: a variable that is never stored. The shape is
-`docs/shape.md`; `make` builds `rcc`, `make test` runs the oracle
-over `tests/corpus/` and the cost corpus over `tests/cost/`, and
-`make bench` times the benchmark corpus of `tests/perf/`. The queue
-is `TODO`.
+Then `register`, honoured: a variable that is never stored. Then the
+measurement, and the change of direction it led to: rcc's own back
+end, c1, in place of LLVM's. Its three slices landed: the integer
+types, control and calls; pointers, arrays and string literals;
+register variables. Then the LLVM pipeline was retired, c1 is the
+only back end, and the measurement is redone under it.
+The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
+the oracle over `tests/corpus/` and the cost corpus over
+`tests/cost/`, both through c1, and `make bench` times the benchmark
+corpus of `tests/perf/`.
+The queue is `TODO`.

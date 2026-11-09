@@ -1,16 +1,42 @@
-Disassembly of section .text:
-
-<load>:
-	mov    %rdi,-0x10(%rsp)
-	mov    -0x10(%rsp),%rax
-	mov    (%rax),%eax
+	.file	"deref.c"
+	.text
+	.globl	load
+	.type	load, @function
+load:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	-8(%rbp), %rax
+	movl	(%rax), %eax
+	jmp	.Lload.1
+.Lload.1:
+	leave
+	.cfi_def_cfa %rsp, 8
 	ret
-	nopl   (%rax)
-
-<store>:
-	mov    %rdi,-0x8(%rsp)
-	mov    %esi,-0xc(%rsp)
-	mov    -0x8(%rsp),%rax
-	mov    -0xc(%rsp),%ecx
-	mov    %ecx,(%rax)
+	.cfi_endproc
+	.size	load, .-load
+	.globl	store
+	.type	store, @function
+store:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	movl	-12(%rbp), %ecx
+	movl	%ecx, (%rax)
+.Lstore.1:
+	leave
+	.cfi_def_cfa %rsp, 8
 	ret
+	.cfi_endproc
+	.size	store, .-store
+	.section	.note.GNU-stack,"",@progbits

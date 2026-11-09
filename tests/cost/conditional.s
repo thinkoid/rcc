@@ -1,13 +1,30 @@
-Disassembly of section .text:
-
-<conditional>:
-	mov    %edi,-0x8(%rsp)
-	mov    %esi,-0xc(%rsp)
-	mov    %edx,-0x10(%rsp)
-	mov    -0x8(%rsp),%eax
-	cmp    $0x0,%eax
-	je     <conditional+0x1b>
-	mov    -0xc(%rsp),%eax
-	jmp    <conditional+0x1f>
-	mov    -0x10(%rsp),%eax
+	.file	"conditional.c"
+	.text
+	.globl	conditional
+	.type	conditional, @function
+conditional:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	movl	%edx, -12(%rbp)
+	movl	-4(%rbp), %eax
+	cmpl	$0, %eax
+	je	.Lconditional.2
+	movl	-8(%rbp), %eax
+	jmp	.Lconditional.3
+.Lconditional.2:
+	movl	-12(%rbp), %eax
+.Lconditional.3:
+	jmp	.Lconditional.1
+.Lconditional.1:
+	leave
+	.cfi_def_cfa %rsp, 8
 	ret
+	.cfi_endproc
+	.size	conditional, .-conditional
+	.section	.note.GNU-stack,"",@progbits

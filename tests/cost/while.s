@@ -1,19 +1,33 @@
-Disassembly of section .text:
-
-<count>:
-	mov    %edi,-0x8(%rsp)
-	movl   $0x0,-0xc(%rsp)
-	mov    -0xc(%rsp),%eax
-	mov    -0x8(%rsp),%ecx
-	cmp    %ecx,%eax
-	setl   %al
-	and    $0x1,%al
-	movzbl %al,%eax
-	cmp    $0x0,%eax
-	je     <count+0x30>
-	mov    -0xc(%rsp),%eax
-	add    $0x1,%eax
-	mov    %eax,-0xc(%rsp)
-	jmp    <count+0xc>
-	mov    -0xc(%rsp),%eax
+	.file	"while.c"
+	.text
+	.globl	count
+	.type	count, @function
+count:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	$0, -8(%rbp)
+	.p2align 5
+.Lcount.2:
+	movl	-8(%rbp), %eax
+	movl	-4(%rbp), %ecx
+	cmpl	%ecx, %eax
+	jge	.Lcount.3
+	movl	-8(%rbp), %eax
+	addl	$1, %eax
+	movl	%eax, -8(%rbp)
+	jmp	.Lcount.2
+.Lcount.3:
+	movl	-8(%rbp), %eax
+	jmp	.Lcount.1
+.Lcount.1:
+	leave
+	.cfi_def_cfa %rsp, 8
 	ret
+	.cfi_endproc
+	.size	count, .-count
+	.section	.note.GNU-stack,"",@progbits

@@ -4,10 +4,12 @@
    the end of b's first row once per repetition, not at each
    access.  The inner loop walks a pointer along a's row and
    another down b's column, stepping by n, so it multiplies only the
-   two elements; the sum is kept in a register and stored to c once,
-   so c needs no clearing.  Every variable of the product is a
-   register variable, and every loop ends on !=.  The fill, the change
-   to a and the checksum are as in matmul.c. */
+   two elements; the sum is stored to c once, so c needs no clearing.
+   The machine keeps five register variables, so register is on the
+   five the inner loop uses, n, aend, pa, pb and s; the row and column
+   walkers of the outer loops, arow, pc and bcol, and bend and i take
+   slots.  Every loop ends on !=.  The fill, the change to a and the
+   checksum are as in matmul.c. */
 #define SIZE 9216
 #define REPS 1200
 
@@ -31,13 +33,13 @@ int main(void)
         seed = seed * 1103515245 + 12345;
         a[(seed >> 16) % SIZE] = (seed >> 8) % 256;
 
-        register int *bend = b + n;
+        int *bend = b + n;
 
-        for (register int i = 0; i != n; ++i) {
-            register int *arow = a + i * n;
+        for (int i = 0; i != n; ++i) {
+            int *arow = a + i * n;
             register int *aend = arow + n;
-            register int *pc = c + i * n;
-            register int *bcol = b;
+            int *pc = c + i * n;
+            int *bcol = b;
 
             while (bcol != bend) {
                 register int *pa = arow;

@@ -1,26 +1,48 @@
-Disassembly of section .text:
-
-<twice>:
-	mov    %edi,-0x8(%rsp)
-	mov    %esi,-0xc(%rsp)
-	mov    -0x8(%rsp),%eax
-	mov    -0xc(%rsp),%ecx
-	imul   %eax,%ecx
-	mov    -0x8(%rsp),%edx
-	mov    -0xc(%rsp),%eax
-	imul   %edx,%eax
-	add    %ecx,%eax
+	.file	"twice.c"
+	.text
+	.globl	twice
+	.type	twice, @function
+twice:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	movl	-4(%rbp), %eax
+	movl	-8(%rbp), %ecx
+	imull	%ecx, %eax
+	movl	-4(%rbp), %ecx
+	movl	-8(%rbp), %edx
+	imull	%edx, %ecx
+	addl	%ecx, %eax
+	jmp	.Ltwice.1
+.Ltwice.1:
+	leave
+	.cfi_def_cfa %rsp, 8
 	ret
-	cs nopw 0x0(%rax,%rax,1)
-	nopl   0x0(%rax,%rax,1)
-
-<twice_constant>:
-	mov    %edi,-0x8(%rsp)
-	mov    -0x8(%rsp),%eax
-	mov    $0x22,%ecx
-	imul   $0xc,%ecx,%ecx
-	add    %eax,%ecx
-	mov    $0x22,%eax
-	imul   $0xc,%eax,%eax
-	add    %ecx,%eax
+	.cfi_endproc
+	.size	twice, .-twice
+	.globl	twice_constant
+	.type	twice_constant, @function
+twice_constant:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	-4(%rbp), %eax
+	addl	$408, %eax
+	addl	$408, %eax
+	jmp	.Ltwice_constant.1
+.Ltwice_constant.1:
+	leave
+	.cfi_def_cfa %rsp, 8
 	ret
+	.cfi_endproc
+	.size	twice_constant, .-twice_constant
+	.section	.note.GNU-stack,"",@progbits

@@ -13,14 +13,60 @@ git keeps them.
 
 #+TOC: headlines 2
 
+* The back end
+
+The direction is taken: c1 is rcc's only back end, it writes x86-64
+assembly itself, and the system cc preprocesses, assembles and
+links. The reasons are =docs/findings.md= and =docs/llvm.md=, the
+design is =docs/backend.md= with its calls made in
+=docs/design-calls.md=. The chapter holds c1's own defects and the
+second target.
+
+** TODO A memory-form shift on a slot moves its count from =eax=
+
+The effect context's =x <<= n;= on a slot evaluates the count by
+=rvalue()=, which takes the lowest free register, =eax=, and
+=shift_on()= then moves it to =ecx=: =movl -8(%rbp), %eax; movl %eax,
+%ecx; shlb %cl, -9(%rbp)=. Through a pointer the base holds =rax=, so
+the count lands in =ecx= at once. The =mov= is a real move of a real
+value, but one the generator made for itself.
+
+Fix: =shift_on()= evaluates a count that is not a constant with
+=rax= held out of =take()=, so that the count's load takes =rcx= when
+it is free, the next register of chapter 4's order.
+
+Check: the probe =int f(int a, int n) { char x = a; x <<= n; return
+x; }= has no =movl %eax, %ecx=; the 51 cost pins are unchanged.
+
+** TODO A shift's reloaded left operand lands in =rcx=
+
+In a variable shift whose left operand is reloaded after a call,
+=int c(int); long w(long a, int n) { return a << c(n); }=,
+=operands()= reloads the left operand avoiding only the count's
+register, so it lands in =rcx=, and =shift()= then moves it straight
+out again for the count: =movq -24(%rbp), %rcx; movq %rcx, %rdx=
+before =shlq %cl, %rdx=. The =mov= is a real move of a real value,
+but one the generator made for itself.
+
+Fix: for a shift, the left operand's reload also avoids =rcx=.
+
+Check: the probe loses the =movq %rcx, %rdx=, and the 51 cost pins
+are unchanged.
+
+** TODO aarch64
+
+A second instruction table and the AAPCS64 convention: =x0= to =x7=
+for arguments, =x19= to =x28= callee-saved, ten register variables.
+After x86-64 is whole.
+
 * Guarantees
 
 The promises in =docs/guarantees.md=. The entry number is the
 guarantee it belongs to. All are decided; G15 is withdrawn with its
-number reserved; under the literal pipeline the guard of G4, the
-round trip of G8 and the laundering of G16 are no longer emitted,
-because nothing between the source and the instruction reasons about
-the program.
+number reserved. c1 writes none of the guard of G4, the round trip
+of G8 and the laundering of G16, which draft 1 designed against an
+optimizer, because nothing between the source and the instruction
+reasons about the program.
 
 ** TODO G7's "Lost" in the rationale misses the equality fold
 
@@ -38,12 +84,12 @@ Check: the rationale's G7 names the fold and the program.
 
 ** TODO The rationale has no G17
 
-=guarantees.md= has G17, the writable string literal, and its row in
-the never-emitted table; =rationale.md= has neither, so the promise
-has no recorded argument, alternatives or probe. The corpus has the
-probe: =clang -O2= folds the load from a literal to its initializer
-and drops the store (=tests/corpus/g17-string-store.c=, 122 under
-rcc, 97 under clang).
+=guarantees.md= has G17, the writable string literal; =rationale.md=
+has neither a G17 entry nor its row in the never-emitted table, so
+the promise has no recorded argument, alternatives or probe. The corpus
+has the probe: =clang -O2= folds the load from a literal to its
+initializer and drops the store (=tests/corpus/g17-string-store.c=, 122
+under rcc, 97 under clang).
 
 Fix: a Storage section in the rationale with G17: the ISO paragraph,
 the promise, the IR, what is lost (equal literals merged, the
@@ -54,93 +100,37 @@ Check: the rationale has a G17 entry and the table row.
 * Cost model
 
 The record in =docs/cost.md=: what each construct compiles to under
-the literal pipeline, =llc= with FastISel and the rewriting passes
-off.
+c1, its table written from the pins of =tests/cost/=. The findings of
+the measurement (=docs/findings.md=) were facts about LLVM's code
+generator and left with it; that page's chapter 8 says what became
+of each. The entries below are rows the table lacks.
 
-** TODO A function whose every path returns still gets the indeterminate slot
+** TODO No row pins a multiply or an unsigned division by a power of two
 
-=needs_return_slot= allocates =%ret.indeterminate= in every non-void
-function but =main=, for the value a fall off the end returns (G5).
-A function whose last top-level statement is a =return= cannot fall
-off the end, so its slot is a dead =alloca=, eight bytes of frame per
-such function.
+c1 writes =x * 4= as =imull $4, %eax, %eax=, and an unsigned =x / 4=
+and =x % 4= as =movl $4, %ecx; xorl %edx, %edx; divl %ecx=, the
+remainder then moved from =edx= (=backend.md= 6.4). This is the
+thesis's answer to finding 2 of =findings.md=, the selector's
+strength reduction. But no cost program pins the three: =mul-three=
+multiplies by 3 and =div-four= divides a signed value, so a change to
+c1 that turned the three into a shift or a mask would show in no
+row.
 
-Fix: no slot when the body's last statement is a =return=; the
-syntactic test is enough, since the slot is read only by the fall-off
-path =finish= writes.
-
-Check: =int f(void) { return 1; }= has no =ret.indeterminate= in its
-IR; a function ending in an =if= without =else= still has one.
-
-** TODO The selector rewrites a multiply and an unsigned division by a power of two
-
-FastISel turns a =mul= by a power of two into =shl=, a =udiv= by one
-into =shr= and a =urem= by one into =and= (=FastISel::fastEmit_ri_=
-and =FastISel::selectBinaryOp=, =FastISel.cpp=); no option gates it.
-So =x * 4= is =shl $0x2= for any =x=, and for an unsigned =x=, =x /
-4= is =shr $0x2= and =x % 4= is =and $0x3=. A signed division or
-remainder by a power of two stays =cltd; idiv=, as =div-four= pins.
-Chapter 1 says =x / 4= is a division, and chapter 3 gives =imul= and
-=div= for every operand; neither holds for these three, and no cost
-row covers them. =tests/perf/collatz.c= declares its value signed so
-that its halving divides.
-
-Fix: decide between the emitter freezing a power-of-two constant
-operand of =mul=, =udiv= and =urem=, as it freezes the constant of a
-compare, so the instruction written is selected, and recording the
-rewrite in chapter 4 as the selector's own rule, with chapters 1 and
-3 qualified.
-
-Check: cost rows for =x * 4=, unsigned =x / 4= and unsigned =x % 4=
-pin =imul=, =div= and =div=, or pin the rewrite chapter 4 records.
-
-** TODO A pass with no switch drops a constant already in its register
-
-=machine-latecleanup=, after register allocation, removes an
-instruction that loads an immediate into a register already holding
-that immediate on every path to it; =llc= 23.1.3 has no option to
-disable it. In =tests/perf/collatz.c=, =x % 2= loads 2 into =rcx= for
-its =idiv=, and =x / 2= in the next block divides by that =rcx= with
-no =mov= of its own: =llc -print-after-all= shows two =MOV32ri64 2=
-up to that pass and one after it. Chapter 2 names the machine
-combiner as the one pass without a switch, and chapter 1 says the
-same expression written twice is computed twice.
-
-Fix: name the pass in chapter 2 and its effect in chapter 4, with a
-cost row of one constant used in two blocks, the first dominating
-the second.
-
-Check: the row's pin shows one =mov= of the constant, and chapter 2
-names both passes.
-
-** TODO Chapter 3 has no row for unary minus and complement
-
-C has no negative constant: =-1= is unary minus applied to 1, and the
-emitter writes it as =sub i32 0, 1=, then a =sext= where the type is
-wider. So =long x = -1= is =xor=, =sub= and =cltq= where =long x = 2=
-is one =movq $2=, and =p[-1]= negates and extends the 1 at each
-access where =p[1]= is a displacement. Chapter 3 has no row for =-a=
-or =~a=, and its constant row reads as if every constant costs
-nothing.
-
-Fix: a row for =-a= and =~a= that says a negative constant is a
-negation at run time, with a cost program.
+Fix: a cost program pinning =imull $4=, the =movl $4= into a
+register and the =divl= of the unsigned division and remainder.
 
 Check: the row and its pin.
 
-** TODO A register pointer to a local array is a lea at each use
+** TODO Chapter 2 has no row for unary minus and complement
 
-A local array's address is a frame index to the selector, and a
-=register= variable initialized with it is that address itself, since
-a register variable is its SSA value. The selector materializes it
-with a =lea= from =rsp= at each use, inside a loop too: in a loop,
-=p != first= with =register int *first = a;= is a =lea= and a =cmp=,
-the same as =p != a=. Chapter 3's row for a =register= local says "a
-register".
+Chapter 2 of =cost.md= has no row for =-a= or =~a=. A negative
+constant is not one of them: the parser folds =-1= to a constant, so
+=long x = -1= is one store, =movq $-1, -8(%rbp)=, as =long x = 2= is
+=movq $2, -8(%rbp)=, and =p[-1]= is a displacement. On a variable the
+two operators are instructions, =negl %eax= and =notl %eax=, the row
+of =backend.md= 6.3.
 
-Fix: the =register= row of chapter 3 says that a register variable
-holding a local's address is a =lea= at each use, with a cost
-program.
+Fix: a row for =-a= and =~a=, with a cost program.
 
 Check: the row and its pin.
 
@@ -195,56 +185,64 @@ rcc and 0 under clang.
 
 Check: the oracle row.
 
+** TODO The register rows pin only part of c1's register rules
+
+The five programs that declare =register= pin the registers in
+declaration order, the pushes with their unwind offsets, a register
+parameter's move from its argument register, a read as an operand, a
+copy before an instruction that writes, an assignment, a constant's
+immediate, and G5's unwritten register. No program of either corpus
+shows the rest of =backend.md= chapter 4, so a change to any of these
+shows in no pin:
+
+- a compound assignment or a =++= on the register in place, =addl $1,
+  %r13d=;
+- a narrow register variable: the extending store =movsbl %al,
+  %ebx=, the re-extension after a step, and an unwritten one's
+  extension at its declaration;
+- the copy of a held read before a write, =i + i++=, and before the
+  paths of =&&=, =||= and =?:= (G13);
+- a register parameter past the sixth, loaded from its stack slot,
+  and the order of the moves and the stores among mixed parameters;
+- the epilogue's =leaq -8k(%rbp), %rsp= before the pops, which only a
+  function with pushes and a =subq= writes;
+- the sixth live variable in a slot, and a later block taking =rbx=
+  again.
+
+Fix: a cost program for each, with its pin.
+
+Check: perturbing each rule in =c1.cc= turns a row red.
+
 ** TODO =-o -= names a file, not standard output
 
 =rcc -S -o -= writes a file called =-= in the working directory. Every
-cc reads =-o -= as standard output for =-S=, and a reader of the IR
-expects it.
+cc reads =-o -= as standard output for =-S=, and a reader of the
+assembly expects it.
 
 Fix: with =-S=, an output of =-= writes the text to standard output;
 with =-c= or a link it stays a usage error.
 
-Check: =rcc -S -o - x.c | head -1= prints the first line of the IR
-and leaves no file.
-
-** TODO A failed =llc= under =-c= may leave a partial object
-
-With =-c=, =llc= writes straight to the output path. If it fails
-after opening the file, the path holds a partial object that a
-later =make= would take for a good one. Unchecked.
-
-Fix: write to a temporary beside the output and rename on success,
-or confirm =llc= removes its output on failure.
-
-Check: a fake =llc= that writes then exits 7 leaves no output file.
-
-* Emitter
-
-** TODO The object names the temporary IR file, so no two builds match
-
-The IR has no =source_filename=, so =llc= names the module after the
-file it reads, the driver's temporary =rcc-XXXXXX.ll=. The object's
-file symbol is that name (=objdump -t= shows =rcc-BRXkWH.ll=), and two
-=rcc -c= builds of the same source differ in it.
-
-Fix: the emitter writes ~source_filename = "<the .c path>"~ at the
-top of the IR.
-
-Check: two =rcc -c= builds of =tests/cost/local.c= compare equal with
-=cmp=, and =objdump -t= names the =.c= file.
-
-** TODO A loop's end block with several predecessors
-
-When =break= and =continue= arrive, a loop's end block gets several
-predecessors: the two-arm join of the register variables generalizes
-to n arms then.
-
-Fix: =join= over a list of arms.
-
-Check: a register variable assigned before a =break= has that value
-after the loop.
+Check: =rcc -S -o - x.c | head -1= prints the first line of the
+assembly and leaves no file.
 
 * Parser
+
+** TODO A warning recorded before an error is never printed
+
+The parser records a warning in the unit, and the driver prints the
+unit's warnings only after a successful parse. =error_t= ends the
+parse at the first error, so the unit and its warnings are lost with
+the exception. Thus =&k= on a sixth register variable reports the
+error alone: the warning that put =k= in a slot was recorded at its
+declaration, before the error, and is never printed.
+
+Fix: the driver prints the warnings the parser recorded before the
+error too. Since the unit is lost with the exception, the warnings
+need a home the exception does not destroy, such as a list the
+driver passes to the parser.
+
+Check: =int f(void) { register int a, b, c, d, e, k; return *&k; }=
+prints the warning at =k= and then the error at =&=, exit status 1.
 
 ** TODO Assignment to a const object is not diagnosed
 
@@ -280,22 +278,62 @@ A probe says which headers need what.
 
 Check: `#include <stdio.h>` followed by an empty `main` parses.
 
-** TODO An array size must be one integer literal
+** TODO A parameter's array size cannot name an earlier parameter
 
-The parser takes an array size only as a lone integer token: =int
-a[96 * 96];= fails with "not yet: array size other than an integer
-constant", though an integer constant expression of any form makes a
-fixed-size array, 6.7.7.3p4. A macro that expands to a literal works;
-one that expands to an expression does not. =tests/perf/matmul.c=
-writes its size out as 9216.
+=int f(int n, int a[n])= fails with "'n' undeclared". Before the
+evaluator, any size but one integer token was a not-yet; the size is
+now parsed as an expression, and the name in it is looked up. The
+parser declares a definition's parameters only after the whole
+declarator, in =function_definition=, and a prototype's never, so no
+parameter is in scope inside the list. The program is valid C: =n='s
+scope begins just after its declarator (6.2.1p7), and a definition's
+parameter list has block scope (6.2.1p4). The size changes nothing:
+6.7.7.4p6 adjusts the parameter to a pointer, and at prototype scope
+6.7.7.3p5 treats a size that is not an integer constant expression as
+=*=.
 
-Fix: evaluate an integer constant expression for the size: the
-integer constants and character constants, the arithmetic, shift,
-bitwise, relational, logical and conditional operators on them,
-casts to an integer type, and =sizeof=.
+Fix: a scope opened at the parameter list, each parameter declared as
+its declarator completes, which a definition keeps as its body's
+scope; a parameter's size that is not an integer constant expression
+taken as =*=. In a definition this skips the evaluation of the size
+that 6.7.7.3p5 asks for, which only a size with a side effect shows.
 
-Check: =int a[96 * 96];= has 9216 elements in the IR, and =int a[n];=
-with =n= a variable is still refused.
+Check: =int f(int n, int a[n]) { return a[0]; }= compiles to the
+listing of =int f(int n, int *a)=; =int g(int n) { int a[n]; }= is
+still the variable-length not-yet.
+
+** TODO A =(void *) 0= arm makes =?:= a =void *=
+
+=c ? (void *) 0 : p= with =p= an =int *= has type =void *= in the
+tree, so =*(c ? (void *) 0 : p)= fails with "indirection through a
+pointer to void". 6.5.16p7 gives the result the type of the other
+operand when one operand is a null pointer constant, and =(void *) 0=
+is one (6.3.2.3p3); the result is an =int *=. =common_pointer()=
+asks whether an operand is a null pointer constant only when it is
+not a pointer. Two pointers of different types thus meet at =void *=
+whenever one is a =void *=, which is p7's rule for a pointer to void
+that is not a null pointer constant.
+
+Fix: in =common_pointer()=, a null pointer constant takes the other
+operand's type before the rule for =void *= applies.
+
+Check: =int f(int c, int *p) { return *(c ? (void *) 0 : p); }=
+compiles; =c ? v : p= with =v= a =void *= variable is still =void *=.
+
+** TODO The operand of =!= is not promoted
+
+=!E= is defined as =(0==E)= (6.5.4.3p5), and the equality operator
+promotes a =char= operand to =int=. The parser builds =!c= on the
+unpromoted =char=, and c1 compares it at the =char='s width, =cmpb
+$0=. The result is the same, 0 or 1, but the tree does not say what
+the standard says, and the listing shows a byte compare where the
+operation is on an =int=.
+
+Fix: the parser inserts the promotion cast on the operand of =!=; c1
+then writes =cmpl=.
+
+Check: the listing of =!c= on a =char= is the load =movsbl= and
+=cmpl $0=.
 
 * Lexer
 

@@ -1,11 +1,26 @@
-Disassembly of section .text:
-
-<parameter>:
-	mov    %edi,-0xc(%rsp)
-	mov    %esi,-0x8(%rsp)
-	mov    -0xc(%rsp),%ecx
-	mov    -0x8(%rsp),%eax
-	sub    %eax,%ecx
-	mov    -0xc(%rsp),%eax
-	add    %ecx,%eax
+	.file	"parameter.c"
+	.text
+	.globl	parameter
+	.type	parameter, @function
+parameter:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	movl	-4(%rbp), %eax
+	movl	-8(%rbp), %ecx
+	subl	%ecx, %eax
+	movl	-4(%rbp), %ecx
+	addl	%ecx, %eax
+	jmp	.Lparameter.1
+.Lparameter.1:
+	leave
+	.cfi_def_cfa %rsp, 8
 	ret
+	.cfi_endproc
+	.size	parameter, .-parameter
+	.section	.note.GNU-stack,"",@progbits

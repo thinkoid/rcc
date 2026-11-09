@@ -1,9 +1,9 @@
-/* Chapter 3, a pointer as a condition and p == 0: icmp against null.
-   The listing must show test() comparing the pointer with
-   cmp $0x0 once and branching with je, no second comparison, since
-   the condition is the pointer's own compare and not an int tested
-   again; and equal() comparing with cmp $0x0 and sete, widened to
-   int. */
+/* backend.md 7.1, a pointer as a condition, and 6.3, p == 0 as a
+   value.  The listing must show test() comparing the pointer with
+   cmpq $0, %rax once and branching with je, then each return's movl
+   and jmp to the epilogue label, the last one included; and equal()
+   comparing with cmpq $0, %rax and sete, widened with
+   movzbl %al, %eax. */
 int test(int *p)
 {
     if (p)

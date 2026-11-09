@@ -8,10 +8,11 @@
 # Each program tests/corpus/<name>.c is built by ./rcc, which has no
 # optimization levels, and by clang -O2, and each build is run with
 # no arguments and no standard input.  The two exit statuses are
-# compared with the program's row in tests/corpus/expected.  The IR
-# rcc writes with -S is diffed against the pin, tests/corpus/<name>.ll.
-# A row passes when both statuses match the table and the pin matches
-# the IR; a program without a row or without a pin fails.
+# compared with the program's row in tests/corpus/expected.  The
+# assembly rcc writes with -S is diffed against the pin,
+# tests/corpus/<name>.s.  A row passes when both statuses match the
+# table and the pin matches the assembly; a program without a row or
+# without a pin fails.
 #
 # A program may hang by promise, so each run has a time limit of 10
 # seconds when timeout(1) is on the path.  A run it stops, status 124,
@@ -21,9 +22,9 @@
 # The script prints a table, one row per program, and a summary, and
 # exits 0 when every row passed, 1 otherwise.  It runs from the tree
 # root with ./rcc built, as make test runs it.  The programs, their
-# IR and the log of every command stay in build/oracle; each command's
-# output in the log follows a "### <command>:" line and ends with a
-# "### status <n>" line.
+# assembly and the log of every command stay in build/oracle; each
+# command's output in the log follows a "### <command>:" line and ends
+# with a "### status <n>" line.
 #
 # tests/corpus/expected holds one line per program: its name, the
 # exit status of the rcc build and that of the clang build, separated
@@ -39,13 +40,14 @@
 # OPTIONS:
 #
 #     --pin
-#         Adopts the run.  Copies the IR of every program over its
-#         pin, and rewrites the status columns of tests/corpus/expected
-#         from the measured statuses, printing what changed in each.
-#         A program that did not build, or wrote no IR, is left as it
-#         was.  Exits 0 when every program was adopted, 1 otherwise.
-#         It is how a new program enters the corpus, after a human
-#         has read its IR and its statuses.
+#         Adopts the run.  Copies the assembly of every program over
+#         its pin, and rewrites the status columns of
+#         tests/corpus/expected from the measured statuses, printing
+#         what changed in each.  A program that did not build, or
+#         wrote no assembly, is left as it was.  Exits 0 when every
+#         program was adopted, 1 otherwise.  It is how a new program
+#         enters the corpus, after a human has read its assembly and
+#         its statuses.
 #
 #     --help
 #         Prints the usage and exits.
@@ -74,13 +76,6 @@ myname=${0##*/}
 corpus=tests/corpus
 expected=$corpus/expected
 
-# the work directory, kept between runs and removed by make clean
-workdir=build/oracle
-
-# the log of every command, and the statuses each program gave
-log=$workdir/log
-measured=$workdir/measured
-
 # the shown status of a program that did not build
 unbuilt=unbuilt
 
@@ -100,6 +95,13 @@ export LC_ALL
 # with --pin, the run is adopted as the pins and the expected statuses
 pin=0
 
+# the work directory, kept between runs and removed by make clean
+workdir=build/oracle
+
+# the log of every command, and the statuses each program gave
+log=$workdir/log
+measured=$workdir/measured
+
 # 1 when timeout(1) is on the path and each run has the time limit
 limited=0
 
@@ -114,8 +116,8 @@ usage()
 {
     echo "usage: $0 [ --pin ] [ --help ]"
     echo
-    echo "    --pin   adopt the run: rewrite the pins and the expected statuses"
-    echo "    --help  print this usage"
+    echo "    --pin     adopt the run: rewrite the pins and the expected statuses"
+    echo "    --help    print this usage"
 }
 
 
@@ -204,21 +206,21 @@ measure()
 
 
 ##########
-# check_pin(): writes the program's IR with rcc -S and diffs it against
-# the pin; prints "pin ok", "pin differs" or "no pin"
+# check_pin(): writes the program's assembly with rcc -S and diffs it
+# against the pin; prints "pin ok", "pin differs" or "no pin"
 check_pin()
 {
     name=$1
 
-    pin_file=$corpus/$name.ll
-    ir_file=$workdir/$name.ll
+    pin_file=$corpus/$name.s
+    asm_file=$workdir/$name.s
 
-    # a failure leaves no IR, and the diff below reports the difference
-    logged ./rcc -S -o "$ir_file" "$corpus/$name.c"
+    # a failure leaves no text, and the diff below reports the difference
+    logged ./rcc -S -o "$asm_file" "$corpus/$name.c"
 
     if [ ! -e "$pin_file" ]; then
         echo "no pin"
-    elif logged diff -u "$pin_file" "$ir_file"; then
+    elif logged diff -u "$pin_file" "$asm_file"; then
         echo "pin ok"
     else
         echo "pin differs"
@@ -260,9 +262,9 @@ print_row()
 
 
 ##########
-# check_program(): builds and runs one program both ways, diffs its IR
-# against the pin, records its statuses and prints its row; reports 0
-# when the row passed, 1 when it failed
+# check_program(): builds and runs one program both ways, diffs its
+# assembly against the pin, records its statuses and prints its row;
+# reports 0 when the row passed, 1 when it failed
 check_program()
 {
     name=$1
@@ -271,7 +273,7 @@ check_program()
     stem=$workdir/$name
 
     # an output left by an earlier run must not stand in for this one's
-    rm -f "$stem.rcc" "$stem.clang" "$stem.ll"
+    rm -f "$stem.rcc" "$stem.clang" "$stem.s"
 
     rcc_status=$(measure "$source" "$stem.rcc" ./rcc)
     clang_status=$(measure "$source" "$stem.clang" clang -O2)
@@ -298,9 +300,9 @@ check_program()
 
 
 ##########
-# adopt_pins(): copies the IR of the run over the pin of every program,
-# printing each pin it made or changed; reports 1 when a program wrote
-# no IR or a pin could not be written, 0 otherwise
+# adopt_pins(): copies the assembly of the run over the pin of every
+# program, printing each pin it made or changed; reports 1 when a
+# program wrote no text or a pin could not be written, 0 otherwise
 adopt_pins()
 {
     result=0
@@ -311,17 +313,17 @@ adopt_pins()
         name=${source##*/}
         name=${name%.c}
 
-        pin_file=$corpus/$name.ll
-        ir_file=$workdir/$name.ll
+        pin_file=$corpus/$name.s
+        asm_file=$workdir/$name.s
 
-        if [ ! -e "$ir_file" ]; then
-            echo "$name: no IR, pin left as it was"
+        if [ ! -e "$asm_file" ]; then
+            echo "$name: no text, pin left as it was"
             result=1
         elif [ ! -e "$pin_file" ]; then
-            cp "$ir_file" "$pin_file" && echo "pinned $pin_file (new)" ||
+            cp "$asm_file" "$pin_file" && echo "pinned $pin_file (new)" ||
                 result=1
-        elif ! cmp -s "$pin_file" "$ir_file"; then
-            cp "$ir_file" "$pin_file" && echo "pinned $pin_file (changed)" ||
+        elif ! cmp -s "$pin_file" "$asm_file"; then
+            cp "$asm_file" "$pin_file" && echo "pinned $pin_file (changed)" ||
                 result=1
         fi
     done

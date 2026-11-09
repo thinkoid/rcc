@@ -26,7 +26,7 @@ probes are at the end.
 Draft 1 assumed the IR would be handed to LLVM's optimizer, and the
 guard of G4, the round trip of G8 and the laundering of G16 were
 designed to survive it. The pipeline since became literal (`cost.md`,
-`shape.md` chapter 1): no optimizer runs, those three mechanisms are
+`llvm.md` chapter 2): no optimizer runs, those three mechanisms are
 not emitted, and the arguments below stand as the record of what the
 optimizer would have done to the plain instruction, which is why it
 does not run.
@@ -312,7 +312,8 @@ The grant (G15) is the one exception, and it is written in the source.
 Per the README: the same program under `clang -O2` and under
 rcc on a corpus of the known UB-divergence cases; where the two
 differ is the experiment's output. The IR text per test program,
-diffed, is the pin. The first corpus entry per guarantee is the
+diffed, was the pin under the LLVM pipeline; the assembly text is the
+pin now. The first corpus entry per guarantee is the
 `opt -O2` probe that shows the fold the promise removes.
 
 ## Probes (LLVM 23.1.3, `opt -O2 -S`)

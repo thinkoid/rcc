@@ -1,0 +1,33 @@
+	.file	"g8-cross-object.c"
+	.text
+	.globl	main
+	.type	main, @function
+main:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	$1, -8(%rbp)
+	movl	$2, -12(%rbp)
+	leaq	-12(%rbp), %rax
+	leaq	-8(%rbp), %rcx
+	subq	%rcx, %rax
+	movq	%rax, -24(%rbp)
+	leaq	-8(%rbp), %rax
+	movq	%rax, -32(%rbp)
+	movq	-32(%rbp), %rax
+	movq	-24(%rbp), %rcx
+	addq	%rcx, %rax
+	movl	$3, (%rax)
+	movl	-12(%rbp), %eax
+	jmp	.Lmain.1
+.Lmain.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	main, .-main
+	.section	.note.GNU-stack,"",@progbits
