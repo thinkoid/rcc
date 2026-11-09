@@ -345,6 +345,18 @@ place_label(state_t &s, int n)
     s.terminated = false;
 }
 
+// A loop's head opens a 32-byte window of the code: Zen 2 fetches 32
+// bytes a cycle, and where the head falls in its window moves a hot
+// loop's time (cost.md 4.2).  The directive is a convention of the
+// target, as the stack's 16 bytes at a call are, not knowledge of the
+// program.  With no fill byte named, the assembler fills the gap in a
+// code section with multi-byte nops.
+void
+align_loop_head(state_t &s)
+{
+    s.body << "\t.p2align 5\n";
+}
+
 void
 jump(state_t &s, int n)
 {
@@ -2363,6 +2375,7 @@ while_stmt(state_t &s, const while_t &w)
     const int cond = new_label(s);
     const int end = new_label(s);
 
+    align_loop_head(s);
     place_label(s, cond);
     cbranch(s, w.cond, end, false);
 
@@ -2392,6 +2405,7 @@ for_stmt(state_t &s, const for_t &f)
     const int next = new_label(s);
     const int end = new_label(s);
 
+    align_loop_head(s);
     place_label(s, cond);
     if (f.cond)
         cbranch(s, *f.cond, end, false);

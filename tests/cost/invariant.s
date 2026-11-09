@@ -14,6 +14,7 @@ invariant:
 	movl	%edx, -12(%rbp)
 	movl	$0, -16(%rbp)
 	movl	$0, -20(%rbp)
+	.p2align 5
 .Linvariant.2:
 	movl	-20(%rbp), %eax
 	movl	-12(%rbp), %ecx
@@ -56,6 +57,7 @@ invariant_constant:
 	movl	%edi, -4(%rbp)
 	movl	$0, -8(%rbp)
 	movl	$0, -12(%rbp)
+	.p2align 5
 .Linvariant_constant.2:
 	movl	-12(%rbp), %eax
 	movl	-4(%rbp), %ecx

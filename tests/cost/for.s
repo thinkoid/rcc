@@ -12,6 +12,7 @@ sum:
 	movl	%edi, -4(%rbp)
 	movl	$0, -8(%rbp)
 	movl	$0, -12(%rbp)
+	.p2align 5
 .Lsum.2:
 	movl	-12(%rbp), %eax
 	movl	-4(%rbp), %ecx

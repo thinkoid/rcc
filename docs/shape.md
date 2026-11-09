@@ -132,9 +132,10 @@ tree and a second walk for no invariant the compiler needs.
 
 `generate(unit, file, out)` walks the tree and writes x86-64 assembly
 text in AT&T syntax, one instruction, or the machine's fixed
-sequence, per operator, with nothing added and nothing left out.
-`file` is the source's name, for the `.file` directive. The rules,
-each the code of a `backend.md` chapter:
+sequence, per operator, with nothing added and nothing left out but
+the 32-byte alignment of a loop's head, which is layout, not an
+operator's code. `file` is the source's name, for the `.file`
+directive. The rules, each the code of a `backend.md` chapter:
 
 - The state is per function, reset at each definition: the slots,
   the held values, the register variables, the frame's size, the

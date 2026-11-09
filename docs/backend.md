@@ -596,13 +596,15 @@ the promotion is queued.
 
 - `if (e) s1 else s2`: `cbranch(e, .Lelse, 0); s1; jmp .Lend;
   .Lelse: s2; .Lend:`. Without `else`, no `jmp` and one label.
-- `while (e) s`: `.Lcond: cbranch(e, .Lend, 0); s; jmp .Lcond;
-  .Lend:`. The condition is at the top, where it is written, and
-  tested once per iteration plus once; no rotation, no duplicated
-  test at the bottom.
-- `for (i; e; n) s`: `i; .Lcond: cbranch(e, .Lend, 0); s; .Lstep: n;
-  jmp .Lcond; .Lend:`. `continue` will jump to `.Lstep`, `break` to
-  `.Lend`.
+- `while (e) s`: `.p2align 5; .Lcond: cbranch(e, .Lend, 0); s; jmp
+  .Lcond; .Lend:`. The condition is at the top, where it is written,
+  and tested once per iteration plus once; no rotation, no
+  duplicated test at the bottom. The directive aligns the head to 32
+  bytes, and the assembler fills the gap with multi-byte `nop`s (13,
+  call 8).
+- `for (i; e; n) s`: `i; .p2align 5; .Lcond: cbranch(e, .Lend, 0); s;
+  .Lstep: n; jmp .Lcond; .Lend:`. `continue` will jump to `.Lstep`,
+  `break` to `.Lend`.
 - `e ? a : b` for its value: `cbranch(e, .Lelse, 0)`, `a` into `L`,
   `jmp .Lend`, `.Lelse:` `b` into the same `L`, `.Lend:`. Never
   `cmov`: the arm not chosen is not evaluated (6.5.16p5), and the
@@ -785,9 +787,9 @@ exit status; `-w` silences it.
 
 ## 13. The calls
 
-Six were open in the first draft of this page, and a seventh came
-later. `design-calls.md` weighs the first five one chapter each; the
-answers:
+Six were open in the first draft of this page, and a seventh and an
+eighth came later. `design-calls.md` weighs the first five one
+chapter each; the answers:
 
 1. **`rbp`** is the frame pointer in every function, and the
    register variables are five. A slot's offset is known at its
@@ -813,3 +815,5 @@ answers:
    `src/c1.cc` and `src/c1.hh`.
 7. **The effect context takes the memory forms**, as Ritchie's
    `efftab` did: `x += 5;` is `addl $5, x` and `x++;` is `addl $1, x`.
+8. **Every loop head is aligned to 32 bytes**, `.p2align 5`, a
+   convention of the target; the measurement is `cost.md` 4.2.

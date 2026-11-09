@@ -18,6 +18,7 @@ sum:
 	movl	%edi, %ebx
 	movl	$0, %r12d
 	movl	$0, %r13d
+	.p2align 5
 .Lsum.2:
 	cmpl	%ebx, %r13d
 	jge	.Lsum.4

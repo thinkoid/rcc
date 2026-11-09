@@ -12,6 +12,7 @@ constant_in_loop:
 	movq	%rdi, -8(%rbp)
 	movl	%esi, -12(%rbp)
 	movl	$0, -16(%rbp)
+	.p2align 5
 .Lconstant_in_loop.2:
 	movl	-16(%rbp), %eax
 	movl	-12(%rbp), %ecx

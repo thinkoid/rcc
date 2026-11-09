@@ -11,6 +11,7 @@ main:
 	.cfi_def_cfa_register %rbp
 	movl	%edi, -4(%rbp)
 	movl	$0, -16(%rbp)
+	.p2align 5
 .Lmain.2:
 	movl	-16(%rbp), %eax
 	cmpl	$8, %eax

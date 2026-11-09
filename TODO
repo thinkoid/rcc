@@ -19,29 +19,8 @@ The direction is taken: c1 is rcc's only back end, it writes x86-64
 assembly itself, and the system cc preprocesses, assembles and
 links. The reasons are =docs/findings.md= and =docs/llvm.md=, the
 design is =docs/backend.md= with its calls made in
-=docs/design-calls.md=. The chapter holds the question the
-measurement left open, c1's own defects and the second target.
-
-** TODO A hot loop's time swings with the placement of its head
-
-c1 writes no alignment directive, so a loop's head lands wherever the
-code before it ends. =cost.md= 4.2 moved the re-tuned collatz step loop
-through the eight 4-byte offsets of a 32-byte window: 480 to 496 ms at
-offsets 0 to 12, 536 to 660 from 16 on, where =make bench= placed it;
-so the re-tuning, which left no stack operand in the loop, measured
-slower, 1.91 to 2.14. matmul's inner loop moves the other way: 811 ms
-at offset 0, 599 at the offset 22 the assembler gave it. clang writes
-=.p2align 4, 0x90= before every loop head. No one alignment wins both
-loops, and which a loop wants is not read from the numbers.
-
-Fix: open. Either c1 writes =.p2align 4= before every loop head, as the
-system compiler does, and the six rows are measured at it; or it writes
-nothing, and =cost.md= keeps saying that a ratio is a fact about one
-layout.
-
-Check: the choice recorded in =backend.md= with its reason; if c1
-aligns, =cost.md= chapter 4 re-recorded, and the collatz and matmul
-notes say where each head lands.
+=docs/design-calls.md=. The chapter holds c1's own defects and the
+second target.
 
 ** TODO A memory-form shift on a slot moves its count from =eax=
 

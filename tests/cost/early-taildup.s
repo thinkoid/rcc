@@ -12,6 +12,7 @@ join:
 	movl	%edi, -4(%rbp)
 	movl	%esi, -8(%rbp)
 	movl	$0, -12(%rbp)
+	.p2align 5
 .Ljoin.2:
 	movl	-12(%rbp), %eax
 	movl	-8(%rbp), %ecx

@@ -11,6 +11,7 @@ count:
 	.cfi_def_cfa_register %rbp
 	movl	%edi, -4(%rbp)
 	movl	$0, -8(%rbp)
+	.p2align 5
 .Lcount.2:
 	movl	-8(%rbp), %eax
 	movl	-4(%rbp), %ecx
