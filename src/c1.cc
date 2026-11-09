@@ -1177,13 +1177,17 @@ divide(state_t &s, binary_op_t op, value_t l, value_t r, const int_t &t)
 // count's own width, which the parser leaves at its promoted type, a
 // value held in rcx moving out first (chapter 6.5), a register variable
 // copied there.
+const char *
+shift_mnemonic(binary_op_t op, bool is_signed)
+{
+    return op == binary_op_t::shl ? "shl" : is_signed ? "sar" : "shr";
+}
+
 value_t
 shift(state_t &s, binary_op_t op, value_t l, const expr_t &rhs, const int_t &t)
 {
     const int width = t.width;
-    const auto stem = op == binary_op_t::shl ? "shl" :
-                      t.is_signed            ? "sar" :
-                                               "shr";
+    const auto stem = shift_mnemonic(op, t.is_signed);
 
     if (is< literal_t >(rhs)) {
         insn(s, sized(stem, width),
@@ -1582,15 +1586,14 @@ binary(state_t &s, const expr_t &e)
 // The prefix forms yield a read of the variable after the write, as a
 // compound assignment does.
 value_t
-step_register(state_t &s, const unary_t &u, const symbol_t *sym)
+step_register(state_t &s, unary_op_t op, const symbol_t *sym)
 {
     const auto &t = integer(sym->type);
     const int width = register_width(sym);
     const long amount = is< pointer_t >(sym->type) ? stride(sym->type) : 1;
 
-    const bool up = u.op == unary_op_t::pre_inc || u.op == unary_op_t::post_inc;
-    const bool post =
-        u.op == unary_op_t::post_inc || u.op == unary_op_t::post_dec;
+    const bool up = op == unary_op_t::pre_inc || op == unary_op_t::post_inc;
+    const bool post = op == unary_op_t::post_inc || op == unary_op_t::post_dec;
 
     const auto old = post ? read(s, sym) : value_t { };
     preserve(s, sym);
@@ -1613,7 +1616,7 @@ value_t
 step(state_t &s, const unary_t &u)
 {
     if (const auto *sym = register_variable(*u.arg))
-        return step_register(s, u, sym);
+        return step_register(s, u.op, sym);
 
     const auto &t = integer(u.arg->type);
     const int width = std::max(32, t.width);
@@ -2046,15 +2049,181 @@ constant_assignment(state_t &s, const assign_t &a)
     return true;
 }
 
+// The memory forms, chapter 6.6: the operator on the object at the
+// object's width, op R, obj or op $c, obj.  The address is held and
+// the right operand evaluated before the operand is formed, since the
+// right operand may spill the address's base or index (G13).
+
+// +=, -=, &=, |= and ^=: addl $5, -8(%rbp), andb %cl, (%rax).  G1, G2:
+// the low bits of the operation in int are the low bits of the
+// operation at the object's width.
+void
+arithmetic_on(state_t &s,
+              binary_op_t op,
+              const address_t &place,
+              const expr_t &rhs,
+              int width)
+{
+    const auto mnemonic = sized(arithmetic_mnemonic(op), width);
+
+    if (immediate(rhs, width)) {
+        insn(s, mnemonic, { immediate_of(rhs, width), operand(s, place) });
+        return;
+    }
+
+    const auto r = rvalue(s, rhs);
+    const reg_t right = reg_of(s, r, registers_of(s, place));
+    insn(s, mnemonic, { reg(right, width), operand(s, place, bit(right)) });
+    release(s, r);
+}
+
+// <<= and >>=: shlb $3, (%rax), the count the immediate or in cl, as
+// for shift(); sar for a signed object and shr for an unsigned one.
+// G3: the instruction masks the count to 5 bits at 8, 16 and 32 bits,
+// as the promoted operation does, and the low bits of its result are
+// the narrow shift's.
+void
+shift_on(state_t &s,
+         binary_op_t op,
+         const address_t &place,
+         const expr_t &rhs,
+         const int_t &t)
+{
+    const auto mnemonic = sized(shift_mnemonic(op, t.is_signed), t.width);
+
+    if (is< literal_t >(rhs)) {
+        insn(s, mnemonic,
+             { imm(as< literal_t >(rhs).value & 0xff), operand(s, place) });
+        return;
+    }
+
+    const auto r = rvalue(s, rhs);
+    const unsigned held = registers_of(s, place);
+    const reg_t right = reg_of(s, r, held);
+
+    if (right != rcx) {
+        vacate(s, rcx, held | bit(right));
+
+        if (fixed(s, r))
+            copy(s, r, rcx);
+        else
+            move(s, right, rcx, operation_width(rhs.type));
+    }
+
+    insn(s, mnemonic, { "%cl", operand(s, place, bit(rcx)) });
+    release(s, r);
+}
+
+// p += n and p -= n: addq $8, -8(%rbp) for a constant n the immediate
+// holds times the size; otherwise n in a register, multiplied by the
+// size as for displaced(), then addq R, obj or subq R, obj.  G6.
+void
+displaced_on(state_t &s,
+             binary_op_t op,
+             const address_t &place,
+             const expr_t &n,
+             long size)
+{
+    const auto mnemonic = op == binary_op_t::add ? "addq" : "subq";
+    const unsigned held = registers_of(s, place);
+
+    value_t r;
+    if (is< literal_t >(n)) {
+        const auto d = scaled(as< literal_t >(n).value, size);
+        if (fits_imm32(d)) {
+            insn(s, mnemonic, { imm(d), operand(s, place) });
+            return;
+        }
+
+        r = fresh(s, 64, held);
+        insn(s, "movabsq", { imm(d), reg(reg_of(s, r), 64) });
+    }
+    else {
+        r = rvalue(s, n);
+        if (size != 1) {
+            const reg_t index = writable(s, r, held);
+            insn(s, "imulq", { imm(size), reg(index, 64), reg(index, 64) });
+        }
+    }
+
+    const reg_t right = reg_of(s, r, held);
+    insn(s, mnemonic, { reg(right, 64), operand(s, place, bit(right)) });
+    release(s, r);
+}
+
+// A compound assignment for its effect, on an object in memory: the
+// address, then the one instruction on the object.  False for a
+// register variable, whose operation is in place already, and for *=,
+// /= and %=, which keep the load, the operation and the store: imul
+// has no memory destination, and idiv none at all.
+bool
+modify(state_t &s, const assign_t &a)
+{
+    if (!a.op || register_variable(*a.lhs))
+        return false;
+
+    const auto op = *a.op;
+    if (op == binary_op_t::mul || op == binary_op_t::div ||
+        op == binary_op_t::rem)
+        return false;
+
+    const auto &t = integer(a.lhs->type);
+    const auto place = address(s, *a.lhs);
+
+    if (op == binary_op_t::shl || op == binary_op_t::shr)
+        shift_on(s, op, place, *a.rhs, t);
+    else if (is< pointer_t >(a.lhs->type))
+        displaced_on(s, op, place, *a.rhs, stride(a.lhs->type));
+    else
+        arithmetic_on(s, op, place, *a.rhs, t.width);
+
+    release(s, place);
+
+    return true;
+}
+
+// ++ and -- for their effect: add $1 or sub $1 on the object at its
+// width, addq $8 for a pointer to 8 bytes, and no old value copied,
+// since nothing reads it.  A register variable's step is its prefix
+// form, which copies no read.
+void
+modify(state_t &s, const unary_t &u)
+{
+    const bool up = u.op == unary_op_t::pre_inc || u.op == unary_op_t::post_inc;
+
+    if (const auto *sym = register_variable(*u.arg)) {
+        const auto prefix = up ? unary_op_t::pre_inc : unary_op_t::pre_dec;
+        release(s, step_register(s, prefix, sym));
+        return;
+    }
+
+    const auto &t = integer(u.arg->type);
+    const long amount = is< pointer_t >(u.arg->type) ? stride(u.arg->type) : 1;
+
+    const auto place = address(s, *u.arg);
+    insn(s, sized(up ? "add" : "sub", t.width),
+         { imm(amount), operand(s, place) });
+    release(s, place);
+}
+
 // The effect context, chapter 6.6, Ritchie's efftab beside regtab and
 // cctab: an expression evaluated for its side effects, its value not
-// wanted.  A constant assigned to memory is stored directly; anything
-// else is its value, discarded.
+// wanted.  A constant assigned to memory is stored directly, and a
+// compound assignment or a step on an object in memory is the memory
+// form; anything else is its value, discarded.
 void
 effect(state_t &s, const expr_t &e)
 {
-    if (is< assign_t >(e) && constant_assignment(s, as< assign_t >(e)))
+    if (is< assign_t >(e)) {
+        const auto &a = as< assign_t >(e);
+        if (constant_assignment(s, a) || modify(s, a))
+            return;
+    }
+
+    if (is< unary_t >(e) && is_step(as< unary_t >(e).op)) {
+        modify(s, as< unary_t >(e));
         return;
+    }
 
     release(s, rvalue(s, e));
 }

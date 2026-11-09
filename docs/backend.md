@@ -382,8 +382,8 @@ promotion casts before any operator sees them, as today.
 | `a < b` and the rest, as a value | `cmp R, L`; `setcc %Lb`; `movzbl %Lb, L` | `setl`, `setle`, `setg`, `setge`, `sete`, `setne` signed; `setb`, `setbe`, `seta`, `setae` unsigned and for pointers (G7) |
 | `a && b`, `a \|\| b`, `a ? b : c`, as a value | jump code of chapter 7 into `L`, with `mov $0, L` and `mov $1, L` on the arms | no `setcc` chain |
 | `x = e` | `mov L, slot` or `mov L, reg`, the value staying in `L`; a constant goes as the immediate straight into a register variable, `movl $0, %r12d`, or into memory when the assignment is evaluated for its effect alone, `movl $0, -12(%rbp)` (6.6) | a `char` store is `movb %Lb` |
-| `x op= e` | the load row, the op row, the store row | |
-| `++x`, `x++`, `--x`, `x--` | the load, `add $1` or `sub $1`, the store; the post forms keep the old value in another register | `add $size` for a pointer |
+| `x op= e` | in the effect context, the op on the object, `addl %eax, -12(%rbp)`, but for `*=`, `/=` and `%=` (6.6); in a value context, the load row, the op row, the store row | `*=`, `/=` and `%=` are always the load, the op and the store: `imul` has no memory destination and `idiv` none at all |
+| `++x`, `x++`, `--x`, `x--` | in the effect context, the op on the object, `addl $1, -8(%rbp)`, and no old value (6.6); in a value context, the load, `add $1` or `sub $1`, the store, the post forms keeping the old value in another register | `add $size` for a pointer |
 | `(T) a` | `movslq L, L64` for `int` to `long`, `movsbl` or `movzbl` from `Lb` for `char` to `int`, each only when `L` is not already valid to the new width (the width rule below); nothing for `long` to `int` (the 32-bit name is the value); nothing between pointer types; an integer to a pointer as to `unsigned long`, so `movslq` for an `int` (6.3.2.3p5); nothing for a pointer to `long` or `int` | G2: truncation is reading the low bits |
 | `&x` | `lea slot(%rbp), L` or `lea sym(%rip), L` | refused on a `register` variable, 6.5.4.2p1 |
 | `*p` | `mov (L), L` at the pointee's width and extension: `movsbl`, `movzbl`, `movswl`, `movzwl`, `movl`, `movq` | G8, G9, G10, G11: one `mov`, any address |
@@ -496,8 +496,7 @@ In the effect context, a plain assignment of a constant to an object
 in memory is one instruction. The lvalue's address is evaluated
 first, then the constant is written into it, `movb $122, (%rax)`,
 and no register is held. G13 holds, since the constant has no
-evaluation. Any other expression is evaluated by `rvalue()` and its
-value discarded.
+evaluation.
 
 The write is the store row of an initializer, `initialize()`: a
 constant the immediate holds is `mov $c` of the object's width into
@@ -512,9 +511,45 @@ in 6.3. Three writers share the row:
 - the effect context's assignment of a constant, through the
   lvalue's address.
 
+The effect context also takes the memory forms, as Ritchie's
+`efftab` did. Every PDP-11 arithmetic instruction took a memory
+operand, so `x++;` was `inc x` and `x += 5;` was `add $5, x`, and
+x86 has the same forms. On an object in memory, at the object's
+width:
+
+- `x++;`, `x--;`, `++x;` and `--x;` are `add $1` or `sub $1` on the
+  object, `addl $1, -8(%rbp)`, `addq $4` for a pointer to 4 bytes,
+  and no old value is copied;
+- `x += e;`, `-=`, `&=`, `|=` and `^=` are the right operand in a
+  register, or the immediate, then the operator on the object,
+  `addl %eax, -12(%rbp)`, `addb %al, -9(%rbp)`;
+- `x <<= e;` and `>>=` take the count in `cl`, or the immediate, and
+  shift the object, `sar` for a signed object and `shr` for an
+  unsigned one;
+- a pointer's `+=` and `-=` multiply the index by the size in a
+  register first, then add it to the object or subtract it.
+
+This is the form of the operator on its operand, not a fold: the
+operation is written once, on the object, and nothing is left out.
+`*=`, `/=` and `%=` keep the load, the operation and the store,
+since `imul` has no memory destination and `idiv` none at all. The
+object's width writes the bytes the promoted operation and the narrow
+store write: the low bits of `add`, `sub`, `and`, `or`, `xor` and
+`shl` do not depend on the bits above them, `sar` on a signed object
+and `shr` on an unsigned one fill as the promoted shift does, and x86
+masks a count to 5 bits at 8, 16 and 32 bits alike (G1, G2, G3). The
+address is evaluated first and held, the right operand next, and the
+operand is formed last, since the right operand may spill the
+address's base or index (G13). A register variable is operated on in
+its register already (chapter 4); its postfix step is the prefix
+form, which copies no read. Any other expression is evaluated by
+`rvalue()` and its value discarded.
+
 The value context differs, since the value is wanted in a register.
 In `a = b = 5` the value of `b = 5` is wanted, so the 5 is loaded
-once, `movl $5, %eax`, and stored twice.
+once, `movl $5, %eax`, and stored twice; `y = x += 5` and `a[i++]`
+are the load, the operation and the store, and `i++` copies the old
+`i`.
 
 ## 7. Conditions and control
 
@@ -750,8 +785,9 @@ exit status; `-w` silences it.
 
 ## 13. The calls
 
-Six were open in the first draft of this page. `design-calls.md`
-weighs the first five one chapter each; the answers:
+Six were open in the first draft of this page, and a seventh came
+later. `design-calls.md` weighs the first five one chapter each; the
+answers:
 
 1. **`rbp`** is the frame pointer in every function, and the
    register variables are five. A slot's offset is known at its
@@ -774,3 +810,5 @@ weighs the first five one chapter each; the answers:
    draft's pushes put the eighth argument below the seventh.
 6. **The names.** The front end is c0, the generator is c1:
    `src/c1.cc` and `src/c1.hh`.
+7. **The effect context takes the memory forms**, as Ritchie's
+   `efftab` did: `x += 5;` is `addl $5, x` and `x++;` is `addl $1, x`.

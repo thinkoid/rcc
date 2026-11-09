@@ -23,10 +23,7 @@ main:
 	addl	%esi, %edx
 	movb	%dl, (%rax,%rcx,1)
 .Lmain.3:
-	movl	-16(%rbp), %eax
-	movl	%eax, %ecx
-	addl	$1, %eax
-	movl	%eax, -16(%rbp)
+	addl	$1, -16(%rbp)
 	jmp	.Lmain.2
 .Lmain.4:
 	leaq	-12(%rbp), %rax

@@ -164,7 +164,9 @@ each the code of a `backend.md` chapter:
 - Three entry points: `rvalue(e)` yields the value in a register,
   `cbranch(e, label, sense)` jumps on its truth and yields no value
   (chapter 7), and `effect(e)` writes its side effects and yields no
-  value, a constant assigned to memory in one store (6.6). `!`, `&&`
+  value: a constant assigned to memory is one store, and a compound
+  assignment or a step on an object in memory is the memory form,
+  the operator on the object, `addl $1, -8(%rbp)` (6.6). `!`, `&&`
   and `||` are the shape of the jumps; any other condition is its
   value compared with 0 at its own width.
 - An lvalue is an `address_t`: a slot off `rbp`, a label off `rip`,

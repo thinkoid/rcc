@@ -78,23 +78,21 @@ point at =cost.md= chapter 1.
 Check: no sentence of =design-calls.md= calls the record of the
 extent future.
 
-** TODO A post-increment for its effect copies the old value
+** TODO A memory-form shift on a slot moves its count from =eax=
 
-=i++;= as a statement or as =for='s step goes through =rvalue()=, so
-=step()= copies the old value into another register before the add:
-=movl %eax, %ecx; addl $1, %eax; movl %eax, -16(%rbp)= in the loop of
-=g11-misaligned=, and =(*p)--;= likewise copies =movl %ecx, %edx=.
-=effect()= hands every expression but a constant assignment to
-=rvalue()=, so the copy is made for a value nothing reads.
+The effect context's =x <<= n;= on a slot evaluates the count by
+=rvalue()=, which takes the lowest free register, =eax=, and
+=shift_on()= then moves it to =ecx=: =movl -8(%rbp), %eax; movl %eax,
+%ecx; shlb %cl, -9(%rbp)=. Through a pointer the base holds =rax=, so
+the count lands in =ecx= at once. The =mov= is a real move of a real
+value, but one the generator made for itself.
 
-Fix: in =effect()=, a postfix =++= or =--= is generated as its
-prefix form, whose value is the stored one and needs no copy; a
-register variable's postfix form thus also drops the =preserve()=
-copy of its old read.
+Fix: =shift_on()= evaluates a count that is not a constant with
+=rax= held out of =take()=, so that the count's load takes =rcx= when
+it is free, the next register of chapter 4's order.
 
-Check: =g11-misaligned='s step loses its =movl %eax, %ecx=; the probe
-=void g(int *p) { (*p)--; }= has no =movl %ecx, %edx=; =a[i++]= in a
-value context still copies.
+Check: the probe =int f(int a, int n) { char x = a; x <<= n; return
+x; }= has no =movl %eax, %ecx=; the 51 cost pins are unchanged.
 
 ** TODO A cast to void and a void =?:= arm leave the effect context
 
