@@ -22,11 +22,11 @@ does what the source says, and only that.
   stored. A sixth live at once takes a slot, with a warning. The
   keyword is the allocation, as it was on the PDP-11.
 - Chapter 4 holds the measurement under c1: the plain source runs
-  2.27 to 8.19 times as long under rcc as under `clang -O2`, and the
-  source tuned by hand for rcc 1.62 to 7.54 times. The 7.54 is
-  matmul, whose tuned `main` holds ten `register` variables live and
-  puts five in slots. Under the LLVM pipeline the two ranges were 1.49
-  to 8.43 and 1.33 to 4.40.
+  2.19 to 8.19 times as long under rcc as under `clang -O2`, and the
+  source tuned by hand for rcc 1.57 to 2.22 times. As first written,
+  matmul's tuned `main` held ten `register` variables live, put five
+  in slots and ran 7.54 times as long. Under the LLVM pipeline the
+  two ranges were 1.49 to 8.43 and 1.33 to 4.40.
 
 ## 1. The rule
 
@@ -179,20 +179,24 @@ which builds the four binaries, refuses a row whose four builds
 disagree on the exit status, and times each run under `timeout 120`.
 The numbers are bound to the machine, so nothing is pinned. `make
 bench` was run three times, and the table is the run whose cells sum
-least, on an x86-64 desktop, Zen 2, with clang 23.1.4, on 2026-11-09.
+least, on an x86-64 desktop, Zen 2, with clang 23.1.4, on 2026-11-09. A
+hot loop's time moves by up to a third with where its head lands in the
+code (4.2), so a ratio here is a fact about one layout of the binary,
+and a movement smaller than that between two layouts is not a fact
+about the model.
 
 | program | `clang -O2 <name>.c` | `rcc <name>.c` | `rcc <name>-tuned.c` | `clang -O2 <name>-tuned.c` |
 |---|---|---|---|---|
-| collatz | 296 (1.00) | 2320 (7.84) | 565 (1.91) | 294 (0.99) |
-| fib | 268 (1.00) | 608 (2.27) | 600 (2.24) | 262 (0.98) |
-| matmul | 283 (1.00) | 2318 (8.19) | 2133 (7.54) | 274 (0.97) |
-| sieve | 292 (1.00) | 1960 (6.71) | 472 (1.62) | 295 (1.01) |
-| sort | 279 (1.00) | 2225 (7.97) | 524 (1.88) | 282 (1.01) |
-| strings | 278 (1.00) | 2155 (7.75) | 633 (2.28) | 286 (1.03) |
+| collatz | 293 (1.00) | 2260 (7.71) | 628 (2.14) | 299 (1.02) |
+| fib | 273 (1.00) | 597 (2.19) | 605 (2.22) | 270 (0.99) |
+| matmul | 291 (1.00) | 2279 (7.83) | 599 (2.06) | 279 (0.96) |
+| sieve | 292 (1.00) | 1898 (6.50) | 459 (1.57) | 299 (1.02) |
+| sort | 272 (1.00) | 2229 (8.19) | 522 (1.92) | 283 (1.04) |
+| strings | 284 (1.00) | 2111 (7.43) | 628 (2.21) | 287 (1.01) |
 
-The plain source under rcc runs 2.27 to 8.19 times as long as under
-`clang -O2`. The tuned source under rcc runs 1.62 to 7.54 times as
-long. The tuned source under `clang -O2` runs 0.97 to 1.03 times as
+The plain source under rcc runs 2.19 to 8.19 times as long as under
+`clang -O2`. The tuned source under rcc runs 1.57 to 2.22 times as
+long. The tuned source under `clang -O2` runs 0.96 to 1.04 times as
 long as the plain one.
 
 **collatz.** The tuned source tests the parity with `& 1` and halves
@@ -203,13 +207,21 @@ iteration, for the loop test, the parity test and the step, stores it
 back, and adds 1 to the count in its slot, `addl $1, -52(%rbp)`. The
 parity test is `movq $2, %rcx; cqto; idivq %rcx` and a compare of the
 remainder with 0, `cmpq $0, %rax; jne .Lmain.10`, and the even path
-divides again. The tuned `main` holds seven `register` variables live
-in the step loop: total, rep, start, end and v take `rbx` and `r12`
-to `r15`, and x and steps, the sixth and the seventh, take slots,
-each with its warning. The step loop of `rcc collatz-tuned.c` thus
-has `andq $1, %rax` and `sarq $1, %rax` in place of the two `idivq`,
-but the same stack operands as the plain one, x at `-56(%rbp)` and
-steps at `-60(%rbp)`. The ratio falls from 7.84 to 1.91.
+divides again. The tuned `main` holds five `register` variables live
+in the step loop: total, end, v, x and steps take `rbx`, `r12`,
+`r13`, `r14` and `r15d`, and rep and start, declared without the
+keyword, take slots. Nothing warns. The step loop of `rcc
+collatz-tuned.c` has no stack operand: it compares x with 1, `cmpq
+$1, %r14`, tests the parity on a copy, `andq $1, %rax`, computes the
+odd step with `imulq %r14, %rax` and `addq $1, %rax` and the even one
+with `sarq $1, %rax`, moves the result back, `movq %rax, %r14`, and
+counts in its register, `addl $1, %r15d`. The ratio falls from 7.71 to
+2.14. As first written, with seven `register` variables live and x and
+steps in slots, the tuned ratio was 1.91: the re-tuning took both slots
+out of the step loop and the ratio rose. The listing does not say why;
+the loop's address does. The head of the step loop lands 16 bytes into
+a 32-byte window of the code, and 4.2 times the same loop at 480 ms, a
+ratio of 1.64, when its head opens a window.
 
 **fib.** The tuned source declares the parameter and the two partial
 sums `register`. `rcc fib.c` subtracts its frame, `subq $32, %rsp`,
@@ -224,8 +236,8 @@ and b in `r13d`. `rcc fib-tuned.c` moves the parameter in once,
 result in `r12d` across the second call; but every call, the base
 case included, pushes the three registers and pops them in the
 epilogue, and each argument still goes through its slot, `movl %eax,
--28(%rbp); movl -28(%rbp), %edi`. The ratio falls from 2.27 to 2.24,
-the least fall in the table. The work is the calls, and `clang -O2
+-28(%rbp); movl -28(%rbp), %edi`. The ratio rises from 2.19 to 2.22,
+the only rise in the table. The work is the calls, and `clang -O2
 fib.c` keeps one of the two recursive calls and turns the other into
 a loop.
 
@@ -236,18 +248,25 @@ inner loop of `rcc matmul.c` has four `imull`, two for `i * n` and
 one for `k * n` in the three indices and one for the product, eleven
 loads of i, j, k and n from their slots, the step `addl $1,
 -110632(%rbp)` on k's slot, and the product added to c's element in
-place, `addl %edx, (%rax,%rcx,4)`. The tuned `main` holds ten
-`register` variables live in the inner loop: n, bend, i, arow and
-aend take `ebx` and `r12` to `r15`, and pc, bcol, pa, pb and s, the
-sixth to the tenth, take slots, each with its warning. So the inner
-loop of `rcc matmul-tuned.c` loads pa from its slot for the test and
-for the element and pb for its element, adds the product to s in its
-slot, `addl %eax, -110684(%rbp)`, and steps both walkers in theirs,
-`addq $4, -110672(%rbp)` and `addq %rax, -110680(%rbp)`. The step `pb
-+= n` widens and scales n at each iteration, `movslq %ebx, %rax;
-imulq $4, %rax, %rax`, so the loop has two multiplies, the product
-and the scale, where the plain one has four. The ratio falls from
-8.19 to 7.54.
+place, `addl %edx, (%rax,%rcx,4)`. The tuned `main` holds five
+`register` variables live in the inner loop: n, aend, pa, pb and s
+take `ebx`, `r12`, `r13`, `r14` and `r15d`, and bend, i, arow, pc and
+bcol, declared without the keyword, take slots. Nothing warns. The
+inner loop of `rcc matmul-tuned.c` has no stack operand and runs 11
+instructions an iteration: the test `cmpq %r12, %r13` and its jump,
+the two loads, `movl (%r13), %eax` and `movl (%r14), %ecx`, the
+product, `imull %ecx, %eax`, its add to s, `addl %eax, %r15d`, the
+step `addq $4, %r13`, the step `pb += n`, `movslq %ebx, %rax; leaq
+(%r14,%rax,4), %rax; movq %rax, %r14`, and the `jmp` back. The `leaq`
+scales n, so the product is the loop's one multiply, where the plain
+one has four. The middle loop pays the slots: it loads bcol and bend
+for its test, `movq -110688(%rbp), %rax; movq -110656(%rbp), %rcx`,
+copies arow and bcol from their slots into pa and pb, stores s
+through pc loaded from its slot, and steps pc and bcol in theirs,
+`addq $4, -110680(%rbp)` and `addq $4, -110688(%rbp)`. The ratio
+falls from 7.83 to 2.06. As first written, with ten `register`
+variables live and pc, bcol, pa, pb and s in slots, the tuned ratio
+was 7.54.
 
 **sieve.** The tuned source walks a pointer in the marking loop and
 in the strike loop, up to an end computed once per repetition, and
@@ -263,7 +282,7 @@ takes `r14d` and the strike walker `r15`. Nothing warns. The strike
 loop of `rcc sieve-tuned.c` compares the walker with the end, `cmpq
 %r13, %r15; jae .Lmain.14`, stores the byte through it, `movb $0,
 (%r15)`, and adds i, widened by `movslq %r14d, %rax`, with no stack
-operand. The ratio falls from 6.71 to 1.62.
+operand. The ratio falls from 6.50 to 1.57.
 
 **sort.** The tuned source walks two pointers down for the shift,
 steps with `--q`, loads each element it compares once, and keeps the
@@ -282,7 +301,7 @@ jump code: each test is a compare and a jump to the loop's exit,
 `cmpq %rax, %r13; je .Lmain.12` and `cmpl %r12d, %eax; jle
 .Lmain.12`, four of the 11, where the LLVM pipeline set and widened a
 byte for each test and for the `&&` (`llvm.md` 5.5). The ratio falls
-from 7.97 to 1.88, the largest fall in the table.
+from 8.19 to 1.92, the largest fall in the table.
 
 **strings.** The tuned source walks pointers in `length` and `copy`,
 returns the length as the difference of two `char` pointers, tests
@@ -298,7 +317,7 @@ loads the source byte twice. The tuned `length` and `copy` hold two
 stack operand: `length` steps `r12` and returns one `subq %rbx,
 %rax`, and `copy` loads each byte once, `movsbl (%r12), %eax`, stores
 it, `movb %al, (%rbx)`, and tests it. The `idivl` of `n / 2` in
-`main` is a `sarl $1, %edx`. The ratio falls from 7.75 to 2.28.
+`main` is a `sarl $1, %edx`. The ratio falls from 7.43 to 2.21.
 `clang -O2` turns `length` into a call of `strlen` in both its
 builds.
 
@@ -318,22 +337,73 @@ records, on an x86-64 desktop, Zen 2, with LLVM 23.1.3, on
 | strings | 281 (1.00) | 2370 (8.43) | 760 (2.70) | 270 (0.96) |
 
 The movement between the two tables is a result about the model.
-The tuned source under `clang -O2`, which c1 does not touch, stays
-within 0.96 to 1.04 in both; the two rcc columns move, from the
-pipeline's ratio to c1's:
+In the table of chapter 4 the tuned sources of collatz and matmul
+are the re-tuned ones, with five `register` variables live where
+the sources the pipeline ran had seven and ten. The tuned source
+under `clang -O2`, which c1 does not touch, stays within 0.96 to
+1.04 in both; the two rcc columns move, from the pipeline's ratio to
+c1's:
 
-- collatz: plain 8.14 to 7.84, tuned 1.69 to 1.91.
-- fib: plain 1.49 to 2.27, tuned 1.33 to 2.24.
-- matmul: plain 7.64 to 8.19, tuned 3.31 to 7.54.
-- sieve: plain 6.40 to 6.71, tuned 2.67 to 1.62.
-- sort: plain 5.94 to 7.97, tuned 4.40 to 1.88.
-- strings: plain 8.43 to 7.75, tuned 2.70 to 2.28.
+- collatz: plain 8.14 to 7.71, tuned 1.69 to 2.14.
+- fib: plain 1.49 to 2.19, tuned 1.33 to 2.22.
+- matmul: plain 7.64 to 7.83, tuned 3.31 to 2.06.
+- sieve: plain 6.40 to 6.50, tuned 2.67 to 1.57.
+- sort: plain 5.94 to 8.19, tuned 4.40 to 1.92.
+- strings: plain 8.43 to 7.43, tuned 2.70 to 2.21.
 
-The tuned ratio fell for sort, sieve and strings and rose for matmul,
-fib and collatz; the notes above say where each listing pays.
+The tuned ratio fell for sort, sieve, strings and matmul, whose hot
+loops under c1 have no stack operand, sort's with jump code where
+the pipeline set a byte for each test. It rose for fib, whose every
+call under c1 pushes and pops three registers and passes its
+argument through a slot, and for collatz, whose step loop has no stack
+operand either: its head moved into the slow half of a 32-byte window
+(4.2).
 
 Reading that pipeline's listings turned up five facts about it that
 the cost model did not record, two of them against what its rule and
 its flag table said. `findings.md` explains each from the ground up,
 with the listings, the LLVM source and the choice it left open, and
 closes with what became of each under c1.
+
+### 4.2 The placement of a loop
+
+The re-tuned collatz took both slots out of its step loop and ran
+slower, 565 ms to 628, with no stack operand left to blame. What
+changed beside the registers is where the loop lies. c1 writes no
+alignment directive, so a loop's head falls wherever the instructions
+before it end; clang writes `.p2align 4, 0x90` before every loop head.
+The probe put the re-tuned step loop at the eight 4-byte offsets of a
+32-byte window, with `.p2align 5` and a run of `nop` before `.Lmain.8`,
+built each with `clang`, and timed each binary five times on the same
+machine, the least kept:
+
+| offset of the head in its 32-byte window | 0 | 4 | 8 | 12 | 16 | 20 | 24 | 28 |
+|---|---|---|---|---|---|---|---|---|
+| `rcc collatz-tuned.c`, ms | 480 | 480 | 493 | 496 | 652 | 536 | 660 | 549 |
+
+The loop is 54 bytes. From offset 0 to 12 it spans two windows and runs
+in 480 to 496 ms, a ratio of 1.64 to 1.69 against the table's 293; from
+offset 16 on it spans three and runs in 536 to 660. The build `make
+bench` timed has the head at offset 16, 628 ms, and the source as first
+written, with x and steps in slots, had it at offset 14 and ran in 565.
+The re-tuning's gain was real; the placement took it back, and more.
+
+Matmul's inner loop, 34 bytes, moves the other way:
+
+| offset of the head in its 32-byte window | 0 | 8 | 16 | 24 |
+|---|---|---|---|---|
+| `rcc matmul-tuned.c`, ms | 811 | 643 | 658 | 823 |
+
+The build `make bench` timed has the head at offset 22 and runs in 599
+ms, faster than any of the four; aligned to the window it loses a
+third. So no one alignment wins both loops, and the count of windows a
+loop spans is not the whole mechanism. Zen 2 fetches 32 bytes of code a
+cycle, and its op cache and branch predictor keep their entries by code
+address in 64-byte lines; which of these a given loop runs into is not
+read from the numbers above, and this page does not guess.
+
+What it means for this chapter: a ratio is a fact about one layout of
+the binary. The six rows stand as `make bench` built them, since that
+is what the compiler and the assembler produce, and the ranges of
+chapter 0 carry this width. Whether c1 writes an alignment directive
+before a loop's head, as clang does, is open in the queue.

@@ -792,9 +792,9 @@ answers:
 1. **`rbp`** is the frame pointer in every function, and the
    register variables are five. A slot's offset is known at its
    declaration, the prologue is one shape, the debugger needs
-   nothing from us; by the live count the sixth register would keep
-   one more variable out of a slot in each of collatz and matmul, and
-   fit neither whole.
+   nothing from us; by the live count as first written the sixth
+   register would keep one more variable out of a slot in each of
+   collatz and matmul, and fit neither whole.
 2. **The sixth `register` variable** takes a slot, with a warning by
    default. The extent is implementation-defined (6.7.2p12) and
    documented (4p10); a lever that silently does nothing is not a

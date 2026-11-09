@@ -103,7 +103,8 @@ calls shows the price in a non-leaf: `push %rbp; mov %rsp,%rbp` on
 top of `push %rbx`, and `leave` before `ret`.
 
 What a sixth register is worth to rcc is in the tuned programs of
-the measurement, counted per function:
+the measurement as first written for the LLVM pipeline, counted per
+function:
 
 | program | function | `register` variables declared | most live at once |
 |---|---|---|---|
@@ -125,6 +126,8 @@ pc, which the inner loop does not touch, while bcol and the inner
 loop's pa, pb and s stay in theirs. Sieve, sort, strings and fib fit
 in five. That is what the sixth register is worth: one variable in
 each of two programs of six, and it fits neither of them whole.
+The two were since re-tuned to five, and `cost.md` chapter 4 holds
+both numbers.
 
 ### 2.3 What it means
 
@@ -165,10 +168,10 @@ Ritchie's `c1` kept `r5` for the first and second of these reasons:
 its expression stack pushed and popped through a body and the frame
 pointer made that harmless. The same reasons hold here in the same
 form. The cost is one register variable, five instead of six, which
-2.2 priced at one variable in each of collatz and matmul, and three
-instructions per function, the `push`, the `mov` and the `leave`,
-two in a leaf that keeps its slots in the red zone and needs no
-`sub`.
+2.2 priced at one variable in each of collatz and matmul as first
+written, and three instructions per function, the `push`, the `mov`
+and the `leave`, two in a leaf that keeps its slots in the red zone
+and needs no `sub`.
 
 ### 2.4 Where it lands
 
@@ -204,10 +207,11 @@ default, naming the variable and the count.
 
 The table of 2.2: in the tuned programs, written by a programmer who
 knew the LLVM pipeline would honour every `register`, two of six
-`main` functions exceed five live at once. Under the discipline,
-matmul's `main` has five variables in slots and collatz's two, while
-sieve's six are never more than five live at once; `cost.md` chapter
-4 reads the slots in the listings and the timing. If the
+`main` functions exceeded five live at once, until the two were
+re-tuned to five. Under the discipline, matmul's `main` had five
+variables in slots and collatz's two, while sieve's six are never
+more than five live at once; `cost.md` chapter 4 reads the slots in
+the listings and the timing. If the
 compiler says nothing, the programmer learns it from the listing or
 the timing, or not at all; a programmer who
 wrote `register` on a loop's variable and got a slot has asked for a

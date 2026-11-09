@@ -3,9 +3,11 @@
    2, so the parity test is & 1 and the halving >> 1: an and and a
    shift where collatz.c divides twice per step.  The compiler cannot
    know the sign; the programmer does.  The end of the range is
-   computed once, the range loop ends on !=, and every variable of the
-   two loops is a register variable, so none goes to its slot and back
-   at each step. */
+   computed once and the range loop ends on !=.  The machine keeps
+   five register variables, so register is on the five the two inner
+   loops use, total, end, v, x and steps, and none of them goes to a
+   slot and back at each step; the repetition counter and the range
+   start take slots. */
 #define COUNT 1000
 #define REPS 3000
 
@@ -14,10 +16,10 @@ int main(void)
     unsigned seed = 1;
     register long total = 0;
 
-    for (register int rep = 0; rep != REPS; ++rep) {
+    for (int rep = 0; rep != REPS; ++rep) {
         seed = seed * 1103515245 + 12345;
 
-        register long start = 1 + (seed >> 16);
+        long start = 1 + (seed >> 16);
         register long end = start + COUNT;
 
         for (register long v = start; v != end; ++v) {

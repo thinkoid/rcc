@@ -20,37 +20,28 @@ assembly itself, and the system cc preprocesses, assembles and
 links. The reasons are =docs/findings.md= and =docs/llvm.md=, the
 design is =docs/backend.md= with its calls made in
 =docs/design-calls.md=. The chapter holds the question the
-measurement left open, the records to correct, c1's own changes and
-defects, and the second target.
+measurement left open, c1's own defects and the second target.
 
-** TODO Two tuned sources hold more than five =register= variables live
+** TODO A hot loop's time swings with the placement of its head
 
-The tuned sources of =tests/perf/= were written for the LLVM
-pipeline, which honoured every =register=. Under c1 two of them hold
-more than five live at once (=design-calls.md= 2.2), and the sixth
-and later take slots in the hot loops. =collatz-tuned='s =main=
-holds seven: =x= and =steps= take slots, so the step loop loads =x=
-three times an iteration, stores it, and adds to =steps= in its
-slot. =matmul-tuned='s =main= holds ten: =pc=, =bcol=, =pa=, =pb=
-and =s= take slots, so the inner loop loads =pa= and =pb= and adds
-to =s=, =pa= and =pb= in theirs. In =cost.md= chapter 4 matmul's
-tuned ratio is 7.54 against its plain 8.19, where the LLVM
-pipeline's was 3.31, and collatz's is 1.91, where it was 1.69.
-The header comment of each still says every variable of its loops
-is in a register. Whether the two are re-tuned to five, as a PDP-11
-programmer tuned to three, or kept as they are, as the record of a
-source that asks for more registers than the machine has, is open;
-either way the headers say what the compiler does.
+c1 writes no alignment directive, so a loop's head lands wherever the
+code before it ends. =cost.md= 4.2 moved the re-tuned collatz step loop
+through the eight 4-byte offsets of a 32-byte window: 480 to 496 ms at
+offsets 0 to 12, 536 to 660 from 16 on, where =make bench= placed it;
+so the re-tuning, which left no stack operand in the loop, measured
+slower, 1.91 to 2.14. matmul's inner loop moves the other way: 811 ms
+at offset 0, 599 at the offset 22 the assembler gave it. clang writes
+=.p2align 4, 0x90= before every loop head. No one alignment wins both
+loops, and which a loop wants is not read from the numbers.
 
-Fix: if re-tuned, program by program. =collatz-tuned= declares
-=register= only the five the two inner loops use, =x=, =steps=, =v=,
-=end= and =total=, and leaves =rep= and =start= in slots.
-=matmul-tuned= declares =register= only the five the inner loop
-uses, =n=, =aend=, =pa=, =pb= and =s=, and leaves =bend=, =i=,
-=arow=, =pc= and =bcol= in slots.
+Fix: open. Either c1 writes =.p2align 4= before every loop head, as the
+system compiler does, and the six rows are measured at it; or it writes
+nothing, and =cost.md= keeps saying that a ratio is a fact about one
+layout.
 
-Check: neither tuned source warns; =make bench= gives the two
-ratios after the re-tuning, and =cost.md= chapter 4 records them.
+Check: the choice recorded in =backend.md= with its reason; if c1
+aligns, =cost.md= chapter 4 re-recorded, and the collatz and matmul
+notes say where each head lands.
 
 ** TODO A memory-form shift on a slot moves its count from =eax=
 
