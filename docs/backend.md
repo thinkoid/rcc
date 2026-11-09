@@ -778,16 +778,10 @@ exit status; `-w` silences it.
   A `clang`-compiled `main` calling rcc code, and an rcc `main`
   calling `clang`-compiled code, were run as probes outside the tree
   in the first two slices, with the statuses of the all-`clang` build.
-- **The measurement**, `tests/bench`: redone. The most `register`
-  variables live at once in each tuned program: matmul's `main` ten,
-  collatz's seven, sieve's and sort's five, strings' four, and `fib`
-  three. The sixth and later take slots, each with its warning:
-  matmul's five and collatz's two. Sieve declares six, but its two
-  loops are sibling blocks, so it gets no warning. The numbers move,
-  and the movement is recorded as a result about the model. Then the
-  tuned sources may be re-tuned to five, as a PDP-11 programmer tuned
-  to three, and the chapter re-recorded with the register count per
-  program.
+- **The measurement**, `tests/bench`: redone under c1, and recorded
+  in `cost.md` chapter 4 beside the LLVM pipeline's; the most
+  `register` variables live at once in each tuned function are in
+  `design-calls.md` 2.2.
 
 ## 13. The calls
 
@@ -798,8 +792,9 @@ answers:
 1. **`rbp`** is the frame pointer in every function, and the
    register variables are five. A slot's offset is known at its
    declaration, the prologue is one shape, the debugger needs
-   nothing from us; the sixth register was worth one variable in one
-   program of six.
+   nothing from us; by the live count the sixth register would keep
+   one more variable out of a slot in each of collatz and matmul, and
+   fit neither whole.
 2. **The sixth `register` variable** takes a slot, with a warning by
    default. The extent is implementation-defined (6.7.2p12) and
    documented (4p10); a lever that silently does nothing is not a

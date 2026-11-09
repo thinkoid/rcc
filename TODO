@@ -19,64 +19,38 @@ The direction is taken: c1 is rcc's only back end, it writes x86-64
 assembly itself, and the system cc preprocesses, assembles and
 links. The reasons are =docs/findings.md= and =docs/llvm.md=, the
 design is =docs/backend.md= with its calls made in
-=docs/design-calls.md=. The chapter holds the measurement to redo,
-the records of the design to correct, c1's own changes and defects,
-and the second target.
+=docs/design-calls.md=. The chapter holds the question the
+measurement left open, the records to correct, c1's own changes and
+defects, and the second target.
 
-** TODO Redo the measurement
+** TODO Two tuned sources hold more than five =register= variables live
 
-=make bench= under c1. Compiled with c1, =collatz-tuned= warns
-twice, for =x= and =steps=, and =matmul-tuned= five times, for =pc=,
-=bcol=, =pa=, =pb= and =s=; those seven take slots. =sieve-tuned=,
-=fib-tuned=, =sort-tuned= and =strings-tuned= warn not at all: sieve
-declares six, but its two loops are sibling blocks, so never more than
-five are live at once. The numbers move. The movement is a result about
-the model, and the tuned sources may be re-tuned to the set, as a PDP-11
-programmer tuned to three.
+The tuned sources of =tests/perf/= were written for the LLVM
+pipeline, which honoured every =register=. Under c1 two of them hold
+more than five live at once (=design-calls.md= 2.2), and the sixth
+and later take slots in the hot loops. =collatz-tuned='s =main=
+holds seven: =x= and =steps= take slots, so the step loop loads =x=
+three times an iteration, stores it, and adds to =steps= in its
+slot. =matmul-tuned='s =main= holds ten: =pc=, =bcol=, =pa=, =pb=
+and =s= take slots, so the inner loop loads =pa= and =pb= and adds
+to =s=, =pa= and =pb= in theirs. In =cost.md= chapter 4 matmul's
+tuned ratio is 7.54 against its plain 8.19, where the LLVM
+pipeline's was 3.31, and collatz's is 1.91, where it was 1.69.
+The header comment of each still says every variable of its loops
+is in a register. Whether the two are re-tuned to five, as a PDP-11
+programmer tuned to three, or kept as they are, as the record of a
+source that asks for more registers than the machine has, is open;
+either way the headers say what the compiler does.
 
-Check: chapter 4 of =cost.md= re-recorded, with the register count
-per program, and its opening sentence on the LLVM-era numbers
-gone.
+Fix: if re-tuned, program by program. =collatz-tuned= declares
+=register= only the five the two inner loops use, =x=, =steps=, =v=,
+=end= and =total=, and leaves =rep= and =start= in slots.
+=matmul-tuned= declares =register= only the five the inner loop
+uses, =n=, =aend=, =pa=, =pb= and =s=, and leaves =bend=, =i=,
+=arow=, =pc= and =bcol= in slots.
 
-** TODO The sixth register's price is counted by declarations
-
-=design-calls.md= 2.2 prices a sixth register from the =register=
-variables each tuned =main= declares. But c0 counts the variables
-live at once: a block's variables leave the count at its end. The
-warnings follow the live count, so sieve, which declares six and
-holds at most five live, gets none. Three sentences thus rest
-on the wrong count:
-
-- 2.2: "with five, sieve loses one too", where sieve loses none;
-- 3.2: "four of six =main= functions exceed five", where two do by
-  the live count, matmul and collatz, and three by declarations;
-- 2.2, 2.3 and =backend.md= 13.1: the sixth register "was worth one
-  variable in one program of six". By the live count it keeps one
-  more variable out of a slot in each of matmul and collatz, and
-  fits no program whole that five do not.
-
-Fix: 2.2's table gains the most live at once per function, and the
-sentences that price the sixth register are restated from it; 2.3's
-conclusion is re-read against the restated price.
-
-Check: no sentence of the two documents counts a sixth register
-variable by declarations where the rule counts the live ones.
-
-** TODO =design-calls.md= calls the record of the register extent future
-
-=design-calls.md= 3.2 says the five-register extent "can be written
-in the cost model, and it will be", and chapter 7 lists "the
-implementation-defined extent of =register= recorded as five and the
-warning" among the changes "when it is rewritten from the new pins".
-=cost.md= chapter 1 now records the extent, as 6.7.2p12 leaves it to
-the implementation and 4p10 asks, so both sentences describe as
-pending what is done.
-
-Fix: the two sentences say the cost model records the extent, and
-point at =cost.md= chapter 1.
-
-Check: no sentence of =design-calls.md= calls the record of the
-extent future.
+Check: neither tuned source warns; =make bench= gives the two
+ratios after the re-tuning, and =cost.md= chapter 4 records them.
 
 ** TODO A memory-form shift on a slot moves its count from =eax=
 
@@ -181,10 +155,10 @@ Check: the row and its pin.
 
 Chapter 2 of =cost.md= has no row for =-a= or =~a=. A negative
 constant is not one of them: the parser folds =-1= to a constant, so
-=long x = -1= is =movq $-1, %rax= and the store, as =long x = 2= is
-=movq $2, %rax=, and =p[-1]= is a displacement. On a variable the two
-operators are instructions, =negl %eax= and =notl %eax=, the row of
-=backend.md= 6.3.
+=long x = -1= is one store, =movq $-1, -8(%rbp)=, as =long x = 2= is
+=movq $2, -8(%rbp)=, and =p[-1]= is a displacement. On a variable the
+two operators are instructions, =negl %eax= and =notl %eax=, the row
+of =backend.md= 6.3.
 
 Fix: a row for =-a= and =~a=, with a cost program.
 

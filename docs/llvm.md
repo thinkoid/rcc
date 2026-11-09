@@ -471,8 +471,8 @@ materialized condition of 5.5, matmul's 3.3 is the slot loads of the
 locals the programmer did not declare `register`. The measurement
 is chapter 4 of `cost.md`; its purpose, to say how far a literal
 machine lands from the optimizer and how much of the gap the
-programmer closes by hand, is served, and it will be redone under
-the new back end.
+programmer closes by hand, is served. The chapter now holds the run
+under c1, and this pipeline's table is its 4.1.
 
 ## 7. The three ways out
 

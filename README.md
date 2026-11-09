@@ -55,8 +55,8 @@ Then `register`, honoured: a variable that is never stored. Then the
 measurement, and the change of direction it led to: rcc's own back
 end, c1, in place of LLVM's. Its three slices landed: the integer
 types, control and calls; pointers, arrays and string literals;
-register variables. Then the LLVM pipeline was retired, and c1 is
-the only back end. What remains is the measurement redone under c1.
+register variables. Then the LLVM pipeline was retired, c1 is the
+only back end, and the measurement is redone under it.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/` and the cost corpus over
 `tests/cost/`, both through c1, and `make bench` times the benchmark

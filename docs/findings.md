@@ -1,9 +1,10 @@
 # rcc: what the measurement found
 
 The measurement of `cost.md` chapter 4 wrote six programs twice, read
-their listings line by line and timed them. It ran under the LLVM
-pipeline, the one the tree compiled through until c1 replaced it
-(`llvm.md`), and every listing on this page is that pipeline's.
+their listings line by line and timed them. Its first run, now the
+chapter's 4.1, was under the LLVM pipeline, the one the tree compiled
+through until c1 replaced it (`llvm.md`), and every listing on this
+page is that pipeline's.
 Reading the listings turned up five facts about the pipeline that
 the cost model did not record, and two of them contradicted what it
 said. This page explains each one from the ground up: the terms, the
@@ -715,8 +716,8 @@ compiler this one descends from did from its first version.
 The retirement of the LLVM pipeline settled the three findings that
 were the machine's, and the evaluator had already closed the two
 that were the front end's. The measurement of `cost.md` chapter 4
-stands as it was run, with `collatz.c` signed and `matmul.c` writing
-its size out, until it is redone under c1.
+is redone under c1, with `collatz.c` signed and `matmul.c` writing
+its size out as before; the run under the pipeline is its 4.1.
 
 **Finding 2, the strength reduction**, has no place to happen. c1
 writes the instruction of its table for the operator, whatever the

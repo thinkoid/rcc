@@ -105,20 +105,26 @@ top of `push %rbx`, and `leave` before `ret`.
 What a sixth register is worth to rcc is in the tuned programs of
 the measurement, counted per function:
 
-| program | function | `register` variables declared |
-|---|---|---|
-| matmul | `main` | 10 |
-| collatz | `main` | 7 |
-| sieve | `main` | 6 |
-| sort | `main` | 5 |
-| strings | `main` | 4 |
-| strings | `length`, `copy` | 2 each |
-| fib | `fib` | 3 |
+| program | function | `register` variables declared | most live at once |
+|---|---|---|---|
+| matmul | `main` | 10 | 10 |
+| collatz | `main` | 7 | 7 |
+| sieve | `main` | 6 | 5 |
+| sort | `main` | 5 | 5 |
+| strings | `main` | 4 | 4 |
+| strings | `length`, `copy` | 2 each | 2 each |
+| fib | `fib` | 3 | 3 |
 
-With six, sieve fits whole and collatz loses one; with five, sieve
-loses one too, and the sort of budgeting a PDP-11 programmer did
-with three begins one variable earlier. That is what the sixth
-register is worth: one variable in one of six programs.
+c0 counts the live ones: a block's variables leave the count at its
+end, so sieve's marking walker is gone before its outer counter and
+strike walker are declared. By the live count two functions exceed
+five, matmul's `main` and collatz's, and a sixth register would keep
+one more variable out of a slot in each. In collatz it is x, the
+step loop's value, while steps stays in its slot; in matmul it is
+pc, which the inner loop does not touch, while bcol and the inner
+loop's pa, pb and s stay in theirs. Sieve, sort, strings and fib fit
+in five. That is what the sixth register is worth: one variable in
+each of two programs of six, and it fits neither of them whole.
 
 ### 2.3 What it means
 
@@ -159,7 +165,7 @@ Ritchie's `c1` kept `r5` for the first and second of these reasons:
 its expression stack pushed and popped through a body and the frame
 pointer made that harmless. The same reasons hold here in the same
 form. The cost is one register variable, five instead of six, which
-2.2 priced at one variable in one program of six, and three
+2.2 priced at one variable in each of collatz and matmul, and three
 instructions per function, the `push`, the `mov` and the `leave`,
 two in a leaf that keeps its slots in the red zone and needs no
 `sub`.
@@ -197,18 +203,19 @@ default, naming the variable and the count.
 ### 3.2 The evidence
 
 The table of 2.2: in the tuned programs, written by a programmer who
-knew the LLVM pipeline would honour every `register`, four of six
-`main` functions exceed five. Under the discipline, matmul's `main`
-has five variables in slots and collatz's two, while sieve's six are
-never more than five live at once, and the measurement moves. If the
+knew the LLVM pipeline would honour every `register`, two of six
+`main` functions exceed five live at once. Under the discipline,
+matmul's `main` has five variables in slots and collatz's two, while
+sieve's six are never more than five live at once; `cost.md` chapter
+4 reads the slots in the listings and the timing. If the
 compiler says nothing, the programmer learns it from the listing or
 the timing, or not at all; a programmer who
 wrote `register` on a loop's variable and got a slot has asked for a
 thing and been refused in silence.
 
 The PDP-11 compiler said nothing, and its programmers knew the
-machine had three. That knowledge was tribal. It can be written in
-the cost model, and it will be, but a cost model is read once and a
+machine had three. That knowledge was tribal. It is written in the
+cost model, `cost.md` chapter 1, but a cost model is read once and a
 diagnostic is read at the moment it matters.
 
 ### 3.3 What it means
@@ -515,6 +522,7 @@ call rows of the cost model follow the first pins.
   static initializer require.
 - Chapter 8, calls: rewritten to the shape of 6.4 and 6.5 here.
 - Chapter 13: the six calls, each in one line, pointing here.
-- The cost model, when it is rewritten from the new pins: the
-  implementation-defined extent of `register` recorded as five and
-  the warning; the call rows of 6.5.
+- The cost model, rewritten from the new pins: the
+  implementation-defined extent of `register`, five live at once,
+  recorded in `cost.md` chapter 1, and the warning in its chapter 0;
+  the call rows of 6.5 in its chapter 2.

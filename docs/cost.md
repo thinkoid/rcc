@@ -21,10 +21,12 @@ does what the source says, and only that.
   callee-saved registers, `rbx` and `r12` to `r15`, and is never
   stored. A sixth live at once takes a slot, with a warning. The
   keyword is the allocation, as it was on the PDP-11.
-- Chapter 4 holds the measurement as it was run under the LLVM
-  pipeline: the plain source ran 1.49 to 8.43 times as long under rcc
-  as under `clang -O2`, and the source tuned by hand for rcc 1.33 to
-  4.40 times. The queue's "Redo the measurement" runs it under c1.
+- Chapter 4 holds the measurement under c1: the plain source runs
+  2.27 to 8.19 times as long under rcc as under `clang -O2`, and the
+  source tuned by hand for rcc 1.62 to 7.54 times. The 7.54 is
+  matmul, whose tuned `main` holds ten `register` variables live and
+  puts five in slots. Under the LLVM pipeline the two ranges were 1.49
+  to 8.43 and 1.33 to 4.40.
 
 ## 1. The rule
 
@@ -145,11 +147,6 @@ moved.
 
 ## 4. The measurement
 
-The numbers of this chapter were measured under the LLVM pipeline,
-on 2026-11-07, and the notes on each program read that pipeline's
-listings, not c1's (`llvm.md` records the pipeline). They stand until
-the queue's "Redo the measurement" runs `make bench` under c1.
-
 The measurement says how far a literal machine lands from the
 optimizer, and how much of that gap the programmer closes by hand.
 Each program in `tests/perf/` comes as two sources: `<name>.c`, the
@@ -180,9 +177,136 @@ The metric is user CPU time, the least of five runs, in milliseconds
 and as the ratio to the baseline. `make bench` runs `tests/bench`,
 which builds the four binaries, refuses a row whose four builds
 disagree on the exit status, and times each run under `timeout 120`.
-The numbers are bound to the machine, so nothing is pinned. The table
-is one run on an x86-64 desktop, Zen 2, with LLVM 23.1.3, on
-2026-11-07.
+The numbers are bound to the machine, so nothing is pinned. `make
+bench` was run three times, and the table is the run whose cells sum
+least, on an x86-64 desktop, Zen 2, with clang 23.1.4, on 2026-11-09.
+
+| program | `clang -O2 <name>.c` | `rcc <name>.c` | `rcc <name>-tuned.c` | `clang -O2 <name>-tuned.c` |
+|---|---|---|---|---|
+| collatz | 296 (1.00) | 2320 (7.84) | 565 (1.91) | 294 (0.99) |
+| fib | 268 (1.00) | 608 (2.27) | 600 (2.24) | 262 (0.98) |
+| matmul | 283 (1.00) | 2318 (8.19) | 2133 (7.54) | 274 (0.97) |
+| sieve | 292 (1.00) | 1960 (6.71) | 472 (1.62) | 295 (1.01) |
+| sort | 279 (1.00) | 2225 (7.97) | 524 (1.88) | 282 (1.01) |
+| strings | 278 (1.00) | 2155 (7.75) | 633 (2.28) | 286 (1.03) |
+
+The plain source under rcc runs 2.27 to 8.19 times as long as under
+`clang -O2`. The tuned source under rcc runs 1.62 to 7.54 times as
+long. The tuned source under `clang -O2` runs 0.97 to 1.03 times as
+long as the plain one.
+
+**collatz.** The tuned source tests the parity with `& 1` and halves
+with `>> 1`, where the plain one writes `% 2` and `/ 2`. The value is
+a signed `long`, so only the programmer knows it is never negative.
+The step loop of `rcc collatz.c` loads x from its slot three times an
+iteration, for the loop test, the parity test and the step, stores it
+back, and adds 1 to the count in its slot, `addl $1, -52(%rbp)`. The
+parity test is `movq $2, %rcx; cqto; idivq %rcx` and a compare of the
+remainder with 0, `cmpq $0, %rax; jne .Lmain.10`, and the even path
+divides again. The tuned `main` holds seven `register` variables live
+in the step loop: total, rep, start, end and v take `rbx` and `r12`
+to `r15`, and x and steps, the sixth and the seventh, take slots,
+each with its warning. The step loop of `rcc collatz-tuned.c` thus
+has `andq $1, %rax` and `sarq $1, %rax` in place of the two `idivq`,
+but the same stack operands as the plain one, x at `-56(%rbp)` and
+steps at `-60(%rbp)`. The ratio falls from 7.84 to 1.91.
+
+**fib.** The tuned source declares the parameter and the two partial
+sums `register`. `rcc fib.c` subtracts its frame, `subq $32, %rsp`,
+on every call, the base case included, stores the parameter to its
+slot, `movl %edi, -4(%rbp)`, and loads it back for the test, the
+return and each argument. Each argument goes through a slot of its
+own, `movl %eax, -8(%rbp); movl -8(%rbp), %edi`, and the first result
+is stored across the second call, `movq %rax, -16(%rbp)`, and loaded
+back. The tuned `fib` holds its three live, n in `ebx`, a in `r12d`
+and b in `r13d`. `rcc fib-tuned.c` moves the parameter in once,
+`movl %edi, %ebx`, tests and returns it there, and keeps the first
+result in `r12d` across the second call; but every call, the base
+case included, pushes the three registers and pops them in the
+epilogue, and each argument still goes through its slot, `movl %eax,
+-28(%rbp); movl -28(%rbp), %edi`. The ratio falls from 2.27 to 2.24,
+the least fall in the table. The work is the calls, and `clang -O2
+fib.c` keeps one of the two recursive calls and turns the other into
+a loop.
+
+**matmul.** The tuned source computes the row bases of a and c once
+per row, walks one pointer along a's row and another down b's column,
+and declares the sum `register`, stored to c once per element. The
+inner loop of `rcc matmul.c` has four `imull`, two for `i * n` and
+one for `k * n` in the three indices and one for the product, eleven
+loads of i, j, k and n from their slots, the step `addl $1,
+-110632(%rbp)` on k's slot, and the product added to c's element in
+place, `addl %edx, (%rax,%rcx,4)`. The tuned `main` holds ten
+`register` variables live in the inner loop: n, bend, i, arow and
+aend take `ebx` and `r12` to `r15`, and pc, bcol, pa, pb and s, the
+sixth to the tenth, take slots, each with its warning. So the inner
+loop of `rcc matmul-tuned.c` loads pa from its slot for the test and
+for the element and pb for its element, adds the product to s in its
+slot, `addl %eax, -110684(%rbp)`, and steps both walkers in theirs,
+`addq $4, -110672(%rbp)` and `addq %rax, -110680(%rbp)`. The step `pb
++= n` widens and scales n at each iteration, `movslq %ebx, %rax;
+imulq $4, %rax, %rax`, so the loop has two multiplies, the product
+and the scale, where the plain one has four. The ratio falls from
+8.19 to 7.54.
+
+**sieve.** The tuned source walks a pointer in the marking loop and
+in the strike loop, up to an end computed once per repetition, and
+declares the walkers, the end, the limit, the outer counter and the
+count `register`. The strike loop of `rcc sieve.c` loads j and n for
+the test, j for the store and i for the step, and adds i to j's slot,
+`addl %eax, -65568(%rbp)`: four loads and an add to memory for each
+byte struck. The tuned `main` declares six `register` variables but
+holds at most five live, since the marking walker's loop ends before
+the outer counter's begins: n, count and end take `ebx`, `r12d` and
+`r13`, the marking walker `r14`, and after it the outer counter i
+takes `r14d` and the strike walker `r15`. Nothing warns. The strike
+loop of `rcc sieve-tuned.c` compares the walker with the end, `cmpq
+%r13, %r15; jae .Lmain.14`, stores the byte through it, `movb $0,
+(%r15)`, and adds i, widened by `movslq %r14d, %rax`, with no stack
+operand. The ratio falls from 6.71 to 1.62.
+
+**sort.** The tuned source walks two pointers down for the shift,
+steps with `--q`, loads each element it compares once, and keeps the
+key, the index, the walkers and the element in registers. The shift
+loop of `rcc sort.c` loads j four times and the key once from their
+slots, steps j in its slot, `subl $1, -8220(%rbp)`, and loads the
+element `a[j]` twice, for the test and for the move. The tuned
+`main` holds its five live, i, key, p, q and v, in `ebx`, `r12d`,
+`r13`, `r14` and `r15d`. The shift loop of `rcc sort-tuned.c` has no
+stack operand and runs 11 instructions an iteration: `leaq
+-8232(%rbp), %rax` for the array's address, the test `p != a`, `subq
+$4, %r14` for `--q`, the one load of the element, `movl (%r14),
+%eax`, its copy into v, the compare with the key, the store `movl
+%r15d, (%r13)`, the move of `p = q` and the `jmp` back. The `&&` is
+jump code: each test is a compare and a jump to the loop's exit,
+`cmpq %rax, %r13; je .Lmain.12` and `cmpl %r12d, %eax; jle
+.Lmain.12`, four of the 11, where the LLVM pipeline set and widened a
+byte for each test and for the `&&` (`llvm.md` 5.5). The ratio falls
+from 7.97 to 1.88, the largest fall in the table.
+
+**strings.** The tuned source walks pointers in `length` and `copy`,
+returns the length as the difference of two `char` pointers, tests
+the byte `copy` has just stored, and halves the length with `>> 1`.
+`length` in `rcc strings.c` loads the pointer and the index from
+their slots at each test and steps the index in its slot, `addl $1,
+-12(%rbp)`. `copy` in `rcc strings.c` loads s twice, d once and i
+three times from their slots for each byte, steps i in its slot, and
+loads the source byte twice. The tuned `length` and `copy` hold two
+`register` variables each, s and p, and d and s, in `rbx` and `r12`;
+`main` holds four, sum, p, end and n, in `ebx`, `r12`, `r13` and
+`r14d`. In `rcc strings-tuned.c` neither `length` nor `copy` has a
+stack operand: `length` steps `r12` and returns one `subq %rbx,
+%rax`, and `copy` loads each byte once, `movsbl (%r12), %eax`, stores
+it, `movb %al, (%rbx)`, and tests it. The `idivl` of `n / 2` in
+`main` is a `sarl $1, %edx`. The ratio falls from 7.75 to 2.28.
+`clang -O2` turns `length` into a call of `strlen` in both its
+builds.
+
+### 4.1 Under the LLVM pipeline
+
+The same programs were measured through the pipeline `llvm.md`
+records, on an x86-64 desktop, Zen 2, with LLVM 23.1.3, on
+2026-11-07:
 
 | program | `clang -O2 <name>.c` | `rcc <name>.c` | `rcc <name>-tuned.c` | `clang -O2 <name>-tuned.c` |
 |---|---|---|---|---|
@@ -193,86 +317,23 @@ is one run on an x86-64 desktop, Zen 2, with LLVM 23.1.3, on
 | sort | 275 (1.00) | 1634 (5.94) | 1209 (4.40) | 280 (1.02) |
 | strings | 281 (1.00) | 2370 (8.43) | 760 (2.70) | 270 (0.96) |
 
-The plain source under rcc runs 1.49 to 8.43 times as long as under
-`clang -O2`. The tuned source under rcc runs 1.33 to 4.40 times as
-long. The tuned source under `clang -O2` runs 0.96 to 1.04 times as
-long as the plain one.
+The movement between the two tables is a result about the model.
+The tuned source under `clang -O2`, which c1 does not touch, stays
+within 0.96 to 1.04 in both; the two rcc columns move, from the
+pipeline's ratio to c1's:
 
-**collatz.** The tuned source tests the parity with `& 1` and halves
-with `>> 1`, where the plain one writes `% 2` and `/ 2`. The value is
-a signed `long`, so only the programmer knows it is never negative;
-an unsigned value would not have shown the division, since that
-pipeline's selector rewrote an unsigned `/` and `%` by a power of two
-on its own (`findings.md` chapter 2). The
-step loop of `rcc collatz.c` has an `idiv` for the test and a second
-on the even path, and moves the value and the count to and from their
-slots. The step loop of `rcc collatz-tuned.c` has an `and $0x1` and a
-`sar $1` in their place and no stack operand. The ratio falls from
-8.14 to 1.69, the largest fall in the table.
+- collatz: plain 8.14 to 7.84, tuned 1.69 to 1.91.
+- fib: plain 1.49 to 2.27, tuned 1.33 to 2.24.
+- matmul: plain 7.64 to 8.19, tuned 3.31 to 7.54.
+- sieve: plain 6.40 to 6.71, tuned 2.67 to 1.62.
+- sort: plain 5.94 to 7.97, tuned 4.40 to 1.88.
+- strings: plain 8.43 to 7.75, tuned 2.70 to 2.28.
 
-**fib.** The tuned source declares the parameter and the two partial
-sums `register`. `rcc fib.c` builds the frame and stores the
-parameter to its slot on every call, the base case included, and
-loads it back for the test, the return and each call's argument.
-`rcc fib-tuned.c` tests the argument register and returns from the
-base case before any frame is built; on the recursive path it keeps n
-in `rbx` and the first sum in `rbp`, both callee-saved, across the
-second call. The ratio falls from 1.49 to 1.33. The work is the
-calls, and `clang -O2 fib.c` keeps one of the two recursive calls and
-turns the other into a loop.
+The tuned ratio fell for sort, sieve and strings and rose for matmul,
+fib and collatz; the notes above say where each listing pays.
 
-**matmul.** The tuned source computes the row bases of a and c once
-per row, walks one pointer along a's row and another down b's column,
-and keeps the sum in a register, stored to c once per element. The
-inner loop of `rcc matmul.c` has four `imul`, three for the indices
-`i * n`, `k * n` and `i * n` again and one for the product, twelve
-loads of i, j, k and n from their slots, a store of k, and a load and
-a store of the element of c. The inner loop of `rcc matmul-tuned.c`
-has one `imul`, the product, the two loads of the elements, and no
-stack operand. Its step `pb += n` moves 96 into a register, extends
-and shifts it at each iteration: n is a `register` variable
-initialized with a constant, so it is the constant. The ratio falls
-from 7.64 to 3.31.
-
-**sieve.** The tuned source walks a pointer in the marking loop and
-in the strike loop, up to an end computed once per repetition, with
-the walker, the end, the limit and the count in registers. The strike
-loop of `rcc sieve.c` loads j and n for the test, j for the store and
-j and i for the step, and stores j back: five loads and a store of
-slots for each byte struck. The strike loop of `rcc sieve-tuned.c`
-compares the walker with the end, stores the byte through the walker
-and adds i, extended by a `movslq`, with no stack operand. The ratio
-falls from 6.40 to 2.67.
-
-**sort.** The tuned source walks two pointers down for the shift,
-steps with `--q`, loads each element it compares once, and keeps the
-key, the index, the walkers and the element in registers. The shift
-loop of `rcc sort.c` loads j five times and the key once from their
-slots, stores j back, and loads the element `a[j]` twice, for the test
-and for the move. The shift loop of `rcc sort-tuned.c` has no stack
-operand and one load of the element, at a displacement of -4 from q.
-Of the 23 instructions an iteration runs, 17 are the two tests and
-the `&&` that joins them: each test sets a byte, masks and widens it,
-and the joined value is masked, widened and compared with 0 once more
-(`llvm.md` 5.5). One more is a `lea` of the array's
-address for the test `p != a`. The ratio falls from 5.94 to 4.40, the
-least fall in the table after fib.
-
-**strings.** The tuned source walks pointers in `length` and `copy`,
-returns the length as the difference of two `char` pointers, tests
-the byte `copy` has just stored, and halves the length with `>> 1`.
-`length` in `rcc strings.c` loads the pointer and the index from
-their slots at each test and the index again at the step, and stores
-it back. `copy` in `rcc strings.c` loads s twice, d once and i four
-times from their slots for each byte, and the source byte twice. In
-`rcc strings-tuned.c` neither function has a stack operand: `length`
-steps a register and returns one `sub`, and `copy` loads each byte
-once, stores it and tests it. The `idiv` of `n / 2` in `main` is a
-`sar`. The ratio falls from 8.43 to 2.70. `clang -O2` turns `length`
-into a call of `strlen` in both its builds.
-
-Reading the listings for this chapter turned up five facts about
-that pipeline that the cost model did not record, two of them
-against what its rule and its flag table said. `findings.md` explains
-each from the ground up, with the listings, the LLVM source and the
-choice it left open, and closes with what became of each under c1.
+Reading that pipeline's listings turned up five facts about it that
+the cost model did not record, two of them against what its rule and
+its flag table said. `findings.md` explains each from the ground up,
+with the listings, the LLVM source and the choice it left open, and
+closes with what became of each under c1.
