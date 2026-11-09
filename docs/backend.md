@@ -381,7 +381,7 @@ promotion casts before any operator sees them, as today.
 | `!a` | `cmp $0, L`; `sete %Lb`; `movzbl %Lb, L` | as a value; as a condition, chapter 7 |
 | `a < b` and the rest, as a value | `cmp R, L`; `setcc %Lb`; `movzbl %Lb, L` | `setl`, `setle`, `setg`, `setge`, `sete`, `setne` signed; `setb`, `setbe`, `seta`, `setae` unsigned and for pointers (G7) |
 | `a && b`, `a \|\| b`, `a ? b : c`, as a value | jump code of chapter 7 into `L`, with `mov $0, L` and `mov $1, L` on the arms | no `setcc` chain |
-| `x = e` | `mov L, slot` or `mov L, reg`, the value staying in `L`; a constant goes as the immediate straight into a register variable only, `movl $0, %r12d`; into memory it goes by `mov $c, L` and the store, `movl $0, %eax; movl %eax, -12(%rbp)`, and the one-instruction store is queued (`TODO`, the effect context) | a `char` store is `movb %Lb` |
+| `x = e` | `mov L, slot` or `mov L, reg`, the value staying in `L`; a constant goes as the immediate straight into a register variable, `movl $0, %r12d`, or into memory when the assignment is evaluated for its effect alone, `movl $0, -12(%rbp)` (6.6) | a `char` store is `movb %Lb` |
 | `x op= e` | the load row, the op row, the store row | |
 | `++x`, `x++`, `--x`, `x--` | the load, `add $1` or `sub $1`, the store; the post forms keep the old value in another register | `add $size` for a pointer |
 | `(T) a` | `movslq L, L64` for `int` to `long`, `movsbl` or `movzbl` from `Lb` for `char` to `int`, each only when `L` is not already valid to the new width (the width rule below); nothing for `long` to `int` (the 32-bit name is the value); nothing between pointer types; an integer to a pointer as to `unsigned long`, so `movslq` for an `int` (6.3.2.3p5); nothing for a pointer to `long` or `int` | G2: truncation is reading the low bits |
@@ -434,27 +434,27 @@ as they found it, whatever their operands do.
 
 The parser folds integer constant expressions: the operators 6.6p3
 does not exclude, applied to the operands 6.6p8 allows, which are
-integer constants, character constants, `sizeof` and casts to
-integer types, with the type the expression has in C and the value
-the instruction would compute: a signed result the type cannot hold
-wraps (G1), a shift count is masked (G3), and a division with no
-value, by zero or of the most negative value by -1, is left unfolded
-for the instruction to trap on (G4), so folding changes no program.
-6.6p4, which makes an out-of-range constant expression a constraint
+integer constants, character constants, `sizeof` and casts to integer
+types, with the type the expression has in C and the value the
+instruction would compute: a signed result the type cannot hold wraps
+(G1), a shift count is masked (G3), and a division with no value, by
+zero or of the most negative value by -1, is left unfolded for the
+instruction to trap on (G4), so folding changes no program. 6.6p4,
+which makes an out-of-range constant expression a constraint
 violation, governs where the grammar requires one, the size of an
-array, and the wrapped value is refused there. A variable never
-folds: `x * 1` multiplies, `x - x` subtracts, `x + 0` adds. The rule "the instruction written is the
-instruction executed" is about operations on the program's data; a
-constant expression is the spelling of a number, which ISO C says
-"can be evaluated during translation" (6.6p2) and which Ritchie's
-`c0` evaluated. So `-1` is the immediate `$-1`, `p[-1]` is the
-displacement `-4(L)`, and `int a[96 * 96]` has 9216 elements. This
-closes findings 4 and 5 of `findings.md`, and the evaluator is not
-an addition: the size of an array (6.7.7.3p4), the label of a `case`
-(6.8.5.3p3) and every expression in a static initializer (6.7.11p5)
-require one, and the last of these cannot compile without it, since
-there is no instruction to compute a static's initial bytes at
-(`design-calls.md` chapter 4).
+array, and the wrapped value is refused there. A variable never folds:
+`x * 1` multiplies, `x - x` subtracts, `x + 0` adds. The rule "the
+instruction written is the instruction executed" is about operations
+on the program's data; a constant expression is the spelling of a
+number, which ISO C says "can be evaluated during translation" (6.6p2)
+and which Ritchie's `c0` evaluated. So `-1` is the immediate `$-1`,
+`p[-1]` is the displacement `-4(L)`, and `int a[96 * 96]` has 9216
+elements. This closes findings 4 and 5 of `findings.md`, and the
+evaluator is not an addition: the size of an array (6.7.7.3p4), the
+label of a `case` (6.8.5.3p3) and every expression in a static
+initializer (6.7.11p5) require one, and the last of these cannot
+compile without it, since there is no instruction to compute a
+static's initial bytes at (`design-calls.md` chapter 4).
 
 A constant operand of an arithmetic instruction is an immediate when
 the instruction has an immediate form, which on x86-64 every one of
@@ -478,6 +478,34 @@ which value is in which register is updated and nothing else cares.
 Every instruction written is a real move of a real value and shows
 in the listing; the cost model's row for a division with `rax` and
 `rdx` busy says what it costs (`div-busy`).
+
+### 6.6 The effect context
+
+Ritchie's `c1` had three tables: `regtab` for a value in a register,
+`cctab` for the condition codes, `efftab` for an expression evaluated
+for its effect alone. c1 has the three contexts as its three entry
+points:
+
+- `rvalue(e)`, the value in a register, by this chapter;
+- `cbranch(e, label, sense)`, a jump on the truth of `e` and no
+  value, chapter 7.1;
+- `effect(e)`, the side effects of `e` and no value: an expression
+  statement, a declaration's initializer and `for`'s step.
+
+In the effect context, a plain assignment of a constant to an object
+in memory is one instruction. The lvalue's address is evaluated
+first, then `mov $c` of the object's width writes the constant into
+it, `movl $0, -12(%rbp)`, `movb $122, (%rax)`, and no register is
+held. G13 holds, since the constant has no evaluation. A declaration's
+initializer that is a constant is stored into the slot the same way;
+a register variable's is the immediate into its register already
+(chapter 4). A 64-bit constant no sign-extended 32-bit immediate
+holds is `movabsq` into a register and the store, as in 6.3. Any
+other expression is evaluated by `rvalue()` and its value discarded.
+
+The value context is unchanged. In `a = b = 5` the value of `b = 5`
+is wanted, so the 5 is loaded once, `movl $5, %eax`, and stored
+twice.
 
 ## 7. Conditions and control
 
@@ -563,8 +591,8 @@ call sequence.
    register is freed. Nothing is held in a register from here to the
    `call`.
 2. Each argument in turn is evaluated into a register by chapter 6,
-   as the initializer of a local would be, and stored to its argument
-   slot, `mov L, -24(%rbp)`. Arguments are evaluated in source order,
+   a constant included, and stored to its argument slot, `mov L,
+   -24(%rbp)`. Arguments are evaluated in source order,
    each complete before the next begins, and a call inside an
    argument finds every expression register free and clobbers
    nothing that matters.

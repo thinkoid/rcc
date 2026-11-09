@@ -10,8 +10,7 @@ empty_if:
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register %rbp
 	movl	%edi, -4(%rbp)
-	movl	$0, %eax
-	movl	%eax, -8(%rbp)
+	movl	$0, -8(%rbp)
 	movl	-4(%rbp), %eax
 	cmpl	$0, %eax
 	je	.Lempty_if.2
@@ -19,8 +18,7 @@ empty_if:
 	movl	-4(%rbp), %eax
 	cmpl	$1, %eax
 	jle	.Lempty_if.3
-	movl	$1, %eax
-	movl	%eax, -8(%rbp)
+	movl	$1, -8(%rbp)
 .Lempty_if.3:
 	movl	-8(%rbp), %eax
 	jmp	.Lempty_if.1

@@ -78,31 +78,58 @@ point at =cost.md= chapter 1.
 Check: no sentence of =design-calls.md= calls the record of the
 extent future.
 
-** TODO A constant is stored through a register
+** TODO A post-increment for its effect copies the old value
 
-c1 stores a constant to a slot through a register, =movl $0, %eax;
-movl %eax, -12(%rbp)= (34 stores in 13 pins), and =g17='s byte store
-likewise, =movl $122, %ecx; movb %cl, (%rax)=, where x86 stores an
-immediate in one instruction, =movl $0, -12(%rbp)=. The register is
-taken because =rvalue()= yields every value in a register, and the
-assignment's own value may be wanted by an enclosing expression. The
-=x = e= row of =backend.md= 6.3 says the immediate goes directly only
-into a register variable, and points here.
+=i++;= as a statement or as =for='s step goes through =rvalue()=, so
+=step()= copies the old value into another register before the add:
+=movl %eax, %ecx; addl $1, %eax; movl %eax, -16(%rbp)= in the loop of
+=g11-misaligned=, and =(*p)--;= likewise copies =movl %ecx, %edx=.
+=effect()= hands every expression but a constant assignment to
+=rvalue()=, so the copy is made for a value nothing reads.
 
-Fix: an effect context, as Ritchie's c1 had its =efftab= beside
-=regtab= and =cctab=: =effect(e)= as a third entry beside =rvalue()=
-and =cbranch()=, used for an expression statement, a declaration's
-initializer and =for='s init and step. In it an assignment of a
-literal to a slot or through a pointer writes =mov $c, dst= at the
-type's width (=movb=, =movw=, =movl=, or =movq= for a constant that a
-sign-extended 32-bit immediate holds; a wider =long= still goes
-through =movabsq=) and holds nothing. In a value context, =a = b =
-5=, the constant is loaded into a register as today. The 6.3 row is
-restated.
+Fix: in =effect()=, a postfix =++= or =--= is generated as its
+prefix form, whose value is the stored one and needs no copy; a
+register variable's postfix form thus also drops the =preserve()=
+copy of its old read.
 
-Check: the 13 pins re-adopted, and no pin holds a =mov $c, reg=
-followed by a store of that register; =a = b = 5= still loads the
-constant once.
+Check: =g11-misaligned='s step loses its =movl %eax, %ecx=; the probe
+=void g(int *p) { (*p)--; }= has no =movl %ecx, %edx=; =a[i++]= in a
+value context still copies.
+
+** TODO A constant argument is stored to its slot through a register
+
+=call()= evaluates each argument by =rvalue()= and stores the
+register to the argument's slot, so a constant argument is
+=movl $1, %eax; movl %eax, -4(%rbp)=. =stack-args= holds 15 such
+pairs, the only ones left in the pins once the effect context stores
+a constant to memory in one instruction. An argument slot is a
+hidden local, written as the argument is evaluated, and a local's
+constant initializer is now the immediate store.
+
+Fix: in =call()=, a constant argument that a sign-extended 32-bit
+immediate holds at its width is stored as the immediate,
+=movl $1, -4(%rbp)=, by =store_immediate()=; =backend.md= chapter 8
+step 2 says so.
+
+Check: =stack-args= re-pinned, its argument stores one instruction
+each; =grep -hE -A1 '^\s+mov[lq]\s+\$-?[0-9]+, %(e|r)?[a-d]x$'
+tests/cost/*.s tests/corpus/*.s | grep -cE '^\s+mov[bwlq]\s+%[a-z0-9]+, -?[0-9]*\('=
+is 0.
+
+** TODO A cast to void and a void =?:= arm leave the effect context
+
+=(void) (i = 0);= and =c ? (i = 1) : (i = 2);= as statements store
+each constant through a register, =movl $0, %eax; movl %eax,
+-8(%rbp)= in the probe below. =cast()= to void and =conditional()=
+of void type evaluate their operands by =rvalue()= and release them,
+so the constant assignment inside never reaches =effect()=.
+
+Fix: =cast()= to void and the arms of a void =conditional()= call
+=effect()= on their operands.
+
+Check: the probe =void g(int c) { int i; (void) (i = 0); c ? (i = 1)
+: (i = 2); }= stores each constant in one instruction; no pin
+changes, since none holds either form.
 
 ** TODO A shift's reloaded left operand lands in =rcx=
 

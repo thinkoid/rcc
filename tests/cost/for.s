@@ -10,10 +10,8 @@ sum:
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register %rbp
 	movl	%edi, -4(%rbp)
-	movl	$0, %eax
-	movl	%eax, -8(%rbp)
-	movl	$0, %eax
-	movl	%eax, -12(%rbp)
+	movl	$0, -8(%rbp)
+	movl	$0, -12(%rbp)
 .Lsum.2:
 	movl	-12(%rbp), %eax
 	movl	-4(%rbp), %ecx

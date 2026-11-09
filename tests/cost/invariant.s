@@ -12,10 +12,8 @@ invariant:
 	movl	%edi, -4(%rbp)
 	movl	%esi, -8(%rbp)
 	movl	%edx, -12(%rbp)
-	movl	$0, %eax
-	movl	%eax, -16(%rbp)
-	movl	$0, %eax
-	movl	%eax, -20(%rbp)
+	movl	$0, -16(%rbp)
+	movl	$0, -20(%rbp)
 .Linvariant.2:
 	movl	-20(%rbp), %eax
 	movl	-12(%rbp), %ecx
@@ -56,10 +54,8 @@ invariant_constant:
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register %rbp
 	movl	%edi, -4(%rbp)
-	movl	$0, %eax
-	movl	%eax, -8(%rbp)
-	movl	$0, %eax
-	movl	%eax, -12(%rbp)
+	movl	$0, -8(%rbp)
+	movl	$0, -12(%rbp)
 .Linvariant_constant.2:
 	movl	-12(%rbp), %eax
 	movl	-4(%rbp), %ecx

@@ -10,8 +10,7 @@ count:
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register %rbp
 	movl	%edi, -4(%rbp)
-	movl	$0, %eax
-	movl	%eax, -8(%rbp)
+	movl	$0, -8(%rbp)
 .Lcount.2:
 	movl	-8(%rbp), %eax
 	movl	-4(%rbp), %ecx

@@ -10,10 +10,8 @@ main:
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register %rbp
 	movl	%edi, -4(%rbp)
-	movl	$1, %eax
-	movl	%eax, -8(%rbp)
-	movl	$2, %eax
-	movl	%eax, -12(%rbp)
+	movl	$1, -8(%rbp)
+	movl	$2, -12(%rbp)
 	leaq	-12(%rbp), %rax
 	leaq	-8(%rbp), %rcx
 	subq	%rcx, %rax
@@ -23,8 +21,7 @@ main:
 	movq	-32(%rbp), %rax
 	movq	-24(%rbp), %rcx
 	addq	%rcx, %rax
-	movl	$3, %ecx
-	movl	%ecx, (%rax)
+	movl	$3, (%rax)
 	movl	-12(%rbp), %eax
 	jmp	.Lmain.1
 .Lmain.1:

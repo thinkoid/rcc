@@ -13,8 +13,7 @@ main:
 	movq	%rsi, -16(%rbp)
 	movq	-16(%rbp), %rax
 	movq	%rax, -24(%rbp)
-	movq	$-1, %rax
-	movq	%rax, -32(%rbp)
+	movq	$-1, -32(%rbp)
 	movq	-32(%rbp), %rax
 	movl	-4(%rbp), %ecx
 	addl	$2, %ecx

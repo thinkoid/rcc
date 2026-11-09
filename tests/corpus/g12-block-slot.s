@@ -25,8 +25,7 @@ main:
 	movq	-40(%rbp), %rsi
 	movl	$0, %eax
 	call	printf@PLT
-	movl	$9, %eax
-	movl	%eax, -44(%rbp)
+	movl	$9, -44(%rbp)
 	leaq	.Ls1(%rip), %rax
 	movq	%rax, -56(%rbp)
 	leaq	-44(%rbp), %rax

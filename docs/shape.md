@@ -161,10 +161,12 @@ each the code of a `backend.md` chapter:
   before the variable is written, so the read keeps the old value
   (G13). The registers the prologue pushes are counted from the tree
   before the body, since the slots lie below them.
-- Two entry points: `rvalue(e)` yields the value in a register, and
+- Three entry points: `rvalue(e)` yields the value in a register,
   `cbranch(e, label, sense)` jumps on its truth and yields no value
-  (chapter 7). `!`, `&&` and `||` are the shape of the jumps; any
-  other condition is its value compared with 0 at its own width.
+  (chapter 7), and `effect(e)` writes its side effects and yields no
+  value, a constant assigned to memory in one store (6.6). `!`, `&&`
+  and `||` are the shape of the jumps; any other condition is its
+  value compared with 0 at its own width.
 - An lvalue is an `address_t`: a slot off `rbp`, a label off `rip`,
   or a held base with a displacement or with a held index scaled by
   1, 2, 4 or 8. It is the operand of the one `mov` that reads or

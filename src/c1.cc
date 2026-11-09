@@ -1696,18 +1696,17 @@ settle(state_t &s, const symbol_t *sym, value_t v, int width)
         establish(s, sym, variable_register(s, sym));
 }
 
-// Assignment to a register variable, after preserve() has copied every
-// read of it still held.  Plain: a constant is the immediate into the
-// variable's register and the value is a read of the variable;
-// otherwise the right operand into L, then the mov of establish() into
-// the register, movl %eax, %ebx, or movl %r12d, %ebx from another
-// register variable, and the value stays L, as for a slot.  Compound: the operation row with the variable's
-// register as L, in place, addl %eax, %ebx, but for a division, whose
-// quotient comes back from rax by the mov; the value is a read of the
-// variable after the write.  The read is taken before the right
-// operand, as the slot's load is (6.5.17.3p4), and is extended into a
-// fresh register first when the operation is wider than the register
-// is valid to, movslq %ebx, %rax for int += long.
+// Assignment to a register variable, after preserve() has copied every read of
+// it still held.  Plain: a constant is the immediate into the variable's
+// register and the value is a read of the variable; otherwise the right
+// operand into L, then the mov of establish() into the register, movl %eax,
+// %ebx, or movl %r12d, %ebx from another register variable, and the value
+// stays L, as for a slot.  Compound: the operation row with the variable's
+// register as L, in place, addl %eax, %ebx, but for a division, whose quotient
+// comes back from rax by the mov; the value is a read of the variable after
+// the write.  The read is taken before the right operand, as the slot's load is
+// (6.5.17.3p4), and is extended into a fresh register first when the operation
+// is wider than the register is valid to, movslq %ebx, %rax for int += long.
 value_t
 assign_register(state_t &s, const assign_t &a, const symbol_t *sym)
 {
@@ -2007,6 +2006,50 @@ cbranch(state_t &s, const expr_t &e, int label, bool sense)
     insn(s, sense ? "jne" : "je", { label_name(s, label) });
 }
 
+// The store of a constant to memory, chapter 6.6: mov $c of the
+// object's width straight into the operand, movb $122, (%rax), and no
+// register held.  The caller has checked that the immediate holds e.
+void
+store_immediate(state_t &s, const expr_t &e, std::string_view to, int width)
+{
+    insn(s, sized("mov", width), { immediate_of(e, width), to });
+}
+
+// A plain assignment of a constant to an object in memory, for its
+// effect alone: the lvalue's address, then the one store.  G13 holds,
+// since the address is evaluated first and the constant has no
+// evaluation.  False for anything else, a register variable and a
+// 64-bit constant no 32-bit immediate holds included.
+bool
+constant_assignment(state_t &s, const assign_t &a)
+{
+    if (a.op || register_variable(*a.lhs))
+        return false;
+
+    const int width = integer(a.lhs->type).width;
+    if (!immediate(*a.rhs, width))
+        return false;
+
+    const auto place = address(s, *a.lhs);
+    store_immediate(s, *a.rhs, operand(s, place), width);
+    release(s, place);
+
+    return true;
+}
+
+// The effect context, chapter 6.6, Ritchie's efftab beside regtab and
+// cctab: an expression evaluated for its side effects, its value not
+// wanted.  A constant assigned to memory is stored directly; anything
+// else is its value, discarded.
+void
+effect(state_t &s, const expr_t &e)
+{
+    if (is< assign_t >(e) && constant_assignment(s, as< assign_t >(e)))
+        return;
+
+    release(s, rvalue(s, e));
+}
+
 // statements
 
 void statement(state_t &, const stmt_t &);
@@ -2015,7 +2058,7 @@ void
 expr_stmt(state_t &s, const expr_stmt_t &x)
 {
     if (x.e)
-        release(s, rvalue(s, *x.e));
+        effect(s, *x.e);
 }
 
 // A register variable takes the next of the five where its declaration
@@ -2050,7 +2093,8 @@ register_decl(state_t &s, const decl_stmt_t &d)
 // G12: the slot is taken where the declaration is met, one for the
 // whole activation, and before the initializer, whose scope already
 // holds the name, 6.2.1p7.  G5: without an initializer nothing is
-// stored; the slot holds what it holds.  An array's slot is at the
+// stored; the slot holds what it holds.  A constant initializer is the
+// one store of the immediate, chapter 6.6.  An array's slot is at the
 // type's alignment, chapter 5, and its displacement is the array's
 // lowest address, the elements upward from it.
 void
@@ -2070,6 +2114,11 @@ decl_stmt(state_t &s, const decl_stmt_t &d)
         return;
 
     const auto &t = integer(sym->type);
+    if (immediate(*d.init, t.width)) {
+        store_immediate(s, *d.init, at(displacement), t.width);
+        return;
+    }
+
     const auto v = rvalue(s, *d.init);
     store(s, reg_of(s, v), at(displacement), t.width);
     release(s, v);
@@ -2154,7 +2203,7 @@ for_stmt(state_t &s, const for_t &f)
 
     place_label(s, next);
     if (f.step)
-        release(s, rvalue(s, *f.step));
+        effect(s, *f.step);
     jump(s, cond);
 
     place_label(s, end);

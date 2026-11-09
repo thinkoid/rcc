@@ -10,8 +10,7 @@ main:
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register %rbp
 	movl	%edi, -4(%rbp)
-	movl	$0, %eax
-	movl	%eax, -16(%rbp)
+	movl	$0, -16(%rbp)
 .Lmain.2:
 	movl	-16(%rbp), %eax
 	cmpl	$8, %eax

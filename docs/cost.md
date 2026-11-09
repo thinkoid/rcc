@@ -79,7 +79,7 @@ shows it yet.
 
 | Source | Machine | Program |
 |---|---|---|
-| a local | a slot of its own off `rbp` for the whole call; a load at each read, `movl -8(%rbp), %eax`, and a store at each write, `movl %eax, -8(%rbp)`; a constant stored is held in a register first, `movl $0, %eax` | `local`, `while` |
+| a local | a slot of its own off `rbp` for the whole call; a load at each read, `movl -8(%rbp), %eax`, and a store at each write, `movl %eax, -8(%rbp)`; a constant stored by a statement or an initializer is the one store of the immediate, `movl $0, -8(%rbp)` | `local`, `while` |
 | a parameter | its argument register stored to its slot in the prologue, `movl %edi, -4(%rbp)`; then the local's row | `parameter` |
 | a `register` local | the next of `rbx`, `r12` to `r15`, by declaration order, pushed after `rbp` in the prologue and popped before `leave`; no slot, no load, no store; a read is the register as an operand, `cmpl %ebx, %r13d`; an instruction that writes its destination works on a copy, `movl %r12d, %eax; addl %r13d, %eax`, and the assignment moves the result back, `movl %eax, %r12d`; a constant assigned is the immediate, `movl $0, %r12d`; across a loop, the same register | `register-loop` |
 | a `register` local without an initializer | the register as the prologue left it; nothing writes it until the program does, so every read sees one value (G5) | `register-undef` |
@@ -107,7 +107,7 @@ shows it yet.
 | a `char` or `short` parameter or result | stored at its width in the prologue, `movb %dil, -1(%rbp)`, `movw %si, -4(%rbp)`, and loaded with its extension, `movsbl`, `movswl`; a result not already valid to 32 bits extended before the jump to the epilogue, `movsbl %al, %eax`, `movzbl %al, %eax`; an argument stored at its width and loaded extended into its register, `movsbl -5(%rbp), %edi` | `narrow` |
 | `a += b` | the load, the op, the store; on a `char`, the extending load `movsbl -9(%rbp), %eax`, the op in `int`, the narrow store `movb %al, -9(%rbp)` | `compound` |
 | a constant | the immediate, `addl $408, %eax`, a constant expression folded first, `12 * 34` to 408; a 64-bit constant no 32-bit immediate holds is `movabsq $81985529216486895, %rcx` where it is written, in a loop at every iteration | `constant-hoisting`, `constant-in-loop` |
-| a constant under an implicit conversion | the constant in the target type, an immediate of its width, held and stored: `long x = 2` is `movq $2, %rax`, `long x = -1` is `movq $-1, %rax`; `(long) 2` is the same `long` constant | |
+| a constant under an implicit conversion | the constant in the target type, an immediate of its width, stored: `long x = 2` is `movq $2, -8(%rbp)`, `long x = -1` is `movq $-1, -8(%rbp)`; `(long) 2` is the same `long` constant | |
 | a loop-invariant expression | computed every iteration: `a / b` in the body is its two loads and its `idivl`, and `12 * 34` its `addl $408` | `invariant` |
 | an expression written twice | computed twice: `a * b + a * b` is two `imull`, and `12 * 34 + 12 * 34` two `addl $408` | `twice` |
 | more held values than nine registers | the oldest held value spilled, `movq %rax, -32(%rbp)`, and reloaded when it is consumed, `movq -32(%rbp), %rax` | `spill` |

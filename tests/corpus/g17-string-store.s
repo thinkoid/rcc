@@ -13,8 +13,7 @@ main:
 	leaq	.Ls0(%rip), %rax
 	movq	%rax, -16(%rbp)
 	movq	-16(%rbp), %rax
-	movl	$122, %ecx
-	movb	%cl, (%rax)
+	movb	$122, (%rax)
 	movq	-16(%rbp), %rax
 	movsbl	(%rax), %eax
 	jmp	.Lmain.1

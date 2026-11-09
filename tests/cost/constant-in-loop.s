@@ -11,8 +11,7 @@ constant_in_loop:
 	.cfi_def_cfa_register %rbp
 	movq	%rdi, -8(%rbp)
 	movl	%esi, -12(%rbp)
-	movl	$0, %eax
-	movl	%eax, -16(%rbp)
+	movl	$0, -16(%rbp)
 .Lconstant_in_loop.2:
 	movl	-16(%rbp), %eax
 	movl	-12(%rbp), %ecx
