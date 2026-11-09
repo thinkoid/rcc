@@ -1,9 +1,9 @@
 # rcc
 
-An experimental descendant of Ritchie's C compiler, using LLVM to
-bring early C's machine-oriented programming model to modern targets,
-with explicit guarantees for selected operations that ISO C leaves
-undefined.
+An experimental descendant of Ritchie's C compiler, with its own
+back end, bringing early C's machine-oriented programming model to
+modern targets, with explicit guarantees for selected operations
+that ISO C leaves undefined.
 
 The name says where it comes from. The syntax stays near ISO C, so
 existing programs compile; the promises are the project. They are
