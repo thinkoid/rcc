@@ -94,21 +94,6 @@ it is free, the next register of chapter 4's order.
 Check: the probe =int f(int a, int n) { char x = a; x <<= n; return
 x; }= has no =movl %eax, %ecx=; the 51 cost pins are unchanged.
 
-** TODO A cast to void and a void =?:= arm leave the effect context
-
-=(void) (i = 0);= and =c ? (i = 1) : (i = 2);= as statements store
-each constant through a register, =movl $0, %eax; movl %eax,
--8(%rbp)= in the probe below. =cast()= to void and =conditional()=
-of void type evaluate their operands by =rvalue()= and release them,
-so the constant assignment inside never reaches =effect()=.
-
-Fix: =cast()= to void and the arms of a void =conditional()= call
-=effect()= on their operands.
-
-Check: the probe =void g(int c) { int i; (void) (i = 0); c ? (i = 1)
-: (i = 2); }= stores each constant in one instruction; no pin
-changes, since none holds either form.
-
 ** TODO A shift's reloaded left operand lands in =rcx=
 
 In a variable shift whose left operand is reloaded after a call,

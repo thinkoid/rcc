@@ -586,6 +586,7 @@ operands(state_t &s, value_t l, value_t r)
 
 value_t rvalue(state_t &, const expr_t &);
 void cbranch(state_t &, const expr_t &, int label, bool sense);
+void effect(state_t &, const expr_t &);
 
 // register variables
 
@@ -1497,6 +1498,30 @@ logical(state_t &s, const expr_t &e)
     return v;
 }
 
+// A conditional whose value is not wanted, a void one or one in the
+// effect context: the jump code of 6.5.16p5, and each arm for its
+// effect, chapter 6.6, so a constant assigned in an arm is one store.
+void
+conditional_effect(state_t &s, const expr_t &e)
+{
+    const auto &c = as< conditional_t >(e);
+
+    before_paths(s, e);
+
+    const int no = new_label(s);
+    const int end = new_label(s);
+
+    cbranch(s, *c.cond, no, false);
+
+    effect(s, *c.yes);
+    jump(s, end);
+
+    place_label(s, no);
+    effect(s, *c.no);
+
+    place_label(s, end);
+}
+
 // 6.5.16p5: the arm not chosen is not evaluated, and the jump says so;
 // never cmov.  Each arm's value is moved into the register of the
 // first arm's, which is an expression register: a register variable as
@@ -1507,23 +1532,17 @@ conditional(state_t &s, const expr_t &e)
     const auto &c = as< conditional_t >(e);
     const auto &t = e.type;
 
+    if (is< void_t >(t)) {
+        conditional_effect(s, e);
+        return { };
+    }
+
     before_paths(s, e);
 
     const int no = new_label(s);
     const int end = new_label(s);
 
     cbranch(s, *c.cond, no, false);
-
-    if (is< void_t >(t)) {
-        release(s, rvalue(s, *c.yes));
-        jump(s, end);
-
-        place_label(s, no);
-        release(s, rvalue(s, *c.no));
-
-        place_label(s, end);
-        return { };
-    }
 
     const int width = std::max(32, integer(t).width);
 
@@ -1810,14 +1829,15 @@ assign(state_t &s, const assign_t &a)
 // is its integer view, so pointer to pointer is nothing, an integer
 // widens to a pointer by its own signedness (6.3.2.3p5), and a pointer
 // narrows to an integer by its low bits (p6).  An array decays to its
-// address, 6.3.2.1p3.  A cast to void discards the value.  A register
-// variable widens into a fresh register, movslq %ebx, %rax, and narrows
-// as its read: the read, not the variable, is valid to less.
+// address, 6.3.2.1p3.  A cast to void evaluates its operand for its
+// effect alone, chapter 6.6.  A register variable widens into a fresh
+// register, movslq %ebx, %rax, and narrows as its read: the read, not
+// the variable, is valid to less.
 value_t
 cast(state_t &s, const cast_t &c, const type_t &to)
 {
     if (is< void_t >(to)) {
-        release(s, rvalue(s, *c.arg));
+        effect(s, *c.arg);
         return { };
     }
 
@@ -2210,7 +2230,9 @@ modify(state_t &s, const unary_t &u)
 // cctab: an expression evaluated for its side effects, its value not
 // wanted.  A constant assigned to memory is stored directly, and a
 // compound assignment or a step on an object in memory is the memory
-// form; anything else is its value, discarded.
+// form.  The context reaches through a conditional's arms and, by
+// cast(), through a cast to void; anything else is its value,
+// discarded.
 void
 effect(state_t &s, const expr_t &e)
 {
@@ -2222,6 +2244,11 @@ effect(state_t &s, const expr_t &e)
 
     if (is< unary_t >(e) && is_step(as< unary_t >(e).op)) {
         modify(s, as< unary_t >(e));
+        return;
+    }
+
+    if (is< conditional_t >(e)) {
+        conditional_effect(s, e);
         return;
     }
 

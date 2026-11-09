@@ -492,6 +492,12 @@ points:
 - `effect(e)`, the side effects of `e` and no value: an expression
   statement, a declaration's initializer and `for`'s step.
 
+The effect context reaches through the operators that discard a
+value: the operand of a cast to void, and the arms of a conditional
+whose value is not wanted, a void one or one in the effect context.
+`(void) (i = 0);` and `c ? (i = 1) : (i = 2);` thus store each
+constant in one instruction.
+
 In the effect context, a plain assignment of a constant to an object
 in memory is one instruction. The lvalue's address is evaluated
 first, then the constant is written into it, `movb $122, (%rax)`,
