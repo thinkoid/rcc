@@ -494,18 +494,27 @@ points:
 
 In the effect context, a plain assignment of a constant to an object
 in memory is one instruction. The lvalue's address is evaluated
-first, then `mov $c` of the object's width writes the constant into
-it, `movl $0, -12(%rbp)`, `movb $122, (%rax)`, and no register is
-held. G13 holds, since the constant has no evaluation. A declaration's
-initializer that is a constant is stored into the slot the same way;
-a register variable's is the immediate into its register already
-(chapter 4). A 64-bit constant no sign-extended 32-bit immediate
-holds is `movabsq` into a register and the store, as in 6.3. Any
-other expression is evaluated by `rvalue()` and its value discarded.
+first, then the constant is written into it, `movb $122, (%rax)`,
+and no register is held. G13 holds, since the constant has no
+evaluation. Any other expression is evaluated by `rvalue()` and its
+value discarded.
 
-The value context is unchanged. In `a = b = 5` the value of `b = 5`
-is wanted, so the 5 is loaded once, `movl $5, %eax`, and stored
-twice.
+The write is the store row of an initializer, `initialize()`: a
+constant the immediate holds is `mov $c` of the object's width into
+the object, `movl $0, -12(%rbp)`, and anything else is its value in
+a register and the store. A 64-bit constant no sign-extended 32-bit
+immediate holds is thus `movabsq` into a register and the store, as
+in 6.3. Three writers share the row:
+
+- a declaration's initializer, into the local's slot; a register
+  variable's is the immediate into its register already (chapter 4);
+- an argument, into its slot (chapter 8);
+- the effect context's assignment of a constant, through the
+  lvalue's address.
+
+The value context differs, since the value is wanted in a register.
+In `a = b = 5` the value of `b = 5` is wanted, so the 5 is loaded
+once, `movl $5, %eax`, and stored twice.
 
 ## 7. Conditions and control
 
@@ -590,12 +599,14 @@ call sequence.
    expression (`x` in `x + f(a, b)`) is stored to a spill slot; the
    register is freed. Nothing is held in a register from here to the
    `call`.
-2. Each argument in turn is evaluated into a register by chapter 6,
-   a constant included, and stored to its argument slot, `mov L,
-   -24(%rbp)`. Arguments are evaluated in source order,
-   each complete before the next begins, and a call inside an
-   argument finds every expression register free and clobbers
-   nothing that matters.
+2. Each argument in turn is written to its argument slot by the
+   store row of 6.6, the slot taken before the argument is
+   evaluated. A constant is the immediate into its slot, `movl $1,
+   -4(%rbp)`; anything else is evaluated into a register by chapter
+   6 and stored, `mov L, -24(%rbp)`. Arguments are evaluated in
+   source order, each complete before the next begins, and a call
+   inside an argument finds every expression register free and
+   clobbers nothing that matters.
 3. The call sequence. If the arguments past the sixth are an odd
    number, `sub $8,%rsp`, so that the `call` lands on a multiple of
    16. The arguments past the sixth are pushed from their slots right

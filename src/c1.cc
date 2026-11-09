@@ -1083,6 +1083,24 @@ literal(state_t &s, const literal_t &l, const type_t &t)
     return v;
 }
 
+// The store row of an initializer, chapter 6.6: e written into the
+// object at to, at the object's width, its value not wanted.  A
+// constant the immediate holds is the one mov $c, to, and no register
+// is held; anything else is its value in a register and the store.  to
+// is formed before e is evaluated, so it is a slot, or e is a constant.
+void
+initialize(state_t &s, const expr_t &e, std::string_view to, int width)
+{
+    if (immediate(e, width)) {
+        insn(s, sized("mov", width), { immediate_of(e, width), to });
+        return;
+    }
+
+    const auto v = rvalue(s, e);
+    store(s, reg_of(s, v), to, width);
+    release(s, v);
+}
+
 const char *
 arithmetic_mnemonic(binary_op_t op)
 {
@@ -1852,11 +1870,9 @@ call(state_t &s, const call_t &c, const type_t &t)
         if (i < f.params.size() && !(arg.type == *f.params[i]))
             throw std::logic_error("c1: an argument unlike its parameter");
 
-        const auto v = rvalue(s, arg);
         const int displacement =
             allocate(s, size_of(arg.type), align_of(arg.type));
-        store(s, reg_of(s, v), at(displacement), type.width);
-        release(s, v);
+        initialize(s, arg, at(displacement), type.width);
 
         slots.emplace_back(displacement, type);
     }
@@ -2006,20 +2022,13 @@ cbranch(state_t &s, const expr_t &e, int label, bool sense)
     insn(s, sense ? "jne" : "je", { label_name(s, label) });
 }
 
-// The store of a constant to memory, chapter 6.6: mov $c of the
-// object's width straight into the operand, movb $122, (%rax), and no
-// register held.  The caller has checked that the immediate holds e.
-void
-store_immediate(state_t &s, const expr_t &e, std::string_view to, int width)
-{
-    insn(s, sized("mov", width), { immediate_of(e, width), to });
-}
-
 // A plain assignment of a constant to an object in memory, for its
-// effect alone: the lvalue's address, then the one store.  G13 holds,
-// since the address is evaluated first and the constant has no
-// evaluation.  False for anything else, a register variable and a
-// 64-bit constant no 32-bit immediate holds included.
+// effect alone: the lvalue's address, then the store row of an
+// initializer through it, movb $122, (%rax).  G13 holds, since the
+// address is evaluated first and the constant has no evaluation.  False
+// for anything else, a register variable and a 64-bit constant no
+// 32-bit immediate holds included: the operand is formed before the
+// right operand would be evaluated, which could spill the address.
 bool
 constant_assignment(state_t &s, const assign_t &a)
 {
@@ -2031,7 +2040,7 @@ constant_assignment(state_t &s, const assign_t &a)
         return false;
 
     const auto place = address(s, *a.lhs);
-    store_immediate(s, *a.rhs, operand(s, place), width);
+    initialize(s, *a.rhs, operand(s, place), width);
     release(s, place);
 
     return true;
@@ -2093,8 +2102,8 @@ register_decl(state_t &s, const decl_stmt_t &d)
 // G12: the slot is taken where the declaration is met, one for the
 // whole activation, and before the initializer, whose scope already
 // holds the name, 6.2.1p7.  G5: without an initializer nothing is
-// stored; the slot holds what it holds.  A constant initializer is the
-// one store of the immediate, chapter 6.6.  An array's slot is at the
+// stored; the slot holds what it holds.  The initializer is the store
+// row of chapter 6.6, into the slot.  An array's slot is at the
 // type's alignment, chapter 5, and its displacement is the array's
 // lowest address, the elements upward from it.
 void
@@ -2113,15 +2122,7 @@ decl_stmt(state_t &s, const decl_stmt_t &d)
     if (!d.init)
         return;
 
-    const auto &t = integer(sym->type);
-    if (immediate(*d.init, t.width)) {
-        store_immediate(s, *d.init, at(displacement), t.width);
-        return;
-    }
-
-    const auto v = rvalue(s, *d.init);
-    store(s, reg_of(s, v), at(displacement), t.width);
-    release(s, v);
+    initialize(s, *d.init, at(displacement), integer(sym->type).width);
 }
 
 // A block's register variables give their registers back at its end.

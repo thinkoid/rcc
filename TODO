@@ -96,26 +96,6 @@ Check: =g11-misaligned='s step loses its =movl %eax, %ecx=; the probe
 =void g(int *p) { (*p)--; }= has no =movl %ecx, %edx=; =a[i++]= in a
 value context still copies.
 
-** TODO A constant argument is stored to its slot through a register
-
-=call()= evaluates each argument by =rvalue()= and stores the
-register to the argument's slot, so a constant argument is
-=movl $1, %eax; movl %eax, -4(%rbp)=. =stack-args= holds 15 such
-pairs, the only ones left in the pins once the effect context stores
-a constant to memory in one instruction. An argument slot is a
-hidden local, written as the argument is evaluated, and a local's
-constant initializer is now the immediate store.
-
-Fix: in =call()=, a constant argument that a sign-extended 32-bit
-immediate holds at its width is stored as the immediate,
-=movl $1, -4(%rbp)=, by =store_immediate()=; =backend.md= chapter 8
-step 2 says so.
-
-Check: =stack-args= re-pinned, its argument stores one instruction
-each; =grep -hE -A1 '^\s+mov[lq]\s+\$-?[0-9]+, %(e|r)?[a-d]x$'
-tests/cost/*.s tests/corpus/*.s | grep -cE '^\s+mov[bwlq]\s+%[a-z0-9]+, -?[0-9]*\('=
-is 0.
-
 ** TODO A cast to void and a void =?:= arm leave the effect context
 
 =(void) (i = 0);= and =c ? (i = 1) : (i = 2);= as statements store
