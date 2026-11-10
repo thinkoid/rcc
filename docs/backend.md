@@ -656,11 +656,10 @@ spill of 6.2 for an owned one, the store of the variable's register
 for a borrowed read. A branch uses both halves and a call the
 first.
 
-Three parts of this section are queued and not in c1 yet: the save
-after the arguments, the store of a borrowed read's register, and
-the check. Today c1 spills on entry to a call and not again, and
-before a branch it copies a threatened read into an expression
-register and spills the copy.
+Two parts of this section are queued and not in c1 yet: the store of
+a borrowed read's register, and the check. Today c1 copies a
+threatened read into an expression register before a branch, and
+spills the copy.
 
 ## 7. Conditions and control
 

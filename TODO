@@ -128,52 +128,6 @@ value and with =*==, and ~r += (r = 2)~ on a register variable,
 exits with one status under =rcc= and =clang -O2=, each form having
 read the object after the right operand.
 
-** TODO A register variable's read is lost across a call whose argument writes the variable
-
-=call()= spills every held value before it evaluates the arguments.
-A read of a register variable holds no expression register at that
-point, so nothing is spilled for it. When an argument then writes
-the variable, =preserve()= copies the read into an expression
-register, and the copy is still there when the =call= instruction
-runs, which destroys it. For
-
-#+begin_src c
-int f(int);
-int broken(register int x) { return x + f(x++); }
-#+end_src
-
-c1 writes
-
-#+begin_example
-	movl	%ebx, %eax
-	movl	%ebx, %ecx
-	addl	$1, %ebx
-	movl	%ecx, -12(%rbp)
-	movl	-12(%rbp), %edi
-	call	f@PLT
-	addl	%eax, %eax
-#+end_example
-
-The first =movl= is the copy of the left operand. The call returns
-in the same register, and the function returns twice =f='s result
-where G13 promises the old =x= plus =f= of the old =x=. With =x= in
-a slot the listing is right: the left operand is loaded, spilled by
-=call()= and reloaded after the call.
-
-Fix: =call()= saves the held values a second time, after the last
-argument is stored and before the call sequence. That point needs no
-knowledge of what the arguments write: whatever they left in an
-expression register is saved there. The spill on entry stays, since
-it frees the registers for the arguments: without it =a + f(b / c)=
-holds =a= in =rax= when the division wants it, and takes four moves
-more. A read still borrowed from a register variable needs nothing
-at a call: its register is callee-saved, and the callee cannot name
-the variable. The aarch64 generator takes the same rule
-(=aarch64.md= chapter 8, step 1).
-
-Check: a program that calls =broken(5)= with =f= returning its
-argument plus 100 exits with status 110 under rcc.
-
 ** TODO A threatened read of a register variable is copied, then spilled
 
 Before the paths of =&&=, =||= and =?:=, =before_paths()= copies a

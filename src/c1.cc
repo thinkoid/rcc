@@ -1898,7 +1898,8 @@ callee_of(const call_t &c)
 
 // Chapter 8, every argument a hidden local of its call.  Every held
 // value is spilled; each argument, in order and complete before the
-// next (G13), is stored to its own slot at its width; then the stack
+// next (G13), is stored to its own slot at its width; what the
+// arguments left held is spilled in its turn; then the stack
 // arguments are pushed from their slots, last first, over a pad that
 // keeps rsp a multiple of 16 at the call, and the first six are loaded
 // into their registers, extended to 32 bits if narrower.  G16: the
@@ -1927,6 +1928,10 @@ call(state_t &s, const call_t &c, const type_t &t)
 
         slots.emplace_back(displacement, type);
     }
+
+    // the call destroys every expression register, and an argument's
+    // write may have copied a borrowed read into one (6.7)
+    spill_all(s);
 
     const std::size_t registers = std::size(argument_registers);
     const std::size_t stacked =
