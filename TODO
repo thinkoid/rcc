@@ -24,9 +24,9 @@ second target, whose design is =docs/aarch64.md=.
 
 ** TODO aarch64
 
-The design is =docs/aarch64.md=; its chapter 15 lists seven calls
-still open. The target takes ten register variables, =x19= to =x28=,
-and the oracle's programs run on an aarch64 machine, with no
+The design is =docs/aarch64.md=; its chapter 15 has the seven calls
+and their answers. The target takes ten register variables, =x19= to
+=x28=, and the oracle's programs run on an aarch64 machine, with no
 emulator. The work is four slices, each followed by its pins and its
 documents, as the x86-64 slices were:
 
@@ -44,7 +44,8 @@ sibling or more operands: =spill= (fifteen expression registers, not
 nine), =stack-args= (eight argument registers, not six) and
 =div-busy= (no pinned register). New rows the target asks for: a slot
 beyond the instruction's reach, a constant by its bits, the
-remainder, a stack parameter's copy, a frame of 4096 bytes or more.
+subscript by an =int= and by a =long=, the remainder, a stack
+parameter's copy, a frame of 4096 bytes or more.
 
 Then the measurement on the aarch64 machine, with the tuned sources
 as first written, and the loop-head alignment probe.

@@ -6,11 +6,11 @@ first, then the mechanism, with the standard and the ABI cited where
 they govern. `backend.md` stays the design of the x86-64 generator;
 this page says what carries over unchanged, what is x86's own and has
 no counterpart, and what the new machine asks that the old one did
-not. The last chapter lists the calls to make. The C citations are
-N3220; the ABI citations are the AAPCS64, release 2026Q3, by section
-title. Every instruction form on this page was assembled by both
-`clang` and GNU `as`, and every behaviour stated of the machine was
-run on an aarch64 Linux machine.
+not. The last chapter lists the calls and their answers. The C
+citations are N3220; the ABI citations are the AAPCS64, release
+2026Q3, by section title. Every instruction form on this page was
+assembled by both `clang` and GNU `as`, and every behaviour stated of
+the machine was run on an aarch64 Linux machine.
 
 ## 0. tl;dr
 
@@ -41,7 +41,9 @@ run on an aarch64 Linux machine.
 - Plain `char` is unsigned, as the platform has it.
 - The oracle carries: `clang -O2` gives the same nine statuses on this
   machine as on x86-64. The pins are per target.
-- Seven calls are open, chapter 15.
+- A subscript by an `int` is one instruction, `ldr w0, [x1, w2, sxtw
+  #2]`: the addressing form extends the index itself (6.3).
+- The seven calls of chapter 15 are answered.
 
 ## 1. What carries, and what does not
 
@@ -125,6 +127,13 @@ An address operand is one of:
 - `[x1, x2, lsl #k]`, a base and an index shifted by the access's
   own size: `#2` for an `int`, `#3` for a `long`, and no other
   amount. `ldr w0, [x1, x2, lsl #3]` does not assemble.
+- `[x1, w2, sxtw #k]` and `[x1, w2, uxtw #k]`, a base and a 32-bit
+  index that the form itself extends to 64 bits, signed or unsigned,
+  and then shifts. `k` is again the access's own size, or absent.
+
+`add` and `sub` take the last operand too, since the machine has no
+`lea`: `add x0, x1, w2, sxtw #2` is the address the form above reads
+from.
 
 The displacement is where this machine differs most from x86, whose
 `-8(%rbp)` takes any 32-bit number. Here it is one of two encodings:
@@ -464,9 +473,9 @@ For a 32-bit operation (`w` names) or a 64-bit one (`x` names).
 | `(T) a` | `sxtw L, L` for `int` to `long`; `sxtb`, `sxth`, `uxtb`, `uxth` from a narrow type; each only when `L` is not already valid to the new width; `mov wL, wL` for an `unsigned` not valid to 64 | G2; the width rule |
 | `&x` | `add L, x29, #d` | two `add`s beyond 4095, 5.3 |
 | `*p` | the load of 2.2 from `[L]` | G8 to G11 |
-| `p[i]`, `a[i]` | the load from `[L, R, lsl #k]`, `[L, R]` for a size of 1; a constant index is `[L, #c*s]` when the displacement encodes | the index widened by the parser's cast, `sxtw` for an `int` (call 5) |
-| `&p[i]` | `add L, L, R, lsl #k` | |
-| `p + n`, `p - n` | `add L, L, R` or `sub` for a size of 1; `add L, L, R, lsl #k` or `sub` for 2, 4 or 8; `mov N, #s; mul R, R, N` first for any other; a constant `n` is the immediate `#c*s` when it encodes | G6 |
+| `p[i]`, `a[i]` | the load from `[L, R, lsl #k]`, `[L, R]` for a size of 1; from `[L, wR, sxtw #k]` or `[L, wR, uxtw #k]` for an index held at 32 bits; a constant index is `[L, #c*s]` when the displacement encodes | one instruction; the index's extension is the form's, below (call 5) |
+| `&p[i]` | `add L, L, R, lsl #k`; `add L, L, wR, sxtw #k` for an index held at 32 bits | the same address by `add`, the machine having no `lea` |
+| `p + n`, `p - n` | `add L, L, R` or `sub` for a size of 1; `add L, L, R, lsl #k` or `sub` for 2, 4 or 8; the index held at 32 bits as for `&p[i]`; `mov N, #s; mul R, R, N` first for any other size; a constant `n` is the immediate `#c*s` when it encodes | G6 |
 | `p - q` | `sub L, L, R`; for a size other than 1, `mov R, #s; sdiv L, L, R` | G6: a division |
 | `"abc"` | `adrp L, .Ls<n>; add L, L, :lo12:.Ls<n>` | two instructions, chapter 10 |
 | `f(a, b)` | chapter 8 | |
@@ -484,6 +493,36 @@ The width rule holds as written. Its facts on this machine:
 
 And a `return` of a `char` or a `short` writes no extension: the
 convention asks none of the callee, and G16 adds nothing.
+
+**The index.** The integer operand of a subscript or of pointer
+arithmetic is 64 bits by the parser's cast, on both targets. On
+x86-64 the cast's instruction is written, `movslq` for an `int`, and
+the load follows. This machine's addressing form takes a 32-bit index
+and extends it itself, so the cast's operand is generated and what is
+held decides the operand:
+
+- valid to 64 bits, a `long` or an `unsigned` written at 32: `[L, R,
+  lsl #k]`, as the width rule writes nothing for the cast;
+- valid to 32 bits and signed, an `int`: `[L, wR, sxtw #k]`;
+- valid to 32 bits and unsigned, as an `unsigned` call result is:
+  `[L, wR, uxtw #k]`;
+- narrower, as a `char` call result is: the cast's instruction
+  extends it to 32 first, `sxtb w2, w2`, and the form does the rest.
+
+`&p[i]` and `p + n` form the same address by `add` or `sub` with the
+same operand, `add x0, x1, w2, sxtw #2`. A size that is not 1, 2, 4
+or 8 is multiplied in, and there the cast writes its `sxtw` before
+the `mul`, as it does anywhere else.
+
+So `p[i]` for an `int i` is one instruction, and for a `register int
+i` it names the variable's register and nothing is copied:
+
+```
+	ldr	w0, [x1, w20, sxtw #2]
+```
+
+On x86-64 a `long` index is the programmer's lever against the
+`movslq`. Here an `int` index and a `long` one cost the same.
 
 ### 6.4 Constants
 
@@ -555,9 +594,8 @@ A register variable is operated on in its register, as before.
 - A comparison: `cmp L, R` and `b.cc label`, the condition or its
   inverse by `sense`.
 - `!e`, `&&`, `||`: the same shapes.
-- Any other expression: its value into `L`, then the test of zero.
-  With call 3 it is `cbnz L, label` or `cbz L, label`, one
-  instruction; without it, `cmp L, #0` and `b.ne` or `b.eq`.
+- Any other expression: its value into `L`, then the test of zero,
+  `cbnz L, label` or `cbz L, label`, one instruction (call 3).
 
 x86 tests a narrow operand at its own width, `cmpb $0, %al`. This
 machine compares whole registers only. A value valid to 32 bits is
@@ -650,7 +688,8 @@ c0 learns the target, for two facts:
   6.2.5p20: "The implementation shall define char to have the same
   range, representation, and behavior as either signed char or
   unsigned char." The platform defined it, and rcc follows the
-  platform (call 2).
+  platform (call 2). A program that needs a signed byte writes
+  `signed char`.
 
 Both live in one small description, `target_t`, that c0 and the
 driver read: the name, the two facts. Everything else about a target
@@ -679,7 +718,7 @@ in it writes x86 mnemonics. Two ways to add a target:
   and `src/c1-aarch64.cc`, each read whole against its own design
   page. `c1.hh`'s `generate()` takes the target and calls one.
 
-The second is the recommendation (call 1), with one qualification.
+The second is the answer (call 1), with one qualification.
 Some of c1 holds no instruction: the integer view of a type, the
 tree predicates (`writes()`, `registers_in()`, `is_comparison()`),
 the label names, the literals' `.string` block. That part is shared
@@ -710,8 +749,8 @@ hand.
   
   Each gets a sibling that reaches the row on this machine, or grows.
   New rows: a slot beyond reach (5.3), a constant by its bits (6.4),
-  the remainder, the stack parameter's copy, a frame of 4096 bytes
-  or more.
+  the subscript by an `int` and by a `long` (6.3), the remainder, the
+  stack parameter's copy, a frame of 4096 bytes or more.
 - **The ABI probes** of `backend.md` 12 are rerun in both pairings
   with `clang` objects: narrow arguments and results both ways, nine
   and ten arguments, `printf`.
@@ -735,36 +774,41 @@ documents, as the x86-64 slices were. Then the measurement.
 
 ## 15. The calls
 
-1. **Two generators or one walk** (chapter 12). Recommended: two
-   files, the instruction-free part shared, the register stack
-   written twice and reconciled after slice 3.
+Seven were open in the first draft of this page. The answers:
+
+1. **Two generators**, `src/c1-x86-64.cc` and `src/c1-aarch64.cc`,
+   each read whole against its own page (chapter 12). The
+   instruction-free part is shared from the start; the register
+   stack is written twice and reconciled after slice 3.
 2. **Plain `char` follows the platform**, unsigned here (chapter
-   11). Recommended. The cost is that one source means two things on
-   two machines, as with every C compiler; the alternative, signed
-   everywhere, is a decision of the compiler's own, and it breaks
-   the oracle's comparison with `clang` on any program that reads a
-   `char` above 127.
-3. **`cbz` and `cbnz` for the test of zero** (7.1). Recommended. It
-   is the machine's instruction for "compares unequal to 0", and it
+   11). One source means two things on two machines, as with every C
+   compiler, and a program that needs a signed byte says `signed
+   char`. Signed everywhere would be a decision of the compiler's
+   own, and would break the oracle's comparison with `clang` on any
+   program that reads a `char` above 127.
+3. **`cbz` and `cbnz` are the test of zero** (7.1). It is the
+   machine's instruction for "compares unequal to 0", and it
    rewrites nothing: an explicit `a != 0` still compares. The
    Seventh Edition compiler's code table keyed rows on a zero
    operand in the same way, `tst` for the test.
-4. **`wzr` as the source of a zero store** (6.6). Recommended, on
-   the same ground; the same table has `clr` for a zero. The cost is
-   a second row for one constant: `x = 0;` is one instruction and
-   `x = 1;` two.
-5. **The index's extension inside the addressing form.** `ldr w0,
-   [x1, w2, sxtw #2]` reads `p[i]` for an `int i` in one instruction,
-   where the table's row is `sxtw x2, w2` and then the load. Not
-   recommended for the three slices: the row as written is the one
-   x86-64 has, the cast's instruction is in the listing, and the
-   programmer's lever, a `long` index, is the same on both machines.
-   It is the first candidate for a measured step afterwards.
+4. **`wzr` is the source of a zero store** (6.6), on the same
+   ground; the same table has `clr` for a zero. The cost is a second
+   row for one constant: `x = 0;` is one instruction and `x = 1;`
+   two.
+5. **The index's extension is written inside the form** (6.3):
+   `ldr w0, [x1, w2, sxtw #2]` reads `p[i]` for an `int i` in one
+   instruction. The first draft kept x86-64's row for the three
+   slices, `sxtw x2, w2` and then the load. But base, extended index
+   and scale are one operand on this machine, as base, index and
+   scale are one on x86-64, and a program written for the machine
+   gets the machine's addressing form. The cost is that the two
+   targets' listings differ for the same subscript, and that the
+   `long` index is a lever on one of them only.
 6. **`-target`, and both pin sets checked on one machine** (chapter
-   11). Recommended. The cost is a driver option and a `--target`
-   passed to `clang`.
-7. **Loop-head alignment** (7.2): none until measured on this
-   machine. Recommended.
+   11). The cost is a driver option and a `--target` passed to
+   `clang`.
+7. **No loop-head alignment** until it is measured on this machine
+   (7.2).
 
 Decided by the machine, listed so that nothing is decided silently:
 
