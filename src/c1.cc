@@ -68,7 +68,8 @@ constexpr reg_t argument_registers[] = { rdi, rsi, rdx, rcx, r8, r9 };
 // read of a register variable is fixed: variable names it, and reg is
 // the variable's register, which the value does not own.  A fixed value
 // is never spilled, freed or written, and it survives a call, since the
-// callee saves the register.
+// callee saves the register.  across counts the branches whose paths
+// the value is held across, which may not move it (6.7).
 struct held_t
 {
     int reg;
@@ -77,6 +78,7 @@ struct held_t
     bool live;
     int valid;
     const symbol_t *variable;
+    int across = 0;
 };
 
 // A handle on a held value; the default is the no-value of a void
@@ -451,12 +453,27 @@ bit(reg_t r)
     return 1u << r;
 }
 
+// A value held across a branch is where both paths expect it until
+// they meet; an instruction on one path that moves it leaves the paths
+// with two register maps (6.7).  Such a move means the walk of writes()
+// missed a write, and the listing would assemble and be wrong, so the
+// generator stops at the instruction instead.
+void
+check_movable(const state_t &s, int id)
+{
+    if (s.values[id].across > 0)
+        throw std::logic_error(
+            "c1: a value held across a branch was moved inside it");
+}
+
 // Stores the value in r to the next spill slot, all 8 bytes, and frees
 // the register.
 void
 spill(state_t &s, reg_t r)
 {
     const int id = s.owner[r];
+    check_movable(s, id);
+
     const int displacement = allocate(s, 8, 8);
 
     insn(s, "movq", { reg(r, 64), at(displacement) });
@@ -541,6 +558,8 @@ reg_of(state_t &s, value_t v, unsigned avoid = 0)
     if (s.values[v.id].reg >= 0)
         return static_cast< reg_t >(s.values[v.id].reg);
 
+    check_movable(s, v.id);
+
     const reg_t r = take(s, avoid);
     insn(s, "movq", { at(s.values[v.id].spill), reg(r, 64) });
 
@@ -572,9 +591,11 @@ release(state_t &s, value_t v)
 void
 move(state_t &s, reg_t from, reg_t to, int width)
 {
+    const int id = s.owner[from];
+    check_movable(s, id);
+
     insn(s, sized("mov", width), { reg(from, width), reg(to, width) });
 
-    const int id = s.owner[from];
     s.values[id].reg = to;
     s.owner[to] = id;
     s.owner[from] = -1;
@@ -739,6 +760,8 @@ constant_into(state_t &s, const symbol_t *sym, const expr_t &e)
 void
 copy(state_t &s, value_t v, reg_t to)
 {
+    check_movable(s, v.id);
+
     auto &h = s.values[v.id];
     const int width = register_width(h.variable);
 
@@ -845,6 +868,8 @@ save(state_t &s, value_t v)
         return;
     }
 
+    check_movable(s, v.id);
+
     const int displacement = allocate(s, 8, 8);
     insn(s, "movq", { reg(r, 64), at(displacement) });
 
@@ -853,12 +878,50 @@ save(state_t &s, value_t v)
     h.variable = nullptr;
 }
 
-// Before the two paths of &&, || or ?: as a value: a read of a register
-// variable that e writes is saved, and every other held value is
-// spilled, as for a call.  Each then has one location on both paths;
-// preserve() on one path alone would leave the paths with two register
-// maps.
-void
+// The values held where the paths of a branch diverge, each marked held
+// across the branch for as long as this lives.  Its scope ends where the
+// paths meet, and the destructor unmarks them, so no return and no
+// exception leaves a value marked.  A branch nested in a path marks the
+// outer branch's values once more, and its end takes back its own mark
+// alone.
+class [[nodiscard]] incoming_t
+{
+public:
+    explicit incoming_t(state_t &s)
+        : m_s(s)
+    {
+        for (std::size_t id = 0; id < s.values.size(); ++id) {
+            if (!s.values[id].live)
+                continue;
+
+            ++s.values[id].across;
+            m_ids.push_back(static_cast< int >(id));
+        }
+    }
+
+    ~incoming_t()
+    {
+        for (const int id : m_ids)
+            --m_s.values[id].across;
+    }
+
+    incoming_t(const incoming_t &) = delete;
+    incoming_t &operator=(const incoming_t &) = delete;
+
+private:
+    state_t &m_s;
+    std::vector< int > m_ids { };
+};
+
+// Before the two paths of &&, || or ?:, a read of a register variable
+// that e writes is saved, and every owned value is spilled, as for a
+// call; a read e does not write stays in its variable's register.  Each
+// then has one location on both paths.  preserve() on one path alone
+// would leave the paths with two register maps, so each value is then
+// marked held across the paths until they meet, where the caller's
+// incoming_t ends, and a write the walk missed is an error of the
+// generator, not a wrong listing.
+incoming_t
 before_paths(state_t &s, const expr_t &e)
 {
     for (std::size_t id = 0; id < s.values.size(); ++id) {
@@ -868,6 +931,8 @@ before_paths(state_t &s, const expr_t &e)
     }
 
     spill_all(s);
+
+    return incoming_t { s };
 }
 
 // The value extended by from's signedness to a width of 32 or 64, where
@@ -1528,12 +1593,13 @@ comparison(state_t &s, const binary_t &b)
 }
 
 // &&, || and ?: as a value: jump code into one register on both paths.
-// Every held value is spilled first, as for a call, so the paths leave
-// the register map as they found it whatever their operands do.
+// before_paths() first gives every held value one location on both, so
+// the paths leave the register map as they found it whatever their
+// operands do.
 value_t
 logical(state_t &s, const expr_t &e)
 {
-    before_paths(s, e);
+    const auto incoming = before_paths(s, e);
 
     const int no = new_label(s);
     const int end = new_label(s);
@@ -1562,7 +1628,7 @@ conditional_effect(state_t &s, const expr_t &e)
 {
     const auto &c = as< conditional_t >(e);
 
-    before_paths(s, e);
+    const auto incoming = before_paths(s, e);
 
     const int no = new_label(s);
     const int end = new_label(s);
@@ -1593,7 +1659,7 @@ conditional(state_t &s, const expr_t &e)
         return { };
     }
 
-    before_paths(s, e);
+    const auto incoming = before_paths(s, e);
 
     const int no = new_label(s);
     const int end = new_label(s);

@@ -656,8 +656,6 @@ spill of 6.2 for an owned one, the store of the variable's register
 for a borrowed read. A branch uses both halves and a call the
 first.
 
-One part of this section is queued and not in c1 yet: the check.
-
 ## 7. Conditions and control
 
 ### 7.1 Jump code

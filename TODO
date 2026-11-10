@@ -172,24 +172,6 @@ frame that reaches the limit by the sum of smaller locals.
 Check: =rcc -S= on the function above prints an error at the
 declaration of =a=, line 2, and exits with status 1.
 
-** TODO Nothing checks that a branch's incoming values stay put
-
-=before_paths()= decides before =&&=, =||= and =?:= which held reads
-of a register variable to save, from what =writes()= finds in the
-expression. Nothing verifies the decision afterwards. If =writes()=
-missed a write, as it would in a node kind added later, its last
-line being =return false=, =preserve()= would copy the read on one
-path alone and the paths would meet with two register maps, in a
-listing that assembles.
-
-Fix: the check of =backend.md= 6.7. The values held at the
-divergence are marked and unmarked where the paths meet, and a
-copy, a spill or a reload of a marked value throws.
-
-Check: with one case of =writes()= disabled by hand, =rcc -S= on
-=x + (c ? x++ : 2)= for a =register int x= stops with the error
-and writes no listing.
-
 * Guarantees
 
 The promises in =docs/guarantees.md=. The entry number is the
