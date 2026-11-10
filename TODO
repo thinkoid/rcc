@@ -128,25 +128,6 @@ value and with =*==, and ~r += (r = 2)~ on a register variable,
 exits with one status under =rcc= and =clang -O2=, each form having
 read the object after the right operand.
 
-** TODO A threatened read of a register variable is copied, then spilled
-
-Before the paths of =&&=, =||= and =?:=, =before_paths()= copies a
-held read of a register variable that the expression writes into an
-expression register, and =spill_all()= then stores the copy:
-=movl %ebx, %eax= and =movq %rax, -24(%rbp)= for
-=x + (c ? x++ : 2)=. The first is a move the generator makes for
-itself: the variable's register can be stored as it is.
-
-Fix: one operation saves a held value, whichever kind it is: an
-owned one by the spill, a borrowed read by a store of the variable's
-register to the spill slot, =movq %rbx, -24(%rbp)=, after which the
-value is no longer the variable's. =before_paths()= uses it.
-=preserve()= keeps its copy, since a write in straight-line code
-wants the old value in a register.
-
-Check: the listing of =x + (c ? x++ : 2)= on a =register int x= has
-the one store before the test and no =movl %ebx, %eax= ahead of it.
-
 ** TODO A local of 2 GiB or more wraps the frame
 
 =allocate()= keeps the frame's size in an =int= and narrows the sum

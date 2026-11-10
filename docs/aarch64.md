@@ -39,7 +39,7 @@ the machine was run on an aarch64 Linux machine.
   `INT_MIN / -1` is `INT_MIN`. The guarantee is unchanged, "what the
   target's instruction does"; the answer is different.
 - Plain `char` is unsigned, as the platform has it.
-- The oracle carries: `clang -O2` gives the same ten statuses on this
+- The oracle carries: `clang -O2` gives the same eleven statuses on this
   machine as on x86-64. The pins are per target.
 - A subscript by an `int` is one instruction, `ldr w0, [x1, w2, sxtw
   #2]`: the addressing form extends the index itself (6.3).
@@ -736,7 +736,7 @@ values and the two save points of `backend.md` 6.7.
 
 ## 13. Verification
 
-- **The oracle.** `clang -O2` on this machine gives the ten corpus
+- **The oracle.** `clang -O2` on this machine gives the eleven corpus
   programs the statuses it gives them on x86-64, the second column
   of `tests/corpus/expected` unchanged. The file is shared until a
   row differs.

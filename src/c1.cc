@@ -826,17 +826,45 @@ writes(const expr_t &e, const symbol_t *sym)
     return false;
 }
 
-// Before the two paths of &&, || or ?: as a value: every held value is
-// spilled, as for a call, and a read of a register variable that e
-// writes is copied first, so it is spilled with them.  preserve() on
-// one path alone would leave the paths with two register maps.
+// Saves a held value to a spill slot, whichever kind it is: an owned
+// value in a register is spilled, and a fixed one has its variable's
+// register stored, all 8 bytes, with no copy.  The fixed value is then
+// owned and spilled, no longer the variable's, so a later write of the
+// variable leaves it alone; valid holds, since the reload is all 8
+// bytes too.  An owned value already spilled is saved as it is.
+void
+save(state_t &s, value_t v)
+{
+    auto &h = s.values[v.id];
+    if (h.reg < 0)
+        return;
+
+    const reg_t r = static_cast< reg_t >(h.reg);
+    if (!h.variable) {
+        spill(s, r);
+        return;
+    }
+
+    const int displacement = allocate(s, 8, 8);
+    insn(s, "movq", { reg(r, 64), at(displacement) });
+
+    h.reg = -1;
+    h.spill = displacement;
+    h.variable = nullptr;
+}
+
+// Before the two paths of &&, || or ?: as a value: a read of a register
+// variable that e writes is saved, and every other held value is
+// spilled, as for a call.  Each then has one location on both paths;
+// preserve() on one path alone would leave the paths with two register
+// maps.
 void
 before_paths(state_t &s, const expr_t &e)
 {
     for (std::size_t id = 0; id < s.values.size(); ++id) {
         const auto &h = s.values[id];
         if (h.live && h.variable && writes(e, h.variable))
-            copy(s, { static_cast< int >(id) }, take(s, 0));
+            save(s, { static_cast< int >(id) });
     }
 
     spill_all(s);
