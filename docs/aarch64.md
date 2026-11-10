@@ -288,8 +288,10 @@ better:
 - A compound assignment and `++` operate in place, `add w21, w21,
   #1`, and a narrow one is re-extended after, `sxtb w19, w19`.
 - G13's copy stays: a read still held when its variable is written is
-  copied into an expression register first, and before the paths of
-  `&&`, `||` and `?:` when a path writes it.
+  copied into an expression register first. The two invariants of
+  `backend.md` 6.7, at a branch and at a call, carry as written; a
+  borrowed read is the common case here, since no instruction copies
+  one.
 - A `register` parameter is moved from its argument register in the
   prologue, by the extending form for a narrow one, since the
   convention leaves its upper bits unspecified. One past the eighth
@@ -624,7 +626,9 @@ Every argument is a hidden local of its call, as before.
 1. Every held value is spilled.
 2. Each argument in turn is written to its slot by the store row of
    6.6.
-3. The call sequence. With more than eight arguments, `sub sp, sp,
+3. The call sequence. What the arguments left held in an expression
+   register is spilled first (`backend.md` 6.7). With more than
+   eight arguments, `sub sp, sp,
    #A` opens the outgoing area, `A` being 8 bytes for each argument
    past the eighth, rounded up to 16. Each of those is copied from
    its slot at its own width, `ldr w17, [x29, #44]; str w17, [sp]`,
@@ -727,7 +731,8 @@ from the start, in a file of its own. The register stack, `take()`,
 the same code, since x86's has the reservation and the pins. It is
 written twice, and what proves textually identical after the third
 slice is lifted out then, as a grooming step with both instances in
-hand.
+hand. Its contract is one, whichever file holds the code: the held
+values and the two save points of `backend.md` 6.7.
 
 ## 13. Verification
 

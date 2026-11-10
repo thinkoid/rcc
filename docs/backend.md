@@ -243,9 +243,9 @@ narrow one is re-extended after.
 
 A read still held when its variable is written would see the new
 value, but G13 promises the old one. So every held read of the
-variable is copied into an expression register before the write, and
-before the two paths of `&&`, `||` or `?:` when a path writes it;
-`i + i++` thus adds the old `i` to itself.
+variable is copied into an expression register before the write;
+`i + i++` thus adds the old `i` to itself. A branch and a call ask
+more than the copy, and 6.7 says what.
 
 **The frame pointer: `rbp`.** Pushed and set in every function's
 prologue, leaf included, restored by `leave`. Every slot is a
@@ -425,9 +425,9 @@ register, not of the program's data. The PDP-11 compiler had the
 same knowledge built in: its `movb` into a register sign-extended,
 and a `char` to `int` conversion of a register value cost nothing.
 
-`&&`, `||` and `?:` evaluated for a value spill every held value
-first, as a call does (chapter 8). Each has two paths into one
-register, and with nothing held, both paths leave the register map
+`&&`, `||` and `?:` evaluated for a value have two paths into one
+register. Before the first divergence every held value is given a
+location that both paths share (6.7), so both leave the register map
 as they found it, whatever their operands do.
 
 ### 6.4 Constants
@@ -562,6 +562,106 @@ once, `movl $5, %eax`, and stored twice; `y = x += 5` and `a[i++]`
 are the load, the operation and the store, and `i++` copies the old
 `i`.
 
+### 6.7 Held values at a branch and at a call
+
+A value is held from the instruction that produces it to the one
+that consumes it. There are two kinds:
+
+- **An owned value** is in an expression register, or in a spill
+  slot once it is spilled (6.2). Nothing else names its location.
+- **A borrowed read** is a read of a register variable (chapter 4):
+  the variable's own register as an operand, and no instruction. It
+  is the value read only for as long as the variable is not written.
+
+In straight-line code the write keeps a borrowed read true: it
+copies every held read of its variable first, `movl %ebx, %eax`
+ahead of the `addl $1, %ebx` of `i++`. Nothing is predicted there,
+since the write sees what is held. At two points of an expression
+that is not enough, and each has an invariant of its own.
+
+**A branch.** `&&`, `||` and `?:` have two paths that meet again.
+The invariant: at the first divergence, every held value has a
+location that is the same on every path. It is established once,
+before the first jump is written, and all that is generated for the
+operands, nested branches included, runs inside it. The write
+cannot establish it later. A copy made on one path moves the value
+on that path alone, and the other path may already be written: the
+false exit of `a && b` leaves from inside `a`'s jump code.
+
+So before the first divergence:
+
+- an owned value in a register is spilled, and its slot is its
+  location on every path;
+- a borrowed read that some path writes is saved: the variable's
+  register is stored to a spill slot, `movq %rbx, -24(%rbp)`, and
+  the value is an owned, spilled one from there on;
+- a borrowed read that no path writes stays borrowed, and the
+  variable's register is its location on every path. `x + (c ? 1 :
+  2)` on a `register int x` stores nothing.
+
+The last two cases turn on what the paths write. That is known, not
+estimated: a register variable has no address (6.5.4.2p1), so only
+an assignment, a `++` or a `--` that names it can write it, and the
+tree shows every one. The walk that looks for them visits every
+kind of node that has operands. A path the program does not take at
+run time counts all the same, so a write in one arm saves the read
+on both.
+
+A condition generated as jump code (7.1) for a statement has nothing
+held. Inside an expression it is always an operand of one of these
+three, and runs inside the invariant they established. The result
+is not an incoming value: both paths write it into one register
+(7.2).
+
+The invariant is checked where it could be broken. The incoming
+values are marked at the divergence and unmarked where the paths
+meet, and an instruction that would move a marked value, a copy, a
+spill or a reload, is an error of the generator, reported at that
+instruction. A gap in the walk thus stops the compilation; it does
+not reach a listing.
+
+**A call.** The `call` instruction destroys the nine expression
+registers. The invariant: when the call sequence begins, no
+expression register holds a value. It is established after the last
+argument is stored and before the first instruction of the call
+sequence (chapter 8), by spilling what is held then. That point
+sees what the arguments themselves produced, and predicts nothing.
+In `x + f(x++)` on a `register int x`, the argument's write copies
+the held read of `x` into `eax`, and the copy is spilled there:
+
+```
+	movl	%ebx, %eax
+	movl	%ebx, %ecx
+	addl	$1, %ebx
+	movl	%ecx, -12(%rbp)
+	movq	%rax, -24(%rbp)
+	movl	-12(%rbp), %edi
+	call	f@PLT
+	movq	-24(%rbp), %rcx
+	addl	%eax, %ecx
+```
+
+The values held on entry to the call are spilled sooner, before the
+first argument is evaluated. They are known to cross the call, and
+spilling them first leaves every expression register to the
+arguments: with `a` still in `rax`, the division in `a + f(b / c)`
+would have to move it out of the way (6.5).
+
+A borrowed read needs nothing at a call. Its register is
+callee-saved (3.2), and the callee cannot write a variable that has
+no address.
+
+**One operation saves a held value**, whichever kind it is: the
+spill of 6.2 for an owned one, the store of the variable's register
+for a borrowed read. A branch uses both halves and a call the
+first.
+
+Three parts of this section are queued and not in c1 yet: the save
+after the arguments, the store of a borrowed read's register, and
+the check. Today c1 spills on entry to a call and not again, and
+before a branch it copies a threatened read into an expression
+register and spills the copy.
+
 ## 7. Conditions and control
 
 ### 7.1 Jump code
@@ -645,8 +745,8 @@ call sequence.
 
 1. Every expression register holding a value of the enclosing
    expression (`x` in `x + f(a, b)`) is stored to a spill slot; the
-   register is freed. Nothing is held in a register from here to the
-   `call`.
+   register is freed, and the arguments find every expression
+   register free.
 2. Each argument in turn is written to its argument slot by the
    store row of 6.6, the slot taken before the argument is
    evaluated. A constant is the immediate into its slot, `movl $1,
@@ -655,19 +755,20 @@ call sequence.
    source order, each complete before the next begins, and a call
    inside an argument finds every expression register free and
    clobbers nothing that matters.
-3. The call sequence. If the arguments past the sixth are an odd
-   number, `sub $8,%rsp`, so that the `call` lands on a multiple of
-   16. The arguments past the sixth are pushed from their slots right
-   to left, so that the seventh is lowest, as the ABI wants (3.2.3):
-   an 8-byte slot in one instruction, `pushq -40(%rbp)`. A slot
-   narrower than 8 bytes is not pushed directly, since `pushq` would
-   read the bytes above it: it is loaded, extended, into `eax` and
-   pushed from `rax`, `movl -28(%rbp), %eax; pushq %rax`. The first
-   six are loaded from their slots into `rdi`, `rsi`, `rdx`, `rcx`,
-   `r8`, `r9`, a narrower one extended to 32 bits by the load. `al`
-   is set to 0 for a variadic callee, `movl $0, %eax`. `call f@PLT`,
-   every call through the PLT, chapter 10. The pushed bytes and the pad
-   are added back.
+3. The call sequence. Whatever the arguments left held in an expression
+   register is spilled first (6.7), so nothing is held in a register
+   from here to the `call`. If the arguments past the sixth are an odd
+   number, `sub $8,%rsp`, so that the `call` lands on a multiple of 16.
+   The arguments past the sixth are pushed from their slots right to
+   left, so that the seventh is lowest, as the ABI wants (3.2.3): an
+   8-byte slot in one instruction, `pushq -40(%rbp)`. A slot narrower
+   than 8 bytes is not pushed directly, since `pushq` would read the
+   bytes above it: it is loaded, extended, into `eax` and pushed from
+   `rax`, `movl -28(%rbp), %eax; pushq %rax`. The first six are loaded
+   from their slots into `rdi`, `rsi`, `rdx`, `rcx`, `r8`, `r9`, a
+   narrower one extended to 32 bits by the load. `al` is set to 0 for a
+   variadic callee, `movl $0, %eax`. `call f@PLT`, every call through
+   the PLT, chapter 10. The pushed bytes and the pad are added back.
 4. The result is in `rax`; it is moved into the lowest free
    expression register, and the values of step 1 are reloaded from
    their spill slots as the enclosing expression consumes them.
