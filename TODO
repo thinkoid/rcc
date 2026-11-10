@@ -19,14 +19,66 @@ The direction is taken: c1 is rcc's only back end, it writes x86-64
 assembly itself, and the system cc preprocesses, assembles and
 links. The reasons are =docs/findings.md= and =docs/llvm.md=, the
 design is =docs/backend.md= with its calls made in
-=docs/design-calls.md=. The chapter holds c1's own defects, none
-open now, and the second target.
+=docs/design-calls.md=. The chapter holds c1's own defects and the
+second target, whose design is =docs/aarch64.md=.
 
 ** TODO aarch64
 
-A second instruction table and the AAPCS64 convention: =x0= to =x7=
-for arguments, =x19= to =x28= callee-saved, ten register variables.
-After x86-64 is whole.
+The design is =docs/aarch64.md=; its chapter 15 lists seven calls
+still open. The target takes ten register variables, =x19= to =x28=,
+and the oracle's programs run on an aarch64 machine, with no
+emulator. The work is four slices, each followed by its pins and its
+documents, as the x86-64 slices were:
+
+- slice 0, the ground: the target's description, which c0 reads for
+  the count of register variables and the signedness of plain
+  =char=; the driver's =-target=; =c1.cc= renamed and its
+  instruction-free part split out; the pins moved under a directory
+  per target. Check: every x86-64 pin unchanged.
+- slice 1: integers, control and calls, with the frame of chapter 5.
+- slice 2: pointers, arrays and string literals.
+- slice 3: register variables.
+
+Three cost programs do not reach their row on this target and need a
+sibling or more operands: =spill= (fifteen expression registers, not
+nine), =stack-args= (eight argument registers, not six) and
+=div-busy= (no pinned register). New rows the target asks for: a slot
+beyond the instruction's reach, a constant by its bits, the
+remainder, a stack parameter's copy, a frame of 4096 bytes or more.
+
+Then the measurement on the aarch64 machine, with the tuned sources
+as first written, and the loop-head alignment probe.
+
+Check: =make test= on the aarch64 machine, the nine corpus rows with
+the statuses of =tests/corpus/expected= and every pin read against
+=docs/aarch64.md=.
+
+** TODO A narrow call result is read as the callee's extension
+
+c1 for x86-64 holds the result of a call to a =char= or =short=
+function as valid to 32 bits: =call()= says "the callee extended a
+narrow result to 32 bits", and =backend.md= chapter 8 gives the
+ground as the ABI's "the callee extends". The psABI says that of no
+result. Its sentence covers arguments and results alike: "When a
+value of a type of class INTEGER is returned or passed in a register
+or on the stack, the excess bits that would not be present in the
+memory representation of the type" are "unspecified", with the
+footnote that "the consumer side of those values needs to extend
+them". So a callee that leaves the upper bits of =eax= as they fell,
+which the convention allows, gives c1's caller a wrong =int= when the
+result is widened: the widening cast finds the value valid and
+writes nothing. A callee compiled by rcc or by =clang= extends before
+=ret=, so no test shows it.
+
+Fix: a call's result is valid to its own type's width, 8 or 16 bits
+for a narrow one, and the cast that widens it writes its =movsbl= or
+=movzwl=. =backend.md= 6.3 and chapter 8 say so, and the width
+rule's list loses "since the callee extends a narrow result".
+Whether =return= keeps its extension, which the convention does not
+ask for, is decided with the fix.
+
+Check: on x86-64, an assembly callee =char f(void)= that returns
+=0x1ff= in =eax=, called from rcc as =return f() == -1;=, exits 1.
 
 * Guarantees
 
