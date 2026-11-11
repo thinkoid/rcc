@@ -425,9 +425,13 @@ its slot, `str w0, [x29, #40]`, at its width. A parameter past the
 eighth lies above the frame at `[x29, #T + 8(i - 8)]`, and `T` is not
 known while the body is generated. So the prologue, which is written
 after the body, copies it to a slot of its own: `ldr w17, [x29, #T];
-str w17, [x29, #44]`. Every parameter is then a slot at a known
+str w17, [x29, #44]`. The copies follow `mov x29, sp` and precede the
+stores of the first eight. Every parameter is then a slot at a known
 offset, at two instructions for each one past the eighth. On x86 such
-a parameter stays where the caller pushed it.
+a parameter stays where the caller pushed it. One that lies 16 MiB or
+more above `x29`, where the `add` into `x16` does not reach (5.3), is
+a not-yet; only a frame within a few bytes of its limit puts one
+there.
 
 ### 5.3 A slot beyond reach
 
@@ -670,14 +674,21 @@ Every argument is a hidden local of its call, as before.
    6.6.
 3. The call sequence. What the arguments left held in an expression
    register is spilled first (`backend.md` 6.7). With more than
-   eight arguments, `sub sp, sp,
-   #A` opens the outgoing area, `A` being 8 bytes for each argument
-   past the eighth, rounded up to 16. Each of those is copied from
-   its slot at its own width, `ldr w17, [x29, #44]; str w17, [sp]`,
-   the ninth at `[sp]`, the tenth at `[sp, #8]`. The first eight are
-   loaded from their slots into `x0` to `x7`, a narrow one extended
-   by its load. `bl f`. `add sp, sp, #A`.
+   eight arguments, `sub sp, sp, #A` opens the outgoing area, `A`
+   being 8 bytes for each argument past the eighth, rounded up to
+   16. Each of those is copied from its slot at its own width, `ldr
+   w17, [x29, #44]; str w17, [sp]`, the ninth at `[sp]`, the tenth
+   at `[sp, #8]`. A `char` is `ldrb` and `strb`, and the seven bytes
+   above it in the area stay as they were: they are padding to the
+   convention (chapter 3). The first eight are loaded from their
+   slots into `x0` to `x7`, a narrow one extended by its load. `bl
+   f`. `add sp, sp, #A`.
 4. The result is in `x0`, valid to its type's width (6.3).
+
+An area of 4096 bytes or more, which the immediate of `sub` does not
+encode, is a not-yet: a call takes 510 arguments past the eighth. No
+unwind directive is written around the area, since the canonical
+frame address is computed from `x29` there.
 
 The outgoing area is opened and closed around the call, as x86's
 pushes are added back after theirs. The alternative, an area at the

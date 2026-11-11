@@ -3,10 +3,10 @@
 // c1, the code generator for aarch64: the typed tree in, assembly text
 // out, for clang and GNU as.  docs/aarch64.md is the design, with
 // docs/backend.md where it says the model carries; this file
-// implements its chapters 4 to 7 and 10, with c1-common.cc, and each
-// function names the row it writes.  These are the first two steps of
-// the first slice: the frame and straight-line code on integers, then
-// conditions and control.  A construct of a later step or slice throws
+// implements its chapters 4 to 8 and 10, with c1-common.cc, and each
+// function names the row it writes.  This is the first slice, in its
+// three steps: the frame and straight-line code on integers, conditions
+// and control, then calls.  A construct of a later slice throws
 // logic_error("c1: not yet: ..."), and a tree the parser cannot make
 // throws logic_error("c1: ...").
 
@@ -322,6 +322,37 @@ store_of(int width)
     case 16: return "strh";
     default: return "str";
     }
+}
+
+// The plain load of width bits, the store's mirror: ldrb, ldrh or ldr,
+// the load of the unsigned type.  A copy stores the same width back, so
+// what the load writes above the bytes is never read.
+std::string_view
+plain_load_of(int width)
+{
+    switch (width) {
+    case 8: return "ldrb";
+    case 16: return "ldrh";
+    default: return "ldr";
+    }
+}
+
+// A copy from memory to memory, which the machine has no instruction
+// for, carries its bytes through x17, chapter 4: the plain load of the
+// source's width into x17, then the store of the same width.  Each end's
+// operand is formed just before its access, so either may go through
+// x16, 5.3.  copy_in() is the load from a displacement off x29.
+void
+copy_in(state_t &s, int displacement, int width)
+{
+    const auto from = slot_operand(s, displacement, width / 8);
+    insn(s, plain_load_of(width), { reg(x17, width), from });
+}
+
+void
+copy_out(state_t &s, std::string_view to, int width)
+{
+    insn(s, store_of(width), { reg(x17, width), to });
 }
 
 // the register stack
@@ -1334,6 +1365,109 @@ cast(state_t &s, const cast_t &c, const type_t &to)
     return v;
 }
 
+// The outgoing area of a call with stacked arguments past the eighth,
+// chapter 8: 8 bytes for each, rounded up to 16, since sp is a multiple
+// of 16 at the call (chapter 3).  It is opened by one sub, whose
+// immediate is 12 bits; an area the immediate does not encode is a
+// not-yet.
+long
+outgoing_size(std::size_t stacked)
+{
+    const long size = (8 * static_cast< long >(stacked) + 15) / 16 * 16;
+    if (size > 0xfff)
+        not_yet("an outgoing area of 4096 bytes or more");
+
+    return size;
+}
+
+// The address of the outgoing area's k-th 8 bytes, [sp, #8k]: the
+// ninth argument at [sp], as clang -S writes it, the tenth at [sp, #8].
+// The area is under 4096 bytes, so every one is in reach of the store.
+std::string
+outgoing_operand(std::size_t k)
+{
+    if (k == 0)
+        return "[sp]";
+
+    return std::format("[sp, #{}]", 8 * k);
+}
+
+// Chapter 8, every argument a hidden local of its call.  Every held
+// value is spilled; each argument, in order and complete before the
+// next (G13), is written to a slot of its own, taken before it is
+// evaluated, by the store row of 6.6; what the arguments left held is
+// spilled in its turn, backend.md 6.7.  The arguments past the eighth
+// are copied from their slots to the outgoing area, opened below the
+// frame for this call alone, and the first eight are loaded into x0 to
+// x7, a narrow one extended to 32 bits by its type's load.  G16: bl f,
+// the name alone, since the linker makes a PLT entry where one is
+// needed, and a variadic callee gets nothing of its own (chapter 3).
+// No unwind directive is written around the area, since the canonical
+// frame address is computed from x29.  The result is in x0, valid to
+// its type's width and no further, 6.3: the convention leaves the bits
+// above a narrow one unspecified, and the width rule extends it where
+// it is used wider.
+value_t
+call(state_t &s, const call_t &c, const type_t &t)
+{
+    const auto &callee = callee_of(c);
+    const auto &f = as< function_t >(callee.type);
+
+    spill_all(s);
+
+    std::vector< std::pair< int, int_t > > slots;
+    for (std::size_t i = 0; i < c.args.size(); ++i) {
+        const auto &arg = c.args[i];
+        const auto &type = integer(arg.type);
+
+        if (i < f.params.size() && !(arg.type == *f.params[i]))
+            throw std::logic_error("c1: an argument unlike its parameter");
+
+        const int displacement =
+            allocate(s, size_of(arg.type), align_of(arg.type));
+        initialize(s, arg, slot_address(displacement), type);
+
+        slots.emplace_back(displacement, type);
+    }
+
+    // the call destroys every expression register: nothing is held
+    // from here to the bl
+    spill_all(s);
+
+    const std::size_t registers = std::size(argument_registers);
+    const std::size_t stacked =
+        slots.size() > registers ? slots.size() - registers : 0;
+    const long area = stacked > 0 ? outgoing_size(stacked) : 0;
+
+    if (area > 0)
+        insn(s, "sub", { "sp", "sp", imm(area) });
+
+    for (std::size_t i = registers; i < slots.size(); ++i) {
+        const auto &[displacement, type] = slots[i];
+
+        copy_in(s, displacement, type.width);
+        copy_out(s, outgoing_operand(i - registers), type.width);
+    }
+
+    for (std::size_t i = 0; i < std::min(registers, slots.size()); ++i) {
+        const auto &[displacement, type] = slots[i];
+        const auto [mnemonic, width] = load_of(type, std::max(32, type.width));
+
+        const auto from = slot_operand(s, displacement, type.width / 8);
+        insn(s, mnemonic, { reg(argument_registers[i], width), from });
+    }
+
+    insn(s, "bl", { callee.name });
+
+    if (area > 0)
+        insn(s, "add", { "sp", "sp", imm(area) });
+
+    if (is< void_t >(t))
+        return { };
+
+    return hold(s, x0, integer(t).width);
+}
+
 // The value of an expression in a register, its code written first.
 // An array is never a value: the parser decays it, 6.3.2.1p3, and a
 // string literal is an array.
@@ -1364,7 +1498,7 @@ rvalue(state_t &s, const expr_t &e)
         return assign(s, as< assign_t >(e));
 
     if (is< call_t >(e))
-        not_yet("a call");
+        return call(s, as< call_t >(e), e.type);
 
     if (is< cast_t >(e))
         return cast(s, as< cast_t >(e), e.type);
@@ -1643,9 +1777,11 @@ statement(state_t &s, const stmt_t &st)
 // functions
 
 // The parameters' half of the prologue, before the body, since the
-// body's slots come after theirs.  Each of the first eight takes the
-// next slot and is stored there from its argument register at its
-// width, str w0, [x29, #16], 5.2.
+// body's slots come after theirs.  Each takes the next slot, in
+// declaration order.  Each of the first eight is stored there from its
+// argument register at its width, str w0, [x29, #16], 5.2; one past the
+// eighth is copied there by stack_parameters(), once the frame's size
+// says where the caller left it.
 void
 parameters(state_t &s, const function_decl_t &fd)
 {
@@ -1656,15 +1792,41 @@ parameters(state_t &s, const function_decl_t &fd)
         if (p->in_register)
             not_yet("a register parameter");
 
-        if (i >= std::size(argument_registers))
-            not_yet("a parameter past the eighth");
-
         const int displacement =
             allocate(s, size_of(p->type), align_of(p->type));
         s.slots.emplace(p, displacement);
 
+        if (i >= std::size(argument_registers))
+            continue;
+
         const auto to = slot_operand(s, displacement, t.width / 8);
         insn(s, store_of(t.width), { reg(argument_registers[i], t.width), to });
+    }
+}
+
+// The parameters past the eighth, copied to their slots, 5.2: the
+// caller left the one of index i above the frame, at [x29, #T + 8(i -
+// 8)], and T, the frame's size, is known only once the body is done.
+// The copy is the plain load of the parameter's width, which reads a
+// narrow one at its width, since the convention leaves the bits above it
+// unspecified (chapter 3), and the store to its slot.  A frame at its
+// limit puts the third of them 16 MiB above x29, where the add into x16
+// does not reach, 5.3: a not-yet.
+void
+stack_parameters(state_t &s, const function_decl_t &fd, long size)
+{
+    const std::size_t registers = std::size(argument_registers);
+
+    for (std::size_t i = registers; i < fd.params.size(); ++i) {
+        const auto *p = fd.params[i];
+        const int width = integer(p->type).width;
+
+        const long above = size + 8 * static_cast< long >(i - registers);
+        if (above >= 1L << 24)
+            not_yet("a stack parameter 16 MiB or more above the frame record");
+
+        copy_in(s, static_cast< int >(above), width);
+        copy_out(s, slot_operand(s, slot_of(s, p), width / 8), width);
     }
 }
 
@@ -1732,10 +1894,12 @@ epilogue(state_t &s, long size)
 }
 
 // A definition.  The body is generated first, into the buffer, and the
-// prologue written after it, when the frame's size is known.  The first
-// slot lies above the frame record, and this is the one place that says
-// so.  The one epilogue is reached with x0 as it is, G5's some value,
-// but for main, which returns 0 when it falls off its end, 5.1.2.3.4.
+// prologue written after it, when the frame's size is known; so are the
+// copies of the parameters past the eighth, which follow the prologue
+// and precede the body.  The first slot lies above the frame record,
+// and this is the one place that says so.  The one epilogue is reached
+// with x0 as it is, G5's some value, but for main, which returns 0 when
+// it falls off its end, 5.1.2.3.4.
 void
 function(state_t &s, const function_decl_t &fd)
 {
@@ -1759,6 +1923,10 @@ function(state_t &s, const function_decl_t &fd)
 
     const long size = (s.frame + 15) / 16 * 16;
 
+    const auto body = s.body.str();
+    s.body.str({ });
+    stack_parameters(s, fd, size);
+
     const auto &name = s.function;
     s.out << std::format("\t.globl\t{}\n"
                          "\t.type\t{}, @function\n"
@@ -1768,7 +1936,7 @@ function(state_t &s, const function_decl_t &fd)
 
     prologue(s, size);
 
-    s.out << s.body.str();
+    s.out << s.body.str() << body;
 
     epilogue(s, size);
     s.out << std::format("\t.cfi_endproc\n"
