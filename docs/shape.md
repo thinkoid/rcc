@@ -182,7 +182,7 @@ directive. The rules, each the code of a `backend.md` chapter:
 - The string literals are one `.data` block after the last function,
   one label per literal written, never merged (chapter 10, G17).
 
-A reader checking a promise opens `c1.cc`, finds the function that
+A reader checking a promise opens c1's source, finds the function that
 writes the row, and reads what is not there.
 
 ## 7. Errors
@@ -235,7 +235,10 @@ compile database, and three lines of make, a shell script and
     src/type.hh .cc   type_t, constructors, equality
     src/ast.hh        the tree
     src/parse.hh .cc  parse()
-    src/c1.hh .cc     generate(), the code generator
+    src/c1.hh         generate(), the code generator
+    src/c1-x86-64.cc  the generator for x86-64
+    src/c1-common.hh .cc
+                      the part of c1 that is the same for every target
     src/error.hh      error_t and warning_t
     src/main.cc       the driver
     tests/oracle      the oracle script

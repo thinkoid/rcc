@@ -255,7 +255,7 @@ shows in no pin:
 
 Fix: a cost program for each, with its pin.
 
-Check: perturbing each rule in =c1.cc= turns a row red.
+Check: perturbing each rule in =c1-x86-64.cc= turns a row red.
 
 ** TODO =-o -= names a file, not standard output
 

@@ -932,7 +932,7 @@ chapter each; the answers:
    their slots right to left and loads the first six. The first
    draft's pushes put the eighth argument below the seventh.
 6. **The names.** The front end is c0, the generator is c1:
-   `src/c1.cc` and `src/c1.hh`.
+   `src/c1-x86-64.cc` and `src/c1.hh`.
 7. **The effect context takes the memory forms**, as Ritchie's
    `efftab` did: `x += 5;` is `addl $5, x` and `x++;` is `addl $1, x`.
 8. **Every loop head is aligned to 32 bytes**, `.p2align 5`, a

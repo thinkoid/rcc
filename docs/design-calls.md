@@ -2,14 +2,14 @@
 
 `backend.md` ends with six calls it leaves open, each with the
 answer the design assumed. The sixth, the names, is settled: the
-front end is c0, the generator is c1, `src/c1.cc` and `src/c1.hh`.
-This page takes the other five one at a time, in the register of
-`findings.md`: what the call turns on, the background a reader needs
-to weigh it, the evidence from the compilers on this machine and
-from the record of the LLVM sprint, what each answer costs, and
-where the argument lands. Two of the five land where the design
-assumed. Three move, two of them because the design's answer was
-weighed on the wrong scale: it counted registers where it should
+front end is c0, the generator is c1, `src/c1-x86-64.cc` and
+`src/c1.hh`. This page takes the other five one at a time, in the
+register of `findings.md`: what the call turns on, the background a
+reader needs to weigh it, the evidence from the compilers on this
+machine and from the record of the LLVM sprint, what each answer
+costs, and where the argument lands. Two of the five land where the
+design assumed. Three move, two of them because the design's answer
+was weighed on the wrong scale: it counted registers where it should
 have counted what the generator has to know. The last chapter says
 what changes in `backend.md`.
 

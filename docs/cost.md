@@ -145,7 +145,7 @@ whole. The script assembles each listing with `clang -c`, to prove
 that it assembles. A row passes when the fresh listing equals the
 pin; the diff of a failed row is in `build/cost/log`. A new or
 changed listing is read by hand against its row of chapter 2 before
-`tests/costs --pin` adopts it. A change to `c1.cc` that moves a cost
+`tests/costs --pin` adopts it. A change to c1 that moves a cost
 thus shows as a red row, and the row names the construct whose cost
 moved.
 

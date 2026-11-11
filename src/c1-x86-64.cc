@@ -3,13 +3,14 @@
 // c1, the code generator: the typed tree in, x86-64 assembly text out,
 // AT&T syntax for the system assembler.  docs/backend.md is the
 // design; its chapters 4 to 8 and 10 are what this file implements,
-// and each function names the row it writes.  These are the first three
+// with c1-common.cc, and each function names the row it writes.  These are the first three
 // slices: integers, control and calls; pointers, arrays and string
 // literals; register variables.  A construct of a later slice throws
 // logic_error("c1: not yet: ..."), and a tree the parser cannot make
 // throws logic_error("c1: ...").
 
 #include "c1.hh"
+#include "c1-common.hh"
 
 #include <algorithm>
 #include <array>
@@ -138,78 +139,7 @@ struct state_t
     bool terminated = false;
 };
 
-[[noreturn]] void
-not_yet(std::string_view what)
-{
-    throw std::logic_error(std::format("c1: not yet: {}", what));
-}
-
 // types
-
-// The integer type of an operand.  A pointer is a 64-bit unsigned
-// quantity to the machine, so its integer view is unsigned long's: the
-// width rule, the suffixes and the unsigned conditions of G7 apply to
-// it unchanged.  An array is never a value, since the parser decays
-// every array it reads, 6.3.2.1p3; anything else the parser does not
-// make.
-const int_t &
-integer(const type_t &t)
-{
-    static constexpr int_t address_view { 64, false };
-
-    if (is< pointer_t >(t))
-        return address_view;
-
-    if (is< array_t >(t))
-        throw std::logic_error("c1: an array as a value");
-
-    if (!is< int_t >(t))
-        throw std::logic_error("c1: a non-integer operand");
-
-    return as< int_t >(t);
-}
-
-// The width of an operator's operation, 32 or 64 bits: the parser
-// promotes every narrower operand before an operator sees it.
-int
-operation_width(const type_t &t)
-{
-    const int width = integer(t).width;
-    if (width < 32)
-        throw std::logic_error("c1: an operator on a narrow operand");
-
-    return width;
-}
-
-// A constant of N bits as the assembler takes it: the value modulo
-// 2^N, written signed.  G2: the low bits are the value.
-long long
-normalized(long long value, int width)
-{
-    if (width >= 64)
-        return value;
-
-    const auto mask = (1ull << width) - 1;
-    const auto sign = 1ull << (width - 1);
-    const auto bits = static_cast< unsigned long long >(value) & mask;
-
-    return static_cast< long long >(bits ^ sign) -
-           static_cast< long long >(sign);
-}
-
-// A constant narrower than int as the promotion to int reads it: the
-// low bits of the value, sign- or zero-extended by the type.
-long long
-widened(long long value, const int_t &t)
-{
-    if (t.is_signed)
-        return normalized(value, t.width);
-
-    const auto mask = (1ull << t.width) - 1;
-
-    return static_cast< long long >(static_cast< unsigned long long >(value) &
-                                    mask);
-}
 
 bool
 fits_imm32(long long value)
@@ -235,24 +165,6 @@ bool
 is_scale(long size)
 {
     return size == 1 || size == 2 || size == 4 || size == 8;
-}
-
-// A constant index times the size, modulo 2^64: G6, the address
-// arithmetic wraps.
-long long
-scaled(long long index, long size)
-{
-    return static_cast< long long >(static_cast< unsigned long long >(index) *
-                                    static_cast< unsigned long long >(size));
-}
-
-// The width a value is valid to after an instruction writes it at
-// width: a 32-bit write clears the upper half of the register, which
-// is the extension of an unsigned value and not of a signed one.
-int
-written(int width, bool is_signed)
-{
-    return width == 32 && !is_signed ? 64 : width;
 }
 
 // operands
@@ -307,14 +219,6 @@ imm(long long value)
     return std::format("${}", value);
 }
 
-// A label of the function, chapter 7.2: .L, the function's name and
-// the number, .Lsum.1.
-std::string
-label_name(const state_t &s, int n)
-{
-    return std::format(".L{}.{}", s.function, n);
-}
-
 // writing
 
 // One instruction: a tab, the mnemonic, a tab and the operands
@@ -347,7 +251,7 @@ new_label(state_t &s)
 void
 place_label(state_t &s, int n)
 {
-    s.body << label_name(s, n) << ":\n";
+    s.body << label_name(s.function, n) << ":\n";
     s.terminated = false;
 }
 
@@ -366,7 +270,7 @@ align_loop_head(state_t &s)
 void
 jump(state_t &s, int n)
 {
-    insn(s, "jmp", { label_name(s, n) });
+    insn(s, "jmp", { label_name(s.function, n) });
     s.terminated = true;
 }
 
@@ -399,28 +303,6 @@ slot_of(const state_t &s, const symbol_t *sym)
         throw std::logic_error("c1: a name read before its declaration");
 
     return it->second;
-}
-
-// The local or parameter a name designates, which has a slot.  A
-// register variable has none, and the parser refuses its address,
-// 6.5.4.2p1; a global is a later slice.
-const symbol_t *
-object_of(const expr_t &e)
-{
-    if (!is< name_t >(e))
-        throw std::logic_error("c1: an lvalue the parser does not make");
-
-    const auto *sym = as< name_t >(e).sym;
-    if (sym->storage == storage_t::function)
-        throw std::logic_error("c1: a function as an object");
-
-    if (sym->storage == storage_t::global)
-        not_yet("a global");
-
-    if (sym->in_register)
-        throw std::logic_error("c1: the address of a register variable");
-
-    return sym;
 }
 
 // The extending mov that brings a value of type from to a width of 32
@@ -665,19 +547,6 @@ register_width(const symbol_t *sym)
     return std::max(32, integer(sym->type).width);
 }
 
-// The register variable an lvalue names, or null.  The parser gave the
-// symbol its register, or declared the sixth an ordinary local.
-const symbol_t *
-register_variable(const expr_t &e)
-{
-    if (!is< name_t >(e))
-        return nullptr;
-
-    const auto *sym = as< name_t >(e).sym;
-
-    return sym->in_register ? sym : nullptr;
-}
-
 // The next of the five for a register variable met in declaration
 // order; a block's end gives its variables' registers back, so a later
 // block takes them again from rbx.  The parser keeps a sixth live one
@@ -807,54 +676,6 @@ preserve(state_t &s, const symbol_t *sym)
     for (std::size_t id = 0; id < s.values.size(); ++id)
         if (s.values[id].live && s.values[id].variable == sym)
             copy(s, { static_cast< int >(id) }, take(s, 0));
-}
-
-bool
-is_step(unary_op_t op)
-{
-    return op == unary_op_t::pre_inc || op == unary_op_t::pre_dec ||
-           op == unary_op_t::post_inc || op == unary_op_t::post_dec;
-}
-
-// Whether evaluating e may write the register variable sym: an
-// assignment to it or a ++ or -- of it anywhere in e.
-bool
-writes(const expr_t &e, const symbol_t *sym)
-{
-    if (is< unary_t >(e)) {
-        const auto &u = as< unary_t >(e);
-        return (is_step(u.op) && register_variable(*u.arg) == sym) ||
-               writes(*u.arg, sym);
-    }
-
-    if (is< binary_t >(e))
-        return writes(*as< binary_t >(e).lhs, sym) ||
-               writes(*as< binary_t >(e).rhs, sym);
-
-    if (is< assign_t >(e)) {
-        const auto &a = as< assign_t >(e);
-        return register_variable(*a.lhs) == sym || writes(*a.lhs, sym) ||
-               writes(*a.rhs, sym);
-    }
-
-    if (is< call_t >(e)) {
-        const auto &c = as< call_t >(e);
-        return writes(*c.callee, sym) ||
-               std::ranges::any_of(c.args, [sym](const expr_t &arg) {
-                   return writes(arg, sym);
-               });
-    }
-
-    if (is< cast_t >(e))
-        return writes(*as< cast_t >(e).arg, sym);
-
-    if (is< conditional_t >(e)) {
-        const auto &c = as< conditional_t >(e);
-        return writes(*c.cond, sym) || writes(*c.yes, sym) ||
-               writes(*c.no, sym);
-    }
-
-    return false;
 }
 
 // Saves a held value to a spill slot, whichever kind it is: an owned
@@ -1101,18 +922,6 @@ address_of(state_t &s, const address_t &a)
     return v;
 }
 
-// A string literal's array, 6.4.5p6: one per literal met, in the order
-// met, never merged with an equal one, which 6.4.5p7 leaves
-// unspecified, and writable (G17).  generate() writes them to .data.
-std::string
-string_label(state_t &s, const string_t &str)
-{
-    const auto label = std::format(".Ls{}", s.strings.size());
-    s.strings.push_back(str.bytes);
-
-    return label;
-}
-
 // The address a dereference designates, 6.5.4.2p4, of an object of
 // type pointee: the addressing row.  An add of a pointer and an
 // integer, the shape of a subscript (6.5.3.2p2), is the machine's
@@ -1155,7 +964,7 @@ address_t
 address(state_t &s, const expr_t &e)
 {
     if (is< string_t >(e))
-        return { .label = string_label(s, as< string_t >(e)) };
+        return { .label = string_label(s.strings, as< string_t >(e)) };
 
     if (is< unary_t >(e) && as< unary_t >(e).op == unary_op_t::deref)
         return pointed(s, *as< unary_t >(e).arg, e.type);
@@ -1236,12 +1045,6 @@ arithmetic_mnemonic(binary_op_t op)
     }
 
     throw std::logic_error("c1: not an arithmetic operator");
-}
-
-bool
-is_shift(binary_op_t op)
-{
-    return op == binary_op_t::shl || op == binary_op_t::shr;
 }
 
 // The right operand of an operator's row, generated: the immediate the
@@ -1586,34 +1389,6 @@ difference(state_t &s, const binary_t &b)
     insn(s, "movq", { imm(size), reg(reg_of(s, d), 64) });
 
     return divide(s, binary_op_t::div, l, d, int_t { 64, true });
-}
-
-bool
-is_comparison(binary_op_t op)
-{
-    switch (op) {
-    case binary_op_t::lt:
-    case binary_op_t::gt:
-    case binary_op_t::le:
-    case binary_op_t::ge:
-    case binary_op_t::eq:
-    case binary_op_t::ne: return true;
-    default: return false;
-    }
-}
-
-// The comparison that is true exactly when op is false.
-binary_op_t
-inverse(binary_op_t op)
-{
-    switch (op) {
-    case binary_op_t::lt: return binary_op_t::ge;
-    case binary_op_t::ge: return binary_op_t::lt;
-    case binary_op_t::gt: return binary_op_t::le;
-    case binary_op_t::le: return binary_op_t::gt;
-    case binary_op_t::eq: return binary_op_t::ne;
-    default: return binary_op_t::eq;
-    }
 }
 
 // The condition code of a comparison, the suffix of jcc and setcc:
@@ -2086,17 +1861,6 @@ cast(state_t &s, const cast_t &c, const type_t &to)
     return v;
 }
 
-// The function a call names; an indirect call is a later slice.
-const symbol_t &
-callee_of(const call_t &c)
-{
-    const auto &e = *c.callee;
-    if (!is< name_t >(e) || as< name_t >(e).sym->storage != storage_t::function)
-        not_yet("an indirect call");
-
-    return *as< name_t >(e).sym;
-}
-
 // Chapter 8, every argument a hidden local of its call.  Every held
 // value is spilled; each argument, in order and complete before the
 // next (G13), is stored to its own slot at its width; what the
@@ -2284,7 +2048,7 @@ cbranch(state_t &s, const expr_t &e, int label, bool sense)
 
             const auto op = sense ? b.op : inverse(b.op);
             insn(s, std::format("j{}", condition(op, is_signed)),
-                 { label_name(s, label) });
+                 { label_name(s.function, label) });
             return;
         }
 
@@ -2312,7 +2076,7 @@ cbranch(state_t &s, const expr_t &e, int label, bool sense)
     insn(s, sized("cmp", width), { imm(0), reg(reg_of(s, v), width) });
     release(s, v);
 
-    insn(s, sense ? "jne" : "je", { label_name(s, label) });
+    insn(s, sense ? "jne" : "je", { label_name(s.function, label) });
 }
 
 // A plain assignment of a constant to an object in memory, for its
@@ -2779,61 +2543,6 @@ parameters(state_t &s, const function_decl_t &fd)
     }
 }
 
-// The most register variables live at once in a block's items, those
-// of nested blocks included: a declaration adds one to the count to its
-// block's end.  It is the count c1 reaches walking the block, which is
-// the parser's assignment, known before the body is generated, since
-// the slots lie below the pushes.
-int registers_in(const stmt_t &);
-
-bool
-declares_register(const stmt_t &st)
-{
-    return is< decl_stmt_t >(st) && as< decl_stmt_t >(st).sym->in_register;
-}
-
-int
-registers_in(const std::vector< stmt_t > &items)
-{
-    int live = 0;
-    int most = 0;
-
-    for (const auto &st : items) {
-        live += declares_register(st);
-        most = std::max(most, live + registers_in(st));
-    }
-
-    return most;
-}
-
-int
-registers_in(const stmt_t &st)
-{
-    if (is< block_t >(st))
-        return registers_in(as< block_t >(st).body);
-
-    if (is< if_t >(st)) {
-        const auto &i = as< if_t >(st);
-        return std::max(registers_in(*i.yes), i.no ? registers_in(*i.no) : 0);
-    }
-
-    if (is< while_t >(st))
-        return registers_in(*as< while_t >(st).body);
-
-    // the init's declarations live with the body, 6.8.6.4p1
-    if (is< for_t >(st)) {
-        const auto &f = as< for_t >(st);
-
-        int init = 0;
-        if (f.init)
-            init = registers_in(*f.init) + declares_register(*f.init);
-
-        return init + registers_in(*f.body);
-    }
-
-    return 0;
-}
-
 // The registers of the five a function uses: its register parameters
 // and the most register variables its body has live at once.
 int
@@ -2879,7 +2588,7 @@ prologue(state_t &s, long size, bool sub)
 void
 epilogue(state_t &s, bool sub)
 {
-    s.out << label_name(s, s.ret) << ":\n";
+    s.out << label_name(s.function, s.ret) << ":\n";
 
     if (sub && s.pushes > 0)
         s.out << std::format("\tleaq\t{}, %rsp\n", at(-8 * s.pushes));
@@ -2950,69 +2659,6 @@ function(state_t &s, const function_decl_t &fd)
                          name, name);
 }
 
-// The file name as a .file directive's string.
-std::string
-quoted_file(std::string_view file)
-{
-    const auto slash = file.rfind('/');
-    if (slash != std::string_view::npos)
-        file.remove_prefix(slash + 1);
-
-    std::string text = "\"";
-    for (const char c : file) {
-        if (c == '"' || c == '\\')
-            text += '\\';
-        text += c;
-    }
-
-    return text + '"';
-}
-
-// A string literal's bytes as the operand of .string: printable ASCII
-// as itself but " and \ escaped, a newline, a tab and a return as the
-// C escapes the assembler reads, every other byte a three-digit octal
-// escape.  The directive appends the terminating zero, 6.4.5p6.
-std::string
-quoted_bytes(std::string_view bytes)
-{
-    std::string text = "\"";
-    for (const char c : bytes) {
-        const auto byte = static_cast< unsigned char >(c);
-
-        if (c == '\n' || c == '\t' || c == '\r') {
-            text += c == '\n' ? "\\n" : c == '\t' ? "\\t" : "\\r";
-            continue;
-        }
-
-        if (byte < 0x20 || byte > 0x7e) {
-            text += std::format("\\{:03o}", byte);
-            continue;
-        }
-
-        if (c == '"' || c == '\\')
-            text += '\\';
-        text += c;
-    }
-
-    return text + '"';
-}
-
-// Chapter 10: the string literals, each its own labeled array in .data,
-// never .rodata and never merged (G17), with no alignment directive,
-// since a char array aligns to 1.
-void
-literals(const state_t &s)
-{
-    if (s.strings.empty())
-        return;
-
-    s.out << "\t.data\n";
-
-    for (std::size_t i = 0; i < s.strings.size(); ++i)
-        s.out << std::format(".Ls{}:\n\t.string\t{}\n", i,
-                             quoted_bytes(s.strings[i]));
-}
-
 } // namespace
 
 // The functions the unit defines, in order; one it only declares
@@ -3030,7 +2676,7 @@ generate(const unit_t &unit, std::string_view file, std::ostream &out)
         if (fd.body)
             function(s, fd);
 
-    literals(s);
+    literals(s.out, s.strings);
 
     out << "\t.section\t.note.GNU-stack,\"\",@progbits\n";
 }
