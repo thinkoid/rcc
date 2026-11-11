@@ -59,8 +59,8 @@ in_value:
 	movl	%esi, -8(%rbp)
 	movl	-4(%rbp), %eax
 	movb	%al, -9(%rbp)
-	movsbl	-9(%rbp), %eax
 	movl	-8(%rbp), %ecx
+	movsbl	-9(%rbp), %eax
 	addl	%ecx, %eax
 	movb	%al, -9(%rbp)
 	movsbl	%al, %eax

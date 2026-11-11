@@ -3,8 +3,9 @@
    and the store row.  The listing must show compound() loading b and
    adding it to x's slot with addl %eax, -12(%rbp); narrow() adding the
    low byte of b to c's slot with addb %al, -9(%rbp); and in_value(),
-   whose value is returned, loading c with movsbl, adding b in int with
-   addl %ecx, %eax and storing the low byte back with movb %al. */
+   whose value is returned, loading b, the right operand, first, then c
+   with movsbl into eax, adding b in int with addl %ecx, %eax and
+   storing the low byte back with movb %al. */
 int compound(int a, int b)
 {
     int x = a;

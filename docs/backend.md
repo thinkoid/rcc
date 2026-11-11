@@ -239,7 +239,10 @@ not change. An assignment is the `mov` into the register: a constant
 is the immediate, `movl $0, %r12d`, and a narrow store is the
 extending `mov`, `movsbl %al, %ebx`. A compound assignment and `++`
 or `--` operate on the register in place, `addl $1, %r13d`, and a
-narrow one is re-extended after.
+narrow one is re-extended after. A compound assignment generates its
+right operand first and then operates on the register, so no read of
+the variable is held across the right operand: `r += (r = 2)` is
+`movl $2, %ebx; addl %ebx, %ebx`.
 
 A read still held when its variable is written would see the new
 value, but G13 promises the old one. So every held read of the
@@ -382,7 +385,7 @@ promotion casts before any operator sees them, as today.
 | `a < b` and the rest, as a value | `cmp R, L`; `setcc %Lb`; `movzbl %Lb, L` | `setl`, `setle`, `setg`, `setge`, `sete`, `setne` signed; `setb`, `setbe`, `seta`, `setae` unsigned and for pointers (G7) |
 | `a && b`, `a \|\| b`, `a ? b : c`, as a value | jump code of chapter 7 into `L`, with `mov $0, L` and `mov $1, L` on the arms | no `setcc` chain |
 | `x = e` | `mov L, slot` or `mov L, reg`, the value staying in `L`; a constant goes as the immediate straight into a register variable, `movl $0, %r12d`, or into memory when the assignment is evaluated for its effect alone, `movl $0, -12(%rbp)` (6.6) | a `char` store is `movb %Lb` |
-| `x op= e` | in the effect context, the op on the object, `addl %eax, -12(%rbp)`, but for `*=`, `/=` and `%=` (6.6); in a value context, the load row, the op row, the store row | `*=`, `/=` and `%=` are always the load, the op and the store: `imul` has no memory destination and `idiv` none at all |
+| `x op= e` | the address of `x` first, then `e`; in the effect context, the op on the object, `addl %eax, -12(%rbp)`, but for `*=`, `/=` and `%=` (6.6); in a value context, the load row, the op row, the store row, after `e`; on a register variable, the op on the register in place, after `e` | `*=`, `/=` and `%=` are always `e`, then the load, the op and the store: `imul` has no memory destination and `idiv` none at all |
 | `++x`, `x++`, `--x`, `x--` | in the effect context, the op on the object, `addl $1, -8(%rbp)`, and no old value (6.6); in a value context, the load, `add $1` or `sub $1`, the store, the post forms keeping the old value in another register | `add $size` for a pointer |
 | `(T) a` | `movslq L, L64` for `int` to `long`, `movsbl` or `movzbl` from `Lb` for `char` to `int`, each only when `L` is not already valid to the new width (the width rule below); nothing for `long` to `int` (the 32-bit name is the value); nothing between pointer types; an integer to a pointer as to `unsigned long`, so `movslq` for an `int` (6.3.2.3p5); nothing for a pointer to `long` or `int` | G2: truncation is reading the low bits |
 | `&x` | `lea slot(%rbp), L` or `lea sym(%rip), L` | refused on a `register` variable, 6.5.4.2p1 |
@@ -479,7 +482,14 @@ A shift's count is generated with `rax` held out of the choice, in
 the value and the effect context alike, so its load takes `rcx` when
 it is free, and a left operand reloaded from its spill slot avoids
 `rcx`; a division or a call inside the count keeps its own pin, and
-the moves remain for a value that is already elsewhere. Every
+the moves remain for a value that is already elsewhere. A divisor is
+generated the same way, so that a dividend loaded after it, as a
+compound assignment's is, finds `rax`: `x /= e` is the load of `e`
+into `ecx`, the load of `x` into `eax`, `cltd`, `idivl %ecx` and the
+store. The right operand of any other compound assignment on an
+object in memory is generated with `rax` held out of the choice too,
+so that the object's load takes it and the result is in the register
+a `return` or an enclosing expression takes first. Every
 instruction written is a real move of a real value and shows in the
 listing; the cost model's row for a division with `rax` and `rdx`
 busy says what it costs (`div-busy`).
@@ -542,25 +552,29 @@ width:
 
 This is the form of the operator on its operand, not a fold: the
 operation is written once, on the object, and nothing is left out.
-`*=`, `/=` and `%=` keep the load, the operation and the store,
-since `imul` has no memory destination and `idiv` none at all. The
-object's width writes the bytes the promoted operation and the narrow
-store write: the low bits of `add`, `sub`, `and`, `or`, `xor` and
-`shl` do not depend on the bits above them, `sar` on a signed object
-and `shr` on an unsigned one fill as the promoted shift does, and x86
-masks a count to 5 bits at 8, 16 and 32 bits alike (G1, G2, G3). The
-address is evaluated first and held, the right operand next, and the
-operand is formed last, since the right operand may spill the
-address's base or index (G13). A register variable is operated on in
-its register already (chapter 4); its postfix step is the prefix
-form, which copies no read. Any other expression is evaluated by
-`rvalue()` and its value discarded.
+`*=`, `/=` and `%=` keep the right operand, then the load, the
+operation and the store, since `imul` has no memory destination and
+`idiv` none at all. The object's width writes the bytes the promoted
+operation and the narrow store write: the low bits of `add`, `sub`,
+`and`, `or`, `xor` and `shl` do not depend on the bits above them,
+`sar` on a signed object and `shr` on an unsigned one fill as the
+promoted shift does, and x86 masks a count to 5 bits at 8, 16 and 32
+bits alike (G1, G2, G3). The address is evaluated first and held, the
+right operand next, and the operand is formed last, since the right
+operand may spill the address's base or index (G13). A register
+variable is operated on in its register already (chapter 4); its
+postfix step is the prefix form, which copies no read. Any other
+expression is evaluated by `rvalue()` and its value discarded.
 
 The value context differs, since the value is wanted in a register.
 In `a = b = 5` the value of `b = 5` is wanted, so the 5 is loaded
 once, `movl $5, %eax`, and stored twice; `y = x += 5` and `a[i++]`
 are the load, the operation and the store, and `i++` copies the old
-`i`.
+`i`. The order is the memory form's: the address of `x`, then the
+right operand, then the load of `x`, the operation and the store, so
+`y = x += e` reads `x` after `e`, as `x += e;` does. A constant right
+operand has no evaluation, so `y = x += 5` is the load, `addl $5,
+%eax`, the store.
 
 ### 6.7 Held values at a branch and at a call
 

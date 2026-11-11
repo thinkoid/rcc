@@ -91,7 +91,14 @@ its declaration, none shared and none reused within the call.
 **G13. Left to right.** 6.5.1p2, p3. Operands and arguments are
 evaluated left to right, and an operand's side effects complete before
 the next operand starts; `i = i++ + ++i` has one value. The one choice
-the machine never made; the written order is the order.
+the machine never made; the written order is the order. An assignment
+operator's left operand is evaluated first, for its place: the
+address, and any side effect in computing it. A compound assignment
+then evaluates its right operand and reads the object as part of its
+operation, the read, the operator and the store with nothing between:
+`x += e` is `e`, then the `add` on `x`. So `x += (x = 2)` leaves 4
+where `x = x + (x = 2)` leaves 3: the second names `x` as an operand of
+`+`, and reads it first.
 
 **G14. A loop runs until its condition says stop.** 6.8.6.1p4. `for
 (;;);` hangs. Instruction: the test at the top of the loop, a `cmp`

@@ -81,53 +81,6 @@ ask for, is decided with the fix.
 Check: on x86-64, an assembly callee =char f(void)= that returns
 =0x1ff= in =eax=, called from rcc as ~return f() == -1;~, exits 1.
 
-** TODO A compound assignment reads its object at two different times
-
-c1 for x86-64 reads the left operand of ~x op= e~ after =e= in one
-form and before it in the others, so one expression has two values
-when =e= writes =x=. In the effect context the memory form,
-=addl %eax, -4(%rbp)=, reads =x= when the instruction runs, which is
-after =e=. In a value context, for a register variable, and for
-=*==, =/== and =%== in either context, =assign()= and
-=assign_register()= load the old value first and hold it across =e=.
-With =int x = 1;= and a =bump()= that stores 10 through its argument
-and returns 1:
-
-- ~x += (x = 2);~ leaves 4 in =x=, and ~y = x += (x = 2);~ leaves 3,
-  as does the statement on a =register int x=; ~x *= (x = 2);~
-  leaves 2;
-- ~x += (*p = 2);~ with =p = &x= leaves 4, and as a value 3: the
-  write need not name =x=;
-- ~x += bump(&x);~ leaves 11, ~y = x += bump(&x);~ leaves 2, and
-  ~x *= bump(&x);~ leaves 1.
-
-The first group is undefined in ISO C (6.5.1p2; the operands are
-unsequenced by 6.5.17.1p3), and G13 promises it one value. The
-second group is not undefined. 6.5.17.3p4: "with respect to an
-indeterminately sequenced function call, the operation of a compound
-assignment is a single evaluation." The call is indeterminately
-sequenced with the read of =x= (6.5.3.3p8) and sequenced before the
-store (6.5.17.1p3), so it cannot fall between the two, and the read
-follows it: 11, and 10 for the product. =clang= and =gcc= give those
-in every form. So the early load is wrong where the standard does
-decide, and the comment on =assign()= cites that paragraph for it.
-
-Fix: the object is read after the right operand in every form. The
-lvalue's address comes first and is held (G13), then =e=, then the
-load, the operation and the store, or the memory form; a register
-variable is operated on in place after =e=, and no copy of its old
-value is kept. G13 in =guarantees.md= says that the read of a
-compound assignment belongs to its operation, and =backend.md= 6.3,
-6.6 and chapter 4 and =aarch64.md= 6.6 state the order. The other
-order, the old value first in every form, would give 3 for
-~x += (x = 2)~ and take the memory form away whenever =e= can write,
-and the standard does not allow it for a call.
-
-Check: a corpus program with ~x op= bump(&x)~ as a statement, as a
-value and with =*==, and ~r += (r = 2)~ on a register variable,
-exits with one status under =rcc= and =clang -O2=, each form having
-read the object after the right operand.
-
 ** TODO A local of 2 GiB or more wraps the frame
 
 =allocate()= keeps the frame's size in an =int= and narrows the sum

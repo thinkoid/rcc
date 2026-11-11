@@ -39,7 +39,7 @@ the machine was run on an aarch64 Linux machine.
   `INT_MIN / -1` is `INT_MIN`. The guarantee is unchanged, "what the
   target's instruction does"; the answer is different.
 - Plain `char` is unsigned, as the platform has it.
-- The oracle carries: `clang -O2` gives the same eleven statuses on this
+- The oracle carries: `clang -O2` gives the same twelve statuses on this
   machine as on x86-64. The pins are per target.
 - A subscript by an `int` is one instruction, `ldr w0, [x1, w2, sxtw
   #2]`: the addressing form extends the index itself (6.3).
@@ -471,7 +471,7 @@ For a 32-bit operation (`w` names) or a 64-bit one (`x` names).
 | `a < b` and the rest, as a value | `cmp L, R; cset L, lt` | `lt`, `le`, `gt`, `ge`, `eq`, `ne` signed; `lo`, `ls`, `hi`, `hs` unsigned and for pointers (G7) |
 | `a && b`, `a \|\| b`, `a ? b : c`, as a value | jump code into `L`, `mov L, #1` and `mov L, #0` on the arms | never `csel`: 6.5.16p5, the arm not chosen is not evaluated |
 | `x = e` | the store of 2.2 to the slot, or `mov` into a register variable | 6.6 for a constant |
-| `x op= e`, `++x`, `x++` | the load, the operation, the store; a register variable in place | no memory form, 6.6 |
+| `x op= e`, `++x`, `x++` | the load, the operation, the store, after `e` for `x op= e`; a register variable in place | no memory form, 6.6 |
 | `(T) a` | `sxtw L, L` for `int` to `long`; `sxtb`, `sxth`, `uxtb`, `uxth` from a narrow type; each only when `L` is not already valid to the new width; `mov wL, wL` for an `unsigned` not valid to 64 | G2; the width rule |
 | `&x` | `add L, x29, #d` | two `add`s beyond 4095, 5.3 |
 | `*p` | the load of 2.2 from `[L]` | G8 to G11 |
@@ -571,11 +571,11 @@ to void and a conditional's arms. What it finds there is less,
 because the machine has less:
 
 - **No memory forms.** `x++;` on a slot is `ldr w0, [x29, #40]; add
-  w0, w0, #1; str w0, [x29, #40]`. `x += e;` is the load, the
-  operation and the store. `backend.md` took the memory forms because
-  "x86 has the same forms" as the PDP-11; this machine does not, and
-  three instructions are what the statement costs on it. The post
-  forms still copy no old value in this context.
+  w0, w0, #1; str w0, [x29, #40]`. `x += e;` is `e`, then the load,
+  the operation and the store. `backend.md` took the memory forms
+  because "x86 has the same forms" as the PDP-11; this machine does
+  not, and three instructions are what the statement costs on it. The
+  post forms still copy no old value in this context.
 - **A constant into memory goes through a register.** `str` takes no
   immediate. `x = 5;` is `mov w0, #5; str w0, [x29, #40]`. The one
   store row of `initialize()` stays one function, serving a
@@ -736,7 +736,7 @@ values and the two save points of `backend.md` 6.7.
 
 ## 13. Verification
 
-- **The oracle.** `clang -O2` on this machine gives the eleven corpus
+- **The oracle.** `clang -O2` on this machine gives the twelve corpus
   programs the statuses it gives them on x86-64, the second column
   of `tests/corpus/expected` unchanged. The file is shared until a
   row differs.
