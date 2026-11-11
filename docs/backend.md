@@ -515,10 +515,19 @@ points:
   statement, a declaration's initializer and `for`'s step.
 
 The effect context reaches through the operators that discard a
-value: the operand of a cast to void, and the arms of a conditional
-whose value is not wanted, a void one or one in the effect context.
-`(void) (i = 0);` and `c ? (i = 1) : (i = 2);` thus store each
-constant in one instruction.
+value: the operand of a cast to void, the arms of a conditional
+whose value is not wanted, a void one or one in the effect context,
+and the left operand of a comma. `(void) (i = 0);` and `c ? (i = 1) :
+(i = 2);` thus store each constant in one instruction.
+
+The comma's left operand is in the effect context wherever the comma
+stands: "The left operand of a comma operator is evaluated as a void
+expression" (6.5.18p2), and a void expression "is evaluated for its
+side effects" (6.3.2.2p1). Its right operand takes the comma's own
+context: `effect()` under the effect context, `cbranch()` as a
+condition, its value otherwise. So the step of `for (i = 0, j = 0; i
+< n; i++, j += 2)` is `addl $1, -8(%rbp)` and `addl $2, -12(%rbp)`,
+what the two statements `i++; j += 2;` are.
 
 In the effect context, a plain assignment of a constant to an object
 in memory is one instruction. The lvalue's address is evaluated
@@ -695,6 +704,7 @@ otherwise, without producing a value:
   skip:`. `||` is the mirror. Short circuit is the shape of the code;
   the second operand is not evaluated when the first decides (6.5.14p4,
   6.5.15p4).
+- `a, b`: `effect(a)`, then `cbranch(b, label, sense)` (6.6).
 - Any other expression: its value into `L` by chapter 6, `cmp $0, L`
   (or `test L, L`, the same flags), `jne` or `je`. A pointer compares
   against `$0` the same way (G9 has nothing to say about a test).

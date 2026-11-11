@@ -1563,9 +1563,12 @@ binary(state_t &s, const expr_t &e)
     switch (b.op) {
     case binary_op_t::log_and:
     case binary_op_t::log_or: return logical(s, e);
-    case binary_op_t::comma:
-        release(s, rvalue(s, *b.lhs));
+    // 6.5.18p2: the left operand is evaluated as a void expression,
+    // the effect context of chapter 6.6
+    case binary_op_t::comma: {
+        effect(s, *b.lhs);
         return rvalue(s, *b.rhs);
+    }
     default: break;
     }
 
@@ -2070,6 +2073,13 @@ cbranch(state_t &s, const expr_t &e, int label, bool sense)
             place_label(s, skip);
             return;
         }
+
+        // a comma's right operand is the condition
+        if (b.op == binary_op_t::comma) {
+            effect(s, *b.lhs);
+            cbranch(s, *b.rhs, label, sense);
+            return;
+        }
     }
 
     const int width = integer(e.type).width;
@@ -2266,8 +2276,10 @@ modify(state_t &s, const unary_t &u)
 // cctab: an expression evaluated for its side effects, its value not
 // wanted.  A constant assigned to memory is stored directly, and a
 // compound assignment or a step on an object in memory is the memory
-// form.  The context reaches through a conditional's arms and, by
-// cast(), through a cast to void; anything else is its value,
+// form.  The context reaches through the operators that discard a
+// value: a conditional's arms, both operands of a comma, whose left one
+// is in this context wherever the comma stands (6.5.18p2), and, by
+// cast(), the operand of a cast to void; anything else is its value,
 // discarded.
 void
 effect(state_t &s, const expr_t &e)
@@ -2285,6 +2297,12 @@ effect(state_t &s, const expr_t &e)
 
     if (is< conditional_t >(e)) {
         conditional_effect(s, e);
+        return;
+    }
+
+    if (is< binary_t >(e) && as< binary_t >(e).op == binary_op_t::comma) {
+        effect(s, *as< binary_t >(e).lhs);
+        effect(s, *as< binary_t >(e).rhs);
         return;
     }
 
