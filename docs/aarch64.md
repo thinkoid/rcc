@@ -493,7 +493,7 @@ For a 32-bit operation (`w` names) or a 64-bit one (`x` names).
 | `a << b`, `a >> b` | `lsl L, L, R`, `asr`, `lsr`; a constant count is the immediate, masked to the width | G3; the count in any register |
 | `a & b`, `a \| b`, `a ^ b` | `and`, `orr`, `eor` | |
 | `-a`, `~a` | `neg L, L`, `mvn L, L` | |
-| `!a` | `cmp L, #0; cset L, eq` | as a value |
+| `!a` | `cmp L, #0; cset L, eq`; for an operand with stale upper bits, `tst L, #0xff` in place of the `cmp` (7.1) | as a value |
 | `a < b` and the rest, as a value | `cmp L, R; cset L, lt` | `lt`, `le`, `gt`, `ge`, `eq`, `ne` signed; `lo`, `ls`, `hi`, `hs` unsigned and for pointers (G7) |
 | `a && b`, `a \|\| b`, `a ? b : c`, as a value | jump code into `L`, `mov L, #1` and `mov L, #0` on the arms | never `csel`: 6.5.16p5, the arm not chosen is not evaluated |
 | `x = e` | the store of 2.2 to the slot, or `mov` into a register variable | 6.6 for a constant |
@@ -636,6 +636,7 @@ A register variable is operated on in its register, as before.
 - A comparison: `cmp L, R` and `b.cc label`, the condition or its
   inverse by `sense`.
 - `!e`, `&&`, `||`: the same shapes.
+- `a, b`: `effect(a)`, then `cbranch(b, label, sense)`.
 - Any other expression: its value into `L`, then the test of zero,
   `cbnz L, label` or `cbz L, label`, one instruction (call 3).
 
@@ -643,7 +644,8 @@ x86 tests a narrow operand at its own width, `cmpb $0, %al`. This
 machine compares whole registers only. A value valid to 32 bits is
 tested at 32, which a loaded `char` always is. One with stale upper
 bits, the operand of a narrowing cast, is tested by `tst w0, #0xff`
-and `b.ne`: the low bits and nothing else.
+and `b.ne`: the low bits and nothing else. `!` as a value has the
+same test, with `cset` after it.
 
 `if (a != 0)` and `if (a)` thus differ in the listing, as they differ
 in the source: the first is the comparison row, `cmp w0, #0; b.eq`,

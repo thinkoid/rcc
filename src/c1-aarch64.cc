@@ -3,12 +3,12 @@
 // c1, the code generator for aarch64: the typed tree in, assembly text
 // out, for clang and GNU as.  docs/aarch64.md is the design, with
 // docs/backend.md where it says the model carries; this file
-// implements its chapters 4 to 6 and 10, with c1-common.cc, and each
-// function names the row it writes.  This is the first part of the
-// first slice: the frame and straight-line code on integers.  A
-// construct of a later step or slice throws logic_error("c1: not yet:
-// ..."), and a tree the parser cannot make throws logic_error("c1:
-// ...").
+// implements its chapters 4 to 7 and 10, with c1-common.cc, and each
+// function names the row it writes.  These are the first two steps of
+// the first slice: the frame and straight-line code on integers, then
+// conditions and control.  A construct of a later step or slice throws
+// logic_error("c1: not yet: ..."), and a tree the parser cannot make
+// throws logic_error("c1: ...").
 
 #include "c1.hh"
 #include "c1-common.hh"
@@ -17,6 +17,7 @@
 #include <array>
 #include <format>
 #include <initializer_list>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -88,7 +89,9 @@ constexpr int frame_record = 16;
 // type's signedness: what the instruction that wrote it left there.  A
 // load extends to 32 or 64, a write to a w name clears the upper half, a
 // narrowing cast leaves the bits above its width stale; a widening cast
-// that finds the value valid to its width writes nothing.
+// that finds the value valid to its width writes nothing.  across counts
+// the branches whose paths the value is held across, which may not move
+// it (backend.md 6.7).
 struct held_t
 {
     int reg;
@@ -96,6 +99,7 @@ struct held_t
     long age;
     bool live;
     int valid;
+    int across = 0;
 };
 
 // A handle on a held value; the default is the no-value of a void
@@ -185,6 +189,17 @@ int
 new_label(state_t &s)
 {
     return ++s.labels;
+}
+
+// Labels are placed in source order, and nothing is reordered after
+// them, backend.md 7.2.  No alignment directive precedes a loop's head:
+// nothing is known of this target's processors until it is measured on
+// one (7.2, call 7).
+void
+place_label(state_t &s, int n)
+{
+    s.body << label_name(s.function, n) << ":\n";
+    s.terminated = false;
 }
 
 void
@@ -317,12 +332,28 @@ bit(reg_t r)
     return 1u << r;
 }
 
+// A value held across a branch is where both paths expect it until
+// they meet; an instruction on one path that moves it leaves the paths
+// with two register maps (backend.md 6.7).  Such a move means a value
+// was held where the generator did not save it, and the listing would
+// assemble and be wrong, so the generator stops at the instruction
+// instead.
+void
+check_movable(const state_t &s, int id)
+{
+    if (s.values[id].across > 0)
+        throw std::logic_error(
+            "c1: a value held across a branch was moved inside it");
+}
+
 // Stores the value in r to the next spill slot, all 8 bytes, and frees
 // the register, 6.2.
 void
 spill(state_t &s, reg_t r)
 {
     const int id = s.owner[r];
+    check_movable(s, id);
+
     const int displacement = allocate(s, 8, 8);
 
     const auto to = slot_operand(s, displacement, 8);
@@ -331,6 +362,14 @@ spill(state_t &s, reg_t r)
     s.values[id].reg = -1;
     s.values[id].spill = displacement;
     s.owner[r] = -1;
+}
+
+void
+spill_all(state_t &s)
+{
+    for (const reg_t r : expression_registers)
+        if (s.owner[r] >= 0)
+            spill(s, r);
 }
 
 // A register for a value: the lowest free one outside avoid, or, when
@@ -398,6 +437,8 @@ reg_of(state_t &s, value_t v, unsigned avoid = 0)
     if (s.values[v.id].reg >= 0)
         return static_cast< reg_t >(s.values[v.id].reg);
 
+    check_movable(s, v.id);
+
     const reg_t r = take(s, avoid);
     const auto from = slot_operand(s, s.values[v.id].spill, 8);
     insn(s, "ldr", { reg(r, 64), from });
@@ -438,7 +479,59 @@ operands(state_t &s, value_t l, value_t r)
 }
 
 value_t rvalue(state_t &, const expr_t &);
+void cbranch(state_t &, const expr_t &, int label, bool sense);
 void effect(state_t &, const expr_t &);
+
+// The values held where the paths of a branch diverge, each marked held
+// across the branch for as long as this lives.  Its scope ends where the
+// paths meet, and the destructor unmarks them, so no return and no
+// exception leaves a value marked.  A branch nested in a path marks the
+// outer branch's values once more, and its end takes back its own mark
+// alone.
+class [[nodiscard]] incoming_t
+{
+public:
+
+    explicit incoming_t(state_t &s) : m_s(s)
+    {
+        for (std::size_t id = 0; id < s.values.size(); ++id) {
+            if (!s.values[id].live)
+                continue;
+
+            ++s.values[id].across;
+            m_ids.push_back(static_cast< int >(id));
+        }
+    }
+
+    ~incoming_t()
+    {
+        for (const int id : m_ids)
+            --m_s.values[id].across;
+    }
+
+    incoming_t(const incoming_t &) = delete;
+    incoming_t &operator=(const incoming_t &) = delete;
+
+private:
+
+    state_t &m_s;
+    std::vector< int > m_ids { };
+};
+
+// Before the two paths of &&, || or ?:, every held value is saved, so
+// that it has one location on both: backend.md 6.7.  Every held value
+// is an owned one, since there is no register variable yet, and its
+// save is the spill of 6.2.  Each is then marked held across the paths
+// until they meet, where the caller's incoming_t ends, and a spill or a
+// reload of one inside them is an error of the generator, not a wrong
+// listing.
+incoming_t
+before_paths(state_t &s)
+{
+    spill_all(s);
+
+    return incoming_t { s };
+}
 
 // The register-to-register extension that brings a value of type from
 // to a width of 32 or 64 bits, and the width it leaves the value valid
@@ -721,11 +814,11 @@ struct right_t
 
 // The right operand of op in an operation of width bits, as its row
 // takes it, 6.4.  A constant is an immediate where the instruction
-// encodes it, and then nothing is evaluated: add and sub's 12 bits, the
-// bitmask of and, orr and eor, a shift's count masked to the width,
-// which is what the instruction itself does to a count in a register
-// (G3).  mul, sdiv and udiv take no immediate, and their constant is
-// held, as is one its instruction does not encode.
+// encodes it, and then nothing is evaluated: add, sub and cmp's 12
+// bits, the bitmask of and, orr and eor, a shift's count masked to the
+// width, which is what the instruction itself does to a count in a
+// register (G3).  mul, sdiv and udiv take no immediate, and their
+// constant is held, as is one its instruction does not encode.
 right_t
 right_operand(state_t &s, binary_op_t op, const expr_t &rhs, int width)
 {
@@ -735,8 +828,10 @@ right_operand(state_t &s, binary_op_t op, const expr_t &rhs, int width)
     if (constant && is_shift(op))
         return { .immediate = imm(value & (width - 1)) };
 
-    const bool additive = op == binary_op_t::add || op == binary_op_t::sub;
-    if (constant && additive && arithmetic_immediate(value, width))
+    // add, sub and cmp are one class of immediate, 2.4
+    const bool twelve_bits =
+        op == binary_op_t::add || op == binary_op_t::sub || is_comparison(op);
+    if (constant && twelve_bits && arithmetic_immediate(value, width))
         return { .immediate = imm(normalized(value, width)) };
 
     const bool logical = op == binary_op_t::bit_and ||
@@ -847,6 +942,199 @@ arithmetic(
     return l;
 }
 
+// The condition of a comparison, the suffix of b.cc and the operand of
+// cset, 2.5: signed or unsigned by the operands' type, which the
+// parser's conversions made common; a pointer's is unsigned, G7.
+std::string_view
+condition(binary_op_t op, bool is_signed)
+{
+    switch (op) {
+    case binary_op_t::lt: return is_signed ? "lt" : "lo";
+    case binary_op_t::le: return is_signed ? "le" : "ls";
+    case binary_op_t::gt: return is_signed ? "gt" : "hi";
+    case binary_op_t::ge: return is_signed ? "ge" : "hs";
+    case binary_op_t::eq: return "eq";
+    default: return "ne";
+    }
+}
+
+// cmp L, R for a relational or equality operator, left operand first
+// (G13), or cmp L, #c for a constant cmp encodes, the immediate of add
+// and sub, 2.4.  A negative constant is written as the source has it,
+// cmp w0, #-1, which the assembler encodes as cmn w0, #1, the same
+// flags, 6.4.  The flags are set and the right value freed; the left
+// one stays held, for cset or for the caller to free.
+value_t
+compare(state_t &s, const binary_t &b)
+{
+    const int width = operation_width(b.lhs->type);
+
+    const auto l = rvalue(s, *b.lhs);
+    const auto r = right_operand(s, b.op, *b.rhs, width);
+
+    if (!r.immediate.empty()) {
+        insn(s, "cmp", { reg(reg_of(s, l), width), r.immediate });
+        return l;
+    }
+
+    const auto [left, right] = operands(s, l, r.value);
+    insn(s, "cmp", { reg(left, width), reg(right, width) });
+
+    release(s, r.value);
+
+    return l;
+}
+
+// A comparison as a value, the row of 6.3: cmp, then cset of the
+// condition into L's w name, the int the operator yields, in one
+// instruction where x86 needs two.
+value_t
+comparison(state_t &s, const binary_t &b)
+{
+    const bool is_signed = integer(b.lhs->type).is_signed;
+
+    const auto l = compare(s, b);
+    insn(s, "cset", { reg(reg_of(s, l), 32), condition(b.op, is_signed) });
+    wrote(s, l, 32, true);
+
+    return l;
+}
+
+// The test of zero of a held value v of type t, 7.1, the one function
+// the jump code and ! share.  With a label, a jump to it when v is
+// nonzero (sense) or zero (!sense): cbnz or cbz, on the w name or the x
+// name by the type's width, one instruction and no flags (call 3).
+// Without one, the flags for the caller's cset, eq when v is zero: cmp
+// L, #0, the row of !.  A value valid to less than 32 bits, the operand
+// of a narrowing cast, has stale bits above its type's width, and the
+// machine compares whole registers only: either way it is tst of the
+// low bits alone, tst w0, #0xff, then b.ne or b.eq to the label.
+void
+test_zero(state_t &s,
+          value_t v,
+          const int_t &t,
+          std::optional< int > label,
+          bool sense = false)
+{
+    const reg_t r = reg_of(s, v);
+
+    if (s.values[v.id].valid < 32) {
+        const long long low_bits = (1ll << t.width) - 1;
+        insn(s, "tst", { reg(r, 32), bitmask_of(low_bits, 32) });
+
+        if (label)
+            insn(s, sense ? "b.ne" : "b.eq",
+                 { label_name(s.function, *label) });
+        return;
+    }
+
+    if (!label) {
+        insn(s, "cmp", { reg(r, t.width), imm(0) });
+        return;
+    }
+
+    insn(s, sense ? "cbnz" : "cbz",
+         { reg(r, t.width), label_name(s.function, *label) });
+}
+
+// &&, || and ?: as a value: jump code into one register on both paths,
+// mov L, #1 and mov L, #0 on the arms of the logical operators, never
+// csel, 6.3.  before_paths() first gives every held value one location
+// on both, so the paths leave the register map as they found it
+// whatever their operands do.
+value_t
+logical(state_t &s, const expr_t &e)
+{
+    const auto incoming = before_paths(s);
+
+    const int no = new_label(s);
+    const int end = new_label(s);
+
+    cbranch(s, e, no, false);
+
+    const auto v = fresh(s, 32);
+    const auto r = reg(reg_of(s, v), 32);
+
+    insn(s, "mov", { r, imm(1) });
+    jump(s, end);
+
+    place_label(s, no);
+    insn(s, "mov", { r, imm(0) });
+
+    place_label(s, end);
+
+    return v;
+}
+
+// A conditional whose value is not wanted, a void one or one in the
+// effect context: the jump code of 6.5.16p5, and each arm for its
+// effect, chapter 6.6, so a zero assigned in an arm is one store.
+void
+conditional_effect(state_t &s, const expr_t &e)
+{
+    const auto &c = as< conditional_t >(e);
+
+    const auto incoming = before_paths(s);
+
+    const int no = new_label(s);
+    const int end = new_label(s);
+
+    cbranch(s, *c.cond, no, false);
+
+    effect(s, *c.yes);
+    jump(s, end);
+
+    place_label(s, no);
+    effect(s, *c.no);
+
+    place_label(s, end);
+}
+
+// 6.5.16p5: the arm not chosen is not evaluated, and the jump says so;
+// never csel.  Each arm's value is moved into the register of the first
+// arm's, by mov at the operation's width, backend.md 7.2.
+value_t
+conditional(state_t &s, const expr_t &e)
+{
+    const auto &c = as< conditional_t >(e);
+    const auto &t = e.type;
+
+    if (is< void_t >(t)) {
+        conditional_effect(s, e);
+        return { };
+    }
+
+    const auto incoming = before_paths(s);
+
+    const int no = new_label(s);
+    const int end = new_label(s);
+
+    cbranch(s, *c.cond, no, false);
+
+    const int width = std::max(32, integer(t).width);
+
+    const auto yes = rvalue(s, *c.yes);
+    const reg_t into = reg_of(s, yes);
+    const int valid = s.values[yes.id].valid;
+    release(s, yes);
+    jump(s, end);
+
+    place_label(s, no);
+    const auto other = rvalue(s, *c.no);
+    const reg_t from = reg_of(s, other);
+    int other_valid = s.values[other.id].valid;
+    if (from != into) {
+        insn(s, "mov", { reg(into, width), reg(from, width) });
+        other_valid = written(width, integer(t).is_signed);
+    }
+    release(s, other);
+
+    place_label(s, end);
+
+    // valid to what both arms left
+    return hold(s, into, std::min(valid, other_valid));
+}
+
 value_t
 binary(state_t &s, const expr_t &e)
 {
@@ -854,7 +1142,7 @@ binary(state_t &s, const expr_t &e)
 
     switch (b.op) {
     case binary_op_t::log_and:
-    case binary_op_t::log_or: not_yet("&& or || as a value");
+    case binary_op_t::log_or: return logical(s, e);
     // 6.5.18p2: the left operand is evaluated as a void expression,
     // the effect context of chapter 6.6
     case binary_op_t::comma: {
@@ -865,7 +1153,7 @@ binary(state_t &s, const expr_t &e)
     }
 
     if (is_comparison(b.op))
-        not_yet("a comparison as a value");
+        return comparison(s, b);
 
     if (is< pointer_t >(e.type))
         not_yet("pointer arithmetic");
@@ -940,7 +1228,17 @@ unary(state_t &s, const unary_t &u, const type_t &t)
         return v;
     }
 
-    case unary_op_t::log_not: not_yet("! as a value");
+    // as a value, the row of 6.3: the test of zero, then cset L, eq.
+    // The operand is not promoted, so it is tested at its own width.
+    case unary_op_t::log_not: {
+        const auto v = rvalue(s, *u.arg);
+        test_zero(s, v, integer(u.arg->type), std::nullopt);
+
+        insn(s, "cset", { reg(reg_of(s, v), 32), "eq" });
+        wrote(s, v, 32, true);
+
+        return v;
+    }
 
     case unary_op_t::pre_inc:
     case unary_op_t::pre_dec:
@@ -1071,7 +1369,65 @@ rvalue(state_t &s, const expr_t &e)
     if (is< cast_t >(e))
         return cast(s, as< cast_t >(e), e.type);
 
-    not_yet("a conditional expression");
+    return conditional(s, e);
+}
+
+// Jump code, chapter 7.1: a jump to label when e is true (sense) or
+// false (!sense), a fall through otherwise, and no value.  A comparison
+// is cmp and b.cc; ! flips the sense; && and || are the shape of the
+// short circuit, 6.5.14p4, 6.5.15p4, the right operand not reached when
+// the left decides.  Any other scalar, a constant included, is its
+// value and the test of zero.
+void
+cbranch(state_t &s, const expr_t &e, int label, bool sense)
+{
+    if (is< unary_t >(e) && as< unary_t >(e).op == unary_op_t::log_not) {
+        cbranch(s, *as< unary_t >(e).arg, label, !sense);
+        return;
+    }
+
+    if (is< binary_t >(e)) {
+        const auto &b = as< binary_t >(e);
+
+        if (is_comparison(b.op)) {
+            const bool is_signed = integer(b.lhs->type).is_signed;
+            release(s, compare(s, b));
+
+            const auto op = sense ? b.op : inverse(b.op);
+            insn(s, std::format("b.{}", condition(op, is_signed)),
+                 { label_name(s.function, label) });
+            return;
+        }
+
+        if (b.op == binary_op_t::log_and || b.op == binary_op_t::log_or) {
+            // && false and || true: either operand decides, to label
+            const bool is_and = b.op == binary_op_t::log_and;
+            if (sense != is_and) {
+                cbranch(s, *b.lhs, label, sense);
+                cbranch(s, *b.rhs, label, sense);
+                return;
+            }
+
+            // && true and || false: the left operand decides the other
+            // way, past the right one
+            const int skip = new_label(s);
+            cbranch(s, *b.lhs, skip, !sense);
+            cbranch(s, *b.rhs, label, sense);
+            place_label(s, skip);
+            return;
+        }
+
+        // a comma's right operand is the condition
+        if (b.op == binary_op_t::comma) {
+            effect(s, *b.lhs);
+            cbranch(s, *b.rhs, label, sense);
+            return;
+        }
+    }
+
+    const auto v = rvalue(s, e);
+    test_zero(s, v, integer(e.type), label, sense);
+    release(s, v);
 }
 
 // ++ and -- for their effect: the load, add or sub of 1 and the store,
@@ -1092,10 +1448,10 @@ modify(state_t &s, const unary_t &u)
 // its value context's load, operation and store, and the value is
 // discarded.  A plain assignment is the store row of an initializer,
 // initialize(), which stores a zero from the zero register.  The
-// context reaches through the operators that discard a value: both
-// operands of a comma, whose left one is in this context wherever the
-// comma stands (6.5.18p2), and, by cast(), the operand of a cast to
-// void; anything else is its value, discarded.
+// context reaches through the operators that discard a value: a
+// conditional's arms, both operands of a comma, whose left one is in
+// this context wherever the comma stands (6.5.18p2), and, by cast(),
+// the operand of a cast to void; anything else is its value, discarded.
 void
 effect(state_t &s, const expr_t &e)
 {
@@ -1111,6 +1467,11 @@ effect(state_t &s, const expr_t &e)
 
     if (is< unary_t >(e) && is_step(as< unary_t >(e).op)) {
         modify(s, as< unary_t >(e));
+        return;
+    }
+
+    if (is< conditional_t >(e)) {
+        conditional_effect(s, e);
         return;
     }
 
@@ -1164,6 +1525,74 @@ block_stmt(state_t &s, const block_t &b)
         statement(s, st);
 }
 
+// backend.md 7.2, with b for jmp: the condition's false exit to the
+// else part, or past the statement without one.
+void
+if_stmt(state_t &s, const if_t &i)
+{
+    const int no = new_label(s);
+    cbranch(s, i.cond, no, false);
+
+    statement(s, *i.yes);
+
+    if (!i.no) {
+        place_label(s, no);
+        return;
+    }
+
+    const int end = new_label(s);
+    jump(s, end);
+
+    place_label(s, no);
+    statement(s, *i.no);
+
+    place_label(s, end);
+}
+
+// G14: the condition at the top, where it is written, tested once per
+// iteration and once more; no rotation and no reasoning about it.
+void
+while_stmt(state_t &s, const while_t &w)
+{
+    const int cond = new_label(s);
+    const int end = new_label(s);
+
+    place_label(s, cond);
+    cbranch(s, w.cond, end, false);
+
+    statement(s, *w.body);
+    jump(s, cond);
+
+    place_label(s, end);
+}
+
+// G14, as for while.  The step has its label, for continue.  The init
+// is a statement, a declaration of several declarators a block of
+// them, and its names are in scope for the whole loop, 6.8.6.4p1.
+void
+for_stmt(state_t &s, const for_t &f)
+{
+    if (f.init)
+        statement(s, *f.init);
+
+    const int cond = new_label(s);
+    const int next = new_label(s);
+    const int end = new_label(s);
+
+    place_label(s, cond);
+    if (f.cond)
+        cbranch(s, *f.cond, end, false);
+
+    statement(s, *f.body);
+
+    place_label(s, next);
+    if (f.step)
+        effect(s, *f.step);
+    jump(s, cond);
+
+    place_label(s, end);
+}
+
 // The value goes to x0.  A char or a short is not extended: the
 // convention leaves the bits above a narrow result unspecified, and the
 // caller extends it, 6.3.  Every return jumps to the one epilogue, the
@@ -1199,11 +1628,11 @@ statement(state_t &s, const stmt_t &st)
     else if (is< block_t >(st))
         block_stmt(s, as< block_t >(st));
     else if (is< if_t >(st))
-        not_yet("an if statement");
+        if_stmt(s, as< if_t >(st));
     else if (is< while_t >(st))
-        not_yet("a while statement");
+        while_stmt(s, as< while_t >(st));
     else if (is< for_t >(st))
-        not_yet("a for statement");
+        for_stmt(s, as< for_t >(st));
     else
         return_stmt(s, as< return_t >(st));
 
