@@ -161,7 +161,7 @@ own short encoding:
 | `add`, `sub`, `cmp` | 0 to 4095, or that shifted left by 12 |
 | `and`, `orr`, `eor`, `tst` | a "bitmask": a run of ones, rotated, repeated across the register. `#0xff` is one, `#5` is not |
 | `lsl`, `asr`, `lsr` | 0 to 31 on a `w` register, 0 to 63 on an `x` |
-| `mov` | 16 bits at one of the positions 0, 16, 32, 48, the rest zeros (`movz`) or ones (`movn`); `movk` writes 16 more bits and keeps the rest |
+| `mov` | 16 bits at one of the positions 0, 16, 32, 48, the rest zeros (`movz`) or ones (`movn`), or a bitmask (`orr` from the zero register): three instructions under one name, and the assembler picks; `movk` writes 16 more bits and keeps the rest |
 | `mul`, `sdiv`, `udiv`, `str` | none |
 
 So c1 must look at a constant's value, for one question: does this
@@ -374,23 +374,44 @@ sum:
 	.cfi_offset w21, -16
 	...
 .Lsum.1:
+	.cfi_def_cfa wsp, 48
 	ldp	x19, x20, [x29, #16]
+	.cfi_restore w19
+	.cfi_restore w20
 	ldr	x21, [x29, #32]
+	.cfi_restore w21
 	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
 	add	sp, sp, #48
-	.cfi_def_cfa wsp, 0
+	.cfi_def_cfa_offset 0
 	ret
 	.cfi_endproc
 ```
 
 This listing was assembled and run under a `clang`-compiled `main`,
-with a callee that walked the frame chain through it.
+with a callee that walked the frame chain through it, and stepped by
+instruction under `gdb`, which printed `main` in its backtrace at
+every one.
+
+The epilogue's directives keep the unwind table true at each of its
+instructions. From the prologue's `.cfi_def_cfa_register w29` the
+table computes the canonical frame address from `x29`, and the `ldp`
+gives `x29` back to the caller; so the epilogue names `sp` first, at
+its label, where `sp` equals `x29`. Once `sp` has moved up, the saved
+registers lie below it, and the convention has no red zone (chapter
+3): a signal's frame may overwrite them. So each `.cfi_restore` says
+that its register holds the caller's value again, and
+`.cfi_def_cfa_offset` follows each `add` with what is left of the
+frame.
 
 `sp` equals `x29` from the prologue to the epilogue, but inside a
 call that passes arguments on the stack (chapter 8). It is a multiple
-of 16 throughout, since `T` is. A frame of 4096 bytes or more is two
-instructions, `sub sp, sp, #110592; sub sp, sp, #48`: the immediate of
-`sub` is 12 bits, or 12 bits shifted by 12. A frame over 16 MiB less
+of 16 throughout, since `T` is. The immediate of `sub` is 12 bits, or
+12 bits shifted by 12, so a frame of 4096 bytes or more is opened in
+two instructions, `sub sp, sp, #110592; sub sp, sp, #48`, the upper
+part first, and in one when its low 12 bits are zero. The epilogue's
+`add`s close it in the same order. A frame over 16 MiB less
 16 is a not-yet, refused as `backend.md` chapter 5 has it: a single
 local at its declaration by the parser, a sum of smaller ones by the
 generator.
@@ -444,8 +465,11 @@ register `L`, the right into `R`, one instruction for the operator,
 `R` freed, the result in `L`. The instruction is written `op L, L,
 R`. When `L` is a register variable's read, the result takes a fresh
 expression register, `op N, L, R`, and that is the whole of what x86's
-`writable()` copy becomes. Left first is G13; a commutative
-operator's operands are not swapped.
+`writable()` copy becomes. A postfix `++` or `--` for its value is
+the same case: the new value takes a fresh register, `add w1, w0,
+#1`, the old one stays in `L` as the expression's value, and x86's
+copy of it is gone. Left first is G13; a commutative operator's
+operands are not swapped.
 
 ### 6.2 Depth and spill
 
@@ -551,9 +575,22 @@ source writes it, has an encoding for the value:
   same result and the same flags: the machine has no negative
   immediate, and these are its spellings of the two operations. c1
   writes the operator the source has.
-- A constant that must be held is `mov w0, #c` when 16 bits at one
-  position hold it or its complement, and `mov` and one `movk` for any
-  other 32-bit value; a 64-bit one takes up to four instructions.
+- A constant that must be held is one `mov` when the instruction
+  encodes it (2.4): 16 bits at one position hold it or its
+  complement, `mov w0, #5000`, or it is a bitmask, `mov x0,
+  #0xffff0000ffff0000`. Any other 32-bit value is `mov` and one
+  `movk`. Any other 64-bit one starts from zeros or from ones,
+  whichever leaves fewer of its four 16-bit parts to write, zeros on
+  a tie, and takes one `movk` for each part left, four instructions
+  at most: `-100000L` is `mov x0, #-34464; movk x0, #0xfffe, lsl
+  #16`. A `mov` is written with the value it leaves in the register,
+  in decimal, or in hex for a bitmask; a `movk` with its 16 bits in
+  hex.
+
+  Counting the 16-bit parts that differ from zeros, or from ones,
+  gives the most a constant costs, and that count is made by eye. The
+  bitmask only lowers it: `0x80000001` is one `mov` and `0x80000002`
+  two, which the eye does not tell apart.
 
 The count is a fact of the encoding, and the cost model gets a row
 for it: a constant costs nothing, one instruction, or two, by its
@@ -569,15 +606,16 @@ only.
 ### 6.6 The effect context
 
 The three contexts stay, and `effect()` still reaches through a cast
-to void and a conditional's arms. What it finds there is less,
+to void, a conditional's arms and a comma, whose left operand is in
+this context wherever the comma stands. What it finds there is less,
 because the machine has less:
 
 - **No memory forms.** `x++;` on a slot is `ldr w0, [x29, #40]; add
   w0, w0, #1; str w0, [x29, #40]`. `x += e;` is `e`, then the load,
   the operation and the store. `backend.md` took the memory forms
   because "x86 has the same forms" as the PDP-11; this machine does
-  not, and three instructions are what the statement costs on it. The
-  post forms still copy no old value in this context.
+  not, and three instructions are what the statement costs on it. A
+  post form is its prefix form in this context, in one register.
 - **A constant into memory goes through a register.** `str` takes no
   immediate. `x = 5;` is `mov w0, #5; str w0, [x29, #40]`. The one
   store row of `initialize()` stays one function, serving a
