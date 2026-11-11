@@ -154,8 +154,12 @@ types rcc has, integers and pointers:
   `rdx`, `rcx`, `r8`, `r9`, in that order; further arguments go on
   the stack, right to left, so the seventh is at the lowest address.
   A `char` or `short` argument is passed in the register's low bits,
-  and the ABI leaves the upper bits undefined; the callee extends.
-- The result returns in `rax` (`eax` for a 32-bit type).
+  and the ABI leaves the upper bits unspecified; the callee extends.
+- The result returns in `rax` (`eax` for a 32-bit type). A `char` or
+  `short` result is in the register's low bits, and the ABI leaves
+  the bits above it unspecified, as for an argument; the caller
+  extends. `gcc` and `clang` write nothing before `ret` and extend
+  after the `call`, `movsbl %al, %eax`.
 - `rbx`, `rbp`, `r12`, `r13`, `r14`, `r15` are callee-saved: a
   function that uses one restores it before returning. The other
   nine, `rax`, `rcx`, `rdx`, `rsi`, `rdi`, `r8` to `r11`, are
@@ -421,15 +425,18 @@ signedness. The instruction that wrote the register sets it:
   at 32 bits is valid to 64 and an `int` to 32;
 - a narrowing cast writes nothing and leaves the bits above its
   width stale;
-- a call's result is valid to 32, or to 64 for a `long` or pointer
-  result, since the callee extends a narrow result and a 64-bit
-  result is written whole.
+- a call's result is valid to its own type's width: 8 for a `char`,
+  16 for a `short`, 32 for an `int` or an `unsigned`, 64 for a
+  `long` or a pointer, since the ABI leaves the bits above a result
+  unspecified (3.2).
 
 A widening cast writes its `movs` or `movz` only when the value is
 not already valid to the new width: `(int) c` after the load of `c`
-writes nothing, `(long) i` is `movslq`. A `return` of a `char` or a
-`short` extends `eax` by the same test, so `return c / 4 + s` in a
-function returning `char` ends in `movsbl %al, %eax`. This is
+writes nothing, `(long) i` is `movslq`, and the promotion of a `char`
+call result, `f() + 1`, is `movsbl %al, %eax` after the `call`. A
+`return` of a `char` or a `short` writes no extension: the ABI asks
+none of the callee, so `return c / 4 + s` in a function returning
+`char` ends in the `addl` and the jump to the epilogue. This is
 knowledge of what the generator's own instruction left in the
 register, not of the program's data. The PDP-11 compiler had the
 same knowledge built in: its `movb` into a register sign-extended,
@@ -811,11 +818,13 @@ measurement says the store and the load matter.
 A `char` or `short` argument to a parameter of that type keeps the
 parameter's type: it is stored to its slot at its width and extended
 to 32 bits by the load into its register (`movsbl -5(%rbp), %edi`).
-A `char` or `short` result is extended by the callee before `ret`,
-as the ABI's "the callee extends" says and the IR pipeline's row
-said, and the caller reads 32 bits of it. G16: the call is made
-with the call site's types and the convention's registers, and
-nothing is added, dropped or rewritten.
+A `char` or `short` result is not extended by the callee before
+`ret`: the ABI leaves the bits above a narrow result unspecified, and
+`gcc` and `clang` extend it in the caller. So the caller holds it
+valid to its type's width, and the width rule extends it where it is
+used wider (6.3), `movsbl %al, %eax` after the `call`. G16: the call
+is made with the call site's types and the convention's registers,
+and nothing is added, dropped or rewritten.
 
 The callee's prologue: `push %rbp; mov %rsp,%rbp`, push the
 register-variable registers it uses, `sub` its frame unless it is a

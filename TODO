@@ -51,32 +51,44 @@ Check: =make test= on the aarch64 machine, every corpus row with
 the statuses of =tests/corpus/expected= and every pin read against
 =docs/aarch64.md=.
 
-** TODO A narrow call result is read as the callee's extension
+** TODO aarch64: a stack parameter at the frame's limit is refused
 
-c1 for x86-64 holds the result of a call to a =char= or =short=
-function as valid to 32 bits: =call()= says "the callee extended a
-narrow result to 32 bits", and =backend.md= chapter 8 gives the
-ground as the ABI's "the callee extends". The psABI says that of no
-result. Its sentence covers arguments and results alike: "When a
-value of a type of class INTEGER is returned or passed in a register
-or on the stack, the excess bits that would not be present in the
-memory representation of the type" are "unspecified", with the
-footnote that "the consumer side of those values needs to extend
-them". So a callee that leaves the upper bits of =eax= as they fell,
-which the convention allows, gives c1's caller a wrong =int= when the
-result is widened: the widening cast finds the value valid and
-writes nothing. A callee compiled by rcc or by =clang= extends before
-=ret=, so no test shows it.
+A parameter past the eighth is copied to its slot from above the
+frame, at =[x29, #T + 8(i - 8)]= with =T= the frame's size
+(=aarch64.md= 5.2). Past the load's reach the address is formed by
+an =add= into =x16=, whose immediate is 12 bits shifted by 12 (5.3),
+so it stops short of 16 MiB. The frame's own limit is 16 bytes under
+16 MiB, and a frame there puts the eleventh parameter at 16 MiB:
+~long f(long a, ..., long k) { char pad[16777096]; return k; }~, of
+eleven parameters, stops the generator with "not yet: a stack
+parameter 16 MiB or more above the frame record". With the array 16
+bytes smaller it compiles.
 
-Fix: a call's result is valid to its own type's width, 8 or 16 bits
-for a narrow one, and the cast that widens it writes its =movsbl= or
-=movzwl=. =backend.md= 6.3 and chapter 8 say so, and the width
-rule's list loses "since the callee extends a narrow result".
-Whether =return= keeps its extension, which the convention does not
-ask for, is decided with the fix.
+Fix: for a displacement the =add= does not encode, the displacement
+as a constant in =x16=, by the rule for constants, and =add x16,
+x29, x16=. 5.2 loses its sentence on the limit.
 
-Check: on x86-64, an assembly callee =char f(void)= that returns
-=0x1ff= in =eax=, called from rcc as ~return f() == -1;~, exits 1.
+Check: the program compiles and its listing assembles; run with the
+stack limit raised, it returns its eleventh argument.
+
+** TODO aarch64: a call takes 510 arguments past the eighth
+
+The outgoing area of a call is opened by one =sub sp, sp, #A=, whose
+immediate is 12 bits, and 8 bytes an argument rounded up to 16 make
+the largest area 4080 bytes: 510 arguments past the eighth, 518 in
+all. A call with more stops the generator with "not yet: an outgoing
+area of 4096 bytes or more". x86-64 has no such limit, since it
+pushes. Under 4096 bytes every store to the area is in reach at
+every width, so the one limit covers the =sub= and the stores;
+5.2.5.2 asks for 127 arguments in one function call.
+
+Fix: the area opened and closed in two parts, as the frame is, and a
+store past its instruction's reach (4095 bytes for =strb=, 8190 for
+=strh=, 16380 for =str= of a =w= register, 32760 of an =x=) through
+=x16= formed from =sp=. Chapter 8 loses its sentence on the limit.
+
+Check: a call with 520 arguments to a function compiled by =clang=
+returns the sum that tells the positions apart.
 
 * Guarantees
 
@@ -385,6 +397,28 @@ then writes =cmpl=.
 
 Check: the listing of =!c= on a =char= is the load =movsbl= and
 =cmpl $0=.
+
+** TODO A conditional with two void arms is refused
+
+~a < b ? f() : g();~ with =f= and =g= returning =void= fails with
+"not yet: conditional with void operands". It is valid: 6.5.16p3
+lists "both operands have void type" among the pairs the second and
+third operands may be, and p6 says "If both operands have void type,
+the result has void type." =conditional_expression()= converts each
+arm to a value and finds their common type, and a void arm has
+neither. The strict form of glibc's =assert= is this expression,
+~((e) ? (void) (0) : __assert_fail(...))~.
+
+Fix: with two void arms the parser converts neither and types the
+node =void=. Such a node stands only where a value is dropped, an
+expression statement, the left of a comma, a cast to =void=, an arm
+of another conditional, and c1 takes a conditional's arms for their
+effect there; whether either generator needs more is found with the
+fix.
+
+Check: ~void f(int *p) { *p = 1; }~, ~void g(int *p) { *p = 2; }~
+and ~c ? f(&x) : g(&x);~ compile under both targets and store the
+arm the condition selects.
 
 * Lexer
 

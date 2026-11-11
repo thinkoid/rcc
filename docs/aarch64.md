@@ -518,9 +518,9 @@ The width rule holds as written. Its facts on this machine:
 - a write to a `w` name clears the upper half, so an `unsigned`
   written at 32 is valid to 64 and an `int` to 32;
 - a narrowing cast writes nothing;
-- **a call's result is valid to its own type's width and no more**: 8
-  for a `char`, 16 for a `short`, since the convention leaves the
-  rest unspecified (chapter 3). The cast that widens it writes the
+- a call's result is valid to its own type's width and no more: 8 for
+  a `char`, 16 for a `short`, since the convention leaves the rest
+  unspecified (chapter 3). The cast that widens it writes the
   extension.
 
 And a `return` of a `char` or a `short` writes no extension: the
@@ -882,7 +882,5 @@ Decided by the machine, listed so that nothing is decided silently:
 - the frame record at the bottom and positive displacements (5.1);
 - a stack parameter copied to its slot by the prologue (5.2);
 - slots in declaration order, a far one through `x16` (5.3);
-- a narrow result extended by the caller, and none by `return`
-  (6.3);
 - the remainder as `sdiv` and `msub` (6.3);
 - G4 without a trap (chapter 9).

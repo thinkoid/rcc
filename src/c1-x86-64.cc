@@ -1873,8 +1873,10 @@ cast(state_t &s, const cast_t &c, const type_t &to)
 // keeps rsp a multiple of 16 at the call, and the first six are loaded
 // into their registers, extended to 32 bits if narrower.  G16: the
 // call is made with the call site's types and the convention's
-// registers.  The result is in rax, the lowest free register, and a
-// narrow one is read at its width, since the callee extended it.
+// registers.  The result is in rax, the lowest free register, valid to
+// its type's width and no further, 6.3: the convention leaves the bits
+// above a narrow one unspecified, and the width rule extends it where
+// it is used wider.
 value_t
 call(state_t &s, const call_t &c, const type_t &t)
 {
@@ -1950,9 +1952,7 @@ call(state_t &s, const call_t &c, const type_t &t)
     if (is< void_t >(t))
         return { };
 
-    // the callee extended a narrow result to 32 bits; above a 32-bit
-    // result the convention promises nothing
-    return hold(s, rax, std::max(32, integer(t).width));
+    return hold(s, rax, integer(t).width);
 }
 
 // Whether the instruction written for e has a pin of its own: a call,
@@ -2464,29 +2464,22 @@ for_stmt(state_t &s, const for_t &f)
     s.variables = variables;
 }
 
-// The value goes to rax, and a char or short result not already valid
-// to 32 bits is extended in eax by its signedness: the callee extends,
-// so a caller that reads 32 bits reads the value.  Every return jumps
-// to the one epilogue, the last statement of the body included: the
-// jump to the next instruction is what the statement says, and
-// removing it was the optional peephole pass's work in the PDP-11
-// compiler, which rcc has no counterpart of.
+// The value goes to rax.  A char or a short is not extended: the
+// convention leaves the bits above a narrow result unspecified, and the
+// caller extends it, 6.3.  Every return jumps to the one epilogue, the
+// last statement of the body included: the jump to the next instruction
+// is what the statement says, and removing it was the optional peephole
+// pass's work in the PDP-11 compiler, which rcc has no counterpart of.
 void
 return_stmt(state_t &s, const return_t &r)
 {
     if (r.value) {
-        const auto &t = integer(r.value->type);
-        const int width = std::max(32, t.width);
+        const int width = std::max(32, integer(r.value->type).width);
 
         const auto v = rvalue(s, *r.value);
         const reg_t from = reg_of(s, v);
         if (from != rax)
             insn(s, sized("mov", width), { reg(from, width), reg(rax, width) });
-
-        if (s.values[v.id].valid < 32) {
-            const auto [mnemonic, into] = extension(t, 32);
-            insn(s, mnemonic, { reg(rax, t.width), reg(rax, into) });
-        }
 
         release(s, v);
     }

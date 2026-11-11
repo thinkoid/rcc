@@ -17,7 +17,6 @@ f:
 	idivl	%ecx
 	movswl	-4(%rbp), %ecx
 	addl	%ecx, %eax
-	movsbl	%al, %eax
 	jmp	.Lf.1
 .Lf.1:
 	leave
@@ -37,7 +36,6 @@ g:
 	movb	%dil, -1(%rbp)
 	movzbl	-1(%rbp), %eax
 	addl	$1, %eax
-	movzbl	%al, %eax
 	jmp	.Lg.1
 .Lg.1:
 	leave
@@ -63,6 +61,7 @@ h:
 	movsbl	-5(%rbp), %edi
 	movswl	-8(%rbp), %esi
 	call	f@PLT
+	movsbl	%al, %eax
 	jmp	.Lh.1
 .Lh.1:
 	leave
