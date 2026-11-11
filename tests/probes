@@ -1,0 +1,413 @@
+#!/bin/sh
+########################################################################
+#
+# The probes: rcc against the platform's compiler, clang -O0, on this
+# machine's own target, function by function over a table of values.
+#
+# The pins show what rcc writes, for a human to read against the
+# design, and the oracle runs twelve programs.  Neither runs every
+# operator on every type, every condition and every shape of call.  A
+# probe does: one source is compiled by rcc and, as the reference, by
+# clang, and a main compiled by clang calls each function of both
+# builds over a table of values and compares the results.  Calls are
+# probed in three pairings: clang's code calls rcc's, rcc's code calls
+# clang's, and rcc's code calls rcc's.  The first two prove the calling
+# convention from each side, which no pin and no program of the oracle
+# does.
+#
+# A probe is three files in tests/probe: <name>.c, the functions, in
+# rcc's C; <name>.h, the lists they are made from; <name>-main.c, the
+# caller.  A probe may have a fourth, <name>-lib.c: functions that
+# <name>.c calls, compiled by clang alone.
+#
+# The reference is clang -O0 -w -fno-stack-protector.  -O0, because
+# rcc's guarantees define what the standard leaves undefined, signed
+# overflow among them, and clang without its optimizer writes the
+# machine's instruction for each, as rcc does, where clang -O2 may
+# assume the case away.  -w, because the probes write on purpose what
+# the warnings are about.  -fno-stack-protector, because the reference
+# object is renamed whole: a stack protector's references into the C
+# library would be renamed with it, and would not link.
+#
+# The renaming is objcopy --prefix-symbols=ref_.  Both builds of a
+# function then link into one program, the reference's under the
+# prefix.  A <name>-lib.c object is linked twice, as it is for rcc's
+# build and renamed for the reference's, since the reference calls
+# its functions by the prefixed names.
+#
+# The probes run on this machine's own target only, since every probe
+# is run.  On a machine rcc has no target for, or one without clang or
+# objcopy on the path, no probe runs: the script says so and exits 0.
+#
+# The script prints a line per probe, its name and the probe's own
+# count, "<n> checks, <m> differ", or the step that failed, and a
+# summary.  It exits 0 when every probe ran and nothing differed, 1
+# otherwise.  It runs from the tree root with ./rcc built, as make
+# test runs it.  The objects, the programs and the log of every
+# command stay in build/probe; each command's output in the log,
+# every difference a probe printed included, follows a
+# "### <command>:" line and ends with a "### status <n>" line.
+#
+########################################################################
+#
+# USAGE:
+#
+#     tests/probes [ --help ] [ <name> ... ]
+#
+# OPTIONS:
+#
+#     <name>
+#         Runs the probe <name> of tests/probe.  Without a name every
+#         probe runs, in sorted order.  A name with no probe is an
+#         error, exit status 2.
+#
+#     --help
+#         Prints the usage and exits.
+#
+# EXAMPLES:
+#
+#     tests/probes
+#
+#     Builds and runs every probe for this machine's own target,
+#     prints a line for each and the summary, and keeps the log in
+#     build/probe/log.
+#
+#     tests/probes calls
+#
+#     The same for the calls probe alone.
+#
+########################################################################
+
+##########
+# global constants
+
+# the name of the script, in diagnostics
+myname=${0##*/}
+
+# the probes' sources, and the work directory, kept between runs and
+# removed by make clean
+probes=tests/probe
+workdir=build/probe
+
+# the reference's flags, split into words where they are used
+reference_flags="-O0 -w -fno-stack-protector"
+
+# the prefix of the reference's symbols
+prefix=ref_
+
+# byte order for the sorted probes, and diagnostics in one language
+LC_ALL=C
+export LC_ALL
+
+##########
+# global variables
+
+# the probes the run builds, space separated; every probe by default
+names=
+
+# this machine's own target
+native=
+
+# the log of every command, and the output of the last command, kept
+# apart for the probe's count
+log=$workdir/log
+output=$workdir/output
+
+# the command line, for the log
+command_line="$0 $*"
+
+# the probes run, and the probes that passed
+count=0
+passed=0
+
+
+##########
+# usage(): prints the usage
+usage()
+{
+    echo "usage: $0 [ --help ] [ <name> ... ]"
+    echo
+    echo "    <name>    run the probe <name> of $probes; every probe by default"
+    echo "    --help    print this usage"
+}
+
+
+##########
+# machine_target(): prints the target of this machine, from uname -m;
+# reports 1 and prints nothing when rcc has no target for it
+machine_target()
+{
+    machine=$(uname -m)
+
+    case "$machine" in
+        x86_64)  # the machine of the x86-64 target
+            echo x86-64
+            ;;
+
+        aarch64)  # the machine of the aarch64 target
+            echo aarch64
+            ;;
+
+        *)  # a machine rcc writes no code for
+            return 1
+            ;;
+    esac
+}
+
+
+##########
+# check_tree(): reports 0 when the script runs from the tree root with
+# rcc built, and says what is missing otherwise
+check_tree()
+{
+    if [ ! -d "$probes" ]; then
+        echo "$myname: no $probes here; run from the tree root" >&2
+        return 1
+    fi
+
+    if [ ! -x ./rcc ]; then
+        echo "$myname: no ./rcc; run make first" >&2
+        return 1
+    fi
+
+    return 0
+}
+
+
+##########
+# check_tools(): reports 0 when clang and objcopy are on the path, and
+# says which is missing otherwise
+check_tools()
+{
+    for tool in clang objcopy; do
+        if ! command -v "$tool" > /dev/null 2>&1; then
+            echo "$myname: no $tool on the path; no probe run"
+            return 1
+        fi
+    done
+
+    return 0
+}
+
+
+##########
+# check_name(): reports 0 when the name is a probe of tests/probe, and
+# says what is missing otherwise
+check_name()
+{
+    name=$1
+
+    case "$name" in
+        "" | . | .. | */*)  # not the name of a probe
+            echo "$myname: '$name' is not a probe" >&2
+            return 1
+            ;;
+    esac
+
+    if [ ! -e "$probes/$name.c" ] || [ ! -e "$probes/$name-main.c" ]; then
+        echo "$myname: no probe $name; no $probes/$name.c and" \
+            "$probes/$name-main.c" >&2
+        return 1
+    fi
+
+    return 0
+}
+
+
+##########
+# all_names(): prints the name of every probe, one per main, in sorted
+# order
+all_names()
+{
+    for main in "$probes"/*-main.c; do
+        [ -e "$main" ] || continue
+
+        name=${main##*/}
+        echo "${name%-main.c}"
+    done
+}
+
+
+##########
+# logged(): runs a command with its standard output and standard error
+# appended to the log after a "### <command>:" line, and its status
+# after the output; the output is also kept in the file output until
+# the next command; reports the command's status as its own
+logged()
+{
+    echo "### $*:" >> "$log"
+
+    "$@" > "$output" 2>&1
+    status=$?
+
+    cat "$output" >> "$log"
+    echo "### status $status" >> "$log"
+    echo >> "$log"
+
+    return $status
+}
+
+
+##########
+# build(): compiles one probe's functions by rcc and, renamed, by
+# clang, its library by clang alone, twice, and links them under its
+# main; prints nothing when the program is built, and the step that
+# failed otherwise
+build()
+{
+    name=$1
+
+    source=$probes/$name.c
+    library=$probes/$name-lib.c
+    stem=$workdir/$name
+
+    # $reference_flags is split into its words, on purpose
+
+    if ! logged ./rcc -target "$native" -c -o "$stem.o" "$source"; then
+        echo "not built: rcc did not compile $source"
+        return 1
+    fi
+
+    if ! logged clang $reference_flags -c -o "$stem-ref.o" "$source" ||
+       ! logged objcopy --prefix-symbols="$prefix" "$stem-ref.o"; then
+        echo "not built: no reference object of $source"
+        return 1
+    fi
+
+    if [ ! -e "$library" ]; then
+        if ! logged clang -O0 -w -o "$stem-probe" "$probes/$name-main.c" \
+            "$stem.o" "$stem-ref.o"; then
+            echo "not built: $stem-probe did not link"
+            return 1
+        fi
+
+        return 0
+    fi
+
+    if ! logged clang $reference_flags -c -o "$stem-lib.o" "$library" ||
+       ! logged objcopy --prefix-symbols="$prefix" "$stem-lib.o" \
+            "$stem-lib-ref.o"; then
+        echo "not built: no objects of $library"
+        return 1
+    fi
+
+    if ! logged clang -O0 -w -o "$stem-probe" "$probes/$name-main.c" \
+        "$stem.o" "$stem-ref.o" "$stem-lib.o" "$stem-lib-ref.o"; then
+        echo "not built: $stem-probe did not link"
+        return 1
+    fi
+
+    return 0
+}
+
+
+##########
+# check_probe(): builds and runs one probe and prints its line, the
+# probe's count, or the step that failed; reports 0 when the probe
+# ran and nothing differed, 1 otherwise
+check_probe()
+{
+    name=$1
+
+    stem=$workdir/$name
+
+    # an output left by an earlier run must not stand in for this one's
+    rm -f "$stem.o" "$stem-ref.o" "$stem-lib.o" "$stem-lib-ref.o" \
+        "$stem-probe"
+
+    failure=$(build "$name")
+
+    if [ -n "$failure" ]; then
+        printf '%-10s %s\n' "$name" "$failure"
+        return 1
+    fi
+
+    logged "$stem-probe" < /dev/null
+    ran=$?
+
+    # the probe's count is its last line; a probe stopped by a signal
+    # may not have printed it
+    if [ "$ran" -gt 1 ]; then
+        printf '%-10s %s\n' "$name" "stopped, status $ran"
+        return 1
+    fi
+
+    printf '%-10s %s\n' "$name" "$(tail -n 1 "$output")"
+
+    [ "$ran" -eq 0 ]
+}
+
+
+##########
+# main body of script
+
+# process command line options
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --help)  # print the usage and stop
+            usage
+            exit 0
+            ;;
+
+        -*)  # any other option is a usage error
+            usage >&2
+            exit 2
+            ;;
+
+        *)  # a probe to run, in place of every probe
+            names="$names $1"
+            ;;
+    esac
+    shift
+done
+
+# without the tree root and a built rcc there is nothing to run
+check_tree || exit 2
+
+# a probe runs what rcc wrote, so only on this machine's own target; a
+# machine without one, or without the tools, runs none, and that is
+# not a failure
+if ! native=$(machine_target); then
+    echo "$myname: rcc has no target for this machine, $(uname -m);" \
+        "no probe run"
+    exit 0
+fi
+
+check_tools || exit 0
+
+# every probe named must exist; no name means every probe
+if [ -z "$names" ]; then
+    names=$(all_names)
+fi
+
+for name in $names; do
+    check_name "$name" || exit 2
+done
+
+# the work directory is kept; the log starts over
+if ! mkdir -p "$workdir" || ! : > "$log"; then
+    echo "$myname: cannot write in $workdir" >&2
+    exit 2
+fi
+
+echo "### running $command_line" >> "$log"
+echo >> "$log"
+
+# one line per probe; a failed probe does not stop the run
+for name in $names; do
+    count=$((count + 1))
+    if check_probe "$name"; then
+        passed=$((passed + 1))
+    fi
+done
+
+if [ "$count" -eq 0 ]; then
+    echo "$myname: no probes in $probes" >&2
+    exit 1
+fi
+
+echo
+echo "$passed of $count probes passed on $native; the log is $log"
+
+[ "$passed" -eq "$count" ]
+exit $?

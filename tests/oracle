@@ -24,6 +24,15 @@
 # table, the object assembled and the pin matches the assembly; a
 # program without a row or without a pin fails.
 #
+# A target's generator is written in slices, and a program may use a
+# construct whose slice is not in the tree yet.  rcc then stops in c1
+# with exit status 3 and the message "c1: not yet: ...".  A program
+# that has no pin for the target and stops so is not built or run: it
+# shows "not yet" in its row, and is neither passed nor failed.  The
+# summary counts it apart, and it does not make the exit status 1.  A
+# program with a pin that stops so fails, as any program with a pin
+# that did not build.
+#
 # On another machine's target nothing is built to run: the rcc and
 # clang columns show "-", a row passes when the object assembled and
 # the pin matches the assembly, and the summary says that the
@@ -35,11 +44,11 @@
 # Without timeout the script says so once and runs without a limit.
 #
 # The script prints a table, one row per program, and a summary, and
-# exits 0 when every row passed, 1 otherwise.  It runs from the tree
-# root with ./rcc built, as make test runs it.  The programs, their
-# assembly and objects and the log of every command stay in
-# build/oracle/<target>, so that runs for two targets do not overwrite
-# each other; each command's output in the log follows a
+# exits 0 when every row passed or is not yet, 1 otherwise.  It runs
+# from the tree root with ./rcc built, as make test runs it.  The
+# programs, their assembly and objects and the log of every command
+# stay in build/oracle/<target>, so that runs for two targets do not
+# overwrite each other; each command's output in the log follows a
 # "### <command>:" line and ends with a "### status <n>" line.
 #
 # tests/corpus/expected holds one line per program: its name, the
@@ -69,11 +78,13 @@
 #         from the measured statuses, printing what changed in each.
 #         On another machine's target nothing was measured, and
 #         tests/corpus/expected is left alone.  A program that did not
-#         build, or wrote no assembly, is left as it was.  Exits 0
-#         when every program was adopted, 1 otherwise.  It is how a
-#         new program enters the corpus, after a human has read its
-#         assembly and its statuses.  A target's first pins need its
-#         directory made first.
+#         build, or wrote no assembly, is left as it was.  A program
+#         that is not yet is left without a pin, keeps its row, and is
+#         not counted as unadopted.  Exits 0 when every other program
+#         was adopted, 1 otherwise.  It is how a new program enters
+#         the corpus, after a human has read its assembly and its
+#         statuses.  A target's first pins need its directory made
+#         first.
 #
 #     --help
 #         Prints the usage and exits.
@@ -109,8 +120,15 @@ myname=${0##*/}
 corpus=tests/corpus
 expected=$corpus/expected
 
-# the shown status of a program that did not build
+# the shown status of a program that did not build, and of one that
+# was not run
 unbuilt=unbuilt
+unrun=-
+
+# the exit status of rcc and the start of its message when c1 meets a
+# construct whose slice is not in the tree yet
+not_yet_status=3
+not_yet_message='c1: not yet:'
 
 # the seconds a program may run, the status timeout(1) gives when it
 # stops one, and the status shown for it
@@ -143,8 +161,10 @@ run=0
 # make clean; set once the target is known
 workdir=
 
-# the log of every command, and the statuses each program gave
+# the log of every command, the output of the last command, kept apart
+# for a look at its message, and the statuses each program gave
 log=
+output=
 measured=
 
 # the command line, for the log
@@ -153,9 +173,12 @@ command_line="$0 $*"
 # 1 when timeout(1) is on the path and each run has the time limit
 limited=0
 
-# the rows of the table, and the rows that passed
+# the rows of the table, the rows that passed, and the rows that are
+# not yet with their programs' names, space separated
 programs=0
 passed=0
+waiting=0
+waiting_names=
 
 
 ##########
@@ -251,14 +274,16 @@ find_timeout()
 ##########
 # logged(): runs a command with its standard output and standard error
 # appended to the log after a "### <command>:" line, and its status
-# after the output; reports the command's status as its own
+# after the output; the output is also kept in the file output until
+# the next command; reports the command's status as its own
 logged()
 {
     echo "### $*:" >> "$log"
 
-    "$@" >> "$log" 2>&1
+    "$@" > "$output" 2>&1
     status=$?
 
+    cat "$output" >> "$log"
     echo "### status $status" >> "$log"
     echo >> "$log"
 
@@ -297,6 +322,23 @@ measure()
     else
         echo "$status"
     fi
+}
+
+
+##########
+# not_yet(): writes the program's assembly for the target with rcc -S
+# and reports 0 when rcc stopped in c1 at a construct whose slice is
+# not in the tree yet, 1 when it wrote the text or stopped otherwise
+not_yet()
+{
+    name=$1
+
+    logged ./rcc -target "$target" -S -o "$workdir/$name.s" \
+        "$corpus/$name.c"
+    written=$?
+
+    [ "$written" -eq "$not_yet_status" ] &&
+        grep -q "$not_yet_message" "$output"
 }
 
 
@@ -374,7 +416,8 @@ print_row()
 # check_program(): on this machine's own target, builds and runs one
 # program both ways and records its statuses; on any target, diffs its
 # assembly against the pin and assembles it; prints its row; reports
-# 0 when the row passed, 1 when it failed
+# 0 when the row passed, 1 when it failed, and 2 when it is not yet:
+# the program has no pin and c1 does not handle it yet
 check_program()
 {
     name=$1
@@ -384,6 +427,17 @@ check_program()
 
     # an output left by an earlier run must not stand in for this one's
     rm -f "$stem.rcc" "$stem.clang" "$stem.s" "$stem.o"
+
+    # a program that waits for its slice is neither built nor run, and
+    # its row in expected stays as it is
+    if [ ! -e "$pins/$name.s" ] && not_yet "$name"; then
+        if [ "$run" -ne 0 ]; then
+            echo "$name $unrun $unrun" >> "$measured"
+        fi
+
+        print_row "$name" "$unrun" "$unrun" "no pin" "not yet"
+        return 2
+    fi
 
     if [ "$run" -ne 0 ]; then
         rcc_status=$(measure "$source" "$stem.rcc" ./rcc -target "$target")
@@ -421,10 +475,29 @@ check_program()
 
 
 ##########
+# is_waiting(): reports 0 when the program's row in this run is not
+# yet, 1 otherwise
+is_waiting()
+{
+    name=$1
+
+    case " $waiting_names " in
+        *" $name "*)  # among the rows not yet
+            return 0
+            ;;
+
+        *)  # a row that passed or failed
+            return 1
+            ;;
+    esac
+}
+
+
+##########
 # adopt_pins(): copies the assembly of the run over the target's pin
-# of every program, printing each pin it made or changed; reports 1
-# when a program wrote no text or a pin could not be written, 0
-# otherwise
+# of every program, printing each pin it made or changed, and leaves a
+# program that is not yet without one; reports 1 when another program
+# wrote no text or a pin could not be written, 0 otherwise
 adopt_pins()
 {
     result=0
@@ -438,7 +511,9 @@ adopt_pins()
         pin_file=$pins/$name.s
         asm_file=$workdir/$name.s
 
-        if [ ! -e "$asm_file" ]; then
+        if is_waiting "$name"; then
+            echo "$name: not yet, left without a pin"
+        elif [ ! -e "$asm_file" ]; then
             echo "$name: no text, pin left as it was"
             result=1
         elif [ ! -e "$pin_file" ]; then
@@ -459,8 +534,9 @@ adopt_pins()
 # from the measured statuses and prints the change as a diff; comments
 # and the order of the rows stay, a program new to the table is
 # appended, a row whose program left the corpus goes, and a program
-# that did not build keeps its row; reports 1 when a program could
-# not be adopted or the table could not be written, 0 otherwise
+# that did not build or was not run keeps its row; reports 1 when a
+# program that should have run could not be adopted or the table could
+# not be written, 0 otherwise
 adopt_expected()
 {
     result=0
@@ -476,11 +552,11 @@ adopt_expected()
         : > "$expected" || return 1
     fi
 
-    awk -v unbuilt="$unbuilt" '
+    awk -v unbuilt="$unbuilt" -v unrun="$unrun" '
         FILENAME == ARGV[1] {
             order[++n] = $1
             known[$1] = 1
-            if ($2 != unbuilt && $3 != unbuilt)
+            if ($2 != unbuilt && $3 != unbuilt && $2 != unrun && $3 != unrun)
                 row[$1] = $1 " " $2 " " $3
             next
         }
@@ -571,6 +647,7 @@ check_target "$target" || exit 2
 pins=$corpus/$target
 workdir=build/oracle/$target
 log=$workdir/log
+output=$workdir/output
 measured=$workdir/measured
 
 if [ "$target" = "$native" ]; then
@@ -602,9 +679,18 @@ for source in "$corpus"/*.c; do
     name=${name%.c}
 
     programs=$((programs + 1))
-    if check_program "$name"; then
-        passed=$((passed + 1))
-    fi
+    check_program "$name"
+
+    case $? in
+        0)  # the row passed
+            passed=$((passed + 1))
+            ;;
+
+        2)  # the row is not yet, and counted apart
+            waiting=$((waiting + 1))
+            waiting_names="$waiting_names $name"
+            ;;
+    esac
 done
 
 if [ "$programs" -eq 0 ]; then
@@ -612,11 +698,19 @@ if [ "$programs" -eq 0 ]; then
     exit 1
 fi
 
+# the rows that are not yet are neither passed nor failed
+checked=$((programs - waiting))
+
+counts="$passed of $checked passed"
+if [ "$waiting" -ne 0 ]; then
+    counts="$counts, $waiting not yet"
+fi
+
 echo
 if [ "$run" -ne 0 ]; then
-    echo "$passed of $programs passed; the log is $log"
+    echo "$counts; the log is $log"
 else
-    echo "$passed of $programs passed;" \
+    echo "$counts;" \
         "the programs were not run on another machine's target;" \
         "the log is $log"
 fi
@@ -640,5 +734,5 @@ if [ "$pin" -ne 0 ]; then
     exit $?
 fi
 
-[ "$passed" -eq "$programs" ]
+[ "$passed" -eq "$checked" ]
 exit $?
