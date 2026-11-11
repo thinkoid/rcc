@@ -663,13 +663,16 @@ string_bytes(const token_t &t)
 }
 
 // The value of a char object holding the character, converted to int,
-// 6.4.4.5p11.  char is signed on x86-64, so '\xff' is -1.
+// 6.4.4.5p11: '\xff' is -1 where plain char is signed, 255 where it is
+// unsigned.
 int
-character_value(const token_t &t)
+character_value(const token_t &t, bool char_is_signed)
 {
     const char_t c = next_char(t.text, 1);
+    if (char_is_signed)
+        return static_cast< signed char >(c.value);
 
-    return static_cast< signed char >(c.value);
+    return c.value;
 }
 
 } // namespace rcc

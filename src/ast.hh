@@ -29,8 +29,8 @@ namespace rcc {
 // refused whether or not it got a register (6.5.4.2p1), and an array
 // so declared is not yet (6.3.2.1p3).
 // in_register is the parser's assignment: a register declaration met
-// with five register variables live is an ordinary local, with a
-// warning.
+// with the target's register variables all live is an ordinary local,
+// with a warning.
 enum class storage_t { local, parameter, global, function };
 
 struct symbol_t

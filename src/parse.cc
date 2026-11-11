@@ -29,6 +29,7 @@ struct parser_t
 {
     const std::vector< token_t > &tokens;
     std::size_t pos;
+    const target_t &target;
 
     std::vector< std::unordered_map< std::string_view, const symbol_t * > >
         scopes;
@@ -152,12 +153,13 @@ int_type()
     return make_int(32, true);
 }
 
-// char is signed on x86-64; long is the 64-bit signed type, and
-// unsigned long the type of sizeof, 6.5.4.4p5.
+// Plain char is signed or unsigned as the target has it, 6.2.5p20;
+// long is the 64-bit signed type, and unsigned long the type of
+// sizeof, 6.5.4.4p5.
 type_t
-char_type()
+char_type(const parser_t &p)
 {
-    return make_int(8, true);
+    return make_int(8, p.target.char_is_signed);
 }
 
 type_t
@@ -935,15 +937,6 @@ lookup(const parser_t &p, std::string_view name)
     return nullptr;
 }
 
-// The registers a function's register variables live in, the five
-// callee-saved ones of docs/backend.md chapter 4.
-constexpr int register_variables = 5;
-
-// The target's frame limit: a local's slot is a 32-bit displacement off
-// rbp and the frame the immediate of sub, so a frame is under 2 GiB,
-// docs/backend.md chapter 5.
-constexpr long frame_limit = 1L << 31;
-
 // The register variables live at this point of the function: those of
 // the scopes open, the parameters' among them.  A scope's variables
 // leave the count when the scope is popped.
@@ -959,13 +952,26 @@ live_registers(const parser_t &p)
     return live;
 }
 
+// A target's count of register variables as the warning spells it.
+std::string
+in_words(int n)
+{
+    constexpr std::string_view words[] = { "zero",  "one",  "two", "three",
+                                           "four",  "five", "six", "seven",
+                                           "eight", "nine", "ten" };
+    if (n >= 0 && n < std::ssize(words))
+        return std::string(words[n]);
+
+    return std::to_string(n);
+}
+
 // A new object in the innermost scope.  Without linkage a name is
 // declared once per scope (6.7.1p4); an inner scope may shadow it.  The
 // map's key views the symbol's own name, which the deque keeps in
-// place.  A register declaration met with five register variables live
-// declares an ordinary object, with a warning: the extent to which the
-// suggestion is effective is implementation-defined, 6.7.2p12, so the
-// program is conforming and compiles.
+// place.  A register declaration met with the target's register
+// variables all live declares an ordinary object, with a warning: the
+// extent to which the suggestion is effective is implementation-defined,
+// 6.7.2p12, so the program is conforming and compiles.
 const symbol_t *
 declare(parser_t &p,
         const token_t &name,
@@ -978,11 +984,12 @@ declare(parser_t &p,
         fail(name, "redefinition of " + quoted(name.text));
 
     const bool declared_register = in_register;
-    if (in_register && live_registers(p) == register_variables) {
+    const int count = p.target.register_variables;
+    if (in_register && live_registers(p) == count) {
         p.unit.warnings.push_back(
             { name.where, "register variable " + quoted(name.text) +
-                              " in a stack slot: the five registers are "
-                              "taken" });
+                              " in a stack slot: the " + in_words(count) +
+                              " registers are taken" });
         in_register = false;
     }
 
@@ -1410,6 +1417,9 @@ declaration_specifiers(parser_t &p)
             if (n_void)
                 return { make_void(), in_register };
 
+            if (n_char && !n_signed && !n_unsigned)
+                return { char_type(p), in_register };
+
             return { make_int(n_char  ? 8 :
                               n_short ? 16 :
                               n_long  ? 64 :
@@ -1694,7 +1704,7 @@ init_declarator(parser_t &p, const specifiers_t &spec)
     if (is< array_t >(d.type) && as< array_t >(d.type).count < 0)
         fail(*d.name, "array size missing in " + quoted(d.name->text));
 
-    if (size_of(d.type) >= frame_limit)
+    if (size_of(d.type) > p.target.frame_limit)
         fail(*d.name,
              "variable " + quoted(d.name->text) + " is too large for a local");
 
@@ -2506,15 +2516,18 @@ primary_expression(parser_t &p)
         return expr_t { sym->type, name_t { sym } };
     }
     case tok_t::integer: advance(p); return integer_constant(t);
-    case tok_t::character:
+    case tok_t::character: {
         advance(p);
-        return expr_t { int_type(), literal_t { character_value(t) } };
+        const int value = character_value(t, p.target.char_is_signed);
+
+        return expr_t { int_type(), literal_t { value } };
+    }
     case tok_t::string: {
         std::string bytes;
         while (peek(p).kind == tok_t::string)
             bytes += string_bytes(advance(p));
 
-        type_t type = make_array(char_type(), long(bytes.size()) + 1);
+        type_t type = make_array(char_type(p), long(bytes.size()) + 1);
 
         return expr_t { std::move(type), string_t { std::move(bytes) } };
     }
@@ -2533,9 +2546,9 @@ primary_expression(parser_t &p)
 } // namespace
 
 unit_t
-parse(const std::vector< token_t > &tokens)
+parse(const std::vector< token_t > &tokens, const target_t &target)
 {
-    parser_t p { tokens, 0, { }, { }, make_void() };
+    parser_t p { tokens, 0, target, { }, { }, make_void() };
     p.scopes.emplace_back();
 
     translation_unit(p);

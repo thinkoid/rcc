@@ -328,11 +328,12 @@ the canonical frame address is `rsp + 8` from there to `ret`, and
 without the directive the table still computes it from `rbp`, which
 is wrong between `leave` and `ret`.
 
-A frame is under 2 GiB, since a slot is a 32-bit displacement off
-`rbp` and the frame is the 32-bit immediate of `sub`. The parser
-refuses a single local of 2 GiB or more at its declaration, with its
-position. A sum of smaller locals that passes the limit is refused
-by c1, which has no position to give.
+A frame is at most 2147483632 bytes, 2 GiB less 16, since a slot is
+a 32-bit displacement off `rbp` and the frame, a multiple of 16, is
+the 32-bit immediate of `sub`. The parser refuses a single local over
+the limit at its declaration, with its position. A sum of smaller
+locals that passes the limit is refused by c1, which has no position
+to give.
 
 ## 6. Expressions
 
@@ -879,7 +880,10 @@ every cc does, is queued (`TODO`). No `llc`, no IR, no flag table. The
 `# line "file"` markers of the preprocessor still give the diagnostics
 their positions. The one warning, chapter 4's for a sixth live
 `register` variable, is printed in the error's format and changes no
-exit status; `-w` silences it.
+exit status; `-w` silences it. `-target x86-64` or `-target aarch64`
+names the target, and the default is the machine rcc was built on.
+For another machine's target the driver hands each of the three
+`clang` runs `--target=` and the target's triple.
 
 ## 12. Verification
 

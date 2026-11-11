@@ -390,8 +390,8 @@ with a callee that walked the frame chain through it.
 call that passes arguments on the stack (chapter 8). It is a multiple
 of 16 throughout, since `T` is. A frame of 4096 bytes or more is two
 instructions, `sub sp, sp, #110592; sub sp, sp, #48`: the immediate of
-`sub` is 12 bits, or 12 bits shifted by 12. A frame of 16 MiB or more
-is a not-yet, refused as `backend.md` chapter 5 has it: a single
+`sub` is 12 bits, or 12 bits shifted by 12. A frame over 16 MiB less
+16 is a not-yet, refused as `backend.md` chapter 5 has it: a single
 local at its declaration by the parser, a sum of smaller ones by the
 generator.
 
@@ -696,14 +696,15 @@ c0 learns the target, for three facts:
   unsigned char." The platform defined it, and rcc follows the
   platform (call 2). A program that needs a signed byte writes
   `signed char`.
-- **The frame limit**, 2 GiB on x86-64 and 16 MiB on aarch64 (5.2):
-  the size at which c0 refuses a local at its declaration, where its
-  position is known. The generator holds the same limit for the
-  frame as a whole.
+- **The frame limit**, 2 GiB less 16 on x86-64 and 16 MiB less 16
+  on aarch64 (5.2): the largest frame. c0 refuses a local over it at
+  its declaration, where its position is known. The generator holds
+  the same limit for the frame as a whole.
 
 They live in one small description, `target_t`, that c0, the
-generators and the driver read: the name, the three facts.
-Everything else about a target is in its generator.
+generators and the driver read: the name, the name `clang` takes after
+`--target=`, the three facts. Everything else about a target is in its
+generator.
 
 The driver takes `-target x86-64` or `-target aarch64`, and the
 default is the machine rcc was built on. With `-S` either target's

@@ -97,6 +97,9 @@ struct state_t
 {
     std::ostream &out;
 
+    // the target's largest frame
+    long frame_limit;
+
     // the bytes of each string literal met, in order; the index is the
     // number of its label
     std::vector< std::string > strings { };
@@ -276,20 +279,18 @@ jump(state_t &s, int n)
 
 // the frame
 
-// The largest frame the prologue can subtract: rounded up to 16, it is
-// still the 32-bit immediate of subq, and every slot's displacement off
-// rbp is a 32-bit one.  The parser refuses a single local of 2 GiB or
-// more at its declaration; a sum of smaller ones is refused here.
-constexpr long frame_limit = INT32_MAX / 16 * 16;
-
 // The next slot below the last, of size bytes at align; returns its
 // displacement.  G12: a slot is never shared and never reused inside
-// the activation.
+// the activation.  Up to the target's frame limit the frame, rounded up
+// to 16, is still the 32-bit immediate of subq, and every slot's
+// displacement off rbp is a 32-bit one.  The parser refuses a single
+// local over the limit at its declaration; a sum of smaller ones is
+// refused here.
 int
 allocate(state_t &s, long size, int align)
 {
     s.frame = (s.frame + size + align - 1) / align * align;
-    if (s.frame > frame_limit)
+    if (s.frame > s.frame_limit)
         not_yet("a frame of 2 GiB or more");
 
     return static_cast< int >(-s.frame);
@@ -2666,9 +2667,12 @@ function(state_t &s, const function_decl_t &fd)
 // The string literals follow the last function.  The note section
 // marks the stack not executable.
 void
-generate(const unit_t &unit, std::string_view file, std::ostream &out)
+generate_x86_64(const unit_t &unit,
+                const target_t &target,
+                std::string_view file,
+                std::ostream &out)
 {
-    state_t s { .out = out };
+    state_t s { .out = out, .frame_limit = target.frame_limit };
 
     out << std::format("\t.file\t{}\n\t.text\n", quoted_file(file));
 

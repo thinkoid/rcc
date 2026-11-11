@@ -122,10 +122,10 @@ std::vector< token_t > tokenize(std::string_view source, std::string_view file);
 
 // The bytes of a string literal token, escapes applied, the quotes and
 // the terminating zero left out; and the value of a character
-// constant, an int (6.4.4.5p11).  Neither fails: tokenize() refused
-// every malformed escape, and a constant of more than one character
-// is not yet.
+// constant, an int (6.4.4.5p11), which depends on the signedness of
+// plain char.  Neither fails: tokenize() refused every malformed
+// escape, and a constant of more than one character is not yet.
 std::string string_bytes(const token_t &);
-int character_value(const token_t &);
+int character_value(const token_t &, bool char_is_signed);
 
 } // namespace rcc

@@ -12,6 +12,7 @@
 #include "error.hh"
 #include "lex.hh"
 #include "parse.hh"
+#include "target.hh"
 
 #include <fcntl.h>
 #include <sys/wait.h>
@@ -22,6 +23,7 @@
 #include <cstring>
 #include <exception>
 #include <filesystem>
+#include <initializer_list>
 #include <iostream>
 #include <optional>
 #include <sstream>
@@ -37,7 +39,8 @@ namespace {
 // The program rcc runs, found on PATH.
 constexpr const char *clang = "clang";
 
-constexpr const char *usage = "usage: rcc [-w] [-S|-c] [-o out] file.c";
+constexpr const char *usage =
+    "usage: rcc [-w] [-S|-c] [-target name] [-o out] file.c";
 
 // The last thing the driver makes: the assembly, an object, or an
 // executable.
@@ -46,6 +49,7 @@ enum class stage_t { assembly, object, executable };
 struct options_t
 {
     stage_t stage = stage_t::executable;
+    const target_t *target = &build_target();
     bool warnings = true;
     std::string out;
     std::string file;
@@ -84,8 +88,9 @@ default_output(const options_t &opts)
 
 // The command line, or nothing when it is a usage error: an unknown
 // option, -O<n> among them, since there are no optimization levels;
-// -o without a name; -S with -c; or other than one input file.  A
-// repeated -o takes the last one, as cc does.
+// -o or -target without a name; a name that is no target; -S with -c;
+// or other than one input file.  A repeated -o or -target takes the
+// last one, as cc does.
 std::optional< options_t >
 options_from(int argc, char **argv)
 {
@@ -103,6 +108,11 @@ options_from(int argc, char **argv)
             to_object = true;
         else if (arg == "-o" && i + 1 < argc)
             opts.out = argv[++i];
+        else if (arg == "-target" && i + 1 < argc) {
+            opts.target = target_named(argv[++i]);
+            if (!opts.target)
+                return std::nullopt;
+        }
         else if (arg.starts_with('-') || !opts.file.empty())
             return std::nullopt;
         else
@@ -355,6 +365,20 @@ report(const error_t &e)
     report(e.where, "error", e.what);
 }
 
+// A clang command line.  clang's default is the machine it runs on,
+// so the target is named only when it is another.
+std::vector< std::string >
+clang_with(const options_t &opts, std::initializer_list< std::string > args)
+{
+    std::vector< std::string > command { clang };
+    if (opts.target->name != build_target().name)
+        command.push_back("--target=" + std::string(opts.target->clang_name));
+
+    command.insert(command.end(), args);
+
+    return command;
+}
+
 // Hands the assembly to clang to assemble into the object and, without
 // -c, to link; returns clang's exit status.
 int
@@ -363,9 +387,9 @@ assemble(const options_t &opts, std::string_view text)
     const temp_file_t s(".s", text);
 
     if (opts.stage == stage_t::object)
-        return run({ clang, "-c", s.path(), "-o", opts.out });
+        return run(clang_with(opts, { "-c", s.path(), "-o", opts.out }));
 
-    return run({ clang, s.path(), "-o", opts.out });
+    return run(clang_with(opts, { s.path(), "-o", opts.out }));
 }
 
 // The pipeline: preprocess, tokenize, parse, generate, then the
@@ -376,19 +400,19 @@ assemble(const options_t &opts, std::string_view text)
 int
 drive(const options_t &opts)
 {
-    const auto pp = capture({ clang, "-E", opts.file });
+    const auto pp = capture(clang_with(opts, { "-E", opts.file }));
     if (pp.status != 0)
         return pp.status;
 
     std::ostringstream assembly;
     try {
         const auto tokens = tokenize(pp.text, opts.file);
-        const auto unit = parse(tokens);
+        const auto unit = parse(tokens, *opts.target);
         if (opts.warnings)
             for (const auto &w : unit.warnings)
                 report(w.where, "warning", w.what);
 
-        generate(unit, opts.file, assembly);
+        generate(unit, *opts.target, opts.file, assembly);
     }
     catch (const error_t &e) {
         report(e);

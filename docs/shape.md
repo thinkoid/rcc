@@ -195,21 +195,22 @@ nothing in the method needs it: the corpus is correct programs.
 
 ## 8. The driver
 
-`rcc [-w] [-S|-c] [-o out] file.c`. `-S` stops at the assembly, and
-the pins of both corpora are what `-S` wrote. `-c` stops at the
-object, which `clang -c` assembled. Without either, `clang` links an
-executable. The default output is `<stem>.s`, `<stem>.o` or `a.out`.
-There is no `-O`: there is one pipeline, and it is literal, so `-O`
-is an unknown option and a usage error. Processes are spawned by fork
-and exec, never `system`; the temporary `.s` of `-c` and of a link is
-removed on every way out.
+`rcc [-w] [-S|-c] [-target name] [-o out] file.c`. `-S` stops at the
+assembly, and the pins of both corpora are what `-S` wrote. `-c` stops
+at the object, which `clang -c` assembled. Without either, `clang`
+links an executable. The default output is `<stem>.s`, `<stem>.o` or
+`a.out`. There is no `-O`: there is one pipeline, and it is literal,
+so `-O` is an unknown option and a usage error. Processes are spawned
+by fork and exec, never `system`; the temporary `.s` of `-c` and of a
+link is removed on every way out.
 
 A warning does not stop the translation. The parser records it in
 the unit, and the driver prints the unit's warnings after a
 successful parse, on standard error in the error's format, `warning`
 in place of `error`. `-w` silences them, and no warning changes the
-exit status. The one warning is a sixth live `register` variable's,
-which takes a slot (`backend.md` chapter 4).
+exit status. The one warning is for a live `register` variable past
+the target's count, the sixth on x86-64, which takes a slot
+(`backend.md` chapter 4).
 
 Exit status: 0; 1 for a diagnosed error or a failed system call; 2
 for a usage error; 3 for an internal error, a construct c1 does not
@@ -235,7 +236,9 @@ compile database, and three lines of make, a shell script and
     src/type.hh .cc   type_t, constructors, equality
     src/ast.hh        the tree
     src/parse.hh .cc  parse()
+    src/target.hh     target_t, the facts of a target
     src/c1.hh         generate(), the code generator
+    src/c1.cc         generate(), which calls the target's generator
     src/c1-x86-64.cc  the generator for x86-64
     src/c1-common.hh .cc
                       the part of c1 that is the same for every target
