@@ -747,10 +747,14 @@ values and the two save points of `backend.md` 6.7.
   programs the statuses it gives them on x86-64, the second column
   of `tests/corpus/expected` unchanged. The file is shared until a
   row differs.
-- **The pins** move under a directory per target,
-  `tests/corpus/x86-64/<name>.s` and `tests/cost/aarch64/<name>.s`.
-  The scripts take the target. The text diff and the assembly run for
-  both targets on any machine; the programs run only for the host's.
+- **The pins** live under a directory per target,
+  `tests/corpus/<target>/<name>.s` and `tests/cost/<target>/<name>.s`;
+  today `x86-64` has one in each corpus. Both scripts take
+  `--target <target>`, by default the machine's own. The text diff,
+  and the assembly by `rcc -target <target> -c`, run for any target
+  on any machine; the oracle's programs run only on the machine's
+  own target. `make test` runs both scripts for every target with a
+  pin directory.
 - **The cost corpus** needs widening in three places, since three
   programs are aimed at x86's numbers:
   - `spill`: ten nested operands exhaust nine registers, not
@@ -775,7 +779,7 @@ values and the two save points of `backend.md` 6.7.
 0. **The ground.** `target_t`; c0 takes the count, `char` and the
    frame limit from it; the driver's `-target`; `c1.cc` renamed; the
    shared file split out; the pins moved. No aarch64 instruction yet.
-   Check: every x86-64 pin unchanged.
+   Check: every x86-64 pin unchanged. The slice is in the tree.
 1. **Integers, control, calls.** The frame, the prologue, chapters 6
    to 8.
 2. **Pointers, arrays, string literals.**

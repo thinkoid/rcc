@@ -131,19 +131,28 @@ shows it yet.
 
 ## 3. Verification
 
-Two scripts, both run by `make test`. `tests/oracle` runs first: it
-builds each divergence program of `tests/corpus/` under `clang -O2`
-and under `./rcc`, compares the exit statuses with
-`tests/corpus/expected`, and diffs the assembly `./rcc -S` writes
-against the pin, `tests/corpus/<name>.s`. `tests/costs` runs after
-it and pins this page.
+Two scripts, both run by `make test` for every target with a pin
+directory, and both take the target as `--target <target>`; the
+default is the machine's own. A pin is one target's listing, so it
+sits under a directory named for its target. `tests/oracle` runs
+first: it diffs the assembly `./rcc -target <target> -S` writes for
+each divergence program of `tests/corpus/` against the pin,
+`tests/corpus/<target>/<name>.s`, and proves with
+`./rcc -target <target> -c` that it assembles. On the machine's own
+target it also builds each program under `clang -O2` and under
+`./rcc`, runs both, and compares the exit statuses with
+`tests/corpus/expected`; on another target the programs are not run.
+`tests/costs` runs after it and pins this page.
 
 Each program under `tests/cost/` is one row of chapter 2 or one rule
 of chapter 1, and its opening comment says what its listing must
-show. The pin beside it, `<name>.s`, is the text `./rcc -S` writes,
-whole. The script assembles each listing with `clang -c`, to prove
-that it assembles. A row passes when the fresh listing equals the
-pin; the diff of a failed row is in `build/cost/log`. A new or
+show. Its pin, `tests/cost/<target>/<name>.s`, is the text
+`./rcc -target <target> -S` writes, whole. The script assembles each
+program with `./rcc -target <target> -c`, which hands `clang` the
+target, to prove that the text assembles; no program runs, so the
+run is the same on any machine. A row passes when the fresh listing
+equals the pin; the diff of a failed row is in
+`build/cost/<target>/log`. A new or
 changed listing is read by hand against its row of chapter 2 before
 `tests/costs --pin` adopts it. A change to c1 that moves a cost
 thus shows as a red row, and the row names the construct whose cost

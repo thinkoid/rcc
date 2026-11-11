@@ -7,6 +7,9 @@ CXXFLAGS = -std=c++20 -Wall -Wextra -g -MMD -MP
 SRC = $(wildcard src/*.cc)
 OBJ = $(SRC:src/%.cc=build/%.o)
 
+# the targets with pins: each directory under tests/corpus
+TARGETS = $(patsubst tests/corpus/%/,%,$(wildcard tests/corpus/*/))
+
 rcc: $(OBJ)
 	$(CXX) -o $@ $^
 
@@ -16,9 +19,11 @@ build/%.o: src/%.cc | build
 build:
 	mkdir -p $@
 
-test: rcc
-	tests/oracle
-	tests/costs
+test: $(TARGETS:%=test-%)
+
+$(TARGETS:%=test-%): test-%: rcc
+	tests/oracle --target $*
+	tests/costs --target $*
 
 bench: rcc
 	tests/bench
@@ -27,4 +32,4 @@ clean:
 	rm -rf build rcc
 
 -include $(OBJ:.o=.d)
-.PHONY: test bench clean
+.PHONY: test $(TARGETS:%=test-%) bench clean

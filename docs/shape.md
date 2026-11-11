@@ -245,9 +245,13 @@ compile database, and three lines of make, a shell script and
     src/error.hh      error_t and warning_t
     src/main.cc       the driver
     tests/oracle      the oracle script
-    tests/corpus/     the divergence programs, their pinned .s
+    tests/corpus/     the divergence programs and their expected statuses
+    tests/corpus/x86-64/
+                      their pinned .s for x86-64, one directory per target
     tests/costs       the cost corpus script
-    tests/cost/       one program per cost-model row, its pinned .s
+    tests/cost/       one program per cost-model row
+    tests/cost/x86-64/
+                      their pinned .s for x86-64, one directory per target
     tests/bench       the measurement script
     tests/perf/       the benchmark programs, plain and tuned
 

@@ -4,13 +4,19 @@
 # The cost corpus: what the machine runs for each construct of the
 # cost model, docs/cost.md, pinned as the assembly rcc writes for it.
 #
+# The run checks one target, x86-64 or aarch64, given by --target;
+# the default is this machine's own, from uname -m.  Each target has
+# its pins in a directory of its own, tests/cost/<target>, and a
+# target without one is an error.  The programs are shared by every
+# target, and none is run, so the run is the same on any machine.
+#
 # Each program tests/cost/<name>.c holds one construct or one rule of
-# the cost model.  It is written by ./rcc -S, and the text is
-# assembled by clang -c to prove that it assembles.  The listing is
-# that text, diffed against the pin, tests/cost/<name>.s.  A row
-# passes when the program built and the listing matches the pin; a
-# program without a pin fails, and a program c1 does not handle yet
-# fails as unbuilt.
+# the cost model.  It is written by ./rcc -target <target> -S, and
+# ./rcc -target <target> -c assembles it into an object to prove that
+# the text assembles.  The listing is that text, diffed against the
+# pin, tests/cost/<target>/<name>.s.  A row passes when the program
+# built and the listing matches the pin; a program without a pin
+# fails, and a program c1 does not handle yet fails as unbuilt.
 #
 # A change in the parser or in c1 shows as a diff in the rows it
 # touches, and the diff is in the log.
@@ -18,7 +24,8 @@
 # The script prints a table, one row per program, and a summary, and
 # exits 0 when every row passed, 1 otherwise.  It runs from the tree
 # root with ./rcc built, as make test runs it.  The objects, their
-# listings and the log of every command stay in build/cost; each
+# listings and the log of every command stay in build/cost/<target>,
+# so that runs for two targets do not overwrite each other; each
 # command's output in the log follows a "### <command>:" line and
 # ends with a "### status <n>" line.
 #
@@ -26,18 +33,26 @@
 #
 # USAGE:
 #
-#     tests/costs [ --pin ] [ --help ]
+#     tests/costs [ --target <name> ] [ --pin ] [ --help ]
 #
 # OPTIONS:
 #
+#     --target <name>
+#         Checks the target <name>, x86-64 or aarch64, against its
+#         pins in tests/cost/<name>.  Without it the target is this
+#         machine's own, and a machine rcc has no target for is an
+#         error.  A target without a pin directory is an error, exit
+#         status 2.
+#
 #     --pin
-#         Adopts the run.  Copies the listing of every program over
-#         its pin and prints, for each, whether the pin is new,
-#         changed or the same.  A program that did not build is left
-#         as it was.  Exits 0 when every program was adopted, 1
-#         otherwise.  It is how a new program enters the corpus, after
-#         a human has read its listing against its row of the cost
-#         model.
+#         Adopts the run for the target.  Copies the listing of every
+#         program over its pin and prints, for each, whether the pin
+#         is new, changed or the same.  A program that did not build
+#         is left as it was.  Exits 0 when every program was adopted,
+#         1 otherwise.  It is how a new program enters the corpus,
+#         after a human has read its listing against its row of the
+#         cost model.  A target's first pins need its directory made
+#         first.
 #
 #     --help
 #         Prints the usage and exits.
@@ -46,12 +61,18 @@
 #
 #     tests/costs
 #
-#     Writes, assembles and diffs every program in the corpus, prints
-#     the table and the summary, and keeps the log in build/cost/log.
+#     Writes, assembles and diffs every program in the corpus for
+#     this machine's own target, prints the table and the summary,
+#     and keeps the log in build/cost/<target>/log.
 #
-#     tests/costs --pin
+#     tests/costs --target x86-64
 #
-#     The same run, then the pins are made to match it.
+#     The same for x86-64, on any machine; the log is
+#     build/cost/x86-64/log.
+#
+#     tests/costs --target x86-64 --pin
+#
+#     The same run, then the x86-64 pins are made to match it.
 #
 ########################################################################
 
@@ -74,11 +95,23 @@ export LC_ALL
 # with --pin, the run is adopted as the pins
 pin=0
 
-# the work directory, kept between runs and removed by make clean
-workdir=build/cost
+# the target the run checks, from --target or this machine's own, and
+# the directory of its pins
+target=
+pins=
+
+# this machine's own target, empty when rcc has none for it
+native=
+
+# the work directory of the target, kept between runs and removed by
+# make clean; set once the target is known
+workdir=
 
 # the log of every command
-log=$workdir/log
+log=
+
+# the command line, for the log
+command_line="$0 $*"
 
 # the rows of the table, and the rows that passed
 programs=0
@@ -89,10 +122,57 @@ passed=0
 # usage(): prints the usage
 usage()
 {
-    echo "usage: $0 [ --pin ] [ --help ]"
+    echo "usage: $0 [ --target <name> ] [ --pin ] [ --help ]"
     echo
+    echo "    --target  check the target <name>, x86-64 or aarch64; this machine's by default"
     echo "    --pin     adopt the run: rewrite the pinned listings"
     echo "    --help    print this usage"
+}
+
+
+##########
+# machine_target(): prints the target of this machine, from uname -m;
+# reports 1 and prints nothing when rcc has no target for it
+machine_target()
+{
+    machine=$(uname -m)
+
+    case "$machine" in
+        x86_64)  # the machine of the x86-64 target
+            echo x86-64
+            ;;
+
+        aarch64)  # the machine of the aarch64 target
+            echo aarch64
+            ;;
+
+        *)  # a machine rcc writes no code for
+            return 1
+            ;;
+    esac
+}
+
+
+##########
+# check_target(): reports 0 when the target has a pin directory under
+# the corpus, and says what is missing otherwise
+check_target()
+{
+    name=$1
+
+    case "$name" in
+        "" | . | .. | */*)  # not the name of a directory of the corpus
+            echo "$myname: '$name' is not a target" >&2
+            return 1
+            ;;
+    esac
+
+    if [ ! -d "$corpus/$name" ]; then
+        echo "$myname: no pins for $name; no directory $corpus/$name" >&2
+        return 1
+    fi
+
+    return 0
 }
 
 
@@ -134,22 +214,24 @@ logged()
 
 
 ##########
-# build(): writes one program's assembly with rcc -S, which is its
-# listing, and assembles it with clang -c; prints "built", or
+# build(): writes one program's assembly for the target with rcc -S,
+# which is its listing, and its object with rcc -c, which hands clang
+# the target, to prove that the text assembles; prints "built", or
 # "unbuilt" when either step failed, and then leaves no listing, so
 # that text which did not assemble is never adopted as a pin
 build()
 {
     name=$1
 
+    source=$corpus/$name.c
     stem=$workdir/$name
 
-    if ! logged ./rcc -S -o "$stem.s" "$corpus/$name.c"; then
+    if ! logged ./rcc -target "$target" -S -o "$stem.s" "$source"; then
         echo unbuilt
         return 1
     fi
 
-    if ! logged clang -c "$stem.s" -o "$stem.o"; then
+    if ! logged ./rcc -target "$target" -c -o "$stem.o" "$source"; then
         rm -f "$stem.s"
         echo unbuilt
         return 1
@@ -160,13 +242,13 @@ build()
 
 
 ##########
-# check_pin(): diffs the listing of one program against its pin;
-# prints "pin ok", "pin differs" or "no pin"
+# check_pin(): diffs the listing of one program against the target's
+# pin; prints "pin ok", "pin differs" or "no pin"
 check_pin()
 {
     name=$1
 
-    pin_file=$corpus/$name.s
+    pin_file=$pins/$name.s
     listing=$workdir/$name.s
 
     # a program that did not build has no listing, and the diff below
@@ -224,10 +306,10 @@ check_program()
 
 
 ##########
-# adopt_pins(): copies the listing of the run over the pin of every
-# program, printing for each pin whether it is new, changed or the
-# same; reports 1 when a program has no listing or a pin could not be
-# written, 0 otherwise
+# adopt_pins(): copies the listing of the run over the target's pin of
+# every program, printing for each pin whether it is new, changed or
+# the same; reports 1 when a program has no listing or a pin could not
+# be written, 0 otherwise
 adopt_pins()
 {
     result=0
@@ -238,7 +320,7 @@ adopt_pins()
         name=${source##*/}
         name=${name%.c}
 
-        pin_file=$corpus/$name.s
+        pin_file=$pins/$name.s
         listing=$workdir/$name.s
 
         if [ ! -s "$listing" ]; then
@@ -263,8 +345,17 @@ adopt_pins()
 # main body of script
 
 # process command line options
-for arg in "$@"; do
-    case "$arg" in
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --target)  # check the target named next, not this machine's own
+            if [ $# -lt 2 ]; then
+                usage >&2
+                exit 2
+            fi
+            target=$2
+            shift
+            ;;
+
         --pin)  # adopt the run as the pins
             pin=1
             ;;
@@ -279,10 +370,32 @@ for arg in "$@"; do
             exit 2
             ;;
     esac
+    shift
 done
 
 # without the tree root and a built rcc there is nothing to run
 check_tree || exit 2
+
+# this machine's own target is the default; a machine rcc has no
+# target for has no default
+native=$(machine_target)
+
+if [ -z "$target" ] && [ -z "$native" ]; then
+    echo "$myname: rcc has no target for this machine, $(uname -m);" \
+        "name one with --target" >&2
+    exit 2
+fi
+
+if [ -z "$target" ]; then
+    target=$native
+fi
+
+# a target without pins has nothing to be checked against
+check_target "$target" || exit 2
+
+pins=$corpus/$target
+workdir=build/cost/$target
+log=$workdir/log
 
 # the work directory is kept; the log starts over
 if ! mkdir -p "$workdir" || ! : > "$log"; then
@@ -290,7 +403,7 @@ if ! mkdir -p "$workdir" || ! : > "$log"; then
     exit 2
 fi
 
-echo "### running $0 $*" >> "$log"
+echo "### running $command_line" >> "$log"
 echo >> "$log"
 
 print_row program build pin result

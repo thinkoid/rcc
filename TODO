@@ -27,16 +27,11 @@ second target, whose design is =docs/aarch64.md=.
 The design is =docs/aarch64.md=; its chapter 15 has the seven calls
 and their answers. The target takes ten register variables, =x19= to
 =x28=, and the oracle's programs run on an aarch64 machine, with no
-emulator. The work is four slices, each followed by its pins and its
+emulator. Slice 0, the ground, is in the tree: the target's
+description, =-target=, the generator's files and the pins per
+target. Three slices remain, each followed by its pins and its
 documents, as the x86-64 slices were:
 
-- slice 0, the ground: the target's description, which c0 reads for
-  the count of register variables, the signedness of plain =char=
-  and the frame limit (2 GiB on x86-64, 16 MiB on aarch64; today a
-  constant each in =parse.cc= and =c1.cc=); the driver's =-target=;
-  =c1.cc= renamed and its instruction-free part split out; the pins
-  moved under a directory per target. Check: every x86-64 pin
-  unchanged.
 - slice 1: integers, control and calls, with the frame of chapter 5.
 - slice 2: pointers, arrays and string literals.
 - slice 3: register variables.
@@ -52,7 +47,7 @@ parameter's copy, a frame of 4096 bytes or more.
 Then the measurement on the aarch64 machine, with the tuned sources
 as first written, and the loop-head alignment probe.
 
-Check: =make test= on the aarch64 machine, the nine corpus rows with
+Check: =make test= on the aarch64 machine, every corpus row with
 the statuses of =tests/corpus/expected= and every pin read against
 =docs/aarch64.md=.
 
@@ -179,6 +174,18 @@ refuses with status 3.
 
 Check: the script fails when one message of the parser is reworded
 by hand, and passes when it is restored.
+
+** TODO =tests/oracle --pin= says nothing of a pin that is the same
+
+=tests/costs --pin= prints a line for every pin, new, changed or the
+same. =tests/oracle --pin= prints one only for a new or a changed
+pin, so a clean run adopts in silence and the two scripts read
+differently.
+
+Fix: the oracle prints "pinned <file> (same)" too.
+
+Check: =tests/oracle --pin= on a clean tree prints one line for each
+program.
 
 ** TODO The oracle's time limit cannot tell 124 from a timeout
 

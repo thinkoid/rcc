@@ -892,13 +892,15 @@ For another machine's target the driver hands each of the three
   and the text `rcc -S` writes diffed against the program's pin.
 - **The cost corpus**, `tests/costs` over `tests/cost`: the pin of
   each program is the text `rcc -S` writes, and the script assembles
-  it with `clang -c` to prove that it assembles. Each pin is read by
+  it with `rcc -c` to prove that it assembles. Each pin is read by
   hand against this document's table before it is adopted, and
   chapter 2 of `cost.md` is written from the pins.
-- **Where the pins live**: beside their programs,
-  `tests/corpus/<name>.s` and `tests/cost/<name>.s`, written by
-  `tests/oracle --pin` and `tests/costs --pin`; `make test` runs both
-  scripts.
+- **Where the pins live**: under a directory per target beside their
+  programs, `tests/corpus/<target>/<name>.s` and
+  `tests/cost/<target>/<name>.s`, written by
+  `tests/oracle --target <target> --pin` and
+  `tests/costs --target <target> --pin`; `make test` runs both
+  scripts for every target with a pin directory, today `x86-64`.
 - **The ABI**: `g12-block-slot` is the corpus program that calls
   into libc, `printf` with `al` set, and it passes.
   A `clang`-compiled `main` calling rcc code, and an rcc `main`
