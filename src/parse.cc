@@ -939,6 +939,11 @@ lookup(const parser_t &p, std::string_view name)
 // callee-saved ones of docs/backend.md chapter 4.
 constexpr int register_variables = 5;
 
+// The target's frame limit: a local's slot is a 32-bit displacement off
+// rbp and the frame the immediate of sub, so a frame is under 2 GiB,
+// docs/backend.md chapter 5.
+constexpr long frame_limit = 1L << 31;
+
 // The register variables live at this point of the function: those of
 // the scopes open, the parameters' among them.  A scope's variables
 // leave the count when the scope is popped.
@@ -1668,7 +1673,8 @@ declaration(parser_t &p)
 // complete, 6.7.1p8, so an array needs its size; any initializer of an
 // array, and a brace initializer of anything, is not yet.  A register
 // array is not yet either: its decay is undefined, 6.3.2.1p3, and it
-// has no slot to decay to.
+// has no slot to decay to.  A local of 2 GiB or more is refused here,
+// where its position is known, since no frame holds it.
 stmt_t
 init_declarator(parser_t &p, const specifiers_t &spec)
 {
@@ -1687,6 +1693,10 @@ init_declarator(parser_t &p, const specifiers_t &spec)
 
     if (is< array_t >(d.type) && as< array_t >(d.type).count < 0)
         fail(*d.name, "array size missing in " + quoted(d.name->text));
+
+    if (size_of(d.type) >= frame_limit)
+        fail(*d.name,
+             "variable " + quoted(d.name->text) + " is too large for a local");
 
     decl_stmt_t decl { declare(p, *d.name, d.type, storage_t::local,
                                spec.in_register != nullptr),

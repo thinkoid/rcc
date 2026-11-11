@@ -328,6 +328,12 @@ the canonical frame address is `rsp + 8` from there to `ret`, and
 without the directive the table still computes it from `rbp`, which
 is wrong between `leave` and `ret`.
 
+A frame is under 2 GiB, since a slot is a 32-bit displacement off
+`rbp` and the frame is the 32-bit immediate of `sub`. The parser
+refuses a single local of 2 GiB or more at its declaration, with its
+position. A sum of smaller locals that passes the limit is refused
+by c1, which has no position to give.
+
 ## 6. Expressions
 
 ### 6.1 The rule

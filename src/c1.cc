@@ -107,7 +107,7 @@ struct state_t
 
     // the bytes the slots take below rbp, and whether the function
     // calls, which keeps it out of the red zone
-    int frame = 0;
+    long frame = 0;
     bool calls = false;
 
     // the value each register holds, or -1; values[i] is the value i
@@ -372,15 +372,23 @@ jump(state_t &s, int n)
 
 // the frame
 
+// The largest frame the prologue can subtract: rounded up to 16, it is
+// still the 32-bit immediate of subq, and every slot's displacement off
+// rbp is a 32-bit one.  The parser refuses a single local of 2 GiB or
+// more at its declaration; a sum of smaller ones is refused here.
+constexpr long frame_limit = INT32_MAX / 16 * 16;
+
 // The next slot below the last, of size bytes at align; returns its
 // displacement.  G12: a slot is never shared and never reused inside
 // the activation.
 int
 allocate(state_t &s, long size, int align)
 {
-    s.frame = static_cast< int >((s.frame + size + align - 1) / align * align);
+    s.frame = (s.frame + size + align - 1) / align * align;
+    if (s.frame > frame_limit)
+        not_yet("a frame of 2 GiB or more");
 
-    return -s.frame;
+    return static_cast< int >(-s.frame);
 }
 
 int
@@ -2846,7 +2854,7 @@ pushes_of(const function_decl_t &fd)
 // nothing keeps up to 128 bytes of slots in the red zone, measured from
 // rsp after the pushes, and moves no rsp.
 void
-prologue(state_t &s, int size, bool sub)
+prologue(state_t &s, long size, bool sub)
 {
     s.out << "\tpushq\t%rbp\n"
              "\t.cfi_def_cfa_offset 16\n"
@@ -2922,7 +2930,7 @@ function(state_t &s, const function_decl_t &fd)
         insn(s, "movl", { imm(0), "%eax" });
 
     const int saved = 8 * s.pushes;
-    const int size = (s.frame + 15) / 16 * 16 - saved;
+    const long size = (s.frame + 15) / 16 * 16 - saved;
     const bool sub = size > 0 && (s.calls || s.frame - saved > 128);
 
     const auto &name = s.function;

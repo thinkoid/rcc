@@ -56,9 +56,9 @@ all of it, and keeps c1's three entry points, `rvalue()`, `cbranch()`
 and `effect()`, the width rule, the spill rule, the hidden local of an
 argument, the left-to-right order of G13 and the label names.
 
-c0 carries too, but for two numbers it must now take from the target
-(chapter 11): the count of register variables, and the signedness of
-plain `char`.
+c0 carries too, but for three facts it must now take from the target
+(chapter 11): the count of register variables, the signedness of
+plain `char`, and the frame limit.
 
 What does not carry is what `backend.md` built around the shape of
 x86 instructions:
@@ -391,7 +391,9 @@ call that passes arguments on the stack (chapter 8). It is a multiple
 of 16 throughout, since `T` is. A frame of 4096 bytes or more is two
 instructions, `sub sp, sp, #110592; sub sp, sp, #48`: the immediate of
 `sub` is 12 bits, or 12 bits shifted by 12. A frame of 16 MiB or more
-is a not-yet.
+is a not-yet, refused as `backend.md` chapter 5 has it: a single
+local at its declaration by the parser, a sum of smaller ones by the
+generator.
 
 `stp x29, x30, [sp, #-48]!` would open a frame of up to 512 bytes in
 one instruction where this shape takes two. It is not used: a second
@@ -684,7 +686,7 @@ is 4 bytes, and the assembler aligns `.text` to 4.
 
 ## 11. c0 and the driver
 
-c0 learns the target, for two facts:
+c0 learns the target, for three facts:
 
 - **The register variables**, 5 or 10: the count c0 assigns from and
   the number in its warning.
@@ -694,10 +696,14 @@ c0 learns the target, for two facts:
   unsigned char." The platform defined it, and rcc follows the
   platform (call 2). A program that needs a signed byte writes
   `signed char`.
+- **The frame limit**, 2 GiB on x86-64 and 16 MiB on aarch64 (5.2):
+  the size at which c0 refuses a local at its declaration, where its
+  position is known. The generator holds the same limit for the
+  frame as a whole.
 
-Both live in one small description, `target_t`, that c0 and the
-driver read: the name, the two facts. Everything else about a target
-is in its generator.
+They live in one small description, `target_t`, that c0, the
+generators and the driver read: the name, the three facts.
+Everything else about a target is in its generator.
 
 The driver takes `-target x86-64` or `-target aarch64`, and the
 default is the machine rcc was built on. With `-S` either target's
@@ -765,10 +771,10 @@ values and the two save points of `backend.md` 6.7.
 
 ## 14. The slices
 
-0. **The ground.** `target_t`; c0 takes the count and `char` from
-   it; the driver's `-target`; `c1.cc` renamed; the shared file split
-   out; the pins moved. No aarch64 instruction yet. Check: every
-   x86-64 pin unchanged.
+0. **The ground.** `target_t`; c0 takes the count, `char` and the
+   frame limit from it; the driver's `-target`; `c1.cc` renamed; the
+   shared file split out; the pins moved. No aarch64 instruction yet.
+   Check: every x86-64 pin unchanged.
 1. **Integers, control, calls.** The frame, the prologue, chapters 6
    to 8.
 2. **Pointers, arrays, string literals.**

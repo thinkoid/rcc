@@ -31,10 +31,12 @@ emulator. The work is four slices, each followed by its pins and its
 documents, as the x86-64 slices were:
 
 - slice 0, the ground: the target's description, which c0 reads for
-  the count of register variables and the signedness of plain
-  =char=; the driver's =-target=; =c1.cc= renamed and its
-  instruction-free part split out; the pins moved under a directory
-  per target. Check: every x86-64 pin unchanged.
+  the count of register variables, the signedness of plain =char=
+  and the frame limit (2 GiB on x86-64, 16 MiB on aarch64; today a
+  constant each in =parse.cc= and =c1.cc=); the driver's =-target=;
+  =c1.cc= renamed and its instruction-free part split out; the pins
+  moved under a directory per target. Check: every x86-64 pin
+  unchanged.
 - slice 1: integers, control and calls, with the frame of chapter 5.
 - slice 2: pointers, arrays and string literals.
 - slice 3: register variables.
@@ -80,50 +82,6 @@ ask for, is decided with the fix.
 
 Check: on x86-64, an assembly callee =char f(void)= that returns
 =0x1ff= in =eax=, called from rcc as ~return f() == -1;~, exits 1.
-
-** TODO A local of 2 GiB or more wraps the frame
-
-=allocate()= keeps the frame's size in an =int= and narrows the sum
-to it, so a local of 4 GiB adds nothing to the frame and one of
-2 GiB makes it negative. rcc exits 0 and says nothing. For
-
-#+begin_src c
-int f(void) {
-    char a[4294967296L];
-    a[0] = 1;
-    return a[0];
-}
-#+end_src
-
-c1 places =a= at =0(%rbp)= and writes no =sub=:
-
-#+begin_example
-	pushq	%rbp
-	movq	%rsp, %rbp
-	leaq	0(%rbp), %rax
-	movb	$1, (%rax)
-#+end_example
-
-The store lands on the low byte of the caller's saved =rbp=. With
-=char a[4294967296L + 16]= the array is 16 bytes, at =-16(%rbp)=,
-and the next local sits right under it. With =char a[2147483648L]=
-the array is at =-2147483648(%rbp)=, and the function still writes
-no =sub=: the negative frame passes the red zone's test. The size
-is right in the tree, where =sizeof a= is the number written;
-=clang= subtracts the whole frame, by a =movabsq=, and warns.
-
-Fix: the oversized local is rejected. The parser refuses it at its
-declaration, with the position, when its size reaches the target's
-frame limit: 2 GiB on x86-64, which is what the 32-bit displacement
-and the immediate of =sub= hold, and the 16 MiB of =aarch64.md= 5.2
-on that target. The refusal belongs there and not in c1, whose own
-refusals carry no position and print as an internal error. The type
-stays legal elsewhere: a pointer to such an array, or =sizeof= of
-it. In c1 the frame becomes a =long=, and =allocate()= refuses a
-frame that reaches the limit by the sum of smaller locals.
-
-Check: =rcc -S= on the function above prints an error at the
-declaration of =a=, line 2, and exits with status 1.
 
 * Guarantees
 
@@ -201,6 +159,26 @@ Fix: a row for =-a= and =~a=, with a cost program.
 Check: the row and its pin.
 
 * Tests
+
+** TODO Nothing pins a diagnostic
+
+The two corpora hold programs that build: the oracle runs them and
+both scripts diff their listings. No test compiles a program that
+rcc must refuse and reads the message, the position and the exit
+status. The parser has 58 calls of =fail()= and 33 of =not_yet()=,
+and c1 five of its own =not_yet()=; a message reworded or lost, or
+a refusal that became an acceptance, changes no row. The refusal of
+a local of 2 GiB or more was checked by hand when it was written.
+
+Fix: a third corpus, =tests/errors/<name>.c=, each program with the
+first line rcc must print and its exit status beside it, and a
+script as the other two are, run by =make test=. The first two
+programs: a local of 4 GiB, which the parser refuses at the
+declaration with status 1, and two locals of 1.5 GiB, which c1
+refuses with status 3.
+
+Check: the script fails when one message of the parser is reworded
+by hand, and passes when it is restored.
 
 ** TODO The oracle's time limit cannot tell 124 from a timeout
 
