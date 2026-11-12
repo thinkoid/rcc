@@ -100,29 +100,6 @@ is the base whatever the size.
 Check: a cost program with =m[0]= on =int m[2][3]=, pinned for both
 targets, with no =add= after the array's address.
 
-** TODO aarch64: =a % b= on a register variable leaves its result above a free register
-
-A binary row whose left operand is a register variable's read frees
-=R= before it takes the result's register, so the result is in the
-lowest free register, =R='s own: =mul w0, w19, w0= (=aarch64.md=
-6.1). =%= is two instructions, and the second reads =R= again, so the
-quotient cannot take =R='s register. The generator then keeps the
-result in the quotient's: =sdiv w1, w19, w0; msub w1, w1, w0, w19=,
-with =w0= free below it, and a =mov w0, w1= where the value is
-returned. But the =msub= is the last instruction to read =R=, and its
-destination can be =R='s register, as every other row's is: =sdiv w1,
-w19, w0; msub w0, w1, w0, w19=. That is the row for an =L= the
-expression owns, =sdiv N, L, R; msub L, N, R, L=, with the quotient's
-register taken and freed.
-
-Fix: in =divide()=, for a remainder whose =L= is a register
-variable's read, the quotient in a register taken and freed, and the
-result in the register =R= leaves. =aarch64.md= 6.3 has the row.
-
-Check: a cost program with =a % (b + 1)= on a =register= =a=, signed
-and unsigned, pinned for aarch64 with no =mov= after the =msub=; the
-registers and inplace probes.
-
 * Guarantees
 
 The promises in =docs/guarantees.md=. The entry number is the

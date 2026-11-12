@@ -1579,12 +1579,14 @@ right_operand(state_t &s, binary_op_t op, const expr_t &rhs, int width)
 // trap, 2.6: x / 0 is 0 and INT_MIN / -1 is INT_MIN; nothing looks at
 // the divisor, which is in a register even when it is a constant.  The
 // remainder has no instruction: the quotient into a register N taken
-// and freed, then msub, L - N * R, sdiv N, L, R; msub L, N, R, L.  A
-// borrowed read as L writes into the fresh register of destination(),
-// which takes the quotient and then the result, sdiv w0, w19, w20; msub
-// w0, w0, w20, w19.  In place the destination is L, which msub still
-// reads, so the quotient has a register of its own, as for an owned L:
-// sdiv w1, w19, w0; msub w19, w1, w0, w19.
+// and freed, then msub, L - N * R, sdiv N, L, R; msub L, N, R, L.  msub
+// is the last to read R, so R is freed before the result is placed, as
+// in every binary row.  A borrowed read as L then writes into the fresh
+// register of destination(), which is R's own when R held one, sdiv w1,
+// w19, w0; msub w0, w1, w0, w19, and the quotient's when R is a
+// register variable too, sdiv w0, w19, w20; msub w0, w0, w20, w19.  In
+// place the destination is L: sdiv w0, w19, w20; msub w19, w0, w20,
+// w19.
 value_t
 divide(state_t &s, binary_op_t op, value_t l, value_t r, const int_t &t)
 {
@@ -1602,14 +1604,15 @@ divide(state_t &s, binary_op_t op, value_t l, value_t r, const int_t &t)
         insn(s, mnemonic, { result, left, right });
     }
     else {
-        const reg_t to = destination(s, l, bit(r_reg));
-        const reg_t n = to != l_reg ? to : take(s, bit(l_reg) | bit(r_reg));
+        const reg_t n = take(s, bit(l_reg) | bit(r_reg));
 
         const auto quotient = reg(n, width);
         insn(s, mnemonic, { quotient, left, right });
-        insn(s, "msub", { reg(to, width), quotient, right, left });
 
         release(s, r);
+
+        const auto result = reg(destination(s, l), width);
+        insn(s, "msub", { result, quotient, right, left });
     }
 
     wrote(s, l, width, t.is_signed);

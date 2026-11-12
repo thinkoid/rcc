@@ -546,19 +546,20 @@ PDP-11's registers.
 
 Unchanged from `backend.md` 6.1 in what it says: the left child into
 register `L`, the right into `R`, one instruction for the operator,
-`R` freed, the result in `L`. The instruction is written `op L, L,
-R`. When `L` is a register variable's read, the result takes a fresh
+`R` freed, the result in `L`. The instruction is written `op L, L, R`.
+When `L` is a register variable's read, the result takes a fresh
 expression register, `op N, L, R`, and that is the whole of what x86's
 `writable()` copy becomes. `R` is freed before `N` is taken, in the
 rule's order, so `N` may be `R`'s register: `x * 4` is `mov w0, #4;
-mul w0, w19, w0`. A postfix `++` or `--` for its value on an object
-in a slot is the same case: the load leaves the old value in `L`, the
-new value takes a fresh register, `ldr w0, [x29, #16]; add w1, w0,
-#1; str w1, [x29, #16]`, and x86's copy of the old one is gone. On a
-register variable it is not the same case. The variable is written in
-place, so G13's copy of chapter 4 stays and is the value: `mov w0,
-w19; add w19, w19, #1`. Left first is G13; a commutative operator's
-operands are not swapped.
+mul w0, w19, w0`. A row of two instructions frees `R` after the last
+that reads it, the remainder's `msub` (6.3). A postfix `++` or `--`
+for its value on an object in a slot is the same case: the load leaves
+the old value in `L`, the new value takes a fresh register, `ldr w0,
+[x29, #16]; add w1, w0, #1; str w1, [x29, #16]`, and x86's copy of the
+old one is gone. On a register variable it is not the same case. The
+variable is written in place, so G13's copy of chapter 4 stays and is
+the value: `mov w0, w19; add w19, w19, #1`. Left first is G13; a
+commutative operator's operands are not swapped.
 
 ### 6.2 Depth and spill
 
@@ -578,7 +579,7 @@ For a 32-bit operation (`w` names) or a 64-bit one (`x` names).
 | `a + b`, `a - b` | `add L, L, R`, `sub L, L, R` | G1 |
 | `a * b` | `mul L, L, R` | G1; a constant factor is first loaded, `mov R, #4` |
 | `a / b` | `sdiv L, L, R`, `udiv L, L, R` | G4: no trap, 2.6 |
-| `a % b` | `sdiv N, L, R; msub L, N, R, L`; for `L` a register variable's read, the fresh register takes the quotient and then the result, and `R`, read after the quotient is written, stays apart: `sdiv w1, w19, w0; msub w1, w1, w0, w19` | the machine has no remainder; `N` is taken and freed |
+| `a % b` | `sdiv N, L, R; msub L, N, R, L`; for `L` a register variable's read, `msub` is the last to read `R`, so its result takes the register `R` leaves, as in every row (6.1), and the quotient's register is taken and freed as before: `sdiv w1, w19, w0; msub w0, w1, w0, w19` | the machine has no remainder; `N` is taken and freed |
 | `a << b`, `a >> b` | `lsl L, L, R`, `asr`, `lsr`; a constant count is the immediate, masked to the width | G3; the count in any register |
 | `a & b`, `a \| b`, `a ^ b` | `and`, `orr`, `eor` | |
 | `-a`, `~a` | `neg L, L`, `mvn L, L` | |

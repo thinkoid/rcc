@@ -103,6 +103,7 @@ yet.
 | `a + 0` | `addl $0, %eax`: a constant operand is the immediate, whatever its value | `add-zero` |
 | `a * b` | `imull %ecx, %eax`; by a constant, `imull $3, %eax, %eax` | `mul`, `mul-three` |
 | `a / b`, `a % b` | `cltd; idivl %ecx` signed, `xorl %edx, %edx; divl %ecx` unsigned; the quotient in `eax`, the remainder moved from `edx`, `movl %edx, %eax` | `div-rem`, `udiv-urem` |
+| `a % b` on a `register` variable | the left operand copied from its register to where the division wants it, `movl %ebx, %eax`, then the row above, `cltd; idivl %ecx; movl %edx, %eax`, and `xorl %edx, %edx; divl %ecx` unsigned; the variable is not written | `register-remainder` |
 | `x / 4`, `x / 7` | the divisor held in a register, `movl $4, %ecx`, since `idiv` takes no immediate, then `cltd; idivl %ecx`; no shift, no multiply by a magic constant | `div-four`, `div-seven` |
 | `a + b / c`, a division with `rax` and `rdx` busy | the values held there moved out to free registers, `movq %rdx, %rsi; movq %rax, %rdi`, the dividend moved into `eax`, then `cltd; idivl %esi` (`backend.md` 6.5) | `div-busy` |
 | `a << n`, `a >> n` | the count in `ecx`, `shll %cl, %eax`, `sarl %cl, %eax`, `shrl %cl, %eax`; the instruction masks the count | `shift` |
@@ -165,6 +166,7 @@ bytes or more.
 | `a + 0` | `add w0, w0, #0`: a constant operand is the immediate where the instruction encodes it | `add-zero` |
 | `a * b` | `mul w0, w0, w1`; by a constant, the constant held first, `mov w1, #3`, since `mul` takes no immediate | `mul`, `mul-three` |
 | `a / b`, `a % b` | `sdiv w0, w0, w1` signed, `udiv w0, w0, w1` unsigned; the remainder is the quotient multiplied back and subtracted, `sdiv w2, w0, w1; msub w0, w2, w1, w0`, and `udiv w2, w0, w1` first unsigned | `div-rem`, `udiv-urem` |
+| `a % b` on a `register` variable | the quotient in a register taken for it, and the result in the register the right operand leaves, `sdiv w1, w19, w0; msub w0, w1, w0, w19`, `udiv` unsigned; no copy and no move, and the variable is not written | `register-remainder` |
 | `x / 4`, `x / 7` | the divisor held in a register, `mov w1, #4`, since `sdiv` takes no immediate, then `sdiv w0, w0, w1`; no shift, no multiply by a magic constant | `div-four`, `div-seven` |
 | `a + b / c`, a division with values held | the instruction on the registers the operands are in, `sdiv w1, w1, w2`, then `add w0, w0, w1`, and the remainder `sdiv w3, w1, w2; msub w1, w3, w2, w1`; nothing is moved, since no register is pinned | `div-busy` |
 | `a << n`, `a >> n` | the count in any register, `lsl w0, w0, w1`, `asr w0, w0, w1`, `lsr w0, w0, w1`; the instruction masks the count | `shift` |
