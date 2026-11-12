@@ -4,12 +4,12 @@
 // out, for clang and GNU as.  docs/aarch64.md is the design, with
 // docs/backend.md where it says the model carries; this file
 // implements its chapters 4 to 8 and 10, with c1-common.cc, and each
-// function names the row it writes.  It holds the first slice, the
+// function names the row it writes.  It holds slices 1 and 2: the
 // frame and straight-line code on integers, conditions and control, and
-// calls, and the first step of the second: the address of an object,
-// the indirection through a pointer, the use of an array and a string
-// literal.  A construct of a later step throws logic_error("c1: not yet:
-// ..."), and a tree the parser cannot make throws logic_error("c1:
+// calls; the address of an object, the indirection through a pointer,
+// the use of an array and a string literal, pointer arithmetic and the
+// subscript.  A construct of a later slice throws logic_error("c1: not
+// yet: ..."), and a tree the parser cannot make throws logic_error("c1:
 // ...").
 
 #include "c1.hh"
@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <format>
 #include <initializer_list>
 #include <optional>
@@ -247,12 +248,17 @@ slot_of(const state_t &s, const symbol_t *sym)
 }
 
 // Whether an access of size bytes encodes the displacement off its
-// base, 2.3: a multiple of the size no greater than 4095 times it.  No
-// displacement off x29 is negative, so the unscaled form is not asked.
+// base, 2.3: a multiple of the size from 0 to 4095 times it, the scaled
+// form, or -256 to 255, the unscaled one; the assembler picks, and both
+// are written ldr.  A slot's displacement is positive and a multiple of
+// its size, so the scaled form alone decides for it.
 bool
-in_reach(long displacement, int size)
+in_reach(long long displacement, int size)
 {
-    return displacement % size == 0 && displacement / size <= 4095;
+    const bool scaled = displacement >= 0 && displacement % size == 0 &&
+                        displacement / size <= 4095;
+
+    return scaled || (displacement >= -256 && displacement <= 255);
 }
 
 // A slot as the address operand of an access of size bytes, 5.3:
@@ -595,14 +601,102 @@ extended(state_t &s, value_t v, const int_t &from, int to)
 
 // addresses
 
+// The size of the object a pointer points to, the stride of its
+// arithmetic, 6.5.7p9.
+long
+stride(const type_t &pointer)
+{
+    return size_of(*as< pointer_t >(pointer).pointee);
+}
+
+// Whether a size is a scale of the machine's addressing form, 2.3: the
+// sizes of an access, which the form's index is shifted by.
+bool
+is_scale(long size)
+{
+    return size == 1 || size == 2 || size == 4 || size == 8;
+}
+
+int
+shift_of(long size)
+{
+    return std::countr_zero(static_cast< unsigned long >(size));
+}
+
+// How an operand form reads its index register, 2.3: the x register
+// whole, or the w register extended to 64 bits by the form, signed or
+// unsigned; either then shifted by the scale.
+enum class extend_t { lsl, sxtw, uxtw };
+
+// The index as the last operand of an access, or of add and sub, which
+// take the same forms, 2.3: x2, lsl #2, or w2, sxtw #2, and for a size
+// of 1 the forms without the shift, x2 and w2, sxtw.
+std::string
+index_operand(reg_t r, extend_t extend, int shift)
+{
+    if (extend == extend_t::lsl && shift == 0)
+        return reg(r, 64);
+
+    if (extend == extend_t::lsl)
+        return std::format("{}, lsl #{}", reg(r, 64), shift);
+
+    const auto name = extend == extend_t::sxtw ? "sxtw" : "uxtw";
+    if (shift == 0)
+        return std::format("{}, {}", reg(r, 32), name);
+
+    return std::format("{}, {} #{}", reg(r, 32), name, shift);
+}
+
+// The integer operand of a subscript or of pointer arithmetic,
+// generated, and how the form reads it: the paragraph "The index" under
+// 6.3's table.  The parser widened it to 64 bits by a cast, and the form
+// extends a 32-bit index itself, so the cast is looked through: its
+// operand is generated and what is held decides.  Valid to 64 bits, a
+// long or an unsigned written at 32, it is the x register, lsl; valid
+// to 32, the w register, sxtw for a signed operand and uxtw for an
+// unsigned one, as an unsigned call result is; narrower, as a char call
+// result is, the cast's instruction extends it to 32 first, sxtb w2, w2,
+// and the form does the rest.  An index that is no cast is 64 bits.
+struct index_t
+{
+    value_t value { };
+    extend_t extend = extend_t::lsl;
+};
+
+index_t
+index_of(state_t &s, const expr_t &n)
+{
+    if (!is< cast_t >(n))
+        return { .value = rvalue(s, n) };
+
+    const auto &arg = *as< cast_t >(n).arg;
+    const auto &from = integer(arg.type);
+
+    auto v = rvalue(s, arg);
+    if (s.values[v.id].valid < 32)
+        v = extended(s, v, from, 32);
+
+    if (s.values[v.id].valid >= 64)
+        return { .value = v };
+
+    return { .value = v,
+             .extend = from.is_signed ? extend_t::sxtw : extend_t::uxtw };
+}
+
 // An lvalue's address as the operand of the instruction that reads or
-// writes it, 2.3: a slot off x29, or a held base, the pointer's value,
-// [x0].  A string literal's address is its label, which no access
-// takes as an operand: the literal is an array and is used only by its
-// address as a value, chapter 10.  The access consumes the base.
+// writes it, 2.3: a slot off x29; a held base, the pointer's value,
+// [x0]; a subscript's, the base and a constant displacement, the index
+// times the size, [x0, #8], or the base and a held index read by the
+// form, [x0, w1, sxtw #2].  A string literal's address is its label,
+// which no access takes as an operand: the literal is an array and is
+// used only by its address as a value, chapter 10.  The access consumes
+// the values.
 struct address_t
 {
     value_t base { };
+    value_t index { };
+    extend_t extend = extend_t::lsl;
+    int shift = 0;
     int displacement = 0;
     std::string label { };
 };
@@ -613,21 +707,24 @@ slot_address(int displacement)
     return { .displacement = displacement };
 }
 
-// The register an address's base is in, for a take or a reload to stay
-// clear of.
+// The registers an address's values are in, for a take or a reload to
+// stay clear of.
 unsigned
 registers_of(const state_t &s, const address_t &a)
 {
-    if (a.base.id < 0 || s.values[a.base.id].reg < 0)
-        return 0;
+    unsigned held = 0;
+    for (const auto v : { a.base, a.index })
+        if (v.id >= 0 && s.values[v.id].reg >= 0)
+            held |= bit(static_cast< reg_t >(s.values[v.id].reg));
 
-    return bit(static_cast< reg_t >(s.values[a.base.id].reg));
+    return held;
 }
 
 // The address as the operand of an access of width bits.  A slot is
 // [x29, #d], or through x16 beyond reach, its add written here, 5.3.  A
-// spilled base is reloaded first, outside avoid; the reload is complete
-// before the access, so x16 holds nothing across it.
+// spilled base or index is reloaded first, outside avoid and outside the
+// other's register; the reload is complete before the access, so x16
+// holds nothing across it.
 std::string
 operand(state_t &s, const address_t &a, int width, unsigned avoid = 0)
 {
@@ -637,31 +734,44 @@ operand(state_t &s, const address_t &a, int width, unsigned avoid = 0)
     if (a.base.id < 0)
         return slot_operand(s, a.displacement, width / 8);
 
+    avoid |= registers_of(s, a);
+
+    std::string index;
+    if (a.index.id >= 0) {
+        const reg_t r = reg_of(s, a.index, avoid);
+        avoid |= bit(r);
+        index = ", " + index_operand(r, a.extend, a.shift);
+    }
+
     const reg_t base = reg_of(s, a.base, avoid);
 
-    return std::format("[{}]", reg(base, 64));
+    if (a.displacement != 0)
+        return std::format("[{}, #{}]", reg(base, 64), a.displacement);
+
+    return std::format("[{}{}]", reg(base, 64), index);
 }
 
-// The address is consumed: its register is free.
+// The address is consumed: its registers are free.
 void
 release(state_t &s, const address_t &a)
 {
     release(s, a.base);
+    release(s, a.index);
 }
 
-// The address as a value, valid to 64: &x, an array's decay, 6.3.2.1p3,
-// and a string literal's.  A base alone is its own value, so &*p is p
-// and no instruction, 6.5.4.2p3.  A literal's label is formed
-// PC-relative in two instructions, adrp L, .Ls0 for its 4 KiB page and
-// add L, L, :lo12:.Ls0 for the offset in it, chapter 3.  A slot is add
-// L, x29, #d; a displacement add's 12 bits do not encode is the two adds
-// of 5.3, the upper part shifted first, and one when the lower part is
-// zero.  The sum is formed in L, so x16 is not used.
+// The address of a slot or of a string literal as a value, valid to
+// 64.  A literal's label is formed PC-relative in two instructions,
+// adrp L, .Ls0 for its 4 KiB page and add L, L, :lo12:.Ls0 for the
+// offset in it, chapter 3.  A slot is add L, x29, #d; a displacement
+// add's 12 bits do not encode is the two adds of 5.3, the upper part
+// shifted first, and one when the lower part is zero.  The sum is
+// formed in L, so x16 is not used.  A dereference's address is never
+// here: address_value() takes it as the pointer's value.
 value_t
 address_of(state_t &s, const address_t &a)
 {
     if (a.base.id >= 0)
-        return a.base;
+        throw std::logic_error("c1: a held base taken as a value");
 
     const auto v = fresh(s, 64);
     const auto r = reg(reg_of(s, v), 64);
@@ -687,20 +797,59 @@ address_of(state_t &s, const address_t &a)
     return v;
 }
 
-// The address a dereference designates, 6.5.4.2p4: the pointer's value
-// as the base, [x0], whatever computed it and however it is aligned
-// (G8, G11); nothing looks through a cast.  The pointer is evaluated
-// here, before anything the access goes with, G13.
+// The address an access through a dereference designates, 6.5.4.2p4,
+// for a load, a fetch or a store: the pointer's value as the base, [x0],
+// whatever computed it and however it is aligned (G8, G11).  An add of
+// a pointer and an integer, the shape of a subscript (6.5.3.2p2), is the
+// machine's addressing form: the pointer the base, the integer the
+// index, each generated in the order written (G13), the index by
+// index_of(), and the scale the size of the pointee, a scalar of 1, 2,
+// 4 or 8 bytes, since an access reads no array.  A constant index is
+// the displacement c * s when the access encodes it, 2.3; any other is
+// an index like a variable one, held whole, lsl.  Any other pointer is
+// computed into a register and is the base; nothing looks through a
+// cast of the pointer.  The pointer is evaluated here, before anything
+// the access goes with.
 address_t
 pointed(state_t &s, const expr_t &p)
 {
-    return { .base = rvalue(s, p) };
+    if (!is< binary_t >(p) || as< binary_t >(p).op != binary_op_t::add)
+        return { .base = rvalue(s, p) };
+
+    const auto &b = as< binary_t >(p);
+    const bool left = is< pointer_t >(b.lhs->type);
+    const auto &pointer = left ? *b.lhs : *b.rhs;
+    const auto &n = left ? *b.rhs : *b.lhs;
+    const long size = stride(p.type);
+
+    if (is< literal_t >(n)) {
+        const auto d = scaled(as< literal_t >(n).value, size);
+        if (in_reach(d, static_cast< int >(size)))
+            return { .base = rvalue(s, pointer),
+                     .displacement = static_cast< int >(d) };
+    }
+
+    if (left) {
+        const auto base = rvalue(s, pointer);
+        const auto index = index_of(s, n);
+        return { .base = base,
+                 .index = index.value,
+                 .extend = index.extend,
+                 .shift = shift_of(size) };
+    }
+
+    const auto index = index_of(s, n);
+    const auto base = rvalue(s, pointer);
+
+    return { .base = base,
+             .index = index.value,
+             .extend = index.extend,
+             .shift = shift_of(size) };
 }
 
 // The address of an lvalue: a local's or a parameter's slot, a string
-// literal's label, or what a dereference designates.  It serves &,
-// array decay, loads and stores alike, so the addressing row is
-// written once.
+// literal's label, or what a dereference designates.  It serves loads
+// and stores alike, so the addressing row is written once.
 address_t
 address(state_t &s, const expr_t &e)
 {
@@ -713,13 +862,56 @@ address(state_t &s, const expr_t &e)
     return slot_address(slot_of(s, object_of(e)));
 }
 
+// The pointer of a subscript by a constant 0, p[0] or 0[p]: the pointer
+// operand of the add, or null for any other pointer.  The address such
+// a subscript designates has no displacement and no index; it is the
+// bare base, as *p's is.
+const expr_t *
+bare_base(const expr_t &p)
+{
+    if (!is< binary_t >(p) || as< binary_t >(p).op != binary_op_t::add)
+        return nullptr;
+
+    const auto &b = as< binary_t >(p);
+    const bool left = is< pointer_t >(b.lhs->type);
+    const auto &n = left ? *b.rhs : *b.lhs;
+
+    if (!is< literal_t >(n) || as< literal_t >(n).value != 0)
+        return nullptr;
+
+    return left ? b.lhs.get() : b.rhs.get();
+}
+
+// The address of an lvalue as a value: &x, and an array's decay,
+// 6.3.2.1p3.  The address of *E is taken and no access made, 6.5.4.2p3:
+// "neither that operator nor the & operator is evaluated".  A bare base
+// is its own value and no instruction: &*p is p, and so is &p[0], whose
+// access is [x0] as *p's is.  Any other subscript's address is the row
+// of p + n, the machine having no lea, so &p[i] and &p[3] are the add;
+// a row of an array of arrays, m[i], decays the same way, and m[0] to
+// m.  Anything else is a slot or a string literal, whose address
+// address_of() forms.
+value_t
+address_value(state_t &s, const expr_t &e)
+{
+    if (!is< unary_t >(e) || as< unary_t >(e).op != unary_op_t::deref)
+        return address_of(s, address(s, e));
+
+    const auto &p = *as< unary_t >(e).arg;
+    if (const auto *base = bare_base(p))
+        return rvalue(s, *base);
+
+    return rvalue(s, p);
+}
+
 // The load row, 6.3.2.1p2: the value at an address into a register at
 // a width of 32 or 64, a char or a short by the extending load of its
 // signedness, ldrsb w0, [x29, #16].  G8, G10: the load of 2.2 at the
 // lvalue's width and extension, whatever computed the address.  A held
-// base is consumed first, so the value takes its register, ldr w0,
-// [x0].  For a slot the register is taken first, since the take may
-// spill through x16, and the slot's operand is formed after it.
+// base and index are consumed first, so the value may take one of their
+// registers, ldr w0, [x0], ldr w0, [x0, w1, sxtw #2].  For a slot the
+// register is taken first, since the take may spill through x16, and
+// the slot's operand is formed after it.
 value_t
 load(state_t &s, const address_t &a, const int_t &t, int width)
 {
@@ -747,7 +939,7 @@ load(state_t &s, const address_t &a, const int_t &t, int width)
 // The load row of a read-modify-write, a compound assignment or a ++
 // or --: the address stays held for the store through it, since E1 is
 // evaluated once, 6.5.17.3p4.  The value's register is taken outside
-// the base's, and the operand formed after the take.
+// the address's, and the operand formed after the take.
 value_t
 fetch(state_t &s, const address_t &a, const int_t &t, int width)
 {
@@ -959,12 +1151,17 @@ arithmetic_mnemonic(binary_op_t op)
 // instruction takes, or the value held, with the width of its type.  A
 // binary operator generates it after its left operand, a compound
 // assignment before it reads its object (G13); the row is the same
-// function for both.
+// function for both.  The n of pointer arithmetic is read by add and
+// sub through the form's extension and shift, or multiplied by the
+// factor first, 6.3.
 struct right_t
 {
     std::string immediate { };
     value_t value { };
     int width = 0;
+    extend_t extend = extend_t::lsl;
+    int shift = 0;
+    long factor = 1;
 };
 
 // The right operand of op in an operation of width bits, as its row
@@ -1095,6 +1292,146 @@ arithmetic(
     wrote(s, l, width, integer(t).is_signed);
 
     return l;
+}
+
+// The product c * s of a constant n and the size, as the row of p + n
+// takes it, G6: the immediate when add and sub encode it, 2.4, a
+// negative one written with the source's operator, add x0, x0, #-4
+// (6.4); otherwise held in a register by the constant row of 6.4, and
+// added as a held n of a size of 1 is.
+right_t
+product(state_t &s, long long d, unsigned avoid = 0)
+{
+    if (arithmetic_immediate(d, 64))
+        return { .immediate = imm(d) };
+
+    const auto v = fresh(s, 64, avoid);
+    constant(s, reg_of(s, v), d, 64);
+
+    return { .value = v, .width = 64 };
+}
+
+// The n of p + n, n + p and p - n, and of p += n and p -= n, generated
+// as the row takes it, 6.3.  A constant is its product with the size.
+// For a size of 1, 2, 4 or 8 any other n is the index of index_of(),
+// read by the shifted or extended operand of add and sub; for any other
+// size it is generated whole, the cast writing its extension, and the
+// row multiplies it by the size.
+right_t
+displacement(state_t &s, const expr_t &n, long size)
+{
+    if (is< literal_t >(n))
+        return product(s, scaled(as< literal_t >(n).value, size));
+
+    if (!is_scale(size))
+        return { .value = rvalue(s, n), .width = 64, .factor = size };
+
+    const auto index = index_of(s, n);
+
+    return { .value = index.value,
+             .width = 64,
+             .extend = index.extend,
+             .shift = shift_of(size) };
+}
+
+// The row of p + n and p - n, 6.3, G6: the address plus or minus n
+// times the size, modulo 2^64, on the held pointer and the generated n,
+// the result in L.  An immediate is add L, L, #c*s.  A held n of a size
+// other than 1, 2, 4 or 8 is multiplied first, mov N, #s; mul R, R, N,
+// N taken and freed.  Then add or sub with n as its last operand, add
+// L, L, R, add L, L, R, lsl #2, add L, L, wR, sxtw #2.  When n is
+// written first, n + p, it is L: a plain register keeps the source's
+// order, add L, L, R, and the shifted or extended one, which the
+// instruction takes last only, is add L, R, wL, sxtw #2.
+value_t
+offset(state_t &s,
+       binary_op_t op,
+       value_t pointer,
+       const right_t &n,
+       bool pointer_first)
+{
+    const auto mnemonic = op == binary_op_t::add ? "add" : "sub";
+
+    if (!n.immediate.empty()) {
+        const auto to = reg(reg_of(s, pointer), 64);
+        insn(s, mnemonic, { to, to, n.immediate });
+        wrote(s, pointer, 64, false);
+        return pointer;
+    }
+
+    const auto [first, second] = pointer_first ? operands(s, pointer, n.value) :
+                                                 operands(s, n.value, pointer);
+    const reg_t p = pointer_first ? first : second;
+    const reg_t i = pointer_first ? second : first;
+
+    if (n.factor != 1) {
+        const reg_t factor = take(s, bit(p) | bit(i));
+        constant(s, factor, n.factor, 64);
+        insn(s, "mul", { reg(i, 64), reg(i, 64), reg(factor, 64) });
+    }
+
+    const auto index = index_operand(i, n.extend, n.shift);
+    const bool plain = n.extend == extend_t::lsl && n.shift == 0;
+
+    if (pointer_first)
+        insn(s, mnemonic, { reg(p, 64), reg(p, 64), index });
+    else if (plain)
+        insn(s, mnemonic, { reg(i, 64), reg(i, 64), reg(p, 64) });
+    else
+        insn(s, mnemonic, { reg(i, 64), reg(p, 64), index });
+
+    const auto result = pointer_first ? pointer : n.value;
+    release(s, pointer_first ? n.value : pointer);
+    wrote(s, result, 64, false);
+
+    return result;
+}
+
+// A binary + or - of the pointer type t, 6.5.7p9: the pointer and the
+// integer, the integer widened to 64 bits by the parser, each generated
+// in the order written (G13), a constant as its product with the size,
+// whose immediate takes no register.
+value_t
+pointer_arithmetic(state_t &s, const binary_t &b, const type_t &t)
+{
+    const long size = stride(t);
+
+    if (is< pointer_t >(b.lhs->type)) {
+        const auto l = rvalue(s, *b.lhs);
+        return offset(s, b.op, l, displacement(s, *b.rhs, size), true);
+    }
+
+    const auto n = displacement(s, *b.lhs, size);
+    const auto p = rvalue(s, *b.rhs);
+
+    return offset(s, b.op, p, n, false);
+}
+
+// p - q, 6.5.7p10: the difference of the addresses divided by the size,
+// a long.  G6: a division, sub L, L, R and then mov R, #s; sdiv L, L,
+// R, the size held, since sdiv takes no immediate; never a shift, since
+// the two pointers are any two addresses.  A size of 1 is the sub
+// alone.
+value_t
+difference(state_t &s, const binary_t &b)
+{
+    const long size = stride(b.lhs->type);
+
+    const auto l = rvalue(s, *b.lhs);
+    const auto r = rvalue(s, *b.rhs);
+    const auto [left, right] = operands(s, l, r);
+    insn(s, "sub", { reg(left, 64), reg(left, 64), reg(right, 64) });
+
+    release(s, r);
+    wrote(s, l, 64, true);
+
+    if (size == 1)
+        return l;
+
+    const auto d = fresh(s, 64);
+    constant(s, reg_of(s, d), size, 64);
+
+    return divide(s, binary_op_t::div, l, d, int_t { 64, true });
 }
 
 // The condition of a comparison, the suffix of b.cc and the operand of
@@ -1311,10 +1648,10 @@ binary(state_t &s, const expr_t &e)
         return comparison(s, b);
 
     if (is< pointer_t >(e.type))
-        not_yet("pointer arithmetic");
+        return pointer_arithmetic(s, b, e.type);
 
     if (is< pointer_t >(b.lhs->type))
-        not_yet("a difference of pointers");
+        return difference(s, b);
 
     // G13: the left operand first, held while the right one is generated
     const auto l = rvalue(s, *b.lhs);
@@ -1323,25 +1660,25 @@ binary(state_t &s, const expr_t &e)
     return arithmetic(s, b.op, l, r, e.type);
 }
 
-// ++ and --, either side: the address once, the load, add or sub of 1
-// (6.5.4.1p2, 6.5.3.5p2), the store through the same address, held
-// between the two; G1, the machine wraps.  A char or a short is loaded
-// extended to 32 bits and its low bytes stored, so no operator sees 8
-// or 16 bits.  The prefix forms operate on the loaded value's register
-// and yield it.  The postfix forms name another register as the
-// destination, add w1, w0, #1, and yield the old value where the load
-// left it: nothing is copied, 6.1.
+// ++ and --, either side: the address once, the load, add or sub of 1,
+// or of the size for a pointer (6.5.4.1p2, 6.5.3.5p2), the store
+// through the same address, held between the two; G1, the machine
+// wraps.  The size is the immediate where add and sub encode it, and
+// otherwise held in a register and freed, as the product of p + n is.
+// A char or a short is loaded extended to 32 bits and its low bytes
+// stored, so no operator sees 8 or 16 bits.  The prefix forms operate
+// on the loaded value's register and yield it.  The postfix forms name
+// another register as the destination, add w1, w0, #1, and yield the
+// old value where the load left it: nothing is copied, 6.1.
 value_t
 step(state_t &s, unary_op_t op, const expr_t &arg)
 {
     if (register_variable(arg))
         not_yet("a register variable");
 
-    if (is< pointer_t >(arg.type))
-        not_yet("++ or -- of a pointer");
-
     const auto &t = integer(arg.type);
     const int width = std::max(32, t.width);
+    const long amount = is< pointer_t >(arg.type) ? stride(arg.type) : 1;
 
     const bool up = op == unary_op_t::pre_inc || op == unary_op_t::post_inc;
     const bool post = op == unary_op_t::post_inc || op == unary_op_t::post_dec;
@@ -1353,8 +1690,15 @@ step(state_t &s, unary_op_t op, const expr_t &arg)
     const auto v = post ? fresh(s, written(width, t.is_signed),
                                 bit(r) | registers_of(s, place)) :
                           l;
-    insn(s, up ? "add" : "sub",
-         { reg(reg_of(s, v), width), reg(r, width), imm(1) });
+    const reg_t into = reg_of(s, v);
+
+    const auto n =
+        product(s, amount, bit(r) | bit(into) | registers_of(s, place));
+    const auto by =
+        n.immediate.empty() ? reg(reg_of(s, n.value), width) : n.immediate;
+    insn(s, up ? "add" : "sub", { reg(into, width), reg(r, width), by });
+    release(s, n.value);
+
     store(s, v, place, t.width);
     release(s, place);
 
@@ -1403,7 +1747,7 @@ unary(state_t &s, const unary_t &u, const type_t &t)
     case unary_op_t::post_inc:
     case unary_op_t::post_dec: return step(s, u.op, *u.arg);
 
-    case unary_op_t::addr: return address_of(s, address(s, *u.arg));
+    case unary_op_t::addr: return address_value(s, *u.arg);
 
     // the load row from [L], at the object's width and extension
     case unary_op_t::deref: {
@@ -1425,21 +1769,20 @@ unary(state_t &s, const unary_t &u, const type_t &t)
 // same address (G2), so the object is read after the right operand.
 // 6.5.17.3p4: "with respect to an indeterminately sequenced function
 // call, the operation of a compound assignment is a single evaluation."
+// p += n and p -= n are the row of p + n, n its right operand.
 value_t
 assign(state_t &s, const assign_t &a)
 {
     const auto &t = integer(a.lhs->type);
+    const bool stepped = a.op && is< pointer_t >(a.lhs->type);
     const bool shifted = a.op && is_shift(*a.op);
 
     if (register_variable(*a.lhs))
         not_yet("a register variable");
 
-    if (a.op && is< pointer_t >(a.lhs->type))
-        not_yet("+= or -= on a pointer");
-
-    // the parser converted the right operand to the common type, or
-    // promoted a shift count on its own
-    if (!shifted && !(a.rhs->type == a.common))
+    // the parser converted the right operand to the common type, widened
+    // it to 64 bits for a pointer, or promoted a shift count on its own
+    if (!stepped && !shifted && !(a.rhs->type == a.common))
         throw std::logic_error("c1: an assignment across two types");
 
     const auto place = address(s, *a.lhs);
@@ -1452,12 +1795,14 @@ assign(state_t &s, const assign_t &a)
     }
 
     const int width = operation_width(a.common);
-    const auto r = right_operand(s, *a.op, *a.rhs, width);
+    const auto r = stepped ? displacement(s, *a.rhs, stride(a.lhs->type)) :
+                             right_operand(s, *a.op, *a.rhs, width);
 
     // the value of the expression has the lvalue's type: the bits
     // above its width are the operation's, not the value's extension
     const auto l = fetch(s, place, t, width);
-    const auto v = arithmetic(s, *a.op, l, r, a.common);
+    const auto v = stepped ? offset(s, *a.op, l, r, true) :
+                             arithmetic(s, *a.op, l, r, a.common);
     store(s, v, place, t.width);
     release(s, place);
     s.values[v.id].valid = std::min(s.values[v.id].valid, t.width);
@@ -1485,7 +1830,7 @@ cast(state_t &s, const cast_t &c, const type_t &to)
     }
 
     if (is< array_t >(c.arg->type))
-        return address_of(s, address(s, *c.arg));
+        return address_value(s, *c.arg);
 
     const auto &from = integer(c.arg->type);
     const auto &into = integer(to);

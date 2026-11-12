@@ -2,7 +2,10 @@
    the subtraction is the whole of it.
 
    On x86-64 the listing must show subq %rcx, %rax of the two addresses
-   and no cqto and no idiv. */
+   and no cqto and no idiv.
+
+   On aarch64 the listing must show sub x0, x0, x1 of the two addresses
+   and no sdiv. */
 long diff(char *p, char *q)
 {
     return p - q;

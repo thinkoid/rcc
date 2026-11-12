@@ -4,7 +4,13 @@
 
    On x86-64 the listing must show the array's address from
    leaq -28(%rbp), %rax, the index widened with movslq %ecx, %rcx,
-   scaled by imulq $12, %rcx, %rcx and added with addq %rcx, %rax. */
+   scaled by imulq $12, %rcx, %rcx and added with addq %rcx, %rax.
+
+   On aarch64 the listing must show the array's address from
+   add x0, x29, #20, the index widened with sxtw x1, w1 before the
+   multiply, the size held with mov x2, #12, since mul takes no
+   immediate, the index scaled by mul x1, x1, x2 and added with
+   add x0, x0, x1. */
 int *row(int i)
 {
     int m[2][3];

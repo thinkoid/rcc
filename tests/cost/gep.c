@@ -6,7 +6,12 @@
    leaq -20(%rbp), %rax, i loaded and widened with movslq %ecx, %rcx,
    the sum formed by the lea of the addressing form,
    leaq (%rax,%rcx,4), %rax, and the sum stored to p's slot with
-   movq. */
+   movq.
+
+   On aarch64 the listing must show the array's address taken with
+   add x0, x29, #20, i loaded with ldr w1 and not widened, the sum
+   formed by add x0, x0, w1, sxtw #2, the operand extending and scaling
+   the index, and the sum stored to p's slot with str x0. */
 int *gep(int i)
 {
     int a[4];

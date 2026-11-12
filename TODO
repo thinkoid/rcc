@@ -86,6 +86,23 @@ store past its instruction's reach (4095 bytes for =strb=, 8190 for
 Check: a call with 520 arguments to a function compiled by =clang=
 returns the sum that tells the positions apart.
 
+** TODO x86-64: =m[0]= of a row that is no scale adds 0
+
+The address of a subscript by a constant 0 is the bare base, as
+=*p='s is, and no instruction: =&p[0]= is =p= (=backend.md= 6.3, the
+=subscript-address= row). c1 for x86-64 gets there through the
+addressing form, which it uses only for a size of 1, 2, 4 or 8. A
+row of another size goes through the =p + n= row, so on =int
+m[2][3]= the decay of =m[0]= is =leaq -24(%rbp), %rax; addq $0,
+%rax=, where on =long m[2][1]= it is the =leaq= alone. The aarch64
+generator writes no instruction for either.
+
+Fix: in =c1-x86-64.cc=, the address of a subscript by a constant 0
+is the base whatever the size.
+
+Check: a cost program with =m[0]= on =int m[2][3]=, pinned for both
+targets, with no =add= after the array's address.
+
 * Guarantees
 
 The promises in =docs/guarantees.md=. The entry number is the
