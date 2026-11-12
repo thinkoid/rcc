@@ -1,8 +1,9 @@
 # rcc: `*p++` on a register pointer
 
 The design of one row of the aarch64 generator, written before its
-code. On aarch64 a load or a store can step its base register in the
-same instruction. This page says what those two addressing forms
+code: where the page says "today", it means the generator without
+the row. On aarch64 a load or a store can step its base register in
+the same instruction. This page says what those two addressing forms
 are, where they enter the design of `docs/aarch64.md`, what one rule
 in the generator uses them, and the one condition the order of
 evaluation puts on that rule. The last chapter lists the calls and
@@ -57,8 +58,8 @@ Chapter 2 of `docs/aarch64.md` is the background on the machine. It
 holds no decision. It states what the instruction set offers, so
 that the later chapters can cite a fact instead of restating it. Its
 section 2.3, "The addressing forms and their reach", is the list of
-operands a load or a store accepts, and how far each reaches. Today
-it has five:
+operands a load or a store accepts, and how far each reaches. Five
+of them leave the base as it was:
 
 | Form | Reads from |
 |---|---|
@@ -91,9 +92,10 @@ pre store:  "abXYef", p moved +1
 They belong in 2.3 for the reason the other five are there: they
 are operands of the same instructions, and the generator must know
 their reach. 2.3 gains the two rows, the range of `d`, and one
-restriction: the register loaded or stored may not be the base. The
-assembler refuses `ldr x19, [x19], #8` with "unpredictable LDR
-instruction, writeback base is also a source".
+restriction: the register loaded or stored may not be the base.
+`clang` refuses `ldr x19, [x19], #8` with "unpredictable LDR
+instruction, writeback base is also a source", and GNU `as` assembles
+it with a warning.
 
 2.3 does not say when the forms are used. That is a row of chapter
 6, as it is for the other five.
@@ -186,8 +188,10 @@ a scalar, of 1, 2, 4 or 8 bytes, so `s` is always in the form's
 reach.
 
 `address_t` gains the step: which variable, by how much, before or
-after. `operand()`, which prints an address, prints the form.
-Nothing else in the generator changes shape.
+after. `operand()`, which prints an address, prints the form. A
+caller that goes through one address twice, or that generates an
+operand between the address and its access, tells the address so;
+chapter 6 has both.
 
 The access now writes a variable, so it is preceded by what precedes
 every write of a register variable: `preserve()` copies each read of
@@ -350,11 +354,11 @@ the price.
 - `docs/aarch64.md` 2.3: the two forms, as in chapter 2 above.
 - Chapter 4: one bullet under the rules of reading and writing a
   register variable.
-- 6.3: one row, `*p++`, `*p--`, `*++p`, `*--p` on a register
-  pointer.
+- 6.3: one row, `*p++`, `*p--`, `*++p`, `*--p`, `*(p += c)` and
+  `*(p -= c)` on a register pointer.
 - Chapter 15 is the list of calls: the places where the design could
   have gone two ways, each with its answer and what the answer
-  costs. Eight are there. This is the ninth: the machine's
+  costs. This is the ninth: the machine's
   form is taken, and the cost is that the two targets' listings
   part for the same source, and that one store has two rows by what
   its right operand names.

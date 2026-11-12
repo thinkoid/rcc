@@ -235,6 +235,7 @@ compile database, and three lines of make, a shell script and
     docs/findings.md    what the measurement found, explained from the ground up
     docs/backend.md     the design of rcc's own back end, x86-64 first
     docs/aarch64.md     the design of the back end for aarch64
+    docs/autoincrement.md  the design of *p++ on a register pointer, for aarch64
     docs/llvm.md        the LLVM sprint: the literal pipeline, where its judgment showed, why it left
     docs/design-calls.md  the back end's open calls, weighed one by one
     src/lex.hh .cc    tokens and tokenize()
@@ -295,10 +296,10 @@ of the cost corpus built through c1 and matched its pin, the LLVM
 pipeline was retired.
 
 The second target, aarch64, is written in the same three slices
-(`aarch64.md` chapter 14). The first two, integers, control and
-calls, then pointers, arrays and string literals, are in the tree,
-with their pins and the probes that run rcc's code against
-`clang`'s. The third, register variables, remains.
+(`aarch64.md` chapter 14). All three, integers, control and calls,
+then pointers, arrays and string literals, then register variables,
+are in the tree, with their pins and the probes that run rcc's code
+against `clang`'s.
 
 ## 11. Not yet
 

@@ -21,10 +21,10 @@ does what the source says, and only that.
   and `a / b;` divides, and the division can fault.
 - Locals live in memory, one stack slot each, for the whole call. A
   local or parameter declared `register` lives in one of five
-  callee-saved registers on x86-64, `rbx` and `r12` to `r15`, and is
-  never stored. A sixth live at once takes a slot, with a warning.
-  The keyword is the allocation, as it was on the PDP-11. aarch64's
-  ten, `x19` to `x28`, come with its third slice.
+  callee-saved registers on x86-64, `rbx` and `r12` to `r15`, or one
+  of ten on aarch64, `x19` to `x28`, and is never stored. A sixth
+  live at once on x86-64, an eleventh on aarch64, takes a slot, with
+  a warning. The keyword is the allocation, as it was on the PDP-11.
 - Chapter 4 holds the measurement under c1: the plain source runs
   2.33 to 8.29 times as long under rcc as under `clang -O2`, and the
   source tuned by hand for rcc 1.59 to 2.37 times. As first written,
@@ -45,16 +45,16 @@ never folds.
 What the compiler may do:
 
 - Allocate registers, by the discipline, not by an allocator. A
-  `register` variable takes the next free one of the five at its
-  declaration and keeps it to the end of its block. An expression
-  value takes the lowest free one of the nine caller-saved registers,
-  fifteen on aarch64, and when none is free the oldest held value is
-  spilled (`backend.md` chapter 4 and 6.2, `aarch64.md` chapter 4). A
-  local declared in the source lives in its own stack slot
-  regardless, unless it is declared `register`. The extent to which
-  `register` is effective, which 6.7.2p12 leaves
+  `register` variable takes the next free one of the five, ten on
+  aarch64, at its declaration and keeps it to the end of its block.
+  An expression value takes the lowest free one of the nine
+  caller-saved registers, fifteen on aarch64, and when none is free
+  the oldest held value is spilled (`backend.md` chapter 4 and 6.2,
+  `aarch64.md` chapter 4). A local declared in the source lives in
+  its own stack slot regardless, unless it is declared `register`.
+  The extent to which `register` is effective, which 6.7.2p12 leaves
   implementation-defined and 4p10 asks to be documented, is five
-  variables live at once on x86-64.
+  variables live at once on x86-64 and ten on aarch64.
 - Select the machine form, by the table. On x86-64 a `+` is an
   `add`; a 32-bit signed division is `cltd; idivl`; a comparison is
   `cmp` and a `setcc` for a value, `cmp` and a conditional jump for a
@@ -136,18 +136,16 @@ yet.
 | `p < q` and the rest | `cmpq %rcx, %rax`, the unsigned `setb %al`, `movzbl %al, %eax` | `ptr-compare` |
 | `if (p)`, `p == 0` | `cmpq $0, %rax`, then `je` as a condition, or `sete %al; movzbl %al, %eax` as a value | `ptr-null` |
 | `*p` | `movl (%rax), %eax`, `movl %ecx, (%rax)`; x86 has one `mov` for every alignment | `deref` |
+| `*p++` on a `register` pointer | the row of `p++` on a register variable, the read copied and the variable stepped in place, then the access through the copy, `movq %rbx, %rax; addq $1, %rbx; movsbl (%rax), %eax`; `*--q` is the step and the access through the variable, `subq $1, %r12; movsbl (%r12), %ecx`; the copy loop, `while (*p++ = *q++)`, is nine instructions, `movq %rbx, %rax; addq $1, %rbx; movq %r12, %rcx; addq $1, %r12; movsbl (%rcx), %ecx; movb %cl, (%rax); cmpb $0, %cl; je .Lcopy.3; jmp .Lcopy.2` | `register-walk` |
 | `&x` | `leaq -8(%rbp), %rax` | `address-of` |
 | `(T *) p`, `(long) p`, `(T *) l` | nothing; `movslq %eax, %rax` for an `int` | `ptr-int`, `void-pointer` |
 | `"abc"` | `leaq .Ls0(%rip), %rax`; the bytes a `.string` under a label of their own in `.data`, writable, after the last function | `string` |
 
 ### 2.2 aarch64
 
-The rows of slices 1 and 2, integers, control and calls, then
-pointers, arrays and string literals (`aarch64.md` chapter 14), in
-the order of 2.1. A row whose programs stop at "not yet" on this
-target has no row here: the `register` rows wait for slice 3,
-`register-loop`, `register-undef`, `register-parameter`,
-`register-compare`.
+The rows of the three slices, integers, control and calls, then
+pointers, arrays and string literals, then register variables
+(`aarch64.md` chapter 14), in the order of 2.1.
 
 The two rows of 2.1 with no program have none here either. Two rows
 are this target's alone: a slot beyond reach and a frame of 4096
@@ -157,6 +155,9 @@ bytes or more.
 |---|---|---|
 | a local | a slot of its own above `x29` for the whole call; a load at each read, `ldr w0, [x29, #20]`, and a store at each write, `str w0, [x29, #20]`; zero stored by a statement or an initializer is one store of the zero register, `str wzr, [x29, #20]`, and any other constant goes through a register, `mov w0, #1; str w0, [x29, #16]` | `local`, `while`, `stack-args` |
 | a parameter | its argument register stored to its slot in the prologue, `str w0, [x29, #16]`; then the local's row; one past the eighth copied in the prologue from above the frame to a slot of its own through `x17`, at its width, after `mov x29, sp` and before the stores of the first eight, `ldrb w17, [x29, #64]; strb w17, [x29, #48]` for a `char` and `ldr x17, [x29, #72]; str x17, [x29, #56]` for a `long` | `parameter`, `stack-parameter` |
+| a `register` local | the next of `x19` to `x28`, by declaration order, stored to the save area above the frame record in the prologue, `stp x19, x20, [x29, #16]` and `str x21, [x29, #32]`, and loaded back before the frame record in the epilogue, `ldp x19, x20, [x29, #16]` and `ldr x21, [x29, #32]`; no slot, no load, no store; a read is the register as an operand, `cmp w21, w19`; an instruction that writes its destination writes a fresh register, with no copy, `add w0, w20, w21`, and the assignment moves the result back, `mov w20, w0`; a constant assigned is the immediate, `mov w20, #0`; across a loop, the same register | `register-loop` |
+| a `register` local without an initializer | the register as the prologue left it; nothing writes it until the program does, so every read sees one value (G5), `cmp w19, #10` at both tests | `register-undef` |
+| a `register` parameter | moved from its argument register to its register in the prologue, `mov w19, w0`; then the register | `register-parameter` |
 | the frame | `sub sp, sp, #32; stp x29, x30, [sp]; mov x29, sp` in every function, a leaf included, and `ldp x29, x30, [sp]; add sp, sp, #32; ret` in the one epilogue; the frame record at the bottom, the slots above it, the size rounded up to 16, `sub sp, sp, #16` for the record alone | `local`, `call`, `zero-test` |
 | a slot beyond reach | one more instruction at each access: the displacement's upper part added into `x16`, `add x16, x29, #36864`, then `str w0, [x16, #20]` or `ldr w0, [x16, #20]`; the same local declared before the array is `ldr w0, [x29, #20]` | `far-slot` |
 | a frame of 4096 bytes or more | opened by two `sub`s, the upper part first, `sub sp, sp, #8192` and `sub sp, sp, #16`, each followed by its `.cfi_def_cfa_offset`, and closed by two `add`s in the same order; by one, `sub sp, sp, #8192`, when its low 12 bits are zero | `large-frame` |
@@ -168,6 +169,7 @@ bytes or more.
 | `a + b / c`, a division with values held | the instruction on the registers the operands are in, `sdiv w1, w1, w2`, then `add w0, w0, w1`, and the remainder `sdiv w3, w1, w2; msub w1, w3, w2, w1`; nothing is moved, since no register is pinned | `div-busy` |
 | `a << n`, `a >> n` | the count in any register, `lsl w0, w0, w1`, `asr w0, w0, w1`, `lsr w0, w0, w1`; the instruction masks the count | `shift` |
 | `a < b` and the rest, as a value | `cmp w0, w1; cset w0, lt`, `cset w0, eq` for `==`; no jump | `compare` |
+| `x == x` on a `register` variable | `cmp w19, w19`: the compare is written | `register-compare` |
 | `a < b` as a condition | `cmp w0, w1` and a branch on the inverse to the else label, `b.ge .Lchoose.2`; no value | `if` |
 | `a && b`, `a \|\| b` | jump code: each operand tested for zero in one instruction and a branch, `cbz w0, .Lboth.2` for `&&`, `cbnz w0, .Leither.4` past the right operand for `\|\|`; as a value, `mov w0, #1` and `mov w0, #0` on the two paths | `logical` |
 | `a ? b : c` | the condition by jump code, `cbz w0, .Lconditional.2`, each arm into `w0`, a `b .Lconditional.3` past the second arm; never `csel` | `conditional`, `select` |
@@ -195,6 +197,7 @@ bytes or more.
 | `p < q` and the rest | `cmp x0, x1`, the unsigned `cset w0, lo` | `ptr-compare` |
 | `if (p)`, `p == 0` | the test of zero as a condition, `cbz x0, .Ltest.2`; `cmp x0, #0; cset w0, eq` as a value | `ptr-null` |
 | `*p` | `ldr w0, [x0]`, `str w1, [x0]`; one load or one store at any alignment (G11) | `deref` |
+| `*p++` on a `register` pointer | one access that steps the pointer itself, by the post-indexed form for `p++`, `ldrb w0, [x19], #1`, and the pre-indexed one for `--q`, `ldrb w1, [x20, #-1]!`; no step is an instruction of its own; the copy loop, `while (*p++ = *q++)`, is four instructions, `ldrb w0, [x20], #1; strb w0, [x19], #1; cbz w0, .Lcopy.3; b .Lcopy.2`; a pointer in a slot keeps the rows of `p++` and `*p`, its step a load, an `add` and a store | `register-walk` |
 | `&x` | `add x0, x29, #20` | `address-of` |
 | `(T *) p`, `(long) p`, `(T *) l` | nothing, the load alone, `ldr x0, [x29, #16]`; `sxtw x0, w0` for an `int` | `ptr-int`, `void-pointer` |
 | `"abc"` | `adrp x0, .Ls0; add x0, x0, :lo12:.Ls0`; the bytes a `.string` under a label of their own in `.data`, writable, after the last function | `string` |
@@ -239,10 +242,14 @@ and compares the results; the calls probe pairs the two builds three
 ways, each calling the other and rcc calling rcc. The memory and
 pointers probes compare the memory each function writes as well, byte
 by byte, the first over loads and stores through pointers and the
-second over pointer arithmetic and the subscript. The one place a probe
-does not compare with `clang` is `p - q` for a negative difference that
-is no multiple of a size of 2, 4 or 8: `clang -O0` shifts, and the
-probe's main computes the truncated quotient itself.
+second over pointer arithmetic and the subscript. A probe does not
+compare with `clang` in two places. One is `p - q` for a negative
+difference that is no multiple of a size of 2, 4 or 8: `clang -O0`
+shifts, and the probe's main computes the truncated quotient itself.
+The other is the walk probe's store through a stepped `register`
+pointer whose right operand names the pointer: `clang -O0` evaluates
+that operand before the step, where G13 makes the step first, so the
+main compares with a function of its own that keeps G13's order.
 A probe checks values, not costs: that rcc's code computes what
 `clang`'s does, which no pin shows.
 

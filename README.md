@@ -57,10 +57,10 @@ end, c1, in place of LLVM's. Its three slices landed: the integer
 types, control and calls; pointers, arrays and string literals;
 register variables. Then the LLVM pipeline was retired, c1 is the
 only back end, and the measurement is redone under it.
-c1 also writes aarch64 for the first two slices' constructs, the
-integer types, control and calls, then pointers, arrays and string
-literals; register variables remain. Its design is
-`docs/aarch64.md`.
+c1 also writes aarch64, for the constructs of the same three slices:
+the integer types, control and calls; pointers, arrays and string
+literals; register variables. Its design is `docs/aarch64.md`, and
+its measurement remains.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/` and the cost corpus over
 `tests/cost/` for each target, both through c1, and then the probes

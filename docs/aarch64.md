@@ -12,9 +12,9 @@ citations are N3220; the ABI citations are the AAPCS64, release
 assembled by both `clang` and GNU `as`, and every behaviour stated of
 the machine was run on an aarch64 Linux machine.
 
-Slices 1 and 2 of chapter 14, integers, control and calls, then
-pointers, arrays and string literals, are in the tree with their pins
-and their probes; slice 3, register variables, remains.
+The three slices of chapter 14, integers, control and calls, then
+pointers, arrays and string literals, then register variables, are in
+the tree with their pins and their probes; the measurement remains.
 
 ## 0. tl;dr
 
@@ -47,7 +47,9 @@ and their probes; slice 3, register variables, remains.
   machine as on x86-64. The pins are per target.
 - A subscript by an `int` is one instruction, `ldr w0, [x1, w2, sxtw
   #2]`: the addressing form extends the index itself (6.3).
-- The eight calls of chapter 15 are answered.
+- `*p++` on a `register` pointer is one instruction, `ldrb w0, [x19],
+  #1`: the addressing form steps the pointer itself (2.3, 6.3).
+- The nine calls of chapter 15 are answered.
 
 ## 1. What carries, and what does not
 
@@ -152,6 +154,29 @@ The reach upward is 4095 bytes for a `char`, 8190 for a `short`,
 bytes for all of them. The assembler picks the encoding from the
 number, so c1 writes `ldr w0, [x29, #d]` for both, and must know
 when `d` has neither. Chapter 5 is built on this table.
+
+None of the five forms changes its base. Two more do, and each makes
+the access and writes `x1 + d` into the base, in its own order:
+
+- `[x1], #d`, post-indexed: the access at `x1`, then `x1 + d` into
+  `x1`;
+- `[x1, #d]!`, pre-indexed: `x1 + d` into `x1`, then the access at
+  the new `x1`.
+
+`d` is the second encoding of the table, signed and unscaled, -256 to
+255 whatever the access's size: `ldr x0, [x1, #255]!` assembles, and
+`ldr w0, [x1, #256]!` does not. Neither form takes an index, so `ldr
+w0, [x1, x2]!` does not assemble either. Every load and store of 2.2
+takes both, the store of `wzr` included, `strb wzr, [x1], #1`. A load
+or a store whose data register is its base is unpredictable to the
+architecture. `clang` refuses `ldr x19, [x19], #8`, "unpredictable LDR
+instruction, writeback base is also a source", and GNU `as` assembles
+it with a warning, "unpredictable transfer with writeback". c1 never
+writes one. The base is a register variable's register, and a load's
+data register an expression register; a store whose source is the
+base's variable names it in its right operand, so the store keeps the
+step out of the access (6.3). The run on the machine is
+`autoincrement.md` chapter 2.
 
 ### 2.4 Immediates
 
@@ -285,21 +310,45 @@ better:
   variables is `movl %ebx, %eax; subl %r12d, %eax`. Here the
   destination is named apart: `sub w0, w19, w20`, the result in a
   fresh expression register, the variables untouched.
-- An assignment is the `mov` into the register, `mov w20, w0`. A
-  constant is the immediate, `mov w20, #0`. A narrow one is the
-  extension, `sxtb w19, w0` for a `signed char`, `uxtb w19, w0` for a
-  `char`.
+- An assignment is the `mov` into the register, `mov w20, w0`, or
+  `mov x20, x0` for a `long` or a pointer. A constant is the
+  immediate, `mov w20, #0`. A narrow one is the extension, `sxtb w19,
+  w0` for a `signed char`, `uxtb w19, w0` for a `char`. A
+  declaration's initializer is the same. Without one nothing is
+  written (G5), but a narrow or an `unsigned` variable is extended in
+  its own register, `sxtb w19, w19` or `mov w19, w19`, so that the
+  register holds the representation above.
 - A compound assignment and `++` operate in place, `add w21, w21,
-  #1`, and a narrow one is re-extended after, `sxtb w19, w19`.
+  #1`, and a narrow one is re-extended after, `sxtb w19, w19`. `%=`
+  keeps the quotient in a register of its own, since `msub` still
+  reads the variable: `sdiv w0, w19, w20; msub w19, w0, w20, w19`. An
+  operation wider than the variable, `int += long`, is made on the
+  read's extension in a fresh register and moved in, `sxtw x1, w19;
+  add x1, x1, x0; mov w19, w1`, and an `unsigned` one that a 64-bit
+  operation wrote whole is re-established, `add x19, x19, x0; mov
+  w19, w19`.
 - G13's copy stays: a read still held when its variable is written is
-  copied into an expression register first. The two invariants of
+  copied into an expression register first. A postfix `++` or `--`
+  for its value is such a write, and the copy is the value: `i++` is
+  `mov w0, w19; add w19, w19, #1`. The two invariants of
   `backend.md` 6.7, at a branch and at a call, carry as written; a
   borrowed read is the common case here, since no instruction copies
   one.
+- An access through a `register` pointer stepped by `++`, `--` or a
+  compound assignment by a constant makes the step itself, by a form
+  of 2.3 that writes the variable's register: `*p++` on a `char *`
+  is `ldrb w0, [x19], #1`, where the rules above write three
+  instructions, the copy, the step and the access through the copy
+  (`autoincrement.md` chapter 3). The access writes the variable,
+  so a read of it still held is copied first, as before any write.
+  The row and its conditions are 6.3.
 - A `register` parameter is moved from its argument register in the
-  prologue, by the extending form for a narrow one, since the
-  convention leaves its upper bits unspecified. One past the eighth
-  is loaded from where the caller stored it.
+  prologue, by the extending form for a narrow one, `sxth w19, w1`
+  for a `short`, since the convention leaves its upper bits
+  unspecified. The moves come in parameter order among the stores of
+  the other parameters. One past the eighth is loaded straight into
+  its register from where the caller stored it, `ldrsb w19, [x29,
+  #64]`.
 
 **The frame pointer: `x29`.** Set in every function's prologue, leaf
 included, and every slot is a displacement off it.
@@ -409,6 +458,28 @@ that its register holds the caller's value again, and
 `.cfi_def_cfa_offset` follows each `add` with what is left of the
 frame.
 
+The listing's function has three register variables, and their
+registers are the save area of 5.1: directly above the frame record,
+from `[x29, #16]`, and below the first slot. The prologue stores them
+right after `mov x29, sp`, two at a time by `stp` and an odd last one
+by `str`:
+
+- one register is `str x19, [x29, #16]`;
+- two are `stp x19, x20, [x29, #16]`;
+- three are that pair and `str x21, [x29, #32]`.
+
+Each store is followed by a `.cfi_offset` for each register it
+stores, at its place counted from the canonical frame address, `16 +
+8i - T` for the register `i` places past `x19`: `w19` is at -32 in
+the listing's frame of 48 bytes, and at -16 in a frame of 32. The
+epilogue loads them back by the same pairs in the same order, after
+`.cfi_def_cfa wsp, T` and before the frame record, each load followed
+by a `.cfi_restore` for each register it loads. A function with no
+register variable has no save area, and its first slot is at `[x29,
+#16]`. The area is in reach of its `stp` and `ldp` whatever the
+frame's size: their displacement is signed and scaled by 8, -512 to
+504, and the last pair of the ten registers is at `[x29, #80]`.
+
 `sp` equals `x29` from the prologue to the epilogue, but inside a
 call that passes arguments on the stack (chapter 8). It is a multiple
 of 16 throughout, since `T` is. The immediate of `sub` is 12 bits, or
@@ -434,12 +505,13 @@ position counted from 0: the ninth parameter, `i` = 8, is at `T`, and
 the tenth at `T + 8`. `T` is not known while the body is generated. So
 the prologue, which is written after the body, copies it to a slot of
 its own: `ldr w17, [x29, #T]; str w17, [x29, #44]`. The copies follow
-`mov x29, sp` and precede the stores of the first eight. Every
-parameter is then a slot at a known offset, at two instructions for
-each one past the eighth. On x86 such a parameter stays where the
-caller pushed it. One that lies 16 MiB or more above `x29`, where the
-`add` into `x16` does not reach (5.3), is a not-yet; only a frame
-within a few bytes of its limit puts one there.
+`mov x29, sp` and the save area's stores, and precede the stores of
+the first eight. Every parameter is then a slot at a known offset, at
+two instructions for each one past the eighth. On x86 such a
+parameter stays where the caller pushed it. One that lies 16 MiB or
+more above `x29`, where the `add` into `x16` does not reach (5.3), is
+a not-yet; only a frame within a few bytes of its limit puts one
+there.
 
 ### 5.3 A slot beyond reach
 
@@ -477,10 +549,15 @@ register `L`, the right into `R`, one instruction for the operator,
 `R` freed, the result in `L`. The instruction is written `op L, L,
 R`. When `L` is a register variable's read, the result takes a fresh
 expression register, `op N, L, R`, and that is the whole of what x86's
-`writable()` copy becomes. A postfix `++` or `--` for its value is
-the same case: the new value takes a fresh register, `add w1, w0,
-#1`, the old one stays in `L` as the expression's value, and x86's
-copy of it is gone. Left first is G13; a commutative operator's
+`writable()` copy becomes. `R` is freed before `N` is taken, in the
+rule's order, so `N` may be `R`'s register: `x * 4` is `mov w0, #4;
+mul w0, w19, w0`. A postfix `++` or `--` for its value on an object
+in a slot is the same case: the load leaves the old value in `L`, the
+new value takes a fresh register, `ldr w0, [x29, #16]; add w1, w0,
+#1; str w1, [x29, #16]`, and x86's copy of the old one is gone. On a
+register variable it is not the same case. The variable is written in
+place, so G13's copy of chapter 4 stays and is the value: `mov w0,
+w19; add w19, w19, #1`. Left first is G13; a commutative operator's
 operands are not swapped.
 
 ### 6.2 Depth and spill
@@ -497,22 +574,23 @@ For a 32-bit operation (`w` names) or a 64-bit one (`x` names).
 |---|---|---|
 | a constant | an immediate where the instruction encodes it; else `mov L, #c`, with `movk` for each further 16 bits a wide one needs | 6.4 |
 | a local, a parameter | the load of 2.2 from `[x29, #d]` | through `x16` beyond reach, 5.3 |
-| a `register` variable | the register, as a source operand | no instruction, and no copy |
+| a `register` variable | the register, as a source operand; as `L` of a row that writes its result, the result in a fresh `N`, `sub w0, w19, w20`, `lsl w0, w19, #3`, `add x0, x19, w20, sxtw #2` for `p + n`, `sub x0, x19, x20` for `p - q` before its `sdiv` | no instruction, and no copy (6.1) |
 | `a + b`, `a - b` | `add L, L, R`, `sub L, L, R` | G1 |
 | `a * b` | `mul L, L, R` | G1; a constant factor is first loaded, `mov R, #4` |
 | `a / b` | `sdiv L, L, R`, `udiv L, L, R` | G4: no trap, 2.6 |
-| `a % b` | `sdiv N, L, R; msub L, N, R, L` | the machine has no remainder; `N` is taken and freed |
+| `a % b` | `sdiv N, L, R; msub L, N, R, L`; for `L` a register variable's read, the fresh register takes the quotient and then the result, and `R`, read after the quotient is written, stays apart: `sdiv w1, w19, w0; msub w1, w1, w0, w19` | the machine has no remainder; `N` is taken and freed |
 | `a << b`, `a >> b` | `lsl L, L, R`, `asr`, `lsr`; a constant count is the immediate, masked to the width | G3; the count in any register |
 | `a & b`, `a \| b`, `a ^ b` | `and`, `orr`, `eor` | |
 | `-a`, `~a` | `neg L, L`, `mvn L, L` | |
 | `!a` | `cmp L, #0; cset L, eq`; for an operand with stale upper bits, `tst L, #0xff` in place of the `cmp` (7.1) | as a value |
 | `a < b` and the rest, as a value | `cmp L, R; cset L, lt` | `lt`, `le`, `gt`, `ge`, `eq`, `ne` signed; `lo`, `ls`, `hi`, `hs` unsigned and for pointers (G7) |
 | `a && b`, `a \|\| b`, `a ? b : c`, as a value | jump code into `L`, `mov L, #1` and `mov L, #0` on the arms | never `csel`: 6.5.16p5, the arm not chosen is not evaluated |
-| `x = e` | the store of 2.2 to the slot, or `mov` into a register variable | 6.6 for a constant |
-| `x op= e`, `++x`, `x++` | the load, the operation, the store, after `e` for `x op= e`; a register variable in place; a pointer's `++` and `--` step by the size, an immediate where `add` encodes it, `add L, L, #4` for an `int *`, and otherwise held in a register | no memory form, 6.6 |
+| `x = e` | the store of 2.2 to the slot; for a register variable the `mov` into its register, `mov w20, w0`, `mov x20, x0`, a constant the immediate, `mov w20, #0`, a narrow type the extension, `sxtb w19, w0` | 6.6 for a constant; chapter 4 |
+| `x op= e`, `++x`, `x++` | the load, the operation, the store, after `e` for `x op= e`; a register variable in place, after `e`, its register `L` and the destination, `add w19, w19, w0`, `add w19, w19, #1`, a narrow one re-extended after, `sxtb w19, w19`, and `%=` with the quotient in a register of its own, `sdiv w0, w19, w20; msub w19, w0, w20, w19`; `x++` on a register variable for its value is G13's copy and the step, `mov w0, w19; add w19, w19, #1`; a pointer's `++` and `--` step by the size, an immediate where `add` encodes it, `add L, L, #4` for an `int *`, and otherwise held in a register | no memory form, 6.6; chapter 4 |
 | `(T) a` | `sxtw L, L` for `int` to `long`; `sxtb`, `sxth`, `uxtb`, `uxth` from a narrow type; each only when `L` is not already valid to the new width; `mov wL, wL` for an `unsigned` not valid to 64; nothing between pointer types and for a pointer to `long`; an integer to a pointer as to `unsigned long`, so `sxtw` for an `int` | G2; the width rule |
 | `&x` | `add L, x29, #d` | two `add`s beyond 4095, 5.3 |
 | `*p` | the load of 2.2 from `[L]` | G8 to G11 |
+| `*p++`, `*p--`, `*++p`, `*--p`, `*(p += c)`, `*(p -= c)` on a `register` pointer | the access by a form of 2.3 that steps the variable's register, the borrowed read the base: the post-indexed form for `p++` and `p--`, `ldrb w0, [x19], #1` and `ldrb w0, [x19], #-1`, and the pre-indexed one for the others, `ldrb w0, [x19, #1]!`, `ldr w0, [x19, #16]!` for `*(p += 4)` on an `int *`; a store the same, `strb w0, [x19], #1`, so `*p++ = *q++` is `ldrb w0, [x20], #1; strb w0, [x19], #1`; a compound assignment or a `++` through the pointer, two accesses through one address, steps once, the post form at the store, `ldrb w0, [x19]; add w0, w0, #5; strb w0, [x19], #1`, the pre form at the load; a read of the pointer still held is copied before the access that steps, `mov x0, x19`. The step is its own instructions and the access goes through the old or the new value, as the rows of `x++` and `*p` have it, in three cases: a store whose right operand names the pointer, since G13 completes the step before that operand, `*p++ = *p` being `mov x0, x19; add x19, x19, #1; ldrb w1, [x19]; strb w1, [x0]`; a step out of the form's reach, `*(p += 64)` on an `int *` being `add x19, x19, #256; ldr w0, [x19]`; and a pointer in a slot, whose step is a load, an `add` and a store | `autoincrement.md`; call 9 |
 | `p[i]`, `a[i]` | the load from `[L, R, lsl #k]`, `[L, R]` for a size of 1; from `[L, wR, sxtw #k]` or `[L, wR, uxtw #k]` for an index held at 32 bits; a constant index is `[L, #c*s]` when the displacement encodes, a negative one within 256 bytes the unscaled displacement, `[L, #-4]`; a constant index the access does not encode (2.3) is an index like any other, held in a register by the constant row of 6.4 and read `[L, R, lsl #k]` | one instruction; the index's extension is the form's, below (call 5) |
 | `&p[i]`, `&*p` | the address of `*E` as a value, and no access made (6.5.4.2p3): a bare base is its own value, so `&*p` is `p`, and so is `&p[0]`, a subscript by a constant 0, whose access is `[L]` as `*p`'s is, no instruction (call 8); any other subscript's address is the row of `p + n`: `&p[3]` is `add L, L, #12` for an `int *`, and `&p[i]` is `add L, L, R, lsl #k`, or `add L, L, wR, sxtw #k` for an index held at 32 bits; a row of an array of arrays decays the same way, `m[0]` to `m` | the same address by `add`, the machine having no `lea` |
 | `p + n`, `p - n` | `add L, L, R` or `sub` for a size of 1; `add L, L, R, lsl #k` or `sub` for 2, 4 or 8; the index held at 32 bits as for `&p[i]`; `mov N, #s; mul R, R, N` first for any other size; a constant `n` is the immediate `#c*s` when it encodes, and otherwise the product held in a register by 6.4, `add L, L, R`; for `n + p` the result is in `L`, the integer's register: a plain register keeps the source's order, `add L, L, R`, and the shifted or extended operand, which the instruction takes last only, is `add L, R, wL, sxtw #2` | G6 |
@@ -643,7 +721,9 @@ because the machine has less:
   context's assignment, and its body is these two instructions.
 - **Zero** is the exception the machine offers: `str wzr, [x29, #40]`
   stores zero in one instruction, since the zero register is an
-  operand like any other (call 4).
+  operand like any other (call 4). Through a stepped `register`
+  pointer it is the same store with the form of 6.3: `*p++ = 0;` is
+  `strb wzr, [x19], #1`.
 
 A register variable is operated on in its register, as before.
 
@@ -725,7 +805,7 @@ done, for the sake of a call with nine arguments.
 | G2 narrowing truncates | `strb`, `strh`, `str w`, or the `w` name; nothing is computed |
 | G3 shifts | `lsl`, `asr`, `lsr`: the instruction masks the count to the width |
 | G4 division is the instruction's | `sdiv`, `udiv`: 0 for a zero divisor, `INT_MIN` for `INT_MIN / -1`, and no trap |
-| G5 an uninitialized object holds a value | a slot's bytes or a register's content, unwritten until the program writes |
+| G5 an uninitialized object holds a value | a slot's bytes or a register's content, unwritten until the program writes, `cmp w19, w19`; but a narrow or an `unsigned` register variable is extended in its own register, `sxtb w19, w19`, which leaves the value of its type as it was (chapter 4) |
 | G6 pointer arithmetic is address arithmetic | `add`, `sub` on `x` registers, `mul` by the size; `p - q` is `sub`, `sdiv` |
 | G7 pointer comparison is address comparison | `cmp` of `x` registers, the unsigned conditions |
 | G8 a load reads the bytes at the address | the load of 2.2, whatever computed the address |
@@ -733,7 +813,7 @@ done, for the sake of a call with nine arguments.
 | G10 memory is bytes | the same load, at the lvalue's width and extension |
 | G11 misaligned access performed | the same load; the machine performs it, as the corpus program shows, 52 on both targets |
 | G12 one slot for the activation | chapter 5 |
-| G13 left to right | chapter 6's rule and chapter 8's order |
+| G13 left to right | chapter 6's rule and chapter 8's order; for a register variable, chapter 4's copy of a held read, `mov w0, w19` before `add w19, w19, #1`, and its save before a branch, `str x19, [x29, #32]` |
 | G14 a loop runs until its condition says stop | a test and a jump |
 | G16 a call goes out as written | chapter 8 |
 | G17 a string literal is writable | `.data`, chapter 10 |
@@ -831,7 +911,8 @@ values and the two save points of `backend.md` 6.7.
   own target. A program that uses a construct whose slice is not in
   the tree, and has no pin for the target, shows "not yet" in its row
   and is neither passed nor failed. The headers of `tests/oracle`
-  and `tests/costs` state the rule.
+  and `tests/costs` state the rule. No program of either corpus shows
+  it on this target.
 - **The cost corpus** reaches this target's rows. Three programs are
   aimed at x86's numbers:
   - `spill`'s ten nested operands exhaust nine registers, not
@@ -852,6 +933,13 @@ values and the two save points of `backend.md` 6.7.
   The subscript by an `int` and by a `long` has `subscript` and
   `subscript-long`, and the subscript's address `subscript-address`
   (6.3).
+
+  The register variables of chapter 4 have the programs x86-64's
+  have, pinned for this target as well: `register-loop`,
+  `register-undef`, `register-parameter` and `register-compare`. The
+  access that steps a register pointer has `register-walk`, a copy, a
+  length and a compare in the register idiom, pinned for both targets
+  (6.3).
 - **The ABI probes** are `tests/probes`, over the probes of
   `tests/probe/`: rcc's code against `clang -O0`'s, function by
   function over a table of values, run on the machine's own target.
@@ -871,10 +959,38 @@ values and the two save points of `backend.md` 6.7.
   place: for a negative difference that is no multiple of a size of
   2, 4 or 8, `clang -O0` shifts, and the probe's main computes the
   truncated quotient itself.
+
+  Three probes run the register variables. The registers probe runs
+  a register variable of each integer type and a register pointer to
+  four pointees: initialized, read by every operator on either side,
+  assigned, tested, its read held across the paths of a branch and
+  across a call, a parameter in each position, in blocks, beside a
+  frame of 40000 bytes and in an expression deeper than the
+  expression registers. Its functions that use one to ten registers
+  prove the save area, and an unwritten narrow variable is run over
+  registers filled with nine patterns. The inplace probe runs every
+  compound assignment on each integer type and five pointees, as a
+  statement and for its value, with a constant, a slot, a register
+  variable and a call as the right operand, and `++` and `--` either
+  side. It reads a narrow variable back at its promoted width too,
+  `(x + 1) * 3L`, since a widening cast extends from the type's own
+  bits and would hide a re-extension the write skipped. The walk probe
+  runs the accesses of 6.3 that step a register pointer, over eight
+  pointees, `char` to `long` and a pointer: as a load and as a store,
+  both ends of `*p++ = *q++`, a compound assignment and a `++`
+  through the pointer, steps at and past the form's reach, and the
+  accesses the form does not take. Each of its functions returns the
+  pointer's final offset beside what it read, so a step of the wrong
+  size or at the wrong time shows. It compares with `clang`'s build
+  except in one place: for a store whose right operand names the
+  stepped pointer, `clang -O0` evaluates that operand before the left
+  operand's step, where G13 evaluates the left operand first, so the
+  probe's main compares rcc's result with a function of its own that
+  makes the same accesses in G13's order.
 - **`make test`** runs both scripts for every target with a pin
   directory, and then the probes.
-- **The measurement** is rerun on this machine after the third
-  slice, with the tuned sources as first written, ten registers
+- **The measurement** is what comes next: it is rerun on this
+  machine, with the tuned sources as first written, ten registers
   live. `cost.md` chapter 4 gets a table per target.
 
 ## 14. The slices
@@ -890,15 +1006,19 @@ values and the two save points of `backend.md` 6.7.
    to `"abc"`, the index under the table, and chapter 10. Check: the
    slice's pins read against this page, and the memory and pointers
    probes. The slice is in the tree.
-3. **Register variables.**
+3. **Register variables.** Chapter 4, the save area of 5.1 and 5.2,
+   the rows of 6.3 that a register variable changes, and the access
+   that steps a register pointer. Check: the slice's pins read against
+   this page, and the registers, inplace and walk probes. The slice is
+   in the tree.
 
 Each slice is followed by its pins, read against this page, and its
 documents, as the x86-64 slices were. Then the measurement.
 
 ## 15. The calls
 
-Seven were open in the first draft of this page, and an eighth came
-later. The answers:
+Seven were open in the first draft of this page, and an eighth and a
+ninth came later. The answers:
 
 1. **Two generators**, `src/c1-x86-64.cc` and `src/c1-aarch64.cc`,
    each read whole against its own page (chapter 12). The
@@ -946,10 +1066,27 @@ later. The answers:
    `+` was written. The cost is that `&p[0]` and `p + 0`, one value,
    are two listings. `subscript-address` pins the row on both
    targets.
+9. **An access through a stepped `register` pointer makes the step**
+   (6.3), by the form of 2.3 that writes its base: `*p++` is `ldrb
+   w0, [x19], #1`, and `*(p += c)` takes the pre-indexed form when
+   the step's bytes are in the form's reach, since "The expression ++E
+   is equivalent to (E+=1)" (6.5.4.1p2). The rules carried from
+   x86-64 write three instructions, the copy, the step and the access
+   through the copy. But the base and its step are one operand on this
+   machine, as base, extended index and scale are (call 5), and a
+   program written for the machine gets the machine's form. The form
+   is a case of the address, not a row of the load or of the store,
+   so one rule serves both ends of `*p++ = *q++`. The cost is that the
+   two targets' listings part for the same source, and that one store
+   has two rows: one whose right operand names the pointer keeps the
+   step before that operand, as G13 has it. `register-walk` pins the
+   row on both targets, and `autoincrement.md` has the argument.
 
 Decided by the machine, listed so that nothing is decided silently:
 
 - the frame record at the bottom and positive displacements (5.1);
+- the save area directly above the frame record, where its `stp` and
+  `ldp` reach it in a frame of any size (5.2);
 - a stack parameter copied to its slot by the prologue (5.2);
 - slots in declaration order, a far one through `x16` (5.3);
 - the remainder as `sdiv` and `msub` (6.3);
