@@ -1026,15 +1026,23 @@ address_of(state_t &s, const address_t &a)
 address_t
 pointed(state_t &s, const expr_t &p)
 {
+    // *p, and *E for any E that is no sum: *f(), *(char *) q, *p++,
+    // and a difference, *(p - 1).  E's value is the base, [x0].
     if (!is< binary_t >(p) || as< binary_t >(p).op != binary_op_t::add)
         return { .base = rvalue(s, p) };
 
+    // From here a sum of a pointer and an integer: p[n], n[p], *(p +
+    // n) and *(n + p), which are one tree.  Either operand may be the
+    // pointer; the other is n.
     const auto &b = as< binary_t >(p);
     const bool left = is< pointer_t >(b.lhs->type);
     const auto &pointer = left ? *b.lhs : *b.rhs;
     const auto &n = left ? *b.rhs : *b.lhs;
     const long size = stride(p.type);
 
+    // p[3], 3[p], p[-1]: a constant n whose product with the size the
+    // access encodes is the displacement, [x0, #12], and n generates
+    // nothing.  One it does not encode, p[5000], goes on as an index.
     if (is< literal_t >(n)) {
         const auto d = scaled(as< literal_t >(n).value, size);
         if (in_reach(d, static_cast< int >(size)))
