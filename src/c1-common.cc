@@ -204,6 +204,45 @@ writes(const expr_t &e, const symbol_t *sym)
     return false;
 }
 
+// Whether e names the register variable sym anywhere, to read it or to
+// write it.  Such a variable has no address, 6.5.4.2p1, so no other
+// expression can reach it.
+bool
+names(const expr_t &e, const symbol_t *sym)
+{
+    if (is< name_t >(e))
+        return as< name_t >(e).sym == sym;
+
+    if (is< unary_t >(e))
+        return names(*as< unary_t >(e).arg, sym);
+
+    if (is< binary_t >(e))
+        return names(*as< binary_t >(e).lhs, sym) ||
+               names(*as< binary_t >(e).rhs, sym);
+
+    if (is< assign_t >(e))
+        return names(*as< assign_t >(e).lhs, sym) ||
+               names(*as< assign_t >(e).rhs, sym);
+
+    if (is< call_t >(e)) {
+        const auto &c = as< call_t >(e);
+        return names(*c.callee, sym) ||
+               std::ranges::any_of(c.args, [sym](const expr_t &arg) {
+                   return names(arg, sym);
+               });
+    }
+
+    if (is< cast_t >(e))
+        return names(*as< cast_t >(e).arg, sym);
+
+    if (is< conditional_t >(e)) {
+        const auto &c = as< conditional_t >(e);
+        return names(*c.cond, sym) || names(*c.yes, sym) || names(*c.no, sym);
+    }
+
+    return false;
+}
+
 // expressions
 
 bool

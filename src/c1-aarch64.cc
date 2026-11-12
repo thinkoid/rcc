@@ -10,10 +10,11 @@
 // the use of an array and a string literal, pointer arithmetic and the
 // subscript; the register variable: the save area, the binding, the
 // borrowed read, plain assignment, the declaration, the register
-// parameter, the held values of backend.md 6.7, and the compound
-// assignment, the ++ and the -- in place.  A construct of a later slice
-// throws logic_error("c1: not yet: ..."), and a tree the parser cannot
-// make throws logic_error("c1: ...").
+// parameter, the held values of backend.md 6.7, the compound
+// assignment, the ++ and the -- in place, and the access that steps a
+// register pointer.  A construct of a later slice throws
+// logic_error("c1: not yet: ..."), and a tree the parser cannot make
+// throws logic_error("c1: ...").
 
 #include "c1.hh"
 #include "c1-common.hh"
@@ -649,13 +650,22 @@ destination(state_t &s, value_t v, unsigned avoid = 0)
 // Before a register variable is written, each of its reads still held
 // is copied into an expression register, so it keeps the value it read:
 // G13, an operand's side effects complete before the next operand
-// starts.
+// starts.  An access that steps its base writes the variable too, and
+// the base, a read of it, is kept: it is the operand the access writes.
+// The copies are taken outside avoid, the registers of that access.
 void
-preserve(state_t &s, const symbol_t *sym)
+preserve(state_t &s,
+         const symbol_t *sym,
+         value_t kept = { },
+         unsigned avoid = 0)
 {
-    for (std::size_t id = 0; id < s.values.size(); ++id)
-        if (s.values[id].live && s.values[id].variable == sym)
-            copy(s, { static_cast< int >(id) }, take(s, 0));
+    for (std::size_t id = 0; id < s.values.size(); ++id) {
+        const auto &h = s.values[id];
+        if (!h.live || h.variable != sym || static_cast< int >(id) == kept.id)
+            continue;
+
+        copy(s, { static_cast< int >(id) }, take(s, avoid));
+    }
 }
 
 // Saves a held value to a spill slot, whichever kind it is, backend.md
@@ -896,14 +906,27 @@ index_of(state_t &s, const expr_t &n)
              .extend = from.is_signed ? extend_t::sxtw : extend_t::uxtw };
 }
 
+// The step of 2.3's two forms that write their base: the register
+// variable stepped, by how many bytes, -256 to 255, and whether before
+// the access, the pre-indexed form, or after it, the post-indexed one.
+// A null variable is no step.
+struct step_t
+{
+    const symbol_t *variable = nullptr;
+    long long bytes = 0;
+    bool before = false;
+};
+
 // An lvalue's address as the operand of the instruction that reads or
 // writes it, 2.3: a slot off x29; a held base, the pointer's value,
 // [x0]; a subscript's, the base and a constant displacement, the index
 // times the size, [x0, #8], or the base and a held index read by the
 // form, [x0, w1, sxtw #2].  A string literal's address is its label,
 // which no access takes as an operand: the literal is an array and is
-// used only by its address as a value, chapter 10.  The access consumes
-// the values.
+// used only by its address as a value, chapter 10.  A register pointer
+// stepped by a constant the form encodes is its register as the base and
+// the step, which the access makes, [x19], #1 or [x19, #1]!.  The access
+// consumes the values.
 struct address_t
 {
     value_t base { };
@@ -912,6 +935,7 @@ struct address_t
     int shift = 0;
     int displacement = 0;
     std::string label { };
+    step_t step { };
 };
 
 address_t
@@ -933,11 +957,29 @@ registers_of(const state_t &s, const address_t &a)
     return held;
 }
 
+// The operand of an access that steps its base, 2.3: the post-indexed
+// form, [x19], #1, the access and then the step, or the pre-indexed one,
+// [x19, #-4]!, the step and then the access.  The access writes the
+// variable, so every other read of it still held is copied first, as
+// before any write of it, chapter 4; the base is the variable's
+// register, never a copy.
+std::string
+stepped_operand(state_t &s, const address_t &a, unsigned avoid)
+{
+    preserve(s, a.step.variable, a.base, avoid);
+
+    const auto base = reg(reg_of(s, a.base, avoid), 64);
+    if (a.step.before)
+        return std::format("[{}, #{}]!", base, a.step.bytes);
+
+    return std::format("[{}], #{}", base, a.step.bytes);
+}
+
 // The address as the operand of an access of width bits.  A slot is
 // [x29, #d], or through x16 beyond reach, its add written here, 5.3.  A
 // spilled base or index is reloaded first, outside avoid and outside the
 // other's register; the reload is complete before the access, so x16
-// holds nothing across it.
+// holds nothing across it.  A step is stepped_operand()'s.
 std::string
 operand(state_t &s, const address_t &a, int width, unsigned avoid = 0)
 {
@@ -948,6 +990,9 @@ operand(state_t &s, const address_t &a, int width, unsigned avoid = 0)
         return slot_operand(s, a.displacement, width / 8);
 
     avoid |= registers_of(s, a);
+
+    if (a.step.variable)
+        return stepped_operand(s, a, avoid);
 
     std::string index;
     if (a.index.id >= 0) {
@@ -970,6 +1015,31 @@ release(state_t &s, const address_t &a)
 {
     release(s, a.base);
     release(s, a.index);
+}
+
+// The address of the first and of the last of two accesses through one,
+// the load and the store of a compound assignment or of a ++ through a
+// pointer.  The step is made once: by the pre-indexed form at the first
+// and the plain base at the last, ldrb w0, [x19, #1]!; strb w0, [x19];
+// or by the plain base at the first and the post-indexed form at the
+// last, ldrb w0, [x19]; strb w0, [x19], #1.  An address with no step is
+// both, 6.3.
+address_t
+first_access(address_t a)
+{
+    if (!a.step.before)
+        a.step = { };
+
+    return a;
+}
+
+address_t
+last_access(address_t a)
+{
+    if (a.step.before)
+        a.step = { };
+
+    return a;
 }
 
 // The address of a slot or of a string literal as a value, valid to
@@ -1010,6 +1080,51 @@ address_of(state_t &s, const address_t &a)
     return v;
 }
 
+// The step a pointer expression makes, when 2.3's forms that write
+// their base can make it: p++ and p-- after the access, ++p and --p
+// before it, by the size of what p points to, 6.5.4.1p2, and p += c and
+// p -= c before it, c a constant, by c times the size, G6; p a register
+// variable, since the forms write a register, and the bytes in their
+// reach, -256 to 255.  Anything else is no step.
+step_t
+step_of(const expr_t &p)
+{
+    step_t step;
+
+    if (is< unary_t >(p) && is_step(as< unary_t >(p).op)) {
+        const auto op = as< unary_t >(p).op;
+        const bool up = op == unary_op_t::pre_inc || op == unary_op_t::post_inc;
+        const long size = stride(p.type);
+
+        step = { .variable = register_variable(*as< unary_t >(p).arg),
+                 .bytes = up ? size : -size,
+                 .before =
+                     op == unary_op_t::pre_inc || op == unary_op_t::pre_dec };
+    }
+    else if (is< assign_t >(p)) {
+        const auto &a = as< assign_t >(p);
+        if (!a.op || !is< literal_t >(*a.rhs))
+            return { };
+
+        if (*a.op != binary_op_t::add && *a.op != binary_op_t::sub)
+            return { };
+
+        const auto bytes =
+            scaled(as< literal_t >(*a.rhs).value, stride(p.type));
+        const auto negated = static_cast< long long >(
+            0ull - static_cast< unsigned long long >(bytes));
+
+        step = { .variable = register_variable(*a.lhs),
+                 .bytes = *a.op == binary_op_t::add ? bytes : negated,
+                 .before = true };
+    }
+
+    if (step.bytes < -256 || step.bytes > 255)
+        return { };
+
+    return step;
+}
+
 // The address an access through a dereference designates, 6.5.4.2p4,
 // for a load, a fetch or a store: the pointer's value as the base, [x0],
 // whatever computed it and however it is aligned (G8, G11).  An add of
@@ -1023,11 +1138,27 @@ address_of(state_t &s, const address_t &a)
 // computed into a register and is the base; nothing looks through a
 // cast of the pointer.  The pointer is evaluated here, before anything
 // the access goes with.
+//
+// A register pointer stepped by a constant the form encodes is the
+// first case: its register is the base, a borrowed read, and the access
+// makes the step, 6.3.  The step then moves from here to the
+// access, past between, the operand the caller generates between the
+// two, a store's right operand; so the case is not taken when between
+// names the variable, and the step is written here as before, G13.
 address_t
-pointed(state_t &s, const expr_t &p)
+pointed(state_t &s, const expr_t &p, const expr_t *between = nullptr)
 {
-    // *p, and *E for any E that is no sum: *f(), *(char *) q, *p++,
-    // and a difference, *(p - 1).  E's value is the base, [x0].
+    // *p++, *p--, *++p, *--p, *(p += 4) and *(p -= 4) on a register
+    // pointer, each step's bytes in -256 to 255: [x19], #1 for p++ and
+    // p--, [x19, #1]! for the others.  Not for *p++ = *p, whose right
+    // operand names p.
+    const auto step = step_of(p);
+    if (step.variable && !(between && names(*between, step.variable)))
+        return { .base = read(s, step.variable), .step = step };
+
+    // *p, and *E for any E that is no sum: *f(), *(char *) q, *p++ on
+    // a pointer in a slot, *p++ = *p, and a difference, *(p - 1).  E's
+    // value is the base, [x0].
     if (!is< binary_t >(p) || as< binary_t >(p).op != binary_op_t::add)
         return { .base = rvalue(s, p) };
 
@@ -1074,15 +1205,17 @@ pointed(state_t &s, const expr_t &p)
 
 // The address of an lvalue: a local's or a parameter's slot, a string
 // literal's label, or what a dereference designates.  It serves loads
-// and stores alike, so the addressing row is written once.
+// and stores alike, so the addressing row is written once.  between is
+// the operand the caller generates after the address and before its
+// access, an assignment's right operand, or null, for pointed().
 address_t
-address(state_t &s, const expr_t &e)
+address(state_t &s, const expr_t &e, const expr_t *between = nullptr)
 {
     if (is< string_t >(e))
         return { .label = string_label(s.strings, as< string_t >(e)) };
 
     if (is< unary_t >(e) && as< unary_t >(e).op == unary_op_t::deref)
-        return pointed(s, *as< unary_t >(e).arg);
+        return pointed(s, *as< unary_t >(e).arg, between);
 
     return slot_address(slot_of(s, object_of(e)));
 }
@@ -2001,7 +2134,7 @@ step(state_t &s, unary_op_t op, const expr_t &arg)
     const bool post = op == unary_op_t::post_inc || op == unary_op_t::post_dec;
 
     const auto place = address(s, arg);
-    const auto l = fetch(s, place, t, width);
+    const auto l = fetch(s, first_access(place), t, width);
     const reg_t r = reg_of(s, l);
 
     const auto v = post ? fresh(s, written(width, t.is_signed),
@@ -2016,7 +2149,7 @@ step(state_t &s, unary_op_t op, const expr_t &arg)
     insn(s, up ? "add" : "sub", { reg(into, width), reg(r, width), by });
     release(s, n.value);
 
-    store(s, v, place, t.width);
+    store(s, v, last_access(place), t.width);
     release(s, place);
 
     if (post) {
@@ -2175,7 +2308,7 @@ assign(state_t &s, const assign_t &a)
     if (const auto *sym = register_variable(*a.lhs))
         return assign_register(s, a, sym);
 
-    const auto place = address(s, *a.lhs);
+    const auto place = address(s, *a.lhs, a.rhs.get());
 
     if (!a.op) {
         const auto v = rvalue(s, *a.rhs);
@@ -2190,10 +2323,10 @@ assign(state_t &s, const assign_t &a)
 
     // the value of the expression has the lvalue's type: the bits
     // above its width are the operation's, not the value's extension
-    const auto l = fetch(s, place, t, width);
+    const auto l = fetch(s, first_access(place), t, width);
     const auto v = stepped ? offset(s, *a.op, l, r, true) :
                              arithmetic(s, *a.op, l, r, a.common);
-    store(s, v, place, t.width);
+    store(s, v, last_access(place), t.width);
     release(s, place);
     s.values[v.id].valid = std::min(s.values[v.id].valid, t.width);
 
@@ -2471,7 +2604,7 @@ effect(state_t &s, const expr_t &e)
             return;
         }
 
-        const auto place = address(s, *a.lhs);
+        const auto place = address(s, *a.lhs, a.rhs.get());
         initialize(s, *a.rhs, place, integer(a.lhs->type));
         release(s, place);
         return;

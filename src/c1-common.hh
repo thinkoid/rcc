@@ -38,6 +38,7 @@ bool is_comparison(binary_op_t);
 binary_op_t inverse(binary_op_t);
 
 bool writes(const expr_t &, const symbol_t *);
+bool names(const expr_t &, const symbol_t *);
 int registers_in(const std::vector< stmt_t > &);
 
 std::string string_label(std::vector< std::string > &strings, const string_t &);
