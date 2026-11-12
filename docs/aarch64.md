@@ -12,6 +12,9 @@ citations are N3220; the ABI citations are the AAPCS64, release
 assembled by both `clang` and GNU `as`, and every behaviour stated of
 the machine was run on an aarch64 Linux machine.
 
+Slice 1 of chapter 14, integers, control and calls, is in the tree
+with its pins and its probes; slices 2 and 3 remain.
+
 ## 0. tl;dr
 
 - The model carries whole. Every local in its slot off the frame
@@ -410,11 +413,14 @@ call that passes arguments on the stack (chapter 8). It is a multiple
 of 16 throughout, since `T` is. The immediate of `sub` is 12 bits, or
 12 bits shifted by 12, so a frame of 4096 bytes or more is opened in
 two instructions, `sub sp, sp, #110592; sub sp, sp, #48`, the upper
-part first, and in one when its low 12 bits are zero. The epilogue's
-`add`s close it in the same order. A frame over 16 MiB less
-16 is a not-yet, refused as `backend.md` chapter 5 has it: a single
-local at its declaration by the parser, a sum of smaller ones by the
-generator.
+part first, and in one when its low 12 bits are zero. Each `sub` is
+followed by its `.cfi_def_cfa_offset`, with the part of the frame
+opened so far: a frame of 8208 bytes is `sub sp, sp, #8192;
+.cfi_def_cfa_offset 8192; sub sp, sp, #16; .cfi_def_cfa_offset 8208`.
+The epilogue's `add`s close it in the same order. A frame over 16 MiB
+less 16 is a not-yet, refused as `backend.md` chapter 5 has it: a
+single local at its declaration by the parser, a sum of smaller ones
+by the generator.
 
 `stp x29, x30, [sp, #-48]!` would open a frame of up to 512 bytes in
 one instruction where this shape takes two. It is not used: a second
@@ -422,16 +428,17 @@ prologue shape chosen by the frame's size.
 
 A parameter of the first eight is stored from its argument register to
 its slot, `str w0, [x29, #40]`, at its width. A parameter past the
-eighth lies above the frame at `[x29, #T + 8(i - 8)]`, and `T` is not
-known while the body is generated. So the prologue, which is written
-after the body, copies it to a slot of its own: `ldr w17, [x29, #T];
-str w17, [x29, #44]`. The copies follow `mov x29, sp` and precede the
-stores of the first eight. Every parameter is then a slot at a known
-offset, at two instructions for each one past the eighth. On x86 such
-a parameter stays where the caller pushed it. One that lies 16 MiB or
-more above `x29`, where the `add` into `x16` does not reach (5.3), is
-a not-yet; only a frame within a few bytes of its limit puts one
-there.
+eighth lies above the frame at `[x29, #T + 8(i - 8)]`, `i` its
+position counted from 0: the ninth parameter, `i` = 8, is at `T`, and
+the tenth at `T + 8`. `T` is not known while the body is generated. So
+the prologue, which is written after the body, copies it to a slot of
+its own: `ldr w17, [x29, #T]; str w17, [x29, #44]`. The copies follow
+`mov x29, sp` and precede the stores of the first eight. Every
+parameter is then a slot at a known offset, at two instructions for
+each one past the eighth. On x86 such a parameter stays where the
+caller pushed it. One that lies 16 MiB or more above `x29`, where the
+`add` into `x16` does not reach (5.3), is a not-yet; only a frame
+within a few bytes of its limit puts one there.
 
 ### 5.3 A slot beyond reach
 
@@ -502,7 +509,7 @@ For a 32-bit operation (`w` names) or a 64-bit one (`x` names).
 | `a && b`, `a \|\| b`, `a ? b : c`, as a value | jump code into `L`, `mov L, #1` and `mov L, #0` on the arms | never `csel`: 6.5.16p5, the arm not chosen is not evaluated |
 | `x = e` | the store of 2.2 to the slot, or `mov` into a register variable | 6.6 for a constant |
 | `x op= e`, `++x`, `x++` | the load, the operation, the store, after `e` for `x op= e`; a register variable in place | no memory form, 6.6 |
-| `(T) a` | `sxtw L, L` for `int` to `long`; `sxtb`, `sxth`, `uxtb`, `uxth` from a narrow type; each only when `L` is not already valid to the new width; `mov wL, wL` for an `unsigned` not valid to 64 | G2; the width rule |
+| `(T) a` | `sxtw L, L` for `int` to `long`; `sxtb`, `sxth`, `uxtb`, `uxth` from a narrow type; each only when `L` is not already valid to the new width; `mov wL, wL` for an `unsigned` not valid to 64; nothing between pointer types and for a pointer to `long`; an integer to a pointer as to `unsigned long`, so `sxtw` for an `int` | G2; the width rule |
 | `&x` | `add L, x29, #d` | two `add`s beyond 4095, 5.3 |
 | `*p` | the load of 2.2 from `[L]` | G8 to G11 |
 | `p[i]`, `a[i]` | the load from `[L, R, lsl #k]`, `[L, R]` for a size of 1; from `[L, wR, sxtw #k]` or `[L, wR, uxtw #k]` for an index held at 32 bits; a constant index is `[L, #c*s]` when the displacement encodes | one instruction; the index's extension is the form's, below (call 5) |
@@ -588,8 +595,10 @@ source writes it, has an encoding for the value:
   a tie, and takes one `movk` for each part left, four instructions
   at most: `-100000L` is `mov x0, #-34464; movk x0, #0xfffe, lsl
   #16`. A `mov` is written with the value it leaves in the register,
-  in decimal, or in hex for a bitmask; a `movk` with its 16 bits in
-  hex.
+  in hex for a bitmask, and otherwise in decimal, read as a signed
+  number of the register's width whatever the constant's type: the
+  `unsigned` 0xffffec78 is `mov w1, #-5000`. A `movk` is written with
+  its 16 bits in hex.
 
   Counting the 16-bit parts that differ from zeros, or from ones,
   gives the most a constant costs, and that count is made by eye. The
@@ -657,8 +666,13 @@ and the second the test.
 
 ### 7.2 Statements
 
-As `backend.md` 7.2, with `b` for `jmp`. Every `return` jumps to the
-one epilogue. `main` returns 0 on reaching its `}`, `mov w0, #0`.
+As `backend.md` 7.2, with `b` for `jmp`. `return e` leaves `e` in
+`x0`, and a `mov` puts it there when it is held in another register:
+`mov w0, w1` at 32 bits, and on the `x` names for a `long` or a
+pointer. `x op= e` for its value is such a case: the result is in
+the object's register, taken above `e`'s, so a `return` of it ends
+in `mov w0, w1`. Every `return` jumps to the one epilogue. `main`
+returns 0 on reaching its `}`, `mov w0, #0`.
 
 **No alignment directive before a loop head**, for now. `.p2align 5`
 on x86-64 was measured on one processor and adopted as "a convention
@@ -733,7 +747,9 @@ literals after the last function, `.Ls<n>` and `.string`, never
 merged, never read-only. A literal's address is the `adrp` and `add`
 pair. A function is `.globl`, `.type f, @function` and `.size`. No
 alignment directive is needed before a function: every instruction
-is 4 bytes, and the assembler aligns `.text` to 4.
+is 4 bytes, and the assembler aligns `.text` to 4. The listing opens
+and closes as on x86-64: `.file` with the source's name and `.text`
+first, `.section .note.GNU-stack,"",@progbits` last.
 
 ## 11. c0 and the driver
 
@@ -760,9 +776,10 @@ generator.
 The driver takes `-target x86-64` or `-target aarch64`, and the
 default is the machine rcc was built on. With `-S` either target's
 text can be written on either machine. With `-c` or a link the
-driver hands `clang` the matching `--target`. This machine's `clang`
-assembles all sixty x86-64 pins, so one machine can check both sets
-of pins, and only the oracle's run is the host's alone (call 6).
+driver hands `clang` the matching `--target`. The `clang` of either
+machine assembles the other target's pins, so one machine checks
+both sets of pins; only the oracle's runs and the probes need the
+machine's own target (call 6).
 
 ## 12. The code
 
@@ -799,28 +816,43 @@ values and the two save points of `backend.md` 6.7.
   of `tests/corpus/expected` unchanged. The file is shared until a
   row differs.
 - **The pins** live under a directory per target,
-  `tests/corpus/<target>/<name>.s` and `tests/cost/<target>/<name>.s`;
-  today `x86-64` has one in each corpus. Both scripts take
+  `tests/corpus/<target>/<name>.s` and `tests/cost/<target>/<name>.s`,
+  and both targets have one in each corpus. Both scripts take
   `--target <target>`, by default the machine's own. The text diff,
   and the assembly by `rcc -target <target> -c`, run for any target
   on any machine; the oracle's programs run only on the machine's
-  own target. `make test` runs both scripts for every target with a
-  pin directory.
-- **The cost corpus** needs widening in three places, since three
-  programs are aimed at x86's numbers:
-  - `spill`: ten nested operands exhaust nine registers, not
-    fifteen;
-  - `stack-args`: seven and eight arguments are all in registers
-    here;
-  - `div-busy`: there is no pin to be busy.
-  
-  Each gets a sibling that reaches the row on this machine, or grows.
-  New rows: a slot beyond reach (5.3), a constant by its bits (6.4),
-  the subscript by an `int` and by a `long` (6.3), the remainder, the
-  stack parameter's copy, a frame of 4096 bytes or more.
-- **The ABI probes** of `backend.md` 12 are rerun in both pairings
-  with `clang` objects: narrow arguments and results both ways, nine
-  and ten arguments, `printf`.
+  own target. A program that uses a construct whose slice is not in
+  the tree, and has no pin for the target, shows "not yet" in its row
+  and is neither passed nor failed. The headers of `tests/oracle`
+  and `tests/costs` state the rule.
+- **The cost corpus** reaches this target's rows. Three programs are
+  aimed at x86's numbers:
+  - `spill`'s ten nested operands exhaust nine registers, not
+    fifteen. Its sibling `spill-fifteen` holds seventeen values, more
+    than either target's registers.
+  - `stack-args`'s seven and eight arguments are all in registers
+    here. Its sibling `stack-args-nine` passes nine and ten.
+  - `div-busy` has no pinned register to be busy here, and needs no
+    sibling: its aarch64 pin shows the row, as those of `div-rem`
+    and `udiv-urem` show the remainder.
+
+  The rows this target asks for have programs of their own:
+  - `far-slot`, a slot beyond reach (5.3);
+  - `constant-bits`, a constant by its bits (6.4);
+  - `stack-parameter`, the stack parameter's copy (5.2);
+  - `large-frame`, a frame of 4096 bytes or more (5.2).
+
+  The rows of the subscript by an `int` and by a `long` (6.3) wait
+  for slice 2.
+- **The ABI probes** are `tests/probes`, over the probes of
+  `tests/probe/`: rcc's code against `clang -O0`'s, function by
+  function over a table of values, run on the machine's own target.
+  The calls probe pairs the two three ways: `clang`'s code calls
+  rcc's, rcc's calls `clang`'s, and rcc's calls rcc's. Its cases
+  include narrow arguments and results both ways, calls of none to
+  twelve arguments, and variadic callees.
+- **`make test`** runs both scripts for every target with a pin
+  directory, and then the probes.
 - **The measurement** is rerun on this machine after the third
   slice, with the tuned sources as first written, ten registers
   live. `cost.md` chapter 4 gets a table per target.
@@ -832,7 +864,8 @@ values and the two save points of `backend.md` 6.7.
    shared file split out; the pins moved. No aarch64 instruction yet.
    Check: every x86-64 pin unchanged. The slice is in the tree.
 1. **Integers, control, calls.** The frame, the prologue, chapters 6
-   to 8.
+   to 8. Check: the slice's pins read against this page, and the
+   three probes. The slice is in the tree.
 2. **Pointers, arrays, string literals.**
 3. **Register variables.**
 

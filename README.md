@@ -18,8 +18,8 @@ what the optimizer loses.
   computed every iteration. Choosing the cheaper form is the
   programmer's job, and the compiler never second-guesses it.
   `docs/cost.md` says what each construct compiles to.
-- Own tree, own back end. rcc writes x86-64 assembly from the tree
-  and owns its registers, in Ritchie's model: every local in its
+- Own tree, own back end. rcc writes the machine's assembly from the
+  tree and owns its registers, in Ritchie's model: every local in its
   stack slot, `register` variables in the callee-saved registers,
   expressions in the rest. The system cc preprocesses, assembles and
   links. The design is `docs/backend.md`, and the reasons are
@@ -57,8 +57,11 @@ end, c1, in place of LLVM's. Its three slices landed: the integer
 types, control and calls; pointers, arrays and string literals;
 register variables. Then the LLVM pipeline was retired, c1 is the
 only back end, and the measurement is redone under it.
+c1 also writes aarch64 for the first slice's constructs, the integer
+types, control and calls; its design is `docs/aarch64.md`.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/` and the cost corpus over
-`tests/cost/`, both through c1, and `make bench` times the benchmark
-corpus of `tests/perf/`.
+`tests/cost/` for each target, both through c1, and then the probes
+of `tests/probe/`, rcc's code against `clang`'s on the machine's own
+target; `make bench` times the benchmark corpus of `tests/perf/`.
 The queue is `TODO`.

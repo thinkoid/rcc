@@ -29,20 +29,16 @@ and their answers. The target takes ten register variables, =x19= to
 =x28=, and the oracle's programs run on an aarch64 machine, with no
 emulator. Slice 0, the ground, is in the tree: the target's
 description, =-target=, the generator's files and the pins per
-target. Three slices remain, each followed by its pins and its
+target. Slice 1, integers, control and calls with the frame of
+chapter 5, is in the tree with its pins, its probes and its
+documents. Two slices remain, each followed by its pins and its
 documents, as the x86-64 slices were:
 
-- slice 1: integers, control and calls, with the frame of chapter 5.
 - slice 2: pointers, arrays and string literals.
 - slice 3: register variables.
 
-Three cost programs do not reach their row on this target and need a
-sibling or more operands: =spill= (fifteen expression registers, not
-nine), =stack-args= (eight argument registers, not six) and
-=div-busy= (no pinned register). New rows the target asks for: a slot
-beyond the instruction's reach, a constant by its bits, the
-subscript by an =int= and by a =long=, the remainder, a stack
-parameter's copy, a frame of 4096 bytes or more.
+Slice 2 brings the cost rows of the subscript by an =int= and by a
+=long= (6.3), which the target asks for.
 
 Then the measurement on the aarch64 machine, with the tuned sources
 as first written, and the loop-head alignment probe.
@@ -89,39 +85,6 @@ store past its instruction's reach (4095 bytes for =strb=, 8190 for
 
 Check: a call with 520 arguments to a function compiled by =clang=
 returns the sum that tells the positions apart.
-
-** TODO The documents do not say what six aarch64 pins show
-
-The pins of slice 1 were read against =docs/aarch64.md=. The
-generator is as the page has it; the page is silent or loose in
-these places:
-
-- The =mov= into =x0= at a =return=. =x op= e= for its value leaves
-  the result in the object's register, above =e='s, and the return
-  moves it: =compound= ends in =uxtb w1, w1; mov w0, w1=. 7.2 says
-  only that every =return= jumps to the one epilogue.
-- The directive after each =sub= of a frame opened in two. 5.2 gives
-  =.cfi_def_cfa_offset= for the epilogue's two =add=s and not for
-  the prologue's: =large-frame= has =sub sp, sp, #8192;
-  .cfi_def_cfa_offset 8192; sub sp, sp, #16; .cfi_def_cfa_offset
-  8208=.
-- The =i= of =[x29, #T + 8(i - 8)]= in 5.2. The ninth parameter is at
-  =T=, as =stack-parameter= shows, so =i= counts from 0; the page
-  does not say, and read from 1 the formula is 8 bytes off.
-- The spelling of an unsigned constant held in a register. 6.4 says
-  "in decimal, or in hex for a bitmask" and its negative example is a
-  =long=; =constant-bits= writes =mov w1, #-5000= for the =unsigned=
-  0xffffec78.
-- =.file= and =.section .note.GNU-stack=, which open and close every
-  listing of both targets. Chapter 10 of neither design page names
-  them.
-- =src/c1-aarch64.cc=, which the tree's listing in =shape.md= does
-  not have.
-
-Fix: each sentence written where it belongs, with the documents of
-slice 1.
-
-Check: each item's pin read against its sentence.
 
 * Guarantees
 
@@ -184,6 +147,22 @@ Fix: a cost program pinning =imull $4=, the =movl $4= into a
 register and the =divl= of the unsigned division and remainder.
 
 Check: the row and its pin.
+
+** TODO No aarch64 pin shows a signed byte
+
+Plain =char= is unsigned on aarch64 (=aarch64.md= chapter 11), so
+every =char= of the cost corpus is loaded there with =ldrb= and
+extended with =uxtb=: =cast='s =signed_()= and =narrow='s =f()= show
+the unsigned forms on that target. No cost program declares a
+=signed char=, so no aarch64 pin has =ldrsb= or =sxtb=, and a change
+to the generator's signed byte load or extension would turn no row
+red. The probes run the type; the pins do not show its listing.
+
+Fix: a cost program with a =signed char= local, parameter and call
+result, pinned for both targets.
+
+Check: its aarch64 pin has =ldrsb= and =sxtb=, and perturbing either
+in =c1-aarch64.cc= turns the row red.
 
 ** TODO Chapter 2 has no row for unary minus and complement
 

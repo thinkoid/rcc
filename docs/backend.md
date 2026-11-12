@@ -883,6 +883,11 @@ initializer or its zeros, reached the same way. A function is
 `.globl` and `.type f, @function` unless `static`, and ends with
 `.size`.
 
+The file opens with `.file` and the source's name without its
+directory, `.file "local.c"`, and then `.text`. It closes with
+`.section .note.GNU-stack,"",@progbits`, the empty note section that
+marks the stack not executable.
+
 Every address is PC-relative (`sym(%rip)`) and every external call
 goes through the PLT, so the object links into a position-independent
 executable, which is the default link on the platforms rcc runs on,
@@ -912,19 +917,27 @@ For another machine's target the driver hands each of the three
 - **The cost corpus**, `tests/costs` over `tests/cost`: the pin of
   each program is the text `rcc -S` writes, and the script assembles
   it with `rcc -c` to prove that it assembles. Each pin is read by
-  hand against this document's table before it is adopted, and
-  chapter 2 of `cost.md` is written from the pins.
+  hand against its target's design, this document's table or
+  `aarch64.md`'s, before it is adopted, and chapter 2 of `cost.md` is
+  written from the pins.
 - **Where the pins live**: under a directory per target beside their
   programs, `tests/corpus/<target>/<name>.s` and
   `tests/cost/<target>/<name>.s`, written by
   `tests/oracle --target <target> --pin` and
-  `tests/costs --target <target> --pin`; `make test` runs both
-  scripts for every target with a pin directory, today `x86-64`.
+  `tests/costs --target <target> --pin`. Both targets have a
+  directory in each corpus. A program that uses a construct the
+  target's generator does not handle yet, and has no pin for the
+  target, shows "not yet" and is neither passed nor failed, as the
+  scripts' headers say.
 - **The ABI**: `g12-block-slot` is the corpus program that calls
-  into libc, `printf` with `al` set, and it passes.
-  A `clang`-compiled `main` calling rcc code, and an rcc `main`
-  calling `clang`-compiled code, were run as probes outside the tree
-  in the first two slices, with the statuses of the all-`clang` build.
+  into libc, `printf` with `al` set, and it passes. The probes,
+  `tests/probes` over `tests/probe/`, run rcc's code against `clang
+  -O0`'s on the machine's own target, function by function over a
+  table of values, and the calls probe pairs the two three ways:
+  `clang`'s code calls rcc's, rcc's calls `clang`'s, and rcc's calls
+  rcc's.
+- **`make test`** runs both scripts for every target with a pin
+  directory, and then the probes.
 - **The measurement**, `tests/bench`: redone under c1, and recorded
   in `cost.md` chapter 4 beside the LLVM pipeline's; the most
   `register` variables live at once in each tuned function are in

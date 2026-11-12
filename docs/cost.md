@@ -13,16 +13,18 @@ does what the source says, and only that.
 - The compiler decides three things of its own: the register that
   holds a value, by the discipline of `backend.md` chapter 4; the
   machine form of each operator, by the table of chapter 2; and the
-  calling convention, System V AMD64. Nothing else, but a convention
-  of the target like the stack's 16 bytes at a call: every loop head
-  is aligned to 32 bytes (4.2).
+  calling convention, System V AMD64 on x86-64 and the AAPCS64 on
+  aarch64. Nothing else, but a convention of the target like the
+  stack's 16 bytes at a call: on x86-64 every loop head is aligned to
+  32 bytes (4.2).
 - Every statement is written, its value used or not. `a + 0;` adds
   and `a / b;` divides, and the division can fault.
 - Locals live in memory, one stack slot each, for the whole call. A
   local or parameter declared `register` lives in one of five
-  callee-saved registers, `rbx` and `r12` to `r15`, and is never
-  stored. A sixth live at once takes a slot, with a warning. The
-  keyword is the allocation, as it was on the PDP-11.
+  callee-saved registers on x86-64, `rbx` and `r12` to `r15`, and is
+  never stored. A sixth live at once takes a slot, with a warning.
+  The keyword is the allocation, as it was on the PDP-11. aarch64's
+  ten, `x19` to `x28`, come with its third slice.
 - Chapter 4 holds the measurement under c1: the plain source runs
   2.33 to 8.29 times as long under rcc as under `clang -O2`, and the
   source tuned by hand for rcc 1.59 to 2.37 times. As first written,
@@ -46,21 +48,25 @@ What the compiler may do:
   `register` variable takes the next free one of the five at its
   declaration and keeps it to the end of its block. An expression
   value takes the lowest free one of the nine caller-saved registers,
-  and when none is free the oldest held value is spilled
-  (`backend.md` chapter 4 and 6.2). A local declared in the source
-  lives in its own stack slot regardless, unless it is declared
-  `register`. The extent to which `register` is effective, which
-  6.7.2p12 leaves implementation-defined and 4p10 asks to be
-  documented, is five variables live at once.
-- Select the machine form, by the table. A `+` is an `add`; a 32-bit
-  signed division is `cltd; idivl`; a comparison is `cmp` and a
-  `setcc` for a value, `cmp` and a conditional jump for a condition;
-  a subscript is the access's scaled-index address, `(%rax,%rcx,4)`.
-  The form is fixed per operator and target, and listed in chapter 2.
+  fifteen on aarch64, and when none is free the oldest held value is
+  spilled (`backend.md` chapter 4 and 6.2, `aarch64.md` chapter 4). A
+  local declared in the source lives in its own stack slot
+  regardless, unless it is declared `register`. The extent to which
+  `register` is effective, which 6.7.2p12 leaves
+  implementation-defined and 4p10 asks to be documented, is five
+  variables live at once on x86-64.
+- Select the machine form, by the table. On x86-64 a `+` is an
+  `add`; a 32-bit signed division is `cltd; idivl`; a comparison is
+  `cmp` and a `setcc` for a value, `cmp` and a conditional jump for a
+  condition; a subscript is the access's scaled-index address,
+  `(%rax,%rcx,4)`. The form is fixed per operator and target, and
+  listed in chapter 2.
 - Follow the calling convention: argument registers, the stack
   frame, callee-saved registers.
-- Align every loop head to 32 bytes, `.p2align 5`, a convention of
-  the target like the stack's 16 bytes at a call (4.2).
+- Align every loop head to 32 bytes on x86-64, `.p2align 5`, a
+  convention of the target like the stack's 16 bytes at a call
+  (4.2). aarch64 aligns none until it is measured there (`aarch64.md`
+  7.2).
 
 What the compiler never does:
 
@@ -77,16 +83,18 @@ What the compiler never does:
 
 ## 2. What each construct compiles to
 
-x86-64; aarch64 rows to follow when the target is wired. Each row is
-the form c1 writes, in the text of the pin of the cost program named
-in its last column, whose opening comment says what its listing must
-show. A row with no program is stated from `backend.md` 6.3; no pin
-shows it yet.
+A table per target. Each row is the form c1 writes, in the text of
+the target's pin of the cost program named in its last column, whose
+opening comment says what its listing must show on each target. A
+row with no program is stated from `backend.md` 6.3; no pin shows it
+yet.
+
+### 2.1 x86-64
 
 | Source | Machine | Program |
 |---|---|---|
 | a local | a slot of its own off `rbp` for the whole call; a load at each read, `movl -8(%rbp), %eax`, and a store at each write, `movl %eax, -8(%rbp)`; a constant stored by a statement or an initializer is the one store of the immediate, `movl $0, -8(%rbp)` | `local`, `while` |
-| a parameter | its argument register stored to its slot in the prologue, `movl %edi, -4(%rbp)`; then the local's row | `parameter` |
+| a parameter | its argument register stored to its slot in the prologue, `movl %edi, -4(%rbp)`; then the local's row; one past the sixth read where the caller pushed it, above the return address, with no copy, `movsbl 32(%rbp), %ecx` for a `char` and `movq 40(%rbp), %rcx` for a `long` | `parameter`, `stack-parameter` |
 | a `register` local | the next of `rbx`, `r12` to `r15`, by declaration order, pushed after `rbp` in the prologue and popped before `leave`; no slot, no load, no store; a read is the register as an operand, `cmpl %ebx, %r13d`; an instruction that writes its destination works on a copy, `movl %r12d, %eax; addl %r13d, %eax`, and the assignment moves the result back, `movl %eax, %r12d`; a constant assigned is the immediate, `movl $0, %r12d`; across a loop, the same register | `register-loop` |
 | a `register` local without an initializer | the register as the prologue left it; nothing writes it until the program does, so every read sees one value (G5) | `register-undef` |
 | a `register` parameter | moved from its argument register to its register in the prologue, `movl %edi, %ebx`; then the register | `register-parameter` |
@@ -109,15 +117,15 @@ shows it yet.
 | `return e` | `e` into `eax`, then `jmp .L<function>.1` to the one epilogue, `jmp .Lsum.1` in `for`, the last statement included | every program |
 | a statement whose value is unused | written: `a + 0;` is `addl $0, %eax`, `a / b;` is `cltd; idivl %ecx`, and the division can fault | `unused` |
 | `f(a, b)` | each argument evaluated into a register and stored to a slot of its own, `movl %eax, -12(%rbp)`, a constant argument in one store of the immediate, `movl $1, -4(%rbp)` in `stack-args`; the slots loaded into `edi`, `esi` and on; `call f@PLT`; the result in `eax` | `call` |
-| a seventh and an eighth argument | stored to their slots as the first six are, a constant in one instruction, `movl $7, -28(%rbp)`, then pushed from their slots right to left, a narrow one loaded into `eax` and pushed from `rax`, `movl -28(%rbp), %eax; pushq %rax`; `subq $8, %rsp` first for an odd count; the bytes added back after the call, `addq $16, %rsp` | `stack-args` |
+| a seventh argument and on | stored to their slots as the first six are, a constant in one instruction, `movl $7, -28(%rbp)`, then pushed from their slots right to left, each loaded into `eax` and pushed from `rax`, `movl -28(%rbp), %eax; pushq %rax`, a `char` by its extending load, `movsbl -33(%rbp), %eax`; `subq $8, %rsp` first for an odd count; the bytes added back after the call, `addq $16, %rsp` for one or two, `addq $32, %rsp` for three or four | `stack-args`, `stack-args-nine` |
 | `(T) a` | `int` to `long`, `movslq %eax, %rax`; `char` to `int` after the extending load, nothing; `int` to `unsigned`, nothing; to `char`, the narrow store `movb %al, -5(%rbp)`, and the next read is the extending load, `movsbl -5(%rbp), %eax` or `movzbl` | `cast` |
 | a `char` or `short` parameter or result | stored at its width in the prologue, `movb %dil, -1(%rbp)`, `movw %si, -4(%rbp)`, and loaded with its extension, `movsbl`, `movswl`; a result in `eax` as the operation left it, no extension before the jump to the epilogue; an argument stored at its width and loaded extended into its register, `movsbl -5(%rbp), %edi`; the result extended by the caller where it is used wider, `movsbl %al, %eax` after the `call` | `narrow` |
 | `a += b` | as a statement, the op on the object at its width, `addl %eax, -12(%rbp)`, on a `char` `addb %al, -9(%rbp)`; for its value, and for `*=`, `/=` and `%=` always, `b` first, then the load, the op, the store; on a `char`, `b` into `ecx`, the extending load `movsbl -9(%rbp), %eax`, the op in `int`, the narrow store `movb %al, -9(%rbp)` | `compound` |
-| a constant | the immediate, `addl $408, %eax`, a constant expression folded first, `12 * 34` to 408; a 64-bit constant no 32-bit immediate holds is `movabsq $81985529216486895, %rcx` where it is written, in a loop at every iteration | `constant-hoisting`, `constant-in-loop` |
+| a constant | the immediate, `addl $408, %eax`, a constant expression folded first, `12 * 34` to 408; a 32-bit constant whatever its bits, `addl $-2147483646, %eax` for `0x80000002`, and a 64-bit one a 32-bit immediate holds, `addq $-100000, %rax`; a 64-bit constant no 32-bit immediate holds is `movabsq $81985529216486895, %rcx` where it is written, in a loop at every iteration | `invariant`, `constant-hoisting`, `constant-in-loop`, `constant-bits` |
 | a constant under an implicit conversion | the constant in the target type, an immediate of its width, stored: `long x = 2` is `movq $2, -8(%rbp)`, `long x = -1` is `movq $-1, -8(%rbp)`; `(long) 2` is the same `long` constant | |
 | a loop-invariant expression | computed every iteration: `a / b` in the body is its two loads and its `idivl`, and `12 * 34` its `addl $408` | `invariant` |
 | an expression written twice | computed twice: `a * b + a * b` is two `imull`, and `12 * 34 + 12 * 34` two `addl $408` | `twice` |
-| more held values than nine registers | the oldest held value spilled, `movq %rax, -32(%rbp)`, and reloaded when it is consumed, `movq -32(%rbp), %rax` | `spill` |
+| more held values than nine registers | the oldest held value spilled, `movq %rax, -32(%rbp)`, and reloaded when it is consumed, `movq -32(%rbp), %rcx` | `spill`, `spill-fifteen` |
 | `p + n`, `m[i]` as a pointer | the index widened to 64 bits, `movslq %ecx, %rcx`, then `leaq (%rax,%rcx,4), %rax` for a size of 2, 4 or 8, and `imulq $12, %rcx, %rcx; addq %rcx, %rax` for a size that is not a scale | `gep`, `gep-stride` |
 | `p - n` | the index widened, `imulq $4, %rcx, %rcx; subq %rcx, %rax`; for a size of 1, the `sub` alone | |
 | `++p`, `--p`, `p += 2`, `p -= 2` | the size times the constant, an immediate: as a statement, on the pointer's slot, `addq $4, -8(%rbp)`, `subq $8, -8(%rbp)`; for its value, between the load and the store, `subq $8, %rax` | `ptr-step` |
@@ -130,11 +138,65 @@ shows it yet.
 | `(T *) p`, `(long) p`, `(T *) l` | nothing; `movslq %eax, %rax` for an `int` | `ptr-int`, `void-pointer` |
 | `"abc"` | `leaq .Ls0(%rip), %rax`; the bytes a `.string` under a label of their own in `.data`, writable, after the last function | `string` |
 
+### 2.2 aarch64
+
+The rows of slice 1, integers, control and calls (`aarch64.md`
+chapter 14), in the order of 2.1. A row whose programs stop at "not
+yet" on this target has no row here:
+
+- the `register` rows wait for slice 3: `register-loop`,
+  `register-undef`, `register-parameter`, `register-compare`;
+- the rows of pointer arithmetic, the subscript, `*p`, `&x` and the
+  string literal wait for slice 2: `gep`, `gep-stride`, `ptr-step`,
+  `subscript`, `ptr-diff`, `ptr-diff-char`, `deref`, `address-of`,
+  `string`.
+
+The two rows of 2.1 with no program have none here either. Two rows
+are this target's alone: a slot beyond reach and a frame of 4096
+bytes or more.
+
+| Source | Machine | Program |
+|---|---|---|
+| a local | a slot of its own above `x29` for the whole call; a load at each read, `ldr w0, [x29, #20]`, and a store at each write, `str w0, [x29, #20]`; zero stored by a statement or an initializer is one store of the zero register, `str wzr, [x29, #20]`, and any other constant goes through a register, `mov w0, #1; str w0, [x29, #16]` | `local`, `while`, `stack-args` |
+| a parameter | its argument register stored to its slot in the prologue, `str w0, [x29, #16]`; then the local's row; one past the eighth copied in the prologue from above the frame to a slot of its own through `x17`, at its width, after `mov x29, sp` and before the stores of the first eight, `ldrb w17, [x29, #64]; strb w17, [x29, #48]` for a `char` and `ldr x17, [x29, #72]; str x17, [x29, #56]` for a `long` | `parameter`, `stack-parameter` |
+| the frame | `sub sp, sp, #32; stp x29, x30, [sp]; mov x29, sp` in every function, a leaf included, and `ldp x29, x30, [sp]; add sp, sp, #32; ret` in the one epilogue; the frame record at the bottom, the slots above it, the size rounded up to 16, `sub sp, sp, #16` for the record alone | `local`, `call`, `zero-test` |
+| a slot beyond reach | one more instruction at each access: the displacement's upper part added into `x16`, `add x16, x29, #36864`, then `str w0, [x16, #20]` or `ldr w0, [x16, #20]`; the same local declared before the array is `ldr w0, [x29, #20]` | `far-slot` |
+| a frame of 4096 bytes or more | opened by two `sub`s, the upper part first, `sub sp, sp, #8192` and `sub sp, sp, #16`, each followed by its `.cfi_def_cfa_offset`, and closed by two `add`s in the same order; by one, `sub sp, sp, #8192`, when its low 12 bits are zero | `large-frame` |
+| `a + b`, `a - b` | `add w0, w0, w1`, `sub w0, w0, w1`; the left operand's register is the result's | `add-sub`, `parameter` |
+| `a + 0` | `add w0, w0, #0`: a constant operand is the immediate where the instruction encodes it | `add-zero` |
+| `a * b` | `mul w0, w0, w1`; by a constant, the constant held first, `mov w1, #3`, since `mul` takes no immediate | `mul`, `mul-three` |
+| `a / b`, `a % b` | `sdiv w0, w0, w1` signed, `udiv w0, w0, w1` unsigned; the remainder is the quotient multiplied back and subtracted, `sdiv w2, w0, w1; msub w0, w2, w1, w0`, and `udiv w2, w0, w1` first unsigned | `div-rem`, `udiv-urem` |
+| `x / 4`, `x / 7` | the divisor held in a register, `mov w1, #4`, since `sdiv` takes no immediate, then `sdiv w0, w0, w1`; no shift, no multiply by a magic constant | `div-four`, `div-seven` |
+| `a + b / c`, a division with values held | the instruction on the registers the operands are in, `sdiv w1, w1, w2`, then `add w0, w0, w1`, and the remainder `sdiv w3, w1, w2; msub w1, w3, w2, w1`; nothing is moved, since no register is pinned | `div-busy` |
+| `a << n`, `a >> n` | the count in any register, `lsl w0, w0, w1`, `asr w0, w0, w1`, `lsr w0, w0, w1`; the instruction masks the count | `shift` |
+| `a < b` and the rest, as a value | `cmp w0, w1; cset w0, lt`, `cset w0, eq` for `==`; no jump | `compare` |
+| `a < b` as a condition | `cmp w0, w1` and a branch on the inverse to the else label, `b.ge .Lchoose.2`; no value | `if` |
+| `a && b`, `a \|\| b` | jump code: each operand tested for zero in one instruction and a branch, `cbz w0, .Lboth.2` for `&&`, `cbnz w0, .Leither.4` past the right operand for `\|\|`; as a value, `mov w0, #1` and `mov w0, #0` on the two paths | `logical` |
+| `a ? b : c` | the condition by jump code, `cbz w0, .Lconditional.2`, each arm into `w0`, a `b .Lconditional.3` past the second arm; never `csel` | `conditional`, `select` |
+| `a, b` | no instruction of its own: `a` as the statement `a;` would be written, `ldr w0, [x29, #20]; add w0, w0, #1; str w0, [x29, #20]` for `i++`, then `b` as the value, the condition or the effect the comma is | `comma` |
+| `if`, `while`, `for` | the condition by jump code at the top, where it is written, blocks in the written order; no alignment directive before a loop head; a loop branches back from its bottom, `b .Lcount.2` in `while`, and `for`'s step has its own label, `.Lsum.3`, before the branch; an empty arm is still tested, `cbz w0, .Lempty_if.2` to the label that follows it in `cgp`; a join that holds only the branch back stays one block | `if`, `while`, `for`, `block-order`, `cgp`, `early-taildup` |
+| `if (0)`, `!0` | `if (0)` is a test, `mov w0, #0; cbz w0, .Lnever.2`, and the body is kept; `!0` is the constant 1, folded in the parser, `mov w0, #1` | `zero-test` |
+| `return e` | `e` into `w0`, by a `mov` when it is held in another register, `mov w0, w1` in `compound`; then the branch to the one epilogue, `b .Lsum.1` in `for`, the last statement included | every program |
+| a statement whose value is unused | written: `a + 0;` is `add w0, w0, #0`, `a / b;` is `sdiv w0, w0, w1`, and the division does not trap | `unused` |
+| `f(a, b)` | each argument evaluated into a register and stored to a slot of its own, `str w0, [x29, #24]`, a constant argument through a register, `mov w0, #1; str w0, [x29, #16]` in `stack-args`; the slots loaded into `w0`, `w1` and on, `ldr w0, [x29, #24]`; `bl f`; the result in `w0` | `call` |
+| a seventh and an eighth argument | in registers as the first six are, `ldr w6, [x29, #40]` and `ldr w7, [x29, #44]`; nothing on the stack | `stack-args` |
+| a ninth argument and on | stored to their slots as the first eight are, a `char` at its width, `strb w0, [x29, #48]`; after the stores the outgoing area opened below the frame, 8 bytes an argument rounded up to 16, `sub sp, sp, #16`; each copied from its slot through `x17` at its width, the ninth to `[sp]` and the tenth to `[sp, #8]`, `ldrb w17, [x29, #48]; strb w17, [sp]` for a `char`, `ldr w17, [x29, #52]; str w17, [sp, #8]`; then the first eight loaded, `bl f9`, and `add sp, sp, #16` | `stack-args-nine` |
+| `(T) a` | `int` to `long`, `sxtw x0, w0`; `char` to `int` after the extending load, nothing; `int` to `unsigned`, nothing; to `char`, the narrow store `strb w0, [x29, #20]`, and the next read is the extending load, `ldrb w0, [x29, #20]`, unsigned as plain `char` is | `cast` |
+| a `char` or `short` parameter or result | stored at its width in the prologue, `strb w0, [x29, #16]`, `strh w1, [x29, #18]`, and loaded with its extension, `ldrb w0, [x29, #16]`, `ldrsh w1, [x29, #18]`; a result in `w0` as the operation left it, no extension before the branch to the epilogue; an argument stored at its width and loaded extended into its register, `ldrb w0, [x29, #20]`; the result extended by the caller where it is used wider, `uxtb w0, w0` after the `bl` | `narrow` |
+| `a += b` | no memory form, as a statement or for its value: `b` first, then the load, the op, the store, `ldr w1, [x29, #24]; add w1, w1, w0; str w1, [x29, #24]`; on a `char`, the extending load `ldrb w1, [x29, #24]`, the op in `int`, the narrow store `strb w1, [x29, #24]`, and for its value the re-extension `uxtb w1, w1` | `compound` |
+| a constant | the immediate where the instruction encodes it, `add w0, w0, #4095`, `add w0, w0, #4096`, the bitmask `and w0, w0, #0xff`; otherwise held in a register first, by one `mov` where it encodes, `mov w1, #5000`, `mov w1, #-5000`, `mov w1, #0x80000001`, else by a `mov` and a `movk` for each further 16 bits, `mov w1, #2; movk w1, #0x8000, lsl #16`, and from ones for `-100000L`, `mov x1, #-34464; movk x1, #0xfffe, lsl #16`; a 64-bit constant of four parts is four instructions where it is written, `mov x1, #52719` and three `movk`, in a loop at every iteration | `constant-hoisting`, `constant-in-loop`, `constant-bits` |
+| a loop-invariant expression | computed every iteration: `a / b` in the body is its two loads and its `sdiv w1, w1, w2`, and `12 * 34` its `add w0, w0, #408` | `invariant` |
+| an expression written twice | computed twice: `a * b + a * b` is two `mul`, `mul w0, w0, w1` and `mul w1, w1, w2`, and `12 * 34 + 12 * 34` two `add w0, w0, #408` | `twice` |
+| more held values than fifteen registers | the values held in `w0` to `w7` and `w9` to `w15`, `ldr w15, [x29, #40]`, `x8` left out; then the oldest held value spilled, `str x0, [x29, #48]`, and reloaded when it is consumed, `ldr x1, [x29, #48]`; `spill`'s eleven values are all held, the last `ldr w11, [x29, #32]` | `spill`, `spill-fifteen` |
+| `p < q` and the rest | `cmp x0, x1`, the unsigned `cset w0, lo` | `ptr-compare` |
+| `if (p)`, `p == 0` | the test of zero as a condition, `cbz x0, .Ltest.2`; `cmp x0, #0; cset w0, eq` as a value | `ptr-null` |
+| `(T *) p`, `(long) p`, `(T *) l` | nothing, the load alone, `ldr x0, [x29, #16]`; `sxtw x0, w0` for an `int` | `ptr-int`, `void-pointer` |
+
 ## 3. Verification
 
-Two scripts, both run by `make test` for every target with a pin
-directory, and both take the target as `--target <target>`; the
-default is the machine's own. A pin is one target's listing, so it
+Three scripts. `make test` runs the first two for every target with
+a pin directory, and both take the target as `--target <target>`;
+the default is the machine's own. A pin is one target's listing, so it
 sits under a directory named for its target. `tests/oracle` runs
 first: it diffs the assembly `./rcc -target <target> -S` writes for
 each divergence program of `tests/corpus/` against the pin,
@@ -143,11 +205,15 @@ each divergence program of `tests/corpus/` against the pin,
 target it also builds each program under `clang -O2` and under
 `./rcc`, runs both, and compares the exit statuses with
 `tests/corpus/expected`; on another target the programs are not run.
-`tests/costs` runs after it and pins this page.
+`tests/costs` runs after it and pins this page. A program that uses
+a construct whose slice is not in the target's generator, and has no
+pin for the target, shows "not yet" in its row of either script and
+is neither passed nor failed; the scripts' headers give the rule.
 
 Each program under `tests/cost/` is one row of chapter 2 or one rule
 of chapter 1, and its opening comment says what its listing must
-show. Its pin, `tests/cost/<target>/<name>.s`, is the text
+show on each target, in a paragraph per target. Its pin,
+`tests/cost/<target>/<name>.s`, is the text
 `./rcc -target <target> -S` writes, whole. The script assembles each
 program with `./rcc -target <target> -c`, which hands `clang` the
 target, to prove that the text assembles; no program runs, so the
@@ -158,6 +224,14 @@ changed listing is read by hand against its row of chapter 2 before
 `tests/costs --pin` adopts it. A change to c1 that moves a cost
 thus shows as a red row, and the row names the construct whose cost
 moved.
+
+`tests/probes` runs last, on the machine's own target only. Each
+probe of `tests/probe/` compiles one source by rcc and by `clang
+-O0`, and a `clang` main calls each function of both builds over a
+table of values and compares the results; the calls probe pairs the
+two builds three ways, each calling the other and rcc calling rcc.
+A probe checks values, not costs: that rcc's code computes what
+`clang`'s does, which no pin shows.
 
 ## 4. The measurement
 

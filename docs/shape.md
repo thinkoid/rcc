@@ -24,18 +24,19 @@ The parts, what each owns, and where they meet. The headers under
   for a fixed arity and `vector` for a list. Types are values,
   compared structurally.
 - The first error is fatal. No recovery.
-- GNU make, one executable, a flat `src/`. The test is two scripts,
-  the oracle over `tests/corpus/` and the cost corpus over
+- GNU make, one executable, a flat `src/`. The test is three
+  scripts: the oracle over `tests/corpus/` and the cost corpus over
   `tests/cost/`, each diffing the assembly `rcc -S` writes against
-  its pin.
+  its pin, and the probes of `tests/probe/`, which run rcc's code
+  against `clang`'s.
 
 ## 1. The pipeline
 
 `rcc file.c` runs `clang -E` on the file, tokenizes the result,
 parses it into one tree per translation unit, prints the warnings,
-and generates x86-64 assembly from the tree into a buffer. With `-S`
-the buffer is written to the output. Otherwise it goes to a
-temporary `.s`, which `clang -c` assembles into the object for `-c`,
+and generates the target's assembly from the tree into a buffer.
+With `-S` the buffer is written to the output. Otherwise it goes to
+a temporary `.s`, which `clang -c` assembles into the object for `-c`,
 and which `clang` assembles and links into an executable without
 it. LLVM is what any cc is to a compiler that writes assembly:
 `clang -E` preprocesses, `clang -c` assembles, `clang` links. There
@@ -130,12 +131,15 @@ tree and a second walk for no invariant the compiler needs.
 
 ## 6. The generator
 
-`generate(unit, file, out)` walks the tree and writes x86-64 assembly
-text in AT&T syntax, one instruction, or the machine's fixed
-sequence, per operator, with nothing added and nothing left out but
-the 32-byte alignment of a loop's head, which is layout, not an
-operator's code. `file` is the source's name, for the `.file`
-directive. The rules, each the code of a `backend.md` chapter:
+`generate(unit, target, file, out)` calls the target's generator,
+`generate_x86_64()` or `generate_aarch64()`. `file` is the source's
+name, for the `.file` directive. The x86-64 generator walks the tree
+and writes assembly text in AT&T syntax, one instruction, or the
+machine's fixed sequence, per operator, with nothing added and
+nothing left out but the 32-byte alignment of a loop's head, which
+is layout, not an operator's code. The aarch64 generator is the same
+walk under the rules of `aarch64.md`. The x86-64 rules, each the
+code of a `backend.md` chapter:
 
 - The state is per function, reset at each definition: the slots,
   the held values, the register variables, the frame's size, the
@@ -230,6 +234,7 @@ compile database, and three lines of make, a shell script and
     docs/rationale.md   the reasoning behind draft 1 of the guarantees
     docs/findings.md    what the measurement found, explained from the ground up
     docs/backend.md     the design of rcc's own back end, x86-64 first
+    docs/aarch64.md     the design of the back end for aarch64
     docs/llvm.md        the LLVM sprint: the literal pipeline, where its judgment showed, why it left
     docs/design-calls.md  the back end's open calls, weighed one by one
     src/lex.hh .cc    tokens and tokenize()
@@ -240,6 +245,7 @@ compile database, and three lines of make, a shell script and
     src/c1.hh         generate(), the code generator
     src/c1.cc         generate(), which calls the target's generator
     src/c1-x86-64.cc  the generator for x86-64
+    src/c1-aarch64.cc the generator for aarch64
     src/c1-common.hh .cc
                       the part of c1 that is the same for every target
     src/error.hh      error_t and warning_t
@@ -248,10 +254,16 @@ compile database, and three lines of make, a shell script and
     tests/corpus/     the divergence programs and their expected statuses
     tests/corpus/x86-64/
                       their pinned .s for x86-64, one directory per target
+    tests/corpus/aarch64/
+                      their pinned .s for aarch64
     tests/costs       the cost corpus script
     tests/cost/       one program per cost-model row
     tests/cost/x86-64/
                       their pinned .s for x86-64, one directory per target
+    tests/cost/aarch64/
+                      their pinned .s for aarch64
+    tests/probes      the probe script
+    tests/probe/      the probes: rcc's code against clang -O0's
     tests/bench       the measurement script
     tests/perf/       the benchmark programs, plain and tuned
 
@@ -281,6 +293,12 @@ variables in the five callee-saved registers (`backend.md` chapter
 4). When the three had landed and every program of the corpus and
 of the cost corpus built through c1 and matched its pin, the LLVM
 pipeline was retired.
+
+The second target, aarch64, is written in the same three slices
+(`aarch64.md` chapter 14). The first, integers, control and calls,
+is in the tree, with its pins and the probes that run rcc's code
+against `clang`'s. The second, pointers, arrays and string
+literals, and the third, register variables, remain.
 
 ## 11. Not yet
 
