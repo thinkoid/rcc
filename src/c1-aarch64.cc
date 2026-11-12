@@ -4,11 +4,13 @@
 // out, for clang and GNU as.  docs/aarch64.md is the design, with
 // docs/backend.md where it says the model carries; this file
 // implements its chapters 4 to 8 and 10, with c1-common.cc, and each
-// function names the row it writes.  This is the first slice, in its
-// three steps: the frame and straight-line code on integers, conditions
-// and control, then calls.  A construct of a later slice throws
-// logic_error("c1: not yet: ..."), and a tree the parser cannot make
-// throws logic_error("c1: ...").
+// function names the row it writes.  It holds the first slice, the
+// frame and straight-line code on integers, conditions and control, and
+// calls, and the first step of the second: the address of an object,
+// the indirection through a pointer, the use of an array and a string
+// literal.  A construct of a later step throws logic_error("c1: not yet:
+// ..."), and a tree the parser cannot make throws logic_error("c1:
+// ...").
 
 #include "c1.hh"
 #include "c1-common.hh"
@@ -110,14 +112,18 @@ struct value_t
 };
 
 // The state of one file's generation.  Everything is reset per
-// function, the label count included.  The body is a buffer, since the
-// prologue's frame size is known only after it.
+// function, the label count included, but the string literals, which
+// are the file's.  The body is a buffer, since the prologue's frame
+// size is known only after it.
 struct state_t
 {
     std::ostream &out;
 
     // the target's largest frame
     long frame_limit;
+
+    // the string literals' bytes in the order met; .Ls<n> is the n-th
+    std::vector< std::string > strings { };
 
     std::ostringstream body { };
 
@@ -268,25 +274,6 @@ slot_operand(state_t &s, int displacement, int size)
         return "[x16]";
 
     return std::format("[x16, #{}]", lower);
-}
-
-// An lvalue's address as the operand of the instruction that reads or
-// writes it: in this step a local's or a parameter's slot.
-struct address_t
-{
-    int displacement;
-};
-
-address_t
-slot_address(int displacement)
-{
-    return { .displacement = displacement };
-}
-
-std::string
-operand(state_t &s, const address_t &a, int width)
-{
-    return slot_operand(s, a.displacement, width / 8);
 }
 
 // The load of 2.2 that brings a value of type t into a register of 32
@@ -608,28 +595,145 @@ extended(state_t &s, value_t v, const int_t &from, int to)
 
 // addresses
 
-// The address of an lvalue: a local's or a parameter's slot.  A string
-// literal's label and what a dereference designates are slice 2's.
+// An lvalue's address as the operand of the instruction that reads or
+// writes it, 2.3: a slot off x29, or a held base, the pointer's value,
+// [x0].  A string literal's address is its label, which no access
+// takes as an operand: the literal is an array and is used only by its
+// address as a value, chapter 10.  The access consumes the base.
+struct address_t
+{
+    value_t base { };
+    int displacement = 0;
+    std::string label { };
+};
+
+address_t
+slot_address(int displacement)
+{
+    return { .displacement = displacement };
+}
+
+// The register an address's base is in, for a take or a reload to stay
+// clear of.
+unsigned
+registers_of(const state_t &s, const address_t &a)
+{
+    if (a.base.id < 0 || s.values[a.base.id].reg < 0)
+        return 0;
+
+    return bit(static_cast< reg_t >(s.values[a.base.id].reg));
+}
+
+// The address as the operand of an access of width bits.  A slot is
+// [x29, #d], or through x16 beyond reach, its add written here, 5.3.  A
+// spilled base is reloaded first, outside avoid; the reload is complete
+// before the access, so x16 holds nothing across it.
+std::string
+operand(state_t &s, const address_t &a, int width, unsigned avoid = 0)
+{
+    if (!a.label.empty())
+        throw std::logic_error("c1: a string literal as an access's operand");
+
+    if (a.base.id < 0)
+        return slot_operand(s, a.displacement, width / 8);
+
+    const reg_t base = reg_of(s, a.base, avoid);
+
+    return std::format("[{}]", reg(base, 64));
+}
+
+// The address is consumed: its register is free.
+void
+release(state_t &s, const address_t &a)
+{
+    release(s, a.base);
+}
+
+// The address as a value, valid to 64: &x, an array's decay, 6.3.2.1p3,
+// and a string literal's.  A base alone is its own value, so &*p is p
+// and no instruction, 6.5.4.2p3.  A literal's label is formed
+// PC-relative in two instructions, adrp L, .Ls0 for its 4 KiB page and
+// add L, L, :lo12:.Ls0 for the offset in it, chapter 3.  A slot is add
+// L, x29, #d; a displacement add's 12 bits do not encode is the two adds
+// of 5.3, the upper part shifted first, and one when the lower part is
+// zero.  The sum is formed in L, so x16 is not used.
+value_t
+address_of(state_t &s, const address_t &a)
+{
+    if (a.base.id >= 0)
+        return a.base;
+
+    const auto v = fresh(s, 64);
+    const auto r = reg(reg_of(s, v), 64);
+
+    if (!a.label.empty()) {
+        insn(s, "adrp", { r, a.label });
+        insn(s, "add", { r, r, std::format(":lo12:{}", a.label) });
+        return v;
+    }
+
+    const int upper = a.displacement & ~0xfff;
+    const int lower = a.displacement & 0xfff;
+
+    if (upper == 0) {
+        insn(s, "add", { r, "x29", imm(lower) });
+        return v;
+    }
+
+    insn(s, "add", { r, "x29", imm(upper) });
+    if (lower != 0)
+        insn(s, "add", { r, r, imm(lower) });
+
+    return v;
+}
+
+// The address a dereference designates, 6.5.4.2p4: the pointer's value
+// as the base, [x0], whatever computed it and however it is aligned
+// (G8, G11); nothing looks through a cast.  The pointer is evaluated
+// here, before anything the access goes with, G13.
+address_t
+pointed(state_t &s, const expr_t &p)
+{
+    return { .base = rvalue(s, p) };
+}
+
+// The address of an lvalue: a local's or a parameter's slot, a string
+// literal's label, or what a dereference designates.  It serves &,
+// array decay, loads and stores alike, so the addressing row is
+// written once.
 address_t
 address(state_t &s, const expr_t &e)
 {
     if (is< string_t >(e))
-        not_yet("a string literal");
+        return { .label = string_label(s.strings, as< string_t >(e)) };
 
     if (is< unary_t >(e) && as< unary_t >(e).op == unary_op_t::deref)
-        not_yet("the indirection operator *");
+        return pointed(s, *as< unary_t >(e).arg);
 
     return slot_address(slot_of(s, object_of(e)));
 }
 
 // The load row, 6.3.2.1p2: the value at an address into a register at
 // a width of 32 or 64, a char or a short by the extending load of its
-// signedness, ldrsb w0, [x29, #16].  The register is taken before the
-// operand is formed, since the take may spill through x16.
+// signedness, ldrsb w0, [x29, #16].  G8, G10: the load of 2.2 at the
+// lvalue's width and extension, whatever computed the address.  A held
+// base is consumed first, so the value takes its register, ldr w0,
+// [x0].  For a slot the register is taken first, since the take may
+// spill through x16, and the slot's operand is formed after it.
 value_t
 load(state_t &s, const address_t &a, const int_t &t, int width)
 {
     const auto [mnemonic, into] = load_of(t, width);
+
+    if (a.base.id >= 0) {
+        const auto from = operand(s, a, t.width);
+        release(s, a);
+
+        const auto v = fresh(s, written(into, t.is_signed));
+        insn(s, mnemonic, { reg(reg_of(s, v), into), from });
+
+        return v;
+    }
 
     const auto v = fresh(s, written(into, t.is_signed));
     const reg_t r = reg_of(s, v);
@@ -640,14 +744,33 @@ load(state_t &s, const address_t &a, const int_t &t, int width)
     return v;
 }
 
+// The load row of a read-modify-write, a compound assignment or a ++
+// or --: the address stays held for the store through it, since E1 is
+// evaluated once, 6.5.17.3p4.  The value's register is taken outside
+// the base's, and the operand formed after the take.
+value_t
+fetch(state_t &s, const address_t &a, const int_t &t, int width)
+{
+    const auto [mnemonic, into] = load_of(t, width);
+
+    const auto v = fresh(s, written(into, t.is_signed), registers_of(s, a));
+    const reg_t r = reg_of(s, v);
+
+    const auto from = operand(s, a, t.width, bit(r));
+    insn(s, mnemonic, { reg(r, into), from });
+
+    return v;
+}
+
 // The store row through an address, at the lvalue's width, strb w0,
-// [x29, #16].
+// [x29, #16] or str x1, [x0].  The address stays held, for the caller
+// to consume.
 void
 store(state_t &s, value_t v, const address_t &a, int width)
 {
-    const reg_t r = reg_of(s, v);
+    const reg_t r = reg_of(s, v, registers_of(s, a));
 
-    const auto to = operand(s, a, width);
+    const auto to = operand(s, a, width, bit(r));
     insn(s, store_of(width), { reg(r, width), to });
 }
 
@@ -797,7 +920,8 @@ literal(state_t &s, const literal_t &l, const type_t &t)
 // constant is the store of the zero register, str wzr, [x29, #16], and
 // no register is held; anything else, any other constant included, is
 // its value in a register and the store, since str takes no immediate.
-// to is a slot, which has no evaluation, so G13 holds.
+// to is a slot, which has no evaluation, or an address the caller
+// evaluated before e, so G13 holds; the caller consumes it.
 void
 initialize(state_t &s, const expr_t &e, const address_t &to, const int_t &t)
 {
@@ -1200,13 +1324,13 @@ binary(state_t &s, const expr_t &e)
 }
 
 // ++ and --, either side: the address once, the load, add or sub of 1
-// (6.5.4.1p2, 6.5.3.5p2), the store through the same address; G1, the
-// machine wraps.  A char or a short is loaded extended to 32 bits and
-// its low bytes stored, so no operator sees 8 or 16 bits.  The prefix
-// forms operate on the loaded value's register and yield it.  The
-// postfix forms name another register as the destination, add w1, w0,
-// #1, and yield the old value where the load left it: nothing is
-// copied, 6.1.
+// (6.5.4.1p2, 6.5.3.5p2), the store through the same address, held
+// between the two; G1, the machine wraps.  A char or a short is loaded
+// extended to 32 bits and its low bytes stored, so no operator sees 8
+// or 16 bits.  The prefix forms operate on the loaded value's register
+// and yield it.  The postfix forms name another register as the
+// destination, add w1, w0, #1, and yield the old value where the load
+// left it: nothing is copied, 6.1.
 value_t
 step(state_t &s, unary_op_t op, const expr_t &arg)
 {
@@ -1223,13 +1347,16 @@ step(state_t &s, unary_op_t op, const expr_t &arg)
     const bool post = op == unary_op_t::post_inc || op == unary_op_t::post_dec;
 
     const auto place = address(s, arg);
-    const auto l = load(s, place, t, width);
+    const auto l = fetch(s, place, t, width);
     const reg_t r = reg_of(s, l);
 
-    const auto v = post ? fresh(s, written(width, t.is_signed), bit(r)) : l;
+    const auto v = post ? fresh(s, written(width, t.is_signed),
+                                bit(r) | registers_of(s, place)) :
+                          l;
     insn(s, up ? "add" : "sub",
          { reg(reg_of(s, v), width), reg(r, width), imm(1) });
     store(s, v, place, t.width);
+    release(s, place);
 
     if (post) {
         release(s, v);
@@ -1276,23 +1403,28 @@ unary(state_t &s, const unary_t &u, const type_t &t)
     case unary_op_t::post_inc:
     case unary_op_t::post_dec: return step(s, u.op, *u.arg);
 
-    case unary_op_t::addr: not_yet("the address operator &");
+    case unary_op_t::addr: return address_of(s, address(s, *u.arg));
 
-    case unary_op_t::deref: not_yet("the indirection operator *");
+    // the load row from [L], at the object's width and extension
+    case unary_op_t::deref: {
+        const auto &type = integer(t);
+        return load(s, pointed(s, *u.arg), type, std::max(32, type.width));
+    }
     }
 
     throw std::logic_error("c1: an unknown unary operator");
 }
 
-// Plain or compound assignment to a slot; its value is the value
-// stored, the low bytes of L.  Plain: the right operand, then the
-// store.  Compound: the right operand first, then, as one piece and
-// nothing evaluated between, the load of the object extended into the
-// common type the parser chose, the operation, and the store of the
-// result's low bytes back (G2), so the object is read after the right
-// operand (G13).  6.5.17.3p4: "with respect to an indeterminately
-// sequenced function call, the operation of a compound assignment is a
-// single evaluation."
+// Plain or compound assignment to an object in memory; its value is
+// the value stored, the low bytes of L.  The lvalue's address comes
+// first (G13) and is held across the right operand.  Plain: the right
+// operand, then the store.  Compound: the right operand, then, as one
+// piece and nothing evaluated between, the load of the object through
+// the held address, extended into the common type the parser chose, the
+// operation, and the store of the result's low bytes back through the
+// same address (G2), so the object is read after the right operand.
+// 6.5.17.3p4: "with respect to an indeterminately sequenced function
+// call, the operation of a compound assignment is a single evaluation."
 value_t
 assign(state_t &s, const assign_t &a)
 {
@@ -1315,6 +1447,7 @@ assign(state_t &s, const assign_t &a)
     if (!a.op) {
         const auto v = rvalue(s, *a.rhs);
         store(s, v, place, t.width);
+        release(s, place);
         return v;
     }
 
@@ -1323,9 +1456,10 @@ assign(state_t &s, const assign_t &a)
 
     // the value of the expression has the lvalue's type: the bits
     // above its width are the operation's, not the value's extension
-    const auto l = load(s, place, t, width);
+    const auto l = fetch(s, place, t, width);
     const auto v = arithmetic(s, *a.op, l, r, a.common);
     store(s, v, place, t.width);
+    release(s, place);
     s.values[v.id].valid = std::min(s.values[v.id].valid, t.width);
 
     return v;
@@ -1336,8 +1470,12 @@ assign(state_t &s, const assign_t &a)
 // operand's signedness, and only when the register is not already
 // valid to the new width, as it is after the load of a char or a 32-bit
 // write of an unsigned value.  A change of signedness alone is nothing.
-// A cast to void evaluates its operand for its effect alone, chapter
-// 6.6.  An array, which decays here, 6.3.2.1p3, is slice 2's.
+// A pointer is its integer view, so pointer to pointer is nothing, an
+// integer widens to a pointer by its own signedness (6.3.2.3p5), sxtw
+// for an int, and a pointer narrows to an integer by its low bits (p6).
+// An array decays to its address, 6.3.2.1p3, a string literal's
+// included.  A cast to void evaluates its operand for its effect alone,
+// chapter 6.6.
 value_t
 cast(state_t &s, const cast_t &c, const type_t &to)
 {
@@ -1346,11 +1484,8 @@ cast(state_t &s, const cast_t &c, const type_t &to)
         return { };
     }
 
-    if (is< string_t >(*c.arg))
-        not_yet("a string literal");
-
     if (is< array_t >(c.arg->type))
-        not_yet("the use of an array");
+        return address_of(s, address(s, *c.arg));
 
     const auto &from = integer(c.arg->type);
     const auto &into = integer(to);
@@ -1580,12 +1715,13 @@ modify(state_t &s, const unary_t &u)
 // cctab: an expression evaluated for its side effects, its value not
 // wanted.  The machine has no memory forms, so a compound assignment is
 // its value context's load, operation and store, and the value is
-// discarded.  A plain assignment is the store row of an initializer,
-// initialize(), which stores a zero from the zero register.  The
-// context reaches through the operators that discard a value: a
-// conditional's arms, both operands of a comma, whose left one is in
-// this context wherever the comma stands (6.5.18p2), and, by cast(),
-// the operand of a cast to void; anything else is its value, discarded.
+// discarded.  A plain assignment is the lvalue's address, then the
+// store row of an initializer through it, initialize(), which stores a
+// zero from the zero register, str wzr, [x0].  The context reaches
+// through the operators that discard a value: a conditional's arms,
+// both operands of a comma, whose left one is in this context wherever
+// the comma stands (6.5.18p2), and, by cast(), the operand of a cast to
+// void; anything else is its value, discarded.
 void
 effect(state_t &s, const expr_t &e)
 {
@@ -1595,7 +1731,9 @@ effect(state_t &s, const expr_t &e)
         if (register_variable(*a.lhs))
             not_yet("a register variable");
 
-        initialize(s, *a.rhs, address(s, *a.lhs), integer(a.lhs->type));
+        const auto place = address(s, *a.lhs);
+        initialize(s, *a.rhs, place, integer(a.lhs->type));
+        release(s, place);
         return;
     }
 
@@ -1948,7 +2086,8 @@ function(state_t &s, const function_decl_t &fd)
 
 // The functions the unit defines, in order; one it only declares
 // writes nothing, since the assembler leaves its symbol to the link.
-// The note section marks the stack not executable.
+// The string literals follow the last function, chapter 10.  The note
+// section marks the stack not executable.
 void
 generate_aarch64(const unit_t &unit,
                  const target_t &target,
@@ -1962,6 +2101,8 @@ generate_aarch64(const unit_t &unit,
     for (const auto &fd : unit.functions)
         if (fd.body)
             function(s, fd);
+
+    literals(s.out, s.strings);
 
     out << "\t.section\t.note.GNU-stack,\"\",@progbits\n";
 }

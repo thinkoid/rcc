@@ -5,7 +5,11 @@
    On x86-64, which has one mov for every alignment, the listing must
    show load() loading p into rax with movq and reading through it with
    movl (%rax), %eax, and store() writing v with movl %ecx, (%rax) and
-   no jmp after it. */
+   no jmp after it.
+
+   On aarch64 the listing must show load() loading p into x0 with ldr
+   and reading through it with ldr w0, [x0], and store() writing v
+   with str w1, [x0] and no b after it. */
 int load(int *p)
 {
     return *p;
