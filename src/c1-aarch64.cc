@@ -4,16 +4,16 @@
 // out, for clang and GNU as.  docs/aarch64.md is the design, with
 // docs/backend.md where it says the model carries; this file
 // implements its chapters 4 to 8 and 10, with c1-common.cc, and each
-// function names the row it writes.  It holds slices 1 and 2: the
-// frame and straight-line code on integers, conditions and control, and
+// function names the row it writes.  It holds slices 1 to 3: the frame
+// and straight-line code on integers, conditions and control, and
 // calls; the address of an object, the indirection through a pointer,
 // the use of an array and a string literal, pointer arithmetic and the
-// subscript.  Of slice 3 it holds a register variable as a place: the
-// save area, the binding, the borrowed read, plain assignment, the
-// declaration, the register parameter and the held values of backend.md
-// 6.7; a compound assignment, a ++ and a -- of one are not yet.  A
-// construct of a later slice throws logic_error("c1: not yet: ..."), and
-// a tree the parser cannot make throws logic_error("c1: ...").
+// subscript; the register variable: the save area, the binding, the
+// borrowed read, plain assignment, the declaration, the register
+// parameter, the held values of backend.md 6.7, and the compound
+// assignment, the ++ and the -- in place.  A construct of a later slice
+// throws logic_error("c1: not yet: ..."), and a tree the parser cannot
+// make throws logic_error("c1: ...").
 
 #include "c1.hh"
 #include "c1-common.hh"
@@ -105,10 +105,10 @@ constexpr int frame_record = 16;
 // that finds the value valid to its width writes nothing.  A read of a
 // register variable is borrowed (backend.md 6.7): variable names it, and
 // reg is the variable's register, which the value does not own.  A
-// borrowed read is never spilled or freed, no row writes its register,
-// and it survives a call, since the register is callee-saved.  across
-// counts the branches whose paths the value is held across, which may
-// not move it (backend.md 6.7).
+// borrowed read is never spilled or freed, no row writes its register
+// but a compound assignment's in place, and it survives a call, since
+// the register is callee-saved.  across counts the branches whose paths
+// the value is held across, which may not move it (backend.md 6.7).
 struct held_t
 {
     int reg;
@@ -162,6 +162,10 @@ struct state_t
     int variables = 0;
     int used = 0;
     int saved = 0;
+
+    // the read of a compound assignment's register variable, which its
+    // operation writes in place
+    int in_place = -1;
 
     std::string function { };
     int labels = 0;
@@ -621,11 +625,13 @@ copy(state_t &s, value_t v, reg_t to)
 // destination's after it.  A binary row frees R first, in 6.1's order,
 // R freed and then the result placed: the instruction consumes R, so
 // the fresh register is the lowest free one with R's among them, mul
-// w0, w19, w0.
+// w0, w19, w0.  The read of a compound assignment's own variable,
+// s.in_place, is the exception: its destination is the variable's
+// register, add w19, w19, w0, chapter 4.
 reg_t
 destination(state_t &s, value_t v, unsigned avoid = 0)
 {
-    if (!fixed(s, v))
+    if (!fixed(s, v) || v.id == s.in_place)
         return reg_of(s, v, avoid);
 
     check_movable(s, v.id);
@@ -1036,6 +1042,8 @@ pointed(state_t &s, const expr_t &p)
                      .displacement = static_cast< int >(d) };
     }
 
+    // p[i], *(p + i): the pointer is written first, so the base is
+    // generated first and the index after it (G13), [x0, w1, sxtw #2].
     if (left) {
         const auto base = rvalue(s, pointer);
         const auto index = index_of(s, n);
@@ -1045,6 +1053,8 @@ pointed(state_t &s, const expr_t &p)
                  .shift = shift_of(size) };
     }
 
+    // i[p], *(i + p): the integer is written first, so the index is
+    // generated first.  The operand is the same, [x1, w0, sxtw #2].
     const auto index = index_of(s, n);
     const auto base = rvalue(s, pointer);
 
@@ -1431,7 +1441,9 @@ right_operand(state_t &s, binary_op_t op, const expr_t &rhs, int width)
 // and freed, then msub, L - N * R, sdiv N, L, R; msub L, N, R, L.  A
 // borrowed read as L writes into the fresh register of destination(),
 // which takes the quotient and then the result, sdiv w0, w19, w20; msub
-// w0, w0, w20, w19.
+// w0, w0, w20, w19.  In place the destination is L, which msub still
+// reads, so the quotient has a register of its own, as for an owned L:
+// sdiv w1, w19, w0; msub w19, w1, w0, w19.
 value_t
 divide(state_t &s, binary_op_t op, value_t l, value_t r, const int_t &t)
 {
@@ -1449,9 +1461,8 @@ divide(state_t &s, binary_op_t op, value_t l, value_t r, const int_t &t)
         insn(s, mnemonic, { result, left, right });
     }
     else {
-        const bool borrowed = fixed(s, l);
         const reg_t to = destination(s, l, bit(r_reg));
-        const reg_t n = borrowed ? to : take(s, bit(l_reg) | bit(r_reg));
+        const reg_t n = to != l_reg ? to : take(s, bit(l_reg) | bit(r_reg));
 
         const auto quotient = reg(n, width);
         insn(s, mnemonic, { quotient, left, right });
@@ -1502,9 +1513,10 @@ shift(state_t &s, binary_op_t op, value_t l, const right_t &r, const int_t &t)
 // An arithmetic, bitwise or shift operator on the held left value and
 // the generated right operand, in type t, chapter 6.1: op L, L, R, the
 // result in L, or op L, L, #c for an immediate.  A borrowed read as L
-// writes into a fresh register, op N, L, R, by destination(); as R it
-// is the operand as it is.  G1: add, sub, mul and lsl wrap; mul is the
-// same instruction for unsigned, the low bits agree.
+// writes into a fresh register, op N, L, R, by destination(), unless it
+// is the variable a compound assignment writes in place, add w19, w19,
+// w0; as R it is the operand as it is.  G1: add, sub, mul and lsl wrap;
+// mul is the same instruction for unsigned, the low bits agree.
 value_t
 arithmetic(
     state_t &s, binary_op_t op, value_t l, const right_t &r, const type_t &t)
@@ -1587,7 +1599,9 @@ displacement(state_t &s, const expr_t &n, long size)
 // order, add L, L, R, and the shifted or extended one, which the
 // instruction takes last only, is add L, R, wL, sxtw #2.  A borrowed read
 // as the value an instruction writes, L, or n under the mul, writes into
-// a fresh register by destination(), add x0, x19, w20, sxtw #2, 6.1.
+// a fresh register by destination(), add x0, x19, w20, sxtw #2, 6.1.  p
+// += n writes the pointer in place, add x19, x19, w0, sxtw #2, and the
+// product of a factor, which is n's, never lands in it.
 value_t
 offset(state_t &s,
        binary_op_t op,
@@ -1919,6 +1933,41 @@ binary(state_t &s, const expr_t &e)
     return arithmetic(s, b.op, l, r, e.type);
 }
 
+// ++ and -- of a register variable, chapter 4: add or sub of 1, or of
+// the size for a pointer, on its register in place, add w21, w21, #1,
+// the size as step() has it, then the re-extension of a narrow one,
+// sxtb w19, w19, which is establish() from the variable's own register.
+// The postfix forms read the variable first, and preserve() copies the
+// read into an expression register before the write, mov w0, w19: that
+// copy is the value, G13's copy of chapter 4.  The prefix forms yield a
+// read of the variable after the write, as a compound assignment does.
+value_t
+step_register(state_t &s, unary_op_t op, const symbol_t *sym)
+{
+    const auto &t = integer(sym->type);
+    const int width = register_width(sym);
+    const long amount = is< pointer_t >(sym->type) ? stride(sym->type) : 1;
+
+    const bool up = op == unary_op_t::pre_inc || op == unary_op_t::post_inc;
+    const bool post = op == unary_op_t::post_inc || op == unary_op_t::post_dec;
+
+    const auto old = post ? read(s, sym) : value_t { };
+    preserve(s, sym);
+
+    const auto r = reg(variable_register(s, sym), width);
+
+    const auto n = product(s, amount);
+    const auto by =
+        n.immediate.empty() ? reg(reg_of(s, n.value), width) : n.immediate;
+    insn(s, up ? "add" : "sub", { r, r, by });
+    release(s, n.value);
+
+    if (t.width < 32)
+        establish(s, sym, variable_register(s, sym));
+
+    return post ? old : read(s, sym);
+}
+
 // ++ and --, either side: the address once, the load, add or sub of 1,
 // or of the size for a pointer (6.5.4.1p2, 6.5.3.5p2), the store
 // through the same address, held between the two; G1, the machine
@@ -1928,12 +1977,13 @@ binary(state_t &s, const expr_t &e)
 // stored, so no operator sees 8 or 16 bits.  The prefix forms operate
 // on the loaded value's register and yield it.  The postfix forms name
 // another register as the destination, add w1, w0, #1, and yield the
-// old value where the load left it: nothing is copied, 6.1.
+// old value where the load left it: nothing is copied, 6.1.  A register
+// variable's is step_register()'s.
 value_t
 step(state_t &s, unary_op_t op, const expr_t &arg)
 {
-    if (register_variable(arg))
-        not_yet("a register variable");
+    if (const auto *sym = register_variable(arg))
+        return step_register(s, op, sym);
 
     const auto &t = integer(arg.type);
     const int width = std::max(32, t.width);
@@ -2021,29 +2071,73 @@ unary(state_t &s, const unary_t &u, const type_t &t)
     throw std::logic_error("c1: an unknown unary operator");
 }
 
-// Plain assignment to a register variable, chapter 4, after preserve()
-// has copied every read of it an enclosing expression still holds, x +
-// (x = e).  A constant is the constant row into the variable's
+// A compound assignment's result into its register variable, chapter
+// 4.  In place, the operation wrote the register at the operation's
+// width, and a narrow variable is re-extended, sxtb w19, w19, as is a
+// 32-bit one an operation of 64 bits wrote whole, mov w19, w19;
+// otherwise the result is moved in by establish(), mov w19, w0.
+void
+settle(state_t &s, const symbol_t *sym, value_t v, int width)
+{
+    if (!fixed(s, v)) {
+        establish(s, sym, reg_of(s, v));
+        return;
+    }
+
+    const auto &t = integer(sym->type);
+    if (t.width < 32 || width > register_width(sym))
+        establish(s, sym, variable_register(s, sym));
+}
+
+// Assignment to a register variable, chapter 4, after preserve() has
+// copied every read of it an enclosing expression still holds, x + (x
+// = e).  Plain: a constant is the constant row into the variable's
 // register, mov w20, #0, and the value is a read of the variable;
 // anything else is the right operand, then the mov of establish() into
 // the register, mov w20, w0, or mov w19, w20 from another register
 // variable, and the value stays the right operand's, valid to what it
-// left, as for a slot.  A compound assignment to one is a not-yet.
+// left, as for a slot.  Compound: the right operand first, then the
+// operation's row with the variable's register as L and as the
+// destination, in place, add w19, w19, w0, add w19, w19, #5, sdiv w19,
+// w19, w0; p += n and p -= n by the row of p + n, add x19, x19, w0, sxtw
+// #2.  The value is a read of the variable after the write.  The
+// variable is read by the operation, after the right operand, as a
+// slot's object is (G13), so no read of it is held across the right
+// operand: r += (r = 2) is mov w19, #2 and add w19, w19, w19.  The read
+// is extended into a fresh register first when the operation is wider
+// than the register is valid to, sxtw x1, w19 for int += long, and
+// settle() moves the result in.
 value_t
 assign_register(state_t &s, const assign_t &a, const symbol_t *sym)
 {
-    if (a.op)
-        not_yet("a register variable");
-
     preserve(s, sym);
 
-    if (constant_into(s, sym, *a.rhs))
-        return read(s, sym);
+    if (!a.op) {
+        if (constant_into(s, sym, *a.rhs))
+            return read(s, sym);
 
-    const auto v = rvalue(s, *a.rhs);
-    establish(s, sym, reg_of(s, v));
+        const auto v = rvalue(s, *a.rhs);
+        establish(s, sym, reg_of(s, v));
 
-    return v;
+        return v;
+    }
+
+    const int width = operation_width(a.common);
+    const bool stepped = is< pointer_t >(sym->type);
+
+    const auto r = stepped ? displacement(s, *a.rhs, stride(sym->type)) :
+                             right_operand(s, *a.op, *a.rhs, width);
+    const auto l = extended(s, read(s, sym), integer(sym->type), width);
+
+    const int outer = std::exchange(s.in_place, l.id);
+    const auto v = stepped ? offset(s, *a.op, l, r, true) :
+                             arithmetic(s, *a.op, l, r, a.common);
+    s.in_place = outer;
+
+    settle(s, sym, v, width);
+    release(s, v);
+
+    return read(s, sym);
 }
 
 // Plain or compound assignment to an object in memory; its value is
@@ -2334,7 +2428,8 @@ cbranch(state_t &s, const expr_t &e, int label, bool sense)
 
 // ++ and -- for their effect: the load, add or sub of 1 and the store,
 // chapter 6.6, in one register, since nothing reads the old value: the
-// prefix form, its value discarded.
+// prefix form, its value discarded.  A register variable's prefix form
+// is add w19, w19, #1 alone, and copies no read.
 void
 modify(state_t &s, const unary_t &u)
 {
@@ -2347,15 +2442,16 @@ modify(state_t &s, const unary_t &u)
 // The effect context, chapter 6.6, Ritchie's efftab beside regtab and
 // cctab: an expression evaluated for its side effects, its value not
 // wanted.  The machine has no memory forms, so a compound assignment is
-// its value context's load, operation and store, and the value is
-// discarded.  A plain assignment is the lvalue's address, then the
-// store row of an initializer through it, initialize(), which stores a
-// zero from the zero register, str wzr, [x0]; to a register variable it
-// is the mov into its register, as for its value.  The context reaches
-// through the operators that discard a value: a conditional's arms,
-// both operands of a comma, whose left one is in this context wherever
-// the comma stands (6.5.18p2), and, by cast(), the operand of a cast to
-// void; anything else is its value, discarded.
+// its value context's load, operation and store, or its operation in
+// place on a register variable, and the value is discarded.  A plain
+// assignment is the lvalue's address, then the store row of an
+// initializer through it, initialize(), which stores a zero from the
+// zero register, str wzr, [x0]; to a register variable it is the mov
+// into its register, as for its value.  The context reaches through the
+// operators that discard a value: a conditional's arms, both operands
+// of a comma, whose left one is in this context wherever the comma
+// stands (6.5.18p2), and, by cast(), the operand of a cast to void;
+// anything else is its value, discarded.
 void
 effect(state_t &s, const expr_t &e)
 {
@@ -2820,6 +2916,7 @@ function(state_t &s, const function_decl_t &fd)
     s.variables = 0;
     s.used = 0;
     s.saved = registers_saved(fd);
+    s.in_place = -1;
     s.frame = saved_at(s.saved);
     s.function = fd.sym->name;
     s.labels = 0;
