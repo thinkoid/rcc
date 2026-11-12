@@ -8,9 +8,12 @@
 // frame and straight-line code on integers, conditions and control, and
 // calls; the address of an object, the indirection through a pointer,
 // the use of an array and a string literal, pointer arithmetic and the
-// subscript.  A construct of a later slice throws logic_error("c1: not
-// yet: ..."), and a tree the parser cannot make throws logic_error("c1:
-// ...").
+// subscript.  Of slice 3 it holds a register variable as a place: the
+// save area, the binding, the borrowed read, plain assignment, the
+// declaration, the register parameter and the held values of backend.md
+// 6.7; a compound assignment, a ++ and a -- of one are not yet.  A
+// construct of a later slice throws logic_error("c1: not yet: ..."), and
+// a tree the parser cannot make throws logic_error("c1: ...").
 
 #include "c1.hh"
 #include "c1-common.hh"
@@ -78,6 +81,13 @@ constexpr reg_t expression_registers[] = { x0, x1,  x2,  x3,  x4,  x5,  x6, x7,
 
 constexpr int register_count = x16;
 
+// The ten register-variable registers, chapter 4: the callee-saved set
+// but the frame pointer, in the order the variables take them, x19
+// first.  The state keeps no owner for them, since a read of a register
+// variable is borrowed, never owned.
+constexpr reg_t variable_registers[] = { x19, x20, x21, x22, x23,
+                                         x24, x25, x26, x27, x28 };
+
 // The convention's argument registers, in order, chapter 3.
 constexpr reg_t argument_registers[] = { x0, x1, x2, x3, x4, x5, x6, x7 };
 
@@ -92,9 +102,13 @@ constexpr int frame_record = 16;
 // type's signedness: what the instruction that wrote it left there.  A
 // load extends to 32 or 64, a write to a w name clears the upper half, a
 // narrowing cast leaves the bits above its width stale; a widening cast
-// that finds the value valid to its width writes nothing.  across counts
-// the branches whose paths the value is held across, which may not move
-// it (backend.md 6.7).
+// that finds the value valid to its width writes nothing.  A read of a
+// register variable is borrowed (backend.md 6.7): variable names it, and
+// reg is the variable's register, which the value does not own.  A
+// borrowed read is never spilled or freed, no row writes its register,
+// and it survives a call, since the register is callee-saved.  across
+// counts the branches whose paths the value is held across, which may
+// not move it (backend.md 6.7).
 struct held_t
 {
     int reg;
@@ -102,6 +116,7 @@ struct held_t
     long age;
     bool live;
     int valid;
+    const symbol_t *variable;
     int across = 0;
 };
 
@@ -139,6 +154,14 @@ struct state_t
     std::vector< held_t > values { };
     long age = 0;
     int live = 0;
+
+    // each register variable's register; how many are live, the most
+    // live at once, and the registers the save area holds, which the
+    // body's first slot lies above
+    std::unordered_map< const symbol_t *, reg_t > registers { };
+    int variables = 0;
+    int used = 0;
+    int saved = 0;
 
     std::string function { };
     int labels = 0;
@@ -428,7 +451,7 @@ hold(state_t &s, reg_t r, int valid)
 {
     const int id = static_cast< int >(s.values.size());
 
-    s.values.push_back({ r, 0, s.age++, true, valid });
+    s.values.push_back({ r, 0, s.age++, true, valid, nullptr });
     s.owner[r] = id;
     ++s.live;
 
@@ -473,7 +496,9 @@ reg_of(state_t &s, value_t v, unsigned avoid = 0)
     return r;
 }
 
-// The value is consumed: its register, if it has one, is free.
+// The value is consumed: its register, if it has one and owns it, is
+// free.  A borrowed read's register is the variable's, which has no
+// owner entry.
 void
 release(state_t &s, value_t v)
 {
@@ -481,7 +506,7 @@ release(state_t &s, value_t v)
         return;
 
     auto &h = s.values[v.id];
-    if (h.reg >= 0)
+    if (h.reg >= 0 && !h.variable)
         s.owner[h.reg] = -1;
 
     h.reg = -1;
@@ -505,6 +530,159 @@ operands(state_t &s, value_t l, value_t r)
 value_t rvalue(state_t &, const expr_t &);
 void cbranch(state_t &, const expr_t &, int label, bool sense);
 void effect(state_t &, const expr_t &);
+
+// register variables
+
+// Whether a value is a register variable's read, a borrowed one.
+bool
+fixed(const state_t &s, value_t v)
+{
+    return v.id >= 0 && s.values[v.id].variable != nullptr;
+}
+
+// The register a register variable lives in, from its declaration to
+// the end of its block.
+reg_t
+variable_register(const state_t &s, const symbol_t *sym)
+{
+    const auto it = s.registers.find(sym);
+    if (it == s.registers.end())
+        throw std::logic_error(
+            "c1: a register variable before its declaration");
+
+    return it->second;
+}
+
+// The width a register variable's register is written at: 64 bits for a
+// long or a pointer, 32 for the rest.
+int
+register_width(const symbol_t *sym)
+{
+    return std::max(32, integer(sym->type).width);
+}
+
+// The next of the ten for a register variable met in declaration order,
+// chapter 4; a block's end gives its variables' registers back, so a
+// later block takes them again from x19.  The parser keeps an eleventh
+// live one out of a register.
+void
+bind(state_t &s, const symbol_t *sym)
+{
+    if (s.variables == static_cast< int >(std::size(variable_registers)))
+        throw std::logic_error("c1: an eleventh register variable");
+
+    s.registers.insert_or_assign(sym, variable_registers[s.variables++]);
+    s.used = std::max(s.used, s.variables);
+}
+
+// A read of a register variable: its register as an operand, and no
+// instruction, chapter 4.  The register holds the value as establish()
+// left it, which is what the read is valid to.
+value_t
+read(state_t &s, const symbol_t *sym)
+{
+    const auto &t = integer(sym->type);
+    const int id = static_cast< int >(s.values.size());
+
+    s.values.push_back({ variable_register(s, sym), 0, s.age++, true,
+                         written(register_width(sym), t.is_signed), sym });
+    ++s.live;
+
+    return { id };
+}
+
+// Copies a borrowed read into the free expression register to, by mov
+// at its variable's register width, mov w0, w19; the value is then to's,
+// owned, valid to what it was, since the mov carries every bit the read
+// was valid to.  preserve() and the first arm of a ?: copy a read, and a
+// return's mov into x0 is the third copy chapter 4 keeps.
+void
+copy(state_t &s, value_t v, reg_t to)
+{
+    check_movable(s, v.id);
+
+    auto &h = s.values[v.id];
+    const int width = register_width(h.variable);
+
+    insn(s, "mov", { reg(to, width), reg(static_cast< reg_t >(h.reg), width) });
+
+    h.reg = to;
+    h.variable = nullptr;
+    s.owner[to] = v.id;
+}
+
+// The register a row writes its result into, chapter 6.1: an owned
+// value's own, reloaded outside avoid if it was spilled; for a borrowed
+// read a fresh expression register outside avoid, which the value owns
+// from here on, and no instruction.  No copy precedes the instruction
+// that writes: the row names the variable's register as its source and
+// the fresh one as its destination, sub w0, w19, w20.  The caller takes
+// the source's register before this, since the value's register is the
+// destination's after it.  A binary row frees R first, in 6.1's order,
+// R freed and then the result placed: the instruction consumes R, so
+// the fresh register is the lowest free one with R's among them, mul
+// w0, w19, w0.
+reg_t
+destination(state_t &s, value_t v, unsigned avoid = 0)
+{
+    if (!fixed(s, v))
+        return reg_of(s, v, avoid);
+
+    check_movable(s, v.id);
+
+    const reg_t r = take(s, avoid);
+
+    auto &h = s.values[v.id];
+    h.reg = r;
+    h.variable = nullptr;
+    s.owner[r] = v.id;
+
+    return r;
+}
+
+// Before a register variable is written, each of its reads still held
+// is copied into an expression register, so it keeps the value it read:
+// G13, an operand's side effects complete before the next operand
+// starts.
+void
+preserve(state_t &s, const symbol_t *sym)
+{
+    for (std::size_t id = 0; id < s.values.size(); ++id)
+        if (s.values[id].live && s.values[id].variable == sym)
+            copy(s, { static_cast< int >(id) }, take(s, 0));
+}
+
+// Saves a held value to a spill slot, whichever kind it is, backend.md
+// 6.7: an owned value in a register is spilled, and a borrowed read has
+// its variable's register stored, all 8 bytes, str x19, [x29, #40], with
+// no copy.  The read is then owned and spilled, no longer the
+// variable's, so a later write of the variable leaves it alone; valid
+// holds, since the reload is all 8 bytes too.  An owned value already
+// spilled is saved as it is.
+void
+save(state_t &s, value_t v)
+{
+    auto &h = s.values[v.id];
+    if (h.reg < 0)
+        return;
+
+    const reg_t r = static_cast< reg_t >(h.reg);
+    if (!h.variable) {
+        spill(s, r);
+        return;
+    }
+
+    check_movable(s, v.id);
+
+    const int displacement = allocate(s, 8, 8);
+
+    const auto to = slot_operand(s, displacement, 8);
+    insn(s, "str", { reg(r, 64), to });
+
+    h.reg = -1;
+    h.spill = displacement;
+    h.variable = nullptr;
+}
 
 // The values held where the paths of a branch diverge, each marked held
 // across the branch for as long as this lives.  Its scope ends where the
@@ -542,16 +720,23 @@ private:
     std::vector< int > m_ids { };
 };
 
-// Before the two paths of &&, || or ?:, every held value is saved, so
-// that it has one location on both: backend.md 6.7.  Every held value
-// is an owned one, since there is no register variable yet, and its
-// save is the spill of 6.2.  Each is then marked held across the paths
-// until they meet, where the caller's incoming_t ends, and a spill or a
-// reload of one inside them is an error of the generator, not a wrong
-// listing.
+// Before the two paths of &&, || or ?:, a borrowed read that e writes is
+// saved, and every owned value is spilled, as for a call; a read e does
+// not write stays in its variable's register.  Each then has one
+// location on both paths: backend.md 6.7.  preserve() on one path alone
+// would leave the paths with two register maps, so each value is then
+// marked held across the paths until they meet, where the caller's
+// incoming_t ends, and a copy, a spill or a reload of one inside them is
+// an error of the generator, not a wrong listing.
 incoming_t
-before_paths(state_t &s)
+before_paths(state_t &s, const expr_t &e)
 {
+    for (std::size_t id = 0; id < s.values.size(); ++id) {
+        const auto &h = s.values[id];
+        if (h.live && h.variable && writes(e, h.variable))
+            save(s, { static_cast< int >(id) });
+    }
+
     spill_all(s);
 
     return incoming_t { s };
@@ -582,7 +767,8 @@ extension(const int_t &from, int to)
 
 // The value extended by from's signedness to a width of 32 or 64, where
 // it is not valid to it already, the width rule: the instruction is
-// written on the value's own register, sxtw xL, wL.
+// written on the value's own register, sxtw xL, wL.  A borrowed read is
+// extended into a fresh register, sxtw x0, w19, by destination(), 6.1.
 value_t
 extended(state_t &s, value_t v, const int_t &from, int to)
 {
@@ -590,13 +776,34 @@ extended(state_t &s, value_t v, const int_t &from, int to)
         return v;
 
     const auto [mnemonic, valid] = extension(from, std::max(32, to));
-    const reg_t r = reg_of(s, v);
+    const reg_t source = reg_of(s, v);
+    const reg_t r = destination(s, v);
     const int width = from.is_signed ? valid : 32;
 
-    insn(s, mnemonic, { reg(r, width), reg(r, 32) });
+    insn(s, mnemonic, { reg(r, width), reg(source, 32) });
     s.values[v.id].valid = valid;
 
     return v;
+}
+
+// The mov into a register variable's register from the register from
+// that keeps the representation, chapter 4: the register holds the
+// value extended to 32 bits by the variable's signedness, which for an
+// unsigned written at 32 is its extension to 64, and a long or a pointer
+// whole.  mov w20, w0 for an int or an unsigned, mov x20, x0 for a long
+// or a pointer; for a narrow type the extension of 6.3, sxtb w19, w0,
+// uxtb w19, w0, sxth or uxth, where the store row has its narrow store:
+// G2's truncation and the representation in one instruction.
+void
+establish(state_t &s, const symbol_t *sym, reg_t from)
+{
+    const auto &t = integer(sym->type);
+    const int width = register_width(sym);
+    const std::string_view mnemonic =
+        t.width < 32 ? extension(t, 32).first : "mov";
+
+    insn(s, mnemonic,
+         { reg(variable_register(s, sym), width), reg(from, width) });
 }
 
 // addresses
@@ -1107,6 +1314,28 @@ literal(state_t &s, const literal_t &l, const type_t &t)
     return v;
 }
 
+// A constant assigned to a register variable, or initializing it, is
+// the constant row of 6.4 into its register, mov w20, #0, chapter 4.
+// The parser folded the constant to the variable's type, so a narrow
+// one is in range and is written as its promotion, which is the
+// register's representation.  False when e is not a constant.
+bool
+constant_into(state_t &s, const symbol_t *sym, const expr_t &e)
+{
+    if (!is< literal_t >(e))
+        return false;
+
+    const auto &t = integer(sym->type);
+    const int width = register_width(sym);
+    const auto value = t.width < 32 ?
+                           widened(as< literal_t >(e).value, t) :
+                           normalized(as< literal_t >(e).value, width);
+
+    constant(s, variable_register(s, sym), value, width);
+
+    return true;
+}
+
 // The store row of an initializer, chapter 6.6: e written into the
 // object at to, at the object's width t, its value not wanted.  A zero
 // constant is the store of the zero register, str wzr, [x29, #16], and
@@ -1199,7 +1428,10 @@ right_operand(state_t &s, binary_op_t op, const expr_t &rhs, int width)
 // trap, 2.6: x / 0 is 0 and INT_MIN / -1 is INT_MIN; nothing looks at
 // the divisor, which is in a register even when it is a constant.  The
 // remainder has no instruction: the quotient into a register N taken
-// and freed, then msub, L - N * R, sdiv N, L, R; msub L, N, R, L.
+// and freed, then msub, L - N * R, sdiv N, L, R; msub L, N, R, L.  A
+// borrowed read as L writes into the fresh register of destination(),
+// which takes the quotient and then the result, sdiv w0, w19, w20; msub
+// w0, w0, w20, w19.
 value_t
 divide(state_t &s, binary_op_t op, value_t l, value_t r, const int_t &t)
 {
@@ -1211,15 +1443,23 @@ divide(state_t &s, binary_op_t op, value_t l, value_t r, const int_t &t)
     const auto right = reg(r_reg, width);
 
     if (op == binary_op_t::div) {
-        insn(s, mnemonic, { left, left, right });
+        release(s, r);
+
+        const auto result = reg(destination(s, l), width);
+        insn(s, mnemonic, { result, left, right });
     }
     else {
-        const auto quotient = reg(take(s, bit(l_reg) | bit(r_reg)), width);
+        const bool borrowed = fixed(s, l);
+        const reg_t to = destination(s, l, bit(r_reg));
+        const reg_t n = borrowed ? to : take(s, bit(l_reg) | bit(r_reg));
+
+        const auto quotient = reg(n, width);
         insn(s, mnemonic, { quotient, left, right });
-        insn(s, "msub", { left, quotient, right, left });
+        insn(s, "msub", { reg(to, width), quotient, right, left });
+
+        release(s, r);
     }
 
-    release(s, r);
     wrote(s, l, width, t.is_signed);
 
     return l;
@@ -1243,16 +1483,17 @@ shift(state_t &s, binary_op_t op, value_t l, const right_t &r, const int_t &t)
 
     if (!r.immediate.empty()) {
         const auto left = reg(reg_of(s, l), width);
-        insn(s, mnemonic, { left, left, r.immediate });
+        const auto to = reg(destination(s, l), width);
+        insn(s, mnemonic, { to, left, r.immediate });
         wrote(s, l, width, t.is_signed);
         return l;
     }
 
     const auto [l_reg, r_reg] = operands(s, l, r.value);
-    const auto left = reg(l_reg, width);
-    insn(s, mnemonic, { left, left, reg(r_reg, width) });
-
     release(s, r.value);
+
+    const auto to = reg(destination(s, l), width);
+    insn(s, mnemonic, { to, reg(l_reg, width), reg(r_reg, width) });
     wrote(s, l, width, t.is_signed);
 
     return l;
@@ -1260,9 +1501,10 @@ shift(state_t &s, binary_op_t op, value_t l, const right_t &r, const int_t &t)
 
 // An arithmetic, bitwise or shift operator on the held left value and
 // the generated right operand, in type t, chapter 6.1: op L, L, R, the
-// result in L, or op L, L, #c for an immediate.  G1: add, sub, mul and
-// lsl wrap; mul is the same instruction for unsigned, the low bits
-// agree.
+// result in L, or op L, L, #c for an immediate.  A borrowed read as L
+// writes into a fresh register, op N, L, R, by destination(); as R it
+// is the operand as it is.  G1: add, sub, mul and lsl wrap; mul is the
+// same instruction for unsigned, the low bits agree.
 value_t
 arithmetic(
     state_t &s, binary_op_t op, value_t l, const right_t &r, const type_t &t)
@@ -1279,16 +1521,17 @@ arithmetic(
 
     if (!r.immediate.empty()) {
         const auto left = reg(reg_of(s, l), width);
-        insn(s, mnemonic, { left, left, r.immediate });
+        const auto to = reg(destination(s, l), width);
+        insn(s, mnemonic, { to, left, r.immediate });
         wrote(s, l, width, integer(t).is_signed);
         return l;
     }
 
     const auto [l_reg, r_reg] = operands(s, l, r.value);
-    const auto left = reg(l_reg, width);
-    insn(s, mnemonic, { left, left, reg(r_reg, width) });
-
     release(s, r.value);
+
+    const auto to = reg(destination(s, l), width);
+    insn(s, mnemonic, { to, reg(l_reg, width), reg(r_reg, width) });
     wrote(s, l, width, integer(t).is_signed);
 
     return l;
@@ -1342,7 +1585,9 @@ displacement(state_t &s, const expr_t &n, long size)
 // L, L, R, add L, L, R, lsl #2, add L, L, wR, sxtw #2.  When n is
 // written first, n + p, it is L: a plain register keeps the source's
 // order, add L, L, R, and the shifted or extended one, which the
-// instruction takes last only, is add L, R, wL, sxtw #2.
+// instruction takes last only, is add L, R, wL, sxtw #2.  A borrowed read
+// as the value an instruction writes, L, or n under the mul, writes into
+// a fresh register by destination(), add x0, x19, w20, sxtw #2, 6.1.
 value_t
 offset(state_t &s,
        binary_op_t op,
@@ -1353,8 +1598,9 @@ offset(state_t &s,
     const auto mnemonic = op == binary_op_t::add ? "add" : "sub";
 
     if (!n.immediate.empty()) {
-        const auto to = reg(reg_of(s, pointer), 64);
-        insn(s, mnemonic, { to, to, n.immediate });
+        const auto from = reg(reg_of(s, pointer), 64);
+        const auto to = reg(destination(s, pointer), 64);
+        insn(s, mnemonic, { to, from, n.immediate });
         wrote(s, pointer, 64, false);
         return pointer;
     }
@@ -1362,26 +1608,32 @@ offset(state_t &s,
     const auto [first, second] = pointer_first ? operands(s, pointer, n.value) :
                                                  operands(s, n.value, pointer);
     const reg_t p = pointer_first ? first : second;
-    const reg_t i = pointer_first ? second : first;
+    reg_t i = pointer_first ? second : first;
 
     if (n.factor != 1) {
         const reg_t factor = take(s, bit(p) | bit(i));
         constant(s, factor, n.factor, 64);
-        insn(s, "mul", { reg(i, 64), reg(i, 64), reg(factor, 64) });
+
+        const reg_t product = destination(s, n.value, bit(p) | bit(factor));
+        insn(s, "mul", { reg(product, 64), reg(i, 64), reg(factor, 64) });
+        i = product;
     }
 
     const auto index = index_operand(i, n.extend, n.shift);
     const bool plain = n.extend == extend_t::lsl && n.shift == 0;
 
-    if (pointer_first)
-        insn(s, mnemonic, { reg(p, 64), reg(p, 64), index });
-    else if (plain)
-        insn(s, mnemonic, { reg(i, 64), reg(i, 64), reg(p, 64) });
-    else
-        insn(s, mnemonic, { reg(i, 64), reg(p, 64), index });
-
     const auto result = pointer_first ? pointer : n.value;
     release(s, pointer_first ? n.value : pointer);
+
+    const auto to = reg(destination(s, result), 64);
+
+    if (pointer_first)
+        insn(s, mnemonic, { to, reg(p, 64), index });
+    else if (plain)
+        insn(s, mnemonic, { to, reg(i, 64), reg(p, 64) });
+    else
+        insn(s, mnemonic, { to, reg(p, 64), index });
+
     wrote(s, result, 64, false);
 
     return result;
@@ -1420,9 +1672,10 @@ difference(state_t &s, const binary_t &b)
     const auto l = rvalue(s, *b.lhs);
     const auto r = rvalue(s, *b.rhs);
     const auto [left, right] = operands(s, l, r);
-    insn(s, "sub", { reg(left, 64), reg(left, 64), reg(right, 64) });
-
     release(s, r);
+
+    const auto to = reg(destination(s, l), 64);
+    insn(s, "sub", { to, reg(left, 64), reg(right, 64) });
     wrote(s, l, 64, true);
 
     if (size == 1)
@@ -1479,14 +1732,15 @@ compare(state_t &s, const binary_t &b)
 
 // A comparison as a value, the row of 6.3: cmp, then cset of the
 // condition into L's w name, the int the operator yields, in one
-// instruction where x86 needs two.
+// instruction where x86 needs two.  A borrowed read as L is only read by
+// the cmp, and the cset takes a fresh register, by destination().
 value_t
 comparison(state_t &s, const binary_t &b)
 {
     const bool is_signed = integer(b.lhs->type).is_signed;
 
     const auto l = compare(s, b);
-    insn(s, "cset", { reg(reg_of(s, l), 32), condition(b.op, is_signed) });
+    insn(s, "cset", { reg(destination(s, l), 32), condition(b.op, is_signed) });
     wrote(s, l, 32, true);
 
     return l;
@@ -1537,7 +1791,7 @@ test_zero(state_t &s,
 value_t
 logical(state_t &s, const expr_t &e)
 {
-    const auto incoming = before_paths(s);
+    const auto incoming = before_paths(s, e);
 
     const int no = new_label(s);
     const int end = new_label(s);
@@ -1566,7 +1820,7 @@ conditional_effect(state_t &s, const expr_t &e)
 {
     const auto &c = as< conditional_t >(e);
 
-    const auto incoming = before_paths(s);
+    const auto incoming = before_paths(s, e);
 
     const int no = new_label(s);
     const int end = new_label(s);
@@ -1584,7 +1838,9 @@ conditional_effect(state_t &s, const expr_t &e)
 
 // 6.5.16p5: the arm not chosen is not evaluated, and the jump says so;
 // never csel.  Each arm's value is moved into the register of the first
-// arm's, by mov at the operation's width, backend.md 7.2.
+// arm's, by mov at the operation's width, backend.md 7.2.  That register
+// is an expression register: a borrowed read as the first arm is copied
+// into one, mov w0, w19, chapter 4.
 value_t
 conditional(state_t &s, const expr_t &e)
 {
@@ -1596,7 +1852,7 @@ conditional(state_t &s, const expr_t &e)
         return { };
     }
 
-    const auto incoming = before_paths(s);
+    const auto incoming = before_paths(s, e);
 
     const int no = new_label(s);
     const int end = new_label(s);
@@ -1606,6 +1862,9 @@ conditional(state_t &s, const expr_t &e)
     const int width = std::max(32, integer(t).width);
 
     const auto yes = rvalue(s, *c.yes);
+    if (fixed(s, yes))
+        copy(s, yes, take(s, 0));
+
     const reg_t into = reg_of(s, yes);
     const int valid = s.values[yes.id].valid;
     release(s, yes);
@@ -1716,7 +1975,8 @@ value_t
 unary(state_t &s, const unary_t &u, const type_t &t)
 {
     switch (u.op) {
-    // G1: neg of INT_MIN is INT_MIN
+    // G1: neg of INT_MIN is INT_MIN.  A borrowed read writes into a
+    // fresh register, neg w0, w19, by destination().
     case unary_op_t::neg:
     case unary_op_t::bit_not: {
         const auto &type = integer(t);
@@ -1724,19 +1984,21 @@ unary(state_t &s, const unary_t &u, const type_t &t)
 
         const auto v = rvalue(s, *u.arg);
         const auto left = reg(reg_of(s, v), width);
-        insn(s, u.op == unary_op_t::neg ? "neg" : "mvn", { left, left });
+        const auto to = reg(destination(s, v), width);
+        insn(s, u.op == unary_op_t::neg ? "neg" : "mvn", { to, left });
         wrote(s, v, width, type.is_signed);
 
         return v;
     }
 
     // as a value, the row of 6.3: the test of zero, then cset L, eq.
-    // The operand is not promoted, so it is tested at its own width.
+    // The operand is not promoted, so it is tested at its own width.  A
+    // borrowed read is only tested, and the cset takes a fresh register.
     case unary_op_t::log_not: {
         const auto v = rvalue(s, *u.arg);
         test_zero(s, v, integer(u.arg->type), std::nullopt);
 
-        insn(s, "cset", { reg(reg_of(s, v), 32), "eq" });
+        insn(s, "cset", { reg(destination(s, v), 32), "eq" });
         wrote(s, v, 32, true);
 
         return v;
@@ -1759,6 +2021,31 @@ unary(state_t &s, const unary_t &u, const type_t &t)
     throw std::logic_error("c1: an unknown unary operator");
 }
 
+// Plain assignment to a register variable, chapter 4, after preserve()
+// has copied every read of it an enclosing expression still holds, x +
+// (x = e).  A constant is the constant row into the variable's
+// register, mov w20, #0, and the value is a read of the variable;
+// anything else is the right operand, then the mov of establish() into
+// the register, mov w20, w0, or mov w19, w20 from another register
+// variable, and the value stays the right operand's, valid to what it
+// left, as for a slot.  A compound assignment to one is a not-yet.
+value_t
+assign_register(state_t &s, const assign_t &a, const symbol_t *sym)
+{
+    if (a.op)
+        not_yet("a register variable");
+
+    preserve(s, sym);
+
+    if (constant_into(s, sym, *a.rhs))
+        return read(s, sym);
+
+    const auto v = rvalue(s, *a.rhs);
+    establish(s, sym, reg_of(s, v));
+
+    return v;
+}
+
 // Plain or compound assignment to an object in memory; its value is
 // the value stored, the low bytes of L.  The lvalue's address comes
 // first (G13) and is held across the right operand.  Plain: the right
@@ -1769,7 +2056,8 @@ unary(state_t &s, const unary_t &u, const type_t &t)
 // same address (G2), so the object is read after the right operand.
 // 6.5.17.3p4: "with respect to an indeterminately sequenced function
 // call, the operation of a compound assignment is a single evaluation."
-// p += n and p -= n are the row of p + n, n its right operand.
+// p += n and p -= n are the row of p + n, n its right operand.  An
+// assignment to a register variable is assign_register()'s.
 value_t
 assign(state_t &s, const assign_t &a)
 {
@@ -1777,13 +2065,13 @@ assign(state_t &s, const assign_t &a)
     const bool stepped = a.op && is< pointer_t >(a.lhs->type);
     const bool shifted = a.op && is_shift(*a.op);
 
-    if (register_variable(*a.lhs))
-        not_yet("a register variable");
-
     // the parser converted the right operand to the common type, widened
     // it to 64 bits for a pointer, or promoted a shift count on its own
     if (!stepped && !shifted && !(a.rhs->type == a.common))
         throw std::logic_error("c1: an assignment across two types");
+
+    if (const auto *sym = register_variable(*a.lhs))
+        return assign_register(s, a, sym);
 
     const auto place = address(s, *a.lhs);
 
@@ -1961,8 +2249,8 @@ rvalue(state_t &s, const expr_t &e)
         return literal(s, as< literal_t >(e), e.type);
 
     if (is< name_t >(e)) {
-        if (register_variable(e))
-            not_yet("a register variable");
+        if (const auto *sym = register_variable(e))
+            return read(s, sym);
 
         const auto &t = integer(e.type);
         return load(s, address(s, e), t, std::max(32, t.width));
@@ -2062,7 +2350,8 @@ modify(state_t &s, const unary_t &u)
 // its value context's load, operation and store, and the value is
 // discarded.  A plain assignment is the lvalue's address, then the
 // store row of an initializer through it, initialize(), which stores a
-// zero from the zero register, str wzr, [x0].  The context reaches
+// zero from the zero register, str wzr, [x0]; to a register variable it
+// is the mov into its register, as for its value.  The context reaches
 // through the operators that discard a value: a conditional's arms,
 // both operands of a comma, whose left one is in this context wherever
 // the comma stands (6.5.18p2), and, by cast(), the operand of a cast to
@@ -2073,8 +2362,10 @@ effect(state_t &s, const expr_t &e)
     if (is< assign_t >(e) && !as< assign_t >(e).op) {
         const auto &a = as< assign_t >(e);
 
-        if (register_variable(*a.lhs))
-            not_yet("a register variable");
+        if (const auto *sym = register_variable(*a.lhs)) {
+            release(s, assign_register(s, a, sym));
+            return;
+        }
 
         const auto place = address(s, *a.lhs);
         initialize(s, *a.rhs, place, integer(a.lhs->type));
@@ -2112,6 +2403,36 @@ expr_stmt(state_t &s, const expr_stmt_t &x)
         effect(s, *x.e);
 }
 
+// A register variable takes the next of the ten where its declaration
+// is met, chapter 4.  A constant initializer is the constant row into
+// the register, mov w19, #0, and any other is its value and the mov of
+// establish().  G5: without one, nothing writes the value; the register
+// holds what the prologue left in it, and every read before the first
+// write reads that.  Where the representation claims more bits than the
+// type has, for a char, a short or an unsigned, it is established on
+// those contents by the extension of the register into itself, sxtb
+// w19, w19 or mov w19, w19: the value of the type in the low bits is
+// unchanged, and the register is the extension every read assumes.
+void
+register_decl(state_t &s, const decl_stmt_t &d)
+{
+    bind(s, d.sym);
+
+    if (d.init && constant_into(s, d.sym, *d.init))
+        return;
+
+    if (d.init) {
+        const auto v = rvalue(s, *d.init);
+        establish(s, d.sym, reg_of(s, v));
+        release(s, v);
+        return;
+    }
+
+    const auto &t = integer(d.sym->type);
+    if (t.width < 32 || (t.width == 32 && !t.is_signed))
+        establish(s, d.sym, variable_register(s, d.sym));
+}
+
 // G12: the slot is taken where the declaration is met, one for the
 // whole activation, and before the initializer, whose scope already
 // holds the name, 6.2.1p7.  G5: without an initializer nothing is
@@ -2122,8 +2443,10 @@ void
 decl_stmt(state_t &s, const decl_stmt_t &d)
 {
     const auto *sym = d.sym;
-    if (sym->in_register)
-        not_yet("a register variable");
+    if (sym->in_register) {
+        register_decl(s, d);
+        return;
+    }
 
     const int displacement =
         allocate(s, size_of(sym->type), align_of(sym->type));
@@ -2135,11 +2458,16 @@ decl_stmt(state_t &s, const decl_stmt_t &d)
     initialize(s, *d.init, slot_address(displacement), integer(sym->type));
 }
 
+// A block's register variables give their registers back at its end.
 void
 block_stmt(state_t &s, const block_t &b)
 {
+    const int variables = s.variables;
+
     for (const auto &st : b.body)
         statement(s, st);
+
+    s.variables = variables;
 }
 
 // backend.md 7.2, with b for jmp: the condition's false exit to the
@@ -2185,11 +2513,18 @@ while_stmt(state_t &s, const while_t &w)
 
 // G14, as for while.  The step has its label, for continue.  The init
 // is a statement, a declaration of several declarators a block of
-// them, and its names are in scope for the whole loop, 6.8.6.4p1.
+// them, and its names are in scope for the whole loop, 6.8.6.4p1, so
+// their registers are given back at the loop's end; such a block's own
+// end is not theirs.
 void
 for_stmt(state_t &s, const for_t &f)
 {
-    if (f.init)
+    const int variables = s.variables;
+
+    if (f.init && is< block_t >(*f.init))
+        for (const auto &st : as< block_t >(*f.init).body)
+            statement(s, st);
+    else if (f.init)
         statement(s, *f.init);
 
     const int cond = new_label(s);
@@ -2208,6 +2543,8 @@ for_stmt(state_t &s, const for_t &f)
     jump(s, cond);
 
     place_label(s, end);
+
+    s.variables = variables;
 }
 
 // The value goes to x0.  A char or a short is not extended: the
@@ -2264,7 +2601,13 @@ statement(state_t &s, const stmt_t &st)
 // declaration order.  Each of the first eight is stored there from its
 // argument register at its width, str w0, [x29, #16], 5.2; one past the
 // eighth is copied there by stack_parameters(), once the frame's size
-// says where the caller left it.
+// says where the caller left it.  A register parameter takes the next of
+// the ten, in parameter order, chapter 4, and no slot.  One of the first
+// eight is moved into it from its argument register by establish(),
+// which extends a narrow one, sxtb w19, w0: the convention leaves the
+// bits above a narrow argument unspecified, and the argument register is
+// caller-saved, so it would not survive the first call.  The moves and
+// the stores are written in parameter order, after the save area.
 void
 parameters(state_t &s, const function_decl_t &fd)
 {
@@ -2272,8 +2615,12 @@ parameters(state_t &s, const function_decl_t &fd)
         const auto *p = fd.params[i];
         const auto &t = integer(p->type);
 
-        if (p->in_register)
-            not_yet("a register parameter");
+        if (p->in_register) {
+            bind(s, p);
+            if (i < std::size(argument_registers))
+                establish(s, p, argument_registers[i]);
+            continue;
+        }
 
         const int displacement =
             allocate(s, size_of(p->type), align_of(p->type));
@@ -2292,9 +2639,11 @@ parameters(state_t &s, const function_decl_t &fd)
 // 8)], and T, the frame's size, is known only once the body is done.
 // The copy is the plain load of the parameter's width, which reads a
 // narrow one at its width, since the convention leaves the bits above it
-// unspecified (chapter 3), and the store to its slot.  A frame at its
-// limit puts the third of them 16 MiB above x29, where the add into x16
-// does not reach, 5.3: a not-yet.
+// unspecified (chapter 3), and the store to its slot.  A register
+// parameter is loaded straight into its register instead, by the load
+// of its type, which extends a narrow one, ldrsb w19, [x29, #48], chapter
+// 4.  A frame at its limit puts the third of them 16 MiB above x29,
+// where the add into x16 does not reach, 5.3: a not-yet.
 void
 stack_parameters(state_t &s, const function_decl_t &fd, long size)
 {
@@ -2302,11 +2651,20 @@ stack_parameters(state_t &s, const function_decl_t &fd, long size)
 
     for (std::size_t i = registers; i < fd.params.size(); ++i) {
         const auto *p = fd.params[i];
-        const int width = integer(p->type).width;
+        const auto &t = integer(p->type);
+        const int width = t.width;
 
         const long above = size + 8 * static_cast< long >(i - registers);
         if (above >= 1L << 24)
             not_yet("a stack parameter 16 MiB or more above the frame record");
+
+        if (p->in_register) {
+            const auto [mnemonic, into] = load_of(t, register_width(p));
+            const auto from =
+                slot_operand(s, static_cast< int >(above), width / 8);
+            insn(s, mnemonic, { reg(variable_register(s, p), into), from });
+            continue;
+        }
 
         copy_in(s, static_cast< int >(above), width);
         copy_out(s, slot_operand(s, slot_of(s, p), width / 8), width);
@@ -2328,10 +2686,32 @@ frame_parts(long size)
     return parts;
 }
 
+// The registers of the ten a function uses, 5.1: its register
+// parameters and the most register variables its body has live at once.
+int
+registers_saved(const function_decl_t &fd)
+{
+    const auto parameters = std::ranges::count_if(
+        fd.params, [](const symbol_t *p) { return p->in_register; });
+
+    return static_cast< int >(parameters) + registers_in(fd.body->body);
+}
+
+// The displacement off x29 of the k-th register of the save area, 5.1:
+// 8 bytes each, from just above the frame record.
+int
+saved_at(int k)
+{
+    return frame_record + 8 * k;
+}
+
 // Chapter 5.2: the frame opened by sub, the frame record stored at its
 // bottom, x29 pointed at it.  Each sub is followed by the canonical frame
 // address's offset from sp so far, and the record by the places of x29
 // and x30 off the canonical frame address, which is sp before the sub.
+// The save area follows, the registers the function uses stored from
+// [x29, #16] in pairs by stp and an odd last one by str, each with its
+// place off the canonical frame address.
 void
 prologue(state_t &s, long size)
 {
@@ -2349,19 +2729,61 @@ prologue(state_t &s, long size)
                          "\tmov\tx29, sp\n"
                          "\t.cfi_def_cfa_register w29\n",
                          -size, 8 - size);
+
+    for (int k = 0; k < s.saved; k += 2) {
+        const reg_t first = variable_registers[k];
+
+        if (k + 1 == s.saved) {
+            s.out << std::format("\tstr\t{}, [x29, #{}]\n"
+                                 "\t.cfi_offset {}, {}\n",
+                                 reg(first, 64), saved_at(k), reg(first, 32),
+                                 saved_at(k) - size);
+            continue;
+        }
+
+        const reg_t second = variable_registers[k + 1];
+        s.out << std::format("\tstp\t{}, {}, [x29, #{}]\n"
+                             "\t.cfi_offset {}, {}\n"
+                             "\t.cfi_offset {}, {}\n",
+                             reg(first, 64), reg(second, 64), saved_at(k),
+                             reg(first, 32), saved_at(k) - size,
+                             reg(second, 32), saved_at(k + 1) - size);
+    }
 }
 
-// The one epilogue: the frame record loaded, the frame closed by add.
-// The label is reached with sp equal to x29, so the canonical frame
-// address moves to sp + size there, before the load gives x29 back to
-// the caller; after it x29 and x30 are in their registers again, and
-// each add leaves the address at what is left of the frame above sp.
+// The one epilogue: the save area loaded, the frame record loaded, the
+// frame closed by add.  The label is reached with sp equal to x29, so
+// the canonical frame address moves to sp + size there, before the load
+// gives x29 back to the caller.  Each register of the save area is
+// loaded as the prologue stored it, and each load is followed by the
+// note that the register holds the caller's value again; after the
+// record's load x29 and x30 are in their registers again, and each add
+// leaves the address at what is left of the frame above sp.
 void
 epilogue(state_t &s, long size)
 {
     s.out << label_name(s.function, s.ret) << ":\n"
-          << std::format("\t.cfi_def_cfa wsp, {}\n", size)
-          << "\tldp\tx29, x30, [sp]\n"
+          << std::format("\t.cfi_def_cfa wsp, {}\n", size);
+
+    for (int k = 0; k < s.saved; k += 2) {
+        const reg_t first = variable_registers[k];
+
+        if (k + 1 == s.saved) {
+            s.out << std::format("\tldr\t{}, [x29, #{}]\n"
+                                 "\t.cfi_restore {}\n",
+                                 reg(first, 64), saved_at(k), reg(first, 32));
+            continue;
+        }
+
+        const reg_t second = variable_registers[k + 1];
+        s.out << std::format("\tldp\t{}, {}, [x29, #{}]\n"
+                             "\t.cfi_restore {}\n"
+                             "\t.cfi_restore {}\n",
+                             reg(first, 64), reg(second, 64), saved_at(k),
+                             reg(first, 32), reg(second, 32));
+    }
+
+    s.out << "\tldp\tx29, x30, [sp]\n"
              "\t.cfi_restore w29\n"
              "\t.cfi_restore w30\n";
 
@@ -2376,13 +2798,15 @@ epilogue(state_t &s, long size)
     s.out << "\tret\n";
 }
 
-// A definition.  The body is generated first, into the buffer, and the
-// prologue written after it, when the frame's size is known; so are the
-// copies of the parameters past the eighth, which follow the prologue
-// and precede the body.  The first slot lies above the frame record,
-// and this is the one place that says so.  The one epilogue is reached
-// with x0 as it is, G5's some value, but for main, which returns 0 when
-// it falls off its end, 5.1.2.3.4.
+// A definition.  The registers the save area holds are counted from the
+// tree first, since every slot lies above them; the body is generated
+// next, into the buffer, and the prologue written after it, when the
+// frame's size is known; so are the copies of the parameters past the
+// eighth, which follow the prologue and precede the body.  The first
+// slot lies above the frame record and the save area, and this is the
+// one place that says so.  The one epilogue is reached with x0 as it
+// is, G5's some value, but for main, which returns 0 when it falls off
+// its end, 5.1.2.3.4.
 void
 function(state_t &s, const function_decl_t &fd)
 {
@@ -2392,7 +2816,11 @@ function(state_t &s, const function_decl_t &fd)
     s.values.clear();
     s.age = 0;
     s.live = 0;
-    s.frame = frame_record;
+    s.registers.clear();
+    s.variables = 0;
+    s.used = 0;
+    s.saved = registers_saved(fd);
+    s.frame = saved_at(s.saved);
     s.function = fd.sym->name;
     s.labels = 0;
     s.ret = new_label(s);
@@ -2400,6 +2828,10 @@ function(state_t &s, const function_decl_t &fd)
 
     parameters(s, fd);
     block_stmt(s, *fd.body);
+
+    if (s.used != s.saved)
+        throw std::logic_error(
+            "c1: the save area miscounts the register variables");
 
     if (!s.terminated && s.function == "main")
         insn(s, "mov", { "w0", imm(0) });

@@ -5,7 +5,12 @@
    On x86-64 x is ebx, and the listing must show rbx pushed, no slot and
    no load, both compares cmpl $10, %ebx against the register itself,
    the inverse jumps jge and jl, and each return jumping to the epilogue
-   label, the last one included. */
+   label, the last one included.
+
+   On aarch64 x is w19, and the listing must show x19 stored to the
+   save area, no slot and no load, both compares cmp w19, #10 against
+   the register itself, the inverse branches b.ge and b.lt, and each
+   return jumping to the epilogue label, the last one included. */
 int which(void)
 {
     register int x;
