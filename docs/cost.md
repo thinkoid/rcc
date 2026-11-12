@@ -130,6 +130,8 @@ yet.
 | `p - n` | the index widened, `imulq $4, %rcx, %rcx; subq %rcx, %rax`; for a size of 1, the `sub` alone | |
 | `++p`, `--p`, `p += 2`, `p -= 2` | the size times the constant, an immediate: as a statement, on the pointer's slot, `addq $4, -8(%rbp)`, `subq $8, -8(%rbp)`; for its value, between the load and the store, `subq $8, %rax` | `ptr-step` |
 | `a[i]`, `p[i]` | the access's own address: the array's `leaq -24(%rbp), %rax`, the index widened, `movslq %ecx, %rcx`, then `movl (%rax,%rcx,4), %eax` or `movl %edx, (%rax,%rcx,4)`; a constant index is the displacement, `movsbl 1(%rax), %eax` | `subscript`, `string` |
+| `a[i]` by a `long` | the index loaded whole, `movq -8(%rbp), %rcx`, and not widened; then `movl %edx, (%rax,%rcx,4)` or `movl (%rax,%rcx,4), %eax` | `subscript-long` |
+| `&p[0]`, `&p[3]`, `&p[i]` | the address the access would read, and no access: `&p[0]` is `p` and no instruction, the bare base as `*p`'s is; `&p[3]` and `&p[i]` one `lea` of the addressing form, `leaq 12(%rax), %rax`, and `leaq (%rax,%rcx,4), %rax` after `movslq %ecx, %rcx` | `subscript-address` |
 | `p - q` | `subq %rcx, %rax`; for a size other than 1, `movq $4, %rcx; cqto; idivq %rcx`, a division even for a size of 4, since G6 promises any two pointers and a shift would floor where the division truncates; for a size of 1 the `sub` alone, so `(char *) p - (char *) q` is the cheap spelling | `ptr-diff`, `ptr-diff-char` |
 | `p < q` and the rest | `cmpq %rcx, %rax`, the unsigned `setb %al`, `movzbl %al, %eax` | `ptr-compare` |
 | `if (p)`, `p == 0` | `cmpq $0, %rax`, then `je` as a condition, or `sete %al; movzbl %al, %eax` as a value | `ptr-null` |
@@ -140,16 +142,12 @@ yet.
 
 ### 2.2 aarch64
 
-The rows of slice 1, integers, control and calls (`aarch64.md`
-chapter 14), in the order of 2.1. A row whose programs stop at "not
-yet" on this target has no row here:
-
-- the `register` rows wait for slice 3: `register-loop`,
-  `register-undef`, `register-parameter`, `register-compare`;
-- the rows of pointer arithmetic, the subscript, `*p`, `&x` and the
-  string literal wait for slice 2: `gep`, `gep-stride`, `ptr-step`,
-  `subscript`, `ptr-diff`, `ptr-diff-char`, `deref`, `address-of`,
-  `string`.
+The rows of slices 1 and 2, integers, control and calls, then
+pointers, arrays and string literals (`aarch64.md` chapter 14), in
+the order of 2.1. A row whose programs stop at "not yet" on this
+target has no row here: the `register` rows wait for slice 3,
+`register-loop`, `register-undef`, `register-parameter`,
+`register-compare`.
 
 The two rows of 2.1 with no program have none here either. Two rows
 are this target's alone: a slot beyond reach and a frame of 4096
@@ -188,9 +186,18 @@ bytes or more.
 | a loop-invariant expression | computed every iteration: `a / b` in the body is its two loads and its `sdiv w1, w1, w2`, and `12 * 34` its `add w0, w0, #408` | `invariant` |
 | an expression written twice | computed twice: `a * b + a * b` is two `mul`, `mul w0, w0, w1` and `mul w1, w1, w2`, and `12 * 34 + 12 * 34` two `add w0, w0, #408` | `twice` |
 | more held values than fifteen registers | the values held in `w0` to `w7` and `w9` to `w15`, `ldr w15, [x29, #40]`, `x8` left out; then the oldest held value spilled, `str x0, [x29, #48]`, and reloaded when it is consumed, `ldr x1, [x29, #48]`; `spill`'s eleven values are all held, the last `ldr w11, [x29, #32]` | `spill`, `spill-fifteen` |
+| `p + n`, `m[i]` as a pointer | the index not widened, read by the last operand of `add`, which extends and scales it, `add x0, x0, w1, sxtw #2` for a size of 4; for a size that is not a scale, the index widened first, `sxtw x1, w1`, the size held, `mov x2, #12`, since `mul` takes no immediate, then `mul x1, x1, x2` and `add x0, x0, x1` | `gep`, `gep-stride` |
+| `++p`, `--p`, `p += 2`, `p -= 2` | the size times the constant, an immediate, between the load of the pointer and the store back, as a statement and for its value: `ldr x0, [x29, #16]`, `add x0, x0, #4` or `sub x0, x0, #8`, `str x0, [x29, #16]` | `ptr-step` |
+| `a[i]`, `p[i]` | the access's own address: the array's `add x0, x29, #24`, the index loaded and not widened, `ldr w1, [x29, #16]`, then `str w2, [x0, w1, sxtw #2]` or `ldr w0, [x0, w1, sxtw #2]`, the operand extending and scaling it; a constant index is the displacement, `ldrb w0, [x0, #1]` | `subscript`, `string` |
+| `a[i]` by a `long` | the index loaded whole, `ldr x1, [x29, #16]`, and read by the shifted operand, `str w2, [x0, x1, lsl #2]` or `ldr w0, [x0, x1, lsl #2]`: as many instructions as by an `int` | `subscript-long` |
+| `&p[0]`, `&p[3]`, `&p[i]` | the address the access would read, and no access: `&p[0]` is `p` and no instruction, the bare base as `*p`'s is; `&p[3]` and `&p[i]` one `add`, the machine having no `lea`, `add x0, x0, #12`, and `add x0, x0, w1, sxtw #2` | `subscript-address` |
+| `p - q` | `sub x0, x0, x1`; for a size other than 1, `mov x1, #4; sdiv x0, x0, x1`, a division even for a size of 4, as on x86-64; for a size of 1 the `sub` alone | `ptr-diff`, `ptr-diff-char` |
 | `p < q` and the rest | `cmp x0, x1`, the unsigned `cset w0, lo` | `ptr-compare` |
 | `if (p)`, `p == 0` | the test of zero as a condition, `cbz x0, .Ltest.2`; `cmp x0, #0; cset w0, eq` as a value | `ptr-null` |
+| `*p` | `ldr w0, [x0]`, `str w1, [x0]`; one load or one store at any alignment (G11) | `deref` |
+| `&x` | `add x0, x29, #20` | `address-of` |
 | `(T *) p`, `(long) p`, `(T *) l` | nothing, the load alone, `ldr x0, [x29, #16]`; `sxtw x0, w0` for an `int` | `ptr-int`, `void-pointer` |
+| `"abc"` | `adrp x0, .Ls0; add x0, x0, :lo12:.Ls0`; the bytes a `.string` under a label of their own in `.data`, writable, after the last function | `string` |
 
 ## 3. Verification
 
@@ -225,11 +232,17 @@ changed listing is read by hand against its row of chapter 2 before
 thus shows as a red row, and the row names the construct whose cost
 moved.
 
-`tests/probes` runs last, on the machine's own target only. Each
-probe of `tests/probe/` compiles one source by rcc and by `clang
--O0`, and a `clang` main calls each function of both builds over a
-table of values and compares the results; the calls probe pairs the
-two builds three ways, each calling the other and rcc calling rcc.
+`tests/probes` runs last, on the machine's own target only. Each probe
+of `tests/probe/` compiles one source by rcc and by `clang -O0`, and a
+`clang` main calls each function of both builds over a table of values
+and compares the results; the calls probe pairs the two builds three
+ways, each calling the other and rcc calling rcc. The memory and
+pointers probes compare the memory each function writes as well, byte
+by byte, the first over loads and stores through pointers and the
+second over pointer arithmetic and the subscript. The one place a probe
+does not compare with `clang` is `p - q` for a negative difference that
+is no multiple of a size of 2, 4 or 8: `clang -O0` shifts, and the
+probe's main computes the truncated quotient itself.
 A probe checks values, not costs: that rcc's code computes what
 `clang`'s does, which no pin shows.
 

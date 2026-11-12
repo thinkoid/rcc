@@ -29,16 +29,11 @@ and their answers. The target takes ten register variables, =x19= to
 =x28=, and the oracle's programs run on an aarch64 machine, with no
 emulator. Slice 0, the ground, is in the tree: the target's
 description, =-target=, the generator's files and the pins per
-target. Slice 1, integers, control and calls with the frame of
-chapter 5, is in the tree with its pins, its probes and its
-documents. Two slices remain, each followed by its pins and its
-documents, as the x86-64 slices were:
-
-- slice 2: pointers, arrays and string literals.
-- slice 3: register variables.
-
-Slice 2 brings the cost rows of the subscript by an =int= and by a
-=long= (6.3), which the target asks for.
+target. Slices 1 and 2, integers, control and calls with the frame
+of chapter 5, then pointers, arrays and string literals, are in the
+tree with their pins, their probes and their documents. Slice 3,
+register variables, remains, followed by its pins and its documents,
+as the x86-64 slices were.
 
 Then the measurement on the aarch64 machine, with the tuned sources
 as first written, and the loop-head alignment probe.

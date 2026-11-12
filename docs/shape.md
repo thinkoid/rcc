@@ -295,10 +295,10 @@ of the cost corpus built through c1 and matched its pin, the LLVM
 pipeline was retired.
 
 The second target, aarch64, is written in the same three slices
-(`aarch64.md` chapter 14). The first, integers, control and calls,
-is in the tree, with its pins and the probes that run rcc's code
-against `clang`'s. The second, pointers, arrays and string
-literals, and the third, register variables, remain.
+(`aarch64.md` chapter 14). The first two, integers, control and
+calls, then pointers, arrays and string literals, are in the tree,
+with their pins and the probes that run rcc's code against
+`clang`'s. The third, register variables, remains.
 
 ## 11. Not yet
 

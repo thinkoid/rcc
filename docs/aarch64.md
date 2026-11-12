@@ -12,8 +12,9 @@ citations are N3220; the ABI citations are the AAPCS64, release
 assembled by both `clang` and GNU `as`, and every behaviour stated of
 the machine was run on an aarch64 Linux machine.
 
-Slice 1 of chapter 14, integers, control and calls, is in the tree
-with its pins and its probes; slices 2 and 3 remain.
+Slices 1 and 2 of chapter 14, integers, control and calls, then
+pointers, arrays and string literals, are in the tree with their pins
+and their probes; slice 3, register variables, remains.
 
 ## 0. tl;dr
 
@@ -46,7 +47,7 @@ with its pins and its probes; slices 2 and 3 remain.
   machine as on x86-64. The pins are per target.
 - A subscript by an `int` is one instruction, `ldr w0, [x1, w2, sxtw
   #2]`: the addressing form extends the index itself (6.3).
-- The seven calls of chapter 15 are answered.
+- The eight calls of chapter 15 are answered.
 
 ## 1. What carries, and what does not
 
@@ -508,13 +509,13 @@ For a 32-bit operation (`w` names) or a 64-bit one (`x` names).
 | `a < b` and the rest, as a value | `cmp L, R; cset L, lt` | `lt`, `le`, `gt`, `ge`, `eq`, `ne` signed; `lo`, `ls`, `hi`, `hs` unsigned and for pointers (G7) |
 | `a && b`, `a \|\| b`, `a ? b : c`, as a value | jump code into `L`, `mov L, #1` and `mov L, #0` on the arms | never `csel`: 6.5.16p5, the arm not chosen is not evaluated |
 | `x = e` | the store of 2.2 to the slot, or `mov` into a register variable | 6.6 for a constant |
-| `x op= e`, `++x`, `x++` | the load, the operation, the store, after `e` for `x op= e`; a register variable in place | no memory form, 6.6 |
+| `x op= e`, `++x`, `x++` | the load, the operation, the store, after `e` for `x op= e`; a register variable in place; a pointer's `++` and `--` step by the size, an immediate where `add` encodes it, `add L, L, #4` for an `int *`, and otherwise held in a register | no memory form, 6.6 |
 | `(T) a` | `sxtw L, L` for `int` to `long`; `sxtb`, `sxth`, `uxtb`, `uxth` from a narrow type; each only when `L` is not already valid to the new width; `mov wL, wL` for an `unsigned` not valid to 64; nothing between pointer types and for a pointer to `long`; an integer to a pointer as to `unsigned long`, so `sxtw` for an `int` | G2; the width rule |
 | `&x` | `add L, x29, #d` | two `add`s beyond 4095, 5.3 |
 | `*p` | the load of 2.2 from `[L]` | G8 to G11 |
-| `p[i]`, `a[i]` | the load from `[L, R, lsl #k]`, `[L, R]` for a size of 1; from `[L, wR, sxtw #k]` or `[L, wR, uxtw #k]` for an index held at 32 bits; a constant index is `[L, #c*s]` when the displacement encodes | one instruction; the index's extension is the form's, below (call 5) |
-| `&p[i]` | `add L, L, R, lsl #k`; `add L, L, wR, sxtw #k` for an index held at 32 bits | the same address by `add`, the machine having no `lea` |
-| `p + n`, `p - n` | `add L, L, R` or `sub` for a size of 1; `add L, L, R, lsl #k` or `sub` for 2, 4 or 8; the index held at 32 bits as for `&p[i]`; `mov N, #s; mul R, R, N` first for any other size; a constant `n` is the immediate `#c*s` when it encodes | G6 |
+| `p[i]`, `a[i]` | the load from `[L, R, lsl #k]`, `[L, R]` for a size of 1; from `[L, wR, sxtw #k]` or `[L, wR, uxtw #k]` for an index held at 32 bits; a constant index is `[L, #c*s]` when the displacement encodes, a negative one within 256 bytes the unscaled displacement, `[L, #-4]`; a constant index the access does not encode (2.3) is an index like any other, held in a register by the constant row of 6.4 and read `[L, R, lsl #k]` | one instruction; the index's extension is the form's, below (call 5) |
+| `&p[i]`, `&*p` | the address of `*E` as a value, and no access made (6.5.4.2p3): a bare base is its own value, so `&*p` is `p`, and so is `&p[0]`, a subscript by a constant 0, whose access is `[L]` as `*p`'s is, no instruction (call 8); any other subscript's address is the row of `p + n`: `&p[3]` is `add L, L, #12` for an `int *`, and `&p[i]` is `add L, L, R, lsl #k`, or `add L, L, wR, sxtw #k` for an index held at 32 bits; a row of an array of arrays decays the same way, `m[0]` to `m` | the same address by `add`, the machine having no `lea` |
+| `p + n`, `p - n` | `add L, L, R` or `sub` for a size of 1; `add L, L, R, lsl #k` or `sub` for 2, 4 or 8; the index held at 32 bits as for `&p[i]`; `mov N, #s; mul R, R, N` first for any other size; a constant `n` is the immediate `#c*s` when it encodes, and otherwise the product held in a register by 6.4, `add L, L, R`; for `n + p` the result is in `L`, the integer's register: a plain register keeps the source's order, `add L, L, R`, and the shifted or extended operand, which the instruction takes last only, is `add L, R, wL, sxtw #2` | G6 |
 | `p - q` | `sub L, L, R`; for a size other than 1, `mov R, #s; sdiv L, L, R` | G6: a division |
 | `"abc"` | `adrp L, .Ls<n>; add L, L, :lo12:.Ls<n>` | two instructions, chapter 10 |
 | `f(a, b)` | chapter 8 | |
@@ -537,7 +538,9 @@ convention asks none of the callee, and G16 adds nothing.
 arithmetic is 64 bits by the parser's cast, on both targets. On
 x86-64 the cast's instruction is written, `movslq` for an `int`, and
 the load follows. This machine's addressing form takes a 32-bit index
-and extends it itself, so the cast's operand is generated and what is
+and extends it itself, so the cast is looked through wherever it
+stands, the source's own `p[(long) i]` included, since the tree does
+not tell the two apart. The cast's operand is generated and what is
 held decides the operand:
 
 - valid to 64 bits, a `long` or an `unsigned` written at 32: `[L, R,
@@ -545,8 +548,12 @@ held decides the operand:
 - valid to 32 bits and signed, an `int`: `[L, wR, sxtw #k]`;
 - valid to 32 bits and unsigned, as an `unsigned` call result is:
   `[L, wR, uxtw #k]`;
-- narrower, as a `char` call result is: the cast's instruction
-  extends it to 32 first, `sxtb w2, w2`, and the form does the rest.
+- narrower and signed, as a `signed char` call result is: the cast's
+  instruction extends it to 32 first, `sxtb w2, w2`, and the form
+  does the rest;
+- narrower and unsigned, as a plain `char` call result is on this
+  target: the cast's instruction is `uxtb w2, w2`, which leaves it
+  valid to 64 bits, so the form is `lsl`.
 
 `&p[i]` and `p + n` form the same address by `add` or `sub` with the
 same operand, `add x0, x1, w2, sxtw #2`. A size that is not 1, 2, 4
@@ -842,15 +849,28 @@ values and the two save points of `backend.md` 6.7.
   - `stack-parameter`, the stack parameter's copy (5.2);
   - `large-frame`, a frame of 4096 bytes or more (5.2).
 
-  The rows of the subscript by an `int` and by a `long` (6.3) wait
-  for slice 2.
+  The subscript by an `int` and by a `long` has `subscript` and
+  `subscript-long`, and the subscript's address `subscript-address`
+  (6.3).
 - **The ABI probes** are `tests/probes`, over the probes of
   `tests/probe/`: rcc's code against `clang -O0`'s, function by
   function over a table of values, run on the machine's own target.
   The calls probe pairs the two three ways: `clang`'s code calls
   rcc's, rcc's calls `clang`'s, and rcc's calls rcc's. Its cases
   include narrow arguments and results both ways, calls of none to
-  twelve arguments, and variadic callees.
+  twelve arguments, and variadic callees. The memory probe runs every
+  integer type loaded and stored through a pointer, aligned and not,
+  the address of locals in frames beyond the reach of 5.3, arrays and
+  string literals, and compares the memory each function writes byte
+  by byte, guard bytes included. The pointers probe runs pointer
+  arithmetic and the subscript over pointees of 1, 2, 4 and 8 bytes
+  and rows of 3, 12 and 40, with an index of each integer type as a
+  variable, as a call's result and as a constant on either side of
+  what an immediate or a displacement holds, and compares the memory
+  in the same way. It compares `p - q` with `clang`'s except in one
+  place: for a negative difference that is no multiple of a size of
+  2, 4 or 8, `clang -O0` shifts, and the probe's main computes the
+  truncated quotient itself.
 - **`make test`** runs both scripts for every target with a pin
   directory, and then the probes.
 - **The measurement** is rerun on this machine after the third
@@ -866,7 +886,10 @@ values and the two save points of `backend.md` 6.7.
 1. **Integers, control, calls.** The frame, the prologue, chapters 6
    to 8. Check: the slice's pins read against this page, and the
    three probes. The slice is in the tree.
-2. **Pointers, arrays, string literals.**
+2. **Pointers, arrays, string literals.** The rows of 6.3 from `&x`
+   to `"abc"`, the index under the table, and chapter 10. Check: the
+   slice's pins read against this page, and the memory and pointers
+   probes. The slice is in the tree.
 3. **Register variables.**
 
 Each slice is followed by its pins, read against this page, and its
@@ -874,7 +897,8 @@ documents, as the x86-64 slices were. Then the measurement.
 
 ## 15. The calls
 
-Seven were open in the first draft of this page. The answers:
+Seven were open in the first draft of this page, and an eighth came
+later. The answers:
 
 1. **Two generators**, `src/c1-x86-64.cc` and `src/c1-aarch64.cc`,
    each read whole against its own page (chapter 12). The
@@ -909,6 +933,19 @@ Seven were open in the first draft of this page. The answers:
    `clang`.
 7. **No loop-head alignment** until it is measured on this machine
    (7.2).
+8. **The address of a subscript by a constant 0 is the pointer, and
+   no instruction** (6.3), on both targets. Two readings meet here.
+   6.5.4.2p3 has `&p[0]` "as if the & operator were removed and the
+   [] operator were changed to a + operator", and `p + 0` adds
+   (`backend.md` 6.4: `x + 0` adds), so `&p[0]` would be an `add` of
+   0. Against it, `p[0]` and `*p` are one access on either machine,
+   `movl (%rax), %eax` and `ldr w0, [x0]`: the constant is the
+   displacement of the addressing form, and a displacement of 0 is
+   the bare base. The address of one access is thus the address of
+   the other, and `&*p` is `p`. The page takes the second, since no
+   `+` was written. The cost is that `&p[0]` and `p + 0`, one value,
+   are two listings. `subscript-address` pins the row on both
+   targets.
 
 Decided by the machine, listed so that nothing is decided silently:
 
