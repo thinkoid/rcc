@@ -160,12 +160,13 @@ code of a `backend.md` chapter:
   (chapter 8).
 - A `register` variable takes the next free of the five callee-saved
   registers, by declaration order, and gives it back at the end of
-  its block (chapter 4). Its read is a fixed value: the register
-  itself, never spilled, freed or written. An instruction that would
-  write its destination works on a copy, and a held read is copied
-  before the variable is written, so the read keeps the old value
-  (G13). The registers the prologue pushes are counted from the tree
-  before the body, since the slots lie below them.
+  its block (chapter 4). Its read is borrowed: the register itself,
+  never spilled or freed, and written only by a compound assignment
+  in place. An instruction that would write its destination works on
+  a copy, and a held read is copied before the variable is written,
+  so the read keeps the old value (G13). The registers the prologue
+  pushes are counted from the tree before the body, since the slots
+  lie below them.
 - Three entry points: `rvalue(e)` yields the value in a register,
   `cbranch(e, label, sense)` jumps on its truth and yields no value
   (chapter 7), and `effect(e)` writes its side effects and yields no
@@ -250,6 +251,7 @@ compile database, and three lines of make, a shell script and
     src/c1-aarch64.cc the generator for aarch64
     src/c1-common.hh .cc
                       the part of c1 that is the same for every target
+    src/c1-stack.hh   the register stack, which each generator includes
     src/error.hh      error_t and warning_t
     src/main.cc       the driver
     tests/oracle      the oracle script

@@ -897,13 +897,15 @@ The second is the answer (call 1), with one qualification.
 Some of c1 holds no instruction: the integer view of a type, the
 tree predicates (`writes()`, `registers_in()`, `is_comparison()`),
 the label names, the literals' `.string` block. That part is shared
-from the start, in a file of its own. The register stack, `take()`,
-`spill()`, `hold()` and the rest, is the same idea on both and not
-the same code, since x86's has the reservation and the pins. It is
-written twice, and what proves textually identical after the third
-slice is lifted out then, as a grooming step with both instances in
-hand. Its contract is one, whichever file holds the code: the held
-values and the two save points of `backend.md` 6.7.
+from the start, in a file of its own. The register stack, `spill()`,
+`hold()`, `reg_of()` and the rest, is written once, in
+`src/c1-stack.hh`. Each generator includes it inside its own
+namespace and so compiles it against its own registers. The stack
+writes three instructions, the store to a spill slot, the reload
+from one and the `mov` of a register into another; each generator
+defines them before the include. `take()` stays in each generator,
+since x86's has the reservation, and so do x86's pins. The contract
+is one: the held values and the two save points of `backend.md` 6.7.
 
 ## 13. Verification
 
@@ -1040,7 +1042,8 @@ ninth came later. The answers:
 1. **Two generators**, `src/c1-x86-64.cc` and `src/c1-aarch64.cc`,
    each read whole against its own page (chapter 12). The
    instruction-free part is shared from the start; the register
-   stack is written twice and reconciled after slice 3.
+   stack is written once, in `src/c1-stack.hh`, which each generator
+   includes.
 2. **Plain `char` follows the platform**, unsigned here (chapter
    11). One source means two things on two machines, as with every C
    compiler, and a program that needs a signed byte says `signed

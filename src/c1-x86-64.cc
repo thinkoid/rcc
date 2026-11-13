@@ -3,11 +3,11 @@
 // c1, the code generator: the typed tree in, x86-64 assembly text out,
 // AT&T syntax for the system assembler.  docs/backend.md is the design;
 // its chapters 4 to 8 and 10 are what this file implements, with
-// c1-common.cc, and each function names the row it writes.  These are
-// the first three slices: integers, control and calls; pointers, arrays
-// and string literals; register variables.  A construct of a later slice
-// throws logic_error("c1: not yet: ..."), and a tree the parser cannot
-// make throws logic_error("c1: ...").
+// c1-common.cc and c1-stack.hh, and each function names the row it
+// writes.  These are the first three slices: integers, control and
+// calls; pointers, arrays and string literals; register variables.  A
+// construct of a later slice throws logic_error("c1: not yet: ..."),
+// and a tree the parser cannot make throws logic_error("c1: ...").
 
 #include "c1.hh"
 #include "c1-common.hh"
@@ -64,38 +64,6 @@ constexpr reg_t variable_registers[] = { rbx, r12, r13, r14, r15 };
 
 // The convention's argument registers, in order, 3.2.
 constexpr reg_t argument_registers[] = { rdi, rsi, rdx, rcx, r8, r9 };
-
-// A value the generator holds: in an expression register, or in its
-// spill slot once the register was needed for another.  The age orders
-// the values for the spill, the oldest first.  valid is the width, in
-// bits, up to which the register's bits are the value extended by its
-// type's signedness: what the instruction that wrote it left there.  A
-// load extends to 32 or 64, a 32-bit write clears the upper half, a
-// narrowing cast leaves the bits above its width stale; a widening cast
-// that finds the value valid to its width writes nothing.  A read of a
-// register variable is borrowed (backend.md 6.7): variable names it, and
-// reg is the variable's register, which the value does not own.  A
-// borrowed read is never spilled or freed, no row writes its register
-// but a compound assignment's in place, and it survives a call, since
-// the register is callee-saved.  across counts the branches whose paths
-// the value is held across, which may not move it (backend.md 6.7).
-struct held_t
-{
-    int reg;
-    int spill;
-    long age;
-    bool live;
-    int valid;
-    const symbol_t *variable;
-    int across = 0;
-};
-
-// A handle on a held value; the default is the no-value of a void
-// expression.
-struct value_t
-{
-    int id = -1;
-};
 
 // The state of one file's generation.  Everything is reset per function,
 // the label count included, but the string literals, which are numbered
@@ -346,50 +314,33 @@ store(state_t &s, reg_t r, std::string_view to, int width)
 
 // the register stack
 
-unsigned
-bit(reg_t r)
-{
-    return 1u << r;
-}
-
-// A value held across a branch is where both paths expect it until they
-// meet; an instruction on one path that moves it leaves the paths with
-// two register maps (backend.md 6.7).  Such a move means a value was
-// held where the generator did not save it, as when the walk of writes()
-// missed a write, and the listing would assemble and be wrong, so the
-// generator stops at the instruction instead.
+// The three instructions the register stack writes, called by name from
+// c1-stack.hh.  The store of a register to a spill slot, all 8 bytes,
+// backend.md 6.2: movq %rbx, -24(%rbp).
 void
-check_movable(const state_t &s, int id)
+store_spill(state_t &s, reg_t r, int displacement)
 {
-    if (s.values[id].across > 0)
-        throw std::logic_error(
-            "c1: a value held across a branch was moved inside it");
-}
-
-// Stores the value in r to the next spill slot, all 8 bytes, and frees
-// the register, backend.md 6.2.
-void
-spill(state_t &s, reg_t r)
-{
-    const int id = s.owner[r];
-    check_movable(s, id);
-
-    const int displacement = allocate(s, 8, 8);
-
     insn(s, "movq", { reg(r, 64), at(displacement) });
-
-    s.values[id].reg = -1;
-    s.values[id].spill = displacement;
-    s.owner[r] = -1;
 }
 
+// The reload of a register from a spill slot, all 8 bytes, 6.2.
 void
-spill_all(state_t &s)
+reload_spill(state_t &s, reg_t r, int displacement)
 {
-    for (const reg_t r : expression_registers)
-        if (s.owner[r] >= 0)
-            spill(s, r);
+    insn(s, "movq", { at(displacement), reg(r, 64) });
 }
+
+// The copy of a register into another at a width, the source first in
+// AT&T order: movl %ebx, %eax.
+void
+mov(state_t &s, reg_t from, reg_t to, int width)
+{
+    insn(s, sized("mov", width), { reg(from, width), reg(to, width) });
+}
+
+reg_t take(state_t &, unsigned avoid);
+
+#include "c1-stack.hh"
 
 // A register for a value: the lowest free one outside avoid and
 // s.reserved, else the lowest free one outside avoid, or, when every
@@ -420,73 +371,6 @@ take(state_t &s, unsigned avoid)
     return static_cast< reg_t >(victim);
 }
 
-value_t
-hold(state_t &s, reg_t r, int valid)
-{
-    const int id = static_cast< int >(s.values.size());
-
-    s.values.push_back({ r, 0, s.age++, true, valid, nullptr });
-    s.owner[r] = id;
-    ++s.live;
-
-    return { id };
-}
-
-// A new value in a register taken for it, valid to the width the
-// instruction about to write it leaves.
-value_t
-fresh(state_t &s, int valid, unsigned avoid = 0)
-{
-    return hold(s, take(s, avoid), valid);
-}
-
-// The value was just written at width by an instruction of its type.
-void
-wrote(state_t &s, value_t v, int width, bool is_signed)
-{
-    s.values[v.id].valid = written(width, is_signed);
-}
-
-// The register a value is in; a spilled value is reloaded first, all 8
-// bytes, into a free register outside avoid.
-reg_t
-reg_of(state_t &s, value_t v, unsigned avoid = 0)
-{
-    if (v.id < 0)
-        throw std::logic_error("c1: a void expression used as a value");
-
-    if (s.values[v.id].reg >= 0)
-        return static_cast< reg_t >(s.values[v.id].reg);
-
-    check_movable(s, v.id);
-
-    const reg_t r = take(s, avoid);
-    insn(s, "movq", { at(s.values[v.id].spill), reg(r, 64) });
-
-    s.values[v.id].reg = r;
-    s.owner[r] = v.id;
-
-    return r;
-}
-
-// The value is consumed: its register, if it has one and owns it, is
-// free.  A borrowed read's register is the variable's, which has no
-// owner entry.
-void
-release(state_t &s, value_t v)
-{
-    if (v.id < 0)
-        return;
-
-    auto &h = s.values[v.id];
-    if (h.reg >= 0 && !h.variable)
-        s.owner[h.reg] = -1;
-
-    h.reg = -1;
-    h.live = false;
-    --s.live;
-}
-
 // Moves the value in from to the free register to, at a width: a real
 // mov, and the map follows it (chapter 6.5).
 void
@@ -495,7 +379,7 @@ move(state_t &s, reg_t from, reg_t to, int width)
     const int id = s.owner[from];
     check_movable(s, id);
 
-    insn(s, sized("mov", width), { reg(from, width), reg(to, width) });
+    mov(s, from, to, width);
 
     s.values[id].reg = to;
     s.owner[to] = id;
@@ -511,53 +395,11 @@ vacate(state_t &s, reg_t r, unsigned avoid)
         move(s, r, take(s, avoid | bit(r)), 64);
 }
 
-// The registers of a binary node's two values, either reloaded if it
-// was spilled, neither reload taking the other's register.
-std::pair< reg_t, reg_t >
-operands(state_t &s, value_t l, value_t r)
-{
-    const int held = s.values[l.id].reg;
-    const reg_t right =
-        reg_of(s, r, held >= 0 ? bit(static_cast< reg_t >(held)) : 0);
-    const reg_t left = reg_of(s, l, bit(right));
-
-    return { left, right };
-}
-
 value_t rvalue(state_t &, const expr_t &);
 void cbranch(state_t &, const expr_t &, int label, bool sense);
 void effect(state_t &, const expr_t &);
 
 // register variables
-
-// Whether a value is a register variable's read, a borrowed one,
-// backend.md 6.7.
-bool
-borrowed(const state_t &s, value_t v)
-{
-    return v.id >= 0 && s.values[v.id].variable != nullptr;
-}
-
-// The register a register variable lives in, from its declaration to
-// the end of its block.
-reg_t
-variable_register(const state_t &s, const symbol_t *sym)
-{
-    const auto it = s.registers.find(sym);
-    if (it == s.registers.end())
-        throw std::logic_error(
-            "c1: a register variable before its declaration");
-
-    return it->second;
-}
-
-// The width a register variable's register is written at: 64 bits for a
-// long or a pointer, 32 for the rest.
-int
-register_width(const symbol_t *sym)
-{
-    return std::max(32, integer(sym->type).width);
-}
 
 // The next of variable_registers for a register variable met in
 // declaration order, backend.md chapter 4; a block's end gives its
@@ -571,22 +413,6 @@ bind(state_t &s, const symbol_t *sym)
 
     s.registers.insert_or_assign(sym, variable_registers[s.variables++]);
     s.used = std::max(s.used, s.variables);
-}
-
-// A read of a register variable: its register as an operand, and no
-// instruction, backend.md 6.7.  The register holds the value as
-// establish() left it, which is what the read is valid to.
-value_t
-read(state_t &s, const symbol_t *sym)
-{
-    const auto &t = integer(sym->type);
-    const int id = static_cast< int >(s.values.size());
-
-    s.values.push_back({ variable_register(s, sym), 0, s.age++, true,
-                         written(register_width(sym), t.is_signed), sym });
-    ++s.live;
-
-    return { id };
 }
 
 // The mov into a register variable's register, from source at the
@@ -642,26 +468,6 @@ constant_into(state_t &s, const symbol_t *sym, const expr_t &e)
     return true;
 }
 
-// Copies a borrowed read into the free expression register to, by mov at
-// its variable's register width, movl %ebx, %eax; the value is then
-// to's, owned, valid to what it was, since the mov carries every bit the
-// read was valid to.
-void
-copy(state_t &s, value_t v, reg_t to)
-{
-    check_movable(s, v.id);
-
-    auto &h = s.values[v.id];
-    const int width = register_width(h.variable);
-
-    insn(s, sized("mov", width),
-         { reg(static_cast< reg_t >(h.reg), width), reg(to, width) });
-
-    h.reg = to;
-    h.variable = nullptr;
-    s.owner[to] = v.id;
-}
-
 // The register of a value an instruction is about to write.  A borrowed
 // read is first copied into an expression register outside avoid,
 // since its register is the variable; the read of a compound
@@ -692,94 +498,6 @@ preserve(state_t &s, const symbol_t *sym)
 
         copy(s, { static_cast< int >(id) }, take(s, 0));
     }
-}
-
-// Saves a held value to a spill slot, whichever kind it is, backend.md
-// 6.7: an owned value in a register is spilled, and a borrowed read has
-// its variable's register stored, all 8 bytes, movq %rbx, -24(%rbp),
-// with no copy.  The read is then owned and spilled, no longer the
-// variable's, so a later write of the variable leaves it alone; valid
-// holds, since the reload is all 8 bytes too.  An owned value already
-// spilled is saved as it is.
-void
-save(state_t &s, value_t v)
-{
-    auto &h = s.values[v.id];
-    if (h.reg < 0)
-        return;
-
-    const reg_t r = static_cast< reg_t >(h.reg);
-    if (!h.variable) {
-        spill(s, r);
-        return;
-    }
-
-    check_movable(s, v.id);
-
-    const int displacement = allocate(s, 8, 8);
-    insn(s, "movq", { reg(r, 64), at(displacement) });
-
-    h.reg = -1;
-    h.spill = displacement;
-    h.variable = nullptr;
-}
-
-// The values held where the paths of a branch diverge, each marked held
-// across the branch for as long as this lives.  Its scope ends where the
-// paths meet, and the destructor unmarks them, so no return and no
-// exception leaves a value marked.  A branch nested in a path marks the
-// outer branch's values once more, and its end takes back its own mark
-// alone.
-class [[nodiscard]] incoming_t
-{
-public:
-
-    explicit incoming_t(state_t &s) : m_s(s)
-    {
-        for (std::size_t id = 0; id < s.values.size(); ++id) {
-            if (!s.values[id].live)
-                continue;
-
-            ++s.values[id].across;
-            m_ids.push_back(static_cast< int >(id));
-        }
-    }
-
-    ~incoming_t()
-    {
-        for (const int id : m_ids)
-            --m_s.values[id].across;
-    }
-
-    incoming_t(const incoming_t &) = delete;
-    incoming_t &operator=(const incoming_t &) = delete;
-
-private:
-
-    state_t &m_s;
-    std::vector< int > m_ids { };
-};
-
-// Before the two paths of &&, || or ?:, a borrowed read that e writes is
-// saved, and every owned value is spilled, as for a call; a read e does
-// not write stays in its variable's register.  Each then has one
-// location on both paths: backend.md 6.7.  preserve() on one path alone
-// would leave the paths with two register maps, so each value is then
-// marked held across the paths until they meet, where the caller's
-// incoming_t ends, and a copy, a spill or a reload of one inside them is
-// an error of the generator, not a wrong listing.
-incoming_t
-before_paths(state_t &s, const expr_t &e)
-{
-    for (std::size_t id = 0; id < s.values.size(); ++id) {
-        const auto &h = s.values[id];
-        if (h.live && h.variable && writes(e, h.variable))
-            save(s, { static_cast< int >(id) });
-    }
-
-    spill_all(s);
-
-    return incoming_t { s };
 }
 
 // The value extended by from's signedness to a width of 32 or 64, where

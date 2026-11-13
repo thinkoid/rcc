@@ -19,33 +19,8 @@ The direction is taken: c1 is rcc's only back end, it writes x86-64
 and aarch64 assembly itself, and the system cc preprocesses,
 assembles and links. The reasons are =docs/findings.md= and
 =docs/llvm.md=, the design is =docs/backend.md= with its calls made
-in =docs/design-calls.md=. The chapter holds c1's own defects and the
-second target, whose design is =docs/aarch64.md=.
-
-** TODO aarch64
-
-The design is =docs/aarch64.md=; its chapter 15 has the nine calls
-and their answers. The target takes ten register variables, =x19= to
-=x28=, and the oracle's programs run on an aarch64 machine, with no
-emulator. Slice 0, the ground, is in the tree: the target's
-description, =-target=, the generator's files and the pins per
-target. Slices 1, 2 and 3, integers, control and calls with the
-frame of chapter 5, then pointers, arrays and string literals, then
-register variables with the access that steps a register pointer
-(=docs/autoincrement.md=), are in the tree with their pins, their
-probes and their documents.
-
-The measurement is taken, on two machines, with the alignment probe
-(=docs/cost.md= chapter 4).
-
-What remains: the reconciliation of the two generators' register
-stacks (=aarch64.md= chapter 12). Their accidental differences are
-gone, so what is the same reads the same in both files; nothing is
-lifted into a shared file yet.
-
-Check: =make test= on the aarch64 machine, every corpus row with
-the statuses of =tests/corpus/expected= and every pin read against
-=docs/aarch64.md=.
+in =docs/design-calls.md=. The chapter holds c1's own defects on both
+targets; the second target's design is =docs/aarch64.md=.
 
 ** TODO x86-64: =m[0]= of a row that is no scale adds 0
 
@@ -79,6 +54,22 @@ Fix: x86-64's =unary()= calls =wrote()= as the aarch64 one does.
 Check: every listing of both corpora is unchanged, or each change is
 an extension that was missing; a probe negates and complements a
 value that a widening cast then reads.
+
+** TODO =aarch64.md= chapter 12 opens on a sentence that is no longer true
+
+The chapter's first paragraph says "The x86-64 generator is one file,
+and every function in it writes x86 mnemonics". The generator's text
+is =src/c1-x86-64.cc= with =src/c1-common.cc= and =src/c1-stack.hh=,
+and neither of the last two writes a mnemonic. The sentence is the
+ground the chapter's two ways stand on, so it is the chapter's
+argument and not a slip of wording.
+
+Fix: say what the question is without the count of files: a
+generator's functions write their machine's mnemonics, and a second
+target is added in one of two ways.
+
+Check: the chapter's first paragraph agrees with the map of
+=docs/shape.md= chapter 9.
 
 ** TODO aarch64: a stack parameter at the frame's limit is refused
 
