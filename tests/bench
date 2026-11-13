@@ -29,9 +29,12 @@
 # Each build is run once for its exit status, and a row whose four
 # statuses differ is refused: a tuned source that computes something
 # else is a bug in the corpus.  Then each build is timed five times
-# with the shell's time keyword, and the least user CPU time is kept.
-# Every run is under timeout(1) at 120 seconds; a run it stops fails
-# the row.
+# with the shell's time keyword, and the least user plus system CPU
+# time is kept.  It is the sum because the kernel splits a run's time
+# between user and system by sampling, so user time alone can read far
+# under the run's cost, while the sum only grows with noise.  Every
+# run is under timeout(1) at 120 seconds; a run it stops fails the
+# row.
 #
 # The script prints a table, one row per program, each build's cell
 # the time in milliseconds and, in parentheses, its ratio to the
@@ -86,8 +89,9 @@ timeout_status=124
 # the timed runs per build; the least is kept
 runs=5
 
-# the time keyword prints the user CPU seconds, to the millisecond
-TIMEFORMAT=%3U
+# the time keyword prints the user and the system CPU seconds, to the
+# millisecond
+TIMEFORMAT='%3U %3S'
 
 # byte order for the sorted corpus, and diagnostics in one language
 LC_ALL=C
@@ -103,8 +107,8 @@ agreed=0
 # this machine's own target, empty when rcc has none for it
 native=
 
-# set by measure(): the build's least user time in milliseconds, or a
-# word saying why there is none
+# set by measure(): the build's least user plus system time in
+# milliseconds, or a word saying why there is none
 ms=
 
 
@@ -263,26 +267,30 @@ timed()
 
 
 ##########
-# to_ms(): prints the seconds the time keyword wrote, 0.123, as
-# milliseconds, 123; reports 1 when the text is not of that form
+# to_ms(): prints the user and the system seconds the time keyword
+# wrote, 0.123 0.004, as their sum in milliseconds, 127; reports 1
+# when the text is not of that form
 to_ms()
 {
-    local seconds=$1
+    local user=$1
+    local system=$2
 
-    if [[ ! "$seconds" =~ ^[0-9]+\.[0-9]{3}$ ]]; then
+    if [ $# -ne 2 ] ||
+        [[ ! "$user" =~ ^[0-9]+\.[0-9]{3}$ ]] ||
+        [[ ! "$system" =~ ^[0-9]+\.[0-9]{3}$ ]]; then
         return 1
     fi
 
-    echo $((10#${seconds/./}))
+    echo $((10#${user/./} + 10#${system/./}))
 }
 
 
 ##########
 # measure(): times one binary $runs times and sets ms to the least
-# user time in milliseconds; sets ms to "timeout" when a run was
-# stopped by the limit, "status <n>" when a run's status differs from
-# the expected one, "notime" when the time is unreadable; reports 0
-# when ms is a time, 1 otherwise
+# user plus system time in milliseconds; sets ms to "timeout" when a
+# run was stopped by the limit, "status <n>" when a run's status
+# differs from the expected one, "notime" when the time is
+# unreadable; reports 0 when ms is a time, 1 otherwise
 measure()
 {
     local exe=$1
@@ -305,7 +313,9 @@ measure()
             return 1
         fi
 
-        if ! t=$(to_ms "$(cat "$time_file")"); then
+        # the file holds the two times; they become to_ms's two
+        # arguments
+        if ! t=$(to_ms $(cat "$time_file")); then
             ms=notime
             return 1
         fi
