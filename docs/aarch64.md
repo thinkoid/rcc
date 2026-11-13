@@ -14,7 +14,8 @@ the machine was run on an aarch64 Linux machine.
 
 The three slices of chapter 14, integers, control and calls, then
 pointers, arrays and string literals, then register variables, are in
-the tree with their pins and their probes; the measurement remains.
+the tree with their pins and their probes. The measurement is taken,
+on two machines, and `cost.md` chapter 4 has its tables.
 
 ## 0. tl;dr
 
@@ -50,6 +51,9 @@ the tree with their pins and their probes; the measurement remains.
 - `*p++` on a `register` pointer is one instruction, `ldrb w0, [x19],
   #1`: the addressing form steps the pointer itself (2.3, 6.3).
 - The nine calls of chapter 15 are answered.
+- The measurement is taken on an Apple M1 Max and on a Qualcomm Oryon
+  (`cost.md` chapter 4). Loop-head alignment is measured, not
+  adopted: c1 writes no alignment directive on this target (7.2).
 
 ## 1. What carries, and what does not
 
@@ -762,10 +766,14 @@ the object's register, taken above `e`'s, so a `return` of it ends
 in `mov w0, w1`. Every `return` jumps to the one epilogue. `main`
 returns 0 on reaching its `}`, `mov w0, #0`.
 
-**No alignment directive before a loop head**, for now. `.p2align 5`
-on x86-64 was measured on one processor and adopted as "a convention
-of the target" (`backend.md` 13, call 8). Nothing is known of this
-target's processors until the measurement is run on one (call 7).
+**No alignment directive before a loop head**: measured, not
+adopted. `.p2align 5` on x86-64 was measured on one processor and
+adopted as "a convention of the target" (`backend.md` 13, call 8). On
+this target `.p2align 4`, `5` and `6` were measured on two cores, a
+Qualcomm Oryon and the Firestorm core of an Apple M1 Max. The best,
+`.p2align 5`, nets -0.5% on the Oryon and -0.3% on Firestorm over the
+tuned sources, and `clang -O2` aligns no loop head here (`cost.md`
+4.2, call 7).
 
 ## 8. Calls
 
@@ -871,8 +879,8 @@ machine's own target (call 6).
 
 ## 12. The code
 
-The x86-64 generator is 2838 lines in one file, and every function
-in it writes x86 mnemonics. Two ways to add a target:
+The x86-64 generator is one file, and every function in it writes
+x86 mnemonics. Two ways to add a target:
 
 - **One walk over a target interface.** The walk is shared and each
   instruction goes through a table or an object the target supplies.
@@ -990,9 +998,16 @@ values and the two save points of `backend.md` 6.7.
   makes the same accesses in G13's order.
 - **`make test`** runs both scripts for every target with a pin
   directory, and then the probes.
-- **The measurement** is what comes next: it is rerun on this
-  machine, with the tuned sources as first written, ten registers
-  live. `cost.md` chapter 4 gets a table per target.
+- **The measurement** is taken on two machines, an Apple M1 Max and a
+  Qualcomm Oryon, and `cost.md` chapter 4 has a table for each beside
+  x86-64's. Two tuned sources are this target's own, in
+  `tests/perf/aarch64/`. matmul's is the shared source as first
+  written, ten registers live. strings' writes its loops with the
+  `*p++` of 6.3; it was written for this machine after the generator
+  existed, which "as first written" does not cover. Loop-head
+  alignment is measured, not adopted (`cost.md` 4.2). `make slots`
+  measures the cost of a stack slot on each core (`cost.md` 4.3,
+  `slot.md`).
 
 ## 14. The slices
 
@@ -1014,7 +1029,8 @@ values and the two save points of `backend.md` 6.7.
    in the tree.
 
 Each slice is followed by its pins, read against this page, and its
-documents, as the x86-64 slices were. Then the measurement.
+documents, as the x86-64 slices were. Then the measurement, which
+`cost.md` chapter 4 records.
 
 ## 15. The calls
 
@@ -1052,8 +1068,10 @@ ninth came later. The answers:
 6. **`-target`, and both pin sets checked on one machine** (chapter
    11). The cost is a driver option and a `--target` passed to
    `clang`.
-7. **No loop-head alignment** until it is measured on this machine
-   (7.2).
+7. **No loop-head alignment**: measured, not adopted (7.2). On two
+   cores the best directive nets half a percent or less over the
+   tuned sources, and `clang -O2` aligns no loop head on this target
+   (`cost.md` 4.2).
 8. **The address of a subscript by a constant 0 is the pointer, and
    no instruction** (6.3), on both targets. Two readings meet here.
    6.5.4.2p3 has `&p[0]` "as if the & operator were removed and the

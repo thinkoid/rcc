@@ -35,14 +35,50 @@ register variables with the access that steps a register pointer
 (=docs/autoincrement.md=), are in the tree with their pins, their
 probes and their documents.
 
-What remains: the measurement on the aarch64 machine, with the tuned
-sources as first written; the loop-head alignment probe; and the
-reconciliation of the two generators' register stacks (=aarch64.md=
-chapter 12).
+The measurement is taken, on two machines, with the alignment probe
+(=docs/cost.md= chapter 4).
+
+What remains: the reconciliation of the two generators' register
+stacks (=aarch64.md= chapter 12). Their accidental differences are
+gone, so what is the same reads the same in both files; nothing is
+lifted into a shared file yet.
 
 Check: =make test= on the aarch64 machine, every corpus row with
 the statuses of =tests/corpus/expected= and every pin read against
 =docs/aarch64.md=.
+
+** TODO x86-64: =m[0]= of a row that is no scale adds 0
+
+The address of a subscript by a constant 0 is the bare base, as
+=*p='s is, and no instruction: =&p[0]= is =p= (=backend.md= 6.3, the
+=subscript-address= row). c1 for x86-64 gets there through the
+addressing form, which it uses only for a size of 1, 2, 4 or 8. A
+row of another size goes through the =p + n= row, so on =int
+m[2][3]= the decay of =m[0]= is =leaq -24(%rbp), %rax; addq $0,
+%rax=, where on =long m[2][1]= it is the =leaq= alone. The aarch64
+generator writes no instruction for either.
+
+Fix: in =c1-x86-64.cc=, the address of a subscript by a constant 0
+is the base whatever the size.
+
+Check: a cost program with =m[0]= on =int m[2][3]=, pinned for both
+targets, with no =add= after the array's address.
+
+** TODO x86-64: unary minus and complement do not record what they wrote
+
+=unary()= in =src/c1-aarch64.cc= calls =wrote()= after =neg= and
+=mvn=, which sets the width the result's register is valid to. The
+x86-64 =unary()= writes =neg= and =not= and calls nothing, so the
+value keeps the width it had before the instruction. A 32-bit =negl=
+clears the upper half of the register. The omission is harmless only
+if no signed value valid past 32 bits ever reaches a 32-bit =neg= or
+=not=, and nothing states or checks that.
+
+Fix: x86-64's =unary()= calls =wrote()= as the aarch64 one does.
+
+Check: every listing of both corpora is unchanged, or each change is
+an extension that was missing; a probe negates and complements a
+value that a widening cast then reads.
 
 ** TODO aarch64: a stack parameter at the frame's limit is refused
 
@@ -83,23 +119,6 @@ store past its instruction's reach (4095 bytes for =strb=, 8190 for
 Check: a call with 520 arguments to a function compiled by =clang=
 returns the sum that tells the positions apart.
 
-** TODO x86-64: =m[0]= of a row that is no scale adds 0
-
-The address of a subscript by a constant 0 is the bare base, as
-=*p='s is, and no instruction: =&p[0]= is =p= (=backend.md= 6.3, the
-=subscript-address= row). c1 for x86-64 gets there through the
-addressing form, which it uses only for a size of 1, 2, 4 or 8. A
-row of another size goes through the =p + n= row, so on =int
-m[2][3]= the decay of =m[0]= is =leaq -24(%rbp), %rax; addq $0,
-%rax=, where on =long m[2][1]= it is the =leaq= alone. The aarch64
-generator writes no instruction for either.
-
-Fix: in =c1-x86-64.cc=, the address of a subscript by a constant 0
-is the base whatever the size.
-
-Check: a cost program with =m[0]= on =int m[2][3]=, pinned for both
-targets, with no =add= after the array's address.
-
 * Guarantees
 
 The promises in =docs/guarantees.md=. The entry number is the
@@ -134,6 +153,24 @@ c1, its table written from the pins of =tests/cost/=. The findings of
 the measurement (=docs/findings.md=) were facts about LLVM's code
 generator and left with it; that page's chapter 8 says what became
 of each. The entries below are rows the table lacks.
+
+** TODO The x86-64 table is user time, and no x86-64 core has run =make slots=
+
+=tests/bench= times user plus system, and the aarch64 tables of
+=cost.md= chapter 4 are measured so. The x86-64 table was measured
+before, in user time alone, and the chapter says so. =cost.md= 4.3
+and =docs/slot.md= have the slot's cost on three aarch64 cores and on
+no x86-64 core, though the x86-64 loops are in the page and one of
+them, with the sum in a slot, is as many instructions as the loop in
+registers.
+
+Fix: =make bench= three times and =make slots= on the x86-64 machine,
+quiet, with the scripts as they are; the table of chapter 4 and its
+sentence on the metric, a column in 4.3 and in =slot.md=, and that
+page's chapter 6 loses its x86-64 bullet.
+
+Check: every table of chapter 4 is user plus system, and 4.3 has an
+x86-64 core.
 
 ** TODO No row pins a multiply or an unsigned division by a power of two
 
@@ -262,7 +299,8 @@ core" in the log.
 
 Fix: =ulimit -c 0= in the script before the runs.
 
-Check: =make test= leaves no new =/tmp/core.*=.
+Check: =make test= leaves no new =/tmp/core.*=, and no =core.*= in
+the tree's root where =core_pattern= is =core=.
 
 ** TODO A G14 corpus program needs a non-constant condition
 
@@ -331,6 +369,45 @@ do.
 
 Check: no comment of =tests/corpus= names a register or an
 instruction of one target alone.
+
+** TODO The sources of =tests/perf= do not follow =.clang-format=
+
+=clang-format --dry-run tests/perf/*.c= flags all twelve: each keeps
+a definition's return type on the line of its name, and =collatz*.c=
+and =sort*.c= align their =#define= lines otherwise than the tree's
+=.clang-format= does. The two files of =tests/perf/aarch64= follow
+it, so they differ from their shared siblings by that layout.
+
+Fix: the twelve laid out as =.clang-format= has it. No listing
+changes.
+
+Check: =clang-format --dry-run tests/perf/*.c tests/perf/*/*.c=
+prints nothing, and =make test= passes.
+
+** TODO The shared =matmul-tuned.c= says every loop ends on =!==
+
+The header of =tests/perf/matmul-tuned.c= says "Every loop ends on
+!=". The loops of the fill, the repetitions and the checksum end on
+=<=; the three loops of the product end on =!==. The aarch64 file
+says "Every loop of the product".
+
+Fix: the shared header says it as the aarch64 one does.
+
+Check: the header read against the loops.
+
+** TODO The aarch64 =strings-tuned.c= draws a warning from =clang=
+
+=clang -O2= warns at =copy()= of =tests/perf/aarch64/strings-tuned.c=,
+"using the result of an assignment as a condition without
+parentheses", on ~while (*d++ = *s++)~, and every =make bench= on
+aarch64 writes the warning to =build/perf/log=. Writing the test as
+~!= 0~ would silence it but is another program under rcc, which
+compares where a comparison is written.
+
+Fix: a second pair of parentheses, ~while ((*d++ = *s++))~.
+
+Check: =make bench= on aarch64 writes no warning to the log, and the
+listing of =copy()='s loop under rcc is unchanged.
 
 * Parser
 

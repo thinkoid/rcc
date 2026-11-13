@@ -60,10 +60,15 @@ only back end, and the measurement is redone under it.
 c1 also writes aarch64, for the constructs of the same three slices:
 the integer types, control and calls; pointers, arrays and string
 literals; register variables. Its design is `docs/aarch64.md`, and
-its measurement remains.
+its measurement, on two machines, is in chapter 4 of `docs/cost.md`
+beside x86-64's. `docs/slot.md` explains what a stack slot costs on
+three aarch64 cores.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/` and the cost corpus over
 `tests/cost/` for each target, both through c1, and then the probes
 of `tests/probe/`, rcc's code against `clang`'s on the machine's own
-target; `make bench` times the benchmark corpus of `tests/perf/`.
+target; `make bench` times the benchmark corpus of `tests/perf/`,
+with a target's own tuned sources from `tests/perf/<target>/`, and
+`make slots` times the four loops of `tests/slot/`, the cost of a
+stack slot.
 The queue is `TODO`.

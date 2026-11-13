@@ -227,7 +227,7 @@ whole; meson would add dependency scanning, a test runner and a
 compile database, and three lines of make, a shell script and
 `compile_flags.txt` cover the three.
 
-    Makefile          build, test, bench, clean
+    Makefile          build, test, bench, slots, clean
     compile_flags.txt what clangd needs
     docs/guarantees.md  the meaning: what happens where ISO C says nothing
     docs/cost.md        the cost: what each construct compiles to
@@ -238,6 +238,7 @@ compile database, and three lines of make, a shell script and
     docs/autoincrement.md  the design of *p++ on a register pointer, for aarch64
     docs/llvm.md        the LLVM sprint: the literal pipeline, where its judgment showed, why it left
     docs/design-calls.md  the back end's open calls, weighed one by one
+    docs/slot.md        what a stack slot costs, explained from the ground up
     src/lex.hh .cc    tokens and tokenize()
     src/type.hh .cc   type_t, constructors, equality
     src/ast.hh        the tree
@@ -267,6 +268,11 @@ compile database, and three lines of make, a shell script and
     tests/probe/      the probes: rcc's code against clang -O0's
     tests/bench       the measurement script
     tests/perf/       the benchmark programs, plain and tuned
+    tests/perf/aarch64/
+                      the tuned sources written for aarch64, one
+                      directory per target that has its own
+    tests/slots       the slot's cost script
+    tests/slot/       its four loops, each variable in a register or a slot
 
 ## 10. The slices
 
@@ -299,7 +305,8 @@ The second target, aarch64, is written in the same three slices
 (`aarch64.md` chapter 14). All three, integers, control and calls,
 then pointers, arrays and string literals, then register variables,
 are in the tree, with their pins and the probes that run rcc's code
-against `clang`'s.
+against `clang`'s. Its measurement, on two machines, is in `cost.md`
+chapter 4.
 
 ## 11. Not yet
 
