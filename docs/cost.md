@@ -26,11 +26,13 @@ does what the source says, and only that.
   live at once on x86-64, an eleventh on aarch64, takes a slot, with
   a warning. The keyword is the allocation, as it was on the PDP-11.
 - Chapter 4 holds the measurement under c1. On x86-64 the plain
-  source runs 2.33 to 8.29 times as long under rcc as under `clang
-  -O2`, and the source tuned by hand for rcc 1.59 to 2.37 times. As
+  source runs 2.25 to 8.06 times as long under rcc as under `clang
+  -O2`, and the source tuned by hand for rcc 1.62 to 2.29 times. As
   first written, matmul's tuned `main` held ten `register` variables
   live, put five in slots and ran 7.54 times as long. Under the LLVM
-  pipeline the two ranges were 1.49 to 8.43 and 1.33 to 4.40.
+  pipeline the two ranges were 1.49 to 8.43 and 1.33 to 4.40. A
+  stack slot that a loop carries adds 6.01 to 6.73 clock cycles an
+  iteration on the Zen 2 core of an x86-64 desktop (4.3).
 - On aarch64 the plain source runs 1.61 to 7.42 times as long on an
   Apple M1 Max and 1.92 to 9.67 times on a Qualcomm Oryon, and the
   tuned source 1.33 to 2.41 and 1.33 to 2.29 times. A stack slot that
@@ -307,24 +309,31 @@ times on each machine, and each table is the run whose cells sum
 least.
 
 The x86-64 table was measured on an x86-64 desktop, Zen 2, with clang
-23.1.4, on 2026-11-09, before `tests/bench` timed the sum: its cells
-are user time alone, and it is not re-measured. c1 aligns every loop
-head to 32 bytes on x86-64 (4.2), so the table is measured at that
-layout: a hot loop's time still moves with the code before it, but
-only where no loop head intervenes.
+23.1.4, on 2026-11-13, in user plus system time, with the cpufreq
+governor `performance` and the frequency boost on, the machine's
+ordinary state. c1 aligns every loop head to 32 bytes on x86-64
+(4.2), so the table is measured at that layout: a hot loop's time
+still moves with the code before it, but only where no loop head
+intervenes.
 
 | program | `clang -O2 <name>.c` | `rcc <name>.c` | `rcc <name>-tuned.c` | `clang -O2 <name>-tuned.c` |
 |---|---|---|---|---|
-| collatz | 298 (1.00) | 2313 (7.76) | 473 (1.59) | 300 (1.01) |
-| fib | 260 (1.00) | 607 (2.33) | 616 (2.37) | 274 (1.05) |
-| matmul | 298 (1.00) | 2343 (7.86) | 605 (2.03) | 286 (0.96) |
-| sieve | 300 (1.00) | 2048 (6.83) | 480 (1.60) | 307 (1.02) |
-| sort | 279 (1.00) | 2313 (8.29) | 521 (1.87) | 283 (1.01) |
-| strings | 287 (1.00) | 2201 (7.67) | 570 (1.99) | 286 (1.00) |
+| collatz | 287 (1.00) | 2255 (7.86) | 474 (1.65) | 287 (1.00) |
+| fib | 262 (1.00) | 589 (2.25) | 599 (2.29) | 260 (0.99) |
+| matmul | 283 (1.00) | 2281 (8.06) | 593 (2.10) | 275 (0.97) |
+| sieve | 292 (1.00) | 1987 (6.80) | 474 (1.62) | 291 (1.00) |
+| sort | 274 (1.00) | 2191 (8.00) | 507 (1.85) | 279 (1.02) |
+| strings | 276 (1.00) | 2090 (7.57) | 554 (2.01) | 272 (0.99) |
 
-The plain source under rcc runs 2.33 to 8.29 times as long as under
-`clang -O2`. The tuned source under rcc runs 1.59 to 2.37 times as
-long. The tuned source under `clang -O2` runs 0.96 to 1.05 times as
+The table is the method's, and two of its cells lie more than 2%
+under the same cell of the other two runs: `clang -O2 fib-tuned.c`,
+260 ms against 275 and 277, and `rcc sort.c`, 2191 against 2305 and
+2237. At the medians of the three runs the two ratios are 1.05 and
+8.38.
+
+The plain source under rcc runs 2.25 to 8.06 times as long as under
+`clang -O2`. The tuned source under rcc runs 1.62 to 2.29 times as
+long. The tuned source under `clang -O2` runs 0.97 to 1.02 times as
 long as the plain one.
 
 **collatz.** The tuned source tests the parity with `& 1` and halves
@@ -343,8 +352,8 @@ collatz-tuned.c` has no stack operand: it compares x with 1, `cmpq
 $1, %r14`, tests the parity on a copy, `andq $1, %rax`, computes the
 odd step with `imulq %r14, %rax` and `addq $1, %rax` and the even one
 with `sarq $1, %rax`, moves the result back, `movq %rax, %r14`, and
-counts in its register, `addl $1, %r15d`. The ratio falls from 7.76 to
-1.59. The head of the step loop opens a 32-byte window, at 0x11e0. As
+counts in its register, `addl $1, %r15d`. The ratio falls from 7.86 to
+1.65. The head of the step loop opens a 32-byte window, at 0x11e0. As
 first written, with seven `register` variables live and x and steps in
 slots, the tuned ratio was 1.91, measured before c1 aligned its loop
 heads; the re-tuning then measured slower, and 4.2 tells why.
@@ -362,7 +371,7 @@ and b in `r13d`. `rcc fib-tuned.c` moves the parameter in once,
 result in `r12d` across the second call; but every call, the base
 case included, pushes the three registers and pops them in the
 epilogue, and each argument still goes through its slot, `movl %eax,
--28(%rbp); movl -28(%rbp), %edi`. The ratio rises from 2.33 to 2.37,
+-28(%rbp); movl -28(%rbp), %edi`. The ratio rises from 2.25 to 2.29,
 the only rise in the table. The work is the calls, and `clang -O2
 fib.c` keeps one of the two recursive calls and turns the other into
 a loop.
@@ -390,7 +399,7 @@ for its test, `movq -110688(%rbp), %rax; movq -110656(%rbp), %rcx`,
 copies arow and bcol from their slots into pa and pb, stores s
 through pc loaded from its slot, and steps pc and bcol in theirs,
 `addq $4, -110680(%rbp)` and `addq $4, -110688(%rbp)`. The ratio
-falls from 7.86 to 2.03. The head of the inner loop opens a 32-byte
+falls from 8.06 to 2.10. The head of the inner loop opens a 32-byte
 window, at 0x1380. As first written, with ten `register` variables
 live and pc, bcol, pa, pb and s in slots, the tuned ratio was 7.54.
 
@@ -408,7 +417,7 @@ takes `r14d` and the strike walker `r15`. Nothing warns. The strike
 loop of `rcc sieve-tuned.c` compares the walker with the end, `cmpq
 %r13, %r15; jae .Lmain.14`, stores the byte through it, `movb $0,
 (%r15)`, and adds i, widened by `movslq %r14d, %rax`, with no stack
-operand. The ratio falls from 6.83 to 1.60.
+operand. The ratio falls from 6.80 to 1.62.
 
 **sort.** The tuned source walks two pointers down for the shift,
 steps with `--q`, loads each element it compares once, and keeps the
@@ -427,7 +436,7 @@ jump code: each test is a compare and a jump to the loop's exit,
 `cmpq %rax, %r13; je .Lmain.12` and `cmpl %r12d, %eax; jle
 .Lmain.12`, four of the 11, where the LLVM pipeline set and widened a
 byte for each test and for the `&&` (`llvm.md` 5.5). The ratio falls
-from 8.29 to 1.87; with collatz's, from 7.76 to 1.59, it is one of the
+from 8.00 to 1.85; with collatz's, from 7.86 to 1.65, it is one of the
 two largest falls in the table.
 
 **strings.** The tuned source walks pointers in `length` and `copy`,
@@ -444,7 +453,7 @@ loads the source byte twice. The tuned `length` and `copy` hold two
 stack operand: `length` steps `r12` and returns one `subq %rbx,
 %rax`, and `copy` loads each byte once, `movsbl (%r12), %eax`, stores
 it, `movb %al, (%rbx)`, and tests it. The `idivl` of `n / 2` in
-`main` is a `sarl $1, %edx`. The ratio falls from 7.67 to 1.99.
+`main` is a `sarl $1, %edx`. The ratio falls from 7.57 to 2.01.
 `clang -O2` turns `length` into a call of `strlen` in both its
 builds.
 
@@ -532,7 +541,7 @@ path that recurses is 25 instructions in both. Each argument still
 goes through a slot of its own, `str w0, [x29, #40]; ldr w0, [x29,
 #40]`. The tuned source runs longer than the plain one on both
 machines: the ratio rises from 1.61 to 2.41 on the M1 Max and from
-1.92 to 2.29 on the Oryon. On x86-64 it rises from 2.33 to 2.37.
+1.92 to 2.29 on the Oryon. On x86-64 it rises from 2.25 to 2.29.
 
 **matmul.** `matmul.c` declares its scalars after the three arrays,
 so every scalar's slot is beyond the reach of a load, and each access
@@ -614,15 +623,15 @@ In the table of chapter 4 the tuned sources of collatz and matmul
 are the re-tuned ones, with five `register` variables live where
 the sources the pipeline ran had seven and ten. The tuned source
 under `clang -O2`, which c1 does not touch, stays within 0.96 to
-1.05 in both; the two rcc columns move, from the pipeline's ratio to
+1.04 in both; the two rcc columns move, from the pipeline's ratio to
 c1's:
 
-- collatz: plain 8.14 to 7.76, tuned 1.69 to 1.59.
-- fib: plain 1.49 to 2.33, tuned 1.33 to 2.37.
-- matmul: plain 7.64 to 7.86, tuned 3.31 to 2.03.
-- sieve: plain 6.40 to 6.83, tuned 2.67 to 1.60.
-- sort: plain 5.94 to 8.29, tuned 4.40 to 1.87.
-- strings: plain 8.43 to 7.67, tuned 2.70 to 1.99.
+- collatz: plain 8.14 to 7.86, tuned 1.69 to 1.65.
+- fib: plain 1.49 to 2.25, tuned 1.33 to 2.29.
+- matmul: plain 7.64 to 8.06, tuned 3.31 to 2.10.
+- sieve: plain 6.40 to 6.80, tuned 2.67 to 1.62.
+- sort: plain 5.94 to 8.00, tuned 4.40 to 1.85.
+- strings: plain 8.43 to 7.57, tuned 2.70 to 2.01.
 
 The tuned ratio fell for sort, sieve, strings, matmul and collatz,
 whose hot loops under c1 have no stack operand, sort's with jump code
@@ -768,22 +777,29 @@ s in a slot, and `ss.c` with both in slots. Each run is pinned to one
 core and timed in user plus system CPU time, fifteen rounds, the least
 kept, and the script turns the time into clock cycles per iteration
 at the frequency the kernel reports. On the two kinds of core of the
-Apple M1 Max and on the Qualcomm Oryon, in clock cycles per
-iteration, with the cycles above `rr`'s in parentheses:
+Apple M1 Max, on the Qualcomm Oryon and on the Zen 2 core of the
+x86-64 desktop, in clock cycles per iteration, with the cycles above
+`rr`'s in parentheses:
 
-| variant | Firestorm, 3036 MHz | Icestorm, 2064 MHz | Oryon, 3418 MHz |
-|---|---|---|---|
-| rr | 1.00 | 2.00 | 1.00 |
-| sr | 1.38 (+0.37) | 7.01 (+5.00) | 7.08 (+6.08) |
-| rs | 1.65 (+0.65) | 6.00 (+4.00) | 7.01 (+6.00) |
-| ss | 1.63 (+0.63) | 7.28 (+5.28) | 7.63 (+6.62) |
+| variant | Firestorm, 3036 MHz | Icestorm, 2064 MHz | Oryon, 3418 MHz | Zen 2, 3493 MHz |
+|---|---|---|---|---|
+| rr | 1.00 | 2.00 | 1.00 | 1.00 |
+| sr | 1.38 (+0.37) | 7.01 (+5.00) | 7.08 (+6.08) | 7.71 (+6.71) |
+| rs | 1.65 (+0.65) | 6.00 (+4.00) | 7.01 (+6.00) | 7.01 (+6.01) |
+| ss | 1.63 (+0.63) | 7.28 (+5.28) | 7.63 (+6.62) | 7.73 (+6.73) |
+
+The Zen 2 core ran with the frequency boost off, its clock fixed: with
+the boost on, the frequency the kernel reports before the first run is
+the idle core's and not the clock a run gets, though the times keep
+their ratios to `rr`'s within 1%.
 
 A slot the loop carries, stored in one iteration and loaded back in
 the next, adds 0.37 to 0.65 cycles an iteration on Firestorm, 4.00 to
-5.28 on Icestorm and 6.00 to 6.62 on the Oryon. The count of loads
-barely moves that price, and two slots cost little more than one. The
-listing is the same on the three cores, so the worth of `register` is
-the core's: a variable left in its slot makes this loop 1.37 to 1.65
-times as long on Firestorm, and 6.98 to 7.59 times on the Oryon.
+5.28 on Icestorm, 6.00 to 6.62 on the Oryon and 6.01 to 6.73 on
+Zen 2. The count of loads barely moves that price, and two slots cost
+little more than one. The listing is the same on the three aarch64
+cores, so the worth of `register` is the core's: a variable left in
+its slot makes this loop 1.37 to 1.65 times as long on Firestorm, 6.98
+to 7.59 times on the Oryon, and 6.99 to 7.71 times on Zen 2.
 `slot.md` explains the measurement from the ground up, with the
 listings on both targets, and says what it leaves unexplained.

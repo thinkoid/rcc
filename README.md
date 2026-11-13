@@ -62,7 +62,7 @@ the integer types, control and calls; pointers, arrays and string
 literals; register variables. Its design is `docs/aarch64.md`, and
 its measurement, on two machines, is in chapter 4 of `docs/cost.md`
 beside x86-64's. `docs/slot.md` explains what a stack slot costs on
-three aarch64 cores.
+three aarch64 cores and one x86-64 core.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/` and the cost corpus over
 `tests/cost/` for each target, both through c1, and then the probes

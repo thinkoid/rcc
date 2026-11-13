@@ -8,9 +8,10 @@ nearly the same. `make slots` measures the slot alone: one loop,
 written four ways, each of its two variables in a register or in a
 slot. This page explains that measurement from the ground up: the
 terms, the loop and its listings on both targets, the numbers on
-three aarch64 cores, what they mean for `register`, and what they
-leave unexplained. It is written as a tutorial, for a reader who
-knows C and has seen assembly but has not used these machines.
+three aarch64 cores and one x86-64 core, what they mean for
+`register`, and what they leave unexplained. It is written as a
+tutorial, for a reader who knows C and has seen assembly but has not
+used these machines.
 
 ## 0. tl;dr
 
@@ -24,13 +25,18 @@ knows C and has seen assembly but has not used these machines.
   one x86-64 instruction can load a slot, add to it and store it.
 - A slot the loop carries adds, per iteration, 0.37 to 0.65 clock
   cycles on the Firestorm core of an Apple M1 Max, 4.00 to 5.28 on
-  its Icestorm core, and 6.00 to 6.62 on a Qualcomm Oryon. The loop
-  in registers takes 1, 2 and 1 cycles.
+  its Icestorm core, 6.00 to 6.62 on a Qualcomm Oryon, and 6.01 to
+  6.73 on the Zen 2 core of an x86-64 desktop. The loop in registers
+  takes 1, 2, 1 and 1 cycles.
+- A cycle figure needs the clock a run gets. The Zen 2 core's
+  frequency boost hides that clock from the script, so its figures
+  are taken with the boost off (4.1, chapter 7).
 - The number of loads barely moves that price; the round trip sets
   it. Two slots cost little more than one.
 - The worth of `register` thus depends on the core. In this loop, a
   variable left in its slot makes the loop 1.37 to 1.65 times as long
-  on Firestorm, but 6.98 to 7.59 times as long on the Oryon.
+  on Firestorm, but 6.98 to 7.59 times as long on the Oryon and 6.99
+  to 7.71 times on Zen 2.
 - The bench agrees in part. As plain sources, sort, strings and
   collatz have ratios of 7.82, 9.67 and 5.71 on the Oryon against
   2.54, 4.07 and 3.39 on the M1 Max; as tuned sources the three
@@ -121,7 +127,8 @@ The script reads the frequency from the kernel, in
 `/sys/devices/system/cpu/cpu<n>/cpufreq/scaling_cur_freq`, before the
 first timed run and after the last. A cycle count is thus only as
 true as that frequency: the page takes each core to run at the clock
-the kernel reports.
+the kernel reports. On the Zen 2 core that holds only with the
+frequency boost off (4.1).
 
 The listings and the clock are all this page uses. No maker's
 document was consulted, so the page says nothing about how a core is
@@ -370,16 +377,29 @@ loads of the next iteration that read it.
 
 ### 4.1 How they were taken
 
-Three cores, on two machines:
+Four cores, on three machines:
 
 - an Apple M1 Max, with clang 23.1.3. It has two kinds of core: its
   Firestorm cores ran at 3036 MHz and its Icestorm cores at 2064 MHz.
 - a Qualcomm Oryon, with clang 23.1.1, at 3418 MHz.
+- an x86-64 desktop, Zen 2, with clang 23.1.4, at 3493 MHz with the
+  frequency boost off.
 
-Both machines ran on mains with the cpufreq governor `performance`,
-and the kernel reported the same frequency before and after every
-series. The timed binaries are those `make slots` builds, rcc's
-aarch64 builds of the four sources of chapter 3.
+The three machines ran with the cpufreq governor `performance`, the
+two aarch64 machines on mains. The kernel reported the same frequency
+before and after every series on the aarch64 cores, and 3493 MHz
+before and after the series of record on the Zen 2 core. The timed
+binaries are those `make slots` builds, rcc's builds of the four
+sources of chapter 3 for the machine's target.
+
+In its ordinary state the Zen 2 desktop runs with its frequency
+boost on. There the times repeat, but the frequency the kernel
+reports before the first run is that of the idle core, not the clock
+a run gets: at that reading `rr` comes out at 0.84 and 0.78 cycles an
+iteration in two series, under one, though each iteration's add to
+`i` waits for the one before. The Zen 2 figures are thus taken with
+the boost off. With the boost on the times are shorter, but their
+ratios to `rr`'s lie within 1% of those with it off.
 
 The four variants ran in fifteen rounds, once each a round, in an
 order rotated by the round. Every run was pinned to one core and
@@ -392,22 +412,22 @@ first's in every cell. The tables are the first series.
 The least time of each variant, in milliseconds, for 10^9
 iterations:
 
-| variant | Firestorm | Icestorm | Oryon |
-|---|---|---|---|
-| rr | 330 | 970 | 294 |
-| sr | 453 | 3394 | 2072 |
-| rs | 543 | 2909 | 2051 |
-| ss | 537 | 3527 | 2232 |
+| variant | Firestorm | Icestorm | Oryon | Zen 2 |
+|---|---|---|---|---|
+| rr | 330 | 970 | 294 | 287 |
+| sr | 453 | 3394 | 2072 | 2208 |
+| rs | 543 | 2909 | 2051 | 2006 |
+| ss | 537 | 3527 | 2232 | 2213 |
 
 The same in clock cycles per iteration, with the cycles above `rr`'s
 in parentheses:
 
-| variant | Firestorm | Icestorm | Oryon |
-|---|---|---|---|
-| rr | 1.00 | 2.00 | 1.00 |
-| sr | 1.38 (+0.37) | 7.01 (+5.00) | 7.08 (+6.08) |
-| rs | 1.65 (+0.65) | 6.00 (+4.00) | 7.01 (+6.00) |
-| ss | 1.63 (+0.63) | 7.28 (+5.28) | 7.63 (+6.62) |
+| variant | Firestorm | Icestorm | Oryon | Zen 2 |
+|---|---|---|---|---|
+| rr | 1.00 | 2.00 | 1.00 | 1.00 |
+| sr | 1.38 (+0.37) | 7.01 (+5.00) | 7.08 (+6.08) | 7.71 (+6.71) |
+| rs | 1.65 (+0.65) | 6.00 (+4.00) | 7.01 (+6.00) | 7.01 (+6.01) |
+| ss | 1.63 (+0.63) | 7.28 (+5.28) | 7.63 (+6.62) | 7.73 (+6.73) |
 
 The cycles above `rr`'s are computed from the times before rounding,
 so a difference of two rounded cells can miss them by 0.01.
@@ -415,21 +435,24 @@ so a difference of two rounded cells can miss them by 0.01.
 ### 4.3 What the table shows
 
 - **The loop in registers.** `rr` takes one cycle per iteration on
-  Firestorm and on the Oryon, and two on Icestorm. An iteration of
-  seven instructions thus takes one cycle on two of the three cores.
+  Firestorm, on the Oryon and on Zen 2, and two on Icestorm. An
+  iteration of seven instructions thus takes one cycle on two of the
+  three aarch64 cores, and the x86-64 iteration of five takes one on
+  Zen 2.
 - **The round trip's price.** A slot the loop carries adds 6.00 to
-  6.62 cycles an iteration on the Oryon, 4.00 to 5.28 on Icestorm,
-  and 0.37 to 0.65 on Firestorm. On the Oryon one slot costs six
-  times what the whole loop in registers does.
-- **The count of loads barely matters.** `sr` loads its slot three
+  6.62 cycles an iteration on the Oryon, 6.01 to 6.73 on Zen 2, 4.00
+  to 5.28 on Icestorm, and 0.37 to 0.65 on Firestorm. On the Oryon
+  and on Zen 2 one slot costs at least six times what the whole loop
+  in registers does.
+- **The count of loads barely matters.** `sr` reads its slot three
   times an iteration and `rs` once, and each carries one round trip.
-  `sr` costs 0.07 cycle more than `rs` on the Oryon and 1.00 more on
-  Icestorm, but 0.27 less on Firestorm. The round trip sets the
-  price; the loads beside it move it little.
+  `sr` costs 0.07 cycle more than `rs` on the Oryon, 0.71 more on
+  Zen 2 and 1.00 more on Icestorm, but 0.27 less on Firestorm. The
+  round trip sets the price; the loads beside it move it little.
 - **Two slots cost little more than one.** `ss` carries two round
-  trips, but costs only 0.55 cycle more than `sr` on the Oryon and
-  0.27 more on Icestorm, and on Firestorm 0.02 less than `rs`. The
-  second slot does not double the price.
+  trips, but costs only 0.55 cycle more than `sr` on the Oryon, 0.27
+  more on Icestorm and 0.02 more on Zen 2, and on Firestorm 0.02 less
+  than `rs`. The second slot does not double the price.
 
 ## 5. What it means
 
@@ -465,14 +488,20 @@ way: a carried slot costs the Oryon about six cycles an iteration and
 the M1 Max's Firestorm core under one. It does not show that this
 cost is what splits the plain rows; chapter 6 says why not.
 
+On x86-64 the table of `cost.md` chapter 4 has the plain ratios of
+sort, strings and collatz at 8.00, 7.57 and 7.86, and a carried slot
+costs the Zen 2 core about six cycles, as it costs the Oryon. The
+listings of the two targets differ, so the match shows no more than
+the one between the aarch64 machines.
+
 ### 5.2 For `register`
 
 The keyword is the allocation, and its worth is the slot's price on
 the core that runs the program. In this loop a variable left without
 it makes the loop 1.37 to 1.65 times as long on Firestorm, 3.00 to
-3.64 times on Icestorm, and 6.98 to 7.59 times on the Oryon. The
-source and the listing are the same on all three; only the time
-differs.
+3.64 times on Icestorm, 6.98 to 7.59 times on the Oryon, and 6.99 to
+7.71 times on Zen 2. The source is the same on all four, and the
+listing on the three aarch64 cores; only the time differs.
 
 The cost model of `cost.md` says what a slot compiles to, a load and
 a store per access, on every core; it cannot say what the slot costs
@@ -482,7 +511,8 @@ sources declare their hot variables `register`, and their ratios
 agree on the two machines.
 
 On x86-64 the count of instructions understates the slot: `rs` is
-as many instructions as `rr`. Its time there is not measured.
+as many instructions as `rr`, five, but takes 7.01 cycles an
+iteration on Zen 2 to `rr`'s 1.00.
 
 ## 6. What is not explained
 
@@ -497,10 +527,21 @@ as many instructions as `rr`. Its time there is not measured.
 - **Firestorm's order.** On Firestorm `sr`, with three loads, costs
   less than `rs`, with one, and `ss` less than `rs`. The table
   records it; nothing here explains it.
-- **x86-64.** The listings of 3.7 are rcc's, but no x86-64 core has
-  run the test. `cost.md` chapter 4 has the bench on x86-64, plain
-  2.33 to 8.29 and tuned 1.59 to 2.37, with no slot figure to set
-  beside it.
+- **x86-64.** One x86-64 core has run the test, Zen 2, and its
+  cycle figures hold only with the frequency boost off. The clock a
+  run gets with the boost on is not read, so the cycles of the
+  machine's ordinary state are not known; its times are. No other
+  x86-64 core has run the test, so whether the price differs between
+  x86-64 cores as it does between aarch64 ones is not known. The
+  bench on the same machine, plain 2.25 to 8.06 and tuned 1.62 to
+  2.29 (`cost.md` chapter 4), ran with the boost on.
+- **Two targets, one price.** The Oryon and Zen 2 run different
+  loops: `rs` is nine instructions on the one, with a load and a
+  store of the slot, and five on the other, with one `addl` to it.
+  Yet a carried slot costs the two about the same, 6.00 to 6.62
+  cycles an iteration on the Oryon and 6.01 to 6.73 on Zen 2. The
+  table records it; nothing here says whether it is more than
+  chance.
 - **The frequency.** The cycle figures rest on the frequency the
   kernel reports. A core that ran at another clock would move its
   cycle figures in proportion; the milliseconds stand either way.
@@ -530,7 +571,17 @@ iteration and the cycles above `rr`'s. The log of every command is
 register, so it runs on either target.
 
 Run it on a quiet machine. The script changes no setting, so a fixed
-clock is the machine's own: the numbers above were taken on mains
-with the governor `performance`. The cycle column is computed at the
-frequency read before the first run; when the reading after the last
-run differs, the clock was not fixed, and the column does not hold.
+clock is the machine's own: the numbers above were taken with the
+governor `performance`, the aarch64 machines on mains and the Zen 2
+desktop with its frequency boost off. The cycle column is computed at
+the frequency read before the first run; when the reading after the
+last run differs, the clock was not fixed, and the column does not
+hold.
+
+On a machine with its frequency boost on, the reading before the
+first run is the idle core's, not the clock a run gets, so the cycle
+column does not hold. Turn the boost off for the run: with the
+cpufreq driver `acpi-cpufreq`, write 0 to
+`/sys/devices/system/cpu/cpufreq/boost` before it and 1 after. The
+times are shorter with the boost on, and their ratios to `rr`'s move
+by under 1% on the Zen 2 core.

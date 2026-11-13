@@ -145,23 +145,18 @@ the measurement (=docs/findings.md=) were facts about LLVM's code
 generator and left with it; that page's chapter 8 says what became
 of each. The entries below are rows the table lacks.
 
-** TODO The x86-64 table is user time, and no x86-64 core has run =make slots=
+** TODO =cost.md= 4.1 does not state the metric of its table
 
-=tests/bench= times user plus system, and the aarch64 tables of
-=cost.md= chapter 4 are measured so. The x86-64 table was measured
-before, in user time alone, and the chapter says so. =cost.md= 4.3
-and =docs/slot.md= have the slot's cost on three aarch64 cores and on
-no x86-64 core, though the x86-64 loops are in the page and one of
-them, with the sum in a slot, is as many instructions as the loop in
-registers.
+4.1 sets the ratios of the LLVM pipeline's table beside those of
+chapter 4's x86-64 table. The pipeline's table was taken in user time
+alone; chapter 4's is user plus system. Each ratio is taken within
+its own table, so the comparison stands, but 4.1 never says how its
+table was timed and a reader takes the two as one method.
 
-Fix: =make bench= three times and =make slots= on the x86-64 machine,
-quiet, with the scripts as they are; the table of chapter 4 and its
-sentence on the metric, a column in 4.3 and in =slot.md=, and that
-page's chapter 6 loses its x86-64 bullet.
+Fix: one clause in 4.1's opening that gives its metric.
 
-Check: every table of chapter 4 is user plus system, and 4.3 has an
-x86-64 core.
+Check: 4.1 states its metric, and it is the one its table was taken
+with.
 
 ** TODO No row pins a multiply or an unsigned division by a power of two
 
@@ -360,6 +355,26 @@ do.
 
 Check: no comment of =tests/corpus= names a register or an
 instruction of one target alone.
+
+** TODO =tests/slots= reads the clock of an idle core
+
+The script reads =scaling_cur_freq= once, before the first timed
+run, and computes the cycle column at that frequency. The core is
+idle then. On a core with a frequency boost the reading is not the
+clock a run gets: on the Zen 2 core with the boost on it read 3853
+and 3593 MHz in two series, and =rr= came out at 0.84 and 0.78
+cycles an iteration, under the one cycle its add takes. The script
+prints the column all the same; the only sign is that the reading
+after the last run differs, which its header mentions and its output
+does not flag.
+
+Fix: read the frequency while a run is in flight, or leave the cycle
+columns out and say why when the two readings differ by more than a
+percent.
+
+Check: on an x86-64 core with its boost on, =make slots= prints =rr=
+at about one cycle an iteration, or prints no cycle column and says
+why.
 
 ** TODO The sources of =tests/perf= do not follow =.clang-format=
 
