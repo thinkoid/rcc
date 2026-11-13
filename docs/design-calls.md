@@ -259,7 +259,7 @@ cannot compile them at all:
   6.7.3.3 and 6.7.3.2.
 - Every expression in the initializer of an object with static
   storage duration, 6.7.11p5: `int x = 3 * 4;` at file scope is
-  twelve bytes of `.data` holding the value 12, and there is no
+  four bytes of `.data` holding the value 12, and there is no
   instruction to compute it at, since no code runs before `main`.
 
 rcc has none of these yet (`static` and file-scope variables are

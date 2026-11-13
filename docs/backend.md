@@ -219,14 +219,16 @@ A register variable is nothing but its register. No slot, no load,
 no store, no `phi`, no join of arms, no patching of a loop's back
 edge: an assignment to it is a `mov` into the register, a read of it
 is the register as an operand. G5 for a register variable needs no
-unwritten slot any more: before its first write the register holds
-whatever the prologue left in it, and nothing writes the register
-until the program does, so every read before the first write sees
-the same value. The one exception is an unwritten `char`, `short` or
-`unsigned` variable: the representation below claims more bits than
-the type has, so its declaration extends the register in place,
-`movsbl %bl, %ebx` for a `char`. The value of the type, in the low
-bits, is unchanged. The function's epilogue restores every register
+unwritten slot any more. Before its first write the register holds
+what it held when the declaration was reached: what the prologue
+left in it for the first variable to take it, and what the last
+variable to hold it left for a later one. Nothing writes the
+register until the program does, so every read before the first
+write sees the same value. The one exception is an unwritten `char`,
+`short` or `unsigned` variable: the representation below claims more
+bits than the type has, so its declaration extends the register in
+place, `movsbl %bl, %ebx` for a `char`. The value of the type, in the
+low bits, is unchanged. The function's epilogue restores every register
 of the set the function used, from the pushes of its prologue.
 
 The register holds the variable's value extended by its signedness
@@ -868,7 +870,7 @@ argument.
 A translation unit's output is one assembly file with a `.text`
 section for its functions and a `.data` section for its objects
 with static storage. A string literal is a labeled array of bytes in
-`.data`, one label per literal written, never merged, never in
+`.data`, one label per joined literal, never merged, never in
 `.rodata`: G17. The label is `.Ls<n>`, numbered from 0 in the order
 the literals are met, by a counter of its own in each file; two equal
 literals written twice are two labels. The bytes are one `.string`

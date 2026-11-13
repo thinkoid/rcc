@@ -6,7 +6,8 @@ arguments, the rejected alternatives, the probes. The list itself is
 from and is not the record of conformance.
 
 This list was the conformance record. A program that stays inside ISO C
-runs the same under rcc as under any conforming compiler. Where
+is meant to run the same under rcc as under any conforming compiler;
+what rcc does not compile yet is `shape.md` chapter 11. Where
 ISO C says "undefined", this list says what happens. Each entry gives
 the ISO paragraph, cited from C23 (ISO/IEC 9899:2024, N3220
 numbering) where the text is there, and from an earlier edition only
@@ -107,11 +108,18 @@ Machine: an add. IR: `getelementptr` without `inbounds`, `nusw` or
 Lost: `p < p + n` no longer folds to `n > 0` (probe 2); the pointer
 form of the induction-variable facts of G1. Same mitigations.
 
-**G7. Pointer comparison is address comparison.** ISO 6.5.9p6: only
-within one object. Promise: `<`, `<=`, `>`, `>=`, `==`, `!=` compare
-addresses as unsigned integers, any two pointers. IR: `icmp` on
-pointers, which LLVM already defines as address comparison. Lost:
-nothing beyond G6.
+**G7. Pointer comparison is address comparison.** ISO 6.5.9p6: the
+relational operators, only within one object; 6.5.10p7 defines `==`
+and `!=` between pointers to different objects, equal where one
+"happens to immediately follow" the other. Promise: `<`, `<=`, `>`,
+`>=`, `==`, `!=` compare addresses as unsigned integers, any two
+pointers the type constraints of 6.5.9p2 and 6.5.10p2 admit. IR:
+`icmp` on pointers, which LLVM already defines as address
+comparison. Lost:
+`&a + 1 == &b` no longer folds to 0 for two distinct objects, the
+one-past-the-end address included (`tests/corpus/g7-ptr-equal.c`: 1
+under rcc, 0 under `clang -O2`); for `<` and the other relational
+operators, nothing beyond G6.
 
 **G8. A load reads the bytes at the address.** Which object the bytes
 belong to is not the compiler's concern. ISO 6.5.7p9: `p + n` is
@@ -275,10 +283,28 @@ promise for indirect calls only, since inlining decides which calls
 stay indirect, not the source; and leaving the rewrite, since the zero
 is a value the compiler invents, G5's objection.
 
+## Storage
+
+**G17. A string literal is a writable object.** ISO 6.4.5p7: "It is
+unspecified whether these arrays are distinct provided their
+elements have the appropriate values", and a program that modifies
+one is undefined. Promise: each literal, adjacent literals joined
+first (6.4.5p5), is its own array of static storage, distinct from
+every other literal however spelled, and a store through a pointer
+into it writes the byte, as under Ritchie's compiler. Machine: the
+bytes lie in a writable section, and a store is a store. IR: the
+literal's global without `constant` and without `unnamed_addr`.
+Lost: equal literals merged into one array; the read-only section,
+where a stray store faults; and the fold of a load from a literal to
+its initializer, by which `clang -O2` returns the initializer's `'a'`
+after a store of `'z'` and drops the store
+(`tests/corpus/g17-string-store.c`: 122 under rcc, 97 under
+`clang -O2`).
+
 ## Not in this list
 
-- Implementation-defined behaviour is fixed per target in a separate
-  table (`char` signedness, widths, bit-field layout, `>>` of
+- Implementation-defined behaviour is fixed per target, but in no
+  table yet (`char` signedness, widths, bit-field layout, `>>` of
   negatives is in G3). Not promises, just fixed.
 - Library undefined behaviour (overlapping `strcpy`, bad `printf`
   formats): the library's, not the compiler's.
@@ -304,6 +330,7 @@ of emitted IR:
 | `llvm.lifetime.start`, `llvm.lifetime.end` | G12 |
 | `mustprogress`, `willreturn`, `llvm.loop.mustprogress` | G14 |
 | a direct `call` whose function type differs from the callee's | G16 |
+| `constant`, `unnamed_addr` on a string literal's global | G17 |
 
 The grant (G15) is the one exception, and it is written in the source.
 

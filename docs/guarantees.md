@@ -1,12 +1,16 @@
 # rcc: the guarantees
 
-The conformance record. Inside ISO C, rcc is a conforming compiler.
-Where ISO C says "undefined", this list says what happens: the
-paragraph (C23, N3220 numbering), the promise, and the instruction
-that delivers it (`backend.md` chapter 9). One rule: whatever
-behaviour the platform has, no decision of the compiler's own. The
-compiler does what the source says, the foolish included. rcc is a
-literal compiler (`cost.md`): no optimizer runs, so most of these
+The conformance record. Inside ISO C, rcc aims to be a conforming
+compiler: what it does not compile yet is `shape.md` chapter 11, and
+its known defects are `TODO`. Where ISO C says "undefined", this list
+says what happens, and it fixes two choices ISO C leaves to the
+implementation: G2's narrowing (6.3.1.3p3) and G3's right shift of a
+negative value (6.5.8p5). Each entry gives the paragraph (C23, N3220
+numbering), the promise, and the instruction that delivers it
+(`backend.md` chapter 9). One rule: whatever behaviour the platform
+has, no decision of the compiler's own. The compiler does what the
+source says, the foolish included. rcc is a literal compiler
+(`cost.md`): no optimizer runs, so most of these
 promises are the machine's own behaviour, reached by writing the
 plain instruction and nothing in between. Arguments, alternatives, and
 the probes of what an optimizer would have done: `rationale.md`.
@@ -43,23 +47,32 @@ content, as nothing wrote them. Nothing in the generator touches
 either before the program writes, so every read before the first
 write sees the same value. A `register` variable read before a
 write, at a read in its own initializer too (6.2.1p7), is its
-register as the prologue left it. The one instruction G5 costs is
-the extension of an unwritten `char`, `short` or `unsigned` register
-variable in its own register at its declaration, `movsbl %bl, %ebx`
-for a `char`, which leaves the value of its type as it was.
+register as its declaration finds it: as the prologue left it where
+no variable of the function held that register before, and
+otherwise as the last variable to hold it left it. The one
+instruction G5 costs is the extension of an unwritten `char`, `short`
+or `unsigned` register variable in its own register at its
+declaration, `movsbl %bl, %ebx` for a `char`, which leaves the value
+of its type as it was.
 
 ## Pointers and memory
 
 **G6. Pointer arithmetic is address arithmetic.** 6.5.7p9, p10. `p + n`
 is `p + n * sizeof *p` modulo 2^N; `p - q` is the address difference
-divided by the size, for any two pointers. Instruction: `lea`, `add`
-or `sub` on the 64-bit registers, `imul` by the size; the difference
-is `sub`, `cqto` and `idiv` by the size. The difference costs a
-division (`cost.md`).
+divided by the size, for any two pointers. The type constraints of
+6.5.7p2, p3 stand: no arithmetic on a `void *` or a function pointer,
+and `p - q` only on pointers to compatible types; rcc refuses the
+rest with an error. Instruction: `lea`, `add` or `sub` on the 64-bit
+registers, `imul` by the size; the difference is `sub`, `cqto` and
+`idiv` by the size. The difference costs a division (`cost.md`).
 
 **G7. Pointer comparison is address comparison.** 6.5.9p6. Addresses
-compared as unsigned integers, any two pointers. Instruction: `cmp`
-of the 64-bit addresses, and the unsigned `jcc` or `setcc`.
+compared as unsigned integers, any two pointers the type constraints
+of 6.5.9p2 and 6.5.10p2 admit; rcc refuses the rest with an error.
+ISO C defines `==` and `!=` between pointers to different objects
+already (6.5.10p7), so the promise adds `<`, `<=`, `>` and `>=`.
+Instruction: `cmp` of the 64-bit addresses, and the unsigned `jcc` or
+`setcc`.
 
 **G8. A load reads the bytes at the address.** 6.5.7p9. Whichever
 object the bytes belong to, however the address was computed.
@@ -81,10 +94,12 @@ happens at the address. Instruction: the same `mov`; x86 has one
 `mov` for every alignment.
 
 **G12. A local's storage is one stack slot for the whole activation.**
-6.2.4p2. A block-scoped local keeps its slot after its block ends,
-within the call. Instruction: the frame of `backend.md` chapter 5,
-in which every local's slot is a displacement off `rbp`, assigned at
-its declaration, none shared and none reused within the call.
+6.2.4p2. A block-scoped local in a slot keeps the slot after its
+block ends, within the call; a `register` local has no address
+(6.5.4.2p1), so no pointer reaches it after its block. Instruction:
+the frame of `backend.md` chapter 5, in which every local's slot is a
+displacement off `rbp`, assigned at its declaration, none shared and
+none reused within the call.
 
 ## Control
 
@@ -96,9 +111,11 @@ operator's left operand is evaluated first, for its place: the
 address, and any side effect in computing it. A compound assignment
 then evaluates its right operand and reads the object as part of its
 operation, the read, the operator and the store with nothing between:
-`x += e` is `e`, then the `add` on `x`. So `x += (x = 2)` leaves 4
-where `x = x + (x = 2)` leaves 3: the second names `x` as an operand of
-`+`, and reads it first.
+`x += e` is `e`, then the `add` on `x`. So, with `x` 1 before,
+`x += (x = 2)` leaves 4 where `x = x + (x = 2)` leaves 3. The first
+stores 2, then reads `x` as 2 and adds the assignment's 2. The second
+names `x` as an operand of `+`, so it reads 1 first, then stores 2,
+then stores 1 + 2.
 
 **G14. A loop runs until its condition says stop.** 6.8.6.1p4. `for
 (;;);` hangs. Instruction: the test at the top of the loop, a `cmp`
@@ -120,18 +137,20 @@ instruction rewrites a call.
 
 ## Storage
 
-**G17. A string literal is a writable object.** 6.4.5p7. Each literal
-written is its own array of static storage, distinct from every other
-literal however spelled, and a store through a pointer into it writes
-the byte, as under Ritchie's compiler. Instruction: a `.string`
-under a label of its own in `.data`, one per literal written, never
-in `.rodata`, so nothing marks it read-only and nothing merges it.
+**G17. A string literal is a writable object.** 6.4.5p7. Each literal,
+adjacent literals joined first (6.4.5p5), is its own array of static
+storage, distinct from every other literal however spelled, and a
+store through a pointer into it writes the byte, as under Ritchie's
+compiler. Instruction: a `.string` under a label of its own in
+`.data`, one per joined literal, never in `.rodata`, so nothing marks
+it read-only and nothing merges it.
 
 ## Not in this list
 
-Implementation-defined behaviour, fixed per target in a separate
-table. Library undefined behaviour. Threads, out of scope for now.
-Floating point, the target's IEEE 754, no fast-math flags.
+Implementation-defined behaviour beyond G2 and G3, fixed per target
+but gathered in no table yet. Library undefined behaviour. Threads,
+out of scope for now. Floating point, the target's IEEE 754, no
+fast-math flags.
 
 ## What the front end never writes
 

@@ -184,7 +184,7 @@ code of a `backend.md` chapter:
   it, once the frame's size is known, then the body and the one
   epilogue (chapter 5).
 - The string literals are one `.data` block after the last function,
-  one label per literal written, never merged (chapter 10, G17).
+  one label per joined literal, never merged (chapter 10, G17).
 
 A reader checking a promise opens c1's source, finds the function that
 writes the row, and reads what is not there.

@@ -109,34 +109,40 @@ of G8 and the laundering of G16, which draft 1 designed against an
 optimizer, because nothing between the source and the instruction
 reasons about the program.
 
-** TODO G7's "Lost" in the rationale misses the equality fold
+** TODO No document gathers the implementation-defined choices
 
-=rationale.md= says G7 loses "nothing beyond G6". The corpus says
-otherwise: =clang -O2= folds ~&a + 1 == &b~ to false for two distinct
-locals, the one-past-the-end address included, where rcc compares the
-addresses and finds them equal (=tests/corpus/g7-ptr-equal.c=, 1
-under rcc, 0 under clang). A relational compare of the two is not
-folded.
+4p10 asks for "a document that defines all implementation-defined
+and locale-specific characteristics and all extensions". rcc fixes
+each choice per target in its code, and the documents record them
+piecemeal: plain =char='s signedness on aarch64 in =docs/aarch64.md=,
+the extent of =register= in =docs/cost.md= chapter 1, the narrowing
+and the right shift of a negative value in G2 and G3.
+=docs/guarantees.md= and =docs/rationale.md= say that no table
+gathers them.
 
-Fix: the Lost clause of G7 names the equality fold between distinct
-objects, with the corpus program as its probe.
+Fix: one table, per target, of the items of Annex J.3 that the
+implemented subset reaches, each with its choice and the code or pin
+that fixes it; the "Not in this list" of both documents points at it.
 
-Check: the rationale's G7 names the fold and the program.
+Check: every J.3 item the subset reaches has a row for each target,
+and each row agrees with a pin or a probe.
 
-** TODO The rationale has no G17
+** TODO "As the prologue left it" stands in c1's comments
 
-=guarantees.md= has G17, the writable string literal; =rationale.md=
-has neither a G17 entry nor its row in the never-emitted table, so
-the promise has no recorded argument, alternatives or probe. The corpus
-has the probe: =clang -O2= folds the load from a literal to its
-initializer and drops the store (=tests/corpus/g17-string-store.c=, 122
-under rcc, 97 under clang).
+G5, =backend.md= chapter 4 and the =register-undef= rows of
+=docs/cost.md= say what an unwritten register variable holds relative
+to its declaration: what the prologue left for the first variable to
+take the register, what the last variable to hold it left for a
+later one. The comments of =register_decl()= in =src/c1-x86-64.cc=
+and =src/c1-aarch64.cc= still say the register holds "what the
+prologue left in it", which a variable of a later sibling block
+contradicts: it reads what the earlier one wrote, =movl $42, %ebx;
+movl %ebx, %eax=.
 
-Fix: a Storage section in the rationale with G17: the ISO paragraph,
-the promise, the IR, what is lost (equal literals merged, the
-read-only section, the fold of a load from a literal), and the probe.
+Fix: the two comments say it as G5 does.
 
-Check: the rationale has a G17 entry and the table row.
+Check: each names both the first declaration and the register an
+earlier variable released.
 
 * Cost model
 
@@ -474,6 +480,23 @@ fix.
 Check: ~void f(int *p) { *p = 1; }~, ~void g(int *p) { *p = 2; }~
 and ~c ? f(&x) : g(&x);~ compile under both targets and store the
 arm the condition selects.
+
+** TODO A relational operator would take two function pointers
+
+6.5.9p2 admits two pointers to a relational operator only as
+"pointers to qualified or unqualified versions of compatible object
+types". =comparison()= in =src/parse.cc= checks that the two types
+are one and not what they point to, so ~p < q~ on two =int (*)(void)=
+would pass. No program reaches it yet: a function pointer, a
+function used as a value and =typedef= are each "not yet". Pointer
+arithmetic is safe; =require_object_pointee()= refuses a function.
+
+Fix: =comparison()= refuses a relational operator on two pointers to
+a function with an error, as =require_object_pointee()= does for
+arithmetic.
+
+Check: when function pointers arrive, ~p < q~ on two function
+pointers fails with the error, and ~p == q~ compiles.
 
 * Lexer
 
