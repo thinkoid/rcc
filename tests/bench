@@ -10,8 +10,11 @@
 # program, and <name>-tuned.c, the same program written for a literal
 # compiler: register on the hot variables, pointer walks instead of
 # subscripts, != loop ends, invariants hoisted and shifts for powers of
-# two, by hand.  Each program is built four times, the binaries kept
-# in build/perf:
+# two, by hand.  A tuned source is written for a machine, so a target
+# may have its own, tests/perf/<target>/<name>-tuned.c, which the
+# script takes in place of the shared tests/perf/<name>-tuned.c; the
+# target is this machine's own, x86-64 or aarch64, from uname -m.
+# Each program is built four times, the binaries kept in build/perf:
 #
 #     clang -O2 <name>.c         the plain source under the optimizer,
 #                                the baseline
@@ -65,7 +68,8 @@
 # the name of the script, in diagnostics
 myname=${0##*/}
 
-# the corpus: each program as <name>.c and <name>-tuned.c
+# the corpus: each program as <name>.c and <name>-tuned.c, and a
+# target's own <name>-tuned.c in <target>
 corpus=tests/perf
 
 # the work directory, kept between runs and removed by make clean
@@ -96,6 +100,9 @@ export LC_ALL
 programs=0
 agreed=0
 
+# this machine's own target, empty when rcc has none for it
+native=
+
 # set by measure(): the build's least user time in milliseconds, or a
 # word saying why there is none
 ms=
@@ -108,6 +115,29 @@ usage()
     echo "usage: $0 [ --help ]"
     echo
     echo "    --help  print this usage"
+}
+
+
+##########
+# machine_target(): prints the target of this machine, from uname -m;
+# reports 1 and prints nothing when rcc has no target for it
+machine_target()
+{
+    machine=$(uname -m)
+
+    case "$machine" in
+        x86_64)  # the machine of the x86-64 target
+            echo x86-64
+            ;;
+
+        aarch64)  # the machine of the aarch64 target
+            echo aarch64
+            ;;
+
+        *)  # a machine rcc writes no code for
+            return 1
+            ;;
+    esac
 }
 
 
@@ -157,20 +187,35 @@ logged()
 
 
 ##########
+# tuned_source(): prints the tuned source of one program, the target's
+# own when this machine's target has one, the shared one otherwise
+tuned_source()
+{
+    local name=$1
+    local own=$corpus/$native/$name-tuned.c
+
+    if [ -n "$native" ] && [ -e "$own" ]; then
+        echo "$own"
+    else
+        echo "$corpus/$name-tuned.c"
+    fi
+}
+
+
+##########
 # build(): builds the four binaries of one program; reports 1 when
 # any of them failed to build, 0 otherwise
 build()
 {
     local name=$1
     local stem=$workdir/$name
+    local tuned=$(tuned_source "$name")
     local result=0
 
     logged clang -O2 -o "$stem.clang" "$corpus/$name.c" || result=1
     logged ./rcc -o "$stem.rcc" "$corpus/$name.c" || result=1
-    logged ./rcc -o "$stem-tuned.rcc" "$corpus/$name-tuned.c" ||
-        result=1
-    logged clang -O2 -o "$stem-tuned.clang" "$corpus/$name-tuned.c" ||
-        result=1
+    logged ./rcc -o "$stem-tuned.rcc" "$tuned" || result=1
+    logged clang -O2 -o "$stem-tuned.clang" "$tuned" || result=1
 
     return $result
 }
@@ -383,6 +428,10 @@ done
 # without the tree root, a built rcc, clang and timeout there is
 # nothing to run
 check_tree || exit 2
+
+# the tuned sources are this machine's target's own where it has
+# them; a machine rcc has no target for takes the shared ones
+native=$(machine_target)
 
 # the work directory is kept; the log starts over
 if ! mkdir -p "$workdir" || ! : > "$log"; then
