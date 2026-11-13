@@ -127,23 +127,6 @@ that fixes it; the "Not in this list" of both documents points at it.
 Check: every J.3 item the subset reaches has a row for each target,
 and each row agrees with a pin or a probe.
 
-** TODO "As the prologue left it" stands in c1's comments
-
-G5, =backend.md= chapter 4 and the =register-undef= rows of
-=docs/cost.md= say what an unwritten register variable holds relative
-to its declaration: what the prologue left for the first variable to
-take the register, what the last variable to hold it left for a
-later one. The comments of =register_decl()= in =src/c1-x86-64.cc=
-and =src/c1-aarch64.cc= still say the register holds "what the
-prologue left in it", which a variable of a later sibling block
-contradicts: it reads what the earlier one wrote, =movl $42, %ebx;
-movl %ebx, %eax=.
-
-Fix: the two comments say it as G5 does.
-
-Check: each names both the first declaration and the register an
-earlier variable released.
-
 * Cost model
 
 The record in =docs/cost.md=: what each construct compiles to under

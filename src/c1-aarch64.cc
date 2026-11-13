@@ -101,7 +101,7 @@ constexpr int frame_record = 16;
 // the values for the spill, the oldest first.  valid is the width, in
 // bits, up to which the register's bits are the value extended by its
 // type's signedness: what the instruction that wrote it left there.  A
-// load extends to 32 or 64, a write to a w name clears the upper half, a
+// load extends to 32 or 64, a 32-bit write clears the upper half, a
 // narrowing cast leaves the bits above its width stale; a widening cast
 // that finds the value valid to its width writes nothing.  A read of a
 // register variable is borrowed (backend.md 6.7): variable names it, and
@@ -128,9 +128,9 @@ struct value_t
     int id = -1;
 };
 
-// The state of one file's generation.  Everything is reset per
-// function, the label count included, but the string literals, which
-// are the file's.  The body is a buffer, since the prologue's frame
+// The state of one file's generation.  Everything is reset per function,
+// the label count included, but the string literals, which are numbered
+// across the file.  The body is a buffer, since the prologue's frame
 // size is known only after it.
 struct state_t
 {
@@ -384,12 +384,12 @@ bit(reg_t r)
     return 1u << r;
 }
 
-// A value held across a branch is where both paths expect it until
-// they meet; an instruction on one path that moves it leaves the paths
-// with two register maps (backend.md 6.7).  Such a move means a value
-// was held where the generator did not save it, and the listing would
-// assemble and be wrong, so the generator stops at the instruction
-// instead.
+// A value held across a branch is where both paths expect it until they
+// meet; an instruction on one path that moves it leaves the paths with
+// two register maps (backend.md 6.7).  Such a move means a value was
+// held where the generator did not save it, as when the walk of writes()
+// missed a write, and the listing would assemble and be wrong, so the
+// generator stops at the instruction instead.
 void
 check_movable(const state_t &s, int id)
 {
@@ -399,7 +399,7 @@ check_movable(const state_t &s, int id)
 }
 
 // Stores the value in r to the next spill slot, all 8 bytes, and frees
-// the register, 6.2.
+// the register, backend.md 6.2.
 void
 spill(state_t &s, reg_t r)
 {
@@ -538,9 +538,10 @@ void effect(state_t &, const expr_t &);
 
 // register variables
 
-// Whether a value is a register variable's read, a borrowed one.
+// Whether a value is a register variable's read, a borrowed one,
+// backend.md 6.7.
 bool
-fixed(const state_t &s, value_t v)
+borrowed(const state_t &s, value_t v)
 {
     return v.id >= 0 && s.values[v.id].variable != nullptr;
 }
@@ -566,10 +567,10 @@ register_width(const symbol_t *sym)
     return std::max(32, integer(sym->type).width);
 }
 
-// The next of the ten for a register variable met in declaration order,
-// chapter 4; a block's end gives its variables' registers back, so a
-// later block takes them again from x19.  The parser keeps an eleventh
-// live one out of a register.
+// The next of variable_registers for a register variable met in
+// declaration order, backend.md chapter 4; a block's end gives its
+// variables' registers back, so a later block takes them again from the
+// first.  The parser gives one live past the last of them a stack slot.
 void
 bind(state_t &s, const symbol_t *sym)
 {
@@ -581,8 +582,8 @@ bind(state_t &s, const symbol_t *sym)
 }
 
 // A read of a register variable: its register as an operand, and no
-// instruction, chapter 4.  The register holds the value as establish()
-// left it, which is what the read is valid to.
+// instruction, backend.md 6.7.  The register holds the value as
+// establish() left it, which is what the read is valid to.
 value_t
 read(state_t &s, const symbol_t *sym)
 {
@@ -596,11 +597,10 @@ read(state_t &s, const symbol_t *sym)
     return { id };
 }
 
-// Copies a borrowed read into the free expression register to, by mov
-// at its variable's register width, mov w0, w19; the value is then to's,
+// Copies a borrowed read into the free expression register to, by mov at
+// its variable's register width, mov w0, w19; the value is then to's,
 // owned, valid to what it was, since the mov carries every bit the read
-// was valid to.  preserve() and the first arm of a ?: copy a read, and a
-// return's mov into x0 is the third copy chapter 4 keeps.
+// was valid to.
 void
 copy(state_t &s, value_t v, reg_t to)
 {
@@ -628,11 +628,13 @@ copy(state_t &s, value_t v, reg_t to)
 // the fresh register is the lowest free one with R's among them, mul
 // w0, w19, w0.  The read of a compound assignment's own variable,
 // s.in_place, is the exception: its destination is the variable's
-// register, add w19, w19, w0, chapter 4.
+// register, add w19, w19, w0, chapter 4.  The copies that remain are
+// three: preserve() and the first arm of a ?: copy a read, and a
+// return's mov into x0 is the third copy chapter 4 keeps.
 reg_t
 destination(state_t &s, value_t v, unsigned avoid = 0)
 {
-    if (!fixed(s, v) || v.id == s.in_place)
+    if (!borrowed(s, v) || v.id == s.in_place)
         return reg_of(s, v, avoid);
 
     check_movable(s, v.id);
@@ -2020,7 +2022,7 @@ conditional(state_t &s, const expr_t &e)
     const int width = std::max(32, integer(t).width);
 
     const auto yes = rvalue(s, *c.yes);
-    if (fixed(s, yes))
+    if (borrowed(s, yes))
         copy(s, yes, take(s, 0));
 
     const reg_t into = reg_of(s, yes);
@@ -2223,7 +2225,7 @@ unary(state_t &s, const unary_t &u, const type_t &t)
 void
 settle(state_t &s, const symbol_t *sym, value_t v, int width)
 {
-    if (!fixed(s, v)) {
+    if (!borrowed(s, v)) {
         establish(s, sym, reg_of(s, v));
         return;
     }
@@ -2646,12 +2648,14 @@ expr_stmt(state_t &s, const expr_stmt_t &x)
 // A register variable takes the next of the ten where its declaration
 // is met, chapter 4.  A constant initializer is the constant row into
 // the register, mov w19, #0, and any other is its value and the mov of
-// establish().  G5: without one, nothing writes the value; the register
-// holds what the prologue left in it, and every read before the first
+// establish().  G5: without one, nothing writes the value.  The register
+// holds what the declaration finds in it: what the prologue left, where
+// no variable of the function held the register before, and otherwise
+// what the last variable to hold it left.  Every read before the first
 // write reads that.  Where the representation claims more bits than the
 // type has, for a char, a short or an unsigned, it is established on
-// those contents by the extension of the register into itself, sxtb
-// w19, w19 or mov w19, w19: the value of the type in the low bits is
+// those contents by the extension of the register into itself, sxtb w19,
+// w19 or mov w19, w19: the value of the type in the low bits is
 // unchanged, and the register is the extension every read assumes.
 void
 register_decl(state_t &s, const decl_stmt_t &d)
@@ -2926,8 +2930,9 @@ frame_parts(long size)
     return parts;
 }
 
-// The registers of the ten a function uses, 5.1: its register
-// parameters and the most register variables its body has live at once.
+// The register-variable registers a function uses, which its prologue
+// saves, backend.md chapter 5: its register parameters and the most
+// register variables its body has live at once.
 int
 registers_saved(const function_decl_t &fd)
 {
@@ -3072,7 +3077,7 @@ function(state_t &s, const function_decl_t &fd)
 
     if (s.used != s.saved)
         throw std::logic_error(
-            "c1: the save area miscounts the register variables");
+            "c1: the registers saved miscount the register variables");
 
     if (!s.terminated && s.function == "main")
         insn(s, "mov", { "w0", imm(0) });
