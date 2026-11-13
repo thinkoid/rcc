@@ -1,0 +1,598 @@
+#!/bin/bash
+########################################################################
+#
+# The slot's cost: what a variable kept in a stack slot costs against
+# one kept in a register, in clock cycles per iteration of one loop.
+#
+# The loop is s += i a thousand million times.  It comes in four
+# sources in tests/slot, the same program with each of the two
+# variables a register variable or not, so in a register or in a
+# stack slot under rcc:
+#
+#     rr.c    i and s in registers, the baseline
+#     sr.c    the counter i in a slot
+#     rs.c    the sum s in a slot
+#     ss.c    both in slots
+#
+# Each source is built with rcc, the binaries kept in build/slot, and
+# rr.c also with clang -O2 as the reference.  Each build is run once
+# for its exit status, and the script refuses to time unless the five
+# statuses are the same: a variant that computes something else is a
+# bug in rcc or in the corpus.  Then it times fifteen rounds, the four
+# variants once a round in an order rotated by the round, so a drift
+# in the machine's state spreads over the four.  Each run is pinned to
+# one core by taskset(1), so its clock is the one the script reads,
+# and timed by the shell's time keyword in user plus system CPU time:
+# the kernel splits a run's time between user and system by sampling,
+# so either part alone can read under the run's cost, while the sum
+# only grows with noise.  Every run is under timeout(1) at 120
+# seconds; a run it stops ends the script.
+#
+# The core is the highest-numbered online core unless --core names
+# one.  The script prints the core and its frequency, scaling_cur_freq,
+# read before the first timed run and after the last, and a table, per
+# variant: the least and the median time in milliseconds, and from the
+# least the nanoseconds per iteration.  Where the core has a cpufreq
+# policy, the table also has the clock cycles per iteration at the
+# frequency read before, and the cycles above rr's.  The numbers are
+# bound to the machine, so nothing is pinned.  It exits 0 when every
+# variant built, agreed and was timed, 1 otherwise.  It runs from the
+# tree root with ./rcc built, as make slots runs it, on a quiet
+# machine; it changes no setting.  The binaries and the log of every
+# command stay in build/slot; each command's output in the log follows
+# a "### <command>:" line and ends with a "### status <n>" line.
+#
+########################################################################
+#
+# USAGE:
+#
+#     tests/slots [ --help ] [ --core <n> ]
+#
+# OPTIONS:
+#
+#     --help
+#         Prints the usage and exits.
+#
+#     --core <n>
+#         Pins every run to core <n>.  Without it, the highest-numbered
+#         online core.
+#
+# EXAMPLES:
+#
+#     tests/slots --core 6
+#
+#     Builds and checks the four variants, times them on core 6,
+#     prints the table, and keeps the log in build/slot/log.
+#
+########################################################################
+
+##########
+# global constants
+
+# the name of the script, in diagnostics
+myname=${0##*/}
+
+# the corpus: the four variants, <name>.c each, the baseline first
+corpus=tests/slot
+variants="rr sr rs ss"
+
+# the iterations of the loop in every variant
+iterations=1000000000
+
+# the work directory, kept between runs and removed by make clean
+workdir=build/slot
+
+# the log of every command
+log=$workdir/log
+
+# the seconds a run may take, and the status timeout(1) gives when it
+# stops one
+time_limit=120
+timeout_status=124
+
+# the timed rounds; each runs every variant once
+rounds=15
+
+# the online cores, as the kernel lists them, 0-9 or 0-3,6
+online=/sys/devices/system/cpu/online
+
+# the time keyword prints the user and the system CPU seconds, to the
+# millisecond
+TIMEFORMAT='%3U %3S'
+
+# diagnostics in one language
+LC_ALL=C
+export LC_ALL
+
+##########
+# global variables
+
+# the core every run is pinned to
+core=
+
+# the file of the core's current frequency in kHz, empty when the core
+# has no cpufreq policy
+freq_file=
+
+# the exit status every build gave
+want=
+
+# every timed run, as <variant>:<ms> words
+times=
+
+
+##########
+# usage(): prints the usage
+usage()
+{
+    echo "usage: $0 [ --help ] [ --core <n> ]"
+    echo
+    echo "    --help      print this usage"
+    echo "    --core <n>  pin every run to core <n>; the highest-numbered"
+    echo "                online core by default"
+}
+
+
+##########
+# check_tree(): reports 0 when the script runs from the tree root with
+# rcc built and clang, timeout and taskset on the path, and says what
+# is missing otherwise
+check_tree()
+{
+    if [ ! -d "$corpus" ]; then
+        echo "$myname: no $corpus here; run from the tree root" >&2
+        return 1
+    fi
+
+    if [ ! -x ./rcc ]; then
+        echo "$myname: no ./rcc; run make first" >&2
+        return 1
+    fi
+
+    for tool in clang timeout taskset; do
+        if ! command -v "$tool" > /dev/null 2>&1; then
+            echo "$myname: no $tool on the path" >&2
+            return 1
+        fi
+    done
+
+    return 0
+}
+
+
+##########
+# last_online_core(): prints the highest-numbered online core, the
+# last number of the kernel's list; reports 1 when there is no list
+last_online_core()
+{
+    local list
+
+    if ! list=$(cat "$online" 2> /dev/null) || [ -z "$list" ]; then
+        return 1
+    fi
+
+    echo "${list##*[-,]}"
+}
+
+
+##########
+# logged(): runs a command with its standard output and standard error
+# appended to the log after a "### <command>:" line, and its status
+# after the output; reports the command's status as its own
+logged()
+{
+    echo "### $*:" >> "$log"
+
+    "$@" >> "$log" 2>&1
+    local status=$?
+
+    echo "### status $status" >> "$log"
+    echo >> "$log"
+
+    return $status
+}
+
+
+##########
+# check_core(): reports 0 when the core is a number and taskset can pin
+# a run to it, and says what is wrong otherwise
+check_core()
+{
+    if [[ ! "$core" =~ ^[0-9]+$ ]]; then
+        echo "$myname: core $core is not a number" >&2
+        return 1
+    fi
+
+    if ! logged taskset -c "$core" true; then
+        echo "$myname: cannot pin a run to core $core" >&2
+        return 1
+    fi
+
+    return 0
+}
+
+
+##########
+# build(): builds the four variants with rcc and rr.c with clang -O2;
+# reports 1 when any of them failed to build, 0 otherwise
+build()
+{
+    local name
+    local result=0
+
+    # a binary left by an earlier run must not stand in for this one's
+    for name in $variants; do
+        rm -f "$workdir/$name"
+        logged ./rcc -o "$workdir/$name" "$corpus/$name.c" || result=1
+    done
+
+    rm -f "$workdir/rr.clang"
+    logged clang -O2 -o "$workdir/rr.clang" "$corpus/rr.c" || result=1
+
+    return $result
+}
+
+
+##########
+# run_status(): runs one binary pinned to the core under the time limit
+# and prints its exit status, or "timeout" when the limit stopped it
+run_status()
+{
+    local exe=$1
+
+    logged taskset -c "$core" timeout "$time_limit" "$exe" < /dev/null
+    local status=$?
+
+    if [ "$status" -eq "$timeout_status" ]; then
+        echo timeout
+    else
+        echo "$status"
+    fi
+}
+
+
+##########
+# check_statuses(): runs the four variants and the clang build once
+# each, prints their statuses and sets want to the status; reports 0
+# when the five are the same number, 1 otherwise
+check_statuses()
+{
+    local name status
+    local statuses=
+    local line=
+
+    for name in $variants rr.clang; do
+        status=$(run_status "$workdir/$name")
+        statuses="$statuses $status"
+        line="$line, $name $status"
+    done
+
+    echo "statuses: ${line#, }"
+
+    set -- $statuses
+    want=$1
+    if [ "$want" = timeout ] || [ "$statuses" != " $1 $1 $1 $1 $1" ]; then
+        echo "$myname: the statuses differ or a run timed out" >&2
+        return 1
+    fi
+
+    return 0
+}
+
+
+##########
+# timed(): runs one binary pinned to the core under the time limit
+# with the time keyword, the program's output to the log and the time
+# to a file; reports the program's status as its own
+timed()
+{
+    local exe=$1
+    local time_file=$2
+
+    echo "### time taskset -c $core timeout $time_limit $exe:" >> "$log"
+
+    { time taskset -c "$core" timeout "$time_limit" "$exe" \
+        < /dev/null >> "$log" 2>&1 ; } 2> "$time_file"
+    local status=$?
+
+    cat "$time_file" >> "$log"
+    echo "### status $status" >> "$log"
+    echo >> "$log"
+
+    return $status
+}
+
+
+##########
+# to_ms(): prints the user and the system seconds the time keyword
+# wrote, 0.123 0.004, as their sum in milliseconds, 127; reports 1
+# when the text is not of that form
+to_ms()
+{
+    local user=$1
+    local system=$2
+
+    if [ $# -ne 2 ] ||
+        [[ ! "$user" =~ ^[0-9]+\.[0-9]{3}$ ]] ||
+        [[ ! "$system" =~ ^[0-9]+\.[0-9]{3}$ ]]; then
+        return 1
+    fi
+
+    echo $((10#${user/./} + 10#${system/./}))
+}
+
+
+##########
+# variant_at(): prints the variant at a position in the list, counted
+# from 0
+variant_at()
+{
+    local position=$1
+
+    set -- $variants
+    shift "$position"
+    echo "$1"
+}
+
+
+##########
+# time_rounds(): times the rounds, each variant once a round in an
+# order rotated by the round, and adds each run to times; reports 1
+# and says why when a run timed out, gave another status or left an
+# unreadable time, 0 otherwise
+time_rounds()
+{
+    local round k name status t
+    local time_file=$workdir/time
+
+    for ((round = 1; round <= rounds; ++round)); do
+        for ((k = 0; k < 4; ++k)); do
+            name=$(variant_at $(((k + round) % 4)))
+
+            timed "$workdir/$name" "$time_file"
+            status=$?
+
+            if [ "$status" -ne "$want" ]; then
+                echo "$myname: $name exited $status, not $want" >&2
+                return 1
+            fi
+
+            # the file holds the two times; they become to_ms's two
+            # arguments
+            if ! t=$(to_ms $(cat "$time_file")); then
+                echo "$myname: $name: no time in $time_file" >&2
+                return 1
+            fi
+
+            times="$times $name:$t"
+        done
+    done
+
+    return 0
+}
+
+
+##########
+# sorted(): prints its arguments, numbers, in ascending order
+sorted()
+{
+    local out=
+    local x y next placed
+
+    for x in "$@"; do
+        next=
+        placed=
+        for y in $out; do
+            if [ -z "$placed" ] && [ "$x" -lt "$y" ]; then
+                next="$next $x"
+                placed=1
+            fi
+            next="$next $y"
+        done
+        [ -n "$placed" ] || next="$next $x"
+        out=$next
+    done
+
+    echo $out
+}
+
+
+##########
+# runs_of(): prints the times of one variant's runs, in ascending order
+runs_of()
+{
+    local name=$1
+    local word
+    local list=
+
+    for word in $times; do
+        case "$word" in
+            "$name":*)  # a run of this variant
+                list="$list ${word#*:}"
+                ;;
+        esac
+    done
+
+    sorted $list
+}
+
+
+##########
+# decimal(): prints a count of thousandths as a decimal number to
+# three places, -0.042 for -42; with a second argument, + before a
+# number that is not negative
+decimal()
+{
+    local thousandths=$1
+    local plus=$2
+    local sign=
+
+    if [ "$thousandths" -lt 0 ]; then
+        sign=-
+        thousandths=$((-thousandths))
+    elif [ -n "$plus" ]; then
+        sign=+
+    fi
+
+    printf '%s%d.%03d\n' "$sign" \
+        $((thousandths / 1000)) $((thousandths % 1000))
+}
+
+
+##########
+# per_iteration(): prints the milliseconds of a run times a factor,
+# over the iterations, in thousandths rounded half away from zero:
+# with a factor of 10^6 the nanoseconds per iteration, with the
+# frequency in kHz the clock cycles per iteration
+per_iteration()
+{
+    local ms=$1
+    local factor=$2
+    local product=$((ms * factor * 1000))
+
+    if [ "$product" -lt 0 ]; then
+        echo $(( -((-product * 2 + iterations) / (2 * iterations)) ))
+    else
+        echo $(( (product * 2 + iterations) / (2 * iterations) ))
+    fi
+}
+
+
+##########
+# print_table(): prints the table, per variant the least and the
+# median time, the nanoseconds per iteration and, at the frequency in
+# kHz when there is one, the clock cycles per iteration and the cycles
+# above rr's
+print_table()
+{
+    local khz=$1
+    local name least median ns cycles above
+    local rr_least=
+
+    if [ -n "$khz" ]; then
+        printf '%-8s %9s %10s %8s %10s %9s\n' \
+            variant "least ms" "median ms" ns/it cycles/it "above rr"
+    else
+        printf '%-8s %9s %10s %8s\n' variant "least ms" "median ms" ns/it
+    fi
+
+    for name in $variants; do
+        set -- $(runs_of "$name")
+        least=$1
+        shift $((($# - 1) / 2))
+        median=$1
+
+        [ -n "$rr_least" ] || rr_least=$least
+
+        ns=$(decimal $(per_iteration "$least" 1000000))
+
+        if [ -n "$khz" ]; then
+            cycles=$(decimal $(per_iteration "$least" "$khz"))
+            if [ "$name" = rr ]; then
+                above=-
+            else
+                above=$(decimal \
+                    $(per_iteration $((least - rr_least)) "$khz") +)
+            fi
+            printf '%-8s %9d %10d %8s %10s %9s\n' \
+                "$name" "$least" "$median" "$ns" "$cycles" "$above"
+        else
+            printf '%-8s %9d %10d %8s\n' "$name" "$least" "$median" "$ns"
+        fi
+    done
+}
+
+
+##########
+# main body of script
+
+# the command line, for the log, before the options are shifted off
+command_line="$0 $*"
+
+# process command line options
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --help)  # print the usage and stop
+            usage
+            exit 0
+            ;;
+
+        --core)  # the core every run is pinned to
+            if [ $# -lt 2 ]; then
+                usage >&2
+                exit 2
+            fi
+            core=$2
+            shift
+            ;;
+
+        *)  # anything else is a usage error
+            usage >&2
+            exit 2
+            ;;
+    esac
+    shift
+done
+
+# without the tree root, a built rcc, clang, timeout and taskset there
+# is nothing to run
+check_tree || exit 2
+
+# the work directory is kept; the log starts over
+if ! mkdir -p "$workdir" || ! : > "$log"; then
+    echo "$myname: cannot write in $workdir" >&2
+    exit 2
+fi
+
+echo "### running $command_line" >> "$log"
+echo >> "$log"
+
+# without --core, the highest-numbered online core
+if [ -z "$core" ] && ! core=$(last_online_core); then
+    echo "$myname: no $online; name a core with --core" >&2
+    exit 2
+fi
+
+check_core || exit 2
+
+# the cycles need the core's clock, which only a cpufreq policy reports
+freq_file=/sys/devices/system/cpu/cpu$core/cpufreq/scaling_cur_freq
+[ -r "$freq_file" ] || freq_file=
+
+# a variant that did not build, or computes something else, is not
+# timed
+if ! build; then
+    echo "$myname: a build failed; the log is $log" >&2
+    exit 1
+fi
+
+check_statuses || exit 1
+
+khz_before=
+[ -z "$freq_file" ] || khz_before=$(cat "$freq_file")
+
+# a run that fails ends the timing: the table would be a partial one
+if ! time_rounds; then
+    echo "$myname: the log is $log" >&2
+    exit 1
+fi
+
+khz_after=
+[ -z "$freq_file" ] || khz_after=$(cat "$freq_file")
+
+if [ -n "$freq_file" ]; then
+    echo "core $core, scaling_cur_freq $khz_before kHz before," \
+        "$khz_after kHz after"
+else
+    echo "core $core, no cpufreq policy: no clock cycles"
+fi
+echo "$rounds rounds, user plus system CPU time; per iteration from" \
+    "the least"
+echo
+
+print_table "$khz_before"
+
+echo
+echo "the log is $log"
+
+exit 0

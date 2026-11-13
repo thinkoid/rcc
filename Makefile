@@ -1,5 +1,5 @@
-# rcc: build, test, bench, clean.  GNU make; the dependency files and
-# the pattern rules are GNU.
+# rcc: build, test, bench, slots, clean.  GNU make; the dependency
+# files and the pattern rules are GNU.
 
 CXX      = clang++
 CXXFLAGS = -std=c++20 -Wall -Wextra -g -MMD -MP
@@ -31,8 +31,12 @@ $(TARGETS:%=test-%): test-%: rcc
 bench: rcc
 	tests/bench
 
+# the slot's cost; CORE=<n> pins the runs to core <n>
+slots: rcc
+	tests/slots $(if $(CORE),--core $(CORE))
+
 clean:
 	rm -rf build rcc
 
 -include $(OBJ:.o=.d)
-.PHONY: test $(TARGETS:%=test-%) bench clean
+.PHONY: test $(TARGETS:%=test-%) bench slots clean
