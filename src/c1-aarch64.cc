@@ -92,6 +92,11 @@ constexpr reg_t variable_registers[] = { x19, x20, x21, x22, x23,
 // The convention's argument registers, in order, chapter 3.
 constexpr reg_t argument_registers[] = { x0, x1, x2, x3, x4, x5, x6, x7 };
 
+// The alignment of a loop's head, as .p2align's power of two; 0 is
+// none.  .p2align 4, 5 and 6 were measured on two cores and none was
+// adopted (7.2, and call 7 of chapter 15; cost.md 4.2).
+constexpr int loop_alignment = 0;
+
 // The frame record, the caller's x29 and x30, at the bottom of the
 // frame, chapter 5.1.
 constexpr int frame_record = 16;
@@ -195,14 +200,24 @@ new_label(state_t &s)
 }
 
 // Labels are placed in source order, and nothing is reordered after
-// them, backend.md 7.2.  No alignment directive precedes a loop's head:
-// nothing is known of this target's processors until it is measured on
-// one (7.2, call 7).
+// them, backend.md 7.2.
 void
 place_label(state_t &s, int n)
 {
     s.body << label_name(s.function, n) << ":\n";
     s.terminated = false;
+}
+
+// The directive before a loop's head, by the target's loop_alignment,
+// and nothing where that is 0.  The directive is a convention of the
+// target, as the stack's 16 bytes at a call are, not knowledge of the
+// program.  With no fill byte named, the assembler fills the gap in a
+// code section with multi-byte nops.
+void
+align_loop_head(state_t &s)
+{
+    if (loop_alignment != 0)
+        s.body << std::format("\t.p2align {}\n", loop_alignment);
 }
 
 void
@@ -2443,6 +2458,7 @@ while_stmt(state_t &s, const while_t &w)
     const int cond = new_label(s);
     const int end = new_label(s);
 
+    align_loop_head(s);
     place_label(s, cond);
     cbranch(s, w.cond, end, false);
 
@@ -2472,6 +2488,7 @@ for_stmt(state_t &s, const for_t &f)
     const int next = new_label(s);
     const int end = new_label(s);
 
+    align_loop_head(s);
     place_label(s, cond);
     if (f.cond)
         cbranch(s, *f.cond, end, false);

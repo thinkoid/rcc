@@ -65,6 +65,12 @@ constexpr reg_t variable_registers[] = { rbx, r12, r13, r14, r15 };
 // The convention's argument registers, in order, 3.2.
 constexpr reg_t argument_registers[] = { rdi, rsi, rdx, rcx, r8, r9 };
 
+// The alignment of a loop's head, as .p2align's power of two; 0 is
+// none.  The head opens a 32-byte window of the code: Zen 2 fetches 32
+// bytes a cycle, and where the head falls in its window moves a hot
+// loop's time (cost.md 4.2).
+constexpr int loop_alignment = 5;
+
 // The state of one file's generation.  Everything is reset per function,
 // the label count included, but the string literals, which are numbered
 // across the file.  The body is a buffer, since the prologue's frame
@@ -234,16 +240,16 @@ place_label(state_t &s, int n)
     s.terminated = false;
 }
 
-// A loop's head opens a 32-byte window of the code: Zen 2 fetches 32
-// bytes a cycle, and where the head falls in its window moves a hot
-// loop's time (cost.md 4.2).  The directive is a convention of the
+// The directive before a loop's head, by the target's loop_alignment,
+// and nothing where that is 0.  The directive is a convention of the
 // target, as the stack's 16 bytes at a call are, not knowledge of the
 // program.  With no fill byte named, the assembler fills the gap in a
 // code section with multi-byte nops.
 void
 align_loop_head(state_t &s)
 {
-    s.body << "\t.p2align 5\n";
+    if (loop_alignment != 0)
+        s.body << std::format("\t.p2align {}\n", loop_alignment);
 }
 
 void

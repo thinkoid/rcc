@@ -38,21 +38,6 @@ target is added in one of two ways.
 Check: the chapter's first paragraph agrees with the map of
 =docs/shape.md= chapter 9.
 
-** TODO aarch64: the comment on =place_label()= says the alignment is not measured
-
-The comment in =src/c1-aarch64.cc= says no alignment directive
-precedes a loop's head because "nothing is known of this target's
-processors until it is measured on one (7.2, call 7)". The alignment
-was measured on two cores and not adopted (=aarch64.md= 7.2 and call
-7 of chapter 15, =cost.md= 4.2). The comment is the only place the
-generator's text records the decision, and it records the state
-before the measurement.
-
-Fix: the comment says measured and not adopted, and names =cost.md=
-4.2.
-
-Check: the comment agrees with =aarch64.md= 7.2.
-
 ** TODO =backend.md= 6.5 says a pinned register's value is exchanged by =xchg=
 
 6.5 says a pinned register that holds a live value "is exchanged with
