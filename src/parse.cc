@@ -1048,7 +1048,7 @@ conditional(const token_t &op, expr_t cond, expr_t yes, expr_t no)
 // to an integer or a pointer type is the constant converted_constant()
 // gives, which is not an lvalue either.
 expr_t
-explicit_conversion(const token_t &open, const type_t &t, expr_t arg)
+cast(const token_t &open, const type_t &t, expr_t arg)
 {
     if (is< void_t >(t)) {
         require_not_function(open, arg);
@@ -1101,7 +1101,7 @@ unary_arithmetic(const token_t &op, expr_t arg)
 // ! is an int, its scalar operand left as it is, 6.5.4.3p5.  ! on an
 // integer constant is a constant.
 expr_t
-logical_negation(const token_t &op, expr_t arg)
+logical_not(const token_t &op, expr_t arg)
 {
     arg = rvalue(op, std::move(arg));
 
@@ -1115,7 +1115,7 @@ logical_negation(const token_t &op, expr_t arg)
 // & takes an lvalue, which does not decay, and yields a pointer to its
 // type, 6.5.4.2p1, p3.
 expr_t
-address(const token_t &op, expr_t arg)
+address_of(const token_t &op, expr_t arg)
 {
     require_not_function(op, arg);
 
@@ -1160,9 +1160,10 @@ indirection(const token_t &op, expr_t arg)
 
 // sizeof folds to a constant of type unsigned long, size_t on LP64,
 // 6.5.4.4p2, p5.  A function, void, and an array of unknown size have
-// no size, p1.
+// no size, p1.  The name is the operator's, with the underscore a name
+// takes when it is a keyword of C++.
 expr_t
-operand_size(const token_t &op, const type_t &t)
+sizeof_(const token_t &op, const type_t &t)
 {
     if (is< void_t >(t))
         fail(op, "invalid application of 'sizeof' to a void type");
@@ -2433,7 +2434,7 @@ cast_expression(parser_t &p)
     const type_t t = type_name(p);
     expect(p, tok_t::rparen, "expected ')' after type name");
 
-    return explicit_conversion(open, t, cast_expression(p));
+    return cast(open, t, cast_expression(p));
 }
 
 expr_t
@@ -2448,10 +2449,8 @@ unary_expression(parser_t &p)
     case tok_t::tilde:
         advance(p);
         return unary_arithmetic(op, cast_expression(p));
-    case tok_t::bang:
-        advance(p);
-        return logical_negation(op, cast_expression(p));
-    case tok_t::amp: advance(p); return address(op, cast_expression(p));
+    case tok_t::bang: advance(p); return logical_not(op, cast_expression(p));
+    case tok_t::amp: advance(p); return address_of(op, cast_expression(p));
     case tok_t::star: advance(p); return indirection(op, cast_expression(p));
     case tok_t::kw_sizeof: return sizeof_expression(p);
     case tok_t::plus: not_yet(op, "unary +");
@@ -2476,7 +2475,7 @@ sizeof_expression(parser_t &p)
     else
         t = unary_expression(p).type;
 
-    return operand_size(op, t);
+    return sizeof_(op, t);
 }
 
 // A call names its function directly, 6.5.3.3p5 gives its type.

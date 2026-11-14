@@ -611,7 +611,7 @@ Check: the comment read against =src/target.hh=.
 The comment on =convert_to()= in =src/parse.cc= calls it "The one
 place a conversion enters the tree". =decayed()= makes a cast node of
 its own, for an array's decay, which =src/ast.hh= calls "a cast too".
-The cast the source writes, made in =explicit_conversion()=, the
+The cast the source writes, made in =cast()=, the
 comment does allow for.
 
 Fix: the comment says every conversion but an array's decay.
