@@ -35,6 +35,7 @@ std::string label_name(std::string_view function, int n);
 const symbol_t *object_of(const expr_t &);
 const symbol_t *register_variable(const expr_t &);
 const symbol_t &callee_of(const call_t &);
+const expr_t *bare_base(const expr_t &);
 
 bool is_step(unary_op_t);
 bool is_shift(binary_op_t);

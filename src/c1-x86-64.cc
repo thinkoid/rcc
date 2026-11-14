@@ -658,16 +658,22 @@ address_of(state_t &s, const address_t &a)
 }
 
 // The address a dereference designates, 6.5.4.2p4, of an object of
-// type pointee: the addressing row.  An add of a pointer and an
-// integer, the shape of a subscript (6.5.3.2p2), is the machine's
-// addressing form when the size is a scale: the pointer the base, the
-// integer the index, each generated in the order written (G13); a
-// constant index is the displacement c * size when it fits 32 bits.
-// Any other pointer, an add of another size included, is computed into
-// a register and is the base; nothing looks through a cast.
+// type pointee: the addressing row.  A subscript by a constant 0 is the
+// bare base, the pointer's value with no displacement and no index,
+// whatever the pointee's size: m[0] on int m[2][3] is m, as p[0] is p.
+// Any other add of a pointer and an integer, the shape of a subscript
+// (6.5.3.2p2), is the machine's addressing form when the size is a
+// scale: the pointer the base, the integer the index, each generated in
+// the order written (G13); a constant index is the displacement
+// c * size when it fits 32 bits.  Any other pointer, an add of another
+// size included, is computed into a register and is the base; nothing
+// looks through a cast.
 address_t
 pointed(state_t &s, const expr_t &p, const type_t &pointee)
 {
+    if (const auto *base = bare_base(p))
+        return { .base = rvalue(s, *base) };
+
     const long size = size_of(pointee);
 
     if (!is_scale(size) || !is< binary_t >(p) ||

@@ -290,6 +290,27 @@ callee_of(const call_t &c)
     return *as< name_t >(e).sym;
 }
 
+// The pointer of a subscript by a constant 0, p[0] or 0[p]: the pointer
+// operand of the add, or null for any other pointer.  The address such
+// a subscript designates has no displacement and no index, whatever the
+// pointee's size; it is the bare base, as *p's is.  A row of an array
+// of arrays is the same case, m[0] the address of m.
+const expr_t *
+bare_base(const expr_t &p)
+{
+    if (!is< binary_t >(p) || as< binary_t >(p).op != binary_op_t::add)
+        return nullptr;
+
+    const auto &b = as< binary_t >(p);
+    const bool left = is< pointer_t >(b.lhs->type);
+    const auto &n = left ? *b.rhs : *b.lhs;
+
+    if (!is< literal_t >(n) || as< literal_t >(n).value != 0)
+        return nullptr;
+
+    return left ? b.lhs.get() : b.rhs.get();
+}
+
 // functions
 
 // The most register variables live at once in a block's items, those

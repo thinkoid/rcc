@@ -943,7 +943,7 @@ is one: the held values and the two save points of `backend.md` 6.7.
 
   The subscript by an `int` and by a `long` has `subscript` and
   `subscript-long`, and the subscript's address `subscript-address`
-  (6.3).
+  and `subscript-row` (6.3).
 
   The register variables of chapter 4 have the programs x86-64's
   have, pinned for this target as well: `register-loop`,
@@ -1087,7 +1087,7 @@ ninth came later. The answers:
    the other, and `&*p` is `p`. The page takes the second, since no
    `+` was written. The cost is that `&p[0]` and `p + 0`, one value,
    are two listings. `subscript-address` pins the row on both
-   targets.
+   targets, and `subscript-row` a row of an array of arrays, `m[0]`.
 9. **An access through a stepped `register` pointer makes the step**
    (6.3), by the form of 2.3 that writes its base: `*p++` is `ldrb
    w0, [x19], #1`, and `*(p += c)` takes the pre-indexed form when

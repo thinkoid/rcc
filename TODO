@@ -22,23 +22,6 @@ assembles and links. The reasons are =docs/findings.md= and
 in =docs/design-calls.md=. The chapter holds c1's own defects on both
 targets; the second target's design is =docs/aarch64.md=.
 
-** TODO x86-64: =m[0]= of a row that is no scale adds 0
-
-The address of a subscript by a constant 0 is the bare base, as
-=*p='s is, and no instruction: =&p[0]= is =p= (=backend.md= 6.3, the
-=subscript-address= row). c1 for x86-64 gets there through the
-addressing form, which it uses only for a size of 1, 2, 4 or 8. A
-row of another size goes through the =p + n= row, so on =int
-m[2][3]= the decay of =m[0]= is =leaq -24(%rbp), %rax; addq $0,
-%rax=, where on =long m[2][1]= it is the =leaq= alone. The aarch64
-generator writes no instruction for either.
-
-Fix: in =c1-x86-64.cc=, the address of a subscript by a constant 0
-is the base whatever the size.
-
-Check: a cost program with =m[0]= on =int m[2][3]=, pinned for both
-targets, with no =add= after the array's address.
-
 ** TODO x86-64: unary minus and complement do not record what they wrote
 
 =unary()= in =src/c1-aarch64.cc= calls =wrote()= after =neg= and
@@ -383,6 +366,13 @@ a definition's return type on the line of its name, and =collatz*.c=
 and =sort*.c= align their =#define= lines otherwise than the tree's
 =.clang-format= does. The two files of =tests/perf/aarch64= follow
 it, so they differ from their shared siblings by that layout.
+
+The two corpora are laid out as the twelve are: =clang-format
+--dry-run= prints 112 warnings over =tests/cost/*.c= and 24 over
+=tests/corpus/*.c=, each program keeping a definition's return type
+on the line of its name. So the layout is the tests' own and
+=.clang-format= is written for the C++ sources, or all three
+directories are to follow it; the entry's fix assumes the second.
 
 Fix: the twelve laid out as =.clang-format= has it. No listing
 changes.
