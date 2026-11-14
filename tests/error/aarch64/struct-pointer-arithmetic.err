@@ -1,0 +1,2 @@
+tests/error/struct-pointer-arithmetic.c:7:14: error: not yet: struct
+status 1

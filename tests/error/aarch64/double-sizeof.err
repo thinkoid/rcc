@@ -1,0 +1,2 @@
+tests/error/double-sizeof.c:4:18: error: not yet: floating type 'double'
+status 1

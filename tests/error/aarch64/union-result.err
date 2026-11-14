@@ -1,0 +1,2 @@
+tests/error/union-result.c:7:12: error: not yet: union
+status 1

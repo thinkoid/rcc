@@ -69,7 +69,12 @@ malformed escape when it made the token.
 
 A type is the machine's view: void, an integer of a width and a
 signedness, a pointer to a type, an array of a type and a count, a
-function of a result and parameters. The C spelling is not kept:
+function of a result and parameters, or a type rcc declares and does
+not use yet: a struct, a union, an enum, a floating type,
+`__builtin_va_list`. Such a type carries an identity, which equality
+compares, and the words a refusal of its use prints; it has no size
+and no alignment, and a pointer to it is an ordinary pointer. The C
+spelling is not kept:
 `long` and `long long` are one type on a target where both are 64
 bits. The edges from a type to the types it names are
 `shared_ptr< const type_t >`: a type is never written after it is
@@ -109,20 +114,24 @@ Three sums.
   once, its parameters among them.
 
 A symbol is a name, a type and a storage: local, parameter, global,
-function, type name. A global is an object declared `extern` at file
-scope and defined elsewhere; nothing is written for it, and the
-parser refuses its use, so no expression names one yet. A type name
-is a typedef's: its type is the type the name stands for, it has no
-object, and nothing is written for it. A local or parameter the
+function, type name, enumerator. A global is an object declared
+`extern` at file scope and defined elsewhere; nothing is written for
+it, and the parser refuses its use, so no expression names one yet. A
+type name is a typedef's: its type is the type the name stands for,
+it has no object, and nothing is written for it. An enumerator is an
+enumeration constant: its type is its enum's, its value is not
+computed, and the parser refuses its use, so no expression names one
+either. A local or parameter the
 parser gives a register carries its index, which of the target's
 register variables it takes: each
 takes the next in declaration order and gives it back at its block's
 end (`backend.md` chapter 4), so the index is the count of those live
 where it is declared. The parser decides this, and the generator
 reads the decision from the tree. Scopes live in the parser and die
-with it; after parsing there are only symbols. The tree carries no
-source locations: the parser diagnoses with the token in hand, and
-the generator diagnoses nothing.
+with it; each holds its ordinary identifiers and, apart, its tags of
+structs, unions and enums. After parsing there are only symbols. The
+tree carries no source locations: the parser diagnoses with the token
+in hand, and the generator diagnoses nothing.
 
 Every conversion is a cast node the parser inserted. The generator
 converts nothing on its own; when it sees an operand, the operand
@@ -339,14 +348,18 @@ chapter 4.
 
 ## 11. Not yet
 
-Structs, unions, enums, global variables (an object declared
-`extern` at file scope is accepted and its use refused; a definition
-at file scope is refused), `extern` in a block, brace initializers and
+Structs, unions, enums and floating point (each type is declared, a
+struct's or union's members skipped and an enum's constants declared
+without their values; a pointer to one is an ordinary pointer, and a
+use that needs the object, or a constant's value, is refused), global
+variables (an object declared `extern` at file scope is accepted and
+its use refused; a definition at file scope is refused), `extern` in
+a block, brace initializers and
 `char s[] = "..."`, function pointers and a declaration through a
 typedef of function type, wide and `u8` strings,
 `volatile` (c1 writes every access it meets, an unused one
 included, so the access needs nothing more; the qualifier waits for
 the type model, as `const`'s checks do),
 `restrict`, `switch`, `goto`, `static`, a `register`
-array (6.3.2.1p3), floating point. Each arrives when a probe needs
-it. The preprocessor stays external for good.
+array (6.3.2.1p3). Each arrives when a probe needs it. The
+preprocessor stays external for good.

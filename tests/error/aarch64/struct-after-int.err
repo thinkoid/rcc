@@ -1,0 +1,2 @@
+tests/error/struct-after-int.c:2:5: error: cannot combine 'struct' with the type specifiers before it
+status 1

@@ -1,0 +1,2 @@
+tests/error/long-double-call.c:8:9: error: not yet: floating type 'long double'
+status 1

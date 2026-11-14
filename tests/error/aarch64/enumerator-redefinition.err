@@ -1,0 +1,2 @@
+tests/error/enumerator-redefinition.c:3:14: error: redefinition of 'red'
+status 1

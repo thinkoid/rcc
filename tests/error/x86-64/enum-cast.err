@@ -1,0 +1,2 @@
+tests/error/enum-cast.c:8:18: error: not yet: enum
+status 1

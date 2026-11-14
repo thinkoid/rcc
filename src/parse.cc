@@ -23,31 +23,53 @@ namespace rcc {
 
 namespace {
 
+// A tag: the type it names, the keyword that declared it, and whether
+// a list has defined its content.
+struct tag_t
+{
+    type_t type;
+    tok_t keyword;
+    bool defined;
+};
+
+// The names one scope declares.  The tags of structs, unions and enums
+// have a name space of their own, 6.2.3p1, apart from the ordinary
+// identifiers, with the same block structure.
+struct scope_t
+{
+    std::unordered_map< std::string_view, const symbol_t * > names;
+    std::unordered_map< std::string_view, tag_t > tags;
+};
+
 // The state of one parse.  Scope 0 is file scope; the scopes die with
 // the parser and leave only the symbols in the unit.  result and
 // registers are the function being defined: its result type, and the
-// most register variables live at once in it so far.
+// most register variables live at once in it so far.  identities is
+// the identity the next struct, union or enum type takes.
 struct parser_t
 {
     const std::vector< token_t > &tokens;
     std::size_t pos;
     const target_t &target;
 
-    std::vector< std::unordered_map< std::string_view, const symbol_t * > >
-        scopes;
+    std::vector< scope_t > scopes;
 
     unit_t unit;
     type_t result;
     int registers;
+    int identities;
 };
 
 // The declaration specifiers: the type, and the storage-class specifier
 // when one was written, register, typedef or extern, for the caller to
-// accept or refuse in its context.
+// accept or refuse in its context.  tagged is whether the type
+// specifier is a struct, union or enum one, which may declare a tag or
+// enumeration constants with no declarator after it.
 struct specifiers_t
 {
     type_t type;
     const token_t *storage_class;
+    bool tagged;
 };
 
 // A parameter as written: its type, its name token when it has one,
@@ -177,6 +199,35 @@ size_type()
 {
     return make_int(64, false);
 }
+
+// The not-yet types that are one type wherever they are written: the
+// floating types and __builtin_va_list, each of a fixed identity.  A
+// struct, a union or an enum takes the next identity after theirs.
+type_t
+float_type()
+{
+    return make_not_yet(0, "floating type 'float'");
+}
+
+type_t
+double_type()
+{
+    return make_not_yet(1, "floating type 'double'");
+}
+
+type_t
+long_double_type()
+{
+    return make_not_yet(2, "floating type 'long double'");
+}
+
+type_t
+va_list_type()
+{
+    return make_not_yet(3, "'__builtin_va_list'");
+}
+
+constexpr int first_tag_identity = 4;
 
 const type_t &
 pointee_of(const type_t &t)
@@ -382,6 +433,34 @@ arithmetic_conversions(expr_t &lhs, expr_t &rhs)
 // operand checks
 //
 
+// The not-yet type a type is, or holds as an array's element, or null.
+const not_yet_t *
+not_yet_in(const type_t &t)
+{
+    if (is< not_yet_t >(t))
+        return &as< not_yet_t >(t);
+
+    if (is< array_t >(t))
+        return not_yet_in(*as< array_t >(t).element);
+
+    return nullptr;
+}
+
+// A not-yet type stands wherever nothing needs its object: behind a
+// pointer, as the type a typedef names, in a function declaration, as
+// the type of an object defined elsewhere.  Where the object is needed,
+// so are its size and its layout, which rcc does not know, and the use
+// is refused with the type's own words.  The parser refuses every
+// expression that would have such a type where it would be made, by
+// indirection, by a call or by a cast, so no expression has one and c1
+// meets one only as a pointee it does not look into.
+void
+require_honoured(const token_t &at, const type_t &t)
+{
+    if (const not_yet_t *n = not_yet_in(t))
+        not_yet(at, n->what);
+}
+
 // A value in the subset is an integer or a pointer to an object.  A
 // function's name stands only as the callee of a call: function
 // pointers are outside the subset, so a function designator where a
@@ -449,7 +528,8 @@ require_integer(const token_t &op, const expr_t &e)
 
 // Pointer arithmetic, ++ and -- included, needs a pointer to a
 // complete object type, 6.5.7p2, p3: not void, which GNU C would take
-// as a byte, and not a function.
+// as a byte, and not a function.  The step is the pointee's size, so a
+// not-yet pointee is not yet.
 void
 require_object_pointee(const token_t &op, const type_t &t)
 {
@@ -458,6 +538,8 @@ require_object_pointee(const token_t &op, const type_t &t)
 
     if (is< function_t >(pointee_of(t)))
         fail(op, "arithmetic on a pointer to a function");
+
+    require_honoured(op, pointee_of(t));
 }
 
 // Prefix and postfix ++ and -- on a pointer step it by one element,
@@ -496,10 +578,14 @@ is_null_pointer_constant(const expr_t &e)
 // 6.5.17.2p1: integers convert to each other; a pointer takes a pointer
 // of its own type, a pointer to void and an object pointer convert
 // either way, and a null pointer constant converts to any pointer.  An
-// integer and a pointer meet only through a cast, 6.5.5p3.
+// integer and a pointer meet only through a cast, 6.5.5p3.  A value
+// converted to a not-yet type, as an argument meets a parameter of one,
+// is not yet.
 expr_t
 assignment_conversion(const token_t &at, expr_t e, const type_t &t)
 {
+    require_honoured(at, t);
+
     e = rvalue(at, std::move(e));
 
     const bool to_pointer = is< pointer_t >(t);
@@ -1047,10 +1133,13 @@ conditional(const token_t &op, expr_t cond, expr_t yes, expr_t no)
 // pointer, p1, p7.  A cast yields no lvalue, 6.5.5p6 and its footnote,
 // so a cast to the operand's own type is still a node.  A constant cast
 // to an integer or a pointer type is the constant converted_constant()
-// gives, which is not an lvalue either.
+// gives, which is not an lvalue either.  A cast to a not-yet type is
+// not yet.
 expr_t
 cast(const token_t &open, const type_t &t, expr_t arg)
 {
+    require_honoured(open, t);
+
     if (is< void_t >(t)) {
         require_not_function(open, arg);
         return convert_to(decayed(std::move(arg)), t);
@@ -1139,8 +1228,8 @@ address_of(const token_t &op, expr_t arg)
 
 // *E: the operand a pointer, after decay; the result the lvalue it
 // points to, of the pointee type, 6.5.4.2p2, p4.  A void pointee
-// designates nothing to read, and a function pointer is not in the
-// subset.
+// designates nothing to read, a function pointer is not in the subset,
+// and a not-yet pointee is not yet.
 expr_t
 indirection(const token_t &op, expr_t arg)
 {
@@ -1156,13 +1245,16 @@ indirection(const token_t &op, expr_t arg)
     if (is< function_t >(t))
         not_yet(op, "indirection through a function pointer");
 
+    require_honoured(op, t);
+
     return expr_t { t, unary_t { unary_op_t::deref, box(std::move(arg)) } };
 }
 
 // sizeof folds to a constant of type unsigned long, size_t on LP64,
 // 6.5.4.4p2, p5.  A function, void, and an array of unknown size have
-// no size, p1.  The name is the operator's, with the underscore a name
-// takes when it is a keyword of C++.
+// no size, p1; a not-yet type has one rcc does not know yet.  The name
+// is the operator's, with the underscore a name takes when it is a
+// keyword of C++.
 expr_t
 sizeof_(const token_t &op, const type_t &t)
 {
@@ -1174,6 +1266,8 @@ sizeof_(const token_t &op, const type_t &t)
 
     if (is< array_t >(t) && as< array_t >(t).count < 0)
         fail(op, "invalid application of 'sizeof' to an array of unknown size");
+
+    require_honoured(op, t);
 
     return expr_t { size_type(), literal_t { size_of(t) } };
 }
@@ -1212,23 +1306,37 @@ const symbol_t *
 lookup(const parser_t &p, std::string_view name)
 {
     for (auto scope = p.scopes.rbegin(); scope != p.scopes.rend(); ++scope)
-        if (const auto it = scope->find(name); it != scope->end())
+        if (const auto it = scope->names.find(name); it != scope->names.end())
             return it->second;
 
     return nullptr;
 }
 
-// Whether the token is an identifier that names a type where it stands:
-// a typedef in scope, not hidden by an inner declaration of the name.
+// The type an identifier names where it stands: a typedef's, in scope
+// and not hidden by an inner declaration of the name; or, while
+// undeclared, __builtin_va_list's, clang's and gcc's name for the type
+// behind va_list, which no header declares.  Nothing for any other
+// token.
+std::optional< type_t >
+named_type(const parser_t &p, const token_t &t)
+{
+    if (t.kind != tok_t::identifier)
+        return std::nullopt;
+
+    const symbol_t *sym = lookup(p, t.text);
+    if (sym && sym->storage == storage_t::type_name)
+        return sym->type;
+
+    if (!sym && t.text == "__builtin_va_list")
+        return va_list_type();
+
+    return std::nullopt;
+}
+
 bool
 names_type(const parser_t &p, const token_t &t)
 {
-    if (t.kind != tok_t::identifier)
-        return false;
-
-    const symbol_t *sym = lookup(p, t.text);
-
-    return sym && sym->storage == storage_t::type_name;
+    return named_type(p, t).has_value();
 }
 
 // The register variables live at this point of the function: those of
@@ -1239,7 +1347,7 @@ live_registers(const parser_t &p)
 {
     int live = 0;
     for (const auto &scope : p.scopes)
-        for (const auto &[name, sym] : scope)
+        for (const auto &[name, sym] : scope.names)
             if (in_register(*sym))
                 ++live;
 
@@ -1275,7 +1383,7 @@ declare(parser_t &p,
         storage_t storage,
         bool in_register)
 {
-    auto &scope = p.scopes.back();
+    auto &scope = p.scopes.back().names;
     if (scope.contains(name.text))
         fail(name, "redefinition of " + quoted(name.text));
 
@@ -1445,6 +1553,9 @@ integer_constant(const token_t &t)
 void external_declaration(parser_t &);
 void function_definition(parser_t &, const declarator_t &);
 specifiers_t declaration_specifiers(parser_t &);
+type_t struct_or_union_specifier(parser_t &);
+type_t enum_specifier(parser_t &);
+void enumerator_list(parser_t &, const type_t &);
 declarator_t declarator(parser_t &, const type_t &, bool abstract = false);
 type_t pointer(parser_t &, type_t);
 type_t array_declarator(parser_t &, const type_t &);
@@ -1563,7 +1674,7 @@ earlier_declaration(const parser_t &p,
                     const type_t &t,
                     storage_t storage)
 {
-    const auto &scope = p.scopes.back();
+    const auto &scope = p.scopes.back().names;
 
     const auto it = scope.find(name.text);
     if (it == scope.end())
@@ -1590,7 +1701,7 @@ added(parser_t &p, std::string_view name, type_t t, storage_t storage)
 {
     const symbol_t &sym = p.unit.symbols.emplace_back(
         symbol_t { std::string(name), std::move(t), storage, false, -1 });
-    p.scopes.back().emplace(sym.name, &sym);
+    p.scopes.back().names.emplace(sym.name, &sym);
 
     return sym;
 }
@@ -1668,8 +1779,9 @@ external_declarator(parser_t &p,
 }
 
 // A function definition, or a declaration of functions, of objects
-// defined elsewhere and of type names.  extern on a function changes
-// nothing: a function has external linkage without it.
+// defined elsewhere and of type names, or of a tag or enumeration
+// constants alone.  extern on a function changes nothing: a function
+// has external linkage without it.
 void
 external_declaration(parser_t &p)
 {
@@ -1679,6 +1791,9 @@ external_declaration(parser_t &p)
     if (declared(spec, tok_t::kw_register))
         fail(*spec.storage_class,
              quoted(spec.storage_class->text) + " in an external declaration");
+
+    if (spec.tagged && accept(p, tok_t::semicolon))
+        return;
 
     const type_t &base = spec.type;
 
@@ -1700,7 +1815,9 @@ external_declaration(parser_t &p)
 
 // The parameters and the outermost block of the body are one block,
 // 6.8.3p2, so a local cannot redeclare a parameter there; the body's
-// items are parsed into the parameter scope directly.
+// items are parsed into the parameter scope directly.  The result and
+// the parameters are objects the definition makes, so none may be of a
+// not-yet type.
 void
 function_definition(parser_t &p, const declarator_t &d)
 {
@@ -1709,6 +1826,8 @@ function_definition(parser_t &p, const declarator_t &d)
         fail(*d.name, "redefinition of " + quoted(d.name->text));
 
     p.result = *as< function_t >(d.type).result;
+    require_honoured(*d.name, p.result);
+
     p.registers = 0;
     p.scopes.emplace_back();
 
@@ -1717,6 +1836,7 @@ function_definition(parser_t &p, const declarator_t &d)
         if (!param.name)
             fail(*param.start, "parameter name omitted");
 
+        require_honoured(*param.name, param.type);
         params.push_back(declare(p, *param.name, param.type,
                                  storage_t::parameter, param.in_register));
     }
@@ -1734,6 +1854,140 @@ function_definition(parser_t &p, const declarator_t &d)
     f.registers = p.registers;
 }
 
+// How a struct, union or enum specifier uses its tag, 6.7.3.4: a list
+// defines the tag's content (p10); struct S; declares the tag alone
+// (p11); any other mention refers to the type the tag names (p12, p13).
+enum class tag_use_t { defines, declares, refers };
+
+// A new struct, union or enum type, of an identity of its own: an
+// untagged specifier makes one each time, 6.7.3.4p9.
+type_t
+new_tag_type(parser_t &p, const token_t &keyword)
+{
+    const std::string_view what = keyword.kind == tok_t::kw_struct ? "struct" :
+                                  keyword.kind == tok_t::kw_union  ? "union" :
+                                                                     "enum";
+
+    return make_not_yet(p.identities++, what);
+}
+
+// The tag the scope declares by the name, or null.
+tag_t *
+tag_in(scope_t &scope, std::string_view name)
+{
+    const auto it = scope.tags.find(name);
+
+    return it == scope.tags.end() ? nullptr : &it->second;
+}
+
+// The type a tag names, 6.7.3.4.  A list and struct S; declare the tag
+// in the current scope (p10, p11), and a tag declared there already is
+// the same type, p4.  Any other mention is the type of the innermost
+// declaration of the tag in scope, p13, or without one declares an
+// incomplete struct or union in the current scope, p12.  The tag of
+// another kind of type is an error, p1, and so is an enum without its
+// list before the enum is declared, p2.  A second list for one tag in
+// one scope is valid when it defines the same content, p1, which rcc
+// cannot compare while it skips the lists, so it is not yet.  A tag
+// declared in a parameter list is declared in the scope around the
+// declarator, which is not the prototype scope of 6.2.1p4.
+type_t
+tagged_type(parser_t &p,
+            const token_t &keyword,
+            const token_t &tag,
+            tag_use_t use)
+{
+    tag_t *found = tag_in(p.scopes.back(), tag.text);
+
+    if (use == tag_use_t::refers)
+        for (auto scope = p.scopes.rbegin(); !found && scope != p.scopes.rend();
+             ++scope)
+            found = tag_in(*scope, tag.text);
+
+    if (found && found->keyword != keyword.kind)
+        fail(tag,
+             "use of " + quoted(tag.text) +
+                 " with tag type that does not match previous declaration");
+
+    if (!found && use == tag_use_t::refers && keyword.kind == tok_t::kw_enum)
+        fail(tag, "enum " + quoted(tag.text) + " used before its list");
+
+    if (found && use == tag_use_t::defines && found->defined)
+        not_yet(tag, std::string(keyword.text) + " " + quoted(tag.text) +
+                         " defined again");
+
+    if (!found) {
+        tag_t fresh { new_tag_type(p, keyword), keyword.kind, false };
+        found = &p.scopes.back().tags.emplace(tag.text, fresh).first->second;
+    }
+
+    if (use == tag_use_t::defines)
+        found->defined = true;
+
+    return found->type;
+}
+
+// The tag after struct, union or enum, or null where the list follows
+// at once; a specifier with neither is an error.
+const token_t *
+optional_tag(parser_t &p, const token_t &keyword)
+{
+    if (peek(p).kind == tok_t::lbrace)
+        return nullptr;
+
+    return &expect(p, tok_t::identifier,
+                   "expected identifier or '{' after " + quoted(keyword.text));
+}
+
+// The member list of a struct or union, skipped up to its closing
+// brace, which is left for the caller, with the braces nested in it
+// counted.  The members are not yet, and nothing reads them.
+void
+skip_member_list(parser_t &p)
+{
+    for (int depth = 0; peek(p).kind != tok_t::eof; advance(p)) {
+        const tok_t kind = peek(p).kind;
+        if (kind == tok_t::rbrace && depth == 0)
+            return;
+
+        if (kind == tok_t::lbrace)
+            ++depth;
+        else if (kind == tok_t::rbrace)
+            --depth;
+    }
+}
+
+// The value of an enumeration constant, skipped up to the comma or the
+// closing brace at the list's own depth, which is left for the caller:
+// a comma inside parentheses, brackets or braces is the expression's.
+// The value is not computed yet.
+void
+skip_enumerator_value(parser_t &p)
+{
+    for (int depth = 0; peek(p).kind != tok_t::eof; advance(p)) {
+        switch (peek(p).kind) {
+        case tok_t::lparen:
+        case tok_t::lbracket:
+        case tok_t::lbrace: ++depth; break;
+        case tok_t::rparen:
+        case tok_t::rbracket:
+            if (depth > 0)
+                --depth;
+            break;
+        case tok_t::rbrace:
+            if (depth == 0)
+                return;
+            --depth;
+            break;
+        case tok_t::comma:
+            if (depth == 0)
+                return;
+            break;
+        default: break;
+        }
+    }
+}
+
 // The type specifiers in any valid order and combination, 6.7.3.1p2.
 // The tree keeps no spelling: char and signed char are one type, long
 // and long long another.  Each keyword is checked against the ones
@@ -1744,16 +1998,18 @@ function_definition(parser_t &p, const declarator_t &d)
 // 6.7.2p2, and is reported to the caller, since what it may declare
 // depends on where the declaration is.  A typedef name is the type
 // specifier where no type specifier has been seen; after one, an
-// identifier is the declarator's name, so unsigned T declares a T.  No
-// other type specifier joins a typedef name.
+// identifier is the declarator's name, so unsigned T declares a T.  A
+// typedef name, a struct, union or enum specifier, and float are each
+// the whole type specifier; double joins one long.
 specifiers_t
 declaration_specifiers(parser_t &p)
 {
     int n_void = 0, n_char = 0, n_short = 0, n_int = 0, n_long = 0;
-    int n_signed = 0, n_unsigned = 0;
+    int n_signed = 0, n_unsigned = 0, n_float = 0, n_double = 0;
     bool any = false;
 
-    const symbol_t *named = nullptr;
+    std::optional< type_t > whole;
+    bool tagged = false;
     const token_t *storage_class = nullptr;
 
     for (;;) {
@@ -1775,11 +2031,11 @@ declaration_specifiers(parser_t &p)
         }
 
         if (!any && names_type(p, t)) {
-            named = lookup(p, t.text);
+            whole = named_type(p, t);
 
             // a function declared through it, or a pointer to one, would
             // need function designators as values
-            if (is< function_t >(named->type))
+            if (is< function_t >(*whole))
                 not_yet(t,
                         "typedef name " + quoted(t.text) + " of function type");
 
@@ -1788,62 +2044,87 @@ declaration_specifiers(parser_t &p)
             continue;
         }
 
-        bool bad = n_void > 0 || named;
+        bool bad = n_void > 0 || whole || n_float > 0;
         switch (t.kind) {
         case tok_t::kw_void:
             bad = bad || n_char || n_short || n_int || n_long || n_signed ||
-                  n_unsigned;
+                  n_unsigned || n_double;
             ++n_void;
             break;
         case tok_t::kw_char:
-            bad = bad || n_char || n_short || n_int || n_long;
+            bad = bad || n_char || n_short || n_int || n_long || n_double;
             ++n_char;
             break;
         case tok_t::kw_short:
-            bad = bad || n_char || n_short || n_long;
+            bad = bad || n_char || n_short || n_long || n_double;
             ++n_short;
             break;
         case tok_t::kw_int:
-            bad = bad || n_char || n_int;
+            bad = bad || n_char || n_int || n_double;
             ++n_int;
             break;
         case tok_t::kw_long:
-            bad = bad || n_char || n_short || n_long == 2;
+            bad =
+                bad || n_char || n_short || n_long == 2 || (n_long && n_double);
             ++n_long;
             break;
         case tok_t::kw_signed:
         case tok_t::kw_unsigned:
-            bad = bad || n_signed || n_unsigned;
+            bad = bad || n_signed || n_unsigned || n_double;
             ++(t.kind == tok_t::kw_signed ? n_signed : n_unsigned);
             break;
+        case tok_t::kw_float:
+            bad = any;
+            ++n_float;
+            break;
+        case tok_t::kw_double:
+            bad = bad || n_char || n_short || n_int || n_long == 2 ||
+                  n_signed || n_unsigned || n_double;
+            ++n_double;
+            break;
+        case tok_t::kw_struct:
+        case tok_t::kw_union:
+        case tok_t::kw_enum:
+            if (any) {
+                bad = true;
+                break;
+            }
+
+            whole = t.kind == tok_t::kw_enum ? enum_specifier(p) :
+                                               struct_or_union_specifier(p);
+            tagged = true;
+            any = true;
+            continue;
         case tok_t::kw_volatile:
         case tok_t::kw_restrict: not_yet(t, "type qualifier " + quoted(t.text));
         case tok_t::kw_auto:
         case tok_t::kw_static: not_yet(t, "storage class " + quoted(t.text));
-        case tok_t::kw_struct:
-        case tok_t::kw_union:
-        case tok_t::kw_enum: not_yet(t, quoted(t.text));
-        case tok_t::kw_float:
-        case tok_t::kw_double: not_yet(t, "floating type " + quoted(t.text));
         default:
             if (!any)
                 fail(t, "expected a type specifier");
 
-            if (named)
-                return { named->type, storage_class };
+            if (whole)
+                return { *whole, storage_class, tagged };
 
             if (n_void)
-                return { make_void(), storage_class };
+                return { make_void(), storage_class, false };
+
+            if (n_float)
+                return { float_type(), storage_class, false };
+
+            if (n_double)
+                return { n_long ? long_double_type() : double_type(),
+                         storage_class, false };
 
             if (n_char && !n_signed && !n_unsigned)
-                return { char_type(p), storage_class };
+                return { char_type(p), storage_class, false };
 
             return { make_int(n_char  ? 8 :
                               n_short ? 16 :
                               n_long  ? 64 :
                                         32,
                               n_unsigned == 0),
-                     storage_class };
+                     storage_class, false };
         }
 
         if (bad)
@@ -1853,6 +2134,82 @@ declaration_specifiers(parser_t &p)
         advance(p);
         any = true;
     }
+}
+
+// struct or union, then a tag, a member list in braces, or both,
+// 6.7.3.2p1.  The type is a not-yet type: the members are skipped,
+// and nothing that needs the object is taken.  A tag followed by ; is
+// the declaration of the tag alone, 6.7.3.4p11.
+type_t
+struct_or_union_specifier(parser_t &p)
+{
+    const token_t &keyword = advance(p);
+    const token_t *tag = optional_tag(p, keyword);
+
+    if (peek(p).kind != tok_t::lbrace) {
+        const tag_use_t use = peek(p).kind == tok_t::semicolon ?
+                                  tag_use_t::declares :
+                                  tag_use_t::refers;
+
+        return tagged_type(p, keyword, *tag, use);
+    }
+
+    const type_t t = tag ? tagged_type(p, keyword, *tag, tag_use_t::defines) :
+                           new_tag_type(p, keyword);
+
+    advance(p);
+    skip_member_list(p);
+    expect(p, tok_t::rbrace, "expected '}' at end of member list");
+
+    return t;
+}
+
+// enum, then a tag, an enumerator list in braces, or both, 6.7.3.3p1.
+// The type is a not-yet type, and its enumeration constants are
+// declared for what they are.
+type_t
+enum_specifier(parser_t &p)
+{
+    const token_t &keyword = advance(p);
+    const token_t *tag = optional_tag(p, keyword);
+
+    if (peek(p).kind != tok_t::lbrace)
+        return tagged_type(p, keyword, *tag, tag_use_t::refers);
+
+    const type_t t = tag ? tagged_type(p, keyword, *tag, tag_use_t::defines) :
+                           new_tag_type(p, keyword);
+
+    advance(p);
+    enumerator_list(p, t);
+    expect(p, tok_t::rbrace, "expected '}' at end of enumerator list");
+
+    return t;
+}
+
+// One or more enumerators, the list perhaps ending in a comma,
+// 6.7.3.3p1.  Each declares its enumeration constant as an ordinary
+// identifier, 6.2.3p1, in the current scope, once there, from the end
+// of its enumerator, 6.2.1p7.  The constant's type here is the
+// enumeration's, and its value, the tokens after =, is skipped: its use
+// is refused where it is named.
+void
+enumerator_list(parser_t &p, const type_t &t)
+{
+    do {
+        const token_t &name =
+            expect(p, tok_t::identifier, "expected identifier");
+        if (p.scopes.back().names.contains(name.text))
+            fail(name, "redefinition of " + quoted(name.text));
+
+        if (accept(p, tok_t::assign)) {
+            if (next_is(p, { tok_t::comma, tok_t::rbrace }))
+                fail(peek(p), "expected expression");
+
+            skip_enumerator_value(p);
+        }
+
+        added(p, name.text, t, storage_t::enumerator);
+    } while (accept(p, tok_t::comma) && peek(p).kind != tok_t::rbrace);
 }
 
 // The pointers, then an identifier, then array suffixes or a parameter
@@ -1957,7 +2314,9 @@ array_count(const token_t &at, const expr_t &size)
 // in the grammar, 6.7.7.1p1.  The suffixes nest from the right: int
 // a[2][3] is an array of two arrays of three ints.  An element must be
 // a complete type, so only the first suffix may leave its size out, and
-// the caller decides whether it may.
+// the caller decides whether it may.  An array of a not-yet type has no
+// size rcc knows, so its size is not checked; its object is refused
+// where it would be made.
 type_t
 array_declarator(parser_t &p, const type_t &element)
 {
@@ -1986,7 +2345,7 @@ array_declarator(parser_t &p, const type_t &element)
         if (is< void_t >(t) || (is< array_t >(t) && as< array_t >(t).count < 0))
             fail(*open, "array has incomplete element type");
 
-        if (count >= 0 &&
+        if (count >= 0 && !not_yet_in(t) &&
             count > std::numeric_limits< long >::max() / size_of(t))
             fail(*open, "array is too large");
 
@@ -2090,7 +2449,8 @@ type_name(parser_t &p)
     return t;
 }
 
-// A block-scope declaration.  extern in a block is not yet.
+// A block-scope declaration, perhaps of a tag or enumeration constants
+// alone, which makes no statement.  extern in a block is not yet.
 std::vector< stmt_t >
 declaration(parser_t &p)
 {
@@ -2099,6 +2459,9 @@ declaration(parser_t &p)
     if (declared(spec, tok_t::kw_extern))
         not_yet(*spec.storage_class,
                 "storage class " + quoted(spec.storage_class->text));
+
+    if (spec.tagged && accept(p, tok_t::semicolon))
+        return { };
 
     return init_declarator_list(p, spec);
 }
@@ -2130,7 +2493,8 @@ init_declarator_list(parser_t &p, const specifiers_t &spec)
 // array, and a brace initializer of anything, is not yet.  A register
 // array is not yet either: its decay is undefined, 6.3.2.1p3, and it
 // has no slot to decay to.  A local of 2 GiB or more is refused here,
-// where its position is known, since no frame holds it.
+// where its position is known, since no frame holds it, and so is one
+// of a not-yet type, whose size rcc does not know.
 stmt_t
 init_declarator(parser_t &p, const specifiers_t &spec)
 {
@@ -2140,6 +2504,8 @@ init_declarator(parser_t &p, const specifiers_t &spec)
 
     if (is< void_t >(d.type))
         fail(*d.name, "variable " + quoted(d.name->text) + " has type void");
+
+    require_honoured(*d.name, d.type);
 
     if (is< array_t >(d.type) && declared(spec, tok_t::kw_register))
         not_yet(*d.name, "register array " + quoted(d.name->text));
@@ -2643,7 +3009,9 @@ sizeof_expression(parser_t &p)
     return sizeof_(op, t);
 }
 
-// A call names its function directly, 6.5.3.3p5 gives its type.
+// A call names its function directly, 6.5.3.3p5 gives its type.  A
+// call of a function whose result is of a not-yet type is not yet, its
+// value used or not: the call makes the object it returns.
 expr_t
 postfix_expression(parser_t &p)
 {
@@ -2664,10 +3032,12 @@ postfix_expression(parser_t &p)
                 fail(op,
                      "called object " + quoted(fn.name) + " is not a function");
 
+            const type_t t = *as< function_t >(fn.type).result;
+            require_honoured(op, t);
+
             std::vector< expr_t > args = argument_expression_list(p, fn);
             expect(p, tok_t::rparen, "expected ')' after arguments");
 
-            const type_t t = *as< function_t >(fn.type).result;
             e = expr_t { t, call_t { box(std::move(e)), std::move(args) } };
             break;
         }
@@ -2731,7 +3101,8 @@ argument_expression_list(parser_t &p, const symbol_t &fn)
 // A name must be declared, 6.5.2p2, as an object or a function: a
 // typedef name names a type, and an object declared extern at file
 // scope is not addressed by c1 yet, so its use is refused here, with
-// the name in hand.  Parentheses leave the expression as it is, an
+// the name in hand, as is an enumeration constant's, whose value is
+// not computed yet.  Parentheses leave the expression as it is, an
 // lvalue included, p6.  A character constant is an int,
 // 6.4.4.5p11.  Adjacent string literals are one, 6.4.5p5, an array of
 // char one longer than its bytes for the zero appended, p6.
@@ -2754,6 +3125,9 @@ primary_expression(parser_t &p)
 
         if (sym->storage == storage_t::global)
             not_yet(t, "global variable");
+
+        if (sym->storage == storage_t::enumerator)
+            not_yet(t, "enum");
 
         return expr_t { sym->type, name_t { sym } };
     }
@@ -2790,7 +3164,9 @@ primary_expression(parser_t &p)
 unit_t
 parse(const std::vector< token_t > &tokens, const target_t &target)
 {
-    parser_t p { tokens, 0, target, { }, { }, make_void(), 0 };
+    parser_t p {
+        tokens, 0, target, { }, { }, make_void(), 0, first_tag_identity
+    };
     p.scopes.emplace_back();
 
     translation_unit(p);

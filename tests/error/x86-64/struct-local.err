@@ -1,0 +1,2 @@
+tests/error/struct-local.c:6:36: error: not yet: struct
+status 1

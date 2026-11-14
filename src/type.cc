@@ -46,6 +46,12 @@ equal(const array_t &a, const array_t &b)
     return a.count == b.count && *a.element == *b.element;
 }
 
+bool
+equal(const not_yet_t &a, const not_yet_t &b)
+{
+    return a.identity == b.identity;
+}
+
 // The parameter lists compare through the edges; comparing the
 // vectors directly would compare the shared pointers.
 bool
@@ -110,6 +116,12 @@ make_function(type_t result, std::vector< type_t > params, bool variadic)
 
     return type_t { function_t { share(std::move(result)), std::move(edges),
                                  variadic } };
+}
+
+type_t
+make_not_yet(int identity, std::string_view what)
+{
+    return type_t { not_yet_t { identity, what } };
 }
 
 // An array of unknown size has no size; asking is the caller's error.

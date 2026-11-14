@@ -39,8 +39,18 @@ namespace rcc {
 // A global is an object declared extern at file scope, defined
 // elsewhere; the parser refuses its use for now, so no expression names
 // one.  A type_name is a typedef: its type is the type the name stands
-// for, it has no object, and no expression names it either.
-enum class storage_t { local, parameter, global, function, type_name };
+// for, it has no object, and no expression names it either.  An
+// enumerator is an enumeration constant: its type is its enumeration's,
+// a not-yet type, its value is not computed, and the parser refuses its
+// use, so no expression names one.
+enum class storage_t {
+    local,
+    parameter,
+    global,
+    function,
+    type_name,
+    enumerator
+};
 
 struct symbol_t
 {

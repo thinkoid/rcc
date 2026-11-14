@@ -1,0 +1,2 @@
+tests/error/member-list-unclosed.c:3:1: error: expected '}' at end of member list
+status 1

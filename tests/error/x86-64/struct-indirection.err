@@ -1,0 +1,2 @@
+tests/error/struct-indirection.c:7:5: error: not yet: struct
+status 1

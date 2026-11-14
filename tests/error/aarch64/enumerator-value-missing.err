@@ -1,0 +1,2 @@
+tests/error/enumerator-value-missing.c:2:19: error: expected expression
+status 1

@@ -1,0 +1,2 @@
+tests/error/enum-before-its-list.c:2:6: error: enum 'color' used before its list
+status 1

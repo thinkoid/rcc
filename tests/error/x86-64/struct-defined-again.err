@@ -1,0 +1,2 @@
+tests/error/struct-defined-again.c:5:8: error: not yet: struct 'point' defined again
+status 1

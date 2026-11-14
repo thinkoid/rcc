@@ -1,0 +1,2 @@
+tests/error/struct-without-tag-or-list.c:2:17: error: expected identifier or '{' after 'struct'
+status 1

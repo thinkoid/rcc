@@ -1,0 +1,2 @@
+tests/error/unsigned-double.c:2:10: error: cannot combine 'double' with the type specifiers before it
+status 1

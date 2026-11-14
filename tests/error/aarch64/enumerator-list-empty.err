@@ -1,0 +1,2 @@
+tests/error/enumerator-list-empty.c:2:14: error: expected identifier
+status 1

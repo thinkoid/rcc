@@ -594,6 +594,35 @@ Fix: each rule cited by its paragraph in N3220, read from the text.
 Check: every citation in the comments of =src/parse.cc= that this
 entry names is found at its number in N3220.
 
+** TODO A tag first written in a parameter list outlives the prototype
+
+~void f(struct S *); struct S { int x; }; void f(struct S *p) { }~ is
+accepted. In C a tag first declared in a parameter list has the
+prototype's scope, so the first =struct S= is not the second, and the
+two declarations of =f= have conflicting types. The parser declares
+such a tag in the scope around the declarator. The entry on a
+prototype's parameter that does not hide a typedef name is the same
+missing scope.
+
+Fix: with the scope opened at the parameter list, a tag declared
+there is declared in it; a definition's parameter tags are its body's.
+
+Check: the program above fails with "conflicting types for 'f'".
+
+** TODO A cast to a struct says not yet
+
+~(struct S) x~ fails with "not yet: struct". The cast is not waiting
+for a slice: C takes only =void= or a scalar type in a cast, so "cast
+to a type that is not a scalar", which the tree has, is the
+diagnosis. A cast to an enum or to a floating type is valid C, and
+"not yet" is right for those.
+
+Fix: =cast()= refuses a struct or a union as not a scalar, before it
+asks whether the type is one rcc does not use yet.
+
+Check: a program of =tests/error= with ~(struct S) x~, pinned "cast
+to a type that is not a scalar".
+
 ** TODO A parameter's array size cannot name an earlier parameter
 
 =int f(int n, int a[n])= fails with "'n' undeclared". Before the
