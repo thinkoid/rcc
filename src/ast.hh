@@ -36,7 +36,11 @@ namespace rcc {
 // is declared.  It is -1 for an object in no register: a register
 // declaration met with the target's register variables all live is an
 // ordinary local, with a warning.
-enum class storage_t { local, parameter, global, function };
+// A global is an object declared extern at file scope, defined
+// elsewhere; the parser refuses its use for now, so no expression names
+// one.  A type_name is a typedef: its type is the type the name stands
+// for, it has no object, and no expression names it either.
+enum class storage_t { local, parameter, global, function, type_name };
 
 struct symbol_t
 {

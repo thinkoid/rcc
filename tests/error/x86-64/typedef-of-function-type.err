@@ -1,0 +1,2 @@
+tests/error/typedef-of-function-type.c:5:1: error: not yet: typedef name 'handler' of function type
+status 1

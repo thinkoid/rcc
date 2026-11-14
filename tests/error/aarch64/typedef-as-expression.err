@@ -1,0 +1,2 @@
+tests/error/typedef-as-expression.c:7:12: error: unexpected type name 'word': expected expression
+status 1

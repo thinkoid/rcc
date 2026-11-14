@@ -1,0 +1,2 @@
+tests/error/extern-conflicting-types.c:3:13: error: conflicting types for 'count'
+status 1

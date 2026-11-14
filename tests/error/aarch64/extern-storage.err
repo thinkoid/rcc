@@ -1,2 +1,0 @@
-tests/error/extern-storage.c:2:1: error: not yet: storage class 'extern'
-status 1

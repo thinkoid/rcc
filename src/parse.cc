@@ -41,12 +41,13 @@ struct parser_t
     int registers;
 };
 
-// The declaration specifiers: the type, and the register token when
-// one was written, for the caller to accept or refuse in its context.
+// The declaration specifiers: the type, and the storage-class specifier
+// when one was written, register, typedef or extern, for the caller to
+// accept or refuse in its context.
 struct specifiers_t
 {
     type_t type;
-    const token_t *in_register;
+    const token_t *storage_class;
 };
 
 // A parameter as written: its type, its name token when it has one,
@@ -1217,6 +1218,19 @@ lookup(const parser_t &p, std::string_view name)
     return nullptr;
 }
 
+// Whether the token is an identifier that names a type where it stands:
+// a typedef in scope, not hidden by an inner declaration of the name.
+bool
+names_type(const parser_t &p, const token_t &t)
+{
+    if (t.kind != tok_t::identifier)
+        return false;
+
+    const symbol_t *sym = lookup(p, t.text);
+
+    return sym && sym->storage == storage_t::type_name;
+}
+
 // The register variables live at this point of the function: those of
 // the scopes open, the parameters' among them.  A scope's variables
 // leave the count when the scope is popped.
@@ -1438,6 +1452,7 @@ bool parameter_type_list(parser_t &, std::vector< parameter_t > &);
 parameter_t parameter_declaration(parser_t &);
 type_t type_name(parser_t &);
 std::vector< stmt_t > declaration(parser_t &);
+std::vector< stmt_t > init_declarator_list(parser_t &, const specifiers_t &);
 stmt_t init_declarator(parser_t &, const specifiers_t &);
 
 stmt_t statement(parser_t &);
@@ -1474,12 +1489,19 @@ expr_t primary_expression(parser_t &);
 // declarations
 //
 
-// The keywords a declaration can start with, those outside the subset
-// included, so that they are refused by name and not as an expression.
+// Whether a declaration starts at the token ahead: a typedef name in
+// scope, or a keyword a declaration can start with, those outside the
+// subset included, so that they are refused by name and not as an
+// expression.  A typedef name before a colon is a label, since labels
+// have a name space of their own.
 bool
-is_declaration_start(tok_t kind)
+is_declaration_start(const parser_t &p, std::size_t ahead = 0)
 {
-    switch (kind) {
+    const token_t &t = peek(p, ahead);
+    if (t.kind == tok_t::identifier)
+        return names_type(p, t) && peek(p, ahead + 1).kind != tok_t::colon;
+
+    switch (t.kind) {
     case tok_t::kw_void:
     case tok_t::kw_char:
     case tok_t::kw_short:
@@ -1504,6 +1526,12 @@ is_declaration_start(tok_t kind)
     }
 }
 
+bool
+declared(const specifiers_t &spec, tok_t storage_class)
+{
+    return spec.storage_class && spec.storage_class->kind == storage_class;
+}
+
 void
 translation_unit(parser_t &p)
 {
@@ -1524,67 +1552,148 @@ check_parameter_names(const declarator_t &d)
                  "redefinition of parameter " + quoted(param.name->text));
 }
 
-// Declares a function at file scope, or meets its earlier declaration,
-// which must name the same type (6.2.7p2).  Returns the index of its
-// entry in the unit's functions.
+// The declaration of the name earlier in the current scope, or null
+// when there is none.  A name declared again there is the same kind of
+// entity, of the same type: a function or an object of file scope by
+// the rule of compatible types (6.2.7p2), and a typedef because C11
+// lets a typedef be declared again only as the type it already names.
+const symbol_t *
+earlier_declaration(const parser_t &p,
+                    const token_t &name,
+                    const type_t &t,
+                    storage_t storage)
+{
+    const auto &scope = p.scopes.back();
+
+    const auto it = scope.find(name.text);
+    if (it == scope.end())
+        return nullptr;
+
+    const symbol_t &earlier = *it->second;
+    if (earlier.storage != storage)
+        fail(name, "redefinition of " + quoted(name.text));
+
+    if (earlier.type == t)
+        return &earlier;
+
+    if (storage == storage_t::type_name)
+        fail(name, "redefinition of typedef " + quoted(name.text) +
+                       " with another type");
+
+    fail(name, "conflicting types for " + quoted(name.text));
+}
+
+// A new symbol in the current scope, in no register.  The map's key
+// views the symbol's own name, which the deque keeps in place.
+const symbol_t &
+added(parser_t &p, std::string_view name, type_t t, storage_t storage)
+{
+    const symbol_t &sym = p.unit.symbols.emplace_back(
+        symbol_t { std::string(name), std::move(t), storage, false, -1 });
+    p.scopes.back().emplace(sym.name, &sym);
+
+    return sym;
+}
+
+// A typedef declares its declarator's name as a name for the type the
+// declarator gives, in the current scope.  The name has no object, so
+// nothing is generated for it, and it takes no initializer.  The type
+// may be a function type, whose parameters share one scope as a
+// prototype's do.
+void
+type_definition(parser_t &p, const declarator_t &d)
+{
+    if (d.params)
+        check_parameter_names(d);
+
+    if (peek(p).kind == tok_t::assign)
+        fail(peek(p),
+             "typedef " + quoted(d.name->text) + " cannot have an initializer");
+
+    if (!earlier_declaration(p, *d.name, d.type, storage_t::type_name))
+        added(p, d.name->text, d.type, storage_t::type_name);
+}
+
+// Declares a function at file scope, or meets its earlier declaration.
+// Returns the index of its entry in the unit's functions.
 std::size_t
 declare_function(parser_t &p, const declarator_t &d)
 {
     check_parameter_names(d);
 
-    const type_t &t = d.type;
-    const std::string_view name = d.name->text;
+    const symbol_t *earlier =
+        earlier_declaration(p, *d.name, d.type, storage_t::function);
 
-    auto &file_scope = p.scopes.front();
-    if (const auto it = file_scope.find(name); it != file_scope.end()) {
-        if (!(it->second->type == t))
-            fail(*d.name, "conflicting types for " + quoted(name));
-
+    if (earlier)
         for (std::size_t i = 0; i < p.unit.functions.size(); ++i)
-            if (p.unit.functions[i].sym == it->second)
+            if (p.unit.functions[i].sym == earlier)
                 return i;
-    }
 
-    const symbol_t &sym = p.unit.symbols.emplace_back(
-        symbol_t { std::string(name), t, storage_t::function, false, -1 });
-    file_scope.emplace(sym.name, &sym);
+    const symbol_t &sym = added(p, d.name->text, d.type, storage_t::function);
     p.unit.functions.push_back(function_decl_t { &sym, { }, std::nullopt, 0 });
 
     return p.unit.functions.size() - 1;
 }
 
-// A function definition, or a declaration of one or more functions.
-// File-scope objects are outside the subset.
+// An object declared extern at file scope without an initializer is
+// defined elsewhere: its symbol has storage global, and c1 writes
+// nothing for it.  Any other object at file scope is a definition,
+// which needs the object's storage, and is not yet.  A use of the
+// object is refused where the object is named.
+void
+declare_external_object(parser_t &p,
+                        const specifiers_t &spec,
+                        const declarator_t &d)
+{
+    if (!declared(spec, tok_t::kw_extern) || peek(p).kind == tok_t::assign)
+        not_yet(*d.name, "global variable");
+
+    if (!earlier_declaration(p, *d.name, d.type, storage_t::global))
+        added(p, d.name->text, d.type, storage_t::global);
+}
+
+// One declarator of a file-scope declaration: a type name, a function,
+// or an object.
+void
+external_declarator(parser_t &p,
+                    const specifiers_t &spec,
+                    const declarator_t &d)
+{
+    if (declared(spec, tok_t::kw_typedef))
+        type_definition(p, d);
+    else if (d.params)
+        declare_function(p, d);
+    else
+        declare_external_object(p, spec, d);
+}
+
+// A function definition, or a declaration of functions, of objects
+// defined elsewhere and of type names.  extern on a function changes
+// nothing: a function has external linkage without it.
 void
 external_declaration(parser_t &p)
 {
     const specifiers_t spec = declaration_specifiers(p);
 
     // 6.9.1p2: register shall not appear in an external declaration
-    if (spec.in_register)
-        fail(*spec.in_register,
-             quoted(spec.in_register->text) + " in an external declaration");
+    if (declared(spec, tok_t::kw_register))
+        fail(*spec.storage_class,
+             quoted(spec.storage_class->text) + " in an external declaration");
 
     const type_t &base = spec.type;
 
-    declarator_t d = declarator(p, base);
-    if (!d.params)
-        not_yet(*d.name, "global variable");
+    const declarator_t d = declarator(p, base);
 
-    if (peek(p).kind == tok_t::lbrace) {
+    const bool defines_function = d.params && peek(p).kind == tok_t::lbrace;
+    if (defines_function && !declared(spec, tok_t::kw_typedef)) {
         function_definition(p, d);
         return;
     }
 
-    declare_function(p, d);
+    external_declarator(p, spec, d);
 
-    while (accept(p, tok_t::comma)) {
-        d = declarator(p, base);
-        if (!d.params)
-            not_yet(*d.name, "global variable");
-
-        declare_function(p, d);
-    }
+    while (accept(p, tok_t::comma))
+        external_declarator(p, spec, declarator(p, base));
 
     expect(p, tok_t::semicolon, "expected ';' after top level declarator");
 }
@@ -1630,9 +1739,13 @@ function_definition(parser_t &p, const declarator_t &d)
 // and long long another.  Each keyword is checked against the ones
 // before it, so an error names the keyword that breaks the set.  const
 // may stand anywhere among them, once or more, 6.7.4.1p6, and is
-// dropped: the type is the machine's view.  register may stand
-// anywhere too, once, 6.7.2p2, and is reported to the caller, since
-// what it may qualify depends on where the declaration is.
+// dropped: the type is the machine's view.  A storage-class specifier,
+// register, typedef or extern, may stand anywhere too, one of them,
+// 6.7.2p2, and is reported to the caller, since what it may declare
+// depends on where the declaration is.  A typedef name is the type
+// specifier where no type specifier has been seen; after one, an
+// identifier is the declarator's name, so unsigned T declares a T.  No
+// other type specifier joins a typedef name.
 specifiers_t
 declaration_specifiers(parser_t &p)
 {
@@ -1640,7 +1753,8 @@ declaration_specifiers(parser_t &p)
     int n_signed = 0, n_unsigned = 0;
     bool any = false;
 
-    const token_t *in_register = nullptr;
+    const symbol_t *named = nullptr;
+    const token_t *storage_class = nullptr;
 
     for (;;) {
         const token_t &t = peek(p);
@@ -1648,18 +1762,33 @@ declaration_specifiers(parser_t &p)
         if (accept(p, tok_t::kw_const))
             continue;
 
-        if (t.kind == tok_t::kw_register) {
+        if (t.kind == tok_t::kw_register || t.kind == tok_t::kw_typedef ||
+            t.kind == tok_t::kw_extern) {
             // 6.7.2p2: at most one storage-class specifier
-            if (in_register)
+            if (storage_class)
                 fail(t, "cannot combine " + quoted(t.text) +
                             " with the storage class before it");
 
-            in_register = &t;
+            storage_class = &t;
             advance(p);
             continue;
         }
 
-        bool bad = n_void > 0;
+        if (!any && names_type(p, t)) {
+            named = lookup(p, t.text);
+
+            // a function declared through it, or a pointer to one, would
+            // need function designators as values
+            if (is< function_t >(named->type))
+                not_yet(t,
+                        "typedef name " + quoted(t.text) + " of function type");
+
+            advance(p);
+            any = true;
+            continue;
+        }
+
+        bool bad = n_void > 0 || named;
         switch (t.kind) {
         case tok_t::kw_void:
             bad = bad || n_char || n_short || n_int || n_long || n_signed ||
@@ -1690,9 +1819,7 @@ declaration_specifiers(parser_t &p)
         case tok_t::kw_volatile:
         case tok_t::kw_restrict: not_yet(t, "type qualifier " + quoted(t.text));
         case tok_t::kw_auto:
-        case tok_t::kw_static:
-        case tok_t::kw_extern:
-        case tok_t::kw_typedef: not_yet(t, "storage class " + quoted(t.text));
+        case tok_t::kw_static: not_yet(t, "storage class " + quoted(t.text));
         case tok_t::kw_struct:
         case tok_t::kw_union:
         case tok_t::kw_enum: not_yet(t, quoted(t.text));
@@ -1702,18 +1829,21 @@ declaration_specifiers(parser_t &p)
             if (!any)
                 fail(t, "expected a type specifier");
 
+            if (named)
+                return { named->type, storage_class };
+
             if (n_void)
-                return { make_void(), in_register };
+                return { make_void(), storage_class };
 
             if (n_char && !n_signed && !n_unsigned)
-                return { char_type(p), in_register };
+                return { char_type(p), storage_class };
 
             return { make_int(n_char  ? 8 :
                               n_short ? 16 :
                               n_long  ? 64 :
                                         32,
                               n_unsigned == 0),
-                     in_register };
+                     storage_class };
         }
 
         if (bad)
@@ -1752,7 +1882,9 @@ declarator(parser_t &p, const type_t &base, bool abstract)
         if (peek(p).kind == tok_t::lparen)
             fail(peek(p), "array element type cannot be a function");
     }
-    else if (accept(p, tok_t::lparen)) {
+    else if (peek(p).kind == tok_t::lparen) {
+        const token_t &open = advance(p);
+
         std::vector< parameter_t > params;
         const bool variadic = parameter_type_list(p, params);
 
@@ -1761,6 +1893,10 @@ declarator(parser_t &p, const type_t &base, bool abstract)
 
         if (peek(p).kind == tok_t::lparen)
             fail(peek(p), "function cannot return a function");
+
+        // an array result through a typedef name, which no suffix shows
+        if (is< array_t >(t))
+            fail(open, "function cannot return an array");
 
         std::vector< type_t > types;
         for (const parameter_t &param : params)
@@ -1907,6 +2043,12 @@ parameter_declaration(parser_t &p)
     const token_t &start = peek(p);
 
     const specifiers_t spec = declaration_specifiers(p);
+
+    // register is the one storage class a parameter takes
+    if (spec.storage_class && !declared(spec, tok_t::kw_register))
+        fail(*spec.storage_class,
+             quoted(spec.storage_class->text) + " in a parameter declaration");
+
     const declarator_t d = declarator(p, spec.type, true);
 
     if (is< void_t >(d.type))
@@ -1922,7 +2064,7 @@ parameter_declaration(parser_t &p)
         t = make_pointer(*as< array_t >(t).element);
 
     return parameter_t { std::move(t), &start, d.name,
-                         spec.in_register != nullptr };
+                         declared(spec, tok_t::kw_register) };
 }
 
 // Specifiers and an abstract declarator of '*'s, each perhaps const,
@@ -1933,9 +2075,9 @@ type_name(parser_t &p)
     const specifiers_t spec = declaration_specifiers(p);
 
     // 6.7.8p1: a specifier-qualifier list, no storage class
-    if (spec.in_register)
-        fail(*spec.in_register,
-             quoted(spec.in_register->text) + " in a type name");
+    if (spec.storage_class)
+        fail(*spec.storage_class,
+             quoted(spec.storage_class->text) + " in a type name");
 
     const type_t t = pointer(p, spec.type);
 
@@ -1948,17 +2090,33 @@ type_name(parser_t &p)
     return t;
 }
 
-// A block-scope declaration: one declaration statement per declarator,
-// in order.
+// A block-scope declaration.  extern in a block is not yet.
 std::vector< stmt_t >
 declaration(parser_t &p)
 {
     const specifiers_t spec = declaration_specifiers(p);
 
+    if (declared(spec, tok_t::kw_extern))
+        not_yet(*spec.storage_class,
+                "storage class " + quoted(spec.storage_class->text));
+
+    return init_declarator_list(p, spec);
+}
+
+// The declarators of a block-scope declaration and its ';': one
+// declaration statement per object, in order.  A typedef's declarators
+// declare type names and make no statement.
+std::vector< stmt_t >
+init_declarator_list(parser_t &p, const specifiers_t &spec)
+{
     std::vector< stmt_t > decls;
-    do
-        decls.push_back(init_declarator(p, spec));
-    while (accept(p, tok_t::comma));
+
+    do {
+        if (declared(spec, tok_t::kw_typedef))
+            type_definition(p, declarator(p, spec.type));
+        else
+            decls.push_back(init_declarator(p, spec));
+    } while (accept(p, tok_t::comma));
 
     expect(p, tok_t::semicolon, "expected ';' at end of declaration");
 
@@ -1983,7 +2141,7 @@ init_declarator(parser_t &p, const specifiers_t &spec)
     if (is< void_t >(d.type))
         fail(*d.name, "variable " + quoted(d.name->text) + " has type void");
 
-    if (is< array_t >(d.type) && spec.in_register)
+    if (is< array_t >(d.type) && declared(spec, tok_t::kw_register))
         not_yet(*d.name, "register array " + quoted(d.name->text));
 
     if (is< array_t >(d.type) && peek(p).kind == tok_t::assign)
@@ -1997,7 +2155,7 @@ init_declarator(parser_t &p, const specifiers_t &spec)
              "variable " + quoted(d.name->text) + " is too large for a local");
 
     decl_stmt_t decl { declare(p, *d.name, d.type, storage_t::local,
-                               spec.in_register != nullptr),
+                               declared(spec, tok_t::kw_register)),
                        std::nullopt };
 
     if (peek(p).kind == tok_t::assign) {
@@ -2043,7 +2201,7 @@ statement(parser_t &p)
     if (t.kind == tok_t::identifier && peek(p, 1).kind == tok_t::colon)
         not_yet(t, "label");
 
-    if (is_declaration_start(t.kind))
+    if (is_declaration_start(p))
         fail(t, "expected statement, found a declaration");
 
     return expression_statement(p);
@@ -2069,7 +2227,7 @@ void
 block_item_list(parser_t &p, block_t &block)
 {
     while (!next_is(p, { tok_t::rbrace, tok_t::eof })) {
-        if (is_declaration_start(peek(p).kind)) {
+        if (is_declaration_start(p)) {
             for (stmt_t &decl : declaration(p))
                 block.body.push_back(std::move(decl));
         }
@@ -2151,7 +2309,8 @@ while_statement(parser_t &p)
 // so the for opens a scope; a braced body nests inside it.  The init
 // and the step are evaluated as void expressions there.  Several
 // declarators in the init become one block of declaration statements,
-// since the tree holds a single init statement.
+// since the tree holds a single init statement.  The init declares
+// objects only, so neither typedef nor extern is a storage class of it.
 stmt_t
 for_statement(parser_t &p)
 {
@@ -2162,8 +2321,13 @@ for_statement(parser_t &p)
 
     for_t loop;
 
-    if (is_declaration_start(peek(p).kind)) {
-        std::vector< stmt_t > decls = declaration(p);
+    if (is_declaration_start(p)) {
+        const specifiers_t spec = declaration_specifiers(p);
+        if (spec.storage_class && !declared(spec, tok_t::kw_register))
+            fail(*spec.storage_class, quoted(spec.storage_class->text) +
+                                          " in the declaration of a 'for'");
+
+        std::vector< stmt_t > decls = init_declarator_list(p, spec);
         if (decls.size() == 1)
             loop.init = box(std::move(decls.front()));
         else
@@ -2415,13 +2579,14 @@ multiplicative_expression(parser_t &p)
 }
 
 // A parenthesized type name starts a cast; anything else in
-// parentheses is a primary expression.  Without typedefs the token
-// after the parenthesis decides.
+// parentheses is a primary expression.  The token after the
+// parenthesis decides: a keyword by its kind, an identifier by what it
+// names in scope, so (T)(x) is a cast when T is a typedef name and a
+// call when T names a function.
 bool
 starts_type_name(const parser_t &p)
 {
-    return peek(p).kind == tok_t::lparen &&
-           is_declaration_start(peek(p, 1).kind);
+    return peek(p).kind == tok_t::lparen && is_declaration_start(p, 1);
 }
 
 expr_t
@@ -2563,8 +2728,11 @@ argument_expression_list(parser_t &p, const symbol_t &fn)
     return args;
 }
 
-// A name must be declared, 6.5.2p2; parentheses leave the expression
-// as it is, an lvalue included, p6.  A character constant is an int,
+// A name must be declared, 6.5.2p2, as an object or a function: a
+// typedef name names a type, and an object declared extern at file
+// scope is not addressed by c1 yet, so its use is refused here, with
+// the name in hand.  Parentheses leave the expression as it is, an
+// lvalue included, p6.  A character constant is an int,
 // 6.4.4.5p11.  Adjacent string literals are one, 6.4.5p5, an array of
 // char one longer than its bytes for the zero appended, p6.
 expr_t
@@ -2579,6 +2747,13 @@ primary_expression(parser_t &p)
         const symbol_t *sym = lookup(p, t.text);
         if (!sym)
             fail(t, quoted(t.text) + " undeclared");
+
+        if (sym->storage == storage_t::type_name)
+            fail(t, "unexpected type name " + quoted(t.text) +
+                        ": expected expression");
+
+        if (sym->storage == storage_t::global)
+            not_yet(t, "global variable");
 
         return expr_t { sym->type, name_t { sym } };
     }

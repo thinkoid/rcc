@@ -1,0 +1,2 @@
+tests/error/typedef-redefinition.c:3:14: error: redefinition of typedef 'word' with another type
+status 1

@@ -1,0 +1,2 @@
+tests/error/global-variable-use.c:7:12: error: not yet: global variable
+status 1

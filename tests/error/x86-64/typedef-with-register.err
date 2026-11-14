@@ -1,0 +1,2 @@
+tests/error/typedef-with-register.c:5:13: error: cannot combine 'register' with the storage class before it
+status 1

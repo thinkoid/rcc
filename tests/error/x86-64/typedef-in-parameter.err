@@ -1,0 +1,2 @@
+tests/error/typedef-in-parameter.c:3:7: error: 'typedef' in a parameter declaration
+status 1

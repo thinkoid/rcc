@@ -109,8 +109,13 @@ Three sums.
   once, its parameters among them.
 
 A symbol is a name, a type and a storage: local, parameter, global,
-function. A local or parameter the parser gives a register carries
-its index, which of the target's register variables it takes: each
+function, type name. A global is an object declared `extern` at file
+scope and defined elsewhere; nothing is written for it, and the
+parser refuses its use, so no expression names one yet. A type name
+is a typedef's: its type is the type the name stands for, it has no
+object, and nothing is written for it. A local or parameter the
+parser gives a register carries its index, which of the target's
+register variables it takes: each
 takes the next in declaration order and gives it back at its block's
 end (`backend.md` chapter 4), so the index is the count of those live
 where it is declared. The parser decides this, and the generator
@@ -334,11 +339,14 @@ chapter 4.
 
 ## 11. Not yet
 
-Structs, unions, enums, global variables, brace initializers and
-`char s[] = "..."`, function pointers, wide and `u8` strings,
+Structs, unions, enums, global variables (an object declared
+`extern` at file scope is accepted and its use refused; a definition
+at file scope is refused), `extern` in a block, brace initializers and
+`char s[] = "..."`, function pointers and a declaration through a
+typedef of function type, wide and `u8` strings,
 `volatile` (c1 writes every access it meets, an unused one
 included, so the access needs nothing more; the qualifier waits for
 the type model, as `const`'s checks do),
-`restrict`, `switch`, `goto`, typedefs, `static`, a `register`
+`restrict`, `switch`, `goto`, `static`, a `register`
 array (6.3.2.1p3), floating point. Each arrives when a probe needs
 it. The preprocessor stays external for good.

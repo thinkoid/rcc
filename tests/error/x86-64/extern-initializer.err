@@ -1,0 +1,2 @@
+tests/error/extern-initializer.c:3:12: error: not yet: global variable
+status 1

@@ -48,7 +48,9 @@ sequence, per operator (`backend.md` 6.1). Between the parser and the
 assembler, nothing reasons about the program. The parser folds an
 integer constant expression to the number it spells, since it is a
 spelling and not an operation on data (`backend.md` 6.4); a variable
-never folds.
+never folds. A typedef name is another spelling of its type and
+writes nothing: a program compiles to the listing of its twin with
+every type spelled out (`typedef` in the cost corpus).
 
 What the compiler may do:
 

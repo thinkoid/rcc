@@ -1,0 +1,2 @@
+tests/error/typedef-initializer.c:2:18: error: typedef 'word' cannot have an initializer
+status 1
