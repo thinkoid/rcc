@@ -459,6 +459,17 @@ require_object_pointee(const token_t &op, const type_t &t)
         fail(op, "arithmetic on a pointer to a function");
 }
 
+// Prefix and postfix ++ and -- on a pointer step it by one element,
+// 6.5.4.1p2, 6.5.3.5p2, so the pointee is an object type as for p + 1.
+void
+require_steppable(const token_t &op, const expr_t &e)
+{
+    require_modifiable_lvalue(op, e);
+
+    if (is< pointer_t >(e.type))
+        require_object_pointee(op, e.type);
+}
+
 //
 // pointer conversions
 //
@@ -924,6 +935,271 @@ shift(const token_t &op, expr_t lhs, expr_t rhs)
 
     return make_binary(binary_operator(op.kind), t, std::move(lhs),
                        std::move(rhs));
+}
+
+// The result is the right operand's type and value, an array decayed,
+// 6.5.18p2.  A function name is refused on either side, which keeps
+// every function-typed expression a name_t; the left operand comes
+// refused and decayed.
+expr_t
+comma(const token_t &op, expr_t lhs, expr_t rhs)
+{
+    require_not_function(op, rhs);
+    rhs = decayed(std::move(rhs));
+
+    const type_t t = rhs.type;
+
+    return make_binary(binary_op_t::comma, t, std::move(lhs), std::move(rhs));
+}
+
+// The type of the whole is the type of the left operand, 6.5.17.1p3,
+// 6.5.17.2p2, and a plain assignment converts the right operand to it
+// as by assignment.  E1 op= E2 is E1 = E1 op (E2) with E1 evaluated
+// once, 6.5.17.3p4: the operation is computed in the common type of the
+// usual arithmetic conversions, so the right operand goes to that type
+// here, or in the promoted left type for a shift, 6.5.8p3, where the
+// count is promoted on its own, as in the shift production.  c1 takes
+// the loaded left operand into it and the result back to the left
+// type.  A pointer takes += and -= only, 6.5.17.3p1, computed in the
+// pointer's type with the right operand widened as for p + n.  The left
+// operand comes checked as a modifiable lvalue.
+expr_t
+assignment(const token_t &op, expr_t lhs, expr_t rhs)
+{
+    const type_t t = lhs.type;
+
+    if (op.kind == tok_t::assign) {
+        rhs = assignment_conversion(op, std::move(rhs), t);
+
+        return expr_t { t, assign_t { std::nullopt, t, box(std::move(lhs)),
+                                      box(std::move(rhs)) } };
+    }
+
+    rhs = rvalue(op, std::move(rhs));
+    require_integer(op, rhs);
+
+    const binary_op_t compound = binary_operator(op.kind);
+    const bool additive =
+        compound == binary_op_t::add || compound == binary_op_t::sub;
+
+    type_t common = t;
+    if (is< pointer_t >(t)) {
+        if (!additive)
+            require_integer(op, lhs);
+
+        require_object_pointee(op, t);
+        rhs = widened_index(std::move(rhs));
+    }
+    else {
+        if (compound == binary_op_t::shl || compound == binary_op_t::shr) {
+            common = promoted(t);
+            rhs = promote(std::move(rhs));
+        }
+        else {
+            common = common_type(t, rhs.type);
+            rhs = convert_to(std::move(rhs), common);
+        }
+    }
+
+    return expr_t { t, assign_t { compound, common, box(std::move(lhs)),
+                                  box(std::move(rhs)) } };
+}
+
+// The arms go to their common type, 6.5.16p6, or two pointers to the
+// one common_pointer() finds, p7.  A pointer and an integer other than
+// a null pointer constant do not meet, p3.  Two void arms are valid C,
+// outside the subset for now.  On a constant condition and two
+// constant arms, the node is the arm the condition selects, p5.  The
+// condition comes as an rvalue.
+expr_t
+conditional(const token_t &op, expr_t cond, expr_t yes, expr_t no)
+{
+    if (is< void_t >(yes.type) && is< void_t >(no.type))
+        not_yet(op, "conditional with void operands");
+
+    yes = rvalue(op, std::move(yes));
+    no = rvalue(op, std::move(no));
+
+    const bool pointers = is< pointer_t >(yes.type) && is< pointer_t >(no.type);
+
+    if (!is< pointer_t >(yes.type) && !is< pointer_t >(no.type))
+        arithmetic_conversions(yes, no);
+    else if (!common_pointer(yes, no))
+        fail(op, pointers ?
+                     "pointer type mismatch in conditional expression" :
+                     "pointer/integer type mismatch in conditional expression");
+
+    const type_t t = yes.type;
+
+    if (is_integer_constant(cond) && is_integer_constant(yes) &&
+        is_integer_constant(no))
+        return exact_value(cond) != 0 ? std::move(yes) : std::move(no);
+
+    return expr_t { t,
+                    conditional_t { box(std::move(cond)), box(std::move(yes)),
+                                    box(std::move(no)) } };
+}
+
+// The type name is void or a scalar, 6.5.5p2: to void the operand is
+// discarded, whatever its type; to a scalar it converts from a scalar,
+// integer and pointer either way, 6.3.2.3p5, p6, and pointer to
+// pointer, p1, p7.  A cast yields no lvalue, 6.5.5p6 and its footnote,
+// so a cast to the operand's own type is still a node.  A constant cast
+// to an integer or a pointer type is the constant converted_constant()
+// gives, which is not an lvalue either.
+expr_t
+explicit_conversion(const token_t &open, const type_t &t, expr_t arg)
+{
+    if (is< void_t >(t)) {
+        require_not_function(open, arg);
+        return convert_to(decayed(std::move(arg)), t);
+    }
+
+    if (!is< int_t >(t) && !is< pointer_t >(t))
+        fail(open, "cast to a type that is not a scalar");
+
+    arg = rvalue(open, std::move(arg));
+
+    if (converts_to_constant(arg, t))
+        return converted_constant(arg, t);
+
+    return expr_t { t, cast_t { box(std::move(arg)) } };
+}
+
+// Prefix ++ and -- have the type of their lvalue operand, 6.5.4.1.
+expr_t
+prefix_step(const token_t &op, expr_t arg)
+{
+    require_steppable(op, arg);
+
+    const type_t t = arg.type;
+    const unary_op_t u =
+        op.kind == tok_t::inc ? unary_op_t::pre_inc : unary_op_t::pre_dec;
+
+    return expr_t { t, unary_t { u, box(std::move(arg)) } };
+}
+
+// - and ~ promote their operand and have its promoted type, 6.5.4.3p3,
+// p4.  - and ~ on an integer constant are a constant.
+expr_t
+unary_arithmetic(const token_t &op, expr_t arg)
+{
+    arg = rvalue(op, std::move(arg));
+    require_integer(op, arg);
+
+    arg = promote(std::move(arg));
+    const type_t t = arg.type;
+    const unary_op_t u =
+        op.kind == tok_t::minus ? unary_op_t::neg : unary_op_t::bit_not;
+
+    if (is_integer_constant(arg))
+        return folded_unary(u, t, arg);
+
+    return expr_t { t, unary_t { u, box(std::move(arg)) } };
+}
+
+// ! is an int, its scalar operand left as it is, 6.5.4.3p5.  ! on an
+// integer constant is a constant.
+expr_t
+logical_negation(const token_t &op, expr_t arg)
+{
+    arg = rvalue(op, std::move(arg));
+
+    if (is_integer_constant(arg))
+        return folded_unary(unary_op_t::log_not, int_type(), arg);
+
+    return expr_t { int_type(),
+                    unary_t { unary_op_t::log_not, box(std::move(arg)) } };
+}
+
+// & takes an lvalue, which does not decay, and yields a pointer to its
+// type, 6.5.4.2p1, p3.
+expr_t
+address(const token_t &op, expr_t arg)
+{
+    require_not_function(op, arg);
+
+    if (!is_lvalue(arg))
+        fail(op, "cannot take the address of an rvalue");
+
+    // 6.5.4.2p1: not an object declared register, whether or not it
+    // got a register: 6.7.2p12's footnote says that addressable
+    // storage does not make the address computable
+    if (is< name_t >(arg) && as< name_t >(arg).sym->declared_register)
+        fail(op, "cannot take the address of " +
+                     quoted(as< name_t >(arg).sym->name) +
+                     ", declared register");
+
+    type_t t = make_pointer(arg.type);
+
+    return expr_t { std::move(t),
+                    unary_t { unary_op_t::addr, box(std::move(arg)) } };
+}
+
+// *E: the operand a pointer, after decay; the result the lvalue it
+// points to, of the pointee type, 6.5.4.2p2, p4.  A void pointee
+// designates nothing to read, and a function pointer is not in the
+// subset.
+expr_t
+indirection(const token_t &op, expr_t arg)
+{
+    arg = rvalue(op, std::move(arg));
+    if (!is< pointer_t >(arg.type))
+        fail(op, "indirection requires a pointer operand");
+
+    const type_t t = pointee_of(arg.type);
+
+    if (is< void_t >(t))
+        fail(op, "indirection through a pointer to void");
+
+    if (is< function_t >(t))
+        not_yet(op, "indirection through a function pointer");
+
+    return expr_t { t, unary_t { unary_op_t::deref, box(std::move(arg)) } };
+}
+
+// sizeof folds to a constant of type unsigned long, size_t on LP64,
+// 6.5.4.4p2, p5.  A function, void, and an array of unknown size have
+// no size, p1.
+expr_t
+operand_size(const token_t &op, const type_t &t)
+{
+    if (is< void_t >(t))
+        fail(op, "invalid application of 'sizeof' to a void type");
+
+    if (is< function_t >(t))
+        fail(op, "invalid application of 'sizeof' to a function type");
+
+    if (is< array_t >(t) && as< array_t >(t).count < 0)
+        fail(op, "invalid application of 'sizeof' to an array of unknown size");
+
+    return expr_t { size_type(), literal_t { size_of(t) } };
+}
+
+// Postfix ++ and -- have the type of their lvalue operand, 6.5.3.5.
+expr_t
+postfix_step(const token_t &op, expr_t arg)
+{
+    require_steppable(op, arg);
+
+    const type_t t = arg.type;
+    const unary_op_t u =
+        op.kind == tok_t::inc ? unary_op_t::post_inc : unary_op_t::post_dec;
+
+    return expr_t { t, unary_t { u, box(std::move(arg)) } };
+}
+
+// E1[E2] is *((E1)+(E2)), 6.5.3.2p2, and is built as exactly that tree,
+// so the pointer may be either operand.
+expr_t
+subscript(const token_t &op, expr_t e, expr_t index)
+{
+    e = rvalue(op, std::move(e));
+    index = rvalue(op, std::move(index));
+    if (!is< pointer_t >(e.type) && !is< pointer_t >(index.type))
+        fail(op, "subscripted value is not an array or a pointer");
+
+    return indirection(op, addition(op, std::move(e), std::move(index)));
 }
 
 //
@@ -1952,10 +2228,7 @@ jump_statement(parser_t &p)
 // expressions, from the comma down
 //
 
-// The left operand is evaluated for its effect and may be void, 6.5.18p2;
-// the result is the right operand's type and value, an array decayed.
-// A function name is refused on either side, which keeps every
-// function-typed expression a name_t.
+// The left operand is evaluated for its effect and may be void, 6.5.18p2.
 expr_t
 expression(parser_t &p)
 {
@@ -1963,30 +2236,16 @@ expression(parser_t &p)
 
     while (peek(p).kind == tok_t::comma) {
         const token_t &op = advance(p);
+        // before the right operand is parsed, so that this error comes first
         require_not_function(op, e);
         e = decayed(std::move(e));
 
-        expr_t rhs = assignment_expression(p);
-        require_not_function(op, rhs);
-        rhs = decayed(std::move(rhs));
-
-        const type_t t = rhs.type;
-        e = make_binary(binary_op_t::comma, t, std::move(e), std::move(rhs));
+        e = comma(op, std::move(e), assignment_expression(p));
     }
 
     return e;
 }
 
-// The type of the whole is the type of the left operand, 6.5.17.1p3,
-// 6.5.17.2p2, and a plain assignment converts the right operand to it
-// as by assignment.  E1 op= E2 is E1 = E1 op (E2) with E1 evaluated
-// once, 6.5.17.3p4: the operation is computed in the common type of the
-// usual arithmetic conversions, so the right operand goes to that type
-// here, or in the promoted left type for a shift, 6.5.8p3, where the
-// count is promoted on its own, as in the shift production.  c1 takes
-// the loaded left operand into it and the result back to the left
-// type.  A pointer takes += and -= only, 6.5.17.3p1, computed in the
-// pointer's type with the right operand widened as for p + n.
 expr_t
 assignment_expression(parser_t &p)
 {
@@ -1995,54 +2254,13 @@ assignment_expression(parser_t &p)
         return lhs;
 
     const token_t &op = advance(p);
+    // before the right operand is parsed, so that this error comes first
     require_modifiable_lvalue(op, lhs);
 
-    expr_t rhs = assignment_expression(p);
-    const type_t t = lhs.type;
-
-    if (op.kind == tok_t::assign) {
-        rhs = assignment_conversion(op, std::move(rhs), t);
-
-        return expr_t { t, assign_t { std::nullopt, t, box(std::move(lhs)),
-                                      box(std::move(rhs)) } };
-    }
-
-    rhs = rvalue(op, std::move(rhs));
-    require_integer(op, rhs);
-
-    const binary_op_t compound = binary_operator(op.kind);
-    const bool additive =
-        compound == binary_op_t::add || compound == binary_op_t::sub;
-
-    type_t common = t;
-    if (is< pointer_t >(t)) {
-        if (!additive)
-            require_integer(op, lhs);
-
-        require_object_pointee(op, t);
-        rhs = widened_index(std::move(rhs));
-    }
-    else {
-        if (compound == binary_op_t::shl || compound == binary_op_t::shr) {
-            common = promoted(t);
-            rhs = promote(std::move(rhs));
-        }
-        else {
-            common = common_type(t, rhs.type);
-            rhs = convert_to(std::move(rhs), common);
-        }
-    }
-
-    return expr_t { t, assign_t { compound, common, box(std::move(lhs)),
-                                  box(std::move(rhs)) } };
+    return assignment(op, std::move(lhs), assignment_expression(p));
 }
 
-// The condition is a scalar and stays as it is, 6.5.16p2; the arms go
-// to their common type, 6.5.16p6, or two pointers to the one
-// common_pointer() finds, p7.  A pointer and an integer other than a
-// null pointer constant do not meet, p3.  Two void arms are valid C,
-// outside the subset for now.  On a constant condition and two
-// constant arms, the node is the arm the condition selects, p5.
+// The condition is a scalar and stays as it is, 6.5.16p2.
 expr_t
 conditional_expression(parser_t &p)
 {
@@ -2051,36 +2269,14 @@ conditional_expression(parser_t &p)
         return cond;
 
     const token_t &op = advance(p);
+    // before the arms are parsed, so that this error comes first
     cond = rvalue(op, std::move(cond));
 
     expr_t yes = expression(p);
     expect(p, tok_t::colon, "expected ':' in conditional expression");
     expr_t no = conditional_expression(p);
 
-    if (is< void_t >(yes.type) && is< void_t >(no.type))
-        not_yet(op, "conditional with void operands");
-
-    yes = rvalue(op, std::move(yes));
-    no = rvalue(op, std::move(no));
-
-    const bool pointers = is< pointer_t >(yes.type) && is< pointer_t >(no.type);
-
-    if (!is< pointer_t >(yes.type) && !is< pointer_t >(no.type))
-        arithmetic_conversions(yes, no);
-    else if (!common_pointer(yes, no))
-        fail(op, pointers ?
-                     "pointer type mismatch in conditional expression" :
-                     "pointer/integer type mismatch in conditional expression");
-
-    const type_t t = yes.type;
-
-    if (is_integer_constant(cond) && is_integer_constant(yes) &&
-        is_integer_constant(no))
-        return exact_value(cond) != 0 ? std::move(yes) : std::move(no);
-
-    return expr_t { t,
-                    conditional_t { box(std::move(cond)), box(std::move(yes)),
-                                    box(std::move(no)) } };
+    return conditional(op, std::move(cond), std::move(yes), std::move(no));
 }
 
 expr_t
@@ -2227,13 +2423,6 @@ starts_type_name(const parser_t &p)
            is_declaration_start(peek(p, 1).kind);
 }
 
-// The type name is void or a scalar, 6.5.5p2: to void the operand is
-// discarded, whatever its type; to a scalar it converts from a scalar,
-// integer and pointer either way, 6.3.2.3p5, p6, and pointer to
-// pointer, p1, p7.  A cast yields no lvalue, 6.5.5p6 and its footnote,
-// so a cast to the operand's own type is still a node.  A constant cast
-// to an integer or a pointer type is the constant converted_constant()
-// gives, which is not an lvalue either.
 expr_t
 cast_expression(parser_t &p)
 {
@@ -2244,62 +2433,9 @@ cast_expression(parser_t &p)
     const type_t t = type_name(p);
     expect(p, tok_t::rparen, "expected ')' after type name");
 
-    expr_t arg = cast_expression(p);
-
-    if (is< void_t >(t)) {
-        require_not_function(open, arg);
-        return convert_to(decayed(std::move(arg)), t);
-    }
-
-    if (!is< int_t >(t) && !is< pointer_t >(t))
-        fail(open, "cast to a type that is not a scalar");
-
-    arg = rvalue(open, std::move(arg));
-
-    if (converts_to_constant(arg, t))
-        return converted_constant(arg, t);
-
-    return expr_t { t, cast_t { box(std::move(arg)) } };
+    return explicit_conversion(open, t, cast_expression(p));
 }
 
-// Prefix and postfix ++ and -- on a pointer step it by one element,
-// 6.5.4.1p2, 6.5.3.5p2, so the pointee is an object type as for p + 1.
-void
-require_steppable(const token_t &op, const expr_t &e)
-{
-    require_modifiable_lvalue(op, e);
-
-    if (is< pointer_t >(e.type))
-        require_object_pointee(op, e.type);
-}
-
-// *E: the operand a pointer, after decay; the result the lvalue it
-// points to, of the pointee type, 6.5.4.2p2, p4.  A void pointee
-// designates nothing to read, and a function pointer is not in the
-// subset.
-expr_t
-indirection(const token_t &op, expr_t arg)
-{
-    arg = rvalue(op, std::move(arg));
-    if (!is< pointer_t >(arg.type))
-        fail(op, "indirection requires a pointer operand");
-
-    const type_t t = pointee_of(arg.type);
-
-    if (is< void_t >(t))
-        fail(op, "indirection through a pointer to void");
-
-    if (is< function_t >(t))
-        not_yet(op, "indirection through a function pointer");
-
-    return expr_t { t, unary_t { unary_op_t::deref, box(std::move(arg)) } };
-}
-
-// - and ~ promote their operand and have its promoted type, 6.5.4.3p3,
-// p4; ! is an int, its scalar operand left as it is, p5.  Prefix ++ and
-// -- have the type of their lvalue operand, 6.5.4.1.  & takes an
-// lvalue, which does not decay, and yields a pointer to its type,
-// 6.5.4.2p1, p3.  - ~ and ! on an integer constant are a constant.
 expr_t
 unary_expression(parser_t &p)
 {
@@ -2307,68 +2443,15 @@ unary_expression(parser_t &p)
 
     switch (op.kind) {
     case tok_t::inc:
-    case tok_t::dec: {
-        advance(p);
-
-        expr_t arg = unary_expression(p);
-        require_steppable(op, arg);
-
-        const type_t t = arg.type;
-        const unary_op_t u =
-            op.kind == tok_t::inc ? unary_op_t::pre_inc : unary_op_t::pre_dec;
-
-        return expr_t { t, unary_t { u, box(std::move(arg)) } };
-    }
+    case tok_t::dec: advance(p); return prefix_step(op, unary_expression(p));
     case tok_t::minus:
-    case tok_t::tilde: {
+    case tok_t::tilde:
         advance(p);
-
-        expr_t arg = rvalue(op, cast_expression(p));
-        require_integer(op, arg);
-
-        arg = promote(std::move(arg));
-        const type_t t = arg.type;
-        const unary_op_t u =
-            op.kind == tok_t::minus ? unary_op_t::neg : unary_op_t::bit_not;
-
-        if (is_integer_constant(arg))
-            return folded_unary(u, t, arg);
-
-        return expr_t { t, unary_t { u, box(std::move(arg)) } };
-    }
-    case tok_t::bang: {
+        return unary_arithmetic(op, cast_expression(p));
+    case tok_t::bang:
         advance(p);
-
-        expr_t arg = rvalue(op, cast_expression(p));
-
-        if (is_integer_constant(arg))
-            return folded_unary(unary_op_t::log_not, int_type(), arg);
-
-        return expr_t { int_type(),
-                        unary_t { unary_op_t::log_not, box(std::move(arg)) } };
-    }
-    case tok_t::amp: {
-        advance(p);
-
-        expr_t arg = cast_expression(p);
-        require_not_function(op, arg);
-
-        if (!is_lvalue(arg))
-            fail(op, "cannot take the address of an rvalue");
-
-        // 6.5.4.2p1: not an object declared register, whether or not it
-        // got a register: 6.7.2p12's footnote says that addressable
-        // storage does not make the address computable
-        if (is< name_t >(arg) && as< name_t >(arg).sym->declared_register)
-            fail(op, "cannot take the address of " +
-                         quoted(as< name_t >(arg).sym->name) +
-                         ", declared register");
-
-        type_t t = make_pointer(arg.type);
-
-        return expr_t { std::move(t),
-                        unary_t { unary_op_t::addr, box(std::move(arg)) } };
-    }
+        return logical_negation(op, cast_expression(p));
+    case tok_t::amp: advance(p); return address(op, cast_expression(p));
     case tok_t::star: advance(p); return indirection(op, cast_expression(p));
     case tok_t::kw_sizeof: return sizeof_expression(p);
     case tok_t::plus: not_yet(op, "unary +");
@@ -2376,11 +2459,9 @@ unary_expression(parser_t &p)
     }
 }
 
-// sizeof E or sizeof (T), folded here to a constant of type unsigned
-// long, size_t on LP64, 6.5.4.4p2, p5.  The operand expression is typed
-// and dropped, never evaluated, and does not decay, so the size of an
-// array is the whole array's, p4.  A function, void, and an array of
-// unknown size have no size, p1.
+// sizeof E or sizeof (T).  The operand expression is typed and dropped,
+// never evaluated, and does not decay, so the size of an array is the
+// whole array's, 6.5.4.4p4.
 expr_t
 sizeof_expression(parser_t &p)
 {
@@ -2395,22 +2476,10 @@ sizeof_expression(parser_t &p)
     else
         t = unary_expression(p).type;
 
-    if (is< void_t >(t))
-        fail(op, "invalid application of 'sizeof' to a void type");
-
-    if (is< function_t >(t))
-        fail(op, "invalid application of 'sizeof' to a function type");
-
-    if (is< array_t >(t) && as< array_t >(t).count < 0)
-        fail(op, "invalid application of 'sizeof' to an array of unknown size");
-
-    return expr_t { size_type(), literal_t { size_of(t) } };
+    return operand_size(op, t);
 }
 
-// A call names its function directly, 6.5.3.3p5 gives its type; postfix
-// ++ and -- have the type of their lvalue operand, 6.5.3.5.  E1[E2] is
-// *((E1)+(E2)), 6.5.3.2p2, and is built as exactly that tree, so the
-// pointer may be either operand.
+// A call names its function directly, 6.5.3.3p5 gives its type.
 expr_t
 postfix_expression(parser_t &p)
 {
@@ -2439,29 +2508,17 @@ postfix_expression(parser_t &p)
             break;
         }
         case tok_t::inc:
-        case tok_t::dec: {
+        case tok_t::dec:
             advance(p);
-            require_steppable(op, e);
-
-            const type_t t = e.type;
-            const unary_op_t u = op.kind == tok_t::inc ? unary_op_t::post_inc :
-                                                         unary_op_t::post_dec;
-
-            e = expr_t { t, unary_t { u, box(std::move(e)) } };
+            e = postfix_step(op, std::move(e));
             break;
-        }
         case tok_t::lbracket: {
             advance(p);
 
             expr_t index = expression(p);
             expect(p, tok_t::rbracket, "expected ']' after subscript");
 
-            e = rvalue(op, std::move(e));
-            index = rvalue(op, std::move(index));
-            if (!is< pointer_t >(e.type) && !is< pointer_t >(index.type))
-                fail(op, "subscripted value is not an array or a pointer");
-
-            e = indirection(op, addition(op, std::move(e), std::move(index)));
+            e = subscript(op, std::move(e), std::move(index));
             break;
         }
         case tok_t::dot:
