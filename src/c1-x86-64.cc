@@ -461,20 +461,34 @@ constant_into(state_t &s, const symbol_t *sym, const expr_t &e)
     return true;
 }
 
-// The register of a value an instruction is about to write.  A borrowed
-// read is first copied into an expression register outside avoid,
-// since its register is the variable; the read of a compound
-// assignment's own variable, s.in_place, is the one written in place.
+// The register of a value an instruction is about to write, the value
+// valid from here on to valid, the width that instruction leaves, as for
+// fresh().  A borrowed read is first copied into an expression register
+// outside avoid, since its register is the variable; the read of a
+// compound assignment's own variable, s.in_place, is the one written in
+// place.
 reg_t
-writable(state_t &s, value_t v, unsigned avoid = 0)
+writable(state_t &s, value_t v, int valid, unsigned avoid = 0)
 {
-    if (!borrowed(s, v) || v.id == s.in_place)
-        return reg_of(s, v, avoid);
+    if (!borrowed(s, v) || v.id == s.in_place) {
+        const reg_t r = reg_of(s, v, avoid);
+        s.values[v.id].valid = valid;
+        return r;
+    }
 
     const reg_t r = take(s, avoid);
     copy(s, v, r);
+    s.values[v.id].valid = valid;
 
     return r;
+}
+
+// The value was just written at width by an instruction of its type, in
+// a row that takes its register by other means than writable().
+void
+wrote(state_t &s, value_t v, int width, bool is_signed)
+{
+    s.values[v.id].valid = written(width, is_signed);
 }
 
 // Before a register variable is written, each of its reads still held
@@ -921,15 +935,16 @@ shift(state_t &s, binary_op_t op, value_t l, const right_t &r, const int_t &t)
 
     if (!r.immediate.empty()) {
         insn(s, sized(stem, width),
-             { r.immediate, reg(writable(s, l), width) });
-        wrote(s, l, width, t.is_signed);
+             { r.immediate,
+               reg(writable(s, l, written(width, t.is_signed)), width) });
         return l;
     }
 
     const int held = s.values[l.id].reg;
     const reg_t right =
         reg_of(s, r.value, held >= 0 ? bit(static_cast< reg_t >(held)) : 0);
-    reg_t left = writable(s, l, bit(right) | bit(rcx));
+    reg_t left =
+        writable(s, l, written(width, t.is_signed), bit(right) | bit(rcx));
 
     if (left == rcx) {
         const reg_t to = take(s, bit(rcx) | bit(right));
@@ -949,7 +964,6 @@ shift(state_t &s, binary_op_t op, value_t l, const right_t &r, const int_t &t)
     insn(s, sized(stem, width), { "%cl", reg(left, width) });
 
     release(s, r.value);
-    wrote(s, l, width, t.is_signed);
 
     return l;
 }
@@ -977,23 +991,23 @@ arithmetic(
     const auto mnemonic = sized(arithmetic_mnemonic(op), width);
 
     if (!r.immediate.empty()) {
-        const auto left = reg(writable(s, l), width);
+        const auto left =
+            reg(writable(s, l, written(width, integer(t).is_signed)), width);
 
         if (op == binary_op_t::mul)
             insn(s, mnemonic, { r.immediate, left, left });
         else
             insn(s, mnemonic, { r.immediate, left });
 
-        wrote(s, l, width, integer(t).is_signed);
         return l;
     }
 
     const reg_t right = operands(s, l, r.value).second;
-    const reg_t left = writable(s, l, bit(right));
+    const reg_t left =
+        writable(s, l, written(width, integer(t).is_signed), bit(right));
     insn(s, mnemonic, { reg(right, width), reg(left, width) });
 
     release(s, r.value);
-    wrote(s, l, width, integer(t).is_signed);
 
     return l;
 }
@@ -1024,16 +1038,15 @@ offset(state_t &s,
     // the multiply writes the index, and the add or sub writes L
     if (size != 1) {
         auto &index = pointer_first ? right : left;
-        index = writable(s, pointer_first ? r : l,
+        index = writable(s, pointer_first ? r : l, 64,
                          bit(pointer_first ? left : right));
         insn(s, "imulq", { imm(size), reg(index, 64), reg(index, 64) });
     }
 
-    left = writable(s, l, bit(right));
+    left = writable(s, l, 64, bit(right));
     insn(s, mnemonic, { reg(right, 64), reg(left, 64) });
 
     release(s, r);
-    wrote(s, l, 64, false);
 
     return l;
 }
@@ -1070,8 +1083,7 @@ displaced(state_t &s, binary_op_t op, value_t l, const right_t &n)
 {
     if (!n.immediate.empty()) {
         insn(s, op == binary_op_t::add ? "addq" : "subq",
-             { n.immediate, reg(writable(s, l), 64) });
-        wrote(s, l, 64, false);
+             { n.immediate, reg(writable(s, l, 64), 64) });
         return l;
     }
 
@@ -1105,11 +1117,10 @@ difference(state_t &s, const binary_t &b)
     const auto l = rvalue(s, *b.lhs);
     const auto r = rvalue(s, *b.rhs);
     const reg_t right = operands(s, l, r).second;
-    const reg_t left = writable(s, l, bit(right));
+    const reg_t left = writable(s, l, 64, bit(right));
     insn(s, "subq", { reg(right, 64), reg(left, 64) });
 
     release(s, r);
-    wrote(s, l, 64, true);
 
     if (size == 1)
         return l;
@@ -1262,7 +1273,10 @@ conditional(state_t &s, const expr_t &e)
     const int width = std::max(32, integer(t).width);
 
     const auto yes = rvalue(s, *c.yes);
-    const reg_t into = writable(s, yes);
+    if (borrowed(s, yes))
+        copy(s, yes, take(s, 0));
+
+    const reg_t into = reg_of(s, yes);
     const int valid = s.values[yes.id].valid;
     release(s, yes);
     jump(s, end);
@@ -1401,8 +1415,7 @@ unary(state_t &s, const unary_t &u, const type_t &t)
 
         const auto v = rvalue(s, *u.arg);
         insn(s, sized(u.op == unary_op_t::neg ? "neg" : "not", width),
-             { reg(writable(s, v), width) });
-        wrote(s, v, width, type.is_signed);
+             { reg(writable(s, v, written(width, type.is_signed)), width) });
 
         return v;
     }
@@ -1940,7 +1953,7 @@ displaced_on(state_t &s,
     else {
         r = rvalue(s, n);
         if (size != 1) {
-            const reg_t index = writable(s, r, held);
+            const reg_t index = writable(s, r, 64, held);
             insn(s, "imulq", { imm(size), reg(index, 64), reg(index, 64) });
         }
     }

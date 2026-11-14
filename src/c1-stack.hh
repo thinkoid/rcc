@@ -85,13 +85,6 @@ fresh(state_t &s, int valid, unsigned avoid = 0)
     return hold(s, take(s, avoid), valid);
 }
 
-// The value was just written at width by an instruction of its type.
-void
-wrote(state_t &s, value_t v, int width, bool is_signed)
-{
-    s.values[v.id].valid = written(width, is_signed);
-}
-
 // The register a value is in; a spilled value is reloaded first, all 8
 // bytes, into a free register outside avoid.
 reg_t

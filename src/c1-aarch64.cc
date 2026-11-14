@@ -430,12 +430,17 @@ void effect(state_t &, const expr_t &);
 // s.in_place, is the exception: its destination is the variable's
 // register, add w19, w19, w0, chapter 4.  The copies that remain are
 // three: preserve() and the first arm of a ?: copy a read, and a
-// return's mov into x0 is the third copy chapter 4 keeps.
+// return's mov into x0 is the third copy chapter 4 keeps.  The value is
+// valid from here on to valid, the width the instruction about to write
+// it leaves, as for fresh().
 reg_t
-destination(state_t &s, value_t v, unsigned avoid = 0)
+destination(state_t &s, value_t v, int valid, unsigned avoid = 0)
 {
-    if (!borrowed(s, v) || v.id == s.in_place)
-        return reg_of(s, v, avoid);
+    if (!borrowed(s, v) || v.id == s.in_place) {
+        const reg_t r = reg_of(s, v, avoid);
+        s.values[v.id].valid = valid;
+        return r;
+    }
 
     check_movable(s, v.id);
 
@@ -443,6 +448,7 @@ destination(state_t &s, value_t v, unsigned avoid = 0)
 
     auto &h = s.values[v.id];
     h.reg = r;
+    h.valid = valid;
     h.variable = nullptr;
     s.owner[r] = v.id;
 
@@ -505,11 +511,10 @@ extended(state_t &s, value_t v, const int_t &from, int to)
 
     const auto [mnemonic, valid] = extension(from, std::max(32, to));
     const reg_t source = reg_of(s, v);
-    const reg_t r = destination(s, v);
+    const reg_t r = destination(s, v, valid);
     const int width = from.is_signed ? valid : 32;
 
     insn(s, mnemonic, { reg(r, width), reg(source, 32) });
-    s.values[v.id].valid = valid;
 
     return v;
 }
@@ -1291,7 +1296,8 @@ divide(state_t &s, binary_op_t op, value_t l, value_t r, const int_t &t)
     if (op == binary_op_t::div) {
         release(s, r);
 
-        const auto result = reg(destination(s, l), width);
+        const auto result =
+            reg(destination(s, l, written(width, t.is_signed)), width);
         insn(s, mnemonic, { result, left, right });
     }
     else {
@@ -1302,11 +1308,10 @@ divide(state_t &s, binary_op_t op, value_t l, value_t r, const int_t &t)
 
         release(s, r);
 
-        const auto result = reg(destination(s, l), width);
+        const auto result =
+            reg(destination(s, l, written(width, t.is_signed)), width);
         insn(s, "msub", { result, quotient, right, left });
     }
-
-    wrote(s, l, width, t.is_signed);
 
     return l;
 }
@@ -1329,18 +1334,17 @@ shift(state_t &s, binary_op_t op, value_t l, const right_t &r, const int_t &t)
 
     if (!r.immediate.empty()) {
         const auto left = reg(reg_of(s, l), width);
-        const auto to = reg(destination(s, l), width);
+        const auto to =
+            reg(destination(s, l, written(width, t.is_signed)), width);
         insn(s, mnemonic, { to, left, r.immediate });
-        wrote(s, l, width, t.is_signed);
         return l;
     }
 
     const auto [l_reg, r_reg] = operands(s, l, r.value);
     release(s, r.value);
 
-    const auto to = reg(destination(s, l), width);
+    const auto to = reg(destination(s, l, written(width, t.is_signed)), width);
     insn(s, mnemonic, { to, reg(l_reg, width), reg(r_reg, width) });
-    wrote(s, l, width, t.is_signed);
 
     return l;
 }
@@ -1368,18 +1372,18 @@ arithmetic(
 
     if (!r.immediate.empty()) {
         const auto left = reg(reg_of(s, l), width);
-        const auto to = reg(destination(s, l), width);
+        const auto to =
+            reg(destination(s, l, written(width, integer(t).is_signed)), width);
         insn(s, mnemonic, { to, left, r.immediate });
-        wrote(s, l, width, integer(t).is_signed);
         return l;
     }
 
     const auto [l_reg, r_reg] = operands(s, l, r.value);
     release(s, r.value);
 
-    const auto to = reg(destination(s, l), width);
+    const auto to =
+        reg(destination(s, l, written(width, integer(t).is_signed)), width);
     insn(s, mnemonic, { to, reg(l_reg, width), reg(r_reg, width) });
-    wrote(s, l, width, integer(t).is_signed);
 
     return l;
 }
@@ -1448,9 +1452,8 @@ offset(state_t &s,
 
     if (!n.immediate.empty()) {
         const auto from = reg(reg_of(s, pointer), 64);
-        const auto to = reg(destination(s, pointer), 64);
+        const auto to = reg(destination(s, pointer, 64), 64);
         insn(s, mnemonic, { to, from, n.immediate });
-        wrote(s, pointer, 64, false);
         return pointer;
     }
 
@@ -1463,7 +1466,7 @@ offset(state_t &s,
         const reg_t factor = take(s, bit(p) | bit(i));
         constant(s, factor, n.factor, 64);
 
-        const reg_t product = destination(s, n.value, bit(p) | bit(factor));
+        const reg_t product = destination(s, n.value, 64, bit(p) | bit(factor));
         insn(s, "mul", { reg(product, 64), reg(i, 64), reg(factor, 64) });
         i = product;
     }
@@ -1474,7 +1477,7 @@ offset(state_t &s,
     const auto result = pointer_first ? pointer : n.value;
     release(s, pointer_first ? n.value : pointer);
 
-    const auto to = reg(destination(s, result), 64);
+    const auto to = reg(destination(s, result, 64), 64);
 
     if (pointer_first)
         insn(s, mnemonic, { to, reg(p, 64), index });
@@ -1482,8 +1485,6 @@ offset(state_t &s,
         insn(s, mnemonic, { to, reg(i, 64), reg(p, 64) });
     else
         insn(s, mnemonic, { to, reg(p, 64), index });
-
-    wrote(s, result, 64, false);
 
     return result;
 }
@@ -1523,9 +1524,8 @@ difference(state_t &s, const binary_t &b)
     const auto [left, right] = operands(s, l, r);
     release(s, r);
 
-    const auto to = reg(destination(s, l), 64);
+    const auto to = reg(destination(s, l, 64), 64);
     insn(s, "sub", { to, reg(left, 64), reg(right, 64) });
-    wrote(s, l, 64, true);
 
     if (size == 1)
         return l;
@@ -1589,8 +1589,8 @@ comparison(state_t &s, const binary_t &b)
     const bool is_signed = integer(b.lhs->type).is_signed;
 
     const auto l = compare(s, b);
-    insn(s, "cset", { reg(destination(s, l), 32), condition(b.op, is_signed) });
-    wrote(s, l, 32, true);
+    insn(s, "cset",
+         { reg(destination(s, l, 32), 32), condition(b.op, is_signed) });
 
     return l;
 }
@@ -1869,9 +1869,9 @@ unary(state_t &s, const unary_t &u, const type_t &t)
 
         const auto v = rvalue(s, *u.arg);
         const auto left = reg(reg_of(s, v), width);
-        const auto to = reg(destination(s, v), width);
+        const auto to =
+            reg(destination(s, v, written(width, type.is_signed)), width);
         insn(s, u.op == unary_op_t::neg ? "neg" : "mvn", { to, left });
-        wrote(s, v, width, type.is_signed);
 
         return v;
     }
@@ -1883,8 +1883,7 @@ unary(state_t &s, const unary_t &u, const type_t &t)
         const auto v = rvalue(s, *u.arg);
         test_zero(s, v, integer(u.arg->type), std::nullopt);
 
-        insn(s, "cset", { reg(destination(s, v), 32), "eq" });
-        wrote(s, v, 32, true);
+        insn(s, "cset", { reg(destination(s, v, 32), 32), "eq" });
 
         return v;
     }
