@@ -24,18 +24,18 @@ namespace rcc {
 // pointer to one is stable for the life of the unit.  An object's slot
 // and the machine register it is kept in are c1's business and are
 // not kept here; which of the target's register variables it is, is
-// kept.  A local or parameter the parser gives a register, in_register
+// kept.  A local or parameter the parser gives a register, in_register()
 // below, has no slot: c1 keeps it in a callee-saved register.
 // declared_register is the keyword as written: & on such an object is
 // refused whether or not it got a register (6.5.4.2p1), and an array
 // so declared is not yet (6.3.2.1p3).
-// in_register is the parser's assignment: a register declaration met
-// with the target's register variables all live is an ordinary local,
-// with a warning.  register_index is which of them the object takes,
-// 0 the first: each takes the next in declaration order and gives it
-// back at its block's end, backend.md chapter 4, so the index is the
-// count of those live where the object is declared.  It is -1 for an
-// object in no register, and so is 0 or more exactly when in_register.
+// register_index is the parser's assignment, which of the target's
+// register variables the object takes, 0 the first: each takes the next
+// in declaration order and gives it back at its block's end, backend.md
+// chapter 4, so the index is the count of those live where the object
+// is declared.  It is -1 for an object in no register: a register
+// declaration met with the target's register variables all live is an
+// ordinary local, with a warning.
 enum class storage_t { local, parameter, global, function };
 
 struct symbol_t
@@ -44,9 +44,14 @@ struct symbol_t
     type_t type;
     storage_t storage;
     bool declared_register;
-    bool in_register;
     int register_index;
 };
+
+inline bool
+in_register(const symbol_t &sym)
+{
+    return sym.register_index >= 0;
+}
 
 // expressions
 

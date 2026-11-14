@@ -12,13 +12,13 @@
 // generator's own includes serve it.
 //
 // Before the include the generator declares reg_t, expression_registers,
-// and state_t with owner, values, age, live and registers; allocate(),
-// the next slot of the frame; take(), a register for a value, which is
-// defined after the include, since it spills; and the three instructions
-// the stack writes: store_spill(), the store of a register to a spill
-// slot, all 8 bytes; reload_spill(), the reload from one, all 8 bytes;
-// and mov(), a register copied into another at a width.  held_t and
-// value_t are c1-common.hh's.
+// variable_registers, and state_t with owner, values, age and live;
+// allocate(), the next slot of the frame; take(), a register for a
+// value, which is defined after the include, since it spills; and the
+// three instructions the stack writes: store_spill(), the store of a
+// register to a spill slot, all 8 bytes; reload_spill(), the reload from
+// one, all 8 bytes; and mov(), a register copied into another at a
+// width.  held_t and value_t are c1-common.hh's.
 
 unsigned
 bit(reg_t r)
@@ -156,16 +156,12 @@ borrowed(const state_t &s, value_t v)
 }
 
 // The register a register variable lives in, from its declaration to
-// the end of its block.
+// the end of its block: the one of variable_registers the parser's
+// index names, backend.md chapter 4.
 reg_t
-variable_register(const state_t &s, const symbol_t *sym)
+variable_register(const symbol_t *sym)
 {
-    const auto it = s.registers.find(sym);
-    if (it == s.registers.end())
-        throw std::logic_error(
-            "c1: a register variable before its declaration");
-
-    return it->second;
+    return variable_registers[sym->register_index];
 }
 
 // The width a register variable's register is written at: 64 bits for a
@@ -185,7 +181,7 @@ read(state_t &s, const symbol_t *sym)
     const auto &t = integer(sym->type);
     const int id = static_cast< int >(s.values.size());
 
-    s.values.push_back({ variable_register(s, sym), 0, s.age++, true,
+    s.values.push_back({ variable_register(sym), 0, s.age++, true,
                          written(register_width(sym), t.is_signed), sym });
     ++s.live;
 

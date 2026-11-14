@@ -89,6 +89,11 @@ constexpr int register_count = x16;
 constexpr reg_t variable_registers[] = { x19, x20, x21, x22, x23,
                                          x24, x25, x26, x27, x28 };
 
+// The parser's register_index is below the target's count, target.hh,
+// and variable_register() takes the index into this table unchecked.
+static_assert(static_cast< int >(std::size(variable_registers)) ==
+              aarch64.register_variables);
+
 // The convention's argument registers, in order, chapter 3.
 constexpr reg_t argument_registers[] = { x0, x1, x2, x3, x4, x5, x6, x7 };
 
@@ -129,12 +134,8 @@ struct state_t
     long age = 0;
     int live = 0;
 
-    // each register variable's register; how many are live, the most
-    // live at once, and the registers the save area holds, which the
-    // body's first slot lies above
-    std::unordered_map< const symbol_t *, reg_t > registers { };
-    int variables = 0;
-    int used = 0;
+    // the registers the save area holds, which the body's first slot
+    // lies above
     int saved = 0;
 
     // the read of a compound assignment's register variable, which its
@@ -424,25 +425,6 @@ void effect(state_t &, const expr_t &);
 
 // register variables
 
-// The next of variable_registers for a register variable met in
-// declaration order, backend.md chapter 4; a block's end gives its
-// variables' registers back, so a later block takes them again from the
-// first.  The parser gives one live past the last of them a stack slot,
-// and records the index of the others, which this count must reach.
-void
-bind(state_t &s, const symbol_t *sym)
-{
-    if (s.variables == static_cast< int >(std::size(variable_registers)))
-        throw std::logic_error("c1: an eleventh register variable");
-
-    if (sym->register_index != s.variables)
-        throw std::logic_error(
-            "c1: a register variable's index is not the parser's");
-
-    s.registers.insert_or_assign(sym, variable_registers[s.variables++]);
-    s.used = std::max(s.used, s.variables);
-}
-
 // The register a row writes its result into, chapter 6.1: an owned
 // value's own, reloaded outside avoid if it was spilled; for a borrowed
 // read a fresh expression register outside avoid, which the value owns
@@ -557,8 +539,7 @@ establish(state_t &s, const symbol_t *sym, reg_t from)
     const std::string_view mnemonic =
         t.width < 32 ? extension(t, 32).first : "mov";
 
-    insn(s, mnemonic,
-         { reg(variable_register(s, sym), width), reg(from, width) });
+    insn(s, mnemonic, { reg(variable_register(sym), width), reg(from, width) });
 }
 
 // addresses
@@ -1201,7 +1182,7 @@ constant_into(state_t &s, const symbol_t *sym, const expr_t &e)
                            widened(as< literal_t >(e).value, t) :
                            normalized(as< literal_t >(e).value, width);
 
-    constant(s, variable_register(s, sym), value, width);
+    constant(s, variable_register(sym), value, width);
 
     return true;
 }
@@ -1817,7 +1798,7 @@ step_register(state_t &s, unary_op_t op, const symbol_t *sym)
     const auto old = post ? read(s, sym) : value_t { };
     preserve(s, sym);
 
-    const auto r = reg(variable_register(s, sym), width);
+    const auto r = reg(variable_register(sym), width);
 
     const auto n = product(s, amount);
     const auto by =
@@ -1826,7 +1807,7 @@ step_register(state_t &s, unary_op_t op, const symbol_t *sym)
     release(s, n.value);
 
     if (t.width < 32)
-        establish(s, sym, variable_register(s, sym));
+        establish(s, sym, variable_register(sym));
 
     return post ? old : read(s, sym);
 }
@@ -1949,7 +1930,7 @@ settle(state_t &s, const symbol_t *sym, value_t v, int width)
 
     const auto &t = integer(sym->type);
     if (t.width < 32 || width > register_width(sym))
-        establish(s, sym, variable_register(s, sym));
+        establish(s, sym, variable_register(sym));
 }
 
 // Assignment to a register variable, chapter 4, after preserve() has
@@ -2362,8 +2343,8 @@ expr_stmt(state_t &s, const expr_stmt_t &x)
         effect(s, *x.e);
 }
 
-// A register variable takes the next of the ten where its declaration
-// is met, chapter 4.  A constant initializer is the constant row into
+// A register variable is in the one of the ten its index names,
+// chapter 4.  A constant initializer is the constant row into
 // the register, mov w19, #0, and any other is its value and the mov of
 // establish().  G5: without one, nothing writes the value.  The register
 // holds what the declaration finds in it: what the prologue left, where
@@ -2377,8 +2358,6 @@ expr_stmt(state_t &s, const expr_stmt_t &x)
 void
 register_decl(state_t &s, const decl_stmt_t &d)
 {
-    bind(s, d.sym);
-
     if (d.init && constant_into(s, d.sym, *d.init))
         return;
 
@@ -2391,7 +2370,7 @@ register_decl(state_t &s, const decl_stmt_t &d)
 
     const auto &t = integer(d.sym->type);
     if (t.width < 32 || (t.width == 32 && !t.is_signed))
-        establish(s, d.sym, variable_register(s, d.sym));
+        establish(s, d.sym, variable_register(d.sym));
 }
 
 // G12: the slot is taken where the declaration is met, one for the
@@ -2404,7 +2383,7 @@ void
 decl_stmt(state_t &s, const decl_stmt_t &d)
 {
     const auto *sym = d.sym;
-    if (sym->in_register) {
+    if (in_register(*sym)) {
         register_decl(s, d);
         return;
     }
@@ -2419,16 +2398,11 @@ decl_stmt(state_t &s, const decl_stmt_t &d)
     initialize(s, *d.init, slot_address(displacement), integer(sym->type));
 }
 
-// A block's register variables give their registers back at its end.
 void
 block_stmt(state_t &s, const block_t &b)
 {
-    const int variables = s.variables;
-
     for (const auto &st : b.body)
         statement(s, st);
-
-    s.variables = variables;
 }
 
 // backend.md 7.2, with b for jmp: the condition's false exit to the
@@ -2474,19 +2448,13 @@ while_stmt(state_t &s, const while_t &w)
 }
 
 // G14, as for while.  The step has its label, for continue.  The init
-// is a statement, a declaration of several declarators a block of
-// them, and its names are in scope for the whole loop, 6.8.6.4p1, so
-// their registers are given back at the loop's end; such a block's own
-// end is not theirs.
+// is a statement: a declaration, a block of them for several
+// declarators, or an expression.  Its names are in scope for the whole
+// loop, 6.8.6.4p1.
 void
 for_stmt(state_t &s, const for_t &f)
 {
-    const int variables = s.variables;
-
-    if (f.init && is< block_t >(*f.init))
-        for (const auto &st : as< block_t >(*f.init).body)
-            statement(s, st);
-    else if (f.init)
+    if (f.init)
         statement(s, *f.init);
 
     const int cond = new_label(s);
@@ -2506,8 +2474,6 @@ for_stmt(state_t &s, const for_t &f)
     jump(s, cond);
 
     place_label(s, end);
-
-    s.variables = variables;
 }
 
 // The value goes to x0.  A char or a short is not extended: the
@@ -2564,13 +2530,14 @@ statement(state_t &s, const stmt_t &st)
 // declaration order.  Each of the first eight is stored there from its
 // argument register at its width, str w0, [x29, #16], 5.2; one past the
 // eighth is copied there by stack_parameters(), once the frame's size
-// says where the caller left it.  A register parameter takes the next of
-// the ten, in parameter order, chapter 4, and no slot.  One of the first
-// eight is moved into it from its argument register by establish(),
-// which extends a narrow one, sxtb w19, w0: the convention leaves the
-// bits above a narrow argument unspecified, and the argument register is
-// caller-saved, so it would not survive the first call.  The moves and
-// the stores are written in parameter order, after the save area.
+// says where the caller left it.  A register parameter is in the one of
+// the ten its index names, the next in parameter order, chapter 4, and
+// has no slot.  One of the first eight is moved into it from its
+// argument register by establish(), which extends a narrow one, sxtb
+// w19, w0: the convention leaves the bits above a narrow argument
+// unspecified, and the argument register is caller-saved, so it would
+// not survive the first call.  The moves and the stores are written in
+// parameter order, after the save area.
 void
 parameters(state_t &s, const function_decl_t &fd)
 {
@@ -2578,8 +2545,7 @@ parameters(state_t &s, const function_decl_t &fd)
         const auto *p = fd.params[i];
         const auto &t = integer(p->type);
 
-        if (p->in_register) {
-            bind(s, p);
+        if (in_register(*p)) {
             if (i < std::size(argument_registers))
                 establish(s, p, argument_registers[i]);
             continue;
@@ -2621,11 +2587,11 @@ stack_parameters(state_t &s, const function_decl_t &fd, long size)
         if (above >= 1L << 24)
             not_yet("a stack parameter 16 MiB or more above the frame record");
 
-        if (p->in_register) {
+        if (in_register(*p)) {
             const auto [mnemonic, into] = load_of(t, register_width(p));
             const auto from =
                 slot_operand(s, static_cast< int >(above), width / 8);
-            insn(s, mnemonic, { reg(variable_register(s, p), into), from });
+            insn(s, mnemonic, { reg(variable_register(p), into), from });
             continue;
         }
 
@@ -2647,18 +2613,6 @@ frame_parts(long size)
             parts.push_back(part);
 
     return parts;
-}
-
-// The register-variable registers a function uses, which its prologue
-// saves, backend.md chapter 5: its register parameters and the most
-// register variables its body has live at once.
-int
-registers_saved(const function_decl_t &fd)
-{
-    const auto parameters = std::ranges::count_if(
-        fd.params, [](const symbol_t *p) { return p->in_register; });
-
-    return static_cast< int >(parameters) + registers_in(fd.body->body);
 }
 
 // The displacement off x29 of the k-th register of the save area, 5.1:
@@ -2762,15 +2716,16 @@ epilogue(state_t &s, long size)
     s.out << "\tret\n";
 }
 
-// A definition.  The registers the save area holds are counted from the
-// tree first, since every slot lies above them, and must be the count
-// the parser recorded; the body is generated next, into the buffer, and
-// the prologue written after it, when the frame's size is known; so are
-// the copies of the parameters past the eighth, which follow the
-// prologue and precede the body.  The first slot lies above the frame
-// record and the save area, and this is the one place that says so.
-// The one epilogue is reached with x0 as it is, G5's some value, but
-// for main, which returns 0 when it falls off its end, 5.1.2.3.4.
+// A definition.  The registers the save area holds are the parser's
+// count, the most register variables live at once, chapter 5.1, known
+// before the body, since every slot lies above them; the body is
+// generated next, into the buffer, and the prologue written after it,
+// when the frame's size is known; so are the copies of the parameters
+// past the eighth, which follow the prologue and precede the body.  The
+// first slot lies above the frame record and the save area, and this is
+// the one place that says so.  The one epilogue is reached with x0 as
+// it is, G5's some value, but for main, which returns 0 when it falls
+// off its end, 5.1.2.3.4.
 void
 function(state_t &s, const function_decl_t &fd)
 {
@@ -2780,10 +2735,7 @@ function(state_t &s, const function_decl_t &fd)
     s.values.clear();
     s.age = 0;
     s.live = 0;
-    s.registers.clear();
-    s.variables = 0;
-    s.used = 0;
-    s.saved = registers_saved(fd);
+    s.saved = fd.registers;
     s.in_place = -1;
     s.frame = saved_at(s.saved);
     s.function = fd.sym->name;
@@ -2791,16 +2743,8 @@ function(state_t &s, const function_decl_t &fd)
     s.ret = new_label(s);
     s.terminated = false;
 
-    if (fd.registers != s.saved)
-        throw std::logic_error(
-            "c1: the registers saved are not the parser's count");
-
     parameters(s, fd);
     block_stmt(s, *fd.body);
-
-    if (s.used != s.saved)
-        throw std::logic_error(
-            "c1: the registers saved miscount the register variables");
 
     if (!s.terminated && s.function == "main")
         insn(s, "mov", { "w0", imm(0) });

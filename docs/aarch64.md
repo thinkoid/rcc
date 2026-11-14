@@ -400,7 +400,7 @@ From low addresses to high:
    `x30`.
 2. The register-variable registers the function uses, 8 bytes each
    from `[x29, #16]`, stored in pairs by `stp` and an odd last one by
-   `str`. They are counted from the tree before the body, as on
+   `str`. Their count is the parser's, known before the body, as on
    x86, since the slots lie above them.
 3. One slot per parameter and per local, each of its type's size at
    its type's alignment, in declaration order, none shared (G12).
@@ -895,7 +895,7 @@ x86 mnemonics. Two ways to add a target:
 
 The second is the answer (call 1), with one qualification.
 Some of c1 holds no instruction: the integer view of a type, the
-tree predicates (`writes()`, `registers_in()`, `is_comparison()`),
+tree predicates (`writes()`, `names()`, `is_comparison()`),
 the label names, the literals' `.string` block. That part is shared
 from the start, in a file of its own. The register stack, `spill()`,
 `hold()`, `reg_of()` and the rest, is written once, in

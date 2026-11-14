@@ -49,21 +49,6 @@ Fix: 6.5 says the value moves to a free register by =mov=.
 
 Check: =grep -n xchg docs/backend.md= prints nothing.
 
-** TODO The count of register variables is stated twice for each target
-
-=src/target.hh= gives =register_variables= as 5 and 10, which the
-parser reads to decide which variable takes a slot. Each generator
-has its own table, =variable_registers=, of 5 and 10 registers, which
-=bind()= reads. Nothing ties the two. A count raised in =target.hh=
-alone stops the generator with "c1: a sixth register variable" at
-the first program that declares one more; a table lengthened alone
-is never used.
-
-Fix: a =static_assert= in each generator that its table's size is its
-target's =register_variables=.
-
-Check: changing either number alone fails to compile.
-
 ** TODO x86-64: =function()= resets every field of the state but =reserved=
 
 The comment on =state_t= in =src/c1-x86-64.cc= says everything is
@@ -97,7 +82,7 @@ Fix: drop the include.
 
 Check: =make= builds.
 
-** TODO Five comments of the shared sources describe x86-64 alone
+** TODO Four comments of the shared sources describe x86-64 alone
 
 Each is in text both targets read, and each is true of one:
 
@@ -109,12 +94,9 @@ Each is in text both targets read, and each is true of one:
 - =src/c1-common.cc= on the register variable an lvalue names says
   the parser "declared the sixth an ordinary local"; on aarch64 it is
   the eleventh.
-- =src/c1-common.cc= on the most register variables live at once
-  says "the slots lie below the pushes"; on aarch64 they lie above
-  the save area.
 
-Fix: each says what holds for both targets: the sizes are LP64's, the
-count is the target's, the slots lie past the saved registers.
+Fix: each says what holds for both targets: the sizes are LP64's, and
+the count is the target's.
 
 Check: no comment of =type.hh=, =parse.cc= or =c1-common.cc= names a
 register or a number of one target alone.

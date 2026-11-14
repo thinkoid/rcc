@@ -949,7 +949,7 @@ live_registers(const parser_t &p)
     int live = 0;
     for (const auto &scope : p.scopes)
         for (const auto &[name, sym] : scope)
-            if (sym->in_register)
+            if (in_register(*sym))
                 ++live;
 
     return live;
@@ -1004,7 +1004,7 @@ declare(parser_t &p,
 
     const symbol_t &sym = p.unit.symbols.emplace_back(
         symbol_t { std::string(name.text), std::move(t), storage,
-                   declared_register, in_register, register_index });
+                   declared_register, register_index });
     scope.emplace(sym.name, &sym);
 
     return &sym;
@@ -1268,8 +1268,8 @@ declare_function(parser_t &p, const declarator_t &d)
                 return i;
     }
 
-    const symbol_t &sym = p.unit.symbols.emplace_back(symbol_t {
-        std::string(name), t, storage_t::function, false, false, -1 });
+    const symbol_t &sym = p.unit.symbols.emplace_back(
+        symbol_t { std::string(name), t, storage_t::function, false, -1 });
     file_scope.emplace(sym.name, &sym);
     p.unit.functions.push_back(function_decl_t { &sym, { }, std::nullopt, 0 });
 

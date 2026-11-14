@@ -287,10 +287,11 @@ A function's frame holds, from high addresses to low:
 3. The register-variable registers the function uses, pushed in the
    prologue, popped in reverse in the epilogue. Each push carries its
    place in the unwind table, `.cfi_offset %rbx, -24` for the first
-   and 8 lower for each next. The registers pushed are the register
-   parameters and the most register variables the body has live at
-   once, counted from the tree before the body is generated, since
-   the slots lie below them.
+   and 8 lower for each next. The registers pushed are the most
+   register variables the function has live at once, its register
+   parameters among them: the count the parser records with the
+   definition, known before the body is generated, since the slots
+   lie below them.
 4. One slot per local and per parameter, each of its type's size at
    its type's alignment, in declaration order, every block's locals
    included, none shared: G12, "a local's storage is one stack slot

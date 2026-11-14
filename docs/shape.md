@@ -102,13 +102,20 @@ Three sums.
 - `unit_t`: the translation unit. It owns every symbol in a `deque`,
   so symbol addresses are stable for the life of the unit, and holds
   one `function_decl_t` per function symbol, with a body when the
-  unit defines the function and none when it only declares it.
+  unit defines the function and none when it only declares it. A
+  definition carries the most register variables it has live at
+  once, its parameters among them.
 
 A symbol is a name, a type and a storage: local, parameter, global,
-function. Scopes live in the parser and die with it; after parsing
-there are only symbols. The tree carries no source locations: the
-parser diagnoses with the token in hand, and the generator
-diagnoses nothing.
+function. A local or parameter the parser gives a register carries
+its index, which of the target's register variables it takes: each
+takes the next in declaration order and gives it back at its block's
+end (`backend.md` chapter 4), so the index is the count of those live
+where it is declared. The parser decides this, and the generator
+reads the decision from the tree. Scopes live in the parser and die
+with it; after parsing there are only symbols. The tree carries no
+source locations: the parser diagnoses with the token in hand, and
+the generator diagnoses nothing.
 
 Every conversion is a cast node the parser inserted. The generator
 converts nothing on its own; when it sees an operand, the operand
@@ -142,8 +149,8 @@ walk under the rules of `aarch64.md`. The x86-64 rules, each the
 code of a `backend.md` chapter:
 
 - The state is per function, reset at each definition: the slots,
-  the held values, the register variables, the frame's size, the
-  label numbers. Only the string literals run across the file.
+  the held values, the frame's size, the label numbers. Only the
+  string literals run across the file.
 - Every local and parameter not declared `register` has a slot off
   `rbp`, assigned at its declaration, none shared; every read is a
   load and every write a store (chapter 5, G12).
@@ -158,15 +165,14 @@ code of a `backend.md` chapter:
   division or a variable shift first moves the values out of the
   registers it pins (6.5); a call first spills every held value
   (chapter 8).
-- A `register` variable takes the next free of the five callee-saved
-  registers, by declaration order, and gives it back at the end of
-  its block (chapter 4). Its read is borrowed: the register itself,
-  never spilled or freed, and written only by a compound assignment
-  in place. An instruction that would write its destination works on
-  a copy, and a held read is copied before the variable is written,
-  so the read keeps the old value (G13). The registers the prologue
-  pushes are counted from the tree before the body, since the slots
-  lie below them.
+- A `register` variable is in the callee-saved register of the five
+  its symbol's index names (chapter 4). Its read is borrowed: the
+  register itself, never spilled or freed, and written only by a
+  compound assignment in place. An instruction that would write its
+  destination works on a copy, and a held read is copied before the
+  variable is written, so the read keeps the old value (G13). The
+  registers the prologue pushes are the definition's count, known
+  before the body, since the slots lie below them.
 - Three entry points: `rvalue(e)` yields the value in a register,
   `cbranch(e, label, sense)` jumps on its truth and yields no value
   (chapter 7), and `effect(e)` writes its side effects and yields no

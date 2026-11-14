@@ -135,7 +135,7 @@ object_of(const expr_t &e)
     if (sym->storage == storage_t::global)
         not_yet("a global");
 
-    if (sym->in_register)
+    if (in_register(*sym))
         throw std::logic_error("c1: the address of a register variable");
 
     return sym;
@@ -153,7 +153,7 @@ register_variable(const expr_t &e)
 
     const auto *sym = as< name_t >(e).sym;
 
-    return sym->in_register ? sym : nullptr;
+    return in_register(*sym) ? sym : nullptr;
 }
 
 bool
@@ -312,69 +312,6 @@ bare_base(const expr_t &p)
 }
 
 // functions
-
-// The most register variables live at once in a block's items, those
-// of nested blocks included: a declaration adds one to the count to its
-// block's end.  It is the count c1 reaches walking the block, which is
-// the parser's assignment, known before the body is generated, since
-// the slots lie below the pushes.
-namespace {
-
-int registers_in(const stmt_t &);
-
-bool
-declares_register(const stmt_t &st)
-{
-    return is< decl_stmt_t >(st) && as< decl_stmt_t >(st).sym->in_register;
-}
-
-} // namespace
-
-int
-registers_in(const std::vector< stmt_t > &items)
-{
-    int live = 0;
-    int most = 0;
-
-    for (const auto &st : items) {
-        live += declares_register(st);
-        most = std::max(most, live + registers_in(st));
-    }
-
-    return most;
-}
-
-namespace {
-
-int
-registers_in(const stmt_t &st)
-{
-    if (is< block_t >(st))
-        return registers_in(as< block_t >(st).body);
-
-    if (is< if_t >(st)) {
-        const auto &i = as< if_t >(st);
-        return std::max(registers_in(*i.yes), i.no ? registers_in(*i.no) : 0);
-    }
-
-    if (is< while_t >(st))
-        return registers_in(*as< while_t >(st).body);
-
-    // the init's declarations live with the body, 6.8.6.4p1
-    if (is< for_t >(st)) {
-        const auto &f = as< for_t >(st);
-
-        int init = 0;
-        if (f.init)
-            init = registers_in(*f.init) + declares_register(*f.init);
-
-        return init + registers_in(*f.body);
-    }
-
-    return 0;
-}
-
-} // namespace
 
 // A string literal's array, 6.4.5p6: one per literal met, in the order
 // met, never merged with an equal one, which 6.4.5p7 leaves
