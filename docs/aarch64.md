@@ -879,8 +879,8 @@ machine's own target (call 6).
 
 ## 12. The code
 
-The x86-64 generator is one file, and every function in it writes
-x86 mnemonics. Two ways to add a target:
+A generator's functions write its machine's mnemonics. A second
+target is added in one of two ways:
 
 - **One walk over a target interface.** The walk is shared and each
   instruction goes through a table or an object the target supplies.
@@ -889,23 +889,39 @@ x86 mnemonics. Two ways to add a target:
   both or the least of both. It is a second, smaller LLVM, and the
   first one was retired for the judgment it kept between the tree
   and the instruction.
-- **Two generators.** `src/c1-x86-64.cc`, today's `c1.cc` renamed,
-  and `src/c1-aarch64.cc`, each read whole against its own design
-  page. `c1.hh`'s `generate()` takes the target and calls one.
+- **Two generators.** `src/c1-x86-64.cc` and `src/c1-aarch64.cc`,
+  each read whole against its own design page. `c1.hh`'s
+  `generate()` takes the target and calls one.
 
-The second is the answer (call 1), with one qualification.
-Some of c1 holds no instruction: the integer view of a type, the
-tree predicates (`writes()`, `names()`, `is_comparison()`),
-the label names, the literals' `.string` block. That part is shared
-from the start, in a file of its own. The register stack, `spill()`,
-`hold()`, `reg_of()` and the rest, is written once, in
-`src/c1-stack.hh`. Each generator includes it inside its own
-namespace and so compiles it against its own registers. The stack
-writes three instructions, the store to a spill slot, the reload
-from one and the `mov` of a register into another; each generator
-defines them before the include. `take()` stays in each generator,
-since x86's has the reservation, and so do x86's pins. The contract
-is one: the held values and the two save points of `backend.md` 6.7.
+The second is the answer (call 1), with one qualification: what is
+the same text for both machines is written once.
+
+- **What holds no instruction**: the integer view of a type, the
+  tree predicates (`writes()`, `names()`, `is_comparison()`), the
+  label names, the literals' `.string` block. It is
+  `src/c1-common.cc`, compiled once.
+- **The register stack**, `spill()`, `hold()`, `reg_of()` and the
+  rest, is `src/c1-stack.hh`. It writes three instructions, the
+  store to a spill slot, the reload from one and the `mov` of a
+  register into another; each generator defines them before the
+  include. `take()` stays in each generator, since x86's has the
+  reservation, and so do x86's pins. The contract is one: the held
+  values and the two save points of `backend.md` 6.7.
+- **The statements**, the expression statement, the block, `if`,
+  `while`, `for` and `return`, are `src/c1-statements.hh`. Each is a
+  shape of labels and jumps around the generator's own functions,
+  with no instruction of its own (7.2). Where the machines differ,
+  each generator defines a constant: `loop_alignment`, 5 on x86-64
+  and 0 here (7.2), and `result_register`, `rax` and `x0`. A
+  `return`'s value reaches its register by the stack's `mov`. A
+  declaration, `decl_stmt()` with the `register_decl()` it calls,
+  stays in each generator, since the store row of its initializer
+  takes each machine's own form of the slot's address.
+
+The stack and the statements are generator text that names each
+target's registers and state. Each generator includes the two inside
+its own namespace, the statements after its expressions, and so
+compiles them against its own registers and state.
 
 ## 13. Verification
 
@@ -1042,8 +1058,8 @@ ninth came later. The answers:
 1. **Two generators**, `src/c1-x86-64.cc` and `src/c1-aarch64.cc`,
    each read whole against its own page (chapter 12). The
    instruction-free part is shared from the start; the register
-   stack is written once, in `src/c1-stack.hh`, which each generator
-   includes.
+   stack and the statements are written once, in `src/c1-stack.hh`
+   and `src/c1-statements.hh`, which each generator includes.
 2. **Plain `char` follows the platform**, unsigned here (chapter
    11). One source means two things on two machines, as with every C
    compiler, and a program that needs a signed byte says `signed

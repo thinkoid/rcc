@@ -3,18 +3,18 @@
 // c1, the code generator for aarch64: the typed tree in, assembly text
 // out, for clang and GNU as.  docs/aarch64.md is the design, with
 // docs/backend.md where it says the model carries; this file implements
-// its chapters 4 to 8 and 10, with c1-common.cc and c1-stack.hh, and
-// each function names the row it writes.  It holds slices 1 to 3: the
-// frame and straight-line code on integers, conditions and control, and
-// calls; the address of an object, the indirection through a pointer,
-// the use of an array and a string literal, pointer arithmetic and the
-// subscript; the register variable: the save area, the binding, the
-// borrowed read, plain assignment, the declaration, the register
-// parameter, the held values of backend.md 6.7, the compound
-// assignment, the ++ and the -- in place, and the access that steps a
-// register pointer.  A construct of a later slice throws
-// logic_error("c1: not yet: ..."), and a tree the parser cannot make
-// throws logic_error("c1: ...").
+// its chapters 4 to 8 and 10, with c1-common.cc, c1-stack.hh and
+// c1-statements.hh, and each function names the row it writes.  It
+// holds slices 1 to 3: the frame and straight-line code on integers,
+// conditions and control, and calls; the address of an object, the
+// indirection through a pointer, the use of an array and a string
+// literal, pointer arithmetic and the subscript; the register variable:
+// the save area, the binding, the borrowed read, plain assignment, the
+// declaration, the register parameter, the held values of backend.md
+// 6.7, the compound assignment, the ++ and the -- in place, and the
+// access that steps a register pointer.  A construct of a later slice
+// throws logic_error("c1: not yet: ..."), and a tree the parser cannot
+// make throws logic_error("c1: ...").
 
 #include "c1.hh"
 #include "c1-common.hh"
@@ -96,6 +96,9 @@ static_assert(static_cast< int >(std::size(variable_registers)) ==
 
 // The convention's argument registers, in order, chapter 3.
 constexpr reg_t argument_registers[] = { x0, x1, x2, x3, x4, x5, x6, x7 };
+
+// The convention's result register, chapter 3.
+constexpr reg_t result_register = x0;
 
 // The alignment of a loop's head, as .p2align's power of two; 0 is
 // none.  .p2align 4, 5 and 6 were measured on two cores and none was
@@ -207,18 +210,6 @@ place_label(state_t &s, int n)
 {
     s.body << label_name(s.function, n) << ":\n";
     s.terminated = false;
-}
-
-// The directive before a loop's head, by the target's loop_alignment,
-// and nothing where that is 0.  The directive is a convention of the
-// target, as the stack's 16 bytes at a call are, not knowledge of the
-// program.  With no fill byte named, the assembler fills the gap in a
-// code section with multi-byte nops.
-void
-align_loop_head(state_t &s)
-{
-    if (loop_alignment != 0)
-        s.body << std::format("\t.p2align {}\n", loop_alignment);
 }
 
 void
@@ -2334,15 +2325,6 @@ effect(state_t &s, const expr_t &e)
 
 // statements
 
-void statement(state_t &, const stmt_t &);
-
-void
-expr_stmt(state_t &s, const expr_stmt_t &x)
-{
-    if (x.e)
-        effect(s, *x.e);
-}
-
 // A register variable is in the one of the ten its index names,
 // chapter 4.  A constant initializer is the constant row into
 // the register, mov w19, #0, and any other is its value and the mov of
@@ -2398,130 +2380,7 @@ decl_stmt(state_t &s, const decl_stmt_t &d)
     initialize(s, *d.init, slot_address(displacement), integer(sym->type));
 }
 
-void
-block_stmt(state_t &s, const block_t &b)
-{
-    for (const auto &st : b.body)
-        statement(s, st);
-}
-
-// backend.md 7.2, with b for jmp: the condition's false exit to the
-// else part, or past the statement without one.
-void
-if_stmt(state_t &s, const if_t &i)
-{
-    const int no = new_label(s);
-    cbranch(s, i.cond, no, false);
-
-    statement(s, *i.yes);
-
-    if (!i.no) {
-        place_label(s, no);
-        return;
-    }
-
-    const int end = new_label(s);
-    jump(s, end);
-
-    place_label(s, no);
-    statement(s, *i.no);
-
-    place_label(s, end);
-}
-
-// G14: the condition at the top, where it is written, tested once per
-// iteration and once more; no rotation and no reasoning about it.
-void
-while_stmt(state_t &s, const while_t &w)
-{
-    const int cond = new_label(s);
-    const int end = new_label(s);
-
-    align_loop_head(s);
-    place_label(s, cond);
-    cbranch(s, w.cond, end, false);
-
-    statement(s, *w.body);
-    jump(s, cond);
-
-    place_label(s, end);
-}
-
-// G14, as for while.  The step has its label, for continue.  The init
-// is a statement: a declaration, a block of them for several
-// declarators, or an expression.  Its names are in scope for the whole
-// loop, 6.8.6.4p1.
-void
-for_stmt(state_t &s, const for_t &f)
-{
-    if (f.init)
-        statement(s, *f.init);
-
-    const int cond = new_label(s);
-    const int next = new_label(s);
-    const int end = new_label(s);
-
-    align_loop_head(s);
-    place_label(s, cond);
-    if (f.cond)
-        cbranch(s, *f.cond, end, false);
-
-    statement(s, *f.body);
-
-    place_label(s, next);
-    if (f.step)
-        effect(s, *f.step);
-    jump(s, cond);
-
-    place_label(s, end);
-}
-
-// The value goes to x0.  A char or a short is not extended: the
-// convention leaves the bits above a narrow result unspecified, and the
-// caller extends it, 6.3.  Every return jumps to the one epilogue, the
-// last statement of the body included: the jump to the next instruction
-// is what the statement says, and removing it was the optional peephole
-// pass's work in the PDP-11 compiler, which rcc has no counterpart of.
-void
-return_stmt(state_t &s, const return_t &r)
-{
-    if (r.value) {
-        const int width = std::max(32, integer(r.value->type).width);
-
-        const auto v = rvalue(s, *r.value);
-        const reg_t from = reg_of(s, v);
-        if (from != x0)
-            insn(s, "mov", { reg(x0, width), reg(from, width) });
-
-        release(s, v);
-    }
-
-    jump(s, s.ret);
-}
-
-// Every value an expression statement holds is consumed by its end;
-// nothing is held from one statement to the next.
-void
-statement(state_t &s, const stmt_t &st)
-{
-    if (is< expr_stmt_t >(st))
-        expr_stmt(s, as< expr_stmt_t >(st));
-    else if (is< decl_stmt_t >(st))
-        decl_stmt(s, as< decl_stmt_t >(st));
-    else if (is< block_t >(st))
-        block_stmt(s, as< block_t >(st));
-    else if (is< if_t >(st))
-        if_stmt(s, as< if_t >(st));
-    else if (is< while_t >(st))
-        while_stmt(s, as< while_t >(st));
-    else if (is< for_t >(st))
-        for_stmt(s, as< for_t >(st));
-    else
-        return_stmt(s, as< return_t >(st));
-
-    if (s.live != 0)
-        throw std::logic_error("c1: a value held across a statement");
-}
+#include "c1-statements.hh"
 
 // functions
 

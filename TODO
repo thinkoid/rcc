@@ -22,21 +22,17 @@ assembles and links. The reasons are =docs/findings.md= and
 in =docs/design-calls.md=. The chapter holds c1's own defects on both
 targets; the second target's design is =docs/aarch64.md=.
 
-** TODO =aarch64.md= chapter 12 opens on a sentence that is no longer true
+** TODO x86-64: the comment on =register_decl()= sends every initializer through =establish()=
 
-The chapter's first paragraph says "The x86-64 generator is one file,
-and every function in it writes x86 mnemonics". The generator's text
-is =src/c1-x86-64.cc= with =src/c1-common.cc= and =src/c1-stack.hh=,
-and neither of the last two writes a mnemonic. The sentence is the
-ground the chapter's two ways stand on, so it is the chapter's
-argument and not a slip of wording.
+The comment in =src/c1-x86-64.cc= says "an initializer is moved into
+the register by establish()". A constant initializer is not: it is
+the constant row, written by =constant_into()=, =mov $c, %r12d=. The
+aarch64 comment on the same function states both cases.
 
-Fix: say what the question is without the count of files: a
-generator's functions write their machine's mnemonics, and a second
-target is added in one of two ways.
+Fix: the comment names the constant row for a constant initializer,
+as the aarch64 one does.
 
-Check: the chapter's first paragraph agrees with the map of
-=docs/shape.md= chapter 9.
+Check: the comment read against =register_decl()=.
 
 ** TODO =backend.md= 6.5 says a pinned register's value is exchanged by =xchg=
 

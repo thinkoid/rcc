@@ -264,6 +264,8 @@ compile database, and three lines of make, a shell script and
     src/c1-common.hh .cc
                       the part of c1 that is the same for every target
     src/c1-stack.hh   the register stack, which each generator includes
+    src/c1-statements.hh
+                      the statements, which each generator includes
     src/error.hh      error_t and warning_t
     src/main.cc       the driver
     tests/oracle      the oracle script
