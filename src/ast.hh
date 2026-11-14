@@ -21,16 +21,21 @@
 namespace rcc {
 
 // A declared name.  The unit owns every symbol in a deque, so a
-// pointer to one is stable for the life of the unit.  Where an object
-// lives, its slot or its register, is c1's business and is not kept
-// here.  A local or parameter the parser gives a register, in_register
+// pointer to one is stable for the life of the unit.  An object's slot
+// and the machine register it is kept in are c1's business and are
+// not kept here; which of the target's register variables it is, is
+// kept.  A local or parameter the parser gives a register, in_register
 // below, has no slot: c1 keeps it in a callee-saved register.
 // declared_register is the keyword as written: & on such an object is
 // refused whether or not it got a register (6.5.4.2p1), and an array
 // so declared is not yet (6.3.2.1p3).
 // in_register is the parser's assignment: a register declaration met
 // with the target's register variables all live is an ordinary local,
-// with a warning.
+// with a warning.  register_index is which of them the object takes,
+// 0 the first: each takes the next in declaration order and gives it
+// back at its block's end, backend.md chapter 4, so the index is the
+// count of those live where the object is declared.  It is -1 for an
+// object in no register, and so is 0 or more exactly when in_register.
 enum class storage_t { local, parameter, global, function };
 
 struct symbol_t
@@ -40,6 +45,7 @@ struct symbol_t
     storage_t storage;
     bool declared_register;
     bool in_register;
+    int register_index;
 };
 
 // expressions
@@ -288,11 +294,15 @@ as(const stmt_t &s)
 // One per function symbol.  A body is present when the unit defines
 // the function; a declaration alone has none, and c1 writes nothing
 // for it: a call names the symbol, and the linker resolves it.
+// registers is the most register variables live at once in the
+// definition, its parameters' among them, as the parser assigned them:
+// the largest register_index + 1, and 0 for a declaration alone.
 struct function_decl_t
 {
     const symbol_t *sym;
     std::vector< const symbol_t * > params;
     std::optional< block_t > body;
+    int registers;
 };
 
 // The warnings in the order the parser met them; the unit compiles

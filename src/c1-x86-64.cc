@@ -425,12 +425,17 @@ void effect(state_t &, const expr_t &);
 // The next of variable_registers for a register variable met in
 // declaration order, backend.md chapter 4; a block's end gives its
 // variables' registers back, so a later block takes them again from the
-// first.  The parser gives one live past the last of them a stack slot.
+// first.  The parser gives one live past the last of them a stack slot,
+// and records the index of the others, which this count must reach.
 void
 bind(state_t &s, const symbol_t *sym)
 {
     if (s.variables == static_cast< int >(std::size(variable_registers)))
         throw std::logic_error("c1: a sixth register variable");
+
+    if (sym->register_index != s.variables)
+        throw std::logic_error(
+            "c1: a register variable's index is not the parser's");
 
     s.registers.insert_or_assign(sym, variable_registers[s.variables++]);
     s.used = std::max(s.used, s.variables);
@@ -2371,11 +2376,11 @@ epilogue(state_t &s, bool sub)
 }
 
 // A definition.  The registers the prologue pushes are counted from the
-// tree first, since every slot lies below them; the body is generated
-// next, into the buffer, and the prologue written after it, when the
-// frame's size is known.  The one epilogue is reached with rax as it is,
-// G5's some value, but for main, which returns 0 when it falls off its
-// end, 5.1.2.3.4.
+// tree first, since every slot lies below them, and must be the count
+// the parser recorded; the body is generated next, into the buffer, and
+// the prologue written after it, when the frame's size is known.  The
+// one epilogue is reached with rax as it is, G5's some value, but for
+// main, which returns 0 when it falls off its end, 5.1.2.3.4.
 void
 function(state_t &s, const function_decl_t &fd)
 {
@@ -2396,6 +2401,10 @@ function(state_t &s, const function_decl_t &fd)
     s.labels = 0;
     s.ret = new_label(s);
     s.terminated = false;
+
+    if (fd.registers != s.saved)
+        throw std::logic_error(
+            "c1: the registers saved are not the parser's count");
 
     parameters(s, fd);
     block_stmt(s, *fd.body);

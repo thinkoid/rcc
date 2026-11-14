@@ -24,7 +24,9 @@ namespace rcc {
 namespace {
 
 // The state of one parse.  Scope 0 is file scope; the scopes die with
-// the parser and leave only the symbols in the unit.
+// the parser and leave only the symbols in the unit.  result and
+// registers are the function being defined: its result type, and the
+// most register variables live at once in it so far.
 struct parser_t
 {
     const std::vector< token_t > &tokens;
@@ -36,6 +38,7 @@ struct parser_t
 
     unit_t unit;
     type_t result;
+    int registers;
 };
 
 // The declaration specifiers: the type, and the register token when
@@ -971,7 +974,9 @@ in_words(int n)
 // place.  A register declaration met with the target's register
 // variables all live declares an ordinary object, with a warning: the
 // extent to which the suggestion is effective is implementation-defined,
-// 6.7.2p12, so the program is conforming and compiles.
+// 6.7.2p12, so the program is conforming and compiles.  One that gets a
+// register takes the next, the count of those live, backend.md chapter
+// 4, and the function's count is the most taken at once.
 const symbol_t *
 declare(parser_t &p,
         const token_t &name,
@@ -985,7 +990,8 @@ declare(parser_t &p,
 
     const bool declared_register = in_register;
     const int count = p.target.register_variables;
-    if (in_register && live_registers(p) == count) {
+    const int live = in_register ? live_registers(p) : 0;
+    if (in_register && live == count) {
         p.unit.warnings.push_back(
             { name.where, "register variable " + quoted(name.text) +
                               " in a stack slot: the " + in_words(count) +
@@ -993,9 +999,12 @@ declare(parser_t &p,
         in_register = false;
     }
 
+    const int register_index = in_register ? live : -1;
+    p.registers = std::max(p.registers, register_index + 1);
+
     const symbol_t &sym = p.unit.symbols.emplace_back(
         symbol_t { std::string(name.text), std::move(t), storage,
-                   declared_register, in_register });
+                   declared_register, in_register, register_index });
     scope.emplace(sym.name, &sym);
 
     return &sym;
@@ -1259,10 +1268,10 @@ declare_function(parser_t &p, const declarator_t &d)
                 return i;
     }
 
-    const symbol_t &sym = p.unit.symbols.emplace_back(
-        symbol_t { std::string(name), t, storage_t::function, false, false });
+    const symbol_t &sym = p.unit.symbols.emplace_back(symbol_t {
+        std::string(name), t, storage_t::function, false, false, -1 });
     file_scope.emplace(sym.name, &sym);
-    p.unit.functions.push_back(function_decl_t { &sym, { }, std::nullopt });
+    p.unit.functions.push_back(function_decl_t { &sym, { }, std::nullopt, 0 });
 
     return p.unit.functions.size() - 1;
 }
@@ -1314,6 +1323,7 @@ function_definition(parser_t &p, const declarator_t &d)
         fail(*d.name, "redefinition of " + quoted(d.name->text));
 
     p.result = *as< function_t >(d.type).result;
+    p.registers = 0;
     p.scopes.emplace_back();
 
     std::vector< const symbol_t * > params;
@@ -1335,6 +1345,7 @@ function_definition(parser_t &p, const declarator_t &d)
     function_decl_t &f = p.unit.functions[index];
     f.params = std::move(params);
     f.body = std::move(body);
+    f.registers = p.registers;
 }
 
 // The type specifiers in any valid order and combination, 6.7.3.1p2.
@@ -2548,7 +2559,7 @@ primary_expression(parser_t &p)
 unit_t
 parse(const std::vector< token_t > &tokens, const target_t &target)
 {
-    parser_t p { tokens, 0, target, { }, { }, make_void() };
+    parser_t p { tokens, 0, target, { }, { }, make_void(), 0 };
     p.scopes.emplace_back();
 
     translation_unit(p);
