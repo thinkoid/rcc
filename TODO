@@ -478,23 +478,51 @@ type itself stays unqualified.
 Check: the three programs above fail with a diagnostic; =const= in
 every other position still parses.
 
-** TODO GNU extensions in system headers reach the parser as identifiers
+** TODO A system header does not parse
 
-`clang -E` of a program that includes `stdio.h` or most other glibc
-headers leaves `__attribute__`, `__extension__`, `__restrict`,
-`__inline`, `__asm__` and their arguments in the text; the lexer
-hands them over as identifiers and the parser refuses the first.
-`limits.h` has none, so the first slice does not meet them. Any
-corpus program that calls into libc will. The same family: `_Bool`,
-`bool`, `inline` and every keyword outside =tok_t= arrive as
-identifiers and fail as undeclared names rather than as `not yet`.
+=#include <stdio.h>= stops at the first =typedef=, in =clang='s
+=stddef= header. Behind it glibc's headers use =extern=,
+=__restrict=, =__attribute__=, =__asm__=, =__extension__=,
+=__inline=, a struct that is declared and never completed, and the
+names of the floating types. The lexer hands the GNU spellings over
+as identifiers, and the parser refuses the first. =_Bool=, =bool=,
+=inline= and every keyword outside =tok_t= arrive as identifiers too
+and fail as undeclared names rather than as "not yet".
 
-Fix: decide between skipping the extensions in the parser (an
-attribute and its parenthesized argument list dropped, the others
-dropped as words) and preprocessing with a flag set that hides them.
-A probe says which headers need what.
+rcc reads the system's headers as they are. It conforms with what a
+correct program depends on, the size and layout of a type and the
+symbol a name links to, and leaves hints and warnings for later. A
+declaration it cannot honour is accepted, and its use is refused.
 
-Check: `#include <stdio.h>` followed by an empty `main` parses.
+Fix:
+
+- =__restrict= and =restrict= are dropped. The qualifier is a
+  licence for an optimizer, and rcc takes none.
+- An attribute is read by its name. One that licenses an optimizer
+  or asks for a warning is dropped: =__nothrow__=, =__nonnull__=,
+  =__pure__=, =__const__=, =__malloc__=, =__alloc_align__=,
+  =__format__=, =__noreturn__=, =__deprecated__=,
+  =__warn_unused_result__=, =__cold__=. Any other marks what it is
+  written on, and a program that uses the marked type, member or
+  function is refused with the attribute's name: =__mode__= changes
+  a type's size, =__aligned__= and =__packed__= a member's offset.
+- =__asm__= after a function's declarator is the symbol's name in
+  the assembly, and c1 writes it in the call: glibc declares =scanf=
+  with =__asm__ ("__isoc99_scanf")=. On a register variable, and as
+  a statement, it is not yet.
+- =__extension__= is dropped; =__inline= and =inline= on a
+  declaration without a body are dropped, and a body is not yet.
+- A keyword of C outside the subset is a token, refused by its name
+  as not yet.
+- =typedef=, =extern=, a struct declared and not completed, and a
+  floating type named in a declaration no program uses are slices of
+  their own, =shape.md= chapter 11; the header needs each.
+
+Check: a program with =#include <stdio.h>= that calls =printf=
+compiles, links and prints, on both targets. A program that declares
+a =register_t= after =#include <sys/types.h>= is refused with "not
+yet: attribute '__mode__'", and without the declaration it compiles.
+The listing of a program that calls =scanf= calls =__isoc99_scanf=.
 
 ** TODO A parameter's array size cannot name an earlier parameter
 
