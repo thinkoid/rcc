@@ -1,0 +1,2 @@
+tests/error/address-of-register.c:5:14: error: cannot take the address of 'r', declared register
+status 1

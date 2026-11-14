@@ -1,0 +1,2 @@
+tests/error/register-array.c:5:18: error: not yet: register array 'a'
+status 1

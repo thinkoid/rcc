@@ -1,0 +1,2 @@
+tests/error/restrict-qualifier.c:5:5: error: not yet: type qualifier 'restrict'
+status 1

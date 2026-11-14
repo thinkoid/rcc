@@ -1,0 +1,2 @@
+tests/error/function-redefinition.c:7:5: error: redefinition of 'f'
+status 1

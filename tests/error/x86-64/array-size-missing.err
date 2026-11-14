@@ -1,0 +1,2 @@
+tests/error/array-size-missing.c:5:9: error: array size missing in 'a'
+status 1

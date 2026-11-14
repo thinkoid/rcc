@@ -1,0 +1,2 @@
+tests/error/call-non-function.c:6:13: error: called object 'x' is not a function
+status 1

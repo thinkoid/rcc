@@ -1,0 +1,2 @@
+tests/error/volatile-qualifier.c:4:5: error: not yet: type qualifier 'volatile'
+status 1

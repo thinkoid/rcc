@@ -1,0 +1,2 @@
+tests/error/conditional-without-colon.c:4:17: error: expected ':' in conditional expression
+status 1

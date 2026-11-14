@@ -1,0 +1,2 @@
+tests/error/unterminated-line-marker.c:6:6: error: unterminated file name in line marker
+status 1

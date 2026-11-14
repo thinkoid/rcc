@@ -1,0 +1,2 @@
+tests/error/address-of-rvalue.c:5:14: error: cannot take the address of an rvalue
+status 1

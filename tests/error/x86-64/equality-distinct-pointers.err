@@ -1,0 +1,2 @@
+tests/error/equality-distinct-pointers.c:9:14: error: comparison of distinct pointer types
+status 1

@@ -1,0 +1,2 @@
+tests/error/incompatible-pointers.c:5:13: error: incompatible pointer types
+status 1

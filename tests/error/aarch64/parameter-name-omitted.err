@@ -1,0 +1,2 @@
+tests/error/parameter-name-omitted.c:2:7: error: parameter name omitted
+status 1

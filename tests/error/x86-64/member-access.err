@@ -1,0 +1,2 @@
+tests/error/member-access.c:6:13: error: not yet: member access
+status 1

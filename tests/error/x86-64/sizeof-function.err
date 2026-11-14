@@ -1,0 +1,2 @@
+tests/error/sizeof-function.c:6:12: error: invalid application of 'sizeof' to a function type
+status 1

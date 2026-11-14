@@ -1,0 +1,2 @@
+tests/error/local-redefinition.c:5:9: error: redefinition of 'x'
+status 1

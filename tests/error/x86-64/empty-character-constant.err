@@ -1,0 +1,2 @@
+tests/error/empty-character-constant.c:5:12: error: empty character constant
+status 1

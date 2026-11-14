@@ -1,0 +1,2 @@
+tests/error/incomplete-element-type.c:5:10: error: array has incomplete element type
+status 1

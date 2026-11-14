@@ -1,0 +1,2 @@
+tests/error/unclosed-for-clauses.c:6:34: error: expected ')' after for clauses
+status 1

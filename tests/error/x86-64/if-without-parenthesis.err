@@ -1,0 +1,2 @@
+tests/error/if-without-parenthesis.c:4:8: error: expected '(' after 'if'
+status 1

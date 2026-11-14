@@ -1,0 +1,2 @@
+tests/error/continue.c:8:9: error: not yet: 'continue' statement
+status 1

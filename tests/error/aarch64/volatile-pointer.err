@@ -1,0 +1,2 @@
+tests/error/volatile-pointer.c:5:10: error: not yet: type qualifier 'volatile'
+status 1

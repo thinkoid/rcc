@@ -1,0 +1,2 @@
+tests/error/multi-character-constant.c:5:12: error: not yet: multi-character constant
+status 1

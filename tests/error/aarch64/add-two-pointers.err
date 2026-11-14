@@ -1,0 +1,2 @@
+tests/error/add-two-pointers.c:7:7: error: cannot add two pointers
+status 1

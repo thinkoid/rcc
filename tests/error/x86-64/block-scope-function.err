@@ -1,0 +1,2 @@
+tests/error/block-scope-function.c:4:9: error: not yet: function declaration at block scope
+status 1

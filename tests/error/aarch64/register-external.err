@@ -1,0 +1,2 @@
+tests/error/register-external.c:2:1: error: 'register' in an external declaration
+status 1

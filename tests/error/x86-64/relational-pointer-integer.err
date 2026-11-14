@@ -1,0 +1,2 @@
+tests/error/relational-pointer-integer.c:7:14: error: comparison between pointer and integer
+status 1

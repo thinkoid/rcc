@@ -1,0 +1,2 @@
+tests/error/unclosed-function-body.c:5:1: error: expected '}' at end of function body
+status 1

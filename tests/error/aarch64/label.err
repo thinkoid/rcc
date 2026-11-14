@@ -1,0 +1,2 @@
+tests/error/label.c:4:1: error: not yet: label
+status 1

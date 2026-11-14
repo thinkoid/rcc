@@ -1,0 +1,2 @@
+tests/error/do-while.c:6:5: error: not yet: do statement
+status 1

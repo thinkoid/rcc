@@ -1,0 +1,2 @@
+tests/error/encoding-prefix.c:4:12: error: not yet: encoding prefix 'L'
+status 1

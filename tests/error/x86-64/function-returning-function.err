@@ -1,0 +1,2 @@
+tests/error/function-returning-function.c:2:12: error: function cannot return a function
+status 1

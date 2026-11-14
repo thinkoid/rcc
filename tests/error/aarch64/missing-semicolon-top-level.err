@@ -1,0 +1,2 @@
+tests/error/missing-semicolon-top-level.c:3:1: error: expected ';' after top level declarator
+status 1

@@ -1,0 +1,2 @@
+tests/error/function-type-name.c:4:23: error: not yet: parenthesized or function type name
+status 1

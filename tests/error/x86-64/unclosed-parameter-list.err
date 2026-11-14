@@ -1,0 +1,2 @@
+tests/error/unclosed-parameter-list.c:2:12: error: expected ')' after parameter list
+status 1

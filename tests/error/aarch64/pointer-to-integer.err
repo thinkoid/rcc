@@ -1,0 +1,2 @@
+tests/error/pointer-to-integer.c:5:12: error: incompatible pointer to integer conversion
+status 1

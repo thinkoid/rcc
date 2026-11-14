@@ -27,6 +27,7 @@ test: $(TARGETS:%=test-%) rcc
 $(TARGETS:%=test-%): test-%: rcc
 	tests/oracle --target $*
 	tests/costs --target $*
+	tests/errors --target $*
 
 bench: rcc
 	tests/bench

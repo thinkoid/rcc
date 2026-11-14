@@ -1,0 +1,2 @@
+tests/error/function-as-value.c:7:5: error: not yet: function 'f' used as a value
+status 1

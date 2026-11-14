@@ -1,0 +1,2 @@
+tests/error/too-many-arguments.c:7:17: error: too many arguments to function 'f'
+status 1

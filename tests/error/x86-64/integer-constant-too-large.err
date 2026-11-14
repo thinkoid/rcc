@@ -1,0 +1,2 @@
+tests/error/integer-constant-too-large.c:5:12: error: integer constant is too large for its type
+status 1

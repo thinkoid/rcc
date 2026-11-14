@@ -1,0 +1,2 @@
+tests/error/line-number-out-of-range.c:5:4: error: line number out of range in line marker
+status 1

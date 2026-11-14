@@ -1,0 +1,2 @@
+tests/error/parameter-redefinition.c:3:18: error: redefinition of parameter 'a'
+status 1

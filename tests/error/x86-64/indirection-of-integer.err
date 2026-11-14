@@ -1,0 +1,2 @@
+tests/error/indirection-of-integer.c:6:12: error: indirection requires a pointer operand
+status 1

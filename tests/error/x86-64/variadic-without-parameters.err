@@ -1,0 +1,2 @@
+tests/error/variadic-without-parameters.c:3:7: error: not yet: variadic function without named parameters
+status 1

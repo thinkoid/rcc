@@ -1,0 +1,2 @@
+tests/error/unterminated-character.c:5:12: error: missing terminating ' character
+status 1

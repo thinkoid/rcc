@@ -64,9 +64,10 @@ its measurement, on two machines, is in chapter 4 of `docs/cost.md`
 beside x86-64's. `docs/slot.md` explains what a stack slot costs on
 three aarch64 cores and one x86-64 core.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
-the oracle over `tests/corpus/` and the cost corpus over
-`tests/cost/` for each target, both through c1, and then the probes
-of `tests/probe/`, rcc's code against `clang`'s on the machine's own
+the oracle over `tests/corpus/`, the cost corpus over `tests/cost/`
+and the error corpus over `tests/error/`, the programs rcc refuses
+with their diagnostics, for each target, and then the probes of
+`tests/probe/`, rcc's code against `clang`'s on the machine's own
 target; `make bench` times the benchmark corpus of `tests/perf/`,
 with a target's own tuned sources from `tests/perf/<target>/`, and
 `make slots` times the four loops of `tests/slot/`, the cost of a

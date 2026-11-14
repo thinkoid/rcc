@@ -1,0 +1,2 @@
+tests/error/undeclared-name.c:4:12: error: 'x' undeclared
+status 1

@@ -1,0 +1,2 @@
+tests/error/unclosed-block.c:7:1: error: expected '}' at end of block
+status 1

@@ -1,0 +1,2 @@
+tests/error/invalid-integer-constant.c:4:12: error: invalid integer constant '12abc'
+status 1

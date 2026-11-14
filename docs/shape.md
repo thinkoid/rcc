@@ -24,10 +24,12 @@ The parts, what each owns, and where they meet. The headers under
   for a fixed arity and `vector` for a list. Types are values,
   compared structurally.
 - The first error is fatal. No recovery.
-- GNU make, one executable, a flat `src/`. The test is three
+- GNU make, one executable, a flat `src/`. The test is four
   scripts: the oracle over `tests/corpus/` and the cost corpus over
   `tests/cost/`, each diffing the assembly `rcc -S` writes against
-  its pin, and the probes of `tests/probe/`, which run rcc's code
+  its pin; the error corpus over `tests/error/`, diffing what
+  `rcc -S` prints on standard error and its exit status against
+  theirs; and the probes of `tests/probe/`, which run rcc's code
   against `clang`'s.
 
 ## 1. The pipeline
@@ -202,18 +204,22 @@ The first error is fatal: `file:line:column: error: message`, the
 form clang and Emacs agree on, exit status 1. The lexer or the
 parser throws `error_t` with the location in hand; the driver
 catches it and prints. Recovery is the complexity dropped first, and
-nothing in the method needs it: the corpus is correct programs.
+nothing in the method needs it: the corpora that build are correct
+programs, and each program of the error corpus, `tests/error/`, draws
+one diagnostic. Its pin, per target, is what rcc printed on standard
+error and the exit status, so a message reworded or moved, or a
+refusal turned into an acceptance, fails its row.
 
 ## 8. The driver
 
 `rcc [-w] [-S|-c] [-target name] [-o out] file.c`. `-S` stops at the
-assembly, and the pins of both corpora are what `-S` wrote. `-c` stops
-at the object, which `clang -c` assembled. Without either, `clang`
-links an executable. The default output is `<stem>.s`, `<stem>.o` or
-`a.out`. There is no `-O`: there is one pipeline, and it is literal,
-so `-O` is an unknown option and a usage error. Processes are spawned
-by fork and exec, never `system`; the temporary `.s` of `-c` and of a
-link is removed on every way out.
+assembly, and the pins of the oracle and of the cost corpus are what
+`-S` wrote. `-c` stops at the object, which `clang -c` assembled.
+Without either, `clang` links an executable. The default output is
+`<stem>.s`, `<stem>.o` or `a.out`. There is no `-O`: there is one
+pipeline, and it is literal, so `-O` is an unknown option and a usage
+error. Processes are spawned by fork and exec, never `system`; the
+temporary `.s` of `-c` and of a link is removed on every way out.
 
 A warning does not stop the translation. The parser records it in
 the unit, and the driver prints the unit's warnings after a
@@ -272,6 +278,14 @@ compile database, and three lines of make, a shell script and
                       their pinned .s for x86-64, one directory per target
     tests/cost/aarch64/
                       their pinned .s for aarch64
+    tests/errors      the error corpus script
+    tests/error/      one program per diagnostic rcc can print
+    tests/error/x86-64/
+                      their pinned standard error and exit status for
+                      x86-64, one directory per target
+    tests/error/aarch64/
+                      their pinned standard error and exit status for
+                      aarch64
     tests/probes      the probe script
     tests/probe/      the probes: rcc's code against clang -O0's
     tests/bench       the measurement script

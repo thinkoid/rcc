@@ -1,0 +1,2 @@
+tests/error/integer-minus-pointer.c:7:7: error: cannot subtract a pointer from an integer
+status 1

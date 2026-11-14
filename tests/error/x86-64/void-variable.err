@@ -1,0 +1,2 @@
+tests/error/void-variable.c:4:10: error: variable 'x' has type void
+status 1

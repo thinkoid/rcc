@@ -1,0 +1,2 @@
+tests/error/void-conditional.c:7:7: error: not yet: conditional with void operands
+status 1

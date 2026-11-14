@@ -1,0 +1,2 @@
+tests/error/default-label.c:4:5: error: not yet: default label
+status 1

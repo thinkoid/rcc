@@ -1,0 +1,2 @@
+tests/error/function-parameter.c:3:11: error: not yet: parameter of function type
+status 1

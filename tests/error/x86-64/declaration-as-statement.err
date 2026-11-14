@@ -1,0 +1,2 @@
+tests/error/declaration-as-statement.c:6:9: error: expected statement, found a declaration
+status 1

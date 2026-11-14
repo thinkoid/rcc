@@ -1,0 +1,2 @@
+tests/error/conditional-pointer-mismatch.c:9:16: error: pointer type mismatch in conditional expression
+status 1

@@ -1,0 +1,2 @@
+tests/error/hex-escape-without-digits.c:4:13: error: \x used with no following hex digits
+status 1

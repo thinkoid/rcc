@@ -1,0 +1,2 @@
+tests/error/unterminated-string.c:5:19: error: missing terminating " character
+status 1

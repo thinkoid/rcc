@@ -1,0 +1,2 @@
+tests/error/expected-expression.c:6:9: error: expected expression
+status 1

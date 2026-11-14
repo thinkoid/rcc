@@ -1,0 +1,2 @@
+tests/error/float-type.c:4:5: error: not yet: floating type 'float'
+status 1

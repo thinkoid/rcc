@@ -1,0 +1,466 @@
+#!/bin/sh
+########################################################################
+#
+# The error corpus: the programs rcc refuses, each pinned as the
+# diagnostics rcc prints for it and the exit status it leaves with.
+#
+# The run checks one target, x86-64 or aarch64, given by --target;
+# the default is this machine's own, from uname -m.  Each target has
+# its pins in a directory of its own, tests/error/<target>, and a
+# target without one is an error.  The programs are shared by every
+# target, and nothing is assembled or run, so the run is the same on
+# any machine.
+#
+# Each program tests/error/<name>.c draws one diagnostic: an error of
+# the lexer or the parser, exit status 1, or a construct c1 does not
+# handle yet, "c1: not yet: ...", exit status 3.  ./rcc -target
+# <target> -S writes it, from the tree root, so the file in each
+# message is the relative path tests/error/<name>.c.  The run is what
+# rcc itself printed on standard error, its warnings included, then a
+# last line "status <n>" with rcc's exit status.  It is diffed against
+# the pin, tests/error/<target>/<name>.err.  A row passes when the run
+# matches the pin; a program without a pin fails.
+#
+# The preprocessor is clang's, and it warns of some of these programs
+# before rcc reads them: of an open quote, of an empty character
+# constant.  That text is clang's and changes with clang's version, so
+# it is no part of the run: the lines up to clang's own last line,
+# "<n> warning(s) generated.", are left out.  The log has them.
+#
+# A c1 refusal may belong to one target: a limit of one generator
+# that the other does not have.  Such a program is pinned for the
+# other target as rcc treats it there: an empty standard error and
+# "status 0" where that target compiles it, or the parser's own error
+# where the program is past a limit of the parser for that target.
+#
+# A change that rewords a message, moves its position, changes the
+# exit status, or makes rcc accept a program it refused shows as a
+# diff in the rows it touches, and the diff is in the log.
+#
+# The script prints a table, one row per program, and a summary, and
+# exits 0 when every row passed, 1 otherwise.  It runs from the tree
+# root with ./rcc built, as make test runs it.  The runs, the assembly
+# of any program a target compiles and the log of every command stay
+# in build/error/<target>, so that runs for two targets do not
+# overwrite each other; each command's output in the log follows a
+# "### <command>:" line and ends with a "### status <n>" line.
+#
+########################################################################
+#
+# USAGE:
+#
+#     tests/errors [ --target <name> ] [ --pin ] [ --help ]
+#
+# OPTIONS:
+#
+#     --target <name>
+#         Checks the target <name>, x86-64 or aarch64, against its
+#         pins in tests/error/<name>.  Without it the target is this
+#         machine's own, and a machine rcc has no target for is an
+#         error.  A target without a pin directory is an error, exit
+#         status 2.
+#
+#     --pin
+#         Adopts the run for the target.  Copies the run of every
+#         program over its pin and prints, for each, whether the pin
+#         is new, changed or the same.  Exits 0 when every program
+#         was adopted, 1 otherwise.  It is how a new program enters
+#         the corpus, after a human has read its pin: the message
+#         must be the one the program was written to draw, at the
+#         position of the construct.  A target's first pins need its
+#         directory made first.
+#
+#     --help
+#         Prints the usage and exits.
+#
+# EXAMPLES:
+#
+#     tests/errors
+#
+#     Compiles every program in the corpus for this machine's own
+#     target, diffs each run against its pin, prints the table and
+#     the summary, and keeps the log in build/error/<target>/log.
+#
+#     tests/errors --target aarch64
+#
+#     The same for aarch64, on any machine; the log is
+#     build/error/aarch64/log.
+#
+#     tests/errors --target aarch64 --pin
+#
+#     The same run, then the aarch64 pins are made to match it.
+#
+########################################################################
+
+##########
+# global constants
+
+# the name of the script, in diagnostics
+myname=${0##*/}
+
+# the corpus: the programs and their pinned diagnostics
+corpus=tests/error
+
+# byte order for the sorted corpus, and diagnostics in one language
+LC_ALL=C
+export LC_ALL
+
+##########
+# global variables
+
+# with --pin, the run is adopted as the pins
+pin=0
+
+# the target the run checks, from --target or this machine's own, and
+# the directory of its pins
+target=
+pins=
+
+# this machine's own target, empty when rcc has none for it
+native=
+
+# the work directory of the target, kept between runs and removed by
+# make clean; set once the target is known
+workdir=
+
+# the log of every command
+log=
+
+# the command line, for the log
+command_line="$0 $*"
+
+# the rows of the table and the rows that passed
+programs=0
+passed=0
+
+
+##########
+# usage(): prints the usage
+usage()
+{
+    echo "usage: $0 [ --target <name> ] [ --pin ] [ --help ]"
+    echo
+    echo "    --target  check the target <name>, x86-64 or aarch64; this machine's by default"
+    echo "    --pin     adopt the run: rewrite the pinned diagnostics"
+    echo "    --help    print this usage"
+}
+
+
+##########
+# machine_target(): prints the target of this machine, from uname -m;
+# reports 1 and prints nothing when rcc has no target for it
+machine_target()
+{
+    machine=$(uname -m)
+
+    case "$machine" in
+        x86_64)  # the machine of the x86-64 target
+            echo x86-64
+            ;;
+
+        aarch64)  # the machine of the aarch64 target
+            echo aarch64
+            ;;
+
+        *)  # a machine rcc writes no code for
+            return 1
+            ;;
+    esac
+}
+
+
+##########
+# check_target(): reports 0 when the target has a pin directory under
+# the corpus, and says what is missing otherwise
+check_target()
+{
+    name=$1
+
+    case "$name" in
+        "" | . | .. | */*)  # not the name of a directory of the corpus
+            echo "$myname: '$name' is not a target" >&2
+            return 1
+            ;;
+    esac
+
+    if [ ! -d "$corpus/$name" ]; then
+        echo "$myname: no pins for $name; no directory $corpus/$name" >&2
+        return 1
+    fi
+
+    return 0
+}
+
+
+##########
+# check_tree(): reports 0 when the script runs from the tree root with
+# rcc built, and says what is missing otherwise
+check_tree()
+{
+    if [ ! -d "$corpus" ]; then
+        echo "$myname: no $corpus here; run from the tree root" >&2
+        return 1
+    fi
+
+    if [ ! -x ./rcc ]; then
+        echo "$myname: no ./rcc; run make first" >&2
+        return 1
+    fi
+
+    return 0
+}
+
+
+##########
+# logged(): runs a command with its standard output and standard error
+# appended to the log after a "### <command>:" line, and its status
+# after the output; reports the command's status as its own
+logged()
+{
+    echo "### $*:" >> "$log"
+
+    "$@" >> "$log" 2>&1
+    status=$?
+
+    echo "### status $status" >> "$log"
+    echo >> "$log"
+
+    return $status
+}
+
+
+##########
+# own_diagnostics(): copies standard input to standard output without
+# the preprocessor's part: the lines up to the last "<n> warning(s)
+# generated.", which clang prints after its own warnings
+own_diagnostics()
+{
+    awk '{ line[NR] = $0 }
+         /^[0-9]+ warnings? generated\.$/ { last = NR }
+         END { for (i = last + 1; i <= NR; i++) print line[i] }'
+}
+
+
+##########
+# compile(): compiles one program for the target with rcc -S, keeping
+# what rcc itself printed on standard error and then a "status <n>"
+# line with its exit status as the program's run, <name>.err in the
+# work directory, and copying all of standard error into the log;
+# prints rcc's exit status
+compile()
+{
+    name=$1
+
+    source=$corpus/$name.c
+    stem=$workdir/$name
+
+    echo "### ./rcc -target $target -S -o $stem.s $source:" >> "$log"
+
+    ./rcc -target "$target" -S -o "$stem.s" "$source" \
+        > /dev/null 2> "$stem.all"
+    status=$?
+
+    own_diagnostics < "$stem.all" > "$stem.err"
+    echo "status $status" >> "$stem.err"
+
+    cat "$stem.all" >> "$log"
+    echo "### status $status" >> "$log"
+    echo >> "$log"
+
+    echo "$status"
+}
+
+
+##########
+# check_pin(): diffs the run of one program against the target's pin;
+# prints "pin ok", "pin differs" or "no pin"
+check_pin()
+{
+    name=$1
+
+    pin_file=$pins/$name.err
+    run=$workdir/$name.err
+
+    if [ ! -e "$pin_file" ]; then
+        echo "no pin"
+    elif logged diff -u "$pin_file" "$run"; then
+        echo "pin ok"
+    else
+        echo "pin differs"
+    fi
+}
+
+
+##########
+# print_row(): prints one row of the table
+print_row()
+{
+    name=$1
+    status=$2
+    pin_state=$3
+    verdict=$4
+
+    printf '%-32s %-8s %-12s %s\n' \
+        "$name" "$status" "$pin_state" "$verdict"
+}
+
+
+##########
+# check_program(): compiles one program into its run, diffs the run
+# against the pin and prints its row; reports 0 when the row passed,
+# 1 when it failed
+check_program()
+{
+    name=$1
+
+    stem=$workdir/$name
+
+    # an output left by an earlier run must not stand in for this one's
+    rm -f "$stem.all" "$stem.err" "$stem.s"
+
+    status=$(compile "$name")
+    pin_state=$(check_pin "$name")
+
+    if [ "$pin_state" = "pin ok" ]; then
+        verdict=pass
+    else
+        verdict=FAIL
+    fi
+
+    print_row "$name" "$status" "$pin_state" "$verdict"
+
+    [ "$verdict" = pass ]
+}
+
+
+##########
+# adopt_pins(): copies the run of every program over its pin for the
+# target, printing for each pin whether it is new, changed or the
+# same; reports 1 when a program has no run or a pin could not be
+# written, 0 otherwise
+adopt_pins()
+{
+    result=0
+
+    for source in "$corpus"/*.c; do
+        [ -e "$source" ] || continue
+
+        name=${source##*/}
+        name=${name%.c}
+
+        pin_file=$pins/$name.err
+        run=$workdir/$name.err
+
+        if [ ! -s "$run" ]; then
+            echo "$name: no run, pin left as it was"
+            result=1
+        elif [ ! -e "$pin_file" ]; then
+            cp "$run" "$pin_file" && echo "pinned $pin_file (new)" ||
+                result=1
+        elif ! cmp -s "$pin_file" "$run"; then
+            cp "$run" "$pin_file" && echo "pinned $pin_file (changed)" ||
+                result=1
+        else
+            echo "pinned $pin_file (same)"
+        fi
+    done
+
+    return $result
+}
+
+
+##########
+# main body of script
+
+# process command line options
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --target)  # check the target named next, not this machine's own
+            if [ $# -lt 2 ]; then
+                usage >&2
+                exit 2
+            fi
+            target=$2
+            shift
+            ;;
+
+        --pin)  # adopt the run as the pins
+            pin=1
+            ;;
+
+        --help)  # print the usage and stop
+            usage
+            exit 0
+            ;;
+
+        *)  # anything else is a usage error
+            usage >&2
+            exit 2
+            ;;
+    esac
+    shift
+done
+
+# without the tree root and a built rcc there is nothing to run
+check_tree || exit 2
+
+# this machine's own target is the default; a machine rcc has no
+# target for has no default
+native=$(machine_target)
+
+if [ -z "$target" ] && [ -z "$native" ]; then
+    echo "$myname: rcc has no target for this machine, $(uname -m);" \
+        "name one with --target" >&2
+    exit 2
+fi
+
+if [ -z "$target" ]; then
+    target=$native
+fi
+
+# a target without pins has nothing to be checked against
+check_target "$target" || exit 2
+
+pins=$corpus/$target
+workdir=build/error/$target
+log=$workdir/log
+
+# the work directory is kept; the log starts over
+if ! mkdir -p "$workdir" || ! : > "$log"; then
+    echo "$myname: cannot write in $workdir" >&2
+    exit 2
+fi
+
+echo "### running $command_line" >> "$log"
+echo >> "$log"
+
+print_row program status pin result
+
+# one row per program in sorted order; a failed row does not stop the run
+for source in "$corpus"/*.c; do
+    [ -e "$source" ] || continue
+
+    name=${source##*/}
+    name=${name%.c}
+
+    programs=$((programs + 1))
+    check_program "$name" && passed=$((passed + 1))
+done
+
+if [ "$programs" -eq 0 ]; then
+    echo "$myname: no programs in $corpus" >&2
+    exit 1
+fi
+
+echo
+echo "$passed of $programs passed; the log is $log"
+
+# with --pin, the exit status is the adoption's, not the run's
+if [ "$pin" -ne 0 ]; then
+    echo
+    adopt_pins
+    exit $?
+fi
+
+[ "$passed" -eq "$programs" ]
+exit $?

@@ -1,0 +1,2 @@
+tests/error/global-variable.c:2:5: error: not yet: global variable
+status 1

@@ -1,0 +1,2 @@
+tests/error/array-type-name.c:4:23: error: not yet: array type name
+status 1

@@ -1,0 +1,2 @@
+tests/error/union.c:4:5: error: not yet: 'union'
+status 1

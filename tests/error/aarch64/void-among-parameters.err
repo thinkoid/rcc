@@ -1,0 +1,2 @@
+tests/error/void-among-parameters.c:3:14: error: 'void' must be the only parameter
+status 1

@@ -1,0 +1,2 @@
+tests/error/hexadecimal-without-digits.c:4:12: error: hexadecimal constant without digits
+status 1

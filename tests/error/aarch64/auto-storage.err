@@ -1,0 +1,2 @@
+tests/error/auto-storage.c:4:5: error: not yet: storage class 'auto'
+status 1

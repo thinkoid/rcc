@@ -101,6 +101,19 @@ the count is the target's.
 Check: no comment of =type.hh=, =parse.cc= or =c1-common.cc= names a
 register or a number of one target alone.
 
+** TODO A refusal of c1 names no place
+
+c1's not-yets print "rcc: internal error: c1: not yet: a frame of 2
+GiB or more" and exit with status 3. The message names no file, no
+line and no function, since the tree carries no positions
+(=shape.md= chapter 4). In a file of several functions the reader is
+not told which one met the limit.
+
+Fix: the message names the function being generated, which the
+state holds.
+
+Check: the five pins of c1's refusals in =tests/error= name =main=.
+
 ** TODO aarch64: a stack parameter at the frame's limit is refused
 
 A parameter past the eighth is copied to its slot from above the
@@ -250,26 +263,6 @@ named for the save.
 Check: the sentence agrees with both pins of =g13-read-across-branch=.
 
 * Tests
-
-** TODO Nothing pins a diagnostic
-
-The two corpora hold programs that build: the oracle runs them and
-both scripts diff their listings. No test compiles a program that
-rcc must refuse and reads the message, the position and the exit
-status. The parser has 58 calls of =fail()= and 33 of =not_yet()=,
-and c1 five of its own =not_yet()=; a message reworded or lost, or
-a refusal that became an acceptance, changes no row. The refusal of
-a local of 2 GiB or more was checked by hand when it was written.
-
-Fix: a third corpus, =tests/errors/<name>.c=, each program with the
-first line rcc must print and its exit status beside it, and a
-script as the other two are, run by =make test=. The first two
-programs: a local of 4 GiB, which the parser refuses at the
-declaration with status 1, and two locals of 1.5 GiB, which c1
-refuses with status 3.
-
-Check: the script fails when one message of the parser is reworded
-by hand, and passes when it is restored.
 
 ** TODO =tests/oracle --pin= says nothing of a pin that is the same
 
@@ -630,5 +623,92 @@ Fix: the comment says every conversion but an array's decay.
 Check: =grep -n 'cast_t {' src/parse.cc= prints the sites the
 comments name.
 
+** TODO An error at the end of the file names a line the file does not have
+
+A function body the file ends inside is reported at the end-of-file
+token: =tests/error/unclosed-function-body.c= has four lines, and
+the error is at 5:1. =clang= reports the same program at the end of
+the last token, 4:14. A reader, or an editor following the position,
+is sent past the text.
+
+Fix: the end-of-file token takes the position just after the last
+token; or an error at end of file is reported at the token before
+it.
+
+Check: the pins of =unclosed-function-body= and =unclosed-block=
+name the last line of their programs.
+
+** TODO A void initializer is reported at the ===
+
+~int x = g();~ with =g= returning =void= fails with "void expression
+used as a value" at the ===, not at the call: =init_declarator()=
+hands the === token to =assignment_conversion()=, which is the right
+place for a conversion's error and the wrong one for an operand that
+has no value.
+
+Fix: the check for a value reports at the initializer's first token.
+
+Check: the pin of =tests/error/void-value= names the column of =g=.
+
 * Lexer
 
+** TODO A binary or a bit-precise constant is an invalid integer constant
+
+=0b101= and =1wb= are C23's (6.4.4.2). The parser has a "not yet:
+binary constant" and a "not yet: bit-precise integer constant" for
+them, and an error for a suffix it does not know, but none of the
+three is reached: the lexer's =number()= stops at the =b= and at the
+=wb= and refuses each first, "invalid integer constant '0b101'". A
+valid constant is thus called invalid, and the parser's three
+branches are dead.
+
+Fix: the lexer takes the binary prefix with its digits and the =wb=
+suffix as part of the number, so the parser's not-yets say what is
+missing; or the lexer says "not yet" itself and the parser's
+branches go.
+
+Check: two programs of =tests/error=, pinned "not yet: binary
+constant" and "not yet: bit-precise integer constant".
+
+** TODO A digit separator is a missing quote
+
+~1'000~ is C23's (6.4.4.2). The parser's "not yet: digit separator"
+is never reached: rcc runs =clang -E= with no =-std=, clang's default
+dialect has no separator, so clang warns of an open character
+constant, and the lexer, which ends the number at the quote, reports
+"missing terminating ' character".
+
+Fix: decide the dialect rcc preprocesses in. With =-std=c23= passed
+to =clang -E= and the quote taken by =number()=, the not-yet is
+reached; without, the parser's branch goes.
+
+Check: a program of =tests/error= with ~1'000~ and its pin.
+
+** TODO A floating constant draws one of two errors, and neither says not yet
+
+=.5= is refused with "floating constant not supported"; =1.5= and
+=1e3= with "invalid integer constant '1.5'" and "'1e3'". The types
+=float= and =double= are "not yet: floating type", and =shape.md=
+chapter 11 lists floating point among what is not yet. A valid
+constant is called an invalid integer, and the three spellings of
+one thing read as two different errors.
+
+Fix: =number()= and =punctuator()= say "not yet: floating constant"
+for a fraction or an exponent.
+
+Check: =.5=, =1.5= and =1e3= each pinned "not yet: floating
+constant".
+
+** TODO A character outside ASCII in a character constant is called multi-character
+
+='é'= written in the source reaches the lexer as the two bytes of its
+UTF-8 encoding, and the lexer reports "not yet: multi-character
+constant". The source has one character. The same character in a
+string literal compiles, as its two bytes, with no diagnostic; the
+escape =é= is "not yet: universal character name" in both.
+
+Fix: a byte above 127 in a character constant is refused by its own
+name; whether a string literal takes such bytes in silence is decided
+with it and recorded in the table of implementation-defined choices.
+
+Check: a program of =tests/error= with ='é'= and its pin.

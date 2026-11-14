@@ -1,0 +1,2 @@
+tests/error/unknown-escape.c:5:13: error: unknown escape sequence: '\' followed by 'q'
+status 1

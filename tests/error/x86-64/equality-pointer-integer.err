@@ -1,0 +1,2 @@
+tests/error/equality-pointer-integer.c:8:14: error: comparison between pointer and integer
+status 1

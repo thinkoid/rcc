@@ -1,0 +1,2 @@
+tests/error/pointer-operand.c:7:14: error: operand of '*' is a pointer
+status 1

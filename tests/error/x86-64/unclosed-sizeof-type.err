@@ -1,0 +1,2 @@
+tests/error/unclosed-sizeof-type.c:4:24: error: expected ')' after type name
+status 1

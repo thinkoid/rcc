@@ -1,0 +1,2 @@
+tests/error/goto.c:4:5: error: not yet: 'goto' statement
+status 1

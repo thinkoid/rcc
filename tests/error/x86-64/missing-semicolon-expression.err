@@ -1,0 +1,2 @@
+tests/error/missing-semicolon-expression.c:7:5: error: expected ';' after expression
+status 1

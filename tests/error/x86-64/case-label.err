@@ -1,0 +1,2 @@
+tests/error/case-label.c:4:5: error: not yet: case label
+status 1

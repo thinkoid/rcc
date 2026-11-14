@@ -1,0 +1,2 @@
+tests/error/void-pointer-arithmetic.c:6:11: error: arithmetic on a pointer to void
+status 1

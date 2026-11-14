@@ -1,0 +1,2 @@
+tests/error/octal-escape-out-of-range.c:4:13: error: octal escape sequence out of range
+status 1

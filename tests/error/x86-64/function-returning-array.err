@@ -1,0 +1,2 @@
+tests/error/function-returning-array.c:2:12: error: function cannot return an array
+status 1

@@ -1,0 +1,2 @@
+tests/error/brace-initializer.c:4:13: error: not yet: brace initializer
+status 1

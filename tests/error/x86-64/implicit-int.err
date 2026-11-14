@@ -1,0 +1,2 @@
+tests/error/implicit-int.c:3:1: error: expected a type specifier
+status 1

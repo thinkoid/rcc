@@ -1,0 +1,2 @@
+tests/error/subscript-non-pointer.c:6:13: error: subscripted value is not an array or a pointer
+status 1
