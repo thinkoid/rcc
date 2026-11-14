@@ -14,3 +14,4 @@ g5-register-undef 1 0
 g13-read-across-call 110 110
 g13-read-across-branch 167 167
 g13-compound-order 63 63
+header-stdio 0 0

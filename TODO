@@ -478,51 +478,87 @@ type itself stays unqualified.
 Check: the three programs above fail with a diagnostic; =const= in
 every other position still parses.
 
-** TODO A system header does not parse
+** TODO =stdlib.h=, =sys/types.h= and =signal.h= do not parse
 
-=#include <stdio.h>= stops at the first =typedef=, in =clang='s
-=stddef= header. Behind it glibc's headers use =extern=,
-=__restrict=, =__attribute__=, =__asm__=, =__extension__=,
-=__inline=, a struct that is declared and never completed, and the
-names of the floating types. The lexer hands the GNU spellings over
-as identifiers, and the parser refuses the first. =_Bool=, =bool=,
-=inline= and every keyword outside =tok_t= arrive as identifiers too
-and fail as undeclared names rather than as "not yet".
-
-rcc reads the system's headers as they are. It conforms with what a
+rcc reads the system's headers as they are: it conforms with what a
 correct program depends on, the size and layout of a type and the
-symbol a name links to, and leaves hints and warnings for later. A
-declaration it cannot honour is accepted, and its use is refused.
+symbol a name links to, and leaves hints and warnings for later; a
+declaration it cannot honour is accepted, and its use is refused
+(=shape.md= chapter 5). =stdio.h=, =string.h=, =ctype.h=,
+=unistd.h=, =stdint.h=, =setjmp.h=, =sys/stat.h= and =stddef.h=
+parse. Three of the common ones stop:
 
-Fix:
+- =stdlib.h= and =sys/types.h= at =bits/byteswap.h=, ~static __inline
+  __uint16_t __bswap_16 (__uint16_t __bsx) { ... }~: "not yet:
+  storage class 'static'". A function the header defines and the
+  program may never call.
+- =stdlib.h= would stop next at a function-pointer declarator, the
+  parameter of =atexit= and the typedef =__compar_fn_t=; =signal.h=
+  stops there first, at ~typedef void (*__sighandler_t) (int);~: "not
+  yet: parenthesized declarator".
+- =signal.h= would stop next at ~typedef __signed__ __int128 __s128
+  __attribute__((aligned(16)));~, where =__int128= is taken for the
+  declarator's name. =asm=, =typeof=, =__typeof__=, =__alignof__=,
+  =__auto_type= and the =__builtin_= functions are identifiers too.
+- An attribute among the declaration specifiers or on a parameter is
+  an error; the headers above place none there.
 
-- =__restrict= and =restrict= are dropped. The qualifier is a
-  licence for an optimizer, and rcc takes none.
-- An attribute is read by its name. One that licenses an optimizer
-  or asks for a warning is dropped: =__nothrow__=, =__nonnull__=,
-  =__pure__=, =__const__=, =__malloc__=, =__alloc_align__=,
-  =__format__=, =__noreturn__=, =__deprecated__=,
-  =__warn_unused_result__=, =__cold__=. Any other marks what it is
-  written on, and a program that uses the marked type, member or
-  function is refused with the attribute's name: =__mode__= changes
-  a type's size, =__aligned__= and =__packed__= a member's offset.
-- =__asm__= after a function's declarator is the symbol's name in
-  the assembly, and c1 writes it in the call: glibc declares =scanf=
-  with =__asm__ ("__isoc99_scanf")=. On a register variable, and as
-  a statement, it is not yet.
-- =__extension__= is dropped; =__inline= and =inline= on a
-  declaration without a body are dropped, and a body is not yet.
-- A keyword of C outside the subset is a token, refused by its name
-  as not yet.
-- =typedef=, =extern=, a struct declared and not completed, and a
-  floating type named in a declaration no program uses are slices of
-  their own, =shape.md= chapter 11; the header needs each.
+Fix: by the same rule. A =static= function with a body in a header is
+accepted, its body skipped to the closing brace, and a call of it
+refused. A function-pointer declarator declares a pointer to a
+function, which is passed and stored as any pointer, and a call
+through it is refused. =__int128= is a type rcc declares and does not
+use.
 
-Check: a program with =#include <stdio.h>= that calls =printf=
-compiles, links and prints, on both targets. A program that declares
-a =register_t= after =#include <sys/types.h>= is refused with "not
-yet: attribute '__mode__'", and without the declaration it compiles.
-The listing of a program that calls =scanf= calls =__isoc99_scanf=.
+Check: a program that includes =stdlib.h= and calls =atoi= compiles,
+links and runs on both targets; one that includes =signal.h= and
+calls =raise= does; a call of =__bswap_16= is refused by name.
+
+** TODO A typedef through a marking attribute cannot be written twice
+
+~typedef int w __attribute__ ((mode (word))); typedef int w
+__attribute__ ((mode (word)));~ fails with "redefinition of typedef
+'w' with another type". A typedef may be declared again as the same
+type, and these two are. Each declaration through an attribute rcc
+does not honour makes a type of an identity of its own, so the
+second is never the first.
+
+Fix: a typedef declared again through the same marking attribute on
+the same type takes the earlier declaration's type.
+
+Check: the program above compiles; with =mode (byte)= in the second
+it still fails.
+
+** TODO A marking attribute on a later declaration does not reach an earlier call
+
+~int f(void); int g(void) { return f(); } int f(void) __attribute__
+((weak));~ compiles. The attribute marks the symbol from where it is
+written, and the call parsed before it was accepted. GNU C lets a
+later declaration add an attribute, and the use rcc cannot honour has
+then been taken.
+
+Fix: decide whether an attribute rcc does not honour, met after a
+use of the symbol, is refused where it is written.
+
+Check: the program above is refused, at the attribute or at the
+call.
+
+** TODO The other target is preprocessed with this machine's headers
+
+=rcc -target x86-64= on an aarch64 machine runs =clang -E
+--target=x86_64-linux-gnu=, which searches =/usr/include=: the
+aarch64 glibc's headers, read with x86-64's predefined macros. For
+=stdio.h= the two texts are the same here, so the pin of
+=header-stdio= for the other target is honest; a header that differs
+by architecture, =bits/= and =asm/= above all, would give the other
+target this machine's declarations.
+
+Fix: say in =shape.md= chapter 8 that a program with system headers
+is compiled for the machine's own target, and refuse =-target= for
+another machine when the program includes one; or take a sysroot.
+
+Check: the documents and the driver agree on what =-target= does to
+=#include <...>=.
 
 ** TODO A typedef for =void= is not the empty parameter list
 

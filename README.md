@@ -63,6 +63,10 @@ literals; register variables. Its design is `docs/aarch64.md`, and
 its measurement, on two machines, is in chapter 4 of `docs/cost.md`
 beside x86-64's. `docs/slot.md` explains what a stack slot costs on
 three aarch64 cores and one x86-64 core.
+Then a program with its headers: `typedef`, `extern` at file scope,
+structs, unions, enums and floating types declared and not yet used,
+and the GNU C of a system header read as it is, so that a program
+includes `stdio.h` and calls `printf`.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/`, the cost corpus over `tests/cost/`
 and the error corpus over `tests/error/`, the programs rcc refuses

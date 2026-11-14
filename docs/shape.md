@@ -376,6 +376,19 @@ are in the tree, with their pins and the probes that run rcc's code
 against `clang`'s. Its measurement, on two machines, is in `cost.md`
 chapter 4.
 
+The fourth slice is a program with its headers. `typedef`, `extern`
+at file scope, the types a header declares and the program never
+opens, and the GNU C a system header is written in (chapter 5) bring
+`stdio.h`, `string.h`, `ctype.h`, `unistd.h`, `stdint.h` and
+`stddef.h` through the parser. It is parser work but for the name
+`__asm__` gives a symbol, which c1 writes at the label and at the
+call. The milestone program, `header-stdio` in the corpus, includes
+`stdio.h` and `string.h`, formats a line with `snprintf`, checks it
+with `strcmp` and prints it: the same line and the same status under
+rcc and under `clang -O2`. `stdlib.h` and `sys/types.h` stop at a
+`static` function with a body, and `signal.h` at a function-pointer
+declarator.
+
 ## 11. Not yet
 
 Structs, unions, enums and floating point (each type is declared, a
