@@ -115,6 +115,7 @@ yet.
 | `x / 4`, `x / 7` | the divisor held in a register, `movl $4, %ecx`, since `idiv` takes no immediate, then `cltd; idivl %ecx`; no shift, no multiply by a magic constant | `div-four`, `div-seven` |
 | `a + b / c`, a division with `rax` and `rdx` busy | the values held there moved out to free registers, `movq %rdx, %rsi; movq %rax, %rdi`, the dividend moved into `eax`, then `cltd; idivl %esi` (`backend.md` 6.5) | `div-busy` |
 | `a << n`, `a >> n` | the count in `ecx`, `shll %cl, %eax`, `sarl %cl, %eax`, `shrl %cl, %eax`; the instruction masks the count | `shift` |
+| `-a`, `~a` | `negl %eax`, `notl %eax`; widened after, `-(unsigned) a` to `unsigned long` is the `negl` alone, since the 32-bit write cleared the upper half, and `-a` to `long` is `negl %eax; movslq %eax, %rax`; the parser folds `-1` to a constant, so it is no instruction of this row | `negate` |
 | `a < b` and the rest, as a value | `cmpl %ecx, %eax; setl %al; movzbl %al, %eax`, `sete` for `==`; no jump | `compare` |
 | `x == x` on a `register` variable | `cmpl %ebx, %ebx`: the compare is written | `register-compare` |
 | `a < b` as a condition | `cmpl %ecx, %eax` and a jump on the inverse to the else label, `jge .Lchoose.2`; no value | `if` |
@@ -179,6 +180,7 @@ bytes or more.
 | `x / 4`, `x / 7` | the divisor held in a register, `mov w1, #4`, since `sdiv` takes no immediate, then `sdiv w0, w0, w1`; no shift, no multiply by a magic constant | `div-four`, `div-seven` |
 | `a + b / c`, a division with values held | the instruction on the registers the operands are in, `sdiv w1, w1, w2`, then `add w0, w0, w1`, and the remainder `sdiv w3, w1, w2; msub w1, w3, w2, w1`; nothing is moved, since no register is pinned | `div-busy` |
 | `a << n`, `a >> n` | the count in any register, `lsl w0, w0, w1`, `asr w0, w0, w1`, `lsr w0, w0, w1`; the instruction masks the count | `shift` |
+| `-a`, `~a` | `neg w0, w0`, `mvn w0, w0`; widened after, `-(unsigned) a` to `unsigned long` is the `neg` alone, since the write to the `w` name cleared the upper half, and `-a` to `long` is `neg w0, w0; sxtw x0, w0`; the parser folds `-1` to a constant, so it is no instruction of this row | `negate` |
 | `a < b` and the rest, as a value | `cmp w0, w1; cset w0, lt`, `cset w0, eq` for `==`; no jump | `compare` |
 | `x == x` on a `register` variable | `cmp w19, w19`: the compare is written | `register-compare` |
 | `a < b` as a condition | `cmp w0, w1` and a branch on the inverse to the else label, `b.ge .Lchoose.2`; no value | `if` |

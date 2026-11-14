@@ -1404,13 +1404,18 @@ value_t
 unary(state_t &s, const unary_t &u, const type_t &t)
 {
     switch (u.op) {
-    // G1: neg of INT_MIN is INT_MIN
+    // G1: neg of INT_MIN is INT_MIN.  A borrowed read is copied into a
+    // fresh register first, movl %ebx, %eax, by writable().
     case unary_op_t::neg:
     case unary_op_t::bit_not: {
+        const auto &type = integer(t);
         const int width = operation_width(t);
+
         const auto v = rvalue(s, *u.arg);
         insn(s, sized(u.op == unary_op_t::neg ? "neg" : "not", width),
              { reg(writable(s, v), width) });
+        wrote(s, v, width, type.is_signed);
+
         return v;
     }
 

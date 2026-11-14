@@ -22,22 +22,6 @@ assembles and links. The reasons are =docs/findings.md= and
 in =docs/design-calls.md=. The chapter holds c1's own defects on both
 targets; the second target's design is =docs/aarch64.md=.
 
-** TODO x86-64: unary minus and complement do not record what they wrote
-
-=unary()= in =src/c1-aarch64.cc= calls =wrote()= after =neg= and
-=mvn=, which sets the width the result's register is valid to. The
-x86-64 =unary()= writes =neg= and =not= and calls nothing, so the
-value keeps the width it had before the instruction. A 32-bit =negl=
-clears the upper half of the register. The omission is harmless only
-if no signed value valid past 32 bits ever reaches a 32-bit =neg= or
-=not=, and nothing states or checks that.
-
-Fix: x86-64's =unary()= calls =wrote()= as the aarch64 one does.
-
-Check: every listing of both corpora is unchanged, or each change is
-an extension that was missing; a probe negates and complements a
-value that a widening cast then reads.
-
 ** TODO =aarch64.md= chapter 12 opens on a sentence that is no longer true
 
 The chapter's first paragraph says "The x86-64 generator is one file,
@@ -172,19 +156,6 @@ result, pinned for both targets.
 
 Check: its aarch64 pin has =ldrsb= and =sxtb=, and perturbing either
 in =c1-aarch64.cc= turns the row red.
-
-** TODO Chapter 2 has no row for unary minus and complement
-
-Chapter 2 of =cost.md= has no row for =-a= or =~a=. A negative
-constant is not one of them: the parser folds =-1= to a constant, so
-=long x = -1= is one store, =movq $-1, -8(%rbp)=, as =long x = 2= is
-=movq $2, -8(%rbp)=, and =p[-1]= is a displacement. On a variable the
-two operators are instructions, =negl %eax= and =notl %eax=, the row
-of =backend.md= 6.3.
-
-Fix: a row for =-a= and =~a=, with a cost program.
-
-Check: the row and its pin.
 
 ** TODO The tl;dr says a register variable is never stored
 
