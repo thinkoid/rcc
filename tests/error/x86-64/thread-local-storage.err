@@ -1,0 +1,2 @@
+tests/error/thread-local-storage.c:2:1: error: not yet: storage class '_Thread_local'
+status 1

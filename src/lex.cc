@@ -55,6 +55,31 @@ const keyword_t keywords[] = {
     { "union", tok_t::kw_union },       { "unsigned", tok_t::kw_unsigned },
     { "void", tok_t::kw_void },         { "volatile", tok_t::kw_volatile },
     { "while", tok_t::kw_while },
+
+    // the keywords C99 and C11 add but restrict; C17 adds none
+    { "_Alignas", tok_t::kw_alignas },  { "_Alignof", tok_t::kw_alignof },
+    { "_Atomic", tok_t::kw_atomic },    { "_Bool", tok_t::kw_bool },
+    { "_Complex", tok_t::kw_complex },  { "_Generic", tok_t::kw_generic },
+    { "_Imaginary", tok_t::kw_imaginary },
+    { "_Noreturn", tok_t::kw_noreturn },
+    { "_Static_assert", tok_t::kw_static_assert },
+    { "_Thread_local", tok_t::kw_thread_local },
+    { "inline", tok_t::kw_inline },
+
+    // GNU C's spellings in the implementation's name space, which a
+    // header writes so that no dialect and no macro of the program's
+    // takes them: each is a keyword of C's, or one of GNU C's own
+    { "__asm", tok_t::kw_asm },         { "__asm__", tok_t::kw_asm },
+    { "__attribute", tok_t::kw_attribute },
+    { "__attribute__", tok_t::kw_attribute },
+    { "__const", tok_t::kw_const },     { "__const__", tok_t::kw_const },
+    { "__extension__", tok_t::kw_extension },
+    { "__inline", tok_t::kw_inline },   { "__inline__", tok_t::kw_inline },
+    { "__restrict", tok_t::kw_restrict },
+    { "__restrict__", tok_t::kw_restrict },
+    { "__signed", tok_t::kw_signed },   { "__signed__", tok_t::kw_signed },
+    { "__volatile", tok_t::kw_volatile },
+    { "__volatile__", tok_t::kw_volatile },
 };
 
 struct punctuator_t

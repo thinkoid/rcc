@@ -1,0 +1,2 @@
+tests/error/alignof-operator.c:4:12: error: not yet: operator '_Alignof'
+status 1

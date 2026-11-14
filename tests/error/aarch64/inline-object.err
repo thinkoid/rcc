@@ -1,0 +1,2 @@
+tests/error/inline-object.c:3:1: error: 'inline' can only appear on functions
+status 1

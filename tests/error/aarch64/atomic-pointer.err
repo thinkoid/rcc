@@ -1,0 +1,2 @@
+tests/error/atomic-pointer.c:5:10: error: not yet: type qualifier '_Atomic'
+status 1

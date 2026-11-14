@@ -1,0 +1,2 @@
+tests/error/attribute-mode-typedef.c:11:12: error: not yet: attribute 'mode'
+status 1

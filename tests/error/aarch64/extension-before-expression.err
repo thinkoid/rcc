@@ -1,0 +1,2 @@
+tests/error/extension-before-expression.c:7:5: error: expected expression
+status 1

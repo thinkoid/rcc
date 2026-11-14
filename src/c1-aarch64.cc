@@ -2153,7 +2153,7 @@ call(state_t &s, const call_t &c, const type_t &t)
         insn(s, mnemonic, { reg(argument_registers[i], width), from });
     }
 
-    insn(s, "bl", { callee.name });
+    insn(s, "bl", { assembly_name(callee) });
 
     if (area > 0)
         insn(s, "add", { "sp", "sp", imm(area) });
@@ -2613,7 +2613,7 @@ function(state_t &s, const function_decl_t &fd)
     s.body.str({ });
     stack_parameters(s, fd, size);
 
-    const auto &name = s.function;
+    const auto name = assembly_name(*fd.sym);
     s.out << std::format("\t.globl\t{}\n"
                          "\t.type\t{}, @function\n"
                          "{}:\n"

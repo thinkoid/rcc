@@ -1,0 +1,2 @@
+tests/error/attribute-list-unclosed.c:3:39: error: expected '))' after attribute list
+status 1

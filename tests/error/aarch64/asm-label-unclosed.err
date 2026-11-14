@@ -1,0 +1,2 @@
+tests/error/asm-label-unclosed.c:2:25: error: expected ')' after assembler name
+status 1

@@ -1,0 +1,2 @@
+tests/error/asm-label-conflict.c:4:13: error: conflicting assembler names for 'f'
+status 1

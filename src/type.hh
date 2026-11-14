@@ -9,7 +9,7 @@
 #pragma once
 
 #include <memory>
-#include <string_view>
+#include <string>
 #include <variant>
 #include <vector>
 
@@ -50,15 +50,15 @@ struct function_t
 };
 
 // A type rcc declares and does not use yet: a struct, a union, an enum,
-// a floating type, __builtin_va_list.  Two are one type when their
-// identities are equal, so two pointers to one struct are one type and
-// pointers to two structs are not.  what is the words a refusal prints,
-// a view of a literal.  It has no size and no alignment, and a pointer
-// to it is an ordinary pointer.
+// a floating type, __builtin_va_list, the type a typedef names through
+// a marking attribute.  Two are one type when their identities are
+// equal, so two pointers to one struct are one type and pointers to two
+// structs are not.  what is the words a refusal prints.  It has no size
+// and no alignment, and a pointer to it is an ordinary pointer.
 struct not_yet_t
 {
     int identity;
-    std::string_view what;
+    std::string what;
 };
 
 struct type_t
@@ -96,6 +96,6 @@ type_t make_pointer(type_t pointee);
 type_t make_array(type_t element, long count);
 type_t
 make_function(type_t result, std::vector< type_t > params, bool variadic);
-type_t make_not_yet(int identity, std::string_view what);
+type_t make_not_yet(int identity, std::string what);
 
 } // namespace rcc

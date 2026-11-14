@@ -1,0 +1,2 @@
+tests/error/attribute-on-local.c:7:27: error: not yet: attribute 'aligned'
+status 1

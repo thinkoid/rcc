@@ -65,13 +65,21 @@ beside `tokenize` yield the bytes of a string and the value of a
 character constant, and cannot fail, because the lexer refused every
 malformed escape when it made the token.
 
+The keywords are C17's, those outside the subset included, so the
+parser refuses each by its name. GNU C's spellings in the
+implementation's name space, which a system header writes, are
+keywords too: `__const`, `__restrict__`, `__signed__`, `__inline` and
+their like are the keyword they spell, and `__attribute__`, `__asm__`
+and `__extension__` are tokens of their own.
+
 ## 3. The types
 
 A type is the machine's view: void, an integer of a width and a
 signedness, a pointer to a type, an array of a type and a count, a
 function of a result and parameters, or a type rcc declares and does
 not use yet: a struct, a union, an enum, a floating type,
-`__builtin_va_list`. Such a type carries an identity, which equality
+`__builtin_va_list`, a type a typedef names through an attribute rcc
+does not honour. Such a type carries an identity, which equality
 compares, and the words a refusal of its use prints; it has no size
 and no alignment, and a pointer to it is an ordinary pointer. The C
 spelling is not kept:
@@ -121,7 +129,10 @@ type name is a typedef's: its type is the type the name stands for,
 it has no object, and nothing is written for it. An enumerator is an
 enumeration constant: its type is its enum's, its value is not
 computed, and the parser refuses its use, so no expression names one
-either. A local or parameter the
+either. A function or a global may carry two facts more: the name
+`__asm__` gives it in the assembly, which c1 writes wherever it writes
+the symbol, and a marking, the words its use is refused with when an
+attribute changes what the program depends on. A local or parameter the
 parser gives a register carries its index, which of the target's
 register variables it takes: each
 takes the next in declaration order and gives it back at its block's
@@ -151,6 +162,25 @@ functions: integer promotion, the usual arithmetic conversions,
 assignment conversion, lvalue conversion, function and array decay.
 One pass, one tree. A separate type-check pass would be a second
 tree and a second walk for no invariant the compiler needs.
+
+A system header is written in GNU C, and the parser reads it as it
+is. It conforms with what a correct program depends on, the size and
+the layout of a type and the symbol a name links to, and leaves hints
+and warnings for later: a declaration it cannot honour is accepted,
+and its use is refused. `restrict`, `_Noreturn`, and `inline` on a
+declaration, are dropped, and so is `__extension__` before one. An
+attribute is of one of two kinds. One that only licenses an
+optimizer, asks for a diagnostic, or describes what a compiler that
+calls each function as written does not depend on, `nonnull`, `pure`,
+`format` and their like, is dropped. Any other, known or not, marks
+what it is said of: a typedef through one names a not-yet type of its
+own, a marked function or `extern` object is refused where an
+expression names it, and on a local, which rcc would make, the
+attribute is not yet. On a struct, a union or an enum every attribute
+is dropped, since the type is a not-yet type. `__asm__ ("name")` after
+the declarator of a function or an `extern` object is the symbol's
+name in the assembly: glibc declares `scanf` as `__isoc99_scanf`, and
+the call names that.
 
 ## 6. The generator
 
@@ -360,6 +390,13 @@ typedef of function type, wide and `u8` strings,
 `volatile` (c1 writes every access it meets, an unused one
 included, so the access needs nothing more; the qualifier waits for
 the type model, as `const`'s checks do),
-`restrict`, `switch`, `goto`, `static`, a `register`
-array (6.3.2.1p3). Each arrives when a probe needs it. The
-preprocessor stays external for good.
+`switch`, `goto`, `static`, a `register`
+array (6.3.2.1p3), `inline` on a function definition,
+what an attribute that rcc does not honour marks (an object of a
+typedef so declared, the use of a function or an `extern` object, a
+local, a function's definition), an attribute among the declaration
+specifiers or on a parameter, `__asm__` as a statement, at file scope
+or on a local, and C's keywords outside the subset: `_Bool`,
+`_Complex`, `_Imaginary`, `_Atomic`, `_Alignas`, `_Alignof`,
+`_Generic`, `_Static_assert`, `_Thread_local`. Each arrives when a
+probe needs it. The preprocessor stays external for good.

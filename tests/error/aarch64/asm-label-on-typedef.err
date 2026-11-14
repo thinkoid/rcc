@@ -1,0 +1,2 @@
+tests/error/asm-label-on-typedef.c:2:18: error: '__asm__' on typedef 'word'
+status 1

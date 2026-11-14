@@ -119,9 +119,9 @@ make_function(type_t result, std::vector< type_t > params, bool variadic)
 }
 
 type_t
-make_not_yet(int identity, std::string_view what)
+make_not_yet(int identity, std::string what)
 {
-    return type_t { not_yet_t { identity, what } };
+    return type_t { not_yet_t { identity, std::move(what) } };
 }
 
 // An array of unknown size has no size; asking is the caller's error.

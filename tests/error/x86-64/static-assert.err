@@ -1,0 +1,2 @@
+tests/error/static-assert.c:2:1: error: not yet: '_Static_assert' declaration
+status 1

@@ -1,0 +1,2 @@
+tests/error/atomic-qualifier.c:5:5: error: not yet: type qualifier '_Atomic'
+status 1

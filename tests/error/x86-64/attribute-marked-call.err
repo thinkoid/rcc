@@ -1,0 +1,2 @@
+tests/error/attribute-marked-call.c:7:12: error: not yet: attribute 'weak'
+status 1

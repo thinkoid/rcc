@@ -1,0 +1,2 @@
+tests/error/asm-label-without-parenthesis.c:2:21: error: expected '(' after '__asm__'
+status 1

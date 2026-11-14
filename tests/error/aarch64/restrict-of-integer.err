@@ -1,0 +1,2 @@
+tests/error/restrict-of-integer.c:8:5: error: 'restrict' qualifies a type that is not a pointer to an object
+status 1

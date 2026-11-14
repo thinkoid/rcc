@@ -1,14 +1,14 @@
 // -*- mode: c++; -*-
 
 // The part of c1 that is the same for every target: the integer view
-// of a type, the label names, the predicates on the tree, the string
-// literals' block after the last function, and the register stack's
-// held value and its handle.  None of it names a register, a mnemonic
-// or an operand form; each generator includes it and writes its own
-// instructions around it.  The register stack's functions are the same
-// text for every target too, but they name the target's registers and
-// state: they are in c1-stack.hh, which each generator includes inside
-// its own namespace.
+// of a type, the symbol and label names, the predicates on the tree,
+// the string literals' block after the last function, and the register
+// stack's held value and its handle.  None of it names a register, a
+// mnemonic or an operand form; each generator includes it and writes
+// its own instructions around it.  The register stack's functions are
+// the same text for every target too, but they name the target's
+// registers and state: they are in c1-stack.hh, which each generator
+// includes inside its own namespace.
 
 #pragma once
 
@@ -30,6 +30,7 @@ long long widened(long long value, const int_t &);
 long long scaled(long long index, long size);
 int written(int width, bool is_signed);
 
+std::string_view assembly_name(const symbol_t &);
 std::string label_name(std::string_view function, int n);
 
 const symbol_t *object_of(const expr_t &);

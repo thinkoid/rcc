@@ -1,0 +1,2 @@
+tests/error/asm-statement.c:4:5: error: not yet: '__asm__' statement
+status 1

@@ -1,0 +1,2 @@
+tests/error/bool-type.c:4:5: error: not yet: type specifier '_Bool'
+status 1

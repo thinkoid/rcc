@@ -1687,7 +1687,7 @@ call(state_t &s, const call_t &c, const type_t &t)
         insn(s, "movl", { imm(0), "%eax" });
 
     // every call through the PLT: the executable is position-independent
-    insn(s, "call", { callee.name + "@PLT" });
+    insn(s, "call", { std::format("{}@PLT", assembly_name(callee)) });
 
     const long popped = 8 * static_cast< long >(stacked) + (pad ? 8 : 0);
     if (popped > 0)
@@ -2240,7 +2240,7 @@ function(state_t &s, const function_decl_t &fd)
     const long size = (s.frame + 15) / 16 * 16 - pushed;
     const bool sub = size > 0 && (s.calls || s.frame - pushed > 128);
 
-    const auto &name = s.function;
+    const auto name = assembly_name(*fd.sym);
     s.out << std::format("\t.globl\t{}\n"
                          "\t.type\t{}, @function\n"
                          "{}:\n"

@@ -1,0 +1,2 @@
+tests/error/asm-at-file-scope.c:2:1: error: not yet: '__asm__' at file scope
+status 1

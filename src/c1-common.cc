@@ -1,9 +1,9 @@
 // -*- mode: c++; -*-
 
 // The part of c1 that is the same for every target, declared in
-// c1-common.hh: the integer view of a type, the label names, the tree
-// predicates, and the string literals' block.  Nothing here writes an
-// instruction.
+// c1-common.hh: the integer view of a type, the symbol and label names,
+// the tree predicates, and the string literals' block.  Nothing here
+// writes an instruction.
 
 #include "c1-common.hh"
 
@@ -108,6 +108,17 @@ written(int width, bool is_signed)
 }
 
 // operands
+
+// The name the assembly gives a symbol, at its label and at every use:
+// the one __asm__ gave it, or else its name in C.
+std::string_view
+assembly_name(const symbol_t &sym)
+{
+    if (sym.asm_name.empty())
+        return sym.name;
+
+    return sym.asm_name;
+}
 
 // A label of the function, chapter 7.2: .L, the function's name and
 // the number, .Lsum.1.

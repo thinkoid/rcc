@@ -55,6 +55,25 @@ enum class tok_t {
     kw_volatile,
     kw_while,
 
+    // keywords of C outside the subset, each refused by its name
+    kw_alignas,
+    kw_alignof,
+    kw_atomic,
+    kw_bool,
+    kw_complex,
+    kw_generic,
+    kw_imaginary,
+    kw_static_assert,
+    kw_thread_local,
+
+    // the function specifiers, and GNU C's words for what a header
+    // says beside the C: __asm__, __attribute__, __extension__
+    kw_inline,
+    kw_noreturn,
+    kw_asm,
+    kw_attribute,
+    kw_extension,
+
     // punctuators, in the order of 6.4.6
     lbracket,
     rbracket,

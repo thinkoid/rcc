@@ -1,0 +1,2 @@
+tests/error/inline-definition.c:6:1: error: not yet: 'inline' on a function definition
+status 1

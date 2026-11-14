@@ -50,7 +50,11 @@ integer constant expression to the number it spells, since it is a
 spelling and not an operation on data (`backend.md` 6.4); a variable
 never folds. A typedef name is another spelling of its type and
 writes nothing: a program compiles to the listing of its twin with
-every type spelled out (`typedef` in the cost corpus).
+every type spelled out (`typedef` in the cost corpus). Neither do
+`restrict`, `inline` on a declaration, `__extension__` and the
+attributes rcc drops, which are licences for an optimizer or
+requests for a warning (`gnu-declarations`); `__asm__` after a
+declarator changes the name a call writes and nothing else.
 
 What the compiler may do:
 
