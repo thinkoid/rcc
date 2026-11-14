@@ -312,6 +312,21 @@ store(state_t &s, reg_t r, std::string_view to, int width)
     insn(s, sized("mov", width), { reg(r, width), to });
 }
 
+// The constant row, backend.md 6.3: value into r at width, movl $c, L
+// at 32 bits and movq $c, L at 64.  movq's immediate is 32 bits,
+// sign-extended, so a 64-bit value outside int's range is movabsq, the
+// one mov that carries 64 bits; 4294967295 as a long is one.
+void
+constant(state_t &s, reg_t r, long long value, int width)
+{
+    if (width == 32)
+        insn(s, "movl", { imm(value), reg(r, 32) });
+    else if (fits_imm32(value))
+        insn(s, "movq", { imm(value), reg(r, 64) });
+    else
+        insn(s, "movabsq", { imm(value), reg(r, 64) });
+}
+
 // the register stack
 
 // The three instructions the register stack writes, called by name from
@@ -456,14 +471,7 @@ constant_into(state_t &s, const symbol_t *sym, const expr_t &e)
                            widened(as< literal_t >(e).value, t) :
                            normalized(as< literal_t >(e).value, width);
 
-    const auto to = reg(variable_register(s, sym), width);
-
-    if (width == 32)
-        insn(s, "movl", { imm(value), to });
-    else if (fits_imm32(value))
-        insn(s, "movq", { imm(value), to });
-    else
-        insn(s, "movabsq", { imm(value), to });
+    constant(s, variable_register(s, sym), value, width);
 
     return true;
 }
@@ -744,12 +752,7 @@ literal(state_t &s, const literal_t &l, const type_t &t)
     const auto v = fresh(s, written(width, type.is_signed));
     const reg_t r = reg_of(s, v);
 
-    if (width == 32)
-        insn(s, "movl", { imm(value), reg(r, 32) });
-    else if (fits_imm32(value))
-        insn(s, "movq", { imm(value), reg(r, 64) });
-    else
-        insn(s, "movabsq", { imm(value), reg(r, 64) });
+    constant(s, r, value, width);
 
     return v;
 }
@@ -1070,7 +1073,7 @@ displacement(state_t &s, const expr_t &n, long size, unsigned avoid = 0)
         return { .immediate = imm(d) };
 
     const auto r = fresh(s, 64, avoid);
-    insn(s, "movabsq", { imm(d), reg(reg_of(s, r), 64) });
+    constant(s, reg_of(s, r), d, 64);
 
     return { .value = r, .width = 64 };
 }
@@ -1127,7 +1130,7 @@ difference(state_t &s, const binary_t &b)
         return l;
 
     const auto d = fresh(s, 64);
-    insn(s, "movq", { imm(size), reg(reg_of(s, d), 64) });
+    constant(s, reg_of(s, d), size, 64);
 
     return divide(s, binary_op_t::div, l, d, int_t { 64, true });
 }
@@ -1212,13 +1215,13 @@ logical(state_t &s, const expr_t &e)
     cbranch(s, e, no, false);
 
     const auto v = fresh(s, 32);
-    const auto r = reg(reg_of(s, v), 32);
+    const reg_t r = reg_of(s, v);
 
-    insn(s, "movl", { imm(1), r });
+    constant(s, r, 1, 32);
     jump(s, end);
 
     place_label(s, no);
-    insn(s, "movl", { imm(0), r });
+    constant(s, r, 0, 32);
 
     place_label(s, end);
 
@@ -1947,7 +1950,7 @@ displaced_on(state_t &s,
         }
 
         r = fresh(s, 64, held);
-        insn(s, "movabsq", { imm(d), reg(reg_of(s, r), 64) });
+        constant(s, reg_of(s, r), d, 64);
     }
     else {
         r = rvalue(s, n);

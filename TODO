@@ -38,6 +38,102 @@ target is added in one of two ways.
 Check: the chapter's first paragraph agrees with the map of
 =docs/shape.md= chapter 9.
 
+** TODO aarch64: the comment on =place_label()= says the alignment is not measured
+
+The comment in =src/c1-aarch64.cc= says no alignment directive
+precedes a loop's head because "nothing is known of this target's
+processors until it is measured on one (7.2, call 7)". The alignment
+was measured on two cores and not adopted (=aarch64.md= 7.2 and call
+7 of chapter 15, =cost.md= 4.2). The comment is the only place the
+generator's text records the decision, and it records the state
+before the measurement.
+
+Fix: the comment says measured and not adopted, and names =cost.md=
+4.2.
+
+Check: the comment agrees with =aarch64.md= 7.2.
+
+** TODO =backend.md= 6.5 says a pinned register's value is exchanged by =xchg=
+
+6.5 says a pinned register that holds a live value "is exchanged with
+a free register (=xchg=, or a =mov= to a free one)". The generator
+never writes =xchg=: =move()= and =vacate()= in =src/c1-x86-64.cc=
+write =mov=, and no source file has the mnemonic.
+
+Fix: 6.5 says the value moves to a free register by =mov=.
+
+Check: =grep -n xchg docs/backend.md= prints nothing.
+
+** TODO The count of register variables is stated twice for each target
+
+=src/target.hh= gives =register_variables= as 5 and 10, which the
+parser reads to decide which variable takes a slot. Each generator
+has its own table, =variable_registers=, of 5 and 10 registers, which
+=bind()= reads. Nothing ties the two. A count raised in =target.hh=
+alone stops the generator with "c1: a sixth register variable" at
+the first program that declares one more; a table lengthened alone
+is never used.
+
+Fix: a =static_assert= in each generator that its table's size is its
+target's =register_variables=.
+
+Check: changing either number alone fails to compile.
+
+** TODO x86-64: =function()= resets every field of the state but =reserved=
+
+The comment on =state_t= in =src/c1-x86-64.cc= says everything is
+reset per function. =function()= resets the fields a line each and
+leaves out =reserved=, the registers =take()= leaves for last. No
+listing is wrong: the two functions that write the field,
+=rvalue_avoiding()= and =rvalue()=, restore it before they return, so
+it is 0 between functions.
+
+Fix: =function()= resets it with the others.
+
+Check: every x86-64 listing is byte-identical.
+
+** TODO x86-64: the move of a shift's count into =cl= is written twice
+
+=shift()= and =shift_on()= in =src/c1-x86-64.cc= each hold the same
+eight lines: when the count is not in =rcx=, =vacate()= frees =rcx=,
+and the count is copied there if it is a borrowed read and moved
+otherwise.
+
+Fix: one function, called from both.
+
+Check: every x86-64 listing is byte-identical.
+
+** TODO =c1.cc= includes =c1-common.hh= and uses nothing of it
+
+=src/c1.cc= calls the two generators and throws =std::logic_error=
+for an unknown target. It names nothing that =c1-common.hh= declares.
+
+Fix: drop the include.
+
+Check: =make= builds.
+
+** TODO Five comments of the shared sources describe x86-64 alone
+
+Each is in text both targets read, and each is true of one:
+
+- =src/type.hh= on =size_of= and =align_of=, and =docs/shape.md=
+  chapter 3, call the sizes and alignments "the x86-64 ABI's"; the
+  aarch64 generator reads the same functions.
+- =src/parse.cc= on =shift()= says the instruction reads the count's
+  low bits "in cl".
+- =src/c1-common.cc= on the register variable an lvalue names says
+  the parser "declared the sixth an ordinary local"; on aarch64 it is
+  the eleventh.
+- =src/c1-common.cc= on the most register variables live at once
+  says "the slots lie below the pushes"; on aarch64 they lie above
+  the save area.
+
+Fix: each says what holds for both targets: the sizes are LP64's, the
+count is the target's, the slots lie past the saved registers.
+
+Check: no comment of =type.hh=, =parse.cc= or =c1-common.cc= names a
+register or a number of one target alone.
+
 ** TODO aarch64: a stack parameter at the frame's limit is refused
 
 A parameter past the eighth is copied to its slot from above the
@@ -103,6 +199,21 @@ that fixes it; the "Not in this list" of both documents points at it.
 
 Check: every J.3 item the subset reaches has a row for each target,
 and each row agrees with a pin or a probe.
+
+** TODO =guarantees.md= names each guarantee's instruction for x86-64 alone
+
+The page's opening says each entry gives "the instruction that
+delivers it (=backend.md= chapter 9)", and the entries name x86-64's:
+=movb=, =movsbl=, =lea=, =cqto=, a displacement off =rbp=, =call
+f@PLT=. The aarch64 instructions are the table of =aarch64.md=
+chapter 9, which the page does not name. A reader on aarch64 finds
+another machine's instructions and no pointer to its own.
+
+Fix: the opening says the instruction clauses are x86-64's and names
+=aarch64.md= chapter 9 for the other target; or each clause names
+both.
+
+Check: a reader on aarch64 is sent to the table of its instructions.
 
 * Cost model
 
@@ -524,6 +635,33 @@ arithmetic.
 
 Check: when function pointers arrive, ~p < q~ on two function
 pointers fails with the error, and ~p == q~ compiles.
+
+** TODO The comment on a local's declaration says 2 GiB
+
+The comment on =init_declarator()= says "A local of 2 GiB or more is
+refused here". The test under it is against the target's frame limit,
+which is 16 bytes under 2 GiB on x86-64 and 16 bytes under 16 MiB on
+aarch64: =char a[20000000];= as a local compiles with =-target
+x86-64= and fails with =-target aarch64=, "variable 'a' is too large
+for a local", status 1.
+
+Fix: the comment says a local over the target's largest frame is
+refused, and names no number.
+
+Check: the comment read against =src/target.hh=.
+
+** TODO =convert_to()= is not the one place a conversion enters the tree
+
+The comment on =convert_to()= in =src/parse.cc= calls it "The one
+place a conversion enters the tree". =decayed()= makes a cast node of
+its own, for an array's decay, which =src/ast.hh= calls "a cast too".
+The cast the source writes, made in =cast_expression()=, the comment
+does allow for.
+
+Fix: the comment says every conversion but an array's decay.
+
+Check: =grep -n 'cast_t {' src/parse.cc= prints the sites the
+comments name.
 
 * Lexer
 
