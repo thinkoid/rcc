@@ -1,0 +1,2 @@
+tests/error/switch-second-default.c:13:9: error: second 'default' label in a switch, first at line 11
+status 1

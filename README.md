@@ -89,7 +89,10 @@ and an object of internal linkage, and a block's object of static
 storage under a label of its own, so `header-getch` keeps K&R's
 buffer of `getch` and `ungetch` private to its file. Then the jumps:
 `do`, `break`, `continue`, `goto` and labels; `header-itoa` is K&R's
-`itoa`, `reverse` and `trim`.
+`itoa`, `reverse` and `trim`. Then `switch`, compiled by the Seventh
+Edition compiler's rule: a direct table, a chain of compares or a
+hash, chosen from the case values alone; `header-count` is K&R's
+count of digits, white space and other characters.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/`, the cost corpus over `tests/cost/`
 and the error corpus over `tests/error/`, the programs rcc refuses

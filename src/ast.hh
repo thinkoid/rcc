@@ -294,6 +294,28 @@ struct if_t
     stmt_ptr_t yes, no;
 };
 
+// A case of a switch: its constant converted to the promoted type of
+// the controlling expression, 6.8.5.3p5, held as a literal of that type
+// holds its value, and the number of its label.  The parser numbers the
+// case and default labels of a function from 0 in the order written.
+struct case_t
+{
+    long long value;
+    int label;
+};
+
+// A switch, 6.8.5.3: the controlling expression, promoted, p5; the
+// body; the cases that belong to it, p4, in the order written, no two
+// of one value, p3; and the number of its default label, absent without
+// one.  The body marks where each label stands by a case_label_t.
+struct switch_t
+{
+    expr_t cond;
+    stmt_ptr_t body;
+    std::vector< case_t > cases;
+    std::optional< int > default_;
+};
+
 struct while_t
 {
     expr_t cond;
@@ -338,6 +360,14 @@ struct label_t
     std::string name;
 };
 
+// A case or a default label, by the number its switch_t gives it: a
+// label as a named one is, 6.8.2p1, a statement of its own, which may
+// stand before a declaration and before a block's closing brace.
+struct case_label_t
+{
+    int label;
+};
+
 struct goto_t
 {
     std::string name;
@@ -354,12 +384,14 @@ struct stmt_t
                   decl_stmt_t,
                   block_t,
                   if_t,
+                  switch_t,
                   while_t,
                   do_t,
                   for_t,
                   break_t,
                   continue_t,
                   label_t,
+                  case_label_t,
                   goto_t,
                   return_t >
         v;

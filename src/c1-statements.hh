@@ -1,8 +1,8 @@
 // -*- mode: c++; -*-
 
-// The statements of backend.md 7.2 and aarch64.md 7.2: each a shape of
-// labels and jumps around the generator's own functions, with no
-// instruction of its own.  Its text is the same for every target, but
+// The statements of backend.md 7.2 and 7.3 and aarch64.md 7.2 and 7.3:
+// each a shape of labels and jumps around the generator's own
+// functions, with no instruction of its own.  Its text is the same for every target, but
 // it names each target's state and calls each target's functions, so
 // this is not a header in the ordinary sense: it is part of a
 // generator's text, kept in one place, as c1-stack.hh is.  c1-x86-64.cc
@@ -12,16 +12,23 @@
 // is read inside a namespace; the generator's own includes serve it.
 //
 // Before the include the generator declares reg_t; state_t with body,
-// live, ret, jump_targets and user_labels; loop_alignment, the power of
-// two of .p2align before a loop's head, 0 for none; result_register,
-// the register the convention returns a result in; new_label(),
-// place_label() and jump(); the three entry points, rvalue(), cbranch()
-// and effect(); and decl_stmt(), a declaration, which is the
-// generator's own, since the store row of its initializer takes the
-// target's form of the slot's address.  It includes c1-stack.hh first,
+// live, ret, jump_targets, user_labels and case_labels; loop_alignment,
+// the power of two of .p2align before a loop's head, 0 for none;
+// result_register, the register the convention returns a result in;
+// new_label(), place_label() and jump(); the three entry points,
+// rvalue(), cbranch() and effect(); and decl_stmt(), a declaration,
+// which is the generator's own, since the store row of its initializer
+// takes the target's form of the slot's address.  For a switch's
+// dispatch, whose form is chosen here and whose instructions are the
+// generator's, it declares right_operand() and arithmetic(), the rows of
+// a binary operator; compare_with(), the comparison row of a held value
+// and a constant; jump_if(), the conditional jump on its flags;
+// equal_jump(), a case's test; table_jump(), the jump through a table;
+// and divided(), the hash's division.  It includes c1-stack.hh first,
 // whose reg_of() and release() the statements call, with mov(), the
-// stack's copy of a register into another, for the result.  integer()
-// and jump_target_t are c1-common.hh's, and the tree ast.hh's.
+// stack's copy of a register into another, for the result.  integer(),
+// jump_target_t and the rule of a switch are c1-common.hh's, and the
+// tree ast.hh's.
 
 void statement(state_t &, const stmt_t &);
 
@@ -156,6 +163,187 @@ for_stmt(state_t &s, const for_t &f)
     place_label(s, end);
 }
 
+// A constant of a switch's dispatch, a case's value or a number of the
+// rule, as a literal of type t, for the rows that take a constant.
+expr_t
+dispatch_constant(const type_t &t, long long value)
+{
+    return { t, literal_t { value } };
+}
+
+// The table of a switch's dispatch, backend.md 7.3, as the Seventh
+// Edition compiler wrote it: in .data, in the function's text where the
+// dispatch stands, aligned to 8, under a label of the function, an
+// address for each entry, which the loader relocates as it does a
+// global's address constant; then .text again.
+void
+jump_table(state_t &s, int table, const std::vector< int > &entries)
+{
+    s.body << "\t.data\n\t.p2align 3\n"
+           << label_name(s.function, table) << ":\n";
+
+    for (const int entry : entries)
+        s.body << std::format("\t.quad\t{}\n", label_name(s.function, entry));
+
+    s.body << "\t.text\n";
+}
+
+// The direct form, backend.md 7.3: the first value subtracted when it
+// is not 0, the result compared unsigned with the range and above it to
+// otherwise, then the jump through a table of range + 1 entries, each a
+// case's label or otherwise.  The dispatch is an operation of the
+// unsigned type of the controlling expression's width, which the
+// compare reads the result as, so the width rule knows that a 32-bit
+// subtraction leaves the index valid to 64.
+void
+direct_switch(state_t &s,
+              value_t v,
+              const std::vector< case_t > &cases,
+              int width,
+              int otherwise)
+{
+    const type_t t = make_int(width, false);
+    const long long first = cases.front().value;
+    const auto range = case_range(cases, width);
+
+    if (unsigned_bits(first, width) != 0) {
+        const auto constant = dispatch_constant(t, first);
+        v = arithmetic(s, binary_op_t::sub, v,
+                       right_operand(s, binary_op_t::sub, constant, width), t);
+    }
+
+    compare_with(s, v, dispatch_constant(t, static_cast< long long >(range)),
+                 width);
+    jump_if(s, binary_op_t::gt, false, otherwise);
+
+    std::vector< int > entries(range + 1, otherwise);
+    for (const auto &c : cases)
+        entries[case_offset(c.value, first, width)] = s.case_labels.at(c.label);
+
+    const int table = new_label(s);
+    table_jump(s, v, width, table);
+    jump_table(s, table, entries);
+}
+
+// The simple form, backend.md 7.3: a case's test for each case, in the
+// order of the values, then the jump to otherwise.
+void
+simple_switch(state_t &s,
+              value_t v,
+              const std::vector< case_t > &cases,
+              const type_t &t,
+              int otherwise)
+{
+    for (const auto &c : cases)
+        equal_jump(s, v, dispatch_constant(t, c.value),
+                   s.case_labels.at(c.label));
+
+    release(s, v);
+    jump(s, otherwise);
+}
+
+// The hash form, backend.md 7.3: the value divided unsigned by the size
+// of the table, the jump through the table by the remainder to a bucket,
+// and in each bucket a case's test of the quotient against each of its
+// cases' value divided by the size, in the order of the values, then
+// the jump to otherwise.  The quotient is held across the table's jump
+// and the buckets; no case's label is among them.
+void
+hash_switch(state_t &s,
+            value_t v,
+            const std::vector< case_t > &cases,
+            int width,
+            int otherwise)
+{
+    const type_t t = make_int(width, false);
+    const auto tabs = table_size(cases, width);
+
+    const auto [quotient, remainder] = divided(
+        s, v, dispatch_constant(t, static_cast< long long >(tabs)), width);
+
+    const int table = new_label(s);
+    std::vector< int > buckets;
+    for (unsigned long long i = 0; i < tabs; ++i)
+        buckets.push_back(new_label(s));
+
+    table_jump(s, remainder, width, table);
+    jump_table(s, table, buckets);
+
+    for (unsigned long long i = 0; i < tabs; ++i) {
+        place_label(s, buckets[i]);
+
+        for (const auto &c : cases) {
+            const auto bits = unsigned_bits(c.value, width);
+            if (bits % tabs != i)
+                continue;
+
+            equal_jump(
+                s, quotient,
+                dispatch_constant(t, static_cast< long long >(bits / tabs)),
+                s.case_labels.at(c.label));
+        }
+
+        jump(s, otherwise);
+    }
+
+    release(s, quotient);
+}
+
+// The labels of a switch's cases and of its default, each one more
+// label of the function, numbered when c1 meets the switch, in the order
+// they are written, which is the order of the parser's numbers.
+void
+number_case_labels(state_t &s, const switch_t &sw)
+{
+    std::vector< int > labels;
+    for (const auto &c : sw.cases)
+        labels.push_back(c.label);
+    if (sw.default_)
+        labels.push_back(*sw.default_);
+
+    std::ranges::sort(labels);
+    for (const int n : labels)
+        s.case_labels.emplace(n, new_label(s));
+}
+
+// backend.md 7.3: the controlling expression's value, the dispatch of
+// the form the rule of the Seventh Edition compiler chooses, then the
+// body in source order, each label where it is written, and the label
+// past the body, which a break in it jumps to and which stands for the
+// default when there is none.  Nothing is held from the dispatch into
+// the body.  With no case, the dispatch is the jump to the default or
+// past the body, after the value, since it is written.
+void
+switch_stmt(state_t &s, const switch_t &sw)
+{
+    number_case_labels(s, sw);
+    const int end = new_label(s);
+    const int otherwise = sw.default_ ? s.case_labels.at(*sw.default_) : end;
+
+    const auto &t = integer(sw.cond.type);
+    const auto cases = sorted_cases(sw.cases, t);
+
+    const auto form = dispatch_of(cases, t.width);
+    const auto v = rvalue(s, sw.cond);
+
+    if (form == dispatch_t::direct)
+        direct_switch(s, v, cases, t.width, otherwise);
+    else if (form == dispatch_t::simple)
+        simple_switch(s, v, cases, sw.cond.type, otherwise);
+    else if (form == dispatch_t::hash)
+        hash_switch(s, v, cases, t.width, otherwise);
+    else {
+        release(s, v);
+        jump(s, otherwise);
+    }
+
+    s.jump_targets.push_back({ end, std::nullopt });
+    statement(s, *sw.body);
+    s.jump_targets.pop_back();
+
+    place_label(s, end);
+}
+
 // A jump out of the innermost statement around it that takes a break,
 // 6.8.7.4p2.  Nothing is held at a statement's start, so the jump is
 // the whole of it.
@@ -204,6 +392,14 @@ label_stmt(state_t &s, const label_t &l)
     place_label(s, user_label(s, l.name));
 }
 
+// A case or a default label, placed where it is written under the
+// number its switch gave it; no value is held there.
+void
+case_label_stmt(state_t &s, const case_label_t &l)
+{
+    place_label(s, s.case_labels.at(l.label));
+}
+
 void
 goto_stmt(state_t &s, const goto_t &g)
 {
@@ -248,6 +444,8 @@ statement(state_t &s, const stmt_t &st)
         block_stmt(s, as< block_t >(st));
     else if (is< if_t >(st))
         if_stmt(s, as< if_t >(st));
+    else if (is< switch_t >(st))
+        switch_stmt(s, as< switch_t >(st));
     else if (is< while_t >(st))
         while_stmt(s, as< while_t >(st));
     else if (is< do_t >(st))
@@ -260,6 +458,8 @@ statement(state_t &s, const stmt_t &st)
         continue_stmt(s);
     else if (is< label_t >(st))
         label_stmt(s, as< label_t >(st));
+    else if (is< case_label_t >(st))
+        case_label_stmt(s, as< case_label_t >(st));
     else if (is< goto_t >(st))
         goto_stmt(s, as< goto_t >(st));
     else

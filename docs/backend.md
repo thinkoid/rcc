@@ -756,11 +756,11 @@ the promotion is queued.
   them. `break` jumps to its `.Lend`, past the loop (6.8.7.4p2).
   `continue` jumps to the loop's continuation (6.8.7.3p2): `.Lcond` in
   `while` and `do`, `.Lstep` in `for`. Each loop places all three of its
-  labels whether or not a jump names them. c1 keeps the loops around the
-  statement it generates as a stack of their two labels; a `switch` will
-  take a `break` and no `continue`, which goes on to the loop around it.
-  A statement boundary holds no value (6.7), so the jump is the whole
-  statement.
+  labels whether or not a jump names them. c1 keeps the loops and the
+  switches around the statement it generates as a stack of their labels;
+  a `switch` takes a `break`, to the label past its body, and no
+  `continue`, which goes on to the loop around it (7.3). A statement
+  boundary holds no value (6.7), so the jump is the whole statement.
 - `goto L` and `L:`: `jmp` to the label and the label where it is
   written. A label of the source is one more label of the function,
   `.L<function>.<n>`, numbered when c1 first meets it, at its definition
@@ -797,6 +797,158 @@ the promotion is queued.
   unique, since an identifier holds no dot. The first label a
   function takes is its epilogue's, `.L<function>.1`. Nothing is
   reordered after the labels.
+- `switch (e) s`: `e` into `L`, the dispatch of 7.3, then `s` in
+  source order, each `case` and `default` label where it is written,
+  and the label past the body.
+
+### 7.3 The switch
+
+The parser converts each case's constant to the promoted type of the
+controlling expression (6.8.5.3p5): `int`, `unsigned`, `long` or
+`unsigned long`. c1 sorts the cases by value in that type's order;
+`ncase` is the count of the cases, and `range` the last value less the
+first, as an unsigned number of the type's width. The form of the
+dispatch follows from the cases alone:
+
+1. **No case.** The value of `e` is computed, since it is written, and
+   a `jmp` goes to the default, or past the body when there is none.
+2. **Direct**, when `range > 0` and `range <= 3 * ncase`. The first
+   value is subtracted from `L` when it is not 0; the result is
+   compared unsigned with `range`, and a value above it jumps to the
+   default. Any other jumps through a table of `range + 1` addresses:
+   each value's entry is its case's label, and a value no case holds
+   has the default's.
+3. **Simple**, otherwise when `ncase < 10`. A compare and a jump if
+   equal for each case, in the order of the values, then a `jmp` to
+   the default.
+4. **Hash**, otherwise. The table's size, `tabs`, is the `i` from
+   `ncase / 4` to `ncase / 2` whose `i * worst` is least, `worst` being
+   the most cases whose values, read unsigned, leave one remainder
+   modulo `i`; on a tie the first such `i`. `L` is divided unsigned by
+   `tabs`, and the jump goes through a table of `tabs` addresses by the
+   remainder, to a bucket. Each bucket compares the quotient with
+   `value / tabs` of each case whose remainder it is, in the order of
+   the values, then jumps to the default.
+
+The default of a switch that has none is the label past the body.
+The rule is the Seventh Edition compiler's, `pswitch` in its `c11.c`,
+and what rcc adds is for its wider types and its machines: the type is
+the promoted one, not the PDP-11's 16-bit `int`, so the order, the
+range and the unsigned reading of the hash are that type's, and every
+instruction of the dispatch is at its width; the search for `tabs`
+starts above any product, where the PDP-11's started at 077777, so a
+switch of any size finds one; and the instructions are each machine's
+rows, below.
+
+**Direct.** `day()` of the cost program `switch-direct`, cases 1, 2, 3
+and 5 of an `int` and a default, `ncase` 4 and `range` 4:
+
+```
+	movl	-4(%rbp), %eax
+	subl	$1, %eax
+	cmpl	$4, %eax
+	ja	.Lday.6
+	leaq	.Lday.8(%rip), %rcx
+	jmp	*(%rcx,%rax,8)
+	.data
+	.p2align 3
+.Lday.8:
+	.quad	.Lday.2
+	.quad	.Lday.3
+	.quad	.Lday.4
+	.quad	.Lday.6
+	.quad	.Lday.5
+	.text
+```
+
+The subtraction is the `sub` row of 6.3, the constant an immediate, or
+held by the constant row when no 32-bit immediate holds it: `movabsq
+$-9223372036854775808, %rcx; subq %rcx, %rax`. The compare is the
+comparison row and `ja` its unsigned jump. The dispatch is an
+operation of the unsigned type of the width, since the compare reads
+the index so, and the addressing form reads the index at 64 bits. The
+width rule of 6.3 makes it valid to 64: after `subl`, a 32-bit write
+of an unsigned value, it writes nothing; with a first value of 0 and
+no `subl`, an `int` loaded valid to 32 bits takes `movl %eax, %eax`
+before the `leaq`, as `digit()` of the same program shows. A register
+variable is read by the compare and by the jump, `cmpl $3, %ebx`, and
+copied into `L` for the `subl`, or for the width rule's `movl`, since
+neither may write the variable (chapter 4). The jump goes through the
+entry, `jmp *(%rcx,%rax,8)`, the table's address formed by `leaq` as a
+literal's is.
+
+**Simple.** `kind()` of `switch-simple`, cases written 10, 0, -1 and
+100 and a default, `range` 101:
+
+```
+	movl	-4(%rbp), %eax
+	cmpl	$-1, %eax
+	je	.Lkind.4
+	cmpl	$0, %eax
+	je	.Lkind.3
+	cmpl	$10, %eax
+	je	.Lkind.2
+	cmpl	$100, %eax
+	je	.Lkind.5
+	jmp	.Lkind.6
+```
+
+Each compare is the comparison row with the case's constant, an
+immediate or the constant row's register, and `je`. The Seventh Edition
+compiler tested a case of 0 with `tst`, its test of zero; this
+machine's test of zero is the same `cmpl $0` (7.1).
+
+**Hash.** `reason()` of `switch-hash`, twelve status codes from 200 to
+503, `range` 303; its comment works the size out, 5:
+
+```
+	movl	-4(%rbp), %eax
+	movl	$5, %ecx
+	xorl	%edx, %edx
+	divl	%ecx
+	leaq	.Lreason.16(%rip), %rcx
+	jmp	*(%rcx,%rdx,8)
+	.data
+	.p2align 3
+.Lreason.16:
+	.quad	.Lreason.17
+	.quad	.Lreason.18
+	.quad	.Lreason.19
+	.quad	.Lreason.20
+	.quad	.Lreason.21
+	.text
+.Lreason.17:
+	cmpl	$40, %eax
+	je	.Lreason.2
+	cmpl	$80, %eax
+	je	.Lreason.8
+	cmpl	$100, %eax
+	je	.Lreason.12
+	jmp	.Lreason.14
+```
+
+The division is the unsigned division row of 6.3 with the pins of 6.5:
+the size held in a register as the divisor of `x / 7` is, kept out of
+`rax` and `rdx`, and both results kept, the quotient in `eax` and the
+remainder in `edx`. The remainder is valid to 64 bits, since `divl`
+wrote it at 32, and indexes the table. The quotient is held across the
+jump and into the buckets; nothing on any path writes it.
+
+**The table.** As the Seventh Edition compiler wrote it: in `.data`,
+where the dispatch stands in the function's text, aligned to 8, under
+a label of the function, an address per entry, then `.text` again. The
+assembler leaves a relocation for each address and the loader fills it
+in, as it does a global's address constant (chapter 10).
+
+**Labels and the body.** A `case` or `default` label is one more label
+of the function, numbered when c1 meets the switch, in the order the
+labels are written; the label past the body follows, then the table's
+and the buckets'. The dispatch comes first, then the body in source
+order, each label where it is written, in a nested block or a loop of
+the body as well, so Duff's device is the body as written. Control
+falls from one case into the next unless a statement leaves. No value
+is held at a case label. A `break` in the body jumps past it, and a
+`continue` goes on with the loop around the switch (7.2).
 
 ## 8. Calls
 
@@ -1118,7 +1270,7 @@ For another machine's target the driver hands each of the three
 ## 13. The calls
 
 Six were open in the first draft of this page, and a seventh, an
-eighth and a ninth came later. `design-calls.md` weighs the first
+eighth, a ninth and a tenth came later. `design-calls.md` weighs the first
 five one chapter each; the answers:
 
 1. **`rbp`** is the frame pointer in every function, and the
@@ -1154,3 +1306,11 @@ five one chapter each; the answers:
    other local is in its slot and keeps the value last stored. The
    cost is a departure from 7.13.2.1p3, which keeps the value of a
    volatile local of the function that called `setjmp`.
+10. **A switch is compiled by the rule of the Seventh Edition
+    compiler**, taken whole (7.3): a direct jump through a table, a
+    compare chain in the order of the values, or a hash, chosen from
+    the case values alone, the same on both targets. The rule has no
+    threshold of rcc's own and no order by frequency, so a programmer
+    who knows the cases knows the form. The cost is a table in `.data`
+    for the loader to relocate, and in the hash a division at every
+    dispatch.

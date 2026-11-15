@@ -1,2 +1,2 @@
-tests/error/default-label.c:4:5: error: not yet: default label
+tests/error/default-label.c:4:5: error: 'default' label not in a switch
 status 1

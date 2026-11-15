@@ -51,6 +51,20 @@ struct internal_use_t
     const token_t *at;
 };
 
+// A switch whose body the parse is in, 6.8.5.3: the promoted type of
+// its controlling expression, which each case's constant is converted
+// to, p5; its cases so far, as the tree takes them, and the token of
+// each one's constant by its value, for the words of a duplicate, p3;
+// and its default's number and keyword, once one is met.
+struct open_switch_t
+{
+    type_t type;
+    std::vector< case_t > cases = { };
+    std::unordered_map< long long, const token_t * > values = { };
+    std::optional< int > default_ = { };
+    const token_t *default_at = nullptr;
+};
+
 // The state of one parse.  Scope 0 is file scope; the scopes die with
 // the parser and leave only the symbols in the unit.  result,
 // registers, function and statics are the function being defined: its
@@ -62,6 +76,9 @@ struct internal_use_t
 // the function's end.  break_targets and continue_targets are the
 // statements around the parse a break may leave and a continue go on
 // with: the loops, for both, and a switch, for a break alone.
+// switches are the switches around the parse, the innermost last, which
+// a case or a default label belongs to, 6.8.5.3p4; case_labels is the
+// number the function's next case or default label takes.
 // identities is the identity the next struct, union or enum type takes.
 // internal_uses are the uses of names of internal linkage, in the order
 // met, checked against their definitions at the end of the unit.
@@ -84,6 +101,8 @@ struct parser_t
     std::vector< const token_t * > gotos = { };
     int break_targets = 0;
     int continue_targets = 0;
+    std::vector< open_switch_t > switches = { };
+    int case_labels = 0;
     std::vector< internal_use_t > internal_uses = { };
 };
 
@@ -3043,8 +3062,8 @@ defined_parameter(parser_t &p, const parameter_t &param)
 // attribute marked, on a declaration, among the definition's specifiers
 // or on a parameter, is one rcc would have to define as the attribute
 // says, which is not yet.  function and statics start over, for the
-// labels of the static objects the body declares, and labels and gotos,
-// for the body's own labels, which no other function sees.
+// labels of the static objects the body declares, and labels, gotos and
+// case_labels, for the body's own labels, which no other function sees.
 void
 function_definition(parser_t &p,
                     const specifiers_t &spec,
@@ -3067,6 +3086,7 @@ function_definition(parser_t &p,
     p.statics.clear();
     p.labels.clear();
     p.gotos.clear();
+    p.case_labels = 0;
     p.scopes.push_back(d.scope);
 
     std::vector< const symbol_t * > params;
@@ -4386,19 +4406,22 @@ init_declarator(parser_t &p, const specifiers_t &spec)
 // statements
 //
 
-// Whether a label starts at the token ahead: an identifier and a
-// colon, a typedef name's among them, since a label name has a name
-// space of its own, 6.2.3p1.
+// Whether a label starts at the token ahead, 6.8.2p1: case, default,
+// or an identifier and a colon, a typedef name's among them, since a
+// label name has a name space of its own, 6.2.3p1.
 bool
 is_label_start(const parser_t &p)
 {
+    if (next_is(p, { tok_t::kw_case, tok_t::kw_default }))
+        return true;
+
     return peek(p).kind == tok_t::identifier && peek(p, 1).kind == tok_t::colon;
 }
 
 // A label, identifier :, which defines its name in the function's
 // labels, 6.2.1p3; a name is defined once in a function, 6.8.2p3.
 stmt_t
-label(parser_t &p)
+named_label(parser_t &p)
 {
     const token_t &name = advance(p);
     advance(p);
@@ -4409,9 +4432,91 @@ label(parser_t &p)
     return stmt_t { label_t { std::string(name.text) } };
 }
 
+// A case's value in the words of a diagnostic: the value of the
+// controlling expression's promoted type, an unsigned long's read from
+// the bits its literal holds.
+std::string
+case_value(long long value, const type_t &t)
+{
+    if (as< int_t >(t).width == 64 && !as< int_t >(t).is_signed)
+        return std::to_string(static_cast< unsigned long long >(value));
+
+    return std::to_string(value);
+}
+
+// case, an integer constant expression and a colon, 6.8.2p1.  It stands
+// only in a switch, p2, and belongs to the innermost, 6.8.5.3p4.  Its
+// constant is converted to the promoted type of the controlling
+// expression, p5, and no two of one switch have one value after the
+// conversion, p3.  GNU C's range, case 1 ... 5:, is not yet.
+stmt_t
+case_label(parser_t &p)
+{
+    const token_t &keyword = advance(p);
+    if (p.switches.empty())
+        fail(keyword, "'case' label not in a switch");
+
+    const token_t &start = peek(p);
+    expr_t constant = rvalue(start, conditional_expression(p));
+    if (!is_integer_constant(constant))
+        fail(start, "case label is not an integer constant expression");
+
+    if (peek(p).kind == tok_t::ellipsis)
+        not_yet(peek(p), "case range");
+
+    expect(p, tok_t::colon, "expected ':' after case label");
+
+    open_switch_t &sw = p.switches.back();
+    const long long value =
+        as< literal_t >(convert_to(std::move(constant), sw.type)).value;
+
+    const auto [first, added] = sw.values.emplace(value, &start);
+    if (!added)
+        fail(start, "duplicate case value " + case_value(value, sw.type) +
+                        ", first at line " +
+                        std::to_string(first->second->where.line));
+
+    sw.cases.push_back({ value, p.case_labels });
+
+    return stmt_t { case_label_t { p.case_labels++ } };
+}
+
+// default and a colon, 6.8.2p1: in a switch alone, p2, the innermost's,
+// 6.8.5.3p4, and one to a switch, p3.
+stmt_t
+default_label(parser_t &p)
+{
+    const token_t &keyword = advance(p);
+    if (p.switches.empty())
+        fail(keyword, "'default' label not in a switch");
+
+    open_switch_t &sw = p.switches.back();
+    if (sw.default_)
+        fail(keyword, "second 'default' label in a switch, first at line " +
+                          std::to_string(sw.default_at->where.line));
+
+    expect(p, tok_t::colon, "expected ':' after 'default'");
+
+    sw.default_ = p.case_labels;
+    sw.default_at = &keyword;
+
+    return stmt_t { case_label_t { p.case_labels++ } };
+}
+
+// A label of any of the three kinds of 6.8.2p1.
+stmt_t
+label(parser_t &p)
+{
+    switch (peek(p).kind) {
+    case tok_t::kw_case: return case_label(p);
+    case tok_t::kw_default: return default_label(p);
+    default: return named_label(p);
+    }
+}
+
 // A label before a statement, where a statement is wanted: the body of
-// an if, of a loop, or a labeled statement's own.  It is a block of the
-// two, which opens no scope.
+// an if, of a switch, of a loop, or a labeled statement's own.  It is a
+// block of the two, which opens no scope.
 stmt_t
 labeled_statement(parser_t &p)
 {
@@ -4440,8 +4545,6 @@ statement(parser_t &p)
     case tok_t::kw_break:
     case tok_t::kw_continue:
     case tok_t::kw_goto: return jump_statement(p);
-    case tok_t::kw_case: not_yet(t, "case label");
-    case tok_t::kw_default: not_yet(t, "default label");
     case tok_t::kw_asm: not_yet(t, quoted(t.text) + " statement");
     default: break;
     }
@@ -4503,15 +4606,47 @@ expression_statement(parser_t &p)
     return stmt_t { expr_stmt_t { decayed(std::move(e)) } };
 }
 
+// A switch, 6.8.5.3: the controlling expression, an integer, p1, and
+// promoted, p5; then the body, in which a break leaves the switch,
+// 6.8.7.4p2, a continue goes on with the loop around it, and each case
+// and default label belongs to this switch unless a switch inside the
+// body is closer, p4.
+stmt_t
+switch_statement(parser_t &p)
+{
+    advance(p);
+    expect(p, tok_t::lparen, "expected '(' after 'switch'");
+
+    const token_t &start = peek(p);
+    expr_t cond = rvalue(start, expression(p));
+    if (!is< int_t >(cond.type))
+        fail(start, "controlling expression of 'switch' is not an integer");
+    cond = promote(std::move(cond));
+
+    expect(p, tok_t::rparen, "expected ')' after controlling expression");
+
+    p.switches.push_back({ cond.type });
+    ++p.break_targets;
+
+    stmt_ptr_t body = box(statement(p));
+
+    --p.break_targets;
+    open_switch_t sw = std::move(p.switches.back());
+    p.switches.pop_back();
+
+    return stmt_t { switch_t { std::move(cond), std::move(body),
+                               std::move(sw.cases), sw.default_ } };
+}
+
 // The condition stays in its own type, an integer or a pointer; c1
 // compares it against zero, 6.8.5.2p2.
 stmt_t
 selection_statement(parser_t &p)
 {
-    const token_t &keyword = advance(p);
-    if (keyword.kind == tok_t::kw_switch)
-        not_yet(keyword, "switch statement");
+    if (peek(p).kind == tok_t::kw_switch)
+        return switch_statement(p);
 
+    advance(p);
     expect(p, tok_t::lparen, "expected '(' after 'if'");
 
     const token_t &start = peek(p);

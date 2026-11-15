@@ -1,0 +1,2 @@
+tests/error/switch-not-integer.c:9:17: error: controlling expression of 'switch' is not an integer
+status 1

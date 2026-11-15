@@ -2,14 +2,16 @@
 
 // The part of c1 that is the same for every target, declared in
 // c1-common.hh: the integer view of a type, the symbol and label names,
-// the tree predicates, and the blocks of the string literals and of the
-// objects.  Nothing here writes an instruction.
+// the tree predicates, the rule that chooses a switch's form, and the
+// blocks of the string literals and of the objects.  Nothing here writes
+// an instruction.
 
 #include "c1-common.hh"
 
 #include <algorithm>
 #include <bit>
 #include <format>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -316,6 +318,100 @@ inverse(binary_op_t op)
     case binary_op_t::eq: return binary_op_t::ne;
     default: return binary_op_t::eq;
     }
+}
+
+// switches
+
+// The bits of a value of width bits read as an unsigned number: the
+// (unsigned) of the rule's hash, backend.md 7.3.
+unsigned long long
+unsigned_bits(long long value, int width)
+{
+    const auto bits = static_cast< unsigned long long >(value);
+
+    return width == 64 ? bits : bits & ((1ull << width) - 1);
+}
+
+// A switch's cases sorted by value, in the order of t, the controlling
+// expression's promoted type: signed or unsigned, at its width.
+std::vector< case_t >
+sorted_cases(std::vector< case_t > cases, const int_t &t)
+{
+    std::ranges::sort(cases, [&t](const case_t &a, const case_t &b) {
+        if (t.is_signed)
+            return a.value < b.value;
+
+        return unsigned_bits(a.value, t.width) <
+               unsigned_bits(b.value, t.width);
+    });
+
+    return cases;
+}
+
+// A value less the first of a switch's sorted cases, as an unsigned
+// number of width bits: its entry in a direct table, backend.md 7.3.
+unsigned long long
+case_offset(long long value, long long first, int width)
+{
+    const auto difference = static_cast< unsigned long long >(value) -
+                            static_cast< unsigned long long >(first);
+
+    return unsigned_bits(static_cast< long long >(difference), width);
+}
+
+// The last value of sorted cases less the first, the rule's range.
+unsigned long long
+case_range(const std::vector< case_t > &sorted, int width)
+{
+    return case_offset(sorted.back().value, sorted.front().value, width);
+}
+
+// The form of a switch's dispatch on sorted cases, by the rule of the
+// Seventh Edition compiler, backend.md 7.3: none without a case; direct
+// when the range is above 0 and at most three times the count of the
+// cases; simple below ten cases; hash otherwise.
+dispatch_t
+dispatch_of(const std::vector< case_t > &sorted, int width)
+{
+    if (sorted.empty())
+        return dispatch_t::none;
+
+    const unsigned long long count = sorted.size();
+    const auto range = case_range(sorted, width);
+    if (range > 0 && range <= 3 * count)
+        return dispatch_t::direct;
+
+    if (count < 10)
+        return dispatch_t::simple;
+
+    return dispatch_t::hash;
+}
+
+// The size of a hash switch's table, backend.md 7.3: the i from a
+// quarter of the count of the cases to a half that makes i times the
+// most cases one remainder modulo i holds the least, the first such i
+// on a tie.  A value's remainder is of its bits read unsigned.  The hash
+// form has ten cases or more, so i is 2 or more.
+unsigned long long
+table_size(const std::vector< case_t > &sorted, int width)
+{
+    const unsigned long long count = sorted.size();
+
+    unsigned long long tabs = 0;
+    auto best = std::numeric_limits< unsigned long long >::max();
+    for (auto i = count / 4; i <= count / 2; ++i) {
+        std::vector< unsigned long long > held(i);
+        for (const auto &c : sorted)
+            ++held[unsigned_bits(c.value, width) % i];
+
+        const auto worst = std::ranges::max(held);
+        if (i * worst < best) {
+            tabs = i;
+            best = i * worst;
+        }
+    }
+
+    return tabs;
 }
 
 // The function a direct call names, or null for a call through a

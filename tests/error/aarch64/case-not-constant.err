@@ -1,0 +1,2 @@
+tests/error/case-not-constant.c:10:14: error: case label is not an integer constant expression
+status 1

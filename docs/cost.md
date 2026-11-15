@@ -91,6 +91,31 @@ What the compiler may do:
   adopted (4.2, `aarch64.md` 7.2). A loop is one the language names,
   `while`, `do` or `for`: a loop built of `goto` is laid out as
   written, and no label of the source is aligned.
+- Choose a `switch`'s dispatch by the rule of the Seventh Edition
+  compiler (`backend.md` 7.3), from the case values alone, the same on
+  both targets. With `ncase` the count of the cases and `range` the
+  greatest value less the least, read unsigned at the promoted type's
+  width:
+  - no case: the value, and a jump to the default or past the body;
+  - **direct** when `range > 0` and `range <= 3 * ncase`: the same
+    instructions whatever the value, the subtraction of the first
+    value when it is not 0, a compare, a jump to the default, the
+    table's address and the jump through it, four to six on x86-64
+    and six or seven on aarch64, and the loads of a constant the
+    instruction does not encode; and a table of `range + 1`
+    addresses, 8 bytes each, in `.data`;
+  - **simple** otherwise when `ncase < 10`: a compare and a jump per
+    case in the order of the values, so the k-th smallest value costs
+    k of each, and a value no case holds costs all of them and a jump;
+    a constant the compare does not encode costs its loads first;
+  - **hash** otherwise: an unsigned division by a table size of
+    `ncase / 4` to `ncase / 2`, a jump through a table of that size,
+    and the compares of the quotient in one bucket, as many as the
+    most cases one bucket holds, at most.
+
+  The form is thus the programmer's to choose by the values: cases
+  close together are a table, few cases a chain, and many spread
+  cases a division.
 
 What the compiler never does:
 
@@ -143,6 +168,10 @@ yet.
 | `do s while (e);` | the body first, under the loop's head, aligned to 32 bytes, `.p2align 5` before `.Lcount.2`; the condition by jump code at the bottom, where it is written, under a label of its own, and the jump back while it holds, `jl .Lcount.2`; one test an iteration; a label past the test, placed whether or not a `break` jumps to it | `do` |
 | `break`, `continue` | one `jmp` each, nothing held: `break` past the loop, `jmp .Lsum.4`, `continue` to the condition in `while` and `do` and to the step in `for`, `jmp .Lsum.3` | `break-continue` |
 | `goto`, a label | one `jmp` to the label, and the label where it is written, `.L<function>.<n>` numbered as every label of the function is, when first met, at its definition or at a `goto`; the listing shows no C name; never aligned, so a loop built of `goto` has no `.p2align`, `jmp .Lcount.2` back to `.Lcount.2` | `goto` |
+| `switch`, direct | the value less the first case's, `subl $1, %eax`, compared unsigned with the range, `cmpl $4, %eax; ja .Lday.6` to the default; the table's address and the jump through it, `leaq .Lday.8(%rip), %rcx; jmp *(%rcx,%rax,8)`; the table in `.data`, `.p2align 3` and a `.quad` per value from the first to the last, the default's label where no case holds the value; a first value of 0 is no `subl`, and an `int` then takes the width rule's `movl %eax, %eax` before the `leaq` | `switch-direct` |
+| `switch`, simple | per case, in the order of the values, `cmpl $-1, %eax; je .Lkind.4`, a 0 as `cmpl $0, %eax`; then `jmp .Lkind.6` to the default | `switch-simple` |
+| `switch`, hash | the unsigned division by the table's size, `movl $5, %ecx; xorl %edx, %edx; divl %ecx`; the jump through the table by the remainder, `leaq .Lreason.16(%rip), %rcx; jmp *(%rcx,%rdx,8)`; in each bucket the quotient compared with each of its cases' value divided by the size, `cmpl $40, %eax; je .Lreason.2`, then `jmp .Lreason.14` to the default | `switch-hash` |
+| a switch's body | the labels where they are written, nothing between one case's statements and the next label, so control falls through, `addl $1, -8(%rbp)` then `.Lscore.3:` and `addl $2, -8(%rbp)`; a `break` is `jmp .Lscore.7` past the body; a default in the middle is one more label | `switch-fall` |
 | `return e` | `e` into `eax`, then `jmp .L<function>.1` to the one epilogue, `jmp .Lsum.1` in `for`, the last statement included | every program |
 | a statement whose value is unused | written: `a + 0;` is `addl $0, %eax`, `a / b;` is `cltd; idivl %ecx`, and the division can fault | `unused` |
 | `f(a, b)` | each argument evaluated into a register and stored to a slot of its own, `movl %eax, -12(%rbp)`, a constant argument in one store of the immediate, `movl $1, -4(%rbp)` in `stack-args`; the slots loaded into `edi`, `esi` and on; `call f@PLT`; the result in `eax` | `call` |
@@ -223,6 +252,10 @@ bytes or more.
 | `do s while (e);` | the body first, under the loop's head, with no alignment directive; the condition by jump code at the bottom under a label of its own, and the branch back while it holds, `b.lt .Lcount.2`; one test an iteration; a label past the test | `do` |
 | `break`, `continue` | one `b` each, nothing held: `break` past the loop, `b .Lsum.4`, `continue` to the condition in `while` and `do` and to the step in `for`, `b .Lsum.3` | `break-continue` |
 | `goto`, a label | one `b` to the label, and the label where it is written, numbered as on x86-64; the listing shows no C name; a loop built of `goto` branches back, `b .Lcount.2` | `goto` |
+| `switch`, direct | the value less the first case's, `sub w0, w0, #1`, compared unsigned with the range, `cmp w0, #4; b.hi .Lday.6` to the default; the table's address into `x16` and the branch through it, `adrp x16, .Lday.8; add x16, x16, :lo12:.Lday.8; ldr x16, [x16, w0, uxtw #3]; br x16`, the load extending the index; the table of x86-64's row; a first value of 0 is no `sub` and nothing else | `switch-direct` |
+| `switch`, simple | per case, in the order of the values, `cmp w0, #-1; b.eq .Lkind.4`, a 0 as the test of zero, `cbz w0, .Lkind.3`; then `b .Lkind.6` to the default | `switch-simple` |
+| `switch`, hash | the size held and the unsigned division, quotient and remainder, `mov w1, #5; udiv w2, w0, w1; msub w0, w2, w1, w0`; the branch through the table by the remainder, `ldr x16, [x16, w0, uxtw #3]; br x16`; in each bucket the quotient compared, `cmp w2, #40; b.eq .Lreason.2`, then `b .Lreason.14` to the default | `switch-hash` |
+| a switch's body | as on x86-64: the labels where they are written, each case's load, add and store with no branch before the next label; a `break` is `b .Lscore.7` past the body | `switch-fall` |
 | `return e` | `e` into `w0`, by a `mov` when it is held in another register, `mov w0, w1` in `compound`; then the branch to the one epilogue, `b .Lsum.1` in `for`, the last statement included | every program |
 | a statement whose value is unused | written: `a + 0;` is `add w0, w0, #0`, `a / b;` is `sdiv w0, w0, w1`, and the division does not trap | `unused` |
 | `f(a, b)` | each argument evaluated into a register and stored to a slot of its own, `str w0, [x29, #24]`, a constant argument through a register, `mov w0, #1; str w0, [x29, #16]` in `stack-args`; the slots loaded into `w0`, `w1` and on, `ldr w0, [x29, #24]`; `bl f`; the result in `w0` | `call` |

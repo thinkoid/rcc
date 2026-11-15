@@ -56,20 +56,19 @@ M:
 block, where the store to =y= writes the register =z= is in, and
 jumps forward past the declaration: 4 under rcc, 8 under =clang=.
 Without a =goto= the declaration of =z= is reached again before any
-read of it, and nothing shows. A slot is never shared, so only a
-register variable is affected.
+read of it, and nothing shows. A =case= label inside a nested block
+of a =switch='s body reaches the same shape. A slot is never shared,
+so only a register variable is affected.
 
-Fix: decide between three. A later declaration takes a register
-above every one the closed inner blocks of its block used, which is
-6.2.4p6 and costs registers where a =for= declares its counter and
-the block declares more after it. The same, in a function that
-defines a label alone, which costs a second pass over the function's
-register variables. Or the documents say that a register variable
-keeps its value while control stays in its scope, and that one left
-by a backward =goto= is indeterminate, as one jumped past is (G5).
+Fix: a declaration takes a register above every one that the closed
+inner blocks of its own block used: the register it would have had at
+its block's head, which is where its lifetime begins. Sibling blocks
+still share. It costs one register where a block declares a register
+variable after an inner block, or a =for=, that declared one; no pin
+of the corpus or of the cost corpus moves.
 
-Check: the function above returns 8 on both targets, in a probe; or
-=backend.md= chapter 4 and =shape.md= say what it returns.
+Check: the function above returns 8 on both targets, in a probe, and
+=backend.md= chapter 4 says the rule.
 
 ** TODO x86-64: the comment on =register_decl()= sends every initializer through =establish()=
 
@@ -869,6 +868,26 @@ function specifier on one already is.
 Check: a program of =tests/error= with the definition, pinned with
 the error.
 
+** TODO A program's own =static inline= function is not compiled
+
+~static inline int max(int a, int b) { return a > b ? a : b; }~ in a
+program's own source is accepted, its body skipped, and a call of it
+refused, "not yet: static function 'max'". That is the rule for the
+definitions a system header writes, as =bits/byteswap.h= defines
+=__bswap_16=, whose bodies rcc need not be able to compile and no
+program may ever call. A program's own function is the program.
+
+Fix: a =static inline= definition is compiled as the =static=
+function it is, =inline= dropped as on a declaration: it suggests
+that calls be fast and changes nothing a literal compiler writes. One
+that a system header defines keeps today's rule; the preprocessor's
+line markers say which file is one, by their flag 3, which the lexer
+reads past today.
+
+Check: the definition above compiles to the listing of the same
+function without =inline=, on both targets; a program that includes
+=sys/types.h= compiles as before and writes nothing for =__bswap_16=.
+
 ** TODO A =static= definition after a =static inline= one is "not yet"
 
 ~static inline int f(void) { return 1; } static int f(void) { return
@@ -878,8 +897,9 @@ missing: =function_definition()= asks whether the function is marked
 before it asks whether it has a body, and the skipped =static inline=
 definition left its mark and no body.
 
-Fix: with the decision on compiling a =static inline= function; or
-the mark is tested after the redefinition.
+Fix: the mark is tested after the redefinition; with a program's own
+=static inline= function compiled, only a system header's is left to
+meet it.
 
 Check: the program above fails with "redefinition of 'f'".
 

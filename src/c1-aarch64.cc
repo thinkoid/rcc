@@ -157,9 +157,11 @@ struct state_t
 
     // the statements around the one generated that a break jumps out
     // of, innermost last, and the label of each label the source
-    // names, in the order met
+    // names, in the order met; and of each case and default label, by
+    // the parser's number
     std::vector< jump_target_t > jump_targets { };
     std::unordered_map< std::string, int > user_labels { };
+    std::unordered_map< int, int > case_labels { };
 };
 
 // operands
@@ -1629,31 +1631,46 @@ condition(binary_op_t op, bool is_signed)
     }
 }
 
-// cmp L, R for a relational or equality operator, left operand first
-// (G13), or cmp L, #c for a constant cmp encodes, the immediate of add
-// and sub, 2.4.  A negative constant is written as the source has it,
-// cmp w0, #-1, which the assembler encodes as cmn w0, #1, the same
-// flags, 6.4.  The flags are set and the right value freed; the left
-// one stays held, for cset or for the caller to free.
-value_t
-compare(state_t &s, const binary_t &b)
+// cmp L, R of the held left value l and the right operand rhs, at
+// width, or cmp L, #c for a constant cmp encodes, the immediate of add
+// and sub, 2.4, whichever the comparison.  A negative constant is
+// written as the source has it, cmp w0, #-1, which the assembler
+// encodes as cmn w0, #1, the same flags, 6.4.  The flags are set and the
+// right value freed; l stays held.
+void
+compare_with(state_t &s, value_t l, const expr_t &rhs, int width)
 {
-    const int width = operation_width(b.lhs->type);
-
-    const auto l = rvalue(s, *b.lhs);
-    const auto r = right_operand(s, b.op, *b.rhs, width);
+    const auto r = right_operand(s, binary_op_t::eq, rhs, width);
 
     if (!r.immediate.empty()) {
         insn(s, "cmp", { reg(reg_of(s, l), width), r.immediate });
-        return l;
+        return;
     }
 
     const auto [left, right] = operands(s, l, r.value);
     insn(s, "cmp", { reg(left, width), reg(right, width) });
 
     release(s, r.value);
+}
+
+// cmp for a relational or equality operator, left operand first (G13).
+// The left value stays held, for cset or for the caller to free.
+value_t
+compare(state_t &s, const binary_t &b)
+{
+    const auto l = rvalue(s, *b.lhs);
+    compare_with(s, l, *b.rhs, operation_width(b.lhs->type));
 
     return l;
+}
+
+// The branch to label on the flags a comparison set, when op holds:
+// b.cc of the condition, 7.1.
+void
+jump_if(state_t &s, binary_op_t op, bool is_signed, int label)
+{
+    insn(s, std::format("b.{}", condition(op, is_signed)),
+         { label_name(s.function, label) });
 }
 
 // A comparison as a value, the row of 6.3: cmp, then cset of the
@@ -2338,9 +2355,7 @@ cbranch(state_t &s, const expr_t &e, int label, bool sense)
             const bool is_signed = integer(b.lhs->type).is_signed;
             release(s, compare(s, b));
 
-            const auto op = sense ? b.op : inverse(b.op);
-            insn(s, std::format("b.{}", condition(op, is_signed)),
-                 { label_name(s.function, label) });
+            jump_if(s, sense ? b.op : inverse(b.op), is_signed, label);
             return;
         }
 
@@ -2435,6 +2450,79 @@ effect(state_t &s, const expr_t &e)
     }
 
     release(s, rvalue(s, e));
+}
+
+// switches
+
+// A case's test in a switch's dispatch, 7.3: the comparison row of the
+// held value and the case's constant, cmp w0, #5, then b.eq to its
+// label.  The Seventh Edition compiler tested a 0 where it compared
+// another value, tst for cmp; this machine's test of zero is cbz, one
+// instruction, 7.1 and call 3 of chapter 15.
+void
+equal_jump(state_t &s, value_t v, const expr_t &constant, int label)
+{
+    const auto &t = integer(constant.type);
+    if (normalized(as< literal_t >(constant).value, t.width) == 0) {
+        test_zero(s, v, t, label);
+        return;
+    }
+
+    compare_with(s, v, constant, t.width);
+    jump_if(s, binary_op_t::eq, true, label);
+}
+
+// The jump through a switch's table by a held index of width bits, 7.3:
+// the table's page and offset into x16, adrp and add, as a literal's
+// address is formed; the entry loaded through it by the form that
+// scales the index, and extends a 32-bit one unsigned, ldr x16, [x16,
+// w0, uxtw #3], or reads a 64-bit one whole, [x16, x0, lsl #3]; then br
+// x16.  The index is formed first, so a reload of it is done before x16
+// holds anything (chapter 4).
+void
+table_jump(state_t &s, value_t index, int width, int table)
+{
+    const auto name = label_name(s.function, table);
+    const reg_t r = reg_of(s, index);
+    const auto extend = width == 64 ? extend_t::lsl : extend_t::uxtw;
+
+    insn(s, "adrp", { "x16", name });
+    insn(s, "add", { "x16", "x16", ":lo12:" + name });
+    insn(s, "ldr",
+         { "x16", std::format("[x16, {}]", index_operand(r, extend, 3)) });
+    insn(s, "br", { "x16" });
+
+    release(s, index);
+
+    s.terminated = true;
+}
+
+// The division of a hash switch, 7.3: the table's size held
+// in a register, as the divisor of x / 7 is, since udiv takes no
+// immediate; the quotient by udiv into a register taken for it, and the
+// remainder by msub into v's, or into a fresh one when v is a borrowed
+// read, as divide() writes the remainder of %.  Both are kept and
+// valid to 64 as unsigned values; v and the divisor are consumed.
+std::pair< value_t, value_t >
+divided(state_t &s, value_t v, const expr_t &tabs, int width)
+{
+    const int valid = written(width, false);
+
+    const auto d = rvalue(s, tabs);
+    const auto [l_reg, r_reg] = operands(s, v, d);
+    const auto left = reg(l_reg, width);
+    const auto right = reg(r_reg, width);
+
+    const auto quotient = fresh(s, valid, bit(l_reg) | bit(r_reg));
+    const auto q = reg(reg_of(s, quotient), width);
+    insn(s, "udiv", { q, left, right });
+
+    release(s, d);
+
+    const auto remainder = reg(destination(s, v, valid), width);
+    insn(s, "msub", { remainder, q, right, left });
+
+    return { quotient, v };
 }
 
 // statements
@@ -2717,6 +2805,7 @@ function(state_t &s, const function_decl_t &fd)
     s.terminated = false;
     s.jump_targets.clear();
     s.user_labels.clear();
+    s.case_labels.clear();
 
     parameters(s, fd);
     block_stmt(s, *fd.body);

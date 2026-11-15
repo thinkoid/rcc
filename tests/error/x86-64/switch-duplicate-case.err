@@ -1,0 +1,2 @@
+tests/error/switch-duplicate-case.c:12:14: error: duplicate case value 1, first at line 11
+status 1

@@ -781,7 +781,8 @@ returns 0 on reaching its `}`, `mov w0, #0`.
 `do`'s condition at the bottom branches back to the body's label on
 the condition, `b.lt .Lcount.2` or `cbnz`, by jump code (7.1). `break`,
 `continue` and `goto` are each one `b`, to the label `backend.md` 7.2
-names, and a label of the source is one more label of the function.
+names, and a label of the source is one more label of the function. A
+`switch` is its dispatch, 7.3, then its body, as on x86-64.
 
 **No alignment directive before a loop head**: measured, not
 adopted. `.p2align 5` on x86-64 was measured on one processor and
@@ -791,6 +792,79 @@ Qualcomm Oryon and the Firestorm core of an Apple M1 Max. The best,
 `.p2align 5`, nets -0.5% on the Oryon and -0.3% on Firestorm over the
 tuned sources, and `clang -O2` aligns no loop head here (`cost.md`
 4.2, call 7).
+
+### 7.3 The switch
+
+The rule of `backend.md` 7.3, the Seventh Edition compiler's, chooses
+the form from the cases alone, in the code both generators share, so a
+switch takes the same form on both targets; the instructions are this
+machine's rows.
+
+**Direct.** `day()` of `switch-direct`, cases 1, 2, 3 and 5:
+
+```
+	ldr	w0, [x29, #16]
+	sub	w0, w0, #1
+	cmp	w0, #4
+	b.hi	.Lday.6
+	adrp	x16, .Lday.8
+	add	x16, x16, :lo12:.Lday.8
+	ldr	x16, [x16, w0, uxtw #3]
+	br	x16
+```
+
+The `sub` and the `cmp` take their constant as an immediate where the
+instruction encodes it (2.4), and hold it by the constant row of 6.4
+where it does not: the least `int` as the first value is `mov w1,
+#-2147483648; sub w0, w0, w1`. `b.hi` is the unsigned jump above
+`range`. The table's address is the `adrp` and `add` pair a literal's
+is, into `x16`, which holds nothing across a node (chapter 4). The
+load reads the entry by the form of 2.3 that scales the index and
+extends a 32-bit one unsigned, `uxtw #3`, so no instruction extends it
+first, and a 64-bit one whole, `[x16, x0, lsl #3]`; `br x16` jumps. A
+register variable is read where it is only read, `cmp w19, #3` and
+`ldr x16, [x16, w19, uxtw #3]`, and the `sub` writes a fresh register
+(6.1). The table is the text of `backend.md` 7.3.
+
+**Simple.** `kind()` of `switch-simple`, cases written 10, 0, -1 and
+100:
+
+```
+	cmp	w0, #-1
+	b.eq	.Lkind.4
+	cbz	w0, .Lkind.3
+	cmp	w0, #10
+	b.eq	.Lkind.2
+	cmp	w0, #100
+	b.eq	.Lkind.5
+	b	.Lkind.6
+```
+
+A case of 0 takes the test of zero, `cbz`, one instruction: the
+Seventh Edition compiler tested a 0 with `tst` where it compared any
+other value, and `cbz` is this machine's test (7.1, call 3). Any other
+case is the comparison row, `cmp` and `b.eq`, its constant held first
+by the constant row where `cmp` does not encode it.
+
+**Hash.** `reason()` of `switch-hash`, twelve cases, a table of 5:
+
+```
+	mov	w1, #5
+	udiv	w2, w0, w1
+	msub	w0, w2, w1, w0
+	adrp	x16, .Lreason.16
+	add	x16, x16, :lo12:.Lreason.16
+	ldr	x16, [x16, w0, uxtw #3]
+	br	x16
+```
+
+The size is held, as the divisor of `x / 7` is, since `udiv` takes no
+immediate. `udiv` writes the quotient into a register taken for it,
+and `msub` the remainder into the value's, as the remainder of `%` is
+(6.3); a register variable's remainder goes to a fresh register. The
+remainder indexes the table, and the buckets compare the quotient,
+`cmp w2, #40` and `b.eq`, or `cbz w2` for a quotient of 0. No register
+is pinned (6.5), so nothing moves.
 
 ## 8. Calls
 

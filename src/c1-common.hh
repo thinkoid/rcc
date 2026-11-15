@@ -2,8 +2,9 @@
 
 // The part of c1 that is the same for every target: the integer view
 // of a type, the symbol and label names, the predicates on the tree,
-// the blocks of the string literals and of the objects after the last
-// function, and the register stack's held value and its handle.  None
+// the rule that chooses a switch's form, the blocks of the string
+// literals and of the objects after the last function, and the
+// register stack's held value and its handle.  None
 // of it names a register, a mnemonic or an operand form; each
 // generator includes it and writes its own instructions around it.
 // The register stack's functions are
@@ -53,6 +54,19 @@ binary_op_t inverse(binary_op_t);
 
 bool writes(const expr_t &, const symbol_t *);
 bool names(const expr_t &, const symbol_t *);
+
+// The forms of a switch's dispatch, backend.md 7.3: none, when there
+// is no case; a direct jump through a table; a simple compare chain; a
+// hash, a table jump by the remainder and a compare chain by the
+// quotient.
+enum class dispatch_t { none, direct, simple, hash };
+
+unsigned long long unsigned_bits(long long value, int width);
+std::vector< case_t > sorted_cases(std::vector< case_t >, const int_t &);
+unsigned long long case_offset(long long value, long long first, int width);
+unsigned long long case_range(const std::vector< case_t > &sorted, int width);
+dispatch_t dispatch_of(const std::vector< case_t > &sorted, int width);
+unsigned long long table_size(const std::vector< case_t > &sorted, int width);
 
 std::string string_label(std::vector< std::string > &strings, const string_t &);
 std::string quoted_file(std::string_view file);

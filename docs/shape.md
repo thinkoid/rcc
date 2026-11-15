@@ -134,16 +134,23 @@ Three sums.
   are one node. A value of pointer-to-function type is loaded,
   stored, passed, returned and compared as any pointer, and no node
   is particular to it.
-- `stmt_t`: expression, declaration, block, if, while, do, for,
-  break, continue, label, goto, return. A `for` carries its init as a
-  statement, so a declaration in the init costs nothing. `break` and
-  `continue` name no statement: c1 finds the loop they leave or go on
-  with as it generates the statements around them. A label and a `goto`
-  carry the label's name. A label is a statement of its own, so it may
-  stand before a declaration and before a block's closing brace; a
-  labeled statement where one statement is wanted, the body of an `if`
-  or a loop, is a block of the label and the statement, which opens no
-  scope.
+- `stmt_t`: expression, declaration, block, if, switch, while, do,
+  for, break, continue, label, case label, goto, return. A `for`
+  carries its init as a statement, so a declaration in the init costs
+  nothing. `break` and `continue` name no statement: c1 finds the loop
+  or the switch they leave or go on with as it generates the
+  statements around them. A label and a `goto` carry the label's name.
+  A label is a statement of its own, so it may stand before a
+  declaration and before a block's closing brace; a labeled statement
+  where one statement is wanted, the body of an `if`, a `switch` or a
+  loop, is a block of the label and the statement, which opens no
+  scope. A switch carries its controlling expression, promoted; its
+  body; its cases, each a value, converted to the promoted type, and
+  the number of its label; and the number of its default's label, or
+  none. A `case` or `default` label in the body is a case label, a
+  statement of its own as a label is, which carries the number. The
+  parser numbers a function's case and default labels from 0 in the
+  order written, and c1 gives each number a label of the function.
 - `unit_t`: the translation unit. It owns every symbol in a `deque`,
   so symbol addresses are stable for the life of the unit, and holds
   one `function_decl_t` per function symbol, with a body when the
@@ -463,9 +470,25 @@ and the first that names no label is the error (6.8.7.2p1). A `goto`
 into the scope of a variable length array is an error by the same
 paragraph; rcc has no such array, so nothing is checked. The parser
 counts the statements around the parse that a `break` may leave and
-that a `continue` may go on with: a loop counts for both. A `break`
-with neither around it is an error (6.8.7.4p1), and so is a `continue`
-outside a loop (6.8.7.3p1).
+that a `continue` may go on with: a loop counts for both, and a
+`switch` for a `break` alone. A `break` with neither around it is an
+error (6.8.7.4p1), and so is a `continue` outside a loop (6.8.7.3p1).
+
+A `switch`'s controlling expression is an integer (6.8.5.3p1), and a
+pointer there is an error; it is promoted (p5). The parser keeps the
+switches around the parse as a stack, and a `case` or `default` label
+belongs to the innermost (p4), in whatever block or loop of its body it
+stands, so Duff's device parses. A `case` or `default` label is a
+label (6.8.2p1): it stands where a named one may, before a statement, a
+declaration or a block's closing brace. A `case` takes an integer
+constant expression (6.8.5.3p3), folded; anything else is an error. Its
+value is converted to the promoted type (p5), and a second case of one
+switch with the same value after the conversion is an error that names
+the value and the line of the first (p3), so `case 1:` and `case
+4294967297:` collide on an `int`. A second `default` in one switch is
+an error that names the line of the first (p3), and a `case` or a
+`default` outside a switch is one too (6.8.2p2). GNU C's case range,
+`case 1 ... 5:`, is not yet.
 
 ## 6. The generator
 
@@ -706,7 +729,9 @@ object of internal linkage and a block's object of static storage,
 `header-getch` keeps K&R's buffer of `getch` and `ungetch` (sections
 4.3 and 4.6) private to its file. With `do`, `break`, `continue`,
 `goto` and labels, `header-itoa` runs K&R's `itoa`, `reverse` and
-`trim` (sections 3.6 and 3.7).
+`trim` (sections 3.6 and 3.7). With `switch`, compiled by the Seventh
+Edition compiler's rule (`backend.md` 7.3), `header-count` counts
+digits, white space and other characters as K&R's section 3.4 does.
 
 ## 11. Not yet
 
@@ -725,8 +750,8 @@ array's, and a local array's initializer of any kind, `char s[] =
 type, wide and `u8` strings, the checks of the qualifiers (`const`
 and `volatile` are dropped, so an assignment to a `const` object and
 a conversion that discards a qualifier draw no diagnostic, and
-`(const void)` is taken as `(void)`), an atomic object, `switch` and
-its `case` and `default` labels, the body of a `static inline`
+`(const void)` is taken as `(void)`), an atomic object, GNU C's case
+range, `case 1 ... 5:`, the body of a `static inline`
 function, whose use is refused,
 and a `static inline` declaration without a body, a `register` array
 (6.3.2.1p3), `inline` on a function
