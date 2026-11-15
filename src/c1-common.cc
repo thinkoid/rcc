@@ -435,8 +435,6 @@ quoted_bytes(std::string_view bytes)
     return text + '"';
 }
 
-} // namespace
-
 // Chapter 10: the string literals, each its own labeled array in .data,
 // never .rodata and never merged (G17), with no alignment directive,
 // since a char array aligns to 1.
@@ -453,8 +451,6 @@ literals(std::ostream &out, const std::vector< std::string > &strings)
                            quoted_bytes(strings[i]));
 }
 
-namespace {
-
 // The directive of a value of size bytes, which both targets'
 // assemblers take: .byte, .short, .long or .quad.
 std::string_view
@@ -468,17 +464,79 @@ data_directive(long size)
     }
 }
 
-// An initializer's value as its directive writes it: the constant of
-// the object's type, read unsigned for an unsigned type or a pointer,
-// which the parser holds as its bits past LLONG_MAX.
+// A constant as its directive writes it: the value of the object's type
+// t, read unsigned for an unsigned type or a pointer, which the parser
+// holds as its bits past LLONG_MAX.
 std::string
-initial_value(const expr_t &init)
+constant_value(const literal_t &constant, const type_t &t)
 {
-    const long long value = as< literal_t >(init).value;
-    if (integer(init.type).is_signed)
-        return std::to_string(value);
+    if (integer(t).is_signed)
+        return std::to_string(constant.value);
 
-    return std::to_string(static_cast< unsigned long long >(value));
+    return std::to_string(static_cast< unsigned long long >(constant.value));
+}
+
+// An address constant as its directive writes it, a symbol and its
+// offset, n, a+12, .Ls0+1: the name in the assembly of the global or
+// the function, or label, the label of the string literal.  The
+// assembler leaves the symbol to a relocation, which the linker
+// resolves or leaves to the loader, for a symbol the file defines and
+// for one it only declares alike.
+std::string
+address_value(const address_t &address, std::string_view label)
+{
+    std::string text { label };
+    if (const auto *sym = std::get_if< const symbol_t * >(&address.base))
+        text = assembly_name(**sym);
+
+    const auto offset = static_cast< unsigned long long >(address.offset);
+    if (address.offset > 0)
+        text += std::format("+{}", offset);
+    else if (address.offset < 0)
+        text += std::format("-{}", 0 - offset);
+
+    return text;
+}
+
+// The bytes of an array of char that a string literal initializes,
+// 6.7.11p15, in the escapes of the literals' block: .string, which
+// appends the terminating zero, when the array has room for it, and
+// .ascii, which appends none, when the literal fills the array; then
+// .zero for the elements past the literal's, p22.
+void
+string_data(std::ostream &out, const string_t &str, long size)
+{
+    const long length = long(str.bytes.size());
+    const auto directive = size > length ? ".string" : ".ascii";
+
+    out << std::format("\t{}\t{}\n", directive, quoted_bytes(str.bytes));
+
+    if (size > length + 1)
+        out << std::format("\t.zero\t{}\n", size - length - 1);
+}
+
+// The value an object's initializer gives it, or its zeros: a constant
+// in the directive of the object's size, an address in a .quad, or an
+// array's bytes.  label is the label of the string literal the address
+// points into, if it does.
+void
+initial_data(std::ostream &out,
+             const object_decl_t &od,
+             std::string_view label,
+             long size)
+{
+    if (!od.init) {
+        out << std::format("\t.zero\t{}\n", size);
+        return;
+    }
+
+    if (const auto *constant = std::get_if< literal_t >(&*od.init))
+        out << std::format("\t{}\t{}\n", data_directive(size),
+                           constant_value(*constant, od.sym->type));
+    else if (const auto *address = std::get_if< address_t >(&*od.init))
+        out << std::format("\t.quad\t{}\n", address_value(*address, label));
+    else
+        string_data(out, std::get< string_t >(*od.init), size);
 }
 
 // The alignment of an object the unit defines, chapter 10: its type's,
@@ -502,7 +560,10 @@ object_alignment(const type_t &t, const target_t &target)
 // alignment, and no directive for an alignment of 1; the label; then
 // the value of its initializer, or its zeros.
 void
-object(std::ostream &out, const object_decl_t &od, const target_t &target)
+object(std::ostream &out,
+       const object_decl_t &od,
+       std::string_view label,
+       const target_t &target)
 {
     const auto name = assembly_name(*od.sym);
     const long size = size_of(od.sym->type);
@@ -519,49 +580,77 @@ object(std::ostream &out, const object_decl_t &od, const target_t &target)
 
     out << name << ":\n";
 
-    if (od.init)
-        out << std::format("\t{}\t{}\n", data_directive(size),
-                           initial_value(*od.init));
-    else
-        out << std::format("\t.zero\t{}\n", size);
+    initial_data(out, od, label, size);
 }
 
 // One block of objects, under its section's directive, or nothing when
 // no object belongs to it: those with an initializer or those without.
+// labels holds the label of each object's string literal, by its index.
 void
 object_block(std::ostream &out,
              const std::vector< object_decl_t > &objects,
+             const std::vector< std::string > &labels,
              const target_t &target,
              bool initialized)
 {
     bool opened = false;
 
-    for (const auto &od : objects) {
-        if (od.init.has_value() != initialized)
+    for (std::size_t i = 0; i < objects.size(); ++i) {
+        if (objects[i].init.has_value() != initialized)
             continue;
 
         if (!opened)
             out << (initialized ? "\t.data\n" : "\t.bss\n");
         opened = true;
 
-        object(out, od, target);
+        object(out, objects[i], labels[i], target);
     }
+}
+
+// The label of the string literal each object's initializer points
+// into, by the object's index, or empty for an object whose initializer
+// names none.  Each such literal is one more literal of the file,
+// added to strings after those the functions name, in the order of the
+// definitions, so no function's literal changes its number.
+std::vector< std::string >
+initializer_literals(std::vector< std::string > &strings,
+                     const std::vector< object_decl_t > &objects)
+{
+    std::vector< std::string > labels;
+
+    for (const auto &od : objects) {
+        const auto *address =
+            od.init ? std::get_if< address_t >(&*od.init) : nullptr;
+        const auto *str =
+            address ? std::get_if< string_t >(&address->base) : nullptr;
+
+        labels.push_back(str ? string_label(strings, *str) : std::string());
+    }
+
+    return labels;
 }
 
 } // namespace
 
-// Chapter 10: the objects the unit defines, after the string literals,
+// Chapter 10: the data after the last function.  First the string
+// literals, those the functions name, strings, and after them those the
+// objects' initializers point into.  Then the objects the unit defines,
 // in the order of their definitions: one .data block of those with an
 // initializer, then one .bss block of those without, which are zero,
 // 6.7.11p11.  int n = 0; is in .data, since the source wrote its
-// initializer.  An object the unit only declares writes nothing.
+// initializer, and so is an object an address initializes, which the
+// loader writes.  An object the unit only declares writes nothing.
 void
-objects(std::ostream &out,
-        const std::vector< object_decl_t > &objects,
-        const target_t &target)
+data(std::ostream &out,
+     std::vector< std::string > strings,
+     const std::vector< object_decl_t > &objects,
+     const target_t &target)
 {
-    object_block(out, objects, target, true);
-    object_block(out, objects, target, false);
+    const auto labels = initializer_literals(strings, objects);
+
+    literals(out, strings);
+    object_block(out, objects, labels, target, true);
+    object_block(out, objects, labels, target, false);
 }
 
 } // namespace rcc

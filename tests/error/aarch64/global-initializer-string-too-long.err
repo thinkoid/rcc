@@ -1,0 +1,2 @@
+tests/error/global-initializer-string-too-long.c:5:20: error: initializer-string for char array is too long
+status 1

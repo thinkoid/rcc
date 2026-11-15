@@ -2762,8 +2762,7 @@ generate_aarch64(const unit_t &unit,
         if (fd.body)
             function(s, fd);
 
-    literals(s.out, s.strings);
-    objects(s.out, unit.objects, target);
+    data(s.out, s.strings, unit.objects, target);
 
     out << "\t.section\t.note.GNU-stack,\"\",@progbits\n";
 }

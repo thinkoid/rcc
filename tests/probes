@@ -5,7 +5,7 @@
 # machine's own target, function by function over a table of values.
 #
 # The pins show what rcc writes, for a human to read against the
-# design, and the oracle runs twelve programs.  Neither runs every
+# design, and the oracle runs a corpus of programs.  Neither runs every
 # operator on every type, every condition and every shape of call.  A
 # probe does: one source is compiled by rcc and, as the reference, by
 # clang, and a main compiled by clang calls each function of both
@@ -318,7 +318,7 @@ check_probe()
     failure=$(build "$name")
 
     if [ -n "$failure" ]; then
-        printf '%-10s %s\n' "$name" "$failure"
+        printf '%-12s %s\n' "$name" "$failure"
         return 1
     fi
 
@@ -328,11 +328,11 @@ check_probe()
     # the probe's count is its last line; a probe stopped by a signal
     # may not have printed it
     if [ "$ran" -gt 1 ]; then
-        printf '%-10s %s\n' "$name" "stopped, status $ran"
+        printf '%-12s %s\n' "$name" "stopped, status $ran"
         return 1
     fi
 
-    printf '%-10s %s\n' "$name" "$(tail -n 1 "$output")"
+    printf '%-12s %s\n' "$name" "$(tail -n 1 "$output")"
 
     [ "$ran" -eq 0 ]
 }

@@ -1,0 +1,2 @@
+tests/error/global-array-size-conflict.c:5:12: error: conflicting types for 'table'
+status 1

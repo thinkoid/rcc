@@ -172,6 +172,8 @@ yet.
 | a global the file only declares | its address loaded from the GOT at each access, `movq counter@GOTPCREL(%rip), %rax`, then the rows of `*p`: `movl (%rax), %eax`, `movl %ecx, (%rax)`, `addl $1, (%rax)`; `counter = counter + 1` loads the address twice, the store's first; two instructions an access | `global-extern` |
 | `a[i]`, `a[3]` on a global array | the address formed, `leaq table(%rip), %rax` for one the file defines and `movq other@GOTPCREL(%rip), %rax` for one it only declares, then the access of a local array's subscript, `movl (%rax,%rcx,4), %eax` after `movslq %ecx, %rcx`, or `movl 12(%rax), %eax` | `global-array` |
 | the data of a global | after the last function, the objects with an initializer in `.data` and the others in `.bss`, each under `.globl`, `.type n, @object`, `.size n, 4` and `.p2align 2` above an alignment of 1, then `.byte 120`, `.short -3`, `.long 42`, `.quad 4886718345` or `.zero 12`; `int zero = 0;` is `.long 0` in `.data`; an array of 16 bytes or more is aligned to 16, `.p2align 4` for `long pair[2]`, which the psABI asks of a global array; nothing for an object only declared | `global-data` |
+| an address constant as a global's initializer | one `.quad` in `.data`, the symbol and its offset in bytes, the constant times the pointee's size: `.quad n` for `&n`, `.quad a+12` for `&a[3]`, `.quad a+8` for `a + 2`, `.quad m+24` for `&m[1][2]`, `.quad on_signal`, `.quad stdout` and `.quad putchar` for objects and functions the file only declares, `.quad .Ls1+1` for `"abc" + 1`, its literal numbered after the functions'; `.quad 4096` for `(int *) 4096` and `.quad n` for `(long) &n`; the linker or the loader fills each in | `global-address` |
+| a string literal as the initializer of an array of `char` | the array's own bytes under its own label, in the escapes of the literals' block: `.string "abc"` for `char s[] = "abc"`, which is 4 bytes, `.string "abc"` and `.zero 4` for `char s[8]`, `.ascii "abc"` for `char s[3]`, which the literal fills; no alignment, but `.p2align 4` for an array of 16 bytes or more; beside them, `char *p = "abc"` is two objects, the literal `.Ls0` and `.quad .Ls0` | `global-string` |
 
 ### 2.2 aarch64
 
@@ -244,6 +246,8 @@ bytes or more.
 | a global the file only declares | its address loaded from the GOT at each access, `adrp x0, :got:counter; ldr x0, [x0, :got_lo12:counter]`, then the rows of `*p`: `ldr w0, [x0]`, `str w1, [x0]`; `counter = counter + 1` loads the address twice, the store's first; three instructions an access | `global-extern` |
 | `a[i]`, `a[3]` on a global array | the address formed, `adrp x0, table; add x0, x0, :lo12:table` for one the file defines and the GOT's load for one it only declares, then the access of a local array's subscript, `ldr w0, [x0, w1, sxtw #2]` or `ldr w0, [x0, #12]` | `global-array` |
 | the data of a global | the text of x86-64's row, but an array takes its element's alignment whatever its size, `.p2align 3` for `long pair[2]`, since the AAPCS64 asks no more | `global-data` |
+| an address constant as a global's initializer | the text of x86-64's row; the assembler's relocation is `R_AARCH64_ABS64`, which the linker of a position-independent executable makes relative for a symbol the program defines | `global-address` |
+| a string literal as the initializer of an array of `char` | the text of x86-64's row, but no alignment for an array of any size | `global-string` |
 
 ## 3. Verification
 

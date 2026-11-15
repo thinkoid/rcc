@@ -1,2 +1,0 @@
-tests/error/global-initializer-string-array.c:3:20: error: not yet: array initialized by a string literal
-status 1

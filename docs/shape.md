@@ -144,7 +144,11 @@ Three sums.
   definition carries the most register variables it has live at
   once, its parameters among them. It holds one `object_decl_t` per
   object it defines, in the order of the definitions, with the
-  initializer when one was written: c1 writes the data from them.
+  initializer when one was written: c1 writes the data from them. The
+  parser folds an initializer into that data: a constant of the
+  object's type; an address constant, a symbol, a global, a function
+  or a string literal, and a byte offset from it; or the bytes of a
+  string literal that initialize an array of `char`.
 
 A symbol is a name, a type and a storage: local, parameter, global,
 function, type name, enumerator. A global is an object declared at
@@ -229,7 +233,12 @@ Its size need not be constant: one that is not is taken as left out,
 as 6.7.7.3p5 takes it in a prototype, since the parameter is the
 pointer either way, and nothing is evaluated for it. Every other array
 suffix keeps the rules of an array, so `int (*a)[n]` points to a
-variable length array, which is not yet.
+variable length array, which is not yet. At file scope such a size is
+an error of the program, not a construct to come: an object of static
+storage duration has no variable length array type, and an identifier
+of a variably modified type has block or prototype scope (6.7.7.3p2),
+so `extern int n; int a[n];` and a typedef of the array there are
+refused in words of their own.
 
 A pointer to a function is a value as any pointer is, with the type
 rules of the standard: assignment and argument passing take one of
@@ -332,18 +341,40 @@ declares it. Every declaration of the name is of one object with
 external linkage, of one type by the tree's equality: `extern int n;
 int n; int n = 1;` declare one object, and two tentative definitions
 define one, which is zero (6.9.3p2). A second initializer is a second
-external definition, an error (6.9.1p5). A declaration may leave an
-array's size out, a definition may not, and the definition of an
+external definition, an error (6.9.1p5). An array declared without its
+size and with it is one object of the composite type, the array of
+known size (6.2.7p3, p5): `extern int a[]; int a[3];` and `int a[3];
+extern int a[];` declare an `int [3]`, and `extern int a[2]; extern
+int a[3];` conflict. Only the outermost bound may be left out. Until a
+declaration gives the size, `a[i]` and `a` as a pointer are what they
+are for any array, and `sizeof a` is the error of an incomplete type.
+An array of unknown size that only tentative definitions define is
+one element at the end of the file (6.9.3p2). The definition of an
 object of a not-yet type, or of one an attribute marks, is not yet.
-The initializer is an integer constant expression, folded and
-converted to the object's type as by assignment (6.7.11p12), or a
-null pointer for a pointer. An address constant (6.6p11), the address
-of an object or a function, an array that decays, a string literal as
-a pointer's initializer, is not yet, and so are a string as a `char`
-array's initializer and braces; anything else is no constant
-expression, an error (6.7.11p5). In an expression a global is what a
-local is, an lvalue of its type; one declared elsewhere of a not-yet
-type is refused where it is named.
+
+The initializer is a constant expression (6.7.11p5), converted to the
+object's type as by assignment (p12) and folded. It is an integer
+constant expression, a null pointer of any spelling, an integer cast
+to a pointer, or an address constant (6.6p9, p11): the address of an
+object of static storage or of a function, plus or minus an integer
+constant. The address is written with `&`, a subscript by a constant,
+`*`, a pointer cast and the decay of an array or a function
+designator, as in `&n`, `&a[3]`, `a + 2`, `&m[1][2]`, `&m[1]`,
+`on_signal`, `&stdout` and `(char *) &n + 1`. It may be of an object
+or a function the file only declares, and of a string literal, which
+is an object of static storage like any other: `"abc" + 1`. An
+address cast to an integer of 8 bytes, `(long) &n`, is the address,
+which 6.6p14 lets an implementation take; cast to a narrower integer
+it is an error, since the loader fills in no narrower field. No
+object's value is read, so `&a[n]` and `n` with `n` an object are no
+constant expressions, an error. An array of `char`, `signed char` or
+`unsigned char` takes a string literal, in braces or not (6.7.11p15).
+An array of unknown size takes the literal's size with its
+terminating zero, one with room for the zero takes it, one the
+literal fills exactly takes none, and a literal longer than the array
+is an error (p3). Any other brace initializer is not yet. In an
+expression a global is what a local is, an lvalue of its type; one
+declared elsewhere of a not-yet type is refused where it is named.
 
 ## 6. The generator
 
@@ -574,7 +605,10 @@ headers of the C library and of POSIX parse on each target;
 the objects at file scope: a program defines, declares and uses its
 own globals, with integer constants as initializers, and reaches the C
 library's, so `header-stdout` writes to `stdout` (`backend.md` and
-`aarch64.md` chapter 10).
+`aarch64.md` chapter 10). With address constants and strings as
+initializers, `header-months` keeps a table of names in an array of
+`char` and reaches `stdout`, `putchar` and `fputs` through global
+pointers to them.
 
 ## 11. Not yet
 
@@ -586,11 +620,10 @@ value, is refused; a floating constant is a token, refused where an
 expression uses it), an object of a typedef whose array size rcc
 cannot compute, a variable length array (a parameter's array of a
 size that is not constant is the pointer the parameter is adjusted to,
-and the size is not evaluated), an address constant as an object's
-initializer, the composite type of two declarations of one object (an
-array declared without its size and defined with it, and a tentative
-definition of an array of unknown size), `extern` in a block, brace
-initializers and `char s[] = "..."`, a declaration through a typedef of function
+and the size is not evaluated), `extern` in a block, brace
+initializers but one string literal in braces for an array of `char`
+at file scope, a local array's initializer, `char s[] = "..."` among
+them, a declaration through a typedef of function
 type, wide and `u8` strings, the checks of the qualifiers (`const`
 and `volatile` are dropped, so an assignment to a `const` object and
 a conversion that discards a qualifier draw no diagnostic, and

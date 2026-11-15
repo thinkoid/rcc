@@ -345,19 +345,39 @@ struct function_decl_t
     int registers;
 };
 
+// An address constant, 6.6p9, p11, as the parser folds it: the address
+// of a global, of a function or of a string literal, and a byte offset
+// from it.  The literal is one more object of static storage, 6.4.5p6,
+// apart from every other, as a literal a function names is.
+struct address_t
+{
+    std::variant< const symbol_t *, string_t > base;
+    long long offset;
+};
+
+// The initializer of an object at file scope, folded by the parser into
+// the data c1 writes: a constant of the object's type, an integer or a
+// pointer, the bits of a value past LLONG_MAX of an unsigned type; an
+// address constant; or the bytes of a string literal that initialize an
+// array of char, 6.7.11p15, the object's own bytes and no literal of
+// its own.
+using initializer_t = std::variant< literal_t, address_t, string_t >;
+
 // One per object the unit defines, 6.9.3: a declaration at file scope
 // with an initializer, or a tentative definition, one without an
 // initializer and without extern.  The entries are in the order of the
 // definitions, each where the first declaration that defines its
 // object stands; a later one adds its initializer.  An object the unit
 // only declares has none, and c1 writes nothing for it.  init is the
-// initializer converted to the object's type, a constant, or absent
-// for an object whose definitions are all tentative, which is zero,
-// 6.9.3p2, 6.7.11p11.
+// initializer converted to the object's type, or absent for an object
+// whose definitions are all tentative, which is zero, 6.9.3p2,
+// 6.7.11p11.  The symbol's type is complete by the end of the unit: an
+// array of unknown size takes its size from a later declaration, from
+// its string, or else is one element, 6.9.3p2.
 struct object_decl_t
 {
     const symbol_t *sym;
-    std::optional< expr_t > init;
+    std::optional< initializer_t > init;
 };
 
 // The warnings in the order the parser met them; the unit compiles

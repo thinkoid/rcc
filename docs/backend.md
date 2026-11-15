@@ -901,7 +901,10 @@ with static storage. A string literal is a labeled array of bytes in
 `.data`, one label per joined literal, never merged, never in
 `.rodata`: G17. The label is `.Ls<n>`, numbered from 0 in the order
 the literals are met, by a counter of its own in each file; two equal
-literals written twice are two labels. The bytes are one `.string`
+literals written twice are two labels. The literals the functions name
+are numbered first; those the objects' initializers point into follow
+them, in the order of the definitions, so an initializer's literal
+moves no function's. The bytes are one `.string`
 directive, which appends the terminating zero (6.4.5p6): printable
 ASCII as itself with `"` and `\` escaped, `\n`, `\t` and `\r` as the C
 escapes, and every other byte as a three-digit octal escape. All the
@@ -925,12 +928,42 @@ initializer, and `int n;` is in `.bss`. Each object is written so:
   aligned to 16, `.p2align 4`, as the psABI's "Aggregates and Unions"
   asks of a global array, since code another compiler writes for its
   declaration may assume it, and a local array keeps its element's;
-- the label, then `.byte`, `.short`, `.long` or `.quad` with the
-  initializer's value, or `.zero` with the object's size.
+- the label, then the initializer's data, below, or `.zero` with the
+  object's size.
 
-The initializer is an integer constant expression, folded by c0 and
-converted to the object's type, or a null pointer. An object the file
-only declares writes nothing.
+c0 folds the initializer into one of three forms, and each has its
+data:
+
+- A constant: an integer constant expression converted to the
+  object's type, a null pointer, or an integer cast to a pointer. It
+  is `.byte`, `.short`, `.long` or `.quad` with the number, by the
+  object's size: `.long 42`, `.quad 4096`.
+- An address constant (6.6p9, p11): a symbol and a byte offset, one
+  `.quad`. The symbol is a global or a function, one the file defines
+  or one it only declares, or a string literal's label: `.quad n` for
+  `&n`, `.quad a+12` for `&a[3]` of an `int` array, `.quad a+8` for
+  `a + 2`, `.quad on_signal`, `.quad stdout`, `.quad .Ls0+1` for
+  `"abc" + 1`. The offset is the constant times the pointee's size, as
+  a subscript's is. An address cast to an integer of 8 bytes is the
+  same `.quad`; to a narrower integer it is an error, since the loader
+  fills in no field narrower than a pointer. The assembler leaves a
+  relocation, and in a position-independent executable the linker
+  leaves the word to the loader: a relative relocation for a symbol
+  the program defines, the symbol's own for one in a shared library.
+  The object is in `.data` with the other initialized ones, writable,
+  since the loader writes it.
+- A string literal for an array of `char`, `signed char` or `unsigned
+  char` (6.7.11p15): the array's own bytes under its own label, in the
+  escapes of the literals' block, and no literal of its own. `.string`
+  appends the terminating zero when the array has room for it, and
+  `.ascii` appends none when the literal fills the array; `.zero`
+  writes the elements past the literal's. `char s[] = "abc";` is
+  `.size s, 4` and `.string "abc"`, `char s[8] = "abc";` is `.string
+  "abc"` and `.zero 4`, and `char s[3] = "abc";` is `.ascii "abc"`.
+  `char *p = "abc";` is two objects: the literal in the literals'
+  block, and the pointer, `.quad .Ls0`.
+
+An object the file only declares writes nothing.
 
 A global the file defines is reached PC-relative, a slot with another
 spelling: `movl counter(%rip), %eax`, `addl $1, counter(%rip)`,

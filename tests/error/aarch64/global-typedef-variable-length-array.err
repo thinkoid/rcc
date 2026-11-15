@@ -1,0 +1,2 @@
+tests/error/global-typedef-variable-length-array.c:5:19: error: variable length array declaration not allowed at file scope
+status 1

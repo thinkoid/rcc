@@ -1,0 +1,2 @@
+tests/error/global-array-incomplete-sizeof.c:10:16: error: invalid application of 'sizeof' to an array of unknown size
+status 1

@@ -659,19 +659,6 @@ or the documents say that a size rcc cannot compute is not checked.
 
 Check: the typedef above fails with "'undeclared' undeclared".
 
-** TODO An array sized by an object at file scope is "not yet"
-
-~extern int n; int a[n];~ and the same in a typedef fail with "not
-yet: variable length array". At file scope the program is wrong, not
-early: an object there has static storage duration, and an array of
-variable length has none (6.7.7.3p2).
-
-Fix: at file scope a size that is no integer constant expression is
-an error, with its own words.
-
-Check: a program of =tests/error= with the two declarations, pinned
-with the error.
-
 ** TODO A parameter of a typedef's array type rcc cannot size is not a pointer
 
 ~typedef long g_t[sizeof (struct s)]; void f(g_t g); void f(long
@@ -792,25 +779,21 @@ Fix: the message names what the name was first declared as.
 Check: a program of =tests/error= with the declaration above, pinned
 "redefinition of 'A'".
 
-** TODO Two declarations of an array, one without its size, conflict
+** TODO Arithmetic on a pointer to an array of unknown size is an internal error
 
-~extern int a[]; extern int a[3];~ fails with "conflicting types for
-'a'". C finds the two types compatible, since one size is absent, and
-the object has the composite type, =int [3]=. Type equality in the
-tree is structural, with no notion of compatibility or of a composite
-type.
+~extern int a[]; long f(void) { return (long) (&a + 1); }~ ends with
+"rcc: internal error: size_of: a type without a size", status 3. The
+pointee of =&a= is an array of unknown size, which has no size to
+step by; 6.5.7p2 asks that the pointer be to a complete object type.
+=require_object_pointee()= refuses =void= and a function and lets
+the incomplete array through. An initializer, ~int (*q)[] = &a + 1;~,
+ends the same way.
 
-A tentative definition of an array of unknown size, ~int a[];~ at
-file scope, is "not yet" for the same reason: a later declaration may
-give its size, and if none does it has one element at the end of the
-file (6.9.3, EXAMPLE 2).
+Fix: =require_object_pointee()= refuses a pointer to an array of
+unknown size, with an error.
 
-Fix: at a redeclaration, an array of unknown size is compatible with
-one of known size and equal element type, and the symbol takes the
-sized type.
-
-Check: the program above compiles; ~extern int a[2]; extern int
-a[3];~ still fails.
+Check: both programs fail with the error, status 1, pinned in
+=tests/error=.
 
 ** TODO A typedef followed by a function body draws an error about a semicolon
 

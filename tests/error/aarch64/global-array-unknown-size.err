@@ -1,2 +1,0 @@
-tests/error/global-array-unknown-size.c:4:5: error: not yet: tentative definition of an array of unknown size
-status 1

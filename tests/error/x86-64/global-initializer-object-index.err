@@ -1,0 +1,2 @@
+tests/error/global-initializer-object-index.c:6:16: error: initializer element is not a compile-time constant
+status 1

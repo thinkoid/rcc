@@ -2095,11 +2095,31 @@ declared(const specifiers_t &spec, tok_t storage_class)
     return spec.storage_class && spec.storage_class->kind == storage_class;
 }
 
+void complete_tentative_arrays(parser_t &);
+
 void
 translation_unit(parser_t &p)
 {
     while (peek(p).kind != tok_t::eof)
         external_declaration(p);
+
+    complete_tentative_arrays(p);
+}
+
+// Whether two array types are one but for the size one of them leaves
+// out: compatible, 6.7.7.3p6, since the elements are one type, and the
+// composite type of the two is the one of known size, 6.2.7p3.  Only
+// the outermost bound may be left out, so the elements are complete.
+bool
+sized_alike(const type_t &a, const type_t &b)
+{
+    if (!is< array_t >(a) || !is< array_t >(b))
+        return false;
+
+    const auto &x = as< array_t >(a);
+    const auto &y = as< array_t >(b);
+
+    return (x.count < 0 || y.count < 0) && *x.element == *y.element;
 }
 
 // The declaration of the name earlier in the current scope, or null
@@ -2107,6 +2127,9 @@ translation_unit(parser_t &p)
 // entity, of the same type: a function or an object of file scope by
 // the rule of compatible types (6.2.7p2), and a typedef because C11
 // lets a typedef be declared again only as the type it already names.
+// An object declared as an array of unknown size and as one of known
+// size takes the composite type from the later declaration on, p5,
+// which is the array of known size whichever came first.
 symbol_t *
 earlier_declaration(const parser_t &p,
                     const token_t &name,
@@ -2125,6 +2148,13 @@ earlier_declaration(const parser_t &p,
 
     if (earlier.type == t)
         return &earlier;
+
+    if (storage == storage_t::global && sized_alike(earlier.type, t)) {
+        if (as< array_t >(earlier.type).count < 0)
+            earlier.type = t;
+
+        return &earlier;
+    }
 
     if (storage == storage_t::type_name)
         fail(name, "redefinition of typedef " + quoted(name.text) +
@@ -2232,101 +2262,209 @@ declare_function(parser_t &p, const declarator_t &d, declarator_tail_t tail)
     return p.unit.functions.size() - 1;
 }
 
-bool is_address_constant(const expr_t &);
+std::optional< initializer_t > address_constant(const expr_t &);
 
-// Whether an lvalue designates an object of static storage or a
-// function, the operand an address constant is made from, 6.6p11: a
-// global's name or a function's, a string literal, 6.4.5p6, or *E for an
-// address constant E, as a subscript by a constant is, p12.
-bool
-designates_static(const expr_t &e)
+// The address of an lvalue that designates an object of static storage
+// or a function, the operand an address constant is made from, 6.6p11:
+// a global's name, whether the unit defines it or only declares it, a
+// function's, a string literal, 6.4.5p6, or *E for an address constant
+// E, as a subscript by a constant is, p12.  Nothing for any other
+// lvalue: a local, or *p, which reads the value of the object p.
+std::optional< initializer_t >
+static_address(const expr_t &e)
 {
     if (is< name_t >(e)) {
-        const storage_t storage = as< name_t >(e).sym->storage;
-        return storage == storage_t::global || storage == storage_t::function;
+        const symbol_t *sym = as< name_t >(e).sym;
+        if (sym->storage != storage_t::global &&
+            sym->storage != storage_t::function)
+            return std::nullopt;
+
+        return address_t { sym, 0 };
     }
 
     if (is< string_t >(e))
-        return true;
+        return address_t { as< string_t >(e), 0 };
 
     if (is< unary_t >(e) && as< unary_t >(e).op == unary_op_t::deref)
-        return is_address_constant(*as< unary_t >(e).arg);
+        return address_constant(*as< unary_t >(e).arg);
 
-    return false;
+    return std::nullopt;
 }
 
-// Whether a pointer expression is an address constant, 6.6p11, p12, or
-// one plus or minus an integer constant, p9: & of such an lvalue, the
-// decay of an array or a function designator that is one, a pointer
-// cast of an address constant, and the sum or difference of one and a
-// constant.  An integer constant cast to a pointer is one too, and the
-// parser made it a literal; the caller tells it apart.
-bool
-is_address_constant(const expr_t &e)
+// An address constant moved by a number of bytes, modulo 2^64 (G6): the
+// offset from its base, or the integer of one cast from an integer.
+initializer_t
+moved(initializer_t a, unsigned long long bytes)
 {
+    const auto sum = [bytes](long long v) {
+        return static_cast< long long >(static_cast< unsigned long long >(v) +
+                                        bytes);
+    };
+
+    if (auto *constant = std::get_if< literal_t >(&a))
+        constant->value = sum(constant->value);
+    else
+        std::get< address_t >(a).offset = sum(std::get< address_t >(a).offset);
+
+    return a;
+}
+
+// A pointer expression folded to the address constant it is, 6.6p9,
+// p11, p12, or nothing when it is none: & of an lvalue static_address()
+// takes, the decay of an array or of a function designator it takes, a
+// pointer cast of an address constant, and one plus or minus an integer
+// constant, whose bytes are the constant times the pointee's size, as
+// the subscript of a constant is.  The parser made an integer constant
+// cast to a pointer a literal of the pointer's type, which is one too.
+// A cast of an address constant to an integer of a pointer's width is
+// the address as an integer, which 6.6p14 lets an implementation take.
+std::optional< initializer_t >
+address_constant(const expr_t &e)
+{
+    if (is< literal_t >(e) && is< pointer_t >(e.type))
+        return as< literal_t >(e);
+
     if (is< unary_t >(e) && as< unary_t >(e).op == unary_op_t::addr)
-        return designates_static(*as< unary_t >(e).arg);
+        return static_address(*as< unary_t >(e).arg);
 
     if (is< cast_t >(e)) {
         const expr_t &arg = *as< cast_t >(e).arg;
         if (is< array_t >(arg.type) || is< function_t >(arg.type))
-            return designates_static(arg);
+            return static_address(arg);
 
-        return is< pointer_t >(e.type) && is< pointer_t >(arg.type) &&
-               is_address_constant(arg);
+        if (!is< pointer_t >(arg.type) || size_of(e.type) != 8)
+            return std::nullopt;
+
+        return address_constant(arg);
     }
 
     if (!is< binary_t >(e) || !is< pointer_t >(e.type))
-        return false;
+        return std::nullopt;
 
     const auto &b = as< binary_t >(e);
     if (b.op != binary_op_t::add && b.op != binary_op_t::sub)
-        return false;
+        return std::nullopt;
 
     const bool left = is< pointer_t >(b.lhs->type);
+    const expr_t &index = left ? *b.rhs : *b.lhs;
 
-    return is_address_constant(left ? *b.lhs : *b.rhs) &&
-           is< literal_t >(left ? *b.rhs : *b.lhs);
+    const std::optional< initializer_t > base =
+        address_constant(left ? *b.lhs : *b.rhs);
+    if (!base || !is< literal_t >(index))
+        return std::nullopt;
+
+    const auto bytes =
+        static_cast< unsigned long long >(as< literal_t >(index).value) *
+        static_cast< unsigned long long >(size_of(pointee_of(e.type)));
+
+    return moved(*base, b.op == binary_op_t::sub ? 0 - bytes : bytes);
 }
 
-// The initializer of an object the unit defines, after its '='.  Every
-// expression in it is a constant expression, 6.7.11p5, and in the
-// subset that is an integer constant expression, which the evaluator
-// has folded to a literal, converted to the object's type as by simple
-// assignment, p12; for a pointer, a null pointer.  An address constant,
-// 6.6p11, is not yet: the address of an object or a function, an array
-// or a function designator that decays, a string literal as a
-// pointer's initializer, an integer cast to a pointer other than 0.
-// Any other initializer is no constant expression, an error.  An array
-// takes a brace-enclosed list, or a string literal when its elements
-// are char, p15, p17, and both are not yet; so is a brace around a
-// scalar's initializer, p12.
-expr_t
-object_initializer(parser_t &p, const token_t &op, const type_t &t)
+// Whether a scalar's initializer is a pointer cast to an integer
+// narrower than a pointer, (int) &n: the address is known only when the
+// program is loaded, and the loader fills in a pointer's 64 bits and no
+// narrower field.  An integer constant cast to a pointer and back is
+// such a cast too, which is no integer constant expression, 6.6p8.
+bool
+narrowed_address(const expr_t &init)
 {
-    if (peek(p).kind == tok_t::lbrace)
+    if (!is< cast_t >(init) || !is< int_t >(init.type) ||
+        size_of(init.type) == 8)
+        return false;
+
+    const expr_t &arg = *as< cast_t >(init).arg;
+
+    return is< pointer_t >(arg.type) && address_constant(arg);
+}
+
+// Whether the tokens ahead are a string literal in braces, { "abc" } or
+// { "abc", }, which initializes an array of char as the literal alone
+// does, 6.7.11p15.
+bool
+braced_string_ahead(const parser_t &p)
+{
+    if (peek(p).kind != tok_t::lbrace || peek(p, 1).kind != tok_t::string)
+        return false;
+
+    std::size_t ahead = 2;
+    while (peek(p, ahead).kind == tok_t::string)
+        ++ahead;
+
+    if (peek(p, ahead).kind == tok_t::comma)
+        ++ahead;
+
+    return peek(p, ahead).kind == tok_t::rbrace;
+}
+
+// The initializer of an array at file scope.  An array of char, signed
+// char or unsigned char takes a string literal, in braces or not,
+// 6.7.11p15: its bytes, and its terminating zero when the array has
+// room for it or is of unknown size, which takes the literal's size;
+// the elements past the literal's are zero, p22.  A literal longer than
+// the array is an initializer for an object not contained in it, p3.
+// Any other array takes a brace-enclosed list, p17, which is not yet.
+string_t
+array_initializer(parser_t &p, const type_t &t)
+{
+    const auto &array = as< array_t >(t);
+    const type_t &element = *array.element;
+    const bool of_char =
+        is< int_t >(element) && as< int_t >(element).width == 8;
+
+    const bool braced = of_char && braced_string_ahead(p);
+    if (braced)
+        advance(p);
+    else if (peek(p).kind == tok_t::lbrace)
         not_yet(peek(p), "brace initializer");
 
     const token_t &start = peek(p);
     expr_t e = assignment_expression(p);
 
-    if (is< array_t >(t)) {
-        const type_t &element = *as< array_t >(t).element;
-        if (is< string_t >(e) && is< int_t >(element) &&
-            as< int_t >(element).width == 8)
-            not_yet(start, "array initialized by a string literal");
-
+    if (!of_char || !is< string_t >(e))
         fail(start, "array initializer must be an initializer list");
+
+    if (braced) {
+        accept(p, tok_t::comma);
+        expect(p, tok_t::rbrace, "expected '}'");
     }
 
-    expr_t init = assignment_conversion(op, std::move(e), t);
+    string_t str = as< string_t >(e);
+    if (array.count >= 0 && long(str.bytes.size()) > array.count)
+        fail(start, "initializer-string for char array is too long");
 
-    const bool constant = is< literal_t >(init);
-    if (constant && (is< int_t >(t) || as< literal_t >(init).value == 0))
-        return init;
+    return str;
+}
 
-    if (constant || is_address_constant(init))
-        not_yet(start, "address constant as an initializer");
+// The initializer of an object the unit defines, after its '='.  Every
+// expression in it is a constant expression, 6.7.11p5, converted to the
+// object's type as by simple assignment, p12, and folded: an integer
+// constant expression, or a null pointer, which the evaluator made a
+// literal; an address constant, 6.6p9, p11.  Any other initializer is
+// no constant expression, an error, and so is an address in an integer
+// narrower than a pointer, which no load writes.  An array takes what
+// array_initializer() takes.  A brace around a scalar's initializer,
+// p12, is not yet.
+initializer_t
+object_initializer(parser_t &p, const token_t &op, const type_t &t)
+{
+    if (is< array_t >(t))
+        return array_initializer(p, t);
+
+    if (peek(p).kind == tok_t::lbrace)
+        not_yet(peek(p), "brace initializer");
+
+    const token_t &start = peek(p);
+    expr_t init = assignment_conversion(op, assignment_expression(p), t);
+
+    if (is< literal_t >(init))
+        return as< literal_t >(init);
+
+    if (narrowed_address(init))
+        fail(start, "initializer element is an address cast to an integer "
+                    "narrower than a pointer");
+
+    if (std::optional< initializer_t > address = address_constant(init))
+        return std::move(*address);
 
     fail(start, "initializer element is not a compile-time constant");
 }
@@ -2345,13 +2483,13 @@ definition_of(const parser_t &p, const symbol_t *sym)
 
 // An object the unit defines is one rcc makes, and its type is
 // complete, 6.7.1p8: not void, not a not-yet type, whose size rcc does
-// not know, and an array with its size, which a declaration alone may
-// leave out.  An array of unknown size in a tentative definition is one
-// element, 6.9.3p2, the composite type rcc does not build, so it is not
-// yet.  An attribute that marks the object, said on any of its
-// declarations, is one rcc would have to honour, and is not yet.
+// not know.  An array may leave its size out: its initializer gives it,
+// 6.7.11p23, or a later declaration, 6.2.7p5, and an array of unknown
+// size still at the end of the unit is one element, 6.9.3p2.  An
+// attribute that marks the object, said on any of its declarations, is
+// one rcc would have to honour, and is not yet.
 void
-require_definable(const token_t &name, const symbol_t &sym, bool initialized)
+require_definable(const token_t &name, const symbol_t &sym)
 {
     if (is< void_t >(sym.type))
         fail(name, "variable " + quoted(name.text) + " has type void");
@@ -2360,10 +2498,37 @@ require_definable(const token_t &name, const symbol_t &sym, bool initialized)
 
     if (!sym.marking.empty())
         not_yet(name, sym.marking);
+}
 
-    if (!initialized && is< array_t >(sym.type) &&
-        as< array_t >(sym.type).count < 0)
-        not_yet(name, "tentative definition of an array of unknown size");
+// The type of an array of unknown size that an initializer completes,
+// 6.7.11p23: the string's bytes and its terminating zero, p15.  Any
+// other type is complete and stays as it is.
+type_t
+completed_type(const type_t &t, const initializer_t &init)
+{
+    if (!is< array_t >(t) || as< array_t >(t).count >= 0)
+        return t;
+
+    const long count = long(std::get< string_t >(init).bytes.size()) + 1;
+
+    return make_array(*as< array_t >(t).element, count);
+}
+
+// 6.9.3p2: an object the unit defines whose type is still an array of
+// unknown size at the end of the unit, when no declaration has given
+// the size, is one element, which is zero; its definitions are all
+// tentative, since an initializer gives the size.
+void
+complete_tentative_arrays(parser_t &p)
+{
+    for (symbol_t &sym : p.unit.symbols) {
+        if (sym.storage != storage_t::global || !is< array_t >(sym.type))
+            continue;
+
+        const auto &array = as< array_t >(sym.type);
+        if (array.count < 0 && definition_of(p, &sym))
+            sym.type = make_array(*array.element, 1);
+    }
 }
 
 // An object at file scope, 6.9.3.  A declaration with an initializer
@@ -2373,6 +2538,9 @@ require_definable(const token_t &name, const symbol_t &sym, bool initialized)
 // declaration of the name in the unit is of one object with external
 // linkage, 6.2.2p5, of one type, 6.2.7p2: extern int n; int n; int n =
 // 1; declare one object, and two tentative definitions define one.  An
+// array declared without its size and with it is one object of the
+// composite type, the array of known size, p5: extern int a[]; int
+// a[3]; and int a[3]; extern int a[]; declare an int [3].  An
 // object only tentatively defined is zero, 6.9.3p2.  A second
 // initializer is a second external definition, of which a program has
 // one, 6.9.1p5, an error.  The name is in scope from the end of its
@@ -2395,7 +2563,7 @@ declare_external_object(parser_t &p,
     if (!initialized && declared(spec, tok_t::kw_extern))
         return;
 
-    require_definable(*d.name, *sym, initialized);
+    require_definable(*d.name, *sym);
 
     std::optional< std::size_t > index = definition_of(p, sym);
     if (index && initialized && p.unit.objects[*index].init)
@@ -2410,8 +2578,9 @@ declare_external_object(parser_t &p,
         return;
 
     const token_t &op = advance(p);
-    expr_t init = object_initializer(p, op, sym->type);
+    initializer_t init = object_initializer(p, op, sym->type);
 
+    sym->type = completed_type(sym->type, init);
     p.unit.objects[*index].init = std::move(init);
 }
 
@@ -3498,6 +3667,24 @@ parameter_array_qualifiers(parser_t &p, const token_t *&restrict_)
     return static_;
 }
 
+// A size that is no integer constant expression at file scope, extern
+// int n; int a[n]; or a typedef of such an array there, is an error of
+// the program and no construct to come: an identifier of a variably
+// modified type has block or function prototype scope, and an object of
+// static storage duration has no variable length array type,
+// 6.7.7.3p2.  A parameter's list is a scope of its own, so its arrays
+// are not at file scope.
+void
+refuse_file_scope_variable_size(const parser_t &p,
+                                const token_t &at,
+                                const expr_t &size)
+{
+    if (p.scopes.size() == 1 && is< int_t >(size.type) &&
+        !is< literal_t >(size))
+        fail(at, "variable length array declaration not allowed at file "
+                 "scope");
+}
+
 // One or more [N], N an integer constant expression, or [] for an array
 // of unknown size, 6.7.7.3p1, p4.  The size is an assignment-expression
 // in the grammar, 6.7.7.1p1.  The suffixes nest from the right: int
@@ -3535,9 +3722,11 @@ array_declarator(parser_t &p,
             const std::optional< expr_t > size =
                 typedef_ ? typedef_array_size(p, suffix.missing) :
                            array_size(p);
-            if (size)
+            if (size) {
+                refuse_file_scope_variable_size(p, start, *size);
                 suffix.count = adjusted ? parameter_array_count(start, *size) :
                                           array_count(start, *size);
+            }
         }
 
         expect(p, tok_t::rbracket, "expected ']'");

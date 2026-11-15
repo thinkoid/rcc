@@ -54,10 +54,10 @@ bool names(const expr_t &, const symbol_t *);
 
 std::string string_label(std::vector< std::string > &strings, const string_t &);
 std::string quoted_file(std::string_view file);
-void literals(std::ostream &, const std::vector< std::string > &strings);
-void objects(std::ostream &,
-             const std::vector< object_decl_t > &objects,
-             const target_t &);
+void data(std::ostream &,
+          std::vector< std::string > strings,
+          const std::vector< object_decl_t > &objects,
+          const target_t &);
 
 // A value the generator holds: in an expression register, or in its
 // spill slot once the register was needed for another.  The age orders

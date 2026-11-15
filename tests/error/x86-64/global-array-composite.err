@@ -1,2 +1,0 @@
-tests/error/global-array-composite.c:5:5: error: conflicting types for 'table'
-status 1

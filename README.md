@@ -78,7 +78,11 @@ and a call goes through a pointer to one, on both targets, so a
 program passes its own comparison to `qsort` and its own handler to
 `signal`. Then the objects at file scope: a program defines, declares
 and uses its globals, with integer constants as initializers, and
-reaches the C library's, so `header-stdout` writes to `stdout`.
+reaches the C library's, so `header-stdout` writes to `stdout`. Their
+initializers take address constants and strings, and an array takes
+its size from another declaration, so `header-months` keeps a table
+of names in an array of `char` and reaches `stdout`, `putchar` and
+`fputs` through global pointers.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/`, the cost corpus over `tests/cost/`
 and the error corpus over `tests/error/`, the programs rcc refuses

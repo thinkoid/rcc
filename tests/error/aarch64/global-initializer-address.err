@@ -1,2 +1,0 @@
-tests/error/global-initializer-address.c:4:16: error: not yet: address constant as an initializer
-status 1

@@ -900,10 +900,17 @@ function.
 The objects' data is the text of `backend.md` chapter 10, the same on
 both targets: `.data` for those with an initializer, `.bss` for the
 others, each under `.globl`, `.type`, `.size` and `.p2align`, with
-`.byte`, `.short`, `.long`, `.quad` or `.zero`, which GNU as and
-clang take on this machine as on x86-64. The one difference is the
-alignment of an array: the AAPCS64 has no rule like x86-64's 16 for
-an array of 16 bytes or more, so an array takes its element's.
+`.byte`, `.short`, `.long`, `.quad`, `.string`, `.ascii` or `.zero`,
+which GNU as and clang take on this machine as on x86-64. An address
+constant is the same `.quad n`, `.quad a+12`, `.quad .Ls0+1`: the
+assembler leaves an `R_AARCH64_ABS64`, which the linker of a
+position-independent executable makes an `R_AARCH64_RELATIVE` for a
+symbol the program defines and leaves against the symbol for one in a
+shared library, `.quad stdout`, `.quad putchar`; the loader fills in
+both. The one difference is the alignment of an array: the AAPCS64
+has no rule like x86-64's 16 for an array of 16 bytes or more, so an
+array takes its element's, and an array of `char` a string
+initializes has none.
 
 ## 11. c0 and the driver
 
@@ -1067,7 +1074,19 @@ compiles them against its own registers and state.
   object byte by byte after it, so a store too wide or to the wrong
   object shows. It checks the initialized objects against their
   initializers, and a tentative definition written twice against
-  zero, before anything writes them.
+  zero, before anything writes them. The initializers probe runs the
+  data of chapter 10's address constants and strings: a pointer
+  initialized by each spelling of an address constant, of an object
+  or a function the file defines and of one its library defines, and
+  each shape of an array of `char` a string initializes. An address
+  differs between the two builds, so the main compares what it
+  designates, the address against its own build's object, the bytes
+  of a string past its end included, a call through the pointer, and
+  the comparisons each build's code makes of the address in its data
+  with the one it forms. Its library's objects, initialized by
+  `clang`, are read by rcc's code, and arrays declared without their
+  size are completed by a later declaration, by the other file and by
+  the end of the file.
 
   Three probes run the register variables. The registers probe runs
   a register variable of each integer type and a register pointer to

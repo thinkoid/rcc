@@ -1,0 +1,2 @@
+tests/error/global-initializer-address-narrow.c:5:15: error: initializer element is an address cast to an integer narrower than a pointer
+status 1
