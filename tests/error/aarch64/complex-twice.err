@@ -1,0 +1,2 @@
+tests/error/complex-twice.c:6:25: error: cannot combine '_Complex' with the type specifiers before it
+status 1

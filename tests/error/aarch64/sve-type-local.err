@@ -1,0 +1,2 @@
+tests/error/sve-type-local.c:9:19: error: not yet: '__SVBool_t'
+status 1

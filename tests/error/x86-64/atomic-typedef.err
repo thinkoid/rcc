@@ -1,0 +1,2 @@
+tests/error/atomic-typedef.c:11:16: error: not yet: type qualifier '_Atomic'
+status 1

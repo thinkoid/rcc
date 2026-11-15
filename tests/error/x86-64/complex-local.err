@@ -1,0 +1,2 @@
+tests/error/complex-local.c:11:25: error: not yet: complex type 'double _Complex'
+status 1

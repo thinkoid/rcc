@@ -1,0 +1,2 @@
+tests/error/atomic-specifier.c:3:9: error: not yet: type specifier '_Atomic'
+status 1

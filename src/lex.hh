@@ -67,12 +67,15 @@ enum class tok_t {
     kw_thread_local,
 
     // the function specifiers, and GNU C's words for what a header
-    // says beside the C: __asm__, __attribute__, __extension__
+    // says beside the C: __asm__, __attribute__, __extension__, and
+    // the types __float128 and __int128
     kw_inline,
     kw_noreturn,
     kw_asm,
     kw_attribute,
     kw_extension,
+    kw_float128,
+    kw_int128,
 
     // punctuators, in the order of 6.4.6
     lbracket,

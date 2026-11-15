@@ -69,20 +69,22 @@ The keywords are C17's, those outside the subset included, so the
 parser refuses each by its name. GNU C's spellings in the
 implementation's name space, which a system header writes, are
 keywords too: `__const`, `__restrict__`, `__signed__`, `__inline` and
-their like are the keyword they spell, and `__attribute__`, `__asm__`
-and `__extension__` are tokens of their own.
+their like are the keyword they spell, and `__attribute__`, `__asm__`,
+`__extension__`, `__int128` and `__float128` are tokens of their own.
 
 ## 3. The types
 
 A type is the machine's view: void, an integer of a width and a
 signedness, a pointer to a type, an array of a type and a count, a
 function of a result and parameters, or a type rcc declares and does
-not use yet: a struct, a union, an enum, a floating type,
-`__builtin_va_list`, a type a typedef names through an attribute rcc
-does not honour. Such a type carries an identity, which equality
-compares, and the words a refusal of its use prints; it has no size
-and no alignment, and a pointer to it is an ordinary pointer. The C
-spelling is not kept:
+not use yet: a struct, a union, an enum; a floating type, real or
+complex, GNU C's `__float128` among them; GNU C's `__int128`;
+`__builtin_va_list` and clang's SVE types; a type a typedef names
+through `volatile`, `_Atomic` or an attribute rcc does not honour.
+Such a type carries an identity, which equality compares, and the
+words a refusal of its use prints; it has no size and no alignment,
+and a pointer to it is an ordinary pointer. The C spelling is not
+kept:
 `long` and `long long` are one type on a target where both are 64
 bits. The edges from a type to the types it names are
 `shared_ptr< const type_t >`: a type is never written after it is
@@ -176,11 +178,26 @@ calls each function as written does not depend on, `nonnull`, `pure`,
 what it is said of: a typedef through one names a not-yet type of its
 own, a marked function or `extern` object is refused where an
 expression names it, and on a local, which rcc would make, the
-attribute is not yet. On a struct, a union or an enum every attribute
-is dropped, since the type is a not-yet type. `__asm__ ("name")` after
+attribute is not yet. An attribute among the declaration specifiers
+is said of each declarator, as one after the declarator is. One on a
+parameter marks the function, whose calls pass the parameter, and its
+definition. On a struct, a union or an enum every attribute is
+dropped, since the type is a not-yet type. `__asm__ ("name")` after
 the declarator of a function or an `extern` object is the symbol's
 name in the assembly: glibc declares `scanf` as `__isoc99_scanf`, and
 the call names that.
+
+The types a header declares and rcc does not use are not-yet types:
+the complex types, `_Complex` among the specifiers of a floating
+type; GNU C's `__float128` and `__int128`, signed or unsigned;
+clang's names of the SVE types, which no header declares. A typedef
+through `volatile` or `_Atomic` names a not-yet type of its own; both
+qualifiers are not yet anywhere else, and so is `_Atomic (` *type
+name* `)`. The definition of a `static inline` function, as glibc's
+`bits/byteswap.h` defines `__bswap_16`, is accepted: its body is
+skipped to the closing brace, c1 writes nothing for it, and an
+expression that names the function is refused. `static` on anything
+else is not yet.
 
 ## 6. The generator
 
@@ -391,25 +408,26 @@ declarator.
 
 ## 11. Not yet
 
-Structs, unions, enums and floating point (each type is declared, a
-struct's or union's members skipped and an enum's constants declared
-without their values; a pointer to one is an ordinary pointer, and a
+Structs, unions, enums, floating point and `__int128` (each type is
+declared, a struct's or union's members skipped and an enum's
+constants declared without their values; a pointer to one is an ordinary pointer, and a
 use that needs the object, or a constant's value, is refused), global
 variables (an object declared `extern` at file scope is accepted and
 its use refused; a definition at file scope is refused), `extern` in
 a block, brace initializers and
 `char s[] = "..."`, function pointers and a declaration through a
 typedef of function type, wide and `u8` strings,
-`volatile` (c1 writes every access it meets, an unused one
-included, so the access needs nothing more; the qualifier waits for
-the type model, as `const`'s checks do),
-`switch`, `goto`, `static`, a `register`
+`volatile` outside a typedef (c1 writes every access it meets, an
+unused one included, so the access needs nothing more; the qualifier
+waits for the type model, as `const`'s checks do),
+`switch`, `goto`, `static` outside a `static inline` definition, whose
+use is refused, a `register`
 array (6.3.2.1p3), `inline` on a function definition,
 what an attribute that rcc does not honour marks (an object of a
 typedef so declared, the use of a function or an `extern` object, a
-local, a function's definition), an attribute among the declaration
-specifiers or on a parameter, `__asm__` as a statement, at file scope
-or on a local, and C's keywords outside the subset: `_Bool`,
-`_Complex`, `_Imaginary`, `_Atomic`, `_Alignas`, `_Alignof`,
-`_Generic`, `_Static_assert`, `_Thread_local`. Each arrives when a
+local, a function's definition), `__asm__` as a statement, at file
+scope or on a local, and C's keywords outside the subset: `_Bool`,
+`_Complex` outside the specifiers of a floating type, `_Imaginary`,
+`_Atomic` outside a typedef, `_Alignas`, `_Alignof`, `_Generic`,
+`_Static_assert`, `_Thread_local`. Each arrives when a
 probe needs it. The preprocessor stays external for good.

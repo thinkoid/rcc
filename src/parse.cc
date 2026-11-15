@@ -63,28 +63,33 @@ struct parser_t
 };
 
 // The declaration specifiers: the type, and the storage-class specifier
-// when one was written, register, typedef or extern, for the caller to
-// accept or refuse in its context.  tagged is whether the type
-// specifier is a struct, union or enum one, which may declare a tag or
-// enumeration constants with no declarator after it.
+// when one was written, register, typedef, extern or static, for the
+// caller to accept or refuse in its context.  tagged is whether the
+// type specifier is a struct, union or enum one, which may declare a
+// tag or enumeration constants with no declarator after it.
 // function_specifier is the first inline or _Noreturn written, or null,
-// for the caller to drop or refuse.
+// for the caller to drop or refuse.  marking is the name's token of the
+// first marking attribute among the specifiers, or null: it marks each
+// declarator of the declaration, as one after the declarator does.
 struct specifiers_t
 {
     type_t type;
     const token_t *storage_class;
     bool tagged;
     const token_t *function_specifier;
+    const token_t *marking;
 };
 
 // A parameter as written: its type, its name token when it has one,
-// and whether it was declared register.
+// whether it was declared register, and the name's token of the first
+// marking attribute said of it, or null.
 struct parameter_t
 {
     type_t type;
     const token_t *start;
     const token_t *name;
     bool in_register;
+    const token_t *marking;
 };
 
 // A declarator in the subset: a name, absent only from a parameter,
@@ -174,6 +179,24 @@ expect(parser_t &p, tok_t kind, std::string_view message)
     return advance(p);
 }
 
+// The tokens after an opening brace, skipped up to the closing brace
+// that matches it, which is left for the caller, with the braces nested
+// in them counted.  Nothing reads them.
+void
+skip_to_closing_brace(parser_t &p)
+{
+    for (int depth = 0; peek(p).kind != tok_t::eof; advance(p)) {
+        const tok_t kind = peek(p).kind;
+        if (kind == tok_t::rbrace && depth == 0)
+            return;
+
+        if (kind == tok_t::lbrace)
+            ++depth;
+        else if (kind == tok_t::rbrace)
+            --depth;
+    }
+}
+
 //
 // types and conversions
 //
@@ -206,8 +229,10 @@ size_type()
 }
 
 // The not-yet types that are one type wherever they are written: the
-// floating types and __builtin_va_list, each of a fixed identity.  A
-// struct, a union or an enum takes the next identity after theirs.
+// real and the complex floating types, __builtin_va_list, GNU C's
+// __float128 and __int128, and clang's SVE types, each of a fixed
+// identity.  A struct, a union or an enum takes the next identity after
+// theirs.
 type_t
 float_type()
 {
@@ -232,7 +257,63 @@ va_list_type()
     return make_not_yet(3, "'__builtin_va_list'");
 }
 
-constexpr int first_tag_identity = 4;
+type_t
+complex_float_type()
+{
+    return make_not_yet(4, "complex type 'float _Complex'");
+}
+
+type_t
+complex_double_type()
+{
+    return make_not_yet(5, "complex type 'double _Complex'");
+}
+
+type_t
+complex_long_double_type()
+{
+    return make_not_yet(6, "complex type 'long double _Complex'");
+}
+
+type_t
+float128_type()
+{
+    return make_not_yet(7, "floating type '__float128'");
+}
+
+// GNU C's 128-bit integer types: __int128 and signed __int128 are one
+// type, as int and signed int are.
+type_t
+int128_type(bool is_signed)
+{
+    if (is_signed)
+        return make_not_yet(8, "integer type '__int128'");
+
+    return make_not_yet(9, "integer type 'unsigned __int128'");
+}
+
+// clang's names for three of the aarch64 vector types of SVE, those
+// glibc's bits/math-vector.h names: scalable, of no size fixed when
+// the program is compiled.
+type_t
+sve_float32_type()
+{
+    return make_not_yet(10, "'__SVFloat32_t'");
+}
+
+type_t
+sve_float64_type()
+{
+    return make_not_yet(11, "'__SVFloat64_t'");
+}
+
+type_t
+sve_bool_type()
+{
+    return make_not_yet(12, "'__SVBool_t'");
+}
+
+constexpr int first_tag_identity = 13;
 
 const type_t &
 pointee_of(const type_t &t)
@@ -1338,10 +1419,31 @@ lookup(const parser_t &p, std::string_view name)
     return nullptr;
 }
 
+// The type a name the compiler declares stands for, or nothing:
+// __builtin_va_list, clang's and gcc's name for the type behind
+// va_list, and clang's names of the SVE types.  No header declares
+// them.
+std::optional< type_t >
+builtin_type(std::string_view name)
+{
+    if (name == "__builtin_va_list")
+        return va_list_type();
+
+    if (name == "__SVFloat32_t")
+        return sve_float32_type();
+
+    if (name == "__SVFloat64_t")
+        return sve_float64_type();
+
+    if (name == "__SVBool_t")
+        return sve_bool_type();
+
+    return std::nullopt;
+}
+
 // The type an identifier names where it stands: a typedef's, in scope
 // and not hidden by an inner declaration of the name; or, while
-// undeclared, __builtin_va_list's, clang's and gcc's name for the type
-// behind va_list, which no header declares.  Nothing for any other
+// undeclared, the builtin type of the name.  Nothing for any other
 // token.
 std::optional< type_t >
 named_type(const parser_t &p, const token_t &t)
@@ -1353,8 +1455,8 @@ named_type(const parser_t &p, const token_t &t)
     if (sym && sym->storage == storage_t::type_name)
         return sym->type;
 
-    if (!sym && t.text == "__builtin_va_list")
-        return va_list_type();
+    if (!sym)
+        return builtin_type(t.text);
 
     return std::nullopt;
 }
@@ -1742,17 +1844,24 @@ struct declarator_tail_t
     const token_t *marking;
 };
 
+// The tail of a declarator of the declaration the specifiers begin.  A
+// marking attribute among the specifiers is said of every declarator,
+// and comes first.
 declarator_tail_t
-declarator_tail(parser_t &p)
+declarator_tail(parser_t &p, const specifiers_t &spec)
 {
-    declarator_tail_t tail { nullptr, { }, attribute_specifier_list(p) };
+    declarator_tail_t tail { nullptr, { }, spec.marking };
+
+    const token_t *marking = attribute_specifier_list(p);
+    if (!tail.marking)
+        tail.marking = marking;
 
     if (peek(p).kind == tok_t::kw_asm) {
         tail.asm_keyword = &peek(p);
         tail.asm_name = asm_label(p);
     }
 
-    const token_t *marking = attribute_specifier_list(p);
+    marking = attribute_specifier_list(p);
     if (!tail.marking)
         tail.marking = marking;
 
@@ -1804,7 +1913,11 @@ skip_extension_keywords(parser_t &p)
 //
 
 void external_declaration(parser_t &);
-void function_definition(parser_t &, const declarator_t &);
+void
+function_definition(parser_t &, const specifiers_t &, const declarator_t &);
+void static_function_definition(parser_t &,
+                                const specifiers_t &,
+                                const declarator_t &);
 specifiers_t declaration_specifiers(parser_t &);
 type_t struct_or_union_specifier(parser_t &);
 type_t enum_specifier(parser_t &);
@@ -1897,7 +2010,9 @@ is_declaration_start(const parser_t &p, std::size_t ahead = 0)
     case tok_t::kw_atomic:
     case tok_t::kw_alignas:
     case tok_t::kw_thread_local:
-    case tok_t::kw_static_assert: return true;
+    case tok_t::kw_static_assert:
+    case tok_t::kw_float128:
+    case tok_t::kw_int128: return true;
     default: return false;
     }
 }
@@ -1980,12 +2095,12 @@ added(parser_t &p, std::string_view name, type_t t, storage_t storage)
 // typedef int register_t __attribute__ ((__mode__ (__word__))) names an
 // integer of a size rcc does not take, and its objects are refused.
 void
-type_definition(parser_t &p, const declarator_t &d)
+type_definition(parser_t &p, const specifiers_t &spec, const declarator_t &d)
 {
     if (d.params)
         check_parameter_names(d);
 
-    const declarator_tail_t tail = declarator_tail(p);
+    const declarator_tail_t tail = declarator_tail(p, spec);
     if (tail.asm_keyword)
         fail(*tail.asm_keyword, quoted(tail.asm_keyword->text) +
                                     " on typedef " + quoted(d.name->text));
@@ -2002,15 +2117,29 @@ type_definition(parser_t &p, const declarator_t &d)
         added(p, d.name->text, std::move(t), storage_t::type_name);
 }
 
+// The name's token of the first marking attribute said of a parameter
+// of the function the declarator declares, or null.
+const token_t *
+marked_parameter(const declarator_t &d)
+{
+    for (const parameter_t &param : *d.params)
+        if (param.marking)
+            return param.marking;
+
+    return nullptr;
+}
+
 // Declares a function at file scope, or meets its earlier declaration,
-// with what the declaration writes after its declarator.  Returns the
-// index of its entry in the unit's functions.
+// with what the declaration writes after its declarator.  A marking
+// attribute on a parameter marks the function, whose calls pass the
+// parameter.  Returns the index of its entry in the unit's functions.
 std::size_t
-declare_function(parser_t &p,
-                 const declarator_t &d,
-                 const declarator_tail_t &tail)
+declare_function(parser_t &p, const declarator_t &d, declarator_tail_t tail)
 {
     check_parameter_names(d);
+
+    if (!tail.marking)
+        tail.marking = marked_parameter(d);
 
     symbol_t *earlier =
         earlier_declaration(p, *d.name, d.type, storage_t::function);
@@ -2040,7 +2169,7 @@ declare_external_object(parser_t &p,
                         const specifiers_t &spec,
                         const declarator_t &d)
 {
-    const declarator_tail_t tail = declarator_tail(p);
+    const declarator_tail_t tail = declarator_tail(p, spec);
 
     if (!declared(spec, tok_t::kw_extern) || peek(p).kind == tok_t::assign)
         not_yet(*d.name, "global variable");
@@ -2052,9 +2181,19 @@ declare_external_object(parser_t &p,
     record_tail(*sym, tail);
 }
 
+// No function specifier stands in a declaration of main, 6.7.5p4.
+void
+refuse_specifier_on_main(const specifiers_t &spec, const declarator_t &d)
+{
+    const token_t *specifier = spec.function_specifier;
+    if (specifier && d.name->text == "main")
+        fail(*specifier,
+             quoted(specifier->text) + " in a declaration of 'main'");
+}
+
 // One declarator of a file-scope declaration: a type name, a function,
-// or an object.  No function specifier stands in a declaration of
-// main, 6.7.5p4.
+// or an object.  static reaches here only with inline, and only the
+// definition of a static inline function is taken.
 void
 external_declarator(parser_t &p,
                     const specifiers_t &spec,
@@ -2064,15 +2203,16 @@ external_declarator(parser_t &p,
     if (typedef_ || !d.params)
         refuse_function_specifier(spec);
 
-    const token_t *specifier = spec.function_specifier;
-    if (specifier && d.name->text == "main")
-        fail(*specifier,
-             quoted(specifier->text) + " in a declaration of 'main'");
+    refuse_specifier_on_main(spec, d);
+
+    if (declared(spec, tok_t::kw_static))
+        not_yet(*spec.storage_class,
+                "storage class " + quoted(spec.storage_class->text));
 
     if (typedef_)
-        type_definition(p, d);
+        type_definition(p, spec, d);
     else if (d.params)
-        declare_function(p, d, declarator_tail(p));
+        declare_function(p, d, declarator_tail(p, spec));
     else
         declare_external_object(p, spec, d);
 }
@@ -2087,7 +2227,8 @@ external_declarator(parser_t &p,
 // external definition, 6.7.5p7, which rcc would have to honour.
 // _Noreturn on one is dropped, as on a declaration: it promises that
 // the function does not return, and rcc writes the function as it is
-// written either way.  An __asm__ at file scope is not yet.
+// written either way.  The definition of a static inline function is
+// accepted and not compiled.  An __asm__ at file scope is not yet.
 void
 external_declaration(parser_t &p)
 {
@@ -2111,12 +2252,17 @@ external_declaration(parser_t &p)
     const declarator_t d = declarator(p, base);
 
     const bool defines_function = d.params && peek(p).kind == tok_t::lbrace;
+    if (defines_function && declared(spec, tok_t::kw_static)) {
+        static_function_definition(p, spec, d);
+        return;
+    }
+
     if (defines_function && !declared(spec, tok_t::kw_typedef)) {
         const token_t *t = spec.function_specifier;
         if (t && t->kind == tok_t::kw_inline)
             not_yet(*t, quoted(t->text) + " on a function definition");
 
-        function_definition(p, d);
+        function_definition(p, spec, d);
         return;
     }
 
@@ -2132,12 +2278,16 @@ external_declaration(parser_t &p)
 // 6.8.3p2, so a local cannot redeclare a parameter there; the body's
 // items are parsed into the parameter scope directly.  The result and
 // the parameters are objects the definition makes, so none may be of a
-// not-yet type.  A function a marking attribute marked is one rcc would
-// have to define as the attribute says, which is not yet.
+// not-yet type.  A function a marking attribute marked, on a
+// declaration, among the definition's specifiers or on a parameter, is
+// one rcc would have to define as the attribute says, which is not yet.
 void
-function_definition(parser_t &p, const declarator_t &d)
+function_definition(parser_t &p,
+                    const specifiers_t &spec,
+                    const declarator_t &d)
 {
-    const std::size_t index = declare_function(p, d, { });
+    const std::size_t index =
+        declare_function(p, d, { nullptr, { }, spec.marking });
     if (p.unit.functions[index].body)
         fail(*d.name, "redefinition of " + quoted(d.name->text));
 
@@ -2172,6 +2322,39 @@ function_definition(parser_t &p, const declarator_t &d)
     f.params = std::move(params);
     f.body = std::move(body);
     f.registers = p.registers;
+}
+
+// The definition of a static inline function, as glibc's
+// bits/byteswap.h defines __bswap_16.  The function has internal
+// linkage, 6.2.2p3, so a call of it calls this definition, which rcc
+// would have to compile, and that is not yet.  The definition is
+// accepted, its body skipped to the brace that closes it, and the
+// function stays declared, so c1 writes nothing for it; an expression
+// that names it is refused by name.  A static declaration without a
+// body is not yet, so a function that carries the words already was
+// defined before.
+void
+static_function_definition(parser_t &p,
+                           const specifiers_t &spec,
+                           const declarator_t &d)
+{
+    refuse_specifier_on_main(spec, d);
+
+    const std::size_t index =
+        declare_function(p, d, { nullptr, { }, spec.marking });
+
+    const std::string words = "static function " + quoted(d.name->text);
+
+    symbol_t &sym = *p.scopes.back().names.at(d.name->text);
+    if (p.unit.functions[index].body || sym.marking == words)
+        fail(*d.name, "redefinition of " + quoted(d.name->text));
+
+    if (sym.marking.empty())
+        sym.marking = words;
+
+    expect(p, tok_t::lbrace, "expected '{' before function body");
+    skip_to_closing_brace(p);
+    expect(p, tok_t::rbrace, "expected '}' at end of function body");
 }
 
 // How a struct, union or enum specifier uses its tag, 6.7.3.4: a list
@@ -2259,24 +2442,6 @@ optional_tag(parser_t &p, const token_t &keyword)
                    "expected identifier or '{' after " + quoted(keyword.text));
 }
 
-// The member list of a struct or union, skipped up to its closing
-// brace, which is left for the caller, with the braces nested in it
-// counted.  The members are not yet, and nothing reads them.
-void
-skip_member_list(parser_t &p)
-{
-    for (int depth = 0; peek(p).kind != tok_t::eof; advance(p)) {
-        const tok_t kind = peek(p).kind;
-        if (kind == tok_t::rbrace && depth == 0)
-            return;
-
-        if (kind == tok_t::lbrace)
-            ++depth;
-        else if (kind == tok_t::rbrace)
-            --depth;
-    }
-}
-
 // The value of an enumeration constant, skipped up to the comma or the
 // closing brace at the list's own depth, which is left for the caller:
 // a comma inside parentheses, brackets or braces is the expression's.
@@ -2308,39 +2473,75 @@ skip_enumerator_value(parser_t &p)
     }
 }
 
+// volatile and _Atomic make a qualified type, which rcc does not use
+// yet.  After typedef, the qualifier at the position is taken, and the
+// typedef names a not-yet type of its own; anywhere else it is not
+// yet, and so is _Atomic ( type-name ), the atomic type specifier.
+void
+refuse_qualifier(const parser_t &p, const token_t *storage_class)
+{
+    const token_t &q = peek(p);
+
+    if (q.kind == tok_t::kw_atomic && peek(p, 1).kind == tok_t::lparen)
+        not_yet(q, "type specifier " + quoted(q.text));
+
+    if (!storage_class || storage_class->kind != tok_t::kw_typedef)
+        not_yet(q, "type qualifier " + quoted(q.text));
+}
+
+// static is taken on a function that is inline too, whose definition
+// a header writes, and is not yet on anything else.  It is checked
+// where the specifiers end, since inline may follow it.
+void
+refuse_static(const token_t *storage_class, const token_t *inline_specifier)
+{
+    if (storage_class && storage_class->kind == tok_t::kw_static &&
+        !inline_specifier)
+        not_yet(*storage_class, "storage class " + quoted(storage_class->text));
+}
+
 // The type specifiers in any valid order and combination, 6.7.3.1p2.
 // The tree keeps no spelling: char and signed char are one type, long
 // and long long another.  Each keyword is checked against the ones
 // before it, so an error names the keyword that breaks the set.  const
 // may stand anywhere among them, once or more, 6.7.4.1p6, and is
 // dropped: the type is the machine's view.  A storage-class specifier,
-// register, typedef or extern, may stand anywhere too, one of them,
-// 6.7.2p2, and is reported to the caller, since what it may declare
-// depends on where the declaration is.  A typedef name is the type
-// specifier where no type specifier has been seen; after one, an
+// register, typedef, extern or static, may stand anywhere too, one of
+// them, 6.7.2p2, and is reported to the caller, since what it may
+// declare depends on where the declaration is.  A typedef name is the
+// type specifier where no type specifier has been seen; after one, an
 // identifier is the declarator's name, so unsigned T declares a T.  A
-// typedef name, a struct, union or enum specifier, and float are each
-// the whole type specifier; double joins one long.  restrict may stand
-// among them too, on a type require_restrictable() takes, and is
-// dropped.  So is a function specifier, inline or _Noreturn, once or
-// more, 6.7.5p5, reported to the caller, which knows whether the
-// declaration is of a function.  The keywords of C outside the subset
-// are refused by name where they stand.
+// typedef name, a struct, union or enum specifier, float and GNU C's
+// __float128 are each the whole type specifier; double joins one long,
+// __int128 signed or unsigned, and _Complex a floating type.  restrict
+// may stand among them too, on a type require_restrictable() takes,
+// and is dropped.  So is a function specifier, inline or _Noreturn,
+// once or more, 6.7.5p5, reported to the caller, which knows whether
+// the declaration is of a function.  An attribute may stand anywhere
+// among them; a marking one is reported to the caller.  The keywords
+// of C outside the subset are refused by name where they stand.
 specifiers_t
 declaration_specifiers(parser_t &p)
 {
     int n_void = 0, n_char = 0, n_short = 0, n_int = 0, n_long = 0;
     int n_signed = 0, n_unsigned = 0, n_float = 0, n_double = 0;
+    int n_int128 = 0, n_float128 = 0;
     bool any = false;
 
     std::optional< type_t > whole;
     bool tagged = false;
     const token_t *storage_class = nullptr;
+    const token_t *qualifier = nullptr;
     const token_t *restrict_qualifier = nullptr;
     const token_t *function_specifier = nullptr;
+    const token_t *inline_specifier = nullptr;
+    const token_t *complex_specifier = nullptr;
+    const token_t *marking = nullptr;
 
     // the type the specifiers name, once they end
     const auto specified = [&]() -> type_t {
+        const bool complex = complex_specifier != nullptr;
+
         if (whole)
             return *whole;
 
@@ -2348,10 +2549,19 @@ declaration_specifiers(parser_t &p)
             return make_void();
 
         if (n_float)
-            return float_type();
+            return complex ? complex_float_type() : float_type();
+
+        if (n_double && n_long)
+            return complex ? complex_long_double_type() : long_double_type();
 
         if (n_double)
-            return n_long ? long_double_type() : double_type();
+            return complex ? complex_double_type() : double_type();
+
+        if (n_float128)
+            return float128_type();
+
+        if (n_int128)
+            return int128_type(n_unsigned == 0);
 
         if (n_char && !n_signed && !n_unsigned)
             return char_type(p);
@@ -2378,12 +2588,15 @@ declaration_specifiers(parser_t &p)
             if (!function_specifier)
                 function_specifier = &t;
 
+            if (t.kind == tok_t::kw_inline && !inline_specifier)
+                inline_specifier = &t;
+
             advance(p);
             continue;
         }
 
         if (t.kind == tok_t::kw_register || t.kind == tok_t::kw_typedef ||
-            t.kind == tok_t::kw_extern) {
+            t.kind == tok_t::kw_extern || t.kind == tok_t::kw_static) {
             // 6.7.2p2: at most one storage-class specifier
             if (storage_class)
                 fail(t, "cannot combine " + quoted(t.text) +
@@ -2391,6 +2604,35 @@ declaration_specifiers(parser_t &p)
 
             storage_class = &t;
             advance(p);
+            continue;
+        }
+
+        if (t.kind == tok_t::kw_volatile || t.kind == tok_t::kw_atomic) {
+            refuse_qualifier(p, storage_class);
+
+            if (!qualifier)
+                qualifier = &t;
+
+            advance(p);
+            continue;
+        }
+
+        if (t.kind == tok_t::kw_attribute) {
+            const token_t *name = attribute_specifier_list(p);
+            if (!marking)
+                marking = name;
+
+            continue;
+        }
+
+        // _Complex joins the floating type before or after it, and is
+        // left out of any, since float takes no other type specifier
+        if (t.kind == tok_t::kw_complex) {
+            if (complex_specifier || n_void || whole || n_float128)
+                fail(t, "cannot combine " + quoted(t.text) +
+                            " with the type specifiers before it");
+
+            complex_specifier = &advance(p);
             continue;
         }
 
@@ -2408,29 +2650,35 @@ declaration_specifiers(parser_t &p)
             continue;
         }
 
-        bool bad = n_void > 0 || whole || n_float > 0;
+        bool bad = n_void > 0 || whole || n_float > 0 || n_float128 > 0;
         switch (t.kind) {
         case tok_t::kw_void:
             bad = bad || n_char || n_short || n_int || n_long || n_signed ||
-                  n_unsigned || n_double;
+                  n_unsigned || n_double || n_int128 || complex_specifier;
             ++n_void;
             break;
         case tok_t::kw_char:
-            bad = bad || n_char || n_short || n_int || n_long || n_double;
+            bad = bad || n_char || n_short || n_int || n_long || n_double ||
+                  n_int128;
             ++n_char;
             break;
         case tok_t::kw_short:
-            bad = bad || n_char || n_short || n_long || n_double;
+            bad = bad || n_char || n_short || n_long || n_double || n_int128;
             ++n_short;
             break;
         case tok_t::kw_int:
-            bad = bad || n_char || n_int || n_double;
+            bad = bad || n_char || n_int || n_double || n_int128;
             ++n_int;
             break;
         case tok_t::kw_long:
-            bad =
-                bad || n_char || n_short || n_long == 2 || (n_long && n_double);
+            bad = bad || n_char || n_short || n_long == 2 ||
+                  (n_long && n_double) || n_int128;
             ++n_long;
+            break;
+        case tok_t::kw_int128:
+            bad = bad || n_char || n_short || n_int || n_long || n_double ||
+                  n_int128;
+            ++n_int128;
             break;
         case tok_t::kw_signed:
         case tok_t::kw_unsigned:
@@ -2443,13 +2691,17 @@ declaration_specifiers(parser_t &p)
             break;
         case tok_t::kw_double:
             bad = bad || n_char || n_short || n_int || n_long == 2 ||
-                  n_signed || n_unsigned || n_double;
+                  n_signed || n_unsigned || n_double || n_int128;
             ++n_double;
+            break;
+        case tok_t::kw_float128:
+            bad = any;
+            ++n_float128;
             break;
         case tok_t::kw_struct:
         case tok_t::kw_union:
         case tok_t::kw_enum:
-            if (any) {
+            if (any || complex_specifier) {
                 bad = true;
                 break;
             }
@@ -2460,13 +2712,9 @@ declaration_specifiers(parser_t &p)
             any = true;
             continue;
         case tok_t::kw_bool:
-        case tok_t::kw_complex:
         case tok_t::kw_imaginary:
             not_yet(t, "type specifier " + quoted(t.text));
-        case tok_t::kw_volatile:
-        case tok_t::kw_atomic: not_yet(t, "type qualifier " + quoted(t.text));
         case tok_t::kw_auto:
-        case tok_t::kw_static:
         case tok_t::kw_thread_local:
             not_yet(t, "storage class " + quoted(t.text));
         case tok_t::kw_alignas:
@@ -2475,14 +2723,25 @@ declaration_specifiers(parser_t &p)
         case tok_t::kw_static_assert:
             not_yet(t, quoted(t.text) + " declaration");
         default: {
+            refuse_static(storage_class, inline_specifier);
+
+            if (complex_specifier && !n_float && !n_double)
+                not_yet(*complex_specifier,
+                        "type specifier " + quoted(complex_specifier->text));
+
             if (!any)
                 fail(t, "expected a type specifier");
 
-            const type_t type = specified();
+            type_t type = specified();
             if (restrict_qualifier)
                 require_restrictable(*restrict_qualifier, type);
 
-            return { type, storage_class, tagged, function_specifier };
+            if (qualifier)
+                type =
+                    make_not_yet(p.identities++,
+                                 "type qualifier " + quoted(qualifier->text));
+
+            return { type, storage_class, tagged, function_specifier, marking };
         }
         }
 
@@ -2523,7 +2782,7 @@ struct_or_union_specifier(parser_t &p)
                            new_tag_type(p, keyword);
 
     advance(p);
-    skip_member_list(p);
+    skip_to_closing_brace(p);
     expect(p, tok_t::rbrace, "expected '}' at end of member list");
     attribute_specifier_list(p);
 
@@ -2763,7 +3022,9 @@ parameter_type_list(parser_t &p, std::vector< parameter_t > &params)
     return variadic;
 }
 
-// Specifiers and a declarator, whose name is optional.  void stands
+// Specifiers and a declarator, whose name is optional, and attributes
+// after it, as after any declarator; a marking one among the
+// specifiers or after the declarator is the parameter's.  void stands
 // only alone, as (void), 6.7.7.4p9.  A parameter of array type is
 // adjusted to a pointer to the element, 6.7.7.4p6, so its size may be
 // left out; one of function type would be adjusted to a function
@@ -2784,6 +3045,10 @@ parameter_declaration(parser_t &p)
 
     const declarator_t d = declarator(p, spec.type, true);
 
+    const token_t *marking = attribute_specifier_list(p);
+    if (spec.marking)
+        marking = spec.marking;
+
     if (is< void_t >(d.type))
         fail(start, "'void' must be the only parameter");
 
@@ -2797,11 +3062,13 @@ parameter_declaration(parser_t &p)
         t = make_pointer(*as< array_t >(t).element);
 
     return parameter_t { std::move(t), &start, d.name,
-                         declared(spec, tok_t::kw_register) };
+                         declared(spec, tok_t::kw_register), marking };
 }
 
 // Specifiers and an abstract declarator of '*'s, each perhaps const,
-// 6.7.8p1; the array and function abstract declarators are not yet.
+// 6.7.8p1; the array and function abstract declarators are not yet.  A
+// marking attribute would make the type one rcc does not use, which no
+// name stands for here, so it is not yet.
 type_t
 type_name(parser_t &p)
 {
@@ -2813,6 +3080,9 @@ type_name(parser_t &p)
              quoted(spec.storage_class->text) + " in a type name");
 
     refuse_function_specifier(spec);
+
+    if (spec.marking)
+        not_yet(*spec.marking, attribute_words(*spec.marking));
 
     const type_t t = pointer(p, spec.type);
 
@@ -2826,7 +3096,8 @@ type_name(parser_t &p)
 }
 
 // A block-scope declaration, perhaps of a tag or enumeration constants
-// alone, which makes no statement.  extern in a block is not yet.
+// alone, which makes no statement.  extern and static in a block are
+// not yet, static inline among them.
 std::vector< stmt_t >
 declaration(parser_t &p)
 {
@@ -2834,7 +3105,7 @@ declaration(parser_t &p)
 
     const specifiers_t spec = declaration_specifiers(p);
 
-    if (declared(spec, tok_t::kw_extern))
+    if (declared(spec, tok_t::kw_extern) || declared(spec, tok_t::kw_static))
         not_yet(*spec.storage_class,
                 "storage class " + quoted(spec.storage_class->text));
 
@@ -2855,7 +3126,7 @@ init_declarator_list(parser_t &p, const specifiers_t &spec)
     do {
         if (declared(spec, tok_t::kw_typedef)) {
             refuse_function_specifier(spec);
-            type_definition(p, declarator(p, spec.type));
+            type_definition(p, spec, declarator(p, spec.type));
         }
         else
             decls.push_back(init_declarator(p, spec));
@@ -2887,7 +3158,7 @@ init_declarator(parser_t &p, const specifiers_t &spec)
 
     refuse_function_specifier(spec);
 
-    const declarator_tail_t tail = declarator_tail(p);
+    const declarator_tail_t tail = declarator_tail(p, spec);
     if (tail.asm_keyword)
         not_yet(*tail.asm_keyword,
                 quoted(tail.asm_keyword->text) + " on a local variable");

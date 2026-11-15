@@ -1,0 +1,2 @@
+tests/error/int128-local.c:12:14: error: not yet: integer type 'unsigned __int128'
+status 1

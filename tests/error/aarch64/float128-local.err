@@ -1,0 +1,2 @@
+tests/error/float128-local.c:11:19: error: not yet: floating type '__float128'
+status 1

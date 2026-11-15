@@ -1,0 +1,2 @@
+tests/error/static-definition.c:3:1: error: not yet: storage class 'static'
+status 1

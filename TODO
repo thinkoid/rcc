@@ -296,18 +296,19 @@ program exits above 128.
 
 Check: the =g9-null-load= row reads =SEGV= and passes.
 
-** TODO A signal death leaves a core file in /tmp
+** TODO A signal death leaves a core file
 
 The oracle runs each program with the caller's core limit. Where it is
-unlimited and =core_pattern= is =/tmp/core.%e.%p.%s=, as on this
-machine, every run of =g9-null-load= under rcc leaves a core of about
-290 KB in =/tmp=, and =timeout= says "the monitored command dumped
-core" in the log.
+unlimited, every run of =g9-null-load= under rcc leaves a core file
+where =core_pattern= says: in the tree's root where the pattern is
+=core=, as =core.<pid>=, and in =/tmp= where it is
+=/tmp/core.%e.%p.%s=, about 290 KB each; and =timeout= says "the
+monitored command dumped core" in the log.
 
 Fix: =ulimit -c 0= in the script before the runs.
 
-Check: =make test= leaves no new =/tmp/core.*=, and no =core.*= in
-the tree's root where =core_pattern= is =core=.
+Check: =make test= leaves no new =core.*= in the tree's root and none
+in =/tmp=.
 
 ** TODO A G14 corpus program needs a non-constant condition
 
@@ -484,61 +485,26 @@ type itself stays unqualified.
 Check: the three programs above fail with a diagnostic; =const= in
 every other position still parses.
 
-** TODO On x86-64 =stdio.h= does not parse
-
-=tests/corpus/header-stdio.c= fails on an x86-64 machine: its
-=stdio.h= includes =bits/floatn.h=, which declares ~typedef _Complex
-float __cfloat128 __attribute__ ((__mode__ (__TC__)));~ for a
-compiler that reports itself older than GCC 7, as =clang= does, and
-the parser stops with "not yet: type specifier '_Complex'". The next
-line it would stop at is ~typedef __float128 _Float128;~, where
-=__float128= is taken for the declarator's name. =stdlib.h= and
-=math.h= stop at the same line. The aarch64 glibc has no such
-typedef, and the x86-64 pin of =header-stdio= was made on an aarch64
-machine, with its headers (the entry on the other target's headers).
-
-Fix: by the rule for a system header. =_Complex= among the
-specifiers of a floating type, and =__float128=, name types rcc
-declares and does not use.
-
-Check: =make test= passes on an x86-64 machine, the =header-stdio=
-row 0 0 with its pin unchanged.
-
-** TODO =stdlib.h=, =sys/types.h= and =signal.h= do not parse
+** TODO =stdlib.h= and =signal.h= do not parse
 
 rcc reads the system's headers as they are: it conforms with what a
 correct program depends on, the size and layout of a type and the
 symbol a name links to, and leaves hints and warnings for later; a
 declaration it cannot honour is accepted, and its use is refused
-(=shape.md= chapter 5). =stdio.h=, =string.h=, =ctype.h=,
-=unistd.h=, =stdint.h=, =setjmp.h=, =sys/stat.h=, =stddef.h=,
-=errno.h=, =limits.h=, =assert.h=, =time.h=, =fcntl.h=, =stdarg.h=
-and =stdbool.h= parse on aarch64. Three of the common ones stop:
+(=shape.md= chapter 5). Of 58 headers of the C library and of POSIX,
+45 parse on both targets. Ten stop at a function-pointer declarator,
+"not yet: parenthesized declarator":
 
-- =stdlib.h= and =sys/types.h= at =bits/byteswap.h=, ~static __inline
-  __uint16_t __bswap_16 (__uint16_t __bsx) { ... }~: "not yet:
-  storage class 'static'". A function the header defines and the
-  program may never call.
-- =stdlib.h= would stop next at a function-pointer declarator, the
-  parameter of =atexit= and the typedef =__compar_fn_t=; =signal.h=
-  stops there first, at ~typedef void (*__sighandler_t) (int);~: "not
-  yet: parenthesized declarator".
-- =signal.h= would stop next at ~typedef __signed__ __int128 __s128
-  __attribute__((aligned(16)));~, where =__int128= is taken for the
-  declarator's name. =asm=, =typeof=, =__typeof__=, =__alignof__=,
-  =__auto_type= and the =__builtin_= functions are identifiers too.
-- An attribute among the declaration specifiers or on a parameter is
-  an error. On aarch64 =math.h= stops there, at ~typedef __attribute__
-  ((__neon_vector_type__ (4))) float __f32x4_t;~ of
-  =bits/math-vector.h=.
+- =signal.h= and =sys/wait.h= at ~typedef void (*__sighandler_t)
+  (int);~;
+- =stdlib.h= at the parameter of =atexit=;
+- =threads.h=, =dirent.h= and =pthread.h= at theirs;
+- =sys/socket.h=, =netinet/in.h=, =arpa/inet.h= and =netdb.h= at
+  ~typedef void (*__kernel_sighandler_t)(int);~ of
+  =linux/posix_types.h=.
 
-Fix: in three steps.
+Fix: in two steps.
 
-- A =static= function with a body in a header is accepted, its body
-  skipped to the closing brace, and a call of it refused, until
-  =static= is in the subset. =__int128= is a type rcc declares and
-  does not use. An attribute among the specifiers is read as one
-  after the declarator is.
 - A function-pointer declarator declares a pointer to a function,
   which is passed, stored and compared as any pointer; with it the
   parameter of function type, adjusted to the pointer, and the type
@@ -547,14 +513,53 @@ Fix: in three steps.
   expression that is a pointer to a function: nothing in the subset
   stands in the way of either, and =qsort=, =atexit= and =signal= are
   of no use without them. Both generators gain two rows, the address
-  of a function and the call through a register.
+  of a function and the call through a pointer.
 
 Check: a program that includes =stdlib.h= and calls =atoi= compiles,
 links and runs on both targets; one that includes =signal.h= and
-calls =raise= does; a call of =__bswap_16= is refused by name. Then
-one that sorts with =qsort= and its own comparison, and one that
-installs a handler with =signal= and raises its signal, run on both
-targets, and a probe sets calls through pointers against =clang='s.
+calls =raise= does. Then one that sorts with =qsort= and its own
+comparison, and one that installs a handler with =signal= and raises
+its signal, run on both targets, and a probe sets calls through
+pointers against =clang='s.
+
+** TODO =stdatomic.h= does not parse
+
+=clang='s =stdatomic.h= stops at ~typedef _Atomic(_Bool)
+atomic_bool;~, "not yet: type specifier '_Atomic'". Three things
+stand between the header and its end: the atomic type specifier
+=_Atomic ( type-name )=; =_Bool=, which is not yet a type; and
+~volatile atomic_flag *~ in a parameter. =volatile= and =_Atomic= as
+qualifiers are taken after =typedef= only, where the typedef names a
+type rcc declares and does not use, as =pthread_spinlock_t= is; a
+qualified type written out anywhere else is not yet. Written out, each
+occurrence would be a type of its own, so two declarations of one
+function would conflict, and a pointer to =int= would not convert to
+a pointer to =volatile int=, which is valid.
+
+Fix: decide what =volatile= is in rcc. c1 writes every access it
+meets, an unused one included (=shape.md= chapter 11), so the
+qualifier may ask for nothing more and be dropped as =const= is; or
+it waits for qualifiers in the type model. =_Atomic= and =_Bool= are
+decided with it or after it.
+
+Check: a program that includes =stdatomic.h= compiles, and the
+documents say what a =volatile= object's access is.
+
+** TODO A pointer to a type rcc does not honour takes no pointer to the type behind it
+
+~typedef volatile int spin_t; void f(spin_t *); void g(int *p) {
+f(p); }~ fails with "incompatible pointer types"; so does the same
+program with ~typedef int word_t __attribute__ ((mode (word)));~. The
+first is valid C, a conversion that adds a qualifier, and the error
+calls it invalid. A typedef through a qualifier or a marking
+attribute names a type of an identity of its own, which keeps nothing
+of the type it was made from.
+
+Fix: the refusal says "not yet" and names the typedef's words, where
+one of the two pointees is such a type; or the type keeps what it was
+made from.
+
+Check: the first program is refused as not yet, or compiles.
 
 ** TODO A typedef through a marking attribute cannot be written twice
 
@@ -565,8 +570,12 @@ type, and these two are. Each declaration through an attribute rcc
 does not honour makes a type of an identity of its own, so the
 second is never the first.
 
-Fix: a typedef declared again through the same marking attribute on
-the same type takes the earlier declaration's type.
+A typedef through =volatile= or =_Atomic= written twice fails
+the same way.
+
+Fix: a typedef declared again through the same marking attribute, or
+the same qualifier, on the same type takes the earlier declaration's
+type.
 
 Check: the program above compiles; with =mode (byte)= in the second
 it still fails.
@@ -601,6 +610,65 @@ another machine when the program includes one; or take a sysroot.
 
 Check: the documents and the driver agree on what =-target= does to
 =#include <...>=.
+
+** TODO A definition that is =_Noreturn inline= is compiled
+
+~_Noreturn inline void f(void) { for (;;) { } }~ compiles as an
+external definition, with =.globl f=. ~inline _Noreturn~ on the same
+definition is "not yet: 'inline' on a function definition", as
+=inline= alone is. =external_declaration()= asks whether the first
+function specifier written is =inline=, and here it is =_Noreturn=.
+
+Fix: the test is whether =inline= was written among the specifiers,
+which =declaration_specifiers()= records since the =static inline=
+definitions of the headers.
+
+Check: a program of =tests/error= with the definition above, pinned
+"not yet: 'inline' on a function definition".
+
+** TODO A block's declaration that begins with an attribute is read as an expression
+
+~int main(void) { __attribute__ ((unused)) int x = 1; return x; }~
+fails with "expected expression" at the attribute. At file scope the
+same declaration is read. =is_declaration_start()= does not take the
+attribute keyword, so a block reads the tokens as a statement.
+
+Fix: =is_declaration_start()= takes the attribute keyword; the
+attribute is then read among the specifiers, dropped or not yet on a
+local by its kind.
+
+Check: the program above compiles and returns 1; with ~__attribute__
+((aligned (16)))~ it is refused as not yet, by the attribute's name.
+
+** TODO A qualifier inside a parameter's array brackets is an error
+
+=regex.h= stops at ~regmatch_t __pmatch[__restrict __nmatch]~ of
+=regexec=, "expected expression": a parameter's array declarator may
+hold =static= and type qualifiers before its size, which say
+something of the pointer the parameter is adjusted to. The size there
+names an earlier parameter, which the entry on a parameter's array
+size is about.
+
+Fix: the qualifiers and =static= inside a parameter's brackets are
+read and dropped, =restrict= checked as it is on a pointer.
+
+Check: with the entry on a parameter's array size fixed too, a
+program that includes =regex.h= compiles.
+
+** TODO A typedef of function type keeps no marking attribute of its parameters
+
+A marking attribute on a parameter marks the function a declaration
+declares, so that a call is refused. On ~typedef int f_t(int x
+__attribute__ ((mode (word))));~ nothing is recorded: the typedef
+names the function type and the attribute is lost. No program shows
+it while a declaration through such a typedef is not yet.
+
+Fix: with declarations through a typedef of function type, the
+typedef's type carries the marking, or the typedef is refused where
+it is declared.
+
+Check: a function declared through the typedef above is refused
+where it is called.
 
 ** TODO A typedef for =void= is not the empty parameter list
 
@@ -909,7 +977,9 @@ Check: a program of =tests/error= with ~1'000~ and its pin.
 =float= and =double= are "not yet: floating type", and =shape.md=
 chapter 11 lists floating point among what is not yet. A valid
 constant is called an invalid integer, and the three spellings of
-one thing read as two different errors.
+one thing read as two different errors. =clang='s =tgmath.h= stops
+there, at a =0.F= inside the body of a =static= function: the lexer
+reads the body before the parser skips it.
 
 Fix: =number()= and =punctuator()= say "not yet: floating constant"
 for a fraction or an exponent.

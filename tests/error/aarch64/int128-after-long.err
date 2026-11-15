@@ -1,0 +1,2 @@
+tests/error/int128-after-long.c:6:14: error: cannot combine '__int128' with the type specifiers before it
+status 1

@@ -1,0 +1,2 @@
+tests/error/static-inline-call.c:13:16: error: not yet: static function 'swap'
+status 1

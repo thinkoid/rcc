@@ -1,0 +1,2 @@
+tests/error/attribute-parameter-definition.c:4:1: error: not yet: attribute 'aligned'
+status 1

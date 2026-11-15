@@ -53,11 +53,13 @@ enum class storage_t {
 };
 
 // A function or a global may carry two more facts from GNU C, said
-// after its declarator.  asm_name is the name __asm__ gives the symbol
+// in its declarations.  asm_name is the name __asm__ gives the symbol
 // in the assembly, empty when the symbol is named as it is in C.
 // marking is the words a use of the symbol is refused with, when an
 // attribute changes or may change what the program depends on, as weak
-// or alias change the symbol a name links to; empty when none does.
+// or alias change the symbol a name links to, or when the symbol is a
+// static inline function, whose definition rcc does not compile; empty
+// when none of these holds.
 struct symbol_t
 {
     std::string name;

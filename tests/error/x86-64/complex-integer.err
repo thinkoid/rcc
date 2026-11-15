@@ -1,0 +1,2 @@
+tests/error/complex-integer.c:6:9: error: not yet: type specifier '_Complex'
+status 1
