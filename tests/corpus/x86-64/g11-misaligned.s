@@ -16,13 +16,12 @@ main:
 	movl	-16(%rbp), %eax
 	cmpl	$8, %eax
 	jge	.Lmain.4
-	leaq	-12(%rbp), %rax
+	movl	-16(%rbp), %eax
+	movslq	%eax, %rax
 	movl	-16(%rbp), %ecx
-	movslq	%ecx, %rcx
-	movl	-16(%rbp), %edx
-	movl	-4(%rbp), %esi
-	addl	%esi, %edx
-	movb	%dl, (%rax,%rcx,1)
+	movl	-4(%rbp), %edx
+	addl	%edx, %ecx
+	movb	%cl, -12(%rbp,%rax,1)
 .Lmain.3:
 	addl	$1, -16(%rbp)
 	jmp	.Lmain.2

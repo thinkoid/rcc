@@ -10,10 +10,9 @@ gep:
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register %rbp
 	movl	%edi, -4(%rbp)
-	leaq	-20(%rbp), %rax
-	movl	-4(%rbp), %ecx
-	movslq	%ecx, %rcx
-	leaq	(%rax,%rcx,4), %rax
+	movl	-4(%rbp), %eax
+	movslq	%eax, %rax
+	leaq	-20(%rbp,%rax,4), %rax
 	movq	%rax, -32(%rbp)
 	movq	-32(%rbp), %rax
 	jmp	.Lgep.1

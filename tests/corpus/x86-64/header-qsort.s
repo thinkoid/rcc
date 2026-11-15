@@ -70,15 +70,13 @@ main:
 	movl	-28(%rbp), %eax
 	cmpl	$6, %eax
 	jge	.Lmain.4
-	leaq	-24(%rbp), %rax
+	movl	-28(%rbp), %eax
+	subl	$1, %eax
+	movslq	%eax, %rax
+	movl	-24(%rbp,%rax,4), %eax
 	movl	-28(%rbp), %ecx
-	subl	$1, %ecx
 	movslq	%ecx, %rcx
-	movl	(%rax,%rcx,4), %eax
-	leaq	-24(%rbp), %rcx
-	movl	-28(%rbp), %edx
-	movslq	%edx, %rdx
-	movl	(%rcx,%rdx,4), %ecx
+	movl	-24(%rbp,%rcx,4), %ecx
 	cmpl	%ecx, %eax
 	jle	.Lmain.5
 	movl	$1, %eax

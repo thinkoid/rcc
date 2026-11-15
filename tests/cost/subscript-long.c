@@ -4,9 +4,9 @@
    the operand reading either.
 
    On x86-64 the listing must show, for the store and again for the
-   load, the array's address taken with leaq -28(%rbp), %rax and i
-   loaded with movq -8(%rbp), %rcx and no movslq; then the store
-   movl %edx, (%rax,%rcx,4) and the load movl (%rax,%rcx,4), %eax.
+   load, i loaded with movq -8(%rbp), %rax and no movslq, and no
+   instruction for the array's address; then the store
+   movl %ecx, -28(%rbp,%rax,4) and the load movl -28(%rbp,%rax,4), %eax.
 
    On aarch64 the listing must show, for the store and again for the
    load, the array's address taken with add x0, x29, #28 and i loaded

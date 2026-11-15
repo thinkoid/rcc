@@ -19,10 +19,9 @@ main:
 	movl	-8(%rbp), %eax
 	cmpl	$10, %eax
 	jge	.Lmain.4
-	leaq	-56(%rbp), %rax
-	movl	-8(%rbp), %ecx
-	movslq	%ecx, %rcx
-	movl	$0, (%rax,%rcx,4)
+	movl	-8(%rbp), %eax
+	movslq	%eax, %rax
+	movl	$0, -56(%rbp,%rax,4)
 .Lmain.3:
 	addl	$1, -8(%rbp)
 	jmp	.Lmain.2
@@ -92,11 +91,10 @@ main:
 .Lmain.15:
 .Lmain.16:
 .Lmain.17:
-	leaq	-56(%rbp), %rax
-	movl	-4(%rbp), %ecx
-	subl	$48, %ecx
-	movslq	%ecx, %rcx
-	addl	$1, (%rax,%rcx,4)
+	movl	-4(%rbp), %eax
+	subl	$48, %eax
+	movslq	%eax, %rax
+	addl	$1, -56(%rbp,%rax,4)
 	jmp	.Lmain.22
 .Lmain.18:
 .Lmain.19:
@@ -124,10 +122,9 @@ main:
 	jge	.Lmain.29
 	leaq	.Ls1(%rip), %rax
 	movq	%rax, -72(%rbp)
-	leaq	-56(%rbp), %rax
-	movl	-8(%rbp), %ecx
-	movslq	%ecx, %rcx
-	movl	(%rax,%rcx,4), %eax
+	movl	-8(%rbp), %eax
+	movslq	%eax, %rax
+	movl	-56(%rbp,%rax,4), %eax
 	movl	%eax, -76(%rbp)
 	movq	-72(%rbp), %rdi
 	movl	-76(%rbp), %esi

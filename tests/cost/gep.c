@@ -2,11 +2,11 @@
    one instruction forms the sum, the index scaled by 4 within it.
    a + i is stored to a pointer variable and feeds no load.
 
-   On x86-64 the listing must show the array's address taken with
-   leaq -20(%rbp), %rax, i loaded and widened with movslq %ecx, %rcx,
-   the sum formed by the lea of the addressing form,
-   leaq (%rax,%rcx,4), %rax, and the sum stored to p's slot with
-   movq.
+   On x86-64 the listing must show i loaded and widened with
+   movslq %eax, %rax and no instruction for the array's address, the
+   sum formed by the one lea of the addressing form with the slot as
+   its displacement, leaq -20(%rbp,%rax,4), %rax, and the sum stored to
+   p's slot with movq.
 
    On aarch64 the listing must show the array's address taken with
    add x0, x29, #20, i loaded with ldr w1 and not widened, the sum

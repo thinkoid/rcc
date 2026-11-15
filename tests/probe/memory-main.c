@@ -264,6 +264,15 @@ TYPES(DECLARE_STORE_ALL)
 
 TYPES(DECLARE_FOLDS)
 
+#define DECLARE_INDEXED(T, N)                                           \
+    BOTH(long, indexed_##N, (T, int))                                   \
+    BOTH(long, indexed_value_##N, (T, int))                             \
+    BOTH(long, indexed_held_##N, (T, int))                              \
+    BOTH(long, indexed_matrix_##N, (long, int))                         \
+    BOTH(long, indexed_distance_##N, (int))
+
+TYPES(DECLARE_INDEXED)
+
 BOTH(long, text_pass, (void))
 BOTH(long, text_two, (void))
 BOTH(long, text_escapes, (void))
@@ -287,6 +296,7 @@ BOTH(long, fold_pointers, (long *, long *, long))
 BOTH(int, text_elem, (void))
 BOTH(long, text_addr, (void))
 BOTH(long, text_beyond, (void))
+BOTH(long, indexed_pointers, (long *, long *, long, int))
 
 /* The loads and stores, the pointers to pointers and the steps of one
    type, over every value and every offset: P(T) is a pointer the main
@@ -507,6 +517,28 @@ TYPES(TEST_ADDRESS)
 
 TYPES(TEST_FOLDS)
 
+/* an element of a local array by a variable index, the slot and the
+   index one operand, of one type over every value and every index */
+#define TEST_INDEXED(T, N)                                              \
+    static void test_indexed_##N(void)                                  \
+    {                                                                   \
+        for (int i = 0; i < COUNT; ++i) {                               \
+            const long x = values[i];                                   \
+                                                                        \
+            for (int k = 0; k < 8; ++k) {                               \
+                CHECK(indexed_##N, x, k, ((T) x, k));                   \
+                CHECK(indexed_value_##N, x, k, ((T) x, k));             \
+                CHECK(indexed_held_##N, x, k, ((T) x, k));              \
+                CHECK(indexed_matrix_##N, x, k, (x, k));                \
+            }                                                           \
+        }                                                               \
+                                                                        \
+        for (int k = 0; k < 8; ++k)                                     \
+            CHECK(indexed_distance_##N, 0, k, (k));                     \
+    }
+
+TYPES(TEST_INDEXED)
+
 /* the literals, the frames of one function each, and depth */
 static void
 test_rest(void)
@@ -558,6 +590,8 @@ test_rest(void)
             MCHECK(around_store, x, y, at, ((char *) (B + at), v[2]));
             MCHECK(fold_pointers, x, y, at,
                    ((long *) (B + at), (long *) (B + at + 8), y));
+            MCHECK(indexed_pointers, x, y, at,
+                   ((long *) (B + at), (long *) (B + at + 8), y, i & 3));
         }
     }
 }
@@ -570,7 +604,7 @@ main(void)
 
 #define RUN(T, N)                                                       \
     test_access_##N(); test_operators_##N(); test_address_##N();        \
-    test_folds_##N();
+    test_folds_##N(); test_indexed_##N();
     TYPES(RUN)
 
     test_rest();

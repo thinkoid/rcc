@@ -27,8 +27,8 @@ does what the source says, and only that.
   a slot, with a warning. The keyword is the allocation, as it was on
   the PDP-11.
 - Chapter 4 holds the measurement under c1. On x86-64 the plain
-  source runs 2.25 to 8.06 times as long under rcc as under `clang
-  -O2`, and the source tuned by hand for rcc 1.62 to 2.29 times. As
+  source runs 2.18 to 8.12 times as long under rcc as under `clang
+  -O2`, and the source tuned by hand for rcc 1.39 to 2.77 times. As
   first written, matmul's tuned `main` held ten `register` variables
   live, put five in slots and ran 7.54 times as long. Under the LLVM
   pipeline the two ranges were 1.49 to 8.43 and 1.33 to 4.40. A
@@ -88,7 +88,9 @@ What the compiler may do:
   `add`; a 32-bit signed division is `cltd; idivl`; a comparison is
   `cmp` and a `setcc` for a value, `cmp` and a conditional jump for a
   condition; a subscript is the access's scaled-index address,
-  `(%rax,%rcx,4)`. An object reached by its name plus a constant is
+  `(%rax,%rcx,4)`, and on a local array the slot is its displacement
+  off `rbp`, `-24(%rbp,%rax,4)`, with no instruction forming the
+  array's address. An object reached by its name plus a constant is
   one operand, the constant in its displacement, `movl -20(%rbp),
   %eax` for `a[3]` on a local `int a[8]` and `movl table+12(%rip),
   %eax` for `table[3]` on a global the file defines, as the Seventh
@@ -198,11 +200,11 @@ yet.
 | a loop-invariant expression | computed every iteration: `a / b` in the body is its two loads and its `idivl`, and `12 * 34` its `addl $408` | `invariant` |
 | an expression written twice | computed twice: `a * b + a * b` is two `imull`, and `12 * 34 + 12 * 34` two `addl $408` | `twice` |
 | more held values than nine registers | the oldest held value spilled, `movq %rax, -32(%rbp)`, and reloaded when it is consumed, `movq -32(%rbp), %rcx` | `spill`, `spill-fifteen` |
-| `p + n`, `m[i]` as a pointer | the index widened to 64 bits, `movslq %ecx, %rcx`, then `leaq (%rax,%rcx,4), %rax` for a size of 2, 4 or 8, and `imulq $12, %rcx, %rcx; addq %rcx, %rax` for a size that is not a scale | `gep`, `gep-stride` |
+| `p + n`, `m[i]` as a pointer | the index widened to 64 bits, `movslq %ecx, %rcx`, then `leaq (%rax,%rcx,4), %rax` for a size of 2, 4 or 8, and `imulq $12, %rcx, %rcx; addq %rcx, %rax` for a size that is not a scale; on a local array of a size 1, 2, 4 or 8 the one `leaq -20(%rbp,%rax,4), %rax` after `movslq %eax, %rax`, no address formed first | `gep`, `gep-stride` |
 | `p - n` | the index widened, `imulq $4, %rcx, %rcx; subq %rcx, %rax`; for a size of 1, the `sub` alone | |
 | `++p`, `--p`, `p += 2`, `p -= 2` | the size times the constant, an immediate: as a statement, on the pointer's slot, `addq $4, -8(%rbp)`, `subq $8, -8(%rbp)`; for its value, between the load and the store, `subq $8, %rax` | `ptr-step` |
-| `a[i]`, `p[i]` | the access's own address: the array's `leaq -24(%rbp), %rax`, the index widened, `movslq %ecx, %rcx`, then `movl (%rax,%rcx,4), %eax` or `movl %edx, (%rax,%rcx,4)`; a constant index into a pointer is the displacement, `movsbl 1(%rax), %eax`, and into an array reached by its name the one access at the slot plus the offset, `movl -20(%rbp), %eax` for `m[0][1]`, no `leaq` first; a store takes that operand too, `movl $8, -16(%rbp)` for `r[1]` in `typedef` | `subscript`, `string`, `subscript-row`, `typedef` |
-| `a[i]` by a `long` | the index loaded whole, `movq -8(%rbp), %rcx`, and not widened; then `movl %edx, (%rax,%rcx,4)` or `movl (%rax,%rcx,4), %eax` | `subscript-long` |
+| `a[i]`, `p[i]` | the access's own address: on a local array the index widened, `movslq %eax, %rax`, then the access with the slot as the displacement, `movl -24(%rbp,%rax,4), %eax` or `movl %ecx, -24(%rbp,%rax,4)`, no `leaq` first; through a pointer the pointer loaded, the index widened, `movslq %ecx, %rcx`, then `movl (%rax,%rcx,4), %eax`; a constant index into a pointer is the displacement, `movsbl 1(%rax), %eax`, and into an array reached by its name the one access at the slot plus the offset, `movl -20(%rbp), %eax` for `m[0][1]`, no `leaq` first; a store takes that operand too, `movl $8, -16(%rbp)` for `r[1]` in `typedef` | `subscript`, `string`, `subscript-row`, `typedef` |
+| `a[i]` by a `long` | the index loaded whole, `movq -8(%rbp), %rax`, and not widened; then `movl %ecx, -28(%rbp,%rax,4)` or `movl -28(%rbp,%rax,4), %eax` | `subscript-long` |
 | `&p[0]`, `&p[3]`, `&p[i]` | the address the access would read, and no access: `&p[0]` is `p` and no instruction, the bare base as `*p`'s is; `&p[3]` and `&p[i]` one `lea` of the addressing form, `leaq 12(%rax), %rax`, and `leaq (%rax,%rcx,4), %rax` after `movslq %ecx, %rcx` | `subscript-address` |
 | `m[0]`, `m[0][1]`, `m[1]` on `int m[2][3]` | a row decays to its address, the address of a subscript, which on a local array is its slot plus the row's offset whatever the row's size: `m[0]` is the array's `leaq -24(%rbp), %rax` and no instruction after it; `m[0][1]` the one access `movl -20(%rbp), %eax`; `m[1]` the one `leaq -12(%rbp), %rax` | `subscript-row` |
 | `p - q` | `subq %rcx, %rax`; for a size other than 1, `movq $4, %rcx; cqto; idivq %rcx`, a division even for a size of 4, since G6 promises any two pointers and a shift would floor where the division truncates; for a size of 1 the `sub` alone, so `(char *) p - (char *) q` is the cheap spelling | `ptr-diff`, `ptr-diff-char` |
@@ -216,7 +218,7 @@ yet.
 | `f`, `&f` as a value | of a function the file defines, PC-relative, `leaq defined(%rip), %rax`; of one it only declares, from the GOT, `movq declared@GOTPCREL(%rip), %rax`; one instruction either way | `function-address` |
 | a global the file defines | the object PC-relative, its slot's rows with `counter(%rip)` for `-8(%rbp)`: the load `movl counter(%rip), %eax`, the store `movl %eax, counter(%rip)`, the memory forms `addl %eax, counter(%rip)` and `addl $1, counter(%rip)`, the address `leaq counter(%rip), %rax`; one instruction an access | `global` |
 | a global the file only declares | its address loaded from the GOT at each access, `movq counter@GOTPCREL(%rip), %rax`, then the rows of `*p`: `movl (%rax), %eax`, `movl %ecx, (%rax)`, `addl $1, (%rax)`; `counter = counter + 1` loads the address twice, the store's first; two instructions an access | `global-extern` |
-| `a[i]`, `a[3]` on a global array | by a variable, the address formed, `leaq table(%rip), %rax` for one the file defines and `movq other@GOTPCREL(%rip), %rax` for one it only declares, then the access of a local array's subscript, `movl (%rax,%rcx,4), %eax` after `movslq %ecx, %rcx`; by a constant, on one the file defines, the one access at the label plus the offset, `movl table+12(%rip), %eax`, and on one it only declares the GOT's load and `movl 12(%rax), %eax` | `global-array` |
+| `a[i]`, `a[3]` on a global array | by a variable, the address formed, `leaq table(%rip), %rax` for one the file defines and `movq other@GOTPCREL(%rip), %rax` for one it only declares, then the access through it, `movl (%rax,%rcx,4), %eax` after `movslq %ecx, %rcx`, since a PC-relative operand takes no index; by a constant, on one the file defines, the one access at the label plus the offset, `movl table+12(%rip), %eax`, and on one it only declares the GOT's load and `movl 12(%rax), %eax` | `global-array` |
 | the data of a global | after the last function, the objects with an initializer in `.data` and the others in `.bss`, each under `.globl`, `.type n, @object`, `.size n, 4` and `.p2align 2` above an alignment of 1, then `.byte 120`, `.short -3`, `.long 42`, `.quad 4886718345` or `.zero 12`; `int zero = 0;` is `.long 0` in `.data`; an array of 16 bytes or more is aligned to 16, `.p2align 4` for `long pair[2]`, which the psABI asks of a global array; nothing for an object only declared | `global-data` |
 | an address constant as a global's initializer | one `.quad` in `.data`, the symbol and its offset in bytes, the constant times the pointee's size: `.quad n` for `&n`, `.quad a+12` for `&a[3]`, `.quad a+8` for `a + 2`, `.quad m+24` for `&m[1][2]`, `.quad on_signal`, `.quad stdout` and `.quad putchar` for objects and functions the file only declares, `.quad .Ls1+1` for `"abc" + 1`, its literal numbered after the functions'; `.quad 4096` for `(int *) 4096` and `.quad n` for `(long) &n`; the linker or the loader fills each in | `global-address` |
 | a string literal as the initializer of an array of `char` | the array's own bytes under its own label, in the escapes of the literals' block: `.string "abc"` for `char s[] = "abc"`, which is 4 bytes, `.string "abc"` and `.zero 4` for `char s[8]`, `.ascii "abc"` for `char s[3]`, which the literal fills; no alignment, but `.p2align 4` for an array of 16 bytes or more; beside them, `char *p = "abc"` is two objects, the literal `.Ls0` and `.quad .Ls0` | `global-string` |
@@ -403,31 +405,32 @@ times on each machine, and each table is the run whose cells sum
 least.
 
 The x86-64 table was measured on an x86-64 desktop, Zen 2, with clang
-23.1.4, on 2026-11-13, in user plus system time, with the cpufreq
-governor `performance` and the frequency boost on, the machine's
-ordinary state. c1 aligns every loop head to 32 bytes on x86-64
+23.1.4, on 2026-11-15, in user plus system time, with the cpufreq
+governor `schedutil` and the frequency boost on, the load average
+under 0.2 when the first run began. c1 aligns every loop head to 32 bytes on x86-64
 (4.2), so the table is measured at that layout: a hot loop's time
 still moves with the code before it, but only where no loop head
 intervenes.
 
 | program | `clang -O2 <name>.c` | `rcc <name>.c` | `rcc <name>-tuned.c` | `clang -O2 <name>-tuned.c` |
 |---|---|---|---|---|
-| collatz | 287 (1.00) | 2255 (7.86) | 474 (1.65) | 287 (1.00) |
-| fib | 262 (1.00) | 589 (2.25) | 599 (2.29) | 260 (0.99) |
-| matmul | 283 (1.00) | 2281 (8.06) | 593 (2.10) | 275 (0.97) |
-| sieve | 292 (1.00) | 1987 (6.80) | 474 (1.62) | 291 (1.00) |
-| sort | 274 (1.00) | 2191 (8.00) | 507 (1.85) | 279 (1.02) |
-| strings | 276 (1.00) | 2090 (7.57) | 554 (2.01) | 272 (0.99) |
+| collatz | 292 (1.00) | 2314 (7.92) | 471 (1.61) | 287 (0.98) |
+| fib | 266 (1.00) | 580 (2.18) | 599 (2.25) | 265 (1.00) |
+| matmul | 287 (1.00) | 2280 (7.94) | 794 (2.77) | 274 (0.95) |
+| sieve | 301 (1.00) | 2039 (6.77) | 417 (1.39) | 295 (0.98) |
+| sort | 272 (1.00) | 2206 (8.11) | 501 (1.84) | 278 (1.02) |
+| strings | 273 (1.00) | 2217 (8.12) | 563 (2.06) | 270 (0.99) |
 
-The table is the method's, and two of its cells lie more than 2%
-under the same cell of the other two runs: `clang -O2 fib-tuned.c`,
-260 ms against 275 and 277, and `rcc sort.c`, 2191 against 2305 and
-2237. At the medians of the three runs the two ratios are 1.05 and
-8.38.
+The table is the method's, and three of its cells lie more than 2%
+from the same cell of both other runs: `rcc sieve-tuned.c`, 417 ms
+against 452 and 493, and `clang -O2 strings-tuned.c`, 270 against 280
+and 278, lie under them, and `rcc strings.c`, 2217 against 2132 and
+2116, lies over them. At the medians of the three runs the three
+ratios are 1.50, 1.01 and 7.72.
 
-The plain source under rcc runs 2.25 to 8.06 times as long as under
-`clang -O2`. The tuned source under rcc runs 1.62 to 2.29 times as
-long. The tuned source under `clang -O2` runs 0.97 to 1.02 times as
+The plain source under rcc runs 2.18 to 8.12 times as long as under
+`clang -O2`. The tuned source under rcc runs 1.39 to 2.77 times as
+long. The tuned source under `clang -O2` runs 0.95 to 1.02 times as
 long as the plain one.
 
 **collatz.** The tuned source tests the parity with `& 1` and halves
@@ -446,8 +449,8 @@ collatz-tuned.c` has no stack operand: it compares x with 1, `cmpq
 $1, %r14`, tests the parity on a copy, `andq $1, %rax`, computes the
 odd step with `imulq %r14, %rax` and `addq $1, %rax` and the even one
 with `sarq $1, %rax`, moves the result back, `movq %rax, %r14`, and
-counts in its register, `addl $1, %r15d`. The ratio falls from 7.86 to
-1.65. The head of the step loop opens a 32-byte window, at 0x11e0. As
+counts in its register, `addl $1, %r15d`. The ratio falls from 7.92 to
+1.61. The head of the step loop opens a 32-byte window, at 0x11e0. As
 first written, with seven `register` variables live and x and steps in
 slots, the tuned ratio was 1.91, measured before c1 aligned its loop
 heads; the re-tuning then measured slower, and 4.2 tells why.
@@ -465,7 +468,7 @@ and b in `r13d`. `rcc fib-tuned.c` moves the parameter in once,
 result in `r12d` across the second call; but every call, the base
 case included, pushes the three registers and pops them in the
 epilogue, and each argument still goes through its slot, `movl %eax,
--28(%rbp); movl -28(%rbp), %edi`. The ratio rises from 2.25 to 2.29,
+-28(%rbp); movl -28(%rbp), %edi`. The ratio rises from 2.18 to 2.25,
 the only rise in the table. The work is the calls, and `clang -O2
 fib.c` keeps one of the two recursive calls and turns the other into
 a loop.
@@ -477,7 +480,8 @@ inner loop of `rcc matmul.c` has four `imull`, two for `i * n` and
 one for `k * n` in the three indices and one for the product, eleven
 loads of i, j, k and n from their slots, the step `addl $1,
 -110632(%rbp)` on k's slot, and the product added to c's element in
-place, `addl %edx, (%rax,%rcx,4)`. The tuned `main` holds five
+place, `addl %ecx, -110592(%rbp,%rax,4)`, the slot of c the
+displacement of the indexed operand. The tuned `main` holds five
 `register` variables live in the inner loop: n, aend, pa, pb and s
 take `ebx`, `r12`, `r13`, `r14` and `r15d`, and bend, i, arow, pc and
 bcol, declared without the keyword, take slots. Nothing warns. The
@@ -493,8 +497,9 @@ for its test, `movq -110688(%rbp), %rax; movq -110656(%rbp), %rcx`,
 copies arow and bcol from their slots into pa and pb, stores s
 through pc loaded from its slot, and steps pc and bcol in theirs,
 `addq $4, -110680(%rbp)` and `addq $4, -110688(%rbp)`. The ratio
-falls from 8.06 to 2.10. The head of the inner loop opens a 32-byte
-window, at 0x1380. As first written, with ten `register` variables
+falls from 7.94 to 2.77. The head of the inner loop opens a 32-byte
+window, at 0x1360, the second half of a 64-byte line, and the loop's
+34 bytes end in the next line: its `jmp` back is at 0x1380. As first written, with ten `register` variables
 live and pc, bcol, pa, pb and s in slots, the tuned ratio was 7.54.
 
 **sieve.** The tuned source walks a pointer in the marking loop and
@@ -511,7 +516,7 @@ takes `r14d` and the strike walker `r15`. Nothing warns. The strike
 loop of `rcc sieve-tuned.c` compares the walker with the end, `cmpq
 %r13, %r15; jae .Lmain.14`, stores the byte through it, `movb $0,
 (%r15)`, and adds i, widened by `movslq %r14d, %rax`, with no stack
-operand. The ratio falls from 6.80 to 1.62.
+operand. The ratio falls from 6.77 to 1.39.
 
 **sort.** The tuned source walks two pointers down for the shift,
 steps with `--q`, loads each element it compares once, and keeps the
@@ -530,7 +535,7 @@ jump code: each test is a compare and a jump to the loop's exit,
 `cmpq %rax, %r13; je .Lmain.12` and `cmpl %r12d, %eax; jle
 .Lmain.12`, four of the 11, where the LLVM pipeline set and widened a
 byte for each test and for the `&&` (`llvm.md` 5.5). The ratio falls
-from 8.00 to 1.85; with collatz's, from 7.86 to 1.65, it is one of the
+from 8.11 to 1.84; with collatz's, from 7.92 to 1.61, it is one of the
 two largest falls in the table.
 
 **strings.** The tuned source walks pointers in `length` and `copy`,
@@ -547,7 +552,7 @@ loads the source byte twice. The tuned `length` and `copy` hold two
 stack operand: `length` steps `r12` and returns one `subq %rbx,
 %rax`, and `copy` loads each byte once, `movsbl (%r12), %eax`, stores
 it, `movb %al, (%rbx)`, and tests it. The `idivl` of `n / 2` in
-`main` is a `sarl $1, %edx`. The ratio falls from 7.57 to 2.01.
+`main` is a `sarl $1, %ecx`. The ratio falls from 8.12 to 2.06.
 `clang -O2` turns `length` into a call of `strlen` in both its
 builds.
 
@@ -635,7 +640,7 @@ path that recurses is 25 instructions in both. Each argument still
 goes through a slot of its own, `str w0, [x29, #40]; ldr w0, [x29,
 #40]`. The tuned source runs longer than the plain one on both
 machines: the ratio rises from 1.61 to 2.41 on the M1 Max and from
-1.92 to 2.29 on the Oryon. On x86-64 it rises from 2.25 to 2.29.
+1.92 to 2.29 on the Oryon. On x86-64 it rises from 2.18 to 2.25.
 
 **matmul.** `matmul.c` declares its scalars after the three arrays,
 so every scalar's slot is beyond the reach of a load, and each access
@@ -716,16 +721,16 @@ The movement between the two tables is a result about the model.
 In the table of chapter 4 the tuned sources of collatz and matmul
 are the re-tuned ones, with five `register` variables live where
 the sources the pipeline ran had seven and ten. The tuned source
-under `clang -O2`, which c1 does not touch, stays within 0.96 to
+under `clang -O2`, which c1 does not touch, stays within 0.95 to
 1.04 in both; the two rcc columns move, from the pipeline's ratio to
 c1's:
 
-- collatz: plain 8.14 to 7.86, tuned 1.69 to 1.65.
-- fib: plain 1.49 to 2.25, tuned 1.33 to 2.29.
-- matmul: plain 7.64 to 8.06, tuned 3.31 to 2.10.
-- sieve: plain 6.40 to 6.80, tuned 2.67 to 1.62.
-- sort: plain 5.94 to 8.00, tuned 4.40 to 1.85.
-- strings: plain 8.43 to 7.57, tuned 2.70 to 2.01.
+- collatz: plain 8.14 to 7.92, tuned 1.69 to 1.61.
+- fib: plain 1.49 to 2.18, tuned 1.33 to 2.25.
+- matmul: plain 7.64 to 7.94, tuned 3.31 to 2.77.
+- sieve: plain 6.40 to 6.77, tuned 2.67 to 1.39.
+- sort: plain 5.94 to 8.11, tuned 4.40 to 1.84.
+- strings: plain 8.43 to 8.12, tuned 2.70 to 2.06.
 
 The tuned ratio fell for sort, sieve, strings, matmul and collatz,
 whose hot loops under c1 have no stack operand, sort's with jump code
@@ -832,11 +837,16 @@ machine fetches well and nothing about the program. It has two costs:
 The x86-64 numbers of this chapter are thus a fact about c1's layout,
 every loop head at offset 0 of its 32-byte window, and no longer about
 where the code before a loop happens to end. The heads of the five hot
-loops of chapter 4 lie at 0x11e0 in collatz, 0x1380 in matmul, 0x1240
+loops of chapter 4 lie at 0x11e0 in collatz, 0x1360 in matmul, 0x1240
 in sieve, 0x1220 in sort and 0x1140 in strings' `length`. The code
 before a head still decides which half of a 64-byte line the head
-opens: the heads in collatz and sort open the second half, the other
-three the first.
+opens: the heads in collatz, matmul and sort open the second half,
+the other two the first. For matmul's inner loop the half is a third
+of the time: `rcc matmul-tuned.c` runs in 770 ms as c1 writes it, and
+in 593 with `.p2align 6` before that one head in the same listing,
+which puts the loop's 34 bytes in one line; with `.p2align 6` before
+every head it runs in 584. The least of seven runs each, on the
+machine and the day of the table.
 
 On aarch64 the probe ran on two cores, a Qualcomm Oryon and the
 Firestorm core of an Apple M1 Max. It built each of the twelve sources

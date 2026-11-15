@@ -2,10 +2,10 @@
    machine's addressing form.
 
    On x86-64 the listing must show, for the store and again for the
-   load, the array's address taken with leaq -24(%rbp), %rax and i
-   loaded and widened with movslq %ecx, %rcx; then the store
-   movl %edx, (%rax,%rcx,4) and the load movl (%rax,%rcx,4), %eax, and
-   no imul or shl for the address.
+   load, i loaded and widened with movslq %eax, %rax and no instruction
+   for the array's address; then the store movl %ecx, -24(%rbp,%rax,4)
+   and the load movl -24(%rbp,%rax,4), %eax, the slot the displacement
+   and rbp the base, and no imul or shl for the address.
 
    On aarch64 the listing must show, for the store and again for the
    load, the array's address taken with add x0, x29, #24 and i loaded

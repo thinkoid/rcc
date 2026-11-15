@@ -42,6 +42,8 @@ TYPES(OBJECTS)
 
 TYPES(LIBRARY)
 
+int turn(int i);
+
 /* The object itself, 6.3's load and store rows and 6.6's memory forms:
    read, written, a constant and zero stored, each compound assignment
    that has a memory form and one that has none, as a statement and for
@@ -430,9 +432,64 @@ TYPES(LIBRARY)
                 *K##q_##N[3] = v;         \
         }
 
+/* An element by a variable index, which keeps the array's address
+   formed on both kinds, since a PC-relative operand takes no index
+   (backend.md 6.3): read and written, operated on in place for the
+   effect and for the value, ++ and -- either side; by i[a], by an index
+   with a call in it and by a register variable; an element of a row by
+   a constant, m[1][i], and of a row by a variable; an element of the
+   array of pointers, the pointer stepped and dereferenced; and a - i,
+   with the other addresses as their distance in bytes from the
+   array's start.  i is 0 to 7. */
+#define INDEXED(T, N, K)                                                     \
+        void indexed_##K##_##N(long v, int i)                                \
+        {                                                                    \
+                register int k = i ^ 7;                                      \
+                                                                             \
+                K##a_##N[i ^ 1] += v;                                        \
+                K##a_##N[i ^ 2]++;                                           \
+                --K##a_##N[i ^ 3];                                           \
+                K##a_##N[turn(i)] ^= 0x55;                                   \
+                K##a_##N[k] = K##a_##N[k] * 3 + v;                           \
+                (i ^ 4)[K##a_##N] = 0;                                       \
+                K##m_##N[1][i & 3] -= v;                                     \
+                K##m_##N[i % 3][i & 3] <<= 2;                                \
+        }                                                                    \
+        long indexed_value_##K##_##N(long v, int i)                          \
+        {                                                                    \
+                long x = K##a_##N[i]++;                                      \
+                long y = K##a_##N[i ^ 1] += v;                               \
+                long z = --K##a_##N[i ^ 2];                                  \
+                long w = K##a_##N[i ^ 3] = v * 3;                            \
+                long u = K##m_##N[2][i & 3]--;                               \
+                                                                             \
+                return x * 3 + y * 5 + z * 7 + w * 11 + u * 13 +             \
+                       K##a_##N[turn(i)] * 17 + K##m_##N[i % 3][i & 3] * 19; \
+        }                                                                    \
+        long indexed_cells_##K##_##N(long v, int i)                          \
+        {                                                                    \
+                int c = i & 3;                                               \
+                                                                             \
+                *K##q_##N[c] += v;                                           \
+                K##q_##N[c ^ 1]++;                                           \
+                return *K##q_##N[c] + *K##q_##N[c ^ 1] * 3 +                 \
+                       K##q_##N[c ^ 2][1] * 5;                               \
+        }                                                                    \
+        long indexed_distance_##K##_##N(int i)                               \
+        {                                                                    \
+                return (long) &K##a_##N[i] - (long) K##a_##N +               \
+                       ((long) (K##a_##N + i) - (long) K##a_##N) * 100 +     \
+                       ((long) (i + K##a_##N) - (long) K##a_##N) * 10000 +   \
+                       ((long) (K##a_##N - i) - (long) K##a_##N) * 1000000 + \
+                       ((long) &K##m_##N[1][i & 3] - (long) K##m_##N) *      \
+                           100000000 +                                       \
+                       ((long) K##m_##N[i % 3] - (long) K##m_##N) *          \
+                           10000000000;                                      \
+        }
+
 #define KIND(T, N, K) \
         SCALAR(T, N, K) ARRAYS(T, N, K) ADDRESSES(T, N, K) POINTERS(T, N, K)
-#define FOLD_KIND(T, N, K) FOLDS(T, N, K) CELLS_OF(T, N, K)
+#define FOLD_KIND(T, N, K) FOLDS(T, N, K) CELLS_OF(T, N, K) INDEXED(T, N, K)
 #define BOTH_KINDS(T, N)   KINDS(KIND, T, N) KINDS(FOLD_KIND, T, N)
 
 TYPES(BOTH_KINDS)

@@ -647,7 +647,11 @@ resolves the label and the offset, and one outside the object it may
 not reach, where the rows of the table always link. Anything else, a
 negative displacement off `x29` and `table[-1]` among them, takes the
 rows of the table, as every address that is not a name's does: `adrp
-x0, table; add x0, x0, :lo12:table; ldr w0, [x0, #-4]`.
+x0, table; add x0, x0, :lo12:table; ldr w0, [x0, #-4]`. No form of
+2.3 has a base, an index and a displacement at once, so a local
+array's element by a variable index forms the array's address first,
+`add x0, x29, #16`, where x86-64 makes the slot the displacement of
+the indexed operand (`backend.md` 6.3, a slot and an index).
 
 The width rule holds as written. Its facts on this machine:
 

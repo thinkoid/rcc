@@ -54,3 +54,10 @@
         }
 
 TYPES(LIBRARY)
+
+/* an index from a call, 0 to 7 */
+int
+turn(int i)
+{
+        return (i * 5 + 3) & 7;
+}

@@ -4,9 +4,11 @@
    which are the pointers probe's: no + or - with a pointer operand,
    no [] in an expression, no ++, --, += or -= of a pointer; but for
    the address of a local array or a string literal plus a constant,
-   folded into the slot's or the label's operand (backend.md 6.3),
-   which the last section probes.  A pointer into the middle of a
-   buffer, or misaligned, is made by the main.  See memory.h. */
+   folded into the slot's or the label's operand, and a local array's
+   element by a variable index, the slot the indexed operand's
+   displacement (backend.md 6.3), which the last sections probe.  A
+   pointer into the middle of a buffer, or misaligned, is made by the
+   main.  See memory.h. */
 
 #include "memory.h"
 
@@ -25,6 +27,7 @@ TYPES(LIBRARY)
 long text(char *s);
 long mix1(long a);
 long mix2(long a, long b);
+int turn(int i);
 
 /* The load and the store, 6.3, G8: the load at the object's width and
    extension, its value used at 32 bits and at 64; a narrow result,
@@ -596,4 +599,115 @@ long text_beyond(void)
     char *p = "abcdef" + 9;
 
     return text(p - 8) + text("abcdef" + 9 - 4) * 3;
+}
+
+/* An element of a local array by a variable index, backend.md 6.3, a
+   slot and an index: the slot the displacement of the indexed operand
+   and rbp its base on x86-64, no instruction forming the array's
+   address.  Read and written, a constant and zero stored, operated on
+   in place for the effect and for the value, ++ and -- either side; by
+   i[a]; by an index that is an expression with a call in it, and with
+   a call in the right operand, each held across the call (6.7); by a
+   register variable; an element of a row by a constant, m[1][i]; and
+   the rows that keep the array's address formed: a pointer, p[i], a row
+   of an array of arrays by a variable, whose size is no scale, and
+   a - i.  The addresses as their distance in bytes from the array's
+   start.  i is 0 to 7. */
+#define INDEXED(T, N)                                                   \
+    long indexed_##N(T v, int i)                                        \
+    {                                                                   \
+        T a[8];                                                         \
+        T *p = a;                                                       \
+        long r = fill_##N(a, 8, v);                                     \
+                                                                        \
+        a[i] = v;                                                       \
+        a[i ^ 2] = 0;                                                   \
+        a[i ^ 4] = 0x12345;                                             \
+        a[7 - i] += v;                                                  \
+        a[i ^ 5] ^= 0x55;                                               \
+        a[i ^ 3] <<= 3;                                                 \
+        a[i ^ 6]++;                                                     \
+        --a[i ^ 1];                                                     \
+        p[i ^ 7] -= 9;                                                  \
+        return r + a[i] * 3 + a[i ^ 1] + a[7 - i] * 5 + p[i ^ 6] * 7 +  \
+               total_##N(a, 8);                                         \
+    }                                                                   \
+    long indexed_value_##N(T v, int i)                                  \
+    {                                                                   \
+        T a[8];                                                         \
+        long r = fill_##N(a, 8, v);                                     \
+        long x = a[i]++;                                                \
+        long y = a[i ^ 1] += v;                                         \
+        long z = --a[i ^ 2];                                            \
+        long w = a[i ^ 3] = v * 3;                                      \
+        long u = a[i ^ 4]--;                                            \
+        long t = ++a[i ^ 5];                                            \
+        long s = a[i ^ 6] <<= 2;                                        \
+                                                                        \
+        return r + x * 3 + y * 5 + z * 7 + w * 11 + u * 13 + t * 17 +   \
+               s * 19 + total_##N(a, 8);                                \
+    }                                                                   \
+    long indexed_held_##N(T v, int i)                                   \
+    {                                                                   \
+        T a[8];                                                         \
+        register int k = i ^ 7;                                         \
+        long r = fill_##N(a, 8, v);                                     \
+                                                                        \
+        a[turn(i)] = v;                                                 \
+        a[(i + turn(i)) & 7] += v;                                      \
+        a[i ^ 2] += mix1(v);                                            \
+        i[a] -= 2;                                                      \
+        a[k] = a[k] * 3 + v;                                            \
+        a[k]++;                                                         \
+        return r + v * 5 + a[turn(k)] * 3 + (i ^ 4)[a] + a[k] * 5 +     \
+               mix1(a[i]) + total_##N(a, 8);                            \
+    }                                                                   \
+    long indexed_matrix_##N(long v, int i)                              \
+    {                                                                   \
+        T m[3][5];                                                      \
+        int c = i % 5;                                                  \
+        int j = i % 3;                                                  \
+        long r = fill_rows_##N(m, 3, v);                                \
+                                                                        \
+        m[1][c] += 2;                                                   \
+        m[2][c] = v;                                                    \
+        m[0][c]++;                                                      \
+        m[j][c] ^= 3;                                                   \
+        m[j][4] -= 1;                                                   \
+        return r + m[1][c] * 3 + m[j][2] * 5 + m[j][c] +                \
+               *(m[2] + c) * 7 + (c - 1)[m[1]] + total_rows_##N(m, 3);  \
+    }                                                                   \
+    long indexed_distance_##N(int i)                                    \
+    {                                                                   \
+        T a[8];                                                         \
+        T m[3][5];                                                      \
+                                                                        \
+        return (long) &a[i] - (long) a +                                \
+               ((long) (a + i) - (long) a) * 100 +                      \
+               ((long) (i + a) - (long) a) * 10000 +                    \
+               ((long) &m[1][i % 5] - (long) m) * 1000000 +             \
+               ((long) m[i % 3] - (long) m) * 100000000 +               \
+               ((long) (a - i) - (long) a) * 10000000000 +              \
+               (&a[i] - &a[1]) * 1000000000000;                         \
+    }
+
+TYPES(INDEXED)
+
+/* an array of pointers by a variable index: an element written, read,
+   stepped in place and dereferenced, and subscripted by a constant in
+   its turn; q8 points 8 bytes past p, and i is 0 to 3 */
+long indexed_pointers(long *p, long *q8, long v, int i)
+{
+    long *q[4];
+
+    q[i] = p;
+    q[i ^ 1] = q8;
+    q[i ^ 2] = q[i];
+    q[i ^ 3] = 0;
+    *q[i ^ 1] = v;
+    q[i ^ 2]++;
+    *q[i ^ 2] += 5;
+
+    return *q[i] + q[i ^ 1][0] * 3 + q[i][1] * 5 + (q[i ^ 3] == 0) * 7 +
+           ((long) &q[i] - (long) q) * 11;
 }

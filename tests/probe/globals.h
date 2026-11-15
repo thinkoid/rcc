@@ -9,8 +9,9 @@
    defines, reached PC-relative, and one it only declares, reached
    through the GOT, read, written, stepped, subscripted and its address
    taken; an element by a constant, its offset folded into the label's
-   operand, 6.3; the data of an initialized object and of a tentative
-   one.
+   operand, 6.3, and by a variable index, the array's address formed
+   first, as a PC-relative operand takes no index; the data of an
+   initialized object and of a tentative one.
 
    The integer types are calls.h's. */
 

@@ -558,7 +558,8 @@ extended(state_t &s, value_t v, const int_t &from, int to)
 // writes it: a slot off rbp, a label off rip with a displacement of
 // its own, table+12(%rip), or the machine's addressing form, a held
 // base with a displacement or with a held index scaled by 1, 2, 4 or 8.
-// The access consumes the values.
+// A slot with a held index is the form with rbp the base,
+// -24(%rbp,%rcx,4).  The access consumes the values.
 struct address_t
 {
     value_t base { };
@@ -587,15 +588,16 @@ registers_of(const state_t &s, const address_t &a)
     return held;
 }
 
-// The address in AT&T syntax, d(B,I,s).  A spilled base or index is
-// reloaded first, outside avoid and outside the other's register.
+// The address in AT&T syntax, d(B,I,s), rbp the base of a slot.  A
+// spilled base or index is reloaded first, outside avoid and outside
+// the other's register.
 std::string
 operand(state_t &s, const address_t &a, unsigned avoid = 0)
 {
     if (!a.label.empty())
         return std::format("{}(%rip)", symbol_plus(a.label, a.displacement));
 
-    if (a.base.id < 0)
+    if (a.base.id < 0 && a.index.id < 0)
         return at(static_cast< int >(a.displacement));
 
     avoid |= registers_of(s, a);
@@ -607,11 +609,12 @@ operand(state_t &s, const address_t &a, unsigned avoid = 0)
         index = std::format(",{},{}", reg(r, 64), a.scale);
     }
 
-    const reg_t base = reg_of(s, a.base, avoid);
+    const auto base =
+        a.base.id < 0 ? std::string("%rbp") : reg(reg_of(s, a.base, avoid), 64);
     const auto displacement =
         a.displacement != 0 ? std::to_string(a.displacement) : std::string();
 
-    return std::format("{}({}{})", displacement, reg(base, 64), index);
+    return std::format("{}({}{})", displacement, base, index);
 }
 
 // The address is consumed: its registers are free.
@@ -714,6 +717,32 @@ folded(state_t &s, const expr_t &pointer)
     return address_t { .displacement = displacement, .label = label };
 }
 
+// The operand of a local array's element by a variable index,
+// backend.md 6.3: the addressing form with rbp the base, the slot the
+// displacement and the index scaled by the size, -24(%rbp,%rcx,4) for
+// a[i] on an int a[6] at -24(%rbp); no instruction forms the array's
+// address.  The array is folded()'s slot plus a constant, so m[1][i] on
+// int m[2][3] at -24(%rbp) is -12(%rbp,%rcx,4).  The index is the one
+// operand evaluated, so the order written holds (G13).  None for a
+// label, since a PC-relative operand takes no index, for a constant
+// index and for b - i, which the form does not express.
+std::optional< address_t >
+indexed(state_t &s, const binary_t &b, long size)
+{
+    const bool left = is< pointer_t >(b.lhs->type);
+    const auto &index = left ? *b.rhs : *b.lhs;
+    if (b.op != binary_op_t::add || is< literal_t >(index))
+        return std::nullopt;
+
+    const auto slot = folded(s, left ? *b.lhs : *b.rhs);
+    if (!slot || !slot->label.empty())
+        return std::nullopt;
+
+    return address_t { .index = rvalue(s, index),
+                       .scale = size,
+                       .displacement = slot->displacement };
+}
+
 // The address a dereference designates, 6.5.4.2p4, of an object of
 // type pointee: the addressing row.  A name's address plus a constant,
 // 0 for *a and *&x, is the one operand of folded().  A subscript by a constant 0 is the
@@ -723,9 +752,10 @@ folded(state_t &s, const expr_t &pointer)
 // (6.5.3.2p2), is the machine's addressing form when the size is a
 // scale: the pointer the base, the integer the index, each generated in
 // the order written (G13); a constant index is the displacement
-// c * size when it fits 32 bits.  Any other pointer, an add of another
-// size included, is computed into a register and is the base; nothing
-// looks through a cast.
+// c * size when it fits 32 bits, and a variable index into a local
+// array has rbp the base and the slot the displacement, indexed().  Any
+// other pointer, an add of another size included, is computed into a
+// register and is the base; nothing looks through a cast.
 address_t
 pointed(state_t &s, const expr_t &p, const type_t &pointee)
 {
@@ -751,6 +781,10 @@ pointed(state_t &s, const expr_t &p, const type_t &pointee)
         if (fits_imm32(d))
             return { .base = rvalue(s, pointer), .displacement = d };
     }
+
+    // a[i], m[1][i] on a local array: -24(%rbp,%rcx,4)
+    if (const auto a = indexed(s, b, size))
+        return *a;
 
     const auto l = rvalue(s, *b.lhs);
     const auto r = rvalue(s, *b.rhs);
@@ -1221,7 +1255,9 @@ displaced(state_t &s, binary_op_t op, value_t l, const right_t &n)
 // A binary + or - of a pointer type: the pointer and the integer, the
 // integer widened to 64 bits by the parser, in the order written
 // (G13).  A name's address plus a constant is the leaq of folded()'s
-// one operand, leaq -20(%rbp), %rax for a + 3, 6.3.
+// one operand, leaq -20(%rbp), %rax for a + 3, 6.3, and a local array
+// plus a variable index of a size the form scales the leaq of
+// indexed()'s, leaq -24(%rbp,%rcx,4), %rax for a + i.
 value_t
 pointer_arithmetic(state_t &s, const expr_t &e)
 {
@@ -1230,6 +1266,11 @@ pointer_arithmetic(state_t &s, const expr_t &e)
 
     const auto &b = as< binary_t >(e);
     const long size = stride(e.type);
+
+    if (is_scale(size))
+        if (const auto a = indexed(s, b, size))
+            return address_of(s, *a);
+
     const auto l = rvalue(s, *b.lhs);
 
     if (is< pointer_t >(b.lhs->type))

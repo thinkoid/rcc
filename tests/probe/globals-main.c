@@ -195,6 +195,10 @@ extern int late, ref_late;
         BOTH(T *, fold_end_##K##_##N, (void) )            \
         BOTH(T *, fold_row_past_##K##_##N, (void) )       \
         BOTH(long, fold_distance_##K##_##N, (void) )      \
+        BOTH(void, indexed_##K##_##N, (long, int) )       \
+        BOTH(long, indexed_value_##K##_##N, (long, int) ) \
+        BOTH(long, indexed_cells_##K##_##N, (long, int) ) \
+        BOTH(long, indexed_distance_##K##_##N, (int) )    \
         BOTH(T *, cell_get_##K##_##N, (void) )            \
         BOTH(void, cell_put_##K##_##N, (T *) )            \
         BOTH(long, cell_deref_##K##_##N, (void) )         \
@@ -514,6 +518,16 @@ compare(const char *name, long x)
                         ACHECK(fold_end_##K##_##N, x, at, (), K##a_##N);      \
                         ACHECK(fold_row_past_##K##_##N, x, at, (), K##m_##N); \
                         MCHECK(fold_distance_##K##_##N, x, at, ());           \
+                                                                              \
+                        for (int k = 0; k < ARRAY; ++k) {                     \
+                                VCHECK(indexed_##K##_##N, x, at, (y, k));     \
+                                MCHECK(indexed_value_##K##_##N, x, at,        \
+                                       (y, k));                               \
+                                MCHECK(indexed_cells_##K##_##N, x, at,        \
+                                       (y, k));                               \
+                                MCHECK(indexed_distance_##K##_##N, x, at,     \
+                                       (k));                                  \
+                        }                                                     \
                                                                               \
                         PCHECK(cell_get_##K##_##N, x, at, ());                \
                         VCHECK(cell_put_##K##_##N, x, at,                     \

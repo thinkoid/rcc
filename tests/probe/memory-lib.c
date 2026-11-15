@@ -76,3 +76,7 @@ long text(const char *s)
 
 long mix1(long a) { return a * 3 + SKEW; }
 long mix2(long a, long b) { return a * 3 + b * 5 + SKEW; }
+
+/* an index from a call, 0 to 7, and no SKEW, which would put it
+   outside the array it indexes */
+int turn(int i) { return (i * 5 + 3) & 7; }

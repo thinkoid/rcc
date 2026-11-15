@@ -489,7 +489,7 @@ the M1 Max's Firestorm core under one. It does not show that this
 cost is what splits the plain rows; chapter 6 says why not.
 
 On x86-64 the table of `cost.md` chapter 4 has the plain ratios of
-sort, strings and collatz at 8.00, 7.57 and 7.86, and a carried slot
+sort, strings and collatz at 8.11, 8.12 and 7.92, and a carried slot
 costs the Zen 2 core about six cycles, as it costs the Oryon. The
 listings of the two targets differ, so the match shows no more than
 the one between the aarch64 machines.
@@ -533,8 +533,8 @@ iteration on Zen 2 to `rr`'s 1.00.
   machine's ordinary state are not known; its times are. No other
   x86-64 core has run the test, so whether the price differs between
   x86-64 cores as it does between aarch64 ones is not known. The
-  bench on the same machine, plain 2.25 to 8.06 and tuned 1.62 to
-  2.29 (`cost.md` chapter 4), ran with the boost on.
+  bench on the same machine, plain 2.18 to 8.12 and tuned 1.39 to
+  2.77 (`cost.md` chapter 4), ran with the boost on.
 - **Two targets, one price.** The Oryon and Zen 2 run different
   loops: `rs` is nine instructions on the one, with a load and a
   store of the slot, and five on the other, with one `addl` to it.
