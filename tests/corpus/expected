@@ -15,3 +15,5 @@ g13-read-across-call 110 110
 g13-read-across-branch 167 167
 g13-compound-order 63 63
 header-stdio 0 0
+header-stdlib 0 0
+header-signal 0 0

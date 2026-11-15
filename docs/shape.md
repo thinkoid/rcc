@@ -93,7 +93,9 @@ is structural, through the edges. No interning; a table of types is
 an optimization taken when it is measured. The size and the
 alignment of a type are the type's, `size_of` and `align_of`, the
 x86-64 ABI's numbers; the parser folds `sizeof` from them and c1
-sizes and aligns the slots from them.
+sizes and aligns the slots from them. A pointer to a function is a
+pointer as any other: 8 bytes, an address, of a type that compares
+through the function's result and parameters.
 
 ## 4. The tree
 
@@ -112,7 +114,11 @@ Three sums.
   difference of two
   pointers is a binary sub of type `long`; a subscript is a
   dereference of an add, as 6.5.3.2p2 defines it; `sizeof` is an
-  integer literal the parser folded.
+  integer literal the parser folded. A call's callee is the name of
+  a function, and that is the one place a name of function type
+  stands; a value of pointer-to-function type is loaded, stored,
+  passed, returned and compared as any pointer, and no node is
+  particular to it.
 - `stmt_t`: expression, declaration, block, if, while, for, return.
   A `for` carries its init as a statement, so a declaration in the
   init costs nothing.
@@ -164,6 +170,33 @@ functions: integer promotion, the usual arithmetic conversions,
 assignment conversion, lvalue conversion, function and array decay.
 One pass, one tree. A separate type-check pass would be a second
 tree and a second walk for no invariant the compiler needs.
+
+A declarator is C's: pointers, then the name or a declarator in
+parentheses, then array suffixes or one parameter list. The
+declarator in parentheses derives from what the suffixes after it
+derive (6.7.7.1p6), so the parser reads those suffixes first, then
+the declarator inside the parentheses, and goes on after the
+suffixes: `void (*signal(int, void (*)(int)))(int)` is a function
+returning a pointer to a function. The same production without the
+name is the abstract declarator of a type name, `(void (*)(int)) 0`,
+`sizeof (int [3])`, and of a parameter that leaves its name out. A
+parameter of function type is adjusted to a pointer to the function,
+as one of array type to a pointer to its element (6.7.7.4p6, p7). A
+typedef name of function type stands for the type, and a pointer
+through it is a pointer to the function; a function declared through
+it is not yet.
+
+A pointer to a function is a value as any pointer is, with the type
+rules of the standard: assignment and argument passing take one of
+its own type or a null pointer constant, and a pointer to void only
+through a cast (6.5.17.2p1); `==` and `!=` compare it with one of its
+type or a null pointer constant (6.5.10p2), and `<`, `<=`, `>` and
+`>=` are an error on it (6.5.9p2); it is a condition, an operand of
+`!`, `&&` and `||`, and an arm of `?:`; a cast converts it to any
+pointer or integer type and back, with no instruction. Arithmetic on
+it is an error, and so is `restrict` on it. A function's name as a
+value, `&f` and `*p` on a pointer to a function, and a call through
+anything but a function's name are not yet.
 
 A system header is written in GNU C, and the parser reads it as it
 is. It conforms with what a correct program depends on, the size and
@@ -402,9 +435,12 @@ opens, and the GNU C a system header is written in (chapter 5) bring
 call. The milestone program, `header-stdio` in the corpus, includes
 `stdio.h` and `string.h`, formats a line with `snprintf`, checks it
 with `strcmp` and prints it: the same line and the same status under
-rcc and under `clang -O2`. `stdlib.h` and `sys/types.h` stop at a
-`static` function with a body, and `signal.h` at a function-pointer
-declarator.
+rcc and under `clang -O2`. The types a header declares for another
+compiler's sake, the body of a `static inline` function, skipped, and
+the function-pointer declarator bring `stdlib.h`, `sys/types.h`,
+`signal.h` and most headers of the C library and of POSIX through as
+well: `header-stdlib` and `header-signal` in the corpus call `atoi`,
+`strtol`, `signal` and `raise`.
 
 ## 11. Not yet
 
@@ -415,8 +451,10 @@ use that needs the object, or a constant's value, is refused), global
 variables (an object declared `extern` at file scope is accepted and
 its use refused; a definition at file scope is refused), `extern` in
 a block, brace initializers and
-`char s[] = "..."`, function pointers and a declaration through a
-typedef of function type, wide and `u8` strings,
+`char s[] = "..."`, a function designator as a value, its address,
+the indirection through a pointer to a function and a call through
+one, a declaration through a typedef of function type, wide and `u8`
+strings,
 `volatile` outside a typedef (c1 writes every access it meets, an
 unused one included, so the access needs nothing more; the qualifier
 waits for the type model, as `const`'s checks do),

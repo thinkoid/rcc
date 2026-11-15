@@ -1,0 +1,2 @@
+tests/error/parameter-redefinition-function-pointer.c:4:34: error: redefinition of parameter 'a'
+status 1

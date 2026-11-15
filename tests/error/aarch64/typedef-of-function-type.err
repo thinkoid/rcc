@@ -1,2 +1,2 @@
-tests/error/typedef-of-function-type.c:5:1: error: not yet: typedef name 'handler' of function type
+tests/error/typedef-of-function-type.c:7:9: error: not yet: function 'on_signal' declared through a typedef
 status 1

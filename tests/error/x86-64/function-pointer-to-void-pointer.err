@@ -1,0 +1,2 @@
+tests/error/function-pointer-to-void-pointer.c:9:11: error: incompatible pointer types
+status 1

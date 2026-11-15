@@ -1,2 +1,2 @@
-tests/error/function-type-name.c:4:23: error: not yet: parenthesized or function type name
+tests/error/function-type-name.c:5:12: error: invalid application of 'sizeof' to a function type
 status 1

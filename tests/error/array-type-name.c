@@ -1,5 +1,6 @@
-/* An array type as a type name, which is not yet. */
+/* An array type as the type name of a cast: a cast converts to void or
+   to a scalar type, 6.5.5p2, and an array is neither. */
 int main(void)
 {
-    return sizeof (int[3]);
+    return (int) (int[3]) 0;
 }

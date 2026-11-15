@@ -92,15 +92,22 @@ struct parameter_t
     const token_t *marking;
 };
 
-// A declarator in the subset: a name, absent only from a parameter,
-// the type it gives the name, and the parameters as written when it
-// declares a function.
+// A declarator: a name, absent from a parameter that leaves it out and
+// from a type name, the type it gives the name, and the parameters as
+// written when it declares a function, the parameter list that derives
+// the name's type.  A pointer to a function has a parameter list and
+// declares no function, so it has none.
 struct declarator_t
 {
     const token_t *name;
     type_t type;
     std::optional< std::vector< parameter_t > > params;
 };
+
+// Whether a declarator names what it declares: a declaration's does, a
+// parameter's may, 6.7.7.1p1, and a type name's, an abstract
+// declarator, does not, 6.7.8p1.
+enum class naming_t { required, optional, none };
 
 //
 // diagnostics
@@ -327,6 +334,26 @@ is_void_pointer(const type_t &t)
     return is< pointer_t >(t) && is< void_t >(pointee_of(t));
 }
 
+bool
+is_function_pointer(const type_t &t)
+{
+    return is< pointer_t >(t) && is< function_t >(pointee_of(t));
+}
+
+// A pointer to void and a pointer to an object type, in either order,
+// which assignment converts to each other, 6.5.17.2p1, and which meet at
+// void * in == and ?:, 6.5.10p2, 6.5.16p3.  A pointer to a function is
+// not a pointer to an object, and meets void * only as a null pointer
+// constant or through a cast.
+bool
+void_and_object_pointer(const type_t &a, const type_t &b)
+{
+    if (is_void_pointer(a))
+        return !is_function_pointer(b);
+
+    return is_void_pointer(b) && !is_function_pointer(a);
+}
+
 // The integer promotions, 6.3.1.1p2: every type narrower than int
 // converts to int, which holds all of its values, signed or not.
 type_t
@@ -550,9 +577,10 @@ require_honoured(const token_t &at, const type_t &t)
 // restrict qualifies a pointer to an object type, or an array of such
 // pointers, 6.7.4.1p2.  It promises what an optimizer may assume, and
 // deleting it changes no program's meaning, p9, so rcc takes the
-// promise and drops it.  Behind a '*' it always qualifies such a
-// pointer; among the specifiers it qualifies the type they name, which
-// is one only through a typedef name.  Whether a not-yet type is one is
+// promise and drops it.  Behind a '*' it qualifies such a pointer
+// unless the pointer is to a function; among the specifiers it
+// qualifies the type they name, which is one only through a typedef
+// name.  Whether a not-yet type is one is
 // not known, so restrict on it is not yet.
 void
 require_restrictable(const token_t &q, const type_t &t)
@@ -568,10 +596,11 @@ require_restrictable(const token_t &q, const type_t &t)
                     " qualifies a type that is not a pointer to an object");
 }
 
-// A value in the subset is an integer or a pointer to an object.  A
-// function's name stands only as the callee of a call: function
-// pointers are outside the subset, so a function designator where a
-// value is wanted is not yet, and a void expression is an error.
+// A value in the subset is an integer or a pointer, to an object or to
+// a function.  A function's name stands only as the callee of a call:
+// its conversion to a pointer, 6.3.2.1p4, is not yet, so a function
+// designator where a value is wanted is not yet, and a void expression
+// is an error.
 void
 require_not_function(const token_t &at, const expr_t &e)
 {
@@ -684,10 +713,11 @@ is_null_pointer_constant(const expr_t &e)
 // returned.  The constraints are those of simple assignment,
 // 6.5.17.2p1: integers convert to each other; a pointer takes a pointer
 // of its own type, a pointer to void and an object pointer convert
-// either way, and a null pointer constant converts to any pointer.  An
-// integer and a pointer meet only through a cast, 6.5.5p3.  A value
-// converted to a not-yet type, as an argument meets a parameter of one,
-// is not yet.
+// either way, and a null pointer constant converts to any pointer, one
+// to a function included.  An integer and a pointer meet only through a
+// cast, 6.5.5p3, and so do a pointer to a function and a pointer to
+// void.  A value converted to a not-yet type, as an argument meets a
+// parameter of one, is not yet.
 expr_t
 assignment_conversion(const token_t &at, expr_t e, const type_t &t)
 {
@@ -704,8 +734,8 @@ assignment_conversion(const token_t &at, expr_t e, const type_t &t)
     if (!to_pointer && from_pointer)
         fail(at, "incompatible pointer to integer conversion");
 
-    if (to_pointer && from_pointer && !(e.type == t) && !is_void_pointer(t) &&
-        !is_void_pointer(e.type))
+    if (to_pointer && from_pointer && !(e.type == t) &&
+        !void_and_object_pointer(t, e.type) && !is_null_pointer_constant(e))
         fail(at, "incompatible pointer types");
 
     return convert_to(std::move(e), t);
@@ -715,7 +745,9 @@ assignment_conversion(const token_t &at, expr_t e, const type_t &t)
 // == and != and the arms of ?: take them, 6.5.10p2, p6, 6.5.16p3, p7:
 // pointers of one type stay as they are, a pointer to void and an
 // object pointer meet at void *, and a null pointer constant goes to
-// the other operand's type.  False when none of the three applies.
+// the other operand's type: a (void *) 0 met by a pointer to a
+// function, which meets no other void *, goes to the function pointer's
+// type.  False when none of the three applies.
 bool
 common_pointer(expr_t &lhs, expr_t &rhs)
 {
@@ -725,10 +757,12 @@ common_pointer(expr_t &lhs, expr_t &rhs)
     type_t t = lp ? lhs.type : rhs.type;
 
     if (lp && rp && !(lhs.type == rhs.type)) {
-        if (!is_void_pointer(lhs.type) && !is_void_pointer(rhs.type))
+        if (void_and_object_pointer(lhs.type, rhs.type))
+            t = make_pointer(make_void());
+        else if (is_null_pointer_constant(lhs))
+            t = rhs.type;
+        else if (!is_null_pointer_constant(rhs))
             return false;
-
-        t = make_pointer(make_void());
     }
     else if (!lp && !is_null_pointer_constant(lhs))
         return false;
@@ -1071,8 +1105,9 @@ subtraction(const token_t &op, expr_t lhs, expr_t rhs)
 // < > <= >= == !=: the result an int (6.5.9p7, 6.5.10p4), integer
 // operands in their common type (6.5.9p4, 6.5.10p5).  Pointers compare
 // as addresses (G7): a relational operator takes two pointers of one
-// type, 6.5.9p2, and == and != what common_pointer() brings to one,
-// 6.5.10p2.  A pointer and any other integer meet only through a cast.
+// object type, 6.5.9p2, so not two pointers to a function, and == and
+// != what common_pointer() brings to one, 6.5.10p2.  A pointer and any
+// other integer meet only through a cast.
 expr_t
 comparison(const token_t &op, expr_t lhs, expr_t rhs)
 {
@@ -1092,6 +1127,8 @@ comparison(const token_t &op, expr_t lhs, expr_t rhs)
         fail(op, "comparison between pointer and integer");
     else if (!equality && !(lhs.type == rhs.type))
         fail(op, "comparison of distinct pointer types");
+    else if (!equality && is_function_pointer(lhs.type))
+        fail(op, "ordered comparison of pointers to functions");
 
     return make_binary(binary_operator(op.kind), int_type(), std::move(lhs),
                        std::move(rhs));
@@ -1237,11 +1274,12 @@ conditional(const token_t &op, expr_t cond, expr_t yes, expr_t no)
 // The type name is void or a scalar, 6.5.5p2: to void the operand is
 // discarded, whatever its type; to a scalar it converts from a scalar,
 // integer and pointer either way, 6.3.2.3p5, p6, and pointer to
-// pointer, p1, p7.  A cast yields no lvalue, 6.5.5p6 and its footnote,
-// so a cast to the operand's own type is still a node.  A constant cast
-// to an integer or a pointer type is the constant converted_constant()
-// gives, which is not an lvalue either.  A cast to a not-yet type is
-// not yet.
+// pointer, p1, p7, p8, a pointer to a function as any other: an
+// address, which no instruction converts.  A cast yields no lvalue,
+// 6.5.5p6 and its footnote, so a cast to the operand's own type is
+// still a node.  A constant cast to an integer or a pointer type is the
+// constant converted_constant() gives, which is not an lvalue either.
+// A cast to a not-yet type is not yet.
 expr_t
 cast(const token_t &open, const type_t &t, expr_t arg)
 {
@@ -1335,8 +1373,9 @@ address_of(const token_t &op, expr_t arg)
 
 // *E: the operand a pointer, after decay; the result the lvalue it
 // points to, of the pointee type, 6.5.4.2p2, p4.  A void pointee
-// designates nothing to read, a function pointer is not in the subset,
-// and a not-yet pointee is not yet.
+// designates nothing to read; through a pointer to a function, the
+// function designator it yields is not yet; and a not-yet pointee is
+// not yet.
 expr_t
 indirection(const token_t &op, expr_t arg)
 {
@@ -1922,7 +1961,10 @@ specifiers_t declaration_specifiers(parser_t &);
 type_t struct_or_union_specifier(parser_t &);
 type_t enum_specifier(parser_t &);
 void enumerator_list(parser_t &, const type_t &);
-declarator_t declarator(parser_t &, const type_t &, bool abstract = false);
+declarator_t
+declarator(parser_t &, const type_t &, naming_t = naming_t::required);
+declarator_t parenthesized_declarator(parser_t &, const type_t &, naming_t);
+declarator_t declarator_suffix(parser_t &, const token_t *, const type_t &);
 type_t pointer(parser_t &, type_t);
 type_t array_declarator(parser_t &, const type_t &);
 bool parameter_type_list(parser_t &, std::vector< parameter_t > &);
@@ -2031,13 +2073,14 @@ translation_unit(parser_t &p)
 }
 
 // A prototype's parameters share one scope, 6.7.1p4, even when no
-// body follows to use the names.
+// body follows to use the names: the prototype of a function declared,
+// and the one a pointer to a function points through.
 void
-check_parameter_names(const declarator_t &d)
+check_parameter_names(const std::vector< parameter_t > &params)
 {
     std::unordered_map< std::string_view, bool > seen;
 
-    for (const parameter_t &param : *d.params)
+    for (const parameter_t &param : params)
         if (param.name && !seen.emplace(param.name->text, true).second)
             fail(*param.name,
                  "redefinition of parameter " + quoted(param.name->text));
@@ -2097,9 +2140,6 @@ added(parser_t &p, std::string_view name, type_t t, storage_t storage)
 void
 type_definition(parser_t &p, const specifiers_t &spec, const declarator_t &d)
 {
-    if (d.params)
-        check_parameter_names(d);
-
     const declarator_tail_t tail = declarator_tail(p, spec);
     if (tail.asm_keyword)
         fail(*tail.asm_keyword, quoted(tail.asm_keyword->text) +
@@ -2136,8 +2176,6 @@ marked_parameter(const declarator_t &d)
 std::size_t
 declare_function(parser_t &p, const declarator_t &d, declarator_tail_t tail)
 {
-    check_parameter_names(d);
-
     if (!tail.marking)
         tail.marking = marked_parameter(d);
 
@@ -2193,13 +2231,20 @@ refuse_specifier_on_main(const specifiers_t &spec, const declarator_t &d)
 
 // One declarator of a file-scope declaration: a type name, a function,
 // or an object.  static reaches here only with inline, and only the
-// definition of a static inline function is taken.
+// definition of a static inline function is taken.  A function declared
+// through a typedef name of function type, typedef int fn_t(int);
+// fn_t f;, is not yet: its declaration writes no parameter list, and
+// the typedef keeps no marking attribute of its parameters.
 void
 external_declarator(parser_t &p,
                     const specifiers_t &spec,
                     const declarator_t &d)
 {
     const bool typedef_ = declared(spec, tok_t::kw_typedef);
+    if (!typedef_ && !d.params && is< function_t >(d.type))
+        not_yet(*d.name, "function " + quoted(d.name->text) +
+                             " declared through a typedef");
+
     if (typedef_ || !d.params)
         refuse_function_specifier(spec);
 
@@ -2639,12 +2684,6 @@ declaration_specifiers(parser_t &p)
         if (!any && names_type(p, t)) {
             whole = named_type(p, t);
 
-            // a function declared through it, or a pointer to one, would
-            // need function designators as values
-            if (is< function_t >(*whole))
-                not_yet(t,
-                        "typedef name " + quoted(t.text) + " of function type");
-
             advance(p);
             any = true;
             continue;
@@ -2842,25 +2881,122 @@ enumerator_list(parser_t &p, const type_t &t)
     } while (accept(p, tok_t::comma) && peek(p).kind != tok_t::rbrace);
 }
 
-// The pointers, then an identifier, then array suffixes or a parameter
-// list; the name is left out only in a parameter, which may be
-// abstract.  The pointers bind to the base type, so int *f(void) is a
-// function returning a pointer.  An array of functions and a function
-// returning an array or a function are errors, 6.7.7.3p1, 6.7.7.4p1;
-// a parenthesized declarator, which would let the two nest the other
-// way, is not yet.
+// Whether the parenthesis ahead opens a declarator in parentheses,
+// 6.7.7.1p1, and not a parameter list.  Before a name that must be
+// written, a parenthesis opens only a declarator.  Where the name may
+// be left out, a '*', a '(' or a '[' opens a declarator, and so does
+// an identifier where it may be the name and does not name a type,
+// 6.7.7.4p10; anything else opens a parameter list, an empty one
+// included, 6.7.8 footnote 162.
+bool
+starts_parenthesized_declarator(const parser_t &p, naming_t naming)
+{
+    if (peek(p).kind != tok_t::lparen)
+        return false;
+
+    if (naming == naming_t::required)
+        return true;
+
+    const token_t &t = peek(p, 1);
+
+    switch (t.kind) {
+    case tok_t::star:
+    case tok_t::lparen:
+    case tok_t::lbracket: return true;
+    case tok_t::identifier:
+        return naming == naming_t::optional && !names_type(p, t);
+    default: return false;
+    }
+}
+
+// The tokens of a declarator in parentheses, skipped up to the
+// parenthesis that closes it, which is left for the caller, with the
+// parentheses nested in them counted.  Outside those, a semicolon or a
+// brace ends the declaration and no declarator holds one, so the skip
+// stops there too, and an unclosed parenthesis is reported where the
+// declaration ends.
+void
+skip_parenthesized_declarator(parser_t &p)
+{
+    for (int depth = 0; peek(p).kind != tok_t::eof; advance(p)) {
+        const tok_t kind = peek(p).kind;
+        if (depth == 0 && (kind == tok_t::rparen || kind == tok_t::semicolon ||
+                           kind == tok_t::lbrace || kind == tok_t::rbrace))
+            return;
+
+        if (kind == tok_t::lparen)
+            ++depth;
+        else if (kind == tok_t::rparen)
+            --depth;
+    }
+}
+
+// The pointers, then the name or a declarator in parentheses, then
+// array suffixes or a parameter list.  The name must be written in a
+// declaration, may be left out in a parameter, and is not written in a
+// type name.  The pointers bind to the base type, so int *f(void) is a
+// function returning a pointer, and parentheses bind them first, so
+// int (*f)(void) is a pointer to a function.
 declarator_t
-declarator(parser_t &p, const type_t &base, bool abstract)
+declarator(parser_t &p, const type_t &base, naming_t naming)
 {
     const type_t t = pointer(p, base);
 
-    if (peek(p).kind == tok_t::lparen)
-        not_yet(peek(p), "parenthesized declarator");
+    if (starts_parenthesized_declarator(p, naming))
+        return parenthesized_declarator(p, t, naming);
 
     const token_t *name = nullptr;
-    if (!abstract || peek(p).kind == tok_t::identifier)
+    if (naming == naming_t::required ||
+        (naming == naming_t::optional && peek(p).kind == tok_t::identifier))
         name = &expect(p, tok_t::identifier, "expected identifier");
 
+    return declarator_suffix(p, name, t);
+}
+
+// ( D ) and the suffixes after it.  The declarator in parentheses
+// derives from what the suffixes derive from the type so far, 6.7.7.1p6:
+// in void (*f)(int) the '*' derives a pointer from void (int), the
+// function.  So the suffixes are read first, past the parentheses, and
+// then the declarator inside them, and the parse goes on after the
+// suffixes.  A parameter list after the parentheses is the name's when
+// the declarator inside derives nothing, as in int (f)(void), whose
+// type is then the suffix's; otherwise it is the prototype of what the
+// name's type points through, and the name declares no function.
+declarator_t
+parenthesized_declarator(parser_t &p, const type_t &t, naming_t naming)
+{
+    advance(p);
+
+    const std::size_t inside = p.pos;
+    skip_parenthesized_declarator(p);
+    expect(p, tok_t::rparen, "expected ')'");
+
+    declarator_t suffix = declarator_suffix(p, nullptr, t);
+    const std::size_t after = p.pos;
+
+    p.pos = inside;
+    declarator_t d = declarator(p, suffix.type, naming);
+    expect(p, tok_t::rparen, "expected ')'");
+    p.pos = after;
+
+    if (d.type == suffix.type)
+        d.params = std::move(suffix.params);
+
+    return d;
+}
+
+// Array suffixes or a parameter list after the name, or after a
+// declarator in parentheses, each deriving from t, the type so far; or
+// neither, and the type is t.  An array of functions and a function
+// returning an array or a function are errors, 6.7.7.3p1, 6.7.7.4p1:
+// a suffix that would make one after the other is refused where it
+// stands, and the type so far, which a typedef name or the suffixes
+// after parentheses made, is refused at the suffix that derives from
+// it.  A prototype's parameter names are checked here, whether the
+// function is the name's or one a pointer points to.
+declarator_t
+declarator_suffix(parser_t &p, const token_t *name, const type_t &t)
+{
     declarator_t d { name, t, std::nullopt };
 
     if (peek(p).kind == tok_t::lbracket) {
@@ -2881,9 +3017,13 @@ declarator(parser_t &p, const type_t &base, bool abstract)
         if (peek(p).kind == tok_t::lparen)
             fail(peek(p), "function cannot return a function");
 
-        // an array result through a typedef name, which no suffix shows
         if (is< array_t >(t))
             fail(open, "function cannot return an array");
+
+        if (is< function_t >(t))
+            fail(open, "function cannot return a function");
+
+        check_parameter_names(params);
 
         std::vector< type_t > types;
         for (const parameter_t &param : params)
@@ -2898,7 +3038,8 @@ declarator(parser_t &p, const type_t &base, bool abstract)
 
 // Each '*' derives a pointer to the type so far, 6.7.7.2p1.  A const or
 // a restrict after it qualifies the pointer and is dropped, as in the
-// specifiers; the pointer is one restrict may qualify.
+// specifiers; the pointer is one restrict may qualify unless it points
+// to a function, as in void (*restrict f)(void).
 type_t
 pointer(parser_t &p, type_t t)
 {
@@ -2909,6 +3050,9 @@ pointer(parser_t &p, type_t t)
             const token_t &q = peek(p);
             if (q.kind == tok_t::kw_volatile || q.kind == tok_t::kw_atomic)
                 not_yet(q, "type qualifier " + quoted(q.text));
+
+            if (q.kind == tok_t::kw_restrict)
+                require_restrictable(q, t);
 
             if (!accept(p, tok_t::kw_const) && !accept(p, tok_t::kw_restrict))
                 break;
@@ -2973,6 +3117,9 @@ array_declarator(parser_t &p, const type_t &element)
     for (auto it = suffixes.rbegin(); it != suffixes.rend(); ++it) {
         const auto [open, count] = *it;
 
+        if (is< function_t >(t))
+            fail(*open, "array element type cannot be a function");
+
         if (is< void_t >(t) || (is< array_t >(t) && as< array_t >(t).count < 0))
             fail(*open, "array has incomplete element type");
 
@@ -3027,8 +3174,9 @@ parameter_type_list(parser_t &p, std::vector< parameter_t > &params)
 // specifiers or after the declarator is the parameter's.  void stands
 // only alone, as (void), 6.7.7.4p9.  A parameter of array type is
 // adjusted to a pointer to the element, 6.7.7.4p6, so its size may be
-// left out; one of function type would be adjusted to a function
-// pointer, p7, which is not yet.
+// left out, and one of function type to a pointer to the function, p7,
+// so int atexit(void f(void)) and int atexit(void (*f)(void)) declare
+// one function.
 parameter_t
 parameter_declaration(parser_t &p)
 {
@@ -3043,7 +3191,7 @@ parameter_declaration(parser_t &p)
 
     refuse_function_specifier(spec);
 
-    const declarator_t d = declarator(p, spec.type, true);
+    const declarator_t d = declarator(p, spec.type, naming_t::optional);
 
     const token_t *marking = attribute_specifier_list(p);
     if (spec.marking)
@@ -3052,23 +3200,22 @@ parameter_declaration(parser_t &p)
     if (is< void_t >(d.type))
         fail(start, "'void' must be the only parameter");
 
-    if (d.params)
-        not_yet(d.name ? *d.name : start, "parameter of function type");
-
-    // a register parameter of array type is a register pointer, since
-    // the adjustment comes first
+    // a register parameter of array or function type is a register
+    // pointer, since the adjustment comes first
     type_t t = d.type;
     if (is< array_t >(t))
         t = make_pointer(*as< array_t >(t).element);
+    else if (is< function_t >(t))
+        t = make_pointer(std::move(t));
 
     return parameter_t { std::move(t), &start, d.name,
                          declared(spec, tok_t::kw_register), marking };
 }
 
-// Specifiers and an abstract declarator of '*'s, each perhaps const,
-// 6.7.8p1; the array and function abstract declarators are not yet.  A
-// marking attribute would make the type one rcc does not use, which no
-// name stands for here, so it is not yet.
+// Specifiers and an abstract declarator, the declarator of a
+// declaration without its name, 6.7.8p1, p2: int *, int [3],
+// void (*)(int).  A marking attribute would make the type one rcc does
+// not use, which no name stands for here, so it is not yet.
 type_t
 type_name(parser_t &p)
 {
@@ -3084,15 +3231,7 @@ type_name(parser_t &p)
     if (spec.marking)
         not_yet(*spec.marking, attribute_words(*spec.marking));
 
-    const type_t t = pointer(p, spec.type);
-
-    if (peek(p).kind == tok_t::lbracket)
-        not_yet(peek(p), "array type name");
-
-    if (peek(p).kind == tok_t::lparen)
-        not_yet(peek(p), "parenthesized or function type name");
-
-    return t;
+    return declarator(p, spec.type, naming_t::none).type;
 }
 
 // A block-scope declaration, perhaps of a tag or enumeration constants
@@ -3153,7 +3292,7 @@ stmt_t
 init_declarator(parser_t &p, const specifiers_t &spec)
 {
     const declarator_t d = declarator(p, spec.type);
-    if (d.params)
+    if (is< function_t >(d.type))
         not_yet(*d.name, "function declaration at block scope");
 
     refuse_function_specifier(spec);
@@ -3677,9 +3816,10 @@ sizeof_expression(parser_t &p)
     return sizeof_(op, t);
 }
 
-// A call names its function directly, 6.5.3.3p5 gives its type.  A
-// call of a function whose result is of a not-yet type is not yet, its
-// value used or not: the call makes the object it returns.
+// A call names its function directly, 6.5.3.3p5 gives its type; a call
+// through a pointer to a function, the name of one included, is not
+// yet.  A call of a function whose result is of a not-yet type is not
+// yet, its value used or not: the call makes the object it returns.
 expr_t
 postfix_expression(parser_t &p)
 {
@@ -3692,7 +3832,7 @@ postfix_expression(parser_t &p)
         case tok_t::lparen: {
             advance(p);
 
-            if (!is< name_t >(e))
+            if (!is< name_t >(e) || is_function_pointer(e.type))
                 not_yet(op, "call through an expression");
 
             const symbol_t &fn = *as< name_t >(e).sym;

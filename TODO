@@ -485,42 +485,44 @@ type itself stays unqualified.
 Check: the three programs above fail with a diagnostic; =const= in
 every other position still parses.
 
-** TODO =stdlib.h= and =signal.h= do not parse
+** TODO A function is no value, and no call goes through a pointer
 
-rcc reads the system's headers as they are: it conforms with what a
-correct program depends on, the size and layout of a type and the
-symbol a name links to, and leaves hints and warnings for later; a
-declaration it cannot honour is accepted, and its use is refused
-(=shape.md= chapter 5). Of 58 headers of the C library and of POSIX,
-45 parse on both targets. Ten stop at a function-pointer declarator,
-"not yet: parenthesized declarator":
+A pointer to a function is declared, stored, passed, returned and
+compared, and the headers that declare one parse: of 58 headers of
+the C library and of POSIX, 53 on aarch64 and 55 on x86-64. But a
+function's name stands only as the callee of a call, "not yet:
+function 'f' used as a value", and a call names its function, "not
+yet: call through an expression". So =qsort=, =atexit=, =signal= and
+=pthread_create= are declared and of no use: nothing a program has
+can be passed to them.
 
-- =signal.h= and =sys/wait.h= at ~typedef void (*__sighandler_t)
-  (int);~;
-- =stdlib.h= at the parameter of =atexit=;
-- =threads.h=, =dirent.h= and =pthread.h= at theirs;
-- =sys/socket.h=, =netinet/in.h=, =arpa/inet.h= and =netdb.h= at
-  ~typedef void (*__kernel_sighandler_t)(int);~ of
-  =linux/posix_types.h=.
+Fix: a function is a value, its address, and a call is made through
+any expression that is a pointer to a function: nothing in the subset
+stands in the way of either. Both generators gain two rows, the
+address of a function and the call through a pointer.
 
-Fix: in two steps.
+Check: a program that sorts with =qsort= and its own comparison, and
+one that installs a handler with =signal= and raises its signal, run
+on both targets, and a probe sets calls through pointers against
+=clang='s.
 
-- A function-pointer declarator declares a pointer to a function,
-  which is passed, stored and compared as any pointer; with it the
-  parameter of function type, adjusted to the pointer, and the type
-  name of a cast.
-- A function is a value, its address, and a call is made through any
-  expression that is a pointer to a function: nothing in the subset
-  stands in the way of either, and =qsort=, =atexit= and =signal= are
-  of no use without them. Both generators gain two rows, the address
-  of a function and the call through a pointer.
+** TODO On aarch64 =signal.h= stops at an array sized by a struct
 
-Check: a program that includes =stdlib.h= and calls =atoi= compiles,
-links and runs on both targets; one that includes =signal.h= and
-calls =raise= does. Then one that sorts with =qsort= and its own
-comparison, and one that installs a handler with =signal= and raises
-its signal, run on both targets, and a probe sets calls through
-pointers against =clang='s.
+With glibc's default feature set, aarch64's =signal.h= and
+=sys/wait.h= reach =bits/procfs.h=, whose ~typedef elf_greg_t
+elf_gregset_t[ELF_NGREG];~ has for its size ~sizeof (struct
+user_regs_struct) / sizeof (elf_greg_t)~, and the parser stops with
+"not yet: struct". =tests/corpus/header-signal.c= defines
+=_POSIX_C_SOURCE=, under which the header leaves the file out; a
+program that includes =signal.h= and defines nothing does not
+compile on aarch64. On x86-64 both headers parse.
+
+Fix: by the rule for a system header, until a struct has a size: a
+typedef of an array whose size rcc cannot compute names a type rcc
+declares and does not use.
+
+Check: a program that includes =signal.h= alone compiles on both
+targets, and an object of type =elf_gregset_t= is refused by name.
 
 ** TODO =stdatomic.h= does not parse
 
@@ -655,20 +657,23 @@ read and dropped, =restrict= checked as it is on a pointer.
 Check: with the entry on a parameter's array size fixed too, a
 program that includes =regex.h= compiles.
 
-** TODO A typedef of function type keeps no marking attribute of its parameters
+** TODO A function type keeps no marking attribute of its parameters
 
 A marking attribute on a parameter marks the function a declaration
 declares, so that a call is refused. On ~typedef int f_t(int x
-__attribute__ ((mode (word))));~ nothing is recorded: the typedef
-names the function type and the attribute is lost. No program shows
-it while a declaration through such a typedef is not yet.
+__attribute__ ((mode (word))));~ and on ~int (*p)(int x __attribute__
+((mode (word))));~ nothing is recorded: the mark is the symbol's, a
+function type has none, and the attribute is lost. No program shows
+it yet: a function declared through such a typedef is "not yet:
+function 'f' declared through a typedef", and a call through a
+pointer is not yet.
 
-Fix: with declarations through a typedef of function type, the
-typedef's type carries the marking, or the typedef is refused where
-it is declared.
+Fix: the function type carries the marking, so that a call through a
+pointer to it and a function declared through the typedef are
+refused as a call of a marked function is.
 
-Check: a function declared through the typedef above is refused
-where it is called.
+Check: a call through the pointer above is refused by the
+attribute's name.
 
 ** TODO A typedef for =void= is not the empty parameter list
 
@@ -847,23 +852,6 @@ fix.
 Check: ~void f(int *p) { *p = 1; }~, ~void g(int *p) { *p = 2; }~
 and ~c ? f(&x) : g(&x);~ compile under both targets and store the
 arm the condition selects.
-
-** TODO A relational operator would take two function pointers
-
-6.5.9p2 admits two pointers to a relational operator only as
-"pointers to qualified or unqualified versions of compatible object
-types". =comparison()= in =src/parse.cc= checks that the two types
-are one and not what they point to, so ~p < q~ on two =int (*)(void)=
-would pass. No program reaches it yet: a function pointer, a
-function used as a value and =typedef= are each "not yet". Pointer
-arithmetic is safe; =require_object_pointee()= refuses a function.
-
-Fix: =comparison()= refuses a relational operator on two pointers to
-a function with an error, as =require_object_pointee()= does for
-arithmetic.
-
-Check: when function pointers arrive, ~p < q~ on two function
-pointers fails with the error, and ~p == q~ compiles.
 
 ** TODO The comment on a local's declaration says 2 GiB
 

@@ -1,2 +1,2 @@
-tests/error/array-type-name.c:4:23: error: not yet: array type name
+tests/error/array-type-name.c:5:18: error: cast to a type that is not a scalar
 status 1

@@ -1,2 +1,2 @@
-tests/error/parenthesized-declarator.c:5:9: error: not yet: parenthesized declarator
+tests/error/parenthesized-declarator.c:5:15: error: expected ')'
 status 1

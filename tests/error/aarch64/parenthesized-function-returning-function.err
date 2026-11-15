@@ -1,0 +1,2 @@
+tests/error/parenthesized-function-returning-function.c:4:6: error: function cannot return a function
+status 1

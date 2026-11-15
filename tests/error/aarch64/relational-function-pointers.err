@@ -1,0 +1,2 @@
+tests/error/relational-function-pointers.c:7:28: error: ordered comparison of pointers to functions
+status 1
