@@ -96,12 +96,16 @@ struct parameter_t
 // from a type name, the type it gives the name, and the parameters as
 // written when it declares a function, the parameter list that derives
 // the name's type.  A pointer to a function has a parameter list and
-// declares no function, so it has none.
+// declares no function, so it has none.  scope is that list's scope,
+// closed at its ')', with the parameters and the tags the list
+// declares, which a definition opens again as its body's; empty when
+// there are no params.
 struct declarator_t
 {
     const token_t *name;
     type_t type;
     std::optional< std::vector< parameter_t > > params;
+    scope_t scope;
 };
 
 // Whether a declarator names what it declares: a declaration's does, a
@@ -1545,15 +1549,36 @@ in_words(int n)
     return std::to_string(n);
 }
 
-// A new object in the innermost scope.  Without linkage a name is
-// declared once per scope (6.7.1p4); an inner scope may shadow it.  The
-// map's key views the symbol's own name, which the deque keeps in
-// place.  A register declaration met with the target's register
+// The register index of an object declared by name, register or not:
+// -1 for none.  A register declaration met with the target's register
 // variables all live declares an ordinary object, with a warning: the
 // extent to which the suggestion is effective is implementation-defined,
 // 6.7.2p12, so the program is conforming and compiles.  One that gets a
 // register takes the next, the count of those live, backend.md chapter
 // 4, and the function's count is the most taken at once.
+int
+register_index(parser_t &p, const token_t &name, bool in_register)
+{
+    const int count = p.target.register_variables;
+    const int live = in_register ? live_registers(p) : 0;
+    if (in_register && live == count) {
+        p.unit.warnings.push_back(
+            { name.where, "register variable " + quoted(name.text) +
+                              " in a stack slot: the " + in_words(count) +
+                              " registers are taken" });
+        in_register = false;
+    }
+
+    const int index = in_register ? live : -1;
+    p.registers = std::max(p.registers, index + 1);
+
+    return index;
+}
+
+// A new object in the innermost scope.  Without linkage a name is
+// declared once per scope (6.7.1p4); an inner scope may shadow it.  The
+// map's key views the symbol's own name, which the deque keeps in
+// place.
 const symbol_t *
 declare(parser_t &p,
         const token_t &name,
@@ -1565,23 +1590,10 @@ declare(parser_t &p,
     if (scope.contains(name.text))
         fail(name, "redefinition of " + quoted(name.text));
 
-    const bool declared_register = in_register;
-    const int count = p.target.register_variables;
-    const int live = in_register ? live_registers(p) : 0;
-    if (in_register && live == count) {
-        p.unit.warnings.push_back(
-            { name.where, "register variable " + quoted(name.text) +
-                              " in a stack slot: the " + in_words(count) +
-                              " registers are taken" });
-        in_register = false;
-    }
+    const int index = register_index(p, name, in_register);
 
-    const int register_index = in_register ? live : -1;
-    p.registers = std::max(p.registers, register_index + 1);
-
-    symbol_t &sym = p.unit.symbols.emplace_back(
-        symbol_t { std::string(name.text), std::move(t), storage,
-                   declared_register, register_index });
+    symbol_t &sym = p.unit.symbols.emplace_back(symbol_t {
+        std::string(name.text), std::move(t), storage, in_register, index });
     scope.emplace(sym.name, &sym);
 
     return &sym;
@@ -1979,10 +1991,11 @@ declarator_t declarator(parser_t &,
                         bool typedef_ = false);
 declarator_t
 parenthesized_declarator(parser_t &, const type_t &, naming_t, bool typedef_);
-declarator_t
-declarator_suffix(parser_t &, const token_t *, const type_t &, bool typedef_);
+declarator_t declarator_suffix(
+    parser_t &, const token_t *, const type_t &, bool typedef_, bool parameter);
 type_t pointer(parser_t &, type_t);
-type_t array_declarator(parser_t &, const type_t &, bool typedef_);
+type_t
+array_declarator(parser_t &, const type_t &, bool typedef_, bool parameter);
 bool parameter_type_list(parser_t &, std::vector< parameter_t > &);
 parameter_t parameter_declaration(parser_t &);
 type_t type_name(parser_t &);
@@ -2089,20 +2102,6 @@ translation_unit(parser_t &p)
         external_declaration(p);
 }
 
-// A prototype's parameters share one scope, 6.7.1p4, even when no
-// body follows to use the names: the prototype of a function declared,
-// and the one a pointer to a function points through.
-void
-check_parameter_names(const std::vector< parameter_t > &params)
-{
-    std::unordered_map< std::string_view, bool > seen;
-
-    for (const parameter_t &param : params)
-        if (param.name && !seen.emplace(param.name->text, true).second)
-            fail(*param.name,
-                 "redefinition of parameter " + quoted(param.name->text));
-}
-
 // The declaration of the name earlier in the current scope, or null
 // when there is none.  A name declared again there is the same kind of
 // entity, of the same type: a function or an object of file scope by
@@ -2144,6 +2143,25 @@ added(parser_t &p, std::string_view name, type_t t, storage_t storage)
     p.scopes.back().names.emplace(sym.name, &sym);
 
     return sym;
+}
+
+// A parameter's name, declared in the scope of its list from the end of
+// its declarator, 6.2.1p7, so that a later parameter's declarator sees
+// it: as an array's size, or as the object that hides a typedef name.
+// The parameters of one list share that scope, 6.7.1p4, whether a body
+// follows or not.  The parameter takes no register here: register is
+// ignored but in a definition, 6.7.7.4p12, which gives the registers.
+void
+declare_parameter(parser_t &p, const parameter_t &param)
+{
+    if (!param.name)
+        return;
+
+    if (p.scopes.back().names.contains(param.name->text))
+        fail(*param.name,
+             "redefinition of parameter " + quoted(param.name->text));
+
+    added(p, param.name->text, param.type, storage_t::parameter);
 }
 
 // A typedef declares its declarator's name as a name for the type the
@@ -2338,13 +2356,29 @@ external_declaration(parser_t &p)
     expect(p, tok_t::semicolon, "expected ';' after top level declarator");
 }
 
-// The parameters and the outermost block of the body are one block,
-// 6.8.3p2, so a local cannot redeclare a parameter there; the body's
-// items are parsed into the parameter scope directly.  The result and
-// the parameters are objects the definition makes, so none may be of a
-// not-yet type.  A function a marking attribute marked, on a
-// declaration, among the definition's specifiers or on a parameter, is
-// one rcc would have to define as the attribute says, which is not yet.
+// A parameter of a definition, declared already in the scope of its
+// list, which is open again as the body's, takes its register in the
+// order of the parameters, as a local does.
+const symbol_t *
+defined_parameter(parser_t &p, const parameter_t &param)
+{
+    symbol_t &sym = *p.scopes.back().names.at(param.name->text);
+
+    sym.declared_register = param.in_register;
+    sym.register_index = register_index(p, *param.name, param.in_register);
+
+    return &sym;
+}
+
+// The parameter type list and the body are one block, 6.9.2p10,
+// 6.8.3p2, so a local cannot redeclare a parameter there: the scope of
+// the list that makes the name a function, with its parameters and its
+// tags, is opened again and the body's items are parsed into it
+// directly.  The result and the parameters are objects the definition
+// makes, so none may be of a not-yet type.  A function a marking
+// attribute marked, on a declaration, among the definition's specifiers
+// or on a parameter, is one rcc would have to define as the attribute
+// says, which is not yet.
 void
 function_definition(parser_t &p,
                     const specifiers_t &spec,
@@ -2363,7 +2397,7 @@ function_definition(parser_t &p,
     require_honoured(*d.name, p.result);
 
     p.registers = 0;
-    p.scopes.emplace_back();
+    p.scopes.push_back(d.scope);
 
     std::vector< const symbol_t * > params;
     for (const parameter_t &param : *d.params) {
@@ -2371,8 +2405,7 @@ function_definition(parser_t &p,
             fail(*param.start, "parameter name omitted");
 
         require_honoured(*param.name, param.type);
-        params.push_back(declare(p, *param.name, param.type,
-                                 storage_t::parameter, param.in_register));
+        params.push_back(defined_parameter(p, param));
     }
 
     block_t body;
@@ -2456,8 +2489,8 @@ tag_in(scope_t &scope, std::string_view name)
 // list before the enum is declared, p2.  A second list for one tag in
 // one scope is valid when it defines the same content, p1, which rcc
 // cannot compare while it skips the lists, so it is not yet.  A tag
-// declared in a parameter list is declared in the scope around the
-// declarator, which is not the prototype scope of 6.2.1p4.
+// first declared in a parameter list is declared in the list's scope,
+// 6.2.1p4, and ends with it, or with the body of a definition.
 type_t
 tagged_type(parser_t &p,
             const token_t &keyword,
@@ -2988,7 +3021,11 @@ skip_parenthesized_declarator(parser_t &p)
 // int (*f)(void) is a pointer to a function.  typedef_ says that the
 // declarator is a typedef's, where an array size that needs what rcc
 // does not have yet makes a not-yet type; the parameters of a parameter
-// list in it are not the typedef's, and their sizes are refused.
+// list in it are not the typedef's, and their sizes are refused.  The
+// array suffix right after a parameter's name, or the place of it, is
+// the parameter's outermost array type derivation, the one 6.7.7.4p6
+// adjusts to a pointer; a parameter's is the declarator whose name is
+// optional.
 declarator_t
 declarator(parser_t &p, const type_t &base, naming_t naming, bool typedef_)
 {
@@ -3002,7 +3039,8 @@ declarator(parser_t &p, const type_t &base, naming_t naming, bool typedef_)
         (naming == naming_t::optional && peek(p).kind == tok_t::identifier))
         name = &expect(p, tok_t::identifier, "expected identifier");
 
-    return declarator_suffix(p, name, t, typedef_);
+    return declarator_suffix(p, name, t, typedef_,
+                             naming == naming_t::optional);
 }
 
 // ( D ) and the suffixes after it.  The declarator in parentheses
@@ -3013,7 +3051,12 @@ declarator(parser_t &p, const type_t &base, naming_t naming, bool typedef_)
 // suffixes.  A parameter list after the parentheses is the name's when
 // the declarator inside derives nothing, as in int (f)(void), whose
 // type is then the suffix's; otherwise it is the prototype of what the
-// name's type points through, and the name declares no function.
+// name's type points through, and the name declares no function.  Each
+// parameter list is read once, the suffix's before the rewind and the
+// inner one's after it, and the list that is the name's brings its
+// scope.  An array suffix after the parentheses is read as an array's
+// that no parameter is adjusted from, as it is in int (*a)[3], though
+// in int (a)[3] it is the parameter's own.
 declarator_t
 parenthesized_declarator(parser_t &p,
                          const type_t &t,
@@ -3026,7 +3069,7 @@ parenthesized_declarator(parser_t &p,
     skip_parenthesized_declarator(p);
     expect(p, tok_t::rparen, "expected ')'");
 
-    declarator_t suffix = declarator_suffix(p, nullptr, t, typedef_);
+    declarator_t suffix = declarator_suffix(p, nullptr, t, typedef_, false);
     const std::size_t after = p.pos;
 
     p.pos = inside;
@@ -3034,8 +3077,10 @@ parenthesized_declarator(parser_t &p,
     expect(p, tok_t::rparen, "expected ')'");
     p.pos = after;
 
-    if (d.type == suffix.type)
+    if (d.type == suffix.type) {
         d.params = std::move(suffix.params);
+        d.scope = std::move(suffix.scope);
+    }
 
     return d;
 }
@@ -3047,18 +3092,23 @@ parenthesized_declarator(parser_t &p,
 // a suffix that would make one after the other is refused where it
 // stands, and the type so far, which a typedef name or the suffixes
 // after parentheses made, is refused at the suffix that derives from
-// it.  A prototype's parameter names are checked here, whether the
-// function is the name's or one a pointer points to.
+// it.  A parameter list opens a scope at its '(' and closes it at its
+// ')', the function prototype scope of 6.2.1p4, whether the function is
+// the name's or one a pointer points to; the declarator keeps it for a
+// definition.  parameter says that the suffixes follow a parameter's
+// name or the place of it, so that their first array is the
+// parameter's own.
 declarator_t
 declarator_suffix(parser_t &p,
                   const token_t *name,
                   const type_t &t,
-                  bool typedef_)
+                  bool typedef_,
+                  bool parameter)
 {
-    declarator_t d { name, t, std::nullopt };
+    declarator_t d { name, t, std::nullopt, { } };
 
     if (peek(p).kind == tok_t::lbracket) {
-        d.type = array_declarator(p, t, typedef_);
+        d.type = array_declarator(p, t, typedef_, parameter);
 
         if (peek(p).kind == tok_t::lparen)
             fail(peek(p), "array element type cannot be a function");
@@ -3067,7 +3117,10 @@ declarator_suffix(parser_t &p,
         const token_t &open = advance(p);
 
         std::vector< parameter_t > params;
+        p.scopes.emplace_back();
         const bool variadic = parameter_type_list(p, params);
+        d.scope = std::move(p.scopes.back());
+        p.scopes.pop_back();
 
         if (peek(p).kind == tok_t::lbracket)
             fail(peek(p), "function cannot return an array");
@@ -3080,8 +3133,6 @@ declarator_suffix(parser_t &p,
 
         if (is< function_t >(t))
             fail(open, "function cannot return a function");
-
-        check_parameter_names(params);
 
         std::vector< type_t > types;
         for (const parameter_t &param : params)
@@ -3213,6 +3264,9 @@ closing_bracket(const parser_t &p)
 // found first, where the parse resumes.  An error of the program in
 // the size stays the error it is, and so does a size that reads whole
 // and is no constant, or no positive one, which array_count() refuses.
+// A refusal inside a parameter list of a type name in the size leaves
+// that list's scope open, and the scopes are cut back to those open
+// before the size.
 std::optional< expr_t >
 typedef_array_size(parser_t &p, std::string &missing)
 {
@@ -3220,15 +3274,67 @@ typedef_array_size(parser_t &p, std::string &missing)
     if (!close)
         return array_size(p);
 
+    const std::size_t depth = p.scopes.size();
+
     try {
         return array_size(p);
     }
     catch (const not_yet_error_t &e) {
         missing = e.construct;
         p.pos = *close;
+        p.scopes.resize(depth);
     }
 
     return std::nullopt;
+}
+
+// The count of the array a parameter is adjusted from, 6.7.7.4p6: as
+// any array's, but for a size that is no integer constant expression,
+// as one that names an earlier parameter, which is taken as left out.
+// At prototype scope such a size stands for '*', 6.7.7.3p5, and the
+// parameter is the pointer either way.  In a definition the size is not
+// evaluated on entry, as 6.9.2p11 asks, which only a size with a side
+// effect shows.
+long
+parameter_array_count(const token_t &at, const expr_t &size)
+{
+    if (is< int_t >(size.type) && !is< literal_t >(size))
+        return -1;
+
+    return array_count(at, size);
+}
+
+// static and the type qualifiers inside a parameter's brackets, before
+// the size, 6.7.7.3p3: static first or after the qualifiers, once.  The
+// qualifiers are the pointer's the parameter is adjusted to, 6.7.7.4p6,
+// and are dropped as after a '*'; restrict is returned in restrict_,
+// for the caller to check on that pointer.  _Atomic is not yet, as on a
+// pointer.  static promises that each argument points to the first of
+// at least as many elements as the size says, p6, which no call rcc
+// writes depends on, and is dropped; whether it was written is
+// returned, since a size must follow it.
+bool
+parameter_array_qualifiers(parser_t &p, const token_t *&restrict_)
+{
+    bool static_ = accept(p, tok_t::kw_static);
+
+    for (;;) {
+        const token_t &q = peek(p);
+        if (q.kind == tok_t::kw_atomic)
+            not_yet(q, "type qualifier " + quoted(q.text));
+
+        if (q.kind == tok_t::kw_restrict && !restrict_)
+            restrict_ = &q;
+
+        if (!accept(p, tok_t::kw_const) && !accept(p, tok_t::kw_volatile) &&
+            !accept(p, tok_t::kw_restrict))
+            break;
+    }
+
+    if (!static_)
+        static_ = accept(p, tok_t::kw_static);
+
+    return static_;
 }
 
 // One or more [N], N an integer constant expression, or [] for an array
@@ -3240,23 +3346,37 @@ typedef_array_size(parser_t &p, std::string &missing)
 // size rcc knows, so its size is not checked; its object is refused
 // where it would be made.  In a typedef's declarator a suffix whose
 // size needs what rcc does not have yet makes a not-yet type of the
-// words of what it needs, in place of the array.
+// words of what it needs, in place of the array.  When parameter says
+// that the first suffix is the array a parameter is adjusted from, its
+// brackets may hold static and type qualifiers, 6.7.7.3p1, and its size
+// need not be an integer constant expression; every other suffix keeps
+// the rules of any array, so a variable length array behind the
+// parameter's pointer is not yet.
 type_t
-array_declarator(parser_t &p, const type_t &element, bool typedef_)
+array_declarator(parser_t &p,
+                 const type_t &element,
+                 bool typedef_,
+                 bool parameter)
 {
     std::vector< array_suffix_t > suffixes;
+    const token_t *restrict_ = nullptr;
 
     while (peek(p).kind == tok_t::lbracket) {
         array_suffix_t suffix { &advance(p), -1, { } };
+        const bool adjusted = parameter && suffixes.empty();
 
-        if (peek(p).kind != tok_t::rbracket) {
+        const bool static_ =
+            adjusted && parameter_array_qualifiers(p, restrict_);
+
+        if (static_ || peek(p).kind != tok_t::rbracket) {
             const token_t &start = peek(p);
 
             const std::optional< expr_t > size =
                 typedef_ ? typedef_array_size(p, suffix.missing) :
                            array_size(p);
             if (size)
-                suffix.count = array_count(start, *size);
+                suffix.count = adjusted ? parameter_array_count(start, *size) :
+                                          array_count(start, *size);
         }
 
         expect(p, tok_t::rbracket, "expected ']'");
@@ -3286,24 +3406,26 @@ array_declarator(parser_t &p, const type_t &element, bool typedef_)
         t = make_array(std::move(t), count);
     }
 
+    if (restrict_)
+        require_restrictable(*restrict_,
+                             make_pointer(*as< array_t >(t).element));
+
     return t;
 }
 
 // (void), (), or parameters with an optional trailing ", ...", which
-// makes the function variadic, the value returned.  An empty list is
-// (void) in C23, 6.7.7.4p13; before C23 it declared a function without
-// a prototype, which this parser does not take.
+// makes the function variadic, the value returned, read in the scope
+// the caller opened for the list.  An empty list is (void) in C23,
+// 6.7.7.4p13; before C23 it declared a function without a prototype,
+// which this parser does not take.  An unnamed parameter of type void
+// as the only one is no parameter, p9, whatever spells the type, a
+// typedef name among them; void stands nowhere else.  Each parameter
+// is declared as it is read, so that the next one sees it.
 bool
 parameter_type_list(parser_t &p, std::vector< parameter_t > &params)
 {
     if (accept(p, tok_t::rparen))
         return false;
-
-    if (peek(p).kind == tok_t::kw_void && peek(p, 1).kind == tok_t::rparen) {
-        advance(p);
-        advance(p);
-        return false;
-    }
 
     bool variadic = false;
 
@@ -3317,7 +3439,16 @@ parameter_type_list(parser_t &p, std::vector< parameter_t > &params)
             break;
         }
 
-        params.push_back(parameter_declaration(p));
+        parameter_t param = parameter_declaration(p);
+        if (is< void_t >(param.type)) {
+            if (params.empty() && !param.name && accept(p, tok_t::rparen))
+                return false;
+
+            fail(*param.start, "'void' must be the only parameter");
+        }
+
+        declare_parameter(p, param);
+        params.push_back(std::move(param));
     } while (accept(p, tok_t::comma));
 
     expect(p, tok_t::rparen, "expected ')' after parameter list");
@@ -3327,12 +3458,12 @@ parameter_type_list(parser_t &p, std::vector< parameter_t > &params)
 
 // Specifiers and a declarator, whose name is optional, and attributes
 // after it, as after any declarator; a marking one among the
-// specifiers or after the declarator is the parameter's.  void stands
-// only alone, as (void), 6.7.7.4p9.  A parameter of array type is
-// adjusted to a pointer to the element, 6.7.7.4p6, so its size may be
-// left out, and one of function type to a pointer to the function, p7,
-// so int atexit(void f(void)) and int atexit(void (*f)(void)) declare
-// one function.
+// specifiers or after the declarator is the parameter's.  A parameter
+// of array type is adjusted to a pointer to the element, 6.7.7.4p6, so
+// its size may be left out, and one of function type to a pointer to
+// the function, p7, so int atexit(void f(void)) and int atexit(void
+// (*f)(void)) declare one function.  A parameter of type void is left
+// for the list to take or refuse.
 parameter_t
 parameter_declaration(parser_t &p)
 {
@@ -3352,9 +3483,6 @@ parameter_declaration(parser_t &p)
     const token_t *marking = attribute_specifier_list(p);
     if (spec.marking)
         marking = spec.marking;
-
-    if (is< void_t >(d.type))
-        fail(start, "'void' must be the only parameter");
 
     // a register parameter of array or function type is a register
     // pointer, since the adjustment comes first

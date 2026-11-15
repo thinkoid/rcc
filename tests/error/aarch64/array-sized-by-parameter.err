@@ -1,0 +1,2 @@
+tests/error/array-sized-by-parameter.c:7:15: error: not yet: variable length array
+status 1

@@ -1,0 +1,2 @@
+tests/error/parameter-list-tag.c:13:1: error: conflicting types for 'f'
+status 1

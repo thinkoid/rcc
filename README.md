@@ -70,9 +70,11 @@ includes `stdio.h` and calls `printf`. Then the rest of the headers:
 the declarator in parentheses, the types a header declares for
 another compiler and the `static inline` bodies it defines,
 `volatile` dropped as `const` is, `_Atomic` and `_Bool` declared,
-floating constants taken by the lexer, and a typedef of an array of a
-size rcc cannot compute, so that 56 of 58 headers of the C library
-and of POSIX parse on each target. A function is a value and a call
+floating constants taken by the lexer, a typedef of an array of a
+size rcc cannot compute, and the scope a parameter list opens, so
+that 57 of 58 headers of the C library and of POSIX parse on each
+target; the one left is `clang`'s `tgmath.h`. A function is a value
+and a call
 goes through a pointer to one, on both targets, so a program passes
 its own comparison to `qsort` and its own handler to `signal`.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs

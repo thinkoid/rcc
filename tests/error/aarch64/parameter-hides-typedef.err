@@ -1,0 +1,2 @@
+tests/error/parameter-hides-typedef.c:7:14: error: expected a type specifier
+status 1

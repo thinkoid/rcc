@@ -1,0 +1,2 @@
+tests/error/return-type-parameter.c:7:13: error: 'b' undeclared
+status 1

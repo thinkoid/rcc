@@ -20,3 +20,4 @@ header-stdlib 0 0
 header-signal 0 0
 header-qsort 0 0
 header-handler 42 42
+header-regex 0 0

@@ -201,6 +201,31 @@ typedef name of function type stands for the type, and a pointer
 through it is a pointer to the function; a function declared through
 it is not yet.
 
+A parameter list opens a scope at its `(` and closes it at its `)`,
+the function prototype scope of 6.2.1p4. Each parameter is declared in
+it as its declarator completes (6.2.1p7), so a later parameter sees
+it: `int f(int n, int a[n])` sizes `a` by `n`, and in `typedef int T;
+int f(int T, T x);` the second `T` names the parameter, not the type.
+A tag first written in the list is declared there and ends with it,
+so the `struct S` of `void f(struct S *);` is no struct declared after
+it. A definition opens the scope again as its body's (6.9.2p10): the
+body sees the parameters and the tags of the list that makes the name
+a function, which in `int (*g(int a))(int b) { ... }` is `(int a)`
+alone. An unnamed parameter of type `void` as the only one is the
+empty list (6.7.7.4p9), whatever spells the type, a typedef name
+included.
+
+The array a parameter is adjusted from, the suffix right after the
+parameter's name or the place of it, takes `static` and the type
+qualifiers inside its brackets before the size, as `regex.h` writes
+`regmatch_t __pmatch[__restrict __nmatch]`. They are dropped,
+`restrict` is checked as on a pointer, and `_Atomic` there is not yet.
+Its size need not be constant: one that is not is taken as left out,
+as 6.7.7.3p5 takes it in a prototype, since the parameter is the
+pointer either way, and nothing is evaluated for it. Every other array
+suffix keeps the rules of an array, so `int (*a)[n]` points to a
+variable length array, which is not yet.
+
 A pointer to a function is a value as any pointer is, with the type
 rules of the standard: assignment and argument passing take one of
 its own type or a null pointer constant, and a pointer to void only
@@ -510,10 +535,12 @@ comparison, and `header-handler` installs its own signal handler and
 raises the signal. `volatile` dropped, `_Atomic` and `_Bool`
 declared, a floating constant taken as a token, and a typedef's array
 of a size rcc cannot compute bring `stdatomic.h` through, and on
-aarch64 `signal.h` and `sys/wait.h` with glibc's default feature set,
-so 56 of 58 headers of the C library and of POSIX parse on each
-target. `tgmath.h` stops at the declaration of a `static` function,
-and `regex.h` at a qualifier inside a parameter's array brackets.
+aarch64 `signal.h` and `sys/wait.h` with glibc's default feature set.
+The scope of a parameter list and the qualifiers inside a parameter's
+array brackets bring `regex.h` through, and `header-regex` in the
+corpus declares a function in the shape of `regexec`. So 57 of 58
+headers of the C library and of POSIX parse on each target;
+`tgmath.h` stops at the declaration of a `static` function.
 
 ## 11. Not yet
 
@@ -523,16 +550,19 @@ constants declared without their values; a pointer to one is an
 ordinary pointer, and a use that needs the object, or a constant's
 value, is refused; a floating constant is a token, refused where an
 expression uses it), an object of a typedef whose array size rcc
-cannot compute, global variables (an object declared `extern` at
-file scope is accepted and its use refused; a definition at file
-scope is refused), `extern` in a block, brace initializers and `char
-s[] = "..."`, a declaration through a typedef of function type, wide
-and `u8` strings, the checks of the qualifiers (`const` and
-`volatile` are dropped, so an assignment to a `const` object and a
-conversion that discards a qualifier draw no diagnostic), an atomic
-object, `switch`, `goto`, `static` outside a `static inline`
-definition, whose use is refused, a `register` array (6.3.2.1p3),
-`inline` on a function definition, what an attribute that rcc does
+cannot compute, a variable length array (a parameter's array of a
+size that is not constant is the pointer the parameter is adjusted to,
+and the size is not evaluated), global variables (an object declared
+`extern` at file scope is accepted and its use refused; a definition
+at file scope is refused), `extern` in a block, brace initializers
+and `char s[] = "..."`, a declaration through a typedef of function
+type, wide and `u8` strings, the checks of the qualifiers (`const`
+and `volatile` are dropped, so an assignment to a `const` object and
+a conversion that discards a qualifier draw no diagnostic, and
+`(const void)` is taken as `(void)`), an atomic object, `switch`,
+`goto`, `static` outside a `static inline` definition, whose use is
+refused, a `register` array (6.3.2.1p3), `inline` on a function
+definition, what an attribute that rcc does
 not honour marks (an object of a typedef so declared, the use of a
 function or an `extern` object, a local, a function's definition),
 `__asm__` as a statement, at file scope or on a local, and C's

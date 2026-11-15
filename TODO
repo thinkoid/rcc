@@ -611,21 +611,6 @@ local by its kind.
 Check: the program above compiles and returns 1; with ~__attribute__
 ((aligned (16)))~ it is refused as not yet, by the attribute's name.
 
-** TODO A qualifier inside a parameter's array brackets is an error
-
-=regex.h= stops at ~regmatch_t __pmatch[__restrict __nmatch]~ of
-=regexec=, "expected expression": a parameter's array declarator may
-hold =static= and type qualifiers before its size, which say
-something of the pointer the parameter is adjusted to. The size there
-names an earlier parameter, which the entry on a parameter's array
-size is about.
-
-Fix: the qualifiers and =static= inside a parameter's brackets are
-read and dropped, =restrict= checked as it is on a pointer.
-
-Check: with the entry on a parameter's array size fixed too, a
-program that includes =regex.h= compiles.
-
 ** TODO A call through a pointer passes a parameter a marking attribute marked
 
 ~int f(int x __attribute__ ((mode (word))));~ marks =f=, and a call
@@ -705,7 +690,7 @@ _Argument_type_is_not_arithmetic __tg_promote(...) __attribute__
 'static'": a =static= function declared without a body, with =(...)=
 for its whole parameter list, and overloaded by an attribute, which
 no other C header does. More than a thousand such declarations
-follow. Every other header of the 58 surveyed parses but =regex.h=.
+follow. Every other header of the 58 surveyed parses.
 
 Fix: decide whether =clang='s own headers are read: the type-generic
 macros need overloading, which is not C; a program that includes
@@ -714,33 +699,68 @@ macros need overloading, which is not C; a program that includes
 Check: the documents say what a program that includes =tgmath.h=
 gets.
 
-** TODO A typedef for =void= is not the empty parameter list
+** TODO =[*]= in a parameter is "expected expression"
 
-~typedef void V; int f(V);~ fails with "'void' must be the only
-parameter". C takes a single unnamed parameter of type =void= as "no
-parameters", whatever spells the type. =parameter_type_list()= asks
-for the keyword =void= followed by =)=, and a typedef name is not the
-keyword.
+~void f(int n, int a[*]);~ fails with "expected expression" at the
+=*=. It is valid in a declaration that is no definition: 6.7.7.3p4
+lets =*= stand for the size of a variable length array of unspecified
+size, at function prototype scope alone. A parameter's size that
+names another parameter is taken as unspecified already; the spelling
+that says so is not read.
 
-Fix: the test is on the parameter's type after its specifiers, not on
-the token.
+Fix: =[*]= in a parameter's brackets is the size left out; in a
+definition it is the error it is.
 
-Check: ~typedef void V; int f(V) { return 0; }~ compiles to the
-listing of ~int f(void)~.
+Check: the declaration above compiles; ~void f(int n, int a[*]) { }~
+fails with a message about the =*=.
 
-** TODO A prototype's parameter does not hide a typedef name
+** TODO =static= and a qualifier in a parameter's brackets are read in one place only
 
-~typedef int T; int f(int T, T x);~ is accepted. In C the first
-parameter declares an object named =T= in the prototype's scope, so
-the second =T= names that object and =T x= is an error. The parser
-declares a definition's parameters after the whole declarator and a
-prototype's never, so the typedef stays visible. The entry on a
-parameter's array size naming an earlier parameter is the same gap.
+A parameter's array declarator takes =static= and type qualifiers
+inside its brackets, in the array type derivation the parameter is
+adjusted from. The parser reads them in the suffix written right
+after the parameter's name. Three spellings draw "expected
+expression" where another message, or none, is due:
 
-Fix: the scope opened at the parameter list, each parameter declared
-as its declarator completes.
+- ~int f(int (a)[static 3]);~ and ~int f(int n, int (a)[n]);~ are
+  valid, the parentheses redundant, and are refused;
+- ~int f(int a[3][const 4]);~ is an error, of a qualifier in an array
+  derivation that is not the outermost (6.7.7.3p1), and the message
+  does not say so;
+- ~int f(int a[static]);~ is an error, of =static= without a size, and
+  the message does not say so.
 
-Check: the program above fails at the second =T=.
+Fix: the suffix after redundant parentheses is the parameter's own;
+the two errors take messages of their own.
+
+Check: the first two declarations compile; the other two are pinned
+in =tests/error= with their messages.
+
+** TODO =(const void)= is taken as =(void)=
+
+~int f(const void);~, ~int f(register void);~ and a parameter of a
+typedef for =const void= declare a function of no parameters. The
+empty list is "an unnamed parameter of type void as the only item"
+(6.7.7.4p9), and a qualified =void=, or one with a storage class, is
+not that; =clang= and =gcc= refuse each. rcc drops qualifiers where
+it reads them and tests the parameter's type, so it cannot tell.
+
+Fix: with qualifiers in the type model, the entry on =const=; the
+storage class is refused where the list is taken as empty.
+
+Check: the three declarations fail with "'void' must be the only
+parameter".
+
+** TODO A parameter that takes an enumeration constant's name is called a parameter twice
+
+~int f(enum { A } x, int A);~ fails with "redefinition of parameter
+'A'". It should fail: the constant and the parameter are declared in
+one scope. But the first =A= is no parameter.
+
+Fix: the message names what the name was first declared as.
+
+Check: a program of =tests/error= with the declaration above, pinned
+"redefinition of 'A'".
 
 ** TODO Two declarations of an array, one without its size, conflict
 
@@ -784,21 +804,6 @@ Fix: each rule cited by its paragraph in N3220, read from the text.
 Check: every citation in the comments of =src/parse.cc= that this
 entry names is found at its number in N3220.
 
-** TODO A tag first written in a parameter list outlives the prototype
-
-~void f(struct S *); struct S { int x; }; void f(struct S *p) { }~ is
-accepted. In C a tag first declared in a parameter list has the
-prototype's scope, so the first =struct S= is not the second, and the
-two declarations of =f= have conflicting types. The parser declares
-such a tag in the scope around the declarator. The entry on a
-prototype's parameter that does not hide a typedef name is the same
-missing scope.
-
-Fix: with the scope opened at the parameter list, a tag declared
-there is declared in it; a definition's parameter tags are its body's.
-
-Check: the program above fails with "conflicting types for 'f'".
-
 ** TODO A cast to a struct says not yet
 
 ~(struct S) x~ fails with "not yet: struct". The cast is not waiting
@@ -812,30 +817,6 @@ asks whether the type is one rcc does not use yet.
 
 Check: a program of =tests/error= with ~(struct S) x~, pinned "cast
 to a type that is not a scalar".
-
-** TODO A parameter's array size cannot name an earlier parameter
-
-=int f(int n, int a[n])= fails with "'n' undeclared". Before the
-evaluator, any size but one integer token was a not-yet; the size is
-now parsed as an expression, and the name in it is looked up. The
-parser declares a definition's parameters only after the whole
-declarator, in =function_definition=, and a prototype's never, so no
-parameter is in scope inside the list. The program is valid C: =n='s
-scope begins just after its declarator (6.2.1p7), and a definition's
-parameter list has block scope (6.2.1p4). The size changes nothing:
-6.7.7.4p6 adjusts the parameter to a pointer, and at prototype scope
-6.7.7.3p5 treats a size that is not an integer constant expression as
-=*=.
-
-Fix: a scope opened at the parameter list, each parameter declared as
-its declarator completes, which a definition keeps as its body's
-scope; a parameter's size that is not an integer constant expression
-taken as =*=. In a definition this skips the evaluation of the size
-that 6.7.7.3p5 asks for, which only a size with a side effect shows.
-
-Check: =int f(int n, int a[n]) { return a[0]; }= compiles to the
-listing of =int f(int n, int *a)=; =int g(int n) { int a[n]; }= is
-still the variable-length not-yet.
 
 ** TODO A =(void *) 0= arm makes =?:= a =void *=
 
