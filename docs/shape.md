@@ -63,7 +63,14 @@ parser arbitrary lookahead for free. A string or character token
 keeps its spelling, quotes and escapes included; two functions
 beside `tokenize` yield the bytes of a string and the value of a
 character constant, and cannot fail, because the lexer refused every
-malformed escape when it made the token.
+malformed escape when it made the token. A floating constant is a
+token of its own, in the grammar of 6.4.4.3p1: decimal or
+hexadecimal, a fraction, an exponent, which a hexadecimal one must
+have, and a suffix, `f`, `l` or one of the decimal ones, which p2
+keeps off a hexadecimal constant. Its value is not computed: the
+parser refuses the constant where an expression uses it, and a
+floating constant in the skipped body of a `static inline` function,
+as clang's `tgmath.h` writes `0.F`, is never read.
 
 The keywords are C17's, those outside the subset included, so the
 parser refuses each by its name. GNU C's spellings in the
@@ -78,13 +85,15 @@ A type is the machine's view: void, an integer of a width and a
 signedness, a pointer to a type, an array of a type and a count, a
 function of a result and parameters, or a type rcc declares and does
 not use yet: a struct, a union, an enum; a floating type, real or
-complex, GNU C's `__float128` among them; GNU C's `__int128`;
-`__builtin_va_list` and clang's SVE types; a type a typedef names
-through `volatile`, `_Atomic` or an attribute rcc does not honour.
-Such a type carries an identity, which equality compares, and the
-words a refusal of its use prints; it has no size and no alignment,
-and a pointer to it is an ordinary pointer. The C spelling is not
-kept:
+complex, GNU C's `__float128` among them; `_Bool`; GNU C's
+`__int128`; `__builtin_va_list` and clang's SVE types; an atomic
+type; a type a typedef names through an attribute rcc does not
+honour, or through an array size rcc cannot compute. Such a type
+carries an identity, which equality compares, and the words a
+refusal of its use prints; it has no size and no alignment, and a
+pointer to it is an ordinary pointer. The type carries no qualifier:
+`const`, `volatile` and `restrict` are dropped (chapter 5). The C
+spelling is not kept:
 `long` and `long long` are one type on a target where both are 64
 bits. The edges from a type to the types it names are
 `shared_ptr< const type_t >`: a type is never written after it is
@@ -238,13 +247,49 @@ the declarator of a function or an `extern` object is the symbol's
 name in the assembly: glibc declares `scanf` as `__isoc99_scanf`, and
 the call names that.
 
+`volatile` is dropped as `const` is, wherever `const` may stand:
+among the declaration specifiers, after a `*`, in a type name, once
+or more. It asks that each access the source writes be made
+(6.7.4.1p8), and c1 writes every access of every object, an unused
+one included, at the object's width: `*p;` is a load, and `*p + *p`
+is two. What an access to a volatile object is, which p8 leaves to
+the implementation, is thus each load and each store c1 writes. A
+typedef through `volatile` names the type itself: glibc's
+`pthread_spinlock_t` is `int`. A `register volatile` variable is a
+register variable as any other, and there rcc departs from
+7.13.2.1p3, which keeps the value of a volatile local of the function
+that called `setjmp`: `longjmp` restores the callee-saved registers,
+so a register variable takes back the value it had at `setjmp`,
+volatile or not. Every other local is in its slot and keeps the value
+last stored. No conversion that discards `const` or `volatile` is
+diagnosed, nor an assignment to a `const` object (chapter 11).
+
 The types a header declares and rcc does not use are not-yet types:
 the complex types, `_Complex` among the specifiers of a floating
 type; GNU C's `__float128` and `__int128`, signed or unsigned;
-clang's names of the SVE types, which no header declares. A typedef
-through `volatile` or `_Atomic` names a not-yet type of its own; both
-qualifiers are not yet anywhere else, and so is `_Atomic (` *type
-name* `)`. The definition of a `static inline` function, as glibc's
+clang's names of the SVE types, which no header declares; `_Bool`,
+which `stdatomic.h` declares functions to return. An atomic type is a
+not-yet type of its own, since an access of an atomic object, `x++`
+on one among them, is one atomic instruction, which c1 does not
+write. `_Atomic (` *type name* `)`, the atomic type specifier, names
+one wherever it is written, as `stdatomic.h` declares `atomic_int`,
+and so does a typedef through the `_Atomic` qualifier; the qualifier
+is not yet anywhere else.
+
+A typedef of an array whose size needs what rcc does not have yet
+names a not-yet type whose words say what the size needs: glibc's
+`bits/procfs.h` sizes `elf_gregset_t` by the size of a struct, so
+the typedef is accepted and a local of the type is refused with "not
+yet: struct". The parser catches a refusal of the not-yet kind alone,
+only while it reads the size of a typedef's array suffix, and only
+when it has found the `]` that closes the suffix first, matching the
+brackets and parentheses in the size; the parse goes on there. A size
+that is wrong stays the error it is, and so does such a size outside
+a typedef: of a local, a parameter, a cast or a `sizeof`. Since the
+parse of the size stops at its first refusal, an error of the program
+after it in the size is not seen.
+
+The definition of a `static inline` function, as glibc's
 `bits/byteswap.h` defines `__bswap_16`, is accepted: its body is
 skipped to the closing brace, c1 writes nothing for it, and an
 expression that names the function is refused. `static` on anything
@@ -462,29 +507,37 @@ well: `header-stdlib` and `header-signal` in the corpus call `atoi`,
 and a call goes through a pointer to one, in both generators
 (`backend.md` chapters 8 and 10): `header-qsort` sorts with its own
 comparison, and `header-handler` installs its own signal handler and
-raises the signal.
+raises the signal. `volatile` dropped, `_Atomic` and `_Bool`
+declared, a floating constant taken as a token, and a typedef's array
+of a size rcc cannot compute bring `stdatomic.h` through, and on
+aarch64 `signal.h` and `sys/wait.h` with glibc's default feature set,
+so 56 of 58 headers of the C library and of POSIX parse on each
+target. `tgmath.h` stops at the declaration of a `static` function,
+and `regex.h` at a qualifier inside a parameter's array brackets.
 
 ## 11. Not yet
 
-Structs, unions, enums, floating point and `__int128` (each type is
-declared, a struct's or union's members skipped and an enum's
+Structs, unions, enums, floating point, `_Bool` and `__int128` (each
+type is declared, a struct's or union's members skipped and an enum's
 constants declared without their values; a pointer to one is an
 ordinary pointer, and a use that needs the object, or a constant's
-value, is refused), global variables (an object declared `extern` at
+value, is refused; a floating constant is a token, refused where an
+expression uses it), an object of a typedef whose array size rcc
+cannot compute, global variables (an object declared `extern` at
 file scope is accepted and its use refused; a definition at file
 scope is refused), `extern` in a block, brace initializers and `char
 s[] = "..."`, a declaration through a typedef of function type, wide
-and `u8` strings, `volatile` outside a typedef (c1 writes every
-access it meets, an unused one included, so the access needs nothing
-more; the qualifier waits for the type model, as `const`'s checks
-do), `switch`, `goto`, `static` outside a `static inline` definition,
-whose use is refused, a `register` array (6.3.2.1p3), `inline` on a
-function definition, what an attribute that rcc does not honour marks
-(an object of a typedef so declared, the use of a function or an
-`extern` object, a local, a function's definition), `__asm__` as a
-statement, at file scope or on a local, and C's keywords outside the
-subset: `_Bool`, `_Complex` outside the specifiers of a floating
-type, `_Imaginary`, `_Atomic` outside a typedef, `_Alignas`,
-`_Alignof`, `_Generic`, `_Static_assert`, `_Thread_local`. Each
-arrives when a probe needs it. The preprocessor stays external for
-good.
+and `u8` strings, the checks of the qualifiers (`const` and
+`volatile` are dropped, so an assignment to a `const` object and a
+conversion that discards a qualifier draw no diagnostic), an atomic
+object, `switch`, `goto`, `static` outside a `static inline`
+definition, whose use is refused, a `register` array (6.3.2.1p3),
+`inline` on a function definition, what an attribute that rcc does
+not honour marks (an object of a typedef so declared, the use of a
+function or an `extern` object, a local, a function's definition),
+`__asm__` as a statement, at file scope or on a local, and C's
+keywords outside the subset: `_Complex` outside the specifiers of a
+floating type, `_Imaginary`, the `_Atomic` qualifier outside a
+typedef, `_Alignas`, `_Alignof`, `_Generic`, `_Static_assert`,
+`_Thread_local`. Each arrives when a probe needs it. The
+preprocessor stays external for good.

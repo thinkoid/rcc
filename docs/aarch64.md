@@ -1090,8 +1090,8 @@ documents, as the x86-64 slices were. Then the measurement, which
 
 ## 15. The calls
 
-Seven were open in the first draft of this page, and an eighth and a
-ninth came later. The answers:
+Seven were open in the first draft of this page, and an eighth, a
+ninth and a tenth came later. The answers:
 
 1. **Two generators**, `src/c1-x86-64.cc` and `src/c1-aarch64.cc`,
    each read whole against its own page (chapter 12). The
@@ -1157,6 +1157,13 @@ ninth came later. The answers:
    has two rows: one whose right operand names the pointer keeps the
    step before that operand, as G13 has it. `register-walk` pins the
    row on both targets, and `autoincrement.md` has the argument.
+10. **A `register` variable is not kept across `longjmp`**, `volatile`
+    or not, as on x86-64 (`backend.md` chapter 13, call 9): the
+    variable is in its callee-saved register (chapter 4), which
+    `longjmp` restores to its value at `setjmp`. Every other local is
+    in its slot and keeps the value last stored. The cost is a
+    departure from 7.13.2.1p3, which keeps the value of a volatile
+    local of the function that called `setjmp`.
 
 Decided by the machine, listed so that nothing is decided silently:
 

@@ -1,0 +1,2 @@
+tests/error/invalid-floating-constant.c:5:16: error: invalid floating constant '1.5x'
+status 1

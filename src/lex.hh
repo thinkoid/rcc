@@ -17,6 +17,7 @@ enum class tok_t {
     eof,
     identifier,
     integer,
+    floating,
     character,
     string,
 
@@ -129,6 +130,7 @@ enum class tok_t {
 // The spelling is a view into the source, the quotes included for a
 // character constant or a string literal; an integer token's value is
 // read from it by the parser, a literal's by the two functions below.
+// A floating token's value is not read: the parser refuses its use.
 struct token_t
 {
     tok_t kind;

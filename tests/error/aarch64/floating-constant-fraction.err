@@ -1,0 +1,2 @@
+tests/error/floating-constant-fraction.c:6:16: error: not yet: floating constant
+status 1

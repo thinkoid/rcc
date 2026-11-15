@@ -68,11 +68,13 @@ structs, unions, enums and floating types declared and not yet used,
 and the GNU C of a system header read as it is, so that a program
 includes `stdio.h` and calls `printf`. Then the rest of the headers:
 the declarator in parentheses, the types a header declares for
-another compiler and the `static inline` bodies it defines, so that
-53 of 58 headers of the C library and of POSIX parse on aarch64 and
-55 on x86-64. A function is a value and a call goes through a pointer
-to one, on both targets, so a program passes its own comparison to
-`qsort` and its own handler to `signal`.
+another compiler and the `static inline` bodies it defines,
+`volatile` dropped as `const` is, `_Atomic` and `_Bool` declared,
+floating constants taken by the lexer, and a typedef of an array of a
+size rcc cannot compute, so that 56 of 58 headers of the C library
+and of POSIX parse on each target. A function is a value and a call
+goes through a pointer to one, on both targets, so a program passes
+its own comparison to `qsort` and its own handler to `signal`.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/`, the cost corpus over `tests/cost/`
 and the error corpus over `tests/error/`, the programs rcc refuses

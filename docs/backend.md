@@ -984,9 +984,9 @@ For another machine's target the driver hands each of the three
 
 ## 13. The calls
 
-Six were open in the first draft of this page, and a seventh and an
-eighth came later. `design-calls.md` weighs the first five one
-chapter each; the answers:
+Six were open in the first draft of this page, and a seventh, an
+eighth and a ninth came later. `design-calls.md` weighs the first
+five one chapter each; the answers:
 
 1. **`rbp`** is the frame pointer in every function, and the
    register variables are five. A slot's offset is known at its
@@ -1014,3 +1014,10 @@ chapter each; the answers:
    `efftab` did: `x += 5;` is `addl $5, x` and `x++;` is `addl $1, x`.
 8. **Every loop head is aligned to 32 bytes**, `.p2align 5`, a
    convention of the target; the measurement is `cost.md` 4.2.
+9. **A `register` variable is not kept across `longjmp`**, `volatile`
+   or not. c0 drops `volatile` (`shape.md` chapter 5), so `register
+   volatile int x;` is in its callee-saved register (chapter 4), and
+   `longjmp` restores that register to its value at `setjmp`. Every
+   other local is in its slot and keeps the value last stored. The
+   cost is a departure from 7.13.2.1p3, which keeps the value of a
+   volatile local of the function that called `setjmp`.

@@ -51,7 +51,7 @@ main:
 	str	x0, [x29, #24]
 	ldr	w0, [x29, #16]
 	ldr	x1, [x29, #24]
-	bl	__sysv_signal
+	bl	signal
 	cmp	x0, #-1
 	b.ne	.Lmain.2
 	mov	w0, #2

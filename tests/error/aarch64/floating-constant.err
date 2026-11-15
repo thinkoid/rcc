@@ -1,2 +1,2 @@
-tests/error/floating-constant.c:4:12: error: floating constant not supported
+tests/error/floating-constant.c:4:12: error: not yet: floating constant
 status 1

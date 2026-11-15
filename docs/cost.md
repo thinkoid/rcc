@@ -55,6 +55,9 @@ every type spelled out (`typedef` in the cost corpus). Neither do
 attributes rcc drops, which are licences for an optimizer or
 requests for a warning (`gnu-declarations`); `__asm__` after a
 declarator changes the name a call writes and nothing else.
+`volatile` writes nothing either: it asks that every access written
+be made, and every access of every object is, so a program compiles
+to the listing of its twin without the qualifier (`volatile`).
 
 What the compiler may do:
 

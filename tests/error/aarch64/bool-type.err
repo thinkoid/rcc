@@ -1,2 +1,2 @@
-tests/error/bool-type.c:4:5: error: not yet: type specifier '_Bool'
+tests/error/bool-type.c:5:11: error: not yet: '_Bool'
 status 1

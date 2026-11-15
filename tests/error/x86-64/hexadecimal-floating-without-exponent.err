@@ -1,0 +1,2 @@
+tests/error/hexadecimal-floating-without-exponent.c:6:16: error: hexadecimal floating constant requires an exponent
+status 1

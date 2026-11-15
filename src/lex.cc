@@ -370,23 +370,34 @@ identifier(state_t &st)
     return take(st, keyword_or_identifier(spelling), spelling.size());
 }
 
+// Whether the constant at the current position opens with 0x or 0X.
+bool
+is_hex_prefix(const state_t &st)
+{
+    return at(st, st.pos) == '0' &&
+           (at(st, st.pos + 1) == 'x' || at(st, st.pos + 1) == 'X');
+}
+
 // The end of the digits of a constant starting at the current
 // position.  Octal and decimal digits are scanned alike; an 8 or a 9
-// in an octal constant is caught once the spelling is known.
+// in an octal constant is caught once the spelling is known.  A
+// hexadecimal floating constant may have its digits after the period
+// alone, 6.4.4.3p1.
 std::size_t
 digits_end(const state_t &st)
 {
     std::size_t end = st.pos;
 
-    if (at(st, end) == '0' &&
-        (at(st, end + 1) == 'x' || at(st, end + 1) == 'X')) {
+    if (is_hex_prefix(st)) {
         end += 2;
 
         const std::size_t first = end;
         while (is_hex_digit(at(st, end)))
             ++end;
 
-        if (end == first)
+        const bool fraction =
+            at(st, end) == '.' && is_hex_digit(at(st, end + 1));
+        if (end == first && !fraction)
             fail(location_of(st, st.pos),
                  "hexadecimal constant without digits");
 
@@ -448,26 +459,118 @@ check_octal(const state_t &st, std::string_view digits)
                  std::format("invalid digit '{}' in octal constant", c));
 }
 
-// An integer constant, digits and suffix; the value is the parser's to
-// read.  An identifier character or a '.' right after the suffix is an
-// error: the constant is malformed, or a floating one, outside the
-// language this lexer takes.
-token_t
-number(state_t &st)
+// An identifier character or a '.' right after the suffix of a
+// constant that ends at end makes it malformed, and the message names
+// the whole run; kind is the constant's, integer or floating.
+void
+check_constant_end(const state_t &st, std::size_t end, std::string_view kind)
 {
-    const std::size_t digits = digits_end(st);
-    check_octal(st, st.source.substr(st.pos, digits - st.pos));
-
-    const std::size_t end = suffix_end(st, digits);
-
     std::size_t junk = end;
     while (is_ident_char(at(st, junk)) || at(st, junk) == '.')
         ++junk;
 
     if (junk != end)
         fail(location_of(st, st.pos),
-             std::format("invalid integer constant '{}'",
+             std::format("invalid {} constant '{}'", kind,
                          st.source.substr(st.pos, junk - st.pos)));
+}
+
+// The letter that opens the exponent part, 6.4.4.3p1: e or E after a
+// decimal significand, p or P after a hexadecimal one, where an e is a
+// digit.
+bool
+is_exponent_letter(char c, bool hex)
+{
+    if (hex)
+        return c == 'p' || c == 'P';
+
+    return c == 'e' || c == 'E';
+}
+
+// After the exponent part whose letter is at i: an optional sign and a
+// digit sequence, decimal in either base, 6.4.4.3p1.
+std::size_t
+exponent_end(const state_t &st, std::size_t i)
+{
+    ++i;
+    if (at(st, i) == '+' || at(st, i) == '-')
+        ++i;
+
+    const std::size_t first = i;
+    while (is_digit(at(st, i)))
+        ++i;
+
+    if (i == first)
+        fail(location_of(st, st.pos), "exponent has no digits");
+
+    return i;
+}
+
+// After the floating suffix at i, or i where there is none: f, l, F or
+// L, or one of df, dd, dl, DF, DD and DL, 6.4.4.3p1.  p2 keeps the six
+// decimal ones off a hexadecimal constant, where they are junk.
+std::size_t
+floating_suffix_end(const state_t &st, std::size_t i, bool hex)
+{
+    const char c = at(st, i);
+    if (c == 'f' || c == 'F' || c == 'l' || c == 'L')
+        return i + 1;
+
+    const char d = at(st, i + 1);
+    const bool lower = c == 'd' && (d == 'f' || d == 'd' || d == 'l');
+    const bool upper = c == 'D' && (d == 'F' || d == 'D' || d == 'L');
+    if (!hex && (lower || upper))
+        return i + 2;
+
+    return i;
+}
+
+// A floating constant, 6.4.4.3p1, whose whole-number digits end at i:
+// the period and the fraction's digits, the exponent part, which a
+// hexadecimal constant must have, and the suffix.  Either the
+// whole-number part or the fraction is present, since the caller
+// starts here only on a digit or on a period before one.  The value
+// is not computed: the parser refuses the constant where an expression
+// uses it.
+token_t
+floating(state_t &st, std::size_t i, bool hex)
+{
+    if (at(st, i) == '.') {
+        ++i;
+        while (hex ? is_hex_digit(at(st, i)) : is_digit(at(st, i)))
+            ++i;
+    }
+
+    if (is_exponent_letter(at(st, i), hex))
+        i = exponent_end(st, i);
+    else if (hex)
+        fail(location_of(st, st.pos),
+             "hexadecimal floating constant requires an exponent");
+
+    const std::size_t end = floating_suffix_end(st, i, hex);
+    check_constant_end(st, end, "floating");
+
+    return take(st, tok_t::floating, end - st.pos);
+}
+
+// An integer or a floating constant, digits and suffix; the value of an
+// integer one is the parser's to read.  The constant is a floating one
+// when its digits go on to a period or to the letter of an exponent,
+// 6.4.4.3p1.  An identifier character or a '.' right after the suffix
+// is an error: the constant is malformed.
+token_t
+number(state_t &st)
+{
+    const bool hex = is_hex_prefix(st);
+    const std::size_t digits = digits_end(st);
+
+    if (at(st, digits) == '.' || is_exponent_letter(at(st, digits), hex))
+        return floating(st, digits, hex);
+
+    check_octal(st, st.source.substr(st.pos, digits - st.pos));
+
+    const std::size_t end = suffix_end(st, digits);
+    check_constant_end(st, end, "integer");
 
     return take(st, tok_t::integer, end - st.pos);
 }
@@ -619,15 +722,11 @@ encoding_prefix_length(const state_t &st)
     return 0;
 }
 
-// The longest punctuator at the current position.  A '.' before a
-// digit is the start of a floating constant, not a member access.
+// The longest punctuator at the current position.
 token_t
 punctuator(state_t &st)
 {
     const auto rest = st.source.substr(st.pos);
-
-    if (rest[0] == '.' && is_digit(at(st, st.pos + 1)))
-        fail(location_of(st, st.pos), "floating constant not supported");
 
     for (const auto &p : punctuators)
         if (rest.starts_with(p.spelling))
@@ -662,7 +761,9 @@ tokenize(std::string_view source, std::string_view file)
             tokens.push_back(literal(st, tok_t::string));
         else if (is_ident_start(c))
             tokens.push_back(identifier(st));
-        else if (is_digit(c))
+        // a '.' before a digit starts a floating constant, not a
+        // member access
+        else if (is_digit(c) || (c == '.' && is_digit(at(st, st.pos + 1))))
             tokens.push_back(number(st));
         else
             tokens.push_back(punctuator(st));

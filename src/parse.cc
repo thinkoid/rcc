@@ -119,11 +119,22 @@ fail(const token_t &at, std::string what)
     throw error_t { at.where, std::move(what) };
 }
 
+// The refusal of a construct of C outside the subset, apart from an
+// error of the program, so that the one place where the rule for a
+// system header turns a refusal into a not-yet type catches this kind
+// alone; the driver catches it as any error_t.  construct is the words
+// after "not yet: ".
+struct not_yet_error_t: error_t
+{
+    std::string construct;
+};
+
 // A construct of C outside the subset this parser takes.
 [[noreturn]] void
 not_yet(const token_t &at, std::string_view construct)
 {
-    fail(at, "not yet: " + std::string(construct));
+    throw not_yet_error_t { { at.where, "not yet: " + std::string(construct) },
+                            std::string(construct) };
 }
 
 std::string
@@ -237,9 +248,9 @@ size_type()
 
 // The not-yet types that are one type wherever they are written: the
 // real and the complex floating types, __builtin_va_list, GNU C's
-// __float128 and __int128, and clang's SVE types, each of a fixed
-// identity.  A struct, a union or an enum takes the next identity after
-// theirs.
+// __float128 and __int128, clang's SVE types, and _Bool, each of a
+// fixed identity.  A struct, a union or an enum takes the next identity
+// after theirs.
 type_t
 float_type()
 {
@@ -320,7 +331,15 @@ sve_bool_type()
     return make_not_yet(12, "'__SVBool_t'");
 }
 
-constexpr int first_tag_identity = 13;
+// C's boolean type, whose conversion from a scalar, false for a zero
+// and true for any other value, 6.3.1.2p1, rcc does not make yet.
+type_t
+bool_type()
+{
+    return make_not_yet(13, "'_Bool'");
+}
+
+constexpr int first_tag_identity = 14;
 
 const type_t &
 pointee_of(const type_t &t)
@@ -1953,12 +1972,17 @@ specifiers_t declaration_specifiers(parser_t &);
 type_t struct_or_union_specifier(parser_t &);
 type_t enum_specifier(parser_t &);
 void enumerator_list(parser_t &, const type_t &);
+type_t atomic_type_specifier(parser_t &);
+declarator_t declarator(parser_t &,
+                        const type_t &,
+                        naming_t = naming_t::required,
+                        bool typedef_ = false);
 declarator_t
-declarator(parser_t &, const type_t &, naming_t = naming_t::required);
-declarator_t parenthesized_declarator(parser_t &, const type_t &, naming_t);
-declarator_t declarator_suffix(parser_t &, const token_t *, const type_t &);
+parenthesized_declarator(parser_t &, const type_t &, naming_t, bool typedef_);
+declarator_t
+declarator_suffix(parser_t &, const token_t *, const type_t &, bool typedef_);
 type_t pointer(parser_t &, type_t);
-type_t array_declarator(parser_t &, const type_t &);
+type_t array_declarator(parser_t &, const type_t &, bool typedef_);
 bool parameter_type_list(parser_t &, std::vector< parameter_t > &);
 parameter_t parameter_declaration(parser_t &);
 type_t type_name(parser_t &);
@@ -2286,8 +2310,9 @@ external_declaration(parser_t &p)
         return;
 
     const type_t &base = spec.type;
+    const bool typedef_ = declared(spec, tok_t::kw_typedef);
 
-    const declarator_t d = declarator(p, base);
+    const declarator_t d = declarator(p, base, naming_t::required, typedef_);
 
     const bool defines_function = d.params && peek(p).kind == tok_t::lbrace;
     if (defines_function && declared(spec, tok_t::kw_static)) {
@@ -2295,7 +2320,7 @@ external_declaration(parser_t &p)
         return;
     }
 
-    if (defines_function && !declared(spec, tok_t::kw_typedef)) {
+    if (defines_function && !typedef_) {
         const token_t *t = spec.function_specifier;
         if (t && t->kind == tok_t::kw_inline)
             not_yet(*t, quoted(t->text) + " on a function definition");
@@ -2307,7 +2332,8 @@ external_declaration(parser_t &p)
     external_declarator(p, spec, d);
 
     while (accept(p, tok_t::comma))
-        external_declarator(p, spec, declarator(p, base));
+        external_declarator(p, spec,
+                            declarator(p, base, naming_t::required, typedef_));
 
     expect(p, tok_t::semicolon, "expected ';' after top level declarator");
 }
@@ -2511,18 +2537,13 @@ skip_enumerator_value(parser_t &p)
     }
 }
 
-// volatile and _Atomic make a qualified type, which rcc does not use
-// yet.  After typedef, the qualifier at the position is taken, and the
-// typedef names a not-yet type of its own; anywhere else it is not
-// yet, and so is _Atomic ( type-name ), the atomic type specifier.
+// _Atomic as a qualifier makes an atomic type, whose access, ++ on it
+// among them, is one atomic instruction, which c1 does not write.
+// After typedef the qualifier is taken, and the typedef names a not-yet
+// type of its own; anywhere else it is not yet.
 void
-refuse_qualifier(const parser_t &p, const token_t *storage_class)
+refuse_atomic_qualifier(const token_t &q, const token_t *storage_class)
 {
-    const token_t &q = peek(p);
-
-    if (q.kind == tok_t::kw_atomic && peek(p, 1).kind == tok_t::lparen)
-        not_yet(q, "type specifier " + quoted(q.text));
-
     if (!storage_class || storage_class->kind != tok_t::kw_typedef)
         not_yet(q, "type qualifier " + quoted(q.text));
 }
@@ -2542,22 +2563,27 @@ refuse_static(const token_t *storage_class, const token_t *inline_specifier)
 // The tree keeps no spelling: char and signed char are one type, long
 // and long long another.  Each keyword is checked against the ones
 // before it, so an error names the keyword that breaks the set.  const
-// may stand anywhere among them, once or more, 6.7.4.1p6, and is
-// dropped: the type is the machine's view.  A storage-class specifier,
-// register, typedef, extern or static, may stand anywhere too, one of
-// them, 6.7.2p2, and is reported to the caller, since what it may
-// declare depends on where the declaration is.  A typedef name is the
-// type specifier where no type specifier has been seen; after one, an
+// and volatile may stand anywhere among them, once or more, 6.7.4.1p6,
+// and are dropped: the type is the machine's view.  volatile asks that
+// each access the source writes be made, p8, and c1 writes every access
+// of every object, an unused one included, at the object's width, so
+// the qualifier asks for nothing c1 does not do.  _Atomic as a qualifier
+// is taken after typedef alone.  A storage-class specifier, register,
+// typedef, extern or static, may stand anywhere too, one of them,
+// 6.7.2p2, and is reported to the caller, since what it may declare
+// depends on where the declaration is.  A typedef name is the type
+// specifier where no type specifier has been seen; after one, an
 // identifier is the declarator's name, so unsigned T declares a T.  A
-// typedef name, a struct, union or enum specifier, float and GNU C's
-// __float128 are each the whole type specifier; double joins one long,
-// __int128 signed or unsigned, and _Complex a floating type.  restrict
-// may stand among them too, on a type require_restrictable() takes,
-// and is dropped.  So is a function specifier, inline or _Noreturn,
-// once or more, 6.7.5p5, reported to the caller, which knows whether
-// the declaration is of a function.  An attribute may stand anywhere
-// among them; a marking one is reported to the caller.  The keywords
-// of C outside the subset are refused by name where they stand.
+// typedef name, a struct, union or enum specifier, an atomic type
+// specifier, float, _Bool and GNU C's __float128 are each the whole
+// type specifier; double joins one long, __int128 signed or unsigned,
+// and _Complex a floating type.  restrict may stand among them too, on
+// a type require_restrictable() takes, and is dropped.  So is a
+// function specifier, inline or _Noreturn, once or more, 6.7.5p5,
+// reported to the caller, which knows whether the declaration is of a
+// function.  An attribute may stand anywhere among them; a marking one
+// is reported to the caller.  The keywords of C outside the subset are
+// refused by name where they stand.
 specifiers_t
 declaration_specifiers(parser_t &p)
 {
@@ -2569,7 +2595,7 @@ declaration_specifiers(parser_t &p)
     std::optional< type_t > whole;
     bool tagged = false;
     const token_t *storage_class = nullptr;
-    const token_t *qualifier = nullptr;
+    const token_t *atomic_qualifier = nullptr;
     const token_t *restrict_qualifier = nullptr;
     const token_t *function_specifier = nullptr;
     const token_t *inline_specifier = nullptr;
@@ -2614,7 +2640,7 @@ declaration_specifiers(parser_t &p)
     for (;;) {
         const token_t &t = peek(p);
 
-        if (accept(p, tok_t::kw_const))
+        if (accept(p, tok_t::kw_const) || accept(p, tok_t::kw_volatile))
             continue;
 
         if (t.kind == tok_t::kw_restrict) {
@@ -2645,11 +2671,11 @@ declaration_specifiers(parser_t &p)
             continue;
         }
 
-        if (t.kind == tok_t::kw_volatile || t.kind == tok_t::kw_atomic) {
-            refuse_qualifier(p, storage_class);
+        if (t.kind == tok_t::kw_atomic && peek(p, 1).kind != tok_t::lparen) {
+            refuse_atomic_qualifier(t, storage_class);
 
-            if (!qualifier)
-                qualifier = &t;
+            if (!atomic_qualifier)
+                atomic_qualifier = &t;
 
             advance(p);
             continue;
@@ -2743,7 +2769,19 @@ declaration_specifiers(parser_t &p)
             tagged = true;
             any = true;
             continue;
+        case tok_t::kw_atomic:
+            if (any || complex_specifier) {
+                bad = true;
+                break;
+            }
+
+            whole = atomic_type_specifier(p);
+            any = true;
+            continue;
         case tok_t::kw_bool:
+            bad = any || complex_specifier;
+            whole = bool_type();
+            break;
         case tok_t::kw_imaginary:
             not_yet(t, "type specifier " + quoted(t.text));
         case tok_t::kw_auto:
@@ -2768,10 +2806,10 @@ declaration_specifiers(parser_t &p)
             if (restrict_qualifier)
                 require_restrictable(*restrict_qualifier, type);
 
-            if (qualifier)
-                type =
-                    make_not_yet(p.identities++,
-                                 "type qualifier " + quoted(qualifier->text));
+            if (atomic_qualifier)
+                type = make_not_yet(p.identities++,
+                                    "type qualifier " +
+                                        quoted(atomic_qualifier->text));
 
             return { type, storage_class, tagged, function_specifier, marking };
         }
@@ -2874,6 +2912,24 @@ enumerator_list(parser_t &p, const type_t &t)
     } while (accept(p, tok_t::comma) && peek(p).kind != tok_t::rbrace);
 }
 
+// _Atomic ( type-name ), the atomic type specifier, 6.7.3.5p1, which
+// _Atomic is when a parenthesis follows it, p4, as clang's stdatomic.h
+// declares atomic_int.  The type is atomic, as the qualifier makes it,
+// so it is a not-yet type of its own wherever it is written, and the
+// use of its object is refused.
+type_t
+atomic_type_specifier(parser_t &p)
+{
+    const token_t &keyword = advance(p);
+    advance(p);
+
+    type_name(p);
+    expect(p, tok_t::rparen, "expected ')' after type name");
+
+    return make_not_yet(p.identities++,
+                        "type specifier " + quoted(keyword.text));
+}
+
 // Whether the parenthesis ahead opens a declarator in parentheses,
 // 6.7.7.1p1, and not a parameter list.  Before a name that must be
 // written, a parenthesis opens only a declarator.  Where the name may
@@ -2929,21 +2985,24 @@ skip_parenthesized_declarator(parser_t &p)
 // declaration, may be left out in a parameter, and is not written in a
 // type name.  The pointers bind to the base type, so int *f(void) is a
 // function returning a pointer, and parentheses bind them first, so
-// int (*f)(void) is a pointer to a function.
+// int (*f)(void) is a pointer to a function.  typedef_ says that the
+// declarator is a typedef's, where an array size that needs what rcc
+// does not have yet makes a not-yet type; the parameters of a parameter
+// list in it are not the typedef's, and their sizes are refused.
 declarator_t
-declarator(parser_t &p, const type_t &base, naming_t naming)
+declarator(parser_t &p, const type_t &base, naming_t naming, bool typedef_)
 {
     const type_t t = pointer(p, base);
 
     if (starts_parenthesized_declarator(p, naming))
-        return parenthesized_declarator(p, t, naming);
+        return parenthesized_declarator(p, t, naming, typedef_);
 
     const token_t *name = nullptr;
     if (naming == naming_t::required ||
         (naming == naming_t::optional && peek(p).kind == tok_t::identifier))
         name = &expect(p, tok_t::identifier, "expected identifier");
 
-    return declarator_suffix(p, name, t);
+    return declarator_suffix(p, name, t, typedef_);
 }
 
 // ( D ) and the suffixes after it.  The declarator in parentheses
@@ -2956,7 +3015,10 @@ declarator(parser_t &p, const type_t &base, naming_t naming)
 // type is then the suffix's; otherwise it is the prototype of what the
 // name's type points through, and the name declares no function.
 declarator_t
-parenthesized_declarator(parser_t &p, const type_t &t, naming_t naming)
+parenthesized_declarator(parser_t &p,
+                         const type_t &t,
+                         naming_t naming,
+                         bool typedef_)
 {
     advance(p);
 
@@ -2964,11 +3026,11 @@ parenthesized_declarator(parser_t &p, const type_t &t, naming_t naming)
     skip_parenthesized_declarator(p);
     expect(p, tok_t::rparen, "expected ')'");
 
-    declarator_t suffix = declarator_suffix(p, nullptr, t);
+    declarator_t suffix = declarator_suffix(p, nullptr, t, typedef_);
     const std::size_t after = p.pos;
 
     p.pos = inside;
-    declarator_t d = declarator(p, suffix.type, naming);
+    declarator_t d = declarator(p, suffix.type, naming, typedef_);
     expect(p, tok_t::rparen, "expected ')'");
     p.pos = after;
 
@@ -2988,12 +3050,15 @@ parenthesized_declarator(parser_t &p, const type_t &t, naming_t naming)
 // it.  A prototype's parameter names are checked here, whether the
 // function is the name's or one a pointer points to.
 declarator_t
-declarator_suffix(parser_t &p, const token_t *name, const type_t &t)
+declarator_suffix(parser_t &p,
+                  const token_t *name,
+                  const type_t &t,
+                  bool typedef_)
 {
     declarator_t d { name, t, std::nullopt };
 
     if (peek(p).kind == tok_t::lbracket) {
-        d.type = array_declarator(p, t);
+        d.type = array_declarator(p, t, typedef_);
 
         if (peek(p).kind == tok_t::lparen)
             fail(peek(p), "array element type cannot be a function");
@@ -3029,10 +3094,11 @@ declarator_suffix(parser_t &p, const token_t *name, const type_t &t)
     return d;
 }
 
-// Each '*' derives a pointer to the type so far, 6.7.7.2p1.  A const or
-// a restrict after it qualifies the pointer and is dropped, as in the
-// specifiers; the pointer is one restrict may qualify unless it points
-// to a function, as in void (*restrict f)(void).
+// Each '*' derives a pointer to the type so far, 6.7.7.2p1.  A const, a
+// volatile or a restrict after it qualifies the pointer and is dropped,
+// as in the specifiers; the pointer is one restrict may qualify unless
+// it points to a function, as in void (*restrict f)(void).  An _Atomic
+// pointer is not yet.
 type_t
 pointer(parser_t &p, type_t t)
 {
@@ -3041,13 +3107,14 @@ pointer(parser_t &p, type_t t)
 
         for (;;) {
             const token_t &q = peek(p);
-            if (q.kind == tok_t::kw_volatile || q.kind == tok_t::kw_atomic)
+            if (q.kind == tok_t::kw_atomic)
                 not_yet(q, "type qualifier " + quoted(q.text));
 
             if (q.kind == tok_t::kw_restrict)
                 require_restrictable(q, t);
 
-            if (!accept(p, tok_t::kw_const) && !accept(p, tok_t::kw_restrict))
+            if (!accept(p, tok_t::kw_const) && !accept(p, tok_t::kw_volatile) &&
+                !accept(p, tok_t::kw_restrict))
                 break;
         }
     }
@@ -3077,6 +3144,93 @@ array_count(const token_t &at, const expr_t &size)
     return long(std::min< exact_t >(value, std::numeric_limits< long >::max()));
 }
 
+// An array suffix as written: its '[', its count, -1 when the size is
+// left out, and the words of what the size needs that rcc does not
+// have yet, empty when it needs nothing.
+struct array_suffix_t
+{
+    const token_t *open;
+    long count;
+    std::string missing;
+};
+
+// The size of an array suffix, read up to the ']' that closes it.
+expr_t
+array_size(parser_t &p)
+{
+    const token_t &start = peek(p);
+
+    return rvalue(start, assignment_expression(p));
+}
+
+// The position of the ']' that closes the array suffix whose size
+// starts at the position, the brackets and the parentheses in the size
+// matched; or nothing when the size is not one the parser could read
+// whole: a bracket that closes what it did not open, a brace, a
+// semicolon or the end of the file comes first.
+std::optional< std::size_t >
+closing_bracket(const parser_t &p)
+{
+    std::vector< tok_t > open;
+
+    for (std::size_t i = p.pos; i < p.tokens.size(); ++i) {
+        const tok_t kind = p.tokens[i].kind;
+
+        if (kind == tok_t::rbracket && open.empty())
+            return i;
+
+        switch (kind) {
+        case tok_t::lbracket:
+        case tok_t::lparen: open.push_back(kind); break;
+        case tok_t::rbracket:
+        case tok_t::rparen: {
+            const tok_t opener =
+                kind == tok_t::rbracket ? tok_t::lbracket : tok_t::lparen;
+            if (open.empty() || open.back() != opener)
+                return std::nullopt;
+
+            open.pop_back();
+            break;
+        }
+        case tok_t::lbrace:
+        case tok_t::rbrace:
+        case tok_t::semicolon:
+        case tok_t::eof: return std::nullopt;
+        default: break;
+        }
+    }
+
+    return std::nullopt;
+}
+
+// The size of an array suffix of a typedef's declarator, or nothing
+// when it needs what rcc does not have yet, whose words go to missing.
+// glibc's bits/procfs.h sizes elf_gregset_t by the size of a struct,
+// which rcc does not know; by the rule for a system header the typedef
+// is accepted and names a not-yet type, and the use of its object is
+// refused.  Only the refusal of the not-yet kind is caught, only while
+// the size is read, and only when the ']' that closes the suffix is
+// found first, where the parse resumes.  An error of the program in
+// the size stays the error it is, and so does a size that reads whole
+// and is no constant, or no positive one, which array_count() refuses.
+std::optional< expr_t >
+typedef_array_size(parser_t &p, std::string &missing)
+{
+    const std::optional< std::size_t > close = closing_bracket(p);
+    if (!close)
+        return array_size(p);
+
+    try {
+        return array_size(p);
+    }
+    catch (const not_yet_error_t &e) {
+        missing = e.construct;
+        p.pos = *close;
+    }
+
+    return std::nullopt;
+}
+
 // One or more [N], N an integer constant expression, or [] for an array
 // of unknown size, 6.7.7.3p1, p4.  The size is an assignment-expression
 // in the grammar, 6.7.7.1p1.  The suffixes nest from the right: int
@@ -3084,37 +3238,46 @@ array_count(const token_t &at, const expr_t &size)
 // a complete type, so only the first suffix may leave its size out, and
 // the caller decides whether it may.  An array of a not-yet type has no
 // size rcc knows, so its size is not checked; its object is refused
-// where it would be made.
+// where it would be made.  In a typedef's declarator a suffix whose
+// size needs what rcc does not have yet makes a not-yet type of the
+// words of what it needs, in place of the array.
 type_t
-array_declarator(parser_t &p, const type_t &element)
+array_declarator(parser_t &p, const type_t &element, bool typedef_)
 {
-    std::vector< std::pair< const token_t *, long > > suffixes;
+    std::vector< array_suffix_t > suffixes;
 
     while (peek(p).kind == tok_t::lbracket) {
-        const token_t &open = advance(p);
+        array_suffix_t suffix { &advance(p), -1, { } };
 
-        long count = -1;
         if (peek(p).kind != tok_t::rbracket) {
             const token_t &start = peek(p);
 
-            const expr_t size = rvalue(start, assignment_expression(p));
-            count = array_count(start, size);
+            const std::optional< expr_t > size =
+                typedef_ ? typedef_array_size(p, suffix.missing) :
+                           array_size(p);
+            if (size)
+                suffix.count = array_count(start, *size);
         }
 
         expect(p, tok_t::rbracket, "expected ']'");
-        suffixes.emplace_back(&open, count);
+        suffixes.push_back(std::move(suffix));
     }
 
     type_t t = element;
 
     for (auto it = suffixes.rbegin(); it != suffixes.rend(); ++it) {
-        const auto [open, count] = *it;
+        const auto &[open, count, missing] = *it;
 
         if (is< function_t >(t))
             fail(*open, "array element type cannot be a function");
 
         if (is< void_t >(t) || (is< array_t >(t) && as< array_t >(t).count < 0))
             fail(*open, "array has incomplete element type");
+
+        if (!missing.empty()) {
+            t = make_not_yet(p.identities++, missing);
+            continue;
+        }
 
         if (count >= 0 && !not_yet_in(t) &&
             count > std::numeric_limits< long >::max() / size_of(t))
@@ -3258,7 +3421,8 @@ init_declarator_list(parser_t &p, const specifiers_t &spec)
     do {
         if (declared(spec, tok_t::kw_typedef)) {
             refuse_function_specifier(spec);
-            type_definition(p, spec, declarator(p, spec.type));
+            type_definition(p, spec,
+                            declarator(p, spec.type, naming_t::required, true));
         }
         else
             decls.push_back(init_declarator(p, spec));
@@ -3935,9 +4099,11 @@ argument_expression_list(parser_t &p,
 // the name in hand, as is an enumeration constant's, whose value is
 // not computed yet, and a symbol's an attribute marked, by the
 // attribute's words.  A generic selection is not yet.  Parentheses leave the expression as it is, an
-// lvalue included, p6.  A character constant is an int,
-// 6.4.4.5p11.  Adjacent string literals are one, 6.4.5p5, an array of
-// char one longer than its bytes for the zero appended, p6.
+// lvalue included, p6.  A floating constant is not yet: the lexer took
+// its spelling, and its value is not computed.  A character constant
+// is an int, 6.4.4.5p11.  Adjacent string literals are one, 6.4.5p5,
+// an array of char one longer than its bytes for the zero appended,
+// p6.
 expr_t
 primary_expression(parser_t &p)
 {
@@ -3967,6 +4133,7 @@ primary_expression(parser_t &p)
         return expr_t { sym->type, name_t { sym } };
     }
     case tok_t::integer: advance(p); return integer_constant(t);
+    case tok_t::floating: not_yet(t, "floating constant");
     case tok_t::character: {
         advance(p);
         const int value = character_value(t, p.target.char_is_signed);

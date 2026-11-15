@@ -43,7 +43,7 @@ main:
 	movq	%rax, -16(%rbp)
 	movl	-4(%rbp), %edi
 	movq	-16(%rbp), %rsi
-	call	__sysv_signal@PLT
+	call	signal@PLT
 	cmpq	$-1, %rax
 	jne	.Lmain.2
 	movl	$2, %eax

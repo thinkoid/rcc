@@ -25,7 +25,7 @@ main:
 	str	x0, [x29, #24]
 	ldr	w0, [x29, #20]
 	ldr	x1, [x29, #24]
-	bl	__sysv_signal
+	bl	signal
 	cmp	x0, #0
 	b.eq	.Lmain.3
 	mov	w0, #2
@@ -45,7 +45,7 @@ main:
 	str	xzr, [x29, #40]
 	ldr	w0, [x29, #36]
 	ldr	x1, [x29, #40]
-	bl	__sysv_signal
+	bl	signal
 	cmp	x0, #1
 	b.eq	.Lmain.5
 	mov	w0, #4

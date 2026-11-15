@@ -1,0 +1,2 @@
+tests/error/floating-exponent-without-digits.c:5:16: error: exponent has no digits
+status 1

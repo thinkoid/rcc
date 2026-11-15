@@ -198,6 +198,9 @@ gathers them.
 Fix: one table, per target, of the items of Annex J.3 that the
 implemented subset reaches, each with its choice and the code or pin
 that fixes it; the "Not in this list" of both documents points at it.
+Among them what an access to a volatile object is (6.7.4.1p8): each
+load and each store the source writes, at the object's width, which
+=shape.md= chapter 5 says and =tests/cost/volatile.c= pins.
 
 Check: every J.3 item the subset reaches has a row for each target,
 and each row agrees with a pin or a probe.
@@ -502,7 +505,10 @@ view and carries no qualifier. So =const int c = 1; c = 2;= compiles,
 though 6.5.17.1p2 requires a modifiable lvalue and 6.3.2.1p1 excludes
 a const-qualified one; a conforming compiler must diagnose it. The
 same silence covers a =const= pointee assigned through, and a
-=T *= initialized from a =const T *=.
+=T *= initialized from a =const T *=. =volatile= is dropped the same
+way, and a =T *= initialized from a =volatile T *= is not diagnosed
+either, though 6.5.17.2p1 asks that the left pointee have every
+qualifier of the right.
 
 Fix: qualifiers on the symbol and on the pointee, checked by
 =require_modifiable_lvalue= and by the assignment conversion; the
@@ -511,56 +517,14 @@ type itself stays unqualified.
 Check: the three programs above fail with a diagnostic; =const= in
 every other position still parses.
 
-** TODO On aarch64 =signal.h= stops at an array sized by a struct
-
-With glibc's default feature set, aarch64's =signal.h= and
-=sys/wait.h= reach =bits/procfs.h=, whose ~typedef elf_greg_t
-elf_gregset_t[ELF_NGREG];~ has for its size ~sizeof (struct
-user_regs_struct) / sizeof (elf_greg_t)~, and the parser stops with
-"not yet: struct". =tests/corpus/header-signal.c= defines
-=_POSIX_C_SOURCE=, under which the header leaves the file out; a
-program that includes =signal.h= and defines nothing does not
-compile on aarch64. On x86-64 both headers parse.
-
-Fix: by the rule for a system header, until a struct has a size: a
-typedef of an array whose size rcc cannot compute names a type rcc
-declares and does not use.
-
-Check: a program that includes =signal.h= alone compiles on both
-targets, and an object of type =elf_gregset_t= is refused by name.
-
-** TODO =stdatomic.h= does not parse
-
-=clang='s =stdatomic.h= stops at ~typedef _Atomic(_Bool)
-atomic_bool;~, "not yet: type specifier '_Atomic'". Three things
-stand between the header and its end: the atomic type specifier
-=_Atomic ( type-name )=; =_Bool=, which is not yet a type; and
-~volatile atomic_flag *~ in a parameter. =volatile= and =_Atomic= as
-qualifiers are taken after =typedef= only, where the typedef names a
-type rcc declares and does not use, as =pthread_spinlock_t= is; a
-qualified type written out anywhere else is not yet. Written out, each
-occurrence would be a type of its own, so two declarations of one
-function would conflict, and a pointer to =int= would not convert to
-a pointer to =volatile int=, which is valid.
-
-Fix: decide what =volatile= is in rcc. c1 writes every access it
-meets, an unused one included (=shape.md= chapter 11), so the
-qualifier may ask for nothing more and be dropped as =const= is; or
-it waits for qualifiers in the type model. =_Atomic= and =_Bool= are
-decided with it or after it.
-
-Check: a program that includes =stdatomic.h= compiles, and the
-documents say what a =volatile= object's access is.
-
 ** TODO A pointer to a type rcc does not honour takes no pointer to the type behind it
 
-~typedef volatile int spin_t; void f(spin_t *); void g(int *p) {
-f(p); }~ fails with "incompatible pointer types"; so does the same
-program with ~typedef int word_t __attribute__ ((mode (word)));~. The
-first is valid C, a conversion that adds a qualifier, and the error
-calls it invalid. A typedef through a qualifier or a marking
-attribute names a type of an identity of its own, which keeps nothing
-of the type it was made from.
+~typedef int word_t __attribute__ ((mode (word))); void f(word_t *);
+void g(int *p) { f(p); }~ fails with "incompatible pointer types";
+so does the same program with ~typedef _Atomic int a_t;~. The error
+calls the program invalid where rcc has not looked: a typedef through
+a marking attribute or =_Atomic= names a type of an identity of its
+own, which keeps nothing of the type it was made from.
 
 Fix: the refusal says "not yet" and names the typedef's words, where
 one of the two pointees is such a type; or the type keeps what it was
@@ -568,24 +532,24 @@ made from.
 
 Check: the first program is refused as not yet, or compiles.
 
-** TODO A typedef through a marking attribute cannot be written twice
+** TODO A type rcc does not honour cannot be written twice
 
 ~typedef int w __attribute__ ((mode (word))); typedef int w
 __attribute__ ((mode (word)));~ fails with "redefinition of typedef
 'w' with another type". A typedef may be declared again as the same
 type, and these two are. Each declaration through an attribute rcc
 does not honour makes a type of an identity of its own, so the
-second is never the first.
+second is never the first. Three more are made the same way and fail
+the same way: a typedef through =_Atomic=; the atomic type specifier,
+so that ~void f(_Atomic(int) *); void f(_Atomic(int) *);~ fails with
+"conflicting types for 'f'"; and a typedef of an array whose size rcc
+cannot compute, ~typedef int a[sizeof (struct s)];~ written twice.
 
-A typedef through =volatile= or =_Atomic= written twice fails
-the same way.
+Fix: a type made again by the same means from the same type takes
+the earlier one's identity.
 
-Fix: a typedef declared again through the same marking attribute, or
-the same qualifier, on the same type takes the earlier declaration's
-type.
-
-Check: the program above compiles; with =mode (byte)= in the second
-it still fails.
+Check: the programs above compile; with =mode (byte)= in the second
+typedef the first still fails.
 
 ** TODO A marking attribute on a later declaration does not reach an earlier call
 
@@ -677,6 +641,78 @@ Fix: the function type carries the marking, so that a call through a
 pointer to it is refused as a call of a marked function is.
 
 Check: the second program above is refused by the attribute's name.
+
+** TODO An error after the first not-yet in a typedef's array size is not seen
+
+~typedef int a[sizeof (struct s) + undeclared];~ compiles: in a
+typedef, an array size that needs what rcc does not have yet makes a
+type rcc declares and does not use, and the parse of the size ends at
+its first refusal, so the undeclared name after it is never read.
+~extern int n; typedef int a[n];~ at file scope compiles for the same
+reason, though the size is no constant: "not yet: global variable"
+comes before the test for a constant.
+
+Fix: the rest of the size is parsed for its errors after the refusal;
+or the documents say that a size rcc cannot compute is not checked.
+
+Check: the first typedef fails with "'undeclared' undeclared".
+
+** TODO A parameter of a typedef's array type rcc cannot size is not a pointer
+
+~typedef long g_t[sizeof (struct s)]; void f(g_t g); void f(long
+*g);~ fails with "conflicting types for 'f'". A parameter of array
+type is adjusted to a pointer to the element, and =g_t= is an array
+of =long=; but the typedef names a type rcc does not use, which is
+no array in the tree, so nothing is adjusted. glibc declares no such
+parameter in the headers surveyed.
+
+Fix: the type keeps its element, so that a parameter of it is
+adjusted.
+
+Check: the program above compiles.
+
+** TODO =_Atomic ( type-name )= takes an array and a function type
+
+~typedef _Atomic(int [3]) a_t;~ and ~typedef _Atomic(int (void))
+f_t;~ are accepted. 6.7.3.5p3 says the type name "shall not refer to
+an array type, a function type, an atomic type, or a qualified
+type". The specifier makes a type rcc declares and does not use and
+looks at nothing inside the parentheses; a qualified type cannot be
+told, since qualifiers are dropped.
+
+Fix: the specifier refuses an array and a function type.
+
+Check: two programs of =tests/error= with their pins.
+
+** TODO A macro of =stdatomic.h= draws "undeclared"
+
+~atomic_flag_test_and_set(p)~ fails with "'__c11_atomic_exchange'
+undeclared": the header's macros expand to =clang='s builtin
+functions, which rcc takes for identifiers. The program is valid, and
+the message says a name is missing where an atomic access is not
+yet.
+
+Fix: a name that begins =__c11_atomic_= or =__atomic_= is refused as
+not yet, by name.
+
+Check: the call above fails with "not yet", pinned in =tests/error=.
+
+** TODO =tgmath.h= does not parse
+
+=clang='s =tgmath.h= stops at its line 34, ~static
+_Argument_type_is_not_arithmetic __tg_promote(...) __attribute__
+((__unavailable__, __overloadable__));~, "not yet: storage class
+'static'": a =static= function declared without a body, with =(...)=
+for its whole parameter list, and overloaded by an attribute, which
+no other C header does. More than a thousand such declarations
+follow. Every other header of the 58 surveyed parses but =regex.h=.
+
+Fix: decide whether =clang='s own headers are read: the type-generic
+macros need overloading, which is not C; a program that includes
+=tgmath.h= needs floating point first.
+
+Check: the documents say what a program that includes =tgmath.h=
+gets.
 
 ** TODO A typedef for =void= is not the empty parameter list
 
@@ -960,23 +996,6 @@ to =clang -E= and the quote taken by =number()=, the not-yet is
 reached; without, the parser's branch goes.
 
 Check: a program of =tests/error= with ~1'000~ and its pin.
-
-** TODO A floating constant draws one of two errors, and neither says not yet
-
-=.5= is refused with "floating constant not supported"; =1.5= and
-=1e3= with "invalid integer constant '1.5'" and "'1e3'". The types
-=float= and =double= are "not yet: floating type", and =shape.md=
-chapter 11 lists floating point among what is not yet. A valid
-constant is called an invalid integer, and the three spellings of
-one thing read as two different errors. =clang='s =tgmath.h= stops
-there, at a =0.F= inside the body of a =static= function: the lexer
-reads the body before the parser skips it.
-
-Fix: =number()= and =punctuator()= say "not yet: floating constant"
-for a fraction or an exponent.
-
-Check: =.5=, =1.5= and =1e3= each pinned "not yet: floating
-constant".
 
 ** TODO A character outside ASCII in a character constant is called multi-character
 

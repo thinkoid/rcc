@@ -22,7 +22,7 @@ main:
 	movq	$1, -16(%rbp)
 	movl	-8(%rbp), %edi
 	movq	-16(%rbp), %rsi
-	call	__sysv_signal@PLT
+	call	signal@PLT
 	cmpq	$0, %rax
 	je	.Lmain.3
 	movl	$2, %eax
@@ -40,7 +40,7 @@ main:
 	movq	$0, -32(%rbp)
 	movl	-24(%rbp), %edi
 	movq	-32(%rbp), %rsi
-	call	__sysv_signal@PLT
+	call	signal@PLT
 	cmpq	$1, %rax
 	je	.Lmain.5
 	movl	$4, %eax

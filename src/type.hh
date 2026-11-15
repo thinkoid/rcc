@@ -50,8 +50,9 @@ struct function_t
 };
 
 // A type rcc declares and does not use yet: a struct, a union, an enum,
-// a floating type, __builtin_va_list, the type a typedef names through
-// a marking attribute.  Two are one type when their identities are
+// a floating type, _Bool, __builtin_va_list, an atomic type, the type a
+// typedef names through a marking attribute or through an array size
+// rcc cannot compute.  Two are one type when their identities are
 // equal, so two pointers to one struct are one type and pointers to two
 // structs are not.  what is the words a refusal prints.  It has no size
 // and no alignment, and a pointer to it is an ordinary pointer.

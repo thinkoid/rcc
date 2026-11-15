@@ -1,2 +1,0 @@
-tests/error/volatile-typedef.c:12:20: error: not yet: type qualifier 'volatile'
-status 1
