@@ -1,2 +1,2 @@
-tests/error/equality-function-void-pointer.c:8:36: error: comparison of distinct pointer types
+tests/error/equality-function-void-pointer.c:8:37: error: comparison of distinct pointer types
 status 1

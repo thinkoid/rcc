@@ -173,6 +173,12 @@ struct assign_t
     expr_ptr_t lhs, rhs;
 };
 
+// A call names its function, or goes through a pointer to one, and the
+// callee's type tells the two apart.  The direct call's callee is the
+// name of a function, of function type, the one place a function
+// designator stands as an operand; any other callee is an expression of
+// pointer-to-function type, the decay of a function designator among
+// them, so (*f)(x) and (&f)(x) are calls through a pointer.
 struct call_t
 {
     expr_ptr_t callee;
@@ -184,7 +190,9 @@ struct call_t
 // two conversions a compound assignment names.  Pointer to pointer is
 // no instruction; a pointer converts to an integer and back as an
 // unsigned long, its integer view in c1.  Array decay is a cast too,
-// to the pointer to the first element; a function decays nowhere yet.
+// to the pointer to the first element, and so is a function
+// designator's, to the pointer to the function: over a function's name
+// it is the function's address, over *E it is E's value.
 // An explicit cast is a node even to the operand's own type, since a
 // cast is never an lvalue (6.5.5p6); c1 makes nothing of it.
 struct cast_t
@@ -229,14 +237,15 @@ as(const expr_t &e)
 // The name of an object, a string literal or a dereference; the three
 // c1 takes the address of: a local's slot, a string's label, or what
 // the dereferenced pointer designates; a global's is a later slice.  A
-// function's name is not an object (6.3.2.1p1).
+// function designator, a function's name or *p through a pointer to a
+// function, designates no object (6.3.2.1p1, p4).
 inline bool
 is_lvalue(const expr_t &e)
 {
-    if (is< name_t >(e))
-        return as< name_t >(e).sym->storage != storage_t::function;
+    if (is< function_t >(e.type))
+        return false;
 
-    if (is< string_t >(e))
+    if (is< name_t >(e) || is< string_t >(e))
         return true;
 
     return is< unary_t >(e) && as< unary_t >(e).op == unary_op_t::deref;

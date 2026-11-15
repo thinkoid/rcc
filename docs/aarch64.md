@@ -283,11 +283,14 @@ The AAPCS64, the convention Linux on aarch64 follows and `clang` and
   no counterpart of `al`.
 - Plain `char` is the unsigned byte (Arithmetic types).
 
-A function's address and a string's are formed PC-relative in two
-instructions, `adrp x0, sym` for the 4 KiB page and `add x0, x0,
-:lo12:sym` for the offset in it. A call is `bl f`; the linker makes
-the PLT entry when `f` is in a shared library, and no `@PLT` is
-written.
+A string's address, and the address of a function the file defines,
+are formed PC-relative in two instructions, `adrp x0, sym` for the 4
+KiB page and `add x0, x0, :lo12:sym` for the offset in it. A function
+the file only declares has its address loaded from the GOT, `adrp x0,
+:got:f` and `ldr x0, [x0, :got_lo12:f]` (chapter 10). A call is `bl
+f`; the linker makes the PLT entry when `f` is in a shared library,
+and no `@PLT` is written. A call through a pointer is `blr` on the
+register that holds it.
 
 ## 4. The register discipline
 
@@ -370,11 +373,13 @@ and the spill path is the same code.
 
 **The scratch pair: `x16`, `x17`.** Never an expression register and
 never held across a node. `x16` takes an address the instruction
-cannot reach (chapter 5.3). `x17` carries the bytes of a copy from
-memory to memory, which the machine has no instruction for: a stack
-argument on its way from its slot to the outgoing area, and a stack
-parameter on its way to its slot. Both are dead at every `bl` by the
-convention, which is what suits them to a use that never spans one.
+cannot reach (chapter 5.3), and the callee of a call through a
+pointer, loaded from its slot for the `blr` (chapter 8). `x17`
+carries the bytes of a copy from memory to memory, which the machine
+has no instruction for: a stack argument on its way from its slot to
+the outgoing area, and a stack parameter on its way to its slot. Both
+are dead at every `bl` by the convention, which is what suits them to
+a use that never spans one.
 
 `x8` and `x18` are not used. `sp` is the stack pointer, and nothing
 else.
@@ -780,8 +785,10 @@ tuned sources, and `clang -O2` aligns no loop head here (`cost.md`
 Every argument is a hidden local of its call, as before.
 
 1. Every held value is spilled.
-2. Each argument in turn is written to its slot by the store row of
-   6.6.
+2. The callee of a call through a pointer is evaluated first and
+   written to a slot of 8 bytes of its own, taken before it is
+   evaluated, by the store row of 6.6, `str x0, [x29, #32]`. Then each
+   argument in turn is written to its slot by the store row of 6.6.
 3. The call sequence. What the arguments left held in an expression
    register is spilled first (`backend.md` 6.7). With more than
    eight arguments, `sub sp, sp, #A` opens the outgoing area, `A`
@@ -792,8 +799,20 @@ Every argument is a hidden local of its call, as before.
    above it in the area stay as they were: they are padding to the
    convention (chapter 3). The first eight are loaded from their
    slots into `x0` to `x7`, a narrow one extended by its load. `bl
-   f`. `add sp, sp, #A`.
+   f` for a named function. Through a pointer, the callee's slot is
+   loaded into `x16` after the argument registers, `ldr x16, [x29,
+   #32]`, and `blr x16`. `x16` is the register the convention lets a
+   call destroy, and nothing is held in it across a node (chapter 4).
+   A callee's slot beyond the load's reach forms its address in `x16`
+   first, as any far slot does (5.3), and `x16` is loaded through it,
+   `add x16, x29, #36864; ldr x16, [x16, #3192]` beside a local of
+   40000 bytes. `add sp, sp, #A`.
 4. The result is in `x0`, valid to its type's width (6.3).
+
+A call through a pointer is made with the types of the pointer's
+pointee (G16). `p(x)`, `(*p)(x)` and `(**p)(x)` are one listing, and
+`(*f)(x)` and `(&f)(x)` on a function's name form the address and call
+through it, as `backend.md` chapter 8 has it.
 
 An area of 4096 bytes or more, which the immediate of `sub` does not
 encode, is a not-yet: a call takes 510 arguments past the eighth. No
@@ -824,7 +843,7 @@ done, for the sake of a call with nine arguments.
 | G12 one slot for the activation | chapter 5 |
 | G13 left to right | chapter 6's rule and chapter 8's order; for a register variable, chapter 4's copy of a held read, `mov w0, w19` before `add w19, w19, #1`, and its save before a branch, `str x19, [x29, #32]` |
 | G14 a loop runs until its condition says stop | a test and a jump |
-| G16 a call goes out as written | chapter 8 |
+| G16 a call goes out as written | chapter 8: the convention's argument moves with the call site's types, then `bl f`, or `ldr x16` from the callee's slot and `blr x16` through a pointer |
 | G17 a string literal is writable | `.data`, chapter 10 |
 
 G4 is the row to read twice. `guarantees.md` already says "x86 `idiv`
@@ -846,6 +865,15 @@ alignment directive is needed before a function: every instruction
 is 4 bytes, and the assembler aligns `.text` to 4. The listing opens
 and closes as on x86-64: `.file` with the source's name and `.text`
 first, `.section .note.GNU-stack,"",@progbits` last.
+
+A function's address as a value has the two rows of `backend.md`
+chapter 10. A function the file defines, wherever its body stands,
+is the `adrp` and `add` pair, `adrp x0, f; add x0, x0, :lo12:f`. A
+function the file only declares is loaded from the GOT, `adrp x0,
+:got:f; ldr x0, [x0, :got_lo12:f]`: GNU ld refuses the PC-relative
+pair against a libc function in a position-independent executable,
+`R_AARCH64_ADR_PREL_PG_HI21 ... which may bind externally`, and the
+GOT's entry is the address the library itself takes of the function.
 
 ## 11. c0 and the driver
 
@@ -973,7 +1001,17 @@ compiles them against its own registers and state.
   The calls probe pairs the two three ways: `clang`'s code calls
   rcc's, rcc's calls `clang`'s, and rcc's calls rcc's. Its cases
   include narrow arguments and results both ways, calls of none to
-  twelve arguments, and variadic callees. The memory probe runs every
+  twelve arguments, and variadic callees. The indirect probe pairs
+  them the same three ways through pointers to functions: `clang`'s
+  main calls rcc's functions through the pointers they return, rcc's
+  code calls `clang`'s, of its library and of the main, through
+  pointers, and rcc's calls rcc's. It calls through a local, a
+  parameter, a register variable, an array element, a call's result,
+  a conditional and a cast, with none to twelve arguments, narrow
+  arguments and results, and a variadic pointee; it checks that the
+  callee is evaluated before the arguments, and that a function's
+  address, of one the file defines and of one it only declares,
+  equals the main's and the library's. The memory probe runs every
   integer type loaded and stored through a pointer, aligned and not,
   the address of locals in frames beyond the reach of 5.3, arrays and
   string literals, and compares the memory each function writes byte

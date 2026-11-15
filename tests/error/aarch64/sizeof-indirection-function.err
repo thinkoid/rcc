@@ -1,0 +1,2 @@
+tests/error/sizeof-indirection-function.c:6:16: error: invalid application of 'sizeof' to a function type
+status 1

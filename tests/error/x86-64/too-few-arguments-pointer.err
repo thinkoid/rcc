@@ -1,0 +1,2 @@
+tests/error/too-few-arguments-pointer.c:6:19: error: too few arguments in a call through a pointer
+status 1

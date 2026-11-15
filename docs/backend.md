@@ -778,12 +778,22 @@ Every argument is a hidden local of the call: a slot of its own in
 the frame, written as the argument is evaluated and read back by the
 call sequence.
 
+A call names its function or goes through a pointer to one. The tree
+says which: the callee of the first is the function's name, and the
+callee of the second is any expression that is a pointer to a
+function (`shape.md` chapter 4). The callee of a call through a
+pointer is a hidden local of its call as every argument is.
+
 1. Every expression register holding a value of the enclosing
    expression (`x` in `x + f(a, b)`) is stored to a spill slot; the
    register is freed, and the arguments find every expression
    register free.
-2. Each argument in turn is written to its argument slot by the
-   store row of 6.6, the slot taken before the argument is
+2. The callee of a call through a pointer is evaluated first, since
+   the source writes it first (G13): a slot of 8 bytes, taken before
+   the callee is evaluated, written by the store row of 6.6,
+   `movq %rax, -24(%rbp)`. A call that names its function has no
+   such slot. Then each argument in turn is written to its argument
+   slot by the store row of 6.6, the slot taken before the argument is
    evaluated. A constant is the immediate into its slot, `movl $1,
    -4(%rbp)`; anything else is evaluated into a register by chapter
    6 and stored, `mov L, -24(%rbp)`. Arguments are evaluated in
@@ -802,8 +812,11 @@ call sequence.
    `rax`, `movl -28(%rbp), %eax; pushq %rax`. The first six are loaded
    from their slots into `rdi`, `rsi`, `rdx`, `rcx`, `r8`, `r9`, a
    narrower one extended to 32 bits by the load. `al` is set to 0 for a
-   variadic callee, `movl $0, %eax`. `call f@PLT`, every call through
-   the PLT, chapter 10. The pushed bytes and the pad are added back.
+   variadic callee, `movl $0, %eax`, a function or the pointee of a
+   pointer. `call f@PLT` for a named function, every named call through
+   the PLT, chapter 10; `call *-24(%rbp)` through a pointer, the
+   machine's call through memory, straight from the callee's slot, with
+   no register. The pushed bytes and the pad are added back.
 4. The result is in `rax`; it is moved into the lowest free
    expression register, and the values of step 1 are reloaded from
    their spill slots as the enclosing expression consumes them.
@@ -827,7 +840,18 @@ A `char` or `short` result is not extended by the callee before
 valid to its type's width, and the width rule extends it where it is
 used wider (6.3), `movsbl %al, %eax` after the `call`. G16: the call
 is made with the call site's types and the convention's registers,
-and nothing is added, dropped or rewritten.
+and nothing is added, dropped or rewritten. A call through a pointer
+takes its types from the pointer's pointee, whatever function the
+pointer came from: a pointer cast to another function type calls with
+the cast's types, and nothing checks them against the function's.
+
+`p(x)`, `(*p)(x)` and `(**p)(x)` are one call and one listing: `*` on
+a pointer to a function is the function designator, which converts
+back to the pointer, and writes no instruction. `(*f)(x)` and
+`(&f)(x)` on a function's name are calls through a pointer: the source
+wrote an address, so the address is formed by the row of chapter 10,
+stored to the callee's slot, and called through. `f(x)` and `(f)(x)`
+name the function.
 
 The callee's prologue: `push %rbp; mov %rsp,%rbp`, push the
 register-variable registers it uses, `sub` its frame unless it is a
@@ -857,7 +881,7 @@ row here, in the guarantee's voice.
 | G12 one slot for the activation | chapter 5: every local's slot, none shared, none reused within the call |
 | G13 left to right | chapter 6's rule and chapter 8's order |
 | G14 a loop runs until its condition says stop | chapter 7's `while`: a test and a jump, and no code that reasons about the test |
-| G16 a call goes out as written | chapter 8 |
+| G16 a call goes out as written | chapter 8: the convention's argument moves with the call site's types, then `call f@PLT`, or `call *d(%rbp)` through a pointer |
 | G17 a string literal is writable | `.data`, chapter 10 |
 
 G15 stays withdrawn. The never-emitted table, the IR flags the
@@ -886,15 +910,27 @@ initializer or its zeros, reached the same way. A function is
 `.globl` and `.type f, @function` unless `static`, and ends with
 `.size`.
 
+A function's address as a value has two rows. A function the file
+defines, wherever in the file its body stands, is reached
+PC-relative, as a literal is, `leaq f(%rip), L`. A function the file
+only declares may be in a shared library, which a PC-relative
+reference does not reach from a position-independent executable:
+GNU ld refuses `R_X86_64_PC32` against a libc function there. Its
+address is loaded from the GOT, `movq f@GOTPCREL(%rip), L`, the
+entry the dynamic linker writes, which holds the address the library
+itself takes of the function, so the two compare equal. The symbol is
+the name `assembly_name()` gives, as a call's is.
+
 The file opens with `.file` and the source's name without its
 directory, `.file "local.c"`, and then `.text`. It closes with
 `.section .note.GNU-stack,"",@progbits`, the empty note section that
 marks the stack not executable.
 
-Every address is PC-relative (`sym(%rip)`) and every external call
-goes through the PLT, so the object links into a position-independent
-executable, which is the default link on the platforms rcc runs on,
-and into a fixed one as well.
+Every address is PC-relative (`sym(%rip)`) but a declared function's,
+which comes from the GOT, and every named call goes through the PLT,
+so the object links into a position-independent executable, which is
+the default link on the platforms rcc runs on, and into a fixed one
+as well.
 
 ## 11. The driver and the pipeline
 

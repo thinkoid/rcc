@@ -106,8 +106,8 @@ Three sums.
   cast, conditional. A name holds a non-owning pointer to its
   symbol. A string literal holds its bytes and is typed `char [N +
   1]`. Whether an expression is an lvalue follows from its node (the
-  name of an object, a string literal, a dereference), it is not
-  stored. A compound assignment carries the type it is computed in,
+  name of an object, a string literal, a dereference of an object
+  pointer), it is not stored; a function designator is none. A compound assignment carries the type it is computed in,
   the usual arithmetic conversions of its operands. Pointer
   arithmetic is a binary add or sub of the pointer's type with the
   integer operand widened to 64 bits in its own signedness; the
@@ -115,10 +115,16 @@ Three sums.
   pointers is a binary sub of type `long`; a subscript is a
   dereference of an add, as 6.5.3.2p2 defines it; `sizeof` is an
   integer literal the parser folded. A call's callee is the name of
-  a function, and that is the one place a name of function type
-  stands; a value of pointer-to-function type is loaded, stored,
-  passed, returned and compared as any pointer, and no node is
-  particular to it.
+  a function, the direct call, or an expression of
+  pointer-to-function type, the call through a pointer; c1 tells the
+  two apart by the callee's type. A function designator where a value
+  is wanted, a function's name or `*p` through a pointer to a
+  function, decays as an array does, a cast to the pointer over the
+  designator: over a name it is the function's address, over `*p` it
+  is `p`'s value. `&f` is that cast too, so `f` and `&f` as values
+  are one node. A value of pointer-to-function type is loaded,
+  stored, passed, returned and compared as any pointer, and no node
+  is particular to it.
 - `stmt_t`: expression, declaration, block, if, while, for, return.
   A `for` carries its init as a statement, so a declaration in the
   init costs nothing.
@@ -194,9 +200,21 @@ type or a null pointer constant (6.5.10p2), and `<`, `<=`, `>` and
 `>=` are an error on it (6.5.9p2); it is a condition, an operand of
 `!`, `&&` and `||`, and an arm of `?:`; a cast converts it to any
 pointer or integer type and back, with no instruction. Arithmetic on
-it is an error, and so is `restrict` on it. A function's name as a
-value, `&f` and `*p` on a pointer to a function, and a call through
-anything but a function's name are not yet.
+it is an error, and so is `restrict` on it.
+
+A function designator where a value is wanted converts to the pointer
+to the function (6.3.2.1p4), as an array decays, and `&f` is that
+pointer too (6.5.4.2p3). `*p` on a pointer to a function is the
+function designator again (p4), which converts back, so `(*p)(x)`,
+`(**p)(x)` and `p(x)` are one call; a designator is no lvalue, so
+`*p = q` and `&*p = q` are errors. A call's callee is any expression
+that is a pointer to a function after the conversion (6.5.3.3p1). The
+result type, the argument conversions, the count check and the
+promotions of a variadic pointee come from the pointed-to function
+type, as from a named function's; that is the call site's type,
+whatever function the pointer was converted from (G16). A function's
+name, in parentheses or not, stays the callee of a direct call;
+`(*f)(x)` and `(&f)(x)` go through the pointer the source formed.
 
 A system header is written in GNU C, and the parser reads it as it
 is. It conforms with what a correct program depends on, the size and
@@ -440,32 +458,33 @@ compiler's sake, the body of a `static inline` function, skipped, and
 the function-pointer declarator bring `stdlib.h`, `sys/types.h`,
 `signal.h` and most headers of the C library and of POSIX through as
 well: `header-stdlib` and `header-signal` in the corpus call `atoi`,
-`strtol`, `signal` and `raise`.
+`strtol`, `signal` and `raise`. A function is a value, its address,
+and a call goes through a pointer to one, in both generators
+(`backend.md` chapters 8 and 10): `header-qsort` sorts with its own
+comparison, and `header-handler` installs its own signal handler and
+raises the signal.
 
 ## 11. Not yet
 
 Structs, unions, enums, floating point and `__int128` (each type is
 declared, a struct's or union's members skipped and an enum's
-constants declared without their values; a pointer to one is an ordinary pointer, and a
-use that needs the object, or a constant's value, is refused), global
-variables (an object declared `extern` at file scope is accepted and
-its use refused; a definition at file scope is refused), `extern` in
-a block, brace initializers and
-`char s[] = "..."`, a function designator as a value, its address,
-the indirection through a pointer to a function and a call through
-one, a declaration through a typedef of function type, wide and `u8`
-strings,
-`volatile` outside a typedef (c1 writes every access it meets, an
-unused one included, so the access needs nothing more; the qualifier
-waits for the type model, as `const`'s checks do),
-`switch`, `goto`, `static` outside a `static inline` definition, whose
-use is refused, a `register`
-array (6.3.2.1p3), `inline` on a function definition,
-what an attribute that rcc does not honour marks (an object of a
-typedef so declared, the use of a function or an `extern` object, a
-local, a function's definition), `__asm__` as a statement, at file
-scope or on a local, and C's keywords outside the subset: `_Bool`,
-`_Complex` outside the specifiers of a floating type, `_Imaginary`,
-`_Atomic` outside a typedef, `_Alignas`, `_Alignof`, `_Generic`,
-`_Static_assert`, `_Thread_local`. Each arrives when a
-probe needs it. The preprocessor stays external for good.
+constants declared without their values; a pointer to one is an
+ordinary pointer, and a use that needs the object, or a constant's
+value, is refused), global variables (an object declared `extern` at
+file scope is accepted and its use refused; a definition at file
+scope is refused), `extern` in a block, brace initializers and `char
+s[] = "..."`, a declaration through a typedef of function type, wide
+and `u8` strings, `volatile` outside a typedef (c1 writes every
+access it meets, an unused one included, so the access needs nothing
+more; the qualifier waits for the type model, as `const`'s checks
+do), `switch`, `goto`, `static` outside a `static inline` definition,
+whose use is refused, a `register` array (6.3.2.1p3), `inline` on a
+function definition, what an attribute that rcc does not honour marks
+(an object of a typedef so declared, the use of a function or an
+`extern` object, a local, a function's definition), `__asm__` as a
+statement, at file scope or on a local, and C's keywords outside the
+subset: `_Bool`, `_Complex` outside the specifiers of a floating
+type, `_Imaginary`, `_Atomic` outside a typedef, `_Alignas`,
+`_Alignof`, `_Generic`, `_Static_assert`, `_Thread_local`. Each
+arrives when a probe needs it. The preprocessor stays external for
+good.

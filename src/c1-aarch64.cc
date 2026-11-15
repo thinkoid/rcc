@@ -30,6 +30,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -119,6 +120,9 @@ struct state_t
 
     // the target's largest frame
     long frame_limit;
+
+    // the functions the unit defines, whose addresses are PC-relative
+    std::unordered_set< const symbol_t * > defined { };
 
     // the string literals' bytes in the order met; .Ls<n> is the n-th
     std::vector< std::string > strings { };
@@ -796,6 +800,29 @@ address_of(state_t &s, const address_t &a)
     return v;
 }
 
+// The address of a function as a value, valid to 64, chapter 10.  One
+// the unit defines is PC-relative, as a string literal's address is,
+// adrp L, f and add L, L, :lo12:f.  One it only declares may be in a
+// shared library, which a PC-relative reference does not reach from a
+// position-independent executable, so its address is loaded from the
+// GOT, adrp L, :got:f and ldr L, [L, :got_lo12:f], the one the dynamic
+// linker wrote, the address the library's own code takes of it.
+value_t
+function_address(state_t &s, const symbol_t &f)
+{
+    const auto name = assembly_name(f);
+    if (s.defined.contains(&f))
+        return address_of(s, { .label = std::string(name) });
+
+    const auto v = fresh(s, 64);
+    const auto r = reg(reg_of(s, v), 64);
+
+    insn(s, "adrp", { r, std::format(":got:{}", name) });
+    insn(s, "ldr", { r, std::format("[{}, :got_lo12:{}]", r, name) });
+
+    return v;
+}
+
 // The step a pointer expression makes, when 2.3's forms that write
 // their base can make it: p++ and p-- after the access, ++p and --p
 // before it, by the size of what p points to, 6.5.4.1p2, and p += c and
@@ -956,6 +983,18 @@ address_value(state_t &s, const expr_t &e)
         return rvalue(s, *base);
 
     return rvalue(s, p);
+}
+
+// A function designator decayed to a pointer, 6.3.2.1p4: a function's
+// name is its address, and *p through a pointer to a function is p's
+// value, the * written as no instruction.
+value_t
+function_pointer(state_t &s, const expr_t &designator)
+{
+    if (is< name_t >(designator))
+        return function_address(s, *as< name_t >(designator).sym);
+
+    return rvalue(s, *as< unary_t >(designator).arg);
 }
 
 // The load row, 6.3.2.1p2: the value at an address into a register at
@@ -2035,7 +2074,8 @@ assign(state_t &s, const assign_t &a)
 // integer widens to a pointer by its own signedness (6.3.2.3p5), sxtw
 // for an int, and a pointer narrows to an integer by its low bits (p6).
 // An array decays to its address, 6.3.2.1p3, a string literal's
-// included.  A cast to void evaluates its operand for its effect alone,
+// included, and a function designator to the pointer to the function,
+// p4.  A cast to void evaluates its operand for its effect alone,
 // chapter 6.6.
 value_t
 cast(state_t &s, const cast_t &c, const type_t &to)
@@ -2047,6 +2087,9 @@ cast(state_t &s, const cast_t &c, const type_t &to)
 
     if (is< array_t >(c.arg->type))
         return address_value(s, *c.arg);
+
+    if (is< function_t >(c.arg->type))
+        return function_pointer(s, *c.arg);
 
     const auto &from = integer(c.arg->type);
     const auto &into = integer(to);
@@ -2088,28 +2131,59 @@ outgoing_operand(std::size_t k)
     return std::format("[sp, #{}]", 8 * k);
 }
 
+// The callee of a call through a pointer, chapter 8: a hidden local of
+// its call, as an argument is, an 8-byte slot taken before the callee
+// is evaluated and written by the store row of 6.6.  Returns the slot's
+// displacement.
+int
+callee_slot(state_t &s, const expr_t &callee)
+{
+    const int displacement = allocate(s, 8, 8);
+    initialize(s, callee, slot_address(displacement), integer(callee.type));
+
+    return displacement;
+}
+
+// The call through the callee's slot, after the argument registers are
+// loaded: the slot loaded into x16, which the convention lets a call
+// destroy (chapter 3), and blr x16.  A slot beyond the load's reach
+// forms its address in x16 first, as any far slot does, 5.3, and x16 is
+// loaded through it.
+void
+call_through(state_t &s, int displacement)
+{
+    const auto from = slot_operand(s, displacement, 8);
+
+    insn(s, "ldr", { "x16", from });
+    insn(s, "blr", { "x16" });
+}
+
 // Chapter 8, every argument a hidden local of its call.  Every held
-// value is spilled; each argument, in order and complete before the
-// next (G13), is written to a slot of its own, taken before it is
-// evaluated, by the store row of 6.6; what the arguments left held is
-// spilled in its turn, backend.md 6.7.  The arguments past the eighth
-// are copied from their slots to the outgoing area, opened below the
-// frame for this call alone, and the first eight are loaded into x0 to
-// x7, a narrow one extended to 32 bits by its type's load.  G16: bl f,
-// the name alone, since the linker makes a PLT entry where one is
-// needed, and a variadic callee gets nothing of its own (chapter 3).
-// No unwind directive is written around the area, since the canonical
-// frame address is computed from x29.  The result is in x0, valid to
-// its type's width and no further, 6.3: the convention leaves the bits
-// above a narrow one unspecified, and the width rule extends it where
-// it is used wider.
+// value is spilled; the callee of a call through a pointer is evaluated
+// first, as the source writes it (G13), and written to its slot; each
+// argument, in order and complete before the next, is written to a slot
+// of its own, taken before it is evaluated, by the store row of 6.6;
+// what the arguments left held is spilled in its turn, backend.md 6.7.
+// The arguments past the eighth are copied from their slots to the
+// outgoing area, opened below the frame for this call alone, and the
+// first eight are loaded into x0 to x7, a narrow one extended to 32
+// bits by its type's load.  G16: bl f, the name alone, since the linker
+// makes a PLT entry where one is needed, or the call through the
+// callee's slot, call_through(); a variadic callee gets nothing of its
+// own (chapter 3).  No unwind directive is written around the area,
+// since the canonical frame address is computed from x29.  The result
+// is in x0, valid to its type's width and no further, 6.3: the
+// convention leaves the bits above a narrow one unspecified, and the
+// width rule extends it where it is used wider.
 value_t
 call(state_t &s, const call_t &c, const type_t &t)
 {
-    const auto &callee = callee_of(c);
-    const auto &f = as< function_t >(callee.type);
+    const auto *named = named_callee(c);
+    const auto &f = callee_type(c);
 
     spill_all(s);
+
+    const int target = named ? 0 : callee_slot(s, *c.callee);
 
     std::vector< std::pair< int, int_t > > slots;
     for (std::size_t i = 0; i < c.args.size(); ++i) {
@@ -2153,7 +2227,10 @@ call(state_t &s, const call_t &c, const type_t &t)
         insn(s, mnemonic, { reg(argument_registers[i], width), from });
     }
 
-    insn(s, "bl", { assembly_name(callee) });
+    if (named)
+        insn(s, "bl", { assembly_name(*named) });
+    else
+        call_through(s, target);
 
     if (area > 0)
         insn(s, "add", { "sp", "sp", imm(area) });
@@ -2642,7 +2719,9 @@ generate_aarch64(const unit_t &unit,
                  std::string_view file,
                  std::ostream &out)
 {
-    state_t s { .out = out, .frame_limit = target.frame_limit };
+    state_t s { .out = out,
+                .frame_limit = target.frame_limit,
+                .defined = defined_functions(unit) };
 
     out << std::format("\t.file\t{}\n\t.text\n", quoted_file(file));
 

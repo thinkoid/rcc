@@ -1,2 +1,0 @@
-tests/error/address-of-function.c:8:26: error: not yet: function 'f' used as a value
-status 1

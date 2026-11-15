@@ -1,0 +1,2 @@
+tests/error/long-double-call-pointer.c:7:10: error: not yet: floating type 'long double'
+status 1

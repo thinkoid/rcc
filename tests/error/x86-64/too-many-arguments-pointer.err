@@ -1,0 +1,2 @@
+tests/error/too-many-arguments-pointer.c:6:21: error: too many arguments in a call through a pointer
+status 1

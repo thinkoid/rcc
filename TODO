@@ -69,6 +69,32 @@ Fix: one function, called from both.
 
 Check: every x86-64 listing is byte-identical.
 
+** TODO The generators' opening comments stop at the third slice
+
+The comment that opens =src/c1-x86-64.cc= says "These are the first
+three slices", and the one that opens =src/c1-aarch64.cc= "It holds
+slices 1 to 3", each with its list. Both files now write a function's
+address and the call through a pointer as well, which are of no
+slice of the three.
+
+Fix: each comment lists what the file writes, the two rows of
+=backend.md= chapters 8 and 10 among them.
+
+Check: each comment read against its file.
+
+** TODO The tables of 6.3 have no row for a function's name as a value
+
+=backend.md= 6.3 and =aarch64.md= 6.3 list what each expression
+compiles to, an array and a string literal as pointers among them. A
+function's name as a value, =f= or =&f=, has its two rows in chapter
+10 and in =cost.md=, and no line in either table sends a reader
+there.
+
+Fix: a row in each table, beside the array's and the literal's, that
+gives the two forms or names chapter 10.
+
+Check: each table has the row.
+
 ** TODO =c1.cc= includes =c1-common.hh= and uses nothing of it
 
 =src/c1.cc= calls the two generators and throws =std::logic_error=
@@ -485,27 +511,6 @@ type itself stays unqualified.
 Check: the three programs above fail with a diagnostic; =const= in
 every other position still parses.
 
-** TODO A function is no value, and no call goes through a pointer
-
-A pointer to a function is declared, stored, passed, returned and
-compared, and the headers that declare one parse: of 58 headers of
-the C library and of POSIX, 53 on aarch64 and 55 on x86-64. But a
-function's name stands only as the callee of a call, "not yet:
-function 'f' used as a value", and a call names its function, "not
-yet: call through an expression". So =qsort=, =atexit=, =signal= and
-=pthread_create= are declared and of no use: nothing a program has
-can be passed to them.
-
-Fix: a function is a value, its address, and a call is made through
-any expression that is a pointer to a function: nothing in the subset
-stands in the way of either. Both generators gain two rows, the
-address of a function and the call through a pointer.
-
-Check: a program that sorts with =qsort= and its own comparison, and
-one that installs a handler with =signal= and raises its signal, run
-on both targets, and a probe sets calls through pointers against
-=clang='s.
-
 ** TODO On aarch64 =signal.h= stops at an array sized by a struct
 
 With glibc's default feature set, aarch64's =signal.h= and
@@ -657,23 +662,21 @@ read and dropped, =restrict= checked as it is on a pointer.
 Check: with the entry on a parameter's array size fixed too, a
 program that includes =regex.h= compiles.
 
-** TODO A function type keeps no marking attribute of its parameters
+** TODO A call through a pointer passes a parameter a marking attribute marked
 
-A marking attribute on a parameter marks the function a declaration
-declares, so that a call is refused. On ~typedef int f_t(int x
-__attribute__ ((mode (word))));~ and on ~int (*p)(int x __attribute__
-((mode (word))));~ nothing is recorded: the mark is the symbol's, a
-function type has none, and the attribute is lost. No program shows
-it yet: a function declared through such a typedef is "not yet:
-function 'f' declared through a typedef", and a call through a
-pointer is not yet.
+~int f(int x __attribute__ ((mode (word))));~ marks =f=, and a call
+of it is refused, "not yet: attribute 'mode'": rcc would pass the
+argument as an =int= where the attribute asks for another size. The
+same parameter in a pointer's prototype is not refused: ~int call(int
+(*p)(int x __attribute__ ((mode (word))))) { return p(1); }~ compiles,
+and the call passes an =int=. The mark is the symbol's; a function
+type has none, so the attribute is lost on a pointer's prototype and
+on a typedef of function type.
 
 Fix: the function type carries the marking, so that a call through a
-pointer to it and a function declared through the typedef are
-refused as a call of a marked function is.
+pointer to it is refused as a call of a marked function is.
 
-Check: a call through the pointer above is refused by the
-attribute's name.
+Check: the second program above is refused by the attribute's name.
 
 ** TODO A typedef for =void= is not the empty parameter list
 

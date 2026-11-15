@@ -1,0 +1,2 @@
+tests/error/function-to-integer.c:9:16: error: incompatible pointer to integer conversion
+status 1

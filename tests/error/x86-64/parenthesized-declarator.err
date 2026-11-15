@@ -1,2 +1,0 @@
-tests/error/parenthesized-declarator.c:5:15: error: expected ')'
-status 1

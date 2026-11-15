@@ -131,9 +131,12 @@ has no optimizer to hand a flag to, so there was nothing to grant.
 arguments are passed as the call site's type says, per the ABI, and the
 call is made; what the callee does with them is another business.
 Nothing is added, dropped or rewritten. Instruction: the
-convention's argument moves and `call f@PLT`, with the call site's
-types (`backend.md` chapter 8). Nothing between the source and the
-instruction rewrites a call.
+convention's argument moves and `call f@PLT`, or `call *d(%rbp)`
+through a pointer, with the call site's types (`backend.md` chapter
+8). A call through a pointer converted to another function type is
+made with that type, and nothing checks it against the function the
+pointer came from. Nothing between the source and the instruction
+rewrites a call.
 
 ## Storage
 

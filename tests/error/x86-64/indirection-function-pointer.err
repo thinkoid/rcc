@@ -1,2 +1,0 @@
-tests/error/indirection-function-pointer.c:6:17: error: not yet: indirection through a function pointer
-status 1

@@ -597,23 +597,10 @@ require_restrictable(const token_t &q, const type_t &t)
 }
 
 // A value in the subset is an integer or a pointer, to an object or to
-// a function.  A function's name stands only as the callee of a call:
-// its conversion to a pointer, 6.3.2.1p4, is not yet, so a function
-// designator where a value is wanted is not yet, and a void expression
-// is an error.
-void
-require_not_function(const token_t &at, const expr_t &e)
-{
-    if (is< function_t >(e.type))
-        not_yet(at, "function " + quoted(as< name_t >(e).sym->name) +
-                        " used as a value");
-}
-
+// a function; a void expression is an error.
 void
 require_value(const token_t &at, const expr_t &e)
 {
-    require_not_function(at, e);
-
     if (is< void_t >(e.type))
         fail(at, "void expression used as a value");
 }
@@ -629,11 +616,19 @@ require_modifiable_lvalue(const token_t &at, const expr_t &e)
 
 // Array decay, 6.3.2.1p3: but as the operand of sizeof or of unary &,
 // an array becomes a pointer to its first element, a cast c1 reads as
-// that address.  Lvalue conversion, p2, is c1's load and needs no
-// node.
+// that address.  A function designator decays the same way, p4: a
+// function's name, or *E through a pointer to a function, becomes the
+// pointer to the function, a cast c1 reads as the function's address,
+// or as E's value with no instruction for the *.  Lvalue conversion,
+// p2, is c1's load and needs no node.
 expr_t
 decayed(expr_t e)
 {
+    if (is< function_t >(e.type)) {
+        type_t t = make_pointer(e.type);
+        return expr_t { std::move(t), cast_t { box(std::move(e)) } };
+    }
+
     if (!is< array_t >(e.type))
         return e;
 
@@ -642,8 +637,8 @@ decayed(expr_t e)
     return expr_t { std::move(t), cast_t { box(std::move(e)) } };
 }
 
-// An operand whose value is used: not void, not a function, and
-// decayed, so it is a scalar.
+// An operand whose value is used: not void, and decayed, so it is a
+// scalar.
 expr_t
 rvalue(const token_t &at, expr_t e)
 {
@@ -1168,14 +1163,11 @@ shift(const token_t &op, expr_t lhs, expr_t rhs)
                        std::move(rhs));
 }
 
-// The result is the right operand's type and value, an array decayed,
-// 6.5.18p2.  A function name is refused on either side, which keeps
-// every function-typed expression a name_t; the left operand comes
-// refused and decayed.
+// The result is the right operand's type and value, an array or a
+// function decayed, 6.5.18p2; the left operand comes decayed.
 expr_t
-comma(const token_t &op, expr_t lhs, expr_t rhs)
+comma(expr_t lhs, expr_t rhs)
 {
-    require_not_function(op, rhs);
     rhs = decayed(std::move(rhs));
 
     const type_t t = rhs.type;
@@ -1285,10 +1277,8 @@ cast(const token_t &open, const type_t &t, expr_t arg)
 {
     require_honoured(open, t);
 
-    if (is< void_t >(t)) {
-        require_not_function(open, arg);
+    if (is< void_t >(t))
         return convert_to(decayed(std::move(arg)), t);
-    }
 
     if (!is< int_t >(t) && !is< pointer_t >(t))
         fail(open, "cast to a type that is not a scalar");
@@ -1348,11 +1338,15 @@ logical_not(const token_t &op, expr_t arg)
 }
 
 // & takes an lvalue, which does not decay, and yields a pointer to its
-// type, 6.5.4.2p1, p3.
+// type, 6.5.4.2p1, p3.  On a function designator it yields the pointer
+// to the function, p3, which is the designator's decay, p4: &f and f
+// where a value is wanted are one node, and &*p is p's value, as if
+// both operators were omitted.
 expr_t
 address_of(const token_t &op, expr_t arg)
 {
-    require_not_function(op, arg);
+    if (is< function_t >(arg.type))
+        return decayed(std::move(arg));
 
     if (!is_lvalue(arg))
         fail(op, "cannot take the address of an rvalue");
@@ -1373,9 +1367,10 @@ address_of(const token_t &op, expr_t arg)
 
 // *E: the operand a pointer, after decay; the result the lvalue it
 // points to, of the pointee type, 6.5.4.2p2, p4.  A void pointee
-// designates nothing to read; through a pointer to a function, the
-// function designator it yields is not yet; and a not-yet pointee is
-// not yet.
+// designates nothing to read, and a not-yet pointee is not yet.
+// Through a pointer to a function the result is a function designator,
+// p4, which decays back to the pointer where a value is wanted, so
+// (*p)(x), (**p)(x) and p(x) are one call.
 expr_t
 indirection(const token_t &op, expr_t arg)
 {
@@ -1387,9 +1382,6 @@ indirection(const token_t &op, expr_t arg)
 
     if (is< void_t >(t))
         fail(op, "indirection through a pointer to void");
-
-    if (is< function_t >(t))
-        not_yet(op, "indirection through a function pointer");
 
     require_honoured(op, t);
 
@@ -2001,7 +1993,8 @@ expr_t cast_expression(parser_t &);
 expr_t unary_expression(parser_t &);
 expr_t sizeof_expression(parser_t &);
 expr_t postfix_expression(parser_t &);
-std::vector< expr_t > argument_expression_list(parser_t &, const symbol_t &);
+std::vector< expr_t >
+argument_expression_list(parser_t &, const function_t &, std::string_view);
 expr_t primary_expression(parser_t &);
 
 //
@@ -3414,10 +3407,7 @@ expression_statement(parser_t &p)
     if (accept(p, tok_t::semicolon))
         return stmt_t { expr_stmt_t { } };
 
-    const token_t &start = peek(p);
-
     expr_t e = expression(p);
-    require_not_function(start, e);
 
     expect(p, tok_t::semicolon, "expected ';' after expression");
 
@@ -3515,13 +3505,8 @@ for_statement(parser_t &p)
 
     expect(p, tok_t::semicolon, "expected ';' after for condition");
 
-    if (peek(p).kind != tok_t::rparen) {
-        const token_t &start = peek(p);
-        expr_t step = expression(p);
-        require_not_function(start, step);
-
-        loop.step = decayed(std::move(step));
-    }
+    if (peek(p).kind != tok_t::rparen)
+        loop.step = decayed(expression(p));
 
     expect(p, tok_t::rparen, "expected ')' after for clauses");
 
@@ -3571,13 +3556,9 @@ expression(parser_t &p)
 {
     expr_t e = assignment_expression(p);
 
-    while (peek(p).kind == tok_t::comma) {
-        const token_t &op = advance(p);
-        // before the right operand is parsed, so that this error comes first
-        require_not_function(op, e);
+    while (accept(p, tok_t::comma)) {
         e = decayed(std::move(e));
-
-        e = comma(op, std::move(e), assignment_expression(p));
+        e = comma(std::move(e), assignment_expression(p));
     }
 
     return e;
@@ -3816,10 +3797,56 @@ sizeof_expression(parser_t &p)
     return sizeof_(op, t);
 }
 
-// A call names its function directly, 6.5.3.3p5 gives its type; a call
-// through a pointer to a function, the name of one included, is not
-// yet.  A call of a function whose result is of a not-yet type is not
-// yet, its value used or not: the call makes the object it returns.
+// The callee of a call, 6.5.3.3p1.  A function's name, in parentheses
+// or not, stays the name: the direct call, which names its function.
+// Any other callee decays as a value does and must then be a pointer to
+// a function: the call through it, (*f)(x) and (&f)(x) included, since
+// the source wrote the address.  The name of anything else is refused
+// by name.
+expr_t
+callee(const token_t &op, expr_t e)
+{
+    if (is< name_t >(e) && is< function_t >(e.type))
+        return e;
+
+    if (is< name_t >(e) && !is_function_pointer(e.type))
+        fail(op, "called object " + quoted(as< name_t >(e).sym->name) +
+                     " is not a function");
+
+    e = rvalue(op, std::move(e));
+    if (!is_function_pointer(e.type))
+        fail(op, "called object is not a function or a pointer to one");
+
+    return e;
+}
+
+// The type a call is made with: the named function's, or the pointee of
+// the callee's pointer, which is the call site's type whatever the
+// pointer was converted from (G16, 6.5.3.3p7).
+const function_t &
+callee_type(const expr_t &callee)
+{
+    if (is< function_t >(callee.type))
+        return as< function_t >(callee.type);
+
+    return as< function_t >(pointee_of(callee.type));
+}
+
+// The words a count error names the callee by: the function, or the
+// pointer it is called through.
+std::string
+callee_words(const expr_t &callee)
+{
+    if (is< function_t >(callee.type))
+        return "to function " + quoted(as< name_t >(callee).sym->name);
+
+    return "in a call through a pointer";
+}
+
+// 6.5.3.3p5 gives a call the result type of the function it calls, a
+// named one or one through a pointer.  A call of a function whose result
+// is of a not-yet type is not yet, its value used or not: the call
+// makes the object it returns.
 expr_t
 postfix_expression(parser_t &p)
 {
@@ -3832,18 +3859,14 @@ postfix_expression(parser_t &p)
         case tok_t::lparen: {
             advance(p);
 
-            if (!is< name_t >(e) || is_function_pointer(e.type))
-                not_yet(op, "call through an expression");
+            e = callee(op, std::move(e));
+            const function_t &type = callee_type(e);
 
-            const symbol_t &fn = *as< name_t >(e).sym;
-            if (fn.storage != storage_t::function)
-                fail(op,
-                     "called object " + quoted(fn.name) + " is not a function");
-
-            const type_t t = *as< function_t >(fn.type).result;
+            const type_t t = *type.result;
             require_honoured(op, t);
 
-            std::vector< expr_t > args = argument_expression_list(p, fn);
+            std::vector< expr_t > args =
+                argument_expression_list(p, type, callee_words(e));
             expect(p, tok_t::rparen, "expected ')' after arguments");
 
             e = expr_t { t, call_t { box(std::move(e)), std::move(args) } };
@@ -3873,12 +3896,13 @@ postfix_expression(parser_t &p)
 // Each argument is converted to its parameter's type as if by
 // assignment; past the parameters of a variadic function, the default
 // argument promotions apply to an integer, and a pointer passes as it
-// is, 6.5.3.3p6.  The count must agree, p2.
+// is, 6.5.3.3p6.  The count must agree, p2; an error names the callee
+// by words, callee_words()'s.
 std::vector< expr_t >
-argument_expression_list(parser_t &p, const symbol_t &fn)
+argument_expression_list(parser_t &p,
+                         const function_t &type,
+                         std::string_view words)
 {
-    const function_t &type = as< function_t >(fn.type);
-
     std::vector< expr_t > args;
 
     if (peek(p).kind != tok_t::rparen) {
@@ -3893,15 +3917,14 @@ argument_expression_list(parser_t &p, const symbol_t &fn)
             else if (type.variadic && is< int_t >(arg.type))
                 arg = promote(std::move(arg));
             else if (!type.variadic)
-                fail(start,
-                     "too many arguments to function " + quoted(fn.name));
+                fail(start, "too many arguments " + std::string(words));
 
             args.push_back(std::move(arg));
         } while (accept(p, tok_t::comma));
     }
 
     if (args.size() < type.params.size())
-        fail(peek(p), "too few arguments to function " + quoted(fn.name));
+        fail(peek(p), "too few arguments " + std::string(words));
 
     return args;
 }

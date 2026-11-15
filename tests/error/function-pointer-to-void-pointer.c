@@ -4,7 +4,7 @@
 void *
 erase(void (*h)(int))
 {
-        void *v = (void *)h;
+        void *v = (void *) h;
 
         v = h;
         return v;

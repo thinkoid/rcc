@@ -72,6 +72,7 @@ SpaceBeforeInheritanceColon: false
 SpaceAfterTemplateKeyword: false
 SpacesInAngles: Always
 SpacesBeforeTrailingComments: 1
+SpaceAfterCStyleCast: true
 DerivePointerAlignment: true
 PointerAlignment: Right
 ReferenceAlignment: Pointer

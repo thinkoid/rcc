@@ -1,0 +1,2 @@
+tests/error/assign-function-designator.c:6:12: error: expression is not assignable
+status 1

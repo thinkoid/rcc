@@ -17,6 +17,7 @@
 #include <ostream>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 namespace rcc {
@@ -35,7 +36,9 @@ std::string label_name(std::string_view function, int n);
 
 const symbol_t *object_of(const expr_t &);
 const symbol_t *register_variable(const expr_t &);
-const symbol_t &callee_of(const call_t &);
+const symbol_t *named_callee(const call_t &);
+const function_t &callee_type(const call_t &);
+std::unordered_set< const symbol_t * > defined_functions(const unit_t &);
 const expr_t *bare_base(const expr_t &);
 
 bool is_step(unary_op_t);

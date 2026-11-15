@@ -14,6 +14,9 @@ g5-register-undef 1 0
 g13-read-across-call 110 110
 g13-read-across-branch 167 167
 g13-compound-order 63 63
+g16-mismatched-call 44 44
 header-stdio 0 0
 header-stdlib 0 0
 header-signal 0 0
+header-qsort 0 0
+header-handler 42 42

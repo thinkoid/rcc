@@ -12,6 +12,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 namespace rcc {
@@ -290,15 +291,45 @@ inverse(binary_op_t op)
     }
 }
 
-// The function a call names; an indirect call is a later slice.
-const symbol_t &
-callee_of(const call_t &c)
+// The function a direct call names, or null for a call through a
+// pointer: the parser leaves a function's name as the callee of the
+// one, and gives the other a callee of pointer-to-function type
+// (shape.md chapter 4).
+const symbol_t *
+named_callee(const call_t &c)
 {
-    const auto &e = *c.callee;
-    if (!is< name_t >(e) || as< name_t >(e).sym->storage != storage_t::function)
-        not_yet("an indirect call");
+    if (!is< function_t >(c.callee->type))
+        return nullptr;
 
-    return *as< name_t >(e).sym;
+    return as< name_t >(*c.callee).sym;
+}
+
+// The function type a call is made with: the named function's, or the
+// pointee of the callee's pointer, the call site's type whatever the
+// pointer was converted from (G16).
+const function_t &
+callee_type(const call_t &c)
+{
+    const type_t &t = c.callee->type;
+    if (is< function_t >(t))
+        return as< function_t >(t);
+
+    return as< function_t >(*as< pointer_t >(t).pointee);
+}
+
+// The functions the unit defines, whose address c1 forms PC-relative;
+// one the unit only declares is reached through the GOT (backend.md
+// chapter 10).  A body anywhere in the file counts, before the use or
+// after it.
+std::unordered_set< const symbol_t * >
+defined_functions(const unit_t &unit)
+{
+    std::unordered_set< const symbol_t * > defined;
+    for (const auto &fd : unit.functions)
+        if (fd.body)
+            defined.insert(fd.sym);
+
+    return defined;
 }
 
 // The pointer of a subscript by a constant 0, p[0] or 0[p]: the pointer

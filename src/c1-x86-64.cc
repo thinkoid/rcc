@@ -23,6 +23,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -90,6 +91,9 @@ struct state_t
 
     // the target's largest frame
     long frame_limit;
+
+    // the functions the unit defines, whose addresses are PC-relative
+    std::unordered_set< const symbol_t * > defined { };
 
     // the bytes of each string literal met, in order; the index is the
     // number of its label
@@ -718,6 +722,39 @@ address(state_t &s, const expr_t &e)
         return pointed(s, *as< unary_t >(e).arg, e.type);
 
     return slot_address(slot_of(s, object_of(e)));
+}
+
+// The address of a function as a value, valid to 64, chapter 10.  One
+// the unit defines is PC-relative, as a string literal's address is,
+// leaq f(%rip), L.  One it only declares may be in a shared library,
+// which a PC-relative reference does not reach from a position-
+// independent executable, so its address is loaded from the GOT, movq
+// f@GOTPCREL(%rip), L, the one the dynamic linker wrote, the address
+// the library's own code takes of it.
+value_t
+function_address(state_t &s, const symbol_t &f)
+{
+    const auto name = assembly_name(f);
+    if (s.defined.contains(&f))
+        return address_of(s, { .label = std::string(name) });
+
+    const auto v = fresh(s, 64);
+    const auto entry = std::format("{}@GOTPCREL(%rip)", name);
+    insn(s, "movq", { entry, reg(reg_of(s, v), 64) });
+
+    return v;
+}
+
+// A function designator decayed to a pointer, 6.3.2.1p4: a function's
+// name is its address, and *p through a pointer to a function is p's
+// value, the * written as no instruction.
+value_t
+function_pointer(state_t &s, const expr_t &designator)
+{
+    if (is< name_t >(designator))
+        return function_address(s, *as< name_t >(designator).sym);
+
+    return rvalue(s, *as< unary_t >(designator).arg);
 }
 
 // expressions
@@ -1583,7 +1620,8 @@ assign(state_t &s, const assign_t &a)
 // is its integer view, so pointer to pointer is nothing, an integer
 // widens to a pointer by its own signedness (6.3.2.3p5), and a pointer
 // narrows to an integer by its low bits (p6).  An array decays to its
-// address, 6.3.2.1p3.  A cast to void evaluates its operand for its
+// address, 6.3.2.1p3, and a function designator to the pointer to the
+// function, p4.  A cast to void evaluates its operand for its
 // effect alone, chapter 6.6.  A register variable widens into a fresh
 // register, movslq %ebx, %rax, and narrows as its read: the read, not
 // the variable, is valid to less.
@@ -1598,6 +1636,9 @@ cast(state_t &s, const cast_t &c, const type_t &to)
     if (is< array_t >(c.arg->type))
         return address_of(s, address(s, *c.arg));
 
+    if (is< function_t >(c.arg->type))
+        return function_pointer(s, *c.arg);
+
     const auto &from = integer(c.arg->type);
     const auto &into = integer(to);
 
@@ -1611,25 +1652,43 @@ cast(state_t &s, const cast_t &c, const type_t &to)
     return v;
 }
 
+// The callee of a call through a pointer, chapter 8: a hidden local of
+// its call, as an argument is, an 8-byte slot taken before the callee
+// is evaluated and written by the store row of 6.6.  Returns the slot's
+// displacement.
+int
+callee_slot(state_t &s, const expr_t &callee)
+{
+    const int displacement = allocate(s, 8, 8);
+    initialize(s, callee, at(displacement), 64);
+
+    return displacement;
+}
+
 // Chapter 8, every argument a hidden local of its call.  Every held
-// value is spilled; each argument, in order and complete before the
-// next (G13), is stored to its own slot at its width; what the
-// arguments left held is spilled in its turn; then the stack
-// arguments are pushed from their slots, last first, over a pad that
-// keeps rsp a multiple of 16 at the call, and the first six are loaded
-// into their registers, extended to 32 bits if narrower.  G16: the
-// call is made with the call site's types and the convention's
-// registers.  The result is in rax, the lowest free register, valid to
-// its type's width and no further, 6.3: the convention leaves the bits
-// above a narrow one unspecified, and the width rule extends it where
-// it is used wider.
+// value is spilled; the callee of a call through a pointer is evaluated
+// first, as the source writes it (G13), and stored to its slot; each
+// argument, in order and complete before the next, is stored to its own
+// slot at its width; what the arguments left held is spilled in its
+// turn; then the stack arguments are pushed from their slots, last
+// first, over a pad that keeps rsp a multiple of 16 at the call, and
+// the first six are loaded into their registers, extended to 32 bits if
+// narrower.  G16: the call is made with the call site's types and the
+// convention's registers, call f@PLT for a named function and call
+// *d(%rbp) through the callee's slot, the machine's call through
+// memory, with no register.  The result is in rax, the lowest free
+// register, valid to its type's width and no further, 6.3: the
+// convention leaves the bits above a narrow one unspecified, and the
+// width rule extends it where it is used wider.
 value_t
 call(state_t &s, const call_t &c, const type_t &t)
 {
-    const auto &callee = callee_of(c);
-    const auto &f = as< function_t >(callee.type);
+    const auto *named = named_callee(c);
+    const auto &f = callee_type(c);
 
     spill_all(s);
+
+    const int target = named ? 0 : callee_slot(s, *c.callee);
 
     std::vector< std::pair< int, int_t > > slots;
     for (std::size_t i = 0; i < c.args.size(); ++i) {
@@ -1686,8 +1745,12 @@ call(state_t &s, const call_t &c, const type_t &t)
     if (f.variadic)
         insn(s, "movl", { imm(0), "%eax" });
 
-    // every call through the PLT: the executable is position-independent
-    insn(s, "call", { std::format("{}@PLT", assembly_name(callee)) });
+    // every named call through the PLT: the executable is
+    // position-independent
+    if (named)
+        insn(s, "call", { std::format("{}@PLT", assembly_name(*named)) });
+    else
+        insn(s, "call", { "*" + at(target) });
 
     const long popped = 8 * static_cast< long >(stacked) + (pad ? 8 : 0);
     if (popped > 0)
@@ -2269,7 +2332,9 @@ generate_x86_64(const unit_t &unit,
                 std::string_view file,
                 std::ostream &out)
 {
-    state_t s { .out = out, .frame_limit = target.frame_limit };
+    state_t s { .out = out,
+                .frame_limit = target.frame_limit,
+                .defined = defined_functions(unit) };
 
     out << std::format("\t.file\t{}\n\t.text\n", quoted_file(file));
 

@@ -5,7 +5,7 @@
 int
 same(void (*h)(int), void *v)
 {
-        return h != (void *)0 && h == v;
+        return h != (void *) 0 && h == v;
 }
 
 int

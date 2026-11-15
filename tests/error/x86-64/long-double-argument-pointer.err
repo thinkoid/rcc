@@ -1,0 +1,2 @@
+tests/error/long-double-argument-pointer.c:7:11: error: not yet: floating type 'long double'
+status 1

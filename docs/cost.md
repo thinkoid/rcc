@@ -134,6 +134,9 @@ yet.
 | a statement whose value is unused | written: `a + 0;` is `addl $0, %eax`, `a / b;` is `cltd; idivl %ecx`, and the division can fault | `unused` |
 | `f(a, b)` | each argument evaluated into a register and stored to a slot of its own, `movl %eax, -12(%rbp)`, a constant argument in one store of the immediate, `movl $1, -4(%rbp)` in `stack-args`; the slots loaded into `edi`, `esi` and on; `call f@PLT`; the result in `eax` | `call` |
 | a seventh argument and on | stored to their slots as the first six are, a constant in one instruction, `movl $7, -28(%rbp)`, then pushed from their slots right to left, each loaded into `eax` and pushed from `rax`, `movl -28(%rbp), %eax; pushq %rax`, a `char` by its extending load, `movsbl -33(%rbp), %eax`; `subq $8, %rsp` first for an odd count; the bytes added back after the call, `addq $16, %rsp` for one or two, `addq $32, %rsp` for three or four | `stack-args`, `stack-args-nine` |
+| `p(a, b)` | the callee first: `p` loaded and stored to a slot of its own, `movq %rax, -24(%rbp)`, a hidden local as each argument is; then the arguments as for `f(a, b)`; the call through the slot, `call *-24(%rbp)`, the machine's call through memory, with no register; the result in `eax` | `call-pointer` |
+| `p(1, ..., 9)` | the callee's slot written first, `movq %rax, -16(%rbp)`, then the arguments' and the pushes as for a named call, `subq $8, %rsp` and three `pushq %rax`; `call *-16(%rbp)`, which the pushes do not move, since the slot is off `rbp`; `addq $32, %rsp` | `call-pointer-stack` |
+| `(*p)(x)`, `(**p)(x)` | the listing of `p(x)`: the `*` writes no instruction | `call-pointer-star` |
 | `(T) a` | `int` to `long`, `movslq %eax, %rax`; `char` to `int` after the extending load, nothing; `int` to `unsigned`, nothing; to `char`, the narrow store `movb %al, -5(%rbp)`, and the next read is the extending load, `movsbl -5(%rbp), %eax` or `movzbl` | `cast` |
 | a `char` or `short` parameter or result | stored at its width in the prologue, `movb %dil, -1(%rbp)`, `movw %si, -4(%rbp)`, and loaded with its extension, `movsbl`, `movswl`; a result in `eax` as the operation left it, no extension before the jump to the epilogue; an argument stored at its width and loaded extended into its register, `movsbl -5(%rbp), %edi`; the result extended by the caller where it is used wider, `movsbl %al, %eax` after the `call` | `narrow` |
 | `a += b` | as a statement, the op on the object at its width, `addl %eax, -12(%rbp)`, on a `char` `addb %al, -9(%rbp)`; for its value, and for `*=`, `/=` and `%=` always, `b` first, then the load, the op, the store; on a `char`, `b` into `ecx`, the extending load `movsbl -9(%rbp), %eax`, the op in `int`, the narrow store `movb %al, -9(%rbp)` | `compound` |
@@ -157,6 +160,7 @@ yet.
 | `&x` | `leaq -8(%rbp), %rax` | `address-of` |
 | `(T *) p`, `(long) p`, `(T *) l` | nothing; `movslq %eax, %rax` for an `int` | `ptr-int`, `void-pointer` |
 | `"abc"` | `leaq .Ls0(%rip), %rax`; the bytes a `.string` under a label of their own in `.data`, writable, after the last function | `string` |
+| `f`, `&f` as a value | of a function the file defines, PC-relative, `leaq defined(%rip), %rax`; of one it only declares, from the GOT, `movq declared@GOTPCREL(%rip), %rax`; one instruction either way | `function-address` |
 
 ### 2.2 aarch64
 
@@ -200,6 +204,9 @@ bytes or more.
 | `f(a, b)` | each argument evaluated into a register and stored to a slot of its own, `str w0, [x29, #24]`, a constant argument through a register, `mov w0, #1; str w0, [x29, #16]` in `stack-args`; the slots loaded into `w0`, `w1` and on, `ldr w0, [x29, #24]`; `bl f`; the result in `w0` | `call` |
 | a seventh and an eighth argument | in registers as the first six are, `ldr w6, [x29, #40]` and `ldr w7, [x29, #44]`; nothing on the stack | `stack-args` |
 | a ninth argument and on | stored to their slots as the first eight are, a `char` at its width, `strb w0, [x29, #48]`; after the stores the outgoing area opened below the frame, 8 bytes an argument rounded up to 16, `sub sp, sp, #16`; each copied from its slot through `x17` at its width, the ninth to `[sp]` and the tenth to `[sp, #8]`, `ldrb w17, [x29, #48]; strb w17, [sp]` for a `char`, `ldr w17, [x29, #52]; str w17, [sp, #8]`; then the first eight loaded, `bl f9`, and `add sp, sp, #16` | `stack-args-nine` |
+| `p(a, b)` | the callee first: `p` stored to a slot of its own, `str x0, [x29, #32]`, a hidden local as each argument is; then the arguments as for `f(a, b)`; after the argument registers, the slot loaded into `x16` and the call through it, `ldr x16, [x29, #32]; blr x16`; the result in `w0` | `call-pointer` |
+| `p(1, ..., 9)` | the callee's slot written first, `str x0, [x29, #24]`, then the arguments' and the outgoing area as for a named call, `sub sp, sp, #16` and the ninth copied to `[sp]`; `ldr x16, [x29, #24]; blr x16`; `add sp, sp, #16` | `call-pointer-stack` |
+| `(*p)(x)`, `(**p)(x)` | the listing of `p(x)`: the `*` writes no instruction | `call-pointer-star` |
 | `(T) a` | `int` to `long`, `sxtw x0, w0`; `char` to `int` after the extending load, nothing; `int` to `unsigned`, nothing; to `char`, the narrow store `strb w0, [x29, #20]`, and the next read is the extending load, `ldrb w0, [x29, #20]`, unsigned as plain `char` is | `cast` |
 | a `char` or `short` parameter or result | stored at its width in the prologue, `strb w0, [x29, #16]`, `strh w1, [x29, #18]`, and loaded with its extension, `ldrb w0, [x29, #16]`, `ldrsh w1, [x29, #18]`; a result in `w0` as the operation left it, no extension before the branch to the epilogue; an argument stored at its width and loaded extended into its register, `ldrb w0, [x29, #20]`; the result extended by the caller where it is used wider, `uxtb w0, w0` after the `bl` | `narrow` |
 | `a += b` | no memory form, as a statement or for its value: `b` first, then the load, the op, the store, `ldr w1, [x29, #24]; add w1, w1, w0; str w1, [x29, #24]`; on a `char`, the extending load `ldrb w1, [x29, #24]`, the op in `int`, the narrow store `strb w1, [x29, #24]`, and for its value the re-extension `uxtb w1, w1` | `compound` |
@@ -221,6 +228,7 @@ bytes or more.
 | `&x` | `add x0, x29, #20` | `address-of` |
 | `(T *) p`, `(long) p`, `(T *) l` | nothing, the load alone, `ldr x0, [x29, #16]`; `sxtw x0, w0` for an `int` | `ptr-int`, `void-pointer` |
 | `"abc"` | `adrp x0, .Ls0; add x0, x0, :lo12:.Ls0`; the bytes a `.string` under a label of their own in `.data`, writable, after the last function | `string` |
+| `f`, `&f` as a value | of a function the file defines, PC-relative, `adrp x0, defined; add x0, x0, :lo12:defined`; of one it only declares, from the GOT, `adrp x0, :got:declared; ldr x0, [x0, :got_lo12:declared]`; two instructions either way | `function-address` |
 
 ## 3. Verification
 
