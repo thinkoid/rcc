@@ -620,21 +620,6 @@ another machine when the program includes one; or take a sysroot.
 Check: the documents and the driver agree on what =-target= does to
 =#include <...>=.
 
-** TODO A definition that is =_Noreturn inline= is compiled
-
-~_Noreturn inline void f(void) { for (;;) { } }~ compiles as an
-external definition, with =.globl f=. ~inline _Noreturn~ on the same
-definition is "not yet: 'inline' on a function definition", as
-=inline= alone is. =external_declaration()= asks whether the first
-function specifier written is =inline=, and here it is =_Noreturn=.
-
-Fix: the test is whether =inline= was written among the specifiers,
-which =declaration_specifiers()= records since the =static inline=
-definitions of the headers.
-
-Check: a program of =tests/error= with the definition above, pinned
-"not yet: 'inline' on a function definition".
-
 ** TODO A block's declaration that begins with an attribute is read as an expression
 
 ~int main(void) { __attribute__ ((unused)) int x = 1; return x; }~
@@ -838,40 +823,36 @@ function specifier on one already is.
 Check: a program of =tests/error= with the definition, pinned with
 the error.
 
-** TODO A program's own =static inline= function is not compiled
+** TODO A =static= definition after a header's =static inline= one is "not yet"
 
-~static inline int max(int a, int b) { return a > b ? a : b; }~ in a
-program's own source is accepted, its body skipped, and a call of it
-refused, "not yet: static function 'max'". That is the rule for the
-definitions a system header writes, as =bits/byteswap.h= defines
-=__bswap_16=, whose bodies rcc need not be able to compile and no
-program may ever call. A program's own function is the program.
+A system header's =static inline= definition is accepted, its body
+skipped, and the function left with a mark and no body. A program
+that then defines a =static= function of that name gets "not yet:
+static function 'f'" at its own definition. It is a redefinition, and
+the message says something is missing: =function_definition()= asks
+whether the function has a body before it asks for the mark, and the
+skipped definition left none. Two definitions in the program's own
+source draw "redefinition of 'f'".
 
-Fix: a =static inline= definition is compiled as the =static=
-function it is, =inline= dropped as on a declaration: it suggests
-that calls be fast and changes nothing a literal compiler writes. One
-that a system header defines keeps today's rule; the preprocessor's
-line markers say which file is one, by their flag 3, which the lexer
-reads past today.
+Fix: the mark of a skipped definition counts as a definition where a
+second one is met.
 
-Check: the definition above compiles to the listing of the same
-function without =inline=, on both targets; a program that includes
-=sys/types.h= compiles as before and writes nothing for =__bswap_16=.
+Check: a program of =tests/error= that marks its first definition as
+a system header's, pinned "redefinition of 'f'".
 
-** TODO A =static= definition after a =static inline= one is "not yet"
+** TODO A function specifier stands on a definition of =main=
 
-~static inline int f(void) { return 1; } static int f(void) { return
-2; }~ fails with "not yet: static function 'f'" at the second
-definition. It is a redefinition, and the message says something is
-missing: =function_definition()= asks whether the function is marked
-before it asks whether it has a body, and the skipped =static inline=
-definition left its mark and no body.
+~_Noreturn int main(void) { for (;;) { } }~ compiles, and ~inline
+int main(void) { return 0; }~ fails with "not yet: 'inline' on a
+function definition". 6.7.5p4 allows no function specifier in a
+declaration of =main=; a declaration without a body and a =static
+inline= definition are refused with "'inline' in a declaration of
+'main'", and a plain definition is not asked.
 
-Fix: the mark is tested after the redefinition; with a program's own
-=static inline= function compiled, only a system header's is left to
-meet it.
+Fix: =refuse_specifier_on_main()= is called for every definition.
 
-Check: the program above fails with "redefinition of 'f'".
+Check: two programs of =tests/error= with the definitions above,
+pinned with the error of =main=.
 
 ** TODO A string in parentheses initializes an array of char only without braces
 

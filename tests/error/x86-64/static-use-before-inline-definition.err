@@ -1,2 +1,2 @@
-tests/error/static-use-before-inline-definition.c:9:16: error: not yet: static function 'helper'
+tests/error/static-use-before-inline-definition.c:12:16: error: not yet: static function 'helper'
 status 1

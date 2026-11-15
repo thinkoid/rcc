@@ -58,7 +58,11 @@ requests for a warning (`gnu-declarations`); `__asm__` after a
 declarator changes the name a call writes and nothing else.
 `volatile` writes nothing either: it asks that every access written
 be made, and every access of every object is, so a program compiles
-to the listing of its twin without the qualifier (`volatile`).
+to the listing of its twin without the qualifier (`volatile`). Nor
+does `inline` on the definition of a program's own `static`
+function: it suggests that calls be fast, and each call is written
+as it is either way, so a program compiles to the listing of its
+twin without the specifier (`static-inline`).
 
 What the compiler may do:
 

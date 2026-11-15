@@ -15,7 +15,9 @@
 # the lexer or the parser, exit status 1, or a construct c1 does not
 # handle yet, "c1: not yet: ...", exit status 3.  ./rcc -target
 # <target> -S writes it, from the tree root, so the file in each
-# message is the relative path tests/error/<name>.c.  The run is what
+# message is the relative path tests/error/<name>.c, or the name a
+# line marker of the program gives, where the program marks a part of
+# its text as a system header's.  The run is what
 # rcc itself printed on standard error, its warnings included, then a
 # last line "status <n>" with rcc's exit status.  It is diffed against
 # the pin, tests/error/<target>/<name>.err.  A row passes when the run

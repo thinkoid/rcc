@@ -1,2 +1,2 @@
-tests/error/static-inline-redefinition.c:9:1: error: redefinition of 'one'
+header.h:8:1: error: redefinition of 'one'
 status 1

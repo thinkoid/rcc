@@ -2055,7 +2055,7 @@ skip_extension_keywords(parser_t &p)
 void external_declaration(parser_t &);
 void
 function_definition(parser_t &, const specifiers_t &, const declarator_t &);
-void static_function_definition(parser_t &,
+void header_function_definition(parser_t &,
                                 const specifiers_t &,
                                 const declarator_t &);
 specifiers_t declaration_specifiers(parser_t &);
@@ -2879,9 +2879,10 @@ defines(const parser_t &p, const symbol_t *sym)
 // leave its symbol undefined, and the linker would bind it to another
 // file's symbol of the name, which is not the program.  Only a
 // function can lack one, since every object of internal linkage has a
-// tentative definition at least.  A use of a static inline function
-// before its definition, which rcc does not compile, is not yet, in the
-// function's words.  The first use is the one refused.
+// tentative definition at least.  A use of a system header's static
+// inline function before its definition, which rcc does not compile,
+// is not yet, in the function's words.  The first use is the one
+// refused.
 void
 require_internal_definitions(const parser_t &p)
 {
@@ -2961,13 +2962,23 @@ refuse_specifier_on_main(const specifiers_t &spec, const declarator_t &d)
              quoted(specifier->text) + " in a declaration of 'main'");
 }
 
+// Whether a static declaration is a system header's, by the line
+// marker in force at its static.
+bool
+in_system_header(const specifiers_t &spec)
+{
+    return spec.storage_class->where.system_header;
+}
+
 // One declarator of a file-scope declaration: a type name, a function,
-// or an object.  static inline on a declaration without a body is not
-// yet: only the definition of a static inline function is taken.  A
-// function declared through a typedef name of function type, typedef
-// int fn_t(int); fn_t f;, is not yet: its declaration writes no
-// parameter list, and the typedef keeps no marking attribute of its
-// parameters.
+// or an object.  static inline on a declaration without a body is a
+// static function's declaration in the program's own source, inline
+// dropped as on any declaration; in a system header it is not yet,
+// since only the definition of a system header's static inline
+// function is taken there.  A function declared through a typedef name
+// of function type, typedef int fn_t(int); fn_t f;, is not yet: its
+// declaration writes no parameter list, and the typedef keeps no
+// marking attribute of its parameters.
 void
 external_declarator(parser_t &p,
                     const specifiers_t &spec,
@@ -2983,7 +2994,8 @@ external_declarator(parser_t &p,
 
     refuse_specifier_on_main(spec, d);
 
-    if (declared(spec, tok_t::kw_static) && spec.inline_specifier)
+    if (declared(spec, tok_t::kw_static) && spec.inline_specifier &&
+        in_system_header(spec))
         not_yet(*spec.storage_class,
                 "storage class " + quoted(spec.storage_class->text));
 
@@ -3003,13 +3015,16 @@ external_declarator(parser_t &p,
 // and on a definition alike.  A definition is a declarator and
 // its body, with nothing between them, so no attribute and no
 // assembler name of its own; it takes those of its declarations.
-// inline on a definition is not yet: an inline definition is no
-// external definition, 6.7.5p7, which rcc would have to honour.
-// _Noreturn on one is dropped, as on a declaration: it promises that
-// the function does not return, and rcc writes the function as it is
-// written either way.  The definition of a static inline function is
-// accepted and not compiled; one of a static function without inline
-// is compiled as any other.  An __asm__ at file scope is not yet.
+// inline on a definition without static is not yet, wherever it stands
+// among the specifiers: an inline definition of a function of external
+// linkage is no external definition, 6.7.5p7, which rcc would have to
+// honour.  _Noreturn on one is dropped, as on a declaration: it
+// promises that the function does not return, and rcc writes the
+// function as it is written either way.  A static inline function may
+// be an inline function, p7, and its definition in the program's own
+// source is compiled as the static function it is, inline dropped;
+// one a system header writes is accepted and not compiled.  An
+// __asm__ at file scope is not yet.
 void
 external_declaration(parser_t &p)
 {
@@ -3036,13 +3051,18 @@ external_declaration(parser_t &p)
     const bool defines_function = d.params && peek(p).kind == tok_t::lbrace;
     if (defines_function && declared(spec, tok_t::kw_static) &&
         spec.inline_specifier) {
-        static_function_definition(p, spec, d);
+        refuse_specifier_on_main(spec, d);
+
+        if (in_system_header(spec))
+            header_function_definition(p, spec, d);
+        else
+            function_definition(p, spec, d);
+
         return;
     }
 
     if (defines_function && !typedef_) {
-        const token_t *t = spec.function_specifier;
-        if (t && t->kind == tok_t::kw_inline)
+        if (const token_t *t = spec.inline_specifier)
             not_yet(*t, quoted(t->text) + " on a function definition");
 
         function_definition(p, spec, d);
@@ -3145,22 +3165,21 @@ function_definition(parser_t &p,
     f.registers = p.registers;
 }
 
-// The definition of a static inline function, as glibc's
-// bits/byteswap.h defines __bswap_16.  The function has internal
-// linkage, 6.2.2p3, so a call of it calls this definition, which rcc
-// would have to compile, and that is not yet.  The definition is
-// accepted, its body skipped to the brace that closes it, and the
-// function stays declared, so c1 writes nothing for it; an expression
-// that names it is refused by name, and so is a use before the
-// definition, at the end of the unit.  A function that carries the
-// words was defined so before.
+// The definition of a static inline function a system header writes,
+// as glibc's bits/byteswap.h defines __bswap_16.  The function has
+// internal linkage, 6.2.2p3, so a call of it calls this definition,
+// which rcc would have to compile, and that is not yet: a header's body
+// need not be one rcc can compile, and a program that never calls the
+// function does not pay for it.  The definition is accepted, its body
+// skipped to the brace that closes it, and the function stays
+// declared, so c1 writes nothing for it; an expression that names it is
+// refused by name, and so is a use before the definition, at the end of
+// the unit.  A function that carries the words was defined so before.
 void
-static_function_definition(parser_t &p,
+header_function_definition(parser_t &p,
                            const specifiers_t &spec,
                            const declarator_t &d)
 {
-    refuse_specifier_on_main(spec, d);
-
     const std::size_t index =
         declare_function(p, spec, d, { nullptr, { }, spec.marking });
 

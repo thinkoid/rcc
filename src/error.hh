@@ -15,12 +15,15 @@ namespace rcc {
 
 // A position in the source as the preprocessor's line markers name
 // it.  The file name is a view into the preprocessed text, which
-// outlives every token and every error.
+// outlives every token and every error.  system_header is whether the
+// marker in force says, by its flag 3, that the text is a system
+// header's.
 struct location_t
 {
     std::string_view file;
     int line;
     int column;
+    bool system_header;
 };
 
 struct error_t

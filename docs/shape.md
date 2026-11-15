@@ -69,8 +69,19 @@ hexadecimal, a fraction, an exponent, which a hexadecimal one must
 have, and a suffix, `f`, `l` or one of the decimal ones, which p2
 keeps off a hexadecimal constant. Its value is not computed: the
 parser refuses the constant where an expression uses it, and a
-floating constant in the skipped body of a `static inline` function,
-as clang's `tgmath.h` writes `0.F`, is never read.
+floating constant in the skipped body of a system header's `static
+inline` function, as clang's `tgmath.h` writes `0.F`, is never read.
+
+A line marker names the file and the line of the text after it, and
+its flags, after the name, say more of that text: `# 33
+"/usr/include/bits/byteswap.h" 3 4`. Flag 1 enters a file, 2 returns
+to one, 3 marks a system header's text, and 4 text read as if in an
+implicit `extern "C"`. A marker without 3 ends a system header's
+text. The lexer keeps the flag 3 in the location, so each token says
+whether it came from a system header; the parser asks it of a `static
+inline` function (chapter 5). The other flags change nothing. A
+program may write a line marker itself, and `clang -E` writes it into
+its output again, flags included, as a marker of its own.
 
 The keywords are C17's, those outside the subset included, so the
 parser refuses each by its name. GNU C's spellings in the
@@ -358,11 +369,20 @@ a typedef: of a local, a parameter, a cast or a `sizeof`. Since the
 parse of the size stops at its first refusal, an error of the program
 after it in the size is not seen.
 
-The definition of a `static inline` function, as glibc's
-`bits/byteswap.h` defines `__bswap_16`, is accepted: its body is
-skipped to the closing brace, c1 writes nothing for it, and an
-expression that names the function is refused, before the definition
-as after it. A `static inline` declaration without a body is not yet.
+A function of internal linkage may be an inline function (6.7.5p7),
+and `inline` suggests only that its calls be fast (p6), so it writes
+nothing. A `static inline` definition in the program's own source is
+thus compiled as the static function it is, `inline` dropped, and
+such a declaration without a body declares a static function. One a
+system header writes, as glibc's `bits/byteswap.h` defines
+`__bswap_16`, is accepted and not compiled: a header's body need not
+be one rcc can compile, and a program that never calls the function
+does not pay for it. Its body is skipped to the closing brace, c1
+writes nothing for it, and an expression that names the function is
+refused, before the definition as after it; a system header's `static
+inline` declaration without a body is not yet. The line marker in
+force at the declaration's `static` says which of the two it is
+(chapter 2).
 
 `static` at file scope gives a function or an object internal
 linkage (6.2.2p3). The rules of linkage are the standard's: `extern`
@@ -381,7 +401,8 @@ of `sizeof`, has its definition in the file (6.9.1p3), so a `static`
 function called and never defined is an error at the end of the file:
 the assembler would leave its symbol undefined, and the linker would
 bind the call to another file's function of the name. A call of a
-`static inline` function before its definition is not yet there.
+system header's `static inline` function before its definition is not
+yet there.
 
 `static` in a block declares an object of static storage duration
 (6.2.4p3) and no linkage (6.2.2p6): a name of the block's, declared
@@ -702,7 +723,8 @@ call. The milestone program, `header-stdio` in the corpus, includes
 `stdio.h` and `string.h`, formats a line with `snprintf`, checks it
 with `strcmp` and prints it: the same line and the same status under
 rcc and under `clang -O2`. The types a header declares for another
-compiler's sake, the body of a `static inline` function, skipped, and
+compiler's sake, the body of a header's `static inline` function,
+skipped, and
 the function-pointer declarator bring `stdlib.h`, `sys/types.h`,
 `signal.h` and most headers of the C library and of POSIX through as
 well: `header-stdlib` and `header-signal` in the corpus call `atoi`,
@@ -754,11 +776,11 @@ type, wide and `u8` strings, the checks of the qualifiers (`const`
 and `volatile` are dropped, so an assignment to a `const` object and
 a conversion that discards a qualifier draw no diagnostic, and
 `(const void)` is taken as `(void)`), an atomic object, GNU C's case
-range, `case 1 ... 5:`, the body of a `static inline`
+range, `case 1 ... 5:`, the body of a system header's `static inline`
 function, whose use is refused,
-and a `static inline` declaration without a body, a `register` array
-(6.3.2.1p3), `inline` on a function
-definition, what an attribute that rcc does
+and a system header's `static inline` declaration without a body, a
+`register` array (6.3.2.1p3), `inline` on a function
+definition without `static`, what an attribute that rcc does
 not honour marks (an object of a typedef so declared, the use of a
 function or of an object at file scope, a local, the definition of a
 function or of an object at file scope),

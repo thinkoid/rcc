@@ -2,7 +2,8 @@
 
 // The lexer: preprocessed C in, tokens out.  The input is what
 // clang -E writes, so there are no comments and no directives but the
-// line markers, which move the locations back onto the source file.
+// line markers, which move the locations back onto the source file and
+// say which text is a system header's.
 
 #include "lex.hh"
 
@@ -22,6 +23,8 @@ namespace {
 
 // Where the lexer stands.  The column of a position is its distance
 // from origin, the offset of the first byte of the current line.
+// system_header is what the last line marker said of the text after
+// it.
 struct state_t
 {
     std::string_view source;
@@ -29,6 +32,7 @@ struct state_t
     std::string_view file;
     int line;
     std::size_t origin;
+    bool system_header;
 };
 
 struct keyword_t
@@ -171,7 +175,7 @@ is_line_blank(char c)
 location_t
 location_of(const state_t &st, std::size_t pos)
 {
-    return { st.file, st.line, int(pos - st.origin) + 1 };
+    return { st.file, st.line, int(pos - st.origin) + 1, st.system_header };
 }
 
 [[noreturn]] void
@@ -318,9 +322,31 @@ file_name(state_t &st)
     return name;
 }
 
+// Whether the flags after a marker's file name say that the text after
+// it is a system header's.  Each flag is a number: 1 enters a file, 2
+// returns to one, 3 marks a system header's text, and 4 text read as
+// if in an implicit extern "C".  Only 3 matters here.
+bool
+system_header_flag(state_t &st)
+{
+    bool system = false;
+
+    for (skip_line_blanks(st); is_digit(at(st, st.pos)); skip_line_blanks(st)) {
+        const std::size_t first = st.pos;
+        while (is_digit(at(st, st.pos)))
+            ++st.pos;
+
+        if (st.source.substr(first, st.pos - first) == "3")
+            system = true;
+    }
+
+    return system;
+}
+
 // A line opening with '#'.  A line marker, # N "name" flags or
-// #line N "name", sets the file and the number of the next line; any
-// other directive (a #pragma) is skipped whole.
+// #line N "name", sets the file and the number of the next line, and
+// says anew whether the text after it is a system header's; any other
+// directive (a #pragma) is skipped whole.
 void
 line_marker(state_t &st)
 {
@@ -339,6 +365,7 @@ line_marker(state_t &st)
     if (at(st, st.pos) == '"')
         st.file = file_name(st);
 
+    st.system_header = system_header_flag(st);
     skip_rest_of_line(st);
     if (st.pos < st.source.size())
         next_line(st);
@@ -741,7 +768,7 @@ punctuator(state_t &st)
 std::vector< token_t >
 tokenize(std::string_view source, std::string_view file)
 {
-    state_t st { source, 0, file, 1, 0 };
+    state_t st { source, 0, file, 1, 0, false };
     std::vector< token_t > tokens;
 
     for (skip_blanks(st); st.pos < source.size(); skip_blanks(st)) {
