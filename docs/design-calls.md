@@ -106,7 +106,7 @@ What a sixth register is worth to rcc is in the tuned programs of
 the measurement as first written for the LLVM pipeline, counted per
 function:
 
-| program | function | `register` variables declared | most live at once |
+| program | function | `register` variables declared | registers taken |
 |---|---|---|---|
 | matmul | `main` | 10 | 10 |
 | collatz | `main` | 7 | 7 |
@@ -116,9 +116,13 @@ function:
 | strings | `length`, `copy` | 2 each | 2 each |
 | fib | `fib` | 3 | 3 |
 
-c0 counts the live ones: a block's variables leave the count at its
-end, so sieve's marking walker is gone before its outer counter and
-strike walker are declared. By the live count two functions exceed
+The registers taken are c0's count, where the target has ten to
+give: a variable takes the register above those live and above
+those the closed inner blocks of its own block took (`backend.md`
+chapter 4), and blocks that follow one another share. Sieve's
+marking walker is declared by a `for`, whose scope closes before the
+`for` of the outer counter opens, so the counter takes its register,
+and the six variables take five. By that count two functions exceed
 five, matmul's `main` and collatz's, and a sixth register would keep
 one more variable out of a slot in each. In collatz it is x, the
 step loop's value, while steps stays in its slot; in matmul it is
@@ -207,10 +211,10 @@ default, naming the variable and the count.
 
 The table of 2.2: in the tuned programs, written by a programmer who
 knew the LLVM pipeline would honour every `register`, two of six
-`main` functions exceeded five live at once, until the two were
+`main` functions took more than five registers, until the two were
 re-tuned to five. Under the discipline, matmul's `main` had five
-variables in slots and collatz's two, while sieve's six are never
-more than five live at once; `cost.md` chapter 4 reads the slots in
+variables in slots and collatz's two, while sieve's six take five
+registers; `cost.md` chapter 4 reads the slots in
 the listings and the timing. If the
 compiler says nothing, the programmer learns it from the listing or
 the timing, or not at all; a programmer who
@@ -527,6 +531,6 @@ call rows of the cost model follow the first pins.
 - Chapter 8, calls: rewritten to the shape of 6.4 and 6.5 here.
 - Chapter 13: the six calls, each in one line, pointing here.
 - The cost model, rewritten from the new pins: the
-  implementation-defined extent of `register`, five live at once,
+  implementation-defined extent of `register`, five registers,
   recorded in `cost.md` chapter 1, and the warning in its chapter 0;
   the call rows of 6.5 in its chapter 2.

@@ -56,24 +56,6 @@ and an index is that address's displacement, on x86-64 alone.
 
 Check: =cost.md= and a pin of the row agree with the decision.
 
-** TODO Two documents still count register variables "live at once"
-
-A register variable takes the register above those live at its
-declaration and above those the closed inner blocks of its block
-used (=backend.md= chapter 4), so the registers a function takes may
-be more than the variables alive at any one point. =backend.md=
-chapter 12 and =design-calls.md= chapter 3 (the sixth =register=
-variable) still reason in "live at once", the second in a
-measurement taken under the earlier rule, where a later declaration
-took a closed block's register.
-
-Fix: each passage says "the registers taken"; the measurement of
-=design-calls.md= is taken again or dated to the rule it was taken
-under.
-
-Check: =grep -n 'live at once' docs/*.md= prints only sentences that
-are true of the rule.
-
 ** TODO =c1.cc= includes =c1-common.hh= and uses nothing of it
 
 =src/c1.cc= calls the two generators and throws =std::logic_error=

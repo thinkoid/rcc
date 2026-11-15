@@ -1333,9 +1333,8 @@ For another machine's target the driver hands each of the three
 - **`make test`** runs both scripts for every target with a pin
   directory, and then the probes.
 - **The measurement**, `tests/bench`: redone under c1, and recorded
-  in `cost.md` chapter 4 beside the LLVM pipeline's; the most
-  `register` variables live at once in each tuned function are in
-  `design-calls.md` 2.2.
+  in `cost.md` chapter 4 beside the LLVM pipeline's; the registers
+  each tuned function takes are in `design-calls.md` 2.2.
 
 ## 13. The calls
 
