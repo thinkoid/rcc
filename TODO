@@ -22,19 +22,6 @@ assembles and links. The reasons are =docs/findings.md= and
 in =docs/design-calls.md=. The chapter holds c1's own defects on both
 targets; the second target's design is =docs/aarch64.md=.
 
-** TODO The generators' opening comments stop at the third slice
-
-The comment that opens =src/c1-x86-64.cc= says "These are the first
-three slices", and the one that opens =src/c1-aarch64.cc= "It holds
-slices 1 to 3", each with its list. Both files now write a function's
-address and the call through a pointer as well, which are of no
-slice of the three.
-
-Fix: each comment lists what the file writes, the two rows of
-=backend.md= chapters 8 and 10 among them.
-
-Check: each comment read against its file.
-
 ** TODO The tables of 6.3 have no row for a function's name as a value
 
 =backend.md= 6.3 and =aarch64.md= 6.3 list what each expression

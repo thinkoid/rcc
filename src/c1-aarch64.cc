@@ -5,16 +5,19 @@
 // docs/backend.md where it says the model carries; this file implements
 // its chapters 4 to 8 and 10, with c1-common.cc, c1-stack.hh and
 // c1-statements.hh, and each function names the row it writes.  It
-// holds slices 1 to 3: the frame and straight-line code on integers,
-// conditions and control, and calls; the address of an object, the
-// indirection through a pointer, the use of an array and a string
+// writes the frame and straight-line code on integers, conditions and
+// control, the switch among it, and calls; the address of an object,
+// the indirection through a pointer, the use of an array and a string
 // literal, pointer arithmetic and the subscript; the register variable:
 // the save area, the binding, the borrowed read, plain assignment, the
 // declaration, the register parameter, the held values of backend.md
 // 6.7, the compound assignment, the ++ and the -- in place, and the
-// access that steps a register pointer.  A construct of a later slice
-// throws logic_error("c1: not yet: ..."), and a tree the parser cannot
-// make throws logic_error("c1: ...").
+// access that steps a register pointer; a function's address as a value
+// and the call through a pointer, chapters 8 and 10; and an object of
+// static storage, reached by its name when the file defines it and
+// through the GOT when it only declares it, chapter 10.  A size past a
+// limit of the target throws logic_error("c1: not yet: ..."), and a
+// tree the parser cannot make throws logic_error("c1: ...").
 
 #include "c1.hh"
 #include "c1-common.hh"

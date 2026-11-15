@@ -4,11 +4,15 @@
 // AT&T syntax for the system assembler.  docs/backend.md is the design;
 // its chapters 4 to 8 and 10 are what this file implements, with
 // c1-common.cc, c1-stack.hh and c1-statements.hh, and each function
-// names the row it writes.  These are the first three slices: integers,
-// control and calls; pointers, arrays and string literals; register
-// variables.  A construct of a later slice throws logic_error("c1: not
-// yet: ..."), and a tree the parser cannot make throws
-// logic_error("c1: ...").
+// names the row it writes.  It writes the frame and the code on
+// integers, the conditions and the control, the switch among it, and
+// the calls; pointers, arrays and string literals; the register
+// variables; a function's address as a value and the call through a
+// pointer, chapters 8 and 10; and an object of static storage, reached
+// by its name when the file defines it and through the GOT when it
+// only declares it, chapter 10.  A size past a limit of the target
+// throws logic_error("c1: not yet: ..."), and a tree the parser cannot
+// make throws logic_error("c1: ...").
 
 #include "c1.hh"
 #include "c1-common.hh"
