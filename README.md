@@ -95,7 +95,11 @@ hash, chosen from the case values alone; `header-count` is K&R's
 count of digits, white space and other characters. An element by a
 constant index is the object's own operand, `movl table+12(%rip),
 %eax`, the constant folded into the address as that compiler
-subsumes the constant of `&x+c`.
+subsumes the constant of `&x+c`. On x86-64 a local array's element
+by a variable index is one operand too, the slot the displacement of
+the indexed form, `movl -24(%rbp,%rax,4), %eax`, and on both targets
+a constant over any lvalue's address joins that address's
+displacement, `movsbl 2(%rax,%rcx,8), %eax` for `p[i][2]`.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/`, the cost corpus over `tests/cost/`
 and the error corpus over `tests/error/`, the programs rcc refuses

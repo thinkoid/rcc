@@ -49,6 +49,18 @@ const function_t &callee_type(const call_t &);
 std::unordered_set< const symbol_t * > defined_symbols(const unit_t &);
 const expr_t *bare_base(const expr_t &);
 
+// A pointer that is an lvalue's address plus a constant (backend.md
+// 6.3): the decay or the & that takes the address, the lvalue under
+// it, and the offset in bytes from that address.
+struct lvalue_offset_t
+{
+    const expr_t *address;
+    const expr_t *lvalue;
+    long long offset;
+};
+
+std::optional< lvalue_offset_t > lvalue_offset(const expr_t &pointer);
+
 // An address reached by a name and a constant, Ritchie's &x+c
 // (backend.md 6.3): the lvalue whose address is a slot or a label, and
 // the offset in bytes from that address.

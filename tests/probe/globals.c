@@ -487,9 +487,63 @@ int turn(int i);
                            10000000000;                                      \
         }
 
+/* A constant over the address of a row by a variable index, the
+   constant in that address's displacement, backend.md 6.3: on the
+   array of arrays, whose rows of 4 are a scale for a char and a short
+   and none for an int and a long, and through a pointer to its rows;
+   read and written, operated on in place for the effect and for the
+   value, ++ and -- either side, by a register variable and with a call
+   in the right operand; a column of -1; the addresses of elements of a
+   row by a constant as values, passed to the library; and the
+   addresses as their distance in bytes from the array's start.  The rows of the object
+   the file only declares sum the constants of the GOT's address, as
+   corner and origin do.  i is 0 to 7. */
+#define SUMMED(T, N, K)                                                     \
+        void summed_##K##_##N(long v, int i)                                \
+        {                                                                   \
+                int r = i % ROWS;                                           \
+                register int k = (r + 1) % ROWS;                            \
+                T(*p)[COLUMNS] = K##m_##N;                                  \
+                                                                            \
+                K##m_##N[r][2] += v;                                        \
+                K##m_##N[k][3]++;                                           \
+                --K##m_##N[r][0];                                           \
+                K##m_##N[r + 1][-1] ^= 0x55;                                \
+                p[k][1] = v;                                                \
+                p[r][3] <<= 2;                                              \
+                (*p)[2] -= v;                                               \
+        }                                                                   \
+        long summed_value_##K##_##N(long v, int i)                          \
+        {                                                                   \
+                int r = i % ROWS;                                           \
+                T(*p)[COLUMNS] = K##m_##N;                                  \
+                long x = K##m_##N[r][2]++;                                  \
+                long y = K##m_##N[(r + 1) % ROWS][1] += v;                  \
+                long z = --p[r][3];                                         \
+                long w = p[(r + 2) % ROWS][0] = v * 3;                      \
+                long u = K##m_##N[r][1] -= turn(i);                         \
+                                                                            \
+                return x * 3 + y * 5 + z * 7 + w * 11 + u * 13 +            \
+                       K##m_##N[r + 1][-1] * 17 + p[r][2] * 19 +            \
+                       total_##N(&K##m_##N[1][1], 2) * 23 +                 \
+                       total_##N(&p[1][1], 2) * 29 +                        \
+                       total_##N(p[2] - 1, 2) * 31;                         \
+        }                                                                   \
+        long summed_distance_##K##_##N(int i)                               \
+        {                                                                   \
+                int r = i % ROWS;                                           \
+                T(*p)[COLUMNS] = K##m_##N;                                  \
+                                                                            \
+                return (long) &K##m_##N[r][2] - (long) K##m_##N +           \
+                       ((long) (K##m_##N[r] + 3) - (long) K##m_##N) * 100 + \
+                       ((long) &p[r][1] - (long) K##m_##N) * 10000 +        \
+                       ((long) (p[r] - 1) - (long) K##m_##N) * 1000000;     \
+        }
+
 #define KIND(T, N, K) \
         SCALAR(T, N, K) ARRAYS(T, N, K) ADDRESSES(T, N, K) POINTERS(T, N, K)
-#define FOLD_KIND(T, N, K) FOLDS(T, N, K) CELLS_OF(T, N, K) INDEXED(T, N, K)
+#define FOLD_KIND(T, N, K) \
+        FOLDS(T, N, K) CELLS_OF(T, N, K) INDEXED(T, N, K) SUMMED(T, N, K)
 #define BOTH_KINDS(T, N)   KINDS(KIND, T, N) KINDS(FOLD_KIND, T, N)
 
 TYPES(BOTH_KINDS)

@@ -4,11 +4,13 @@
    which are the pointers probe's: no + or - with a pointer operand,
    no [] in an expression, no ++, --, += or -= of a pointer; but for
    the address of a local array or a string literal plus a constant,
-   folded into the slot's or the label's operand, and a local array's
+   folded into the slot's or the label's operand, a local array's
    element by a variable index, the slot the indexed operand's
-   displacement (backend.md 6.3), which the last sections probe.  A
-   pointer into the middle of a buffer, or misaligned, is made by the
-   main.  See memory.h. */
+   displacement, and a constant over a row's address, a local's or one
+   through a pointer to rows, the constant the displacement of that
+   address (backend.md 6.3), which the last sections probe.  A pointer
+   into the middle of a buffer, or misaligned, is made by the main.
+   See memory.h. */
 
 #include "memory.h"
 
@@ -710,4 +712,111 @@ long indexed_pointers(long *p, long *q8, long v, int i)
 
     return *q[i] + q[i ^ 1][0] * 3 + q[i][1] * 5 + (q[i ^ 3] == 0) * 7 +
            ((long) &q[i] - (long) q) * 11;
+}
+
+/* A constant over an lvalue's address that is no name's, backend.md
+   6.3: the constant in the displacement of that address, and no
+   instruction forming the intermediate address.  Rows of 8 bytes,
+   whose size is a scale, of a local array by a variable index, m[i][c],
+   the slot the base's part on x86-64 (6.3, a slot and an index), and
+   the same rows through a parameter, a pointer to them, p[i][c],
+   p[i][-1], (*p)[c] and p[2][c]; rows of 3 elements by a constant, the
+   two constants one, q[1][2] and q[2][-1], and their addresses as
+   values, &q[1][1], q[2] - 2 and q[1] - 3; read and written, operated
+   on in place for the effect and for the value, ++ and -- either side;
+   by an index with a call in it and by a register variable; and rows
+   of 16 bytes, no scale, whose address is formed before the constant.
+   The addresses as their distance in bytes from the array's start.  i
+   is 0 to 3. */
+#define ROW(T) (8 / (int) sizeof(T))
+#define SUMMED(T, N)                                                    \
+    long rows_##N(T (*p)[ROW(T)], int i, T v)                           \
+    {                                                                   \
+        register int k = i ^ 3;                                         \
+                                                                        \
+        p[i][0] = v;                                                    \
+        p[i ^ 1][ROW(T) - 1] += v;                                      \
+        p[i ^ 2][ROW(T) - 1]++;                                         \
+        --p[k][0];                                                      \
+        p[turn(i) & 3][ROW(T) - 1] ^= 0x55;                             \
+        (*p)[ROW(T) - 1] -= 1;                                          \
+        p[i | 1][-1] <<= 2;                                             \
+        return p[i][ROW(T) - 1] * 3 + *p[i ^ 2] + p[i | 1][-1] * 5 +    \
+               (p[i] + ROW(T) - 1)[0] * 7 + p[k][0] * 11 + p[2][0];     \
+    }                                                                   \
+    long rows_value_##N(T (*p)[ROW(T)], int i, T v)                     \
+    {                                                                   \
+        long x = p[i][ROW(T) - 1]++;                                    \
+        long y = p[i ^ 1][0] += v;                                      \
+        long z = --p[i ^ 2][ROW(T) - 1];                                \
+        long w = p[i ^ 3][0] = v * 3;                                   \
+        long u = p[2][ROW(T) - 1] -= mix1(v);                           \
+                                                                        \
+        return x * 3 + y * 5 + z * 7 + w * 11 + u * 13;                 \
+    }                                                                   \
+    long summed_##N(T v, int i)                                         \
+    {                                                                   \
+        T m[4][ROW(T)];                                                 \
+        T r[4][2 * ROW(T)];                                             \
+        T t[4][3];                                                      \
+        T (*q)[3] = t;                                                  \
+        register int k = i ^ 3;                                         \
+        long s = fill_##N(&m[0][0], 4 * ROW(T), v) +                    \
+                 fill_##N(&r[0][0], 8 * ROW(T), v) +                    \
+                 fill_##N(&t[0][0], 12, v);                             \
+                                                                        \
+        m[i][ROW(T) - 1] = v;                                           \
+        m[i ^ 1][0] += v;                                               \
+        m[k][ROW(T) - 1]++;                                             \
+        m[turn(i) & 3][0] -= 2;                                         \
+        r[i][1] ^= 3;                                                   \
+        q[1][2] += v;                                                   \
+        q[2][-1] = 0;                                                   \
+        q[i][1]++;                                                      \
+        s += rows_##N(m, i, v) + rows_value_##N(m, i, v) * 3;           \
+        return s + m[i][ROW(T) - 1] * 3 + m[k][0] + r[i][1] * 5 +       \
+               q[1][2] * 7 + q[2][-1] + total_##N(&q[1][1], 2) * 11 +   \
+               total_##N(q[2] - 2, 3) * 13 +                            \
+               total_##N(&m[0][0], 4 * ROW(T)) +                        \
+               total_##N(&r[0][0], 8 * ROW(T)) +                        \
+               total_##N(&t[0][0], 12);                                 \
+    }                                                                   \
+    long summed_distance_##N(int i)                                     \
+    {                                                                   \
+        T m[4][ROW(T)];                                                 \
+        T t[4][3];                                                      \
+        T (*p)[ROW(T)] = m;                                             \
+        T (*q)[3] = t;                                                  \
+                                                                        \
+        return (long) &m[i][ROW(T) - 1] - (long) m +                    \
+               ((long) (m[i] + 1) - (long) m) * 100 +                   \
+               ((long) &p[i][ROW(T) - 1] - (long) m) * 10000 +          \
+               ((long) (p[i] - 1) - (long) m) * 1000000 +               \
+               ((long) &q[1][2] - (long) t) * 100000000 +               \
+               ((long) (q[2] + 1) - (long) t) * 10000000000 +           \
+               ((long) (q[2] - 4) - (long) t) * 1000000000000 +         \
+               ((long) (q[1] - 3) - (long) t) * 10000000000000 +        \
+               ((long) &p[2][ROW(T) - 1] - (long) m) * 100000000000000; \
+    }
+
+TYPES(SUMMED)
+
+/* rows of one pointer by a variable index, through the array and
+   through a pointer to its rows: an element written, read, stepped in
+   place and dereferenced, and subscripted in its turn; q8 points 8
+   bytes past p, and i is 0 to 3 */
+long summed_pointers(long *p, long *q8, long v, int i)
+{
+    long *r[4][1];
+    long *(*rp)[1] = r;
+
+    r[i][0] = p;
+    rp[i ^ 1][0] = q8;
+    r[i ^ 2][0] = rp[i][0];
+    *r[i ^ 1][0] = v;
+    rp[i ^ 2][0]++;
+    *rp[i ^ 2][0] += 5;
+
+    return *r[i][0] + rp[i ^ 1][0][0] * 3 + r[i][0][1] * 5 +
+           ((long) &rp[i][0] - (long) r) * 7;
 }

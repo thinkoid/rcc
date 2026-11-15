@@ -7,8 +7,9 @@
    indirection, docs/aarch64.md 6.3's rows from &x to "abc" but those
    of pointer arithmetic and the subscript, which are the pointers
    probe's, but for the address of a local array or a literal plus a
-   constant, backend.md 6.3's fold, and a local array's element by a
-   variable index, 6.3's slot and index; the frame of 5.3, depth of
+   constant, backend.md 6.3's fold, a local array's element by a
+   variable index, 6.3's slot and index, and a constant over a row's
+   address, summed into its displacement; the frame of 5.3, depth of
    6.2, G7, G8, G10 and G11 of chapter 9 and the literals of chapter
    10. */
 

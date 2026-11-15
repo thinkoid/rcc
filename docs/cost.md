@@ -94,7 +94,12 @@ What the compiler may do:
   one operand, the constant in its displacement, `movl -20(%rbp),
   %eax` for `a[3]` on a local `int a[8]` and `movl table+12(%rip),
   %eax` for `table[3]` on a global the file defines, as the Seventh
-  Edition compiler's `&x+c` was (`backend.md` 6.3). The form is fixed
+  Edition compiler's `&x+c` was (`backend.md` 6.3). Any other
+  lvalue's address plus a constant is that address with the constant
+  in its displacement, `movsbl 2(%rax,%rcx,8), %eax` for `p[i][2]` on
+  a `char (*p)[8]`, and on aarch64 where the address is a base and a
+  displacement, `ldr w0, [x0, #20]` for `p[1][2]` on an `int (*p)[3]`
+  and `add x0, x0, #20` for its address. The form is fixed
   per operator and target, and listed in chapter 2.
 - Follow the calling convention: argument registers, the stack
   frame, callee-saved registers.
@@ -207,6 +212,7 @@ yet.
 | `a[i]` by a `long` | the index loaded whole, `movq -8(%rbp), %rax`, and not widened; then `movl %ecx, -28(%rbp,%rax,4)` or `movl -28(%rbp,%rax,4), %eax` | `subscript-long` |
 | `&p[0]`, `&p[3]`, `&p[i]` | the address the access would read, and no access: `&p[0]` is `p` and no instruction, the bare base as `*p`'s is; `&p[3]` and `&p[i]` one `lea` of the addressing form, `leaq 12(%rax), %rax`, and `leaq (%rax,%rcx,4), %rax` after `movslq %ecx, %rcx` | `subscript-address` |
 | `m[0]`, `m[0][1]`, `m[1]` on `int m[2][3]` | a row decays to its address, the address of a subscript, which on a local array is its slot plus the row's offset whatever the row's size: `m[0]` is the array's `leaq -24(%rbp), %rax` and no instruction after it; `m[0][1]` the one access `movl -20(%rbp), %eax`; `m[1]` the one `leaq -12(%rbp), %rax` | `subscript-row` |
+| `p[i][2]`, `m[i][2]`, `p[1][2]`, `&p[i][2]` | a constant over a row's address is that address's displacement, and no instruction forms the row's address: `p[i][2]` on a `char (*p)[8]` the one `movsbl 2(%rax,%rcx,8), %eax` after `p`'s load and `movslq %ecx, %rcx`; on a local `char m[4][8]` the slot plus 2, `movsbl -34(%rbp,%rax,8), %eax`; `p[1][2]` on an `int (*p)[3]` the one `movl 20(%rax), %eax`, the row's 12 and the column's 8; `&p[i][2]` the one `leaq 2(%rax,%rcx,8), %rax`, and `&p[1][2]` the one `leaq 20(%rax), %rax` | `subscript-displacement` |
 | `p - q` | `subq %rcx, %rax`; for a size other than 1, `movq $4, %rcx; cqto; idivq %rcx`, a division even for a size of 4, since G6 promises any two pointers and a shift would floor where the division truncates; for a size of 1 the `sub` alone, so `(char *) p - (char *) q` is the cheap spelling | `ptr-diff`, `ptr-diff-char` |
 | `p < q` and the rest | `cmpq %rcx, %rax`, the unsigned `setb %al`, `movzbl %al, %eax` | `ptr-compare` |
 | `if (p)`, `p == 0` | `cmpq $0, %rax`, then `je` as a condition, or `sete %al; movzbl %al, %eax` as a value | `ptr-null` |
@@ -290,6 +296,7 @@ bytes or more.
 | `a[i]` by a `long` | the index loaded whole, `ldr x1, [x29, #16]`, and read by the shifted operand, `str w2, [x0, x1, lsl #2]` or `ldr w0, [x0, x1, lsl #2]`: as many instructions as by an `int` | `subscript-long` |
 | `&p[0]`, `&p[3]`, `&p[i]` | the address the access would read, and no access: `&p[0]` is `p` and no instruction, the bare base as `*p`'s is; `&p[3]` and `&p[i]` one `add`, the machine having no `lea`, `add x0, x0, #12`, and `add x0, x0, w1, sxtw #2` | `subscript-address` |
 | `m[0]`, `m[0][1]`, `m[1]` on `int m[2][3]` | a row decays to its address, the address of a subscript, which on a local array is its slot plus the row's offset: `m[0]` is the array's `add x0, x29, #16` and no instruction after it; `m[0][1]` the one access `ldr w0, [x29, #20]`; `m[1]` the one `add x0, x29, #28` | `subscript-row` |
+| `p[i][2]`, `m[i][2]`, `p[1][2]`, `&p[i][2]` | a constant over a row's address is the access's displacement: `p[1][2]` on an `int (*p)[3]` the one `ldr w0, [x0, #20]` after `p`'s load, the row's 12 and the column's 8, no `add` first; by a variable row the row's address formed, since no form holds an index with a displacement, `add x0, x0, w1, sxtw #3`, then `ldrb w0, [x0, #2]`, on a local `char m[4][8]` after the array's `add x0, x29, #20`; `&p[i][2]` the row's `add` and `add x0, x0, #2`; `&p[1][2]` the one `add x0, x0, #20` | `subscript-displacement` |
 | `p - q` | `sub x0, x0, x1`; for a size other than 1, `mov x1, #4; sdiv x0, x0, x1`, a division even for a size of 4, as on x86-64; for a size of 1 the `sub` alone | `ptr-diff`, `ptr-diff-char` |
 | `p < q` and the rest | `cmp x0, x1`, the unsigned `cset w0, lo` | `ptr-compare` |
 | `if (p)`, `p == 0` | the test of zero as a condition, `cbz x0, .Ltest.2`; `cmp x0, #0; cset w0, eq` as a value | `ptr-null` |

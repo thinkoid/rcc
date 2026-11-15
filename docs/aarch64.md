@@ -646,12 +646,28 @@ object's size, one past the end included, as on x86-64: the linker
 resolves the label and the offset, and one outside the object it may
 not reach, where the rows of the table always link. Anything else, a
 negative displacement off `x29` and `table[-1]` among them, takes the
-rows of the table, as every address that is not a name's does: `adrp
-x0, table; add x0, x0, :lo12:table; ldr w0, [x0, #-4]`. No form of
-2.3 has a base, an index and a displacement at once, so a local
-array's element by a variable index forms the array's address first,
-`add x0, x29, #16`, where x86-64 makes the slot the displacement of
-the indexed operand (`backend.md` 6.3, a slot and an index).
+rows of the table: `adrp x0, table; add x0, x0, :lo12:table; ldr w0,
+[x0, #-4]`. No form of 2.3 has a base, an index and a displacement at
+once, so a local array's element by a variable index forms the
+array's address first, `add x0, x29, #16`, where x86-64 makes the
+slot the displacement of the indexed operand (`backend.md` 6.3, a
+slot and an index).
+
+Any other lvalue's address plus a constant is the rule's where that
+address is a base and a displacement: the base is generated once and
+the constants are one displacement, where the access encodes it
+(2.3). `p[1][2]` on `int (*p)[3]` is `ldr w0, [x0, #20]` after `p`'s
+load, with no `add` of the row's 12 bytes first; `other[1][2]` on an
+`extern int other[][3]` is the GOT's load and `ldr w0, [x0, #20]`. An
+address with an index has no form with a displacement, so `m[i][2]`
+on `char (*m)[8]` forms the row's address, `add x0, x0, w1, sxtw #3`,
+and reads `ldrb w0, [x0, #2]`; a sum the access does not encode takes
+the rows of the table too. The address as a value is the base and one
+`add` of the displacement, where `add` encodes it (2.4): `&p[1][2]`
+and `p[1] + 2` are `add x0, x0, #20` after `p`'s load, and a
+displacement of 0, `p[1] - 3`, is the base and no instruction, as
+`&*p` is `p`. A displacement `add` does not encode takes the rows of
+`p + n`.
 
 The width rule holds as written. Its facts on this machine:
 

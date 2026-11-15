@@ -273,6 +273,12 @@ TYPES(DECLARE_FOLDS)
 
 TYPES(DECLARE_INDEXED)
 
+#define DECLARE_SUMMED(T, N)                                            \
+    BOTH(long, summed_##N, (T, int))                                    \
+    BOTH(long, summed_distance_##N, (int))
+
+TYPES(DECLARE_SUMMED)
+
 BOTH(long, text_pass, (void))
 BOTH(long, text_two, (void))
 BOTH(long, text_escapes, (void))
@@ -297,6 +303,7 @@ BOTH(int, text_elem, (void))
 BOTH(long, text_addr, (void))
 BOTH(long, text_beyond, (void))
 BOTH(long, indexed_pointers, (long *, long *, long, int))
+BOTH(long, summed_pointers, (long *, long *, long, int))
 
 /* The loads and stores, the pointers to pointers and the steps of one
    type, over every value and every offset: P(T) is a pointer the main
@@ -539,6 +546,21 @@ TYPES(TEST_FOLDS)
 
 TYPES(TEST_INDEXED)
 
+/* a constant over the address of a row by a variable index, of one
+   type over every value and every row */
+#define TEST_SUMMED(T, N)                                               \
+    static void test_summed_##N(void)                                   \
+    {                                                                   \
+        for (int i = 0; i < COUNT; ++i)                                 \
+            for (int k = 0; k < 4; ++k)                                 \
+                CHECK(summed_##N, values[i], k, ((T) values[i], k));    \
+                                                                        \
+        for (int k = 0; k < 4; ++k)                                     \
+            CHECK(summed_distance_##N, 0, k, (k));                      \
+    }
+
+TYPES(TEST_SUMMED)
+
 /* the literals, the frames of one function each, and depth */
 static void
 test_rest(void)
@@ -592,6 +614,8 @@ test_rest(void)
                    ((long *) (B + at), (long *) (B + at + 8), y));
             MCHECK(indexed_pointers, x, y, at,
                    ((long *) (B + at), (long *) (B + at + 8), y, i & 3));
+            MCHECK(summed_pointers, x, y, at,
+                   ((long *) (B + at), (long *) (B + at + 8), y, k & 3));
         }
     }
 }
@@ -604,7 +628,7 @@ main(void)
 
 #define RUN(T, N)                                                       \
     test_access_##N(); test_operators_##N(); test_address_##N();        \
-    test_folds_##N(); test_indexed_##N();
+    test_folds_##N(); test_indexed_##N(); test_summed_##N();
     TYPES(RUN)
 
     test_rest();

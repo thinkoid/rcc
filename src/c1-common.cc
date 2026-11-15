@@ -507,6 +507,55 @@ bare_base(const expr_t &p)
     return left ? b.lhs.get() : b.rhs.get();
 }
 
+// A pointer that is an lvalue's address plus a constant (backend.md
+// 6.3): the decay of an array lvalue, 6.3.2.1p3, or & of an lvalue,
+// 6.5.4.2p3, the constant 0, so *a is a[0] and *&x is x; or a sum of
+// such a pointer and an integer constant, p + c, c + p or p - c, the
+// constant times the pointee's size added or subtracted modulo 2^64
+// (G6).  The decay or the &, the lvalue under it, and the offset.  None
+// for any other pointer, a variable index, a pointer object's value and
+// any other cast among them.
+std::optional< lvalue_offset_t >
+lvalue_offset(const expr_t &pointer)
+{
+    if (is< cast_t >(pointer) && is< array_t >(as< cast_t >(pointer).arg->type))
+        return lvalue_offset_t { .address = &pointer,
+                                 .lvalue = as< cast_t >(pointer).arg.get(),
+                                 .offset = 0 };
+
+    if (is< unary_t >(pointer) && as< unary_t >(pointer).op == unary_op_t::addr)
+        return lvalue_offset_t { .address = &pointer,
+                                 .lvalue = as< unary_t >(pointer).arg.get(),
+                                 .offset = 0 };
+
+    if (!is< binary_t >(pointer) || !is< pointer_t >(pointer.type))
+        return std::nullopt;
+
+    const auto &b = as< binary_t >(pointer);
+    if (b.op != binary_op_t::add && b.op != binary_op_t::sub)
+        return std::nullopt;
+
+    const bool left = is< pointer_t >(b.lhs->type);
+    const auto &p = left ? *b.lhs : *b.rhs;
+    const auto &n = left ? *b.rhs : *b.lhs;
+    if (!is< literal_t >(n))
+        return std::nullopt;
+
+    auto at = lvalue_offset(p);
+    if (!at)
+        return std::nullopt;
+
+    const long size = size_of(*as< pointer_t >(pointer.type).pointee);
+    const auto bytes = scaled(as< literal_t >(n).value, size);
+    const auto negated = static_cast< long long >(
+        0ull - static_cast< unsigned long long >(bytes));
+
+    at->offset =
+        wrapped_add(at->offset, b.op == binary_op_t::add ? bytes : negated);
+
+    return at;
+}
+
 // The lvalue at the root of an address by a name and a constant
 // (backend.md 6.3), offset 0: a local's or a parameter's name, whose
 // address is its slot; the name of a global the unit defines, or a
@@ -539,50 +588,25 @@ named_lvalue(const expr_t &e,
     return named_offset_t { .object = &e, .offset = 0 };
 }
 
-// A pointer that is a name's address plus a constant: the decay of an
-// array lvalue, 6.3.2.1p3, or & of an lvalue, 6.5.4.2p3, the constant
-// 0, so *a is a[0] and *&x is x; or a sum of such a pointer and an
-// integer constant, p + c, c + p or p - c, the constant times the
-// pointee's size added or subtracted modulo 2^64 (G6).  The lvalue and
-// the offset.  Ritchie's c1 subsumes the constant of "&x+c" into the
-// name's offset; the generators fold it into the operand's
-// displacement, so no instruction forms the object's address first.
-// None for any other pointer, a variable index, a pointer object's
-// value and any other cast among them.
+// A pointer that is a name's address plus a constant: lvalue_offset()'s
+// shape on an lvalue named_lvalue() roots at a slot or a label, the
+// offsets of each level summed.  The lvalue and the offset.  Ritchie's
+// c1 subsumes the constant of "&x+c" into the name's offset; the
+// generators fold it into the operand's displacement, so no instruction
+// forms the object's address first.
 std::optional< named_offset_t >
 named_offset(const expr_t &pointer,
              const std::unordered_set< const symbol_t * > &defined)
 {
-    if (is< cast_t >(pointer) && is< array_t >(as< cast_t >(pointer).arg->type))
-        return named_lvalue(*as< cast_t >(pointer).arg, defined);
-
-    if (is< unary_t >(pointer) && as< unary_t >(pointer).op == unary_op_t::addr)
-        return named_lvalue(*as< unary_t >(pointer).arg, defined);
-
-    if (!is< binary_t >(pointer) || !is< pointer_t >(pointer.type))
+    const auto at = lvalue_offset(pointer);
+    if (!at)
         return std::nullopt;
 
-    const auto &b = as< binary_t >(pointer);
-    if (b.op != binary_op_t::add && b.op != binary_op_t::sub)
-        return std::nullopt;
-
-    const bool left = is< pointer_t >(b.lhs->type);
-    const auto &p = left ? *b.lhs : *b.rhs;
-    const auto &n = left ? *b.rhs : *b.lhs;
-    if (!is< literal_t >(n))
-        return std::nullopt;
-
-    auto named = named_offset(p, defined);
+    auto named = named_lvalue(*at->lvalue, defined);
     if (!named)
         return std::nullopt;
 
-    const long size = size_of(*as< pointer_t >(pointer.type).pointee);
-    const auto bytes = scaled(as< literal_t >(n).value, size);
-    const auto negated = static_cast< long long >(
-        0ull - static_cast< unsigned long long >(bytes));
-
-    named->offset =
-        wrapped_add(named->offset, b.op == binary_op_t::add ? bytes : negated);
+    named->offset = wrapped_add(named->offset, at->offset);
 
     return named;
 }

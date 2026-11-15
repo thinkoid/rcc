@@ -41,6 +41,22 @@ from the start.
 
 Check: the listing of the statement has neither =movq=.
 
+** TODO x86-64: a row's address by a constant index is read two ways
+
+With ~int (*p)[3]~, the row ~p[1]~ as a value is the row of =p + n=,
+=addq $12, %rax=, which =pointed()= in =src/c1-x86-64.cc= takes for a
+size that is not a scale. Under a further constant, ~p[1][2]~,
+=lvalue_address()= reads the same tree as the pointer's value with 12
+as a displacement, so that the two constants sum, =movl 20(%rax),
+%eax=. The same address is computed by two functions with two rules.
+
+Fix: one reading of a pointer plus a constant index, whatever the
+size, which both functions take; the bare row ~p[1]~ is then =leaq
+12(%rax), %rax=, one instruction as today.
+
+Check: one function reads the shape; the pins of =subscript-row= and
+=subscript-displacement= say which instruction a bare row is.
+
 ** TODO x86-64: a loop head aligned to 32 bytes may open the second half of a 64-byte line
 
 c1 writes =.p2align 5= before every loop head on x86-64 (=cost.md=

@@ -743,9 +743,75 @@ indexed(state_t &s, const binary_t &b, long size)
                        .displacement = slot->displacement };
 }
 
+address_t address(state_t &, const expr_t &);
+
+// The address of the lvalue under summed()'s decay or &: address()'s,
+// but that a dereference of a pointer plus a constant index is the
+// pointer's value with the index times the size as the displacement,
+// whatever the size.  p[1] on int (*p)[3] is 12(%rax), where address()
+// forms the row's address by the p + n row, addq $12, %rax, since the
+// row's 12 bytes are no scale.  A pointer that is itself an lvalue's
+// address plus a constant is address()'s, whose folds hold.
+address_t
+lvalue_address(state_t &s, const expr_t &lvalue)
+{
+    if (!is< unary_t >(lvalue) || as< unary_t >(lvalue).op != unary_op_t::deref)
+        return address(s, lvalue);
+
+    const auto &q = *as< unary_t >(lvalue).arg;
+    if (!is< binary_t >(q) || as< binary_t >(q).op != binary_op_t::add ||
+        lvalue_offset(q))
+        return address(s, lvalue);
+
+    const auto &b = as< binary_t >(q);
+    const bool left = is< pointer_t >(b.lhs->type);
+    const auto &index = left ? *b.rhs : *b.lhs;
+    if (!is< literal_t >(index))
+        return address(s, lvalue);
+
+    const long size = size_of(*as< pointer_t >(q.type).pointee);
+    const auto d = scaled(as< literal_t >(index).value, size);
+    if (!fits_imm32(d))
+        return address(s, lvalue);
+
+    return { .base = rvalue(s, left ? *b.lhs : *b.rhs), .displacement = d };
+}
+
+// The operand of an address by any other lvalue and a constant,
+// backend.md 6.3: the lvalue's own address, lvalue_address()'s, with
+// the constant summed into its displacement, 2(%rax,%rcx,8) for
+// m[i][2] on char (*m)[8], 20(%rax) for p[1][2] on int (*p)[3];
+// nothing else is evaluated, and no instruction forms the intermediate
+// address.  The lvalue is a dereference whose pointer is no name's
+// address plus a constant, or a global the unit only declares, whose
+// address the GOT gives.  None for a constant no 32-bit displacement
+// holds, and for a name's address, folded()'s, whose bounds hold.  A
+// sum that does not fit forms the lvalue's address, and the constant is
+// the displacement off it.
+std::optional< address_t >
+summed(state_t &s, const expr_t &pointer)
+{
+    const auto at = lvalue_offset(pointer);
+    if (!at || !fits_imm32(at->offset) || named_offset(pointer, s.defined))
+        return std::nullopt;
+
+    auto a = lvalue_address(s, *at->lvalue);
+
+    const auto displacement = wrapped_add(a.displacement, at->offset);
+    if (!fits_imm32(displacement))
+        return address_t { .base = address_of(s, a),
+                           .displacement = at->offset };
+
+    a.displacement = displacement;
+
+    return a;
+}
+
 // The address a dereference designates, 6.5.4.2p4, of an object of
 // type pointee: the addressing row.  A name's address plus a constant,
-// 0 for *a and *&x, is the one operand of folded().  A subscript by a constant 0 is the
+// 0 for *a and *&x, is the one operand of folded(), and any other
+// lvalue's address plus a constant is that address with the constant in
+// its displacement, summed().  A subscript by a constant 0 is the
 // bare base, the pointer's value with no displacement and no index,
 // whatever the pointee's size: m[0] on int m[2][3] is m, as p[0] is p.
 // Any other add of a pointer and an integer, the shape of a subscript
@@ -760,6 +826,10 @@ address_t
 pointed(state_t &s, const expr_t &p, const type_t &pointee)
 {
     if (const auto a = folded(s, p))
+        return *a;
+
+    // m[i][2], p[1][2]: 2(%rax,%rcx,8), 20(%rax)
+    if (const auto a = summed(s, p))
         return *a;
 
     if (const auto *base = bare_base(p))
@@ -1255,13 +1325,18 @@ displaced(state_t &s, binary_op_t op, value_t l, const right_t &n)
 // A binary + or - of a pointer type: the pointer and the integer, the
 // integer widened to 64 bits by the parser, in the order written
 // (G13).  A name's address plus a constant is the leaq of folded()'s
-// one operand, leaq -20(%rbp), %rax for a + 3, 6.3, and a local array
-// plus a variable index of a size the form scales the leaq of
-// indexed()'s, leaq -24(%rbp,%rcx,4), %rax for a + i.
+// one operand, leaq -20(%rbp), %rax for a + 3, 6.3; any other
+// lvalue's address plus a constant the leaq of summed()'s,
+// leaq 2(%rax,%rcx,8), %rax for m[i] + 2; and a local array plus a
+// variable index of a size the form scales the leaq of indexed()'s,
+// leaq -24(%rbp,%rcx,4), %rax for a + i.
 value_t
 pointer_arithmetic(state_t &s, const expr_t &e)
 {
     if (const auto a = folded(s, e))
+        return address_of(s, *a);
+
+    if (const auto a = summed(s, e))
         return address_of(s, *a);
 
     const auto &b = as< binary_t >(e);

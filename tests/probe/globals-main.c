@@ -199,6 +199,9 @@ extern int late, ref_late;
         BOTH(long, indexed_value_##K##_##N, (long, int) ) \
         BOTH(long, indexed_cells_##K##_##N, (long, int) ) \
         BOTH(long, indexed_distance_##K##_##N, (int) )    \
+        BOTH(void, summed_##K##_##N, (long, int) )        \
+        BOTH(long, summed_value_##K##_##N, (long, int) )  \
+        BOTH(long, summed_distance_##K##_##N, (int) )     \
         BOTH(T *, cell_get_##K##_##N, (void) )            \
         BOTH(void, cell_put_##K##_##N, (T *) )            \
         BOTH(long, cell_deref_##K##_##N, (void) )         \
@@ -418,6 +421,26 @@ compare(const char *name, long x)
                 compare(#f, (long) (x));                                     \
         } while (0)
 
+/* The elements of one kind of object of one type by a variable index,
+   and the constants over a row's address, for one value: every index
+   into the array. */
+#define TEST_ROWS(T, N, K)                                              \
+        static void rows_##K##_##N(long x, long y, int at)              \
+        {                                                               \
+                for (int k = 0; k < ARRAY; ++k) {                       \
+                        VCHECK(indexed_##K##_##N, x, at, (y, k));       \
+                        MCHECK(indexed_value_##K##_##N, x, at, (y, k)); \
+                        MCHECK(indexed_cells_##K##_##N, x, at, (y, k)); \
+                        MCHECK(indexed_distance_##K##_##N, x, at, (k)); \
+                        VCHECK(summed_##K##_##N, x, at, (y, k));        \
+                        MCHECK(summed_value_##K##_##N, x, at, (y, k));  \
+                        MCHECK(summed_distance_##K##_##N, x, at, (k));  \
+                }                                                       \
+        }
+#define TEST_ROWS_KINDS(T, N) KINDS(TEST_ROWS, T, N)
+
+TYPES(TEST_ROWS_KINDS)
+
 /* Every function of one kind of object of one type, over every value:
    x is in the scalars and where the pointers point, y an argument, i
    an index into the array, r and c a row and a column, n a shift
@@ -518,16 +541,7 @@ compare(const char *name, long x)
                         ACHECK(fold_end_##K##_##N, x, at, (), K##a_##N);      \
                         ACHECK(fold_row_past_##K##_##N, x, at, (), K##m_##N); \
                         MCHECK(fold_distance_##K##_##N, x, at, ());           \
-                                                                              \
-                        for (int k = 0; k < ARRAY; ++k) {                     \
-                                VCHECK(indexed_##K##_##N, x, at, (y, k));     \
-                                MCHECK(indexed_value_##K##_##N, x, at,        \
-                                       (y, k));                               \
-                                MCHECK(indexed_cells_##K##_##N, x, at,        \
-                                       (y, k));                               \
-                                MCHECK(indexed_distance_##K##_##N, x, at,     \
-                                       (k));                                  \
-                        }                                                     \
+                        rows_##K##_##N(x, y, at);                             \
                                                                               \
                         PCHECK(cell_get_##K##_##N, x, at, ());                \
                         VCHECK(cell_put_##K##_##N, x, at,                     \

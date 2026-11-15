@@ -953,6 +953,84 @@ folded(state_t &s, const expr_t &pointer)
                        .label = label };
 }
 
+// The base and the displacement of an address by an lvalue and a
+// constant, read off the tree before anything is generated: the pointer
+// whose value is the base, and the displacement in bytes.
+struct based_t
+{
+    const expr_t *pointer;
+    long long displacement;
+};
+
+// The base and the displacement of an address by any lvalue that is no
+// name's and a constant, 6.3: the lvalue's address plus the constant,
+// down through each dereference whose own pointer is such an address,
+// and through one plus a constant index of any size, p[1] on int
+// (*p)[3]; the pointer at the bottom is the base.  p[1][2] is p and 20,
+// other[1][2] on an extern int other[][3] the GOT's load and 20.  None
+// for a name's address, folded()'s, and for any other pointer.
+std::optional< based_t >
+based(const expr_t &pointer,
+      const std::unordered_set< const symbol_t * > &defined)
+{
+    const auto at = lvalue_offset(pointer);
+    if (!at || named_offset(pointer, defined))
+        return std::nullopt;
+
+    const auto &lvalue = *at->lvalue;
+    if (!is< unary_t >(lvalue) || as< unary_t >(lvalue).op != unary_op_t::deref)
+        return based_t { at->address, at->offset };
+
+    const auto &q = *as< unary_t >(lvalue).arg;
+    if (const auto inner = based(q, defined))
+        return based_t { inner->pointer,
+                         wrapped_add(inner->displacement, at->offset) };
+
+    if (!is< binary_t >(q) || as< binary_t >(q).op != binary_op_t::add)
+        return based_t { at->address, at->offset };
+
+    const auto &b = as< binary_t >(q);
+    const bool left = is< pointer_t >(b.lhs->type);
+    const auto &index = left ? *b.rhs : *b.lhs;
+    if (!is< literal_t >(index))
+        return based_t { at->address, at->offset };
+
+    const auto d = scaled(as< literal_t >(index).value, stride(q.type));
+
+    return based_t { left ? b.lhs.get() : b.rhs.get(),
+                     wrapped_add(d, at->offset) };
+}
+
+bool arithmetic_immediate(long long value, int width);
+
+// The operand of an address by any other lvalue and a constant, 6.3:
+// based()'s base, its pointer's value, with the displacement, when the
+// access encodes it (2.3), [x0, #20] for p[1][2] on int (*p)[3], and no
+// instruction forms the intermediate address.  Only the base is
+// evaluated.  A row by a variable index is a base the row of p + n
+// forms, add x0, x0, w1, sxtw #3, since no form holds an index with a
+// displacement.  For the address as a value, as_value, the add of the
+// base and the displacement is to encode it instead (2.4), add x0, x0,
+// #20 for &p[1][2].  None for a displacement out of reach, and the rows
+// of *p and p + n reach the address.
+std::optional< address_t >
+summed(state_t &s, const expr_t &pointer, bool as_value = false)
+{
+    const auto plan = based(pointer, s.defined);
+    if (!plan)
+        return std::nullopt;
+
+    const bool reached = as_value ?
+                             arithmetic_immediate(plan->displacement, 64) :
+                             in_reach(plan->displacement,
+                                      static_cast< int >(stride(pointer.type)));
+    if (!reached)
+        return std::nullopt;
+
+    return address_t { .base = rvalue(s, *plan->pointer),
+                       .displacement = static_cast< int >(plan->displacement) };
+}
+
 // The address an access through a dereference designates, 6.5.4.2p4,
 // for a load, a fetch or a store: the pointer's value as the base, [x0],
 // whatever computed it and however it is aligned (G8, G11).  An add of
@@ -974,7 +1052,9 @@ folded(state_t &s, const expr_t &pointer)
 // two, a store's right operand; so the case is not taken when between
 // names the variable, and the step is written here as before, G13.  A
 // name's address plus a constant is the second: the one operand of
-// folded(), and nothing evaluated.
+// folded(), and nothing evaluated.  Any other lvalue's address plus a
+// constant is the third: summed()'s base, with the constant in the
+// displacement.
 address_t
 pointed(state_t &s, const expr_t &p, const expr_t *between = nullptr)
 {
@@ -989,6 +1069,10 @@ pointed(state_t &s, const expr_t &p, const expr_t *between = nullptr)
     // a[3], table[3], m[1][2], *(a + 3), *a and *&x on an object the
     // slot or the label reaches: [x29, #28], [x16, :lo12:table+12]
     if (const auto a = folded(s, p))
+        return *a;
+
+    // p[1][2] on int (*p)[3], other[1][2] through the GOT: [x0, #20]
+    if (const auto a = summed(s, p))
         return *a;
 
     // *p, and *E for any E that is no sum: *f(), *(char *) q, *p++ on
@@ -1633,12 +1717,23 @@ offset(state_t &s,
 // in the order written (G13), a constant as its product with the size,
 // whose immediate takes no register.  A name's address plus a constant
 // is the address of folded()'s one operand, add x0, x29, #28 for a + 3,
-// 6.3.
+// 6.3, and any other lvalue's address plus a constant summed()'s base
+// and the one add of its displacement, add x0, x0, #20 for &p[1][2] on
+// int (*p)[3]; a displacement of 0 is the base and no instruction, as
+// &*p is p.
 value_t
 pointer_arithmetic(state_t &s, const expr_t &e)
 {
     if (const auto a = folded(s, e))
         return address_of(s, *a);
+
+    if (const auto a = summed(s, e, true)) {
+        if (a->displacement == 0)
+            return a->base;
+
+        return offset(s, binary_op_t::add, a->base,
+                      { .immediate = imm(a->displacement) }, true);
+    }
 
     const auto &b = as< binary_t >(e);
     const long size = stride(e.type);
