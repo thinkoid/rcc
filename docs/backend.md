@@ -15,7 +15,8 @@ govern. The last chapter lists the calls still open; the queue,
 - Ritchie's machine on x86-64. Every local lives in its stack slot,
   off the frame pointer. A `register` variable lives in one of five
   callee-saved registers, by declaration order, and is nothing but
-  that register; a sixth live at once takes a slot and a warning.
+  that register; one whose register would be a sixth takes a slot and
+  a warning.
   Expressions are evaluated left to right in the caller-saved
   registers, used as a stack. Conditions are jumps. An argument is a
   hidden local of its call.
@@ -198,8 +199,15 @@ the callee-saved set. A function's `register` variables take them
 in order of declaration; the first declared gets `rbx`. A variable
 keeps its register until its block ends, and a variable declared in
 an inner block may take a register that an earlier block's variable
-has released, so sibling blocks share. A `register` variable beyond
-the five gets a slot and is an ordinary local, as 6.7.2p12 allows
+has released, so sibling blocks share. A later declaration of the
+enclosing block does not take a closed inner block's register: its
+object is live from the entry into its block (6.2.4p6), so through
+the inner block, and a `goto` back into that block would write the
+inner variable's register while the later one holds its value. It
+takes the register above those live and above every one the closed
+inner blocks of its block took. A `register` variable whose register
+would be past the five gets a slot and is an ordinary local, as
+6.7.2p12 allows
 ("the extent to which such suggestions are effective is
 implementation-defined"), and as the PDP-11 did with the fourth; the
 compiler says so with a warning, `register variable 'k' in a stack
@@ -287,8 +295,8 @@ A function's frame holds, from high addresses to low:
 3. The register-variable registers the function uses, pushed in the
    prologue, popped in reverse in the epilogue. Each push carries its
    place in the unwind table, `.cfi_offset %rbx, -24` for the first
-   and 8 lower for each next. The registers pushed are the most
-   register variables the function has live at once, its register
+   and 8 lower for each next. The registers pushed are those the
+   function's register variables take by chapter 4, its register
    parameters among them: the count the parser records with the
    definition, known before the body is generated, since the slots
    lie below them.

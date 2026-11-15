@@ -22,9 +22,10 @@ does what the source says, and only that.
 - Locals live in memory, one stack slot each, for the whole call. A
   local or parameter declared `register` lives in one of five
   callee-saved registers on x86-64, `rbx` and `r12` to `r15`, or one
-  of ten on aarch64, `x19` to `x28`, and is never stored. A sixth
-  live at once on x86-64, an eleventh on aarch64, takes a slot, with
-  a warning. The keyword is the allocation, as it was on the PDP-11.
+  of ten on aarch64, `x19` to `x28`, and is never stored. One whose
+  register would be a sixth on x86-64, an eleventh on aarch64, takes
+  a slot, with a warning. The keyword is the allocation, as it was on
+  the PDP-11.
 - Chapter 4 holds the measurement under c1. On x86-64 the plain
   source runs 2.25 to 8.06 times as long under rcc as under `clang
   -O2`, and the source tuned by hand for rcc 1.62 to 2.29 times. As
@@ -64,7 +65,9 @@ What the compiler may do:
 - Allocate registers, by the discipline, not by an allocator. A
   `register` variable takes the next free one of the five, ten on
   aarch64, at its declaration and keeps it to the end of its block.
-  An expression value takes the lowest free one of the nine
+  A later declaration of a block takes one above every register its
+  closed inner blocks took, since its object is live from the entry
+  into its block (6.2.4p6). An expression value takes the lowest free one of the nine
   caller-saved registers, fifteen on aarch64, and when none is free
   the oldest held value is spilled (`backend.md` chapter 4 and 6.2,
   `aarch64.md` chapter 4). A local declared in the source lives in
@@ -76,7 +79,7 @@ What the compiler may do:
   as one the file defines.
   The extent to which `register` is effective, which 6.7.2p12 leaves
   implementation-defined and 4p10 asks to be documented, is five
-  variables live at once on x86-64 and ten on aarch64.
+  registers on x86-64 and ten on aarch64, taken by the rule above.
 - Select the machine form, by the table. On x86-64 a `+` is an
   `add`; a 32-bit signed division is `cltd; idivl`; a comparison is
   `cmp` and a `setcc` for a value, `cmp` and a conditional jump for a

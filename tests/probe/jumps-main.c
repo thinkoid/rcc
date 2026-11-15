@@ -122,6 +122,11 @@ BOTH(int, into_block, (int) )
 BOTH(int, into_loop, (int) )
 BOTH(int, registers, (int) )
 BOTH(int, register_into, (int) )
+BOTH(int, later_block, (int) )
+BOTH(int, later_for, (int) )
+BOTH(int, later_deep, (int) )
+BOTH(int, later_loop, (int) )
+BOTH(int, later_case, (int) )
 BOTH(int, label_declaration, (int) )
 BOTH(int, label_end, (int) )
 BOTH(void, clamp, (int *) )
@@ -204,6 +209,11 @@ test_loops(void)
                 CHECK(into_loop, n, 0, (n));
                 CHECK(registers, n, 0, (n));
                 CHECK(register_into, n, 0, (n));
+                CHECK(later_block, n, 0, (n));
+                CHECK(later_for, n, 0, (n));
+                CHECK(later_deep, n, 0, (n));
+                CHECK(later_loop, n, 0, (n));
+                CHECK(later_case, n, 0, (n));
                 CHECK(label_declaration, n, 0, (n));
                 CHECK(label_end, n, 0, (n));
                 report("clamp", n, 0, clamped(clamp, n), clamped(ref_clamp, n));

@@ -2372,10 +2372,10 @@ epilogue(state_t &s, bool sub)
 }
 
 // A definition.  The registers the prologue pushes are the parser's
-// count, the most register variables live at once, backend.md chapter
-// 5, known before the body, since every slot lies below them; the body
-// is generated next, into the buffer, and the prologue written after
-// it, when the frame's size is known.  The one epilogue is reached with
+// count, the registers the function's variables take, backend.md
+// chapter 5, known before the body, since every slot lies below them;
+// the body is generated next, into the buffer, and the prologue written
+// after it, when the frame's size is known.  The one epilogue is reached with
 // rax as it is, G5's some value, but for main, which returns 0 when it
 // falls off its end, 5.1.2.3.4.
 void

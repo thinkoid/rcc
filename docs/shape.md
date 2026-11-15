@@ -155,8 +155,8 @@ Three sums.
   so symbol addresses are stable for the life of the unit, and holds
   one `function_decl_t` per function symbol, with a body when the
   unit defines the function and none when it only declares it. A
-  definition carries the most register variables it has live at
-  once, its parameters among them. It holds one `object_decl_t` per
+  definition carries the count of register variables it uses, its
+  parameters among them, the highest index plus one. It holds one `object_decl_t` per
   object it defines, in the order of the definitions, with the
   initializer when one was written: c1 writes the data from them. The
   parser folds an initializer into that data, the subobjects it gives
@@ -196,8 +196,10 @@ attribute changes what the program depends on. A local or parameter the
 parser gives a register carries its index, which of the target's
 register variables it takes: each
 takes the next in declaration order and gives it back at its block's
-end (`backend.md` chapter 4), so the index is the count of those live
-where it is declared. The parser decides this, and the generator
+end (`backend.md` chapter 4), so the index is one above the highest of
+those live where it is declared and of those the closed inner blocks
+of its block took, since its object is live from the entry into its
+block (6.2.4p6). The parser decides this, and the generator
 reads the decision from the tree. Scopes live in the parser and die
 with it; each holds its ordinary identifiers and, apart, its tags of
 structs, unions and enums. After parsing there are only symbols. The
@@ -582,8 +584,9 @@ A warning does not stop the translation. The parser records it in
 the unit, and the driver prints the unit's warnings after a
 successful parse, on standard error in the error's format, `warning`
 in place of `error`. `-w` silences them, and no warning changes the
-exit status. The one warning is for a live `register` variable past
-the target's count, the sixth on x86-64, which takes a slot
+exit status. The one warning is for a `register` variable whose
+register would be past the target's count, the sixth on x86-64,
+which takes a slot
 (`backend.md` chapter 4).
 
 Exit status: 0; 1 for a diagnosed error or a failed system call; 2

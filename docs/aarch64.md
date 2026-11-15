@@ -300,8 +300,10 @@ Thirty-one registers, five classes, fixed at design time.
 set but the frame pointer. A function's `register` variables take them
 in order of declaration, the first `x19`. Everything else of
 `backend.md` chapter 4 holds with the names changed: a variable keeps
-its register to the end of its block, sibling blocks share, an
-eleventh live at once takes a slot and the warning, `register
+its register to the end of its block, sibling blocks share, a later
+declaration of a block takes a register above its closed inner
+blocks', one whose register would be past the ten takes a slot and
+the warning, `register
 variable 'k' in a stack slot: the ten registers are taken`. The extent
 is implementation-defined (6.7.2p12) and is now a number per target,
 which the cost model records for each.

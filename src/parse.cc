@@ -36,11 +36,16 @@ struct tag_t
 // have a name space of their own, 6.2.3p1, apart from the ordinary
 // identifiers, with the same block structure.  A symbol is writable
 // here, since a later declaration may add to what an earlier one said:
-// a function's assembler name, its marking.
+// a function's assembler name, its marking.  registers is one above
+// the highest register index taken in the scope or in a closed block
+// nested in it: a later declaration of the scope's block takes a
+// register above it, since its object is live from the entry into the
+// block, 6.2.4p6, and so through the nested block.
 struct scope_t
 {
     std::unordered_map< std::string_view, symbol_t * > names;
     std::unordered_map< std::string_view, tag_t > tags;
+    int registers = 0;
 };
 
 // A name of internal linkage where an expression uses it, 6.9.1p3: its
@@ -68,7 +73,7 @@ struct open_switch_t
 // The state of one parse.  Scope 0 is file scope; the scopes die with
 // the parser and leave only the symbols in the unit.  result,
 // registers, function and statics are the function being defined: its
-// result type, the most register variables live at once in it so far,
+// result type, the highest register index taken in it so far plus one,
 // its name, and the count of the static objects its blocks declared so
 // far, by name.  labels and gotos are its labels too, which have
 // function scope, 6.2.1p3: each label defined so far, by name, and each
@@ -1567,19 +1572,30 @@ names_type(const parser_t &p, const token_t &t)
     return named_type(p, t).has_value();
 }
 
-// The register variables live at this point of the function: those of
-// the scopes open, the parameters' among them.  A scope's variables
-// leave the count when the scope is popped.
+// One above the highest register index of the register variables live
+// at this point of the function: those of the scopes open, the
+// parameters' among them.  A scope's variables leave when it closes.
 int
-live_registers(const parser_t &p)
+above_live_registers(const parser_t &p)
 {
-    int live = 0;
+    int above = 0;
     for (const auto &scope : p.scopes)
         for (const auto &[name, sym] : scope.names)
             if (in_register(*sym))
-                ++live;
+                above = std::max(above, sym->register_index + 1);
 
-    return live;
+    return above;
+}
+
+// The register a register declaration takes: above those live, and
+// above those its block's closed inner blocks took, since its object is
+// live from the entry into its block, 6.2.4p6, through those blocks.  A
+// block opened later starts from the registers live at its opening, so
+// sibling blocks share.
+int
+next_register(const parser_t &p)
+{
+    return std::max(above_live_registers(p), p.scopes.back().registers);
 }
 
 // A target's count of register variables as the warning spells it.
@@ -1596,18 +1612,18 @@ in_words(int n)
 }
 
 // The register index of an object declared by name, register or not:
-// -1 for none.  A register declaration met with the target's register
-// variables all live declares an ordinary object, with a warning: the
-// extent to which the suggestion is effective is implementation-defined,
-// 6.7.2p12, so the program is conforming and compiles.  One that gets a
-// register takes the next, the count of those live, backend.md chapter
-// 4, and the function's count is the most taken at once.
+// -1 for none.  A register declaration takes the next register,
+// backend.md chapter 4.  One whose next is past the target's last
+// declares an ordinary object, with a warning: the extent to which the
+// suggestion is effective is implementation-defined, 6.7.2p12, so the
+// program is conforming and compiles.  The function's count and the
+// scope's are each the highest index taken plus one.
 int
 register_index(parser_t &p, const token_t &name, bool in_register)
 {
     const int count = p.target.register_variables;
-    const int live = in_register ? live_registers(p) : 0;
-    if (in_register && live == count) {
+    const int next = in_register ? next_register(p) : 0;
+    if (in_register && next >= count) {
         p.unit.warnings.push_back(
             { name.where, "register variable " + quoted(name.text) +
                               " in a stack slot: the " + in_words(count) +
@@ -1615,8 +1631,9 @@ register_index(parser_t &p, const token_t &name, bool in_register)
         in_register = false;
     }
 
-    const int index = in_register ? live : -1;
+    const int index = in_register ? next : -1;
     p.registers = std::max(p.registers, index + 1);
+    p.scopes.back().registers = std::max(p.scopes.back().registers, index + 1);
 
     return index;
 }
@@ -1643,6 +1660,21 @@ declare(parser_t &p,
     scope.emplace(sym.name, &sym);
 
     return &sym;
+}
+
+// The end of a block's scope, a compound statement's or a for's: its
+// names leave, and the enclosing scope keeps the registers it took as
+// taken, for the enclosing block's later declarations, whose objects
+// are live through this block, 6.2.4p6.  A function's body ends with a
+// pop alone, since file scope takes no register.
+void
+close_block(parser_t &p)
+{
+    const int registers = p.scopes.back().registers;
+    p.scopes.pop_back();
+
+    scope_t &enclosing = p.scopes.back();
+    enclosing.registers = std::max(enclosing.registers, registers);
 }
 
 //
@@ -4567,7 +4599,7 @@ compound_statement(parser_t &p)
     expect(p, tok_t::lbrace, "expected '{'");
     p.scopes.emplace_back();
     block_item_list(p, block);
-    p.scopes.pop_back();
+    close_block(p);
     expect(p, tok_t::rbrace, "expected '}' at end of block");
 
     return block;
@@ -4773,7 +4805,7 @@ for_statement(parser_t &p)
 
     loop.body = loop_body(p);
 
-    p.scopes.pop_back();
+    close_block(p);
 
     return stmt_t { std::move(loop) };
 }

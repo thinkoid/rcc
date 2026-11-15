@@ -2778,8 +2778,8 @@ epilogue(state_t &s, long size)
 }
 
 // A definition.  The registers the save area holds are the parser's
-// count, the most register variables live at once, chapter 5.1, known
-// before the body, since every slot lies above them; the body is
+// count, the registers the function's variables take, chapter 5.1,
+// known before the body, since every slot lies above them; the body is
 // generated next, into the buffer, and the prologue written after it,
 // when the frame's size is known; so are the copies of the parameters
 // past the eighth, which follow the prologue and precede the body.  The

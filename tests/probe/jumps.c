@@ -3,7 +3,8 @@
    every kind the control probe has, per type; break and continue in
    each loop and in loops in loops; goto forward, back, out of loops,
    into a block and into a loop, past declarations, with register
-   variables live on both sides; a label before a declaration and before
+   variables live on both sides; back into a block whose variable a
+   later declaration outlives; a label before a declaration and before
    a closing brace.  See jumps.h. */
 
 #include "jumps.h"
@@ -438,6 +439,155 @@ register_into(int n)
         register int c = s * 3;
 
         return a + s + c;
+}
+
+/* a register variable declared after an inner block, in the enclosing
+   one: its object is live from the entry into its block, 6.2.4p6, so
+   through the inner block, and the two take two registers, backend.md
+   chapter 4.  A goto back into the inner block writes the inner
+   variable while the later one is live, and the later one is read
+   after.  later_block is the shape itself; later_for has a for that
+   declares one in its clause and one in its braced body in place of the
+   inner block; later_deep has the inner block two levels down, and a
+   declaration after it in the middle block as well; later_loop has the
+   inner block and the later declaration in a loop's body, with a
+   continue; later_case enters the inner block by a case label of a
+   switch whose body declares the later one. */
+int
+later_block(int n)
+{
+        register int x = 1;
+        int once = 0;
+
+        {
+                register int y;
+
+        L:
+                y = 3;
+                if (once)
+                        goto M;
+        }
+        register int z = 7;
+
+        once = 1;
+        if (n)
+                goto L;
+M:
+        return x + z;
+}
+
+int
+later_for(int n)
+{
+        register int x = n;
+        int once = 0;
+
+        for (register int i = 0; i < 1; i = i + 1) {
+                register int t;
+
+        L:
+                t = 20;
+                i = 30 + t;
+                if (once)
+                        goto M;
+        }
+        register int z = 7;
+
+        once = 1;
+        if (n)
+                goto L;
+M:
+        return x + z;
+}
+
+int
+later_deep(int n)
+{
+        register int x = n;
+        int once = 0;
+
+        {
+                {
+                        register int y;
+
+                L:
+                        y = 3;
+                        if (once)
+                                goto M;
+                }
+                register int w = 50;
+
+                x = x + w;
+        }
+        register int z = 7;
+
+        once = 1;
+        if (n)
+                goto L;
+M:
+        return x + z;
+}
+
+int
+later_loop(int n)
+{
+        register int s = 0;
+        int again = 0;
+
+        for (register int i = 0; i < 6; i = i + 1) {
+                {
+                        register int y;
+
+                back:
+                        y = i + 10;
+                        s = s + y;
+                        if (again) {
+                                again = 0;
+                                goto forward;
+                        }
+                        if (i == n)
+                                continue;
+                }
+                register int z = i * 100 + n;
+
+                if (i & 1) {
+                        again = 1;
+                        goto back;
+                }
+        forward:
+                s = s + z;
+        }
+
+        return s;
+}
+
+int
+later_case(int n)
+{
+        register int x = n;
+        int once = 0;
+
+        switch (n & 3) {
+        case 0:
+                return x;
+                {
+                        register int y;
+
+                case 1:
+                case 2:
+                L:
+                        y = 3;
+                        if (once)
+                                goto M;
+                }
+                register int z = 7;
+
+                once = 1;
+                goto L;
+        M:
+                return x + z;
+        default: return -x;
+        }
 }
 
 /* a label before a declaration, C23's 6.8.2p4 */

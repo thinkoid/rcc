@@ -32,10 +32,12 @@ namespace rcc {
 // register_index is the parser's assignment, which of the target's
 // register variables the object takes, 0 the first: each takes the next
 // in declaration order and gives it back at its block's end, backend.md
-// chapter 4, so the index is the count of those live where the object
-// is declared.  It is -1 for an object in no register: a register
-// declaration met with the target's register variables all live is an
-// ordinary local, with a warning.
+// chapter 4, so the index is one above the highest of those live where
+// the object is declared and of those the closed inner blocks of its
+// block took, since the object is live from the entry into its block,
+// 6.2.4p6, and so through those blocks.  It is -1 for an object in no
+// register: a register declaration whose next index is past the
+// target's register variables is an ordinary local, with a warning.
 // A global is an object of static storage duration, 6.2.4p3: one
 // declared at file scope, or one declared static in a block.  One the
 // unit defines has an entry in the unit's objects, and one it only
@@ -416,9 +418,9 @@ as(const stmt_t &s)
 // One per function symbol.  A body is present when the unit defines
 // the function; a declaration alone has none, and c1 writes nothing
 // for it: a call names the symbol, and the linker resolves it.
-// registers is the most register variables live at once in the
-// definition, its parameters' among them, as the parser assigned them:
-// the largest register_index + 1, and 0 for a declaration alone.
+// registers is the count of register variables the definition uses,
+// its parameters' among them, as the parser assigned them: the largest
+// register_index + 1, and 0 for a declaration alone.
 struct function_decl_t
 {
     const symbol_t *sym;
