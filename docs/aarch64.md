@@ -615,6 +615,7 @@ For a 32-bit operation (`w` names) or a 64-bit one (`x` names).
 | `p + n`, `p - n` | `add L, L, R` or `sub` for a size of 1; `add L, L, R, lsl #k` or `sub` for 2, 4 or 8; the index held at 32 bits as for `&p[i]`; `mov N, #s; mul R, R, N` first for any other size; a constant `n` is the immediate `#c*s` when it encodes, and otherwise the product held in a register by 6.4, `add L, L, R`; for `n + p` the result is in `L`, the integer's register: a plain register keeps the source's order, `add L, L, R`, and the shifted or extended operand, which the instruction takes last only, is `add L, R, wL, sxtw #2` | G6 |
 | `p - q` | `sub L, L, R`; for a size other than 1, `mov R, #s; sdiv L, L, R` | G6: a division |
 | `"abc"` | `adrp L, .Ls<n>; add L, L, :lo12:.Ls<n>` | two instructions, chapter 10 |
+| `f`, `&f` as a value | `adrp L, f; add L, L, :lo12:f` for a function the file defines; for one it only declares, the load from the GOT, `adrp L, :got:f; ldr L, [L, :got_lo12:f]` | two instructions either way, chapter 10; a call by the name forms no address, chapter 8 |
 | `f(a, b)` | chapter 8 | |
 
 The width rule holds as written. Its facts on this machine:

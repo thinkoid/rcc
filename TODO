@@ -22,19 +22,6 @@ assembles and links. The reasons are =docs/findings.md= and
 in =docs/design-calls.md=. The chapter holds c1's own defects on both
 targets; the second target's design is =docs/aarch64.md=.
 
-** TODO The tables of 6.3 have no row for a function's name as a value
-
-=backend.md= 6.3 and =aarch64.md= 6.3 list what each expression
-compiles to, an array and a string literal as pointers among them. A
-function's name as a value, =f= or =&f=, has its two rows in chapter
-10 and in =cost.md=, and no line in either table sends a reader
-there.
-
-Fix: a row in each table, beside the array's and the literal's, that
-gives the two forms or names chapter 10.
-
-Check: each table has the row.
-
 ** TODO A constant index into a global array forms the array's address first
 
 ~int table[8]; ... table[3]~ is =leaq table(%rip), %rax; movl
