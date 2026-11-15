@@ -132,6 +132,12 @@ struct state_t
     int labels = 0;
     int ret = 0;
     bool terminated = false;
+
+    // the statements around the one generated that a break jumps out
+    // of, innermost last, and the label of each label the source
+    // names, in the order met
+    std::vector< jump_target_t > jump_targets { };
+    std::unordered_map< std::string, int > user_labels { };
 };
 
 // types
@@ -2311,6 +2317,8 @@ function(state_t &s, const function_decl_t &fd)
     s.labels = 0;
     s.ret = new_label(s);
     s.terminated = false;
+    s.jump_targets.clear();
+    s.user_labels.clear();
 
     parameters(s, fd);
     block_stmt(s, *fd.body);

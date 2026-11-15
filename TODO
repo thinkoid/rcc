@@ -22,6 +22,55 @@ assembles and links. The reasons are =docs/findings.md= and
 in =docs/design-calls.md=. The chapter holds c1's own defects on both
 targets; the second target's design is =docs/aarch64.md=.
 
+** TODO A =goto= shows a register shared by two variables alive at once
+
+A block's register variable gives its register back at the block's
+end, and the next declaration takes it (=backend.md= chapter 4). So
+an inner block's variable and a variable declared after that block,
+in the enclosing one, share a register. Their scopes are apart, but
+6.2.4p6 has the later variable live from the entry into its block,
+and a =goto= makes that visible:
+
+#+begin_src c
+int f(int n)
+{
+        register int x = 1;
+        int once = 0;
+        {
+                register int y;
+        L:
+                y = 3;
+                if (once)
+                        goto M;
+        }
+        register int z = 7;
+        once = 1;
+        if (n)
+                goto L;
+M:
+        return x + z;
+}
+#+end_src
+
+=f(1)= reaches the declaration of =z=, jumps back into the inner
+block, where the store to =y= writes the register =z= is in, and
+jumps forward past the declaration: 4 under rcc, 8 under =clang=.
+Without a =goto= the declaration of =z= is reached again before any
+read of it, and nothing shows. A slot is never shared, so only a
+register variable is affected.
+
+Fix: decide between three. A later declaration takes a register
+above every one the closed inner blocks of its block used, which is
+6.2.4p6 and costs registers where a =for= declares its counter and
+the block declares more after it. The same, in a function that
+defines a label alone, which costs a second pass over the function's
+register variables. Or the documents say that a register variable
+keeps its value while control stays in its scope, and that one left
+by a backward =goto= is indeterminate, as one jumped past is (G5).
+
+Check: the function above returns 8 on both targets, in a probe; or
+=backend.md= chapter 4 and =shape.md= say what it returns.
+
 ** TODO x86-64: the comment on =register_decl()= sends every initializer through =establish()=
 
 The comment in =src/c1-x86-64.cc= says "an initializer is moved into

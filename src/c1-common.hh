@@ -16,6 +16,7 @@
 #include "ast.hh"
 #include "target.hh"
 
+#include <optional>
 #include <ostream>
 #include <string>
 #include <string_view>
@@ -90,6 +91,16 @@ struct held_t
 struct value_t
 {
     int id = -1;
+};
+
+// A statement a break jumps out of: the label past its end, and for a
+// loop, which a continue goes on with, the label of the loop's
+// continuation, backend.md 7.2.  A switch has none, so a continue in it
+// goes on with the loop around it.
+struct jump_target_t
+{
+    int break_;
+    std::optional< int > continue_;
 };
 
 } // namespace rcc

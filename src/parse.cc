@@ -56,10 +56,15 @@ struct internal_use_t
 // registers, function and statics are the function being defined: its
 // result type, the most register variables live at once in it so far,
 // its name, and the count of the static objects its blocks declared so
-// far, by name.  identities is the identity the next struct, union or
-// enum type takes.  internal_uses are the uses of names of internal
-// linkage, in the order met, checked against their definitions at the
-// end of the unit.
+// far, by name.  labels and gotos are its labels too, which have
+// function scope, 6.2.1p3: each label defined so far, by name, and each
+// goto's label name, in the order met, checked against the labels at
+// the function's end.  break_targets and continue_targets are the
+// statements around the parse a break may leave and a continue go on
+// with: the loops, for both, and a switch, for a break alone.
+// identities is the identity the next struct, union or enum type takes.
+// internal_uses are the uses of names of internal linkage, in the order
+// met, checked against their definitions at the end of the unit.
 struct parser_t
 {
     const std::vector< token_t > &tokens;
@@ -75,6 +80,10 @@ struct parser_t
 
     std::string_view function = { };
     std::unordered_map< std::string, int > statics = { };
+    std::unordered_map< std::string_view, const token_t * > labels = { };
+    std::vector< const token_t * > gotos = { };
+    int break_targets = 0;
+    int continue_targets = 0;
     std::vector< internal_use_t > internal_uses = { };
 };
 
@@ -2028,6 +2037,7 @@ stmt_t expression_statement(parser_t &);
 stmt_t selection_statement(parser_t &);
 stmt_t iteration_statement(parser_t &);
 stmt_t while_statement(parser_t &);
+stmt_t do_statement(parser_t &);
 stmt_t for_statement(parser_t &);
 stmt_t jump_statement(parser_t &);
 
@@ -2997,6 +3007,19 @@ external_declaration(parser_t &p)
     expect(p, tok_t::semicolon, "expected ';' after top level declarator");
 }
 
+// Each goto of the function names a label the function defines,
+// 6.8.7.2p1, before the goto or after it, since a label has function
+// scope, 6.2.1p3.  So the check waits for the function's end, and the
+// first goto that names none is the error.
+void
+require_labels(const parser_t &p)
+{
+    for (const token_t *name : p.gotos)
+        if (!p.labels.contains(name->text))
+            fail(*name,
+                 "label " + quoted(name->text) + " used but not defined");
+}
+
 // A parameter of a definition, declared already in the scope of its
 // list, which is open again as the body's, takes its register in the
 // order of the parameters, as a local does.
@@ -3020,7 +3043,8 @@ defined_parameter(parser_t &p, const parameter_t &param)
 // attribute marked, on a declaration, among the definition's specifiers
 // or on a parameter, is one rcc would have to define as the attribute
 // says, which is not yet.  function and statics start over, for the
-// labels of the static objects the body declares.
+// labels of the static objects the body declares, and labels and gotos,
+// for the body's own labels, which no other function sees.
 void
 function_definition(parser_t &p,
                     const specifiers_t &spec,
@@ -3041,6 +3065,8 @@ function_definition(parser_t &p,
     p.registers = 0;
     p.function = d.name->text;
     p.statics.clear();
+    p.labels.clear();
+    p.gotos.clear();
     p.scopes.push_back(d.scope);
 
     std::vector< const symbol_t * > params;
@@ -3058,6 +3084,8 @@ function_definition(parser_t &p,
     expect(p, tok_t::rbrace, "expected '}' at end of function body");
 
     p.scopes.pop_back();
+
+    require_labels(p);
 
     function_decl_t &f = p.unit.functions[index];
     f.params = std::move(params);
@@ -4358,8 +4386,44 @@ init_declarator(parser_t &p, const specifiers_t &spec)
 // statements
 //
 
+// Whether a label starts at the token ahead: an identifier and a
+// colon, a typedef name's among them, since a label name has a name
+// space of its own, 6.2.3p1.
+bool
+is_label_start(const parser_t &p)
+{
+    return peek(p).kind == tok_t::identifier && peek(p, 1).kind == tok_t::colon;
+}
+
+// A label, identifier :, which defines its name in the function's
+// labels, 6.2.1p3; a name is defined once in a function, 6.8.2p3.
+stmt_t
+label(parser_t &p)
+{
+    const token_t &name = advance(p);
+    advance(p);
+
+    if (!p.labels.emplace(name.text, &name).second)
+        fail(name, "redefinition of label " + quoted(name.text));
+
+    return stmt_t { label_t { std::string(name.text) } };
+}
+
+// A label before a statement, where a statement is wanted: the body of
+// an if, of a loop, or a labeled statement's own.  It is a block of the
+// two, which opens no scope.
+stmt_t
+labeled_statement(parser_t &p)
+{
+    block_t block;
+    block.body.push_back(label(p));
+    block.body.push_back(statement(p));
+
+    return stmt_t { std::move(block) };
+}
+
 // A declaration is a block item, not a statement: it cannot be the
-// body of an if, a while or a for.
+// body of an if or of a loop.
 stmt_t
 statement(parser_t &p)
 {
@@ -4382,8 +4446,8 @@ statement(parser_t &p)
     default: break;
     }
 
-    if (t.kind == tok_t::identifier && peek(p, 1).kind == tok_t::colon)
-        not_yet(t, "label");
+    if (is_label_start(p))
+        return labeled_statement(p);
 
     if (is_declaration_start(p))
         fail(t, "expected statement, found a declaration");
@@ -4406,12 +4470,16 @@ compound_statement(parser_t &p)
     return block;
 }
 
-// The items up to the closing brace, which is left for the caller.
+// The items up to the closing brace, which is left for the caller.  A
+// label is an item of its own, 6.8.3p1, so it may stand before a
+// declaration and before the closing brace.
 void
 block_item_list(parser_t &p, block_t &block)
 {
     while (!next_is(p, { tok_t::rbrace, tok_t::eof })) {
-        if (is_declaration_start(p)) {
+        if (is_label_start(p))
+            block.body.push_back(label(p));
+        else if (is_declaration_start(p)) {
             for (stmt_t &decl : declaration(p))
                 block.body.push_back(std::move(decl));
         }
@@ -4465,9 +4533,25 @@ iteration_statement(parser_t &p)
 {
     switch (peek(p).kind) {
     case tok_t::kw_while: return while_statement(p);
-    case tok_t::kw_for: return for_statement(p);
-    default: not_yet(peek(p), "do statement");
+    case tok_t::kw_do: return do_statement(p);
+    default: return for_statement(p);
     }
+}
+
+// The body of a loop, where a break and a continue may stand,
+// 6.8.7.3p1, 6.8.7.4p1.
+stmt_ptr_t
+loop_body(parser_t &p)
+{
+    ++p.break_targets;
+    ++p.continue_targets;
+
+    stmt_ptr_t body = box(statement(p));
+
+    --p.break_targets;
+    --p.continue_targets;
+
+    return body;
 }
 
 stmt_t
@@ -4481,9 +4565,30 @@ while_statement(parser_t &p)
 
     expect(p, tok_t::rparen, "expected ')' after condition");
 
-    stmt_ptr_t body = box(statement(p));
+    stmt_ptr_t body = loop_body(p);
 
     return stmt_t { while_t { std::move(cond), std::move(body) } };
+}
+
+// The body, then the condition, evaluated after each execution of the
+// body, 6.8.6.3p1, and the ';' that ends the statement.
+stmt_t
+do_statement(parser_t &p)
+{
+    advance(p);
+
+    stmt_ptr_t body = loop_body(p);
+
+    expect(p, tok_t::kw_while, "expected 'while' after the body of 'do'");
+    expect(p, tok_t::lparen, "expected '(' after 'while'");
+
+    const token_t &start = peek(p);
+    expr_t cond = rvalue(start, expression(p));
+
+    expect(p, tok_t::rparen, "expected ')' after condition");
+    expect(p, tok_t::semicolon, "expected ';' after do statement");
+
+    return stmt_t { do_t { std::move(body), std::move(cond) } };
 }
 
 // A declaration in the init is in scope for the whole loop, 6.8.6.4p1,
@@ -4531,22 +4636,62 @@ for_statement(parser_t &p)
 
     expect(p, tok_t::rparen, "expected ')' after for clauses");
 
-    loop.body = box(statement(p));
+    loop.body = loop_body(p);
 
     p.scopes.pop_back();
 
     return stmt_t { std::move(loop) };
 }
 
+// A goto names a label of the function, defined before it or after
+// it, so the name is checked at the function's end, 6.8.7.2p1.
+stmt_t
+goto_statement(parser_t &p)
+{
+    advance(p);
+
+    const token_t &name =
+        expect(p, tok_t::identifier, "expected label name after 'goto'");
+    p.gotos.push_back(&name);
+
+    expect(p, tok_t::semicolon, "expected ';' after goto statement");
+
+    return stmt_t { goto_t { std::string(name.text) } };
+}
+
+// A continue stands only in the body of a loop, 6.8.7.3p1.
+stmt_t
+continue_statement(parser_t &p)
+{
+    const token_t &keyword = advance(p);
+    if (p.continue_targets == 0)
+        fail(keyword, "'continue' statement not in a loop");
+
+    expect(p, tok_t::semicolon, "expected ';' after continue statement");
+
+    return stmt_t { continue_t { } };
+}
+
+// A break stands only in the body of a loop or of a switch, 6.8.7.4p1.
+stmt_t
+break_statement(parser_t &p)
+{
+    const token_t &keyword = advance(p);
+    if (p.break_targets == 0)
+        fail(keyword, "'break' statement not in a loop or a switch");
+
+    expect(p, tok_t::semicolon, "expected ';' after break statement");
+
+    return stmt_t { break_t { } };
+}
+
 // A value is converted to the result type as if by assignment,
 // 6.8.7.5p3; a void function takes no value and a non-void one
 // requires one, 6.8.7.5p1.
 stmt_t
-jump_statement(parser_t &p)
+return_statement(parser_t &p)
 {
     const token_t &keyword = advance(p);
-    if (keyword.kind != tok_t::kw_return)
-        not_yet(keyword, quoted(keyword.text) + " statement");
 
     return_t ret;
 
@@ -4565,6 +4710,17 @@ jump_statement(parser_t &p)
     expect(p, tok_t::semicolon, "expected ';' after return statement");
 
     return stmt_t { std::move(ret) };
+}
+
+stmt_t
+jump_statement(parser_t &p)
+{
+    switch (peek(p).kind) {
+    case tok_t::kw_goto: return goto_statement(p);
+    case tok_t::kw_continue: return continue_statement(p);
+    case tok_t::kw_break: return break_statement(p);
+    default: return return_statement(p);
+    }
 }
 
 //

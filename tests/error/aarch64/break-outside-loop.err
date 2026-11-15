@@ -1,0 +1,2 @@
+tests/error/break-outside-loop.c:6:17: error: 'break' statement not in a loop or a switch
+status 1

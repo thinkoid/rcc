@@ -88,7 +88,9 @@ What the compiler may do:
 - Align every loop head to 32 bytes on x86-64, `.p2align 5`, a
   convention of the target like the stack's 16 bytes at a call
   (4.2). On aarch64 it aligns none: alignment there is measured, not
-  adopted (4.2, `aarch64.md` 7.2).
+  adopted (4.2, `aarch64.md` 7.2). A loop is one the language names,
+  `while`, `do` or `for`: a loop built of `goto` is laid out as
+  written, and no label of the source is aligned.
 
 What the compiler never does:
 
@@ -138,6 +140,9 @@ yet.
 | `a, b` | no instruction of its own: `a` as the statement `a;` would be written, `addl $1, -8(%rbp)` for `i++`, then `b` as the value, the condition or the effect the comma is | `comma` |
 | `if`, `while`, `for` | the condition by jump code at the top, where it is written, blocks in the written order; a loop's head is aligned to 32 bytes, `.p2align 5` before `.Lcount.2` in `while` and `.Lsum.2` in `for`, the gap filled by the assembler with multi-byte `nop`s; a loop jumps back from its bottom, `jmp .Lcount.2` in `while`, and `for`'s step has its own label before the jump; an empty arm is still tested, `je .Lempty_if.2` to the label that follows it in `cgp`; a join that holds only the jump back stays one block | `if`, `while`, `for`, `block-order`, `cgp`, `early-taildup` |
 | `if (0)`, `!0` | `if (0)` is a test, `movl $0, %eax; cmpl $0, %eax; je .Lnever.2`, and the body is kept; `!0` is the constant 1, folded in the parser | `zero-test` |
+| `do s while (e);` | the body first, under the loop's head, aligned to 32 bytes, `.p2align 5` before `.Lcount.2`; the condition by jump code at the bottom, where it is written, under a label of its own, and the jump back while it holds, `jl .Lcount.2`; one test an iteration; a label past the test, placed whether or not a `break` jumps to it | `do` |
+| `break`, `continue` | one `jmp` each, nothing held: `break` past the loop, `jmp .Lsum.4`, `continue` to the condition in `while` and `do` and to the step in `for`, `jmp .Lsum.3` | `break-continue` |
+| `goto`, a label | one `jmp` to the label, and the label where it is written, `.L<function>.<n>` numbered as every label of the function is, when first met, at its definition or at a `goto`; the listing shows no C name; never aligned, so a loop built of `goto` has no `.p2align`, `jmp .Lcount.2` back to `.Lcount.2` | `goto` |
 | `return e` | `e` into `eax`, then `jmp .L<function>.1` to the one epilogue, `jmp .Lsum.1` in `for`, the last statement included | every program |
 | a statement whose value is unused | written: `a + 0;` is `addl $0, %eax`, `a / b;` is `cltd; idivl %ecx`, and the division can fault | `unused` |
 | `f(a, b)` | each argument evaluated into a register and stored to a slot of its own, `movl %eax, -12(%rbp)`, a constant argument in one store of the immediate, `movl $1, -4(%rbp)` in `stack-args`; the slots loaded into `edi`, `esi` and on; `call f@PLT`; the result in `eax` | `call` |
@@ -215,6 +220,9 @@ bytes or more.
 | `a, b` | no instruction of its own: `a` as the statement `a;` would be written, `ldr w0, [x29, #20]; add w0, w0, #1; str w0, [x29, #20]` for `i++`, then `b` as the value, the condition or the effect the comma is | `comma` |
 | `if`, `while`, `for` | the condition by jump code at the top, where it is written, blocks in the written order; no alignment directive before a loop head; a loop branches back from its bottom, `b .Lcount.2` in `while`, and `for`'s step has its own label, `.Lsum.3`, before the branch; an empty arm is still tested, `cbz w0, .Lempty_if.2` to the label that follows it in `cgp`; a join that holds only the branch back stays one block | `if`, `while`, `for`, `block-order`, `cgp`, `early-taildup` |
 | `if (0)`, `!0` | `if (0)` is a test, `mov w0, #0; cbz w0, .Lnever.2`, and the body is kept; `!0` is the constant 1, folded in the parser, `mov w0, #1` | `zero-test` |
+| `do s while (e);` | the body first, under the loop's head, with no alignment directive; the condition by jump code at the bottom under a label of its own, and the branch back while it holds, `b.lt .Lcount.2`; one test an iteration; a label past the test | `do` |
+| `break`, `continue` | one `b` each, nothing held: `break` past the loop, `b .Lsum.4`, `continue` to the condition in `while` and `do` and to the step in `for`, `b .Lsum.3` | `break-continue` |
+| `goto`, a label | one `b` to the label, and the label where it is written, numbered as on x86-64; the listing shows no C name; a loop built of `goto` branches back, `b .Lcount.2` | `goto` |
 | `return e` | `e` into `w0`, by a `mov` when it is held in another register, `mov w0, w1` in `compound`; then the branch to the one epilogue, `b .Lsum.1` in `for`, the last statement included | every program |
 | a statement whose value is unused | written: `a + 0;` is `add w0, w0, #0`, `a / b;` is `sdiv w0, w0, w1`, and the division does not trap | `unused` |
 | `f(a, b)` | each argument evaluated into a register and stored to a slot of its own, `str w0, [x29, #24]`, a constant argument through a register, `mov w0, #1; str w0, [x29, #16]` in `stack-args`; the slots loaded into `w0`, `w1` and on, `ldr w0, [x29, #24]`; `bl f`; the result in `w0` | `call` |

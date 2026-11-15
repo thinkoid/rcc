@@ -87,7 +87,9 @@ arrays to any depth, with C's brace elision, so `header-calendar` is
 K&R's day of the year with its two tables. Then `static`: a function
 and an object of internal linkage, and a block's object of static
 storage under a label of its own, so `header-getch` keeps K&R's
-buffer of `getch` and `ungetch` private to its file.
+buffer of `getch` and `ungetch` private to its file. Then the jumps:
+`do`, `break`, `continue`, `goto` and labels; `header-itoa` is K&R's
+`itoa`, `reverse` and `trim`.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/`, the cost corpus over `tests/cost/`
 and the error corpus over `tests/error/`, the programs rcc refuses

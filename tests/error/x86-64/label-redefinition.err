@@ -1,0 +1,2 @@
+tests/error/label-redefinition.c:9:1: error: redefinition of label 'again'
+status 1

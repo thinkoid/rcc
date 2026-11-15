@@ -778,6 +778,11 @@ the object's register, taken above `e`'s, so a `return` of it ends
 in `mov w0, w1`. Every `return` jumps to the one epilogue. `main`
 returns 0 on reaching its `}`, `mov w0, #0`.
 
+`do`'s condition at the bottom branches back to the body's label on
+the condition, `b.lt .Lcount.2` or `cbnz`, by jump code (7.1). `break`,
+`continue` and `goto` are each one `b`, to the label `backend.md` 7.2
+names, and a label of the source is one more label of the function.
+
 **No alignment directive before a loop head**: measured, not
 adopted. `.p2align 5` on x86-64 was measured on one processor and
 adopted as "a convention of the target" (`backend.md` 13, call 8). On

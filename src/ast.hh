@@ -300,6 +300,13 @@ struct while_t
     stmt_ptr_t body;
 };
 
+// The body before the condition, as written, 6.8.6.3p1.
+struct do_t
+{
+    stmt_ptr_t body;
+    expr_t cond;
+};
+
 // init is null, an expression statement or a declaration; cond and
 // step are absent when the source leaves them out.
 struct for_t
@@ -307,6 +314,33 @@ struct for_t
     stmt_ptr_t init;
     std::optional< expr_t > cond, step;
     stmt_ptr_t body;
+};
+
+// A break or a continue names no statement: c1 jumps out of the
+// innermost one that takes it, or on with it, as it generates the
+// statements around it.
+struct break_t
+{
+};
+
+struct continue_t
+{
+};
+
+// A label and a goto name a label of the function's own name space,
+// 6.2.3p1, by its identifier.  A label is a statement of its own, the
+// null statement it is translated as followed by, 6.8.3p2, so it may
+// stand before a declaration and before a block's closing brace; a
+// labeled statement elsewhere is a block of the label and the
+// statement, a block of no scope, as the init of a for is.
+struct label_t
+{
+    std::string name;
+};
+
+struct goto_t
+{
+    std::string name;
 };
 
 struct return_t
@@ -321,7 +355,12 @@ struct stmt_t
                   block_t,
                   if_t,
                   while_t,
+                  do_t,
                   for_t,
+                  break_t,
+                  continue_t,
+                  label_t,
+                  goto_t,
                   return_t >
         v;
 };

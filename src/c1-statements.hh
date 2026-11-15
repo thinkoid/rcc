@@ -12,16 +12,16 @@
 // is read inside a namespace; the generator's own includes serve it.
 //
 // Before the include the generator declares reg_t; state_t with body,
-// live and ret; loop_alignment, the power of two of .p2align before a
-// loop's head, 0 for none; result_register, the register the convention
-// returns a result in; new_label(), place_label() and jump(); the three
-// entry points, rvalue(), cbranch() and effect(); and decl_stmt(), a
-// declaration, which is the generator's own, since the store row of its
-// initializer takes the target's form of the slot's address.  It
-// includes c1-stack.hh first, whose reg_of() and release() the
-// statements call, with mov(), the stack's copy of a register into
-// another, for the result.  integer() is c1-common.hh's, and the tree
-// ast.hh's.
+// live, ret, jump_targets and user_labels; loop_alignment, the power of
+// two of .p2align before a loop's head, 0 for none; result_register,
+// the register the convention returns a result in; new_label(),
+// place_label() and jump(); the three entry points, rvalue(), cbranch()
+// and effect(); and decl_stmt(), a declaration, which is the
+// generator's own, since the store row of its initializer takes the
+// target's form of the slot's address.  It includes c1-stack.hh first,
+// whose reg_of() and release() the statements call, with mov(), the
+// stack's copy of a register into another, for the result.  integer()
+// and jump_target_t are c1-common.hh's, and the tree ast.hh's.
 
 void statement(state_t &, const stmt_t &);
 
@@ -75,8 +75,20 @@ align_loop_head(state_t &s)
         s.body << std::format("\t.p2align {}\n", loop_alignment);
 }
 
+// The body of a loop, backend.md 7.2: a break in it jumps to end and a
+// continue to next, but for one in a loop inside it, which takes its
+// own.
+void
+loop_body(state_t &s, const stmt_t &body, int next, int end)
+{
+    s.jump_targets.push_back({ end, next });
+    statement(s, body);
+    s.jump_targets.pop_back();
+}
+
 // G14: the condition at the top, where it is written, tested once per
-// iteration and once more; no rotation and no reasoning about it.
+// iteration and once more; no rotation and no reasoning about it.  A
+// continue jumps to the condition.
 void
 while_stmt(state_t &s, const while_t &w)
 {
@@ -87,16 +99,38 @@ while_stmt(state_t &s, const while_t &w)
     place_label(s, cond);
     cbranch(s, w.cond, end, false);
 
-    statement(s, *w.body);
+    loop_body(s, *w.body, cond, end);
     jump(s, cond);
 
     place_label(s, end);
 }
 
-// G14, as for while.  The step has its label, for continue.  The init
-// is a statement: a declaration, a block of them for several
-// declarators, or an expression.  Its names are in scope for the whole
-// loop, 6.8.6.4p1.
+// backend.md 7.2: the body first, then the condition at the bottom,
+// where it is written, tested once per iteration, 6.8.6.3p1, and the
+// jump back taken while it holds.  The body's label is the loop's head.
+// A continue jumps to the condition.  The label past the test is placed
+// whether or not a break jumps to it, as while's and for's are.
+void
+do_stmt(state_t &s, const do_t &d)
+{
+    const int body = new_label(s);
+    const int cond = new_label(s);
+    const int end = new_label(s);
+
+    align_loop_head(s);
+    place_label(s, body);
+    loop_body(s, *d.body, cond, end);
+
+    place_label(s, cond);
+    cbranch(s, d.cond, body, true);
+
+    place_label(s, end);
+}
+
+// G14, as for while.  The step has its label, which a continue jumps
+// to.  The init is a statement: a declaration, a block of them for
+// several declarators, or an expression.  Its names are in scope for
+// the whole loop, 6.8.6.4p1.
 void
 for_stmt(state_t &s, const for_t &f)
 {
@@ -112,7 +146,7 @@ for_stmt(state_t &s, const for_t &f)
     if (f.cond)
         cbranch(s, *f.cond, end, false);
 
-    statement(s, *f.body);
+    loop_body(s, *f.body, next, end);
 
     place_label(s, next);
     if (f.step)
@@ -120,6 +154,60 @@ for_stmt(state_t &s, const for_t &f)
     jump(s, cond);
 
     place_label(s, end);
+}
+
+// A jump out of the innermost statement around it that takes a break,
+// 6.8.7.4p2.  Nothing is held at a statement's start, so the jump is
+// the whole of it.
+void
+break_stmt(state_t &s)
+{
+    if (s.jump_targets.empty())
+        throw std::logic_error("c1: a break outside a loop or a switch");
+
+    jump(s, s.jump_targets.back().break_);
+}
+
+// A jump to the continuation of the innermost loop around it,
+// 6.8.7.3p2, past any switch between.
+void
+continue_stmt(state_t &s)
+{
+    for (auto t = s.jump_targets.rbegin(); t != s.jump_targets.rend(); ++t)
+        if (t->continue_) {
+            jump(s, *t->continue_);
+            return;
+        }
+
+    throw std::logic_error("c1: a continue outside a loop");
+}
+
+// The number of a label the source names: one more label of the
+// function, numbered when c1 first meets it, at its definition or at a
+// goto to it.  No listing shows the name.
+int
+user_label(state_t &s, const std::string &name)
+{
+    const auto [at, added] = s.user_labels.try_emplace(name, 0);
+    if (added)
+        at->second = new_label(s);
+
+    return at->second;
+}
+
+// A label the source names is placed where it is written and is not
+// aligned, even when a goto jumps back to it: a loop built of goto is
+// laid out as written, backend.md 7.2.
+void
+label_stmt(state_t &s, const label_t &l)
+{
+    place_label(s, user_label(s, l.name));
+}
+
+void
+goto_stmt(state_t &s, const goto_t &g)
+{
+    jump(s, user_label(s, g.name));
 }
 
 // The value goes to the convention's result register, backend.md 7.2
@@ -162,8 +250,18 @@ statement(state_t &s, const stmt_t &st)
         if_stmt(s, as< if_t >(st));
     else if (is< while_t >(st))
         while_stmt(s, as< while_t >(st));
+    else if (is< do_t >(st))
+        do_stmt(s, as< do_t >(st));
     else if (is< for_t >(st))
         for_stmt(s, as< for_t >(st));
+    else if (is< break_t >(st))
+        break_stmt(s);
+    else if (is< continue_t >(st))
+        continue_stmt(s);
+    else if (is< label_t >(st))
+        label_stmt(s, as< label_t >(st));
+    else if (is< goto_t >(st))
+        goto_stmt(s, as< goto_t >(st));
     else
         return_stmt(s, as< return_t >(st));
 

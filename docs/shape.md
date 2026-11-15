@@ -134,9 +134,16 @@ Three sums.
   are one node. A value of pointer-to-function type is loaded,
   stored, passed, returned and compared as any pointer, and no node
   is particular to it.
-- `stmt_t`: expression, declaration, block, if, while, for, return.
-  A `for` carries its init as a statement, so a declaration in the
-  init costs nothing.
+- `stmt_t`: expression, declaration, block, if, while, do, for,
+  break, continue, label, goto, return. A `for` carries its init as a
+  statement, so a declaration in the init costs nothing. `break` and
+  `continue` name no statement: c1 finds the loop they leave or go on
+  with as it generates the statements around them. A label and a `goto`
+  carry the label's name. A label is a statement of its own, so it may
+  stand before a declaration and before a block's closing brace; a
+  labeled statement where one statement is wanted, the body of an `if`
+  or a loop, is a block of the label and the statement, which opens no
+  scope.
 - `unit_t`: the translation unit. It owns every symbol in a `deque`,
   so symbol addresses are stable for the life of the unit, and holds
   one `function_decl_t` per function symbol, with a body when the
@@ -445,6 +452,21 @@ expression as above, converted to the element's type; a designator,
 In an expression a global is what a local is, an lvalue of its type;
 one declared elsewhere of a not-yet type is refused where it is named.
 
+A label name has function scope (6.2.1p3) and a name space of its own
+(6.2.3p1): an identifier and a colon are a label wherever a block item
+or a statement starts, a typedef name's included, and a variable and a
+label may share a name. The parser keeps the function's labels apart
+from its scopes. A label defined twice in a function is an error
+(6.8.2p3). A `goto` may name a label defined after it, in any block of
+the function, so each `goto`'s name is checked at the function's end,
+and the first that names no label is the error (6.8.7.2p1). A `goto`
+into the scope of a variable length array is an error by the same
+paragraph; rcc has no such array, so nothing is checked. The parser
+counts the statements around the parse that a `break` may leave and
+that a `continue` may go on with: a loop counts for both. A `break`
+with neither around it is an error (6.8.7.4p1), and so is a `continue`
+outside a loop (6.8.7.3p1).
+
 ## 6. The generator
 
 `generate(unit, target, file, out)` calls the target's generator,
@@ -682,7 +704,9 @@ K&R's tables of the days of the months and of their names (sections
 5.7 and 5.8 of the second edition). With `static`, a function and an
 object of internal linkage and a block's object of static storage,
 `header-getch` keeps K&R's buffer of `getch` and `ungetch` (sections
-4.3 and 4.6) private to its file.
+4.3 and 4.6) private to its file. With `do`, `break`, `continue`,
+`goto` and labels, `header-itoa` runs K&R's `itoa`, `reverse` and
+`trim` (sections 3.6 and 3.7).
 
 ## 11. Not yet
 
@@ -701,8 +725,9 @@ array's, and a local array's initializer of any kind, `char s[] =
 type, wide and `u8` strings, the checks of the qualifiers (`const`
 and `volatile` are dropped, so an assignment to a `const` object and
 a conversion that discards a qualifier draw no diagnostic, and
-`(const void)` is taken as `(void)`), an atomic object, `switch`,
-`goto`, the body of a `static inline` function, whose use is refused,
+`(const void)` is taken as `(void)`), an atomic object, `switch` and
+its `case` and `default` labels, the body of a `static inline`
+function, whose use is refused,
 and a `static inline` declaration without a body, a `register` array
 (6.3.2.1p3), `inline` on a function
 definition, what an attribute that rcc does

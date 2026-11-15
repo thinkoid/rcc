@@ -745,9 +745,33 @@ the promotion is queued.
   duplicated test at the bottom. The directive aligns the head to 32
   bytes, and the assembler fills the gap with multi-byte `nop`s (13,
   call 8).
+- `do s while (e);`: `.p2align 5; .Lbody: s; .Lcond: cbranch(e,
+  .Lbody, 1); .Lend:`. The body comes first and the condition at the
+  bottom, where it is written, tested once per iteration (6.8.6.3p1);
+  the jump back is taken while it holds. `.Lbody` is the loop's head
+  and takes the directive as `while`'s and `for`'s heads do.
 - `for (i; e; n) s`: `i; .p2align 5; .Lcond: cbranch(e, .Lend, 0); s;
-  .Lstep: n; jmp .Lcond; .Lend:`. `continue` will jump to `.Lstep`,
-  `break` to `.Lend`.
+  .Lstep: n; jmp .Lcond; .Lend:`.
+- `break` and `continue`: `jmp` to a label of the innermost loop around
+  them. `break` jumps to its `.Lend`, past the loop (6.8.7.4p2).
+  `continue` jumps to the loop's continuation (6.8.7.3p2): `.Lcond` in
+  `while` and `do`, `.Lstep` in `for`. Each loop places all three of its
+  labels whether or not a jump names them. c1 keeps the loops around the
+  statement it generates as a stack of their two labels; a `switch` will
+  take a `break` and no `continue`, which goes on to the loop around it.
+  A statement boundary holds no value (6.7), so the jump is the whole
+  statement.
+- `goto L` and `L:`: `jmp` to the label and the label where it is
+  written. A label of the source is one more label of the function,
+  `.L<function>.<n>`, numbered when c1 first meets it, at its definition
+  or at a `goto` to it; no listing shows the C name. It is not aligned,
+  even when a `goto` jumps back to it: the directive is the compiler's
+  for the loops the language names, and a loop built of `goto` is laid
+  out as written. A `goto` into a block skips the initializers before
+  its label, and the objects they would initialize hold some value of
+  their type (G5). A label may stand before a declaration and
+  before a block's closing brace (6.8.3p1), and is then the null
+  statement it is translated as followed by (p2).
 - `e ? a : b` for its value: `cbranch(e, .Lelse, 0)`, `a` into `L`,
   `jmp .Lend`, `.Lelse:` `b` into the same `L`, `.Lend:`. Never
   `cmov`: the arm not chosen is not evaluated (6.5.16p5), and the

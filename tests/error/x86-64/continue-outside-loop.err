@@ -1,0 +1,2 @@
+tests/error/continue-outside-loop.c:10:9: error: 'continue' statement not in a loop
+status 1
