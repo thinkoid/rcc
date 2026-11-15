@@ -1,0 +1,2 @@
+tests/error/global-initializer-member-designator.c:4:18: error: not yet: designator
+status 1

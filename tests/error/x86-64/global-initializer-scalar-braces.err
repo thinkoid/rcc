@@ -1,0 +1,2 @@
+tests/error/global-initializer-scalar-braces.c:4:15: error: too many braces around scalar initializer
+status 1

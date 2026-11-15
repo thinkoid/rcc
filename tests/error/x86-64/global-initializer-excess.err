@@ -1,0 +1,2 @@
+tests/error/global-initializer-excess.c:3:24: error: excess elements in array initializer
+status 1

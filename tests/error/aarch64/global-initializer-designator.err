@@ -1,0 +1,2 @@
+tests/error/global-initializer-designator.c:2:21: error: not yet: designator
+status 1

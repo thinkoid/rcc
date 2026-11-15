@@ -1,0 +1,2 @@
+tests/error/global-initializer-element-not-constant.c:5:21: error: initializer element is not a compile-time constant
+status 1

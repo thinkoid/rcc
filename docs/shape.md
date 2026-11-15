@@ -145,10 +145,15 @@ Three sums.
   once, its parameters among them. It holds one `object_decl_t` per
   object it defines, in the order of the definitions, with the
   initializer when one was written: c1 writes the data from them. The
-  parser folds an initializer into that data: a constant of the
-  object's type; an address constant, a symbol, a global, a function
-  or a string literal, and a byte offset from it; or the bytes of a
-  string literal that initialize an array of `char`.
+  parser folds an initializer into that data, the subobjects it gives
+  a value, each a byte offset in the object, a type, a scalar's or an
+  array of `char`'s, and a value: a constant of the type; an address
+  constant, a symbol, a global, a function or a string literal, and a
+  byte offset from it; or the bytes of a string literal that
+  initialize an array of `char`. They are in the order of their
+  offsets, and every byte none of them holds is zero, so a brace
+  list reaches c1 with its brace elision resolved and its omitted
+  elements implied.
 
 A symbol is a name, a type and a storage: local, parameter, global,
 function, type name, enumerator. A global is an object declared at
@@ -372,9 +377,31 @@ constant expressions, an error. An array of `char`, `signed char` or
 An array of unknown size takes the literal's size with its
 terminating zero, one with room for the zero takes it, one the
 literal fills exactly takes none, and a literal longer than the array
-is an error (p3). Any other brace initializer is not yet. In an
-expression a global is what a local is, an lvalue of its type; one
-declared elsewhere of a not-yet type is refused where it is named.
+is an error (p3).
+
+Any other array takes a brace-enclosed list (p17), and a scalar may
+take its expression in one pair of braces (p12). The parser walks the
+list against the type, in subscript order (p18): an element whose
+initializer begins with a brace takes that list, and one that does
+not, an array, takes as many initializers from the enclosing list as
+its own elements do and leaves the rest to the next (p21). So `int
+m[2][3] = { { 1 }, 4, 5 };` gives `m[0][0]`, `m[1][0]` and `m[1][1]`,
+and `{ 1, 2, 3, 4, 5, 6 }` gives the six in order. A string literal
+alone in its place, before a `,` or the `}`, initializes an element
+that is an array of `char` whole, so `char names[][4] = { "Jan", "Feb"
+};` holds two strings and `{ { 'J', 'a', 'n' }, "Feb" }` spells the
+first. The elements the list leaves out are zero (p22); the empty
+initializer `{}` leaves the whole object zero (p11), and is an error
+for an array of unknown size (p4), which otherwise takes its size from
+the elements the list gives (p23). A list that goes on past what its
+object holds, `int a[2] = { 1, 2, 3 }`, is an error (p3), and so is a
+second expression for a scalar and a second pair of braces around
+one. A trailing comma is taken (p1). Each element is a constant
+expression as above, converted to the element's type; a designator,
+`[2] = 5` or `.x = 1`, is not yet.
+
+In an expression a global is what a local is, an lvalue of its type;
+one declared elsewhere of a not-yet type is refused where it is named.
 
 ## 6. The generator
 
@@ -608,7 +635,9 @@ library's, so `header-stdout` writes to `stdout` (`backend.md` and
 `aarch64.md` chapter 10). With address constants and strings as
 initializers, `header-months` keeps a table of names in an array of
 `char` and reaches `stdout`, `putchar` and `fputs` through global
-pointers to them.
+pointers to them. With brace-enclosed lists, `header-calendar` keeps
+K&R's tables of the days of the months and of their names (sections
+5.7 and 5.8 of the second edition).
 
 ## 11. Not yet
 
@@ -620,10 +649,10 @@ value, is refused; a floating constant is a token, refused where an
 expression uses it), an object of a typedef whose array size rcc
 cannot compute, a variable length array (a parameter's array of a
 size that is not constant is the pointer the parameter is adjusted to,
-and the size is not evaluated), `extern` in a block, brace
-initializers but one string literal in braces for an array of `char`
-at file scope, a local array's initializer, `char s[] = "..."` among
-them, a declaration through a typedef of function
+and the size is not evaluated), `extern` in a block, a designator in
+an initializer list, a local's brace initializer, a scalar's or an
+array's, and a local array's initializer of any kind, `char s[] =
+"..."` among them, a declaration through a typedef of function
 type, wide and `u8` strings, the checks of the qualifiers (`const`
 and `volatile` are dropped, so an assignment to a `const` object and
 a conversion that discards a qualifier draw no diagnostic, and

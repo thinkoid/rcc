@@ -82,7 +82,9 @@ reaches the C library's, so `header-stdout` writes to `stdout`. Their
 initializers take address constants and strings, and an array takes
 its size from another declaration, so `header-months` keeps a table
 of names in an array of `char` and reaches `stdout`, `putchar` and
-`fputs` through global pointers.
+`fputs` through global pointers. An initializer in braces takes
+arrays to any depth, with C's brace elision, so `header-calendar` is
+K&R's day of the year with its two tables.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/`, the cost corpus over `tests/cost/`
 and the error corpus over `tests/error/`, the programs rcc refuses

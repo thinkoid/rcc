@@ -501,9 +501,9 @@ address_value(const address_t &address, std::string_view label)
 // The bytes of an array of char that a string literal initializes,
 // 6.7.11p15, in the escapes of the literals' block: .string, which
 // appends the terminating zero, when the array has room for it, and
-// .ascii, which appends none, when the literal fills the array; then
-// .zero for the elements past the literal's, p22.
-void
+// .ascii, which appends none, when the literal fills the array.
+// Returns the bytes written; the elements past them are zero, p22.
+long
 string_data(std::ostream &out, const string_t &str, long size)
 {
     const long length = long(str.bytes.size());
@@ -511,32 +511,64 @@ string_data(std::ostream &out, const string_t &str, long size)
 
     out << std::format("\t{}\t{}\n", directive, quoted_bytes(str.bytes));
 
-    if (size > length + 1)
-        out << std::format("\t.zero\t{}\n", size - length - 1);
+    return std::min(size, length + 1);
 }
 
-// The value an object's initializer gives it, or its zeros: a constant
-// in the directive of the object's size, an address in a .quad, or an
-// array's bytes.  label is the label of the string literal the address
-// points into, if it does.
+// The value of one subobject, at its own width: a constant in the
+// directive of its size, an address in a .quad, or an array's bytes.
+// label is the label of the string literal the address points into, if
+// it does.  Returns the bytes written.
+long
+value_data(std::ostream &out, const subobject_t &sub, std::string_view label)
+{
+    const long size = size_of(sub.type);
+
+    if (const auto *constant = std::get_if< literal_t >(&sub.value)) {
+        out << std::format("\t{}\t{}\n", data_directive(size),
+                           constant_value(*constant, sub.type));
+        return size;
+    }
+
+    if (const auto *address = std::get_if< address_t >(&sub.value)) {
+        out << std::format("\t.quad\t{}\n", address_value(*address, label));
+        return size;
+    }
+
+    return string_data(out, std::get< string_t >(sub.value), size);
+}
+
+// A run of bytes no subobject holds, which are zero, 6.7.11p11: one
+// .zero, or nothing for an empty run.
+void
+zero_data(std::ostream &out, long bytes)
+{
+    if (bytes > 0)
+        out << std::format("\t.zero\t{}\n", bytes);
+}
+
+// The value an object's initializer gives it, exactly its size in bytes:
+// each subobject's value in the order of their offsets, and a .zero for
+// each run of bytes between them and after the last that none holds.
+// An object without an initializer, or with {}, is one .zero.  labels
+// holds the label of the string literal each subobject's address points
+// into, by the subobject's index.
 void
 initial_data(std::ostream &out,
              const object_decl_t &od,
-             std::string_view label,
+             const std::vector< std::string > &labels,
              long size)
 {
-    if (!od.init) {
-        out << std::format("\t.zero\t{}\n", size);
-        return;
-    }
+    long at = 0;
 
-    if (const auto *constant = std::get_if< literal_t >(&*od.init))
-        out << std::format("\t{}\t{}\n", data_directive(size),
-                           constant_value(*constant, od.sym->type));
-    else if (const auto *address = std::get_if< address_t >(&*od.init))
-        out << std::format("\t.quad\t{}\n", address_value(*address, label));
-    else
-        string_data(out, std::get< string_t >(*od.init), size);
+    if (od.init)
+        for (std::size_t i = 0; i < od.init->size(); ++i) {
+            const subobject_t &sub = (*od.init)[i];
+
+            zero_data(out, sub.offset - at);
+            at = sub.offset + value_data(out, sub, labels[i]);
+        }
+
+    zero_data(out, size - at);
 }
 
 // The alignment of an object the unit defines, chapter 10: its type's,
@@ -562,7 +594,7 @@ object_alignment(const type_t &t, const target_t &target)
 void
 object(std::ostream &out,
        const object_decl_t &od,
-       std::string_view label,
+       const std::vector< std::string > &labels,
        const target_t &target)
 {
     const auto name = assembly_name(*od.sym);
@@ -580,16 +612,17 @@ object(std::ostream &out,
 
     out << name << ":\n";
 
-    initial_data(out, od, label, size);
+    initial_data(out, od, labels, size);
 }
 
 // One block of objects, under its section's directive, or nothing when
 // no object belongs to it: those with an initializer or those without.
-// labels holds the label of each object's string literal, by its index.
+// labels holds the labels of each object's string literals, by its
+// index.
 void
 object_block(std::ostream &out,
              const std::vector< object_decl_t > &objects,
-             const std::vector< std::string > &labels,
+             const std::vector< std::vector< std::string > > &labels,
              const target_t &target,
              bool initialized)
 {
@@ -607,24 +640,31 @@ object_block(std::ostream &out,
     }
 }
 
-// The label of the string literal each object's initializer points
-// into, by the object's index, or empty for an object whose initializer
-// names none.  Each such literal is one more literal of the file,
+// The label of the string literal each subobject's address points into,
+// by the object's index and the subobject's, or empty for one whose
+// value names none.  Each such literal is one more literal of the file,
 // added to strings after those the functions name, in the order of the
-// definitions, so no function's literal changes its number.
-std::vector< std::string >
+// definitions and of the subobjects in each, so no function's literal
+// changes its number.
+std::vector< std::vector< std::string > >
 initializer_literals(std::vector< std::string > &strings,
                      const std::vector< object_decl_t > &objects)
 {
-    std::vector< std::string > labels;
+    std::vector< std::vector< std::string > > labels;
 
     for (const auto &od : objects) {
-        const auto *address =
-            od.init ? std::get_if< address_t >(&*od.init) : nullptr;
-        const auto *str =
-            address ? std::get_if< string_t >(&address->base) : nullptr;
+        auto &object_labels = labels.emplace_back();
+        if (!od.init)
+            continue;
 
-        labels.push_back(str ? string_label(strings, *str) : std::string());
+        for (const auto &sub : *od.init) {
+            const auto *address = std::get_if< address_t >(&sub.value);
+            const auto *str =
+                address ? std::get_if< string_t >(&address->base) : nullptr;
+
+            object_labels.push_back(str ? string_label(strings, *str) :
+                                          std::string());
+        }
     }
 
     return labels;

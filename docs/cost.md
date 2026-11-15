@@ -174,6 +174,7 @@ yet.
 | the data of a global | after the last function, the objects with an initializer in `.data` and the others in `.bss`, each under `.globl`, `.type n, @object`, `.size n, 4` and `.p2align 2` above an alignment of 1, then `.byte 120`, `.short -3`, `.long 42`, `.quad 4886718345` or `.zero 12`; `int zero = 0;` is `.long 0` in `.data`; an array of 16 bytes or more is aligned to 16, `.p2align 4` for `long pair[2]`, which the psABI asks of a global array; nothing for an object only declared | `global-data` |
 | an address constant as a global's initializer | one `.quad` in `.data`, the symbol and its offset in bytes, the constant times the pointee's size: `.quad n` for `&n`, `.quad a+12` for `&a[3]`, `.quad a+8` for `a + 2`, `.quad m+24` for `&m[1][2]`, `.quad on_signal`, `.quad stdout` and `.quad putchar` for objects and functions the file only declares, `.quad .Ls1+1` for `"abc" + 1`, its literal numbered after the functions'; `.quad 4096` for `(int *) 4096` and `.quad n` for `(long) &n`; the linker or the loader fills each in | `global-address` |
 | a string literal as the initializer of an array of `char` | the array's own bytes under its own label, in the escapes of the literals' block: `.string "abc"` for `char s[] = "abc"`, which is 4 bytes, `.string "abc"` and `.zero 4` for `char s[8]`, `.ascii "abc"` for `char s[3]`, which the literal fills; no alignment, but `.p2align 4` for an array of 16 bytes or more; beside them, `char *p = "abc"` is two objects, the literal `.Ls0` and `.quad .Ls0` | `global-string` |
+| a brace-enclosed list as a global's initializer | in `.data` whatever its values, each element the list gives in subscript order in the directive of its form at its width, and `.zero` for each run of elements it leaves out, so the bytes are the object's size: `.long 1`, `.long 2`, `.zero 12` for `int a[5] = { 1, 2 }`; `.long 1`, `.zero 8`, `.long 4`, `.long 5`, `.zero 4` for `int m[2][3] = { { 1 }, 4, 5 }`; `.quad .Ls0`, `.quad .Ls1` for `char *names[] = { "Jan", "Feb" }`, the literals numbered after the functions'; `.string "Jan"`, `.string "Feb"` for `char months[][4]`, each row's own bytes; `.long 5` for `int n = { 5 }` and `.zero 4` for `int z = {}`; `.p2align 4` for an array of 16 bytes or more | `global-braces` |
 
 ### 2.2 aarch64
 
@@ -248,6 +249,7 @@ bytes or more.
 | the data of a global | the text of x86-64's row, but an array takes its element's alignment whatever its size, `.p2align 3` for `long pair[2]`, since the AAPCS64 asks no more | `global-data` |
 | an address constant as a global's initializer | the text of x86-64's row; the assembler's relocation is `R_AARCH64_ABS64`, which the linker of a position-independent executable makes relative for a symbol the program defines | `global-address` |
 | a string literal as the initializer of an array of `char` | the text of x86-64's row, but no alignment for an array of any size | `global-string` |
+| a brace-enclosed list as a global's initializer | the text of x86-64's row, but an array takes its element's alignment whatever its size | `global-braces` |
 
 ## 3. Verification
 

@@ -903,8 +903,8 @@ with static storage. A string literal is a labeled array of bytes in
 the literals are met, by a counter of its own in each file; two equal
 literals written twice are two labels. The literals the functions name
 are numbered first; those the objects' initializers point into follow
-them, in the order of the definitions, so an initializer's literal
-moves no function's. The bytes are one `.string`
+them, in the order of the definitions and of the elements in each,
+so an initializer's literal moves no function's. The bytes are one `.string`
 directive, which appends the terminating zero (6.4.5p6): printable
 ASCII as itself with `"` and `\` escaped, `\n`, `\t` and `\r` as the C
 escapes, and every other byte as a three-digit octal escape. All the
@@ -931,13 +931,26 @@ initializer, and `int n;` is in `.bss`. Each object is written so:
 - the label, then the initializer's data, below, or `.zero` with the
   object's size.
 
-c0 folds the initializer into one of three forms, and each has its
-data:
+c0 folds the initializer into the subobjects it gives a value
+(6.7.11p18): each scalar, and each array of `char` a string
+initializes, with its byte offset in the object, its type and its
+value. A scalar's initializer, in braces or not, is one subobject at
+offset 0. A brace-enclosed list is one for each element it gives, in
+subscript order and at any depth, with the braces of a subaggregate
+written, left out or left out in part (p21). The data are each
+subobject's value at its own width, in the order of the offsets, and
+a `.zero` for each run of bytes no subobject holds, between them and
+after the last, so the bytes written are the object's size:
+`int m[2][3] = { { 1 }, 4, 5 };` is `.long 1`, `.zero 8`, `.long 4`,
+`.long 5` and `.zero 4`. An object a list initializes is in `.data`
+whatever its values, so `int z[3] = {};` is `.zero 12` there. Each
+value has one of three forms, and each form has its data:
 
 - A constant: an integer constant expression converted to the
-  object's type, a null pointer, or an integer cast to a pointer. It
+  scalar's type, a null pointer, or an integer cast to a pointer. It
   is `.byte`, `.short`, `.long` or `.quad` with the number, by the
-  object's size: `.long 42`, `.quad 4096`.
+  scalar's size, read unsigned for an unsigned type: `.long 42`,
+  `.quad 4096`, `.byte 255` for an `unsigned char`.
 - An address constant (6.6p9, p11): a symbol and a byte offset, one
   `.quad`. The symbol is a global or a function, one the file defines
   or one it only declares, or a string literal's label: `.quad n` for
@@ -951,17 +964,20 @@ data:
   leaves the word to the loader: a relative relocation for a symbol
   the program defines, the symbol's own for one in a shared library.
   The object is in `.data` with the other initialized ones, writable,
-  since the loader writes it.
+  since the loader writes it. `char *names[] = { "Jan", "Feb" };` is
+  two literals and `.quad .Ls0` and `.quad .Ls1`.
 - A string literal for an array of `char`, `signed char` or `unsigned
-  char` (6.7.11p15): the array's own bytes under its own label, in the
+  char` (6.7.11p15), the object or an element of an array of arrays,
+  in braces or not: the array's own bytes at its offset, in the
   escapes of the literals' block, and no literal of its own. `.string`
   appends the terminating zero when the array has room for it, and
-  `.ascii` appends none when the literal fills the array; `.zero`
-  writes the elements past the literal's. `char s[] = "abc";` is
-  `.size s, 4` and `.string "abc"`, `char s[8] = "abc";` is `.string
-  "abc"` and `.zero 4`, and `char s[3] = "abc";` is `.ascii "abc"`.
-  `char *p = "abc";` is two objects: the literal in the literals'
-  block, and the pointer, `.quad .Ls0`.
+  `.ascii` appends none when the literal fills the array; the elements
+  past the literal's are part of the run of zeros after it. `char s[]
+  = "abc";` is `.size s, 4` and `.string "abc"`, `char s[8] = "abc";`
+  is `.string "abc"` and `.zero 4`, and `char s[3] = "abc";` is
+  `.ascii "abc"`. `char names[][4] = { "Jan", "Feb" };` is `.string
+  "Jan"` and `.string "Feb"`. `char *p = "abc";` is two objects: the
+  literal in the literals' block, and the pointer, `.quad .Ls0`.
 
 An object the file only declares writes nothing.
 

@@ -779,6 +779,35 @@ Fix: the message names what the name was first declared as.
 Check: a program of =tests/error= with the declaration above, pinned
 "redefinition of 'A'".
 
+** TODO A string in parentheses initializes an array of char only without braces
+
+~char s[] = ("abc");~ compiles, and ~char t[] = { ("abc") };~ fails
+with "incompatible pointer to integer conversion". In a list the
+string is known by its tokens, a string literal before a comma or the
+closing brace; outside a list the parentheses are looked through.
+=clang= takes both, and 6.7.11p15 says "a string literal", which a
+parenthesized one is not in so many words.
+
+Fix: one answer for both spellings: both taken, or both refused with
+a message that names the parentheses.
+
+Check: the two declarations behave alike, pinned in =tests/error= or
+in =tests/cost=.
+
+** TODO Two pairs of braces around a scalar's initializer are an error
+
+~int n = { { 1 } };~ fails with "too many braces around scalar
+initializer". 6.7.11p12 gives a scalar "a single expression,
+optionally enclosed in braces", one pair, in its Semantics and not as
+a constraint, so the program is undefined and not wrong; =clang= and
+=gcc= compile it with a warning.
+
+Fix: decide whether rcc keeps the error or takes the inner braces
+with a warning.
+
+Check: the pin of =global-initializer-scalar-braces= agrees with the
+decision.
+
 ** TODO Arithmetic on a pointer to an array of unknown size is an internal error
 
 ~extern int a[]; long f(void) { return (long) (&a + 1); }~ ends with

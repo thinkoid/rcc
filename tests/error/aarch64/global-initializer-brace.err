@@ -1,2 +1,2 @@
-tests/error/global-initializer-brace.c:2:16: error: not yet: brace initializer
+tests/error/global-initializer-brace.c:4:23: error: expected '}'
 status 1

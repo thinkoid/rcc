@@ -1,2 +1,2 @@
-tests/error/global-initializer-brace-string.c:4:16: error: not yet: brace initializer
+tests/error/global-initializer-brace-string.c:4:25: error: excess elements in char array initializer
 status 1

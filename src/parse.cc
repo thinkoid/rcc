@@ -2377,84 +2377,57 @@ narrowed_address(const expr_t &init)
     return is< pointer_t >(arg.type) && address_constant(arg);
 }
 
-// Whether the tokens ahead are a string literal in braces, { "abc" } or
-// { "abc", }, which initializes an array of char as the literal alone
-// does, 6.7.11p15.
+// Whether a type is an array of char, signed char or unsigned char,
+// which a string literal may initialize, 6.7.11p15.
 bool
-braced_string_ahead(const parser_t &p)
+is_char_array(const type_t &t)
 {
-    if (peek(p).kind != tok_t::lbrace || peek(p, 1).kind != tok_t::string)
+    if (!is< array_t >(t))
         return false;
 
-    std::size_t ahead = 2;
+    const type_t &element = *as< array_t >(t).element;
+
+    return is< int_t >(element) && as< int_t >(element).width == 8;
+}
+
+// Whether the tokens ahead are a string literal alone in its place in a
+// list, "abc" or "ab" "c" before a ',' or the '}': it initializes an
+// array of char whole, 6.7.11p15, where any other expression there
+// initializes the array's first element.
+bool
+string_ahead(const parser_t &p)
+{
+    std::size_t ahead = 0;
     while (peek(p, ahead).kind == tok_t::string)
         ++ahead;
 
-    if (peek(p, ahead).kind == tok_t::comma)
-        ++ahead;
+    const tok_t after = peek(p, ahead).kind;
 
-    return peek(p, ahead).kind == tok_t::rbrace;
+    return ahead > 0 && (after == tok_t::comma || after == tok_t::rbrace);
 }
 
-// The initializer of an array at file scope.  An array of char, signed
-// char or unsigned char takes a string literal, in braces or not,
-// 6.7.11p15: its bytes, and its terminating zero when the array has
-// room for it or is of unknown size, which takes the literal's size;
-// the elements past the literal's are zero, p22.  A literal longer than
-// the array is an initializer for an object not contained in it, p3.
-// Any other array takes a brace-enclosed list, p17, which is not yet.
-string_t
-array_initializer(parser_t &p, const type_t &t)
+// A designation, [2] = or .x =, 6.7.11p1, is not yet.
+void
+refuse_designator(const parser_t &p)
 {
-    const auto &array = as< array_t >(t);
-    const type_t &element = *array.element;
-    const bool of_char =
-        is< int_t >(element) && as< int_t >(element).width == 8;
-
-    const bool braced = of_char && braced_string_ahead(p);
-    if (braced)
-        advance(p);
-    else if (peek(p).kind == tok_t::lbrace)
-        not_yet(peek(p), "brace initializer");
-
-    const token_t &start = peek(p);
-    expr_t e = assignment_expression(p);
-
-    if (!of_char || !is< string_t >(e))
-        fail(start, "array initializer must be an initializer list");
-
-    if (braced) {
-        accept(p, tok_t::comma);
-        expect(p, tok_t::rbrace, "expected '}'");
-    }
-
-    string_t str = as< string_t >(e);
-    if (array.count >= 0 && long(str.bytes.size()) > array.count)
-        fail(start, "initializer-string for char array is too long");
-
-    return str;
+    if (next_is(p, { tok_t::lbracket, tok_t::dot }))
+        not_yet(peek(p), "designator");
 }
 
-// The initializer of an object the unit defines, after its '='.  Every
-// expression in it is a constant expression, 6.7.11p5, converted to the
-// object's type as by simple assignment, p12, and folded: an integer
-// constant expression, or a null pointer, which the evaluator made a
-// literal; an address constant, 6.6p9, p11.  Any other initializer is
-// no constant expression, an error, and so is an address in an integer
-// narrower than a pointer, which no load writes.  An array takes what
-// array_initializer() takes.  A brace around a scalar's initializer,
-// p12, is not yet.
+// The value of a scalar at file scope, the expression ahead.  Every
+// expression in an initializer of an object of static storage is a
+// constant expression, 6.7.11p5, converted to the scalar's type as by
+// simple assignment, p12, and folded: an integer constant expression,
+// or a null pointer, which the evaluator made a literal; an address
+// constant, 6.6p9, p11.  Any other expression is no constant
+// expression, an error, and so is an address in an integer narrower
+// than a pointer, which no load writes.  at is the token a conversion's
+// error is said at.
 initializer_t
-object_initializer(parser_t &p, const token_t &op, const type_t &t)
+scalar_value(parser_t &p, const token_t &at, const type_t &t)
 {
-    if (is< array_t >(t))
-        return array_initializer(p, t);
-
-    if (peek(p).kind == tok_t::lbrace)
-        not_yet(peek(p), "brace initializer");
-
     const token_t &start = peek(p);
-    expr_t init = assignment_conversion(op, assignment_expression(p), t);
+    expr_t init = assignment_conversion(at, assignment_expression(p), t);
 
     if (is< literal_t >(init))
         return as< literal_t >(init);
@@ -2467,6 +2440,226 @@ object_initializer(parser_t &p, const token_t &op, const type_t &t)
         return std::move(*address);
 
     fail(start, "initializer element is not a compile-time constant");
+}
+
+// The scalar t at offset, given the value of the expression ahead.
+void
+scalar_subobject(parser_t &p,
+                 const token_t &at,
+                 const type_t &t,
+                 long offset,
+                 std::vector< subobject_t > &values)
+{
+    initializer_t value = scalar_value(p, at, t);
+    values.push_back(subobject_t { offset, t, std::move(value) });
+}
+
+// A string literal that initializes the array of char t at offset,
+// 6.7.11p15: its bytes, and its terminating zero when the array has
+// room for it or is of unknown size, which takes the literal's size;
+// the elements past the literal's are zero, p22.  A literal longer than
+// the array is an initializer for an object not contained in it, p3.
+// Returns the count of elements the literal gives an array of unknown
+// size, its bytes and the zero.
+long
+string_value(const token_t &start,
+             const string_t &str,
+             const type_t &t,
+             long offset,
+             std::vector< subobject_t > &values)
+{
+    const auto &array = as< array_t >(t);
+    const long given = long(str.bytes.size()) + 1;
+
+    if (array.count >= 0 && given - 1 > array.count)
+        fail(start, "initializer-string for char array is too long");
+
+    const type_t sized =
+        array.count >= 0 ? t : make_array(*array.element, given);
+    values.push_back(subobject_t { offset, sized, str });
+
+    return given;
+}
+
+// The string literal ahead, which string_ahead() found, for the array of
+// char t at offset.
+long
+listed_string(parser_t &p,
+              const type_t &t,
+              long offset,
+              std::vector< subobject_t > &values)
+{
+    const token_t &start = peek(p);
+    const expr_t e = assignment_expression(p);
+
+    return string_value(start, as< string_t >(e), t, offset, values);
+}
+
+// Takes the ',' before another initializer of the list, and says
+// whether one follows; a ',' before the '}' ends the list, 6.7.11p1,
+// and is left for it.
+bool
+accept_separator(parser_t &p)
+{
+    if (peek(p).kind != tok_t::comma || peek(p, 1).kind == tok_t::rbrace)
+        return false;
+
+    advance(p);
+
+    return true;
+}
+
+long subobject_initializer(parser_t &,
+                           const type_t &,
+                           long offset,
+                           std::vector< subobject_t > &);
+
+// The elements of an array at offset, from the initializers ahead in a
+// list, in increasing subscript order, 6.7.11p18: each element from
+// the next initializer, or from as many as it takes when that one does
+// not begin with a brace, p21.  An initializer is ahead.  The elements
+// end with the array's count, leaving the rest of the list to the
+// enclosing aggregate or to the list's own check, or with the list;
+// an array of unknown size ends only with the list.  Returns the count
+// of elements given, which completes such an array, p23.
+long
+elements(parser_t &p,
+         const array_t &array,
+         long offset,
+         std::vector< subobject_t > &values)
+{
+    const type_t &element = *array.element;
+    const long size = size_of(element);
+
+    long count = 0;
+    do {
+        subobject_initializer(p, element, offset + count * size, values);
+        ++count;
+    } while (count != array.count && accept_separator(p));
+
+    return count;
+}
+
+// The end of a brace-enclosed list after its initializers: a ',' may
+// stand before the '}', 6.7.11p1.  A list that went on once its object
+// held every value it gives would be an initializer for an object not
+// contained in it, p3, said with what the object is.
+void
+close_list(parser_t &p, bool full, std::string_view what)
+{
+    accept(p, tok_t::comma);
+
+    if (full && peek(p).kind != tok_t::rbrace)
+        fail(peek(p),
+             "excess elements in " + std::string(what) + " initializer");
+
+    expect(p, tok_t::rbrace, "expected '}'");
+}
+
+// A brace-enclosed initializer of an object or a subobject of type t at
+// offset, its '{' ahead.  The empty initializer, {}, leaves it zero,
+// 6.7.11p11, but an array of unknown size may not take it, p4.  A
+// scalar takes one expression, p12, and no braces of its own inside
+// them; an array of char a string literal alone, p15; any other array
+// its elements, p17.  Returns the count of elements given to an array.
+long
+braced_initializer(parser_t &p,
+                   const type_t &t,
+                   long offset,
+                   std::vector< subobject_t > &values)
+{
+    const token_t &brace = advance(p);
+
+    if (peek(p).kind == tok_t::rbrace) {
+        if (is< array_t >(t) && as< array_t >(t).count < 0)
+            fail(brace, "empty initializer for an array of unknown size");
+
+        advance(p);
+
+        return 0;
+    }
+
+    refuse_designator(p);
+
+    if (!is< array_t >(t)) {
+        if (peek(p).kind == tok_t::lbrace)
+            fail(peek(p), "too many braces around scalar initializer");
+
+        scalar_subobject(p, peek(p), t, offset, values);
+        close_list(p, true, "scalar");
+
+        return 0;
+    }
+
+    if (is_char_array(t) && string_ahead(p)) {
+        const long count = listed_string(p, t, offset, values);
+        close_list(p, true, "char array");
+
+        return count;
+    }
+
+    const auto &array = as< array_t >(t);
+    const long count = elements(p, array, offset, values);
+    close_list(p, count == array.count, "array");
+
+    return count;
+}
+
+// The initializer of a subobject of type t at offset from its place in
+// a list, 6.7.11p21: one that begins with a brace is its own; a scalar
+// takes the one expression ahead; an array of char a string literal
+// alone; any other array takes as many initializers from the list as
+// its elements do.  Returns the count of elements given to an array.
+long
+subobject_initializer(parser_t &p,
+                      const type_t &t,
+                      long offset,
+                      std::vector< subobject_t > &values)
+{
+    refuse_designator(p);
+
+    if (peek(p).kind == tok_t::lbrace)
+        return braced_initializer(p, t, offset, values);
+
+    if (!is< array_t >(t)) {
+        scalar_subobject(p, peek(p), t, offset, values);
+        return 0;
+    }
+
+    if (is_char_array(t) && string_ahead(p))
+        return listed_string(p, t, offset, values);
+
+    return elements(p, as< array_t >(t), offset, values);
+}
+
+// The initializer of an object the unit defines, after its '=', into
+// the subobjects it gives a value.  A brace-enclosed one is as
+// braced_initializer() takes it.  Without braces, a scalar takes one
+// expression, converted from the '=', 6.7.11p12, and an array a string
+// literal alone, for an array of char, p15: any other array takes a
+// brace-enclosed list, p17.  Returns the count of elements given to an
+// array, which completes one of unknown size, p23.
+long
+object_initializer(parser_t &p,
+                   const token_t &op,
+                   const type_t &t,
+                   std::vector< subobject_t > &values)
+{
+    if (peek(p).kind == tok_t::lbrace)
+        return braced_initializer(p, t, 0, values);
+
+    if (!is< array_t >(t)) {
+        scalar_subobject(p, op, t, 0, values);
+        return 0;
+    }
+
+    const token_t &start = peek(p);
+    const expr_t e = assignment_expression(p);
+
+    if (!is_char_array(t) || !is< string_t >(e))
+        fail(start, "array initializer must be an initializer list");
+
+    return string_value(start, as< string_t >(e), t, 0, values);
 }
 
 // The entry of the unit's objects that defines sym, its index, or
@@ -2501,15 +2694,14 @@ require_definable(const token_t &name, const symbol_t &sym)
 }
 
 // The type of an array of unknown size that an initializer completes,
-// 6.7.11p23: the string's bytes and its terminating zero, p15.  Any
-// other type is complete and stays as it is.
+// 6.7.11p23: count elements, the elements its list gives or a string's
+// bytes and its terminating zero, p15.  Any other type is complete and
+// stays as it is.
 type_t
-completed_type(const type_t &t, const initializer_t &init)
+completed_type(const type_t &t, long count)
 {
     if (!is< array_t >(t) || as< array_t >(t).count >= 0)
         return t;
-
-    const long count = long(std::get< string_t >(init).bytes.size()) + 1;
 
     return make_array(*as< array_t >(t).element, count);
 }
@@ -2578,10 +2770,11 @@ declare_external_object(parser_t &p,
         return;
 
     const token_t &op = advance(p);
-    initializer_t init = object_initializer(p, op, sym->type);
+    std::vector< subobject_t > values;
+    const long count = object_initializer(p, op, sym->type, values);
 
-    sym->type = completed_type(sym->type, init);
-    p.unit.objects[*index].init = std::move(init);
+    sym->type = completed_type(sym->type, count);
+    p.unit.objects[*index].init = std::move(values);
 }
 
 // No function specifier stands in a declaration of main, 6.7.5p4.

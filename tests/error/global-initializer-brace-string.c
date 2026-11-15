@@ -1,6 +1,6 @@
-/* Two string literals in braces, an initializer list of an array of
-   char: a list is not yet, and only one string literal in braces is
-   taken, as the literal alone is, 6.7.11p15. */
+/* Two string literals in braces for an array of char: a string literal
+   in braces initializes the array whole, 6.7.11p15, and the second is
+   an initializer for an object not contained in the array, p3. */
 char words[] = { "one", "two" };
 
 int

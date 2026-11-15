@@ -355,13 +355,25 @@ struct address_t
     long long offset;
 };
 
-// The initializer of an object at file scope, folded by the parser into
-// the data c1 writes: a constant of the object's type, an integer or a
-// pointer, the bits of a value past LLONG_MAX of an unsigned type; an
-// address constant; or the bytes of a string literal that initialize an
-// array of char, 6.7.11p15, the object's own bytes and no literal of
-// its own.
+// A value an initializer gives a scalar or an array of char at file
+// scope, folded by the parser into the data c1 writes: a constant of the
+// scalar's type, an integer or a pointer, the bits of a value past
+// LLONG_MAX of an unsigned type; an address constant; or the bytes of a
+// string literal that initialize an array of char, 6.7.11p15, the
+// array's own bytes and no literal of its own.
 using initializer_t = std::variant< literal_t, address_t, string_t >;
+
+// One object or subobject an initializer gives a value, 6.7.11p18: the
+// object itself when it is a scalar or an array of char a string
+// initializes, else an element of an array, at any depth.  offset is
+// its byte offset in the object, type its type, a scalar's or the array
+// of char's, which gives its size, and value what it holds.
+struct subobject_t
+{
+    long offset;
+    type_t type;
+    initializer_t value;
+};
 
 // One per object the unit defines, 6.9.3: a declaration at file scope
 // with an initializer, or a tentative definition, one without an
@@ -369,15 +381,17 @@ using initializer_t = std::variant< literal_t, address_t, string_t >;
 // definitions, each where the first declaration that defines its
 // object stands; a later one adds its initializer.  An object the unit
 // only declares has none, and c1 writes nothing for it.  init is the
-// initializer converted to the object's type, or absent for an object
-// whose definitions are all tentative, which is zero, 6.9.3p2,
-// 6.7.11p11.  The symbol's type is complete by the end of the unit: an
-// array of unknown size takes its size from a later declaration, from
-// its string, or else is one element, 6.9.3p2.
+// subobjects the initializer gives a value, each converted to its type,
+// in the order of their offsets, which never overlap; every byte none of
+// them holds is zero, 6.7.11p11, p20, p22, and {} holds none.  It is
+// absent for an object whose definitions are all tentative, which is
+// zero, 6.9.3p2.  The symbol's type is complete by the end of the unit:
+// an array of unknown size takes its size from a later declaration, from
+// its initializer, or else is one element, 6.9.3p2.
 struct object_decl_t
 {
     const symbol_t *sym;
-    std::optional< initializer_t > init;
+    std::optional< std::vector< subobject_t > > init;
 };
 
 // The warnings in the order the parser met them; the unit compiles

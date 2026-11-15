@@ -1,0 +1,2 @@
+tests/error/global-initializer-empty-unknown-size.c:4:15: error: empty initializer for an array of unknown size
+status 1

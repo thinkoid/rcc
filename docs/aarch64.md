@@ -901,7 +901,12 @@ The objects' data is the text of `backend.md` chapter 10, the same on
 both targets: `.data` for those with an initializer, `.bss` for the
 others, each under `.globl`, `.type`, `.size` and `.p2align`, with
 `.byte`, `.short`, `.long`, `.quad`, `.string`, `.ascii` or `.zero`,
-which GNU as and clang take on this machine as on x86-64. An address
+which GNU as and clang take on this machine as on x86-64. A
+brace-enclosed list is the same text too: each element it gives in
+the directive of its form at its width, in subscript order, and a
+`.zero` for each run of elements it leaves out, so `int m[2][3] = {
+{ 1 }, 4, 5 };` is `.long 1`, `.zero 8`, `.long 4`, `.long 5` and
+`.zero 4` on both targets. An address
 constant is the same `.quad n`, `.quad a+12`, `.quad .Ls0+1`: the
 assembler leaves an `R_AARCH64_ABS64`, which the linker of a
 position-independent executable makes an `R_AARCH64_RELATIVE` for a
