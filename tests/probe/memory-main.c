@@ -256,6 +256,14 @@ TYPES(DECLARE_KCOMPOUND_ALL)
 
 TYPES(DECLARE_STORE_ALL)
 
+#define DECLARE_FOLDS(T, N)                                             \
+    BOTH(long, fold_##N, (T)) BOTH(long, fold_value_##N, (T))           \
+    BOTH(long, fold_matrix_##N, (long)) BOTH(long, fold_sum_##N, (T))   \
+    BOTH(long, fold_zero_##N, (T)) BOTH(long, fold_distance_##N, (void)) \
+    BOTH(long, far_fold_##N, (T)) BOTH(long, farther_fold_##N, (T))
+
+TYPES(DECLARE_FOLDS)
+
 BOTH(long, text_pass, (void))
 BOTH(long, text_two, (void))
 BOTH(long, text_escapes, (void))
@@ -275,6 +283,10 @@ BOTH(long, deep_twice, (P8(long), short **))
 BOTH(long, around, (long *, long *, long))
 BOTH(long, around_held, (int *, long))
 BOTH(long, around_store, (char *, long))
+BOTH(long, fold_pointers, (long *, long *, long))
+BOTH(int, text_elem, (void))
+BOTH(long, text_addr, (void))
+BOTH(long, text_beyond, (void))
 
 /* The loads and stores, the pointers to pointers and the steps of one
    type, over every value and every offset: P(T) is a pointer the main
@@ -473,6 +485,28 @@ TYPES(TEST_OPERATORS)
 
 TYPES(TEST_ADDRESS)
 
+/* an element of a local array by a constant, the slot's operand, of
+   one type over every value */
+#define TEST_FOLDS(T, N)                                                \
+    static void test_folds_##N(void)                                    \
+    {                                                                   \
+        for (int i = 0; i < COUNT; ++i) {                               \
+            const long x = values[i];                                   \
+                                                                        \
+            CHECK(fold_##N, x, 0, ((T) x));                             \
+            CHECK(fold_value_##N, x, 0, ((T) x));                       \
+            CHECK(fold_matrix_##N, x, 0, (x));                          \
+            CHECK(fold_sum_##N, x, 0, ((T) x));                         \
+            CHECK(fold_zero_##N, x, 0, ((T) x));                        \
+            CHECK(far_fold_##N, x, 0, ((T) x));                         \
+            CHECK(farther_fold_##N, x, 0, ((T) x));                     \
+        }                                                               \
+                                                                        \
+        CHECK(fold_distance_##N, 0, 0, ());                             \
+    }
+
+TYPES(TEST_FOLDS)
+
 /* the literals, the frames of one function each, and depth */
 static void
 test_rest(void)
@@ -484,6 +518,9 @@ test_rest(void)
     CHECK(text_first, 0, 0, ());
     CHECK(text_star, 0, 0, ());
     CHECK(text_joined, 0, 0, ());
+    CHECK(text_elem, 0, 0, ());
+    CHECK(text_addr, 0, 0, ());
+    CHECK(text_beyond, 0, 0, ());
 
     for (int c = -1; c < 3; ++c) {
         CHECK(text_cond, c, 0, (c));
@@ -519,6 +556,8 @@ test_rest(void)
                    ((long *) (B + at), (long *) (B + at + 16), v[2]));
             MCHECK(around_held, x, y, at, ((int *) (B + at), v[2]));
             MCHECK(around_store, x, y, at, ((char *) (B + at), v[2]));
+            MCHECK(fold_pointers, x, y, at,
+                   ((long *) (B + at), (long *) (B + at + 8), y));
         }
     }
 }
@@ -529,7 +568,9 @@ main(void)
     if (getenv("PROBE_ALL"))
         shown = LONG_MAX;
 
-#define RUN(T, N) test_access_##N(); test_operators_##N(); test_address_##N();
+#define RUN(T, N)                                                       \
+    test_access_##N(); test_operators_##N(); test_address_##N();        \
+    test_folds_##N();
     TYPES(RUN)
 
     test_rest();

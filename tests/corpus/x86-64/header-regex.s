@@ -46,12 +46,9 @@ main:
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register %rbp
 	subq	$32, %rsp
-	leaq	-12(%rbp), %rax
-	movl	$1, (%rax)
-	leaq	-12(%rbp), %rax
-	movl	$2, 4(%rax)
-	leaq	-12(%rbp), %rax
-	movl	$3, 8(%rax)
+	movl	$1, -12(%rbp)
+	movl	$2, -8(%rbp)
+	movl	$3, -4(%rbp)
 	movl	$3, -16(%rbp)
 	leaq	-12(%rbp), %rax
 	movq	%rax, -24(%rbp)

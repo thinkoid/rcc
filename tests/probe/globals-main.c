@@ -16,7 +16,9 @@
    as offsets from the buffer, then the buffers, so a store too wide,
    one to the wrong object, or one that reached its object's copy of
    the other build shows.  An address an object's function returns is
-   compared as its offset from its build's own object.
+   compared as its offset from its build's own object.  The static
+   array that crosses a page, big, is filled and compared through the
+   start each build's big_base() returns.
 
    Before anything writes them, the initialized objects of both builds
    are checked against their initializers, which the main converts to
@@ -95,7 +97,9 @@ static long shown = 40;
         extern T xa_##N[ARRAY], ref_xa_##N[ARRAY];                 \
         extern T dm_##N[ROWS][COLUMNS], ref_dm_##N[ROWS][COLUMNS]; \
         extern T xm_##N[ROWS][COLUMNS], ref_xm_##N[ROWS][COLUMNS]; \
-        extern T *dp_##N, *ref_dp_##N, *xp_##N, *ref_xp_##N;
+        extern T *dp_##N, *ref_dp_##N, *xp_##N, *ref_xp_##N;       \
+        extern T *dq_##N[CELLS], *ref_dq_##N[CELLS];               \
+        extern T *xq_##N[CELLS], *ref_xq_##N[CELLS];
 
 TYPES(DECLARE_OBJECTS)
 
@@ -169,7 +173,34 @@ extern int late, ref_late;
         BOTH(T *, step_value_##K##_##N, (void) )          \
         BOTH(T *, step_by_value_##K##_##N, (int) )        \
         BOTH(long, walk_##K##_##N, (void) )               \
-        BOTH(void, walk_store_##K##_##N, (long) )
+        BOTH(void, walk_store_##K##_##N, (long) )         \
+        BOTH(long, fold_before_##K##_##N, (void) )        \
+        BOTH(long, fold_beyond_##K##_##N, (void) )        \
+        BOTH(void, fold_put_##K##_##N, (long) )           \
+        BOTH(void, fold_bump_##K##_##N, (long) )          \
+        BOTH(void, fold_shift_##K##_##N, (int) )          \
+        BOTH(void, fold_tick_##K##_##N, (void) )          \
+        BOTH(long, fold_tick_value_##K##_##N, (void) )    \
+        BOTH(long, fold_bump_value_##K##_##N, (long) )    \
+        BOTH(long, fold_sum_##K##_##N, (void) )           \
+        BOTH(long, fold_minus_##K##_##N, (void) )         \
+        BOTH(long, fold_nested_##K##_##N, (void) )        \
+        BOTH(T *, fold_third_##K##_##N, (void) )          \
+        BOTH(T *, fold_plus_##K##_##N, (void) )           \
+        BOTH(T *, fold_back_##K##_##N, (void) )           \
+        BOTH(T *, fold_row_##K##_##N, (void) )            \
+        BOTH(long, fold_zero_##K##_##N, (long) )          \
+        BOTH(T *, fold_below_##K##_##N, (void) )          \
+        BOTH(T *, fold_past_##K##_##N, (void) )           \
+        BOTH(T *, fold_end_##K##_##N, (void) )            \
+        BOTH(T *, fold_row_past_##K##_##N, (void) )       \
+        BOTH(long, fold_distance_##K##_##N, (void) )      \
+        BOTH(T *, cell_get_##K##_##N, (void) )            \
+        BOTH(void, cell_put_##K##_##N, (T *) )            \
+        BOTH(long, cell_deref_##K##_##N, (void) )         \
+        BOTH(long, cell_index_##K##_##N, (void) )         \
+        BOTH(void, cell_step_##K##_##N, (void) )          \
+        BOTH(void, cell_store_##K##_##N, (long) )
 #define DECLARE_KINDS(T, N) KINDS(DECLARE_KIND, T, N)
 
 TYPES(DECLARE_KINDS)
@@ -179,6 +210,13 @@ BOTH(void, write_twice, (long) )
 BOTH(long, read_extern, (void) )
 BOTH(long, read_late, (void) )
 BOTH(void, bump_late, (int) )
+BOTH(char *, big_base, (void) )
+BOTH(long, big_read, (void) )
+BOTH(void, big_write, (long) )
+BOTH(char *, big_middle, (void) )
+BOTH(char *, big_end, (void) )
+BOTH(char *, big_beyond, (void) )
+BOTH(char *, big_below, (void) )
 
 static unsigned char *
 base(int k)
@@ -215,17 +253,22 @@ fill(void *a, void *b, size_t n)
                 p[i] = q[i] = next_byte();
 }
 
-#define PRIME_TYPE(T, N)                               \
-        d_##N = ref_d_##N = x_##N = ref_x_##N = (T) x; \
-        fill(da_##N, ref_da_##N, sizeof da_##N);       \
-        fill(xa_##N, ref_xa_##N, sizeof xa_##N);       \
-        fill(dm_##N, ref_dm_##N, sizeof dm_##N);       \
-        fill(xm_##N, ref_xm_##N, sizeof xm_##N);       \
-        dp_##N = xp_##N = (T *) (base(0) + at);        \
-        ref_dp_##N = ref_xp_##N = (T *) (base(1) + at);
+#define PRIME_TYPE(T, N)                                                      \
+        d_##N = ref_d_##N = x_##N = ref_x_##N = (T) x;                        \
+        fill(da_##N, ref_da_##N, sizeof da_##N);                              \
+        fill(xa_##N, ref_xa_##N, sizeof xa_##N);                              \
+        fill(dm_##N, ref_dm_##N, sizeof dm_##N);                              \
+        fill(xm_##N, ref_xm_##N, sizeof xm_##N);                              \
+        dp_##N = xp_##N = (T *) (base(0) + at);                               \
+        ref_dp_##N = ref_xp_##N = (T *) (base(1) + at);                       \
+        for (int j = 0; j < CELLS; ++j) {                                     \
+                dq_##N[j] = xq_##N[j] = (T *) (base(0) + at + 8 * j);         \
+                ref_dq_##N[j] = ref_xq_##N[j] = (T *) (base(1) + at + 8 * j); \
+        }
 
 /* Both builds' objects and buffers filled alike, x in every scalar and
-   at B + at, where every pointer points. */
+   at B + at, where every pointer points, and each array of pointers'
+   elements 8 bytes apart from there. */
 static void
 prime(long x, int at)
 {
@@ -299,6 +342,9 @@ pointers_differ(
         differs = differs || bytes_differ(name, x, #o, &o, &ref_##o, sizeof o)
 #define POINTER_DIFFERS(o) \
         differs = differs || pointers_differ(name, x, #o, o, ref_##o)
+#define CELLS_DIFFER(o)                 \
+        for (int j = 0; j < CELLS; ++j) \
+        differs = differs || pointers_differ(name, x, #o, o[j], ref_##o[j])
 #define TYPE_DIFFERS(T, N)       \
         OBJECT_DIFFERS(d_##N);   \
         OBJECT_DIFFERS(x_##N);   \
@@ -307,7 +353,9 @@ pointers_differ(
         OBJECT_DIFFERS(dm_##N);  \
         OBJECT_DIFFERS(xm_##N);  \
         POINTER_DIFFERS(dp_##N); \
-        POINTER_DIFFERS(xp_##N);
+        POINTER_DIFFERS(xp_##N); \
+        CELLS_DIFFER(dq_##N);    \
+        CELLS_DIFFER(xq_##N);
 
 /* every object, then the buffers */
 static void
@@ -444,6 +492,36 @@ compare(const char *name, long x)
                         PCHECK(step_by_value_##K##_##N, x, at, (s));          \
                         MCHECK(walk_##K##_##N, x, at, ());                    \
                         VCHECK(walk_store_##K##_##N, x, at, (y));             \
+                                                                              \
+                        MCHECK(fold_before_##K##_##N, x, at, ());             \
+                        MCHECK(fold_beyond_##K##_##N, x, at, ());             \
+                        VCHECK(fold_put_##K##_##N, x, at, (y));               \
+                        VCHECK(fold_bump_##K##_##N, x, at, (y));              \
+                        VCHECK(fold_shift_##K##_##N, x, at, (n));             \
+                        VCHECK(fold_tick_##K##_##N, x, at, ());               \
+                        MCHECK(fold_tick_value_##K##_##N, x, at, ());         \
+                        MCHECK(fold_bump_value_##K##_##N, x, at, (y));        \
+                        MCHECK(fold_sum_##K##_##N, x, at, ());                \
+                        MCHECK(fold_minus_##K##_##N, x, at, ());              \
+                        MCHECK(fold_nested_##K##_##N, x, at, ());             \
+                        ACHECK(fold_third_##K##_##N, x, at, (), K##a_##N);    \
+                        ACHECK(fold_plus_##K##_##N, x, at, (), K##a_##N);     \
+                        ACHECK(fold_back_##K##_##N, x, at, (), K##m_##N);     \
+                        ACHECK(fold_row_##K##_##N, x, at, (), K##m_##N);      \
+                        MCHECK(fold_zero_##K##_##N, x, at, (y));              \
+                        ACHECK(fold_below_##K##_##N, x, at, (), K##a_##N);    \
+                        ACHECK(fold_past_##K##_##N, x, at, (), K##a_##N);     \
+                        ACHECK(fold_end_##K##_##N, x, at, (), K##a_##N);      \
+                        ACHECK(fold_row_past_##K##_##N, x, at, (), K##m_##N); \
+                        MCHECK(fold_distance_##K##_##N, x, at, ());           \
+                                                                              \
+                        PCHECK(cell_get_##K##_##N, x, at, ());                \
+                        VCHECK(cell_put_##K##_##N, x, at,                     \
+                               ((T *) (B + 8 * c)));                          \
+                        MCHECK(cell_deref_##K##_##N, x, at, ());              \
+                        MCHECK(cell_index_##K##_##N, x, at, ());              \
+                        VCHECK(cell_step_##K##_##N, x, at, ());               \
+                        VCHECK(cell_store_##K##_##N, x, at, (y));             \
                 }                                                             \
         }
 #define TEST_KINDS(T, N) KINDS(TEST_KIND, T, N)
@@ -499,6 +577,38 @@ test_tentative(void)
         }
 }
 
+/* The static array that crosses a page, filled alike in both builds
+   through the start each gives: the reads, the writes and the address
+   past the boundary, as its offset from the build's own start. */
+static void
+test_big(void)
+{
+        char *const own = big_base();
+        char *const ref = ref_big_base();
+
+        for (int v = 0; v < COUNT; ++v) {
+                const long x = values[v];
+
+                prime(x, 16);
+                fill(own, ref, BIG);
+                report("big_read", x, big_read(), ref_big_read());
+
+                big_write(x);
+                ref_big_write(x);
+                report("big_write", x, big_read(), ref_big_read());
+                bytes_differ("big_write", x, "big", own, ref, BIG);
+
+                report("big_middle", x, offset(big_middle(), own),
+                       offset(ref_big_middle(), ref));
+                report("big_end", x, offset(big_end(), own),
+                       offset(ref_big_end(), ref));
+                report("big_beyond", x, offset(big_beyond(), own),
+                       offset(ref_big_beyond(), ref));
+                report("big_below", x, offset(big_below(), own),
+                       offset(ref_big_below(), ref));
+        }
+}
+
 int
 main(void)
 {
@@ -512,6 +622,8 @@ main(void)
         test_d_##N(); \
         test_x_##N();
         TYPES(RUN)
+
+        test_big();
 
         printf("%ld checks, %ld differ\n", total, bad);
 

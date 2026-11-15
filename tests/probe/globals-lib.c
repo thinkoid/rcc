@@ -14,6 +14,7 @@
         T xa_##N[ARRAY];                              \
         T xm_##N[ROWS][COLUMNS];                      \
         T *xp_##N;                                    \
+        T *xq_##N[CELLS];                             \
                                                       \
         long touch_##N(T *p, long v)                  \
         {                                             \

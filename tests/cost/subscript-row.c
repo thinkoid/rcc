@@ -1,18 +1,20 @@
 /* backend.md 6.3 and aarch64.md 6.3, &p[i]: a row of an array of
-   arrays decays to its address, as the address of a subscript.  With a
-   constant index of 0 that address is the bare base whatever the row's
-   size, so on int m[2][3], whose rows of 12 bytes are no scale, m[0] is
-   m and no instruction.  Any other constant index is the row of p + n.
+   arrays decays to its address, as the address of a subscript.  On a
+   local array a row by a constant index is the address by a name and a
+   constant, the array's slot plus the row's offset, whatever the row's
+   size: on int m[2][3], whose rows of 12 bytes are no scale, m[0] is
+   m's slot, m[1] the slot 12 bytes up, and m[0][1] one access at the
+   slot 4 bytes up.
 
    On x86-64 the listing must show first() returning the array's
    address, leaq -24(%rbp), %rax, with no instruction after it,
-   element() reading m[0][1] by one movl 4(%rax), %eax after that leaq,
-   and second() adding the row's 12 bytes after it, addq $12, %rax.
+   element() reading m[0][1] by the one movl -20(%rbp), %eax, and
+   second() forming the row's address by the one leaq -12(%rbp), %rax.
 
    On aarch64 the listing must show first() returning the array's
    address, add x0, x29, #16, with no instruction after it, element()
-   reading m[0][1] by one ldr w0, [x0, #4] after that add, and second()
-   adding the row's 12 bytes after it, add x0, x0, #12. */
+   reading m[0][1] by the one ldr w0, [x29, #20], and second() forming
+   the row's address by the one add x0, x29, #28. */
 int *first(void)
 {
     int m[2][3];

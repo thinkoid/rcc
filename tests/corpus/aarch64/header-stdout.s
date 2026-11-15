@@ -102,9 +102,8 @@ main:
 	mov	w0, #3
 	b	.Lmain.1
 .Lmain.10:
-	adrp	x0, table
-	add	x0, x0, :lo12:table
-	ldr	w0, [x0, #12]
+	adrp	x16, table+12
+	ldr	w0, [x16, :lo12:table+12]
 	adrp	x16, count
 	ldr	w1, [x16, :lo12:count]
 	add	w0, w0, w1

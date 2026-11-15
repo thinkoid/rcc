@@ -38,9 +38,8 @@ third:
 	.cfi_offset w30, -8
 	mov	x29, sp
 	.cfi_def_cfa_register w29
-	adrp	x0, table
-	add	x0, x0, :lo12:table
-	ldr	w0, [x0, #12]
+	adrp	x16, table+12
+	ldr	w0, [x16, :lo12:table+12]
 	b	.Lthird.1
 .Lthird.1:
 	.cfi_def_cfa wsp, 16

@@ -55,15 +55,12 @@ main:
 	.cfi_offset w30, -40
 	mov	x29, sp
 	.cfi_def_cfa_register w29
-	add	x0, x29, #16
-	mov	w1, #1
-	str	w1, [x0]
-	add	x0, x29, #16
-	mov	w1, #2
-	str	w1, [x0, #4]
-	add	x0, x29, #16
-	mov	w1, #3
-	str	w1, [x0, #8]
+	mov	w0, #1
+	str	w0, [x29, #16]
+	mov	w0, #2
+	str	w0, [x29, #20]
+	mov	w0, #3
+	str	w0, [x29, #24]
 	mov	w0, #3
 	str	w0, [x29, #28]
 	add	x0, x29, #16

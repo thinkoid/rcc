@@ -148,32 +148,26 @@ main:
 	movl	-96(%rbp), %edx
 	movl	$0, %eax
 	call	printf@PLT
-	leaq	-56(%rbp), %rax
-	movl	4(%rax), %eax
+	movl	-52(%rbp), %eax
 	cmpl	$2, %eax
 	jne	.Lmain.31
-	leaq	-56(%rbp), %rax
-	movl	8(%rax), %eax
+	movl	-48(%rbp), %eax
 	cmpl	$5, %eax
 	jne	.Lmain.31
-	leaq	-56(%rbp), %rax
-	movl	28(%rax), %eax
+	movl	-28(%rbp), %eax
 	cmpl	$2, %eax
 	je	.Lmain.30
 .Lmain.31:
 	movl	$101, %eax
 	jmp	.Lmain.1
 .Lmain.30:
-	leaq	-56(%rbp), %rax
-	movl	32(%rax), %eax
+	movl	-24(%rbp), %eax
 	cmpl	$4, %eax
 	jne	.Lmain.33
-	leaq	-56(%rbp), %rax
-	movl	36(%rax), %eax
+	movl	-20(%rbp), %eax
 	cmpl	$2, %eax
 	jne	.Lmain.33
-	leaq	-56(%rbp), %rax
-	movl	(%rax), %eax
+	movl	-56(%rbp), %eax
 	cmpl	$0, %eax
 	je	.Lmain.32
 .Lmain.33:

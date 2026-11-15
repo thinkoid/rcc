@@ -1,12 +1,15 @@
 /* The globals probe: objects at file scope, in rcc's C.  For each
-   integer type, the objects this file defines, d_N, da_N, dm_N and
-   dp_N, and those it only declares, x_N, xa_N, xm_N and xp_N, which
-   globals-lib.c defines; each read, written, operated on in memory and
-   for its value, subscripted by a constant and by a variable, its
-   address taken and passed, and a pointer dereferenced and stepped.
-   The rows are backend.md 6.3's and 6.6's and aarch64.md 6.3's for a
-   global, and the two of chapter 10, PC-relative and through the GOT.
-   See globals.h. */
+   integer type, the objects this file defines, d_N, da_N, dm_N, dp_N
+   and dq_N, and those it only declares, x_N, xa_N, xm_N, xp_N and
+   xq_N, which globals-lib.c defines; each read, written, operated on
+   in memory and for its value, subscripted by a constant and by a
+   variable, its address taken and passed, and a pointer dereferenced
+   and stepped.  The rows are backend.md 6.3's and 6.6's and
+   aarch64.md 6.3's for a global, and the two of chapter 10,
+   PC-relative and through the GOT; and 6.3's address by a name and a
+   constant, an element by a constant index folded into the label's
+   operand, on a static array that crosses a page too.  See
+   globals.h. */
 
 #include "globals.h"
 
@@ -17,10 +20,12 @@
         T da_##N[ARRAY];            \
         T dm_##N[ROWS][COLUMNS];    \
         T *dp_##N;                  \
+        T *dq_##N[CELLS];           \
         extern T x_##N;             \
         extern T xa_##N[];          \
         extern T xm_##N[][COLUMNS]; \
-        extern T *xp_##N;
+        extern T *xp_##N;           \
+        extern T *xq_##N[];
 
 TYPES(OBJECTS)
 
@@ -279,11 +284,211 @@ TYPES(LIBRARY)
                 *K##p_##N++ = v;             \
         }
 
+/* An element by a constant, its offset folded into the label's operand
+   where the file defines the object and the offset lies within it,
+   backend.md 6.3, and the GOT's rows where it only declares it: an
+   element of the array of arrays by a negative column and by one past
+   a row's end, both inside the array; a constant and zero stored, the
+   memory forms and the shifts in place, ++ and -- for the effect and
+   for the value; through the sum of the array and a constant, of a
+   constant and the array, of an element's address and a constant, and
+   their difference from a constant, and a row of the array of arrays
+   so reached; the constant 0, *a, *m[1] and **m; the addresses of
+   these forms returned, and as their distance in bytes from the
+   array's start; and addresses outside the object, below its start
+   and past its end, which take the rows of p + n, beside one exactly
+   one past the end, which folds. */
+#define FOLDS(T, N, K)                                                       \
+        long fold_before_##K##_##N(void)                                     \
+        {                                                                    \
+                return K##m_##N[1][-1];                                      \
+        }                                                                    \
+        long fold_beyond_##K##_##N(void)                                     \
+        {                                                                    \
+                return K##m_##N[1][COLUMNS];                                 \
+        }                                                                    \
+        void fold_put_##K##_##N(long v)                                      \
+        {                                                                    \
+                K##m_##N[0][COLUMNS + 1] = v;                                \
+                K##m_##N[2][-2] = 0;                                         \
+                K##a_##N[4] = 0x12345;                                       \
+        }                                                                    \
+        void fold_bump_##K##_##N(long v)                                     \
+        {                                                                    \
+                K##a_##N[2] += v;                                            \
+                K##a_##N[7] ^= 0x55;                                         \
+                K##m_##N[2][1] -= v;                                         \
+        }                                                                    \
+        void fold_shift_##K##_##N(int n)                                     \
+        {                                                                    \
+                K##a_##N[6] <<= n;                                           \
+                K##m_##N[1][3] >>= n;                                        \
+        }                                                                    \
+        void fold_tick_##K##_##N(void)                                       \
+        {                                                                    \
+                K##a_##N[1]++;                                               \
+                --K##m_##N[2][2];                                            \
+        }                                                                    \
+        long fold_tick_value_##K##_##N(void)                                 \
+        {                                                                    \
+                long old = K##a_##N[4]++;                                    \
+                                                                             \
+                return old * 3 + --K##a_##N[0];                              \
+        }                                                                    \
+        long fold_bump_value_##K##_##N(long v)                               \
+        {                                                                    \
+                return K##a_##N[7] -= v;                                     \
+        }                                                                    \
+        long fold_sum_##K##_##N(void)                                        \
+        {                                                                    \
+                return *(K##a_##N + 5) + (K##a_##N + 2)[4] * 3 +             \
+                       *(3 + K##a_##N) * 5;                                  \
+        }                                                                    \
+        long fold_minus_##K##_##N(void)                                      \
+        {                                                                    \
+                return *(K##a_##N + 7 - 2) + (&K##a_##N[6])[-4] * 3 +        \
+                       *(K##a_##N - -1) * 5;                                 \
+        }                                                                    \
+        long fold_nested_##K##_##N(void)                                     \
+        {                                                                    \
+                return (&K##m_##N[1][0])[2] + *(K##m_##N[2] + 1) * 3 +       \
+                       (*(K##m_##N + 1))[3] * 5;                             \
+        }                                                                    \
+        T *fold_third_##K##_##N(void)                                        \
+        {                                                                    \
+                return &K##a_##N[3];                                         \
+        }                                                                    \
+        T *fold_plus_##K##_##N(void)                                         \
+        {                                                                    \
+                return 6 + K##a_##N;                                         \
+        }                                                                    \
+        T *fold_back_##K##_##N(void)                                         \
+        {                                                                    \
+                return &K##m_##N[2][-1];                                     \
+        }                                                                    \
+        T *fold_row_##K##_##N(void)                                          \
+        {                                                                    \
+                return K##m_##N[2];                                          \
+        }                                                                    \
+        long fold_zero_##K##_##N(long v)                                     \
+        {                                                                    \
+                *K##a_##N += v;                                              \
+                *K##m_##N[1] = v;                                            \
+                return *K##a_##N + *K##m_##N[2] * 3 + **K##m_##N * 5;        \
+        }                                                                    \
+        T *fold_below_##K##_##N(void)                                        \
+        {                                                                    \
+                return &K##a_##N[-2];                                        \
+        }                                                                    \
+        T *fold_past_##K##_##N(void)                                         \
+        {                                                                    \
+                return K##a_##N + ARRAY + 3;                                 \
+        }                                                                    \
+        T *fold_end_##K##_##N(void)                                          \
+        {                                                                    \
+                return K##a_##N + ARRAY;                                     \
+        }                                                                    \
+        T *fold_row_past_##K##_##N(void)                                     \
+        {                                                                    \
+                return &K##m_##N[ROWS][1];                                   \
+        }                                                                    \
+        long fold_distance_##K##_##N(void)                                   \
+        {                                                                    \
+                return (long) &K##a_##N[5] - (long) K##a_##N +               \
+                       ((long) (K##m_##N[2] + 1) - (long) K##m_##N) * 1000 + \
+                       ((long) (K##a_##N + ARRAY) - (long) &K##a_##N[-1]) *  \
+                           1000000;                                          \
+        }
+
+/* The array of pointers: an element by a constant, the pointer it
+   holds, read, written, stepped in place and dereferenced, and
+   subscripted by a constant in its turn. */
+#define CELLS_OF(T, N, K)                 \
+        T *cell_get_##K##_##N(void)       \
+        {                                 \
+                return K##q_##N[0];       \
+        }                                 \
+        void cell_put_##K##_##N(T *p)     \
+        {                                 \
+                K##q_##N[3] = p;          \
+        }                                 \
+        long cell_deref_##K##_##N(void)   \
+        {                                 \
+                return *K##q_##N[2];      \
+        }                                 \
+        long cell_index_##K##_##N(void)   \
+        {                                 \
+                return K##q_##N[1][1];    \
+        }                                 \
+        void cell_step_##K##_##N(void)    \
+        {                                 \
+                K##q_##N[1]++;            \
+                K##q_##N[2] -= 1;         \
+        }                                 \
+        void cell_store_##K##_##N(long v) \
+        {                                 \
+                *K##q_##N[3] = v;         \
+        }
+
 #define KIND(T, N, K) \
         SCALAR(T, N, K) ARRAYS(T, N, K) ADDRESSES(T, N, K) POINTERS(T, N, K)
-#define BOTH_KINDS(T, N) KINDS(KIND, T, N)
+#define FOLD_KIND(T, N, K) FOLDS(T, N, K) CELLS_OF(T, N, K)
+#define BOTH_KINDS(T, N)   KINDS(KIND, T, N) KINDS(FOLD_KIND, T, N)
 
 TYPES(BOTH_KINDS)
+
+/* A static array that crosses a page: an element on each side of the
+   boundary 4096 bytes in, and the last, read and written by a constant
+   index, the address of the one past the boundary returned, and the
+   start given to the main; and addresses at its end and outside it.  On aarch64 the page is the element's,
+   adrp x16, big+4096, not the array's. */
+static char big[BIG];
+
+char *
+big_base(void)
+{
+        return big;
+}
+
+long
+big_read(void)
+{
+        return big[4095] + big[4096] * 3 + big[BIG - 1] * 5 + big[0] * 7;
+}
+
+void
+big_write(long v)
+{
+        big[4095] = v;
+        big[4096] = v >> 8;
+        big[BIG - 1] = v >> 16;
+}
+
+char *
+big_middle(void)
+{
+        return &big[4096];
+}
+
+/* one past its end, which folds, and beyond it and below its start,
+   which take the rows of p + n */
+char *
+big_end(void)
+{
+        return big + BIG;
+}
+
+char *
+big_beyond(void)
+{
+        return big + BIG + 4096;
+}
+
+char *
+big_below(void)
+{
+        return &big[-4096];
+}
 
 /* The data: an object of each type with an initializer, the main
    reading each before anything writes it; null pointers. */

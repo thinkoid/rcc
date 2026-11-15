@@ -34,8 +34,7 @@ element:
 	.cfi_offset w30, -40
 	mov	x29, sp
 	.cfi_def_cfa_register w29
-	add	x0, x29, #16
-	ldr	w0, [x0, #4]
+	ldr	w0, [x29, #20]
 	b	.Lelement.1
 .Lelement.1:
 	.cfi_def_cfa wsp, 48
@@ -58,8 +57,7 @@ second:
 	.cfi_offset w30, -40
 	mov	x29, sp
 	.cfi_def_cfa_register w29
-	add	x0, x29, #16
-	add	x0, x0, #12
+	add	x0, x29, #28
 	b	.Lsecond.1
 .Lsecond.1:
 	.cfi_def_cfa wsp, 48

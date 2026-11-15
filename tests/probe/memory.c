@@ -2,9 +2,11 @@
    docs/aarch64.md 6.3's rows of &x, *p and "abc", the use of an array,
    and pointers as values.  No pointer arithmetic and no subscript,
    which are the pointers probe's: no + or - with a pointer operand,
-   no [] in an expression, no ++, --, += or -= of a pointer.  A pointer
-   into the middle of a buffer, or misaligned, is made by the main.
-   See memory.h. */
+   no [] in an expression, no ++, --, += or -= of a pointer; but for
+   the address of a local array or a string literal plus a constant,
+   folded into the slot's or the label's operand (backend.md 6.3),
+   which the last section probes.  A pointer into the middle of a
+   buffer, or misaligned, is made by the main.  See memory.h. */
 
 #include "memory.h"
 
@@ -433,4 +435,165 @@ long around_store(char *p, long a)
     *p = mix1(a) + *p;
 
     return *p - mix1(*p);
+}
+
+/* An element of a local array by a constant, backend.md 6.3: the
+   slot's operand with the offset folded in, and no instruction forming
+   the array's address first.  Read and written, a constant and zero
+   stored, operated on in place for the effect and for the value; an
+   element of an array of arrays, by a negative column and by one past
+   a row's end, inside the array; through the sum of the array and a
+   constant, of a constant and the array, of an element's address and a
+   constant, and their difference from a constant; the addresses as
+   their distance in bytes from the array's start; and in frames that
+   put the array beyond the reach of an aarch64 load, 5.3: a char's
+   past 4095 bytes, and every type's past 65535. */
+#define FOLDS(T, N)                                                     \
+    long fold_##N(T v)                                                  \
+    {                                                                   \
+        T a[8];                                                         \
+        long r = fill_##N(a, 8, v);                                     \
+                                                                        \
+        a[3] = v;                                                       \
+        a[2] = 0;                                                       \
+        a[4] = 0x12345;                                                 \
+        a[5] += v;                                                      \
+        a[7] ^= 0x55;                                                   \
+        a[1] <<= 3;                                                     \
+        a[6]++;                                                         \
+        --a[0];                                                         \
+        return r + a[0] * 7 + a[1] + a[3] * 3 + a[5] - a[6] + a[7] +    \
+               total_##N(a, 8);                                         \
+    }                                                                   \
+    long fold_value_##N(T v)                                            \
+    {                                                                   \
+        T a[4];                                                         \
+        long r = fill_##N(a, 4, v);                                     \
+        long x = a[2]++;                                                \
+        long y = a[1] += v;                                             \
+        long z = --a[3];                                                \
+        long w = a[0] = v * 3;                                          \
+                                                                        \
+        return r + x * 3 + y * 5 + z * 7 + w * 11 + total_##N(a, 4);    \
+    }                                                                   \
+    long fold_matrix_##N(long v)                                        \
+    {                                                                   \
+        T m[3][5];                                                      \
+        long r = fill_rows_##N(m, 3, v);                                \
+                                                                        \
+        m[1][-1] += 2;                                                  \
+        m[1][5] = v;                                                    \
+        m[2][2]++;                                                      \
+        return r + m[1][2] * 3 + m[0][4] + m[2][0] * 5 +                \
+               (&m[1][0])[3] + *(m[2] + 4) * 7 + (*(m + 1))[1] +        \
+               total_rows_##N(m, 3);                                    \
+    }                                                                   \
+    long fold_sum_##N(T v)                                              \
+    {                                                                   \
+        T a[8];                                                         \
+        long r = fill_##N(a, 8, v);                                     \
+                                                                        \
+        *(a + 5) = v;                                                   \
+        (a + 2)[3] += 1;                                                \
+        *(&a[1] + 1) -= 2;                                              \
+        return r + *(3 + a) + (&a[6])[-4] * 3 + *(a + 7 - 1) +          \
+               *(a - -1) * 5 + total_##N(a, 8);                         \
+    }                                                                   \
+    long fold_zero_##N(T v)                                             \
+    {                                                                   \
+        T a[4];                                                         \
+        T m[3][5];                                                      \
+        T x = v;                                                        \
+        long r = fill_##N(a, 4, v) + fill_rows_##N(m, 3, v);            \
+                                                                        \
+        *a += 3;                                                        \
+        *m[1] = v;                                                      \
+        **m -= 1;                                                       \
+        *&x += 2;                                                       \
+        return r + *a * 3 + *m[1] * 5 + **m * 7 + *&x + *m[2] +         \
+               total_##N(a, 4) + total_rows_##N(m, 3);                  \
+    }                                                                   \
+    long fold_distance_##N(void)                                        \
+    {                                                                   \
+        T a[8];                                                         \
+        T m[3][5];                                                      \
+                                                                        \
+        return (long) &a[5] - (long) a +                                \
+               ((long) (a + 7) - (long) a) * 100 +                      \
+               ((long) &m[2][-1] - (long) m) * 10000 +                  \
+               ((long) m[2] - (long) m) * 1000000 +                     \
+               ((long) (a + 8) - (long) &a[-1]) * 100000000 +           \
+               (&a[5] - &a[1]) * 10000000000;                           \
+    }                                                                   \
+    long far_fold_##N(T v)                                              \
+    {                                                                   \
+        char pad[4090];                                                 \
+        T a[16];                                                        \
+        long r = fill_##N(a, 16, v);                                    \
+                                                                        \
+        a[3] = v;                                                       \
+        a[10] += v;                                                     \
+        a[15]++;                                                        \
+        a[12] = 0;                                                      \
+        return r + a[3] + a[10] * 3 + a[15] * 5 +                       \
+               ((long) &a[12] - (long) a) * 7 + total_##N(a, 16);       \
+    }                                                                   \
+    long farther_fold_##N(T v)                                          \
+    {                                                                   \
+        char pad[70000];                                                \
+        T a[8];                                                         \
+        T m[3][5];                                                      \
+        long r = fill_##N(a, 8, v) + fill_rows_##N(m, 3, v);            \
+                                                                        \
+        a[3] = v;                                                       \
+        a[5] += v;                                                      \
+        a[6]++;                                                         \
+        m[1][-1] -= 3;                                                  \
+        m[2][1] = 0;                                                    \
+        return r + a[3] + a[5] * 3 + a[6] * 5 + m[1][2] * 7 + m[0][4] + \
+               ((long) (a + 7) - (long) a) + total_##N(a, 8) +          \
+               total_rows_##N(m, 3);                                    \
+    }
+
+TYPES(FOLDS)
+
+/* an array of pointers: an element by a constant, written, read,
+   stepped in place and dereferenced, and subscripted by a constant in
+   its turn; q8 points 8 bytes past p */
+long fold_pointers(long *p, long *q8, long v)
+{
+    long *q[4];
+
+    q[1] = p;
+    q[2] = q8;
+    q[3] = q[1];
+    q[0] = 0;
+    *q[2] = v;
+    q[3]++;
+    *q[3] += 5;
+
+    return *q[1] + q[2][0] * 3 + q[1][1] * 5 + (q[0] == 0) * 7;
+}
+
+/* a string literal's element by a constant, the label's operand with
+   the offset folded in, its terminating zero among them, and *"abc",
+   the constant 0; its address, passed to the library, one past the end
+   included; and an address beyond the literal, which is no fold, and
+   back into it */
+int text_elem(void)
+{
+    return "abcdef"[2] * 3 + "xyz"[3] + *("xyz" + 1) + *"abc" * 5;
+}
+
+long text_addr(void)
+{
+    return text(&"hello, world"[7]) + text("hello" + 2) * 3 +
+           text(1 + "abc") + text("hello" + 5) * 5;
+}
+
+long text_beyond(void)
+{
+    char *p = "abcdef" + 9;
+
+    return text(p - 8) + text("abcdef" + 9 - 4) * 3;
 }

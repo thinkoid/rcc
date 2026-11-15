@@ -10,14 +10,12 @@ main:
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register %rbp
 	movl	%edi, -4(%rbp)
-	leaq	-8(%rbp), %rax
-	addq	$4, %rax
+	leaq	-4(%rbp), %rax
 	leaq	-12(%rbp), %rcx
 	cmpq	%rcx, %rax
 	sete	%al
 	movzbl	%al, %eax
-	leaq	-12(%rbp), %rcx
-	addq	$4, %rcx
+	leaq	-8(%rbp), %rcx
 	leaq	-8(%rbp), %rdx
 	cmpq	%rdx, %rcx
 	sete	%cl

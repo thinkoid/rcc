@@ -84,8 +84,7 @@ main:
 	movl	$3, %eax
 	jmp	.Lmain.1
 .Lmain.10:
-	leaq	table(%rip), %rax
-	movl	12(%rax), %eax
+	movl	table+12(%rip), %eax
 	movl	count(%rip), %ecx
 	addl	%ecx, %eax
 	jmp	.Lmain.1

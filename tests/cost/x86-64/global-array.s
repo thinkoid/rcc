@@ -30,8 +30,7 @@ third:
 	.cfi_offset %rbp, -16
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register %rbp
-	leaq	table(%rip), %rax
-	movl	12(%rax), %eax
+	movl	table+12(%rip), %eax
 	jmp	.Lthird.1
 .Lthird.1:
 	leave

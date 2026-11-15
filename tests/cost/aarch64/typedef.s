@@ -49,16 +49,12 @@ sum:
 	str	w0, [x29, #16]
 	add	x0, x29, #20
 	str	x0, [x29, #40]
-	add	x0, x29, #20
-	ldr	w1, [x29, #16]
-	str	w1, [x0]
-	add	x0, x29, #20
-	mov	w1, #8
-	str	w1, [x0, #4]
-	add	x0, x29, #20
-	ldr	w0, [x0]
-	add	x1, x29, #20
-	ldr	w1, [x1, #4]
+	ldr	w0, [x29, #16]
+	str	w0, [x29, #20]
+	mov	w0, #8
+	str	w0, [x29, #24]
+	ldr	w0, [x29, #20]
+	ldr	w1, [x29, #24]
 	add	w0, w0, w1
 	ldr	x1, [x29, #40]
 	ldrb	w1, [x1]

@@ -92,7 +92,10 @@ buffer of `getch` and `ungetch` private to its file. Then the jumps:
 `itoa`, `reverse` and `trim`. Then `switch`, compiled by the Seventh
 Edition compiler's rule: a direct table, a chain of compares or a
 hash, chosen from the case values alone; `header-count` is K&R's
-count of digits, white space and other characters.
+count of digits, white space and other characters. An element by a
+constant index is the object's own operand, `movl table+12(%rip),
+%eax`, the constant folded into the address as that compiler
+subsumes the constant of `&x+c`.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/`, the cost corpus over `tests/cost/`
 and the error corpus over `tests/error/`, the programs rcc refuses

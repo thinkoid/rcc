@@ -22,6 +22,7 @@
 #include <cstdint>
 #include <format>
 #include <initializer_list>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -554,9 +555,10 @@ extended(state_t &s, value_t v, const int_t &from, int to)
 // addresses
 
 // An lvalue's address as the operand of the instruction that reads or
-// writes it: a slot off rbp, a label off rip, or the machine's
-// addressing form, a held base with a displacement or with a held
-// index scaled by 1, 2, 4 or 8.  The access consumes the values.
+// writes it: a slot off rbp, a label off rip with a displacement of
+// its own, table+12(%rip), or the machine's addressing form, a held
+// base with a displacement or with a held index scaled by 1, 2, 4 or 8.
+// The access consumes the values.
 struct address_t
 {
     value_t base { };
@@ -591,7 +593,7 @@ std::string
 operand(state_t &s, const address_t &a, unsigned avoid = 0)
 {
     if (!a.label.empty())
-        return std::format("{}(%rip)", a.label);
+        return std::format("{}(%rip)", symbol_plus(a.label, a.displacement));
 
     if (a.base.id < 0)
         return at(static_cast< int >(a.displacement));
@@ -681,8 +683,40 @@ address_of(state_t &s, const address_t &a)
     return v;
 }
 
+// The operand of an address by a name and a constant, Ritchie's &x+c,
+// backend.md 6.3: the object's slot or label with the offset folded
+// into its displacement, -20(%rbp) for a[3] on an int a[8] at
+// -32(%rbp), table+12(%rip) for table[3], and no instruction forms the
+// object's address first.  None when the displacement does not fit 32
+// bits, or a label's offset lies outside its object, and the rows of
+// *p and p + n reach the address.
+std::optional< address_t >
+folded(state_t &s, const expr_t &pointer)
+{
+    const auto named = named_offset(pointer, s.defined);
+    if (!named)
+        return std::nullopt;
+
+    const auto &object = *named->object;
+    const bool slot = is< name_t >(object) && !global_of(object);
+    const auto displacement =
+        wrapped_add(slot ? slot_of(s, object_of(object)) : 0, named->offset);
+    if (!fits_imm32(displacement) || (!slot && !within_object(*named)))
+        return std::nullopt;
+
+    if (slot)
+        return slot_address(static_cast< int >(displacement));
+
+    const auto label = is< string_t >(object) ?
+                           string_label(s.strings, as< string_t >(object)) :
+                           std::string(assembly_name(*global_of(object)));
+
+    return address_t { .displacement = displacement, .label = label };
+}
+
 // The address a dereference designates, 6.5.4.2p4, of an object of
-// type pointee: the addressing row.  A subscript by a constant 0 is the
+// type pointee: the addressing row.  A name's address plus a constant,
+// 0 for *a and *&x, is the one operand of folded().  A subscript by a constant 0 is the
 // bare base, the pointer's value with no displacement and no index,
 // whatever the pointee's size: m[0] on int m[2][3] is m, as p[0] is p.
 // Any other add of a pointer and an integer, the shape of a subscript
@@ -695,6 +729,9 @@ address_of(state_t &s, const address_t &a)
 address_t
 pointed(state_t &s, const expr_t &p, const type_t &pointee)
 {
+    if (const auto a = folded(s, p))
+        return *a;
+
     if (const auto *base = bare_base(p))
         return { .base = rvalue(s, *base) };
 
@@ -1181,13 +1218,18 @@ displaced(state_t &s, binary_op_t op, value_t l, const right_t &n)
     return offset(s, op, l, n.value, n.scale, true);
 }
 
-// A binary + or - of the pointer type t: the pointer and the integer,
-// the integer widened to 64 bits by the parser, in the order written
-// (G13).
+// A binary + or - of a pointer type: the pointer and the integer, the
+// integer widened to 64 bits by the parser, in the order written
+// (G13).  A name's address plus a constant is the leaq of folded()'s
+// one operand, leaq -20(%rbp), %rax for a + 3, 6.3.
 value_t
-pointer_arithmetic(state_t &s, const binary_t &b, const type_t &t)
+pointer_arithmetic(state_t &s, const expr_t &e)
 {
-    const long size = stride(t);
+    if (const auto a = folded(s, e))
+        return address_of(s, *a);
+
+    const auto &b = as< binary_t >(e);
+    const long size = stride(e.type);
     const auto l = rvalue(s, *b.lhs);
 
     if (is< pointer_t >(b.lhs->type))
@@ -1424,7 +1466,7 @@ binary(state_t &s, const expr_t &e)
         return comparison(s, b);
 
     if (is< pointer_t >(e.type))
-        return pointer_arithmetic(s, b, e.type);
+        return pointer_arithmetic(s, e);
 
     if (is< pointer_t >(b.lhs->type))
         return difference(s, b);

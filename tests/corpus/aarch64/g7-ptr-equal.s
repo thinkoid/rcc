@@ -12,13 +12,11 @@ main:
 	mov	x29, sp
 	.cfi_def_cfa_register w29
 	str	w0, [x29, #16]
-	add	x0, x29, #20
-	add	x0, x0, #4
+	add	x0, x29, #24
 	add	x1, x29, #24
 	cmp	x0, x1
 	cset	w0, eq
-	add	x1, x29, #24
-	add	x1, x1, #4
+	add	x1, x29, #28
 	add	x2, x29, #20
 	cmp	x1, x2
 	cset	w1, eq

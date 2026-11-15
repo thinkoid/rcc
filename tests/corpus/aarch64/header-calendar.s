@@ -192,9 +192,8 @@ month_name:
 	cmp	w0, #12
 	b.le	.Lmonth_name.2
 .Lmonth_name.4:
-	adrp	x0, name
-	add	x0, x0, :lo12:name
-	ldr	x0, [x0]
+	adrp	x16, name
+	ldr	x0, [x16, :lo12:name]
 	b	.Lmonth_name.3
 .Lmonth_name.2:
 	adrp	x0, name
@@ -318,18 +317,16 @@ main:
 	str	wzr, [x29, #32]
 	ldr	w0, [x29, #32]
 	bl	month_name
-	adrp	x1, name
-	add	x1, x1, :lo12:name
-	ldr	x1, [x1]
+	adrp	x16, name
+	ldr	x1, [x16, :lo12:name]
 	cmp	x0, x1
 	b.ne	.Lmain.5
 	mov	w0, #13
 	str	w0, [x29, #36]
 	ldr	w0, [x29, #36]
 	bl	month_name
-	adrp	x1, name
-	add	x1, x1, :lo12:name
-	ldr	x1, [x1]
+	adrp	x16, name
+	ldr	x1, [x16, :lo12:name]
 	cmp	x0, x1
 	b.eq	.Lmain.4
 .Lmain.5:

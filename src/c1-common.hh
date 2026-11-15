@@ -33,9 +33,11 @@ int operation_width(const type_t &);
 long long normalized(long long value, int width);
 long long widened(long long value, const int_t &);
 long long scaled(long long index, long size);
+long long wrapped_add(long long a, long long b);
 int written(int width, bool is_signed);
 
 std::string_view assembly_name(const symbol_t &);
+std::string symbol_plus(std::string_view symbol, long long offset);
 void binding(std::ostream &, const symbol_t &);
 std::string label_name(std::string_view function, int n);
 
@@ -46,6 +48,20 @@ const symbol_t *named_callee(const call_t &);
 const function_t &callee_type(const call_t &);
 std::unordered_set< const symbol_t * > defined_symbols(const unit_t &);
 const expr_t *bare_base(const expr_t &);
+
+// An address reached by a name and a constant, Ritchie's &x+c
+// (backend.md 6.3): the lvalue whose address is a slot or a label, and
+// the offset in bytes from that address.
+struct named_offset_t
+{
+    const expr_t *object;
+    long long offset;
+};
+
+std::optional< named_offset_t >
+named_offset(const expr_t &pointer,
+             const std::unordered_set< const symbol_t * > &defined);
+bool within_object(const named_offset_t &);
 
 bool is_step(unary_op_t);
 bool is_shift(binary_op_t);

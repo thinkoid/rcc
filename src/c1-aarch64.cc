@@ -25,6 +25,7 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <cstdint>
 #include <format>
 #include <initializer_list>
 #include <optional>
@@ -655,12 +656,12 @@ struct step_t
 // times the size, [x0, #8], or the base and a held index read by the
 // form, [x0, w1, sxtw #2].  A global the unit defines is its label,
 // reached through x16 as a far slot is, [x16, :lo12:n] after adrp x16,
-// n, chapter 10.  A string literal's address is its label too, which no
-// access takes as an operand: the literal is an array and is used only
-// by its address as a value.  A register pointer
-// stepped by a constant the form encodes is its register as the base and
-// the step, which the access makes, [x19], #1 or [x19, #1]!.  The access
-// consumes the values.
+// n, chapter 10; the label's displacement is the offset of an element
+// by a constant, carried by both, adrp x16, n+12 and [x16,
+// :lo12:n+12] (6.3).  A string literal's address is its label too.  A
+// register pointer stepped by a constant the form encodes is its
+// register as the base and the step, which the access makes, [x19], #1
+// or [x19, #1]!.  The access consumes the values.
 struct address_t
 {
     value_t base { };
@@ -714,16 +715,19 @@ stepped_operand(state_t &s, const address_t &a, unsigned avoid)
 // global's label is the far slot's mechanism with the symbol's page,
 // adrp x16, n written here and [x16, :lo12:n] the operand, chapter 10:
 // two instructions an access, and the object's alignment, at its
-// definition, is what the scaled :lo12: form needs.  A spilled base or
-// index is reloaded first, outside avoid and outside the other's
-// register; the reload is complete before the access, so x16 holds
-// nothing across it.  A step is stepped_operand()'s.
+// definition, is what the scaled :lo12: form needs.  A displacement of
+// the label is in both, so the page is the element's: adrp x16, n+12
+// and [x16, :lo12:n+12].  A spilled base or index is reloaded first,
+// outside avoid and outside the other's register; the reload is
+// complete before the access, so x16 holds nothing across it.  A step
+// is stepped_operand()'s.
 std::string
 operand(state_t &s, const address_t &a, int width, unsigned avoid = 0)
 {
     if (!a.label.empty()) {
-        insn(s, "adrp", { "x16", a.label });
-        return std::format("[x16, :lo12:{}]", a.label);
+        const auto symbol = symbol_plus(a.label, a.displacement);
+        insn(s, "adrp", { "x16", symbol });
+        return std::format("[x16, :lo12:{}]", symbol);
     }
 
     if (a.base.id < 0)
@@ -782,14 +786,16 @@ last_access(address_t a)
     return a;
 }
 
-// The address of a slot or of a string literal as a value, valid to
-// 64.  A literal's label is formed PC-relative in two instructions,
-// adrp L, .Ls0 for its 4 KiB page and add L, L, :lo12:.Ls0 for the
-// offset in it, chapter 3.  A slot is add L, x29, #d; a displacement
-// add's 12 bits do not encode is the two adds of 5.3, the upper part
-// shifted first, and one when the lower part is zero.  The sum is
-// formed in L, so x16 is not used.  A dereference's address is never
-// here: address_value() takes it as the pointer's value.
+// The address of a slot or of a label as a value, valid to 64, a name's
+// plus a constant included (6.3).  A label is formed PC-relative in two
+// instructions, adrp L, .Ls0 for its 4 KiB page and add L, L,
+// :lo12:.Ls0 for the offset in it, chapter 3, each with the label's
+// displacement, adrp L, table+12.  A slot is add L, x29, #d; a
+// displacement add's 12 bits do not encode is the two adds of 5.3, the
+// upper part shifted first, and one when the lower part is zero.  The
+// sum is formed in L, so x16 is not used.  Any other dereference's
+// address is never here: address_value() takes it as the pointer's
+// value.
 value_t
 address_of(state_t &s, const address_t &a)
 {
@@ -800,8 +806,9 @@ address_of(state_t &s, const address_t &a)
     const auto r = reg(reg_of(s, v), 64);
 
     if (!a.label.empty()) {
-        insn(s, "adrp", { r, a.label });
-        insn(s, "add", { r, r, std::format(":lo12:{}", a.label) });
+        const auto symbol = symbol_plus(a.label, a.displacement);
+        insn(s, "adrp", { r, symbol });
+        insn(s, "add", { r, r, std::format(":lo12:{}", symbol) });
         return v;
     }
 
@@ -903,6 +910,49 @@ step_of(const expr_t &p)
     return step;
 }
 
+// Whether a displacement off x29 is one 5.3 reaches: the add into x16
+// of its upper 12 bits, shifted, and the access of its low 12, so 0 to
+// 16 MiB less 1.  A slot's always is.
+bool
+in_frame_reach(long long displacement)
+{
+    return displacement >= 0 && displacement < (1LL << 24);
+}
+
+// The operand of an address by a name and a constant, Ritchie's &x+c,
+// 6.3: the object's slot or label with the offset folded into its
+// displacement, [x29, #d+12] for a[3] on an int a[8] at d, through x16
+// beyond reach (5.3), and adrp x16, table+12 and [x16,
+// :lo12:table+12] for table[3]; no instruction forms the object's
+// address first.  None for a slot's displacement 5.3 does not reach and
+// a label's offset outside its object, and the rows of *p and p + n
+// reach the address.
+std::optional< address_t >
+folded(state_t &s, const expr_t &pointer)
+{
+    const auto named = named_offset(pointer, s.defined);
+    if (!named)
+        return std::nullopt;
+
+    const auto &object = *named->object;
+    const bool slot = is< name_t >(object) && !global_of(object);
+    const auto displacement =
+        wrapped_add(slot ? slot_of(s, object_of(object)) : 0, named->offset);
+    if (slot ? !in_frame_reach(displacement) :
+               !within_object(*named) || displacement > INT32_MAX)
+        return std::nullopt;
+
+    if (slot)
+        return slot_address(static_cast< int >(displacement));
+
+    const auto label = is< string_t >(object) ?
+                           string_label(s.strings, as< string_t >(object)) :
+                           std::string(assembly_name(*global_of(object)));
+
+    return address_t { .displacement = static_cast< int >(displacement),
+                       .label = label };
+}
+
 // The address an access through a dereference designates, 6.5.4.2p4,
 // for a load, a fetch or a store: the pointer's value as the base, [x0],
 // whatever computed it and however it is aligned (G8, G11).  An add of
@@ -922,7 +972,9 @@ step_of(const expr_t &p)
 // makes the step, 6.3.  The step then moves from here to the
 // access, past between, the operand the caller generates between the
 // two, a store's right operand; so the case is not taken when between
-// names the variable, and the step is written here as before, G13.
+// names the variable, and the step is written here as before, G13.  A
+// name's address plus a constant is the second: the one operand of
+// folded(), and nothing evaluated.
 address_t
 pointed(state_t &s, const expr_t &p, const expr_t *between = nullptr)
 {
@@ -933,6 +985,11 @@ pointed(state_t &s, const expr_t &p, const expr_t *between = nullptr)
     const auto step = step_of(p);
     if (step.variable && !(between && names(*between, step.variable)))
         return { .base = read(s, step.variable), .step = step };
+
+    // a[3], table[3], m[1][2], *(a + 3), *a and *&x on an object the
+    // slot or the label reaches: [x29, #28], [x16, :lo12:table+12]
+    if (const auto a = folded(s, p))
+        return *a;
 
     // *p, and *E for any E that is no sum: *f(), *(char *) q, *p++ on
     // a pointer in a slot, *p++ = *p, and a difference, *(p - 1).  E's
@@ -1571,14 +1628,20 @@ offset(state_t &s,
     return result;
 }
 
-// A binary + or - of the pointer type t, 6.5.7p9: the pointer and the
+// A binary + or - of a pointer type, 6.5.7p9: the pointer and the
 // integer, the integer widened to 64 bits by the parser, each generated
 // in the order written (G13), a constant as its product with the size,
-// whose immediate takes no register.
+// whose immediate takes no register.  A name's address plus a constant
+// is the address of folded()'s one operand, add x0, x29, #28 for a + 3,
+// 6.3.
 value_t
-pointer_arithmetic(state_t &s, const binary_t &b, const type_t &t)
+pointer_arithmetic(state_t &s, const expr_t &e)
 {
-    const long size = stride(t);
+    if (const auto a = folded(s, e))
+        return address_of(s, *a);
+
+    const auto &b = as< binary_t >(e);
+    const long size = stride(e.type);
 
     if (is< pointer_t >(b.lhs->type)) {
         const auto l = rvalue(s, *b.lhs);
@@ -1853,7 +1916,7 @@ binary(state_t &s, const expr_t &e)
         return comparison(s, b);
 
     if (is< pointer_t >(e.type))
-        return pointer_arithmetic(s, b, e.type);
+        return pointer_arithmetic(s, e);
 
     if (is< pointer_t >(b.lhs->type))
         return difference(s, b);

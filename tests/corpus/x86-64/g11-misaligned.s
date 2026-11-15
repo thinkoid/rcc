@@ -27,8 +27,7 @@ main:
 	addl	$1, -16(%rbp)
 	jmp	.Lmain.2
 .Lmain.4:
-	leaq	-12(%rbp), %rax
-	addq	$1, %rax
+	leaq	-11(%rbp), %rax
 	movl	(%rax), %eax
 	movl	%eax, -20(%rbp)
 	movl	-20(%rbp), %eax

@@ -12,6 +12,7 @@
 #include <bit>
 #include <format>
 #include <limits>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -102,6 +103,14 @@ scaled(long long index, long size)
                                     static_cast< unsigned long long >(size));
 }
 
+// Two byte offsets added modulo 2^64: G6, the address arithmetic wraps.
+long long
+wrapped_add(long long a, long long b)
+{
+    return static_cast< long long >(static_cast< unsigned long long >(a) +
+                                    static_cast< unsigned long long >(b));
+}
+
 // The width a value is valid to after an instruction writes it at
 // width: a 32-bit write clears the upper half of the register, which
 // is the extension of an unsigned value and not of a signed one.
@@ -122,6 +131,24 @@ assembly_name(const symbol_t &sym)
         return sym.name;
 
     return sym.asm_name;
+}
+
+// A symbol and a byte offset as the assembler's expression, table,
+// table+12, table-4, .Ls0+1: the address the relocation resolves, the
+// operand of an address constant's .quad (backend.md chapter 10) and of
+// an access by a name and a constant (6.3).
+std::string
+symbol_plus(std::string_view symbol, long long offset)
+{
+    std::string text { symbol };
+
+    const auto bits = static_cast< unsigned long long >(offset);
+    if (offset > 0)
+        text += std::format("+{}", bits);
+    else if (offset < 0)
+        text += std::format("-{}", 0 - bits);
+
+    return text;
 }
 
 // The binding of a symbol the unit defines, its .globl, chapter 10:
@@ -480,6 +507,102 @@ bare_base(const expr_t &p)
     return left ? b.lhs.get() : b.rhs.get();
 }
 
+// The lvalue at the root of an address by a name and a constant
+// (backend.md 6.3), offset 0: a local's or a parameter's name, whose
+// address is its slot; the name of a global the unit defines, or a
+// string literal, whose address is its label; or the dereference of
+// such an address, whose address it is, so m[1][2] composes.  None for
+// any other lvalue, a global the unit only declares among them, whose
+// address comes from the GOT.
+std::optional< named_offset_t >
+named_lvalue(const expr_t &e,
+             const std::unordered_set< const symbol_t * > &defined)
+{
+    if (is< unary_t >(e) && as< unary_t >(e).op == unary_op_t::deref)
+        return named_offset(*as< unary_t >(e).arg, defined);
+
+    if (is< string_t >(e))
+        return named_offset_t { .object = &e, .offset = 0 };
+
+    if (!is< name_t >(e))
+        return std::nullopt;
+
+    const auto &sym = *as< name_t >(e).sym;
+    const bool slot = (sym.storage == storage_t::local ||
+                       sym.storage == storage_t::parameter) &&
+                      !in_register(sym);
+    const bool label =
+        sym.storage == storage_t::global && defined.contains(&sym);
+    if (!slot && !label)
+        return std::nullopt;
+
+    return named_offset_t { .object = &e, .offset = 0 };
+}
+
+// A pointer that is a name's address plus a constant: the decay of an
+// array lvalue, 6.3.2.1p3, or & of an lvalue, 6.5.4.2p3, the constant
+// 0, so *a is a[0] and *&x is x; or a sum of such a pointer and an
+// integer constant, p + c, c + p or p - c, the constant times the
+// pointee's size added or subtracted modulo 2^64 (G6).  The lvalue and
+// the offset.  Ritchie's c1 subsumes the constant of "&x+c" into the
+// name's offset; the generators fold it into the operand's
+// displacement, so no instruction forms the object's address first.
+// None for any other pointer, a variable index, a pointer object's
+// value and any other cast among them.
+std::optional< named_offset_t >
+named_offset(const expr_t &pointer,
+             const std::unordered_set< const symbol_t * > &defined)
+{
+    if (is< cast_t >(pointer) && is< array_t >(as< cast_t >(pointer).arg->type))
+        return named_lvalue(*as< cast_t >(pointer).arg, defined);
+
+    if (is< unary_t >(pointer) && as< unary_t >(pointer).op == unary_op_t::addr)
+        return named_lvalue(*as< unary_t >(pointer).arg, defined);
+
+    if (!is< binary_t >(pointer) || !is< pointer_t >(pointer.type))
+        return std::nullopt;
+
+    const auto &b = as< binary_t >(pointer);
+    if (b.op != binary_op_t::add && b.op != binary_op_t::sub)
+        return std::nullopt;
+
+    const bool left = is< pointer_t >(b.lhs->type);
+    const auto &p = left ? *b.lhs : *b.rhs;
+    const auto &n = left ? *b.rhs : *b.lhs;
+    if (!is< literal_t >(n))
+        return std::nullopt;
+
+    auto named = named_offset(p, defined);
+    if (!named)
+        return std::nullopt;
+
+    const long size = size_of(*as< pointer_t >(pointer.type).pointee);
+    const auto bytes = scaled(as< literal_t >(n).value, size);
+    const auto negated = static_cast< long long >(
+        0ull - static_cast< unsigned long long >(bytes));
+
+    named->offset =
+        wrapped_add(named->offset, b.op == binary_op_t::add ? bytes : negated);
+
+    return named;
+}
+
+// Whether a label's offset folds, backend.md 6.3: from 0 to the
+// object's size, one past the end included (6.5.7p9).  The linker
+// resolves a label and an offset, and one outside the object it may
+// not reach.  An array of unknown size has no bound and does not fold.
+bool
+within_object(const named_offset_t &named)
+{
+    const auto &object = *named.object;
+    const auto &type =
+        is< name_t >(object) ? as< name_t >(object).sym->type : object.type;
+    if (is< array_t >(type) && as< array_t >(type).count < 0)
+        return false;
+
+    return named.offset >= 0 && named.offset <= size_of(type);
+}
+
 // functions
 
 // A string literal's array, 6.4.5p6: one per literal met, in the order
@@ -593,17 +716,11 @@ constant_value(const literal_t &constant, const type_t &t)
 std::string
 address_value(const address_t &address, std::string_view label)
 {
-    std::string text { label };
+    std::string_view symbol = label;
     if (const auto *sym = std::get_if< const symbol_t * >(&address.base))
-        text = assembly_name(**sym);
+        symbol = assembly_name(**sym);
 
-    const auto offset = static_cast< unsigned long long >(address.offset);
-    if (address.offset > 0)
-        text += std::format("+{}", offset);
-    else if (address.offset < 0)
-        text += std::format("-{}", 0 - offset);
-
-    return text;
+    return symbol_plus(symbol, address.offset);
 }
 
 // The bytes of an array of char that a string literal initializes,

@@ -41,15 +41,11 @@ sum:
 	movl	%edi, -4(%rbp)
 	leaq	-20(%rbp), %rax
 	movq	%rax, -32(%rbp)
-	leaq	-20(%rbp), %rax
-	movl	-4(%rbp), %ecx
-	movl	%ecx, (%rax)
-	leaq	-20(%rbp), %rax
-	movl	$8, 4(%rax)
-	leaq	-20(%rbp), %rax
-	movl	(%rax), %eax
-	leaq	-20(%rbp), %rcx
-	movl	4(%rcx), %ecx
+	movl	-4(%rbp), %eax
+	movl	%eax, -20(%rbp)
+	movl	$8, -16(%rbp)
+	movl	-20(%rbp), %eax
+	movl	-16(%rbp), %ecx
 	addl	%ecx, %eax
 	movq	-32(%rbp), %rcx
 	movsbl	(%rcx), %ecx

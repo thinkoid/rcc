@@ -157,32 +157,26 @@ main:
 	ldr	w1, [x29, #104]
 	ldr	w2, [x29, #108]
 	bl	printf
-	add	x0, x29, #32
-	ldr	w0, [x0, #4]
+	ldr	w0, [x29, #36]
 	cmp	w0, #2
 	b.ne	.Lmain.31
-	add	x0, x29, #32
-	ldr	w0, [x0, #8]
+	ldr	w0, [x29, #40]
 	cmp	w0, #5
 	b.ne	.Lmain.31
-	add	x0, x29, #32
-	ldr	w0, [x0, #28]
+	ldr	w0, [x29, #60]
 	cmp	w0, #2
 	b.eq	.Lmain.30
 .Lmain.31:
 	mov	w0, #101
 	b	.Lmain.1
 .Lmain.30:
-	add	x0, x29, #32
-	ldr	w0, [x0, #32]
+	ldr	w0, [x29, #64]
 	cmp	w0, #4
 	b.ne	.Lmain.33
-	add	x0, x29, #32
-	ldr	w0, [x0, #36]
+	ldr	w0, [x29, #68]
 	cmp	w0, #2
 	b.ne	.Lmain.33
-	add	x0, x29, #32
-	ldr	w0, [x0]
+	ldr	w0, [x29, #32]
 	cmp	w0, #0
 	b.eq	.Lmain.32
 .Lmain.33:

@@ -22,25 +22,39 @@ assembles and links. The reasons are =docs/findings.md= and
 in =docs/design-calls.md=. The chapter holds c1's own defects on both
 targets; the second target's design is =docs/aarch64.md=.
 
-** TODO A constant index into a global array forms the array's address first
+** TODO x86-64: a variable index into a local array forms the array's address first
 
-~int table[8]; ... table[3]~ is =leaq table(%rip), %rax; movl
-12(%rax), %eax= on x86-64, and =adrp x0, table; add x0, x0,
-:lo12:table; ldr w0, [x0, #12]= on aarch64. It is the row of a local
-array, whose address is formed and then indexed, with the global's
-label for the slot; =cost.md= says so. The machine has one
-instruction for it on x86-64, =movl table+12(%rip), %eax=, which
-=clang -O0= writes, and two on aarch64, =adrp x16, table; ldr w0,
-[x16, :lo12:table+12]=. A local array's element by a constant index
-has the same shorter form, a slot's displacement, and does not take
-it either.
+~int a[6]; ... a[i]~ is =leaq -24(%rbp), %rax; movl -4(%rbp), %ecx;
+movslq %ecx, %rcx; movl (%rax,%rcx,4), %eax=: four instructions and
+two registers, the pin of =tests/cost/subscript.c=. The machine's
+addressing form holds the slot's displacement with the index, =movl
+-24(%rbp,%rcx,4), %eax=, which =clang -O0= writes: three
+instructions and one register. A constant index takes the slot's own
+operand (=backend.md= 6.3, a name and a constant); a variable one
+does not. aarch64 has no form with a base, an index and a
+displacement, and a global's label takes no index on either target.
 
-Fix: decide whether an element by a constant index is the object's
-operand with the displacement folded in, for a local and a global
-alike, as a measured step.
+Fix: decide whether a local array's element by a variable index is
+the slot's displacement with the index, on x86-64 alone, as a
+measured step.
 
-Check: =cost.md= and the pins of =subscript= and =global-array= agree
-with the decision.
+Check: =cost.md= and the pin of =subscript= agree with the decision.
+
+** TODO x86-64: an address with an index does not take a constant displacement
+
+~char m[4][8]; ... m[i][2]~ is =leaq (%rax,%rcx,8), %rax; movsbl
+2(%rax), %eax= after the array's address and the index: the row's
+address is formed, and the constant is the displacement of a second
+operand. The addressing form holds all three, =movsbl 2(%rax,%rcx,8),
+%eax=. The same holds through a pointer to a row whose size is a
+scale, ~char (*p)[8]; ... p[i][2]~. The fold of a name and a constant
+(=backend.md= 6.3) does not reach it: its address is a slot or a
+label, with no register.
+
+Fix: decide whether a constant index over an address that has a base
+and an index is that address's displacement, on x86-64 alone.
+
+Check: =cost.md= and a pin of the row agree with the decision.
 
 ** TODO Two documents still count register variables "live at once"
 

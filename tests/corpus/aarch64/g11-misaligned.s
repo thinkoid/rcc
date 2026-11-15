@@ -29,8 +29,7 @@ main:
 	str	w0, [x29, #28]
 	b	.Lmain.2
 .Lmain.4:
-	add	x0, x29, #20
-	add	x0, x0, #1
+	add	x0, x29, #21
 	ldr	w0, [x0]
 	str	w0, [x29, #32]
 	ldr	w0, [x29, #32]

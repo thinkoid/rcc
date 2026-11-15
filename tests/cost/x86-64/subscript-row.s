@@ -26,8 +26,7 @@ element:
 	.cfi_offset %rbp, -16
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register %rbp
-	leaq	-24(%rbp), %rax
-	movl	4(%rax), %eax
+	movl	-20(%rbp), %eax
 	jmp	.Lelement.1
 .Lelement.1:
 	leave
@@ -44,8 +43,7 @@ second:
 	.cfi_offset %rbp, -16
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register %rbp
-	leaq	-24(%rbp), %rax
-	addq	$12, %rax
+	leaq	-12(%rbp), %rax
 	jmp	.Lsecond.1
 .Lsecond.1:
 	leave

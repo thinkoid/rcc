@@ -8,7 +8,9 @@
    chapter 10 and docs/aarch64.md 6.3 and chapter 10: one the file
    defines, reached PC-relative, and one it only declares, reached
    through the GOT, read, written, stepped, subscripted and its address
-   taken; the data of an initialized object and of a tentative one.
+   taken; an element by a constant, its offset folded into the label's
+   operand, 6.3; the data of an initialized object and of a tentative
+   one.
 
    The integer types are calls.h's. */
 
@@ -20,11 +22,16 @@
 #define KINDS(X, T, N) X(T, N, d) X(T, N, x)
 
 /* the objects of a type and a kind: K_N, an array Ka_N[8], an array of
-   arrays Km_N[3][4], and a pointer Kp_N; each array has its
-   neighbours' alignment, so an access too wide lands in the next one */
+   arrays Km_N[3][4], a pointer Kp_N and an array of pointers
+   Kq_N[4]; each array has its neighbours' alignment, so an access too
+   wide lands in the next one */
 #define ARRAY   8
 #define ROWS    3
 #define COLUMNS 4
+#define CELLS   4
+
+/* the bytes of the static array that crosses a page, big */
+#define BIG 8192
 
 /* initialized objects: a name, its type and its initializer, each
    entry a statement of its own; the constant converted to the object's

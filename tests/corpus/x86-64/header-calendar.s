@@ -166,8 +166,7 @@ month_name:
 	cmpl	$12, %eax
 	jle	.Lmonth_name.2
 .Lmonth_name.4:
-	leaq	name(%rip), %rax
-	movq	(%rax), %rax
+	movq	name(%rip), %rax
 	jmp	.Lmonth_name.3
 .Lmonth_name.2:
 	leaq	name(%rip), %rax
@@ -277,15 +276,13 @@ main:
 	movl	$0, -20(%rbp)
 	movl	-20(%rbp), %edi
 	call	month_name@PLT
-	leaq	name(%rip), %rcx
-	movq	(%rcx), %rcx
+	movq	name(%rip), %rcx
 	cmpq	%rcx, %rax
 	jne	.Lmain.5
 	movl	$13, -24(%rbp)
 	movl	-24(%rbp), %edi
 	call	month_name@PLT
-	leaq	name(%rip), %rcx
-	movq	(%rcx), %rcx
+	movq	name(%rip), %rcx
 	cmpq	%rcx, %rax
 	je	.Lmain.4
 .Lmain.5:

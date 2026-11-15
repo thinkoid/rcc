@@ -607,16 +607,47 @@ For a 32-bit operation (`w` names) or a 64-bit one (`x` names).
 | `x = e` | the store of 2.2 to the slot; for a register variable the `mov` into its register, `mov w20, w0`, `mov x20, x0`, a constant the immediate, `mov w20, #0`, a narrow type the extension, `sxtb w19, w0` | 6.6 for a constant; chapter 4 |
 | `x op= e`, `++x`, `x++` | the load, the operation, the store, after `e` for `x op= e`; a register variable in place, after `e`, its register `L` and the destination, `add w19, w19, w0`, `add w19, w19, #1`, a narrow one re-extended after, `sxtb w19, w19`, and `%=` with the quotient in a register of its own, `sdiv w0, w19, w20; msub w19, w0, w20, w19`; `x++` on a register variable for its value is G13's copy and the step, `mov w0, w19; add w19, w19, #1`; a pointer's `++` and `--` step by the size, an immediate where `add` encodes it, `add L, L, #4` for an `int *`, and otherwise held in a register | no memory form, 6.6; chapter 4 |
 | `(T) a` | `sxtw L, L` for `int` to `long`; `sxtb`, `sxth`, `uxtb`, `uxth` from a narrow type; each only when `L` is not already valid to the new width; `mov wL, wL` for an `unsigned` not valid to 64; nothing between pointer types and for a pointer to `long`; an integer to a pointer as to `unsigned long`, so `sxtw` for an `int` | G2; the width rule |
-| `&x` | `add L, x29, #d`; for a global the file defines `adrp L, sym; add L, L, :lo12:sym`, as a string literal's; for one it only declares, the load from the GOT | two `add`s beyond 4095, 5.3 |
+| `&x` | `add L, x29, #d`; for a global the file defines `adrp L, sym; add L, L, :lo12:sym`, as a string literal's; for one it only declares, the load from the GOT; `&x` plus a constant is the same `add` or pair with the constant in it, the name and constant below | two `add`s beyond 4095, 5.3 |
 | `*p` | the load of 2.2 from `[L]` | G8 to G11 |
 | `*p++`, `*p--`, `*++p`, `*--p`, `*(p += c)`, `*(p -= c)` on a `register` pointer | the access by a form of 2.3 that steps the variable's register, the borrowed read the base: the post-indexed form for `p++` and `p--`, `ldrb w0, [x19], #1` and `ldrb w0, [x19], #-1`, and the pre-indexed one for the others, `ldrb w0, [x19, #1]!`, `ldr w0, [x19, #16]!` for `*(p += 4)` on an `int *`; a store the same, `strb w0, [x19], #1`, so `*p++ = *q++` is `ldrb w0, [x20], #1; strb w0, [x19], #1`; a compound assignment or a `++` through the pointer, two accesses through one address, steps once, the post form at the store, `ldrb w0, [x19]; add w0, w0, #5; strb w0, [x19], #1`, the pre form at the load; a read of the pointer still held is copied before the access that steps, `mov x0, x19`. The step is its own instructions and the access goes through the old or the new value, as the rows of `x++` and `*p` have it, in three cases: a store whose right operand names the pointer, since G13 completes the step before that operand, `*p++ = *p` being `mov x0, x19; add x19, x19, #1; ldrb w1, [x19]; strb w1, [x0]`; a step out of the form's reach, `*(p += 64)` on an `int *` being `add x19, x19, #256; ldr w0, [x19]`; and a pointer in a slot, whose step is a load, an `add` and a store | `autoincrement.md`; call 9 |
-| `p[i]`, `a[i]` | the load from `[L, R, lsl #k]`, `[L, R]` for a size of 1; from `[L, wR, sxtw #k]` or `[L, wR, uxtw #k]` for an index held at 32 bits; a constant index is `[L, #c*s]` when the displacement encodes, a negative one within 256 bytes the unscaled displacement, `[L, #-4]`; a constant index the access does not encode (2.3) is an index like any other, held in a register by the constant row of 6.4 and read `[L, R, lsl #k]` | one instruction; the index's extension is the form's, below (call 5) |
-| `&p[i]`, `&*p` | the address of `*E` as a value, and no access made (6.5.4.2p3): a bare base is its own value, so `&*p` is `p`, and so is `&p[0]`, a subscript by a constant 0, whose access is `[L]` as `*p`'s is, no instruction (call 8); any other subscript's address is the row of `p + n`: `&p[3]` is `add L, L, #12` for an `int *`, and `&p[i]` is `add L, L, R, lsl #k`, or `add L, L, wR, sxtw #k` for an index held at 32 bits; a row of an array of arrays decays the same way, `m[0]` to `m` | the same address by `add`, the machine having no `lea` |
-| `p + n`, `p - n` | `add L, L, R` or `sub` for a size of 1; `add L, L, R, lsl #k` or `sub` for 2, 4 or 8; the index held at 32 bits as for `&p[i]`; `mov N, #s; mul R, R, N` first for any other size; a constant `n` is the immediate `#c*s` when it encodes, and otherwise the product held in a register by 6.4, `add L, L, R`; for `n + p` the result is in `L`, the integer's register: a plain register keeps the source's order, `add L, L, R`, and the shifted or extended operand, which the instruction takes last only, is `add L, R, wL, sxtw #2` | G6 |
+| `p[i]`, `a[i]` | the load from `[L, R, lsl #k]`, `[L, R]` for a size of 1; from `[L, wR, sxtw #k]` or `[L, wR, uxtw #k]` for an index held at 32 bits; a constant index is `[L, #c*s]` when the displacement encodes, a negative one within 256 bytes the unscaled displacement, `[L, #-4]`; a constant index the access does not encode (2.3) is an index like any other, held in a register by the constant row of 6.4 and read `[L, R, lsl #k]`; on an array reached by its name a constant index is the name and constant below, the slot's own access, `ldr w0, [x29, #28]`, or the row of a global scalar the file defines, `adrp x16, table+12; ldr w0, [x16, :lo12:table+12]` | one instruction; the index's extension is the form's, below (call 5) |
+| `&p[i]`, `&*p` | the address of `*E` as a value, and no access made (6.5.4.2p3): a bare base is its own value, so `&*p` is `p`, and so is `&p[0]`, a subscript by a constant 0, whose access is `[L]` as `*p`'s is, no instruction (call 8); any other subscript's address is the row of `p + n`: `&p[3]` is `add L, L, #12` for an `int *`, and `&p[i]` is `add L, L, R, lsl #k`, or `add L, L, wR, sxtw #k` for an index held at 32 bits; a row of an array of arrays decays the same way, `m[0]` to `m`; on an array reached by its name, the name and constant below, the slot's `add L, x29, #d+12` or the label's pair, `adrp L, table+12; add L, L, :lo12:table+12` | the same address by `add`, the machine having no `lea` |
+| `p + n`, `p - n` | `add L, L, R` or `sub` for a size of 1; `add L, L, R, lsl #k` or `sub` for 2, 4 or 8; the index held at 32 bits as for `&p[i]`; `mov N, #s; mul R, R, N` first for any other size; a constant `n` is the immediate `#c*s` when it encodes, and otherwise the product held in a register by 6.4, `add L, L, R`; on a name's address a constant `n` is the name and constant below, the address formed once, `add x0, x29, #28` for `a + 3`; for `n + p` the result is in `L`, the integer's register: a plain register keeps the source's order, `add L, L, R`, and the shifted or extended operand, which the instruction takes last only, is `add L, R, wL, sxtw #2` | G6 |
 | `p - q` | `sub L, L, R`; for a size other than 1, `mov R, #s; sdiv L, L, R` | G6: a division |
-| `"abc"` | `adrp L, .Ls<n>; add L, L, :lo12:.Ls<n>` | two instructions, chapter 10 |
+| `"abc"` | `adrp L, .Ls<n>; add L, L, :lo12:.Ls<n>`; an element by a constant, the name and constant below, `adrp x16, .Ls0+1; ldrb w0, [x16, :lo12:.Ls0+1]` | two instructions, chapter 10 |
 | `f`, `&f` as a value | `adrp L, f; add L, L, :lo12:f` for a function the file defines; for one it only declares, the load from the GOT, `adrp L, :got:f; ldr L, [L, :got_lo12:f]` | two instructions either way, chapter 10; a call by the name forms no address, chapter 8 |
 | `f(a, b)` | chapter 8 | |
+
+**A name and a constant.** The rule of `backend.md` 6.3 holds as
+written: an object reached by its name plus an integer constant, 0
+for `*a` and `*&x`, is one operand, the constant folded into it, and
+no instruction forms the object's address first. With `int a[8]` at `[x29, #16]` and `int
+table[8]` a global the file defines:
+
+- `a[3]` is the slot's own access, `ldr w0, [x29, #28]`, reached
+  through `x16` beyond reach by 5.3; `&a[3]` and `a + 3` are `add x0,
+  x29, #28`, two `add`s beyond 4095;
+- `table[3]` is the row of a global scalar the file defines, `adrp
+  x16, table+12; ldr w0, [x16, :lo12:table+12]`, and `&table[3]` and
+  `table + 3` the label's pair, `adrp x0, table+12; add x0, x0,
+  :lo12:table+12`.
+
+The `adrp` and the `:lo12:` carry the same addend, so the page is the
+element's: `adrp x16, table` with `:lo12:table+12` reads the wrong
+page whenever the array's start and the element lie on two. GNU as
+and clang take the addend in both, the relocation is against the
+symbol plus it, and a `static char big[8192]` read at 4095, 4096 and
+8191 runs right (the globals probe). The `:lo12:` form of a load is
+scaled by the access's size, and the element's offset is a multiple
+of it, as the object's address is (chapter 10). A slot's displacement
+plus the constant is reached when it is from 0 to 16 MiB less 1, the
+reach of 5.3's `add` into `x16`. A label's offset folds from 0 to the
+object's size, one past the end included, as on x86-64: the linker
+resolves the label and the offset, and one outside the object it may
+not reach, where the rows of the table always link. Anything else, a
+negative displacement off `x29` and `table[-1]` among them, takes the
+rows of the table, as every address that is not a name's does: `adrp
+x0, table; add x0, x0, :lo12:table; ldr w0, [x0, #-4]`.
 
 The width rule holds as written. Its facts on this machine:
 
@@ -973,10 +1004,13 @@ nothing across them. A `static` object and a block's are such
 objects, a block's under its label, `adrp x16, next.count` and
 `[x16, :lo12:next.count]`. Its address as a value is the pair a literal's
 is, `adrp x0, counter; add x0, x0, :lo12:counter`, and an array the
-file defines is indexed after that pair, as a local array is after
-its `add`. The `:lo12:` form of a load or a store is scaled by the
-access's size, so the object's low 12 bits must be a multiple of it:
-the object is aligned to its type at its definition. One the file only
+file defines is indexed by a variable after that pair, as a local
+array is after its `add`; by a constant it is the element's own pair,
+`adrp x16, table+12` and `[x16, :lo12:table+12]`, the name and
+constant of 6.3. The `:lo12:` form of a load or a store is scaled by
+the access's size, so the object's low 12 bits must be a multiple of
+it: the object is aligned to its type at its definition, and an
+element's offset is a multiple of the element's size. One the file only
 declares has its address loaded from the GOT, as a declared function's
 is, and each access is the indirection through that register. GNU ld
 refuses the PC-relative pair against `stdout`, as against a libc
@@ -1297,6 +1331,10 @@ ninth and a tenth came later. The answers:
    `+` was written. The cost is that `&p[0]` and `p + 0`, one value,
    are two listings. `subscript-address` pins the row on both
    targets, and `subscript-row` a row of an array of arrays, `m[0]`.
+   On an array reached by its name the constant 0 is the name and
+   constant of 6.3 with nothing to add: `a[0]` and `*a` are the
+   slot's own access, and `&a[0]` and `a + 0` are one listing, the
+   array's address.
 9. **An access through a stepped `register` pointer makes the step**
    (6.3), by the form of 2.3 that writes its base: `*p++` is `ldrb
    w0, [x19], #1`, and `*(p += c)` takes the pre-indexed form when
