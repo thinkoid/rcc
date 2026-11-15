@@ -6,14 +6,15 @@
 # continuation line ends with the operator. Format the lines you add
 # (clang-format-region in Emacs, or git clang-format on the hunks).
 #
-# Needs clang-format 19 or later.
+# The first section is the layout of every source.  The two after it
+# say what differs by language: the C++ of src/ is indented by 4, the
+# C of tests/ by 8.
+#
+# Needs clang-format 20 or later, the first to know C from C++.
 
-Language: Cpp
-Standard: c++20
 BasedOnStyle: WebKit
 
-# indentation
-IndentWidth: 4
+# indentation; the width is each language's, below
 TabWidth: 4
 UseTab: Never
 ContinuationIndentWidth: 4
@@ -89,3 +90,10 @@ AlignTrailingComments:
 ReflowComments: false
 FixNamespaceComments: false
 SortIncludes: Never
+---
+Language: Cpp
+Standard: c++20
+IndentWidth: 4
+---
+Language: C
+IndentWidth: 8

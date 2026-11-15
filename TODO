@@ -397,7 +397,7 @@ Check: on an x86-64 core with its boost on, =make slots= prints =rr=
 at about one cycle an iteration, or prints no cycle column and says
 why.
 
-** TODO The sources of =tests/perf= do not follow =.clang-format=
+** TODO The C sources of the tests do not follow =.clang-format=
 
 =clang-format --dry-run tests/perf/*.c= flags all twelve: each keeps
 a definition's return type on the line of its name, and =collatz*.c=
@@ -408,15 +408,21 @@ it, so they differ from their shared siblings by that layout.
 The two corpora are laid out as the twelve are: =clang-format
 --dry-run= prints 112 warnings over =tests/cost/*.c= and 24 over
 =tests/corpus/*.c=, each program keeping a definition's return type
-on the line of its name. So the layout is the tests' own and
-=.clang-format= is written for the C++ sources, or all three
-directories are to follow it; the entry's fix assumes the second.
+on the line of its name. The C sources of the tests follow
+=.clang-format=, with one difference from the C++ sources: C is
+indented by 8 spaces, C++ by 4. The file is written for C++ alone and
+has no section for C.
 
-Fix: the twelve laid out as =.clang-format= has it. No listing
-changes.
+Fix: a section for C in =.clang-format=, the C++ rules with an
+indentation of 8; then every C source under =tests/= laid out by it.
+No listing changes. A pin of =tests/error= changes in the line and
+the column of its diagnostic and in nothing else, and a program that
+is malformed on purpose is laid out by hand where the formatter
+cannot read it.
 
-Check: =clang-format --dry-run tests/perf/*.c tests/perf/*/*.c=
-prints nothing, and =make test= passes.
+Check: =clang-format --dry-run= over every =.c= and =.h= under
+=tests/= prints nothing, every listing is byte-identical, and =make
+test= passes.
 
 ** TODO The shared =matmul-tuned.c= says every loop ends on =!==
 
@@ -478,6 +484,26 @@ type itself stays unqualified.
 Check: the three programs above fail with a diagnostic; =const= in
 every other position still parses.
 
+** TODO On x86-64 =stdio.h= does not parse
+
+=tests/corpus/header-stdio.c= fails on an x86-64 machine: its
+=stdio.h= includes =bits/floatn.h=, which declares ~typedef _Complex
+float __cfloat128 __attribute__ ((__mode__ (__TC__)));~ for a
+compiler that reports itself older than GCC 7, as =clang= does, and
+the parser stops with "not yet: type specifier '_Complex'". The next
+line it would stop at is ~typedef __float128 _Float128;~, where
+=__float128= is taken for the declarator's name. =stdlib.h= and
+=math.h= stop at the same line. The aarch64 glibc has no such
+typedef, and the x86-64 pin of =header-stdio= was made on an aarch64
+machine, with its headers (the entry on the other target's headers).
+
+Fix: by the rule for a system header. =_Complex= among the
+specifiers of a floating type, and =__float128=, name types rcc
+declares and does not use.
+
+Check: =make test= passes on an x86-64 machine, the =header-stdio=
+row 0 0 with its pin unchanged.
+
 ** TODO =stdlib.h=, =sys/types.h= and =signal.h= do not parse
 
 rcc reads the system's headers as they are: it conforms with what a
@@ -485,8 +511,9 @@ correct program depends on, the size and layout of a type and the
 symbol a name links to, and leaves hints and warnings for later; a
 declaration it cannot honour is accepted, and its use is refused
 (=shape.md= chapter 5). =stdio.h=, =string.h=, =ctype.h=,
-=unistd.h=, =stdint.h=, =setjmp.h=, =sys/stat.h= and =stddef.h=
-parse. Three of the common ones stop:
+=unistd.h=, =stdint.h=, =setjmp.h=, =sys/stat.h=, =stddef.h=,
+=errno.h=, =limits.h=, =assert.h=, =time.h=, =fcntl.h=, =stdarg.h=
+and =stdbool.h= parse on aarch64. Three of the common ones stop:
 
 - =stdlib.h= and =sys/types.h= at =bits/byteswap.h=, ~static __inline
   __uint16_t __bswap_16 (__uint16_t __bsx) { ... }~: "not yet:
@@ -501,18 +528,33 @@ parse. Three of the common ones stop:
   declarator's name. =asm=, =typeof=, =__typeof__=, =__alignof__=,
   =__auto_type= and the =__builtin_= functions are identifiers too.
 - An attribute among the declaration specifiers or on a parameter is
-  an error; the headers above place none there.
+  an error. On aarch64 =math.h= stops there, at ~typedef __attribute__
+  ((__neon_vector_type__ (4))) float __f32x4_t;~ of
+  =bits/math-vector.h=.
 
-Fix: by the same rule. A =static= function with a body in a header is
-accepted, its body skipped to the closing brace, and a call of it
-refused. A function-pointer declarator declares a pointer to a
-function, which is passed and stored as any pointer, and a call
-through it is refused. =__int128= is a type rcc declares and does not
-use.
+Fix: in three steps.
+
+- A =static= function with a body in a header is accepted, its body
+  skipped to the closing brace, and a call of it refused, until
+  =static= is in the subset. =__int128= is a type rcc declares and
+  does not use. An attribute among the specifiers is read as one
+  after the declarator is.
+- A function-pointer declarator declares a pointer to a function,
+  which is passed, stored and compared as any pointer; with it the
+  parameter of function type, adjusted to the pointer, and the type
+  name of a cast.
+- A function is a value, its address, and a call is made through any
+  expression that is a pointer to a function: nothing in the subset
+  stands in the way of either, and =qsort=, =atexit= and =signal= are
+  of no use without them. Both generators gain two rows, the address
+  of a function and the call through a register.
 
 Check: a program that includes =stdlib.h= and calls =atoi= compiles,
 links and runs on both targets; one that includes =signal.h= and
-calls =raise= does; a call of =__bswap_16= is refused by name.
+calls =raise= does; a call of =__bswap_16= is refused by name. Then
+one that sorts with =qsort= and its own comparison, and one that
+installs a handler with =signal= and raises its signal, run on both
+targets, and a probe sets calls through pointers against =clang='s.
 
 ** TODO A typedef through a marking attribute cannot be written twice
 
@@ -888,3 +930,14 @@ name; whether a string literal takes such bytes in silence is decided
 with it and recorded in the table of implementation-defined choices.
 
 Check: a program of =tests/error= with ='é'= and its pin.
+
+** TODO The keyword table of =src/lex.cc= does not follow =.clang-format=
+
+=clang-format --dry-run src/lex.cc= prints 23 warnings, all on the
+table =keywords[]=: the table is written two entries a line in
+aligned columns, and the formatter lays it out one entry a line. No
+other C++ source draws a warning.
+
+Fix: the table one entry a line, as the formatter has it.
+
+Check: =clang-format --dry-run src/*.cc src/*.hh= prints nothing.
