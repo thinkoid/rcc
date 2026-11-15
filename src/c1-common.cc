@@ -2,12 +2,13 @@
 
 // The part of c1 that is the same for every target, declared in
 // c1-common.hh: the integer view of a type, the symbol and label names,
-// the tree predicates, and the string literals' block.  Nothing here
-// writes an instruction.
+// the tree predicates, and the blocks of the string literals and of the
+// objects.  Nothing here writes an instruction.
 
 #include "c1-common.hh"
 
 #include <algorithm>
+#include <bit>
 #include <format>
 #include <stdexcept>
 #include <string>
@@ -131,9 +132,23 @@ label_name(std::string_view function, int n)
 
 // the frame
 
+// The global a name designates, or null for any other lvalue: its
+// address is its label or comes from the GOT (backend.md chapter 10),
+// where a local's is its slot.
+const symbol_t *
+global_of(const expr_t &e)
+{
+    if (!is< name_t >(e))
+        return nullptr;
+
+    const auto *sym = as< name_t >(e).sym;
+
+    return sym->storage == storage_t::global ? sym : nullptr;
+}
+
 // The local or parameter a name designates, which has a slot.  A
 // register variable has none, and the parser refuses its address,
-// 6.5.4.2p1; a global is a later slice.
+// 6.5.4.2p1; a global has none either, and global_of() takes it first.
 const symbol_t *
 object_of(const expr_t &e)
 {
@@ -145,7 +160,7 @@ object_of(const expr_t &e)
         throw std::logic_error("c1: a function as an object");
 
     if (sym->storage == storage_t::global)
-        not_yet("a global");
+        throw std::logic_error("c1: a global in a slot");
 
     if (in_register(*sym))
         throw std::logic_error("c1: the address of a register variable");
@@ -317,17 +332,21 @@ callee_type(const call_t &c)
     return as< function_t >(*as< pointer_t >(t).pointee);
 }
 
-// The functions the unit defines, whose address c1 forms PC-relative;
-// one the unit only declares is reached through the GOT (backend.md
-// chapter 10).  A body anywhere in the file counts, before the use or
-// after it.
+// The functions and the objects the unit defines, whose address c1
+// forms PC-relative; one the unit only declares is reached through the
+// GOT (backend.md chapter 10).  A definition anywhere in the file
+// counts, before the use or after it: a function's body, an object's
+// entry in the unit's objects.
 std::unordered_set< const symbol_t * >
-defined_functions(const unit_t &unit)
+defined_symbols(const unit_t &unit)
 {
     std::unordered_set< const symbol_t * > defined;
     for (const auto &fd : unit.functions)
         if (fd.body)
             defined.insert(fd.sym);
+
+    for (const auto &od : unit.objects)
+        defined.insert(od.sym);
 
     return defined;
 }
@@ -432,6 +451,117 @@ literals(std::ostream &out, const std::vector< std::string > &strings)
     for (std::size_t i = 0; i < strings.size(); ++i)
         out << std::format(".Ls{}:\n\t.string\t{}\n", i,
                            quoted_bytes(strings[i]));
+}
+
+namespace {
+
+// The directive of a value of size bytes, which both targets'
+// assemblers take: .byte, .short, .long or .quad.
+std::string_view
+data_directive(long size)
+{
+    switch (size) {
+    case 1: return ".byte";
+    case 2: return ".short";
+    case 4: return ".long";
+    default: return ".quad";
+    }
+}
+
+// An initializer's value as its directive writes it: the constant of
+// the object's type, read unsigned for an unsigned type or a pointer,
+// which the parser holds as its bits past LLONG_MAX.
+std::string
+initial_value(const expr_t &init)
+{
+    const long long value = as< literal_t >(init).value;
+    if (integer(init.type).is_signed)
+        return std::to_string(value);
+
+    return std::to_string(static_cast< unsigned long long >(value));
+}
+
+// The alignment of an object the unit defines, chapter 10: its type's,
+// 6.2.8, which aarch64's scaled :lo12: accesses rely on; an array of
+// the target's array_alignment in bytes or more takes at least that,
+// 16 on x86-64 by its psABI, since code another compiler writes for the
+// array's declaration may assume it.
+int
+object_alignment(const type_t &t, const target_t &target)
+{
+    const int align = align_of(t);
+    if (is< array_t >(t) && size_of(t) >= target.array_alignment)
+        return std::max(align, target.array_alignment);
+
+    return align;
+}
+
+// One object the unit defines, chapter 10: .globl, since every object
+// has external linkage; .type and .size, the symbol's kind and its
+// bytes in the symbol table, which the linker and a debugger read; its
+// alignment, and no directive for an alignment of 1; the label; then
+// the value of its initializer, or its zeros.
+void
+object(std::ostream &out, const object_decl_t &od, const target_t &target)
+{
+    const auto name = assembly_name(*od.sym);
+    const long size = size_of(od.sym->type);
+    const int align = object_alignment(od.sym->type, target);
+
+    out << std::format("\t.globl\t{}\n"
+                       "\t.type\t{}, @object\n"
+                       "\t.size\t{}, {}\n",
+                       name, name, name, size);
+
+    if (align > 1)
+        out << std::format("\t.p2align {}\n",
+                           std::countr_zero(static_cast< unsigned >(align)));
+
+    out << name << ":\n";
+
+    if (od.init)
+        out << std::format("\t{}\t{}\n", data_directive(size),
+                           initial_value(*od.init));
+    else
+        out << std::format("\t.zero\t{}\n", size);
+}
+
+// One block of objects, under its section's directive, or nothing when
+// no object belongs to it: those with an initializer or those without.
+void
+object_block(std::ostream &out,
+             const std::vector< object_decl_t > &objects,
+             const target_t &target,
+             bool initialized)
+{
+    bool opened = false;
+
+    for (const auto &od : objects) {
+        if (od.init.has_value() != initialized)
+            continue;
+
+        if (!opened)
+            out << (initialized ? "\t.data\n" : "\t.bss\n");
+        opened = true;
+
+        object(out, od, target);
+    }
+}
+
+} // namespace
+
+// Chapter 10: the objects the unit defines, after the string literals,
+// in the order of their definitions: one .data block of those with an
+// initializer, then one .bss block of those without, which are zero,
+// 6.7.11p11.  int n = 0; is in .data, since the source wrote its
+// initializer.  An object the unit only declares writes nothing.
+void
+objects(std::ostream &out,
+        const std::vector< object_decl_t > &objects,
+        const target_t &target)
+{
+    object_block(out, objects, target, true);
+    object_block(out, objects, target, false);
 }
 
 } // namespace rcc

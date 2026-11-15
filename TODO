@@ -95,6 +95,26 @@ gives the two forms or names chapter 10.
 
 Check: each table has the row.
 
+** TODO A constant index into a global array forms the array's address first
+
+~int table[8]; ... table[3]~ is =leaq table(%rip), %rax; movl
+12(%rax), %eax= on x86-64, and =adrp x0, table; add x0, x0,
+:lo12:table; ldr w0, [x0, #12]= on aarch64. It is the row of a local
+array, whose address is formed and then indexed, with the global's
+label for the slot; =cost.md= says so. The machine has one
+instruction for it on x86-64, =movl table+12(%rip), %eax=, which
+=clang -O0= writes, and two on aarch64, =adrp x16, table; ldr w0,
+[x16, :lo12:table+12]=. A local array's element by a constant index
+has the same shorter form, a slot's displacement, and does not take
+it either.
+
+Fix: decide whether an element by a constant index is the object's
+operand with the displacement folded in, for a local and a global
+alike, as a measured step.
+
+Check: =cost.md= and the pins of =subscript= and =global-array= agree
+with the decision.
+
 ** TODO =c1.cc= includes =c1-common.hh= and uses nothing of it
 
 =src/c1.cc= calls the two generators and throws =std::logic_error=
@@ -633,14 +653,24 @@ Check: the second program above is refused by the attribute's name.
 typedef, an array size that needs what rcc does not have yet makes a
 type rcc declares and does not use, and the parse of the size ends at
 its first refusal, so the undeclared name after it is never read.
-~extern int n; typedef int a[n];~ at file scope compiles for the same
-reason, though the size is no constant: "not yet: global variable"
-comes before the test for a constant.
 
 Fix: the rest of the size is parsed for its errors after the refusal;
 or the documents say that a size rcc cannot compute is not checked.
 
-Check: the first typedef fails with "'undeclared' undeclared".
+Check: the typedef above fails with "'undeclared' undeclared".
+
+** TODO An array sized by an object at file scope is "not yet"
+
+~extern int n; int a[n];~ and the same in a typedef fail with "not
+yet: variable length array". At file scope the program is wrong, not
+early: an object there has static storage duration, and an array of
+variable length has none (6.7.7.3p2).
+
+Fix: at file scope a size that is no integer constant expression is
+an error, with its own words.
+
+Check: a program of =tests/error= with the two declarations, pinned
+with the error.
 
 ** TODO A parameter of a typedef's array type rcc cannot size is not a pointer
 
@@ -769,6 +799,11 @@ Check: a program of =tests/error= with the declaration above, pinned
 the object has the composite type, =int [3]=. Type equality in the
 tree is structural, with no notion of compatibility or of a composite
 type.
+
+A tentative definition of an array of unknown size, ~int a[];~ at
+file scope, is "not yet" for the same reason: a later declaration may
+give its size, and if none does it has one element at the end of the
+file (6.9.3, EXAMPLE 2).
 
 Fix: at a redeclaration, an array of unknown size is compatible with
 one of known size and equal element type, and the symbol takes the

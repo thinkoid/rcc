@@ -2232,11 +2232,152 @@ declare_function(parser_t &p, const declarator_t &d, declarator_tail_t tail)
     return p.unit.functions.size() - 1;
 }
 
-// An object declared extern at file scope without an initializer is
-// defined elsewhere: its symbol has storage global, and c1 writes
-// nothing for it.  Any other object at file scope is a definition,
-// which needs the object's storage, and is not yet.  A use of the
-// object is refused where the object is named.
+bool is_address_constant(const expr_t &);
+
+// Whether an lvalue designates an object of static storage or a
+// function, the operand an address constant is made from, 6.6p11: a
+// global's name or a function's, a string literal, 6.4.5p6, or *E for an
+// address constant E, as a subscript by a constant is, p12.
+bool
+designates_static(const expr_t &e)
+{
+    if (is< name_t >(e)) {
+        const storage_t storage = as< name_t >(e).sym->storage;
+        return storage == storage_t::global || storage == storage_t::function;
+    }
+
+    if (is< string_t >(e))
+        return true;
+
+    if (is< unary_t >(e) && as< unary_t >(e).op == unary_op_t::deref)
+        return is_address_constant(*as< unary_t >(e).arg);
+
+    return false;
+}
+
+// Whether a pointer expression is an address constant, 6.6p11, p12, or
+// one plus or minus an integer constant, p9: & of such an lvalue, the
+// decay of an array or a function designator that is one, a pointer
+// cast of an address constant, and the sum or difference of one and a
+// constant.  An integer constant cast to a pointer is one too, and the
+// parser made it a literal; the caller tells it apart.
+bool
+is_address_constant(const expr_t &e)
+{
+    if (is< unary_t >(e) && as< unary_t >(e).op == unary_op_t::addr)
+        return designates_static(*as< unary_t >(e).arg);
+
+    if (is< cast_t >(e)) {
+        const expr_t &arg = *as< cast_t >(e).arg;
+        if (is< array_t >(arg.type) || is< function_t >(arg.type))
+            return designates_static(arg);
+
+        return is< pointer_t >(e.type) && is< pointer_t >(arg.type) &&
+               is_address_constant(arg);
+    }
+
+    if (!is< binary_t >(e) || !is< pointer_t >(e.type))
+        return false;
+
+    const auto &b = as< binary_t >(e);
+    if (b.op != binary_op_t::add && b.op != binary_op_t::sub)
+        return false;
+
+    const bool left = is< pointer_t >(b.lhs->type);
+
+    return is_address_constant(left ? *b.lhs : *b.rhs) &&
+           is< literal_t >(left ? *b.rhs : *b.lhs);
+}
+
+// The initializer of an object the unit defines, after its '='.  Every
+// expression in it is a constant expression, 6.7.11p5, and in the
+// subset that is an integer constant expression, which the evaluator
+// has folded to a literal, converted to the object's type as by simple
+// assignment, p12; for a pointer, a null pointer.  An address constant,
+// 6.6p11, is not yet: the address of an object or a function, an array
+// or a function designator that decays, a string literal as a
+// pointer's initializer, an integer cast to a pointer other than 0.
+// Any other initializer is no constant expression, an error.  An array
+// takes a brace-enclosed list, or a string literal when its elements
+// are char, p15, p17, and both are not yet; so is a brace around a
+// scalar's initializer, p12.
+expr_t
+object_initializer(parser_t &p, const token_t &op, const type_t &t)
+{
+    if (peek(p).kind == tok_t::lbrace)
+        not_yet(peek(p), "brace initializer");
+
+    const token_t &start = peek(p);
+    expr_t e = assignment_expression(p);
+
+    if (is< array_t >(t)) {
+        const type_t &element = *as< array_t >(t).element;
+        if (is< string_t >(e) && is< int_t >(element) &&
+            as< int_t >(element).width == 8)
+            not_yet(start, "array initialized by a string literal");
+
+        fail(start, "array initializer must be an initializer list");
+    }
+
+    expr_t init = assignment_conversion(op, std::move(e), t);
+
+    const bool constant = is< literal_t >(init);
+    if (constant && (is< int_t >(t) || as< literal_t >(init).value == 0))
+        return init;
+
+    if (constant || is_address_constant(init))
+        not_yet(start, "address constant as an initializer");
+
+    fail(start, "initializer element is not a compile-time constant");
+}
+
+// The entry of the unit's objects that defines sym, its index, or
+// nothing when no declaration has defined the object yet.
+std::optional< std::size_t >
+definition_of(const parser_t &p, const symbol_t *sym)
+{
+    for (std::size_t i = 0; i < p.unit.objects.size(); ++i)
+        if (p.unit.objects[i].sym == sym)
+            return i;
+
+    return std::nullopt;
+}
+
+// An object the unit defines is one rcc makes, and its type is
+// complete, 6.7.1p8: not void, not a not-yet type, whose size rcc does
+// not know, and an array with its size, which a declaration alone may
+// leave out.  An array of unknown size in a tentative definition is one
+// element, 6.9.3p2, the composite type rcc does not build, so it is not
+// yet.  An attribute that marks the object, said on any of its
+// declarations, is one rcc would have to honour, and is not yet.
+void
+require_definable(const token_t &name, const symbol_t &sym, bool initialized)
+{
+    if (is< void_t >(sym.type))
+        fail(name, "variable " + quoted(name.text) + " has type void");
+
+    require_honoured(name, sym.type);
+
+    if (!sym.marking.empty())
+        not_yet(name, sym.marking);
+
+    if (!initialized && is< array_t >(sym.type) &&
+        as< array_t >(sym.type).count < 0)
+        not_yet(name, "tentative definition of an array of unknown size");
+}
+
+// An object at file scope, 6.9.3.  A declaration with an initializer
+// defines it, p1, extern or not; one without an initializer and
+// without extern is a tentative definition, p2; extern alone declares
+// an object defined elsewhere, and c1 writes nothing for it.  Every
+// declaration of the name in the unit is of one object with external
+// linkage, 6.2.2p5, of one type, 6.2.7p2: extern int n; int n; int n =
+// 1; declare one object, and two tentative definitions define one.  An
+// object only tentatively defined is zero, 6.9.3p2.  A second
+// initializer is a second external definition, of which a program has
+// one, 6.9.1p5, an error.  The name is in scope from the end of its
+// declarator, 6.2.1p7, so an initializer sees the object.  A use of an
+// object an attribute marks is refused where the object is named.
 void
 declare_external_object(parser_t &p,
                         const specifiers_t &spec,
@@ -2244,14 +2385,34 @@ declare_external_object(parser_t &p,
 {
     const declarator_tail_t tail = declarator_tail(p, spec);
 
-    if (!declared(spec, tok_t::kw_extern) || peek(p).kind == tok_t::assign)
-        not_yet(*d.name, "global variable");
-
     symbol_t *sym = earlier_declaration(p, *d.name, d.type, storage_t::global);
     if (!sym)
         sym = &added(p, d.name->text, d.type, storage_t::global);
 
     record_tail(*sym, tail);
+
+    const bool initialized = peek(p).kind == tok_t::assign;
+    if (!initialized && declared(spec, tok_t::kw_extern))
+        return;
+
+    require_definable(*d.name, *sym, initialized);
+
+    std::optional< std::size_t > index = definition_of(p, sym);
+    if (index && initialized && p.unit.objects[*index].init)
+        fail(*d.name, "redefinition of " + quoted(d.name->text));
+
+    if (!index) {
+        index = p.unit.objects.size();
+        p.unit.objects.push_back(object_decl_t { sym, std::nullopt });
+    }
+
+    if (!initialized)
+        return;
+
+    const token_t &op = advance(p);
+    expr_t init = object_initializer(p, op, sym->type);
+
+    p.unit.objects[*index].init = std::move(init);
 }
 
 // No function specifier stands in a declaration of main, 6.7.5p4.
@@ -2298,7 +2459,7 @@ external_declarator(parser_t &p,
 }
 
 // A function definition, or a declaration of functions, of objects
-// defined elsewhere and of type names, or of a tag or enumeration
+// and of type names, or of a tag or enumeration
 // constants alone.  extern on a function changes nothing: a function
 // has external linkage without it.  A definition is a declarator and
 // its body, with nothing between them, so no attribute and no
@@ -4222,11 +4383,11 @@ argument_expression_list(parser_t &p,
 }
 
 // A name must be declared, 6.5.2p2, as an object or a function: a
-// typedef name names a type, and an object declared extern at file
-// scope is not addressed by c1 yet, so its use is refused here, with
-// the name in hand, as is an enumeration constant's, whose value is
-// not computed yet, and a symbol's an attribute marked, by the
-// attribute's words.  A generic selection is not yet.  Parentheses leave the expression as it is, an
+// typedef name names a type.  The use of an enumeration constant, whose
+// value is not computed yet, is refused here, with the name in hand, as
+// is a symbol's an attribute marked, by the attribute's words, and a
+// global's of a not-yet type, which an object declared elsewhere may
+// have, by the type's.  A generic selection is not yet.  Parentheses leave the expression as it is, an
 // lvalue included, p6.  A floating constant is not yet: the lexer took
 // its spelling, and its value is not computed.  A character constant
 // is an int, 6.4.4.5p11.  Adjacent string literals are one, 6.4.5p5,
@@ -4253,7 +4414,7 @@ primary_expression(parser_t &p)
             not_yet(t, sym->marking);
 
         if (sym->storage == storage_t::global)
-            not_yet(t, "global variable");
+            require_honoured(t, sym->type);
 
         if (sym->storage == storage_t::enumerator)
             not_yet(t, "enum");

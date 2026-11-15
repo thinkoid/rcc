@@ -74,9 +74,11 @@ floating constants taken by the lexer, a typedef of an array of a
 size rcc cannot compute, and the scope a parameter list opens, so
 that 57 of 58 headers of the C library and of POSIX parse on each
 target; the one left is `clang`'s `tgmath.h`. A function is a value
-and a call
-goes through a pointer to one, on both targets, so a program passes
-its own comparison to `qsort` and its own handler to `signal`.
+and a call goes through a pointer to one, on both targets, so a
+program passes its own comparison to `qsort` and its own handler to
+`signal`. Then the objects at file scope: a program defines, declares
+and uses its globals, with integer constants as initializers, and
+reaches the C library's, so `header-stdout` writes to `stdout`.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/`, the cost corpus over `tests/cost/`
 and the error corpus over `tests/error/`, the programs rcc refuses

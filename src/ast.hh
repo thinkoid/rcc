@@ -36,10 +36,11 @@ namespace rcc {
 // is declared.  It is -1 for an object in no register: a register
 // declaration met with the target's register variables all live is an
 // ordinary local, with a warning.
-// A global is an object declared extern at file scope, defined
-// elsewhere; the parser refuses its use for now, so no expression names
-// one.  A type_name is a typedef: its type is the type the name stands
-// for, it has no object, and no expression names it either.  An
+// A global is an object declared at file scope, with external linkage:
+// one the unit defines has an entry in the unit's objects, and one it
+// only declares has none.  A type_name is a typedef: its type is the
+// type the name stands for, it has no object, and no expression names
+// it.  An
 // enumerator is an enumeration constant: its type is its enumeration's,
 // a not-yet type, its value is not computed, and the parser refuses its
 // use, so no expression names one.
@@ -235,10 +236,11 @@ as(const expr_t &e)
 }
 
 // The name of an object, a string literal or a dereference; the three
-// c1 takes the address of: a local's slot, a string's label, or what
-// the dereferenced pointer designates; a global's is a later slice.  A
-// function designator, a function's name or *p through a pointer to a
-// function, designates no object (6.3.2.1p1, p4).
+// c1 takes the address of: a local's slot, a global's label or its
+// address from the GOT, a string's label, or what the dereferenced
+// pointer designates.  A function designator, a function's name or *p
+// through a pointer to a function, designates no object (6.3.2.1p1,
+// p4).
 inline bool
 is_lvalue(const expr_t &e)
 {
@@ -343,12 +345,28 @@ struct function_decl_t
     int registers;
 };
 
+// One per object the unit defines, 6.9.3: a declaration at file scope
+// with an initializer, or a tentative definition, one without an
+// initializer and without extern.  The entries are in the order of the
+// definitions, each where the first declaration that defines its
+// object stands; a later one adds its initializer.  An object the unit
+// only declares has none, and c1 writes nothing for it.  init is the
+// initializer converted to the object's type, a constant, or absent
+// for an object whose definitions are all tentative, which is zero,
+// 6.9.3p2, 6.7.11p11.
+struct object_decl_t
+{
+    const symbol_t *sym;
+    std::optional< expr_t > init;
+};
+
 // The warnings in the order the parser met them; the unit compiles
 // whatever they say.
 struct unit_t
 {
     std::deque< symbol_t > symbols;
     std::vector< function_decl_t > functions;
+    std::vector< object_decl_t > objects;
     std::vector< warning_t > warnings;
 };
 

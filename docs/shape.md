@@ -142,13 +142,18 @@ Three sums.
   one `function_decl_t` per function symbol, with a body when the
   unit defines the function and none when it only declares it. A
   definition carries the most register variables it has live at
-  once, its parameters among them.
+  once, its parameters among them. It holds one `object_decl_t` per
+  object it defines, in the order of the definitions, with the
+  initializer when one was written: c1 writes the data from them.
 
 A symbol is a name, a type and a storage: local, parameter, global,
-function, type name, enumerator. A global is an object declared
-`extern` at file scope and defined elsewhere; nothing is written for
-it, and the parser refuses its use, so no expression names one yet. A
-type name is a typedef's: its type is the type the name stands for,
+function, type name, enumerator. A global is an object declared at
+file scope, with external linkage. One the unit defines has an entry
+in the unit's objects, and that entry is how c1 tells it from one the
+unit only declares, which has none and for which nothing is written:
+the first is reached PC-relative and the second through the GOT. A
+parameter of a prototype is a symbol of storage parameter, never a
+global, even where nothing defines its function. A type name is a typedef's: its type is the type the name stands for,
 it has no object, and nothing is written for it. An enumerator is an
 enumeration constant: its type is its enum's, its value is not
 computed, and the parser refuses its use, so no expression names one
@@ -261,16 +266,16 @@ optimizer, asks for a diagnostic, or describes what a compiler that
 calls each function as written does not depend on, `nonnull`, `pure`,
 `format` and their like, is dropped. Any other, known or not, marks
 what it is said of: a typedef through one names a not-yet type of its
-own, a marked function or `extern` object is refused where an
-expression names it, and on a local, which rcc would make, the
-attribute is not yet. An attribute among the declaration specifiers
+own, a marked function or object at file scope is refused where an
+expression names it, and on a local or the definition of an object,
+which rcc would make, the attribute is not yet. An attribute among the declaration specifiers
 is said of each declarator, as one after the declarator is. One on a
 parameter marks the function, whose calls pass the parameter, and its
 definition. On a struct, a union or an enum every attribute is
 dropped, since the type is a not-yet type. `__asm__ ("name")` after
-the declarator of a function or an `extern` object is the symbol's
-name in the assembly: glibc declares `scanf` as `__isoc99_scanf`, and
-the call names that.
+the declarator of a function or of an object at file scope is the
+symbol's name in the assembly: glibc declares `scanf` as
+`__isoc99_scanf`, and the call names that.
 
 `volatile` is dropped as `const` is, wherever `const` may stand:
 among the declaration specifiers, after a `*`, in a type name, once
@@ -320,6 +325,26 @@ skipped to the closing brace, c1 writes nothing for it, and an
 expression that names the function is refused. `static` on anything
 else is not yet.
 
+An object at file scope is defined by a declaration with an
+initializer, `extern` or not, and tentatively by one without an
+initializer and without `extern` (6.9.3p1, p2); `extern` alone
+declares it. Every declaration of the name is of one object with
+external linkage, of one type by the tree's equality: `extern int n;
+int n; int n = 1;` declare one object, and two tentative definitions
+define one, which is zero (6.9.3p2). A second initializer is a second
+external definition, an error (6.9.1p5). A declaration may leave an
+array's size out, a definition may not, and the definition of an
+object of a not-yet type, or of one an attribute marks, is not yet.
+The initializer is an integer constant expression, folded and
+converted to the object's type as by assignment (6.7.11p12), or a
+null pointer for a pointer. An address constant (6.6p11), the address
+of an object or a function, an array that decays, a string literal as
+a pointer's initializer, is not yet, and so are a string as a `char`
+array's initializer and braces; anything else is no constant
+expression, an error (6.7.11p5). In an expression a global is what a
+local is, an lvalue of its type; one declared elsewhere of a not-yet
+type is refused where it is named.
+
 ## 6. The generator
 
 `generate(unit, target, file, out)` calls the target's generator,
@@ -334,7 +359,8 @@ code of a `backend.md` chapter:
 
 - The state is per function, reset at each definition: the slots,
   the held values, the frame's size, the label numbers. Only the
-  string literals run across the file.
+  string literals and the symbols the file defines run across the
+  file.
 - Every local and parameter not declared `register` has a slot off
   `rbp`, assigned at its declaration, none shared; every read is a
   load and every write a store (chapter 5, G12).
@@ -375,7 +401,11 @@ code of a `backend.md` chapter:
   it, once the frame's size is known, then the body and the one
   epilogue (chapter 5).
 - The string literals are one `.data` block after the last function,
-  one label per joined literal, never merged (chapter 10, G17).
+  one label per joined literal, never merged (chapter 10, G17). The
+  objects the file defines follow, those with an initializer in one
+  `.data` block and the others in one `.bss` block, in the order of
+  their definitions; the text is the same on both targets, and is
+  `c1-common`'s.
 
 A reader checking a promise opens c1's source, finds the function that
 writes the row, and reads what is not there.
@@ -540,7 +570,11 @@ The scope of a parameter list and the qualifiers inside a parameter's
 array brackets bring `regex.h` through, and `header-regex` in the
 corpus declares a function in the shape of `regexec`. So 57 of 58
 headers of the C library and of POSIX parse on each target;
-`tgmath.h` stops at the declaration of a `static` function.
+`tgmath.h` stops at the declaration of a `static` function. Then
+the objects at file scope: a program defines, declares and uses its
+own globals, with integer constants as initializers, and reaches the C
+library's, so `header-stdout` writes to `stdout` (`backend.md` and
+`aarch64.md` chapter 10).
 
 ## 11. Not yet
 
@@ -552,10 +586,11 @@ value, is refused; a floating constant is a token, refused where an
 expression uses it), an object of a typedef whose array size rcc
 cannot compute, a variable length array (a parameter's array of a
 size that is not constant is the pointer the parameter is adjusted to,
-and the size is not evaluated), global variables (an object declared
-`extern` at file scope is accepted and its use refused; a definition
-at file scope is refused), `extern` in a block, brace initializers
-and `char s[] = "..."`, a declaration through a typedef of function
+and the size is not evaluated), an address constant as an object's
+initializer, the composite type of two declarations of one object (an
+array declared without its size and defined with it, and a tentative
+definition of an array of unknown size), `extern` in a block, brace
+initializers and `char s[] = "..."`, a declaration through a typedef of function
 type, wide and `u8` strings, the checks of the qualifiers (`const`
 and `volatile` are dropped, so an assignment to a `const` object and
 a conversion that discards a qualifier draw no diagnostic, and
@@ -564,7 +599,8 @@ a conversion that discards a qualifier draw no diagnostic, and
 refused, a `register` array (6.3.2.1p3), `inline` on a function
 definition, what an attribute that rcc does
 not honour marks (an object of a typedef so declared, the use of a
-function or an `extern` object, a local, a function's definition),
+function or of an object at file scope, a local, the definition of a
+function or of an object at file scope),
 `__asm__` as a statement, at file scope or on a local, and C's
 keywords outside the subset: `_Complex` outside the specifiers of a
 floating type, `_Imaginary`, the `_Atomic` qualifier outside a

@@ -92,7 +92,8 @@ struct state_t
     // the target's largest frame
     long frame_limit;
 
-    // the functions the unit defines, whose addresses are PC-relative
+    // the functions and the objects the unit defines, whose addresses
+    // are PC-relative
     std::unordered_set< const symbol_t * > defined { };
 
     // the bytes of each string literal met, in order; the index is the
@@ -708,34 +709,18 @@ pointed(state_t &s, const expr_t &p, const type_t &pointee)
     return { .base = left ? l : r, .index = left ? r : l, .scale = size };
 }
 
-// The address of an lvalue: a local's or a parameter's slot, a string
-// literal's label, or what a dereference designates.  It serves &,
-// array decay, loads and stores alike, so the addressing row is
-// written once.
-address_t
-address(state_t &s, const expr_t &e)
-{
-    if (is< string_t >(e))
-        return { .label = string_label(s.strings, as< string_t >(e)) };
-
-    if (is< unary_t >(e) && as< unary_t >(e).op == unary_op_t::deref)
-        return pointed(s, *as< unary_t >(e).arg, e.type);
-
-    return slot_address(slot_of(s, object_of(e)));
-}
-
-// The address of a function as a value, valid to 64, chapter 10.  One
-// the unit defines is PC-relative, as a string literal's address is,
-// leaq f(%rip), L.  One it only declares may be in a shared library,
-// which a PC-relative reference does not reach from a position-
-// independent executable, so its address is loaded from the GOT, movq
-// f@GOTPCREL(%rip), L, the one the dynamic linker wrote, the address
-// the library's own code takes of it.
+// The address of a function or of an object as a value, valid to 64,
+// chapter 10.  One the unit defines is PC-relative, as a string
+// literal's address is, leaq f(%rip), L.  One it only declares may be
+// in a shared library, which a PC-relative reference does not reach
+// from a position-independent executable, so its address is loaded from
+// the GOT, movq f@GOTPCREL(%rip), L, the one the dynamic linker wrote,
+// the address the library's own code takes of it.
 value_t
-function_address(state_t &s, const symbol_t &f)
+symbol_address(state_t &s, const symbol_t &sym)
 {
-    const auto name = assembly_name(f);
-    if (s.defined.contains(&f))
+    const auto name = assembly_name(sym);
+    if (s.defined.contains(&sym))
         return address_of(s, { .label = std::string(name) });
 
     const auto v = fresh(s, 64);
@@ -745,6 +730,40 @@ function_address(state_t &s, const symbol_t &f)
     return v;
 }
 
+// The address of a global as an access's operand, chapter 10.  One the
+// unit defines is its label off rip, a slot with another spelling,
+// n(%rip), where a local's is -12(%rbp).  One it only declares has its
+// address loaded from the GOT into a register, and the access is the
+// indirection through it, (%rax), as *p's is with p loaded: each access
+// the source writes loads the address once.
+address_t
+global_address(state_t &s, const symbol_t &g)
+{
+    if (s.defined.contains(&g))
+        return { .label = std::string(assembly_name(g)) };
+
+    return { .base = symbol_address(s, g) };
+}
+
+// The address of an lvalue: a local's or a parameter's slot, a global's
+// label or its address from the GOT, a string literal's label, or what a
+// dereference designates.  It serves &, array decay, loads and stores
+// alike, so the addressing row is written once.
+address_t
+address(state_t &s, const expr_t &e)
+{
+    if (is< string_t >(e))
+        return { .label = string_label(s.strings, as< string_t >(e)) };
+
+    if (is< unary_t >(e) && as< unary_t >(e).op == unary_op_t::deref)
+        return pointed(s, *as< unary_t >(e).arg, e.type);
+
+    if (const auto *g = global_of(e))
+        return global_address(s, *g);
+
+    return slot_address(slot_of(s, object_of(e)));
+}
+
 // A function designator decayed to a pointer, 6.3.2.1p4: a function's
 // name is its address, and *p through a pointer to a function is p's
 // value, the * written as no instruction.
@@ -752,7 +771,7 @@ value_t
 function_pointer(state_t &s, const expr_t &designator)
 {
     if (is< name_t >(designator))
-        return function_address(s, *as< name_t >(designator).sym);
+        return symbol_address(s, *as< name_t >(designator).sym);
 
     return rvalue(s, *as< unary_t >(designator).arg);
 }
@@ -2324,8 +2343,9 @@ function(state_t &s, const function_decl_t &fd)
 
 // The functions the unit defines, in order; one it only declares
 // writes nothing, since the assembler leaves its symbol to the link.
-// The string literals follow the last function.  The note section
-// marks the stack not executable.
+// The string literals follow the last function, and the objects the
+// unit defines follow them.  The note section marks the stack not
+// executable.
 void
 generate_x86_64(const unit_t &unit,
                 const target_t &target,
@@ -2334,7 +2354,7 @@ generate_x86_64(const unit_t &unit,
 {
     state_t s { .out = out,
                 .frame_limit = target.frame_limit,
-                .defined = defined_functions(unit) };
+                .defined = defined_symbols(unit) };
 
     out << std::format("\t.file\t{}\n\t.text\n", quoted_file(file));
 
@@ -2343,6 +2363,7 @@ generate_x86_64(const unit_t &unit,
             function(s, fd);
 
     literals(s.out, s.strings);
+    objects(s.out, unit.objects, target);
 
     out << "\t.section\t.note.GNU-stack,\"\",@progbits\n";
 }

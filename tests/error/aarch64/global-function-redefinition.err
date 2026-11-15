@@ -1,0 +1,2 @@
+tests/error/global-function-redefinition.c:3:5: error: redefinition of 'count'
+status 1

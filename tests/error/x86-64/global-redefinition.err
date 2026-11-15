@@ -1,0 +1,2 @@
+tests/error/global-redefinition.c:4:5: error: redefinition of 'count'
+status 1

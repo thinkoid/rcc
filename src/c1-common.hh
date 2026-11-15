@@ -2,10 +2,11 @@
 
 // The part of c1 that is the same for every target: the integer view
 // of a type, the symbol and label names, the predicates on the tree,
-// the string literals' block after the last function, and the register
-// stack's held value and its handle.  None of it names a register, a
-// mnemonic or an operand form; each generator includes it and writes
-// its own instructions around it.  The register stack's functions are
+// the blocks of the string literals and of the objects after the last
+// function, and the register stack's held value and its handle.  None
+// of it names a register, a mnemonic or an operand form; each
+// generator includes it and writes its own instructions around it.
+// The register stack's functions are
 // the same text for every target too, but they name the target's
 // registers and state: they are in c1-stack.hh, which each generator
 // includes inside its own namespace.
@@ -13,6 +14,7 @@
 #pragma once
 
 #include "ast.hh"
+#include "target.hh"
 
 #include <ostream>
 #include <string>
@@ -34,11 +36,12 @@ int written(int width, bool is_signed);
 std::string_view assembly_name(const symbol_t &);
 std::string label_name(std::string_view function, int n);
 
+const symbol_t *global_of(const expr_t &);
 const symbol_t *object_of(const expr_t &);
 const symbol_t *register_variable(const expr_t &);
 const symbol_t *named_callee(const call_t &);
 const function_t &callee_type(const call_t &);
-std::unordered_set< const symbol_t * > defined_functions(const unit_t &);
+std::unordered_set< const symbol_t * > defined_symbols(const unit_t &);
 const expr_t *bare_base(const expr_t &);
 
 bool is_step(unary_op_t);
@@ -52,6 +55,9 @@ bool names(const expr_t &, const symbol_t *);
 std::string string_label(std::vector< std::string > &strings, const string_t &);
 std::string quoted_file(std::string_view file);
 void literals(std::ostream &, const std::vector< std::string > &strings);
+void objects(std::ostream &,
+             const std::vector< object_decl_t > &objects,
+             const target_t &);
 
 // A value the generator holds: in an expression register, or in its
 // spill slot once the register was needed for another.  The age orders

@@ -1,0 +1,2 @@
+tests/error/global-struct.c:4:14: error: not yet: struct
+status 1

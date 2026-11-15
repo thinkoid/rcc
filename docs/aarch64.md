@@ -373,8 +373,9 @@ and the spill path is the same code.
 
 **The scratch pair: `x16`, `x17`.** Never an expression register and
 never held across a node. `x16` takes an address the instruction
-cannot reach (chapter 5.3), and the callee of a call through a
-pointer, loaded from its slot for the `blr` (chapter 8). `x17`
+cannot reach (chapter 5.3), the page of a global the file defines for
+its access (chapter 10), and the callee of a call through a pointer,
+loaded from its slot for the `blr` (chapter 8). `x17`
 carries the bytes of a copy from memory to memory, which the machine
 has no instruction for: a stack argument on its way from its slot to
 the outgoing area, and a stack parameter on its way to its slot. Both
@@ -540,6 +541,10 @@ access takes the low 12. Its address as a value, for `&x` or an
 array's decay, is `add x0, x29, #36864; add x0, x0, #24`, and one
 `add` when either part is zero.
 
+A global the file defines is reached by the same mechanism with the
+symbol's page in place of the upper part: `adrp x16, counter`, then
+the access through `[x16, :lo12:counter]` (chapter 10).
+
 This is a cost the programmer controls, and the cost model gives it a
 row: slots are laid out in declaration order, so a function that
 declares `int a[9216]` three times and its counters after them puts
@@ -584,6 +589,8 @@ For a 32-bit operation (`w` names) or a 64-bit one (`x` names).
 |---|---|---|
 | a constant | an immediate where the instruction encodes it; else `mov L, #c`, with `movk` for each further 16 bits a wide one needs | 6.4 |
 | a local, a parameter | the load of 2.2 from `[x29, #d]` | through `x16` beyond reach, 5.3 |
+| a global the file defines | `adrp x16, sym`, then the load or the store of 2.2 through `[x16, :lo12:sym]`, wherever a row reads or writes a slot: `ldr w0, [x16, :lo12:sym]`, `str w0, [x16, :lo12:sym]` | two instructions an access, chapter 10 |
+| a global the file only declares | `adrp L, :got:sym; ldr L, [L, :got_lo12:sym]`, its address from the GOT, then the row of `*p` through `L`: `ldr w0, [L]`, `str w1, [L]` | chapter 10; each access the source writes loads the address once |
 | a `register` variable | the register, as a source operand; as `L` of a row that writes its result, the result in a fresh `N`, `sub w0, w19, w20`, `lsl w0, w19, #3`, `add x0, x19, w20, sxtw #2` for `p + n`, `sub x0, x19, x20` for `p - q` before its `sdiv` | no instruction, and no copy (6.1) |
 | `a + b`, `a - b` | `add L, L, R`, `sub L, L, R` | G1 |
 | `a * b` | `mul L, L, R` | G1; a constant factor is first loaded, `mov R, #4` |
@@ -598,7 +605,7 @@ For a 32-bit operation (`w` names) or a 64-bit one (`x` names).
 | `x = e` | the store of 2.2 to the slot; for a register variable the `mov` into its register, `mov w20, w0`, `mov x20, x0`, a constant the immediate, `mov w20, #0`, a narrow type the extension, `sxtb w19, w0` | 6.6 for a constant; chapter 4 |
 | `x op= e`, `++x`, `x++` | the load, the operation, the store, after `e` for `x op= e`; a register variable in place, after `e`, its register `L` and the destination, `add w19, w19, w0`, `add w19, w19, #1`, a narrow one re-extended after, `sxtb w19, w19`, and `%=` with the quotient in a register of its own, `sdiv w0, w19, w20; msub w19, w0, w20, w19`; `x++` on a register variable for its value is G13's copy and the step, `mov w0, w19; add w19, w19, #1`; a pointer's `++` and `--` step by the size, an immediate where `add` encodes it, `add L, L, #4` for an `int *`, and otherwise held in a register | no memory form, 6.6; chapter 4 |
 | `(T) a` | `sxtw L, L` for `int` to `long`; `sxtb`, `sxth`, `uxtb`, `uxth` from a narrow type; each only when `L` is not already valid to the new width; `mov wL, wL` for an `unsigned` not valid to 64; nothing between pointer types and for a pointer to `long`; an integer to a pointer as to `unsigned long`, so `sxtw` for an `int` | G2; the width rule |
-| `&x` | `add L, x29, #d` | two `add`s beyond 4095, 5.3 |
+| `&x` | `add L, x29, #d`; for a global the file defines `adrp L, sym; add L, L, :lo12:sym`, as a string literal's; for one it only declares, the load from the GOT | two `add`s beyond 4095, 5.3 |
 | `*p` | the load of 2.2 from `[L]` | G8 to G11 |
 | `*p++`, `*p--`, `*++p`, `*--p`, `*(p += c)`, `*(p -= c)` on a `register` pointer | the access by a form of 2.3 that steps the variable's register, the borrowed read the base: the post-indexed form for `p++` and `p--`, `ldrb w0, [x19], #1` and `ldrb w0, [x19], #-1`, and the pre-indexed one for the others, `ldrb w0, [x19, #1]!`, `ldr w0, [x19, #16]!` for `*(p += 4)` on an `int *`; a store the same, `strb w0, [x19], #1`, so `*p++ = *q++` is `ldrb w0, [x20], #1; strb w0, [x19], #1`; a compound assignment or a `++` through the pointer, two accesses through one address, steps once, the post form at the store, `ldrb w0, [x19]; add w0, w0, #5; strb w0, [x19], #1`, the pre form at the load; a read of the pointer still held is copied before the access that steps, `mov x0, x19`. The step is its own instructions and the access goes through the old or the new value, as the rows of `x++` and `*p` have it, in three cases: a store whose right operand names the pointer, since G13 completes the step before that operand, `*p++ = *p` being `mov x0, x19; add x19, x19, #1; ldrb w1, [x19]; strb w1, [x0]`; a step out of the form's reach, `*(p += 64)` on an `int *` being `add x19, x19, #256; ldr w0, [x19]`; and a pointer in a slot, whose step is a load, an `add` and a store | `autoincrement.md`; call 9 |
 | `p[i]`, `a[i]` | the load from `[L, R, lsl #k]`, `[L, R]` for a size of 1; from `[L, wR, sxtw #k]` or `[L, wR, uxtw #k]` for an index held at 32 bits; a constant index is `[L, #c*s]` when the displacement encodes, a negative one within 256 bytes the unscaled displacement, `[L, #-4]`; a constant index the access does not encode (2.3) is an index like any other, held in a register by the constant row of 6.4 and read `[L, R, lsl #k]` | one instruction; the index's extension is the form's, below (call 5) |
@@ -875,6 +882,29 @@ pair against a libc function in a position-independent executable,
 `R_AARCH64_ADR_PREL_PG_HI21 ... which may bind externally`, and the
 GOT's entry is the address the library itself takes of the function.
 
+An object follows the same rule. One the file defines, by a definition
+anywhere in the file, is reached by the far slot's mechanism with the
+symbol's page (5.3): `adrp x16, counter`, then the access through
+`[x16, :lo12:counter]`, two instructions an access, and `x16` holds
+nothing across them. Its address as a value is the pair a literal's
+is, `adrp x0, counter; add x0, x0, :lo12:counter`, and an array the
+file defines is indexed after that pair, as a local array is after
+its `add`. The `:lo12:` form of a load or a store is scaled by the
+access's size, so the object's low 12 bits must be a multiple of it:
+the object is aligned to its type at its definition. One the file only
+declares has its address loaded from the GOT, as a declared function's
+is, and each access is the indirection through that register. GNU ld
+refuses the PC-relative pair against `stdout`, as against a libc
+function.
+
+The objects' data is the text of `backend.md` chapter 10, the same on
+both targets: `.data` for those with an initializer, `.bss` for the
+others, each under `.globl`, `.type`, `.size` and `.p2align`, with
+`.byte`, `.short`, `.long`, `.quad` or `.zero`, which GNU as and
+clang take on this machine as on x86-64. The one difference is the
+alignment of an array: the AAPCS64 has no rule like x86-64's 16 for
+an array of 16 bytes or more, so an array takes its element's.
+
 ## 11. c0 and the driver
 
 c0 learns the target, for three facts:
@@ -894,7 +924,8 @@ c0 learns the target, for three facts:
 
 They live in one small description, `target_t`, that c0, the
 generators and the driver read: the name, the name `clang` takes after
-`--target=`, the three facts. Everything else about a target is in its
+`--target=`, the three facts, and the alignment the convention asks of
+a global array, which c1 reads (chapter 10). Everything else about a target is in its
 generator.
 
 The driver takes `-target x86-64` or `-target aarch64`, and the
@@ -953,7 +984,7 @@ compiles them against its own registers and state.
 
 ## 13. Verification
 
-- **The oracle.** `clang -O2` on this machine gives the twelve corpus
+- **The oracle.** `clang -O2` on this machine gives the corpus
   programs the statuses it gives them on x86-64, the second column
   of `tests/corpus/expected` unchanged. The file is shared until a
   row differs.
@@ -1023,7 +1054,20 @@ compiles them against its own registers and state.
   in the same way. It compares `p - q` with `clang`'s except in one
   place: for a negative difference that is no multiple of a size of
   2, 4 or 8, `clang -O0` shifts, and the probe's main computes the
-  truncated quotient itself.
+  truncated quotient itself. The globals probe runs the objects at file
+  scope of chapter 10, of every integer type and pointers to them,
+  each one the file defines and one it only declares, which its
+  library defines: read and written, a compound assignment and `++`
+  for the effect and for the value, an element by a constant and by a
+  variable index, a row of an array of arrays, the address taken and
+  passed, a pointer dereferenced and stepped, and an object read
+  before and after a call that writes it. The library is linked twice,
+  once renamed, so each build has its own copy of every object; the
+  main fills both copies alike before each check and compares every
+  object byte by byte after it, so a store too wide or to the wrong
+  object shows. It checks the initialized objects against their
+  initializers, and a tentative definition written twice against
+  zero, before anything writes them.
 
   Three probes run the register variables. The registers probe runs
   a register variable of each integer type and a register pointer to

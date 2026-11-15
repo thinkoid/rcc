@@ -121,7 +121,8 @@ struct state_t
     // the target's largest frame
     long frame_limit;
 
-    // the functions the unit defines, whose addresses are PC-relative
+    // the functions and the objects the unit defines, whose addresses
+    // are PC-relative
     std::unordered_set< const symbol_t * > defined { };
 
     // the string literals' bytes in the order met; .Ls<n> is the n-th
@@ -641,9 +642,11 @@ struct step_t
 // writes it, 2.3: a slot off x29; a held base, the pointer's value,
 // [x0]; a subscript's, the base and a constant displacement, the index
 // times the size, [x0, #8], or the base and a held index read by the
-// form, [x0, w1, sxtw #2].  A string literal's address is its label,
-// which no access takes as an operand: the literal is an array and is
-// used only by its address as a value, chapter 10.  A register pointer
+// form, [x0, w1, sxtw #2].  A global the unit defines is its label,
+// reached through x16 as a far slot is, [x16, :lo12:n] after adrp x16,
+// n, chapter 10.  A string literal's address is its label too, which no
+// access takes as an operand: the literal is an array and is used only
+// by its address as a value.  A register pointer
 // stepped by a constant the form encodes is its register as the base and
 // the step, which the access makes, [x19], #1 or [x19, #1]!.  The access
 // consumes the values.
@@ -697,14 +700,20 @@ stepped_operand(state_t &s, const address_t &a, unsigned avoid)
 
 // The address as the operand of an access of width bits.  A slot is
 // [x29, #d], or through x16 beyond reach, its add written here, 5.3.  A
-// spilled base or index is reloaded first, outside avoid and outside the
-// other's register; the reload is complete before the access, so x16
-// holds nothing across it.  A step is stepped_operand()'s.
+// global's label is the far slot's mechanism with the symbol's page,
+// adrp x16, n written here and [x16, :lo12:n] the operand, chapter 10:
+// two instructions an access, and the object's alignment, at its
+// definition, is what the scaled :lo12: form needs.  A spilled base or
+// index is reloaded first, outside avoid and outside the other's
+// register; the reload is complete before the access, so x16 holds
+// nothing across it.  A step is stepped_operand()'s.
 std::string
 operand(state_t &s, const address_t &a, int width, unsigned avoid = 0)
 {
-    if (!a.label.empty())
-        throw std::logic_error("c1: a string literal as an access's operand");
+    if (!a.label.empty()) {
+        insn(s, "adrp", { "x16", a.label });
+        return std::format("[x16, :lo12:{}]", a.label);
+    }
 
     if (a.base.id < 0)
         return slot_operand(s, a.displacement, width / 8);
@@ -800,15 +809,16 @@ address_of(state_t &s, const address_t &a)
     return v;
 }
 
-// The address of a function as a value, valid to 64, chapter 10.  One
-// the unit defines is PC-relative, as a string literal's address is,
-// adrp L, f and add L, L, :lo12:f.  One it only declares may be in a
-// shared library, which a PC-relative reference does not reach from a
-// position-independent executable, so its address is loaded from the
-// GOT, adrp L, :got:f and ldr L, [L, :got_lo12:f], the one the dynamic
-// linker wrote, the address the library's own code takes of it.
+// The address of a function or of an object as a value, valid to 64,
+// chapter 10.  One the unit defines is PC-relative, as a string
+// literal's address is, adrp L, f and add L, L, :lo12:f.  One it only
+// declares may be in a shared library, which a PC-relative reference
+// does not reach from a position-independent executable, so its address
+// is loaded from the GOT, adrp L, :got:f and ldr L, [L, :got_lo12:f],
+// the one the dynamic linker wrote, the address the library's own code
+// takes of it.
 value_t
-function_address(state_t &s, const symbol_t &f)
+symbol_address(state_t &s, const symbol_t &f)
 {
     const auto name = assembly_name(f);
     if (s.defined.contains(&f))
@@ -821,6 +831,20 @@ function_address(state_t &s, const symbol_t &f)
     insn(s, "ldr", { r, std::format("[{}, :got_lo12:{}]", r, name) });
 
     return v;
+}
+
+// The address of a global as an access's operand, chapter 10.  One the
+// unit defines is its label, which operand() reaches through x16.  One
+// it only declares has its address loaded from the GOT into a register,
+// and the access is the indirection through it, [x0], as *p's is with p
+// loaded: each access the source writes loads the address once.
+address_t
+global_address(state_t &s, const symbol_t &g)
+{
+    if (s.defined.contains(&g))
+        return { .label = std::string(assembly_name(g)) };
+
+    return { .base = symbol_address(s, g) };
 }
 
 // The step a pointer expression makes, when 2.3's forms that write
@@ -946,11 +970,12 @@ pointed(state_t &s, const expr_t &p, const expr_t *between = nullptr)
              .shift = shift_of(size) };
 }
 
-// The address of an lvalue: a local's or a parameter's slot, a string
-// literal's label, or what a dereference designates.  It serves loads
-// and stores alike, so the addressing row is written once.  between is
-// the operand the caller generates after the address and before its
-// access, an assignment's right operand, or null, for pointed().
+// The address of an lvalue: a local's or a parameter's slot, a global's
+// label or its address from the GOT, a string literal's label, or what a
+// dereference designates.  It serves loads and stores alike, so the
+// addressing row is written once.  between is the operand the caller
+// generates after the address and before its access, an assignment's
+// right operand, or null, for pointed().
 address_t
 address(state_t &s, const expr_t &e, const expr_t *between = nullptr)
 {
@@ -959,6 +984,9 @@ address(state_t &s, const expr_t &e, const expr_t *between = nullptr)
 
     if (is< unary_t >(e) && as< unary_t >(e).op == unary_op_t::deref)
         return pointed(s, *as< unary_t >(e).arg, between);
+
+    if (const auto *g = global_of(e))
+        return global_address(s, *g);
 
     return slot_address(slot_of(s, object_of(e)));
 }
@@ -970,11 +998,15 @@ address(state_t &s, const expr_t &e, const expr_t *between = nullptr)
 // access is [x0] as *p's is.  Any other subscript's address is the row
 // of p + n, the machine having no lea, so &p[i] and &p[3] are the add;
 // a row of an array of arrays, m[i], decays the same way, and m[0] to
-// m.  Anything else is a slot or a string literal, whose address
+// m.  A global's address is the row of chapter 10, PC-relative or from
+// the GOT.  Anything else is a slot or a string literal, whose address
 // address_of() forms.
 value_t
 address_value(state_t &s, const expr_t &e)
 {
+    if (const auto *g = global_of(e))
+        return symbol_address(s, *g);
+
     if (!is< unary_t >(e) || as< unary_t >(e).op != unary_op_t::deref)
         return address_of(s, address(s, e));
 
@@ -992,7 +1024,7 @@ value_t
 function_pointer(state_t &s, const expr_t &designator)
 {
     if (is< name_t >(designator))
-        return function_address(s, *as< name_t >(designator).sym);
+        return symbol_address(s, *as< name_t >(designator).sym);
 
     return rvalue(s, *as< unary_t >(designator).arg);
 }
@@ -2711,8 +2743,9 @@ function(state_t &s, const function_decl_t &fd)
 
 // The functions the unit defines, in order; one it only declares
 // writes nothing, since the assembler leaves its symbol to the link.
-// The string literals follow the last function, chapter 10.  The note
-// section marks the stack not executable.
+// The string literals follow the last function, and the objects the
+// unit defines follow them, chapter 10.  The note section marks the
+// stack not executable.
 void
 generate_aarch64(const unit_t &unit,
                  const target_t &target,
@@ -2721,7 +2754,7 @@ generate_aarch64(const unit_t &unit,
 {
     state_t s { .out = out,
                 .frame_limit = target.frame_limit,
-                .defined = defined_functions(unit) };
+                .defined = defined_symbols(unit) };
 
     out << std::format("\t.file\t{}\n\t.text\n", quoted_file(file));
 
@@ -2730,6 +2763,7 @@ generate_aarch64(const unit_t &unit,
             function(s, fd);
 
     literals(s.out, s.strings);
+    objects(s.out, unit.objects, target);
 
     out << "\t.section\t.note.GNU-stack,\"\",@progbits\n";
 }

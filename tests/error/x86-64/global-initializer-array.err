@@ -1,0 +1,2 @@
+tests/error/global-initializer-array.c:3:16: error: array initializer must be an initializer list
+status 1

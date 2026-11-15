@@ -1,0 +1,2 @@
+tests/error/global-initializer-pointer-type.c:4:14: error: incompatible integer to pointer conversion
+status 1

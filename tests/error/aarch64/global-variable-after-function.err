@@ -1,2 +1,0 @@
-tests/error/global-variable-after-function.c:3:14: error: not yet: global variable
-status 1

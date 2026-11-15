@@ -1,0 +1,2 @@
+tests/error/global-void.c:2:6: error: variable 'nothing' has type void
+status 1

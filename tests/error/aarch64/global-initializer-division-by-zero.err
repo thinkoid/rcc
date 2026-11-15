@@ -1,0 +1,2 @@
+tests/error/global-initializer-division-by-zero.c:4:13: error: initializer element is not a compile-time constant
+status 1

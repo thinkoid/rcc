@@ -1,0 +1,2 @@
+tests/error/global-initializer-integer-pointer.c:3:16: error: not yet: address constant as an initializer
+status 1
