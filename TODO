@@ -22,53 +22,6 @@ assembles and links. The reasons are =docs/findings.md= and
 in =docs/design-calls.md=. The chapter holds c1's own defects on both
 targets; the second target's design is =docs/aarch64.md=.
 
-** TODO x86-64: the comment on =register_decl()= sends every initializer through =establish()=
-
-The comment in =src/c1-x86-64.cc= says "an initializer is moved into
-the register by establish()". A constant initializer is not: it is
-the constant row, written by =constant_into()=, =mov $c, %r12d=. The
-aarch64 comment on the same function states both cases.
-
-Fix: the comment names the constant row for a constant initializer,
-as the aarch64 one does.
-
-Check: the comment read against =register_decl()=.
-
-** TODO =backend.md= 6.5 says a pinned register's value is exchanged by =xchg=
-
-6.5 says a pinned register that holds a live value "is exchanged with
-a free register (=xchg=, or a =mov= to a free one)". The generator
-never writes =xchg=: =move()= and =vacate()= in =src/c1-x86-64.cc=
-write =mov=, and no source file has the mnemonic.
-
-Fix: 6.5 says the value moves to a free register by =mov=.
-
-Check: =grep -n xchg docs/backend.md= prints nothing.
-
-** TODO x86-64: =function()= resets every field of the state but =reserved=
-
-The comment on =state_t= in =src/c1-x86-64.cc= says everything is
-reset per function. =function()= resets the fields a line each and
-leaves out =reserved=, the registers =take()= leaves for last. No
-listing is wrong: the two functions that write the field,
-=rvalue_avoiding()= and =rvalue()=, restore it before they return, so
-it is 0 between functions.
-
-Fix: =function()= resets it with the others.
-
-Check: every x86-64 listing is byte-identical.
-
-** TODO x86-64: the move of a shift's count into =cl= is written twice
-
-=shift()= and =shift_on()= in =src/c1-x86-64.cc= each hold the same
-eight lines: when the count is not in =rcx=, =vacate()= frees =rcx=,
-and the count is copied there if it is a borrowed read and moved
-otherwise.
-
-Fix: one function, called from both.
-
-Check: every x86-64 listing is byte-identical.
-
 ** TODO The generators' opening comments stop at the third slice
 
 The comment that opens =src/c1-x86-64.cc= says "These are the first

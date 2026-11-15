@@ -990,6 +990,24 @@ divide(state_t &s, binary_op_t op, value_t l, value_t r, const int_t &t)
     return l;
 }
 
+// Puts a shift's count, held in right, into cl, chapter 6.5: a value
+// held in rcx moves out first, to a register outside avoid, and the
+// count is copied there if it is a borrowed read of a register
+// variable and moved otherwise, at its own width.
+void
+count_into_cl(state_t &s, const right_t &r, reg_t right, unsigned avoid)
+{
+    if (right == rcx)
+        return;
+
+    vacate(s, rcx, avoid | bit(right));
+
+    if (borrowed(s, r.value))
+        copy(s, r.value, rcx);
+    else
+        move(s, right, rcx, r.width);
+}
+
 // G3: the instruction masks the count to the width, and nothing else
 // does.  A constant count is the immediate; a variable one goes to cl,
 // at the count's own width, which the parser leaves at its promoted
@@ -1028,14 +1046,7 @@ shift(state_t &s, binary_op_t op, value_t l, const right_t &r, const int_t &t)
         left = to;
     }
 
-    if (right != rcx) {
-        vacate(s, rcx, bit(left) | bit(right));
-
-        if (borrowed(s, r.value))
-            copy(s, r.value, rcx);
-        else
-            move(s, right, rcx, r.width);
-    }
+    count_into_cl(s, r, right, bit(left));
 
     insn(s, sized(stem, width), { "%cl", reg(left, width) });
 
@@ -2028,14 +2039,7 @@ shift_on(state_t &s,
     const unsigned held = registers_of(s, place);
     const reg_t right = reg_of(s, r.value, held);
 
-    if (right != rcx) {
-        vacate(s, rcx, held | bit(right));
-
-        if (borrowed(s, r.value))
-            copy(s, r.value, rcx);
-        else
-            move(s, right, rcx, r.width);
-    }
+    count_into_cl(s, r, right, held);
 
     insn(s, mnemonic, { "%cl", operand(s, place, bit(rcx)) });
     release(s, r.value);
@@ -2223,8 +2227,9 @@ divided(state_t &s, value_t v, const expr_t &tabs, int width)
 
 // statements
 
-// A register variable is in the one of the five its index names, and
-// an initializer is moved into the register by establish().
+// A register variable is in the one of the five its index names.  A
+// constant initializer is the constant row into the register, mov $c,
+// %r12d, and any other is its value and the mov of establish().
 // G5: without one, nothing writes the value.  The register holds what
 // the declaration finds in it: what the prologue left, where no variable
 // of the function held the register before, and otherwise what the last
@@ -2390,6 +2395,7 @@ function(state_t &s, const function_decl_t &fd)
     s.live = 0;
     s.saved = fd.registers;
     s.in_place = -1;
+    s.reserved = 0;
     s.frame = 8 * s.saved;
     s.function = fd.sym->name;
     s.labels = 0;

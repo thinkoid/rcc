@@ -499,11 +499,11 @@ A division needs its dividend in `rax` and `rdx` free; a variable
 shift needs its count in `cl`. The generator is holding values in
 the expression registers, possibly in those three. The rule: before
 the pinned instruction, each of the pinned registers that holds a
-live value other than the operand is exchanged with a free register
-(`xchg`, or a `mov` to a free one), the operands are moved into
-place, the instruction is written, the result is moved into `L`, and
-the displaced values stay where they went; the generator's map of
-which value is in which register is updated and nothing else cares.
+live value other than the operand is moved to a free register by
+`mov`, the operands are moved into place, the instruction is written,
+the result is moved into `L`, and the displaced values stay where
+they went; the generator's map of which value is in which register is
+updated and nothing else cares.
 A shift's count is generated with `rax` held out of the choice, in
 the value and the effect context alike, so its load takes `rcx` when
 it is free, and a left operand reloaded from its spill slot avoids
