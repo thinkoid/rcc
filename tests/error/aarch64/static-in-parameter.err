@@ -1,0 +1,2 @@
+tests/error/static-in-parameter.c:3:7: error: 'static' in a parameter declaration
+status 1

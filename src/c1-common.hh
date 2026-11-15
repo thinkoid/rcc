@@ -34,6 +34,7 @@ long long scaled(long long index, long size);
 int written(int width, bool is_signed);
 
 std::string_view assembly_name(const symbol_t &);
+void binding(std::ostream &, const symbol_t &);
 std::string label_name(std::string_view function, int n);
 
 const symbol_t *global_of(const expr_t &);

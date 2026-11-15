@@ -1,0 +1,2 @@
+tests/error/static-in-for.c:8:14: error: 'static' in the declaration of a 'for'
+status 1

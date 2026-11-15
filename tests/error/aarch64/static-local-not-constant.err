@@ -1,0 +1,2 @@
+tests/error/static-local-not-constant.c:8:24: error: initializer element is not a compile-time constant
+status 1

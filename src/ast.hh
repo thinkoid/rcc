@@ -36,12 +36,12 @@ namespace rcc {
 // is declared.  It is -1 for an object in no register: a register
 // declaration met with the target's register variables all live is an
 // ordinary local, with a warning.
-// A global is an object declared at file scope, with external linkage:
-// one the unit defines has an entry in the unit's objects, and one it
-// only declares has none.  A type_name is a typedef: its type is the
-// type the name stands for, it has no object, and no expression names
-// it.  An
-// enumerator is an enumeration constant: its type is its enumeration's,
+// A global is an object of static storage duration, 6.2.4p3: one
+// declared at file scope, or one declared static in a block.  One the
+// unit defines has an entry in the unit's objects, and one it only
+// declares has none; a block's has one always.  A type_name is a
+// typedef: its type is the type the name stands for, it has no object,
+// and no expression names it.  An enumerator is an enumeration constant: its type is its enumeration's,
 // a not-yet type, its value is not computed, and the parser refuses its
 // use, so no expression names one.
 enum class storage_t {
@@ -53,9 +53,19 @@ enum class storage_t {
     enumerator
 };
 
+// The linkage of a name, 6.2.2p1.  A function or an object at file
+// scope has external linkage, or internal when declared static, p3;
+// every other name has none, p6, a block's static object among them.
+// c1 makes a symbol the unit defines global, .globl, for external
+// linkage alone: the others are local to the file's object, which no
+// other file's reference binds to.
+enum class linkage_t { none, internal, external };
+
 // A function or a global may carry two more facts from GNU C, said
 // in its declarations.  asm_name is the name __asm__ gives the symbol
-// in the assembly, empty when the symbol is named as it is in C.
+// in the assembly, empty when the symbol is named as it is in C; a
+// block's static object takes one from the parser, the label of
+// backend.md chapter 10, since two blocks may declare one name.
 // marking is the words a use of the symbol is refused with, when an
 // attribute changes or may change what the program depends on, as weak
 // or alias change the symbol a name links to, or when the symbol is a
@@ -70,6 +80,7 @@ struct symbol_t
     int register_index;
     std::string asm_name = { };
     std::string marking = { };
+    linkage_t linkage = linkage_t::none;
 };
 
 inline bool
@@ -377,7 +388,8 @@ struct subobject_t
 
 // One per object the unit defines, 6.9.3: a declaration at file scope
 // with an initializer, or a tentative definition, one without an
-// initializer and without extern.  The entries are in the order of the
+// initializer and without extern; and a block's static object, whose
+// declaration defines it, 6.7.1p6.  The entries are in the order of the
 // definitions, each where the first declaration that defines its
 // object stands; a later one adds its initializer.  An object the unit
 // only declares has none, and c1 writes nothing for it.  init is the

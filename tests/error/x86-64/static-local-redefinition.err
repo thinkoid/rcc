@@ -1,0 +1,2 @@
+tests/error/static-local-redefinition.c:7:20: error: redefinition of 'count'
+status 1

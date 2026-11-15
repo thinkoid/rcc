@@ -1,0 +1,2 @@
+tests/error/static-used-undefined.c:10:16: error: static function 'helper' is used but never defined
+status 1

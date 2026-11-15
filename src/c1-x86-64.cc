@@ -2323,11 +2323,11 @@ function(state_t &s, const function_decl_t &fd)
     const bool sub = size > 0 && (s.calls || s.frame - pushed > 128);
 
     const auto name = assembly_name(*fd.sym);
-    s.out << std::format("\t.globl\t{}\n"
-                         "\t.type\t{}, @function\n"
+    binding(s.out, *fd.sym);
+    s.out << std::format("\t.type\t{}, @function\n"
                          "{}:\n"
                          "\t.cfi_startproc\n",
-                         name, name, name);
+                         name, name);
 
     prologue(s, size, sub);
 

@@ -1,0 +1,2 @@
+tests/error/static-in-type-name.c:6:17: error: 'static' in a type name
+status 1

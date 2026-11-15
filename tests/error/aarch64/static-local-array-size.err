@@ -1,0 +1,2 @@
+tests/error/static-local-array-size.c:7:20: error: array size missing in 'table'
+status 1

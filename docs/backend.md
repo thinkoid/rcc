@@ -910,9 +910,17 @@ ASCII as itself with `"` and `\` escaped, `\n`, `\t` and `\r` as the C
 escapes, and every other byte as a three-digit octal escape. All the
 literals of a file are one `.data` block after its last function,
 before the note section, with no alignment directive, since a `char`
-array aligns to 1. A literal's address is `lea .Ls<n>(%rip), L`. A
-function is `.globl` and `.type f, @function` unless `static`, and
-ends with `.size`.
+array aligns to 1. A literal's address is `lea .Ls<n>(%rip), L`.
+
+A function is `.type f, @function` and its label, and ends with
+`.size`. One of external linkage is `.globl f` first. A `static`
+function has internal linkage (6.2.2p3) and no `.globl`, so its symbol
+is local to the file's object: the assembler binds the file's
+references to it, and the linker binds no other file's. That is the
+whole difference in the listing. A call of it is the named call,
+`call f@PLT`, which the linker resolves to the local symbol directly,
+and its address is the PC-relative row of a function the file
+defines, below.
 
 An object the file defines is a labeled area after the literals. The
 objects with an initializer are one `.data` block, and those without
@@ -920,7 +928,9 @@ one are one `.bss` block after it, each in the order of the
 definitions; `int n = 0;` is in `.data`, since the source wrote the
 initializer, and `int n;` is in `.bss`. Each object is written so:
 
-- `.globl n`, since every object has external linkage;
+- `.globl n` for an object of external linkage, and nothing for a
+  `static` one, at file scope or in a block, whose symbol is local to
+  the file's object;
 - `.type n, @object` and `.size n, 4`, the symbol's kind and its size
   in the symbol table, which the linker and a debugger read;
 - `.p2align k`, the alignment of its type, `k` its power of two, when
@@ -981,8 +991,23 @@ value has one of three forms, and each form has its data:
 
 An object the file only declares writes nothing.
 
-A global the file defines is reached PC-relative, a slot with another
-spelling: `movl counter(%rip), %eax`, `addl $1, counter(%rip)`,
+An object a block declares `static` has static storage duration
+(6.2.4p3) and is one more object the file defines: in the `.data` or
+the `.bss` block with the others, in the order of the definitions,
+without `.globl`, since it has no linkage. Its initializer takes every
+form a global's does, and is written once in its data; its
+declaration writes no instruction. Its label is the function's name
+and its own, `next.count` for `count` in `next()`, and from the second
+object of that name in the function on, a number after them, counting
+from 1: `next.count.1`. No C identifier holds a `.`, so the label is no
+other symbol's, and two functions, or two blocks of one function, do
+not share one. c0 gives the symbol the label as its assembler name,
+which c1 writes wherever it writes the symbol.
+
+A global the file defines, `static` or not, a block's among them, is
+reached PC-relative, a slot with another spelling: `movl
+counter(%rip), %eax`, `addl $1, counter(%rip)`, `movl
+next.count(%rip), %eax`,
 `leaq counter(%rip), %rax`. An array the file defines is indexed after
 its address is formed, `leaq table(%rip), %rax`, as a local array's
 is, since a PC-relative operand takes no index.

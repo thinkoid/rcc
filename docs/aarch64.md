@@ -867,8 +867,9 @@ generator's to keep and never the program's.
 As `backend.md` chapter 10: one `.text`, one `.data` block of
 literals after the last function, `.Ls<n>` and `.string`, never
 merged, never read-only. A literal's address is the `adrp` and `add`
-pair. A function is `.globl`, `.type f, @function` and `.size`. No
-alignment directive is needed before a function: every instruction
+pair. A function is `.type f, @function` and `.size`, and `.globl`
+first for one of external linkage; a `static` function has none, and
+a call of it is `bl f`, as of any function. No alignment directive is needed before a function: every instruction
 is 4 bytes, and the assembler aligns `.text` to 4. The listing opens
 and closes as on x86-64: `.file` with the source's name and `.text`
 first, `.section .note.GNU-stack,"",@progbits` last.
@@ -886,7 +887,9 @@ An object follows the same rule. One the file defines, by a definition
 anywhere in the file, is reached by the far slot's mechanism with the
 symbol's page (5.3): `adrp x16, counter`, then the access through
 `[x16, :lo12:counter]`, two instructions an access, and `x16` holds
-nothing across them. Its address as a value is the pair a literal's
+nothing across them. A `static` object and a block's are such
+objects, a block's under its label, `adrp x16, next.count` and
+`[x16, :lo12:next.count]`. Its address as a value is the pair a literal's
 is, `adrp x0, counter; add x0, x0, :lo12:counter`, and an array the
 file defines is indexed after that pair, as a local array is after
 its `add`. The `:lo12:` form of a load or a store is scaled by the
@@ -899,7 +902,9 @@ function.
 
 The objects' data is the text of `backend.md` chapter 10, the same on
 both targets: `.data` for those with an initializer, `.bss` for the
-others, each under `.globl`, `.type`, `.size` and `.p2align`, with
+others, each under `.type`, `.size` and `.p2align`, and `.globl` for
+one of external linkage alone, a block's static object under the
+label of `backend.md` chapter 10, with
 `.byte`, `.short`, `.long`, `.quad`, `.string`, `.ascii` or `.zero`,
 which GNU as and clang take on this machine as on x86-64. A
 brace-enclosed list is the same text too: each element it gives in

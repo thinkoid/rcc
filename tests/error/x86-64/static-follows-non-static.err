@@ -1,0 +1,2 @@
+tests/error/static-follows-non-static.c:8:1: error: static declaration of 'twice' follows non-static declaration
+status 1

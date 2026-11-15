@@ -1,0 +1,2 @@
+tests/error/non-static-follows-static.c:6:5: error: non-static declaration of 'count' follows static declaration
+status 1

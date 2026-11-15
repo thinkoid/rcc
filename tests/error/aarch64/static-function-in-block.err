@@ -1,0 +1,2 @@
+tests/error/static-function-in-block.c:6:20: error: function 'helper' declared static in a block
+status 1

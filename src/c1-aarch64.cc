@@ -2723,11 +2723,11 @@ function(state_t &s, const function_decl_t &fd)
     stack_parameters(s, fd, size);
 
     const auto name = assembly_name(*fd.sym);
-    s.out << std::format("\t.globl\t{}\n"
-                         "\t.type\t{}, @function\n"
+    binding(s.out, *fd.sym);
+    s.out << std::format("\t.type\t{}, @function\n"
                          "{}:\n"
                          "\t.cfi_startproc\n",
-                         name, name, name);
+                         name, name);
 
     prologue(s, size);
 

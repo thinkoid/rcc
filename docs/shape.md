@@ -155,12 +155,20 @@ Three sums.
   list reaches c1 with its brace elision resolved and its omitted
   elements implied.
 
-A symbol is a name, a type and a storage: local, parameter, global,
-function, type name, enumerator. A global is an object declared at
-file scope, with external linkage. One the unit defines has an entry
+A symbol is a name, a type, a storage and a linkage. The storage is
+local, parameter, global, function, type name or enumerator. A global
+is an object of static storage duration: one declared at file scope,
+or one a block declares `static`. One the unit defines has an entry
 in the unit's objects, and that entry is how c1 tells it from one the
 unit only declares, which has none and for which nothing is written:
 the first is reached PC-relative and the second through the GOT. A
+block's has an entry always. The linkage is external, internal or
+none (6.2.2): a function or an object at file scope has external
+linkage, or internal when declared `static`, and every other name has
+none, a block's `static` object among them. c1 writes `.globl` for a
+symbol of external linkage alone, so a `static` function or object is
+local to the file's object, which is the one difference in its
+listing. A
 parameter of a prototype is a symbol of storage parameter, never a
 global, even where nothing defines its function. A type name is a typedef's: its type is the type the name stands for,
 it has no object, and nothing is written for it. An enumerator is an
@@ -168,7 +176,8 @@ enumeration constant: its type is its enum's, its value is not
 computed, and the parser refuses its use, so no expression names one
 either. A function or a global may carry two facts more: the name
 `__asm__` gives it in the assembly, which c1 writes wherever it writes
-the symbol, and a marking, the words its use is refused with when an
+the symbol, and which a block's `static` object takes from the parser
+as its label, `next.count` (`backend.md` chapter 10); and a marking, the words its use is refused with when an
 attribute changes what the program depends on. A local or parameter the
 parser gives a register carries its index, which of the target's
 register variables it takes: each
@@ -336,14 +345,47 @@ after it in the size is not seen.
 The definition of a `static inline` function, as glibc's
 `bits/byteswap.h` defines `__bswap_16`, is accepted: its body is
 skipped to the closing brace, c1 writes nothing for it, and an
-expression that names the function is refused. `static` on anything
-else is not yet.
+expression that names the function is refused, before the definition
+as after it. A `static inline` declaration without a body is not yet.
+
+`static` at file scope gives a function or an object internal
+linkage (6.2.2p3). The rules of linkage are the standard's: `extern`
+on a later declaration keeps the linkage of the earlier one (p4), and
+a function declared without a storage class is as if declared
+`extern` (p5), so `static int f(void); int f(void) { ... }` defines a
+function of internal linkage, and `static int n; extern int n;`
+declares one object of it. An object at file scope declared without a
+storage class has external linkage (p5), so `static int n; int n;`
+gives `n` both linkages, which p7 leaves undefined; it is an error,
+and so is a `static` declaration after one of external linkage. A
+static object at file scope keeps every rule of an object at file
+scope below, and its tentative definition defines it in the file. A
+name of internal linkage that an expression uses, outside the operand
+of `sizeof`, has its definition in the file (6.9.1p3), so a `static`
+function called and never defined is an error at the end of the file:
+the assembler would leave its symbol undefined, and the linker would
+bind the call to another file's function of the name. A call of a
+`static inline` function before its definition is not yet there.
+
+`static` in a block declares an object of static storage duration
+(6.2.4p3) and no linkage (6.2.2p6): a name of the block's, declared
+once there (6.7.1p4), which hides an outer one and is hidden by an
+inner one as a local is. It is an object the file defines, as one at
+file scope is: its initializer takes every form a global's takes,
+constant, and is folded into its data the same way, so the object is
+initialized once, before the program starts, and keeps its value from
+call to call; without one it is zero. Its declaration makes no
+statement. An array of unknown size takes its size from its
+initializer and is an error without one (6.7.1p8). A function declared
+`static` in a block is an error (6.7.2p13), and `static` on a
+parameter, in a type name and in the declaration of a `for` is one
+too.
 
 An object at file scope is defined by a declaration with an
 initializer, `extern` or not, and tentatively by one without an
 initializer and without `extern` (6.9.3p1, p2); `extern` alone
-declares it. Every declaration of the name is of one object with
-external linkage, of one type by the tree's equality: `extern int n;
+declares it. Every declaration of the name is of one object, of one
+linkage, and of one type by the tree's equality: `extern int n;
 int n; int n = 1;` declare one object, and two tentative definitions
 define one, which is zero (6.9.3p2). A second initializer is a second
 external definition, an error (6.9.1p5). An array declared without its
@@ -628,16 +670,19 @@ The scope of a parameter list and the qualifiers inside a parameter's
 array brackets bring `regex.h` through, and `header-regex` in the
 corpus declares a function in the shape of `regexec`. So 57 of 58
 headers of the C library and of POSIX parse on each target;
-`tgmath.h` stops at the declaration of a `static` function. Then
-the objects at file scope: a program defines, declares and uses its
-own globals, with integer constants as initializers, and reaches the C
+`tgmath.h` stops at a function declared with `(...)` for its whole
+parameter list. Then the objects at file scope: a program defines,
+declares and uses its own globals, with integer constants as initializers, and reaches the C
 library's, so `header-stdout` writes to `stdout` (`backend.md` and
 `aarch64.md` chapter 10). With address constants and strings as
 initializers, `header-months` keeps a table of names in an array of
 `char` and reaches `stdout`, `putchar` and `fputs` through global
 pointers to them. With brace-enclosed lists, `header-calendar` keeps
 K&R's tables of the days of the months and of their names (sections
-5.7 and 5.8 of the second edition).
+5.7 and 5.8 of the second edition). With `static`, a function and an
+object of internal linkage and a block's object of static storage,
+`header-getch` keeps K&R's buffer of `getch` and `ungetch` (sections
+4.3 and 4.6) private to its file.
 
 ## 11. Not yet
 
@@ -657,8 +702,9 @@ type, wide and `u8` strings, the checks of the qualifiers (`const`
 and `volatile` are dropped, so an assignment to a `const` object and
 a conversion that discards a qualifier draw no diagnostic, and
 `(const void)` is taken as `(void)`), an atomic object, `switch`,
-`goto`, `static` outside a `static inline` definition, whose use is
-refused, a `register` array (6.3.2.1p3), `inline` on a function
+`goto`, the body of a `static inline` function, whose use is refused,
+and a `static inline` declaration without a body, a `register` array
+(6.3.2.1p3), `inline` on a function
 definition, what an attribute that rcc does
 not honour marks (an object of a typedef so declared, the use of a
 function or of an object at file scope, a local, the definition of a

@@ -84,7 +84,10 @@ its size from another declaration, so `header-months` keeps a table
 of names in an array of `char` and reaches `stdout`, `putchar` and
 `fputs` through global pointers. An initializer in braces takes
 arrays to any depth, with C's brace elision, so `header-calendar` is
-K&R's day of the year with its two tables.
+K&R's day of the year with its two tables. Then `static`: a function
+and an object of internal linkage, and a block's object of static
+storage under a label of its own, so `header-getch` keeps K&R's
+buffer of `getch` and `ungetch` private to its file.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/`, the cost corpus over `tests/cost/`
 and the error corpus over `tests/error/`, the programs rcc refuses

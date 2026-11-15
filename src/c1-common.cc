@@ -122,6 +122,18 @@ assembly_name(const symbol_t &sym)
     return sym.asm_name;
 }
 
+// The binding of a symbol the unit defines, its .globl, chapter 10:
+// one of external linkage is global, and the linker binds every
+// file's references to the name to it; any other, a static function or
+// object, is local to the file's object, which writes no directive for
+// it, and only the file's own references reach it.
+void
+binding(std::ostream &out, const symbol_t &sym)
+{
+    if (sym.linkage == linkage_t::external)
+        out << std::format("\t.globl\t{}\n", assembly_name(sym));
+}
+
 // A label of the function, chapter 7.2: .L, the function's name and
 // the number, .Lsum.1.
 std::string
@@ -586,9 +598,9 @@ object_alignment(const type_t &t, const target_t &target)
     return align;
 }
 
-// One object the unit defines, chapter 10: .globl, since every object
-// has external linkage; .type and .size, the symbol's kind and its
-// bytes in the symbol table, which the linker and a debugger read; its
+// One object the unit defines, chapter 10: its binding, .globl for one
+// of external linkage; .type and .size, the symbol's kind and its bytes
+// in the symbol table, which the linker and a debugger read; its
 // alignment, and no directive for an alignment of 1; the label; then
 // the value of its initializer, or its zeros.
 void
@@ -601,10 +613,10 @@ object(std::ostream &out,
     const long size = size_of(od.sym->type);
     const int align = object_alignment(od.sym->type, target);
 
-    out << std::format("\t.globl\t{}\n"
-                       "\t.type\t{}, @object\n"
+    binding(out, *od.sym);
+    out << std::format("\t.type\t{}, @object\n"
                        "\t.size\t{}, {}\n",
-                       name, name, name, size);
+                       name, name, size);
 
     if (align > 1)
         out << std::format("\t.p2align {}\n",

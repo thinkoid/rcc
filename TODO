@@ -703,11 +703,11 @@ Check: the call above fails with "not yet", pinned in =tests/error=.
 
 =clang='s =tgmath.h= stops at its line 34, ~static
 _Argument_type_is_not_arithmetic __tg_promote(...) __attribute__
-((__unavailable__, __overloadable__));~, "not yet: storage class
-'static'": a =static= function declared without a body, with =(...)=
-for its whole parameter list, and overloaded by an attribute, which
-no other C header does. More than a thousand such declarations
-follow. Every other header of the 58 surveyed parses.
+((__unavailable__, __overloadable__));~, "not yet: variadic function
+without named parameters": a function with =(...)= for its whole
+parameter list, overloaded by an attribute, which no other C header
+does. More than a thousand overloaded declarations follow. Every
+other header of the 58 surveyed parses.
 
 Fix: decide whether =clang='s own headers are read: the type-generic
 macros need overloading, which is not C; a program that includes
@@ -778,6 +778,61 @@ Fix: the message names what the name was first declared as.
 
 Check: a program of =tests/error= with the declaration above, pinned
 "redefinition of 'A'".
+
+** TODO =static= in the declaration of a =for= is an error
+
+~for (static int i = 0; i < 3; i++)~ fails with "'static' in the
+declaration of a 'for'". C23 has no such constraint: C17's 6.8.5p3
+allowed only =auto= and =register= there, and N3220's 6.8.6 says
+nothing of the storage class; =gcc= and =clang= take it with
+=-std=c23=. The program is valid in the dialect rcc cites and wrong
+in the one it preprocesses in.
+
+Fix: decide the dialect's answer: the error stays with C17's
+paragraph cited, or the declaration is a block's static.
+
+Check: the pin of =static-in-for= agrees with the decision.
+
+** TODO A =static= array never given a size has one element
+
+~static int a[];~ at file scope, with no later declaration that
+sizes it, is an array of one element at the end of the file, as a
+tentative definition with external linkage is. 6.9.3p3 says the
+declared type of a tentative definition with internal linkage "shall
+not be an incomplete type"; =gcc= and =clang= warn and make it one
+element too.
+
+Fix: an error at the end of the file, as the linkage conflict of
+6.2.2p7 is.
+
+Check: a program of =tests/error= with the declaration, pinned with
+the error.
+
+** TODO =main= may be declared =static=
+
+~static int main(void) { return 0; }~ compiles to a function local
+to its object file, and the link fails with "undefined reference to
+`main'". The linker's message names no line of the program.
+
+Fix: =static= on a declaration of =main= is an error, where a
+function specifier on one already is.
+
+Check: a program of =tests/error= with the definition, pinned with
+the error.
+
+** TODO A =static= definition after a =static inline= one is "not yet"
+
+~static inline int f(void) { return 1; } static int f(void) { return
+2; }~ fails with "not yet: static function 'f'" at the second
+definition. It is a redefinition, and the message says something is
+missing: =function_definition()= asks whether the function is marked
+before it asks whether it has a body, and the skipped =static inline=
+definition left its mark and no body.
+
+Fix: with the decision on compiling a =static inline= function; or
+the mark is tested after the redefinition.
+
+Check: the program above fails with "redefinition of 'f'".
 
 ** TODO A string in parentheses initializes an array of char only without braces
 

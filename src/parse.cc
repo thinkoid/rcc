@@ -43,11 +43,23 @@ struct scope_t
     std::unordered_map< std::string_view, tag_t > tags;
 };
 
+// A name of internal linkage where an expression uses it, 6.9.1p3: its
+// symbol and the token that names it.
+struct internal_use_t
+{
+    const symbol_t *sym;
+    const token_t *at;
+};
+
 // The state of one parse.  Scope 0 is file scope; the scopes die with
-// the parser and leave only the symbols in the unit.  result and
-// registers are the function being defined: its result type, and the
-// most register variables live at once in it so far.  identities is
-// the identity the next struct, union or enum type takes.
+// the parser and leave only the symbols in the unit.  result,
+// registers, function and statics are the function being defined: its
+// result type, the most register variables live at once in it so far,
+// its name, and the count of the static objects its blocks declared so
+// far, by name.  identities is the identity the next struct, union or
+// enum type takes.  internal_uses are the uses of names of internal
+// linkage, in the order met, checked against their definitions at the
+// end of the unit.
 struct parser_t
 {
     const std::vector< token_t > &tokens;
@@ -60,6 +72,10 @@ struct parser_t
     type_t result;
     int registers;
     int identities;
+
+    std::string_view function = { };
+    std::unordered_map< std::string, int > statics = { };
+    std::vector< internal_use_t > internal_uses = { };
 };
 
 // The declaration specifiers: the type, and the storage-class specifier
@@ -68,15 +84,17 @@ struct parser_t
 // type specifier is a struct, union or enum one, which may declare a
 // tag or enumeration constants with no declarator after it.
 // function_specifier is the first inline or _Noreturn written, or null,
-// for the caller to drop or refuse.  marking is the name's token of the
-// first marking attribute among the specifiers, or null: it marks each
-// declarator of the declaration, as one after the declarator does.
+// for the caller to drop or refuse, and inline_specifier the first
+// inline, or null.  marking is the name's token of the first marking
+// attribute among the specifiers, or null: it marks each declarator of
+// the declaration, as one after the declarator does.
 struct specifiers_t
 {
     type_t type;
     const token_t *storage_class;
     bool tagged;
     const token_t *function_specifier;
+    const token_t *inline_specifier;
     const token_t *marking;
 };
 
@@ -2096,6 +2114,7 @@ declared(const specifiers_t &spec, tok_t storage_class)
 }
 
 void complete_tentative_arrays(parser_t &);
+void require_internal_definitions(const parser_t &);
 
 void
 translation_unit(parser_t &p)
@@ -2104,6 +2123,7 @@ translation_unit(parser_t &p)
         external_declaration(p);
 
     complete_tentative_arrays(p);
+    require_internal_definitions(p);
 }
 
 // Whether two array types are one but for the size one of them leaves
@@ -2234,20 +2254,63 @@ marked_parameter(const declarator_t &d)
     return nullptr;
 }
 
+// The linkage a declaration at file scope gives its name, 6.2.2: static
+// gives internal linkage, p3; extern the linkage of the earlier
+// declaration, p4, or else external, and a function declared without a
+// storage class is as if declared extern, p5; an object declared
+// without one has external linkage, p5.  So static int f(void); int
+// f(void) { ... } defines a function of internal linkage, and static
+// int n; extern int n; declares one object of internal linkage.
+linkage_t
+linkage_of(const specifiers_t &spec, const symbol_t *earlier, bool function)
+{
+    if (declared(spec, tok_t::kw_static))
+        return linkage_t::internal;
+
+    const bool as_extern = function || declared(spec, tok_t::kw_extern);
+    if (earlier && as_extern)
+        return earlier->linkage;
+
+    return linkage_t::external;
+}
+
+// A name of internal and of external linkage in one unit is undefined,
+// 6.2.2p7, and refused: int n; static int n; and static int n; int n;,
+// whose second declaration gives the name the other linkage.
+void
+require_linkage(const token_t &name, const symbol_t &earlier, linkage_t linkage)
+{
+    if (earlier.linkage == linkage)
+        return;
+
+    if (linkage == linkage_t::internal)
+        fail(name, "static declaration of " + quoted(name.text) +
+                       " follows non-static declaration");
+
+    fail(name, "non-static declaration of " + quoted(name.text) +
+                   " follows static declaration");
+}
+
 // Declares a function at file scope, or meets its earlier declaration,
-// with what the declaration writes after its declarator.  A marking
-// attribute on a parameter marks the function, whose calls pass the
-// parameter.  Returns the index of its entry in the unit's functions.
+// with what the declaration writes after its declarator, and gives it
+// the declaration's linkage.  A marking attribute on a parameter marks
+// the function, whose calls pass the parameter.  Returns the index of
+// its entry in the unit's functions.
 std::size_t
-declare_function(parser_t &p, const declarator_t &d, declarator_tail_t tail)
+declare_function(parser_t &p,
+                 const specifiers_t &spec,
+                 const declarator_t &d,
+                 declarator_tail_t tail)
 {
     if (!tail.marking)
         tail.marking = marked_parameter(d);
 
     symbol_t *earlier =
         earlier_declaration(p, *d.name, d.type, storage_t::function);
+    const linkage_t linkage = linkage_of(spec, earlier, true);
 
     if (earlier) {
+        require_linkage(*d.name, *earlier, linkage);
         record_tail(*earlier, tail);
 
         for (std::size_t i = 0; i < p.unit.functions.size(); ++i)
@@ -2256,6 +2319,7 @@ declare_function(parser_t &p, const declarator_t &d, declarator_tail_t tail)
     }
 
     symbol_t &sym = added(p, d.name->text, d.type, storage_t::function);
+    sym.linkage = linkage;
     record_tail(sym, tail);
     p.unit.functions.push_back(function_decl_t { &sym, { }, std::nullopt, 0 });
 
@@ -2723,13 +2787,64 @@ complete_tentative_arrays(parser_t &p)
     }
 }
 
+// The initializer after the '=' ahead of the object the unit's objects
+// hold at index: the subobjects it gives a value, and the size it gives
+// an array of unknown size, 6.7.11p23.
+void
+initialize(parser_t &p, symbol_t &sym, std::size_t index)
+{
+    const token_t &op = advance(p);
+    std::vector< subobject_t > values;
+    const long count = object_initializer(p, op, sym.type, values);
+
+    sym.type = completed_type(sym.type, count);
+    p.unit.objects[index].init = std::move(values);
+}
+
+// Whether the unit defines sym: a function by its body, an object by
+// its entry in the unit's objects.
+bool
+defines(const parser_t &p, const symbol_t *sym)
+{
+    for (const function_decl_t &f : p.unit.functions)
+        if (f.sym == sym)
+            return f.body.has_value();
+
+    return definition_of(p, sym).has_value();
+}
+
+// 6.9.1p3: a name of internal linkage that an expression uses has its
+// external definition in the unit.  Without one the assembler would
+// leave its symbol undefined, and the linker would bind it to another
+// file's symbol of the name, which is not the program.  Only a
+// function can lack one, since every object of internal linkage has a
+// tentative definition at least.  A use of a static inline function
+// before its definition, which rcc does not compile, is not yet, in the
+// function's words.  The first use is the one refused.
+void
+require_internal_definitions(const parser_t &p)
+{
+    for (const auto &[sym, at] : p.internal_uses) {
+        if (defines(p, sym))
+            continue;
+
+        if (!sym->marking.empty())
+            not_yet(*at, sym->marking);
+
+        fail(*at, "static function " + quoted(sym->name) +
+                      " is used but never defined");
+    }
+}
+
 // An object at file scope, 6.9.3.  A declaration with an initializer
 // defines it, p1, extern or not; one without an initializer and
 // without extern is a tentative definition, p2; extern alone declares
 // an object defined elsewhere, and c1 writes nothing for it.  Every
-// declaration of the name in the unit is of one object with external
-// linkage, 6.2.2p5, of one type, 6.2.7p2: extern int n; int n; int n =
-// 1; declare one object, and two tentative definitions define one.  An
+// declaration of the name in the unit is of one object, of one linkage,
+// linkage_of()'s, and of one type, 6.2.7p2: extern int n; int n; int n
+// = 1; declare one object of external linkage, static int n; extern int
+// n; one of internal linkage, which a tentative definition defines,
+// and two tentative definitions define one.  An
 // array declared without its size and with it is one object of the
 // composite type, the array of known size, p5: extern int a[]; int
 // a[3]; and int a[3]; extern int a[]; declare an int [3].  An
@@ -2746,9 +2861,14 @@ declare_external_object(parser_t &p,
     const declarator_tail_t tail = declarator_tail(p, spec);
 
     symbol_t *sym = earlier_declaration(p, *d.name, d.type, storage_t::global);
-    if (!sym)
-        sym = &added(p, d.name->text, d.type, storage_t::global);
+    const linkage_t linkage = linkage_of(spec, sym, false);
 
+    if (!sym) {
+        sym = &added(p, d.name->text, d.type, storage_t::global);
+        sym->linkage = linkage;
+    }
+
+    require_linkage(*d.name, *sym, linkage);
     record_tail(*sym, tail);
 
     const bool initialized = peek(p).kind == tok_t::assign;
@@ -2766,15 +2886,8 @@ declare_external_object(parser_t &p,
         p.unit.objects.push_back(object_decl_t { sym, std::nullopt });
     }
 
-    if (!initialized)
-        return;
-
-    const token_t &op = advance(p);
-    std::vector< subobject_t > values;
-    const long count = object_initializer(p, op, sym->type, values);
-
-    sym->type = completed_type(sym->type, count);
-    p.unit.objects[*index].init = std::move(values);
+    if (initialized)
+        initialize(p, *sym, *index);
 }
 
 // No function specifier stands in a declaration of main, 6.7.5p4.
@@ -2788,11 +2901,12 @@ refuse_specifier_on_main(const specifiers_t &spec, const declarator_t &d)
 }
 
 // One declarator of a file-scope declaration: a type name, a function,
-// or an object.  static reaches here only with inline, and only the
-// definition of a static inline function is taken.  A function declared
-// through a typedef name of function type, typedef int fn_t(int);
-// fn_t f;, is not yet: its declaration writes no parameter list, and
-// the typedef keeps no marking attribute of its parameters.
+// or an object.  static inline on a declaration without a body is not
+// yet: only the definition of a static inline function is taken.  A
+// function declared through a typedef name of function type, typedef
+// int fn_t(int); fn_t f;, is not yet: its declaration writes no
+// parameter list, and the typedef keeps no marking attribute of its
+// parameters.
 void
 external_declarator(parser_t &p,
                     const specifiers_t &spec,
@@ -2808,14 +2922,14 @@ external_declarator(parser_t &p,
 
     refuse_specifier_on_main(spec, d);
 
-    if (declared(spec, tok_t::kw_static))
+    if (declared(spec, tok_t::kw_static) && spec.inline_specifier)
         not_yet(*spec.storage_class,
                 "storage class " + quoted(spec.storage_class->text));
 
     if (typedef_)
         type_definition(p, spec, d);
     else if (d.params)
-        declare_function(p, d, declarator_tail(p, spec));
+        declare_function(p, spec, d, declarator_tail(p, spec));
     else
         declare_external_object(p, spec, d);
 }
@@ -2823,7 +2937,9 @@ external_declarator(parser_t &p,
 // A function definition, or a declaration of functions, of objects
 // and of type names, or of a tag or enumeration
 // constants alone.  extern on a function changes nothing: a function
-// has external linkage without it.  A definition is a declarator and
+// declared without a storage class has the linkage extern gives it,
+// 6.2.2p5, and static gives it internal linkage, p3, on a declaration
+// and on a definition alike.  A definition is a declarator and
 // its body, with nothing between them, so no attribute and no
 // assembler name of its own; it takes those of its declarations.
 // inline on a definition is not yet: an inline definition is no
@@ -2831,7 +2947,8 @@ external_declarator(parser_t &p,
 // _Noreturn on one is dropped, as on a declaration: it promises that
 // the function does not return, and rcc writes the function as it is
 // written either way.  The definition of a static inline function is
-// accepted and not compiled.  An __asm__ at file scope is not yet.
+// accepted and not compiled; one of a static function without inline
+// is compiled as any other.  An __asm__ at file scope is not yet.
 void
 external_declaration(parser_t &p)
 {
@@ -2856,7 +2973,8 @@ external_declaration(parser_t &p)
     const declarator_t d = declarator(p, base, naming_t::required, typedef_);
 
     const bool defines_function = d.params && peek(p).kind == tok_t::lbrace;
-    if (defines_function && declared(spec, tok_t::kw_static)) {
+    if (defines_function && declared(spec, tok_t::kw_static) &&
+        spec.inline_specifier) {
         static_function_definition(p, spec, d);
         return;
     }
@@ -2901,14 +3019,15 @@ defined_parameter(parser_t &p, const parameter_t &param)
 // makes, so none may be of a not-yet type.  A function a marking
 // attribute marked, on a declaration, among the definition's specifiers
 // or on a parameter, is one rcc would have to define as the attribute
-// says, which is not yet.
+// says, which is not yet.  function and statics start over, for the
+// labels of the static objects the body declares.
 void
 function_definition(parser_t &p,
                     const specifiers_t &spec,
                     const declarator_t &d)
 {
     const std::size_t index =
-        declare_function(p, d, { nullptr, { }, spec.marking });
+        declare_function(p, spec, d, { nullptr, { }, spec.marking });
     if (p.unit.functions[index].body)
         fail(*d.name, "redefinition of " + quoted(d.name->text));
 
@@ -2920,6 +3039,8 @@ function_definition(parser_t &p,
     require_honoured(*d.name, p.result);
 
     p.registers = 0;
+    p.function = d.name->text;
+    p.statics.clear();
     p.scopes.push_back(d.scope);
 
     std::vector< const symbol_t * > params;
@@ -2950,9 +3071,9 @@ function_definition(parser_t &p,
 // would have to compile, and that is not yet.  The definition is
 // accepted, its body skipped to the brace that closes it, and the
 // function stays declared, so c1 writes nothing for it; an expression
-// that names it is refused by name.  A static declaration without a
-// body is not yet, so a function that carries the words already was
-// defined before.
+// that names it is refused by name, and so is a use before the
+// definition, at the end of the unit.  A function that carries the
+// words was defined so before.
 void
 static_function_definition(parser_t &p,
                            const specifiers_t &spec,
@@ -2961,7 +3082,7 @@ static_function_definition(parser_t &p,
     refuse_specifier_on_main(spec, d);
 
     const std::size_t index =
-        declare_function(p, d, { nullptr, { }, spec.marking });
+        declare_function(p, spec, d, { nullptr, { }, spec.marking });
 
     const std::string words = "static function " + quoted(d.name->text);
 
@@ -3102,17 +3223,6 @@ refuse_atomic_qualifier(const token_t &q, const token_t *storage_class)
 {
     if (!storage_class || storage_class->kind != tok_t::kw_typedef)
         not_yet(q, "type qualifier " + quoted(q.text));
-}
-
-// static is taken on a function that is inline too, whose definition
-// a header writes, and is not yet on anything else.  It is checked
-// where the specifiers end, since inline may follow it.
-void
-refuse_static(const token_t *storage_class, const token_t *inline_specifier)
-{
-    if (storage_class && storage_class->kind == tok_t::kw_static &&
-        !inline_specifier)
-        not_yet(*storage_class, "storage class " + quoted(storage_class->text));
 }
 
 // The type specifiers in any valid order and combination, 6.7.3.1p2.
@@ -3349,8 +3459,6 @@ declaration_specifiers(parser_t &p)
         case tok_t::kw_static_assert:
             not_yet(t, quoted(t.text) + " declaration");
         default: {
-            refuse_static(storage_class, inline_specifier);
-
             if (complex_specifier && !n_float && !n_double)
                 not_yet(*complex_specifier,
                         "type specifier " + quoted(complex_specifier->text));
@@ -3367,7 +3475,12 @@ declaration_specifiers(parser_t &p)
                                     "type qualifier " +
                                         quoted(atomic_qualifier->text));
 
-            return { type, storage_class, tagged, function_specifier, marking };
+            return { type,
+                     storage_class,
+                     tagged,
+                     function_specifier,
+                     inline_specifier,
+                     marking };
         }
         }
 
@@ -4061,65 +4174,23 @@ type_name(parser_t &p)
     return declarator(p, spec.type, naming_t::none).type;
 }
 
-// A block-scope declaration, perhaps of a tag or enumeration constants
-// alone, which makes no statement.  extern and static in a block are
-// not yet, static inline among them.
-std::vector< stmt_t >
-declaration(parser_t &p)
+// The declarator of an object declared in a block, with what is
+// checked of every such object, static or not.  A function declared in
+// a block is not yet, and an error with static, which a block's
+// function takes no more than any other storage class but extern,
+// 6.7.2p13.  An object is one rcc makes, so an attribute that marks it
+// is one rcc would have to honour, and is not yet; so is an assembler
+// name, which names a register for a register variable.  An object's
+// type is complete, 6.7.1p8: not void, not a not-yet type, whose size
+// rcc does not know.
+declarator_t
+block_object_declarator(parser_t &p, const specifiers_t &spec)
 {
-    skip_extension_keywords(p);
+    declarator_t d = declarator(p, spec.type);
+    if (is< function_t >(d.type) && declared(spec, tok_t::kw_static))
+        fail(*d.name, "function " + quoted(d.name->text) +
+                          " declared static in a block");
 
-    const specifiers_t spec = declaration_specifiers(p);
-
-    if (declared(spec, tok_t::kw_extern) || declared(spec, tok_t::kw_static))
-        not_yet(*spec.storage_class,
-                "storage class " + quoted(spec.storage_class->text));
-
-    if (spec.tagged && accept(p, tok_t::semicolon))
-        return { };
-
-    return init_declarator_list(p, spec);
-}
-
-// The declarators of a block-scope declaration and its ';': one
-// declaration statement per object, in order.  A typedef's declarators
-// declare type names and make no statement.
-std::vector< stmt_t >
-init_declarator_list(parser_t &p, const specifiers_t &spec)
-{
-    std::vector< stmt_t > decls;
-
-    do {
-        if (declared(spec, tok_t::kw_typedef)) {
-            refuse_function_specifier(spec);
-            type_definition(p, spec,
-                            declarator(p, spec.type, naming_t::required, true));
-        }
-        else
-            decls.push_back(init_declarator(p, spec));
-    } while (accept(p, tok_t::comma));
-
-    expect(p, tok_t::semicolon, "expected ';' at end of declaration");
-
-    return decls;
-}
-
-// The name is in scope from the end of its declarator, 6.2.1p7, so an
-// initializer sees the object it initializes.  The initializer is
-// converted as by assignment, 6.7.11p12.  An object's type must be
-// complete, 6.7.1p8, so an array needs its size; any initializer of an
-// array, and a brace initializer of anything, is not yet.  A register
-// array is not yet either: its decay is undefined, 6.3.2.1p3, and it
-// has no slot to decay to.  A local of 2 GiB or more is refused here,
-// where its position is known, since no frame holds it, and so is one
-// of a not-yet type, whose size rcc does not know.  A local is an
-// object rcc makes, so an attribute that marks it is one rcc would have
-// to honour, and is not yet; so is an assembler name, which names a
-// register for a register variable.
-stmt_t
-init_declarator(parser_t &p, const specifiers_t &spec)
-{
-    const declarator_t d = declarator(p, spec.type);
     if (is< function_t >(d.type))
         not_yet(*d.name, "function declaration at block scope");
 
@@ -4137,6 +4208,121 @@ init_declarator(parser_t &p, const specifiers_t &spec)
         fail(*d.name, "variable " + quoted(d.name->text) + " has type void");
 
     require_honoured(*d.name, d.type);
+
+    return d;
+}
+
+// The label of a block's static object, backend.md chapter 10: the
+// function's name and the object's, next.count, and from the second of
+// the name in the function on a number after them, counting from 1,
+// next.count.1.  No C identifier holds a '.', so the label is no
+// symbol's of the file and no other static object's.
+std::string
+static_label(parser_t &p, const std::string &name)
+{
+    const int n = p.statics[name]++;
+
+    std::string label = std::string(p.function) + "." + name;
+    if (n > 0)
+        label += "." + std::to_string(n);
+
+    return label;
+}
+
+// An object a block declares static: of static storage duration,
+// 6.2.4p3, and no linkage, 6.2.2p6, so a name of the block's, which
+// may hide another and be hidden as a local's is, and is declared once
+// in its block, 6.7.1p4.  It is an object the unit defines, as one at
+// file scope is, with an entry in the unit's objects and a label of its
+// own: its initializer is constant, read as a global's, and gives its
+// value once, before the program starts, and without one it is zero,
+// 6.7.11p11.  Its declaration makes no statement.  An array of unknown
+// size takes its size from its initializer, and is an error without
+// one, 6.7.1p8.  The name is in scope from the end of its declarator,
+// 6.2.1p7, so the initializer sees the object.
+void
+static_local(parser_t &p, const specifiers_t &spec)
+{
+    const declarator_t d = block_object_declarator(p, spec);
+
+    const bool initialized = peek(p).kind == tok_t::assign;
+    if (!initialized && is< array_t >(d.type) &&
+        as< array_t >(d.type).count < 0)
+        fail(*d.name, "array size missing in " + quoted(d.name->text));
+
+    if (p.scopes.back().names.contains(d.name->text))
+        fail(*d.name, "redefinition of " + quoted(d.name->text));
+
+    symbol_t &sym = added(p, d.name->text, d.type, storage_t::global);
+    sym.asm_name = static_label(p, sym.name);
+
+    p.unit.objects.push_back(object_decl_t { &sym, std::nullopt });
+
+    if (initialized)
+        initialize(p, sym, p.unit.objects.size() - 1);
+}
+
+// A block-scope declaration, perhaps of a tag or enumeration constants
+// alone, which makes no statement.  extern in a block is not yet, and
+// so is static inline.
+std::vector< stmt_t >
+declaration(parser_t &p)
+{
+    skip_extension_keywords(p);
+
+    const specifiers_t spec = declaration_specifiers(p);
+
+    const bool static_inline =
+        declared(spec, tok_t::kw_static) && spec.inline_specifier;
+    if (declared(spec, tok_t::kw_extern) || static_inline)
+        not_yet(*spec.storage_class,
+                "storage class " + quoted(spec.storage_class->text));
+
+    if (spec.tagged && accept(p, tok_t::semicolon))
+        return { };
+
+    return init_declarator_list(p, spec);
+}
+
+// The declarators of a block-scope declaration and its ';': one
+// declaration statement per object, in order.  A typedef's declarators
+// declare type names and make no statement, and so do a static
+// declaration's, whose objects are no locals.
+std::vector< stmt_t >
+init_declarator_list(parser_t &p, const specifiers_t &spec)
+{
+    std::vector< stmt_t > decls;
+
+    do {
+        if (declared(spec, tok_t::kw_typedef)) {
+            refuse_function_specifier(spec);
+            type_definition(p, spec,
+                            declarator(p, spec.type, naming_t::required, true));
+        }
+        else if (declared(spec, tok_t::kw_static))
+            static_local(p, spec);
+        else
+            decls.push_back(init_declarator(p, spec));
+    } while (accept(p, tok_t::comma));
+
+    expect(p, tok_t::semicolon, "expected ';' at end of declaration");
+
+    return decls;
+}
+
+// A local, an object of automatic storage duration, 6.2.4p5.  The name
+// is in scope from the end of its declarator, 6.2.1p7, so an
+// initializer sees the object it initializes.  The initializer is
+// converted as by assignment, 6.7.11p12.  An object's type must be
+// complete, 6.7.1p8, so an array needs its size; any initializer of an
+// array, and a brace initializer of anything, is not yet.  A register
+// array is not yet either: its decay is undefined, 6.3.2.1p3, and it
+// has no slot to decay to.  A local of 2 GiB or more is refused here,
+// where its position is known, since no frame holds it.
+stmt_t
+init_declarator(parser_t &p, const specifiers_t &spec)
+{
+    const declarator_t d = block_object_declarator(p, spec);
 
     if (is< array_t >(d.type) && declared(spec, tok_t::kw_register))
         not_yet(*d.name, "register array " + quoted(d.name->text));
@@ -4614,11 +4800,14 @@ unary_expression(parser_t &p)
 
 // sizeof E or sizeof (T).  The operand expression is typed and dropped,
 // never evaluated, and does not decay, so the size of an array is the
-// whole array's, 6.5.4.4p4.
+// whole array's, 6.5.4.4p4.  A name of internal linkage it uses needs no
+// definition, 6.9.1p3, since the size is an integer constant, and its
+// uses are dropped.
 expr_t
 sizeof_expression(parser_t &p)
 {
     const token_t &op = advance(p);
+    const auto uses = std::ssize(p.internal_uses);
 
     type_t t = make_void();
     if (starts_type_name(p)) {
@@ -4628,6 +4817,9 @@ sizeof_expression(parser_t &p)
     }
     else
         t = unary_expression(p).type;
+
+    p.internal_uses.erase(p.internal_uses.begin() + uses,
+                          p.internal_uses.end());
 
     return sizeof_(op, t);
 }
@@ -4769,7 +4961,9 @@ argument_expression_list(parser_t &p,
 // value is not computed yet, is refused here, with the name in hand, as
 // is a symbol's an attribute marked, by the attribute's words, and a
 // global's of a not-yet type, which an object declared elsewhere may
-// have, by the type's.  A generic selection is not yet.  Parentheses leave the expression as it is, an
+// have, by the type's.  A use of a name of internal linkage is kept for
+// the check of its definition at the end of the unit.  A generic
+// selection is not yet.  Parentheses leave the expression as it is, an
 // lvalue included, p6.  A floating constant is not yet: the lexer took
 // its spelling, and its value is not computed.  A character constant
 // is an int, 6.4.4.5p11.  Adjacent string literals are one, 6.4.5p5,
@@ -4800,6 +4994,9 @@ primary_expression(parser_t &p)
 
         if (sym->storage == storage_t::enumerator)
             not_yet(t, "enum");
+
+        if (sym->linkage == linkage_t::internal)
+            p.internal_uses.push_back({ sym, &t });
 
         return expr_t { sym->type, name_t { sym } };
     }
