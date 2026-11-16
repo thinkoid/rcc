@@ -12,8 +12,7 @@ add:
 	movl	%edi, -4(%rbp)
 	movl	%esi, -8(%rbp)
 	movl	-4(%rbp), %eax
-	movl	-8(%rbp), %ecx
-	addl	%ecx, %eax
+	addl	-8(%rbp), %eax
 	je	.Ladd.2
 	movl	$1, %eax
 	jmp	.Ladd.1
@@ -38,8 +37,7 @@ sub:
 	movl	%edi, -4(%rbp)
 	movl	%esi, -8(%rbp)
 	movl	-4(%rbp), %eax
-	movl	-8(%rbp), %ecx
-	subl	%ecx, %eax
+	subl	-8(%rbp), %eax
 	je	.Lsub.2
 	movl	$1, %eax
 	jmp	.Lsub.1
@@ -64,8 +62,7 @@ or:
 	movl	%edi, -4(%rbp)
 	movl	%esi, -8(%rbp)
 	movl	-4(%rbp), %eax
-	movl	-8(%rbp), %ecx
-	orl	%ecx, %eax
+	orl	-8(%rbp), %eax
 	je	.Lor.2
 	movl	$1, %eax
 	jmp	.Lor.1
@@ -90,8 +87,7 @@ xor:
 	movl	%edi, -4(%rbp)
 	movl	%esi, -8(%rbp)
 	movl	-4(%rbp), %eax
-	movl	-8(%rbp), %ecx
-	xorl	%ecx, %eax
+	xorl	-8(%rbp), %eax
 	je	.Lxor.2
 	movl	$1, %eax
 	jmp	.Lxor.1
@@ -140,8 +136,7 @@ test_register:
 	movl	%edi, -4(%rbp)
 	movl	%esi, -8(%rbp)
 	movl	-4(%rbp), %eax
-	movl	-8(%rbp), %ecx
-	testl	%ecx, %eax
+	testl	-8(%rbp), %eax
 	je	.Ltest_register.2
 	movl	$1, %eax
 	jmp	.Ltest_register.1
@@ -164,8 +159,7 @@ test_immediate:
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register %rbp
 	movl	%edi, -4(%rbp)
-	movl	-4(%rbp), %eax
-	testl	$1, %eax
+	testl	$1, -4(%rbp)
 	je	.Ltest_immediate.2
 	movl	$1, %eax
 	jmp	.Ltest_immediate.1
@@ -193,8 +187,7 @@ test_variable:
 	movl	%esi, -16(%rbp)
 	movl	-12(%rbp), %eax
 	movl	%eax, %ebx
-	movl	-16(%rbp), %eax
-	testl	%eax, %ebx
+	testl	-16(%rbp), %ebx
 	je	.Ltest_variable.2
 	movl	$1, %eax
 	jmp	.Ltest_variable.1
@@ -960,8 +953,7 @@ equal_zero:
 	movl	%edi, -4(%rbp)
 	movl	%esi, -8(%rbp)
 	movl	-4(%rbp), %eax
-	movl	-8(%rbp), %ecx
-	testl	%ecx, %eax
+	testl	-8(%rbp), %eax
 	jne	.Lequal_zero.2
 	movl	$1, %eax
 	jmp	.Lequal_zero.1
@@ -1013,8 +1005,7 @@ product:
 	movl	%edi, -4(%rbp)
 	movl	%esi, -8(%rbp)
 	movl	-4(%rbp), %eax
-	movl	-8(%rbp), %ecx
-	imull	%ecx, %eax
+	imull	-8(%rbp), %eax
 	cmpl	$0, %eax
 	je	.Lproduct.2
 	movl	$1, %eax
@@ -1126,8 +1117,7 @@ negative:
 	movl	%edi, -4(%rbp)
 	movl	%esi, -8(%rbp)
 	movl	-4(%rbp), %eax
-	movl	-8(%rbp), %ecx
-	addl	%ecx, %eax
+	addl	-8(%rbp), %eax
 	cmpl	$0, %eax
 	jge	.Lnegative.2
 	movl	$1, %eax

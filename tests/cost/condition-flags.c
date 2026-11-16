@@ -2,7 +2,7 @@
    instruction sets the zero flag, after the Seventh Edition compiler's
    cctab.  add, sub, or, xor and neg test +, -, |, ^ and unary -;
    test_register, test_immediate and test_variable test & of two
-   registers, of an immediate and of a register variable; each compound
+   parameters, of an immediate and of a register variable; each compound
    assignment that has a memory form, and each prefix step, is tested on
    a local, a char local, a global and a register variable, in
    <op>_local, <op>_char, <op>_global and <op>_register; equal_zero and
@@ -13,15 +13,17 @@
    it, and < 0.
 
    On x86-64 the listing must show the jump on the flags of the
-   operator's own instruction, with no cmp: addl %ecx, %eax then
-   je .Ladd.2, and the same after subl, orl, xorl and negl %eax;
-   testl %ecx, %eax, testl $1, %eax and testl %eax, %ebx, the register
-   variable read in ebx and not copied, each then je; the memory form
-   then je, addl %eax, -12(%rbp) on the local, addb %al, -9(%rbp) on
-   the char, addl %eax, counter(%rip) on the global, and the operation
-   in place, addl %eax, %ebx, on the register variable; the steps
+   operator's own instruction, with no cmp: addl -8(%rbp), %eax, b's
+   slot the instruction's operand, then je .Ladd.2, and the same after
+   subl, orl, xorl and negl %eax; testl -8(%rbp), %eax,
+   testl $1, -4(%rbp) on a in its slot, and testl -16(%rbp), %ebx, the
+   register variable read in ebx and not copied, each then je; the
+   memory form then je, addl %eax, -12(%rbp) on the local,
+   addb %al, -9(%rbp) on the char, addl %eax, counter(%rip) on the
+   global, and the operation in place, addl %eax, %ebx, on the register
+   variable; the steps
    addl $1 and subl $1, addb $1 and subb $1 on the char; in equal_zero
-   testl %ecx, %eax then jne .Lequal_zero.2, and in unequal_zero
+   testl -8(%rbp), %eax then jne .Lequal_zero.2, and in unequal_zero
    subl %eax, -12(%rbp) then je .Lunequal_zero.2.  It must show imull,
    shll %cl, the old value copied in postfix, movsbl %bl, %ebx after
    the addl in narrow_register and the addl of negative each followed

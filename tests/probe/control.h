@@ -23,6 +23,19 @@
     X(T, N, ne_0, !=, 0) X(T, N, lt_0, <, 0) X(T, N, ge_m4096, >=, -4096) \
     X(T, N, lt_fff000, <, 0xfff000) X(T, N, gt_m5000, >, -5000)
 
+/* a comparison of an object in memory with a constant, which x86-64
+   writes as the cmp of the object itself as a condition, docs/backend.md
+   7.1: a name, the operator, the constant.  Each operator, with
+   constants an int holds and one it does not, positive and negative,
+   so an unsigned type compares a large value. */
+#define KSIDES(X, T, N)                                                 \
+    X(T, N, lt_5, <, 5) X(T, N, le_5, <=, 5) X(T, N, gt_5, >, 5)        \
+    X(T, N, ge_5, >=, 5) X(T, N, eq_5, ==, 5) X(T, N, ne_5, !=, 5)      \
+    X(T, N, lt_0, <, 0) X(T, N, ge_0, >=, 0) X(T, N, eq_0, ==, 0)       \
+    X(T, N, le_m1, <=, -1) X(T, N, gt_m1, >, -1) X(T, N, ne_m1, !=, -1) \
+    X(T, N, lt_m4096, <, -4096) X(T, N, ge_12345, >=, 0x12345)          \
+    X(T, N, gt_7fff, >, 0x7fff) X(T, N, le_big, <=, 0x123456789)
+
 /* The conditions that jump on the flags of their operator's own
    instruction on x86-64, docs/backend.md 7.1, and beside them those
    that keep the cmp: a name and the condition.  Those of a and b alone:

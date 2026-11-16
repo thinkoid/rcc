@@ -26,8 +26,7 @@ main:
 	movl	$0, %eax
 	call	snprintf@PLT
 	movl	%eax, -36(%rbp)
-	movl	-36(%rbp), %eax
-	cmpl	$15, %eax
+	cmpl	$15, -36(%rbp)
 	je	.Lmain.2
 	movl	$1, %eax
 	jmp	.Lmain.1

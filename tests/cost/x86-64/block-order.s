@@ -15,12 +15,10 @@ block_order:
 	.p2align 5
 .Lblock_order.2:
 	movl	-12(%rbp), %eax
-	movl	-8(%rbp), %ecx
-	cmpl	%ecx, %eax
+	cmpl	-8(%rbp), %eax
 	jge	.Lblock_order.3
 	movl	-12(%rbp), %eax
-	movl	-4(%rbp), %ecx
-	cmpl	%ecx, %eax
+	cmpl	-4(%rbp), %eax
 	jne	.Lblock_order.4
 	movl	$1, %eax
 	jmp	.Lblock_order.1

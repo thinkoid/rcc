@@ -14,9 +14,8 @@ unused:
 	movl	-4(%rbp), %eax
 	addl	$0, %eax
 	movl	-4(%rbp), %eax
-	movl	-8(%rbp), %ecx
 	cltd
-	idivl	%ecx
+	idivl	-8(%rbp)
 	movl	$0, %eax
 	jmp	.Lunused.1
 .Lunused.1:

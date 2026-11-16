@@ -13,14 +13,12 @@ main:
 	movl	$0, -4(%rbp)
 	.p2align 5
 .Lmain.2:
-	movl	-4(%rbp), %eax
-	cmpl	$10, %eax
+	cmpl	$10, -4(%rbp)
 	jge	.Lmain.4
 	leaq	table(%rip), %rax
 	movslq	-4(%rbp), %rcx
 	movl	-4(%rbp), %edx
-	movl	-4(%rbp), %esi
-	imull	%esi, %edx
+	imull	-4(%rbp), %edx
 	movl	%edx, (%rax,%rcx,4)
 	addl	$1, count(%rip)
 .Lmain.3:
@@ -31,8 +29,7 @@ main:
 	.p2align 5
 .Lmain.5:
 	movl	-4(%rbp), %eax
-	movl	count(%rip), %ecx
-	cmpl	%ecx, %eax
+	cmpl	count(%rip), %eax
 	jge	.Lmain.7
 	leaq	table(%rip), %rax
 	movslq	-4(%rbp), %rcx
@@ -42,8 +39,7 @@ main:
 	addl	$1, -4(%rbp)
 	jmp	.Lmain.5
 .Lmain.7:
-	movq	total(%rip), %rax
-	cmpq	$285, %rax
+	cmpq	$285, total(%rip)
 	je	.Lmain.8
 	movl	$1, %eax
 	jmp	.Lmain.1
@@ -82,8 +78,7 @@ main:
 	jmp	.Lmain.1
 .Lmain.10:
 	movl	table+12(%rip), %eax
-	movl	count(%rip), %ecx
-	addl	%ecx, %eax
+	addl	count(%rip), %eax
 	jmp	.Lmain.1
 .Lmain.1:
 	leave

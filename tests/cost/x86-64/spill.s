@@ -26,9 +26,7 @@ spill:
 	movl	-12(%rbp), %r11d
 	movq	%rax, -32(%rbp)
 	movl	-16(%rbp), %eax
-	movq	%rcx, -40(%rbp)
-	movl	-20(%rbp), %ecx
-	subl	%ecx, %eax
+	subl	-20(%rbp), %eax
 	subl	%eax, %r11d
 	subl	%r11d, %r10d
 	subl	%r10d, %r9d
@@ -36,11 +34,9 @@ spill:
 	subl	%r8d, %edi
 	subl	%edi, %esi
 	subl	%esi, %edx
-	movq	-40(%rbp), %rax
-	subl	%edx, %eax
-	movq	-32(%rbp), %rcx
-	subl	%eax, %ecx
-	movl	%ecx, %eax
+	subl	%edx, %ecx
+	movq	-32(%rbp), %rax
+	subl	%ecx, %eax
 	jmp	.Lspill.1
 .Lspill.1:
 	leave

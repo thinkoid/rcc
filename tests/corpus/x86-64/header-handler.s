@@ -11,8 +11,7 @@ handler:
 	.cfi_def_cfa_register %rbp
 	subq	$16, %rsp
 	movl	%edi, -4(%rbp)
-	movl	-4(%rbp), %eax
-	cmpl	$10, %eax
+	cmpl	$10, -4(%rbp)
 	jne	.Lhandler.2
 	movl	$42, %eax
 	jmp	.Lhandler.3

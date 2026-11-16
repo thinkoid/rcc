@@ -21,6 +21,47 @@
 
 TYPES(OPERATORS)
 
+/* an operator whose right operand is an object in memory, which on
+   x86-64 the instruction names as its own operand, docs/backend.md 6.1:
+   a local, ml_, and a global the file defines, mg_; a char or a short
+   is promoted and keeps its load.  Beside them, the rows that keep the
+   load: an operand widened to long, a compound assignment's right
+   operand, for its effect and for its value, a shift's count and a
+   multiply by a constant. */
+#define RIGHT_GLOBAL(T, N) T right_##N;
+
+TYPES(RIGHT_GLOBAL)
+
+#define IN_MEMORY(T, N, name, op)                                       \
+    long ml_##name##_##N(T a, T b)                                      \
+    {                                                                   \
+        T y = b;                                                        \
+        return a op y;                                                  \
+    }                                                                   \
+    long mg_##name##_##N(T a, T b)                                      \
+    {                                                                   \
+        right_##N = b;                                                  \
+        return a op right_##N;                                          \
+    }
+#define IN_MEMORY_ALL(T, N) MEMORY_OPERATORS(IN_MEMORY, T, N)
+
+TYPES(IN_MEMORY_ALL)
+
+#define KEEPS(T, N)                                                     \
+    long keep_##N(long a, T b, int n)                                   \
+    {                                                                   \
+        T y = b;                                                        \
+        T x = a;                                                        \
+        long r = a + y;                                                 \
+        x += y;                                                         \
+        r = r * 7 + x;                                                  \
+        r = r * 7 + (x -= y);                                           \
+        r = r * 7 + (y << n);                                           \
+        return r * 7 + y * 4;                                           \
+    }
+
+TYPES(KEEPS)
+
 /* locals, and every assignment in the effect context: each statement's
    value is dropped */
 #define LOCALS(T, N)                                                    \

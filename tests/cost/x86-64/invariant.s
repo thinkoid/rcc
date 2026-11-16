@@ -17,20 +17,17 @@ invariant:
 	.p2align 5
 .Linvariant.2:
 	movl	-20(%rbp), %eax
-	movl	-12(%rbp), %ecx
-	cmpl	%ecx, %eax
+	cmpl	-12(%rbp), %eax
 	jge	.Linvariant.4
 	movl	-16(%rbp), %eax
 	movl	-4(%rbp), %ecx
-	movl	-8(%rbp), %edx
-	movq	%rdx, %rsi
-	movq	%rax, %rdi
+	movq	%rax, %rsi
 	movl	%ecx, %eax
 	cltd
-	idivl	%esi
+	idivl	-8(%rbp)
 	movl	%eax, %ecx
-	addl	%ecx, %edi
-	movl	%edi, -16(%rbp)
+	addl	%ecx, %esi
+	movl	%esi, -16(%rbp)
 .Linvariant.3:
 	movl	-20(%rbp), %eax
 	addl	$1, %eax
@@ -60,8 +57,7 @@ invariant_constant:
 	.p2align 5
 .Linvariant_constant.2:
 	movl	-12(%rbp), %eax
-	movl	-4(%rbp), %ecx
-	cmpl	%ecx, %eax
+	cmpl	-4(%rbp), %eax
 	jge	.Linvariant_constant.4
 	movl	-8(%rbp), %eax
 	addl	$408, %eax

@@ -7,11 +7,11 @@
    The listing shows no C name.  No label of the source's is aligned,
    though a goto jumps back to again.
 
-   On x86-64 the listing must show .Lcount.2 with no .p2align before
-   it; the counter loaded and compared with cmpl %ecx, %eax, and the
-   jge to .Lcount.3; the counter incremented with addl $1, %eax and
-   stored to -8(%rbp), and jmp .Lcount.2 back; then .Lcount.3 and the
-   return.
+   On x86-64 the listing must show .Lcount.2 with no .p2align before it;
+   the counter loaded and compared with n in its slot, cmpl -4(%rbp),
+   %eax, and the jge to .Lcount.3; the counter incremented with addl $1,
+   %eax and stored to -8(%rbp), and jmp .Lcount.2 back; then .Lcount.3
+   and the return.
 
    On aarch64 the listing must show the same shape: cmp w0, w1 and
    b.ge .Lcount.3; the increment with add w0, w0, #1 and the store to

@@ -15,11 +15,9 @@ join:
 	.p2align 5
 .Ljoin.2:
 	movl	-12(%rbp), %eax
-	movl	-8(%rbp), %ecx
-	cmpl	%ecx, %eax
+	cmpl	-8(%rbp), %eax
 	jge	.Ljoin.3
-	movl	-4(%rbp), %eax
-	cmpl	$0, %eax
+	cmpl	$0, -4(%rbp)
 	je	.Ljoin.4
 	movl	-12(%rbp), %eax
 	addl	$1, %eax

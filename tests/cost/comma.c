@@ -8,7 +8,7 @@
    addl $2, -12(%rbp), with no load, no copy of an old value and no
    store; of last(), a++ as addl $1, -4(%rbp) and then b loaded for the
    value; and of test(), a = b as b loaded and stored to a's slot, then
-   c loaded and compared for the jump.
+   c compared in its slot, cmpl $0, -12(%rbp), for the jump.
 
    On aarch64 the listing of sum() must show the initializer's two
    constants, both zero, each stored in one instruction,

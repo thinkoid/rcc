@@ -37,8 +37,7 @@ getch:
 	.cfi_offset %rbp, -16
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register %rbp
-	movl	bufp(%rip), %eax
-	cmpl	$0, %eax
+	cmpl	$0, bufp(%rip)
 	jle	.Lgetch.2
 	leaq	buf(%rip), %rax
 	movl	bufp(%rip), %ecx
@@ -68,8 +67,7 @@ ungetch:
 	.cfi_def_cfa_register %rbp
 	subq	$16, %rsp
 	movl	%edi, -4(%rbp)
-	movl	bufp(%rip), %eax
-	cmpl	$100, %eax
+	cmpl	$100, bufp(%rip)
 	jl	.Lungetch.2
 	leaq	.Ls0(%rip), %rax
 	movq	%rax, -16(%rbp)
@@ -110,23 +108,19 @@ getint:
 	movl	%eax, -12(%rbp)
 	cmpl	$32, %eax
 	je	.Lgetint.4
-	movl	-12(%rbp), %eax
-	cmpl	$9, %eax
+	cmpl	$9, -12(%rbp)
 	je	.Lgetint.4
-	movl	-12(%rbp), %eax
-	cmpl	$10, %eax
+	cmpl	$10, -12(%rbp)
 	jne	.Lgetint.3
 .Lgetint.4:
 	jmp	.Lgetint.2
 .Lgetint.3:
-	movl	-12(%rbp), %eax
-	cmpl	$-1, %eax
+	cmpl	$-1, -12(%rbp)
 	jne	.Lgetint.5
 	movl	$0, %eax
 	jmp	.Lgetint.1
 .Lgetint.5:
-	movl	-12(%rbp), %eax
-	cmpl	$45, %eax
+	cmpl	$45, -12(%rbp)
 	jne	.Lgetint.6
 	movl	$-1, %eax
 	jmp	.Lgetint.7
@@ -134,11 +128,9 @@ getint:
 	movl	$1, %eax
 .Lgetint.7:
 	movl	%eax, -16(%rbp)
-	movl	-12(%rbp), %eax
-	cmpl	$43, %eax
+	cmpl	$43, -12(%rbp)
 	je	.Lgetint.9
-	movl	-12(%rbp), %eax
-	cmpl	$45, %eax
+	cmpl	$45, -12(%rbp)
 	jne	.Lgetint.8
 .Lgetint.9:
 	call	getch@PLT
@@ -148,17 +140,14 @@ getint:
 	movl	$0, (%rax)
 	.p2align 5
 .Lgetint.10:
-	movl	-12(%rbp), %eax
-	cmpl	$48, %eax
+	cmpl	$48, -12(%rbp)
 	jl	.Lgetint.12
-	movl	-12(%rbp), %eax
-	cmpl	$57, %eax
+	cmpl	$57, -12(%rbp)
 	jg	.Lgetint.12
 	movq	-8(%rbp), %rax
 	movl	$10, %ecx
 	movq	-8(%rbp), %rdx
-	movl	(%rdx), %edx
-	imull	%edx, %ecx
+	imull	(%rdx), %ecx
 	movl	-12(%rbp), %edx
 	subl	$48, %edx
 	addl	%edx, %ecx
@@ -173,8 +162,7 @@ getint:
 	movl	(%rax), %edx
 	imull	%ecx, %edx
 	movl	%edx, (%rax)
-	movl	-12(%rbp), %eax
-	cmpl	$-1, %eax
+	cmpl	$-1, -12(%rbp)
 	je	.Lgetint.13
 	movl	-12(%rbp), %eax
 	movl	%eax, -20(%rbp)

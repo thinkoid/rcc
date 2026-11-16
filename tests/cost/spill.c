@@ -5,10 +5,11 @@
    written, hold eleven values at once.
 
    On x86-64, whose nine expression registers run out, the listing must
-   show the eleven loads in source order, the oldest held values, the
-   first a and then the first b, stored with movq to spill slots when
-   the tenth and the eleventh need a register, and each reloaded with
-   movq when the subtraction that consumes it comes.
+   show the first ten loads in source order, the oldest held value, the
+   first a, stored with movq to a spill slot when the tenth needs a
+   register, the eleventh operand, the last e, the operand of the first
+   subtraction, subl -20(%rbp), %eax (backend.md 6.1), and a reloaded
+   with movq when the subtraction that consumes it comes.
 
    On aarch64 the listing is the eleven loads in source order into w0
    to w7 and w9 to w11, then the ten subtractions, with no spill slot,

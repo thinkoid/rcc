@@ -12,9 +12,8 @@ udiv:
 	movl	%edi, -4(%rbp)
 	movl	%esi, -8(%rbp)
 	movl	-4(%rbp), %eax
-	movl	-8(%rbp), %ecx
 	xorl	%edx, %edx
-	divl	%ecx
+	divl	-8(%rbp)
 	jmp	.Ludiv.1
 .Ludiv.1:
 	leave
@@ -34,9 +33,8 @@ urem:
 	movl	%edi, -4(%rbp)
 	movl	%esi, -8(%rbp)
 	movl	-4(%rbp), %eax
-	movl	-8(%rbp), %ecx
 	xorl	%edx, %edx
-	divl	%ecx
+	divl	-8(%rbp)
 	movl	%edx, %eax
 	jmp	.Lurem.1
 .Lurem.1:

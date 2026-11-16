@@ -3,7 +3,7 @@
    a / b is performed, and does what the target's division does (G4).
 
    On x86-64 the listing must show a + 0 as a loaded into eax and
-   addl $0, %eax, and a / b as a and b loaded, cltd and idivl %ecx, then
+   addl $0, %eax, and a / b as a loaded, cltd and idivl -8(%rbp), then
    movl $0, %eax for the return: the division faults when b is 0 or when
    a is INT_MIN and b is -1.
 

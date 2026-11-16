@@ -12,8 +12,7 @@ add:
 	movl	%edi, -4(%rbp)
 	movl	%esi, -8(%rbp)
 	movl	-4(%rbp), %eax
-	movl	-8(%rbp), %ecx
-	addl	%ecx, %eax
+	addl	-8(%rbp), %eax
 	jmp	.Ladd.1
 .Ladd.1:
 	leave
@@ -33,8 +32,7 @@ sub:
 	movl	%edi, -4(%rbp)
 	movl	%esi, -8(%rbp)
 	movl	-4(%rbp), %eax
-	movl	-8(%rbp), %ecx
-	subl	%ecx, %eax
+	subl	-8(%rbp), %eax
 	jmp	.Lsub.1
 .Lsub.1:
 	leave

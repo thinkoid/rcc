@@ -16,8 +16,7 @@ sum:
 	.p2align 5
 .Lsum.2:
 	movl	-8(%rbp), %eax
-	movl	-4(%rbp), %ecx
-	cmpl	%ecx, %eax
+	cmpl	-4(%rbp), %eax
 	jge	.Lsum.4
 	movl	-12(%rbp), %eax
 	addl	%eax, -16(%rbp)
@@ -68,8 +67,7 @@ test:
 	movl	%edx, -12(%rbp)
 	movl	-8(%rbp), %eax
 	movl	%eax, -4(%rbp)
-	movl	-12(%rbp), %eax
-	cmpl	$0, %eax
+	cmpl	$0, -12(%rbp)
 	je	.Ltest.2
 	movl	-4(%rbp), %eax
 	jmp	.Ltest.1

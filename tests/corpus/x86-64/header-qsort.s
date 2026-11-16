@@ -18,15 +18,13 @@ compare:
 	movq	-24(%rbp), %rax
 	movl	(%rax), %eax
 	movq	-32(%rbp), %rcx
-	movl	(%rcx), %ecx
-	cmpl	%ecx, %eax
+	cmpl	(%rcx), %eax
 	setg	%al
 	movzbl	%al, %eax
 	movq	-24(%rbp), %rcx
 	movl	(%rcx), %ecx
 	movq	-32(%rbp), %rdx
-	movl	(%rdx), %edx
-	cmpl	%edx, %ecx
+	cmpl	(%rdx), %ecx
 	setl	%cl
 	movzbl	%cl, %ecx
 	subl	%ecx, %eax
@@ -67,16 +65,14 @@ main:
 	movl	$1, -28(%rbp)
 	.p2align 5
 .Lmain.2:
-	movl	-28(%rbp), %eax
-	cmpl	$6, %eax
+	cmpl	$6, -28(%rbp)
 	jge	.Lmain.4
 	movl	-28(%rbp), %eax
 	subl	$1, %eax
 	movslq	%eax, %rax
 	movl	-24(%rbp,%rax,4), %eax
 	movslq	-28(%rbp), %rcx
-	movl	-24(%rbp,%rcx,4), %ecx
-	cmpl	%ecx, %eax
+	cmpl	-24(%rbp,%rcx,4), %eax
 	jle	.Lmain.5
 	movl	$1, %eax
 	jmp	.Lmain.1

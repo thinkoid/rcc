@@ -563,8 +563,12 @@ PDP-11's registers.
 Unchanged from `backend.md` 6.1 in what it says: the left child into
 register `L`, the right into `R`, one instruction for the operator,
 `R` freed, the result in `L`. The instruction is written `op L, L, R`.
-When `L` is a register variable's read, the result takes a fresh
-expression register, `op N, L, R`, and that is the whole of what x86's
+Where x86-64 names an object in memory as the right operand in place
+of `R` (`backend.md` 6.1), this target has nothing to take: a
+load-store machine has no instruction with a memory operand, so every
+operand is loaded into `R` by the load of 2.2. When `L` is a register
+variable's read, the result takes a fresh expression register,
+`op N, L, R`, and that is the whole of what x86's
 `writable()` copy becomes. `R` is freed before `N` is taken, in the
 rule's order, so `N` may be `R`'s register: `x * 4` is `mov w0, #4;
 mul w0, w19, w0`. A row of two instructions frees `R` after the last

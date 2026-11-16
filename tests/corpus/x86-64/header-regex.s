@@ -16,8 +16,7 @@ sum:
 	.p2align 5
 .Lsum.2:
 	movl	-24(%rbp), %eax
-	movl	-4(%rbp), %ecx
-	cmpl	%ecx, %eax
+	cmpl	-4(%rbp), %eax
 	jge	.Lsum.4
 	movq	-16(%rbp), %rax
 	movslq	-24(%rbp), %rcx

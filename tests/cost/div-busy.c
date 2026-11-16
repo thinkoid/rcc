@@ -1,13 +1,14 @@
 /* backend.md 6.5 and aarch64.md 6.5, the pinned instructions: a
    division that wants its operands in fixed registers first moves out
    the values held there.  In a + b / c, a is held when the division
-   comes and c is loaded last.
+   comes and c is read last.
 
-   On x86-64, where the held a sits in eax and c is loaded into edx, the
-   listing must show, in each function, the two moves out of the pinned
-   registers, c from rdx and a from rax, each to a free register, then b
-   moved into eax, cltd, idivl, the quotient (eax) or the remainder
-   (edx) moved into b's register, and the add into a's new register.
+   On x86-64, where the held a sits in eax, b in ecx and c is the
+   division's operand in its slot (backend.md 6.1), the listing must
+   show, in each function, the move of a out of the pinned rax to a
+   free register, movq %rax, %rsi, then b moved into eax, cltd,
+   idivl -12(%rbp), the quotient (eax) or the remainder (edx) moved
+   into b's register, and the add into a's new register.
 
    On aarch64 the listing is the division on the registers the loads
    took, a in w0, b in w1 and c in w2: sdiv w1, w1, w2 in div_busy(),

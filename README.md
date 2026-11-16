@@ -99,9 +99,14 @@ A cast that widens a signed object in memory is the object's load,
 extending: `movslq -4(%rbp), %rax`, `ldrsw x0, [x29, #16]`, as that
 compiler's tables converted an operand in the instruction that read
 it. On x86-64 a condition whose operator's own instruction sets the
-zero flag jumps on it with no `cmp`, `testl $1, %eax; jne .Llow.3`
-for `if (n & 1) break;` and `subl $1, -4(%rbp); je` for `while
-(--n)`, as that compiler's `cctab` compiled a condition.
+zero flag jumps on it with no `cmp`, `testl $1, -4(%rbp); jne
+.Llow.3` for `if (n & 1) break;` and `subl $1, -4(%rbp); je` for
+`while (--n)`, as that compiler's `cctab` compiled a condition. On
+x86-64 an object in memory as an operator's right operand is the
+instruction's own operand, `addl -8(%rbp), %eax`, `idivl -8(%rbp)`,
+and a condition on an object in memory and a constant is the `cmp`
+or the `test` of the object, `cmpl $5, -4(%rbp)`, as that compiler's
+table named an addressable operand in the instruction.
 An element by a
 constant index is the object's own operand, `movl table+12(%rip),
 %eax`, the constant folded into the address as that compiler

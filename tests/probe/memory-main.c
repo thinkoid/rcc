@@ -293,6 +293,28 @@ TYPES(DECLARE_SUMMED)
 
 TYPES(DECLARE_WIDEN_ALL)
 
+#define DECLARE_OPERAND(T, N, name, op)                                 \
+    BOTH(long, od_##name##_##N, (T, T)) BOTH(long, op_##name##_##N, (T *, T)) \
+    BOTH(long, oi_##name##_##N, (T *, T, T, int))                       \
+    BOTH(long, oa_##name##_##N, (T, T, int))
+#define DECLARE_KTEST(T, N, name, op, constant)                         \
+    BOTH(int, kt_##name##_##N, (T *)) BOTH(int, ktl_##name##_##N, (T *)) \
+    BOTH(int, ktd_##name##_##N, (T))
+#define DECLARE_OPERANDS(T, N)                                          \
+    MEMORY_OPERATORS(DECLARE_OPERAND, T, N)                             \
+    KTESTS(DECLARE_KTEST, T, N)                                         \
+    BOTH(long, alias_##N, (T *, T)) BOTH(long, alias_local_##N, (T, T)) \
+    BOTH(long, busy_div_##N, (T *, T, T, T, T))                         \
+    BOTH(long, busy_rem_##N, (T *, T, T, T, T))                         \
+    BOTH(long, rdx_div_##N, (T *, T, T)) BOTH(long, rdx_rem_##N, (T *, T, T)) \
+    BOTH(long, rdx_index_div_##N, (T *, T, T, int))                     \
+    BOTH(long, rdx_index_rem_##N, (T *, T, T, int))                     \
+    BOTH(long, rax_div_##N, (T *, T, int))                              \
+    BOTH(long, rax_rem_##N, (T *, T, int))                              \
+    BOTH(long, tests_##N, (T *, T))
+
+TYPES(DECLARE_OPERANDS)
+
 BOTH(long, text_pass, (void))
 BOTH(long, text_two, (void))
 BOTH(long, text_escapes, (void))
@@ -625,6 +647,72 @@ TYPES(TEST_SUMMED)
 
 TYPES(TEST_WIDEN_ALL)
 
+/* an object in memory as an operator's right operand and as a
+   condition's object, of one type, over pairs of the table and every
+   offset: P(T) holds x, the divisor of op_ and of the divisions with
+   rax and rdx busy, and of y for the others, so a divisor of 0 or -1
+   is skipped by the value that is it */
+#define DIVIDES(op) ((#op)[0] == '/' || (#op)[0] == '%')
+#define DIVISOR(T, v) ((T) (v) != 0 && (T) (v) != (T) -1)
+
+#define TEST_OPERAND(T, N, name, op)                                    \
+    if (!DIVIDES(op) || DIVISOR(T, x))                                  \
+        MCHECK(op_##name##_##N, x, y, at, (P(T), (T) y));               \
+    if (!DIVIDES(op) || DIVISOR(T, y)) {                                \
+        CHECK(od_##name##_##N, x, y, ((T) x, (T) y));                   \
+        MCHECK(oi_##name##_##N, x, y, at, (P(T), (T) x, (T) y, k));     \
+        CHECK(oa_##name##_##N, x, y, ((T) x, (T) y, k));                \
+    }
+
+#define TEST_KTEST(T, N, name, op, constant)                            \
+    MCHECK(kt_##name##_##N, x, at, at, (P(T)));                         \
+    MCHECK(ktl_##name##_##N, x, at, at, (P(T)));                        \
+    CHECK(ktd_##name##_##N, x, 0, ((T) x));
+
+#define TEST_OPERANDS(T, N)                                             \
+    static void test_operands_##N(void)                                 \
+    {                                                                   \
+        for (int i = 0; i < COUNT; ++i) {                               \
+            const long x = values[i];                                   \
+                                                                        \
+            for (int o = 0; o < OFFSETS; ++o) {                         \
+                const int at = offsets[o];                              \
+                                                                        \
+                KTESTS(TEST_KTEST, T, N)                                \
+                MCHECK(tests_##N, x, values[(i + o) % COUNT], at,       \
+                       (P(T), (T) values[(i + o) % COUNT]));            \
+            }                                                           \
+                                                                        \
+            for (int j = i % 3; j < COUNT; j += 3) {                    \
+                const long y = values[j];                               \
+                const int at = offsets[(i + j) % OFFSETS];              \
+                const int k = (i + j) & 3;                              \
+                                                                        \
+                MEMORY_OPERATORS(TEST_OPERAND, T, N)                    \
+                MCHECK(alias_##N, x, y, at, (P(T), (T) y));             \
+                CHECK(alias_local_##N, x, y, ((T) x, (T) y));           \
+                                                                        \
+                if (!DIVISOR(T, x))                                     \
+                    continue;                                           \
+                                                                        \
+                MCHECK(busy_div_##N, x, y, at,                          \
+                       (P(T), (T) y, (T) (x ^ y), (T) (x + y), (T) y)); \
+                MCHECK(busy_rem_##N, x, y, at,                          \
+                       (P(T), (T) y, (T) (x ^ y), (T) (x + y), (T) y)); \
+                MCHECK(rdx_div_##N, x, y, at, (P(T), (T) (x ^ y), (T) y)); \
+                MCHECK(rdx_rem_##N, x, y, at, (P(T), (T) (x ^ y), (T) y)); \
+                MCHECK(rdx_index_div_##N, x, y, at,                     \
+                       (P(T), (T) (x ^ y), (T) y, 0));                  \
+                MCHECK(rdx_index_rem_##N, x, y, at,                     \
+                       (P(T), (T) (x ^ y), (T) y, 0));                  \
+                MCHECK(rax_div_##N, x, y, at, (P(T), (T) y, 0));        \
+                MCHECK(rax_rem_##N, x, y, at, (P(T), (T) y, 0));        \
+            }                                                           \
+        }                                                               \
+    }
+
+TYPES(TEST_OPERANDS)
+
 /* the literals, the frames of one function each, and depth */
 static void
 test_rest(void)
@@ -693,7 +781,7 @@ main(void)
 #define RUN(T, N)                                                       \
     test_access_##N(); test_operators_##N(); test_address_##N();        \
     test_folds_##N(); test_indexed_##N(); test_summed_##N();            \
-    test_widen_##N();
+    test_widen_##N(); test_operands_##N();
     TYPES(RUN)
 
     test_rest();

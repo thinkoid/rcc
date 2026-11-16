@@ -1,7 +1,8 @@
 /* The control probe: conditions as values and as jumps, the
    statements that branch, and values held across a branch, in rcc's C,
    for docs/aarch64.md chapter 7, and the conditions that jump on their
-   operator's own flags on x86-64, docs/backend.md 7.1.  See control.h. */
+   operator's own flags on x86-64 and those it writes as the cmp or test
+   of an object in memory, docs/backend.md 7.1.  See control.h. */
 
 #include "control.h"
 
@@ -341,3 +342,74 @@ TYPES(CC_GLOBAL)
     CC_OBJECT(CC_ON_REGISTER, T, N, reg, x)
 
 TYPES(CC_ALL)
+
+/* docs/backend.md 7.1 on x86-64, a condition on an object in memory and
+   a constant, the cmp or test of the object itself: each comparison of
+   control.h's KSIDES with the constant on either side, under ! and
+   before the ? of ?:, of a parameter, ks_p_, a local, ks_l_, and a
+   global, ks_g_; and the object tested alone, under !, with & a
+   constant and in && and while, tz_p_, tz_l_ and tz_g_.  A char or a
+   short is promoted by a comparison and by &, and keeps its load
+   there; tested alone it is compared at its own width. */
+#define KSIDE_PLACES(O, op, constant)                                   \
+    int r = 0;                                                          \
+    if (O op constant)                                                  \
+        r += 1;                                                         \
+    if (constant op O)                                                  \
+        r += 2;                                                         \
+    if (!(O op constant))                                               \
+        r += 4;                                                         \
+    return r + ((O op constant) && (constant op O) ? 8 : 16);
+
+#define TRUTH_PLACES(O)                                                 \
+    int r = 0;                                                          \
+    if (O)                                                              \
+        r += 1;                                                         \
+    if (!O)                                                             \
+        r += 2;                                                         \
+    if (O & 1)                                                          \
+        r += 4;                                                         \
+    if ((O & 0x81) == 0)                                                \
+        r += 8;                                                         \
+    if (O && b)                                                         \
+        r += 16;                                                        \
+    while (O) {                                                         \
+        r += 32;                                                        \
+        break;                                                          \
+    }                                                                   \
+    return r + (O ? 64 : 128);
+
+#define KSIDE_GLOBAL(T, N) T ks_object_##N;
+
+TYPES(KSIDE_GLOBAL)
+
+#define KSIDE(T, N, name, op, constant)                                 \
+    int ks_p_##name##_##N(T a) { KSIDE_PLACES(a, op, constant) }        \
+    int ks_l_##name##_##N(T a)                                          \
+    {                                                                   \
+        T x = a;                                                        \
+        KSIDE_PLACES(x, op, constant)                                   \
+    }                                                                   \
+    int ks_g_##name##_##N(T a)                                          \
+    {                                                                   \
+        ks_object_##N = a;                                              \
+        KSIDE_PLACES(ks_object_##N, op, constant)                       \
+    }
+#define KSIDE_ALL(T, N) KSIDES(KSIDE, T, N)
+
+TYPES(KSIDE_ALL)
+
+#define TRUTHS(T, N)                                                    \
+    int tz_p_##N(T a, T b) { TRUTH_PLACES(a) }                          \
+    int tz_l_##N(T a, T b)                                              \
+    {                                                                   \
+        T x = a;                                                        \
+        TRUTH_PLACES(x)                                                 \
+    }                                                                   \
+    int tz_g_##N(T a, T b)                                              \
+    {                                                                   \
+        ks_object_##N = a;                                              \
+        TRUTH_PLACES(ks_object_##N)                                     \
+    }
+
+TYPES(TRUTHS)

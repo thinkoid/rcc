@@ -14,8 +14,7 @@ two_constants:
 	movq	-8(%rbp), %rax
 	movabsq	$81985529216486895, %rcx
 	addq	%rcx, %rax
-	movq	-16(%rbp), %rcx
-	addq	%rcx, %rax
+	addq	-16(%rbp), %rax
 	movabsq	$81985529216486903, %rcx
 	addq	%rcx, %rax
 	jmp	.Ltwo_constants.1

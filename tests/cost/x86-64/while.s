@@ -14,8 +14,7 @@ count:
 	.p2align 5
 .Lcount.2:
 	movl	-8(%rbp), %eax
-	movl	-4(%rbp), %ecx
-	cmpl	%ecx, %eax
+	cmpl	-4(%rbp), %eax
 	jge	.Lcount.3
 	movl	-8(%rbp), %eax
 	addl	$1, %eax

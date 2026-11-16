@@ -67,8 +67,7 @@ day_of_year:
 	.p2align 5
 .Lday_of_year.2:
 	movl	-16(%rbp), %eax
-	movl	-8(%rbp), %ecx
-	cmpl	%ecx, %eax
+	cmpl	-8(%rbp), %eax
 	jge	.Lday_of_year.4
 	leaq	daytab(%rip), %rax
 	movslq	-20(%rbp), %rcx
@@ -153,11 +152,9 @@ month_name:
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register %rbp
 	movl	%edi, -4(%rbp)
-	movl	-4(%rbp), %eax
-	cmpl	$1, %eax
+	cmpl	$1, -4(%rbp)
 	jl	.Lmonth_name.4
-	movl	-4(%rbp), %eax
-	cmpl	$12, %eax
+	cmpl	$12, -4(%rbp)
 	jle	.Lmonth_name.2
 .Lmonth_name.4:
 	movq	name(%rip), %rax
@@ -224,8 +221,7 @@ round_trip:
 	movl	-72(%rbp), %esi
 	movl	-76(%rbp), %edx
 	call	day_of_year@PLT
-	movl	-8(%rbp), %ecx
-	cmpl	%ecx, %eax
+	cmpl	-8(%rbp), %eax
 	je	.Lround_trip.5
 	movl	-8(%rbp), %eax
 	jmp	.Lround_trip.1
@@ -269,14 +265,12 @@ main:
 	movl	$0, -20(%rbp)
 	movl	-20(%rbp), %edi
 	call	month_name@PLT
-	movq	name(%rip), %rcx
-	cmpq	%rcx, %rax
+	cmpq	name(%rip), %rax
 	jne	.Lmain.5
 	movl	$13, -24(%rbp)
 	movl	-24(%rbp), %edi
 	call	month_name@PLT
-	movq	name(%rip), %rcx
-	cmpq	%rcx, %rax
+	cmpq	name(%rip), %rax
 	je	.Lmain.4
 .Lmain.5:
 	movl	$2, %eax

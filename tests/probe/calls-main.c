@@ -61,6 +61,14 @@ report(const char *name, long x, long y, long got, long want)
 
 TYPES(DECLARE_TYPE)
 
+#define DECLARE_ORDERED(T, N)                                           \
+    BOTH(int, lt_call_##N, (T, T)) BOTH(int, lt_call_value_##N, (T, T)) \
+    BOTH(long, add_call_##N, (T, T)) BOTH(int, eq_call_##N, (T, T))     \
+    BOTH(int, eq_call_value_##N, (T, T))                                \
+    BOTH(int, lt_call_local_##N, (T, T))
+
+TYPES(DECLARE_ORDERED)
+
 #define DECLARE_RESULT(F, T, N)                                         \
     BOTH(long, F##_long_##N, (long)) BOTH(int, F##_plus_##N, (long))    \
     BOTH(int, F##_test_##N, (long)) BOTH(int, F##_not_##N, (long))      \
@@ -152,6 +160,29 @@ fill(long v[12], int i, int k)
     }
 
 TYPES(TEST_TYPE)
+
+/* the left operand before a call on the right that writes its object,
+   of one type, over every pair of the table: equal values and unequal
+   ones, which tell the object's old value from the call's */
+#define TEST_ORDERED(T, N)                                              \
+    static void test_ordered_##N(void)                                  \
+    {                                                                   \
+        for (int i = 0; i < COUNT; ++i) {                               \
+            for (int j = 0; j < COUNT; ++j) {                           \
+                const long x = values[i];                               \
+                const long y = values[j];                               \
+                                                                        \
+                CHECK(lt_call_##N, x, y, ((T) x, (T) y));               \
+                CHECK(lt_call_value_##N, x, y, ((T) x, (T) y));         \
+                CHECK(add_call_##N, x, y, ((T) x, (T) y));              \
+                CHECK(eq_call_##N, x, y, ((T) x, (T) y));               \
+                CHECK(eq_call_value_##N, x, y, ((T) x, (T) y));         \
+                CHECK(lt_call_local_##N, x, y, ((T) x, (T) y));         \
+            }                                                           \
+        }                                                               \
+    }
+
+TYPES(TEST_ORDERED)
 
 /* a result of one type, from an honest function and from a wide one */
 #define TEST_RESULT(F, T, N)                                            \
@@ -260,6 +291,9 @@ main(void)
 
 #define RUN(T, N) test_##N();
     TYPES(RUN)
+
+#define RUN_ORDERED(T, N) test_ordered_##N();
+    TYPES(RUN_ORDERED)
 
 #define RUN_RET(T, N) test_ret_##N();
     TYPES(RUN_RET)

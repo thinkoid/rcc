@@ -14,15 +14,13 @@ div_busy:
 	movl	%edx, -12(%rbp)
 	movl	-4(%rbp), %eax
 	movl	-8(%rbp), %ecx
-	movl	-12(%rbp), %edx
-	movq	%rdx, %rsi
-	movq	%rax, %rdi
+	movq	%rax, %rsi
 	movl	%ecx, %eax
 	cltd
-	idivl	%esi
+	idivl	-12(%rbp)
 	movl	%eax, %ecx
-	addl	%ecx, %edi
-	movl	%edi, %eax
+	addl	%ecx, %esi
+	movl	%esi, %eax
 	jmp	.Ldiv_busy.1
 .Ldiv_busy.1:
 	leave
@@ -44,15 +42,13 @@ rem_busy:
 	movl	%edx, -12(%rbp)
 	movl	-4(%rbp), %eax
 	movl	-8(%rbp), %ecx
-	movl	-12(%rbp), %edx
-	movq	%rdx, %rsi
-	movq	%rax, %rdi
+	movq	%rax, %rsi
 	movl	%ecx, %eax
 	cltd
-	idivl	%esi
+	idivl	-12(%rbp)
 	movl	%edx, %ecx
-	addl	%ecx, %edi
-	movl	%edi, %eax
+	addl	%ecx, %esi
+	movl	%esi, %eax
 	jmp	.Lrem_busy.1
 .Lrem_busy.1:
 	leave

@@ -20,6 +20,15 @@
 /* the types a constant operand is tried on */
 #define WIDE(X) X(int, i) X(unsigned, u) X(long, l) X(unsigned long, ul)
 
+/* the binary operators whose right operand an object in memory may be,
+   the instruction's own operand on x86-64, docs/backend.md 6.1: a name
+   and the operator */
+#define MEMORY_OPERATORS(X, T, N)                                       \
+    X(T, N, add, +) X(T, N, sub, -) X(T, N, mul, *) X(T, N, div, /)     \
+    X(T, N, rem, %) X(T, N, and, &) X(T, N, or, |) X(T, N, xor, ^)      \
+    X(T, N, lt, <) X(T, N, le, <=) X(T, N, gt, >) X(T, N, ge, >=)       \
+    X(T, N, eq, ==) X(T, N, ne, !=)
+
 /* an operator with a constant right operand: a name, the operator,
    the constant.  The constants walk the immediates of docs/aarch64.md
    2.4 and 6.4: those add, sub and the logical instructions encode,

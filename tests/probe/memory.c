@@ -9,7 +9,9 @@
    displacement, a constant over a row's address, a local's or one
    through a pointer to rows, the constant the displacement of that
    address, and an object read under a cast that widens it, an element
-   by a subscript among them (backend.md 6.3), which the last sections
+   by a subscript among them (backend.md 6.3), and an object in memory
+   as an operator's right operand or a condition's object, an element
+   by a subscript among them (6.1, 7.1), which the last sections
    probe.  A pointer
    into the middle of a buffer, or misaligned, is made by the main.
    See memory.h. */
@@ -24,7 +26,8 @@
     long fill_##N(T *a, int n, long v);                                 \
     long total_##N(T *a, int n);                                        \
     long fill_rows_##N(T m[][5], int n, long v);                        \
-    long total_rows_##N(T m[][5], int n);
+    long total_rows_##N(T m[][5], int n);                               \
+    T *same_##N(T *p);
 
 TYPES(LIBRARY)
 
@@ -910,3 +913,123 @@ TYPES(WIDEN_ALL)
     }
 
 TYPES(WIDENED_INDEX)
+
+/* An operator whose right operand is an object in memory reached by
+   other means than a local's or a parameter's name, the instruction's
+   own operand on x86-64, backend.md 6.1: a global the file only
+   declares, od_; *p, op_, which holds the main's x at B + at; p[i],
+   oi_, and a local array's x[i], oa_, each written with b first, i 0
+   to 3.  A char or a short is promoted and keeps its load. */
+#define OPERAND(T, N, name, op)                                         \
+    long od_##name##_##N(T a, T b)                                      \
+    {                                                                   \
+        declared_##N = b;                                               \
+        return a op declared_##N;                                       \
+    }                                                                   \
+    long op_##name##_##N(T *p, T a) { return a op *p; }                 \
+    long oi_##name##_##N(T *p, T a, T b, int i)                         \
+    {                                                                   \
+        p[i] = b;                                                       \
+        return a op p[i];                                               \
+    }                                                                   \
+    long oa_##name##_##N(T a, T b, int i)                               \
+    {                                                                   \
+        T x[4];                                                         \
+        x[i] = b;                                                       \
+        return a op x[i];                                               \
+    }
+#define OPERAND_ALL(T, N) MEMORY_OPERATORS(OPERAND, T, N)
+
+TYPES(OPERAND_ALL)
+
+/* *p as the right operand where p points at the left operand's object,
+   which the left operand wrote: the instruction reads what the write
+   left, after it (G13); through the main's pointer and to a local */
+#define ALIASED(T, N)                                                   \
+    long alias_##N(T *p, T b) { return (*p += b) + *p; }                \
+    long alias_local_##N(T a, T b)                                      \
+    {                                                                   \
+        T x = a;                                                        \
+        T *q = &x;                                                      \
+        return (x = b) * 3 - *q;                                        \
+    }
+
+TYPES(ALIASED)
+
+/* A division by an object in memory, *p, with values held in rax and
+   rdx when it comes, and by one whose address is in them: *p and p[i]
+   with p loaded into rdx, and p[i] on a pointer a call returned in rax.
+   On x86-64, the values and the address's registers move out of the
+   two registers the division pins first, backend.md 6.5.  p points at
+   the main's x at B + at, the divisor, and i is 0. */
+#define BUSY(T, N)                                                      \
+    long busy_div_##N(T *p, T a, T b, T c, T d)                         \
+    {                                                                   \
+        return a + (b + (c + d / *p));                                  \
+    }                                                                   \
+    long busy_rem_##N(T *p, T a, T b, T c, T d)                         \
+    {                                                                   \
+        return a + (b + (c + d % *p));                                  \
+    }                                                                   \
+    long rdx_div_##N(T *p, T a, T b) { return a + b / *p; }             \
+    long rdx_rem_##N(T *p, T a, T b) { return a + b % *p; }             \
+    long rdx_index_div_##N(T *p, T a, T b, int i) { return a + b / p[i]; } \
+    long rdx_index_rem_##N(T *p, T a, T b, int i) { return a + b % p[i]; } \
+    long rax_div_##N(T *p, T a, int i) { return a / same_##N(p)[i]; }   \
+    long rax_rem_##N(T *p, T a, int i) { return a % same_##N(p)[i]; }
+
+TYPES(BUSY)
+
+/* A condition on an object in memory, on x86-64 the cmp or test of the
+   object itself, backend.md 7.1: compared with a constant on either
+   side, kt_ and ktl_, through the main's pointer, and as a global the
+   file only declares, ktd_; tested alone, under !, and with & a
+   constant, under == 0 too, in tests_.  A char or a short is promoted
+   by the comparison and by &, and keeps its load there. */
+#define KTEST(T, N, name, op, constant)                                 \
+    int kt_##name##_##N(T *p)                                           \
+    {                                                                   \
+        if (*p op constant)                                             \
+            return 1;                                                   \
+        return 0;                                                       \
+    }                                                                   \
+    int ktl_##name##_##N(T *p)                                          \
+    {                                                                   \
+        if (constant op *p)                                             \
+            return 1;                                                   \
+        return 0;                                                       \
+    }                                                                   \
+    int ktd_##name##_##N(T a)                                           \
+    {                                                                   \
+        declared_##N = a;                                               \
+        if (declared_##N op constant)                                   \
+            return 1;                                                   \
+        return 0;                                                       \
+    }
+#define KTEST_ALL(T, N) KTESTS(KTEST, T, N)
+
+TYPES(KTEST_ALL)
+
+#define TESTS(T, N)                                                     \
+    long tests_##N(T *p, T a)                                           \
+    {                                                                   \
+        long r = 0;                                                     \
+        declared_##N = a;                                               \
+        if (*p)                                                         \
+            r += 1;                                                     \
+        if (!*p)                                                        \
+            r += 2;                                                     \
+        if (*p & 1)                                                     \
+            r += 4;                                                     \
+        if ((*p & 0x81) == 0)                                           \
+            r += 8;                                                     \
+        if (declared_##N)                                               \
+            r += 16;                                                    \
+        if (declared_##N & 0x10)                                        \
+            r += 32;                                                    \
+        if (*p && declared_##N)                                         \
+            r += 64;                                                    \
+        return r;                                                       \
+    }
+
+TYPES(TESTS)

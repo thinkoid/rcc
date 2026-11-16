@@ -15,18 +15,14 @@ sum:
 	.p2align 5
 .Lsum.2:
 	movl	-12(%rbp), %eax
-	movl	-4(%rbp), %ecx
-	cmpl	%ecx, %eax
+	cmpl	-4(%rbp), %eax
 	jge	.Lsum.4
-	movl	-12(%rbp), %eax
-	cmpl	$5, %eax
+	cmpl	$5, -12(%rbp)
 	je	.Lsum.3
-	movl	-8(%rbp), %eax
-	cmpl	$100, %eax
+	cmpl	$100, -8(%rbp)
 	jg	.Lsum.4
 	movl	-8(%rbp), %eax
-	movl	-12(%rbp), %ecx
-	addl	%ecx, %eax
+	addl	-12(%rbp), %eax
 	movl	%eax, -8(%rbp)
 .Lsum.3:
 	movl	-12(%rbp), %eax
@@ -42,8 +38,7 @@ sum:
 	movl	-8(%rbp), %eax
 	subl	$1, %eax
 	movl	%eax, -8(%rbp)
-	movl	-8(%rbp), %eax
-	cmpl	$50, %eax
+	cmpl	$50, -8(%rbp)
 	jl	.Lsum.6
 	jmp	.Lsum.5
 .Lsum.6:

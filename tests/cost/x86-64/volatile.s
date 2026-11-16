@@ -17,8 +17,7 @@ peek:
 	movq	-8(%rbp), %rax
 	movl	(%rax), %eax
 	movq	-8(%rbp), %rcx
-	movl	(%rcx), %ecx
-	addl	%ecx, %eax
+	addl	(%rcx), %eax
 	jmp	.Lpeek.1
 .Lpeek.1:
 	leave
@@ -59,8 +58,7 @@ spin:
 	movl	$0, %ebx
 	.p2align 5
 .Lspin.2:
-	movl	-12(%rbp), %eax
-	cmpl	%eax, %ebx
+	cmpl	-12(%rbp), %ebx
 	jge	.Lspin.3
 	addl	$1, %ebx
 	jmp	.Lspin.2

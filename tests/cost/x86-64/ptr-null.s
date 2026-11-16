@@ -10,8 +10,7 @@ test:
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register %rbp
 	movq	%rdi, -8(%rbp)
-	movq	-8(%rbp), %rax
-	cmpq	$0, %rax
+	cmpq	$0, -8(%rbp)
 	je	.Ltest.2
 	movl	$1, %eax
 	jmp	.Ltest.1

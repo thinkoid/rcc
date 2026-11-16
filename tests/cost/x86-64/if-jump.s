@@ -12,11 +12,9 @@ low:
 	movl	%edi, -4(%rbp)
 	.p2align 5
 .Llow.2:
-	movl	-4(%rbp), %eax
-	cmpl	$0, %eax
+	cmpl	$0, -4(%rbp)
 	je	.Llow.3
-	movl	-4(%rbp), %eax
-	testl	$1, %eax
+	testl	$1, -4(%rbp)
 	jne	.Llow.3
 	movl	-4(%rbp), %eax
 	sarl	$1, %eax
@@ -44,11 +42,9 @@ low_else:
 	movl	$0, -8(%rbp)
 	.p2align 5
 .Llow_else.2:
-	movl	-4(%rbp), %eax
-	cmpl	$0, %eax
+	cmpl	$0, -4(%rbp)
 	je	.Llow_else.3
-	movl	-4(%rbp), %eax
-	testl	$1, %eax
+	testl	$1, -4(%rbp)
 	jne	.Llow_else.3
 	movl	-8(%rbp), %eax
 	addl	$1, %eax
@@ -81,15 +77,12 @@ even:
 	.p2align 5
 .Leven.2:
 	movl	-12(%rbp), %eax
-	movl	-4(%rbp), %ecx
-	cmpl	%ecx, %eax
+	cmpl	-4(%rbp), %eax
 	jge	.Leven.4
-	movl	-12(%rbp), %eax
-	testl	$1, %eax
+	testl	$1, -12(%rbp)
 	jne	.Leven.3
 	movl	-8(%rbp), %eax
-	movl	-12(%rbp), %ecx
-	addl	%ecx, %eax
+	addl	-12(%rbp), %eax
 	movl	%eax, -8(%rbp)
 .Leven.3:
 	movl	-12(%rbp), %eax
@@ -120,15 +113,12 @@ even_else:
 	.p2align 5
 .Leven_else.2:
 	movl	-12(%rbp), %eax
-	movl	-4(%rbp), %ecx
-	cmpl	%ecx, %eax
+	cmpl	-4(%rbp), %eax
 	jge	.Leven_else.4
-	movl	-12(%rbp), %eax
-	testl	$1, %eax
+	testl	$1, -12(%rbp)
 	jne	.Leven_else.3
 	movl	-8(%rbp), %eax
-	movl	-12(%rbp), %ecx
-	addl	%ecx, %eax
+	addl	-12(%rbp), %eax
 	movl	%eax, -8(%rbp)
 	movl	-8(%rbp), %eax
 	addl	$1, %eax
@@ -157,8 +147,7 @@ clamp:
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register %rbp
 	movl	%edi, -4(%rbp)
-	movl	-4(%rbp), %eax
-	cmpl	$0, %eax
+	cmpl	$0, -4(%rbp)
 	jge	.Lclamp.2
 	movl	$0, -4(%rbp)
 .Lclamp.2:
@@ -180,8 +169,7 @@ clamp_else:
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register %rbp
 	movl	%edi, -4(%rbp)
-	movl	-4(%rbp), %eax
-	cmpl	$0, %eax
+	cmpl	$0, -4(%rbp)
 	jge	.Lclamp_else.2
 	movl	$0, -4(%rbp)
 	movl	-4(%rbp), %eax
@@ -207,8 +195,7 @@ early:
 	.cfi_def_cfa_register %rbp
 	movq	%rdi, -8(%rbp)
 	movq	-8(%rbp), %rax
-	movl	(%rax), %eax
-	cmpl	$0, %eax
+	cmpl	$0, (%rax)
 	jne	.Learly.1
 	movq	-8(%rbp), %rax
 	movl	$1, (%rax)
@@ -229,8 +216,7 @@ early_else:
 	.cfi_def_cfa_register %rbp
 	movq	%rdi, -8(%rbp)
 	movq	-8(%rbp), %rax
-	movl	(%rax), %eax
-	cmpl	$0, %eax
+	cmpl	$0, (%rax)
 	jne	.Learly_else.1
 	movq	-8(%rbp), %rax
 	movl	$1, (%rax)
@@ -260,8 +246,7 @@ tally:
 	.p2align 5
 .Ltally.2:
 	movl	-12(%rbp), %eax
-	movl	-4(%rbp), %ecx
-	cmpl	%ecx, %eax
+	cmpl	-4(%rbp), %eax
 	jge	.Ltally.4
 	movl	-12(%rbp), %eax
 	andl	$3, %eax
@@ -277,16 +262,14 @@ tally:
 	.quad	.Ltally.6
 	.text
 .Ltally.5:
-	movl	-8(%rbp), %eax
-	cmpl	$100, %eax
+	cmpl	$100, -8(%rbp)
 	jg	.Ltally.7
 	movl	-8(%rbp), %eax
 	addl	$1, %eax
 	movl	%eax, -8(%rbp)
 	jmp	.Ltally.7
 .Ltally.6:
-	movl	-12(%rbp), %eax
-	cmpl	$10, %eax
+	cmpl	$10, -12(%rbp)
 	jg	.Ltally.3
 	movl	-8(%rbp), %eax
 	addl	$2, %eax
@@ -321,11 +304,9 @@ low_braced:
 	movl	%edi, -4(%rbp)
 	.p2align 5
 .Llow_braced.2:
-	movl	-4(%rbp), %eax
-	cmpl	$0, %eax
+	cmpl	$0, -4(%rbp)
 	je	.Llow_braced.3
-	movl	-4(%rbp), %eax
-	testl	$1, %eax
+	testl	$1, -4(%rbp)
 	jne	.Llow_braced.3
 	movl	-4(%rbp), %eax
 	sarl	$1, %eax

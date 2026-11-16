@@ -21,11 +21,9 @@ swap:
 	call	install@PLT
 	movq	%rax, -24(%rbp)
 	movq	-24(%rbp), %rax
-	movq	-16(%rbp), %rcx
-	cmpq	%rcx, %rax
+	cmpq	-16(%rbp), %rax
 	je	.Lswap.3
-	movq	-24(%rbp), %rax
-	cmpq	$0, %rax
+	cmpq	$0, -24(%rbp)
 	jne	.Lswap.2
 .Lswap.3:
 	movq	$0, %rax

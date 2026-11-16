@@ -14,8 +14,7 @@ pick:
 	movl	%edi, %ebx
 	movl	%esi, -12(%rbp)
 	movq	%rbx, -24(%rbp)
-	movl	-12(%rbp), %eax
-	cmpl	$0, %eax
+	cmpl	$0, -12(%rbp)
 	je	.Lpick.2
 	movl	%ebx, %eax
 	addl	$1, %ebx

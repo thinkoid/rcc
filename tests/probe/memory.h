@@ -10,9 +10,12 @@
    constant, backend.md 6.3's fold, a local array's element by a
    variable index, 6.3's slot and index, a constant over a row's
    address, summed into its displacement, and an object widened by its
-   load, (T) a's row, an element by a subscript among them; the frame
-   of 5.3, depth of 6.2, G7, G8, G10 and G11 of chapter 9 and the
-   literals of chapter 10. */
+   load, (T) a's row, an element by a subscript among them; an object
+   in memory as an operator's right operand and as a condition's
+   object, backend.md 6.1 and 7.1, by a name the file only declares,
+   through a pointer and by a subscript; the frame of 5.3, depth of
+   6.2, the pinned division of 6.5, G7, G8, G10 and G11 of chapter 9
+   and the literals of chapter 10. */
 
 /* the integer types and the letter each takes in a function's name */
 #define NARROW(X)                                                       \
@@ -40,6 +43,21 @@
     X(T, N, or, |=) X(T, N, xor, ^=)
 
 #define SHIFTS(X, T, N) X(T, N, shl, <<=) X(T, N, shr, >>=)
+
+/* the binary operators whose right operand an object in memory may be,
+   the instruction's own operand on x86-64, backend.md 6.1: a name and
+   the operator */
+#define MEMORY_OPERATORS(X, T, N)                                       \
+    X(T, N, add, +) X(T, N, sub, -) X(T, N, mul, *) X(T, N, div, /)     \
+    X(T, N, rem, %) X(T, N, and, &) X(T, N, or, |) X(T, N, xor, ^)      \
+    X(T, N, lt, <) X(T, N, le, <=) X(T, N, gt, >) X(T, N, ge, >=)       \
+    X(T, N, eq, ==) X(T, N, ne, !=)
+
+/* a comparison of an object in memory with a constant, as a condition:
+   a name, the operator, the constant */
+#define KTESTS(X, T, N)                                                 \
+    X(T, N, lt_5, <, 5) X(T, N, le_m1, <=, -1) X(T, N, gt_0, >, 0)      \
+    X(T, N, ge_4096, >=, 4096) X(T, N, eq_0, ==, 0) X(T, N, ne_7, !=, 7)
 
 /* a compound assignment of a constant: a name, the operator, the
    constant; an immediate the instruction takes, one it does not, and

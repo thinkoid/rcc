@@ -3,8 +3,9 @@
    expression, folded in the parser to 408 (backend.md 6.4 and
    aarch64.md 6.4), and each of the two is added.
 
-   On x86-64 the listing of twice() must show two loads of a, two of b,
-   two imull and the addl %ecx, %eax of the two products; and of
+   On x86-64 the listing of twice() must show two loads of a, two imull
+   of b in its slot, imull -8(%rbp), %eax and imull -8(%rbp), %ecx,
+   and the addl %ecx, %eax of the two products; and of
    twice_constant(), two addl $408, %eax and no imul.
 
    On aarch64 the listing of twice() must show two loads of a, two of b,

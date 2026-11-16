@@ -8,14 +8,14 @@
    break and a continue in a switch in a for; low_braced is low with the
    break in braces, which write nothing.
 
-   On x86-64 the listing must show the test of n & 1, testl $1, %eax
-   (backend.md 7.1), then jne .Llow.3 to the label past the while, and
-   jne .Llow_else.3 followed at once by the else part's load of s; in
-   even, jne .Leven.3 to the for's step; in clamp, jge .Lclamp.2 to
-   done, numbered at the goto; in early, jne .Learly.1 to the epilogue;
-   in tally, jg .Ltally.7 past the switch and jg .Ltally.3 to the step;
-   and low_braced as low.  No jmp follows any of these jumps, and no
-   label.
+   On x86-64 the listing must show the test of n & 1 in n's slot, testl
+   $1, -4(%rbp) (backend.md 7.1), then jne .Llow.3 to the label past the
+   while, and jne .Llow_else.3 followed at once by the else part's load
+   of s; in even, jne .Leven.3 to the for's step; in clamp, jge
+   .Lclamp.2 to done, numbered at the goto; in early, jne .Learly.1 to
+   the epilogue; in tally, jg .Ltally.7 past the switch and jg .Ltally.3
+   to the step; and low_braced as low.  No jmp follows any of these
+   jumps, and no label.
 
    On aarch64 the listing must show the same jumps: and w0, w0, #0x1 and
    cbnz w0, .Llow.3; cbnz w0, .Leven.3; cmp w0, #0 and b.ge .Lclamp.2;

@@ -46,10 +46,17 @@ into the dividend's register. A variable shift pays the same way for
 takes =rcx=, and it moves out for the count, =movq %rcx, %rsi; movl
 %edx, %ecx=.
 
-Fix: two rules, both decided, built after the right operand in
-memory, which rewrites the same functions.
+An object in memory is now the instruction's own operand, so a
+divisor in a slot takes no register, and =div-busy= writes one
+=movq=, the left operand's, =movq %rax, %rsi=. A divisor's address
+is held as a value is: a base in =rdx= moves out, =movq %rdx, %rdi=
+in =operand='s =divide_busy=, and ~a % f()[i]~ reloads its dividend
+into =rdx= and moves it once more.
 
-- A divisor is generated with =rdx= held out as =rax= is. The
+Fix: two rules, both decided.
+
+- A divisor, and the address of one in memory, is generated with
+  =rdx= held out as =rax= is. The
   division's own node knows its instruction's registers, and no
   listing loses by it, since a divisor in =rdx= always moves. This
   one is a defect.
@@ -136,11 +143,37 @@ constant has no evaluation to order, so G13 does not ask for it; what
 asks for it is the rule that an operator's operands are written as
 the source has them (6.1).
 
+The same holds for a comparison of an object in memory: ~x > 5~ in a
+condition is =cmpl $5, -4(%rbp)=, and ~5 < x~ loads the 5, =movl $5,
+%eax; cmpl -4(%rbp), %eax=. The Seventh Edition compiler exchanges a
+relational's operands to put the simpler one on the right (=c12.c=).
+
 Fix: decide whether the constant on the left is taken as the one on
 the right is.
 
-Check: the listing of ~0 == (c & 1)~ agrees with the decision, pinned
-in =condition-flags=.
+Check: the listings of ~0 == (c & 1)~ and of ~5 < x~ agree with the
+decision, pinned in =condition-flags= and in =operand=.
+
+** TODO Four rows beside the operand in memory still load their operand
+
+On x86-64 an object in memory of the operation's width is the
+instruction's own operand (=backend.md= 6.1). Four rows next to that
+rule keep the load, each for a reason of the rule's wording and not
+of the machine:
+
+- pointer arithmetic: ~p - q~ and ~p + n~ with a stride of 1 take a
+  64-bit right operand that =subq= and =addq= could name;
+- a cast that changes signedness alone: in ~u + i~ the =int= is
+  under ~(unsigned)~, a cast and no read, though the bytes and the
+  width are the same;
+- a comparison for its value: ~return x < 5;~ loads =x=, where a
+  condition has =cmpl $5, -4(%rbp)=;
+- a multiply by a constant: ~x * 4~ is =movl -4(%rbp), %eax; imull
+  $4, %eax, %eax=, and the machine has =imull $4, -4(%rbp), %eax=.
+
+Fix: decide each.
+
+Check: a row of =operand= for each, agreeing with its decision.
 
 ** TODO =backend.md= chapter 13 records no call for the rules taken from the Seventh Edition's tables
 
@@ -330,7 +363,10 @@ collatz as written, and matmul, sort and strings as tuned, by one to
 nine instructions each; on aarch64 collatz as written, by one. The
 jump on an operator's flags changes collatz as tuned on x86-64 again:
 its parity test is =testq $1, %r14=, where the chapter's paragraph
-quotes =andq $1, %rax= on a copy. The times in the tables, the ratios the tl;dr draws from them and the
+quotes =andq $1, %rax= on a copy. The operand in memory changes
+every x86-64 listing of =tests/perf=: the inner loop of matmul as
+tuned is ten instructions, =movl (%r13), %eax; imull (%r14), %eax=,
+where the paragraph counts eleven. The times in the tables, the ratios the tl;dr draws from them and the
 listings the chapter's paragraphs quote are those of the code before
 it. The steps that follow it on x86-64 change the same listings
 again.

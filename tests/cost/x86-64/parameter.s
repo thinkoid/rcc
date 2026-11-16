@@ -12,10 +12,8 @@ parameter:
 	movl	%edi, -4(%rbp)
 	movl	%esi, -8(%rbp)
 	movl	-4(%rbp), %eax
-	movl	-8(%rbp), %ecx
-	subl	%ecx, %eax
-	movl	-4(%rbp), %ecx
-	addl	%ecx, %eax
+	subl	-8(%rbp), %eax
+	addl	-4(%rbp), %eax
 	jmp	.Lparameter.1
 .Lparameter.1:
 	leave

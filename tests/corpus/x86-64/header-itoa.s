@@ -21,8 +21,7 @@ reverse:
 	.p2align 5
 .Lreverse.2:
 	movl	-16(%rbp), %eax
-	movl	-20(%rbp), %ecx
-	cmpl	%ecx, %eax
+	cmpl	-20(%rbp), %eax
 	jge	.Lreverse.4
 	movq	-8(%rbp), %rax
 	movslq	-16(%rbp), %rcx
@@ -97,8 +96,7 @@ itoa:
 	cmpl	$0, %eax
 	jg	.Litoa.3
 .Litoa.5:
-	movl	-24(%rbp), %eax
-	cmpl	$0, %eax
+	cmpl	$0, -24(%rbp)
 	jge	.Litoa.6
 	movq	-16(%rbp), %rax
 	movl	-20(%rbp), %ecx
@@ -140,8 +138,7 @@ trim:
 	movl	%eax, -12(%rbp)
 	.p2align 5
 .Ltrim.2:
-	movl	-12(%rbp), %eax
-	cmpl	$0, %eax
+	cmpl	$0, -12(%rbp)
 	jl	.Ltrim.4
 	movq	-8(%rbp), %rax
 	movslq	-12(%rbp), %rcx

@@ -15,12 +15,10 @@ sum:
 	.p2align 5
 .Lsum.2:
 	movl	-12(%rbp), %eax
-	movl	-4(%rbp), %ecx
-	cmpl	%ecx, %eax
+	cmpl	-4(%rbp), %eax
 	jge	.Lsum.4
 	movl	-8(%rbp), %eax
-	movl	-12(%rbp), %ecx
-	addl	%ecx, %eax
+	addl	-12(%rbp), %eax
 	movl	%eax, -8(%rbp)
 .Lsum.3:
 	movl	-12(%rbp), %eax

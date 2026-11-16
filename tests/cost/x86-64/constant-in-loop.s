@@ -15,8 +15,7 @@ constant_in_loop:
 	.p2align 5
 .Lconstant_in_loop.2:
 	movl	-16(%rbp), %eax
-	movl	-12(%rbp), %ecx
-	cmpl	%ecx, %eax
+	cmpl	-12(%rbp), %eax
 	jge	.Lconstant_in_loop.4
 	movq	-8(%rbp), %rax
 	movabsq	$81985529216486895, %rcx

@@ -12,8 +12,7 @@ main:
 	subq	$64, %rsp
 	movl	%edi, -4(%rbp)
 	movl	$4, %eax
-	movl	-4(%rbp), %ecx
-	addl	%ecx, %eax
+	addl	-4(%rbp), %eax
 	movl	%eax, -20(%rbp)
 	leaq	-20(%rbp), %rax
 	movq	%rax, -16(%rbp)

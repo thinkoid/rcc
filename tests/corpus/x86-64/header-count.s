@@ -16,8 +16,7 @@ main:
 	movl	$0, -8(%rbp)
 	.p2align 5
 .Lmain.2:
-	movl	-8(%rbp), %eax
-	cmpl	$10, %eax
+	cmpl	$10, -8(%rbp)
 	jge	.Lmain.4
 	movslq	-8(%rbp), %rax
 	movl	$0, -56(%rbp,%rax,4)
@@ -115,8 +114,7 @@ main:
 	movl	$0, -8(%rbp)
 	.p2align 5
 .Lmain.27:
-	movl	-8(%rbp), %eax
-	cmpl	$10, %eax
+	cmpl	$10, -8(%rbp)
 	jge	.Lmain.29
 	leaq	.Ls1(%rip), %rax
 	movq	%rax, -72(%rbp)
@@ -142,34 +140,27 @@ main:
 	movl	-96(%rbp), %edx
 	movl	$0, %eax
 	call	printf@PLT
-	movl	-52(%rbp), %eax
-	cmpl	$2, %eax
+	cmpl	$2, -52(%rbp)
 	jne	.Lmain.31
-	movl	-48(%rbp), %eax
-	cmpl	$5, %eax
+	cmpl	$5, -48(%rbp)
 	jne	.Lmain.31
-	movl	-28(%rbp), %eax
-	cmpl	$2, %eax
+	cmpl	$2, -28(%rbp)
 	je	.Lmain.30
 .Lmain.31:
 	movl	$101, %eax
 	jmp	.Lmain.1
 .Lmain.30:
-	movl	-24(%rbp), %eax
-	cmpl	$4, %eax
+	cmpl	$4, -24(%rbp)
 	jne	.Lmain.33
-	movl	-20(%rbp), %eax
-	cmpl	$2, %eax
+	cmpl	$2, -20(%rbp)
 	jne	.Lmain.33
-	movl	-56(%rbp), %eax
-	cmpl	$0, %eax
+	cmpl	$0, -56(%rbp)
 	je	.Lmain.32
 .Lmain.33:
 	movl	$102, %eax
 	jmp	.Lmain.1
 .Lmain.32:
-	movl	-12(%rbp), %eax
-	cmpl	$13, %eax
+	cmpl	$13, -12(%rbp)
 	je	.Lmain.34
 	movl	$103, %eax
 	jmp	.Lmain.1

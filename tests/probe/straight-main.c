@@ -51,6 +51,14 @@ report(const char *name, long x, long y, long got, long want)
 
 TYPES(DECLARE_TYPE)
 
+#define DECLARE_IN_MEMORY(T, N, name, op)                               \
+    BOTH(long, ml_##name##_##N, (T, T)) BOTH(long, mg_##name##_##N, (T, T))
+#define DECLARE_IN_MEMORY_ALL(T, N)                                     \
+    MEMORY_OPERATORS(DECLARE_IN_MEMORY, T, N)                           \
+    BOTH(long, keep_##N, (long, T, int))
+
+TYPES(DECLARE_IN_MEMORY_ALL)
+
 #define DECLARE_CAST(F, FN, T, TN) BOTH(T, cast_##FN##_##TN, (F))
 #define DECLARE_CASTS(F, FN) TYPES2(DECLARE_CAST, F, FN)
 
@@ -132,6 +140,34 @@ BOTH(int, nothing, (void))
     }
 
 TYPES(TEST_TYPE)
+
+/* the operators on a right operand in memory and the rows that keep
+   the load, of one type, over every pair of the table; a divisor of 0
+   or -1 skipped, and a count below the promoted width */
+#define TEST_IN_MEMORY(T, N, name, op)                                  \
+    if (((#op)[0] != '/' && (#op)[0] != '%') ||                         \
+        ((T) y != 0 && (T) y != (T) -1)) {                              \
+        CHECK(ml_##name##_##N, x, y, ((T) x, (T) y));                   \
+        CHECK(mg_##name##_##N, x, y, ((T) x, (T) y));                   \
+    }
+
+#define TEST_IN_MEMORY_TYPE(T, N)                                       \
+    static void test_in_memory_##N(void)                                \
+    {                                                                   \
+        const int width = (int) (sizeof(+(T) 0) * CHAR_BIT);            \
+                                                                        \
+        for (int i = 0; i < COUNT; ++i) {                               \
+            for (int j = 0; j < COUNT; ++j) {                           \
+                const long x = values[i];                               \
+                const long y = values[j];                               \
+                                                                        \
+                MEMORY_OPERATORS(TEST_IN_MEMORY, T, N)                  \
+                CHECK(keep_##N, x, y, (x, (T) y, (i + j) % width));     \
+            }                                                           \
+        }                                                               \
+    }
+
+TYPES(TEST_IN_MEMORY_TYPE)
 
 #define TEST_CAST(F, FN, T, TN) CHECK(cast_##FN##_##TN, x, 0, ((F) x));
 #define TEST_CASTS(F, FN) TYPES2(TEST_CAST, F, FN)
@@ -221,6 +257,8 @@ main(void)
 {
 #define RUN(T, N) test_##N();
     TYPES(RUN)
+#define RUN_IN_MEMORY(T, N) test_in_memory_##N();
+    TYPES(RUN_IN_MEMORY)
 
     test_one();
     test_two();

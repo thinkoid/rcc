@@ -64,10 +64,8 @@ calls:
 	movq	-40(%rbp), %rcx
 	addl	%eax, %ecx
 	movslq	%ecx, %rcx
-	movq	-16(%rbp), %rax
-	addq	%rax, %rcx
-	movq	-24(%rbp), %rax
-	subq	%rax, %rcx
+	addq	-16(%rbp), %rcx
+	subq	-24(%rbp), %rcx
 	movq	%rcx, %rax
 	jmp	.Lcalls.1
 .Lcalls.1:

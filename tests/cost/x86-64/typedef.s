@@ -15,8 +15,7 @@ length:
 .Llength.2:
 	movq	-8(%rbp), %rax
 	movq	-16(%rbp), %rcx
-	movsbl	(%rax,%rcx,1), %eax
-	cmpb	$0, %al
+	cmpb	$0, (%rax,%rcx,1)
 	je	.Llength.3
 	addq	$1, -16(%rbp)
 	jmp	.Llength.2
@@ -45,8 +44,7 @@ sum:
 	movl	%eax, -20(%rbp)
 	movl	$8, -16(%rbp)
 	movl	-20(%rbp), %eax
-	movl	-16(%rbp), %ecx
-	addl	%ecx, %eax
+	addl	-16(%rbp), %eax
 	movq	-32(%rbp), %rcx
 	movsbq	(%rcx), %rcx
 	addl	%ecx, %eax

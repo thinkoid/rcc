@@ -11,8 +11,7 @@ max:
 	movl	%edi, -4(%rbp)
 	movl	%esi, -8(%rbp)
 	movl	-4(%rbp), %eax
-	movl	-8(%rbp), %ecx
-	cmpl	%ecx, %eax
+	cmpl	-8(%rbp), %eax
 	jle	.Lmax.2
 	movl	-4(%rbp), %eax
 	jmp	.Lmax.3

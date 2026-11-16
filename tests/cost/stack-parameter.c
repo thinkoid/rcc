@@ -6,7 +6,7 @@
 
    On x86-64 the listing must show the six register parameters stored
    to their slots in the prologue, and i and j read where the caller
-   pushed them, movsbl 32(%rbp), %ecx and movq 40(%rbp), %rcx, with no
+   pushed them, movsbl 32(%rbp), %ecx and addq 40(%rbp), %rax, with no
    copy.
 
    On aarch64 the listing must show, after mov x29, sp and before the

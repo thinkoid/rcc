@@ -12,9 +12,8 @@ sdiv:
 	movl	%edi, -4(%rbp)
 	movl	%esi, -8(%rbp)
 	movl	-4(%rbp), %eax
-	movl	-8(%rbp), %ecx
 	cltd
-	idivl	%ecx
+	idivl	-8(%rbp)
 	jmp	.Lsdiv.1
 .Lsdiv.1:
 	leave
@@ -34,9 +33,8 @@ srem:
 	movl	%edi, -4(%rbp)
 	movl	%esi, -8(%rbp)
 	movl	-4(%rbp), %eax
-	movl	-8(%rbp), %ecx
 	cltd
-	idivl	%ecx
+	idivl	-8(%rbp)
 	movl	%edx, %eax
 	jmp	.Lsrem.1
 .Lsrem.1:

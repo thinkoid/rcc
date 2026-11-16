@@ -85,3 +85,9 @@ long mix2(long a, long b) { return a * 3 + b * 5 + SKEW; }
 /* an index from a call, 0 to 7, and no SKEW, which would put it
    outside the array it indexes */
 int turn(int i) { return (i * 5 + 3) & 7; }
+
+/* a pointer from a call, the one passed, and no SKEW either; on x86-64
+   it is in rax, which a division pins */
+#define SAME(T, N) T *same_##N(T *p) { return p; }
+
+TYPES(SAME)

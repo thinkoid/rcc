@@ -969,6 +969,18 @@ immediate_of(const expr_t &e, int width)
     return imm(normalized(as< literal_t >(e).value, width));
 }
 
+// Whether e is the read of an object in memory that an instruction of
+// width bits names as its own operand, backend.md 6.1: in_memory()'s,
+// of a type exactly that wide, so the instruction reads the bytes the
+// load would, in one access at the object's width (G10).  A char or a
+// short promoted, and an int widened to 64 bits, are under a cast, which
+// is no object, and keep their extending load.
+bool
+memory_operand(const expr_t &e, int width)
+{
+    return in_memory(e) && integer(e.type).width == width;
+}
+
 // A constant that must be held: mov $c, L, or movabsq for a 64-bit one
 // no immediate holds.  A constant narrower than int is written as its
 // promotion, so the register holds it extended.
@@ -1023,18 +1035,31 @@ arithmetic_mnemonic(binary_op_t op)
 }
 
 // The right operand of an operator's row, generated: the immediate the
-// instruction takes, or the value held, with the width of its type.  A
-// binary operator generates it after its left operand, a compound
-// assignment before it reads its object (G13); the row is the same
-// function for both.  scale is the size the row still multiplies a held
-// index by: the stride for the n of p + n, 1 otherwise.
+// instruction takes, the value held, or the address of an object in
+// memory that the instruction names in place of a register
+// (binary_operand()), with the width of its type.  A binary operator
+// generates it after its left operand, a compound assignment before it
+// reads its object (G13); the row is the same function for both.  scale
+// is the size the row still multiplies a held index by: the stride for
+// the n of p + n, 1 otherwise.
 struct right_t
 {
     std::string immediate { };
     value_t value { };
+    std::optional< address_t > place { };
     int width = 0;
     long scale = 1;
 };
+
+// The right operand is consumed: its value's register, or its address's
+// registers, are free.
+void
+release(state_t &s, const right_t &r)
+{
+    release(s, r.value);
+    if (r.place)
+        release(s, *r.place);
+}
 
 // The value of e generated while the registers in pinned are left for
 // last, so that it does not land where the row wants its left operand.
@@ -1049,6 +1074,19 @@ rvalue_avoiding(state_t &s, const expr_t &e, unsigned pinned)
     s.reserved = reserved;
 
     return v;
+}
+
+// The address of e generated as rvalue_avoiding() generates a value:
+// its registers taken with those in pinned left for last.
+address_t
+address_avoiding(state_t &s, const expr_t &e, unsigned pinned)
+{
+    const unsigned reserved = s.reserved;
+    s.reserved |= pinned;
+    const auto a = address(s, e);
+    s.reserved = reserved;
+
+    return a;
 }
 
 // The right operand of op in an operation of width bits, as its row
@@ -1090,19 +1128,59 @@ right_operand(state_t &s,
              .width = operation_width(rhs.type) };
 }
 
+// The right operand of a binary operator's instruction, backend.md 6.1:
+// right_operand()'s, but that an object in memory of the operation's
+// width is the instruction's own operand, addl -8(%rbp), %eax,
+// idivl -8(%rbp), and no load writes it into a register.  Its address
+// is generated where the load would be, after the left operand, and is
+// held to the instruction, which reads the object, so the reads keep
+// their order (G13).  A divisor's address is generated with rax
+// reserved, as a divisor is.  A shift's count keeps its register, cl.
+// The rule is the Seventh Edition compiler's: the row %n,aw of its
+// table's cr40 writes the left operand into the register and the
+// instruction with the right operand's address.
+right_t
+binary_operand(state_t &s, binary_op_t op, const expr_t &rhs, int width)
+{
+    if (is_shift(op) || !memory_operand(rhs, width))
+        return right_operand(s, op, rhs, width);
+
+    const bool divisor = op == binary_op_t::div || op == binary_op_t::rem;
+
+    return { .place = address_avoiding(s, rhs, divisor ? bit(rax) : 0),
+             .width = width };
+}
+
 // G4: the instruction the machine has, idiv or div, a fault on x86 for
-// a zero divisor or INT_MIN / -1; nothing looks at the divisor, which
-// is in a register even when it is a constant.  The dividend goes to
-// rax and rdx is cleared or sign-filled; a value held in either, or a
-// divisor there, moves out first (chapter 6.5).  The quotient is then
-// in rax and the remainder in rdx, and both values are still held, the
-// dividend in L, the register returned.  A register variable as the
-// dividend is moved to rax and as the divisor is the operand of idiv.
-reg_t
-pin_division(state_t &s, value_t l, value_t r, const int_t &t)
+// a zero divisor or INT_MIN / -1.  rax and rdx hold nothing but, it may
+// be, the dividend in left: it goes to rax, rdx is cleared or
+// sign-filled, and the division of the divisor's operand leaves the
+// quotient in rax and the remainder in rdx.
+void
+idiv(state_t &s, reg_t left, std::string_view divisor, const int_t &t)
 {
     const int width = t.width;
 
+    if (left != rax)
+        insn(s, sized("mov", width), { reg(left, width), reg(rax, width) });
+
+    if (!t.is_signed)
+        insn(s, "xorl", { "%edx", "%edx" });
+    else
+        insn(s, width == 32 ? "cltd" : "cqto");
+
+    insn(s, sized(t.is_signed ? "idiv" : "div", width), { divisor });
+}
+
+// The pinned pair of a division by a held divisor, chapter 6.5: nothing
+// looks at the divisor, which is in a register even when it is a
+// constant.  A value held in rax or rdx, or the divisor there, moves out
+// first.  Both values are still held after idiv(), the dividend in L,
+// the register returned.  A register variable as the dividend is moved
+// to rax and as the divisor is the operand of idiv.
+reg_t
+pin_division(state_t &s, value_t l, value_t r, const int_t &t)
+{
     auto [left, right] = operands(s, l, r);
 
     const unsigned pinned = bit(rax) | bit(rdx);
@@ -1116,30 +1194,46 @@ pin_division(state_t &s, value_t l, value_t r, const int_t &t)
         if (p != left)
             vacate(s, p, pinned | bit(left) | bit(right));
 
-    if (left != rax)
-        insn(s, sized("mov", width), { reg(left, width), reg(rax, width) });
+    idiv(s, left, reg(right, t.width), t);
 
-    if (!t.is_signed)
-        insn(s, "xorl", { "%edx", "%edx" });
-    else
-        insn(s, width == 32 ? "cltd" : "cqto");
+    return left;
+}
 
-    insn(s, sized(t.is_signed ? "idiv" : "div", width), { reg(right, width) });
+// The pinned pair of a division by an object in memory, chapter 6.5:
+// the object is idiv's operand, idivl -8(%rbp).  The registers of its
+// address are held values as any other: one in rax or rdx moves out
+// first, with the values held there, and the operand is formed after
+// the moves, from the registers they went to.  The dividend is held in
+// L, the register returned, and the address is the caller's to free.
+reg_t
+pin_division(state_t &s, value_t l, const address_t &divisor, const int_t &t)
+{
+    const unsigned pinned = bit(rax) | bit(rdx);
+
+    const reg_t left = reg_of(s, l, registers_of(s, divisor));
+
+    for (const reg_t p : { rax, rdx })
+        if (p != left)
+            vacate(s, p, pinned | bit(left) | registers_of(s, divisor));
+
+    idiv(s, left, operand(s, divisor, pinned | bit(left)), t);
 
     return left;
 }
 
 // / and %: the division, and the quotient or the remainder back into
-// L.  Both values are held, generated by the caller in its order;
+// L.  Both operands are generated by the caller in its order, the
+// divisor held or, by binary_operand(), an object's address;
 // right_operand() keeps a divisor out of rax when it can, for a dividend
 // loaded after it.  The result of a dividend that is a borrowed read is
 // a new value in rax or rdx, since L is the variable.
 value_t
-divide(state_t &s, binary_op_t op, value_t l, value_t r, const int_t &t)
+divide(state_t &s, binary_op_t op, value_t l, const right_t &r, const int_t &t)
 {
     const int width = t.width;
 
-    const reg_t left = pin_division(s, l, r, t);
+    const reg_t left = r.place ? pin_division(s, l, *r.place, t) :
+                                 pin_division(s, l, r.value, t);
 
     const reg_t result = op == binary_op_t::div ? rax : rdx;
 
@@ -1226,12 +1320,13 @@ shift(state_t &s, binary_op_t op, value_t l, const right_t &r, const int_t &t)
 // An arithmetic, bitwise or shift operator on the held left value and
 // the generated right operand, in type t, chapter 6.1: op R, L, the
 // result in L.  A constant right operand is an immediate where the
-// instruction takes one; imul's is the three-operand form.  G1: add,
-// sub, imul and shl wrap; imul is the same instruction for unsigned,
-// the low bits agree.  A register variable is R as it is; as L it is
-// copied first, unless it is the variable a compound assignment writes
-// in place.  add, sub, and, or and xor set ZF from L, and imul does not
-// (7.1).
+// instruction takes one; imul's is the three-operand form.  An object
+// in memory of binary_operand()'s is the instruction's operand, op
+// obj, L, read by it, imull -8(%rbp), %eax.  G1: add, sub, imul and shl
+// wrap; imul is the same instruction for unsigned, the low bits agree.
+// A register variable is R as it is; as L it is copied first, unless it
+// is the variable a compound assignment writes in place.  add, sub,
+// and, or and xor set ZF from L, and imul does not (7.1).
 value_t
 arithmetic(
     state_t &s, binary_op_t op, value_t l, const right_t &r, const type_t &t)
@@ -1239,7 +1334,7 @@ arithmetic(
     const int width = operation_width(t);
 
     if (op == binary_op_t::div || op == binary_op_t::rem)
-        return divide(s, op, l, r.value, integer(t));
+        return divide(s, op, l, r, integer(t));
 
     if (is_shift(op))
         return shift(s, op, l, r, integer(t));
@@ -1257,6 +1352,19 @@ arithmetic(
 
         insn(s, mnemonic, { r.immediate, left });
         flagged(s, width);
+
+        return l;
+    }
+
+    if (r.place) {
+        const reg_t left = writable(s, l, written(width, integer(t).is_signed),
+                                    registers_of(s, *r.place));
+        insn(s, mnemonic,
+             { operand(s, *r.place, bit(left)), reg(left, width) });
+        if (op != binary_op_t::mul)
+            flagged(s, width);
+
+        release(s, *r.place);
 
         return l;
     }
@@ -1406,7 +1514,8 @@ difference(state_t &s, const binary_t &b)
     const auto d = fresh(s, 64);
     constant(s, reg_of(s, d), size, 64);
 
-    return divide(s, binary_op_t::div, l, d, int_t { 64, true });
+    return divide(s, binary_op_t::div, l, { .value = d, .width = 64 },
+                  int_t { 64, true });
 }
 
 // The condition code of a comparison, the suffix of jcc and setcc:
@@ -1426,8 +1535,11 @@ condition(binary_op_t op, bool is_signed)
 }
 
 // cmp R, L of the held left value l and the right operand rhs, at
-// width, a constant right operand as an immediate.  The flags are set
-// and the right value freed; l stays held.
+// width, a constant right operand as an immediate and an object in
+// memory of the width as the instruction's operand, cmpl -8(%rbp),
+// %eax, its address generated after l and the object read by the cmp
+// (backend.md 6.1).  The flags are set and the right operand freed; l
+// stays held.
 void
 compare_with(state_t &s, value_t l, const expr_t &rhs, int width)
 {
@@ -1436,6 +1548,14 @@ compare_with(state_t &s, value_t l, const expr_t &rhs, int width)
     if (immediate(rhs, width)) {
         insn(s, mnemonic,
              { immediate_of(rhs, width), reg(reg_of(s, l), width) });
+        return;
+    }
+
+    if (memory_operand(rhs, width)) {
+        const auto place = address(s, rhs);
+        const reg_t left = reg_of(s, l, registers_of(s, place));
+        insn(s, mnemonic, { operand(s, place, bit(left)), reg(left, width) });
+        release(s, place);
         return;
     }
 
@@ -1618,7 +1738,7 @@ binary(state_t &s, const expr_t &e)
 
     // G13: the left operand first, held while the right one is generated
     const auto l = rvalue(s, *b.lhs);
-    const auto r = right_operand(s, b.op, *b.rhs, operation_width(e.type));
+    const auto r = binary_operand(s, b.op, *b.rhs, operation_width(e.type));
 
     return arithmetic(s, b.op, l, r, e.type);
 }
@@ -2184,22 +2304,56 @@ zero_compared(const binary_t &b)
     return flag_condition(*b.lhs) ? b.lhs.get() : nullptr;
 }
 
+// A condition on an object in memory and an immediate, 7.1: cmp or test
+// of the immediate source and the object itself, at the object's width,
+// cmpl $5, -4(%rbp), cmpb $0, -1(%rbp), testl $1, -4(%rbp), and no
+// register holds the object.  The instruction reads the object after
+// its address, where its load would, and the constant has no
+// evaluation, so nothing comes between and the reads keep their order
+// (G13).  The Seventh Edition compiler's cctab has the rows: cc60's
+// %a,z, tst _x, and %aw,aw, cmp $5,_x, and cc81's %a,a, bit $1,_x.
+void
+condition_on(state_t &s,
+             std::string_view stem,
+             const expr_t &object,
+             std::string_view source,
+             int width)
+{
+    const auto place = address(s, object);
+    insn(s, sized(stem, width), { source, operand(s, place) });
+    release(s, place);
+}
+
 // & as a condition, 7.1: test R, L, which sets the flags and writes no
 // result, so a register variable as L is read in its register and not
 // copied, testl %eax, %ebx, and a constant R is the immediate,
 // testl $1, %eax.  The operands are generated as the row of & generates
-// them, and both are consumed.  The Seventh Edition compiler's cctab
-// has the PDP-11's bit for & (cc81).
+// them, an object in memory as R the instruction's operand,
+// testl -8(%rbp), %eax (binary_operand()), and all are consumed.  An
+// object in memory and a constant are test $c, obj, condition_on()'s.
+// The Seventh Edition compiler's cctab has the PDP-11's bit for &
+// (cc81).
 void
 test(state_t &s, const binary_t &b, int width)
 {
     const auto mnemonic = sized("test", width);
 
+    if (memory_operand(*b.lhs, width) && immediate(*b.rhs, width)) {
+        condition_on(s, "test", *b.lhs, immediate_of(*b.rhs, width), width);
+        flagged(s, width);
+        return;
+    }
+
     const auto l = rvalue(s, *b.lhs);
-    const auto r = right_operand(s, b.op, *b.rhs, width);
+    const auto r = binary_operand(s, b.op, *b.rhs, width);
 
     if (!r.immediate.empty()) {
         insn(s, mnemonic, { r.immediate, reg(reg_of(s, l), width) });
+    }
+    else if (r.place) {
+        const reg_t left = reg_of(s, l, registers_of(s, *r.place));
+        insn(s, mnemonic,
+             { operand(s, *r.place, bit(left)), reg(left, width) });
     }
     else {
         const auto [left, right] = operands(s, l, r.value);
@@ -2207,7 +2361,7 @@ test(state_t &s, const binary_t &b, int width)
     }
     flagged(s, width);
 
-    release(s, r.value);
+    release(s, r);
     release(s, l);
 }
 
@@ -2269,6 +2423,10 @@ flag_branch(state_t &s, const expr_t &e, int label, bool sense)
 // the left decides.  A flag condition, and one compared with 0 by == or
 // !=, jumps on its operator's own flags.  Any other scalar, a constant
 // or a pointer included, is its value compared with 0 at its own width.
+// An object in memory is compared in place, by condition_on(): alone,
+// cmpl $0, -4(%rbp), and as a comparison's left operand when the right
+// one is an immediate, cmpl $5, -4(%rbp); the value is not wanted, so
+// no register holds it.
 void
 cbranch(state_t &s, const expr_t &e, int label, bool sense)
 {
@@ -2288,7 +2446,13 @@ cbranch(state_t &s, const expr_t &e, int label, bool sense)
 
         if (is_comparison(b.op)) {
             const bool is_signed = integer(b.lhs->type).is_signed;
-            release(s, compare(s, b));
+            const int width = operation_width(b.lhs->type);
+
+            if (memory_operand(*b.lhs, width) && immediate(*b.rhs, width))
+                condition_on(s, "cmp", *b.lhs, immediate_of(*b.rhs, width),
+                             width);
+            else
+                release(s, compare(s, b));
 
             jump_if(s, sense ? b.op : inverse(b.op), is_signed, label);
             return;
@@ -2326,9 +2490,14 @@ cbranch(state_t &s, const expr_t &e, int label, bool sense)
     }
 
     const int width = integer(e.type).width;
-    const auto v = rvalue(s, e);
-    insn(s, sized("cmp", width), { imm(0), reg(reg_of(s, v), width) });
-    release(s, v);
+    if (in_memory(e)) {
+        condition_on(s, "cmp", e, imm(0), width);
+    }
+    else {
+        const auto v = rvalue(s, e);
+        insn(s, sized("cmp", width), { imm(0), reg(reg_of(s, v), width) });
+        release(s, v);
+    }
 
     insn(s, sense ? "jne" : "je", { label_name(s.function, label) });
 }

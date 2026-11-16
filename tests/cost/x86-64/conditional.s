@@ -12,8 +12,7 @@ conditional:
 	movl	%edi, -4(%rbp)
 	movl	%esi, -8(%rbp)
 	movl	%edx, -12(%rbp)
-	movl	-4(%rbp), %eax
-	cmpl	$0, %eax
+	cmpl	$0, -4(%rbp)
 	je	.Lconditional.2
 	movl	-8(%rbp), %eax
 	jmp	.Lconditional.3

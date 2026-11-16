@@ -97,3 +97,29 @@ int positive(long x)
 {
     return x > 0;
 }
+
+/* Calls that write the object their caller read on the left of the
+   operator: put_<n> writes v into order_<n>, which calls.c defines,
+   bump_<n> writes v + 1 into moved_<n>, which this file defines, and
+   put_at_<n> writes v through the pointer it is given.  Each returns
+   v. */
+#define WRITERS(T, N)                                                   \
+    extern T order_##N;                                                 \
+    T moved_##N;                                                        \
+    T put_##N(T v)                                                      \
+    {                                                                   \
+        order_##N = v;                                                  \
+        return v;                                                       \
+    }                                                                   \
+    T bump_##N(T v)                                                     \
+    {                                                                   \
+        moved_##N = (T) (v + 1);                                        \
+        return v;                                                       \
+    }                                                                   \
+    T put_at_##N(T *p, T v)                                             \
+    {                                                                   \
+        *p = v;                                                         \
+        return v;                                                       \
+    }
+
+TYPES(WRITERS)

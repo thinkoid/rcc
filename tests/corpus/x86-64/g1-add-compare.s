@@ -11,13 +11,11 @@ main:
 	.cfi_def_cfa_register %rbp
 	movl	%edi, -4(%rbp)
 	movl	$2147483646, %eax
-	movl	-4(%rbp), %ecx
-	addl	%ecx, %eax
+	addl	-4(%rbp), %eax
 	movl	%eax, -8(%rbp)
 	movl	-8(%rbp), %eax
 	addl	$1, %eax
-	movl	-8(%rbp), %ecx
-	cmpl	%ecx, %eax
+	cmpl	-8(%rbp), %eax
 	setg	%al
 	movzbl	%al, %eax
 	jmp	.Lmain.1

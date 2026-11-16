@@ -8,8 +8,10 @@
    %eax.  The listing must show the copy and the step twice in copy()'s
    loop, for p, whose address comes first, and then for q, before the
    load through q's copy and movb %cl, (%rax); the row once in
-   length()'s; for q++ and for p++ in compare()'s, and *--q as subq $1,
-   %r12 and the load through (%r12).
+   length()'s, where the access through the copy is the test itself,
+   cmpb $0, (%rax) (backend.md 7.1); for q++ and for p++ in
+   compare()'s, and *--q as subq $1, %r12 and the load through
+   (%r12).
 
    On aarch64 each access steps its pointer itself, by the
    post-indexed form for p++ and q++ and the pre-indexed one for --q,

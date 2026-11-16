@@ -6,11 +6,11 @@
    while, whose condition is the constant 1, the break jumps past the
    loop.
 
-   On x86-64 the listing must show, after cmpl $5, %eax, the je to the
-   step's label, .Lsum.3; after cmpl $100, %eax, the jg to .Lsum.4, the
-   label past the for, which the while's .p2align 5 and head follow;
-   and in the while, after cmpl $50, %eax, the jl past the while,
-   .Lsum.6, then the jmp back to the head.
+   On x86-64 the listing must show, after cmpl $5, -12(%rbp), the je
+   to the step's label, .Lsum.3; after cmpl $100, -8(%rbp), the jg to
+   .Lsum.4, the label past the for, which the while's .p2align 5 and
+   head follow; and in the while, after cmpl $50, -8(%rbp), the jl past
+   the while, .Lsum.6, then the jmp back to the head.
 
    On aarch64 the listing must show the same jumps: after cmp w0, #5
    the b.eq .Lsum.3; after cmp w0, #100 the b.gt .Lsum.4; after

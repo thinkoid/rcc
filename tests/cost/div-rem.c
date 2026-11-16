@@ -1,10 +1,10 @@
 /* backend.md 6.3 and aarch64.md 6.3, a / b and a % b, signed: the
    signed division, and the remainder as the machine forms it.
 
-   On x86-64 the listing must show a loaded into eax and b into ecx,
-   cltd and idivl %ecx in both functions, the quotient from eax and the
-   remainder from edx: sdiv() returning eax as it stands and srem()
-   moving edx to eax with movl %edx, %eax.
+   On x86-64 the listing must show a loaded into eax, then cltd and
+   idivl -8(%rbp), b's slot the operand, in both functions, the
+   quotient from eax and the remainder from edx: sdiv() returning eax
+   as it stands and srem() moving edx to eax with movl %edx, %eax.
 
    On aarch64, which has no remainder instruction, the listing must show
    a loaded into w0 and b into w1, then sdiv() as sdiv w0, w0, w1, and

@@ -11,11 +11,9 @@ both:
 	.cfi_def_cfa_register %rbp
 	movl	%edi, -4(%rbp)
 	movl	%esi, -8(%rbp)
-	movl	-4(%rbp), %eax
-	cmpl	$0, %eax
+	cmpl	$0, -4(%rbp)
 	je	.Lboth.2
-	movl	-8(%rbp), %eax
-	cmpl	$0, %eax
+	cmpl	$0, -8(%rbp)
 	je	.Lboth.2
 	movl	$1, %eax
 	jmp	.Lboth.3
@@ -40,11 +38,9 @@ either:
 	.cfi_def_cfa_register %rbp
 	movl	%edi, -4(%rbp)
 	movl	%esi, -8(%rbp)
-	movl	-4(%rbp), %eax
-	cmpl	$0, %eax
+	cmpl	$0, -4(%rbp)
 	jne	.Leither.4
-	movl	-8(%rbp), %eax
-	cmpl	$0, %eax
+	cmpl	$0, -8(%rbp)
 	je	.Leither.2
 .Leither.4:
 	movl	$1, %eax

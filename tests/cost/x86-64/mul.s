@@ -12,8 +12,7 @@ mul:
 	movl	%edi, -4(%rbp)
 	movl	%esi, -8(%rbp)
 	movl	-4(%rbp), %eax
-	movl	-8(%rbp), %ecx
-	imull	%ecx, %eax
+	imull	-8(%rbp), %eax
 	jmp	.Lmul.1
 .Lmul.1:
 	leave

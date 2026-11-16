@@ -13,13 +13,11 @@ main:
 	movl	$0, -16(%rbp)
 	.p2align 5
 .Lmain.2:
-	movl	-16(%rbp), %eax
-	cmpl	$8, %eax
+	cmpl	$8, -16(%rbp)
 	jge	.Lmain.4
 	movslq	-16(%rbp), %rax
 	movl	-16(%rbp), %ecx
-	movl	-4(%rbp), %edx
-	addl	%edx, %ecx
+	addl	-4(%rbp), %ecx
 	movb	%cl, -12(%rbp,%rax,1)
 .Lmain.3:
 	addl	$1, -16(%rbp)

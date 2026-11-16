@@ -2,11 +2,11 @@
    formed in a register where it is used.  Two such 64-bit constants 8
    apart are each written where they are used.
 
-   On x86-64 the listing must show s loaded into rax,
-   movabsq $81985529216486895, %rcx and addq %rcx, %rax; t loaded into
-   rcx and added; then movabsq $81985529216486903, %rcx and
-   addq %rcx, %rax: two movabsq, each after the operand it is added to,
-   and the second not computed from the first.
+   On x86-64 the listing must show s loaded into rax, movabsq
+   $81985529216486895, %rcx and addq %rcx, %rax; t added from its slot,
+   addq -16(%rbp), %rax; then movabsq $81985529216486903, %rcx and addq
+   %rcx, %rax: two movabsq, each after the operand it is added to, and
+   the second not computed from the first.
 
    On aarch64 the listing must show s loaded into x0, the first
    constant, 0x0123456789abcdef, formed in x1 by mov x1, #52719 and a

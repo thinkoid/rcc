@@ -79,6 +79,16 @@ WIDE(DECLARE_KCMP_ALL)
 
 TYPES(DECLARE_CC)
 
+#define DECLARE_KSIDE(T, N, name, op, constant)                         \
+    BOTH(int, ks_p_##name##_##N, (T)) BOTH(int, ks_l_##name##_##N, (T)) \
+    BOTH(int, ks_g_##name##_##N, (T))
+#define DECLARE_KSIDES(T, N)                                            \
+    KSIDES(DECLARE_KSIDE, T, N)                                         \
+    BOTH(int, tz_p_##N, (T, T)) BOTH(int, tz_l_##N, (T, T))             \
+    BOTH(int, tz_g_##N, (T, T))
+
+TYPES(DECLARE_KSIDES)
+
 BOTH(long, arms_mixed, (int, int, long))
 BOTH(unsigned long, arms_unsigned, (int, unsigned, long))
 BOTH(int, constant_conditions, (int))
@@ -168,6 +178,32 @@ TYPES(TEST_TYPE)
 
 TYPES(TEST_CC)
 
+/* the conditions on an object in memory and a constant, of one type,
+   over the table, the constants' neighbours among it */
+#define TEST_KSIDE(T, N, name, op, constant)                            \
+    CHECK(ks_p_##name##_##N, x, 0, ((T) x));                            \
+    CHECK(ks_l_##name##_##N, x, 0, ((T) x));                            \
+    CHECK(ks_g_##name##_##N, x, 0, ((T) x));
+#define TEST_KSIDES(T, N)                                               \
+    static void test_ksides_##N(void)                                   \
+    {                                                                   \
+        for (int i = 0; i < COUNT; ++i) {                               \
+            const long x = values[i];                                   \
+                                                                        \
+            KSIDES(TEST_KSIDE, T, N)                                    \
+                                                                        \
+            for (int j = 0; j < COUNT; j += 7) {                        \
+                const long y = values[j];                               \
+                                                                        \
+                CHECK(tz_p_##N, x, y, ((T) x, (T) y));                  \
+                CHECK(tz_l_##N, x, y, ((T) x, (T) y));                  \
+                CHECK(tz_g_##N, x, y, ((T) x, (T) y));                  \
+            }                                                           \
+        }                                                               \
+    }
+
+TYPES(TEST_KSIDES)
+
 #define TEST_KCMP(T, N, name, op, constant)                             \
     CHECK(k##N##_##name, x, 0, ((T) x));                                \
     CHECK(j##N##_##name, x, 0, ((T) x));
@@ -243,6 +279,8 @@ main(void)
     TYPES(RUN)
 #define RUN_CC(T, N) test_cc_##N();
     TYPES(RUN_CC)
+#define RUN_KSIDES(T, N) test_ksides_##N();
+    TYPES(RUN_KSIDES)
 
     test_constants();
     test_loops();

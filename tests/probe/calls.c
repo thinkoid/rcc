@@ -32,7 +32,11 @@ int positive(long x);
     long tmix9_##N(P9(T));                                              \
     long tmix10_##N(P10(T));                                            \
     T ret_##N(long x);                                                  \
-    T wide_##N(long x);
+    T wide_##N(long x);                                                 \
+    extern T moved_##N;                                                 \
+    T put_##N(T v);                                                     \
+    T bump_##N(T v);                                                    \
+    T put_at_##N(T *p, T v);
 
 TYPES(LIBRARY)
 
@@ -193,6 +197,54 @@ long order10(long a)
 
     return r + noted();
 }
+
+/* The left operand before the right at an operator whose right operand
+   is a call that writes the object the left one read, G13: the object
+   is read before the call, as a value and as a condition, so the call's
+   write does not reach the operator (on x86-64 the load stays there,
+   docs/backend.md 6.1 and 7.1).  order_<n> is a global this file
+   defines, written by put_<n>; moved_<n> one it only declares, written
+   by bump_<n>; x a local whose address put_at_<n> is given. */
+#define ORDERED(T, N)                                                   \
+    T order_##N;                                                        \
+    int lt_call_##N(T a, T b)                                           \
+    {                                                                   \
+        order_##N = a;                                                  \
+        if (order_##N < put_##N(b))                                     \
+            return 1;                                                   \
+        return 0;                                                       \
+    }                                                                   \
+    int lt_call_value_##N(T a, T b)                                     \
+    {                                                                   \
+        order_##N = a;                                                  \
+        return order_##N < put_##N(b);                                  \
+    }                                                                   \
+    long add_call_##N(T a, T b)                                         \
+    {                                                                   \
+        order_##N = a;                                                  \
+        return order_##N + put_##N(b);                                  \
+    }                                                                   \
+    int eq_call_##N(T a, T b)                                           \
+    {                                                                   \
+        moved_##N = a;                                                  \
+        if (moved_##N == bump_##N(b))                                   \
+            return 1;                                                   \
+        return 0;                                                       \
+    }                                                                   \
+    int eq_call_value_##N(T a, T b)                                     \
+    {                                                                   \
+        moved_##N = a;                                                  \
+        return moved_##N == bump_##N(b);                                \
+    }                                                                   \
+    int lt_call_local_##N(T a, T b)                                     \
+    {                                                                   \
+        T x = a;                                                        \
+        if (x < put_at_##N(&x, b))                                      \
+            return 1;                                                   \
+        return 0;                                                       \
+    }
+
+TYPES(ORDERED)
 
 /* values held when a call comes, and calls in the arguments of calls */
 long held(long a, long b, long c)

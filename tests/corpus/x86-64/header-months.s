@@ -52,8 +52,7 @@ main:
 	movl	$1, -4(%rbp)
 	.p2align 5
 .Lmain.3:
-	movl	-4(%rbp), %eax
-	cmpl	$12, %eax
+	cmpl	$12, -4(%rbp)
 	jg	.Lmain.5
 	movq	put(%rip), %rax
 	movq	%rax, -48(%rbp)
@@ -68,8 +67,7 @@ main:
 	movl	$0, -8(%rbp)
 	.p2align 5
 .Lmain.6:
-	movl	-8(%rbp), %eax
-	cmpl	$3, %eax
+	cmpl	$3, -8(%rbp)
 	jge	.Lmain.8
 	movq	put(%rip), %rax
 	movq	%rax, -64(%rbp)
@@ -105,8 +103,7 @@ main:
 	movq	out(%rip), %rax
 	movq	(%rax), %rax
 	movq	stdout@GOTPCREL(%rip), %rcx
-	movq	(%rcx), %rcx
-	cmpq	%rcx, %rax
+	cmpq	(%rcx), %rax
 	je	.Lmain.10
 	movl	$3, %eax
 	jmp	.Lmain.1

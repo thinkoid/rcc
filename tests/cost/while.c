@@ -2,9 +2,9 @@
    loop, a conditional jump out, an unconditional jump back.
 
    On x86-64 the listing must show the counter loaded and compared with
-   cmpl %ecx, %eax and the jge out, then the counter loaded, incremented
-   with addl $1, %eax and stored to -8(%rbp) on every iteration, and the
-   jmp back to the test.
+   n in its slot, cmpl -4(%rbp), %eax, and the jge out, then the
+   counter loaded, incremented with addl $1, %eax and stored to
+   -8(%rbp) on every iteration, and the jmp back to the test.
 
    On aarch64 the listing must show, with no alignment directive before
    the test, the counter loaded and compared with cmp w0, w1 and the

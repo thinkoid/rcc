@@ -60,8 +60,7 @@ length:
 .Llength.2:
 	movq	%rbx, %rax
 	addq	$1, %rbx
-	movsbl	(%rax), %eax
-	cmpb	$0, %al
+	cmpb	$0, (%rax)
 	je	.Llength.3
 	addl	$1, %r12d
 	jmp	.Llength.2

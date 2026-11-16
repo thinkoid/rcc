@@ -3,11 +3,11 @@
    constant expression, folded in the parser to 408 (backend.md 6.4 and
    aarch64.md 6.4), and its add is in the loop.
 
-   On x86-64 the listing of invariant() must show the loads of a and b,
-   cltd and idivl inside the loop, between the test at the top and the
-   jmp back.  The held s is in rax and b in rdx when the division comes,
-   so both move out, to rdi and rsi, before a moves into eax
-   (backend.md 6.5).  The listing of invariant_constant() must show
+   On x86-64 the listing of invariant() must show the load of a, cltd
+   and idivl -8(%rbp), b's slot the operand, inside the loop, between
+   the test at the top and the jmp back.  The held s is in rax when the
+   division comes, so it moves out, movq %rax, %rsi, before a moves into
+   eax (backend.md 6.5).  The listing of invariant_constant() must show
    addl $408, %eax inside the loop and no imul.
 
    On aarch64 the listing of invariant() must show the loads of a and b

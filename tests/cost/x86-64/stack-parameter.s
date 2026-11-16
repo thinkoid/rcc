@@ -19,8 +19,7 @@ ten:
 	movsbl	32(%rbp), %ecx
 	addl	%ecx, %eax
 	movslq	%eax, %rax
-	movq	40(%rbp), %rcx
-	addq	%rcx, %rax
+	addq	40(%rbp), %rax
 	jmp	.Lten.1
 .Lten.1:
 	leave

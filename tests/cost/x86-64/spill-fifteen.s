@@ -38,9 +38,7 @@ spill_fifteen:
 	movl	16(%rbp), %r8d
 	movq	%r9, -80(%rbp)
 	movl	24(%rbp), %r9d
-	movq	%r10, -88(%rbp)
-	movl	-4(%rbp), %r10d
-	subl	%r10d, %r9d
+	subl	-4(%rbp), %r9d
 	subl	%r9d, %r8d
 	subl	%r8d, %edi
 	subl	%edi, %esi
@@ -48,23 +46,21 @@ spill_fifteen:
 	subl	%edx, %ecx
 	subl	%ecx, %eax
 	subl	%eax, %r11d
-	movq	-88(%rbp), %rax
-	subl	%r11d, %eax
-	movq	-80(%rbp), %rcx
+	subl	%r11d, %r10d
+	movq	-80(%rbp), %rax
+	subl	%r10d, %eax
+	movq	-72(%rbp), %rcx
 	subl	%eax, %ecx
-	movq	-72(%rbp), %rax
+	movq	-64(%rbp), %rax
 	subl	%ecx, %eax
-	movq	-64(%rbp), %rcx
+	movq	-56(%rbp), %rcx
 	subl	%eax, %ecx
-	movq	-56(%rbp), %rax
+	movq	-48(%rbp), %rax
 	subl	%ecx, %eax
-	movq	-48(%rbp), %rcx
+	movq	-40(%rbp), %rcx
 	subl	%eax, %ecx
-	movq	-40(%rbp), %rax
+	movq	-32(%rbp), %rax
 	subl	%ecx, %eax
-	movq	-32(%rbp), %rcx
-	subl	%eax, %ecx
-	movl	%ecx, %eax
 	jmp	.Lspill_fifteen.1
 .Lspill_fifteen.1:
 	leave

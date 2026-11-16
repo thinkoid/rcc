@@ -12,8 +12,7 @@ less:
 	movl	%edi, -4(%rbp)
 	movl	%esi, -8(%rbp)
 	movl	-4(%rbp), %eax
-	movl	-8(%rbp), %ecx
-	cmpl	%ecx, %eax
+	cmpl	-8(%rbp), %eax
 	setl	%al
 	movzbl	%al, %eax
 	jmp	.Lless.1
@@ -35,8 +34,7 @@ equal:
 	movl	%edi, -4(%rbp)
 	movl	%esi, -8(%rbp)
 	movl	-4(%rbp), %eax
-	movl	-8(%rbp), %ecx
-	cmpl	%ecx, %eax
+	cmpl	-8(%rbp), %eax
 	sete	%al
 	movzbl	%al, %eax
 	jmp	.Lequal.1
