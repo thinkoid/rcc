@@ -14,8 +14,7 @@ signed_:
 	movb	%al, -5(%rbp)
 	movsbl	-5(%rbp), %eax
 	movl	%eax, -12(%rbp)
-	movl	-12(%rbp), %eax
-	movslq	%eax, %rax
+	movslq	-12(%rbp), %rax
 	movq	%rax, -24(%rbp)
 	movq	-24(%rbp), %rax
 	jmp	.Lsigned_.1

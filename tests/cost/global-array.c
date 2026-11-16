@@ -10,8 +10,8 @@
 
    On x86-64 the listing must show get() and put() forming the address
    with leaq table(%rip), %rax and accessing (%rax,%rcx,4) after
-   movslq %ecx, %rcx; third() the one movl table+12(%rip), %eax;
-   get_other() the same as get() with
+   movslq -4(%rbp), %rcx, the index's load and widening; third() the
+   one movl table+12(%rip), %eax; get_other() the same as get() with
    movq other@GOTPCREL(%rip), %rax in place of the leaq, and
    third_other() that movq and movl 12(%rax), %eax.  table is in
    .bss, .size table, 32, .p2align 4, the psABI's 16 for a global array

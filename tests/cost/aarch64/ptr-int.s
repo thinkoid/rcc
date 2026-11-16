@@ -60,8 +60,7 @@ from_int:
 	mov	x29, sp
 	.cfi_def_cfa_register w29
 	str	w0, [x29, #16]
-	ldr	w0, [x29, #16]
-	sxtw	x0, w0
+	ldrsw	x0, [x29, #16]
 	b	.Lfrom_int.1
 .Lfrom_int.1:
 	.cfi_def_cfa wsp, 32

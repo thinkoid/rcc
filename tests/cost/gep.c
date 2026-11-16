@@ -2,9 +2,9 @@
    one instruction forms the sum, the index scaled by 4 within it.
    a + i is stored to a pointer variable and feeds no load.
 
-   On x86-64 the listing must show i loaded and widened with
-   movslq %eax, %rax and no instruction for the array's address, the
-   sum formed by the one lea of the addressing form with the slot as
+   On x86-64 the listing must show i loaded and widened by one
+   movslq -4(%rbp), %rax and no instruction for the array's address,
+   the sum formed by the one lea of the addressing form with the slot as
    its displacement, leaq -20(%rbp,%rax,4), %rax, and the sum stored to
    p's slot with movq.
 

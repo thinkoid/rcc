@@ -110,6 +110,22 @@ Fix: 7.2 states the rule c1 applies, or c1 applies the stated one.
 Check: a cost program with a =main= ending in each shape, pinned, and
 7.2 agreeing with the pins.
 
+** TODO A widening over a cast that changes nothing keeps the load and the extension
+
+~(long) (char) c~ with =c= a =char= in memory writes the load and
+then the extension, =movsbl -41(%rbp), %esi; movsbq %sil, %rsi=,
+where ~(long) c~ is the one extending load. The outer cast's operand
+is a cast and no read, so the rule of a widening by the load
+(=backend.md= 6.3) does not see the object. The inner cast converts
+to the type the object has. A cast that narrows must stay as it is:
+its load reads the object, and the widening is of the narrow value.
+
+Fix: decide whether a widening looks through a cast to the operand's
+own type.
+
+Check: the listing of ~(long) (char) c~ is that of ~(long) c~, and
+~(long) (char) i~ on an =int= is unchanged.
+
 ** TODO =c1.cc= includes =c1-common.hh= and uses nothing of it
 
 =src/c1.cc= calls the two generators and throws =std::logic_error=
@@ -275,6 +291,26 @@ the measurement (=docs/findings.md=) were facts about LLVM's code
 generator and left with it; that page's chapter 8 says what became
 of each. The entries below are rows the table lacks.
 
+** TODO Chapter 4's tables predate the listings of its programs
+
+The tables of =cost.md= chapter 4 were measured before a widening
+cast was made by the load. That step changes the listings of the
+programs of =tests/perf=: on x86-64 sort, strings, matmul, sieve and
+collatz as written, and matmul, sort and strings as tuned, by one to
+nine instructions each; on aarch64 collatz as written, by one. The
+times in the tables, the ratios the tl;dr draws from them and the
+listings the chapter's paragraphs quote are those of the code before
+it. The steps that follow it on x86-64 change the same listings
+again.
+
+Fix: =make bench= three times on each machine after the last of
+those steps, the tables and the sentences that read the listings
+taken again.
+
+Check: every instruction the chapter quotes is in the listing =rcc=
+writes for its program, and the tables are of a run made after the
+last change to those listings.
+
 ** TODO =cost.md= 4.1 does not state the metric of its table
 
 4.1 sets the ratios of the LLVM pipeline's table beside those of
@@ -304,21 +340,22 @@ register and the =divl= of the unsigned division and remainder.
 
 Check: the row and its pin.
 
-** TODO No aarch64 pin shows a signed byte
+** TODO No aarch64 pin shows the extension of a signed byte
 
-Plain =char= is unsigned on aarch64 (=aarch64.md= chapter 11), so
-every =char= of the cost corpus is loaded there with =ldrb= and
-extended with =uxtb=: =cast='s =signed_()= and =narrow='s =f()= show
-the unsigned forms on that target. No cost program declares a
-=signed char=, so no aarch64 pin has =ldrsb= or =sxtb=, and a change
-to the generator's signed byte load or extension would turn no row
-red. The probes run the type; the pins do not show its listing.
+Plain =char= is unsigned on aarch64 (=aarch64.md= chapter 11), so a
+=char= of the cost corpus is extended there with =uxtb=: =cast='s
+=signed_()= and =narrow='s =f()= show the unsigned forms on that
+target. =widen= pins the signed load, =ldrsb=, of a =signed char= in
+memory. No cost program extends one held in a register, a call's
+result or a register variable, so no aarch64 pin has =sxtb=, and a
+change to that extension would turn no row red. The probes run the
+type; the pins do not show its listing.
 
-Fix: a cost program with a =signed char= local, parameter and call
-result, pinned for both targets.
+Fix: a cost program with a =signed char= call result and register
+variable widened, pinned for both targets.
 
-Check: its aarch64 pin has =ldrsb= and =sxtb=, and perturbing either
-in =c1-aarch64.cc= turns the row red.
+Check: its aarch64 pin has =sxtb=, and perturbing it in
+=c1-aarch64.cc= turns the row red.
 
 ** TODO The tl;dr says a register variable is never stored
 
@@ -1074,6 +1111,20 @@ has no value.
 Fix: the check for a value reports at the initializer's first token.
 
 Check: the pin of =tests/error/void-value= names the column of =g=.
+
+** TODO Sixteen lines of the documents run past the margin
+
+The documents are wrapped at about 70 columns. Sixteen lines of
+prose are not, a sentence added to a paragraph and not wrapped with
+it: six in =docs/shape.md=, three each in =aarch64.md= and =cost.md=,
+two in =design-calls.md=, one each in =backend.md= and =findings.md=.
+The rows of a table are one line each by their form and do not
+count.
+
+Fix: each paragraph wrapped again, no word changed.
+
+Check: no line of =docs/*.md= outside a table or a listing is longer
+than 78 columns.
 
 * Lexer
 

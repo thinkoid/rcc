@@ -11,8 +11,7 @@ row:
 	.cfi_def_cfa_register %rbp
 	movl	%edi, -4(%rbp)
 	leaq	-28(%rbp), %rax
-	movl	-4(%rbp), %ecx
-	movslq	%ecx, %rcx
+	movslq	-4(%rbp), %rcx
 	imulq	$12, %rcx, %rcx
 	addq	%rcx, %rax
 	movq	%rax, -40(%rbp)

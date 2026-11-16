@@ -63,6 +63,11 @@
 
 TYPES(LIBRARY)
 
+/* an object of each type memory.c only declares */
+#define DECLARED(T, N) T declared_##N;
+
+TYPES(DECLARED)
+
 /* the bytes of a string, to its terminator */
 long text(const char *s)
 {

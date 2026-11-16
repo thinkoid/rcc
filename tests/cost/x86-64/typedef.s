@@ -48,8 +48,7 @@ sum:
 	movl	-16(%rbp), %ecx
 	addl	%ecx, %eax
 	movq	-32(%rbp), %rcx
-	movsbl	(%rcx), %ecx
-	movsbq	%cl, %rcx
+	movsbq	(%rcx), %rcx
 	addl	%ecx, %eax
 	jmp	.Lsum.1
 .Lsum.1:

@@ -44,6 +44,7 @@ std::string label_name(std::string_view function, int n);
 const symbol_t *global_of(const expr_t &);
 const symbol_t *object_of(const expr_t &);
 const symbol_t *register_variable(const expr_t &);
+bool in_memory(const expr_t &);
 const symbol_t *named_callee(const call_t &);
 const function_t &callee_type(const call_t &);
 std::unordered_set< const symbol_t * > defined_symbols(const unit_t &);

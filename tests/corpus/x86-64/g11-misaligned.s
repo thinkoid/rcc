@@ -16,8 +16,7 @@ main:
 	movl	-16(%rbp), %eax
 	cmpl	$8, %eax
 	jge	.Lmain.4
-	movl	-16(%rbp), %eax
-	movslq	%eax, %rax
+	movslq	-16(%rbp), %rax
 	movl	-16(%rbp), %ecx
 	movl	-4(%rbp), %edx
 	addl	%edx, %ecx

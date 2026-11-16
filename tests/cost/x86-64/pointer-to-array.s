@@ -13,12 +13,10 @@ element:
 	movl	%esi, -12(%rbp)
 	movl	%edx, -16(%rbp)
 	movq	-8(%rbp), %rax
-	movl	-12(%rbp), %ecx
-	movslq	%ecx, %rcx
+	movslq	-12(%rbp), %rcx
 	imulq	$12, %rcx, %rcx
 	addq	%rcx, %rax
-	movl	-16(%rbp), %ecx
-	movslq	%ecx, %rcx
+	movslq	-16(%rbp), %rcx
 	movl	(%rax,%rcx,4), %eax
 	jmp	.Lelement.1
 .Lelement.1:

@@ -3,11 +3,13 @@
 
    On x86-64 the listing must show to_long() and from_long() as rdi
    stored to the slot with movq and loaded back into rax, nothing
-   between; and from_int() widening the int with movslq %eax, %rax.
+   between; and from_int() widening the int by its load,
+   movslq -4(%rbp), %rax.
 
    On aarch64 the listing must show to_long() and from_long() as x0
    stored to the slot with str and loaded back with ldr, nothing
-   between; and from_int() widening the int with sxtw x0, w0. */
+   between; and from_int() widening the int by its load,
+   ldrsw x0, [x29, #16]. */
 long to_long(int *p)
 {
     return (long) p;

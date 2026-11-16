@@ -76,8 +76,7 @@ day_of_year:
 	b.ge	.Lday_of_year.4
 	adrp	x0, daytab
 	add	x0, x0, :lo12:daytab
-	ldr	w1, [x29, #32]
-	sxtw	x1, w1
+	ldrsw	x1, [x29, #32]
 	mov	x2, #13
 	mul	x1, x1, x2
 	add	x0, x0, x1
@@ -130,8 +129,7 @@ month_day:
 	ldr	w0, [x29, #20]
 	adrp	x1, daytab
 	add	x1, x1, :lo12:daytab
-	ldr	w2, [x29, #44]
-	sxtw	x2, w2
+	ldrsw	x2, [x29, #44]
 	mov	x3, #13
 	mul	x2, x2, x3
 	add	x1, x1, x2
@@ -141,8 +139,7 @@ month_day:
 	b.le	.Lmonth_day.4
 	adrp	x0, daytab
 	add	x0, x0, :lo12:daytab
-	ldr	w1, [x29, #44]
-	sxtw	x1, w1
+	ldrsw	x1, [x29, #44]
 	mov	x2, #13
 	mul	x1, x1, x2
 	add	x0, x0, x1

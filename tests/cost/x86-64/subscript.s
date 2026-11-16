@@ -11,12 +11,10 @@ subscript:
 	.cfi_def_cfa_register %rbp
 	movl	%edi, -4(%rbp)
 	movl	%esi, -8(%rbp)
-	movl	-4(%rbp), %eax
-	movslq	%eax, %rax
+	movslq	-4(%rbp), %rax
 	movl	-8(%rbp), %ecx
 	movl	%ecx, -24(%rbp,%rax,4)
-	movl	-4(%rbp), %eax
-	movslq	%eax, %rax
+	movslq	-4(%rbp), %rax
 	movl	-24(%rbp,%rax,4), %eax
 	jmp	.Lsubscript.1
 .Lsubscript.1:

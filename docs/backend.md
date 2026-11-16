@@ -394,9 +394,9 @@ promotion casts before any operator sees them, as today.
 | Source | Instruction | Note |
 |---|---|---|
 | a constant | an immediate operand, or `mov $c, L` when it must be held; `movabsq $c, L` for a 64-bit constant no 32-bit immediate holds | integer constant expressions folded in the parser, chapter 6.4 |
-| a local, a parameter | `mov slot(%rbp), L` | a `char` is `movsbl` or `movzbl`, a `short` `movswl` or `movzwl` |
+| a local, a parameter | `mov slot(%rbp), L` | a `char` is `movsbl` or `movzbl`, a `short` `movswl` or `movzwl`; a signed object under a cast to 64 bits is the extending load of the row of `(T) a`, `movslq`, `movsbq` or `movswq` |
 | a `register` variable | the register, as an operand the instruction reads; copied into `L`, `mov reg, L`, where the instruction writes `L` | no instruction for a read |
-| a global the file defines | `mov sym(%rip), L`; `sym(%rip)` wherever a row writes a local's `slot(%rbp)`: the store, `mov L, sym(%rip)`, and the memory forms of 6.6, `addl $1, sym(%rip)` | PC-relative, chapter 10; a char is `movsbl` or `movzbl`, a short `movswl` or `movzwl` |
+| a global the file defines | `mov sym(%rip), L`; `sym(%rip)` wherever a row writes a local's `slot(%rbp)`: the store, `mov L, sym(%rip)`, and the memory forms of 6.6, `addl $1, sym(%rip)` | PC-relative, chapter 10; a char is `movsbl` or `movzbl`, a short `movswl` or `movzwl`, and a signed object under a cast to 64 bits the row of `(T) a`, `movslq sym(%rip), L64` |
 | a global the file only declares | `movq sym@GOTPCREL(%rip), L`, its address from the GOT, then the row of `*p` through `L`: `movl (L), L`, `movl R, (L)`, `addl $1, (L)` | chapter 10; each access the source writes loads the address once, so `n = n + 1` loads it twice |
 | `a + b`, `a - b` | `add R, L`, `sub R, L` | G1: the machine wraps |
 | `a * b` | `imul R, L` | G1; the same instruction for signed and unsigned, since the low bits agree |
@@ -410,10 +410,10 @@ promotion casts before any operator sees them, as today.
 | `x = e` | `mov L, slot` or `mov L, reg`, the value staying in `L`; a constant goes as the immediate straight into a register variable, `movl $0, %r12d`, or into memory when the assignment is evaluated for its effect alone, `movl $0, -12(%rbp)` (6.6) | a `char` store is `movb %Lb` |
 | `x op= e` | the address of `x` first, then `e`; in the effect context, the op on the object, `addl %eax, -12(%rbp)`, but for `*=`, `/=` and `%=` (6.6); in a value context, the load row, the op row, the store row, after `e`; on a register variable, the op on the register in place, after `e` | `*=`, `/=` and `%=` are always `e`, then the load, the op and the store: `imul` has no memory destination and `idiv` none at all |
 | `++x`, `x++`, `--x`, `x--` | in the effect context, the op on the object, `addl $1, -8(%rbp)`, and no old value (6.6); in a value context, the load, `add $1` or `sub $1`, the store, the post forms keeping the old value in another register | `add $size` for a pointer |
-| `(T) a` | `movslq L, L64` for `int` to `long`, `movsbl` or `movzbl` from `Lb` for `char` to `int`, each only when `L` is not already valid to the new width (the width rule below); nothing for `long` to `int` (the 32-bit name is the value); nothing between pointer types; an integer to a pointer as to `unsigned long`, so `movslq` for an `int` (6.3.2.3p5); nothing for a pointer to `long` or `int` | G2: truncation is reading the low bits |
+| `(T) a` | `movslq L, L64` for `int` to `long`, `movsbl` or `movzbl` from `Lb` for `char` to `int`, each only when `L` is not already valid to the new width (the width rule below); a signed object in memory under a cast that widens it is its load extended to the new width, `movslq -4(%rbp), L64` for an `int` to `long`, `movsbq` and `movswq` for a `signed char` and a `short`, and no instruction after it (a widening by the load, below); nothing for `long` to `int` (the 32-bit name is the value); nothing between pointer types; an integer to a pointer as to `unsigned long`, so `movslq` for an `int` (6.3.2.3p5); nothing for a pointer to `long` or `int` | G2: truncation is reading the low bits |
 | `&x` | `lea slot(%rbp), L` or `lea sym(%rip), L`; for a global the file only declares, the load from the GOT, `movq sym@GOTPCREL(%rip), L`; `&x` plus a constant is one `lea`, the name and constant below | refused on a `register` variable, 6.5.4.2p1 |
-| `*p` | `mov (L), L` at the pointee's width and extension: `movsbl`, `movzbl`, `movswl`, `movzwl`, `movl`, `movq` | G8, G9, G10, G11: one `mov`, any address |
-| `p[i]`, `a[i]` | `mov (L,R,s), L` for a size of 1, 2, 4 or 8, the pointer in `L` (`lea sym(%rip), L` for a global array the file defines, the GOT's load for one it declares), the index in `R`; on a local array the slot is the displacement and `rbp` the base, `movl -24(%rbp,R,4), L`, and no instruction forms the array's address (a slot and an index, below); a constant index is the displacement `c*s(L)`, and on an array reached by its name the name and constant below, the slot's or the label's own operand, `movl -20(%rbp), L`, `movl table+12(%rip), L` | one instruction, the machine's addressing form; the index is 64 bits by the parser's cast, written by the width rule: `movslq` for an `int`, nothing for an `unsigned` or a `long` |
+| `*p` | `mov (L), L` at the pointee's width and extension: `movsbl`, `movzbl`, `movswl`, `movzwl`, `movl`, `movq`; under a cast that widens a signed pointee to 64 bits, `movsbq`, `movswq`, `movslq` | G8, G9, G10, G11: one `mov`, any address |
+| `p[i]`, `a[i]` | `mov (L,R,s), L` for a size of 1, 2, 4 or 8, the pointer in `L` (`lea sym(%rip), L` for a global array the file defines, the GOT's load for one it declares), the index in `R`; on a local array the slot is the displacement and `rbp` the base, `movl -24(%rbp,R,4), L`, and no instruction forms the array's address (a slot and an index, below); a constant index is the displacement `c*s(L)`, and on an array reached by its name the name and constant below, the slot's or the label's own operand, `movl -20(%rbp), L`, `movl table+12(%rip), L` | one instruction, the machine's addressing form; the index is 64 bits by the parser's cast, written by the row of `(T) a`: an `int` in memory is its load, `movslq -4(%rbp), R64`, one in a register `movslq R, R64`, and nothing is written for an `unsigned` or a `long` |
 | `p[i]` of another size | the `p + n` row, and the sum is the base `L` of the access; a constant index of 0 adds nothing, the bare base of the `&p[i]` row; on an array reached by its name a constant index is the name and constant below, so `m[1][2]` is one operand, and through a pointer a constant index under a constant is one displacement, `movl 20(L), L` for `p[1][2]` on `int (*p)[3]` | only an array has such a size: `m[i][j]` on `int m[2][3]` is `imul $12`, `add`, then `(L,R,4)` |
 | `&p[i]`, `&*p` | `lea (L,R,s), L`, `lea -24(%rbp,R,4), L` on a local array, and `lea c*s(L), L` for a constant index; `&*p` is `p`, no instruction, and a subscript by a constant 0 is the bare base, so `&p[0]` is `p` and no instruction as well (`aarch64.md` chapter 15, call 8); a row of an array of arrays decays the same way, `m[0]` to `m`; on an array reached by its name, the name and constant below, one `lea` of the folded operand, `leaq -20(%rbp), L` for `&a[3]` | one instruction, the addressing form, where 6.5.4.2p3's "as if `+`" would spell the same address as the `p + n` row |
 | `p + n`, `p - n` | `+`: `add R, L` for a size of 1, `lea (L,R,s), L` for 2, 4 or 8, `imul $s, R, R; add R, L` for any other, and on a local array of a size 1, 2, 4 or 8 one `lea -24(%rbp,R,4), L`, a slot and an index below; `-`: `sub R, L` for 1, `imul $s, R, R; sub R, L` for any other; a constant `n` is the immediate, `add $c*s, L` or `sub $c*s, L`, and on a name's address the name and constant below, one `lea`, `leaq -20(%rbp), L` for `a + 3` | G6; the index widened as for `p[i]` |
@@ -504,10 +504,11 @@ list, and the `*` over `r5` plus a constant is the operand
 base, an index and a displacement at once, so a local array's
 element by a variable index is one operand: `rbp` the base, the slot
 the displacement, the index scaled by the size. With `int a[6]` at
-`-24(%rbp)`, `a[i]` is `movslq %eax, %rax` after the index's load and
-`movl -24(%rbp,%rax,4), L`; `a[i] = v` stores through the same
-operand, `a[i] += e;` and `a[i]++;` are the memory forms of 6.6 on
-it, and `&a[i]` and `a + i` are one `leaq -24(%rbp,%rax,4), L`. No
+`-24(%rbp)`, `a[i]` is the index's load, `movslq -28(%rbp), %rax` for
+an `int i` at `-28(%rbp)`, and `movl -24(%rbp,%rax,4), L`; `a[i] = v`
+stores through the same operand, `a[i] += e;` and `a[i]++;` are the
+memory forms of 6.6 on it, and `&a[i]` and `a + i` are one `leaq
+-24(%rbp,%rax,4), L`. No
 instruction forms the array's address, so the index is the one
 operand evaluated, where it stood (G13). The array is the name and
 constant above, so `m[1][i]` on `int m[2][3]` at `-24(%rbp)` is
@@ -518,15 +519,17 @@ global array, since a PC-relative operand takes no index; and a slot
 plus a constant no 32-bit displacement holds.
 
 A `char` or `short` lvalue is loaded with the extending `mov` of its
-signedness and stored with the narrow `mov`; that is the whole of
-narrowing and widening on x86, where under the IR pipeline it was
+signedness, to 64 bits under a cast that widens a signed one to
+`long`, `movsbq`, and stored with the narrow `mov`; that is the whole
+of narrowing and widening on x86, where under the IR pipeline it was
 `trunc`, `sext` and `zext` nodes.
 
 The width rule. Each held value carries a width: the width to which
 its register's bits are the value extended by its type's
 signedness. The instruction that wrote the register sets it:
 
-- a load of a `char` or `short` leaves it valid to 32;
+- a load of a `char` or `short` leaves it valid to 32, and the load
+  of a signed object that a cast widens to 64 bits valid to 64;
 - a 32-bit write clears the upper half, which is the extension of an
   unsigned value and not of a signed one, so an `unsigned` written
   at 32 bits is valid to 64 and an `int` to 32;
@@ -539,15 +542,50 @@ signedness. The instruction that wrote the register sets it:
 
 A widening cast writes its `movs` or `movz` only when the value is
 not already valid to the new width: `(int) c` after the load of `c`
-writes nothing, `(long) i` is `movslq`, and the promotion of a `char`
-call result, `f() + 1`, is `movsbl %al, %eax` after the `call`. A
-`return` of a `char` or a `short` writes no extension: the ABI asks
-none of the callee, so `return c / 4 + s` in a function returning
-`char` ends in the `addl` and the jump to the epilogue. This is
-knowledge of what the generator's own instruction left in the
-register, not of the program's data. The PDP-11 compiler had the
-same knowledge built in: its `movb` into a register sign-extended,
-and a `char` to `int` conversion of a register value cost nothing.
+writes nothing, `(long) i` on a register variable is `movslq %ebx,
+%rax` and on an `int` in memory its load, `movslq -4(%rbp), %rax`
+(below), and the promotion of a `char` call result, `f() + 1`, is
+`movsbl %al, %eax` after the `call`. A `return` of a `char` or a
+`short` writes no extension: the ABI asks none of the callee, so
+`return c / 4 + s` in a function returning `char` ends in the `addl`
+and the jump to the epilogue. This is knowledge of what the
+generator's own instruction left in the register, not of the
+program's data. The PDP-11 compiler had the same knowledge built in:
+its `movb` into a register sign-extended, and a `char` to `int`
+conversion of a register value cost nothing.
+
+**A widening by the load.** A cast that widens a signed object in
+memory makes the object's load the extending one, to the cast's width,
+and writes nothing after it. `(long) i` on an `int` at `-4(%rbp)` is
+`movslq -4(%rbp), %rax`, not `movl -4(%rbp), %eax; movslq %eax, %rax`,
+and `(long) c` on a `signed char` is `movsbq`, not `movsbl` and
+`movsbq %al, %rax`; a plain `char` follows the target's signedness.
+The object is any the load row reads: a local's or a parameter's slot,
+a global's label or its address from the GOT, or what a dereference
+designates, an element by a subscript among them. The parser's
+widening of a subscript's index and of a pointer's addend is such a
+cast, so `p[i]` on an `int i` in a slot is `movslq -12(%rbp), %rcx`
+and the access. The load reads the bytes the load at 32 bits reads,
+one access at the object's width (G10, `shape.md` chapter 5), into the
+register the value takes in any case, and leaves it valid to the
+cast's width. An unsigned object needs no such load: `movl` and
+`movzbl` leave it valid to 64 bits already. A `char` promoted to `int`
+was loaded extended already. A register variable is no object in
+memory, so its read is extended into a fresh register, `movslq %ebx,
+%rax`. A cast over any other operand, a call's result, an arithmetic
+value, a comparison or another cast, extends the value in its register
+by the width rule.
+
+The rule is the Seventh Edition compiler's. `match()`, in its
+`c10.c`, tries a code table's row for an operator again with the
+conversion over an operand dropped, so that a row whose instructions
+convert as they read takes the unconverted operand; its comment's
+example is `int = double` as `movf` and `movfi` with no converted
+value in a register. The conversion's own rows convert an operand in
+memory in the instruction that reads it: in `table.s`, an `int` to a
+`float` is `movif A1,R` for an addressable word and `movif #1(R),R`
+through a pointer, and `movif R,R` only for a value already in a
+register (`cr51`).
 
 `&&`, `||` and `?:` evaluated for a value have two paths into one
 register. Before the first divergence every held value is given a

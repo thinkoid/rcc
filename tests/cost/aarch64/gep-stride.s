@@ -13,8 +13,7 @@ row:
 	.cfi_def_cfa_register w29
 	str	w0, [x29, #16]
 	add	x0, x29, #20
-	ldr	w1, [x29, #16]
-	sxtw	x1, w1
+	ldrsw	x1, [x29, #16]
 	mov	x2, #12
 	mul	x1, x1, x2
 	add	x0, x0, x1

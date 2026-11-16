@@ -17,8 +17,7 @@ main:
 	cmpl	$10, %eax
 	jge	.Lmain.4
 	leaq	table(%rip), %rax
-	movl	-4(%rbp), %ecx
-	movslq	%ecx, %rcx
+	movslq	-4(%rbp), %rcx
 	movl	-4(%rbp), %edx
 	movl	-4(%rbp), %esi
 	imull	%esi, %edx
@@ -36,10 +35,8 @@ main:
 	cmpl	%ecx, %eax
 	jge	.Lmain.7
 	leaq	table(%rip), %rax
-	movl	-4(%rbp), %ecx
-	movslq	%ecx, %rcx
-	movl	(%rax,%rcx,4), %eax
-	movslq	%eax, %rax
+	movslq	-4(%rbp), %rcx
+	movslq	(%rax,%rcx,4), %rax
 	addq	%rax, total(%rip)
 .Lmain.6:
 	addl	$1, -4(%rbp)

@@ -44,8 +44,7 @@ main:
 	adrp	x0, table
 	add	x0, x0, :lo12:table
 	ldr	w1, [x29, #16]
-	ldr	w0, [x0, w1, sxtw #2]
-	sxtw	x0, w0
+	ldrsw	x0, [x0, w1, sxtw #2]
 	adrp	x16, total
 	ldr	x1, [x16, :lo12:total]
 	add	x1, x1, x0

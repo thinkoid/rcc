@@ -74,8 +74,7 @@ main:
 	subl	$1, %eax
 	movslq	%eax, %rax
 	movl	-24(%rbp,%rax,4), %eax
-	movl	-28(%rbp), %ecx
-	movslq	%ecx, %rcx
+	movslq	-28(%rbp), %rcx
 	movl	-24(%rbp,%rcx,4), %ecx
 	cmpl	%ecx, %eax
 	jle	.Lmain.5

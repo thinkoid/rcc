@@ -49,8 +49,7 @@ at:
 	movq	%rdi, -8(%rbp)
 	movl	%esi, -12(%rbp)
 	movq	-8(%rbp), %rax
-	movl	-12(%rbp), %ecx
-	movslq	%ecx, %rcx
+	movslq	-12(%rbp), %rcx
 	leaq	(%rax,%rcx,4), %rax
 	jmp	.Lat.1
 .Lat.1:

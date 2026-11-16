@@ -19,8 +19,7 @@ main:
 	movl	-8(%rbp), %eax
 	cmpl	$10, %eax
 	jge	.Lmain.4
-	movl	-8(%rbp), %eax
-	movslq	%eax, %rax
+	movslq	-8(%rbp), %rax
 	movl	$0, -56(%rbp,%rax,4)
 .Lmain.3:
 	addl	$1, -8(%rbp)
@@ -30,8 +29,7 @@ main:
 	.p2align 5
 .Lmain.5:
 	leaq	text(%rip), %rax
-	movl	-8(%rbp), %ecx
-	movslq	%ecx, %rcx
+	movslq	-8(%rbp), %rcx
 	movsbl	(%rax,%rcx,1), %eax
 	movl	%eax, -4(%rbp)
 	cmpl	$0, %eax
@@ -122,8 +120,7 @@ main:
 	jge	.Lmain.29
 	leaq	.Ls1(%rip), %rax
 	movq	%rax, -72(%rbp)
-	movl	-8(%rbp), %eax
-	movslq	%eax, %rax
+	movslq	-8(%rbp), %rax
 	movl	-56(%rbp,%rax,4), %eax
 	movl	%eax, -76(%rbp)
 	movq	-72(%rbp), %rdi

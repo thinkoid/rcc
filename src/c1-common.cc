@@ -224,6 +224,18 @@ register_variable(const expr_t &e)
     return in_register(*sym) ? sym : nullptr;
 }
 
+// Whether e reads an object in memory, by the load row of backend.md
+// 6.3: a name that is no register variable, a local's or a global's,
+// or a dereference.  A register variable's read is its register.
+bool
+in_memory(const expr_t &e)
+{
+    if (is< unary_t >(e))
+        return as< unary_t >(e).op == unary_op_t::deref;
+
+    return is< name_t >(e) && !register_variable(e);
+}
+
 bool
 is_step(unary_op_t op)
 {

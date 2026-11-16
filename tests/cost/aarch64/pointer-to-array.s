@@ -15,8 +15,7 @@ element:
 	str	w1, [x29, #24]
 	str	w2, [x29, #28]
 	ldr	x0, [x29, #16]
-	ldr	w1, [x29, #24]
-	sxtw	x1, w1
+	ldrsw	x1, [x29, #24]
 	mov	x2, #12
 	mul	x1, x1, x2
 	add	x0, x0, x1

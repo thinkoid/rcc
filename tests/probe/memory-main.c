@@ -279,6 +279,20 @@ TYPES(DECLARE_INDEXED)
 
 TYPES(DECLARE_SUMMED)
 
+#define DECLARE_WIDEN(T, N, W, M)                                       \
+    BOTH(W, wparam_##N##_##M, (T)) BOTH(W, wlocal_##N##_##M, (T))       \
+    BOTH(W, wfar_##N##_##M, (T)) BOTH(W, wdefined_##N##_##M, (T))       \
+    BOTH(W, wdeclared_##N##_##M, (T)) BOTH(W, wderef_##N##_##M, (T *))  \
+    BOTH(W, wpconst_##N##_##M, (T *)) BOTH(W, wpvar_##N##_##M, (T *, int)) \
+    BOTH(W, waconst_##N##_##M, (T)) BOTH(W, wavar_##N##_##M, (T, int))  \
+    BOTH(W, wgconst_##N##_##M, (T)) BOTH(W, wgvar_##N##_##M, (T, int))
+#define DECLARE_WIDEN_ALL(T, N)                                         \
+    WIDENINGS(DECLARE_WIDEN, T, N)                                      \
+    BOTH(long, windex_##N, (long *, T))                                 \
+    BOTH(long, windex_deref_##N, (long *, T))
+
+TYPES(DECLARE_WIDEN_ALL)
+
 BOTH(long, text_pass, (void))
 BOTH(long, text_two, (void))
 BOTH(long, text_escapes, (void))
@@ -561,6 +575,56 @@ TYPES(TEST_INDEXED)
 
 TYPES(TEST_SUMMED)
 
+/* an object of one type widened by its load, to long and to unsigned
+   long, over every value, the result compared whole; through P(T) at
+   every offset, by a constant and by an index of -3 to 3; into an array
+   by an index of 0 to 3 */
+#define TEST_WIDEN(T, N, W, M)                                          \
+    CHECK(wparam_##N##_##M, x, 0, ((T) x));                             \
+    CHECK(wlocal_##N##_##M, x, 0, ((T) x));                             \
+    CHECK(wfar_##N##_##M, x, 0, ((T) x));                               \
+    CHECK(wdefined_##N##_##M, x, 0, ((T) x));                           \
+    CHECK(wdeclared_##N##_##M, x, 0, ((T) x));                          \
+    CHECK(waconst_##N##_##M, x, 0, ((T) x));                            \
+    for (int k = 0; k < 4; ++k) {                                       \
+        CHECK(wavar_##N##_##M, x, k, ((T) x, k));                       \
+        CHECK(wgvar_##N##_##M, x, k, ((T) x, k));                       \
+    }                                                                   \
+    CHECK(wgconst_##N##_##M, x, 0, ((T) x));                            \
+                                                                        \
+    for (int o = 0; o < OFFSETS; ++o) {                                 \
+        const int at = offsets[o];                                      \
+                                                                        \
+        MCHECK(wderef_##N##_##M, x, at, at, (P(T)));                    \
+        MCHECK(wpconst_##N##_##M, x, at, at, (P(T)));                   \
+        for (int k = -3; k <= 3; ++k)                                   \
+            MCHECK(wpvar_##N##_##M, x, k, at, (P(T), k));               \
+    }
+
+/* a subscript's index of one type, widened by the parser's cast, from
+   -8 to 7 where the type holds the value, into longs at B */
+#define TEST_WIDEN_INDEX(T, N)                                          \
+    for (int k = -8; k < 8; ++k) {                                      \
+        if ((long) (T) k != k)                                          \
+            continue;                                                   \
+                                                                        \
+        MCHECK(windex_##N, x, k, 0, ((long *) B, (T) k));               \
+        MCHECK(windex_deref_##N, x, k, 0, ((long *) B, (T) k));         \
+    }
+
+#define TEST_WIDEN_ALL(T, N)                                            \
+    static void test_widen_##N(void)                                    \
+    {                                                                   \
+        for (int i = 0; i < COUNT; ++i) {                               \
+            const long x = values[i];                                   \
+                                                                        \
+            WIDENINGS(TEST_WIDEN, T, N)                                 \
+            TEST_WIDEN_INDEX(T, N)                                      \
+        }                                                               \
+    }
+
+TYPES(TEST_WIDEN_ALL)
+
 /* the literals, the frames of one function each, and depth */
 static void
 test_rest(void)
@@ -628,7 +692,8 @@ main(void)
 
 #define RUN(T, N)                                                       \
     test_access_##N(); test_operators_##N(); test_address_##N();        \
-    test_folds_##N(); test_indexed_##N(); test_summed_##N();
+    test_folds_##N(); test_indexed_##N(); test_summed_##N();            \
+    test_widen_##N();
     TYPES(RUN)
 
     test_rest();

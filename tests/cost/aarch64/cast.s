@@ -16,8 +16,7 @@ signed_:
 	strb	w0, [x29, #20]
 	ldrb	w0, [x29, #20]
 	str	w0, [x29, #24]
-	ldr	w0, [x29, #24]
-	sxtw	x0, w0
+	ldrsw	x0, [x29, #24]
 	str	x0, [x29, #32]
 	ldr	x0, [x29, #32]
 	b	.Lsigned_.1

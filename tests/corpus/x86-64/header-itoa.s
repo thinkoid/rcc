@@ -25,21 +25,17 @@ reverse:
 	cmpl	%ecx, %eax
 	jge	.Lreverse.4
 	movq	-8(%rbp), %rax
-	movl	-16(%rbp), %ecx
-	movslq	%ecx, %rcx
+	movslq	-16(%rbp), %rcx
 	movsbl	(%rax,%rcx,1), %eax
 	movl	%eax, -12(%rbp)
 	movq	-8(%rbp), %rax
-	movl	-16(%rbp), %ecx
-	movslq	%ecx, %rcx
+	movslq	-16(%rbp), %rcx
 	movq	-8(%rbp), %rdx
-	movl	-20(%rbp), %esi
-	movslq	%esi, %rsi
+	movslq	-20(%rbp), %rsi
 	movsbl	(%rdx,%rsi,1), %edx
 	movb	%dl, (%rax,%rcx,1)
 	movq	-8(%rbp), %rax
-	movl	-20(%rbp), %ecx
-	movslq	%ecx, %rcx
+	movslq	-20(%rbp), %rcx
 	movl	-12(%rbp), %edx
 	movb	%dl, (%rax,%rcx,1)
 .Lreverse.3:
@@ -113,8 +109,7 @@ itoa:
 	movb	$45, (%rax,%rdx,1)
 .Litoa.6:
 	movq	-16(%rbp), %rax
-	movl	-20(%rbp), %ecx
-	movslq	%ecx, %rcx
+	movslq	-20(%rbp), %rcx
 	movb	$0, (%rax,%rcx,1)
 	movq	-16(%rbp), %rax
 	movq	%rax, -32(%rbp)
@@ -149,20 +144,17 @@ trim:
 	cmpl	$0, %eax
 	jl	.Ltrim.4
 	movq	-8(%rbp), %rax
-	movl	-12(%rbp), %ecx
-	movslq	%ecx, %rcx
+	movslq	-12(%rbp), %rcx
 	movsbl	(%rax,%rcx,1), %eax
 	cmpl	$32, %eax
 	je	.Ltrim.5
 	movq	-8(%rbp), %rax
-	movl	-12(%rbp), %ecx
-	movslq	%ecx, %rcx
+	movslq	-12(%rbp), %rcx
 	movsbl	(%rax,%rcx,1), %eax
 	cmpl	$9, %eax
 	je	.Ltrim.5
 	movq	-8(%rbp), %rax
-	movl	-12(%rbp), %ecx
-	movslq	%ecx, %rcx
+	movslq	-12(%rbp), %rcx
 	movsbl	(%rax,%rcx,1), %eax
 	cmpl	$10, %eax
 	jne	.Ltrim.4
@@ -199,20 +191,17 @@ count_digits:
 	.p2align 5
 .Lcount_digits.2:
 	movq	-8(%rbp), %rax
-	movl	-12(%rbp), %ecx
-	movslq	%ecx, %rcx
+	movslq	-12(%rbp), %rcx
 	movsbl	(%rax,%rcx,1), %eax
 	cmpl	$0, %eax
 	je	.Lcount_digits.4
 	movq	-8(%rbp), %rax
-	movl	-12(%rbp), %ecx
-	movslq	%ecx, %rcx
+	movslq	-12(%rbp), %rcx
 	movsbl	(%rax,%rcx,1), %eax
 	cmpl	$48, %eax
 	jl	.Lcount_digits.3
 	movq	-8(%rbp), %rax
-	movl	-12(%rbp), %ecx
-	movslq	%ecx, %rcx
+	movslq	-12(%rbp), %rcx
 	movsbl	(%rax,%rcx,1), %eax
 	cmpl	$57, %eax
 	jg	.Lcount_digits.3

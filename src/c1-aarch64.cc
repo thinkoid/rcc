@@ -2281,11 +2281,29 @@ assign(state_t &s, const assign_t &a)
     return v;
 }
 
+// The load of a signed object in memory extended to a cast's width,
+// 6.3: ldrsw x0, [x29, #16] for (long) i on an int, ldrsb x0 for a
+// signed char.  It reads the bytes the load at 32 bits reads, at the
+// object's width (G10), and its displacement scales by that width as
+// the plain load's does, so a slot it does not reach goes through x16
+// alike (5.3); the cast then finds the value valid to its width.  The
+// rule is the Seventh Edition compiler's: match(), in c10.c, tries a
+// row again with the conversion dropped, and its tables convert an
+// operand in memory in the instruction that reads it.
+value_t
+extending_load(state_t &s, const expr_t &e, const int_t &from, int to)
+{
+    return load(s, address(s, e), from, std::max(32, to));
+}
+
 // An integer conversion, 6.3.  G2: narrowing is no instruction, the
 // narrower register name is the value; widening extends by the
 // operand's signedness, and only when the register is not already
 // valid to the new width, as it is after the load of a char or a 32-bit
-// write of an unsigned value.  A change of signedness alone is nothing.
+// write of an unsigned value.  A signed object in memory is loaded
+// extended to the new width, extending_load(), so the load is the
+// widening; an unsigned one is loaded as any read, valid to 64 bits by
+// the load's own extension.  A change of signedness alone is nothing.
 // A pointer is its integer view, so pointer to pointer is nothing, an
 // integer widens to a pointer by its own signedness (6.3.2.3p5), sxtw
 // for an int, and a pointer narrows to an integer by its low bits (p6).
@@ -2309,9 +2327,12 @@ cast(state_t &s, const cast_t &c, const type_t &to)
 
     const auto &from = integer(c.arg->type);
     const auto &into = integer(to);
+    const bool widens = into.width > from.width;
 
-    auto v = rvalue(s, *c.arg);
-    if (into.width > from.width)
+    auto v = widens && from.is_signed && in_memory(*c.arg) ?
+                 extending_load(s, *c.arg, from, into.width) :
+                 rvalue(s, *c.arg);
+    if (widens)
         v = extended(s, v, from, into.width);
 
     auto &valid = s.values[v.id].valid;

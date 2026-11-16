@@ -606,7 +606,7 @@ For a 32-bit operation (`w` names) or a 64-bit one (`x` names).
 | `a && b`, `a \|\| b`, `a ? b : c`, as a value | jump code into `L`, `mov L, #1` and `mov L, #0` on the arms | never `csel`: 6.5.16p5, the arm not chosen is not evaluated |
 | `x = e` | the store of 2.2 to the slot; for a register variable the `mov` into its register, `mov w20, w0`, `mov x20, x0`, a constant the immediate, `mov w20, #0`, a narrow type the extension, `sxtb w19, w0` | 6.6 for a constant; chapter 4 |
 | `x op= e`, `++x`, `x++` | the load, the operation, the store, after `e` for `x op= e`; a register variable in place, after `e`, its register `L` and the destination, `add w19, w19, w0`, `add w19, w19, #1`, a narrow one re-extended after, `sxtb w19, w19`, and `%=` with the quotient in a register of its own, `sdiv w0, w19, w20; msub w19, w0, w20, w19`; `x++` on a register variable for its value is G13's copy and the step, `mov w0, w19; add w19, w19, #1`; a pointer's `++` and `--` step by the size, an immediate where `add` encodes it, `add L, L, #4` for an `int *`, and otherwise held in a register | no memory form, 6.6; chapter 4 |
-| `(T) a` | `sxtw L, L` for `int` to `long`; `sxtb`, `sxth`, `uxtb`, `uxth` from a narrow type; each only when `L` is not already valid to the new width; `mov wL, wL` for an `unsigned` not valid to 64; nothing between pointer types and for a pointer to `long`; an integer to a pointer as to `unsigned long`, so `sxtw` for an `int` | G2; the width rule |
+| `(T) a` | `sxtw L, L` for `int` to `long`; `sxtb`, `sxth`, `uxtb`, `uxth` from a narrow type; each only when `L` is not already valid to the new width; a signed object in memory under a cast that widens it is the load of 2.2 extended to the new width, `ldrsw x0, [x29, #16]` for an `int` to `long`, `ldrsb x0` and `ldrsh x0` for a `signed char` and a `short`, its displacement scaled by the object's size as the plain load's is, so through `x16` where that one would be (5.3), and no instruction after it, as `backend.md` 6.3's widening by the load has it; `mov wL, wL` for an `unsigned` not valid to 64; nothing between pointer types and for a pointer to `long`; an integer to a pointer as to `unsigned long`, so `sxtw` for an `int` | G2; the width rule |
 | `&x` | `add L, x29, #d`; for a global the file defines `adrp L, sym; add L, L, :lo12:sym`, as a string literal's; for one it only declares, the load from the GOT; `&x` plus a constant is the same `add` or pair with the constant in it, the name and constant below | two `add`s beyond 4095, 5.3 |
 | `*p` | the load of 2.2 from `[L]` | G8 to G11 |
 | `*p++`, `*p--`, `*++p`, `*--p`, `*(p += c)`, `*(p -= c)` on a `register` pointer | the access by a form of 2.3 that steps the variable's register, the borrowed read the base: the post-indexed form for `p++` and `p--`, `ldrb w0, [x19], #1` and `ldrb w0, [x19], #-1`, and the pre-indexed one for the others, `ldrb w0, [x19, #1]!`, `ldr w0, [x19, #16]!` for `*(p += 4)` on an `int *`; a store the same, `strb w0, [x19], #1`, so `*p++ = *q++` is `ldrb w0, [x20], #1; strb w0, [x19], #1`; a compound assignment or a `++` through the pointer, two accesses through one address, steps once, the post form at the store, `ldrb w0, [x19]; add w0, w0, #5; strb w0, [x19], #1`, the pre form at the load; a read of the pointer still held is copied before the access that steps, `mov x0, x19`. The step is its own instructions and the access goes through the old or the new value, as the rows of `x++` and `*p` have it, in three cases: a store whose right operand names the pointer, since G13 completes the step before that operand, `*p++ = *p` being `mov x0, x19; add x19, x19, #1; ldrb w1, [x19]; strb w1, [x0]`; a step out of the form's reach, `*(p += 64)` on an `int *` being `add x19, x19, #256; ldr w0, [x19]`; and a pointer in a slot, whose step is a load, an `add` and a store | `autoincrement.md`; call 9 |
@@ -671,7 +671,9 @@ displacement of 0, `p[1] - 3`, is the base and no instruction, as
 
 The width rule holds as written. Its facts on this machine:
 
-- a narrow load leaves the value valid to 32;
+- a narrow load leaves the value valid to 32, and the load of a
+  signed object that a cast widens to 64 bits, `ldrsw x0`, valid to
+  64;
 - a write to a `w` name clears the upper half, so an `unsigned`
   written at 32 is valid to 64 and an `int` to 32;
 - a narrowing cast writes nothing;
@@ -684,13 +686,13 @@ And a `return` of a `char` or a `short` writes no extension: the
 convention asks none of the callee, and G16 adds nothing.
 
 **The index.** The integer operand of a subscript or of pointer
-arithmetic is 64 bits by the parser's cast, on both targets. On
-x86-64 the cast's instruction is written, `movslq` for an `int`, and
-the load follows. This machine's addressing form takes a 32-bit index
-and extends it itself, so the cast is looked through wherever it
-stands, the source's own `p[(long) i]` included, since the tree does
-not tell the two apart. The cast's operand is generated and what is
-held decides the operand:
+arithmetic is 64 bits by the parser's cast, on both targets. On x86-64
+the cast's instruction is written, `movslq` for an `int`, the index's
+own load when it is in memory, and the access follows. This machine's
+addressing form takes a 32-bit index and extends it itself, so the
+cast is looked through wherever it stands, the source's own `p[(long)
+i]` included, since the tree does not tell the two apart. The cast's
+operand is generated and what is held decides the operand:
 
 - valid to 64 bits, a `long` or an `unsigned` written at 32: `[L, R,
   lsl #k]`, as the width rule writes nothing for the cast;
@@ -706,8 +708,9 @@ held decides the operand:
 
 `&p[i]` and `p + n` form the same address by `add` or `sub` with the
 same operand, `add x0, x1, w2, sxtw #2`. A size that is not 1, 2, 4
-or 8 is multiplied in, and there the cast writes its `sxtw` before
-the `mul`, as it does anywhere else.
+or 8 is multiplied in, and there the cast is written before the
+`mul`, as anywhere else: the extending load, `ldrsw x1, [x29, #16]`,
+for an `int` in memory, and `sxtw` for one in a register.
 
 So `p[i]` for an `int i` is one instruction, and for a `register int
 i` it names the variable's register and nothing is copied:
@@ -717,7 +720,9 @@ i` it names the variable's register and nothing is copied:
 ```
 
 On x86-64 a `long` index is the programmer's lever against the
-`movslq`. Here an `int` index and a `long` one cost the same.
+`movslq` of an `int` index held in a register; an `int` in memory is
+one `movslq`, its load, as a `long` is one `movq`. Here an `int`
+index and a `long` one cost the same.
 
 ### 6.4 Constants
 
@@ -1333,7 +1338,10 @@ ninth and a tenth came later. The answers:
    scale are one on x86-64, and a program written for the machine
    gets the machine's addressing form. The cost is that the two
    targets' listings differ for the same subscript, and that the
-   `long` index is a lever on one of them only.
+   `long` index is a lever on one of them only. The extending load of
+   6.3 leaves the index alone: its extension is the form's, so no
+   instruction is left for the load to absorb, and the index's load
+   stays `ldr w1`.
 6. **`-target`, and both pin sets checked on one machine** (chapter
    11). The cost is a driver option and a `--target` passed to
    `clang`.

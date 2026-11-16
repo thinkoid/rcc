@@ -6,7 +6,8 @@
    On x86-64 the listing must show zero() returning p as it was loaded,
    with no instruction for the address, and third() and at() each with
    one lea of the addressing form: leaq 12(%rax), %rax, and
-   leaq (%rax,%rcx,4), %rax after the index is widened with movslq.
+   leaq (%rax,%rcx,4), %rax after the index is loaded and widened by
+   one movslq.
 
    On aarch64 the listing must show zero() returning p as it was
    loaded, with no instruction for the address, and third() and at()

@@ -8,10 +8,11 @@
    of pointer arithmetic and the subscript, which are the pointers
    probe's, but for the address of a local array or a literal plus a
    constant, backend.md 6.3's fold, a local array's element by a
-   variable index, 6.3's slot and index, and a constant over a row's
-   address, summed into its displacement; the frame of 5.3, depth of
-   6.2, G7, G8, G10 and G11 of chapter 9 and the literals of chapter
-   10. */
+   variable index, 6.3's slot and index, a constant over a row's
+   address, summed into its displacement, and an object widened by its
+   load, (T) a's row, an element by a subscript among them; the frame
+   of 5.3, depth of 6.2, G7, G8, G10 and G11 of chapter 9 and the
+   literals of chapter 10. */
 
 /* the integer types and the letter each takes in a function's name */
 #define NARROW(X)                                                       \
@@ -21,6 +22,10 @@
 #define WIDE(X) X(int, i) X(unsigned, u) X(long, l) X(unsigned long, ul)
 
 #define TYPES(X) NARROW(X) WIDE(X)
+
+/* the types a read is widened to, crossed with one entry of TYPES, and
+   the letter each takes in a function's name */
+#define WIDENINGS(X, T, N) X(T, N, long, l) X(T, N, unsigned long, ul)
 
 /* eight long parameters, the convention's registers on aarch64; a
    ninth and a tenth go on the stack on both targets */

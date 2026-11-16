@@ -20,8 +20,7 @@ sum:
 	cmpl	%ecx, %eax
 	jge	.Lsum.4
 	movq	-16(%rbp), %rax
-	movl	-24(%rbp), %ecx
-	movslq	%ecx, %rcx
+	movslq	-24(%rbp), %rcx
 	movl	(%rax,%rcx,4), %eax
 	addl	%eax, -20(%rbp)
 .Lsum.3:

@@ -95,6 +95,10 @@ hash, chosen from the case values alone; `header-count` is K&R's
 count of digits, white space and other characters. An `if` whose
 body is one jump is the condition's jump to its target, as that
 compiler's first pass wrote it, `jne .Llow.3` for `if (n & 1) break;`.
+A cast that widens a signed object in memory is the object's load,
+extending: `movslq -4(%rbp), %rax`, `ldrsw x0, [x29, #16]`, as that
+compiler's tables converted an operand in the instruction that read
+it.
 An element by a
 constant index is the object's own operand, `movl table+12(%rip),
 %eax`, the constant folded into the address as that compiler

@@ -11,8 +11,7 @@ get:
 	.cfi_def_cfa_register %rbp
 	movl	%edi, -4(%rbp)
 	leaq	table(%rip), %rax
-	movl	-4(%rbp), %ecx
-	movslq	%ecx, %rcx
+	movslq	-4(%rbp), %rcx
 	movl	(%rax,%rcx,4), %eax
 	jmp	.Lget.1
 .Lget.1:
@@ -50,8 +49,7 @@ put:
 	movl	%edi, -4(%rbp)
 	movl	%esi, -8(%rbp)
 	leaq	table(%rip), %rax
-	movl	-4(%rbp), %ecx
-	movslq	%ecx, %rcx
+	movslq	-4(%rbp), %rcx
 	movl	-8(%rbp), %edx
 	movl	%edx, (%rax,%rcx,4)
 .Lput.1:
@@ -71,8 +69,7 @@ get_other:
 	.cfi_def_cfa_register %rbp
 	movl	%edi, -4(%rbp)
 	movq	other@GOTPCREL(%rip), %rax
-	movl	-4(%rbp), %ecx
-	movslq	%ecx, %rcx
+	movslq	-4(%rbp), %rcx
 	movl	(%rax,%rcx,4), %eax
 	jmp	.Lget_other.1
 .Lget_other.1:

@@ -74,8 +74,7 @@ main:
 	movq	put(%rip), %rax
 	movq	%rax, -64(%rbp)
 	movq	-16(%rbp), %rax
-	movl	-8(%rbp), %ecx
-	movslq	%ecx, %rcx
+	movslq	-8(%rbp), %rcx
 	movsbl	(%rax,%rcx,1), %eax
 	movl	%eax, -68(%rbp)
 	movl	-68(%rbp), %edi

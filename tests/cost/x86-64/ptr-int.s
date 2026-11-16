@@ -46,8 +46,7 @@ from_int:
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register %rbp
 	movl	%edi, -4(%rbp)
-	movl	-4(%rbp), %eax
-	movslq	%eax, %rax
+	movslq	-4(%rbp), %rax
 	jmp	.Lfrom_int.1
 .Lfrom_int.1:
 	leave

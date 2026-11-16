@@ -71,12 +71,10 @@ day_of_year:
 	cmpl	%ecx, %eax
 	jge	.Lday_of_year.4
 	leaq	daytab(%rip), %rax
-	movl	-20(%rbp), %ecx
-	movslq	%ecx, %rcx
+	movslq	-20(%rbp), %rcx
 	imulq	$13, %rcx, %rcx
 	addq	%rcx, %rax
-	movl	-16(%rbp), %ecx
-	movslq	%ecx, %rcx
+	movslq	-16(%rbp), %rcx
 	movsbl	(%rax,%rcx,1), %eax
 	addl	%eax, -12(%rbp)
 .Lday_of_year.3:
@@ -115,22 +113,18 @@ month_day:
 .Lmonth_day.2:
 	movl	-8(%rbp), %eax
 	leaq	daytab(%rip), %rcx
-	movl	-32(%rbp), %edx
-	movslq	%edx, %rdx
+	movslq	-32(%rbp), %rdx
 	imulq	$13, %rdx, %rdx
 	addq	%rdx, %rcx
-	movl	-28(%rbp), %edx
-	movslq	%edx, %rdx
+	movslq	-28(%rbp), %rdx
 	movsbl	(%rcx,%rdx,1), %ecx
 	cmpl	%ecx, %eax
 	jle	.Lmonth_day.4
 	leaq	daytab(%rip), %rax
-	movl	-32(%rbp), %ecx
-	movslq	%ecx, %rcx
+	movslq	-32(%rbp), %rcx
 	imulq	$13, %rcx, %rcx
 	addq	%rcx, %rax
-	movl	-28(%rbp), %ecx
-	movslq	%ecx, %rcx
+	movslq	-28(%rbp), %rcx
 	movsbl	(%rax,%rcx,1), %eax
 	subl	%eax, -8(%rbp)
 .Lmonth_day.3:
@@ -170,8 +164,7 @@ month_name:
 	jmp	.Lmonth_name.3
 .Lmonth_name.2:
 	leaq	name(%rip), %rax
-	movl	-4(%rbp), %ecx
-	movslq	%ecx, %rcx
+	movslq	-4(%rbp), %rcx
 	movq	(%rax,%rcx,8), %rax
 .Lmonth_name.3:
 	jmp	.Lmonth_name.1

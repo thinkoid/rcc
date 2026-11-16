@@ -6,9 +6,11 @@
    the address of a local array or a string literal plus a constant,
    folded into the slot's or the label's operand, a local array's
    element by a variable index, the slot the indexed operand's
-   displacement, and a constant over a row's address, a local's or one
+   displacement, a constant over a row's address, a local's or one
    through a pointer to rows, the constant the displacement of that
-   address (backend.md 6.3), which the last sections probe.  A pointer
+   address, and an object read under a cast that widens it, an element
+   by a subscript among them (backend.md 6.3), which the last sections
+   probe.  A pointer
    into the middle of a buffer, or misaligned, is made by the main.
    See memory.h. */
 
@@ -25,6 +27,12 @@
     long total_rows_##N(T m[][5], int n);
 
 TYPES(LIBRARY)
+
+/* an object of each type the file only declares, which the library
+   defines */
+#define DECLARED(T, N) extern T declared_##N;
+
+TYPES(DECLARED)
 
 long text(char *s);
 long mix1(long a);
@@ -820,3 +828,85 @@ long summed_pointers(long *p, long *q8, long v, int i)
     return *r[i][0] + rp[i ^ 1][0][0] * 3 + r[i][0][1] * 5 +
            ((long) &rp[i][0] - (long) r) * 7;
 }
+
+/* An object of each type read under a cast to long and to unsigned
+   long, backend.md 6.3's (T) a: a signed object's load extends to 64
+   bits, and an unsigned one's is valid to 64 bits as it is.  From a
+   parameter's slot, a local's, a local's beyond the reach of an
+   aarch64 load (5.3), a global the file defines and one it only
+   declares, through a pointer, and an element by a constant and by a
+   variable index of an array through a pointer, of a local array and
+   of a global one.  The result is the widened value whole.  p points
+   into the main's buffer, and i is -3 to 3 through it and 0 to 3 into
+   an array. */
+#define WIDENED_GLOBALS(T, N)                                           \
+    T defined_##N;                                                      \
+    T row_##N[4];
+
+TYPES(WIDENED_GLOBALS)
+
+#define WIDEN(T, N, W, M)                                               \
+    W wparam_##N##_##M(T a) { return (W) a; }                           \
+    W wlocal_##N##_##M(T a)                                             \
+    {                                                                   \
+        T x = a;                                                        \
+        return (W) x;                                                   \
+    }                                                                   \
+    W wfar_##N##_##M(T a)                                               \
+    {                                                                   \
+        char pad[70000];                                                \
+        T x = a;                                                        \
+        return (W) x;                                                   \
+    }                                                                   \
+    W wdefined_##N##_##M(T a)                                           \
+    {                                                                   \
+        defined_##N = a;                                                \
+        return (W) defined_##N;                                         \
+    }                                                                   \
+    W wdeclared_##N##_##M(T a)                                          \
+    {                                                                   \
+        declared_##N = a;                                               \
+        return (W) declared_##N;                                        \
+    }                                                                   \
+    W wderef_##N##_##M(T *p) { return (W) *p; }                         \
+    W wpconst_##N##_##M(T *p) { return (W) p[3]; }                      \
+    W wpvar_##N##_##M(T *p, int i) { return (W) p[i]; }                 \
+    W waconst_##N##_##M(T a)                                            \
+    {                                                                   \
+        T x[4];                                                         \
+        x[2] = a;                                                       \
+        return (W) x[2];                                                \
+    }                                                                   \
+    W wavar_##N##_##M(T a, int i)                                       \
+    {                                                                   \
+        T x[4];                                                         \
+        x[i] = a;                                                       \
+        return (W) x[i];                                                \
+    }                                                                   \
+    W wgconst_##N##_##M(T a)                                            \
+    {                                                                   \
+        row_##N[2] = a;                                                 \
+        return (W) row_##N[2];                                          \
+    }                                                                   \
+    W wgvar_##N##_##M(T a, int i)                                       \
+    {                                                                   \
+        row_##N[i] = a;                                                 \
+        return (W) row_##N[i];                                          \
+    }
+#define WIDEN_ALL(T, N) WIDENINGS(WIDEN, T, N)
+
+TYPES(WIDEN_ALL)
+
+/* A subscript's index of each type, widened to 64 bits by the parser's
+   cast, read from the parameter's slot and through a pointer, and
+   holding a negative value: p points into the middle of the main's
+   buffer, and i is -8 to 7 where its type holds it. */
+#define WIDENED_INDEX(T, N)                                             \
+    long windex_##N(long *p, T i) { return p[i]; }                      \
+    long windex_deref_##N(long *p, T i)                                 \
+    {                                                                   \
+        T *q = &i;                                                      \
+        return p[*q];                                                   \
+    }
+
+TYPES(WIDENED_INDEX)

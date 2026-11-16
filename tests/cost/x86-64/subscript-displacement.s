@@ -12,8 +12,7 @@ row:
 	movq	%rdi, -8(%rbp)
 	movl	%esi, -12(%rbp)
 	movq	-8(%rbp), %rax
-	movl	-12(%rbp), %ecx
-	movslq	%ecx, %rcx
+	movslq	-12(%rbp), %rcx
 	movsbl	2(%rax,%rcx,8), %eax
 	jmp	.Lrow.1
 .Lrow.1:
@@ -32,8 +31,7 @@ local:
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register %rbp
 	movl	%edi, -4(%rbp)
-	movl	-4(%rbp), %eax
-	movslq	%eax, %rax
+	movslq	-4(%rbp), %rax
 	movsbl	-34(%rbp,%rax,8), %eax
 	jmp	.Llocal.1
 .Llocal.1:
@@ -73,8 +71,7 @@ address:
 	movq	%rdi, -8(%rbp)
 	movl	%esi, -12(%rbp)
 	movq	-8(%rbp), %rax
-	movl	-12(%rbp), %ecx
-	movslq	%ecx, %rcx
+	movslq	-12(%rbp), %rcx
 	leaq	2(%rax,%rcx,8), %rax
 	jmp	.Laddress.1
 .Laddress.1:
