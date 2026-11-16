@@ -118,8 +118,8 @@ names `x` as an operand of `+`, so it reads 1 first, then stores 2,
 then stores 1 + 2.
 
 **G14. A loop runs until its condition says stop.** 6.8.6.1p4. `for
-(;;);` hangs. Instruction: the test at the top of the loop, a `cmp`
-and a `jcc` out, and a `jmp` back; nothing reasons about the test.
+(;;);` hangs. Instruction: the test at the top of the loop and a
+`jcc` out, and a `jmp` back; nothing reasons about the test.
 
 **G15. Withdrawn.** The number is reserved. It was the grant: a
 per-declaration attribute by which the programmer handed an

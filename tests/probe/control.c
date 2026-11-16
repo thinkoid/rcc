@@ -1,6 +1,7 @@
 /* The control probe: conditions as values and as jumps, the
    statements that branch, and values held across a branch, in rcc's C,
-   for docs/aarch64.md chapter 7.  See control.h. */
+   for docs/aarch64.md chapter 7, and the conditions that jump on their
+   operator's own flags on x86-64, docs/backend.md 7.1.  See control.h. */
 
 #include "control.h"
 
@@ -239,3 +240,104 @@ long deep_long(long a, long b, long c, long d, long e, long f, long g, long h)
     return a + (b * (c + (d * (e + (f * (g + (h * (a < b ? c : d)
            + (e && f)) - (g || h)) + (a ? b : c)) - !d) + (e == f)) - g) + h);
 }
+
+/* docs/backend.md 7.1 on x86-64, a condition that jumps on the flags of
+   its operator's own instruction: each condition of control.h's
+   CC_VALUES and CC_OBJECT in every place a condition stands, an if, a
+   while, a do and a for, either operand of && and of ||, under ! and
+   before the ? of ?:.  The object O is set to a before each place and
+   its value after is folded into the result, so a memory form that
+   wrote the wrong bytes shows; a loop stops at its third pass.  The
+   function declares n and r, which the places use, and then the
+   object, so a write wider than a local object reaches r, which the
+   result holds, and neither the frame record nor the count of a
+   loop. */
+#define CC_PLACES(O, C)                                                 \
+    O = a;                                                              \
+    if (C)                                                              \
+        r = 1;                                                          \
+    r = r * 7 + O;                                                      \
+    O = a;                                                              \
+    n = 0;                                                              \
+    while (C)                                                           \
+        if (++n == 3)                                                   \
+            break;                                                      \
+    r = (r * 7 + n) * 7 + O;                                            \
+    O = a;                                                              \
+    n = 0;                                                              \
+    do                                                                  \
+        if (++n == 3)                                                   \
+            break;                                                      \
+    while (C);                                                          \
+    r = (r * 7 + n) * 7 + O;                                            \
+    O = a;                                                              \
+    for (n = 0; C;)                                                     \
+        if (++n == 3)                                                   \
+            break;                                                      \
+    r = (r * 7 + n) * 7 + O;                                            \
+    O = a;                                                              \
+    r = r * 7 + ((C) && b) * 2 + (b && (C));                            \
+    r = r * 7 + O;                                                      \
+    O = a;                                                              \
+    if ((C) || b)                                                       \
+        r = r * 7 + 1;                                                  \
+    if (!b || (C))                                                      \
+        r = r * 7 + 2;                                                  \
+    r = r * 7 + O;                                                      \
+    O = a;                                                              \
+    if (!(C))                                                           \
+        r = r * 7 + 3;                                                  \
+    r = r * 7 + O;                                                      \
+    O = a;                                                              \
+    r = r * 7 + ((C) ? 4 : 5);                                          \
+    return r * 7 + O;
+
+/* a condition of a and b alone; x is the object the places reset */
+#define CC_VALUE(T, N, name, C)                                         \
+    long cc_##name##_##N(T a, T b)                                      \
+    {                                                                   \
+        int n;                                                          \
+        long r = 0;                                                     \
+        T x;                                                            \
+        CC_PLACES(x, C)                                                 \
+    }
+
+/* a condition on an object: a local, a global and a register
+   variable, the function cc_<name>_<kind>_<type> */
+#define CC_ON_LOCAL(T, N, K, O, name, C)                                \
+    long cc_##name##_##K##_##N(T a, T b)                                \
+    {                                                                   \
+        int n;                                                          \
+        long r = 0;                                                     \
+        T O;                                                            \
+        CC_PLACES(O, C)                                                 \
+    }
+
+#define CC_ON_GLOBAL(T, N, K, O, name, C)                               \
+    long cc_##name##_##K##_##N(T a, T b)                                \
+    {                                                                   \
+        int n;                                                          \
+        long r = 0;                                                     \
+        CC_PLACES(O, C)                                                 \
+    }
+
+#define CC_ON_REGISTER(T, N, K, O, name, C)                             \
+    long cc_##name##_##K##_##N(T a, T b)                                \
+    {                                                                   \
+        int n;                                                          \
+        long r = 0;                                                     \
+        register T O;                                                   \
+        CC_PLACES(O, C)                                                 \
+    }
+
+#define CC_GLOBAL(T, N) T cc_object_##N;
+
+TYPES(CC_GLOBAL)
+
+#define CC_ALL(T, N)                                                    \
+    CC_VALUES(CC_VALUE, T, N)                                           \
+    CC_OBJECT(CC_ON_LOCAL, T, N, local, x)                              \
+    CC_OBJECT(CC_ON_GLOBAL, T, N, global, cc_object_##N)                \
+    CC_OBJECT(CC_ON_REGISTER, T, N, reg, x)
+
+TYPES(CC_ALL)

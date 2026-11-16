@@ -814,7 +814,10 @@ A register variable is operated on in its register, as before.
 - `!e`, `&&`, `||`: the same shapes.
 - `a, b`: `effect(a)`, then `cbranch(b, label, sense)`.
 - Any other expression: its value into `L`, then the test of zero,
-  `cbnz L, label` or `cbz L, label`, one instruction (call 3).
+  `cbnz L, label` or `cbz L, label`, one instruction (call 3). This
+  covers the conditions that x86-64 jumps on the flags of their
+  operator's instruction (`backend.md` 7.1): `cbz` and `cbnz` test a
+  register and read no flag, so this target has nothing to take.
 
 x86 tests a narrow operand at its own width, `cmpb $0, %al`. This
 machine compares whole registers only. A value valid to 32 bits is

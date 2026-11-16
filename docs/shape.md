@@ -558,7 +558,9 @@ code of a `backend.md` chapter:
   assignment or a step on an object in memory is the memory form,
   the operator on the object, `addl $1, -8(%rbp)` (6.6). `!`, `&&`
   and `||` are the shape of the jumps; any other condition is its
-  value compared with 0 at its own width.
+  value compared with 0 at its own width, or on x86-64 a jump on the
+  flags of its operator's own instruction where that sets them
+  (`backend.md` 7.1).
 - An lvalue is an `address_t`: a slot off `rbp`, a label off `rip`,
   or a held base with a displacement or with a held index scaled by
   1, 2, 4 or 8. It is the operand of the one `mov` that reads or

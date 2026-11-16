@@ -134,6 +134,11 @@ struct state_t
     // pinned register is generated, so it lands there
     unsigned reserved = 0;
 
+    // the width of the result from which the last instruction written
+    // set ZF, or 0 when it set none: flagged() states it after such an
+    // instruction, and the next instruction or label withdraws it
+    int zero_flag = 0;
+
     std::string function { };
     int labels = 0;
     int ret = 0;
@@ -231,12 +236,16 @@ imm(long long value)
 // writing
 
 // One instruction: a tab, the mnemonic, a tab and the operands
-// separated by a comma and a space, as gcc -S writes them.
+// separated by a comma and a space, as gcc -S writes them.  It is the
+// last instruction now, so what the one before it left in ZF no longer
+// stands.
 void
 insn(state_t &s,
      std::string_view mnemonic,
      std::initializer_list< std::string_view > operands = { })
 {
+    s.zero_flag = 0;
+
     s.body << '\t' << mnemonic;
 
     const char *separator = "\t";
@@ -257,11 +266,14 @@ new_label(state_t &s)
     return ++s.labels;
 }
 
+// A label: a jump may reach it from elsewhere, with the flags its own
+// path left.
 void
 place_label(state_t &s, int n)
 {
     s.body << label_name(s.function, n) << ":\n";
     s.terminated = false;
+    s.zero_flag = 0;
 }
 
 void
@@ -269,6 +281,16 @@ jump(state_t &s, int n)
 {
     insn(s, "jmp", { label_name(s.function, n) });
     s.terminated = true;
+}
+
+// The instruction just written set ZF from the result it computed at
+// width, as Intel's reference has add, sub, and, or, xor, neg and test
+// do, and imul, the shifts and the moves do not (backend.md 7.1).  It
+// stands until the next instruction or label.
+void
+flagged(state_t &s, int width)
+{
+    s.zero_flag = width;
 }
 
 // the frame
@@ -1208,7 +1230,8 @@ shift(state_t &s, binary_op_t op, value_t l, const right_t &r, const int_t &t)
 // sub, imul and shl wrap; imul is the same instruction for unsigned,
 // the low bits agree.  A register variable is R as it is; as L it is
 // copied first, unless it is the variable a compound assignment writes
-// in place.
+// in place.  add, sub, and, or and xor set ZF from L, and imul does not
+// (7.1).
 value_t
 arithmetic(
     state_t &s, binary_op_t op, value_t l, const right_t &r, const type_t &t)
@@ -1227,10 +1250,13 @@ arithmetic(
         const auto left =
             reg(writable(s, l, written(width, integer(t).is_signed)), width);
 
-        if (op == binary_op_t::mul)
+        if (op == binary_op_t::mul) {
             insn(s, mnemonic, { r.immediate, left, left });
-        else
-            insn(s, mnemonic, { r.immediate, left });
+            return l;
+        }
+
+        insn(s, mnemonic, { r.immediate, left });
+        flagged(s, width);
 
         return l;
     }
@@ -1239,6 +1265,8 @@ arithmetic(
     const reg_t left =
         writable(s, l, written(width, integer(t).is_signed), bit(right));
     insn(s, mnemonic, { reg(right, width), reg(left, width) });
+    if (op != binary_op_t::mul)
+        flagged(s, width);
 
     release(s, r.value);
 
@@ -1601,7 +1629,8 @@ binary(state_t &s, const expr_t &e)
 // read the variable first, and preserve() copies the read into a fresh
 // register before the write, movl %ebx, %eax: that copy is the value.
 // The prefix forms yield a read of the variable after the write, as a
-// compound assignment does.
+// compound assignment does.  The add or sub sets ZF from the register,
+// and a re-extension after it withdraws that (7.1).
 value_t
 step_register(state_t &s, unary_op_t op, const symbol_t *sym)
 {
@@ -1617,6 +1646,7 @@ step_register(state_t &s, unary_op_t op, const symbol_t *sym)
 
     const reg_t r = variable_register(sym);
     insn(s, sized(up ? "add" : "sub", width), { imm(amount), reg(r, width) });
+    flagged(s, width);
     if (t.width < 32)
         establish(s, sym, r);
 
@@ -1672,15 +1702,19 @@ unary(state_t &s, const unary_t &u, const type_t &t)
 {
     switch (u.op) {
     // G1: neg of INT_MIN is INT_MIN.  A borrowed read is copied into a
-    // fresh register first, movl %ebx, %eax, by writable().
+    // fresh register first, movl %ebx, %eax, by writable().  neg sets
+    // ZF from its result and not sets no flag (7.1).
     case unary_op_t::neg:
     case unary_op_t::bit_not: {
         const auto &type = integer(t);
         const int width = operation_width(t);
+        const bool negated = u.op == unary_op_t::neg;
 
         const auto v = rvalue(s, *u.arg);
-        insn(s, sized(u.op == unary_op_t::neg ? "neg" : "not", width),
+        insn(s, sized(negated ? "neg" : "not", width),
              { reg(writable(s, v, written(width, type.is_signed)), width) });
+        if (negated)
+            flagged(s, width);
 
         return v;
     }
@@ -2085,12 +2119,156 @@ rvalue(state_t &s, const expr_t &e)
     return conditional(s, e);
 }
 
+// Whether the instruction of op sets ZF from the result it computes:
+// add, sub, and, or and xor, by Intel's reference (7.1).
+bool
+flag_operator(binary_op_t op)
+{
+    switch (op) {
+    case binary_op_t::add:
+    case binary_op_t::sub:
+    case binary_op_t::bit_and:
+    case binary_op_t::bit_or:
+    case binary_op_t::bit_xor: return true;
+    default: return false;
+    }
+}
+
+// Whether a condition's top operator is one whose own instruction sets
+// ZF from the condition's value, the rows of 7.1 after the Seventh
+// Edition compiler's cctab: +, -, |, ^ and unary - on integers, & as
+// test, and +=, -=, &=, |=, ^= and a prefix ++ or -- by the form
+// effect() writes.  A pointer keeps the row of any value, since p + n,
+// p - n and p - q are lea, imul or a division; so do *, /, %, the
+// shifts, ~, a cast, *=, /=, %=, <<=, >>= and a postfix step, whose
+// value is the old one.
+bool
+flag_condition(const expr_t &e)
+{
+    if (is< pointer_t >(e.type))
+        return false;
+
+    if (is< unary_t >(e)) {
+        const auto op = as< unary_t >(e).op;
+        return op == unary_op_t::neg || op == unary_op_t::pre_inc ||
+               op == unary_op_t::pre_dec;
+    }
+
+    if (is< binary_t >(e)) {
+        const auto &b = as< binary_t >(e);
+        return !is< pointer_t >(b.lhs->type) && flag_operator(b.op);
+    }
+
+    if (is< assign_t >(e)) {
+        const auto &op = as< assign_t >(e).op;
+        return op && flag_operator(*op);
+    }
+
+    return false;
+}
+
+// The operand of e == 0 or e != 0 that is a flag condition, whose row
+// then serves the comparison, the jump's sense by the operator; nullptr
+// for any other comparison, e < 0 and the rest among them, which keep
+// the cmp, since the jump of 7.1 reads ZF alone.  The Seventh Edition
+// compiler's rcexpr() drops the 0 of any relational under cctab.
+const expr_t *
+zero_compared(const binary_t &b)
+{
+    if (b.op != binary_op_t::eq && b.op != binary_op_t::ne)
+        return nullptr;
+
+    if (!is< literal_t >(*b.rhs) || as< literal_t >(*b.rhs).value != 0)
+        return nullptr;
+
+    return flag_condition(*b.lhs) ? b.lhs.get() : nullptr;
+}
+
+// & as a condition, 7.1: test R, L, which sets the flags and writes no
+// result, so a register variable as L is read in its register and not
+// copied, testl %eax, %ebx, and a constant R is the immediate,
+// testl $1, %eax.  The operands are generated as the row of & generates
+// them, and both are consumed.  The Seventh Edition compiler's cctab
+// has the PDP-11's bit for & (cc81).
+void
+test(state_t &s, const binary_t &b, int width)
+{
+    const auto mnemonic = sized("test", width);
+
+    const auto l = rvalue(s, *b.lhs);
+    const auto r = right_operand(s, b.op, *b.rhs, width);
+
+    if (!r.immediate.empty()) {
+        insn(s, mnemonic, { r.immediate, reg(reg_of(s, l), width) });
+    }
+    else {
+        const auto [left, right] = operands(s, l, r.value);
+        insn(s, mnemonic, { reg(right, width), reg(left, width) });
+    }
+    flagged(s, width);
+
+    release(s, r.value);
+    release(s, l);
+}
+
+// A compound assignment or a prefix step as a condition, 7.1: the form
+// effect() writes for it as a statement.  On an object in memory that
+// is the memory form of 6.6, addl $1, -4(%rbp), whose instruction sets
+// ZF from the object's new value at its width, and nothing is held.  On
+// a register variable it is the operation in place, chapter 4, and the
+// variable's read is returned for the cmp when the flags are not the
+// condition's: a narrow variable is re-extended after its operation,
+// and the result of a wider operation is moved back.
+value_t
+modified(state_t &s, const expr_t &e, int width)
+{
+    effect(s, e);
+    if (s.zero_flag == width)
+        return { };
+
+    const auto &object =
+        is< assign_t >(e) ? *as< assign_t >(e).lhs : *as< unary_t >(e).arg;
+    const auto *sym = register_variable(object);
+    if (!sym)
+        throw std::logic_error("c1: a memory form as a condition set no flag");
+
+    return read(s, sym);
+}
+
+// A flag condition, 7.1: its row, then je or jne on the flags of its
+// operator's instruction, with no cmp.  The jump reads the flags of the
+// last instruction written, so it is taken bare only where the record
+// says that instruction set ZF at the condition's width; otherwise the
+// value is compared with 0, as any other condition's.
+void
+flag_branch(state_t &s, const expr_t &e, int label, bool sense)
+{
+    const int width = integer(e.type).width;
+
+    const bool steps = is< unary_t >(e) && is_step(as< unary_t >(e).op);
+
+    value_t v;
+    if (is< binary_t >(e) && as< binary_t >(e).op == binary_op_t::bit_and)
+        test(s, as< binary_t >(e), width);
+    else if (is< assign_t >(e) || steps)
+        v = modified(s, e, width);
+    else
+        v = rvalue(s, e);
+
+    if (s.zero_flag != width)
+        insn(s, sized("cmp", width), { imm(0), reg(reg_of(s, v), width) });
+    release(s, v);
+
+    jump_if(s, sense ? binary_op_t::ne : binary_op_t::eq, true, label);
+}
+
 // Jump code, chapter 7.1: a jump to label when e is true (sense) or
 // false (!sense), a fall through otherwise, and no value.  A comparison
 // is cmp and jcc; ! flips the sense; && and || are the shape of the
 // short circuit, 6.5.14p4, 6.5.15p4, the right operand not reached when
-// the left decides.  Any other scalar, a constant or a pointer
-// included, is its value compared with 0 at its own width.
+// the left decides.  A flag condition, and one compared with 0 by == or
+// !=, jumps on its operator's own flags.  Any other scalar, a constant
+// or a pointer included, is its value compared with 0 at its own width.
 void
 cbranch(state_t &s, const expr_t &e, int label, bool sense)
 {
@@ -2101,6 +2279,12 @@ cbranch(state_t &s, const expr_t &e, int label, bool sense)
 
     if (is< binary_t >(e)) {
         const auto &b = as< binary_t >(e);
+
+        if (const auto *tested = zero_compared(b)) {
+            const bool equal = b.op == binary_op_t::eq;
+            flag_branch(s, *tested, label, sense != equal);
+            return;
+        }
 
         if (is_comparison(b.op)) {
             const bool is_signed = integer(b.lhs->type).is_signed;
@@ -2134,6 +2318,11 @@ cbranch(state_t &s, const expr_t &e, int label, bool sense)
             cbranch(s, *b.rhs, label, sense);
             return;
         }
+    }
+
+    if (flag_condition(e)) {
+        flag_branch(s, e, label, sense);
+        return;
     }
 
     const int width = integer(e.type).width;
@@ -2175,7 +2364,8 @@ constant_assignment(state_t &s, const assign_t &a)
 
 // +=, -=, &=, |= and ^=: addl $5, -8(%rbp), andb %cl, (%rax).  G1, G2:
 // the low bits of the operation in int are the low bits of the
-// operation at the object's width.
+// operation at the object's width.  The instruction sets ZF from the
+// object's new value at that width (7.1).
 void
 arithmetic_on(state_t &s,
               binary_op_t op,
@@ -2188,11 +2378,13 @@ arithmetic_on(state_t &s,
     const auto r = right_operand(s, op, rhs, width);
     if (!r.immediate.empty()) {
         insn(s, mnemonic, { r.immediate, operand(s, place) });
+        flagged(s, width);
         return;
     }
 
     const reg_t right = reg_of(s, r.value, registers_of(s, place));
     insn(s, mnemonic, { reg(right, width), operand(s, place, bit(right)) });
+    flagged(s, width);
     release(s, r.value);
 }
 
@@ -2297,7 +2489,8 @@ modify(state_t &s, const assign_t &a)
 
 // ++ and -- for their effect: add $1 or sub $1 on the object at its
 // width, addq $8 for a pointer to 8 bytes, and no old value copied,
-// since nothing reads it.  A register variable's step is its prefix
+// since nothing reads it; the instruction sets ZF from the object's new
+// value at that width (7.1).  A register variable's step is its prefix
 // form, which copies no read.
 void
 modify(state_t &s, const unary_t &u)
@@ -2316,6 +2509,7 @@ modify(state_t &s, const unary_t &u)
     const auto place = address(s, *u.arg);
     insn(s, sized(up ? "add" : "sub", t.width),
          { imm(amount), operand(s, place) });
+    flagged(s, t.width);
     release(s, place);
 }
 

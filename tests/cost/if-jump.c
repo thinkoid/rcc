@@ -8,8 +8,8 @@
    break and a continue in a switch in a for; low_braced is low with the
    break in braces, which write nothing.
 
-   On x86-64 the listing must show the test of n & 1, andl $1, %eax and
-   cmpl $0, %eax, then jne .Llow.3 to the label past the while, and
+   On x86-64 the listing must show the test of n & 1, testl $1, %eax
+   (backend.md 7.1), then jne .Llow.3 to the label past the while, and
    jne .Llow_else.3 followed at once by the else part's load of s; in
    even, jne .Leven.3 to the for's step; in clamp, jge .Lclamp.2 to
    done, numbered at the goto; in early, jne .Learly.1 to the epilogue;

@@ -16,8 +16,7 @@ low:
 	cmpl	$0, %eax
 	je	.Llow.3
 	movl	-4(%rbp), %eax
-	andl	$1, %eax
-	cmpl	$0, %eax
+	testl	$1, %eax
 	jne	.Llow.3
 	movl	-4(%rbp), %eax
 	sarl	$1, %eax
@@ -49,8 +48,7 @@ low_else:
 	cmpl	$0, %eax
 	je	.Llow_else.3
 	movl	-4(%rbp), %eax
-	andl	$1, %eax
-	cmpl	$0, %eax
+	testl	$1, %eax
 	jne	.Llow_else.3
 	movl	-8(%rbp), %eax
 	addl	$1, %eax
@@ -87,8 +85,7 @@ even:
 	cmpl	%ecx, %eax
 	jge	.Leven.4
 	movl	-12(%rbp), %eax
-	andl	$1, %eax
-	cmpl	$0, %eax
+	testl	$1, %eax
 	jne	.Leven.3
 	movl	-8(%rbp), %eax
 	movl	-12(%rbp), %ecx
@@ -127,8 +124,7 @@ even_else:
 	cmpl	%ecx, %eax
 	jge	.Leven_else.4
 	movl	-12(%rbp), %eax
-	andl	$1, %eax
-	cmpl	$0, %eax
+	testl	$1, %eax
 	jne	.Leven_else.3
 	movl	-8(%rbp), %eax
 	movl	-12(%rbp), %ecx
@@ -329,8 +325,7 @@ low_braced:
 	cmpl	$0, %eax
 	je	.Llow_braced.3
 	movl	-4(%rbp), %eax
-	andl	$1, %eax
-	cmpl	$0, %eax
+	testl	$1, %eax
 	jne	.Llow_braced.3
 	movl	-4(%rbp), %eax
 	sarl	$1, %eax

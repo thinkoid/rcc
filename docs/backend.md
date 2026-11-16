@@ -134,9 +134,13 @@ Sixteen 64-bit general registers: `rax`, `rbx`, `rcx`, `rdx`,
 (`eax`, `r8d`), a 16-bit name (`ax`, `r8w`) and an 8-bit name (`al`,
 `sil`, `r8b`); a write to the 32-bit name clears the upper half, a
 write to a narrower name does not. `rsp` is the stack pointer and is
-never anything else. The flags register holds the result of the last
-`cmp`, `test` or arithmetic instruction, and the conditional
-instructions, `jcc`, `setcc`, read it.
+never anything else. The flags register describes the result of the
+last instruction that sets it, and the conditional instructions,
+`jcc`, `setcc`, read it. `cmp` and `test` set it and write no
+result; `add`, `sub`, `and`, `or`, `xor` and `neg` set it from the
+result they write. `imul` and the divisions leave ZF undefined, a
+shift by a count of 0 leaves the flags as they were, and `mov`,
+`movsx`, `movzx`, `lea` and `not` set none (7.1).
 
 Three instructions pin registers. `idiv` and `div` divide the
 128-bit pair `rdx:rax` (or `edx:eax`) by their one operand, leaving
@@ -720,6 +724,10 @@ register, a pointer's or a declared global's address from the GOT,
 - a pointer's `+=` and `-=` multiply the index by the size in a
   register first, then add it to the object or subtract it.
 
+The memory form serves a condition too, as `cctab` took `efftab`'s
+rows: `while (--n)` is `subl $1, -4(%rbp)` and a `je` on its flags,
+and `if (x += e)` the `addl` on the object and a `je` (7.1).
+
 This is the form of the operator on its operand, not a fold: the
 operation is written once, on the object, and nothing is left out.
 `*=`, `/=` and `%=` keep the right operand, then the load, the
@@ -859,6 +867,10 @@ otherwise, without producing a value:
   the second operand is not evaluated when the first decides (6.5.14p4,
   6.5.15p4).
 - `a, b`: `effect(a)`, then `cbranch(b, label, sense)` (6.6).
+- An operator whose own instruction sets the zero flag from the
+  condition's value, and `== 0` or `!= 0` over one: that instruction,
+  then `jne` or `je`, with no `cmp` (the flags of the operator's
+  instruction, below).
 - Any other expression: its value into `L` by chapter 6, `cmp $0, L`
   (or `test L, L`, the same flags), `jne` or `je`. A pointer compares
   against `$0` the same way (G9 has nothing to say about a test).
@@ -876,6 +888,95 @@ operands. The parser does not insert that promotion yet, and c1
 compares `!c` at the `char`'s width too; the result is the same, and
 the promotion is queued.
 
+**The flags of the operator's instruction.** A condition holds when
+its value compares unequal to 0, and an instruction that sets ZF from
+the result it computes has made that test: ZF is 1 exactly when the
+result is 0. So on four rows the jump follows the operator's own
+instruction, `je` or `jne` by `sense`, and no `cmp` is written:
+
+- `a + b`, `a - b`, `a | b`, `a ^ b` and `-a` on integers: the value
+  by its row of 6.3, then the jump. `if (a + b)` is `addl %ecx,
+  %eax; je .Ladd.2`.
+- `a & b`: both operands as the row of `&` generates them, then `test
+  R, L` and the jump. `test` sets the flags the `and` would and writes
+  no result, so a register variable as `L` is read in its register
+  and not copied, `testl %eax, %ebx`, and a constant is the
+  instruction's immediate, `testl $1, %eax`.
+- `x += e`, `-=`, `&=`, `|=`, `^=`, `++x` and `--x`: the form
+  `effect()` writes for the statement (6.6), then the jump. On an
+  object in memory that is the memory form, so `while (--n)` is
+  `subl $1, -4(%rbp); je .Lcount.3`, and `subb $1, -1(%rbp)` on a
+  `char`; on a register variable it is the operation in place,
+  `addl %eax, %ebx` (chapter 4). The object is read once and written
+  once, in the order of 6.6, as the value's row reads and writes it
+  (G13). A postfix step is no row: its value is the old one, which
+  the instruction's flags do not describe.
+- `e == 0` and `e != 0`, where `e` is one of these: the same code,
+  the jump's sense by the operator, so `if ((a & m) == 0)` is `testl
+  %ecx, %eax; jne`. `<`, `<=`, `>` and `>=` against 0 keep the `cmp`:
+  a jump of this rule reads ZF alone.
+
+The instruction is written at the condition's width, the width of the
+test above: `addl` for an `int`, `addq` for a `long`, the memory form
+at the object's width. Where the two differ, or where the row writes
+anything after its operator's instruction, the `cmp` stays. A
+`register char`'s step is `addl $1, %ebx` and the re-extension
+`movsbl %bl, %ebx` after it, so its test is `cmpb $0, %bl`; `x += l`
+on a `register int` and a `long l` is the operation on a 64-bit copy
+and the `mov` back, then `cmpl $0, %ebx`. A pointer keeps the `cmp`,
+since `p + n`, `p - n` and `p - q` are `lea`, `imul` or a division
+(6.3), and so do `*`, `/`, `%`, the shifts, `~`, a cast, `*=`, `/=`,
+`%=`, `<<=` and `>>=`, by the table below.
+
+c1 knows the flags as it knows the width a register is valid to
+(6.3). It keeps, for the last instruction written, the width of the
+result from which that instruction set ZF, or none. The rows state it
+after their instruction. Every instruction written after it withdraws
+it, a move of the result, a reload from a spill slot or a narrow
+value's re-extension, and so does a label, which another path may
+reach with flags of its own. `cbranch()` writes the bare jump only
+where the record holds at the condition's width, and the `cmp`
+elsewhere. A memory form under a condition has no value to compare,
+so where it leaves no record c1 stops with an error of the generator.
+
+The flags are Intel's, from the "Flags Affected" paragraph of each
+instruction in the Intel 64 and IA-32 Architectures Software
+Developer's Manual, volume 2:
+
+| Instruction | ZF, by the manual | Row |
+|---|---|---|
+| `add` | "The OF, SF, ZF, AF, CF, and PF flags are set according to the result." | `+`, `+=`, `++x` |
+| `sub` | "The OF, SF, ZF, AF, PF, and CF flags are set according to the result." | `-`, `-=`, `--x` |
+| `and`, `or`, `xor` | "The OF and CF flags are cleared; the SF, ZF, and PF flags are set according to the result." | `\|`, `^`, `&=`, `\|=`, `^=` |
+| `neg` | "The OF, SF, ZF, AF, and PF flags are set according to the result." | `-a` |
+| `test` | "The SF, ZF, and PF flags are set according to the result", the `AND` of its operands, which it does not write | `&` |
+| `imul` | "The SF, ZF, AF, and PF flags are undefined." | none: `*` and `*=` keep the `cmp` |
+| `idiv`, `div` | "The CF, OF, SF, ZF, AF, and PF flags are undefined." | none |
+| `shl`, `sar`, `shr` | "The SF, ZF, and PF flags are set according to the result. If the count is 0, the flags are not affected." | none: a count the machine masks to 0 leaves the flags of the instruction before |
+| `not`, `lea`, `mov`, `movsx`, `movzx` | "None." | none |
+| `inc`, `dec` | "The OF, SF, ZF, AF, and PF flags are set according to the result." | none: c1 writes `add $1` and `sub $1` |
+
+The rule is the Seventh Edition compiler's `cctab`, the table of its
+three that compiles a condition for the condition codes and no value
+(6.6). Its `cbranch()`, in `c11.c`, compiles a condition that is no
+`&&`, `||`, `!` or comma by `cctab` and branches on the codes.
+`rcexpr()`, in `c10.c`, drops the 0 of a relational with 0 under
+`cctab`, so `x == 0` is the code of `x` and the branch. `&` is the
+PDP-11's `bit`, the row `cc81`, under the comment `& as in "if
+((a&b)==0)"`. `cexpr()` tries `efftab` first for a condition, since
+"efftab will generate the right code unless the operator is a shift
+or postfix ++ or --", so an assignment operator's effect form and its
+codes serve. The rows `rest` write the value of `+`, `-`, `|` and
+unary `-` and branch with no `tst`, and any condition no row takes is
+its value by `regtab` and a `tst`. rcc takes the rows whose x86
+instruction leaves ZF right. It adds `^`, which `cctab` has no row
+for, and leaves out `*` and `/`, which `rest` takes; a dereference,
+which `rest` takes too, since a PDP-11 `mov` sets the codes; and `<`
+and the other relationals with 0, whose branches read more than the
+zero code. The optional peephole pass `c2` removed a `tst` of the place
+the `mov` before it wrote (`c21.c`). That is not taken: an x86 `mov`
+sets no flag, and rcc has no peephole pass.
+
 ### 7.2 Statements
 
 - `if (e) s1 else s2`: `cbranch(e, .Lelse, 0); s1; jmp .Lend;
@@ -883,7 +984,7 @@ the promotion is queued.
   `s1` is one jump, a `break`, a `continue`, a `goto L` or a `return`
   with no value, bare or alone in braces, the `if` is `cbranch(e,
   target, 1)` to that jump's target, then `s2`: no `jmp` and no label.
-  `if (n & 1) break;` is `andl $1, %eax; cmpl $0, %eax; jne .Llow.3`.
+  `if (n & 1) break;` is `testl $1, %eax; jne .Llow.3` (7.1).
   The rule is the first pass's of the Seventh Edition compiler,
   `statement()` in its `c02.c`, which takes the bare jump; rcc takes
   it in braces as well, since the braces write nothing. A `return e`

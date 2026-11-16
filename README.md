@@ -98,7 +98,10 @@ compiler's first pass wrote it, `jne .Llow.3` for `if (n & 1) break;`.
 A cast that widens a signed object in memory is the object's load,
 extending: `movslq -4(%rbp), %rax`, `ldrsw x0, [x29, #16]`, as that
 compiler's tables converted an operand in the instruction that read
-it.
+it. On x86-64 a condition whose operator's own instruction sets the
+zero flag jumps on it with no `cmp`, `testl $1, %eax; jne .Llow.3`
+for `if (n & 1) break;` and `subl $1, -4(%rbp); je` for `while
+(--n)`, as that compiler's `cctab` compiled a condition.
 An element by a
 constant index is the object's own operand, `movl table+12(%rip),
 %eax`, the constant folded into the address as that compiler

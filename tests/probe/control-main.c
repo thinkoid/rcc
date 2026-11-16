@@ -68,6 +68,17 @@ TYPES(DECLARE_TYPE)
 
 WIDE(DECLARE_KCMP_ALL)
 
+#define DECLARE_CC_VALUE(T, N, name, C) BOTH(long, cc_##name##_##N, (T, T))
+#define DECLARE_CC_OBJECT(T, N, K, O, name, C)                          \
+    BOTH(long, cc_##name##_##K##_##N, (T, T))
+#define DECLARE_CC(T, N)                                                \
+    CC_VALUES(DECLARE_CC_VALUE, T, N)                                   \
+    CC_OBJECT(DECLARE_CC_OBJECT, T, N, local, x)                        \
+    CC_OBJECT(DECLARE_CC_OBJECT, T, N, global, x)                       \
+    CC_OBJECT(DECLARE_CC_OBJECT, T, N, reg, x)
+
+TYPES(DECLARE_CC)
+
 BOTH(long, arms_mixed, (int, int, long))
 BOTH(unsigned long, arms_unsigned, (int, unsigned, long))
 BOTH(int, constant_conditions, (int))
@@ -129,6 +140,33 @@ BOTH(long, deep_long, (long, long, long, long, long, long, long, long))
     }
 
 TYPES(TEST_TYPE)
+
+/* the conditions that jump on their operator's own flags, over every
+   pair of the table: a result of 0 with and without a carry and an
+   overflow, one whose low byte or low half is 0 while the whole is not,
+   the negation of the most negative value, all ones and single bits */
+#define TEST_CC_VALUE(T, N, name, C)                                    \
+    CHECK(cc_##name##_##N, x, y, ((T) x, (T) y));
+#define TEST_CC_OBJECT(T, N, K, O, name, C)                             \
+    CHECK(cc_##name##_##K##_##N, x, y, ((T) x, (T) y));
+#define TEST_CC(T, N)                                                   \
+    static void test_cc_##N(void)                                       \
+    {                                                                   \
+        for (int i = 0; i < COUNT; ++i) {                               \
+            const long x = values[i];                                   \
+                                                                        \
+            for (int j = 0; j < COUNT; ++j) {                           \
+                const long y = values[j];                               \
+                                                                        \
+                CC_VALUES(TEST_CC_VALUE, T, N)                          \
+                CC_OBJECT(TEST_CC_OBJECT, T, N, local, x)               \
+                CC_OBJECT(TEST_CC_OBJECT, T, N, global, x)              \
+                CC_OBJECT(TEST_CC_OBJECT, T, N, reg, x)                 \
+            }                                                           \
+        }                                                               \
+    }
+
+TYPES(TEST_CC)
 
 #define TEST_KCMP(T, N, name, op, constant)                             \
     CHECK(k##N##_##name, x, 0, ((T) x));                                \
@@ -203,6 +241,8 @@ main(void)
 {
 #define RUN(T, N) test_##N();
     TYPES(RUN)
+#define RUN_CC(T, N) test_cc_##N();
+    TYPES(RUN_CC)
 
     test_constants();
     test_loops();

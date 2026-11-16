@@ -84,27 +84,32 @@ What the compiler may do:
   The extent to which `register` is effective, which 6.7.2p12 leaves
   implementation-defined and 4p10 asks to be documented, is five
   registers on x86-64 and ten on aarch64, taken by the rule above.
-- Select the machine form, by the table. On x86-64 a `+` is an
-  `add`; a 32-bit signed division is `cltd; idivl`; a comparison is
-  `cmp` and a `setcc` for a value, `cmp` and a conditional jump for a
-  condition; a subscript is the access's scaled-index address,
-  `(%rax,%rcx,4)`, and on a local array the slot is its displacement
-  off `rbp`, `-24(%rbp,%rax,4)`, with no instruction forming the
-  array's address. An object reached by its name plus a constant is
-  one operand, the constant in its displacement, `movl -20(%rbp),
-  %eax` for `a[3]` on a local `int a[8]` and `movl table+12(%rip),
-  %eax` for `table[3]` on a global the file defines, as the Seventh
-  Edition compiler's `&x+c` was (`backend.md` 6.3). Any other
-  lvalue's address plus a constant is that address with the constant
-  in its displacement, `movsbl 2(%rax,%rcx,8), %eax` for `p[i][2]` on
-  a `char (*p)[8]`, and on aarch64 where the address is a base and a
-  displacement, `ldr w0, [x0, #20]` for `p[1][2]` on an `int (*p)[3]`
-  and `add x0, x0, #20` for its address. A cast that widens a signed
-  object in memory is the object's load, extending to the cast's
-  width, `movslq -4(%rbp), %rax` for `(long) i` and `ldrsw x0, [x29,
-  #16]` on aarch64, as the Seventh Edition compiler's table converted
-  an operand in the instruction that read it (`backend.md` 6.3). The
-  form is fixed per operator and target, and listed in chapter 2.
+- Select the machine form, by the table. On x86-64 a `+` is an `add`;
+  a 32-bit signed division is `cltd; idivl`; a comparison is `cmp` and
+  a `setcc` for a value, `cmp` and a conditional jump for a condition;
+  a condition whose operator's own instruction sets the zero flag from
+  its value is that instruction and the jump on its flags, `subl $1,
+  -4(%rbp); je` for `while (--n)` and `testl $1, %eax; jne` for `if (n
+  & 1)`, as the Seventh Edition compiler's `cctab` compiled a
+  condition (`backend.md` 7.1); a subscript is the access's
+  scaled-index address, `(%rax,%rcx,4)`, and on a local array the slot
+  is its displacement off `rbp`, `-24(%rbp,%rax,4)`, with no
+  instruction forming the array's address. An object reached by its
+  name plus a constant is one operand, the constant in its
+  displacement, `movl -20(%rbp), %eax` for `a[3]` on a local `int
+  a[8]` and `movl table+12(%rip), %eax` for `table[3]` on a global the
+  file defines, as the Seventh Edition compiler's `&x+c` was
+  (`backend.md` 6.3). Any other lvalue's address plus a constant is
+  that address with the constant in its displacement, `movsbl
+  2(%rax,%rcx,8), %eax` for `p[i][2]` on a `char (*p)[8]`, and on
+  aarch64 where the address is a base and a displacement, `ldr w0,
+  [x0, #20]` for `p[1][2]` on an `int (*p)[3]` and `add x0, x0, #20`
+  for its address. A cast that widens a signed object in memory is the
+  object's load, extending to the cast's width, `movslq -4(%rbp),
+  %rax` for `(long) i` and `ldrsw x0, [x29, #16]` on aarch64, as the
+  Seventh Edition compiler's table converted an operand in the
+  instruction that read it (`backend.md` 6.3). The form is fixed per
+  operator and target, and listed in chapter 2.
 - Follow the calling convention: argument registers, the stack
   frame, callee-saved registers.
 - Align every loop head to 32 bytes on x86-64, `.p2align 5`, a
@@ -182,10 +187,11 @@ yet.
 | `a < b` and the rest, as a value | `cmpl %ecx, %eax; setl %al; movzbl %al, %eax`, `sete` for `==`; no jump | `compare` |
 | `x == x` on a `register` variable | `cmpl %ebx, %ebx`: the compare is written | `register-compare` |
 | `a < b` as a condition | `cmpl %ecx, %eax` and a jump on the inverse to the else label, `jge .Lchoose.2`; no value | `if` |
+| a condition whose operator's instruction sets the zero flag: `a + b`, `a - b`, `a \| b`, `a ^ b`, `-a`; `a & b`; `x += e`, `-=`, `&=`, `\|=`, `^=`, `++x`, `--x`; `== 0` and `!= 0` over one | the operator's instruction and `je` or `jne` on its flags, no `cmp`: `addl %ecx, %eax; je .Ladd.2`, and `negl %eax; je .Lneg.2`; `&` as `test`, no value written, `testl %ecx, %eax`, `testl $1, %eax`, and `testl %eax, %ebx` on a register variable, which is not copied; the statement's form on the object, `addl %eax, -12(%rbp)`, `addb %al, -9(%rbp)` on a `char`, `addl %eax, counter(%rip)` and `subl $1, counter(%rip)` on a global, the operation in place on a register variable, `addl %eax, %ebx`; `(a & m) == 0` is `testl %ecx, %eax; jne .Lequal_zero.2`; the `cmp` stays after `imull`, `shll %cl` and a postfix step's copy of the old value, after a `register char`'s re-extension, `movsbl %bl, %ebx; cmpb $0, %bl`, and for `(a + b) < 0`, `addl %ecx, %eax; cmpl $0, %eax; jge .Lnegative.2` (`backend.md` 7.1) | `condition-flags`, `if-jump` |
 | `a && b`, `a \|\| b` | jump code: each operand compared with 0, `cmpl $0, %eax`, and a jump, `je .Lboth.2` for `&&`, `jne` past the right operand for `\|\|`; as a value, `movl $1, %eax` and `movl $0, %eax` on the two paths | `logical` |
 | `a ? b : c` | the condition by jump code, `cmpl $0, %eax; je .Lconditional.2`, each arm into `eax`, a `jmp` past the second arm; never `cmov` | `conditional`, `select` |
 | `a, b` | no instruction of its own: `a` as the statement `a;` would be written, `addl $1, -8(%rbp)` for `i++`, then `b` as the value, the condition or the effect the comma is | `comma` |
-| `if`, `while`, `for` | the condition by jump code at the top, where it is written, blocks in the written order; a loop's head is aligned to 32 bytes, `.p2align 5` before `.Lcount.2` in `while` and `.Lsum.2` in `for`, the gap filled by the assembler with multi-byte `nop`s; a loop jumps back from its bottom, `jmp .Lcount.2` in `while`, and `for`'s step has its own label before the jump; an empty arm is still tested, `je .Lempty_if.2` to the label that follows it in `cgp`; a join that holds only the jump back stays one block; an `if` whose body is one jump, a `break`, a `continue`, a `goto` or a `return` with no value, bare or alone in braces, is the condition's jump to the jump's target, taken when the condition holds, `andl $1, %eax; cmpl $0, %eax; jne .Llow.3` for `if (n & 1) break;`, and an `else` part follows it, with no `jmp` and no label (`backend.md` 7.2) | `if`, `while`, `for`, `block-order`, `cgp`, `early-taildup`, `if-jump` |
+| `if`, `while`, `for` | the condition by jump code at the top, where it is written, blocks in the written order; a loop's head is aligned to 32 bytes, `.p2align 5` before `.Lcount.2` in `while` and `.Lsum.2` in `for`, the gap filled by the assembler with multi-byte `nop`s; a loop jumps back from its bottom, `jmp .Lcount.2` in `while`, and `for`'s step has its own label before the jump; an empty arm is still tested, `je .Lempty_if.2` to the label that follows it in `cgp`; a join that holds only the jump back stays one block; an `if` whose body is one jump, a `break`, a `continue`, a `goto` or a `return` with no value, bare or alone in braces, is the condition's jump to the jump's target, taken when the condition holds, `testl $1, %eax; jne .Llow.3` for `if (n & 1) break;`, and an `else` part follows it, with no `jmp` and no label (`backend.md` 7.2) | `if`, `while`, `for`, `block-order`, `cgp`, `early-taildup`, `if-jump` |
 | `if (0)`, `!0` | `if (0)` is a test, `movl $0, %eax; cmpl $0, %eax; je .Lnever.2`, and the body is kept; `!0` is the constant 1, folded in the parser | `zero-test` |
 | `do s while (e);` | the body first, under the loop's head, aligned to 32 bytes, `.p2align 5` before `.Lcount.2`; the condition by jump code at the bottom, where it is written, under a label of its own, and the jump back while it holds, `jl .Lcount.2`; one test an iteration; a label past the test, placed whether or not a `break` jumps to it | `do` |
 | `break`, `continue` | one `jmp` each, nothing held, `jmp .Ltally.7` for the `break` that ends a case; as an `if`'s body, the `if`'s one jump: `break` past the loop, `jg .Lsum.4`, `continue` to the condition in `while` and `do` and to the step in `for`, `je .Lsum.3` | `break-continue`, `if-jump` |
@@ -267,6 +273,7 @@ bytes or more.
 | `a < b` and the rest, as a value | `cmp w0, w1; cset w0, lt`, `cset w0, eq` for `==`; no jump | `compare` |
 | `x == x` on a `register` variable | `cmp w19, w19`: the compare is written | `register-compare` |
 | `a < b` as a condition | `cmp w0, w1` and a branch on the inverse to the else label, `b.ge .Lchoose.2`; no value | `if` |
+| a condition that x86-64 jumps on its operator's flags | the value, then the test of zero: `add w0, w0, w1; cbz w0, .Ladd.2`, `and w0, w0, #0x1` and `cbz` for `a & 1`; on an object the load, the operation and the store, then `cbz w1`; a `char`'s stale upper bits `tst w1, #0xff; b.eq`; `(a & m) == 0` the comparison, `cmp w0, #0; b.ne .Lequal_zero.2`; `cbz` and `cbnz` read no flag, so x86-64's rows have nothing to take here (`aarch64.md` 7.1) | `condition-flags` |
 | `a && b`, `a \|\| b` | jump code: each operand tested for zero in one instruction and a branch, `cbz w0, .Lboth.2` for `&&`, `cbnz w0, .Leither.4` past the right operand for `\|\|`; as a value, `mov w0, #1` and `mov w0, #0` on the two paths | `logical` |
 | `a ? b : c` | the condition by jump code, `cbz w0, .Lconditional.2`, each arm into `w0`, a `b .Lconditional.3` past the second arm; never `csel` | `conditional`, `select` |
 | `a, b` | no instruction of its own: `a` as the statement `a;` would be written, `ldr w0, [x29, #20]; add w0, w0, #1; str w0, [x29, #20]` for `i++`, then `b` as the value, the condition or the effect the comma is | `comma` |

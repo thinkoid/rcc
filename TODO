@@ -126,6 +126,36 @@ own type.
 Check: the listing of ~(long) (char) c~ is that of ~(long) c~, and
 ~(long) (char) i~ on an =int= is unchanged.
 
+** TODO ~0 == e~ keeps the compare that ~e == 0~ loses
+
+On x86-64 a condition ~e == 0~ or ~e != 0~ over an operator whose
+instruction sets the zero flag jumps on that flag (=backend.md= 7.1).
+With the constant written first, ~0 == (c & 1)~, the row of any
+comparison stands: the 0 into a register, the =andl=, the =cmpl=. The
+constant has no evaluation to order, so G13 does not ask for it; what
+asks for it is the rule that an operator's operands are written as
+the source has them (6.1).
+
+Fix: decide whether the constant on the left is taken as the one on
+the right is.
+
+Check: the listing of ~0 == (c & 1)~ agrees with the decision, pinned
+in =condition-flags=.
+
+** TODO =backend.md= chapter 13 records no call for the rules taken from the Seventh Edition's tables
+
+Chapter 13 lists the calls made in c1's design; call 7 is the effect
+context's memory forms and call 10 the switch, each credited to that
+compiler. Four rules taken from it since have no entry there: an =if=
+whose body is a jump (7.2), a widening by the load (6.3), a condition
+on its operator's flags (7.1), and an operand in memory as the
+instruction's own.
+
+Fix: a call for each, when the last of them is in the tree.
+
+Check: each of the four rules is named in chapter 13 with the section
+that states it.
+
 ** TODO =c1.cc= includes =c1-common.hh= and uses nothing of it
 
 =src/c1.cc= calls the two generators and throws =std::logic_error=
@@ -298,7 +328,9 @@ cast was made by the load. That step changes the listings of the
 programs of =tests/perf=: on x86-64 sort, strings, matmul, sieve and
 collatz as written, and matmul, sort and strings as tuned, by one to
 nine instructions each; on aarch64 collatz as written, by one. The
-times in the tables, the ratios the tl;dr draws from them and the
+jump on an operator's flags changes collatz as tuned on x86-64 again:
+its parity test is =testq $1, %r14=, where the chapter's paragraph
+quotes =andq $1, %rax= on a copy. The times in the tables, the ratios the tl;dr draws from them and the
 listings the chapter's paragraphs quote are those of the code before
 it. The steps that follow it on x86-64 change the same listings
 again.
