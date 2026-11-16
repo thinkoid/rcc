@@ -35,11 +35,27 @@ operand of a division is already generated with =rax= held out
 (=backend.md= 6.5); an index that stays held across one, and a
 divisor's own register, are not.
 
-Fix: decide whether a value that stays held while a division is
-generated, and the divisor, take a register outside =rax= and =rdx=
-from the start.
+The index is one case of a rule. Any value held while a division is
+generated takes =rax= if it came first, and the two =movq= are those
+of the pinned row =div-busy=, ~a + b / c~, which =cost.md= 2.1 gives
+as the cost of a division with =rax= and =rdx= busy. Two more moves
+follow from the first choice: the dividend, loaded into =rcx= since
+=rax= was held, moves to =rax=, and a remainder moves back from =rdx=
+into the dividend's register. A variable shift pays the same way for
+=rcx=: in ~b[i] = x << n~ the index takes =rax=, the shifted value
+takes =rcx=, and it moves out for the count, =movq %rcx, %rsi; movl
+%edx, %ecx=.
 
-Check: the listing of the statement has neither =movq=.
+Fix: decide two things. Whether a divisor is generated with =rdx=
+held out as =rax= is, which the division's own node knows and which
+no listing loses by, since a divisor in =rdx= always moves. And
+whether a node whose right operand is a division generates its left
+operand, or an assignment its place, with =rax= and =rdx= held out,
+and with =rcx= held out for a shift by a variable count; =div-busy=
+then needs a program in which the reservation cannot be met.
+
+Check: the listing of the statement has neither =movq=; with the
+second decision taken, the pins of =div-busy= have none either.
 
 ** TODO x86-64: a row's address by a constant index is read two ways
 
@@ -56,26 +72,6 @@ size, which both functions take; the bare row ~p[1]~ is then =leaq
 
 Check: one function reads the shape; the pins of =subscript-row= and
 =subscript-displacement= say which instruction a bare row is.
-
-** TODO x86-64: a loop head aligned to 32 bytes may open the second half of a 64-byte line
-
-c1 writes =.p2align 5= before every loop head on x86-64 (=cost.md=
-4.2). The code before a head still decides which half of a 64-byte
-line the head opens, and for the inner loop of
-=tests/perf/matmul-tuned.c= the half is a third of the time: 770 ms
-with the head at 0x1360, and 593 with =.p2align 6= before that one
-head in the same listing; 584 with =.p2align 6= before every head.
-The tuned matmul's ratio in the table of chapter 4 is 2.77 for it,
-where the loop's eleven instructions ran at 2.10 with the head at
-0x1380. The full probe of 4.2 compared no alignment, =.p2align 4=
-and =.p2align 5= on this target, and not =.p2align 6=.
-
-Fix: decide whether c1 writes =.p2align 6= on x86-64, by the full
-probe of 4.2 with that variant beside the three: twelve sources,
-every variant interleaved, the tuned and the plain rows.
-
-Check: =cost.md= 4.2 holds the probe's table and the decision, and
-=backend.md= 7.2 the directive.
 
 ** TODO =c1.cc= includes =c1-common.hh= and uses nothing of it
 

@@ -83,7 +83,8 @@ constexpr reg_t result_register = rax;
 // The alignment of a loop's head, as .p2align's power of two; 0 is
 // none.  The head opens a 32-byte window of the code: Zen 2 fetches 32
 // bytes a cycle, and where the head falls in its window moves a hot
-// loop's time (cost.md 4.2).
+// loop's time (cost.md 4.2).  .p2align 6 was measured and not adopted:
+// it wins one hot loop and loses another by more.
 constexpr int loop_alignment = 5;
 
 // The state of one file's generation.  Everything is reset per function,

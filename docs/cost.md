@@ -845,15 +845,56 @@ The x86-64 numbers of this chapter are thus a fact about c1's layout,
 every loop head at offset 0 of its 32-byte window, and no longer about
 where the code before a loop happens to end. The heads of the five hot
 loops of chapter 4 lie at 0x11e0 in collatz, 0x1360 in matmul, 0x1240
-in sieve, 0x1220 in sort and 0x1140 in strings' `length`. The code
-before a head still decides which half of a 64-byte line the head
-opens: the heads in collatz, matmul and sort open the second half,
-the other two the first. For matmul's inner loop the half is a third
-of the time: `rcc matmul-tuned.c` runs in 770 ms as c1 writes it, and
-in 593 with `.p2align 6` before that one head in the same listing,
-which puts the loop's 34 bytes in one line; with `.p2align 6` before
-every head it runs in 584. The least of seven runs each, on the
-machine and the day of the table.
+in sieve, 0x1220 in sort and 0x1140 in strings' `length`.
+
+The code before a head still decides which half of a 64-byte line the
+head opens: the heads in collatz, matmul and sort open the second
+half, the other two the first. Matmul's inner loop is 34 bytes, so
+from the second half it ends in the next line, and its ratio in the
+table of chapter 4 is 2.77 where the same eleven instructions, with
+the head at the start of a line, had measured 2.10. So the full probe
+was taken again with `.p2align 6` beside the three variants, on the
+machine of the table: the twelve sources as c1 compiles them now,
+the directive bare, as c1 writes it, forty-eight binaries. Fifteen
+rounds ran them interleaved, each run pinned to one core and timed in
+user plus system CPU time, the least kept, the median in parentheses,
+and the whole series ran twice; no cell moved by more than 1.2%
+between the two. The tuned rows, in ms:
+
+| program | none | `.p2align 4` | `.p2align 5` | `.p2align 6` |
+|---|---|---|---|---|
+| collatz | 663 (665) | 671 (672) | 489 (491) | 497 (500) |
+| fib | 621 (623) | 620 (623) | 619 (622) | 621 (623) |
+| matmul | 616 (618) | 651 (659) | 820 (822) | 608 (613) |
+| sieve | 581 (603) | 478 (484) | 450 (459) | 439 (461) |
+| sort | 528 (529) | 753 (753) | 525 (529) | 752 (753) |
+| strings | 649 (650) | 574 (575) | 582 (583) | 586 (588) |
+
+`.p2align 6` wins matmul by 26%, 608 ms against 820, and loses sort
+by 43%, 752 against 525. The two loops answer the same placement in
+opposite ways:
+
+- matmul's inner loop, 34 bytes, runs in 616 and 608 ms where it
+  lies whole in one 64-byte line, with no alignment and under
+  `.p2align 6`, and in 651 and 820 where it spans two;
+- sort's shift loop, 36 bytes, runs in 753 and 752 ms where it lies
+  whole in one line, under `.p2align 4` and `.p2align 6`, and in 528
+  and 525 where it spans two, from the middle of a line.
+
+Over the six rows `.p2align 5` has the least sum, 3485 ms; `.p2align
+6` lies 0.5% over it, no alignment 5.0% and `.p2align 4` 7.5%. The
+plain rows are a wash again: no variant moves one by more than 2%.
+`.p2align 6` adds up to 96 bytes to the code of a tuned program, and
+before the five hot heads its padding is 156 bytes in 17 `nop`s
+against 96 in 10. The probe pins its runs to one core, which `make
+bench` does not, and its tuned cells lie 3% to 8% over the same cells
+of chapter 4's table: the comparison is among its own columns.
+
+The decision stands: c1 writes `.p2align 5`. No variant of the four
+wins every row on this core, and `.p2align 6` gives matmul's time
+back by taking more from sort, with more padding. Alignment to 64
+bytes is thus measured on this target, not adopted, and a tuned
+ratio of chapter 4 remains a fact about one layout.
 
 On aarch64 the probe ran on two cores, a Qualcomm Oryon and the
 Firestorm core of an Apple M1 Max. It built each of the twelve sources

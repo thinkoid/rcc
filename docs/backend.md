@@ -1403,7 +1403,8 @@ five one chapter each; the answers:
 7. **The effect context takes the memory forms**, as Ritchie's
    `efftab` did: `x += 5;` is `addl $5, x` and `x++;` is `addl $1, x`.
 8. **Every loop head is aligned to 32 bytes**, `.p2align 5`, a
-   convention of the target; the measurement is `cost.md` 4.2.
+   convention of the target; the measurement is `cost.md` 4.2, where
+   64 bytes was measured too and not adopted.
 9. **A `register` variable is not kept across `longjmp`**, `volatile`
    or not. c0 drops `volatile` (`shape.md` chapter 5), so `register
    volatile int x;` is in its callee-saved register (chapter 4), and
