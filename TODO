@@ -46,16 +46,23 @@ into the dividend's register. A variable shift pays the same way for
 takes =rcx=, and it moves out for the count, =movq %rcx, %rsi; movl
 %edx, %ecx=.
 
-Fix: decide two things. Whether a divisor is generated with =rdx=
-held out as =rax= is, which the division's own node knows and which
-no listing loses by, since a divisor in =rdx= always moves. And
-whether a node whose right operand is a division generates its left
-operand, or an assignment its place, with =rax= and =rdx= held out,
-and with =rcx= held out for a shift by a variable count; =div-busy=
-then needs a program in which the reservation cannot be met.
+Fix: two rules, both decided, built after the right operand in
+memory, which rewrites the same functions.
 
-Check: the listing of the statement has neither =movq=; with the
-second decision taken, the pins of =div-busy= have none either.
+- A divisor is generated with =rdx= held out as =rax= is. The
+  division's own node knows its instruction's registers, and no
+  listing loses by it, since a divisor in =rdx= always moves. This
+  one is a defect.
+- A node whose right operand's top operator is a division generates
+  its left operand, and an assignment its place, with =rax= and
+  =rdx= held out; a shift by a variable count does the same with
+  =rcx=. A division or a shift deeper in the right operand changes
+  nothing. =div-busy= then needs a program in which the reservation
+  cannot be met, so that the moves of 6.5 stay pinned, and 6.1's
+  "nothing looks at a node's neighbours" takes the exception.
+
+Check: the listing of the statement has neither =movq=, and the pins
+of =div-busy= have none either; ~b[i] = x << n~ has no =movq=.
 
 ** TODO x86-64: a row's address by a constant index is read two ways
 
@@ -72,6 +79,36 @@ size, which both functions take; the bare row ~p[1]~ is then =leaq
 
 Check: one function reads the shape; the pins of =subscript-row= and
 =subscript-displacement= say which instruction a bare row is.
+
+** TODO A =return e= with an =else= is followed by a jump nothing reaches
+
+~if (c) return e; else s2;~ writes the condition's false exit, =e=,
+the =jmp= to the epilogue, and then a =jmp= over the else part, which
+no path reaches: the body cannot fall through. An =if= whose body is
+one jump writes none (=backend.md= 7.2), and the first pass of the
+Seventh Edition compiler writes none after a =return e= either
+(=c02.c=, =hardif=).
+
+Fix: =if_stmt()= writes no jump over the else part after a body that
+ends in a jump.
+
+Check: a cost program with ~return e; else~, pinned for both targets,
+with no =jmp= after the =jmp= to the epilogue.
+
+** TODO =backend.md= 7.2 states another rule for =main='s =movl $0= than c1 applies
+
+7.2 says =main= writes =movl $0, %eax= before the epilogue "unless
+its last statement is a =return=". c1 decides by what it last wrote:
+the instruction is left out when the last instruction is an
+unconditional jump and no label was placed after it. So a =main= that
+ends in ~goto again;~ has none, and neither has one that ends in ~if
+(c) break; else return 3;~ inside a loop's last statement, where
+nothing reaches the end either.
+
+Fix: 7.2 states the rule c1 applies, or c1 applies the stated one.
+
+Check: a cost program with a =main= ending in each shape, pinned, and
+7.2 agreeing with the pins.
 
 ** TODO =c1.cc= includes =c1-common.hh= and uses nothing of it
 
@@ -113,6 +150,38 @@ Fix: the message names the function being generated, which the
 state holds.
 
 Check: the five pins of c1's refusals in =tests/error= name =main=.
+
+** TODO =backend.md= 2.1 gives the multiply's shift to the wrong pass
+
+2.1 says of the Seventh Edition compiler: "~x * 4~ was a multiply.
+There was a =c2= that would turn some of them into shifts, and the
+programmer ran it or did not." The sources say otherwise. Its c1
+writes the shift itself: =rcexpr()= has "Try to change * to shift"
+(=c10.c=, at =case TIMES=), =pow2()= in =c11.c= makes the node a
+left shift, and =optim()= in =c12.c= does the same for an unsigned
+division and remainder by a power of two. c2 has no such rewrite; a
+=mul= is to it one more instruction that writes a register. So the
+sentence credits rcc's rule to its ancestor, which did not keep it.
+
+Fix: 2.1 says that the Seventh Edition's c1 wrote a shift for a
+multiply by a power of two, and that rcc is stricter than its
+ancestor here: the instruction is the operator's.
+
+Check: the sentence agrees with =pow2()= and with =cost.md='s row
+for ~x * 4~.
+
+** TODO =backend.md= 6.6 counts three tables in the Seventh Edition's c1
+
+6.6 opens: "Ritchie's =c1= had three tables", =regtab=, =cctab= and
+=efftab=. It has four: =sptab= is the fourth, for a value pushed on
+the stack as an argument (=c1.h=, =table.s=), with =lsptab= for a
+=long=. c1 has no counterpart of it, since an argument is a hidden
+local of its call (=design-calls.md= chapter 6), and 6.6 does not
+say so.
+
+Fix: 6.6 names the four, and says why c1 has three contexts.
+
+Check: 6.6 read against =c1.h=.
 
 ** TODO aarch64: a stack parameter at the frame's limit is refused
 

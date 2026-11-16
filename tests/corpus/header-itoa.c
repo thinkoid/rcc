@@ -25,10 +25,11 @@
    On x86-64 and on aarch64 the listing must show itoa()'s do loop, the
    body under the head's label, .Litoa.3, and the condition at the
    bottom with the jump back to it, jg .Litoa.3 on x86-64 and
-   b.gt .Litoa.3 on aarch64; trim()'s break, jmp .Ltrim.4 or
-   b .Ltrim.4, to the label past its for; and count_digits()'s
-   continue, jmp .Lcount_digits.3 or b .Lcount_digits.3, to the for's
-   step. */
+   b.gt .Litoa.3 on aarch64; trim()'s break, the body of an if, as the
+   condition's last jump, jne .Ltrim.4 or b.ne .Ltrim.4, to the label
+   past its for; and count_digits()'s continue, the body of an if on
+   ||, as both of its jumps, jl and jg .Lcount_digits.3 or b.lt and
+   b.gt .Lcount_digits.3, to the for's step. */
 #include <stdio.h>
 #include <string.h>
 

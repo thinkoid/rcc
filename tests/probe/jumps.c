@@ -5,7 +5,8 @@
    into a block and into a loop, past declarations, with register
    variables live on both sides; back into a block whose variable a
    later declaration outlives; a label before a declaration and before
-   a closing brace.  See jumps.h. */
+   a closing brace; an if whose body is one jump, each row in each loop
+   on each kind of condition.  See jumps.h. */
 
 #include "jumps.h"
 
@@ -642,3 +643,111 @@ names(int n)
 n2:
         return n2 + 1;
 }
+
+/* an if whose body is one jump, backend.md 7.2: the condition's jump to
+   the target, taken when it holds, and the else part after it.  The
+   conditions are on the pass i and the parameters a and b. */
+#define CONDITION_cmp   i > a
+#define CONDITION_land  (i & 1) && i > b
+#define CONDITION_lnot  !((i + a) & 3)
+#define CONDITION_value (i + b) & 4
+
+/* the rows: the statement in the loop's body on the condition c, but
+   for its last semicolon, which the loop writes; after the brace of the
+   switch and of the block it is an empty statement, which writes
+   nothing */
+#define STATEMENT_break(c) \
+        if (c)             \
+        break
+#define STATEMENT_break_else(c) \
+        if (c)                  \
+                break;          \
+        else                    \
+                s += 100
+#define STATEMENT_continue(c) \
+        if (c)                \
+        continue
+#define STATEMENT_continue_else(c) \
+        if (c)                     \
+                continue;          \
+        else                       \
+                s += 100
+#define STATEMENT_goto(c) \
+        if (c)            \
+        goto out
+#define STATEMENT_goto_else(c) \
+        if (c)                 \
+                goto out;      \
+        else                   \
+                s += 100
+#define STATEMENT_return(c) \
+        if (c)              \
+        return
+#define STATEMENT_return_else(c) \
+        if (c)                   \
+                return;          \
+        else                     \
+                s += 100
+#define STATEMENT_switch(c)       \
+        switch (i & 3) {          \
+        case 0:                   \
+                if (c)            \
+                        break;    \
+                s += 7;           \
+                break;            \
+        case 1:                   \
+                if (c)            \
+                        continue; \
+                s += 9;           \
+        }
+#define STATEMENT_braced(c) \
+        if (c) {            \
+                break;      \
+        }
+
+/* the loops: twelve passes at most, i counted at the top of while's and
+   do's body and by for's step, s summed past the statement.  *r holds
+   s and i after each pass, a value of its own past the loop and another
+   at out, which only a goto reaches, so a jump to the wrong place or
+   on the wrong sense shows in the result.  The function writes the
+   loop's last semicolon. */
+#define LOOP_while(statement)     \
+        i = 0;                    \
+        while (i < 12) {          \
+                i++;              \
+                statement;        \
+                s += i;           \
+                *r = s * 100 + i; \
+        }
+#define LOOP_do(statement)        \
+        i = 0;                    \
+        do {                      \
+                i++;              \
+                statement;        \
+                s += i;           \
+                *r = s * 100 + i; \
+        } while (i < 12)
+#define LOOP_for(statement)        \
+        for (i = 0; i < 12; i++) { \
+                statement;         \
+                s += i;            \
+                *r = s * 100 + i;  \
+        }
+
+/* the function of a row in a loop on a condition, named as jumps.h
+   says */
+#define IF_JUMP(row, loop, condition)                                \
+        void if_##row##_##loop##_##condition(int a, int b, int *r)   \
+        {                                                            \
+                int s = 0;                                           \
+                int i;                                               \
+                                                                     \
+                *r = -1;                                             \
+                LOOP_##loop(STATEMENT_##row(CONDITION_##condition)); \
+                *r = s * 100 + i + 10000;                            \
+                return;                                              \
+        out:                                                         \
+                *r = -(s * 100 + i);                                 \
+        }
+
+IF_JUMPS(IF_JUMP)

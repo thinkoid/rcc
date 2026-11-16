@@ -165,8 +165,7 @@ trim:
 	movslq	%ecx, %rcx
 	movsbl	(%rax,%rcx,1), %eax
 	cmpl	$10, %eax
-	je	.Ltrim.5
-	jmp	.Ltrim.4
+	jne	.Ltrim.4
 .Ltrim.5:
 .Ltrim.3:
 	subl	$1, -12(%rbp)
@@ -210,16 +209,13 @@ count_digits:
 	movslq	%ecx, %rcx
 	movsbl	(%rax,%rcx,1), %eax
 	cmpl	$48, %eax
-	jl	.Lcount_digits.6
+	jl	.Lcount_digits.3
 	movq	-8(%rbp), %rax
 	movl	-12(%rbp), %ecx
 	movslq	%ecx, %rcx
 	movsbl	(%rax,%rcx,1), %eax
 	cmpl	$57, %eax
-	jle	.Lcount_digits.5
-.Lcount_digits.6:
-	jmp	.Lcount_digits.3
-.Lcount_digits.5:
+	jg	.Lcount_digits.3
 	addl	$1, -16(%rbp)
 .Lcount_digits.3:
 	addl	$1, -12(%rbp)

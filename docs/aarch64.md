@@ -835,7 +835,10 @@ returns 0 on reaching its `}`, `mov w0, #0`.
 `do`'s condition at the bottom branches back to the body's label on
 the condition, `b.lt .Lcount.2` or `cbnz`, by jump code (7.1). `break`,
 `continue` and `goto` are each one `b`, to the label `backend.md` 7.2
-names, and a label of the source is one more label of the function. A
+names, and a label of the source is one more label of the function.
+An `if` whose body is one of them, or a `return` with no value, is the
+condition's branch to its target, by the rule of `backend.md` 7.2:
+`if (n & 1) break;` is `and w0, w0, #0x1; cbnz w0, .Llow.3`. A
 `switch` is its dispatch, 7.3, then its body, as on x86-64.
 
 **No alignment directive before a loop head**: measured, not

@@ -46,30 +46,6 @@ block_stmt(state_t &s, const block_t &b)
         statement(s, st);
 }
 
-// backend.md 7.2 and aarch64.md 7.2: the condition's false exit to the
-// else part, or past the statement without one.
-void
-if_stmt(state_t &s, const if_t &i)
-{
-    const int no = new_label(s);
-    cbranch(s, i.cond, no, false);
-
-    statement(s, *i.yes);
-
-    if (!i.no) {
-        place_label(s, no);
-        return;
-    }
-
-    const int end = new_label(s);
-    jump(s, end);
-
-    place_label(s, no);
-    statement(s, *i.no);
-
-    place_label(s, end);
-}
-
 // The directive before a loop's head, by the target's loop_alignment,
 // and nothing where that is 0.  The directive is a convention of the
 // target, as the stack's 16 bytes at a call are, not knowledge of the
@@ -344,30 +320,44 @@ switch_stmt(state_t &s, const switch_t &sw)
     place_label(s, end);
 }
 
-// A jump out of the innermost statement around it that takes a break,
-// 6.8.7.4p2.  Nothing is held at a statement's start, so the jump is
-// the whole of it.
-void
-break_stmt(state_t &s)
+// The label a break jumps to: past the innermost statement around it
+// that takes a break, 6.8.7.4p2.
+int
+break_target(const state_t &s)
 {
     if (s.jump_targets.empty())
         throw std::logic_error("c1: a break outside a loop or a switch");
 
-    jump(s, s.jump_targets.back().break_);
+    return s.jump_targets.back().break_;
 }
 
-// A jump to the continuation of the innermost loop around it,
-// 6.8.7.3p2, past any switch between.
+// A jump out of the innermost statement around it that takes a break.
+// Nothing is held at a statement's start, so the jump is the whole of
+// it.
+void
+break_stmt(state_t &s)
+{
+    jump(s, break_target(s));
+}
+
+// The label a continue jumps to: the continuation of the innermost loop
+// around it, 6.8.7.3p2, past any switch between.
+int
+continue_target(const state_t &s)
+{
+    for (auto t = s.jump_targets.rbegin(); t != s.jump_targets.rend(); ++t)
+        if (t->continue_)
+            return *t->continue_;
+
+    throw std::logic_error("c1: a continue outside a loop");
+}
+
+// A jump to the continuation of the innermost loop around it; the whole
+// of the statement, as a break is.
 void
 continue_stmt(state_t &s)
 {
-    for (auto t = s.jump_targets.rbegin(); t != s.jump_targets.rend(); ++t)
-        if (t->continue_) {
-            jump(s, *t->continue_);
-            return;
-        }
-
-    throw std::logic_error("c1: a continue outside a loop");
+    jump(s, continue_target(s));
 }
 
 // The number of a label the source names: one more label of the
@@ -429,6 +419,83 @@ return_stmt(state_t &s, const return_t &r)
     }
 
     jump(s, s.ret);
+}
+
+// The label of a statement that is one jump, backend.md 7.2: a break's,
+// a continue's, a goto's, or the epilogue's for a return with no value.
+// Nothing for any other statement, a return with a value among them,
+// whose value is code of its own.
+std::optional< int >
+target_of(state_t &s, const stmt_t &st)
+{
+    if (is< break_t >(st))
+        return break_target(s);
+    if (is< continue_t >(st))
+        return continue_target(s);
+    if (is< goto_t >(st))
+        return user_label(s, as< goto_t >(st).name);
+    if (is< return_t >(st) && !as< return_t >(st).value)
+        return s.ret;
+
+    return std::nullopt;
+}
+
+// The label an if's body jumps to when the body is one jump, bare or
+// alone in a block, whose braces write nothing.
+std::optional< int >
+body_target(state_t &s, const stmt_t &body)
+{
+    if (!is< block_t >(body))
+        return target_of(s, body);
+
+    const auto &b = as< block_t >(body).body;
+    if (b.size() != 1)
+        return std::nullopt;
+
+    return target_of(s, b.front());
+}
+
+// An if whose body is one jump, backend.md 7.2: the condition's jump to
+// the body's target, taken when it holds, and the else part after it
+// with no jump over it, as the first pass of the Seventh Edition
+// compiler writes it, c02.c.
+void
+if_jump(state_t &s, const if_t &i, int target)
+{
+    cbranch(s, i.cond, target, true);
+
+    if (i.no)
+        statement(s, *i.no);
+}
+
+// backend.md 7.2 and aarch64.md 7.2: the condition's false exit to the
+// else part, or past the statement without one, but for a body that is
+// one jump, which is if_jump()'s.
+void
+if_stmt(state_t &s, const if_t &i)
+{
+    if (const auto target = body_target(s, *i.yes)) {
+        if_jump(s, i, *target);
+        return;
+    }
+
+    const int no = new_label(s);
+    cbranch(s, i.cond, no, false);
+
+    statement(s, *i.yes);
+
+    if (!i.no) {
+        place_label(s, no);
+        return;
+    }
+
+    const int end = new_label(s);
+    jump(s, end);
+
+    place_label(s, no);
+    statement(s, *i.no);
+
+    place_label(s, end);
 }
 
 // Every value an expression statement holds is consumed by its end;

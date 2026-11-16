@@ -21,14 +21,10 @@ sum:
 	b.ge	.Lsum.4
 	ldr	w0, [x29, #24]
 	cmp	w0, #5
-	b.ne	.Lsum.5
-	b	.Lsum.3
-.Lsum.5:
+	b.eq	.Lsum.3
 	ldr	w0, [x29, #20]
 	cmp	w0, #100
-	b.le	.Lsum.6
-	b	.Lsum.4
-.Lsum.6:
+	b.gt	.Lsum.4
 	ldr	w0, [x29, #20]
 	ldr	w1, [x29, #24]
 	add	w0, w0, w1
@@ -39,19 +35,17 @@ sum:
 	str	w0, [x29, #24]
 	b	.Lsum.2
 .Lsum.4:
-.Lsum.7:
+.Lsum.5:
 	mov	w0, #1
-	cbz	w0, .Lsum.8
+	cbz	w0, .Lsum.6
 	ldr	w0, [x29, #20]
 	sub	w0, w0, #1
 	str	w0, [x29, #20]
 	ldr	w0, [x29, #20]
 	cmp	w0, #50
-	b.ge	.Lsum.9
-	b	.Lsum.8
-.Lsum.9:
-	b	.Lsum.7
-.Lsum.8:
+	b.lt	.Lsum.6
+	b	.Lsum.5
+.Lsum.6:
 	ldr	w0, [x29, #20]
 	b	.Lsum.1
 .Lsum.1:

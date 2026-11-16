@@ -15,14 +15,12 @@ count:
 	movl	-8(%rbp), %eax
 	movl	-4(%rbp), %ecx
 	cmpl	%ecx, %eax
-	jl	.Lcount.3
-	jmp	.Lcount.4
-.Lcount.3:
+	jge	.Lcount.3
 	movl	-8(%rbp), %eax
 	addl	$1, %eax
 	movl	%eax, -8(%rbp)
 	jmp	.Lcount.2
-.Lcount.4:
+.Lcount.3:
 	movl	-8(%rbp), %eax
 	jmp	.Lcount.1
 .Lcount.1:

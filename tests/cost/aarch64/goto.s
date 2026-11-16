@@ -17,14 +17,12 @@ count:
 	ldr	w0, [x29, #20]
 	ldr	w1, [x29, #16]
 	cmp	w0, w1
-	b.lt	.Lcount.3
-	b	.Lcount.4
-.Lcount.3:
+	b.ge	.Lcount.3
 	ldr	w0, [x29, #20]
 	add	w0, w0, #1
 	str	w0, [x29, #20]
 	b	.Lcount.2
-.Lcount.4:
+.Lcount.3:
 	ldr	w0, [x29, #20]
 	b	.Lcount.1
 .Lcount.1:

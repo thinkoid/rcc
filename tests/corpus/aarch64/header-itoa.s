@@ -161,8 +161,7 @@ trim:
 	ldr	w1, [x29, #24]
 	ldrb	w0, [x0, w1, sxtw]
 	cmp	w0, #10
-	b.eq	.Ltrim.5
-	b	.Ltrim.4
+	b.ne	.Ltrim.4
 .Ltrim.5:
 .Ltrim.3:
 	ldr	w0, [x29, #24]
@@ -210,15 +209,12 @@ count_digits:
 	ldr	w1, [x29, #24]
 	ldrb	w0, [x0, w1, sxtw]
 	cmp	w0, #48
-	b.lt	.Lcount_digits.6
+	b.lt	.Lcount_digits.3
 	ldr	x0, [x29, #16]
 	ldr	w1, [x29, #24]
 	ldrb	w0, [x0, w1, sxtw]
 	cmp	w0, #57
-	b.le	.Lcount_digits.5
-.Lcount_digits.6:
-	b	.Lcount_digits.3
-.Lcount_digits.5:
+	b.gt	.Lcount_digits.3
 	ldr	w0, [x29, #28]
 	add	w0, w0, #1
 	str	w0, [x29, #28]

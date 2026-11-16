@@ -841,7 +841,15 @@ the promotion is queued.
 ### 7.2 Statements
 
 - `if (e) s1 else s2`: `cbranch(e, .Lelse, 0); s1; jmp .Lend;
-  .Lelse: s2; .Lend:`. Without `else`, no `jmp` and one label.
+  .Lelse: s2; .Lend:`. Without `else`, no `jmp` and one label. When
+  `s1` is one jump, a `break`, a `continue`, a `goto L` or a `return`
+  with no value, bare or alone in braces, the `if` is `cbranch(e,
+  target, 1)` to that jump's target, then `s2`: no `jmp` and no label.
+  `if (n & 1) break;` is `andl $1, %eax; cmpl $0, %eax; jne .Llow.3`.
+  The rule is the first pass's of the Seventh Edition compiler,
+  `statement()` in its `c02.c`, which takes the bare jump; rcc takes
+  it in braces as well, since the braces write nothing. A `return e`
+  is not one jump: `e` is code of its own.
 - `while (e) s`: `.p2align 5; .Lcond: cbranch(e, .Lend, 0); s; jmp
   .Lcond; .Lend:`. The condition is at the top, where it is written,
   and tested once per iteration plus once; no rotation, no

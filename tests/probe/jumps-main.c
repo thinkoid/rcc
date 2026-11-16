@@ -132,6 +132,11 @@ BOTH(int, label_end, (int) )
 BOTH(void, clamp, (int *) )
 BOTH(int, names, (int) )
 
+#define DECLARE_IF_JUMP(row, loop, condition) \
+        BOTH(void, if_##row##_##loop##_##condition, (int, int, int *) )
+
+IF_JUMPS(DECLARE_IF_JUMP)
+
 /* the conditions of one type, over every pair of the table */
 #define TEST_TYPE(T, N)                                                    \
         static void test_##N(void)                                         \
@@ -225,6 +230,33 @@ test_loops(void)
         }
 }
 
+/* an if_ function's result: what it left in *r */
+static int
+left(void (*f)(int, int, int *), int a, int b)
+{
+        int r;
+
+        f(a, b, &r);
+
+        return r;
+}
+
+#define TEST_IF_JUMP(row, loop, condition)                  \
+        report("if_" #row "_" #loop "_" #condition, a, b,   \
+               left(if_##row##_##loop##_##condition, a, b), \
+               left(ref_if_##row##_##loop##_##condition, a, b));
+
+/* every row of an if whose body is one jump, over a and b from -3 to
+   14, which take each condition both ways at some pass of the twelve */
+static void
+test_if_jumps(void)
+{
+        for (int a = -3; a < 15; ++a)
+                for (int b = -3; b < 15; ++b) {
+                        IF_JUMPS(TEST_IF_JUMP)
+                }
+}
+
 int
 main(void)
 {
@@ -233,6 +265,7 @@ main(void)
 
         test_constants();
         test_loops();
+        test_if_jumps();
 
         printf("%ld checks, %ld differ\n", total, bad);
 
