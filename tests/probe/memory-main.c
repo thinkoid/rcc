@@ -335,6 +335,13 @@ TYPES(DECLARE_OPERANDS)
 
 PINNED_TYPES(DECLARE_PINNED_ALL)
 
+#define DECLARE_DIVIDEND(T, N)                                          \
+    BOTH(long, rd_diff_##N, (T *, T *, long, long))                     \
+    BOTH(long, rd_div_##N, (T, T, T, T, T))                             \
+    BOTH(long, rd_rem_##N, (T, T, T, T, T))
+
+WIDE(DECLARE_DIVIDEND)
+
 BOTH(long, text_pass, (void))
 BOTH(long, text_two, (void))
 BOTH(long, text_escapes, (void))
@@ -791,6 +798,35 @@ TYPES(TEST_OPERANDS)
 
 PINNED_TYPES(TEST_PINNED_ALL)
 
+/* a dividend that arrives in rdx, of one type, over pairs of the
+   table: x the divisor, kept from 0 and -1, y and z the other
+   operands; p is P(T) plus n elements, 0 to 3, and q is P(T) */
+#define TEST_DIVIDEND_ALL(T, N)                                         \
+    static void test_dividend_##N(void)                                 \
+    {                                                                   \
+        for (int j = 0; j < COUNT; ++j) {                               \
+            const long x = values[j];                                   \
+                                                                        \
+            if (!DIVISOR(T, x))                                         \
+                continue;                                               \
+                                                                        \
+            for (int i = 0; i < COUNT; ++i) {                           \
+                const long y = values[i];                               \
+                const long z = values[(i * 5 + j + 1) % COUNT];         \
+                const int at = offsets[(i + j) % OFFSETS];              \
+                const int n = (i + j) & 3;                              \
+                                                                        \
+                MCHECK(rd_diff_##N, x, y, at, (P(T) + n, P(T), y, z));  \
+                CHECK(rd_div_##N, x, y,                                 \
+                      ((T) y, (T) x, (T) z, (T) (y ^ z), (T) x));       \
+                CHECK(rd_rem_##N, x, y,                                 \
+                      ((T) y, (T) x, (T) z, (T) (y ^ z), (T) x));       \
+            }                                                           \
+        }                                                               \
+    }
+
+WIDE(TEST_DIVIDEND_ALL)
+
 /* the literals, the frames of one function each, and depth */
 static void
 test_rest(void)
@@ -864,6 +900,9 @@ main(void)
 
 #define RUN_PINNED(T, N) test_pinned_##N();
     PINNED_TYPES(RUN_PINNED)
+
+#define RUN_DIVIDEND(T, N) test_dividend_##N();
+    WIDE(RUN_DIVIDEND)
 
     test_rest();
 

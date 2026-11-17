@@ -1102,6 +1102,23 @@ TYPES(BUSY)
 
 PINNED_TYPES(PINNED_ALL)
 
+/* A dividend that arrives in rdx on x86-64: rax and rcx hold values
+   when it is loaded, so it takes rdx, and the division moves it to
+   rax, where the quotient stays, backend.md 6.5.  A pointer difference
+   after a held product and a held sum, rd_diff_; a dividend beside a
+   quotient held in rax and its sibling held in rcx, rd_div_, and the
+   same for a remainder, which stays in rdx, rd_rem_.  p is q plus 0
+   to 3 elements in the main's buffer. */
+#define DIVIDEND(T, N)                                                  \
+    long rd_diff_##N(T *p, T *q, long a, long b)                        \
+    {                                                                   \
+        return a * 3 + (b + (p - q));                                   \
+    }                                                                   \
+    long rd_div_##N(T a, T b, T c, T d, T e) { return a / b + (c + d / e); } \
+    long rd_rem_##N(T a, T b, T c, T d, T e) { return a / b + (c + d % e); }
+
+WIDE(DIVIDEND)
+
 /* A condition on an object in memory, on x86-64 the cmp or test of the
    object itself, backend.md 7.1: compared with a constant on either
    side, kt_ and ktl_, through the main's pointer, and as a global the

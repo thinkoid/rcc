@@ -109,8 +109,7 @@ div_held:
 	movl	%edx, %eax
 	cltd
 	idivl	40(%rbp)
-	movl	%eax, %edx
-	addl	%edx, %ecx
+	addl	%eax, %ecx
 	addl	%ecx, %r11d
 	addl	%r11d, %r10d
 	addl	%r10d, %r9d

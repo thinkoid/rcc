@@ -1292,11 +1292,20 @@ held_in(const state_t &s, value_t v)
 // The register a division's dividend is in once rax and rdx are
 // vacated, chapter 6.5: the one it is held in, or rax for a dividend
 // spilled, which is reloaded there and not into another register to be
-// moved again.
+// moved again.  A dividend held in rdx, which the division overwrites,
+// moves to rax for a quotient by the mov idiv() writes in any case, so
+// that L is rax and the quotient stays where idiv leaves it; for a
+// remainder L is rdx, where idiv leaves it.
 reg_t
-dividend(state_t &s, value_t l)
+dividend(state_t &s, value_t l, binary_op_t op, int width)
 {
-    return reg_of(s, l, ~bit(rax));
+    const reg_t r = reg_of(s, l, ~bit(rax));
+    if (r != rdx || op != binary_op_t::div)
+        return r;
+
+    move(s, rdx, rax, width);
+
+    return rax;
 }
 
 // The pinned pair of a division by a held divisor, chapter 6.5: nothing
@@ -1305,9 +1314,10 @@ dividend(state_t &s, value_t l)
 // held there, and a dividend spilled is reloaded into rax.  Both values
 // are still held after idiv(), the dividend in L, the register
 // returned.  A register variable as the dividend is moved to rax and as
-// the divisor is the operand of idiv.
+// the divisor is the operand of idiv.  op is the result the caller
+// takes, / or %, which dividend() reads.
 reg_t
-pin_division(state_t &s, value_t l, value_t r, const int_t &t)
+pin_division(state_t &s, binary_op_t op, value_t l, value_t r, const int_t &t)
 {
     const unsigned pinned = bit(rax) | bit(rdx);
     const unsigned in = held_in(s, l);
@@ -1323,7 +1333,7 @@ pin_division(state_t &s, value_t l, value_t r, const int_t &t)
         if (!(in & bit(p)))
             vacate(s, p, pinned | in | bit(right));
 
-    const reg_t left = dividend(s, l);
+    const reg_t left = dividend(s, l, op, t.width);
     idiv(s, left, reg(right, t.width), t);
 
     return left;
@@ -1337,7 +1347,11 @@ pin_division(state_t &s, value_t l, value_t r, const int_t &t)
 // reloaded into rax after them.  The dividend is held in L, the
 // register returned, and the address is the caller's to free.
 reg_t
-pin_division(state_t &s, value_t l, const address_t &divisor, const int_t &t)
+pin_division(state_t &s,
+             binary_op_t op,
+             value_t l,
+             const address_t &divisor,
+             const int_t &t)
 {
     const unsigned pinned = bit(rax) | bit(rdx);
     const unsigned in = held_in(s, l);
@@ -1346,7 +1360,7 @@ pin_division(state_t &s, value_t l, const address_t &divisor, const int_t &t)
         if (!(in & bit(p)))
             vacate(s, p, pinned | in | registers_of(s, divisor));
 
-    const reg_t left = dividend(s, l);
+    const reg_t left = dividend(s, l, op, t.width);
     idiv(s, left, operand(s, divisor, pinned | bit(left)), t);
 
     return left;
@@ -1364,8 +1378,8 @@ divide(state_t &s, binary_op_t op, value_t l, const right_t &r, const int_t &t)
 {
     const int width = t.width;
 
-    const reg_t left = r.place ? pin_division(s, l, *r.place, t) :
-                                 pin_division(s, l, r.value, t);
+    const reg_t left = r.place ? pin_division(s, op, l, *r.place, t) :
+                                 pin_division(s, op, l, r.value, t);
 
     const reg_t result = op == binary_op_t::div ? rax : rdx;
 
@@ -3044,7 +3058,7 @@ std::pair< value_t, value_t >
 divided(state_t &s, value_t v, const expr_t &tabs, int width)
 {
     const auto d = rvalue_avoiding(s, tabs, bit(rax) | bit(rdx));
-    pin_division(s, v, d, int_t { width, false });
+    pin_division(s, binary_op_t::div, v, d, int_t { width, false });
 
     release(s, d);
     release(s, v);

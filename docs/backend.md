@@ -864,9 +864,13 @@ generator's map of which value is in which register is updated and
 nothing else cares. Every instruction written is a real move of a
 real value and shows in the listing; the cost model's row for a
 division with `rax` and `rdx` busy says what it costs (`div-busy`).
-The remainder's move from `rdx` into the dividend's register, and the
-quotient's when the dividend is not in `rax`, are 6.1's "the result
-is `L`", and the rules do not remove them.
+A dividend found in `rdx`, which the division overwrites, moves to
+`rax` for a quotient, by the `mov` the division writes in any case,
+and `rax` is then its register, so the quotient stays where the
+instruction leaves it (`div-busy`'s `div_held`). The remainder's move
+from `rdx` into the dividend's register, and the quotient's when the
+dividend is in neither `rax` nor `rdx`, are 6.1's "the result is
+`L`", and the rules do not remove them.
 
 A divisor that is an object in memory is the division's operand,
 `idivl -8(%rbp)` (6.1). The registers of its address, a base and an

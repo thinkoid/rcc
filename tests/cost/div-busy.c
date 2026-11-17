@@ -21,8 +21,10 @@
    and the adds.  div_held must show a to g in ecx, esi, edi and r8d to
    r11d, x in eax and y in edx, then, no register being free, a spilled,
    movq %rcx, -32(%rbp), x moved into a's register, movq %rax, %rcx, y
-   moved into eax, cltd, idivl 40(%rbp), the quotient moved back,
-   movl %eax, %edx, and a reloaded for its add, movq -32(%rbp), %rcx.
+   moved into eax, which is then y's register, since the division
+   overwrites edx, cltd, idivl 40(%rbp), the quotient added where idiv
+   left it, addl %eax, %ecx, and a reloaded for its add,
+   movq -32(%rbp), %rcx.
 
    On aarch64 the listing is the division on the registers the loads
    took, a in w0, b in w1 and c in w2: sdiv w1, w1, w2 in div_busy(),
