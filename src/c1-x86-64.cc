@@ -1775,16 +1775,19 @@ pointer_operation(
 // The subq of p - q on the held p, l, and q generated after it: an
 // object in memory of 64 bits as q is the instruction's own operand,
 // subq -16(%rbp), %rax (backend.md 6.1), whatever the size, since the
-// difference of the addresses is taken before its division.
+// difference of the addresses is taken before its division.  q, or the
+// address of its object, is generated with the registers in pinned left
+// for last, rax and rdx when a division follows, as a divisor is
+// (chapter 6.5), so the copy of a register variable as p takes rax.
 void
-subtract_pointer(state_t &s, value_t l, const expr_t &q)
+subtract_pointer(state_t &s, value_t l, const expr_t &q, unsigned pinned)
 {
     if (const auto *object = memory_operand(q, 64)) {
-        from_memory(s, "subq", l, address(s, *object), 64, 64);
+        from_memory(s, "subq", l, address_avoiding(s, *object, pinned), 64, 64);
         return;
     }
 
-    const auto r = rvalue(s, q);
+    const auto r = rvalue_avoiding(s, q, pinned);
     const reg_t right = operands(s, l, r).second;
     const reg_t left = writable(s, l, 64, bit(right));
     insn(s, "subq", { reg(right, 64), reg(left, 64) });
@@ -1795,21 +1798,22 @@ subtract_pointer(state_t &s, value_t l, const expr_t &q)
 // p - q, 6.5.7p10: the difference of the addresses divided by the size,
 // a long.  G6: a division, idivq by the size held in a register, not a
 // shift, since the two pointers are any two addresses; a size of 1 is
-// the subq alone.  The size is taken with rax and rdx reserved, as any
-// divisor is (chapter 6.5).
+// the subq alone.  q and the size are taken with rax and rdx reserved,
+// as any divisor is (chapter 6.5), so the difference is in rax when rax
+// is free, and the quotient stays there.
 value_t
 difference(state_t &s, const binary_t &b)
 {
     const long size = stride(b.lhs->type);
+    const unsigned pinned = size != 1 ? bit(rax) | bit(rdx) : 0;
 
     const auto l = rvalue_avoiding(s, *b.lhs, pinned_by(*b.rhs));
-    subtract_pointer(s, l, *b.rhs);
+    subtract_pointer(s, l, *b.rhs, pinned);
 
     if (size == 1)
         return l;
 
-    const unsigned reserved =
-        std::exchange(s.reserved, s.reserved | bit(rax) | bit(rdx));
+    const unsigned reserved = std::exchange(s.reserved, s.reserved | pinned);
     const auto d = fresh(s, 64);
     s.reserved = reserved;
 

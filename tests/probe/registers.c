@@ -603,6 +603,36 @@ SCALARS(PDEST)
     }
 POINTEES(ADEST)
 
+/* p - q with a register variable on the left, x86-64, backend.md 6.5:
+   at a size other than 1 the right operand is generated outside rax
+   and rdx, as a divisor is.  The right operand a parameter, an object
+   reached through a pointer, another register variable, an element by
+   a variable index, an element by an index that divides, a call's
+   result; the left operand the variable's read and an assignment's
+   value; a quotient held across the difference, and a remainder of
+   it.  Each pointee: sizes 1, 4, 8 and 12. */
+
+#define ADIFF(E, T)                                                     \
+    T *apick_##E(T *p, long i) { return p + (i & 7); }                  \
+    long adiff_##E(T *base, long i, int j)                              \
+    {                                                                   \
+        T *s = base + (j & 7);                                          \
+        T **pp = &s;                                                    \
+        register T *q = base + i;                                       \
+        register T *w = base - 2;                                       \
+        long r;                                                         \
+        r = q - base;                                                   \
+        r = r * 7 + (q - *pp);                                          \
+        r = r * 7 + (q - w);                                            \
+        r = r * 7 + (q - &base[j]);                                     \
+        r = r * 7 + (q - &base[i / 3]);                                 \
+        r = r * 7 + (q - apick_##E(base, i));                           \
+        r = r * 7 + ((q = &base[j]) - &base[i]);                        \
+        r = r * 7 + (i / (j | 1) + (q - &s[1]));                        \
+        return r * 7 + (q - s) % 5;                                     \
+    }
+POINTEES(ADIFF)
+
 /* A register pointer to a function: the address of a function the
    unit defines, and of one it only declares, from the GOT. */
 long

@@ -157,29 +157,36 @@ to that rule compute the value elsewhere and move it:
 - x86-64, ~r = !x~, which ends =sete %al; movzbl %al, %eax; movl
   %eax, %ebx= as a comparison's value did.
 
-Fix: decide each.
+Fix: the first two take the variable's register as their
+destination: the aarch64 address in two instructions, with the
+rule's wording made "the row writes its destination only after it
+has read every operand", and a conversion of signedness alone, read
+and computed. A conversion that narrows is not among them: its last
+instruction is the extension and already writes the variable, and a
+load at the variable's width would read the object narrower than its
+type (G10). Decide the last three.
 
 Check: a function of =register-destination= for each, agreeing with
 its decision.
 
-** TODO x86-64: ~p - q~ on a register variable moves its dividend three times
+** TODO x86-64: a register variable's copy is made where its consumer does not want it
 
-A pointer difference at a size other than 1 is the =subq= and a
-division by the size. With a =register= variable on the left, the
-variable is copied for the =subq= into the lowest free register,
-which is not =rax= when the right operand is already there, and the
-division moves the difference into =rax=, the quotient back and then
-out again: ~return q - a;~ on a ~register int *q~ is ten
-instructions where ~return s - a;~ on a local is seven. The value of
-an assignment as the left operand, ~(q = &a[1]) - a~, takes the same
-path.
+A =register= variable read as the left operand of an instruction
+that writes its result is copied into the lowest free register. When
+the right operand has taken =rax=, the copy is in =rcx= or =rdx= and
+a =return= moves the result back: ~return q - chars;~ on a ~register
+char *q~ is =leaq chars(%rip), %rax; movq %rbx, %rcx; subq %rax,
+%rcx; movq %rcx, %rax=, four instructions where a local takes three,
+and ~return r - p[i];~ on a ~register int r~ ends =movl %ebx, %edx;
+subl (%rax,%rcx,4), %edx; movl %edx, %eax=.
 
-Fix: the right operand of the difference is generated outside =rax=
-and =rdx= when the size is not 1, as a divisor is (=backend.md=
-6.5), so the copy of the left operand is in =rax=.
+Fix: decide whether the copy takes the register its consumer names,
+as a =register= variable is the destination of its value
+(=backend.md= chapter 4). The second arm of ~?:~ and an extension
+moved after are entries of the same kind.
 
-Check: ~return q - a;~ pinned with =movq %rbx, %rax=, the =subq=,
-the size, =cqto=, =idivq= and no move after.
+Check: the count over =tests= of such a copy followed by a move into
+=rax=, before and after; =ptr-diff='s =register_char= pinned.
 
 ** TODO x86-64: ~p += n~ on a register pointer is a =leaq= elsewhere and a =mov=
 
@@ -379,24 +386,6 @@ on.
 
 Check: every cell of those tables and lists is of a run made after
 the last change to its listing.
-
-** TODO x86-64: the 32-byte alignment of a loop head leads by one row
-
-c1 writes =.p2align 5= before every loop head (=backend.md= 7.2,
-chapter 13, call 8). In the probe of =cost.md= 4.2 it has the least
-sum over the six tuned rows, 3313 ms against 3483 to 3517, and the
-whole margin is sort's: its 33-byte shift loop runs in 528 ms where
-it spans two 64-byte lines from offset 32, which =.p2align 5= happens
-to give it, and in 752 where it lies in one. Without that row no
-alignment, =.p2align 4= and =.p2align 6= each sum less than
-=.p2align 5=, in both series.
-
-Fix: decide whether the alignment stays for the layout it fixes, a
-loop head at offset 0 of its window whatever the code before it, or
-goes.
-
-Check: the decision's sentence in 4.2 and in call 8 names the reason
-the numbers support.
 
 ** TODO =slot.md= says a round trip costs "at least six times" the loop
 

@@ -196,7 +196,8 @@ SCALARS(DECLARE_PDEST)
 
 #define DECLARE_ADEST(E, T)                                             \
     BOTH(long, adest_##E, (void *, long, int))                          \
-    BOTH(long, iadest_##E, (void *, long))
+    BOTH(long, iadest_##E, (void *, long))                              \
+    BOTH(long, adiff_##E, (void *, long, int))
 
 POINTEES(DECLARE_ADEST)
 
@@ -414,14 +415,17 @@ test_converts(void)
 }
 
 /* the register pointers at every index, on B and on B + 5; the address
-   rows at every pair of indexes, on B and on B + 5 */
+   rows and p - q on a register pointer at every pair of indexes, on B
+   and on B + 5 */
 #define TEST_PDEST(E, T)                                                \
     MCHECK(pdest_##E, k, 0, (B, k));                                    \
     MCHECK(pdest_##E, k, 5, (B + 5, k));
 #define TEST_ADEST(E, T)                                                \
     MCHECK(adest_##E, k, m, (B, k, m));                                 \
     MCHECK(adest_##E, k, m, (B + 5, k, m));                             \
-    MCHECK(iadest_##E, k, 0, (B, k));
+    MCHECK(iadest_##E, k, 0, (B, k));                                   \
+    MCHECK(adiff_##E, k, m, (B, k, m));                                 \
+    MCHECK(adiff_##E, k, m, (B + 5, k, m));
 
 static void
 test_pointer_destinations(void)

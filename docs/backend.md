@@ -879,6 +879,17 @@ instruction knows its registers:
 
 - a divisor is generated with `rax` and `rdx` reserved, and so is
   the address of a divisor in memory, its base and its index;
+- the right operand of `p - q` at a size other than 1, which the
+  `subq` takes before the division, is generated with `rax` and `rdx`
+  reserved, as a divisor is, and so is the address of an object in
+  memory as `q`; a register variable as `p` is then copied into
+  `rax`, the dividend's register, and nothing moves after the
+  division: `return q - ints;` on a `register int *q` and a global
+  array is `leaq ints(%rip), %rcx; movq %rbx, %rax; subq %rcx, %rax;
+  movq $4, %rcx; cqto; idivq %rcx` (`ptr-diff`). At a size of 1 there
+  is no division and nothing is reserved. A power of two is no
+  exception: the size is a divisor of `idivq` at 2, 4 and 8 too
+  (6.3);
 - the left operand of a shift by a variable count is generated with
   `rcx` reserved, so that the count finds it; the count is generated
   with `rax` reserved, in the value and the effect context alike, and
