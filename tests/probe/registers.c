@@ -429,6 +429,51 @@ TYPES(DEST_ALL)
 
 TYPES(DEST_OTHER)
 
+/* A truth value widened, backend.md 6.3's width rule: the value 0 or 1
+   of a comparison, of ! and of && and ||, valid to 64 bits signed and
+   unsigned.  Converted to long and to unsigned long, used as an index,
+   added to a long, shifted and negated as a long, assigned to a
+   register long and to a register unsigned long, and stored to a long
+   through a pointer.  The operands of each type. */
+#define TRUTH(T, N)                                                     \
+    long truth_##N(T a, T b)                                            \
+    {                                                                   \
+        T s = b;                                                        \
+        long w = 11;                                                    \
+        long *p = &w;                                                   \
+        long v[2];                                                      \
+        register long l;                                                \
+        register unsigned long u;                                       \
+        long r;                                                         \
+        v[0] = 3;                                                       \
+        v[1] = 5;                                                       \
+        r = (long) (a < s);                                             \
+        r = r * 7 + (unsigned long) (s >= a);                           \
+        r = r * 7 + (long) !a;                                          \
+        r = r * 7 + (unsigned long) !s;                                 \
+        r = r * 7 + (long) (a && s);                                    \
+        r = r * 7 + (unsigned long) (a || s);                           \
+        r = r * 7 + v[a == s];                                          \
+        r = r * 7 + w + (a != s);                                       \
+        r = r * 7 + ((long) (a < s) << 40);                             \
+        r = r * 7 - (long) (a > s);                                     \
+        l = a < s;                                                      \
+        r = r * 7 + l;                                                  \
+        l = !a;                                                         \
+        r = r * 7 + l;                                                  \
+        l = a && s;                                                     \
+        r = r * 7 + l;                                                  \
+        u = a > s;                                                      \
+        r = r * 7 + u;                                                  \
+        u = a || s;                                                     \
+        r = r * 7 + u;                                                  \
+        *p = a <= s;                                                    \
+        r = r * 7 + w;                                                  \
+        return r * 7 + l * 3 + u * 5;                                   \
+    }
+
+TYPES(TRUTH)
+
 /* a load into a register variable of every other type, from a
    parameter, a local, through a pointer and from a global, by the
    initializer and by the assignment */

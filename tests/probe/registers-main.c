@@ -168,7 +168,9 @@ TYPES(DECLARE_TYPE)
     BOTH(long, load_##N, (long, long)) BOTH(long, iload_##N, (long, long)) \
     OPERATORS(DECLARE_DEST, T, N)                                       \
     DIVISIONS(DECLARE_DEST_DIVISION, T, N)                              \
-    SHIFTS(DECLARE_DEST_SHIFT, T, N) BOTH(long, dother_##N, (long, long))
+    SHIFTS(DECLARE_DEST_SHIFT, T, N)                                    \
+    BOTH(long, dother_##N, (long, long))                                \
+    BOTH(long, truth_##N, (long, long))
 
 TYPES(DECLARE_DESTINATIONS)
 
@@ -392,6 +394,7 @@ SCALARS(TEST_POINTER)
                 OPERATORS(TEST_DEST, T, N)                              \
                 DIVISIONS(TEST_DEST_DIVISION, T, N)                     \
                 CHECK(dother_##N, x, y, (x, y));                        \
+                CHECK(truth_##N, x, y, (x, y));                         \
             }                                                           \
         }                                                               \
     }

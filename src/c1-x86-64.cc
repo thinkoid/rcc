@@ -1823,6 +1823,13 @@ difference(state_t &s, const binary_t &b)
                   int_t { 64, true });
 }
 
+// The width a truth value is valid to, the value of a comparison, of !
+// and of && and ||, written by movzbl or by movl of the constant: the
+// 32-bit write clears the upper half, and 0 and 1 extend alike by
+// either signedness, so the 64 bits are the value (6.3, the width
+// rule).
+constexpr int truth_valid = 64;
+
 // The condition code of a comparison, the suffix of jcc and setcc:
 // signed or unsigned by the operands' type, which the parser's
 // conversions made common; a pointer's is unsigned, G7.
@@ -1952,12 +1959,13 @@ jump_if(state_t &s, binary_op_t op, bool is_signed, int label)
 }
 
 // A comparison as a value: cmp, setcc into the low byte of L, movzbl
-// to the int the operator yields.  A register variable as L is only
-// read by the cmp, and an object in memory compared in place is read by
-// it (compared()); the setcc then takes a fresh register.  Handed a
-// register variable, the setcc and the movzbl write its register,
-// setl %bl; movzbl %bl, %ebx: the cmp has read both operands before
-// either writes, the variable among them (chapter 4).
+// to the int the operator yields, valid to 64 bits, truth_valid.  A
+// register variable as L is only read by the cmp, and an object in
+// memory compared in place is read by it (compared()); the setcc then
+// takes a fresh register.  Handed a register variable, the setcc and
+// the movzbl write its register, setl %bl; movzbl %bl, %ebx, an int's,
+// a long's and an unsigned long's: the cmp has read both operands
+// before either writes, the variable among them (chapter 4).
 value_t
 comparison(state_t &s, const compared_t &b, into_t *into = nullptr)
 {
@@ -1965,7 +1973,7 @@ comparison(state_t &s, const compared_t &b, into_t *into = nullptr)
     const auto set = std::format("set{}", condition(b.op, is_signed));
 
     auto l = compared(s, b);
-    if (takes(into, 32)) {
+    if (takes(into, truth_valid)) {
         release(s, l);
 
         const reg_t r = variable_register(into->variable);
@@ -1984,12 +1992,13 @@ comparison(state_t &s, const compared_t &b, into_t *into = nullptr)
 
     insn(s, set, { reg(r, 8) });
     insn(s, "movzbl", { reg(r, 8), reg(r, 32) });
-    wrote(s, l, 32, true);
+    s.values[l.id].valid = truth_valid;
 
     return l;
 }
 
-// &&, || and ?: as a value: jump code into one register on both paths.
+// && and || as a value: jump code into one register on both paths,
+// movl $1 and movl $0, the value valid to 64 bits, truth_valid.
 // before_paths() first gives every held value one location on both, so
 // the paths leave the register map as they found it whatever their
 // operands do.
@@ -2003,7 +2012,7 @@ logical(state_t &s, const expr_t &e)
 
     cbranch(s, e, no, false);
 
-    const auto v = fresh(s, 32);
+    const auto v = fresh(s, truth_valid);
     const reg_t r = reg_of(s, v);
 
     constant(s, r, 1, 32);
@@ -2549,7 +2558,8 @@ unary(state_t &s, const unary_t &u, const type_t &t, into_t *into = nullptr)
 
     // as a value; the operand is not promoted, so it is compared at its
     // own width.  A register variable is read by the cmp, and the sete
-    // takes a fresh register, as for a comparison.
+    // takes a fresh register, as for a comparison; the value is valid
+    // to 64 bits, truth_valid.
     case unary_op_t::log_not: {
         const int width = integer(u.arg->type).width;
         auto v = rvalue(s, *u.arg);
@@ -2563,7 +2573,7 @@ unary(state_t &s, const unary_t &u, const type_t &t, into_t *into = nullptr)
         const reg_t r = reg_of(s, v);
         insn(s, "sete", { reg(r, 8) });
         insn(s, "movzbl", { reg(r, 8), reg(r, 32) });
-        wrote(s, v, 32, true);
+        s.values[v.id].valid = truth_valid;
         return v;
     }
 

@@ -301,9 +301,10 @@ declaration's initializer is the same.
 - A comparison's value is set in the register after the `cmp`, `setl
   %bl; movzbl %bl, %ebx`. The `cmp` has read both operands, the
   variable among them, `r = r < y`, before either instruction writes.
-  The `movzbl` leaves the value valid to 32 bits, so the variable is
-  an `int`; a `long` or an `unsigned` keeps the `mov` after the
-  conversion.
+  The `movzbl` leaves 0 or 1, valid to 64 bits (6.3), so the variable
+  is an `int`, a `long` or an `unsigned long`; an `unsigned` or a
+  narrow variable keeps the `mov` after the conversion, as for a
+  load.
 - An operation is computed in the register: `r = a + b` is `a`
   loaded into it and the instruction written on it, `movl -12(%rbp),
   %ebx; addl -16(%rbp), %ebx`. The operators are the rows of two
@@ -776,7 +777,11 @@ signedness. The instruction that wrote the register sets it:
 - a call's result is valid to its own type's width: 8 for a `char`,
   16 for a `short`, 32 for an `int` or an `unsigned`, 64 for a
   `long` or a pointer, since the ABI leaves the bits above a result
-  unspecified (3.2).
+  unspecified (3.2);
+- a truth value, the 0 or 1 of a comparison, of `!` and of `&&` and
+  `||`, is valid to 64: `movzbl` and the `movl $1` and `movl $0` of
+  the jump code clear the upper half, and 0 and 1 extend alike by
+  either signedness.
 
 A widening cast writes its `movs` or `movz` only when the value is
 not already valid to the new width: `(int) c` after the load of `c`
@@ -811,8 +816,9 @@ cast's width. An unsigned object needs no such load: `movl` and
 was loaded extended already. A register variable is no object in
 memory, so its read is extended into a fresh register, `movslq %ebx,
 %rax`. A cast over any other operand, a call's result, an arithmetic
-value, a comparison or another cast, extends the value in its register
-by the width rule.
+value or another cast, extends the value in its register by the width
+rule. A truth value needs no extension: `(long) (a < b)` and
+`(unsigned long) !x` write nothing after the `movzbl`.
 
 The rule is the Seventh Edition compiler's. `match()`, in its
 `c10.c`, tries a code table's row for an operator again with the

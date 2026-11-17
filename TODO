@@ -188,16 +188,32 @@ moved after are entries of the same kind.
 Check: the count over =tests= of such a copy followed by a move into
 =rax=, before and after; =ptr-diff='s =register_char= pinned.
 
-** TODO x86-64: a comparison's value is extended again for a =long=
+** TODO aarch64: a comparison's value is extended again for a =long=
 
-=setcc= and =movzbl= leave 0 or 1 in a register whose 64 bits are
-then valid, signed or unsigned. The generator records the value as
-valid to 32 bits, so ~(long) (a < b)~ and ~register long l = a < b~
-write =movslq= after the =movzbl=.
+=cset= leaves 0 or 1 in a register whose 64 bits are then valid,
+signed or unsigned, as =mov w0, #1= does for ~&&~ and ~||~. The
+aarch64 generator records the value as valid to 32 bits, so ~(long)
+(a < b)~ is =cset w0, lt; sxtw x0, w0=, and ~(long) !a~ and ~(long)
+(a && b)~ end in =sxtw= too. The x86-64 generator records 64.
 
-Fix: the value of a comparison is recorded as valid to 64 bits.
+Fix: the value of a comparison, of ~!~, of ~&&~ and of ~||~ is
+recorded as valid to 64 bits.
 
-Check: no =movslq= after a =movzbl= for ~(long) (a < b)~, pinned.
+Check: the functions of =compare= that widen one, pinned for
+aarch64 with no =sxtw=.
+
+** TODO x86-64: a cast of signedness forgets that a truth value is valid to 64 bits
+
+A cast to =unsigned= records its value as valid to 32 bits, which
+is right of an =int= in general. Of a value that is 0 or 1 it is too
+cautious: ~(unsigned long) (unsigned) (a < b)~ writes =movl %eax,
+%eax= after the =movzbl=.
+
+Fix: decide whether a value keeps the fact that it is valid under
+both signednesses, which today only a truth value is.
+
+Check: the count over =tests= of =movl= of a register onto itself
+directly after a =movzbl= into it, before and after.
 
 ** TODO =c1.cc= includes =c1-common.hh= and uses nothing of it
 
