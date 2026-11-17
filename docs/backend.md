@@ -80,8 +80,12 @@ keyword `register` was not a hint to an allocator; it was the
 allocation. Three variables fit, the fourth went to memory, and a
 programmer who wanted the loop fast put the loop's three variables
 first. The second: the compiler wrote the instruction for the
-operator. `x * 4` was a multiply. There was a `c2` that would turn
-some of them into shifts, and the programmer ran it or did not.
+operator, but its `c1` made an exception of a constant power of two.
+`x * 4` was a shift (`pow2()`, in `c11.c`), and `x / 4` and `x % 4`
+on an `unsigned` were a shift and an `and` (`optim()`, in `c12.c`).
+rcc is stricter than its ancestor here: the instruction is the
+operator's, and `x * 4` multiplies (6.4). `ancestor.md` chapter 2
+has what else that `c1` rewrote.
 
 ### 2.2 The register count of a tree
 
@@ -800,10 +804,15 @@ spilled at the call, is reloaded into `rax`, then `cltd; idivl
 
 ### 6.6 The effect context
 
-Ritchie's `c1` had three tables: `regtab` for a value in a register,
-`cctab` for the condition codes, `efftab` for an expression evaluated
-for its effect alone. c1 has the three contexts as its three entry
-points:
+Ritchie's `c1` had four tables (`c1.h`): `regtab` for a value in a
+register, `cctab` for the condition codes, `efftab` for an expression
+evaluated for its effect alone, and `sptab` for a value pushed on the
+stack as an argument; `lsptab`, declared beside them, is `sptab` for
+an argument stored to `(sp)` rather than pushed. c1 has the first
+three contexts as its three entry points, and no counterpart of
+`sptab`: an argument is a hidden local of its call, stored to its
+slot (chapter 8; 13, call 5; `design-calls.md` chapter 6), so nothing
+is pushed as it is evaluated. The three entry points:
 
 - `rvalue(e)`, the value in a register, by this chapter;
 - `cbranch(e, label, sense)`, a jump on the truth of `e` and no
@@ -1109,7 +1118,7 @@ Developer's Manual, volume 2:
 | `inc`, `dec` | "The OF, SF, ZF, AF, and PF flags are set according to the result." | none: c1 writes `add $1` and `sub $1` |
 
 The rule is the Seventh Edition compiler's `cctab`, the table of its
-three that compiles a condition for the condition codes and no value
+four that compiles a condition for the condition codes and no value
 (6.6). Its `cbranch()`, in `c11.c`, compiles a condition that is no
 `&&`, `||`, `!` or comma by `cctab` and branches on the codes.
 `rcexpr()`, in `c10.c`, drops the 0 of a relational with 0 under
@@ -1712,9 +1721,9 @@ For another machine's target the driver hands each of the three
 
 ## 13. The calls
 
-Six were open in the first draft of this page, and a seventh, an
-eighth, a ninth and a tenth came later. `design-calls.md` weighs the first
-five one chapter each; the answers:
+Six were open in the first draft of this page, and the rest came
+later. `design-calls.md` weighs the first five one chapter each; the
+answers:
 
 1. **`rbp`** is the frame pointer in every function, and the
    register variables are five. A slot's offset is known at its
@@ -1758,3 +1767,50 @@ five one chapter each; the answers:
     who knows the cases knows the form. The cost is a table in `.data`
     for the loader to relocate, and in the hash a division at every
     dispatch.
+11. **An `if` whose body is one jump is the condition's jump** (7.2),
+    on both targets: a `break`, a `continue`, a `goto` or a `return`
+    with no value, and the `if` jumps to its target when the condition
+    holds, with no label of its own. The rule is the first pass's of
+    the Seventh Edition compiler, which takes the bare jump; rcc takes
+    it alone in braces as well, since the braces write nothing. The
+    boundary is one level of braces and a jump with no code: `return
+    e` and a jump in two pairs of braces keep the jump over the body.
+12. **A cast that widens a signed object in memory is its load**,
+    extended to the cast's width (6.3), on both targets: `(long) i`
+    is `movslq -4(%rbp), %rax` and nothing after it, and the parser's
+    widening of an index is such a cast. The Seventh Edition compiler
+    converts an operand in memory in the instruction that reads it, as
+    its `match()` lets a row do; rcc takes the widening of a signed
+    integer alone. The boundary is the read: a register variable, and
+    any operand that is no read of an object, keep the extension after
+    the value.
+13. **On x86-64 a condition jumps on its operator's own flags** (7.1):
+    where the operator's instruction sets ZF from the condition's
+    value, `je` or `jne` follows it and no `cmp` is written, so `while
+    (--n)` is `subl $1, -4(%rbp)` and the jump. The rows are the
+    Seventh Edition compiler's `cctab`, taken where Intel's manual
+    says the instruction sets ZF: rcc adds `^` and leaves out `*`, `/`
+    and a dereference. aarch64 tests a register with `cbz`, no flags,
+    and has nothing to take. The cost is a record the generator keeps,
+    the width at which the last instruction set ZF, which any
+    instruction or label after it withdraws.
+14. **On x86-64 an operand in memory is the instruction's own** (6.1):
+    a right operand that reads an object of the operation's width is
+    named by the instruction, `addl -8(%rbp), %eax`, and in a
+    condition an object against a constant is the instruction on the
+    object, `cmpl $5, -4(%rbp)`. The rule is the Seventh Edition
+    compiler's row `%n,aw`; that compiler also exchanged a
+    relational's operands, and rcc does not reorder. aarch64 has no
+    instruction with a memory operand, and nothing to take. The load
+    stays beyond the rule's boundary: for a `char` promoted, an `int`
+    widened, a compound assignment's right operand and a shift's
+    count.
+15. **On x86-64 a division and a shift by a variable count choose
+    their registers** (6.5). A node chooses for its own operands, as
+    the Seventh Edition compiler's `oddreg()` chose a division's pair
+    from its operator. A node whose right operand's top operator is
+    one holds its left operand out of the registers that instruction
+    pins; that rule has no counterpart in the ancestor, whose `div`
+    takes any even-odd pair. The cost is the one exception to 6.1's
+    "nothing looks at a node's neighbours", and a boundary: a division
+    deeper in the right operand changes nothing.

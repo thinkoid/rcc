@@ -22,6 +22,35 @@ assembles and links. The reasons are =docs/findings.md= and
 in =docs/design-calls.md=. The chapter holds c1's own defects on both
 targets; the second target's design is =docs/aarch64.md=.
 
+** TODO A value assigned to a =register= variable is computed elsewhere and moved
+
+An assignment to a =register= variable is the =mov= into its register
+(=backend.md= chapter 4). ~r = a + b~ computes the sum in =eax= and
+ends in =movl %eax, %ebx=, on aarch64 in =w0= and =mov w19, w0=, and
+the initializer of ~register int x = m;~ is a load and a move. The
+Seventh Edition compiler computed the value in the variable. A load
+is =efftab='s =move3=, =mov _y,r4=. An operation is rewritten by
+=sreorder()= in =c10.c=, ~reg = x + y~ as ~reg = x; reg =+ y~, unless
+the right operand is no leaf (a name, a constant or =*= of a name),
+or names the variable as itself or as the base of its address.
+
+Fix: decided, that compiler's rule. The variable's register is the
+destination wherever the last instruction is the one that writes it:
+a load on both targets, =movl -12(%rbp), %ebx= and =ldr w19, [x29,
+#24]=, and aarch64's operation, =add w19, w0, w1=. On x86-64 an
+operation is computed in the variable's register, the left operand
+loaded into it and the instruction written on it, under that
+compiler's two conditions: the right operand is a leaf, and it does
+not name the variable. Any other right operand is computed as today
+and moved. =preserve()= runs before the first write of the variable.
+=assign_register()= and =register_decl()= of each generator hand the
+register down.
+
+Check: a cost program with the load, the operation and the two
+refused shapes, pinned on both targets; no pin of the cost corpus
+keeps a move into a variable's register after a load or after an
+operation the rule covers.
+
 ** TODO x86-64: a remainder moves from =rdx= into the dividend's register
 
 A division leaves its quotient in =rax= and its remainder in =rdx=,
@@ -86,22 +115,6 @@ Fix: 7.2 states the rule c1 applies, or c1 applies the stated one.
 Check: a cost program with a =main= ending in each shape, pinned, and
 7.2 agreeing with the pins.
 
-** TODO A widening over a cast that changes nothing keeps the load and the extension
-
-~(long) (char) c~ with =c= a =char= in memory writes the load and
-then the extension, =movsbl -41(%rbp), %esi; movsbq %sil, %rsi=,
-where ~(long) c~ is the one extending load. The outer cast's operand
-is a cast and no read, so the rule of a widening by the load
-(=backend.md= 6.3) does not see the object. The inner cast converts
-to the type the object has. A cast that narrows must stay as it is:
-its load reads the object, and the widening is of the narrow value.
-
-Fix: decide whether a widening looks through a cast to the operand's
-own type.
-
-Check: the listing of ~(long) (char) c~ is that of ~(long) c~, and
-~(long) (char) i~ on an =int= is unchanged.
-
 ** TODO ~0 == e~ keeps the compare that ~e == 0~ loses
 
 On x86-64 a condition ~e == 0~ or ~e != 0~ over an operator whose
@@ -144,20 +157,6 @@ Fix: decide each.
 
 Check: a row of =operand= for each, agreeing with its decision.
 
-** TODO =backend.md= chapter 13 records no call for the rules taken from the Seventh Edition's tables
-
-Chapter 13 lists the calls made in c1's design; call 7 is the effect
-context's memory forms and call 10 the switch, each credited to that
-compiler. Four rules taken from it since have no entry there: an =if=
-whose body is a jump (7.2), a widening by the load (6.3), a condition
-on its operator's flags (7.1), and an operand in memory as the
-instruction's own.
-
-Fix: a call for each, when the last of them is in the tree.
-
-Check: each of the four rules is named in chapter 13 with the section
-that states it.
-
 ** TODO =c1.cc= includes =c1-common.hh= and uses nothing of it
 
 =src/c1.cc= calls the two generators and throws =std::logic_error=
@@ -198,38 +197,6 @@ Fix: the message names the function being generated, which the
 state holds.
 
 Check: the five pins of c1's refusals in =tests/error= name =main=.
-
-** TODO =backend.md= 2.1 gives the multiply's shift to the wrong pass
-
-2.1 says of the Seventh Edition compiler: "~x * 4~ was a multiply.
-There was a =c2= that would turn some of them into shifts, and the
-programmer ran it or did not." The sources say otherwise. Its c1
-writes the shift itself: =rcexpr()= has "Try to change * to shift"
-(=c10.c=, at =case TIMES=), =pow2()= in =c11.c= makes the node a
-left shift, and =optim()= in =c12.c= does the same for an unsigned
-division and remainder by a power of two. c2 has no such rewrite; a
-=mul= is to it one more instruction that writes a register. So the
-sentence credits rcc's rule to its ancestor, which did not keep it.
-
-Fix: 2.1 says that the Seventh Edition's c1 wrote a shift for a
-multiply by a power of two, and that rcc is stricter than its
-ancestor here: the instruction is the operator's.
-
-Check: the sentence agrees with =pow2()= and with =cost.md='s row
-for ~x * 4~.
-
-** TODO =backend.md= 6.6 counts three tables in the Seventh Edition's c1
-
-6.6 opens: "Ritchie's =c1= had three tables", =regtab=, =cctab= and
-=efftab=. It has four: =sptab= is the fourth, for a value pushed on
-the stack as an argument (=c1.h=, =table.s=), with =lsptab= for a
-=long=. c1 has no counterpart of it, since an argument is a hidden
-local of its call (=design-calls.md= chapter 6), and 6.6 does not
-say so.
-
-Fix: 6.6 names the four, and says why c1 has three contexts.
-
-Check: 6.6 read against =c1.h=.
 
 ** TODO aarch64: a stack parameter at the frame's limit is refused
 
