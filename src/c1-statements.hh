@@ -16,7 +16,8 @@
 // the power of two of .p2align before a loop's head, 0 for none;
 // result_register, the register the convention returns a result in;
 // new_label(), place_label() and jump(); the three entry points,
-// rvalue(), cbranch() and effect(); and decl_stmt(), a declaration,
+// rvalue(), cbranch() and effect(), and rvalue_in(), a value for a
+// consumer that names its register; and decl_stmt(), a declaration,
 // which is the generator's own, since the store row of its initializer
 // takes the target's form of the slot's address.  For a switch's
 // dispatch, whose form is chosen here and whose instructions are the
@@ -397,20 +398,22 @@ goto_stmt(state_t &s, const goto_t &g)
 }
 
 // The value goes to the convention's result register, backend.md 7.2
-// and aarch64.md 7.2.  A char or a short is not extended: the
-// convention leaves the bits above a narrow result unspecified, and the
-// caller extends it, backend.md 6.3 and aarch64.md 6.3.  Every return
-// jumps to the one epilogue, the last statement of the body included:
-// the jump to the next instruction is what the statement says, and
-// removing it was the optional peephole pass's work in the PDP-11
-// compiler, which rcc has no counterpart of.
+// and aarch64.md 7.2: the return names it, and the value is computed
+// there where its rows can write it, rvalue_in(), and moved there
+// otherwise.  A char or a short is not extended: the convention leaves
+// the bits above a narrow result unspecified, and the caller extends
+// it, backend.md 6.3 and aarch64.md 6.3.  Every return jumps to the one
+// epilogue, the last statement of the body included: the jump to the
+// next instruction is what the statement says, and removing it was the
+// optional peephole pass's work in the PDP-11 compiler, which rcc has
+// no counterpart of.
 void
 return_stmt(state_t &s, const return_t &r)
 {
     if (r.value) {
         const int width = std::max(32, integer(r.value->type).width);
 
-        const auto v = rvalue(s, *r.value);
+        const auto v = rvalue_in(s, *r.value, result_register);
         const reg_t from = reg_of(s, v);
         if (from != result_register)
             mov(s, from, result_register, width);

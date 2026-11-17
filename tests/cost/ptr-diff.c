@@ -13,9 +13,10 @@
    ints(%rip), %rcx, the copy of q into rax, movq %rbx, %rax, subq
    %rcx, %rax, the size in rcx, movq $4, %rcx or movq $12, %rcx, cqto,
    idivq %rcx and no move after; assigned() first writes q, leaq
-   ints+4(%rip), %rbx.  In register_char(), the address in rax, leaq
-   chars(%rip), %rax, the copy in rcx, movq %rbx, %rcx, subq %rax,
-   %rcx and the return's movq %rcx, %rax.
+   ints+4(%rip), %rbx.  In register_char(), the address in rcx, leaq
+   chars(%rip), %rcx, outside rax, which the return names (backend.md
+   6.1), the copy in rax, movq %rbx, %rax, subq %rcx, %rax and no move
+   after.
 
    On aarch64 the listing must show sub x0, x0, x1 of the two
    addresses, the size in a register with mov x1, #4, since sdiv takes

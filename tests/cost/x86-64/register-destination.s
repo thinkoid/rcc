@@ -1530,10 +1530,9 @@ step_widened:
 	movl	%eax, -12(%rbp)
 	movslq	%ecx, %rcx
 	movq	%rcx, %rbx
-	movslq	-12(%rbp), %rax
-	movq	%rbx, %rcx
-	addq	%rax, %rcx
-	movq	%rcx, %rax
+	movslq	-12(%rbp), %rcx
+	movq	%rbx, %rax
+	addq	%rcx, %rax
 	jmp	.Lstep_widened.1
 .Lstep_widened.1:
 	popq	%rbx

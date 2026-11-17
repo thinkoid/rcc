@@ -16,7 +16,9 @@
    assignment's place among them (6.5), and the rows beside the
    operand in memory, an object under a cast that keeps its bits, a
    comparison's value and a multiply by a constant (6.1), which the
-   last sections probe.
+   last sections probe; and a return's value in the result register
+   (6.1, 7.2), an element through a pointer as an assignment's place
+   and as a step's operand among them.
    A pointer into the middle of a buffer, or misaligned, is made by the
    main.  See memory.h. */
 
@@ -1165,6 +1167,38 @@ WIDE(DIVIDEND)
     long rem_index_##N(T *p, T a, T b) { return p[a % b]; }
 
 PINNED_TYPES(REMAINDER)
+
+/* A return names the result register, backend.md 6.1 and 7.2: on
+   x86-64 the value's last instruction writes rax where it is free, and
+   what is generated before it stays out of rax where nothing within it
+   pins a register.  The extension of a remainder returned as a long,
+   rr_ext_; a comparison with a quotient and ! of a remainder, rr_cmp_
+   and rr_not_; the value of an assignment, of += and of a postfix step
+   on an element, rr_store_, rr_add_ and rr_post_, and of a postfix
+   step on a local, rr_local_; a quotient whose dividend is held
+   outside rax, rr_quot_.  rax free for the reload of a left operand
+   spilled before a branch, rr_free_; held by a call's result where the
+   left operand is reloaded, rr_held_; and pinned by a division within
+   the right operand, rr_deep_.  p points at the main's x at B + at,
+   and the main keeps a divisor from 0 and -1. */
+#define RETURNED(T, N)                                                  \
+    long rr_ext_##N(T a, T b) { return a % b; }                         \
+    long rr_cmp_##N(T a, T b, T d) { return a < b / d; }                \
+    long rr_not_##N(T a, T b) { return !(a % b); }                      \
+    long rr_store_##N(T *p, T a, int i) { return p[i] = a; }            \
+    long rr_add_##N(T *p, T a, int i) { return p[i] += a; }             \
+    long rr_post_##N(T *p, int i) { return p[i]++; }                    \
+    long rr_local_##N(T a)                                              \
+    {                                                                   \
+        T x = a;                                                        \
+        return x++;                                                     \
+    }                                                                   \
+    long rr_quot_##N(T a, T b, T d) { return (a + b / d) / d; }         \
+    long rr_free_##N(T a, T b, int c) { return a - (c ? b : 2); }       \
+    long rr_held_##N(T a, T b) { return a - mix1(b); }                  \
+    long rr_deep_##N(T a, T b, T d) { return a - (b / d + 1); }
+
+PINNED_TYPES(RETURNED)
 
 /* A condition on an object in memory, on x86-64 the cmp or test of the
    object itself, backend.md 7.1: compared with a constant on either

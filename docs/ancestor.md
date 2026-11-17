@@ -42,7 +42,9 @@ under what licence.
     `movslq -4(%rbp), %rax`, on both targets (chapter 6);
   - a `register` variable is the destination of the value computed
     for it, `addl -16(%rbp), %ebx` and `add w19, w0, w1`, on both
-    targets (chapter 7);
+    targets, and a `return`'s value is computed in the result
+    register on x86-64, the two consumers of the ancestor's register
+    argument (chapter 7);
   - an `if` whose body is one jump is the condition's jump to the
     jump's target, on both targets (chapter 8).
 - Left alone: a step for its value as the memory form, `!` over a
@@ -1636,6 +1638,42 @@ y` (`c10.c:888-889`). Worked out by hand, `r = x + y` with `r` in
 instructions, and the two conditions make sure that nothing reads it
 there.
 
+The register variable is one consumer that names a register. The
+other is a `return`, and the name is an argument of the expression
+compiler, by `rcexpr()`'s comment (`c10.c:155-159`):
+
+```c
+ * Given a tree, a code table, and a register,
+ * produce code to evaluate the tree with the appropriate table.
+ * Registers reg and upcan be used.
+ * If there is a value, it is desired that it appear in reg.
+ * The routine returns the register in which the value actually appears.
+```
+
+`cexpr()` takes the same argument and returns the same register.
+A `return`'s value is the tree `RFORCE`, which an expression statement
+compiles with `reg` at 0 (`c11.c:917`); its case compiles the operand
+for that register and moves it into `r0` where it appears in another
+(`c10.c:235-239`):
+
+```c
+	case RFORCE:
+		tree = tree->tr1;
+		if((r=rcexpr(tree, regtab, reg)) != 0)
+			movreg(r, 0, tree);
+		return(0);
+```
+
+For `return(q - chars)` on a `register char *q` the compiler writes
+`mov r4,r0; sub $_chars,r0`, the copy of the variable into `r0` and
+the instruction on it, and for `return(r - p[i])` on a `register r`
+`mov r4,r0; mov 10(r5),r1; asl r1; add 6(r5),r1; sub (r1),r0`, the
+right operand's address in `r1`. A remainder appears in the odd
+register of its pair and is moved, `mov 4(r5),r1; sxt r0; div
+6(r5),r0; mov r1,r0` for `return(x % y)`, and in a function
+returning `long` its conversion is written into the result's pair,
+`mov 4(r5),r3; sxt r2; div 6(r5),r2; mov r3,r1; sxt r0`.
+
 ### 7.3 What rcc wrote before
 
 ```c
@@ -1899,6 +1937,21 @@ chapter 4:
 
 The queue holds the rows still to decide.
 
+A `return` names the result register, the other consumer of the
+ancestor's register argument (7.2), and on x86-64 its value is
+computed there where the last instruction can write it (`backend.md`
+6.1): `return q - chars` on a `register char *q` is `leaq chars(%rip),
+%rcx; movq %rbx, %rax; subq %rcx, %rax`, the right operand outside
+`rax` and the copy in it, where it was the copy in `rcx` and a fourth
+instruction, `movq %rcx, %rax`. Where the ancestor copies the variable
+before it compiles the right operand, rcc copies it after, since a
+read that no instruction writes needs no copy, and holds the right
+operand out of `rax` instead. The return keeps its `mov` for a
+remainder, for a node whose right operand or place holds a call or a
+division, and for a right operand that writes the variable whose
+read is the left operand. aarch64 names its destination apart from
+its sources and takes no row of the rule yet (`aarch64.md` 6.1).
+
 ### 7.5 What it buys and what it costs
 
 Per place where the rule applies, one instruction:
@@ -1940,7 +1993,8 @@ pins the four rows on both targets.
 
 C5 is in rcc on both targets: by the ancestor's rule on x86-64,
 extended to `-`, `~` and a comparison's value, and with no condition
-on the operands on aarch64.
+on the operands on aarch64. Its other consumer, a `return`, names the
+result register on x86-64 (7.4).
 
 ## 8. An `if` whose body is a jump (C6)
 

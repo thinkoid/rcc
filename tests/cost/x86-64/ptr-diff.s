@@ -36,10 +36,9 @@ register_char:
 	.cfi_offset %rbx, -24
 	movq	%rdi, -16(%rbp)
 	movq	-16(%rbp), %rbx
-	leaq	chars(%rip), %rax
-	movq	%rbx, %rcx
-	subq	%rax, %rcx
-	movq	%rcx, %rax
+	leaq	chars(%rip), %rcx
+	movq	%rbx, %rax
+	subq	%rcx, %rax
 	jmp	.Lregister_char.1
 .Lregister_char.1:
 	popq	%rbx

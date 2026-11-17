@@ -165,9 +165,8 @@ less:
 	cltd
 	idivl	-12(%rbp)
 	cmpl	%eax, %ecx
-	setl	%cl
-	movzbl	%cl, %ecx
-	movl	%ecx, %eax
+	setl	%al
+	movzbl	%al, %eax
 	jmp	.Lless.1
 .Lless.1:
 	leave

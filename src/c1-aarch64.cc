@@ -2717,6 +2717,16 @@ rvalue(state_t &s, const expr_t &e, into_t *into)
     return conditional(s, e);
 }
 
+// The value of e for a consumer that names a register, a return's for
+// x0 (backend.md 6.1): on aarch64 no row takes the name, so the value
+// is rvalue()'s and the consumer moves it where it is elsewhere
+// (aarch64.md 6.1).
+value_t
+rvalue_in(state_t &s, const expr_t &e, reg_t)
+{
+    return rvalue(s, e);
+}
+
 // Jump code, chapter 7.1: a jump to label when e is true (sense) or
 // false (!sense), a fall through otherwise, and no value.  A comparison
 // is cmp and b.cc; ! flips the sense; && and || are the shape of the

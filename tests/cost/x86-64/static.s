@@ -63,10 +63,9 @@ calls:
 	call	shown@PLT
 	movq	-40(%rbp), %rcx
 	addl	%eax, %ecx
-	movslq	%ecx, %rcx
-	addq	-16(%rbp), %rcx
-	subq	-24(%rbp), %rcx
-	movq	%rcx, %rax
+	movslq	%ecx, %rax
+	addq	-16(%rbp), %rax
+	subq	-24(%rbp), %rax
 	jmp	.Lcalls.1
 .Lcalls.1:
 	leave

@@ -35,26 +35,63 @@ the destination of the value computed for it (=backend.md= chapter
 Fix: the join is the register the consumer of the conditional
 names, where it names one, and each arm writes it where its last
 instruction can: ~return c ? x % y : y;~ joins in =eax=, the first
-arm's one move the return's, the second arm its load. Built with
-the copy of a =register= variable for its consumer, and measured
-apart from it.
+arm's one move the return's, the second arm its load. A =return=
+hands its register down already (=backend.md= 6.1); the conditional
+does not take it.
 
 Check: the listing of ~c ? x % y : y~, pinned at 16 instructions
 with no move after the join, and the count of listings over =tests=
 that change, none longer.
 
-** TODO x86-64: a value extended for a consumer in another register is extended, then moved
+** TODO x86-64: a value extended for a register variable or a shift's count is extended, then moved
 
-A widening is written in the value's own register. Where the
-consumer wants another register the value is extended and then
-moved: a remainder returned as a =long= is =movslq %edx, %rdx; movq
-%rdx, %rax=, where =movslq %edx, %rax= is the one instruction. Not
-measured: how many listings have the pair is not counted.
+A widening is written in the register a =return= names (=backend.md=
+6.1). Two other consumers still take the pair. A =register= variable
+assigned a widened value that is not a load is =movslq %eax, %rax;
+movq %rax, %rbx=, 78 pairs over =tests=, where =movslq %eax, %rbx= is
+the one instruction. A shift's count that is widened is extended in
+=rax= and moved, =movzwl %ax, %eax= and later =movl %eax, %ecx=, 48
+over =tests=, where the extension could write =ecx=.
 
-Fix: decide whether an extension writes the register its consumer
-names, where it has one.
+Fix: decide both: the extension writes the variable's register, as
+the rows of =backend.md= chapter 4 do, and the count's extension
+writes =rcx=, the register its consumer names.
 
-Check: the count of the pair over =tests=, before and after.
+Check: the count of each pair over =tests=, before and after, none
+longer.
+
+** TODO aarch64: a =return='s value is moved where an operand generated first took =x0=
+
+A =return= names =x0=, and no row of the aarch64 generator takes the
+name (=aarch64.md= 6.1). Over =tests=, 2789 returns move their value
+into =x0= from another register. In 327 the value is a =register=
+variable's, and the move is the instruction. Of the rest, 1918 are an
+operation that wrote its left operand's register after the right
+operand took =x0=, =add w1, w1, w0; mov w0, w1=, where =add w0, w1,
+w0= writes =x0=; 380 are a stored value, and 164 a load or a postfix
+step's copy, where the address took =x0=.
+
+Fix: the row's destination is =x0= where the consumer names it and it
+is free at the instruction; the three-address form needs no
+reservation for an operation, and the place of a store or a step is
+generated outside =x0=, as on x86-64.
+
+Check: that count before and after, and the listings over =tests=
+that change, none longer.
+
+** TODO x86-64: a right operand that writes the variable keeps the =return='s =mov=
+
+A =return='s value is computed in =rax= (=backend.md= 6.1), but for a
+node whose right operand writes the =register= variable its left
+operand reads: =preserve()= copies the read inside the right operand,
+into the lowest free register, and the result is moved, ~return x +
+(c ? x++ : 2);~ on a ~register int x~. 35 functions of the probes
+have the shape.
+
+Fix: none taken; the copy =preserve()= makes would need the name
+handed to it.
+
+Check: the count over =tests=, before and after.
 
 ** TODO x86-64: a row's address by a constant index is read two ways
 
@@ -152,25 +189,6 @@ base of ~&a[i][0]~ is formed in it.
 
 Check: a function of =register-destination= for each, with no =mov=
 into the variable's register.
-
-** TODO x86-64: a register variable's copy is made where its consumer does not want it
-
-A =register= variable read as the left operand of an instruction
-that writes its result is copied into the lowest free register. When
-the right operand has taken =rax=, the copy is in =rcx= or =rdx= and
-a =return= moves the result back: ~return q - chars;~ on a ~register
-char *q~ is =leaq chars(%rip), %rax; movq %rbx, %rcx; subq %rax,
-%rcx; movq %rcx, %rax=, four instructions where a local takes three,
-and ~return r - p[i];~ on a ~register int r~ ends =movl %ebx, %edx;
-subl (%rax,%rcx,4), %edx; movl %edx, %eax=.
-
-Fix: the copy takes the register its consumer names, as a
-=register= variable is the destination of its value (=backend.md=
-chapter 4); a step of its own, with its measurement. The second arm
-of ~?:~ and an extension moved after are entries of the same kind.
-
-Check: the count over =tests= of such a copy followed by a move into
-=rax=, before and after; =ptr-diff='s =register_char= pinned.
 
 ** TODO =c1.cc= includes =c1-common.hh= and uses nothing of it
 
@@ -477,6 +495,19 @@ Fix: show a status above 128 by its signal name, =SEGV= from =kill
 program exits above 128.
 
 Check: the =g9-null-load= row reads =SEGV= and passes.
+
+** TODO =tests/probes= has no time limit
+
+A probe program that loops hangs the step: =tests/probes= runs each
+program with no limit, where the oracle gives a program 10 seconds. A
+generator fault that turns a loop's exit wrong leaves the program
+running and =make test= waiting on it.
+
+Fix: a time limit per probe program, as the oracle's, and the
+program's death by it a failed step.
+
+Check: a probe made to loop shows as a failed step, and =make test=
+ends.
 
 ** TODO A signal death leaves a core file
 

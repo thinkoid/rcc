@@ -356,6 +356,16 @@ WIDE(DECLARE_DIVIDEND)
 
 PINNED_TYPES(DECLARE_REMAINDER)
 
+#define DECLARE_RETURNED(T, N)                                          \
+    BOTH(long, rr_ext_##N, (T, T)) BOTH(long, rr_cmp_##N, (T, T, T))    \
+    BOTH(long, rr_not_##N, (T, T)) BOTH(long, rr_store_##N, (T *, T, int)) \
+    BOTH(long, rr_add_##N, (T *, T, int))                               \
+    BOTH(long, rr_post_##N, (T *, int)) BOTH(long, rr_local_##N, (T))   \
+    BOTH(long, rr_quot_##N, (T, T, T)) BOTH(long, rr_free_##N, (T, T, int)) \
+    BOTH(long, rr_held_##N, (T, T)) BOTH(long, rr_deep_##N, (T, T, T))
+
+PINNED_TYPES(DECLARE_RETURNED)
+
 /* the four rows beside the operand in memory: each function of FORMS
    in its six forms */
 #define DECLARE_FORMS(f, A, U)                                          \
@@ -918,6 +928,40 @@ WIDE(TEST_DIVIDEND_ALL)
 
 PINNED_TYPES(TEST_REMAINDER_ALL)
 
+/* a return's value, of one type, over pairs of the table: x the
+   divisor, kept from 0 and -1, y the dividend and the value, z a third
+   operand, P(T) the element at index 0 */
+#define TEST_RETURNED_ALL(T, N)                                         \
+    static void test_returned_##N(void)                                 \
+    {                                                                   \
+        for (int j = 0; j < COUNT; ++j) {                               \
+            const long x = values[j];                                   \
+                                                                        \
+            if (!DIVISOR(T, x))                                         \
+                continue;                                               \
+                                                                        \
+            for (int i = 0; i < COUNT; ++i) {                           \
+                const long y = values[i];                               \
+                const long z = values[(i * 5 + j + 1) % COUNT];         \
+                const int at = offsets[(i + j) % OFFSETS];              \
+                                                                        \
+                CHECK(rr_ext_##N, x, y, ((T) y, (T) x));                \
+                CHECK(rr_cmp_##N, x, y, ((T) z, (T) y, (T) x));         \
+                CHECK(rr_not_##N, x, y, ((T) y, (T) x));                \
+                MCHECK(rr_store_##N, x, y, at, (P(T), (T) y, 0));       \
+                MCHECK(rr_add_##N, x, y, at, (P(T), (T) y, 0));         \
+                MCHECK(rr_post_##N, x, y, at, (P(T), 0));               \
+                CHECK(rr_local_##N, x, y, ((T) y));                     \
+                CHECK(rr_quot_##N, x, y, ((T) z, (T) y, (T) x));        \
+                CHECK(rr_free_##N, x, y, ((T) y, (T) z, i & 1));        \
+                CHECK(rr_held_##N, x, y, ((T) y, (T) z));               \
+                CHECK(rr_deep_##N, x, y, ((T) y, (T) z, (T) x));        \
+            }                                                           \
+        }                                                               \
+    }
+
+PINNED_TYPES(TEST_RETURNED_ALL)
+
 /* f in its six forms, on a, of type A, and the object's value v, of
    type U, which P(U) holds for _ptr; k is 0 to 3 */
 #define TEST_FORMS(f, A, U, a, v)                                       \
@@ -1084,6 +1128,9 @@ main(void)
 
 #define RUN_REMAINDER(T, N) test_remainder_##N();
     PINNED_TYPES(RUN_REMAINDER)
+
+#define RUN_RETURNED(T, N) test_returned_##N();
+    PINNED_TYPES(RUN_RETURNED)
 
 #define RUN_RECAST(A, U, UN, name) test_recast_##name();
     RECASTS(RUN_RECAST)

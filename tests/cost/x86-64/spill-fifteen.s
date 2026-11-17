@@ -47,20 +47,20 @@ spill_fifteen:
 	subl	%ecx, %eax
 	subl	%eax, %r11d
 	subl	%r11d, %r10d
-	movq	-80(%rbp), %rax
-	subl	%r10d, %eax
-	movq	-72(%rbp), %rcx
-	subl	%eax, %ecx
-	movq	-64(%rbp), %rax
-	subl	%ecx, %eax
-	movq	-56(%rbp), %rcx
-	subl	%eax, %ecx
-	movq	-48(%rbp), %rax
-	subl	%ecx, %eax
-	movq	-40(%rbp), %rcx
-	subl	%eax, %ecx
+	movq	-80(%rbp), %rcx
+	subl	%r10d, %ecx
+	movq	-72(%rbp), %rdx
+	subl	%ecx, %edx
+	movq	-64(%rbp), %rcx
+	subl	%edx, %ecx
+	movq	-56(%rbp), %rdx
+	subl	%ecx, %edx
+	movq	-48(%rbp), %rcx
+	subl	%edx, %ecx
+	movq	-40(%rbp), %rdx
+	subl	%ecx, %edx
 	movq	-32(%rbp), %rax
-	subl	%ecx, %eax
+	subl	%edx, %eax
 	jmp	.Lspill_fifteen.1
 .Lspill_fifteen.1:
 	leave

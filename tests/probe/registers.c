@@ -2,7 +2,8 @@
    docs/aarch64.md chapter 4 and backend.md chapters 4 and 6.7.  A
    register variable initialized, read by every operator, assigned and
    tested; its register the destination of the value computed for it;
-   its reads held across the paths of a branch and across a call; the
+   its reads held across the paths of a branch and across a call; its
+   copy for a return, where the return names the result register; the
    callee-saved registers given back; register parameters; blocks;
    pointers; a large frame; depth; and G5's unwritten narrow variable.  No compound assignment and no ++ or -- of a register
    variable: a loop steps by i = i + 1.  A function keeps to five
@@ -1258,6 +1259,51 @@ TYPES(HELD)
     }
 
 TYPES(CALLS)
+
+/* A return names the result register, backend.md 6.1 and 7.2: a
+   register variable as the left operand of an instruction that writes
+   is copied, on x86-64 where the return wants it, the right operand
+   generated outside rax.  rax free, the right operand two loads,
+   ret_free_, and the narrow result, ret_narrow_; held, the right
+   operand a call's result in rax when the copy is made, ret_held_;
+   pinned, a division as the right operand and within it, ret_pinned_
+   and ret_deep_; and a right operand that writes the variable, whose
+   read is copied before the write, ret_written_, which ISO leaves
+   undefined and clang -O0 writes left to right, as assign_order_.  The
+   main keeps a divisor from 0 and -1. */
+#define RETURNED(T, N)                                                  \
+    long ret_free_##N(T a, T b, T c)                                    \
+    {                                                                   \
+        register T r = a;                                               \
+        return r - (b ^ c);                                             \
+    }                                                                   \
+    T ret_narrow_##N(T a, T b, T c)                                     \
+    {                                                                   \
+        register T r = a;                                               \
+        return r - (b ^ c);                                             \
+    }                                                                   \
+    long ret_held_##N(T a, long b)                                      \
+    {                                                                   \
+        register T r = a;                                               \
+        return r - lid(b);                                              \
+    }                                                                   \
+    long ret_pinned_##N(T a, T b, T c)                                  \
+    {                                                                   \
+        register T r = a;                                               \
+        return r - b / c;                                               \
+    }                                                                   \
+    long ret_deep_##N(T a, T b, T c)                                    \
+    {                                                                   \
+        register T r = a;                                               \
+        return r - (b / c + 1);                                         \
+    }                                                                   \
+    long ret_written_##N(T a, T b)                                      \
+    {                                                                   \
+        register T r = a;                                               \
+        return r - (r = b);                                             \
+    }
+
+TYPES(RETURNED)
 
 /* recursion with live register variables, the parameters register too */
 long rsum(register int n, register long acc)

@@ -319,7 +319,8 @@ better:
   variables is `movl %ebx, %eax; subl %r12d, %eax`. Here the
   destination is named apart: `sub w0, w19, w20`, the result in a
   fresh expression register, the variables untouched.
-- An assignment's value is computed in the register: the row that
+- An assignment's value is computed in the register, the variable
+  being a consumer that names its register (6.1): the row that
   computes it writes the variable's register, `ldr w19, [x29, #24]`,
   `add w20, w20, w21`, `cset w19, lt`, `sxtw x19, w0`, wherever the
   row writes its destination only after it has read every operand and
@@ -612,6 +613,21 @@ variable is written in place, so G13's copy of chapter 4 stays and is
 the value: `mov w0, w19; add w19, w19, #1`. Left first is G13; a
 commutative operator's operands are not swapped, but for a constant.
 
+A value is computed in the register its consumer names (`backend.md`
+6.1), and here the register variable is the one consumer whose name a
+row takes (chapter 4). A `return` names `x0`, and no row takes that
+name: the value is where its row left it, and the return moves it
+(7.2). Most of x86-64's shapes of the rule are not here. No copy
+precedes an instruction that writes, so `return r - p[i]` is `sub w0,
+w19, w0`, and a remainder's `msub` and an extension take the lowest
+free register, `x0` at a `return`'s top, `msub w0, w2, w1, w0; sxtw
+x0, w0` for a remainder returned as a `long`. The moves left are
+where an operand generated first took `x0`: a left operand reloaded
+after a branch or a call, `ldr x1, [x29, #24]; add w1, w1, w0; mov w0,
+w1`, which `add w0, w1, w0` would write in one, and the value of an
+assignment, of `+=` and of a postfix step on an element, `mov x0, x2`
+for `return p[i] = x` after the address took `x0` and `x1`.
+
 A constant on the left of a comparison or of `+`, `*`, `&`, `|` or
 `^` is taken on the right, as on x86-64 (`backend.md` 6.1): a
 comparison is mirrored, `5 < x` is `ldr w0, [x29, #16]; cmp w0, #5`
@@ -899,8 +915,9 @@ As `backend.md` 7.2, with `b` for `jmp`. `return e` leaves `e` in
 `mov w0, w1` at 32 bits, and on the `x` names for a `long` or a
 pointer. `x op= e` for its value is such a case: the result is in
 the object's register, taken above `e`'s, so a `return` of it ends
-in `mov w0, w1`. Every `return` jumps to the one epilogue. `main`
-returns 0 on reaching its `}`, `mov w0, #0`.
+in `mov w0, w1`. The return names `x0`, and no row takes the name
+(6.1). Every `return` jumps to the one epilogue. `main` returns 0 on
+reaching its `}`, `mov w0, #0`.
 
 `do`'s condition at the bottom branches back to the body's label on
 the condition, `b.lt .Lcount.2` or `cbnz`, by jump code (7.1). `break`,

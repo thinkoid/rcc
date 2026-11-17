@@ -10,8 +10,9 @@
    the tenth to the sixteenth loads need a register, the seventeenth
    operand, the last a, the operand of the first subtraction,
    subl -4(%rbp), %r9d (backend.md 6.1), and each held value reloaded
-   with movq, into rax or rcx, when the subtraction that consumes it
-   comes.
+   with movq when the subtraction that consumes it comes, into rcx or
+   rdx, and the first a, reloaded last, into rax, which the return
+   names, movq -32(%rbp), %rax and subl %edx, %eax.
 
    On aarch64 the listing must show the seventeen loads in source
    order into w0 to w7 and w9 to w15, x8 left out; the two oldest held

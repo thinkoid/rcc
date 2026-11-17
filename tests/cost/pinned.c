@@ -30,7 +30,9 @@
    array's address, moved out of rax, movq %rax, %rsi, x reloaded from
    its spill slot into rax, movq -16(%rbp), %rax, cltd and
    idivl (%rsi,%rcx,4); in less x in ecx and y in eax, cltd,
-   idivl -12(%rbp) and cmpl %eax, %ecx; in subscript p in rcx and y in
+   idivl -12(%rbp) and cmpl %eax, %ecx, then setl %al and
+   movzbl %al, %eax, in the register the return names (backend.md
+   6.1); in subscript p in rcx and y in
    eax, cltd, idivl -16(%rbp), movslq %eax, %rax and
    movl (%rcx,%rax,4), %eax.
 
