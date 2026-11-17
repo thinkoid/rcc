@@ -26,14 +26,16 @@
 
 /* memory-lib.c: through a pointer, touch_<n> reads the object and
    writes it, fill_<n> writes n objects and total_<n> sums them; text()
-   reads a string; mix1() and mix2() are calls with no memory */
+   reads a string; mix1() and mix2() are calls with no memory;
+   narrowed_<n> returns a long as the type */
 #define LIBRARY(T, N)                                                   \
     long touch_##N(T *p);                                               \
     long fill_##N(T *a, int n, long v);                                 \
     long total_##N(T *a, int n);                                        \
     long fill_rows_##N(T m[][5], int n, long v);                        \
     long total_rows_##N(T m[][5], int n);                               \
-    T *same_##N(T *p);
+    T *same_##N(T *p);                                                  \
+    T narrowed_##N(long x);
 
 TYPES(LIBRARY)
 
@@ -1223,6 +1225,45 @@ PINNED_TYPES(RETURNED)
     long jn_div_##N(int c, T a, T b) { return c ? a % b : a / b; }
 
 PINNED_TYPES(JOINED)
+
+/* A shift's count is computed in the register the shift names, rcx on
+   x86-64, backend.md 6.1 and 6.5: a call's result of the type, which
+   the caller extends, extended into rcx, as the count of << and >> on
+   an unsigned, a long and an unsigned long, cn_call_, and of <<= and
+   >>= on a local and through a pointer, cn_place_; a postfix step's
+   old value, cn_post_; a sum converted to the type with rcx free,
+   cn_cast_, and while rcx holds a live value, cn_held_, which keeps
+   its move into rcx.  p points at the main's x at B + at, and the
+   main keeps each count from 0 to 29. */
+#define COUNTED(T, N)                                                   \
+    long cn_call_##N(unsigned a, long b, long n)                        \
+    {                                                                   \
+        long r = a << narrowed_##N(n);                                  \
+        r = r * 7 + (b >> narrowed_##N(n + 1));                         \
+        return r * 7 + ((unsigned long) b << narrowed_##N(n));          \
+    }                                                                   \
+    long cn_place_##N(unsigned a, long *p, long n)                      \
+    {                                                                   \
+        unsigned x = a;                                                 \
+        x <<= narrowed_##N(n);                                          \
+        long r = x;                                                     \
+        r = r * 7 + (*p >>= narrowed_##N(n + 1));                       \
+        return r * 7 + *p;                                              \
+    }                                                                   \
+    long cn_post_##N(unsigned a, long n)                                \
+    {                                                                   \
+        T k = n;                                                        \
+        long r = a << k++;                                              \
+        r = r * 7 + (a >> k--);                                         \
+        return r * 7 + k;                                               \
+    }                                                                   \
+    long cn_cast_##N(unsigned a, long n) { return a << (T) (n + 1); }   \
+    long cn_held_##N(long a, long b, long c, unsigned x, long n)        \
+    {                                                                   \
+        return a + (b + (c + (x << (T) (n + 1))));                      \
+    }
+
+PINNED_TYPES(COUNTED)
 
 /* A condition on an object in memory, on x86-64 the cmp or test of the
    object itself, backend.md 7.1: compared with a constant on either

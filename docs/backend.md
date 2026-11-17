@@ -283,7 +283,8 @@ register is the destination of the value assigned to it, where the
 machine lets the last instruction be the one that writes it. A
 declaration's initializer is the same. The variable is one consumer
 that names a register, a case of 6.1's rule that a value is computed
-in the register its consumer names; a `return` is the other (7.2).
+in the register its consumer names; a `return` and a shift's count
+are the others (7.2, 6.5).
 
 - A load is the load into the register: `r = a` on an `int` in a slot
   is `movl -12(%rbp), %ebx`, the extending loads included, so `r = c`
@@ -745,9 +746,10 @@ name are 12 or less. `notcompat()` admits as a `w` an `int`, an
 **The register a consumer names.** A value is computed in the
 register its consumer names, where the last instruction that writes
 the value can write that register and no live value holds it. On
-x86-64 two consumers name one: a `register` variable names its own,
-the destination of the value assigned to it (chapter 4), and a
-`return` names the result register, `rax` (7.2). Any other consumer
+x86-64 three consumers name one: a `register` variable names its own,
+the destination of the value assigned to it (chapter 4), a `return`
+names the result register, `rax` (7.2), and a shift names `rcx` for
+its count, read in `cl` by the instruction (6.5). Any other consumer
 takes the value where its row left it. The name goes down from the
 consumer to the instruction that last writes the value, through
 every row whose register is its operand's: an operation's left
@@ -762,7 +764,8 @@ assignment or of a step. `return r - p[i]` on a `register int r` is
 thus `movq -16(%rbp), %rcx; movslq -20(%rbp), %rdx; movl %ebx, %eax;
 subl (%rcx,%rdx,4), %eax`, the copy of `r` that the `subl` writes
 made in `eax`, and a remainder returned as a `long` is `movslq %edx,
-%rax`, the extension written where the return wants it. The two arms
+%rax`, the extension written where the return wants it, and a call's
+`char` result as a shift's count `movsbl %al, %ecx`. The two arms
 of `?:` join in the named register, each moved there where its value
 is elsewhere, and for a register variable each path writes the
 variable's register itself, `&&` and `||` their 1 and 0 (chapter
@@ -823,7 +826,7 @@ written for it.
 | `a + b`, `a - b` | `add R, L`, `sub R, L`; an object in memory as `R`, `addl -8(%rbp), %eax` (6.1); a constant on the left of `+` taken on the right, `5 + x` `addl $5, L` after `x`'s load (6.1) | G1: the machine wraps |
 | `a * b` | `imul R, L`, `imull -8(%rbp), %eax` for an object in memory; by a constant `imul $c, L, L`, and on an object in memory the three-operand form with the object as its source, `imull $4, -4(%rbp), L`, on a register variable's read with its register as the source, `imull $4, %ebx, L`, and `4 * x` the same, its constant taken on the right (6.1) | G1; the same instruction for signed and unsigned, since the low bits agree |
 | `a / b`, `a % b` | `mov L, %rax` if needed; `cltd` or `xor %edx,%edx`; `idiv R` or `div R`, `idivl -8(%rbp)` for an object in memory; the quotient from `rax` into `L`, but where the consumer names `rax`, and the remainder the value in `rdx` | G4; the pinned pair saved around if held, and the registers of a divisor's address moved out of it, 6.5 |
-| `a << b`, `a >> b` | `mov R, %rcx` if needed; `shl %cl, L`, `sar %cl, L`, `shr %cl, L`; by an immediate when `b` is a constant | G3: the instruction masks the count |
+| `a << b`, `a >> b` | `mov R, %rcx` if needed, the count's row writing `rcx` itself where it is free, `movsbl %al, %ecx` for a call's `char` result and a postfix step's copy `movl %edx, %ecx` (6.1, 6.5); `shl %cl, L`, `sar %cl, L`, `shr %cl, L`; by an immediate when `b` is a constant | G3: the instruction masks the count |
 | `a & b`, `a \| b`, `a ^ b` | `and`, `or`, `xor`, an object in memory as `R` and a constant on the left as for `add` | |
 | `-a`, `~a` | `neg L`, `not L` | G1 for `-INT_MIN` |
 | `!a` | `cmp $0, L`; `sete %Lb`; `movzbl %Lb, L`, or the two into the register a consumer names where the `cmp` leaves it free, `sete %al` after `cmpl $0, %edx` (6.1) | as a value; as a condition, chapter 7 |
@@ -1096,7 +1099,8 @@ instruction knows its registers:
   `rcx` reserved, so that the count finds it; the count is generated
   with `rax` reserved, in the value and the effect context alike, and
   takes `rcx` whatever a node around the shift reserves, since the
-  instruction consumes it;
+  instruction consumes it, and its row is handed `rcx` as a consumer's
+  name (6.1), so that the count's last instruction writes it;
 - the place of `/=` and `%=`, the address the object is read and
   written through, is generated with `rax` and `rdx` reserved, and
   the place of `<<=` and `>>=` by a variable count with `rcx`;
@@ -1176,7 +1180,11 @@ into the dividend's register when the dividend is in neither `rax`
 nor `rdx` is 6.1's "the result is `L`", and the rules do not remove
 it, but where the quotient's consumer names `rax`: `return (a + b /
 c) / d` divides `a + b / c` from `ecx` and leaves the quotient in
-`eax` (6.1).
+`eax` (6.1). A shift's count is so written in `rcx` where it is free,
+the extension of a call's `char` result being `movsbl %al, %ecx`; a
+count that is a call's result itself, in `rax` by the convention, and
+one generated while `rcx` holds a live value, `a + (b + (c + (x <<
+(char) (n + 1))))` holding `b` there, keep the `mov` into `rcx`.
 
 **A remainder's value is the value in `rdx`.** The division leaves it
 there, the dividend's register is freed, and nothing moves, as the
@@ -2315,7 +2323,9 @@ answers:
 19. **On x86-64 a `return`'s value is computed in the result
     register** (6.1, 7.2): a value is computed in the register its
     consumer names, the general form of call 16, whose consumer is a
-    register variable. A `return` names `rax`, and the value's last
+    register variable, and a shift names `rcx` for its count, the
+    extension of a call's `char` result written there, `movsbl %al,
+    %ecx` (6.5). A `return` names `rax`, and the value's last
     instruction writes it where it is free: the copy of a borrowed
     read, `movl %ebx, %eax; subl (%rcx,%rdx,4), %eax` for `return r -
     p[i]` on a `register int r`, its right operand generated outside
@@ -2347,8 +2357,10 @@ answers:
     a conditional's at the top of the returned value, whose arms join
     in `x0` (`aarch64.md` 6.1). The cost is a second hand-down beside
     the variable's and a boundary: a node whose right operand or place
-    holds a call or a division, and a right operand that writes the
-    borrowed read's variable, keep the `mov`, a remainder is returned
-    by `movl %edx, %eax`, and a widening of a joined `int`, `return a
-    ? b % c : c` in a function returning `long`, moves the remainder
-    into `eax` where the extension could have read it from `edx`.
+    holds a call or a division, a right operand that writes the
+    borrowed read's variable, and a count that is a call's result or
+    is generated while `rcx` holds a live value keep the `mov`, a
+    remainder is returned by `movl %edx, %eax`, and a widening of a
+    joined `int`, `return a ? b % c : c` in a function returning
+    `long`, moves the remainder into `eax` where the extension could
+    have read it from `edx`.

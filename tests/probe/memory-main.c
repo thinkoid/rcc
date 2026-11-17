@@ -374,6 +374,15 @@ PINNED_TYPES(DECLARE_RETURNED)
 
 PINNED_TYPES(DECLARE_JOINED)
 
+#define DECLARE_COUNTED(T, N)                                           \
+    BOTH(long, cn_call_##N, (unsigned, long, long))                     \
+    BOTH(long, cn_place_##N, (unsigned, long *, long))                  \
+    BOTH(long, cn_post_##N, (unsigned, long))                           \
+    BOTH(long, cn_cast_##N, (unsigned, long))                           \
+    BOTH(long, cn_held_##N, (long, long, long, unsigned, long))
+
+PINNED_TYPES(DECLARE_COUNTED)
+
 /* the four rows beside the operand in memory: each function of FORMS
    in its six forms */
 #define DECLARE_FORMS(f, A, U)                                          \
@@ -1000,6 +1009,30 @@ PINNED_TYPES(TEST_RETURNED_ALL)
 
 PINNED_TYPES(TEST_JOINED_ALL)
 
+/* a shift's count, of one type, over the table and every count from 0
+   to 28, so n + 1 is 29 at most: x the shifted value, z a second
+   operand, P(long) the object >>= shifts */
+#define TEST_COUNTED_ALL(T, N)                                          \
+    static void test_counted_##N(void)                                  \
+    {                                                                   \
+        for (int i = 0; i < COUNT; ++i) {                               \
+            const long x = values[i];                                   \
+            const long z = values[(i * 5 + 1) % COUNT];                 \
+            const int at = offsets[i % OFFSETS];                        \
+                                                                        \
+            for (int n = 0; n < 29; ++n) {                              \
+                CHECK(cn_call_##N, x, n, ((unsigned) x, z, n));         \
+                MCHECK(cn_place_##N, x, n, at,                          \
+                       ((unsigned) x, P(long), n));                     \
+                CHECK(cn_post_##N, x, n, ((unsigned) x, n));            \
+                CHECK(cn_cast_##N, x, n, ((unsigned) x, n));            \
+                CHECK(cn_held_##N, x, n, (x, z, x ^ z, (unsigned) z, n)); \
+            }                                                           \
+        }                                                               \
+    }
+
+PINNED_TYPES(TEST_COUNTED_ALL)
+
 /* f in its six forms, on a, of type A, and the object's value v, of
    type U, which P(U) holds for _ptr; k is 0 to 3 */
 #define TEST_FORMS(f, A, U, a, v)                                       \
@@ -1172,6 +1205,9 @@ main(void)
 
 #define RUN_JOINED(T, N) test_joined_##N();
     PINNED_TYPES(RUN_JOINED)
+
+#define RUN_COUNTED(T, N) test_counted_##N();
+    PINNED_TYPES(RUN_COUNTED)
 
 #define RUN_RECAST(A, U, UN, name) test_recast_##name();
     RECASTS(RUN_RECAST)

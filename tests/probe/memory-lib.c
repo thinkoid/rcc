@@ -92,6 +92,13 @@ int turn(int i) { return (i * 5 + 3) & 7; }
 
 TYPES(SAME)
 
+/* a long as a result of the type, which clang may return with stale
+   bits above its width, since the convention has the caller extend
+   it; no SKEW, as the result is a shift's count */
+#define NARROWED(T, N) T narrowed_##N(long x) { return x; }
+
+TYPES(NARROWED)
+
 /* a pointer of each type memory.c only declares */
 #define POINTER_DECLARED(U, UN) U declared_##UN;
 

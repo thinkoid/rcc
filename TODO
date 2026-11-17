@@ -39,20 +39,6 @@ generated, whether the operand's value is valid to the new width.
 
 Check: the count over =tests=, and no function longer.
 
-** TODO x86-64: a shift's count that is widened is extended, then moved
-
-A widening is written in the register a =return= names and in a
-=register= variable's (=backend.md= 6.1, chapter 4). A shift's count
-is not: a count that is widened is extended in =rax= and moved,
-=movzwl %ax, %eax= and later =movl %eax, %ecx=, 48 over =tests=,
-where the extension could write =ecx=.
-
-Fix: the count's extension writes =rcx=, the register its consumer
-names.
-
-Check: the count of the pair over =tests=, before and after, none
-longer.
-
 ** TODO aarch64: a =return='s value is moved where an operand generated first took =x0=
 
 A =return= names =x0=, and no row of the aarch64 generator takes the

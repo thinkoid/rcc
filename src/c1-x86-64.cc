@@ -1410,12 +1410,14 @@ address_avoiding(state_t &s, const expr_t &e, unsigned pinned)
 // A shift's variable count, generated with rax and avoid reserved, and
 // with rcx taken out of what a node around the shift reserves for its
 // own operand: the instruction consumes the count in cl, so rcx is the
-// count's (chapter 6.5).
+// count's (chapter 6.5), and the register the shift names, as a return
+// names rax (6.1).  The count's row takes the name where rcx is free,
+// so that the extension of a call's narrow result is movsbl %al, %ecx.
 value_t
 shift_count(state_t &s, const expr_t &rhs, unsigned avoid)
 {
     const unsigned outer = std::exchange(s.reserved, s.reserved & ~bit(rcx));
-    const auto v = rvalue_avoiding(s, rhs, avoid | bit(rax));
+    const auto v = rvalue_avoiding(s, rhs, avoid | bit(rax), nullptr, bit(rcx));
     s.reserved = outer;
 
     return v;
