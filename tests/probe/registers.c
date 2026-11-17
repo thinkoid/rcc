@@ -1012,6 +1012,69 @@ TYPES(CONDITION)
 
 TYPES(COMPARED_ALL)
 
+/* A value computed in a type of the variable's width and the other
+   signedness, backend.md and aarch64.md chapter 4: the variable's
+   register the destination of the operation, of the comparison's value
+   and of - and ~, by the initializer and by the assignment, each read
+   then as a long, which reads the register whole; and of an object's
+   load under the conversion, from a slot, a global and *p.  Beside
+   them two narrowings and a call keep the mov. */
+#define RETYPE(F, FN, T, TN)                                            \
+    F rt_object_##FN##_##TN;                                            \
+    F rt_call_##FN##_##TN(F a) { return a; }                            \
+    long retype_##FN##_##TN(F a, F b)                                   \
+    {                                                                   \
+        F s = a;                                                        \
+        F *p = &s;                                                      \
+        register T x = a + b;                                           \
+        register T y = s;                                               \
+        long r = x;                                                     \
+        r = r * 7 + y;                                                  \
+        rt_object_##FN##_##TN = b;                                      \
+        y = rt_object_##FN##_##TN;                                      \
+        r = r * 7 + y;                                                  \
+        y = *p;                                                         \
+        r = r * 7 + y;                                                  \
+        y = a - b;                                                      \
+        r = r * 7 + y;                                                  \
+        y = a * b;                                                      \
+        r = r * 7 + y;                                                  \
+        y = a & b;                                                      \
+        r = r * 7 + y;                                                  \
+        y = a | b;                                                      \
+        r = r * 7 + y;                                                  \
+        y = a ^ b;                                                      \
+        r = r * 7 + y;                                                  \
+        y = a >> (b & 7);                                               \
+        r = r * 7 + y;                                                  \
+        y = a < b;                                                      \
+        r = r * 7 + y;                                                  \
+        y = -a;                                                         \
+        r = r * 7 + y;                                                  \
+        y = ~a;                                                         \
+        r = r * 7 + y;                                                  \
+        y = (int) (a * 3L);                                             \
+        r = r * 7 + y;                                                  \
+        y = a * 3L;                                                     \
+        r = r * 7 + y;                                                  \
+        y = rt_call_##FN##_##TN(b);                                     \
+        return r * 7 + y;                                               \
+    }
+
+RETYPES(RETYPE)
+
+/* an element of a local array beyond the reach of an add's 12 bits,
+   its address into a register pointer, aarch64.md chapter 4 */
+long
+far_address(long i)
+{
+        char big[5000];
+        register char *p;
+
+        p = &big[4500];
+        return (p - big) + i;
+}
+
 /* Held values across the paths of &&, || and ?:, backend.md 6.7: a
    read no path writes stays in its register; a read an arm writes is
    saved before the first divergence; nested.  Each read is the

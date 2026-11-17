@@ -158,12 +158,20 @@ struct value_t
 // computes the value in the variable's register where the target lets
 // it and that leaves the register the variable's representation.
 // taken says the row did; otherwise the value is elsewhere, and the
-// assignment moves it in.
+// assignment moves it in.  as is the type the row computes the value
+// in where the conversion to the variable changes the signedness alone,
+// int for register unsigned u = a + b, and null for the variable's own
+// type.
 struct into_t
 {
     const symbol_t *variable;
     bool taken = false;
+    const type_t *as = nullptr;
 };
+
+bool same_bits(const cast_t &, const type_t &to);
+const expr_t *object_under(const cast_t &);
+bool retypes(const cast_t &, const type_t &to, const into_t *);
 
 // A statement a break jumps out of: the label past its end, and for a
 // loop, which a continue goes on with, the label of the loop's

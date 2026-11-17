@@ -284,6 +284,54 @@ writes(const expr_t &e, const symbol_t *sym)
     return false;
 }
 
+// Whether a cast keeps every bit of its operand: an integer or a
+// pointer to an integer or a pointer of the same width, so it changes
+// the signedness alone, int to unsigned, long to unsigned long, or the
+// view of 64 bits, a pointer to a long or back, one pointer type to
+// another.  It writes no instruction (backend.md 6.3, the row of (T) a).
+bool
+same_bits(const cast_t &c, const type_t &to)
+{
+    const auto &from = c.arg->type;
+    const bool scalars = (is< int_t >(from) || is< pointer_t >(from)) &&
+                         (is< int_t >(to) || is< pointer_t >(to));
+
+    return scalars && integer(from).width == integer(to).width;
+}
+
+// The object in memory a cast's operand reads, or nullptr: the operand,
+// or the read under casts that keep its bits, (long) (int) u's u, an
+// object of the operand's width either way.  The cast's own load may
+// read it (backend.md 6.3, a widening by the load; chapter 4).
+const expr_t *
+object_under(const cast_t &c)
+{
+    const expr_t *top = c.arg.get();
+    while (is< cast_t >(*top) && same_bits(as< cast_t >(*top), top->type))
+        top = as< cast_t >(*top).arg.get();
+
+    return in_memory(*top) ? top : nullptr;
+}
+
+// Whether a conversion to the type to changes the signedness alone, of
+// a value handed a register variable (backend.md chapter 4): two
+// integer types of one width, the variable not yet written, and its
+// value computed in its own type.
+bool
+retypes(const cast_t &c, const type_t &to, const into_t *into)
+{
+    if (!into || into->taken || into->as)
+        return false;
+
+    if (!is< int_t >(to) || !is< int_t >(c.arg->type))
+        return false;
+
+    const auto &from = integer(c.arg->type);
+    const auto &target = integer(to);
+
+    return from.width == target.width && from.is_signed != target.is_signed;
+}
+
 // Whether e names the register variable sym anywhere, to read it or to
 // write it.  Such a variable has no address, 6.5.4.2p1, so no other
 // expression can reach it.

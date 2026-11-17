@@ -40,6 +40,13 @@
     X(T, N, gt, >, 4095, 0x12345) X(T, N, ge, >=, 4095, 0x12345)        \
     X(T, N, eq, ==, 4095, 0x12345) X(T, N, ne, !=, 4095, 0x12345)
 
+/* the pairs of types of one width and the other signedness, the
+   operand's type and the variable's, each with the letters of its
+   name */
+#define RETYPES(X)                                                      \
+    X(int, i, unsigned, u) X(unsigned, u, int, i)                       \
+    X(long, l, unsigned long, ul) X(unsigned long, ul, long, l)
+
 /* the comparisons of OPERATORS, a name and the operator */
 #define COMPARISONS(X, T, N)                                            \
     X(T, N, lt, <) X(T, N, le, <=) X(T, N, gt, >) X(T, N, ge, >=)       \

@@ -22,8 +22,9 @@
    no immediate, and sdiv x0, x0, x1; with the register variable, sub
    x0, x19, x0 after the array's address in x0, adrp and add, then mov
    x1, #4 or mov x1, #12 and sdiv x0, x0, x1 but in register_char();
-   in assigned(), the address of ints+4 in x0, mov x19, x0, and sub
-   x0, x0, x1 after the array's address in x1. */
+   in assigned(), the address of ints+4 in the register, adrp x19,
+   ints+4 and add x19, x19, :lo12:ints+4, and sub x0, x19, x0 after
+   the array's address in x0. */
 long diff(int *p, int *q)
 {
     return p - q;

@@ -139,12 +139,11 @@ assigned:
 	.cfi_def_cfa_register w29
 	str	x19, [x29, #16]
 	.cfi_offset w19, -16
-	adrp	x0, ints+4
-	add	x0, x0, :lo12:ints+4
-	mov	x19, x0
-	adrp	x1, ints
-	add	x1, x1, :lo12:ints
-	sub	x0, x0, x1
+	adrp	x19, ints+4
+	add	x19, x19, :lo12:ints+4
+	adrp	x0, ints
+	add	x0, x0, :lo12:ints
+	sub	x0, x19, x0
 	mov	x1, #4
 	sdiv	x0, x0, x1
 	b	.Lassigned.1

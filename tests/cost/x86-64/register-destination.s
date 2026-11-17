@@ -877,6 +877,282 @@ back_row:
 	ret
 	.cfi_endproc
 	.size	back_row, .-back_row
+	.globl	defined_function
+	.type	defined_function, @function
+defined_function:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	$0, %eax
+	jmp	.Ldefined_function.1
+.Ldefined_function.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	defined_function, .-defined_function
+	.globl	function_defined
+	.type	function_defined, @function
+function_defined:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	leaq	defined_function(%rip), %rbx
+	movq	%rbx, %rax
+	jmp	.Lfunction_defined.1
+.Lfunction_defined.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	function_defined, .-function_defined
+	.globl	function_declared
+	.type	function_declared, @function
+function_declared:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movq	declared_function@GOTPCREL(%rip), %rbx
+	movq	%rbx, %rax
+	jmp	.Lfunction_declared.1
+.Lfunction_declared.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	function_declared, .-function_declared
+	.globl	address_far
+	.type	address_far, @function
+address_far:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	subq	$8008, %rsp
+	leaq	-2008(%rbp), %rbx
+	leaq	-8008(%rbp), %rcx
+	movq	%rbx, %rax
+	subq	%rcx, %rax
+	movq	$4, %rcx
+	cqto
+	idivq	%rcx
+	jmp	.Laddress_far.1
+.Laddress_far.1:
+	leaq	-8(%rbp), %rsp
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	address_far, .-address_far
+	.globl	signedness_load
+	.type	signedness_load, @function
+signedness_load:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movl	-12(%rbp), %ebx
+	movl	%ebx, %eax
+	jmp	.Lsignedness_load.1
+.Lsignedness_load.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	signedness_load, .-signedness_load
+	.globl	signedness_char
+	.type	signedness_char, @function
+signedness_char:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movb	%dil, -9(%rbp)
+	movsbl	-9(%rbp), %ebx
+	movl	%ebx, %eax
+	jmp	.Lsignedness_char.1
+.Lsignedness_char.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	signedness_char, .-signedness_char
+	.globl	signedness_byte
+	.type	signedness_byte, @function
+signedness_byte:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movb	%dil, -9(%rbp)
+	movzbl	-9(%rbp), %ebx
+	movl	%ebx, %eax
+	jmp	.Lsignedness_byte.1
+.Lsignedness_byte.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	signedness_byte, .-signedness_byte
+	.globl	signedness_sum
+	.type	signedness_sum, @function
+signedness_sum:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movl	%esi, -16(%rbp)
+	movl	%ebx, %ebx
+	movl	-12(%rbp), %ebx
+	addl	-16(%rbp), %ebx
+	movl	%ebx, %eax
+	jmp	.Lsignedness_sum.1
+.Lsignedness_sum.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	signedness_sum, .-signedness_sum
+	.globl	signedness_unsigned_sum
+	.type	signedness_unsigned_sum, @function
+signedness_unsigned_sum:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movl	%esi, -16(%rbp)
+	movl	-12(%rbp), %ebx
+	addl	-16(%rbp), %ebx
+	movl	%ebx, %eax
+	jmp	.Lsignedness_unsigned_sum.1
+.Lsignedness_unsigned_sum.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	signedness_unsigned_sum, .-signedness_unsigned_sum
+	.globl	signedness_compare
+	.type	signedness_compare, @function
+signedness_compare:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movl	%esi, -16(%rbp)
+	movl	%ebx, %ebx
+	movl	-12(%rbp), %eax
+	cmpl	-16(%rbp), %eax
+	setl	%bl
+	movzbl	%bl, %ebx
+	movl	%ebx, %eax
+	jmp	.Lsignedness_compare.1
+.Lsignedness_compare.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	signedness_compare, .-signedness_compare
+	.globl	signedness_narrowed
+	.type	signedness_narrowed, @function
+signedness_narrowed:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movq	%rdi, -16(%rbp)
+	movl	%ebx, %ebx
+	movq	-16(%rbp), %rax
+	movl	%eax, %ebx
+	movl	%ebx, %eax
+	jmp	.Lsignedness_narrowed.1
+.Lsignedness_narrowed.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	signedness_narrowed, .-signedness_narrowed
+	.globl	signedness_widened
+	.type	signedness_widened, @function
+signedness_widened:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movb	%dil, -9(%rbp)
+	movsbl	-9(%rbp), %eax
+	movl	%eax, %ebx
+	movl	%ebx, %eax
+	jmp	.Lsignedness_widened.1
+.Lsignedness_widened.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	signedness_widened, .-signedness_widened
 	.bss
 	.globl	defined
 	.type	defined, @object

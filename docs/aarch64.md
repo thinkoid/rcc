@@ -320,23 +320,33 @@ better:
   destination is named apart: `sub w0, w19, w20`, the result in a
   fresh expression register, the variables untouched.
 - An assignment's value is computed in the register: the row that
-  computes it writes the variable's register by its last instruction,
-  `ldr w19, [x29, #24]`, `add w20, w20, w21`, `cset w19, lt`, `sxtw
-  x19, w0`, wherever that instruction is the row's only write of its
-  destination and leaves the representation above. The variable is
-  written after the row has read every operand, so no condition on
-  them is needed, where x86-64 takes two (`backend.md` chapter 4).
-  Any other value is computed elsewhere and moved in, `mov w20, w0`,
-  or `mov x20, x0` for a `long` or a pointer: another register
-  variable's read, `mov w19, w20`; a call's result, in
-  `x0` by the convention; the value of `&&`, `||` and `?:`, written
-  on two paths; a step's, written before its store; an address the
-  page and its offset form, two writes; a load through a register
-  pointer stepped into the same pointer, since a load's data register
-  cannot be its stepped base (2.3); and a value converted to a narrow
-  or an `unsigned` variable, whose extension is the move, `sxtb w19,
-  w0` for a `signed char`, `uxtb w19, w0` for a `char`. A constant is
-  the immediate, `mov w20, #0`. A declaration's initializer is the
+  computes it writes the variable's register, `ldr w19, [x29, #24]`,
+  `add w20, w20, w21`, `cset w19, lt`, `sxtw x19, w0`, wherever the
+  row writes its destination only after it has read every operand and
+  its last instruction leaves the representation above. An address
+  that the page and its offset form is two writes and reads no
+  operand, `adrp x19, buf; add x19, x19, :lo12:buf`, and so is the
+  GOT's, `adrp x19, :got:f; ldr x19, [x19, :got_lo12:f]`, and a slot
+  beyond the reach of an `add`, `add x19, x29, #4096; add x19, x19,
+  #1928`. A conversion that changes the signedness alone is written
+  there too: an object under it is loaded at the extension of the
+  conversion's type, `ldr w19, [x29, #32]` for `register unsigned u =
+  i`, and any other value of 32 bits or more is its own row's, `add
+  w19, w0, w1` for `u = a + b` on two `int`s, since a write of a `w`
+  register clears the upper half. The variable is written after the
+  row has read every operand, so no condition on them is needed,
+  where x86-64 takes two (`backend.md` chapter 4). Any other value is
+  computed elsewhere and moved in, `mov w20, w0`, or `mov x20, x0` for
+  a `long` or a pointer: another register variable's read, `mov w19,
+  w20`; a call's result, in `x0` by the convention; the value of
+  `&&`, `||` and `?:`, written on two paths; a step's, written before
+  its store; a load through a register pointer stepped into the same
+  pointer, since a load's data register cannot be its stepped base
+  (2.3); and a value converted by a narrowing or a widening to a
+  narrow or an `unsigned` variable, whose extension is the move, `sxtb
+  w19, w0` for a `signed char`, `uxtb w19, w0` for a `char`, `mov w19,
+  w0` for an `unsigned` from a `long`. A constant is the immediate,
+  `mov w20, #0`. A declaration's initializer is the
   same. Without one nothing is written (G5), but a narrow or an
   `unsigned` variable is extended in its own register, `sxtb w19, w19`
   or `mov w19, w19`, so that the register holds the representation
@@ -640,7 +650,7 @@ For a 32-bit operation (`w` names) or a 64-bit one (`x` names).
 | `!a` | `cmp L, #0; cset L, eq`; for an operand with stale upper bits, `tst L, #0xff` in place of the `cmp` (7.1) | as a value |
 | `a < b` and the rest, as a value | `cmp L, R; cset L, lt`; a constant on the left the mirrored comparison (6.1), `5 < x` the load and `cmp w0, #5; cset w0, gt` | `lt`, `le`, `gt`, `ge`, `eq`, `ne` signed; `lo`, `ls`, `hi`, `hs` unsigned and for pointers (G7) |
 | `a && b`, `a \|\| b`, `a ? b : c`, as a value | jump code into `L`, `mov L, #1` and `mov L, #0` on the arms | never `csel`: 6.5.16p5, the arm not chosen is not evaluated |
-| `x = e` | the store of 2.2 to the slot; for a register variable the last instruction of the row that computes the value writes its register, `add w19, w0, w1`, `ldr w19, [x29, #24]`, where it is the row's only write of its destination, and otherwise the `mov` into it, `mov w20, w0`, `mov x20, x0`, a narrow type's the extension, `sxtb w19, w0`; a constant the immediate, `mov w20, #0` | 6.6 for a constant; chapter 4 |
+| `x = e` | the store of 2.2 to the slot; for a register variable the last instruction of the row that computes the value writes its register, `add w19, w0, w1`, `ldr w19, [x29, #24]`, where the row writes its destination only after it has read every operand, `adrp x19, buf; add x19, x19, :lo12:buf` for an address in two instructions, and through a conversion that changes the signedness alone, `ldr w19, [x29, #32]` for `register unsigned u = i`, and otherwise the `mov` into it, `mov w20, w0`, `mov x20, x0`, a narrow type's the extension, `sxtb w19, w0`; a constant the immediate, `mov w20, #0` | 6.6 for a constant; chapter 4 |
 | `x op= e`, `++x`, `x++` | the load, the operation, the store, after `e` for `x op= e`; a register variable in place, after `e`, its register `L` and the destination, `add w19, w19, w0`, `add w19, w19, #1`, a narrow one re-extended after, `sxtb w19, w19`, and `%=` with the quotient in a register of its own, `sdiv w0, w19, w20; msub w19, w0, w20, w19`; `x++` on a register variable for its value is G13's copy and the step, `mov w0, w19; add w19, w19, #1`; a pointer's `++` and `--` step by the size, an immediate where `add` encodes it, `add L, L, #4` for an `int *`, and otherwise held in a register | no memory form, 6.6; chapter 4 |
 | `(T) a` | `sxtw L, L` for `int` to `long`; `sxtb`, `sxth`, `uxtb`, `uxth` from a narrow type; each only when `L` is not already valid to the new width; a signed object in memory under a cast that widens it is the load of 2.2 extended to the new width, `ldrsw x0, [x29, #16]` for an `int` to `long`, `ldrsb x0` and `ldrsh x0` for a `signed char` and a `short`, its displacement scaled by the object's size as the plain load's is, so through `x16` where that one would be (5.3), and no instruction after it, as `backend.md` 6.3's widening by the load has it; `mov wL, wL` for an `unsigned` not valid to 64; nothing between pointer types and for a pointer to `long`; an integer to a pointer as to `unsigned long`, so `sxtw` for an `int` | G2; the width rule |
 | `&x` | `add L, x29, #d`; for a global the file defines `adrp L, sym; add L, L, :lo12:sym`, as a string literal's; for one it only declares, the load from the GOT; `&x` plus a constant is the same `add` or pair with the constant in it, the name and constant below | two `add`s beyond 4095, 5.3 |
@@ -1432,12 +1442,17 @@ the twelfth came later. The answers:
 11. **A `register` variable is the destination of the value computed
     for it** (chapter 4), as on x86-64 (`backend.md` chapter 13, call
     16): the row that computes the value writes the variable's
-    register by its last instruction, `add w19, w0, w1` and `ldr w19,
-    [x29, #24]`, wherever that instruction is the row's only write of
-    its destination. An instruction here names its destination apart
-    from its sources, so the variable is written after every operand
-    is read, and the two conditions x86-64 takes from the Seventh
-    Edition compiler's `sreorder()` are not needed. The cost is that
+    register, `add w19, w0, w1` and `ldr w19, [x29, #24]`, wherever
+    the row writes its destination only after it has read every
+    operand: an address in two instructions writes it twice, `adrp
+    x19, buf; add x19, x19, :lo12:buf`, and reads none. An instruction
+    here names its destination apart from its sources, so the variable
+    is written after every operand is read, and the two conditions
+    x86-64 takes from the Seventh Edition compiler's `sreorder()` are
+    not needed. A conversion that changes the signedness alone is no
+    boundary, on both targets: `register unsigned u = i` is the one
+    load, `ldr w19, [x29, #32]`, and `u = a + b` on two `int`s `add
+    w19, w0, w1`. The cost is that
     the two targets' listings part for the same source: `r = a + (b +
     c)` and `r = a - r` write the variable here and keep the `mov` on
     x86-64.

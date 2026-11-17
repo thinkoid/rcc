@@ -143,42 +143,49 @@ x86-64's does.
 Check: =operand='s =widen_signedness= and =widen_unsigned= are one
 =ldrsw= and one =ldr= on aarch64.
 
-** TODO Five rows beside a register variable's destination keep their =mov=
+** TODO Three rows beside a register variable's destination keep their =mov=
 
 A =register= variable is the destination of the value computed for
-it (=backend.md= chapter 4, =aarch64.md= chapter 4). Five rows next
-to that rule compute the value elsewhere and move it:
+it (=backend.md= chapter 4). Three rows next to that rule on x86-64
+compute the value elsewhere and move it:
 
-- aarch64, an address formed by two instructions: ~p = buf~ is =adrp
-  x0, buf; add x0, x0, :lo12:buf; mov x19, x0=, and an address
-  through the GOT the same. The row writes its destination twice,
-  and reads no operand between;
-- both targets, a conversion that changes signedness alone:
-  ~register unsigned u = i;~ is =movl -20(%rbp), %eax; movl %eax,
-  %ebx= and =ldr w0, [x29, #32]; mov w19, w0=, and ~u = a + b~ on
-  two =int= operands ends =movl %eax, %ebx= and =mov w19, w0=, where
-  the load or the operation into the register leaves the same bits;
-- x86-64, pointer arithmetic whose left operand is an address: ~p =
-  buf + n~ on an array, and ~p = a + n~ at a size no addressing form
+- pointer arithmetic whose left operand is an address: ~p = buf +
+  n~ on an array, and ~p = a + n~ at a size no addressing form
   scales by, since the left operand of the rule is a load, a
   constant or the variable, and an array's decay is none;
-- x86-64, an address that is a pointer's own value: ~p = &*q~, ~p =
-  &q[0]~;
-- x86-64, ~r = !x~, which ends =sete %al; movzbl %al, %eax; movl
-  %eax, %ebx= as a comparison's value did.
+- an address that is a pointer's own value: ~p = &*q~, ~p = &q[0]~;
+- ~r = !x~, which ends =sete %al; movzbl %al, %eax; movl %eax,
+  %ebx= as a comparison's value did.
 
-Fix: the first two take the variable's register as their
-destination: the aarch64 address in two instructions, with the
-rule's wording made "the row writes its destination only after it
-has read every operand", and a conversion of signedness alone, read
-and computed. A conversion that narrows is not among them: its last
-instruction is the extension and already writes the variable, and a
-load at the variable's width would read the object narrower than its
-type (G10). The last three take it too: the left operand of pointer
-arithmetic may be an address, which a =lea= or the GOT's load writes
-into the variable; an address that is a pointer's own value is that
-value's load or copy into the variable; and ~!x~ is =sete= and
-=movzbl= on the variable's register, as a comparison's value is.
+Fix: each takes the variable's register as its destination: the
+left operand of pointer arithmetic may be an address, which a =lea=
+or the GOT's load writes into the variable; an address that is a
+pointer's own value is that value's load or copy into the variable;
+and ~!x~ is =sete= and =movzbl= on the variable's register, as a
+comparison's value is.
+
+Check: a function of =register-destination= for each.
+
+** TODO Five more rows at the edge of a register variable's destination
+
+The destination rule (=backend.md= chapter 4, =aarch64.md= chapter
+4) stops short of five rows:
+
+- both targets, the value of a step on an object in memory: ~r =
+  x++~ loads =x= elsewhere and moves it, where the load could write
+  the variable before the =add= and the store;
+- both targets, ~&&~, ~||~ and ~?:~ as a value, written on two
+  paths, each of which could write the variable;
+- x86-64, a left operand that is an object under a cast of
+  signedness: ~u = i + ub~ keeps its =mov=;
+- x86-64, a left operand promoted under such an assignment: ~u = c
+  + b~ with ~c~ a =char= keeps its =mov=, where aarch64 writes =add
+  w19, w0, w1=;
+- x86-64, ~r = c + 5~ with ~c~ a =register char=, in the entry on
+  two rows around a constant and a register variable.
+
+Fix: decide each; the second goes with the join of ~?:~ in the
+register its consumer names.
 
 Check: a function of =register-destination= for each, agreeing with
 its decision.

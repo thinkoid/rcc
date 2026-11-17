@@ -191,6 +191,30 @@ read(state_t &s, const symbol_t *sym)
     return { id };
 }
 
+// The type the row handed into computes the value in: the variable's,
+// or into's as.
+const type_t &
+computed_type(const into_t &into)
+{
+    return into.as ? *into.as : into.variable->type;
+}
+
+// The width a row handed into must leave its result valid to, in the
+// signedness of computed_type(): the variable's representation, or for
+// a row of a type that differs from the variable's in the signedness
+// alone, that type's at the variable's width.  Such a row's last
+// instruction writes the register at that width, so the bits are the
+// variable's representation too: an int row's 32-bit write leaves an
+// unsigned variable valid to 64, the upper half cleared (backend.md
+// chapter 4).
+int
+needed(const into_t &into)
+{
+    const auto &t = integer(computed_type(into));
+
+    return written(register_width(into.variable), t.is_signed);
+}
+
 // Whether a row handed into writes the variable's register, its last
 // instruction leaving the result valid to valid: when no row has, and
 // the register is then the variable's representation, backend.md
@@ -198,7 +222,7 @@ read(state_t &s, const symbol_t *sym)
 bool
 takes(const into_t *into, int valid)
 {
-    return into && !into->taken && valid >= represented(into->variable);
+    return into && !into->taken && valid >= needed(*into);
 }
 
 // The value of a row whose last instruction wrote the variable's
@@ -216,11 +240,17 @@ taken(state_t &s, into_t &into, value_t v = { })
 // What a conversion to t hands on to the row of its operand.  The
 // conversion leaves the value valid to t's width at most (backend.md
 // 6.3, the width rule), so the operand's row leaves the variable's
-// representation only where that width holds it.
+// representation only where that width holds it.  A row computing the
+// value in another signedness, into's as, hands it on through no
+// conversion: under a narrowing one, the last instruction would write
+// the register wider than the variable.
 into_t *
 through(into_t *into, const int_t &t)
 {
-    return into && t.width >= represented(into->variable) ? into : nullptr;
+    if (!into || into->as)
+        return nullptr;
+
+    return t.width >= represented(into->variable) ? into : nullptr;
 }
 
 // Copies a borrowed read into the free expression register to, by mov at

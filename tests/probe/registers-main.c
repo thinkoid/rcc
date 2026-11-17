@@ -160,6 +160,12 @@ compare(const char *name, long x, long y)
 
 TYPES(DECLARE_TYPE)
 
+#define DECLARE_RETYPE(F, FN, T, TN)                                    \
+    BOTH(long, retype_##FN##_##TN, (F, F))
+
+RETYPES(DECLARE_RETYPE)
+BOTH(long, far_address, (long))
+
 #define DECLARE_DEST(T, N, name, op, small, large)                      \
     BOTH(long, dest_##name##_##N, (long, long, long))                   \
     BOTH(long, idest_##name##_##N, (long, long))
@@ -503,6 +509,10 @@ static const long fills[] = {
     for (int i = 0; i < COUNT; ++i)                                     \
         CHECK(fill_##N, values[i], 0, (values[i]));
 
+/* the values computed in the other signedness, over every pair */
+#define TEST_RETYPE(F, FN, T, TN)                                       \
+    CHECK(retype_##FN##_##TN, x, y, ((F) x, (F) y));
+
 static void
 test_rest(void)
 {
@@ -518,6 +528,14 @@ test_rest(void)
 
     for (int i = 0; i < COUNT; ++i) {
         const long x = values[i];
+
+        CHECK(far_address, x, 0, (x));
+
+        for (int j = 0; j < COUNT; ++j) {
+            const long y = values[j];
+
+            RETYPES(TEST_RETYPE)
+        }
 
         CHECK(twice, x, 0, (x));
         CHECK(clobber1, x, 0, (x));

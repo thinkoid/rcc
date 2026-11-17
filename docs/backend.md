@@ -285,12 +285,13 @@ declaration's initializer is the same.
 
 - A load is the load into the register: `r = a` on an `int` in a slot
   is `movl -12(%rbp), %ebx`, the extending loads included, so `r = c`
-  on a `char` is `movsbl -1(%rbp), %ebx`. A conversion hands the
-  variable on to its operand only where the conversion's width holds
-  the representation above: an `int`, a `long` or a pointer takes the
-  load through one, and an `unsigned` or a narrow variable keeps the
-  `mov` after it, `register short s = c` being `movsbl -1(%rbp), %eax;
-  movswl %ax, %ebx`.
+  on a `char` is `movsbl -1(%rbp), %ebx`. A conversion that widens or
+  narrows hands the variable on to its operand only where the
+  conversion's width holds the representation above: an `int`, a
+  `long` or a pointer takes the load through one, and an `unsigned` or
+  a narrow variable keeps the `mov` after it, `register short s = c`
+  being `movsbl -1(%rbp), %eax; movswl %ax, %ebx`. One that changes
+  the signedness alone is below.
 - An address is formed in the register: `p = buf` is `leaq
   buf(%rip), %rbx`, `p = &x` is `leaq -12(%rbp), %rbx`, and `p = q +
   n` is `leaq (%rax,%rcx,4), %rbx` after the two loads. `lea` names
@@ -302,14 +303,15 @@ declaration's initializer is the same.
   %bl; movzbl %bl, %ebx`. The `cmp` has read both operands, the
   variable among them, `r = r < y`, before either instruction writes.
   The `movzbl` leaves 0 or 1, valid to 64 bits (6.3), so the variable
-  is an `int`, a `long` or an `unsigned long`; an `unsigned` or a
-  narrow variable keeps the `mov` after the conversion, as for a
-  load.
+  is an `int`, a `long` or an `unsigned long`, and an `unsigned`
+  through the conversion of the signedness alone (below); a narrow
+  variable keeps the `mov` after the conversion, as for a load.
 - An operation is computed in the register: `r = a + b` is `a`
   loaded into it and the instruction written on it, `movl -12(%rbp),
   %ebx; addl -16(%rbp), %ebx`. The operators are the rows of two
   addresses on a free register, `+`, `-`, `&`, `|`, `^`, `*` and the
-  shifts, on the variable's own type; and pointer arithmetic where its
+  shifts, on the variable's own type or one that differs from it in
+  the signedness alone (below); and pointer arithmetic where its
   last instruction is the `addq` or the `subq` on the left operand,
   not `lea`, so `p = q - n` is `movq -16(%rbp), %rbx; imulq $4,
   -24(%rbp), %rax; subq %rax, %rbx`, `n` the multiply's source (6.1),
@@ -319,6 +321,24 @@ declaration's initializer is the same.
 - `-` and `~` are computed in the register, on the variable's own
   type: `r = -a` is `a` loaded into it and the instruction of one
   address written on it, `movl -12(%rbp), %ebx; negl %ebx`.
+- A conversion that changes the signedness alone, of 8, 16, 32 or 64
+  bits, is computed in the register too. An object in memory under it
+  is loaded at the extension of the conversion's type, the object read
+  at its own width (G10): `register unsigned u = i` is `movl
+  -20(%rbp), %ebx` and `register char c = uc` `movsbl -9(%rbp), %ebx`.
+  Any other value of 32 bits or more is its own row's, handed the
+  variable as computed in the operand's type: `u = a + b` on two
+  `int`s is `movl -12(%rbp), %ebx; addl -16(%rbp), %ebx`, a
+  comparison's value `setl %bl; movzbl %bl, %ebx` and `-a` `negl
+  %ebx`. The row's last instruction writes the register at the
+  variable's width, and the 32-bit write clears the upper half, which
+  is an `unsigned` variable's representation, valid to 64. Such a row
+  hands the variable on through no further conversion, since under a
+  narrowing one the last instruction would write the register wider
+  than the variable: `u = (int) l` keeps the `mov`, and so does a
+  conversion that narrows, whose last instruction is the extension,
+  and one that widens, `register unsigned u = c` being `movsbl
+  -9(%rbp), %eax; movl %eax, %ebx`.
 
 An instruction of two addresses writes its left operand (3.3), so in
 the operation the variable holds `a` before the right operand is
@@ -2090,25 +2110,29 @@ answers:
 16. **A `register` variable is the destination of the value computed
     for it** (chapter 4), on both targets, where the last instruction
     can be the one that writes it: a load is `movl -12(%rbp), %ebx`
-    and `ldr w19, [x29, #24]`, and on aarch64 every row whose last
-    instruction is its only write of its destination writes the
-    variable, `add w19, w0, w1`. On x86-64 an address is its `lea`
-    into the register, `leaq buf(%rip), %rbx`, and a comparison's
-    value its `setcc` and `movzbl`; an operation, pointer arithmetic
-    by `addq` or `subq` among them, is its left operand loaded into
-    the register and the instruction written on it, `addl -16(%rbp),
-    %ebx`, under two conditions on the right operand: a leaf, and not
-    naming the variable; and `-` and `~` are the operation with no
-    right operand, `negl %ebx`. The load is the Seventh Edition
-    compiler's `move3`, and the operation and its conditions are its
-    `sreorder()`; rcc takes `*` by any operand, a `char` promoted and
-    `p[3]` on a pointer in memory, which that compiler refused, and
-    writes `-`, `~` and a comparison's value in the register, which
-    it moved. The cost is the second exception to 6.1's "nothing
-    looks at a node's neighbours", and a boundary on x86-64: `r = a +
-    (b + c)`, `r = a - r`, a division, a left operand its own
-    instruction cannot put in the register, `!`, and an address that
-    is a pointer's own value, `&*p`, keep the `mov`.
+    and `ldr w19, [x29, #24]`, and on aarch64 every row that writes
+    its destination only after it has read every operand writes the
+    variable, `add w19, w0, w1` and an address in two instructions,
+    `adrp x19, buf; add x19, x19, :lo12:buf`. On both targets the
+    variable is written through a conversion that changes the
+    signedness alone, `register unsigned u = i` the one load and `u =
+    a + b` on two `int`s the operation in its register. On x86-64 an
+    address is its `lea` into the register, `leaq buf(%rip), %rbx`,
+    and a comparison's value its `setcc` and `movzbl`; an operation,
+    pointer arithmetic by `addq` or `subq` among them, is its left
+    operand loaded into the register and the instruction written on
+    it, `addl -16(%rbp), %ebx`, under two conditions on the right
+    operand: a leaf, and not naming the variable; and `-` and `~` are
+    the operation with no right operand, `negl %ebx`. The load is the
+    Seventh Edition compiler's `move3`, and the operation and its
+    conditions are its `sreorder()`; rcc takes `*` by any operand, a
+    `char` promoted and `p[3]` on a pointer in memory, which that
+    compiler refused, and writes `-`, `~` and a comparison's value in
+    the register, which it moved. The cost is the second exception to
+    6.1's "nothing looks at a node's neighbours", and a boundary on
+    x86-64: `r = a + (b + c)`, `r = a - r`, a division, a left operand
+    its own instruction cannot put in the register, `!`, and an
+    address that is a pointer's own value, `&*p`, keep the `mov`.
 17. **On x86-64 a remainder's value is the value in `rdx`** (6.5):
     the division leaves it there, the dividend's register is freed,
     and nothing moves, so `a[i] = x % 256` stores `movl %edx,

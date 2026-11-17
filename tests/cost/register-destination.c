@@ -6,6 +6,18 @@
    but in register_leaf(), where the register parameter s takes it and
    r the second.
 
+   function_defined() and function_declared() take a function's
+   address, and address_far() an element of an array beyond the reach
+   of an add's 12 bits.  signedness_load(), signedness_char() and
+   signedness_byte() initialize the variable from an object under a
+   conversion that changes the signedness alone, register unsigned r =
+   i, register char r = uc and register unsigned char r = sc;
+   signedness_sum(), signedness_unsigned_sum() and signedness_compare()
+   assign it a value so converted, r = a + b on two ints and on two
+   unsigneds and r = a < b; beside them signedness_narrowed() and
+   signedness_widened() convert by a narrowing and a widening, r =
+   (int) l and register unsigned r = c, which keep the mov.
+
    On x86-64 the listing must show: in load(), the load of a into the
    register, movl -12(%rbp), %ebx; in constant_leaf(), named_leaf(),
    register_leaf(), pointer_leaf() and promoted_leaf(), the operation
@@ -50,8 +62,20 @@
    both operands before it writes, and after the multiply with n its
    source, imulq $4, -24(%rbp), %rax and subq %rax, %rbx, and
    imulq $12, -24(%rbp), %rax and addq %rax, %rbx or subq %rax, %rbx,
-   and no mov into the register.  return r is movl %ebx, %eax,
-   and return p movq %rbx, %rax.
+   and no mov into the register.  In function_defined() and
+   function_declared() the address into the register, leaq
+   defined_function(%rip), %rbx and movq
+   declared_function@GOTPCREL(%rip), %rbx, and leaq -2008(%rbp), %rbx
+   in address_far(); the load at the conversion's extension into the
+   register, movl -12(%rbp), %ebx in signedness_load(), movsbl
+   -9(%rbp), %ebx in signedness_char() and movzbl -9(%rbp), %ebx in
+   signedness_byte(); the operation on the register, movl -12(%rbp),
+   %ebx; addl -16(%rbp), %ebx, in signedness_sum() and
+   signedness_unsigned_sum(), and setl %bl; movzbl %bl, %ebx after the
+   cmp in signedness_compare(); and the mov kept, movl %eax, %ebx,
+   after movq -16(%rbp), %rax in signedness_narrowed() and after movsbl
+   -9(%rbp), %eax in signedness_widened().  return r is movl %ebx,
+   %eax, and return p movq %rbx, %rax.
 
    On aarch64 the listing must show the last instruction of each
    right operand writing the register, no condition on the operands
@@ -62,9 +86,10 @@
    ldr w19, [x29, #28]; add w19, w19, w0 in itself(); add w0, w19, #1
    and add w19, w0, w1 in itself_left(); sdiv w19, w0, w1 in
    quotient(); mul w19, w0, w1 in initializer(); the address of a
-   global in two instructions, adrp x0, defined and add x0, x0,
-   :lo12:defined, and the GOT's adrp and ldr, each into x0 and moved,
-   mov x19, x0; add x19, x29, #24 and add x19, x0, w1, sxtw #2 for the
+   global in two instructions written into the register, adrp x19,
+   defined and add x19, x19, :lo12:defined, and the GOT's adrp x19,
+   :got:declared and ldr x19, [x19, :got_lo12:declared], and no mov;
+   add x19, x29, #24 and add x19, x0, w1, sxtw #2 for the
    local and the element; add x19, x0, x1, lsl #2, add x19, x19, #4,
    sub x19, x19, x0, lsl #2 and sub x19, x0, #4 for the pointers; neg
    w19, w0, mvn w19, w0 and neg w19, w19; cset w19, lt and cset w19, eq
@@ -74,7 +99,18 @@
    own_element(); for p += n and p -= n, add x19, x19, x0 and sub x19,
    x19, x0, add x19, x19, x0, lsl #2 and sub x19, x19, x0, lsl #2, and
    add x19, x19, x0 and sub x19, x19, x0 after mov x1, #12 and mul x0,
-   x0, x1.  return r is mov w0, w19, and return p mov x0, x19. */
+   x0, x1; adrp x19, defined_function and add x19, x19,
+   :lo12:defined_function in function_defined(), adrp x19,
+   :got:declared_function and ldr x19, [x19,
+   :got_lo12:declared_function] in function_declared(), and add x19,
+   x29, #4096; add x19, x19, #1928 in address_far(); ldr w19, [x29,
+   #24] in signedness_load(), ldrb w19, [x29, #24] in signedness_char()
+   and signedness_byte(); add w19, w0, w1 in signedness_sum() and
+   signedness_unsigned_sum(), and cset w19, lt in signedness_compare();
+   and the mov kept, mov w19, w0, after ldr x0, [x29, #24] in
+   signedness_narrowed() and after ldrb w0, [x29, #24] in
+   signedness_widened().  return r is mov w0, w19, and return p mov x0,
+   x19. */
 int
 load(int a)
 {
@@ -399,4 +435,106 @@ int (*back_row(int (*q)[3], long n))[3]
 
         p -= n;
         return p;
+}
+
+int
+defined_function(void)
+{
+        return 0;
+}
+
+extern int declared_function(void);
+
+int (*function_defined(void))(void)
+{
+        register int (*p)(void);
+
+        p = defined_function;
+        return p;
+}
+
+int (*function_declared(void))(void)
+{
+        register int (*p)(void);
+
+        p = declared_function;
+        return p;
+}
+
+long
+address_far(void)
+{
+        int big[2000];
+        register int *p;
+
+        p = &big[1500];
+        return p - big;
+}
+
+unsigned
+signedness_load(int i)
+{
+        register unsigned r = i;
+
+        return r;
+}
+
+int
+signedness_char(unsigned char uc)
+{
+        register char r = uc;
+
+        return r;
+}
+
+int
+signedness_byte(signed char sc)
+{
+        register unsigned char r = sc;
+
+        return r;
+}
+
+unsigned
+signedness_sum(int a, int b)
+{
+        register unsigned r;
+
+        r = a + b;
+        return r;
+}
+
+int
+signedness_unsigned_sum(unsigned a, unsigned b)
+{
+        register int r;
+
+        r = a + b;
+        return r;
+}
+
+unsigned
+signedness_compare(int a, int b)
+{
+        register unsigned r;
+
+        r = a < b;
+        return r;
+}
+
+unsigned
+signedness_narrowed(long l)
+{
+        register unsigned r;
+
+        r = (int) l;
+        return r;
+}
+
+unsigned
+signedness_widened(char c)
+{
+        register unsigned r = c;
+
+        return r;
 }

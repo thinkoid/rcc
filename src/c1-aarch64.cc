@@ -816,9 +816,10 @@ last_access(address_t a)
 // upper part shifted first, and one when the lower part is zero.  The
 // sum is formed in L, so x16 is not used.  Any other dereference's
 // address is never here: address_value() takes it as the pointer's
-// value.  A register variable handed down is written by the one add of
-// a slot, add x19, x29, #16, chapter 4; the label's pair and the two
-// adds write their register twice and keep it in L.
+// value.  The row reads no operand, so a register variable handed down
+// is L, written by the slot's add, add x19, x29, #16, and by the
+// label's pair and the two adds alike, adrp x19, buf; add x19, x19,
+// :lo12:buf (chapter 4).
 value_t
 address_of(state_t &s, const address_t &a, into_t *into = nullptr)
 {
@@ -828,32 +829,26 @@ address_of(state_t &s, const address_t &a, into_t *into = nullptr)
     const int upper = a.displacement & ~0xfff;
     const int lower = a.displacement & 0xfff;
 
-    if (a.label.empty() && upper == 0 && takes(into, 64)) {
-        insn(s, "add",
-             { reg(variable_register(into->variable), 64), "x29", imm(lower) });
-        return taken(s, *into);
-    }
-
-    const auto v = fresh(s, 64);
-    const auto r = reg(reg_of(s, v), 64);
+    const bool direct = takes(into, 64);
+    const auto v = direct ? value_t { } : fresh(s, 64);
+    const auto r =
+        reg(direct ? variable_register(into->variable) : reg_of(s, v), 64);
 
     if (!a.label.empty()) {
         const auto symbol = symbol_plus(a.label, a.displacement);
         insn(s, "adrp", { r, symbol });
         insn(s, "add", { r, r, std::format(":lo12:{}", symbol) });
-        return v;
     }
-
-    if (upper == 0) {
+    else if (upper == 0) {
         insn(s, "add", { r, "x29", imm(lower) });
-        return v;
+    }
+    else {
+        insn(s, "add", { r, "x29", imm(upper) });
+        if (lower != 0)
+            insn(s, "add", { r, r, imm(lower) });
     }
 
-    insn(s, "add", { r, "x29", imm(upper) });
-    if (lower != 0)
-        insn(s, "add", { r, r, imm(lower) });
-
-    return v;
+    return direct ? taken(s, *into) : v;
 }
 
 // The address of a function or of an object as a value, valid to 64,
@@ -863,21 +858,25 @@ address_of(state_t &s, const address_t &a, into_t *into = nullptr)
 // does not reach from a position-independent executable, so its address
 // is loaded from the GOT, adrp L, :got:f and ldr L, [L, :got_lo12:f],
 // the one the dynamic linker wrote, the address the library's own code
-// takes of it.
+// takes of it.  Either pair reads no operand, so a register variable
+// handed down is L, adrp x19, :got:f; ldr x19, [x19, :got_lo12:f]
+// (chapter 4).
 value_t
-symbol_address(state_t &s, const symbol_t &f)
+symbol_address(state_t &s, const symbol_t &f, into_t *into = nullptr)
 {
     const auto name = assembly_name(f);
     if (s.defined.contains(&f))
-        return address_of(s, { .label = std::string(name) });
+        return address_of(s, { .label = std::string(name) }, into);
 
-    const auto v = fresh(s, 64);
-    const auto r = reg(reg_of(s, v), 64);
+    const bool direct = takes(into, 64);
+    const auto v = direct ? value_t { } : fresh(s, 64);
+    const auto r =
+        reg(direct ? variable_register(into->variable) : reg_of(s, v), 64);
 
     insn(s, "adrp", { r, std::format(":got:{}", name) });
     insn(s, "ldr", { r, std::format("[{}, :got_lo12:{}]", r, name) });
 
-    return v;
+    return direct ? taken(s, *into) : v;
 }
 
 // The address of a global as an access's operand, chapter 10.  One the
@@ -1187,7 +1186,7 @@ value_t
 address_value(state_t &s, const expr_t &e, into_t *into = nullptr)
 {
     if (const auto *g = global_of(e))
-        return symbol_address(s, *g);
+        return symbol_address(s, *g, into);
 
     if (!is< unary_t >(e) || as< unary_t >(e).op != unary_op_t::deref)
         return address_of(s, address(s, e), into);
@@ -1201,14 +1200,15 @@ address_value(state_t &s, const expr_t &e, into_t *into = nullptr)
 
 // A function designator decayed to a pointer, 6.3.2.1p4: a function's
 // name is its address, and *p through a pointer to a function is p's
-// value, the * written as no instruction.
+// value, the * written as no instruction.  A register variable handed
+// down goes to the row of either (chapter 4).
 value_t
-function_pointer(state_t &s, const expr_t &designator)
+function_pointer(state_t &s, const expr_t &designator, into_t *into = nullptr)
 {
     if (is< name_t >(designator))
-        return symbol_address(s, *as< name_t >(designator).sym);
+        return symbol_address(s, *as< name_t >(designator).sym, into);
 
-    return rvalue(s, *as< unary_t >(designator).arg);
+    return rvalue(s, *as< unary_t >(designator).arg, into);
 }
 
 // The load row, 6.3.2.1p2: the value at an address into a register at
@@ -2429,6 +2429,36 @@ extending_load(state_t &s,
 // instruction written for the conversion writes the register, ldrsb
 // w19, [x29, #16] for register int x = c, sxtw x19, w0 for register long
 // y = a + b (chapter 4).
+// The operand of a conversion that retypes(), into the variable's
+// register, chapter 4.  An object in memory, under casts that keep its
+// bits, is loaded at the extension of the conversion's type, ldr w19,
+// [x29, #32] for register unsigned u = i and ldrsb w19, [x29, #24] for
+// register signed char c = uc, the object read at its own width (G10).
+// Any other operand of 32 bits or more is its own row, handed the
+// variable as computed in the operand's type: the row's last
+// instruction writes the register at the variable's width, and a write
+// of a w register clears the upper half, so u = a + b on two ints is
+// add w19, w0, w1.  A narrower operand is no row of its own, and is as
+// any conversion's.
+value_t
+retyped(state_t &s, const cast_t &c, const int_t &target, into_t &into)
+{
+    if (const auto *object = object_under(c))
+        return load(s, address(s, *object), target, std::max(32, target.width),
+                    &into);
+
+    into_t computed { into.variable, false, &c.arg->type };
+    auto v = rvalue(s, *c.arg, target.width < 32 ? nullptr : &computed);
+    into.taken = computed.taken;
+    if (into.taken)
+        return v;
+
+    auto &valid = s.values[v.id].valid;
+    valid = std::min(valid, target.width);
+
+    return v;
+}
+
 value_t
 cast(state_t &s, const cast_t &c, const type_t &to, into_t *into = nullptr)
 {
@@ -2444,7 +2474,10 @@ cast(state_t &s, const cast_t &c, const type_t &to, into_t *into = nullptr)
         return address_value(s, *c.arg, onward);
 
     if (is< function_t >(c.arg->type))
-        return function_pointer(s, *c.arg);
+        return function_pointer(s, *c.arg, onward);
+
+    if (retypes(c, to, into))
+        return retyped(s, c, target, *into);
 
     const auto &from = integer(c.arg->type);
     const bool widens = target.width > from.width;

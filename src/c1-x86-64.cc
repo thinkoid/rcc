@@ -1101,21 +1101,6 @@ immediate_of(const expr_t &e, int width)
     return imm(normalized(as< literal_t >(e).value, width));
 }
 
-// Whether a cast keeps every bit of its operand: an integer or a
-// pointer to an integer or a pointer of the same width, so it changes
-// the signedness alone, int to unsigned, long to unsigned long, or the
-// view of 64 bits, a pointer to a long or back, one pointer type to
-// another.  It writes no instruction (backend.md 6.3, the row of (T) a).
-bool
-same_bits(const cast_t &c, const type_t &to)
-{
-    const auto &from = c.arg->type;
-    const bool scalars = (is< int_t >(from) || is< pointer_t >(from)) &&
-                         (is< int_t >(to) || is< pointer_t >(to));
-
-    return scalars && integer(from).width == integer(to).width;
-}
-
 // The object in memory that an instruction of width bits names as its
 // own operand for e, backend.md 6.1, or nullptr: in_memory()'s read, of
 // a type exactly that wide, so the instruction reads the bytes the load
@@ -2251,8 +2236,8 @@ leaf_apart_from(const expr_t &rhs, const symbol_t *sym)
     return leaf(rhs) && !names(rhs, sym);
 }
 
-bool operates_in(const operation_t &, const type_t &, const symbol_t *);
-operation_t ordered(const binary_t &, const type_t &, const symbol_t *);
+bool operates_in(const operation_t &, const type_t &, const into_t &);
+operation_t ordered(const binary_t &, const type_t &, const into_t *);
 
 // Whether L of the operation form goes into the variable's register by
 // an instruction it has in any case: its load, its constant, or again
@@ -2263,17 +2248,21 @@ operation_t ordered(const binary_t &, const type_t &, const symbol_t *);
 // establish() after it: moved in before the instruction, L would leave
 // the assignment's value in the variable's register, where the mov
 // after leaves it in an expression register, and a use of the value in
-// one would copy it back, an instruction more.
+// one would copy it back, an instruction more.  A row computing the
+// value in another signedness, into's as, takes no L under a
+// conversion, as through() hands it on through none.
 bool
-loads_into(const expr_t &lhs, const symbol_t *sym)
+loads_into(const expr_t &lhs, const into_t &into)
 {
     if (is< literal_t >(lhs) || is< name_t >(lhs) || in_memory(lhs))
         return true;
 
     if (is< cast_t >(lhs)) {
         const auto &arg = *as< cast_t >(lhs).arg;
-        return (is< int_t >(arg.type) || is< pointer_t >(arg.type)) &&
-               in_memory(arg) && integer(lhs.type).width >= represented(sym);
+        return !into.as &&
+               (is< int_t >(arg.type) || is< pointer_t >(arg.type)) &&
+               in_memory(arg) &&
+               integer(lhs.type).width >= represented(into.variable);
     }
 
     if (!is< binary_t >(lhs))
@@ -2281,19 +2270,20 @@ loads_into(const expr_t &lhs, const symbol_t *sym)
 
     const auto &b = as< binary_t >(lhs);
 
-    return operates_in(ordered(b, lhs.type, sym), lhs.type, sym);
+    return operates_in(ordered(b, lhs.type, &into), lhs.type, into);
 }
 
 // Whether r = L op R, of type t, its operands in the order of
 // ordered(), is the operation on the variable's register, chapter 4:
 // an operator of two addresses on a free register, +, -, &, |, ^, * or
-// a shift, on the variable's own type, no pointer; L that loads_into()
+// a shift, on the type the variable's value is computed in,
+// computed_type(), no pointer; L that loads_into()
 // the register; and the Seventh Edition compiler's two conditions on R,
 // which the instruction reads after L has written the register
 // (sreorder(), in c10.c): R is a leaf, and R does not name the
 // variable, as itself or as the base of its address.
 bool
-operates_in(const operation_t &b, const type_t &t, const symbol_t *sym)
+operates_in(const operation_t &b, const type_t &t, const into_t &into)
 {
     switch (b.op) {
     case binary_op_t::add:
@@ -2307,30 +2297,31 @@ operates_in(const operation_t &b, const type_t &t, const symbol_t *sym)
     default: return false;
     }
 
-    if (is< pointer_t >(t) || is< pointer_t >(b.lhs->type) || !(t == sym->type))
+    if (is< pointer_t >(t) || is< pointer_t >(b.lhs->type) ||
+        !(t == computed_type(into)))
         return false;
 
-    return leaf_apart_from(*b.rhs, sym) && loads_into(*b.lhs, sym);
+    return leaf_apart_from(*b.rhs, into.variable) && loads_into(*b.lhs, into);
 }
 
 // An operation of type t in the order its row generates it, ordered()'s,
-// when its value goes to the register variable sym, or to nothing when
-// sym is null.  A constant on the left that ordered() takes on the right
-// stays on the left where that order alone is the operation on the
-// variable's register (chapter 4): r = 5 + c on a register char c has
-// the constant as L, which its mov puts in the register, where (int) c
-// as L is no load into the register, and the sum would be computed
-// elsewhere and moved, an instruction more.
+// when its value goes to the register variable into hands down, or to
+// nothing when into is null.  A constant on the left that ordered()
+// takes on the right stays on the left where that order alone is the
+// operation on the variable's register (chapter 4): r = 5 + c on a
+// register char c has the constant as L, which its mov puts in the
+// register, where (int) c as L is no load into the register, and the
+// sum would be computed elsewhere and moved, an instruction more.
 operation_t
-ordered(const binary_t &b, const type_t &t, const symbol_t *sym)
+ordered(const binary_t &b, const type_t &t, const into_t *into)
 {
     const auto o = ordered(b);
-    if (!sym || o.lhs == b.lhs.get() || operates_in(o, t, sym))
+    if (!into || o.lhs == b.lhs.get() || operates_in(o, t, *into))
         return o;
 
     const auto source = as_written(b);
 
-    return operates_in(source, t, sym) ? source : o;
+    return operates_in(source, t, *into) ? source : o;
 }
 
 // Whether r = P + N, N + P or P - N, of pointer type t, is the operation
@@ -2342,21 +2333,24 @@ ordered(const binary_t &b, const type_t &t, const symbol_t *sym)
 // own register: R's, imulq $12, %rcx, %rcx, or the variable's for the
 // index of N + P.
 bool
-offsets_in(const operation_t &b, const type_t &t, const symbol_t *sym)
+offsets_in(const operation_t &b, const type_t &t, const into_t &into)
 {
-    if (scaled_sum(b, stride(t)) || !(t == sym->type))
+    if (scaled_sum(b, stride(t)) || !(t == computed_type(into)))
         return false;
 
-    return leaf_apart_from(*b.rhs, sym) && loads_into(*b.lhs, sym);
+    return leaf_apart_from(*b.rhs, into.variable) && loads_into(*b.lhs, into);
 }
 
 // L of the operation form into the variable's register, by the
 // instruction loads_into() names: a register variable's read copied,
 // movl %r12d, %ebx, the variable itself nothing, and anything else by
-// its own row, handed the variable.  The value is the variable's read.
+// its own row, handed the variable as the operation computes it.  The
+// value is the variable's read.
 value_t
-left_in(state_t &s, const expr_t &lhs, const symbol_t *sym, unsigned avoid)
+left_in(state_t &s, const expr_t &lhs, const into_t &to, unsigned avoid)
 {
+    const auto *sym = to.variable;
+
     if (const auto *other = register_variable(lhs)) {
         if (other != sym)
             mov(s, variable_register(other), variable_register(sym),
@@ -2364,7 +2358,7 @@ left_in(state_t &s, const expr_t &lhs, const symbol_t *sym, unsigned avoid)
         return read(s, sym);
     }
 
-    into_t into { sym };
+    into_t into { sym, false, to.as };
     const auto v = rvalue_avoiding(s, lhs, avoid, &into);
     if (!into.taken)
         throw std::logic_error("c1: an operand missed its register variable");
@@ -2384,7 +2378,7 @@ operation_in(state_t &s, const operation_t &b, const type_t &t, into_t &into)
 {
     const unsigned own = is_shift(b.op) ? pins(b.op, *b.rhs) : 0;
 
-    const auto l = left_in(s, *b.lhs, into.variable, own);
+    const auto l = left_in(s, *b.lhs, into, own);
     const auto r = binary_operand(s, b.op, *b.rhs, operation_width(t));
 
     const int outer = std::exchange(s.in_place, l.id);
@@ -2409,7 +2403,7 @@ offset_in(state_t &s, const operation_t &b, long size, into_t &into)
     into_t left { into.variable };
     const auto product =
         scaled_first ? multiplied(s, *b.lhs, size, 0, &left) : std::nullopt;
-    const auto l = product ? *product : left_in(s, *b.lhs, into.variable, 0);
+    const auto l = product ? *product : left_in(s, *b.lhs, into, 0);
 
     const int outer = std::exchange(s.in_place, l.id);
     pointer_operation(s, b, product ? 1 : size, l);
@@ -2467,7 +2461,7 @@ pointer_arithmetic(state_t &s, const expr_t &e, into_t *into)
 
     const auto o = ordered_sum(b, size);
 
-    if (into && offsets_in(o, e.type, into->variable))
+    if (into && offsets_in(o, e.type, *into))
         return offset_in(s, o, size, *into);
 
     const unsigned pinned = pinned_by(*o.rhs);
@@ -2558,13 +2552,13 @@ binary(state_t &s, const expr_t &e, into_t *into = nullptr)
 
     // a constant on the left of an operator that commutes is taken on
     // the right, 4 * x as x * 4 (6.1)
-    const auto o = ordered(b, e.type, into ? into->variable : nullptr);
+    const auto o = ordered(b, e.type, into);
     const int width = operation_width(e.type);
 
     if (const auto *object = multiplicand(o, width))
         return product(s, *object, *o.rhs, integer(e.type), into);
 
-    if (into && operates_in(o, e.type, into->variable))
+    if (into && operates_in(o, e.type, *into))
         return operation_in(s, o, e.type, *into);
 
     // G13: the left operand first, held while the right one is
@@ -2673,13 +2667,14 @@ negated(state_t &s, unary_op_t op, value_t v, const type_t &t)
 }
 
 // Whether r = -x or r = ~x, of type t, is computed on the variable's
-// register, chapter 4: on the variable's own type, and x that
-// loads_into() the register.  The instruction has one address and no
-// right operand to put a condition on.
+// register, chapter 4: on the type the variable's value is computed
+// in, computed_type(), and x that loads_into() the register.  The
+// instruction has one address and no right operand to put a condition
+// on.
 bool
-negates_in(const unary_t &u, const type_t &t, const symbol_t *sym)
+negates_in(const unary_t &u, const type_t &t, const into_t &into)
 {
-    return t == sym->type && loads_into(*u.arg, sym);
+    return t == computed_type(into) && loads_into(*u.arg, into);
 }
 
 // r = -x and r = ~x on the variable's register, chapter 4: x into the
@@ -2689,7 +2684,7 @@ negates_in(const unary_t &u, const type_t &t, const symbol_t *sym)
 value_t
 negated_in(state_t &s, const unary_t &u, const type_t &t, into_t &into)
 {
-    const auto l = left_in(s, *u.arg, into.variable, 0);
+    const auto l = left_in(s, *u.arg, into, 0);
 
     const int outer = std::exchange(s.in_place, l.id);
     negated(s, u.op, l, t);
@@ -2704,7 +2699,7 @@ unary(state_t &s, const unary_t &u, const type_t &t, into_t *into = nullptr)
     switch (u.op) {
     case unary_op_t::neg:
     case unary_op_t::bit_not: {
-        if (into && negates_in(u, t, into->variable))
+        if (into && negates_in(u, t, *into))
             return negated_in(s, u, t, *into);
 
         return negated(s, u.op, rvalue(s, *u.arg), t);
@@ -2914,7 +2909,7 @@ extending_load(state_t &s,
 // new width, extending_load(), so the load is the widening; an unsigned
 // one is loaded as any read, valid to 64 bits by the load's own
 // extension.  The object may be under casts that keep its bits,
-// widened_object()'s: (long) (int) u is movslq -4(%rbp), %rax, and
+// object_under()'s: (long) (int) u is movslq -4(%rbp), %rax, and
 // (unsigned long) (unsigned) i the movl, valid to 64 bits, each
 // reading the object at its own width (G10).  A change of signedness
 // alone is nothing.  A pointer
@@ -2930,18 +2925,34 @@ extending_load(state_t &s,
 // representation, and a load takes it: register int x = c is
 // movsbl -1(%rbp), %ebx (chapter 4).  The decay and the function's
 // address take it as & does, leaq buf(%rip), %rbx.
-// The object in memory whose load is a widening cast's, or nullptr:
-// the operand, or the read under casts that keep its bits, (long) (int)
-// u's u, an object of the operand's width either way (backend.md 6.3, a
-// widening by the load).
-const expr_t *
-widened_object(const cast_t &c)
+// The operand of a conversion that retypes(), into the variable's
+// register, backend.md chapter 4.  An object in memory, under casts
+// that keep its bits, is loaded at the extension of the conversion's
+// type, movl -20(%rbp), %ebx for register unsigned u = i and
+// movsbl -9(%rbp), %ebx for register char c = uc, the object read at
+// its own width (G10).  Any other operand of 32 bits or more is its own
+// row, handed the variable as computed in the operand's type: the row's
+// last instruction writes the register at the variable's width, and a
+// 32-bit write clears the upper half, so u = a + b on two ints is
+// movl -12(%rbp), %ebx; addl -16(%rbp), %ebx.  A narrower operand is
+// no row of its own, and is as any conversion's.
+value_t
+retyped(state_t &s, const cast_t &c, const int_t &target, into_t &into)
 {
-    const expr_t *top = c.arg.get();
-    while (is< cast_t >(*top) && same_bits(as< cast_t >(*top), top->type))
-        top = as< cast_t >(*top).arg.get();
+    if (const auto *object = object_under(c))
+        return load(s, address(s, *object), target, std::max(32, target.width),
+                    &into);
 
-    return in_memory(*top) ? top : nullptr;
+    into_t computed { into.variable, false, &c.arg->type };
+    auto v = rvalue(s, *c.arg, target.width < 32 ? nullptr : &computed);
+    into.taken = computed.taken;
+    if (into.taken)
+        return v;
+
+    auto &valid = s.values[v.id].valid;
+    valid = std::min(valid, target.width);
+
+    return v;
 }
 
 value_t
@@ -2958,12 +2969,15 @@ cast(state_t &s, const cast_t &c, const type_t &to, into_t *into = nullptr)
     if (is< function_t >(c.arg->type))
         return function_pointer(s, *c.arg, into);
 
+    if (retypes(c, to, into))
+        return retyped(s, c, integer(to), *into);
+
     const auto &from = integer(c.arg->type);
     const auto &target = integer(to);
     const bool widens = target.width > from.width;
     const auto onward = through(into, target);
 
-    const auto *object = widens ? widened_object(c) : nullptr;
+    const auto *object = widens ? object_under(c) : nullptr;
     const bool loads = object && (from.is_signed || object != c.arg.get());
     const int width = from.is_signed ? target.width : 32;
 

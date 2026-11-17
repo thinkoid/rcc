@@ -1877,15 +1877,16 @@ chapter 4:
 
 - on both targets, a call's result, the value of `&&`, `||` and `?:`,
   which two paths write, another register variable's read, and a
-  value converted into a narrow or an `unsigned` variable;
+  value widened or narrowed into a narrow or an `unsigned` variable;
+  a conversion that changes the signedness alone is the load or the
+  row into the register, `register unsigned u = i` the one load;
 - on x86-64, also a division and a remainder, whose registers are
   pinned (4.6), `!`'s value, `p - q`, and an address that is a
   pointer's own value, `&*p`, or that the pointer's row forms by an
   add, `&a[i]` at a size no addressing form scales by;
-- on aarch64, also an address formed by two instructions, a step's
-  value, which its row writes before its store, and a load that steps
-  the variable's own register as its base, which cannot also be the
-  load's data register.
+- on aarch64, also a step's value, which its row writes before its
+  store, and a load that steps the variable's own register as its
+  base, which cannot also be the load's data register.
 
 The queue holds the rows still to decide.
 
