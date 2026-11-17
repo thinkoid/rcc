@@ -26,6 +26,8 @@ what the optimizer loses.
   `docs/findings.md`. The tree compiled through LLVM's `llc` with
   FastISel and every rewriting pass switched off until c1 replaced
   it; `docs/llvm.md` is the record of that pipeline.
+  `docs/ancestor.md` reads the Seventh Edition compiler's code
+  generator against c1: what rcc takes from it, and what it leaves.
 - Each guarantee is delivered by emitting the plain instruction and
   nothing in between.
 
