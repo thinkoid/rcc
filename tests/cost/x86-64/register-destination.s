@@ -728,6 +728,159 @@ own_element:
 	ret
 	.cfi_endproc
 	.size	own_element, .-own_element
+	.globl	step_char
+	.type	step_char, @function
+step_char:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movq	%rdi, -16(%rbp)
+	movq	%rsi, -24(%rbp)
+	movq	-16(%rbp), %rbx
+	movq	-24(%rbp), %rax
+	addq	%rax, %rbx
+	movq	%rbx, %rax
+	jmp	.Lstep_char.1
+.Lstep_char.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	step_char, .-step_char
+	.globl	back_char
+	.type	back_char, @function
+back_char:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movq	%rdi, -16(%rbp)
+	movq	%rsi, -24(%rbp)
+	movq	-16(%rbp), %rbx
+	movq	-24(%rbp), %rax
+	subq	%rax, %rbx
+	movq	%rbx, %rax
+	jmp	.Lback_char.1
+.Lback_char.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	back_char, .-back_char
+	.globl	step_int
+	.type	step_int, @function
+step_int:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movq	%rdi, -16(%rbp)
+	movq	%rsi, -24(%rbp)
+	movq	-16(%rbp), %rbx
+	movq	-24(%rbp), %rax
+	leaq	(%rbx,%rax,4), %rbx
+	movq	%rbx, %rax
+	jmp	.Lstep_int.1
+.Lstep_int.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	step_int, .-step_int
+	.globl	back_int
+	.type	back_int, @function
+back_int:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movq	%rdi, -16(%rbp)
+	movq	%rsi, -24(%rbp)
+	movq	-16(%rbp), %rbx
+	movq	-24(%rbp), %rax
+	imulq	$4, %rax, %rax
+	subq	%rax, %rbx
+	movq	%rbx, %rax
+	jmp	.Lback_int.1
+.Lback_int.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	back_int, .-back_int
+	.globl	step_row
+	.type	step_row, @function
+step_row:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movq	%rdi, -16(%rbp)
+	movq	%rsi, -24(%rbp)
+	movq	-16(%rbp), %rbx
+	movq	-24(%rbp), %rax
+	imulq	$12, %rax, %rax
+	addq	%rax, %rbx
+	movq	%rbx, %rax
+	jmp	.Lstep_row.1
+.Lstep_row.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	step_row, .-step_row
+	.globl	back_row
+	.type	back_row, @function
+back_row:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movq	%rdi, -16(%rbp)
+	movq	%rsi, -24(%rbp)
+	movq	-16(%rbp), %rbx
+	movq	-24(%rbp), %rax
+	imulq	$12, %rax, %rax
+	subq	%rax, %rbx
+	movq	%rbx, %rax
+	jmp	.Lback_row.1
+.Lback_row.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	back_row, .-back_row
 	.bss
 	.globl	defined
 	.type	defined, @object

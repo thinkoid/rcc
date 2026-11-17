@@ -2629,8 +2629,10 @@ computed_into(state_t &s, const symbol_t *sym, const expr_t &e)
 // operand into the register by computed_into().  Compound: the right
 // operand first, then the operation row with the variable's register as
 // L, in place, addl %eax, %ebx, but for a division, whose quotient comes
-// back from rax by the mov; the value is a read of the variable after
-// the write.  The variable is read by the operation, after the right
+// back from rax by the mov; p += n at a size of 2, 4 or 8, whose leaq
+// is handed the variable and writes its register, leaq (%rbx,%rax,4),
+// %rbx (chapter 4); the value is a read of the variable after the
+// write.  The variable is read by the operation, after the right
 // operand, as a slot's object is (G13), so no read of it is held across
 // the right operand: r += (r = 2) is movl $2, %ebx and addl %ebx, %ebx.
 // The read is extended into a fresh register first when the operation is
@@ -2655,8 +2657,9 @@ assign_register(state_t &s, const assign_t &a, const symbol_t *sym)
                              right_operand(s, *a.op, *a.rhs, width);
     const auto l = extended(s, read(s, sym), integer(sym->type), width);
 
+    into_t into { sym };
     const int outer = std::exchange(s.in_place, l.id);
-    const auto v = stepped ? displaced(s, *a.op, l, r) :
+    const auto v = stepped ? displaced(s, *a.op, l, r, &into) :
                              arithmetic(s, *a.op, l, r, a.common);
     s.in_place = outer;
 

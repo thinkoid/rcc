@@ -42,8 +42,14 @@
    in named_right() and own_element(), a right operand that names the
    variable, as itself and as the base of the element's address, p[1],
    refused: the sum computed in eax and in rax and moved, movl %eax,
-   %ebx and movq %rax, %rbx.  return r is movl %ebx, %eax, and return
-   p movq %rbx, %rax.
+   %ebx and movq %rax, %rbx; in step_char(), back_char(), step_int(),
+   back_int(), step_row() and back_row(), p += n and p -= n at sizes
+   1, 4 and 12, the step on the register after n's load, addq %rax,
+   %rbx and subq %rax, %rbx, leaq (%rbx,%rax,4), %rbx, which reads
+   both operands before it writes, imulq $4, %rax, %rax and subq %rax,
+   %rbx, and imulq $12, %rax, %rax and addq %rax, %rbx or subq %rax,
+   %rbx, and no mov into the register.  return r is movl %ebx, %eax,
+   and return p movq %rbx, %rax.
 
    On aarch64 the listing must show the last instruction of each
    right operand writing the register, no condition on the operands
@@ -63,8 +69,10 @@
    after the cmp; add w19, w0, w1 after the element's ldr in
    element_leaf() and pointer_element_leaf(); add w19, w0, w19 in
    named_right(), and add x19, x0, x1 after ldrb w1, [x19, #1] in
-   own_element().  return r is mov w0, w19, and return p mov x0,
-   x19. */
+   own_element(); for p += n and p -= n, add x19, x19, x0 and sub x19,
+   x19, x0, add x19, x19, x0, lsl #2 and sub x19, x19, x0, lsl #2, and
+   add x19, x19, x0 and sub x19, x19, x0 after mov x1, #12 and mul x0,
+   x0, x1.  return r is mov w0, w19, and return p mov x0, x19. */
 int
 load(int a)
 {
@@ -336,5 +344,57 @@ own_element(char *q)
         register char *p = q;
 
         p = q + p[1];
+        return p;
+}
+
+char *
+step_char(char *q, long n)
+{
+        register char *p = q;
+
+        p += n;
+        return p;
+}
+
+char *
+back_char(char *q, long n)
+{
+        register char *p = q;
+
+        p -= n;
+        return p;
+}
+
+int *
+step_int(int *q, long n)
+{
+        register int *p = q;
+
+        p += n;
+        return p;
+}
+
+int *
+back_int(int *q, long n)
+{
+        register int *p = q;
+
+        p -= n;
+        return p;
+}
+
+int (*step_row(int (*q)[3], long n))[3]
+{
+        register int (*p)[3] = q;
+
+        p += n;
+        return p;
+}
+
+int (*back_row(int (*q)[3], long n))[3]
+{
+        register int (*p)[3] = q;
+
+        p -= n;
         return p;
 }

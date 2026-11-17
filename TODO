@@ -188,20 +188,6 @@ moved after are entries of the same kind.
 Check: the count over =tests= of such a copy followed by a move into
 =rax=, before and after; =ptr-diff='s =register_char= pinned.
 
-** TODO x86-64: ~p += n~ on a register pointer is a =leaq= elsewhere and a =mov=
-
-At a size of 2, 4 or 8 the compound assignment of an index to a
-=register= pointer is =leaq (%r14,%rax,4), %rax; movq %rax, %r14=,
-where the =leaq= could write =r14=, as ~p = p + n~ now does. The
-inner loop of =matmul-tuned=, ~pb += n~, has it: one of the loop's
-ten instructions.
-
-Fix: the compound assignment hands the variable to the =leaq=.
-
-Check: a function of =register-destination=, ~p += n~, with =leaq
-(%rbx,%rax,4), %rbx=; the matmul cell of =cost.md= chapter 4 taken
-again.
-
 ** TODO x86-64: a comparison's value is extended again for a =long=
 
 =setcc= and =movzbl= leave 0 or 1 in a register whose 64 bits are
@@ -360,8 +346,11 @@ one to five instructions, outside the loops the chapter times: the
 step of each program's generator and its checksum. An address
 written into a =register= variable's register takes one =movq= out
 of =matmul-tuned= before its inner loop, whose head is then at
-0x1320, in the second half of its 64-byte line, where 4.2 states
-0x1340 and names sort's head as the only one there.
+0x1320, in the second half of its 64-byte line. The =leaq= of ~pb
++= n~ written into the variable's register takes an instruction out
+of that loop, which is nine instructions and 29 bytes; the chapter
+states the listing of today, and its matmul cell, 572 ms, and the
+rows of 4.2, which names a loop of 32 bytes, are of the loop of ten.
 
 Fix: =make bench= three times on the machine of the table, and the
 table and what is drawn from it taken again.

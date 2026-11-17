@@ -188,7 +188,7 @@ yet.
 | a `register` local | the next of `rbx`, `r12` to `r15`, by declaration order, pushed after `rbp` in the prologue and popped before `leave`; no slot, no load, no store; a read is the register as an operand, `cmpl %ebx, %r13d`; an instruction that writes its destination works on a copy, `movl %ebx, %eax; subl %r12d, %eax`, but where it computes a value assigned to the variable, below, `addl %r13d, %r12d` for `s = s + i`; a constant assigned is the immediate, `movl $0, %r12d`; across a loop, the same register | `register-loop`, `register-parameter` |
 | a `register` local without an initializer | the register as its declaration finds it, from the prologue or from an earlier block's variable; nothing writes it until the program does, so every read sees one value (G5) | `register-undef` |
 | a `register` parameter | moved from its argument register to its register in the prologue, `movl %edi, %ebx`; then the register | `register-parameter` |
-| `r = e` on a `register` variable | the value computed in the variable's register: a load, `movl -12(%rbp), %ebx`; an address, `leaq defined(%rip), %rbx`, `leaq -12(%rbp), %rbx`, `leaq -28(%rbp,%rax,4), %rbx` for `&a[i]`, `leaq (%rax,%rcx,4), %rbx` for `p = q + n`, and the GOT's `movq declared@GOTPCREL(%rip), %rbx`; an operation `+`, `-`, `&`, `\|`, `^`, `*` or a shift whose right operand is a leaf that does not name `r`, the left operand loaded into the register and the instruction written on it, `movl -12(%rbp), %ebx; addl -16(%rbp), %ebx`, `addl $5, %ebx`, `addl %ebx, %r12d` for a register variable, `addl (%rax), %ebx` after `p`'s load, `addl %eax, %ebx` after a `char`'s `movsbl -13(%rbp), %eax`, an element by a constant index, `addl table+12(%rip), %ebx`, and `addl 12(%rax), %ebx` after `p`'s load; `r = r + b` the instruction alone, `addl -16(%rbp), %ebx`; pointer arithmetic by `addq` or `subq` the same, `p = p + 1` the `addq $4, %rbx` alone, `p = q - 1` `movq -16(%rbp), %rbx; subq $4, %rbx`, `p = p - n` `imulq $4, %rax, %rax; subq %rax, %rbx`; `r = -x` `movl -12(%rbp), %ebx; negl %ebx`, `~x` `notl %ebx`, `r = -r` the `negl` alone; a comparison's value `setl %bl; movzbl %bl, %ebx` after the `cmp`, `sete %bl` after `cmpl $5, -12(%rbp)`; `r = a + (b + c)`, `r = a - r`, `p = q + p[1]` and a division computed in `eax` or `rax` and moved, `movl %eax, %ebx`, `movq %rax, %rbx`; an initializer the same, `movl -12(%rbp), %ebx; imull -16(%rbp), %ebx` (`backend.md` chapter 4) | `register-destination`, `register-blocks` |
+| `r = e` on a `register` variable | the value computed in the variable's register: a load, `movl -12(%rbp), %ebx`; an address, `leaq defined(%rip), %rbx`, `leaq -12(%rbp), %rbx`, `leaq -28(%rbp,%rax,4), %rbx` for `&a[i]`, `leaq (%rax,%rcx,4), %rbx` for `p = q + n`, and the GOT's `movq declared@GOTPCREL(%rip), %rbx`; an operation `+`, `-`, `&`, `\|`, `^`, `*` or a shift whose right operand is a leaf that does not name `r`, the left operand loaded into the register and the instruction written on it, `movl -12(%rbp), %ebx; addl -16(%rbp), %ebx`, `addl $5, %ebx`, `addl %ebx, %r12d` for a register variable, `addl (%rax), %ebx` after `p`'s load, `addl %eax, %ebx` after a `char`'s `movsbl -13(%rbp), %eax`, an element by a constant index, `addl table+12(%rip), %ebx`, and `addl 12(%rax), %ebx` after `p`'s load; `r = r + b` the instruction alone, `addl -16(%rbp), %ebx`; pointer arithmetic by `addq` or `subq` the same, `p = p + 1` the `addq $4, %rbx` alone, `p = q - 1` `movq -16(%rbp), %rbx; subq $4, %rbx`, `p = p - n` `imulq $4, %rax, %rax; subq %rax, %rbx`, and `p += n` as `p = p + n`, `leaq (%rbx,%rax,4), %rbx` at a size of 2, 4 or 8; `r = -x` `movl -12(%rbp), %ebx; negl %ebx`, `~x` `notl %ebx`, `r = -r` the `negl` alone; a comparison's value `setl %bl; movzbl %bl, %ebx` after the `cmp`, `sete %bl` after `cmpl $5, -12(%rbp)`; `r = a + (b + c)`, `r = a - r`, `p = q + p[1]` and a division computed in `eax` or `rax` and moved, `movl %eax, %ebx`, `movq %rax, %rbx`; an initializer the same, `movl -12(%rbp), %ebx; imull -16(%rbp), %ebx` (`backend.md` chapter 4) | `register-destination`, `register-blocks` |
 | the frame | `pushq %rbp; movq %rsp, %rbp` in every function and `leave` in the one epilogue; a function that calls nothing keeps its slots in the red zone below `rsp` and writes no `sub`; one that calls subtracts its frame, rounded so that `rsp` is a multiple of 16 at the `call`, `subq $16, %rsp` | `local`, `call` |
 | `a + b`, `a - b` | `addl -8(%rbp), %eax`, `subl -8(%rbp), %eax`, the right operand's slot the instruction's operand after the left operand's load; the left operand's register is the result's | `add-sub`, `parameter` |
 | an object in memory as the right operand | of the operation's width, the instruction's own operand, and no load of its own: in `add`, `addl -24(%rbp), %eax` for a local, `addl defined(%rip), %eax` for a global the file defines, `addl (%rcx), %eax` after the GOT's load, `movq declared@GOTPCREL(%rip), %rcx`, and after `p`'s, and `addl -40(%rbp,%rcx,4), %eax` after `movslq -20(%rbp), %rcx` for `a[i]`; `subl`, `andl`, `orl`, `xorl`, `imull`, `idivl` and `cmpl` the same; an `int` under the cast to `unsigned` of `u + i` the same, `addl -8(%rbp), %ecx`, and `cmpl`, `imull` and `divl -8(%rbp)` in `signedness`; the load kept for a `char` promoted, `movsbl -5(%rbp), %ecx; addl %ecx, %eax`, an `int` widened, `movslq -12(%rbp), %rcx; addq %rcx, %rax`, a compound assignment's right operand, `movl -8(%rbp), %eax; addl %eax, -4(%rbp)`, a shift's count, `movl -8(%rbp), %ecx; shll %cl, %eax`, and an index pointer arithmetic scales, `movq -40(%rbp), %rdx; leaq (%rax,%rdx,4), %rax`; a global read before a call on the right, loaded, spilled across the call and reloaded, `movq -8(%rbp), %rcx; cmpl %eax, %ecx` (`backend.md` 6.1) | `operand` |
@@ -528,22 +528,23 @@ displacement of the indexed operand. The tuned `main` holds five
 `register` variables live in the inner loop: n, aend, pa, pb and s
 take `ebx`, `r12`, `r13`, `r14` and `r15d`, and bend, i, arow, pc and
 bcol, declared without the keyword, take slots. Nothing warns. The
-inner loop of `rcc matmul-tuned.c` has no stack operand and runs 10
+inner loop of `rcc matmul-tuned.c` has no stack operand and runs 9
 instructions an iteration: the test `cmpq %r12, %r13` and its jump,
 the load of one element and the product with the other in place, `movl
 (%r13), %eax; imull (%r14), %eax`, its add to s, `addl %eax, %r15d`,
 the step `addq $4, %r13`, the step `pb += n`, `movslq %ebx, %rax; leaq
-(%r14,%rax,4), %rax; movq %rax, %r14`, and the `jmp` back. The `leaq`
-scales n, so the product is the loop's one multiply, where the plain
-one has four. The middle loop pays the slots: it loads bcol for its
-test and compares it with bend's slot, `movq -110688(%rbp), %rax; cmpq
--110656(%rbp), %rax`, copies arow and bcol from their slots into pa
-and pb, stores s through pc loaded from its slot, and steps pc and
-bcol in theirs, `addq $4, -110680(%rbp)` and `addq $4, -110688(%rbp)`.
-The ratio falls from 8.21 to 1.99. The head of the inner loop opens a
-64-byte line, at 0x1340, and the loop's 32 bytes lie whole in it. As
-first written, with ten `register` variables live and pc, bcol, pa, pb
-and s in slots, the tuned ratio was 7.54.
+(%r14,%rax,4), %r14`, and the `jmp` back. The `leaq` scales n and
+writes pb's register, so the product is the loop's one multiply,
+where the plain one has four. The middle loop pays the slots: it
+loads bcol for its test and compares it with bend's slot, `movq
+-110688(%rbp), %rax; cmpq -110656(%rbp), %rax`, copies arow and bcol
+from their slots into pa and pb, stores s through pc loaded from its
+slot, and steps pc and bcol in theirs, `addq $4, -110680(%rbp)` and
+`addq $4, -110688(%rbp)`. The ratio falls from 8.21 to 1.99. The head
+of the inner loop opens the second half of a 64-byte line, at 0x1320,
+and the loop's 29 bytes lie whole in it. As first written, with ten
+`register` variables live and pc, bcol, pa, pb and s in slots, the
+tuned ratio was 7.54.
 
 **sieve.** The tuned source walks a pointer in the marking loop and
 in the strike loop, up to an end computed once per repetition, and
@@ -876,11 +877,11 @@ machine fetches well and nothing about the program. It has two costs:
 The x86-64 numbers of this chapter are thus a fact about c1's layout,
 every loop head at offset 0 of its 32-byte window, and no longer about
 where the code before a loop happens to end. The heads of the five hot
-loops of chapter 4 lie at 0x11c0 in collatz, 0x1340 in matmul, 0x1240
+loops of chapter 4 lie at 0x11c0 in collatz, 0x1320 in matmul, 0x1240
 in sieve, 0x1220 in sort and 0x1140 in strings' `length`. The code
 before a head still decides which half of a 64-byte line the head
-opens: the head in sort opens the second half, the other four the
-first.
+opens: the heads in sort and matmul open the second half, the other
+three the first.
 
 `.p2align 6` adds up to 96 bytes to the code of a tuned program, and
 before the five hot heads its padding is 173 bytes in 20 `nop`s

@@ -140,7 +140,9 @@ compare(const char *name, long x, long y)
 
 TYPES(DECLARE_TYPE)
 
-#define DECLARE_PSTEP(E, T, S) BOTH(long, pstep_##E, (void *, long))
+#define DECLARE_PSTEP(E, T, S)                                          \
+    BOTH(long, pstep_##E, (void *, long))                               \
+    BOTH(long, pindex_##E, (void *, long))
 
 POINTEES(DECLARE_PSTEP)
 
@@ -215,8 +217,10 @@ TYPES(TEST_TYPE)
 /* the steps of a pointer by every value of the table, never read
    through */
 #define TEST_PSTEP(E, T, S)                                             \
-    for (int i = 0; i < COUNT; ++i)                                     \
-        CHECK(pstep_##E, values[i], 0, (base(0), values[i]));
+    for (int i = 0; i < COUNT; ++i) {                                   \
+        CHECK(pstep_##E, values[i], 0, (base(0), values[i]));           \
+        CHECK(pindex_##E, values[i], 0, (base(0), values[i]));          \
+    }
 
 /* the walks on B and B + 3, the loops over every count to 20 */
 #define TEST_SCALAR(E, T)                                               \

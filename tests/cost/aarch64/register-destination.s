@@ -945,6 +945,202 @@ own_element:
 	ret
 	.cfi_endproc
 	.size	own_element, .-own_element
+	.globl	step_char
+	.type	step_char, @function
+step_char:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -32
+	str	x0, [x29, #24]
+	str	x1, [x29, #32]
+	ldr	x19, [x29, #24]
+	ldr	x0, [x29, #32]
+	add	x19, x19, x0
+	mov	x0, x19
+	b	.Lstep_char.1
+.Lstep_char.1:
+	.cfi_def_cfa wsp, 48
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	step_char, .-step_char
+	.globl	back_char
+	.type	back_char, @function
+back_char:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -32
+	str	x0, [x29, #24]
+	str	x1, [x29, #32]
+	ldr	x19, [x29, #24]
+	ldr	x0, [x29, #32]
+	sub	x19, x19, x0
+	mov	x0, x19
+	b	.Lback_char.1
+.Lback_char.1:
+	.cfi_def_cfa wsp, 48
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	back_char, .-back_char
+	.globl	step_int
+	.type	step_int, @function
+step_int:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -32
+	str	x0, [x29, #24]
+	str	x1, [x29, #32]
+	ldr	x19, [x29, #24]
+	ldr	x0, [x29, #32]
+	add	x19, x19, x0, lsl #2
+	mov	x0, x19
+	b	.Lstep_int.1
+.Lstep_int.1:
+	.cfi_def_cfa wsp, 48
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	step_int, .-step_int
+	.globl	back_int
+	.type	back_int, @function
+back_int:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -32
+	str	x0, [x29, #24]
+	str	x1, [x29, #32]
+	ldr	x19, [x29, #24]
+	ldr	x0, [x29, #32]
+	sub	x19, x19, x0, lsl #2
+	mov	x0, x19
+	b	.Lback_int.1
+.Lback_int.1:
+	.cfi_def_cfa wsp, 48
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	back_int, .-back_int
+	.globl	step_row
+	.type	step_row, @function
+step_row:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -32
+	str	x0, [x29, #24]
+	str	x1, [x29, #32]
+	ldr	x19, [x29, #24]
+	ldr	x0, [x29, #32]
+	mov	x1, #12
+	mul	x0, x0, x1
+	add	x19, x19, x0
+	mov	x0, x19
+	b	.Lstep_row.1
+.Lstep_row.1:
+	.cfi_def_cfa wsp, 48
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	step_row, .-step_row
+	.globl	back_row
+	.type	back_row, @function
+back_row:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -32
+	str	x0, [x29, #24]
+	str	x1, [x29, #32]
+	ldr	x19, [x29, #24]
+	ldr	x0, [x29, #32]
+	mov	x1, #12
+	mul	x0, x0, x1
+	sub	x19, x19, x0
+	mov	x0, x19
+	b	.Lback_row.1
+.Lback_row.1:
+	.cfi_def_cfa wsp, 48
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	back_row, .-back_row
 	.bss
 	.globl	defined
 	.type	defined, @object

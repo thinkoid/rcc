@@ -243,6 +243,32 @@ long widths_value(int a, unsigned b, long w, char c, short d)
 
 POINTEES(PSTEP)
 
+/* p += n on a register pointer by an index of each kind: another
+   register variable, an int widened, an expression, one that reads p
+   itself; a read of p held across the step; and p -= n by a register
+   variable.  Each value is its offset in bytes from where it started. */
+#define PINDEX(E, T, S)                                                 \
+    long pindex_##E(register T p S, long n)                             \
+    {                                                                   \
+        char *start = (char *) p;                                       \
+        register long k = n + 1;                                        \
+        int j = (int) n;                                                \
+        long r;                                                         \
+        p += k;                                                         \
+        r = (char *) p - start;                                         \
+        p += j;                                                         \
+        r = r * 7 + ((char *) p - start);                               \
+        p += n - 2;                                                     \
+        r = r * 7 + ((char *) p - start);                               \
+        p += ((char *) p - start) & 7;                                  \
+        r = r * 7 + ((char *) p - start);                               \
+        r = r * 7 + ((char *) p - start) + ((char *) (p += n) - start); \
+        r = r * 7 + ((char *) p - start) * 3;                           \
+        return r * 7 + ((char *) (p -= k) - start);                     \
+    }
+
+POINTEES(PINDEX)
+
 /* *p++, *++p, *p-- and *--p as a load and as a store, on a register
    pointer into the main's buffer; *q++ = *p++ copies; p[i++] and
    p[i]++ with a register i; a local array's a[i]++. */
