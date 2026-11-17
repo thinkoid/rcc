@@ -1674,6 +1674,30 @@ register of its pair and is moved, `mov 4(r5),r1; sxt r0; div
 returning `long` its conversion is written into the result's pair,
 `mov 4(r5),r3; sxt r2; div 6(r5),r2; mov r3,r1; sxt r0`.
 
+A conditional hands the argument to its first arm and the register
+that arm's value appears in, `rreg`, to its second, moving the second
+arm there where it appears in another (`c10.c:434-440`):
+
+```c
+		rreg = rcexpr(p1->tr1, table, reg);
+		nstack = flag;
+		branch(r=isn++, 0);
+		label(c);
+		reg = rcexpr(p1->tr2, table, rreg);
+		if (rreg!=reg)
+			movreg(reg, rreg, tree->tr2);
+```
+
+So the arms join in the first arm's register. For `return(c ? x % y
+: y)` the compiler writes `div 10(r5),r0` on the first arm, the
+remainder in `r1`, the second arm's `mov 10(r5),r1`, and the return's
+`mov r1,r0` after the join. rcc joins in the register the consumer
+names, `return c ? x % y : y` being the remainder's `movl %edx, %eax`
+on its arm, the second arm's `movl -12(%rbp), %eax` and no move after
+the join; where no consumer names one it joins as the ancestor does,
+in the first arm's register, the second arm's load writing it
+(`backend.md` 6.1).
+
 ### 7.3 What rcc wrote before
 
 ```c

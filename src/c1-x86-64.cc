@@ -2297,12 +2297,36 @@ conditional_effect(state_t &s, const expr_t &e)
     place_label(s, end);
 }
 
-// 6.5.16p5: the arm not chosen is not evaluated, and the jump says so;
-// never cmov.  Each arm's value is moved into the register of the
-// first arm's, which is an expression register: a register variable as
-// the first arm is copied into one.
+// An arm of ?: generated for the join register j, backend.md 6.1:
+// handed j as the register its consumer names, so that its last
+// instruction writes j where it can, and, where no instruction within
+// it pins a register, with the registers below j left for last, so
+// that j is its lowest free register and a row that writes a fresh one
+// writes j, movl -12(%rbp), %edx beside a first arm's remainder.  A
+// pin within the arm decides its registers, as in any operand (6.5).
 value_t
-conditional(state_t &s, const expr_t &e)
+arm(state_t &s, const expr_t &e, reg_t j)
+{
+    unsigned below = 0;
+    for (const reg_t r : expression_registers) {
+        if (r == j)
+            break;
+        below |= bit(r);
+    }
+
+    return rvalue_avoiding(s, e, pinned_within(e) ? 0 : below, nullptr, bit(j));
+}
+
+// 6.5.16p5: the arm not chosen is not evaluated, and the jump says so;
+// never cmov.  The arms join in one expression register: the one the
+// conditional's consumer names, wanted, where it names one, and
+// otherwise the first arm's, a register variable as the first arm
+// copied into one.  Each arm is generated for the join, arm()'s, and
+// moved there where its value is elsewhere: return c ? x % y : y is
+// the remainder's movl %edx, %eax and the second arm's movl -12(%rbp),
+// %eax, and no move after the join (backend.md 6.1).
+value_t
+conditional(state_t &s, const expr_t &e, unsigned wanted = 0)
 {
     const auto &c = as< conditional_t >(e);
     const auto &t = e.type;
@@ -2320,23 +2344,30 @@ conditional(state_t &s, const expr_t &e)
     cbranch(s, *c.cond, no, false);
 
     const int width = std::max(32, integer(t).width);
+    const bool is_signed = integer(t).is_signed;
 
-    const auto yes = rvalue(s, *c.yes);
+    const auto named = wanted_register(s, wanted);
+    const auto yes = named ? arm(s, *c.yes, *named) : rvalue(s, *c.yes);
     if (borrowed(s, yes))
-        copy(s, yes, take(s, 0));
+        copy(s, yes, named ? *named : take(s, 0));
 
-    const reg_t into = reg_of(s, yes);
-    const int valid = s.values[yes.id].valid;
+    reg_t into = reg_of(s, yes);
+    int valid = s.values[yes.id].valid;
+    if (named && into != *named) {
+        mov(s, into, *named, width);
+        into = *named;
+        valid = written(width, is_signed);
+    }
     release(s, yes);
     jump(s, end);
 
     place_label(s, no);
-    const auto other = rvalue(s, *c.no);
+    const auto other = arm(s, *c.no, into);
     const reg_t from = reg_of(s, other);
     int other_valid = s.values[other.id].valid;
     if (from != into) {
-        insn(s, sized("mov", width), { reg(from, width), reg(into, width) });
-        other_valid = written(width, integer(t).is_signed);
+        mov(s, from, into, width);
+        other_valid = written(width, is_signed);
     }
     release(s, other);
 
@@ -3424,8 +3455,9 @@ pinned(const expr_t &e)
 // read of a register variable is no row, and the assignment moves it
 // in, movl %r12d, %ebx.  wanted is the register the consumer of e's
 // value names, rax for a return's, as a set of one, or none (6.1): the
-// rows that write a fresh register take it as the lowest free one, and
-// unary(), binary(), assign() and cast() hand it on.
+// rows that write a fresh register take it as the lowest free one,
+// unary(), binary(), assign() and cast() hand it on, and a conditional
+// joins its arms there.
 value_t
 rvalue(state_t &s, const expr_t &e, into_t *into, unsigned wanted)
 {
@@ -3466,7 +3498,7 @@ rvalue(state_t &s, const expr_t &e, into_t *into, unsigned wanted)
     if (is< cast_t >(e))
         return cast(s, as< cast_t >(e), e.type, into, wanted);
 
-    return conditional(s, e);
+    return conditional(s, e, wanted);
 }
 
 // The value of e for a consumer that names the register r, a return's

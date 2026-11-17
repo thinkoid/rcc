@@ -1,15 +1,63 @@
 /* backend.md 7.2 and aarch64.md 7.2, e ? a : b for its value: jump
-   code, never a conditional move.
+   code, never a conditional move.  backend.md 6.1, the join of the two
+   arms is the register the conditional's consumer names, where it
+   names one, and otherwise the first arm's, and each arm writes it
+   where its last instruction can: stepped() returns a postfix step's
+   old value or b; stored() stores a remainder or d, a consumer that
+   names no register; summed() adds e to the joined value, the
+   conditional the left operand of a returned sum; widened() returns
+   an int remainder or c as a long.
 
-   On x86-64 the listing must show a compared in its slot, cmpl $0,
-   -4(%rbp), a je to the arm that loads c, the arm that loads b into the
-   same eax and jumps past it, the two joining at the jmp to the
-   epilogue label, and no cmov.
+   On x86-64 the listing must show in conditional() a compared in its
+   slot, cmpl $0, -4(%rbp), a je to the arm that loads c, the arm that
+   loads b into the same eax and jumps past it, the two joining at the
+   jmp to the epilogue label, and no cmov.  In stepped() the element's
+   address in rcx and rdx, its load into esi and the old value copied
+   into eax, movl %esi, %eax, before the step and the store, and the
+   second arm's load into eax, movl -8(%rbp), %eax, with no move after
+   the join.  In stored() the arms join in edx, the remainder's
+   register, the second arm's load written there, movl -16(%rbp),
+   %edx, and the store from it, movl %edx, g(%rip).  In summed() the
+   remainder moved into eax, movl %edx, %eax, before its jump, the
+   second arm's load into eax and addl -20(%rbp), %eax after the join.
+   In widened() the remainder moved into eax and the second arm's load
+   into eax, then movslq %eax, %rax after the join.
 
-   On aarch64 the listing must show a tested with cbz w0 to the arm that
-   loads c, the arm that loads b into the same w0 and branches past it,
-   the two joining at the b to the epilogue label, and no csel. */
+   On aarch64 the listing must show in conditional() a tested with cbz
+   w0 to the arm that loads c, the arm that loads b into the same w0
+   and branches past it, the two joining at the b to the epilogue
+   label, and no csel.  In stepped() the old value moved into w0, mov
+   w0, w2, before its branch, the return's x0, and the second arm's
+   ldr w0, [x29, #20], with no move after the join.  In stored(),
+   summed() and widened() msub w0, w2, w1, w0 and the second arm's load
+   into w0, then the store, add w0, w0, w1 and sxtw x0, w0. */
 int conditional(int a, int b, int c)
 {
     return a ? b : c;
+}
+
+int g;
+
+int
+stepped(int a, int b, int *p, int i)
+{
+        return a ? p[i]++ : b;
+}
+
+void
+stored(int a, int b, int c, int d)
+{
+        g = a ? b % c : d;
+}
+
+int
+summed(int a, int b, int c, int d, int e)
+{
+        return (a ? b % c : d) + e;
+}
+
+long
+widened(int a, int b, int c)
+{
+        return a ? b % c : c;
 }

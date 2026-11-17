@@ -366,6 +366,14 @@ PINNED_TYPES(DECLARE_REMAINDER)
 
 PINNED_TYPES(DECLARE_RETURNED)
 
+#define DECLARE_JOINED(T, N)                                            \
+    BOTH(T, jn_ret_##N, (int, T, T)) BOTH(long, jn_sum_##N, (int, T, T)) \
+    BOTH(long, jn_step_##N, (int, T *, T))                              \
+    BOTH(long, jn_kept_##N, (int, T, T))                                \
+    BOTH(long, jn_call_##N, (int, T, T)) BOTH(long, jn_div_##N, (int, T, T))
+
+PINNED_TYPES(DECLARE_JOINED)
+
 /* the four rows beside the operand in memory: each function of FORMS
    in its six forms */
 #define DECLARE_FORMS(f, A, U)                                          \
@@ -962,6 +970,36 @@ PINNED_TYPES(TEST_REMAINDER_ALL)
 
 PINNED_TYPES(TEST_RETURNED_ALL)
 
+/* the joins of ?:, of one type, over pairs of the table and both arms:
+   x the divisor, kept from 0 and -1, y the dividend, P(T) the object a
+   step reads and writes */
+#define TEST_JOINED_ALL(T, N)                                           \
+    static void test_joined_##N(void)                                   \
+    {                                                                   \
+        for (int j = 0; j < COUNT; ++j) {                               \
+            const long x = values[j];                                   \
+                                                                        \
+            if (!DIVISOR(T, x))                                         \
+                continue;                                               \
+                                                                        \
+            for (int i = 0; i < COUNT; ++i) {                           \
+                const long y = values[i];                               \
+                const int at = offsets[(i + j) % OFFSETS];              \
+                                                                        \
+                for (int c = 0; c < 2; ++c) {                           \
+                    CHECK(jn_ret_##N, x, y, (c, (T) y, (T) x));         \
+                    CHECK(jn_sum_##N, x, y, (c, (T) y, (T) x));         \
+                    MCHECK(jn_step_##N, x, y, at, (c, P(T), (T) y));    \
+                    CHECK(jn_kept_##N, x, y, (c, (T) y, (T) x));        \
+                    CHECK(jn_call_##N, x, y, (c, (T) y, (T) x));        \
+                    CHECK(jn_div_##N, x, y, (c, (T) y, (T) x));         \
+                }                                                       \
+            }                                                           \
+        }                                                               \
+    }
+
+PINNED_TYPES(TEST_JOINED_ALL)
+
 /* f in its six forms, on a, of type A, and the object's value v, of
    type U, which P(U) holds for _ptr; k is 0 to 3 */
 #define TEST_FORMS(f, A, U, a, v)                                       \
@@ -1131,6 +1169,9 @@ main(void)
 
 #define RUN_RETURNED(T, N) test_returned_##N();
     PINNED_TYPES(RUN_RETURNED)
+
+#define RUN_JOINED(T, N) test_joined_##N();
+    PINNED_TYPES(RUN_JOINED)
 
 #define RUN_RECAST(A, U, UN, name) test_recast_##name();
     RECASTS(RUN_RECAST)

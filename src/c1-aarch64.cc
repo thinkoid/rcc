@@ -2046,12 +2046,18 @@ conditional_effect(state_t &s, const expr_t &e)
 }
 
 // 6.5.16p5: the arm not chosen is not evaluated, and the jump says so;
-// never csel.  Each arm's value is moved into the register of the first
-// arm's, by mov at the operation's width, backend.md 7.2.  That register
-// is an expression register: a borrowed read as the first arm is copied
-// into one, mov w0, w19, chapter 4.
+// never csel.  The arms join in one expression register: named, the one
+// the conditional's consumer names, where it names one, a return's x0
+// (6.1), and otherwise the first arm's, a borrowed read as the first arm
+// copied into one, mov w0, w19, chapter 4.  Each arm's value is moved
+// into the join where it is elsewhere, by mov at the operation's width,
+// backend.md 7.2: return c ? p[i]++ : 0 is the first arm's mov w0, w2
+// and the second arm's mov w0, #0, and no move after the join.  No row
+// of an arm takes the name.
 value_t
-conditional(state_t &s, const expr_t &e)
+conditional(state_t &s,
+            const expr_t &e,
+            std::optional< reg_t > named = std::nullopt)
 {
     const auto &c = as< conditional_t >(e);
     const auto &t = e.type;
@@ -2070,12 +2076,19 @@ conditional(state_t &s, const expr_t &e)
 
     const int width = std::max(32, integer(t).width);
 
+    const bool is_signed = integer(t).is_signed;
+
     const auto yes = rvalue(s, *c.yes);
     if (borrowed(s, yes))
-        copy(s, yes, take(s, 0));
+        copy(s, yes, named ? *named : take(s, 0));
 
-    const reg_t into = reg_of(s, yes);
-    const int valid = s.values[yes.id].valid;
+    reg_t into = reg_of(s, yes);
+    int valid = s.values[yes.id].valid;
+    if (named && into != *named) {
+        mov(s, into, *named, width);
+        into = *named;
+        valid = written(width, is_signed);
+    }
     release(s, yes);
     jump(s, end);
 
@@ -2084,8 +2097,8 @@ conditional(state_t &s, const expr_t &e)
     const reg_t from = reg_of(s, other);
     int other_valid = s.values[other.id].valid;
     if (from != into) {
-        insn(s, "mov", { reg(into, width), reg(from, width) });
-        other_valid = written(width, integer(t).is_signed);
+        mov(s, from, into, width);
+        other_valid = written(width, is_signed);
     }
     release(s, other);
 
@@ -2717,13 +2730,17 @@ rvalue(state_t &s, const expr_t &e, into_t *into)
     return conditional(s, e);
 }
 
-// The value of e for a consumer that names a register, a return's for
-// x0 (backend.md 6.1): on aarch64 no row takes the name, so the value
-// is rvalue()'s and the consumer moves it where it is elsewhere
+// The value of e for a consumer that names the register r, a return's
+// for x0 (backend.md 6.1): a conditional at the top of e joins its arms
+// in r, and otherwise the value is rvalue()'s, since no other row takes
+// the name on aarch64, and the consumer moves it where it is elsewhere
 // (aarch64.md 6.1).
 value_t
-rvalue_in(state_t &s, const expr_t &e, reg_t)
+rvalue_in(state_t &s, const expr_t &e, reg_t r)
 {
+    if (is< conditional_t >(e))
+        return conditional(s, e, r);
+
     return rvalue(s, e);
 }
 

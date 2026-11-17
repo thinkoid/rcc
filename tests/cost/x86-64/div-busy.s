@@ -345,12 +345,11 @@ rem_arm:
 	movl	-8(%rbp), %eax
 	cltd
 	idivl	-12(%rbp)
+	movl	%edx, %eax
 	jmp	.Lrem_arm.3
 .Lrem_arm.2:
 	movl	-12(%rbp), %eax
-	movl	%eax, %edx
 .Lrem_arm.3:
-	movl	%edx, %eax
 	jmp	.Lrem_arm.1
 .Lrem_arm.1:
 	leave

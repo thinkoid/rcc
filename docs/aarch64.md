@@ -614,10 +614,18 @@ the value: `mov w0, w19; add w19, w19, #1`. Left first is G13; a
 commutative operator's operands are not swapped, but for a constant.
 
 A value is computed in the register its consumer names (`backend.md`
-6.1), and here the register variable is the one consumer whose name a
-row takes (chapter 4). A `return` names `x0`, and no row takes that
-name: the value is where its row left it, and the return moves it
-(7.2). Most of x86-64's shapes of the rule are not here. No copy
+6.1), and here the register variable is the one consumer whose name
+the rows take (chapter 4). A `return` names `x0`, and one row takes
+that name, a conditional's at the top of the returned value: its
+arms join in `x0`, each moved there where its value is elsewhere, so
+`return c ? p[i]++ : b` is the first arm's `mov w0, w2` and the
+second arm's `ldr w0, [x29, #20]`, with no move after the join. No
+row of an arm takes the name, and where no consumer names one the
+arms join in the first arm's register, the second moved there where
+it is elsewhere; to write the join itself, an arm's rows would take
+the name, as x86-64's do. Any other value is where its row left it,
+and the return moves it (7.2). Most of x86-64's shapes of the rule
+are not here. No copy
 precedes an instruction that writes, so `return r - p[i]` is `sub w0,
 w19, w0`, and a remainder's `msub` and an extension take the lowest
 free register, `x0` at a `return`'s top, `msub w0, w2, w1, w0; sxtw
@@ -672,7 +680,7 @@ For a 32-bit operation (`w` names) or a 64-bit one (`x` names).
 | `-a`, `~a` | `neg L, L`, `mvn L, L` | |
 | `!a` | `cmp L, #0; cset L, eq`; for an operand with stale upper bits, `tst L, #0xff` in place of the `cmp` (7.1) | as a value |
 | `a < b` and the rest, as a value | `cmp L, R; cset L, lt`; a constant on the left the mirrored comparison (6.1), `5 < x` the load and `cmp w0, #5; cset w0, gt` | `lt`, `le`, `gt`, `ge`, `eq`, `ne` signed; `lo`, `ls`, `hi`, `hs` unsigned and for pointers (G7) |
-| `a && b`, `a \|\| b`, `a ? b : c`, as a value | jump code into `L`, `mov L, #1` and `mov L, #0` on the arms | never `csel`: 6.5.16p5, the arm not chosen is not evaluated |
+| `a && b`, `a \|\| b`, `a ? b : c`, as a value | jump code into `L`, `mov L, #1` and `mov L, #0` on the arms; the arms of a returned `?:` join in `x0`, each moved there where its value is elsewhere (6.1) | never `csel`: 6.5.16p5, the arm not chosen is not evaluated |
 | `x = e` | the store of 2.2 to the slot; for a register variable the last instruction of the row that computes the value writes its register, `add w19, w0, w1`, `ldr w19, [x29, #24]`, where the row writes its destination only after it has read every operand, `adrp x19, buf; add x19, x19, :lo12:buf` for an address in two instructions, and through a conversion that changes the signedness alone, `ldr w19, [x29, #32]` for `register unsigned u = i`, and otherwise the `mov` into it, `mov w20, w0`, `mov x20, x0`, a narrow type's the extension, `sxtb w19, w0`; a constant the immediate, `mov w20, #0` | 6.6 for a constant; chapter 4 |
 | `x op= e`, `++x`, `x++` | the load, the operation, the store, after `e` for `x op= e`; a register variable in place, after `e`, its register `L` and the destination, `add w19, w19, w0`, `add w19, w19, #1`, a narrow one re-extended after, `sxtb w19, w19`, and `%=` with the quotient in a register of its own, `sdiv w0, w19, w20; msub w19, w0, w20, w19`; `x++` on a register variable for its value is G13's copy and the step, `mov w0, w19; add w19, w19, #1`; a pointer's `++` and `--` step by the size, an immediate where `add` encodes it, `add L, L, #4` for an `int *`, and otherwise held in a register | no memory form, 6.6; chapter 4 |
 | `(T) a` | `sxtw L, L` for `int` to `long`; `sxtb`, `sxth`, `uxtb`, `uxth` from a narrow type; each only when `L` is not already valid to the new width; a signed object in memory under a cast that widens it is the load of 2.2 extended to the new width, `ldrsw x0, [x29, #16]` for an `int` to `long`, `ldrsb x0` and `ldrsh x0` for a `signed char` and a `short`, its displacement scaled by the object's size as the plain load's is, so through `x16` where that one would be (5.3), and no instruction after it, as `backend.md` 6.3's widening by the load has it, the object read under casts that keep its bits included, `ldrsw x0, [x29, #16]` for `(long) (int) u`, the plain `ldr w0` for `(unsigned long) (unsigned) i` and the `ldrb w0` for `(long) (char) c`, valid to 64, while a narrowing cast under the widening keeps its load and the extension after it, `ldr x0; sxtw x0, w0` for `(long) (int) l`; `mov wL, wL` for an `unsigned` not valid to 64; nothing between pointer types and for a pointer to `long`; an integer to a pointer as to `unsigned long`, so `sxtw` for an `int` | G2; the width rule |
@@ -915,9 +923,9 @@ As `backend.md` 7.2, with `b` for `jmp`. `return e` leaves `e` in
 `mov w0, w1` at 32 bits, and on the `x` names for a `long` or a
 pointer. `x op= e` for its value is such a case: the result is in
 the object's register, taken above `e`'s, so a `return` of it ends
-in `mov w0, w1`. The return names `x0`, and no row takes the name
-(6.1). Every `return` jumps to the one epilogue. `main` returns 0 on
-reaching its `}`, `mov w0, #0`.
+in `mov w0, w1`. The return names `x0`, and a conditional at the top
+of `e` joins its arms there (6.1). Every `return` jumps to the one
+epilogue. `main` returns 0 on reaching its `}`, `mov w0, #0`.
 
 `do`'s condition at the bottom branches back to the body's label on
 the condition, `b.lt .Lcount.2` or `cbnz`, by jump code (7.1). `break`,

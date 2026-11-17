@@ -1200,6 +1200,30 @@ PINNED_TYPES(REMAINDER)
 
 PINNED_TYPES(RETURNED)
 
+/* The join of ?: is the register its consumer names, backend.md 6.1:
+   on x86-64 the arms of a returned conditional join in rax, the
+   remainder moved there and the second arm written there, the narrow
+   result, jn_ret_, and as a sum's left operand, jn_sum_; a postfix
+   step's old value as the first arm, jn_step_; with no consumer naming
+   one, the arms join in the first arm's register, rdx for a
+   remainder, and the second arm writes it, jn_kept_; the second arm
+   pinned by a call or a division, jn_call_ and jn_div_.  p points at
+   the main's x at B + at, and the main keeps a divisor from 0 and
+   -1. */
+#define JOINED(T, N)                                                    \
+    T jn_ret_##N(int c, T a, T b) { return c ? a % b : b; }             \
+    long jn_sum_##N(int c, T a, T b) { return (c ? a % b : b) + a; }    \
+    long jn_step_##N(int c, T *p, T b) { return c ? (*p)++ : b; }       \
+    long jn_kept_##N(int c, T a, T b)                                   \
+    {                                                                   \
+        long v = c ? a % b : b;                                         \
+        return v * 3 + a;                                               \
+    }                                                                   \
+    long jn_call_##N(int c, T a, T b) { return c ? a % b : mix1(b); }   \
+    long jn_div_##N(int c, T a, T b) { return c ? a % b : a / b; }
+
+PINNED_TYPES(JOINED)
+
 /* A condition on an object in memory, on x86-64 the cmp or test of the
    object itself, backend.md 7.1: compared with a constant on either
    side, kt_ and ktl_, through the main's pointer, and as a global the

@@ -706,17 +706,23 @@ takes the value where its row left it. The name goes down from the
 consumer to the instruction that last writes the value, through
 every row whose register is its operand's: an operation's left
 operand, a cast's operand, the operand of `-` and `~`, the comma's
-right operand and a plain assignment's right operand. That
-instruction writes the named register, and what is generated before
-it is generated with the name reserved, as a pinned register is
-(6.5), so that it is free when the instruction comes: an operation's
-right operand, or the address of an object as it, where the left
-operand holds no other register, and the place of an assignment or
-of a step. `return r - p[i]` on a `register int r` is
+right operand, a plain assignment's right operand and each arm of
+`?:`. That instruction writes the named register, and what is
+generated before it is generated with the name reserved, as a pinned
+register is (6.5), so that it is free when the instruction comes: an
+operation's right operand, or the address of an object as it, where
+the left operand holds no other register, and the place of an
+assignment or of a step. `return r - p[i]` on a `register int r` is
 thus `movq -16(%rbp), %rcx; movslq -20(%rbp), %rdx; movl %ebx, %eax;
 subl (%rcx,%rdx,4), %eax`, the copy of `r` that the `subl` writes
 made in `eax`, and a remainder returned as a `long` is `movslq %edx,
-%rax`, the extension written where the return wants it. A row that
+%rax`, the extension written where the return wants it. The two arms
+of `?:` join in the named register, each moved there where its value
+is elsewhere. Where the consumer names none they join in the first
+arm's register, and the second arm is generated for that register as
+for a consumer's name, the registers below it reserved where nothing
+within the arm pins one, so that a load there writes it, `movl
+-12(%rbp), %edx` beside a remainder. A row that
 writes a fresh register writes the lowest free one, and nothing is
 held at a `return`'s top, so a load, a `lea` or a constant there is
 in `rax` already. The name stops at a node whose right operand or
@@ -774,7 +780,7 @@ written for it.
 | `-a`, `~a` | `neg L`, `not L` | G1 for `-INT_MIN` |
 | `!a` | `cmp $0, L`; `sete %Lb`; `movzbl %Lb, L`, or the two into the register a consumer names where the `cmp` leaves it free, `sete %al` after `cmpl $0, %edx` (6.1) | as a value; as a condition, chapter 7 |
 | `a < b` and the rest, as a value | `cmp R, L`, `cmpl -8(%rbp), %eax` for an object in memory, and for an object in memory against a constant the `cmp` of the object, `cmpl $5, -4(%rbp)`, as in a condition (7.1), and against a register variable's read the `cmp` of the object with the variable's register, `cmpl %ebx, -4(%rbp)` (6.1), `L` then taken for the `setcc`; `setcc %Lb`; `movzbl %Lb, L`, or the two into the register a consumer names where the `cmp` leaves it free, `setl %al` after `cmpl %eax, %ecx` (6.1); a constant on the left the mirrored comparison (6.1), `5 < x` `cmpl $5, -4(%rbp); setg %al` | `setl`, `setle`, `setg`, `setge`, `sete`, `setne` signed; `setb`, `setbe`, `seta`, `setae` unsigned and for pointers (G7) |
-| `a && b`, `a \|\| b`, `a ? b : c`, as a value | jump code of chapter 7 into `L`, with `mov $0, L` and `mov $1, L` on the arms | no `setcc` chain |
+| `a && b`, `a \|\| b`, `a ? b : c`, as a value | jump code of chapter 7 into `L`, with `mov $0, L` and `mov $1, L` on the arms; the arms of `?:` join in the register the consumer names and otherwise in the first arm's, each arm's last instruction writing the join where it can and a `mov` into it where its value is elsewhere, `movl %edx, %eax` for `return c ? x % y : y` and the second arm's `movl -12(%rbp), %edx` where no consumer names one (6.1) | no `setcc` chain |
 | `x = e` | `mov L, slot`, the value staying in `L`, and the place generated outside the register a consumer names, which `L` then is, `movq %rax, (%rcx,%rdx,8)` for a `return`'s value (6.1); into a register variable, the value computed in its register where its last instruction can write it, the load, `movl -12(%rbp), %ebx`, the operation, `addl -16(%rbp), %ebx` after it, the address, `leaq buf(%rip), %rbx`, `-` and `~`, `negl %ebx` after the load, and a comparison's `setl %bl; movzbl %bl, %ebx`, the value then the variable's read, and otherwise `mov L, reg` (chapter 4); a constant goes as the immediate straight into a register variable, `movl $0, %r12d`, or into memory when the assignment is evaluated for its effect alone, `movl $0, -12(%rbp)` (6.6) | a `char` store is `movb %Lb` |
 | `x op= e` | the address of `x` first, then `e`; in the effect context, the op on the object, `addl %eax, -12(%rbp)`, but for `*=`, `/=` and `%=` (6.6); in a value context, the load row, the op row, the store row, after `e`, the load into the register a consumer names, the place outside it (6.1); on a register variable, the op on the register in place, after `e`, and `p += n` on a register pointer at a size of 2, 4 or 8 the `leaq` into the register, `leaq (%rbx,%rax,4), %rbx` | `*=`, `/=` and `%=` are always `e`, then the load, the op and the store: `imul` has no memory destination and `idiv` none at all |
 | `++x`, `x++`, `--x`, `x--` | in the effect context, the op on the object, `addl $1, -8(%rbp)`, and no old value (6.6); in a value context, the load, `add $1` or `sub $1`, the store, the post forms keeping the old value in another register, the one a consumer names, the load and the place generated outside it (6.1) | `add $size` for a pointer |
@@ -1137,12 +1143,13 @@ next division's dividend into `rax`, `%=` on a register variable's
 into `rax`, `movslq %edx, %rax`, the one instruction (6.1). A
 remainder held in `rdx` across a later division or a call moves out
 as any held value does (6.7).
-The edge is `?:`, whose arms join in the first arm's register: with a
-remainder first, the join is `rdx`, and `return c ? x % y : y;`
-writes `movl -12(%rbp), %eax; movl %eax, %edx` for its second arm and
-`movl %edx, %eax` after the join, 17 instructions, one more than a
-remainder moved into `eax` on the first arm would take (`div-busy`'s
-`rem_arm`).
+A remainder as the first arm of `?:` is moved into the register the
+consumer names, the join (6.1): `return c ? x % y : y;` writes
+`movl %edx, %eax` before the first arm's jump and the second arm's
+load into `eax`, `movl -12(%rbp), %eax`, 16 instructions with no move
+after the join (`div-busy`'s `rem_arm`). Where no consumer names a
+register the join is `rdx`, and the second arm's load writes it,
+`movl -12(%rbp), %edx` (`conditional`'s `stored`).
 
 A divisor that is an object in memory is the division's operand,
 `idivl -8(%rbp)` (6.1). The registers of its address, a base and an
@@ -1582,9 +1589,11 @@ constant.
   before a block's closing brace (6.8.3p1), and is then the null
   statement it is translated as followed by (p2).
 - `e ? a : b` for its value: `cbranch(e, .Lelse, 0)`, `a` into `L`,
-  `jmp .Lend`, `.Lelse:` `b` into the same `L`, `.Lend:`. Never
-  `cmov`: the arm not chosen is not evaluated (6.5.16p5), and the
-  jump says so.
+  `jmp .Lend`, `.Lelse:` `b` into the same `L`, `.Lend:`. `L` is the
+  register the consumer names, where it names one, and otherwise
+  `a`'s own, and each arm's last instruction writes it where it can
+  (6.1). Never `cmov`: the arm not chosen is not evaluated
+  (6.5.16p5), and the jump says so.
 - `return e`: the return names `rax`, and `e` is computed there where
   its last instruction can write it (6.1); otherwise `e` into `L` and
   `mov L, %eax`, a remainder's `movl %edx, %eax` among them, and the
@@ -2222,11 +2231,10 @@ answers:
     in another register moves it once. The rule is the Seventh
     Edition compiler's, whose row of a remainder returns the odd
     register of its pair, where `div` leaves it. aarch64's `msub`
-    names its destination and has nothing to take. The cost is an
-    edge at `?:`, whose arms join in the first arm's register: with a
-    remainder first, the second arm moves into `rdx` and the use after
-    the join moves out of it, one instruction more in `return c ? x %
-    y : y;`.
+    names its destination and has nothing to take. The cost is the
+    one move of a use that wants the value elsewhere, `movl %edx,
+    %eax` for a return, which a `?:` with a remainder first makes on
+    that arm (call 19).
 18. **A constant on the left is taken on the right** (6.1), on both
     targets, of a comparison and of `+`, `*`, `&`, `|` and `^`: `5 <
     x` is generated as `x > 5` and `4 * x` as `x * 4`, so the constant
@@ -2259,19 +2267,33 @@ answers:
     `rax` first; the extension, `movslq %edx, %rax` for a remainder
     returned as a `long`; a comparison's `setl %al` and a quotient
     held in `eax`; and an assignment's value, a `+=`'s load and a
-    postfix step's copy, their place outside `rax`. The rule is the
-    Seventh Edition compiler's: its `cexpr()` takes the register its
-    caller wants the value in, and a `return`'s tree, `RFORCE`, is
-    compiled for `r0` and moved there where it comes back in another
-    (`rcexpr()`, in `c10.c`). For `return(q - chars)` on a `register
-    char *q` that compiler writes `mov r4,r0; sub $_chars,r0`, the
-    variable's copy into `r0` before the right operand, and for a
-    remainder returned as a `long` `mov 4(r5),r3; sxt r2; div
-    6(r5),r2; mov r3,r1; sxt r0`, the conversion written into the
-    result's pair. aarch64 names its destination apart from its
-    sources and has no copy to place; a `return` names `x0` there, and
-    no row takes the name (`aarch64.md` 6.1). The cost is a second
-    hand-down beside the variable's and a boundary: a node whose right
-    operand or place holds a call or a division, and a right operand
-    that writes the borrowed read's variable, keep the `mov`, and a
-    remainder is returned by `movl %edx, %eax`.
+    postfix step's copy, their place outside `rax`. The arms of `?:`
+    join in the register the consumer names, each arm's last
+    instruction writing it where it can: `return c ? x % y : y` moves
+    the remainder into `eax` on its arm and loads the second arm
+    there, with no move after the join; with no consumer naming one,
+    they join in the first arm's register and the second arm writes
+    it, `movl -12(%rbp), %edx`. The rule is the Seventh Edition
+    compiler's: its `cexpr()` takes the register its caller wants the
+    value in, a `return`'s tree, `RFORCE`, is compiled for `r0` and
+    moved there where it comes back in another (`rcexpr()`, in
+    `c10.c`), and its `QUEST` compiles the second arm for the register
+    the first arm's value appears in (`cexpr()`). For `return(q -
+    chars)` on a `register char *q` that compiler writes `mov r4,r0;
+    sub $_chars,r0`, the variable's copy into `r0` before the right
+    operand; for a remainder returned as a `long` `mov 4(r5),r3; sxt
+    r2; div 6(r5),r2; mov r3,r1; sxt r0`, the conversion written into
+    the result's pair; and for `return(c ? x % y : y)` the remainder
+    in `r1`, the second arm's `mov 10(r5),r1` and `mov r1,r0` after
+    the join. rcc joins in the consumer's register instead, so that a
+    second arm a pin puts there needs no move. aarch64 names its
+    destination apart from its sources and has no copy to place; a
+    `return` names `x0` there, and the one row that takes the name is
+    a conditional's at the top of the returned value, whose arms join
+    in `x0` (`aarch64.md` 6.1). The cost is a second hand-down beside
+    the variable's and a boundary: a node whose right operand or place
+    holds a call or a division, and a right operand that writes the
+    borrowed read's variable, keep the `mov`, a remainder is returned
+    by `movl %edx, %eax`, and a widening of a joined `int`, `return a
+    ? b % c : c` in a function returning `long`, moves the remainder
+    into `eax` where the extension could have read it from `edx`.

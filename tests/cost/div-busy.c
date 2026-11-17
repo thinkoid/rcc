@@ -15,7 +15,8 @@
    rem_argument; as the dividend of a quotient, rem_quotient, and of a
    remainder, rem_remainder; as the result of %= on a register
    variable, rem_register, and on a local, rem_local; and as the first
-   arm of ?:, rem_arm, the rule's edge, where the arms join in rdx.
+   arm of ?:, rem_arm, whose arms join in the register the return names
+   (backend.md 6.1).
 
    On x86-64, where c is the division's operand in its slot (backend.md
    6.1), the listing must show, in div_busy and rem_busy, a loaded into
@@ -42,10 +43,10 @@
    movl %edx, %eax, before cltd, and in rem_remainder the return's
    movl %edx, %eax after the second idivl; movl %edx, %ebx in
    rem_register and movl %edx, -12(%rbp) in rem_local.  rem_arm must
-   show the first arm's idivl and its jump, the second arm's load
-   moved into the join register, movl -12(%rbp), %eax and
-   movl %eax, %edx, and the return's movl %edx, %eax after the join:
-   17 instructions where the remainder moved into eax wrote 16.
+   show the first arm's idivl and the remainder moved into the
+   register the return names, movl %edx, %eax, before its jump, the
+   second arm's load into it, movl -12(%rbp), %eax, and no move after
+   the join: 16 instructions.
 
    On aarch64 the listing is the division on the registers the loads
    took, a in w0, b in w1 and c in w2: sdiv w1, w1, w2 in div_busy(),

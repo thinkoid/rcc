@@ -22,26 +22,22 @@ assembles and links. The reasons are =docs/findings.md= and
 in =docs/design-calls.md=. The chapter holds c1's own defects on both
 targets; the second target's design is =docs/aarch64.md=.
 
-** TODO x86-64: the second arm of ~?:~ is computed elsewhere and moved into the join
+** TODO x86-64: a joined remainder widened by its consumer is moved, then extended
 
-The two arms of ~?:~ join in the first arm's register. Where that is
-not the register the second arm is computed in, the second arm moves:
-with a remainder first, whose value is in =rdx=, ~return c ? x % y :
-y;~ has =movl -12(%rbp), %eax; movl %eax, %edx= for its second arm,
-where the load could write =edx=. A =register= variable is already
-the destination of the value computed for it (=backend.md= chapter
-4); the join register is not.
+The arms of ~?:~ join in the register the consumer names
+(=backend.md= 6.1), and the name passes through a cast. In a function
+returning =long=, ~return a ? b % c : c;~ moves the remainder into
+=eax= on its arm and extends after the join, =movl %edx, %eax= and
+=movslq %eax, %rax=, where a join left in =rdx= would be extended
+into =rax= by the one =movslq %edx, %rax=. Ten functions over =tests=
+have the shape. Withholding the name at every signed widening makes
+18 others longer, since a truth value or a quotient under the cast
+needs no extension.
 
-Fix: the join is the register the consumer of the conditional
-names, where it names one, and each arm writes it where its last
-instruction can: ~return c ? x % y : y;~ joins in =eax=, the first
-arm's one move the return's, the second arm its load. A =return=
-hands its register down already (=backend.md= 6.1); the conditional
-does not take it.
+Fix: none taken; the cast would need to know, before its operand is
+generated, whether the operand's value is valid to the new width.
 
-Check: the listing of ~c ? x % y : y~, pinned at 16 instructions
-with no move after the join, and the count of listings over =tests=
-that change, none longer.
+Check: the count over =tests=, and no function longer.
 
 ** TODO x86-64: a value extended for a register variable or a shift's count is extended, then moved
 
@@ -71,10 +67,16 @@ operand took =x0=, =add w1, w1, w0; mov w0, w1=, where =add w0, w1,
 w0= writes =x0=; 380 are a stored value, and 164 a load or a postfix
 step's copy, where the address took =x0=.
 
+A returned conditional joins its arms in =x0=, but no row of an arm
+takes the name: 7 second arms over =tests= are computed elsewhere and
+moved into the join, and a conditional under a cast gets no name, 2
+moves after a join.
+
 Fix: the row's destination is =x0= where the consumer names it and it
 is free at the instruction; the three-address form needs no
 reservation for an operation, and the place of a store or a step is
-generated outside =x0=, as on x86-64.
+generated outside =x0=, as on x86-64. The name goes down through
+=rvalue()= and =cast()= to an arm's rows.
 
 Check: that count before and after, and the listings over =tests=
 that change, none longer.
