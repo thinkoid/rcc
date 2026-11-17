@@ -21,12 +21,12 @@ used these machines.
   memory.
 - The test is `s += i` a thousand million times, with `i` and `s`
   each a `register` variable or not. On aarch64 the four loops are 7,
-  11, 9 and 13 instructions. On x86-64 they are 5, 7, 5 and 7, since
+  11, 9 and 13 instructions. On x86-64 they are 5, 6, 5 and 6, since
   one x86-64 instruction can load a slot, add to it and store it.
 - A slot the loop carries adds, per iteration, 0.37 to 0.65 clock
   cycles on the Firestorm core of an Apple M1 Max, 4.00 to 5.28 on
   its Icestorm core, 6.00 to 6.62 on a Qualcomm Oryon, and 6.01 to
-  6.73 on the Zen 2 core of an x86-64 desktop. The loop in registers
+  6.81 on the Zen 2 core of an x86-64 desktop. The loop in registers
   takes 1, 2, 1 and 1 cycles.
 - A cycle figure needs the clock a run gets. The Zen 2 core's
   frequency boost hides that clock from the script, so its figures
@@ -36,11 +36,11 @@ used these machines.
 - The worth of `register` thus depends on the core. In this loop, a
   variable left in its slot makes the loop 1.37 to 1.65 times as long
   on Firestorm, but 6.98 to 7.59 times as long on the Oryon and 6.99
-  to 7.71 times on Zen 2.
+  to 7.79 times on Zen 2.
 - The bench agrees in part. As plain sources, sort, strings and
   collatz have ratios of 7.82, 9.67 and 5.71 on the Oryon against
-  2.54, 4.07 and 3.39 on the M1 Max; as tuned sources the three
-  differ between the machines by 0.16 at most. But fib, sieve and
+  2.54, 4.09 and 3.40 on the M1 Max; as tuned sources the three
+  differ between the machines by 0.15 at most. But fib, sieve and
   matmul, whose plain sources keep every variable in a slot too, run
   level as plain sources, and the slot test does not say why.
 - The numbers are clock times. The page says what a round trip costs
@@ -71,7 +71,7 @@ local of theirs lives in a slot. The tuned sources declare the hot
 variables `register`, among other changes.
 
 On two aarch64 machines, an Apple M1 Max and a Qualcomm Oryon, the
-tuned sources under rcc run 1.33 to 2.41 times as long as the plain
+tuned sources under rcc run 1.22 to 2.41 times as long as the plain
 ones under `clang -O2` on the first, and 1.33 to 2.29 times on the
 second. The plain sources under rcc run 1.61 to 7.42 times as long on
 the first, but 1.92 to 9.67 times on the second. Sort, as a plain
@@ -306,8 +306,7 @@ immediate, so the test is two instructions, `cmpl` and `je`.
 ```
 	.p2align 5
 .Lmain.2:
-	movl	-12(%rbp), %eax
-	cmpl	$1000000000, %eax
+	cmpl	$1000000000, -12(%rbp)
 	je	.Lmain.4
 	movl	-12(%rbp), %eax
 	addl	%eax, %ebx
@@ -334,8 +333,7 @@ immediate, so the test is two instructions, `cmpl` and `je`.
 ```
 	.p2align 5
 .Lmain.2:
-	movl	-4(%rbp), %eax
-	cmpl	$1000000000, %eax
+	cmpl	$1000000000, -4(%rbp)
 	je	.Lmain.4
 	movl	-4(%rbp), %eax
 	addl	%eax, -8(%rbp)
@@ -352,10 +350,11 @@ An x86-64 instruction can take a slot as an operand. `addl %ebx,
 -12(%rbp)` reads the slot, adds `ebx` and writes the sum back, in
 one instruction; the aarch64 loop needs `ldr`, `add` and `str` for
 the same. So `rs` is five instructions, as `rr` is, though it reads
-and writes `s`'s slot on every iteration. `sr` is seven: two `movl`
-loads of `i` for the test and for `s += i`, and `addl $1,
--12(%rbp)` for `++i`. `ss` is seven too, with `addl %eax, -8(%rbp)`
-for the sum and `addl $1, -4(%rbp)` for the counter.
+and writes `s`'s slot on every iteration. `sr` is six: the test
+compares `i`'s slot with the immediate, `cmpl $1000000000,
+-12(%rbp)`, a `movl` loads `i` for `s += i`, and `addl $1,
+-12(%rbp)` steps it for `++i`. `ss` is six too, with `addl %eax,
+-8(%rbp)` for the sum and `addl $1, -4(%rbp)` for the counter.
 
 The instruction count thus hides the slot on x86-64. The accesses to
 the slots are the same as on aarch64, and so are the round trips:
@@ -366,9 +365,9 @@ each `addl` to a slot writes what the next iteration reads.
 | variant | aarch64 instructions | loads / stores | x86-64 instructions | reads / writes of a slot | round trips |
 |---|---|---|---|---|---|
 | rr | 7 | 0 / 0 | 5 | 0 / 0 | 0 |
-| sr | 11 | 3 / 1 | 7 | 3 / 1 | 1 |
+| sr | 11 | 3 / 1 | 6 | 3 / 1 | 1 |
 | rs | 9 | 1 / 1 | 5 | 1 / 1 | 1 |
-| ss | 13 | 4 / 2 | 7 | 4 / 2 | 2 |
+| ss | 13 | 4 / 2 | 6 | 4 / 2 | 2 |
 
 The counts are per iteration. A round trip is one store and the
 loads of the next iteration that read it.
@@ -415,9 +414,9 @@ iterations:
 | variant | Firestorm | Icestorm | Oryon | Zen 2 |
 |---|---|---|---|---|
 | rr | 330 | 970 | 294 | 287 |
-| sr | 453 | 3394 | 2072 | 2208 |
+| sr | 453 | 3394 | 2072 | 2236 |
 | rs | 543 | 2909 | 2051 | 2006 |
-| ss | 537 | 3527 | 2232 | 2213 |
+| ss | 537 | 3527 | 2232 | 2158 |
 
 The same in clock cycles per iteration, with the cycles above `rr`'s
 in parentheses:
@@ -425,9 +424,9 @@ in parentheses:
 | variant | Firestorm | Icestorm | Oryon | Zen 2 |
 |---|---|---|---|---|
 | rr | 1.00 | 2.00 | 1.00 | 1.00 |
-| sr | 1.38 (+0.37) | 7.01 (+5.00) | 7.08 (+6.08) | 7.71 (+6.71) |
+| sr | 1.38 (+0.37) | 7.01 (+5.00) | 7.08 (+6.08) | 7.81 (+6.81) |
 | rs | 1.65 (+0.65) | 6.00 (+4.00) | 7.01 (+6.00) | 7.01 (+6.01) |
-| ss | 1.63 (+0.63) | 7.28 (+5.28) | 7.63 (+6.62) | 7.73 (+6.73) |
+| ss | 1.63 (+0.63) | 7.28 (+5.28) | 7.63 (+6.62) | 7.54 (+6.54) |
 
 The cycles above `rr`'s are computed from the times before rounding,
 so a difference of two rounded cells can miss them by 0.01.
@@ -440,19 +439,20 @@ so a difference of two rounded cells can miss them by 0.01.
   three aarch64 cores, and the x86-64 iteration of five takes one on
   Zen 2.
 - **The round trip's price.** A slot the loop carries adds 6.00 to
-  6.62 cycles an iteration on the Oryon, 6.01 to 6.73 on Zen 2, 4.00
+  6.62 cycles an iteration on the Oryon, 6.01 to 6.81 on Zen 2, 4.00
   to 5.28 on Icestorm, and 0.37 to 0.65 on Firestorm. On the Oryon
   and on Zen 2 one slot costs at least six times what the whole loop
   in registers does.
 - **The count of loads barely matters.** `sr` reads its slot three
   times an iteration and `rs` once, and each carries one round trip.
-  `sr` costs 0.07 cycle more than `rs` on the Oryon, 0.71 more on
+  `sr` costs 0.07 cycle more than `rs` on the Oryon, 0.80 more on
   Zen 2 and 1.00 more on Icestorm, but 0.27 less on Firestorm. The
   round trip sets the price; the loads beside it move it little.
 - **Two slots cost little more than one.** `ss` carries two round
-  trips, but costs only 0.55 cycle more than `sr` on the Oryon, 0.27
-  more on Icestorm and 0.02 more on Zen 2, and on Firestorm 0.02 less
-  than `rs`. The second slot does not double the price.
+  trips, but costs only 0.55 cycle more than `sr` on the Oryon and
+  0.27 more on Icestorm, and 0.27 less than `sr` on Zen 2 and 0.02
+  less than `rs` on Firestorm. The second slot does not double the
+  price.
 
 ## 5. What it means
 
@@ -463,23 +463,25 @@ ms, with the ratio to `clang -O2` of the plain source:
 
 | program | M1 Max: `clang -O2` | M1 Max: rcc plain | M1 Max: rcc tuned | Oryon: `clang -O2` | Oryon: rcc plain | Oryon: rcc tuned |
 |---|---|---|---|---|---|---|
-| collatz | 330 | 1120 (3.39) | 466 (1.41) | 288 | 1644 (5.71) | 453 (1.57) |
+| collatz | 330 | 1121 (3.40) | 470 (1.42) | 288 | 1644 (5.71) | 453 (1.57) |
 | fib | 282 | 454 (1.61) | 679 (2.41) | 244 | 469 (1.92) | 558 (2.29) |
 | matmul | 362 | 2685 (7.42) | 740 (2.04) | 362 | 2584 (7.14) | 615 (1.70) |
-| sieve | 472 | 2114 (4.48) | 642 (1.36) | 438 | 2065 (4.71) | 582 (1.33) |
-| sort | 373 | 949 (2.54) | 495 (1.33) | 337 | 2634 (7.82) | 448 (1.33) |
-| strings | 266 | 1083 (4.07) | 535 (2.01) | 250 | 2418 (9.67) | 492 (1.97) |
+| sieve | 471 | 2114 (4.49) | 648 (1.38) | 438 | 2065 (4.71) | 582 (1.33) |
+| sort | 373 | 949 (2.54) | 455 (1.22) | 337 | 2634 (7.82) | 448 (1.33) |
+| strings | 266 | 1087 (4.09) | 541 (2.03) | 250 | 2418 (9.67) | 492 (1.97) |
 
 The bench is `make bench`, unpinned, the least of five runs in user
 plus system CPU time, with the tuned matmul and strings of
-`tests/perf/aarch64`. The Oryon's `rcc strings.c` cell is one low
-timing of its five; the other fourteen timings of the three runs
-read 2500 to 2510 ms (`cost.md` chapter 4).
+`tests/perf/aarch64`. The M1 Max columns are of 2026-11-17, and the
+Oryon's of 2026-11-13 and of the compiler as it then was (`cost.md`
+chapter 4). The Oryon's `rcc strings.c` cell is one low timing of its
+five; the other fourteen timings of the three runs read 2500 to 2510
+ms (`cost.md` chapter 4).
 
-- **Tuned.** 1.33 to 2.41 on the M1 Max, 1.33 to 2.29 on the Oryon.
+- **Tuned.** 1.22 to 2.41 on the M1 Max, 1.33 to 2.29 on the Oryon.
   No row's tuned ratio differs between the machines by more than
   0.34, matmul's.
-- **Plain.** sort, strings and collatz run 2.78, 2.23 and 1.47 times
+- **Plain.** sort, strings and collatz run 2.78, 2.22 and 1.47 times
   as long on the Oryon as on the M1 Max, though `clang -O2` runs all
   three faster on the Oryon.
 
@@ -489,7 +491,7 @@ the M1 Max's Firestorm core under one. It does not show that this
 cost is what splits the plain rows; chapter 6 says why not.
 
 On x86-64 the table of `cost.md` chapter 4 has the plain ratios of
-sort, strings and collatz at 8.11, 8.12 and 7.92, and a carried slot
+sort, strings and collatz at 7.93, 7.47 and 7.75, and a carried slot
 costs the Zen 2 core about six cycles, as it costs the Oryon. The
 listings of the two targets differ, so the match shows no more than
 the one between the aarch64 machines.
@@ -500,7 +502,7 @@ The keyword is the allocation, and its worth is the slot's price on
 the core that runs the program. In this loop a variable left without
 it makes the loop 1.37 to 1.65 times as long on Firestorm, 3.00 to
 3.64 times on Icestorm, 6.98 to 7.59 times on the Oryon, and 6.99 to
-7.71 times on Zen 2. The source is the same on all four, and the
+7.79 times on Zen 2. The source is the same on all four, and the
 listing on the three aarch64 cores; only the time differs.
 
 The cost model of `cost.md` says what a slot compiles to, a load and
@@ -533,13 +535,13 @@ iteration on Zen 2 to `rr`'s 1.00.
   machine's ordinary state are not known; its times are. No other
   x86-64 core has run the test, so whether the price differs between
   x86-64 cores as it does between aarch64 ones is not known. The
-  bench on the same machine, plain 2.18 to 8.12 and tuned 1.39 to
-  2.77 (`cost.md` chapter 4), ran with the boost on.
+  bench on the same machine, plain 2.33 to 8.21 and tuned 1.60 to
+  2.24 (`cost.md` chapter 4), ran with the boost on.
 - **Two targets, one price.** The Oryon and Zen 2 run different
   loops: `rs` is nine instructions on the one, with a load and a
   store of the slot, and five on the other, with one `addl` to it.
   Yet a carried slot costs the two about the same, 6.00 to 6.62
-  cycles an iteration on the Oryon and 6.01 to 6.73 on Zen 2. The
+  cycles an iteration on the Oryon and 6.01 to 6.81 on Zen 2. The
   table records it; nothing here says whether it is more than
   chance.
 - **The frequency.** The cycle figures rest on the frequency the

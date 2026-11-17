@@ -34,11 +34,40 @@ the row owns. The Seventh Edition compiler's row returns the register
 the value is in, the pair's odd one for a remainder, and moves
 nothing (=c10.c=, the end of =cexpr()=).
 
-Fix: decide whether a remainder's value is the value in =rdx=, the
-dividend's register freed, as a borrowed dividend's already is.
+Fix: a remainder's value is the value in =rdx=, the dividend's
+register freed, as a borrowed dividend's already is.
 
 Check: the pins of =pinned='s =fill= and of =div-busy='s =rem_busy=
 have no =movl %edx, %eax=.
+
+** TODO x86-64: the second arm of ~?:~ is computed elsewhere and moved into the join
+
+The two arms of ~?:~ join in the first arm's register. Where that is
+not the register the second arm is computed in, the second arm moves:
+with a remainder first, whose value is in =rdx=, ~return c ? x % y :
+y;~ has =movl -12(%rbp), %eax; movl %eax, %edx= for its second arm,
+where the load could write =edx=. A =register= variable is already
+the destination of the value computed for it (=backend.md= chapter
+4); the join register is not.
+
+Fix: decide whether the second arm writes the join register where
+its last instruction can, by the rule for a register variable.
+
+Check: the listing of ~c ? x % y : y~, pinned, and the count of
+listings over =tests= that change, none longer.
+
+** TODO x86-64: a value extended for a consumer in another register is extended, then moved
+
+A widening is written in the value's own register. Where the
+consumer wants another register the value is extended and then
+moved: a remainder returned as a =long= is =movslq %edx, %rdx; movq
+%rdx, %rax=, where =movslq %edx, %rax= is the one instruction. Not
+measured: how many listings have the pair is not counted.
+
+Fix: decide whether an extension writes the register its consumer
+names, where it has one.
+
+Check: the count of the pair over =tests=, before and after.
 
 ** TODO x86-64: a row's address by a constant index is read two ways
 
@@ -101,8 +130,9 @@ condition is =cmpl $5, -4(%rbp)=, and ~5 < x~ loads the 5, =movl $5,
 %eax; cmpl -4(%rbp), %eax=. The Seventh Edition compiler exchanges a
 relational's operands to put the simpler one on the right (=c12.c=).
 
-Fix: decide whether the constant on the left is taken as the one on
-the right is.
+Fix: a constant on the left is taken as the one on the right is, in
+both shapes: ~0 == e~ loses its compare, and ~5 < x~ is =cmpl $5,
+-4(%rbp)= with the jump's sense mirrored.
 
 Check: the listings of ~0 == (c & 1)~ and of ~5 < x~ agree with the
 decision, pinned in =condition-flags= and in =operand=.
@@ -124,9 +154,9 @@ of the machine:
 - a multiply by a constant: ~x * 4~ is =movl -4(%rbp), %eax; imull
   $4, %eax, %eax=, and the machine has =imull $4, -4(%rbp), %eax=.
 
-Fix: decide each.
+Fix: each of the four takes its operand in memory.
 
-Check: a row of =operand= for each, agreeing with its decision.
+Check: a row of =operand= for each, with no load of the operand.
 
 ** TODO Six rows beside a register variable's destination keep their =mov=
 
@@ -159,7 +189,9 @@ of the rule's wording and not of the machine:
   %ebx= and =ldr w0, [x29, #32]; mov w19, w0=, where the load into
   the register leaves the same bits.
 
-Fix: decide each.
+Fix: the first four take the variable's register as their
+destination: the address and pointer arithmetic, =-= and =~=, a
+comparison's value, and ~a[3]~ as a leaf. Decide the last two.
 
 Check: a function of =register-destination= for each, agreeing with
 its decision.
@@ -297,35 +329,68 @@ the measurement (=docs/findings.md=) were facts about LLVM's code
 generator and left with it; that page's chapter 8 says what became
 of each. The entries below are rows the table lacks.
 
-** TODO Chapter 4's tables predate the listings of its programs
+** TODO The Oryon's numbers of chapter 4 predate the listings of its programs
 
-The tables of =cost.md= chapter 4 were measured before a widening
-cast was made by the load. That step changes the listings of the
-programs of =tests/perf=: on x86-64 sort, strings, matmul, sieve and
-collatz as written, and matmul, sort and strings as tuned, by one to
-nine instructions each; on aarch64 collatz as written, by one. The
-jump on an operator's flags changes collatz as tuned on x86-64 again:
-its parity test is =testq $1, %r14=, where the chapter's paragraph
-quotes =andq $1, %rax= on a copy. The operand in memory changes
-every x86-64 listing of =tests/perf=: the inner loop of matmul as
-tuned is ten instructions, =movl (%r13), %eax; imull (%r14), %eax=,
-where the paragraph counts eleven. The registers chosen for a
-division and a shift change matmul, sieve and fib once more. A
-register variable as the destination of its value changes collatz,
-matmul and sort as tuned on x86-64, and those with sieve and strings
-as tuned on aarch64: collatz's halving is =sarq $1, %r14=, where the
-paragraph quotes the shift of a copy and the move back. The times in
-the tables, the ratios the tl;dr draws from them and the listings
-the chapter's paragraphs quote are those of the code before it. The
-steps that follow it on x86-64 change the same listings again.
+The Oryon's table of =cost.md= chapter 4, its column in 4.3 and in
+=slot.md=, and the aarch64 alignment probe of 4.2, on the Oryon and
+on Firestorm, were measured on 2026-11-13. The aarch64 listings of
+collatz and strings as written, and of collatz, matmul, sieve, sort
+and strings as tuned, have changed since; the slot loops have not.
+The chapter says so under the table. The sentence of 4.3 that the
+Zen 2 slot times keep their ratios to =rr='s within 1% with the boost
+on was measured before the x86-64 loops of =sr= and =ss= changed.
 
-Fix: =make bench= three times on each machine after the last of
-those steps, the tables and the sentences that read the listings
-taken again.
+Fix: =make bench= three times on the Oryon; the aarch64 probe of 4.2
+again on both cores; one ~make slots CORE=1~ on Zen 2 with the boost
+on.
 
-Check: every instruction the chapter quotes is in the listing =rcc=
-writes for its program, and the tables are of a run made after the
-last change to those listings.
+Check: every cell of those tables and lists is of a run made after
+the last change to its listing.
+
+** TODO x86-64: the 32-byte alignment of a loop head leads by one row
+
+c1 writes =.p2align 5= before every loop head (=backend.md= 7.2,
+chapter 13, call 8). In the probe of =cost.md= 4.2 it has the least
+sum over the six tuned rows, 3313 ms against 3483 to 3517, and the
+whole margin is sort's: its 33-byte shift loop runs in 528 ms where
+it spans two 64-byte lines from offset 32, which =.p2align 5= happens
+to give it, and in 752 where it lies in one. Without that row no
+alignment, =.p2align 4= and =.p2align 6= each sum less than
+=.p2align 5=, in both series.
+
+Fix: decide whether the alignment stays for the layout it fixes, a
+loop head at offset 0 of its window whatever the code before it, or
+goes.
+
+Check: the decision's sentence in 4.2 and in call 8 names the reason
+the numbers support.
+
+** TODO =slot.md= says a round trip costs "at least six times" the loop
+
+=slot.md= 4.3, "The round trip's price", says =rs= runs at least six
+times as long as =rr=. From the integer times it is 1719 ms above
+=rr= against 6 x 287 = 1722 on Zen 2, and 1757 against 1764 on the
+Oryon: 5.99 and 5.98 times. The figure holds at two decimals of a
+cycle only.
+
+Fix: "about six times".
+
+Check: =rs= less =rr= against six times =rr=, from the integer ms of
+each core.
+
+** TODO =cost.md= says nothing writes an uninitialized register variable
+
+The rows of 2.1 and 2.2 for a =register= local without an initializer
+say "nothing writes it until the program does". For a =char=, a
+=short= or an =unsigned= variable the declaration writes the
+extension in the variable's own register, =movl %ebx, %ebx=,
+=movsbl %bl, %ebx=, =mov w19, w19=, =uxtb w19, w19=, as the G5 rows
+of =backend.md= and =aarch64.md= state.
+
+Fix: the two rows except the extension, as the G5 rows do.
+
+Check: the rows agree with the listing of ~register unsigned u;~ and
+of ~register char c;~ on both targets.
 
 ** TODO =cost.md= 4.1 does not state the metric of its table
 
