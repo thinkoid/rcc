@@ -50,6 +50,13 @@
 /* the pointees of the pointer functions, sizes 1, 2, 4 and 8 */
 #define SCALARS(X) X(c, char) X(s, short) X(i, int) X(l, long)
 
+/* The pointees of the address rows: sizes 1, 4 and 8, which the
+   addressing form scales by, and 12, which it does not.  rcc has no
+   struct yet; a row of three ints is the 12 bytes. */
+typedef int row_t[3];
+
+#define POINTEES(X) X(c, char) X(i, int) X(l, long) X(r, row_t)
+
 /* parameter lists of one type, and the sum that tells the positions
    apart */
 #define P8(T) T a, T b, T c, T d, T e, T f, T g, T h

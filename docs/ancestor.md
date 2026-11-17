@@ -1804,6 +1804,64 @@ copy it back into `eax`: one instruction more (`backend.md` chapter
 4). On aarch64 the `add` writes the variable, `add w19, w0, w1`, and
 the `return` reads it back, `mov w0, w19`.
 
+x86-64 writes the register in four rows besides, where the ancestor
+does not reach. `sreorder()` rewrites the binary operators alone, and
+any other assignment to a register goes to `OK:` (`c10.c:893`,
+`c10.c:906-911`), which compiles it whole by `efftab`. `efftab` has
+no row for `-`, `~` or a relational (`table.s:831-846`), so `move5`
+computes each in a scratch register and moves it (`table.s:873-876`):
+
+```
+%[move5:]
+%a,n
+	S
+	IB1	R,A1
+```
+
+An address does reach the register there: `&x` of a static is the
+operand `$_x`, which `move3` moves in, and `optim()` makes `&x` of an
+automatic `r5` plus its offset, a sum `sreorder()` rewrites. Worked
+out by hand, `r = &x` with `r` in `r4` is `mov $_x,r4` for a static
+and `mov r5,r4; add $-6,r4` for an automatic. rcc writes, in the
+functions of `register-destination`, an address as its `lea` into the
+register, which reads every operand before it writes, `p = &defined`:
+
+```
+	leaq	defined(%rip), %rbx
+```
+
+pointer arithmetic whose last instruction is an `addq` or a `subq` as
+the operation, under the two conditions, `p = p + 1`:
+
+```
+	addq	$4, %rbx
+```
+
+`-` and `~` as the operation with no right operand, which takes no
+condition but the left operand's, `r = -x`:
+
+```
+	movl	-12(%rbp), %ebx
+	negl	%ebx
+```
+
+and a comparison's value set in the register after the `cmp`, which
+has read both operands, the variable among them, `r = r < y`:
+
+```
+	cmpl	-16(%rbp), %ebx
+	setl	%bl
+	movzbl	%bl, %ebx
+```
+
+Each computed its value in `eax` or `rax` before and moved it, `movl
+%eax, %ebx`. The leaf takes an element by a constant index, `r = x +
+table[3]` being `movl -12(%rbp), %ebx; addl table+12(%rip), %ebx`. The
+ancestor's `optim()` folds `*` of a register plus a constant into one
+operand (`c12.c:446-453`), so `a[3]` on an array and `p[3]` on a
+register pointer are leaves there too; rcc takes `p[3]` on a pointer
+in memory as well, which reads `p` as `*p` does.
+
 Other rows keep the `mov`, by `backend.md` chapter 4 and `aarch64.md`
 chapter 4:
 
@@ -1811,8 +1869,9 @@ chapter 4:
   which two paths write, another register variable's read, and a
   value converted into a narrow or an `unsigned` variable;
 - on x86-64, also a division and a remainder, whose registers are
-  pinned (4.6), `-` and `~`, a comparison's value, and an address
-  formed by `lea`;
+  pinned (4.6), `!`'s value, `p - q`, and an address that is a
+  pointer's own value, `&*p`, or that the pointer's row forms by an
+  add, `&a[i]` at a size no addressing form scales by;
 - on aarch64, also an address formed by two instructions, a step's
   value, which its row writes before its store, and a load that steps
   the variable's own register as its base, which cannot also be the
@@ -1850,10 +1909,18 @@ oracle's corpus changed. Four cost pins moved on each target,
 `register-loop`, and the cost program `register-destination` pins the
 rule.
 
+The four x86-64 rows of 7.4, the address, `-` and `~`, a comparison's
+value and the element as a leaf, change no listing of the cost corpus
+or of the oracle's corpus, and 4 of the benchmark programs', 411
+instruction lines to 405: each change is a `lea` into the variable,
+outside the loops `cost.md` chapter 4 times. `register-destination`
+pins the four rows on both targets.
+
 ### 7.6 Where it stands
 
-C5 is in rcc on both targets: by the ancestor's rule on x86-64, and
-with no condition on the operands on aarch64.
+C5 is in rcc on both targets: by the ancestor's rule on x86-64,
+extended to `-`, `~` and a comparison's value, and with no condition
+on the operands on aarch64.
 
 ## 8. An `if` whose body is a jump (C6)
 
@@ -2451,7 +2518,7 @@ What does not carry:
 | The division's two register rules | x86-64 | 12 → 8 instructions in `matmul`'s statement, with C3; 11 → 6 in `a + b / c`, with C1 | moved 3 | in the tree |
 | C2, the flags an instruction already set | x86-64 | two or three instructions per condition of 5.5, C1's operand included, and a register in two of the five | moved 1, 203 instruction lines to 198 | in the tree |
 | C3, the conversion made by the load | both | one instruction per place; 2 bytes on x86-64, 4 on aarch64 | moved 18 x86-64 (44 places), 6 aarch64 (8) | in the tree |
-| C5, a register variable as the destination | both | one instruction per place; on aarch64 also where x86-64's two conditions refuse | moved 4 per target; 7 x86-64 listings, 943 instruction lines to 915, and 11 aarch64, 1827 to 1789 | in the tree |
+| C5, a register variable as the destination | both | one instruction per place; on aarch64 also where x86-64's two conditions refuse | moved 4 per target; 7 x86-64 listings, 943 instruction lines to 915, and 11 aarch64, 1827 to 1789; the four x86-64 rows of 7.4, 4 x86-64 listings, 411 to 405 | in the tree |
 | C6, an `if` whose body is a jump | both | one jump and one label per place; two jumps with an `else` on x86-64 | moved 3 per target, 6 places | in the tree |
 | C4, a step for its value as the memory form | x86-64 | two instructions, four bytes, one register | 3 (5 places); at most 16 (33) | left alone |
 | C9, `!` over a comparison as a value | both | three instructions on x86-64, two on aarch64 | none | left alone |
@@ -2563,7 +2630,7 @@ is not recalled: `backend.md` 7.1 quotes Intel's manual for each.
 - "rcc writes" is a listing `rcc -S` wrote, at the tree this page
   describes. An earlier listing is the compiler's from before the
   mechanisms of chapters 4, 5, 6 and 8 were built, or, in chapter 7,
-  from just before its own.
+  from just before the step that built the row it shows.
 - A form rcc does not write is a listing written by hand, and said
   to be so: the forms it leaves alone, chapter 9's and aarch64's
   `tst` in 5.4.

@@ -194,6 +194,20 @@ SCALARS(DECLARE_POINTER)
 
 SCALARS(DECLARE_PDEST)
 
+#define DECLARE_ADEST(E, T)                                             \
+    BOTH(long, adest_##E, (void *, long, int))                          \
+    BOTH(long, iadest_##E, (void *, long))
+
+POINTEES(DECLARE_ADEST)
+
+#define DECLARE_ROWS(T, N)                                              \
+    BOTH(long, ndest_##N, (long, long)) BOTH(long, indest_##N, (long, long)) \
+    BOTH(long, cdest_##N, (long, long)) BOTH(long, icdest_##N, (long, long)) \
+    BOTH(long, edest_##N, (long, long, int))                            \
+    BOTH(long, iedest_##N, (long, long))
+
+WIDE(DECLARE_ROWS)
+
 #define DECLARE_UNWRITTEN(T, N)                                         \
     BOTH(long, unwritten_##N, (void)) BOTH(long, fill_##N, (long))
 
@@ -230,6 +244,9 @@ BOTH(long, frame_far, (long, long))
 BOTH(long, deep_reg, (P8(long)))
 BOTH(long, deep_reg_call, (P8(long)))
 BOTH(long, own_base, (long, long))
+BOTH(long, own_element, (long, long))
+BOTH(long, own_index, (void *, long))
+BOTH(long, fdest, (long))
 BOTH(long, own_step, (long))
 
 /* twelve values of the table, a different walk for each i and k */
@@ -396,10 +413,15 @@ test_converts(void)
     }
 }
 
-/* the register pointers at every index, on B and on B + 5 */
+/* the register pointers at every index, on B and on B + 5; the address
+   rows at every pair of indexes, on B and on B + 5 */
 #define TEST_PDEST(E, T)                                                \
     MCHECK(pdest_##E, k, 0, (B, k));                                    \
     MCHECK(pdest_##E, k, 5, (B + 5, k));
+#define TEST_ADEST(E, T)                                                \
+    MCHECK(adest_##E, k, m, (B, k, m));                                 \
+    MCHECK(adest_##E, k, m, (B + 5, k, m));                             \
+    MCHECK(iadest_##E, k, 0, (B, k));
 
 static void
 test_pointer_destinations(void)
@@ -408,15 +430,49 @@ test_pointer_destinations(void)
         const long k = indexes[i];
 
         SCALARS(TEST_PDEST)
+        MCHECK(own_index, k, 0, (B, k));
+
+        for (int j = 0; j < INDEX_COUNT; ++j) {
+            const int m = (int) indexes[j];
+
+            POINTEES(TEST_ADEST)
+        }
     }
 
     for (int i = 0; i < COUNT; ++i) {
         CHECK(own_step, values[i], 0, (values[i]));
+        CHECK(fdest, values[i], 0, (values[i]));
 
-        for (int j = 0; j < COUNT; ++j)
+        for (int j = 0; j < COUNT; ++j) {
             CHECK(own_base, values[i], values[j], (values[i], values[j]));
+            CHECK(own_element, values[i], values[j], (values[i], values[j]));
+        }
     }
 }
+
+/* -, ~, a comparison and an element by a constant index into the
+   variable's register, x86-64: every function of a type over pairs of
+   values, the element's shift counts from both */
+#define TEST_ROWS(T, N)                                                 \
+    static void test_rows_##N(void)                                     \
+    {                                                                   \
+        for (int i = 0; i < COUNT; ++i) {                               \
+            const long x = values[i];                                   \
+                                                                        \
+            for (int j = 0; j < COUNT; ++j) {                           \
+                const long y = values[j];                               \
+                                                                        \
+                CHECK(ndest_##N, x, y, (x, y));                         \
+                CHECK(indest_##N, x, y, (x, y));                        \
+                CHECK(cdest_##N, x, y, (x, y));                         \
+                CHECK(icdest_##N, x, y, (x, y));                        \
+                CHECK(edest_##N, x, y, (x, y, (int) (x ^ y)));          \
+                CHECK(iedest_##N, x, y, (x, y));                        \
+            }                                                           \
+        }                                                               \
+    }
+
+WIDE(TEST_ROWS)
 
 /* G5: the fills include a byte, a half and a word whose sign bit is
    set, and patterns whose bits above any narrow width are not the
@@ -509,6 +565,9 @@ main(void)
 
     test_converts();
     test_pointer_destinations();
+
+#define RUN_ROWS(T, N) test_rows_##N();
+    WIDE(RUN_ROWS)
 
 #define RUN_POINTER(E, T) test_pointer_##E();
     SCALARS(RUN_POINTER)

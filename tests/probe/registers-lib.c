@@ -22,3 +22,9 @@ long lmix12(P12(long)) { return S12 + SKEW; }
     long lwide_##N(long x) { return x + SKEW; }
 
 TYPES(RESULTS)
+
+/* an array registers.c only declares, whose address comes from the
+   GOT there */
+#define DECLARED(E, T) T lga_##E[8];
+
+POINTEES(DECLARED)

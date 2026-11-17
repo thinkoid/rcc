@@ -195,7 +195,10 @@ TYPES(ASSIGN)
    the variable held across the assignment; the assignment's value
    used; initializers; a load into a variable of every other type; a
    pointer variable; the rows aarch64 writes the register with besides,
-   a comparison, -, ~, !, an extension, an address and p - q.  Every
+   a comparison, -, ~, !, an extension, an address and p - q; the rows
+   x86-64 writes it with besides, an address and pointer arithmetic,
+   - and ~, a comparison, and an element by a constant index as the
+   leaf, each over its own operands and types.  Every
    value is read back wide, so a register that does not hold the
    variable's representation shows. */
 #define GLOBAL(T, N) T g_##N;
@@ -389,7 +392,9 @@ TYPES(DEST_ALL)
 
 /* aarch64's other rows whose last instruction writes the register: a
    comparison, -, ~ and !, an extension into a long, an address and p
-   - q; x86-64 keeps the mov after each */
+   - q.  x86-64 writes it for the address, and for the comparison, -
+   and ~ into a variable of the operator's type, and keeps the mov
+   after the rest */
 #define DEST_OTHER(T, N)                                                \
     long dother_##N(T a, T b)                                           \
     {                                                                   \
@@ -485,10 +490,322 @@ TYPES(CONVERTS)
 
 SCALARS(PDEST)
 
-/* r = a + *r, the right operand reaching memory through the
-   variable's own register, which x86-64 refuses; and on aarch64 the
-   load through a register pointer stepped into the same pointer, whose
-   data register cannot be its base */
+/* The address rows on x86-64, backend.md chapter 4: the address of a
+   local, of a global and of a global only declared, whose address
+   comes from the GOT, and of their elements; p + n, n + p and p - n by
+   a parameter, a local, a global and another register variable, by a
+   constant, the variable itself among the operands, an index that is
+   no leaf and one that names the variable; a read of the variable held
+   across the assignment; its value used; initializers.  Each pointee:
+   sizes 1, 4, 8 and 12, which no addressing form scales by.  A result
+   is an offset from the main's buffer, a local array or a global one,
+   or an equality. */
+
+#define ADEST(E, T)                                                     \
+    T gav_##E[8];                                                       \
+    T *gaq_##E;                                                         \
+    extern T lga_##E[8];                                                \
+    long adest_##E(T *base, long i, int j)                              \
+    {                                                                   \
+        T a[4];                                                         \
+        T x;                                                            \
+        T *s = base;                                                    \
+        long n = i;                                                     \
+        long *pn = &n;                                                  \
+        register T *w = base + 2;                                       \
+        register long k = i;                                            \
+        register T *q;                                                  \
+        long r;                                                         \
+        gaq_##E = base + 1;                                             \
+        g_l = i;                                                        \
+        q = &x;                                                         \
+        r = q == &x;                                                    \
+        q = a;                                                          \
+        r = r * 7 + (q - a);                                            \
+        q = &a[j & 3];                                                  \
+        r = r * 7 + (q - a);                                            \
+        q = &a[2];                                                      \
+        r = r * 7 + (q - a);                                            \
+        q = gav_##E;                                                    \
+        r = r * 7 + (q - gav_##E);                                      \
+        q = &gav_##E[j & 7];                                            \
+        r = r * 7 + (q - gav_##E);                                      \
+        q = lga_##E;                                                    \
+        r = r * 7 + (q - lga_##E);                                      \
+        q = lga_##E + 3;                                                \
+        r = r * 7 + (q - lga_##E);                                      \
+        q = &lga_##E[j & 7];                                            \
+        r = r * 7 + (q - lga_##E);                                      \
+        q = base + i;                                                   \
+        r = r * 7 + (q - base);                                         \
+        q = base + j;                                                   \
+        r = r * 7 + (q - base);                                         \
+        q = s + n;                                                      \
+        r = r * 7 + (q - base);                                         \
+        q = n + s;                                                      \
+        r = r * 7 + (q - base);                                         \
+        q = s - n;                                                      \
+        r = r * 7 + (q - base);                                         \
+        q = s + 3;                                                      \
+        r = r * 7 + (q - base);                                         \
+        q = s - 3;                                                      \
+        r = r * 7 + (q - base);                                         \
+        q = s + *pn;                                                    \
+        r = r * 7 + (q - base);                                         \
+        q = gaq_##E + g_l;                                              \
+        r = r * 7 + (q - base);                                         \
+        q = gaq_##E - g_l;                                              \
+        r = r * 7 + (q - base);                                         \
+        q = w + k;                                                      \
+        r = r * 7 + (q - base);                                         \
+        q = k + w;                                                      \
+        r = r * 7 + (q - base);                                         \
+        q = w - k;                                                      \
+        r = r * 7 + (q - base);                                         \
+        q = w + 1;                                                      \
+        r = r * 7 + (q - base);                                         \
+        q = w - 1;                                                      \
+        r = r * 7 + (q - base);                                         \
+        q = q + 1;                                                      \
+        r = r * 7 + (q - base);                                         \
+        q = q - n;                                                      \
+        r = r * 7 + (q - base);                                         \
+        q = q + n;                                                      \
+        r = r * 7 + (q - base);                                         \
+        q = n + q;                                                      \
+        r = r * 7 + (q - base);                                         \
+        q = q - k;                                                      \
+        r = r * 7 + (q - base);                                         \
+        q = s + (n - 1);                                                \
+        r = r * 7 + (q - base);                                         \
+        q = s - (n + 1);                                                \
+        r = r * 7 + (q - base);                                         \
+        q = s + (q - base);                                             \
+        r = r * 7 + (q - base);                                         \
+        q = s - (q - base);                                             \
+        r = r * 7 + (q - base);                                         \
+        r = r * 7 + (q - base) + ((q = s + n) - base) + (q - base) * 3; \
+        r = r * 7 + (q - base) + ((q = s - 1) - base) + (q - base) * 3; \
+        r = r * 7 + (q - base) + ((q = &a[1]) - a) + (q - a) * 3;       \
+        r = r * 7 + ((q = q - n) - a) * 5 + (q - a);                    \
+        return r * 7 + (q - a);                                         \
+    }                                                                   \
+    long iadest_##E(T *base, long i)                                    \
+    {                                                                   \
+        T a[4];                                                         \
+        register T *p = a;                                              \
+        register T *q = base + i;                                       \
+        register T *z = q - 1;                                          \
+        register T *u = &gav_##E[2];                                    \
+        register T *v = lga_##E;                                        \
+        return (p - a) + (q - base) * 3 + (z - base) * 5                \
+               + (u - gav_##E) * 7 + (v - lga_##E) * 11;                \
+    }
+POINTEES(ADEST)
+
+/* A register pointer to a function: the address of a function the
+   unit defines, and of one it only declares, from the GOT. */
+long
+fdest(long a)
+{
+        register long (*f)(long);
+        long r;
+
+        f = lid;
+        r = f(a) + (f == lid);
+        f = twice;
+
+        return r * 7 + f(a) + (f == twice);
+}
+
+/* r = -x and r = ~x on the variable's register, x86-64: the operand a
+   parameter, a local, a global, * of a pointer, another register
+   variable, the variable itself, an operation, an operation on the
+   variable; a read held across the assignment; its value used;
+   initializers.  The narrow types convert the int the operator
+   yields, and are DEST_OTHER's. */
+
+#define NDEST(T, N)                                                     \
+    long ndest_##N(T a, T b)                                            \
+    {                                                                   \
+        T s = b;                                                        \
+        T *p = &s;                                                      \
+        register T y = b;                                               \
+        register T x;                                                   \
+        long r;                                                         \
+        g_##N = a ^ b;                                                  \
+        x = -a;                                                         \
+        r = x;                                                          \
+        x = ~s;                                                         \
+        r = r * 7 + x;                                                  \
+        x = -g_##N;                                                     \
+        r = r * 7 + x;                                                  \
+        x = ~*p;                                                        \
+        r = r * 7 + x;                                                  \
+        x = -y;                                                         \
+        r = r * 7 + x + y;                                              \
+        x = ~x;                                                         \
+        r = r * 7 + x;                                                  \
+        x = -x;                                                         \
+        r = r * 7 + x;                                                  \
+        x = -(a + s);                                                   \
+        r = r * 7 + x;                                                  \
+        x = ~(x - b);                                                   \
+        r = r * 7 + x;                                                  \
+        x = -(a * 3);                                                   \
+        r = r * 7 + x;                                                  \
+        r = r * 7 + (x + (x = -s)) + x * 3L;                            \
+        r = r * 7 + (x + (x = ~x)) * 5L + x;                            \
+        r = r * 7 + (x = -b) * 5L + x;                                  \
+        return r * 7 + x + y * 3L;                                      \
+    }                                                                   \
+    long indest_##N(T a, T b)                                           \
+    {                                                                   \
+        T s = b;                                                        \
+        register T x = -a;                                              \
+        register T y = ~s;                                              \
+        register T z = -x;                                              \
+        register T w = ~(y + a);                                        \
+        return x + y * 3L + z * 5L + w * 7L;                            \
+    }
+/* A comparison's value into the variable's register, x86-64: an int
+   variable, the operands of each type, a parameter, a local, a
+   constant the instruction encodes and one it does not, a global, * of
+   a pointer, other register variables, the variable itself on either
+   side, an operation; a variable of the type, which keeps the mov but
+   for an int; a read held across the assignment; its value used;
+   initializers. */
+
+#define CDEST(T, N)                                                     \
+    long cdest_##N(T a, T b)                                            \
+    {                                                                   \
+        T s = b;                                                        \
+        T *p = &s;                                                      \
+        register T y = b;                                               \
+        register T t = a;                                               \
+        register int x;                                                 \
+        long r;                                                         \
+        g_##N = a - b;                                                  \
+        x = a < s;                                                      \
+        r = x;                                                          \
+        x = s >= a;                                                     \
+        r = r * 7 + x;                                                  \
+        x = a == 5;                                                     \
+        r = r * 7 + x;                                                  \
+        x = s != 0x12345;                                               \
+        r = r * 7 + x;                                                  \
+        x = g_##N <= a;                                                 \
+        r = r * 7 + x;                                                  \
+        x = *p > a;                                                     \
+        r = r * 7 + x;                                                  \
+        x = y < t;                                                      \
+        r = r * 7 + x;                                                  \
+        x = x < y;                                                      \
+        r = r * 7 + x;                                                  \
+        x = y > x;                                                      \
+        r = r * 7 + x;                                                  \
+        x = (a + s) < y;                                                \
+        r = r * 7 + x;                                                  \
+        t = a < s;                                                      \
+        r = r * 7 + t;                                                  \
+        t = t == y;                                                     \
+        r = r * 7 + t;                                                  \
+        r = r * 7 + (x + (x = a < s)) + x * 3L;                         \
+        r = r * 7 + (x + (x = x == 0)) * 5L + x;                        \
+        r = r * 7 + (x = s == a) * 5L + x;                              \
+        return r * 7 + x + y * 3L + t * 5L;                             \
+    }                                                                   \
+    long icdest_##N(T a, T b)                                           \
+    {                                                                   \
+        T s = b;                                                        \
+        register int x = a < s;                                         \
+        register int z = x == 0;                                        \
+        register T t = s >= a;                                          \
+        return x + z * 3L + t * 5L;                                     \
+    }
+/* An element by a constant index as the operation form's right
+   operand, x86-64: of a local array and a global one, through a
+   pointer in a slot and a register one, at index 0 and * of the
+   array, a char promoted, a shift's count; the left operand the
+   variable itself, another register variable, an operation, an
+   element; the variable as the right operand, refused; a read held
+   across the assignment; its value used; initializers. */
+
+#define EDEST(T, N)                                                     \
+    T gel_##N[4];                                                       \
+    long edest_##N(T a, T b, int n)                                     \
+    {                                                                   \
+        T v[4];                                                         \
+        T *p = v;                                                       \
+        char c[4];                                                      \
+        int k[2];                                                       \
+        register T *q = v;                                              \
+        register T y = b;                                               \
+        register T x;                                                   \
+        long r;                                                         \
+        v[0] = a;                                                       \
+        v[1] = b;                                                       \
+        v[2] = a ^ b;                                                   \
+        v[3] = a - b;                                                   \
+        gel_##N[0] = b;                                                 \
+        gel_##N[1] = a;                                                 \
+        gel_##N[2] = a + b;                                             \
+        gel_##N[3] = b * 3;                                             \
+        c[0] = a;                                                       \
+        c[3] = b;                                                       \
+        k[0] = n & 15;                                                  \
+        k[1] = (n >> 4) & 15;                                           \
+        x = a + v[3];                                                   \
+        r = x;                                                          \
+        x = a - gel_##N[2];                                             \
+        r = r * 7 + x;                                                  \
+        x = a & p[1];                                                   \
+        r = r * 7 + x;                                                  \
+        x = a | q[2];                                                   \
+        r = r * 7 + x;                                                  \
+        x = a ^ v[0];                                                   \
+        r = r * 7 + x;                                                  \
+        x = a * gel_##N[3];                                             \
+        r = r * 7 + x;                                                  \
+        x = a + *v;                                                     \
+        r = r * 7 + x;                                                  \
+        x = a - c[3];                                                   \
+        r = r * 7 + x;                                                  \
+        x = a << k[1];                                                  \
+        r = r * 7 + x;                                                  \
+        x = a >> k[0];                                                  \
+        r = r * 7 + x;                                                  \
+        x = x - v[1];                                                   \
+        r = r * 7 + x;                                                  \
+        x = y + v[2];                                                   \
+        r = r * 7 + x;                                                  \
+        x = (a + v[1]) - p[2];                                          \
+        r = r * 7 + x;                                                  \
+        x = gel_##N[1] + v[0];                                          \
+        r = r * 7 + x;                                                  \
+        x = v[2] - x;                                                   \
+        r = r * 7 + x;                                                  \
+        r = r * 7 + (x + (x = a + v[3])) + x * 3L;                      \
+        r = r * 7 + (x = b - p[3]) * 5L + x;                            \
+        return r * 7 + x + y * 3L;                                      \
+    }                                                                   \
+    long iedest_##N(T a, T b)                                           \
+    {                                                                   \
+        T v[2];                                                         \
+        register T *q = v;                                              \
+        v[0] = a;                                                       \
+        v[1] = b;                                                       \
+        register T x = a + v[1];                                        \
+        register T z = b - q[0];                                        \
+        return x + z * 3L;                                              \
+    }
+#define ROWS(T, N) NDEST(T, N) CDEST(T, N) EDEST(T, N)
+WIDE(ROWS)
+
+/* r = a + *r and r = a + ((long *) r)[1], the right operand reaching
+   memory through the variable's own register, which x86-64 refuses;
+   and on aarch64 the load through a register pointer stepped into the
+   same pointer, whose data register cannot be its base */
 long own_base(long a, long b)
 {
     long cell[2];
@@ -500,6 +817,32 @@ long own_base(long a, long b)
     r = a + *(long *) r;
 
     return r;
+}
+
+long
+own_element(long a, long b)
+{
+        long cell[2];
+        register long r;
+
+        cell[0] = b;
+        cell[1] = a * 3;
+        r = (long) cell;
+        r = a + ((long *) r)[1];
+
+        return r;
+}
+
+/* p = base + p[1], the index an element whose base is the variable,
+   which x86-64 refuses; the main's buffer is the memory */
+long
+own_index(char *base, long i)
+{
+        register char *p = base + i;
+
+        p = base + p[1];
+
+        return p - base;
 }
 
 long own_step(long a)

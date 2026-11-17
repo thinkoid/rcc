@@ -287,11 +287,30 @@ declaration's initializer is the same.
   load through one, and an `unsigned` or a narrow variable keeps the
   `mov` after it, `register short s = c` being `movsbl -1(%rbp), %eax;
   movswl %ax, %ebx`.
+- An address is formed in the register: `p = buf` is `leaq
+  buf(%rip), %rbx`, `p = &x` is `leaq -12(%rbp), %rbx`, and `p = q +
+  n` is `leaq (%rax,%rcx,4), %rbx` after the two loads. `lea` names
+  its destination apart from its sources, so it reads every operand
+  before it writes, and the form puts no condition on them. The
+  address of a global the file only declares is the load from the
+  GOT, `movq declared@GOTPCREL(%rip), %rbx`.
+- A comparison's value is set in the register after the `cmp`, `setl
+  %bl; movzbl %bl, %ebx`. The `cmp` has read both operands, the
+  variable among them, `r = r < y`, before either instruction writes.
+  The `movzbl` leaves the value valid to 32 bits, so the variable is
+  an `int`; a `long` or an `unsigned` keeps the `mov` after the
+  conversion.
 - An operation is computed in the register: `r = a + b` is `a`
   loaded into it and the instruction written on it, `movl -12(%rbp),
   %ebx; addl -16(%rbp), %ebx`. The operators are the rows of two
   addresses on a free register, `+`, `-`, `&`, `|`, `^`, `*` and the
-  shifts, on the variable's own type.
+  shifts, on the variable's own type; and pointer arithmetic where its
+  last instruction is the `addq` or the `subq` on the left operand,
+  not `lea`, so `p = q - n` is `movq -16(%rbp), %rbx; movq -24(%rbp),
+  %rax; imulq $4, %rax, %rax; subq %rax, %rbx`.
+- `-` and `~` are computed in the register, on the variable's own
+  type: `r = -a` is `a` loaded into it and the instruction of one
+  address written on it, `movl -12(%rbp), %ebx; negl %ebx`.
 
 An instruction of two addresses writes its left operand (3.3), so in
 the operation the variable holds `a` before the right operand is
@@ -299,36 +318,44 @@ read. The form is thus taken under two conditions on the right
 operand, both required:
 
 - it is a leaf: a constant, the read of a named object, a register
-  variable, or `*` of a named pointer, read through the parser's
+  variable, `*` of a named pointer, or an element by a constant
+  index, `a[3]` on an array, whose operand is the slot or the label
+  with the offset folded in (6.3), or `p[3]` on a named pointer,
+  which reads `p` as `*p` does; read through the parser's
   conversions, so that a `char` promoted is one;
 - it does not name the variable, as itself or as the base of its
   address.
 
 Then nothing between the variable's first write and the instruction
-reads it. `r = a + (b + c)` and `r = a - r` are computed in an
-expression register and moved, as is a division or a remainder, whose
-registers are pinned (6.5).
+reads it. `r = a + (b + c)`, `r = a - r` and `p = q + p[1]` are
+computed in an expression register and moved, as is a division or a
+remainder, whose registers are pinned (6.5). `neg` and `not` have no
+right operand, so `-` and `~` take no condition but the left
+operand's.
 
 The left operand goes into the register by an instruction it has in
 any case: its load, its constant, or again the operation; the variable
-itself is there already, so `r = r + b` is `addl -16(%rbp), %ebx`; and
-another register variable's read is copied there, `movl %r12d,
-%ebx`, the copy an instruction that writes is given in any case. Any
-other left operand, a call's result or a division, leaves the whole
-assignment computed elsewhere and moved. Moved in before the
-instruction, that left operand would leave the assignment's value in
-the variable's register, where the `mov` after leaves it in an
-expression register, and a use of the value there, `return r = f() +
-a`, would copy it back: one instruction more.
+itself is there already, so `r = r + b` is `addl -16(%rbp), %ebx` and
+`p = p + 1` is `addq $4, %rbx`, as `p += 1` is; and another register
+variable's read is copied there, `movl %r12d, %ebx`, the copy an
+instruction that writes is given in any case. The operand of `-` and
+`~` goes in the same way. Any other left operand, a call's result or
+a division, leaves the whole assignment computed elsewhere and moved.
+Moved in before the instruction, that left operand would leave the
+assignment's value in the variable's register, where the `mov` after
+leaves it in an expression register, and a use of the value there,
+`return r = f() + a`, would copy it back: one instruction more.
 
 `preserve()` copies the held reads of the variable before its first
 write, which in the operation is the load of the left operand, so `x
-= r + (r = a + b)` adds the old `r`. The value of the assignment is
+= r + (r = -a)` adds the old `r`. The value of the assignment is
 then the variable's read. A call's result, which the convention
 puts in `rax`, the value of `&&`, `||` and `?:`, written on two
-paths, the extension of a value already in a register, a comparison's
-`setcc` and `movzbl`, `-` and `~`, and an address formed by `lea`
-keep the `mov`.
+paths, the extension of a value already in a register, `!`'s `sete`
+and `movzbl`, `p - q`, an address that is a pointer's own value, `&*p`
+or `&p[0]`, or that the pointer's row forms, `&a[i]` at a size no
+addressing form scales by, and pointer arithmetic on an address that
+no `lea` sums, `p = buf + n` on a global array, keep the `mov`.
 
 The rule is the Seventh Edition compiler's. Its `efftab` writes a load
 into a register variable in one instruction: `move3`, in `table.s`,
@@ -342,6 +369,17 @@ name that is the variable or has its register as the base of its
 address. rcc takes `*` by any operand, since `imul` writes any
 register where the PDP-11's `mul` wants an odd one (the rows of `=*`
 in `table.s`), and a `char` promoted, which its conversion reads.
+
+Any other assignment to a register that compiler writes by `efftab`'s
+rows of `=`. An address reaches the register in them: `&x` of a
+static is the operand `$_x`, which `move3` moves in, `mov $_x,r4`;
+and `optim()`, in `c12.c`, makes `&x` of an automatic `r5` plus its
+offset, a sum `sreorder()` rewrites, `mov r5,r4; add $-6,r4`. `-`,
+`~` and a comparison's value have no row of `efftab`, so `move5`
+computes each in a scratch register and moves it, `S` then `mov
+R,A1`. rcc writes those three in the variable's register too: `neg`
+and `not` work on their operand in place, as the operation works on
+its left operand, and the `setcc` and the `movzbl` follow the `cmp`.
 
 **The frame pointer: `rbp`.** Pushed and set in every function's
 prologue, leaf included, restored by `leave`. Every slot is a
@@ -603,7 +641,7 @@ written for it.
 | `!a` | `cmp $0, L`; `sete %Lb`; `movzbl %Lb, L` | as a value; as a condition, chapter 7 |
 | `a < b` and the rest, as a value | `cmp R, L`, `cmpl -8(%rbp), %eax` for an object in memory, and for an object in memory against a constant the `cmp` of the object, `cmpl $5, -4(%rbp)`, as in a condition (7.1), `L` then taken for the `setcc`; `setcc %Lb`; `movzbl %Lb, L`; a constant on the left the mirrored comparison (6.1), `5 < x` `cmpl $5, -4(%rbp); setg %al` | `setl`, `setle`, `setg`, `setge`, `sete`, `setne` signed; `setb`, `setbe`, `seta`, `setae` unsigned and for pointers (G7) |
 | `a && b`, `a \|\| b`, `a ? b : c`, as a value | jump code of chapter 7 into `L`, with `mov $0, L` and `mov $1, L` on the arms | no `setcc` chain |
-| `x = e` | `mov L, slot`, the value staying in `L`; into a register variable, the value computed in its register where its last instruction can write it, the load, `movl -12(%rbp), %ebx`, and the operation, `addl -16(%rbp), %ebx` after it, the value then the variable's read, and otherwise `mov L, reg` (chapter 4); a constant goes as the immediate straight into a register variable, `movl $0, %r12d`, or into memory when the assignment is evaluated for its effect alone, `movl $0, -12(%rbp)` (6.6) | a `char` store is `movb %Lb` |
+| `x = e` | `mov L, slot`, the value staying in `L`; into a register variable, the value computed in its register where its last instruction can write it, the load, `movl -12(%rbp), %ebx`, the operation, `addl -16(%rbp), %ebx` after it, the address, `leaq buf(%rip), %rbx`, `-` and `~`, `negl %ebx` after the load, and a comparison's `setl %bl; movzbl %bl, %ebx`, the value then the variable's read, and otherwise `mov L, reg` (chapter 4); a constant goes as the immediate straight into a register variable, `movl $0, %r12d`, or into memory when the assignment is evaluated for its effect alone, `movl $0, -12(%rbp)` (6.6) | a `char` store is `movb %Lb` |
 | `x op= e` | the address of `x` first, then `e`; in the effect context, the op on the object, `addl %eax, -12(%rbp)`, but for `*=`, `/=` and `%=` (6.6); in a value context, the load row, the op row, the store row, after `e`; on a register variable, the op on the register in place, after `e` | `*=`, `/=` and `%=` are always `e`, then the load, the op and the store: `imul` has no memory destination and `idiv` none at all |
 | `++x`, `x++`, `--x`, `x--` | in the effect context, the op on the object, `addl $1, -8(%rbp)`, and no old value (6.6); in a value context, the load, `add $1` or `sub $1`, the store, the post forms keeping the old value in another register | `add $size` for a pointer |
 | `(T) a` | `movslq L, L64` for `int` to `long`, `movsbl` or `movzbl` from `Lb` for `char` to `int`, each only when `L` is not already valid to the new width (the width rule below); a signed object in memory under a cast that widens it is its load extended to the new width, `movslq -4(%rbp), L64` for an `int` to `long`, `movsbq` and `movswq` for a `signed char` and a `short`, and no instruction after it (a widening by the load, below); nothing for `long` to `int` (the 32-bit name is the value); nothing for a change of signedness alone, and the object read under it is the right operand's own operand, `addl -8(%rbp), %eax` for `u + i` (6.1); nothing between pointer types; an integer to a pointer as to `unsigned long`, so `movslq` for an `int` (6.3.2.3p5); nothing for a pointer to `long` or `int` | G2: truncation is reading the low bits |
@@ -1976,17 +2014,23 @@ answers:
     can be the one that writes it: a load is `movl -12(%rbp), %ebx`
     and `ldr w19, [x29, #24]`, and on aarch64 every row whose last
     instruction is its only write of its destination writes the
-    variable, `add w19, w0, w1`. On x86-64 an operation is its left
-    operand loaded into the register and the instruction written on
-    it, `addl -16(%rbp), %ebx`, under two conditions on the right
-    operand: a leaf, and not naming the variable. The load is the
-    Seventh Edition compiler's `move3`, and the operation and its
-    conditions are its `sreorder()`; rcc takes `*` by any operand and
-    a `char` promoted, which that compiler refused. The cost is the
-    second exception to 6.1's "nothing looks at a node's neighbours",
-    and a boundary on x86-64: `r = a + (b + c)`, `r = a - r`, a
-    division, a left operand its own instruction cannot put in the
-    register, and an address formed by `lea` keep the `mov`.
+    variable, `add w19, w0, w1`. On x86-64 an address is its `lea`
+    into the register, `leaq buf(%rip), %rbx`, and a comparison's
+    value its `setcc` and `movzbl`; an operation, pointer arithmetic
+    by `addq` or `subq` among them, is its left operand loaded into
+    the register and the instruction written on it, `addl -16(%rbp),
+    %ebx`, under two conditions on the right operand: a leaf, and not
+    naming the variable; and `-` and `~` are the operation with no
+    right operand, `negl %ebx`. The load is the Seventh Edition
+    compiler's `move3`, and the operation and its conditions are its
+    `sreorder()`; rcc takes `*` by any operand, a `char` promoted and
+    `p[3]` on a pointer in memory, which that compiler refused, and
+    writes `-`, `~` and a comparison's value in the register, which
+    it moved. The cost is the second exception to 6.1's "nothing
+    looks at a node's neighbours", and a boundary on x86-64: `r = a +
+    (b + c)`, `r = a - r`, a division, a left operand its own
+    instruction cannot put in the register, `!`, and an address that
+    is a pointer's own value, `&*p`, keep the `mov`.
 17. **On x86-64 a remainder's value is the value in `rdx`** (6.5):
     the division leaves it there, the dividend's register is freed,
     and nothing moves, so `a[i] = x % 256` stores `movl %edx,

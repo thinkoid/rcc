@@ -97,7 +97,7 @@ Fix: 7.2 states the rule c1 applies, or c1 applies the stated one.
 Check: a cost program with a =main= ending in each shape, pinned, and
 7.2 agreeing with the pins.
 
-** TODO Four rows beside the operand in memory, to decide
+** TODO Four more rows hold a value the machine could name in place
 
 On x86-64 an object in memory of the operation's width is the
 instruction's own operand (=backend.md= 6.1). Four rows next to that
@@ -119,47 +119,92 @@ place:
 - an object compared with a =register= variable: ~x < r~ loads =x=,
   where =cmpl %ebx, -4(%rbp)= reads it in place.
 
-Fix: decide each; the first for every commutative operator together.
+On aarch64 the first costs an instruction as well: ~5 + x~ is =mov
+w0, #5; ldr w1, [x29, #16]; add w0, w0, w1=, where ~x + 5~ is the
+load and =add w0, w0, #5=. With a call on the right, ~5 + f()~
+spills the constant across the call on both targets.
 
-Check: a row of =operand= for each, agreeing with its decision.
+Fix: each of the four takes the form the machine has. A constant on
+the left of =+=, =*=, =&=, =|= and =^= is taken as one on the right
+is, all five alike and on both targets, under the rule of a
+comparison's constant (=backend.md= 6.1): on x86-64 where the
+instruction takes it as an immediate.
 
-** TODO Six rows beside a register variable's destination keep their =mov=
+Check: a row of =operand= for each, with no register held for the
+value; ~5 + x~ and ~x + 5~ have the same listing.
+
+** TODO Five rows beside a register variable's destination keep their =mov=
 
 A =register= variable is the destination of the value computed for
-it (=backend.md= chapter 4, =aarch64.md= chapter 4). Six rows next to
-that rule compute the value elsewhere and move it, each for a reason
-of the rule's wording and not of the machine:
+it (=backend.md= chapter 4, =aarch64.md= chapter 4). Five rows next
+to that rule compute the value elsewhere and move it:
 
-- x86-64, an address: ~p = buf~ is =leaq buf(%rip), %rax; movq %rax,
-  %rbx=, though =lea= names its destination apart from its sources.
-  Pointer arithmetic is the same row: ~p = q + n~ ends =leaq
-  (%rax,%rcx,4), %rax; movq %rax, %rbx=, and ~p = p + 1~ is =movq
-  %rbx, %rax; addq $4, %rax; movq %rax, %rbx=, where ~p += 1~ is
-  =addq $4, %rbx=;
-- x86-64, =-= and =~=: ~r = -x~ is the load, =negl %eax= and =movl
-  %eax, %ebx=; an instruction of one address has no right operand to
-  put a condition on;
-- x86-64, a comparison's value: ~r = x < y~ ends =setl %al; movzbl
-  %al, %eax; movl %eax, %ebx=;
-- x86-64, an element by a constant index as the right operand: ~r =
-  x + a[3]~ is =addl a+12(%rip), %eax; movl %eax, %ebx=. The leaf of
-  the rule is a constant, a name or =*= of a name, and ~a[3]~ is one
-  operand that evaluates nothing;
 - aarch64, an address formed by two instructions: ~p = buf~ is =adrp
   x0, buf; add x0, x0, :lo12:buf; mov x19, x0=, and an address
   through the GOT the same. The row writes its destination twice,
   and reads no operand between;
-- both targets, a conversion into an =unsigned= or a narrow variable:
+- both targets, a conversion that changes signedness alone:
   ~register unsigned u = i;~ is =movl -20(%rbp), %eax; movl %eax,
-  %ebx= and =ldr w0, [x29, #32]; mov w19, w0=, where the load into
-  the register leaves the same bits.
+  %ebx= and =ldr w0, [x29, #32]; mov w19, w0=, and ~u = a + b~ on
+  two =int= operands ends =movl %eax, %ebx= and =mov w19, w0=, where
+  the load or the operation into the register leaves the same bits;
+- x86-64, pointer arithmetic whose left operand is an address: ~p =
+  buf + n~ on an array, and ~p = a + n~ at a size no addressing form
+  scales by, since the left operand of the rule is a load, a
+  constant or the variable, and an array's decay is none;
+- x86-64, an address that is a pointer's own value: ~p = &*q~, ~p =
+  &q[0]~;
+- x86-64, ~r = !x~, which ends =sete %al; movzbl %al, %eax; movl
+  %eax, %ebx= as a comparison's value did.
 
-Fix: the first four take the variable's register as their
-destination: the address and pointer arithmetic, =-= and =~=, a
-comparison's value, and ~a[3]~ as a leaf. Decide the last two.
+Fix: decide each.
 
 Check: a function of =register-destination= for each, agreeing with
 its decision.
+
+** TODO x86-64: ~p - q~ on a register variable moves its dividend three times
+
+A pointer difference at a size other than 1 is the =subq= and a
+division by the size. With a =register= variable on the left, the
+variable is copied for the =subq= into the lowest free register,
+which is not =rax= when the right operand is already there, and the
+division moves the difference into =rax=, the quotient back and then
+out again: ~return q - a;~ on a ~register int *q~ is ten
+instructions where ~return s - a;~ on a local is seven. The value of
+an assignment as the left operand, ~(q = &a[1]) - a~, takes the same
+path.
+
+Fix: the right operand of the difference is generated outside =rax=
+and =rdx= when the size is not 1, as a divisor is (=backend.md=
+6.5), so the copy of the left operand is in =rax=.
+
+Check: ~return q - a;~ pinned with =movq %rbx, %rax=, the =subq=,
+the size, =cqto=, =idivq= and no move after.
+
+** TODO x86-64: ~p += n~ on a register pointer is a =leaq= elsewhere and a =mov=
+
+At a size of 2, 4 or 8 the compound assignment of an index to a
+=register= pointer is =leaq (%r14,%rax,4), %rax; movq %rax, %r14=,
+where the =leaq= could write =r14=, as ~p = p + n~ now does. The
+inner loop of =matmul-tuned=, ~pb += n~, has it: one of the loop's
+ten instructions.
+
+Fix: the compound assignment hands the variable to the =leaq=.
+
+Check: a function of =register-destination=, ~p += n~, with =leaq
+(%rbx,%rax,4), %rbx=; the matmul cell of =cost.md= chapter 4 taken
+again.
+
+** TODO x86-64: a comparison's value is extended again for a =long=
+
+=setcc= and =movzbl= leave 0 or 1 in a register whose 64 bits are
+then valid, signed or unsigned. The generator records the value as
+valid to 32 bits, so ~(long) (a < b)~ and ~register long l = a < b~
+write =movslq= after the =movzbl=.
+
+Fix: the value of a comparison is recorded as valid to 64 bits.
+
+Check: no =movslq= after a =movzbl= for ~(long) (a < b)~, pinned.
 
 ** TODO =c1.cc= includes =c1-common.hh= and uses nothing of it
 
@@ -294,7 +339,7 @@ the measurement (=docs/findings.md=) were facts about LLVM's code
 generator and left with it; that page's chapter 8 says what became
 of each. The entries below are rows the table lacks.
 
-** TODO One cell of chapter 4's x86-64 table predates its listing
+** TODO Chapter 4's x86-64 numbers predate the listings of its programs
 
 The x86-64 table of =cost.md= chapter 4 was measured before a
 remainder's value became the value in =rdx=. That step takes one
@@ -305,7 +350,11 @@ loops, and the loops of =tests/slot= are the same. The operand in
 memory taken by a multiply by a constant and by a cast of
 signedness changes every x86-64 listing of =tests/perf= again, by
 one to five instructions, outside the loops the chapter times: the
-step of each program's generator and its checksum.
+step of each program's generator and its checksum. An address
+written into a =register= variable's register takes one =movq= out
+of =matmul-tuned= before its inner loop, whose head is then at
+0x1320, in the second half of its 64-byte line, where 4.2 states
+0x1340 and names sort's head as the only one there.
 
 Fix: =make bench= three times on the machine of the table, and the
 table and what is drawn from it taken again.
