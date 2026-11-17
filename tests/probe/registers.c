@@ -1,10 +1,10 @@
 /* The registers probe: register variables as places, in rcc's C, for
    docs/aarch64.md chapter 4 and backend.md chapters 4 and 6.7.  A
    register variable initialized, read by every operator, assigned and
-   tested; its reads held across the paths of a branch and across a
-   call; the callee-saved registers given back; register parameters;
-   blocks; pointers; a large frame; depth; and G5's unwritten narrow
-   variable.  No compound assignment and no ++ or -- of a register
+   tested; its register the destination of the value computed for it;
+   its reads held across the paths of a branch and across a call; the
+   callee-saved registers given back; register parameters; blocks;
+   pointers; a large frame; depth; and G5's unwritten narrow variable.  No compound assignment and no ++ or -- of a register
    variable: a loop steps by i = i + 1.  A function keeps to five
    register variables live at once, x86-64's count, where a sixth
    would take a slot there; the functions that have more say so.  See
@@ -181,6 +181,345 @@ TYPES(CASTS)
     }
 
 TYPES(ASSIGN)
+
+/* The variable's register as the destination of the value computed
+   for it, backend.md chapter 4 and aarch64.md chapter 4.  A load from
+   a parameter, a local, a global, through a pointer in a slot and a
+   register one, by an index and by a constant one; an operator with
+   each kind of leaf as its right operand: a constant the instruction
+   encodes and one it does not, a local, a parameter, a register
+   variable, * of a pointer in a slot and of a register one, a global,
+   a char promoted; the left operand an operation, the variable itself,
+   and an operation on the variable; the shapes x86-64 refuses, a right
+   operand that names the variable and one that is no leaf; a read of
+   the variable held across the assignment; the assignment's value
+   used; initializers; a load into a variable of every other type; a
+   pointer variable; the rows aarch64 writes the register with besides,
+   a comparison, -, ~, !, an extension, an address and p - q.  Every
+   value is read back wide, so a register that does not hold the
+   variable's representation shows. */
+#define GLOBAL(T, N) T g_##N;
+
+TYPES(GLOBAL)
+
+int g_count;
+
+#define LOAD(T, N)                                                      \
+    long load_##N(T a, T b)                                             \
+    {                                                                   \
+        register T x;                                                   \
+        T s = b;                                                        \
+        T v[4];                                                         \
+        T *p = &s;                                                      \
+        register T *q = v;                                              \
+        int k = (int) (a & 3);                                          \
+        long r;                                                         \
+        v[0] = a;                                                       \
+        v[1] = b;                                                       \
+        v[2] = a ^ b;                                                   \
+        v[3] = a - b;                                                   \
+        g_##N = a - 1;                                                  \
+        x = a;                                                          \
+        r = x;                                                          \
+        x = s;                                                          \
+        r = r * 7 + x;                                                  \
+        x = g_##N;                                                      \
+        r = r * 7 + x;                                                  \
+        x = *p;                                                         \
+        r = r * 7 + x;                                                  \
+        x = *q;                                                         \
+        r = r * 7 + x;                                                  \
+        x = v[k];                                                       \
+        r = r * 7 + x;                                                  \
+        x = q[k];                                                       \
+        r = r * 7 + x;                                                  \
+        x = v[2];                                                       \
+        r = r * 7 + x;                                                  \
+        r = r * 7 + (x + (x = s)) + x * 3L;                             \
+        r = r * 7 + (x = v[3]) * 5L + x;                                \
+        return r * 7 + x;                                               \
+    }                                                                   \
+    long iload_##N(T a, T b)                                            \
+    {                                                                   \
+        T s = b;                                                        \
+        T *p = &s;                                                      \
+        register T x = a;                                               \
+        register T y = s;                                               \
+        register T z = *p;                                              \
+        register T w = a * 3 - b;                                       \
+        register T e = y - x;                                           \
+        return x + y * 3L + z * 5L + w * 7L + e * 11L;                  \
+    }
+
+TYPES(LOAD)
+
+#define DEST(T, N, name, op, small, large)                              \
+    long dest_##name##_##N(T a, T b, char c)                            \
+    {                                                                   \
+        register T x;                                                   \
+        register T y = b;                                               \
+        T s = b;                                                        \
+        T *p = &s;                                                      \
+        register T *q = &s;                                             \
+        long r;                                                         \
+        g_##N = b;                                                      \
+        x = a op small;                                                 \
+        r = x;                                                          \
+        x = a op large;                                                 \
+        r = r * 7 + x;                                                  \
+        x = a op s;                                                     \
+        r = r * 7 + x;                                                  \
+        x = a op b;                                                     \
+        r = r * 7 + x;                                                  \
+        x = a op y;                                                     \
+        r = r * 7 + x + y;                                              \
+        x = a op *p;                                                    \
+        r = r * 7 + x;                                                  \
+        x = a op *q;                                                    \
+        r = r * 7 + x;                                                  \
+        x = a op g_##N;                                                 \
+        r = r * 7 + x;                                                  \
+        x = a op c;                                                     \
+        r = r * 7 + x;                                                  \
+        x = (a op s) op y;                                              \
+        r = r * 7 + x;                                                  \
+        x = x op s;                                                     \
+        r = r * 7 + x;                                                  \
+        x = (x op small) op s;                                          \
+        r = r * 7 + x;                                                  \
+        x = s op x;                                                     \
+        r = r * 7 + x;                                                  \
+        x = a op (s op y);                                              \
+        r = r * 7 + x;                                                  \
+        r = r * 7 + (x + (x = a op s)) + x * 3L;                        \
+        r = r * 7 + (x + (x = (x op 1) op y)) * 5L + x;                 \
+        return r * 7 + x * 3L + y;                                      \
+    }                                                                   \
+    long idest_##name##_##N(T a, T b)                                   \
+    {                                                                   \
+        T s = b;                                                        \
+        register T y = b;                                               \
+        register T x = a op s;                                          \
+        register T z = (a op large) op y;                               \
+        register T w = x op y;                                          \
+        return x + z * 3L + w * 5L + y;                                 \
+    }
+
+/* the divisions: no divisor is the variable or c, which the main does
+   not keep from 0 and -1, and the right operand that is no leaf is
+   kept from them by its own bits */
+#define DEST_DIVISION(T, N, name, op, small, large)                     \
+    long dest_##name##_##N(T a, T b)                                    \
+    {                                                                   \
+        register T x;                                                   \
+        register T y = b;                                               \
+        T s = b;                                                        \
+        T *p = &s;                                                      \
+        register T *q = &s;                                             \
+        long r;                                                         \
+        g_##N = b;                                                      \
+        x = a op small;                                                 \
+        r = x;                                                          \
+        x = a op large;                                                 \
+        r = r * 7 + x;                                                  \
+        x = a op s;                                                     \
+        r = r * 7 + x;                                                  \
+        x = a op y;                                                     \
+        r = r * 7 + x + y;                                              \
+        x = a op *p;                                                    \
+        r = r * 7 + x;                                                  \
+        x = a op *q;                                                    \
+        r = r * 7 + x;                                                  \
+        x = a op g_##N;                                                 \
+        r = r * 7 + x;                                                  \
+        x = (a op s) op y;                                              \
+        r = r * 7 + x;                                                  \
+        x = x op s;                                                     \
+        r = r * 7 + x;                                                  \
+        x = a op ((s & 0x7f) | 1);                                      \
+        r = r * 7 + x;                                                  \
+        r = r * 7 + (x + (x = a op s)) + x * 3L;                        \
+        return r * 7 + x * 3L + y;                                      \
+    }
+
+/* the shifts, every count below 32; the count that names the variable
+   is the variable set to the count first */
+#define DEST_SHIFT(T, N, name, op)                                      \
+    long dest_##name##_##N(T a, int n)                                  \
+    {                                                                   \
+        register T x;                                                   \
+        register int k = n;                                             \
+        int t = n;                                                      \
+        int *p = &t;                                                    \
+        register int *q = &t;                                           \
+        long r;                                                         \
+        g_count = n;                                                    \
+        x = a op 1;                                                     \
+        r = x;                                                          \
+        x = a op 31;                                                    \
+        r = r * 7 + x;                                                  \
+        x = a op t;                                                     \
+        r = r * 7 + x;                                                  \
+        x = a op n;                                                     \
+        r = r * 7 + x;                                                  \
+        x = a op k;                                                     \
+        r = r * 7 + x;                                                  \
+        x = a op *p;                                                    \
+        r = r * 7 + x;                                                  \
+        x = a op *q;                                                    \
+        r = r * 7 + x;                                                  \
+        x = a op g_count;                                               \
+        r = r * 7 + x;                                                  \
+        x = x op t;                                                     \
+        r = r * 7 + x;                                                  \
+        x = n;                                                          \
+        x = a op x;                                                     \
+        r = r * 7 + x;                                                  \
+        x = a op (t & 15);                                              \
+        r = r * 7 + x;                                                  \
+        r = r * 7 + (x + (x = a op t)) + x * 3L;                        \
+        return r * 7 + x * 3L + k;                                      \
+    }
+
+#define DEST_ALL(T, N)                                                  \
+    OPERATORS(DEST, T, N) DIVISIONS(DEST_DIVISION, T, N)                \
+    SHIFTS(DEST_SHIFT, T, N)
+
+TYPES(DEST_ALL)
+
+/* aarch64's other rows whose last instruction writes the register: a
+   comparison, -, ~ and !, an extension into a long, an address and p
+   - q; x86-64 keeps the mov after each */
+#define DEST_OTHER(T, N)                                                \
+    long dother_##N(T a, T b)                                           \
+    {                                                                   \
+        T s = b;                                                        \
+        T v[2];                                                         \
+        register T x;                                                   \
+        register long w;                                                \
+        register T *q;                                                  \
+        long r;                                                         \
+        v[0] = a;                                                       \
+        v[1] = b;                                                       \
+        x = a < s;                                                      \
+        r = x;                                                          \
+        x = -s;                                                         \
+        r = r * 7 + x;                                                  \
+        x = ~s;                                                         \
+        r = r * 7 + x;                                                  \
+        x = !s;                                                         \
+        r = r * 7 + x;                                                  \
+        w = a + s;                                                      \
+        r = r * 7 + w;                                                  \
+        w = a;                                                          \
+        r = r * 7 + w;                                                  \
+        q = v;                                                          \
+        r = r * 7 + *q;                                                 \
+        q = &v[1];                                                      \
+        r = r * 7 + *q;                                                 \
+        w = q - v;                                                      \
+        r = r * 7 + w;                                                  \
+        return r * 7 + x + w * 3L;                                      \
+    }
+
+TYPES(DEST_OTHER)
+
+/* a load into a register variable of every other type, from a
+   parameter, a local, through a pointer and from a global, by the
+   initializer and by the assignment */
+#define CONVERT(F, FN, T, TN)                                           \
+    long convert_##FN##_##TN(F a, F b)                                  \
+    {                                                                   \
+        F s = b;                                                        \
+        F *p = &s;                                                      \
+        register T x = a;                                               \
+        register T y = s;                                               \
+        register T z = *p;                                              \
+        g_##FN = a ^ b;                                                 \
+        long r = x + y * 3L + z * 5L;                                   \
+        y = g_##FN;                                                     \
+        x = b;                                                          \
+        return r * 7 + x + y * 3L;                                      \
+    }
+#define CONVERTS(F, FN) TYPES2(CONVERT, F, FN)
+
+TYPES(CONVERTS)
+
+/* A register pointer as the destination: from a local, through a
+   pointer to a pointer, from a global, by an index, p + i, a register
+   pointer plus a constant, &p[i], another register pointer; its read
+   held across the assignment.  The main's buffer is the memory, and a
+   result is an offset in it. */
+#define PDEST(E, T)                                                     \
+    T *gp_##E;                                                          \
+    long pdest_##E(T *base, long i)                                     \
+    {                                                                   \
+        T *s = base;                                                    \
+        T *v[2];                                                        \
+        T **pp = &s;                                                    \
+        register T *q;                                                  \
+        register T *w = base + 1;                                       \
+        long r;                                                         \
+        v[0] = base;                                                    \
+        v[1] = base + 2;                                                \
+        gp_##E = base + 3;                                              \
+        q = s;                                                          \
+        r = q - base;                                                   \
+        q = *pp;                                                        \
+        r = r * 7 + (q - base);                                         \
+        q = gp_##E;                                                     \
+        r = r * 7 + (q - base);                                         \
+        q = v[i & 1];                                                   \
+        r = r * 7 + (q - base);                                         \
+        q = s + i;                                                      \
+        r = r * 7 + (q - base);                                         \
+        q = w + 2;                                                      \
+        r = r * 7 + (q - base);                                         \
+        q = &s[i];                                                      \
+        r = r * 7 + (q - base);                                         \
+        q = w;                                                          \
+        r = r * 7 + (q - base);                                         \
+        r = r * 7 + (q - base) + ((q = s + 1) - base) + (q - base) * 3; \
+        return r * 7 + (q - base) + (w - base) * 3;                     \
+    }
+
+SCALARS(PDEST)
+
+/* r = a + *r, the right operand reaching memory through the
+   variable's own register, which x86-64 refuses; and on aarch64 the
+   load through a register pointer stepped into the same pointer, whose
+   data register cannot be its base */
+long own_base(long a, long b)
+{
+    long cell[2];
+    register long r;
+
+    cell[0] = b;
+    cell[1] = a;
+    r = (long) cell;
+    r = a + *(long *) r;
+
+    return r;
+}
+
+long own_step(long a)
+{
+    long cell[4];
+    register long *w = cell;
+
+    cell[0] = (long) &cell[2];
+    cell[1] = (long) &cell[3];
+    cell[2] = a;
+    cell[3] = a * 3;
+    w = (long *) *w++;
+
+    long r = *w;
+
+    w = cell + 1;
+    w = (long *) *w;
+
+    return r * 7 + *w + (w - cell) * 11;
+}
 
 /* A register variable as the condition of if, while and for, and as
    the operand of &&, ||, ?: and !; compared with a register, a slot

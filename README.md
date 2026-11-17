@@ -114,7 +114,12 @@ their own operands, and a node whose right operand is one holds its
 left operand out of the registers the instruction pins, so `a + b /
 c` loads `a` into `ecx` and `b` into `eax` and writes no move, as
 that compiler's `oddreg()` chose a division's registers before its
-operands.
+operands. A value assigned to a `register` variable is computed in
+its register: a load is `movl -12(%rbp), %ebx` and `ldr w19, [x29,
+#24]`, an operation on aarch64 is `add w19, w0, w1`, and on x86-64
+`r = a + b` is `movl -12(%rbp), %ebx; addl -16(%rbp), %ebx` when the
+right operand is a leaf that does not name the variable, as that
+compiler's `move3` and `sreorder()` wrote it.
 An element by a
 constant index is the object's own operand, `movl table+12(%rip),
 %eax`, the constant folded into the address as that compiler

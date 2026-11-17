@@ -545,8 +545,9 @@ code of a `backend.md` chapter:
   (chapter 8).
 - A `register` variable is in the callee-saved register of the five
   its symbol's index names (chapter 4). Its read is borrowed: the
-  register itself, never spilled or freed, and written only by a
-  compound assignment in place. An instruction that would write its
+  register itself, never spilled or freed, and written only by an
+  assignment: a compound one in place, or the row that computes the
+  value assigned (chapter 4). An instruction that would write its
   destination works on a copy, and a held read is copied before the
   variable is written, so the read keeps the old value (G13). The
   registers the prologue pushes are the definition's count, known

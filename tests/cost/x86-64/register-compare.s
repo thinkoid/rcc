@@ -12,8 +12,7 @@ same:
 	pushq	%rbx
 	.cfi_offset %rbx, -24
 	movl	%edi, -12(%rbp)
-	movl	-12(%rbp), %eax
-	movl	%eax, %ebx
+	movl	-12(%rbp), %ebx
 	cmpl	%ebx, %ebx
 	sete	%al
 	movzbl	%al, %eax

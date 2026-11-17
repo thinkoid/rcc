@@ -233,8 +233,8 @@ order.
 
 A register variable is nothing but its register. No slot, no load,
 no store, no `phi`, no join of arms, no patching of a loop's back
-edge: an assignment to it is a `mov` into the register, a read of it
-is the register as an operand. G5 for a register variable needs no
+edge: an assignment to it writes the register, a read of it is the
+register as an operand. G5 for a register variable needs no
 unwritten slot any more. Before its first write the register holds
 what it held when the declaration was reached: what the prologue
 left in it for the first variable to take it, and what the last
@@ -257,20 +257,91 @@ A read is the register as an operand where the instruction only
 reads it: `cmpl %ebx, %r13d`. Where the instruction would write its
 destination, the register is first copied into an expression
 register, `movl %ebx, %eax; subl %r12d, %eax`, so the variable does
-not change. An assignment is the `mov` into the register: a constant
-is the immediate, `movl $0, %r12d`, and a narrow store is the
-extending `mov`, `movsbl %al, %ebx`. A compound assignment and `++`
-or `--` operate on the register in place, `addl $1, %r13d`, and a
-narrow one is re-extended after. A compound assignment generates its
-right operand first and then operates on the register, so no read of
-the variable is held across the right operand: `r += (r = 2)` is
-`movl $2, %ebx; addl %ebx, %ebx`.
+not change. An assignment writes the register: a constant is the
+immediate, `movl $0, %r12d`, a value is computed in the register
+where its last instruction can write it (below), and any other value
+is moved in, a narrow store by the extending `mov`, `movsbl %al,
+%ebx`. A compound assignment and `++` or `--` operate on the register
+in place, `addl $1, %r13d`, and a narrow one is re-extended after. A
+compound assignment generates its right operand first and then
+operates on the register, so no read of the variable is held across
+the right operand: `r += (r = 2)` is `movl $2, %ebx; addl %ebx,
+%ebx`.
 
 A read still held when its variable is written would see the new
 value, but G13 promises the old one. So every held read of the
 variable is copied into an expression register before the write;
 `i + i++` thus adds the old `i` to itself. A branch and a call ask
 more than the copy, and 6.7 says what.
+
+**The value computed for a register variable.** The variable's
+register is the destination of the value assigned to it, where the
+machine lets the last instruction be the one that writes it. A
+declaration's initializer is the same.
+
+- A load is the load into the register: `r = a` on an `int` in a slot
+  is `movl -12(%rbp), %ebx`, the extending loads included, so `r = c`
+  on a `char` is `movsbl -1(%rbp), %ebx`. A conversion hands the
+  variable on to its operand only where the conversion's width holds
+  the representation above: an `int`, a `long` or a pointer takes the
+  load through one, and an `unsigned` or a narrow variable keeps the
+  `mov` after it, `register short s = c` being `movsbl -1(%rbp), %eax;
+  movswl %ax, %ebx`.
+- An operation is computed in the register: `r = a + b` is `a`
+  loaded into it and the instruction written on it, `movl -12(%rbp),
+  %ebx; addl -16(%rbp), %ebx`. The operators are the rows of two
+  addresses on a free register, `+`, `-`, `&`, `|`, `^`, `*` and the
+  shifts, on the variable's own type.
+
+An instruction of two addresses writes its left operand (3.3), so in
+the operation the variable holds `a` before the right operand is
+read. The form is thus taken under two conditions on the right
+operand, both required:
+
+- it is a leaf: a constant, the read of a named object, a register
+  variable, or `*` of a named pointer, read through the parser's
+  conversions, so that a `char` promoted is one;
+- it does not name the variable, as itself or as the base of its
+  address.
+
+Then nothing between the variable's first write and the instruction
+reads it. `r = a + (b + c)` and `r = a - r` are computed in an
+expression register and moved, as is a division or a remainder, whose
+registers are pinned (6.5).
+
+The left operand goes into the register by an instruction it has in
+any case: its load, its constant, or again the operation; the variable
+itself is there already, so `r = r + b` is `addl -16(%rbp), %ebx`; and
+another register variable's read is copied there, `movl %r12d,
+%ebx`, the copy an instruction that writes is given in any case. Any
+other left operand, a call's result or a division, leaves the whole
+assignment computed elsewhere and moved. Moved in before the
+instruction, that left operand would leave the assignment's value in
+the variable's register, where the `mov` after leaves it in an
+expression register, and a use of the value there, `return r = f() +
+a`, would copy it back: one instruction more.
+
+`preserve()` copies the held reads of the variable before its first
+write, which in the operation is the load of the left operand, so `x
+= r + (r = a + b)` adds the old `r`. The value of the assignment is
+then the variable's read. A call's result, which the convention
+puts in `rax`, the value of `&&`, `||` and `?:`, written on two
+paths, the extension of a value already in a register, a comparison's
+`setcc` and `movzbl`, `-` and `~`, and an address formed by `lea`
+keep the `mov`.
+
+The rule is the Seventh Edition compiler's. Its `efftab` writes a load
+into a register variable in one instruction: `move3`, in `table.s`,
+is `IBE A2,A1`, so `r = y` with `r` in `r4` is `mov _y,r4`. Its
+`sreorder()`, in `c10.c`, rewrites `reg = x + y` as `reg = x; reg =+
+y`, "so long as "reg" and "y" are not the same!", for `+`, `-`, `&`,
+`&~`, `|`, `^` and the shifts, and for `*` by a power of two, which
+it first makes a shift. It refuses a right operand of a degree above
+12 by `xdcalc()`, in `c11.c`, which is no leaf, or a `char`, and a
+name that is the variable or has its register as the base of its
+address. rcc takes `*` by any operand, since `imul` writes any
+register where the PDP-11's `mul` wants an odd one (the rows of `=*`
+in `table.s`), and a `char` promoted, which its conversion reads.
 
 **The frame pointer: `rbp`.** Pushed and set in every function's
 prologue, leaf included, restored by `leave`. Every slot is a
@@ -372,11 +443,15 @@ operand of an object in memory (below), or a register, into which
 it is generated; the instruction for the operator is written as
 `op R, L`; `R` is freed; the result is `L`. Every operator of the
 table is written exactly once per node, and nothing looks at a
-node's neighbours, with one exception. A node whose right operand's
+node's neighbours, with two exceptions. A node whose right operand's
 top operator is a division or a shift by a variable count generates
 its left operand outside the registers that instruction pins (6.5).
 The machine pins those registers, and what the node chooses is a
-register's name, not the order of evaluation.
+register's name, not the order of evaluation. And on x86-64 an
+operation whose value is assigned to a register variable generates
+its left operand into the variable's register when its right operand
+is a leaf that does not name the variable (chapter 4); what it
+chooses is a register's name too.
 
 The left-first order is G13 and is not negotiable for register
 pressure: `f() + g()` calls `f` first. A commutative operator's
@@ -476,7 +551,7 @@ written for it.
 | `!a` | `cmp $0, L`; `sete %Lb`; `movzbl %Lb, L` | as a value; as a condition, chapter 7 |
 | `a < b` and the rest, as a value | `cmp R, L`, `cmpl -8(%rbp), %eax` for an object in memory; `setcc %Lb`; `movzbl %Lb, L` | `setl`, `setle`, `setg`, `setge`, `sete`, `setne` signed; `setb`, `setbe`, `seta`, `setae` unsigned and for pointers (G7) |
 | `a && b`, `a \|\| b`, `a ? b : c`, as a value | jump code of chapter 7 into `L`, with `mov $0, L` and `mov $1, L` on the arms | no `setcc` chain |
-| `x = e` | `mov L, slot` or `mov L, reg`, the value staying in `L`; a constant goes as the immediate straight into a register variable, `movl $0, %r12d`, or into memory when the assignment is evaluated for its effect alone, `movl $0, -12(%rbp)` (6.6) | a `char` store is `movb %Lb` |
+| `x = e` | `mov L, slot`, the value staying in `L`; into a register variable, the value computed in its register where its last instruction can write it, the load, `movl -12(%rbp), %ebx`, and the operation, `addl -16(%rbp), %ebx` after it, the value then the variable's read, and otherwise `mov L, reg` (chapter 4); a constant goes as the immediate straight into a register variable, `movl $0, %r12d`, or into memory when the assignment is evaluated for its effect alone, `movl $0, -12(%rbp)` (6.6) | a `char` store is `movb %Lb` |
 | `x op= e` | the address of `x` first, then `e`; in the effect context, the op on the object, `addl %eax, -12(%rbp)`, but for `*=`, `/=` and `%=` (6.6); in a value context, the load row, the op row, the store row, after `e`; on a register variable, the op on the register in place, after `e` | `*=`, `/=` and `%=` are always `e`, then the load, the op and the store: `imul` has no memory destination and `idiv` none at all |
 | `++x`, `x++`, `--x`, `x--` | in the effect context, the op on the object, `addl $1, -8(%rbp)`, and no old value (6.6); in a value context, the load, `add $1` or `sub $1`, the store, the post forms keeping the old value in another register | `add $size` for a pointer |
 | `(T) a` | `movslq L, L64` for `int` to `long`, `movsbl` or `movzbl` from `Lb` for `char` to `int`, each only when `L` is not already valid to the new width (the width rule below); a signed object in memory under a cast that widens it is its load extended to the new width, `movslq -4(%rbp), L64` for an `int` to `long`, `movsbq` and `movswq` for a `signed char` and a `short`, and no instruction after it (a widening by the load, below); nothing for `long` to `int` (the 32-bit name is the value); nothing between pointer types; an integer to a pointer as to `unsigned long`, so `movslq` for an `int` (6.3.2.3p5); nothing for a pointer to `long` or `int` | G2: truncation is reading the low bits |
@@ -744,7 +819,7 @@ the dividend into the odd register and divides the pair, and the
 row's end steps a quotient back to the even register, where `div`
 leaves it.
 
-**A node holds out what its right operand pins.** This is the one
+**A node holds out what its right operand pins.** This is the first
 exception to 6.1's "nothing looks at a node's neighbours", and the
 machine is its reason: x86 pins these registers, and the node chooses
 a register's name, not the order. A node whose right operand's top
@@ -1811,6 +1886,22 @@ answers:
     from its operator. A node whose right operand's top operator is
     one holds its left operand out of the registers that instruction
     pins; that rule has no counterpart in the ancestor, whose `div`
-    takes any even-odd pair. The cost is the one exception to 6.1's
+    takes any even-odd pair. The cost is the first exception to 6.1's
     "nothing looks at a node's neighbours", and a boundary: a division
     deeper in the right operand changes nothing.
+16. **A `register` variable is the destination of the value computed
+    for it** (chapter 4), on both targets, where the last instruction
+    can be the one that writes it: a load is `movl -12(%rbp), %ebx`
+    and `ldr w19, [x29, #24]`, and on aarch64 every row whose last
+    instruction is its only write of its destination writes the
+    variable, `add w19, w0, w1`. On x86-64 an operation is its left
+    operand loaded into the register and the instruction written on
+    it, `addl -16(%rbp), %ebx`, under two conditions on the right
+    operand: a leaf, and not naming the variable. The load is the
+    Seventh Edition compiler's `move3`, and the operation and its
+    conditions are its `sreorder()`; rcc takes `*` by any operand and
+    a `char` promoted, which that compiler refused. The cost is the
+    second exception to 6.1's "nothing looks at a node's neighbours",
+    and a boundary on x86-64: `r = a + (b + c)`, `r = a - r`, a
+    division, a left operand its own instruction cannot put in the
+    register, and an address formed by `lea` keep the `mov`.

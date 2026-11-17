@@ -22,11 +22,9 @@ sum:
 .Lsum.2:
 	cmp	w21, w19
 	b.ge	.Lsum.4
-	add	w0, w20, w21
-	mov	w20, w0
+	add	w20, w20, w21
 .Lsum.3:
-	add	w0, w21, #1
-	mov	w21, w0
+	add	w21, w21, #1
 	b	.Lsum.2
 .Lsum.4:
 	mov	w0, w20

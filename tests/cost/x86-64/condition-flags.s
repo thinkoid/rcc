@@ -185,8 +185,7 @@ test_variable:
 	.cfi_offset %rbx, -24
 	movl	%edi, -12(%rbp)
 	movl	%esi, -16(%rbp)
-	movl	-12(%rbp), %eax
-	movl	%eax, %ebx
+	movl	-12(%rbp), %ebx
 	testl	-16(%rbp), %ebx
 	je	.Ltest_variable.2
 	movl	$1, %eax
@@ -292,8 +291,7 @@ add_to_register:
 	.cfi_offset %rbx, -24
 	movl	%edi, -12(%rbp)
 	movl	%esi, -16(%rbp)
-	movl	-12(%rbp), %eax
-	movl	%eax, %ebx
+	movl	-12(%rbp), %ebx
 	movl	-16(%rbp), %eax
 	addl	%eax, %ebx
 	je	.Ladd_to_register.2
@@ -400,8 +398,7 @@ sub_from_register:
 	.cfi_offset %rbx, -24
 	movl	%edi, -12(%rbp)
 	movl	%esi, -16(%rbp)
-	movl	-12(%rbp), %eax
-	movl	%eax, %ebx
+	movl	-12(%rbp), %ebx
 	movl	-16(%rbp), %eax
 	subl	%eax, %ebx
 	je	.Lsub_from_register.2
@@ -508,8 +505,7 @@ and_to_register:
 	.cfi_offset %rbx, -24
 	movl	%edi, -12(%rbp)
 	movl	%esi, -16(%rbp)
-	movl	-12(%rbp), %eax
-	movl	%eax, %ebx
+	movl	-12(%rbp), %ebx
 	movl	-16(%rbp), %eax
 	andl	%eax, %ebx
 	je	.Land_to_register.2
@@ -616,8 +612,7 @@ or_to_register:
 	.cfi_offset %rbx, -24
 	movl	%edi, -12(%rbp)
 	movl	%esi, -16(%rbp)
-	movl	-12(%rbp), %eax
-	movl	%eax, %ebx
+	movl	-12(%rbp), %ebx
 	movl	-16(%rbp), %eax
 	orl	%eax, %ebx
 	je	.Lor_to_register.2
@@ -724,8 +719,7 @@ xor_to_register:
 	.cfi_offset %rbx, -24
 	movl	%edi, -12(%rbp)
 	movl	%esi, -16(%rbp)
-	movl	-12(%rbp), %eax
-	movl	%eax, %ebx
+	movl	-12(%rbp), %ebx
 	movl	-16(%rbp), %eax
 	xorl	%eax, %ebx
 	je	.Lxor_to_register.2
@@ -825,8 +819,7 @@ inc_register:
 	pushq	%rbx
 	.cfi_offset %rbx, -24
 	movl	%edi, -12(%rbp)
-	movl	-12(%rbp), %eax
-	movl	%eax, %ebx
+	movl	-12(%rbp), %ebx
 	addl	$1, %ebx
 	je	.Linc_register.2
 	movl	$1, %eax
@@ -925,8 +918,7 @@ dec_register:
 	pushq	%rbx
 	.cfi_offset %rbx, -24
 	movl	%edi, -12(%rbp)
-	movl	-12(%rbp), %eax
-	movl	%eax, %ebx
+	movl	-12(%rbp), %ebx
 	subl	$1, %ebx
 	je	.Ldec_register.2
 	movl	$1, %eax

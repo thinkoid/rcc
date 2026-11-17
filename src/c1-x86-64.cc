@@ -518,7 +518,7 @@ pinned_by(const assign_t &a)
     return (a.op ? pins(*a.op, *a.rhs) : 0) | pinned_by(*a.rhs);
 }
 
-value_t rvalue(state_t &, const expr_t &);
+value_t rvalue(state_t &, const expr_t &, into_t * = nullptr);
 void cbranch(state_t &, const expr_t &, int label, bool sense);
 void effect(state_t &, const expr_t &);
 
@@ -528,11 +528,14 @@ void effect(state_t &, const expr_t &);
 // avoidance, not a pin (take()), and a call or a division inside e
 // keeps its own pin (rvalue()).
 value_t
-rvalue_avoiding(state_t &s, const expr_t &e, unsigned pinned)
+rvalue_avoiding(state_t &s,
+                const expr_t &e,
+                unsigned pinned,
+                into_t *into = nullptr)
 {
     const unsigned reserved = s.reserved;
     s.reserved |= pinned;
-    const auto v = rvalue(s, e);
+    const auto v = rvalue(s, e, into);
     s.reserved = reserved;
 
     return v;
@@ -737,16 +740,29 @@ release(state_t &s, const address_t &a)
 // signedness.  G8 to G11: one mov, whatever computed the address and
 // however it is aligned.  The address is consumed first, so the value
 // takes the lowest free register, the left operand's: mov (L,R,s), L.
+// Handed a register variable, the load writes the variable's register
+// where that leaves its representation, movl -12(%rbp), %ebx (chapter
+// 4).
 value_t
-load(state_t &s, const address_t &a, const int_t &t, int width)
+load(state_t &s,
+     const address_t &a,
+     const int_t &t,
+     int width,
+     into_t *into = nullptr)
 {
-    const auto [mnemonic, into] = extension(t, width);
+    const auto [mnemonic, to] = extension(t, width);
+    const int valid = written(to, t.is_signed);
 
     const auto from = operand(s, a);
     release(s, a);
 
-    const auto v = fresh(s, written(into, t.is_signed));
-    insn(s, mnemonic, { from, reg(reg_of(s, v), into) });
+    if (takes(into, valid)) {
+        insn(s, mnemonic, { from, reg(variable_register(into->variable), to) });
+        return taken(s, *into);
+    }
+
+    const auto v = fresh(s, valid);
+    insn(s, mnemonic, { from, reg(reg_of(s, v), to) });
 
     return v;
 }
@@ -1069,16 +1085,24 @@ memory_operand(const expr_t &e, int width)
 
 // A constant that must be held: mov $c, L, or movabsq for a 64-bit one
 // no immediate holds.  A constant narrower than int is written as its
-// promotion, so the register holds it extended.
+// promotion, so the register holds it extended.  Handed a register
+// variable, the constant is the mov into its register, as
+// constant_into() writes it (chapter 4).
 value_t
-literal(state_t &s, const literal_t &l, const type_t &t)
+literal(state_t &s, const literal_t &l, const type_t &t, into_t *into = nullptr)
 {
     const auto &type = integer(t);
     const int width = std::max(32, type.width);
+    const int valid = written(width, type.is_signed);
     const auto value =
         type.width < 32 ? widened(l.value, type) : normalized(l.value, width);
 
-    const auto v = fresh(s, written(width, type.is_signed));
+    if (takes(into, valid)) {
+        constant(s, variable_register(into->variable), value, width);
+        return taken(s, *into);
+    }
+
+    const auto v = fresh(s, valid);
     const reg_t r = reg_of(s, v);
 
     constant(s, r, value, width);
@@ -1828,8 +1852,127 @@ conditional(state_t &s, const expr_t &e)
     return hold(s, into, std::min(valid, other_valid));
 }
 
+// Whether the right operand of the operation form is a leaf, the
+// Seventh Edition compiler's operand of degree 12 or less (dcalc(), in
+// c11.c): a constant, the read of a named object, a register variable,
+// or * of a named pointer, read through the parser's conversions, so
+// that a char promoted is one.
+bool
+leaf(const expr_t &e)
+{
+    const expr_t *top = &e;
+    while (is< cast_t >(*top))
+        top = as< cast_t >(*top).arg.get();
+
+    if (is< literal_t >(*top) || is< name_t >(*top))
+        return true;
+
+    return is< unary_t >(*top) && as< unary_t >(*top).op == unary_op_t::deref &&
+           is< name_t >(*as< unary_t >(*top).arg);
+}
+
+bool operates_in(const binary_t &, const type_t &, const symbol_t *);
+
+// Whether L of the operation form goes into the variable's register by
+// an instruction it has in any case: its load, its constant, or again
+// the operation form, each written into the register; the read of
+// another register variable, which an instruction that writes is given
+// a copy of (chapter 4), copied there; the variable itself, already
+// there.  Any other L leaves the whole assignment to the mov of
+// establish() after it: moved in before the instruction, L would leave
+// the assignment's value in the variable's register, where the mov
+// after leaves it in an expression register, and a use of the value in
+// one would copy it back, an instruction more.
+bool
+loads_into(const expr_t &lhs, const symbol_t *sym)
+{
+    if (is< literal_t >(lhs) || is< name_t >(lhs) || in_memory(lhs))
+        return true;
+
+    if (is< cast_t >(lhs)) {
+        const auto &arg = *as< cast_t >(lhs).arg;
+        return (is< int_t >(arg.type) || is< pointer_t >(arg.type)) &&
+               in_memory(arg) && integer(lhs.type).width >= represented(sym);
+    }
+
+    return is< binary_t >(lhs) &&
+           operates_in(as< binary_t >(lhs), lhs.type, sym);
+}
+
+// Whether r = L op R, of type t, is the operation on the variable's
+// register, chapter 4: an operator of two addresses on a free
+// register, +, -, &, |, ^, * or a shift, on the variable's own type, no
+// pointer; L that loads_into() the register; and the Seventh Edition
+// compiler's two conditions on R, which the instruction reads after L
+// has written the register (sreorder(), in c10.c): R is a leaf, and R
+// does not name the variable, as itself or as the base of its address.
+bool
+operates_in(const binary_t &b, const type_t &t, const symbol_t *sym)
+{
+    switch (b.op) {
+    case binary_op_t::add:
+    case binary_op_t::sub:
+    case binary_op_t::mul:
+    case binary_op_t::bit_and:
+    case binary_op_t::bit_or:
+    case binary_op_t::bit_xor:
+    case binary_op_t::shl:
+    case binary_op_t::shr: break;
+    default: return false;
+    }
+
+    if (is< pointer_t >(t) || is< pointer_t >(b.lhs->type) || !(t == sym->type))
+        return false;
+
+    return leaf(*b.rhs) && !names(*b.rhs, sym) && loads_into(*b.lhs, sym);
+}
+
+// L of the operation form into the variable's register, by the
+// instruction loads_into() names: a register variable's read copied,
+// movl %r12d, %ebx, the variable itself nothing, and anything else by
+// its own row, handed the variable.  The value is the variable's read.
 value_t
-binary(state_t &s, const expr_t &e)
+left_in(state_t &s, const expr_t &lhs, const symbol_t *sym, unsigned avoid)
+{
+    if (const auto *other = register_variable(lhs)) {
+        if (other != sym)
+            mov(s, variable_register(other), variable_register(sym),
+                operation_width(lhs.type));
+        return read(s, sym);
+    }
+
+    into_t into { sym };
+    const auto v = rvalue_avoiding(s, lhs, avoid, &into);
+    if (!into.taken)
+        throw std::logic_error("c1: an operand missed its register variable");
+
+    return v;
+}
+
+// r = L op R as the operation on the variable's register, chapter 4,
+// the Seventh Edition compiler's sreorder(), which rewrites reg = x + y
+// as reg = x; reg =+ y: L into the register, then R as 6.1 generates
+// it, an immediate, an object in memory or a value held, and the
+// instruction on the register in place, as a compound assignment's,
+// movl -12(%rbp), %ebx; addl -16(%rbp), %ebx.  L is evaluated whole
+// before R, as G13 has it.  The value is the variable's read.
+value_t
+operation_in(state_t &s, const binary_t &b, const type_t &t, into_t &into)
+{
+    const unsigned own = is_shift(b.op) ? pins(b.op, *b.rhs) : 0;
+
+    const auto l = left_in(s, *b.lhs, into.variable, own);
+    const auto r = binary_operand(s, b.op, *b.rhs, operation_width(t));
+
+    const int outer = std::exchange(s.in_place, l.id);
+    arithmetic(s, b.op, l, r, t);
+    s.in_place = outer;
+
+    return taken(s, into, l);
+}
+
+value_t
+binary(state_t &s, const expr_t &e, into_t *into = nullptr)
 {
     const auto &b = as< binary_t >(e);
 
@@ -1840,7 +1983,7 @@ binary(state_t &s, const expr_t &e)
     // the effect context of chapter 6.6
     case binary_op_t::comma: {
         effect(s, *b.lhs);
-        return rvalue(s, *b.rhs);
+        return rvalue(s, *b.rhs, into);
     }
     default: break;
     }
@@ -1853,6 +1996,9 @@ binary(state_t &s, const expr_t &e)
 
     if (is< pointer_t >(b.lhs->type))
         return difference(s, b);
+
+    if (into && operates_in(b, e.type, into->variable))
+        return operation_in(s, b, e.type, *into);
 
     // G13: the left operand first, held while the right one is
     // generated, outside the registers the right one's operator pins and,
@@ -1940,7 +2086,7 @@ step(state_t &s, const unary_t &u)
 }
 
 value_t
-unary(state_t &s, const unary_t &u, const type_t &t)
+unary(state_t &s, const unary_t &u, const type_t &t, into_t *into = nullptr)
 {
     switch (u.op) {
     // G1: neg of INT_MIN is INT_MIN.  A borrowed read is copied into a
@@ -1990,7 +2136,8 @@ unary(state_t &s, const unary_t &u, const type_t &t)
 
     case unary_op_t::deref: {
         const auto &type = integer(t);
-        return load(s, pointed(s, *u.arg, t), type, std::max(32, type.width));
+        return load(s, pointed(s, *u.arg, t), type, std::max(32, type.width),
+                    into);
     }
     }
 
@@ -2014,21 +2161,39 @@ settle(state_t &s, const symbol_t *sym, value_t v, int width)
         establish(s, sym, variable_register(sym));
 }
 
+// The value of e written into a register variable, chapter 4: by the
+// row at the top of e, handed the variable, where the row can write
+// its register, the load, movl -12(%rbp), %ebx, and the operation form,
+// movl -12(%rbp), %ebx; addl -16(%rbp), %ebx, and the value is the
+// variable's read; otherwise into L, then the mov of establish(),
+// movl %eax, %ebx, or movl %r12d, %ebx from another register variable,
+// and the value stays L, as for a slot.
+value_t
+computed_into(state_t &s, const symbol_t *sym, const expr_t &e)
+{
+    into_t into { sym };
+    const auto v = rvalue(s, e, &into);
+    if (!into.taken)
+        establish(s, sym, reg_of(s, v));
+
+    return v;
+}
+
 // Assignment to a register variable, after preserve() has copied every
-// read of it an enclosing expression still holds, x + (x += e).  Plain:
-// a constant is the immediate into the variable's register and the
-// value is a read of the variable; otherwise the right operand into L,
-// then the mov of establish() into the register, movl %eax, %ebx, or
-// movl %r12d, %ebx from another register variable, and the value stays
-// L, as for a slot.  Compound: the right operand first, then the
-// operation row with the variable's register as L, in place,
-// addl %eax, %ebx, but for a division, whose quotient comes back from
-// rax by the mov; the value is a read of the variable after the write.
-// The variable is read by the operation, after the right operand, as a
-// slot's object is (G13), so no read of it is held across the right
-// operand: r += (r = 2) is movl $2, %ebx and addl %ebx, %ebx.  The read
-// is extended into a fresh register first when the operation is wider
-// than the register is valid to, movslq %ebx, %rax for int += long.
+// read of it an enclosing expression still holds, x + (x += e), before
+// the first write of the variable, which in the operation form is the
+// load of L.  Plain: a constant is the immediate into the variable's
+// register and the value is a read of the variable; otherwise the right
+// operand into the register by computed_into().  Compound: the right
+// operand first, then the operation row with the variable's register as
+// L, in place, addl %eax, %ebx, but for a division, whose quotient comes
+// back from rax by the mov; the value is a read of the variable after
+// the write.  The variable is read by the operation, after the right
+// operand, as a slot's object is (G13), so no read of it is held across
+// the right operand: r += (r = 2) is movl $2, %ebx and addl %ebx, %ebx.
+// The read is extended into a fresh register first when the operation is
+// wider than the register is valid to, movslq %ebx, %rax for int +=
+// long.
 value_t
 assign_register(state_t &s, const assign_t &a, const symbol_t *sym)
 {
@@ -2038,9 +2203,7 @@ assign_register(state_t &s, const assign_t &a, const symbol_t *sym)
         if (constant_into(s, sym, *a.rhs))
             return read(s, sym);
 
-        const auto v = rvalue(s, *a.rhs);
-        establish(s, sym, reg_of(s, v));
-        return v;
+        return computed_into(s, sym, *a.rhs);
     }
 
     const int width = operation_width(a.common);
@@ -2125,9 +2288,13 @@ assign(state_t &s, const assign_t &a)
 // c10.c, tries a row again with the conversion dropped, and its tables
 // convert an operand in memory in the instruction that reads it.
 value_t
-extending_load(state_t &s, const expr_t &e, const int_t &from, int to)
+extending_load(state_t &s,
+               const expr_t &e,
+               const int_t &from,
+               int to,
+               into_t *into = nullptr)
 {
-    return load(s, address(s, e), from, std::max(32, to));
+    return load(s, address(s, e), from, std::max(32, to), into);
 }
 
 // An integer conversion.  G2: narrowing is no instruction, the narrower
@@ -2145,9 +2312,12 @@ extending_load(state_t &s, const expr_t &e, const int_t &from, int to)
 // function, p4.  A cast to void evaluates its operand for its
 // effect alone, chapter 6.6.  A register variable widens into a fresh
 // register, movslq %ebx, %rax, and narrows as its read: the read, not
-// the variable, is valid to less.
+// the variable, is valid to less.  A register variable handed down goes
+// on to the operand's row through() a conversion that leaves its
+// representation, and a load takes it: register int x = c is
+// movsbl -1(%rbp), %ebx (chapter 4).
 value_t
-cast(state_t &s, const cast_t &c, const type_t &to)
+cast(state_t &s, const cast_t &c, const type_t &to, into_t *into = nullptr)
 {
     if (is< void_t >(to)) {
         effect(s, *c.arg);
@@ -2161,17 +2331,18 @@ cast(state_t &s, const cast_t &c, const type_t &to)
         return function_pointer(s, *c.arg);
 
     const auto &from = integer(c.arg->type);
-    const auto &into = integer(to);
-    const bool widens = into.width > from.width;
+    const auto &target = integer(to);
+    const bool widens = target.width > from.width;
+    const auto onward = through(into, target);
 
     auto v = widens && from.is_signed && in_memory(*c.arg) ?
-                 extending_load(s, *c.arg, from, into.width) :
-                 rvalue(s, *c.arg);
+                 extending_load(s, *c.arg, from, target.width, onward) :
+                 rvalue(s, *c.arg, onward);
     if (widens)
-        v = extended(s, v, from, into.width);
+        v = extended(s, v, from, target.width);
 
     auto &valid = s.values[v.id].valid;
-    valid = std::min(valid, into.width);
+    valid = std::min(valid, target.width);
 
     return v;
 }
@@ -2302,37 +2473,41 @@ pinned(const expr_t &e)
 // An array is never a value: the parser decays it, 6.3.2.1p3, and a
 // string literal is an array.  A call or a division keeps its own pin:
 // its operands are generated outside an outer reservation, since the
-// pin, not the outer wish, decides where its result is written.
+// pin, not the outer wish, decides where its result is written.  A
+// register variable handed down, into, goes to the row at the top of
+// e, which writes the variable's register where it can (chapter 4); a
+// read of a register variable is no row, and the assignment moves it
+// in, movl %r12d, %ebx.
 value_t
-rvalue(state_t &s, const expr_t &e)
+rvalue(state_t &s, const expr_t &e, into_t *into)
 {
     if (is< array_t >(e.type))
         throw std::logic_error("c1: an array as a value");
 
     if (s.reserved && pinned(e)) {
         const unsigned reserved = std::exchange(s.reserved, 0u);
-        const auto v = rvalue(s, e);
+        const auto v = rvalue(s, e, into);
         s.reserved = reserved;
 
         return v;
     }
 
     if (is< literal_t >(e))
-        return literal(s, as< literal_t >(e), e.type);
+        return literal(s, as< literal_t >(e), e.type, into);
 
     if (is< name_t >(e)) {
         if (const auto *sym = register_variable(e))
             return read(s, sym);
 
         const auto &t = integer(e.type);
-        return load(s, address(s, e), t, std::max(32, t.width));
+        return load(s, address(s, e), t, std::max(32, t.width), into);
     }
 
     if (is< unary_t >(e))
-        return unary(s, as< unary_t >(e), e.type);
+        return unary(s, as< unary_t >(e), e.type, into);
 
     if (is< binary_t >(e))
-        return binary(s, e);
+        return binary(s, e, into);
 
     if (is< assign_t >(e))
         return assign(s, as< assign_t >(e));
@@ -2341,7 +2516,7 @@ rvalue(state_t &s, const expr_t &e)
         return call(s, as< call_t >(e), e.type);
 
     if (is< cast_t >(e))
-        return cast(s, as< cast_t >(e), e.type);
+        return cast(s, as< cast_t >(e), e.type, into);
 
     return conditional(s, e);
 }
@@ -2883,7 +3058,8 @@ divided(state_t &s, value_t v, const expr_t &tabs, int width)
 
 // A register variable is in the one of the five its index names.  A
 // constant initializer is the constant row into the register, mov $c,
-// %r12d, and any other is its value and the mov of establish().
+// %r12d, and any other is computed into the register, as an
+// assignment's right operand is, by computed_into().
 // G5: without one, nothing writes the value.  The register holds what
 // the declaration finds in it: what the prologue left, where no variable
 // of the function held the register before, and otherwise what the last
@@ -2900,9 +3076,7 @@ register_decl(state_t &s, const decl_stmt_t &d)
         return;
 
     if (d.init) {
-        const auto v = rvalue(s, *d.init);
-        establish(s, d.sym, reg_of(s, v));
-        release(s, v);
+        release(s, computed_into(s, d.sym, *d.init));
         return;
     }
 

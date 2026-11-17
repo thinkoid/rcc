@@ -1,19 +1,19 @@
 # rcc: the ancestor's code generator
 
-rcc calls itself "an experimental descendant of Ritchie's C
-compiler". This page reads the ancestor's code generator against the
+rcc calls itself "an experimental descendant of Ritchie's C compiler".
+This page reads the ancestor's code generator against the
 descendant's. A survey read the Seventh Edition compiler's second
 pass, `c1`, and its code table whole, against rcc's own c1, and asked
 what the ancestor still has that the descendant could use. It found
 one surprise, six things rcc already took, five mechanisms rcc takes,
-three it leaves alone, and a longer list its rules exclude. Four of
-the five are in the tree; the fifth is taken and not yet written.
-Each is explained here from the ground up, with the ancestor's own
-lines quoted at their file and line in the compiler's directory,
-`usr/src/cmd/c/`. It is written as a tutorial, in the register of
-`findings.md`, for a reader who knows C and has seen assembly but has
-not read a table-driven code generator and does not know the PDP-11.
-Chapter 13 says where the sources came from and under what licence.
+three it leaves alone, and a longer list its rules exclude. All five
+it takes are in the tree. Each is explained here from the ground up,
+with the ancestor's own lines quoted at their file and line in the
+compiler's directory, `usr/src/cmd/c/`. It is written as a tutorial,
+in the register of `findings.md`, for a reader who knows C and has
+seen assembly but has not read a table-driven code generator and does
+not know the PDP-11. Chapter 13 says where the sources came from and
+under what licence.
 
 ## 0. tl;dr
 
@@ -40,11 +40,11 @@ Chapter 13 says where the sources came from and under what licence.
     with no `cmp $0`, on x86-64 (chapter 5);
   - a cast that widens a signed object in memory is its load,
     `movslq -4(%rbp), %rax`, on both targets (chapter 6);
+  - a `register` variable is the destination of the value computed
+    for it, `addl -16(%rbp), %ebx` and `add w19, w0, w1`, on both
+    targets (chapter 7);
   - an `if` whose body is one jump is the condition's jump to the
     jump's target, on both targets (chapter 8).
-- Taken and not yet written: a `register` variable as the
-  destination of the value computed for it, by the ancestor's rule
-  (chapter 7). The queue holds the step.
 - Left alone: a step for its value as the memory form, `!` over a
   comparison as a value, and x86's short forms for 0 and 1
   (chapter 9).
@@ -400,12 +400,12 @@ has no counterpart of `sptab` (3.3).
   `-4(%rbp)` down on x86-64 and from `[x29, #16]` up on aarch64, and
   every read of a parameter reads its slot (`backend.md` chapter 5).
 - **Earlier listings** show what rcc wrote before a mechanism of
-  chapters 4, 5, 6 and 8 was built. They are real listings, from the
-  compiler as it stood before all of them, and the text says so in
-  the past tense.
-- **Listings written by hand** show a form rcc does not write:
-  chapter 7's, which rcc takes and has not built yet, and the forms
-  it leaves alone, chapter 9's and aarch64's `tst` in 5.4. Each is
+  chapters 4 to 8 was built, and the text says so in the past tense.
+  They are real listings: for chapters 4, 5, 6 and 8 from the
+  compiler as it stood before all four, and for chapter 7 from the
+  compiler just before its own.
+- **Listings written by hand** show a form rcc does not write, one
+  it leaves alone: chapter 9's, and aarch64's `tst` in 5.4. Each is
   said to be so where it stands.
 - **PDP-11 listings** are worked out by hand from the rows, and said
   to be so. None was run.
@@ -1005,15 +1005,15 @@ what `div` needs (`c11.c:295-306`):
 operand's top operator is a division generates its left operand with
 `rax` and `rdx` held out, and an assignment so generates its place; a
 shift by a variable count does the same with `rcx`. The top operator
-is read through a cast, which pins nothing. This is the one exception
-to 6.1's rule that nothing looks at a node's neighbours: the machine
-pins the registers, and the node chooses a register's name, not an
-order. The rule has no counterpart in the ancestor. The PDP-11's
-`div` takes any even-odd pair, and `oddreg()` starts the pair above
-the registers already held: worked out from its lines, with `r0` held
-a division takes `r2` and `r3`, and nothing held moves. On x86-64 the
-pair is `rax` and `rdx` and no other, so the node above the division
-keeps them free.
+is read through a cast, which pins nothing. This is the first of two
+exceptions to 6.1's rule that nothing looks at a node's neighbours,
+the second being chapter 7's. The machine pins the registers, and the
+node chooses a register's name, not an order. The rule has no
+counterpart in the ancestor. The PDP-11's `div` takes any even-odd
+pair, and `oddreg()` starts the pair above the registers already held:
+worked out from its lines, with `r0` held a division takes `r2` and
+`r3`, and nothing held moves. On x86-64 the pair is `rax` and `rdx`
+and no other, so the node above the division keeps them free.
 
 `fill()`'s statement is eight instructions:
 
@@ -1523,7 +1523,7 @@ work, as it is for a `char`.
 A cast over a cast is no read, so the rule does not see the object
 under it. `(long) (char) c` on a `char` in memory is `movsbl
 -1(%rbp), %eax; movsbq %al, %rax`, where `(long) c` is the one
-`movsbq -1(%rbp), %rax`. The queue holds it.
+`movsbq -1(%rbp), %rax`.
 
 The rule moved 18 x86-64 pins in 44 places, 1337 instruction lines to
 1293, and 6 aarch64 pins in 8 places, 499 to 491.
@@ -1536,12 +1536,13 @@ C3 is in rcc on both targets.
 
 ### 7.1 The terms
 
-A `register` variable is nothing but its register, and "an
-assignment is the `mov` into the register" (`backend.md` chapter 4):
-the value is computed wherever the register stack puts it, and then
-moved. The *destination* is the register an
-instruction writes. The question is whether the value is computed in
-the variable's own register, so that the `mov` goes.
+A `register` variable is nothing but its register: "an assignment to
+it writes the register, a read of it is the register as an operand"
+(`backend.md` chapter 4). The *destination* is the register an
+instruction writes. The question is where the value assigned is
+computed: in the variable's own register, so that no `mov` follows,
+or in whichever register the register stack gives it, with a `mov`
+into the variable after.
 
 ### 7.2 What the ancestor does
 
@@ -1556,14 +1557,39 @@ straight into the left (`table.s:862-865`):
 ```
 
 so `r = y` with `r` in `r4` is `mov _y,r4`. For an operation,
-`sreorder()` rewrites the tree (`c10.c:836-837`):
+`sreorder()` rewrites the tree, by its comment (`c10.c:836-837`):
 
 ```c
  * Moreover, expressions like "reg = x+y" are best done as
  * "reg = x; reg =+ y" (so long as "reg" and "y" are not the same!).
 ```
 
-It refuses in two cases (`c10.c:876-881`):
+It takes an assignment to a name. It refuses at once when the name is
+no register variable, when it is a `char`, or when the right side is
+floating. The operators it rewrites are `+`, `-`, `&`, `&~`, `|`, `^`
+and the two shifts, and `*` only by a power of two, which `pow2()`
+first makes a shift (`c10.c:860-875`):
+
+```c
+		case ASSIGN:
+			if (p1->class != REG||p1->type==CHAR||isfloat(p->tr2))
+				return(0);
+			if (p->op==ASSIGN) switch (p->tr2->op) {
+			case TIMES:
+				if (!ispow2(p->tr2))
+					break;
+				p->tr2 = pow2(p->tr2);
+			case PLUS:
+			case MINUS:
+			case AND:
+			case ANDN:
+			case OR:
+			case EXOR:
+			case LSHIFT:
+			case RSHIFT:
+```
+
+It refuses in two more cases (`c10.c:876-881`):
 
 ```c
 				p1 = p->tr2->tr2;
@@ -1580,11 +1606,14 @@ It refuses in two cases (`c10.c:876-881`):
 - the right operand names the variable, as itself or as the base
   register of its address, `*r` or `r->f`.
 
-Worked out by hand, `r = x + y` with `r` in `r4` is `mov _x,r4; add
-_y,r4`. The variable holds `x` between the two instructions, and the
-two conditions make sure that nothing reads it there.
+Otherwise it compiles `reg = x` for its effect, and nothing when `x`
+is the variable itself (`c10.c:884-887`), and makes the node `reg =+
+y` (`c10.c:888-889`). Worked out by hand, `r = x + y` with `r` in
+`r4` is `mov _x,r4; add _y,r4`. The variable holds `x` between the two
+instructions, and the two conditions make sure that nothing reads it
+there.
 
-### 7.3 What rcc writes
+### 7.3 What rcc wrote before
 
 ```c
 int
@@ -1597,8 +1626,8 @@ f(int a, int b)
 }
 ```
 
-On x86-64 the sum is computed in `eax` and moved; its right operand
-is the instruction's own, by chapter 4:
+On x86-64 the sum was computed in `eax`, its right operand the
+instruction's own by chapter 4, and moved:
 
 ```
 	movl	-12(%rbp), %eax
@@ -1616,7 +1645,7 @@ and on aarch64 in `w0`, and moved:
 ```
 
 A declaration's initializer, `register int x = m;` in `regflags()` of
-chapter 5, is loaded and moved, on x86-64:
+chapter 5, was loaded and moved, on x86-64:
 
 ```
 	movl	-12(%rbp), %eax
@@ -1630,21 +1659,30 @@ and on aarch64:
 	mov	w19, w0
 ```
 
-### 7.4 The form rcc takes
+### 7.4 What rcc writes
 
-rcc takes the ancestor's rule: the variable's register is the
-destination wherever the last instruction is the one that writes it.
-The step is not in the tree, so every listing of this section is
-written by hand.
-
-A load goes straight into the variable on both targets: `ldr w19,
-[x29, #24]` on aarch64, and on x86-64:
+The variable's register is the destination of the value assigned to
+it, where the machine lets the last instruction be the one that
+writes it, and a declaration's initializer is the same (`backend.md`
+chapter 4, `aarch64.md` chapter 4). A load goes into the register on
+both targets, an extending load included. `regflags()`'s initializer
+on x86-64:
 
 ```
 	movl	-12(%rbp), %ebx
 ```
 
-On aarch64 an operation's destination is the variable:
+and on aarch64:
+
+```
+	ldr	w19, [x29, #24]
+```
+
+On aarch64 the row that computes the value writes the variable by its
+last instruction, wherever that instruction is the row's only write
+of its destination. An instruction there names its destination apart
+from its sources, so the variable is written after every operand is
+read, and the rule puts no condition on the operands. `f()`:
 
 ```
 	ldr	w0, [x29, #24]
@@ -1652,45 +1690,164 @@ On aarch64 an operation's destination is the variable:
 	add	w19, w0, w1
 ```
 
-In these the last instruction writes the variable after it has read
-every operand, so the variable never holds an intermediate value. G13
-and 6.7 are as they are.
-
-x86-64's operation writes the variable first, since an instruction
-of two addresses writes its left operand. The left operand is loaded
-into the variable's register, and the instruction takes the right
-operand where it lives (chapter 4):
+On x86-64 an instruction of two addresses writes its left operand. So
+the operation is the left operand loaded into the variable's register
+and the instruction written on it, the right operand where it lives
+(chapter 4):
 
 ```
 	movl	-12(%rbp), %ebx
 	addl	-16(%rbp), %ebx
 ```
 
-The variable holds `a` before the right operand is read. So the form
-takes the ancestor's two conditions: the right operand is a leaf, and
-it does not name the variable, which `names()` in `src/c1-common.cc`
-answers. Any other right operand is computed as it is now and moved.
-`preserve()` in `src/c1-x86-64.cc`, which copies every held read of
-the variable before a write, runs before that first write.
+The variable holds `a` before the right operand is read. So x86-64
+takes the ancestor's two conditions on the right operand. It is a
+leaf: a constant, the read of a named object, a register variable or
+`*` of a named pointer, read through the parser's conversions, so
+that a promoted `char` is one. And it does not name the variable, as
+itself or as the base of its address. `operates_in()` in
+`src/c1-x86-64.cc` asks both, the second by `names()` in
+`src/c1-common.cc`. The operators are `+`, `-`, `&`, `|`, `^`, `*`
+and the shifts, on the variable's own type. rcc takes `*` by any
+operand, where the ancestor took a power of two alone: `imul` writes
+any register, and the PDP-11's `mul` wants an odd one, "for integer
+multiply, R must be odd" (`table.s:570`).
 
-Per place, one instruction:
+The two targets thus part for the same source. Two shapes the
+conditions refuse, and a third function for the left operand:
 
-| Case | Instructions | Bytes |
+```c
+int g(void);
+
+int
+nested(int a, int b, int c)
+{
+	register int r;
+
+	r = a + (b + c);
+	return r;
+}
+
+int
+named(int a, int b)
+{
+	register int r = b;
+
+	r = a - r;
+	return r;
+}
+
+int
+called(int a)
+{
+	register int r;
+
+	return r = g() + a;
+}
+```
+
+x86-64 computes `nested()` and `named()` in `eax` and moves the
+result, as it did:
+
+```
+	movl	-12(%rbp), %eax
+	movl	-16(%rbp), %ecx
+	addl	-20(%rbp), %ecx
+	addl	%ecx, %eax
+	movl	%eax, %ebx
+```
+
+```
+	movl	-12(%rbp), %eax
+	subl	%ebx, %eax
+	movl	%eax, %ebx
+```
+
+aarch64 writes the variable in both:
+
+```
+	ldr	w0, [x29, #24]
+	ldr	w1, [x29, #28]
+	ldr	w2, [x29, #32]
+	add	w1, w1, w2
+	add	w19, w0, w1
+```
+
+```
+	ldr	w0, [x29, #24]
+	sub	w19, w0, w19
+```
+
+On x86-64 the left operand has a boundary too. It must reach the
+variable's register by an instruction it has in any case: its load,
+its constant, the operation again, the variable itself, which is
+there already, or the copy of another register variable's read
+(`loads_into()` in `src/c1-x86-64.cc`). Any other left operand, a
+call's result or a division, leaves the whole assignment computed
+elsewhere and moved. `called()` on x86-64:
+
+```
+	call	g@PLT
+	addl	-12(%rbp), %eax
+	movl	%eax, %ebx
+```
+
+Moved into `ebx` before the `addl`, the call's result would leave the
+assignment's value in the variable's register, and the `return` would
+copy it back into `eax`: one instruction more (`backend.md` chapter
+4). On aarch64 the `add` writes the variable, `add w19, w0, w1`, and
+the `return` reads it back, `mov w0, w19`.
+
+Other rows keep the `mov`, by `backend.md` chapter 4 and `aarch64.md`
+chapter 4:
+
+- on both targets, a call's result, the value of `&&`, `||` and `?:`,
+  which two paths write, another register variable's read, and a
+  value converted into a narrow or an `unsigned` variable;
+- on x86-64, also a division and a remainder, whose registers are
+  pinned (4.6), `-` and `~`, a comparison's value, and an address
+  formed by `lea`;
+- on aarch64, also an address formed by two instructions, a step's
+  value, which its row writes before its store, and a load that steps
+  the variable's own register as its base, which cannot also be the
+  load's data register.
+
+The queue holds the rows still to decide.
+
+### 7.5 What it buys and what it costs
+
+Per place where the rule applies, one instruction:
+
+| Case | x86-64 | aarch64 |
 |---|---|---|
-| x86-64, the operation | 3 → 2 | 8 → 6 |
-| x86-64, the load | 2 → 1 | 5 → 3 |
-| aarch64, the operation | 4 → 3 | 16 → 12 |
-| aarch64, the load | 2 → 1 | 8 → 4 |
+| `r = a + b` | 3 → 2 instructions, 8 → 6 bytes | 4 → 3, 16 → 12 |
+| `register int x = m;` | 2 → 1, 5 → 3 | 2 → 1, 8 → 4 |
+| `r = a + (b + c)` | unchanged, 5 and 13 | 6 → 5, 24 → 20 |
+| `r = a - r` | unchanged, 3 and 7 | 3 → 2, 12 → 8 |
 
-The step changes `assign_register()` and `register_decl()` of each
-generator, which hand their register down. The survey's pattern for
-a value moved into a variable's register finds 4 pins on each target,
-in 16 places: 9 loads and 7 operations.
+The rule is the second exception to 6.1's rule that nothing looks at a
+node's neighbours (`backend.md` chapter 13, call 16): the assignment
+hands its register to the row of its right side. G13 holds. On aarch64
+the variable is written after every operand is read, and on x86-64 the
+two conditions make sure that nothing reads it between its first write
+and the instruction. `preserve()` copies the held reads of the
+variable before that first write, so `x = r + (r = a + b)` adds the
+old `r` (`backend.md` chapter 4). Literalness holds: every operation
+the source writes is still its instruction, and the assignment is that
+instruction's destination.
 
-### 7.5 Where it stands
+The step's count, over the cost corpus, the oracle's corpus and the
+benchmark programs: 7 x86-64 listings changed, 943 instruction lines
+to 915, and 11 aarch64 listings, 1827 to 1789; no listing of the
+oracle's corpus changed. Four cost pins moved on each target,
+`condition-flags`, `register-blocks`, `register-compare` and
+`register-loop`, and the cost program `register-destination` pins the
+rule.
 
-rcc takes C5 on both targets, by the ancestor's rule. It is not in
-the tree yet; the queue holds the step.
+### 7.6 Where it stands
+
+C5 is in rcc on both targets: by the ancestor's rule on x86-64, and
+with no condition on the operands on aarch64.
 
 ## 8. An `if` whose body is a jump (C6)
 
@@ -2078,8 +2235,8 @@ Written by hand, the short forms are `xorl %eax, %eax`, `incl
 also writes the flags, which `movl` does not (`backend.md` 7.1), so
 it could not stand between an instruction whose flags a condition
 reads and its jump (chapter 5). The survey's patterns find `movl $0`
-into a register in 28 x86-64 pins (89 places), a step of 1 in 39
-(95) and `cmpl $0` of a register in 14 (41), overlapping.
+into a register in 28 x86-64 pins (89 places), a step of 1 in 40
+(96) and `cmpl $0` of a register in 14 (41), overlapping.
 
 aarch64 took its zero forms on the ancestor's ground, `cbz` for the
 test and `wzr` for the store (calls 3 and 4), and there they save an
@@ -2288,11 +2445,11 @@ What does not carry:
 | The division's two register rules | x86-64 | 12 → 8 instructions in `matmul`'s statement, with C3; 11 → 6 in `a + b / c`, with C1 | moved 3 | in the tree |
 | C2, the flags an instruction already set | x86-64 | two or three instructions per condition of 5.5, C1's operand included, and a register in two of the five | moved 1, 203 instruction lines to 198 | in the tree |
 | C3, the conversion made by the load | both | one instruction per place; 2 bytes on x86-64, 4 on aarch64 | moved 18 x86-64 (44 places), 6 aarch64 (8) | in the tree |
-| C5, a register variable as the destination | both | one instruction per place | 4 per target, 16 places | taken, not yet written |
+| C5, a register variable as the destination | both | one instruction per place; on aarch64 also where x86-64's two conditions refuse | moved 4 per target; 7 x86-64 listings, 943 instruction lines to 915, and 11 aarch64, 1827 to 1789 | in the tree |
 | C6, an `if` whose body is a jump | both | one jump and one label per place; two jumps with an `else` on x86-64 | moved 3 per target, 6 places | in the tree |
 | C4, a step for its value as the memory form | x86-64 | two instructions, four bytes, one register | 3 (5 places); at most 16 (33) | left alone |
 | C9, `!` over a comparison as a value | both | three instructions on x86-64, two on aarch64 | none | left alone |
-| C7, the short forms for 0 and 1 | x86-64 | bytes only: 3, 1 and 1 | 28 (89), 39 (95), 14 (41) | left alone |
+| C7, the short forms for 0 and 1 | x86-64 | bytes only: 3, 1 and 1 | 28 (89), 40 (96), 14 (41) | left alone |
 
 For a mechanism in the tree, the pins are those it moved. For the
 others, they are the places the survey's pattern finds in the pins as
@@ -2399,18 +2556,19 @@ is not recalled: `backend.md` 7.1 quotes Intel's manual for each.
   citation without a quote names the lines read.
 - "rcc writes" is a listing `rcc -S` wrote, at the tree this page
   describes. An earlier listing is the compiler's from before the
-  mechanisms of chapters 4, 5, 6 and 8 were built.
+  mechanisms of chapters 4, 5, 6 and 8 were built, or, in chapter 7,
+  from just before its own.
 - A form rcc does not write is a listing written by hand, and said
-  to be so: chapter 7's, which rcc takes and has not built, and the
-  forms it leaves alone, chapter 9's and aarch64's `tst` in 5.4.
+  to be so: the forms it leaves alone, chapter 9's and aarch64's
+  `tst` in 5.4.
 - A PDP-11 listing is worked out by hand from the rows; none was run.
 - The two orders of 2.4 were assembled and run on an aarch64 Linux
   machine, the one in `delay()`'s order written by hand.
 - Instructions and bytes are `llvm-mc`'s encodings of each snippet,
   LLVM 23.1.3, a snippet being lines cut from a listing or written by
-  hand. The pins a mechanism in the tree moved are the counts its
-  commit records. For the others, the survey's script counts the
-  pins of the cost corpus and of the oracle's corpus, 124 on each
+  hand. The pins and listings a mechanism in the tree moved are the
+  counts of its step. For the others, the survey's script counts the
+  pins of the cost corpus and of the oracle's corpus, 125 on each
   target, by the pattern each form changes. The table's figures are
   a script's count of `table.s`.
 - The one citation of ISO C is 6.5.1p2, N3220's numbering.

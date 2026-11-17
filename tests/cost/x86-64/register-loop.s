@@ -22,13 +22,9 @@ sum:
 .Lsum.2:
 	cmpl	%ebx, %r13d
 	jge	.Lsum.4
-	movl	%r12d, %eax
-	addl	%r13d, %eax
-	movl	%eax, %r12d
+	addl	%r13d, %r12d
 .Lsum.3:
-	movl	%r13d, %eax
-	addl	$1, %eax
-	movl	%eax, %r13d
+	addl	$1, %r13d
 	jmp	.Lsum.2
 .Lsum.4:
 	movl	%r12d, %eax

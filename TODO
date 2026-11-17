@@ -22,35 +22,6 @@ assembles and links. The reasons are =docs/findings.md= and
 in =docs/design-calls.md=. The chapter holds c1's own defects on both
 targets; the second target's design is =docs/aarch64.md=.
 
-** TODO A value assigned to a =register= variable is computed elsewhere and moved
-
-An assignment to a =register= variable is the =mov= into its register
-(=backend.md= chapter 4). ~r = a + b~ computes the sum in =eax= and
-ends in =movl %eax, %ebx=, on aarch64 in =w0= and =mov w19, w0=, and
-the initializer of ~register int x = m;~ is a load and a move. The
-Seventh Edition compiler computed the value in the variable. A load
-is =efftab='s =move3=, =mov _y,r4=. An operation is rewritten by
-=sreorder()= in =c10.c=, ~reg = x + y~ as ~reg = x; reg =+ y~, unless
-the right operand is no leaf (a name, a constant or =*= of a name),
-or names the variable as itself or as the base of its address.
-
-Fix: decided, that compiler's rule. The variable's register is the
-destination wherever the last instruction is the one that writes it:
-a load on both targets, =movl -12(%rbp), %ebx= and =ldr w19, [x29,
-#24]=, and aarch64's operation, =add w19, w0, w1=. On x86-64 an
-operation is computed in the variable's register, the left operand
-loaded into it and the instruction written on it, under that
-compiler's two conditions: the right operand is a leaf, and it does
-not name the variable. Any other right operand is computed as today
-and moved. =preserve()= runs before the first write of the variable.
-=assign_register()= and =register_decl()= of each generator hand the
-register down.
-
-Check: a cost program with the load, the operation and the two
-refused shapes, pinned on both targets; no pin of the cost corpus
-keeps a move into a variable's register after a load or after an
-operation the rule covers.
-
 ** TODO x86-64: a remainder moves from =rdx= into the dividend's register
 
 A division leaves its quotient in =rax= and its remainder in =rdx=,
@@ -156,6 +127,42 @@ of the machine:
 Fix: decide each.
 
 Check: a row of =operand= for each, agreeing with its decision.
+
+** TODO Six rows beside a register variable's destination keep their =mov=
+
+A =register= variable is the destination of the value computed for
+it (=backend.md= chapter 4, =aarch64.md= chapter 4). Six rows next to
+that rule compute the value elsewhere and move it, each for a reason
+of the rule's wording and not of the machine:
+
+- x86-64, an address: ~p = buf~ is =leaq buf(%rip), %rax; movq %rax,
+  %rbx=, though =lea= names its destination apart from its sources.
+  Pointer arithmetic is the same row: ~p = q + n~ ends =leaq
+  (%rax,%rcx,4), %rax; movq %rax, %rbx=, and ~p = p + 1~ is =movq
+  %rbx, %rax; addq $4, %rax; movq %rax, %rbx=, where ~p += 1~ is
+  =addq $4, %rbx=;
+- x86-64, =-= and =~=: ~r = -x~ is the load, =negl %eax= and =movl
+  %eax, %ebx=; an instruction of one address has no right operand to
+  put a condition on;
+- x86-64, a comparison's value: ~r = x < y~ ends =setl %al; movzbl
+  %al, %eax; movl %eax, %ebx=;
+- x86-64, an element by a constant index as the right operand: ~r =
+  x + a[3]~ is =addl a+12(%rip), %eax; movl %eax, %ebx=. The leaf of
+  the rule is a constant, a name or =*= of a name, and ~a[3]~ is one
+  operand that evaluates nothing;
+- aarch64, an address formed by two instructions: ~p = buf~ is =adrp
+  x0, buf; add x0, x0, :lo12:buf; mov x19, x0=, and an address
+  through the GOT the same. The row writes its destination twice,
+  and reads no operand between;
+- both targets, a conversion into an =unsigned= or a narrow variable:
+  ~register unsigned u = i;~ is =movl -20(%rbp), %eax; movl %eax,
+  %ebx= and =ldr w0, [x29, #32]; mov w19, w0=, where the load into
+  the register leaves the same bits.
+
+Fix: decide each.
+
+Check: a function of =register-destination= for each, agreeing with
+its decision.
 
 ** TODO =c1.cc= includes =c1-common.hh= and uses nothing of it
 
@@ -303,10 +310,14 @@ quotes =andq $1, %rax= on a copy. The operand in memory changes
 every x86-64 listing of =tests/perf=: the inner loop of matmul as
 tuned is ten instructions, =movl (%r13), %eax; imull (%r14), %eax=,
 where the paragraph counts eleven. The registers chosen for a
-division and a shift change matmul, sieve and fib once more. The times in the tables, the ratios the tl;dr draws from them and the
-listings the chapter's paragraphs quote are those of the code before
-it. The steps that follow it on x86-64 change the same listings
-again.
+division and a shift change matmul, sieve and fib once more. A
+register variable as the destination of its value changes collatz,
+matmul and sort as tuned on x86-64, and those with sieve and strings
+as tuned on aarch64: collatz's halving is =sarq $1, %r14=, where the
+paragraph quotes the shift of a copy and the move back. The times in
+the tables, the ratios the tl;dr draws from them and the listings
+the chapter's paragraphs quote are those of the code before it. The
+steps that follow it on x86-64 change the same listings again.
 
 Fix: =make bench= three times on each machine after the last of
 those steps, the tables and the sentences that read the listings

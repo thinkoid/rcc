@@ -14,8 +14,7 @@ same:
 	str	x19, [x29, #16]
 	.cfi_offset w19, -16
 	str	w0, [x29, #24]
-	ldr	w0, [x29, #24]
-	mov	w19, w0
+	ldr	w19, [x29, #24]
 	cmp	w19, w19
 	cset	w0, eq
 	b	.Lsame.1

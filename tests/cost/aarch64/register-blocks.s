@@ -20,17 +20,12 @@ blocks:
 	mov	w19, w0
 	mov	w20, #0
 	mov	w0, #2
-	mul	w0, w19, w0
-	mov	w21, w0
-	add	w0, w20, w21
-	mov	w20, w0
+	mul	w21, w19, w0
+	add	w20, w20, w21
 	mov	w0, #3
-	mul	w0, w19, w0
-	mov	w21, w0
-	add	w0, w20, w21
-	mov	w20, w0
-	add	w0, w20, #1
-	mov	w22, w0
+	mul	w21, w19, w0
+	add	w20, w20, w21
+	add	w22, w20, #1
 	mov	w0, w22
 	b	.Lblocks.1
 .Lblocks.1:

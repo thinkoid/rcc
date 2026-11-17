@@ -115,8 +115,9 @@ void data(std::ostream &,
 // register variable is borrowed (backend.md 6.7): variable names it, and
 // reg is the variable's register, which the value does not own.  A
 // borrowed read is never spilled or freed, no row writes its register
-// but a compound assignment's in place, and it survives a call, since
-// the register is callee-saved.  across counts the branches whose paths
+// but one an assignment to the variable hands it (into_t) and a
+// compound assignment's in place, and it survives a call, since the
+// register is callee-saved.  across counts the branches whose paths
 // the value is held across, which may not move it (backend.md 6.7).
 struct held_t
 {
@@ -134,6 +135,19 @@ struct held_t
 struct value_t
 {
     int id = -1;
+};
+
+// A register variable as the destination of the value computed for it
+// (backend.md chapter 4): an assignment to it, or its initializer,
+// hands the variable to the row at the top of the right operand, which
+// computes the value in the variable's register where the target lets
+// it and that leaves the register the variable's representation.
+// taken says the row did; otherwise the value is elsewhere, and the
+// assignment moves it in.
+struct into_t
+{
+    const symbol_t *variable;
+    bool taken = false;
 };
 
 // A statement a break jumps out of: the label past its end, and for a

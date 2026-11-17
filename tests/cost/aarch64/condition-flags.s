@@ -235,8 +235,7 @@ test_variable:
 	.cfi_offset w19, -16
 	str	w0, [x29, #24]
 	str	w1, [x29, #28]
-	ldr	w0, [x29, #24]
-	mov	w19, w0
+	ldr	w19, [x29, #24]
 	ldr	w0, [x29, #28]
 	and	w0, w19, w0
 	cbz	w0, .Ltest_variable.2
@@ -377,8 +376,7 @@ add_to_register:
 	.cfi_offset w19, -16
 	str	w0, [x29, #24]
 	str	w1, [x29, #28]
-	ldr	w0, [x29, #24]
-	mov	w19, w0
+	ldr	w19, [x29, #24]
 	ldr	w0, [x29, #28]
 	add	w19, w19, w0
 	cbz	w19, .Ladd_to_register.2
@@ -519,8 +517,7 @@ sub_from_register:
 	.cfi_offset w19, -16
 	str	w0, [x29, #24]
 	str	w1, [x29, #28]
-	ldr	w0, [x29, #24]
-	mov	w19, w0
+	ldr	w19, [x29, #24]
 	ldr	w0, [x29, #28]
 	sub	w19, w19, w0
 	cbz	w19, .Lsub_from_register.2
@@ -661,8 +658,7 @@ and_to_register:
 	.cfi_offset w19, -16
 	str	w0, [x29, #24]
 	str	w1, [x29, #28]
-	ldr	w0, [x29, #24]
-	mov	w19, w0
+	ldr	w19, [x29, #24]
 	ldr	w0, [x29, #28]
 	and	w19, w19, w0
 	cbz	w19, .Land_to_register.2
@@ -803,8 +799,7 @@ or_to_register:
 	.cfi_offset w19, -16
 	str	w0, [x29, #24]
 	str	w1, [x29, #28]
-	ldr	w0, [x29, #24]
-	mov	w19, w0
+	ldr	w19, [x29, #24]
 	ldr	w0, [x29, #28]
 	orr	w19, w19, w0
 	cbz	w19, .Lor_to_register.2
@@ -945,8 +940,7 @@ xor_to_register:
 	.cfi_offset w19, -16
 	str	w0, [x29, #24]
 	str	w1, [x29, #28]
-	ldr	w0, [x29, #24]
-	mov	w19, w0
+	ldr	w19, [x29, #24]
 	ldr	w0, [x29, #28]
 	eor	w19, w19, w0
 	cbz	w19, .Lxor_to_register.2
@@ -1080,8 +1074,7 @@ inc_register:
 	str	x19, [x29, #16]
 	.cfi_offset w19, -16
 	str	w0, [x29, #24]
-	ldr	w0, [x29, #24]
-	mov	w19, w0
+	ldr	w19, [x29, #24]
 	add	w19, w19, #1
 	cbz	w19, .Linc_register.2
 	mov	w0, #1
@@ -1214,8 +1207,7 @@ dec_register:
 	str	x19, [x29, #16]
 	.cfi_offset w19, -16
 	str	w0, [x29, #24]
-	ldr	w0, [x29, #24]
-	mov	w19, w0
+	ldr	w19, [x29, #24]
 	sub	w19, w19, #1
 	cbz	w19, .Ldec_register.2
 	mov	w0, #1

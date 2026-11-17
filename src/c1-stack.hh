@@ -2,7 +2,8 @@
 
 // The register stack of backend.md 6.7: which expression register holds
 // which value, the spill and the reload, the borrowed read of a register
-// variable, and the values held where the paths of a branch diverge.
+// variable and the variable's register as a row's destination
+// (chapter 4), and the values held where the paths of a branch diverge.
 // Its text is the same for every target, but it names each target's
 // registers and state, so this is not a header in the ordinary sense: it
 // is part of a generator's text, kept in one place.  c1-x86-64.cc and
@@ -165,20 +166,61 @@ register_width(const symbol_t *sym)
     return std::max(32, integer(sym->type).width);
 }
 
+// The width a register variable's register is valid to, its
+// representation, backend.md chapter 4: the value extended by its
+// signedness to 32 bits, which the 32-bit write extends to 64 for an
+// unsigned; a long or a pointer whole.
+int
+represented(const symbol_t *sym)
+{
+    return written(register_width(sym), integer(sym->type).is_signed);
+}
+
 // A read of a register variable: its register as an operand, and no
 // instruction, backend.md 6.7.  The register holds the value as
 // establish() left it, which is what the read is valid to.
 value_t
 read(state_t &s, const symbol_t *sym)
 {
-    const auto &t = integer(sym->type);
     const int id = static_cast< int >(s.values.size());
 
-    s.values.push_back({ variable_register(sym), 0, s.age++, true,
-                         written(register_width(sym), t.is_signed), sym });
+    s.values.push_back(
+        { variable_register(sym), 0, s.age++, true, represented(sym), sym });
     ++s.live;
 
     return { id };
+}
+
+// Whether a row handed into writes the variable's register, its last
+// instruction leaving the result valid to valid: when no row has, and
+// the register is then the variable's representation, backend.md
+// chapter 4.
+bool
+takes(const into_t *into, int valid)
+{
+    return into && !into->taken && valid >= represented(into->variable);
+}
+
+// The value of a row whose last instruction wrote the variable's
+// register in place of v's: v is consumed, and the value is the
+// variable's read, as after any write of it.
+value_t
+taken(state_t &s, into_t &into, value_t v = { })
+{
+    release(s, v);
+    into.taken = true;
+
+    return read(s, into.variable);
+}
+
+// What a conversion to t hands on to the row of its operand.  The
+// conversion leaves the value valid to t's width at most (backend.md
+// 6.3, the width rule), so the operand's row leaves the variable's
+// representation only where that width holds it.
+into_t *
+through(into_t *into, const int_t &t)
+{
+    return into && t.width >= represented(into->variable) ? into : nullptr;
 }
 
 // Copies a borrowed read into the free expression register to, by mov at

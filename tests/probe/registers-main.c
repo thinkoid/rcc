@@ -157,6 +157,27 @@ compare(const char *name, long x, long y)
 
 TYPES(DECLARE_TYPE)
 
+#define DECLARE_DEST(T, N, name, op, small, large)                      \
+    BOTH(long, dest_##name##_##N, (long, long, long))                   \
+    BOTH(long, idest_##name##_##N, (long, long))
+#define DECLARE_DEST_DIVISION(T, N, name, op, small, large)             \
+    BOTH(long, dest_##name##_##N, (long, long))
+#define DECLARE_DEST_SHIFT(T, N, name, op)                              \
+    BOTH(long, dest_##name##_##N, (long, long))
+#define DECLARE_DESTINATIONS(T, N)                                      \
+    BOTH(long, load_##N, (long, long)) BOTH(long, iload_##N, (long, long)) \
+    OPERATORS(DECLARE_DEST, T, N)                                       \
+    DIVISIONS(DECLARE_DEST_DIVISION, T, N)                              \
+    SHIFTS(DECLARE_DEST_SHIFT, T, N) BOTH(long, dother_##N, (long, long))
+
+TYPES(DECLARE_DESTINATIONS)
+
+#define DECLARE_CONVERT(F, FN, T, TN)                                   \
+    BOTH(long, convert_##FN##_##TN, (long, long))
+#define DECLARE_CONVERTS(F, FN) TYPES2(DECLARE_CONVERT, F, FN)
+
+TYPES(DECLARE_CONVERTS)
+
 #define DECLARE_CAST(F, FN, T, TN) BOTH(long, cast_##FN##_##TN, (long))
 #define DECLARE_CASTS(F, FN) TYPES2(DECLARE_CAST, F, FN)
 
@@ -168,6 +189,10 @@ TYPES(DECLARE_CASTS)
     BOTH(long, parith_##E, (void *, long, int))
 
 SCALARS(DECLARE_POINTER)
+
+#define DECLARE_PDEST(E, T) BOTH(long, pdest_##E, (void *, long))
+
+SCALARS(DECLARE_PDEST)
 
 #define DECLARE_UNWRITTEN(T, N)                                         \
     BOTH(long, unwritten_##N, (void)) BOTH(long, fill_##N, (long))
@@ -204,6 +229,8 @@ BOTH(long, puwalk, (unsigned char *, int))
 BOTH(long, frame_far, (long, long))
 BOTH(long, deep_reg, (P8(long)))
 BOTH(long, deep_reg_call, (P8(long)))
+BOTH(long, own_base, (long, long))
+BOTH(long, own_step, (long))
 
 /* twelve values of the table, a different walk for each i and k */
 static void
@@ -318,6 +345,79 @@ test_casts(void)
 
 SCALARS(TEST_POINTER)
 
+/* The destinations, backend.md chapter 4: every function of a type over
+   pairs of values, c a third value; the shifts over every count below
+   32; the divisions where neither value is 0 or -1 in the type */
+#define TEST_DEST(T, N, name, op, small, large)                         \
+    CHECK(dest_##name##_##N, x, y, (x, y, w));                          \
+    CHECK(idest_##name##_##N, x, y, (x, y));
+#define TEST_DEST_DIVISION(T, N, name, op, small, large)                \
+    if (DIVIDES(T, x) && DIVIDES(T, y))                                 \
+        CHECK(dest_##name##_##N, x, y, (x, y));
+#define TEST_DEST_SHIFT(T, N, name, op)                                 \
+    for (int n = 0; n < 32; ++n)                                        \
+        CHECK(dest_##name##_##N, x, n, (x, n));
+#define TEST_DESTINATIONS(T, N)                                         \
+    static void test_destinations_##N(void)                             \
+    {                                                                   \
+        for (int i = 0; i < COUNT; ++i) {                               \
+            const long x = values[i];                                   \
+                                                                        \
+            SHIFTS(TEST_DEST_SHIFT, T, N)                               \
+                                                                        \
+            for (int j = 0; j < COUNT; ++j) {                           \
+                const long y = values[j];                               \
+                const long w = values[(i * 7 + j) % COUNT];             \
+                                                                        \
+                CHECK(load_##N, x, y, (x, y));                          \
+                CHECK(iload_##N, x, y, (x, y));                         \
+                OPERATORS(TEST_DEST, T, N)                              \
+                DIVISIONS(TEST_DEST_DIVISION, T, N)                     \
+                CHECK(dother_##N, x, y, (x, y));                        \
+            }                                                           \
+        }                                                               \
+    }
+
+TYPES(TEST_DESTINATIONS)
+
+#define TEST_CONVERT(F, FN, T, TN) CHECK(convert_##FN##_##TN, x, y, (x, y));
+#define TEST_CONVERTS(F, FN) TYPES2(TEST_CONVERT, F, FN)
+
+static void
+test_converts(void)
+{
+    for (int i = 0; i < COUNT; ++i) {
+        for (int j = 0; j < COUNT; j += 3) {
+            const long x = values[i];
+            const long y = values[j];
+
+            TYPES(TEST_CONVERTS)
+        }
+    }
+}
+
+/* the register pointers at every index, on B and on B + 5 */
+#define TEST_PDEST(E, T)                                                \
+    MCHECK(pdest_##E, k, 0, (B, k));                                    \
+    MCHECK(pdest_##E, k, 5, (B + 5, k));
+
+static void
+test_pointer_destinations(void)
+{
+    for (int i = 0; i < INDEX_COUNT; ++i) {
+        const long k = indexes[i];
+
+        SCALARS(TEST_PDEST)
+    }
+
+    for (int i = 0; i < COUNT; ++i) {
+        CHECK(own_step, values[i], 0, (values[i]));
+
+        for (int j = 0; j < COUNT; ++j)
+            CHECK(own_base, values[i], values[j], (values[i], values[j]));
+    }
+}
+
 /* G5: the fills include a byte, a half and a word whose sign bit is
    set, and patterns whose bits above any narrow width are not the
    extension of the bits below */
@@ -403,6 +503,12 @@ main(void)
     TYPES(RUN)
 
     test_casts();
+
+#define RUN_DESTINATIONS(T, N) test_destinations_##N();
+    TYPES(RUN_DESTINATIONS)
+
+    test_converts();
+    test_pointer_destinations();
 
 #define RUN_POINTER(E, T) test_pointer_##E();
     SCALARS(RUN_POINTER)
