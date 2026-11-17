@@ -894,9 +894,7 @@ Where the form does not apply:
   `add`;
 - an object as the left operand is the instruction's own only
   against a constant, which has no evaluation: `g < f()` loads `g`
-  before the call, since `f` may write `g`;
-- `4 * x` holds the 4 first, as the source orders it, `movl $4,
-  %eax; imull -4(%rbp), %eax`.
+  before the call, since `f` may write `g`.
 
 Four rows beside the arithmetic take the form too. Pointer arithmetic
 names the operand its `add` or `sub` takes as it is: `p - q` is `subq
@@ -907,7 +905,10 @@ instruction, so in `u + i` the `int` is the `addl`'s operand, `addl
 `cmp` of the object, as the condition's is: `return x < 5;` is `cmpl
 $5, -4(%rbp); setl %al`, and `return 5 < x;` the mirrored `cmpl $5,
 -4(%rbp); setg %al`. A multiply by a constant is the three-operand
-`imul` with the object as its source, `imull $4, -4(%rbp), %eax`.
+`imul` with the object as its source, `imull $4, -4(%rbp), %eax`, and
+`4 * x` is the same: a constant on the left of `+`, `*`, `&`, `|` or
+`^` is taken on the right, as `insert()` puts the operand of the
+lowest degree last in a commutative chain (`c12.c:978-986`).
 
 The form moved 54 x86-64 pins, 3224 instruction lines to 3072: 78
 loads of a right operand, 65 of a left one, three moves of a divisor,

@@ -593,16 +593,25 @@ the old value in `L`, the new value takes a fresh register, `ldr w0,
 old one is gone. On a register variable it is not the same case. The
 variable is written in place, so G13's copy of chapter 4 stays and is
 the value: `mov w0, w19; add w19, w19, #1`. Left first is G13; a
-commutative operator's operands are not swapped.
+commutative operator's operands are not swapped, but for a constant.
 
-A comparison with a constant on the left is the mirrored one, as on
-x86-64 (`backend.md` 6.1): `5 < x` is `ldr w0, [x29, #16]; cmp w0,
-#5` and `b.le`, the constant `cmp`'s immediate, and `0 == p` is `cmp
-x0, #0`. A constant `cmp` does not encode is mirrored too, and held
-after the right operand, `mov w1, #5000; cmp w0, w1`: it costs its
-`mov` in either order, and no instruction here names an object in
-memory, so the mirror never costs an instruction. x86-64 keeps the
-order for a constant no immediate holds (`backend.md` 6.1).
+A constant on the left of a comparison or of `+`, `*`, `&`, `|` or
+`^` is taken on the right, as on x86-64 (`backend.md` 6.1): a
+comparison is mirrored, `5 < x` is `ldr w0, [x29, #16]; cmp w0, #5`
+and `b.le`, the constant `cmp`'s immediate, and `0 == p` is `cmp x0,
+#0`; the other five commute, `5 + x` is `ldr w0, [x29, #16]; add w0,
+w0, #5` and `7 & x` the load and `and w0, w0, #0x7`. A constant the
+instruction does not encode, and `mul`'s, which takes no immediate,
+is taken on the right too, and held after the right operand, `mov w1,
+#5000; cmp w0, w1`, `ldr w0, [x29, #16]; mov w1, #4; mul w0, w0, w1`
+for `4 * x`. It costs its `mov` in either order, and no instruction
+here names an object in memory, so the exchange never costs an
+instruction; on the right the constant is held across nothing, so `5
+* f()` is `bl f` and the `mov` after it, where the source's order
+would hold the 5 across the call in a spill slot. x86-64 keeps the
+order for a constant no immediate holds, and for one whose order is
+the operation on a register variable's register (`backend.md` 6.1).
+`-`, `/`, `%` and the shifts keep their order.
 
 ### 6.2 Depth and spill
 
@@ -621,12 +630,12 @@ For a 32-bit operation (`w` names) or a 64-bit one (`x` names).
 | a global the file defines | `adrp x16, sym`, then the load or the store of 2.2 through `[x16, :lo12:sym]`, wherever a row reads or writes a slot: `ldr w0, [x16, :lo12:sym]`, `str w0, [x16, :lo12:sym]` | two instructions an access, chapter 10 |
 | a global the file only declares | `adrp L, :got:sym; ldr L, [L, :got_lo12:sym]`, its address from the GOT, then the row of `*p` through `L`: `ldr w0, [L]`, `str w1, [L]` | chapter 10; each access the source writes loads the address once |
 | a `register` variable | the register, as a source operand; as `L` of a row that writes its result, the result in a fresh `N`, `sub w0, w19, w20`, `lsl w0, w19, #3`, `add x0, x19, w20, sxtw #2` for `p + n`, `sub x0, x19, x20` for `p - q` before its `sdiv` | no instruction, and no copy (6.1) |
-| `a + b`, `a - b` | `add L, L, R`, `sub L, L, R` | G1 |
-| `a * b` | `mul L, L, R` | G1; a constant factor is first loaded, `mov R, #4` |
+| `a + b`, `a - b` | `add L, L, R`, `sub L, L, R`; a constant on the left of `+` taken on the right (6.1), `5 + x` the load and `add w0, w0, #5` | G1 |
+| `a * b` | `mul L, L, R`; a constant on the left taken on the right (6.1), `4 * x` the load, `mov w1, #4` and `mul w0, w0, w1` | G1; a constant factor is first loaded, `mov R, #4` |
 | `a / b` | `sdiv L, L, R`, `udiv L, L, R` | G4: no trap, 2.6 |
 | `a % b` | `sdiv N, L, R; msub L, N, R, L`; for `L` a register variable's read, `msub` is the last to read `R`, so its result takes the register `R` leaves, as in every row (6.1), and the quotient's register is taken and freed as before: `sdiv w1, w19, w0; msub w0, w1, w0, w19` | the machine has no remainder; `N` is taken and freed |
 | `a << b`, `a >> b` | `lsl L, L, R`, `asr`, `lsr`; a constant count is the immediate, masked to the width | G3; the count in any register |
-| `a & b`, `a \| b`, `a ^ b` | `and`, `orr`, `eor` | |
+| `a & b`, `a \| b`, `a ^ b` | `and`, `orr`, `eor`; a constant on the left as for `+` | |
 | `-a`, `~a` | `neg L, L`, `mvn L, L` | |
 | `!a` | `cmp L, #0; cset L, eq`; for an operand with stale upper bits, `tst L, #0xff` in place of the `cmp` (7.1) | as a value |
 | `a < b` and the rest, as a value | `cmp L, R; cset L, lt`; a constant on the left the mirrored comparison (6.1), `5 < x` the load and `cmp w0, #5; cset w0, gt` | `lt`, `le`, `gt`, `ge`, `eq`, `ne` signed; `lo`, `ls`, `hi`, `hs` unsigned and for pointers (G7) |
@@ -1432,15 +1441,18 @@ the twelfth came later. The answers:
     the two targets' listings part for the same source: `r = a + (b +
     c)` and `r = a - r` write the variable here and keep the `mov` on
     x86-64.
-12. **A comparison with a constant on the left is the mirrored
-    one** (6.1), as on x86-64 (`backend.md` chapter 13, call 18): `5 <
-    x` is `ldr w0, [x29, #16]; cmp w0, #5` and `b.le`, and `0 == (c &
-    1)` the `and` and `cmp w0, #0`. A constant `cmp` does not encode
-    is mirrored too, since it is held in a register in either order
-    and no instruction here names an object in memory. The cost is
-    that the two targets' listings part for a constant x86-64 holds:
-    `0x100000000L < x` loads `x` first here and the constant first
-    there.
+12. **A constant on the left is taken on the right** (6.1), of a
+    comparison and of `+`, `*`, `&`, `|` and `^`, as on x86-64
+    (`backend.md` chapter 13, call 18): `5 < x` is `ldr w0, [x29,
+    #16]; cmp w0, #5` and `b.le`, `0 == (c & 1)` the `and` and `cmp
+    w0, #0`, and `5 + x` the load and `add w0, w0, #5`. A constant the
+    instruction does not encode, and `mul`'s, is taken on the right
+    too, since it is held in a register in either order and no
+    instruction here names an object in memory; on the right it is
+    held across nothing, so `5 * f()` spills nothing. The cost is that
+    the two targets' listings part for a constant x86-64 holds:
+    `0x100000000L < x` and `0x100000000L + x` load `x` first here and
+    the constant first there.
 
 Decided by the machine, listed so that nothing is decided silently:
 

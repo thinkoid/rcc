@@ -178,9 +178,9 @@ getint:
 	cmp	w0, #57
 	b.gt	.Lgetint.12
 	ldr	x0, [x29, #16]
-	mov	w1, #10
-	ldr	x2, [x29, #16]
-	ldr	w2, [x2]
+	ldr	x1, [x29, #16]
+	ldr	w1, [x1]
+	mov	w2, #10
 	mul	w1, w1, w2
 	ldr	w2, [x29, #24]
 	sub	w2, w2, #48

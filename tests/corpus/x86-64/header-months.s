@@ -11,10 +11,9 @@ month:
 	.cfi_def_cfa_register %rbp
 	movl	%edi, -4(%rbp)
 	leaq	months(%rip), %rax
-	movl	$3, %ecx
-	movl	-4(%rbp), %edx
-	subl	$1, %edx
-	imull	%edx, %ecx
+	movl	-4(%rbp), %ecx
+	subl	$1, %ecx
+	imull	$3, %ecx, %ecx
 	movslq	%ecx, %rcx
 	addq	%rcx, %rax
 	jmp	.Lmonth.1

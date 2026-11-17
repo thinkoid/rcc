@@ -3,8 +3,8 @@
    clang -O0 under the prefix ref_; control-main.c calls both over a
    table of values and compares.  Conditions and control,
    docs/aarch64.md chapter 7: no call and no pointer, but as the right
-   operand of a comparison with a constant on the left, docs/backend.md
-   6.1. */
+   operand of a comparison or of +, *, &, | or ^ with a constant on the
+   left, docs/backend.md 6.1. */
 
 /* the integer types and the letter each takes in a function's name */
 #define TYPES(X)                                                        \
@@ -90,3 +90,20 @@
     KLEFT_OPS(X, T, N, m5, -5) KLEFT_OPS(X, T, N, 0, 0)                 \
     KLEFT_OPS(X, T, N, 5, 5) KLEFT_OPS(X, T, N, 5000, 5000)             \
     KLEFT_OPS(X, T, N, min, least) KLEFT_OPS(X, T, N, max, most)
+
+/* each of the five operators that commute with the constant k on the
+   left, and beside them -, << and >>, which do not and keep the order
+   of the source */
+#define KFIRST_OPS(X, T, N, name, k)                                    \
+    X(T, N, add_##name, +, k) X(T, N, mul_##name, *, k)                 \
+    X(T, N, and_##name, &, k) X(T, N, or_##name, |, k)                  \
+    X(T, N, xor_##name, ^, k) X(T, N, sub_##name, -, k)                 \
+    X(T, N, shl_##name, <<, k) X(T, N, shr_##name, >>, k)
+
+/* the constants on the left, KLEFTS's: negative, zero, positive, one
+   aarch64's add and its logical instructions do not encode, and the
+   type's least and greatest, a long's no 32-bit immediate holds */
+#define KFIRSTS(X, T, N, least, most)                                   \
+    KFIRST_OPS(X, T, N, m5, -5) KFIRST_OPS(X, T, N, 0, 0)               \
+    KFIRST_OPS(X, T, N, 5, 5) KFIRST_OPS(X, T, N, 5000, 5000)           \
+    KFIRST_OPS(X, T, N, min, least) KFIRST_OPS(X, T, N, max, most)

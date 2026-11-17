@@ -14,9 +14,9 @@ month:
 	str	w0, [x29, #16]
 	adrp	x0, months
 	add	x0, x0, :lo12:months
-	mov	w1, #3
-	ldr	w2, [x29, #16]
-	sub	w2, w2, #1
+	ldr	w1, [x29, #16]
+	sub	w1, w1, #1
+	mov	w2, #3
 	mul	w1, w1, w2
 	add	x0, x0, w1, sxtw
 	b	.Lmonth.1

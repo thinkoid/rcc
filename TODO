@@ -32,11 +32,16 @@ where the load could write =edx=. A =register= variable is already
 the destination of the value computed for it (=backend.md= chapter
 4); the join register is not.
 
-Fix: decide whether the second arm writes the join register where
-its last instruction can, by the rule for a register variable.
+Fix: the join is the register the consumer of the conditional
+names, where it names one, and each arm writes it where its last
+instruction can: ~return c ? x % y : y;~ joins in =eax=, the first
+arm's one move the return's, the second arm its load. Built with
+the copy of a =register= variable for its consumer, and measured
+apart from it.
 
-Check: the listing of ~c ? x % y : y~, pinned, and the count of
-listings over =tests= that change, none longer.
+Check: the listing of ~c ? x % y : y~, pinned at 16 instructions
+with no move after the join, and the count of listings over =tests=
+that change, none longer.
 
 ** TODO x86-64: a value extended for a consumer in another register is extended, then moved
 
@@ -97,18 +102,13 @@ Fix: 7.2 states the rule c1 applies, or c1 applies the stated one.
 Check: a cost program with a =main= ending in each shape, pinned, and
 7.2 agreeing with the pins.
 
-** TODO Four more rows hold a value the machine could name in place
+** TODO Three more rows hold a value the machine could name in place
 
 On x86-64 an object in memory of the operation's width is the
-instruction's own operand (=backend.md= 6.1). Four rows next to that
-rule hold a value in a register that the machine could name in
+instruction's own operand (=backend.md= 6.1). Three rows next to
+that rule hold a value in a register that the machine could name in
 place:
 
-- a constant on the left of a commutative operator: ~4 * x~ is
-  =movl $4, %eax; imull -4(%rbp), %eax=, where ~x * 4~ is =imull $4,
-  -4(%rbp), %eax=; =+=, =&=, =|= and =^= write their constant first
-  too, at no cost in instructions. A comparison's constant on the
-  left is already taken as one on the right (6.1);
 - the index multiply of pointer arithmetic: ~p - n~ at a size other
   than 1, and ~p + n~ at a size that is no scale, are =movq
   -16(%rbp), %rcx; imulq $4, %rcx, %rcx=, and the machine has =imulq
@@ -119,19 +119,40 @@ place:
 - an object compared with a =register= variable: ~x < r~ loads =x=,
   where =cmpl %ebx, -4(%rbp)= reads it in place.
 
-On aarch64 the first costs an instruction as well: ~5 + x~ is =mov
-w0, #5; ldr w1, [x29, #16]; add w0, w0, w1=, where ~x + 5~ is the
-load and =add w0, w0, #5=. With a call on the right, ~5 + f()~
-spills the constant across the call on both targets.
-
-Fix: each of the four takes the form the machine has. A constant on
-the left of =+=, =*=, =&=, =|= and =^= is taken as one on the right
-is, all five alike and on both targets, under the rule of a
-comparison's constant (=backend.md= 6.1): on x86-64 where the
-instruction takes it as an immediate.
+Fix: each of the three takes the form the machine has.
 
 Check: a row of =operand= for each, with no register held for the
-value; ~5 + x~ and ~x + 5~ have the same listing.
+value.
+
+** TODO x86-64: three rows around a constant and a register variable cost an instruction
+
+A constant on the left of a commutative operator is taken as one on
+the right is (=backend.md= 6.1). Three rows beside that rule cost an
+instruction more than their neighbour:
+
+- ~3 + p~ on an ~int *~ is =movq $3, %rax; movq -8(%rbp), %rcx; leaq
+  (%rcx,%rax,4), %rax=, where ~p + 3~ is =movq -8(%rbp), %rax; addq
+  $12, %rax=; pointer arithmetic has its own rows, which the rule
+  does not reach. aarch64 gives both the immediate;
+- ~r = c + 5~ with ~c~ a =register char= and ~r~ a =register int= is
+  =movl %ebx, %eax; addl $5, %eax; movl %eax, %r12d=, where ~r = 5 +
+  c~ is =movl $5, %r12d; addl %ebx, %r12d=: a register variable read
+  under a conversion that writes nothing is not a left operand the
+  destination rule takes, and for that the constant on the left of
+  this one shape keeps the order of the source;
+- ~x * 4~ on a =register= variable is =movl %ebx, %ecx; imull $4,
+  %ecx, %ecx=, where the three-operand form names its source,
+  =imull $4, %ebx, %ecx=.
+
+Fix: ~n + p~ with a constant ~n~ takes the immediate ~p + n~ takes;
+a register variable valid to the width is a left operand of the
+destination rule under such a conversion, and the boundary of the
+constant's rule goes; the immediate =imul= reads a register
+variable's register and writes a fresh one.
+
+Check: ~3 + p~ and ~p + 3~ have one listing, ~r = c + 5~ and ~r = 5
++ c~ one of two instructions, and ~x * 4~ on a register variable is
+one =imull=, each pinned.
 
 ** TODO Five rows beside a register variable's destination keep their =mov=
 
@@ -164,7 +185,11 @@ has read every operand", and a conversion of signedness alone, read
 and computed. A conversion that narrows is not among them: its last
 instruction is the extension and already writes the variable, and a
 load at the variable's width would read the object narrower than its
-type (G10). Decide the last three.
+type (G10). The last three take it too: the left operand of pointer
+arithmetic may be an address, which a =lea= or the GOT's load writes
+into the variable; an address that is a pointer's own value is that
+value's load or copy into the variable; and ~!x~ is =sete= and
+=movzbl= on the variable's register, as a comparison's value is.
 
 Check: a function of =register-destination= for each, agreeing with
 its decision.
@@ -180,10 +205,10 @@ char *q~ is =leaq chars(%rip), %rax; movq %rbx, %rcx; subq %rax,
 and ~return r - p[i];~ on a ~register int r~ ends =movl %ebx, %edx;
 subl (%rax,%rcx,4), %edx; movl %edx, %eax=.
 
-Fix: decide whether the copy takes the register its consumer names,
-as a =register= variable is the destination of its value
-(=backend.md= chapter 4). The second arm of ~?:~ and an extension
-moved after are entries of the same kind.
+Fix: the copy takes the register its consumer names, as a
+=register= variable is the destination of its value (=backend.md=
+chapter 4); a step of its own, with its measurement. The second arm
+of ~?:~ and an extension moved after are entries of the same kind.
 
 Check: the count over =tests= of such a copy followed by a move into
 =rax=, before and after; =ptr-diff='s =register_char= pinned.
@@ -201,19 +226,6 @@ recorded as valid to 64 bits.
 
 Check: the functions of =compare= that widen one, pinned for
 aarch64 with no =sxtw=.
-
-** TODO x86-64: a cast of signedness forgets that a truth value is valid to 64 bits
-
-A cast to =unsigned= records its value as valid to 32 bits, which
-is right of an =int= in general. Of a value that is 0 or 1 it is too
-cautious: ~(unsigned long) (unsigned) (a < b)~ writes =movl %eax,
-%eax= after the =movzbl=.
-
-Fix: decide whether a value keeps the fact that it is valid under
-both signednesses, which today only a truth value is.
-
-Check: the count over =tests= of =movl= of a register onto itself
-directly after a =movzbl= into it, before and after.
 
 ** TODO =c1.cc= includes =c1-common.hh= and uses nothing of it
 
@@ -366,7 +378,11 @@ of =matmul-tuned= before its inner loop, whose head is then at
 += n~ written into the variable's register takes an instruction out
 of that loop, which is nine instructions and 29 bytes; the chapter
 states the listing of today, and its matmul cell, 572 ms, and the
-rows of 4.2, which names a loop of 32 bytes, are of the loop of ten.
+rows of 4.2, which names a loop of 32 bytes, are of the loop of ten. A
+constant on the left taken as one on the right shortens the step
+loop of collatz on x86-64, as written by one instruction, =imulq $3,
+-48(%rbp), %rax=, and as tuned by two, =imulq $3, %r14, %r14; addq
+$1, %r14=: the cells 2293 and 473 ms are of the longer loops.
 
 Fix: =make bench= three times on the machine of the table, and the
 table and what is drawn from it taken again.
@@ -478,6 +494,20 @@ Fix: "has no slot of its own" in both places, with =backend.md= 6.7
 named for the save.
 
 Check: the sentence agrees with both pins of =g13-read-across-branch=.
+
+** TODO Some sixty lines of the documents run past 70 columns
+
+The documents wrap at 70 columns. Outside tables and listings,
+=backend.md= has 25 lines longer, =findings.md= 19, =rationale.md=
+14, =shape.md= 11, =aarch64.md= 8, =guarantees.md= 6,
+=design-calls.md= 4 and =llvm.md= 2, most at 71 or 72 and a few of
+=shape.md= past 100.
+
+Fix: each paragraph rewrapped, its words unchanged.
+
+Check: no line of =docs/*.md= outside a table or a listing is
+longer than 70 columns, and =git diff -w --word-diff= shows no word
+changed.
 
 * Tests
 

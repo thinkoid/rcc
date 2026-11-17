@@ -345,6 +345,21 @@ is_comparison(binary_op_t op)
     }
 }
 
+// Whether a and b may change places under op: +, *, &, | and ^, whose
+// value is the same either way (backend.md 6.1).
+bool
+commutes(binary_op_t op)
+{
+    switch (op) {
+    case binary_op_t::add:
+    case binary_op_t::mul:
+    case binary_op_t::bit_and:
+    case binary_op_t::bit_or:
+    case binary_op_t::bit_xor: return true;
+    default: return false;
+    }
+}
+
 // The comparison that is true exactly when op is false.
 binary_op_t
 inverse(binary_op_t op)
@@ -359,8 +374,9 @@ inverse(binary_op_t op)
     }
 }
 
-// The comparison that holds of b and a exactly when op holds of a and
-// b: 5 < x is x > 5.  The Seventh Edition compiler's maprel[].
+// The operator that holds of b and a exactly when op holds of a and b:
+// 5 < x is x > 5, and an operator that commutes is itself, 5 + x is
+// x + 5.  The Seventh Edition compiler's maprel[].
 binary_op_t
 mirrored(binary_op_t op)
 {
@@ -373,28 +389,34 @@ mirrored(binary_op_t op)
     }
 }
 
-// A comparison with its operands in the order the source has them.
-compared_t
+// An operation with its operands in the order the source has them.
+operation_t
 as_written(const binary_t &b)
 {
     return { b.op, b.lhs.get(), b.rhs.get() };
 }
 
-// Whether a comparison's left operand is a constant and its right one
-// is not (backend.md 6.1): the parser's folded constant, a literal, the
-// null pointer of 0 == p among them; an address constant, &g, is no
-// literal.
+// Whether an operation's left operand is a constant and its right one
+// is not, under an operator whose operands may change places, a
+// comparison or one that commutes (backend.md 6.1): the parser's folded
+// constant, a literal, the null pointer of 0 == p among them; an
+// address constant, &g, is no literal.  -, /, % and the shifts keep
+// their order.
 bool
 constant_first(const binary_t &b)
 {
+    if (!is_comparison(b.op) && !commutes(b.op))
+        return false;
+
     return is< literal_t >(*b.lhs) && !is< literal_t >(*b.rhs);
 }
 
-// A comparison with its constant on the left generated as the mirrored
-// one, 5 < x as x > 5 (backend.md 6.1): the constant has no evaluation,
-// so G13 has nothing to order, and the right operand is evaluated once,
-// first.  The operands' type is common, so the signedness is the same.
-compared_t
+// An operation with its constant on the left generated with the
+// operands exchanged, 5 < x as x > 5 and 5 + x as x + 5 (backend.md
+// 6.1): the constant has no evaluation, so G13 has nothing to order,
+// and the right operand is evaluated once, first.  The operands' type
+// is common, so the signedness and the width are the same.
+operation_t
 mirrored(const binary_t &b)
 {
     return { mirrored(b.op), b.rhs.get(), b.lhs.get() };

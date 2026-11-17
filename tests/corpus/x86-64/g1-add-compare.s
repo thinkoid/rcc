@@ -10,8 +10,8 @@ main:
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register %rbp
 	movl	%edi, -4(%rbp)
-	movl	$2147483646, %eax
-	addl	-4(%rbp), %eax
+	movl	-4(%rbp), %eax
+	addl	$2147483646, %eax
 	movl	%eax, -8(%rbp)
 	movl	-8(%rbp), %eax
 	addl	$1, %eax

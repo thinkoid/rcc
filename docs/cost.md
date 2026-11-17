@@ -193,7 +193,7 @@ yet.
 | `a + b`, `a - b` | `addl -8(%rbp), %eax`, `subl -8(%rbp), %eax`, the right operand's slot the instruction's operand after the left operand's load; the left operand's register is the result's | `add-sub`, `parameter` |
 | an object in memory as the right operand | of the operation's width, the instruction's own operand, and no load of its own: in `add`, `addl -24(%rbp), %eax` for a local, `addl defined(%rip), %eax` for a global the file defines, `addl (%rcx), %eax` after the GOT's load, `movq declared@GOTPCREL(%rip), %rcx`, and after `p`'s, and `addl -40(%rbp,%rcx,4), %eax` after `movslq -20(%rbp), %rcx` for `a[i]`; `subl`, `andl`, `orl`, `xorl`, `imull`, `idivl` and `cmpl` the same; an `int` under the cast to `unsigned` of `u + i` the same, `addl -8(%rbp), %ecx`, and `cmpl`, `imull` and `divl -8(%rbp)` in `signedness`; the load kept for a `char` promoted, `movsbl -5(%rbp), %ecx; addl %ecx, %eax`, an `int` widened, `movslq -12(%rbp), %rcx; addq %rcx, %rax`, a compound assignment's right operand, `movl -8(%rbp), %eax; addl %eax, -4(%rbp)`, a shift's count, `movl -8(%rbp), %ecx; shll %cl, %eax`, and an index pointer arithmetic scales, `movq -40(%rbp), %rdx; leaq (%rax,%rdx,4), %rax`; a global read before a call on the right, loaded, spilled across the call and reloaded, `movq -8(%rbp), %rcx; cmpl %eax, %ecx` (`backend.md` 6.1) | `operand` |
 | `a + 0` | `addl $0, %eax`: a constant operand is the immediate, whatever its value | `add-zero` |
-| `a * b` | `imull -8(%rbp), %eax`; by a constant, the three-operand form with the object in memory as its source and no load, `imull $3, -4(%rbp), %eax`, and `imulq $1000, -16(%rbp), %rcx` for a `long`; on a value in a register `imull $3, %eax, %eax`; `4 * x` as written, the 4 held first, `movl $4, %ecx; imull -4(%rbp), %ecx` (`backend.md` 6.1) | `mul`, `mul-three`, `operand` |
+| `a * b` | `imull -8(%rbp), %eax`; by a constant, the three-operand form with the object in memory as its source and no load, `imull $3, -4(%rbp), %eax`, and `imulq $1000, -16(%rbp), %rcx` for a `long`; on a value in a register `imull $3, %eax, %eax`; `4 * x` as `x * 4` is, `imull $4, -4(%rbp), %ecx` (`backend.md` 6.1) | `mul`, `mul-three`, `operand` |
 | `a / b`, `a % b` | `cltd; idivl -8(%rbp)` signed, `xorl %edx, %edx; divl -8(%rbp)` unsigned, the divisor's slot the operand; the quotient in `eax`, the remainder the value in `edx`, which a return moves, `movl %edx, %eax`, and a store or a next row takes from there (`backend.md` 6.5) | `div-rem`, `udiv-urem` |
 | `a % b` on a `register` variable | the left operand copied from its register to where the division wants it, `movl %ebx, %eax`, then the row above, `cltd; idivl %ecx; movl %edx, %eax`, and `xorl %edx, %edx; divl %ecx` unsigned; the variable is not written | `register-remainder` |
 | `x / 4`, `x / 7` | the divisor held in a register, `movl $4, %ecx`, since `idiv` takes no immediate, then `cltd; idivl %ecx`; no shift, no multiply by a magic constant | `div-four`, `div-seven` |
@@ -206,6 +206,7 @@ yet.
 | `a < b` as a condition | `cmpl -8(%rbp), %eax` and a jump on the inverse to the else label, `jge .Lchoose.2`; no value | `if` |
 | a condition on an object in memory and a constant | the `cmp` or `test` of the object itself, at its width, and no load: `cmpl $5, -4(%rbp); jge .Lless_constant.2` for `x < 5`, `cmpl $0, -4(%rbp); je .Lnonzero.2` for `if (x)`, `cmpb $0, -1(%rbp)` on a `char`, and `testl $1, -4(%rbp); je .Lbit.2` for `x & 1`; through a pointer the same after its load, `cmpl $0, (%rax)` (`backend.md` 7.1) | `operand`, `if-jump` |
 | a comparison with a constant on the left | the mirrored comparison, the constant the immediate on the right, and no load of it: `5 < x` on an `int` in memory is `cmpl $5, -4(%rbp); jle .Lconstant_left.2`, as `x > 5` is, and `jbe` on an `unsigned`; on a register variable `cmpl $5, %ebx`; for its value `cmpl $5, -4(%rbp); setg %al`, and no load; `0 == p` is `cmpq $0, -8(%rbp); jne .Lnull_left.2`; `0 == (c & 1)` jumps on the `test`, `testl $1, -4(%rbp); jne .Lzero_equal.2`; a constant no 32-bit immediate holds keeps the order of the source (`backend.md` 6.1) | `operand`, `condition-flags` |
+| a constant on the left of `+`, `*`, `&`, `\|` or `^` | taken as the constant on the right is, the operands' order exchanged, and no load of it: `5 + x` is `movl -4(%rbp), %eax; addl $5, %eax`, as `x + 5` is, `4 * x` `imull $4, -4(%rbp), %ecx`, `7 & x`, `7 \| x` and `7 ^ x` the load and `andl $7`, `orl $7` and `xorl $7`, and `5 + c` on a `char` `movsbl -5(%rbp), %ecx; addl $5, %ecx`; on a register variable `movl %ebx, %eax; addl $5, %eax`; `5 + f()` the `call` and `addl $5, %eax`, with no spill; into a register variable `imull $4, -12(%rbp), %ebx` for `r = 4 * a` and `addl $5, %ebx` alone for `r = 5 + r`; `if (1 & x)` `testl $1, -4(%rbp); je .Lcommuted_bit.2`; held first where it keeps the order, a constant no 32-bit immediate holds, `movabsq $4294967296, %rax; addq -8(%rbp), %rax`, and `r = 5 + c` on a register `char c`, the operation on the variable's register, `movl $5, %r12d; addl %ebx, %r12d`; `5 - x`, `40 / x` and `1 << x` keep the constant first (`backend.md` 6.1) | `operand` |
 | a condition whose operator's instruction sets the zero flag: `a + b`, `a - b`, `a \| b`, `a ^ b`, `-a`; `a & b`; `x += e`, `-=`, `&=`, `\|=`, `^=`, `++x`, `--x`; `== 0` and `!= 0` over one | the operator's instruction and `je` or `jne` on its flags, no `cmp`: `addl -8(%rbp), %eax; je .Ladd.2`, and `negl %eax; je .Lneg.2`; `&` as `test`, no value written, `testl -8(%rbp), %eax`, `testl $1, -4(%rbp)` on a parameter in its slot, and `testl -16(%rbp), %ebx` on a register variable, which is not copied; the statement's form on the object, `addl %eax, -12(%rbp)`, `addb %al, -9(%rbp)` on a `char`, `addl %eax, counter(%rip)` and `subl $1, counter(%rip)` on a global, the operation in place on a register variable, `addl %eax, %ebx`; `(a & m) == 0` is `testl -8(%rbp), %eax; jne .Lequal_zero.2`; the `cmp` stays after `imull`, `shll %cl` and a postfix step's copy of the old value, after a `register char`'s re-extension, `movsbl %bl, %ebx; cmpb $0, %bl`, and for `(a + b) < 0`, `addl -8(%rbp), %eax; cmpl $0, %eax; jge .Lnegative.2` (`backend.md` 7.1) | `condition-flags`, `if-jump` |
 | `a && b`, `a \|\| b` | jump code: each operand compared with 0 in its slot, `cmpl $0, -4(%rbp)`, and a jump, `je .Lboth.2` for `&&`, `jne` past the right operand for `\|\|`; as a value, `movl $1, %eax` and `movl $0, %eax` on the two paths | `logical` |
 | `a ? b : c` | the condition by jump code, `cmpl $0, -4(%rbp); je .Lconditional.2`, each arm into `eax`, a `jmp` past the second arm; never `cmov` | `conditional`, `select` |
@@ -296,6 +297,7 @@ bytes or more.
 | `a < b` as a condition | `cmp w0, w1` and a branch on the inverse to the else label, `b.ge .Lchoose.2`; no value | `if` |
 | a condition on an object in memory and a constant | the object loaded, then the row of any condition: `ldr w0, [x29, #16]; cmp w0, #5; b.ge .Lless_constant.2`, `cbz w0, .Lnonzero.2`, `ldrb w0, [x29, #16]; cbz w0` on a `char`, and `and w0, w0, #0x1; cbz w0, .Lbit.2` | `operand` |
 | a comparison with a constant on the left | the mirrored comparison, the constant the immediate on the right, and no `mov` of it: `5 < x` is `ldr w0, [x29, #16]; cmp w0, #5; b.le .Lconstant_left.2`, as `x > 5` is, and `b.ls` on an `unsigned`; on a register variable `cmp w19, #5`; for its value `cmp w0, #5; cset w0, gt`; `0 == p` is `ldr x0, [x29, #16]; cmp x0, #0; b.ne .Lnull_left.2`; `0 == (c & 1)` the `and`, then `cmp w0, #0; b.ne .Lzero_equal.2` (`aarch64.md` 6.1) | `operand`, `condition-flags` |
+| a constant on the left of `+`, `*`, `&`, `\|` or `^` | taken as the constant on the right is, the operands' order exchanged, and no `mov` of an immediate: `5 + x` is `ldr w0, [x29, #16]; add w0, w0, #5`, as `x + 5` is, `7 & x` the load and `and w1, w1, #0x7`, `orr` and `eor` the same; `4 * x` the load, then `mov w2, #4; mul w1, w1, w2`, and `0x100000000 + l` the load, then `mov x1, #4294967296; add x0, x0, x1`, the constant held after the right operand; on a register variable `add w0, w19, #5`; `5 + f()` `bl f; add w0, w0, #5`, with no spill; into a register variable `mul w19, w0, w1` for `r = 4 * a` and `add w19, w19, #5` alone for `r = 5 + r`; `if (1 & x)` the load, `and w0, w0, #0x1; cbz w0, .Lcommuted_bit.2`; `5 - x`, `40 / x` and `1 << x` keep the constant first (`aarch64.md` 6.1) | `operand` |
 | a condition that x86-64 jumps on its operator's flags | the value, then the test of zero: `add w0, w0, w1; cbz w0, .Ladd.2`, `and w0, w0, #0x1` and `cbz` for `a & 1`; on an object the load, the operation and the store, then `cbz w1`; a `char`'s stale upper bits `tst w1, #0xff; b.eq`; `(a & m) == 0` the comparison, `cmp w0, #0; b.ne .Lequal_zero.2`; `cbz` and `cbnz` read no flag, so x86-64's rows have nothing to take here (`aarch64.md` 7.1) | `condition-flags` |
 | `a && b`, `a \|\| b` | jump code: each operand tested for zero in one instruction and a branch, `cbz w0, .Lboth.2` for `&&`, `cbnz w0, .Leither.4` past the right operand for `\|\|`; as a value, `mov w0, #1` and `mov w0, #0` on the two paths | `logical` |
 | `a ? b : c` | the condition by jump code, `cbz w0, .Lconditional.2`, each arm into `w0`, a `b .Lconditional.3` past the second arm; never `csel` | `conditional`, `select` |
@@ -487,13 +489,13 @@ in the step loop: total, end, v, x and steps take `rbx`, `r12`,
 keyword, take slots. Nothing warns. The step loop of `rcc
 collatz-tuned.c` has no stack operand: it compares x with 1, `cmpq
 $1, %r14`, tests the parity in its register, `testq $1, %r14`,
-computes the odd step with `imulq %r14, %rax` and `addq $1, %rax` and
-moves it back, `movq %rax, %r14`, halves x in its register, `sarq $1,
-%r14`, and counts in its register, `addl $1, %r15d`. The ratio falls
-from 7.75 to 1.60. The head of the step loop opens a 32-byte window,
-at 0x11c0. As first written, with seven `register` variables live and
-x and steps in slots, the tuned ratio was 1.91, measured before c1
-aligned its loop heads.
+computes the odd step in its register, `imulq $3, %r14, %r14` and
+`addq $1, %r14`, halves x in its register, `sarq $1, %r14`, and counts
+in its register, `addl $1, %r15d`. The ratio falls from 7.75 to 1.60.
+The head of the step loop opens a 32-byte window, at 0x11c0. As first
+written, with seven `register` variables live and x and steps in
+slots, the tuned ratio was 1.91, measured before c1 aligned its loop
+heads.
 
 **fib.** The tuned source declares the parameter and the two partial
 sums `register`. `rcc fib.c` subtracts its frame, `subq $32, %rsp`,
@@ -676,8 +678,8 @@ steps by a load, an add and a store, `ldr w0, [x29, #64]; add w0, w0,
 tuned `main` holds total, end, v, x and steps in `x19` to `x22` and
 `w23`, the five it holds on x86-64, and its step loop has no stack
 operand. The parity test is `and x0, x22, #0x1; cbz x0, .Lmain.10`.
-The odd step holds the 3 in a register, `mov x0, #3; mul x0, x0,
-x22`, since `mul` takes no immediate, and the even step is `asr x22,
+The odd step holds the 3 in a register, `mov x0, #3; mul x0, x22,
+x0`, since `mul` takes no immediate, and the even step is `asr x22,
 x22, #1`. The ratio falls from 3.40 to 1.42 on the M1 Max and from
 5.71 to 1.57 on the Oryon.
 

@@ -225,40 +225,37 @@ round_trip:
 	str	w0, [x29, #20]
 .Lround_trip.2:
 	ldr	w0, [x29, #20]
-	mov	w1, #365
 	str	x0, [x29, #32]
-	str	x1, [x29, #40]
 	ldr	w0, [x29, #16]
-	str	w0, [x29, #48]
-	ldr	w0, [x29, #48]
+	str	w0, [x29, #40]
+	ldr	w0, [x29, #40]
 	bl	leap_year
-	ldr	x1, [x29, #40]
-	add	w1, w1, w0
-	ldr	x0, [x29, #32]
-	cmp	w0, w1
+	add	w0, w0, #365
+	ldr	x1, [x29, #32]
+	cmp	w1, w0
 	b.gt	.Lround_trip.4
 	ldr	w0, [x29, #16]
-	str	w0, [x29, #52]
+	str	w0, [x29, #44]
 	ldr	w0, [x29, #20]
-	str	w0, [x29, #56]
+	str	w0, [x29, #48]
 	add	x0, x29, #24
-	str	x0, [x29, #64]
+	str	x0, [x29, #56]
 	add	x0, x29, #28
-	str	x0, [x29, #72]
-	ldr	w0, [x29, #52]
-	ldr	w1, [x29, #56]
-	ldr	x2, [x29, #64]
-	ldr	x3, [x29, #72]
+	str	x0, [x29, #64]
+	ldr	w0, [x29, #44]
+	ldr	w1, [x29, #48]
+	ldr	x2, [x29, #56]
+	ldr	x3, [x29, #64]
 	bl	month_day
 	ldr	w0, [x29, #16]
-	str	w0, [x29, #80]
+	str	w0, [x29, #72]
 	ldr	w0, [x29, #24]
-	str	w0, [x29, #84]
+	str	w0, [x29, #76]
 	ldr	w0, [x29, #28]
-	str	w0, [x29, #88]
-	ldr	w0, [x29, #80]
-	ldr	w1, [x29, #84]
-	ldr	w2, [x29, #88]
+	str	w0, [x29, #80]
+	ldr	w0, [x29, #72]
+	ldr	w1, [x29, #76]
+	ldr	w2, [x29, #80]
 	bl	day_of_year
 	ldr	w1, [x29, #20]
 	cmp	w0, w1

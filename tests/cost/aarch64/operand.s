@@ -1201,8 +1201,8 @@ by_constant:
 	mov	w2, #-3
 	mul	w1, w1, w2
 	add	w0, w0, w1
-	mov	w1, #4
-	ldr	w2, [x29, #16]
+	ldr	w1, [x29, #16]
+	mov	w2, #4
 	mul	w1, w1, w2
 	add	w0, w0, w1
 	sxtw	x0, w0
@@ -1221,6 +1221,306 @@ by_constant:
 	ret
 	.cfi_endproc
 	.size	by_constant, .-by_constant
+	.globl	commuted
+	.type	commuted, @function
+commuted:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	strb	w1, [x29, #20]
+	ldr	w0, [x29, #16]
+	add	w0, w0, #5
+	ldr	w1, [x29, #16]
+	mov	w2, #4
+	mul	w1, w1, w2
+	sub	w0, w0, w1
+	ldr	w1, [x29, #16]
+	and	w1, w1, #0x7
+	sub	w0, w0, w1
+	ldr	w1, [x29, #16]
+	orr	w1, w1, #0x7
+	sub	w0, w0, w1
+	ldr	w1, [x29, #16]
+	eor	w1, w1, #0x7
+	sub	w0, w0, w1
+	ldrb	w1, [x29, #20]
+	add	w1, w1, #5
+	sub	w0, w0, w1
+	b	.Lcommuted.1
+.Lcommuted.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	commuted, .-commuted
+	.globl	commuted_right
+	.type	commuted_right, @function
+commuted_right:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	strb	w1, [x29, #20]
+	ldr	w0, [x29, #16]
+	add	w0, w0, #5
+	ldr	w1, [x29, #16]
+	mov	w2, #4
+	mul	w1, w1, w2
+	sub	w0, w0, w1
+	ldr	w1, [x29, #16]
+	and	w1, w1, #0x7
+	sub	w0, w0, w1
+	ldr	w1, [x29, #16]
+	orr	w1, w1, #0x7
+	sub	w0, w0, w1
+	ldr	w1, [x29, #16]
+	eor	w1, w1, #0x7
+	sub	w0, w0, w1
+	ldrb	w1, [x29, #20]
+	add	w1, w1, #5
+	sub	w0, w0, w1
+	b	.Lcommuted_right.1
+.Lcommuted_right.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	commuted_right, .-commuted_right
+	.globl	commuted_register
+	.type	commuted_register, @function
+commuted_register:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -16
+	str	w0, [x29, #24]
+	ldr	w19, [x29, #24]
+	add	w0, w19, #5
+	mov	w1, #4
+	mul	w1, w19, w1
+	sub	w0, w0, w1
+	and	w1, w19, #0x7
+	sub	w0, w0, w1
+	orr	w1, w19, #0x7
+	sub	w0, w0, w1
+	eor	w1, w19, #0x7
+	sub	w0, w0, w1
+	b	.Lcommuted_register.1
+.Lcommuted_register.1:
+	.cfi_def_cfa wsp, 32
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	commuted_register, .-commuted_register
+	.globl	commuted_call
+	.type	commuted_call, @function
+commuted_call:
+	.cfi_startproc
+	sub	sp, sp, #16
+	.cfi_def_cfa_offset 16
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -16
+	.cfi_offset w30, -8
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	bl	f
+	add	w0, w0, #5
+	b	.Lcommuted_call.1
+.Lcommuted_call.1:
+	.cfi_def_cfa wsp, 16
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #16
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	commuted_call, .-commuted_call
+	.globl	commuted_into
+	.type	commuted_into, @function
+commuted_into:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -16
+	str	w0, [x29, #24]
+	ldr	w0, [x29, #24]
+	mov	w1, #4
+	mul	w19, w0, w1
+	add	w19, w19, #5
+	mov	w0, w19
+	b	.Lcommuted_into.1
+.Lcommuted_into.1:
+	.cfi_def_cfa wsp, 32
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	commuted_into, .-commuted_into
+	.globl	commuted_bit
+	.type	commuted_bit, @function
+commuted_bit:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	ldr	w0, [x29, #16]
+	and	w0, w0, #0x1
+	cbz	w0, .Lcommuted_bit.2
+	mov	w0, #1
+	b	.Lcommuted_bit.1
+.Lcommuted_bit.2:
+	mov	w0, #0
+	b	.Lcommuted_bit.1
+.Lcommuted_bit.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	commuted_bit, .-commuted_bit
+	.globl	commuted_wide
+	.type	commuted_wide, @function
+commuted_wide:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	ldr	x0, [x29, #16]
+	mov	x1, #4294967296
+	add	x0, x0, x1
+	b	.Lcommuted_wide.1
+.Lcommuted_wide.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	commuted_wide, .-commuted_wide
+	.globl	commuted_char_register
+	.type	commuted_char_register, @function
+commuted_char_register:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	stp	x19, x20, [x29, #16]
+	.cfi_offset w19, -32
+	.cfi_offset w20, -24
+	strb	w0, [x29, #32]
+	ldrb	w19, [x29, #32]
+	add	w20, w19, #5
+	mov	w0, w20
+	b	.Lcommuted_char_register.1
+.Lcommuted_char_register.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x19, x20, [x29, #16]
+	.cfi_restore w19
+	.cfi_restore w20
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	commuted_char_register, .-commuted_char_register
+	.globl	not_commuted
+	.type	not_commuted, @function
+not_commuted:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	mov	w0, #5
+	ldr	w1, [x29, #16]
+	sub	w0, w0, w1
+	mov	w1, #40
+	ldr	w2, [x29, #16]
+	sdiv	w1, w1, w2
+	add	w0, w0, w1
+	mov	w1, #1
+	ldr	w2, [x29, #16]
+	lsl	w1, w1, w2
+	add	w0, w0, w1
+	b	.Lnot_commuted.1
+.Lnot_commuted.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	not_commuted, .-not_commuted
 	.bss
 	.globl	defined
 	.type	defined, @object

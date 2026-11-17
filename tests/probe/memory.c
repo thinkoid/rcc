@@ -1306,9 +1306,9 @@ WIDE(COMPARED_ALL)
 POINTERS(COMPARED_NULL)
 
 /* Row d: the object multiplied by each constant of FACTORS, dv_, and
-   the constant written first, dl_, which keeps its order; and x * c
-   assigned to a register variable, dr_, whose register the imul
-   writes. */
+   the constant written first, dl_, taken on the right where an
+   immediate holds it (docs/backend.md 6.1); and x * c assigned to a
+   register variable, dr_, whose register the imul writes. */
 #define MULTIPLY_RIGHT(o, K, op) ((o) * (K))
 #define MULTIPLY_LEFT(o, K, op) ((K) * (o))
 

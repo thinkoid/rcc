@@ -903,8 +903,7 @@ by_constant:
 	imull	$4, -4(%rbp), %eax
 	imull	$-3, -4(%rbp), %ecx
 	addl	%ecx, %eax
-	movl	$4, %ecx
-	imull	-4(%rbp), %ecx
+	imull	$4, -4(%rbp), %ecx
 	addl	%ecx, %eax
 	movslq	%eax, %rax
 	imulq	$1000, -16(%rbp), %rcx
@@ -916,6 +915,247 @@ by_constant:
 	ret
 	.cfi_endproc
 	.size	by_constant, .-by_constant
+	.globl	commuted
+	.type	commuted, @function
+commuted:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movb	%sil, -5(%rbp)
+	movl	-4(%rbp), %eax
+	addl	$5, %eax
+	imull	$4, -4(%rbp), %ecx
+	subl	%ecx, %eax
+	movl	-4(%rbp), %ecx
+	andl	$7, %ecx
+	subl	%ecx, %eax
+	movl	-4(%rbp), %ecx
+	orl	$7, %ecx
+	subl	%ecx, %eax
+	movl	-4(%rbp), %ecx
+	xorl	$7, %ecx
+	subl	%ecx, %eax
+	movsbl	-5(%rbp), %ecx
+	addl	$5, %ecx
+	subl	%ecx, %eax
+	jmp	.Lcommuted.1
+.Lcommuted.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	commuted, .-commuted
+	.globl	commuted_right
+	.type	commuted_right, @function
+commuted_right:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movb	%sil, -5(%rbp)
+	movl	-4(%rbp), %eax
+	addl	$5, %eax
+	imull	$4, -4(%rbp), %ecx
+	subl	%ecx, %eax
+	movl	-4(%rbp), %ecx
+	andl	$7, %ecx
+	subl	%ecx, %eax
+	movl	-4(%rbp), %ecx
+	orl	$7, %ecx
+	subl	%ecx, %eax
+	movl	-4(%rbp), %ecx
+	xorl	$7, %ecx
+	subl	%ecx, %eax
+	movsbl	-5(%rbp), %ecx
+	addl	$5, %ecx
+	subl	%ecx, %eax
+	jmp	.Lcommuted_right.1
+.Lcommuted_right.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	commuted_right, .-commuted_right
+	.globl	commuted_register
+	.type	commuted_register, @function
+commuted_register:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movl	-12(%rbp), %ebx
+	movl	%ebx, %eax
+	addl	$5, %eax
+	movl	%ebx, %ecx
+	imull	$4, %ecx, %ecx
+	subl	%ecx, %eax
+	movl	%ebx, %ecx
+	andl	$7, %ecx
+	subl	%ecx, %eax
+	movl	%ebx, %ecx
+	orl	$7, %ecx
+	subl	%ecx, %eax
+	movl	%ebx, %ecx
+	xorl	$7, %ecx
+	subl	%ecx, %eax
+	jmp	.Lcommuted_register.1
+.Lcommuted_register.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	commuted_register, .-commuted_register
+	.globl	commuted_call
+	.type	commuted_call, @function
+commuted_call:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	call	f@PLT
+	addl	$5, %eax
+	jmp	.Lcommuted_call.1
+.Lcommuted_call.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	commuted_call, .-commuted_call
+	.globl	commuted_into
+	.type	commuted_into, @function
+commuted_into:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	imull	$4, -12(%rbp), %ebx
+	addl	$5, %ebx
+	movl	%ebx, %eax
+	jmp	.Lcommuted_into.1
+.Lcommuted_into.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	commuted_into, .-commuted_into
+	.globl	commuted_bit
+	.type	commuted_bit, @function
+commuted_bit:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	testl	$1, -4(%rbp)
+	je	.Lcommuted_bit.2
+	movl	$1, %eax
+	jmp	.Lcommuted_bit.1
+.Lcommuted_bit.2:
+	movl	$0, %eax
+	jmp	.Lcommuted_bit.1
+.Lcommuted_bit.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	commuted_bit, .-commuted_bit
+	.globl	commuted_wide
+	.type	commuted_wide, @function
+commuted_wide:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movabsq	$4294967296, %rax
+	addq	-8(%rbp), %rax
+	jmp	.Lcommuted_wide.1
+.Lcommuted_wide.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	commuted_wide, .-commuted_wide
+	.globl	commuted_char_register
+	.type	commuted_char_register, @function
+commuted_char_register:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	pushq	%r12
+	.cfi_offset %r12, -32
+	movb	%dil, -17(%rbp)
+	movsbl	-17(%rbp), %ebx
+	movl	$5, %r12d
+	addl	%ebx, %r12d
+	movl	%r12d, %eax
+	jmp	.Lcommuted_char_register.1
+.Lcommuted_char_register.1:
+	popq	%r12
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	commuted_char_register, .-commuted_char_register
+	.globl	not_commuted
+	.type	not_commuted, @function
+not_commuted:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	$5, %esi
+	subl	-4(%rbp), %esi
+	movl	$40, %eax
+	cltd
+	idivl	-4(%rbp)
+	addl	%eax, %esi
+	movl	$1, %eax
+	movl	-4(%rbp), %ecx
+	shll	%cl, %eax
+	addl	%eax, %esi
+	movl	%esi, %eax
+	jmp	.Lnot_commuted.1
+.Lnot_commuted.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	not_commuted, .-not_commuted
 	.bss
 	.globl	defined
 	.type	defined, @object

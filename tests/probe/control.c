@@ -2,8 +2,9 @@
    statements that branch, and values held across a branch, in rcc's C,
    for docs/aarch64.md chapter 7, and the conditions that jump on their
    operator's own flags on x86-64 and those it writes as the cmp or test
-   of an object in memory, docs/backend.md 7.1, and the comparisons
-   with a constant on the left, docs/backend.md 6.1.  See control.h. */
+   of an object in memory, docs/backend.md 7.1, and the comparisons and
+   the operators that commute with a constant on the left,
+   docs/backend.md 6.1.  See control.h. */
 
 #include "control.h"
 
@@ -416,6 +417,34 @@ kl_null(char *a, char *b)
                 r += 4;
         return r * 8 + (0 == a) * 4 + (0 != x) * 2 + (0 == b + 1);
 }
+
+/* docs/backend.md 6.1, a constant on the left of +, *, &, | and ^,
+   taken as the constant on the right is, and of -, << and >>, which
+   keep their order: each of control.h's KFIRSTS, of an object in
+   memory, a, of a register variable, x, and of a call, as a value;
+   into a register variable of the type, y, and of an int, z, and into
+   the variable it reads, x; and as a condition.  The function
+   kf_<name>_<type>. */
+#define KFIRST(T, N, name, op, k)                                       \
+    long kf_##name##_##N(T a, T b)                                      \
+    {                                                                   \
+        register T x = a;                                               \
+        register T y;                                                   \
+        register int z;                                                 \
+        long r = (k) op a;                                              \
+        r = r * 3 + ((k) op x);                                         \
+        r = r * 3 + ((k) op kl_same_##N(b));                            \
+        y = (k) op b;                                                   \
+        z = (k) op x;                                                   \
+        x = (k) op x;                                                   \
+        r = r * 3 + y + z + x;                                          \
+        if ((k) op a)                                                   \
+            r += 1;                                                     \
+        return r;                                                       \
+    }
+#define KFIRST_ALL(T, N, least, most) KFIRSTS(KFIRST, T, N, least, most)
+
+LEFT_TYPES(KFIRST_ALL)
 
 /* docs/backend.md 7.1 on x86-64, a condition on an object in memory and
    a constant, the cmp or test of the object itself: each comparison of

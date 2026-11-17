@@ -1878,14 +1878,16 @@ compare_with(state_t &s, value_t l, const expr_t &rhs, int width)
     release(s, r);
 }
 
-// A comparison in the order its row generates it, backend.md 6.1: a
-// constant on the left that the instruction takes as an immediate is
-// the immediate on the right, the comparison mirrored, so 5 < x is
-// cmpl $5, -4(%rbp) and 0 == (c & 1) the flags of the and.  A constant
-// no 32-bit immediate holds is held in a register in either order, so
-// it keeps the order of the source: mirrored, it would cost a load of
-// an object in memory that is the cmp's own operand where it stands.
-compared_t
+// A comparison, or an operation of +, *, &, | or ^, in the order its
+// row generates it, backend.md 6.1: a constant on the left that the
+// instruction takes as an immediate is the immediate on the right, the
+// comparison mirrored, so 5 < x is cmpl $5, -4(%rbp) and 0 == (c & 1)
+// the flags of the and, and 4 * x is imull $4, -4(%rbp), %eax.  A
+// constant no 32-bit immediate holds is held in a register in either
+// order, so it keeps the order of the source: on the right, it would
+// cost a load of an object in memory that is the instruction's own
+// operand where it stands.  A pointer's sum keeps the rows of p + n.
+operation_t
 ordered(const binary_t &b)
 {
     const int width = operation_width(b.lhs->type);
@@ -1922,7 +1924,7 @@ condition_on(state_t &s,
 // (chapter 6.5).  The left value stays held, for setcc or for the
 // caller to free.
 value_t
-compare(state_t &s, const compared_t &b)
+compare(state_t &s, const operation_t &b)
 {
     const auto l = rvalue_avoiding(s, *b.lhs, pinned_by(*b.rhs));
     compare_with(s, l, *b.rhs, operation_width(b.lhs->type));
@@ -1936,7 +1938,7 @@ compare(state_t &s, const compared_t &b)
 // a condition (7.1) and for a value (6.3) alike; any other is
 // compare()'s cmp R, L, and L is held.
 value_t
-compared(state_t &s, const compared_t &b)
+compared(state_t &s, const operation_t &b)
 {
     const int width = operation_width(b.lhs->type);
 
@@ -1967,7 +1969,7 @@ jump_if(state_t &s, binary_op_t op, bool is_signed, int label)
 // a long's and an unsigned long's: the cmp has read both operands
 // before either writes, the variable among them (chapter 4).
 value_t
-comparison(state_t &s, const compared_t &b, into_t *into = nullptr)
+comparison(state_t &s, const operation_t &b, into_t *into = nullptr)
 {
     const bool is_signed = integer(b.lhs->type).is_signed;
     const auto set = std::format("set{}", condition(b.op, is_signed));
@@ -2163,7 +2165,8 @@ leaf_apart_from(const expr_t &rhs, const symbol_t *sym)
     return leaf(rhs) && !names(rhs, sym);
 }
 
-bool operates_in(const binary_t &, const type_t &, const symbol_t *);
+bool operates_in(const operation_t &, const type_t &, const symbol_t *);
+operation_t ordered(const binary_t &, const type_t &, const symbol_t *);
 
 // Whether L of the operation form goes into the variable's register by
 // an instruction it has in any case: its load, its constant, or again
@@ -2187,19 +2190,24 @@ loads_into(const expr_t &lhs, const symbol_t *sym)
                in_memory(arg) && integer(lhs.type).width >= represented(sym);
     }
 
-    return is< binary_t >(lhs) &&
-           operates_in(as< binary_t >(lhs), lhs.type, sym);
+    if (!is< binary_t >(lhs))
+        return false;
+
+    const auto &b = as< binary_t >(lhs);
+
+    return operates_in(ordered(b, lhs.type, sym), lhs.type, sym);
 }
 
-// Whether r = L op R, of type t, is the operation on the variable's
-// register, chapter 4: an operator of two addresses on a free
-// register, +, -, &, |, ^, * or a shift, on the variable's own type, no
-// pointer; L that loads_into() the register; and the Seventh Edition
-// compiler's two conditions on R, which the instruction reads after L
-// has written the register (sreorder(), in c10.c): R is a leaf, and R
-// does not name the variable, as itself or as the base of its address.
+// Whether r = L op R, of type t, its operands in the order of
+// ordered(), is the operation on the variable's register, chapter 4:
+// an operator of two addresses on a free register, +, -, &, |, ^, * or
+// a shift, on the variable's own type, no pointer; L that loads_into()
+// the register; and the Seventh Edition compiler's two conditions on R,
+// which the instruction reads after L has written the register
+// (sreorder(), in c10.c): R is a leaf, and R does not name the
+// variable, as itself or as the base of its address.
 bool
-operates_in(const binary_t &b, const type_t &t, const symbol_t *sym)
+operates_in(const operation_t &b, const type_t &t, const symbol_t *sym)
 {
     switch (b.op) {
     case binary_op_t::add:
@@ -2217,6 +2225,26 @@ operates_in(const binary_t &b, const type_t &t, const symbol_t *sym)
         return false;
 
     return leaf_apart_from(*b.rhs, sym) && loads_into(*b.lhs, sym);
+}
+
+// An operation of type t in the order its row generates it, ordered()'s,
+// when its value goes to the register variable sym, or to nothing when
+// sym is null.  A constant on the left that ordered() takes on the right
+// stays on the left where that order alone is the operation on the
+// variable's register (chapter 4): r = 5 + c on a register char c has
+// the constant as L, which its mov puts in the register, where (int) c
+// as L is no load into the register, and the sum would be computed
+// elsewhere and moved, an instruction more.
+operation_t
+ordered(const binary_t &b, const type_t &t, const symbol_t *sym)
+{
+    const auto o = ordered(b);
+    if (!sym || o.lhs == b.lhs.get() || operates_in(o, t, sym))
+        return o;
+
+    const auto source = as_written(b);
+
+    return operates_in(source, t, sym) ? source : o;
 }
 
 // Whether r = P + N, N + P or P - N, of pointer type t, is the operation
@@ -2266,7 +2294,7 @@ left_in(state_t &s, const expr_t &lhs, const symbol_t *sym, unsigned avoid)
 // movl -12(%rbp), %ebx; addl -16(%rbp), %ebx.  L is evaluated whole
 // before R, as G13 has it.  The value is the variable's read.
 value_t
-operation_in(state_t &s, const binary_t &b, const type_t &t, into_t &into)
+operation_in(state_t &s, const operation_t &b, const type_t &t, into_t &into)
 {
     const unsigned own = is_shift(b.op) ? pins(b.op, *b.rhs) : 0;
 
@@ -2334,10 +2362,10 @@ pointer_arithmetic(state_t &s, const expr_t &e, into_t *into)
 
 // The object in memory x of x * c, c a constant the instruction takes
 // as an immediate, or nullptr: memory_operand()'s at the operation's
-// width.  c * x keeps the order of the source, the constant held first
+// width.  c * x is x * c, the constant taken on the right by ordered()
 // (backend.md 6.1).
 const expr_t *
-multiplicand(const binary_t &b, int width)
+multiplicand(const operation_t &b, int width)
 {
     if (b.op != binary_op_t::mul || !immediate(*b.rhs, width))
         return nullptr;
@@ -2407,21 +2435,26 @@ binary(state_t &s, const expr_t &e, into_t *into = nullptr)
     if (is< pointer_t >(b.lhs->type))
         return difference(s, b);
 
-    if (const auto *object = multiplicand(b, operation_width(e.type)))
-        return product(s, *object, *b.rhs, integer(e.type), into);
+    // a constant on the left of an operator that commutes is taken on
+    // the right, 4 * x as x * 4 (6.1)
+    const auto o = ordered(b, e.type, into ? into->variable : nullptr);
+    const int width = operation_width(e.type);
 
-    if (into && operates_in(b, e.type, into->variable))
-        return operation_in(s, b, e.type, *into);
+    if (const auto *object = multiplicand(o, width))
+        return product(s, *object, *o.rhs, integer(e.type), into);
+
+    if (into && operates_in(o, e.type, into->variable))
+        return operation_in(s, o, e.type, *into);
 
     // G13: the left operand first, held while the right one is
     // generated, outside the registers the right one's operator pins and,
     // for a shift by a variable count, outside rcx, where the count goes
     // (chapter 6.5)
-    const unsigned own = is_shift(b.op) ? pins(b.op, *b.rhs) : 0;
-    const auto l = rvalue_avoiding(s, *b.lhs, own | pinned_by(*b.rhs));
-    const auto r = binary_operand(s, b.op, *b.rhs, operation_width(e.type));
+    const unsigned own = is_shift(o.op) ? pins(o.op, *o.rhs) : 0;
+    const auto l = rvalue_avoiding(s, *o.lhs, own | pinned_by(*o.rhs));
+    const auto r = binary_operand(s, o.op, *o.rhs, width);
 
-    return arithmetic(s, b.op, l, r, e.type);
+    return arithmetic(s, o.op, l, r, e.type);
 }
 
 // ++ and -- of a register variable: add or sub of 1, or of the size for
@@ -3032,7 +3065,7 @@ flag_condition(const expr_t &e)
 // ordered().  The Seventh Edition compiler's rcexpr() drops the 0 of
 // any relational under cctab.
 const expr_t *
-zero_compared(const compared_t &b)
+zero_compared(const operation_t &b)
 {
     if (b.op != binary_op_t::eq && b.op != binary_op_t::ne)
         return nullptr;
@@ -3047,14 +3080,14 @@ zero_compared(const compared_t &b)
 // result, so a register variable as L is read in its register and not
 // copied, testl %eax, %ebx, and a constant R is the immediate,
 // testl $1, %eax.  The operands are generated as the row of & generates
-// them, an object in memory as R the instruction's operand,
-// testl -8(%rbp), %eax (binary_operand()), the left operand outside the
-// registers the right one's operator pins (chapter 6.5), and all are
-// consumed.  An object in memory and a constant are test $c, obj,
-// condition_on()'s.  The Seventh Edition compiler's cctab has the
-// PDP-11's bit for & (cc81).
+// them, in the order of ordered(), so 1 & c is c & 1; an object in
+// memory as R the instruction's operand, testl -8(%rbp), %eax
+// (binary_operand()), the left operand outside the registers the right
+// one's operator pins (chapter 6.5), and all are consumed.  An object in
+// memory and a constant are test $c, obj, condition_on()'s.  The
+// Seventh Edition compiler's cctab has the PDP-11's bit for & (cc81).
 void
-test(state_t &s, const binary_t &b, int width)
+test(state_t &s, const operation_t &b, int width)
 {
     const auto mnemonic = sized("test", width);
 
@@ -3124,7 +3157,7 @@ flag_branch(state_t &s, const expr_t &e, int label, bool sense)
 
     value_t v;
     if (is< binary_t >(e) && as< binary_t >(e).op == binary_op_t::bit_and)
-        test(s, as< binary_t >(e), width);
+        test(s, ordered(as< binary_t >(e)), width);
     else if (is< assign_t >(e) || steps)
         v = modified(s, e, width);
     else
@@ -3143,7 +3176,7 @@ flag_branch(state_t &s, const expr_t &e, int label, bool sense)
 // place against an immediate, cmpl $5, -4(%rbp), or cmp R, L.  Then jcc
 // of the operator, or of its inverse by sense.
 void
-comparison_branch(state_t &s, const compared_t &b, int label, bool sense)
+comparison_branch(state_t &s, const operation_t &b, int label, bool sense)
 {
     if (const auto *tested = zero_compared(b)) {
         const bool equal = b.op == binary_op_t::eq;

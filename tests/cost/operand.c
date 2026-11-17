@@ -20,12 +20,22 @@
    int under the cast to unsigned, and a widening cast beside them,
    comparison_value a comparison's value against a constant and against
    an object, signed and unsigned, and by_constant x * 4, x * -3, 4 * x
-   and a long by a constant.  Beside them, char_operand, widened,
-   compound, compound_value, shift_count and before_call keep the load:
-   a char promoted, an int widened to long, a compound assignment's
-   right operand for its effect and for its value, a shift's count and
-   a right operand that is a call, which may write the global loaded
-   before it.
+   and a long by a constant.  commuted writes a constant on the left of
+   +, *, &, | and ^ of an int in memory and of a char promoted,
+   commuted_right the same with the constant on the right,
+   commuted_register of a register variable, commuted_call 5 + f(),
+   commuted_into r = 4 * a and r = 5 + r into a register variable, and
+   commuted_bit 1 & x as a condition: a constant on the left of an
+   operator that commutes is taken as the constant on the right
+   (backend.md 6.1).  commuted_wide, a constant no 32-bit immediate
+   holds, and commuted_char_register, r = 5 + c on a register char c,
+   are the boundary on x86-64, and not_commuted's 5 - x, 40 / x and
+   1 << x keep the order of the source.  Beside them, char_operand,
+   widened, compound, compound_value, shift_count and before_call keep
+   the load: a char promoted, an int widened to long, a compound
+   assignment's right operand for its effect and for its value, a
+   shift's count and a right operand that is a call, which may write the
+   global loaded before it.
 
    On x86-64 the listing must show each right operand as the
    instruction's operand, after the left operand's load and with no load
@@ -73,7 +83,21 @@
    then cmpl -12(%rbp), %ecx before setl and cmpl -16(%rbp), %ecx
    before seta; in by_constant imull $4, -4(%rbp), %eax,
    imull $-3, -4(%rbp), %ecx and imulq $1000, -16(%rbp), %rcx, and
-   4 * x as written, movl $4, %ecx; imull -4(%rbp), %ecx.
+   4 * x as x * 4 is, imull $4, -4(%rbp), %ecx.  It must show the same
+   instructions in commuted and commuted_right: movl -4(%rbp), %eax;
+   addl $5, %eax, imull $4, -4(%rbp), %ecx, the load of x before
+   andl $7, orl $7 and xorl $7, and movsbl -5(%rbp), %ecx; addl $5,
+   %ecx, and no mov of a constant; in commuted_register movl %ebx, %eax;
+   addl $5, %eax, and the rest on a copy of ebx; in commuted_call the
+   call, then addl $5, %eax, and no spill; in commuted_into
+   imull $4, -12(%rbp), %ebx, then addl $5, %ebx alone; and
+   testl $1, -4(%rbp) then je in commuted_bit.  It must show the
+   constant first where it keeps the order: movabsq $4294967296, %rax;
+   addq -8(%rbp), %rax in commuted_wide; movl $5, %r12d;
+   addl %ebx, %r12d in commuted_char_register, the operation on the
+   variable's register; and in not_commuted movl $5, %esi;
+   subl -4(%rbp), %esi, movl $40, %eax before cltd and movl $1, %eax
+   before the count's load.
 
    On aarch64, a load-store machine with no instruction that takes a
    memory operand, the listing must show each operand loaded into a
@@ -93,7 +117,21 @@
    registers after the loads in signedness, and ldrsw x2, [x29, #32]
    for the widened j; ldr then cmp w0, #5 before cset in
    comparison_value; and mov w1, #4 and mul w0, w0, w1 in by_constant,
-   mov x2, #1000 for the long. */
+   4 * x as x * 4 is, the load before mov w2, #4, and mov x2, #1000 for
+   the long.  It must show the same instructions in commuted and
+   commuted_right: the load, then add w0, w0, #5, the load before
+   mov w2, #4 and mul w1, w1, w2, and w1, w1, #0x7, orr and eor the
+   same, and ldrb then add w1, w1, #5; in commuted_register
+   add w0, w19, #5, mov w1, #4 then mul w1, w19, w1, and
+   and w1, w19, #0x7 and the rest on w19; in commuted_call bl f, then
+   add w0, w0, #5, and no spill; in commuted_into the load,
+   mov w1, #4 and mul w19, w0, w1, then add w19, w19, #5;
+   and w0, w0, #0x1 then cbz in commuted_bit; the load before
+   mov x1, #4294967296 and add x0, x0, x1 in commuted_wide, the
+   constant held on the right; add w20, w19, #5 in
+   commuted_char_register; and in not_commuted the constant first,
+   mov w0, #5 before the load and sub w0, w0, w1, mov w1, #40 before
+   sdiv and mov w1, #1 before lsl. */
 int defined;
 extern int declared;
 
@@ -361,4 +399,70 @@ long
 by_constant(int x, long l)
 {
         return x * 4 + x * -3 + 4 * x + l * 1000;
+}
+
+int
+commuted(int x, char c)
+{
+        return (5 + x) - (4 * x) - (7 & x) - (7 | x) - (7 ^ x) - (5 + c);
+}
+
+int
+commuted_right(int x, char c)
+{
+        return (x + 5) - (x * 4) - (x & 7) - (x | 7) - (x ^ 7) - (c + 5);
+}
+
+int
+commuted_register(int a)
+{
+        register int x = a;
+
+        return (5 + x) - (4 * x) - (7 & x) - (7 | x) - (7 ^ x);
+}
+
+int
+commuted_call(void)
+{
+        return 5 + f();
+}
+
+int
+commuted_into(int a)
+{
+        register int r;
+
+        r = 4 * a;
+        r = 5 + r;
+        return r;
+}
+
+int
+commuted_bit(int x)
+{
+        if (1 & x)
+                return 1;
+        return 0;
+}
+
+long
+commuted_wide(long l)
+{
+        return 0x100000000 + l;
+}
+
+int
+commuted_char_register(char c)
+{
+        register char rc = c;
+        register int r;
+
+        r = 5 + rc;
+        return r;
+}
+
+int
+not_commuted(int x)
+{
+        return (5 - x) + (40 / x) + (1 << x);
 }

@@ -1883,10 +1883,16 @@ compare_with(state_t &s, value_t l, const expr_t &rhs, int width)
     release(s, r.value);
 }
 
-// A comparison in the order its row generates it, 6.1: a constant on
-// the left is the constant on the right, the comparison mirrored, so
-// 5 < x is cmp w0, #5 after the load of x, as x > 5 is.
-compared_t
+// A comparison, or an operation of +, *, &, | or ^, in the order its
+// row generates it, 6.1: a constant on the left is the constant on the
+// right, the comparison mirrored, so 5 < x is cmp w0, #5 after the load
+// of x, as x > 5 is, and 5 + x is add w0, w0, #5.  A constant the
+// instruction does not encode is held in a register in either order,
+// and no instruction here names an object in memory, so it is taken on
+// the right too: its mov then comes after the right operand, which
+// holds nothing across that operand's evaluation, 5 * f() among them.
+// A pointer's sum keeps the rows of p + n, which take n as it comes.
+operation_t
 ordered(const binary_t &b)
 {
     return constant_first(b) ? mirrored(b) : as_written(b);
@@ -1895,7 +1901,7 @@ ordered(const binary_t &b)
 // cmp for a relational or equality operator, left operand first (G13).
 // The left value stays held, for cset or for the caller to free.
 value_t
-compare(state_t &s, const compared_t &b)
+compare(state_t &s, const operation_t &b)
 {
     const auto l = rvalue(s, *b.lhs);
     compare_with(s, l, *b.rhs, operation_width(b.lhs->type));
@@ -1919,7 +1925,7 @@ jump_if(state_t &s, binary_op_t op, bool is_signed, int label)
 // register variable handed down is the cset's, cset w19, lt (chapter
 // 4).
 value_t
-comparison(state_t &s, const compared_t &b, into_t *into = nullptr)
+comparison(state_t &s, const operation_t &b, into_t *into = nullptr)
 {
     const bool is_signed = integer(b.lhs->type).is_signed;
 
@@ -2097,11 +2103,14 @@ binary(state_t &s, const expr_t &e, into_t *into = nullptr)
     if (is< pointer_t >(b.lhs->type))
         return difference(s, b, into);
 
-    // G13: the left operand first, held while the right one is generated
-    const auto l = rvalue(s, *b.lhs);
-    const auto r = right_operand(s, b.op, *b.rhs, operation_width(e.type));
+    // G13: the left operand first, held while the right one is
+    // generated; a constant on the left of an operator that commutes is
+    // taken on the right (6.1)
+    const auto o = ordered(b);
+    const auto l = rvalue(s, *o.lhs);
+    const auto r = right_operand(s, o.op, *o.rhs, operation_width(e.type));
 
-    return arithmetic(s, b.op, l, r, e.type, into);
+    return arithmetic(s, o.op, l, r, e.type, into);
 }
 
 // ++ and -- of a register variable, chapter 4: add or sub of 1, or of

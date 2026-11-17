@@ -12,9 +12,8 @@ main:
 	mov	x29, sp
 	.cfi_def_cfa_register w29
 	str	w0, [x29, #16]
-	mov	w0, #4
-	ldr	w1, [x29, #16]
-	add	w0, w0, w1
+	ldr	w0, [x29, #16]
+	add	w0, w0, #4
 	str	w0, [x29, #32]
 	add	x0, x29, #32
 	str	x0, [x29, #24]

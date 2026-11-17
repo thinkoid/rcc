@@ -11,8 +11,8 @@ main:
 	.cfi_def_cfa_register %rbp
 	subq	$64, %rsp
 	movl	%edi, -4(%rbp)
-	movl	$4, %eax
-	addl	-4(%rbp), %eax
+	movl	-4(%rbp), %eax
+	addl	$4, %eax
 	movl	%eax, -20(%rbp)
 	leaq	-20(%rbp), %rax
 	movq	%rax, -16(%rbp)

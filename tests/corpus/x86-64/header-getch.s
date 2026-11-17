@@ -145,9 +145,8 @@ getint:
 	cmpl	$57, -12(%rbp)
 	jg	.Lgetint.12
 	movq	-8(%rbp), %rax
-	movl	$10, %ecx
-	movq	-8(%rbp), %rdx
-	imull	(%rdx), %ecx
+	movq	-8(%rbp), %rcx
+	imull	$10, (%rcx), %ecx
 	movl	-12(%rbp), %edx
 	subl	$48, %edx
 	addl	%edx, %ecx

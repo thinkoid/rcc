@@ -97,6 +97,13 @@ LEFT_TYPES(DECLARE_KLEFT_ALL)
 KLEFTS(DECLARE_KLEFT, char *, p, 0, -1)
 BOTH(long, kl_null, (char *, char *))
 
+#define DECLARE_KFIRST(T, N, name, op, k)                               \
+    BOTH(long, kf_##name##_##N, (T, T))
+#define DECLARE_KFIRST_ALL(T, N, least, most)                           \
+    KFIRSTS(DECLARE_KFIRST, T, N, least, most)
+
+LEFT_TYPES(DECLARE_KFIRST_ALL)
+
 BOTH(long, arms_mixed, (int, int, long))
 BOTH(unsigned long, arms_unsigned, (int, unsigned, long))
 BOTH(int, constant_conditions, (int))
@@ -262,6 +269,27 @@ test_left(void)
     }
 }
 
+/* the operators that commute with a constant on the left, of each
+   type, over every pair of the table */
+#define TEST_KFIRST(T, N, name, op, k)                                  \
+    CHECK(kf_##name##_##N, x, y, ((T) x, (T) y));
+#define TEST_KFIRST_ALL(T, N, least, most)                              \
+    KFIRSTS(TEST_KFIRST, T, N, least, most)
+
+static void
+test_first(void)
+{
+    for (int i = 0; i < COUNT; ++i) {
+        const long x = values[i];
+
+        for (int j = 0; j < COUNT; ++j) {
+            const long y = values[j];
+
+            LEFT_TYPES(TEST_KFIRST_ALL)
+        }
+    }
+}
+
 static void
 test_loops(void)
 {
@@ -316,6 +344,7 @@ main(void)
 
     test_constants();
     test_left();
+    test_first();
     test_loops();
     test_eight();
 

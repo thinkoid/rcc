@@ -183,40 +183,37 @@ round_trip:
 	.p2align 5
 .Lround_trip.2:
 	movl	-8(%rbp), %eax
-	movl	$365, %ecx
 	movq	%rax, -24(%rbp)
-	movq	%rcx, -32(%rbp)
 	movl	-4(%rbp), %eax
-	movl	%eax, -36(%rbp)
-	movl	-36(%rbp), %edi
+	movl	%eax, -28(%rbp)
+	movl	-28(%rbp), %edi
 	call	leap_year@PLT
-	movq	-32(%rbp), %rcx
-	addl	%eax, %ecx
-	movq	-24(%rbp), %rax
-	cmpl	%ecx, %eax
+	addl	$365, %eax
+	movq	-24(%rbp), %rcx
+	cmpl	%eax, %ecx
 	jg	.Lround_trip.4
 	movl	-4(%rbp), %eax
-	movl	%eax, -40(%rbp)
+	movl	%eax, -32(%rbp)
 	movl	-8(%rbp), %eax
-	movl	%eax, -44(%rbp)
+	movl	%eax, -36(%rbp)
 	leaq	-12(%rbp), %rax
-	movq	%rax, -56(%rbp)
+	movq	%rax, -48(%rbp)
 	leaq	-16(%rbp), %rax
-	movq	%rax, -64(%rbp)
-	movl	-40(%rbp), %edi
-	movl	-44(%rbp), %esi
-	movq	-56(%rbp), %rdx
-	movq	-64(%rbp), %rcx
+	movq	%rax, -56(%rbp)
+	movl	-32(%rbp), %edi
+	movl	-36(%rbp), %esi
+	movq	-48(%rbp), %rdx
+	movq	-56(%rbp), %rcx
 	call	month_day@PLT
 	movl	-4(%rbp), %eax
-	movl	%eax, -68(%rbp)
+	movl	%eax, -60(%rbp)
 	movl	-12(%rbp), %eax
-	movl	%eax, -72(%rbp)
+	movl	%eax, -64(%rbp)
 	movl	-16(%rbp), %eax
-	movl	%eax, -76(%rbp)
-	movl	-68(%rbp), %edi
-	movl	-72(%rbp), %esi
-	movl	-76(%rbp), %edx
+	movl	%eax, -68(%rbp)
+	movl	-60(%rbp), %edi
+	movl	-64(%rbp), %esi
+	movl	-68(%rbp), %edx
 	call	day_of_year@PLT
 	cmpl	-8(%rbp), %eax
 	je	.Lround_trip.5

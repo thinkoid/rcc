@@ -567,9 +567,9 @@ code of a `backend.md` chapter:
   1, 2, 4 or 8. It is the operand of the one `mov` that reads or
   writes the object (6.3, G8 to G11).
 - Operands are generated left to right, and a commutative operator's
-  operands are not swapped (6.1, G13), but for a comparison with a
-  constant on its left, which is generated mirrored, `5 < x` as `x >
-  5`.
+  operands are not swapped (6.1, G13), but for a constant on the left
+  of a comparison or of `+`, `*`, `&`, `|` or `^`, which is taken on
+  the right, `5 < x` as `x > 5` and `5 + x` as `x + 5`.
 - The body is written into a buffer. The prologue is written after
   it, once the frame's size is known, then the body and the one
   epilogue (chapter 5).

@@ -499,34 +499,50 @@ chooses is a register's name too.
 
 The left-first order is G13 and is not negotiable for register
 pressure: `f() + g()` calls `f` first. A commutative operator's
-operands are not swapped either, so `4 * x` writes the 4 first; the
-instruction is the same `imul` and the order of the listing is the
-order of the source.
+operands are not swapped either, so `x * y` loads `x` first and `y`
+is the `imul`'s operand; the order of the listing is the order of the
+source, but for a constant, below.
 
-**A constant on the left of a comparison.** The one exception to the
-order of the source: a comparison whose left operand is a constant and
-whose right operand is not is generated as the mirrored comparison, `5
-< x` as `x > 5`, `5 <= x` as `x >= 5`, `0 == e` as `e == 0`, signed or
-unsigned as the operands' common type is. A constant has no
-evaluation, so G13 has nothing to order, and the right operand is
-evaluated once. The constant is then the immediate on the right, and
-every form that takes one follows: the object in memory, `cmpl $5,
--4(%rbp)` for `if (5 < x)`; the jump on an operator's flags, `testl
-$1, -4(%rbp)` and `jne` for `if (0 == (c & 1))` (7.1); a register
-variable compared in its register, `cmpl $5, %ebx`; and for a value,
-`cmpl $5, -4(%rbp)` and the `setg`. A constant is what the parser
-hands over as one after its folding, the null pointer of `0 == p`
-among them; `&g == p` keeps its order, since an address is no
-immediate here. A constant no 32-bit immediate holds keeps the order
-too: it is held in a register in either order, and mirrored it would
-cost the load of an object in memory that is the `cmp`'s own operand
-where it stands, `movabsq $c, %rax; cmpq -8(%rbp), %rax`. A constant
-on both sides is as written, and no other operator is mirrored: `5 +
-x` writes the 5 first. The Seventh Edition compiler's `optim()`, in
-`c12.c`, exchanges a relational's operands wherever the left one's
-degree is the lower, a constant's being the lowest, and maps the
-operator by its table `maprel[]`; rcc takes the exchange for a
-constant alone, which has no evaluation to reorder.
+**A constant on the left.** The one exception to the order of the
+source: an operation whose left operand is a constant and whose right
+operand is not, under a comparison or under `+`, `*`, `&`, `|` or `^`,
+is generated with its operands exchanged. A comparison is mirrored,
+`5 < x` as `x > 5`, `5 <= x` as `x >= 5`, `0 == e` as `e == 0`,
+signed or unsigned as the operands' common type is; the other five
+commute and are themselves, `5 + x` as `x + 5`, `4 * x` as `x * 4`. A
+constant has no evaluation, so G13 has nothing to order, and the right
+operand is evaluated once. The constant is then the immediate on the
+right, and every form that takes one follows: the object in memory,
+`cmpl $5, -4(%rbp)` for `if (5 < x)`, `movl -4(%rbp), %eax; addl $5,
+%eax` for `5 + x`, and the three-operand `imull $4, -4(%rbp), %eax`
+for `4 * x`; the jump on an operator's flags, `testl $1, -4(%rbp)`
+and `jne` for `if (0 == (c & 1))`, and `testl $1, -4(%rbp)` for `if
+(1 & c)` (7.1); a register variable compared in its register, `cmpl
+$5, %ebx`; a call's result, `5 + f()` the `call` and `addl $5, %eax`,
+with no constant held across the call; and for a value, `cmpl $5,
+-4(%rbp)` and the `setg`. A constant is what the parser hands over as
+one after its folding, the null pointer of `0 == p` among them; `&g ==
+p` keeps its order, since an address is no immediate here. A constant
+no 32-bit immediate holds keeps the order too: it is held in a
+register in either order, and exchanged it would cost the load of an
+object in memory that is the instruction's own operand where it
+stands, `movabsq $c, %rax; cmpq -8(%rbp), %rax` and `movabsq $c,
+%rax; addq -8(%rbp), %rax`. And where the value goes to a register
+variable, the order of the source stays when it alone is the operation
+on the variable's register (chapter 4): `r = 5 + c` on a register
+`char c` is `movl $5, %r12d; addl %ebx, %r12d`, since `c` promoted is
+no load into the register, and as `c + 5` the sum would be computed
+elsewhere and moved, an instruction more. A constant on both sides is
+as written. `-`, `/`, `%` and the shifts do not commute, and keep
+their order: `5 - x` writes the 5 first. Pointer arithmetic has its
+own rows, and `n + p` with a constant `n` is not this rule (6.3). The
+Seventh Edition compiler's `optim()`, in `c12.c`, exchanges a
+relational's operands wherever the left one's degree is the lower, a
+constant's being the lowest, and maps the operator by its table
+`maprel[]`, and its `insert()` sorts the operands of a commutative
+chain by degree, the harder first, so a constant goes last; rcc takes
+the exchange for a constant alone, which has no evaluation to
+reorder.
 
 **An object in memory as the operand.** A right operand that is the
 read of an object in memory, a name that is no register variable or
@@ -557,7 +573,8 @@ constant on the right, which has no evaluation: a comparison for its
 value is the `cmp` of the object, `cmpl $5, -4(%rbp); setl %al`, as
 the condition's is (7.1), and a multiply by a constant is the
 three-operand `imul` with the object as its source, `imull $4,
--4(%rbp), %eax`, one instruction and still a multiply.
+-4(%rbp), %eax`, one instruction and still a multiply. A constant on
+the left of either is on the right first, above.
 
 The reads keep G13's order. The left operand is read first; the
 right operand's address is generated where its load would be, after
@@ -581,12 +598,11 @@ register in every context. A call's argument is a hidden local
 (chapter 8). An index that pointer arithmetic scales is in a
 register: `p + n` at a size of 2, 4 or 8 is the `leaq` of `(L,R,s)`,
 and at any other size `n` is multiplied in its register first,
-`imulq $4, %rcx, %rcx` before the `subq` of `p - n`. `4 * x` keeps the
-order of the source, the 4 held first, `movl $4, %eax; imull
--4(%rbp), %eax`. A register variable as the right operand is its
-register (chapter 4), and a global the file only declares is reached
-through the register its address is loaded into, the GOT's load
-staying, `addl (%rcx), %eax` (chapter 10).
+`imulq $4, %rcx, %rcx` before the `subq` of `p - n`. A register
+variable as the right operand is its register (chapter 4), and a
+global the file only declares is reached through the register its
+address is loaded into, the GOT's load staying, `addl (%rcx), %eax`
+(chapter 10).
 
 The rule is the Seventh Edition compiler's. Its table's row `%n,aw`
 in `cr40`, the rows of `+`, `-`, `|`, `&~` and `<<`, takes any left
@@ -637,11 +653,11 @@ written for it.
 | a `register` variable | the register, as an operand the instruction reads; copied into `L`, `mov reg, L`, where the instruction writes `L` | no instruction for a read |
 | a global the file defines | `mov sym(%rip), L`; `sym(%rip)` wherever a row writes a local's `slot(%rbp)`: the store, `mov L, sym(%rip)`, and the memory forms of 6.6, `addl $1, sym(%rip)`, and the right operand of 6.1, `addl sym(%rip), %eax` | PC-relative, chapter 10; a char is `movsbl` or `movzbl`, a short `movswl` or `movzwl`, and a signed object under a cast to 64 bits the row of `(T) a`, `movslq sym(%rip), L64` |
 | a global the file only declares | `movq sym@GOTPCREL(%rip), L`, its address from the GOT, then the row of `*p` through `L`: `movl (L), L`, `movl R, (L)`, `addl $1, (L)`, and `addl (L), %eax` as a right operand | chapter 10; each access the source writes loads the address once, so `n = n + 1` loads it twice |
-| `a + b`, `a - b` | `add R, L`, `sub R, L`; an object in memory as `R`, `addl -8(%rbp), %eax` (6.1) | G1: the machine wraps |
-| `a * b` | `imul R, L`, `imull -8(%rbp), %eax` for an object in memory; by a constant `imul $c, L, L`, and on an object in memory the three-operand form with the object as its source, `imull $4, -4(%rbp), L` (6.1) | G1; the same instruction for signed and unsigned, since the low bits agree |
+| `a + b`, `a - b` | `add R, L`, `sub R, L`; an object in memory as `R`, `addl -8(%rbp), %eax` (6.1); a constant on the left of `+` taken on the right, `5 + x` `addl $5, L` after `x`'s load (6.1) | G1: the machine wraps |
+| `a * b` | `imul R, L`, `imull -8(%rbp), %eax` for an object in memory; by a constant `imul $c, L, L`, and on an object in memory the three-operand form with the object as its source, `imull $4, -4(%rbp), L`, and `4 * x` the same, its constant taken on the right (6.1) | G1; the same instruction for signed and unsigned, since the low bits agree |
 | `a / b`, `a % b` | `mov L, %rax` if needed; `cltd` or `xor %edx,%edx`; `idiv R` or `div R`, `idivl -8(%rbp)` for an object in memory; the quotient from `rax` into `L`, the remainder the value in `rdx` | G4; the pinned pair saved around if held, and the registers of a divisor's address moved out of it, 6.5 |
 | `a << b`, `a >> b` | `mov R, %rcx` if needed; `shl %cl, L`, `sar %cl, L`, `shr %cl, L`; by an immediate when `b` is a constant | G3: the instruction masks the count |
-| `a & b`, `a \| b`, `a ^ b` | `and`, `or`, `xor`, an object in memory as `R` as for `add` | |
+| `a & b`, `a \| b`, `a ^ b` | `and`, `or`, `xor`, an object in memory as `R` and a constant on the left as for `add` | |
 | `-a`, `~a` | `neg L`, `not L` | G1 for `-INT_MIN` |
 | `!a` | `cmp $0, L`; `sete %Lb`; `movzbl %Lb, L` | as a value; as a condition, chapter 7 |
 | `a < b` and the rest, as a value | `cmp R, L`, `cmpl -8(%rbp), %eax` for an object in memory, and for an object in memory against a constant the `cmp` of the object, `cmpl $5, -4(%rbp)`, as in a condition (7.1), `L` then taken for the `setcc`; `setcc %Lb`; `movzbl %Lb, L`; a constant on the left the mirrored comparison (6.1), `5 < x` `cmpl $5, -4(%rbp); setg %al` | `setl`, `setle`, `setg`, `setge`, `sete`, `setne` signed; `setb`, `setbe`, `seta`, `setae` unsigned and for pointers (G7) |
@@ -866,8 +882,9 @@ A constant operand of an arithmetic instruction is an immediate when
 the instruction has an immediate form, which on x86-64 every one of
 the table does but `idiv`, `div` and the variable shift: `x * 4` is
 `imul $4, L, L`, or `imull $4, -4(%rbp), L` on an object in memory
-(6.1), `x + 1` is `add $1, L`, and `x / 4` is `mov $4, R;
-cltd; idiv R`. The multiply stays a multiply, the division a
+(6.1), `x + 1` is `add $1, L`, `4 * x` and `1 + x` the same, their
+constant taken on the right (6.1), and `x / 4` is `mov $4, R; cltd;
+idiv R`. The multiply stays a multiply, the division a
 division, however the constant factors: there is no code in the
 table that looks at a constant's value.
 
@@ -1274,7 +1291,8 @@ instruction, `je` or `jne` by `sense`, and no `cmp` is written:
   is the instruction's operand, `testl -8(%rbp), %eax`, and a
   constant is the instruction's immediate, `testl $1, %eax`. An object
   in memory as `L` with a constant `R` is `testl $1, -4(%rbp)` (a
-  condition on an object in memory, below).
+  condition on an object in memory, below), and so is `1 & x`, its
+  constant taken on the right (6.1).
 - `x += e`, `-=`, `&=`, `|=`, `^=`, `++x` and `--x`: the form
   `effect()` writes for the statement (6.6), then the jump. On an
   object in memory that is the memory form, so `while (--n)` is
@@ -1294,13 +1312,14 @@ The instruction is written at the condition's width, the width of the
 test above: `addl` for an `int`, `addq` for a `long`, the memory form
 at the object's width. Where the two differ, or where the row writes
 anything after its operator's instruction, the `cmp` stays. A
-`register char`'s step is `addl $1, %ebx` and the re-extension
-`movsbl %bl, %ebx` after it, so its test is `cmpb $0, %bl`; `x += l`
-on a `register int` and a `long l` is the operation on a 64-bit copy
-and the `mov` back, then `cmpl $0, %ebx`. A pointer keeps the `cmp`
+`register char`'s step is `addl $1, %ebx` and the re-extension `movsbl
+%bl, %ebx` after it, so its test is `cmpb $0, %bl`; `x += l` on a
+`register int` and a `long l` is the operation on a 64-bit copy and
+the `mov` back, then `cmpl $0, %ebx`. A pointer keeps the `cmp`
 whatever its size, since `p + n`, `p - n` and `p - q` are `lea`,
-`imul` or a division at every size but 1 (6.3), and so do `*`, `/`, `%`, the shifts, `~`, a cast, `*=`, `/=`,
-`%=`, `<<=` and `>>=`, by the table below.
+`imul` or a division at every size but 1 (6.3), and so do `*`, `/`,
+`%`, the shifts, `~`, a cast, `*=`, `/=`, `%=`, `<<=` and `>>=`, by
+the table below.
 
 c1 knows the flags as it knows the width a register is valid to
 (6.3). It keeps, for the last instruction written, the width of the
@@ -2064,17 +2083,24 @@ answers:
     remainder first, the second arm moves into `rdx` and the use after
     the join moves out of it, one instruction more in `return c ? x %
     y : y;`.
-18. **A comparison with a constant on the left is the mirrored one**
-    (6.1), on both targets: `5 < x` is generated as `x > 5`, so the
+18. **A constant on the left is taken on the right** (6.1), on both
+    targets, of a comparison and of `+`, `*`, `&`, `|` and `^`: `5 <
+    x` is generated as `x > 5` and `4 * x` as `x * 4`, so the
     constant is the immediate on the right and every form of a
-    constant on the right follows, `cmpl $5, -4(%rbp)` and `jle`, and
-    `if (0 == (c & 1))` the jump on the `test`. The constant has no
-    evaluation, so G13 has nothing to order. The rule is the Seventh
-    Edition compiler's exchange, in its `optim()`, which puts the
-    operand of the lower degree on the right and maps the operator by
-    `maprel[]`; rcc takes it for a constant alone. aarch64 takes it
-    too, `ldr w0, [x29, #16]; cmp w0, #5`, where the source's order
-    holds the 5 in a register. The cost is the one exception to 6.1's
-    order of the source, and a boundary on x86-64: a constant no
-    32-bit immediate holds keeps its order, since mirrored against an
-    object in memory it would load the object.
+    constant on the right follows, `cmpl $5, -4(%rbp)` and `jle`,
+    `imull $4, -4(%rbp), %eax`, `if (0 == (c & 1))` and `if (1 & c)`
+    the `test`, and `5 + f()` the `call` and `addl $5, %eax`, no
+    constant held across it. The constant has no evaluation, so G13
+    has nothing to order. The rule is the Seventh Edition compiler's
+    exchange, in its `optim()`, which puts the operand of the lower
+    degree on the right and maps a relational by `maprel[]`, and its
+    `insert()`, which sorts a commutative chain's operands by degree;
+    rcc takes them for a constant alone. aarch64 takes it too, `ldr
+    w0, [x29, #16]; cmp w0, #5` and `add w0, w0, #5`, where the
+    source's order holds the 5 in a register. The cost is the one
+    exception to 6.1's order of the source, and a boundary on x86-64:
+    a constant no 32-bit immediate holds keeps its order, since
+    exchanged against an object in memory it would load the object,
+    and so does a constant whose order alone is the operation on a
+    register variable's register, `r = 5 + c` on a register `char c`.
+    `-`, `/`, `%` and the shifts do not commute and keep their order.
