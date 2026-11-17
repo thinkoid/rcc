@@ -204,12 +204,11 @@ both_register:
 	je	.Lboth_register.2
 	cmpl	$0, -16(%rbp)
 	je	.Lboth_register.2
-	movl	$1, %eax
+	movl	$1, %ebx
 	jmp	.Lboth_register.3
 .Lboth_register.2:
-	movl	$0, %eax
+	movl	$0, %ebx
 .Lboth_register.3:
-	movq	%rax, %rbx
 	movq	%rbx, %rax
 	jmp	.Lboth_register.1
 .Lboth_register.1:

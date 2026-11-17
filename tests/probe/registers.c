@@ -1305,6 +1305,72 @@ TYPES(CALLS)
 
 TYPES(RETURNED)
 
+/* A register variable as the consumer of &&, || and ?:, backend.md
+   chapter 4: each path writes the variable's register.  br_and_,
+   br_or_ and br_cond_ assign them, and br_init_ initializes the
+   variable with ?:; br_self_ tests the variable in && and br_read_
+   reads it in an arm, each before its path writes it; br_held_ holds
+   a read of the variable across the branch that writes it, which ISO
+   leaves undefined and clang -O0 writes left to right, as
+   assign_order_; br_call_ and br_div_ have an arm pinned by a call and
+   by a division.  A narrow variable is written through the
+   assignment's conversion.  The main keeps a divisor from 0 and -1. */
+#define BRANCHED(T, N)                                                  \
+    long br_and_##N(T a, T b)                                           \
+    {                                                                   \
+        register T r;                                                   \
+        r = a && b;                                                     \
+        return r;                                                       \
+    }                                                                   \
+    long br_or_##N(T a, T b)                                            \
+    {                                                                   \
+        register T r;                                                   \
+        r = a || b;                                                     \
+        return r;                                                       \
+    }                                                                   \
+    long br_cond_##N(int c, T a, T b)                                   \
+    {                                                                   \
+        register T r;                                                   \
+        r = c ? a : b;                                                  \
+        return r;                                                       \
+    }                                                                   \
+    long br_init_##N(int c, T a, T b)                                   \
+    {                                                                   \
+        register T r = c ? a : b;                                       \
+        return r;                                                       \
+    }                                                                   \
+    long br_self_##N(T a, T b)                                          \
+    {                                                                   \
+        register T r = a;                                               \
+        r = r && b;                                                     \
+        return r;                                                       \
+    }                                                                   \
+    long br_read_##N(int c, T a, T b)                                   \
+    {                                                                   \
+        register T r = a;                                               \
+        r = c ? r + 1 : b;                                              \
+        return r;                                                       \
+    }                                                                   \
+    long br_held_##N(int c, T a, T b)                                   \
+    {                                                                   \
+        register T r = a;                                               \
+        return r + (r = c ? b : 7) * 3L;                                \
+    }                                                                   \
+    long br_call_##N(int c, T a, long b)                                \
+    {                                                                   \
+        register T r;                                                   \
+        r = c ? lid(b) : a;                                             \
+        return r;                                                       \
+    }                                                                   \
+    long br_div_##N(int c, T a, T b)                                    \
+    {                                                                   \
+        register T r;                                                   \
+        r = c ? a / b : a;                                              \
+        return r;                                                       \
+    }
+
+TYPES(BRANCHED)
+
 /* recursion with live register variables, the parameters register too */
 long rsum(register int n, register long acc)
 {

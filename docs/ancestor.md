@@ -1946,20 +1946,28 @@ in memory as well, which reads `p` as `*p` does.
 Other rows keep the `mov`, by `backend.md` chapter 4 and `aarch64.md`
 chapter 4:
 
-- on both targets, a call's result, the value of `&&`, `||` and `?:`,
-  which two paths write, another register variable's read, a value
-  widened or narrowed into a narrow or an `unsigned` variable, and a
-  step's value whose address reads the variable, `r = a[r]++`; a
-  conversion that changes the signedness alone is the load or the row
-  into the register, `register unsigned u = i` the one load, and a
-  step's value on an object in memory the load of the object into the
-  register, `r = x++` being `movl -12(%rbp), %ebx` before the step;
+- on both targets, a call's result, a `?:` whose first arm's row
+  writes no variable, a call's among them, another register
+  variable's read, a value widened or narrowed into a narrow or an
+  `unsigned` variable, and a step's value whose address reads the
+  variable, `r = a[r]++`; a conversion that changes the signedness
+  alone is the load or the row into the register, `register unsigned
+  u = i` the one load, and a step's value on an object in memory the
+  load of the object into the register, `r = x++` being `movl
+  -12(%rbp), %ebx` before the step;
 - on x86-64, also a division and a remainder, whose registers are
   pinned (4.6), and `p - q`;
 - on aarch64, also a load that steps the variable's own register as
   its base, which cannot also be the load's data register.
 
 The queue holds the rows still to decide.
+
+Each path of `&&`, `||` and `?:` writes the variable's register on
+both targets, `movl $1, %ebx` and `movl $0, %ebx` for `r = a && b`
+and each arm's row for `r = c ? x : y`. The ancestor computes the
+value in `r0` on both paths and moves it after the join: for `r = c ?
+x : y` it writes `mov 6(r5),r0` and `mov 10(r5),r0` and then `mov
+r0,r4`.
 
 A `return` names the result register, the other consumer of the
 ancestor's register argument (7.2), and on x86-64 its value is
@@ -1974,7 +1982,8 @@ operand out of `rax` instead. The return keeps its `mov` for a
 remainder, for a node whose right operand or place holds a call or a
 division, and for a right operand that writes the variable whose
 read is the left operand. aarch64 names its destination apart from
-its sources and takes no row of the rule yet (`aarch64.md` 6.1).
+its sources and takes the rule for a returned `?:` alone, whose arms
+join in `x0` (`aarch64.md` 6.1).
 
 ### 7.5 What it buys and what it costs
 

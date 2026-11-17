@@ -1996,9 +1996,13 @@ test_zero(state_t &s,
 // mov L, #1 and mov L, #0, never csel, 6.3, the value valid to 64 bits,
 // truth_valid.  before_paths() first gives every held value one location
 // on both, so the paths leave the register map as they found it
-// whatever their operands do.
+// whatever their operands do.  Handed a register variable, each path
+// writes the variable's register, mov w19, #1 and mov w19, #0, after
+// the jump code has read every operand, and the value is the
+// variable's read (chapter 4); the assignment's preserve() has copied
+// every read of the variable before the first divergence.
 value_t
-logical(state_t &s, const expr_t &e)
+logical(state_t &s, const expr_t &e, into_t *into = nullptr)
 {
     const auto incoming = before_paths(s, e);
 
@@ -2006,6 +2010,20 @@ logical(state_t &s, const expr_t &e)
     const int end = new_label(s);
 
     cbranch(s, e, no, false);
+
+    if (takes(into, truth_valid)) {
+        const auto r = reg(variable_register(into->variable), 32);
+
+        insn(s, "mov", { r, imm(1) });
+        jump(s, end);
+
+        place_label(s, no);
+        insn(s, "mov", { r, imm(0) });
+
+        place_label(s, end);
+
+        return taken(s, *into);
+    }
 
     const auto v = fresh(s, truth_valid);
     const auto r = reg(reg_of(s, v), 32);
@@ -2045,6 +2063,51 @@ conditional_effect(state_t &s, const expr_t &e)
     place_label(s, end);
 }
 
+// An arm of a branch into a register variable computed into the
+// variable's register where its row can, chapter 4: a constant by the
+// constant row, mov w19, #0, constant_into()'s, as an assignment's, and
+// any other arm by its row handed the variable as path, ldr w19, [x29,
+// #20] or add w19, w19, #1 for an arm r + 1, which reads the variable
+// before the path writes it.  path says whether the row did; the value
+// is nothing for a constant.
+value_t
+arm_value(state_t &s, const expr_t &arm, into_t &path)
+{
+    if (constant_into(s, path.variable, arm)) {
+        path.taken = true;
+        return { };
+    }
+
+    return rvalue(s, arm, &path);
+}
+
+// One path of a branch into a register variable, chapter 4: the arm's
+// value written into the variable's register as an assignment's right
+// operand is, by arm_value() where the arm's row can, and otherwise by
+// establish()'s mov after it.  The value is consumed.
+void
+arm_into(state_t &s, const expr_t &arm, const into_t &into)
+{
+    into_t path { into.variable, false, into.as };
+    const auto v = arm_value(s, arm, path);
+    if (!path.taken)
+        establish(s, into.variable, reg_of(s, v));
+
+    release(s, v);
+}
+
+// Whether a conditional handed a register variable may have each path
+// write the variable's register, chapter 4: one of the variable's own
+// type, or of the type into's row computes in, computed_type(), so that
+// each arm is the right operand of an assignment to it; a conditional
+// under a conversion that widens it to the variable keeps its join and
+// the mov after the conversion.
+bool
+joins_into(const expr_t &e, const into_t *into)
+{
+    return into && !into->taken && e.type == computed_type(*into);
+}
+
 // 6.5.16p5: the arm not chosen is not evaluated, and the jump says so;
 // never csel.  The arms join in one expression register: named, the one
 // the conditional's consumer names, where it names one, a return's x0
@@ -2053,10 +2116,20 @@ conditional_effect(state_t &s, const expr_t &e)
 // into the join where it is elsewhere, by mov at the operation's width,
 // backend.md 7.2: return c ? p[i]++ : 0 is the first arm's mov w0, w2
 // and the second arm's mov w0, #0, and no move after the join.  No row
-// of an arm takes the name.
+// of an arm takes the name.  Handed a register variable that
+// joins_into(), the first arm is computed into it where its row can,
+// arm_value()'s, and then each path writes the variable and no register
+// joins them: r = c ? x : y is ldr w19, [x29, #28] on the first path and
+// the second arm's arm_into(), ldr w19, [x29, #32], and the value is the
+// variable's read.  An arm reads the variable on its own path before the
+// path writes it, and the assignment's preserve() has copied every read
+// of it held across the branch.  Where the first arm's row does not
+// write the variable, the arms join as for any consumer and the
+// assignment moves the join in after it (chapter 4).
 value_t
 conditional(state_t &s,
             const expr_t &e,
+            into_t *into = nullptr,
             std::optional< reg_t > named = std::nullopt)
 {
     const auto &c = as< conditional_t >(e);
@@ -2078,15 +2151,31 @@ conditional(state_t &s,
 
     const bool is_signed = integer(t).is_signed;
 
-    const auto yes = rvalue(s, *c.yes);
+    const bool joins = joins_into(e, into);
+    into_t path { joins ? into->variable : nullptr, false,
+                  joins ? into->as : nullptr };
+    const auto yes = joins ? arm_value(s, *c.yes, path) : rvalue(s, *c.yes);
+
+    if (path.taken) {
+        release(s, yes);
+        jump(s, end);
+
+        place_label(s, no);
+        arm_into(s, *c.no, *into);
+
+        place_label(s, end);
+
+        return taken(s, *into);
+    }
+
     if (borrowed(s, yes))
         copy(s, yes, named ? *named : take(s, 0));
 
-    reg_t into = reg_of(s, yes);
+    reg_t join = reg_of(s, yes);
     int valid = s.values[yes.id].valid;
-    if (named && into != *named) {
-        mov(s, into, *named, width);
-        into = *named;
+    if (named && join != *named) {
+        mov(s, join, *named, width);
+        join = *named;
         valid = written(width, is_signed);
     }
     release(s, yes);
@@ -2096,8 +2185,8 @@ conditional(state_t &s,
     const auto other = rvalue(s, *c.no);
     const reg_t from = reg_of(s, other);
     int other_valid = s.values[other.id].valid;
-    if (from != into) {
-        mov(s, from, into, width);
+    if (from != join) {
+        mov(s, from, join, width);
         other_valid = written(width, is_signed);
     }
     release(s, other);
@@ -2105,7 +2194,7 @@ conditional(state_t &s,
     place_label(s, end);
 
     // valid to what both arms left
-    return hold(s, into, std::min(valid, other_valid));
+    return hold(s, join, std::min(valid, other_valid));
 }
 
 value_t
@@ -2115,7 +2204,7 @@ binary(state_t &s, const expr_t &e, into_t *into = nullptr)
 
     switch (b.op) {
     case binary_op_t::log_and:
-    case binary_op_t::log_or: return logical(s, e);
+    case binary_op_t::log_or: return logical(s, e, into);
     // 6.5.18p2: the left operand is evaluated as a void expression,
     // the effect context of chapter 6.6
     case binary_op_t::comma: {
@@ -2727,7 +2816,7 @@ rvalue(state_t &s, const expr_t &e, into_t *into)
     if (is< cast_t >(e))
         return cast(s, as< cast_t >(e), e.type, into);
 
-    return conditional(s, e);
+    return conditional(s, e, into);
 }
 
 // The value of e for a consumer that names the register r, a return's
@@ -2739,7 +2828,7 @@ value_t
 rvalue_in(state_t &s, const expr_t &e, reg_t r)
 {
     if (is< conditional_t >(e))
-        return conditional(s, e, r);
+        return conditional(s, e, nullptr, r);
 
     return rvalue(s, e);
 }

@@ -1617,6 +1617,228 @@ narrowed_sum:
 	ret
 	.cfi_endproc
 	.size	narrowed_sum, .-narrowed_sum
+	.globl	logical_and
+	.type	logical_and, @function
+logical_and:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movl	%esi, -16(%rbp)
+	cmpl	$0, -12(%rbp)
+	je	.Llogical_and.2
+	cmpl	$0, -16(%rbp)
+	je	.Llogical_and.2
+	movl	$1, %ebx
+	jmp	.Llogical_and.3
+.Llogical_and.2:
+	movl	$0, %ebx
+.Llogical_and.3:
+	movl	%ebx, %eax
+	jmp	.Llogical_and.1
+.Llogical_and.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	logical_and, .-logical_and
+	.globl	logical_or
+	.type	logical_or, @function
+logical_or:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movl	%esi, -16(%rbp)
+	cmpl	$0, -12(%rbp)
+	jne	.Llogical_or.4
+	cmpl	$0, -16(%rbp)
+	je	.Llogical_or.2
+.Llogical_or.4:
+	movl	$1, %ebx
+	jmp	.Llogical_or.3
+.Llogical_or.2:
+	movl	$0, %ebx
+.Llogical_or.3:
+	movl	%ebx, %eax
+	jmp	.Llogical_or.1
+.Llogical_or.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	logical_or, .-logical_or
+	.globl	logical_itself
+	.type	logical_itself, @function
+logical_itself:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movl	%esi, -16(%rbp)
+	movl	-12(%rbp), %ebx
+	cmpl	$0, %ebx
+	je	.Llogical_itself.2
+	cmpl	$0, -16(%rbp)
+	je	.Llogical_itself.2
+	movl	$1, %ebx
+	jmp	.Llogical_itself.3
+.Llogical_itself.2:
+	movl	$0, %ebx
+.Llogical_itself.3:
+	movl	%ebx, %eax
+	jmp	.Llogical_itself.1
+.Llogical_itself.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	logical_itself, .-logical_itself
+	.globl	chosen
+	.type	chosen, @function
+chosen:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movl	%esi, -16(%rbp)
+	movl	%edx, -20(%rbp)
+	cmpl	$0, -12(%rbp)
+	je	.Lchosen.2
+	movl	-16(%rbp), %ebx
+	jmp	.Lchosen.3
+.Lchosen.2:
+	movl	-20(%rbp), %ebx
+.Lchosen.3:
+	movl	%ebx, %eax
+	jmp	.Lchosen.1
+.Lchosen.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	chosen, .-chosen
+	.globl	chosen_reading
+	.type	chosen_reading, @function
+chosen_reading:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movl	%esi, -16(%rbp)
+	movl	-16(%rbp), %ebx
+	cmpl	$0, -12(%rbp)
+	je	.Lchosen_reading.2
+	addl	$1, %ebx
+	jmp	.Lchosen_reading.3
+.Lchosen_reading.2:
+	movl	$0, %ebx
+.Lchosen_reading.3:
+	movl	%ebx, %eax
+	jmp	.Lchosen_reading.1
+.Lchosen_reading.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	chosen_reading, .-chosen_reading
+	.globl	chosen_called
+	.type	chosen_called, @function
+chosen_called:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	subq	$24, %rsp
+	movl	%edi, -12(%rbp)
+	movl	%esi, -16(%rbp)
+	cmpl	$0, -12(%rbp)
+	je	.Lchosen_called.2
+	movl	-16(%rbp), %eax
+	movl	%eax, -20(%rbp)
+	movl	-20(%rbp), %edi
+	call	f@PLT
+	jmp	.Lchosen_called.3
+.Lchosen_called.2:
+	movl	$0, %eax
+.Lchosen_called.3:
+	movl	%eax, %ebx
+	movl	%ebx, %eax
+	jmp	.Lchosen_called.1
+.Lchosen_called.1:
+	leaq	-8(%rbp), %rsp
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	chosen_called, .-chosen_called
+	.globl	chosen_widened
+	.type	chosen_widened, @function
+chosen_widened:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movl	%esi, -16(%rbp)
+	movl	%edx, -20(%rbp)
+	cmpl	$0, -12(%rbp)
+	je	.Lchosen_widened.2
+	movl	-16(%rbp), %eax
+	jmp	.Lchosen_widened.3
+.Lchosen_widened.2:
+	movl	-20(%rbp), %eax
+.Lchosen_widened.3:
+	movslq	%eax, %rax
+	movq	%rax, %rbx
+	movq	%rbx, %rax
+	jmp	.Lchosen_widened.1
+.Lchosen_widened.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	chosen_widened, .-chosen_widened
 	.bss
 	.globl	defined
 	.type	defined, @object

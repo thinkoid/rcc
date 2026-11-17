@@ -163,6 +163,15 @@ compare(const char *name, long x, long y)
     BOTH(long, ret_pinned_##N, (long, long, long))                      \
     BOTH(long, ret_deep_##N, (long, long, long))                        \
     BOTH(long, ret_written_##N, (long, long))                           \
+    BOTH(long, br_and_##N, (long, long))                                \
+    BOTH(long, br_or_##N, (long, long))                                 \
+    BOTH(long, br_cond_##N, (int, long, long))                          \
+    BOTH(long, br_init_##N, (int, long, long))                          \
+    BOTH(long, br_self_##N, (long, long))                               \
+    BOTH(long, br_read_##N, (int, long, long))                          \
+    BOTH(long, br_held_##N, (int, long, long))                          \
+    BOTH(long, br_call_##N, (int, long, long))                          \
+    BOTH(long, br_div_##N, (int, long, long))                           \
     COMPARISONS(DECLARE_COMPARED, T, N)
 
 TYPES(DECLARE_TYPE)
@@ -340,6 +349,18 @@ fill(long v[12], int i, int k)
                 if (DIVIDES(T, y)) {                                    \
                     CHECK(ret_pinned_##N, x, y, (w, x, y));             \
                     CHECK(ret_deep_##N, x, y, (w, x, y));               \
+                }                                                       \
+                CHECK(br_and_##N, x, y, (x, y));                        \
+                CHECK(br_or_##N, x, y, (x, y));                         \
+                CHECK(br_self_##N, x, y, (x, y));                       \
+                for (int c = 0; c < 2; ++c) {                           \
+                    CHECK(br_cond_##N, x, y, (c, x, y));                \
+                    CHECK(br_init_##N, x, y, (c, x, y));                \
+                    CHECK(br_read_##N, x, y, (c, x, y));                \
+                    CHECK(br_held_##N, x, y, (c, x, y));                \
+                    CHECK(br_call_##N, x, y, (c, x, y));                \
+                    if (DIVIDES(T, y))                                  \
+                        CHECK(br_div_##N, x, y, (c, x, y));             \
                 }                                                       \
                 COMPARISONS(TEST_COMPARED, T, N)                        \
             }                                                           \

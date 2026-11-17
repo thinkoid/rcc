@@ -13,8 +13,9 @@
    movl $1, %eax and movl $0, %eax: no movslq and no movl %eax, %eax.
    In less_register() and not_register(), the value written into the
    register, setl %bl or sete %bl, then movzbl %bl, %ebx; in
-   both_register(), the value computed in eax and moved, movq %rax,
-   %rbx, with no movslq before the move.  In less_plus_long(),
+   both_register(), the value of && written into the register on each
+   path, movl $1, %ebx and movl $0, %ebx, with no movslq and no move
+   after the join.  In less_plus_long(),
    addl $1, %eax and then movslq %eax, %rax.
 
    On aarch64 the listing must show cmp w0, w1 and cset w0, lt in
@@ -23,8 +24,9 @@
    #1 and mov w0, #0 and nothing after them, no sxtw; in less_register()
    and not_register(), the cset written into the register long, cset
    w19, lt and cset w19, eq, and in both_register() the value of &&
-   moved whole, mov x19, x0.  In less_plus_long(), add w0, w0, #1 and
-   then sxtw x0, w0. */
+   written into the register on each path, mov w19, #1 and mov w19, #0,
+   with no move after the join.  In less_plus_long(), add w0, w0, #1
+   and then sxtw x0, w0. */
 int less(int a, int b)
 {
     return a < b;

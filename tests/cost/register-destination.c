@@ -34,6 +34,14 @@
    long.  mixed_sum() and promoted_sum() write u = i + ub and u = c + b
    into an unsigned, and narrowed_sum() u = (int) l + b beside them.
 
+   logical_and() and logical_or() write r = a && b and r = a || b, and
+   logical_itself() r = r && b, whose condition reads the variable;
+   chosen() writes r = c ? x : y, and chosen_reading() r = c ? r + 1 :
+   0, whose first arm reads it; beside them chosen_called() r = c ?
+   f(x) : 0, whose first arm's call writes no variable, and
+   chosen_widened() a conditional widened to a long, which keep the
+   join and the mov.  Each path of &&, || and ?: writes the register.
+
    On x86-64 the listing must show: in load(), the load of a into the
    register, movl -12(%rbp), %ebx; in constant_leaf(), named_leaf(),
    register_leaf(), pointer_leaf() and promoted_leaf(), the operation
@@ -109,8 +117,16 @@
    movq %rdx, %rbx, and in step_widened() movslq %ecx, %rcx; movq %rcx,
    %rbx; in mixed_sum() and promoted_sum() movl -12(%rbp), %ebx and
    movsbl -9(%rbp), %ebx, each then addl -16(%rbp), %ebx; and in
-   narrowed_sum() the sum in eax and movl %eax, %ebx.  return r is movl
-   %ebx, %eax, and return p movq %rbx, %rax.
+   narrowed_sum() the sum in eax and movl %eax, %ebx; in logical_and(),
+   logical_or() and logical_itself() movl $1, %ebx and movl $0, %ebx on
+   the two paths, logical_itself()'s cmpl $0, %ebx before them; in
+   chosen() movl -16(%rbp), %ebx and movl -20(%rbp), %ebx on the two
+   paths, and in chosen_reading() addl $1, %ebx and movl $0, %ebx, each
+   with no mov into ebx after the join; in chosen_called() the call's
+   result and movl $0, %eax joined in eax and movl %eax, %ebx after the
+   join, and in chosen_widened() movslq %eax, %rax and movq %rax, %rbx
+   after it.  return r is movl %ebx, %eax, and return p movq %rbx,
+   %rax.
 
    On aarch64 the listing must show the last instruction of each
    right operand writing the register, no condition on the operands
@@ -154,8 +170,14 @@
    in step_pointer(), mov w20, w19 before add w19, w19, #1 in
    step_register(), the load into x1 and mov x19, x1 in step_indexed(),
    and sxtw x19, w0 in step_widened(); add w19, w0, w1 in mixed_sum(),
-   promoted_sum() and narrowed_sum().  return r is mov w0, w19, and
-   return p mov x0, x19. */
+   promoted_sum() and narrowed_sum(); mov w19, #1 and mov w19, #0 on the
+   two paths in logical_and(), logical_or() and logical_itself(), after
+   cbz w19 in logical_itself(); ldr w19, [x29, #28] and ldr w19, [x29,
+   #32] in chosen(), and add w19, w19, #1 and mov w19, #0 in
+   chosen_reading(), with no mov into w19 after the join; in
+   chosen_called() the call's result and mov w0, #0 joined in w0 and mov
+   w19, w0 after the join, and in chosen_widened() sxtw x19, w0 after
+   it.  return r is mov w0, w19, and return p mov x0, x19. */
 int
 load(int a)
 {
@@ -749,4 +771,69 @@ narrowed_sum(long l, int b)
 
         u = (int) l + b;
         return u;
+}
+
+int f(int);
+
+int
+logical_and(int a, int b)
+{
+        register int r;
+
+        r = a && b;
+        return r;
+}
+
+int
+logical_or(int a, int b)
+{
+        register int r;
+
+        r = a || b;
+        return r;
+}
+
+int
+logical_itself(int a, int b)
+{
+        register int r = a;
+
+        r = r && b;
+        return r;
+}
+
+int
+chosen(int c, int x, int y)
+{
+        register int r;
+
+        r = c ? x : y;
+        return r;
+}
+
+int
+chosen_reading(int c, int x)
+{
+        register int r = x;
+
+        r = c ? r + 1 : 0;
+        return r;
+}
+
+int
+chosen_called(int c, int x)
+{
+        register int r;
+
+        r = c ? f(x) : 0;
+        return r;
+}
+
+long
+chosen_widened(int c, int x, int y)
+{
+        register long r;
+
+        r = c ? x : y;
+        return r;
 }

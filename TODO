@@ -166,13 +166,11 @@ Check: ~r = c + 5~ and ~r = 5 + c~ have one listing of two
 instructions, and ~x * 4~ on a register variable is one =imull=,
 each pinned.
 
-** TODO Four rows at the edge of a register variable's destination
+** TODO Three rows at the edge of a register variable's destination
 
 The destination rule (=backend.md= chapter 4, =aarch64.md= chapter
-4) stops short of four rows:
+4) stops short of three rows:
 
-- both targets, ~&&~, ~||~ and ~?:~ as a value, written on two
-  paths, each of which could write the variable;
 - x86-64, ~r = c + 5~ with ~c~ a =register char=, in the entry on
   two rows around a constant and a register variable;
 - both targets, the value of a prefix step on an object in memory:
@@ -182,15 +180,32 @@ The destination rule (=backend.md= chapter 4, =aarch64.md= chapter
   with a displacement of 0 from a base made without the variable,
   and moved.
 
-Fix: each takes the variable's register. Each path of ~&&~, ~||~
-and ~?:~ writes it, with the join of ~?:~ in the register its
-consumer names; a register variable valid to the width is a left
-operand of the rule under a conversion that writes nothing; the
-=add= of ~++x~ writes it, and the store takes it from there; the
-base of ~&a[i][0]~ is formed in it.
+Fix: each takes the variable's register. A register variable valid
+to the width is a left operand of the rule under a conversion that
+writes nothing; the =add= of ~++x~ writes it, and the store takes it
+from there; the base of ~&a[i][0]~ is formed in it.
 
 Check: a function of =register-destination= for each, with no =mov=
 into the variable's register.
+
+** TODO A ~?:~ into a register variable keeps its join in two shapes
+
+Each path of ~?:~ writes the =register= variable it is assigned to
+(=backend.md= chapter 4), but for two shapes that join in an
+expression register and move after the join. A conditional the
+assignment widens, ~l = c ? x : y~ into a =long= from two =int=
+arms, is one: the paths would each have to convert their arm. A
+first arm whose row writes no variable, a call's result, is the
+other, and there a second arm that could write the variable is
+moved too, ~r = c ? f(x) : p[i]++~; no test has that shape.
+
+Fix: none taken. The widened one waits on the entry on a value
+extended for a register variable; for the other, the second path
+would write the variable and the first move into it on its own path.
+
+Check: =register-destination='s =chosen_widened= and
+=chosen_called=, and the count of moves after a join into a register
+variable over =tests=.
 
 ** TODO =c1.cc= includes =c1-common.hh= and uses nothing of it
 

@@ -254,12 +254,11 @@ both_register:
 	cbz	w0, .Lboth_register.2
 	ldr	w0, [x29, #28]
 	cbz	w0, .Lboth_register.2
-	mov	w0, #1
+	mov	w19, #1
 	b	.Lboth_register.3
 .Lboth_register.2:
-	mov	w0, #0
+	mov	w19, #0
 .Lboth_register.3:
-	mov	x19, x0
 	mov	x0, x19
 	b	.Lboth_register.1
 .Lboth_register.1:
