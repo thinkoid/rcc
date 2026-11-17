@@ -1264,17 +1264,34 @@ load(state_t &s,
 // The load row of a read-modify-write, a compound assignment or a ++
 // or --: the address stays held for the store through it, since E1 is
 // evaluated once, 6.5.17.3p4.  The value's register is taken outside
-// the address's, and the operand formed after the take.
+// the address's, and the operand formed after the take.  Handed a
+// register variable, the load writes the variable's register where
+// that leaves its representation, as load() does, and the value is the
+// variable's read (chapter 4); not where the address reads the
+// variable's register, r = a[r]++, since the store after the load goes
+// through the same address.
 value_t
-fetch(state_t &s, const address_t &a, const int_t &t, int width)
+fetch(state_t &s,
+      const address_t &a,
+      const int_t &t,
+      int width,
+      into_t *into = nullptr)
 {
-    const auto [mnemonic, into] = load_of(t, width);
+    const auto [mnemonic, to] = load_of(t, width);
+    const int valid = written(to, t.is_signed);
 
-    const auto v = fresh(s, written(into, t.is_signed), registers_of(s, a));
+    if (takes(into, valid) && a.step.variable != into->variable &&
+        !(registers_of(s, a) & bit(variable_register(into->variable)))) {
+        const auto from = operand(s, a, t.width);
+        insn(s, mnemonic, { reg(variable_register(into->variable), to), from });
+        return taken(s, *into);
+    }
+
+    const auto v = fresh(s, valid, registers_of(s, a));
     const reg_t r = reg_of(s, v);
 
     const auto from = operand(s, a, t.width, bit(r));
-    insn(s, mnemonic, { reg(r, into), from });
+    insn(s, mnemonic, { reg(r, to), from });
 
     return v;
 }
@@ -2123,7 +2140,10 @@ binary(state_t &s, const expr_t &e, into_t *into = nullptr)
 // copy is the value, G13's copy of chapter 4.  The prefix forms yield a
 // read of the variable after the write, as a compound assignment does.
 value_t
-step_register(state_t &s, unary_op_t op, const symbol_t *sym)
+step_register(state_t &s,
+              unary_op_t op,
+              const symbol_t *sym,
+              into_t *into = nullptr)
 {
     const auto &t = integer(sym->type);
     const int width = register_width(sym);
@@ -2132,7 +2152,16 @@ step_register(state_t &s, unary_op_t op, const symbol_t *sym)
     const bool up = op == unary_op_t::pre_inc || op == unary_op_t::post_inc;
     const bool post = op == unary_op_t::post_inc || op == unary_op_t::post_dec;
 
-    const auto old = post ? read(s, sym) : value_t { };
+    // r = s++: the old value copied into r's register, which is G13's
+    // copy, mov w20, w19 (chapter 4)
+    const bool copies =
+        post && takes(into, represented(sym)) && into->variable != sym;
+    if (copies)
+        insn(s, "mov",
+             { reg(variable_register(into->variable), width),
+               reg(variable_register(sym), width) });
+
+    const auto old = post && !copies ? read(s, sym) : value_t { };
     preserve(s, sym);
 
     const auto r = reg(variable_register(sym), width);
@@ -2145,6 +2174,9 @@ step_register(state_t &s, unary_op_t op, const symbol_t *sym)
 
     if (t.width < 32)
         establish(s, sym, variable_register(sym));
+
+    if (copies)
+        return taken(s, *into);
 
     return post ? old : read(s, sym);
 }
@@ -2161,10 +2193,10 @@ step_register(state_t &s, unary_op_t op, const symbol_t *sym)
 // old value where the load left it: nothing is copied, 6.1.  A register
 // variable's is step_register()'s.
 value_t
-step(state_t &s, unary_op_t op, const expr_t &arg)
+step(state_t &s, unary_op_t op, const expr_t &arg, into_t *into = nullptr)
 {
     if (const auto *sym = register_variable(arg))
-        return step_register(s, op, sym);
+        return step_register(s, op, sym, into);
 
     const auto &t = integer(arg.type);
     const int width = std::max(32, t.width);
@@ -2174,19 +2206,20 @@ step(state_t &s, unary_op_t op, const expr_t &arg)
     const bool post = op == unary_op_t::post_inc || op == unary_op_t::post_dec;
 
     const auto place = address(s, arg);
-    const auto l = fetch(s, first_access(place), t, width);
+    const auto l =
+        fetch(s, first_access(place), t, width, post ? into : nullptr);
     const reg_t r = reg_of(s, l);
 
     const auto v = post ? fresh(s, written(width, t.is_signed),
                                 bit(r) | registers_of(s, place)) :
                           l;
-    const reg_t into = reg_of(s, v);
+    const reg_t result = reg_of(s, v);
 
     const auto n =
-        product(s, amount, bit(r) | bit(into) | registers_of(s, place));
+        product(s, amount, bit(r) | bit(result) | registers_of(s, place));
     const auto by =
         n.immediate.empty() ? reg(reg_of(s, n.value), width) : n.immediate;
-    insn(s, up ? "add" : "sub", { reg(into, width), reg(r, width), by });
+    insn(s, up ? "add" : "sub", { reg(result, width), reg(r, width), by });
     release(s, n.value);
 
     store(s, v, last_access(place), t.width);
@@ -2244,7 +2277,7 @@ unary(state_t &s, const unary_t &u, const type_t &t, into_t *into = nullptr)
     case unary_op_t::pre_inc:
     case unary_op_t::pre_dec:
     case unary_op_t::post_inc:
-    case unary_op_t::post_dec: return step(s, u.op, *u.arg);
+    case unary_op_t::post_dec: return step(s, u.op, *u.arg, into);
 
     case unary_op_t::addr: return address_value(s, *u.arg, into);
 
@@ -2476,19 +2509,19 @@ cast(state_t &s, const cast_t &c, const type_t &to, into_t *into = nullptr)
     }
 
     const auto &target = integer(to);
-    const auto onward = through(into, target);
 
     if (is< array_t >(c.arg->type))
-        return address_value(s, *c.arg, onward);
+        return address_value(s, *c.arg, through(into, target, false));
 
     if (is< function_t >(c.arg->type))
-        return function_pointer(s, *c.arg, onward);
+        return function_pointer(s, *c.arg, through(into, target, false));
 
     if (retypes(c, to, into))
         return retyped(s, c, target, *into);
 
     const auto &from = integer(c.arg->type);
     const bool widens = target.width > from.width;
+    const auto onward = through(into, target, widens);
 
     const auto *object = widens ? object_under(c) : nullptr;
     const bool loads = object && (from.is_signed || object != c.arg.get());

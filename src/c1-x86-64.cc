@@ -769,15 +769,30 @@ load(state_t &s,
 
 // The load row of a read-modify-write, a compound assignment or a ++
 // or --: the address stays held for the store through it, since E1 is
-// evaluated once, 6.5.17.3p4.
+// evaluated once, 6.5.17.3p4.  Handed a register variable, the load
+// writes the variable's register where that leaves its
+// representation, and the value is the variable's read (chapter 4); not
+// where the address reads the variable's register, r = a[r]++, since
+// the store after the load goes through the same address.
 value_t
-fetch(state_t &s, const address_t &a, const int_t &t, int width)
+fetch(state_t &s,
+      const address_t &a,
+      const int_t &t,
+      int width,
+      into_t *into = nullptr)
 {
-    const auto [mnemonic, into] = extension(t, width);
+    const auto [mnemonic, to] = extension(t, width);
+    const int valid = written(to, t.is_signed);
 
     const auto from = operand(s, a);
-    const auto v = fresh(s, written(into, t.is_signed), registers_of(s, a));
-    insn(s, mnemonic, { from, reg(reg_of(s, v), into) });
+    if (takes(into, valid) &&
+        !(registers_of(s, a) & bit(variable_register(into->variable)))) {
+        insn(s, mnemonic, { from, reg(variable_register(into->variable), to) });
+        return taken(s, *into);
+    }
+
+    const auto v = fresh(s, valid, registers_of(s, a));
+    insn(s, mnemonic, { from, reg(reg_of(s, v), to) });
 
     return v;
 }
@@ -954,9 +969,15 @@ summed(state_t &s, const expr_t &pointer)
 // operand written first is held outside the registers the other's top
 // operator pins, p[x / y]'s p outside rax and rdx (chapter 6.5).  Any
 // other pointer, an add of another size included, is computed into a
-// register and is the base; nothing looks through a cast.
+// register and is the base; nothing looks through a cast.  A register
+// variable handed down goes to the row of a base that is the whole
+// address, p of &*p and &p[0], or the sum of &a[i] at a size no
+// addressing form scales by (chapter 4).
 address_t
-pointed(state_t &s, const expr_t &p, const type_t &pointee)
+pointed(state_t &s,
+        const expr_t &p,
+        const type_t &pointee,
+        into_t *into = nullptr)
 {
     if (const auto a = folded(s, p))
         return *a;
@@ -966,13 +987,13 @@ pointed(state_t &s, const expr_t &p, const type_t &pointee)
         return *a;
 
     if (const auto *base = bare_base(p))
-        return { .base = rvalue(s, *base) };
+        return { .base = rvalue(s, *base, into) };
 
     const long size = size_of(pointee);
 
     if (!is_scale(size) || !is< binary_t >(p) ||
         as< binary_t >(p).op != binary_op_t::add)
-        return { .base = rvalue(s, p) };
+        return { .base = rvalue(s, p, into) };
 
     const auto &b = as< binary_t >(p);
     const bool left = is< pointer_t >(b.lhs->type);
@@ -1061,12 +1082,17 @@ address(state_t &s, const expr_t &e)
 // decay: the leaq of address()'s operand, address_of()'s, and for a
 // global symbol_address()'s, the load from the GOT for one the unit
 // only declares.  A register variable handed down is the destination of
-// either (chapter 4).
+// either, and of the pointer's own row where the address of *p is p's
+// value, p = &*q being the load of q into the register (chapter 4).
 value_t
 address_value(state_t &s, const expr_t &lvalue, into_t *into)
 {
     if (const auto *g = global_of(lvalue))
         return symbol_address(s, *g, into);
+
+    if (is< unary_t >(lvalue) && as< unary_t >(lvalue).op == unary_op_t::deref)
+        return address_of(
+            s, pointed(s, *as< unary_t >(lvalue).arg, lvalue.type, into), into);
 
     return address_of(s, address(s, lvalue), into);
 }
@@ -2232,36 +2258,75 @@ leaf_apart_from(const expr_t &rhs, const symbol_t *sym)
 bool operates_in(const operation_t &, const type_t &, const into_t &);
 operation_t ordered(const binary_t &, const type_t &, const into_t *);
 
+// Whether a cast as L of the operation form goes into the variable's
+// register by its own row: an array's decay, the leaq or the GOT's load
+// of a named array or a string literal; a conversion that changes the
+// signedness alone of an object in memory, retyped()'s load at the
+// conversion's extension; and a conversion of an object in memory whose
+// width holds the representation, its load, which a row computing the
+// value in another signedness, into's as, takes through a widening
+// alone, as through() hands it on.
+bool
+cast_loads_into(const cast_t &c, const type_t &to, const into_t &into)
+{
+    const auto &arg = *c.arg;
+
+    if (is< array_t >(arg.type))
+        return (is< name_t >(arg) && !register_variable(arg)) ||
+               is< string_t >(arg);
+
+    if (retypes(c, to, &into))
+        return object_under(c) != nullptr;
+
+    if (!is< int_t >(arg.type) && !is< pointer_t >(arg.type))
+        return false;
+
+    const bool widens = integer(to).width > integer(arg.type).width;
+
+    return (!into.as || widens) && in_memory(arg) &&
+           integer(to).width >= needed(into);
+}
+
+bool offsets_in(const operation_t &, const type_t &, const into_t &);
+operation_t ordered_sum(const binary_t &, long size);
+
 // Whether L of the operation form goes into the variable's register by
 // an instruction it has in any case: its load, its constant, or again
-// the operation form, each written into the register; the read of
-// another register variable, which an instruction that writes is given
-// a copy of (chapter 4), copied there; the variable itself, already
-// there.  Any other L leaves the whole assignment to the mov of
+// the operation form, each written into the register, pointer
+// arithmetic's among them, flag + i + i; the address of a name, its
+// leaq or the GOT's load, and a cast that cast_loads_into(); the read
+// of another register variable, which an instruction that writes is
+// given a copy of (chapter 4), copied there; the variable itself,
+// already there.  Any other L leaves the whole assignment to the mov of
 // establish() after it: moved in before the instruction, L would leave
 // the assignment's value in the variable's register, where the mov
 // after leaves it in an expression register, and a use of the value in
-// one would copy it back, an instruction more.  A row computing the
-// value in another signedness, into's as, takes no L under a
-// conversion, as through() hands it on through none.
+// one would copy it back, an instruction more.  A sum whose integer is
+// a constant is no L here, since folded() and summed() may form it
+// with no instruction of its own.
 bool
 loads_into(const expr_t &lhs, const into_t &into)
 {
     if (is< literal_t >(lhs) || is< name_t >(lhs) || in_memory(lhs))
         return true;
 
-    if (is< cast_t >(lhs)) {
-        const auto &arg = *as< cast_t >(lhs).arg;
-        return !into.as &&
-               (is< int_t >(arg.type) || is< pointer_t >(arg.type)) &&
-               in_memory(arg) &&
-               integer(lhs.type).width >= represented(into.variable);
-    }
+    if (is< unary_t >(lhs))
+        return as< unary_t >(lhs).op == unary_op_t::addr &&
+               is< name_t >(*as< unary_t >(lhs).arg);
+
+    if (is< cast_t >(lhs))
+        return cast_loads_into(as< cast_t >(lhs), lhs.type, into);
 
     if (!is< binary_t >(lhs))
         return false;
 
     const auto &b = as< binary_t >(lhs);
+
+    if (is< pointer_t >(lhs.type)) {
+        const auto &n = is< pointer_t >(b.lhs->type) ? *b.rhs : *b.lhs;
+        return !is< literal_t >(n) &&
+               offsets_in(ordered_sum(b, stride(lhs.type)), lhs.type, into);
+    }
 
     return operates_in(ordered(b, lhs.type, &into), lhs.type, into);
 }
@@ -2574,7 +2639,10 @@ binary(state_t &s, const expr_t &e, into_t *into = nullptr)
 // compound assignment does.  The add or sub sets ZF from the register,
 // and a re-extension after it withdraws that (7.1).
 value_t
-step_register(state_t &s, unary_op_t op, const symbol_t *sym)
+step_register(state_t &s,
+              unary_op_t op,
+              const symbol_t *sym,
+              into_t *into = nullptr)
 {
     const auto &t = integer(sym->type);
     const int width = register_width(sym);
@@ -2583,7 +2651,15 @@ step_register(state_t &s, unary_op_t op, const symbol_t *sym)
     const bool up = op == unary_op_t::pre_inc || op == unary_op_t::post_inc;
     const bool post = op == unary_op_t::post_inc || op == unary_op_t::post_dec;
 
-    const auto old = post ? read(s, sym) : value_t { };
+    // r = s++: the old value copied into r's register, which is G13's
+    // copy, movl %ebx, %r12d (chapter 4)
+    const bool copies =
+        post && takes(into, represented(sym)) && into->variable != sym;
+    if (copies)
+        mov(s, variable_register(sym), variable_register(into->variable),
+            width);
+
+    const auto old = post && !copies ? read(s, sym) : value_t { };
     preserve(s, sym);
 
     const reg_t r = variable_register(sym);
@@ -2591,6 +2667,9 @@ step_register(state_t &s, unary_op_t op, const symbol_t *sym)
     flagged(s, width);
     if (t.width < 32)
         establish(s, sym, r);
+
+    if (copies)
+        return taken(s, *into);
 
     return post ? old : read(s, sym);
 }
@@ -2602,22 +2681,37 @@ step_register(state_t &s, unary_op_t op, const symbol_t *sym)
 // operator sees 8 or 16 bits.  The postfix forms copy the old value to
 // another register first and yield it.
 value_t
-step(state_t &s, const unary_t &u)
+step(state_t &s, const unary_t &u, into_t *into = nullptr)
 {
     if (const auto *sym = register_variable(*u.arg))
-        return step_register(s, u.op, sym);
+        return step_register(s, u.op, sym, into);
 
     const auto &t = integer(u.arg->type);
     const int width = std::max(32, t.width);
     const long amount = is< pointer_t >(u.arg->type) ? stride(u.arg->type) : 1;
 
-    const auto place = address(s, *u.arg);
-    const auto l = fetch(s, place, t, width);
-    const reg_t r = reg_of(s, l);
-
     const bool up = u.op == unary_op_t::pre_inc || u.op == unary_op_t::post_inc;
     const bool post =
         u.op == unary_op_t::post_inc || u.op == unary_op_t::post_dec;
+
+    const auto place = address(s, *u.arg);
+    const auto l = fetch(s, place, t, width, post ? into : nullptr);
+    const reg_t r = reg_of(s, l);
+
+    // r = x++: the load wrote r's register, the old value; the new one
+    // is a copy of it, stepped and stored (chapter 4)
+    if (borrowed(s, l)) {
+        const auto n =
+            fresh(s, s.values[l.id].valid, bit(r) | registers_of(s, place));
+        mov(s, r, reg_of(s, n), width);
+        insn(s, sized(up ? "add" : "sub", width),
+             { imm(amount), reg(reg_of(s, n), width) });
+        store(s, n, place, t.width);
+        release(s, place);
+        release(s, n);
+
+        return l;
+    }
 
     value_t old;
     if (post) {
@@ -2701,11 +2795,23 @@ unary(state_t &s, const unary_t &u, const type_t &t, into_t *into = nullptr)
     // as a value; the operand is not promoted, so it is compared at its
     // own width.  A register variable is read by the cmp, and the sete
     // takes a fresh register, as for a comparison; the value is valid
-    // to 64 bits, truth_valid.
+    // to 64 bits, truth_valid.  Handed a register variable, the sete and
+    // the movzbl write its register, sete %bl; movzbl %bl, %ebx, after
+    // the cmp has read the operand (chapter 4).
     case unary_op_t::log_not: {
         const int width = integer(u.arg->type).width;
         auto v = rvalue(s, *u.arg);
         insn(s, sized("cmp", width), { imm(0), reg(reg_of(s, v), width) });
+
+        if (takes(into, truth_valid)) {
+            release(s, v);
+
+            const reg_t r = variable_register(into->variable);
+            insn(s, "sete", { reg(r, 8) });
+            insn(s, "movzbl", { reg(r, 8), reg(r, 32) });
+
+            return taken(s, *into);
+        }
 
         if (borrowed(s, v)) {
             release(s, v);
@@ -2722,7 +2828,7 @@ unary(state_t &s, const unary_t &u, const type_t &t, into_t *into = nullptr)
     case unary_op_t::pre_inc:
     case unary_op_t::pre_dec:
     case unary_op_t::post_inc:
-    case unary_op_t::post_dec: return step(s, u);
+    case unary_op_t::post_dec: return step(s, u, into);
 
     case unary_op_t::addr: return address_value(s, *u.arg, into);
 
@@ -2968,7 +3074,7 @@ cast(state_t &s, const cast_t &c, const type_t &to, into_t *into = nullptr)
     const auto &from = integer(c.arg->type);
     const auto &target = integer(to);
     const bool widens = target.width > from.width;
-    const auto onward = through(into, target);
+    const auto onward = through(into, target, widens);
 
     const auto *object = widens ? object_under(c) : nullptr;
     const bool loads = object && (from.is_signed || object != c.arg.get());

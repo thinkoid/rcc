@@ -156,6 +156,7 @@ compare(const char *name, long x, long y)
     BOTH(long, rall_##N, (P12(long)))                                   \
     BOTH(long, rwritten_##N, (long, long, long))                        \
     BOTH(long, rcall_##N, (long, long))                                 \
+    BOTH(long, edge_##N, (long, long))                                  \
     COMPARISONS(DECLARE_COMPARED, T, N)
 
 TYPES(DECLARE_TYPE)
@@ -165,6 +166,7 @@ TYPES(DECLARE_TYPE)
 
 RETYPES(DECLARE_RETYPE)
 BOTH(long, far_address, (long))
+BOTH(long, pedge_named, (long))
 
 #define DECLARE_DEST(T, N, name, op, small, large)                      \
     BOTH(long, dest_##name##_##N, (long, long, long))                   \
@@ -208,6 +210,7 @@ SCALARS(DECLARE_PDEST)
 #define DECLARE_ADEST(E, T)                                             \
     BOTH(long, adest_##E, (void *, long, int))                          \
     BOTH(long, iadest_##E, (void *, long))                              \
+    BOTH(long, pedge_##E, (void *, long, int))                          \
     BOTH(long, adiff_##E, (void *, long, int))
 
 POINTEES(DECLARE_ADEST)
@@ -323,6 +326,7 @@ fill(long v[12], int i, int k)
                 CHECK(across_##N, x, y, (x, y));                        \
                 CHECK(rwritten_##N, x, y, (x, y, w));                   \
                 CHECK(rcall_##N, x, y, (x, y));                         \
+                CHECK(edge_##N, x, y, (x, y));                          \
                 COMPARISONS(TEST_COMPARED, T, N)                        \
             }                                                           \
                                                                         \
@@ -438,6 +442,7 @@ test_converts(void)
     MCHECK(adest_##E, k, m, (B, k, m));                                 \
     MCHECK(adest_##E, k, m, (B + 5, k, m));                             \
     MCHECK(iadest_##E, k, 0, (B, k));                                   \
+    MCHECK(pedge_##E, k, m, (B + 5, k, m));                             \
     MCHECK(adiff_##E, k, m, (B, k, m));                                 \
     MCHECK(adiff_##E, k, m, (B + 5, k, m));
 
@@ -530,6 +535,7 @@ test_rest(void)
         const long x = values[i];
 
         CHECK(far_address, x, 0, (x));
+        CHECK(pedge_named, x, 0, (x));
 
         for (int j = 0; j < COUNT; ++j) {
             const long y = values[j];

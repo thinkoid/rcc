@@ -176,9 +176,8 @@ not_register:
 	movl	%edi, -12(%rbp)
 	movl	-12(%rbp), %eax
 	cmpl	$0, %eax
-	sete	%al
-	movzbl	%al, %eax
-	movq	%rax, %rbx
+	sete	%bl
+	movzbl	%bl, %ebx
 	movq	%rbx, %rax
 	jmp	.Lnot_register.1
 .Lnot_register.1:

@@ -653,6 +653,98 @@ SCALARS(PDEST)
     }
 POINTEES(ADEST)
 
+/* The address rows at the edge of the destination, backend.md chapter
+   4: a sum whose left operand is an array's decay, of a global, of one
+   only declared and of a local, and a sum on such a sum, gav + i + j;
+   an address that is a pointer's own value, &*w and &w[0], and the
+   address of an element of a local array by an index, &a[i]; beside
+   them a sum whose right operand names the variable, which keeps the
+   mov. */
+#define PEDGE(E, T)                                                     \
+    long pedge_##E(T *base, long i, int j)                              \
+    {                                                                   \
+        T a[8];                                                         \
+        register T *w = base + j;                                       \
+        register T *q;                                                  \
+        long r;                                                         \
+        q = gav_##E + i;                                                \
+        r = q - gav_##E;                                                \
+        q = lga_##E + i;                                                \
+        r = r * 7 + (q - lga_##E);                                      \
+        q = a + i;                                                      \
+        r = r * 7 + (q - a);                                            \
+        q = gav_##E + i + j;                                            \
+        r = r * 7 + (q - gav_##E);                                      \
+        q = &*w;                                                        \
+        r = r * 7 + (q - base);                                         \
+        q = &w[0];                                                      \
+        r = r * 7 + (q - base);                                         \
+        q = &a[i];                                                      \
+        r = r * 7 + (q - a);                                            \
+        q = a + (q - a);                                                \
+        return r * 7 + (q - a);                                         \
+    }
+POINTEES(PEDGE)
+
+/* a sum whose right operand is a leaf that names the variable, *q,
+   read after the decay: the variable's register is written only after
+   it, and the sum keeps the mov */
+long
+pedge_named(long i)
+{
+        long t[8];
+        register long *q = t + 1;
+
+        for (int k = 0; k < 8; ++k)
+                t[k] = (i + k) & 7;
+        q = t + *q;
+        return q - t;
+}
+
+/* The value of a step, of ! and of a conversion of the signedness
+   alone at the edge of the destination, backend.md and aarch64.md
+   chapter 4: r = x++ and r = x-- on an object in a slot and through a
+   pointer, r = s++ and r = s-- on another register variable, r = a[r]++,
+   whose address reads the variable, and beside them a step widened to
+   long; r = !x into the variable and into a long; each read after.
+   G13: the value is the old one, and the object holds the new one. */
+#define EDGE(T, N)                                                      \
+    long edge_##N(T a, T b)                                             \
+    {                                                                   \
+        T x = a;                                                        \
+        T *p = &x;                                                      \
+        T y[4];                                                         \
+        register T r;                                                   \
+        register T s = b;                                               \
+        register long l;                                                \
+        long k;                                                         \
+        y[0] = a;                                                       \
+        y[1] = b;                                                       \
+        y[2] = a ^ b;                                                   \
+        y[3] = 3;                                                       \
+        r = x++;                                                        \
+        k = r * 7L + x;                                                 \
+        r = x--;                                                        \
+        k = k * 7 + r + x * 3L;                                         \
+        r = (*p)++;                                                     \
+        k = k * 7 + r + x * 3L;                                         \
+        r = s++;                                                        \
+        k = k * 7 + r + s * 3L;                                         \
+        r = s--;                                                        \
+        k = k * 7 + r + s * 3L;                                         \
+        r = 1;                                                          \
+        r = y[r]++;                                                     \
+        k = k * 7 + r + y[1] * 3L;                                      \
+        l = x++;                                                        \
+        k = k * 7 + l + x * 3L;                                         \
+        r = !a;                                                         \
+        k = k * 7 + r;                                                  \
+        l = !s;                                                         \
+        return k * 7 + l;                                               \
+    }
+
+TYPES(EDGE)
+
 /* p - q with a register variable on the left, x86-64, backend.md 6.5:
    at a size other than 1 the right operand is generated outside rax
    and rdx, as a divisor is.  The right operand a parameter, an object
@@ -1022,8 +1114,10 @@ TYPES(COMPARED_ALL)
    register the destination of the operation, of the comparison's value
    and of - and ~, by the initializer and by the assignment, each read
    then as a long, which reads the register whole; and of an object's
-   load under the conversion, from a slot, a global and *p.  Beside
-   them two narrowings and a call keep the mov. */
+   load under the conversion, from a slot, a global and *p; the left
+   operand an object under the conversion, a + (T) b, and a char
+   promoted, c + b.  Beside them two narrowings and a call keep the
+   mov. */
 #define RETYPE(F, FN, T, TN)                                            \
     F rt_object_##FN##_##TN;                                            \
     F rt_call_##FN##_##TN(F a) { return a; }                            \
@@ -1062,6 +1156,13 @@ TYPES(COMPARED_ALL)
         r = r * 7 + y;                                                  \
         y = a * 3L;                                                     \
         r = r * 7 + y;                                                  \
+        y = a + (T) b;                                                  \
+        r = r * 7 + y;                                                  \
+        {                                                               \
+            char c = a;                                                 \
+            y = c + b;                                                  \
+            r = r * 7 + y;                                              \
+        }                                                               \
         y = rt_call_##FN##_##TN(b);                                     \
         return r * 7 + y;                                               \
     }

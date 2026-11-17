@@ -298,9 +298,15 @@ declaration's initializer is the same.
   its destination apart from its sources, so it reads every operand
   before it writes, and the form puts no condition on them. The
   address of a global the file only declares is the load from the
-  GOT, `movq declared@GOTPCREL(%rip), %rbx`.
+  GOT, `movq declared@GOTPCREL(%rip), %rbx`. An address that is a
+  pointer's own value is that value's row into the register: `p =
+  &*q` and `p = &q[0]` are the load of `q`, `movq -16(%rbp), %rbx`,
+  and `p = &rows[i]` at a size no addressing form scales by the sum
+  below, `leaq rows(%rip), %rbx; imulq $12, -16(%rbp), %rax; addq
+  %rax, %rbx`.
 - A comparison's value is set in the register after the `cmp`, `setl
-  %bl; movzbl %bl, %ebx`. The `cmp` has read both operands, the
+  %bl; movzbl %bl, %ebx`, and `!`'s the same, `sete %bl; movzbl %bl,
+  %ebx`. The `cmp` has read both operands, the
   variable among them, `r = r < y`, before either instruction writes.
   The `movzbl` leaves 0 or 1, valid to 64 bits (6.3), so the variable
   is an `int`, a `long` or an `unsigned long`, and an `unsigned`
@@ -321,6 +327,17 @@ declaration's initializer is the same.
 - `-` and `~` are computed in the register, on the variable's own
   type: `r = -a` is `a` loaded into it and the instruction of one
   address written on it, `movl -12(%rbp), %ebx; negl %ebx`.
+- The value of a step, `r = x++` and `r = x--` on an object in memory,
+  is the load of `x` into the register, the old value; a copy of it
+  is stepped and stored, `movl -12(%rbp), %ebx; movl %ebx, %eax; addl
+  $1, %eax; movl %eax, -12(%rbp)`. The load reads the object once at
+  its width and leaves the variable's representation, as any load into
+  it, and the store follows as before (G13). An address that reads
+  the variable's register, `r = a[r]++`, keeps the `mov`, since the
+  store goes through it after the load. On another register variable,
+  `r = s++` is the copy of `s` into `r`'s register, G13's copy, `movl
+  %ebx, %r12d`, then `addl $1, %ebx`. A step widened, `register long l
+  = x++` on an `int`, keeps the `mov` after its extension.
 - A conversion that changes the signedness alone, of 8, 16, 32 or 64
   bits, is computed in the register too. An object in memory under it
   is loaded at the extension of the conversion's type, the object read
@@ -333,12 +350,14 @@ declaration's initializer is the same.
   %ebx`. The row's last instruction writes the register at the
   variable's width, and the 32-bit write clears the upper half, which
   is an `unsigned` variable's representation, valid to 64. Such a row
-  hands the variable on through no further conversion, since under a
-  narrowing one the last instruction would write the register wider
-  than the variable: `u = (int) l` keeps the `mov`, and so does a
-  conversion that narrows, whose last instruction is the extension,
-  and one that widens, `register unsigned u = c` being `movsbl
-  -9(%rbp), %eax; movl %eax, %ebx`.
+  hands the variable on through a further conversion only where that
+  one widens, `u = c + b` on a `char c` being `movsbl -9(%rbp), %ebx;
+  addl -16(%rbp), %ebx`, since under a narrowing one the last
+  instruction would write the register wider than the variable: `u =
+  (int) l + b` keeps the `mov`, and so does a conversion that narrows,
+  whose last instruction is the extension, and one that widens,
+  `register unsigned u = c` being `movsbl -9(%rbp), %eax; movl %eax,
+  %ebx`.
 
 An instruction of two addresses writes its left operand (3.3), so in
 the operation the variable holds `a` before the right operand is
@@ -362,8 +381,14 @@ right operand, so `-` and `~` take no condition but the left
 operand's.
 
 The left operand goes into the register by an instruction it has in
-any case: its load, its constant, or again the operation; the variable
-itself is there already, so `r = r + b` is `addl -16(%rbp), %ebx` and
+any case: its load, its constant, or again the operation, pointer
+arithmetic's included, so `p = flag + i + i` is `leaq flag(%rip),
+%rbx` and two `addq`; the address of a name, an array's decay or `&x`,
+by its `leaq` or the GOT's load, `p = buf + n` being `leaq buf(%rip),
+%rbx; addq -16(%rbp), %rbx`; an object under the assignment's
+conversion of the signedness alone, by its load, `u = i + ub` being
+`movl -12(%rbp), %ebx; addl -16(%rbp), %ebx`; the variable itself is
+there already, so `r = r + b` is `addl -16(%rbp), %ebx` and
 `p = p + 1` is `addq $4, %rbx`, as `p += 1` is; and another register
 variable's read is copied there, `movl %r12d, %ebx`, the copy an
 instruction that writes is given in any case. The operand of `-` and
@@ -2131,9 +2156,11 @@ answers:
     compiler refused, and writes `-`, `~` and a comparison's value in
     the register, which it moved. The cost is the second exception to
     6.1's "nothing looks at a node's neighbours", and a boundary on
-    x86-64: `r = a + (b + c)`, `r = a - r`, a division, a left operand
-    its own instruction cannot put in the register, `!`, and an
-    address that is a pointer's own value, `&*p`, keep the `mov`.
+    x86-64: `r = a + (b + c)`, `r = a - r`, a division and a left
+    operand its own instruction cannot put in the register keep the
+    `mov`. On both targets the value of a step on an object in memory,
+    `r = x++`, is the load of `x` into the register, the step after
+    it.
 17. **On x86-64 a remainder's value is the value in `rdx`** (6.5):
     the division leaves it there, the dividend's register is freed,
     and nothing moves, so `a[i] = x % 256` stores `movl %edx,

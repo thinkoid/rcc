@@ -11,11 +11,11 @@
    conditional jump.  In less_long(), less_unsigned_long(), not_long()
    and both_long(), nothing after movzbl %al, %eax or after the arms'
    movl $1, %eax and movl $0, %eax: no movslq and no movl %eax, %eax.
-   In less_register(), the comparison written into the register, setl
-   %bl; movzbl %bl, %ebx; in not_register() and both_register(), the
-   value computed in eax and moved, movq %rax, %rbx, with no movslq
-   before the move.  In less_plus_long(), addl $1, %eax and then
-   movslq %eax, %rax.
+   In less_register() and not_register(), the value written into the
+   register, setl %bl or sete %bl, then movzbl %bl, %ebx; in
+   both_register(), the value computed in eax and moved, movq %rax,
+   %rbx, with no movslq before the move.  In less_plus_long(),
+   addl $1, %eax and then movslq %eax, %rax.
 
    On aarch64 the listing must show cmp w0, w1 and cset w0, lt in
    less(), the same with cset w0, eq in equal(), and no conditional

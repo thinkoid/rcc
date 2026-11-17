@@ -127,54 +127,28 @@ Check: ~r = c + 5~ and ~r = 5 + c~ have one listing of two
 instructions, and ~x * 4~ on a register variable is one =imull=,
 each pinned.
 
-** TODO Three rows beside a register variable's destination keep their =mov=
-
-A =register= variable is the destination of the value computed for
-it (=backend.md= chapter 4). Three rows next to that rule on x86-64
-compute the value elsewhere and move it:
-
-- pointer arithmetic whose left operand is an address: ~p = buf +
-  n~ on an array, and ~p = a + n~ at a size no addressing form
-  scales by, since the left operand of the rule is a load, a
-  constant or the variable, and an array's decay is none;
-- an address that is a pointer's own value: ~p = &*q~, ~p = &q[0]~;
-- ~r = !x~, which ends =sete %al; movzbl %al, %eax; movl %eax,
-  %ebx= as a comparison's value did.
-
-Fix: each takes the variable's register as its destination: the
-left operand of pointer arithmetic may be an address, which a =lea=
-or the GOT's load writes into the variable; an address that is a
-pointer's own value is that value's load or copy into the variable;
-and ~!x~ is =sete= and =movzbl= on the variable's register, as a
-comparison's value is.
-
-Check: a function of =register-destination= for each.
-
-** TODO Five more rows at the edge of a register variable's destination
+** TODO Four rows at the edge of a register variable's destination
 
 The destination rule (=backend.md= chapter 4, =aarch64.md= chapter
-4) stops short of five rows:
+4) stops short of four rows:
 
-- both targets, the value of a step on an object in memory: ~r =
-  x++~ loads =x= elsewhere and moves it, where the load could write
-  the variable before the =add= and the store;
 - both targets, ~&&~, ~||~ and ~?:~ as a value, written on two
   paths, each of which could write the variable;
-- x86-64, a left operand that is an object under a cast of
-  signedness: ~u = i + ub~ keeps its =mov=;
-- x86-64, a left operand promoted under such an assignment: ~u = c
-  + b~ with ~c~ a =char= keeps its =mov=, where aarch64 writes =add
-  w19, w0, w1=;
 - x86-64, ~r = c + 5~ with ~c~ a =register char=, in the entry on
-  two rows around a constant and a register variable.
+  two rows around a constant and a register variable;
+- both targets, the value of a prefix step on an object in memory:
+  ~r = ++x~ computes the sum elsewhere and moves it, where the =add=
+  could write the variable before the store;
+- x86-64, ~p = &a[i][0]~ on an array of rows: the address is formed
+  with a displacement of 0 from a base made without the variable,
+  and moved.
 
-Fix: each takes the variable's register. The load of ~x~ in ~r =
-x++~ writes it, the step following on the object; each path of
-~&&~, ~||~ and ~?:~ writes it, with the join of ~?:~ in the register
-its consumer names; a left operand that is an object or a promoted
-value under the assignment's cast of signedness is a left operand
-of the rule; and a register variable valid to the width is one
-under a conversion that writes nothing.
+Fix: each takes the variable's register. Each path of ~&&~, ~||~
+and ~?:~ writes it, with the join of ~?:~ in the register its
+consumer names; a register variable valid to the width is a left
+operand of the rule under a conversion that writes nothing; the
+=add= of ~++x~ writes it, and the store takes it from there; the
+base of ~&a[i][0]~ is formed in it.
 
 Check: a function of =register-destination= for each, with no =mov=
 into the variable's register.
@@ -277,6 +251,38 @@ store past its instruction's reach (4095 bytes for =strb=, 8190 for
 
 Check: a call with 520 arguments to a function compiled by =clang=
 returns the sum that tells the positions apart.
+
+** TODO Three listings of the Seventh Edition compiler are not what it writes
+
+The documents state what the ancestor writes for a shape, worked
+out from its source by hand. Run, the compiler writes otherwise in
+three places:
+
+- =ancestor.md=, the address of an automatic into a register
+  variable: the page has =mov r5,r4; add $-6,r4=; the compiler
+  writes =add $-10,r4=, octal, the first automatic at -8 from =r5=,
+  since =csv= saves three registers below it;
+- =ancestor.md=, ~y = x + y++~ in the order of =delay()=: the page
+  has =mov _x,r0; add _y,r0; mov r0,_y; inc _y=; the compiler writes
+  =mov _y,r0; add _x,r0=, the operands exchanged, then the store and
+  the step as the page has them. The value is the page's;
+- =backend.md= chapter 13, call 16, says the compiler refused a
+  =char= promoted and ~p[3]~ on a pointer in memory. It refused
+  them as a right operand, under =-=; under =+= it put the harder
+  operand on the left and wrote the variable, =movb _c,r4; add
+  _a,r4=. A multiply by a power of two it wrote as the shift, in
+  place, =mov _a,r4; ash $3,r4=.
+
+=ancestor.md= also says twice that none of its PDP-11 listings was
+run.
+
+Fix: the three corrected to what the compiler writes; the two
+sentences say the listings were compared with the compiler's output
+and how a reader runs it.
+
+Check: each listing of the ancestor in =ancestor.md=, in chapter 13
+and in =aarch64.md='s calls is the output of the Seventh Edition
+compiler for a source that has the shape.
 
 * Guarantees
 

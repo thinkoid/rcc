@@ -241,16 +241,17 @@ taken(state_t &s, into_t &into, value_t v = { })
 // conversion leaves the value valid to t's width at most (backend.md
 // 6.3, the width rule), so the operand's row leaves the variable's
 // representation only where that width holds it.  A row computing the
-// value in another signedness, into's as, hands it on through no
-// conversion: under a narrowing one, the last instruction would write
-// the register wider than the variable.
+// value in another signedness, into's as, hands it on through a
+// conversion that widens alone, u = c + b on a char c being movsbl
+// -9(%rbp), %ebx; addl -16(%rbp), %ebx: under a narrowing one, the last
+// instruction would write the register wider than the variable.
 into_t *
-through(into_t *into, const int_t &t)
+through(into_t *into, const int_t &t, bool widens)
 {
-    if (!into || into->as)
+    if (!into || (into->as && !widens))
         return nullptr;
 
-    return t.width >= represented(into->variable) ? into : nullptr;
+    return t.width >= needed(*into) ? into : nullptr;
 }
 
 // Copies a borrowed read into the free expression register to, by mov at

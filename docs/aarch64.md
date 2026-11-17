@@ -333,20 +333,27 @@ better:
   conversion's type, `ldr w19, [x29, #32]` for `register unsigned u =
   i`, and any other value of 32 bits or more is its own row's, `add
   w19, w0, w1` for `u = a + b` on two `int`s, since a write of a `w`
-  register clears the upper half. The variable is written after the
-  row has read every operand, so no condition on them is needed,
-  where x86-64 takes two (`backend.md` chapter 4). Any other value is
-  computed elsewhere and moved in, `mov w20, w0`, or `mov x20, x0` for
-  a `long` or a pointer: another register variable's read, `mov w19,
-  w20`; a call's result, in `x0` by the convention; the value of
-  `&&`, `||` and `?:`, written on two paths; a step's, written before
-  its store; a load through a register pointer stepped into the same
-  pointer, since a load's data register cannot be its stepped base
-  (2.3); and a value converted by a narrowing or a widening to a
-  narrow or an `unsigned` variable, whose extension is the move, `sxtb
-  w19, w0` for a `signed char`, `uxtb w19, w0` for a `char`, `mov w19,
-  w0` for an `unsigned` from a `long`. A constant is the immediate,
-  `mov w20, #0`. A declaration's initializer is the
+  register clears the upper half. The value of a step on an object in
+  memory, `r = x++`, is the load of `x` into the register, `ldr w19,
+  [x29, #24]`, and the step after it on a fresh register and the
+  store, `add w0, w19, #1; str w0, [x29, #24]`, except where the
+  address reads the variable's register, `r = a[r]++`, whose store
+  goes through that register after the load; and `r = s++` on another register
+  variable is G13's copy into `r`'s register, `mov w20, w19`, before
+  the `add`. The variable is written after the row has read every
+  operand, so no condition on them is needed, where x86-64 takes two
+  (`backend.md` chapter 4). Any other value is computed elsewhere and
+  moved in, `mov w20, w0`, or `mov x20, x0` for a `long` or a pointer:
+  another register variable's read, `mov w19, w20`; a call's result,
+  in `x0` by the convention; the value of `&&`, `||` and `?:`, written
+  on two paths; a step's whose address reads the variable, or that a
+  conversion widens after the load; a load through a register pointer
+  stepped into the same pointer, since a load's data register cannot
+  be its stepped base (2.3); and a value converted by a narrowing or a
+  widening to a narrow or an `unsigned` variable, whose extension is
+  the move, `sxtb w19, w0` for a `signed char`, `uxtb w19, w0` for a
+  `char`, `mov w19, w0` for an `unsigned` from a `long`. A constant is
+  the immediate, `mov w20, #0`. A declaration's initializer is the
   same. Without one nothing is written (G5), but a narrow or an
   `unsigned` variable is extended in its own register, `sxtb w19, w19`
   or `mov w19, w19`, so that the register holds the representation

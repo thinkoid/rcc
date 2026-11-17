@@ -1153,6 +1153,471 @@ signedness_widened:
 	ret
 	.cfi_endproc
 	.size	signedness_widened, .-signedness_widened
+	.globl	decay_sum
+	.type	decay_sum, @function
+decay_sum:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movq	%rdi, -16(%rbp)
+	leaq	characters(%rip), %rbx
+	addq	-16(%rbp), %rbx
+	movq	%rbx, %rax
+	jmp	.Ldecay_sum.1
+.Ldecay_sum.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	decay_sum, .-decay_sum
+	.globl	decay_declared
+	.type	decay_declared, @function
+decay_declared:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movq	%rdi, -16(%rbp)
+	movq	declared@GOTPCREL(%rip), %rax
+	movq	-16(%rbp), %rcx
+	leaq	(%rax,%rcx,4), %rbx
+	movq	%rbx, %rax
+	jmp	.Ldecay_declared.1
+.Ldecay_declared.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	decay_declared, .-decay_declared
+	.globl	decay_row
+	.type	decay_row, @function
+decay_row:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movq	%rdi, -16(%rbp)
+	leaq	rows(%rip), %rbx
+	imulq	$12, -16(%rbp), %rax
+	addq	%rax, %rbx
+	movq	%rbx, %rax
+	jmp	.Ldecay_row.1
+.Ldecay_row.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	decay_row, .-decay_row
+	.globl	decay_twice
+	.type	decay_twice, @function
+decay_twice:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movq	%rdi, -16(%rbp)
+	leaq	characters(%rip), %rbx
+	addq	-16(%rbp), %rbx
+	addq	-16(%rbp), %rbx
+	movq	%rbx, %rax
+	jmp	.Ldecay_twice.1
+.Ldecay_twice.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	decay_twice, .-decay_twice
+	.globl	decay_named
+	.type	decay_named, @function
+decay_named:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movq	%rdi, -16(%rbp)
+	movq	-16(%rbp), %rbx
+	leaq	characters(%rip), %rax
+	movsbq	(%rbx), %rcx
+	addq	%rcx, %rax
+	movq	%rax, %rbx
+	movq	%rbx, %rax
+	jmp	.Ldecay_named.1
+.Ldecay_named.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	decay_named, .-decay_named
+	.globl	own_value
+	.type	own_value, @function
+own_value:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movq	%rdi, -16(%rbp)
+	movq	-16(%rbp), %rbx
+	movq	-16(%rbp), %rbx
+	movq	%rbx, %rax
+	jmp	.Lown_value.1
+.Lown_value.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	own_value, .-own_value
+	.globl	element_row
+	.type	element_row, @function
+element_row:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movq	%rdi, -16(%rbp)
+	leaq	rows(%rip), %rbx
+	imulq	$12, -16(%rbp), %rax
+	addq	%rax, %rbx
+	movq	%rbx, %rax
+	jmp	.Lelement_row.1
+.Lelement_row.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	element_row, .-element_row
+	.globl	not_int
+	.type	not_int, @function
+not_int:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movl	-12(%rbp), %eax
+	cmpl	$0, %eax
+	sete	%bl
+	movzbl	%bl, %ebx
+	movl	%ebx, %eax
+	jmp	.Lnot_int.1
+.Lnot_int.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	not_int, .-not_int
+	.globl	not_long
+	.type	not_long, @function
+not_long:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movq	%rdi, -16(%rbp)
+	movq	-16(%rbp), %rax
+	cmpq	$0, %rax
+	sete	%bl
+	movzbl	%bl, %ebx
+	movq	%rbx, %rax
+	jmp	.Lnot_long.1
+.Lnot_long.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	not_long, .-not_long
+	.globl	not_char
+	.type	not_char, @function
+not_char:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movsbl	%bl, %ebx
+	movl	-12(%rbp), %eax
+	cmpl	$0, %eax
+	sete	%al
+	movzbl	%al, %eax
+	movsbl	%al, %ebx
+	movl	%ebx, %eax
+	jmp	.Lnot_char.1
+.Lnot_char.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	not_char, .-not_char
+	.globl	step_value
+	.type	step_value, @function
+step_value:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movl	-12(%rbp), %ebx
+	movl	%ebx, %eax
+	addl	$1, %eax
+	movl	%eax, -12(%rbp)
+	addl	-12(%rbp), %ebx
+	movl	-12(%rbp), %ebx
+	movl	%ebx, %eax
+	subl	$1, %eax
+	movl	%eax, -12(%rbp)
+	movl	%ebx, %eax
+	addl	-12(%rbp), %eax
+	jmp	.Lstep_value.1
+.Lstep_value.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	step_value, .-step_value
+	.globl	step_pointer
+	.type	step_pointer, @function
+step_pointer:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movq	%rdi, -16(%rbp)
+	movq	-16(%rbp), %rax
+	movl	(%rax), %ebx
+	movl	%ebx, %ecx
+	addl	$1, %ecx
+	movl	%ecx, (%rax)
+	movl	%ebx, %eax
+	jmp	.Lstep_pointer.1
+.Lstep_pointer.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	step_pointer, .-step_pointer
+	.globl	step_register
+	.type	step_register, @function
+step_register:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	pushq	%r12
+	.cfi_offset %r12, -32
+	movl	%edi, -20(%rbp)
+	movl	-20(%rbp), %ebx
+	movl	%ebx, %r12d
+	addl	$1, %ebx
+	movl	%r12d, %eax
+	addl	%ebx, %eax
+	jmp	.Lstep_register.1
+.Lstep_register.1:
+	popq	%r12
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	step_register, .-step_register
+	.globl	step_indexed
+	.type	step_indexed, @function
+step_indexed:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movq	%rdi, -16(%rbp)
+	movq	%rsi, -24(%rbp)
+	movq	-24(%rbp), %rbx
+	movq	-16(%rbp), %rax
+	movq	(%rax,%rbx,8), %rcx
+	movq	%rcx, %rdx
+	addq	$1, %rcx
+	movq	%rcx, (%rax,%rbx,8)
+	movq	%rdx, %rbx
+	movq	%rbx, %rax
+	jmp	.Lstep_indexed.1
+.Lstep_indexed.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	step_indexed, .-step_indexed
+	.globl	step_widened
+	.type	step_widened, @function
+step_widened:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movl	-12(%rbp), %eax
+	movl	%eax, %ecx
+	addl	$1, %eax
+	movl	%eax, -12(%rbp)
+	movslq	%ecx, %rcx
+	movq	%rcx, %rbx
+	movslq	-12(%rbp), %rax
+	movq	%rbx, %rcx
+	addq	%rax, %rcx
+	movq	%rcx, %rax
+	jmp	.Lstep_widened.1
+.Lstep_widened.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	step_widened, .-step_widened
+	.globl	mixed_sum
+	.type	mixed_sum, @function
+mixed_sum:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movl	%esi, -16(%rbp)
+	movl	%ebx, %ebx
+	movl	-12(%rbp), %ebx
+	addl	-16(%rbp), %ebx
+	movl	%ebx, %eax
+	jmp	.Lmixed_sum.1
+.Lmixed_sum.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	mixed_sum, .-mixed_sum
+	.globl	promoted_sum
+	.type	promoted_sum, @function
+promoted_sum:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movb	%dil, -9(%rbp)
+	movl	%esi, -16(%rbp)
+	movl	%ebx, %ebx
+	movsbl	-9(%rbp), %ebx
+	addl	-16(%rbp), %ebx
+	movl	%ebx, %eax
+	jmp	.Lpromoted_sum.1
+.Lpromoted_sum.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	promoted_sum, .-promoted_sum
+	.globl	narrowed_sum
+	.type	narrowed_sum, @function
+narrowed_sum:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movq	%rdi, -16(%rbp)
+	movl	%esi, -20(%rbp)
+	movl	%ebx, %ebx
+	movq	-16(%rbp), %rax
+	addl	-20(%rbp), %eax
+	movl	%eax, %ebx
+	movl	%ebx, %eax
+	jmp	.Lnarrowed_sum.1
+.Lnarrowed_sum.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	narrowed_sum, .-narrowed_sum
 	.bss
 	.globl	defined
 	.type	defined, @object
@@ -1166,4 +1631,16 @@ defined:
 	.p2align 4
 table:
 	.zero	32
+	.globl	characters
+	.type	characters, @object
+	.size	characters, 16
+	.p2align 4
+characters:
+	.zero	16
+	.globl	rows
+	.type	rows, @object
+	.size	rows, 48
+	.p2align 4
+rows:
+	.zero	48
 	.section	.note.GNU-stack,"",@progbits

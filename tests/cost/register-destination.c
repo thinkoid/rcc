@@ -18,6 +18,22 @@
    signedness_widened() convert by a narrowing and a widening, r =
    (int) l and register unsigned r = c, which keep the mov.
 
+   decay_sum(), decay_row() and decay_twice() write a sum whose left
+   operand is an array's decay, p = characters + n, p = rows + n of 12
+   bytes and p = characters + i + i, and decay_declared() one of an
+   object only declared, &declared + n; decay_named() a sum whose right
+   operand names the variable, p = characters + *p, which keeps the
+   mov.  own_value() writes an address that is a pointer's own value, p
+   = &*q and p = &q[0], and element_row() the address of an element of
+   12 bytes, p = &rows[i].  not_int() and not_long() write r = !x, and
+   not_char() the same into a char, a narrowing.  step_value(),
+   step_pointer() and step_register() write the value of a step, r =
+   x++ and r = x-- on a local, r = (*p)++ and r = s++ on a register
+   variable; beside them step_indexed(), r = a[r]++, whose address
+   reads the variable, and step_widened(), a step widened to
+   long.  mixed_sum() and promoted_sum() write u = i + ub and u = c + b
+   into an unsigned, and narrowed_sum() u = (int) l + b beside them.
+
    On x86-64 the listing must show: in load(), the load of a into the
    register, movl -12(%rbp), %ebx; in constant_leaf(), named_leaf(),
    register_leaf(), pointer_leaf() and promoted_leaf(), the operation
@@ -74,8 +90,27 @@
    signedness_unsigned_sum(), and setl %bl; movzbl %bl, %ebx after the
    cmp in signedness_compare(); and the mov kept, movl %eax, %ebx,
    after movq -16(%rbp), %rax in signedness_narrowed() and after movsbl
-   -9(%rbp), %eax in signedness_widened().  return r is movl %ebx,
-   %eax, and return p movq %rbx, %rax.
+   -9(%rbp), %eax in signedness_widened().  In decay_sum() and
+   decay_twice() the decay's leaq into the register, leaq
+   characters(%rip), %rbx, then addq -16(%rbp), %rbx once and twice; in
+   decay_row() leaq rows(%rip), %rbx, imulq $12, -16(%rbp), %rax and
+   addq %rax, %rbx; in decay_declared() the GOT's load into rax and
+   leaq (%rax,%rcx,4), %rbx; in decay_named() the sum computed in rax
+   after movsbq (%rbx), %rcx and moved, movq %rax, %rbx; in own_value()
+   movq -16(%rbp), %rbx twice; in element_row() the sum of decay_row();
+   sete %bl; movzbl %bl, %ebx after the cmp in not_int() and
+   not_long(), and in not_char() sete %al; movzbl %al, %eax and the
+   extension, movsbl %al, %ebx; in step_value() the load into the
+   register, movl -12(%rbp), %ebx, then movl %ebx, %eax, addl $1, %eax
+   or subl $1, %eax, and the store, movl %eax, -12(%rbp), and the same
+   through p's load in step_pointer(), movl (%rax), %ebx; in
+   step_register() the copy into r's register, movl %ebx, %r12d, before
+   addl $1, %ebx; in step_indexed() the load into rcx and the mov kept,
+   movq %rdx, %rbx, and in step_widened() movslq %ecx, %rcx; movq %rcx,
+   %rbx; in mixed_sum() and promoted_sum() movl -12(%rbp), %ebx and
+   movsbl -9(%rbp), %ebx, each then addl -16(%rbp), %ebx; and in
+   narrowed_sum() the sum in eax and movl %eax, %ebx.  return r is movl
+   %ebx, %eax, and return p movq %rbx, %rax.
 
    On aarch64 the listing must show the last instruction of each
    right operand writing the register, no condition on the operands
@@ -109,8 +144,18 @@
    signedness_unsigned_sum(), and cset w19, lt in signedness_compare();
    and the mov kept, mov w19, w0, after ldr x0, [x29, #24] in
    signedness_narrowed() and after ldrb w0, [x29, #24] in
-   signedness_widened().  return r is mov w0, w19, and return p mov x0,
-   x19. */
+   signedness_widened(); add x19, x0, x1, add x19, x0, x1, lsl #2 and
+   add x19, x0, x1 after the mul by 12 in the decay functions, add x19,
+   x0, x1 in decay_named() after ldrb w1, [x19], ldr x19, [x29, #24]
+   twice in own_value(); cset w19, eq in not_int() and not_long(), and
+   uxtb w19, w0 after the cset in not_char(); the load into the
+   register, ldr w19, [x29, #24], then add w0, w19, #1 or sub w0, w19,
+   #1 and the store, str w0, [x29, #24], in step_value(), ldr w19, [x0]
+   in step_pointer(), mov w20, w19 before add w19, w19, #1 in
+   step_register(), the load into x1 and mov x19, x1 in step_indexed(),
+   and sxtw x19, w0 in step_widened(); add w19, w0, w1 in mixed_sum(),
+   promoted_sum() and narrowed_sum().  return r is mov w0, w19, and
+   return p mov x0, x19. */
 int
 load(int a)
 {
@@ -537,4 +582,171 @@ signedness_widened(char c)
         register unsigned r = c;
 
         return r;
+}
+
+char characters[16];
+int rows[4][3];
+
+char *
+decay_sum(long n)
+{
+        register char *p;
+
+        p = characters + n;
+        return p;
+}
+
+char *
+decay_declared(long n)
+{
+        register int *p;
+
+        p = &declared + n;
+        return (char *) p;
+}
+
+int (*decay_row(long n))[3]
+{
+        register int (*p)[3];
+
+        p = rows + n;
+        return p;
+}
+
+char *
+decay_twice(long i)
+{
+        register char *p;
+
+        p = characters + i + i;
+        return p;
+}
+
+char *
+decay_named(char *q)
+{
+        register char *p = q;
+
+        p = characters + *p;
+        return p;
+}
+
+int *
+own_value(int *q)
+{
+        register int *p;
+
+        p = &*q;
+        p = &q[0];
+        return p;
+}
+
+int (*element_row(long i))[3]
+{
+        register int (*p)[3];
+
+        p = &rows[i];
+        return p;
+}
+
+int
+not_int(int x)
+{
+        register int r;
+
+        r = !x;
+        return r;
+}
+
+long
+not_long(long x)
+{
+        register long r;
+
+        r = !x;
+        return r;
+}
+
+int
+not_char(int x)
+{
+        register char r;
+
+        r = !x;
+        return r;
+}
+
+int
+step_value(int x)
+{
+        register int r;
+
+        r = x++;
+        r = r + x;
+        r = x--;
+        return r + x;
+}
+
+int
+step_pointer(int *p)
+{
+        register int r;
+
+        r = (*p)++;
+        return r;
+}
+
+int
+step_register(int a)
+{
+        register int s = a;
+        register int r;
+
+        r = s++;
+        return r + s;
+}
+
+long
+step_indexed(long *a, long i)
+{
+        register long r = i;
+
+        r = a[r]++;
+        return r;
+}
+
+long
+step_widened(int x)
+{
+        register long r;
+
+        r = x++;
+        return r + x;
+}
+
+unsigned
+mixed_sum(int i, unsigned ub)
+{
+        register unsigned u;
+
+        u = i + ub;
+        return u;
+}
+
+unsigned
+promoted_sum(char c, int b)
+{
+        register unsigned u;
+
+        u = c + b;
+        return u;
+}
+
+unsigned
+narrowed_sum(long l, int b)
+{
+        register unsigned u;
+
+        u = (int) l + b;
+        return u;
 }

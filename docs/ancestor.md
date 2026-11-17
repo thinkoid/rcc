@@ -1877,17 +1877,17 @@ Other rows keep the `mov`, by `backend.md` chapter 4 and `aarch64.md`
 chapter 4:
 
 - on both targets, a call's result, the value of `&&`, `||` and `?:`,
-  which two paths write, another register variable's read, and a
-  value widened or narrowed into a narrow or an `unsigned` variable;
-  a conversion that changes the signedness alone is the load or the
-  row into the register, `register unsigned u = i` the one load;
+  which two paths write, another register variable's read, a value
+  widened or narrowed into a narrow or an `unsigned` variable, and a
+  step's value whose address reads the variable, `r = a[r]++`; a
+  conversion that changes the signedness alone is the load or the row
+  into the register, `register unsigned u = i` the one load, and a
+  step's value on an object in memory the load of the object into the
+  register, `r = x++` being `movl -12(%rbp), %ebx` before the step;
 - on x86-64, also a division and a remainder, whose registers are
-  pinned (4.6), `!`'s value, `p - q`, and an address that is a
-  pointer's own value, `&*p`, or that the pointer's row forms by an
-  add, `&a[i]` at a size no addressing form scales by;
-- on aarch64, also a step's value, which its row writes before its
-  store, and a load that steps the variable's own register as its
-  base, which cannot also be the load's data register.
+  pinned (4.6), and `p - q`;
+- on aarch64, also a load that steps the variable's own register as
+  its base, which cannot also be the load's data register.
 
 The queue holds the rows still to decide.
 
