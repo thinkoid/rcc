@@ -311,8 +311,11 @@ declaration's initializer is the same.
   addresses on a free register, `+`, `-`, `&`, `|`, `^`, `*` and the
   shifts, on the variable's own type; and pointer arithmetic where its
   last instruction is the `addq` or the `subq` on the left operand,
-  not `lea`, so `p = q - n` is `movq -16(%rbp), %rbx; movq -24(%rbp),
-  %rax; imulq $4, %rax, %rax; subq %rax, %rbx`.
+  not `lea`, so `p = q - n` is `movq -16(%rbp), %rbx; imulq $4,
+  -24(%rbp), %rax; subq %rax, %rbx`, `n` the multiply's source (6.1),
+  and `p = n + q` at a size no addressing form scales by `n`'s product
+  into the register, `imulq $12, -24(%rbp), %rbx; addq -16(%rbp),
+  %rbx`.
 - `-` and `~` are computed in the register, on the variable's own
   type: `r = -a` is `a` loaded into it and the instruction of one
   address written on it, `movl -12(%rbp), %ebx; negl %ebx`.
@@ -534,15 +537,19 @@ on the variable's register (chapter 4): `r = 5 + c` on a register
 no load into the register, and as `c + 5` the sum would be computed
 elsewhere and moved, an instruction more. A constant on both sides is
 as written. `-`, `/`, `%` and the shifts do not commute, and keep
-their order: `5 - x` writes the 5 first. Pointer arithmetic has its
-own rows, and `n + p` with a constant `n` is not this rule (6.3). The
-Seventh Edition compiler's `optim()`, in `c12.c`, exchanges a
-relational's operands wherever the left one's degree is the lower, a
-constant's being the lowest, and maps the operator by its table
-`maprel[]`, and its `insert()` sorts the operands of a commutative
-chain by degree, the harder first, so a constant goes last; rcc takes
-the exchange for a constant alone, which has no evaluation to
-reorder.
+their order: `5 - x` writes the 5 first. Pointer arithmetic takes the
+exchange too: `n + p` with a constant `n` is `p + n` where a 32-bit
+immediate holds the product of `n` and the size, so `3 + p` on an
+`int *` is `movq -8(%rbp), %rax; addq $12, %rax`, as `p + 3` is, and
+`p = 3 + q` into a register pointer `movq -16(%rbp), %rbx; addq $12,
+%rbx`; a product no immediate holds keeps the order of the source
+(6.3). The Seventh Edition compiler's `optim()`, in `c12.c`,
+exchanges a relational's operands wherever the left one's degree is
+the lower, a constant's being the lowest, and maps the operator by
+its table `maprel[]`, and its `insert()` sorts the operands of a
+commutative chain by degree, the harder first, so a constant goes
+last; rcc takes the exchange for a constant alone, which has no
+evaluation to reorder.
 
 **An object in memory as the operand.** A right operand that is the
 read of an object in memory, a name that is no register variable or
@@ -566,7 +573,15 @@ rows that take the form are:
   the division; `n` of `p + n` and `p - n` at a size of 1, `addq
   -16(%rbp), %rax`; and `p` of `n + p` at a size of 1 or one no
   addressing form scales by, `addq -16(%rbp), %rax` after `imulq $12,
-  %rax, %rax`.
+  -24(%rbp), %rax`;
+- the multiply of pointer arithmetic's index by the size, at a size
+  the row multiplies by: `n` of `p - n` at any size but 1 and of `p +
+  n` and `n + p` at a size no addressing form scales by, of 64 bits,
+  is the three-operand `imulq`'s source, `imulq $4, -16(%rbp), %rcx`
+  before the `subq` of `p - n`, one instruction where the load and an
+  `imulq` on its register were; `p -= n`, and `p += n` for its effect,
+  whose memory form multiplies at every size but 1 (6.6), the same,
+  `imulq $4, -16(%rbp), %rax; subq %rax, -8(%rbp)`.
 
 Two rows take an object in memory as their left operand, against a
 constant on the right, which has no evaluation: a comparison for its
@@ -574,31 +589,41 @@ value is the `cmp` of the object, `cmpl $5, -4(%rbp); setl %al`, as
 the condition's is (7.1), and a multiply by a constant is the
 three-operand `imul` with the object as its source, `imull $4,
 -4(%rbp), %eax`, one instruction and still a multiply. A constant on
-the left of either is on the right first, above.
+the left of either is on the right first, above. A comparison takes
+its object as the left operand against a register variable's read
+too, which has no evaluation either: `x < r` is the `cmp` of the
+object with the variable's register as its source, `cmpl %ebx,
+-4(%rbp)`, as a condition and for a value. The read is the
+variable's plain read at the operation's width, under casts that keep
+its bits; an expression on the right, `x < r + 1`, and a `char` or a
+`short` variable, which its promotion widens, keep the object's load.
 
 The reads keep G13's order. The left operand is read first; the
 right operand's address is generated where its load would be, after
 the left operand, and the instruction reads the object, with nothing
 evaluated between. An object as the left operand against a constant
-is read by the instruction where its load would read it, and the
-constant has no evaluation. The address's registers are held to the
-instruction as any held value is (6.7). The instruction reads the
-bytes the load would read, in one access at the object's width (G10,
-`shape.md` chapter 5). So a `char` or a `short`, which a cast
-promotes, keeps its extending load; an `int` widened to 64 bits keeps
-the extending load of 6.3; a narrowing cast keeps its row; a cast
-that changes the signedness alone reads the bytes the load reads; and
-no object is read wider or narrower than its load would read it.
+or a register variable's read is read by the instruction where its
+load would read it, and the right operand has no evaluation: the
+instruction reads the variable's register as it reads the object.
+The address's registers are held to the instruction as any held value
+is (6.7). The instruction reads the bytes the load would read, in one
+access at the object's width (G10, `shape.md` chapter 5). So a `char`
+or a `short`, which a cast promotes, keeps its extending load; an
+`int` widened to 64 bits keeps the extending load of 6.3; a narrowing
+cast keeps its row; a cast that changes the signedness alone reads the
+bytes the load reads; and no object is read wider or narrower than its
+load would read it.
 
 Some operands keep their register. A shift's count goes to `cl`
 (6.5). A compound assignment's right operand is generated before the
 object is read, `x += e` being `e`, then the read of `x` (G13), and
 x86 has no instruction with two memory operands, so `e` keeps its
 register in every context. A call's argument is a hidden local
-(chapter 8). An index that pointer arithmetic scales is in a
-register: `p + n` at a size of 2, 4 or 8 is the `leaq` of `(L,R,s)`,
-and at any other size `n` is multiplied in its register first,
-`imulq $4, %rcx, %rcx` before the `subq` of `p - n`. A register
+(chapter 8). An index that an addressing form scales is in a
+register: `p + n` at a size of 2, 4 or 8 is the `leaq` of `(L,R,s)`.
+An index that the row multiplies and that is no object of 64 bits
+keeps its load: an `int` widened is `movslq -12(%rbp), %rcx; imulq
+$4, %rcx, %rcx` before the `subq` of `p - n`. A register
 variable as the right operand is its register (chapter 4), and a
 global the file only declares is reached through the register its
 address is loaded into, the GOT's load staying, `addl (%rcx), %eax`
@@ -660,18 +685,18 @@ written for it.
 | `a & b`, `a \| b`, `a ^ b` | `and`, `or`, `xor`, an object in memory as `R` and a constant on the left as for `add` | |
 | `-a`, `~a` | `neg L`, `not L` | G1 for `-INT_MIN` |
 | `!a` | `cmp $0, L`; `sete %Lb`; `movzbl %Lb, L` | as a value; as a condition, chapter 7 |
-| `a < b` and the rest, as a value | `cmp R, L`, `cmpl -8(%rbp), %eax` for an object in memory, and for an object in memory against a constant the `cmp` of the object, `cmpl $5, -4(%rbp)`, as in a condition (7.1), `L` then taken for the `setcc`; `setcc %Lb`; `movzbl %Lb, L`; a constant on the left the mirrored comparison (6.1), `5 < x` `cmpl $5, -4(%rbp); setg %al` | `setl`, `setle`, `setg`, `setge`, `sete`, `setne` signed; `setb`, `setbe`, `seta`, `setae` unsigned and for pointers (G7) |
+| `a < b` and the rest, as a value | `cmp R, L`, `cmpl -8(%rbp), %eax` for an object in memory, and for an object in memory against a constant the `cmp` of the object, `cmpl $5, -4(%rbp)`, as in a condition (7.1), and against a register variable's read the `cmp` of the object with the variable's register, `cmpl %ebx, -4(%rbp)` (6.1), `L` then taken for the `setcc`; `setcc %Lb`; `movzbl %Lb, L`; a constant on the left the mirrored comparison (6.1), `5 < x` `cmpl $5, -4(%rbp); setg %al` | `setl`, `setle`, `setg`, `setge`, `sete`, `setne` signed; `setb`, `setbe`, `seta`, `setae` unsigned and for pointers (G7) |
 | `a && b`, `a \|\| b`, `a ? b : c`, as a value | jump code of chapter 7 into `L`, with `mov $0, L` and `mov $1, L` on the arms | no `setcc` chain |
 | `x = e` | `mov L, slot`, the value staying in `L`; into a register variable, the value computed in its register where its last instruction can write it, the load, `movl -12(%rbp), %ebx`, the operation, `addl -16(%rbp), %ebx` after it, the address, `leaq buf(%rip), %rbx`, `-` and `~`, `negl %ebx` after the load, and a comparison's `setl %bl; movzbl %bl, %ebx`, the value then the variable's read, and otherwise `mov L, reg` (chapter 4); a constant goes as the immediate straight into a register variable, `movl $0, %r12d`, or into memory when the assignment is evaluated for its effect alone, `movl $0, -12(%rbp)` (6.6) | a `char` store is `movb %Lb` |
 | `x op= e` | the address of `x` first, then `e`; in the effect context, the op on the object, `addl %eax, -12(%rbp)`, but for `*=`, `/=` and `%=` (6.6); in a value context, the load row, the op row, the store row, after `e`; on a register variable, the op on the register in place, after `e`, and `p += n` on a register pointer at a size of 2, 4 or 8 the `leaq` into the register, `leaq (%rbx,%rax,4), %rbx` | `*=`, `/=` and `%=` are always `e`, then the load, the op and the store: `imul` has no memory destination and `idiv` none at all |
 | `++x`, `x++`, `--x`, `x--` | in the effect context, the op on the object, `addl $1, -8(%rbp)`, and no old value (6.6); in a value context, the load, `add $1` or `sub $1`, the store, the post forms keeping the old value in another register | `add $size` for a pointer |
-| `(T) a` | `movslq L, L64` for `int` to `long`, `movsbl` or `movzbl` from `Lb` for `char` to `int`, each only when `L` is not already valid to the new width (the width rule below); a signed object in memory under a cast that widens it is its load extended to the new width, `movslq -4(%rbp), L64` for an `int` to `long`, `movsbq` and `movswq` for a `signed char` and a `short`, and no instruction after it (a widening by the load, below); nothing for `long` to `int` (the 32-bit name is the value); nothing for a change of signedness alone, and the object read under it is the right operand's own operand, `addl -8(%rbp), %eax` for `u + i` (6.1); nothing between pointer types; an integer to a pointer as to `unsigned long`, so `movslq` for an `int` (6.3.2.3p5); nothing for a pointer to `long` or `int` | G2: truncation is reading the low bits |
+| `(T) a` | `movslq L, L64` for `int` to `long`, `movsbl` or `movzbl` from `Lb` for `char` to `int`, each only when `L` is not already valid to the new width (the width rule below); a signed object in memory under a cast that widens it is its load extended to the new width, `movslq -4(%rbp), L64` for an `int` to `long`, `movsbq` and `movswq` for a `signed char` and a `short`, and no instruction after it, the object's read under casts that change the signedness alone included, `movslq -4(%rbp), L64` for `(long) (int) u` (a widening by the load, below); nothing for `long` to `int` (the 32-bit name is the value); nothing for a change of signedness alone, and the object read under it is the right operand's own operand, `addl -8(%rbp), %eax` for `u + i` (6.1); nothing between pointer types; an integer to a pointer as to `unsigned long`, so `movslq` for an `int` (6.3.2.3p5); nothing for a pointer to `long` or `int` | G2: truncation is reading the low bits |
 | `&x` | `lea slot(%rbp), L` or `lea sym(%rip), L`; for a global the file only declares, the load from the GOT, `movq sym@GOTPCREL(%rip), L`; `&x` plus a constant is one `lea`, the name and constant below | refused on a `register` variable, 6.5.4.2p1 |
 | `*p` | `mov (L), L` at the pointee's width and extension: `movsbl`, `movzbl`, `movswl`, `movzwl`, `movl`, `movq`; under a cast that widens a signed pointee to 64 bits, `movsbq`, `movswq`, `movslq` | G8, G9, G10, G11: one `mov`, any address |
 | `p[i]`, `a[i]` | `mov (L,R,s), L` for a size of 1, 2, 4 or 8, the pointer in `L` (`lea sym(%rip), L` for a global array the file defines, the GOT's load for one it declares), the index in `R`; on a local array the slot is the displacement and `rbp` the base, `movl -24(%rbp,R,4), L`, and no instruction forms the array's address (a slot and an index, below); a constant index is the displacement `c*s(L)`, and on an array reached by its name the name and constant below, the slot's or the label's own operand, `movl -20(%rbp), L`, `movl table+12(%rip), L` | one instruction, the machine's addressing form; the index is 64 bits by the parser's cast, written by the row of `(T) a`: an `int` in memory is its load, `movslq -4(%rbp), R64`, one in a register `movslq R, R64`, and nothing is written for an `unsigned` or a `long` |
 | `p[i]` of another size | the `p + n` row, and the sum is the base `L` of the access; a constant index of 0 adds nothing, the bare base of the `&p[i]` row; on an array reached by its name a constant index is the name and constant below, so `m[1][2]` is one operand, and through a pointer a constant index under a constant is one displacement, `movl 20(L), L` for `p[1][2]` on `int (*p)[3]` | only an array has such a size: `m[i][j]` on `int m[2][3]` is `imul $12`, `add`, then `(L,R,4)` |
 | `&p[i]`, `&*p` | `lea (L,R,s), L`, `lea -24(%rbp,R,4), L` on a local array, and `lea c*s(L), L` for a constant index; `&*p` is `p`, no instruction, and a subscript by a constant 0 is the bare base, so `&p[0]` is `p` and no instruction as well (`aarch64.md` chapter 15, call 8); a row of an array of arrays decays the same way, `m[0]` to `m`; on an array reached by its name, the name and constant below, one `lea` of the folded operand, `leaq -20(%rbp), L` for `&a[3]` | one instruction, the addressing form, where 6.5.4.2p3's "as if `+`" would spell the same address as the `p + n` row |
-| `p + n`, `p - n` | `+`: `add R, L` for a size of 1, an object in memory of 64 bits as `n` the instruction's operand, `addq -16(%rbp), L` (6.1), and `p` of `n + p` the same at a size of 1 or after the `imul` of another size that is no scale, `lea (L,R,s), L` for 2, 4 or 8, `imul $s, R, R; add R, L` for any other, and on a local array of a size 1, 2, 4 or 8 one `lea -24(%rbp,R,4), L`, a slot and an index below; `-`: `sub R, L` for 1, `subq -16(%rbp), L` for `n` in memory, `imul $s, R, R; sub R, L` for any other; a constant `n` is the immediate, `add $c*s, L` or `sub $c*s, L`, and on a name's address the name and constant below, one `lea`, `leaq -20(%rbp), L` for `a + 3` | G6; the index widened as for `p[i]` |
+| `p + n`, `p - n` | `+`: `add R, L` for a size of 1, an object in memory of 64 bits as `n` the instruction's operand, `addq -16(%rbp), L` (6.1), and `p` of `n + p` the same at a size of 1 or after the `imul` of another size that is no scale, `lea (L,R,s), L` for 2, 4 or 8, `imul $s, R, R; add R, L` for any other, `imulq $s, -16(%rbp), R` for `n` an object in memory of 64 bits (6.1), and on a local array of a size 1, 2, 4 or 8 one `lea -24(%rbp,R,4), L`, a slot and an index below; `-`: `sub R, L` for 1, `subq -16(%rbp), L` for `n` in memory, `imul $s, R, R; sub R, L` for any other, `imulq $s, -16(%rbp), R` for `n` in memory of 64 bits; a constant `n` is the immediate, `add $c*s, L` or `sub $c*s, L`, and a constant `n` of `n + p` too where the immediate holds the product (6.1), and on a name's address the name and constant below, one `lea`, `leaq -20(%rbp), L` for `a + 3` | G6; the index widened as for `p[i]` |
 | `p - q` | `sub R, L`, `q` in memory the instruction's operand at any size, `subq -16(%rbp), L` (6.1); for a size other than 1, `mov $s, R; cqto; idiv R`, the result from `rax` | G6: a division, not a shift, since any two pointers; the size is held in a register, since `idiv` takes no immediate; a size of 1 is the `sub` alone |
 | `a`, `"abc"`, `m[i]` as pointers | `lea slot(%rbp), L`, or the address of a global array, `lea sym(%rip), L` or the GOT's load; `lea .Ls<n>(%rip), L`; an element of array type, its address by the `&p[i]` row, or by the `p + n` row for a size that is not a scale (12 bytes: `imul $12`), but for `m[0]`, the bare base at any size, and for a constant index on an array reached by its name, the name and constant below, `leaq -12(%rbp), L` for `m[1]` | 6.3.2.1p3: an array decays to its address; a literal's bytes in `.data`, chapter 10 |
 | `f`, `&f` as a value | `leaq f(%rip), L` for a function the file defines; for one it only declares, the load from the GOT, `movq f@GOTPCREL(%rip), L` | 6.3.2.1p4: a function's name converts to a pointer to the function, and `&f` is the same value; one instruction either way, chapter 10; a call by the name forms no address, chapter 8 |
@@ -828,8 +853,16 @@ and the access. The load reads the bytes the load at 32 bits reads,
 one access at the object's width (G10, `shape.md` chapter 5), into the
 register the value takes in any case, and leaves it valid to the
 cast's width. An unsigned object needs no such load: `movl` and
-`movzbl` leave it valid to 64 bits already. A `char` promoted to `int`
-was loaded extended already. A register variable is no object in
+`movzbl` leave it valid to 64 bits already. The read may be under
+casts that keep its bits, which change the signedness alone: the load
+is then the one of the type under the widening cast, at the object's
+own width, so `(long) (int) u` on an `unsigned u` is `movslq -4(%rbp),
+%rax`, not `movl -4(%rbp), %eax; movslq %eax, %rax`, and `(unsigned
+long) (unsigned) i` on an `int i` the `movl`, valid to 64 bits, with
+nothing after it. A narrowing cast is no such cast: `(long) (int) l`
+reads `l` whole, `movq -8(%rbp), %rax`, and extends after, since the
+object is never read narrower than its type. A `char` promoted to
+`int` was loaded extended already. A register variable is no object in
 memory, so its read is extended into a fresh register, `movslq %ebx,
 %rax`. A cast over any other operand, a call's result, an arithmetic
 value or another cast, extends the value in its register by the width
@@ -1376,7 +1409,8 @@ width, and no register holds the object:
 
 - a comparison whose left operand is the read of an object in memory
   and whose right operand is a constant the instruction takes as an
-  immediate: `cmpl $5, -4(%rbp)` and the jump;
+  immediate, `cmpl $5, -4(%rbp)` and the jump, or a register
+  variable's plain read, `cmpl %ebx, -4(%rbp)` (6.1);
 - the read of an object in memory alone, `if (x)`: `cmpl $0,
   -4(%rbp)`, and `cmpb $0, -1(%rbp)` on a `char`, since a condition
   is tested at its operand's own width (above);
@@ -1387,15 +1421,14 @@ width, and no register holds the object:
 The first serves a comparison for its value as well, `cmpl $5,
 -4(%rbp); setl %al` (6.3): the `setcc` writes a register of its own
 after the `cmp`. The object is any the load row reads, under a cast
-that keeps its bits too (6.1). The instruction reads the
-left operand, so the form holds only where nothing is evaluated
-between the object's load and the instruction: the right operand is a
-constant, which has no evaluation (G13). `if (g < f())` keeps the
-load of `g` before the call, since `f` may write `g`, and so does `g
-== h()`. A `char` or a `short` that the comparison or the `&`
-promotes keeps its extending load; and a
-constant no immediate holds is held in a register, so its left
-operand keeps the load too.
+that keeps its bits too (6.1). The instruction reads the left operand,
+so the form holds only where nothing is evaluated between the object's
+load and the instruction: the right operand is a constant or a
+register variable's read, which have no evaluation (G13). `if (g <
+f())` keeps the load of `g` before the call, since `f` may write `g`,
+and so does `g == h()`. A `char` or a `short` that the comparison or
+the `&` promotes keeps its extending load; and a constant no immediate
+holds is held in a register, so its left operand keeps the load too.
 
 The rows are the Seventh Edition compiler's. In `cc60`, the
 relationals under the condition codes, the row `%a,z`, an addressable
@@ -2017,7 +2050,9 @@ answers:
     its `match()` lets a row do; rcc takes the widening of a signed
     integer alone. The boundary is the read: a register variable, and
     any operand that is no read of an object, keep the extension after
-    the value.
+    the value. On x86-64 the read may be under casts that keep its
+    bits, `(long) (int) u` being `movslq -4(%rbp), %rax`, the object
+    read at its own width; aarch64 extends after the load there.
 13. **On x86-64 a condition jumps on its operator's own flags** (7.1):
     where the operator's instruction sets ZF from the condition's
     value, `je` or `jne` follows it and no `cmp` is written, so `while
@@ -2030,9 +2065,12 @@ answers:
     instruction or label after it withdraws.
 14. **On x86-64 an operand in memory is the instruction's own** (6.1):
     a right operand that reads an object of the operation's width is
-    named by the instruction, `addl -8(%rbp), %eax`, and in a
-    condition an object against a constant is the instruction on the
-    object, `cmpl $5, -4(%rbp)`. The rule is the Seventh Edition
+    named by the instruction, `addl -8(%rbp), %eax`; an object
+    compared with a constant or with a register variable's read is
+    the instruction on the object, `cmpl $5, -4(%rbp)` and `cmpl %ebx,
+    -4(%rbp)`; and a `long` index that pointer arithmetic multiplies
+    by the size is the `imulq`'s source, `imulq $4, -16(%rbp), %rcx`.
+    The rule is the Seventh Edition
     compiler's row `%n,aw`; that compiler also exchanged a
     relational's operands by their degree, which rcc takes for a
     constant on the left alone (call 18). aarch64 has no
@@ -2085,18 +2123,19 @@ answers:
     y : y;`.
 18. **A constant on the left is taken on the right** (6.1), on both
     targets, of a comparison and of `+`, `*`, `&`, `|` and `^`: `5 <
-    x` is generated as `x > 5` and `4 * x` as `x * 4`, so the
-    constant is the immediate on the right and every form of a
-    constant on the right follows, `cmpl $5, -4(%rbp)` and `jle`,
-    `imull $4, -4(%rbp), %eax`, `if (0 == (c & 1))` and `if (1 & c)`
-    the `test`, and `5 + f()` the `call` and `addl $5, %eax`, no
-    constant held across it. The constant has no evaluation, so G13
-    has nothing to order. The rule is the Seventh Edition compiler's
-    exchange, in its `optim()`, which puts the operand of the lower
-    degree on the right and maps a relational by `maprel[]`, and its
-    `insert()`, which sorts a commutative chain's operands by degree;
-    rcc takes them for a constant alone. aarch64 takes it too, `ldr
-    w0, [x29, #16]; cmp w0, #5` and `add w0, w0, #5`, where the
+    x` is generated as `x > 5` and `4 * x` as `x * 4`, so the constant
+    is the immediate on the right and every form of a constant on the
+    right follows, `cmpl $5, -4(%rbp)` and `jle`, `imull $4, -4(%rbp),
+    %eax`, `if (0 == (c & 1))` and `if (1 & c)` the `test`, and `5 +
+    f()` the `call` and `addl $5, %eax`, no constant held across it;
+    `3 + p` on an `int *` is `p + 3`, `addq $12, %rax`, where a 32-bit
+    immediate holds the product. The constant has no evaluation, so
+    G13 has nothing to order. The rule is the Seventh Edition
+    compiler's exchange, in its `optim()`, which puts the operand of
+    the lower degree on the right and maps a relational by `maprel[]`,
+    and its `insert()`, which sorts a commutative chain's operands by
+    degree; rcc takes them for a constant alone. aarch64 takes it too,
+    `ldr w0, [x29, #16]; cmp w0, #5` and `add w0, w0, #5`, where the
     source's order holds the 5 in a register. The cost is the one
     exception to 6.1's order of the source, and a boundary on x86-64:
     a constant no 32-bit immediate holds keeps its order, since

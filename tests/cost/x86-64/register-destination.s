@@ -448,8 +448,7 @@ pointer_back:
 	movq	%rdi, -16(%rbp)
 	movq	%rsi, -24(%rbp)
 	movq	-16(%rbp), %rbx
-	movq	-24(%rbp), %rax
-	imulq	$4, %rax, %rax
+	imulq	$4, -24(%rbp), %rax
 	subq	%rax, %rbx
 	movq	%rbx, %rax
 	jmp	.Lpointer_back.1
@@ -817,8 +816,7 @@ back_int:
 	movq	%rdi, -16(%rbp)
 	movq	%rsi, -24(%rbp)
 	movq	-16(%rbp), %rbx
-	movq	-24(%rbp), %rax
-	imulq	$4, %rax, %rax
+	imulq	$4, -24(%rbp), %rax
 	subq	%rax, %rbx
 	movq	%rbx, %rax
 	jmp	.Lback_int.1
@@ -843,8 +841,7 @@ step_row:
 	movq	%rdi, -16(%rbp)
 	movq	%rsi, -24(%rbp)
 	movq	-16(%rbp), %rbx
-	movq	-24(%rbp), %rax
-	imulq	$12, %rax, %rax
+	imulq	$12, -24(%rbp), %rax
 	addq	%rax, %rbx
 	movq	%rbx, %rax
 	jmp	.Lstep_row.1
@@ -869,8 +866,7 @@ back_row:
 	movq	%rdi, -16(%rbp)
 	movq	%rsi, -24(%rbp)
 	movq	-16(%rbp), %rbx
-	movq	-24(%rbp), %rax
-	imulq	$12, %rax, %rax
+	imulq	$12, -24(%rbp), %rax
 	subq	%rax, %rbx
 	movq	%rbx, %rax
 	jmp	.Lback_row.1

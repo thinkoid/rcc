@@ -137,6 +137,8 @@ compare(const char *name, long x, long y)
 #define DECLARE_BINARY(T, N, name, op, small, large)                    \
     BOTH(long, name##_##N, (long, long))
 #define DECLARE_SHIFT(T, N, name, op) BOTH(long, name##_##N, (long, long))
+#define DECLARE_COMPARED(T, N, name, op)                                \
+    BOTH(long, cm_##name##_##N, (long, long))
 
 #define DECLARE_TYPE(T, N)                                              \
     BOTH(long, init_##N, (long, long)) BOTH(long, kinit_##N, (void))    \
@@ -153,7 +155,8 @@ compare(const char *name, long x, long y)
     BOTH(long, rmiddle_##N, (P12(long))) BOTH(long, rlast_##N, (P12(long))) \
     BOTH(long, rall_##N, (P12(long)))                                   \
     BOTH(long, rwritten_##N, (long, long, long))                        \
-    BOTH(long, rcall_##N, (long, long))
+    BOTH(long, rcall_##N, (long, long))                                 \
+    COMPARISONS(DECLARE_COMPARED, T, N)
 
 TYPES(DECLARE_TYPE)
 
@@ -271,6 +274,7 @@ fill(long v[12], int i, int k)
 
 #define TEST_BINARY(T, N, name, op, small, large)                       \
     CHECK(name##_##N, x, y, (x, y));
+#define TEST_COMPARED(T, N, name, op) CHECK(cm_##name##_##N, x, y, (x, y));
 #define TEST_DIVISION(T, N, name, op, small, large)                     \
     if (DIVIDES(T, x) && DIVIDES(T, y))                                 \
         CHECK(name##_##N, x, y, (x, y));
@@ -313,6 +317,7 @@ fill(long v[12], int i, int k)
                 CHECK(across_##N, x, y, (x, y));                        \
                 CHECK(rwritten_##N, x, y, (x, y, w));                   \
                 CHECK(rcall_##N, x, y, (x, y));                         \
+                COMPARISONS(TEST_COMPARED, T, N)                        \
             }                                                           \
                                                                         \
             for (int k = 1; k < COUNT; k += 3) {                        \

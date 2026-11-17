@@ -17,6 +17,24 @@
     X(F, FN, int, i) X(F, FN, unsigned, u) X(F, FN, long, l)            \
     X(F, FN, unsigned long, ul)
 
+/* each integer type paired with one of its width of the other
+   signedness: a name of the pair, the type and the other */
+#define FLIPS(X)                                                        \
+    X(c_uc, char, unsigned char) X(c_sc, char, signed char)             \
+    X(sc_uc, signed char, unsigned char)                                \
+    X(uc_sc, unsigned char, signed char)                                \
+    X(s_us, short, unsigned short) X(us_s, unsigned short, short)       \
+    X(i_u, int, unsigned) X(u_i, unsigned, int)                         \
+    X(l_ul, long, unsigned long) X(ul_l, unsigned long, long)
+
+/* a pair of FLIPS crossed with every type */
+#define FLIP_TARGETS(X, P, F, S)                                        \
+    X(P, F, S, char, c) X(P, F, S, signed char, sc)                     \
+    X(P, F, S, unsigned char, uc) X(P, F, S, short, s)                  \
+    X(P, F, S, unsigned short, us) X(P, F, S, int, i)                   \
+    X(P, F, S, unsigned, u) X(P, F, S, long, l)                         \
+    X(P, F, S, unsigned long, ul)
+
 /* the types a constant operand is tried on */
 #define WIDE(X) X(int, i) X(unsigned, u) X(long, l) X(unsigned long, ul)
 

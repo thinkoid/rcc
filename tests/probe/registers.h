@@ -40,6 +40,11 @@
     X(T, N, gt, >, 4095, 0x12345) X(T, N, ge, >=, 4095, 0x12345)        \
     X(T, N, eq, ==, 4095, 0x12345) X(T, N, ne, !=, 4095, 0x12345)
 
+/* the comparisons of OPERATORS, a name and the operator */
+#define COMPARISONS(X, T, N)                                            \
+    X(T, N, lt, <) X(T, N, le, <=) X(T, N, gt, >) X(T, N, ge, >=)       \
+    X(T, N, eq, ==) X(T, N, ne, !=)
+
 /* the divisions, whose right operand the main keeps from 0 and -1 */
 #define DIVISIONS(X, T, N)                                              \
     X(T, N, div, /, 7, 0x12345) X(T, N, rem, %, 7, 0x12345)

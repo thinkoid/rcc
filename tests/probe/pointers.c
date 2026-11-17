@@ -379,7 +379,9 @@ char *call_add(short *p, long n) { return (char *) (p + id(n)); }
    memory, on x86-64 the add's or the sub's own operand where the
    instruction takes it as it is, backend.md 6.1 and 6.3: at a size of
    1 for n, at any size for q, and at a size of 1 or one no addressing
-   form scales by for p of n + p.  FORMS makes five functions of f,
+   form scales by for p of n + p; and n of p - n, p + n and n + p, and
+   of p -= n and p += n, as the source of the multiply by the size, at
+   a size the row multiplies by.  FORMS makes five functions of f,
    each returning EXPR(a, o) of an object o of type U holding v, in one
    form: a local, _loc; a global the file defines, _def; one it only
    declares, _dec; *r, _ptr, r a local pointer to a local; and a local
@@ -418,6 +420,12 @@ char *call_add(short *p, long n) { return (char *) (p + id(n)); }
 #define PLUS(a, o) ((a) + (o))
 #define MINUS(a, o) ((a) - (o))
 
+/* p -= n for its value, and p -= n and p += n for their effect, the
+   memory form on a pointer in its slot */
+#define MINUS_TO(a, o) ((a) -= (o))
+#define MINUS_EFFECT(a, o) ((a) -= (o), (a))
+#define PLUS_EFFECT(a, o) ((a) += (o), (a))
+
 /* the globals of the objects: a pointer of each pointee, an index of
    each type of LONG_INDEXES; the declared ones pointers-lib.c's */
 #define POINTER_GLOBALS(E, T, R)                                        \
@@ -431,12 +439,49 @@ unsigned long n_ul_defined;
 extern long n_l_declared;
 extern unsigned long n_ul_declared;
 
+/* Beside them, p -= n on a register pointer, and the value of p - n
+   and of n + p into a register pointer, whose register the multiply or
+   the sub writes, backend.md chapter 4. */
 #define INDEX_OBJECTS(E, I, N)                                          \
     FORMS(mem_add_##E##_##N, ptr_##E, I, n_##N, PLUS)                   \
     FORMS(mem_sub_##E##_##N, ptr_##E, I, n_##N, MINUS)                  \
-    FORMS(mem_radd_##E##_##N, I, ptr_##E, q_##E, PLUS)
+    FORMS(mem_radd_##E##_##N, I, ptr_##E, q_##E, PLUS)                  \
+    FORMS(mem_subto_##E##_##N, ptr_##E, I, n_##N, MINUS_TO)             \
+    FORMS(mem_subeff_##E##_##N, ptr_##E, I, n_##N, MINUS_EFFECT)        \
+    FORMS(mem_addeff_##E##_##N, ptr_##E, I, n_##N, PLUS_EFFECT)         \
+    FORMS(mem_rsubto_##E##_##N, register ptr_##E, I, n_##N, MINUS_TO)   \
+    long mem_into_##E##_##N(ptr_##E a, I v)                             \
+    {                                                                   \
+        register ptr_##E p;                                             \
+        I x = v;                                                        \
+        p = a - x;                                                      \
+        return (long) p;                                                \
+    }                                                                   \
+    long mem_rinto_##E##_##N(ptr_##E a, I v)                            \
+    {                                                                   \
+        register ptr_##E p;                                             \
+        I x = v;                                                        \
+        p = x + a;                                                      \
+        return (long) p;                                                \
+    }
 #define OBJECTS(E, T, R)                                                \
     FORMS(mem_diff_##E, ptr_##E, ptr_##E, q_##E, MINUS)                 \
     LONG_INDEXES(INDEX_OBJECTS, E)
 
 POINTER_TYPES(OBJECTS)
+
+/* n + p with a constant n into a register pointer, from another
+   pointer and from itself, backend.md 6.1: p + n's immediate where a
+   32-bit immediate holds the product, the order of the source where
+   none does; each constant of KONSTS */
+#define KINTO(E, T, R, name, n)                                         \
+    char *kinto_##E##_##name(ptr_##E a)                                 \
+    {                                                                   \
+        register ptr_##E p;                                             \
+        p = (n) + a;                                                    \
+        p = (n) + p;                                                    \
+        return (char *) p;                                              \
+    }
+#define KINTO_ALL(E, T, R) KONSTS(KINTO, E, T, R)
+
+POINTER_TYPES(KINTO_ALL)

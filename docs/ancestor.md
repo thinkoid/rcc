@@ -889,14 +889,15 @@ Where the form does not apply:
   += e` reads `e` before `x` (G13);
 - a global the file only declares is reached through its address
   from the GOT, the global offset table, which is a load of its own;
-- an index that pointer arithmetic scales is in a register, the
-  index of `leaq (%rax,%rcx,4), %rax` or of the `imulq` before the
-  `add`;
+- an index that an addressing form scales is in a register, the
+  index of `leaq (%rax,%rcx,4), %rax`, and an `int` index that the
+  `imulq` multiplies keeps its extending load;
 - an object as the left operand is the instruction's own only
-  against a constant, which has no evaluation: `g < f()` loads `g`
-  before the call, since `f` may write `g`.
+  against a constant or a register variable's read, which have no
+  evaluation: `g < f()` loads `g` before the call, since `f` may write
+  `g`.
 
-Four rows beside the arithmetic take the form too. Pointer arithmetic
+Six rows beside the arithmetic take the form too. Pointer arithmetic
 names the operand its `add` or `sub` takes as it is: `p - q` is `subq
 -16(%rbp), %rax`, and `p + n` on a `char *` is `addq -16(%rbp),
 %rax`. A cast that changes the signedness alone writes no
@@ -908,7 +909,12 @@ $5, -4(%rbp); setl %al`, and `return 5 < x;` the mirrored `cmpl $5,
 `imul` with the object as its source, `imull $4, -4(%rbp), %eax`, and
 `4 * x` is the same: a constant on the left of `+`, `*`, `&`, `|` or
 `^` is taken on the right, as `insert()` puts the operand of the
-lowest degree last in a commutative chain (`c12.c:978-986`).
+lowest degree last in a commutative chain (`c12.c:978-986`), and so
+is a constant `n` of `n + p`, `3 + p` being `addq $12, %rax` after
+`p`'s load. A `long` index that pointer arithmetic multiplies by the
+size is the three-operand `imulq`'s source, `imulq $4, -16(%rbp),
+%rcx`. A comparison of an object with a register variable is the
+`cmp` of the object, `cmpl %ebx, -4(%rbp)`.
 
 The form moved 54 x86-64 pins, 3224 instruction lines to 3072: 78
 loads of a right operand, 65 of a left one, three moves of a divisor,
@@ -1527,10 +1533,13 @@ it read before, in one access at the object's width, into the same
 register. Literalness holds: the conversion is still an instruction's
 work, as it is for a `char`.
 
-A cast over a cast is no read, so the rule does not see the object
-under it. `(long) (char) c` on a `char` in memory is `movsbl
--1(%rbp), %eax; movsbq %al, %rax`, where `(long) c` is the one
-`movsbq -1(%rbp), %rax`.
+On x86-64 the rule sees the object under a cast that keeps its bits,
+one that changes the signedness alone or none: `(long) (char) c` on a
+`char` in memory is the one `movsbq -1(%rbp), %rax`, as `(long) c`
+is, and `(long) (int) u` on an `unsigned` `movslq -4(%rbp), %rax`,
+the object read at its own width. On aarch64 a cast over a cast is
+still no read: `(long) (int) u` is `ldr w0, [x29, #16]; sxtw x0,
+w0`.
 
 The rule moved 18 x86-64 pins in 44 places, 1337 instruction lines to
 1293, and 6 aarch64 pins in 8 places, 499 to 491.

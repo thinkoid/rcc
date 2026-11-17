@@ -336,12 +336,24 @@ SCALARS(DECLARE_WALKS)
 #define DECLARE_INDEX_OBJECTS(E, I, N)                                  \
     DECLARE_FORMS(mem_add_##E##_##N, ptr_##E, I)                        \
     DECLARE_FORMS(mem_sub_##E##_##N, ptr_##E, I)                        \
-    DECLARE_FORMS(mem_radd_##E##_##N, I, ptr_##E)
+    DECLARE_FORMS(mem_radd_##E##_##N, I, ptr_##E)                       \
+    DECLARE_FORMS(mem_subto_##E##_##N, ptr_##E, I)                      \
+    DECLARE_FORMS(mem_subeff_##E##_##N, ptr_##E, I)                     \
+    DECLARE_FORMS(mem_addeff_##E##_##N, ptr_##E, I)                     \
+    DECLARE_FORMS(mem_rsubto_##E##_##N, ptr_##E, I)                     \
+    BOTH(long, mem_into_##E##_##N, (ptr_##E, I))                        \
+    BOTH(long, mem_rinto_##E##_##N, (ptr_##E, I))
 #define DECLARE_OBJECTS(E, T, R)                                        \
     DECLARE_FORMS(mem_diff_##E, ptr_##E, ptr_##E)                       \
     LONG_INDEXES(DECLARE_INDEX_OBJECTS, E)
 
 POINTER_TYPES(DECLARE_OBJECTS)
+
+#define DECLARE_KINTO(E, T, R, name, n)                                 \
+    BOTH(char *, kinto_##E##_##name, (ptr_##E))
+#define DECLARE_KINTO_ALL(E, T, R) KONSTS(DECLARE_KINTO, E, T, R)
+
+POINTER_TYPES(DECLARE_KINTO_ALL)
 
 BOTH(int, lit_index, (int))
 BOTH(int, lit_rindex, (long))
@@ -599,7 +611,15 @@ SCALARS(TEST_WALKS)
 #define TEST_INDEX_OBJECTS(E, I, N)                                     \
     TEST_FORMS(mem_add_##E##_##N, p, n, (void *) p, (I) n)              \
     TEST_FORMS(mem_sub_##E##_##N, p, n, (void *) p, (I) n)              \
-    TEST_FORMS(mem_radd_##E##_##N, p, n, (I) n, (void *) p)
+    TEST_FORMS(mem_radd_##E##_##N, p, n, (I) n, (void *) p)             \
+    TEST_FORMS(mem_subto_##E##_##N, p, n, (void *) p, (I) n)            \
+    TEST_FORMS(mem_subeff_##E##_##N, p, n, (void *) p, (I) n)           \
+    TEST_FORMS(mem_addeff_##E##_##N, p, n, (void *) p, (I) n)           \
+    TEST_FORMS(mem_rsubto_##E##_##N, p, n, (void *) p, (I) n)           \
+    CHECK(mem_into_##E##_##N, p, n, ((void *) p, (I) n));               \
+    CHECK(mem_rinto_##E##_##N, p, n, ((void *) p, (I) n));
+#define TEST_KINTO(E, T, R, name, n)                                    \
+    CHECK(kinto_##E##_##name, p, 0, ((void *) p));
 #define TEST_OBJECTS(E, T, R)                                           \
     static void test_objects_##E(void)                                  \
     {                                                                   \
@@ -610,6 +630,7 @@ SCALARS(TEST_WALKS)
             const long n = values[(i * 5 + 3) % COUNT];                 \
                                                                         \
             LONG_INDEXES(TEST_INDEX_OBJECTS, E)                         \
+            KONSTS(TEST_KINTO, E, T, R)                                 \
                                                                         \
             for (int j = i % 3; j < COUNT; j += 3) {                    \
                 const long q = values[j];                               \

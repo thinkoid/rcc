@@ -1137,6 +1137,25 @@ memory_operand(const expr_t &e, int width)
     return top;
 }
 
+// The register variable whose register an instruction of width bits
+// names for e, or nullptr: a plain read of the variable, of a type
+// exactly that wide, under casts that keep its bits, so its register at
+// the width is the value (chapter 4).  A char or a short promoted and
+// an int widened are under a cast that changes the width.
+const symbol_t *
+register_operand(const expr_t &e, int width)
+{
+    const expr_t *top = &e;
+    while (is< cast_t >(*top) && same_bits(as< cast_t >(*top), top->type))
+        top = as< cast_t >(*top).arg.get();
+
+    const auto *sym = register_variable(*top);
+    if (!sym || integer(top->type).width != width)
+        return nullptr;
+
+    return sym;
+}
+
 // A constant that must be held: mov $c, L, or movabsq for a 64-bit one
 // no immediate holds.  A constant narrower than int is written as its
 // promotion, so the register holds it extended.  Handed a register
@@ -1643,20 +1662,72 @@ offset(state_t &s,
     return l;
 }
 
-// The n of p + n and p - n, and of p += n and p -= n, generated.  A
-// constant n is the immediate c * size, or, when no 32-bit immediate
-// holds the product, the product held in a register; the parser
-// retyped a constant index to 64 bits, so p += 2 on an int * is
-// addq $8.  Any other n is held, for displaced() to scale.  avoid is
-// as for right_operand(): the registers a pointer loaded after n is to
+// Whether the row of p + n, n + p or p - n multiplies a held n by the
+// size, 6.3: at any size but 1, except for + at a size of 2, 4 or 8,
+// whose leaq (P,N,s) scales n.
+bool
+multiplies(binary_op_t op, long size)
+{
+    return size != 1 && !(op == binary_op_t::add && is_scale(size));
+}
+
+// The n of a row that multiplies() it, n times the size, when n is an
+// object in memory of 64 bits: the three-operand imul with the object
+// as its source, imulq $4, -16(%rbp), %rcx, where the load and the
+// imulq on its register were, so the object is read once, where its
+// load would read it (backend.md 6.1, G13).  The product takes a fresh
+// register outside avoid, or, handed a register variable, the
+// variable's, imulq $12, -24(%rbp), %rbx (chapter 4).  None for any
+// other n: an int widened keeps its extending load, and the row
+// multiplies n in its register.
+std::optional< value_t >
+multiplied(state_t &s,
+           const expr_t &n,
+           long size,
+           unsigned avoid,
+           into_t *into = nullptr)
+{
+    const auto *object = memory_operand(n, 64);
+    if (!object)
+        return std::nullopt;
+
+    const auto place = address_avoiding(s, *object, avoid);
+    const auto from = operand(s, place);
+    release(s, place);
+
+    if (takes(into, 64)) {
+        insn(s, "imulq",
+             { imm(size), from, reg(variable_register(into->variable), 64) });
+        return taken(s, *into);
+    }
+
+    const auto v = fresh(s, 64, avoid);
+    insn(s, "imulq", { imm(size), from, reg(reg_of(s, v), 64) });
+
+    return v;
+}
+
+// The n of p op n, and of p op= n, generated.  A constant n is the
+// immediate c * size, or, when no 32-bit immediate holds the product,
+// the product held in a register; the parser retyped a constant index
+// to 64 bits, so p += 2 on an int * is addq $8.  An n the row
+// multiplies is its product where multiplied() writes it, already
+// scaled.  Any other n is held, for displaced() to scale.  avoid is as
+// for right_operand(): the registers a pointer loaded after n is to
 // take.
 right_t
-displacement(state_t &s, const expr_t &n, long size, unsigned avoid = 0)
+displacement(
+    state_t &s, binary_op_t op, const expr_t &n, long size, unsigned avoid = 0)
 {
-    if (!is< literal_t >(n))
+    if (!is< literal_t >(n)) {
+        if (multiplies(op, size))
+            if (const auto product = multiplied(s, n, size, avoid))
+                return { .value = *product, .width = 64 };
+
         return { .value = rvalue_avoiding(s, n, avoid),
                  .width = 64,
                  .scale = size };
+    }
 
     const auto d = scaled(as< literal_t >(n).value, size);
     if (fits_imm32(d))
@@ -1673,17 +1744,17 @@ displacement(state_t &s, const expr_t &n, long size, unsigned avoid = 0)
 // is the instruction's own operand, addq -16(%rbp), %rax, its address
 // generated where its load would be, after p (backend.md 6.1); any
 // other n is displacement()'s.  At another size n is scaled in a
-// register, by the index of leaq or by imulq, and keeps its load.  A
-// compound assignment's n keeps its register in any case, since it is
-// evaluated before the object is read (6.6).
+// register: the index of leaq keeps its load, and the imulq's product
+// takes the object as its source.  A compound assignment's n is held
+// in any case, since it is evaluated before the object is read (6.6).
 right_t
-addend(state_t &s, const expr_t &n, long size)
+addend(state_t &s, binary_op_t op, const expr_t &n, long size)
 {
     if (size == 1)
         if (const auto *object = memory_operand(n, 64))
             return { .place = address(s, *object), .width = 64 };
 
-    return displacement(s, n, size);
+    return displacement(s, op, n, size);
 }
 
 // p + n and p - n, p += n and p -= n, on the held pointer l and the
@@ -1744,7 +1815,7 @@ index_first(state_t &s, value_t n, const expr_t &p, long size)
 // constant on the pointer's right is not: it is the addq's immediate, or
 // its product held, which the addq takes unscaled.
 bool
-scaled_sum(const binary_t &b, long size)
+scaled_sum(const operation_t &b, long size)
 {
     const bool pointer_first = is< pointer_t >(b.lhs->type);
 
@@ -1753,18 +1824,23 @@ scaled_sum(const binary_t &b, long size)
 }
 
 // The row of a binary + or - of a pointer type past the forms of
-// folded(), summed() and indexed(), on its left operand l, held: the
-// right operand generated after it, an object in memory the add or the
-// sub takes unscaled the instruction's own operand, addq -16(%rbp), %rax
-// (6.1), by addend() and index_first(); then the instruction on l's
-// register, or offset()'s leaq, which a register variable handed down
-// is the destination of.
+// folded(), summed() and indexed(), its operands in the order of
+// ordered_sum(), on its left operand l, held: the right operand
+// generated after it, an object in memory the add or the sub takes
+// unscaled the instruction's own operand, addq -16(%rbp), %rax (6.1),
+// by addend() and index_first(); then the instruction on l's register,
+// or offset()'s leaq, which a register variable handed down is the
+// destination of.  size is the stride, but 1 for n + p whose n is
+// multiplied() already.
 value_t
-pointer_operation(
-    state_t &s, const binary_t &b, long size, value_t l, into_t *into = nullptr)
+pointer_operation(state_t &s,
+                  const operation_t &b,
+                  long size,
+                  value_t l,
+                  into_t *into = nullptr)
 {
     if (is< pointer_t >(b.lhs->type))
-        return displaced(s, b.op, l, addend(s, *b.rhs, size), into);
+        return displaced(s, b.op, l, addend(s, b.op, *b.rhs, size), into);
 
     if (const auto sum = index_first(s, l, *b.rhs, size))
         return *sum;
@@ -1934,9 +2010,13 @@ compare(state_t &s, const operation_t &b)
 
 // The cmp of a comparison, its operands in the order of ordered(): an
 // object in memory against an immediate is the cmp of the object in
-// place, condition_on()'s, cmpl $5, -4(%rbp), and nothing is held, for
-// a condition (7.1) and for a value (6.3) alike; any other is
-// compare()'s cmp R, L, and L is held.
+// place, condition_on()'s, cmpl $5, -4(%rbp), and against a register
+// variable's plain read the same with the variable's register as the
+// source, cmpl %ebx, -4(%rbp) for x < r: the object is read first, by
+// the cmp, which reads the register too, and nothing is evaluated
+// between (G13).  Nothing is held then, for a condition (7.1) and for
+// a value (6.3) alike; any other is compare()'s cmp R, L, and L is
+// held.
 value_t
 compared(state_t &s, const operation_t &b)
 {
@@ -1945,6 +2025,12 @@ compared(state_t &s, const operation_t &b)
     const auto *object = memory_operand(*b.lhs, width);
     if (object && immediate(*b.rhs, width)) {
         condition_on(s, "cmp", *object, immediate_of(*b.rhs, width), width);
+        return { };
+    }
+
+    if (const auto *sym = object ? register_operand(*b.rhs, width) : nullptr) {
+        condition_on(s, "cmp", *object, reg(variable_register(sym), width),
+                     width);
         return { };
     }
 
@@ -2256,7 +2342,7 @@ ordered(const binary_t &b, const type_t &t, const symbol_t *sym)
 // own register: R's, imulq $12, %rcx, %rcx, or the variable's for the
 // index of N + P.
 bool
-offsets_in(const binary_t &b, const type_t &t, const symbol_t *sym)
+offsets_in(const operation_t &b, const type_t &t, const symbol_t *sym)
 {
     if (scaled_sum(b, stride(t)) || !(t == sym->type))
         return false;
@@ -2311,17 +2397,42 @@ operation_in(state_t &s, const operation_t &b, const type_t &t, into_t &into)
 // r = P + N, N + P or P - N as the operation on the variable's register,
 // chapter 4: L into the register, then pointer_operation()'s row on it
 // in place, movq -16(%rbp), %rbx; addq $4, %rbx, and p = p + 1 the addq
-// alone, as p += 1 is.  The value is the variable's read.
+// alone, as p += 1 is.  N of N + P that the row multiplies is its
+// product into the register, imulq $12, -24(%rbp), %rbx, by
+// multiplied().  The value is the variable's read.
 value_t
-offset_in(state_t &s, const binary_t &b, long size, into_t &into)
+offset_in(state_t &s, const operation_t &b, long size, into_t &into)
 {
-    const auto l = left_in(s, *b.lhs, into.variable, 0);
+    const bool scaled_first =
+        !is< pointer_t >(b.lhs->type) && multiplies(b.op, size);
+
+    into_t left { into.variable };
+    const auto product =
+        scaled_first ? multiplied(s, *b.lhs, size, 0, &left) : std::nullopt;
+    const auto l = product ? *product : left_in(s, *b.lhs, into.variable, 0);
 
     const int outer = std::exchange(s.in_place, l.id);
-    pointer_operation(s, b, size, l);
+    pointer_operation(s, b, product ? 1 : size, l);
     s.in_place = outer;
 
     return taken(s, into, l);
+}
+
+// A binary + or - of a pointer type in the order its row generates it,
+// backend.md 6.1 and 6.3: n + p with a constant n whose product with
+// the size a 32-bit immediate holds is p + n, so 3 + p on an int * is
+// addq $12, %rax after p's load, as p + 3 is.  The constant has no
+// evaluation, so G13 has nothing to order.  A product no immediate
+// holds keeps the order of the source, as a constant on the left of an
+// integer operator does.
+operation_t
+ordered_sum(const binary_t &b, long size)
+{
+    if (constant_first(b) &&
+        fits_imm32(scaled(as< literal_t >(*b.lhs).value, size)))
+        return mirrored(b);
+
+    return as_written(b);
 }
 
 // A binary + or - of a pointer type: the pointer and the integer, the
@@ -2333,9 +2444,11 @@ offset_in(state_t &s, const binary_t &b, long size, into_t &into)
 // variable index of a size the form scales the leaq of indexed()'s,
 // leaq -24(%rbp,%rcx,4), %rax for a + i.  Otherwise the operand written
 // first is held outside the registers the other's top operator pins
-// (chapter 6.5), and pointer_operation() writes the row.  A register
-// variable handed down is the destination of each leaq, and of the
-// operation on its register where offsets_in() holds (chapter 4).
+// (chapter 6.5), and pointer_operation() writes the row, the operands
+// in the order of ordered_sum(); n of n + p that the row multiplies is
+// multiplied()'s product.  A register variable handed down is the
+// destination of each leaq, and of the operation on its register where
+// offsets_in() holds (chapter 4).
 value_t
 pointer_arithmetic(state_t &s, const expr_t &e, into_t *into)
 {
@@ -2352,12 +2465,20 @@ pointer_arithmetic(state_t &s, const expr_t &e, into_t *into)
         if (const auto a = indexed(s, b, size))
             return address_of(s, *a, into);
 
-    if (into && offsets_in(b, e.type, into->variable))
-        return offset_in(s, b, size, *into);
+    const auto o = ordered_sum(b, size);
 
-    const auto l = rvalue_avoiding(s, *b.lhs, pinned_by(*b.rhs));
+    if (into && offsets_in(o, e.type, into->variable))
+        return offset_in(s, o, size, *into);
 
-    return pointer_operation(s, b, size, l, into);
+    const unsigned pinned = pinned_by(*o.rhs);
+
+    if (!is< pointer_t >(o.lhs->type) && multiplies(o.op, size))
+        if (const auto product = multiplied(s, *o.lhs, size, pinned))
+            return pointer_operation(s, o, 1, *product, into);
+
+    const auto l = rvalue_avoiding(s, *o.lhs, pinned);
+
+    return pointer_operation(s, o, size, l, into);
 }
 
 // The object in memory x of x * c, c a constant the instruction takes
@@ -2696,7 +2817,7 @@ assign_register(state_t &s, const assign_t &a, const symbol_t *sym)
     const int width = operation_width(a.common);
     const bool stepped = is< pointer_t >(sym->type);
 
-    const auto r = stepped ? displacement(s, *a.rhs, stride(sym->type)) :
+    const auto r = stepped ? displacement(s, *a.op, *a.rhs, stride(sym->type)) :
                              right_operand(s, *a.op, *a.rhs, width);
     const auto l = extended(s, read(s, sym), integer(sym->type), width);
 
@@ -2752,9 +2873,9 @@ assign(state_t &s, const assign_t &a)
     }
 
     const int width = operation_width(a.common);
-    const auto r = stepped ?
-                       displacement(s, *a.rhs, stride(a.lhs->type), bit(rax)) :
-                       right_operand(s, *a.op, *a.rhs, width, bit(rax));
+    const auto r = stepped ? displacement(s, *a.op, *a.rhs, stride(a.lhs->type),
+                                          bit(rax)) :
+                             right_operand(s, *a.op, *a.rhs, width, bit(rax));
 
     // the value of the expression has the lvalue's type: the bits
     // above its width are the operation's, not the value's extension
@@ -2792,7 +2913,11 @@ extending_load(state_t &s,
 // unsigned value.  A signed object in memory is loaded extended to the
 // new width, extending_load(), so the load is the widening; an unsigned
 // one is loaded as any read, valid to 64 bits by the load's own
-// extension.  A change of signedness alone is nothing.  A pointer
+// extension.  The object may be under casts that keep its bits,
+// widened_object()'s: (long) (int) u is movslq -4(%rbp), %rax, and
+// (unsigned long) (unsigned) i the movl, valid to 64 bits, each
+// reading the object at its own width (G10).  A change of signedness
+// alone is nothing.  A pointer
 // is its integer view, so pointer to pointer is nothing, an integer
 // widens to a pointer by its own signedness (6.3.2.3p5), and a pointer
 // narrows to an integer by its low bits (p6).  An array decays to its
@@ -2805,6 +2930,20 @@ extending_load(state_t &s,
 // representation, and a load takes it: register int x = c is
 // movsbl -1(%rbp), %ebx (chapter 4).  The decay and the function's
 // address take it as & does, leaq buf(%rip), %rbx.
+// The object in memory whose load is a widening cast's, or nullptr:
+// the operand, or the read under casts that keep its bits, (long) (int)
+// u's u, an object of the operand's width either way (backend.md 6.3, a
+// widening by the load).
+const expr_t *
+widened_object(const cast_t &c)
+{
+    const expr_t *top = c.arg.get();
+    while (is< cast_t >(*top) && same_bits(as< cast_t >(*top), top->type))
+        top = as< cast_t >(*top).arg.get();
+
+    return in_memory(*top) ? top : nullptr;
+}
+
 value_t
 cast(state_t &s, const cast_t &c, const type_t &to, into_t *into = nullptr)
 {
@@ -2824,9 +2963,12 @@ cast(state_t &s, const cast_t &c, const type_t &to, into_t *into = nullptr)
     const bool widens = target.width > from.width;
     const auto onward = through(into, target);
 
-    auto v = widens && from.is_signed && in_memory(*c.arg) ?
-                 extending_load(s, *c.arg, from, target.width, onward) :
-                 rvalue(s, *c.arg, onward);
+    const auto *object = widens ? widened_object(c) : nullptr;
+    const bool loads = object && (from.is_signed || object != c.arg.get());
+    const int width = from.is_signed ? target.width : 32;
+
+    auto v = loads ? extending_load(s, *object, from, width, onward) :
+                     rvalue(s, *c.arg, onward);
     if (widens)
         v = extended(s, v, from, target.width);
 
@@ -3351,7 +3493,9 @@ shift_on(state_t &s,
 
 // p += n and p -= n: addq $8, -8(%rbp) for a constant n the immediate
 // holds times the size; otherwise n in a register, multiplied by the
-// size as for displaced(), then addq R, obj or subq R, obj.  G6.
+// size at any size but 1, an object in memory of 64 bits by
+// multiplied()'s imulq $4, -16(%rbp), %rax, then addq R, obj or
+// subq R, obj.  G6.
 void
 displaced_on(state_t &s,
              binary_op_t op,
@@ -3372,6 +3516,10 @@ displaced_on(state_t &s,
 
         r = fresh(s, 64, held);
         constant(s, reg_of(s, r), d, 64);
+    }
+    else if (const auto product =
+                 size != 1 ? multiplied(s, n, size, held) : std::nullopt) {
+        r = *product;
     }
     else {
         r = rvalue(s, n);

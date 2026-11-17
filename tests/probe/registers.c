@@ -985,6 +985,33 @@ long own_step(long a)
 
 TYPES(CONDITION)
 
+/* An object in memory compared with a register variable, backend.md
+   6.1 on x86-64: the object the cmp's own operand, cmpl %ebx,
+   -4(%rbp), whichever comparison; a local, a global and *p on the
+   left, as a condition and as a value, and beside them an expression
+   on the right, which keeps the object's load.  A char or a short is
+   promoted, and keeps its load too. */
+#define COMPARED(T, N, name, op)                                        \
+    long cm_##name##_##N(T a, T b)                                      \
+    {                                                                   \
+        register T x = b;                                               \
+        T s = a;                                                        \
+        T *p = &s;                                                      \
+        long r = 0;                                                     \
+        g_##N = a;                                                      \
+        if (s op x)                                                     \
+            r = r + 1;                                                  \
+        if (g_##N op x)                                                 \
+            r = r + 2;                                                  \
+        if (*p op x)                                                    \
+            r = r + 4;                                                  \
+        r = r * 7 + (s op x) + (g_##N op x) * 3 + (*p op x) * 5;        \
+        return r * 7 + (s op x + 1) + x;                                \
+    }
+#define COMPARED_ALL(T, N) COMPARISONS(COMPARED, T, N)
+
+TYPES(COMPARED_ALL)
+
 /* Held values across the paths of &&, || and ?:, backend.md 6.7: a
    read no path writes stays in its register; a read an arm writes is
    saved before the first divergence; nested.  Each read is the

@@ -29,9 +29,10 @@
    %rbx, leaq -12(%rbp), %rbx and leaq -28(%rbp,%rax,4), %rbx; in
    pointer_sum(), leaq (%rax,%rcx,4), %rbx; in pointer_step(),
    pointer_back() and pointer_before(), the operation on the register,
-   addq $4, %rbx after the initializer's load, imulq $4, %rax, %rax and
-   subq %rax, %rbx, and movq -16(%rbp), %rbx; subq $4, %rbx; in
-   negated() and complemented(), the operand loaded into the register
+   addq $4, %rbx after the initializer's load, imulq $4, -24(%rbp),
+   %rax, n the multiply's source, and subq %rax, %rbx, and
+   movq -16(%rbp), %rbx; subq $4, %rbx; in negated() and
+   complemented(), the operand loaded into the register
    and negl %ebx or notl %ebx on it, and in negated_itself() the negl
    alone; in compared(), compared_itself() and compared_constant(), the
    cmp, then setl %bl and movzbl %bl, %ebx, the cmp reading r in its
@@ -46,9 +47,10 @@
    back_int(), step_row() and back_row(), p += n and p -= n at sizes
    1, 4 and 12, the step on the register after n's load, addq %rax,
    %rbx and subq %rax, %rbx, leaq (%rbx,%rax,4), %rbx, which reads
-   both operands before it writes, imulq $4, %rax, %rax and subq %rax,
-   %rbx, and imulq $12, %rax, %rax and addq %rax, %rbx or subq %rax,
-   %rbx, and no mov into the register.  return r is movl %ebx, %eax,
+   both operands before it writes, and after the multiply with n its
+   source, imulq $4, -24(%rbp), %rax and subq %rax, %rbx, and
+   imulq $12, -24(%rbp), %rax and addq %rax, %rbx or subq %rax, %rbx,
+   and no mov into the register.  return r is movl %ebx, %eax,
    and return p movq %rbx, %rax.
 
    On aarch64 the listing must show the last instruction of each

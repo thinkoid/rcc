@@ -1156,6 +1156,304 @@ not_commuted:
 	ret
 	.cfi_endproc
 	.size	not_commuted, .-not_commuted
+	.globl	index_sub
+	.type	index_sub, @function
+index_sub:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	%rsi, -16(%rbp)
+	movq	-8(%rbp), %rax
+	imulq	$4, -16(%rbp), %rcx
+	subq	%rcx, %rax
+	jmp	.Lindex_sub.1
+.Lindex_sub.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	index_sub, .-index_sub
+	.globl	index_row
+	.type	index_row, @function
+index_row:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	%rsi, -16(%rbp)
+	movq	-8(%rbp), %rax
+	imulq	$12, -16(%rbp), %rcx
+	addq	%rcx, %rax
+	jmp	.Lindex_row.1
+.Lindex_row.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	index_row, .-index_row
+	.globl	index_first
+	.type	index_first, @function
+index_first:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	%rsi, -16(%rbp)
+	imulq	$12, -16(%rbp), %rax
+	addq	-8(%rbp), %rax
+	jmp	.Lindex_first.1
+.Lindex_first.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	index_first, .-index_first
+	.globl	index_compound
+	.type	index_compound, @function
+index_compound:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	%rsi, -16(%rbp)
+	imulq	$4, -16(%rbp), %rax
+	subq	%rax, -8(%rbp)
+	movq	-8(%rbp), %rax
+	jmp	.Lindex_compound.1
+.Lindex_compound.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	index_compound, .-index_compound
+	.globl	index_int
+	.type	index_int, @function
+index_int:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	movslq	-12(%rbp), %rcx
+	imulq	$4, %rcx, %rcx
+	subq	%rcx, %rax
+	jmp	.Lindex_int.1
+.Lindex_int.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	index_int, .-index_int
+	.globl	index_scaled
+	.type	index_scaled, @function
+index_scaled:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	%rsi, -16(%rbp)
+	movq	-8(%rbp), %rax
+	movq	-16(%rbp), %rcx
+	leaq	(%rax,%rcx,4), %rax
+	jmp	.Lindex_scaled.1
+.Lindex_scaled.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	index_scaled, .-index_scaled
+	.globl	widen_signedness
+	.type	widen_signedness, @function
+widen_signedness:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movslq	-4(%rbp), %rax
+	jmp	.Lwiden_signedness.1
+.Lwiden_signedness.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	widen_signedness, .-widen_signedness
+	.globl	widen_unsigned
+	.type	widen_unsigned, @function
+widen_unsigned:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	-4(%rbp), %eax
+	jmp	.Lwiden_unsigned.1
+.Lwiden_unsigned.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	widen_unsigned, .-widen_unsigned
+	.globl	widen_narrowed
+	.type	widen_narrowed, @function
+widen_narrowed:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	-8(%rbp), %rax
+	movslq	%eax, %rax
+	jmp	.Lwiden_narrowed.1
+.Lwiden_narrowed.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	widen_narrowed, .-widen_narrowed
+	.globl	compare_register
+	.type	compare_register, @function
+compare_register:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movl	%esi, -16(%rbp)
+	movl	-16(%rbp), %ebx
+	cmpl	%ebx, -12(%rbp)
+	jge	.Lcompare_register.2
+	cmpl	%ebx, -12(%rbp)
+	setne	%al
+	movzbl	%al, %eax
+	jmp	.Lcompare_register.1
+.Lcompare_register.2:
+	movl	-12(%rbp), %eax
+	movl	%ebx, %ecx
+	addl	$1, %ecx
+	cmpl	%ecx, %eax
+	sete	%al
+	movzbl	%al, %eax
+	jmp	.Lcompare_register.1
+.Lcompare_register.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	compare_register, .-compare_register
+	.globl	constant_index
+	.type	constant_index, @function
+constant_index:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	-8(%rbp), %rax
+	addq	$12, %rax
+	jmp	.Lconstant_index.1
+.Lconstant_index.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	constant_index, .-constant_index
+	.globl	constant_index_right
+	.type	constant_index_right, @function
+constant_index_right:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	-8(%rbp), %rax
+	addq	$12, %rax
+	jmp	.Lconstant_index_right.1
+.Lconstant_index_right.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	constant_index_right, .-constant_index_right
+	.globl	constant_index_into
+	.type	constant_index_into, @function
+constant_index_into:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movq	%rdi, -16(%rbp)
+	movq	-16(%rbp), %rbx
+	addq	$12, %rbx
+	addq	$12, %rbx
+	movq	%rbx, %rax
+	jmp	.Lconstant_index_into.1
+.Lconstant_index_into.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	constant_index_into, .-constant_index_into
+	.globl	constant_index_wide
+	.type	constant_index_wide, @function
+constant_index_wide:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	$1073741824, %rax
+	movq	-8(%rbp), %rcx
+	leaq	(%rcx,%rax,4), %rax
+	jmp	.Lconstant_index_wide.1
+.Lconstant_index_wide.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	constant_index_wide, .-constant_index_wide
 	.bss
 	.globl	defined
 	.type	defined, @object

@@ -102,38 +102,12 @@ Fix: 7.2 states the rule c1 applies, or c1 applies the stated one.
 Check: a cost program with a =main= ending in each shape, pinned, and
 7.2 agreeing with the pins.
 
-** TODO Three more rows hold a value the machine could name in place
-
-On x86-64 an object in memory of the operation's width is the
-instruction's own operand (=backend.md= 6.1). Three rows next to
-that rule hold a value in a register that the machine could name in
-place:
-
-- the index multiply of pointer arithmetic: ~p - n~ at a size other
-  than 1, and ~p + n~ at a size that is no scale, are =movq
-  -16(%rbp), %rcx; imulq $4, %rcx, %rcx=, and the machine has =imulq
-  $4, -16(%rbp), %rcx=;
-- a widening over a cast that changes signedness alone: ~(long)
-  (int) u~ is =movl -4(%rbp), %eax; movslq %eax, %rax=, where the
-  load could extend;
-- an object compared with a =register= variable: ~x < r~ loads =x=,
-  where =cmpl %ebx, -4(%rbp)= reads it in place.
-
-Fix: each of the three takes the form the machine has.
-
-Check: a row of =operand= for each, with no register held for the
-value.
-
-** TODO x86-64: three rows around a constant and a register variable cost an instruction
+** TODO x86-64: two rows around a constant and a register variable cost an instruction
 
 A constant on the left of a commutative operator is taken as one on
-the right is (=backend.md= 6.1). Three rows beside that rule cost an
+the right is (=backend.md= 6.1). Two rows beside that rule cost an
 instruction more than their neighbour:
 
-- ~3 + p~ on an ~int *~ is =movq $3, %rax; movq -8(%rbp), %rcx; leaq
-  (%rcx,%rax,4), %rax=, where ~p + 3~ is =movq -8(%rbp), %rax; addq
-  $12, %rax=; pointer arithmetic has its own rows, which the rule
-  does not reach. aarch64 gives both the immediate;
 - ~r = c + 5~ with ~c~ a =register char= and ~r~ a =register int= is
   =movl %ebx, %eax; addl $5, %eax; movl %eax, %r12d=, where ~r = 5 +
   c~ is =movl $5, %r12d; addl %ebx, %r12d=: a register variable read
@@ -144,15 +118,30 @@ instruction more than their neighbour:
   %ecx, %ecx=, where the three-operand form names its source,
   =imull $4, %ebx, %ecx=.
 
-Fix: ~n + p~ with a constant ~n~ takes the immediate ~p + n~ takes;
-a register variable valid to the width is a left operand of the
-destination rule under such a conversion, and the boundary of the
-constant's rule goes; the immediate =imul= reads a register
+Fix: a register variable valid to the width is a left operand of
+the destination rule under such a conversion, and the boundary of
+the constant's rule goes; the immediate =imul= reads a register
 variable's register and writes a fresh one.
 
-Check: ~3 + p~ and ~p + 3~ have one listing, ~r = c + 5~ and ~r = 5
-+ c~ one of two instructions, and ~x * 4~ on a register variable is
-one =imull=, each pinned.
+Check: ~r = c + 5~ and ~r = 5 + c~ have one listing of two
+instructions, and ~x * 4~ on a register variable is one =imull=,
+each pinned.
+
+** TODO aarch64: a widening over a cast that keeps the bits extends after the load
+
+On x86-64 a widening reads its object through casts that keep the
+bits, and the load extends: ~(long) (int) u~ is =movslq -4(%rbp),
+%rax= (=backend.md= 6.3). On aarch64 the cast is no read of an
+object, so the extension follows the load: =ldr w0, [x29, #16];
+sxtw x0, w0=, where =ldrsw x0, [x29, #16]= reads the object
+extended, and ~(unsigned long) (unsigned) i~ is =ldr w0, [x29,
+#16]; mov w0, w0=.
+
+Fix: aarch64's widening looks through casts that keep the bits, as
+x86-64's does.
+
+Check: =operand='s =widen_signedness= and =widen_unsigned= are one
+=ldrsw= and one =ldr= on aarch64.
 
 ** TODO Five rows beside a register variable's destination keep their =mov=
 
@@ -494,20 +483,6 @@ Fix: "has no slot of its own" in both places, with =backend.md= 6.7
 named for the save.
 
 Check: the sentence agrees with both pins of =g13-read-across-branch=.
-
-** TODO Some sixty lines of the documents run past 70 columns
-
-The documents wrap at 70 columns. Outside tables and listings,
-=backend.md= has 25 lines longer, =findings.md= 19, =rationale.md=
-14, =shape.md= 11, =aarch64.md= 8, =guarantees.md= 6,
-=design-calls.md= 4 and =llvm.md= 2, most at 71 or 72 and a few of
-=shape.md= past 100.
-
-Fix: each paragraph rewrapped, its words unchanged.
-
-Check: no line of =docs/*.md= outside a table or a listing is
-longer than 70 columns, and =git diff -w --word-diff= shows no word
-changed.
 
 * Tests
 

@@ -124,6 +124,27 @@ TYPES(VALUES)
 
 TYPES(CASTS)
 
+/* a cast over a cast that changes the signedness alone, of an object
+   in memory, a parameter's slot, flip_, and a global, flipg_: a
+   widening is the load extended by the inner type's signedness,
+   docs/backend.md 6.3 on x86-64, (long) (int) u as movslq -4(%rbp),
+   %rax, the object read at its own width; every narrower or equal
+   target beside it */
+#define FLIP_GLOBAL(P, F, S) F flip_object_##P;
+
+FLIPS(FLIP_GLOBAL)
+
+#define FLIP(P, F, S, T, TN)                                            \
+    T flip_##P##_##TN(F a) { return (T) (S) a; }                        \
+    T flipg_##P##_##TN(F a)                                             \
+    {                                                                   \
+        flip_object_##P = a;                                            \
+        return (T) (S) flip_object_##P;                                 \
+    }
+#define FLIP_ALL(P, F, S) FLIP_TARGETS(FLIP, P, F, S)
+
+FLIPS(FLIP_ALL)
+
 /* the width rule, docs/aarch64.md 6.3: a cast after an instruction
    that left the register valid to more, or to less */
 long chain_char(int a) { return (long) (char) a; }

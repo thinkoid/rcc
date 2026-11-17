@@ -37,6 +37,20 @@
    shift's count and a right operand that is a call, which may write the
    global loaded before it.
 
+   index_sub, index_row, index_first and index_compound write the index
+   multiply of pointer arithmetic, p - n at a size of 4, p + n and n + p
+   at 12 and p -= n, n a long in memory, and index_int and index_scaled
+   beside them, an int index and p + n at a scale; widen_signedness and
+   widen_unsigned a widening over a cast that changes the signedness
+   alone, (long) (int) u and (unsigned long) (unsigned) i, and
+   widen_narrowed beside them over a narrowing cast; compare_register an
+   object compared with a register variable, as a condition and as a
+   value, and beside it an expression on the right; constant_index and
+   constant_index_right 3 + p and p + 3, constant_index_into the same
+   into a register pointer, from another and from itself, and
+   constant_index_wide a constant whose product no 32-bit immediate
+   holds (backend.md 6.1, 6.3).
+
    On x86-64 the listing must show each right operand as the
    instruction's operand, after the left operand's load and with no load
    of its own: in add, addl -24(%rbp), %eax for y, addl defined(%rip),
@@ -97,7 +111,23 @@
    addl %ebx, %r12d in commuted_char_register, the operation on the
    variable's register; and in not_commuted movl $5, %esi;
    subl -4(%rbp), %esi, movl $40, %eax before cltd and movl $1, %eax
-   before the count's load.
+   before the count's load.  It must show the index multiply with n its
+   source and no load of n: movq -8(%rbp), %rax; imulq $4, -16(%rbp),
+   %rcx; subq %rcx, %rax in index_sub, imulq $12, -16(%rbp), %rcx before
+   addq %rcx, %rax in index_row, imulq $12, -16(%rbp), %rax then addq
+   -8(%rbp), %rax in index_first, and imulq $4, -16(%rbp), %rax; subq
+   %rax, -8(%rbp) in index_compound; the loads kept beside them, movslq
+   -12(%rbp), %rcx; imulq $4, %rcx, %rcx in index_int and movq
+   -16(%rbp), %rcx; leaq (%rax,%rcx,4), %rax in index_scaled; the load
+   the widening, movslq -4(%rbp), %rax in widen_signedness and movl
+   -4(%rbp), %eax alone in widen_unsigned, and movq -8(%rbp), %rax;
+   movslq %eax, %rax in widen_narrowed; cmpl %ebx, -12(%rbp) before jge
+   and before setne in compare_register, and for x == r + 1 x's load and
+   cmpl %ecx, %eax; movq -8(%rbp), %rax; addq $12, %rax in
+   constant_index and constant_index_right alike, movq -16(%rbp), %rbx;
+   addq $12, %rbx; addq $12, %rbx in constant_index_into, and in
+   constant_index_wide the constant held first, movq $1073741824, %rax,
+   then leaq (%rcx,%rax,4), %rax.
 
    On aarch64, a load-store machine with no instruction that takes a
    memory operand, the listing must show each operand loaded into a
@@ -131,7 +161,17 @@
    constant held on the right; add w20, w19, #5 in
    commuted_char_register; and in not_commuted the constant first,
    mov w0, #5 before the load and sub w0, w0, w1, mov w1, #40 before
-   sdiv and mov w1, #1 before lsl. */
+   sdiv and mov w1, #1 before lsl.  It must show the rows of the pointer
+   arithmetic, the casts and the comparison on registers after the
+   loads: sub x0, x0, x1, lsl #2 in index_sub and sub x1, x1, x0, lsl #2
+   in index_compound, mov x2, #12 and mul in index_row and index_first,
+   sub x0, x0, w1, sxtw #2 in index_int; ldr w0 then sxtw x0, w0 in
+   widen_signedness, ldr x0 then sxtw x0, w0 in widen_narrowed, and mov
+   w0, w0 in widen_unsigned; ldr w0 then cmp w0, w19 in
+   compare_register; add x0, x0, #12 after the load in constant_index
+   and constant_index_right, add x19, x0, #12 then add x19, x19, #12 in
+   constant_index_into, and mov x0, #4294967296 before the load in
+   constant_index_wide. */
 int defined;
 extern int declared;
 
@@ -465,4 +505,95 @@ int
 not_commuted(int x)
 {
         return (5 - x) + (40 / x) + (1 << x);
+}
+
+int *
+index_sub(int *p, long n)
+{
+        return p - n;
+}
+
+int (*index_row(int (*m)[3], long n))[3]
+{
+        return m + n;
+}
+
+int (*index_first(int (*m)[3], long n))[3]
+{
+        return n + m;
+}
+
+int *
+index_compound(int *p, long n)
+{
+        p -= n;
+        return p;
+}
+
+int *
+index_int(int *p, int i)
+{
+        return p - i;
+}
+
+int *
+index_scaled(int *p, long n)
+{
+        return p + n;
+}
+
+long
+widen_signedness(unsigned u)
+{
+        return (long) (int) u;
+}
+
+unsigned long
+widen_unsigned(int i)
+{
+        return (unsigned long) (unsigned) i;
+}
+
+long
+widen_narrowed(unsigned long ul)
+{
+        return (long) (int) ul;
+}
+
+int
+compare_register(int x, int a)
+{
+        register int r = a;
+
+        if (x < r)
+                return x != r;
+        return x == r + 1;
+}
+
+int *
+constant_index(int *p)
+{
+        return 3 + p;
+}
+
+int *
+constant_index_right(int *p)
+{
+        return p + 3;
+}
+
+int *
+constant_index_into(int *q)
+{
+        register int *p;
+
+        p = 3 + q;
+        p = 3 + p;
+        return p;
+}
+
+int *
+constant_index_wide(int *p)
+{
+        return 0x40000000 + p;
 }

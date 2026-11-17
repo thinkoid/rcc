@@ -64,6 +64,12 @@ TYPES(DECLARE_IN_MEMORY_ALL)
 
 TYPES(DECLARE_CASTS)
 
+#define DECLARE_FLIP(P, F, S, T, TN)                                    \
+    BOTH(T, flip_##P##_##TN, (F)) BOTH(T, flipg_##P##_##TN, (F))
+#define DECLARE_FLIP_ALL(P, F, S) FLIP_TARGETS(DECLARE_FLIP, P, F, S)
+
+FLIPS(DECLARE_FLIP_ALL)
+
 #define DECLARE_KONST(T, N, name, op, constant) BOTH(T, k##N##_##name, (T))
 #define DECLARE_KONST_ALL(T, N) KONSTS(DECLARE_KONST, T, N)
 #define DECLARE_KONST_64(T, N) KONSTS64(DECLARE_KONST, T, N)
@@ -172,6 +178,11 @@ TYPES(TEST_IN_MEMORY_TYPE)
 #define TEST_CAST(F, FN, T, TN) CHECK(cast_##FN##_##TN, x, 0, ((F) x));
 #define TEST_CASTS(F, FN) TYPES2(TEST_CAST, F, FN)
 
+#define TEST_FLIP(P, F, S, T, TN)                                       \
+    CHECK(flip_##P##_##TN, x, 0, ((F) x));                              \
+    CHECK(flipg_##P##_##TN, x, 0, ((F) x));
+#define TEST_FLIP_ALL(P, F, S) FLIP_TARGETS(TEST_FLIP, P, F, S)
+
 #define TEST_KONST(T, N, name, op, constant) CHECK(k##N##_##name, x, 0, ((T) x));
 #define TEST_KONST_ALL(T, N) KONSTS(TEST_KONST, T, N)
 #define TEST_KONST_64(T, N) KONSTS64(TEST_KONST, T, N)
@@ -185,6 +196,7 @@ test_one(void)
         const long x = values[i];
 
         TYPES(TEST_CASTS)
+        FLIPS(TEST_FLIP_ALL)
 
         WIDE(TEST_KONST_ALL)
         TEST_KONST_64(long, l)
