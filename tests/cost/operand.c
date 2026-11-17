@@ -23,8 +23,11 @@
    addl (%rcx), %eax, p's load and addl (%rcx), %eax, the index's
    movslq -20(%rbp), %rcx and addl -40(%rbp,%rcx,4), %eax; subl, andl,
    orl, xorl and imull the same; cltd and idivl -24(%rbp) and the rest
-   in divide, and in modulo the remainder's movl %edx, %eax after each
-   idivl; in less cmpl -24(%rbp), %eax, then cmpl defined(%rip), %ecx
+   in divide, and in modulo the same, each remainder left in edx and
+   moved into eax as the next dividend, movl %edx, %eax, after the
+   divisor's address and before cltd, and the return's
+   movl %edx, %eax after the last idivl; in less cmpl -24(%rbp), %eax,
+   then cmpl defined(%rip), %ecx
    and the rest, each before its setl; in test testl -24(%rbp), %eax and
    the rest, each then je.  divide_busy must show a loaded into ecx, b
    into eax and p into rsi, then cltd, idivl (%rsi) and addl %eax,

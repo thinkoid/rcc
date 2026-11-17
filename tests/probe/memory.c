@@ -1119,6 +1119,50 @@ PINNED_TYPES(PINNED_ALL)
 
 WIDE(DIVIDEND)
 
+/* A remainder's value is the value in rdx on x86-64, where the
+   division leaves it, backend.md 6.5, and each use takes it there:
+   stored through a pointer, rem_store_; returned, rem_ret_; the left
+   and the right operand of a next row, rem_left_ and rem_right_; an
+   argument, rem_arg_; the dividend of a quotient and of a remainder,
+   rem_quot_ and rem_rem_; %= on a register variable and on a local,
+   rem_reg_ and rem_local_, for its effect and for its value; the
+   first arm of ?:, rem_arm_; held across a call, rem_call_, and
+   across a second division, rem_div_; an index through a pointer,
+   rem_index_.  p points at the main's x at B + at, b and d are
+   divisors, and rem_index_'s index is -4 to 4. */
+#define REMAINDER(T, N)                                                 \
+    long rem_store_##N(T *p, T a, T b)                                  \
+    {                                                                   \
+        *p = a % b;                                                     \
+        return *p;                                                      \
+    }                                                                   \
+    T rem_ret_##N(T a, T b) { return a % b; }                           \
+    long rem_left_##N(T a, T b, T c) { return a % b + c; }              \
+    long rem_right_##N(T a, T b, T c) { return c + a % b; }             \
+    long rem_arg_##N(T a, T b) { return mix1(a % b); }                  \
+    long rem_quot_##N(T a, T b, T d) { return a % b / d; }              \
+    long rem_rem_##N(T a, T b, T d) { return a % b % d; }               \
+    long rem_reg_##N(T a, T b)                                          \
+    {                                                                   \
+        register T r = a;                                               \
+        long v = r %= b;                                                \
+        r %= b;                                                         \
+        return v * 3 + r;                                               \
+    }                                                                   \
+    long rem_local_##N(T a, T b)                                        \
+    {                                                                   \
+        T l = a;                                                        \
+        long v = l %= b;                                                \
+        l %= b;                                                         \
+        return v * 3 + l;                                               \
+    }                                                                   \
+    long rem_arm_##N(int c, T a, T b) { return c ? a % b : b; }         \
+    long rem_call_##N(T a, T b, T c) { return a % b + mix1(c); }        \
+    long rem_div_##N(T a, T b, T c, T d) { return a % b + c / d; }      \
+    long rem_index_##N(T *p, T a, T b) { return p[a % b]; }
+
+PINNED_TYPES(REMAINDER)
+
 /* A condition on an object in memory, on x86-64 the cmp or test of the
    object itself, backend.md 7.1: compared with a constant on either
    side, kt_ and ktl_, through the main's pointer, and as a global the

@@ -18,8 +18,7 @@ fill:
 	movl	$256, %edi
 	xorl	%edx, %edx
 	divl	%edi
-	movl	%edx, %eax
-	movl	%eax, (%rcx,%rsi,4)
+	movl	%edx, (%rcx,%rsi,4)
 .Lfill.1:
 	leave
 	.cfi_def_cfa %rsp, 8

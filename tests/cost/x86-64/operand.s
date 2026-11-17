@@ -235,16 +235,16 @@ modulo:
 	movl	%edx, %eax
 	cltd
 	idivl	defined(%rip)
-	movl	%edx, %eax
 	movq	declared@GOTPCREL(%rip), %rcx
+	movl	%edx, %eax
 	cltd
 	idivl	(%rcx)
-	movl	%edx, %eax
 	movq	-16(%rbp), %rcx
+	movl	%edx, %eax
 	cltd
 	idivl	(%rcx)
-	movl	%edx, %eax
 	movslq	-20(%rbp), %rcx
+	movl	%edx, %eax
 	cltd
 	idivl	-40(%rbp,%rcx,4)
 	movl	%edx, %eax

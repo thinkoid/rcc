@@ -84,9 +84,8 @@ itoa:
 	movl	%ecx, %eax
 	cltd
 	idivl	%esi
-	movl	%edx, %ecx
-	addl	$48, %ecx
-	movb	%cl, (%rdi,%r8,1)
+	addl	$48, %edx
+	movb	%dl, (%rdi,%r8,1)
 .Litoa.4:
 	movl	$10, %ecx
 	movl	-4(%rbp), %eax

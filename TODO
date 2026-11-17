@@ -22,24 +22,6 @@ assembles and links. The reasons are =docs/findings.md= and
 in =docs/design-calls.md=. The chapter holds c1's own defects on both
 targets; the second target's design is =docs/aarch64.md=.
 
-** TODO x86-64: a remainder moves from =rdx= into the dividend's register
-
-A division leaves its quotient in =rax= and its remainder in =rdx=,
-and the result of a binary row is in the left operand's register
-(=backend.md= 6.1). A dividend is in =rax=, so a quotient is where it
-is wanted and a remainder moves: ~a[i] = x % 256~ ends =divl %edi;
-movl %edx, %eax; movl %eax, (%rcx,%rsi,4)=, where the store could
-take =edx=. The move is written for every remainder whose dividend
-the row owns. The Seventh Edition compiler's row returns the register
-the value is in, the pair's odd one for a remainder, and moves
-nothing (=c10.c=, the end of =cexpr()=).
-
-Fix: a remainder's value is the value in =rdx=, the dividend's
-register freed, as a borrowed dividend's already is.
-
-Check: the pins of =pinned='s =fill= and of =div-busy='s =rem_busy=
-have no =movl %edx, %eax=.
-
 ** TODO x86-64: the second arm of ~?:~ is computed elsewhere and moved into the join
 
 The two arms of ~?:~ join in the first arm's register. Where that is
@@ -328,6 +310,21 @@ c1, its table written from the pins of =tests/cost/=. The findings of
 the measurement (=docs/findings.md=) were facts about LLVM's code
 generator and left with it; that page's chapter 8 says what became
 of each. The entries below are rows the table lacks.
+
+** TODO One cell of chapter 4's x86-64 table predates its listing
+
+The x86-64 table of =cost.md= chapter 4 was measured before a
+remainder's value became the value in =rdx=. That step takes one
+instruction, =movq %rdx, %rax=, out of the step loop of ~rcc
+collatz.c~, the loop the cell times: 2293 ms, 7.75. The other
+listings of =tests/perf= it changes, it changes outside their hot
+loops, and the loops of =tests/slot= are the same.
+
+Fix: =make bench= three times on the machine of the table, and the
+table and what is drawn from it taken again.
+
+Check: the table is of a run made after the last change to a hot
+loop of its programs.
 
 ** TODO The Oryon's numbers of chapter 4 predate the listings of its programs
 

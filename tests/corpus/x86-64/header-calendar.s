@@ -14,23 +14,20 @@ leap_year:
 	movl	$4, %ecx
 	cltd
 	idivl	%ecx
-	movl	%edx, %eax
-	cmpl	$0, %eax
+	cmpl	$0, %edx
 	jne	.Lleap_year.5
 	movl	-4(%rbp), %eax
 	movl	$100, %ecx
 	cltd
 	idivl	%ecx
-	movl	%edx, %eax
-	cmpl	$0, %eax
+	cmpl	$0, %edx
 	jne	.Lleap_year.4
 .Lleap_year.5:
 	movl	-4(%rbp), %eax
 	movl	$400, %ecx
 	cltd
 	idivl	%ecx
-	movl	%edx, %eax
-	cmpl	$0, %eax
+	cmpl	$0, %edx
 	jne	.Lleap_year.2
 .Lleap_year.4:
 	movl	$1, %eax

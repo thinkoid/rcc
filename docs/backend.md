@@ -441,9 +441,10 @@ generated as the instruction's source operand `R`, in one of three
 forms: the immediate of a constant the instruction takes (6.4), the
 operand of an object in memory (below), or a register, into which
 it is generated; the instruction for the operator is written as
-`op R, L`; `R` is freed; the result is `L`. Every operator of the
-table is written exactly once per node, and nothing looks at a
-node's neighbours, with two exceptions. A node whose right operand's
+`op R, L`; `R` is freed; the result is `L`, but for a remainder,
+which is the value in `rdx` (6.5). Every operator of the table is
+written exactly once per node, and nothing looks at a node's
+neighbours, with two exceptions. A node whose right operand's
 top operator is a division or a shift by a variable count generates
 its left operand outside the registers that instruction pins (6.5).
 The machine pins those registers, and what the node chooses is a
@@ -544,7 +545,7 @@ written for it.
 | a global the file only declares | `movq sym@GOTPCREL(%rip), L`, its address from the GOT, then the row of `*p` through `L`: `movl (L), L`, `movl R, (L)`, `addl $1, (L)`, and `addl (L), %eax` as a right operand | chapter 10; each access the source writes loads the address once, so `n = n + 1` loads it twice |
 | `a + b`, `a - b` | `add R, L`, `sub R, L`; an object in memory as `R`, `addl -8(%rbp), %eax` (6.1) | G1: the machine wraps |
 | `a * b` | `imul R, L`, `imull -8(%rbp), %eax` for an object in memory | G1; the same instruction for signed and unsigned, since the low bits agree |
-| `a / b`, `a % b` | `mov L, %rax` if needed; `cltd` or `xor %edx,%edx`; `idiv R` or `div R`, `idivl -8(%rbp)` for an object in memory; the result from `rax` or `rdx` into `L` | G4; the pinned pair saved around if held, and the registers of a divisor's address moved out of it, 6.5 |
+| `a / b`, `a % b` | `mov L, %rax` if needed; `cltd` or `xor %edx,%edx`; `idiv R` or `div R`, `idivl -8(%rbp)` for an object in memory; the quotient from `rax` into `L`, the remainder the value in `rdx` | G4; the pinned pair saved around if held, and the registers of a divisor's address moved out of it, 6.5 |
 | `a << b`, `a >> b` | `mov R, %rcx` if needed; `shl %cl, L`, `sar %cl, L`, `shr %cl, L`; by an immediate when `b` is a constant | G3: the instruction masks the count |
 | `a & b`, `a \| b`, `a ^ b` | `and`, `or`, `xor`, an object in memory as `R` as for `add` | |
 | `-a`, `~a` | `neg L`, `not L` | G1 for `-INT_MIN` |
@@ -858,7 +859,7 @@ or a quotient, is where its own instruction left it. Then, before the
 pinned instruction, each of the pinned registers that holds a live
 value other than the operand is moved to a free register by `mov`, or
 the oldest held value is spilled when none is free (6.2); the
-operands are moved into place, the instruction is written, the result
+operands are moved into place, the instruction is written, a quotient
 is moved into `L`, and the displaced values stay where they went. The
 generator's map of which value is in which register is updated and
 nothing else cares. Every instruction written is a real move of a
@@ -867,10 +868,28 @@ division with `rax` and `rdx` busy says what it costs (`div-busy`).
 A dividend found in `rdx`, which the division overwrites, moves to
 `rax` for a quotient, by the `mov` the division writes in any case,
 and `rax` is then its register, so the quotient stays where the
-instruction leaves it (`div-busy`'s `div_held`). The remainder's move
-from `rdx` into the dividend's register, and the quotient's when the
-dividend is in neither `rax` nor `rdx`, are 6.1's "the result is
-`L`", and the rules do not remove them.
+instruction leaves it (`div-busy`'s `div_held`). The quotient's move
+into the dividend's register when the dividend is in neither `rax`
+nor `rdx` is 6.1's "the result is `L`", and the rules do not remove
+it.
+
+**A remainder's value is the value in `rdx`.** The division leaves it
+there, the dividend's register is freed, and nothing moves, as the
+Seventh Edition compiler's row of a remainder returns the odd
+register of its pair, where `div` leaves it (`c10.c`, the end of
+`cexpr()`). What uses the value takes it from `rdx`: `a[i] = x % 256`
+stores `movl %edx, (%rcx,%rsi,4)` after the `divl` (`pinned`), and
+`a + b % c` adds `addl %edx, %ecx`. A use that wants the value in
+another register moves it once: a return's `movl %edx, %eax`, the
+next division's dividend into `rax`, `%=` on a register variable's
+`movl %edx, %ebx` (`div-busy`). A remainder held in `rdx` across a
+later division or a call moves out as any held value does (6.7).
+The edge is `?:`, whose arms join in the first arm's register: with a
+remainder first, the join is `rdx`, and `return c ? x % y : y;`
+writes `movl -12(%rbp), %eax; movl %eax, %edx` for its second arm and
+`movl %edx, %eax` after the join, 17 instructions, one more than a
+remainder moved into `eax` on the first arm would take (`div-busy`'s
+`rem_arm`).
 
 A divisor that is an object in memory is the division's operand,
 `idivl -8(%rbp)` (6.1). The registers of its address, a base and an
@@ -1909,3 +1928,15 @@ answers:
     and a boundary on x86-64: `r = a + (b + c)`, `r = a - r`, a
     division, a left operand its own instruction cannot put in the
     register, and an address formed by `lea` keep the `mov`.
+17. **On x86-64 a remainder's value is the value in `rdx`** (6.5):
+    the division leaves it there, the dividend's register is freed,
+    and nothing moves, so `a[i] = x % 256` stores `movl %edx,
+    (%rcx,%rsi,4)` after the `divl`, and a use that wants the value
+    in another register moves it once. The rule is the Seventh
+    Edition compiler's, whose row of a remainder returns the odd
+    register of its pair, where `div` leaves it. aarch64's `msub`
+    names its destination and has nothing to take. The cost is an
+    edge at `?:`, whose arms join in the first arm's register: with a
+    remainder first, the second arm moves into `rdx` and the use after
+    the join moves out of it, one instruction more in `return c ? x %
+    y : y;`.

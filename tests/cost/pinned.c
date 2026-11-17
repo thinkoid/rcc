@@ -15,10 +15,11 @@
    subscript reads an element by one.
 
    On x86-64 the listing must show no move between registers but the
-   remainder's, movl %edx, %eax in fill and remainder_call, and the
-   return's: in fill the array's address in rcx and the index in rsi,
-   the dividend in eax, shrl $16, %eax, the divisor in edi, xorl %edx,
-   %edx, divl %edi and the store, movl %eax, (%rcx,%rsi,4); in shifted
+   return's, movl %edx, %eax in remainder_call: in fill the array's
+   address in rcx and the index in rsi, the dividend in eax,
+   shrl $16, %eax, the divisor in edi, xorl %edx, %edx, divl %edi and
+   the store of the remainder from edx, movl %edx, (%rcx,%rsi,4), since
+   a remainder's value is the value in rdx (backend.md 6.5); in shifted
    the index in rax, x in edx and the count in ecx, shll %cl, %edx and
    movl %edx, -44(%rbp,%rax,4); in shifted_through p in rax, the index
    in rdx, x in esi, the count in ecx and movl %esi, (%rax,%rdx,4); in

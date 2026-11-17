@@ -342,6 +342,20 @@ PINNED_TYPES(DECLARE_PINNED_ALL)
 
 WIDE(DECLARE_DIVIDEND)
 
+#define DECLARE_REMAINDER(T, N)                                         \
+    BOTH(long, rem_store_##N, (T *, T, T)) BOTH(T, rem_ret_##N, (T, T)) \
+    BOTH(long, rem_left_##N, (T, T, T))                                 \
+    BOTH(long, rem_right_##N, (T, T, T))                                \
+    BOTH(long, rem_arg_##N, (T, T)) BOTH(long, rem_quot_##N, (T, T, T)) \
+    BOTH(long, rem_rem_##N, (T, T, T)) BOTH(long, rem_reg_##N, (T, T))  \
+    BOTH(long, rem_local_##N, (T, T))                                   \
+    BOTH(long, rem_arm_##N, (int, T, T))                                \
+    BOTH(long, rem_call_##N, (T, T, T))                                 \
+    BOTH(long, rem_div_##N, (T, T, T, T))                               \
+    BOTH(long, rem_index_##N, (T *, T, T))
+
+PINNED_TYPES(DECLARE_REMAINDER)
+
 BOTH(long, text_pass, (void))
 BOTH(long, text_two, (void))
 BOTH(long, text_escapes, (void))
@@ -827,6 +841,44 @@ PINNED_TYPES(TEST_PINNED_ALL)
 
 WIDE(TEST_DIVIDEND_ALL)
 
+/* a remainder, of one type, over pairs of the table: x the divisor,
+   kept from 0 and -1, and P(T) holds it; y the dividend, z a third
+   operand; rem_index_ where its index, computed here, is -4 to 4 */
+#define TEST_REMAINDER_ALL(T, N)                                        \
+    static void test_remainder_##N(void)                                \
+    {                                                                   \
+        for (int j = 0; j < COUNT; ++j) {                               \
+            const long x = values[j];                                   \
+                                                                        \
+            if (!DIVISOR(T, x))                                         \
+                continue;                                               \
+                                                                        \
+            for (int i = 0; i < COUNT; ++i) {                           \
+                const long y = values[i];                               \
+                const long z = values[(i * 5 + j + 1) % COUNT];         \
+                const int at = offsets[(i + j) % OFFSETS];              \
+                const long k = (long) ((T) y % (T) x);                  \
+                                                                        \
+                MCHECK(rem_store_##N, x, y, at, (P(T), (T) y, (T) x));  \
+                CHECK(rem_ret_##N, x, y, ((T) y, (T) x));               \
+                CHECK(rem_left_##N, x, y, ((T) y, (T) x, (T) z));       \
+                CHECK(rem_right_##N, x, y, ((T) y, (T) x, (T) z));      \
+                CHECK(rem_arg_##N, x, y, ((T) y, (T) x));               \
+                CHECK(rem_quot_##N, x, y, ((T) y, (T) x, (T) x));       \
+                CHECK(rem_rem_##N, x, y, ((T) y, (T) x, (T) x));        \
+                CHECK(rem_reg_##N, x, y, ((T) y, (T) x));               \
+                CHECK(rem_local_##N, x, y, ((T) y, (T) x));             \
+                CHECK(rem_arm_##N, x, y, (i & 1, (T) y, (T) x));        \
+                CHECK(rem_call_##N, x, y, ((T) y, (T) x, (T) z));       \
+                CHECK(rem_div_##N, x, y, ((T) y, (T) x, (T) z, (T) x)); \
+                if (k >= -4 && k <= 4)                                  \
+                    MCHECK(rem_index_##N, x, y, at, (P(T), (T) y, (T) x)); \
+            }                                                           \
+        }                                                               \
+    }
+
+PINNED_TYPES(TEST_REMAINDER_ALL)
+
 /* the literals, the frames of one function each, and depth */
 static void
 test_rest(void)
@@ -903,6 +955,9 @@ main(void)
 
 #define RUN_DIVIDEND(T, N) test_dividend_##N();
     WIDE(RUN_DIVIDEND)
+
+#define RUN_REMAINDER(T, N) test_remainder_##N();
+    PINNED_TYPES(RUN_REMAINDER)
 
     test_rest();
 

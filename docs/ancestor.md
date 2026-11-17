@@ -1015,7 +1015,7 @@ worked out from its lines, with `r0` held a division takes `r2` and
 `r3`, and nothing held moves. On x86-64 the pair is `rax` and `rdx`
 and no other, so the node above the division keeps them free.
 
-`fill()`'s statement is eight instructions:
+`fill()`'s statement is seven instructions:
 
 ```
 	movslq	-4(%rbp), %rcx
@@ -1024,15 +1024,14 @@ and no other, so the node above the division keeps them free.
 	movl	$256, %esi
 	xorl	%edx, %edx
 	divl	%esi
-	movl	%edx, %eax
-	movl	%eax, -40(%rbp,%rcx,4)
+	movl	%edx, -40(%rbp,%rcx,4)
 ```
 
 The index is in `rcx` and the dividend in `eax` from the start, the
 divisor in `esi`, and nothing moves before the `divl`. The index's
-load is chapter 6's extending load. The remainder still moves from
-`edx` into the dividend's register, `movl %edx, %eax`, before the
-store; the queue holds it.
+load is chapter 6's extending load. The remainder is stored from
+`edx`, where the division leaves it, as the ancestor's row of a
+remainder returns the odd register of its pair (`backend.md` 6.5).
 
 `div_busy()` is six:
 
