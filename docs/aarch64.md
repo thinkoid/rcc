@@ -341,7 +341,11 @@ better:
   address reads the variable's register, `r = a[r]++`, whose store
   goes through that register after the load; and `r = s++` on another register
   variable is G13's copy into `r`'s register, `mov w20, w19`, before
-  the `add`. The variable is written after the row has read every
+  the `add`. The value of a prefix step on an object of 32 bits or
+  more, `r = ++x`, is the step written into the register and the
+  store from it, `ldr w0, [x29, #24]; add w19, w0, #1; str w19, [x29,
+  #24]`, but not where the address of the object reads the variable's
+  register. The variable is written after the row has read every
   operand, so no condition on them is needed, where x86-64 takes two
   (`backend.md` chapter 4). Any other value is computed elsewhere and
   moved in, `mov w20, w0`, or `mov x20, x0` for a `long` or a pointer:

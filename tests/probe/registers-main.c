@@ -172,6 +172,12 @@ compare(const char *name, long x, long y)
     BOTH(long, br_held_##N, (int, long, long))                          \
     BOTH(long, br_call_##N, (int, long, long))                          \
     BOTH(long, br_div_##N, (int, long, long))                           \
+    BOTH(long, de_left_##N, (long, long))                               \
+    BOTH(long, de_product_##N, (long))                                  \
+    BOTH(long, de_returned_##N, (long))                                 \
+    BOTH(long, de_step_##N, (long, long))                               \
+    BOTH(long, de_rows_##N, (long))                                     \
+    BOTH(long, de_widened_##N, (int, long, long))                       \
     COMPARISONS(DECLARE_COMPARED, T, N)
 
 TYPES(DECLARE_TYPE)
@@ -311,11 +317,15 @@ fill(long v[12], int i, int k)
     {                                                                   \
         CHECK(kinit_##N, 0, 0, ());                                     \
         CHECK(kinit2_##N, 0, 0, ());                                    \
+        for (int n = 0; n < 4; ++n)                                     \
+            CHECK(de_rows_##N, n, 0, (n));                              \
                                                                         \
         for (int i = 0; i < COUNT; ++i) {                               \
             const long x = values[i];                                   \
                                                                         \
             CHECK(unary_##N, x, 0, (x));                                \
+            CHECK(de_product_##N, x, 0, (x));                           \
+            CHECK(de_returned_##N, x, 0, (x));                          \
             CHECK(result_##N, x, 0, (x));                               \
             CHECK(call_order_##N, x, 0, (x));                           \
             CHECK(own_order_##N, x, 0, (x));                            \
@@ -353,7 +363,10 @@ fill(long v[12], int i, int k)
                 CHECK(br_and_##N, x, y, (x, y));                        \
                 CHECK(br_or_##N, x, y, (x, y));                         \
                 CHECK(br_self_##N, x, y, (x, y));                       \
+                CHECK(de_left_##N, x, y, (x, y));                       \
+                CHECK(de_step_##N, x, y, (x, y));                       \
                 for (int c = 0; c < 2; ++c) {                           \
+                    CHECK(de_widened_##N, x, y, (c, x, y));             \
                     CHECK(br_cond_##N, x, y, (c, x, y));                \
                     CHECK(br_init_##N, x, y, (c, x, y));                \
                     CHECK(br_read_##N, x, y, (c, x, y));                \

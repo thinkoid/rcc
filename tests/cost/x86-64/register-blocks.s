@@ -19,11 +19,9 @@ blocks:
 	.cfi_offset %r14, -48
 	movl	%edi, %ebx
 	movl	$0, %r12d
-	movl	%ebx, %r13d
-	imull	$2, %r13d, %r13d
+	imull	$2, %ebx, %r13d
 	addl	%r13d, %r12d
-	movl	%ebx, %r13d
-	imull	$3, %r13d, %r13d
+	imull	$3, %ebx, %r13d
 	addl	%r13d, %r12d
 	movl	%r12d, %r14d
 	addl	$1, %r14d

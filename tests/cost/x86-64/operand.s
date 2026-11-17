@@ -998,8 +998,7 @@ commuted_register:
 	movl	-12(%rbp), %ebx
 	movl	%ebx, %eax
 	addl	$5, %eax
-	movl	%ebx, %ecx
-	imull	$4, %ecx, %ecx
+	imull	$4, %ebx, %ecx
 	subl	%ecx, %eax
 	movl	%ebx, %ecx
 	andl	$7, %ecx
@@ -1116,8 +1115,8 @@ commuted_char_register:
 	.cfi_offset %r12, -32
 	movb	%dil, -17(%rbp)
 	movsbl	-17(%rbp), %ebx
-	movl	$5, %r12d
-	addl	%ebx, %r12d
+	movl	%ebx, %r12d
+	addl	$5, %r12d
 	movl	%r12d, %eax
 	jmp	.Lcommuted_char_register.1
 .Lcommuted_char_register.1:

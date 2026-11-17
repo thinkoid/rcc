@@ -305,7 +305,9 @@ in the register its consumer names; a `return` is the other (7.2).
   &*q` and `p = &q[0]` are the load of `q`, `movq -16(%rbp), %rbx`,
   and `p = &rows[i]` at a size no addressing form scales by the sum
   below, `leaq rows(%rip), %rbx; imulq $12, -16(%rbp), %rax; addq
-  %rax, %rbx`.
+  %rax, %rbx`, as are a row's first element and a row's decay, `p =
+  &rows[i][0]` and `p = rows[i]` into an `int *`, whose sum is the
+  same pointer as a pointer to the row.
 - A comparison's value is set in the register after the `cmp`, `setl
   %bl; movzbl %bl, %ebx`, and `!`'s the same, `sete %bl; movzbl %bl,
   %ebx`. The `cmp` has read both operands, the
@@ -325,7 +327,9 @@ in the register its consumer names; a `return` is the other (7.2).
   -24(%rbp), %rax; subq %rax, %rbx`, `n` the multiply's source (6.1),
   and `p = n + q` at a size no addressing form scales by `n`'s product
   into the register, `imulq $12, -24(%rbp), %rbx; addq -16(%rbp),
-  %rbx`.
+  %rbx`. A register variable's read times a constant is the
+  three-operand `imul` with the read its source, `r = x * 4` being
+  `imull $4, %ebx, %r12d` (6.1).
 - `-` and `~` are computed in the register, on the variable's own
   type: `r = -a` is `a` loaded into it and the instruction of one
   address written on it, `movl -12(%rbp), %ebx; negl %ebx`.
@@ -339,7 +343,13 @@ in the register its consumer names; a `return` is the other (7.2).
   store goes through it after the load. On another register variable,
   `r = s++` is the copy of `s` into `r`'s register, G13's copy, `movl
   %ebx, %r12d`, then `addl $1, %ebx`. A step widened, `register long l
-  = x++` on an `int`, keeps the `mov` after its extension.
+  = x++` on an `int`, is extended into the register (below). The
+  value of a prefix step on an object of 32 bits or more, `r = ++x`
+  and `r = --x`, is the load into the register, the step on it and the
+  store from it, `movl -12(%rbp), %ebx; addl $1, %ebx; movl %ebx,
+  -12(%rbp)`; a narrower object's sum is no value of its type, so `r =
+  ++c` on a `char` keeps the step in an expression register and the
+  re-extension, `movsbl %al, %ebx`, after the store.
 - `&&`, `||` and `?:` are written on two paths, and each path writes
   the register: `r = a && b` is its jump code, then `movl $1, %ebx`
   and `movl $0, %ebx` on the paths, and `r = c ? x : y` each arm by
@@ -351,8 +361,16 @@ in the register its consumer names; a `return` is the other (7.2).
   variable held across the paths before they diverge (6.7). A `?:`
   whose first arm's row does not write the register, a call's
   result, joins its arms as for any consumer and keeps the `mov`
-  after the join, `r = c ? f(x) : 0`, and so does one of a type the
-  assignment widens, `l = c ? x : y` into a `long`.
+  after the join, `r = c ? f(x) : 0`. One of a type the assignment
+  widens, `l = c ? x : y` into a `long`, joins its arms in an
+  expression register too, and the extension after the join writes
+  the variable's register, `movslq %eax, %rbx`.
+- A value extended is extended into the register: `r = a + b` into a
+  `register long` from two `int`s is the sum, then `movslq %eax,
+  %rbx`, and `r = i` from a `register int i` `movslq %ebx, %r12`. The
+  extension is the value's last instruction and the first write of
+  the register, and the operand, generated before it, has read the
+  variable where it reads it.
 - A conversion that changes the signedness alone, of 8, 16, 32 or 64
   bits, is computed in the register too. An object in memory under it
   is loaded at the extension of the conversion's type, the object read
@@ -406,20 +424,24 @@ conversion of the signedness alone, by its load, `u = i + ub` being
 there already, so `r = r + b` is `addl -16(%rbp), %ebx` and
 `p = p + 1` is `addq $4, %rbx`, as `p += 1` is; and another register
 variable's read is copied there, `movl %r12d, %ebx`, the copy an
-instruction that writes is given in any case. The operand of `-` and
-`~` goes in the same way. Any other left operand, a call's result or
-a division, leaves the whole assignment computed elsewhere and moved.
-Moved in before the instruction, that left operand would leave the
-assignment's value in the variable's register, where the `mov` after
-leaves it in an expression register, and a use of the value there,
-`return r = f() + a`, would copy it back: one instruction more.
+instruction that writes is given in any case, under conversions that
+write nothing too, where the read is valid to the width (6.3): `r =
+c + 5` on a register `char c` is `movl %ebx, %r12d; addl $5, %r12d`,
+where `r = i + 5L` on a register `int i`, whose read is not valid to
+64 bits, is the sum computed elsewhere and moved. The operand of `-`
+and `~` goes in the same way. Any other left operand, a call's result
+or a division, leaves the whole assignment computed elsewhere and
+moved. Moved in before the instruction, that left operand would
+leave the assignment's value in the variable's register, where the
+`mov` after leaves it in an expression register, and a use of the
+value there, `return r = f() + a`, would copy it back: one
+instruction more.
 
 `preserve()` copies the held reads of the variable before its first
 write, which in the operation is the load of the left operand, so `x
 = r + (r = -a)` adds the old `r`. The value of the assignment is
 then the variable's read. A call's result, which the convention
-puts in `rax`, the extension of a value already in a register and
-`p - q` keep the `mov`.
+puts in `rax`, and `p - q` keep the `mov`.
 
 The rule is the Seventh Edition compiler's. Its `efftab` writes a load
 into a register variable in one instruction: `move3`, in `table.s`,
@@ -597,24 +619,26 @@ object in memory that is the instruction's own operand where it
 stands, `movabsq $c, %rax; cmpq -8(%rbp), %rax` and `movabsq $c,
 %rax; addq -8(%rbp), %rax`. And where the value goes to a register
 variable, the order of the source stays when it alone is the operation
-on the variable's register (chapter 4): `r = 5 + c` on a register
-`char c` is `movl $5, %r12d; addl %ebx, %r12d`, since `c` promoted is
-no load into the register, and as `c + 5` the sum would be computed
-elsewhere and moved, an instruction more. A constant on both sides is
-as written. `-`, `/`, `%` and the shifts do not commute, and keep
-their order: `5 - x` writes the 5 first. Pointer arithmetic takes the
-exchange too: `n + p` with a constant `n` is `p + n` where a 32-bit
-immediate holds the product of `n` and the size, so `3 + p` on an
-`int *` is `movq -8(%rbp), %rax; addq $12, %rax`, as `p + 3` is, and
-`p = 3 + q` into a register pointer `movq -16(%rbp), %rbx; addq $12,
-%rbx`; a product no immediate holds keeps the order of the source
-(6.3). The Seventh Edition compiler's `optim()`, in `c12.c`,
-exchanges a relational's operands wherever the left one's degree is
-the lower, a constant's being the lowest, and maps the operator by
-its table `maprel[]`, and its `insert()` sorts the operands of a
-commutative chain by degree, the harder first, so a constant goes
-last; rcc takes the exchange for a constant alone, which has no
-evaluation to reorder.
+on the variable's register (chapter 4): `v = 5 + (int) u` into a
+register `unsigned v`, `u` an `unsigned` in memory, is `movl $5, %ebx;
+addl -16(%rbp), %ebx`, since `(int) u` in a row that computes the
+`unsigned` in `int` is no load into the register, and as `(int) u + 5`
+the sum would be computed elsewhere and moved, an instruction more.
+`r = 5 + c` on a register `char c` is `c + 5`, `movl %ebx, %r12d; addl
+$5, %r12d`, since `c` promoted is the variable's read. A constant on
+both sides is as written. `-`, `/`, `%` and the shifts do not commute,
+and keep their order: `5 - x` writes the 5 first. Pointer arithmetic
+takes the exchange too: `n + p` with a constant `n` is `p + n` where a
+32-bit immediate holds the product of `n` and the size, so `3 + p` on
+an `int *` is `movq -8(%rbp), %rax; addq $12, %rax`, as `p + 3` is,
+and `p = 3 + q` into a register pointer `movq -16(%rbp), %rbx; addq
+$12, %rbx`; a product no immediate holds keeps the order of the source
+(6.3). The Seventh Edition compiler's `optim()`, in `c12.c`, exchanges
+a relational's operands wherever the left one's degree is the lower, a
+constant's being the lowest, and maps the operator by its table
+`maprel[]`, and its `insert()` sorts the operands of a commutative
+chain by degree, the harder first, so a constant goes last; rcc takes
+the exchange for a constant alone, which has no evaluation to reorder.
 
 **An object in memory as the operand.** A right operand that is the
 read of an object in memory, a name that is no register variable or
@@ -662,6 +686,14 @@ object with the variable's register as its source, `cmpl %ebx,
 variable's plain read at the operation's width, under casts that keep
 its bits; an expression on the right, `x < r + 1`, and a `char` or a
 `short` variable, which its promotion widens, keep the object's load.
+A multiply by a constant takes a register variable's read as its
+source the same way, `x * 4` on a `register int x` being `imull $4,
+%ebx, %ecx`, and the read is not copied; the read is the variable's
+under conversions that write nothing, where its register is valid to
+the width (6.3), a `register char` promoted among them. The product
+takes the register the consumer names, `imull $4, %ebx, %eax` for a
+return's and `imull $4, %ebx, %r12d` for a register variable's
+(chapter 4).
 
 The reads keep G13's order. The left operand is read first; the
 right operand's address is generated where its load would be, after
@@ -789,7 +821,7 @@ written for it.
 | a global the file defines | `mov sym(%rip), L`; `sym(%rip)` wherever a row writes a local's `slot(%rbp)`: the store, `mov L, sym(%rip)`, and the memory forms of 6.6, `addl $1, sym(%rip)`, and the right operand of 6.1, `addl sym(%rip), %eax` | PC-relative, chapter 10; a char is `movsbl` or `movzbl`, a short `movswl` or `movzwl`, and a signed object under a cast to 64 bits the row of `(T) a`, `movslq sym(%rip), L64` |
 | a global the file only declares | `movq sym@GOTPCREL(%rip), L`, its address from the GOT, then the row of `*p` through `L`: `movl (L), L`, `movl R, (L)`, `addl $1, (L)`, and `addl (L), %eax` as a right operand | chapter 10; each access the source writes loads the address once, so `n = n + 1` loads it twice |
 | `a + b`, `a - b` | `add R, L`, `sub R, L`; an object in memory as `R`, `addl -8(%rbp), %eax` (6.1); a constant on the left of `+` taken on the right, `5 + x` `addl $5, L` after `x`'s load (6.1) | G1: the machine wraps |
-| `a * b` | `imul R, L`, `imull -8(%rbp), %eax` for an object in memory; by a constant `imul $c, L, L`, and on an object in memory the three-operand form with the object as its source, `imull $4, -4(%rbp), L`, and `4 * x` the same, its constant taken on the right (6.1) | G1; the same instruction for signed and unsigned, since the low bits agree |
+| `a * b` | `imul R, L`, `imull -8(%rbp), %eax` for an object in memory; by a constant `imul $c, L, L`, and on an object in memory the three-operand form with the object as its source, `imull $4, -4(%rbp), L`, on a register variable's read with its register as the source, `imull $4, %ebx, L`, and `4 * x` the same, its constant taken on the right (6.1) | G1; the same instruction for signed and unsigned, since the low bits agree |
 | `a / b`, `a % b` | `mov L, %rax` if needed; `cltd` or `xor %edx,%edx`; `idiv R` or `div R`, `idivl -8(%rbp)` for an object in memory; the quotient from `rax` into `L`, but where the consumer names `rax`, and the remainder the value in `rdx` | G4; the pinned pair saved around if held, and the registers of a divisor's address moved out of it, 6.5 |
 | `a << b`, `a >> b` | `mov R, %rcx` if needed; `shl %cl, L`, `sar %cl, L`, `shr %cl, L`; by an immediate when `b` is a constant | G3: the instruction masks the count |
 | `a & b`, `a \| b`, `a ^ b` | `and`, `or`, `xor`, an object in memory as `R` and a constant on the left as for `add` | |
@@ -2277,7 +2309,8 @@ answers:
     a constant no 32-bit immediate holds keeps its order, since
     exchanged against an object in memory it would load the object,
     and so does a constant whose order alone is the operation on a
-    register variable's register, `r = 5 + c` on a register `char c`.
+    register variable's register, `v = 5 + (int) u` into a register
+    `unsigned v` from an `unsigned u` in memory.
     `-`, `/`, `%` and the shifts do not commute and keep their order.
 19. **On x86-64 a `return`'s value is computed in the result
     register** (6.1, 7.2): a value is computed in the register its

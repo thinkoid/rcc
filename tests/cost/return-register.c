@@ -9,7 +9,8 @@
    cmp of operands outside rax; stored() and added() the value of an
    assignment and of += to an element; stepped() and
    stepped_element() the old value of x++ and of p[i]++; divided()
-   (a + b / c) / d, whose dividend is held outside rax.  Beside them
+   (a + b / c) / d, whose dividend is held outside rax; multiplied()
+   r * 4 on a register variable r, which the imul reads.  Beside them
    the rule's edge: called() r + f(x), whose call leaves its result in
    rax; deeper() r - p[i / 2], a division within the right operand;
    and written() r + (r += 2), whose right operand writes r.
@@ -29,7 +30,8 @@
    addl $1, %ecx and movl %ecx, -4(%rbp); in stepped_element() the
    element loaded into esi and copied into eax, movl %esi, %eax, then
    addl $1, %esi and the store from esi; in divided() a + b / c in ecx,
-   movl %ecx, %eax, cltd and idivl -16(%rbp), with no move after it.  In
+   movl %ecx, %eax, cltd and idivl -16(%rbp), with no move after it; in
+   multiplied() imull $4, %ebx, %eax, and no copy of ebx.  In
    called() the call, then movl %ebx, %ecx, addl %eax, %ecx and
    movl %ecx, %eax; in deeper() the quotient in eax, movl %ebx, %edx,
    subl (%rcx,%rax,4), %edx and movl %edx, %eax; in written() the copy
@@ -39,9 +41,10 @@
    On aarch64, where an operation names its destination apart from its
    sources, the listing must show sub w0, w19, w0 in copied(); msub w0,
    w2, w1, w0 and sxtw x0, w0 in extended(); cset w0, lt in compared();
-   cset w0, eq in negated(); sdiv w0, w0, w1 in divided(); add w0, w19,
-   w0 in called(); sub w0, w19, w0 in deeper(); and in written() the
-   copy, mov w0, w19, and add w0, w0, w19.  The return moves the value
+   cset w0, eq in negated(); sdiv w0, w0, w1 in divided(); mul w0, w19,
+   w0 after mov w0, #4 in multiplied(); add w0, w19, w0 in called();
+   sub w0, w19, w0 in deeper(); and in written() the copy, mov w0, w19,
+   and add w0, w0, w19.  The return moves the value
    where an operand generated first took x0: in reloaded() ldr x1,
    [x29, #24], add w1, w1, w0 and mov w0, w1; in stored() mov x0, x2;
    in added() mov x0, x3; in stepped_element() mov w0, w2.  stepped()
@@ -108,6 +111,14 @@ int
 divided(int a, int b, int c, int d)
 {
         return (a + b / c) / d;
+}
+
+int
+multiplied(int x)
+{
+        register int r = x;
+
+        return r * 4;
 }
 
 int

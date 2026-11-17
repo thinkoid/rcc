@@ -24,13 +24,13 @@
    +, *, &, | and ^ of an int in memory and of a char promoted,
    commuted_right the same with the constant on the right,
    commuted_register of a register variable, commuted_call 5 + f(),
-   commuted_into r = 4 * a and r = 5 + r into a register variable, and
+   commuted_into r = 4 * a and r = 5 + r into a register variable,
+   commuted_char_register r = 5 + c on a register char c into one, and
    commuted_bit 1 & x as a condition: a constant on the left of an
    operator that commutes is taken as the constant on the right
    (backend.md 6.1).  commuted_wide, a constant no 32-bit immediate
-   holds, and commuted_char_register, r = 5 + c on a register char c,
-   are the boundary on x86-64, and not_commuted's 5 - x, 40 / x and
-   1 << x keep the order of the source.  Beside them, char_operand,
+   holds, is the boundary on x86-64, and not_commuted's 5 - x, 40 / x
+   and 1 << x keep the order of the source.  Beside them, char_operand,
    widened, compound, compound_value, shift_count and before_call keep
    the load: a char promoted, an int widened to long, a compound
    assignment's right operand for its effect and for its value, a
@@ -104,14 +104,14 @@
    addl $5, %eax, imull $4, -4(%rbp), %ecx, the load of x before
    andl $7, orl $7 and xorl $7, and movsbl -5(%rbp), %ecx; addl $5,
    %ecx, and no mov of a constant; in commuted_register movl %ebx, %eax;
-   addl $5, %eax, and the rest on a copy of ebx; in commuted_call the
-   call, then addl $5, %eax, and no spill; in commuted_into
-   imull $4, -12(%rbp), %ebx, then addl $5, %ebx alone; and
-   testl $1, -4(%rbp) then je in commuted_bit.  It must show the
-   constant first where it keeps the order: movabsq $4294967296, %rax;
-   addq -8(%rbp), %rax in commuted_wide; movl $5, %r12d;
-   addl %ebx, %r12d in commuted_char_register, the operation on the
-   variable's register; and in not_commuted movl $5, %esi;
+   addl $5, %eax, imull $4, %ebx, %ecx, which reads ebx, and the rest on
+   a copy of ebx; in commuted_call the call, then addl $5, %eax, and no
+   spill; in commuted_into imull $4, -12(%rbp), %ebx, then addl $5,
+   %ebx alone; testl $1, -4(%rbp) then je in commuted_bit; and in
+   commuted_char_register movl %ebx, %r12d; addl $5, %r12d, the
+   operation on the variable's register.  It must show the constant
+   first where it keeps the order: movabsq $4294967296, %rax; addq
+   -8(%rbp), %rax in commuted_wide; and in not_commuted movl $5, %esi;
    subl -4(%rbp), %esi, movl $40, %eax before cltd and movl $1, %eax
    before the count's load.  It must show the index multiply with n its
    source and no load of n: movq -8(%rbp), %rax; imulq $4, -16(%rbp),

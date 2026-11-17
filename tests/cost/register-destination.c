@@ -38,9 +38,22 @@
    logical_itself() r = r && b, whose condition reads the variable;
    chosen() writes r = c ? x : y, and chosen_reading() r = c ? r + 1 :
    0, whose first arm reads it; beside them chosen_called() r = c ?
-   f(x) : 0, whose first arm's call writes no variable, and
-   chosen_widened() a conditional widened to a long, which keep the
-   join and the mov.  Each path of &&, || and ?: writes the register.
+   f(x) : 0, whose first arm's call writes no variable, which keeps the
+   join and the mov, and chosen_widened() a conditional widened to a
+   long, which keeps the join and extends it into the register.  Each
+   path of &&, || and ?: writes the register.
+
+   char_operand() and char_operand_left() write r = c + 5 and r = 5 +
+   c on a register char c, whose read is valid to the int's width,
+   int_widened() r = i + 5L on a register int i, whose read is not
+   valid to the long's, and register_product() r = x * 4 on a register
+   variable.  prefix_step() and prefix_pointer() write the value of a
+   prefix step on an object in memory, r = ++x, r = --x and q = ++p,
+   and prefix_char() r = ++c on a char, whose sum is no char.
+   row_element() and row_decay() write p = &rows[i][0] and p = rows[i]
+   on rows of 12 bytes.  widened_sum() and widened_register() write a
+   value extended into a register long, r = a + b from two ints and
+   r = i from a register int.
 
    On x86-64 the listing must show: in load(), the load of a into the
    register, movl -12(%rbp), %ebx; in constant_leaf(), named_leaf(),
@@ -114,8 +127,8 @@
    through p's load in step_pointer(), movl (%rax), %ebx; in
    step_register() the copy into r's register, movl %ebx, %r12d, before
    addl $1, %ebx; in step_indexed() the load into rcx and the mov kept,
-   movq %rdx, %rbx, and in step_widened() movslq %ecx, %rcx; movq %rcx,
-   %rbx; in mixed_sum() and promoted_sum() movl -12(%rbp), %ebx and
+   movq %rdx, %rbx, and in step_widened() movslq %ecx, %rbx; in
+   mixed_sum() and promoted_sum() movl -12(%rbp), %ebx and
    movsbl -9(%rbp), %ebx, each then addl -16(%rbp), %ebx; and in
    narrowed_sum() the sum in eax and movl %eax, %ebx; in logical_and(),
    logical_or() and logical_itself() movl $1, %ebx and movl $0, %ebx on
@@ -124,9 +137,20 @@
    paths, and in chosen_reading() addl $1, %ebx and movl $0, %ebx, each
    with no mov into ebx after the join; in chosen_called() the call's
    result and movl $0, %eax joined in eax and movl %eax, %ebx after the
-   join, and in chosen_widened() movslq %eax, %rax and movq %rax, %rbx
-   after it.  return r is movl %ebx, %eax, and return p movq %rbx,
-   %rax.
+   join, and in chosen_widened() movslq %eax, %rbx after it.  In
+   char_operand() and char_operand_left() one listing, movl %ebx,
+   %r12d; addl $5, %r12d; in int_widened() the sum in rax, movslq %ebx,
+   %rax and addq $5, %rax, and movq %rax, %r12; in register_product()
+   imull $4, %ebx, %r12d; in prefix_step() the load into the register,
+   the step on it and the store from it, movl -12(%rbp), %ebx; addl $1,
+   %ebx; movl %ebx, -12(%rbp), and the same with subl $1, %ebx, and in
+   prefix_pointer() movq -16(%rbp), %rbx; addq $4, %rbx; movq %rbx,
+   -16(%rbp); in prefix_char() the step in eax, the store from al and
+   the extension, movsbl %al, %ebx; in row_element() and row_decay()
+   leaq rows(%rip), %rbx, imulq $12, -16(%rbp), %rax and addq %rax,
+   %rbx; in widened_sum() movslq %eax, %rbx after the add, and in
+   widened_register() movslq %ebx, %r12.  return r is movl %ebx, %eax,
+   and return p movq %rbx, %rax.
 
    On aarch64 the listing must show the last instruction of each
    right operand writing the register, no condition on the operands
@@ -177,7 +201,16 @@
    chosen_reading(), with no mov into w19 after the join; in
    chosen_called() the call's result and mov w0, #0 joined in w0 and mov
    w19, w0 after the join, and in chosen_widened() sxtw x19, w0 after
-   it.  return r is mov w0, w19, and return p mov x0, x19. */
+   it; add w20, w19, #5 in char_operand() and char_operand_left(); sxtw
+   x0, w19 and add x20, x0, #5 in int_widened(); mul w20, w19, w0 after
+   mov w0, #4 in register_product(); in prefix_step() the step written
+   into the register and the store from it, add w19, w0, #1; str w19,
+   [x29, #24], and sub w19, w0, #1, and in prefix_pointer() add x19,
+   x0, #4; str x19, [x29, #24]; in prefix_char() add w0, w0, #1, strb
+   w0, [x29, #24] and uxtb w19, w0; add x19, x0, x1 after the mul by 12
+   in row_element() and row_decay(); sxtw x19, w0 in widened_sum() and
+   sxtw x20, w19 in widened_register().  return r is mov w0, w19, and
+   return p mov x0, x19. */
 int
 load(int a)
 {
@@ -836,4 +869,110 @@ chosen_widened(int c, int x, int y)
 
         r = c ? x : y;
         return r;
+}
+
+int
+char_operand(char x)
+{
+        register char c = x;
+        register int r;
+
+        r = c + 5;
+        return r;
+}
+
+int
+char_operand_left(char x)
+{
+        register char c = x;
+        register int r;
+
+        r = 5 + c;
+        return r;
+}
+
+long
+int_widened(int a)
+{
+        register int i = a;
+        register long r;
+
+        r = i + 5L;
+        return r;
+}
+
+int
+register_product(int a)
+{
+        register int x = a;
+        register int r;
+
+        r = x * 4;
+        return r + x;
+}
+
+int
+prefix_step(int x)
+{
+        register int r;
+
+        r = ++x;
+        r = r + x;
+        r = --x;
+        return r + x;
+}
+
+int *
+prefix_pointer(int *p)
+{
+        register int *q;
+
+        q = ++p;
+        return q;
+}
+
+int
+prefix_char(char c)
+{
+        register int r;
+
+        r = ++c;
+        return r;
+}
+
+int *
+row_element(long i)
+{
+        register int *p;
+
+        p = &rows[i][0];
+        return p;
+}
+
+int *
+row_decay(long i)
+{
+        register int *p;
+
+        p = rows[i];
+        return p;
+}
+
+long
+widened_sum(int a, int b)
+{
+        register long r;
+
+        r = a + b;
+        return r;
+}
+
+long
+widened_register(int a)
+{
+        register int i = a;
+        register long r;
+
+        r = i;
+        return r + i;
 }

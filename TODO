@@ -39,21 +39,18 @@ generated, whether the operand's value is valid to the new width.
 
 Check: the count over =tests=, and no function longer.
 
-** TODO x86-64: a value extended for a register variable or a shift's count is extended, then moved
+** TODO x86-64: a shift's count that is widened is extended, then moved
 
-A widening is written in the register a =return= names (=backend.md=
-6.1). Two other consumers still take the pair. A =register= variable
-assigned a widened value that is not a load is =movslq %eax, %rax;
-movq %rax, %rbx=, 78 pairs over =tests=, where =movslq %eax, %rbx= is
-the one instruction. A shift's count that is widened is extended in
-=rax= and moved, =movzwl %ax, %eax= and later =movl %eax, %ecx=, 48
-over =tests=, where the extension could write =ecx=.
+A widening is written in the register a =return= names and in a
+=register= variable's (=backend.md= 6.1, chapter 4). A shift's count
+is not: a count that is widened is extended in =rax= and moved,
+=movzwl %ax, %eax= and later =movl %eax, %ecx=, 48 over =tests=,
+where the extension could write =ecx=.
 
-Fix: decide both: the extension writes the variable's register, as
-the rows of =backend.md= chapter 4 do, and the count's extension
-writes =rcx=, the register its consumer names.
+Fix: the count's extension writes =rcx=, the register its consumer
+names.
 
-Check: the count of each pair over =tests=, before and after, none
+Check: the count of the pair over =tests=, before and after, none
 longer.
 
 ** TODO aarch64: a =return='s value is moved where an operand generated first took =x0=
@@ -141,49 +138,28 @@ Fix: 7.2 states the rule c1 applies, or c1 applies the stated one.
 Check: a cost program with a =main= ending in each shape, pinned, and
 7.2 agreeing with the pins.
 
-** TODO x86-64: two rows around a constant and a register variable cost an instruction
+** TODO x86-64: three shapes beside a register variable's destination still move
 
-A constant on the left of a commutative operator is taken as one on
-the right is (=backend.md= 6.1). Two rows beside that rule cost an
-instruction more than their neighbour:
+The destination rule (=backend.md= chapter 4) stops short of three
+shapes, each computed in an expression register and moved:
 
-- ~r = c + 5~ with ~c~ a =register char= and ~r~ a =register int= is
-  =movl %ebx, %eax; addl $5, %eax; movl %eax, %r12d=, where ~r = 5 +
-  c~ is =movl $5, %r12d; addl %ebx, %r12d=: a register variable read
-  under a conversion that writes nothing is not a left operand the
-  destination rule takes, and for that the constant on the left of
-  this one shape keeps the order of the source;
-- ~x * 4~ on a =register= variable is =movl %ebx, %ecx; imull $4,
-  %ecx, %ecx=, where the three-operand form names its source,
-  =imull $4, %ebx, %ecx=.
+- ~r = a * b~ into a =register unsigned long= from two =unsigned=
+  operands is =imull -16(%rbp), %eax; movq %rax, %rbx=: the widening
+  writes nothing, but the operation's type is not the variable's, so
+  the operation is not handed the variable;
+- ~r = i + 5L~ into a =register long= with ~i~ a =register int=
+  keeps the sum in =rax= and moves it, where =movslq %ebx, %r12;
+  addq $5, %r12= is the two instructions: an extension is no left
+  operand of the rule;
+- ~v = 5 + (int) u~ into a =register unsigned= with ~u~ an
+  =unsigned= in memory is two instructions only because the constant
+  on the left keeps its place for this one shape, the boundary of
+  =ordered()=: ~(int) u~ in a row computing in the other signedness
+  is no load into the register.
 
-Fix: a register variable valid to the width is a left operand of
-the destination rule under such a conversion, and the boundary of
-the constant's rule goes; the immediate =imul= reads a register
-variable's register and writes a fresh one.
-
-Check: ~r = c + 5~ and ~r = 5 + c~ have one listing of two
-instructions, and ~x * 4~ on a register variable is one =imull=,
-each pinned.
-
-** TODO Three rows at the edge of a register variable's destination
-
-The destination rule (=backend.md= chapter 4, =aarch64.md= chapter
-4) stops short of three rows:
-
-- x86-64, ~r = c + 5~ with ~c~ a =register char=, in the entry on
-  two rows around a constant and a register variable;
-- both targets, the value of a prefix step on an object in memory:
-  ~r = ++x~ computes the sum elsewhere and moves it, where the =add=
-  could write the variable before the store;
-- x86-64, ~p = &a[i][0]~ on an array of rows: the address is formed
-  with a displacement of 0 from a base made without the variable,
-  and moved.
-
-Fix: each takes the variable's register. A register variable valid
-to the width is a left operand of the rule under a conversion that
-writes nothing; the =add= of ~++x~ writes it, and the store takes it
-from there; the base of ~&a[i][0]~ is formed in it.
+Fix: none taken. The first wants the operation handed the variable
+under a widening that writes nothing; the second an extension as a
+left operand; with the third, =ordered()='s boundary goes.
 
 Check: a function of =register-destination= for each, with no =mov=
 into the variable's register.
@@ -192,16 +168,18 @@ into the variable's register.
 
 Each path of ~?:~ writes the =register= variable it is assigned to
 (=backend.md= chapter 4), but for two shapes that join in an
-expression register and move after the join. A conditional the
-assignment widens, ~l = c ? x : y~ into a =long= from two =int=
-arms, is one: the paths would each have to convert their arm. A
-first arm whose row writes no variable, a call's result, is the
-other, and there a second arm that could write the variable is
-moved too, ~r = c ? f(x) : p[i]++~; no test has that shape.
+expression register. A conditional the assignment widens, ~l = c ? x
+: y~ into a =long= from two =int= arms, joins in =eax= and is
+extended into the variable after the join, =movslq %eax, %rbx=,
+where each path could load its arm extended, =movslq -16(%rbp),
+%rbx=, an instruction fewer on each. A first arm whose row writes
+no variable, a call's result, joins and is moved, and there a second
+arm that could write the variable is moved too, ~r = c ? f(x) :
+p[i]++~; no test has that shape.
 
-Fix: none taken. The widened one waits on the entry on a value
-extended for a register variable; for the other, the second path
-would write the variable and the first move into it on its own path.
+Fix: none taken. The first wants the conversion handed to each arm;
+for the second, the second path would write the variable and the
+first move into it on its own path.
 
 Check: =register-destination='s =chosen_widened= and
 =chosen_called=, and the count of moves after a join into a register
@@ -362,7 +340,11 @@ rows of 4.2, which names a loop of 32 bytes, are of the loop of ten. A
 constant on the left taken as one on the right shortens the step
 loop of collatz on x86-64, as written by one instruction, =imulq $3,
 -48(%rbp), %rax=, and as tuned by two, =imulq $3, %r14, %r14; addq
-$1, %r14=: the cells 2293 and 473 ms are of the longer loops.
+$1, %r14=: the cells 2293 and 473 ms are of the longer loops. A
+multiply of a =register= variable by a constant, now the one
+three-operand =imul=, takes an instruction out of the checksum loop
+of ~rcc strings-tuned.c~, =imull $31, %ebx, %eax=, which runs once
+for each string.
 
 Fix: =make bench= three times on the machine of the table, and the
 table and what is drawn from it taken again.

@@ -249,6 +249,28 @@ divided:
 	ret
 	.cfi_endproc
 	.size	divided, .-divided
+	.globl	multiplied
+	.type	multiplied, @function
+multiplied:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movl	-12(%rbp), %ebx
+	imull	$4, %ebx, %eax
+	jmp	.Lmultiplied.1
+.Lmultiplied.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	multiplied, .-multiplied
 	.globl	called
 	.type	called, @function
 called:

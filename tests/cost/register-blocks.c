@@ -9,10 +9,10 @@
    On x86-64 the four are rbx, r12, r13 and r14, and the listing must
    show the four pushed in the prologue and popped in reverse in the
    epilogue, n moved from edi into ebx, s set with movl $0, %r12d, a and
-   then b each computed in r13d, n copied into it and the multiply on
-   it, movl %ebx, %r13d and imull $2, %r13d, %r13d, each sum the add on
-   s's register, addl %r13d, %r12d, and c computed in r14d, movl %r12d,
-   %r14d and addl $1, %r14d, with no mov after any of them.
+   then b each computed in r13d by the multiply that reads n, imull $2,
+   %ebx, %r13d, each sum the add on s's register, addl %r13d, %r12d,
+   and c computed in r14d, movl %r12d, %r14d and addl $1, %r14d, with
+   no mov after any of them.
 
    On aarch64 the four are x19, x20, x21 and x22, and the listing must
    show them stored to the save area by stp x19, x20 and stp x21, x22

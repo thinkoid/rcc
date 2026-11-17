@@ -2290,7 +2290,11 @@ step_register(state_t &s,
 // otherwise held in a register and freed, as the product of p + n is.
 // A char or a short is loaded extended to 32 bits and its low bytes
 // stored, so no operator sees 8 or 16 bits.  The prefix forms operate
-// on the loaded value's register and yield it.  The postfix forms name
+// on the loaded value's register and yield it, and handed a register
+// variable, where the object is 32 bits or more and its address reads
+// no register of the variable, name the variable's register as the
+// destination, so that the store takes the value from there and the
+// value is the variable's read (chapter 4).  The postfix forms name
 // another register as the destination, add w1, w0, #1, and yield the
 // old value where the load left it: nothing is copied, 6.1.  A register
 // variable's is step_register()'s.
@@ -2312,9 +2316,16 @@ step(state_t &s, unary_op_t op, const expr_t &arg, into_t *into = nullptr)
         fetch(s, first_access(place), t, width, post ? into : nullptr);
     const reg_t r = reg_of(s, l);
 
-    const auto v = post ? fresh(s, written(width, t.is_signed),
-                                bit(r) | registers_of(s, place)) :
-                          l;
+    // r = ++x: the add writes r's register and the store takes it from
+    // there, add w19, w0, #1; str w19, [x29, #24] (chapter 4)
+    const bool steps_into =
+        !post && t.width >= 32 && takes(into, written(width, t.is_signed)) &&
+        !(registers_of(s, place) & bit(variable_register(into->variable)));
+
+    const auto v = post       ? fresh(s, written(width, t.is_signed),
+                                      bit(r) | registers_of(s, place)) :
+                   steps_into ? taken(s, *into) :
+                                l;
     const reg_t result = reg_of(s, v);
 
     const auto n =
@@ -2327,9 +2338,9 @@ step(state_t &s, unary_op_t op, const expr_t &arg, into_t *into = nullptr)
     store(s, v, last_access(place), t.width);
     release(s, place);
 
-    if (post) {
-        release(s, v);
-        return l;
+    if (post || steps_into) {
+        release(s, post ? v : l);
+        return post ? l : v;
     }
 
     s.values[l.id].valid = std::min(written(width, t.is_signed), t.width);

@@ -1371,6 +1371,122 @@ TYPES(RETURNED)
 
 TYPES(BRANCHED)
 
+/* The edge of a register variable's destination, backend.md chapter
+   4: a register variable read under a conversion that writes nothing
+   as the left operand, r = c + 5 and r = 5 + c, into an int, an
+   unsigned and a long, the long's valid to the width for an unsigned
+   or narrow unsigned c and extended for a signed one, de_left_; a
+   register variable times a constant, into a variable, into a long and
+   for an operand, de_product_, and for the return, de_returned_; the
+   value of a prefix step on a local, into a variable of its type, into
+   a long and of a pointer, de_step_; the address of a row's first
+   element and a row's decay, three elements a row, local and global,
+   into a register pointer, de_rows_, which the main gives an index of
+   each row; and a value extended into a long and an unsigned long,
+   from an operation, another register variable, a ?: and a product,
+   de_widened_. */
+#define DEST_EDGE(T, N)                                                 \
+    T de_global_##N[4][3];                                              \
+    long de_left_##N(T a, T b)                                          \
+    {                                                                   \
+        register T c = a;                                               \
+        register int r;                                                 \
+        register unsigned u;                                            \
+        register long l;                                                \
+        long s;                                                         \
+        r = c + 5;                                                      \
+        s = r;                                                          \
+        r = 5 + c;                                                      \
+        s = s * 7 + r;                                                  \
+        r = c - b;                                                      \
+        s = s * 7 + r;                                                  \
+        u = c + 5;                                                      \
+        s = s * 7 + u;                                                  \
+        l = c + 5L;                                                     \
+        s = s * 7 + l;                                                  \
+        l = 0x12345 + c;                                                \
+        return s * 7 + l;                                               \
+    }                                                                   \
+    long de_product_##N(T a)                                            \
+    {                                                                   \
+        register T x = a;                                               \
+        register T r;                                                   \
+        register long l;                                                \
+        long s;                                                         \
+        r = x * 3;                                                      \
+        s = r;                                                          \
+        r = x * -5;                                                     \
+        s = s * 7 + r;                                                  \
+        l = x * 0x12345L;                                               \
+        s = s * 7 + l;                                                  \
+        s = s * 7 + x * 4;                                              \
+        return s * 7 + (x * 4 + r) * 3L;                                \
+    }                                                                   \
+    long de_returned_##N(T a)                                           \
+    {                                                                   \
+        register T x = a;                                               \
+        return x * 4;                                                   \
+    }                                                                   \
+    long de_step_##N(T a, T b)                                          \
+    {                                                                   \
+        T x = a;                                                        \
+        T buffer[4];                                                    \
+        T *p = buffer;                                                  \
+        register T r;                                                   \
+        register long l;                                                \
+        register T *q;                                                  \
+        long s;                                                         \
+        r = ++x;                                                        \
+        s = r + x * 3L;                                                 \
+        r = --x;                                                        \
+        s = s * 7 + r + x * 3L;                                         \
+        x = b;                                                          \
+        l = ++x;                                                        \
+        s = s * 7 + l + x * 3L;                                         \
+        l = --x;                                                        \
+        s = s * 7 + l + x * 3L;                                         \
+        q = ++p;                                                        \
+        s = s * 7 + (q - buffer);                                       \
+        q = --p;                                                        \
+        return s * 7 + (q - buffer) + (p - buffer) * 3L;                \
+    }                                                                   \
+    long de_rows_##N(long i)                                            \
+    {                                                                   \
+        T a[4][3];                                                      \
+        register T *p;                                                  \
+        register T *q;                                                  \
+        long s;                                                         \
+        p = &a[i][0];                                                   \
+        s = (char *) p - (char *) a;                                    \
+        q = a[i];                                                       \
+        s = s * 7 + ((char *) q - (char *) a);                          \
+        p = &de_global_##N[i][0];                                       \
+        s = s * 7 + ((char *) p - (char *) de_global_##N);              \
+        q = de_global_##N[i];                                           \
+        return s * 7 + ((char *) q - (char *) de_global_##N);           \
+    }                                                                   \
+    long de_widened_##N(int c, T a, T b)                                \
+    {                                                                   \
+        register T x = a;                                               \
+        register long l;                                                \
+        register unsigned long u;                                       \
+        long s;                                                         \
+        l = a + b;                                                      \
+        s = l;                                                          \
+        u = a - b;                                                      \
+        s = s * 7 + u;                                                  \
+        l = x;                                                          \
+        s = s * 7 + l;                                                  \
+        u = x;                                                          \
+        s = s * 7 + u;                                                  \
+        l = c ? a : b;                                                  \
+        s = s * 7 + l;                                                  \
+        l = x * 3;                                                      \
+        return s * 7 + l;                                               \
+    }
+
+TYPES(DEST_EDGE)
+
 /* recursion with live register variables, the parameters register too */
 long rsum(register int n, register long acc)
 {
