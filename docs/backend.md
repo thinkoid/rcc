@@ -460,6 +460,31 @@ operands are not swapped either, so `4 * x` writes the 4 first; the
 instruction is the same `imul` and the order of the listing is the
 order of the source.
 
+**A constant on the left of a comparison.** The one exception to the
+order of the source: a comparison whose left operand is a constant and
+whose right operand is not is generated as the mirrored comparison, `5
+< x` as `x > 5`, `5 <= x` as `x >= 5`, `0 == e` as `e == 0`, signed or
+unsigned as the operands' common type is. A constant has no
+evaluation, so G13 has nothing to order, and the right operand is
+evaluated once. The constant is then the immediate on the right, and
+every form that takes one follows: the object in memory, `cmpl $5,
+-4(%rbp)` for `if (5 < x)`; the jump on an operator's flags, `testl
+$1, -4(%rbp)` and `jne` for `if (0 == (c & 1))` (7.1); a register
+variable compared in its register, `cmpl $5, %ebx`; and for a value,
+the load and `cmpl $5, %eax`. A constant is what the parser hands over
+as one after its folding, the null pointer of `0 == p` among them; `&g
+== p` keeps its order, since an address is no immediate here. A
+constant no 32-bit immediate holds keeps the order too: it is held in
+a register in either order, and mirrored it would cost the load of an
+object in memory that is the `cmp`'s own operand where it stands,
+`movabsq $c, %rax; cmpq -8(%rbp), %rax`. A constant on both sides is
+as written, and no other operator is mirrored: `5 + x` writes the 5
+first. The Seventh Edition compiler's `optim()`, in `c12.c`, exchanges
+a relational's operands wherever the left one's degree is the lower, a
+constant's being the lowest, and maps the operator by its table
+`maprel[]`; rcc takes the exchange for a constant alone, which has no
+evaluation to reorder.
+
 **An object in memory as the operand.** A right operand that is the
 read of an object in memory, a name that is no register variable or
 a dereference, of exactly the operation's width, is no value in a
@@ -550,7 +575,7 @@ written for it.
 | `a & b`, `a \| b`, `a ^ b` | `and`, `or`, `xor`, an object in memory as `R` as for `add` | |
 | `-a`, `~a` | `neg L`, `not L` | G1 for `-INT_MIN` |
 | `!a` | `cmp $0, L`; `sete %Lb`; `movzbl %Lb, L` | as a value; as a condition, chapter 7 |
-| `a < b` and the rest, as a value | `cmp R, L`, `cmpl -8(%rbp), %eax` for an object in memory; `setcc %Lb`; `movzbl %Lb, L` | `setl`, `setle`, `setg`, `setge`, `sete`, `setne` signed; `setb`, `setbe`, `seta`, `setae` unsigned and for pointers (G7) |
+| `a < b` and the rest, as a value | `cmp R, L`, `cmpl -8(%rbp), %eax` for an object in memory; `setcc %Lb`; `movzbl %Lb, L`; a constant on the left the mirrored comparison (6.1), `5 < x` the load and `cmpl $5, %eax; setg %al` | `setl`, `setle`, `setg`, `setge`, `sete`, `setne` signed; `setb`, `setbe`, `seta`, `setae` unsigned and for pointers (G7) |
 | `a && b`, `a \|\| b`, `a ? b : c`, as a value | jump code of chapter 7 into `L`, with `mov $0, L` and `mov $1, L` on the arms | no `setcc` chain |
 | `x = e` | `mov L, slot`, the value staying in `L`; into a register variable, the value computed in its register where its last instruction can write it, the load, `movl -12(%rbp), %ebx`, and the operation, `addl -16(%rbp), %ebx` after it, the value then the variable's read, and otherwise `mov L, reg` (chapter 4); a constant goes as the immediate straight into a register variable, `movl $0, %r12d`, or into memory when the assignment is evaluated for its effect alone, `movl $0, -12(%rbp)` (6.6) | a `char` store is `movb %Lb` |
 | `x op= e` | the address of `x` first, then `e`; in the effect context, the op on the object, `addl %eax, -12(%rbp)`, but for `*=`, `/=` and `%=` (6.6); in a value context, the load row, the op row, the store row, after `e`; on a register variable, the op on the register in place, after `e` | `*=`, `/=` and `%=` are always `e`, then the load, the op and the store: `imul` has no memory destination and `idiv` none at all |
@@ -1112,7 +1137,10 @@ otherwise, without producing a value:
   `jl`, `jge` and the rest signed, `jb`, `jae` and the rest unsigned
   and for pointers. An object in memory as `a` and a constant the
   instruction takes as `b` are the `cmp` of the object itself,
-  `cmpl $5, -4(%rbp)` (a condition on an object in memory, below).
+  `cmpl $5, -4(%rbp)` (a condition on an object in memory, below). A
+  constant as `a` is first taken as `b`, the comparison mirrored
+  (6.1): `if (5 < x)` is `cmpl $5, -4(%rbp)` and `jle`, as `if (x >
+  5)` is.
 - `!e`: `cbranch(e, label, !sense)`.
 - `a && b`, jump on false: `cbranch(a, label, 0); cbranch(b, label,
   0)`. Jump on true: `cbranch(a, skip, 0); cbranch(b, label, 1);
@@ -1170,10 +1198,11 @@ instruction, `je` or `jne` by `sense`, and no `cmp` is written:
   once, in the order of 6.6, as the value's row reads and writes it
   (G13). A postfix step is no row: its value is the old one, which
   the instruction's flags do not describe.
-- `e == 0` and `e != 0`, where `e` is one of these: the same code,
-  the jump's sense by the operator, so `if ((a & m) == 0)` is `testl
-  -8(%rbp), %eax; jne`. `<`, `<=`, `>` and `>=` against 0 keep the `cmp`:
-  a jump of this rule reads ZF alone.
+- `e == 0` and `e != 0`, where `e` is one of these: the same code, the
+  jump's sense by the operator, so `if ((a & m) == 0)` is `testl
+  -8(%rbp), %eax; jne`, and `0 == e` and `0 != e` are the same, the
+  comparison mirrored (6.1). `<`, `<=`, `>` and `>=` against 0 keep
+  the `cmp`: a jump of this rule reads ZF alone.
 
 The instruction is written at the condition's width, the width of the
 test above: `addl` for an `int`, `addq` for a `long`, the memory form
@@ -1271,9 +1300,10 @@ where they are, a constant among them. In `cc81`, `&` under the
 condition codes, `%a,a` writes `bit A2,A1`, `bit $1,_x`. The PDP-11's
 `cmp` and `bit` took two operands in memory, and its compiler
 exchanged a relational's operands by their degree and mapped the
-operator (`optim()`, in `c12.c`). x86 has no such instruction and rcc
-does not reorder, so here the left operand is the object and the right
-the constant.
+operator (`optim()`, in `c12.c`). x86 has no such instruction, and rcc
+exchanges a relational's operands only to put a constant on the right
+(6.1), so here the left operand is the object and the right the
+constant.
 
 ### 7.2 Statements
 
@@ -1898,7 +1928,8 @@ answers:
     condition an object against a constant is the instruction on the
     object, `cmpl $5, -4(%rbp)`. The rule is the Seventh Edition
     compiler's row `%n,aw`; that compiler also exchanged a
-    relational's operands, and rcc does not reorder. aarch64 has no
+    relational's operands by their degree, which rcc takes for a
+    constant on the left alone (call 18). aarch64 has no
     instruction with a memory operand, and nothing to take. The load
     stays beyond the rule's boundary: for a `char` promoted, an `int`
     widened, a compound assignment's right operand and a shift's
@@ -1940,3 +1971,17 @@ answers:
     remainder first, the second arm moves into `rdx` and the use after
     the join moves out of it, one instruction more in `return c ? x %
     y : y;`.
+18. **A comparison with a constant on the left is the mirrored one**
+    (6.1), on both targets: `5 < x` is generated as `x > 5`, so the
+    constant is the immediate on the right and every form of a
+    constant on the right follows, `cmpl $5, -4(%rbp)` and `jle`, and
+    `if (0 == (c & 1))` the jump on the `test`. The constant has no
+    evaluation, so G13 has nothing to order. The rule is the Seventh
+    Edition compiler's exchange, in its `optim()`, which puts the
+    operand of the lower degree on the right and maps the operator by
+    `maprel[]`; rcc takes it for a constant alone. aarch64 takes it
+    too, `ldr w0, [x29, #16]; cmp w0, #5`, where the source's order
+    holds the 5 in a register. The cost is the one exception to 6.1's
+    order of the source, and a boundary on x86-64: a constant no
+    32-bit immediate holds keeps its order, since mirrored against an
+    object in memory it would load the object.

@@ -6,7 +6,9 @@
    assignment that has a memory form, and each prefix step, is tested on
    a local, a char local, a global and a register variable, in
    <op>_local, <op>_char, <op>_global and <op>_register; equal_zero and
-   unequal_zero compare such a condition with 0 by == and !=.  Beside
+   unequal_zero compare such a condition with 0 by == and !=, and
+   zero_equal and zero_unequal with the 0 on the left, which is taken as
+   the 0 on the right (backend.md 6.1).  Beside
    them, product, shift, postfix, narrow_register and negative keep the
    cmp: a product, a shift by a variable count, a postfix step, whose
    value is the old one, the step of a register char, re-extended after
@@ -24,7 +26,9 @@
    variable; the steps
    addl $1 and subl $1, addb $1 and subb $1 on the char; in equal_zero
    testl -8(%rbp), %eax then jne .Lequal_zero.2, and in unequal_zero
-   subl %eax, -12(%rbp) then je .Lunequal_zero.2.  It must show imull,
+   subl %eax, -12(%rbp) then je .Lunequal_zero.2; in zero_equal
+   testl $1, -4(%rbp) then jne .Lzero_equal.2, and in zero_unequal the
+   same then je, with no load of the 0 and no cmp.  It must show imull,
    shll %cl, the old value copied in postfix, movsbl %bl, %ebx after
    the addl in narrow_register and the addl of negative each followed
    by a cmp at the condition's width, cmpl $0, %ecx in postfix and
@@ -41,7 +45,9 @@
    cbz w19, and in narrow_register uxtb w19, w19 between the add and
    the cbz; and
    equal_zero, unequal_zero and negative as comparisons, cmp w0, #0
-   and b.ne, b.eq and b.ge. */
+   and b.ne, b.eq and b.ge; zero_equal and zero_unequal the same,
+   and w0, w0, #0x1 then cmp w0, #0 and b.ne or b.eq, with no load of
+   the 0. */
 int counter;
 
 int
@@ -390,6 +396,22 @@ unequal_zero(int a, int b)
         int x = a;
 
         if ((x -= b) != 0)
+                return 1;
+        return 0;
+}
+
+int
+zero_equal(int c)
+{
+        if (0 == (c & 1))
+                return 1;
+        return 0;
+}
+
+int
+zero_unequal(int c)
+{
+        if (0 != (c & 1))
                 return 1;
         return 0;
 }

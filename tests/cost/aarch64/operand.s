@@ -818,6 +818,230 @@ before_call:
 	ret
 	.cfi_endproc
 	.size	before_call, .-before_call
+	.globl	constant_left
+	.type	constant_left, @function
+constant_left:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	str	wzr, [x29, #20]
+	ldr	w0, [x29, #16]
+	cmp	w0, #5
+	b.le	.Lconstant_left.2
+	ldr	w0, [x29, #20]
+	add	w0, w0, #1
+	str	w0, [x29, #20]
+.Lconstant_left.2:
+	ldr	w0, [x29, #16]
+	cmp	w0, #5
+	b.lt	.Lconstant_left.3
+	ldr	w0, [x29, #20]
+	add	w0, w0, #2
+	str	w0, [x29, #20]
+.Lconstant_left.3:
+	ldr	w0, [x29, #16]
+	cmp	w0, #5
+	b.ge	.Lconstant_left.4
+	ldr	w0, [x29, #20]
+	add	w0, w0, #4
+	str	w0, [x29, #20]
+.Lconstant_left.4:
+	ldr	w0, [x29, #16]
+	cmp	w0, #5
+	b.gt	.Lconstant_left.5
+	ldr	w0, [x29, #20]
+	add	w0, w0, #8
+	str	w0, [x29, #20]
+.Lconstant_left.5:
+	ldr	w0, [x29, #16]
+	cmp	w0, #5
+	b.ne	.Lconstant_left.6
+	ldr	w0, [x29, #20]
+	add	w0, w0, #16
+	str	w0, [x29, #20]
+.Lconstant_left.6:
+	ldr	w0, [x29, #16]
+	cmp	w0, #5
+	b.eq	.Lconstant_left.7
+	ldr	w0, [x29, #20]
+	add	w0, w0, #32
+	str	w0, [x29, #20]
+.Lconstant_left.7:
+	ldr	w0, [x29, #20]
+	b	.Lconstant_left.1
+.Lconstant_left.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	constant_left, .-constant_left
+	.globl	constant_left_unsigned
+	.type	constant_left_unsigned, @function
+constant_left_unsigned:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	str	wzr, [x29, #20]
+	ldr	w0, [x29, #16]
+	cmp	w0, #5
+	b.ls	.Lconstant_left_unsigned.2
+	ldr	w0, [x29, #20]
+	add	w0, w0, #1
+	str	w0, [x29, #20]
+.Lconstant_left_unsigned.2:
+	ldr	w0, [x29, #16]
+	cmp	w0, #5
+	b.lo	.Lconstant_left_unsigned.3
+	ldr	w0, [x29, #20]
+	add	w0, w0, #2
+	str	w0, [x29, #20]
+.Lconstant_left_unsigned.3:
+	ldr	w0, [x29, #16]
+	cmp	w0, #5
+	b.hs	.Lconstant_left_unsigned.4
+	ldr	w0, [x29, #20]
+	add	w0, w0, #4
+	str	w0, [x29, #20]
+.Lconstant_left_unsigned.4:
+	ldr	w0, [x29, #16]
+	cmp	w0, #5
+	b.hi	.Lconstant_left_unsigned.5
+	ldr	w0, [x29, #20]
+	add	w0, w0, #8
+	str	w0, [x29, #20]
+.Lconstant_left_unsigned.5:
+	ldr	w0, [x29, #16]
+	cmp	w0, #5
+	b.ne	.Lconstant_left_unsigned.6
+	ldr	w0, [x29, #20]
+	add	w0, w0, #16
+	str	w0, [x29, #20]
+.Lconstant_left_unsigned.6:
+	ldr	w0, [x29, #16]
+	cmp	w0, #5
+	b.eq	.Lconstant_left_unsigned.7
+	ldr	w0, [x29, #20]
+	add	w0, w0, #32
+	str	w0, [x29, #20]
+.Lconstant_left_unsigned.7:
+	ldr	w0, [x29, #20]
+	b	.Lconstant_left_unsigned.1
+.Lconstant_left_unsigned.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	constant_left_unsigned, .-constant_left_unsigned
+	.globl	constant_left_register
+	.type	constant_left_register, @function
+constant_left_register:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -16
+	str	w0, [x29, #24]
+	ldr	w19, [x29, #24]
+	cmp	w19, #5
+	b.le	.Lconstant_left_register.2
+	mov	w0, #1
+	b	.Lconstant_left_register.1
+.Lconstant_left_register.2:
+	mov	w0, #0
+	b	.Lconstant_left_register.1
+.Lconstant_left_register.1:
+	.cfi_def_cfa wsp, 32
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	constant_left_register, .-constant_left_register
+	.globl	constant_left_value
+	.type	constant_left_value, @function
+constant_left_value:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	ldr	w0, [x29, #16]
+	cmp	w0, #5
+	cset	w0, gt
+	b	.Lconstant_left_value.1
+.Lconstant_left_value.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	constant_left_value, .-constant_left_value
+	.globl	null_left
+	.type	null_left, @function
+null_left:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	ldr	x0, [x29, #16]
+	cmp	x0, #0
+	b.ne	.Lnull_left.2
+	mov	w0, #1
+	b	.Lnull_left.1
+.Lnull_left.2:
+	mov	w0, #0
+	b	.Lnull_left.1
+.Lnull_left.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	null_left, .-null_left
 	.bss
 	.globl	defined
 	.type	defined, @object

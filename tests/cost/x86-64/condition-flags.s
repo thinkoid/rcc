@@ -985,6 +985,52 @@ unequal_zero:
 	ret
 	.cfi_endproc
 	.size	unequal_zero, .-unequal_zero
+	.globl	zero_equal
+	.type	zero_equal, @function
+zero_equal:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	testl	$1, -4(%rbp)
+	jne	.Lzero_equal.2
+	movl	$1, %eax
+	jmp	.Lzero_equal.1
+.Lzero_equal.2:
+	movl	$0, %eax
+	jmp	.Lzero_equal.1
+.Lzero_equal.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	zero_equal, .-zero_equal
+	.globl	zero_unequal
+	.type	zero_unequal, @function
+zero_unequal:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	testl	$1, -4(%rbp)
+	je	.Lzero_unequal.2
+	movl	$1, %eax
+	jmp	.Lzero_unequal.1
+.Lzero_unequal.2:
+	movl	$0, %eax
+	jmp	.Lzero_unequal.1
+.Lzero_unequal.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	zero_unequal, .-zero_unequal
 	.globl	product
 	.type	product, @function
 product:

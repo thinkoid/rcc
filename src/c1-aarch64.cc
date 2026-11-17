@@ -1883,10 +1883,19 @@ compare_with(state_t &s, value_t l, const expr_t &rhs, int width)
     release(s, r.value);
 }
 
+// A comparison in the order its row generates it, 6.1: a constant on
+// the left is the constant on the right, the comparison mirrored, so
+// 5 < x is cmp w0, #5 after the load of x, as x > 5 is.
+compared_t
+ordered(const binary_t &b)
+{
+    return constant_first(b) ? mirrored(b) : as_written(b);
+}
+
 // cmp for a relational or equality operator, left operand first (G13).
 // The left value stays held, for cset or for the caller to free.
 value_t
-compare(state_t &s, const binary_t &b)
+compare(state_t &s, const compared_t &b)
 {
     const auto l = rvalue(s, *b.lhs);
     compare_with(s, l, *b.rhs, operation_width(b.lhs->type));
@@ -1910,7 +1919,7 @@ jump_if(state_t &s, binary_op_t op, bool is_signed, int label)
 // register variable handed down is the cset's, cset w19, lt (chapter
 // 4).
 value_t
-comparison(state_t &s, const binary_t &b, into_t *into = nullptr)
+comparison(state_t &s, const compared_t &b, into_t *into = nullptr)
 {
     const bool is_signed = integer(b.lhs->type).is_signed;
 
@@ -2080,7 +2089,7 @@ binary(state_t &s, const expr_t &e, into_t *into = nullptr)
     }
 
     if (is_comparison(b.op))
-        return comparison(s, b, into);
+        return comparison(s, ordered(b), into);
 
     if (is< pointer_t >(e.type))
         return pointer_arithmetic(s, e, into);
@@ -2640,10 +2649,11 @@ cbranch(state_t &s, const expr_t &e, int label, bool sense)
         const auto &b = as< binary_t >(e);
 
         if (is_comparison(b.op)) {
-            const bool is_signed = integer(b.lhs->type).is_signed;
-            release(s, compare(s, b));
+            const auto c = ordered(b);
+            const bool is_signed = integer(c.lhs->type).is_signed;
+            release(s, compare(s, c));
 
-            jump_if(s, sense ? b.op : inverse(b.op), is_signed, label);
+            jump_if(s, sense ? c.op : inverse(c.op), is_signed, label);
             return;
         }
 

@@ -89,6 +89,14 @@ TYPES(DECLARE_CC)
 
 TYPES(DECLARE_KSIDES)
 
+#define DECLARE_KLEFT(T, N, name, op, k) BOTH(long, kl_##name##_##N, (T, T))
+#define DECLARE_KLEFT_ALL(T, N, least, most)                            \
+    KLEFTS(DECLARE_KLEFT, T, N, least, most)
+
+LEFT_TYPES(DECLARE_KLEFT_ALL)
+KLEFTS(DECLARE_KLEFT, char *, p, 0, -1)
+BOTH(long, kl_null, (char *, char *))
+
 BOTH(long, arms_mixed, (int, int, long))
 BOTH(unsigned long, arms_unsigned, (int, unsigned, long))
 BOTH(int, constant_conditions, (int))
@@ -230,6 +238,30 @@ test_constants(void)
     }
 }
 
+/* the comparisons with a constant on the left, of each type and of a
+   pointer, over every pair of the table: the constants, the limits
+   and their neighbours among it */
+#define TEST_KLEFT(T, N, name, op, k)                                   \
+    CHECK(kl_##name##_##N, x, y, ((T) x, (T) y));
+#define TEST_KLEFT_ALL(T, N, least, most)                               \
+    KLEFTS(TEST_KLEFT, T, N, least, most)
+
+static void
+test_left(void)
+{
+    for (int i = 0; i < COUNT; ++i) {
+        const long x = values[i];
+
+        for (int j = 0; j < COUNT; ++j) {
+            const long y = values[j];
+
+            LEFT_TYPES(TEST_KLEFT_ALL)
+            KLEFTS(TEST_KLEFT, char *, p, 0, -1)
+            CHECK(kl_null, x, y, ((char *) x, (char *) y));
+        }
+    }
+}
+
 static void
 test_loops(void)
 {
@@ -283,6 +315,7 @@ main(void)
     TYPES(RUN_KSIDES)
 
     test_constants();
+    test_left();
     test_loops();
     test_eight();
 

@@ -1722,12 +1722,30 @@ compare_with(state_t &s, value_t l, const expr_t &rhs, int width)
     release(s, r);
 }
 
+// A comparison in the order its row generates it, backend.md 6.1: a
+// constant on the left that the instruction takes as an immediate is
+// the immediate on the right, the comparison mirrored, so 5 < x is
+// cmpl $5, -4(%rbp) and 0 == (c & 1) the flags of the and.  A constant
+// no 32-bit immediate holds is held in a register in either order, so
+// it keeps the order of the source: mirrored, it would cost a load of
+// an object in memory that is the cmp's own operand where it stands.
+compared_t
+ordered(const binary_t &b)
+{
+    const int width = operation_width(b.lhs->type);
+
+    if (constant_first(b) && immediate(*b.lhs, width))
+        return mirrored(b);
+
+    return as_written(b);
+}
+
 // cmp R, L for a relational or equality operator, the left value
 // generated outside the registers the right one's operator pins
 // (chapter 6.5).  The left value stays held, for setcc or for the
 // caller to free.
 value_t
-compare(state_t &s, const binary_t &b)
+compare(state_t &s, const compared_t &b)
 {
     const auto l = rvalue_avoiding(s, *b.lhs, pinned_by(*b.rhs));
     compare_with(s, l, *b.rhs, operation_width(b.lhs->type));
@@ -1748,7 +1766,7 @@ jump_if(state_t &s, binary_op_t op, bool is_signed, int label)
 // to the int the operator yields.  A register variable as L is only
 // read by the cmp, and the setcc takes a fresh register.
 value_t
-comparison(state_t &s, const binary_t &b)
+comparison(state_t &s, const compared_t &b)
 {
     const bool is_signed = integer(b.lhs->type).is_signed;
 
@@ -2005,7 +2023,7 @@ binary(state_t &s, const expr_t &e, into_t *into = nullptr)
     }
 
     if (is_comparison(b.op))
-        return comparison(s, b);
+        return comparison(s, ordered(b));
 
     if (is< pointer_t >(e.type))
         return pointer_arithmetic(s, e);
@@ -2588,10 +2606,11 @@ flag_condition(const expr_t &e)
 // The operand of e == 0 or e != 0 that is a flag condition, whose row
 // then serves the comparison, the jump's sense by the operator; nullptr
 // for any other comparison, e < 0 and the rest among them, which keep
-// the cmp, since the jump of 7.1 reads ZF alone.  The Seventh Edition
-// compiler's rcexpr() drops the 0 of any relational under cctab.
+// the cmp, since the jump of 7.1 reads ZF alone.  0 == e is e == 0 by
+// ordered().  The Seventh Edition compiler's rcexpr() drops the 0 of
+// any relational under cctab.
 const expr_t *
-zero_compared(const binary_t &b)
+zero_compared(const compared_t &b)
 {
     if (b.op != binary_op_t::eq && b.op != binary_op_t::ne)
         return nullptr;
@@ -2599,7 +2618,7 @@ zero_compared(const binary_t &b)
     if (!is< literal_t >(*b.rhs) || as< literal_t >(*b.rhs).value != 0)
         return nullptr;
 
-    return flag_condition(*b.lhs) ? b.lhs.get() : nullptr;
+    return flag_condition(*b.lhs) ? b.lhs : nullptr;
 }
 
 // A condition on an object in memory and an immediate, 7.1: cmp or test
@@ -2715,9 +2734,35 @@ flag_branch(state_t &s, const expr_t &e, int label, bool sense)
     jump_if(s, sense ? binary_op_t::ne : binary_op_t::eq, true, label);
 }
 
+// A comparison as a condition, 7.1, its operands in the order of
+// ordered(): == 0 or != 0 of a flag condition jumps on its operator's
+// own flags; an object in memory against an immediate is the cmp of
+// the object in place, condition_on()'s, cmpl $5, -4(%rbp); any other
+// is cmp R, L.  Then jcc of the operator, or of its inverse by sense.
+void
+comparison_branch(state_t &s, const compared_t &b, int label, bool sense)
+{
+    if (const auto *tested = zero_compared(b)) {
+        const bool equal = b.op == binary_op_t::eq;
+        flag_branch(s, *tested, label, sense != equal);
+        return;
+    }
+
+    const bool is_signed = integer(b.lhs->type).is_signed;
+    const int width = operation_width(b.lhs->type);
+
+    if (memory_operand(*b.lhs, width) && immediate(*b.rhs, width))
+        condition_on(s, "cmp", *b.lhs, immediate_of(*b.rhs, width), width);
+    else
+        release(s, compare(s, b));
+
+    jump_if(s, sense ? b.op : inverse(b.op), is_signed, label);
+}
+
 // Jump code, chapter 7.1: a jump to label when e is true (sense) or
 // false (!sense), a fall through otherwise, and no value.  A comparison
-// is cmp and jcc; ! flips the sense; && and || are the shape of the
+// is cmp and jcc, a constant on its left mirrored to the right by
+// ordered(); ! flips the sense; && and || are the shape of the
 // short circuit, 6.5.14p4, 6.5.15p4, the right operand not reached when
 // the left decides.  A flag condition, and one compared with 0 by == or
 // !=, jumps on its operator's own flags.  Any other scalar, a constant
@@ -2737,23 +2782,8 @@ cbranch(state_t &s, const expr_t &e, int label, bool sense)
     if (is< binary_t >(e)) {
         const auto &b = as< binary_t >(e);
 
-        if (const auto *tested = zero_compared(b)) {
-            const bool equal = b.op == binary_op_t::eq;
-            flag_branch(s, *tested, label, sense != equal);
-            return;
-        }
-
         if (is_comparison(b.op)) {
-            const bool is_signed = integer(b.lhs->type).is_signed;
-            const int width = operation_width(b.lhs->type);
-
-            if (memory_operand(*b.lhs, width) && immediate(*b.rhs, width))
-                condition_on(s, "cmp", *b.lhs, immediate_of(*b.rhs, width),
-                             width);
-            else
-                release(s, compare(s, b));
-
-            jump_if(s, sense ? b.op : inverse(b.op), is_signed, label);
+            comparison_branch(s, ordered(b), label, sense);
             return;
         }
 

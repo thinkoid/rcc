@@ -97,28 +97,6 @@ Fix: 7.2 states the rule c1 applies, or c1 applies the stated one.
 Check: a cost program with a =main= ending in each shape, pinned, and
 7.2 agreeing with the pins.
 
-** TODO ~0 == e~ keeps the compare that ~e == 0~ loses
-
-On x86-64 a condition ~e == 0~ or ~e != 0~ over an operator whose
-instruction sets the zero flag jumps on that flag (=backend.md= 7.1).
-With the constant written first, ~0 == (c & 1)~, the row of any
-comparison stands: the 0 into a register, the =andl=, the =cmpl=. The
-constant has no evaluation to order, so G13 does not ask for it; what
-asks for it is the rule that an operator's operands are written as
-the source has them (6.1).
-
-The same holds for a comparison of an object in memory: ~x > 5~ in a
-condition is =cmpl $5, -4(%rbp)=, and ~5 < x~ loads the 5, =movl $5,
-%eax; cmpl -4(%rbp), %eax=. The Seventh Edition compiler exchanges a
-relational's operands to put the simpler one on the right (=c12.c=).
-
-Fix: a constant on the left is taken as the one on the right is, in
-both shapes: ~0 == e~ loses its compare, and ~5 < x~ is =cmpl $5,
--4(%rbp)= with the jump's sense mirrored.
-
-Check: the listings of ~0 == (c & 1)~ and of ~5 < x~ agree with the
-decision, pinned in =condition-flags= and in =operand=.
-
 ** TODO Four rows beside the operand in memory still load their operand
 
 On x86-64 an object in memory of the operation's width is the

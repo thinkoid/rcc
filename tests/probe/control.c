@@ -2,7 +2,8 @@
    statements that branch, and values held across a branch, in rcc's C,
    for docs/aarch64.md chapter 7, and the conditions that jump on their
    operator's own flags on x86-64 and those it writes as the cmp or test
-   of an object in memory, docs/backend.md 7.1.  See control.h. */
+   of an object in memory, docs/backend.md 7.1, and the comparisons
+   with a constant on the left, docs/backend.md 6.1.  See control.h. */
 
 #include "control.h"
 
@@ -342,6 +343,79 @@ TYPES(CC_GLOBAL)
     CC_OBJECT(CC_ON_REGISTER, T, N, reg, x)
 
 TYPES(CC_ALL)
+
+/* docs/backend.md 6.1, a comparison with a constant on the left, taken
+   as the constant on the right is, the comparison mirrored: each of
+   control.h's KLEFTS, of an object in memory, a, of a register
+   variable, x, of two expressions e and f, which on an integer are &
+   and + and set the flags on x86-64, and of a call, each as a
+   condition and as a value, and under ! and && and before the ? of
+   ?:.  The function kl_<name>_<type> of an integer type, and of
+   char *, whose constants are cast to it. */
+#define KLEFT_PLACES(T, N, op, k, e, f)                                 \
+    register T x = a;                                                   \
+    long r = 0;                                                         \
+    if (k op a)                                                         \
+        r += 1;                                                         \
+    if (k op x)                                                         \
+        r += 2;                                                         \
+    if (k op (e))                                                       \
+        r += 4;                                                         \
+    if (k op (f))                                                       \
+        r += 8;                                                         \
+    if (k op kl_same_##N(b))                                            \
+        r += 16;                                                        \
+    if (!(k op a) && k op b)                                            \
+        r += 32;                                                        \
+    r = r * 2 + (k op a);                                               \
+    r = r * 2 + (k op x);                                               \
+    r = r * 2 + (k op (e));                                             \
+    r = r * 2 + (k op (f));                                             \
+    r = r * 2 + (k op kl_same_##N(a));                                  \
+    return r * 2 + (k op b ? 1 : 0);
+
+#define KLEFT_SAME(T, N, least, most) T kl_same_##N(T a) { return a; }
+
+LEFT_TYPES(KLEFT_SAME)
+
+#define KLEFT(T, N, name, op, k)                                        \
+    long kl_##name##_##N(T a, T b)                                      \
+    {                                                                   \
+        KLEFT_PLACES(T, N, op, (k), a & b, a + b)                       \
+    }
+#define KLEFT_ALL(T, N, least, most) KLEFTS(KLEFT, T, N, least, most)
+
+LEFT_TYPES(KLEFT_ALL)
+
+char *
+kl_same_p(char *a)
+{
+        return a;
+}
+
+#define KLEFT_POINTER(T, N, name, op, k)                                \
+    long kl_##name##_##N(T a, T b)                                      \
+    {                                                                   \
+        KLEFT_PLACES(T, N, op, ((T) (k)), a + 1, b - 1)                 \
+    }
+
+KLEFTS(KLEFT_POINTER, char *, p, 0, -1)
+
+/* the null pointer constant on the left, 0 == p */
+long
+kl_null(char *a, char *b)
+{
+        register char *x = a;
+        long r = 0;
+
+        if (0 == a)
+                r += 1;
+        if (0 != x)
+                r += 2;
+        if (0 == kl_same_p(b))
+                r += 4;
+        return r * 8 + (0 == a) * 4 + (0 != x) * 2 + (0 == b + 1);
+}
 
 /* docs/backend.md 7.1 on x86-64, a condition on an object in memory and
    a constant, the cmp or test of the object itself: each comparison of

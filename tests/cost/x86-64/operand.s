@@ -616,6 +616,163 @@ before_call:
 	ret
 	.cfi_endproc
 	.size	before_call, .-before_call
+	.globl	constant_left
+	.type	constant_left, @function
+constant_left:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	$0, -8(%rbp)
+	cmpl	$5, -4(%rbp)
+	jle	.Lconstant_left.2
+	addl	$1, -8(%rbp)
+.Lconstant_left.2:
+	cmpl	$5, -4(%rbp)
+	jl	.Lconstant_left.3
+	addl	$2, -8(%rbp)
+.Lconstant_left.3:
+	cmpl	$5, -4(%rbp)
+	jge	.Lconstant_left.4
+	addl	$4, -8(%rbp)
+.Lconstant_left.4:
+	cmpl	$5, -4(%rbp)
+	jg	.Lconstant_left.5
+	addl	$8, -8(%rbp)
+.Lconstant_left.5:
+	cmpl	$5, -4(%rbp)
+	jne	.Lconstant_left.6
+	addl	$16, -8(%rbp)
+.Lconstant_left.6:
+	cmpl	$5, -4(%rbp)
+	je	.Lconstant_left.7
+	addl	$32, -8(%rbp)
+.Lconstant_left.7:
+	movl	-8(%rbp), %eax
+	jmp	.Lconstant_left.1
+.Lconstant_left.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	constant_left, .-constant_left
+	.globl	constant_left_unsigned
+	.type	constant_left_unsigned, @function
+constant_left_unsigned:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	$0, -8(%rbp)
+	cmpl	$5, -4(%rbp)
+	jbe	.Lconstant_left_unsigned.2
+	addl	$1, -8(%rbp)
+.Lconstant_left_unsigned.2:
+	cmpl	$5, -4(%rbp)
+	jb	.Lconstant_left_unsigned.3
+	addl	$2, -8(%rbp)
+.Lconstant_left_unsigned.3:
+	cmpl	$5, -4(%rbp)
+	jae	.Lconstant_left_unsigned.4
+	addl	$4, -8(%rbp)
+.Lconstant_left_unsigned.4:
+	cmpl	$5, -4(%rbp)
+	ja	.Lconstant_left_unsigned.5
+	addl	$8, -8(%rbp)
+.Lconstant_left_unsigned.5:
+	cmpl	$5, -4(%rbp)
+	jne	.Lconstant_left_unsigned.6
+	addl	$16, -8(%rbp)
+.Lconstant_left_unsigned.6:
+	cmpl	$5, -4(%rbp)
+	je	.Lconstant_left_unsigned.7
+	addl	$32, -8(%rbp)
+.Lconstant_left_unsigned.7:
+	movl	-8(%rbp), %eax
+	jmp	.Lconstant_left_unsigned.1
+.Lconstant_left_unsigned.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	constant_left_unsigned, .-constant_left_unsigned
+	.globl	constant_left_register
+	.type	constant_left_register, @function
+constant_left_register:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movl	-12(%rbp), %ebx
+	cmpl	$5, %ebx
+	jle	.Lconstant_left_register.2
+	movl	$1, %eax
+	jmp	.Lconstant_left_register.1
+.Lconstant_left_register.2:
+	movl	$0, %eax
+	jmp	.Lconstant_left_register.1
+.Lconstant_left_register.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	constant_left_register, .-constant_left_register
+	.globl	constant_left_value
+	.type	constant_left_value, @function
+constant_left_value:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	-4(%rbp), %eax
+	cmpl	$5, %eax
+	setg	%al
+	movzbl	%al, %eax
+	jmp	.Lconstant_left_value.1
+.Lconstant_left_value.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	constant_left_value, .-constant_left_value
+	.globl	null_left
+	.type	null_left, @function
+null_left:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	cmpq	$0, -8(%rbp)
+	jne	.Lnull_left.2
+	movl	$1, %eax
+	jmp	.Lnull_left.1
+.Lnull_left.2:
+	movl	$0, %eax
+	jmp	.Lnull_left.1
+.Lnull_left.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	null_left, .-null_left
 	.bss
 	.globl	defined
 	.type	defined, @object

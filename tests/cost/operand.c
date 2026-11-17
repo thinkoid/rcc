@@ -8,7 +8,13 @@
    the same for & as a condition, and divide_busy divides by *p with a
    held and p, the divisor's address, loaded outside rax and rdx
    (backend.md 6.5).  less_constant, nonzero, nonzero_char and bit are
-   the conditions on an object in memory and a constant.  Beside them,
+   the conditions on an object in memory and a constant.
+   constant_left and constant_left_unsigned write each comparison with
+   the constant 5 on the left of an int and of an unsigned in memory,
+   constant_left_register of a register variable, constant_left_value
+   for its value, and null_left is 0 == p: a constant on the left is
+   taken as the constant on the right, the comparison mirrored
+   (backend.md 6.1).  Beside them,
    char_operand, widened, compound, compound_value, shift_count,
    times_four and before_call keep the load: a char promoted, an int
    widened to long, a compound assignment's right operand for its
@@ -41,7 +47,13 @@
    ecx before x in compound_value, the count's movl -8(%rbp), %ecx
    before shll %cl in shift_count, the load and imull $4, %eax, %eax in
    times_four, and in before_call the load of defined before the call,
-   its spill and its reload, then cmpl %eax, %ecx.
+   its spill and its reload, then cmpl %eax, %ecx.  It must show no
+   load of a constant on the left: in constant_left cmpl $5, -4(%rbp)
+   six times, then jle, jl, jge, jg, jne and je, and the unsigned
+   jumps jbe, jb, jae, ja, jne and je in constant_left_unsigned;
+   cmpl $5, %ebx then jle in constant_left_register; the load,
+   cmpl $5, %eax and setg %al in constant_left_value; and
+   cmpq $0, -8(%rbp) then jne in null_left.
 
    On aarch64, a load-store machine with no instruction that takes a
    memory operand, the listing must show each operand loaded into a
@@ -49,7 +61,13 @@
    add w0, w0, w1 and the rest, sdiv w0, w0, w1, sdiv and msub in
    modulo, cmp w0, w1 before cset, and w0, w0, w1 before cbz in test;
    ldr then cmp w0, #5 in less_constant, cbz w0 in nonzero and
-   nonzero_char, and w0, w0, #0x1 then cbz in bit. */
+   nonzero_char, and w0, w0, #0x1 then cbz in bit.  It must show no
+   mov of a constant on the left: ldr then cmp w0, #5 for each
+   comparison, b.le, b.lt, b.ge, b.gt, b.ne and b.eq in constant_left,
+   b.ls, b.lo, b.hs, b.hi, b.ne and b.eq in constant_left_unsigned;
+   cmp w19, #5 then b.le in constant_left_register; cmp w0, #5 and
+   cset w0, gt in constant_left_value; and ldr x0 then cmp x0, #0 and
+   b.ne in null_left. */
 int defined;
 extern int declared;
 
@@ -227,6 +245,70 @@ int
 before_call(void)
 {
         if (defined < f())
+                return 1;
+        return 0;
+}
+
+int
+constant_left(int x)
+{
+        int r = 0;
+
+        if (5 < x)
+                r += 1;
+        if (5 <= x)
+                r += 2;
+        if (5 > x)
+                r += 4;
+        if (5 >= x)
+                r += 8;
+        if (5 == x)
+                r += 16;
+        if (5 != x)
+                r += 32;
+        return r;
+}
+
+int
+constant_left_unsigned(unsigned x)
+{
+        int r = 0;
+
+        if (5 < x)
+                r += 1;
+        if (5 <= x)
+                r += 2;
+        if (5 > x)
+                r += 4;
+        if (5 >= x)
+                r += 8;
+        if (5 == x)
+                r += 16;
+        if (5 != x)
+                r += 32;
+        return r;
+}
+
+int
+constant_left_register(int a)
+{
+        register int x = a;
+
+        if (5 < x)
+                return 1;
+        return 0;
+}
+
+int
+constant_left_value(int x)
+{
+        return 5 < x;
+}
+
+int
+null_left(int *p)
+{
+        if (0 == p)
                 return 1;
         return 0;
 }

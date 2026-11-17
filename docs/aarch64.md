@@ -595,6 +595,15 @@ variable is written in place, so G13's copy of chapter 4 stays and is
 the value: `mov w0, w19; add w19, w19, #1`. Left first is G13; a
 commutative operator's operands are not swapped.
 
+A comparison with a constant on the left is the mirrored one, as on
+x86-64 (`backend.md` 6.1): `5 < x` is `ldr w0, [x29, #16]; cmp w0,
+#5` and `b.le`, the constant `cmp`'s immediate, and `0 == p` is `cmp
+x0, #0`. A constant `cmp` does not encode is mirrored too, and held
+after the right operand, `mov w1, #5000; cmp w0, w1`: it costs its
+`mov` in either order, and no instruction here names an object in
+memory, so the mirror never costs an instruction. x86-64 keeps the
+order for a constant no immediate holds (`backend.md` 6.1).
+
 ### 6.2 Depth and spill
 
 Unchanged. A spill is `str x0, [x29, #d]` and a reload `ldr x0, [x29,
@@ -620,7 +629,7 @@ For a 32-bit operation (`w` names) or a 64-bit one (`x` names).
 | `a & b`, `a \| b`, `a ^ b` | `and`, `orr`, `eor` | |
 | `-a`, `~a` | `neg L, L`, `mvn L, L` | |
 | `!a` | `cmp L, #0; cset L, eq`; for an operand with stale upper bits, `tst L, #0xff` in place of the `cmp` (7.1) | as a value |
-| `a < b` and the rest, as a value | `cmp L, R; cset L, lt` | `lt`, `le`, `gt`, `ge`, `eq`, `ne` signed; `lo`, `ls`, `hi`, `hs` unsigned and for pointers (G7) |
+| `a < b` and the rest, as a value | `cmp L, R; cset L, lt`; a constant on the left the mirrored comparison (6.1), `5 < x` the load and `cmp w0, #5; cset w0, gt` | `lt`, `le`, `gt`, `ge`, `eq`, `ne` signed; `lo`, `ls`, `hi`, `hs` unsigned and for pointers (G7) |
 | `a && b`, `a \|\| b`, `a ? b : c`, as a value | jump code into `L`, `mov L, #1` and `mov L, #0` on the arms | never `csel`: 6.5.16p5, the arm not chosen is not evaluated |
 | `x = e` | the store of 2.2 to the slot; for a register variable the last instruction of the row that computes the value writes its register, `add w19, w0, w1`, `ldr w19, [x29, #24]`, where it is the row's only write of its destination, and otherwise the `mov` into it, `mov w20, w0`, `mov x20, x0`, a narrow type's the extension, `sxtb w19, w0`; a constant the immediate, `mov w20, #0` | 6.6 for a constant; chapter 4 |
 | `x op= e`, `++x`, `x++` | the load, the operation, the store, after `e` for `x op= e`; a register variable in place, after `e`, its register `L` and the destination, `add w19, w19, w0`, `add w19, w19, #1`, a narrow one re-extended after, `sxtb w19, w19`, and `%=` with the quotient in a register of its own, `sdiv w0, w19, w20; msub w19, w0, w20, w19`; `x++` on a register variable for its value is G13's copy and the step, `mov w0, w19; add w19, w19, #1`; a pointer's `++` and `--` step by the size, an immediate where `add` encodes it, `add L, L, #4` for an `int *`, and otherwise held in a register | no memory form, 6.6; chapter 4 |
@@ -828,7 +837,9 @@ A register variable is operated on in its register, as before.
 `cbranch(e, label, sense)` as in `backend.md` 7.1:
 
 - A comparison: `cmp L, R` and `b.cc label`, the condition or its
-  inverse by `sense`.
+  inverse by `sense`; a constant on the left first taken as `R`, the
+  comparison mirrored (6.1), so `if (5 < x)` is `cmp w0, #5` and
+  `b.le`.
 - `!e`, `&&`, `||`: the same shapes.
 - `a, b`: `effect(a)`, then `cbranch(b, label, sense)`.
 - Any other expression: its value into `L`, then the test of zero,
@@ -1329,7 +1340,7 @@ documents, as the x86-64 slices were. Then the measurement, which
 ## 15. The calls
 
 Seven were open in the first draft of this page, and the eighth to
-the eleventh came later. The answers:
+the twelfth came later. The answers:
 
 1. **Two generators**, `src/c1-x86-64.cc` and `src/c1-aarch64.cc`,
    each read whole against its own page (chapter 12). The
@@ -1421,6 +1432,15 @@ the eleventh came later. The answers:
     the two targets' listings part for the same source: `r = a + (b +
     c)` and `r = a - r` write the variable here and keep the `mov` on
     x86-64.
+12. **A comparison with a constant on the left is the mirrored
+    one** (6.1), as on x86-64 (`backend.md` chapter 13, call 18): `5 <
+    x` is `ldr w0, [x29, #16]; cmp w0, #5` and `b.le`, and `0 == (c &
+    1)` the `and` and `cmp w0, #0`. A constant `cmp` does not encode
+    is mirrored too, since it is held in a register in either order
+    and no instruction here names an object in memory. The cost is
+    that the two targets' listings part for a constant x86-64 holds:
+    `0x100000000L < x` loads `x` first here and the constant first
+    there.
 
 Decided by the machine, listed so that nothing is decided silently:
 

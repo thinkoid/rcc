@@ -2,7 +2,9 @@
    functions of each entry, compiled by rcc and, as the reference, by
    clang -O0 under the prefix ref_; control-main.c calls both over a
    table of values and compares.  Conditions and control,
-   docs/aarch64.md chapter 7: no call, no pointer. */
+   docs/aarch64.md chapter 7: no call and no pointer, but as the right
+   operand of a comparison with a constant on the left, docs/backend.md
+   6.1. */
 
 /* the integer types and the letter each takes in a function's name */
 #define TYPES(X)                                                        \
@@ -59,3 +61,32 @@
     X(T, N, K, O, dec, --O) X(T, N, K, O, add_to_eq, (O += b) == 0)     \
     X(T, N, K, O, dec_ne, (--O) != 0) X(T, N, K, O, and_object, O & b)  \
     X(T, N, K, O, post_inc, O++)
+
+/* the least and the greatest char, whose signedness is the target's */
+#define CHAR_LEAST ((char) -1 < 0 ? -128 : 0)
+#define CHAR_MOST ((char) -1 < 0 ? 127 : 255)
+
+/* The types a comparison with the constant on the left is tried on,
+   docs/backend.md 6.1: the type, the letter of its name, its least and
+   its greatest value.  The pointer is tried apart, its constants cast
+   to it. */
+#define LEFT_TYPES(X)                                                   \
+    X(char, c, CHAR_LEAST, CHAR_MOST) X(unsigned char, uc, 0, 255)      \
+    X(short, s, -32768, 32767) X(unsigned short, us, 0, 65535)          \
+    X(int, i, -2147483647 - 1, 2147483647)                              \
+    X(unsigned, u, 0, 4294967295u)                                      \
+    X(long, l, -9223372036854775807L - 1, 9223372036854775807L)         \
+    X(unsigned long, ul, 0, 18446744073709551615ul)
+
+/* each of the six comparisons with the constant k on the left */
+#define KLEFT_OPS(X, T, N, name, k)                                     \
+    X(T, N, lt_##name, <, k) X(T, N, le_##name, <=, k)                  \
+    X(T, N, gt_##name, >, k) X(T, N, ge_##name, >=, k)                  \
+    X(T, N, eq_##name, ==, k) X(T, N, ne_##name, !=, k)
+
+/* the constants on the left: negative, zero, positive, one aarch64's
+   cmp does not encode, and the type's least and greatest */
+#define KLEFTS(X, T, N, least, most)                                    \
+    KLEFT_OPS(X, T, N, m5, -5) KLEFT_OPS(X, T, N, 0, 0)                 \
+    KLEFT_OPS(X, T, N, 5, 5) KLEFT_OPS(X, T, N, 5000, 5000)             \
+    KLEFT_OPS(X, T, N, min, least) KLEFT_OPS(X, T, N, max, most)

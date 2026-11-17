@@ -80,6 +80,20 @@ bool is_step(unary_op_t);
 bool is_shift(binary_op_t);
 bool is_comparison(binary_op_t);
 binary_op_t inverse(binary_op_t);
+binary_op_t mirrored(binary_op_t);
+
+// A comparison as its row generates it (backend.md 6.1): the operator
+// and its operands, the left one generated first.
+struct compared_t
+{
+    binary_op_t op;
+    const expr_t *lhs;
+    const expr_t *rhs;
+};
+
+compared_t as_written(const binary_t &);
+bool constant_first(const binary_t &);
+compared_t mirrored(const binary_t &);
 
 bool writes(const expr_t &, const symbol_t *);
 bool names(const expr_t &, const symbol_t *);
