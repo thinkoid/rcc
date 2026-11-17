@@ -22,54 +22,23 @@ assembles and links. The reasons are =docs/findings.md= and
 in =docs/design-calls.md=. The chapter holds c1's own defects on both
 targets; the second target's design is =docs/aarch64.md=.
 
-** TODO x86-64: an index held in =rax= moves when the stored value is a division
+** TODO x86-64: a remainder moves from =rdx= into the dividend's register
 
-~a[i] = (x >> 16) % 256~ evaluates the index first (G13), and it
-takes =rax=, the first register a value takes. The division then
-needs =rax= for its dividend and =rdx= free, where the constant
-divisor was just loaded, so both move: =movl $256, %edx; movq %rdx,
-%rsi; movq %rax, %rdi; movl %ecx, %eax; xorl %edx, %edx; divl %esi=,
-two =movq= that a different choice of registers would not write
-(=tests/perf/matmul.c=, the loop that fills the arrays). The right
-operand of a division is already generated with =rax= held out
-(=backend.md= 6.5); an index that stays held across one, and a
-divisor's own register, are not.
+A division leaves its quotient in =rax= and its remainder in =rdx=,
+and the result of a binary row is in the left operand's register
+(=backend.md= 6.1). A dividend is in =rax=, so a quotient is where it
+is wanted and a remainder moves: ~a[i] = x % 256~ ends =divl %edi;
+movl %edx, %eax; movl %eax, (%rcx,%rsi,4)=, where the store could
+take =edx=. The move is written for every remainder whose dividend
+the row owns. The Seventh Edition compiler's row returns the register
+the value is in, the pair's odd one for a remainder, and moves
+nothing (=c10.c=, the end of =cexpr()=).
 
-The index is one case of a rule. Any value held while a division is
-generated takes =rax= if it came first, and the two =movq= are those
-of the pinned row =div-busy=, ~a + b / c~, which =cost.md= 2.1 gives
-as the cost of a division with =rax= and =rdx= busy. Two more moves
-follow from the first choice: the dividend, loaded into =rcx= since
-=rax= was held, moves to =rax=, and a remainder moves back from =rdx=
-into the dividend's register. A variable shift pays the same way for
-=rcx=: in ~b[i] = x << n~ the index takes =rax=, the shifted value
-takes =rcx=, and it moves out for the count, =movq %rcx, %rsi; movl
-%edx, %ecx=.
+Fix: decide whether a remainder's value is the value in =rdx=, the
+dividend's register freed, as a borrowed dividend's already is.
 
-An object in memory is now the instruction's own operand, so a
-divisor in a slot takes no register, and =div-busy= writes one
-=movq=, the left operand's, =movq %rax, %rsi=. A divisor's address
-is held as a value is: a base in =rdx= moves out, =movq %rdx, %rdi=
-in =operand='s =divide_busy=, and ~a % f()[i]~ reloads its dividend
-into =rdx= and moves it once more.
-
-Fix: two rules, both decided.
-
-- A divisor, and the address of one in memory, is generated with
-  =rdx= held out as =rax= is. The
-  division's own node knows its instruction's registers, and no
-  listing loses by it, since a divisor in =rdx= always moves. This
-  one is a defect.
-- A node whose right operand's top operator is a division generates
-  its left operand, and an assignment its place, with =rax= and
-  =rdx= held out; a shift by a variable count does the same with
-  =rcx=. A division or a shift deeper in the right operand changes
-  nothing. =div-busy= then needs a program in which the reservation
-  cannot be met, so that the moves of 6.5 stay pinned, and 6.1's
-  "nothing looks at a node's neighbours" takes the exception.
-
-Check: the listing of the statement has neither =movq=, and the pins
-of =div-busy= have none either; ~b[i] = x << n~ has no =movq=.
+Check: the pins of =pinned='s =fill= and of =div-busy='s =rem_busy=
+have no =movl %edx, %eax=.
 
 ** TODO x86-64: a row's address by a constant index is read two ways
 
@@ -366,7 +335,8 @@ its parity test is =testq $1, %r14=, where the chapter's paragraph
 quotes =andq $1, %rax= on a copy. The operand in memory changes
 every x86-64 listing of =tests/perf=: the inner loop of matmul as
 tuned is ten instructions, =movl (%r13), %eax; imull (%r14), %eax=,
-where the paragraph counts eleven. The times in the tables, the ratios the tl;dr draws from them and the
+where the paragraph counts eleven. The registers chosen for a
+division and a shift change matmul, sieve and fib once more. The times in the tables, the ratios the tl;dr draws from them and the
 listings the chapter's paragraphs quote are those of the code before
 it. The steps that follow it on x86-64 change the same listings
 again.

@@ -14,8 +14,8 @@
    in memory as an operator's right operand and as a condition's
    object, backend.md 6.1 and 7.1, by a name the file only declares,
    through a pointer and by a subscript; the frame of 5.3, depth of
-   6.2, the pinned division of 6.5, G7, G8, G10 and G11 of chapter 9
-   and the literals of chapter 10. */
+   6.2, the pinned division and shift of 6.5 under each kind of node,
+   G7, G8, G10 and G11 of chapter 9 and the literals of chapter 10. */
 
 /* the integer types and the letter each takes in a function's name */
 #define NARROW(X)                                                       \
@@ -43,6 +43,19 @@
     X(T, N, or, |=) X(T, N, xor, ^=)
 
 #define SHIFTS(X, T, N) X(T, N, shl, <<=) X(T, N, shr, >>=)
+
+/* the types of the pinned rows: int, long and their unsigned types,
+   and a char and a short beside them */
+#define PINNED_TYPES(X)                                                 \
+    X(char, c) X(short, s) X(int, i) X(unsigned, u) X(long, l)          \
+    X(unsigned long, ul)
+
+/* the instructions that pin registers on x86-64, backend.md 6.5: a
+   name, the operator and its compound form.  The main keeps a divisor
+   from 0 and -1 and a count below the promoted width. */
+#define PINNED_OPERATORS(X, T, N)                                       \
+    X(T, N, div, /, /=) X(T, N, rem, %, %=)                             \
+    X(T, N, shl, <<, <<=) X(T, N, shr, >>, >>=)
 
 /* the binary operators whose right operand an object in memory may be,
    the instruction's own operand on x86-64, backend.md 6.1: a name and

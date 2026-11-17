@@ -778,8 +778,8 @@ bits.
 
 There are none. `divide()` and `shift()` write their instruction on
 the registers the operands are in. The state's `reserved` mask,
-`vacate()`, `move()` and `pinned()` exist in the x86-64 generator
-only.
+`pins()`, `pinned_by()`, `vacate()`, `move()` and `pinned()` exist in
+the x86-64 generator only.
 
 ### 6.6 The effect context
 

@@ -6,14 +6,15 @@
    with a right operand of each form, a local, a global the file
    defines, one it only declares, *p and a local array's a[i]; test does
    the same for & as a condition, and divide_busy divides by *p with a
-   held in eax and p loaded into rdx.  less_constant, nonzero,
-   nonzero_char and bit are the conditions on an object in memory and a
-   constant.  Beside them, char_operand, widened, compound,
-   compound_value, shift_count, times_four and before_call keep the
-   load: a char promoted, an int widened to long, a compound
-   assignment's right operand for its effect and for its value, a
-   shift's count, a multiply by a constant and a right operand that is
-   a call, which may write the global loaded before it.
+   held and p, the divisor's address, loaded outside rax and rdx
+   (backend.md 6.5).  less_constant, nonzero, nonzero_char and bit are
+   the conditions on an object in memory and a constant.  Beside them,
+   char_operand, widened, compound, compound_value, shift_count,
+   times_four and before_call keep the load: a char promoted, an int
+   widened to long, a compound assignment's right operand for its
+   effect and for its value, a shift's count, a multiply by a constant
+   and a right operand that is a call, which may write the global
+   loaded before it.
 
    On x86-64 the listing must show each right operand as the
    instruction's operand, after the left operand's load and with no load
@@ -25,19 +26,19 @@
    in divide, and in modulo the remainder's movl %edx, %eax after each
    idivl; in less cmpl -24(%rbp), %eax, then cmpl defined(%rip), %ecx
    and the rest, each before its setl; in test testl -24(%rbp), %eax and
-   the rest, each then je.  divide_busy must show a moved out of rax,
-   movq %rax, %rsi, p's register out of rdx, movq %rdx, %rdi, then
-   idivl (%rdi).  It must show cmpl $5, -4(%rbp) then jge in
-   less_constant, cmpl $0, -4(%rbp) in nonzero, cmpb $0, -1(%rbp) in
-   nonzero_char and testl $1, -4(%rbp) in bit, each then its jump and
-   no load.  It must show the loads kept: movsbl -5(%rbp), %ecx before
-   the addl in char_operand, movslq -12(%rbp), %rcx before the addq in
-   widened, y loaded and added to the object, addl %eax, -4(%rbp), in
-   compound, y loaded into ecx before x in compound_value, the count's
-   movl -8(%rbp), %ecx before shll %cl in shift_count, the load and
-   imull $4, %eax, %eax in times_four, and in before_call the load of
-   defined before the call, its spill and its reload, then
-   cmpl %eax, %ecx.
+   the rest, each then je.  divide_busy must show a loaded into ecx, b
+   into eax and p into rsi, then cltd, idivl (%rsi) and addl %eax,
+   %ecx, and no move but the return's.  It must show cmpl $5,
+   -4(%rbp) then jge in less_constant, cmpl $0, -4(%rbp) in nonzero,
+   cmpb $0, -1(%rbp) in nonzero_char and testl $1, -4(%rbp) in bit,
+   each then its jump and no load.  It must show the loads kept:
+   movsbl -5(%rbp), %ecx before the addl in char_operand,
+   movslq -12(%rbp), %rcx before the addq in widened, y loaded and
+   added to the object, addl %eax, -4(%rbp), in compound, y loaded into
+   ecx before x in compound_value, the count's movl -8(%rbp), %ecx
+   before shll %cl in shift_count, the load and imull $4, %eax, %eax in
+   times_four, and in before_call the load of defined before the call,
+   its spill and its reload, then cmpl %eax, %ecx.
 
    On aarch64, a load-store machine with no instruction that takes a
    memory operand, the listing must show each operand loaded into a

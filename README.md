@@ -106,7 +106,13 @@ x86-64 an object in memory as an operator's right operand is the
 instruction's own operand, `addl -8(%rbp), %eax`, `idivl -8(%rbp)`,
 and a condition on an object in memory and a constant is the `cmp`
 or the `test` of the object, `cmpl $5, -4(%rbp)`, as that compiler's
-table named an addressable operand in the instruction.
+table named an addressable operand in the instruction. On x86-64 a
+division and a shift by a variable count choose the registers of
+their own operands, and a node whose right operand is one holds its
+left operand out of the registers the instruction pins, so `a + b /
+c` loads `a` into `ecx` and `b` into `eax` and writes no move, as
+that compiler's `oddreg()` chose a division's registers before its
+operands.
 An element by a
 constant index is the object's own operand, `movl table+12(%rip),
 %eax`, the constant folded into the address as that compiler

@@ -5,10 +5,11 @@
 
    On x86-64 the listing of invariant() must show the load of a, cltd
    and idivl -8(%rbp), b's slot the operand, inside the loop, between
-   the test at the top and the jmp back.  The held s is in rax when the
-   division comes, so it moves out, movq %rax, %rsi, before a moves into
-   eax (backend.md 6.5).  The listing of invariant_constant() must show
-   addl $408, %eax inside the loop and no imul.
+   the test at the top and the jmp back.  The + over the division holds
+   s outside rax and rdx, so s is loaded into ecx and a into eax, and no
+   move is written (backend.md 6.5).  The listing of
+   invariant_constant() must show addl $408, %eax inside the loop and no
+   imul.
 
    On aarch64 the listing of invariant() must show the loads of a and b
    and sdiv w1, w1, w2 inside the loop, between the test at the top and

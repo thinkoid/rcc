@@ -11,10 +11,11 @@
    address, and an object read under a cast that widens it, an element
    by a subscript among them (backend.md 6.3), and an object in memory
    as an operator's right operand or a condition's object, an element
-   by a subscript among them (6.1, 7.1), which the last sections
-   probe.  A pointer
-   into the middle of a buffer, or misaligned, is made by the main.
-   See memory.h. */
+   by a subscript among them (6.1, 7.1), and the pinned instructions'
+   operands, a subscript by a division and an element as an
+   assignment's place among them (6.5), which the last sections probe.
+   A pointer into the middle of a buffer, or misaligned, is made by the
+   main.  See memory.h. */
 
 #include "memory.h"
 
@@ -979,6 +980,127 @@ TYPES(ALIASED)
     long rax_rem_##N(T *p, T a, int i) { return a % same_##N(p)[i]; }
 
 TYPES(BUSY)
+
+/* The pinned instructions of x86-64, backend.md 6.5, a division and a
+   shift by a variable count, each the right operand of a node, which
+   holds its left operand, or an assignment its place, out of the
+   registers the instruction pins.  The node is an arithmetic operator,
+   pa_, the second time over the parser's cast to long; a comparison
+   as a value and as a condition, pc_; a subscript through a pointer,
+   ps_, and of the global array the file defines, pg_; an assignment to
+   a local array's element, pl_, to an element through a pointer, pp_,
+   and to the global array's, pr_.  The compound form on a local, pkl_,
+   a local array's element, pkx_, an element through a pointer, pkp_,
+   and the global array's, pkg_, for its effect and for its value.  The
+   divisor or the count is a constant, a register variable, a local, an
+   element through a pointer and an expression, pd_, and an element of
+   the array a call returns, pq_.  The reservation cannot be met with
+   nine values held, pf_, and does not reach a division deeper in the
+   right operand, pe_, where a, b and c are in rax, rcx and rdx when
+   the instruction comes.  p points at the main's x at B + at, the
+   divisor or the count, i is 0 to 3, and a subscript's index is -4 to
+   4 through p and 0 to 3 into the global array. */
+#define PINNED(T, N, name, op, aop)                                     \
+    long pa_##name##_##N(T a, T b, T c)                                 \
+    {                                                                   \
+        long r = a + (b op c);                                          \
+        return r * 7 + ((long) a - (b op c));                           \
+    }                                                                   \
+    long pc_##name##_##N(T a, T b, T c)                                 \
+    {                                                                   \
+        long r = a < (b op c);                                          \
+        if (a != (b op c))                                              \
+            r += 2;                                                     \
+        return r;                                                       \
+    }                                                                   \
+    long ps_##name##_##N(T *p, T b, T c) { return p[b op c]; }          \
+    long pg_##name##_##N(T a, T b, T c)                                 \
+    {                                                                   \
+        row_##N[0] = a;                                                 \
+        row_##N[1] = b;                                                 \
+        row_##N[2] = c;                                                 \
+        row_##N[3] = a ^ b;                                             \
+        return row_##N[b op c];                                         \
+    }                                                                   \
+    long pl_##name##_##N(T a, T b, T c, int i)                          \
+    {                                                                   \
+        T x[4];                                                         \
+        x[0] = a;                                                       \
+        x[1] = a;                                                       \
+        x[2] = a;                                                       \
+        x[3] = a;                                                       \
+        x[i] = b op c;                                                  \
+        return x[0] + x[1] * 3L + x[2] * 5L + x[3] * 7L;                \
+    }                                                                   \
+    long pp_##name##_##N(T *p, T b, T c, int i) { return p[i] = b op c; } \
+    long pr_##name##_##N(T b, T c, int i)                               \
+    {                                                                   \
+        row_##N[0] = b;                                                 \
+        row_##N[1] = b;                                                 \
+        row_##N[2] = b;                                                 \
+        row_##N[3] = b;                                                 \
+        row_##N[i] = b op c;                                            \
+        long r = row_##N[0] + row_##N[1] * 3L;                          \
+        return r + row_##N[2] * 5L + row_##N[3] * 7L;                   \
+    }                                                                   \
+    long pkl_##name##_##N(T a, T c)                                     \
+    {                                                                   \
+        T x = a;                                                        \
+        x aop c;                                                        \
+        long r = x aop c;                                               \
+        return r * 3L + x;                                              \
+    }                                                                   \
+    long pkx_##name##_##N(T a, T c, int i)                              \
+    {                                                                   \
+        T x[4];                                                         \
+        x[0] = a;                                                       \
+        x[1] = a ^ 1;                                                   \
+        x[2] = a ^ 2;                                                   \
+        x[3] = a ^ 3;                                                   \
+        x[i] aop c;                                                     \
+        long r = x[i ^ 1] aop c;                                        \
+        return r * 7 + x[0] + x[1] * 3L + x[2] * 5L + x[3] * 7L;        \
+    }                                                                   \
+    long pkp_##name##_##N(T *p, T c, int i)                             \
+    {                                                                   \
+        p[i] aop c;                                                     \
+        return p[i ^ 1] aop c;                                          \
+    }                                                                   \
+    long pkg_##name##_##N(T a, T c, int i)                              \
+    {                                                                   \
+        row_##N[0] = a;                                                 \
+        row_##N[1] = a ^ 1;                                             \
+        row_##N[2] = a ^ 2;                                             \
+        row_##N[3] = a ^ 3;                                             \
+        row_##N[i] aop c;                                               \
+        long r = row_##N[i ^ 1] aop c;                                  \
+        r = r * 7 + row_##N[0] + row_##N[1] * 3L;                       \
+        return r + row_##N[2] * 5L + row_##N[3] * 7L;                   \
+    }                                                                   \
+    long pd_##name##_##N(T *p, T a, T b, T c, int i)                    \
+    {                                                                   \
+        register T r = c;                                               \
+        T y = c;                                                        \
+        long s = a + (b op 3);                                          \
+        s = s * 7 + (a + (b op r));                                     \
+        s = s * 7 + (a + (b op y));                                     \
+        s = s * 7 + (a + (b op p[i]));                                  \
+        return s * 7 + (a + (b op (c + 0)));                            \
+    }                                                                   \
+    long pq_##name##_##N(T *p, T a, int i) { return a op same_##N(p)[i]; } \
+    long pf_##name##_##N(T a, T b, T c, T d, T e, T f, T g, T x, T y,   \
+                         T z)                                           \
+    {                                                                   \
+        return (a + (b + (c + (d + (e + (f + (g + (x + (y op z)))))))))  \
+               + (y op z);                                              \
+    }                                                                   \
+    long pe_##name##_##N(T a, T b, T c, T d, T e)                       \
+    {                                                                   \
+        return a + (b + (c + ((d op e) + 1)));                          \
+    }
+#define PINNED_ALL(T, N) PINNED_OPERATORS(PINNED, T, N)
+
+PINNED_TYPES(PINNED_ALL)
 
 /* A condition on an object in memory, on x86-64 the cmp or test of the
    object itself, backend.md 7.1: compared with a constant on either

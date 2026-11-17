@@ -450,9 +450,93 @@ vacate(state_t &s, reg_t r, unsigned avoid)
         move(s, r, take(s, avoid | bit(r)), 64);
 }
 
+// the pinned instructions
+
+// The registers the instruction of op pins, rhs its right operand,
+// chapter 6.5: rax and rdx for / and %, rcx for << and >> by a count
+// that is no constant, which is the immediate.
+unsigned
+pins(binary_op_t op, const expr_t &rhs)
+{
+    if (op == binary_op_t::div || op == binary_op_t::rem)
+        return bit(rax) | bit(rdx);
+
+    if (is_shift(op) && !is< literal_t >(rhs))
+        return bit(rcx);
+
+    return 0;
+}
+
+// The registers the instruction of e's own operator pins: those of a
+// binary operator and of a compound assignment, and rax and rdx for
+// p - q, which divides by a size other than 1 (6.3).  None for
+// anything else; a call's result is in rax by the convention, but the
+// call spills every held value first (chapter 8), so nothing held is
+// in its way.
+unsigned
+pins(const expr_t &e)
+{
+    if (is< assign_t >(e)) {
+        const auto &a = as< assign_t >(e);
+        return a.op ? pins(*a.op, *a.rhs) : 0;
+    }
+
+    if (!is< binary_t >(e))
+        return 0;
+
+    const auto &b = as< binary_t >(e);
+    if (b.op == binary_op_t::sub && !is< pointer_t >(e.type) &&
+        is< pointer_t >(b.lhs->type))
+        return stride(b.lhs->type) != 1 ? bit(rax) | bit(rdx) : 0;
+
+    return pins(b.op, *b.rhs);
+}
+
+// The registers a node holds out of the choice for the value it holds
+// while it generates rhs, its left operand or an assignment's place,
+// chapter 6.5: those rhs's top operator pins, read through a cast,
+// which converts in the register of its operand and pins none.  The
+// value then does not stand where the instruction wants its operands.
+// A division or a shift deeper in rhs changes nothing.
+unsigned
+pinned_by(const expr_t &rhs)
+{
+    const expr_t *top = &rhs;
+    while (is< cast_t >(*top))
+        top = as< cast_t >(*top).arg.get();
+
+    return pins(*top);
+}
+
+// The registers an assignment holds its place out of, chapter 6.5:
+// those its own instruction pins, rax and rdx for /= and %=, rcx for
+// <<= and >>= by a variable count, and those its right operand's top
+// operator pins, as for any node.
+unsigned
+pinned_by(const assign_t &a)
+{
+    return (a.op ? pins(*a.op, *a.rhs) : 0) | pinned_by(*a.rhs);
+}
+
 value_t rvalue(state_t &, const expr_t &);
 void cbranch(state_t &, const expr_t &, int label, bool sense);
 void effect(state_t &, const expr_t &);
+
+// The value of e generated while the registers in pinned are left for
+// last, so that it does not land where an instruction generated after
+// it wants its operands (chapter 6.5).  The reservation is an
+// avoidance, not a pin (take()), and a call or a division inside e
+// keeps its own pin (rvalue()).
+value_t
+rvalue_avoiding(state_t &s, const expr_t &e, unsigned pinned)
+{
+    const unsigned reserved = s.reserved;
+    s.reserved |= pinned;
+    const auto v = rvalue(s, e);
+    s.reserved = reserved;
+
+    return v;
+}
 
 // register variables
 
@@ -842,7 +926,9 @@ summed(state_t &s, const expr_t &pointer)
 // scale: the pointer the base, the integer the index, each generated in
 // the order written (G13); a constant index is the displacement
 // c * size when it fits 32 bits, and a variable index into a local
-// array has rbp the base and the slot the displacement, indexed().  Any
+// array has rbp the base and the slot the displacement, indexed().  The
+// operand written first is held outside the registers the other's top
+// operator pins, p[x / y]'s p outside rax and rdx (chapter 6.5).  Any
 // other pointer, an add of another size included, is computed into a
 // register and is the base; nothing looks through a cast.
 address_t
@@ -879,7 +965,7 @@ pointed(state_t &s, const expr_t &p, const type_t &pointee)
     if (const auto a = indexed(s, b, size))
         return *a;
 
-    const auto l = rvalue(s, *b.lhs);
+    const auto l = rvalue_avoiding(s, *b.lhs, pinned_by(*b.rhs));
     const auto r = rvalue(s, *b.rhs);
 
     return { .base = left ? l : r, .index = left ? r : l, .scale = size };
@@ -1061,21 +1147,6 @@ release(state_t &s, const right_t &r)
         release(s, *r.place);
 }
 
-// The value of e generated while the registers in pinned are left for
-// last, so that it does not land where the row wants its left operand.
-// The reservation is an avoidance, not a pin (take()), and a call or a
-// division inside e keeps its own pin (rvalue()).
-value_t
-rvalue_avoiding(state_t &s, const expr_t &e, unsigned pinned)
-{
-    const unsigned reserved = s.reserved;
-    s.reserved |= pinned;
-    const auto v = rvalue(s, e);
-    s.reserved = reserved;
-
-    return v;
-}
-
 // The address of e generated as rvalue_avoiding() generates a value:
 // its registers taken with those in pinned left for last.
 address_t
@@ -1089,15 +1160,30 @@ address_avoiding(state_t &s, const expr_t &e, unsigned pinned)
     return a;
 }
 
+// A shift's variable count, generated with rax and avoid reserved, and
+// with rcx taken out of what a node around the shift reserves for its
+// own operand: the instruction consumes the count in cl, so rcx is the
+// count's (chapter 6.5).
+value_t
+shift_count(state_t &s, const expr_t &rhs, unsigned avoid)
+{
+    const unsigned outer = std::exchange(s.reserved, s.reserved & ~bit(rcx));
+    const auto v = rvalue_avoiding(s, rhs, avoid | bit(rax));
+    s.reserved = outer;
+
+    return v;
+}
+
 // The right operand of op in an operation of width bits, as its row
 // takes it.  A constant is an immediate where the instruction takes
 // one, and then nothing is evaluated: the arithmetic and bitwise
 // operators' constant as it fits 32 bits, a shift's count as its low 8
 // bits, which is what the instruction encodes.  A divisor is always
-// held, since idiv takes no immediate.  A divisor or a variable count
-// is generated with rax reserved, so that its load takes another
-// register when it is free and a dividend or a shifted value loaded
-// after it finds rax; a count's lands in rcx, the register the
+// held, since idiv takes no immediate.  A divisor is generated with
+// rax and rdx reserved, the two registers its instruction pins, and a
+// variable count by shift_count(), so that a dividend or a shifted
+// value loaded after it finds rax and a divisor never stands where
+// idiv writes; a count's load lands in rcx, the register the
 // instruction wants.  avoid is reserved the same way for any other
 // operand: the registers a left operand loaded after it is to take,
 // rax for a compound assignment's object in memory, whose register is
@@ -1110,14 +1196,14 @@ right_operand(state_t &s,
               unsigned avoid = 0)
 {
     if (op == binary_op_t::div || op == binary_op_t::rem)
-        return { .value = rvalue_avoiding(s, rhs, avoid | bit(rax)),
+        return { .value = rvalue_avoiding(s, rhs, avoid | pins(op, rhs)),
                  .width = operation_width(rhs.type) };
 
     if (is_shift(op)) {
         if (is< literal_t >(rhs))
             return { .immediate = imm(as< literal_t >(rhs).value & 0xff) };
 
-        return { .value = rvalue_avoiding(s, rhs, avoid | bit(rax)),
+        return { .value = shift_count(s, rhs, avoid),
                  .width = operation_width(rhs.type) };
     }
 
@@ -1134,7 +1220,7 @@ right_operand(state_t &s,
 // idivl -8(%rbp), and no load writes it into a register.  Its address
 // is generated where the load would be, after the left operand, and is
 // held to the instruction, which reads the object, so the reads keep
-// their order (G13).  A divisor's address is generated with rax
+// their order (G13).  A divisor's address is generated with rax and rdx
 // reserved, as a divisor is.  A shift's count keeps its register, cl.
 // The rule is the Seventh Edition compiler's: the row %n,aw of its
 // table's cr40 writes the left operand into the register and the
@@ -1145,10 +1231,7 @@ binary_operand(state_t &s, binary_op_t op, const expr_t &rhs, int width)
     if (is_shift(op) || !memory_operand(rhs, width))
         return right_operand(s, op, rhs, width);
 
-    const bool divisor = op == binary_op_t::div || op == binary_op_t::rem;
-
-    return { .place = address_avoiding(s, rhs, divisor ? bit(rax) : 0),
-             .width = width };
+    return { .place = address_avoiding(s, rhs, pins(op, rhs)), .width = width };
 }
 
 // G4: the instruction the machine has, idiv or div, a fault on x86 for
@@ -1172,28 +1255,51 @@ idiv(state_t &s, reg_t left, std::string_view divisor, const int_t &t)
     insn(s, sized(t.is_signed ? "idiv" : "div", width), { divisor });
 }
 
+// The register a held value is in, as a set for take() to avoid; none
+// for a value spilled.
+unsigned
+held_in(const state_t &s, value_t v)
+{
+    const int r = s.values[v.id].reg;
+
+    return r >= 0 ? bit(static_cast< reg_t >(r)) : 0;
+}
+
+// The register a division's dividend is in once rax and rdx are
+// vacated, chapter 6.5: the one it is held in, or rax for a dividend
+// spilled, which is reloaded there and not into another register to be
+// moved again.
+reg_t
+dividend(state_t &s, value_t l)
+{
+    return reg_of(s, l, ~bit(rax));
+}
+
 // The pinned pair of a division by a held divisor, chapter 6.5: nothing
 // looks at the divisor, which is in a register even when it is a
-// constant.  A value held in rax or rdx, or the divisor there, moves out
-// first.  Both values are still held after idiv(), the dividend in L,
-// the register returned.  A register variable as the dividend is moved
-// to rax and as the divisor is the operand of idiv.
+// constant.  The divisor moves out of rax or rdx first, then the values
+// held there, and a dividend spilled is reloaded into rax.  Both values
+// are still held after idiv(), the dividend in L, the register
+// returned.  A register variable as the dividend is moved to rax and as
+// the divisor is the operand of idiv.
 reg_t
 pin_division(state_t &s, value_t l, value_t r, const int_t &t)
 {
-    auto [left, right] = operands(s, l, r);
-
     const unsigned pinned = bit(rax) | bit(rdx);
+    const unsigned in = held_in(s, l);
+
+    reg_t right = reg_of(s, r, in);
     if (right == rax || right == rdx) {
-        const reg_t to = take(s, pinned | bit(left));
+        const reg_t to = take(s, pinned | in);
         move(s, right, to, 64);
         right = to;
     }
 
     for (const reg_t p : { rax, rdx })
-        if (p != left)
-            vacate(s, p, pinned | bit(left) | bit(right));
+        if (!(in & bit(p)))
+            vacate(s, p, pinned | in | bit(right));
 
+    const reg_t left = dividend(s, l);
     idiv(s, left, reg(right, t.width), t);
 
     return left;
@@ -1203,19 +1309,20 @@ pin_division(state_t &s, value_t l, value_t r, const int_t &t)
 // the object is idiv's operand, idivl -8(%rbp).  The registers of its
 // address are held values as any other: one in rax or rdx moves out
 // first, with the values held there, and the operand is formed after
-// the moves, from the registers they went to.  The dividend is held in
-// L, the register returned, and the address is the caller's to free.
+// the moves, from the registers they went to.  A dividend spilled is
+// reloaded into rax after them.  The dividend is held in L, the
+// register returned, and the address is the caller's to free.
 reg_t
 pin_division(state_t &s, value_t l, const address_t &divisor, const int_t &t)
 {
     const unsigned pinned = bit(rax) | bit(rdx);
-
-    const reg_t left = reg_of(s, l, registers_of(s, divisor));
+    const unsigned in = held_in(s, l);
 
     for (const reg_t p : { rax, rdx })
-        if (p != left)
-            vacate(s, p, pinned | bit(left) | registers_of(s, divisor));
+        if (!(in & bit(p)))
+            vacate(s, p, pinned | in | registers_of(s, divisor));
 
+    const reg_t left = dividend(s, l);
     idiv(s, left, operand(s, divisor, pinned | bit(left)), t);
 
     return left;
@@ -1224,9 +1331,10 @@ pin_division(state_t &s, value_t l, const address_t &divisor, const int_t &t)
 // / and %: the division, and the quotient or the remainder back into
 // L.  Both operands are generated by the caller in its order, the
 // divisor held or, by binary_operand(), an object's address;
-// right_operand() keeps a divisor out of rax when it can, for a dividend
-// loaded after it.  The result of a dividend that is a borrowed read is
-// a new value in rax or rdx, since L is the variable.
+// right_operand() keeps a divisor and its address out of rax and rdx
+// when it can, for a dividend loaded after it.  The result of a
+// dividend that is a borrowed read is a new value in rax or rdx, since
+// L is the variable.
 value_t
 divide(state_t &s, binary_op_t op, value_t l, const right_t &r, const int_t &t)
 {
@@ -1274,9 +1382,10 @@ count_into_cl(state_t &s, const right_t &r, reg_t right, unsigned avoid)
 // does.  A constant count is the immediate; a variable one goes to cl,
 // at the count's own width, which the parser leaves at its promoted
 // type, a value held in rcx moving out first (chapter 6.5), a register
-// variable copied there.  right_operand() generated the count where cl
-// is likely, and the left operand avoids rcx; the moves of chapter 6.5
-// remain for a value that is already there.
+// variable copied there.  binary() generated the left operand with rcx
+// reserved and right_operand() the count where cl is likely, and a
+// left operand reloaded from its spill slot avoids rcx; the moves of
+// chapter 6.5 remain for a value that is already there.
 const char *
 shift_mnemonic(binary_op_t op, bool is_signed)
 {
@@ -1466,7 +1575,9 @@ displaced(state_t &s, binary_op_t op, value_t l, const right_t &n)
 // lvalue's address plus a constant the leaq of summed()'s,
 // leaq 2(%rax,%rcx,8), %rax for m[i] + 2; and a local array plus a
 // variable index of a size the form scales the leaq of indexed()'s,
-// leaq -24(%rbp,%rcx,4), %rax for a + i.
+// leaq -24(%rbp,%rcx,4), %rax for a + i.  Otherwise the operand written
+// first is held outside the registers the other's top operator pins
+// (chapter 6.5).
 value_t
 pointer_arithmetic(state_t &s, const expr_t &e)
 {
@@ -1483,7 +1594,7 @@ pointer_arithmetic(state_t &s, const expr_t &e)
         if (const auto a = indexed(s, b, size))
             return address_of(s, *a);
 
-    const auto l = rvalue(s, *b.lhs);
+    const auto l = rvalue_avoiding(s, *b.lhs, pinned_by(*b.rhs));
 
     if (is< pointer_t >(b.lhs->type))
         return displaced(s, b.op, l, displacement(s, *b.rhs, size));
@@ -1494,13 +1605,14 @@ pointer_arithmetic(state_t &s, const expr_t &e)
 // p - q, 6.5.7p10: the difference of the addresses divided by the size,
 // a long.  G6: a division, idivq by the size held in a register, not a
 // shift, since the two pointers are any two addresses; a size of 1 is
-// the subq alone.
+// the subq alone.  The size is taken with rax and rdx reserved, as any
+// divisor is (chapter 6.5).
 value_t
 difference(state_t &s, const binary_t &b)
 {
     const long size = stride(b.lhs->type);
 
-    const auto l = rvalue(s, *b.lhs);
+    const auto l = rvalue_avoiding(s, *b.lhs, pinned_by(*b.rhs));
     const auto r = rvalue(s, *b.rhs);
     const reg_t right = operands(s, l, r).second;
     const reg_t left = writable(s, l, 64, bit(right));
@@ -1511,7 +1623,11 @@ difference(state_t &s, const binary_t &b)
     if (size == 1)
         return l;
 
+    const unsigned reserved =
+        std::exchange(s.reserved, s.reserved | bit(rax) | bit(rdx));
     const auto d = fresh(s, 64);
+    s.reserved = reserved;
+
     constant(s, reg_of(s, d), size, 64);
 
     return divide(s, binary_op_t::div, l, { .value = d, .width = 64 },
@@ -1566,12 +1682,14 @@ compare_with(state_t &s, value_t l, const expr_t &rhs, int width)
     release(s, r);
 }
 
-// cmp R, L for a relational or equality operator.  The left value
-// stays held, for setcc or for the caller to free.
+// cmp R, L for a relational or equality operator, the left value
+// generated outside the registers the right one's operator pins
+// (chapter 6.5).  The left value stays held, for setcc or for the
+// caller to free.
 value_t
 compare(state_t &s, const binary_t &b)
 {
-    const auto l = rvalue(s, *b.lhs);
+    const auto l = rvalue_avoiding(s, *b.lhs, pinned_by(*b.rhs));
     compare_with(s, l, *b.rhs, operation_width(b.lhs->type));
 
     return l;
@@ -1736,8 +1854,12 @@ binary(state_t &s, const expr_t &e)
     if (is< pointer_t >(b.lhs->type))
         return difference(s, b);
 
-    // G13: the left operand first, held while the right one is generated
-    const auto l = rvalue(s, *b.lhs);
+    // G13: the left operand first, held while the right one is
+    // generated, outside the registers the right one's operator pins and,
+    // for a shift by a variable count, outside rcx, where the count goes
+    // (chapter 6.5)
+    const unsigned own = is_shift(b.op) ? pins(b.op, *b.rhs) : 0;
+    const auto l = rvalue_avoiding(s, *b.lhs, own | pinned_by(*b.rhs));
     const auto r = binary_operand(s, b.op, *b.rhs, operation_width(e.type));
 
     return arithmetic(s, b.op, l, r, e.type);
@@ -1947,8 +2069,9 @@ assign_register(state_t &s, const assign_t &a, const symbol_t *sym)
 // into the common type the parser chose, the operation, and the store
 // of the result's low bytes back through the same address (G2).  So the
 // object is read after the right operand, as the memory form of chapter
-// 6.6 reads it.  The right operand is generated with rax reserved, so
-// that the object's load takes rax and the result is in the register a
+// 6.6 reads it.  The place is generated outside the registers
+// pinned_by() names, and the right operand with rax reserved, so that
+// the object's load takes rax and the result is in the register a
 // return or an enclosing expression takes first.  6.5.17.3p4: "with
 // respect to an indeterminately sequenced function call, the operation
 // of a compound assignment is a single evaluation."  p += n and p -= n
@@ -1968,7 +2091,7 @@ assign(state_t &s, const assign_t &a)
     if (const auto *sym = register_variable(*a.lhs))
         return assign_register(s, a, sym);
 
-    const auto place = address(s, *a.lhs);
+    const auto place = address_avoiding(s, *a.lhs, pinned_by(a));
 
     if (!a.op) {
         const auto v = rvalue(s, *a.rhs);
@@ -2165,30 +2288,14 @@ call(state_t &s, const call_t &c, const type_t &t)
     return hold(s, rax, integer(t).width);
 }
 
-// Whether the instruction written for e has a pin of its own: a call,
-// whose result is in rax (chapter 8), or a division, chapter 6.5's pin
-// on rax and rdx: / and %, /= and %=, and p - q for a size other than
-// 1.
+// Whether the instruction written for e has a pin on the register of
+// its result: a call, whose result is in rax (chapter 8), or a
+// division, chapter 6.5's pin on rax and rdx: / and %, /= and %=, and
+// p - q for a size other than 1.  A shift's pin is on its count.
 bool
 pinned(const expr_t &e)
 {
-    if (is< call_t >(e))
-        return true;
-
-    if (is< assign_t >(e)) {
-        const auto &op = as< assign_t >(e).op;
-        return op && (*op == binary_op_t::div || *op == binary_op_t::rem);
-    }
-
-    if (!is< binary_t >(e))
-        return false;
-
-    const auto &b = as< binary_t >(e);
-    if (b.op == binary_op_t::div || b.op == binary_op_t::rem)
-        return true;
-
-    return b.op == binary_op_t::sub && !is< pointer_t >(e.type) &&
-           is< pointer_t >(b.lhs->type) && stride(b.lhs->type) != 1;
+    return is< call_t >(e) || (pins(e) & bit(rax));
 }
 
 // The value of an expression in a register, its code written first.
@@ -2329,10 +2436,11 @@ condition_on(state_t &s,
 // copied, testl %eax, %ebx, and a constant R is the immediate,
 // testl $1, %eax.  The operands are generated as the row of & generates
 // them, an object in memory as R the instruction's operand,
-// testl -8(%rbp), %eax (binary_operand()), and all are consumed.  An
-// object in memory and a constant are test $c, obj, condition_on()'s.
-// The Seventh Edition compiler's cctab has the PDP-11's bit for &
-// (cc81).
+// testl -8(%rbp), %eax (binary_operand()), the left operand outside the
+// registers the right one's operator pins (chapter 6.5), and all are
+// consumed.  An object in memory and a constant are test $c, obj,
+// condition_on()'s.  The Seventh Edition compiler's cctab has the
+// PDP-11's bit for & (cc81).
 void
 test(state_t &s, const binary_t &b, int width)
 {
@@ -2344,7 +2452,7 @@ test(state_t &s, const binary_t &b, int width)
         return;
     }
 
-    const auto l = rvalue(s, *b.lhs);
+    const auto l = rvalue_avoiding(s, *b.lhs, pinned_by(*b.rhs));
     const auto r = binary_operand(s, b.op, *b.rhs, width);
 
     if (!r.immediate.empty()) {
@@ -2561,9 +2669,9 @@ arithmetic_on(state_t &s,
 // for shift(); sar for a signed object and shr for an unsigned one.
 // G3: the instruction masks the count to 5 bits at 8, 16 and 32 bits,
 // as the promoted operation does, and the low bits of its result are
-// the narrow shift's.  right_operand() generated the count where cl is
-// likely, and the moves of chapter 6.5 remain for a count that is
-// already elsewhere.
+// the narrow shift's.  modify() generated the place with rcx reserved
+// and right_operand() the count where cl is likely, and the moves of
+// chapter 6.5 remain for a value that is already there.
 void
 shift_on(state_t &s,
          binary_op_t op,
@@ -2626,10 +2734,11 @@ displaced_on(state_t &s,
 }
 
 // A compound assignment for its effect, on an object in memory: the
-// address, then the one instruction on the object.  False for a
-// register variable, whose operation is in place already, and for *=,
-// /= and %=, which keep the load, the operation and the store: imul
-// has no memory destination, and idiv none at all.
+// address, outside the registers pinned_by() names, then the one
+// instruction on the object.  False for a register variable, whose
+// operation is in place already, and for *=, /= and %=, which keep the
+// load, the operation and the store: imul has no memory destination,
+// and idiv none at all.
 bool
 modify(state_t &s, const assign_t &a)
 {
@@ -2642,7 +2751,7 @@ modify(state_t &s, const assign_t &a)
         return false;
 
     const auto &t = integer(a.lhs->type);
-    const auto place = address(s, *a.lhs);
+    const auto place = address_avoiding(s, *a.lhs, pinned_by(a));
 
     if (op == binary_op_t::shl || op == binary_op_t::shr)
         shift_on(s, op, place, *a.rhs, t);

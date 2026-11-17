@@ -284,7 +284,8 @@ and frees it when the value is consumed. `rax` is taken first so
 that the result of an expression statement, a return value and a
 dividend tend to be where they are needed. The pinned instructions
 of 3.1 and the argument registers of 3.2 are inside this set, and
-chapter 6 and chapter 8 say how the generator moves around them.
+chapter 6 and chapter 8 say how the generator chooses around them,
+and moves a value when it cannot.
 
 **`rsp`.** The stack pointer, and nothing else.
 
@@ -367,7 +368,11 @@ operand of an object in memory (below), or a register, into which
 it is generated; the instruction for the operator is written as
 `op R, L`; `R` is freed; the result is `L`. Every operator of the
 table is written exactly once per node, and nothing looks at a
-node's neighbours.
+node's neighbours, with one exception. A node whose right operand's
+top operator is a division or a shift by a variable count generates
+its left operand outside the registers that instruction pins (6.5).
+The machine pins those registers, and what the node chooses is a
+register's name, not the order of evaluation.
 
 The left-first order is G13 and is not negotiable for register
 pressure: `f() + g()` calls `f` first. A commutative operator's
@@ -688,41 +693,110 @@ table that looks at a constant's value.
 
 ### 6.5 The pinned instructions
 
-A division needs its dividend in `rax` and `rdx` free; a variable
-shift needs its count in `cl`. The generator is holding values in
-the expression registers, possibly in those three. The rule: before
-the pinned instruction, each of the pinned registers that holds a
-live value other than the operand is moved to a free register by
-`mov`, the operands are moved into place, the instruction is written,
-the result is moved into `L`, and the displaced values stay where
-they went; the generator's map of which value is in which register is
-updated and nothing else cares.
-A shift's count is generated with `rax` held out of the choice, in
-the value and the effect context alike, so its load takes `rcx` when
-it is free, and a left operand reloaded from its spill slot avoids
-`rcx`; a division or a call inside the count keeps its own pin, and
-the moves remain for a value that is already elsewhere. A divisor is
-generated the same way, so that a dividend loaded after it, as a
-compound assignment's is, finds `rax`: `x /= e` is the load of `e`
+A division needs its dividend in `rax` and writes `rdx`; a shift by
+a variable count needs its count in `cl`. A value takes the lowest
+free register when it is generated, before the generator meets the
+instruction that consumes it, so a value would stand in a pinned
+register when the instruction comes, and moves would repair the
+choice. Two rules choose the registers' names up front instead. Each
+is a reservation in `take()`: the reserved registers are left for
+last, and taken when no other is free, so a reservation is an
+avoidance, not a pin. Neither changes the order of evaluation, nor
+the order and the count of the reads and writes of any object (G13).
+
+**A node chooses for its own operands.** The node of a pinned
+instruction knows its registers:
+
+- a divisor is generated with `rax` and `rdx` reserved, and so is
+  the address of a divisor in memory, its base and its index;
+- the left operand of a shift by a variable count is generated with
+  `rcx` reserved, so that the count finds it; the count is generated
+  with `rax` reserved, in the value and the effect context alike, and
+  takes `rcx` whatever a node around the shift reserves, since the
+  instruction consumes it;
+- the place of `/=` and `%=`, the address the object is read and
+  written through, is generated with `rax` and `rdx` reserved, and
+  the place of `<<=` and `>>=` by a variable count with `rcx`;
+- a dividend reloaded from its spill slot (6.2) is reloaded into
+  `rax`, after `rax` is vacated, and not into another register to be
+  moved again; a shift's left operand reloaded so avoids `rcx`.
+
+The right operand of every compound assignment on an object in
+memory is generated with `rax` reserved, so that the object's load
+takes it and the result is in the register a `return` or an
+enclosing expression takes first. `x /= e` is thus the load of `e`
 into `ecx`, the load of `x` into `eax`, `cltd`, `idivl %ecx` and the
-store. The right operand of any other compound assignment on an
-object in memory is generated with `rax` held out of the choice too,
-so that the object's load takes it and the result is in the register
-a `return` or an enclosing expression takes first. Every
-instruction written is a real move of a real value and shows in the
-listing; the cost model's row for a division with `rax` and `rdx`
-busy says what it costs (`div-busy`).
+store, and `p[i] /= d` loads `p` into `rcx`, `i` into `rsi`, `d`
+into `edi` and the element into `eax`, and moves nothing (`pinned`).
+
+The rule is the Seventh Edition compiler's. Its `cexpr()`, in
+`c10.c`, chooses the register of a node's value from the node's own
+operator before it expands the table's row, by `oddreg()` in
+`c11.c`. A division, a remainder, their assignments, the pointer
+difference and an unsigned right shift work on an even-odd pair, and
+take the odd register of the first pair at or above the first free
+register; a long shift takes the pair's even register. The row loads
+the dividend into the odd register and divides the pair, and the
+row's end steps a quotient back to the even register, where `div`
+leaves it.
+
+**A node holds out what its right operand pins.** This is the one
+exception to 6.1's "nothing looks at a node's neighbours", and the
+machine is its reason: x86 pins these registers, and the node chooses
+a register's name, not the order. A node whose right operand's top
+operator is a division generates its left operand with `rax` and
+`rdx` reserved, and an assignment so generates its place; a shift by
+a variable count as the top operator does the same with `rcx`.
+
+- A division is `/` and `%`, `/=` and `%=` for their value, and
+  `p - q` for a size other than 1; a shift by a variable count is
+  `<<` and `>>`, and `<<=` and `>>=`, by a count that is no constant.
+- The top operator is read through a cast, which converts in its
+  operand's register and pins nothing.
+- The node is any binary operator that holds its left operand while
+  its right one is generated: the arithmetic and bitwise operators,
+  the comparisons, the addition of a subscript or of a pointer and an
+  integer, and an assignment, simple or compound, for its place.
+- A register variable is not steered: its read is its register
+  (chapter 4). Nor is a call: it spills every held value on entry
+  (6.7), and its result is in `rax` by the convention.
+
+So `a + b / c` loads `a` into `ecx` and `b` into `eax`, divides by
+`c`'s slot, `cltd; idivl -12(%rbp)`, and adds, `addl %eax, %ecx`
+(`div-busy`), and `a[i] = (x >> 16) % 256` on a global array forms
+the address in `rcx` and `rsi` and shifts and divides `x` in `eax`
+(`pinned`). The rule has no counterpart in the Seventh Edition
+compiler, since the PDP-11's `div` takes any even-odd pair: `oddreg()`
+takes the pair above the registers the enclosing nodes hold, and no
+held value is in its way.
+
+**When the moves are written.** The rule reads the top operator
+alone, so a programmer applies it to the source: a division or a
+shift deeper in the right operand changes nothing, and `a + (b / c +
+1)` holds `a` in `rax`. A reservation is not met when no other
+register is free, and a value that is itself pinned, a call's result
+or a quotient, is where its own instruction left it. Then, before the
+pinned instruction, each of the pinned registers that holds a live
+value other than the operand is moved to a free register by `mov`, or
+the oldest held value is spilled when none is free (6.2); the
+operands are moved into place, the instruction is written, the result
+is moved into `L`, and the displaced values stay where they went. The
+generator's map of which value is in which register is updated and
+nothing else cares. Every instruction written is a real move of a
+real value and shows in the listing; the cost model's row for a
+division with `rax` and `rdx` busy says what it costs (`div-busy`).
+The remainder's move from `rdx` into the dividend's register, and the
+quotient's when the dividend is not in `rax`, are 6.1's "the result
+is `L`", and the rules do not remove them.
 
 A divisor that is an object in memory is the division's operand,
-`idivl -8(%rbp)` (6.1). Its address is generated with `rax` held out
-of the choice, as a divisor is, and its registers, a base and an
+`idivl -8(%rbp)` (6.1). The registers of its address, a base and an
 index, are live values as any other: one in `rax` or `rdx` moves out
 first with the values held there, and the operand is formed after the
-moves, from the registers they went to. With `a` in `eax`, `b` in
-`ecx` and `p` loaded into `rdx`, the only register left, `a + b / *p`
-is `movq %rax, %rsi; movq %rdx, %rdi; movl %ecx, %eax; cltd; idivl
-(%rdi)` (`operand`). A call's result in `rax` as the base, `a /
-f()[i]`, moves out the same way.
+moves, from the registers they went to. A call's result in `rax` as
+the base, `a % f()[i]`, moves out so, `movq %rax, %rsi`, and `a`,
+spilled at the call, is reloaded into `rax`, then `cltd; idivl
+(%rsi,%rcx,4)` (`pinned`).
 
 ### 6.6 The effect context
 

@@ -315,6 +315,26 @@ TYPES(DECLARE_WIDEN_ALL)
 
 TYPES(DECLARE_OPERANDS)
 
+#define DECLARE_PINNED(T, N, name, op, aop)                             \
+    BOTH(long, pa_##name##_##N, (T, T, T))                              \
+    BOTH(long, pc_##name##_##N, (T, T, T))                              \
+    BOTH(long, ps_##name##_##N, (T *, T, T))                            \
+    BOTH(long, pg_##name##_##N, (T, T, T))                              \
+    BOTH(long, pl_##name##_##N, (T, T, T, int))                         \
+    BOTH(long, pp_##name##_##N, (T *, T, T, int))                       \
+    BOTH(long, pr_##name##_##N, (T, T, int))                            \
+    BOTH(long, pkl_##name##_##N, (T, T))                                \
+    BOTH(long, pkx_##name##_##N, (T, T, int))                           \
+    BOTH(long, pkp_##name##_##N, (T *, T, int))                         \
+    BOTH(long, pkg_##name##_##N, (T, T, int))                           \
+    BOTH(long, pd_##name##_##N, (T *, T, T, T, int))                    \
+    BOTH(long, pq_##name##_##N, (T *, T, int))                          \
+    BOTH(long, pf_##name##_##N, (T, T, T, T, T, T, T, T, T, T))         \
+    BOTH(long, pe_##name##_##N, (T, T, T, T, T))
+#define DECLARE_PINNED_ALL(T, N) PINNED_OPERATORS(DECLARE_PINNED, T, N)
+
+PINNED_TYPES(DECLARE_PINNED_ALL)
+
 BOTH(long, text_pass, (void))
 BOTH(long, text_two, (void))
 BOTH(long, text_escapes, (void))
@@ -713,6 +733,64 @@ TYPES(TEST_WIDEN_ALL)
 
 TYPES(TEST_OPERANDS)
 
+/* the pinned rows of one type, over pairs of the table: x the divisor
+   or the count, kept from 0 and -1 for a division and below the
+   promoted width for a shift, y the dividend or the value shifted, z a
+   third operand; P(T) holds x, so the divisor or the count read
+   through p is x too, and i is 0 to 3.  A subscript is checked where
+   its index, computed here, is -4 to 4 through P(T), and 0 to 3 into
+   the global array. */
+#define PINS(T, op, v, width)                                           \
+    (DIVIDES(op) ? DIVISOR(T, v) : (v) >= 0 && (v) < (width))
+
+#define TEST_PINNED(T, N, name, op, aop)                                \
+    if (PINS(T, op, x, width)) {                                        \
+        const long k = (long) ((T) y op (T) x);                         \
+                                                                        \
+        CHECK(pa_##name##_##N, x, y, ((T) z, (T) y, (T) x));            \
+        CHECK(pc_##name##_##N, x, y, ((T) z, (T) y, (T) x));            \
+        if (k >= -4 && k <= 4)                                          \
+            MCHECK(ps_##name##_##N, x, y, at, (P(T), (T) y, (T) x));    \
+        if (k >= 0 && k <= 3)                                           \
+            CHECK(pg_##name##_##N, x, y, ((T) z, (T) y, (T) x));        \
+        CHECK(pl_##name##_##N, x, y, ((T) z, (T) y, (T) x, n));         \
+        MCHECK(pp_##name##_##N, x, y, at, (P(T), (T) y, (T) x, n));     \
+        CHECK(pr_##name##_##N, x, y, ((T) y, (T) x, n));                \
+        CHECK(pkl_##name##_##N, x, y, ((T) y, (T) x));                  \
+        CHECK(pkx_##name##_##N, x, y, ((T) y, (T) x, n));               \
+        MCHECK(pkp_##name##_##N, x, y, at, (P(T), (T) x, n));           \
+        CHECK(pkg_##name##_##N, x, y, ((T) y, (T) x, n));               \
+        MCHECK(pd_##name##_##N, x, y, at, (P(T), (T) z, (T) y, (T) x, 0)); \
+        MCHECK(pq_##name##_##N, x, y, at, (P(T), (T) y, 0));            \
+        CHECK(pf_##name##_##N, x, y,                                    \
+              ((T) (z + 1), (T) (z + 2), (T) (z + 3), (T) (z + 4),      \
+               (T) (z + 5), (T) (z + 6), (T) (z + 7), (T) z, (T) y,     \
+               (T) x));                                                 \
+        CHECK(pe_##name##_##N, x, y,                                    \
+              ((T) z, (T) (z + 1), (T) (z + 2), (T) y, (T) x));         \
+    }
+
+#define TEST_PINNED_ALL(T, N)                                           \
+    static void test_pinned_##N(void)                                   \
+    {                                                                   \
+        const int width = (int) (sizeof(+(T) 0) * CHAR_BIT);            \
+                                                                        \
+        for (int j = 0; j < COUNT; ++j) {                               \
+            const long x = values[j];                                   \
+                                                                        \
+            for (int i = 0; i < COUNT; ++i) {                           \
+                const long y = values[i];                               \
+                const long z = values[(i * 5 + j + 1) % COUNT];         \
+                const int at = offsets[(i + j) % OFFSETS];              \
+                const int n = (i + j) & 3;                              \
+                                                                        \
+                PINNED_OPERATORS(TEST_PINNED, T, N)                     \
+            }                                                           \
+        }                                                               \
+    }
+
+PINNED_TYPES(TEST_PINNED_ALL)
+
 /* the literals, the frames of one function each, and depth */
 static void
 test_rest(void)
@@ -783,6 +861,9 @@ main(void)
     test_folds_##N(); test_indexed_##N(); test_summed_##N();            \
     test_widen_##N(); test_operands_##N();
     TYPES(RUN)
+
+#define RUN_PINNED(T, N) test_pinned_##N();
+    PINNED_TYPES(RUN_PINNED)
 
     test_rest();
 

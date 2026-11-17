@@ -358,17 +358,13 @@ divide_busy:
 	movl	%edi, -4(%rbp)
 	movl	%esi, -8(%rbp)
 	movq	%rdx, -16(%rbp)
-	movl	-4(%rbp), %eax
-	movl	-8(%rbp), %ecx
-	movq	-16(%rbp), %rdx
-	movq	%rax, %rsi
-	movq	%rdx, %rdi
-	movl	%ecx, %eax
+	movl	-4(%rbp), %ecx
+	movl	-8(%rbp), %eax
+	movq	-16(%rbp), %rsi
 	cltd
-	idivl	(%rdi)
-	movl	%eax, %ecx
-	addl	%ecx, %esi
-	movl	%esi, %eax
+	idivl	(%rsi)
+	addl	%eax, %ecx
+	movl	%ecx, %eax
 	jmp	.Ldivide_busy.1
 .Ldivide_busy.1:
 	leave

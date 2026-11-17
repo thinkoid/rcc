@@ -19,15 +19,12 @@ invariant:
 	movl	-20(%rbp), %eax
 	cmpl	-12(%rbp), %eax
 	jge	.Linvariant.4
-	movl	-16(%rbp), %eax
-	movl	-4(%rbp), %ecx
-	movq	%rax, %rsi
-	movl	%ecx, %eax
+	movl	-16(%rbp), %ecx
+	movl	-4(%rbp), %eax
 	cltd
 	idivl	-8(%rbp)
-	movl	%eax, %ecx
-	addl	%ecx, %esi
-	movl	%esi, -16(%rbp)
+	addl	%eax, %ecx
+	movl	%ecx, -16(%rbp)
 .Linvariant.3:
 	movl	-20(%rbp), %eax
 	addl	$1, %eax
