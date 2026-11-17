@@ -828,9 +828,9 @@ the operation's width, is the instruction's own operand (`backend.md`
 	idivl	-8(%rbp)
 ```
 
-In a condition, where no value is wanted, an object in memory against
-a constant is the instruction on the object (`backend.md` 7.1). So
-`test()` is:
+In a condition, and in a comparison for its value, an object in
+memory against a constant is the instruction on the object
+(`backend.md` 7.1). So `test()` is:
 
 ```
 	cmpl	$0, -4(%rbp)
@@ -889,18 +889,25 @@ Where the form does not apply:
   += e` reads `e` before `x` (G13);
 - a global the file only declares is reached through its address
   from the GOT, the global offset table, which is a load of its own;
-- in a condition an object is compared in place only against a
-  constant, which has no evaluation: `g < f()` loads `g` before the
-  call, since `f` may write `g`.
+- an index that pointer arithmetic scales is in a register, the
+  index of `leaq (%rax,%rcx,4), %rax` or of the `imulq` before the
+  `add`;
+- an object as the left operand is the instruction's own only
+  against a constant, which has no evaluation: `g < f()` loads `g`
+  before the call, since `f` may write `g`;
+- `4 * x` holds the 4 first, as the source orders it, `movl $4,
+  %eax; imull -4(%rbp), %eax`.
 
-Four rows beside the rule still load their operand: pointer
-arithmetic, a cast that changes signedness alone, a comparison with a
-constant for its value, and a multiply by a constant. `return x < 5;`
-is `movl -4(%rbp), %eax; cmpl $5, %eax` where `if (x > 5)` is `cmpl
-$5, -4(%rbp)`, and `x * 4` is the load and `imull $4, %eax, %eax`.
-With the constant written first, `if (5 < x)` loads the 5, `movl $5,
-%eax; cmpl -4(%rbp), %eax`. The queue holds the four rows and the
-constant written first.
+Four rows beside the arithmetic take the form too. Pointer arithmetic
+names the operand its `add` or `sub` takes as it is: `p - q` is `subq
+-16(%rbp), %rax`, and `p + n` on a `char *` is `addq -16(%rbp),
+%rax`. A cast that changes the signedness alone writes no
+instruction, so in `u + i` the `int` is the `addl`'s operand, `addl
+-8(%rbp), %eax`. A comparison with a constant for its value is the
+`cmp` of the object, as the condition's is: `return x < 5;` is `cmpl
+$5, -4(%rbp); setl %al`, and `return 5 < x;` the mirrored `cmpl $5,
+-4(%rbp); setg %al`. A multiply by a constant is the three-operand
+`imul` with the object as its source, `imull $4, -4(%rbp), %eax`.
 
 The form moved 54 x86-64 pins, 3224 instruction lines to 3072: 78
 loads of a right operand, 65 of a left one, three moves of a divisor,

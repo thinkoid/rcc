@@ -17,3 +17,16 @@
 TYPES(WIDE_RESULT)
 
 long id(long a) { return a + SKEW; }
+
+/* the objects pointers.c only declares: a pointer of each pointee of
+   POINTER_TYPES and an index of each type of LONG_INDEXES */
+#define POINTER_TYPE(E, T, R) typedef T (*ptr_##E) R;
+
+POINTER_TYPES(POINTER_TYPE)
+
+#define POINTER_DECLARED(E, T, R) ptr_##E q_##E##_declared;
+
+POINTER_TYPES(POINTER_DECLARED)
+
+long n_l_declared;
+unsigned long n_ul_declared;

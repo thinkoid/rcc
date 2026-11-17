@@ -19,8 +19,7 @@ main:
 	leaq	-8(%rbp), %rax
 	movq	%rax, -32(%rbp)
 	movq	-32(%rbp), %rax
-	movq	-24(%rbp), %rcx
-	addq	%rcx, %rax
+	addq	-24(%rbp), %rax
 	movl	$3, (%rax)
 	movl	-12(%rbp), %eax
 	jmp	.Lmain.1

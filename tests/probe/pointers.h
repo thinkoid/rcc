@@ -6,7 +6,9 @@
    compares the results and the bytes of the memory they wrote.
    Pointer arithmetic and the subscript, docs/aarch64.md 6.3's rows of
    p[i], &p[i], p + n and p - q and the paragraphs on the index under
-   the table; the frame of 5.3, depth of 6.2, G6 and G7 of chapter 9. */
+   the table, and an object in memory as the right operand of p - q,
+   p + n, p - n and n + p, backend.md 6.1; the frame of 5.3, depth of
+   6.2, G6 and G7 of chapter 9. */
 
 /* the integer types, of an index, and the letter each takes in a
    function's name */
@@ -85,6 +87,17 @@
     X(E, T, S, 255, 255) X(E, T, S, 257, 257) X(E, T, S, 4097, 4097)    \
     X(E, T, S, m1, -1) X(E, T, S, m3, -3) X(E, T, S, m255, -255)        \
     X(E, T, S, m257, -257)
+
+/* The pointees of POINTEES once more, each with the suffix that makes
+   (*x) a pointer to it, (*x)[3] to a row of three ints, for a pointer
+   declared as an object: a local, a global, an element of an array. */
+#define POINTER_TYPES(X)                                                \
+    X(c, char, ) X(s, short, ) X(i, int, ) X(l, long, )                 \
+    X(r3, char, [3]) X(r12, int, [3]) X(r40, long, [5])
+
+/* the indexes of 64 bits, which p + n and p - n take as they are,
+   crossed with one entry of POINTER_TYPES */
+#define LONG_INDEXES(X, E) X(E, long, l) X(E, unsigned long, ul)
 
 /* eight long parameters, the convention's registers on aarch64 */
 #define P8(T) T a, T b, T c, T d, T e, T f, T g, T h

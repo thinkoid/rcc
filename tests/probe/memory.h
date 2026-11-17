@@ -13,7 +13,9 @@
    load, (T) a's row, an element by a subscript among them; an object
    in memory as an operator's right operand and as a condition's
    object, backend.md 6.1 and 7.1, by a name the file only declares,
-   through a pointer and by a subscript; the frame of 5.3, depth of
+   through a pointer and by a subscript, and the rows beside it: an
+   object under a cast that keeps its bits, a comparison's value with a
+   constant and a multiply by a constant; the frame of 5.3, depth of
    6.2, the pinned division and shift of 6.5 under each kind of node,
    G7, G8, G10 and G11 of chapter 9 and the literals of chapter 10. */
 
@@ -91,3 +93,42 @@
     X(T, N, 7fff, 0x7fff) X(T, N, 12345, 0x12345)                       \
     X(T, N, 89abcdef, 0x89abcdef) X(T, N, m100000, -100000)             \
     X(T, N, high, 0x1234000000000000) X(T, N, all, 0x123456789abcdef0)
+
+/* The four rows beside the operand in memory, backend.md 6.1: an
+   object read under a cast that keeps its bits, a comparison's value
+   and a multiply by a constant.  Row b's pairs: the type an operation
+   is in, the type of the object read under a cast to it, the letter
+   of the object's globals and a name; an int under unsigned and back,
+   a long under unsigned long and back, a pointer under long and under
+   unsigned long. */
+#define RECASTS(X)                                                      \
+    X(unsigned, int, i, ui) X(int, unsigned, u, iu)                     \
+    X(unsigned long, long, l, ull) X(long, unsigned long, ul, lul)      \
+    X(long, char *, pc, lpc) X(unsigned long, int *, pi, ulpi)          \
+    X(long, long *, pl, lpl)
+
+/* the operators of MEMORY_OPERATORS and the six comparisons, each X
+   given the arguments of the list's own first and then a name and the
+   operator */
+#define OPERATORS_OF(X, ...)                                            \
+    X(__VA_ARGS__, add, +) X(__VA_ARGS__, sub, -)                       \
+    X(__VA_ARGS__, mul, *) X(__VA_ARGS__, div, /)                       \
+    X(__VA_ARGS__, rem, %) X(__VA_ARGS__, and, &)                       \
+    X(__VA_ARGS__, or, |) X(__VA_ARGS__, xor, ^)                        \
+    COMPARISONS_OF(X, __VA_ARGS__)
+
+#define COMPARISONS_OF(X, ...)                                          \
+    X(__VA_ARGS__, lt, <) X(__VA_ARGS__, le, <=)                        \
+    X(__VA_ARGS__, gt, >) X(__VA_ARGS__, ge, >=)                        \
+    X(__VA_ARGS__, eq, ==) X(__VA_ARGS__, ne, !=)
+
+/* the pointers row c compares with the null pointer: the type and the
+   letter of its globals */
+#define POINTERS(X) X(char *, pc) X(int *, pi) X(long *, pl)
+
+/* the constant of x * c: a name and the constant; those an imul
+   immediate holds, and one it does not, which keeps the load */
+#define FACTORS(X, T, N)                                                \
+    X(T, N, 4, 4) X(T, N, m3, -3) X(T, N, 1000, 1000)                   \
+    X(T, N, max, 0x7fffffff) X(T, N, min, -0x7fffffff - 1)              \
+    X(T, N, big, 0x123456789)

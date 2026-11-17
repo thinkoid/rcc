@@ -721,9 +721,9 @@ its size out as before; the run under the pipeline is its 4.1.
 
 **Finding 2, the strength reduction**, has no place to happen. c1
 writes the instruction of its table for the operator, whatever the
-constant: `x * 4` is `imull $4, %eax, %eax`, and an unsigned `x / 4`
-is `movl $4, %ecx; xorl %edx, %edx; divl %ecx`, the remainder of
-`x % 4` then moved from `edx` (`backend.md` 6.4). No code in the
+constant: `x * 4` is `imull $4, -4(%rbp), %eax`, and an unsigned
+`x / 4` is `movl $4, %ecx; xorl %edx, %edx; divl %ecx`, the remainder
+of `x % 4` then the value in `edx` (`backend.md` 6.4, 6.5). No code in the
 table looks at a constant's value. No cost row pins the three yet;
 the queue holds the entry.
 

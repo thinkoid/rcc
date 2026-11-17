@@ -1042,6 +1042,185 @@ null_left:
 	ret
 	.cfi_endproc
 	.size	null_left, .-null_left
+	.globl	pointer_operand
+	.type	pointer_operand, @function
+pointer_operand:
+	.cfi_startproc
+	sub	sp, sp, #64
+	.cfi_def_cfa_offset 64
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -64
+	.cfi_offset w30, -56
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	x1, [x29, #24]
+	str	x2, [x29, #32]
+	str	x3, [x29, #40]
+	str	x4, [x29, #48]
+	ldr	x0, [x29, #16]
+	ldr	x1, [x29, #24]
+	sub	x0, x0, x1
+	ldr	x1, [x29, #32]
+	ldr	x2, [x29, #40]
+	sub	x1, x1, x2
+	mov	x2, #4
+	sdiv	x1, x1, x2
+	add	x0, x0, x1
+	ldr	x1, [x29, #16]
+	ldr	x2, [x29, #48]
+	add	x1, x1, x2
+	ldr	x2, [x29, #24]
+	sub	x1, x1, x2
+	add	x0, x0, x1
+	ldr	x1, [x29, #32]
+	ldr	x2, [x29, #48]
+	add	x1, x1, x2, lsl #2
+	ldr	x2, [x29, #40]
+	sub	x1, x1, x2
+	mov	x2, #4
+	sdiv	x1, x1, x2
+	add	x0, x0, x1
+	b	.Lpointer_operand.1
+.Lpointer_operand.1:
+	.cfi_def_cfa wsp, 64
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #64
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	pointer_operand, .-pointer_operand
+	.globl	signedness
+	.type	signedness, @function
+signedness:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	str	w1, [x29, #20]
+	str	x2, [x29, #24]
+	str	w3, [x29, #32]
+	ldr	w0, [x29, #16]
+	ldr	w1, [x29, #20]
+	add	w0, w0, w1
+	ldr	w1, [x29, #16]
+	ldr	w2, [x29, #20]
+	cmp	w1, w2
+	cset	w1, lo
+	add	w0, w0, w1
+	ldr	w1, [x29, #16]
+	ldr	w2, [x29, #20]
+	mul	w1, w1, w2
+	add	w0, w0, w1
+	ldr	w1, [x29, #16]
+	ldr	w2, [x29, #20]
+	udiv	w1, w1, w2
+	add	w0, w0, w1
+	ldr	x1, [x29, #24]
+	ldrsw	x2, [x29, #32]
+	add	x1, x1, x2
+	add	x0, x0, x1
+	b	.Lsignedness.1
+.Lsignedness.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	signedness, .-signedness
+	.globl	comparison_value
+	.type	comparison_value, @function
+comparison_value:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	str	w1, [x29, #20]
+	str	w2, [x29, #24]
+	str	w3, [x29, #28]
+	ldr	w0, [x29, #16]
+	cmp	w0, #5
+	cset	w0, lt
+	ldr	w1, [x29, #20]
+	cmp	w1, #5
+	cset	w1, hs
+	add	w0, w0, w1
+	ldr	w1, [x29, #16]
+	ldr	w2, [x29, #24]
+	cmp	w1, w2
+	cset	w1, lt
+	add	w0, w0, w1
+	ldr	w1, [x29, #20]
+	ldr	w2, [x29, #28]
+	cmp	w1, w2
+	cset	w1, hi
+	add	w0, w0, w1
+	b	.Lcomparison_value.1
+.Lcomparison_value.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	comparison_value, .-comparison_value
+	.globl	by_constant
+	.type	by_constant, @function
+by_constant:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	str	x1, [x29, #24]
+	ldr	w0, [x29, #16]
+	mov	w1, #4
+	mul	w0, w0, w1
+	ldr	w1, [x29, #16]
+	mov	w2, #-3
+	mul	w1, w1, w2
+	add	w0, w0, w1
+	mov	w1, #4
+	ldr	w2, [x29, #16]
+	mul	w1, w1, w2
+	add	w0, w0, w1
+	sxtw	x0, w0
+	ldr	x1, [x29, #24]
+	mov	x2, #1000
+	mul	x1, x1, x2
+	add	x0, x0, x1
+	b	.Lby_constant.1
+.Lby_constant.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	by_constant, .-by_constant
 	.bss
 	.globl	defined
 	.type	defined, @object

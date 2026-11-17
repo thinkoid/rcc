@@ -1,10 +1,17 @@
 /* The pointers probe: pointer arithmetic and the subscript, in rcc's
    C, for docs/aarch64.md 6.3's rows of p[i] to p - q, the index under
-   the table, G6 and G7.  A pointer result is returned as a char *,
+   the table, G6 and G7, and an object in memory as the right operand
+   of pointer arithmetic, backend.md 6.1.  A pointer result is returned as a char *,
    since a pointer to a row has no type name in rcc's C; the cast is
    no instruction.  See pointers.h. */
 
 #include "pointers.h"
+
+/* ptr_<pointee>, the type of a pointer to each pointee of
+   POINTER_TYPES: ptr_c is char *, ptr_r12 is int (*)[3] */
+#define POINTER_TYPE(E, T, R) typedef T (*ptr_##E) R;
+
+POINTER_TYPES(POINTER_TYPE)
 
 /* pointers-lib.c: wide_<n> is a long behind a declaration of the type,
    so its result is stale above the type's width; id() is a call */
@@ -367,3 +374,69 @@ long call_local(int i, long v)
 }
 
 char *call_add(short *p, long n) { return (char *) (p + id(n)); }
+
+/* p - q, p + n, p - n and n + p with the right operand an object in
+   memory, on x86-64 the add's or the sub's own operand where the
+   instruction takes it as it is, backend.md 6.1 and 6.3: at a size of
+   1 for n, at any size for q, and at a size of 1 or one no addressing
+   form scales by for p of n + p.  FORMS makes five functions of f,
+   each returning EXPR(a, o) of an object o of type U holding v, in one
+   form: a local, _loc; a global the file defines, _def; one it only
+   declares, _dec; *r, _ptr, r a local pointer to a local; and a local
+   array's element by a variable index, _idx.  The parameter is
+   ARITH's and POINTER's own. */
+#define FORMS(f, A, U, G, EXPR)                                         \
+    long f##_loc(A a, U v)                                              \
+    {                                                                   \
+        U x = v;                                                        \
+        return (long) EXPR(a, x);                                       \
+    }                                                                   \
+    long f##_def(A a, U v)                                              \
+    {                                                                   \
+        G##_defined = v;                                                \
+        return (long) EXPR(a, G##_defined);                             \
+    }                                                                   \
+    long f##_dec(A a, U v)                                              \
+    {                                                                   \
+        G##_declared = v;                                               \
+        return (long) EXPR(a, G##_declared);                            \
+    }                                                                   \
+    long f##_ptr(A a, U v)                                              \
+    {                                                                   \
+        U x = v;                                                        \
+        U *r = &x;                                                      \
+        return (long) EXPR(a, *r);                                      \
+    }                                                                   \
+    long f##_idx(A a, U v)                                              \
+    {                                                                   \
+        int i = 2;                                                      \
+        U x[4];                                                         \
+        x[i] = v;                                                       \
+        return (long) EXPR(a, x[i]);                                    \
+    }
+
+#define PLUS(a, o) ((a) + (o))
+#define MINUS(a, o) ((a) - (o))
+
+/* the globals of the objects: a pointer of each pointee, an index of
+   each type of LONG_INDEXES; the declared ones pointers-lib.c's */
+#define POINTER_GLOBALS(E, T, R)                                        \
+    ptr_##E q_##E##_defined;                                            \
+    extern ptr_##E q_##E##_declared;
+
+POINTER_TYPES(POINTER_GLOBALS)
+
+long n_l_defined;
+unsigned long n_ul_defined;
+extern long n_l_declared;
+extern unsigned long n_ul_declared;
+
+#define INDEX_OBJECTS(E, I, N)                                          \
+    FORMS(mem_add_##E##_##N, ptr_##E, I, n_##N, PLUS)                   \
+    FORMS(mem_sub_##E##_##N, ptr_##E, I, n_##N, MINUS)                  \
+    FORMS(mem_radd_##E##_##N, I, ptr_##E, q_##E, PLUS)
+#define OBJECTS(E, T, R)                                                \
+    FORMS(mem_diff_##E, ptr_##E, ptr_##E, q_##E, MINUS)                 \
+    LONG_INDEXES(INDEX_OBJECTS, E)
+
+POINTER_TYPES(OBJECTS)

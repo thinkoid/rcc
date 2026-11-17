@@ -14,13 +14,18 @@
    constant_left_register of a register variable, constant_left_value
    for its value, and null_left is 0 == p: a constant on the left is
    taken as the constant on the right, the comparison mirrored
-   (backend.md 6.1).  Beside them,
-   char_operand, widened, compound, compound_value, shift_count,
-   times_four and before_call keep the load: a char promoted, an int
-   widened to long, a compound assignment's right operand for its
-   effect and for its value, a shift's count, a multiply by a constant
-   and a right operand that is a call, which may write the global
-   loaded before it.
+   (backend.md 6.1).  times_four is a multiply by a constant of an
+   object in memory.  pointer_operand writes p - q and p + n at a
+   stride of 1 and of 4, signedness u + i, u < i, u * i and u / i on an
+   int under the cast to unsigned, and a widening cast beside them,
+   comparison_value a comparison's value against a constant and against
+   an object, signed and unsigned, and by_constant x * 4, x * -3, 4 * x
+   and a long by a constant.  Beside them, char_operand, widened,
+   compound, compound_value, shift_count and before_call keep the load:
+   a char promoted, an int widened to long, a compound assignment's
+   right operand for its effect and for its value, a shift's count and
+   a right operand that is a call, which may write the global loaded
+   before it.
 
    On x86-64 the listing must show each right operand as the
    instruction's operand, after the left operand's load and with no load
@@ -45,15 +50,30 @@
    movslq -12(%rbp), %rcx before the addq in widened, y loaded and
    added to the object, addl %eax, -4(%rbp), in compound, y loaded into
    ecx before x in compound_value, the count's movl -8(%rbp), %ecx
-   before shll %cl in shift_count, the load and imull $4, %eax, %eax in
-   times_four, and in before_call the load of defined before the call,
-   its spill and its reload, then cmpl %eax, %ecx.  It must show no
-   load of a constant on the left: in constant_left cmpl $5, -4(%rbp)
-   six times, then jle, jl, jge, jg, jne and je, and the unsigned
-   jumps jbe, jb, jae, ja, jne and je in constant_left_unsigned;
-   cmpl $5, %ebx then jle in constant_left_register; the load,
-   cmpl $5, %eax and setg %al in constant_left_value; and
-   cmpq $0, -8(%rbp) then jne in null_left.
+   before shll %cl in shift_count, and in before_call the load of
+   defined before the call, its spill and its reload, then
+   cmpl %eax, %ecx.  It must show no load of a constant on the left: in
+   constant_left cmpl $5, -4(%rbp) six times, then jle, jl, jge, jg, jne
+   and je, and the unsigned jumps jbe, jb, jae, ja, jne and je in
+   constant_left_unsigned; cmpl $5, %ebx then jle in
+   constant_left_register; cmpl $5, -4(%rbp) and setg %al, and no load,
+   in constant_left_value; and cmpq $0, -8(%rbp) then jne in null_left.
+   It must show the four rows beside the operand in memory with no load
+   of the operand: imull $4, -4(%rbp), %eax in times_four; in
+   pointer_operand subq -16(%rbp), %rcx for p - q after p's load,
+   subq -32(%rbp), %rax for r - s before the division by 4,
+   addq -40(%rbp), %rsi for p + n at a stride of 1, then
+   subq -16(%rbp), %rsi, and for r + n at a stride of 4 n's load,
+   movq -40(%rbp), %rdx, and leaq (%rax,%rdx,4), %rax, then
+   subq -32(%rbp), %rax; in signedness addl -8(%rbp), %ecx,
+   cmpl -8(%rbp), %esi before setb, imull -8(%rbp), %esi and
+   xorl %edx, %edx; divl -8(%rbp), and for ul + j the widening load
+   kept, movslq -20(%rbp), %rdx; addq %rdx, %rax; in comparison_value
+   cmpl $5, -4(%rbp) before setl and cmpl $5, -8(%rbp) before setae,
+   then cmpl -12(%rbp), %ecx before setl and cmpl -16(%rbp), %ecx
+   before seta; in by_constant imull $4, -4(%rbp), %eax,
+   imull $-3, -4(%rbp), %ecx and imulq $1000, -16(%rbp), %rcx, and
+   4 * x as written, movl $4, %ecx; imull -4(%rbp), %ecx.
 
    On aarch64, a load-store machine with no instruction that takes a
    memory operand, the listing must show each operand loaded into a
@@ -67,7 +87,13 @@
    b.ls, b.lo, b.hs, b.hi, b.ne and b.eq in constant_left_unsigned;
    cmp w19, #5 then b.le in constant_left_register; cmp w0, #5 and
    cset w0, gt in constant_left_value; and ldr x0 then cmp x0, #0 and
-   b.ne in null_left. */
+   b.ne in null_left.  It must show the four rows' operands loaded as
+   any operand is: sub x0, x0, x1 after both loads in pointer_operand,
+   and add x1, x1, x2, lsl #2 for r + n; add, cmp, mul and udiv on
+   registers after the loads in signedness, and ldrsw x2, [x29, #32]
+   for the widened j; ldr then cmp w0, #5 before cset in
+   comparison_value; and mov w1, #4 and mul w0, w0, w1 in by_constant,
+   mov x2, #1000 for the long. */
 int defined;
 extern int declared;
 
@@ -311,4 +337,28 @@ null_left(int *p)
         if (0 == p)
                 return 1;
         return 0;
+}
+
+long
+pointer_operand(char *p, char *q, int *r, int *s, long n)
+{
+        return (p - q) + (r - s) + (p + n - q) + (r + n - s);
+}
+
+unsigned long
+signedness(unsigned u, int i, unsigned long ul, int j)
+{
+        return (u + i) + (u < i) + u * i + u / i + (ul + j);
+}
+
+int
+comparison_value(int x, unsigned u, int y, unsigned v)
+{
+        return (x < 5) + (u >= 5) + (x < y) + (u > v);
+}
+
+long
+by_constant(int x, long l)
+{
+        return x * 4 + x * -3 + 4 * x + l * 1000;
 }

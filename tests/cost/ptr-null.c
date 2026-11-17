@@ -4,8 +4,8 @@
    On x86-64 the listing must show test() comparing the pointer in its
    slot, cmpq $0, -8(%rbp), once and branching with je, then each
    return's movl and jmp to the epilogue label, the last one included;
-   and equal() comparing with cmpq $0, %rax and sete, widened with
-   movzbl %al, %eax.
+   and equal() comparing the pointer in its slot, cmpq $0, -8(%rbp),
+   with no load, and sete, widened with movzbl %al, %eax.
 
    On aarch64 the listing must show test() testing the pointer with
    cbz x0 once, then each return's mov and b to the epilogue label, the

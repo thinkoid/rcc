@@ -356,6 +356,45 @@ WIDE(DECLARE_DIVIDEND)
 
 PINNED_TYPES(DECLARE_REMAINDER)
 
+/* the four rows beside the operand in memory: each function of FORMS
+   in its six forms */
+#define DECLARE_FORMS(f, A, U)                                          \
+    BOTH(long, f##_par, (A, U)) BOTH(long, f##_loc, (A, U))             \
+    BOTH(long, f##_def, (A, U)) BOTH(long, f##_dec, (A, U))             \
+    BOTH(long, f##_ptr, (A, U *)) BOTH(long, f##_idx, (A, U, int))
+
+#define DECLARE_RECAST_OPERATOR(A, U, UN, name, opname, op)             \
+    DECLARE_FORMS(b_##name##_##opname, A, U)
+#define DECLARE_RECAST_COMPARISON(A, U, UN, name, opname, op)           \
+    DECLARE_FORMS(bk_##name##_##opname, A, U)                           \
+    DECLARE_FORMS(bt_##name##_##opname, A, U)
+#define DECLARE_RECAST(A, U, UN, name)                                  \
+    OPERATORS_OF(DECLARE_RECAST_OPERATOR, A, U, UN, name)               \
+    COMPARISONS_OF(DECLARE_RECAST_COMPARISON, A, U, UN, name)           \
+    DECLARE_FORMS(ba_##name, A, U) DECLARE_FORMS(bb_##name, A, U)
+
+RECASTS(DECLARE_RECAST)
+
+#define DECLARE_COMPARED(T, N, name, op, constant)                      \
+    DECLARE_FORMS(cv_##name##_##N, T, T)                                \
+    DECLARE_FORMS(cl_##name##_##N, T, T)
+#define DECLARE_COMPARED_ALL(T, N) KTESTS(DECLARE_COMPARED, T, N)
+
+WIDE(DECLARE_COMPARED_ALL)
+
+#define DECLARE_COMPARED_NULL(U, UN)                                    \
+    DECLARE_FORMS(cn_##UN, long, U) DECLARE_FORMS(cnn_##UN, long, U)
+
+POINTERS(DECLARE_COMPARED_NULL)
+
+#define DECLARE_MULTIPLIED(T, N, name, constant)                        \
+    DECLARE_FORMS(dv_##name##_##N, T, T)                                \
+    DECLARE_FORMS(dl_##name##_##N, T, T)                                \
+    BOTH(long, dr_##name##_##N, (T, T *))
+#define DECLARE_MULTIPLIED_ALL(T, N) FACTORS(DECLARE_MULTIPLIED, T, N)
+
+WIDE(DECLARE_MULTIPLIED_ALL)
+
 BOTH(long, text_pass, (void))
 BOTH(long, text_two, (void))
 BOTH(long, text_escapes, (void))
@@ -879,6 +918,93 @@ WIDE(TEST_DIVIDEND_ALL)
 
 PINNED_TYPES(TEST_REMAINDER_ALL)
 
+/* f in its six forms, on a, of type A, and the object's value v, of
+   type U, which P(U) holds for _ptr; k is 0 to 3 */
+#define TEST_FORMS(f, A, U, a, v)                                       \
+    CHECK(f##_par, a, v, ((A) (a), (U) (v)));                           \
+    CHECK(f##_loc, a, v, ((A) (a), (U) (v)));                           \
+    CHECK(f##_def, a, v, ((A) (a), (U) (v)));                           \
+    CHECK(f##_dec, a, v, ((A) (a), (U) (v)));                           \
+    MCHECK(f##_ptr, v, a, at, ((A) (a), P(U)));                         \
+    CHECK(f##_idx, a, v, ((A) (a), (U) (v), k));
+
+/* row b of one pair, over pairs of the table: x the operand of type A,
+   y the object's value, a divisor kept from 0 and -1 */
+#define TEST_RECAST_OPERATOR(A, U, UN, name, opname, op)                \
+    if (!DIVIDES(op) || DIVISOR(A, y)) {                                \
+        TEST_FORMS(b_##name##_##opname, A, U, x, y)                     \
+    }
+#define TEST_RECAST_COMPARISON(A, U, UN, name, opname, op)              \
+    TEST_FORMS(bk_##name##_##opname, A, U, x, y)                        \
+    TEST_FORMS(bt_##name##_##opname, A, U, x, y)
+#define TEST_RECAST(A, U, UN, name)                                     \
+    static void test_recast_##name(void)                                \
+    {                                                                   \
+        for (int i = 0; i < COUNT; ++i) {                               \
+            const long x = values[i];                                   \
+                                                                        \
+            for (int j = i % 3; j < COUNT; j += 3) {                    \
+                const long y = values[j];                               \
+                const int at = offsets[(i + j) % OFFSETS];              \
+                const int k = (i + j) & 3;                              \
+                                                                        \
+                OPERATORS_OF(TEST_RECAST_OPERATOR, A, U, UN, name)      \
+                COMPARISONS_OF(TEST_RECAST_COMPARISON, A, U, UN, name)  \
+                TEST_FORMS(ba_##name, A, U, x, y)                       \
+                TEST_FORMS(bb_##name, A, U, x, y)                       \
+            }                                                           \
+        }                                                               \
+    }
+
+RECASTS(TEST_RECAST)
+
+/* rows c and d of one type, and row c of a pointer, over the table and
+   every offset: y the object's value, x the other operand of dr_ */
+#define TEST_COMPARED(T, N, name, op, constant)                         \
+    TEST_FORMS(cv_##name##_##N, T, T, x, y)                             \
+    TEST_FORMS(cl_##name##_##N, T, T, x, y)
+#define TEST_MULTIPLIED(T, N, name, constant)                           \
+    TEST_FORMS(dv_##name##_##N, T, T, x, y)                             \
+    TEST_FORMS(dl_##name##_##N, T, T, x, y)                             \
+    MCHECK(dr_##name##_##N, y, x, at, ((T) x, P(T)));
+#define TEST_ROWS(T, N)                                                 \
+    static void test_rows_##N(void)                                     \
+    {                                                                   \
+        for (int i = 0; i < COUNT; ++i) {                               \
+            const long y = values[i];                                   \
+                                                                        \
+            for (int o = 0; o < OFFSETS; ++o) {                         \
+                const long x = values[(i * 7 + o) % COUNT];             \
+                const int at = offsets[o];                              \
+                const int k = (i + o) & 3;                              \
+                                                                        \
+                KTESTS(TEST_COMPARED, T, N)                             \
+                FACTORS(TEST_MULTIPLIED, T, N)                          \
+            }                                                           \
+        }                                                               \
+    }
+
+WIDE(TEST_ROWS)
+
+#define TEST_COMPARED_NULL(U, UN)                                       \
+    static void test_null_##UN(void)                                    \
+    {                                                                   \
+        for (int i = 0; i < COUNT; ++i) {                               \
+            const long y = values[i];                                   \
+                                                                        \
+            for (int o = 0; o < OFFSETS; ++o) {                         \
+                const long x = values[(i * 7 + o) % COUNT];             \
+                const int at = offsets[o];                              \
+                const int k = (i + o) & 3;                              \
+                                                                        \
+                TEST_FORMS(cn_##UN, long, U, x, y)                      \
+                TEST_FORMS(cnn_##UN, long, U, x, y)                     \
+            }                                                           \
+        }                                                               \
+    }
+
+POINTERS(TEST_COMPARED_NULL)
+
 /* the literals, the frames of one function each, and depth */
 static void
 test_rest(void)
@@ -958,6 +1084,15 @@ main(void)
 
 #define RUN_REMAINDER(T, N) test_remainder_##N();
     PINNED_TYPES(RUN_REMAINDER)
+
+#define RUN_RECAST(A, U, UN, name) test_recast_##name();
+    RECASTS(RUN_RECAST)
+
+#define RUN_ROWS(T, N) test_rows_##N();
+    WIDE(RUN_ROWS)
+
+#define RUN_NULL(U, UN) test_null_##UN();
+    POINTERS(RUN_NULL)
 
     test_rest();
 

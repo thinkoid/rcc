@@ -91,3 +91,8 @@ int turn(int i) { return (i * 5 + 3) & 7; }
 #define SAME(T, N) T *same_##N(T *p) { return p; }
 
 TYPES(SAME)
+
+/* a pointer of each type memory.c only declares */
+#define POINTER_DECLARED(U, UN) U declared_##UN;
+
+POINTERS(POINTER_DECLARED)

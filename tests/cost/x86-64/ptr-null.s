@@ -33,8 +33,7 @@ equal:
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register %rbp
 	movq	%rdi, -8(%rbp)
-	movq	-8(%rbp), %rax
-	cmpq	$0, %rax
+	cmpq	$0, -8(%rbp)
 	sete	%al
 	movzbl	%al, %eax
 	jmp	.Lequal.1

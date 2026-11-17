@@ -10,8 +10,7 @@ mul_three:
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register %rbp
 	movl	%edi, -4(%rbp)
-	movl	-4(%rbp), %eax
-	imull	$3, %eax, %eax
+	imull	$3, -4(%rbp), %eax
 	jmp	.Lmul_three.1
 .Lmul_three.1:
 	leave

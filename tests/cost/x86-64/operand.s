@@ -580,8 +580,7 @@ times_four:
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register %rbp
 	movl	%edi, -4(%rbp)
-	movl	-4(%rbp), %eax
-	imull	$4, %eax, %eax
+	imull	$4, -4(%rbp), %eax
 	jmp	.Ltimes_four.1
 .Ltimes_four.1:
 	leave
@@ -739,8 +738,7 @@ constant_left_value:
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register %rbp
 	movl	%edi, -4(%rbp)
-	movl	-4(%rbp), %eax
-	cmpl	$5, %eax
+	cmpl	$5, -4(%rbp)
 	setg	%al
 	movzbl	%al, %eax
 	jmp	.Lconstant_left_value.1
@@ -773,6 +771,151 @@ null_left:
 	ret
 	.cfi_endproc
 	.size	null_left, .-null_left
+	.globl	pointer_operand
+	.type	pointer_operand, @function
+pointer_operand:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	%rsi, -16(%rbp)
+	movq	%rdx, -24(%rbp)
+	movq	%rcx, -32(%rbp)
+	movq	%r8, -40(%rbp)
+	movq	-8(%rbp), %rcx
+	subq	-16(%rbp), %rcx
+	movq	-24(%rbp), %rax
+	subq	-32(%rbp), %rax
+	movq	$4, %rsi
+	cqto
+	idivq	%rsi
+	addq	%rax, %rcx
+	movq	-8(%rbp), %rsi
+	addq	-40(%rbp), %rsi
+	subq	-16(%rbp), %rsi
+	addq	%rsi, %rcx
+	movq	-24(%rbp), %rax
+	movq	-40(%rbp), %rdx
+	leaq	(%rax,%rdx,4), %rax
+	subq	-32(%rbp), %rax
+	movq	$4, %rsi
+	cqto
+	idivq	%rsi
+	addq	%rax, %rcx
+	movq	%rcx, %rax
+	jmp	.Lpointer_operand.1
+.Lpointer_operand.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	pointer_operand, .-pointer_operand
+	.globl	signedness
+	.type	signedness, @function
+signedness:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	movq	%rdx, -16(%rbp)
+	movl	%ecx, -20(%rbp)
+	movl	-4(%rbp), %ecx
+	addl	-8(%rbp), %ecx
+	movl	-4(%rbp), %esi
+	cmpl	-8(%rbp), %esi
+	setb	%sil
+	movzbl	%sil, %esi
+	addl	%esi, %ecx
+	movl	-4(%rbp), %esi
+	imull	-8(%rbp), %esi
+	addl	%esi, %ecx
+	movl	-4(%rbp), %eax
+	xorl	%edx, %edx
+	divl	-8(%rbp)
+	addl	%eax, %ecx
+	movq	-16(%rbp), %rax
+	movslq	-20(%rbp), %rdx
+	addq	%rdx, %rax
+	addq	%rax, %rcx
+	movq	%rcx, %rax
+	jmp	.Lsignedness.1
+.Lsignedness.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	signedness, .-signedness
+	.globl	comparison_value
+	.type	comparison_value, @function
+comparison_value:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	movl	%edx, -12(%rbp)
+	movl	%ecx, -16(%rbp)
+	cmpl	$5, -4(%rbp)
+	setl	%al
+	movzbl	%al, %eax
+	cmpl	$5, -8(%rbp)
+	setae	%cl
+	movzbl	%cl, %ecx
+	addl	%ecx, %eax
+	movl	-4(%rbp), %ecx
+	cmpl	-12(%rbp), %ecx
+	setl	%cl
+	movzbl	%cl, %ecx
+	addl	%ecx, %eax
+	movl	-8(%rbp), %ecx
+	cmpl	-16(%rbp), %ecx
+	seta	%cl
+	movzbl	%cl, %ecx
+	addl	%ecx, %eax
+	jmp	.Lcomparison_value.1
+.Lcomparison_value.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	comparison_value, .-comparison_value
+	.globl	by_constant
+	.type	by_constant, @function
+by_constant:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movq	%rsi, -16(%rbp)
+	imull	$4, -4(%rbp), %eax
+	imull	$-3, -4(%rbp), %ecx
+	addl	%ecx, %eax
+	movl	$4, %ecx
+	imull	-4(%rbp), %ecx
+	addl	%ecx, %eax
+	movslq	%eax, %rax
+	imulq	$1000, -16(%rbp), %rcx
+	addq	%rcx, %rax
+	jmp	.Lby_constant.1
+.Lby_constant.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	by_constant, .-by_constant
 	.bss
 	.globl	defined
 	.type	defined, @object

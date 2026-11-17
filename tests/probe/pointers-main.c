@@ -29,6 +29,11 @@
 
 #include "pointers.h"
 
+/* ptr_<pointee>, as pointers.c declares it */
+#define POINTER_TYPE(E, T, R) typedef T (*ptr_##E) R;
+
+POINTER_TYPES(POINTER_TYPE)
+
 static const long values[] = {
     0, 1, 2, 3, 5, 7, 85, 100, 127, 128, 200, 255, 256, 4095, 4096, 4097,
     5000, 32767, 32768, 65535, 65536, 0x12345, 0xfff000, 0x12345678,
@@ -322,6 +327,22 @@ ELEMENTS(DECLARE_KBYTE_ALL)
 
 SCALARS(DECLARE_WALKS)
 
+/* the objects of row a: each function of FORMS in its five forms */
+#define DECLARE_FORMS(f, A, U)                                          \
+    BOTH(long, f##_loc, (A, U)) BOTH(long, f##_def, (A, U))             \
+    BOTH(long, f##_dec, (A, U)) BOTH(long, f##_ptr, (A, U))             \
+    BOTH(long, f##_idx, (A, U))
+
+#define DECLARE_INDEX_OBJECTS(E, I, N)                                  \
+    DECLARE_FORMS(mem_add_##E##_##N, ptr_##E, I)                        \
+    DECLARE_FORMS(mem_sub_##E##_##N, ptr_##E, I)                        \
+    DECLARE_FORMS(mem_radd_##E##_##N, I, ptr_##E)
+#define DECLARE_OBJECTS(E, T, R)                                        \
+    DECLARE_FORMS(mem_diff_##E, ptr_##E, ptr_##E)                       \
+    LONG_INDEXES(DECLARE_INDEX_OBJECTS, E)
+
+POINTER_TYPES(DECLARE_OBJECTS)
+
 BOTH(int, lit_index, (int))
 BOTH(int, lit_rindex, (long))
 BOTH(long, lit_walk, (void))
@@ -559,6 +580,54 @@ ELEMENTS(TEST_CONSTANTS)
 
 SCALARS(TEST_WALKS)
 
+/* f in its five forms on a and the object's value v */
+#define TEST_FORMS(f, x, y, a, v)                                       \
+    CHECK(f##_loc, x, y, (a, v)); CHECK(f##_def, x, y, (a, v));         \
+    CHECK(f##_dec, x, y, (a, v)); CHECK(f##_ptr, x, y, (a, v));         \
+    CHECK(f##_idx, x, y, (a, v));
+
+/* p - q in its five forms where clang's shift and the division part */
+#define TRUNCATED_FORMS(f, p, q, d, size)                               \
+    TRUNCATED(f##_loc, p, q, d, size);                                  \
+    TRUNCATED(f##_def, p, q, d, size);                                  \
+    TRUNCATED(f##_dec, p, q, d, size);                                  \
+    TRUNCATED(f##_ptr, p, q, d, size);                                  \
+    TRUNCATED(f##_idx, p, q, d, size);
+
+/* row a's objects of one pointee, on pointers of the table: p + n,
+   p - n and n + p for each index of 64 bits, and p - q */
+#define TEST_INDEX_OBJECTS(E, I, N)                                     \
+    TEST_FORMS(mem_add_##E##_##N, p, n, (void *) p, (I) n)              \
+    TEST_FORMS(mem_sub_##E##_##N, p, n, (void *) p, (I) n)              \
+    TEST_FORMS(mem_radd_##E##_##N, p, n, (I) n, (void *) p)
+#define TEST_OBJECTS(E, T, R)                                           \
+    static void test_objects_##E(void)                                  \
+    {                                                                   \
+        const long size = size_##E(0);                                  \
+                                                                        \
+        for (int i = 0; i < COUNT; ++i) {                               \
+            const long p = values[i];                                   \
+            const long n = values[(i * 5 + 3) % COUNT];                 \
+                                                                        \
+            LONG_INDEXES(TEST_INDEX_OBJECTS, E)                         \
+                                                                        \
+            for (int j = i % 3; j < COUNT; j += 3) {                    \
+                const long q = values[j];                               \
+                const long d = (long) ((unsigned long) p - q);          \
+                                                                        \
+                if (divides(d, size)) {                                 \
+                    TEST_FORMS(mem_diff_##E, p, q, (void *) p,          \
+                               (void *) q)                              \
+                }                                                       \
+                else {                                                  \
+                    TRUNCATED_FORMS(mem_diff_##E, p, q, d, size)        \
+                }                                                       \
+            }                                                           \
+        }                                                               \
+    }
+
+POINTER_TYPES(TEST_OBJECTS)
+
 /* the literals, depth, and the indexes that are calls */
 static void
 test_rest(void)
@@ -617,6 +686,9 @@ main(void)
 
 #define RUN_SCALAR(E, T, S) test_walks_##E();
     SCALARS(RUN_SCALAR)
+
+#define RUN_OBJECTS(E, T, R) test_objects_##E();
+    POINTER_TYPES(RUN_OBJECTS)
 
     test_rest();
 

@@ -97,26 +97,31 @@ Fix: 7.2 states the rule c1 applies, or c1 applies the stated one.
 Check: a cost program with a =main= ending in each shape, pinned, and
 7.2 agreeing with the pins.
 
-** TODO Four rows beside the operand in memory still load their operand
+** TODO Four rows beside the operand in memory, to decide
 
 On x86-64 an object in memory of the operation's width is the
 instruction's own operand (=backend.md= 6.1). Four rows next to that
-rule keep the load, each for a reason of the rule's wording and not
-of the machine:
+rule hold a value in a register that the machine could name in
+place:
 
-- pointer arithmetic: ~p - q~ and ~p + n~ with a stride of 1 take a
-  64-bit right operand that =subq= and =addq= could name;
-- a cast that changes signedness alone: in ~u + i~ the =int= is
-  under ~(unsigned)~, a cast and no read, though the bytes and the
-  width are the same;
-- a comparison for its value: ~return x < 5;~ loads =x=, where a
-  condition has =cmpl $5, -4(%rbp)=;
-- a multiply by a constant: ~x * 4~ is =movl -4(%rbp), %eax; imull
-  $4, %eax, %eax=, and the machine has =imull $4, -4(%rbp), %eax=.
+- a constant on the left of a commutative operator: ~4 * x~ is
+  =movl $4, %eax; imull -4(%rbp), %eax=, where ~x * 4~ is =imull $4,
+  -4(%rbp), %eax=; =+=, =&=, =|= and =^= write their constant first
+  too, at no cost in instructions. A comparison's constant on the
+  left is already taken as one on the right (6.1);
+- the index multiply of pointer arithmetic: ~p - n~ at a size other
+  than 1, and ~p + n~ at a size that is no scale, are =movq
+  -16(%rbp), %rcx; imulq $4, %rcx, %rcx=, and the machine has =imulq
+  $4, -16(%rbp), %rcx=;
+- a widening over a cast that changes signedness alone: ~(long)
+  (int) u~ is =movl -4(%rbp), %eax; movslq %eax, %rax=, where the
+  load could extend;
+- an object compared with a =register= variable: ~x < r~ loads =x=,
+  where =cmpl %ebx, -4(%rbp)= reads it in place.
 
-Fix: each of the four takes its operand in memory.
+Fix: decide each; the first for every commutative operator together.
 
-Check: a row of =operand= for each, with no load of the operand.
+Check: a row of =operand= for each, agreeing with its decision.
 
 ** TODO Six rows beside a register variable's destination keep their =mov=
 
@@ -296,7 +301,11 @@ remainder's value became the value in =rdx=. That step takes one
 instruction, =movq %rdx, %rax=, out of the step loop of ~rcc
 collatz.c~, the loop the cell times: 2293 ms, 7.75. The other
 listings of =tests/perf= it changes, it changes outside their hot
-loops, and the loops of =tests/slot= are the same.
+loops, and the loops of =tests/slot= are the same. The operand in
+memory taken by a multiply by a constant and by a cast of
+signedness changes every x86-64 listing of =tests/perf= again, by
+one to five instructions, outside the loops the chapter times: the
+step of each program's generator and its checksum.
 
 Fix: =make bench= three times on the machine of the table, and the
 table and what is drawn from it taken again.

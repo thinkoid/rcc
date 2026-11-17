@@ -11,9 +11,12 @@
    address, and an object read under a cast that widens it, an element
    by a subscript among them (backend.md 6.3), and an object in memory
    as an operator's right operand or a condition's object, an element
-   by a subscript among them (6.1, 7.1), and the pinned instructions'
+   by a subscript among them (6.1, 7.1), the pinned instructions'
    operands, a subscript by a division and an element as an
-   assignment's place among them (6.5), which the last sections probe.
+   assignment's place among them (6.5), and the rows beside the
+   operand in memory, an object under a cast that keeps its bits, a
+   comparison's value and a multiply by a constant (6.1), which the
+   last sections probe.
    A pointer into the middle of a buffer, or misaligned, is made by the
    main.  See memory.h. */
 
@@ -1216,3 +1219,108 @@ TYPES(KTEST_ALL)
     }
 
 TYPES(TESTS)
+
+/* The four rows beside the operand in memory, backend.md 6.1, on
+   x86-64 each the instruction's own operand: an object read under a
+   cast that keeps its bits, a comparison's value with a constant, and
+   a multiply by a constant.  FORMS makes six functions of f, each
+   returning EXPR(o, K, op) of an object o of type U in one form: a
+   parameter, _par; a local, _loc; a global the file defines, _def;
+   one it only declares, _dec; *p, _ptr, which holds the main's x at
+   B + at; and a local array's x[i], _idx, i 0 to 3.  Each but _ptr
+   writes v into the object first; a is the operation's other operand,
+   of type A. */
+#define FORMS(f, A, U, UN, EXPR, K, op)                                 \
+    long f##_par(A a, U v) { return EXPR(v, K, op); }                   \
+    long f##_loc(A a, U v)                                              \
+    {                                                                   \
+        U x = v;                                                        \
+        return EXPR(x, K, op);                                          \
+    }                                                                   \
+    long f##_def(A a, U v)                                              \
+    {                                                                   \
+        defined_##UN = v;                                               \
+        return EXPR(defined_##UN, K, op);                               \
+    }                                                                   \
+    long f##_dec(A a, U v)                                              \
+    {                                                                   \
+        declared_##UN = v;                                              \
+        return EXPR(declared_##UN, K, op);                              \
+    }                                                                   \
+    long f##_ptr(A a, U *p) { return EXPR(*p, K, op); }                 \
+    long f##_idx(A a, U v, int i)                                       \
+    {                                                                   \
+        U x[4];                                                         \
+        x[i] = v;                                                       \
+        return EXPR(x[i], K, op);                                       \
+    }
+
+/* the pointers' globals, which row b and row c read */
+#define POINTER_GLOBALS(U, UN)                                          \
+    U defined_##UN;                                                     \
+    extern U declared_##UN;
+
+POINTERS(POINTER_GLOBALS)
+
+/* Row b: the object under a cast to the operation's type A that keeps
+   its bits, as the right operand of each operator of
+   MEMORY_OPERATORS, b_; compared with 5 for its value, bk_; and as a
+   condition, through ?: : compared with 5, bt_, alone, ba_, and with
+   & 0x81, bb_. */
+#define RECAST_VALUE(o, A, op) (a op (A) (o))
+#define RECAST_KVALUE(o, A, op) ((A) (o) op 5)
+#define RECAST_TEST(o, A, op) ((A) (o) op 5 ? 1 : 2)
+#define RECAST_ALONE(o, A, op) ((A) (o) ? 1 : 2)
+#define RECAST_BIT(o, A, op) ((A) (o) & 0x81 ? 1 : 2)
+
+#define RECAST_OPERATOR(A, U, UN, name, opname, op)                     \
+    FORMS(b_##name##_##opname, A, U, UN, RECAST_VALUE, A, op)
+#define RECAST_COMPARISON(A, U, UN, name, opname, op)                   \
+    FORMS(bk_##name##_##opname, A, U, UN, RECAST_KVALUE, A, op)         \
+    FORMS(bt_##name##_##opname, A, U, UN, RECAST_TEST, A, op)
+#define RECAST(A, U, UN, name)                                          \
+    OPERATORS_OF(RECAST_OPERATOR, A, U, UN, name)                       \
+    COMPARISONS_OF(RECAST_COMPARISON, A, U, UN, name)                   \
+    FORMS(ba_##name, A, U, UN, RECAST_ALONE, A, )                       \
+    FORMS(bb_##name, A, U, UN, RECAST_BIT, A, )
+
+RECASTS(RECAST)
+
+/* Row c: a comparison's value, the object compared with a constant on
+   the right, cv_, and on the left, cl_, for each operator of KTESTS;
+   a pointer compared with the null pointer, cn_ and cnn_. */
+#define COMPARE_VALUE(o, K, op) ((o) op (K))
+#define COMPARE_LEFT(o, K, op) ((K) op (o))
+
+#define COMPARED(T, N, name, op, constant)                              \
+    FORMS(cv_##name##_##N, T, T, N, COMPARE_VALUE, constant, op)        \
+    FORMS(cl_##name##_##N, T, T, N, COMPARE_LEFT, constant, op)
+#define COMPARED_ALL(T, N) KTESTS(COMPARED, T, N)
+
+WIDE(COMPARED_ALL)
+
+#define COMPARED_NULL(U, UN)                                            \
+    FORMS(cn_##UN, long, U, UN, COMPARE_VALUE, 0, ==)                   \
+    FORMS(cnn_##UN, long, U, UN, COMPARE_VALUE, 0, !=)
+
+POINTERS(COMPARED_NULL)
+
+/* Row d: the object multiplied by each constant of FACTORS, dv_, and
+   the constant written first, dl_, which keeps its order; and x * c
+   assigned to a register variable, dr_, whose register the imul
+   writes. */
+#define MULTIPLY_RIGHT(o, K, op) ((o) * (K))
+#define MULTIPLY_LEFT(o, K, op) ((K) * (o))
+
+#define MULTIPLIED(T, N, name, constant)                                \
+    FORMS(dv_##name##_##N, T, T, N, MULTIPLY_RIGHT, constant, )         \
+    FORMS(dl_##name##_##N, T, T, N, MULTIPLY_LEFT, constant, )          \
+    long dr_##name##_##N(T a, T *p)                                     \
+    {                                                                   \
+        register T r = a;                                               \
+        r = *p * (constant);                                            \
+        return r + a;                                                   \
+    }
+#define MULTIPLIED_ALL(T, N) FACTORS(MULTIPLIED, T, N)
+
+WIDE(MULTIPLIED_ALL)

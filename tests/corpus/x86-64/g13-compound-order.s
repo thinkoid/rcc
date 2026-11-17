@@ -62,30 +62,25 @@ main:
 	addl	%eax, -24(%rbp)
 	movl	$2, %ebx
 	addl	%ebx, %ebx
-	movl	-12(%rbp), %eax
-	cmpl	$11, %eax
+	cmpl	$11, -12(%rbp)
 	sete	%al
 	movzbl	%al, %eax
-	movl	-16(%rbp), %ecx
-	cmpl	$11, %ecx
+	cmpl	$11, -16(%rbp)
 	sete	%cl
 	movzbl	%cl, %ecx
 	imull	$2, %ecx, %ecx
 	addl	%ecx, %eax
-	movl	-28(%rbp), %ecx
-	cmpl	$11, %ecx
+	cmpl	$11, -28(%rbp)
 	sete	%cl
 	movzbl	%cl, %ecx
 	imull	$4, %ecx, %ecx
 	addl	%ecx, %eax
-	movl	-20(%rbp), %ecx
-	cmpl	$10, %ecx
+	cmpl	$10, -20(%rbp)
 	sete	%cl
 	movzbl	%cl, %ecx
 	imull	$8, %ecx, %ecx
 	addl	%ecx, %eax
-	movl	-24(%rbp), %ecx
-	cmpl	$4, %ecx
+	cmpl	$4, -24(%rbp)
 	sete	%cl
 	movzbl	%cl, %ecx
 	imull	$16, %ecx, %ecx

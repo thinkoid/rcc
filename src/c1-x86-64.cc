@@ -1071,16 +1071,40 @@ immediate_of(const expr_t &e, int width)
     return imm(normalized(as< literal_t >(e).value, width));
 }
 
-// Whether e is the read of an object in memory that an instruction of
-// width bits names as its own operand, backend.md 6.1: in_memory()'s,
-// of a type exactly that wide, so the instruction reads the bytes the
-// load would, in one access at the object's width (G10).  A char or a
-// short promoted, and an int widened to 64 bits, are under a cast, which
-// is no object, and keep their extending load.
+// Whether a cast keeps every bit of its operand: an integer or a
+// pointer to an integer or a pointer of the same width, so it changes
+// the signedness alone, int to unsigned, long to unsigned long, or the
+// view of 64 bits, a pointer to a long or back, one pointer type to
+// another.  It writes no instruction (backend.md 6.3, the row of (T) a).
 bool
+same_bits(const cast_t &c, const type_t &to)
+{
+    const auto &from = c.arg->type;
+    const bool scalars = (is< int_t >(from) || is< pointer_t >(from)) &&
+                         (is< int_t >(to) || is< pointer_t >(to));
+
+    return scalars && integer(from).width == integer(to).width;
+}
+
+// The object in memory that an instruction of width bits names as its
+// own operand for e, backend.md 6.1, or nullptr: in_memory()'s read, of
+// a type exactly that wide, so the instruction reads the bytes the load
+// would, in one access at the object's width (G10).  The read may be
+// under casts that keep its bits, (unsigned) i in u + i, since the
+// bytes at the width are the value either way.  A char or a short
+// promoted, and an int widened to 64 bits, are under a cast that
+// changes the width, and keep their extending load.
+const expr_t *
 memory_operand(const expr_t &e, int width)
 {
-    return in_memory(e) && integer(e.type).width == width;
+    const expr_t *top = &e;
+    while (is< cast_t >(*top) && same_bits(as< cast_t >(*top), top->type))
+        top = as< cast_t >(*top).arg.get();
+
+    if (!in_memory(*top) || integer(top->type).width != width)
+        return nullptr;
+
+    return top;
 }
 
 // A constant that must be held: mov $c, L, or movabsq for a 64-bit one
@@ -1252,10 +1276,12 @@ right_operand(state_t &s,
 right_t
 binary_operand(state_t &s, binary_op_t op, const expr_t &rhs, int width)
 {
-    if (is_shift(op) || !memory_operand(rhs, width))
+    const auto *object = is_shift(op) ? nullptr : memory_operand(rhs, width);
+    if (!object)
         return right_operand(s, op, rhs, width);
 
-    return { .place = address_avoiding(s, rhs, pins(op, rhs)), .width = width };
+    return { .place = address_avoiding(s, *object, pins(op, rhs)),
+             .width = width };
 }
 
 // G4: the instruction the machine has, idiv or div, a fault on x86 for
@@ -1466,6 +1492,24 @@ shift(state_t &s, binary_op_t op, value_t l, const right_t &r, const int_t &t)
     return l;
 }
 
+// op obj, L: the instruction on the held left value l with the object
+// at place as its source, the instruction's own operand, backend.md
+// 6.1, read by it, addl -8(%rbp), %eax.  L is written, valid as valid
+// says, and the address is consumed.
+void
+from_memory(state_t &s,
+            std::string_view mnemonic,
+            value_t l,
+            const address_t &place,
+            int valid,
+            int width)
+{
+    const reg_t left = writable(s, l, valid, registers_of(s, place));
+    insn(s, mnemonic, { operand(s, place, bit(left)), reg(left, width) });
+
+    release(s, place);
+}
+
 // An arithmetic, bitwise or shift operator on the held left value and
 // the generated right operand, in type t, chapter 6.1: op R, L, the
 // result in L.  A constant right operand is an immediate where the
@@ -1506,14 +1550,10 @@ arithmetic(
     }
 
     if (r.place) {
-        const reg_t left = writable(s, l, written(width, integer(t).is_signed),
-                                    registers_of(s, *r.place));
-        insn(s, mnemonic,
-             { operand(s, *r.place, bit(left)), reg(left, width) });
+        from_memory(s, mnemonic, l, *r.place,
+                    written(width, integer(t).is_signed), width);
         if (op != binary_op_t::mul)
             flagged(s, width);
-
-        release(s, *r.place);
 
         return l;
     }
@@ -1594,18 +1634,69 @@ displacement(state_t &s, const expr_t &n, long size, unsigned avoid = 0)
     return { .value = r, .width = 64 };
 }
 
+// The n of p + n and p - n as their instruction takes it: at a size of
+// 1, where add and sub take n unscaled, an object in memory of 64 bits
+// is the instruction's own operand, addq -16(%rbp), %rax, its address
+// generated where its load would be, after p (backend.md 6.1); any
+// other n is displacement()'s.  At another size n is scaled in a
+// register, by the index of leaq or by imulq, and keeps its load.  A
+// compound assignment's n keeps its register in any case, since it is
+// evaluated before the object is read (6.6).
+right_t
+addend(state_t &s, const expr_t &n, long size)
+{
+    if (size == 1)
+        if (const auto *object = memory_operand(n, 64))
+            return { .place = address(s, *object), .width = 64 };
+
+    return displacement(s, n, size);
+}
+
 // p + n and p - n, p += n and p -= n, on the held pointer l and the
-// generated n: addq $8, L for an immediate, else the offset row.
+// generated n: addq $8, L for an immediate, addq -16(%rbp), L for an
+// object in memory of addend()'s, else the offset row.
 value_t
 displaced(state_t &s, binary_op_t op, value_t l, const right_t &n)
 {
+    const auto mnemonic = op == binary_op_t::add ? "addq" : "subq";
+
     if (!n.immediate.empty()) {
-        insn(s, op == binary_op_t::add ? "addq" : "subq",
-             { n.immediate, reg(writable(s, l, 64), 64) });
+        insn(s, mnemonic, { n.immediate, reg(writable(s, l, 64), 64) });
+        return l;
+    }
+
+    if (n.place) {
+        from_memory(s, mnemonic, l, *n.place, 64, 64);
         return l;
     }
 
     return offset(s, op, l, n.value, n.scale, true);
+}
+
+// n + p with p an object in memory of 64 bits, where the add takes p
+// unscaled: at a size of 1, and at a size no addressing form scales by,
+// after the index is multiplied in its register, imulq $12, %rax, %rax.
+// p is the add's own operand, addq -16(%rbp), %rax (backend.md 6.1),
+// its address generated where its load would be, after n, so the reads
+// keep their order (G13).  None at a size of 2, 4 or 8, whose leaq
+// takes p as its base, a register.
+std::optional< value_t >
+index_first(state_t &s, value_t n, const expr_t &p, long size)
+{
+    const auto *object = memory_operand(p, 64);
+    if (!object || (size != 1 && is_scale(size)))
+        return std::nullopt;
+
+    const auto place = address(s, *object);
+
+    if (size != 1) {
+        const reg_t index = writable(s, n, 64, registers_of(s, place));
+        insn(s, "imulq", { imm(size), reg(index, 64), reg(index, 64) });
+    }
+
+    from_memory(s, "addq", n, place, 64, 64);
+
+    return n;
 }
 
 // A binary + or - of a pointer type: the pointer and the integer, the
@@ -1617,7 +1708,9 @@ displaced(state_t &s, binary_op_t op, value_t l, const right_t &n)
 // variable index of a size the form scales the leaq of indexed()'s,
 // leaq -24(%rbp,%rcx,4), %rax for a + i.  Otherwise the operand written
 // first is held outside the registers the other's top operator pins
-// (chapter 6.5).
+// (chapter 6.5), and the right operand, an object in memory the add or
+// the sub takes unscaled, is the instruction's own operand,
+// addq -16(%rbp), %rax (6.1), by addend() and index_first().
 value_t
 pointer_arithmetic(state_t &s, const expr_t &e)
 {
@@ -1637,9 +1730,32 @@ pointer_arithmetic(state_t &s, const expr_t &e)
     const auto l = rvalue_avoiding(s, *b.lhs, pinned_by(*b.rhs));
 
     if (is< pointer_t >(b.lhs->type))
-        return displaced(s, b.op, l, displacement(s, *b.rhs, size));
+        return displaced(s, b.op, l, addend(s, *b.rhs, size));
+
+    if (const auto sum = index_first(s, l, *b.rhs, size))
+        return *sum;
 
     return offset(s, b.op, l, rvalue(s, *b.rhs), size, false);
+}
+
+// The subq of p - q on the held p, l, and q generated after it: an
+// object in memory of 64 bits as q is the instruction's own operand,
+// subq -16(%rbp), %rax (backend.md 6.1), whatever the size, since the
+// difference of the addresses is taken before its division.
+void
+subtract_pointer(state_t &s, value_t l, const expr_t &q)
+{
+    if (const auto *object = memory_operand(q, 64)) {
+        from_memory(s, "subq", l, address(s, *object), 64, 64);
+        return;
+    }
+
+    const auto r = rvalue(s, q);
+    const reg_t right = operands(s, l, r).second;
+    const reg_t left = writable(s, l, 64, bit(right));
+    insn(s, "subq", { reg(right, 64), reg(left, 64) });
+
+    release(s, r);
 }
 
 // p - q, 6.5.7p10: the difference of the addresses divided by the size,
@@ -1653,12 +1769,7 @@ difference(state_t &s, const binary_t &b)
     const long size = stride(b.lhs->type);
 
     const auto l = rvalue_avoiding(s, *b.lhs, pinned_by(*b.rhs));
-    const auto r = rvalue(s, *b.rhs);
-    const reg_t right = operands(s, l, r).second;
-    const reg_t left = writable(s, l, 64, bit(right));
-    insn(s, "subq", { reg(right, 64), reg(left, 64) });
-
-    release(s, r);
+    subtract_pointer(s, l, *b.rhs);
 
     if (size == 1)
         return l;
@@ -1707,8 +1818,8 @@ compare_with(state_t &s, value_t l, const expr_t &rhs, int width)
         return;
     }
 
-    if (memory_operand(rhs, width)) {
-        const auto place = address(s, rhs);
+    if (const auto *object = memory_operand(rhs, width)) {
+        const auto place = address(s, *object);
         const reg_t left = reg_of(s, l, registers_of(s, place));
         insn(s, mnemonic, { operand(s, place, bit(left)), reg(left, width) });
         release(s, place);
@@ -1740,6 +1851,27 @@ ordered(const binary_t &b)
     return as_written(b);
 }
 
+// A condition on an object in memory and an immediate, 7.1, and a
+// comparison's value on the same operands, 6.3: cmp or test of the
+// immediate source and the object itself, at the object's width,
+// cmpl $5, -4(%rbp), cmpb $0, -1(%rbp), testl $1, -4(%rbp), and no
+// register holds the object.  The instruction reads the object after
+// its address, where its load would, and the constant has no
+// evaluation, so nothing comes between and the reads keep their order
+// (G13).  The Seventh Edition compiler's cctab has the rows: cc60's
+// %a,z, tst _x, and %aw,aw, cmp $5,_x, and cc81's %a,a, bit $1,_x.
+void
+condition_on(state_t &s,
+             std::string_view stem,
+             const expr_t &object,
+             std::string_view source,
+             int width)
+{
+    const auto place = address(s, object);
+    insn(s, sized(stem, width), { source, operand(s, place) });
+    release(s, place);
+}
+
 // cmp R, L for a relational or equality operator, the left value
 // generated outside the registers the right one's operator pins
 // (chapter 6.5).  The left value stays held, for setcc or for the
@@ -1753,6 +1885,25 @@ compare(state_t &s, const compared_t &b)
     return l;
 }
 
+// The cmp of a comparison, its operands in the order of ordered(): an
+// object in memory against an immediate is the cmp of the object in
+// place, condition_on()'s, cmpl $5, -4(%rbp), and nothing is held, for
+// a condition (7.1) and for a value (6.3) alike; any other is
+// compare()'s cmp R, L, and L is held.
+value_t
+compared(state_t &s, const compared_t &b)
+{
+    const int width = operation_width(b.lhs->type);
+
+    const auto *object = memory_operand(*b.lhs, width);
+    if (object && immediate(*b.rhs, width)) {
+        condition_on(s, "cmp", *object, immediate_of(*b.rhs, width), width);
+        return { };
+    }
+
+    return compare(s, b);
+}
+
 // The jump to label on the flags a comparison set, when op holds: jcc
 // of the condition, chapter 7.1.
 void
@@ -1764,14 +1915,15 @@ jump_if(state_t &s, binary_op_t op, bool is_signed, int label)
 
 // A comparison as a value: cmp, setcc into the low byte of L, movzbl
 // to the int the operator yields.  A register variable as L is only
-// read by the cmp, and the setcc takes a fresh register.
+// read by the cmp, and an object in memory compared in place is read by
+// it (compared()); the setcc then takes a fresh register.
 value_t
 comparison(state_t &s, const compared_t &b)
 {
     const bool is_signed = integer(b.lhs->type).is_signed;
 
-    auto l = compare(s, b);
-    if (borrowed(s, l)) {
+    auto l = compared(s, b);
+    if (l.id < 0 || borrowed(s, l)) {
         release(s, l);
         l = fresh(s, 32);
     }
@@ -2005,6 +2157,55 @@ operation_in(state_t &s, const binary_t &b, const type_t &t, into_t &into)
     return taken(s, into, l);
 }
 
+// The object in memory x of x * c, c a constant the instruction takes
+// as an immediate, or nullptr: memory_operand()'s at the operation's
+// width.  c * x keeps the order of the source, the constant held first
+// (backend.md 6.1).
+const expr_t *
+multiplicand(const binary_t &b, int width)
+{
+    if (b.op != binary_op_t::mul || !immediate(*b.rhs, width))
+        return nullptr;
+
+    return memory_operand(*b.lhs, width);
+}
+
+// x * c with x an object in memory: the three-operand imul with the
+// object as its source, imull $4, -4(%rbp), %eax, one instruction and
+// still a multiply (backend.md 6.1, 6.4).  The object is read once, by
+// the imul, where its load would read it, and the constant has no
+// evaluation (G13).  As load() does, the product takes the lowest free
+// register once the address is consumed, or, handed a register
+// variable, the variable's register, imull $4, -4(%rbp), %ebx
+// (chapter 4).
+value_t
+product(state_t &s,
+        const expr_t &object,
+        const expr_t &constant,
+        const int_t &t,
+        into_t *into)
+{
+    const int width = t.width;
+    const int valid = written(width, t.is_signed);
+    const auto mnemonic = sized("imul", width);
+    const auto factor = immediate_of(constant, width);
+
+    const auto place = address(s, object);
+    const auto from = operand(s, place);
+    release(s, place);
+
+    if (takes(into, valid)) {
+        insn(s, mnemonic,
+             { factor, from, reg(variable_register(into->variable), width) });
+        return taken(s, *into);
+    }
+
+    const auto v = fresh(s, valid);
+    insn(s, mnemonic, { factor, from, reg(reg_of(s, v), width) });
+
+    return v;
+}
+
 value_t
 binary(state_t &s, const expr_t &e, into_t *into = nullptr)
 {
@@ -2030,6 +2231,9 @@ binary(state_t &s, const expr_t &e, into_t *into = nullptr)
 
     if (is< pointer_t >(b.lhs->type))
         return difference(s, b);
+
+    if (const auto *object = multiplicand(b, operation_width(e.type)))
+        return product(s, *object, *b.rhs, integer(e.type), into);
 
     if (into && operates_in(b, e.type, into->variable))
         return operation_in(s, b, e.type, *into);
@@ -2574,10 +2778,10 @@ flag_operator(binary_op_t op)
 // ZF from the condition's value, the rows of 7.1 after the Seventh
 // Edition compiler's cctab: +, -, |, ^ and unary - on integers, & as
 // test, and +=, -=, &=, |=, ^= and a prefix ++ or -- by the form
-// effect() writes.  A pointer keeps the row of any value, since p + n,
-// p - n and p - q are lea, imul or a division; so do *, /, %, the
-// shifts, ~, a cast, *=, /=, %=, <<=, >>= and a postfix step, whose
-// value is the old one.
+// effect() writes.  A pointer keeps the row of any value whatever its
+// size, since p + n, p - n and p - q are lea, imul or a division at
+// every size but 1; so do *, /, %, the shifts, ~, a cast, *=, /=, %=,
+// <<=, >>= and a postfix step, whose value is the old one.
 bool
 flag_condition(const expr_t &e)
 {
@@ -2621,26 +2825,6 @@ zero_compared(const compared_t &b)
     return flag_condition(*b.lhs) ? b.lhs : nullptr;
 }
 
-// A condition on an object in memory and an immediate, 7.1: cmp or test
-// of the immediate source and the object itself, at the object's width,
-// cmpl $5, -4(%rbp), cmpb $0, -1(%rbp), testl $1, -4(%rbp), and no
-// register holds the object.  The instruction reads the object after
-// its address, where its load would, and the constant has no
-// evaluation, so nothing comes between and the reads keep their order
-// (G13).  The Seventh Edition compiler's cctab has the rows: cc60's
-// %a,z, tst _x, and %aw,aw, cmp $5,_x, and cc81's %a,a, bit $1,_x.
-void
-condition_on(state_t &s,
-             std::string_view stem,
-             const expr_t &object,
-             std::string_view source,
-             int width)
-{
-    const auto place = address(s, object);
-    insn(s, sized(stem, width), { source, operand(s, place) });
-    release(s, place);
-}
-
 // & as a condition, 7.1: test R, L, which sets the flags and writes no
 // result, so a register variable as L is read in its register and not
 // copied, testl %eax, %ebx, and a constant R is the immediate,
@@ -2656,8 +2840,9 @@ test(state_t &s, const binary_t &b, int width)
 {
     const auto mnemonic = sized("test", width);
 
-    if (memory_operand(*b.lhs, width) && immediate(*b.rhs, width)) {
-        condition_on(s, "test", *b.lhs, immediate_of(*b.rhs, width), width);
+    const auto *object = memory_operand(*b.lhs, width);
+    if (object && immediate(*b.rhs, width)) {
+        condition_on(s, "test", *object, immediate_of(*b.rhs, width), width);
         flagged(s, width);
         return;
     }
@@ -2736,9 +2921,9 @@ flag_branch(state_t &s, const expr_t &e, int label, bool sense)
 
 // A comparison as a condition, 7.1, its operands in the order of
 // ordered(): == 0 or != 0 of a flag condition jumps on its operator's
-// own flags; an object in memory against an immediate is the cmp of
-// the object in place, condition_on()'s, cmpl $5, -4(%rbp); any other
-// is cmp R, L.  Then jcc of the operator, or of its inverse by sense.
+// own flags; any other is compared()'s cmp, of an object in memory in
+// place against an immediate, cmpl $5, -4(%rbp), or cmp R, L.  Then jcc
+// of the operator, or of its inverse by sense.
 void
 comparison_branch(state_t &s, const compared_t &b, int label, bool sense)
 {
@@ -2749,12 +2934,8 @@ comparison_branch(state_t &s, const compared_t &b, int label, bool sense)
     }
 
     const bool is_signed = integer(b.lhs->type).is_signed;
-    const int width = operation_width(b.lhs->type);
 
-    if (memory_operand(*b.lhs, width) && immediate(*b.rhs, width))
-        condition_on(s, "cmp", *b.lhs, immediate_of(*b.rhs, width), width);
-    else
-        release(s, compare(s, b));
+    release(s, compared(s, b));
 
     jump_if(s, sense ? b.op : inverse(b.op), is_signed, label);
 }
@@ -2819,8 +3000,8 @@ cbranch(state_t &s, const expr_t &e, int label, bool sense)
     }
 
     const int width = integer(e.type).width;
-    if (in_memory(e)) {
-        condition_on(s, "cmp", e, imm(0), width);
+    if (const auto *object = memory_operand(e, width)) {
+        condition_on(s, "cmp", *object, imm(0), width);
     }
     else {
         const auto v = rvalue(s, e);
