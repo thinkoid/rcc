@@ -2151,10 +2151,13 @@ answers:
     operand: a leaf, and not naming the variable; and `-` and `~` are
     the operation with no right operand, `negl %ebx`. The load is the
     Seventh Edition compiler's `move3`, and the operation and its
-    conditions are its `sreorder()`; rcc takes `*` by any operand, a
-    `char` promoted and `p[3]` on a pointer in memory, which that
-    compiler refused, and writes `-`, `~` and a comparison's value in
-    the register, which it moved. The cost is the second exception to
+    conditions are its `sreorder()`. That compiler took a `char`
+    promoted or `p[3]` on a pointer in memory under a commutative
+    operator alone, exchanging the operands to put it on the left,
+    `movb _c,r4; add _a,r4`, and of the multiplies the one by a power
+    of two, as its shift; rcc takes them on the right and `*` by any
+    operand, and writes `-`, `~` and a comparison's value in the
+    register, which that compiler moved. The cost is the second exception to
     6.1's "nothing looks at a node's neighbours", and a boundary on
     x86-64: `r = a + (b + c)`, `r = a - r`, a division and a left
     operand its own instruction cannot put in the register keep the

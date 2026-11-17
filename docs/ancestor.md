@@ -408,7 +408,9 @@ has no counterpart of `sptab` (3.3).
   it leaves alone: chapter 9's, and aarch64's `tst` in 5.4. Each is
   said to be so where it stands.
 - **PDP-11 listings** are worked out by hand from the rows, and said
-  to be so. None was run.
+  to be so. Each was then compared with what the compiler itself
+  writes, the Seventh Edition's own binaries run under a PDP-11
+  emulator.
 - **Counts** of instructions and bytes are `llvm-mc`'s encoding of
   each snippet. Chapter 13.4 says how every count was made.
 - **Pins** are the listings the tree keeps for its test programs, in
@@ -616,15 +618,19 @@ fourth line, comes before the add:
 The ancestor's `sdelay()` takes the step out of the tree and leaves
 the name in its place (`c10.c:960-962`). `delay()` then compiles `y =
 x + y` (`c10.c:946-949`), and `rcexpr()` compiles the step after it,
-for its effect (`c10.c:333-337`). Worked out by hand from the rows,
-with `x` and `y` as external names:
+for its effect (`c10.c:333-337`). With `x` and `y` as external
+names the compiler writes:
 
 ```
-mov	_x,r0
-add	_y,r0
+mov	_y,r0
+add	_x,r0
 mov	r0,_y
 inc	_y
 ```
+
+The sum's operands are exchanged here, where `y = x + y;` alone is
+`mov _x,r0; add _y,r0`; the store and the step follow in `delay()`'s
+order.
 
 A listing in `delay()`'s order was written by hand for aarch64, from
 rcc's own, and both were assembled and run on an aarch64 Linux
@@ -1831,9 +1837,11 @@ computes each in a scratch register and moves it (`table.s:873-876`):
 
 An address does reach the register there: `&x` of a static is the
 operand `$_x`, which `move3` moves in, and `optim()` makes `&x` of an
-automatic `r5` plus its offset, a sum `sreorder()` rewrites. Worked
-out by hand, `r = &x` with `r` in `r4` is `mov $_x,r4` for a static
-and `mov r5,r4; add $-6,r4` for an automatic. rcc writes, in the
+automatic `r5` plus its offset, a sum `sreorder()` rewrites. `r =
+&x` with `r` in `r4` is `mov $_x,r4` for a static and `mov r5,r4;
+add $-10,r4` for an automatic, the offset in octal: the first
+automatic lies 8 bytes below `r5`, under the three registers the
+entry routine `csv` saves. rcc writes, in the
 functions of `register-destination`, an address as its `lea` into the
 register, which reads every operand before it writes, `p = &defined`:
 
@@ -2646,7 +2654,9 @@ is not recalled: `backend.md` 7.1 quotes Intel's manual for each.
 - A form rcc does not write is a listing written by hand, and said
   to be so: the forms it leaves alone, chapter 9's and aarch64's
   `tst` in 5.4.
-- A PDP-11 listing is worked out by hand from the rows; none was run.
+- A PDP-11 listing is worked out by hand from the rows and compared
+  with the compiler's own output, its binaries run under a PDP-11
+  emulator.
 - The two orders of 2.4 were assembled and run on an aarch64 Linux
   machine, the one in `delay()`'s order written by hand.
 - Instructions and bytes are `llvm-mc`'s encodings of each snippet,

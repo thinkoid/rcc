@@ -252,38 +252,6 @@ store past its instruction's reach (4095 bytes for =strb=, 8190 for
 Check: a call with 520 arguments to a function compiled by =clang=
 returns the sum that tells the positions apart.
 
-** TODO Three listings of the Seventh Edition compiler are not what it writes
-
-The documents state what the ancestor writes for a shape, worked
-out from its source by hand. Run, the compiler writes otherwise in
-three places:
-
-- =ancestor.md=, the address of an automatic into a register
-  variable: the page has =mov r5,r4; add $-6,r4=; the compiler
-  writes =add $-10,r4=, octal, the first automatic at -8 from =r5=,
-  since =csv= saves three registers below it;
-- =ancestor.md=, ~y = x + y++~ in the order of =delay()=: the page
-  has =mov _x,r0; add _y,r0; mov r0,_y; inc _y=; the compiler writes
-  =mov _y,r0; add _x,r0=, the operands exchanged, then the store and
-  the step as the page has them. The value is the page's;
-- =backend.md= chapter 13, call 16, says the compiler refused a
-  =char= promoted and ~p[3]~ on a pointer in memory. It refused
-  them as a right operand, under =-=; under =+= it put the harder
-  operand on the left and wrote the variable, =movb _c,r4; add
-  _a,r4=. A multiply by a power of two it wrote as the shift, in
-  place, =mov _a,r4; ash $3,r4=.
-
-=ancestor.md= also says twice that none of its PDP-11 listings was
-run.
-
-Fix: the three corrected to what the compiler writes; the two
-sentences say the listings were compared with the compiler's output
-and how a reader runs it.
-
-Check: each listing of the ancestor in =ancestor.md=, in chapter 13
-and in =aarch64.md='s calls is the output of the Seventh Edition
-compiler for a source that has the shape.
-
 * Guarantees
 
 The promises in =docs/guarantees.md=. The entry number is the
