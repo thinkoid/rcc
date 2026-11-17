@@ -434,7 +434,9 @@ TYPES(DEST_OTHER)
    unsigned.  Converted to long and to unsigned long, used as an index,
    added to a long, shifted and negated as a long, assigned to a
    register long and to a register unsigned long, and stored to a long
-   through a pointer.  The operands of each type. */
+   through a pointer; and after a 32-bit operation that makes it
+   negative, - 2 and ~, which leaves it valid to 32 bits again, widened
+   to long.  The operands of each type. */
 #define TRUTH(T, N)                                                     \
     long truth_##N(T a, T b)                                            \
     {                                                                   \
@@ -457,6 +459,9 @@ TYPES(DEST_OTHER)
         r = r * 7 + w + (a != s);                                       \
         r = r * 7 + ((long) (a < s) << 40);                             \
         r = r * 7 - (long) (a > s);                                     \
+        r = r * 7 + (long) ((a < s) - 2);                               \
+        r = r * 7 + (long) (!a - 2);                                    \
+        r = r * 7 + (long) ~(a && s);                                   \
         l = a < s;                                                      \
         r = r * 7 + l;                                                  \
         l = !a;                                                         \

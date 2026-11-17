@@ -42,8 +42,10 @@
    at 12 and p -= n, n a long in memory, and index_int and index_scaled
    beside them, an int index and p + n at a scale; widen_signedness and
    widen_unsigned a widening over a cast that changes the signedness
-   alone, (long) (int) u and (unsigned long) (unsigned) i, and
-   widen_narrowed beside them over a narrowing cast; compare_register an
+   alone, (long) (int) u and (unsigned long) (unsigned) i, widen_char
+   and widen_byte one over a cast that keeps every bit, (long) (char) c
+   and (long) (signed char) uc, and widen_narrowed beside them over a
+   narrowing cast; compare_register an
    object compared with a register variable, as a condition and as a
    value, and beside it an expression on the right; constant_index and
    constant_index_right 3 + p and p + 3, constant_index_into the same
@@ -120,7 +122,8 @@
    -12(%rbp), %rcx; imulq $4, %rcx, %rcx in index_int and movq
    -16(%rbp), %rcx; leaq (%rax,%rcx,4), %rax in index_scaled; the load
    the widening, movslq -4(%rbp), %rax in widen_signedness and movl
-   -4(%rbp), %eax alone in widen_unsigned, and movq -8(%rbp), %rax;
+   -4(%rbp), %eax alone in widen_unsigned, movsbq -1(%rbp), %rax alone
+   in widen_char and widen_byte, and movq -8(%rbp), %rax;
    movslq %eax, %rax in widen_narrowed; cmpl %ebx, -12(%rbp) before jge
    and before setne in compare_register, and for x == r + 1 x's load and
    cmpl %ecx, %eax; movq -8(%rbp), %rax; addq $12, %rax in
@@ -165,9 +168,11 @@
    arithmetic, the casts and the comparison on registers after the
    loads: sub x0, x0, x1, lsl #2 in index_sub and sub x1, x1, x0, lsl #2
    in index_compound, mov x2, #12 and mul in index_row and index_first,
-   sub x0, x0, w1, sxtw #2 in index_int; ldr w0 then sxtw x0, w0 in
-   widen_signedness, ldr x0 then sxtw x0, w0 in widen_narrowed, and mov
-   w0, w0 in widen_unsigned; ldr w0 then cmp w0, w19 in
+   sub x0, x0, w1, sxtw #2 in index_int; ldrsw x0, [x29, #16] alone in
+   widen_signedness and ldr w0, [x29, #16] alone in widen_unsigned,
+   ldrb w0, [x29, #16] alone in widen_char, the target's char unsigned,
+   and ldrsb x0, [x29, #16] alone in widen_byte, ldr x0 then sxtw x0,
+   w0 in widen_narrowed; ldr w0 then cmp w0, w19 in
    compare_register; add x0, x0, #12 after the load in constant_index
    and constant_index_right, add x19, x0, #12 then add x19, x19, #12 in
    constant_index_into, and mov x0, #4294967296 before the load in
@@ -596,4 +601,16 @@ int *
 constant_index_wide(int *p)
 {
         return 0x40000000 + p;
+}
+
+long
+widen_char(char c)
+{
+        return (long) (char) c;
+}
+
+long
+widen_byte(unsigned char uc)
+{
+        return (long) (signed char) uc;
 }

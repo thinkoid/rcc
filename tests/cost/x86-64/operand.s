@@ -1454,6 +1454,42 @@ constant_index_wide:
 	ret
 	.cfi_endproc
 	.size	constant_index_wide, .-constant_index_wide
+	.globl	widen_char
+	.type	widen_char, @function
+widen_char:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movb	%dil, -1(%rbp)
+	movsbq	-1(%rbp), %rax
+	jmp	.Lwiden_char.1
+.Lwiden_char.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	widen_char, .-widen_char
+	.globl	widen_byte
+	.type	widen_byte, @function
+widen_byte:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movb	%dil, -1(%rbp)
+	movsbq	-1(%rbp), %rax
+	jmp	.Lwiden_byte.1
+.Lwiden_byte.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	widen_byte, .-widen_byte
 	.bss
 	.globl	defined
 	.type	defined, @object

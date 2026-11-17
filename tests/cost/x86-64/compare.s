@@ -220,4 +220,28 @@ both_register:
 	ret
 	.cfi_endproc
 	.size	both_register, .-both_register
+	.globl	less_plus_long
+	.type	less_plus_long, @function
+less_plus_long:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	movl	-4(%rbp), %eax
+	cmpl	-8(%rbp), %eax
+	setl	%al
+	movzbl	%al, %eax
+	addl	$1, %eax
+	movslq	%eax, %rax
+	jmp	.Lless_plus_long.1
+.Lless_plus_long.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	less_plus_long, .-less_plus_long
 	.section	.note.GNU-stack,"",@progbits

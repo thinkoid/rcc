@@ -18,8 +18,10 @@
     X(F, FN, unsigned long, ul)
 
 /* each integer type paired with one of its width of the other
-   signedness: a name of the pair, the type and the other */
+   signedness, and three with their own type: a name of the pair, the
+   type and the other */
 #define FLIPS(X)                                                        \
+    X(c_c, char, char) X(s_s, short, short) X(i_i, int, int)            \
     X(c_uc, char, unsigned char) X(c_sc, char, signed char)             \
     X(sc_uc, signed char, unsigned char)                                \
     X(uc_sc, unsigned char, signed char)                                \

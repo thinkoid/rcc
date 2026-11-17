@@ -145,6 +145,13 @@ struct held_t
     int across = 0;
 };
 
+// The width a truth value is valid to, the value of a comparison, of !
+// and of && and ||: its row writes 0 or 1 by a 32-bit write, movzbl or
+// movl $1 on x86-64, cset or mov w0, #1 on aarch64, which clears the
+// upper half, and 0 and 1 extend alike by either signedness, so the 64
+// bits are the value (backend.md 6.3, the width rule).
+constexpr int truth_valid = 64;
+
 // A handle on a held value; the default is the no-value of a void
 // expression.
 struct value_t

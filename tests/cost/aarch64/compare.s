@@ -73,7 +73,6 @@ less_long:
 	ldr	w1, [x29, #20]
 	cmp	w0, w1
 	cset	w0, lt
-	sxtw	x0, w0
 	b	.Lless_long.1
 .Lless_long.1:
 	.cfi_def_cfa wsp, 32
@@ -102,7 +101,6 @@ less_unsigned_long:
 	ldr	w1, [x29, #20]
 	cmp	w0, w1
 	cset	w0, lt
-	sxtw	x0, w0
 	b	.Lless_unsigned_long.1
 .Lless_unsigned_long.1:
 	.cfi_def_cfa wsp, 32
@@ -129,7 +127,6 @@ not_long:
 	ldr	w0, [x29, #16]
 	cmp	w0, #0
 	cset	w0, eq
-	sxtw	x0, w0
 	b	.Lnot_long.1
 .Lnot_long.1:
 	.cfi_def_cfa wsp, 32
@@ -163,7 +160,6 @@ both_long:
 .Lboth_long.2:
 	mov	w0, #0
 .Lboth_long.3:
-	sxtw	x0, w0
 	b	.Lboth_long.1
 .Lboth_long.1:
 	.cfi_def_cfa wsp, 32
@@ -193,8 +189,7 @@ less_register:
 	ldr	w0, [x29, #24]
 	ldr	w1, [x29, #28]
 	cmp	w0, w1
-	cset	w0, lt
-	sxtw	x19, w0
+	cset	w19, lt
 	mov	x0, x19
 	b	.Lless_register.1
 .Lless_register.1:
@@ -225,8 +220,7 @@ not_register:
 	str	w0, [x29, #24]
 	ldr	w0, [x29, #24]
 	cmp	w0, #0
-	cset	w0, eq
-	sxtw	x19, w0
+	cset	w19, eq
 	mov	x0, x19
 	b	.Lnot_register.1
 .Lnot_register.1:
@@ -265,7 +259,7 @@ both_register:
 .Lboth_register.2:
 	mov	w0, #0
 .Lboth_register.3:
-	sxtw	x19, w0
+	mov	x19, x0
 	mov	x0, x19
 	b	.Lboth_register.1
 .Lboth_register.1:
@@ -280,4 +274,34 @@ both_register:
 	ret
 	.cfi_endproc
 	.size	both_register, .-both_register
+	.globl	less_plus_long
+	.type	less_plus_long, @function
+less_plus_long:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	str	w1, [x29, #20]
+	ldr	w0, [x29, #16]
+	ldr	w1, [x29, #20]
+	cmp	w0, w1
+	cset	w0, lt
+	add	w0, w0, #1
+	sxtw	x0, w0
+	b	.Lless_plus_long.1
+.Lless_plus_long.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	less_plus_long, .-less_plus_long
 	.section	.note.GNU-stack,"",@progbits

@@ -127,22 +127,6 @@ Check: ~r = c + 5~ and ~r = 5 + c~ have one listing of two
 instructions, and ~x * 4~ on a register variable is one =imull=,
 each pinned.
 
-** TODO aarch64: a widening over a cast that keeps the bits extends after the load
-
-On x86-64 a widening reads its object through casts that keep the
-bits, and the load extends: ~(long) (int) u~ is =movslq -4(%rbp),
-%rax= (=backend.md= 6.3). On aarch64 the cast is no read of an
-object, so the extension follows the load: =ldr w0, [x29, #16];
-sxtw x0, w0=, where =ldrsw x0, [x29, #16]= reads the object
-extended, and ~(unsigned long) (unsigned) i~ is =ldr w0, [x29,
-#16]; mov w0, w0=.
-
-Fix: aarch64's widening looks through casts that keep the bits, as
-x86-64's does.
-
-Check: =operand='s =widen_signedness= and =widen_unsigned= are one
-=ldrsw= and one =ldr= on aarch64.
-
 ** TODO Three rows beside a register variable's destination keep their =mov=
 
 A =register= variable is the destination of the value computed for
@@ -184,11 +168,16 @@ The destination rule (=backend.md= chapter 4, =aarch64.md= chapter
 - x86-64, ~r = c + 5~ with ~c~ a =register char=, in the entry on
   two rows around a constant and a register variable.
 
-Fix: decide each; the second goes with the join of ~?:~ in the
-register its consumer names.
+Fix: each takes the variable's register. The load of ~x~ in ~r =
+x++~ writes it, the step following on the object; each path of
+~&&~, ~||~ and ~?:~ writes it, with the join of ~?:~ in the register
+its consumer names; a left operand that is an object or a promoted
+value under the assignment's cast of signedness is a left operand
+of the rule; and a register variable valid to the width is one
+under a conversion that writes nothing.
 
-Check: a function of =register-destination= for each, agreeing with
-its decision.
+Check: a function of =register-destination= for each, with no =mov=
+into the variable's register.
 
 ** TODO x86-64: a register variable's copy is made where its consumer does not want it
 
@@ -208,20 +197,6 @@ of ~?:~ and an extension moved after are entries of the same kind.
 
 Check: the count over =tests= of such a copy followed by a move into
 =rax=, before and after; =ptr-diff='s =register_char= pinned.
-
-** TODO aarch64: a comparison's value is extended again for a =long=
-
-=cset= leaves 0 or 1 in a register whose 64 bits are then valid,
-signed or unsigned, as =mov w0, #1= does for ~&&~ and ~||~. The
-aarch64 generator records the value as valid to 32 bits, so ~(long)
-(a < b)~ is =cset w0, lt; sxtw x0, w0=, and ~(long) !a~ and ~(long)
-(a && b)~ end in =sxtw= too. The x86-64 generator records 64.
-
-Fix: the value of a comparison, of ~!~, of ~&&~ and of ~||~ is
-recorded as valid to 64 bits.
-
-Check: the functions of =compare= that widen one, pinned for
-aarch64 with no =sxtw=.
 
 ** TODO =c1.cc= includes =c1-common.hh= and uses nothing of it
 

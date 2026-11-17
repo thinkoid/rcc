@@ -1920,10 +1920,11 @@ jump_if(state_t &s, binary_op_t op, bool is_signed, int label)
 
 // A comparison as a value, the row of 6.3: cmp, then cset of the
 // condition into L's w name, the int the operator yields, in one
-// instruction where x86 needs two.  A borrowed read as L is only read by
-// the cmp, and the cset takes a fresh register, by destination(); a
-// register variable handed down is the cset's, cset w19, lt (chapter
-// 4).
+// instruction where x86 needs two, valid to 64 bits, truth_valid, so
+// (long) (a < b) writes nothing after it.  A borrowed read as L is only
+// read by the cmp, and the cset takes a fresh register, by
+// destination(); a register variable handed down is the cset's, cset
+// w19, lt, an int's, a long's and an unsigned long's (chapter 4).
 value_t
 comparison(state_t &s, const operation_t &b, into_t *into = nullptr)
 {
@@ -1931,7 +1932,7 @@ comparison(state_t &s, const operation_t &b, into_t *into = nullptr)
 
     auto l = compare(s, b);
     insn(s, "cset",
-         { reg(final_destination(s, l, 32, into), 32),
+         { reg(final_destination(s, l, truth_valid, into), 32),
            condition(b.op, is_signed) });
 
     return l;
@@ -1974,9 +1975,9 @@ test_zero(state_t &s,
          { reg(r, t.width), label_name(s.function, *label) });
 }
 
-// &&, || and ?: as a value: jump code into one register on both paths,
-// mov L, #1 and mov L, #0 on the arms of the logical operators, never
-// csel, 6.3.  before_paths() first gives every held value one location
+// && and || as a value: jump code into one register on both paths,
+// mov L, #1 and mov L, #0, never csel, 6.3, the value valid to 64 bits,
+// truth_valid.  before_paths() first gives every held value one location
 // on both, so the paths leave the register map as they found it
 // whatever their operands do.
 value_t
@@ -1989,7 +1990,7 @@ logical(state_t &s, const expr_t &e)
 
     cbranch(s, e, no, false);
 
-    const auto v = fresh(s, 32);
+    const auto v = fresh(s, truth_valid);
     const auto r = reg(reg_of(s, v), 32);
 
     insn(s, "mov", { r, imm(1) });
@@ -2226,14 +2227,16 @@ unary(state_t &s, const unary_t &u, const type_t &t, into_t *into = nullptr)
         return v;
     }
 
-    // as a value, the row of 6.3: the test of zero, then cset L, eq.
-    // The operand is not promoted, so it is tested at its own width.  A
-    // borrowed read is only tested, and the cset takes a fresh register.
+    // as a value, the row of 6.3: the test of zero, then cset L, eq,
+    // valid to 64 bits, truth_valid.  The operand is not promoted, so it
+    // is tested at its own width.  A borrowed read is only tested, and
+    // the cset takes a fresh register.
     case unary_op_t::log_not: {
         auto v = rvalue(s, *u.arg);
         test_zero(s, v, integer(u.arg->type), std::nullopt);
 
-        insn(s, "cset", { reg(final_destination(s, v, 32, into), 32), "eq" });
+        insn(s, "cset",
+             { reg(final_destination(s, v, truth_valid, into), 32), "eq" });
 
         return v;
     }
@@ -2416,7 +2419,12 @@ extending_load(state_t &s,
 // write of an unsigned value.  A signed object in memory is loaded
 // extended to the new width, extending_load(), so the load is the
 // widening; an unsigned one is loaded as any read, valid to 64 bits by
-// the load's own extension.  A change of signedness alone is nothing.
+// the load's own extension.  The object may be under casts that keep
+// its bits, object_under()'s: (long) (int) u is ldrsw x0, [x29, #16],
+// and (unsigned long) (unsigned) i and (long) (char) c the ldr and the
+// ldrb, valid to 64 bits, each reading the object at its own width
+// (G10); a narrowing cast under the widening keeps its load and the
+// extension after it.  A change of signedness alone is nothing.
 // A pointer is its integer view, so pointer to pointer is nothing, an
 // integer widens to a pointer by its own signedness (6.3.2.3p5), sxtw
 // for an int, and a pointer narrows to an integer by its low bits (p6).
@@ -2482,9 +2490,12 @@ cast(state_t &s, const cast_t &c, const type_t &to, into_t *into = nullptr)
     const auto &from = integer(c.arg->type);
     const bool widens = target.width > from.width;
 
-    auto v = widens && from.is_signed && in_memory(*c.arg) ?
-                 extending_load(s, *c.arg, from, target.width, onward) :
-                 rvalue(s, *c.arg, onward);
+    const auto *object = widens ? object_under(c) : nullptr;
+    const bool loads = object && (from.is_signed || object != c.arg.get());
+    const int width = from.is_signed ? target.width : 32;
+
+    auto v = loads ? extending_load(s, *object, from, width, onward) :
+                     rvalue(s, *c.arg, onward);
     if (widens)
         v = extended(s, v, from, target.width, onward);
 

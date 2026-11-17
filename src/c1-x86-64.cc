@@ -1884,13 +1884,6 @@ difference(state_t &s, const binary_t &b)
                   int_t { 64, true });
 }
 
-// The width a truth value is valid to, the value of a comparison, of !
-// and of && and ||, written by movzbl or by movl of the constant: the
-// 32-bit write clears the upper half, and 0 and 1 extend alike by
-// either signedness, so the 64 bits are the value (6.3, the width
-// rule).
-constexpr int truth_valid = 64;
-
 // The condition code of a comparison, the suffix of jcc and setcc:
 // signed or unsigned by the operands' type, which the parser's
 // conversions made common; a pointer's is unsigned, G7.

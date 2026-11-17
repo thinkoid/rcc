@@ -2072,7 +2072,8 @@ answers:
     any operand that is no read of an object, keep the extension after
     the value. On x86-64 the read may be under casts that keep its
     bits, `(long) (int) u` being `movslq -4(%rbp), %rax`, the object
-    read at its own width; aarch64 extends after the load there.
+    read at its own width; aarch64 the same, `ldrsw x0, [x29,
+    #16]`.
 13. **On x86-64 a condition jumps on its operator's own flags** (7.1):
     where the operator's instruction sets ZF from the condition's
     value, `je` or `jne` follows it and no `cmp` is written, so `while

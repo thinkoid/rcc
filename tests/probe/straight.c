@@ -124,12 +124,13 @@ TYPES(VALUES)
 
 TYPES(CASTS)
 
-/* a cast over a cast that changes the signedness alone, of an object
-   in memory, a parameter's slot, flip_, and a global, flipg_: a
-   widening is the load extended by the inner type's signedness,
-   docs/backend.md 6.3 on x86-64, (long) (int) u as movslq -4(%rbp),
-   %rax, the object read at its own width; every narrower or equal
-   target beside it */
+/* a cast over a cast that keeps every bit, of the other signedness or
+   of its own type, of an object in memory, a parameter's slot, flip_,
+   and a global, flipg_: a widening is the load extended by the inner
+   type's signedness, docs/backend.md and docs/aarch64.md 6.3, (long)
+   (int) u as movslq -4(%rbp), %rax and ldrsw x0, [x29, #16], the
+   object read at its own width; every narrower or equal target beside
+   it */
 #define FLIP_GLOBAL(P, F, S) F flip_object_##P;
 
 FLIPS(FLIP_GLOBAL)

@@ -1701,8 +1701,7 @@ widen_signedness:
 	mov	x29, sp
 	.cfi_def_cfa_register w29
 	str	w0, [x29, #16]
-	ldr	w0, [x29, #16]
-	sxtw	x0, w0
+	ldrsw	x0, [x29, #16]
 	b	.Lwiden_signedness.1
 .Lwiden_signedness.1:
 	.cfi_def_cfa wsp, 32
@@ -1727,7 +1726,6 @@ widen_unsigned:
 	.cfi_def_cfa_register w29
 	str	w0, [x29, #16]
 	ldr	w0, [x29, #16]
-	mov	w0, w0
 	b	.Lwiden_unsigned.1
 .Lwiden_unsigned.1:
 	.cfi_def_cfa wsp, 32
@@ -1912,6 +1910,54 @@ constant_index_wide:
 	ret
 	.cfi_endproc
 	.size	constant_index_wide, .-constant_index_wide
+	.globl	widen_char
+	.type	widen_char, @function
+widen_char:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	strb	w0, [x29, #16]
+	ldrb	w0, [x29, #16]
+	b	.Lwiden_char.1
+.Lwiden_char.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	widen_char, .-widen_char
+	.globl	widen_byte
+	.type	widen_byte, @function
+widen_byte:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	strb	w0, [x29, #16]
+	ldrsb	x0, [x29, #16]
+	b	.Lwiden_byte.1
+.Lwiden_byte.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	widen_byte, .-widen_byte
 	.bss
 	.globl	defined
 	.type	defined, @object

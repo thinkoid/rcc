@@ -1537,9 +1537,10 @@ On x86-64 the rule sees the object under a cast that keeps its bits,
 one that changes the signedness alone or none: `(long) (char) c` on a
 `char` in memory is the one `movsbq -1(%rbp), %rax`, as `(long) c`
 is, and `(long) (int) u` on an `unsigned` `movslq -4(%rbp), %rax`,
-the object read at its own width. On aarch64 a cast over a cast is
-still no read: `(long) (int) u` is `ldr w0, [x29, #16]; sxtw x0,
-w0`.
+the object read at its own width. aarch64 the same: `(long) (int) u`
+is `ldrsw x0, [x29, #16]`, and `(long) (char) c` the one `ldrb w0,
+[x29, #16]`, its `char` unsigned. A cast that truncates keeps its load
+and the extension after it.
 
 The rule moved 18 x86-64 pins in 44 places, 1337 instruction lines to
 1293, and 6 aarch64 pins in 8 places, 499 to 491.
