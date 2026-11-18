@@ -145,7 +145,10 @@ Three sums.
   the promotion of its operand (6.5.4.3p2), a cast, and over an lvalue
   that no promotion converts, a cast to the lvalue's own type, since
   the result is a value and no lvalue; so `+x` is `(T) x`, `T` the
-  promoted type, and the source's `+` is no instruction. A call's
+  promoted type, and the source's `+` is no instruction. A
+  conditional of two void operands has type `void` (6.5.16p6) and
+  stands where a value is dropped, as a call of a void function does;
+  one void operand and one of a value is an error (p3). A call's
   callee is the name of a function, the direct call, or an
   expression of
   pointer-to-function type, the call through a pointer; c1 tells the
@@ -647,7 +650,10 @@ code of a `backend.md` chapter:
   (chapter 7), and `effect(e)` writes its side effects and yields no
   value: a constant assigned to memory is one store, and a compound
   assignment or a step on an object in memory is the memory form,
-  the operator on the object, `addl $1, -8(%rbp)` (6.6). `!`, `&&`
+  the operator on the object, `addl $1, -8(%rbp)` (6.6); a
+  conditional is the jump to its second arm, each arm for its effect
+  and the jump past the second, with no join, and so is a void one
+  wherever it stands. `!`, `&&`
   and `||` are the shape of the jumps; any other condition is its
   value compared with 0 at its own width, or on x86-64 a jump on the
   flags of its operator's own instruction where that sets them
@@ -866,7 +872,9 @@ an `enum months` (section 2.3). With a function declared in a block
 and an object declared `extern` in one (chapter 5), `header-squeeze`
 calls K&R's `squeeze` and its `strcat` (section 2.8), defined after
 the block that declares them, and the C library's `strlen` and
-`strcmp` without their header.
+`strcmp` without their header. With `?:` of two `void` operands
+(chapter 4), `header-collatz` takes each step of the walk from 27 by
+a conditional of two void calls.
 
 ## 11. Not yet
 

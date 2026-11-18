@@ -1,0 +1,2 @@
+tests/error/conditional-void-arm.c:9:11: error: void and non-void operands in conditional expression
+status 1

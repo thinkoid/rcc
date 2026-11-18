@@ -1127,6 +1127,19 @@ asks whether the type is one rcc does not use yet.
 Check: a program of =tests/error= with ~(struct S) x~, pinned "cast
 to a type that is not a scalar".
 
+** TODO A ~?:~ with one void arm is refused where =clang= takes it
+
+~c ? f() : g()~ with ~f~ returning =void= and ~g~ an =int= fails
+with "void and non-void operands in conditional expression".
+6.5.16p3 allows no such pair, but =gcc= and =clang= take it as GNU C,
+the result =void=, with a warning only under =-pedantic=; a header
+written for them may have it.
+
+Fix: decide: the error stays, as the constraint has it, or the pair
+is taken as the two compilers take it, the other arm for its effect.
+
+Check: the pin of =conditional-void-arm= agrees with the decision.
+
 ** TODO A =(void *) 0= arm makes =?:= a =void *=
 
 =c ? (void *) 0 : p= with =p= an =int *= has type =void *= in the
@@ -1159,28 +1172,6 @@ then writes =cmpl=.
 
 Check: the listing of =!c= on a =char= is the load =movsbl= and
 =cmpl $0=.
-
-** TODO A conditional with two void arms is refused
-
-~a < b ? f() : g();~ with =f= and =g= returning =void= fails with
-"not yet: conditional with void operands". It is valid: 6.5.16p3
-lists "both operands have void type" among the pairs the second and
-third operands may be, and p6 says "If both operands have void type,
-the result has void type." =conditional_expression()= converts each
-arm to a value and finds their common type, and a void arm has
-neither. The strict form of glibc's =assert= is this expression,
-~((e) ? (void) (0) : __assert_fail(...))~.
-
-Fix: with two void arms the parser converts neither and types the
-node =void=. Such a node stands only where a value is dropped, an
-expression statement, the left of a comma, a cast to =void=, an arm
-of another conditional, and c1 takes a conditional's arms for their
-effect there; whether either generator needs more is found with the
-fix.
-
-Check: ~void f(int *p) { *p = 1; }~, ~void g(int *p) { *p = 2; }~
-and ~c ? f(&x) : g(&x);~ compile under both targets and store the
-arm the condition selects.
 
 ** TODO The comment on a local's declaration says 2 GiB
 

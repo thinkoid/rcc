@@ -1,0 +1,2 @@
+tests/error/void-conditional-value.c:9:18: error: void expression used as a value
+status 1

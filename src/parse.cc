@@ -1321,15 +1321,25 @@ assignment(const token_t &op, expr_t lhs, expr_t rhs)
 
 // The arms go to their common type, 6.5.16p6, or two pointers to the
 // one common_pointer() finds, p7.  A pointer and an integer other than
-// a null pointer constant do not meet, p3.  Two void arms are valid C,
-// outside the subset for now.  On a constant condition and two
-// constant arms, the node is the arm the condition selects, p5.  The
-// condition comes as an rvalue.
+// a null pointer constant do not meet, p3.  Two void arms make a void
+// conditional, p3, p6, which stands where a value is dropped, as a
+// call of a void function does, and c1 generates its arms for their
+// effect; one void arm and one of a value meet in none of p3's pairs.
+// On a constant condition and two constant arms, the node is the arm
+// the condition selects, p5.  The condition comes as an rvalue.
 expr_t
 conditional(const token_t &op, expr_t cond, expr_t yes, expr_t no)
 {
-    if (is< void_t >(yes.type) && is< void_t >(no.type))
-        not_yet(op, "conditional with void operands");
+    const bool void_yes = is< void_t >(yes.type);
+    const bool void_no = is< void_t >(no.type);
+
+    if (void_yes && void_no)
+        return expr_t { make_void(), conditional_t { box(std::move(cond)),
+                                                     box(std::move(yes)),
+                                                     box(std::move(no)) } };
+
+    if (void_yes || void_no)
+        fail(op, "void and non-void operands in conditional expression");
 
     yes = rvalue(op, std::move(yes));
     no = rvalue(op, std::move(no));

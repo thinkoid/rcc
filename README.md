@@ -143,7 +143,10 @@ load alone. Then a function declared in a block, and an object
 declared `extern` in one: the name is the block's, and the entity the
 one of its linkage, so `header-squeeze` calls K&R's `squeeze`,
 defined after the block that declares it, and the C library's
-`strlen` without its header.
+`strlen` without its header. Then `?:` with two `void` operands, a
+void conditional generated for its effect as one whose value is
+dropped, so `header-collatz` takes each step of its walk by
+`n % 2 ? triple(&n) : halve(&n)`.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/`, the cost corpus over `tests/cost/`
 and the error corpus over `tests/error/`, the programs rcc refuses
