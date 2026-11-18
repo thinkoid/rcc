@@ -1124,13 +1124,3 @@ reached; without, the parser's branch goes.
 
 Check: a program of =tests/error= with ~1'000~ and its pin.
 
-** TODO The keyword table of =src/lex.cc= does not follow =.clang-format=
-
-=clang-format --dry-run src/lex.cc= prints 23 warnings, all on the
-table =keywords[]=: the table is written two entries a line in
-aligned columns, and the formatter lays it out one entry a line. No
-other C++ source draws a warning.
-
-Fix: the table one entry a line, as the formatter has it.
-
-Check: =clang-format --dry-run src/*.cc src/*.hh= prints nothing.
