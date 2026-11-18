@@ -587,6 +587,109 @@ member_label_odd:
 	ret
 	.cfi_endproc
 	.size	member_label_odd, .-member_label_odd
+	.globl	view_address
+	.type	view_address, @function
+view_address:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	-8(%rbp), %rax
+	leaq	13(%rax), %rax
+	jmp	.Lview_address.1
+.Lview_address.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	view_address, .-view_address
+	.globl	view_address_zero
+	.type	view_address_zero, @function
+view_address_zero:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	-8(%rbp), %rax
+	jmp	.Lview_address_zero.1
+.Lview_address_zero.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	view_address_zero, .-view_address_zero
+	.globl	view_address_index
+	.type	view_address_index, @function
+view_address_index:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	imull	$4, -12(%rbp), %ecx
+	movslq	%ecx, %rcx
+	leaq	4(%rax,%rcx,1), %rax
+	addq	$2, %rax
+	jmp	.Lview_address_index.1
+.Lview_address_index.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	view_address_index, .-view_address_index
+	.globl	view_address_register
+	.type	view_address_register, @function
+view_address_register:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movq	%rdi, -16(%rbp)
+	movq	-16(%rbp), %rbx
+	addq	$1, %rbx
+	leaq	12(%rbx), %rbx
+	movq	%rbx, %rax
+	jmp	.Lview_address_register.1
+.Lview_address_register.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	view_address_register, .-view_address_register
+	.globl	view_address_held
+	.type	view_address_held, @function
+view_address_held:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	-8(%rbp), %rax
+	leaq	32777(%rax), %rax
+	jmp	.Lview_address_held.1
+.Lview_address_held.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	view_address_held, .-view_address_held
 	.bss
 	.globl	bytes
 	.type	bytes, @object

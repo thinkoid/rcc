@@ -980,7 +980,20 @@ never both: `*(short *) ((char *) p + 4 + i * 4 + 2)` is the product's
 own operand is the index, `((int *) (c + 1))[i]`, the constant keeps
 its `add` before `[x0, w1, sxtw #2]`, the same count. A total out of
 reach, `((int *) (c + 1))[255]` at 1021 bytes, keeps the rows as they
-were.
+were. As a value the address is the same walk: two or more constants
+are one `add` of their sum where its immediate encodes it,
+`&((int *) (c + 1))[3]` being `add x0, x0, #13` and
+`&((int *) (c + 4))[-1]`, whose constants sum to 0, `c` and no
+instruction; a variable index on the way is added first, in the order
+written, and the constants once after it, `add x0, x0, w1, sxtw; add
+x0, x0, #6` for `(short *) ((char *) p + 4 + i * 4 + 2)`; into a
+register pointer the base's row and the `add` write the variable, `ldr
+x19, [x29, #24]; add x19, x19, #13`. A sum no `add` immediate encodes
+is held and added, `mov x1, #32777; add x0, x0, x1` for
+`&((long *) (c + 1))[4097]`, where that is fewer instructions than the
+parts' rows, three there; `0x10000 + 16` keeps its parts, two `add`s,
+where the sum held would be three. A name's address keeps its label's
+pair with the part within the object, as above.
 
 A store's address is generated before its right operand and held
 across it (G13), but a constant index reads nothing, so its `mov` is

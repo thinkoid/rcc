@@ -1415,17 +1415,25 @@ access_sum(const expr_t &p,
     return inner == 1 || inner == stride(p.type) ? sum : p;
 }
 
+// denoted() counts p + n's rows by product_length(), which comes with
+// the constant row of 6.4, after it.
+int product_length(long long);
+
 // The address a pointer denotes before any instruction forms it, 6.3:
 // the pointer under the casts between pointer types and the sums by a
 // constant met on the way, their constants summed in bytes, each scaled
 // by its own sum's stride, and at most one sum by a variable index, its
 // index, its stride and whether it is written first; the walk stops at
 // any other pointer, the base.  ((char *) p + 4 + i * 4) on an int *p
-// is p, 4, and the index i * 4 at a stride of 1.
+// is p, 4, and the index i * 4 at a stride of 1.  constants counts the
+// sums by a constant met, and written the instructions the row of p + n
+// writes for them, one by one, product_length()'s.
 struct denoted_t
 {
     const expr_t *base;
     long long bytes = 0;
+    int constants = 0;
+    int written = 0;
     const expr_t *index = nullptr;
     long index_stride = 0;
     bool index_first = false;
@@ -1459,6 +1467,8 @@ denoted(const expr_t &p)
                 0ull - static_cast< unsigned long long >(bytes));
             d.bytes = wrapped_add(d.bytes,
                                   b.op == binary_op_t::add ? bytes : negated);
+            ++d.constants;
+            d.written += product_length(bytes);
         }
         else if (b.op == binary_op_t::add && !d.index) {
             d.index = &n;
@@ -1906,6 +1916,27 @@ constant(state_t &s, reg_t r, long long value, int width)
     }
 }
 
+// The instructions constant() writes for value at width: one where a
+// mov encodes it, and otherwise one for each chunk that differs from
+// the start, the lesser of those over zeros and those over ones.
+int
+constant_length(long long value, int width)
+{
+    const auto u = bits_of(value, width);
+
+    int zeros = 0;
+    int ones = 0;
+    for (int i = 0; i < width / 16; ++i) {
+        zeros += ((u >> 16 * i) & 0xffff) != 0;
+        ones += ((u >> 16 * i) & 0xffff) != 0xffff;
+    }
+
+    if (zeros <= 1 || ones <= 1 || bitmask_immediate(value, width))
+        return 1;
+
+    return std::min(zeros, ones);
+}
+
 // A constant that must be held, in a register taken for it.  A
 // constant narrower than int is written as its promotion, so the
 // register holds it extended.  Handed a register variable, the
@@ -2227,6 +2258,18 @@ product(state_t &s, long long d, unsigned avoid = 0)
     return { .value = v, .width = 64 };
 }
 
+// The instructions of p + n's row for a product d, product()'s: the add,
+// and before it the constant row's where add's immediate does not
+// encode d.
+int
+product_length(long long d)
+{
+    if (arithmetic_immediate(d, 64))
+        return 1;
+
+    return constant_length(d, 64) + 1;
+}
+
 // The n of p + n, n + p and p - n, and of p += n and p -= n, generated
 // as the row takes it, 6.3.  A constant is its product with the size.
 // For a size of 1, 2, 4 or 8 any other n is the index of index_of(),
@@ -2489,6 +2532,59 @@ row_address(state_t &s, const row_access_t &row)
                        .label = row.label ? row.slot->label : std::string { } };
 }
 
+// The value of a pointer whose sums by a constant, through its casts,
+// are more than one, 6.3: denoted()'s base, a variable index on the way
+// added to it in the order written, and the constants as one add of
+// their sum, product()'s, add x0, x0, #13 for &((int *) (p + 1))[3] on
+// a char *p, and none where they sum to 0, &((int *) (p + 4))[-1] being
+// p.  A sum that add's immediate does not encode is held, mov x1,
+// #32777; add x0, x0, x1 for &((long *) (p + 1))[4097], where that is
+// fewer instructions than the rows write for the parts, denoted()'s
+// written; otherwise the rows add the parts as before, add x0, x0,
+// #65536; add x0, x0, #16, where the sum held is three.  A register
+// variable handed down is the last instruction's destination, and with
+// no index the base's row's too, base_into()'s, as for p + c.  None for
+// one constant, whose add is the rows' own, and for a name's address,
+// whose label pair carries the part within its object, folded()'s.
+std::optional< value_t >
+joined(state_t &s, const expr_t &e, into_t *into, unsigned wanted)
+{
+    const auto at = denoted(e);
+    if (at.constants < 2 || named_offset(*at.base, s.defined))
+        return std::nullopt;
+
+    if ((at.bytes == 0 ? 0 : product_length(at.bytes)) >= at.written)
+        return std::nullopt;
+
+    if (!at.index) {
+        if (at.bytes == 0)
+            return rvalue(s, *at.base, into, wanted);
+
+        auto onto = base_into(into);
+        const auto base = rvalue(s, *at.base, onto ? &*onto : nullptr);
+        return offset(s, binary_op_t::add, base, product(s, at.bytes), true,
+                      into, wanted);
+    }
+
+    value_t base { };
+    if (!at.index_first)
+        base = rvalue(s, *at.base);
+
+    const auto n = displacement(s, *at.index, at.index_stride);
+
+    if (at.index_first)
+        base = rvalue(s, *at.base);
+
+    const bool last = at.bytes == 0;
+    const auto sum = offset(s, binary_op_t::add, base, n, !at.index_first,
+                            last ? into : nullptr, last ? wanted : 0);
+    if (last)
+        return sum;
+
+    return offset(s, binary_op_t::add, sum, product(s, at.bytes), true, into,
+                  wanted);
+}
+
 // A binary + or - of a pointer type, 6.5.7p9: the pointer and the
 // integer, the integer widened to 64 bits by the parser, each generated
 // in the order written (G13), a constant as its product with the size,
@@ -2497,14 +2593,15 @@ row_address(state_t &s, const row_access_t &row)
 // 6.3, and any other lvalue's address plus a constant summed()'s base
 // and the one add of its displacement, add x0, x0, #20 for &p[1][2] on
 // int (*p)[3]; a displacement of 0 is the base and no instruction, as
-// &*p is p.  A register variable handed down goes to the row that
-// writes the sum, chapter 4, and so does the register the consumer
-// names, wanted (6.1); by a constant, to the pointer's row too,
-// base_into()'s, so that q = p[1] into a register int *q is ldr x19,
-// [x29, #24]; add x19, x19, #12, and to summed()'s base.  Not by an
-// integer that is no constant: generated after the pointer it could
-// read the variable the pointer's row wrote, and generated before it,
-// n + p, its value could be a read of the variable that row overwrites.
+// &*p is p.  Constants under the pointer, through its casts, are one
+// add with this one, joined()'s.  A register variable handed down goes
+// to the row that writes the sum, chapter 4, and so does the register
+// the consumer names, wanted (6.1); by a constant, to the pointer's row
+// too, base_into()'s, so that q = p[1] into a register int *q is ldr
+// x19, [x29, #24]; add x19, x19, #12, and to summed()'s base.  Not by
+// an integer that is no constant: generated after the pointer it could
+// read the variable the pointer's row wrote, and generated before it, n
+// + p, its value could be a read of the variable that row overwrites.
 value_t
 pointer_arithmetic(state_t &s,
                    const expr_t &e,
@@ -2522,6 +2619,10 @@ pointer_arithmetic(state_t &s,
                       { .immediate = imm(a->displacement) }, true, into,
                       wanted);
     }
+
+    // &((int *) (p + 1))[3] on a char *p: add x0, x0, #13
+    if (const auto v = joined(s, e, into, wanted))
+        return *v;
 
     const auto &b = as< binary_t >(e);
     const long size = stride(e.type);

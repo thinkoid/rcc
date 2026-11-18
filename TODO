@@ -75,19 +75,35 @@ operand and these do not.
 
 Check: the count over =tests=, and no function longer.
 
-** TODO aarch64: an address as a value adds each constant under a cast
+** TODO aarch64: three functions walk an access's pointer through its casts and sums
 
-~&((int *) (p + 1))[3]~ on a ~char *p~ is =add x0, x0, #1; add x0,
-x0, #12=, where the two constants are one =add x0, x0, #13=; x86-64
-writes the one =leaq 13(%rax), %rax=. An access sums them
-(=denoted()= and =carried()= in =src/c1-aarch64.cc=); the value's
-rows do not walk the casts. No test has the shape.
+=access_sum()=, =row_sum()= with =row_access()=, and =denoted()= in
+=src/c1-aarch64.cc= each read a pointer's tree for the same parts: a
+cast between pointer types, a sum by a constant, a sum by a variable
+index, a row's decay. Each recognises a little the others do not:
+the first one cast over the top sum, with its stride rule; the
+second a row's lvalue layer and a name's constants; the third any
+chain of casts and constant sums with one index.
 
-Fix: the value's rows take =denoted()='s base and bytes, and write
-one =add= where it encodes them.
+Fix: one walk, =denoted()= with the top sum and the casts above it
+recorded and a row's decay stepped through, read by all three
+callers; =access_sum()= and =row_sum()= go. The row's caller must
+ask that its index be the top sum, or it takes constants and casts
+between a row's index and its pointer that today's rows do not.
 
-Check: a function of =subscript-displacement= with the one =add=,
-and no function longer.
+Check: one walk, and no listing changes on either target.
+
+** TODO An addition of a constant 0 writes its instruction
+
+~p + 0~ on a pointer is =addq $0, %rax= and =add x0, x0, #0=, and
+~x + 0~ on an =int= the same =addl $0, %eax= and =add w0, w0, #0=,
+where constants that sum to 0 through a chain of casts write nothing
+(=aarch64.md= 6.3).
+
+Fix: none taken; decide whether a sum by a constant 0 the source
+wrote is an instruction.
+
+Check: by the decision.
 
 ** TODO aarch64: constants whose sum is out of the access's reach are each added
 

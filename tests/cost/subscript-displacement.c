@@ -32,6 +32,11 @@
    x[2], member_far() *(int *) (c + 261) on a local char array, and
    member_label() and member_label_odd() *(short *) ((char *) words +
    6) and *(int *) ((char *) words + 6) on a global int words[8].
+   view_address(), view_address_zero(), view_address_index() and
+   view_address_register() are such addresses as values, &((int *) (p
+   + 1))[3], &((int *) (p + 4))[-1], (short *) ((char *) p + 4 + i * 4
+   + 2), and the first into a register int *q; view_address_held()
+   &((long *) (p + 1))[4097], whose 32777 bytes no add encodes.
 
    On x86-64 the listing must show row() reading p[i][2] by the one
    movsbl 2(%rax,%rcx,8), %eax after p's load and i's movslq, local()
@@ -61,7 +66,11 @@
    slot's or the label's own operand: member_slot() movl -20(%rbp),
    %eax, member_odd() movl -23(%rbp), %eax, member_far() movl
    -343(%rbp), %eax, member_label() movswl words+6(%rip), %eax and
-   member_label_odd() movl words+6(%rip), %eax.
+   member_label_odd() movl words+6(%rip), %eax.  view_address() is the
+   one leaq 13(%rax), %rax, view_address_zero() p's load alone,
+   view_address_index() leaq 4(%rax,%rcx,1), %rax and addq $2, %rax,
+   and view_address_register() addq $1, %rbx and leaq 12(%rbx), %rbx;
+   view_address_held() the one leaq 32777(%rax), %rax.
 
    On aarch64 the listing must show cell() reading p[1][2] by the one
    ldr w0, [x0, #20] after p's load, and corner() forming &p[1][2] by
@@ -107,7 +116,14 @@
    bits, keeps add x0, x29, #281 before ldr w0, [x0], and
    member_label_odd(), whose label plus offset is no multiple of 4,
    keeps the page's adrp and add before ldr w0, [x0], since the scaled
-   :lo12: form needs that multiple at link time. */
+   :lo12: form needs that multiple at link time.  As values the
+   constants under the casts are one add: view_address() add x0, x0,
+   #13 after p's load, view_address_zero() p's load alone,
+   view_address_index() the product's add x0, x0, w1, sxtw, then add
+   x0, x0, #6, and view_address_register() ldr x19, [x29, #24] and add
+   x19, x19, #13; view_address_held() holds the sum, mov x1, #32777;
+   add x0, x0, x1, where the parts were add x0, x0, #1 and the 32776
+   held and added. */
 int
 row(char (*p)[8], int i)
 {
@@ -303,4 +319,37 @@ int
 member_label_odd(void)
 {
         return *(int *) ((char *) words + 6);
+}
+
+int *
+view_address(char *p)
+{
+        return &((int *) (p + 1))[3];
+}
+
+int *
+view_address_zero(char *p)
+{
+        return &((int *) (p + 4))[-1];
+}
+
+short *
+view_address_index(int *p, int i)
+{
+        return (short *) ((char *) p + 4 + i * 4 + 2);
+}
+
+int *
+view_address_register(char *p)
+{
+        register int *q;
+
+        q = &((int *) (p + 1))[3];
+        return q;
+}
+
+long *
+view_address_held(char *p)
+{
+        return &((long *) (p + 1))[4097];
 }
