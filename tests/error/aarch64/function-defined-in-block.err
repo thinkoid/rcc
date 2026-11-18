@@ -1,0 +1,2 @@
+tests/error/function-defined-in-block.c:8:9: error: function 'g' defined in a block
+status 1

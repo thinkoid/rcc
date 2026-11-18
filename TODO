@@ -952,18 +952,6 @@ Check: the pin of =global-initializer-scalar-braces= agrees with the
 decision, and that of
 =struct-initializer-braces=, a scalar member's, with it.
 
-** TODO A function definition in a block draws an error about a semicolon
-
-~int main(void) { int g(void) { return 0; } return 0; }~ fails with
-"expected ';' at end of declaration" at the ~{~, where =clang= says
-"function definition is not allowed here": a function definition
-stands only as an external declaration (6.9p1).
-
-Fix: a block declaration's function declarator followed by ~{~ gets
-an error of its own.
-
-Check: a row of =tests/error= pinned with the new message.
-
 ** TODO The comments on typedef and extern cite no paragraph
 
 The comments written with =typedef= and =extern= state their rules

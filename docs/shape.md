@@ -707,7 +707,10 @@ no storage class but `extern` (6.7.2p13), so `register` on one is an
 error too. After the block's end the name is gone: a call there needs
 a declaration at file scope, as any call does. A declaration of a
 `for` may declare a function too, as C23 lets it. A function declared
-through a typedef of function type is not yet in a block either.
+through a typedef of function type is not yet in a block either. A
+body after the declarator of a function in a block is an error of its
+own: a function definition is an external declaration (6.9.1p1), and a
+block holds declarations and statements (6.8.3p1).
 
 A static assertion, `_Static_assert (` *constant expression* `,`
 *string literal* `);` or C23's form without the string (6.7.12p1), is

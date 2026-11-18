@@ -5537,6 +5537,9 @@ linked_entity(parser_t &p, std::string_view name, linkage_t &linkage)
 // the object as one declared at file scope.  inline and _Noreturn on a
 // function are dropped, as on a declaration at file scope; a function
 // declared through a typedef of function type is not yet there as here.
+// A body after a function's declarator is an error of its own: a
+// function definition is an external declaration, 6.9.1p1, and a
+// block holds declarations and statements, 6.8.3p1.
 void
 linked_declaration(parser_t &p, const specifiers_t &spec, const declarator_t &d)
 {
@@ -5553,6 +5556,10 @@ linked_declaration(parser_t &p, const specifiers_t &spec, const declarator_t &d)
     declarator_tail_t tail = declarator_tail(p, spec);
     if (function && !tail.marking)
         tail.marking = marked_parameter(d);
+
+    if (function && peek(p).kind == tok_t::lbrace)
+        fail(peek(p),
+             "function " + quoted(d.name->text) + " defined in a block");
 
     if (peek(p).kind == tok_t::assign)
         fail(peek(p), quoted(d.name->text) +
