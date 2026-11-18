@@ -12,8 +12,9 @@
 // is read inside a namespace; the generator's own includes serve it.
 //
 // Before the include the generator declares reg_t; state_t with body,
-// live, ret, jump_targets, user_labels and case_labels; loop_alignment,
-// the power of two of .p2align before a loop's head, 0 for none;
+// live, ret, terminated, jump_targets, user_labels and case_labels;
+// loop_alignment, the power of two of .p2align before a loop's head,
+// 0 for none;
 // result_register, the register the convention returns a result in;
 // new_label(), place_label() and jump(); the three entry points,
 // rvalue(), cbranch() and effect(), and rvalue_in(), a value for a
@@ -473,7 +474,9 @@ if_jump(state_t &s, const if_t &i, int target)
 
 // backend.md 7.2 and aarch64.md 7.2: the condition's false exit to the
 // else part, or past the statement without one, but for a body that is
-// one jump, which is if_jump()'s.
+// one jump, which is if_jump()'s.  A body that ends in a jump, the state
+// terminated after it, takes no jump over the else part and no label
+// past it: no path leaves the body at its end to take them.
 void
 if_stmt(state_t &s, const if_t &i)
 {
@@ -489,6 +492,12 @@ if_stmt(state_t &s, const if_t &i)
 
     if (!i.no) {
         place_label(s, no);
+        return;
+    }
+
+    if (s.terminated) {
+        place_label(s, no);
+        statement(s, *i.no);
         return;
     }
 

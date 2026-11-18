@@ -1613,7 +1613,14 @@ constant.
   The rule is the first pass's of the Seventh Edition compiler,
   `statement()` in its `c02.c`, which takes the bare jump; rcc takes
   it in braces as well, since the braces write nothing. A `return e`
-  is not one jump: `e` is code of its own.
+  is not one jump: `e` is code of its own. When `s1` ends in a jump,
+  its last instruction an unconditional jump with no label placed
+  after it, no path leaves `s1` at its end, so neither `jmp .Lend`
+  nor `.Lend` is written: `if (c) return e; else s2;` is `cbranch(c,
+  .Lelse, 0); e; jmp .Lret; .Lelse: s2`. That first pass leaves them
+  out after a bare `return e` alone; rcc after any `s1` that ends so,
+  a block ending in a `break`, a `continue`, a `goto` or a `return`
+  among them, or an `if` whose two parts end so.
 - `while (e) s`: `.p2align 5; .Lcond: cbranch(e, .Lend, 0); s; jmp
   .Lcond; .Lend:`. The condition is at the top, where it is written,
   and tested once per iteration plus once; no rotation, no

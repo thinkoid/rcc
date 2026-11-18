@@ -94,21 +94,6 @@ size, which both functions take; the bare row ~p[1]~ is then =leaq
 Check: one function reads the shape; the pins of =subscript-row= and
 =subscript-displacement= say which instruction a bare row is.
 
-** TODO A =return e= with an =else= is followed by a jump nothing reaches
-
-~if (c) return e; else s2;~ writes the condition's false exit, =e=,
-the =jmp= to the epilogue, and then a =jmp= over the else part, which
-no path reaches: the body cannot fall through. An =if= whose body is
-one jump writes none (=backend.md= 7.2), and the first pass of the
-Seventh Edition compiler writes none after a =return e= either
-(=c02.c=, =hardif=).
-
-Fix: =if_stmt()= writes no jump over the else part after a body that
-ends in a jump.
-
-Check: a cost program with ~return e; else~, pinned for both targets,
-with no =jmp= after the =jmp= to the epilogue.
-
 ** TODO =backend.md= 7.2 states another rule for =main='s =movl $0= than c1 applies
 
 7.2 says =main= writes =movl $0, %eax= before the epilogue "unless
@@ -116,8 +101,9 @@ its last statement is a =return=". c1 decides by what it last wrote:
 the instruction is left out when the last instruction is an
 unconditional jump and no label was placed after it. So a =main= that
 ends in ~goto again;~ has none, and neither has one that ends in ~if
-(c) break; else return 3;~ inside a loop's last statement, where
-nothing reaches the end either.
+(c) break; else return 3;~ inside a loop's last statement, nor one
+that ends in ~if (c) return 1; else return 2;~, where nothing reaches
+the end either.
 
 Fix: 7.2 states the rule c1 applies, or c1 applies the stated one.
 

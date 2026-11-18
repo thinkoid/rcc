@@ -142,6 +142,12 @@ struct state_t
     std::string function { };
     int labels = 0;
     int ret = 0;
+
+    // no path reaches what is written next: the last instruction written
+    // is an unconditional jump, and no label is placed after it.  jump()
+    // and the table's jump set it and place_label() clears it; an if
+    // whose body ends so writes no jump over its else part, and main
+    // writes no return of 0 (backend.md 7.2)
     bool terminated = false;
 
     // the statements around the one generated that a break jumps out
