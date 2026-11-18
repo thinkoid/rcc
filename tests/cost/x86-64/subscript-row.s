@@ -200,4 +200,117 @@ column_wide:
 	ret
 	.cfi_endproc
 	.size	column_wide, .-column_wide
+	.globl	row_sum
+	.type	row_sum, @function
+row_sum:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	movslq	-12(%rbp), %rcx
+	leaq	12(%rax,%rcx,4), %rax
+	jmp	.Lrow_sum.1
+.Lrow_sum.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	row_sum, .-row_sum
+	.globl	row_sum_first
+	.type	row_sum_first, @function
+row_sum_first:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movslq	-12(%rbp), %rax
+	movq	-8(%rbp), %rcx
+	leaq	12(%rcx,%rax,4), %rax
+	jmp	.Lrow_sum_first.1
+.Lrow_sum_first.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	row_sum_first, .-row_sum_first
+	.globl	row_sum_register
+	.type	row_sum_register, @function
+row_sum_register:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movq	%rdi, -16(%rbp)
+	movl	%esi, -20(%rbp)
+	movq	-16(%rbp), %rax
+	movslq	-20(%rbp), %rcx
+	leaq	12(%rax,%rcx,4), %rbx
+	movq	%rbx, %rax
+	jmp	.Lrow_sum_register.1
+.Lrow_sum_register.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	row_sum_register, .-row_sum_register
+	.globl	row_sum_stored
+	.type	row_sum_stored, @function
+row_sum_stored:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	%rdx, -24(%rbp)
+	movq	-24(%rbp), %rax
+	movq	-8(%rbp), %rcx
+	movslq	-12(%rbp), %rdx
+	leaq	12(%rcx,%rdx,4), %rcx
+	movq	%rcx, (%rax)
+.Lrow_sum_stored.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	row_sum_stored, .-row_sum_stored
+	.globl	row_sum_wide
+	.type	row_sum_wide, @function
+row_sum_wide:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	leaq	24(%rax), %rax
+	movslq	-12(%rbp), %rcx
+	imulq	$12, %rcx, %rcx
+	addq	%rcx, %rax
+	jmp	.Lrow_sum_wide.1
+.Lrow_sum_wide.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	row_sum_wide, .-row_sum_wide
 	.section	.note.GNU-stack,"",@progbits

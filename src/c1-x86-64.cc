@@ -1113,18 +1113,22 @@ summed(state_t &s, const expr_t &pointer, into_t *into = nullptr)
     return a;
 }
 
-// The pointer of a subscript by a variable index as the address the
-// index joins, backend.md 6.3.  An address of a base and a displacement
+// The pointer of a subscript or of a sum by a variable index as the
+// address the index joins, backend.md 6.3.  An address of a base and a displacement
 // and no index, summed()'s or constant_indexed()'s, is held whole, so
 // that p[1][i] on int (*p)[3] is 12(%rax,%rcx,4) and no instruction
 // forms the row's address.  Any other address, one with an index or
 // with no register for its base, is formed by address_of()'s leaq, and
 // any other pointer, a name's address plus a constant among them, whose
-// label takes no index, is its value: the base alone.  The registers
-// are taken with those in pinned left for last, as rvalue_avoiding()
-// takes them.
+// label takes no index, is its value: the base alone, computed in the
+// register its consumer names, wanted, as rvalue() computes it.  The
+// registers are taken with those in pinned left for last, as
+// rvalue_avoiding() takes them.
 address_t
-index_base(state_t &s, const expr_t &pointer, unsigned pinned = 0)
+index_base(state_t &s,
+           const expr_t &pointer,
+           unsigned pinned = 0,
+           unsigned wanted = 0)
 {
     const unsigned reserved = std::exchange(s.reserved, s.reserved | pinned);
 
@@ -1134,7 +1138,7 @@ index_base(state_t &s, const expr_t &pointer, unsigned pinned = 0)
                              size_of(*as< pointer_t >(pointer.type).pointee));
 
     if (!a)
-        a = address_t { .base = rvalue(s, pointer) };
+        a = address_t { .base = rvalue(s, pointer, nullptr, wanted) };
     else if (a->base.id < 0 || a->index.id >= 0)
         a = address_t { .base = address_of(s, *a) };
 
@@ -3068,6 +3072,42 @@ ordered_sum(const binary_t &b, long size)
     return as_written(b);
 }
 
+// p + n and n + p at a size of 2, 4 or 8, scaled_sum()'s, as one leaq
+// of the addressing form, backend.md 6.3: the pointer the address the
+// index joins, index_base()'s, so that p[1] + i on int (*p)[3] is
+// leaq 12(%rax,%rcx,4), %rax and no instruction forms the row's
+// address, and any other pointer the base, leaq (%rax,%rcx,4), %rax.
+// The operands in the order of o, as pointer_arithmetic() generates
+// them: the one written first outside pinned and in the register the
+// consumer names, named, the other outside it where held_out() says.
+// A register variable handed down is the destination of the leaq
+// (chapter 4).
+value_t
+joined_sum(state_t &s,
+           const operation_t &o,
+           long size,
+           into_t *into,
+           unsigned pinned,
+           unsigned named)
+{
+    if (is< pointer_t >(o.lhs->type)) {
+        auto a = index_base(s, *o.lhs, pinned, named);
+        a.index =
+            rvalue_avoiding(s, *o.rhs, held_out(s, a.base, *o.rhs, named));
+        a.scale = size;
+
+        return address_of(s, a, into);
+    }
+
+    const auto index = rvalue_avoiding(s, *o.lhs, pinned, nullptr, named);
+
+    auto a = index_base(s, *o.rhs, held_out(s, index, *o.rhs, named));
+    a.index = index;
+    a.scale = size;
+
+    return address_of(s, a, into);
+}
+
 // A binary + or - of a pointer type: the pointer and the integer, the
 // integer widened to 64 bits by the parser, in the order written
 // (G13).  A name's address plus a constant is the leaq of folded()'s
@@ -3075,10 +3115,12 @@ ordered_sum(const binary_t &b, long size)
 // lvalue's address plus a constant the leaq of summed()'s,
 // leaq 2(%rax,%rcx,8), %rax for m[i] + 2; and a local array plus a
 // variable index of a size the form scales the leaq of indexed()'s,
-// leaq -24(%rbp,%rcx,4), %rax for a + i.  Otherwise the operand written
-// first is held outside the registers the other's top operator pins
-// (chapter 6.5), and pointer_operation() writes the row, the operands
-// in the order of ordered_sum(); n of n + p that the row multiplies is
+// leaq -24(%rbp,%rcx,4), %rax for a + i.  Any other + whose row is a
+// leaq, scaled_sum()'s, is joined_sum()'s, leaq 12(%rax,%rcx,4), %rax
+// for p[1] + i on int (*p)[3].  Otherwise the operand written first is held
+// outside the registers the other's top operator pins (chapter 6.5),
+// and pointer_operation() writes the row, the operands in the order of
+// ordered_sum(); n of n + p that the row multiplies is
 // multiplied()'s product.  A register variable handed down is the
 // destination of each leaq, and of the operation on its register where
 // offsets_in() holds (chapter 4).  The register the consumer names,
@@ -3110,6 +3152,10 @@ pointer_arithmetic(state_t &s,
 
     const unsigned pinned = pinned_by(*o.rhs);
     const unsigned named = wanted_left(wanted, 0, *o.rhs);
+
+    // p[1] + i on int (*p)[3]: leaq 12(%rax,%rcx,4), %rax
+    if (scaled_sum(o, size))
+        return joined_sum(s, o, size, into, pinned, named);
 
     if (!is< pointer_t >(o.lhs->type) && multiplies(o.op, size))
         if (const auto product = multiplied(s, *o.lhs, size, pinned))

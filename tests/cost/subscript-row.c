@@ -18,7 +18,11 @@
    displacement holds is the sum of p + n, the access's base,
    p[200000000][i], and an element of a size no addressing form scales
    by, the row p[1][i] of 12 bytes on int (*p)[2][3], is the sum of
-   p + n on the row's address.
+   p + n on the row's address.  The row plus a variable index as a
+   value, p[1] + i, is the same address and one leaq of it on x86-64,
+   returned, i + p[1] with the index generated first, into a register
+   variable, and stored; at a size no addressing form scales by, the
+   12 bytes of p[1] + i on int (*p)[2][3], it is the sum of p + n.
 
    On x86-64 the listing must show first() returning the array's
    address, leaq -24(%rbp), %rax, with no instruction after it,
@@ -34,7 +38,13 @@
    forming p[1]'s address by leaq 12(%rax), %rax and reading by movl
    2147483644(%rax,%rcx,4), %eax, and column_wide() forming p[1]'s
    address by leaq 24(%rax), %rax, then imulq $12, %rcx, %rcx and addq
-   %rcx, %rax.
+   %rcx, %rax.  row_sum() forms p[1] + i by the one leaq
+   12(%rax,%rcx,4), %rax after p's load and i's, row_sum_first() by
+   leaq 12(%rcx,%rax,4), %rax after i's load and p's,
+   row_sum_register() by leaq 12(%rax,%rcx,4), %rbx into the variable,
+   row_sum_stored() by leaq 12(%rcx,%rdx,4), %rcx before the store
+   movq %rcx, (%rax), and row_sum_wide() as column_wide(), leaq
+   24(%rax), %rax, then imulq $12, %rcx, %rcx and addq %rcx, %rax.
 
    On aarch64 the listing must show first() returning the array's
    address, add x0, x29, #16, with no instruction after it, element()
@@ -48,7 +58,11 @@
    i's load, column_beyond() and column_sum() forming the row's
    address and its sum in x0 before the access, and column_wide()
    forming p[1]'s address by add x0, x0, #24, then mov x2, #12, mul x1,
-   x1, x2 and add x0, x0, x1. */
+   x1, x2 and add x0, x0, x1.  row_sum(), row_sum_first(),
+   row_sum_register() and row_sum_stored() form p[1]'s address by
+   add x0, x0, #12, or x1 after i's load, then add the index by add
+   x0, x0, w1, sxtw #2, the last add writing x19 in
+   row_sum_register(), and row_sum_wide() as column_wide(). */
 int *first(void)
 {
     int m[2][3];
@@ -107,4 +121,36 @@ int *
 column_wide(int (*p)[2][3], int i)
 {
         return p[1][i];
+}
+
+int *
+row_sum(int (*p)[3], int i)
+{
+        return p[1] + i;
+}
+
+int *
+row_sum_first(int (*p)[3], int i)
+{
+        return i + p[1];
+}
+
+int *
+row_sum_register(int (*p)[3], int i)
+{
+        register int *q;
+
+        q = p[1] + i;
+        return q;
+}
+
+void
+row_sum_stored(int (*p)[3], int i, int **out)
+{
+        *out = p[1] + i;
+}
+
+int (*row_sum_wide(int (*p)[2][3], int i))[3]
+{
+        return p[1] + i;
 }

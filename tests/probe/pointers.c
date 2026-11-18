@@ -240,7 +240,9 @@ SCALARS(WALKS)
    than 65535 indexed at its ends; and an element by a variable index
    of a row by a constant, through a parameter, m[1][j] and j[m[2]],
    and through a register variable, written, operated on in place,
-   read, and its address. */
+   read, and its address; and such a row plus a variable index as a
+   value, m[1] + j into a register variable, j + m[2], and r[3] + j on
+   a register variable. */
 #define ARRAYS(E, T, S)                                                 \
     long mat_##E(int i, int j, long v)                                  \
     {                                                                   \
@@ -307,6 +309,14 @@ SCALARS(WALKS)
         r[3][j]++;                                                      \
         return m[1][j] * 3 + j[m[2]] * 5 + r[3][j] * 7 +                \
                ((char *) &m[3][j] - (char *) m);                        \
+    }                                                                   \
+    long prow_one_##E(T m[][5], int j)                                  \
+    {                                                                   \
+        register T (*r)[5] = m;                                         \
+        register T *q = m[1] + j;                                       \
+        return ((char *) q - (char *) m) +                              \
+               ((char *) (j + m[2]) - (char *) m) * 1000 +              \
+               ((char *) (r[3] + j) - (char *) m) * 1000000;            \
     }
 
 SCALARS(ARRAYS)

@@ -79,21 +79,20 @@ handed to it.
 
 Check: the count over =tests=, before and after.
 
-** TODO x86-64: a row by a constant index plus a variable index as a value forms the row's address first
+** TODO x86-64: a row by a constant index plus a variable index at a size of 1 adds after the row's address
 
-With ~int (*p)[3]~, ~p[1] + i~ as a value is =leaq 12(%rax), %rax=,
-then =leaq (%rax,%rcx,4), %rax= after =movslq -12(%rbp), %rcx=, where
-~&p[1][i]~, the same address, is the one =leaq 12(%rax,%rcx,4),
-%rax=. =pointer_arithmetic()= in =src/c1-x86-64.cc= generates the
-pointer by =rvalue()=; only =pointed()= takes =index_base()=. No
-listing under =tests= has the shape.
+~p[1] + i~ on ~char (*p)[8]~ is =leaq 8(%rax), %rax; movslq
+-12(%rbp), %rcx; addq %rcx, %rax=, where =leaq 8(%rax,%rcx,1), %rax=
+holds both. The row of =p + n= at a size of 1 is the =add=, which
+takes a =long= in memory as its operand, so =joined_sum()= in
+=src/c1-x86-64.cc= leaves it. No listing under =tests= has the shape
+but =prow_one_c= of the pointers probe.
 
-Fix: the row of =p + n= at a scale takes =index_base()='s address
-where the join holds, without losing =offsets_in()='s register
-destination or the consumer's register.
+Fix: at a size of 1, an index that is no object of 64 bits in memory
+joins =index_base()='s address, where the row commits before the
+pointer is generated.
 
-Check: a cost function ~p[1] + i~ in =subscript-row= pinned with the
-one =leaq=, and no function longer.
+Check: =prow_one_c= an instruction shorter, and no function longer.
 
 ** TODO A row's constant offset is added before an index no addressing form scales by
 

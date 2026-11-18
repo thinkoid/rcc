@@ -267,4 +267,153 @@ column_wide:
 	ret
 	.cfi_endproc
 	.size	column_wide, .-column_wide
+	.globl	row_sum
+	.type	row_sum, @function
+row_sum:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	ldr	x0, [x29, #16]
+	add	x0, x0, #12
+	ldr	w1, [x29, #24]
+	add	x0, x0, w1, sxtw #2
+	b	.Lrow_sum.1
+.Lrow_sum.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	row_sum, .-row_sum
+	.globl	row_sum_first
+	.type	row_sum_first, @function
+row_sum_first:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	ldr	w0, [x29, #24]
+	ldr	x1, [x29, #16]
+	add	x1, x1, #12
+	add	x0, x1, w0, sxtw #2
+	b	.Lrow_sum_first.1
+.Lrow_sum_first.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	row_sum_first, .-row_sum_first
+	.globl	row_sum_register
+	.type	row_sum_register, @function
+row_sum_register:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -32
+	str	x0, [x29, #24]
+	str	w1, [x29, #32]
+	ldr	x0, [x29, #24]
+	add	x0, x0, #12
+	ldr	w1, [x29, #32]
+	add	x19, x0, w1, sxtw #2
+	mov	x0, x19
+	b	.Lrow_sum_register.1
+.Lrow_sum_register.1:
+	.cfi_def_cfa wsp, 48
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	row_sum_register, .-row_sum_register
+	.globl	row_sum_stored
+	.type	row_sum_stored, @function
+row_sum_stored:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	str	x2, [x29, #32]
+	ldr	x0, [x29, #32]
+	ldr	x1, [x29, #16]
+	add	x1, x1, #12
+	ldr	w2, [x29, #24]
+	add	x1, x1, w2, sxtw #2
+	str	x1, [x0]
+.Lrow_sum_stored.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	row_sum_stored, .-row_sum_stored
+	.globl	row_sum_wide
+	.type	row_sum_wide, @function
+row_sum_wide:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	ldr	x0, [x29, #16]
+	add	x0, x0, #24
+	ldrsw	x1, [x29, #24]
+	mov	x2, #12
+	mul	x1, x1, x2
+	add	x0, x0, x1
+	b	.Lrow_sum_wide.1
+.Lrow_sum_wide.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	row_sum_wide, .-row_sum_wide
 	.section	.note.GNU-stack,"",@progbits
