@@ -3005,6 +3005,31 @@ second_path(state_t &s,
     return taken(s, into);
 }
 
+bool own_read(const expr_t &, const symbol_t *);
+
+// A conditional into a register variable an arm of which is the
+// variable's own read, own_read()'s, whose path writes nothing, chapter
+// 4: the condition's jump goes to the join past the other path, the
+// one path the other arm into the variable, arm_into()'s.  Where the
+// first arm is the read, the jump is taken when the condition holds,
+// cbranch()'s sense inverted, jne .L3 for r = c ? r : x; where the
+// second is, when it fails, je .L3 for r = c ? x : r.  A path that
+// writes nothing has no jump over it, and no label where no jump names
+// one (7.2); r = c ? r : r is the condition's jump alone.  The value is
+// the variable's read.
+value_t
+one_path(state_t &s, const conditional_t &c, into_t &into, int end)
+{
+    const bool first = own_read(*c.yes, into.variable);
+
+    cbranch(s, *c.cond, end, first);
+    arm_into(s, first ? *c.no : *c.yes, into);
+
+    place_label(s, end);
+
+    return taken(s, into);
+}
+
 // 6.5.16p5: the arm not chosen is not evaluated, and the jump says so;
 // never cmov.  The arms join in one expression register: the one the
 // conditional's consumer names, wanted, where it names one, and
@@ -3021,8 +3046,9 @@ second_path(state_t &s,
 // variable, the first path moves its value in, and the second arm's
 // row writes it where lands_in() says, r = c ? f(x) : p[i]++ being
 // movl %eax, %ebx after the call and the step's movl (%rax,%rcx,4),
-// %ebx; a read of the variable itself as the first arm is its value
-// already.  Under a conversion that widens the conditional, to, which
+// %ebx; where an arm is the variable's own read, which writes nothing,
+// the condition jumps past the other path alone, one_path()'s.  Under
+// a conversion that widens the conditional, to, which
 // cast() hands down where widens_arms(), each arm is converted: into
 // the variable on each path, or into the join, return a ? b % c : c as
 // a long being movslq %edx, %rax and movslq -12(%rbp), %rax, with no
@@ -3051,6 +3077,12 @@ conditional(state_t &s,
     const int no = new_label(s);
     const int end = new_label(s);
 
+    // r = c ? r : x on a register r: jne past the second path alone
+    const bool joins = !to && joins_into(e, into);
+    if (joins &&
+        (own_read(*c.yes, into->variable) || own_read(*c.no, into->variable)))
+        return one_path(s, c, *into, end);
+
     cbranch(s, *c.cond, no, false);
 
     if (to && into) {
@@ -3062,7 +3094,6 @@ conditional(state_t &s,
     const int width = std::max(32, integer(type).width);
     const bool is_signed = integer(type).is_signed;
 
-    const bool joins = !to && joins_into(e, into);
     into_t path { joins ? into->variable : nullptr, false,
                   joins ? into->as : nullptr };
     const auto named = wanted_register(s, wanted);
@@ -3207,6 +3238,16 @@ register_read(const expr_t &e)
         return { };
 
     return { inner.variable, std::min(inner.valid, to) };
+}
+
+// Whether an arm of ?: is the read of the register variable its paths
+// write, under conversions that write nothing, register_read()'s: the
+// register holds the arm's value already, so its path writes nothing,
+// move_in()'s (chapter 4).
+bool
+own_read(const expr_t &arm, const symbol_t *variable)
+{
+    return register_read(arm).variable == variable;
 }
 
 // Whether a cast as L of the operation form goes into the variable's

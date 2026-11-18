@@ -395,8 +395,13 @@ are the others (7.2, 6.5).
   constant, an object in memory, a truth value, or a step's value on
   an object in memory whose address does not read the variable. `r =
   c ? f(x) : 0` is `movl %eax, %ebx` after the `call` and `movl $0,
-  %ebx`, and a first arm that is the variable's own read writes
-  nothing (above). One of a type the assignment widens, `l = c ? x :
+  %ebx`. An arm that is the variable's own read, under conversions
+  that write nothing, writes nothing on its path (above), whatever the
+  other arm is, so the other arm is written into the register on its
+  own path: `r = c ? f(x) : r` is `movl %eax, %ebx` after the `call`,
+  `q = c ? r : q` on two register variables `movl %ebx, %r12d`, and
+  `r = c ? r : r` nothing at all, the empty path with no jump over it
+  (7.2). One of a type the assignment widens, `l = c ? x :
   y` into
   a `long`, takes 6.1's conversion handed to each arm, each path
   writing the register extended, `movslq -16(%rbp), %rbx` and
@@ -1866,7 +1871,14 @@ constant.
   register the consumer names, where it names one, and otherwise
   `a`'s own, and each arm's last instruction writes it where it can
   (6.1). Never `cmov`: the arm not chosen is not evaluated
-  (6.5.16p5), and the jump says so.
+  (6.5.16p5), and the jump says so. A path that writes nothing, an
+  arm into a register variable that is the variable's own read
+  (chapter 4), has no jump over it and no label: the condition jumps
+  to `.Lend` past the other path, `cbranch(e, .Lend, 1); b; .Lend:`
+  for `r = c ? r : b`, the sense inverted, and `cbranch(e, .Lend, 0);
+  a; .Lend:` for `r = c ? a : r`. A condition of `&&` or `||` keeps
+  its own skip label where its jump on the inverted sense needs one
+  (7.1).
 - `return e`: the return names `rax`, and `e` is computed there where
   its last instruction can write it (6.1); otherwise `e` into `L` and
   `mov L, %eax`, a remainder's `movl %edx, %eax` among them, and the

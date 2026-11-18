@@ -1445,8 +1445,13 @@ TYPES(RETURNED)
    second, whose row writes the variable on aarch64, and br_calls_ two
    calls, whose results join; br_kept_ has the variable itself as the
    second arm, of a register pointer too, beside the variable assigned
-   to itself.  A narrow variable is written through the assignment's
-   conversion.  The main keeps a divisor from 0 and -1. */
+   to itself.  br_own_call_ and br_call_own_ have the variable itself
+   beside a call, as the second arm and as the first, br_own_both_ as
+   both arms, br_own_and_ and br_own_or_ as the first arm under && and
+   ||, and br_own_nested_ as an arm of the first arm's ?:; br_other_
+   has another register variable as the first arm and the variable
+   itself as the second.  A narrow variable is written through the
+   assignment's conversion.  The main keeps a divisor from 0 and -1. */
 #define BRANCHED(T, N)                                                  \
     long br_and_##N(T a, T b)                                           \
     {                                                                   \
@@ -1536,6 +1541,49 @@ TYPES(RETURNED)
         r = r;                                                          \
         q = c ? &v[1] : q;                                              \
         return r * 7 + *q;                                              \
+    }                                                                   \
+    long br_own_call_##N(int c, T a, long b)                            \
+    {                                                                   \
+        register T r = a;                                               \
+        r = c ? lret_##N(b) : r;                                        \
+        return r;                                                       \
+    }                                                                   \
+    long br_call_own_##N(int c, T a, long b)                            \
+    {                                                                   \
+        register T r = a;                                               \
+        r = c ? r : lret_##N(b);                                        \
+        return r;                                                       \
+    }                                                                   \
+    long br_own_both_##N(int c, T a, T b)                               \
+    {                                                                   \
+        register T r = a;                                               \
+        r = c ? r : r;                                                  \
+        return r * 7 + b;                                               \
+    }                                                                   \
+    long br_own_and_##N(int c, T a, T b)                                \
+    {                                                                   \
+        register T r = a;                                               \
+        r = c && a < b ? r : b;                                         \
+        return r;                                                       \
+    }                                                                   \
+    long br_own_or_##N(int c, T a, T b)                                 \
+    {                                                                   \
+        register T r = a;                                               \
+        r = c || a < b ? r : b;                                         \
+        return r;                                                       \
+    }                                                                   \
+    long br_own_nested_##N(int c, T a, T b)                             \
+    {                                                                   \
+        register T r = a;                                               \
+        r = c ? (a < b ? r : b) : b;                                    \
+        return r;                                                       \
+    }                                                                   \
+    long br_other_##N(int c, T a, T b)                                  \
+    {                                                                   \
+        register T r = a;                                               \
+        register T q = b;                                               \
+        q = c ? r : q;                                                  \
+        return r * 7 + q;                                               \
     }
 
 TYPES(BRANCHED)

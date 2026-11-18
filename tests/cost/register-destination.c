@@ -45,10 +45,21 @@
    and r = c ? x : -1, and chosen_promoted() r = c ? a : b on two
    chars, each arm a load under a promotion;
    chosen_calls() r = c ? f(x) : f(x + 1), whose arms are two calls;
-   and chosen_own_first(), chosen_own_second() and chosen_own_pointer()
+   chosen_own_first(), chosen_own_second() and chosen_own_pointer()
    r = c ? r : x, r = c ? x : r and q = c ? p : q on a register pointer
    q, an arm that is the variable's own read, beside itself_assigned(),
-   r = r.
+   r = r; chosen_own_called() and chosen_own_call_first() r = c ?
+   f(x) : r and r = c ? r : f(x), the read beside a call;
+   chosen_own_both() r = c ? r : r; chosen_own_and() and
+   chosen_own_or() r = c && d ? r : 0 and r = c || d ? r : 0, a
+   condition of two jumps; chosen_own_nested() r = c ? (d ? r : 0) :
+   1, the read in an arm's own conditional; chosen_other() q = c ? r :
+   q, another register variable's read beside q's own;
+   chosen_own_retyped() r = c ? x : (int) r on an unsigned r,
+   the read under a cast that changes the signedness alone; and beside
+   them chosen_own_narrow() r = c ? r : x on a register char r, whose
+   conditional of type int does not join in the variable, and
+   chosen_own_returned() return c ? r : 0, whose arms join in eax.
 
    char_operand() and char_operand_left() write r = c + 5 and r = 5 +
    c on a register char c, whose read is valid to the int's width,
@@ -157,11 +168,22 @@
    in eax and movl %eax, %ebx after the join, and in chosen_promoted()
    movsbq -13(%rbp), %rbx and movsbq -14(%rbp), %rbx on the two paths;
    in chosen_calls() the calls' results joined in eax and movl %eax,
-   %ebx after the join, for neither arm's row writes the variable; in
-   chosen_own_first() nothing written on the first path and movl
-   -16(%rbp), %ebx on the second, in chosen_own_second() the load on
-   the first and nothing on the second, and in chosen_own_pointer() the
-   same with movq -24(%rbp), %rbx.  In
+   %ebx after the join, for neither arm's row writes the variable.
+   Where an arm is the variable's own read, the listing must show one
+   conditional jump to the join over the other path, and no jmp: jne
+   over movl -16(%rbp), %ebx in chosen_own_first(), je over the load in
+   chosen_own_second() and over movq -24(%rbp), %rbx in
+   chosen_own_pointer(), je over the call and movl %eax, %ebx in
+   chosen_own_called(), jne over the same in chosen_own_call_first(),
+   the jne alone in chosen_own_both(), je past the second condition and
+   jne to the join before movl $0, %ebx in chosen_own_and(), two jne to
+   the join in chosen_own_or(), the inner conditional's jne in
+   chosen_own_nested() beside the outer one's je and jmp, je over movl
+   %ebx, %r12d in chosen_other(), and je over movl -20(%rbp), %ebx in
+   chosen_own_retyped(); in chosen_own_narrow() and
+   chosen_own_returned() the arms joined in eax, the read copied there,
+   movl %ebx, %eax, and in chosen_own_narrow() movsbl %al, %ebx after
+   the join.  In
    char_operand() and char_operand_left() one listing, movl %ebx,
    %r12d; addl $5, %r12d; in int_widened() the extension into the
    register, movslq %ebx, %r12, and addq $5, %r12; in register_product()
@@ -239,7 +261,14 @@
    first path and ldr w19, [x29, #28] on the second, in
    chosen_own_second() and chosen_own_pointer() the load into the
    register on the first path and nothing on the second, and in
-   itself_assigned() nothing after ldr w19, [x29, #24]; add w20, w19,
+   itself_assigned() nothing after ldr w19, [x29, #24]; in
+   chosen_own_called(), chosen_own_call_first(), chosen_own_both() and
+   chosen_other() the arms joined in w0 and mov w19, w0, or mov w20,
+   w0, after the join; in chosen_own_and(), chosen_own_or(),
+   chosen_own_nested() and chosen_own_retyped() nothing written on the
+   read's path; in chosen_own_narrow() the arms joined in w0 and uxtb
+   w19, w0 after the join, and in chosen_own_returned() the arms joined
+   in w0; add w20, w19,
    #5 in char_operand() and char_operand_left(); sxtw x20, w19 and add
    x20, x20, #5 in
    int_widened(); mul w20, w19, w0 after mov w0, #4 in
@@ -993,6 +1022,96 @@ chosen_own_pointer(int c, int *p)
 
         q = c ? p : q;
         return q;
+}
+
+int
+chosen_own_called(int c, int x)
+{
+        register int r = x;
+
+        r = c ? f(x) : r;
+        return r;
+}
+
+int
+chosen_own_call_first(int c, int x)
+{
+        register int r = x;
+
+        r = c ? r : f(x);
+        return r;
+}
+
+int
+chosen_own_both(int c, int x)
+{
+        register int r = x;
+
+        r = c ? r : r;
+        return r;
+}
+
+int
+chosen_own_and(int c, int d, int x)
+{
+        register int r = x;
+
+        r = c && d ? r : 0;
+        return r;
+}
+
+int
+chosen_own_or(int c, int d, int x)
+{
+        register int r = x;
+
+        r = c || d ? r : 0;
+        return r;
+}
+
+int
+chosen_own_nested(int c, int d, int x)
+{
+        register int r = x;
+
+        r = c ? (d ? r : 0) : 1;
+        return r;
+}
+
+int
+chosen_other(int c, int x, int y)
+{
+        register int r = x;
+        register int q = y;
+
+        q = c ? r : q;
+        return q;
+}
+
+unsigned
+chosen_own_retyped(int c, unsigned u, int x)
+{
+        register unsigned r = u;
+
+        r = c ? x : (int) r;
+        return r;
+}
+
+int
+chosen_own_narrow(int c, char a, int x)
+{
+        register char r = a;
+
+        r = c ? r : x;
+        return r;
+}
+
+int
+chosen_own_returned(int c, int x)
+{
+        register int r = x;
+
+        return c ? r : 0;
 }
 
 int

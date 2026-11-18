@@ -2052,9 +2052,7 @@ chosen_own_first:
 	movl	%esi, -16(%rbp)
 	movl	-16(%rbp), %ebx
 	cmpl	$0, -12(%rbp)
-	je	.Lchosen_own_first.2
-	jmp	.Lchosen_own_first.3
-.Lchosen_own_first.2:
+	jne	.Lchosen_own_first.3
 	movl	-16(%rbp), %ebx
 .Lchosen_own_first.3:
 	movl	%ebx, %eax
@@ -2081,10 +2079,8 @@ chosen_own_second:
 	movl	%esi, -16(%rbp)
 	movl	-16(%rbp), %ebx
 	cmpl	$0, -12(%rbp)
-	je	.Lchosen_own_second.2
+	je	.Lchosen_own_second.3
 	movl	-16(%rbp), %ebx
-	jmp	.Lchosen_own_second.3
-.Lchosen_own_second.2:
 .Lchosen_own_second.3:
 	movl	%ebx, %eax
 	jmp	.Lchosen_own_second.1
@@ -2110,10 +2106,8 @@ chosen_own_pointer:
 	movq	%rsi, -24(%rbp)
 	movq	-24(%rbp), %rbx
 	cmpl	$0, -12(%rbp)
-	je	.Lchosen_own_pointer.2
+	je	.Lchosen_own_pointer.3
 	movq	-24(%rbp), %rbx
-	jmp	.Lchosen_own_pointer.3
-.Lchosen_own_pointer.2:
 .Lchosen_own_pointer.3:
 	movq	%rbx, %rax
 	jmp	.Lchosen_own_pointer.1
@@ -2124,6 +2118,314 @@ chosen_own_pointer:
 	ret
 	.cfi_endproc
 	.size	chosen_own_pointer, .-chosen_own_pointer
+	.globl	chosen_own_called
+	.type	chosen_own_called, @function
+chosen_own_called:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	subq	$24, %rsp
+	movl	%edi, -12(%rbp)
+	movl	%esi, -16(%rbp)
+	movl	-16(%rbp), %ebx
+	cmpl	$0, -12(%rbp)
+	je	.Lchosen_own_called.3
+	movl	-16(%rbp), %eax
+	movl	%eax, -20(%rbp)
+	movl	-20(%rbp), %edi
+	call	f@PLT
+	movl	%eax, %ebx
+.Lchosen_own_called.3:
+	movl	%ebx, %eax
+	jmp	.Lchosen_own_called.1
+.Lchosen_own_called.1:
+	leaq	-8(%rbp), %rsp
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	chosen_own_called, .-chosen_own_called
+	.globl	chosen_own_call_first
+	.type	chosen_own_call_first, @function
+chosen_own_call_first:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	subq	$24, %rsp
+	movl	%edi, -12(%rbp)
+	movl	%esi, -16(%rbp)
+	movl	-16(%rbp), %ebx
+	cmpl	$0, -12(%rbp)
+	jne	.Lchosen_own_call_first.3
+	movl	-16(%rbp), %eax
+	movl	%eax, -20(%rbp)
+	movl	-20(%rbp), %edi
+	call	f@PLT
+	movl	%eax, %ebx
+.Lchosen_own_call_first.3:
+	movl	%ebx, %eax
+	jmp	.Lchosen_own_call_first.1
+.Lchosen_own_call_first.1:
+	leaq	-8(%rbp), %rsp
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	chosen_own_call_first, .-chosen_own_call_first
+	.globl	chosen_own_both
+	.type	chosen_own_both, @function
+chosen_own_both:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movl	%esi, -16(%rbp)
+	movl	-16(%rbp), %ebx
+	cmpl	$0, -12(%rbp)
+	jne	.Lchosen_own_both.3
+.Lchosen_own_both.3:
+	movl	%ebx, %eax
+	jmp	.Lchosen_own_both.1
+.Lchosen_own_both.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	chosen_own_both, .-chosen_own_both
+	.globl	chosen_own_and
+	.type	chosen_own_and, @function
+chosen_own_and:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movl	%esi, -16(%rbp)
+	movl	%edx, -20(%rbp)
+	movl	-20(%rbp), %ebx
+	cmpl	$0, -12(%rbp)
+	je	.Lchosen_own_and.4
+	cmpl	$0, -16(%rbp)
+	jne	.Lchosen_own_and.3
+.Lchosen_own_and.4:
+	movl	$0, %ebx
+.Lchosen_own_and.3:
+	movl	%ebx, %eax
+	jmp	.Lchosen_own_and.1
+.Lchosen_own_and.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	chosen_own_and, .-chosen_own_and
+	.globl	chosen_own_or
+	.type	chosen_own_or, @function
+chosen_own_or:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movl	%esi, -16(%rbp)
+	movl	%edx, -20(%rbp)
+	movl	-20(%rbp), %ebx
+	cmpl	$0, -12(%rbp)
+	jne	.Lchosen_own_or.3
+	cmpl	$0, -16(%rbp)
+	jne	.Lchosen_own_or.3
+	movl	$0, %ebx
+.Lchosen_own_or.3:
+	movl	%ebx, %eax
+	jmp	.Lchosen_own_or.1
+.Lchosen_own_or.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	chosen_own_or, .-chosen_own_or
+	.globl	chosen_own_nested
+	.type	chosen_own_nested, @function
+chosen_own_nested:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movl	%esi, -16(%rbp)
+	movl	%edx, -20(%rbp)
+	movl	-20(%rbp), %ebx
+	cmpl	$0, -12(%rbp)
+	je	.Lchosen_own_nested.2
+	cmpl	$0, -16(%rbp)
+	jne	.Lchosen_own_nested.5
+	movl	$0, %ebx
+.Lchosen_own_nested.5:
+	jmp	.Lchosen_own_nested.3
+.Lchosen_own_nested.2:
+	movl	$1, %ebx
+.Lchosen_own_nested.3:
+	movl	%ebx, %eax
+	jmp	.Lchosen_own_nested.1
+.Lchosen_own_nested.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	chosen_own_nested, .-chosen_own_nested
+	.globl	chosen_other
+	.type	chosen_other, @function
+chosen_other:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	pushq	%r12
+	.cfi_offset %r12, -32
+	movl	%edi, -20(%rbp)
+	movl	%esi, -24(%rbp)
+	movl	%edx, -28(%rbp)
+	movl	-24(%rbp), %ebx
+	movl	-28(%rbp), %r12d
+	cmpl	$0, -20(%rbp)
+	je	.Lchosen_other.3
+	movl	%ebx, %r12d
+.Lchosen_other.3:
+	movl	%r12d, %eax
+	jmp	.Lchosen_other.1
+.Lchosen_other.1:
+	popq	%r12
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	chosen_other, .-chosen_other
+	.globl	chosen_own_retyped
+	.type	chosen_own_retyped, @function
+chosen_own_retyped:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movl	%esi, -16(%rbp)
+	movl	%edx, -20(%rbp)
+	movl	-16(%rbp), %ebx
+	cmpl	$0, -12(%rbp)
+	je	.Lchosen_own_retyped.3
+	movl	-20(%rbp), %ebx
+.Lchosen_own_retyped.3:
+	movl	%ebx, %eax
+	jmp	.Lchosen_own_retyped.1
+.Lchosen_own_retyped.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	chosen_own_retyped, .-chosen_own_retyped
+	.globl	chosen_own_narrow
+	.type	chosen_own_narrow, @function
+chosen_own_narrow:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movb	%sil, -13(%rbp)
+	movl	%edx, -20(%rbp)
+	movsbl	-13(%rbp), %ebx
+	cmpl	$0, -12(%rbp)
+	je	.Lchosen_own_narrow.2
+	movl	%ebx, %eax
+	jmp	.Lchosen_own_narrow.3
+.Lchosen_own_narrow.2:
+	movl	-20(%rbp), %eax
+.Lchosen_own_narrow.3:
+	movsbl	%al, %ebx
+	movl	%ebx, %eax
+	jmp	.Lchosen_own_narrow.1
+.Lchosen_own_narrow.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	chosen_own_narrow, .-chosen_own_narrow
+	.globl	chosen_own_returned
+	.type	chosen_own_returned, @function
+chosen_own_returned:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movl	%esi, -16(%rbp)
+	movl	-16(%rbp), %ebx
+	cmpl	$0, -12(%rbp)
+	je	.Lchosen_own_returned.2
+	movl	%ebx, %eax
+	jmp	.Lchosen_own_returned.3
+.Lchosen_own_returned.2:
+	movl	$0, %eax
+.Lchosen_own_returned.3:
+	jmp	.Lchosen_own_returned.1
+.Lchosen_own_returned.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	chosen_own_returned, .-chosen_own_returned
 	.globl	char_operand
 	.type	char_operand, @function
 char_operand:
