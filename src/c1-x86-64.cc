@@ -1147,6 +1147,29 @@ constant_indexed(state_t &s, const expr_t &p, long size, into_t *into = nullptr)
 
 address_t address(state_t &, const expr_t &, into_t * = nullptr);
 
+// Whether an lvalue's address is a base the row that forms it can
+// write into a register variable, chapter 4: the GOT's load of a global
+// the unit only declares, or the value of the pointer a dereference
+// reads, where that pointer is no sum by a variable index, whose index
+// joins the address rather than its base (6.3).
+bool
+whole_base(const state_t &s, const expr_t &lvalue)
+{
+    if (const auto *g = global_of(lvalue))
+        return !s.defined.contains(g);
+
+    if (!is< unary_t >(lvalue) || as< unary_t >(lvalue).op != unary_op_t::deref)
+        return false;
+
+    const auto &p = *as< unary_t >(lvalue).arg;
+    if (!is< binary_t >(p) || !is< pointer_t >(p.type))
+        return true;
+
+    const auto &b = as< binary_t >(p);
+
+    return is< literal_t >(is< pointer_t >(b.lhs->type) ? *b.rhs : *b.lhs);
+}
+
 // The operand of an address by any other lvalue and a constant,
 // backend.md 6.3: the lvalue's own address, address()'s, with the
 // constant summed into its displacement, 2(%rax,%rcx,8) for
@@ -1159,7 +1182,12 @@ address_t address(state_t &, const expr_t &, into_t * = nullptr);
 // sum that does not fit forms the lvalue's address, and the constant is
 // the displacement off it.  A register variable handed down goes on to
 // the lvalue's address where the constant is 0, so that the address is
-// the lvalue's, the base of &a[i][0] on int a[4][6] (chapter 4).
+// the lvalue's, the base of &a[i][0] on int a[4][6] (chapter 4).  Under
+// any other constant it is the destination of a whole_base()'s row,
+// base_into()'s, so that q = &lga[3] on an array the unit only
+// declares is movq lga@GOTPCREL(%rip), %rbx; leaq 12(%rbx), %rbx, and
+// a sum that comes to 0, &p[1][-3], leaves the pointer's value in the
+// variable, which the assignment moves nowhere.
 std::optional< address_t >
 summed(state_t &s, const expr_t &pointer, into_t *into = nullptr)
 {
@@ -1167,7 +1195,14 @@ summed(state_t &s, const expr_t &pointer, into_t *into = nullptr)
     if (!at || !fits_imm32(at->offset) || named_offset(pointer, s.defined))
         return std::nullopt;
 
-    auto a = address(s, *at->lvalue, at->offset == 0 ? into : nullptr);
+    into_t *to = at->offset == 0 ? into : nullptr;
+    auto onto = at->offset != 0 && whole_base(s, *at->lvalue) ?
+                    base_into(into) :
+                    std::nullopt;
+    if (onto)
+        to = &*onto;
+
+    auto a = address(s, *at->lvalue, to);
 
     const auto displacement = wrapped_add(a.displacement, at->offset);
     if (!fits_imm32(displacement))
@@ -1362,14 +1397,16 @@ symbol_address(state_t &s, const symbol_t &sym, into_t *into = nullptr)
 // n(%rip), where a local's is -12(%rbp).  One it only declares has its
 // address loaded from the GOT into a register, and the access is the
 // indirection through it, (%rax), as *p's is with p loaded: each access
-// the source writes loads the address once.
+// the source writes loads the address once.  A register variable
+// handed down is the destination of the GOT's load, symbol_address()'s
+// (chapter 4).
 address_t
-global_address(state_t &s, const symbol_t &g)
+global_address(state_t &s, const symbol_t &g, into_t *into = nullptr)
 {
     if (s.defined.contains(&g))
         return { .label = std::string(assembly_name(g)) };
 
-    return { .base = symbol_address(s, g) };
+    return { .base = symbol_address(s, g, into) };
 }
 
 // The address of an lvalue: a local's or a parameter's slot, a global's
@@ -1387,7 +1424,7 @@ address(state_t &s, const expr_t &e, into_t *into)
         return pointed(s, *as< unary_t >(e).arg, e.type, into);
 
     if (const auto *g = global_of(e))
-        return global_address(s, *g);
+        return global_address(s, *g, into);
 
     return slot_address(slot_of(s, object_of(e)));
 }
@@ -3351,7 +3388,7 @@ pointer_arithmetic(state_t &s,
     if (const auto a = folded(s, e))
         return address_of(s, *a, into);
 
-    if (const auto a = summed(s, e))
+    if (const auto a = summed(s, e, into))
         return address_of(s, *a, into);
 
     const auto &b = as< binary_t >(e);

@@ -809,6 +809,26 @@ POINTEES(ADIFF)
     }
 POINTEES(KDEST)
 
+/* An lvalue's address plus a constant into a register pointer, x86-64,
+   backend.md chapter 4: the pointer a dereference reads written into
+   the variable's register, then the leaq on it, &m[1][2]; and constants
+   that sum to 0, &m[1][-3], the pointer's value alone.  Each pointee:
+   sizes 1, 4, 8 and 12. */
+
+#define KCOL(E, T)                                                      \
+    long kcol_##E(T m[][3], long i)                                     \
+    {                                                                   \
+        register T *q;                                                  \
+        long r;                                                         \
+        q = &m[1][2];                                                   \
+        r = q - &m[0][0];                                               \
+        q = &m[1][-3];                                                  \
+        r = r * 7 + (q - &m[0][0]);                                     \
+        q = &m[2][1];                                                   \
+        return r * 7 + (q - &m[0][0]) + i;                              \
+    }
+POINTEES(KCOL)
+
 /* A register pointer to a function: the address of a function the
    unit defines, and of one it only declares, from the GOT. */
 long

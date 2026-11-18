@@ -310,9 +310,13 @@ are the others (7.2, 6.5).
   whose row writes no register variable keeps its register, `p =
   &f(x)[1]` being `leaq 4(%rax), %rbx` after the call, and the
   variable's own read is the base already, `p = &p[1]` the one `leaq
-  4(%rbx), %rbx`. The address of an array the file only declares plus
-  a constant keeps the GOT's load elsewhere, `movq
-  declared@GOTPCREL(%rip), %rax; leaq 12(%rax), %rbx`. The
+  4(%rbx), %rbx`. An lvalue's address plus a constant is the same:
+  the GOT's load of an array the file only declares, or the pointer a
+  dereference reads, writes the register, `p = &declared[3]` being
+  `movq declared@GOTPCREL(%rip), %rbx; leaq 12(%rbx), %rbx` and `p =
+  &m[1][2]` on `int (*m)[3]` `movq -16(%rbp), %rbx; leaq 20(%rbx),
+  %rbx`; where the constants sum to 0, `p = &m[1][-3]`, the load is
+  the whole value and nothing is moved after it. The
   address of a global the file only declares is the load from the
   GOT, `movq declared@GOTPCREL(%rip), %rbx`. An address that is a
   pointer's own value is that value's row into the register: `p =

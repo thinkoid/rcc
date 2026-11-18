@@ -207,8 +207,8 @@ global:
 	.cfi_def_cfa_register %rbp
 	pushq	%rbx
 	.cfi_offset %rbx, -24
-	movq	xa@GOTPCREL(%rip), %rax
-	leaq	12(%rax), %rbx
+	movq	xa@GOTPCREL(%rip), %rbx
+	leaq	12(%rbx), %rbx
 	movq	%rbx, %rax
 	jmp	.Lglobal.1
 .Lglobal.1:
@@ -218,4 +218,71 @@ global:
 	ret
 	.cfi_endproc
 	.size	global, .-global
+	.globl	global_sum
+	.type	global_sum, @function
+global_sum:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movq	xa@GOTPCREL(%rip), %rbx
+	leaq	12(%rbx), %rbx
+	movq	%rbx, %rax
+	jmp	.Lglobal_sum.1
+.Lglobal_sum.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	global_sum, .-global_sum
+	.globl	column
+	.type	column, @function
+column:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movq	%rdi, -16(%rbp)
+	movq	-16(%rbp), %rbx
+	leaq	20(%rbx), %rbx
+	movq	%rbx, %rax
+	jmp	.Lcolumn.1
+.Lcolumn.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	column, .-column
+	.globl	column_zero
+	.type	column_zero, @function
+column_zero:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movq	%rdi, -16(%rbp)
+	movq	-16(%rbp), %rbx
+	movq	%rbx, %rax
+	jmp	.Lcolumn_zero.1
+.Lcolumn_zero.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	column_zero, .-column_zero
 	.section	.note.GNU-stack,"",@progbits

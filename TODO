@@ -152,22 +152,22 @@ Fix: none taken; count first.
 
 Check: the count over =tests=, and no function longer.
 
-** TODO x86-64: an lvalue's address plus a constant into a register variable loads the address elsewhere
+** TODO aarch64: an lvalue's address plus a constant into a register variable loads the address elsewhere
 
-~q = &lga[3]~ into a ~register int *q~, with =lga= an array the unit
-only declares, is =movq lga@GOTPCREL(%rip), %rax; leaq 12(%rax),
-%r13=, and ~q = &m[1][2]~ on ~int (*m)[3]~ is =movq -16(%rbp), %rax;
-leaq 20(%rax), %rbx=. =summed()= in =src/c1-x86-64.cc= hands no
-destination to the lvalue's address when the offset is not 0, and
-=global_address()= takes none. Four functions over =tests= have the
-shape, =adest_*= of the registers probe.
+~q = &xa[3]~ into a ~register int *q~, with =xa= an array the unit
+only declares, is =adrp x0, :got:xa; ldr x0, [x0, :got_lo12:xa]; add
+x19, x0, #12=, and ~q = &m[1][-3]~ on ~int (*m)[3]~, whose constants
+sum to 0, is =ldr x0, [x29, #24]; mov x19, x0=; x86-64 loads each
+into the variable's register (=backend.md= chapter 4). =global()=,
+=global_sum()=, =column()= and =column_zero()= of
+=address-destination= pin it.
 
-Fix: =summed()= hands =base_into()='s copy to the lvalue's address
-where the sum is not 0, and the GOT's row takes it.
+Fix: the lvalue's address under a constant is generated into the
+variable handed down, in =src/c1-aarch64.cc=, as x86-64's =summed()=
+and =global_address()= do.
 
-Check: =global()= of =address-destination= with =movq
-xa@GOTPCREL(%rip), %rbx; leaq 12(%rbx), %rbx=, the four =adest_*=
-with no expression register, and no function longer.
+Check: those four pins with =x19= alone, and =column_zero()= the one
+=ldr x19=.
 
 ** TODO aarch64: a pointer plus a constant into a register variable loads the pointer elsewhere
 
