@@ -1,2 +1,2 @@
-tests/error/struct-assignment-argument.c:15:13: error: not yet: value of struct 'point'
+tests/error/struct-assignment-argument.c:16:16: error: not yet: value of struct 'point'
 status 1

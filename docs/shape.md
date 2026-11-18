@@ -585,9 +585,16 @@ be complete. What reads or writes the whole object of a record is not
 yet, each in words of its own: a local's initializer, which is stores
 at run time; a `register` one, which no register holds; a record
 passed or returned by value, by a definition's parameter or result,
-by an argument and by a call; and its value, read as an operand or
-for its effect, a member's of a record type among them. A cast to a
-record or of one is an error, since a record is no scalar (6.5.5p2).
+by an argument and by a call; and its value where a record is wanted,
+an arm of a conditional of two records or an argument past a variadic
+function's parameters, or for its effect, a member's of a record type
+among them. Where a scalar is wanted, a record is an error, not a
+construct rcc lacks: as the operand of an operator or a condition
+(6.5.4.3p1, 6.5.7p2, 6.8.5.2p1 and their like), and converted as if by
+assignment to a scalar, as an initializer, an assigned value, an
+argument or a value returned (6.5.17.2p1); so is a scalar converted to
+a record. A cast to a record or of one is an error, since a record is
+no scalar (6.5.5p2).
 
 `a = b` on two records is a simple assignment (6.5.17.2p1): `a` a
 modifiable lvalue of a complete record (6.3.2.1p1), `b` of a
@@ -603,11 +610,12 @@ comma, the right operand of a comma whose own value is discarded, as
 in `n++, a = b;`, and the operand of a cast to `void`. Used as an
 operand, `f(a = b)` and `a = b = c`, as the record of a member, `(a =
 b).x`, or as the right operand of a comma whose value is used, `c =
-(n, a = b)`, it is refused in the words of a record's value, and so is
-a conditional of two records. The two objects may overlap
-(6.5.17.2p3): exactly, as in `a = a`, which the standard defines, or
-in part, which it leaves undefined; the tree is the same, and the
-bytes are those the copy's order leaves.
+(n, a = b)`, it is refused as a record's value is, not yet where a
+record is wanted and an error where a scalar is, and so is a
+conditional of two records. The two objects may overlap (6.5.17.2p3):
+exactly, as in `a = a`, which the standard defines, or in part, which
+it leaves undefined; the tree is the same, and the bytes are those the
+copy's order leaves.
 
 `E.m` and `P->m` designate a member (6.5.3.4p3, p4): `E` a struct or
 a union, `P` a pointer to one after its decay, complete and laid out,

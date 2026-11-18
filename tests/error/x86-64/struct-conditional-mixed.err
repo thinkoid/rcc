@@ -1,0 +1,2 @@
+tests/error/struct-conditional-mixed.c:15:18: error: incompatible operand types in conditional expression
+status 1

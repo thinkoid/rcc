@@ -1,0 +1,2 @@
+tests/error/int-argument-for-struct.c:14:20: error: incompatible integer to struct 'point' conversion
+status 1

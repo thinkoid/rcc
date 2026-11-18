@@ -1,0 +1,2 @@
+tests/error/struct-as-condition.c:13:13: error: value of struct 'point' where a scalar is required
+status 1

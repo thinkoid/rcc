@@ -781,12 +781,13 @@ require_whole_record(const token_t &at, const type_t &t)
     require_honoured(at, t);
 }
 
-// A record converted to the value stored in its object, 6.3.2.1p2, as
-// an operand or for its effect: c1 reads no record yet, so the use is
-// not yet.  An incomplete record has no value to read, p2, and the use
-// is an error.  A record is an expression only as an lvalue, by a name
-// or by indirection, and is taken as the operand of sizeof and of &,
-// which read no value.
+// A record converted to the value stored in its object, 6.3.2.1p2,
+// where a record is wanted or for its effect: c1 reads no record yet,
+// so the use is not yet.  An incomplete record has no value to read,
+// p2, and the use is an error.  A record is an expression only as an
+// lvalue, by a name or by indirection, and is taken as the operand of
+// sizeof and of &, which read no value.  Where a scalar is wanted, a
+// record is refuse_record_operand()'s error.
 void
 refuse_record_value(const token_t &at, const type_t &t)
 {
@@ -819,16 +820,25 @@ require_restrictable(const token_t &q, const type_t &t)
                     " qualifies a type that is not a pointer to an object");
 }
 
-// A value in the subset is an integer or a pointer, to an object or to
-// a function; a void expression is an error, and a record's value is
-// refuse_record_value()'s.
+// A void expression has no value, 6.3.2.2p1, and its use as one is an
+// error.
 void
 require_value(const token_t &at, const expr_t &e)
 {
     if (is< void_t >(e.type))
         fail(at, "void expression used as a value");
+}
 
-    refuse_record_value(at, e.type);
+// Every operator that reads its operand's value asks a scalar of it, or
+// an arithmetic or an integer type, and so does a condition: 6.5.4.3p1,
+// 6.5.7p2, 6.5.14p2, 6.5.15p2, 6.5.16p2, 6.8.5.2p1, 6.8.6.1p2.  A record
+// there is the error of the constraint, not a construct rcc lacks.
+void
+refuse_record_operand(const token_t &at, const type_t &t)
+{
+    if (is< record_type_t >(t))
+        fail(at, "value of " + record_words(*as< record_type_t >(t).record) +
+                     " where a scalar is required");
 }
 
 // 6.5.17.1p2, 6.5.3.5p1, 6.5.4.1p1: an lvalue of integer or pointer
@@ -863,12 +873,13 @@ decayed(expr_t e)
     return expr_t { std::move(t), cast_t { box(std::move(e)) } };
 }
 
-// An operand whose value is used: not void, and decayed, so it is a
-// scalar.
+// An operand whose value is used: not void, no record, and decayed, so
+// it is a scalar.
 expr_t
 rvalue(const token_t &at, expr_t e)
 {
     require_value(at, e);
+    refuse_record_operand(at, e.type);
 
     return decayed(std::move(e));
 }
@@ -1017,27 +1028,59 @@ refuse_tag_twins(const token_t &at, const type_t &a, const type_t &b)
         not_yet(at, "compatibility of two types of " + record_words(*r));
 }
 
+// The words a conversion's error names a type by: a record by its
+// own, a scalar by its kind.
+std::string
+conversion_words(const type_t &t)
+{
+    if (is< record_type_t >(t))
+        return record_words(*as< record_type_t >(t).record);
+
+    return is< pointer_t >(t) ? "pointer" : "integer";
+}
+
+// No record converts as if by assignment to a scalar, and a record
+// takes only a record compatible with it, 6.5.17.2p1, which rcc takes
+// as the same record: either way round the conversion is the error of
+// incompatible types.  Two records of one tag are not yet.
+void
+require_record_conversion(const token_t &at,
+                          const type_t &from,
+                          const type_t &to)
+{
+    if (!is< record_type_t >(from) && !is< record_type_t >(to))
+        return;
+
+    refuse_tag_twins(at, to, from);
+    if (!(from == to))
+        fail(at, "incompatible " + conversion_words(from) + " to " +
+                     conversion_words(to) + " conversion");
+}
+
 // The conversion as if by assignment, of a value to the type of an
-// object: the right operand of =, an initializer, an argument, a value
-// returned.  The constraints are those of simple assignment,
-// 6.5.17.2p1: integers convert to each other; a pointer takes a pointer
-// of its own type, a pointer to void and an object pointer convert
-// either way, and a null pointer constant converts to any pointer, one
-// to a function included.  An integer and a pointer meet only through a
-// cast, 6.5.5p3, and so do a pointer to a function and a pointer to
-// void.  A value converted to a not-yet type, as an argument meets a
-// parameter of one, is not yet, and so is one converted to a record,
-// whose object c1 does not write yet; the callers that may meet one
-// refuse it first in their own words.
+// object: the right operand of =, an initializer, 6.7.11p12, an
+// argument, 6.5.3.3p2, a value returned, 6.8.7.5p3.  The constraints
+// are those of simple assignment, 6.5.17.2p1: integers convert to each
+// other; a pointer takes a pointer of its own type, a pointer to void
+// and an object pointer convert either way, and a null pointer
+// constant converts to any pointer, one to a function included.  An
+// integer and a pointer meet only through a cast, 6.5.5p3, and so do a
+// pointer to a function and a pointer to void; a record and a scalar
+// never meet.  A value converted to a not-yet type, as an argument
+// meets a parameter of one, is not yet, and so is a record converted
+// to its own type, whose object c1 does not write yet; the callers
+// that may meet one refuse it first in their own words.
 expr_t
 assignment_conversion(const token_t &at, expr_t e, const type_t &t)
 {
     require_honoured(at, t);
+    require_value(at, e);
+
+    e = decayed(std::move(e));
+    require_record_conversion(at, e.type, t);
 
     if (is< record_type_t >(t))
         not_yet(at, "value of " + record_words(*as< record_type_t >(t).record));
-
-    e = rvalue(at, std::move(e));
 
     const bool to_pointer = is< pointer_t >(t);
     const bool from_pointer = is< pointer_t >(e.type);
@@ -1565,8 +1608,10 @@ assignment(const token_t &op, expr_t lhs, expr_t rhs)
 // conditional, p3, p6, which stands where a value is dropped, as a
 // call of a void function does, and c1 generates its arms for their
 // effect; one void arm and one of a value meet in none of p3's pairs.
-// On a constant condition and two constant arms, the node is the arm
-// the condition selects, p5.  The condition comes as an rvalue.
+// Two arms of one record are a record's value, not yet; a record and
+// any other arm meet in none of them either.  On a constant condition
+// and two constant arms, the node is the arm the condition selects,
+// p5.  The condition comes as an rvalue.
 expr_t
 conditional(const token_t &op, expr_t cond, expr_t yes, expr_t no)
 {
@@ -1580,6 +1625,14 @@ conditional(const token_t &op, expr_t cond, expr_t yes, expr_t no)
 
     if (void_yes || void_no)
         fail(op, "void and non-void operands in conditional expression");
+
+    if (is< record_type_t >(yes.type) || is< record_type_t >(no.type)) {
+        refuse_tag_twins(op, yes.type, no.type);
+        if (yes.type == no.type)
+            refuse_record_value(op, yes.type);
+
+        fail(op, "incompatible operand types in conditional expression");
+    }
 
     yes = rvalue(op, std::move(yes));
     no = rvalue(op, std::move(no));
@@ -1747,9 +1800,10 @@ address_of(const token_t &op, expr_t arg)
 // Through a pointer to a function the result is a function designator,
 // p4, which decays back to the pointer where a value is wanted, so
 // (*p)(x), (**p)(x) and p(x) are one call.  A record pointee is an
-// lvalue whose value refuse_record_value() refuses, and whose address
-// c1 forms by the record's size; an incomplete one has none, so its
-// lvalue, which only & and sizeof could take, is not yet.
+// lvalue whose value refuse_record_value() or refuse_record_operand()
+// refuses, and whose address c1 forms by the record's size; an
+// incomplete one has none, so its lvalue, which only & and sizeof could
+// take, is not yet.
 expr_t
 indirection(const token_t &op, expr_t arg)
 {
@@ -7431,7 +7485,9 @@ list_argument(parser_t &p, const token_t &start, const type_t &list)
 // integer, a pointer passing as it is, 6.5.3.3p6.  One past the
 // parameters of a function that takes no more is an error, p2, which
 // names the callee by words, callee_words()'s.  A record passes by value
-// in no rule rcc has yet but the aarch64 va_list's.
+// in no rule rcc has yet but the aarch64 va_list's; an argument of
+// another type for a record parameter is the error of incompatible
+// types, as a record for a scalar one is, p2.
 expr_t
 argument(parser_t &p,
          const function_t &type,
@@ -7445,16 +7501,25 @@ argument(parser_t &p,
     if (param && is_list_by_reference(p, *param))
         return list_argument(p, start, *param);
 
-    if (const record_t *r = param ? record_in(*param) : nullptr)
-        not_yet(start, record_words(*r) + " passed by value");
+    expr_t arg = assignment_expression(p);
 
-    expr_t arg = rvalue(start, assignment_expression(p));
+    if (const record_t *r = param ? record_in(*param) : nullptr) {
+        require_value(start, arg);
+
+        const expr_t value = decayed(std::move(arg));
+        require_record_conversion(start, value.type, *param);
+
+        not_yet(start, record_words(*r) + " passed by value");
+    }
 
     if (param)
         return assignment_conversion(start, std::move(arg), *param);
 
     if (!type.variadic)
         fail(start, "too many arguments " + std::string(words));
+
+    refuse_record_value(start, arg.type);
+    arg = rvalue(start, std::move(arg));
 
     if (is< int_t >(arg.type))
         return promote(std::move(arg));

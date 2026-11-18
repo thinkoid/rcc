@@ -1,0 +1,2 @@
+tests/error/struct-returned-as-int.c:14:16: error: incompatible struct 'point' to integer conversion
+status 1

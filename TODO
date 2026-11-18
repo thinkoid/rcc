@@ -813,23 +813,6 @@ it.
 Check: the pins of =unclosed-function-body= and =unclosed-block=
 name the last line of their programs.
 
-** TODO A record where a scalar is required is "not yet", where it is an error
-
-~int x = origin;~ with =origin= a struct fails with "not yet: value
-of struct 'point'". No rule of simple assignment takes a record into
-an arithmetic type (6.5.17.2p1, through 6.7.11p12 for an
-initializer), so this is an error of incompatible types, and "not
-yet" promises an acceptance C does not have. The check of a value
-refuses a record before the conversion is asked what it converts.
-=struct-value-local-initializer= pins today's message; an
-assignment ~i = s~ is not probed.
-
-Fix: where the type wanted is no record, a record's value is the
-error of incompatible types; "not yet" stays for a record's value
-where a record is wanted.
-
-Check: that row with the error, and a row for the assignment.
-
 ** TODO A local record's initializer is not yet
 
 ~struct point q = *p;~ and ~struct point q = { 1, 2 };~ in a block
