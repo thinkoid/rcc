@@ -1,0 +1,2 @@
+tests/error/binary-constant-digit.c:5:20: error: invalid digit '2' in binary constant
+status 1

@@ -405,15 +405,40 @@ is_hex_prefix(const state_t &st)
            (at(st, st.pos + 1) == 'x' || at(st, st.pos + 1) == 'X');
 }
 
+// The binary prefix, 0b or 0B, 6.4.4.2p1.
+bool
+is_binary_prefix(const state_t &st)
+{
+    return at(st, st.pos) == '0' &&
+           (at(st, st.pos + 1) == 'b' || at(st, st.pos + 1) == 'B');
+}
+
 // The end of the digits of a constant starting at the current
 // position.  Octal and decimal digits are scanned alike; an 8 or a 9
 // in an octal constant is caught once the spelling is known.  A
 // hexadecimal floating constant may have its digits after the period
-// alone, 6.4.4.3p1.
+// alone, 6.4.4.3p1.  A binary constant has one digit at least, each 0
+// or 1, 6.4.4.2p1, p4.
 std::size_t
 digits_end(const state_t &st)
 {
     std::size_t end = st.pos;
+
+    if (is_binary_prefix(st)) {
+        end += 2;
+
+        const std::size_t first = end;
+        for (; is_digit(at(st, end)); ++end)
+            if (at(st, end) != '0' && at(st, end) != '1')
+                fail(location_of(st, end),
+                     std::format("invalid digit '{}' in binary constant",
+                                 at(st, end)));
+
+        if (end == first)
+            fail(location_of(st, st.pos), "binary constant without digits");
+
+        return end;
+    }
 
     if (is_hex_prefix(st)) {
         end += 2;
@@ -455,8 +480,21 @@ long_suffix_end(const state_t &st, std::size_t i)
     return at(st, i + 1) == c ? i + 2 : i + 1;
 }
 
-// After the suffix at i: a u or U and a long part in either order,
-// each at most once, either or both absent.
+// After the bit-precise suffix at i, wb or WB, 6.4.4.2p1; i where there
+// is none.  A mixed-case wB is not one.
+std::size_t
+bit_precise_suffix_end(const state_t &st, std::size_t i)
+{
+    const char w = at(st, i);
+    const char b = at(st, i + 1);
+    if ((w == 'w' && b == 'b') || (w == 'W' && b == 'B'))
+        return i + 2;
+
+    return i;
+}
+
+// After the suffix at i: a u or U and a long part or a bit-precise
+// part in either order, each at most once, either or both absent.
 std::size_t
 suffix_end(const state_t &st, std::size_t i)
 {
@@ -464,7 +502,8 @@ suffix_end(const state_t &st, std::size_t i)
     if (u_first)
         ++i;
 
-    i = long_suffix_end(st, i);
+    const std::size_t bit_precise = bit_precise_suffix_end(st, i);
+    i = bit_precise != i ? bit_precise : long_suffix_end(st, i);
 
     if (!u_first && is_unsigned_suffix(at(st, i)))
         ++i;
@@ -477,7 +516,7 @@ void
 check_octal(const state_t &st, std::string_view digits)
 {
     if (digits.size() < 2 || digits[0] != '0' || digits[1] == 'x' ||
-        digits[1] == 'X')
+        digits[1] == 'X' || digits[1] == 'b' || digits[1] == 'B')
         return;
 
     for (const char c : digits)
@@ -583,15 +622,19 @@ floating(state_t &st, std::size_t i, bool hex)
 // An integer or a floating constant, digits and suffix; the value of an
 // integer one is the parser's to read.  The constant is a floating one
 // when its digits go on to a period or to the letter of an exponent,
-// 6.4.4.3p1.  An identifier character or a '.' right after the suffix
-// is an error: the constant is malformed.
+// 6.4.4.3p1, but for a binary one, which no floating constant is.  An
+// identifier character or a '.' right after the suffix is an error:
+// the constant is malformed.
 token_t
 number(state_t &st)
 {
     const bool hex = is_hex_prefix(st);
+    const bool binary = is_binary_prefix(st);
     const std::size_t digits = digits_end(st);
 
-    if (at(st, digits) == '.' || is_exponent_letter(at(st, digits), hex))
+    const bool fraction =
+        at(st, digits) == '.' || is_exponent_letter(at(st, digits), hex);
+    if (!binary && fraction)
         return floating(st, digits, hex);
 
     check_octal(st, st.source.substr(st.pos, digits - st.pos));

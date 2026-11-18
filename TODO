@@ -1110,24 +1110,6 @@ than 78 columns.
 
 * Lexer
 
-** TODO A binary or a bit-precise constant is an invalid integer constant
-
-=0b101= and =1wb= are C23's (6.4.4.2). The parser has a "not yet:
-binary constant" and a "not yet: bit-precise integer constant" for
-them, and an error for a suffix it does not know, but none of the
-three is reached: the lexer's =number()= stops at the =b= and at the
-=wb= and refuses each first, "invalid integer constant '0b101'". A
-valid constant is thus called invalid, and the parser's three
-branches are dead.
-
-Fix: the lexer takes the binary prefix with its digits and the =wb=
-suffix as part of the number, so the parser's not-yets say what is
-missing; or the lexer says "not yet" itself and the parser's
-branches go.
-
-Check: two programs of =tests/error=, pinned "not yet: binary
-constant" and "not yet: bit-precise integer constant".
-
 ** TODO A digit separator is a missing quote
 
 ~1'000~ is C23's (6.4.4.2). The parser's "not yet: digit separator"

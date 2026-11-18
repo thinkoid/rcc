@@ -1,0 +1,2 @@
+tests/error/bit-precise-constant.c:6:16: error: not yet: bit-precise integer constant
+status 1

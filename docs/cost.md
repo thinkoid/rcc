@@ -57,7 +57,8 @@ an enumeration constant of its number: a program compiles to the
 listing of its twin with the integer types and the numbers spelled
 out (`enum`). A static assertion declares nothing and writes
 nothing: a program compiles to the listing of its twin without its
-assertions (`static-assert`). Neither do
+assertions (`static-assert`). A binary constant is the spelling of its
+number as a hexadecimal one is (`binary-constant`). Neither do
 `restrict`, `inline` on a declaration, `__extension__` and the
 attributes rcc drops, which are licences for an optimizer or
 requests for a warning (`gnu-declarations`); `__asm__` after a

@@ -2057,7 +2057,7 @@ integer_suffix(const token_t &t, std::string_view s)
 
 // The type of a constant is the first of its list in 6.4.4.2p6 that
 // holds the value.  A decimal constant without u stays signed; an
-// octal or hexadecimal one may go unsigned.  long long is long on
+// octal, hexadecimal or binary one may go unsigned.  long long is long on
 // LP64, so the lists end at the 64-bit types.
 std::optional< type_t >
 integer_constant_type(std::uint64_t value, bool decimal, suffix_t suffix)
@@ -2095,8 +2095,10 @@ integer_constant(const token_t &t)
         base = 16;
         s.remove_prefix(2);
     }
-    else if (s.size() > 1 && s[0] == '0' && (s[1] == 'b' || s[1] == 'B'))
-        not_yet(t, "binary constant");
+    else if (s.size() > 1 && s[0] == '0' && (s[1] == 'b' || s[1] == 'B')) {
+        base = 2;
+        s.remove_prefix(2);
+    }
     else if (s[0] == '0')
         base = 8;
 

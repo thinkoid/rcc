@@ -87,7 +87,13 @@ has it; one of `u` holds one UTF-16 code unit, so `u'😀'` is an error
 one of no prefix with more is not yet. `u8'x'` is C23's, and the
 dialect rcc preprocesses in has none, so it is not yet.
 
-A floating constant is a
+An integer constant is decimal, octal, hexadecimal or binary, `0b`
+or `0B` and the digits 0 and 1 (6.4.4.2p1), and takes its suffix
+whole, the bit-precise `wb` and `WB` among the suffixes; the parser
+reads its value and its type, the first of 6.4.4.2p6's list that
+holds the value, a binary constant's the list of an octal or a
+hexadecimal one, and refuses a bit-precise constant, of a
+`_BitInt` type, as not yet. A floating constant is a
 token of its own, in the grammar of 6.4.4.3p1: decimal or
 hexadecimal, a fraction, an exponent, which a hexadecimal one must
 have, and a suffix, `f`, `l` or one of the decimal ones, which p2
