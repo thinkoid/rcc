@@ -127,8 +127,8 @@ signedness, a pointer to a type, an array of a type and a count, a
 function of a result and parameters, a struct or a union, or a type
 rcc declares and does not use yet: an enum in its own list or marked
 by an attribute (chapter 5); a floating type, real or complex, GNU
-C's `__float128` among them; `_Bool`; GNU C's `__int128`;
-`__builtin_va_list` and clang's SVE types; an atomic type; a type a
+C's `__float128` among them; `_Bool`; GNU C's `__int128`; clang's
+SVE types; an atomic type; a type a
 typedef names through an attribute rcc does not honour, or through an
 array size rcc cannot compute. Such a type
 carries an identity, which equality compares, and the words a
@@ -191,6 +191,25 @@ rcc does not use yet. It keeps the words of the first such construct,
 and a use that needs its layout is refused by them, as a not-yet
 type's is; a pointer to it is an ordinary pointer, so a program's
 `FILE *` is what it was.
+
+`__builtin_va_list`, the type behind `va_list` (7.16p4), is the
+target's, since a list is handed to the C library, which reads it as
+the convention lays it out. The parser makes its record once for the
+unit, under `clang`'s tag and in no scope, laid out by the rule above,
+which gives the convention's offsets. On x86-64 it is an array of one
+`__va_list_tag`, 24 bytes: `unsigned gp_offset` at 0 and `unsigned
+fp_offset` at 4, the offsets into the register save area of the next
+general and vector register, then `void *overflow_arg_area` at 8 and
+`void *reg_save_area` at 16, the next argument on the stack and the
+save area. A list decays to the record's address, and a parameter of
+it is that pointer (6.7.7.4p6). On aarch64 it is the record
+`__va_list`, 32 bytes: `void *__stack` at 0, `void *__gr_top` and
+`void *__vr_top` at 8 and 16, the tops of the general and the vector
+registers' parts of the save area, and `int __gr_offs` and `int
+__vr_offs` at 24 and 28, the negative offsets below them of the next
+register of each. A parameter of it arrives as the address of a copy
+the caller makes, which the convention gives every record of more than
+16 bytes (chapter 5).
 
 ## 4. The tree
 
@@ -273,7 +292,15 @@ Three sums.
   one `function_decl_t` per function symbol, with a body when the
   unit defines the function and none when it only declares it. A
   definition carries the count of register variables it uses, its
-  parameters among them, the highest index plus one. It holds one `object_decl_t` per
+  parameters among them, the highest index plus one, and, when it is
+  variadic and calls `va_start`, its save area: a local of bytes no
+  declaration names, which c1 places and fills at entry with every
+  argument register, general and vector, whatever the caller says it
+  passed, and the address of the arguments the caller left on the
+  stack past the named ones. On x86-64 it is 184 bytes, `rdi` to `r9`
+  from 0, `xmm0` to `xmm7` from 48 and the address at 176; on aarch64
+  200, `x0` to `x7` from 0, `q0` to `q7` from 64 and the address at
+  192. It holds one `object_decl_t` per
   object it defines, in the order of the definitions, with the
   initializer when one was written: c1 writes the data from them. The
   parser folds an initializer into that data, the subobjects it gives
@@ -606,6 +633,53 @@ members are reached. `&p->m`, `sizeof p->m`, `p->m++` and `p->m +=
 e` are those of any lvalue, and a union's members are each at 0, so
 a member read after another written reads the bytes at its own
 width.
+
+The macros of `stdarg.h` (7.16.1) are `clang`'s builtins in the
+dialect rcc preprocesses in, and the parser builds each of the tree's
+own nodes, per target, from the list's record (chapter 3); the tree
+has no node of its own for them. The list operand is a `va_list`: on
+x86-64 an array of one record or a parameter of it, on aarch64 an
+lvalue of the record; anything else is an error.
+
+- `__builtin_va_arg(ap, T)`, `va_arg` (7.16.1.1), is the value of
+  the next argument, each argument of rcc's types in one 8-byte slot:
+  the slot of the save area while a register is left, the list's
+  offset stepped past it, then the slot on the stack, the address
+  stepped past it. On x86-64 that is `(T) *(T *) (gp_offset <= 40 ?
+  (gp_offset += 8, (char *) reg_save_area + (gp_offset - 8)) :
+  (overflow_arg_area = (char *) overflow_arg_area + 8, (char *)
+  overflow_arg_area - 8))`, each member reached through the list as
+  `ap->m` is, and on aarch64 the same of `__gr_offs < 0`, `__gr_top`
+  and `__stack`. The cast to `T` makes it no lvalue. T is an object
+  type (p2): `void`, a function type and an array type are errors,
+  and so is an incomplete record; a record, which passes by value, is
+  not yet, and so is a not-yet type, a floating one among them.
+  `char` and `short`, which no argument has after the default
+  argument promotions, read the low bytes of the promoted argument.
+- `__builtin_va_start(ap, parameter)`, `va_start` (7.16.1.4), in a
+  variadic definition, sets each member of the list from the
+  function's save area (chapter 4), which its first `va_start` makes:
+  on x86-64 `gp_offset` 8 for each named parameter, of the six in
+  registers, `fp_offset` 48, as no parameter rcc has is in a vector
+  register, `overflow_arg_area` the address at 176 of the area and
+  `reg_save_area` the area; on aarch64 `__stack` the address at 192,
+  `__gr_top` the area plus 64, `__vr_top` the area plus 192,
+  `__gr_offs` -8 for each register of `x0` to `x7` past the named
+  parameters and `__vr_offs` -128. The second operand is neither
+  evaluated nor checked (p4). `va_start` in a function with fixed
+  parameters is an error.
+- `__builtin_va_end(ap)`, `va_end` (7.16.1.3), is nothing on either
+  target but the list's address, evaluated and discarded.
+- `__builtin_va_copy(d, s)`, `va_copy` (7.16.1.2), is the assignment
+  of `s`'s record to `d`'s, the copy of G18, discarded.
+
+`va_arg` and `va_start` read the list more than once, through copies
+of its expression, so a list with a side effect, `va_arg(*p++, int)`,
+is not yet. On aarch64 a parameter of type `va_list` arrives as the
+address of the caller's copy: its symbol is that pointer, and its
+name reads as `*symbol`, the list; and an argument for such a
+parameter is an lvalue of the list, whose copy c1 makes. Every other
+record by value is not yet.
 
 The types a header declares and rcc does not use are not-yet types:
 the complex types, `_Complex` among the specifiers of a floating
@@ -943,6 +1017,12 @@ A record's assignment reaches each generator in `effect(e)`, the one
 context the parser lets it stand in. Each copies the object there,
 inline, unit by unit (G18; `backend.md` 6.6, `aarch64.md` 6.6).
 
+A variadic definition that calls `va_start` reaches each generator
+with its save area, and an aarch64 call with a `va_list` argument
+with the list: each generator refuses them yet, `c1: not yet:
+va_start` and `c1: not yet: va_list passed by value`. The trees of
+`va_arg`, `va_copy` and `va_end` are rows the generators have.
+
 A reader checking a promise opens c1's source, finds the function that
 writes the row, and reads what is not there.
 
@@ -1160,7 +1240,11 @@ a conditional of two void calls.
 
 A local's initializer of a struct or a union and each use that
 reads or writes one whole (chapter 5: a `register` one, a record by
-value and its value), the layout of a struct or a
+value but the aarch64 `va_list`, and its value), the save area of a
+variadic definition that calls `va_start` and the copy of an aarch64
+`va_list` argument in the generators, a list operand of `va_arg` or
+`va_start` with a side effect, a function whose parameter list is
+`(...)` alone, the layout of a struct or a
 union with a bit-field, an anonymous member, an attribute that marks,
 `packed` and `aligned` among them, a flexible array member, no
 member, or a member of a type rcc does not use yet (chapter 3), C23's

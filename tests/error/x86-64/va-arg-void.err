@@ -1,0 +1,2 @@
+tests/error/va-arg-void.c:10:30: error: va_arg of type void
+status 1

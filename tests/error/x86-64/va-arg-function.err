@@ -1,0 +1,2 @@
+tests/error/va-arg-function.c:11:30: error: va_arg of a function type
+status 1

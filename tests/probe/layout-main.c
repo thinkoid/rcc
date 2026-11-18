@@ -64,6 +64,10 @@ RECORDS(RECORD)
 
 DESIGNATORS(DESIGNATED)
 
+#define LIST_OFFSET(M) long list_##M(void), ref_list_##M(void);
+
+LIST_MEMBERS(LIST_OFFSET)
+
 int mode_two(void), ref_mode_two(void);
 
 /* a record's checks; the stride is of two elements of the record */
@@ -103,6 +107,8 @@ int mode_two(void), ref_mode_two(void);
 #define CHECK_DESIGNATED(N, R, D)                                       \
     report("designated_" #N, designated_##N(), ref_designated_##N());
 
+#define CHECK_LIST(M) report("list_" #M, list_##M(), ref_list_##M());
+
 int
 main(void)
 {
@@ -110,6 +116,7 @@ main(void)
         FEW(CHECK_TRIPLES)
         RECORDS(CHECK_RECORD)
         DESIGNATORS(CHECK_DESIGNATED)
+        LIST_MEMBERS(CHECK_LIST)
         report("mode_two", mode_two(), ref_mode_two());
 
         printf("%ld checks, %ld differ\n", total, bad);

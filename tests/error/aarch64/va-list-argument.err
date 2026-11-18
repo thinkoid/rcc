@@ -1,2 +1,2 @@
-tests/error/va-list-argument.c:8:19: error: not yet: '__builtin_va_list'
+tests/error/va-list-argument.c:10:19: error: incompatible type for a va_list argument
 status 1

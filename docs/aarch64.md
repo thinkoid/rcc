@@ -66,9 +66,10 @@ all of it, and keeps c1's three entry points, `rvalue()`, `cbranch()`
 and `effect()`, the width rule, the spill rule, the hidden local of an
 argument, the left-to-right order of G13 and the label names.
 
-c0 carries too, but for four facts it must now take from the target
+c0 carries too, but for five facts it must now take from the target
 (chapter 11): the count of register variables, the signedness of
-plain `char` and of `wchar_t`, and the frame limit.
+plain `char` and of `wchar_t`, the frame limit, and the variable
+argument list.
 
 What does not carry is what `backend.md` built around the shape of
 x86 instructions:
@@ -1520,7 +1521,7 @@ initializes has none.
 
 ## 11. c0 and the driver
 
-c0 learns the target, for four facts:
+c0 learns the target, for five facts:
 
 - **The register variables**, 5 or 10: the count c0 assigns from and
   the number in its warning.
@@ -1538,10 +1539,18 @@ c0 learns the target, for four facts:
   on aarch64 (5.2): the largest frame. c0 refuses a local over it at
   its declaration, where its position is known. The generator holds
   the same limit for the frame as a whole.
+- **The variable argument list**, 7.16p4, the convention's, which the
+  C library reads: on x86-64 an array of one 24-byte record of the
+  offsets into the register save area and the addresses of the areas,
+  so a parameter of it is a pointer; on aarch64 a 32-byte record of
+  the stack area's address, the tops of the register areas and the
+  offsets below them, which a call passes as the address of a copy.
+  c0 makes the record and builds `va_start` and `va_arg` from it
+  (`shape.md` chapter 5).
 
 They live in one small description, `target_t`, that c0, the
 generators and the driver read: the name, the name `clang` takes after
-`--target=`, the four facts, and the alignment the convention asks of
+`--target=`, the five facts, and the alignment the convention asks of
 a global array, which c1 reads (chapter 10). Everything else about a target is in its
 generator.
 

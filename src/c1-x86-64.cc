@@ -5702,6 +5702,9 @@ epilogue(state_t &s, bool sub)
 void
 function(state_t &s, const function_decl_t &fd)
 {
+    if (fd.va_area)
+        not_yet("va_start");
+
     s.body.str({ });
     s.slots.clear();
     s.calls = false;

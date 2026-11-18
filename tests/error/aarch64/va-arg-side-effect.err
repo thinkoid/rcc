@@ -1,0 +1,2 @@
+tests/error/va-arg-side-effect.c:12:30: error: not yet: va_arg of a list with side effects
+status 1

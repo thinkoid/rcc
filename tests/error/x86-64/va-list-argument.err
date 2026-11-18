@@ -1,2 +1,1 @@
-tests/error/va-list-argument.c:8:19: error: not yet: '__builtin_va_list'
-status 1
+status 0

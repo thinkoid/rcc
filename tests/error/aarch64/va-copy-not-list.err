@@ -1,0 +1,2 @@
+tests/error/va-copy-not-list.c:10:31: error: second argument to 'va_copy' is not a va_list
+status 1

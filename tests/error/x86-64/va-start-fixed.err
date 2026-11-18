@@ -1,0 +1,2 @@
+tests/error/va-start-fixed.c:10:9: error: 'va_start' used outside a variadic function
+status 1

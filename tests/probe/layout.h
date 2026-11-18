@@ -10,9 +10,12 @@
    which c1 computes from the record's size, and for the place of an
    object of the record, a local's and a global's, which c1 aligns.
    struct sockaddr_in is a header's record, whose may_alias attribute
-   rcc drops. */
+   rcc drops.  va_list is the target's list, 7.16p4, an array of one
+   record on x86-64 and a record on aarch64, whose members are read
+   through the list's address. */
 
 #include <netinet/in.h>
+#include <stdarg.h>
 #include <stddef.h>
 
 /* the member kinds that are no record, spelled as one type each */
@@ -128,7 +131,7 @@ struct tagged
 /* the records of no list above, and the keyword each is declared by */
 #define RECORDS(X)                                                      \
     X(struct, inner) X(union, either) X(struct, nest) X(union, choice)  \
-    X(struct, tagged) X(struct, sockaddr_in)
+    X(struct, tagged) X(struct, sockaddr_in) X(, va_list)
 
 /* the designators of offsetof into those records: a name, the record,
    the designator */
@@ -138,3 +141,14 @@ struct tagged
     X(nest_triple_1_x_l, struct nest, triples[1].x.l)                   \
     X(nest_either_x_l, struct nest, either.x.l)                         \
     X(choice_b_z, union choice, b.z) X(tagged_c, struct tagged, c)
+
+/* the members of the target's list record, and the list's address */
+#if defined(__x86_64__)
+#define LIST_MEMBERS(X)                                                 \
+    X(gp_offset) X(fp_offset) X(overflow_arg_area) X(reg_save_area)
+#define LIST(L) (L)
+#else
+#define LIST_MEMBERS(X)                                                 \
+    X(__stack) X(__gr_top) X(__vr_top) X(__gr_offs) X(__vr_offs)
+#define LIST(L) (&(L))
+#endif

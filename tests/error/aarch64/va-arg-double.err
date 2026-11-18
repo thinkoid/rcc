@@ -1,0 +1,2 @@
+tests/error/va-arg-double.c:10:40: error: not yet: floating type 'double'
+status 1

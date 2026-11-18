@@ -1,0 +1,2 @@
+tests/error/va-arg-not-list.c:10:30: error: first argument to 'va_arg' is not a va_list
+status 1

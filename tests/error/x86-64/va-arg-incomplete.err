@@ -1,0 +1,2 @@
+tests/error/va-arg-incomplete.c:13:30: error: va_arg of incomplete type struct 'opaque'
+status 1

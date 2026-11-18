@@ -61,6 +61,17 @@ RECORDS(RECORD)
 
 DESIGNATORS(DESIGNATED)
 
+/* the offset of a member of the list's record, from the list's address */
+#define LIST_OFFSET(M)                                                  \
+    long list_##M(void)                                                 \
+    {                                                                   \
+        va_list l;                                                      \
+                                                                        \
+        return (char *) &LIST(l)->M - (char *) LIST(l);                 \
+    }
+
+LIST_MEMBERS(LIST_OFFSET)
+
 /* an enumeration constant the member list of struct tagged declares */
 int
 mode_two(void)

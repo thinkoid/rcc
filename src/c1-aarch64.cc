@@ -4026,6 +4026,9 @@ call(state_t &s, const call_t &c, const type_t &t)
     std::vector< std::pair< int, int_t > > slots;
     for (std::size_t i = 0; i < c.args.size(); ++i) {
         const auto &arg = c.args[i];
+        if (is< record_type_t >(arg.type))
+            not_yet("va_list passed by value");
+
         const auto &type = integer(arg.type);
 
         if (i < f.params.size() && !(arg.type == *f.params[i]))
@@ -4784,6 +4787,9 @@ epilogue(state_t &s, long size)
 void
 function(state_t &s, const function_decl_t &fd)
 {
+    if (fd.va_area)
+        not_yet("va_start");
+
     s.body.str({ });
     s.slots.clear();
     s.owner.fill(-1);

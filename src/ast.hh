@@ -74,7 +74,10 @@ enum class linkage_t { none, internal, external };
 // attribute changes or may change what the program depends on, as weak
 // or alias change the symbol a name links to, or when the symbol is a
 // static inline function, whose definition rcc does not compile; empty
-// when none of these holds.
+// when none of these holds.  by_reference marks a parameter whose
+// argument the convention passes as the address of a copy the caller
+// makes, the aarch64 va_list: the symbol is that pointer, and the
+// parser reads the parameter's name as the object it points to.
 struct symbol_t
 {
     std::string name;
@@ -86,6 +89,7 @@ struct symbol_t
     std::string marking = { };
     linkage_t linkage = linkage_t::none;
     long long value = 0;
+    bool by_reference = false;
 };
 
 inline bool
@@ -427,13 +431,19 @@ as(const stmt_t &s)
 // for it: a call names the symbol, and the linker resolves it.
 // registers is the count of register variables the definition uses,
 // its parameters' among them, as the parser assigned them: the largest
-// register_index + 1, and 0 for a declaration alone.
+// register_index + 1, and 0 for a declaration alone.  va_area is the
+// save area of a variadic definition that calls va_start, 7.16.1.4: a
+// local no declaration names, of bytes, into which the prologue stores
+// every argument register as it arrives, and the address of the first
+// argument the caller left on the stack past the named ones; null for
+// any other function.  docs/shape.md chapter 4 gives its layout.
 struct function_decl_t
 {
     const symbol_t *sym;
     std::vector< const symbol_t * > params;
     std::optional< block_t > body;
     int registers;
+    const symbol_t *va_area = nullptr;
 };
 
 // An address constant, 6.6p9, p11, as the parser folds it: the address

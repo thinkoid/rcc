@@ -112,7 +112,10 @@ struct open_switch_t
 // of an object of a record incomplete where it is declared, or of
 // internal linkage and of an array of unknown size, with the token that
 // names it, checked against the record and the array at the end of the
-// unit.
+// unit.  va_record is the record behind the target's va_list, made once
+// for the unit.  variadic and named are the function being defined's
+// too: whether it takes variable arguments, and the count of its named
+// parameters; va_area is its save area, made at its first va_start.
 struct parser_t
 {
     const std::vector< token_t > &tokens;
@@ -138,6 +141,10 @@ struct parser_t
     std::vector< internal_use_t > internal_uses = { };
     std::unordered_map< std::string_view, symbol_t * > block_entities = { };
     std::vector< tentative_t > incomplete_definitions = { };
+    const record_t *va_record = nullptr;
+    bool variadic = false;
+    std::size_t named = 0;
+    const symbol_t *va_area = nullptr;
 };
 
 // The declaration specifiers: the type, and the storage-class specifier
@@ -349,10 +356,9 @@ size_type()
 }
 
 // The not-yet types that are one type wherever they are written: the
-// real and the complex floating types, __builtin_va_list, GNU C's
-// __float128 and __int128, clang's SVE types, and _Bool, each of a
-// fixed identity.  A not-yet type of its own takes the next identity
-// after theirs.
+// real and the complex floating types, GNU C's __float128 and
+// __int128, clang's SVE types, and _Bool, each of a fixed identity.  A
+// not-yet type of its own takes the next identity after theirs.
 type_t
 float_type()
 {
@@ -371,10 +377,18 @@ long_double_type()
     return make_not_yet(2, "floating type 'long double'");
 }
 
+// __builtin_va_list, the type behind va_list, 7.16p4, the convention's:
+// on x86-64 an array of one of the unit's list records, so that a list
+// decays to the record's address and a parameter of it is that pointer,
+// 6.7.7.4p6; on aarch64 the record itself.
 type_t
-va_list_type()
+va_list_type(const parser_t &p)
 {
-    return make_not_yet(3, "'__builtin_va_list'");
+    const type_t r = make_record(*p.va_record);
+    if (p.target.va_list == va_list_t::psabi)
+        return make_array(r, 1);
+
+    return r;
 }
 
 type_t
@@ -726,6 +740,17 @@ record_in(const type_t &t)
         return record_in(*as< array_t >(t).element);
 
     return nullptr;
+}
+
+// Whether t is the aarch64 va_list, the one record a value of which
+// passes, 7.16p4: the AAPCS64 passes a record of more than 16 bytes as
+// the address of a copy the caller makes, and the list is one.  Every
+// other record passes by value in no rule rcc has yet.
+bool
+is_list_by_reference(const parser_t &p, const type_t &t)
+{
+    return p.target.va_list == va_list_t::aapcs64 && is< record_type_t >(t) &&
+           as< record_type_t >(t).record == p.va_record;
 }
 
 // The words a diagnostic names a record by: struct 'point', or untagged
@@ -1874,16 +1899,14 @@ lookup(const parser_t &p, std::string_view name)
 }
 
 // The type a name the compiler declares stands for, or nothing:
+// __int128_t and __uint128_t, clang's and gcc's names of the 128-bit
+// integer types, which glibc's sys/user.h writes in a member list; and
+// clang's names of the SVE types.  No header declares them.
 // __builtin_va_list, clang's and gcc's name for the type behind
-// va_list; __int128_t and __uint128_t, clang's and gcc's names of the
-// 128-bit integer types, which glibc's sys/user.h writes in a member
-// list; and clang's names of the SVE types.  No header declares them.
+// va_list, is the unit's, named_type()'s.
 std::optional< type_t >
 builtin_type(std::string_view name)
 {
-    if (name == "__builtin_va_list")
-        return va_list_type();
-
     if (name == "__int128_t")
         return int128_type(true);
 
@@ -1915,6 +1938,9 @@ named_type(const parser_t &p, const token_t &t)
     const symbol_t *sym = lookup(p, t.text);
     if (sym && sym->storage == storage_t::type_name)
         return sym->type;
+
+    if (!sym && t.text == "__builtin_va_list")
+        return va_list_type(p);
 
     if (!sym)
         return builtin_type(t.text);
@@ -3778,7 +3804,9 @@ require_labels(const parser_t &p)
 
 // A parameter of a definition, declared already in the scope of its
 // list, which is open again as the body's, takes its register in the
-// order of the parameters, as a local does.
+// order of the parameters, as a local does.  An aarch64 va_list arrives
+// as the address of the caller's copy, is_list_by_reference(): the
+// symbol is that pointer, and its name reads as the list it points to.
 const symbol_t *
 defined_parameter(parser_t &p, const parameter_t &param)
 {
@@ -3787,21 +3815,52 @@ defined_parameter(parser_t &p, const parameter_t &param)
     sym.declared_register = param.in_register;
     sym.register_index = register_index(p, *param.name, param.in_register);
 
+    if (is_list_by_reference(p, sym.type)) {
+        sym.type = make_pointer(sym.type);
+        sym.by_reference = true;
+    }
+
     return &sym;
+}
+
+// The parameters of a definition, each named, defined_parameter()'s.
+// Each is an object the definition makes, so none may be of a not-yet
+// type, nor of a record, which passes by value in no rule rcc has yet
+// but the aarch64 va_list's.
+std::vector< const symbol_t * >
+defined_parameters(parser_t &p, const declarator_t &d)
+{
+    std::vector< const symbol_t * > params;
+    for (const parameter_t &param : *d.params) {
+        if (!param.name)
+            fail(*param.start, "parameter name omitted");
+
+        require_honoured(*param.name, param.type);
+
+        const record_t *r = record_in(param.type);
+        if (r && !is_list_by_reference(p, param.type))
+            not_yet(*param.name, record_words(*r) + " passed by value");
+
+        params.push_back(defined_parameter(p, param));
+    }
+
+    return params;
 }
 
 // The parameter type list and the body are one block, 6.9.2p10,
 // 6.8.3p2, so a local cannot redeclare a parameter there: the scope of
 // the list that makes the name a function, with its parameters and its
 // tags, is opened again and the body's items are parsed into it
-// directly.  The result and the parameters are objects the definition
-// makes, so none may be of a not-yet type, nor yet of a record, which
-// passes by value.  A function a marking attribute marked, on a
-// declaration, among the definition's specifiers or on a parameter, is
-// one rcc would have to define as the attribute says, which is not
-// yet.  function and statics start over, for the labels of the static
-// objects the body declares, and labels, gotos and case_labels, for the
-// body's own labels, which no other function sees.
+// directly.  The result is an object the definition makes, so it may
+// not be of a not-yet type, nor yet of a record, which returns by
+// value; the parameters are defined_parameters()'s.  A function a
+// marking attribute marked, on a declaration, among the definition's
+// specifiers or on a parameter, is one rcc would have to define as the
+// attribute says, which is not yet.  function and statics start over,
+// for the labels of the static objects the body declares, and labels,
+// gotos and case_labels, for the body's own labels, which no other
+// function sees; and variadic, named and va_area, for the body's
+// va_start.
 void
 function_definition(parser_t &p,
                     const specifiers_t &spec,
@@ -3824,24 +3883,16 @@ function_definition(parser_t &p,
 
     p.registers = 0;
     p.function = d.name->text;
+    p.variadic = as< function_t >(d.type).variadic;
+    p.named = d.params->size();
+    p.va_area = nullptr;
     p.statics.clear();
     p.labels.clear();
     p.gotos.clear();
     p.case_labels = 0;
     p.scopes.push_back(d.scope);
 
-    std::vector< const symbol_t * > params;
-    for (const parameter_t &param : *d.params) {
-        if (!param.name)
-            fail(*param.start, "parameter name omitted");
-
-        require_honoured(*param.name, param.type);
-
-        if (const record_t *r = record_in(param.type))
-            not_yet(*param.name, record_words(*r) + " passed by value");
-
-        params.push_back(defined_parameter(p, param));
-    }
+    std::vector< const symbol_t * > params = defined_parameters(p, d);
 
     block_t body;
     expect(p, tok_t::lbrace, "expected '{' before function body");
@@ -3856,6 +3907,8 @@ function_definition(parser_t &p,
     f.params = std::move(params);
     f.body = std::move(body);
     f.registers = p.registers;
+    f.va_area = p.va_area;
+    p.variadic = false;
 }
 
 // The definition of a static inline function a system header writes,
@@ -4550,6 +4603,51 @@ lay_out(const token_t &close, record_t &r)
 
     r.size = (end + alignment - 1) / alignment * alignment;
     r.alignment = alignment;
+}
+
+// The members of the record behind the target's va_list, 7.16p4, as the
+// convention has them for the C library, which reads the lists a
+// program hands it: the x86-64 psABI's __va_list_tag, the offsets into
+// the register save area of the next general and the next vector
+// register, and the addresses of the next argument on the stack and of
+// the save area; the AAPCS64's __va_list, the address of the next
+// argument on the stack, the tops of the general and the vector
+// registers' parts of the save area, and the negative offsets below
+// them of the next register of each.  The names are clang's.
+std::vector< member_t >
+va_members(const parser_t &p)
+{
+    const type_t pointer = make_pointer(make_void());
+
+    if (p.target.va_list == va_list_t::psabi)
+        return { { "gp_offset", make_int(32, false), 0 },
+                 { "fp_offset", make_int(32, false), 0 },
+                 { "overflow_arg_area", pointer, 0 },
+                 { "reg_save_area", pointer, 0 } };
+
+    return { { "__stack", pointer, 0 },
+             { "__gr_top", pointer, 0 },
+             { "__vr_top", pointer, 0 },
+             { "__gr_offs", int_type(), 0 },
+             { "__vr_offs", int_type(), 0 } };
+}
+
+// The unit's list record, made once, under clang's tag and in no scope,
+// so that every va_list of the unit is one type.  Laid out by the rule
+// of every record, it has the convention's offsets: 0, 4, 8 and 16 in
+// 24 bytes, and 0, 8, 16, 24 and 28 in 32.
+const record_t *
+va_record(parser_t &p)
+{
+    const bool psabi = p.target.va_list == va_list_t::psabi;
+
+    record_t &r = p.unit.records.emplace_back(
+        record_t { false, psabi ? "__va_list_tag" : "__va_list" });
+    r.members = va_members(p);
+    r.complete = true;
+    lay_out(p.tokens.front(), r);
+
+    return &r;
 }
 
 // struct or union, then a tag, a member list in braces, or both,
@@ -6675,27 +6773,15 @@ record_pointer(const token_t &op, expr_t e)
     return { uncast(std::move(*sum.lhs)), offset };
 }
 
-// E.m and P->m, 6.5.3.4: the lvalue of the member, p3, p4, of the
-// member's type, which is *(T *) ((char *) P + offset), the offset the
+// The lvalue of the member m of the record E is, for E.m, or of the one
+// P points to, for P->m, P an rvalue, op saying which, 6.5.3.4p3, p4:
+// *(T *) ((char *) P + offset), of the member's type, the offset the
 // member's in its record plus the one P carries, built of the tree's
 // own nodes, as the Seventh Edition compiler's first pass wrote a->b as
-// *(a + offset).  A member at offset 0 is *(T *) P, with no sum.  A
-// member of an array type decays where its value is used, and one of a
-// record type is an lvalue whose value is refused and whose members
-// are reached.
+// *(a + offset).  A member at offset 0 is *(T *) P, with no sum.
 expr_t
-member_access(parser_t &p, const token_t &op, expr_t e)
+member_lvalue(const parser_t &p, const token_t &op, expr_t e, const member_t &m)
 {
-    const token_t &name = expect(p, tok_t::identifier, "expected member name");
-
-    if (op.kind == tok_t::arrow) {
-        if (is< record_type_t >(e.type))
-            fail(op, "member reference type is not a pointer");
-
-        e = rvalue(op, std::move(e));
-    }
-
-    const member_t &m = named_member(accessed_record(op, e.type), name);
     auto [pointer, offset] = record_pointer(op, std::move(e));
     offset += m.offset;
 
@@ -6716,6 +6802,481 @@ member_access(parser_t &p, const token_t &op, expr_t e)
 
     return expr_t { m.type,
                     unary_t { unary_op_t::deref, box(std::move(pointer)) } };
+}
+
+// E.m and P->m, 6.5.3.4: the lvalue of the member, p3, p4, member_lvalue()'s.
+// A member of an array type decays where its value is used, and one of
+// a record type is an lvalue whose value is refused and whose members
+// are reached.
+expr_t
+member_access(parser_t &p, const token_t &op, expr_t e)
+{
+    const token_t &name = expect(p, tok_t::identifier, "expected member name");
+
+    if (op.kind == tok_t::arrow) {
+        if (is< record_type_t >(e.type))
+            fail(op, "member reference type is not a pointer");
+
+        e = rvalue(op, std::move(e));
+    }
+
+    const member_t &m = named_member(accessed_record(op, e.type), name);
+
+    return member_lvalue(p, op, std::move(e), m);
+}
+
+//
+// the variable argument lists, 7.16
+//
+
+// A token for an operator of a tree the parser builds for a builtin of
+// stdarg.h, at the builtin's place: the builders read the kind.
+token_t
+operator_at(const token_t &at, tok_t kind)
+{
+    token_t op = at;
+    op.kind = kind;
+
+    return op;
+}
+
+expr_t
+int_constant(long long value)
+{
+    return expr_t { int_type(), literal_t { value } };
+}
+
+// Whether a unary operator steps its operand, ++ or --, prefix or
+// postfix, an assignment, 6.5.3.5p2, 6.5.4.1p2.
+bool
+is_step_operator(unary_op_t op)
+{
+    return op == unary_op_t::pre_inc || op == unary_op_t::pre_dec ||
+           op == unary_op_t::post_inc || op == unary_op_t::post_dec;
+}
+
+std::optional< expr_t > pure_copy(const expr_t &);
+
+// pure_copy() of an operand, boxed, or null when it has a side effect.
+expr_ptr_t
+pure_operand(const expr_ptr_t &e)
+{
+    std::optional< expr_t > copy = pure_copy(*e);
+
+    return copy ? box(std::move(*copy)) : nullptr;
+}
+
+// pure_copy() of a node of operands, each copied by pure_operand(), or
+// nothing when one has a side effect.
+std::optional< expr_t >
+pure_node(const expr_t &e)
+{
+    if (is< unary_t >(e) && !is_step_operator(as< unary_t >(e).op)) {
+        expr_ptr_t arg = pure_operand(as< unary_t >(e).arg);
+        if (arg)
+            return expr_t { e.type,
+                            unary_t { as< unary_t >(e).op, std::move(arg) } };
+    }
+
+    if (is< binary_t >(e)) {
+        const auto &b = as< binary_t >(e);
+        expr_ptr_t lhs = pure_operand(b.lhs), rhs = pure_operand(b.rhs);
+        if (lhs && rhs)
+            return expr_t { e.type,
+                            binary_t { b.op, std::move(lhs), std::move(rhs) } };
+    }
+
+    if (is< cast_t >(e))
+        if (expr_ptr_t arg = pure_operand(as< cast_t >(e).arg))
+            return expr_t { e.type, cast_t { std::move(arg) } };
+
+    if (is< conditional_t >(e)) {
+        const auto &c = as< conditional_t >(e);
+        expr_ptr_t cond = pure_operand(c.cond), yes = pure_operand(c.yes),
+                   no = pure_operand(c.no);
+        if (cond && yes && no)
+            return expr_t { e.type,
+                            conditional_t { std::move(cond), std::move(yes),
+                                            std::move(no) } };
+    }
+
+    return std::nullopt;
+}
+
+// A copy of an expression that has no side effect, 5.1.2.4p2: no
+// assignment, no step and no call in it; nothing for any other.  A tree
+// that reads a list more than once reads it through such copies, so
+// that no effect repeats.
+std::optional< expr_t >
+pure_copy(const expr_t &e)
+{
+    if (is< literal_t >(e))
+        return expr_t { e.type, as< literal_t >(e) };
+
+    if (is< name_t >(e))
+        return expr_t { e.type, as< name_t >(e) };
+
+    if (is< string_t >(e))
+        return expr_t { e.type, as< string_t >(e) };
+
+    return pure_node(e);
+}
+
+// The address of the list record an operand of a builtin designates,
+// which the trees read the members through.  On x86-64 the list is an
+// array of one record, which decays to its address, or a parameter of
+// it, which is that pointer, 6.7.7.4p6; on aarch64 an lvalue of the
+// record, whose address is taken, &*P being P, the parameter's among
+// them.  An aarch64 list that is no lvalue is a record's value, not
+// yet; any other operand is no list.  words name the operand.
+expr_t
+list_pointer(const parser_t &p,
+             const token_t &at,
+             std::string_view words,
+             expr_t e)
+{
+    const type_t r = make_record(*p.va_record);
+    const bool psabi = p.target.va_list == va_list_t::psabi;
+
+    if (psabi && is< array_t >(e.type) && *as< array_t >(e.type).element == r)
+        return decayed(std::move(e));
+
+    if (psabi && is< pointer_t >(e.type) && pointee_of(e.type) == r)
+        return rvalue(at, std::move(e));
+
+    if (!psabi && e.type == r && !is_lvalue(e))
+        refuse_record_value(at, e.type);
+
+    if (!psabi && e.type == r)
+        return record_address(at, std::move(e));
+
+    fail(at, std::string(words) + " is not a va_list");
+}
+
+// A list operand a tree reads more than once: the expression, read
+// through a copy each time, and where it stands and its words.
+struct list_operand_t
+{
+    const token_t &at;
+    std::string words;
+    expr_t e;
+};
+
+// The list ahead, the first operand of the builtin of the macro named:
+// one with a side effect is not yet, since each read of the list would
+// repeat it.
+list_operand_t
+list_operand(parser_t &p, std::string_view macro)
+{
+    const token_t &at = peek(p);
+    expr_t e = assignment_expression(p);
+
+    if (!pure_copy(e))
+        not_yet(at, std::string(macro) + " of a list with side effects");
+
+    std::string words = "first argument to " + quoted(macro);
+    list_pointer(p, at, words, std::move(*pure_copy(e)));
+
+    return { at, std::move(words), std::move(e) };
+}
+
+// The member of index k of a list operand's record, an lvalue read
+// through a copy of the operand.
+expr_t
+list_member(const parser_t &p, const list_operand_t &l, std::size_t k)
+{
+    expr_t pointer = list_pointer(p, l.at, l.words, std::move(*pure_copy(l.e)));
+
+    return member_lvalue(p, operator_at(l.at, tok_t::arrow), std::move(pointer),
+                         p.va_record->members[k]);
+}
+
+// What a list's tree reads of its record, the members by index: the
+// offset of the next general register, the save area it is an offset
+// into, and the next argument on the stack; and the test that a
+// register is left, the offset against its end, as clang writes it.
+// x86-64: gp_offset <= 40, of six registers of 8 bytes; aarch64:
+// __gr_offs < 0, which counts up to 0 from below the top.
+struct list_layout_t
+{
+    std::size_t offset, area, stack;
+    tok_t test;
+    long long end;
+};
+
+list_layout_t
+list_layout(const parser_t &p)
+{
+    if (p.target.va_list == va_list_t::psabi)
+        return { 0, 3, 2, tok_t::le, 40 };
+
+    return { 3, 1, 0, tok_t::lt, 0 };
+}
+
+// A member of a list's record that holds an address, read as a pointer
+// to bytes plus n, or less -n, n == 0 adding nothing.
+expr_t
+list_bytes(const parser_t &p, const list_operand_t &l, std::size_t k, long n)
+{
+    const type_t bytes = make_pointer(char_type(p));
+    expr_t e = cast(l.at, bytes, list_member(p, l, k));
+    if (n == 0)
+        return e;
+
+    if (n < 0)
+        return subtraction(operator_at(l.at, tok_t::minus), std::move(e),
+                           int_constant(-n));
+
+    return addition(operator_at(l.at, tok_t::plus), std::move(e),
+                    int_constant(n));
+}
+
+// The address of the next argument of a list, 7.16.1.1p2, as the
+// convention finds it, each argument of rcc's types in one slot of 8
+// bytes: while a register is left, the save area's slot at the list's
+// offset, the offset stepped past it; then the one on the stack, the
+// address stepped past it.  On x86-64 gp_offset <= 40 ? (gp_offset +=
+// 8, (char *) reg_save_area + (gp_offset - 8)) : (overflow_arg_area =
+// (char *) overflow_arg_area + 8, (char *) overflow_arg_area - 8); on
+// aarch64 the same of __gr_offs < 0, __gr_top and __stack.
+expr_t
+next_argument(const parser_t &p, const list_operand_t &l)
+{
+    const list_layout_t m = list_layout(p);
+    const token_t &at = l.at;
+
+    expr_t test = comparison(operator_at(at, m.test),
+                             list_member(p, l, m.offset), int_constant(m.end));
+
+    expr_t step = assignment(operator_at(at, tok_t::add_assign),
+                             list_member(p, l, m.offset), int_constant(8));
+    expr_t slot =
+        addition(operator_at(at, tok_t::plus), list_bytes(p, l, m.area, 0),
+                 subtraction(operator_at(at, tok_t::minus),
+                             list_member(p, l, m.offset), int_constant(8)));
+    expr_t in_area = comma(discarded(at, std::move(step)), std::move(slot));
+
+    expr_t past =
+        assignment(operator_at(at, tok_t::assign), list_member(p, l, m.stack),
+                   list_bytes(p, l, m.stack, 8));
+    expr_t on_stack =
+        comma(discarded(at, std::move(past)), list_bytes(p, l, m.stack, -8));
+
+    return conditional(operator_at(at, tok_t::question),
+                       rvalue(at, std::move(test)), std::move(in_area),
+                       std::move(on_stack));
+}
+
+// The type va_arg reads, 7.16.1.1p2: an object type, complete.  One rcc
+// has the value of, an integer or a pointer, is read; a char or a short,
+// which no argument has after the promotions, reads the low bytes of the
+// promoted one.  A record by value, and a not-yet type, floating ones
+// among them, are not yet.
+void
+require_argument_type(const token_t &at, const type_t &t)
+{
+    if (is< void_t >(t))
+        fail(at, "va_arg of type void");
+
+    if (is< function_t >(t))
+        fail(at, "va_arg of a function type");
+
+    if (is< array_t >(t))
+        fail(at, "va_arg of an array type");
+
+    if (const record_t *r = record_in(t)) {
+        if (!r->complete)
+            fail(at, "va_arg of incomplete type " + record_words(*r));
+
+        not_yet(at, "va_arg of " + record_words(*r));
+    }
+
+    require_honoured(at, t);
+}
+
+// __builtin_va_arg ( list , type-name ), va_arg, 7.16.1.1: the value of
+// the next argument, read at the type from the slot next_argument()
+// finds, (T) *(T *) slot, the cast making it no lvalue.
+expr_t
+va_arg_expression(parser_t &p, const token_t &keyword)
+{
+    expect(p, tok_t::lparen, "expected '(' after " + quoted(keyword.text));
+    const list_operand_t l = list_operand(p, "va_arg");
+    expect(p, tok_t::comma, "expected ',' after the list");
+
+    const token_t &at = peek(p);
+    const type_t t = type_name(p);
+    require_argument_type(at, t);
+    expect(p, tok_t::rparen, "expected ')' after type name");
+
+    expr_t slot = cast(keyword, make_pointer(t), next_argument(p, l));
+
+    return cast(keyword, t, indirection(keyword, std::move(slot)));
+}
+
+// The function's save area, made at its first va_start, 7.16.1.4: a
+// local of bytes no declaration names, in no scope, which the prologue
+// fills.  x86-64: 184 bytes, rdi to r9 from 0, xmm0 to xmm7 from 48,
+// and at 176 the address of the arguments the caller left on the stack
+// past the named ones; aarch64: 200 bytes, x0 to x7 from 0, q0 to q7
+// from 64, the address at 192.  docs/shape.md chapter 4.
+const symbol_t &
+va_area(parser_t &p)
+{
+    const long size = p.target.va_list == va_list_t::psabi ? 184 : 200;
+
+    if (!p.va_area)
+        p.va_area = &p.unit.symbols.emplace_back(
+            symbol_t { "__va_area", make_array(make_int(8, false), size),
+                       storage_t::local, false, -1 });
+
+    return *p.va_area;
+}
+
+// The save area as a pointer to bytes plus n, or the address stored at
+// n in it, read as a pointer to void.
+expr_t
+area_bytes(const parser_t &p, const token_t &at, const symbol_t &area, long n)
+{
+    expr_t name { area.type, name_t { &area } };
+    expr_t e =
+        cast(at, make_pointer(char_type(p)), address_of(at, std::move(name)));
+    if (n == 0)
+        return e;
+
+    return addition(operator_at(at, tok_t::plus), std::move(e),
+                    int_constant(n));
+}
+
+expr_t
+area_address(const parser_t &p, const token_t &at, const symbol_t &area, long n)
+{
+    const type_t pointer = make_pointer(make_void());
+
+    return indirection(
+        at, cast(at, make_pointer(pointer), area_bytes(p, at, area, n)));
+}
+
+// What va_start writes into the members of a list's record, in their
+// order.  x86-64: gp_offset 8 for each named parameter, of the six in
+// registers; fp_offset 48, past the six, as no parameter rcc has is in
+// a vector register; overflow_arg_area the address at 176 of the area;
+// reg_save_area the area.  aarch64: __stack the address at 192;
+// __gr_top the area plus 64, past x0 to x7, and __vr_top plus 192, past
+// q0 to q7; __gr_offs -8 for each of x0 to x7 past the named
+// parameters; __vr_offs -128, all eight q.
+std::vector< expr_t >
+start_values(parser_t &p, const token_t &at)
+{
+    const symbol_t &area = va_area(p);
+    const long named = static_cast< long >(p.named);
+
+    std::vector< expr_t > values;
+    if (p.target.va_list == va_list_t::psabi) {
+        values.push_back(int_constant(8 * std::min(named, 6L)));
+        values.push_back(int_constant(48));
+        values.push_back(area_address(p, at, area, 176));
+        values.push_back(area_bytes(p, at, area, 0));
+    }
+    else {
+        values.push_back(area_address(p, at, area, 192));
+        values.push_back(area_bytes(p, at, area, 64));
+        values.push_back(area_bytes(p, at, area, 192));
+        values.push_back(int_constant(-8 * (8 - std::min(named, 8L))));
+        values.push_back(int_constant(-128));
+    }
+
+    return values;
+}
+
+// __builtin_va_start ( list , parameter ), va_start, 7.16.1.4: in a
+// variadic definition, each member of the list set to start_values()'s,
+// in order, the whole discarded, p6.  Only the list is evaluated, p4:
+// the second operand, the last named parameter as the dialect rcc
+// preprocesses in writes it, is neither evaluated nor checked.
+expr_t
+va_start_expression(parser_t &p, const token_t &keyword)
+{
+    if (!p.variadic)
+        fail(keyword, "'va_start' used outside a variadic function");
+
+    expect(p, tok_t::lparen, "expected '(' after " + quoted(keyword.text));
+    const list_operand_t l = list_operand(p, "va_start");
+    expect(p, tok_t::comma, "expected ',' after the list");
+    assignment_expression(p);
+    expect(p, tok_t::rparen, "expected ')' after the parameter");
+
+    std::vector< expr_t > values = start_values(p, keyword);
+    const token_t assign = operator_at(keyword, tok_t::assign);
+
+    expr_t e = assignment(assign, list_member(p, l, 0), std::move(values[0]));
+    for (std::size_t k = 1; k < values.size(); ++k)
+        e = comma(
+            discarded(keyword, std::move(e)),
+            assignment(assign, list_member(p, l, k), std::move(values[k])));
+
+    return cast(keyword, make_void(), std::move(e));
+}
+
+// __builtin_va_end ( list ), va_end, 7.16.1.3: nothing on either target
+// but the list, evaluated for its address and discarded.
+expr_t
+va_end_expression(parser_t &p, const token_t &keyword)
+{
+    expect(p, tok_t::lparen, "expected '(' after " + quoted(keyword.text));
+    const token_t &at = peek(p);
+    expr_t list =
+        list_pointer(p, at, "argument to 'va_end'", assignment_expression(p));
+    expect(p, tok_t::rparen, "expected ')' after the list");
+
+    return cast(keyword, make_void(), std::move(list));
+}
+
+// __builtin_va_copy ( dest , src ), va_copy, 7.16.1.2: src's record
+// copied into dest's, a record's assignment, G18, its value discarded.
+// Each operand is evaluated once.
+expr_t
+va_copy_expression(parser_t &p, const token_t &keyword)
+{
+    expect(p, tok_t::lparen, "expected '(' after " + quoted(keyword.text));
+    const token_t &to_at = peek(p);
+    expr_t to = list_pointer(p, to_at, "first argument to 'va_copy'",
+                             assignment_expression(p));
+    expect(p, tok_t::comma, "expected ',' after the list");
+    const token_t &from_at = peek(p);
+    expr_t from = list_pointer(p, from_at, "second argument to 'va_copy'",
+                               assignment_expression(p));
+    expect(p, tok_t::rparen, "expected ')' after the list");
+
+    expr_t lhs = indirection(keyword, std::move(to));
+    expr_t rhs = indirection(keyword, std::move(from));
+    const type_t t = lhs.type;
+    expr_t copy { t, assign_t { std::nullopt, t, box(std::move(lhs)),
+                                box(std::move(rhs)) } };
+
+    return cast(keyword, make_void(), std::move(copy));
+}
+
+// The builtins behind the macros of stdarg.h, 7.16.1, which clang's
+// header defines va_start, va_arg, va_end and va_copy by in the
+// dialect rcc preprocesses in: the expression of the one the keyword
+// names, or nothing for any other name.
+std::optional< expr_t >
+va_builtin(parser_t &p, const token_t &keyword)
+{
+    if (keyword.text == "__builtin_va_start")
+        return va_start_expression(p, keyword);
+
+    if (keyword.text == "__builtin_va_arg")
+        return va_arg_expression(p, keyword);
+
+    if (keyword.text == "__builtin_va_end")
+        return va_end_expression(p, keyword);
+
+    if (keyword.text == "__builtin_va_copy")
+        return va_copy_expression(p, keyword);
+
+    return std::nullopt;
 }
 
 // 6.5.3.3p5 gives a call the result type of the function it calls, a
@@ -6774,11 +7335,63 @@ postfix_expression(parser_t &p)
     }
 }
 
-// Each argument is converted to its parameter's type as if by
-// assignment; past the parameters of a variadic function, the default
-// argument promotions apply to an integer, and a pointer passes as it
-// is, 6.5.3.3p6.  The count must agree, p2; an error names the callee
-// by words, callee_words()'s.
+// An aarch64 va_list as an argument, is_list_by_reference(): an
+// lvalue of the list's record, whose object c1 copies, passing the
+// copy's address, as the convention has it.  An expression of another
+// type is none, and a list that is no lvalue is a record's value, which
+// is not yet.
+expr_t
+list_argument(parser_t &p, const token_t &start, const type_t &list)
+{
+    expr_t arg = assignment_expression(p);
+    if (!(arg.type == list))
+        fail(start, "incompatible type for a va_list argument");
+
+    if (!is_lvalue(arg))
+        refuse_record_value(start, arg.type);
+
+    return arg;
+}
+
+// The argument ahead, the call's index-th: converted to its parameter's
+// type as if by assignment, or, past the parameters of a variadic
+// function, promoted by the default argument promotions if it is an
+// integer, a pointer passing as it is, 6.5.3.3p6.  One past the
+// parameters of a function that takes no more is an error, p2, which
+// names the callee by words, callee_words()'s.  A record passes by value
+// in no rule rcc has yet but the aarch64 va_list's.
+expr_t
+argument(parser_t &p,
+         const function_t &type,
+         std::size_t index,
+         std::string_view words)
+{
+    const token_t &start = peek(p);
+    const type_t *param =
+        index < type.params.size() ? type.params[index].get() : nullptr;
+
+    if (param && is_list_by_reference(p, *param))
+        return list_argument(p, start, *param);
+
+    if (const record_t *r = param ? record_in(*param) : nullptr)
+        not_yet(start, record_words(*r) + " passed by value");
+
+    expr_t arg = rvalue(start, assignment_expression(p));
+
+    if (param)
+        return assignment_conversion(start, std::move(arg), *param);
+
+    if (!type.variadic)
+        fail(start, "too many arguments " + std::string(words));
+
+    if (is< int_t >(arg.type))
+        return promote(std::move(arg));
+
+    return arg;
+}
+
+// The arguments of a call, argument()'s each, as many as the callee's
+// parameters, p2, or more for a variadic one.
 std::vector< expr_t >
 argument_expression_list(parser_t &p,
                          const function_t &type,
@@ -6787,25 +7400,9 @@ argument_expression_list(parser_t &p,
     std::vector< expr_t > args;
 
     if (peek(p).kind != tok_t::rparen) {
-        do {
-            const token_t &start = peek(p);
-
-            if (args.size() < type.params.size())
-                if (const record_t *r = record_in(*type.params[args.size()]))
-                    not_yet(start, record_words(*r) + " passed by value");
-
-            expr_t arg = rvalue(start, assignment_expression(p));
-
-            if (args.size() < type.params.size())
-                arg = assignment_conversion(start, std::move(arg),
-                                            *type.params[args.size()]);
-            else if (type.variadic && is< int_t >(arg.type))
-                arg = promote(std::move(arg));
-            else if (!type.variadic)
-                fail(start, "too many arguments " + std::string(words));
-
-            args.push_back(std::move(arg));
-        } while (accept(p, tok_t::comma));
+        do
+            args.push_back(argument(p, type, args.size(), words));
+        while (accept(p, tok_t::comma));
     }
 
     if (args.size() < type.params.size())
@@ -6990,6 +7587,9 @@ primary_expression(parser_t &p)
         if (t.text == "__builtin_offsetof")
             return offsetof_expression(p, t);
 
+        if (std::optional< expr_t > e = va_builtin(p, t))
+            return std::move(*e);
+
         const symbol_t *sym = lookup(p, t.text);
         if (!sym)
             fail(t, quoted(t.text) + " undeclared");
@@ -7010,6 +7610,9 @@ primary_expression(parser_t &p)
 
         if (sym->linkage == linkage_t::internal)
             p.internal_uses.push_back({ sym, &t });
+
+        if (sym->by_reference)
+            return indirection(t, expr_t { sym->type, name_t { sym } });
 
         return expr_t { sym->type, name_t { sym } };
     }
@@ -7040,6 +7643,7 @@ parse(const std::vector< token_t > &tokens,
     parser_t p { tokens, 0,           target, warnings,          { },
                  { },    make_void(), 0,      first_tag_identity };
     p.scopes.emplace_back();
+    p.va_record = va_record(p);
 
     translation_unit(p);
 

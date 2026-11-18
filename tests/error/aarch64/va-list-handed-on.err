@@ -1,0 +1,2 @@
+rcc: internal error: c1: not yet: va_list passed by value, in function 'report'
+status 3

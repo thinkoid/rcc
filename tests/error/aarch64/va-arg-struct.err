@@ -1,0 +1,2 @@
+tests/error/va-arg-struct.c:14:34: error: not yet: va_arg of struct 'point'
+status 1

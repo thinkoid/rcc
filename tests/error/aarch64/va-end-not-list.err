@@ -1,0 +1,2 @@
+tests/error/va-end-not-list.c:10:26: error: argument to 'va_end' is not a va_list
+status 1
