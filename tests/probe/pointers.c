@@ -237,7 +237,10 @@ SCALARS(WALKS)
    decayed and the row's address, the difference of two rows; an array
    filled and summed by index and by a walking pointer, forward and
    backward; the frame, an array of more than 4095 bytes and of more
-   than 65535 indexed at its ends. */
+   than 65535 indexed at its ends; and an element by a variable index
+   of a row by a constant, through a parameter, m[1][j] and j[m[2]],
+   and through a register variable, written, operated on in place,
+   read, and its address. */
 #define ARRAYS(E, T, S)                                                 \
     long mat_##E(int i, int j, long v)                                  \
     {                                                                   \
@@ -295,6 +298,15 @@ SCALARS(WALKS)
         a[i] = x - 1;                                                   \
         a[69999 - i]++;                                                 \
         return a[0] * 3 + a[69999] * 5 + a[i] + (&a[69999] - a);        \
+    }                                                                   \
+    long pmat_one_##E(T m[][5], int j, long v)                          \
+    {                                                                   \
+        register T (*r)[5] = m;                                         \
+        m[1][j] = v;                                                    \
+        m[2][j] += v;                                                   \
+        r[3][j]++;                                                      \
+        return m[1][j] * 3 + j[m[2]] * 5 + r[3][j] * 7 +                \
+               ((char *) &m[3][j] - (char *) m);                        \
     }
 
 SCALARS(ARRAYS)

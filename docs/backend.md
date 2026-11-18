@@ -853,9 +853,9 @@ written for it.
 | `(T) a` | `movslq L, L64` for `int` to `long`, `movsbl` or `movzbl` from `Lb` for `char` to `int`, each only when `L` is not already valid to the new width (the width rule below), and written into the register a consumer names where it is free and `L` is another, `movslq %edx, %rax` for a remainder returned as a `long` (6.1); a signed object in memory under a cast that widens it is its load extended to the new width, `movslq -4(%rbp), L64` for an `int` to `long`, `movsbq` and `movswq` for a `signed char` and a `short`, and no instruction after it, the object's read under casts that change the signedness alone included, `movslq -4(%rbp), L64` for `(long) (int) u` (a widening by the load, below); nothing for `long` to `int` (the 32-bit name is the value); nothing for a change of signedness alone, and the object read under it is the right operand's own operand, `addl -8(%rbp), %eax` for `u + i` (6.1); nothing between pointer types; an integer to a pointer as to `unsigned long`, so `movslq` for an `int` (6.3.2.3p5); nothing for a pointer to `long` or `int` | G2: truncation is reading the low bits |
 | `&x` | `lea slot(%rbp), L` or `lea sym(%rip), L`; for a global the file only declares, the load from the GOT, `movq sym@GOTPCREL(%rip), L`; `&x` plus a constant is one `lea`, the name and constant below | refused on a `register` variable, 6.5.4.2p1 |
 | `*p` | `mov (L), L` at the pointee's width and extension: `movsbl`, `movzbl`, `movswl`, `movzwl`, `movl`, `movq`; under a cast that widens a signed pointee to 64 bits, `movsbq`, `movswq`, `movslq` | G8, G9, G10, G11: one `mov`, any address |
-| `p[i]`, `a[i]` | `mov (L,R,s), L` for a size of 1, 2, 4 or 8, the pointer in `L` (`lea sym(%rip), L` for a global array the file defines, the GOT's load for one it declares), the index in `R`; on a local array the slot is the displacement and `rbp` the base, `movl -24(%rbp,R,4), L`, and no instruction forms the array's address (a slot and an index, below); a constant index is the displacement `c*s(L)`, and on an array reached by its name the name and constant below, the slot's or the label's own operand, `movl -20(%rbp), L`, `movl table+12(%rip), L` | one instruction, the machine's addressing form; the index is 64 bits by the parser's cast, written by the row of `(T) a`: an `int` in memory is its load, `movslq -4(%rbp), R64`, one in a register `movslq R, R64`, and nothing is written for an `unsigned` or a `long` |
+| `p[i]`, `a[i]` | `mov (L,R,s), L` for a size of 1, 2, 4 or 8, the pointer in `L` (`lea sym(%rip), L` for a global array the file defines, the GOT's load for one it declares), the index in `R`; on a local array the slot is the displacement and `rbp` the base, `movl -24(%rbp,R,4), L`, and no instruction forms the array's address (a slot and an index, below); on a pointer that is a base and a displacement, a row by a constant index among them, the index joins that address, `movl 12(L,R,4), L` for `p[1][i]` on `int (*p)[3]`, and no instruction forms the row's address (a base, a displacement and an index, below); a constant index is the displacement `c*s(L)`, and on an array reached by its name the name and constant below, the slot's or the label's own operand, `movl -20(%rbp), L`, `movl table+12(%rip), L` | one instruction, the machine's addressing form; the index is 64 bits by the parser's cast, written by the row of `(T) a`: an `int` in memory is its load, `movslq -4(%rbp), R64`, one in a register `movslq R, R64`, and nothing is written for an `unsigned` or a `long` |
 | `p[i]` of another size | by a variable index the `p + n` row, and the sum is the base `L` of the access; a constant index is the displacement `c*s(L)` of the row above, whatever the size, so the row `p[1]` on `int (*p)[3]` is the base plus 12, `leaq 12(L), L` as a pointer, and under a further constant the two constants are one displacement, `movl 20(L), L` for `p[1][2]`; a constant index of 0 adds nothing, the bare base of the `&p[i]` row; on an array reached by its name a constant index is the name and constant below, so `m[1][2]` is one operand; a product no 32-bit displacement holds is the `p + n` row's, `movabsq $2400000000, R; addq R, L` for `p[200000000]` | only an array has such a size: `m[i][j]` on `int m[2][3]` is `imul $12`, `add`, then `(L,R,4)` |
-| `&p[i]`, `&*p` | `lea (L,R,s), L`, `lea -24(%rbp,R,4), L` on a local array, and `lea c*s(L), L` for a constant index; `&*p` is `p`, no instruction, and a subscript by a constant 0 is the bare base, so `&p[0]` is `p` and no instruction as well (`aarch64.md` chapter 15, call 8); a row of an array of arrays decays the same way, `m[0]` to `m`; on an array reached by its name, the name and constant below, one `lea` of the folded operand, `leaq -20(%rbp), L` for `&a[3]` | one instruction, the addressing form, where 6.5.4.2p3's "as if `+`" would spell the same address as the `p + n` row |
+| `&p[i]`, `&*p` | `lea (L,R,s), L`, `lea -24(%rbp,R,4), L` on a local array, `leaq 12(L,R,4), L` for `&p[1][i]` on `int (*p)[3]`, and `lea c*s(L), L` for a constant index; `&*p` is `p`, no instruction, and a subscript by a constant 0 is the bare base, so `&p[0]` is `p` and no instruction as well (`aarch64.md` chapter 15, call 8); a row of an array of arrays decays the same way, `m[0]` to `m`; on an array reached by its name, the name and constant below, one `lea` of the folded operand, `leaq -20(%rbp), L` for `&a[3]` | one instruction, the addressing form, where 6.5.4.2p3's "as if `+`" would spell the same address as the `p + n` row |
 | `p + n`, `p - n` | `+`: `add R, L` for a size of 1, an object in memory of 64 bits as `n` the instruction's operand, `addq -16(%rbp), L` (6.1), and `p` of `n + p` the same at a size of 1 or after the `imul` of another size that is no scale, `lea (L,R,s), L` for 2, 4 or 8, `imul $s, R, R; add R, L` for any other, `imulq $s, -16(%rbp), R` for `n` an object in memory of 64 bits (6.1), and on a local array of a size 1, 2, 4 or 8 one `lea -24(%rbp,R,4), L`, a slot and an index below; `-`: `sub R, L` for 1, `subq -16(%rbp), L` for `n` in memory, `imul $s, R, R; sub R, L` for any other, `imulq $s, -16(%rbp), R` for `n` in memory of 64 bits; a constant `n` is the immediate, `add $c*s, L` or `sub $c*s, L`, and a constant `n` of `n + p` too where the immediate holds the product (6.1), and on a name's address the name and constant below, one `lea`, `leaq -20(%rbp), L` for `a + 3` | G6; the index widened as for `p[i]` |
 | `p - q` | `sub R, L`, `q` in memory the instruction's operand at any size, `subq -16(%rbp), L` (6.1); for a size other than 1, `mov $s, R; cqto; idiv R`, the result from `rax` | G6: a division, not a shift, since any two pointers; the size is held in a register, since `idiv` takes no immediate; a size of 1 is the `sub` alone |
 | `a`, `"abc"`, `m[i]` as pointers | `lea slot(%rbp), L`, or the address of a global array, `lea sym(%rip), L` or the GOT's load; `lea .Ls<n>(%rip), L`; an element of array type, its address by the `&p[i]` row, `leaq 12(L), L` for the row `p[1]` on `int (*p)[3]`, or by the `p + n` row for a variable index at a size that is not a scale (12 bytes: `imul $12`), but for `m[0]`, the bare base at any size, and for a constant index on an array reached by its name, the name and constant below, `leaq -12(%rbp), L` for `m[1]` | 6.3.2.1p3: an array decays to its address; a literal's bytes in `.data`, chapter 10 |
@@ -957,6 +957,38 @@ table: a size that is not 1, 2, 4 or 8, `m[i]` of 12 bytes; a
 pointer, `p[i]`; `a - i`, since the form only adds its index; a
 global array, since a PC-relative operand takes no index; and a slot
 plus a constant no 32-bit displacement holds.
+
+**A base, a displacement and an index.** The form holds a base in a
+register with a displacement and an index at once, so a variable
+index into a pointer that is itself a base and a displacement joins
+that address. The pointer is a row by a constant index, the
+pointer's value with the row's offset (the row `p[i]` of another
+size), a pointer's value plus a constant, or any other lvalue's
+address plus a constant (a name and a constant, above). With `int
+(*p)[3]` loaded into `rax` and `i` into `rcx`, `p[1][i]` is `movl
+12(%rax,%rcx,4), L` and `&p[1][i]` is `leaq 12(%rax,%rcx,4), L`;
+`xm[1][j]` on an `int xm[][4]` the file only declares is `movl
+16(%rax,%rcx,4), L` after the GOT's load into `rax`; and `*(q + 1 +
+i)` on an `int *q` is `movl 4(%rax,%rcx,4), L`. No instruction forms
+the row's address. The pointer and the index are generated in the
+order written (G13), so `i[p[1]]` loads `i` first. What the form does
+not hold takes the rows of the table:
+
+- a pointer whose address has an index already, `p[i][j]` on `char
+  (*p)[8]`, whose row's address is its `lea`;
+- a label, since a PC-relative operand takes no index: `gm[1][j]` on
+  a global the file defines is `leaq gm+16(%rip), L` and the access
+  through `L`;
+- a size no addressing form scales by, the `p + n` row's;
+- a constant no 32-bit displacement holds: a row's offset is the
+  `p + n` row's sum and the base, and over a sum of two constants
+  that does not fit the row's address is formed and the further
+  constant is the displacement, `movl 2147483644(L,R,4), L` for
+  `(p[1] + 536870911)[i]`.
+
+The join is the access's and `&`'s alone: `p[1] + i` as a value is
+the `p + n` row on the row's address, `leaq 12(L), L; leaq (L,R,4),
+L`.
 
 A `char` or `short` lvalue is loaded with the extending `mov` of its
 signedness, to 64 bits under a cast that widens a signed one to

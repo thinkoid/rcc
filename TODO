@@ -90,26 +90,37 @@ handed to it.
 
 Check: the count over =tests=, before and after.
 
-** TODO x86-64: a row by a constant index under a variable index forms the row's address first
+** TODO x86-64: a row by a constant index plus a variable index as a value forms the row's address first
 
-With =xm_i= an ~int[][4]~ the unit only declares, ~xm_i[1][j] = v~ is
-=movq xm_i@GOTPCREL(%rip), %rax; leaq 16(%rax), %rax=, then =movl
-%edx, (%rax,%rcx,4)=, where =16(%rax,%rcx,4)= holds the row's 16
-bytes and the index at once; through a pointer, ~p[1][i]~ on ~int
-(*p)[3]~ is =leaq 12(%rax), %rax= before =(%rax,%rcx,4)=. =pointed()=
-in =src/c1-x86-64.cc= takes the row's address as a base value,
-=address_of()='s =leaq=, before the index. Nine functions over =tests=
-have the shape, =set_row_one_x_*= of the globals probe. A local array
-has the form already, =-12(%rbp,%rcx,4)= for ~m[1][i]~ (=indexed()=);
-aarch64 has no form with an index and a displacement.
+With ~int (*p)[3]~, ~p[1] + i~ as a value is =leaq 12(%rax), %rax=,
+then =leaq (%rax,%rcx,4), %rax= after =movslq -12(%rbp), %rcx=, where
+~&p[1][i]~, the same address, is the one =leaq 12(%rax,%rcx,4),
+%rax=. =pointer_arithmetic()= in =src/c1-x86-64.cc= generates the
+pointer by =rvalue()=; only =pointed()= takes =index_base()=. No
+listing under =tests= has the shape.
 
-Fix: at a scale, where the pointer is an address of a base and a
-displacement and no index, =constant_indexed()='s or =summed()='s, the
-index joins that address, the base generated first (G13).
+Fix: the row of =p + n= at a scale takes =index_base()='s address
+where the join holds, without losing =offsets_in()='s register
+destination or the consumer's register.
 
-Check: the nine functions an instruction shorter, a cost function
-~p[1][i]~ pinned with =movl 12(%rax,%rcx,4), %eax=, and no function
-longer.
+Check: a cost function ~p[1] + i~ in =subscript-row= pinned with the
+one =leaq=, and no function longer.
+
+** TODO A row's constant offset is added before an index no addressing form scales by
+
+~p[1][i][0]~ on ~int (*p)[3][3]~ is =leaq 36(%rax), %rax; movslq
+-12(%rbp), %rcx; imulq $12, %rcx, %rcx; addq %rcx, %rax; movl (%rax),
+%eax= on x86-64, where the 36 as the access's displacement, =movl
+36(%rax), %eax= after the =addq=, is one instruction fewer. aarch64
+has the shape too, =add x0, x0, #24= before the index and =ldr [x0]=
+after. The shape is not counted over =tests=: a scan for =leaq d(%r),
+%r= followed by an =addq= into the same register matches 44
+functions, many of them a local's address, whose =leaq= is needed.
+
+Fix: none taken; count first.
+
+Check: the count over =tests=, and a cost function of
+=subscript-row= with the constant in the access.
 
 ** TODO x86-64: a pointer plus a constant into a register variable loads the pointer elsewhere
 

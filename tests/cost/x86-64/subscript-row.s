@@ -90,4 +90,114 @@ beyond:
 	ret
 	.cfi_endproc
 	.size	beyond, .-beyond
+	.globl	column
+	.type	column, @function
+column:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	movslq	-12(%rbp), %rcx
+	movl	12(%rax,%rcx,4), %eax
+	jmp	.Lcolumn.1
+.Lcolumn.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	column, .-column
+	.globl	column_first
+	.type	column_first, @function
+column_first:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movslq	-12(%rbp), %rax
+	movq	-8(%rbp), %rcx
+	movl	12(%rcx,%rax,4), %eax
+	jmp	.Lcolumn_first.1
+.Lcolumn_first.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	column_first, .-column_first
+	.globl	column_beyond
+	.type	column_beyond, @function
+column_beyond:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	movabsq	$2400000000, %rcx
+	addq	%rcx, %rax
+	movslq	-12(%rbp), %rcx
+	movl	(%rax,%rcx,4), %eax
+	jmp	.Lcolumn_beyond.1
+.Lcolumn_beyond.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	column_beyond, .-column_beyond
+	.globl	column_sum
+	.type	column_sum, @function
+column_sum:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	leaq	12(%rax), %rax
+	movslq	-12(%rbp), %rcx
+	movl	2147483644(%rax,%rcx,4), %eax
+	jmp	.Lcolumn_sum.1
+.Lcolumn_sum.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	column_sum, .-column_sum
+	.globl	column_wide
+	.type	column_wide, @function
+column_wide:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	leaq	24(%rax), %rax
+	movslq	-12(%rbp), %rcx
+	imulq	$12, %rcx, %rcx
+	addq	%rcx, %rax
+	jmp	.Lcolumn_wide.1
+.Lcolumn_wide.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	column_wide, .-column_wide
 	.section	.note.GNU-stack,"",@progbits

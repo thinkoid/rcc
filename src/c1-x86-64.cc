@@ -1092,6 +1092,36 @@ summed(state_t &s, const expr_t &pointer, into_t *into = nullptr)
     return a;
 }
 
+// The pointer of a subscript by a variable index as the address the
+// index joins, backend.md 6.3.  An address of a base and a displacement
+// and no index, summed()'s or constant_indexed()'s, is held whole, so
+// that p[1][i] on int (*p)[3] is 12(%rax,%rcx,4) and no instruction
+// forms the row's address.  Any other address, one with an index or
+// with no register for its base, is formed by address_of()'s leaq, and
+// any other pointer, a name's address plus a constant among them, whose
+// label takes no index, is its value: the base alone.  The registers
+// are taken with those in pinned left for last, as rvalue_avoiding()
+// takes them.
+address_t
+index_base(state_t &s, const expr_t &pointer, unsigned pinned = 0)
+{
+    const unsigned reserved = std::exchange(s.reserved, s.reserved | pinned);
+
+    auto a = summed(s, pointer);
+    if (!a && !named_offset(pointer, s.defined))
+        a = constant_indexed(s, pointer,
+                             size_of(*as< pointer_t >(pointer.type).pointee));
+
+    if (!a)
+        a = address_t { .base = rvalue(s, pointer) };
+    else if (a->base.id < 0 || a->index.id >= 0)
+        a = address_t { .base = address_of(s, *a) };
+
+    s.reserved = reserved;
+
+    return *a;
+}
+
 // The address a dereference designates, 6.5.4.2p4, of an object of
 // type pointee: the addressing row.  A name's address plus a constant,
 // 0 for *a and *&x, is the one operand of folded(), and any other
@@ -1104,8 +1134,10 @@ summed(state_t &s, const expr_t &pointer, into_t *into = nullptr)
 // pointer and an integer, the shape of a subscript (6.5.3.2p2), is the
 // machine's addressing form when the size is a scale: the pointer the
 // base, the integer the index, each generated in the order written
-// (G13), and a variable index into a local array has rbp the base and
-// the slot the displacement, indexed().  The operand written first is
+// (G13); a variable index into a local array has rbp the base and the
+// slot the displacement, indexed(), and one into a pointer that is a
+// base and a displacement joins that address, index_base()'s, p[1][i]
+// on int (*p)[3] being 12(%rax,%rcx,4).  The operand written first is
 // held outside the registers the other's top operator pins, p[x / y]'s
 // p outside rax and rdx (chapter 6.5).  Any other pointer, an add of
 // another size included, is computed into a register and is the base;
@@ -1146,10 +1178,22 @@ pointed(state_t &s,
     if (const auto a = indexed(s, b, size))
         return *a;
 
-    const auto l = rvalue_avoiding(s, *b.lhs, pinned_by(*b.rhs));
-    const auto r = rvalue(s, *b.rhs);
+    // p[i], and p[1][i] on int (*p)[3]: 12(%rax,%rcx,4)
+    if (left) {
+        auto a = index_base(s, *b.lhs, pinned_by(*b.rhs));
+        a.index = rvalue(s, *b.rhs);
+        a.scale = size;
 
-    return { .base = left ? l : r, .index = left ? r : l, .scale = size };
+        return a;
+    }
+
+    const auto index = rvalue_avoiding(s, *b.lhs, pinned_by(*b.rhs));
+
+    auto a = index_base(s, *b.rhs);
+    a.index = index;
+    a.scale = size;
+
+    return a;
 }
 
 // The address of a function or of an object as a value, valid to 64,
