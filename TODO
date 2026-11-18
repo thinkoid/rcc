@@ -246,6 +246,15 @@ join when a path writes nothing.
 Check: =chosen_own_first()= and =chosen_own_second()= pinned with one
 conditional jump and no =jmp=.
 
+* Guarantees
+
+The promises in =docs/guarantees.md=. The entry number is the
+guarantee it belongs to. All are decided; G15 is withdrawn with its
+number reserved. c1 writes none of the guard of G4, the round trip
+of G8 and the laundering of G16, which draft 1 designed against an
+optimizer, because nothing between the source and the instruction
+reasons about the program.
+
 ** TODO No document gathers the implementation-defined choices
 
 4p10 asks for "a document that defines all implementation-defined
