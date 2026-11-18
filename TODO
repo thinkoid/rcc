@@ -681,19 +681,20 @@ another machine when the program includes one; or take a sysroot.
 Check: the documents and the driver agree on what =-target= does to
 =#include <...>=.
 
-** TODO A block's declaration that begins with an attribute is read as an expression
+** TODO GNU C's statement attribute is read as an expression
 
-~int main(void) { __attribute__ ((unused)) int x = 1; return x; }~
-fails with "expected expression" at the attribute. At file scope the
-same declaration is read. =is_declaration_start()= does not take the
-attribute keyword, so a block reads the tokens as a statement.
+~case 1: c++; __attribute__ ((fallthrough)); case 2:~ fails with
+"expected expression" at the attribute, where =clang= takes it: the
+attribute stands on a null statement and asks only that no warning
+be given. Attributes before a ~;~ begin no declaration
+(=is_declaration_start()= in =src/parse.cc=), and the statement has
+no rule for them.
 
-Fix: =is_declaration_start()= takes the attribute keyword; the
-attribute is then read among the specifiers, dropped or not yet on a
-local by its kind.
+Fix: in a statement, attributes before a ~;~ are a null statement,
+=fallthrough= among the attributes rcc drops.
 
-Check: the program above compiles and returns 1; with ~__attribute__
-((aligned (16)))~ it is refused as not yet, by the attribute's name.
+Check: the =switch= above compiles, and a function of =tests/cost=
+shows that the statement writes nothing.
 
 ** TODO A call through a pointer passes a parameter a marking attribute marked
 

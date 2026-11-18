@@ -2223,11 +2223,42 @@ expr_t primary_expression(parser_t &);
 // declarations
 //
 
+// The position past the attribute specifiers that start at ahead, GNU
+// C's __attribute__ ((...)), each to the parenthesis that closes its
+// first; ahead when none starts there.  A specifier without its
+// parentheses ends the run, which the parse then refuses.
+std::size_t
+past_attributes(const parser_t &p, std::size_t ahead)
+{
+    while (peek(p, ahead).kind == tok_t::kw_attribute) {
+        ++ahead;
+        if (peek(p, ahead).kind != tok_t::lparen)
+            return ahead;
+
+        for (int depth = 0;; ++ahead) {
+            const tok_t kind = peek(p, ahead).kind;
+            if (kind == tok_t::eof)
+                return ahead;
+
+            depth += kind == tok_t::lparen ? 1 : kind == tok_t::rparen ? -1 : 0;
+            if (depth == 0) {
+                ++ahead;
+                break;
+            }
+        }
+    }
+
+    return ahead;
+}
+
 // Whether a declaration starts at the token ahead: a typedef name in
 // scope, or a keyword a declaration can start with, those outside the
 // subset included, so that they are refused by name and not as an
-// expression; either may follow __extension__.  A typedef name before a
-// colon is a label, since labels have a name space of their own.
+// expression; any of them may follow __extension__, and attributes,
+// which the specifiers then read as they read those among them.  A
+// typedef name before a colon is a label, since labels have a name space
+// of their own.  Attributes before a ';' or an expression start no
+// declaration: __attribute__ ((fallthrough)); is a statement.
 bool
 is_declaration_start(const parser_t &p, std::size_t ahead = 0)
 {
@@ -2237,6 +2268,9 @@ is_declaration_start(const parser_t &p, std::size_t ahead = 0)
 
     if (t.kind == tok_t::kw_extension)
         return is_declaration_start(p, ahead + 1);
+
+    if (t.kind == tok_t::kw_attribute)
+        return is_declaration_start(p, past_attributes(p, ahead));
 
     switch (t.kind) {
     case tok_t::kw_void:

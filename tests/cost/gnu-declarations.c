@@ -4,7 +4,8 @@
    __extension__ are dropped, so none of them writes anything (shape.md
    chapter 5).  twice is declared as glibc declares scanf, under
    another name in the assembly, and the call of twice calls
-   other_name.
+   other_name.  In local() an attribute begins a block's declarations
+   and is read among their specifiers, dropped as one at file scope is.
 
    On x86-64 the listing must be, byte for byte but for the .file line,
    the listing of this program without the attributes, __restrict,
@@ -22,4 +23,13 @@ __extension__ extern __inline int add(int *__restrict a, int *__restrict b)
 int use(const char *s, int *a, int *b)
 {
     return count(s) + twice(*a) + add(a, b);
+}
+
+int
+local(int n)
+{
+        __attribute__((__unused__)) int copy = n;
+        __attribute__((__unused__)) static int calls;
+
+        return copy + 1;
 }

@@ -378,7 +378,12 @@ what it is said of: a typedef through one names a not-yet type of its
 own, a marked function or object at file scope is refused where an
 expression names it, and on a local or the definition of an object,
 which rcc would make, the attribute is not yet. An attribute among the declaration specifiers
-is said of each declarator, as one after the declarator is. One on a
+is said of each declarator, as one after the declarator is, and one
+may begin a declaration, in a block as at file scope:
+`__attribute__ ((unused)) int x = 1;` in a block declares `x`, the
+attribute dropped. Attributes before a `;` or an expression begin no
+declaration, and GNU C's statement attribute, `__attribute__
+((fallthrough));`, is read as an expression and refused. One on a
 parameter marks the function, whose calls pass the parameter, and its
 definition. On a struct or a union every attribute is dropped, since
 the type is a not-yet type; on an enum one that marks makes the enum

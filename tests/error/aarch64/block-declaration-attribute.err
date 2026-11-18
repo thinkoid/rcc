@@ -1,0 +1,2 @@
+tests/error/block-declaration-attribute.c:8:24: error: not yet: attribute 'aligned'
+status 1
