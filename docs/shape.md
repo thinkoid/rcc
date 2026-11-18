@@ -742,9 +742,14 @@ declaration gives the size, `a[i]` and `a` as a pointer are what they
 are for any array, and `sizeof a` is the error of an incomplete type,
 as is arithmetic on `&a`, a pointer to that incomplete type, which has
 no size to step by (6.5.7p2): `&a + 1`, `++` and `-` on it.
-An array of unknown size that only tentative definitions define is
-one element at the end of the file (6.9.3p2). The definition of an
-object of a not-yet type, or of one an attribute marks, is not yet.
+An array of unknown size that only tentative definitions define is one
+element at the end of the file (6.9.3p2) if its linkage is external. A
+tentative definition of internal linkage is not of an incomplete type
+(p3), so a `static` array that no declaration sizes is an error there,
+at the name in its first tentative definition. rcc asks this of the
+composite type at the end of the file, so `static int a[]; static int
+a[3];` declare one `int [3]` (6.2.7p5). The definition of an object of
+a not-yet type, or of one an attribute marks, is not yet.
 
 The initializer is a constant expression (6.7.11p5), converted to the
 object's type as by assignment (p12) and folded. It is an integer

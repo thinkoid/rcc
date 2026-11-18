@@ -59,8 +59,9 @@ struct internal_use_t
 };
 
 // A tentative definition at file scope of an object of a record
-// incomplete where it is written, 6.9.3p2: its symbol and the token that
-// names it.
+// incomplete where it is written, 6.9.3p2, or of internal linkage and
+// of an array of unknown size, p3: its symbol and the token that names
+// it.
 struct tentative_t
 {
     const symbol_t *sym;
@@ -108,8 +109,9 @@ struct open_switch_t
 // warnings is the driver's list, which the parse adds each warning to
 // as it meets it, and which outlives an error the parse throws.
 // incomplete_definitions are the tentative definitions at file scope
-// of an object of a record incomplete where it is declared, with the
-// token that names it, checked against the record at the end of the
+// of an object of a record incomplete where it is declared, or of
+// internal linkage and of an array of unknown size, with the token that
+// names it, checked against the record and the array at the end of the
 // unit.
 struct parser_t
 {
@@ -2561,8 +2563,8 @@ translation_unit(parser_t &p)
     while (peek(p).kind != tok_t::eof)
         external_declaration(p);
 
-    complete_tentative_arrays(p);
     require_completed_definitions(p);
+    complete_tentative_arrays(p);
     require_internal_definitions(p);
 }
 
@@ -3345,14 +3347,16 @@ require_complete_record(const token_t &name, const type_t &t)
 // complete, 6.7.1p8: not void, not a not-yet type, whose size rcc does
 // not know.  An array may leave its size out: its initializer gives it,
 // 6.7.11p23, or a later declaration, 6.2.7p5, and an array of unknown
-// size still at the end of the unit is one element, 6.9.3p2.  An
-// attribute that marks the object, said on any of its declarations, is
-// one rcc would have to honour, and is not yet.  An object of a record
-// incomplete where it is declared is an error with an initializer,
-// 6.7.11p4, and in a tentative definition of internal linkage, 6.9.3p3;
-// a tentative definition of external linkage takes the record as it is
-// at the end of the unit, 6.9.3p2, which
-// require_completed_definitions() checks then.
+// size still at the end of the unit is one element, 6.9.3p2, if its
+// linkage is external; of internal linkage it is an error then, p3,
+// which require_completed_definitions() checks.  An attribute that
+// marks the object, said on any of its declarations, is one rcc would
+// have to honour, and is not yet.  An object of a record incomplete
+// where it is declared is an error with an initializer, 6.7.11p4, and
+// in a tentative definition of internal linkage, 6.9.3p3; a tentative
+// definition of external linkage takes the record as it is at the end
+// of the unit, 6.9.3p2, which require_completed_definitions() checks
+// then.
 void
 require_definable(parser_t &p,
                   const token_t &name,
@@ -3371,6 +3375,11 @@ require_definable(parser_t &p,
         p.incomplete_definitions.push_back({ &sym, &name });
     }
 
+    const bool unknown_size =
+        is< array_t >(sym.type) && as< array_t >(sym.type).count < 0;
+    if (unknown_size && !initialized && sym.linkage == linkage_t::internal)
+        p.incomplete_definitions.push_back({ &sym, &name });
+
     if (!sym.marking.empty())
         not_yet(name, sym.marking);
 }
@@ -3378,6 +3387,13 @@ require_definable(parser_t &p,
 // 6.9.3p2: a tentative definition of an object of a record incomplete
 // where it was written takes the record as it is at the end of the
 // unit, which must be complete, and laid out for rcc to make the object.
+// One of internal linkage is not of an incomplete type, p3.  p3 says
+// the declared type; rcc takes the composite type at the end of the
+// unit, so static int a[]; static int a[3]; declares the int [3] it
+// does elsewhere, 6.2.7p5, and an array no declaration sizes is an
+// error at the name of its first tentative definition, where one of
+// external linkage is one element.  The check comes before
+// complete_tentative_arrays() gives it that element.
 void
 require_completed_definitions(const parser_t &p)
 {
@@ -3385,6 +3401,10 @@ require_completed_definitions(const parser_t &p)
         if (const record_t *r = incomplete_record_in(sym->type))
             fail(*at, "tentative definition of " + quoted(sym->name) +
                           " has incomplete type " + record_words(*r));
+
+        if (is< array_t >(sym->type) && as< array_t >(sym->type).count < 0)
+            fail(*at, "static array " + quoted(sym->name) +
+                          " is never given a size");
 
         require_honoured(*at, sym->type);
     }

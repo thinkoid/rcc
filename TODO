@@ -910,20 +910,20 @@ paragraph cited, or the declaration is a block's static.
 
 Check: the pin of =static-in-for= agrees with the decision.
 
-** TODO A =static= array never given a size has one element
+** TODO An incomplete record of internal linkage is refused where it is declared
 
-~static int a[];~ at file scope, with no later declaration that
-sizes it, is an array of one element at the end of the file, as a
-tentative definition with external linkage is. 6.9.3p3 says the
-declared type of a tentative definition with internal linkage "shall
-not be an incomplete type"; =gcc= and =clang= warn and make it one
-element too.
+~static struct S s; struct S { int x; };~ is refused at the first
+declaration, "incomplete type", where an array of unknown size of
+internal linkage is judged at the unit's end, by the type the unit's
+declarations give it together, and =clang= takes both. 6.9.3p3 asks
+that a tentative definition of internal linkage not be of an
+incomplete type, and says nothing of when.
 
-Fix: an error at the end of the file, as the linkage conflict of
-6.2.2p7 is.
+Fix: none taken; decide whether a record follows the array: judged
+at the unit's end, its object made once the record is complete.
 
-Check: a program of =tests/error= with the declaration, pinned with
-the error.
+Check: by the decision; a row of =tests/error= or a program that
+compiles.
 
 ** TODO A =static= definition after a header's =static inline= one is "not yet"
 

@@ -1,0 +1,2 @@
+tests/error/static-array-never-sized.c:5:12: error: static array 'table' is never given a size
+status 1
