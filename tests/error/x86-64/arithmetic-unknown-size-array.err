@@ -1,0 +1,2 @@
+tests/error/arithmetic-unknown-size-array.c:9:27: error: arithmetic on a pointer to an array of unknown size
+status 1

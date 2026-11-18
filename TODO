@@ -947,22 +947,6 @@ with a warning.
 Check: the pin of =global-initializer-scalar-braces= agrees with the
 decision.
 
-** TODO Arithmetic on a pointer to an array of unknown size is an internal error
-
-~extern int a[]; long f(void) { return (long) (&a + 1); }~ ends with
-"rcc: internal error: size_of: a type without a size", status 3. The
-pointee of =&a= is an array of unknown size, which has no size to
-step by; 6.5.7p2 asks that the pointer be to a complete object type.
-=require_object_pointee()= refuses =void= and a function and lets
-the incomplete array through. An initializer, ~int (*q)[] = &a + 1;~,
-ends the same way.
-
-Fix: =require_object_pointee()= refuses a pointer to an array of
-unknown size, with an error.
-
-Check: both programs fail with the error, status 1, pinned in
-=tests/error=.
-
 ** TODO A typedef followed by a function body draws an error about a semicolon
 
 ~typedef int f(void) { return 0; }~ fails with "expected ';' after
@@ -1087,16 +1071,25 @@ Check: the pin of =conditional-void-arm= agrees with the decision.
 
 =!E= is defined as =(0==E)= (6.5.4.3p5), and the equality operator
 promotes a =char= operand to =int=. The parser builds =!c= on the
-unpromoted =char=, and c1 compares it at the =char='s width, =cmpb
-$0=. The result is the same, 0 or 1, but the tree does not say what
-the standard says, and the listing shows a byte compare where the
-operation is on an =int=.
+unpromoted =char=, and c1 tests it at the =char='s width, =cmpb $0,
+-1(%rbp)= and =tst w0, #0xff=. The result is the same, 0 or 1, since
+an extension changes no zero, but the tree does not say what the
+standard says.
 
-Fix: the parser inserts the promotion cast on the operand of =!=; c1
-then writes =cmpl=.
+With the promotion cast inserted by the parser and nothing else
+changed, c1 extends the value before it tests it: =movsbl -1(%rbp),
+%eax; cmpl $0, %eax=, and =uxtb w0, w0; cmp w0, #0= after a call. Over
+=tests= 285 functions gain an instruction on x86-64 and 15 on
+aarch64, and none loses one.
 
-Check: the listing of =!c= on a =char= is the load =movsbl= and
-=cmpl $0=.
+Fix: none taken; decide. Either the parser promotes and both
+generators test a widened narrow value against zero at its narrow
+width, which then also holds for a ~(int) c == 0~ the source
+writes; or =!= stays on the unpromoted operand, as a condition is
+tested, and =shape.md= says so.
+
+Check: under the first, no function longer over =tests=; under the
+second, the sentence in =shape.md= chapter 5.
 
 ** TODO The comment on a local's declaration says 2 GiB
 

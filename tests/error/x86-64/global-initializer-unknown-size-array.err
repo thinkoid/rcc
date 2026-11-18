@@ -1,0 +1,2 @@
+tests/error/global-initializer-unknown-size-array.c:6:17: error: arithmetic on a pointer to an array of unknown size
+status 1

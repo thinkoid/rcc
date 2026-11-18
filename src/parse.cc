@@ -768,18 +768,24 @@ require_integer(const token_t &op, const expr_t &e)
 
 // Pointer arithmetic, ++ and -- included, needs a pointer to a
 // complete object type, 6.5.7p2, p3: not void, which GNU C would take
-// as a byte, and not a function.  The step is the pointee's size, so a
-// not-yet pointee is not yet.
+// as a byte, not a function, and not an array of unknown size, which is
+// incomplete, 6.2.5p27, and has no size to step by.  The step is the
+// pointee's size, so a not-yet pointee is not yet.
 void
 require_object_pointee(const token_t &op, const type_t &t)
 {
-    if (is< void_t >(pointee_of(t)))
+    const type_t &pointee = pointee_of(t);
+
+    if (is< void_t >(pointee))
         fail(op, "arithmetic on a pointer to void");
 
-    if (is< function_t >(pointee_of(t)))
+    if (is< function_t >(pointee))
         fail(op, "arithmetic on a pointer to a function");
 
-    require_honoured(op, pointee_of(t));
+    if (is< array_t >(pointee) && as< array_t >(pointee).count < 0)
+        fail(op, "arithmetic on a pointer to an array of unknown size");
+
+    require_honoured(op, pointee);
 }
 
 // Prefix and postfix ++ and -- on a pointer step it by one element,

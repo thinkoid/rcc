@@ -577,7 +577,9 @@ known size (6.2.7p3, p5): `extern int a[]; int a[3];` and `int a[3];
 extern int a[];` declare an `int [3]`, and `extern int a[2]; extern
 int a[3];` conflict. Only the outermost bound may be left out. Until a
 declaration gives the size, `a[i]` and `a` as a pointer are what they
-are for any array, and `sizeof a` is the error of an incomplete type.
+are for any array, and `sizeof a` is the error of an incomplete type,
+as is arithmetic on `&a`, a pointer to that incomplete type, which has
+no size to step by (6.5.7p2): `&a + 1`, `++` and `-` on it.
 An array of unknown size that only tentative definitions define is
 one element at the end of the file (6.9.3p2). The definition of an
 object of a not-yet type, or of one an attribute marks, is not yet.
