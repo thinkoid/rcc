@@ -847,11 +847,14 @@ assignment_conversion(const token_t &at, expr_t e, const type_t &t)
 
 // Two values, at least one a pointer, brought to one pointer type, as
 // == and != and the arms of ?: take them, 6.5.10p2, p6, 6.5.16p3, p7:
-// pointers of one type stay as they are, a pointer to void and an
-// object pointer meet at void *, and a null pointer constant goes to
-// the other operand's type: a (void *) 0 met by a pointer to a
-// function, which meets no other void *, goes to the function pointer's
-// type.  False when none of the three applies.
+// pointers of one type stay as they are, a null pointer constant goes
+// to the other operand's type, and a pointer to void and an object
+// pointer meet at void *.  The null pointer constant comes first, as
+// p7's "if one operand is a null pointer constant, the result has the
+// type of the other operand" does before its pointer to void, so
+// c ? (void *) 0 : p is an int * for an int *p, and a (void *) 0 met by
+// a pointer to a function, which meets no other void *, goes to the
+// function pointer's type.  False when none of the three applies.
 bool
 common_pointer(expr_t &lhs, expr_t &rhs)
 {
@@ -861,11 +864,13 @@ common_pointer(expr_t &lhs, expr_t &rhs)
     type_t t = lp ? lhs.type : rhs.type;
 
     if (lp && rp && !(lhs.type == rhs.type)) {
-        if (void_and_object_pointer(lhs.type, rhs.type))
-            t = make_pointer(make_void());
-        else if (is_null_pointer_constant(lhs))
+        if (is_null_pointer_constant(lhs))
             t = rhs.type;
-        else if (!is_null_pointer_constant(rhs))
+        else if (is_null_pointer_constant(rhs))
+            t = lhs.type;
+        else if (void_and_object_pointer(lhs.type, rhs.type))
+            t = make_pointer(make_void());
+        else
             return false;
     }
     else if (!lp && !is_null_pointer_constant(lhs))

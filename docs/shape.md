@@ -179,7 +179,13 @@ Three sums.
   promoted type, and the source's `+` is no instruction. A
   conditional of two void operands has type `void` (6.5.16p6) and
   stands where a value is dropped, as a call of a void function does;
-  one void operand and one of a value is an error (p3). A call's
+  one void operand and one of a value is an error (p3). Two pointer
+  operands, or a pointer and a null pointer constant, meet at one
+  type (p7): the null pointer constant takes the other's, before a
+  pointer to `void` and an object pointer meet at `void *`, so `c ?
+  (void *) 0 : p` is an `int *` for an `int *p`; `==` and `!=` test a
+  pointer against a null pointer constant in the pointer's type, a
+  test of null (6.5.10p6). A call's
   callee is the name of a function, the direct call, or an
   expression of
   pointer-to-function type, the call through a pointer; c1 tells the

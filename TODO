@@ -1106,24 +1106,6 @@ is taken as the two compilers take it, the other arm for its effect.
 
 Check: the pin of =conditional-void-arm= agrees with the decision.
 
-** TODO A =(void *) 0= arm makes =?:= a =void *=
-
-=c ? (void *) 0 : p= with =p= an =int *= has type =void *= in the
-tree, so =*(c ? (void *) 0 : p)= fails with "indirection through a
-pointer to void". 6.5.16p7 gives the result the type of the other
-operand when one operand is a null pointer constant, and =(void *) 0=
-is one (6.3.2.3p3); the result is an =int *=. =common_pointer()=
-asks whether an operand is a null pointer constant only when it is
-not a pointer. Two pointers of different types thus meet at =void *=
-whenever one is a =void *=, which is p7's rule for a pointer to void
-that is not a null pointer constant.
-
-Fix: in =common_pointer()=, a null pointer constant takes the other
-operand's type before the rule for =void *= applies.
-
-Check: =int f(int c, int *p) { return *(c ? (void *) 0 : p); }=
-compiles; =c ? v : p= with =v= a =void *= variable is still =void *=.
-
 ** TODO The operand of =!= is not promoted
 
 =!E= is defined as =(0==E)= (6.5.4.3p5), and the equality operator
