@@ -177,50 +177,6 @@ effects:
 	ret
 	.cfi_endproc
 	.size	effects, .-effects
-	.globl	comma_effects
-	.type	comma_effects, @function
-comma_effects:
-	.cfi_startproc
-	pushq	%rbp
-	.cfi_def_cfa_offset 16
-	.cfi_offset %rbp, -16
-	movq	%rsp, %rbp
-	.cfi_def_cfa_register %rbp
-	movq	%rdi, -8(%rbp)
-	movl	%esi, -12(%rbp)
-	movl	$0, -16(%rbp)
-	.p2align 5
-.Lcomma_effects.2:
-	movl	-16(%rbp), %eax
-	cmpl	-12(%rbp), %eax
-	jge	.Lcomma_effects.4
-	addl	$1, -16(%rbp)
-	movq	-8(%rbp), %rax
-	movslq	-16(%rbp), %rcx
-	movl	(%rax,%rcx,8), %edx
-	movl	%edx, corner(%rip)
-	movl	4(%rax,%rcx,8), %edx
-	movl	%edx, corner+4(%rip)
-	jmp	.Lcomma_effects.2
-.Lcomma_effects.4:
-	addl	$1, -12(%rbp)
-	movl	corner(%rip), %eax
-	movl	%eax, origin(%rip)
-	movl	corner+4(%rip), %eax
-	movl	%eax, origin+4(%rip)
-	addl	$1, -12(%rbp)
-	movl	origin(%rip), %eax
-	movl	%eax, corner(%rip)
-	movl	origin+4(%rip), %eax
-	movl	%eax, corner+4(%rip)
-	movl	-12(%rbp), %eax
-	jmp	.Lcomma_effects.1
-.Lcomma_effects.1:
-	leave
-	.cfi_def_cfa %rsp, 8
-	ret
-	.cfi_endproc
-	.size	comma_effects, .-comma_effects
 	.globl	codes
 	.type	codes, @function
 codes:
@@ -451,6 +407,88 @@ registers:
 	ret
 	.cfi_endproc
 	.size	registers, .-registers
+	.globl	stepped
+	.type	stepped, @function
+stepped:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	pushq	%r12
+	.cfi_offset %r12, -32
+	movq	%rdi, -24(%rbp)
+	movq	%rsi, -32(%rbp)
+	movq	-24(%rbp), %rbx
+	movq	-32(%rbp), %r12
+	movq	%rbx, %rax
+	addq	$4, %rbx
+	movzwl	(%r12), %ecx
+	movw	%cx, (%rax)
+	movzwl	2(%r12), %ecx
+	movw	%cx, 2(%rax)
+	addq	$4, %rbx
+	movq	%r12, %rax
+	subq	$4, %r12
+	movzwl	(%rax), %ecx
+	movw	%cx, (%rbx)
+	movzwl	2(%rax), %ecx
+	movw	%cx, 2(%rbx)
+.Lstepped.1:
+	popq	%r12
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	stepped, .-stepped
+	.globl	comma_effects
+	.type	comma_effects, @function
+comma_effects:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movl	$0, -16(%rbp)
+	.p2align 5
+.Lcomma_effects.2:
+	movl	-16(%rbp), %eax
+	cmpl	-12(%rbp), %eax
+	jge	.Lcomma_effects.4
+	addl	$1, -16(%rbp)
+	movq	-8(%rbp), %rax
+	movslq	-16(%rbp), %rcx
+	movl	(%rax,%rcx,8), %edx
+	movl	%edx, corner(%rip)
+	movl	4(%rax,%rcx,8), %edx
+	movl	%edx, corner+4(%rip)
+	jmp	.Lcomma_effects.2
+.Lcomma_effects.4:
+	addl	$1, -12(%rbp)
+	movl	corner(%rip), %eax
+	movl	%eax, origin(%rip)
+	movl	corner+4(%rip), %eax
+	movl	%eax, origin+4(%rip)
+	addl	$1, -12(%rbp)
+	movl	origin(%rip), %eax
+	movl	%eax, corner(%rip)
+	movl	origin+4(%rip), %eax
+	movl	%eax, corner+4(%rip)
+	movl	-12(%rbp), %eax
+	jmp	.Lcomma_effects.1
+.Lcomma_effects.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	comma_effects, .-comma_effects
 	.bss
 	.globl	origin
 	.type	origin, @object
