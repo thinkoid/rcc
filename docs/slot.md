@@ -434,8 +434,8 @@ so a difference of two rounded cells can miss them by 0.01.
 - **The round trip's price.** A slot the loop carries adds 6.00 to
   6.62 cycles an iteration on the Oryon, 6.01 to 6.81 on Zen 2, 4.00
   to 5.28 on Icestorm, and 0.37 to 0.65 on Firestorm. On the Oryon
-  and on Zen 2 one slot costs at least six times what the whole loop
-  in registers does.
+  and on Zen 2 one slot costs about six times what the whole loop in
+  registers does.
 - **The count of loads barely matters.** `sr` reads its slot three
   times an iteration and `rs` once, and each carries one round trip.
   `sr` costs 0.07 cycle more than `rs` on the Oryon, 0.80 more on

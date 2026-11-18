@@ -264,21 +264,6 @@ several an error (J.3.5(9), (10)). =shape.md= chapters 2 and 3 and
 Check: every J.3 item the subset reaches has a row for each target,
 and each row agrees with a pin or a probe.
 
-** TODO =guarantees.md= names each guarantee's instruction for x86-64 alone
-
-The page's opening says each entry gives "the instruction that
-delivers it (=backend.md= chapter 9)", and the entries name x86-64's:
-=movb=, =movsbl=, =lea=, =cqto=, a displacement off =rbp=, =call
-f@PLT=. The aarch64 instructions are the table of =aarch64.md=
-chapter 9, which the page does not name. A reader on aarch64 finds
-another machine's instructions and no pointer to its own.
-
-Fix: the opening says the instruction clauses are x86-64's and names
-=aarch64.md= chapter 9 for the other target; or each clause names
-both.
-
-Check: a reader on aarch64 is sent to the table of its instructions.
-
 * Cost model
 
 The record in =docs/cost.md=: what each construct compiles to under
@@ -357,46 +342,6 @@ what is drawn from it taken again.
 Check: the cell is of a run made after the last change to fib's
 listing.
 
-** TODO =slot.md= says a round trip costs "at least six times" the loop
-
-=slot.md= 4.3, "The round trip's price", says =rs= runs at least six
-times as long as =rr=. From the integer times it is 1719 ms above
-=rr= against 6 x 287 = 1722 on Zen 2, and 1757 against 1764 on the
-Oryon: 5.99 and 5.98 times. The figure holds at two decimals of a
-cycle only.
-
-Fix: "about six times".
-
-Check: =rs= less =rr= against six times =rr=, from the integer ms of
-each core.
-
-** TODO =cost.md= says nothing writes an uninitialized register variable
-
-The rows of 2.1 and 2.2 for a =register= local without an initializer
-say "nothing writes it until the program does". For a =char=, a
-=short= or an =unsigned= variable the declaration writes the
-extension in the variable's own register, =movl %ebx, %ebx=,
-=movsbl %bl, %ebx=, =mov w19, w19=, =uxtb w19, w19=, as the G5 rows
-of =backend.md= and =aarch64.md= state.
-
-Fix: the two rows except the extension, as the G5 rows do.
-
-Check: the rows agree with the listing of ~register unsigned u;~ and
-of ~register char c;~ on both targets.
-
-** TODO =cost.md= 4.1 does not state the metric of its table
-
-4.1 sets the ratios of the LLVM pipeline's table beside those of
-chapter 4's x86-64 table. The pipeline's table was taken in user time
-alone; chapter 4's is user plus system. Each ratio is taken within
-its own table, so the comparison stands, but 4.1 never says how its
-table was timed and a reader takes the two as one method.
-
-Fix: one clause in 4.1's opening that gives its metric.
-
-Check: 4.1 states its metric, and it is the one its table was taken
-with.
-
 ** TODO No row pins a multiply or an unsigned division by a power of two
 
 c1 writes =x * 4= as =imull $4, %eax, %eax=, and an unsigned =x / 4=
@@ -429,20 +374,6 @@ variable widened, pinned for both targets.
 
 Check: its aarch64 pin has =sxtb=, and perturbing it in
 =c1-aarch64.cc= turns the row red.
-
-** TODO The tl;dr says a register variable is never stored
-
-=docs/cost.md='s tl;dr has a =register= variable "never stored", and
-=README.md= has "a variable that is never stored". The variable has
-no slot and no store at a write. But its register is stored to a
-spill slot before a branch one of whose paths writes it while a read
-of it is held (=backend.md= 6.7): =movq %rbx, -24(%rbp)= and =str
-x19, [x29, #32]= in the two pins of =g13-read-across-branch=.
-
-Fix: "has no slot of its own" in both places, with =backend.md= 6.7
-named for the save.
-
-Check: the sentence agrees with both pins of =g13-read-across-branch=.
 
 * Tests
 

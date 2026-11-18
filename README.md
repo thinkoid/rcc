@@ -58,12 +58,14 @@ The first slice: the integer types, the scalar operators, `if`,
 second slice: pointers and `void *`, arrays as locals and
 parameters, subscripts, `&` and `*`, pointer arithmetic and
 comparison, casts, `sizeof`, and string and character literals.
-Then `register`, honoured: a variable that is never stored. Then the
-measurement, and the change of direction it led to: rcc's own back
-end, c1, in place of LLVM's. Its three slices landed: the integer
-types, control and calls; pointers, arrays and string literals;
-register variables. Then the LLVM pipeline was retired, c1 is the
-only back end, and the measurement is redone under it.
+Then `register`, honoured: a variable that has no slot of its own, its
+register stored to a spill slot only to save a read of it held across
+a branch that writes it (`docs/backend.md` 6.7). Then the measurement,
+and the change of direction it led to: rcc's own back end, c1, in
+place of LLVM's. Its three slices landed: the integer types, control
+and calls; pointers, arrays and string literals; register variables.
+Then the LLVM pipeline was retired, c1 is the only back end, and the
+measurement is redone under it.
 c1 also writes aarch64, for the constructs of the same three slices:
 the integer types, control and calls; pointers, arrays and string
 literals; register variables. Its design is `docs/aarch64.md`, and

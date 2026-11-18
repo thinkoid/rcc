@@ -972,13 +972,15 @@ code of a `backend.md` chapter:
   (chapter 8).
 - A `register` variable is in the callee-saved register of the five
   its symbol's index names (chapter 4). Its read is borrowed: the
-  register itself, never spilled or freed, and written only by an
-  assignment: a compound one in place, or the row that computes the
-  value assigned (chapter 4). An instruction that would write its
-  destination works on a copy, and a held read is copied before the
-  variable is written, so the read keeps the old value (G13). The
-  registers the prologue pushes are the definition's count, known
-  before the body, since the slots lie below them.
+  register itself, never freed, and stored to a spill slot only when
+  it is held across a branch one of whose paths writes the variable
+  (6.7). The variable is written only by an assignment: a compound one
+  in place, or the row that computes the value assigned (chapter 4).
+  An instruction that would write its destination works on a copy, and
+  a held read is copied before the variable is written, so the read
+  keeps the old value (G13). The registers the prologue pushes are the
+  definition's count, known before the body, since the slots lie below
+  them.
 - Three entry points: `rvalue(e)` yields the value in a register,
   `cbranch(e, label, sense)` jumps on its truth and yields no value
   (chapter 7), and `effect(e)` writes its side effects and yields no

@@ -6,9 +6,10 @@ its known defects are `TODO`. Where ISO C says "undefined", this list
 says what happens, and it fixes two choices ISO C leaves to the
 implementation: G2's narrowing (6.3.1.3p3) and G3's right shift of a
 negative value (6.5.8p5). Each entry gives the paragraph (C23, N3220
-numbering), the promise, and the instruction that delivers it
-(`backend.md` chapter 9). One rule: whatever behaviour the platform
-has, no decision of the compiler's own. The compiler does what the
+numbering), the promise, and the instruction that delivers it on
+x86-64 (`backend.md` chapter 9); aarch64's are the table of
+`aarch64.md` chapter 9. One rule: whatever behaviour the platform has,
+no decision of the compiler's own. The compiler does what the
 source says, the foolish included. rcc is a literal compiler
 (`cost.md`): no optimizer runs, so most of these
 promises are the machine's own behaviour, reached by writing the
