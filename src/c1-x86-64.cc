@@ -800,7 +800,6 @@ extended(state_t &s,
     return e;
 }
 
-
 // addresses
 
 // An lvalue's address as the operand of the instruction that reads or
