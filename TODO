@@ -61,17 +61,36 @@ of a row that writes the right operand's register.
 
 Check: the count over =tests=, and no function longer.
 
-** TODO aarch64: a byte offset out of reach is added where it could be the access's register offset
+** TODO x86-64: a byte offset under a cast of the pointer is added before the access
 
-~*(int *) (p + 4097)~ on a ~char *p~ is =mov x1, #4097; add x0, x0,
-x1; ldrsw x0, [x0]=, where the constant held in a register is the
-load's register offset at no shift, =ldrsw x0, [x0, x1]=, an
-instruction fewer; ~p[4097]~ on the =char *= itself is written so
-already. 9 forms over =tests=, =kview_*_4097= of the pointers probe
-among them.
+~*(int *) (p + 24)~ on a ~char *p~ is =addq $24, %rax; movl (%rax),
+%eax=, where the constant as the access's displacement, =movl
+24(%rax), %eax=, is one instruction: nothing looks through a cast of
+the pointer to the sum under it. aarch64 looks through it
+(=access_sum()= in =src/c1-aarch64.cc=, =aarch64.md= 6.3) and writes
+=ldr w0, [x0, #24]=. =byte_view()= and =byte_view_near()= of
+=subscript-displacement= pin the two instructions, and the =kview_*=
+rows of the pointers probe have the shape.
 
-Fix: an offset held in a register for want of an immediate is the
-access's register offset where the access has no other.
+Fix: the access's address rows look through a cast between pointer
+types to a sum whose stride is 1 or the access's own size, as on
+aarch64.
+
+Check: those two pins with the displacement in the access, the
+count over =tests=, and no function longer.
+
+** TODO aarch64: an index held in a register is spilled across the right operand's call
+
+~p[5000] = f()~ on an ~int *p~ writes =mov x1, #5000= before the
+call and spills both the pointer and the constant across it, =str x0;
+str x1; bl f; ldr x1; ldr x2; str w0, [x2, x1, lsl #2]=: the constant
+no displacement holds is generated with the address, before the
+right operand. The constant written after the call needs no slot, two
+instructions fewer; a variable index that must be read before the
+call (G13) keeps its spill. The shape is not counted over =tests=.
+
+Fix: none taken; count first. A constant index reads nothing, so its
+=mov= may follow the right operand.
 
 Check: the count over =tests=, and no function longer.
 

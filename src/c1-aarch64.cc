@@ -1288,6 +1288,19 @@ row_access(state_t &s,
 // after pointed(), summed()'s caller.
 address_t row_address(state_t &, const row_access_t &);
 
+// An access's offset in bytes that no displacement of the access holds,
+// 6.3: held in a register by the constant row of 6.4 after the base and
+// read as the access's register offset, unscaled, ldrb w0, [x0, x1]
+// after mov x1, #2147483648, which any access size takes.
+address_t
+held_offset(state_t &s, value_t base, long long bytes)
+{
+    const auto held = fresh(s, 64, registers_of(s, { .base = base }));
+    constant(s, reg_of(s, held), bytes, 64);
+
+    return address_t { .base = base, .index = held };
+}
+
 // The operand of an address by any other lvalue and a constant, 6.3:
 // based()'s base, its pointer's value, with the displacement, when the
 // access encodes it (2.3), [x0, #20] for p[1][2] on int (*p)[3], and no
@@ -1297,8 +1310,10 @@ address_t row_address(state_t &, const row_access_t &);
 // displacement, and for an access the row's own constant goes past the
 // sum, row_address()'s.  For the address as a value, as_value, the
 // add of the base and the displacement is to encode it instead (2.4),
-// add x0, x0, #20 for &p[1][2].  None for a displacement out of reach,
-// and the rows of *p and p + n reach the address.  A register variable
+// add x0, x0, #20 for &p[1][2].  For an access with nothing evaluated
+// between it and its address, a displacement no immediate holds is
+// held_offset()'s; none for any other out of reach, and the rows of *p
+// and p + n reach the address.  A register variable
 // handed down, with the address as a value, is the destination of the
 // base's row: the variable itself where the displacement is 0, so that
 // q = &m[1][-3] on int (*m)[3] is the one ldr x19, [x29, #24], and
@@ -1331,6 +1346,12 @@ summed(state_t &s,
                              arithmetic_immediate(plan->displacement, 64) :
                              in_reach(plan->displacement,
                                       static_cast< int >(stride(pointer.type)));
+    // other[1][0] on char (*other)[2147483648]: the row's offset held,
+    // [x0, x1], where the add would hold it too
+    if (!reached && !as_value && nothing_between &&
+        !arithmetic_immediate(plan->displacement, 64))
+        return held_offset(s, rvalue(s, *plan->pointer), plan->displacement);
+
     if (!reached)
         return std::nullopt;
 
@@ -1339,6 +1360,29 @@ summed(state_t &s,
 
     return address_t { .base = rvalue(s, *plan->pointer, to),
                        .displacement = static_cast< int >(plan->displacement) };
+}
+
+// The sum an access through p reads, 6.3: p, or the sum under a cast of
+// p between pointer types whose stride is 1 or the access's own size,
+// so that the sum's bytes are the access's offset, unscaled or scaled
+// by the access's size: *(int *) (c + 1) on a char *c is ldrsw x0, [x0,
+// #1], and *(int *) (c + 4097) mov x1, #4097; ldrsw x0, [x0, x1].  Not
+// a name's address plus a constant, whose address is its one add.
+const expr_t &
+access_sum(const expr_t &p,
+           const std::unordered_set< const symbol_t * > &defined)
+{
+    if (!is< cast_t >(p) || !is< pointer_t >(p.type))
+        return p;
+
+    const auto &sum = *as< cast_t >(p).arg;
+    if (!is< pointer_t >(sum.type) || !is< binary_t >(sum) ||
+        named_offset(sum, defined))
+        return p;
+
+    const long inner = stride(sum.type);
+
+    return inner == 1 || inner == stride(p.type) ? sum : p;
 }
 
 // The address an access through a dereference designates, 6.5.4.2p4,
@@ -1350,10 +1394,12 @@ summed(state_t &s,
 // index_of(), and the scale the size of the pointee, a scalar of 1, 2,
 // 4 or 8 bytes, since an access reads no array.  A constant index is
 // the displacement c * s when the access encodes it, 2.3; any other is
-// an index like a variable one, held whole, lsl.  Any other pointer is
-// computed into a register and is the base; nothing looks through a
-// cast of the pointer.  The pointer is evaluated here, before anything
-// the access goes with.
+// an index like a variable one, held whole, lsl.  A cast of the
+// pointer is looked through to a sum of a stride of 1 or the access's
+// size, access_sum()'s, whose index form is taken where it saves the
+// add and nothing is evaluated between the address and the access.
+// Any other pointer is computed into a register and is the base.  The
+// pointer is evaluated here, before anything the access goes with.
 //
 // A register pointer stepped by a constant the form encodes is the
 // first case: its register is the base, a borrowed read, and the access
@@ -1388,27 +1434,37 @@ pointed(state_t &s, const expr_t &p, const expr_t *between = nullptr)
     // *p, and *E for any E that is no sum: *f(), *(char *) q, *p++ on
     // a pointer in a slot, *p++ = *p, and a difference, *(p - 1).  E's
     // value is the base, [x0].
-    if (!is< binary_t >(p) || as< binary_t >(p).op != binary_op_t::add)
+    const auto &sum = access_sum(p, s.defined);
+    if (!is< binary_t >(sum) || as< binary_t >(sum).op != binary_op_t::add)
         return { .base = rvalue(s, p) };
 
     // From here a sum of a pointer and an integer: p[n], n[p], *(p +
-    // n) and *(n + p), which are one tree.  Either operand may be the
-    // pointer; the other is n.
-    const auto &b = as< binary_t >(p);
+    // n) and *(n + p), which are one tree, under a cast or not.  Either
+    // operand may be the pointer; the other is n, scaled by the sum's
+    // stride.
+    const auto &b = as< binary_t >(sum);
     const bool left = is< pointer_t >(b.lhs->type);
     const auto &pointer = left ? *b.lhs : *b.rhs;
     const auto &n = left ? *b.rhs : *b.lhs;
-    const long size = stride(p.type);
+    const long size = stride(sum.type);
+    const int access = static_cast< int >(stride(p.type));
 
-    // p[3], 3[p], p[-1]: a constant n whose product with the size the
-    // access encodes is the displacement, [x0, #12], and n generates
-    // nothing.  One it does not encode, p[5000], goes on as an index.
-    if (is< literal_t >(n)) {
-        const auto d = scaled(as< literal_t >(n).value, size);
-        if (in_reach(d, static_cast< int >(size)))
-            return { .base = rvalue(s, pointer),
-                     .displacement = static_cast< int >(d) };
-    }
+    // p[3], 3[p], p[-1], *(int *) (c + 1): a constant n whose product
+    // with the size the access encodes is the displacement, [x0, #12],
+    // and n generates nothing.  One it does not encode, p[5000], goes on
+    // as an index.
+    const auto d = is< literal_t >(n) ? scaled(as< literal_t >(n).value, size) :
+                                        std::optional< long long > { };
+    if (d && in_reach(*d, access))
+        return { .base = rvalue(s, pointer),
+                 .displacement = static_cast< int >(*d) };
+
+    // under a cast, the index form only where it saves the add: not for
+    // a constant the add encodes, *(int *) (c + 257), and not where
+    // anything is evaluated between the address and the access, since it
+    // holds two registers
+    if (&sum != &p && (between || (d && arithmetic_immediate(*d, 64))))
+        return { .base = rvalue(s, p) };
 
     // p[i], *(p + i): the pointer is written first, so the base is
     // generated first and the index after it (G13), [x0, w1, sxtw #2].

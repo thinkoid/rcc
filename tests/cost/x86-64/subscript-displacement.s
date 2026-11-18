@@ -99,4 +99,65 @@ corner:
 	ret
 	.cfi_endproc
 	.size	corner, .-corner
+	.globl	byte_view
+	.type	byte_view, @function
+byte_view:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	-8(%rbp), %rax
+	addq	$4097, %rax
+	movl	(%rax), %eax
+	jmp	.Lbyte_view.1
+.Lbyte_view.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	byte_view, .-byte_view
+	.globl	byte_view_store
+	.type	byte_view_store, @function
+byte_view_store:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	addq	$4097, %rax
+	movl	-12(%rbp), %ecx
+	movl	%ecx, (%rax)
+.Lbyte_view_store.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	byte_view_store, .-byte_view_store
+	.globl	byte_view_near
+	.type	byte_view_near, @function
+byte_view_near:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	-8(%rbp), %rax
+	addq	$1, %rax
+	movl	(%rax), %eax
+	jmp	.Lbyte_view_near.1
+.Lbyte_view_near.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	byte_view_near, .-byte_view_near
 	.section	.note.GNU-stack,"",@progbits
