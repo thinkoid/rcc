@@ -4,7 +4,6 @@
 // target, one per target, docs/aarch64.md chapter 12.
 
 #include "c1.hh"
-#include "c1-common.hh"
 
 #include <ostream>
 #include <stdexcept>

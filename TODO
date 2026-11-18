@@ -171,15 +171,6 @@ Check: =register-destination='s =chosen_widened= and
 =chosen_called=, and the count of moves after a join into a register
 variable over =tests=.
 
-** TODO =c1.cc= includes =c1-common.hh= and uses nothing of it
-
-=src/c1.cc= calls the two generators and throws =std::logic_error=
-for an unknown target. It names nothing that =c1-common.hh= declares.
-
-Fix: drop the include.
-
-Check: =make= builds.
-
 ** TODO Four comments of the shared sources describe x86-64 alone
 
 Each is in text both targets read, and each is true of one:
