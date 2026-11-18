@@ -55,7 +55,11 @@
    row_element() and row_decay() write p = &rows[i][0] and p = rows[i]
    on rows of 12 bytes.  widened_sum() and widened_register() write a
    value extended into a register long, r = a + b from two ints and
-   r = i from a register int.
+   r = i from a register int; widened_product() r = a * b into a
+   register unsigned long from two unsigneds, whose 32-bit write is the
+   widening; and signedness_left() v = 5 + (int) u into a register
+   unsigned from an unsigned in memory, whose (int) u, a load under a
+   conversion of the signedness alone, is the left operand.
 
    On x86-64 the listing must show: in load(), the load of a into the
    register, movl -12(%rbp), %ebx; in constant_leaf(), named_leaf(),
@@ -147,8 +151,8 @@
    in eax and movl %eax, %ebx after the join, and in chosen_promoted()
    the two movsbl joined in eax and movslq %eax, %rbx after it.  In
    char_operand() and char_operand_left() one listing, movl %ebx,
-   %r12d; addl $5, %r12d; in int_widened() the sum in rax, movslq %ebx,
-   %rax and addq $5, %rax, and movq %rax, %r12; in register_product()
+   %r12d; addl $5, %r12d; in int_widened() the extension into the
+   register, movslq %ebx, %r12, and addq $5, %r12; in register_product()
    imull $4, %ebx, %r12d; in prefix_step() the load into the register,
    the step on it and the store from it, movl -12(%rbp), %ebx; addl $1,
    %ebx; movl %ebx, -12(%rbp), and the same with subl $1, %ebx, and in
@@ -157,8 +161,11 @@
    the extension, movsbl %al, %ebx; in row_element() and row_decay()
    leaq rows(%rip), %rbx, imulq $12, -16(%rbp), %rax and addq %rax,
    %rbx; in widened_sum() movslq %eax, %rbx after the add, and in
-   widened_register() movslq %ebx, %r12.  return r is movl %ebx, %eax,
-   and return p movq %rbx, %rax.
+   widened_register() movslq %ebx, %r12; in widened_product() movl
+   -12(%rbp), %ebx; imull -16(%rbp), %ebx, and in signedness_left()
+   movl -12(%rbp), %ebx; addl $5, %ebx, each with no mov into the
+   register.  return r is movl %ebx, %eax, and return p movq %rbx,
+   %rax.
 
    On aarch64 the listing must show the last instruction of each
    right operand writing the register, no condition on the operands
@@ -220,8 +227,10 @@
    x0, #4; str x19, [x29, #24]; in prefix_char() add w0, w0, #1, strb
    w0, [x29, #24] and uxtb w19, w0; add x19, x0, x1 after the mul by 12
    in row_element() and row_decay(); sxtw x19, w0 in widened_sum() and
-   sxtw x20, w19 in widened_register().  return r is mov w0, w19, and
-   return p mov x0, x19. */
+   sxtw x20, w19 in widened_register(); mul w19, w0, w1 in
+   widened_product() and add w19, w0, #5 after ldr w0, [x29, #24] in
+   signedness_left().  return r is mov w0, w19, and return p mov x0,
+   x19. */
 int
 load(int a)
 {
@@ -1022,4 +1031,22 @@ widened_register(int a)
 
         r = i;
         return r + i;
+}
+
+unsigned long
+widened_product(unsigned a, unsigned b)
+{
+        register unsigned long r;
+
+        r = a * b;
+        return r;
+}
+
+unsigned
+signedness_left(unsigned u)
+{
+        register unsigned v;
+
+        v = 5 + (int) u;
+        return v;
 }

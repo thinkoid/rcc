@@ -332,7 +332,11 @@ are the others (7.2, 6.5).
   %ebx; addl -16(%rbp), %ebx`. The operators are the rows of two
   addresses on a free register, `+`, `-`, `&`, `|`, `^`, `*` and the
   shifts, on the variable's own type or one that differs from it in
-  the signedness alone (below); and pointer arithmetic where its
+  the signedness alone (below), or on an `unsigned` of 32 bits into a
+  variable of 64, whose 32-bit write clears the upper half, which is
+  the widening, `r = a * b` into a `register unsigned long` from two
+  `unsigned`s being `movl -12(%rbp), %ebx; imull -16(%rbp), %ebx`
+  (6.3); and pointer arithmetic where its
   last instruction is the `addq` or the `subq` on the left operand,
   not `lea`, so `p = q - n` is `movq -16(%rbp), %rbx; imulq $4,
   -24(%rbp), %rax; subq %rax, %rbx`, `n` the multiply's source (6.1),
@@ -406,8 +410,10 @@ are the others (7.2, 6.5).
   variable's width, and the 32-bit write clears the upper half, which
   is an `unsigned` variable's representation, valid to 64. Such a row
   hands the variable on through a further conversion only where that
-  one widens, `u = c + b` on a `char c` being `movsbl -9(%rbp), %ebx;
-  addl -16(%rbp), %ebx`, since under a narrowing one the last
+  one does not narrow, `u = c + b` on a `char c` being `movsbl
+  -9(%rbp), %ebx; addl -16(%rbp), %ebx` and `v = 5 + (int) u` on an
+  `unsigned u` `movl -12(%rbp), %ebx; addl $5, %ebx`, since under a
+  narrowing one the last
   instruction would write the register wider than the variable: `u =
   (int) l + b` keeps the `mov`, and so does a conversion that narrows,
   whose last instruction is the extension, and one that widens,
@@ -441,16 +447,18 @@ arithmetic's included, so `p = flag + i + i` is `leaq flag(%rip),
 %rbx` and two `addq`; the address of a name, an array's decay or `&x`,
 by its `leaq` or the GOT's load, `p = buf + n` being `leaq buf(%rip),
 %rbx; addq -16(%rbp), %rbx`; an object under the assignment's
-conversion of the signedness alone, by its load, `u = i + ub` being
-`movl -12(%rbp), %ebx; addl -16(%rbp), %ebx`; the variable itself is
+conversion of the signedness alone, or under one in a row computing
+in the other signedness, by its load, `u = i + ub` being `movl
+-12(%rbp), %ebx; addl -16(%rbp), %ebx`; the variable itself is
 there already, so `r = r + b` is `addl -16(%rbp), %ebx` and
 `p = p + 1` is `addq $4, %rbx`, as `p += 1` is; and another register
 variable's read is copied there, `movl %r12d, %ebx`, the copy an
 instruction that writes is given in any case, under conversions that
 write nothing too, where the read is valid to the width (6.3): `r =
-c + 5` on a register `char c` is `movl %ebx, %r12d; addl $5, %r12d`,
-where `r = i + 5L` on a register `int i`, whose read is not valid to
-64 bits, is the sum computed elsewhere and moved. The operand of `-`
+c + 5` on a register `char c` is `movl %ebx, %r12d; addl $5, %r12d`;
+and a register variable's read that is not valid to the width, by its
+extension, `r = i + 5L` on a register `int i` being `movslq %ebx,
+%r12; addq $5, %r12`. The operand of `-`
 and `~` goes in the same way. Any other left operand, a call's result
 or a division, leaves the whole assignment computed elsewhere and
 moved. Moved in before the instruction, that left operand would
@@ -639,15 +647,12 @@ no 32-bit immediate holds keeps the order too: it is held in a
 register in either order, and exchanged it would cost the load of an
 object in memory that is the instruction's own operand where it
 stands, `movabsq $c, %rax; cmpq -8(%rbp), %rax` and `movabsq $c,
-%rax; addq -8(%rbp), %rax`. And where the value goes to a register
-variable, the order of the source stays when it alone is the operation
-on the variable's register (chapter 4): `v = 5 + (int) u` into a
-register `unsigned v`, `u` an `unsigned` in memory, is `movl $5, %ebx;
-addl -16(%rbp), %ebx`, since `(int) u` in a row that computes the
-`unsigned` in `int` is no load into the register, and as `(int) u + 5`
-the sum would be computed elsewhere and moved, an instruction more.
-`r = 5 + c` on a register `char c` is `c + 5`, `movl %ebx, %r12d; addl
-$5, %r12d`, since `c` promoted is the variable's read. A constant on
+%rax; addq -8(%rbp), %rax`. Where the value goes to a register
+variable the exchange stands too (chapter 4): `v = 5 + (int) u` into a
+register `unsigned v`, `u` an `unsigned` in memory, is `movl
+-12(%rbp), %ebx; addl $5, %ebx`, and `r = 5 + c` on a register `char
+c` is `c + 5`, `movl %ebx, %r12d; addl $5, %r12d`, since `c` promoted
+is the variable's read. A constant on
 both sides is as written. `-`, `/`, `%` and the shifts do not commute,
 and keep their order: `5 - x` writes the 5 first. Pointer arithmetic
 takes the exchange too: `n + p` with a constant `n` is `p + n` where a
@@ -2414,10 +2419,7 @@ answers:
     source's order holds the 5 in a register. The cost is the one
     exception to 6.1's order of the source, and a boundary on x86-64:
     a constant no 32-bit immediate holds keeps its order, since
-    exchanged against an object in memory it would load the object,
-    and so does a constant whose order alone is the operation on a
-    register variable's register, `v = 5 + (int) u` into a register
-    `unsigned v` from an `unsigned u` in memory.
+    exchanged against an object in memory it would load the object.
     `-`, `/`, `%` and the shifts do not commute and keep their order.
 19. **A `return`'s value is computed in the result register** (6.1,
     7.2): a value is computed in the register its

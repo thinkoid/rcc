@@ -142,32 +142,6 @@ variable handed down, as on x86-64.
 Check: the aarch64 pin of =address-destination= names =x19= alone in
 =row()= and =element()=.
 
-** TODO x86-64: three shapes beside a register variable's destination still move
-
-The destination rule (=backend.md= chapter 4) stops short of three
-shapes, each computed in an expression register and moved:
-
-- ~r = a * b~ into a =register unsigned long= from two =unsigned=
-  operands is =imull -16(%rbp), %eax; movq %rax, %rbx=: the widening
-  writes nothing, but the operation's type is not the variable's, so
-  the operation is not handed the variable;
-- ~r = i + 5L~ into a =register long= with ~i~ a =register int=
-  keeps the sum in =rax= and moves it, where =movslq %ebx, %r12;
-  addq $5, %r12= is the two instructions: an extension is no left
-  operand of the rule;
-- ~v = 5 + (int) u~ into a =register unsigned= with ~u~ an
-  =unsigned= in memory is two instructions only because the constant
-  on the left keeps its place for this one shape, the boundary of
-  =ordered()=: ~(int) u~ in a row computing in the other signedness
-  is no load into the register.
-
-Fix: none taken. The first wants the operation handed the variable
-under a widening that writes nothing; the second an extension as a
-left operand; with the third, =ordered()='s boundary goes.
-
-Check: a function of =register-destination= for each, with no =mov=
-into the variable's register.
-
 ** TODO A ~?:~ into a register variable keeps its join where each arm needs its own write
 
 On x86-64 each path writes the =register= variable where one arm's

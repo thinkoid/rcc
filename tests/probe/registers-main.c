@@ -181,6 +181,7 @@ compare(const char *name, long x, long y)
     BOTH(long, de_rows_##N, (long))                                     \
     BOTH(long, de_widened_##N, (int, long, long))                       \
     BOTH(long, de_wide_arms_##N, (int, long, long))                     \
+    BOTH(long, de_retyped_##N, (long, long))                            \
     COMPARISONS(DECLARE_COMPARED, T, N)
 
 TYPES(DECLARE_TYPE)
@@ -369,6 +370,7 @@ fill(long v[12], int i, int k)
                 CHECK(br_self_##N, x, y, (x, y));                       \
                 CHECK(de_left_##N, x, y, (x, y));                       \
                 CHECK(de_step_##N, x, y, (x, y));                       \
+                CHECK(de_retyped_##N, x, y, (x, y));                    \
                 for (int c = 0; c < 2; ++c) {                           \
                     CHECK(de_widened_##N, x, y, (c, x, y));             \
                     CHECK(br_cond_##N, x, y, (c, x, y));                \

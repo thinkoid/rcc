@@ -2046,9 +2046,8 @@ int_widened:
 	.cfi_offset %r12, -32
 	movl	%edi, -20(%rbp)
 	movl	-20(%rbp), %ebx
-	movslq	%ebx, %rax
-	addq	$5, %rax
-	movq	%rax, %r12
+	movslq	%ebx, %r12
+	addq	$5, %r12
 	movq	%r12, %rax
 	jmp	.Lint_widened.1
 .Lint_widened.1:
@@ -2265,6 +2264,54 @@ widened_register:
 	ret
 	.cfi_endproc
 	.size	widened_register, .-widened_register
+	.globl	widened_product
+	.type	widened_product, @function
+widened_product:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movl	%esi, -16(%rbp)
+	movl	-12(%rbp), %ebx
+	imull	-16(%rbp), %ebx
+	movq	%rbx, %rax
+	jmp	.Lwidened_product.1
+.Lwidened_product.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	widened_product, .-widened_product
+	.globl	signedness_left
+	.type	signedness_left, @function
+signedness_left:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movl	%ebx, %ebx
+	movl	-12(%rbp), %ebx
+	addl	$5, %ebx
+	movl	%ebx, %eax
+	jmp	.Lsignedness_left.1
+.Lsignedness_left.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	signedness_left, .-signedness_left
 	.bss
 	.globl	defined
 	.type	defined, @object

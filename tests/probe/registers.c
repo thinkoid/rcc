@@ -1432,8 +1432,11 @@ TYPES(BRANCHED)
    into a register pointer, de_rows_, which the main gives an index of
    each row; a value extended into a long and an unsigned long, from
    an operation, another register variable, a ?: and a product,
-   de_widened_; and a ?: widened into a long and an unsigned long whose
-   arm is a constant, a truth value or an operation, de_wide_arms_. */
+   de_widened_; a ?: widened into a long and an unsigned long whose arm
+   is a constant, a truth value or an operation, de_wide_arms_; and an
+   object under a conversion of the signedness alone as the left
+   operand of a row computing in int into a register unsigned,
+   de_retyped_. */
 #define DEST_EDGE(T, N)                                                 \
     T de_global_##N[4][3];                                              \
     long de_left_##N(T a, T b)                                          \
@@ -1546,6 +1549,15 @@ TYPES(BRANCHED)
         s = s * 7 + l;                                                  \
         l = c ? a + b : b;                                              \
         return s * 7 + l;                                               \
+    }                                                                   \
+    long de_retyped_##N(T a, T b)                                       \
+    {                                                                   \
+        register unsigned v;                                            \
+        long s;                                                         \
+        v = 5 + (int) a;                                                \
+        s = v;                                                          \
+        v = (int) b - 3;                                                \
+        return s * 7 + v;                                               \
     }
 
 TYPES(DEST_EDGE)

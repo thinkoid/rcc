@@ -2893,6 +2893,69 @@ widened_register:
 	ret
 	.cfi_endproc
 	.size	widened_register, .-widened_register
+	.globl	widened_product
+	.type	widened_product, @function
+widened_product:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -16
+	str	w0, [x29, #24]
+	str	w1, [x29, #28]
+	ldr	w0, [x29, #24]
+	ldr	w1, [x29, #28]
+	mul	w19, w0, w1
+	mov	x0, x19
+	b	.Lwidened_product.1
+.Lwidened_product.1:
+	.cfi_def_cfa wsp, 32
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	widened_product, .-widened_product
+	.globl	signedness_left
+	.type	signedness_left, @function
+signedness_left:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -16
+	str	w0, [x29, #24]
+	mov	w19, w19
+	ldr	w0, [x29, #24]
+	add	w19, w0, #5
+	mov	w0, w19
+	b	.Lsignedness_left.1
+.Lsignedness_left.1:
+	.cfi_def_cfa wsp, 32
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	signedness_left, .-signedness_left
 	.bss
 	.globl	defined
 	.type	defined, @object

@@ -1431,6 +1431,53 @@ extending_load(state_t &s,
     return load(s, address(s, e), from, std::max(32, to), into);
 }
 
+// Whether op is an operator of two addresses on a free register, the
+// operation form's +, -, *, &, |, ^ and the shifts (backend.md chapter
+// 4).
+bool
+two_address(binary_op_t op)
+{
+    switch (op) {
+    case binary_op_t::add:
+    case binary_op_t::sub:
+    case binary_op_t::mul:
+    case binary_op_t::bit_and:
+    case binary_op_t::bit_or:
+    case binary_op_t::bit_xor:
+    case binary_op_t::shl:
+    case binary_op_t::shr: return true;
+    default: return false;
+    }
+}
+
+// Whether e is an operation whose row writes its own register at its
+// own width: an operator of two addresses, and - and ~ (chapter 4).
+bool
+operation(const expr_t &e)
+{
+    if (is< unary_t >(e))
+        return as< unary_t >(e).op == unary_op_t::neg ||
+               as< unary_t >(e).op == unary_op_t::bit_not;
+
+    return is< binary_t >(e) && two_address(as< binary_t >(e).op);
+}
+
+// What a conversion from from to target hands on to its operand's row
+// of a register variable into hands down, backend.md chapter 4:
+// through()'s, and, where into's row computes in another signedness,
+// into itself through a conversion that changes the signedness alone,
+// whose operand's row writes the same bits at the same width, v = 5 +
+// (int) u into a register unsigned v being movl -12(%rbp), %ebx; addl
+// $5, %ebx.
+into_t *
+onward(into_t *into, const int_t &from, const int_t &target)
+{
+    if (into && !into->taken && into->as && from.width == target.width)
+        return into;
+
+    return through(into, target, target.width > from.width);
+}
+
 // The integer conversion of the operand e to the type to.  G2:
 // narrowing is no instruction, the narrower register name is the
 // value; widening extends by the operand's signedness, and only when
@@ -1451,11 +1498,14 @@ extending_load(state_t &s,
 // low bits (p6).  A register variable widens into a fresh register,
 // movslq %ebx, %rax, and narrows as its read: the read, not the
 // variable, is valid to less.  A register variable handed down goes on
-// to the operand's row through() a conversion that leaves its
+// to the operand's row onward() through a conversion that leaves its
 // representation, and a load takes it: register int x = c is movsbl
-// -1(%rbp), %ebx (chapter 4).  The register the consumer of the value
-// names, wanted, goes on to the operand, and a widening writes its
-// extension there, extended()'s (6.1).
+// -1(%rbp), %ebx (chapter 4); an unsigned operation of 32 bits widened
+// to 64 is handed it as computed in its own type, the operation form on
+// the register, since its 32-bit write clears the upper half.  The
+// register the consumer of the value names, wanted, goes on to the
+// operand, and a widening writes its extension there, extended()'s
+// (6.1).
 value_t
 converted(state_t &s,
           const expr_t &e,
@@ -1471,14 +1521,22 @@ converted(state_t &s,
         return literal(s, { widened(as< literal_t >(e).value, from) }, to,
                        into);
 
-    const auto onward = through(into, target, widens);
+    // r = a * b into a register unsigned long from two unsigneds: the
+    // operation's 32-bit write is the widening, movl -12(%rbp), %ebx;
+    // imull -16(%rbp), %ebx
+    const bool zero = widens && !from.is_signed && from.width == 32 &&
+                      operation(e) && into && !into->taken && !into->as;
+    into_t computed { zero ? into->variable : nullptr, false, &e.type };
+    const auto next = zero ? &computed : onward(into, from, target);
 
     const auto *object = widens ? object_under(e) : nullptr;
     const bool loads = object && (from.is_signed || object != &e);
     const int width = from.is_signed ? target.width : 32;
 
-    auto v = loads ? extending_load(s, *object, from, width, onward) :
-                     rvalue(s, e, onward, wanted);
+    auto v = loads ? extending_load(s, *object, from, width, next) :
+                     rvalue(s, e, next, wanted);
+    if (computed.taken)
+        into->taken = true;
     if (widens)
         v = extended(s, v, from, target.width, wanted, into);
 
@@ -2761,7 +2819,6 @@ leaf_apart_from(const expr_t &rhs, const symbol_t *sym)
 }
 
 bool operates_in(const operation_t &, const type_t &, const into_t &);
-operation_t ordered(const binary_t &, const type_t &, const into_t *);
 
 // A register variable's read under conversions that write nothing, and
 // the width the read is valid to after them (backend.md 6.3, the width
@@ -2802,10 +2859,14 @@ register_read(const expr_t &e)
 // register by its own row: an array's decay, the leaq or the GOT's load
 // of a named array or a string literal; a conversion that changes the
 // signedness alone of an object in memory, retyped()'s load at the
-// conversion's extension; and a conversion of an object in memory whose
-// width holds the representation, its load, which a row computing the
-// value in another signedness, into's as, takes through a widening
-// alone, as through() hands it on.
+// conversion's extension; a conversion of an object in memory, under
+// casts that keep its bits, whose width holds the representation, its
+// load, which a row computing the value in another signedness, into's
+// as, takes through a conversion that does not narrow, as onward()
+// hands it on; and a widening of a
+// register variable's read that is not valid to the new width, its
+// extension, movslq %ebx, %r12 for r = i + 5L into a register long
+// from a register int i.
 bool
 cast_loads_into(const cast_t &c, const type_t &to, const into_t &into)
 {
@@ -2821,10 +2882,14 @@ cast_loads_into(const cast_t &c, const type_t &to, const into_t &into)
     if (!is< int_t >(arg.type) && !is< pointer_t >(arg.type))
         return false;
 
-    const bool widens = integer(to).width > integer(arg.type).width;
+    const int from = integer(arg.type).width;
+    const int width = integer(to).width;
 
-    return (!into.as || widens) && in_memory(arg) &&
-           integer(to).width >= needed(into);
+    if (width > from && register_read(arg).variable)
+        return width >= needed(into);
+
+    return (!into.as || width >= from) && object_under(c) &&
+           width >= needed(into);
 }
 
 bool offsets_in(const operation_t &, const type_t &, const into_t &);
@@ -2870,7 +2935,7 @@ loads_into(const expr_t &lhs, const into_t &into)
                offsets_in(ordered_sum(b, stride(lhs.type)), lhs.type, into);
     }
 
-    return operates_in(ordered(b, lhs.type, &into), lhs.type, into);
+    return operates_in(ordered(b), lhs.type, into);
 }
 
 // Whether r = L op R, of type t, its operands in the order of
@@ -2885,46 +2950,14 @@ loads_into(const expr_t &lhs, const into_t &into)
 bool
 operates_in(const operation_t &b, const type_t &t, const into_t &into)
 {
-    switch (b.op) {
-    case binary_op_t::add:
-    case binary_op_t::sub:
-    case binary_op_t::mul:
-    case binary_op_t::bit_and:
-    case binary_op_t::bit_or:
-    case binary_op_t::bit_xor:
-    case binary_op_t::shl:
-    case binary_op_t::shr: break;
-    default: return false;
-    }
+    if (!two_address(b.op))
+        return false;
 
     if (is< pointer_t >(t) || is< pointer_t >(b.lhs->type) ||
         !(t == computed_type(into)))
         return false;
 
     return leaf_apart_from(*b.rhs, into.variable) && loads_into(*b.lhs, into);
-}
-
-// An operation of type t in the order its row generates it, ordered()'s,
-// when its value goes to the register variable into hands down, or to
-// nothing when into is null.  A constant on the left that ordered()
-// takes on the right stays on the left where that order alone is the
-// operation on the variable's register (chapter 4): v = 5 + (int) u
-// into a register unsigned v has the constant as L, which its mov puts
-// in the register, where (int) u, an object under a conversion of the
-// signedness alone in a row computing in another signedness, is no load
-// into the register, and the sum would be computed elsewhere and moved,
-// an instruction more.  r = 5 + c on a register char c is ordered()'s
-// c + 5, since (int) c is c's read, register_read()'s.
-operation_t
-ordered(const binary_t &b, const type_t &t, const into_t *into)
-{
-    const auto o = ordered(b);
-    if (!into || o.lhs == b.lhs.get() || operates_in(o, t, *into))
-        return o;
-
-    const auto source = as_written(b);
-
-    return operates_in(source, t, *into) ? source : o;
 }
 
 // Whether r = P + N, N + P or P - N, of pointer type t, is the operation
@@ -3208,7 +3241,7 @@ binary(state_t &s, const expr_t &e, into_t *into = nullptr, unsigned wanted = 0)
 
     // a constant on the left of an operator that commutes is taken on
     // the right, 4 * x as x * 4 (6.1)
-    const auto o = ordered(b, e.type, into);
+    const auto o = ordered(b);
     const int width = operation_width(e.type);
 
     if (const auto *object = multiplicand(o, width))
