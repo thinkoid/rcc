@@ -365,6 +365,18 @@ report(const error_t &e)
     report(e.where, "error", e.what);
 }
 
+// The warnings recorded so far, in the order the parse met them, unless
+// -w silences them; each is printed once, and the list is left empty.
+void
+report_warnings(const options_t &opts, std::vector< warning_t > &warnings)
+{
+    if (opts.warnings)
+        for (const auto &w : warnings)
+            report(w.where, "warning", w.what);
+
+    warnings.clear();
+}
+
 // A clang command line.  clang's default is the machine it runs on,
 // so the target is named only when it is another.
 std::vector< std::string >
@@ -396,7 +408,9 @@ assemble(const options_t &opts, std::string_view text)
 // assembly file or clang.  Returns rcc's exit status, which no warning
 // changes; -w silences the warnings.  A diagnostic names its file by a
 // view into the preprocessed text, so it is reported in this frame,
-// while the text is alive.
+// while the text is alive.  The warnings are this frame's too, so the
+// error that ends a parse loses none: they are printed before it, as
+// they precede it in the source, and after a parse that succeeds.
 int
 drive(const options_t &opts)
 {
@@ -404,17 +418,17 @@ drive(const options_t &opts)
     if (pp.status != 0)
         return pp.status;
 
+    std::vector< warning_t > warnings;
     std::ostringstream assembly;
     try {
         const auto tokens = tokenize(pp.text, opts.file);
-        const auto unit = parse(tokens, *opts.target);
-        if (opts.warnings)
-            for (const auto &w : unit.warnings)
-                report(w.where, "warning", w.what);
+        const auto unit = parse(tokens, *opts.target, warnings);
+        report_warnings(opts, warnings);
 
         generate(unit, *opts.target, opts.file, assembly);
     }
     catch (const error_t &e) {
+        report_warnings(opts, warnings);
         report(e);
         return 1;
     }

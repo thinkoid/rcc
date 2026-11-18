@@ -1,0 +1,8 @@
+tests/error/warning-before-error.c:9:37: warning: register variable 'g' in a stack slot: the five registers are taken
+tests/error/warning-before-error.c:9:40: warning: register variable 'h' in a stack slot: the five registers are taken
+tests/error/warning-before-error.c:9:43: warning: register variable 'i' in a stack slot: the five registers are taken
+tests/error/warning-before-error.c:9:46: warning: register variable 'j' in a stack slot: the five registers are taken
+tests/error/warning-before-error.c:9:49: warning: register variable 'l' in a stack slot: the five registers are taken
+tests/error/warning-before-error.c:9:52: warning: register variable 'k' in a stack slot: the five registers are taken
+tests/error/warning-before-error.c:11:17: error: cannot take the address of 'k', declared register
+status 1

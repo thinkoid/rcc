@@ -486,14 +486,11 @@ struct object_decl_t
     std::optional< std::vector< subobject_t > > init;
 };
 
-// The warnings in the order the parser met them; the unit compiles
-// whatever they say.
 struct unit_t
 {
     std::deque< symbol_t > symbols;
     std::vector< function_decl_t > functions;
     std::vector< object_decl_t > objects;
-    std::vector< warning_t > warnings;
 };
 
 } // namespace rcc

@@ -580,23 +580,6 @@ listing of =copy()='s loop under rcc is unchanged.
 
 * Parser
 
-** TODO A warning recorded before an error is never printed
-
-The parser records a warning in the unit, and the driver prints the
-unit's warnings only after a successful parse. =error_t= ends the
-parse at the first error, so the unit and its warnings are lost with
-the exception. Thus =&k= on a sixth register variable reports the
-error alone: the warning that put =k= in a slot was recorded at its
-declaration, before the error, and is never printed.
-
-Fix: the driver prints the warnings the parser recorded before the
-error too. Since the unit is lost with the exception, the warnings
-need a home the exception does not destroy, such as a list the
-driver passes to the parser.
-
-Check: =int f(void) { register int a, b, c, d, e, k; return *&k; }=
-prints the warning at =k= and then the error at =&=, exit status 1.
-
 ** TODO Assignment to a const object is not diagnosed
 
 The parser accepts =const= and drops it: the type is the machine's

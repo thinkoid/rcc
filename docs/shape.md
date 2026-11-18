@@ -782,14 +782,17 @@ pipeline, and it is literal, so `-O` is an unknown option and a usage
 error. Processes are spawned by fork and exec, never `system`; the
 temporary `.s` of `-c` and of a link is removed on every way out.
 
-A warning does not stop the translation. The parser records it in
-the unit, and the driver prints the unit's warnings after a
-successful parse, on standard error in the error's format, `warning`
-in place of `error`. `-w` silences them, and no warning changes the
-exit status. The one warning is for a `register` variable whose
-register would be past the target's count, the sixth on x86-64 and
-the eleventh on aarch64, which takes a slot (`backend.md` chapter
-4).
+A warning does not stop the translation. The parser adds it to a
+list the driver owns and passes to the parse, so an error that ends
+the parse loses none of those recorded before it. The driver prints
+the list once, on standard error in the error's format, `warning` in
+place of `error`: after a parse that succeeds, or before the error
+that ends one, the order in which the parse met them all, as each
+warning stands before the first error in the source. `-w` silences
+the warnings, and no warning changes the exit status. The one warning
+is for a `register` variable whose register would be past the
+target's count, the sixth on x86-64 and the eleventh on aarch64,
+which takes a slot (`backend.md` chapter 4).
 
 Exit status: 0; 1 for a diagnosed error or a failed system call; 2
 for a usage error; 3 for an internal error, a construct c1 does not

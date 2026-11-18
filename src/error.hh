@@ -3,8 +3,9 @@
 // The diagnostics: where and what.  An error is thrown by the lexer or
 // the parser at the first error, caught and printed by the driver;
 // there is no recovery and no second error.  A warning does not stop
-// the translation: the parser records it in the unit, and the driver
-// prints it after a successful parse.
+// the translation: the parser adds it to a list the driver owns, and
+// the driver prints the list after the parse, or before the error that
+// ends it.
 
 #pragma once
 

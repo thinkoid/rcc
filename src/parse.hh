@@ -2,7 +2,9 @@
 
 // The parser's one entry: tokens in, a typed unit out.  The target
 // gives the count of register variables, the signedness of plain char
-// and the frame limit.  Throws error_t at the first error.
+// and the frame limit.  Each warning is added to warnings as the parse
+// meets it, a list the caller owns, so the warnings before an error
+// outlive it.  Throws error_t at the first error.
 
 #pragma once
 
@@ -14,6 +16,8 @@
 
 namespace rcc {
 
-unit_t parse(const std::vector< token_t > &, const target_t &);
+unit_t parse(const std::vector< token_t > &,
+             const target_t &,
+             std::vector< warning_t > &warnings);
 
 } // namespace rcc

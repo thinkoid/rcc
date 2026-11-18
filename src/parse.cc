@@ -91,11 +91,14 @@ struct open_switch_t
 // a block declared first, by name, which no declaration at file scope
 // has met yet: each is the entity a later declaration of the name of
 // external linkage denotes, at file scope or in another block, 6.2.2p2.
+// warnings is the driver's list, which the parse adds each warning to
+// as it meets it, and which outlives an error the parse throws.
 struct parser_t
 {
     const std::vector< token_t > &tokens;
     std::size_t pos;
     const target_t &target;
+    std::vector< warning_t > &warnings;
 
     std::vector< scope_t > scopes;
 
@@ -1731,7 +1734,7 @@ register_index(parser_t &p, const token_t &name, bool in_register)
     const int count = p.target.register_variables;
     const int next = in_register ? next_register(p) : 0;
     if (in_register && next >= count) {
-        p.unit.warnings.push_back(
+        p.warnings.push_back(
             { name.where, "register variable " + quoted(name.text) +
                               " in a stack slot: the " + in_words(count) +
                               " registers are taken" });
@@ -5935,11 +5938,12 @@ primary_expression(parser_t &p)
 } // namespace
 
 unit_t
-parse(const std::vector< token_t > &tokens, const target_t &target)
+parse(const std::vector< token_t > &tokens,
+      const target_t &target,
+      std::vector< warning_t > &warnings)
 {
-    parser_t p {
-        tokens, 0, target, { }, { }, make_void(), 0, first_tag_identity
-    };
+    parser_t p { tokens, 0,           target, warnings,          { },
+                 { },    make_void(), 0,      first_tag_identity };
     p.scopes.emplace_back();
 
     translation_unit(p);

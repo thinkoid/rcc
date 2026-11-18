@@ -1,0 +1,3 @@
+tests/error/warning-before-error.c:9:52: warning: register variable 'k' in a stack slot: the ten registers are taken
+tests/error/warning-before-error.c:11:17: error: cannot take the address of 'k', declared register
+status 1
