@@ -3499,9 +3499,17 @@ generate_aarch64(const unit_t &unit,
 
     out << std::format("\t.file\t{}\n\t.text\n", quoted_file(file));
 
-    for (const auto &fd : unit.functions)
-        if (fd.body)
+    for (const auto &fd : unit.functions) {
+        if (!fd.body)
+            continue;
+
+        try {
             function(s, fd);
+        }
+        catch (const refusal_t &e) {
+            refused_in(fd.sym->name, e);
+        }
+    }
 
     data(s.out, s.strings, unit.objects, target);
 

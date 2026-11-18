@@ -19,6 +19,7 @@
 
 #include <optional>
 #include <ostream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -26,7 +27,21 @@
 
 namespace rcc {
 
-[[noreturn]] void not_yet(std::string_view what);
+// A refusal: a construct c1 does not handle yet, docs/shape.md chapter
+// 8.  what() is "c1: not yet: " and the construct, which the driver
+// reports as an internal error; construct is the words after it.
+struct refusal_t: std::logic_error
+{
+    explicit refusal_t(const std::string &construct);
+
+    std::string construct;
+};
+
+[[noreturn]] void not_yet(std::string_view construct);
+
+// A refusal met while the function named function was generated,
+// thrown again with the function's name after the construct.
+[[noreturn]] void refused_in(std::string_view function, const refusal_t &);
 
 const int_t &integer(const type_t &);
 int operation_width(const type_t &);

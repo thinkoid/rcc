@@ -1,2 +1,2 @@
-rcc: internal error: c1: not yet: an element of 2 GiB or more
+rcc: internal error: c1: not yet: an element of 2 GiB or more, in function 'f'
 status 3

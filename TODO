@@ -187,19 +187,6 @@ Fix: =cast()='s comment moves down to =cast()=.
 Check: each of the two functions is under its own comment, in both
 files.
 
-** TODO A refusal of c1 names no place
-
-c1's not-yets print "rcc: internal error: c1: not yet: a frame of 2
-GiB or more" and exit with status 3. The message names no file, no
-line and no function, since the tree carries no positions
-(=shape.md= chapter 4). In a file of several functions the reader is
-not told which one met the limit.
-
-Fix: the message names the function being generated, which the
-state holds.
-
-Check: the five pins of c1's refusals in =tests/error= name =main=.
-
 ** TODO aarch64: a stack parameter at the frame's limit is refused
 
 A parameter past the eighth is copied to its slot from above the

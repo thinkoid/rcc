@@ -1,2 +1,2 @@
-rcc: internal error: c1: not yet: an outgoing area of 4096 bytes or more
+rcc: internal error: c1: not yet: an outgoing area of 4096 bytes or more, in function 'main'
 status 3

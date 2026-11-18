@@ -21,10 +21,24 @@
 
 namespace rcc {
 
-[[noreturn]] void
-not_yet(std::string_view what)
+refusal_t::refusal_t(const std::string &construct)
+    : std::logic_error("c1: not yet: " + construct), construct(construct)
 {
-    throw std::logic_error(std::format("c1: not yet: {}", what));
+}
+
+[[noreturn]] void
+not_yet(std::string_view construct)
+{
+    throw refusal_t(std::string(construct));
+}
+
+// The tree carries no positions, so the place a refusal names is the
+// function, quoted as the parser quotes a name: "c1: not yet: a frame
+// of 2 GiB or more, in function 'main'".
+[[noreturn]] void
+refused_in(std::string_view function, const refusal_t &e)
+{
+    not_yet(std::format("{}, in function '{}'", e.construct, function));
 }
 
 // types

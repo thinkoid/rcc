@@ -620,6 +620,13 @@ Exit status: 0; 1 for a diagnosed error or a failed system call; 2
 for a usage error; 3 for an internal error, a construct c1 does not
 handle yet; `clang`'s own status when it fails.
 
+A construct c1 does not handle yet is refused as `rcc: internal
+error: c1: not yet: a frame of 2 GiB or more, in function 'main'`.
+The tree carries no positions (chapter 4), so the place it names is
+the function c1 was generating, quoted as the parser quotes a name.
+The message starts as every refusal of c1 does, `c1: not yet:`, which
+`tests/costs` reads as a construct whose slice is not in the tree.
+
 ## 9. The build and the layout
 
 GNU make, one executable. The Makefile is short enough to read
