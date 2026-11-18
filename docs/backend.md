@@ -829,8 +829,9 @@ in `rax` already. The name stops at a node whose right operand or
 place holds a pinned instruction within it, a call or a division:
 there a value held in the named register would be moved out, or a
 value the operand computes outside it would move into the pinned
-one. A right operand that writes the variable whose borrowed read is
-the left operand takes the name too: `preserve()` copies the read
+one, but for the quotient the division leaves in `rax` (6.5). A right
+operand that writes the variable whose borrowed read is the left
+operand takes the name too: `preserve()` copies the read
 inside it, so the copy is handed the name, and the right operand is
 generated with the register left for last, so that nothing of it
 writes the register before the copy, which, held, keeps it to the
@@ -1312,7 +1313,11 @@ into the dividend's register when the dividend is in neither `rax`
 nor `rdx` is 6.1's "the result is `L`", and the rules do not remove
 it, but where the quotient's consumer names `rax`: `return (a + b /
 c) / d` divides `a + b / c` from `ecx` and leaves the quotient in
-`eax` (6.1). A shift's count is so written in `rcx` where it is free,
+`eax` (6.1). The name reaches the quotient though it is withheld from
+the dividend, for a call or a division within the right operand
+(6.1): `return p - h(q)` on two `int *`, `return x / (y / z)` and
+`return x /= f(y)` end in the division, the last with the store from
+`eax`. A shift's count is so written in `rcx` where it is free,
 the extension of a call's `char` result being `movsbl %al, %ecx`; a
 count that is a call's result itself, in `rax` by the convention, and
 one generated while `rcx` holds a live value, `a + (b + (c + (x <<
@@ -2521,7 +2526,8 @@ answers:
     out of `x0` (`aarch64.md` 6.1 and chapter 15, call 13).
     The cost is a second hand-down beside the variable's and, on
     x86-64, a boundary: a node whose right operand or place
-    holds a call or a division, a right operand that writes the
+    holds a call or a division, but a division's own quotient, which
+    stays in `rax` (6.5), a right operand that writes the
     borrowed read's variable with such a pin within it, and a count
     that is a call's result or is generated while `rcx` holds a live
     value keep the `mov`, a

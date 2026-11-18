@@ -16,7 +16,11 @@
    remainder, rem_remainder; as the result of %= on a register
    variable, rem_register, and on a local, rem_local; and as the first
    arm of ?:, rem_arm, whose arms join in the register the return names
-   (backend.md 6.1).
+   (backend.md 6.1).  A quotient stays in rax where the consumer names
+   it, though the name was withheld from the dividend for a division
+   or a call within the right operand: quotient_nested returns x / (y
+   / z), and quotient_compound x /= f(y); beside them remainder_called
+   returns x % f(y), whose remainder is in rdx.
 
    On x86-64, where c is the division's operand in its slot (backend.md
    6.1), the listing must show, in div_busy and rem_busy, a loaded into
@@ -46,7 +50,12 @@
    show the first arm's idivl and the remainder moved into the
    register the return names, movl %edx, %eax, before its jump, the
    second arm's load into it, movl -12(%rbp), %eax, and no move after
-   the join: 16 instructions.
+   the join: 16 instructions.  quotient_nested must show the inner
+   idivl -12(%rbp), x in ecx moved into eax and idivl %esi, with no
+   move after it; quotient_compound the call, x in ecx moved into eax,
+   idivl %esi and the store movl %eax, -4(%rbp), with no move after
+   it; and remainder_called idivl %ecx and the return's movl %edx,
+   %eax.
 
    On aarch64 the listing is the division on the registers the loads
    took, a in w0, b in w1 and c in w2: sdiv w1, w1, w2 in div_busy(),
@@ -58,7 +67,9 @@
    move and no spill.  The rem_ functions are sdiv and msub on the
    registers the loads took, msub writing the register the remainder's
    use reads, w0 for a return, and rem_arm joins its arms in w0 with no
-   move. */
+   move.  quotient_nested is sdiv w1, w1, w2 and sdiv w0, w0, w1,
+   quotient_compound sdiv w0, w1, w0 after the call and the store from
+   w0, and remainder_called sdiv w2, w1, w0 and msub w0, w2, w0, w1. */
 int div_busy(int a, int b, int c)
 {
     return a + b / c;
@@ -140,4 +151,22 @@ int
 rem_arm(int c, int x, int y)
 {
         return c ? x % y : y;
+}
+
+int
+quotient_nested(int x, int y, int z)
+{
+        return x / (y / z);
+}
+
+int
+quotient_compound(int x, int y)
+{
+        return x /= f(y);
+}
+
+int
+remainder_called(int x, int y)
+{
+        return x % f(y);
 }

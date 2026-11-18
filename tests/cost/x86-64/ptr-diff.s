@@ -127,6 +127,102 @@ assigned:
 	ret
 	.cfi_endproc
 	.size	assigned, .-assigned
+	.globl	called
+	.type	called, @function
+called:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$32, %rsp
+	movq	%rdi, -8(%rbp)
+	movq	%rsi, -16(%rbp)
+	movq	-8(%rbp), %rax
+	movq	%rax, -24(%rbp)
+	movq	-16(%rbp), %rax
+	movq	%rax, -32(%rbp)
+	movq	-32(%rbp), %rdi
+	call	h@PLT
+	movq	-24(%rbp), %rcx
+	subq	%rax, %rcx
+	movq	$4, %rsi
+	movq	%rcx, %rax
+	cqto
+	idivq	%rsi
+	jmp	.Lcalled.1
+.Lcalled.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	called, .-called
+	.globl	called_count
+	.type	called_count, @function
+called_count:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$48, %rsp
+	movq	%rdi, -8(%rbp)
+	movq	%rsi, -16(%rbp)
+	movq	%rdx, -24(%rbp)
+	movq	-8(%rbp), %rsi
+	movq	-16(%rbp), %rax
+	movq	%rax, -32(%rbp)
+	movq	%rsi, -40(%rbp)
+	movq	-24(%rbp), %rax
+	movq	%rax, -48(%rbp)
+	movq	-48(%rbp), %rdi
+	call	h@PLT
+	movq	-32(%rbp), %rcx
+	subq	%rax, %rcx
+	movq	$4, %rsi
+	movq	%rcx, %rax
+	cqto
+	idivq	%rsi
+	movq	%rax, %rcx
+	movq	-40(%rbp), %rax
+	shlq	%cl, %rax
+	jmp	.Lcalled_count.1
+.Lcalled_count.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	called_count, .-called_count
+	.globl	called_char
+	.type	called_char, @function
+called_char:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$32, %rsp
+	movq	%rdi, -8(%rbp)
+	movq	%rsi, -16(%rbp)
+	movq	-8(%rbp), %rax
+	movq	%rax, -24(%rbp)
+	movq	-16(%rbp), %rax
+	movq	%rax, -32(%rbp)
+	movq	-32(%rbp), %rdi
+	call	hc@PLT
+	movq	-24(%rbp), %rcx
+	subq	%rax, %rcx
+	movq	%rcx, %rax
+	jmp	.Lcalled_char.1
+.Lcalled_char.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	called_char, .-called_char
 	.bss
 	.globl	chars
 	.type	chars, @object

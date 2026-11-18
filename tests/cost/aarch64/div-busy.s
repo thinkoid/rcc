@@ -436,4 +436,98 @@ rem_arm:
 	ret
 	.cfi_endproc
 	.size	rem_arm, .-rem_arm
+	.globl	quotient_nested
+	.type	quotient_nested, @function
+quotient_nested:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	str	w1, [x29, #20]
+	str	w2, [x29, #24]
+	ldr	w0, [x29, #16]
+	ldr	w1, [x29, #20]
+	ldr	w2, [x29, #24]
+	sdiv	w1, w1, w2
+	sdiv	w0, w0, w1
+	b	.Lquotient_nested.1
+.Lquotient_nested.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	quotient_nested, .-quotient_nested
+	.globl	quotient_compound
+	.type	quotient_compound, @function
+quotient_compound:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	str	w1, [x29, #20]
+	ldr	w0, [x29, #20]
+	str	w0, [x29, #24]
+	ldr	w0, [x29, #24]
+	bl	f
+	ldr	w1, [x29, #16]
+	sdiv	w0, w1, w0
+	str	w0, [x29, #16]
+	b	.Lquotient_compound.1
+.Lquotient_compound.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	quotient_compound, .-quotient_compound
+	.globl	remainder_called
+	.type	remainder_called, @function
+remainder_called:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	str	w1, [x29, #20]
+	ldr	w0, [x29, #16]
+	str	x0, [x29, #24]
+	ldr	w0, [x29, #20]
+	str	w0, [x29, #32]
+	ldr	w0, [x29, #32]
+	bl	f
+	ldr	x1, [x29, #24]
+	sdiv	w2, w1, w0
+	msub	w0, w2, w0, w1
+	b	.Lremainder_called.1
+.Lremainder_called.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	remainder_called, .-remainder_called
 	.section	.note.GNU-stack,"",@progbits

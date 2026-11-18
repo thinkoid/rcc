@@ -45,20 +45,6 @@ the call: ~p[f(i) + 1] = x~ holds it, ~p[i + f(j)] = x~ does not.
 Check: =joined_called= with no move on its paths, and no function
 longer.
 
-** TODO x86-64: a pointer difference with a call moves its quotient out of =rax= and back
-
-~return p - h(q);~ on two ~int *~ writes =idivq %rsi; movq %rax,
-%rcx; movq %rcx, %rax=, two moves that cancel. The name of the
-=return= is withheld from the left operand because a call is in the
-right one, so =divide()= in =src/c1-x86-64.cc= moves the quotient
-into the left operand's register, and the =return= moves it back.
-
-Fix: =difference()= and =divide()= leave the quotient in =rax= where
-the consumer names =rax=, whether or not the name was withheld from
-the left operand.
-
-Check: a cost function ~p - h(q)~ with no =mov= after =idivq=.
-
 ** TODO x86-64: a sum whose right operand holds a call keeps the =return='s =mov=
 
 A =return='s value is computed in =rax= (=backend.md= 6.1), but the

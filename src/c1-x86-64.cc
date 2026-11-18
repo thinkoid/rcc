@@ -2509,7 +2509,10 @@ subtract_pointer(state_t &s, value_t l, const expr_t &q, unsigned pinned)
 // as any divisor is (chapter 6.5), so the difference is in rax when rax
 // is free, and the quotient stays there.  At a size of 1, p is handed
 // the register the consumer names, wanted, and q is taken outside it
-// where held_out() says, as an operation's right operand is (6.1).
+// where held_out() says, as an operation's right operand is (6.1).  At
+// any other size the quotient stays in rax where wanted names it,
+// divide()'s, though p was not handed it for a call within q, return p
+// - h(q) ending in the idivq.
 value_t
 difference(state_t &s, const binary_t &b, unsigned wanted = 0)
 {
@@ -2531,7 +2534,7 @@ difference(state_t &s, const binary_t &b, unsigned wanted = 0)
     constant(s, reg_of(s, d), size, 64);
 
     return divide(s, binary_op_t::div, l, { .value = d, .width = 64 },
-                  int_t { 64, true });
+                  int_t { 64, true }, wanted);
 }
 
 // The condition code of a comparison, the suffix of jcc and setcc:
@@ -3536,7 +3539,10 @@ copied_into(const state_t &s, value_t l, const expr_t &rhs, unsigned named)
 // or the reload of a spilled left operand finds it free: return r -
 // p[i] is movl %ebx, %eax; subl (%rcx,%rdx,4), %eax (6.1).  A right
 // operand that writes the variable of a borrowed left operand is taken
-// outside it too, and the read's copy takes it, copied_into()'s.
+// outside it too, and the read's copy takes it, copied_into()'s.  A
+// quotient stays in the register the consumer names, rax, divide()'s,
+// though the left operand was not handed it for a call or a division
+// within the right one, return x / (y / z) ending in the idivl.
 value_t
 binary(state_t &s, const expr_t &e, into_t *into = nullptr, unsigned wanted = 0)
 {
@@ -3604,7 +3610,7 @@ binary(state_t &s, const expr_t &e, into_t *into = nullptr, unsigned wanted = 0)
     s.named_read = outer_read;
     s.named_copy = outer_copy;
 
-    return arithmetic(s, o.op, l, r, e.type, named);
+    return arithmetic(s, o.op, l, r, e.type, wanted);
 }
 
 // ++ and -- of a register variable: add or sub of 1, or of the size for
@@ -3955,7 +3961,9 @@ assign_register(state_t &s, const assign_t &a, const symbol_t *sym)
 // the value names, wanted, is left out of the place too, so that the
 // value takes it, a plain assignment's right operand, handed it, or a
 // compound one's load, where no instruction within the place or the
-// right operand pins a register, as wanted_left() has it (6.1).
+// right operand pins a register, as wanted_left() has it (6.1); a
+// compound division's quotient stays in rax where the consumer names
+// it, divide()'s, and is stored from there, return x /= f(y).
 value_t
 assign(state_t &s, const assign_t &a, unsigned wanted = 0)
 {
@@ -3991,7 +3999,7 @@ assign(state_t &s, const assign_t &a, unsigned wanted = 0)
     // above its width are the operation's, not the value's extension
     const auto l = fetch(s, place, t, width);
     const auto v = stepped ? displaced(s, *a.op, l, r) :
-                             arithmetic(s, *a.op, l, r, a.common);
+                             arithmetic(s, *a.op, l, r, a.common, wanted);
     store(s, v, place, t.width);
     release(s, place);
     s.values[v.id].valid = std::min(s.values[v.id].valid, t.width);

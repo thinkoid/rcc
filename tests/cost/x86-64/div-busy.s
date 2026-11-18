@@ -357,4 +357,90 @@ rem_arm:
 	ret
 	.cfi_endproc
 	.size	rem_arm, .-rem_arm
+	.globl	quotient_nested
+	.type	quotient_nested, @function
+quotient_nested:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	movl	%edx, -12(%rbp)
+	movl	-4(%rbp), %ecx
+	movl	-8(%rbp), %eax
+	cltd
+	idivl	-12(%rbp)
+	movq	%rax, %rsi
+	movl	%ecx, %eax
+	cltd
+	idivl	%esi
+	jmp	.Lquotient_nested.1
+.Lquotient_nested.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	quotient_nested, .-quotient_nested
+	.globl	quotient_compound
+	.type	quotient_compound, @function
+quotient_compound:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$16, %rsp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	movl	-8(%rbp), %eax
+	movl	%eax, -12(%rbp)
+	movl	-12(%rbp), %edi
+	call	f@PLT
+	movl	-4(%rbp), %ecx
+	movq	%rax, %rsi
+	movl	%ecx, %eax
+	cltd
+	idivl	%esi
+	movl	%eax, -4(%rbp)
+	jmp	.Lquotient_compound.1
+.Lquotient_compound.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	quotient_compound, .-quotient_compound
+	.globl	remainder_called
+	.type	remainder_called, @function
+remainder_called:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$32, %rsp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	movl	-4(%rbp), %eax
+	movq	%rax, -16(%rbp)
+	movl	-8(%rbp), %eax
+	movl	%eax, -20(%rbp)
+	movl	-20(%rbp), %edi
+	call	f@PLT
+	movq	%rax, %rcx
+	movq	-16(%rbp), %rax
+	cltd
+	idivl	%ecx
+	movl	%edx, %eax
+	jmp	.Lremainder_called.1
+.Lremainder_called.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	remainder_called, .-remainder_called
 	.section	.note.GNU-stack,"",@progbits
