@@ -2966,7 +2966,7 @@ step(state_t &s,
         return post ? l : v;
     }
 
-    s.values[l.id].valid = std::min(written(width, t.is_signed), t.width);
+    s.values[l.id].valid = stored_valid(written(width, t.is_signed), width, t);
 
     return l;
 }
@@ -3173,7 +3173,7 @@ assign(state_t &s, const assign_t &a, unsigned wanted = 0)
                        arithmetic(s, *a.op, l, r, a.common, nullptr, wanted);
     store(s, v, last_access(place), t.width);
     release(s, place);
-    s.values[v.id].valid = std::min(s.values[v.id].valid, t.width);
+    s.values[v.id].valid = stored_valid(s.values[v.id].valid, width, t);
 
     return v;
 }

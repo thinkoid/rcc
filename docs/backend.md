@@ -1141,6 +1141,14 @@ signedness. The instruction that wrote the register sets it:
   at 32 bits is valid to 64 and an `int` to 32;
 - a narrowing cast writes nothing and leaves the bits above its
   width stale;
+- the value of a compound assignment or a step has the object's
+  type, so it is cut to the object's width, but where the operation
+  is at that width its write is the value's: `return *p += e` on an
+  `unsigned *p` widened to `long` ends in the `movl %eax, (%rcx)`
+  with nothing after it, where `*p += l` on a `long l` is an
+  operation in `long`, narrowed by the store, and keeps `movl %eax,
+  %eax`, and an `unsigned short`'s value is re-extended, `movzwq %ax,
+  %rax`;
 - a call's result is valid to its own type's width: 8 for a `char`,
   16 for a `short`, 32 for an `int` or an `unsigned`, 64 for a
   `long` or a pointer, since the ABI leaves the bits above a result

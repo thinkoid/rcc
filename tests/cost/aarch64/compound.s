@@ -93,4 +93,329 @@ in_value:
 	ret
 	.cfi_endproc
 	.size	in_value, .-in_value
+	.globl	unsigned_value
+	.type	unsigned_value, @function
+unsigned_value:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	ldr	x1, [x29, #16]
+	ldr	w0, [x29, #24]
+	ldr	w2, [x1]
+	add	w0, w2, w0
+	str	w0, [x1]
+	b	.Lunsigned_value.1
+.Lunsigned_value.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	unsigned_value, .-unsigned_value
+	.globl	unsigned_divided
+	.type	unsigned_divided, @function
+unsigned_divided:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	ldr	x1, [x29, #16]
+	ldr	w0, [x29, #24]
+	ldr	w2, [x1]
+	udiv	w0, w2, w0
+	str	w0, [x1]
+	b	.Lunsigned_divided.1
+.Lunsigned_divided.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	unsigned_divided, .-unsigned_divided
+	.globl	unsigned_shifted
+	.type	unsigned_shifted, @function
+unsigned_shifted:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	ldr	x1, [x29, #16]
+	ldr	w0, [x29, #24]
+	ldr	w2, [x1]
+	lsr	w0, w2, w0
+	str	w0, [x1]
+	b	.Lunsigned_shifted.1
+.Lunsigned_shifted.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	unsigned_shifted, .-unsigned_shifted
+	.globl	unsigned_step
+	.type	unsigned_step, @function
+unsigned_step:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	ldr	x1, [x29, #16]
+	ldr	w0, [x1]
+	add	w0, w0, #1
+	str	w0, [x1]
+	b	.Lunsigned_step.1
+.Lunsigned_step.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	unsigned_step, .-unsigned_step
+	.globl	unsigned_global
+	.type	unsigned_global, @function
+unsigned_global:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	ldr	w0, [x29, #16]
+	adrp	x16, counter
+	ldr	w1, [x16, :lo12:counter]
+	sub	w0, w1, w0
+	adrp	x16, counter
+	str	w0, [x16, :lo12:counter]
+	b	.Lunsigned_global.1
+.Lunsigned_global.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	unsigned_global, .-unsigned_global
+	.globl	unsigned_slot
+	.type	unsigned_slot, @function
+unsigned_slot:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	str	w1, [x29, #20]
+	ldr	w0, [x29, #16]
+	str	w0, [x29, #24]
+	ldr	w0, [x29, #20]
+	ldr	w1, [x29, #24]
+	mul	w0, w1, w0
+	str	w0, [x29, #24]
+	b	.Lunsigned_slot.1
+.Lunsigned_slot.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	unsigned_slot, .-unsigned_slot
+	.globl	unsigned_postfix
+	.type	unsigned_postfix, @function
+unsigned_postfix:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	ldr	x1, [x29, #16]
+	ldr	w0, [x1]
+	add	w2, w0, #1
+	str	w2, [x1]
+	b	.Lunsigned_postfix.1
+.Lunsigned_postfix.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	unsigned_postfix, .-unsigned_postfix
+	.globl	unsigned_wide
+	.type	unsigned_wide, @function
+unsigned_wide:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	x1, [x29, #24]
+	ldr	x1, [x29, #16]
+	ldr	x0, [x29, #24]
+	ldr	w2, [x1]
+	add	x0, x2, x0
+	str	w0, [x1]
+	mov	w0, w0
+	b	.Lunsigned_wide.1
+.Lunsigned_wide.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	unsigned_wide, .-unsigned_wide
+	.globl	unsigned_narrow
+	.type	unsigned_narrow, @function
+unsigned_narrow:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	ldr	x1, [x29, #16]
+	ldr	w0, [x29, #24]
+	ldrh	w2, [x1]
+	add	w0, w2, w0
+	strh	w0, [x1]
+	uxth	w0, w0
+	b	.Lunsigned_narrow.1
+.Lunsigned_narrow.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	unsigned_narrow, .-unsigned_narrow
+	.globl	signed_value
+	.type	signed_value, @function
+signed_value:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	ldr	x1, [x29, #16]
+	ldr	w0, [x29, #24]
+	ldr	w2, [x1]
+	add	w0, w2, w0
+	str	w0, [x1]
+	sxtw	x0, w0
+	b	.Lsigned_value.1
+.Lsigned_value.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	signed_value, .-signed_value
+	.globl	unsigned_plain
+	.type	unsigned_plain, @function
+unsigned_plain:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	x1, [x29, #24]
+	ldr	x1, [x29, #16]
+	ldr	x0, [x29, #24]
+	str	w0, [x1]
+	mov	w0, w0
+	b	.Lunsigned_plain.1
+.Lunsigned_plain.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	unsigned_plain, .-unsigned_plain
+	.bss
+	.globl	counter
+	.type	counter, @object
+	.size	counter, 4
+	.p2align 2
+counter:
+	.zero	4
 	.section	.note.GNU-stack,"",@progbits

@@ -134,6 +134,22 @@ written(int width, bool is_signed)
     return width == 32 && !is_signed ? 64 : width;
 }
 
+// The width the value of a compound assignment or a step is valid to,
+// backend.md 6.3, the width rule: the value has the object's type, so
+// the bits above the object's width are the operation's and are cut;
+// but an operation at the object's own width wrote the value at it, so
+// the value is valid as that write leaves it, an unsigned of 32 bits
+// to 64.  valid is what the operation's row left, width the operation's.
+int
+stored_valid(int valid, int width, const int_t &object)
+{
+    const int cut = width == object.width ?
+                        written(object.width, object.is_signed) :
+                        object.width;
+
+    return std::min(valid, cut);
+}
+
 // operands
 
 // The name the assembly gives a symbol, at its label and at every use:

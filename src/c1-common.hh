@@ -50,6 +50,7 @@ long long widened(long long value, const int_t &);
 long long scaled(long long index, long size);
 long long wrapped_add(long long a, long long b);
 int written(int width, bool is_signed);
+int stored_valid(int valid, int width, const int_t &object);
 
 std::string_view assembly_name(const symbol_t &);
 std::string symbol_plus(std::string_view symbol, long long offset);

@@ -3896,7 +3896,7 @@ step(state_t &s, const unary_t &u, into_t *into = nullptr, unsigned wanted = 0)
     insn(s, sized(up ? "add" : "sub", width), { imm(amount), reg(r, width) });
     store(s, l, place, t.width);
     release(s, place);
-    s.values[l.id].valid = std::min(written(width, t.is_signed), t.width);
+    s.values[l.id].valid = stored_valid(written(width, t.is_signed), width, t);
 
     if (!post)
         return l;
@@ -4169,7 +4169,7 @@ assign(state_t &s, const assign_t &a, unsigned wanted = 0)
                              arithmetic(s, *a.op, l, r, a.common, wanted);
     store(s, v, place, t.width);
     release(s, place);
-    s.values[v.id].valid = std::min(s.values[v.id].valid, t.width);
+    s.values[v.id].valid = stored_valid(s.values[v.id].valid, width, t);
 
     return v;
 }

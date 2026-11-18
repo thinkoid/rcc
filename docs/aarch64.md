@@ -899,6 +899,10 @@ The width rule holds as written. Its facts on this machine:
 - a write to a `w` name clears the upper half, so an `unsigned`
   written at 32 is valid to 64 and an `int` to 32;
 - a narrowing cast writes nothing;
+- the value of a compound assignment or a step at the object's own
+  width is the operation's write, so `return *p += e` on an `unsigned
+  *p` widened to `long` ends in `str w0, [x1]` with nothing after it,
+  where an operation in `long`, `*p += l`, keeps `mov w0, w0`;
 - a call's result is valid to its own type's width and no more: 8 for
   a `char`, 16 for a `short`, since the convention leaves the rest
   unspecified (chapter 3). The cast that widens it writes the

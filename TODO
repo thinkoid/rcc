@@ -181,23 +181,6 @@ the arms are converted on their paths under any consumer.
 
 Check: the count over =tests=, and no function longer.
 
-** TODO An unsigned compound assignment's or step's value loses its validity to 64 bits
-
-~return *p += e~ on an ~unsigned *p~ widened to =long= ends =addl
-%edx, %eax; movl %eax, (%rcx); movl %eax, %eax= on x86-64 and =add w0,
-w2, w0; str w0, [x1]; mov w0, w0= on aarch64, and a prefix step the
-same: the row's value is cut to the object's width, which loses the
-64 bits a 32-bit write of an =unsigned= is valid to. Over =tests=, 91
-sites on x86-64, 8 of them a =divl='s result, and 94 on aarch64, in
-the memory, pointers, globals, walk and straight probes.
-
-Fix: where the operation's width is 32 and the object is an
-=unsigned= of 32 bits, the row's value is valid as a 32-bit write of
-an =unsigned= is, in the assignment and step rows of each generator.
-
-Check: the counts over =tests= with no clearing move after the store,
-and no function longer.
-
 ** TODO A 32-bit write's value widened as an unsigned is cleared again
 
 Any write of a 32-bit register name clears the upper half, so the
