@@ -489,6 +489,181 @@ byte_value:
 	ret
 	.cfi_endproc
 	.size	byte_value, .-byte_value
+	.globl	view_subscript
+	.type	view_subscript, @function
+view_subscript:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	ldr	x0, [x29, #16]
+	add	x0, x0, #1
+	ldr	w0, [x0, #12]
+	b	.Lview_subscript.1
+.Lview_subscript.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	view_subscript, .-view_subscript
+	.globl	view_indexed
+	.type	view_indexed, @function
+view_indexed:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	ldr	x0, [x29, #16]
+	add	x0, x0, #1
+	ldr	w1, [x29, #24]
+	ldr	w0, [x0, w1, sxtw #2]
+	b	.Lview_indexed.1
+.Lview_indexed.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	view_indexed, .-view_indexed
+	.globl	byte_both_sides
+	.type	byte_both_sides, @function
+byte_both_sides:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	ldr	x0, [x29, #16]
+	add	x0, x0, #4
+	ldr	w1, [x29, #24]
+	mov	w2, #4
+	mul	w1, w1, w2
+	add	x0, x0, w1, sxtw
+	ldrsh	w0, [x0, #2]
+	b	.Lbyte_both_sides.1
+.Lbyte_both_sides.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	byte_both_sides, .-byte_both_sides
+	.globl	two_casts
+	.type	two_casts, @function
+two_casts:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	ldr	x0, [x29, #16]
+	add	x0, x0, #1
+	add	x0, x0, #4
+	add	x0, x0, #2
+	ldr	w0, [x0, #4]
+	b	.Ltwo_casts.1
+.Ltwo_casts.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	two_casts, .-two_casts
+	.globl	two_indexes
+	.type	two_indexes, @function
+two_indexes:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	str	w2, [x29, #28]
+	ldr	x0, [x29, #16]
+	ldr	w1, [x29, #24]
+	mov	w2, #4
+	mul	w1, w1, w2
+	add	x0, x0, w1, sxtw
+	ldr	w1, [x29, #28]
+	ldrsh	w0, [x0, w1, sxtw]
+	b	.Ltwo_indexes.1
+.Ltwo_indexes.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	two_indexes, .-two_indexes
+	.globl	view_beyond
+	.type	view_beyond, @function
+view_beyond:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	ldr	x0, [x29, #16]
+	mov	x1, #37888
+	movk	x1, #0x7735, lsl #16
+	add	x0, x0, x1
+	mov	x1, #33792
+	movk	x1, #0x17d7, lsl #16
+	ldr	w0, [x0, x1, lsl #2]
+	b	.Lview_beyond.1
+.Lview_beyond.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	view_beyond, .-view_beyond
 	.bss
 	.globl	bytes
 	.type	bytes, @object

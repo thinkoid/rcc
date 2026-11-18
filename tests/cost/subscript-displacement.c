@@ -18,7 +18,15 @@
    held across the call, and byte_value() (int *) (p + 24), the
    address as a value.  far_called() and far_stored() store through a
    constant index no displacement of the access holds, p[5000] = g()
-   and p[5000] = v on an int *p.
+   and p[5000] = v on an int *p.  Over a sum under a cast, a
+   subscript or a second constant joins the sum's own operand:
+   view_subscript() ((int *) (p + 1))[3] and view_indexed() ((int *)
+   (p + 1))[i] on a char *p, byte_both_sides() *(short *) ((char *) p
+   + 4 + i * 4 + 2), constants on both sides of a variable index,
+   two_casts() a chain of three casts; and the edges, two_indexes()
+   *(short *) ((char *) p + i * 4 + j), two indexes, and view_beyond()
+   ((int *) (p + 2000000000))[400000000], displacements no 32-bit
+   field holds together.
 
    On x86-64 the listing must show row() reading p[i][2] by the one
    movsbl 2(%rax,%rcx,8), %eax after p's load and i's movslq, local()
@@ -31,14 +39,20 @@
    %eax after p's load, byte_view_store() stores by movl %ecx,
    4097(%rax), byte_view_near() reads movl 1(%rax), %eax,
    byte_index() movl (%rax,%rcx,1), %eax, byte_scaled() movq
-   (%rax,%rcx,2), %rax, byte_after_index() movswl 2(%rax), %eax after
-   the product's addq %rcx, %rax, byte_register() the one movl
+   (%rax,%rcx,2), %rax, byte_after_index() movswl 2(%rax,%rcx,1),
+   %eax after the product's movslq, byte_register() the one movl
    8(%rbx), %eax, byte_slot() movl -16(%rbp), %eax and byte_label()
    the one movl bytes+4(%rip), %eax; byte_held() keeps addq %rcx,
    %rax, spilled across the call, and subl %eax, (%rcx) after it, and
    byte_value() is addq $24, %rax.  far_called() stores movl %eax,
    20000(%rcx) after the call and p's reload, and far_stored() movl
-   %ecx, 20000(%rax).
+   %ecx, 20000(%rax).  view_subscript() reads the one movl 13(%rax),
+   %eax, view_indexed() movl 1(%rax,%rcx,4), %eax, byte_both_sides()
+   movswl 6(%rax,%rcx,1), %eax and two_casts() the one movl 11(%rax),
+   %eax, each after p's load and no add; two_indexes() adds the first
+   index, addq %rcx, %rax, before movswl (%rax,%rcx,1), %eax, and
+   view_beyond() forms the first part, leaq 2000000000(%rax), %rax,
+   before movl 1600000000(%rax), %eax.
 
    On aarch64 the listing must show cell() reading p[1][2] by the one
    ldr w0, [x0, #20] after p's load, and corner() forming &p[1][2] by
@@ -64,7 +78,13 @@
    its right operand, since it reads nothing: far_called() spills p
    alone across the call, then bl g; mov x1, #5000; ldr x2, [x29,
    #24]; str w0, [x2, x1, lsl #2], and far_stored() is mov x2, #5000
-   after v's load, then str w1, [x0, x2, lsl #2]. */
+   after v's load, then str w1, [x0, x2, lsl #2].  view_subscript()
+   adds the 1 before ldr w0, [x0, #12], view_indexed() before ldr w0,
+   [x0, w1, sxtw #2], byte_both_sides() adds the 4 and the product
+   before ldrsh w0, [x0, #2], two_casts() adds 1, 4 and 2 before ldr
+   w0, [x0, #4], two_indexes() adds the product before ldrsh w0, [x0,
+   w1, sxtw], and view_beyond() holds both parts, the second as the
+   register offset, ldr w0, [x0, x1, lsl #2]. */
 int
 row(char (*p)[8], int i)
 {
@@ -183,4 +203,40 @@ int *
 byte_value(char *p)
 {
         return (int *) (p + 24);
+}
+
+int
+view_subscript(char *p)
+{
+        return ((int *) (p + 1))[3];
+}
+
+int
+view_indexed(char *p, int i)
+{
+        return ((int *) (p + 1))[i];
+}
+
+int
+byte_both_sides(int *p, int i)
+{
+        return *(short *) ((char *) p + 4 + i * 4 + 2);
+}
+
+int
+two_casts(char *p)
+{
+        return ((int *) ((char *) ((short *) (p + 1) + 2) + 2))[1];
+}
+
+int
+two_indexes(int *p, int i, int j)
+{
+        return *(short *) ((char *) p + i * 4 + j);
+}
+
+int
+view_beyond(char *p)
+{
+        return ((int *) (p + 2000000000))[400000000];
 }

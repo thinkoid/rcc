@@ -255,8 +255,7 @@ byte_after_index:
 	movq	-8(%rbp), %rax
 	imull	$4, -12(%rbp), %ecx
 	movslq	%ecx, %rcx
-	addq	%rcx, %rax
-	movswl	2(%rax), %eax
+	movswl	2(%rax,%rcx,1), %eax
 	jmp	.Lbyte_after_index.1
 .Lbyte_after_index.1:
 	leave
@@ -367,6 +366,132 @@ byte_value:
 	ret
 	.cfi_endproc
 	.size	byte_value, .-byte_value
+	.globl	view_subscript
+	.type	view_subscript, @function
+view_subscript:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	-8(%rbp), %rax
+	movl	13(%rax), %eax
+	jmp	.Lview_subscript.1
+.Lview_subscript.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	view_subscript, .-view_subscript
+	.globl	view_indexed
+	.type	view_indexed, @function
+view_indexed:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	movslq	-12(%rbp), %rcx
+	movl	1(%rax,%rcx,4), %eax
+	jmp	.Lview_indexed.1
+.Lview_indexed.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	view_indexed, .-view_indexed
+	.globl	byte_both_sides
+	.type	byte_both_sides, @function
+byte_both_sides:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	imull	$4, -12(%rbp), %ecx
+	movslq	%ecx, %rcx
+	movswl	6(%rax,%rcx,1), %eax
+	jmp	.Lbyte_both_sides.1
+.Lbyte_both_sides.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	byte_both_sides, .-byte_both_sides
+	.globl	two_casts
+	.type	two_casts, @function
+two_casts:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	-8(%rbp), %rax
+	movl	11(%rax), %eax
+	jmp	.Ltwo_casts.1
+.Ltwo_casts.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	two_casts, .-two_casts
+	.globl	two_indexes
+	.type	two_indexes, @function
+two_indexes:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movl	%edx, -16(%rbp)
+	movq	-8(%rbp), %rax
+	imull	$4, -12(%rbp), %ecx
+	movslq	%ecx, %rcx
+	addq	%rcx, %rax
+	movslq	-16(%rbp), %rcx
+	movswl	(%rax,%rcx,1), %eax
+	jmp	.Ltwo_indexes.1
+.Ltwo_indexes.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	two_indexes, .-two_indexes
+	.globl	view_beyond
+	.type	view_beyond, @function
+view_beyond:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	-8(%rbp), %rax
+	leaq	2000000000(%rax), %rax
+	movl	1600000000(%rax), %eax
+	jmp	.Lview_beyond.1
+.Lview_beyond.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	view_beyond, .-view_beyond
 	.bss
 	.globl	bytes
 	.type	bytes, @object

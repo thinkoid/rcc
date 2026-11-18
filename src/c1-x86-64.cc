@@ -1113,6 +1113,48 @@ base_into(const into_t *into)
     return into_t { into->variable, false, into->as };
 }
 
+const expr_t *memory_operand(const expr_t &, int);
+const expr_t *cast_sum(const state_t &, const expr_t &, const into_t *);
+address_t pointed(state_t &, const expr_t &, const type_t &, into_t *);
+
+// Whether the pointer p, read through casts between pointer types, is a
+// sum at a stride of 1 whose index is an object of 64 bits in memory,
+// which its addq takes as its operand, addq -24(%rbp), %rax, where the
+// addressing form would load it (backend.md 6.1).
+bool
+memory_indexed(const expr_t &p)
+{
+    const expr_t *e = &p;
+    while (is< cast_t >(*e) && is< pointer_t >(as< cast_t >(*e).arg->type))
+        e = as< cast_t >(*e).arg.get();
+
+    if (!is< binary_t >(*e) || !is< pointer_t >(e->type) ||
+        stride(e->type) != 1)
+        return false;
+
+    const auto &b = as< binary_t >(*e);
+    const auto &n = is< pointer_t >(b.lhs->type) ? *b.rhs : *b.lhs;
+
+    return !is< literal_t >(n) && memory_operand(n, 64);
+}
+
+// The address the value of the pointer p denotes, as an operand that no
+// instruction has formed yet, backend.md 6.3: pointed()'s for p's own
+// pointee, the base, the displacement and the index p's rows form,
+// through a cast between pointer types too, cast_sum()'s, so that a
+// constant or an index over p joins them where the form holds it.
+// None, and p's value formed as before, where the address is held
+// across a pinned instruction, which keeps to one register, and for a
+// sum at a stride of 1 by an index in memory, memory_indexed()'s.
+std::optional< address_t >
+denoted(state_t &s, const expr_t &p)
+{
+    if (s.held_across || memory_indexed(p))
+        return std::nullopt;
+
+    return pointed(s, p, *as< pointer_t >(p.type).pointee, nullptr);
+}
+
 // The operand of an address by a pointer and a constant index,
 // backend.md 6.3: the pointer's value the base and the index times the
 // size the displacement, whatever the size, 12(%rax) for p[3] on an
@@ -1124,6 +1166,12 @@ base_into(const into_t *into)
 // pointer's row, base_into()'s, so that q = p[1] into a register int *q
 // is movq -16(%rbp), %rbx; leaq 12(%rbx), %rbx (chapter 4); not where
 // the product wraps to 0, since no leaq follows to write the variable.
+// Any other pointer is denoted()'s address, the constant joining its
+// displacement, ((int *) (p + 1))[3] on a char *p being 13(%rax) and
+// *(short *) ((char *) p + i * 4 + 2) 2(%rax,%rcx,1); a label's, whose
+// offset must stay within its object, and a sum no 32-bit displacement
+// holds are that address formed by its leaq, the constant the
+// displacement off it.
 std::optional< address_t >
 constant_indexed(state_t &s, const expr_t &p, long size, into_t *into = nullptr)
 {
@@ -1140,9 +1188,21 @@ constant_indexed(state_t &s, const expr_t &p, long size, into_t *into = nullptr)
     if (!fits_imm32(d))
         return std::nullopt;
 
+    const auto &pointer = left ? *b.lhs : *b.rhs;
     auto onto = d != 0 ? base_into(into) : std::nullopt;
-    const auto base =
-        rvalue(s, left ? *b.lhs : *b.rhs, onto ? &*onto : nullptr);
+
+    if (!onto)
+        if (auto a = denoted(s, pointer)) {
+            const auto sum = wrapped_add(a->displacement, d);
+            if (a->label.empty() && fits_imm32(sum)) {
+                a->displacement = sum;
+                return *a;
+            }
+
+            return address_t { .base = address_of(s, *a), .displacement = d };
+        }
+
+    const auto base = rvalue(s, pointer, onto ? &*onto : nullptr);
 
     return address_t { .base = base, .displacement = d };
 }
@@ -1240,6 +1300,10 @@ index_base(state_t &s,
         a = constant_indexed(s, pointer,
                              size_of(*as< pointer_t >(pointer.type).pointee));
 
+    // ((int *) (p + 1))[i] on a char *p: 1(%rax,%rcx,4)
+    if (!a && cast_sum(s, pointer, nullptr))
+        a = denoted(s, pointer);
+
     if (!a)
         a = address_t { .base = rvalue(s, pointer, nullptr, wanted) };
     else if (a->base.id < 0 || a->index.id >= 0)
@@ -1281,7 +1345,6 @@ unscaled_pointer(state_t &s,
 }
 
 address_t unscaled(state_t &, const operation_t &, long, unsigned);
-const expr_t *memory_operand(const expr_t &, int);
 
 // The sum under a cast of an access's pointer between pointer types,
 // backend.md 6.3, whose rows form the access's operand as the sum's own

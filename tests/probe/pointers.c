@@ -159,7 +159,8 @@ ELEMENTS(SUBSCRIPT_ALL)
 
 /* a constant subscript on each side of the load's reach, read, written
    and stepped, and written and added to across a call in the right
-   operand; a constant displacement through a cast to a wider element */
+   operand; a constant displacement through a cast to a wider element,
+   read, written, under a subscript, and after a variable index */
 #define KSUB(E, T, S, name, c)                                          \
     long kget_##E##_##name(T *p) { return p[c]; }                       \
     void kput_##E##_##name(T *p, long v) { p[c] = v; }                  \
@@ -176,7 +177,11 @@ ELEMENTS(KSUB_ALL)
 #define KBYTE(E, T, S, name, d)                                         \
     long kview_##E##_##name(char *p) { return *(T *) (p + d); }         \
     void kview_put_##E##_##name(char *p, long v) { *(T *) (p + d) = v; } \
-    long kview_index_##E##_##name(char *p) { return ((T *) (p + 1))[d]; }
+    long kview_index_##E##_##name(char *p) { return ((T *) (p + 1))[d]; } \
+    long kview_after_##E##_##name(char *p, int i)                       \
+    {                                                                   \
+        return *(T *) (p + i * 3 + d);                                  \
+    }
 #define KBYTE_ALL(E, T, S) KBYTES(KBYTE, E, T, S)
 
 ELEMENTS(KBYTE_ALL)

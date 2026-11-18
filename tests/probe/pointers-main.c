@@ -304,7 +304,8 @@ ELEMENTS(DECLARE_KSUB_ALL)
 #define DECLARE_KBYTE(E, T, S, name, d)                                 \
     BOTH(long, kview_##E##_##name, (char *))                            \
     BOTH(void, kview_put_##E##_##name, (char *, long))                  \
-    BOTH(long, kview_index_##E##_##name, (char *))
+    BOTH(long, kview_index_##E##_##name, (char *))                      \
+    BOTH(long, kview_after_##E##_##name, (char *, int))
 #define DECLARE_KBYTE_ALL(E, T, S) KBYTES(DECLARE_KBYTE, E, T, S)
 
 ELEMENTS(DECLARE_KBYTE_ALL)
@@ -536,7 +537,8 @@ ELEMENTS(TEST_SUBSCRIPT_ALL)
 #define TEST_KBYTE(E, T, S, name, d)                                    \
     MCHECK(kview_##E##_##name, x, at, at, ((char *) P));                \
     VCHECK(kview_put_##E##_##name, x, at, at, ((char *) P, x));         \
-    MCHECK(kview_index_##E##_##name, x, at, at, ((char *) P));
+    MCHECK(kview_index_##E##_##name, x, at, at, ((char *) P));          \
+    MCHECK(kview_after_##E##_##name, x, at, at, ((char *) P, at));
 
 #define TEST_CONSTANTS(E, T, S)                                         \
     static void test_constants_##E(void)                                \

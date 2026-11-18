@@ -1103,10 +1103,24 @@ rows are the value's; at a variable index where the address is held
 across a call, a division or a shift by a variable count (an index of
 no scale, above), whose sum keeps to one register; and at a stride of
 1 with an index of 64 bits in memory, which the sum's `addq` takes as
-its operand. A constant over the cast's own result, `((int *) (p +
-1))[d]`, and over a sum by a variable index, `*(short *) ((char *) p +
-i * 4 + 2)`, is the displacement of the sum's value, `movswl 2(%rax),
-L` after the sum's `addq`.
+its operand. A subscript or a constant over such a sum joins the
+sum's own operand: the pointer of a sum by a constant, and of a
+subscript, is taken as the address it denotes, the base, the
+displacement and the index its rows form, through a cast between
+pointer types too, before any instruction forms it, so `((int *) (p +
+1))[3]` on a `char *p` is `movl 13(%rax), L`, `((int *) (p + 1))[i]`
+`movl 1(%rax,%rcx,4), L`, `*(short *) ((char *) p + 4 + i * 4 + 2)`
+`movswl 6(%rax,%rcx,1), L`, and a chain of casts one displacement.
+What the operand cannot hold is formed by a `leaq` and the rest is
+the access's: a second index, `*(short *) ((char *) p + i * 4 + j)`,
+is the `addq` of the first and `(%rax,%rcx,1)`; a sum no 32-bit
+displacement holds is `leaq 2000000000(%rax), %rax` and
+`1600000000(%rax)`; a label's offset, which must stay within its object, is the label's
+`leaq` and the displacement; a scale is always the sum's own stride,
+1, 2, 4 or 8, or an index of no scale's product (above). The same
+stops hold as for the cast at the top: the address held across a
+pinned instruction, and a stride of 1 by an index in memory, keep the
+pointer's value formed first.
 
 **An index of no scale.** At a size no addressing form scales by,
 the index's product, the `imul` of the `p + n` row, is the form's
