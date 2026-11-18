@@ -501,8 +501,7 @@ view_subscript:
 	.cfi_def_cfa_register w29
 	str	x0, [x29, #16]
 	ldr	x0, [x29, #16]
-	add	x0, x0, #1
-	ldr	w0, [x0, #12]
+	ldr	w0, [x0, #13]
 	b	.Lview_subscript.1
 .Lview_subscript.1:
 	.cfi_def_cfa wsp, 32
@@ -556,12 +555,11 @@ byte_both_sides:
 	str	x0, [x29, #16]
 	str	w1, [x29, #24]
 	ldr	x0, [x29, #16]
-	add	x0, x0, #4
 	ldr	w1, [x29, #24]
 	mov	w2, #4
 	mul	w1, w1, w2
 	add	x0, x0, w1, sxtw
-	ldrsh	w0, [x0, #2]
+	ldrsh	w0, [x0, #6]
 	b	.Lbyte_both_sides.1
 .Lbyte_both_sides.1:
 	.cfi_def_cfa wsp, 32
@@ -586,10 +584,7 @@ two_casts:
 	.cfi_def_cfa_register w29
 	str	x0, [x29, #16]
 	ldr	x0, [x29, #16]
-	add	x0, x0, #1
-	add	x0, x0, #4
-	add	x0, x0, #2
-	ldr	w0, [x0, #4]
+	ldr	w0, [x0, #11]
 	b	.Ltwo_casts.1
 .Ltwo_casts.1:
 	.cfi_def_cfa wsp, 32

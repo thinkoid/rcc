@@ -61,24 +61,35 @@ of a row that writes the right operand's register.
 
 Check: the count over =tests=, and no function longer.
 
-** TODO aarch64: a constant under a cast is added where the access's displacement could carry it
+** TODO aarch64: an address as a value adds each constant under a cast
 
-~((int *) (p + 1))[3]~ on a ~char *p~ is =add x0, x0, #1; ldr w0,
-[x0, #12]=, where the two constants are one displacement, =ldr w0,
-[x0, #13]=; a chain of casts adds each of its constants, three =add=
-before the load in =two_casts()=, and a constant before a variable
-index is added before the index where it could follow the sum,
-=add x0, x0, #4= in =byte_both_sides()= for =ldrsh w0, [x0, #6]=
-after it. x86-64 joins them (=denoted()= in =src/c1-x86-64.cc=,
-=backend.md= 6.3). =view_subscript()=, =two_casts()= and
-=byte_both_sides()= of =subscript-displacement= pin the adds, and
-the =kview_index_*= rows of the pointers probe have the first.
+~&((int *) (p + 1))[3]~ on a ~char *p~ is =add x0, x0, #1; add x0,
+x0, #12=, where the two constants are one =add x0, x0, #13=; x86-64
+writes the one =leaq 13(%rax), %rax=. An access sums them
+(=denoted()= and =carried()= in =src/c1-aarch64.cc=); the value's
+rows do not walk the casts. No test has the shape.
 
-Fix: the access's rows sum the constants through the casts into the
-one displacement, where it is in reach after the sum.
+Fix: the value's rows take =denoted()='s base and bytes, and write
+one =add= where it encodes them.
 
-Check: those three functions with no =add= of a constant, the count
-over =tests=, and no function longer.
+Check: a function of =subscript-displacement= with the one =add=,
+and no function longer.
+
+** TODO aarch64: constants whose sum is out of the access's reach are each added
+
+~((int *) (p + 2000000000))[400000000]~ holds each part in a register
+and adds the first, five instructions before the load in
+=view_beyond()= of =subscript-displacement=, where the total held
+once is the load's register offset, two instructions before it. The
+total can need more
+=movk= than its parts do, so the sum is the shorter only by case:
+=p + 0x10000= is one =add=, and a total of 0x10010 held is two
+instructions. 13 forms over =tests=, 12 of them =kview_index_*= rows
+at an odd total above 255.
+
+Fix: none taken; compare the two forms' counts per case.
+
+Check: the count over =tests=, and no function longer.
 
 *p~ is =addq $1, %rax; movslq 4(%rax), %rax=, where =movslq 5(%rax),
 %rax= is one instruction: the subscript's pointer is the cast,

@@ -88,12 +88,16 @@
    its right operand, since it reads nothing: far_called() spills p
    alone across the call, then bl g; mov x1, #5000; ldr x2, [x29,
    #24]; str w0, [x2, x1, lsl #2], and far_stored() is mov x2, #5000
-   after v's load, then str w1, [x0, x2, lsl #2].  view_subscript()
-   adds the 1 before ldr w0, [x0, #12], view_indexed() before ldr w0,
-   [x0, w1, sxtw #2], byte_both_sides() adds the 4 and the product
-   before ldrsh w0, [x0, #2], two_casts() adds 1, 4 and 2 before ldr
-   w0, [x0, #4], two_indexes() adds the product before ldrsh w0, [x0,
-   w1, sxtw], and view_beyond() holds both parts, the second as the
+   after v's load, then str w1, [x0, x2, lsl #2].  The constants under
+   the cast and the subscript's are one displacement where it reaches:
+   view_subscript() reads by the one ldr w0, [x0, #13] after p's load,
+   and two_casts() by the one ldr w0, [x0, #11], with no add;
+   byte_both_sides() adds the product alone, add x0, x0, w1, sxtw, and
+   reads ldrsh w0, [x0, #6], the 4 past the sum with the 2.  One form
+   holds a displacement or an index, never both, so view_indexed()
+   adds the 1 before ldr w0, [x0, w1, sxtw #2] and two_indexes() the
+   product before ldrsh w0, [x0, w1, sxtw]; and view_beyond(), whose
+   sum no displacement reaches, holds both parts, the second as the
    register offset, ldr w0, [x0, x1, lsl #2].  A name's address plus
    a constant under a cast is the slot's or the label's own operand
    where the access encodes it: member_slot() reads ldr w0, [x29,

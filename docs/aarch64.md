@@ -966,6 +966,21 @@ and `*(int *) (c + 4097)`, which no displacement reaches, `mov x1,
 #4097; ldr w0, [x0, x1]`; the add stays where it encodes the constant,
 `*(int *) (c + 257)` being `add x0, x0, #257; ldr w0, [x0]`, and where
 the address is held across a right operand, `*(int *) (c + 4097) = v`.
+A constant over the cast, or a subscript of it, joins the constants
+under it: the pointer is read down through its casts and its sums by a
+constant to a base, each constant scaled by its own sum's stride, and
+their bytes with the access's own are its one displacement where it
+reaches after the sum, so `((int *) (c + 1))[3]` is `ldr w0, [x0,
+#13]` after `c`'s load and `((int *) ((char *) ((short *) (c + 1) + 2)
++ 2))[1]` `ldr w0, [x0, #11]`, with no `add`. A variable index on the
+way is added to the base, in the order written, and the constants
+ride past the sum, since one form holds an index or a displacement,
+never both: `*(short *) ((char *) p + 4 + i * 4 + 2)` is the product's
+`add x0, x0, w1, sxtw` and `ldrsh w0, [x0, #6]`; where the access's
+own operand is the index, `((int *) (c + 1))[i]`, the constant keeps
+its `add` before `[x0, w1, sxtw #2]`, the same count. A total out of
+reach, `((int *) (c + 1))[255]` at 1021 bytes, keeps the rows as they
+were.
 
 A store's address is generated before its right operand and held
 across it (G13), but a constant index reads nothing, so its `mov` is
