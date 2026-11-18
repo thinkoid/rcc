@@ -111,23 +111,36 @@ Fix: none taken; count first.
 Check: the count over =tests=, and a cost function of
 =subscript-row= with the constant in the access.
 
-** TODO x86-64: a pointer plus a constant into a register variable loads the pointer elsewhere
+** TODO x86-64: an lvalue's address plus a constant into a register variable loads the address elsewhere
+
+~q = &lga[3]~ into a ~register int *q~, with =lga= an array the unit
+only declares, is =movq lga@GOTPCREL(%rip), %rax; leaq 12(%rax),
+%r13=, and ~q = &m[1][2]~ on ~int (*m)[3]~ is =movq -16(%rbp), %rax;
+leaq 20(%rax), %rbx=. =summed()= in =src/c1-x86-64.cc= hands no
+destination to the lvalue's address when the offset is not 0, and
+=global_address()= takes none. Four functions over =tests= have the
+shape, =adest_*= of the registers probe.
+
+Fix: =summed()= hands =base_into()='s copy to the lvalue's address
+where the sum is not 0, and the GOT's row takes it.
+
+Check: =global()= of =address-destination= with =movq
+xa@GOTPCREL(%rip), %rbx; leaq 12(%rbx), %rbx=, the four =adest_*=
+with no expression register, and no function longer.
+
+** TODO aarch64: a pointer plus a constant into a register variable loads the pointer elsewhere
 
 ~q = p[1]~ into a ~register int *q~, with ~p~ an ~int (*)[3]~ in
-memory, is =movq -16(%rbp), %rax; leaq 12(%rax), %rbx=, and ~q =
-&p[1]~ on an ~int *p~ is the same with 4: =constant_indexed()= in
-=src/c1-x86-64.cc= generates the pointer with no destination, so it
-takes the lowest free expression register, and the =leaq= writes the
-variable. The count is that of the load into the variable's register,
-=movq -16(%rbp), %rbx; leaq 12(%rbx), %rbx=, but the form takes an
-expression register for the one instruction, and an expression that
-holds them all spills for it. No listing under =tests= has the shape.
+memory, is =ldr x0, [x29, #24]; add x19, x0, #12=, where =ldr x19,
+[x29, #24]; add x19, x19, #12= takes no expression register; x86-64
+writes the pointer into the variable's register
+(=tests/cost/address-destination.c=).
 
 Fix: the pointer of a constant-indexed address is generated into the
-variable handed down, where the pointer's own row can write it.
+variable handed down, as on x86-64.
 
-Check: a function of =register-destination= for each of the two, with
-no expression register named.
+Check: the aarch64 pin of =address-destination= names =x19= alone in
+=row()= and =element()=.
 
 ** TODO x86-64: three shapes beside a register variable's destination still move
 

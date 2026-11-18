@@ -1030,6 +1030,22 @@ indexed(state_t &s, const binary_t &b, long size)
                        .displacement = slot->displacement };
 }
 
+// The register variable an address's base is generated into, where a
+// displacement follows it, chapter 4: a copy of the one handed down, so
+// that the base's own row may write the variable's register and the
+// leaq of the address, address_of()'s, still writes it after, movq
+// -16(%rbp), %rbx; leaq 12(%rbx), %rbx.  A row that cannot write it
+// leaves the copy untaken, and the leaq writes the variable as before.
+// None where none is handed down or a row has written the variable.
+std::optional< into_t >
+base_into(const into_t *into)
+{
+    if (!into || into->taken)
+        return std::nullopt;
+
+    return into_t { into->variable, false, into->as };
+}
+
 // The operand of an address by a pointer and a constant index,
 // backend.md 6.3: the pointer's value the base and the index times the
 // size the displacement, whatever the size, 12(%rax) for p[3] on an
@@ -1037,9 +1053,12 @@ indexed(state_t &s, const binary_t &b, long size)
 // scale, so that the row as a pointer is leaq 12(%rax), %rax.  Only the
 // pointer is evaluated.  None for any other pointer, and for a product
 // no 32-bit displacement holds, which the rows of p + n and of an index
-// reach.
+// reach.  A register variable handed down is the destination of the
+// pointer's row, base_into()'s, so that q = p[1] into a register int *q
+// is movq -16(%rbp), %rbx; leaq 12(%rbx), %rbx (chapter 4); not where
+// the product wraps to 0, since no leaq follows to write the variable.
 std::optional< address_t >
-constant_indexed(state_t &s, const expr_t &p, long size)
+constant_indexed(state_t &s, const expr_t &p, long size, into_t *into = nullptr)
 {
     if (!is< binary_t >(p) || as< binary_t >(p).op != binary_op_t::add)
         return std::nullopt;
@@ -1054,8 +1073,11 @@ constant_indexed(state_t &s, const expr_t &p, long size)
     if (!fits_imm32(d))
         return std::nullopt;
 
-    return address_t { .base = rvalue(s, left ? *b.lhs : *b.rhs),
-                       .displacement = d };
+    auto onto = d != 0 ? base_into(into) : std::nullopt;
+    const auto base =
+        rvalue(s, left ? *b.lhs : *b.rhs, onto ? &*onto : nullptr);
+
+    return address_t { .base = base, .displacement = d };
 }
 
 address_t address(state_t &, const expr_t &, into_t * = nullptr);
@@ -1143,8 +1165,8 @@ index_base(state_t &s, const expr_t &pointer, unsigned pinned = 0)
 // another size included, is computed into a register and is the base;
 // nothing looks through a cast.  A register variable handed down goes
 // to the row of a base that is the whole address, p of &*p and &p[0],
-// or the sum of &a[i] at a size no addressing form scales by, and to
-// summed()'s (chapter 4).
+// or the sum of &a[i] at a size no addressing form scales by, to
+// summed()'s, and to constant_indexed()'s pointer (chapter 4).
 address_t
 pointed(state_t &s,
         const expr_t &p,
@@ -1164,7 +1186,7 @@ pointed(state_t &s,
     const long size = size_of(pointee);
 
     // p[3], and the row p[1] on int (*p)[3]: 12(%rax)
-    if (const auto a = constant_indexed(s, p, size))
+    if (const auto a = constant_indexed(s, p, size, into))
         return *a;
 
     if (!is_scale(size) || !is< binary_t >(p) ||

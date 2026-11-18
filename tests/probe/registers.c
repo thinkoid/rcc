@@ -776,6 +776,39 @@ TYPES(EDGE)
     }
 POINTEES(ADIFF)
 
+/* A pointer plus a constant index into a register pointer, x86-64,
+   backend.md chapter 4: the pointer's row writes the variable's
+   register and the leaq is on it.  The pointer a parameter's copy in
+   memory, a dereference, another register variable, the variable
+   itself, a sum by a variable index and a call's result; a read of
+   the variable held across the assignment.  Each pointee: sizes 1, 4,
+   8 and 12. */
+
+#define KDEST(E, T)                                                     \
+    long kdest_##E(T *base, long i)                                     \
+    {                                                                   \
+        T *s = base;                                                    \
+        T **ps = &s;                                                    \
+        register T *w = base + 1;                                       \
+        register T *q;                                                  \
+        long r;                                                         \
+        q = &s[1];                                                      \
+        r = q - base;                                                   \
+        q = &(*ps)[2];                                                  \
+        r = r * 7 + (q - base);                                         \
+        q = &w[2];                                                      \
+        r = r * 7 + (q - base);                                         \
+        q = &q[1];                                                      \
+        r = r * 7 + (q - base);                                         \
+        q = &(s + (i & 3))[1];                                          \
+        r = r * 7 + (q - base);                                         \
+        q = &apick_##E(base, i)[1];                                     \
+        r = r * 7 + (q - base);                                         \
+        r = r * 7 + (q - base) + ((q = &s[3]) - base) + (q - base) * 3; \
+        return r * 7 + (q - base);                                      \
+    }
+POINTEES(KDEST)
+
 /* A register pointer to a function: the address of a function the
    unit defines, and of one it only declares, from the GOT. */
 long

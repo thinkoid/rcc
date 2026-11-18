@@ -299,7 +299,17 @@ are the others (7.2, 6.5).
   buf(%rip), %rbx`, `p = &x` is `leaq -12(%rbp), %rbx`, and `p = q +
   n` is `leaq (%rax,%rcx,4), %rbx` after the two loads. `lea` names
   its destination apart from its sources, so it reads every operand
-  before it writes, and the form puts no condition on them. The
+  before it writes, and the form puts no condition on them. A pointer
+  plus a constant index has the pointer's own row write the register
+  first, where it can, and the `leaq` is on the register: `p = q[1]`
+  on an `int (*q)[3]` in memory is `movq -16(%rbp), %rbx; leaq
+  12(%rbx), %rbx`, and no expression register is taken. A pointer
+  whose row writes no register variable keeps its register, `p =
+  &f(x)[1]` being `leaq 4(%rax), %rbx` after the call, and the
+  variable's own read is the base already, `p = &p[1]` the one `leaq
+  4(%rbx), %rbx`. The address of an array the file only declares plus
+  a constant keeps the GOT's load elsewhere, `movq
+  declared@GOTPCREL(%rip), %rax; leaq 12(%rax), %rbx`. The
   address of a global the file only declares is the load from the
   GOT, `movq declared@GOTPCREL(%rip), %rbx`. An address that is a
   pointer's own value is that value's row into the register: `p =
