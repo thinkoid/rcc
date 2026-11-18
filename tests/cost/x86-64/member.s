@@ -370,6 +370,81 @@ call:
 	ret
 	.cfi_endproc
 	.size	call, .-call
+	.globl	element_address
+	.type	element_address, @function
+element_address:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	-8(%rbp), %rax
+	leaq	44(%rax), %rax
+	jmp	.Lelement_address.1
+.Lelement_address.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	element_address, .-element_address
+	.globl	element_member_address
+	.type	element_member_address, @function
+element_member_address:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	-8(%rbp), %rax
+	leaq	98(%rax), %rax
+	jmp	.Lelement_member_address.1
+.Lelement_member_address.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	element_member_address, .-element_member_address
+	.globl	element_address_slot
+	.type	element_address_slot, @function
+element_address_slot:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$160, %rsp
+	leaq	-100(%rbp), %rax
+	movq	%rax, -152(%rbp)
+	movq	-152(%rbp), %rdi
+	call	use@PLT
+.Lelement_address_slot.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	element_address_slot, .-element_address_slot
+	.globl	element_address_label
+	.type	element_address_label, @function
+element_address_label:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	leaq	g+44(%rip), %rax
+	jmp	.Lelement_address_label.1
+.Lelement_address_label.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	element_address_label, .-element_address_label
 	.bss
 	.globl	g
 	.type	g, @object

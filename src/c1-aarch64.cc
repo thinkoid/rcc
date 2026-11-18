@@ -1269,12 +1269,13 @@ denoted(const expr_t &p)
     }
 }
 
-// An access through a row by a variable index, read off the tree
-// before anything is generated, 6.3: denoted()'s index, its order and
-// stride, and its base; the base's address as a slot's or a label's,
-// folded()'s, or as based()'s pointer and displacement, the constant
-// with the walk's bytes and the total with the access's column, and
-// whether the index is the access's register offset.
+// An access through a row by a variable index, or by a constant only,
+// read off the tree before anything is generated, 6.3: denoted()'s
+// index, if any, its order and stride, and its base; the base's address
+// as a slot's or a label's, folded()'s, or as based()'s pointer and
+// displacement, the constant with the walk's bytes and the total with
+// the access's column, and whether the index is the access's register
+// offset.
 struct row_access_t
 {
     const expr_t *pointer;
@@ -1335,27 +1336,32 @@ row_reaches(const row_access_t &row, const named_offset_t *named, int size)
     return row.carried == 0 || in_reach(row.total, size);
 }
 
-// Whether a row's index is the access's register offset, 6.3: with no
-// constant at all and nothing evaluated between the address and the
-// access, a product of no scale, or an index the access's form scales,
-// at a size of 1 or the access's own.
+// Whether a row's index is the access's register offset, 6.3: a row
+// with one, with no constant at all and nothing evaluated between the
+// address and the access, a product of no scale, or an index the
+// access's form scales, at a size of 1 or the access's own.
 bool
 offset_index(const row_access_t &row, int size, bool nothing_between)
 {
-    return !row.slot && row.total == 0 && nothing_between &&
+    return row.index && !row.slot && row.total == 0 && nothing_between &&
            (!is_scale(row.stride) || row.stride == 1 || row.stride == size);
 }
 
-// The access of size bytes at column into a row by a variable index,
-// where it takes the row's constants or its index into its own form,
-// 6.3; none where it takes neither, p[i][2] keeping the sum and [x0,
-// #8].  The index's sum is denoted()'s top, with no cast between it and
-// the row or the row's decay, and the constants under it, through its
-// casts, join the base's own, folded()'s or based()'s, so that ((int
-// (*)[3]) (c + 4))[i][2] on a char *c is the index's product and add
-// after c's load and ldr w0, [x0, #12], the add of 4 gone; a total out
-// of reach, or a label's that label_carries() refuses, keeps the rows
-// as before.
+// The access of size bytes at column into a row by a variable index, or
+// by a constant only, where it takes the row's constants or its index
+// into its own form, 6.3; none where it takes neither, p[i][2] keeping
+// the sum and [x0, #8].  The index's sum is denoted()'s top, with no
+// cast between it and the row or the row's decay, and the constants
+// under it, through its casts, join the base's own, folded()'s or
+// based()'s, so that ((int (*)[3]) (c + 4))[i][2] on a char *c is the
+// index's product and add after c's load and ldr w0, [x0, #12], the add
+// of 4 gone; a total out of reach, or a label's that label_carries()
+// refuses, keeps the rows as before.  With no index the row is an array
+// under constants that based() does not read, a member array's decay
+// over its cast and byte sum, and the constants are the column's
+// displacement: p->a[3] on a member int a[8] at 32 is ldr w0, [x0, #44]
+// after p's load, the add of 32 gone; none with no constant under the
+// row, and none on a name, whose operand is folded()'s.
 std::optional< row_access_t >
 row_access(state_t &s,
            const expr_t &row,
@@ -1364,7 +1370,7 @@ row_access(state_t &s,
            bool nothing_between)
 {
     const auto at = denoted(row);
-    if (!at.index_top || at.casts != 0)
+    if (at.index && (!at.index_top || at.casts != 0))
         return std::nullopt;
 
     row_access_t a { .pointer = at.base,
@@ -1373,6 +1379,9 @@ row_access(state_t &s,
                      .stride = at.index_stride };
 
     const auto named = named_offset(*a.pointer, s.defined);
+    if (!a.index && (at.bytes == 0 || named))
+        return std::nullopt;
+
     a.slot = named ? folded(s, *a.pointer) : std::nullopt;
     if (named && !a.slot)
         return std::nullopt;
@@ -2507,10 +2516,15 @@ row_register_offset(state_t &s, value_t base, const right_t &index)
 // mul x1, x1, x2; add x0, x0, x1; ldr w0, [x0, #36] after p's load, and
 // rows[i][2] on a global adrp x0, rows+2, the product's add and ldrb
 // w0, [x0, :lo12:rows+2].  The sum writes a register of its own, never
-// a register variable's.
+// a register variable's.  A row with no index is the base and the
+// total, [x0, #44] after p's load for p->a[3].
 address_t
 row_address(state_t &s, const row_access_t &row)
 {
+    if (!row.index)
+        return address_t { .base = row_base(s, row),
+                           .displacement = static_cast< int >(row.total) };
+
     value_t base { };
     if (row.pointer_first)
         base = row_base(s, row);

@@ -5,20 +5,25 @@
    s.m the slot -136(%rbp), g.m the label g+8(%rip), p->in.i 20(%rax)
    with the two offsets one, p->a[i] 32(%rax,%rcx,4), p->a[3] 44(%rax),
    p->t[i].i 68(%rax,%rcx,1) after the imulq $16 of an element no scale
-   covers, p[i].m and tab[i].m 8(%rax,%rcx,1) after imulq $144, the
-   last after the leaq of the label, which takes no index; p->m++ and
-   p->m += v the memory forms, addl $1, 8(%rax); &p->m one leaq
-   8(%rax); a register pointer's r->m 8(%rbx), and its walk r =
-   r->next movq 128(%rbx), %rbx; a union's members each at 0; and
-   p->f(x) the call through the member's load.  On aarch64 p->m is [x0,
-   #8], s.m [x29, #d], g.m [x16, :lo12:g+8], p->in.i [x0, #20], p->a[i]
-   the add of the offset and [x0, x1, lsl #2], since no form holds an
-   index and a displacement, and a register pointer's [x19, #8]; a
-   member array's element by a constant, p->a[3] and p->t[2].h, adds
-   the member's offset first, add x0, x0, #32 and [x0, #12], and by a
+   covers, p[i].m and tab[i].m 8(%rax,%rcx,1) after imulq $144, the last
+   after the leaq of the label, which takes no index; p->m++ and p->m +=
+   v the memory forms, addl $1, 8(%rax); &p->m one leaq 8(%rax), and
+   &p->a[3], &p->t[2].h, &s.a[3] and &g.a[3] the one leaq 44(%rax), leaq
+   98(%rax), leaq -100(%rbp) and leaq g+44(%rip); a register pointer's
+   r->m 8(%rbx), and its walk r = r->next movq 128(%rbx), %rbx; a
+   union's members each at 0; and p->f(x) the call through the member's
+   load.  On aarch64 p->m is [x0, #8], s.m [x29, #d], g.m [x16,
+   :lo12:g+8], p->in.i [x0, #20], p->a[i] the add of the offset and [x0,
+   x1, lsl #2], since no form holds an index and a displacement, and a
+   register pointer's [x19, #8]; a member array's element by a constant,
+   p->a[3] and p->t[2].h, one access, the member array's offset and the
+   element's one displacement, [x0, #44] and [x0, #98], and by a
    variable index with a member after it, p->t[i].i, adds the index's
    product to p, and the member array's 64 and the member's 4 are the
-   access's displacement, [x0, #68]. */
+   access's displacement, [x0, #68].  The addresses &p->a[3] and
+   &p->t[2].h are one add, add x0, x0, #44 and add x0, x0, #98, &s.a[3]
+   the slot's add x0, x29, #60, and &g.a[3] the label's pair, adrp x0,
+   g+44 and add x0, x0, :lo12:g+44. */
 struct in
 {
         char c;
@@ -164,4 +169,32 @@ int
 call(struct rec *p, int x)
 {
         return p->f(x);
+}
+
+int *
+element_address(struct rec *p)
+{
+        return &p->a[3];
+}
+
+short *
+element_member_address(struct rec *p)
+{
+        return &p->t[2].h;
+}
+
+void use(int *);
+
+void
+element_address_slot(void)
+{
+        struct rec s;
+
+        use(&s.a[3]);
+}
+
+int *
+element_address_label(void)
+{
+        return &g.a[3];
 }

@@ -945,8 +945,13 @@ index. The constants under the row's index, through its casts, join
 its own: `((int (*)[3]) (c + 4))[i][2]` on a `char *c` is `mov x2,
 #12; mul x1, x1, x2; add x0, x0, x1; ldr w0, [x0, #12]` after `c`'s
 load, and `(p + 1)[i][2]` on `int (*p)[3]` reads `[x0, #20]`, with no
-`add` of the 4 or the 12 first. A label keeps its pair where the total
-is no multiple of the access's size or its object is aligned to less,
+`add` of the 4 or the 12 first. A row by a constant only takes them
+the same way: a member array's element, `p->a[3]` on a member `int
+a[8]` at 32, the decay of `*(int (*)[8]) ((char *) p + 32)` plus 12,
+is `ldr w0, [x0, #44]` after `p`'s load, the array's 32 and the
+element's 12 one displacement, and `p->t[2].h` reads `[x0, #98]`. A
+label keeps its pair where the total is no multiple of the access's
+size or its object is aligned to less,
 `((int (*)[3]) ((char *) cells + 2))[i][1]` being `adrp x0, cells+2;
 add x0, x0, :lo12:cells+2`, the product's add and `ldr w0, [x0, #4]`.
 With no constant at all, a product of no scale is the access's

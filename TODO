@@ -45,23 +45,34 @@ the call: ~p[f(i) + 1] = x~ holds it, ~p[i + f(j)] = x~ does not.
 Check: =joined_called= with no move on its paths, and no function
 longer.
 
-** TODO aarch64: an element of a member array by a constant adds the member's offset first
+** TODO aarch64: three member shapes form an address the access could carry
 
-~p->a[3]~ on a member ~int a[8]~ at offset 32 is =add x0, x0, #32;
-ldr w0, [x0, #12]=, where the offset and the index's 12 are one
-displacement, =ldr w0, [x0, #44]=; ~p->t[2].h~ the same with 64 and
-34. A variable index takes the offset past its sum already,
-~p->t[i].i~ being =[x0, #68]=. For a constant index the access's
-rows ask =based()= in =src/c1-common.cc=, which stops at the cast
-over the member's byte sum. x86-64 writes each as one operand.
-=element_constant()= and =element_constant_member()= of =member= pin
-the adds.
+An element of a record array by a constant, its member at offset 0:
+~p[1].x~ is ~*(T *) (p + 1)~, =add x0, x0, #S; ldr w0, [x0]= with S
+the record's size, where =[x0, #S]= is the access. The rule that
+looks through a cast to the sum under it asks a stride of 1 or the
+access's size, which the index form needs and a constant's
+displacement does not. 295 accesses of the =members= probe,
+=second_*=.
 
-Fix: the constant index's row takes the walk's base and bytes
-through the member array's decay, as the variable index's does.
+A row by a variable index on a label under a member's byte sum:
+~tab[i].m~ forms the label's whole address, =adrp x0, tab; add x0,
+x0, :lo12:tab=, the product's add, then =[x0, #8]=, where the page
+of =tab+8=, the add and =[x0, :lo12:tab+8]= is one shorter.
+=indexed_label()= of =member=.
 
-Check: those two functions an instruction shorter each, and no
-function longer.
+A member array's element under a variable index on its record:
+~p[i].a[3]~ and ~tab[i].a[3]~ are the index's add, =add x0, x0,
+#32=, then =[x0, #12]=, where =[x0, #44]= is the access: the row's
+plan asks that its index be the walk's top sum, and the member's
+constant is above it. No test has the shape.
+
+Fix: the constant's displacement at any stride; the label's row
+under a byte sum; the row's plan with constants above its index.
+
+Check: =second_*= one instruction shorter each, =indexed_label()=
+one shorter, a function of =member= for the third, and no function
+longer.
 
 ** TODO aarch64: a row's value on a slot or a label adds its column after the sum
 

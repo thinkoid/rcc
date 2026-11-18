@@ -220,8 +220,7 @@ element_constant:
 	.cfi_def_cfa_register w29
 	str	x0, [x29, #16]
 	ldr	x0, [x29, #16]
-	add	x0, x0, #32
-	ldr	w0, [x0, #12]
+	ldr	w0, [x0, #44]
 	b	.Lelement_constant.1
 .Lelement_constant.1:
 	.cfi_def_cfa wsp, 32
@@ -276,8 +275,7 @@ element_constant_member:
 	.cfi_def_cfa_register w29
 	str	x0, [x29, #16]
 	ldr	x0, [x29, #16]
-	add	x0, x0, #64
-	ldrsh	w0, [x0, #34]
+	ldrsh	w0, [x0, #98]
 	b	.Lelement_constant_member.1
 .Lelement_constant_member.1:
 	.cfi_def_cfa wsp, 32
@@ -498,6 +496,105 @@ call:
 	ret
 	.cfi_endproc
 	.size	call, .-call
+	.globl	element_address
+	.type	element_address, @function
+element_address:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	ldr	x0, [x29, #16]
+	add	x0, x0, #44
+	b	.Lelement_address.1
+.Lelement_address.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	element_address, .-element_address
+	.globl	element_member_address
+	.type	element_member_address, @function
+element_member_address:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	ldr	x0, [x29, #16]
+	add	x0, x0, #98
+	b	.Lelement_member_address.1
+.Lelement_member_address.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	element_member_address, .-element_member_address
+	.globl	element_address_slot
+	.type	element_address_slot, @function
+element_address_slot:
+	.cfi_startproc
+	sub	sp, sp, #176
+	.cfi_def_cfa_offset 176
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -176
+	.cfi_offset w30, -168
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	add	x0, x29, #60
+	str	x0, [x29, #160]
+	ldr	x0, [x29, #160]
+	bl	use
+.Lelement_address_slot.1:
+	.cfi_def_cfa wsp, 176
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #176
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	element_address_slot, .-element_address_slot
+	.globl	element_address_label
+	.type	element_address_label, @function
+element_address_label:
+	.cfi_startproc
+	sub	sp, sp, #16
+	.cfi_def_cfa_offset 16
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -16
+	.cfi_offset w30, -8
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	adrp	x0, g+44
+	add	x0, x0, :lo12:g+44
+	b	.Lelement_address_label.1
+.Lelement_address_label.1:
+	.cfi_def_cfa wsp, 16
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #16
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	element_address_label, .-element_address_label
 	.bss
 	.globl	g
 	.type	g, @object
