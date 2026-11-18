@@ -488,6 +488,10 @@ recorded as =timeout=. And =timeout= sends SIGTERM, which a program
 may ignore; =timeout -k= would follow with SIGKILL.
 
 Fix: =timeout -k 1 10=, and a corpus rule that no program exits 124.
+With =-k= a program that ignores SIGTERM ends with 137, which the
+script must read as the limit's too, and the shell's "Killed" report
+goes to the terminal unless the run is grouped into the log, as
+=tests/probes= does both.
 
 Check: a program that ignores SIGTERM ends its row.
 
@@ -503,19 +507,6 @@ Fix: show a status above 128 by its signal name, =SEGV= from =kill
 program exits above 128.
 
 Check: the =g9-null-load= row reads =SEGV= and passes.
-
-** TODO =tests/probes= has no time limit
-
-A probe program that loops hangs the step: =tests/probes= runs each
-program with no limit, where the oracle gives a program 10 seconds. A
-generator fault that turns a loop's exit wrong leaves the program
-running and =make test= waiting on it.
-
-Fix: a time limit per probe program, as the oracle's, and the
-program's death by it a failed step.
-
-Check: a probe made to loop shows as a failed step, and =make test=
-ends.
 
 ** TODO A G14 corpus program needs a non-constant condition
 

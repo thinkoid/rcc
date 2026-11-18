@@ -431,6 +431,12 @@ global's and a local's address are the program's, not the probe's to
 place, so their widths are the cost pins' to show and the
 comparison's fit to check.
 
+A probe program runs under a time limit of 10 seconds, as
+`timeout -k 1 10`, so that one a fault of rcc's code keeps in a loop
+does not hold `make test`: SIGTERM stops it at the limit, and SIGKILL
+a second later if it ignores SIGTERM. Its line then says "timeout",
+and the probe fails.
+
 ## 4. The measurement
 
 The measurement says how far a literal machine lands from the

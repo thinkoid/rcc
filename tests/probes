@@ -46,6 +46,17 @@
 # is run.  On a machine rcc has no target for, or one without clang or
 # objcopy on the path, no probe runs: the script says so and exits 0.
 #
+# A probe program that a fault of rcc's code keeps in a loop would
+# hold the run, so each probe program has a time limit of 10 seconds
+# when timeout(1) is on the path, as the oracle's programs have.  The
+# run is timeout -k 1 10: at the limit the program is sent SIGTERM,
+# and SIGKILL a second later if it still runs, so a program that
+# ignores SIGTERM stops too.  A program the limit stops fails, and its
+# line says "timeout"; timeout(1) exits 124 when SIGTERM ended the
+# program and 137 when SIGKILL did.  No probe exits with either by
+# itself, though a SIGKILL from outside the run reads as the limit's.
+# Without timeout the script says so once and runs without a limit.
+#
 # The script prints a line per probe, its name and the probe's own
 # count, "<n> checks, <m> differ", "not yet", or the step that failed,
 # and a summary.  It exits 0 when every probe but those not yet ran
@@ -107,6 +118,14 @@ prefix=ref_
 not_yet_status=3
 not_yet_message='c1: not yet:'
 
+# the seconds a probe program may run, the seconds after SIGTERM until
+# SIGKILL, and the statuses timeout(1) gives for a program it stops
+# with each
+time_limit=10
+kill_after=1
+timeout_status=124
+killed_status=137
+
 # byte order for the sorted probes, and diagnostics in one language
 LC_ALL=C
 export LC_ALL
@@ -127,6 +146,10 @@ output=$workdir/output
 
 # the command line, for the log
 command_line="$0 $*"
+
+# 1 when timeout(1) is on the path and each probe program has the time
+# limit
+limited=0
 
 # the probes run, the probes that passed, and the probes that are not
 # yet
@@ -243,6 +266,19 @@ all_names()
 
 
 ##########
+# find_timeout(): sets limited to 1 when timeout(1) is on the path, and
+# says once that the probe programs run without a limit otherwise
+find_timeout()
+{
+    if command -v timeout > /dev/null 2>&1; then
+        limited=1
+    else
+        echo "$myname: no timeout on the path; probes run without a limit" >&2
+    fi
+}
+
+
+##########
 # logged(): runs a command with its standard output and standard error
 # appended to the log after a "### <command>:" line, and its status
 # after the output; the output is also kept in the file output until
@@ -251,7 +287,10 @@ logged()
 {
     echo "### $*:" >> "$log"
 
-    "$@" > "$output" 2>&1
+    # in a group, so that the shell's own report of a command a signal
+    # killed, "Killed" after the limit's SIGKILL, goes to the output
+    # and not to the terminal
+    { "$@"; } > "$output" 2>&1
     status=$?
 
     cat "$output" >> "$log"
@@ -358,8 +397,21 @@ check_probe()
         return 1
     fi
 
-    logged "$stem-probe" < /dev/null
-    ran=$?
+    if [ "$limited" -eq 1 ]; then
+        logged timeout -k "$kill_after" "$time_limit" "$stem-probe" \
+            < /dev/null
+        ran=$?
+
+        if [ "$ran" -eq "$timeout_status" ] ||
+           [ "$ran" -eq "$killed_status" ]; then
+            printf '%-12s %s\n' "$name" \
+                "timeout: still running after $time_limit seconds"
+            return 1
+        fi
+    else
+        logged "$stem-probe" < /dev/null
+        ran=$?
+    fi
 
     # the probe's count is its last line; a probe stopped by a signal
     # may not have printed it
@@ -415,6 +467,7 @@ if ! native=$(machine_target); then
 fi
 
 check_tools || exit 0
+find_timeout
 
 # every probe named must exist; no name means every probe
 if [ -z "$names" ]; then
