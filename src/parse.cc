@@ -2598,8 +2598,8 @@ past_attributes(const parser_t &p, std::size_t ahead)
 // expression; any of them may follow __extension__, and attributes,
 // which the specifiers then read as they read those among them.  A
 // typedef name before a colon is a label, since labels have a name space
-// of their own.  Attributes before a ';' or an expression start no
-// declaration: __attribute__ ((fallthrough)); is a statement.
+// of their own, 6.2.3p1.  Attributes before a ';' or an expression start
+// no declaration: __attribute__ ((fallthrough)); is a statement.
 bool
 is_declaration_start(const parser_t &p, std::size_t ahead = 0)
 {
@@ -2688,8 +2688,9 @@ sized_alike(const type_t &a, const type_t &b)
 
 // An earlier declaration of the name, met again: the same kind of
 // entity, of the same type, a function or an object of linkage by the
-// rule of compatible types (6.2.7p2), and a typedef because C11 lets a
-// typedef be declared again only as the type it already names.  An
+// rule of compatible types (6.2.7p2), and a typedef because a typedef
+// name may be declared again only as the type it already denotes
+// (6.7.1p4).  An
 // object declared as an array of unknown size and as one of known size
 // takes the composite type from the later declaration on, p5, which is
 // the array of known size whichever came first.
@@ -2786,9 +2787,10 @@ declare_parameter(parser_t &p, const parameter_t &param)
 }
 
 // A typedef declares its declarator's name as a name for the type the
-// declarator gives, in the current scope.  The name has no object, so
-// nothing is generated for it, and it takes no initializer and no
-// assembler name.  A typedef of function type defines no function: a
+// declarator gives, in the current scope, 6.7.9p3.  The name has no
+// object, so nothing is generated for it, and it takes no assembler
+// name and no initializer, which gives the value stored in an object,
+// 6.7.11p9.  A typedef of function type defines no function: a
 // function definition's storage class is extern or static, 6.9.2p4, so
 // a body after its declarator is an error of its own.  The type may be
 // a function type, whose parameters share one scope as a prototype's
@@ -3597,8 +3599,9 @@ require_internal_definitions(const parser_t &p)
 
 // An object at file scope, 6.9.3.  A declaration with an initializer
 // defines it, p1, extern or not; one without an initializer and
-// without extern is a tentative definition, p2; extern alone declares
-// an object defined elsewhere, and c1 writes nothing for it.  Every
+// without extern is a tentative definition, p2; extern alone, neither
+// of the two, declares an object defined elsewhere, and c1 writes
+// nothing for it.  Every
 // declaration of the name in the unit is of one object, of one linkage,
 // linkage_of()'s, and of one type, 6.2.7p2: extern int n; int n; int n
 // = 1; declare one object of external linkage, static int n; extern int
@@ -4145,8 +4148,9 @@ refuse_atomic_qualifier(const token_t &q, const token_t *storage_class)
 // is taken after typedef alone.  A storage-class specifier, register,
 // typedef, extern or static, may stand anywhere too, one of them,
 // 6.7.2p2, and is reported to the caller, since what it may declare
-// depends on where the declaration is.  A typedef name is the type
-// specifier where no type specifier has been seen; after one, an
+// depends on where the declaration is.  A typedef name denotes its
+// type, 6.7.9p3, and is the type specifier where no type specifier has
+// been seen, one of 6.7.3.1p2's sets alone; after one, an
 // identifier is the declarator's name, so unsigned T declares a T.  A
 // typedef name, a struct, union or enum specifier, an atomic type
 // specifier, float, _Bool and GNU C's __float128 are each the whole
@@ -5534,7 +5538,7 @@ parameter_declaration(parser_t &p)
 
     const specifiers_t spec = declaration_specifiers(p);
 
-    // register is the one storage class a parameter takes
+    // 6.7.7.4p2: register is the one storage class a parameter takes
     if (spec.storage_class && !declared(spec, tok_t::kw_register))
         fail(*spec.storage_class,
              quoted(spec.storage_class->text) + " in a parameter declaration");
@@ -5883,8 +5887,8 @@ record_initializer(parser_t &p, const token_t &op, const symbol_t &sym)
 // object of static storage takes its value as data.  A register array
 // is not yet either: its decay is undefined, 6.3.2.1p3, and it has no
 // slot to decay to; nor is a register record, which no register holds.
-// A local of 2 GiB or more is refused here, where its position is
-// known, since no frame holds it.
+// A local larger than the target's largest frame, its frame_limit, is
+// refused here, where its position is known, since no frame holds it.
 void
 init_declarator(parser_t &p,
                 const specifiers_t &spec,
@@ -6283,10 +6287,12 @@ do_statement(parser_t &p)
 
 // The declaration of a for's first clause, as the init statement:
 // several declarators become one block of declaration statements, since
-// the tree holds a single init statement.  The init declares objects
-// only, so neither typedef nor extern is a storage class of it.  A static
-// assertion, a declaration too, 6.7.1p1, makes no statement, and the
-// init is null.
+// the tree holds a single init statement.  A storage class but register
+// is refused there, by C17's rule that the declaration declare objects
+// of storage class auto or register only, its 6.8.5p3; N3220 has no
+// such rule, and a function declared there without one is taken, as C23
+// lets it.  A static assertion, a declaration too, 6.7.1p1, makes no
+// statement, and the init is null.
 stmt_ptr_t
 for_declaration(parser_t &p)
 {

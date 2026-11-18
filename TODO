@@ -710,22 +710,6 @@ Check: the pin of =global-initializer-scalar-braces= agrees with the
 decision, and that of
 =struct-initializer-braces=, a scalar member's, with it.
 
-** TODO The comments on typedef and extern cite no paragraph
-
-The comments written with =typedef= and =extern= state their rules
-without the standard's numbers, since no copy was at hand to verify
-them against: a label's name space, the declaration of a =for=, the
-storage class of a parameter, a typedef redeclared as the same type,
-a typedef name as a type specifier, =extern= on a function, an
-=extern= object without an initializer, a typedef's initializer. Two
-existing citations were widened unverified: 6.2.7p2 to objects of
-file scope, and 6.5.2p2 to "as an object or a function".
-
-Fix: each rule cited by its paragraph in N3220, read from the text.
-
-Check: every citation in the comments of =src/parse.cc= that this
-entry names is found at its number in N3220.
-
 ** TODO A forward reference to an enumeration is refused
 
 ~enum e; enum e *p;~ before the list of =e= fails with "enum 'e'
@@ -770,20 +754,6 @@ Fix: decide: the error stays, as the constraint has it, or the pair
 is taken as the two compilers take it, the other arm for its effect.
 
 Check: the pin of =conditional-void-arm= agrees with the decision.
-
-** TODO The comment on a local's declaration says 2 GiB
-
-The comment on =init_declarator()= says "A local of 2 GiB or more is
-refused here". The test under it is against the target's frame limit,
-which is 16 bytes under 2 GiB on x86-64 and 16 bytes under 16 MiB on
-aarch64: =char a[20000000];= as a local compiles with =-target
-x86-64= and fails with =-target aarch64=, "variable 'a' is too large
-for a local", status 1.
-
-Fix: the comment says a local over the target's largest frame is
-refused, and names no number.
-
-Check: the comment read against =src/target.hh=.
 
 ** TODO =convert_to()= is not the one place a conversion enters the tree
 
