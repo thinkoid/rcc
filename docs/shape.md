@@ -659,13 +659,14 @@ and so is a `static` declaration after one of external linkage. The
 function called at program startup is named `main` (5.1.2.3.2p1) and
 is found by that name from outside the file, so `static` on a
 declaration of the function `main` is an error: the link would find
-no `main`. A static object at file scope keeps every rule of an
-object at file scope below, and its tentative definition defines it
-in the file. A name of internal linkage that an expression uses,
-outside the operand of `sizeof`, has its definition in the file
-(6.9.1p3), so a `static` function called and never defined is an error
-at the end of the file: the assembler would leave its symbol
-undefined, and the linker would bind the call to another file's
+no `main`. So is a function specifier on any declaration of `main`, a
+definition among them (6.7.5p4). A static object at file scope keeps
+every rule of an object at file scope below, and its tentative
+definition defines it in the file. A name of internal linkage that an
+expression uses, outside the operand of `sizeof`, has its definition
+in the file (6.9.1p3), so a `static` function called and never defined
+is an error at the end of the file: the assembler would leave its
+symbol undefined, and the linker would bind the call to another file's
 function of the name. A call of a system header's `static inline`
 function before its definition is not yet there.
 

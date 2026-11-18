@@ -3659,8 +3659,10 @@ static_assert_declaration(parser_t &p)
 // function as it is written either way.  A static inline function may
 // be an inline function, p7, and its definition in the program's own
 // source is compiled as the static function it is, inline dropped;
-// one a system header writes is accepted and not compiled.  An
-// __asm__ at file scope is not yet.
+// one a system header writes is accepted and not compiled.  A
+// definition of main takes no function specifier, 6.7.5p4, and no
+// static, as no declaration of it does.  An __asm__ at file scope is
+// not yet.
 void
 external_declaration(parser_t &p)
 {
@@ -3690,11 +3692,13 @@ external_declaration(parser_t &p)
     const declarator_t d = declarator(p, base, naming_t::required, typedef_);
 
     const bool defines_function = d.params && peek(p).kind == tok_t::lbrace;
-    if (defines_function && declared(spec, tok_t::kw_static) &&
-        spec.inline_specifier) {
+    if (defines_function && !typedef_) {
         refuse_specifier_on_main(spec, d);
         refuse_static_main(spec, d);
+    }
 
+    if (defines_function && declared(spec, tok_t::kw_static) &&
+        spec.inline_specifier) {
         if (in_system_header(spec))
             header_function_definition(p, spec, d);
         else
@@ -3704,8 +3708,6 @@ external_declaration(parser_t &p)
     }
 
     if (defines_function && !typedef_) {
-        refuse_static_main(spec, d);
-
         if (const token_t *t = spec.inline_specifier)
             not_yet(*t, quoted(t->text) + " on a function definition");
 

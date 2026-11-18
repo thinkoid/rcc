@@ -1,0 +1,2 @@
+tests/error/noreturn-main.c:3:1: error: '_Noreturn' in a declaration of 'main'
+status 1

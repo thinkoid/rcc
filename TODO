@@ -982,20 +982,6 @@ second one is met.
 Check: a program of =tests/error= that marks its first definition as
 a system header's, pinned "redefinition of 'f'".
 
-** TODO A function specifier stands on a definition of =main=
-
-~_Noreturn int main(void) { for (;;) { } }~ compiles, and ~inline
-int main(void) { return 0; }~ fails with "not yet: 'inline' on a
-function definition". 6.7.5p4 allows no function specifier in a
-declaration of =main=; a declaration without a body and a =static
-inline= definition are refused with "'inline' in a declaration of
-'main'", and a plain definition is not asked.
-
-Fix: =refuse_specifier_on_main()= is called for every definition.
-
-Check: two programs of =tests/error= with the definitions above,
-pinned with the error of =main=.
-
 ** TODO A string in parentheses initializes an array of char only without braces
 
 ~char s[] = ("abc");~ compiles, and ~char t[] = { ("abc") };~ fails

@@ -1,0 +1,2 @@
+tests/error/inline-main-definition.c:3:1: error: 'inline' in a declaration of 'main'
+status 1
