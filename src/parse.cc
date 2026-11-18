@@ -2522,7 +2522,10 @@ parameter_t parameter_declaration(parser_t &);
 type_t type_name(parser_t &);
 std::vector< stmt_t > declaration(parser_t &);
 std::vector< stmt_t > init_declarator_list(parser_t &, const specifiers_t &);
-stmt_t init_declarator(parser_t &, const specifiers_t &, const declarator_t &);
+void init_declarator(parser_t &,
+                     const specifiers_t &,
+                     const declarator_t &,
+                     std::vector< stmt_t > &);
 
 stmt_t statement(parser_t &);
 block_t compound_statement(parser_t &);
@@ -5830,7 +5833,7 @@ init_declarator_list(parser_t &p, const specifiers_t &spec)
             else if (declared(spec, tok_t::kw_static))
                 static_local(p, spec, d);
             else
-                decls.push_back(init_declarator(p, spec, d));
+                init_declarator(p, spec, d, decls);
         }
     } while (accept(p, tok_t::comma));
 
@@ -5839,22 +5842,54 @@ init_declarator_list(parser_t &p, const specifiers_t &spec)
     return decls;
 }
 
-// A local, an object of automatic storage duration, 6.2.4p5.  The name
-// is in scope from the end of its declarator, 6.2.1p7, so an
-// initializer sees the object it initializes.  The initializer is
-// converted as by assignment, 6.7.11p12, an error of the conversion
-// said at the =; an initializer that has no value, a void one,
-// 6.3.2.2p1, is the error of the operand, said at its first token.  An
-// object's type must be complete, 6.7.1p8, so an array needs its size;
-// any initializer of an array or of a record, and a brace initializer
-// of anything, is not yet: a local's initializer is stores at run time,
-// where an object of static storage takes its value as data.  A
-// register array is not yet either: its decay is undefined, 6.3.2.1p3,
-// and it has no slot to decay to; nor is a register record, which no
-// register holds.  A local of 2 GiB or more is refused here, where its
-// position is known, since no frame holds it.
-stmt_t
-init_declarator(parser_t &p, const specifiers_t &spec, const declarator_t &d)
+// The initializer of a local record that is an expression: a record
+// compatible with the object, whose value is the object's initial
+// value, 6.7.11p14, so the declaration is followed by the record's
+// assignment of it to the new object, the copy's own row.  A value of
+// another type is the error of incompatible types, said at the =, and
+// a record no lvalue holds, a call's or an assignment's, is a record's
+// value, not yet.
+expr_t
+record_initializer(parser_t &p, const token_t &op, const symbol_t &sym)
+{
+    const token_t &start = peek(p);
+    expr_t init = assignment_expression(p);
+    require_value(start, init);
+
+    init = decayed(std::move(init));
+    require_record_conversion(op, init.type, sym.type);
+
+    if (!is_lvalue(init))
+        refuse_record_value(start, init.type);
+
+    const type_t t = sym.type;
+    expr_t object { t, name_t { &sym } };
+
+    return expr_t { t, assign_t { std::nullopt, t, box(std::move(object)),
+                                  box(std::move(init)) } };
+}
+
+// A local, an object of automatic storage duration, 6.2.4p5, appended
+// to decls as its declaration, and for a record initialized by an
+// expression the record_initializer() statement after it.  The name is
+// in scope from the end of its declarator, 6.2.1p7, so an initializer
+// sees the object it initializes.  The initializer is converted as by
+// assignment, 6.7.11p12, an error of the conversion said at the =; an
+// initializer that has no value, a void one, 6.3.2.2p1, is the error
+// of the operand, said at its first token.  An object's type must be
+// complete, 6.7.1p8, so an array needs its size; any initializer of an
+// array, a list of a record, and a brace initializer of anything, is
+// not yet: a local's initializer is stores at run time, where an
+// object of static storage takes its value as data.  A register array
+// is not yet either: its decay is undefined, 6.3.2.1p3, and it has no
+// slot to decay to; nor is a register record, which no register holds.
+// A local of 2 GiB or more is refused here, where its position is
+// known, since no frame holds it.
+void
+init_declarator(parser_t &p,
+                const specifiers_t &spec,
+                const declarator_t &d,
+                std::vector< stmt_t > &decls)
 {
     require_block_object(p, spec, d);
 
@@ -5866,7 +5901,9 @@ init_declarator(parser_t &p, const specifiers_t &spec, const declarator_t &d)
         not_yet(*d.name, "register object " + quoted(d.name->text) + " of " +
                              record_words(*r));
 
-    if (r && peek(p).kind == tok_t::assign)
+    const bool record = is< record_type_t >(d.type);
+    const bool listed = peek(p, 1).kind == tok_t::lbrace;
+    if (r && peek(p).kind == tok_t::assign && (!record || listed))
         not_yet(peek(p), "initializer of local " + record_words(*r));
 
     if (is< array_t >(d.type) && peek(p).kind == tok_t::assign)
@@ -5883,6 +5920,15 @@ init_declarator(parser_t &p, const specifiers_t &spec, const declarator_t &d)
                                declared(spec, tok_t::kw_register)),
                        std::nullopt };
 
+    if (peek(p).kind == tok_t::assign && record) {
+        const token_t &op = advance(p);
+        expr_t copy = record_initializer(p, op, *decl.sym);
+
+        decls.push_back(stmt_t { std::move(decl) });
+        decls.push_back(stmt_t { expr_stmt_t { std::move(copy) } });
+        return;
+    }
+
     if (peek(p).kind == tok_t::assign) {
         const token_t &op = advance(p);
 
@@ -5896,7 +5942,7 @@ init_declarator(parser_t &p, const specifiers_t &spec, const declarator_t &d)
         decl.init = assignment_conversion(op, std::move(init), d.type);
     }
 
-    return stmt_t { std::move(decl) };
+    decls.push_back(stmt_t { std::move(decl) });
 }
 
 //

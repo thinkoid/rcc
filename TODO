@@ -813,19 +813,27 @@ it.
 Check: the pins of =unclosed-function-body= and =unclosed-block=
 name the last line of their programs.
 
-** TODO A local record's initializer is not yet
+** TODO A local record's initializer list is not yet
 
-~struct point q = *p;~ and ~struct point q = { 1, 2 };~ in a block
-are refused, "not yet: initializer of local struct 'point'"; a
-record of static storage takes its list.
+~struct point q = { 1, 2 };~ in a block is refused, "not yet:
+initializer of local struct 'point'"; a record of static storage
+takes its list, and a local one initialized by a record's value is
+its copy.
 
-Fix: the first as the declaration and a statement of the record's
-assignment, the copy's own row; the second as a zeroing of the whole
-object and the listed members' assignments in the list's order, the
-zeroing a row of each generator.
+The listed values are run-time expressions, each converted as if by
+assignment (6.7.11p12), and the unlisted rest is zero (6.7.11p21).
+The tree has no node that zeroes an object, and the walk over
+designators that the static path has yields constants at offsets,
+where a local needs places. A string for a member array of char
+needs its bytes copied; arrays have no copy's row.
 
-Check: =struct-local-initializer= and =struct-local-list-initializer=
-compile, and a probe compares the object's bytes.
+Fix: a zeroing of the whole object, padding included, then the
+listed members' assignments in the list's order; the zeroing a row
+of each generator in the copy's units, stores of zero by the
+record's alignment and the loop above eight.
+
+Check: =struct-local-list-initializer= compiles, and the =copies=
+probe, or one beside it, compares the object's bytes.
 
 * Lexer
 

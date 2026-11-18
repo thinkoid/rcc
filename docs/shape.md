@@ -582,19 +582,21 @@ an initializer (6.7.11p4) or a tentative definition of internal
 linkage (6.9.3p3); a tentative definition of external linkage takes
 the record as it is at the end of the unit (6.9.3p2), which must then
 be complete. What reads or writes the whole object of a record is not
-yet, each in words of its own: a local's initializer, which is stores
-at run time; a `register` one, which no register holds; a record
-passed or returned by value, by a definition's parameter or result,
-by an argument and by a call; and its value where a record is wanted,
-an arm of a conditional of two records or an argument past a variadic
-function's parameters, or for its effect, a member's of a record type
-among them. Where a scalar is wanted, a record is an error, not a
-construct rcc lacks: as the operand of an operator or a condition
-(6.5.4.3p1, 6.5.7p2, 6.8.5.2p1 and their like), and converted as if by
-assignment to a scalar, as an initializer, an assigned value, an
-argument or a value returned (6.5.17.2p1); so is a scalar converted to
-a record. A cast to a record or of one is an error, since a record is
-no scalar (6.5.5p2).
+yet, each in words of its own: a local's initializer that is a list,
+which is stores at run time, where one that is a record's value is the
+declaration and the record's assignment of the value to the object
+(6.7.11p14), the copy; a `register` one, which no register holds; a
+record passed or returned by value, by a definition's parameter or
+result, by an argument and by a call; and its value where a record is
+wanted, an arm of a conditional of two records or an argument past a
+variadic function's parameters, or for its effect, a member's of a
+record type among them. Where a scalar is wanted, a record is an
+error, not a construct rcc lacks: as the operand of an operator or a
+condition (6.5.4.3p1, 6.5.7p2, 6.8.5.2p1 and their like), and
+converted as if by assignment to a scalar, as an initializer, an
+assigned value, an argument or a value returned (6.5.17.2p1); so is a
+scalar converted to a record. A cast to a record or of one is an
+error, since a record is no scalar (6.5.5p2).
 
 `a = b` on two records is a simple assignment (6.5.17.2p1): `a` a
 modifiable lvalue of a complete record (6.3.2.1p1), `b` of a
@@ -1255,10 +1257,11 @@ walk from 27 by a conditional of two void calls.
 
 ## 11. Not yet
 
-A local's initializer of a struct or a union and each use that
+A local's initializer list of a struct or a union and each use that
 reads or writes one whole (chapter 5: a `register` one, a record by
-value but the aarch64 `va_list`, and its value), a function whose
-parameter list is `(...)` alone, the layout of a struct or a
+value but the aarch64 `va_list`, and its value where a record is
+wanted), a function whose parameter list is `(...)` alone, the layout
+of a struct or a
 union with a bit-field, an anonymous member, an attribute that marks,
 `packed` and `aligned` among them, a flexible array member, no
 member, or a member of a type rcc does not use yet (chapter 3), C23's

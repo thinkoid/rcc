@@ -1,0 +1,2 @@
+tests/error/struct-local-initialized-by-int.c:12:24: error: incompatible integer to struct 'point' conversion
+status 1

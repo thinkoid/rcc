@@ -75,7 +75,9 @@ compare(const char *name, unsigned seed, size_t span)
     void copy_##N(K N *, K N *), ref_copy_##N(K N *, K N *);            \
     void element_##N(K N *, K N *, int);                                \
     void ref_element_##N(K N *, K N *, int);                            \
-    void local_##N(K N *, K N *), ref_local_##N(K N *, K N *);
+    void local_##N(K N *, K N *), ref_local_##N(K N *, K N *);          \
+    void initialized_##N(K N *, K N *);                                 \
+    void ref_initialized_##N(K N *, K N *);
 
 #define SIZED_DECLARE(N, T, COUNT) DECLARE(struct, N)
 #define PADDED_DECLARE(N, MEMBERS) DECLARE(struct, N)
@@ -98,6 +100,7 @@ UNIONS(UNION_DECLARE)
         CALL(copy_##N, K N, seed, )                                     \
         CALL(element_##N, K N, seed, , 1)                               \
         CALL(local_##N, K N, seed, )                                    \
+        CALL(initialized_##N, K N, seed, )                              \
     }
 
 #define SIZED_CHECK(N, T, COUNT) CHECK(struct, N)
