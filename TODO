@@ -372,31 +372,6 @@ Check: =clang-format --dry-run= over every =.c= and =.h= under
 =tests/= prints nothing, every listing is byte-identical, and =make
 test= passes.
 
-** TODO The shared =matmul-tuned.c= says every loop ends on =!==
-
-The header of =tests/perf/matmul-tuned.c= says "Every loop ends on
-!=". The loops of the fill, the repetitions and the checksum end on
-=<=; the three loops of the product end on =!==. The aarch64 file
-says "Every loop of the product".
-
-Fix: the shared header says it as the aarch64 one does.
-
-Check: the header read against the loops.
-
-** TODO The aarch64 =strings-tuned.c= draws a warning from =clang=
-
-=clang -O2= warns at =copy()= of =tests/perf/aarch64/strings-tuned.c=,
-"using the result of an assignment as a condition without
-parentheses", on ~while (*d++ = *s++)~, and every =make bench= on
-aarch64 writes the warning to =build/perf/log=. Writing the test as
-~!= 0~ would silence it but is another program under rcc, which
-compares where a comparison is written.
-
-Fix: a second pair of parentheses, ~while ((*d++ = *s++))~.
-
-Check: =make bench= on aarch64 writes no warning to the log, and the
-listing of =copy()='s loop under rcc is unchanged.
-
 ** TODO No run checks the width of an access to a global or a local
 
 The =bounds= probe makes an access wider than its object fault where

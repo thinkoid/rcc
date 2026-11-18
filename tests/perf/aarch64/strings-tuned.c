@@ -31,7 +31,7 @@ length(register char *s)
 void
 copy(register char *d, register char *s)
 {
-    while (*d++ = *s++)
+    while ((*d++ = *s++))
         ;
 }
 

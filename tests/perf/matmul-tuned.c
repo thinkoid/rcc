@@ -8,8 +8,8 @@
    The machine keeps five register variables, so register is on the
    five the inner loop uses, n, aend, pa, pb and s; the row and column
    walkers of the outer loops, arow, pc and bcol, and bend and i take
-   slots.  Every loop ends on !=.  The fill, the change to a and the
-   checksum are as in matmul.c. */
+   slots.  Every loop of the product ends on !=.  The fill, the change
+   to a and the checksum are as in matmul.c. */
 #define SIZE 9216
 #define REPS 1200
 
