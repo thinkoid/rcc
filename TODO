@@ -372,21 +372,6 @@ rcc and 0 under clang.
 
 Check: the oracle row.
 
-** TODO Two corpus programs describe the x86-64 listing only
-
-The comments of =g7-ptr-equal= and =g11-misaligned= in =tests/corpus=
-say what c1 writes by x86-64's names: "adjacent slots off rbp", and
-"by one movl: x86 has one mov for every alignment". Each has an
-aarch64 pin beside its x86-64 one, with slots off =x29= and an =ldr=,
-and the comment is true of one pin of the two. =g5-register-undef=
-and the three =g13-= programs name both targets' instructions.
-
-Fix: each comment names both targets' instructions, as those four
-do.
-
-Check: no comment of =tests/corpus= names a register or an
-instruction of one target alone.
-
 ** TODO =tests/probes= takes 124 and 137 for its time limit whenever it sees them
 
 The oracle counts a status of 124 or 137 as the limit's only where
