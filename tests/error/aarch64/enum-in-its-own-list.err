@@ -1,0 +1,2 @@
+tests/error/enum-in-its-own-list.c:3:34: error: not yet: enum 'color' in its own list
+status 1

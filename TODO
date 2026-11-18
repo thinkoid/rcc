@@ -225,7 +225,11 @@ implemented subset reaches, each with its choice and the code or pin
 that fixes it; the "Not in this list" of both documents points at it.
 Among them what an access to a volatile object is (6.7.4.1p8): each
 load and each store the source writes, at the object's width, which
-=shape.md= chapter 5 says and =tests/cost/volatile.c= pins.
+=shape.md= chapter 5 says and =tests/cost/volatile.c= pins. And the
+integer type compatible with each enumerated type (J.3.10(7)): by
+its values, =unsigned int=, =unsigned long=, =int= or =long=, as
+=clang= chooses on both targets, which =shape.md= chapter 5 says and
+the =enums= probe pins; an enumeration under =packed= is refused.
 
 Check: every J.3 item the subset reaches has a row for each target,
 and each row agrees with a pin or a probe.
@@ -1020,13 +1024,55 @@ Fix: each rule cited by its paragraph in N3220, read from the text.
 Check: every citation in the comments of =src/parse.cc= that this
 entry names is found at its number in N3220.
 
+** TODO An enumeration declared in a struct's member list declares nothing
+
+~struct s { enum e { A, B } k; }; int f(void) { return B; }~ fails
+with "'B' undeclared". The constants of an enumeration declared
+among a struct's members have the scope the struct is declared in
+(6.2.1p4), and =clang= compiles the program. The parser skips a
+struct's member list whole, the enum specifier with it.
+
+Fix: the slice that reads member lists declares them; until then the
+skip parses each enum specifier it meets outside parentheses.
+
+Check: the program compiles and =f= returns 1.
+
+** TODO A forward reference to an enumeration is refused
+
+~enum e; enum e *p;~ before the list of =e= fails with "enum 'e'
+used before its list". That is the constraint of 6.7.3.4p2, but
+=clang= takes it without a word as an extension, and a header may
+write it. A type in the tree is a value with no identity of its tag,
+so a pointer made before the list cannot become a pointer to the
+integer type the list completes.
+
+Fix: with the identity of a tag that structs need (~struct s *p;~
+before its members), the forward enumeration takes the same.
+
+Check: the two declarations compile, and =p= points at an object of
+the type the list gives.
+
+** TODO Pointers to two integer types of one representation convert with no diagnostic
+
+~long *p; long long *q = p;~ compiles, and so does an assignment of
+an ~enum a *~ to an ~enum b *~ where both have one integer type:
+=long= and =long long= are one type in the tree, and an enumerated
+type is its integer type (=shape.md= chapter 3). 6.5.17.2p1 asks
+compatible pointee types, and =clang= rejects both programs.
+
+Fix: none taken; either the documents say these compile, with the
+implementation's choices, or an integer type carries its spelling
+for the compatibility check alone.
+
+Check: both programs fail, or the documents say they compile.
+
 ** TODO A cast to a struct says not yet
 
 ~(struct S) x~ fails with "not yet: struct". The cast is not waiting
 for a slice: C takes only =void= or a scalar type in a cast, so "cast
 to a type that is not a scalar", which the tree has, is the
-diagnosis. A cast to an enum or to a floating type is valid C, and
-"not yet" is right for those.
+diagnosis. A cast to a floating type is valid C, and "not yet" is
+right for it; a cast to an enum compiles.
 
 Fix: =cast()= refuses a struct or a union as not a scalar, before it
 asks whether the type is one rcc does not use yet.

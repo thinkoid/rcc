@@ -1,0 +1,2 @@
+tests/error/enumerator-too-large.c:4:39: error: value of 'beyond' is too large for any integer type
+status 1

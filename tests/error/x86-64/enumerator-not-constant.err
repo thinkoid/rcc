@@ -1,0 +1,2 @@
+tests/error/enumerator-not-constant.c:6:21: error: enumerator value is not an integer constant expression
+status 1

@@ -532,6 +532,18 @@ constant_of(const type_t &t, exact_t v)
     return expr_t { t, literal_t { wrapped(v, as< int_t >(t)) } };
 }
 
+// Whether an integer type holds a value: two's complement over its
+// width, a signed type's top bit its sign.
+bool
+holds(const type_t &t, exact_t v)
+{
+    const int_t &type = as< int_t >(t);
+    const int bits = type.width - (type.is_signed ? 1 : 0);
+    const exact_t least = type.is_signed ? -(exact_t(1) << bits) : 0;
+
+    return v >= least && v < (exact_t(1) << bits);
+}
+
 // Whether the conversion of e to t is a constant: an integer constant
 // to an integer type, or to a pointer type, an address constant
 // (6.6p11); a pointer constant to another pointer type.  A pointer
@@ -2061,7 +2073,6 @@ void header_function_definition(parser_t &,
 specifiers_t declaration_specifiers(parser_t &);
 type_t struct_or_union_specifier(parser_t &);
 type_t enum_specifier(parser_t &);
-void enumerator_list(parser_t &, const type_t &);
 type_t atomic_type_specifier(parser_t &);
 declarator_t declarator(parser_t &,
                         const type_t &,
@@ -3231,7 +3242,8 @@ tag_in(scope_t &scope, std::string_view name)
 // another kind of type is an error, p1, and so is an enum without its
 // list before the enum is declared, p2.  A second list for one tag in
 // one scope is valid when it defines the same content, p1, which rcc
-// cannot compare while it skips the lists, so it is not yet.  A tag
+// does not compare: it skips a struct's or a union's list, and holds
+// no enum's against the first.  So it is not yet.  A tag
 // first declared in a parameter list is declared in the list's scope,
 // 6.2.1p4, and ends with it, or with the body of a definition.
 type_t
@@ -3280,37 +3292,6 @@ optional_tag(parser_t &p, const token_t &keyword)
 
     return &expect(p, tok_t::identifier,
                    "expected identifier or '{' after " + quoted(keyword.text));
-}
-
-// The value of an enumeration constant, skipped up to the comma or the
-// closing brace at the list's own depth, which is left for the caller:
-// a comma inside parentheses, brackets or braces is the expression's.
-// The value is not computed yet.
-void
-skip_enumerator_value(parser_t &p)
-{
-    for (int depth = 0; peek(p).kind != tok_t::eof; advance(p)) {
-        switch (peek(p).kind) {
-        case tok_t::lparen:
-        case tok_t::lbracket:
-        case tok_t::lbrace: ++depth; break;
-        case tok_t::rparen:
-        case tok_t::rbracket:
-            if (depth > 0)
-                --depth;
-            break;
-        case tok_t::rbrace:
-            if (depth == 0)
-                return;
-            --depth;
-            break;
-        case tok_t::comma:
-            if (depth == 0)
-                return;
-            break;
-        default: break;
-        }
-    }
 }
 
 // _Atomic as a qualifier makes an atomic type, whose access, ++ on it
@@ -3627,57 +3608,200 @@ struct_or_union_specifier(parser_t &p)
     return t;
 }
 
-// enum, then a tag, an enumerator list in braces, or both, 6.7.3.3p1.
-// The type is a not-yet type, and its enumeration constants are
-// declared for what they are.  Attributes after the keyword and after
-// the list are dropped, as a struct's are: packed, which would change
-// the enum's size, waits for the size.
-type_t
-enum_specifier(parser_t &p)
+// An enumeration constant as its list declares it: its symbol, and its
+// value exactly, which the type the enumeration completes as must hold.
+struct enumerator_t
 {
-    const token_t &keyword = advance(p);
-    attribute_specifier_list(p);
+    symbol_t *sym;
+    exact_t value;
+};
 
-    const token_t *tag = optional_tag(p, keyword);
+// The type and the value of an enumeration constant while its list is
+// read, 6.7.3.3p10, p12, as a literal.  After = they are those of the
+// integer constant expression, p4, but an int where int holds the
+// value.  Without =, the first constant is the int 0, and each other the
+// previous one's value plus one, in the previous one's type, or in the
+// 64-bit type of its signedness where that type does not hold the sum.
+// No type holds a sum past the 64-bit types, and the enumeration has
+// then no type for its values, a constraint violation, p12 and its
+// footnote.
+expr_t
+enumerator_value(parser_t &p, const token_t &name, const expr_t *previous)
+{
+    if (accept(p, tok_t::assign)) {
+        const token_t &start = peek(p);
 
-    if (peek(p).kind != tok_t::lbrace)
-        return tagged_type(p, keyword, *tag, tag_use_t::refers);
+        expr_t e = rvalue(start, conditional_expression(p));
+        if (!is_integer_constant(e))
+            fail(start,
+                 "enumerator value is not an integer constant expression");
 
-    const type_t t = tag ? tagged_type(p, keyword, *tag, tag_use_t::defines) :
-                           new_tag_type(p, keyword);
+        if (holds(int_type(), exact_value(e)))
+            return constant_of(int_type(), exact_value(e));
 
-    advance(p);
-    enumerator_list(p, t);
-    expect(p, tok_t::rbrace, "expected '}' at end of enumerator list");
-    attribute_specifier_list(p);
+        return e;
+    }
 
-    return t;
+    if (!previous)
+        return constant_of(int_type(), 0);
+
+    const exact_t next = exact_value(*previous) + 1;
+    if (holds(previous->type, next))
+        return constant_of(previous->type, next);
+
+    const type_t wider = make_int(64, as< int_t >(previous->type).is_signed);
+    if (!holds(wider, next))
+        fail(name, "value of " + quoted(name.text) +
+                       " is too large for any integer type");
+
+    return constant_of(wider, next);
 }
 
 // One or more enumerators, the list perhaps ending in a comma,
 // 6.7.3.3p1.  Each declares its enumeration constant as an ordinary
-// identifier, 6.2.3p1, in the current scope, once there, from the end
-// of its enumerator, 6.2.1p7.  The constant's type here is the
-// enumeration's, and its value, the tokens after =, is skipped: its use
-// is refused where it is named.
-void
-enumerator_list(parser_t &p, const type_t &t)
+// identifier, 6.2.3p1, in the current scope, once there, of the type and
+// the value enumerator_value() gives it.  Its scope begins after its
+// enumerator, 6.2.1p7, so its own value cannot name it and the next
+// one's can.
+std::vector< enumerator_t >
+enumerator_list(parser_t &p)
 {
+    std::vector< enumerator_t > list;
+    std::optional< expr_t > previous;
+
     do {
         const token_t &name =
             expect(p, tok_t::identifier, "expected identifier");
         if (p.scopes.back().names.contains(name.text))
             fail(name, "redefinition of " + quoted(name.text));
 
-        if (accept(p, tok_t::assign)) {
-            if (next_is(p, { tok_t::comma, tok_t::rbrace }))
-                fail(peek(p), "expected expression");
+        expr_t value =
+            enumerator_value(p, name, previous ? &*previous : nullptr);
 
-            skip_enumerator_value(p);
-        }
+        symbol_t &sym = added(p, name.text, value.type, storage_t::enumerator);
+        sym.value = as< literal_t >(value).value;
+        list.push_back({ &sym, exact_value(value) });
 
-        added(p, name.text, t, storage_t::enumerator);
+        previous = std::move(value);
     } while (accept(p, tok_t::comma) && peek(p).kind != tok_t::rbrace);
+
+    return list;
+}
+
+// The integer type compatible with an enumerated type, 6.7.3.3p13, the
+// choice J.3.10 leaves to the implementation, as clang makes it on both
+// targets: unsigned int when no value is negative and it holds every
+// one, else unsigned long; int when a value is negative and int holds
+// every one, else long.  No type holds a negative value and one past
+// LONG_MAX together, a constraint violation, p4.  at is the tag, or the
+// keyword of an enum without one.
+type_t
+compatible_type(const token_t &at, const std::vector< enumerator_t > &list)
+{
+    const auto [least, most] = std::ranges::minmax(
+        list, { }, [](const enumerator_t &e) { return e.value; });
+    const bool negative = least.value < 0;
+
+    for (const int width : { 32, 64 }) {
+        const type_t t = make_int(width, negative);
+        if (holds(t, least.value) && holds(t, most.value))
+            return t;
+    }
+
+    const std::string what =
+        at.kind == tok_t::identifier ? "enum " + quoted(at.text) : "the enum";
+    fail(at, "no integer type holds every value of " + what);
+}
+
+// The constants of an enumeration whose list is complete take its
+// member type, 6.7.3.3p15: int when int holds every value, else the
+// enumerated type, t.
+void
+complete_constants(const std::vector< enumerator_t > &list, const type_t &t)
+{
+    const bool ints = std::ranges::all_of(
+        list, [](const enumerator_t &e) { return holds(int_type(), e.value); });
+    const type_t member = ints ? int_type() : t;
+
+    for (const enumerator_t &e : list) {
+        e.sym->type = member;
+        if (is< int_t >(member))
+            e.sym->value = wrapped(e.value, as< int_t >(member));
+    }
+}
+
+// C23's enum type specifier, a ':' and a type's specifiers after enum or
+// its tag, 6.7.3.3p1, which fixes the enumerated type, p5, is not yet:
+// no header and no program at hand writes it, and its constraints, p3
+// and p6 to p8, each need a diagnostic of their own.
+void
+refuse_fixed_underlying_type(const parser_t &p)
+{
+    if (peek(p).kind == tok_t::colon)
+        not_yet(peek(p), "enum with a fixed underlying type");
+}
+
+// The tag of an enum whose list follows, declared in the current scope
+// from the list's '{' on, 6.2.1p7, as the incomplete type it is until
+// the '}', 6.7.3.4p5: a not-yet type, whose pointer is taken and whose
+// every other use the list makes is refused by its words.
+void
+open_enum_tag(parser_t &p, const token_t &keyword, const token_t &tag)
+{
+    tagged_type(p, keyword, tag, tag_use_t::defines);
+
+    tag_in(p.scopes.back(), tag.text)->type = make_not_yet(
+        p.identities++, "enum " + quoted(tag.text) + " in its own list");
+}
+
+// enum, then a tag, an enumerator list in braces, or both, 6.7.3.3p1.
+// A list defines an enumerated type, and the tree keeps the integer type
+// compatible with it, compatible_type()'s, as it keeps the type a
+// typedef names: an object, a parameter, a result, a cast, sizeof, a
+// switch and the arithmetic of one are its integer type's.  Its
+// constants take the types and the values of p10, p12 and p15.  A tag
+// without a list names the type its list defined, and is an error
+// before the list, 6.7.3.4p2: GNU C's forward declaration, enum e;, is
+// not taken, since a pointer made to the type before the list would
+// not point to the integer type the list completes it as.  An
+// attribute after the keyword or after the list is dropped when it is
+// of the kind dropped; a marking one, packed among them, which changes
+// the type's size, makes the type a not-yet type of the attribute's
+// words, and the constants keep their values, an int constant its use.
+type_t
+enum_specifier(parser_t &p)
+{
+    const token_t &keyword = advance(p);
+    const token_t *marking = attribute_specifier_list(p);
+
+    refuse_fixed_underlying_type(p);
+    const token_t *tag = optional_tag(p, keyword);
+    refuse_fixed_underlying_type(p);
+
+    if (peek(p).kind != tok_t::lbrace)
+        return tagged_type(p, keyword, *tag, tag_use_t::refers);
+
+    if (tag)
+        open_enum_tag(p, keyword, *tag);
+
+    advance(p);
+    const std::vector< enumerator_t > list = enumerator_list(p);
+    expect(p, tok_t::rbrace, "expected '}' at end of enumerator list");
+
+    const token_t *after = attribute_specifier_list(p);
+    if (!marking)
+        marking = after;
+
+    type_t t = compatible_type(tag ? *tag : keyword, list);
+    if (marking)
+        t = make_not_yet(p.identities++, attribute_words(*marking));
+
+    complete_constants(list, t);
+
+    if (tag)
+        tag_in(p.scopes.back(), tag->text)->type = t;
+
+    return t;
 }
 
 // _Atomic ( type-name ), the atomic type specifier, 6.7.3.5p1, which
@@ -5299,18 +5423,20 @@ argument_expression_list(parser_t &p,
 }
 
 // A name must be declared, 6.5.2p2, as an object or a function: a
-// typedef name names a type.  The use of an enumeration constant, whose
-// value is not computed yet, is refused here, with the name in hand, as
-// is a symbol's an attribute marked, by the attribute's words, and a
-// global's of a not-yet type, which an object declared elsewhere may
-// have, by the type's.  A use of a name of internal linkage is kept for
-// the check of its definition at the end of the unit.  A generic
-// selection is not yet.  Parentheses leave the expression as it is, an
-// lvalue included, p6.  A floating constant is not yet: the lexer took
-// its spelling, and its value is not computed.  A character constant
-// is an int, 6.4.4.5p11.  Adjacent string literals are one, 6.4.5p5,
-// an array of char one longer than its bytes for the zero appended,
-// p6.
+// typedef name names a type.  An enumeration constant is a constant,
+// p2's footnote, of its type and its value, 6.4.4.4p2, 6.7.3.3p10: the
+// literal, an integer constant thus.  The use of a symbol an attribute
+// marked is refused here, with the name in hand, by the attribute's
+// words, and so is a global's of a not-yet type, which an object
+// declared elsewhere may have, and a constant's of one, an enum's an
+// attribute marked, by the type's.  A use of a name of internal linkage
+// is kept for the check of its definition at the end of the unit.  A
+// generic selection is not yet.  Parentheses leave the expression as it
+// is, an lvalue included, 6.5.2p6.  A floating constant is not yet: the
+// lexer took its spelling, and its value is not computed.  A character
+// constant is an int, 6.4.4.5p11.  Adjacent string literals are one,
+// 6.4.5p5, an array of char one longer than its bytes for the zero
+// appended, p6.
 expr_t
 primary_expression(parser_t &p)
 {
@@ -5331,11 +5457,12 @@ primary_expression(parser_t &p)
         if (!sym->marking.empty())
             not_yet(t, sym->marking);
 
-        if (sym->storage == storage_t::global)
+        if (sym->storage == storage_t::global ||
+            sym->storage == storage_t::enumerator)
             require_honoured(t, sym->type);
 
         if (sym->storage == storage_t::enumerator)
-            not_yet(t, "enum");
+            return expr_t { sym->type, literal_t { sym->value } };
 
         if (sym->linkage == linkage_t::internal)
             p.internal_uses.push_back({ sym, &t });

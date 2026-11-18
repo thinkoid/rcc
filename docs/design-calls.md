@@ -266,8 +266,8 @@ cannot compile them at all:
   four bytes of `.data` holding the value 12, and there is no
   instruction to compute it at, since no code runs before `main`.
 
-rcc has the first and the last of these, and each uses the
-evaluator; the others will need it when they arrive. So the
+rcc has each of these but the width of a bit-field, and each uses
+the evaluator; the width will need it when bit-fields arrive. So the
 evaluator exists in c0 regardless. The call is only whether it also
 runs on a constant expression where a non-constant one would do: in
 `long x = -1`, in `p[-1]`, in `x * (2 * 3)`.

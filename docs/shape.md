@@ -95,7 +95,8 @@ their like are the keyword they spell, and `__attribute__`, `__asm__`,
 A type is the machine's view: void, an integer of a width and a
 signedness, a pointer to a type, an array of a type and a count, a
 function of a result and parameters, or a type rcc declares and does
-not use yet: a struct, a union, an enum; a floating type, real or
+not use yet: a struct, a union, an enum in its own list or marked by
+an attribute (chapter 5); a floating type, real or
 complex, GNU C's `__float128` among them; `_Bool`; GNU C's
 `__int128`; `__builtin_va_list` and clang's SVE types; an atomic
 type; a type a typedef names through an attribute rcc does not
@@ -106,7 +107,12 @@ pointer to it is an ordinary pointer. The type carries no qualifier:
 `const`, `volatile` and `restrict` are dropped (chapter 5). The C
 spelling is not kept:
 `long` and `long long` are one type on a target where both are 64
-bits. The edges from a type to the types it names are
+bits. Any other enumerated type is the integer type compatible with
+it (chapter 5), so `enum color { red, green }` and `unsigned int`
+are one type, and so are two enumerations of one integer type, which
+C makes distinct types (6.7.3.4p9): a conversion between pointers to
+the two draws no diagnostic, as one between `long *` and `long long
+*` draws none. The edges from a type to the types it names are
 `shared_ptr< const type_t >`: a type is never written after it is
 made, so sharing is invisible and copying a type is cheap. Equality
 is structural, through the edges. No interning; a table of types is
@@ -198,9 +204,10 @@ listing. A
 parameter of a prototype is a symbol of storage parameter, never a
 global, even where nothing defines its function. A type name is a typedef's: its type is the type the name stands for,
 it has no object, and nothing is written for it. An enumerator is an
-enumeration constant: its type is its enum's, its value is not
-computed, and the parser refuses its use, so no expression names one
-either. A function or a global may carry two facts more: the name
+enumeration constant: it carries its type and its value, and an
+expression that names one is the literal of its value, so no name in
+the tree is an enumerator's. A function or a global may carry two
+facts more: the name
 `__asm__` gives it in the assembly, which c1 writes wherever it writes
 the symbol, and which a block's `static` object takes from the parser
 as its label, `next.count` (`backend.md` chapter 10); and a marking, the words its use is refused with when an
@@ -322,8 +329,9 @@ expression names it, and on a local or the definition of an object,
 which rcc would make, the attribute is not yet. An attribute among the declaration specifiers
 is said of each declarator, as one after the declarator is. One on a
 parameter marks the function, whose calls pass the parameter, and its
-definition. On a struct, a union or an enum every attribute is
-dropped, since the type is a not-yet type. `__asm__ ("name")` after
+definition. On a struct or a union every attribute is dropped, since
+the type is a not-yet type; on an enum one that marks makes the enum
+a not-yet type of its words (below). `__asm__ ("name")` after
 the declarator of a function or of an object at file scope is the
 symbol's name in the assembly: glibc declares `scanf` as
 `__isoc99_scanf`, and the call names that.
@@ -344,6 +352,53 @@ so a register variable takes back the value it had at `setjmp`,
 volatile or not. Every other local is in its slot and keeps the value
 last stored. No conversion that discards `const` or `volatile` is
 diagnosed, nor an assignment to a `const` object (chapter 11).
+
+An enumeration is the integer type compatible with it, and each of
+its constants is its number, so an object, a parameter, a result, a
+cast, `sizeof`, a `switch` and the arithmetic of one are those of its
+integer type, and c1 sees integers. Which type that is, 6.7.3.3p13
+leaves to the implementation (J.3.10), and rcc's choice is `clang`'s
+on both targets, by the values of the constants:
+
+- `unsigned int` when no value is negative and it holds every one,
+  else `unsigned long`;
+- `int` when a value is negative and it holds every one, else `long`;
+- no type for a negative value and one past `LONG_MAX` together, an
+  error (p4).
+
+So `enum color { red, green }` is an `unsigned int`: an object `c`
+of it promotes to `unsigned int` (6.3.1.1p2), and `c - 1 < 0` is
+false.
+
+A constant is an `int` when `int` holds every value of its
+enumeration, and of the enumerated type otherwise (6.7.3.3p15): in
+`enum { A, B = 0x80000000 }` both are `unsigned int`. While the list
+is read, each constant has the type p12 gives it. The first without
+`=` is the `int` 0. One with `=` takes an integer constant expression
+(p4), as an `int` where `int` holds it and in its own type otherwise.
+Any other is the previous value plus one, in the previous constant's
+type, or in the 64-bit type of its signedness where that type does
+not hold the sum, and an error past the 64-bit types. So `enum { A =
+0x7fffffff, B, C = sizeof B }` gives `C` the size of a `long`, 8. A
+value that needs what rcc does not have yet, `sizeof (struct s)`
+among them, is refused where it stands, in a system header as in the
+program; the headers that parse write none. A constant's scope begins
+after its enumerator (6.2.1p7), so `enum { A = A + 1 }` in a block
+reads an outer `A`.
+
+Until the `}` of its list an enumeration is incomplete (6.7.3.4p5):
+its tag names a not-yet type there, a pointer to which is taken, and
+each other use is not yet. A tag without a list names the type its
+list made, and is an error before the list (6.7.3.4p2). GNU C's
+forward declaration, `enum e;` before `enum e { ... }`, is that
+error: a pointer made to the type before its list would not point to
+the integer type the list completes it as. C23's enum type specifier,
+the fixed underlying type of `enum e : long { ... }` (6.7.3.3p5), is
+not yet: no header and no program at hand writes it. An attribute
+that marks, `packed` among them, makes the enumeration a not-yet type
+of its words, since `packed` makes the type the narrowest integer that
+holds its values and rcc does not; the constants keep their values,
+and an `int` constant its use.
 
 The types a header declares and rcc does not use are not-yet types:
 the complex types, `_Complex` among the specifiers of a floating
@@ -770,15 +825,21 @@ object of internal linkage and a block's object of static storage,
 `trim` (sections 3.6 and 3.7). With `switch`, compiled by the Seventh
 Edition compiler's rule (`backend.md` 7.3), `header-count` counts
 digits, white space and other characters as K&R's section 3.4 does.
+With `enum`, each enumeration the integer type compatible with it and
+each constant its number (chapter 5), `header-escapes` names K&R's
+`enum escapes` by a switch on one and counts the days of a year over
+an `enum months` (section 2.3).
 
 ## 11. Not yet
 
-Structs, unions, enums, floating point, `_Bool` and `__int128` (each
-type is declared, a struct's or union's members skipped and an enum's
-constants declared without their values; a pointer to one is an
-ordinary pointer, and a use that needs the object, or a constant's
-value, is refused; a floating constant is a token, refused where an
-expression uses it), an object of a typedef whose array size rcc
+Structs, unions, floating point, `_Bool` and `__int128` (each type is
+declared, a struct's or union's members skipped, the tags and the
+enumeration constants they declare among them; a pointer to one is an
+ordinary pointer, and a use that needs the object is refused; a
+floating constant is a token, refused where an expression uses it),
+an enum's fixed underlying type, the use of an enum in its own list
+but behind a pointer, an object of an enum an attribute marks, an
+object of a typedef whose array size rcc
 cannot compute, a variable length array (a parameter's array of a
 size that is not constant is the pointer the parameter is adjusted to,
 and the size is not evaluated), `extern` in a block, a designator in

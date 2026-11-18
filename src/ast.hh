@@ -43,9 +43,11 @@ namespace rcc {
 // unit defines has an entry in the unit's objects, and one it only
 // declares has none; a block's has one always.  A type_name is a
 // typedef: its type is the type the name stands for, it has no object,
-// and no expression names it.  An enumerator is an enumeration constant: its type is its enumeration's,
-// a not-yet type, its value is not computed, and the parser refuses its
-// use, so no expression names one.
+// and no expression names it.  An enumerator is an enumeration
+// constant: its type is the constant's, 6.7.3.3p12, p15, and value is
+// its value, as a literal of the type holds it.  The parser makes the
+// literal where an expression names one, so no name in the tree is an
+// enumerator's.
 enum class storage_t {
     local,
     parameter,
@@ -83,6 +85,7 @@ struct symbol_t
     std::string asm_name = { };
     std::string marking = { };
     linkage_t linkage = linkage_t::none;
+    long long value = 0;
 };
 
 inline bool

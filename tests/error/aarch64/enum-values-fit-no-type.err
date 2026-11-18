@@ -1,0 +1,2 @@
+tests/error/enum-values-fit-no-type.c:3:6: error: no integer type holds every value of enum 'span'
+status 1

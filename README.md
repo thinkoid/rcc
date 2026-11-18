@@ -128,6 +128,10 @@ by a variable index is one operand too, the slot the displacement of
 the indexed form, `movl -24(%rbp,%rax,4), %eax`, and on both targets
 a constant over any lvalue's address joins that address's
 displacement, `movsbl 2(%rax,%rcx,8), %eax` for `p[i][2]`.
+Then `enum`: an enumeration is the integer type `clang` makes
+compatible with it, and each constant its number, so `header-escapes`
+names K&R's escapes by a switch on an `enum escapes` and counts the
+days of a year over an `enum months`.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/`, the cost corpus over `tests/cost/`
 and the error corpus over `tests/error/`, the programs rcc refuses

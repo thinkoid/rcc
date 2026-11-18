@@ -2499,10 +2499,10 @@ subject.
 
 ## 11. For the constructs not written yet
 
-Structs, unions, enums and floating point are not yet in rcc
-(`shape.md` chapter 11), and bit-fields come with structs. The
-ancestor's rows for each say what carries to today's two machines
-and what does not.
+Structs, unions and floating point are not yet in rcc (`shape.md`
+chapter 11), and bit-fields come with structs; enums are, as 11.2
+says. The ancestor's rows for each say what carries to today's two
+machines and what does not.
 
 ### 11.1 Structs
 
@@ -2549,6 +2549,10 @@ Both are c0's alone. c0 declares a union's members with `MOU`
 (`c03.c:200`, `c03.c:233-241`), and an enumerator is a constant of
 type `int` (`c03.c:448-455`). c1 sees offsets and constants, and
 `c1.h` has no union and no enum among its types (`c1.h:283-297`).
+rcc's enums are its parser's alone too: each constant is its number,
+of the type C23 gives it, not always an `int` as c0's is, and each
+enumeration the integer type compatible with it, so c1 sees integers
+(`shape.md` chapter 5).
 
 ### 11.3 Bit-fields
 
