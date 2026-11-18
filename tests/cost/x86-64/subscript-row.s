@@ -694,6 +694,92 @@ row_start_stored:
 	ret
 	.cfi_endproc
 	.size	row_start_stored, .-row_start_stored
+	.globl	row_under_cast
+	.type	row_under_cast, @function
+row_under_cast:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	movslq	-12(%rbp), %rcx
+	imulq	$12, %rcx, %rcx
+	movl	12(%rax,%rcx,1), %eax
+	jmp	.Lrow_under_cast.1
+.Lrow_under_cast.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	row_under_cast, .-row_under_cast
+	.globl	row_past_rows
+	.type	row_past_rows, @function
+row_past_rows:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	movslq	-12(%rbp), %rcx
+	imulq	$12, %rcx, %rcx
+	movl	20(%rax,%rcx,1), %eax
+	jmp	.Lrow_past_rows.1
+.Lrow_past_rows.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	row_past_rows, .-row_past_rows
+	.globl	row_label_refused
+	.type	row_label_refused, @function
+row_label_refused:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	leaq	cells+2(%rip), %rax
+	movslq	-4(%rbp), %rcx
+	imulq	$12, %rcx, %rcx
+	movl	4(%rax,%rcx,1), %eax
+	jmp	.Lrow_label_refused.1
+.Lrow_label_refused.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	row_label_refused, .-row_label_refused
+	.globl	row_cancelled
+	.type	row_cancelled, @function
+row_cancelled:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	movslq	-12(%rbp), %rcx
+	movl	(%rax,%rcx,4), %eax
+	jmp	.Lrow_cancelled.1
+.Lrow_cancelled.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	row_cancelled, .-row_cancelled
 	.bss
 	.globl	rows
 	.type	rows, @object
@@ -701,4 +787,10 @@ row_start_stored:
 	.p2align 4
 rows:
 	.zero	20
+	.globl	cells
+	.type	cells, @object
+	.size	cells, 48
+	.p2align 4
+cells:
+	.zero	48
 	.section	.note.GNU-stack,"",@progbits

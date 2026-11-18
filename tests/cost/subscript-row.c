@@ -34,7 +34,15 @@
    displacement past the sum, a label's its offset in the page; with
    no constant at all the product is the access's register offset
    instead, p[i][0] in row_start(), but not where the address is held
-   across a right operand, p[i][0] = f() in row_start_stored().
+   across a right operand, p[i][0] = f() in row_start_stored().  A row
+   under a cast and past a constant of bytes, ((int (*)[3]) (c +
+   4))[i][2] in row_under_cast(), or past a constant of rows, (p +
+   1)[i][2] in row_past_rows(), takes that constant into the access's
+   displacement past the sum as well; a label whose offset with the
+   column is no multiple of the access's size keeps its page's add,
+   ((int (*)[3]) ((char *) cells + 2))[i][1] in row_label_refused(); and
+   constants that cancel the column leave the product the register
+   offset, ((int (*)[1]) (c + 4))[i][-1] in row_cancelled().
 
    On x86-64 the listing must show first() returning the array's
    address, leaq -24(%rbp), %rax, with no instruction after it,
@@ -84,6 +92,11 @@
    %rax.  row_start() reads p[i][0] by the imulq and movl
    (%rax,%rcx,1), %eax, and row_start_stored() forms the address by
    addq %rcx, %rax, held across the call, then movl %eax, (%rcx).
+   row_under_cast() reads by imulq $12, %rcx, %rcx and the one movl
+   12(%rax,%rcx,1), %eax after c's load and i's, row_past_rows() by the
+   same and movl 20(%rax,%rcx,1), %eax, row_label_refused() by leaq
+   cells+2(%rip), %rax, the imulq and movl 4(%rax,%rcx,1), %eax, and
+   row_cancelled() by the one movl (%rax,%rcx,4), %eax.
 
    On aarch64 the listing must show first() returning the array's
    address, add x0, x29, #16, with no instruction after it, element()
@@ -122,7 +135,14 @@
    by str w0, [x1].  byte_sum(),
    byte_sum_long() and byte_sum_register() add the row's 8, then the
    index, add x0, x0, w1, sxtw, or add x0, x0, x1 for the long, the
-   last add writing x19 in byte_sum_register(). */
+   last add writing x19 in byte_sum_register().  row_under_cast() and
+   row_past_rows() add the product to the pointer, mov x2, #12, mul and
+   add x0, x0, x1, with no add of the 4 or the 12, and read by ldr w0,
+   [x0, #12] and ldr w0, [x0, #20]; row_label_refused(), whose 2 and 4
+   are no multiple of the int's 4 bytes in the page, keeps adrp x0,
+   cells+2 and add x0, x0, :lo12:cells+2 before the product's add and
+   ldr w0, [x0, #4]; and row_cancelled() is ldr w0, [x0, w1, sxtw #2]
+   after c's load and i's, with no add. */
 int *first(void)
 {
     int m[2][3];
@@ -333,4 +353,30 @@ void
 row_start_stored(int (*p)[3], int i)
 {
         p[i][0] = f();
+}
+
+int
+row_under_cast(char *c, int i)
+{
+        return ((int (*)[3]) (c + 4))[i][2];
+}
+
+int
+row_past_rows(int (*p)[3], int i)
+{
+        return (p + 1)[i][2];
+}
+
+int cells[4][3];
+
+int
+row_label_refused(int i)
+{
+        return ((int (*)[3]) ((char *) cells + 2))[i][1];
+}
+
+int
+row_cancelled(char *c, int i)
+{
+        return ((int (*)[1]) (c + 4))[i][-1];
 }

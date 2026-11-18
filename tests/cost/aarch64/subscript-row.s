@@ -930,10 +930,133 @@ row_start_stored:
 	ret
 	.cfi_endproc
 	.size	row_start_stored, .-row_start_stored
+	.globl	row_under_cast
+	.type	row_under_cast, @function
+row_under_cast:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	ldr	x0, [x29, #16]
+	ldrsw	x1, [x29, #24]
+	mov	x2, #12
+	mul	x1, x1, x2
+	add	x0, x0, x1
+	ldr	w0, [x0, #12]
+	b	.Lrow_under_cast.1
+.Lrow_under_cast.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	row_under_cast, .-row_under_cast
+	.globl	row_past_rows
+	.type	row_past_rows, @function
+row_past_rows:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	ldr	x0, [x29, #16]
+	ldrsw	x1, [x29, #24]
+	mov	x2, #12
+	mul	x1, x1, x2
+	add	x0, x0, x1
+	ldr	w0, [x0, #20]
+	b	.Lrow_past_rows.1
+.Lrow_past_rows.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	row_past_rows, .-row_past_rows
+	.globl	row_label_refused
+	.type	row_label_refused, @function
+row_label_refused:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	adrp	x0, cells+2
+	add	x0, x0, :lo12:cells+2
+	ldrsw	x1, [x29, #16]
+	mov	x2, #12
+	mul	x1, x1, x2
+	add	x0, x0, x1
+	ldr	w0, [x0, #4]
+	b	.Lrow_label_refused.1
+.Lrow_label_refused.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	row_label_refused, .-row_label_refused
+	.globl	row_cancelled
+	.type	row_cancelled, @function
+row_cancelled:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	ldr	x0, [x29, #16]
+	ldr	w1, [x29, #24]
+	ldr	w0, [x0, w1, sxtw #2]
+	b	.Lrow_cancelled.1
+.Lrow_cancelled.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	row_cancelled, .-row_cancelled
 	.bss
 	.globl	rows
 	.type	rows, @object
 	.size	rows, 20
 rows:
 	.zero	20
+	.globl	cells
+	.type	cells, @object
+	.size	cells, 48
+	.p2align 2
+cells:
+	.zero	48
 	.section	.note.GNU-stack,"",@progbits

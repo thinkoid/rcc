@@ -88,6 +88,24 @@
     X(E, T, S, m1, -1) X(E, T, S, m3, -3) X(E, T, S, m255, -255)        \
     X(E, T, S, m257, -257)
 
+/* bytes under a row of two elements by a variable index, past which
+   the row's element 1 is read: no multiple of the size, in the
+   unscaled reach of -256 to 255 bytes with the column and beyond it;
+   a multiple, in the scaled reach and at its end and past it.  The
+   near ones are within an object that starts at the row's pointer. */
+#define KROWS_NEAR(X, E, T, S)                                          \
+    X(E, T, S, 1, 1) X(E, T, S, 3, 3) X(E, T, S, 255, 255)              \
+    X(E, T, S, 257, 257) X(E, T, S, s1, (long) sizeof (T))              \
+    X(E, T, S, s100, 100 * (long) sizeof (T))                           \
+    X(E, T, S, s4094, 4094 * (long) sizeof (T))                         \
+    X(E, T, S, s4095, 4095 * (long) sizeof (T))
+#define KROWS(X, E, T, S)                                               \
+    KROWS_NEAR(X, E, T, S) X(E, T, S, m3, -3) X(E, T, S, m300, -300)
+
+/* the rows of two elements an object under such a row needs: the
+   farthest bytes, an index of 3 and the element past it */
+#define KROW_ROWS 2056
+
 /* The pointees of POINTEES once more, each with the suffix that makes
    (*x) a pointer to it, (*x)[3] to a row of three ints, for a pointer
    declared as an object: a local, a global, an element of an array. */

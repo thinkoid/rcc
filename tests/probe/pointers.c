@@ -197,6 +197,116 @@ ELEMENTS(KSUB_ALL)
 
 ELEMENTS(KBYTE_ALL)
 
+/* A row by a variable index under a cast and past constants, 6.3: on
+   the pointer's value, read, written, stepped, with the index first,
+   and written across a call in the right operand; on a slot and on a
+   label, the object's bytes summed after the row is written, stepped
+   and read, and on a char array's label, whose alignment is 1; a row
+   past a constant of rows, (q + c)[i][1], without a cast; and rows
+   whose constants cancel the column, stepped and read, the index
+   first too. */
+#define KROW(E, T, S, name, d)                                          \
+    long krow_##E##_##name(char *p, int i)                              \
+    {                                                                   \
+        return ((T (*)[2]) (p + d))[i][1];                              \
+    }                                                                   \
+    void krow_put_##E##_##name(char *p, int i, long v)                  \
+    {                                                                   \
+        ((T (*)[2]) (p + d))[i][1] = v;                                 \
+    }                                                                   \
+    long krow_add_##E##_##name(char *p, int i, long v)                  \
+    {                                                                   \
+        return ((T (*)[2]) (p + d))[i][1] += v;                         \
+    }                                                                   \
+    long krow_first_##E##_##name(char *p, int i)                        \
+    {                                                                   \
+        return i[(T (*)[2]) (p + d)][1];                                \
+    }                                                                   \
+    void krow_call_##E##_##name(char *p, int i, long v)                 \
+    {                                                                   \
+        ((T (*)[2]) (p + d))[i][1] = id(v);                             \
+    }
+#define KROW_ALL(E, T, S) KROWS(KROW, E, T, S)
+
+ELEMENTS(KROW_ALL)
+
+/* the label of each element's rows, and a char array's */
+#define KROW_GLOBAL(E, T, S) T krow_rows_##E[KROW_ROWS][2];
+
+ELEMENTS(KROW_GLOBAL)
+
+unsigned char krow_bytes[KROW_ROWS * 16];
+
+/* an object's bytes filled from v, and summed */
+static void
+krow_fill(unsigned char *b, long n, long v)
+{
+    for (long k = 0; k < n; ++k)
+        b[k] = (unsigned char) (k * 7 + v);
+}
+
+static long
+krow_sum(const unsigned char *b, long n)
+{
+    long sum = 0;
+
+    for (long k = 0; k < n; ++k)
+        sum = sum * 31 + b[k];
+
+    return sum;
+}
+
+#define KROW_NAMED(E, T, S, name, d)                                    \
+    long krow_slot_##E##_##name(int i, long v)                          \
+    {                                                                   \
+        T m[KROW_ROWS][2];                                              \
+        krow_fill((unsigned char *) m, sizeof m, v);                    \
+        ((T (*)[2]) ((char *) m + d))[i][1] = v;                        \
+        ((T (*)[2]) ((char *) m + d))[i][1] += v >> 3;                  \
+        long r = i[(T (*)[2]) ((char *) m + d)][1];                     \
+        return r + krow_sum((unsigned char *) m, sizeof m);             \
+    }                                                                   \
+    long krow_label_##E##_##name(int i, long v)                         \
+    {                                                                   \
+        unsigned char *b = (unsigned char *) krow_rows_##E;             \
+        krow_fill(b, sizeof krow_rows_##E, v);                          \
+        ((T (*)[2]) ((char *) krow_rows_##E + d))[i][1] = v;            \
+        ((T (*)[2]) ((char *) krow_rows_##E + d))[i][1] += v >> 3;      \
+        long r = i[(T (*)[2]) ((char *) krow_rows_##E + d)][1];         \
+        return r + krow_sum(b, sizeof krow_rows_##E);                   \
+    }                                                                   \
+    long krow_bytes_##E##_##name(int i, long v)                         \
+    {                                                                   \
+        krow_fill(krow_bytes, sizeof krow_bytes, v);                    \
+        ((T (*)[2]) ((char *) krow_bytes + d))[i][1] = v;               \
+        ((T (*)[2]) ((char *) krow_bytes + d))[i][1] += v >> 3;         \
+        long r = i[(T (*)[2]) ((char *) krow_bytes + d)][1];            \
+        return r + krow_sum(krow_bytes, sizeof krow_bytes);             \
+    }
+#define KROW_NAMED_ALL(E, T, S) KROWS_NEAR(KROW_NAMED, E, T, S)
+
+ELEMENTS(KROW_NAMED_ALL)
+
+#define KROW_PAST(E, T, S)                                              \
+    long krow_past_##E(char *p, int i)                                  \
+    {                                                                   \
+        T (*q)[2] = (T (*)[2]) p;                                       \
+        return (q + 1)[i][1] * 3 + (q + 300)[i][1] * 5 +                \
+               (q + 2048)[i][1] * 7 + (q - 1)[i][1];                    \
+    }
+
+ELEMENTS(KROW_PAST)
+
+#define KROW_CANCEL(E, T, S)                                            \
+    long krow_cancel_##E(char *p, int i, long v)                        \
+    {                                                                   \
+        ((T (*)[1]) (p + (long) sizeof (T)))[i][-1] += v;               \
+        return ((T (*)[2]) (p + 2 * (long) sizeof (T)))[i][-2] * 3 +    \
+               i[(T (*)[1]) (p + 3 * (long) sizeof (T))][-3];           \
+    }
+
+ELEMENTS(KROW_CANCEL)
+
 /* A pointer in memory stepped, the main's cells holding it; the
    walks, *p++, *++p, *p++ = v, and (*p)++ against *p++; a buffer
    filled and summed by a walking pointer, a comparison of pointers

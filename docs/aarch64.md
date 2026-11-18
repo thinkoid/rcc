@@ -941,10 +941,20 @@ to the frame pointer, `add x0, x29, x0`, and reads `ldrb w0, [x0,
 #24]`. A label's constant is its offset in the page: `rows[i][2]` on a
 global the file defines is `adrp x0, rows+2`, the add of the product
 and `ldrb w0, [x0, :lo12:rows+2]`, with no add of `:lo12:` before the
-index. With no constant at all, a product of no scale is the access's
+index. The constants under the row's index, through its casts, join
+its own: `((int (*)[3]) (c + 4))[i][2]` on a `char *c` is `mov x2,
+#12; mul x1, x1, x2; add x0, x0, x1; ldr w0, [x0, #12]` after `c`'s
+load, and `(p + 1)[i][2]` on `int (*p)[3]` reads `[x0, #20]`, with no
+`add` of the 4 or the 12 first. A label keeps its pair where the total
+is no multiple of the access's size or its object is aligned to less,
+`((int (*)[3]) ((char *) cells + 2))[i][1]` being `adrp x0, cells+2;
+add x0, x0, :lo12:cells+2`, the product's add and `ldr w0, [x0, #4]`.
+With no constant at all, a product of no scale is the access's
 register offset, `p[i][0]` on `int (*p)[3]` being `ldr w0, [x0, x1]`
-after the `mul`, where nothing is evaluated between the address and
-its access; one form holds a register offset or a displacement, never
+after the `mul`, and so are constants that cancel the column,
+`((int (*)[1]) (c + 4))[i][-1]` being `ldr w0, [x0, w1, sxtw #2]`,
+where nothing is evaluated between the address and its access; one
+form holds a register offset or a displacement, never
 both, so `p[i][1]` adds the product and reads `[x0, #4]`, and an
 address held across an assignment's right operand keeps to one
 register, `p[i][0] = f()` adding the product before the call. A

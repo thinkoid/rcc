@@ -74,23 +74,40 @@ holds.
 
 Check: the count over =tests=, and no function longer.
 
-** TODO aarch64: a row's index does not take the constants and casts under its pointer
+** TODO aarch64: a row's address as a value adds the constants under its index apart from the column
 
-~((int (*)[3]) (c + 4))[i][2]~ on a ~char *c~ is =add x0, x0, #4=,
-then the index's product and its add, then =ldr w0, [x0, #8]=, where
-the 4 joins the access's displacement, =ldr w0, [x0, #12]=, an
-instruction fewer; ~(p + 1)[i][2]~ on an ~int (*p)[3]~ the same with
-12 and =ldr w0, [x0, #20]=. The row's rule (=row_access()= in
-=src/c1-aarch64.cc=) asks that its index be the top sum with
-nothing under it, where =denoted()='s walk has the base and the
-bytes. No test has either shape.
+~&((int (*)[3]) (c + 4))[i][2]~ on a ~char *c~ is =add x0, x0, #4=,
+the index's product and its add, then =add x0, x0, #8=, where the
+two constants are one =add x0, x0, #12= after the sum. An access
+takes them together (=row_access()= in =src/c1-aarch64.cc=); the
+value's path in =summed()= does not ask it. No test has the shape.
 
-Fix: =row_access()= takes the walk's base and bytes.
+Fix: the value's path takes the row's plan, the constants one =add=
+past the sum where it encodes them.
 
-Check: a probe of a row by a variable index under a cast and past a
-constant, on a pointer, a slot and a label, read and written, the
-index first too, at constants that do and do not reach; those
-functions shorter, and no function longer.
+Check: a function of =subscript-row= with the one =add=, a probe row
+that returns such an address and reads through it, and no function
+longer.
+
+** TODO x86-64: a row's constant under its index is added before the operand in three shapes
+
+A row by a variable index whose pointer has a constant under it
+joins the constant to the access's displacement, =movq 808(%rax,
+%rcx,1), %rax=, but for three shapes, each an instruction more than
+the operand with the constant joined. A store across a call: ~((long
+(*)[2]) (p + 800))[i][1] = f()~ is =addq $800, %rax= before the
+call and =movq %rax, 8(%rcx)= after it, where =808(%rcx)= is the
+form. The index written first at a size no addressing form scales
+by: =addq $1, %rcx; imulq $16, ...; addq %rcx, %rax; movq 8(%rax),
+%rax=. A subtracted constant of rows: ~(q - 1)[i][1]~ is =subq $16,
+%rcx= before =8(%rcx,%rdx,1)=. The =krow_call_*=, =krow_first_l= and
+=krow_past_*= rows of the pointers probe have them, 108 functions.
+
+Fix: =denoted()= in =src/c1-x86-64.cc= carries the constant where
+the address is held across a call, where the index is written first,
+and through a subtraction.
+
+Check: the count over =tests=, and no function longer.
 
 ** TODO An addition of a constant 0 writes its instruction
 

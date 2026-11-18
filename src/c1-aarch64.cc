@@ -1185,15 +1185,15 @@ int product_length(long long);
 // the pointer under the casts between pointer types and the sums by a
 // constant met on the way, their constants summed in bytes, each scaled
 // by its own sum's stride, and at most one sum by a variable index, its
-// index, its stride, whether it is written first and the pointer it is
-// added to; the walk stops at any other pointer, the base.  ((char *) p
-// + 4 + i * 4) on an int *p is p, 4, and the index i * 4 at a stride of
-// 1.  Above the first sum, top, it steps once through a row's decay of
-// *q, or &*q, to q (6.5.4.2p3), p[i][2]'s row on int (*p)[3] being p +
-// i; casts counts the casts from that step, or the pointer, to top, and
-// index_top is whether the index's sum is top.  constants counts the
-// sums by a constant, and written the instructions the row of p + n
-// writes for them, one by one, product_length()'s.
+// index, its stride and whether it is written first; the walk stops at
+// any other pointer, the base.  ((char *) p + 4 + i * 4) on an int *p
+// is p, 4, and the index i * 4 at a stride of 1.  Above the first sum,
+// top, it steps once through a row's decay of *q, or &*q, to q
+// (6.5.4.2p3), p[i][2]'s row on int (*p)[3] being p + i; casts counts
+// the casts from that step, or the pointer, to top, and index_top is
+// whether the index's sum is top.  constants counts the sums by a
+// constant, and written the instructions the row of p + n writes for
+// them, one by one, product_length()'s.
 struct denoted_t
 {
     const expr_t *base;
@@ -1203,7 +1203,6 @@ struct denoted_t
     const expr_t *index = nullptr;
     long index_stride = 0;
     bool index_first = false;
-    const expr_t *indexed = nullptr;
     const expr_t *top = nullptr;
     int casts = 0;
     bool index_top = false;
@@ -1260,7 +1259,6 @@ denoted(const expr_t &p)
             d.index = &n;
             d.index_stride = stride(e.type);
             d.index_first = !left;
-            d.indexed = d.base;
             d.index_top = d.top == &e;
         }
         else
@@ -1270,10 +1268,10 @@ denoted(const expr_t &p)
 
 // An access through a row by a variable index, read off the tree
 // before anything is generated, 6.3: denoted()'s index, its order and
-// stride, and the pointer it is added to; that pointer's address as a
-// slot's or a label's, folded()'s, or as based()'s pointer and
-// displacement, its constant and the total with the access's column,
-// and whether the index is the access's register offset.
+// stride, and its base; the base's address as a slot's or a label's,
+// folded()'s, or as based()'s pointer and displacement, the constant
+// with the walk's bytes and the total with the access's column, and
+// whether the index is the access's register offset.
 struct row_access_t
 {
     const expr_t *pointer;
@@ -1349,9 +1347,12 @@ offset_index(const row_access_t &row, int size, bool nothing_between)
 // where it takes the row's constants or its index into its own form,
 // 6.3; none where it takes neither, p[i][2] keeping the sum and [x0,
 // #8].  The index's sum is denoted()'s top, with no cast between it and
-// the row or the row's decay, and the constants are those of the
-// pointer it is added to, folded()'s or based()'s, only: ((int (*)[3])
-// (c + 4))[i][2] keeps its add of 4.
+// the row or the row's decay, and the constants under it, through its
+// casts, join the base's own, folded()'s or based()'s, so that ((int
+// (*)[3]) (c + 4))[i][2] on a char *c is the index's product and add
+// after c's load and ldr w0, [x0, #12], the add of 4 gone; a total out
+// of reach, or a label's that label_carries() refuses, keeps the rows
+// as before.
 std::optional< row_access_t >
 row_access(state_t &s,
            const expr_t &row,
@@ -1363,7 +1364,7 @@ row_access(state_t &s,
     if (!at.index_top || at.casts != 0)
         return std::nullopt;
 
-    row_access_t a { .pointer = at.indexed,
+    row_access_t a { .pointer = at.base,
                      .index = at.index,
                      .pointer_first = !at.index_first,
                      .stride = at.index_stride };
@@ -1374,9 +1375,9 @@ row_access(state_t &s,
         return std::nullopt;
 
     a.plan = named ? std::nullopt : based(*a.pointer, s.defined);
-    a.carried = a.slot ? a.slot->displacement :
-                a.plan ? a.plan->displacement :
-                         0;
+    a.carried = wrapped_add(at.bytes, a.slot ? a.slot->displacement :
+                                      a.plan ? a.plan->displacement :
+                                               0);
     a.total = wrapped_add(a.carried, column);
     a.label = a.slot && !a.slot->label.empty();
     if (!row_reaches(a, named ? &*named : nullptr, size))

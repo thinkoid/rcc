@@ -311,6 +311,34 @@ ELEMENTS(DECLARE_KSUB_ALL)
 
 ELEMENTS(DECLARE_KBYTE_ALL)
 
+#define DECLARE_KROW(E, T, S, name, d)                                  \
+    BOTH(long, krow_##E##_##name, (char *, int))                        \
+    BOTH(void, krow_put_##E##_##name, (char *, int, long))              \
+    BOTH(long, krow_add_##E##_##name, (char *, int, long))              \
+    BOTH(long, krow_first_##E##_##name, (char *, int))                  \
+    BOTH(void, krow_call_##E##_##name, (char *, int, long))
+#define DECLARE_KROW_ALL(E, T, S) KROWS(DECLARE_KROW, E, T, S)
+
+ELEMENTS(DECLARE_KROW_ALL)
+
+#define DECLARE_KROW_NAMED(E, T, S, name, d)                            \
+    BOTH(long, krow_slot_##E##_##name, (int, long))                     \
+    BOTH(long, krow_label_##E##_##name, (int, long))                    \
+    BOTH(long, krow_bytes_##E##_##name, (int, long))
+#define DECLARE_KROW_NAMED_ALL(E, T, S)                                 \
+    KROWS_NEAR(DECLARE_KROW_NAMED, E, T, S)
+
+ELEMENTS(DECLARE_KROW_NAMED_ALL)
+
+#define DECLARE_KROW_PAST(E, T, S) BOTH(long, krow_past_##E, (char *, int))
+
+ELEMENTS(DECLARE_KROW_PAST)
+
+#define DECLARE_KROW_CANCEL(E, T, S)                                    \
+    BOTH(long, krow_cancel_##E, (char *, int, long))
+
+ELEMENTS(DECLARE_KROW_CANCEL)
+
 #define DECLARE_WALKS(E, T, S)                                          \
     BOTH(void, cell_steps_##E, (T **))                                  \
     BOTH(char *, cell_post_##E, (T **))                                 \
@@ -542,6 +570,17 @@ ELEMENTS(TEST_SUBSCRIPT_ALL)
     MCHECK(kview_after_##E##_##name, x, at, at, ((char *) P, at));      \
     MCHECK(kview_address_##E##_##name, x, at, at, ((char *) P, at));
 
+#define TEST_KROW(E, T, S, name, d)                                     \
+    MCHECK(krow_##E##_##name, x, at, at, ((char *) P, at));             \
+    VCHECK(krow_put_##E##_##name, x, at, at, ((char *) P, at, x));      \
+    MCHECK(krow_add_##E##_##name, x, at, at, ((char *) P, at, x));      \
+    MCHECK(krow_first_##E##_##name, x, at, at, ((char *) P, at));       \
+    VCHECK(krow_call_##E##_##name, x, at, at, ((char *) P, at, x));
+#define TEST_KROW_NAMED(E, T, S, name, d)                               \
+    CHECK(krow_slot_##E##_##name, x, at, (at, x));                      \
+    CHECK(krow_label_##E##_##name, x, at, (at, x));                     \
+    CHECK(krow_bytes_##E##_##name, x, at, (at, x));
+
 #define TEST_CONSTANTS(E, T, S)                                         \
     static void test_constants_##E(void)                                \
     {                                                                   \
@@ -553,6 +592,10 @@ ELEMENTS(TEST_SUBSCRIPT_ALL)
                                                                         \
             KSUBS(TEST_KSUB, E, T, S)                                   \
             KBYTES(TEST_KBYTE, E, T, S)                                 \
+            KROWS(TEST_KROW, E, T, S)                                   \
+            KROWS_NEAR(TEST_KROW_NAMED, E, T, S)                        \
+            MCHECK(krow_past_##E, x, at, at, ((char *) P, at));         \
+            MCHECK(krow_cancel_##E, x, at, at, ((char *) P, at, x));    \
         }                                                               \
                                                                         \
         span = SPAN;                                                    \
