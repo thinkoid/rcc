@@ -28,6 +28,11 @@ what the optimizer loses.
   it; `docs/llvm.md` is the record of that pipeline.
   `docs/ancestor.md` reads the Seventh Edition compiler's code
   generator against c1: what rcc takes from it, and what it leaves.
+  `docs/designs.md` reads four organizing designs against c1, the
+  Seventh Edition compiler's code tables, destination-driven code
+  generation, delayed operand descriptors and selection as a pass of
+  its own: where c1's edge cases come from, and what each design would
+  remove and what it would cost.
 - Each guarantee is delivered by emitting the plain instruction and
   nothing in between.
 
