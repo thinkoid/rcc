@@ -1173,31 +1173,107 @@ based(const expr_t &pointer,
                      wrapped_add(d, at->offset) };
 }
 
+// summed() and pointed() ask arithmetic_immediate(), which comes with
+// the constant row of 6.4, after them.
 bool arithmetic_immediate(long long value, int width);
 
-// The sum p + n whose dereference a row is, 6.3: the row's decay, or
-// its &, of *(p + n), or the row itself; null for any other pointer.
-const expr_t *
-row_sum(const expr_t &row)
+// denoted() counts p + n's rows by product_length(), which comes with
+// the constant row of 6.4, after it.
+int product_length(long long);
+
+// The address a pointer denotes before any instruction forms it, 6.3:
+// the pointer under the casts between pointer types and the sums by a
+// constant met on the way, their constants summed in bytes, each scaled
+// by its own sum's stride, and at most one sum by a variable index, its
+// index, its stride, whether it is written first and the pointer it is
+// added to; the walk stops at any other pointer, the base.  ((char *) p
+// + 4 + i * 4) on an int *p is p, 4, and the index i * 4 at a stride of
+// 1.  Above the first sum, top, it steps once through a row's decay of
+// *q, or &*q, to q (6.5.4.2p3), p[i][2]'s row on int (*p)[3] being p +
+// i; casts counts the casts from that step, or the pointer, to top, and
+// index_top is whether the index's sum is top.  constants counts the
+// sums by a constant, and written the instructions the row of p + n
+// writes for them, one by one, product_length()'s.
+struct denoted_t
 {
-    const expr_t *top = &row;
-    if (const auto at = lvalue_offset(row);
-        at && at->offset == 0 && is< unary_t >(*at->lvalue) &&
-        as< unary_t >(*at->lvalue).op == unary_op_t::deref)
-        top = as< unary_t >(*at->lvalue).arg.get();
+    const expr_t *base;
+    long long bytes = 0;
+    int constants = 0;
+    int written = 0;
+    const expr_t *index = nullptr;
+    long index_stride = 0;
+    bool index_first = false;
+    const expr_t *indexed = nullptr;
+    const expr_t *top = nullptr;
+    int casts = 0;
+    bool index_top = false;
+};
 
-    if (!is< binary_t >(*top) || as< binary_t >(*top).op != binary_op_t::add)
-        return nullptr;
+denoted_t
+denoted(const expr_t &p)
+{
+    denoted_t d { .base = &p };
+    bool stepped = false;
 
-    return top;
+    for (;;) {
+        const auto &e = *d.base;
+        const auto at = stepped || d.top ? std::nullopt : lvalue_offset(e);
+        if (at && at->address == &e && is< unary_t >(*at->lvalue) &&
+            as< unary_t >(*at->lvalue).op == unary_op_t::deref) {
+            stepped = true;
+            d.casts = 0;
+            d.base = as< unary_t >(*at->lvalue).arg.get();
+            continue;
+        }
+
+        if (is< cast_t >(e) && is< pointer_t >(e.type) &&
+            is< pointer_t >(as< cast_t >(e).arg->type)) {
+            d.casts += !d.top;
+            d.base = as< cast_t >(e).arg.get();
+            continue;
+        }
+
+        if (!is< binary_t >(e) || !is< pointer_t >(e.type))
+            return d;
+
+        if (!d.top)
+            d.top = &e;
+
+        const auto &b = as< binary_t >(e);
+        if (b.op != binary_op_t::add && b.op != binary_op_t::sub)
+            return d;
+
+        const bool left = is< pointer_t >(b.lhs->type);
+        const auto &n = left ? *b.rhs : *b.lhs;
+        d.base = left ? b.lhs.get() : b.rhs.get();
+
+        if (is< literal_t >(n)) {
+            const auto bytes = scaled(as< literal_t >(n).value, stride(e.type));
+            const auto negated = static_cast< long long >(
+                0ull - static_cast< unsigned long long >(bytes));
+            d.bytes = wrapped_add(d.bytes,
+                                  b.op == binary_op_t::add ? bytes : negated);
+            ++d.constants;
+            d.written += product_length(bytes);
+        }
+        else if (b.op == binary_op_t::add && !d.index) {
+            d.index = &n;
+            d.index_stride = stride(e.type);
+            d.index_first = !left;
+            d.indexed = d.base;
+            d.index_top = d.top == &e;
+        }
+        else
+            return d;
+    }
 }
 
 // An access through a row by a variable index, read off the tree
-// before anything is generated, 6.3: the sum's pointer and index and
-// their order, the sum's stride, the pointer's address as a slot's or a
-// label's, folded()'s, or as based()'s pointer and displacement, its
-// constant and the total with the access's column, and whether the
-// index is the access's register offset.
+// before anything is generated, 6.3: denoted()'s index, its order and
+// stride, and the pointer it is added to; that pointer's address as a
+// slot's or a label's, folded()'s, or as based()'s pointer and
+// displacement, its constant and the total with the access's column,
+// and whether the index is the access's register offset.
 struct row_access_t
 {
     const expr_t *pointer;
@@ -1272,7 +1348,10 @@ offset_index(const row_access_t &row, int size, bool nothing_between)
 // The access of size bytes at column into a row by a variable index,
 // where it takes the row's constants or its index into its own form,
 // 6.3; none where it takes neither, p[i][2] keeping the sum and [x0,
-// #8].
+// #8].  The index's sum is denoted()'s top, with no cast between it and
+// the row or the row's decay, and the constants are those of the
+// pointer it is added to, folded()'s or based()'s, only: ((int (*)[3])
+// (c + 4))[i][2] keeps its add of 4.
 std::optional< row_access_t >
 row_access(state_t &s,
            const expr_t &row,
@@ -1280,18 +1359,14 @@ row_access(state_t &s,
            int size,
            bool nothing_between)
 {
-    const auto *sum = row_sum(row);
-    if (!sum)
+    const auto at = denoted(row);
+    if (!at.index_top || at.casts != 0)
         return std::nullopt;
 
-    const auto &b = as< binary_t >(*sum);
-    const bool first = is< pointer_t >(b.lhs->type);
-    row_access_t a { .pointer = first ? b.lhs.get() : b.rhs.get(),
-                     .index = first ? b.rhs.get() : b.lhs.get(),
-                     .pointer_first = first,
-                     .stride = stride(sum->type) };
-    if (is< literal_t >(*a.index))
-        return std::nullopt;
+    row_access_t a { .pointer = at.indexed,
+                     .index = at.index,
+                     .pointer_first = !at.index_first,
+                     .stride = at.index_stride };
 
     const auto named = named_offset(*a.pointer, s.defined);
     a.slot = named ? folded(s, *a.pointer) : std::nullopt;
@@ -1392,103 +1467,14 @@ summed(state_t &s,
                        .displacement = static_cast< int >(plan->displacement) };
 }
 
-// The sum an access through p reads, 6.3: p, or the sum under a cast of
-// p between pointer types whose stride is 1 or the access's own size,
-// so that the sum's bytes are the access's offset, unscaled or scaled
-// by the access's size: *(int *) (c + 1) on a char *c is ldrsw x0, [x0,
-// #1], and *(int *) (c + 4097) mov x1, #4097; ldrsw x0, [x0, x1].  Not
-// a name's address plus a constant, whose address is its one add.
-const expr_t &
-access_sum(const expr_t &p,
-           const std::unordered_set< const symbol_t * > &defined)
-{
-    if (!is< cast_t >(p) || !is< pointer_t >(p.type))
-        return p;
-
-    const auto &sum = *as< cast_t >(p).arg;
-    if (!is< pointer_t >(sum.type) || !is< binary_t >(sum) ||
-        named_offset(sum, defined))
-        return p;
-
-    const long inner = stride(sum.type);
-
-    return inner == 1 || inner == stride(p.type) ? sum : p;
-}
-
-// denoted() counts p + n's rows by product_length(), which comes with
-// the constant row of 6.4, after it.
-int product_length(long long);
-
-// The address a pointer denotes before any instruction forms it, 6.3:
-// the pointer under the casts between pointer types and the sums by a
-// constant met on the way, their constants summed in bytes, each scaled
-// by its own sum's stride, and at most one sum by a variable index, its
-// index, its stride and whether it is written first; the walk stops at
-// any other pointer, the base.  ((char *) p + 4 + i * 4) on an int *p
-// is p, 4, and the index i * 4 at a stride of 1.  constants counts the
-// sums by a constant met, and written the instructions the row of p + n
-// writes for them, one by one, product_length()'s.
-struct denoted_t
-{
-    const expr_t *base;
-    long long bytes = 0;
-    int constants = 0;
-    int written = 0;
-    const expr_t *index = nullptr;
-    long index_stride = 0;
-    bool index_first = false;
-};
-
-denoted_t
-denoted(const expr_t &p)
-{
-    denoted_t d { .base = &p };
-
-    for (;;) {
-        const auto &e = *d.base;
-        if (is< cast_t >(e) && is< pointer_t >(e.type) &&
-            is< pointer_t >(as< cast_t >(e).arg->type)) {
-            d.base = as< cast_t >(e).arg.get();
-            continue;
-        }
-
-        if (!is< binary_t >(e) || !is< pointer_t >(e.type))
-            return d;
-
-        const auto &b = as< binary_t >(e);
-        if (b.op != binary_op_t::add && b.op != binary_op_t::sub)
-            return d;
-
-        const bool left = is< pointer_t >(b.lhs->type);
-        const auto &n = left ? *b.rhs : *b.lhs;
-        if (is< literal_t >(n)) {
-            const auto bytes = scaled(as< literal_t >(n).value, stride(e.type));
-            const auto negated = static_cast< long long >(
-                0ull - static_cast< unsigned long long >(bytes));
-            d.bytes = wrapped_add(d.bytes,
-                                  b.op == binary_op_t::add ? bytes : negated);
-            ++d.constants;
-            d.written += product_length(bytes);
-        }
-        else if (b.op == binary_op_t::add && !d.index) {
-            d.index = &n;
-            d.index_stride = stride(e.type);
-            d.index_first = !left;
-        }
-        else
-            return d;
-
-        d.base = left ? b.lhs.get() : b.rhs.get();
-    }
-}
-
 // index_across() and carried() need right_t and offset(), and
 // calls_within() sits with the conditional's rows: all come after
 // pointed(), their caller.
 address_t index_across(
     state_t &, value_t, index_t, int shift, bool pointer_first, const expr_t *);
 bool calls_within(const expr_t &);
-std::optional< address_t > carried(state_t &, const expr_t &, long long, int);
+std::optional< address_t >
+carried(state_t &, const denoted_t &, long long, int);
 
 // The address an access through a dereference designates, 6.5.4.2p4,
 // for a load, a fetch or a store: the pointer's value as the base, [x0],
@@ -1499,10 +1485,15 @@ std::optional< address_t > carried(state_t &, const expr_t &, long long, int);
 // index_of(), and the scale the size of the pointee, a scalar of 1, 2,
 // 4 or 8 bytes, since an access reads no array.  A constant index is
 // the displacement c * s when the access encodes it, 2.3; any other is
-// an index like a variable one, held whole, lsl.  A cast of the
-// pointer is looked through to a sum of a stride of 1 or the access's
-// size, access_sum()'s, whose index form is taken where it saves the
-// add and nothing is evaluated between the address and the access.
+// an index like a variable one, held whole, lsl.  A cast between
+// pointer types directly over denoted()'s top sum is looked through
+// where the sum's stride is 1 or the access's size, so that its bytes
+// are the access's offset, unscaled or scaled by the access's size:
+// *(int *) (c + 1) on a char *c is ldrsw x0, [x0, #1], and *(int *) (c
+// + 4097) mov x1, #4097; ldrsw x0, [x0, x1].  Not for a name's address
+// plus a constant, whose address is its one add; and the index form
+// under the cast only where it saves the add and nothing is evaluated
+// between the address and the access.
 // Any other pointer is computed into a register and is the base.  The
 // pointer is evaluated here, before anything the access goes with.
 //
@@ -1542,7 +1533,12 @@ pointed(state_t &s, const expr_t &p, const expr_t *between = nullptr)
     // *p, and *E for any E that is no sum: *f(), *(char *) q, *p++ on
     // a pointer in a slot, *p++ = *p, and a difference, *(p - 1).  E's
     // value is the base, [x0].
-    const auto &sum = access_sum(p, s.defined);
+    const auto at = denoted(p);
+    const bool under =
+        is< cast_t >(p) && as< cast_t >(p).arg.get() == at.top &&
+        !named_offset(*at.top, s.defined) &&
+        (stride(at.top->type) == 1 || stride(at.top->type) == stride(p.type));
+    const auto &sum = under ? *at.top : p;
     if (!is< binary_t >(sum) || as< binary_t >(sum).op != binary_op_t::add)
         return { .base = rvalue(s, p) };
 
@@ -1567,7 +1563,7 @@ pointed(state_t &s, const expr_t &p, const expr_t *between = nullptr)
     // ((int *) (p + 1))[3] on a char *p: the constants under the pointer
     // and n's are one displacement, [x0, #13], carried()'s
     if (d)
-        if (const auto a = carried(s, pointer, *d, access))
+        if (const auto a = carried(s, at, *d, access))
             return *a;
 
     if (d && in_reach(*d, access))
@@ -2391,23 +2387,26 @@ index_across(state_t &s,
     return { .base = offset(s, binary_op_t::add, base, n, pointer_first) };
 }
 
-// The operand of an access whose pointer, past a constant of d bytes,
-// is denoted()'s with constants of its own, 6.3: the base, and the
-// constants summed with d the access's displacement where it reaches
-// the sum (in_reach()), so that ((int *) (p + 1))[3] on a char *p is
-// ldr w0, [x0, #13] after p's load and two_casts()'s three adds are
-// gone.  A variable index on the way is added to the base first, in the
-// order written (G13), by the row of p + n, and the constants ride past
-// the sum, since one form holds an index or a displacement, never both:
-// *(short *) ((char *) p + 4 + i * 4 + 2) adds the product to p and
-// reads [x0, #6].  None, and the rows as before, where the pointer has
-// no constant of its own and where the sum does not reach.
+// The operand of an access through a pointer whose walk, denoted()'s,
+// has for its top a sum by a constant of d bytes and constants of its
+// own under that sum, 6.3: the base, and all the constants the access's
+// displacement where it reaches the sum (in_reach()), so that ((int *)
+// (p + 1))[3] on a char *p is ldr w0, [x0, #13] after p's load and
+// two_casts()'s three adds are gone.  A variable index on the way is
+// added to the base first, in the order written (G13), by the row of p
+// + n, and the constants ride past the sum, since one form holds an
+// index or a displacement, never both: *(short *) ((char *) p + 4 + i *
+// 4 + 2) adds the product to p and reads [x0, #6].  None, and the rows
+// as before, where the constants under the top sum, inner, are 0 and
+// where the sum does not reach.
 std::optional< address_t >
-carried(state_t &s, const expr_t &pointer, long long d, int access)
+carried(state_t &s, const denoted_t &at, long long d, int access)
 {
-    const auto at = denoted(pointer);
-    const auto total = wrapped_add(at.bytes, d);
-    if (at.bytes == 0 || !in_reach(total, access))
+    const auto total = at.bytes;
+    const auto inner = wrapped_add(
+        total,
+        static_cast< long long >(0ull - static_cast< unsigned long long >(d)));
+    if (inner == 0 || !in_reach(total, access))
         return std::nullopt;
 
     if (!at.index)

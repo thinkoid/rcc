@@ -74,23 +74,23 @@ holds.
 
 Check: the count over =tests=, and no function longer.
 
-** TODO aarch64: three functions walk an access's pointer through its casts and sums
+** TODO aarch64: a row's index does not take the constants and casts under its pointer
 
-=access_sum()=, =row_sum()= with =row_access()=, and =denoted()= in
-=src/c1-aarch64.cc= each read a pointer's tree for the same parts: a
-cast between pointer types, a sum by a constant, a sum by a variable
-index, a row's decay. Each recognises a little the others do not:
-the first one cast over the top sum, with its stride rule; the
-second a row's lvalue layer and a name's constants; the third any
-chain of casts and constant sums with one index.
+~((int (*)[3]) (c + 4))[i][2]~ on a ~char *c~ is =add x0, x0, #4=,
+then the index's product and its add, then =ldr w0, [x0, #8]=, where
+the 4 joins the access's displacement, =ldr w0, [x0, #12]=, an
+instruction fewer; ~(p + 1)[i][2]~ on an ~int (*p)[3]~ the same with
+12 and =ldr w0, [x0, #20]=. The row's rule (=row_access()= in
+=src/c1-aarch64.cc=) asks that its index be the top sum with
+nothing under it, where =denoted()='s walk has the base and the
+bytes. No test has either shape.
 
-Fix: one walk, =denoted()= with the top sum and the casts above it
-recorded and a row's decay stepped through, read by all three
-callers; =access_sum()= and =row_sum()= go. The row's caller must
-ask that its index be the top sum, or it takes constants and casts
-between a row's index and its pointer that today's rows do not.
+Fix: =row_access()= takes the walk's base and bytes.
 
-Check: one walk, and no listing changes on either target.
+Check: a probe of a row by a variable index under a cast and past a
+constant, on a pointer, a slot and a label, read and written, the
+index first too, at constants that do and do not reach; those
+functions shorter, and no function longer.
 
 ** TODO An addition of a constant 0 writes its instruction
 
