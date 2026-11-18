@@ -5,7 +5,8 @@
    the dereference of the record's address plus the member's offset,
    docs/shape.md chapter 4: each member is read, written, stepped,
    added to and its address taken, through ->, through . on an element
-   of an array of records, and on a local and a global of its record.
+   of an array of records, written and added to there across a call,
+   and on a local and a global of its record.
    The records are layout.h's. */
 
 #include "layout.h"
@@ -62,6 +63,22 @@
 #define ADD_r ADD
 #define ADD_u ADD
 #define ADD_n ADD
+
+/* the scalar added to across a call, held(): the address of p[i]'s
+   member is held across it */
+long held(long);
+#define HELD_ADD(E) ((long) ((E) += held(3)))
+#define HELD_ADD_c HELD_ADD
+#define HELD_ADD_s HELD_ADD
+#define HELD_ADD_i HELD_ADD
+#define HELD_ADD_l HELD_ADD
+#define HELD_ADD_p HELD_ADD
+#define HELD_ADD_f(E) 0L
+#define HELD_ADD_a HELD_ADD
+#define HELD_ADD_h HELD_ADD
+#define HELD_ADD_r HELD_ADD
+#define HELD_ADD_u HELD_ADD
+#define HELD_ADD_n HELD_ADD
 
 /* a list a register pointer walks */
 struct link

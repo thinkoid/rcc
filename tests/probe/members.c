@@ -5,10 +5,17 @@
 
 #include "members.h"
 
+/* a call, which spills each value held across it */
+long
+held(long v)
+{
+        return v;
+}
+
 /* the functions of member M, of kind A, of record N declared by K: its
    scalar read, written, stepped, added to and its offset by ->, read by
-   . on the second element of an array, and written and read on a
-   local and on a global */
+   . on the second element of an array, written and added to there
+   across a call, and written and read on a local and on a global */
 #define MEMBER(K, N, M, A)                                              \
     long get_##N##_##M(K N *p) { return (long) p->M PATH_##A; }         \
     void set_##N##_##M(K N *p, long v)                                  \
@@ -22,6 +29,14 @@
         return (char *) &p->M PATH_##A - (char *) p;                    \
     }                                                                   \
     long second_##N##_##M(K N *p) { return (long) p[1].M PATH_##A; }    \
+    void held_##N##_##M(K N *p, int i, long v)                          \
+    {                                                                   \
+        p[i].M PATH_##A = (SCALAR_##A) held(v);                         \
+    }                                                                   \
+    long held_add_##N##_##M(K N *p, int i)                              \
+    {                                                                   \
+        return HELD_ADD_##A(p[i].M PATH_##A);                           \
+    }                                                                   \
     long local_##N##_##M(long v)                                        \
     {                                                                   \
         K N s;                                                          \

@@ -595,6 +595,87 @@ element_address_label:
 	ret
 	.cfi_endproc
 	.size	element_address_label, .-element_address_label
+	.globl	held_member
+	.type	held_member, @function
+held_member:
+	.cfi_startproc
+	sub	sp, sp, #64
+	.cfi_def_cfa_offset 64
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -64
+	.cfi_offset w30, -56
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	x1, [x29, #24]
+	str	w2, [x29, #32]
+	ldr	x0, [x29, #16]
+	ldr	x1, [x29, #24]
+	mov	x2, #16
+	mul	x1, x1, x2
+	add	x0, x0, x1
+	str	x0, [x29, #40]
+	ldr	x0, [x29, #16]
+	ldr	x0, [x0, #136]
+	str	x0, [x29, #48]
+	ldr	w0, [x29, #32]
+	str	w0, [x29, #56]
+	ldr	w0, [x29, #56]
+	ldr	x16, [x29, #48]
+	blr	x16
+	ldr	x1, [x29, #40]
+	str	w0, [x1, #68]
+.Lheld_member.1:
+	.cfi_def_cfa wsp, 64
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #64
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	held_member, .-held_member
+	.globl	held_element
+	.type	held_element, @function
+held_element:
+	.cfi_startproc
+	sub	sp, sp, #64
+	.cfi_def_cfa_offset 64
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -64
+	.cfi_offset w30, -56
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	x1, [x29, #24]
+	str	w2, [x29, #32]
+	ldr	x0, [x29, #16]
+	add	x0, x0, #32
+	ldr	x1, [x29, #24]
+	add	x0, x0, x1, lsl #2
+	str	x0, [x29, #40]
+	ldr	x0, [x29, #16]
+	ldr	x0, [x0, #136]
+	str	x0, [x29, #48]
+	ldr	w0, [x29, #32]
+	str	w0, [x29, #56]
+	ldr	w0, [x29, #56]
+	ldr	x16, [x29, #48]
+	blr	x16
+	ldr	x2, [x29, #40]
+	ldr	w1, [x2]
+	add	w1, w1, w0
+	str	w1, [x2]
+.Lheld_element.1:
+	.cfi_def_cfa wsp, 64
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #64
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	held_element, .-held_element
 	.bss
 	.globl	g
 	.type	g, @object

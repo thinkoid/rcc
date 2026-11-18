@@ -818,12 +818,11 @@ row_held_scaled:
 	movl	%esi, -12(%rbp)
 	movq	-8(%rbp), %rax
 	movslq	-12(%rbp), %rcx
+	leaq	(%rax,%rcx,8), %rax
 	movq	%rax, -24(%rbp)
-	movq	%rcx, -32(%rbp)
 	call	f@PLT
-	movq	-32(%rbp), %rcx
-	movq	-24(%rbp), %rdx
-	movl	%eax, 404(%rdx,%rcx,8)
+	movq	-24(%rbp), %rcx
+	movl	%eax, 404(%rcx)
 .Lrow_held_scaled.1:
 	leave
 	.cfi_def_cfa %rsp, 8

@@ -1152,7 +1152,7 @@ base_into(const into_t *into)
 }
 
 const expr_t *memory_operand(const expr_t &, int);
-const expr_t *cast_sum(const state_t &, const expr_t &, const into_t *);
+const expr_t *cast_sum(const expr_t &, const into_t *);
 address_t pointed(state_t &, const expr_t &, const type_t &, into_t *);
 
 // Whether the pointer p, read through casts between pointer types, is a
@@ -1180,29 +1180,20 @@ memory_indexed(const expr_t &p)
 // instruction has formed yet, backend.md 6.3: pointed()'s for p's own
 // pointee, the base, the displacement and the index p's rows form,
 // through a cast between pointer types too, cast_sum()'s, so that a
-// constant or an index over p joins them where the form holds it.
-// Where the address is held across a pinned instruction, which spills
-// or moves each register it holds, an index is summed into the base,
-// address_of()'s, the addq of a sum at scale 1 and a leaq at any other
-// scale, so that one register is held, and the displacement
-// stays the access's, which holds no register: ((long (*)[2]) (p +
-// 800))[i][1] = f() is 808(%rcx) after the call.  None, and p's value
-// formed as before, for a sum at a stride of 1 by an index in memory,
-// memory_indexed()'s.
+// constant or an index over p joins them where the form holds it,
+// held across a pinned instruction too, the constants the access's
+// displacement, which holds no register: ((long (*)[2]) (p +
+// 800))[i][1] = f() is 808(%rcx) after the call, and place_of() sums
+// a base and an index that the right operand would spill.  None, and
+// p's value formed as before, for a sum at a stride of 1 by an index
+// in memory, memory_indexed()'s.
 std::optional< address_t >
 denoted(state_t &s, const expr_t &p)
 {
     if (memory_indexed(p))
         return std::nullopt;
 
-    auto a = pointed(s, p, *as< pointer_t >(p.type).pointee, nullptr);
-    if (!s.held_across || a.base.id < 0 || a.index.id < 0)
-        return a;
-
-    const auto displacement = std::exchange(a.displacement, 0);
-    a.sum = a.scale == 1;
-
-    return address_t { .base = address_of(s, a), .displacement = displacement };
+    return pointed(s, p, *as< pointer_t >(p.type).pointee, nullptr);
 }
 
 // The operand of an address by a pointer and a constant index,
@@ -1358,7 +1349,7 @@ index_base(state_t &s,
                              size_of(*as< pointer_t >(pointer.type).pointee));
 
     // ((int *) (p + 1))[i] on a char *p: 1(%rax,%rcx,4)
-    if (!a && cast_sum(s, pointer, nullptr))
+    if (!a && cast_sum(pointer, nullptr))
         a = denoted(s, pointer);
 
     if (!a)
@@ -1418,12 +1409,11 @@ address_t index_unscaled(state_t &, const binary_t &, long);
 // The access is at the cast's type all the same (G10), at the address
 // the source computes (G11).  None for any other pointer, an array's
 // decay among them, for an address handed a register variable, whose
-// rows are the value's, and for a variable index where the address is
-// held_across a pinned instruction, which the sum keeps to one
-// register, and for an index of 64 bits in memory at a stride of 1,
-// memory_indexed()'s.
+// rows are the value's, and for an index of 64 bits in memory at a
+// stride of 1, memory_indexed()'s.  An address held across a right
+// operand that spills it is summed into one register by place_of().
 const expr_t *
-cast_sum(const state_t &s, const expr_t &p, const into_t *into)
+cast_sum(const expr_t &p, const into_t *into)
 {
     if (into || !is< cast_t >(p) || !is< pointer_t >(p.type))
         return nullptr;
@@ -1436,8 +1426,7 @@ cast_sum(const state_t &s, const expr_t &p, const into_t *into)
     if (b.op != binary_op_t::add && b.op != binary_op_t::sub)
         return nullptr;
 
-    const auto &n = is< pointer_t >(b.lhs->type) ? *b.rhs : *b.lhs;
-    if ((!is< literal_t >(n) && s.held_across) || memory_indexed(p))
+    if (memory_indexed(p))
         return nullptr;
 
     return &sum;
@@ -1479,7 +1468,7 @@ pointed(state_t &s,
         into_t *into = nullptr)
 {
     // *(int *) (p + 24) on a char *p: 24(%rax)
-    if (const auto *sum = cast_sum(s, p, into))
+    if (const auto *sum = cast_sum(p, into))
         return pointed(s, *sum, *as< pointer_t >(sum->type).pointee);
 
     if (const auto a = folded(s, p))
@@ -1938,17 +1927,115 @@ address_avoiding(state_t &s, const expr_t &e, unsigned pinned)
     return a;
 }
 
+// Whether generating e spills every value held across it, 6.7: a call
+// within it, or a branch of &&, || or ?:.
+bool
+spills_within(const expr_t &e)
+{
+    if (is< call_t >(e) || is< conditional_t >(e))
+        return true;
+
+    if (is< unary_t >(e))
+        return spills_within(*as< unary_t >(e).arg);
+
+    if (is< binary_t >(e)) {
+        const auto &b = as< binary_t >(e);
+        return b.op == binary_op_t::log_and || b.op == binary_op_t::log_or ||
+               spills_within(*b.lhs) || spills_within(*b.rhs);
+    }
+
+    if (is< assign_t >(e)) {
+        const auto &a = as< assign_t >(e);
+        return spills_within(*a.lhs) || spills_within(*a.rhs);
+    }
+
+    if (is< cast_t >(e))
+        return spills_within(*as< cast_t >(e).arg);
+
+    return false;
+}
+
+// Whether the lvalue e is reached from a label, backend.md 6.3: its
+// pointer, read through casts between pointer types, the decay of a
+// row and the pointer operand of each sum, a global's or a string's
+// address, whose leaq is
+// the base an index cannot join, so a place there is left as it is.
+bool
+label_rooted(const expr_t &e,
+             const std::unordered_set< const symbol_t * > &defined)
+{
+    if (!is< unary_t >(e) || as< unary_t >(e).op != unary_op_t::deref)
+        return false;
+
+    const expr_t *p = as< unary_t >(e).arg.get();
+    while (is< cast_t >(*p) || is< binary_t >(*p)) {
+        if (is< cast_t >(*p) && is< pointer_t >(as< cast_t >(*p).arg->type)) {
+            p = as< cast_t >(*p).arg.get();
+            continue;
+        }
+
+        // a row's decay, m[i] of m[i][1]: the row's own pointer
+        if (is< cast_t >(*p)) {
+            const auto &row = *as< cast_t >(*p).arg;
+            if (!is< array_t >(row.type) || !is< unary_t >(row) ||
+                as< unary_t >(row).op != unary_op_t::deref)
+                break;
+
+            p = as< unary_t >(row).arg.get();
+            continue;
+        }
+
+        if (!is< binary_t >(*p) || !is< pointer_t >(p->type))
+            break;
+
+        const auto &b = as< binary_t >(*p);
+        p = is< pointer_t >(b.lhs->type) ? b.lhs.get() : b.rhs.get();
+    }
+
+    const auto named = named_offset(*p, defined);
+    if (!named)
+        return false;
+
+    const auto &object = *named->object;
+
+    return !is< name_t >(object) || global_of(object);
+}
+
 // The place of an assignment, held across its right operand: the
 // lvalue's address, address_avoiding()'s, held_across the right
 // operand where an instruction within it pins a register, a call, a
 // division or a shift by a variable count, so that an unscaled sum
-// keeps to one register (backend.md 6.3).
+// keeps to one register (backend.md 6.3).  Where the right operand
+// spills every held value, spills_within()'s, a base and an index that
+// would each be spilled are summed into one register first, the addq
+// of a sum at scale 1 and a leaq at any other scale, the displacement
+// apart: ((int (*)[2]) (c + 400))[i][1] = f() is leaq (%rax,%rcx,8),
+// %rax before the call, one spill and one reload, and movl %eax,
+// 404(%rcx) after it.  Not where either is a register variable's read,
+// which no call spills, or is spilled already, across a call of the
+// index, p[id(i)] = id(v), whose slot holds it across the next; nor on
+// a label's leaq, label_rooted()'s; and
+// not where nothing is spilled, a division's or a shift's registers
+// chosen outside the address.
 address_t
 place_of(state_t &s, const assign_t &a, unsigned pinned)
 {
     const bool outer = std::exchange(s.held_across, pinned_within(*a.rhs) != 0);
-    const auto place = address_avoiding(s, *a.lhs, pinned);
+    const unsigned reserved = std::exchange(s.reserved, s.reserved | pinned);
+    auto place = address(s, *a.lhs);
     s.held_across = outer;
+
+    const bool apart = place.base.id >= 0 && place.index.id >= 0 &&
+                       !borrowed(s, place.base) && !borrowed(s, place.index) &&
+                       s.values[place.base.id].reg >= 0 &&
+                       s.values[place.index.id].reg >= 0;
+    if (apart && spills_within(*a.rhs) && !label_rooted(*a.lhs, s.defined)) {
+        const auto displacement = std::exchange(place.displacement, 0);
+        place.sum = place.scale == 1;
+        place = { .base = address_of(s, place), .displacement = displacement };
+    }
+
+    s.reserved = reserved;
 
     return place;
 }

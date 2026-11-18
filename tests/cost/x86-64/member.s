@@ -445,6 +445,70 @@ element_address_label:
 	ret
 	.cfi_endproc
 	.size	element_address_label, .-element_address_label
+	.globl	held_member
+	.type	held_member, @function
+held_member:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$48, %rsp
+	movq	%rdi, -8(%rbp)
+	movq	%rsi, -16(%rbp)
+	movl	%edx, -20(%rbp)
+	movq	-8(%rbp), %rax
+	imulq	$16, -16(%rbp), %rcx
+	addq	%rcx, %rax
+	movq	%rax, -32(%rbp)
+	movq	-8(%rbp), %rax
+	movq	136(%rax), %rax
+	movq	%rax, -40(%rbp)
+	movl	-20(%rbp), %eax
+	movl	%eax, -44(%rbp)
+	movl	-44(%rbp), %edi
+	call	*-40(%rbp)
+	movq	-32(%rbp), %rcx
+	movl	%eax, 68(%rcx)
+.Lheld_member.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	held_member, .-held_member
+	.globl	held_element
+	.type	held_element, @function
+held_element:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$48, %rsp
+	movq	%rdi, -8(%rbp)
+	movq	%rsi, -16(%rbp)
+	movl	%edx, -20(%rbp)
+	movq	-8(%rbp), %rax
+	movq	-16(%rbp), %rcx
+	leaq	(%rax,%rcx,4), %rax
+	movq	%rax, -32(%rbp)
+	movq	-8(%rbp), %rax
+	movq	136(%rax), %rax
+	movq	%rax, -40(%rbp)
+	movl	-20(%rbp), %eax
+	movl	%eax, -44(%rbp)
+	movl	-44(%rbp), %edi
+	call	*-40(%rbp)
+	movq	-32(%rbp), %rcx
+	addl	%eax, 32(%rcx)
+.Lheld_element.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	held_element, .-held_element
 	.bss
 	.globl	g
 	.type	g, @object

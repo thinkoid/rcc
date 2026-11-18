@@ -12,7 +12,13 @@
    98(%rax), leaq -100(%rbp) and leaq g+44(%rip); a register pointer's
    r->m 8(%rbx), and its walk r = r->next movq 128(%rbx), %rbx; a
    union's members each at 0; and p->f(x) the call through the member's
-   load.  On aarch64 p->m is [x0, #8], s.m [x29, #d], g.m [x16,
+   load.  An address held across a call in the right operand keeps its
+   constants in the access's displacement and its base and index in one
+   register, spilled once: held_member(), p->t[i].i = p->f(x), is the
+   imulq and addq %rcx, %rax before the call and movl %eax, 68(%rcx)
+   after it, the 64 and the 4 one displacement, and held_element(),
+   p->a[i] += p->f(x), leaq (%rax,%rcx,4), %rax before it and addl
+   %eax, 32(%rcx).  On aarch64 p->m is [x0, #8], s.m [x29, #d], g.m [x16,
    :lo12:g+8], p->in.i [x0, #20], p->a[i] the add of the offset and [x0,
    x1, lsl #2], since no form holds an index and a displacement, and a
    register pointer's [x19, #8]; a member array's element by a constant,
@@ -23,7 +29,10 @@
    access's displacement, [x0, #68].  The addresses &p->a[3] and
    &p->t[2].h are one add, add x0, x0, #44 and add x0, x0, #98, &s.a[3]
    the slot's add x0, x29, #60, and &g.a[3] the label's pair, adrp x0,
-   g+44 and add x0, x0, :lo12:g+44. */
+   g+44 and add x0, x0, :lo12:g+44.  held_member() adds the index's
+   product before the call and stores str w0, [x1, #68] after it, and
+   held_element() add x0, x0, #32 and add x0, x0, x1, lsl #2 before
+   it, then ldr, add and str at [x2]. */
 struct in
 {
         char c;
@@ -197,4 +206,16 @@ int *
 element_address_label(void)
 {
         return &g.a[3];
+}
+
+void
+held_member(struct rec *p, long i, int x)
+{
+        p->t[i].i = p->f(x);
+}
+
+void
+held_element(struct rec *p, long i, int x)
+{
+        p->a[i] += p->f(x);
 }

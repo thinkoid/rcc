@@ -1135,11 +1135,8 @@ its label, `movl -16(%rbp), L` and `movl bytes+4(%rip), L`. It stops
 at the address as a value, `(int *) (p + 24)` being the `addq $24`;
 at a cast that is no conversion between pointer types, an array's
 decay among them; at an address handed a register variable, whose
-rows are the value's; at a variable index where the address is held
-across a call, a division or a shift by a variable count (an index of
-no scale, below), whose sum keeps to one register; and at a stride of
-1 with an index of 64 bits in memory, which the sum's `addq` takes as
-its operand. A subscript or a constant over such a sum joins the
+rows are the value's; and at a stride of 1 with an index of 64 bits
+in memory, which the sum's `addq` takes as its operand. A subscript or a constant over such a sum joins the
 sum's own operand: the pointer of a sum by a constant, and of a
 subscript, is taken as the address it denotes, the base, the
 displacement and the index its rows form, through a cast between
@@ -1156,16 +1153,10 @@ object, is the label's `leaq` and the displacement; a scale is always
 the sum's own stride, 1, 2, 4 or 8, or an index of no scale's product
 (below). A constant subtracted is the displacement negated, `(q -
 1)[i][1]` on a `long (*q)[2]` being `movq -8(%rax,%rcx,1), L` after
-the `imulq`. Where the address is held across a pinned instruction,
-which spills or moves each register held, an index is summed into the
-base before it, so that one register is held, and every constant
-stays the access's displacement, which holds none:
-`((long (*)[2]) (p + 800))[i][1] = f()` is the `imulq` and `addq
-%rcx, %rax` before the call and `movq %rax, 808(%rcx)` after, as
-`(q + 50)[i][1] = f()` is; a compound assignment's read and write
-both carry it, `movq 808(%rcx), %rdx` and `movq %rax, 808(%rcx)`. A
-stride of 1 by an index in memory keeps the pointer's value formed
-first, as at the top.
+the `imulq`. Held across a right operand, every constant stays the
+access's displacement too (an address held across a right operand,
+below). A stride of 1 by an index in memory keeps the pointer's value
+formed first, as at the top.
 
 **An index of no scale.** At a size no addressing form scales by,
 the index's product, the `imul` of the `p + n` row, is the form's
@@ -1192,10 +1183,11 @@ one, `imulq $12, -16(%rbp), R` (6.1). The form does not reach:
   address with a displacement, and `j` is the access's index;
 - an address held across a right operand with a pinned instruction
   within, `m[i][1] -= f()`, a division or a shift by a variable
-  count: two registers would each be spilled or moved, so the sum is
-  the `addq` and the pointer's displacement the access's, `subb %al,
-  1(%rcx)` after the reload, the constants under the pointer
-  included, `808(%rcx)` for `((long (*)[2]) (p + 800))[i][1] = f()`;
+  count: the sum is the `addq` and the pointer's displacement the
+  access's, `subb %al, 1(%rcx)` after the reload, the constants under
+  the pointer included, `808(%rcx)` for `((long (*)[2]) (p +
+  800))[i][1] = f()` (an address held across a right operand,
+  below);
 - the index written first on a pointer that is an object of 64 bits
   in memory, `i[p][1]`, which keeps the `p + n` row, `addq -8(%rbp),
   %rax` of `p` after the `imulq`, as many instructions as its load;
@@ -1215,6 +1207,36 @@ written into a register variable, `leaq 8(L,R,1), %rbx`; an index
 that is an object of 64 bits in memory keeps the `p + n` row's `add`
 on the row's address, `leaq 8(L), L; addq -16(%rbp), L`, since the
 `add` takes it as its operand where the join would load it.
+
+**An address held across a right operand.** An assignment's place
+is formed before its right operand (6.6) and held across it. A call
+within the right operand, or a branch of `&&`, `||` or `?:`, spills
+every register held (6.7), so each register of the place costs a
+spill and a reload, and a constant costs nothing. So the constants
+under the place stay the access's displacement, and a base and an
+index that would each be spilled are summed into one register first,
+at any scale, the `addq` at a scale of 1 and a `leaq` at 2, 4 or 8,
+the displacement apart: `((int (*)[2]) (c + 400))[i][1] = f()` is
+`leaq (%rax,%rcx,8), %rax` before the call, one spill and one reload,
+and `movl %eax, 404(%rcx)` after it; `p->a[i] = f()` is `movl %eax,
+32(%rcx)` after the same `leaq`; and an index of no scale is its own
+row's sum, `((long (*)[2]) (p + 800))[i][1] = f()` the `imulq` and
+`addq %rcx, %rax` and `movq %rax, 808(%rcx)`, as `(q + 50)[i][1] =
+f()` is and `p->t[i].i = f()` is, `movl %eax, 68(%rcx)` with the
+member array's 64 and the member's 4. A compound assignment's read
+and write both go through the one sum, `movq 808(%rcx), %rdx` and
+`movq %rax, 808(%rcx)`; a step, `p->t[i].i++`, holds nothing across
+anything and keeps the one operand. Where only one of the two would
+be spilled the other is kept, the shorter form: a register
+variable's read as the base, which no call spills, `movl %eax,
+(%rbx,%rcx,4)` after the index's reload, two instructions where the
+sum is three; a register variable of 64 bits as the index; and a
+base spilled already, across a call within the index, `p[id(i)] =
+id(v)`, whose slot holds it across the next call. A place on a label
+keeps its form, the label's `leaq` the base. Where nothing is
+spilled, a division or a shift by a variable count, whose registers
+the place is formed outside, the base and the index stay where they
+are, `movl %eax, (%rcx,%rsi,4)` after the `idivl`.
 
 A `char` or `short` lvalue is loaded with the extending `mov` of its
 signedness, to 64 bits under a cast that widens a signed one to

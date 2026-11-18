@@ -56,6 +56,10 @@ fill(void *p, size_t size)
     long add_##N##_##M(K N *), ref_add_##N##_##M(K N *);                \
     long where_##N##_##M(K N *), ref_where_##N##_##M(K N *);            \
     long second_##N##_##M(K N *), ref_second_##N##_##M(K N *);          \
+    void held_##N##_##M(K N *, int, long);                              \
+    void ref_held_##N##_##M(K N *, int, long);                          \
+    long held_add_##N##_##M(K N *, int);                                \
+    long ref_held_add_##N##_##M(K N *, int);                            \
     long local_##N##_##M(long), ref_local_##N##_##M(long);              \
     long global_##N##_##M(long), ref_global_##N##_##M(long);
 
@@ -86,7 +90,8 @@ int apply(struct ops *, int), ref_apply(struct ops *, int);
 
 /* a member's checks for each value: written, read, stepped and added
    to on two records filled alike, its offset, the second element's
-   read, and a local's and a global's write and read */
+   read, written and added to across a call, and a local's and a
+   global's write and read */
 #define CHECK_MEMBER(K, N, M, A)                                        \
     for (int k = 0; k < COUNT; ++k) {                                   \
         K N a[2], b[2];                                                 \
@@ -109,6 +114,12 @@ int apply(struct ops *, int), ref_apply(struct ops *, int);
                ref_where_##N##_##M(b));                                 \
         report("second_" #N "_" #M, v, second_##N##_##M(a),             \
                ref_second_##N##_##M(b));                                \
+        held_##N##_##M(a, 1, v);                                        \
+        ref_held_##N##_##M(b, 1, v);                                    \
+        same("held_" #N "_" #M, v, a, b, sizeof a);                     \
+        report("held_add_" #N "_" #M, v, held_add_##N##_##M(a, 1),      \
+               ref_held_add_##N##_##M(b, 1));                           \
+        same("held_add_" #N "_" #M, v, a, b, sizeof a);                 \
         report("local_" #N "_" #M, v, local_##N##_##M(v),               \
                ref_local_##N##_##M(v));                                 \
         report("global_" #N "_" #M, v, global_##N##_##M(v),             \

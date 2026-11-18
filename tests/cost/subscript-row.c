@@ -109,13 +109,14 @@
    row_cancelled() by the one movl (%rax,%rcx,4), %eax.  row_held()
    forms the sum in one register, the imulq and addq %rcx, %rax, which
    the call spills once, then stores movl %eax, 408(%rcx), with no add
-   of the 400; row_held_scaled() holds the pointer and the index
-   across the call and stores movl %eax, 404(%rdx,%rcx,8);
-   row_held_rows() stores movl %eax, 20(%rcx); row_first_cast() and
-   row_first_rows() read by imulq $12, %rax, %rax after i's load and
-   p's and the one movl 12(%rcx,%rax,1), %eax and movl
-   20(%rcx,%rax,1), %eax; and row_before_cast() and row_before_rows()
-   by the imulq and the one movl -4(%rax,%rcx,1), %eax.
+   of the 400; row_held_scaled() sums the pointer and the index before
+   the call, leaq (%rax,%rcx,8), %rax, spilled once, and stores movl
+   %eax, 404(%rcx); row_held_rows() stores movl %eax, 20(%rcx);
+   row_first_cast() and row_first_rows() read by imulq $12, %rax, %rax
+   after i's load and p's and the one movl 12(%rcx,%rax,1), %eax and
+   movl 20(%rcx,%rax,1), %eax; and row_before_cast() and
+   row_before_rows() by the imulq and the one movl -4(%rax,%rcx,1),
+   %eax.
    row_address_under_cast() is the imulq and the one leaq
    12(%rax,%rcx,1), %rax.
 
