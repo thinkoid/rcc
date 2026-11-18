@@ -1140,6 +1140,8 @@ compile database, and three lines of make, a shell script and
                       aarch64
     tests/driver      the driver's command-line script
     tests/probes      the probe script
+    tests/status.sh   a run's exit status by its signal's name, which
+                      the oracle and the probe script read
     tests/probe/      the probes: rcc's code against clang -O0's
     tests/bench       the measurement script
     tests/perf/       the benchmark programs, plain and tuned

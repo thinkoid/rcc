@@ -59,7 +59,9 @@
 #
 # The script prints a line per probe, its name and the probe's own
 # count, "<n> checks, <m> differ", "not yet", or the step that failed,
-# and a summary.  It exits 0 when every probe but those not yet ran
+# and a summary.  A probe a signal stopped shows the signal's name, as
+# tests/oracle shows it, "stopped, SEGV", by shown_status() of
+# tests/status.sh.  It exits 0 when every probe but those not yet ran
 # and nothing differed, 1 otherwise.  It runs from the tree root with
 # ./rcc built, as make test runs it.  The objects, the programs and
 # the log of every command stay in build/probe; each command's output
@@ -414,9 +416,16 @@ check_probe()
     fi
 
     # the probe's count is its last line; a probe stopped by a signal
-    # may not have printed it
+    # may not have printed it, and shows the signal's name, SEGV
     if [ "$ran" -gt 1 ]; then
-        printf '%-12s %s\n' "$name" "stopped, status $ran"
+        shown=$(shown_status "$ran")
+        case "$shown" in
+            [0-9]*)  # a status of its own, or no signal's name
+                shown="status $shown"
+                ;;
+        esac
+
+        printf '%-12s %s\n' "$name" "stopped, $shown"
         return 1
     fi
 
@@ -451,6 +460,9 @@ done
 
 # without the tree root and a built rcc there is nothing to run
 check_tree || exit 2
+
+# shown_status(), which names a signal's status as tests/oracle does
+. tests/status.sh
 
 # a probe program, or rcc, killed by a signal leaves no core file: the
 # log has its status, and a core would land in the tree's root, or where

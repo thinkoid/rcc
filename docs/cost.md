@@ -480,7 +480,10 @@ elsewhere before the limit. No program of the corpus exits above 128
 by itself, so no status reads two ways. `tests/corpus/expected` names
 the signal too: a row passes on a signal only when it names it, and a
 row that holds a number above 128 fails, as does a status above 128
-whose signal `kill -l` has no name for.
+whose signal `kill -l` has no name for. A probe a signal stops shows
+the name the same way, "stopped, SEGV": the name comes from one
+function, `shown_status()` in `tests/status.sh`, which both scripts
+read from the tree's root.
 
 ## 4. The measurement
 
