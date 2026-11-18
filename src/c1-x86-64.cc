@@ -1030,44 +1030,39 @@ indexed(state_t &s, const binary_t &b, long size)
                        .displacement = slot->displacement };
 }
 
-address_t address(state_t &, const expr_t &, into_t * = nullptr);
-
-// The address of the lvalue under summed()'s decay or &: address()'s,
-// but that a dereference of a pointer plus a constant index is the
-// pointer's value with the index times the size as the displacement,
-// whatever the size.  p[1] on int (*p)[3] is 12(%rax), where address()
-// forms the row's address by the p + n row, addq $12, %rax, since the
-// row's 12 bytes are no scale.  A pointer that is itself an lvalue's
-// address plus a constant is address()'s, whose folds hold.  A register
-// variable handed down goes on to address()'s rows.
-address_t
-lvalue_address(state_t &s, const expr_t &lvalue, into_t *into = nullptr)
+// The operand of an address by a pointer and a constant index,
+// backend.md 6.3: the pointer's value the base and the index times the
+// size the displacement, whatever the size, 12(%rax) for p[3] on an
+// int *p and for the row p[1] on int (*p)[3], whose 12 bytes are no
+// scale, so that the row as a pointer is leaq 12(%rax), %rax.  Only the
+// pointer is evaluated.  None for any other pointer, and for a product
+// no 32-bit displacement holds, which the rows of p + n and of an index
+// reach.
+std::optional< address_t >
+constant_indexed(state_t &s, const expr_t &p, long size)
 {
-    if (!is< unary_t >(lvalue) || as< unary_t >(lvalue).op != unary_op_t::deref)
-        return address(s, lvalue, into);
+    if (!is< binary_t >(p) || as< binary_t >(p).op != binary_op_t::add)
+        return std::nullopt;
 
-    const auto &q = *as< unary_t >(lvalue).arg;
-    if (!is< binary_t >(q) || as< binary_t >(q).op != binary_op_t::add ||
-        lvalue_offset(q))
-        return address(s, lvalue, into);
-
-    const auto &b = as< binary_t >(q);
+    const auto &b = as< binary_t >(p);
     const bool left = is< pointer_t >(b.lhs->type);
     const auto &index = left ? *b.rhs : *b.lhs;
     if (!is< literal_t >(index))
-        return address(s, lvalue, into);
+        return std::nullopt;
 
-    const long size = size_of(*as< pointer_t >(q.type).pointee);
     const auto d = scaled(as< literal_t >(index).value, size);
     if (!fits_imm32(d))
-        return address(s, lvalue, into);
+        return std::nullopt;
 
-    return { .base = rvalue(s, left ? *b.lhs : *b.rhs), .displacement = d };
+    return address_t { .base = rvalue(s, left ? *b.lhs : *b.rhs),
+                       .displacement = d };
 }
 
+address_t address(state_t &, const expr_t &, into_t * = nullptr);
+
 // The operand of an address by any other lvalue and a constant,
-// backend.md 6.3: the lvalue's own address, lvalue_address()'s, with
-// the constant summed into its displacement, 2(%rax,%rcx,8) for
+// backend.md 6.3: the lvalue's own address, address()'s, with the
+// constant summed into its displacement, 2(%rax,%rcx,8) for
 // m[i][2] on char (*m)[8], 20(%rax) for p[1][2] on int (*p)[3];
 // nothing else is evaluated, and no instruction forms the intermediate
 // address.  The lvalue is a dereference whose pointer is no name's
@@ -1085,7 +1080,7 @@ summed(state_t &s, const expr_t &pointer, into_t *into = nullptr)
     if (!at || !fits_imm32(at->offset) || named_offset(pointer, s.defined))
         return std::nullopt;
 
-    auto a = lvalue_address(s, *at->lvalue, at->offset == 0 ? into : nullptr);
+    auto a = address(s, *at->lvalue, at->offset == 0 ? into : nullptr);
 
     const auto displacement = wrapped_add(a.displacement, at->offset);
     if (!fits_imm32(displacement))
@@ -1104,19 +1099,20 @@ summed(state_t &s, const expr_t &pointer, into_t *into = nullptr)
 // its displacement, summed().  A subscript by a constant 0 is the
 // bare base, the pointer's value with no displacement and no index,
 // whatever the pointee's size: m[0] on int m[2][3] is m, as p[0] is p.
-// Any other add of a pointer and an integer, the shape of a subscript
-// (6.5.3.2p2), is the machine's addressing form when the size is a
-// scale: the pointer the base, the integer the index, each generated in
-// the order written (G13); a constant index is the displacement
-// c * size when it fits 32 bits, and a variable index into a local
-// array has rbp the base and the slot the displacement, indexed().  The
-// operand written first is held outside the registers the other's top
-// operator pins, p[x / y]'s p outside rax and rdx (chapter 6.5).  Any
-// other pointer, an add of another size included, is computed into a
-// register and is the base; nothing looks through a cast.  A register
-// variable handed down goes to the row of a base that is the whole
-// address, p of &*p and &p[0], or the sum of &a[i] at a size no
-// addressing form scales by, and to summed()'s (chapter 4).
+// Any other constant index is the displacement c * size, whatever the
+// size, when it fits 32 bits, constant_indexed()'s.  Any other add of a
+// pointer and an integer, the shape of a subscript (6.5.3.2p2), is the
+// machine's addressing form when the size is a scale: the pointer the
+// base, the integer the index, each generated in the order written
+// (G13), and a variable index into a local array has rbp the base and
+// the slot the displacement, indexed().  The operand written first is
+// held outside the registers the other's top operator pins, p[x / y]'s
+// p outside rax and rdx (chapter 6.5).  Any other pointer, an add of
+// another size included, is computed into a register and is the base;
+// nothing looks through a cast.  A register variable handed down goes
+// to the row of a base that is the whole address, p of &*p and &p[0],
+// or the sum of &a[i] at a size no addressing form scales by, and to
+// summed()'s (chapter 4).
 address_t
 pointed(state_t &s,
         const expr_t &p,
@@ -1135,20 +1131,16 @@ pointed(state_t &s,
 
     const long size = size_of(pointee);
 
+    // p[3], and the row p[1] on int (*p)[3]: 12(%rax)
+    if (const auto a = constant_indexed(s, p, size))
+        return *a;
+
     if (!is_scale(size) || !is< binary_t >(p) ||
         as< binary_t >(p).op != binary_op_t::add)
         return { .base = rvalue(s, p, into) };
 
     const auto &b = as< binary_t >(p);
     const bool left = is< pointer_t >(b.lhs->type);
-    const auto &pointer = left ? *b.lhs : *b.rhs;
-    const auto &index = left ? *b.rhs : *b.lhs;
-
-    if (is< literal_t >(index)) {
-        const auto d = scaled(as< literal_t >(index).value, size);
-        if (fits_imm32(d))
-            return { .base = rvalue(s, pointer), .displacement = d };
-    }
 
     // a[i], m[1][i] on a local array: -24(%rbp,%rcx,4)
     if (const auto a = indexed(s, b, size))

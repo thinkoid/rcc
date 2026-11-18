@@ -39,7 +39,8 @@ long id(long a);
 
 POINTEES(ARITH_ALL)
 
-/* p + n with n a constant, and p += n */
+/* p + n with n a constant, p += n, and &p[n], the address by a
+   constant index */
 #define KARITH(E, T, S, name, n)                                        \
     char *kadd_##E##_##name(T p S) { return (char *) (p + (n)); }       \
     char *kradd_##E##_##name(T p S) { return (char *) ((n) + p); }      \
@@ -49,7 +50,8 @@ POINTEES(ARITH_ALL)
         p += n;                                                         \
         return (char *) p;                                              \
     }                                                                   \
-    char *ksubeq_##E##_##name(T p S) { return (char *) (p -= n); }
+    char *ksubeq_##E##_##name(T p S) { return (char *) (p -= n); }      \
+    char *kaddr_##E##_##name(T p S) { return (char *) &p[n]; }
 #define KARITH_ALL(E, T, S) KONSTS(KARITH, E, T, S)
 
 POINTEES(KARITH_ALL)

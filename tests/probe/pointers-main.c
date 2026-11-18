@@ -243,7 +243,8 @@ POINTEES(DECLARE_ARITH_ALL)
     BOTH(char *, kradd_##E##_##name, (T p S))                           \
     BOTH(char *, ksub_##E##_##name, (T p S))                            \
     BOTH(char *, kaddeq_##E##_##name, (T p S))                          \
-    BOTH(char *, ksubeq_##E##_##name, (T p S))
+    BOTH(char *, ksubeq_##E##_##name, (T p S))                          \
+    BOTH(char *, kaddr_##E##_##name, (T p S))
 #define DECLARE_KARITH_ALL(E, T, S) KONSTS(DECLARE_KARITH, E, T, S)
 
 POINTEES(DECLARE_KARITH_ALL)
@@ -398,6 +399,7 @@ POINTEES(TEST_ARITH_ALL)
     CHECK(ksub_##E##_##name, p, 0, ((void *) p));                       \
     CHECK(kaddeq_##E##_##name, p, 0, ((void *) p));                     \
     CHECK(ksubeq_##E##_##name, p, 0, ((void *) p));                     \
+    CHECK(kaddr_##E##_##name, p, 0, ((void *) p));                      \
     PCHECK(kadd_##E##_##name, at, 0, at, (P));
 
 /* p - q, the steps, p += n and p -= n, and the comparisons of derived

@@ -725,7 +725,7 @@ whole, widened to its types (`backend.md` 7.3 and call 10;
 so `*(&x + 4)` is the operand `_x+4`, and no instruction forms the
 address. rcc's "name and a constant" is the same rule on a slot or a
 label: "`a[3]` is `movl -20(%rbp), L`" (`backend.md` 6.3;
-`lvalue_address()` and `folded()` in `src/c1-x86-64.cc`).
+`folded()` in `src/c1-x86-64.cc`).
 
 ### 3.6 Autoincrement
 
