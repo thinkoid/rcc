@@ -131,6 +131,21 @@ Fix: remove the value's path of =summed()=.
 Check: no function longer, and the listings that change at the same
 count read.
 
+** TODO aarch64: a register parameter from the stack is loaded before the other parameters' stores
+
+A =register= parameter past the eighth is loaded from the caller's
+frame first, =ldr w20, [x29, #64]=, before the stores and moves of
+the parameters that arrive in registers; x86-64 loads its stack
+parameters in parameter order, after the six stores. =aarch64.md=
+chapter 4 does not say where the load stands, and =backend.md=
+chapter 4 states x86-64's order as the rule. =register-rules='s
+=stacked()= pins both.
+
+Fix: decide. The load takes its place in parameter order, as on
+x86-64; or the chapter states aarch64's order and why it differs.
+
+Check: =stacked()= on aarch64 against the chapter's sentence.
+
 ** TODO An addition of a constant 0 writes its instruction
 
 ~p + 0~ on a pointer is =addq $0, %rax= and =add x0, x0, #0=, and
@@ -395,34 +410,6 @@ Fix: write that program as the G14 entry, expected =timeout= under
 rcc and 0 under clang.
 
 Check: the oracle row.
-
-** TODO The register rows pin only part of c1's register rules
-
-The five programs that declare =register= pin the registers in
-declaration order, the pushes with their unwind offsets, a register
-parameter's move from its argument register, a read as an operand, a
-copy before an instruction that writes, an assignment, a constant's
-immediate, and G5's unwritten register. No program of either corpus
-shows the rest of =backend.md= chapter 4, so a change to any of these
-shows in no pin:
-
-- a compound assignment or a =++= on the register in place, =addl $1,
-  %r13d=;
-- a narrow register variable: the extending store =movsbl %al,
-  %ebx=, the re-extension after a step, and an unwritten one's
-  extension at its declaration;
-- the copy of a held read before a write, =i + i++=, and before the
-  paths of =&&=, =||= and =?:= (G13);
-- a register parameter past the sixth, loaded from its stack slot,
-  and the order of the moves and the stores among mixed parameters;
-- the epilogue's =leaq -8k(%rbp), %rsp= before the pops, which only a
-  function with pushes and a =subq= writes;
-- the sixth live variable in a slot, and a later block taking =rbx=
-  again.
-
-Fix: a cost program for each, with its pin.
-
-Check: perturbing each rule in =c1-x86-64.cc= turns a row red.
 
 ** TODO Two corpus programs describe the x86-64 listing only
 
