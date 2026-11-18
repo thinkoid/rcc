@@ -3536,6 +3536,19 @@ refuse_specifier_on_main(const specifiers_t &spec, const declarator_t &d)
              quoted(specifier->text) + " in a declaration of 'main'");
 }
 
+// The function called at program startup is named main, 5.1.2.3.2p1,
+// and is found by that name from outside the unit, which static, giving
+// it internal linkage, 6.2.2p3, would forbid: the link would find no
+// main.  An object named main is not the function and is let be.
+void
+refuse_static_main(const specifiers_t &spec, const declarator_t &d)
+{
+    if (declared(spec, tok_t::kw_static) && d.name->text == "main" &&
+        is< function_t >(d.type))
+        fail(*spec.storage_class,
+             quoted(spec.storage_class->text) + " in a declaration of 'main'");
+}
+
 // Whether a static declaration is a system header's, by the line
 // marker in force at its static.
 bool
@@ -3567,6 +3580,7 @@ external_declarator(parser_t &p,
         refuse_function_specifier(spec);
 
     refuse_specifier_on_main(spec, d);
+    refuse_static_main(spec, d);
 
     if (declared(spec, tok_t::kw_static) && spec.inline_specifier &&
         in_system_header(spec))
@@ -3679,6 +3693,7 @@ external_declaration(parser_t &p)
     if (defines_function && declared(spec, tok_t::kw_static) &&
         spec.inline_specifier) {
         refuse_specifier_on_main(spec, d);
+        refuse_static_main(spec, d);
 
         if (in_system_header(spec))
             header_function_definition(p, spec, d);
@@ -3689,6 +3704,8 @@ external_declaration(parser_t &p)
     }
 
     if (defines_function && !typedef_) {
+        refuse_static_main(spec, d);
+
         if (const token_t *t = spec.inline_specifier)
             not_yet(*t, quoted(t->text) + " on a function definition");
 

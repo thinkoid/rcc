@@ -965,18 +965,6 @@ Fix: an error at the end of the file, as the linkage conflict of
 Check: a program of =tests/error= with the declaration, pinned with
 the error.
 
-** TODO =main= may be declared =static=
-
-~static int main(void) { return 0; }~ compiles to a function local
-to its object file, and the link fails with "undefined reference to
-`main'". The linker's message names no line of the program.
-
-Fix: =static= on a declaration of =main= is an error, where a
-function specifier on one already is.
-
-Check: a program of =tests/error= with the definition, pinned with
-the error.
-
 ** TODO A =static= definition after a header's =static inline= one is "not yet"
 
 A system header's =static inline= definition is accepted, its body

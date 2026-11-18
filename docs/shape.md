@@ -655,16 +655,19 @@ function of internal linkage, and `static int n; extern int n;`
 declares one object of it. An object at file scope declared without a
 storage class has external linkage (p5), so `static int n; int n;`
 gives `n` both linkages, which p7 leaves undefined; it is an error,
-and so is a `static` declaration after one of external linkage. A
-static object at file scope keeps every rule of an object at file
-scope below, and its tentative definition defines it in the file. A
-name of internal linkage that an expression uses, outside the operand
-of `sizeof`, has its definition in the file (6.9.1p3), so a `static`
-function called and never defined is an error at the end of the file:
-the assembler would leave its symbol undefined, and the linker would
-bind the call to another file's function of the name. A call of a
-system header's `static inline` function before its definition is not
-yet there.
+and so is a `static` declaration after one of external linkage. The
+function called at program startup is named `main` (5.1.2.3.2p1) and
+is found by that name from outside the file, so `static` on a
+declaration of the function `main` is an error: the link would find
+no `main`. A static object at file scope keeps every rule of an
+object at file scope below, and its tentative definition defines it
+in the file. A name of internal linkage that an expression uses,
+outside the operand of `sizeof`, has its definition in the file
+(6.9.1p3), so a `static` function called and never defined is an error
+at the end of the file: the assembler would leave its symbol
+undefined, and the linker would bind the call to another file's
+function of the name. A call of a system header's `static inline`
+function before its definition is not yet there.
 
 `static` in a block declares an object of static storage duration
 (6.2.4p3) and no linkage (6.2.2p6): a name of the block's, declared

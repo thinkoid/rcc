@@ -1,0 +1,2 @@
+tests/error/static-main.c:4:1: error: 'static' in a declaration of 'main'
+status 1
