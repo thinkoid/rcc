@@ -572,21 +572,6 @@ not yet, by name.
 
 Check: the call above fails with "not yet", pinned in =tests/error=.
 
-** TODO A list with side effects in =va_arg= or =va_start= is not yet
-
-~va_arg(*p++, int)~ is refused, "not yet: va_arg of a list with side
-effects", and =va_start= the same. Each builtin is a tree that reads
-its list more than once, the offset's test, its step and the slot's
-address, and the list's expression is copied into each place, which
-is right only where evaluating it twice is evaluating it once.
-
-Fix: the list's address read once, into a temporary no declaration
-names, and the tree built on that.
-
-Check: the error rows =va-arg-side-effect= and
-=va-start-side-effect= compile, and a probe row steps a pointer to a
-list once for each argument read.
-
 ** TODO =tgmath.h= does not parse
 
 =clang='s =tgmath.h= stops at its line 34, ~static

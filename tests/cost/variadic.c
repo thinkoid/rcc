@@ -5,9 +5,11 @@
    the stack; va_arg reads the next 8-byte slot, the save area's while
    a register is left and then the stack's, at the type's width;
    va_copy is a record's assignment; va_end is the list's address,
-   discarded; and a list is handed to the C library, on x86-64 as the
+   discarded; a list is handed to the C library, on x86-64 as the
    address of its record and on aarch64 as the address of a copy the
-   caller makes.
+   caller makes; and a list with a side effect, *lists++ in stepped,
+   is evaluated once, its address assigned to a temporary the tree
+   reads it through.
 
    On x86-64, each function's save area is the slot of 184 bytes after
    its named parameter's, at -192(%rbp): after the parameter's own
@@ -27,7 +29,14 @@
    and movl (%rax), %eax in twice.  va_copy is three 8-byte units,
    movq -216(%rbp), %rax; movq %rax, -240(%rbp) and on.  va_end is the
    list's leaq, discarded.  print hands vprintf the list's address,
-   leaq -216(%rbp), %rax, from its argument slot into %rsi.
+   leaq -216(%rbp), %rax, from its argument slot into %rsi.  In
+   stepped, the pointer is stepped once for each va_arg, movq
+   -8(%rbp), %rax; movq %rax, %rcx; addq $24, %rax; movq %rax,
+   -8(%rbp), and the list's address stored in the temporary, movq %rcx,
+   -24(%rbp), whose slot follows the parameters' and precedes the
+   body's own; each read of the list then loads the temporary, movq
+   -24(%rbp), %rax, and reaches the member through it, cmpl $40,
+   (%rax), addl $8, (%rax), movq 16(%rax), %rax.
 
    On aarch64 each definition stores the area first, right after
    the frame record, at [x29, #16]: x0 to x7 by stp x0, x1, [x29,
@@ -47,7 +56,13 @@
    hands the list to vprintf as the address of a copy: the four units
    into a slot of the call's own after the first argument's, ldr x17,
    [x29, #224]; str x17, [x29, #272] and on, then ldr x0, [x29, #264];
-   add x1, x29, #272; bl vprintf. */
+   add x1, x29, #272; bl vprintf.  In stepped() the pointer is stepped
+   once for each va_arg, ldr x0, [x29, #16]; add x1, x0, #32; str x1,
+   [x29, #16], and the list's address stored in the temporary, str x0,
+   [x29, #32], whose slot follows the parameters' and precedes the
+   body's own; each read of the list then loads the temporary and
+   reaches the member through it, ldr x0, [x29, #32]; ldr w0, [x0,
+   #24]. */
 #include <stdarg.h>
 #include <stdio.h>
 
@@ -77,6 +92,17 @@ twice(int count, ...)
                 s += va_arg(ap, int) + va_arg(again, int);
         va_end(again);
         va_end(ap);
+
+        return s;
+}
+
+long
+stepped(va_list *lists, int count)
+{
+        long s = 0;
+
+        while (count-- > 0)
+                s += va_arg(*lists++, long);
 
         return s;
 }

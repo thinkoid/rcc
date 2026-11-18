@@ -4,9 +4,9 @@
    parameters; the arguments of the types a string names; a list handed
    to vsnprintf, whose doubles the caller passed in vector registers,
    directly and through a function of rcc's that takes it; a list
-   copied, started again, handed to clang's code, and read again after
-   it was handed on; and a call of one of them from rcc's code.  See
-   variadics.h. */
+   copied, started again, started through a pointer stepped once,
+   handed to clang's code, and read again after it was handed on; and
+   a call of one of them from rcc's code.  See variadics.h. */
 
 #include <stdio.h>
 
@@ -166,6 +166,23 @@ relayed(int count, ...)
         va_end(ap);
 
         return h;
+}
+
+/* count ints read from a list started through a pointer stepped once,
+   va_start(*next++, count), which ends one past the list */
+long
+started(int count, ...)
+{
+        va_list lists[2];
+        va_list *next = lists;
+        long h = 47;
+
+        va_start(*next++, count);
+        for (int n = count; n > 0; --n)
+                h = h * 1000003 + va_arg(lists[0], int);
+        va_end(lists[0]);
+
+        return next == lists + 1 ? h : -h;
 }
 
 /* a variadic call of rcc's code, from rcc's code */

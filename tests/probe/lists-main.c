@@ -4,8 +4,10 @@
    arguments, and compares the results: for each type, each count of
    named parameters before the list and each count of arguments read,
    from none to MOST; the types of a pattern, each after every count of
-   named parameters; and a list read through a copy.  Prints each difference and a summary;
-   exits 0 when nothing differs, 1 otherwise. */
+   named parameters; a list read through a copy; and lists read through
+   a pointer stepped, or a call made, once for each read.  Prints each
+   difference and a summary; exits 0 when nothing differs, 1
+   otherwise. */
 
 #include <stdio.h>
 
@@ -56,6 +58,8 @@ TYPES(DECLARES)
 COUNTS(DECLARE_MIXED, )
 
 long wrap_copied(int, ...), ref_wrap_copied(int, ...);
+long wrap_stepped(int, ...), ref_wrap_stepped(int, ...);
+long wrap_fetched(int, ...), ref_wrap_fetched(int, ...);
 
 static long total;
 static long bad;
@@ -100,10 +104,17 @@ main(void)
         TYPES(CHECKS)
         COUNTS(CHECK_MIXED, )
 
-        for (int count = 0; count <= MOST; ++count)
+        for (int count = 0; count <= MOST; ++count) {
                 report("wrap_copied", 0, count,
                        wrap_copied(count, VALUES_i),
                        ref_wrap_copied(count, VALUES_i));
+                report("wrap_stepped", 0, count,
+                       wrap_stepped(count, VALUES_i),
+                       ref_wrap_stepped(count, VALUES_i));
+                report("wrap_fetched", 0, count,
+                       wrap_fetched(count, VALUES_i),
+                       ref_wrap_fetched(count, VALUES_i));
+        }
 
         printf("%ld checks, %ld differ\n", total, bad);
 

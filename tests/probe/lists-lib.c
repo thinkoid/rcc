@@ -12,6 +12,8 @@ TYPES(READ)
 
 long mixed(const char *, va_list);
 long copied(int, va_list);
+long stepped(int, va_list);
+long fetched(int, va_list);
 
 /* after k named parameters, count arguments of T read by read_A */
 #define WRAP(K, A)                                                      \
@@ -53,6 +55,32 @@ wrap_copied(int count, ...)
 
         va_start(ap, count);
         r = copied(count, ap);
+        va_end(ap);
+
+        return r;
+}
+
+long
+wrap_stepped(int count, ...)
+{
+        va_list ap;
+        long r;
+
+        va_start(ap, count);
+        r = stepped(count, ap);
+        va_end(ap);
+
+        return r;
+}
+
+long
+wrap_fetched(int count, ...)
+{
+        va_list ap;
+        long r;
+
+        va_start(ap, count);
+        r = fetched(count, ap);
         va_end(ap);
 
         return r;

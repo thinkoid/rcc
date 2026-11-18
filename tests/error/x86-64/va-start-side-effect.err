@@ -1,2 +1,0 @@
-tests/error/va-start-side-effect.c:12:28: error: not yet: va_start of a list with side effects
-status 1

@@ -1,9 +1,10 @@
 /* The lists probe: functions in rcc's C that take a list a variadic
    function's va_start built, 7.16, and read it with va_arg, 7.16.1.1:
    count arguments of one type each, every type at every position;
-   arguments of the types a string names; and two copies of a list,
+   arguments of the types a string names; two copies of a list,
    va_copy, 7.16.1.2, read one after the other, each ended by va_end,
-   7.16.1.3.  See lists.h. */
+   7.16.1.3; and lists whose operand has a side effect, a pointer
+   stepped or a call made once for each read.  See lists.h. */
 
 #include "lists.h"
 
@@ -68,4 +69,62 @@ copied(int count, va_list ap)
                 h = h * 7 + va_arg(ap, int);
 
         return h;
+}
+
+/* count ints, each read from a copy of the list of its own through a
+   pointer stepped once for each read, va_arg(*next++, int): copy n
+   stands at the list's argument n, so the reads are the arguments in
+   order, and the pointer ends one past the last copy read */
+long
+stepped(int count, va_list ap)
+{
+        va_list copies[MOST];
+        va_list *next = copies;
+        long h = 43;
+        int n;
+
+        for (n = 0; n < count; ++n) {
+                va_copy(copies[n], ap);
+                va_arg(ap, int);
+        }
+
+        for (n = 0; n < count; ++n)
+                h = h * 1000003 + va_arg(*next++, int);
+
+        for (n = 0; n < count; ++n)
+                va_end(copies[n]);
+
+        return next == copies + count ? h : -h;
+}
+
+/* the copy of index *taken, and the index stepped: one call for each
+   read of a list */
+static va_list *
+take(va_list *copies, int *taken)
+{
+        return &copies[(*taken)++];
+}
+
+/* the same, each list the result of a call, va_arg(*take(...), int),
+   which is made once for each read */
+long
+fetched(int count, va_list ap)
+{
+        va_list copies[MOST];
+        long h = 53;
+        int taken = 0;
+        int n;
+
+        for (n = 0; n < count; ++n) {
+                va_copy(copies[n], ap);
+                va_arg(ap, int);
+        }
+
+        for (n = 0; n < count; ++n)
+                h = h * 1000003 + va_arg(*take(copies, &taken), int);
+
+        for (n = 0; n < count; ++n)
+                va_end(copies[n]);
+
+        return taken == count ? h : -h;
 }

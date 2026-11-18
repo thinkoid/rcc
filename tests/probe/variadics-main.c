@@ -5,10 +5,10 @@
    none to MOST; the types of a pattern after each count of named
    parameters; the text vsnprintf makes of a list rcc's va_start built,
    with doubles among the arguments, which the caller passes in vector
-   registers; a copied list, one started again and one handed to
-   clang's code; and a variadic call rcc's code makes.  Prints each
-   difference and a summary; exits 0 when nothing differs, 1
-   otherwise. */
+   registers; a copied list, one started again, one started through a
+   pointer stepped once, and one handed to clang's code; and a variadic
+   call rcc's code makes.  Prints each difference and a summary; exits
+   0 when nothing differs, 1 otherwise. */
 
 #include <stdio.h>
 #include <string.h>
@@ -67,6 +67,7 @@ long copied(int, ...), ref_copied(int, ...);
 long restarted(int, ...), ref_restarted(int, ...);
 long relayed(int, ...), ref_relayed(int, ...);
 long handed(int, ...), ref_handed(int, ...);
+long started(int, ...), ref_started(int, ...);
 long called(void), ref_called(void);
 
 static long total;
@@ -140,6 +141,8 @@ main(void)
                        ref_restarted(count, VALUES_i));
                 report("relayed", 0, count, relayed(count, VALUES_l),
                        ref_relayed(count, VALUES_l));
+                report("started", 0, count, started(count, VALUES_i),
+                       ref_started(count, VALUES_i));
         }
 
         for (int count = 0; count <= MOST / 2; ++count)

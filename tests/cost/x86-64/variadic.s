@@ -164,6 +164,65 @@ twice:
 	ret
 	.cfi_endproc
 	.size	twice, .-twice
+	.globl	stepped
+	.type	stepped, @function
+stepped:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	$0, -32(%rbp)
+	.p2align 5
+.Lstepped.2:
+	movl	-12(%rbp), %eax
+	movl	%eax, %ecx
+	subl	$1, %eax
+	movl	%eax, -12(%rbp)
+	cmpl	$0, %ecx
+	jle	.Lstepped.3
+	movq	-8(%rbp), %rax
+	movq	%rax, %rcx
+	addq	$24, %rax
+	movq	%rax, -8(%rbp)
+	movq	%rcx, -24(%rbp)
+	movq	-24(%rbp), %rax
+	cmpl	$40, (%rax)
+	ja	.Lstepped.4
+	movq	-24(%rbp), %rax
+	addl	$8, (%rax)
+	movq	-24(%rbp), %rax
+	movq	16(%rax), %rax
+	movq	-24(%rbp), %rcx
+	movl	(%rcx), %ecx
+	subl	$8, %ecx
+	addq	%rcx, %rax
+	jmp	.Lstepped.5
+.Lstepped.4:
+	movq	-24(%rbp), %rax
+	movq	-24(%rbp), %rcx
+	movq	8(%rcx), %rcx
+	addq	$8, %rcx
+	movq	%rcx, 8(%rax)
+	movq	-24(%rbp), %rax
+	movq	8(%rax), %rax
+	subq	$8, %rax
+.Lstepped.5:
+	movq	(%rax), %rax
+	addq	%rax, -32(%rbp)
+	jmp	.Lstepped.2
+.Lstepped.3:
+	movq	-32(%rbp), %rax
+	jmp	.Lstepped.1
+.Lstepped.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	stepped, .-stepped
 	.globl	print
 	.type	print, @function
 print:

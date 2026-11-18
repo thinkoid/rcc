@@ -116,6 +116,8 @@ struct open_switch_t
 // for the unit.  variadic and named are the function being defined's
 // too: whether it takes variable arguments, and the count of its named
 // parameters; va_area is its save area, made at its first va_start.
+// temporaries are the locals its builtins made, which no declaration
+// names, while its body is parsed, and nothing at file scope.
 struct parser_t
 {
     const std::vector< token_t > &tokens;
@@ -145,6 +147,7 @@ struct parser_t
     bool variadic = false;
     std::size_t named = 0;
     const symbol_t *va_area = nullptr;
+    std::optional< std::vector< const symbol_t * > > temporaries = { };
 };
 
 // The declaration specifiers: the type, and the storage-class specifier
@@ -3847,6 +3850,23 @@ defined_parameters(parser_t &p, const declarator_t &d)
     return params;
 }
 
+// The temporaries the body's builtins made, list_temporary()'s, each
+// declared at the head of the body without an initializer, so that
+// each has a slot for the activation, G12, as a local the body declared
+// there would; the body is parsed with them, and file scope without.
+void
+declare_temporaries(parser_t &p, block_t &body)
+{
+    std::vector< stmt_t > declarations;
+    for (const symbol_t *t : *p.temporaries)
+        declarations.push_back(stmt_t { decl_stmt_t { t, std::nullopt } });
+
+    body.body.insert(body.body.begin(),
+                     std::make_move_iterator(declarations.begin()),
+                     std::make_move_iterator(declarations.end()));
+    p.temporaries.reset();
+}
+
 // The parameter type list and the body are one block, 6.9.2p10,
 // 6.8.3p2, so a local cannot redeclare a parameter there: the scope of
 // the list that makes the name a function, with its parameters and its
@@ -3895,9 +3915,11 @@ function_definition(parser_t &p,
     std::vector< const symbol_t * > params = defined_parameters(p, d);
 
     block_t body;
+    p.temporaries.emplace();
     expect(p, tok_t::lbrace, "expected '{' before function body");
     block_item_list(p, body);
     expect(p, tok_t::rbrace, "expected '}' at end of function body");
+    declare_temporaries(p, body);
 
     p.scopes.pop_back();
 
@@ -6953,31 +6975,78 @@ list_pointer(const parser_t &p,
     fail(at, std::string(words) + " is not a va_list");
 }
 
-// A list operand a tree reads more than once: the expression, read
-// through a copy each time, and where it stands and its words.
+// A list operand a tree reads more than once: the expression read
+// through a copy each time, where it stands and its words, and, for a
+// list with a side effect, the assignment of its address to a
+// temporary, which the tree evaluates first and reads through after.
 struct list_operand_t
 {
     const token_t &at;
     std::string words;
     expr_t e;
+    std::optional< expr_t > set = { };
 };
 
-// The list ahead, the first operand of the builtin of the macro named:
-// one with a side effect is not yet, since each read of the list would
-// repeat it.
+// A temporary that no declaration names, a pointer to the list's
+// record, for one builtin's list with a side effect.  In a body it is
+// declared at the body's head, declare_temporaries(), so its slot is
+// the activation's, G12.  At file scope, where no expression is
+// generated, an initializer's being folded or refused, and sizeof's
+// operand not evaluated, it is declared nowhere.
+const symbol_t &
+list_temporary(parser_t &p)
+{
+    symbol_t &t = p.unit.symbols.emplace_back(
+        symbol_t { "__va_list_address", make_pointer(make_record(*p.va_record)),
+                   storage_t::local, false, -1 });
+
+    if (p.temporaries)
+        p.temporaries->push_back(&t);
+
+    return t;
+}
+
+// The list ahead, the first operand of the builtin of the macro named.
+// One without a side effect is read through copies of its expression,
+// pure_copy()'s, as often as the tree reads it.  One with a side effect
+// is evaluated once, where the builtin stands, G13: its address is
+// assigned to a temporary first, and the tree reads the list through
+// the temporary, the pointer itself on x86-64, the record it points to
+// on aarch64.
 list_operand_t
 list_operand(parser_t &p, std::string_view macro)
 {
     const token_t &at = peek(p);
     expr_t e = assignment_expression(p);
-
-    if (!pure_copy(e))
-        not_yet(at, std::string(macro) + " of a list with side effects");
-
     std::string words = "first argument to " + quoted(macro);
-    list_pointer(p, at, words, std::move(*pure_copy(e)));
 
-    return { at, std::move(words), std::move(e) };
+    if (pure_copy(e)) {
+        list_pointer(p, at, words, std::move(*pure_copy(e)));
+        return { at, std::move(words), std::move(e) };
+    }
+
+    expr_t address = list_pointer(p, at, words, std::move(e));
+    const symbol_t &t = list_temporary(p);
+    expr_t set =
+        assignment(operator_at(at, tok_t::assign),
+                   expr_t { t.type, name_t { &t } }, std::move(address));
+
+    expr_t list { t.type, name_t { &t } };
+    if (p.target.va_list == va_list_t::aapcs64)
+        list = indirection(at, std::move(list));
+
+    return { at, std::move(words), std::move(list), std::move(set) };
+}
+
+// A builtin's tree e, after the assignment of its list's address to
+// the list's temporary, if the list has one: (temporary = &list, e).
+expr_t
+after_list(const token_t &at, list_operand_t &l, expr_t e)
+{
+    if (!l.set)
+        return e;
+
+    return comma(discarded(at, std::move(*l.set)), std::move(e));
 }
 
 // The member of index k of a list operand's record, an lvalue read
@@ -7096,12 +7165,13 @@ require_argument_type(const token_t &at, const type_t &t)
 
 // __builtin_va_arg ( list , type-name ), va_arg, 7.16.1.1: the value of
 // the next argument, read at the type from the slot next_argument()
-// finds, (T) *(T *) slot, the cast making it no lvalue.
+// finds, (T) *(T *) slot, the cast making it no lvalue; for a list with
+// a side effect, after_list()'s.
 expr_t
 va_arg_expression(parser_t &p, const token_t &keyword)
 {
     expect(p, tok_t::lparen, "expected '(' after " + quoted(keyword.text));
-    const list_operand_t l = list_operand(p, "va_arg");
+    list_operand_t l = list_operand(p, "va_arg");
     expect(p, tok_t::comma, "expected ',' after the list");
 
     const token_t &at = peek(p);
@@ -7109,7 +7179,8 @@ va_arg_expression(parser_t &p, const token_t &keyword)
     require_argument_type(at, t);
     expect(p, tok_t::rparen, "expected ')' after type name");
 
-    expr_t slot = cast(keyword, make_pointer(t), next_argument(p, l));
+    expr_t next = after_list(keyword, l, next_argument(p, l));
+    expr_t slot = cast(keyword, make_pointer(t), std::move(next));
 
     return cast(keyword, t, indirection(keyword, std::move(slot)));
 }
@@ -7191,7 +7262,8 @@ start_values(parser_t &p, const token_t &at)
 
 // __builtin_va_start ( list , parameter ), va_start, 7.16.1.4: in a
 // variadic definition, each member of the list set to start_values()'s,
-// in order, the whole discarded, p6.  Only the list is evaluated, p4:
+// in order, after_list()'s for a list with a side effect, the whole
+// discarded, p6.  Only the list is evaluated, p4:
 // the second operand, the last named parameter as the dialect rcc
 // preprocesses in writes it, is neither evaluated nor checked.
 expr_t
@@ -7201,7 +7273,7 @@ va_start_expression(parser_t &p, const token_t &keyword)
         fail(keyword, "'va_start' used outside a variadic function");
 
     expect(p, tok_t::lparen, "expected '(' after " + quoted(keyword.text));
-    const list_operand_t l = list_operand(p, "va_start");
+    list_operand_t l = list_operand(p, "va_start");
     expect(p, tok_t::comma, "expected ',' after the list");
     assignment_expression(p);
     expect(p, tok_t::rparen, "expected ')' after the parameter");
@@ -7215,7 +7287,7 @@ va_start_expression(parser_t &p, const token_t &keyword)
             discarded(keyword, std::move(e)),
             assignment(assign, list_member(p, l, k), std::move(values[k])));
 
-    return cast(keyword, make_void(), std::move(e));
+    return cast(keyword, make_void(), after_list(keyword, l, std::move(e)));
 }
 
 // __builtin_va_end ( list ), va_end, 7.16.1.3: nothing on either target

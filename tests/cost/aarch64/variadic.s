@@ -186,6 +186,73 @@ twice:
 	ret
 	.cfi_endproc
 	.size	twice, .-twice
+	.globl	stepped
+	.type	stepped, @function
+stepped:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	str	xzr, [x29, #40]
+.Lstepped.2:
+	ldr	w0, [x29, #24]
+	sub	w1, w0, #1
+	str	w1, [x29, #24]
+	cmp	w0, #0
+	b.le	.Lstepped.3
+	ldr	x0, [x29, #16]
+	add	x1, x0, #32
+	str	x1, [x29, #16]
+	str	x0, [x29, #32]
+	ldr	x0, [x29, #32]
+	ldr	w0, [x0, #24]
+	cmp	w0, #0
+	b.ge	.Lstepped.4
+	ldr	x0, [x29, #32]
+	ldr	w1, [x0, #24]
+	add	w1, w1, #8
+	str	w1, [x0, #24]
+	ldr	x0, [x29, #32]
+	ldr	x0, [x0, #8]
+	ldr	x1, [x29, #32]
+	ldr	w1, [x1, #24]
+	sub	w1, w1, #8
+	add	x0, x0, w1, sxtw
+	b	.Lstepped.5
+.Lstepped.4:
+	ldr	x0, [x29, #32]
+	ldr	x1, [x29, #32]
+	ldr	x1, [x1]
+	add	x1, x1, #8
+	str	x1, [x0]
+	ldr	x0, [x29, #32]
+	ldr	x0, [x0]
+	sub	x0, x0, #8
+.Lstepped.5:
+	ldr	x0, [x0]
+	ldr	x1, [x29, #40]
+	add	x1, x1, x0
+	str	x1, [x29, #40]
+	b	.Lstepped.2
+.Lstepped.3:
+	ldr	x0, [x29, #40]
+	b	.Lstepped.1
+.Lstepped.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	stepped, .-stepped
 	.globl	print
 	.type	print, @function
 print:

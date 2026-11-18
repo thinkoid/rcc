@@ -673,9 +673,18 @@ lvalue of the record; anything else is an error.
 - `__builtin_va_copy(d, s)`, `va_copy` (7.16.1.2), is the assignment
   of `s`'s record to `d`'s, the copy of G18, discarded.
 
-`va_arg` and `va_start` read the list more than once, through copies
-of its expression, so a list with a side effect, `va_arg(*p++, int)`,
-is not yet. On aarch64 a parameter of type `va_list` arrives as the
+`va_arg` and `va_start` read the list more than once. A list without
+a side effect, no assignment, step or call in its expression, `*p`,
+`p[i]` and `a.list` among them, is read through a copy of its
+expression at each place. One with a side effect, `*p++`, `p[i++]`,
+`f()->list` or `*g()`, is evaluated once, where the builtin stands
+(G13): its address goes into a temporary, a pointer to the list's
+record that no declaration names, one for each such builtin, and the
+tree reads the list through it, `(t = &*p++, ...)`. The temporary is
+declared at the head of the function's body, with no initializer, so
+it has a slot for the activation as a local the body declared there
+would (G12). `va_copy` and `va_end` evaluate each operand once
+already. On aarch64 a parameter of type `va_list` arrives as the
 address of the caller's copy: its symbol is that pointer, and its
 name reads as `*symbol`, the list; and an argument for such a
 parameter is an lvalue of the list, whose copy c1 makes. Every other
@@ -1246,8 +1255,7 @@ a conditional of two void calls.
 
 A local's initializer of a struct or a union and each use that
 reads or writes one whole (chapter 5: a `register` one, a record by
-value but the aarch64 `va_list`, and its value), a list operand of
-`va_arg` or `va_start` with a side effect, a function whose
+value but the aarch64 `va_list`, and its value), a function whose
 parameter list is `(...)` alone, the layout of a struct or a
 union with a bit-field, an anonymous member, an attribute that marks,
 `packed` and `aligned` among them, a flexible array member, no
