@@ -22,34 +22,28 @@ assembles and links. The reasons are =docs/findings.md= and
 in =docs/design-calls.md=. The chapter holds c1's own defects on both
 targets; the second target's design is =docs/aarch64.md=.
 
-** TODO aarch64: a conditional below a cast gets no name
+** TODO A returned ~?:~ whose arms store through a call's result moves each into the result register
 
-A =return= names =x0=, and the value's last instruction writes it,
-the place of a store or a step generated with =x0= left for last and
-each arm of a returned ~?:~ generated for it (=aarch64.md= 6.1). Over
-=tests= the moves left are 390 of a =register= variable's value, the
-instruction itself, 4 of a value stored through a call's result,
-which holds =x0= at the store, and those of a conditional below a
-cast, a comma or an assignment, which takes no name: 6 second arms
-moved into the first arm's register and 2 moves after the join, and
-2 second arms moved into a join in =x0= under a narrowing cast.
+A returned conditional joins in the result register: on aarch64 at
+the top of the value, and below a cast, a comma or an assignment
+where its arms take the name (=aarch64.md= 6.1); on x86-64 wherever
+the return's name reaches it. Two arms that store through a call's
+result, whose place holds that register at the store, are each moved
+there: ~return c ? (*g() = a) : (*h() = b);~ is =mov w0, w1= on each
+path on aarch64 and =movl %ecx, %eax= on x86-64, where a join in the
+arms' register and the one move after it is an instruction fewer. On
+x86-64 under a widening, ~return (long) (c ? ... : ...);~, the moves
+and =movslq %eax, %rax= after the join are two instructions more than
+=movslq %ecx, %rax=. =conditional.c='s =joined_called= on both targets
+and =widened_called= on x86-64 have it.
 
-Handed the name, two arms that both store through a call's result
-would each be moved into =x0=, where they join in one register with
-no move, and under a cast that widens the extension after the join
-reads that register: ~return (long) (c ? (*g() = a) : (*h() = b));~
-is two instructions longer. The name would save 7 instructions in 5
-functions of =tests=, none of which has that shape. A conditional at
-the top of a returned value, which joins in =x0= on both targets,
-has the same exposure: ~return c ? (*g() = a) : (*h() = b);~ writes
-=mov w0, w1= on each path, where a join in the arms' register and
-the one move after it is an instruction fewer.
+Fix: none taken. The join in the arms' register is the shorter only
+where both arms certainly miss the register, and whether a call's
+result still holds it at the store depends on the arithmetic around
+the call: ~p[f(i) + 1] = x~ holds it, ~p[i + f(j)] = x~ does not.
 
-Fix: none taken; the conditional would need to know before its arms
-are generated whether each can write =x0=.
-
-Check: the count of moves into and after a join below a cast over
-=tests=, and no function longer.
+Check: =joined_called= with no move on its paths, and no function
+longer.
 
 ** TODO x86-64: a pointer difference with a call moves its quotient out of =rax= and back
 

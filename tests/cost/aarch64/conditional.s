@@ -165,11 +165,11 @@ widened:
 	ldr	w1, [x29, #24]
 	sdiv	w2, w0, w1
 	msub	w0, w2, w1, w0
+	sxtw	x0, w0
 	b	.Lwidened.3
 .Lwidened.2:
-	ldr	w0, [x29, #24]
+	ldrsw	x0, [x29, #24]
 .Lwidened.3:
-	sxtw	x0, w0
 	b	.Lwidened.1
 .Lwidened.1:
 	.cfi_def_cfa wsp, 32
@@ -195,12 +195,11 @@ widened_constants:
 	str	w0, [x29, #16]
 	ldr	w0, [x29, #16]
 	cbz	w0, .Lwidened_constants.2
-	mov	w0, #4
+	mov	x0, #4
 	b	.Lwidened_constants.3
 .Lwidened_constants.2:
-	mov	w0, #-5
+	mov	x0, #-5
 .Lwidened_constants.3:
-	sxtw	x0, w0
 	b	.Lwidened_constants.1
 .Lwidened_constants.1:
 	.cfi_def_cfa wsp, 32
@@ -344,16 +343,15 @@ widened_step:
 	str	w2, [x29, #32]
 	ldr	w0, [x29, #16]
 	cbz	w0, .Lwidened_step.2
-	ldr	x0, [x29, #24]
-	ldr	w1, [x0]
-	add	w2, w1, #1
-	str	w2, [x0]
+	ldr	x1, [x29, #24]
+	ldr	w0, [x1]
+	add	w2, w0, #1
+	str	w2, [x1]
+	sxtw	x0, w0
 	b	.Lwidened_step.3
 .Lwidened_step.2:
-	ldr	w0, [x29, #32]
-	mov	w1, w0
+	ldrsw	x0, [x29, #32]
 .Lwidened_step.3:
-	sxtw	x0, w1
 	b	.Lwidened_step.1
 .Lwidened_step.1:
 	.cfi_def_cfa wsp, 48
@@ -365,6 +363,149 @@ widened_step:
 	ret
 	.cfi_endproc
 	.size	widened_step, .-widened_step
+	.globl	widened_chars
+	.type	widened_chars, @function
+widened_chars:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	str	x1, [x29, #24]
+	strb	w2, [x29, #32]
+	ldr	w0, [x29, #16]
+	cbz	w0, .Lwidened_chars.2
+	ldr	x1, [x29, #24]
+	ldrb	w0, [x1]
+	add	w2, w0, #1
+	strb	w2, [x1]
+	b	.Lwidened_chars.3
+.Lwidened_chars.2:
+	ldrb	w0, [x29, #32]
+.Lwidened_chars.3:
+	sxtw	x0, w0
+	b	.Lwidened_chars.1
+.Lwidened_chars.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	widened_chars, .-widened_chars
+	.globl	narrowed_stored
+	.type	narrowed_stored, @function
+narrowed_stored:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	str	x1, [x29, #24]
+	strb	w2, [x29, #32]
+	ldr	w0, [x29, #16]
+	cbz	w0, .Lnarrowed_stored.2
+	ldrb	w0, [x29, #32]
+	b	.Lnarrowed_stored.3
+.Lnarrowed_stored.2:
+	ldr	x1, [x29, #24]
+	ldrb	w0, [x29, #32]
+	strb	w0, [x1]
+.Lnarrowed_stored.3:
+	b	.Lnarrowed_stored.1
+.Lnarrowed_stored.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	narrowed_stored, .-narrowed_stored
+	.globl	widened_called
+	.type	widened_called, @function
+widened_called:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	str	w1, [x29, #20]
+	ldr	w0, [x29, #16]
+	cbz	w0, .Lwidened_called.2
+	bl	first
+	ldr	w1, [x29, #20]
+	str	w1, [x0]
+	b	.Lwidened_called.3
+.Lwidened_called.2:
+	bl	second
+	ldr	w1, [x29, #20]
+	str	w1, [x0]
+.Lwidened_called.3:
+	sxtw	x0, w1
+	b	.Lwidened_called.1
+.Lwidened_called.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	widened_called, .-widened_called
+	.globl	joined_called
+	.type	joined_called, @function
+joined_called:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	str	w1, [x29, #20]
+	ldr	w0, [x29, #16]
+	cbz	w0, .Ljoined_called.2
+	bl	first
+	ldr	w1, [x29, #20]
+	str	w1, [x0]
+	mov	w0, w1
+	b	.Ljoined_called.3
+.Ljoined_called.2:
+	bl	second
+	ldr	w1, [x29, #20]
+	str	w1, [x0]
+	mov	w0, w1
+.Ljoined_called.3:
+	b	.Ljoined_called.1
+.Ljoined_called.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	joined_called, .-joined_called
 	.bss
 	.globl	g
 	.type	g, @object

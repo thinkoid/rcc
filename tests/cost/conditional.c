@@ -13,7 +13,12 @@
    extension after it; widened_stored() stores a remainder or c into a
    long, a consumer that names no register; summed_arm() returns 0 or
    x + (d ? 1 : 2), whose x is spilled before the inner branch;
-   widened_step() returns a postfix step's old value or b as a long.
+   widened_step() returns a postfix step's old value or b as a long,
+   widened_chars() the same on chars, whose arms each need an extension
+   of their own, and narrowed_stored() b or the value of *p = b as a
+   char.  Beside them the edge: widened_called() returns as a long, and
+   joined_called() as an int, the value of an assignment through one of
+   two calls' results, whose place holds the return's register.
 
    On x86-64 the listing must show in conditional() a compared in its
    slot, cmpl $0, -4(%rbp), a je to the arm that loads c, the arm that
@@ -39,7 +44,13 @@
    second x reloaded into rax and addl %ecx, %eax.  In widened_step()
    the old value copied into eax, movl %edx, %eax, and extended on its
    own path, movslq %eax, %rax, the second arm's load extended, movslq
-   -20(%rbp), %rax, and nothing after the join.
+   -20(%rbp), %rax, and nothing after the join.  In widened_chars() the
+   old value copied into eax, the second arm's movsbl -17(%rbp), %eax
+   and movslq %eax, %rax after the join; in narrowed_stored() the two
+   movsbl -17(%rbp), %eax and the store movb %al, (%rcx); in
+   widened_called() and joined_called() the store through each call's
+   result, movl %ecx, (%rax), and movl %ecx, %eax on each path, then
+   movslq %eax, %rax after the join in widened_called().
 
    On aarch64 the listing must show in conditional() a tested with cbz
    w0 to the arm that loads c, the arm that loads b into the same w0
@@ -47,17 +58,25 @@
    label, and no csel.  In stepped() the element's address in x1 and
    w2 and the old value loaded into w0, the return's x0, ldr w0, [x1,
    w2, sxtw #2], before the step and the store, and the second arm's
-   ldr w0, [x29, #20], with no move after the join.  In stored(),
-   summed() and widened() msub w0, w2, w1, w0 and the second arm's load
-   into w0, then the store, add w0, w0, w1 and sxtw x0, w0.  In
-   widened_constants() mov w0, #4 and mov w0, #-5, in
-   widened_quotients() the two sdiv w0, w0, w1 and in widened_stored()
-   the msub and the load, each then sxtw x0, w0 after the join, and
-   widened_stored()'s str x0, [x16, :lo12:h].  In summed_arm() the
-   second arm's add w0, w1, w0 after x's reload, with no move after it.
-   In widened_step(), whose conditional is under a cast and gets no
-   name, the arms join in w1, the old value's register, the second
-   arm's mov w1, w0, then sxtw x0, w1. */
+   ldr w0, [x29, #20], with no move after the join.  In stored() and
+   summed() msub w0, w2, w1, w0 and the second arm's load into w0,
+   then the store and add w0, w0, w1.  Under the cast of a return the
+   arms are extended into x0 where one of them is free: in widened()
+   the msub and sxtw x0, w0 on its path and ldrsw x0, [x29, #24] on
+   the other, in widened_constants() mov x0, #4 and mov x0, #-5, and
+   in widened_step() the old value loaded into w0 and sxtw x0, w0 on
+   its path, and ldrsw x0, [x29, #32] on the other, each with nothing
+   after the join; in widened_quotients() the two sdiv w0, w0, w1 and
+   in widened_chars() the old value loaded into w0 and the second
+   arm's ldrb w0, [x29, #32], each then sxtw x0, w0 after the join; in
+   widened_stored(), whose consumer names no register, the msub and
+   the load, sxtw x0, w0 after the join and str x0, [x16,
+   :lo12:h].  In narrowed_stored() ldrb w0, [x29, #32] on each path
+   and strb w0, [x1], the place in x1.  In summed_arm() the second
+   arm's add w0, w1, w0 after x's reload, with no move after it.  In
+   widened_called(), whose arms each store through a call's result in
+   x0, the arms join in w1 and sxtw x0, w1 after the join; in
+   joined_called() mov w0, w1 on each path. */
 int conditional(int a, int b, int c)
 {
     return a ? b : c;
@@ -119,4 +138,31 @@ long
 widened_step(int a, int *p, int b)
 {
         return a ? (*p)++ : b;
+}
+
+long
+widened_chars(int a, char *p, char b)
+{
+        return a ? (*p)++ : b;
+}
+
+char
+narrowed_stored(int a, char *p, char b)
+{
+        return a ? b : (*p = b);
+}
+
+int *first(void);
+int *second(void);
+
+long
+widened_called(int a, int b)
+{
+        return a ? (*first() = b) : (*second() = b);
+}
+
+int
+joined_called(int a, int b)
+{
+        return a ? (*first() = b) : (*second() = b);
 }

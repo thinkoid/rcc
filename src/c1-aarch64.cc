@@ -2249,7 +2249,8 @@ extending_load(state_t &s,
 // bits, each reading the object at its own width (G10); a narrowing
 // cast under the widening keeps its load and the extension after it.
 // A constant widened into a register variable is the constant of the
-// new type, mov x19, #-1.  A change of signedness alone is nothing.  A pointer is its
+// new type, mov x19, #-1, and so is a signed one for any other
+// consumer, mov x0, #-1.  A change of signedness alone is nothing.  A pointer is its
 // integer view, so pointer to pointer is nothing, an integer widens to
 // a pointer by its own signedness (6.3.2.3p5), sxtw for an int, and a
 // pointer narrows to an integer by its low bits (p6).  A register
@@ -2272,15 +2273,19 @@ converted(state_t &s,
     const bool widens = target.width > from.width;
     const auto onward = through(into, target, widens);
 
-    // c ? x : -1 into a register long: mov x19, #-1
-    if (widens && is< literal_t >(e) && takes(onward, 64)) {
+    // c ? x : -1 into a register long, mov x19, #-1, and returned as a
+    // long, mov x0, #-1
+    if (widens && is< literal_t >(e)) {
         const auto value = widened(as< literal_t >(e).value, from);
-        const int width = register_width(onward->variable);
+        if (takes(onward, 64)) {
+            const int width = register_width(onward->variable);
+            constant(s, variable_register(onward->variable),
+                     normalized(value, width), width);
+            return taken(s, *onward);
+        }
 
-        constant(s, variable_register(onward->variable),
-                 normalized(value, width), width);
-
-        return taken(s, *onward);
+        if (from.is_signed)
+            return literal(s, { value }, to);
     }
 
     const auto *object = widens ? object_under(e) : nullptr;
@@ -2427,30 +2432,133 @@ joins_into(const expr_t &e, const into_t *into)
     return into && !into->taken && e.type == computed_type(*into);
 }
 
-// Whether a conditional under a conversion that widens it to the type
-// into's row computes in has each path write the register variable,
-// the conversion handed to each arm, chapter 4: where one arm at least
-// widens free, widens_free(), so that the other's extension, if it
-// needs one, is the one the join would have had after it, and no path
-// writes more than the join and the extension after it.  l = c ? x : y
-// into a register long from two ints is ldrsw x19, [x29, #28] and ldrsw
-// x19, [x29, #32].  Two arms that each need an extension of their own,
-// two calls or two promoted chars, keep the join and the one extension
-// after it.
+// Whether a conditional under a conversion that widens it has the
+// conversion handed to each arm, backend.md 6.1 and chapter 4: where one
+// arm at least widens free, widens_free(), so that the other's
+// extension, if it needs one, is the one the join would have had after
+// it, and no path writes more than the join and the extension after
+// it.  An extension here writes any register from any other, so an arm
+// whose value is elsewhere is extended into the join, where the join
+// would have moved it.  For a register variable handed down, of the
+// type its row computes in, each path writes the variable, l = c ? x :
+// y into a register long from two ints being ldrsw x19, [x29, #28] and
+// ldrsw x19, [x29, #32]; for a consumer that names a register, wanted,
+// the arms join there extended, return a ? (*p)++ : b as a long being
+// sxtw x0, w0 after the step and ldrsw x0, [x29, #32], where the
+// widening is a signed one, since an unsigned value written at 32 bits
+// is valid to 64 already.  Two arms that each need an extension of
+// their own, two promoted chars or two stores through a call's result,
+// keep the join and the one extension after it.
 bool
-widens_into(const cast_t &c, const type_t &to, const into_t *into)
+widens_arms(const cast_t &c,
+            const type_t &to,
+            const into_t *into,
+            unsigned wanted)
 {
-    if (!into || into->taken || !is< conditional_t >(*c.arg) ||
-        !(to == computed_type(*into)))
+    if (!is< conditional_t >(*c.arg) || !is< int_t >(to) ||
+        !is< int_t >(c.arg->type) ||
+        integer(to).width <= integer(c.arg->type).width)
         return false;
 
-    if (!is< int_t >(to) || !is< int_t >(c.arg->type) ||
-        integer(to).width <= integer(c.arg->type).width)
+    const bool paths = into && !into->taken;
+    if (paths && !(to == computed_type(*into)))
+        return false;
+
+    if (!paths && (!wanted || !integer(c.arg->type).is_signed))
         return false;
 
     const auto &k = as< conditional_t >(*c.arg);
 
     return widens_free(*k.yes) || widens_free(*k.no);
+}
+
+// Whether e holds a call anywhere, whose result the convention puts in
+// x0 (chapter 8).
+bool
+calls_within(const expr_t &e)
+{
+    if (is< call_t >(e))
+        return true;
+
+    if (is< unary_t >(e))
+        return calls_within(*as< unary_t >(e).arg);
+
+    if (is< binary_t >(e)) {
+        const auto &b = as< binary_t >(e);
+        return calls_within(*b.lhs) || calls_within(*b.rhs);
+    }
+
+    if (is< assign_t >(e)) {
+        const auto &a = as< assign_t >(e);
+        return calls_within(*a.lhs) || calls_within(*a.rhs);
+    }
+
+    if (is< cast_t >(e))
+        return calls_within(*as< cast_t >(e).arg);
+
+    if (is< conditional_t >(e)) {
+        const auto &k = as< conditional_t >(e);
+        return calls_within(*k.cond) || calls_within(*k.yes) ||
+               calls_within(*k.no);
+    }
+
+    return false;
+}
+
+// Whether the rows of an arm of ?: handed the register a consumer names,
+// x0 for a return's, write it with no instruction of their own, 6.1, or
+// leave the value where a join in any other register moves it too.  A
+// row writes its destination last, after it has read its sources, and
+// nothing but the arm is held at its top, so those named are the ones
+// certain to: a constant, a load, a call's result, a truth value, an
+// operation on integers, - and ~, a conversion of an arm that does, and
+// the comma's right operand; a register variable's read, an assignment
+// to one and a step of one, whose value is copied into the join in any
+// case; and an assignment, a compound assignment or a step of an object
+// in memory whose place holds no call, since the place is generated with
+// x0 left for last, and for a plain assignment whose right operand
+// writes x0.  A place that holds a call's result holds x0 at the store:
+// *g() = a writes no x0, and nor does any row not named.
+bool
+takes_name(const expr_t &arm)
+{
+    if (is< literal_t >(arm) || is< call_t >(arm) || in_memory(arm) ||
+        register_variable(arm))
+        return true;
+
+    if (is< cast_t >(arm))
+        return takes_name(*as< cast_t >(arm).arg);
+
+    if (is< binary_t >(arm)) {
+        const auto &b = as< binary_t >(arm);
+        if (b.op == binary_op_t::comma)
+            return takes_name(*b.rhs);
+
+        if (is_comparison(b.op) || b.op == binary_op_t::log_and ||
+            b.op == binary_op_t::log_or)
+            return true;
+
+        return !is< pointer_t >(arm.type) && !is< pointer_t >(b.lhs->type);
+    }
+
+    if (is< assign_t >(arm)) {
+        const auto &a = as< assign_t >(arm);
+        if (register_variable(*a.lhs))
+            return true;
+
+        return !calls_within(*a.lhs) && (a.op || takes_name(*a.rhs));
+    }
+
+    if (!is< unary_t >(arm))
+        return false;
+
+    const auto &u = as< unary_t >(arm);
+    if (u.op == unary_op_t::neg || u.op == unary_op_t::bit_not ||
+        u.op == unary_op_t::log_not)
+        return true;
+
+    return is_step(u.op) &&
+           (register_variable(*u.arg) || !calls_within(*u.arg));
 }
 
 // The second path of a conditional each of whose paths writes the
@@ -2497,9 +2605,11 @@ second_path(state_t &s,
 // where lands_in() says: r = c ? f(x) : a / b is mov w19, w0 after the
 // call and sdiv w19, w0, w1; a read of the variable itself as the first
 // arm is its value already.  Under a conversion that widens the
-// conditional to the variable, to, which cast() hands down where
-// widens_into(), each arm is converted into it.  Otherwise the arms join
-// as for any consumer and the assignment moves the join in after it
+// conditional, to, which cast() hands down where widens_arms(), each arm
+// is converted: into the variable on each path, or into the join, return
+// a ? (*p)++ : b as a long being sxtw x0, w0 after the step and ldrsw
+// x0, [x29, #32], with no extension after the join.  Otherwise the arms
+// join as for any consumer and the assignment moves the join in after it
 // (chapter 4).
 value_t
 conditional(state_t &s,
@@ -2523,22 +2633,24 @@ conditional(state_t &s,
 
     cbranch(s, *c.cond, no, false);
 
-    if (to) {
+    if (to && into) {
         arm_into(s, *c.yes, *into, to);
         return second_path(s, *c.no, *into, to, no, end);
     }
 
-    const int width = std::max(32, integer(t).width);
+    const auto &type = to ? *to : t;
+    const int width = std::max(32, integer(type).width);
 
-    const bool is_signed = integer(t).is_signed;
+    const bool is_signed = integer(type).is_signed;
     const auto named = wanted_register(s, { }, wanted);
     const unsigned arm = named ? bit(*named) : 0;
 
-    const bool joins = joins_into(e, into);
+    const bool joins = !to && joins_into(e, into);
     into_t path { joins ? into->variable : nullptr, false,
                   joins ? into->as : nullptr };
-    const auto yes =
-        joins ? arm_value(s, *c.yes, path) : rvalue(s, *c.yes, nullptr, arm);
+    const auto yes = joins ? arm_value(s, *c.yes, path) :
+                     to    ? converted(s, *c.yes, *to, nullptr, arm) :
+                             rvalue(s, *c.yes, nullptr, arm);
 
     if (path.taken || (joins && lands_in(*c.no, into->variable))) {
         if (!path.taken && s.values[yes.id].variable != into->variable)
@@ -2562,7 +2674,8 @@ conditional(state_t &s,
     jump(s, end);
 
     place_label(s, no);
-    const auto other = rvalue(s, *c.no, nullptr, arm);
+    const auto other = to ? converted(s, *c.no, *to, nullptr, arm) :
+                            rvalue(s, *c.no, nullptr, arm);
     const reg_t from = reg_of(s, other);
     int other_valid = s.values[other.id].valid;
     if (from != join) {
@@ -2977,9 +3090,9 @@ retyped(state_t &s, const cast_t &c, const int_t &target, into_t &into)
 }
 
 // A cast: a change of signedness alone that retypes(), retyped()'s; a
-// conditional under a conversion that widens it into a register
-// variable, each path's arm widened into the variable's register where
-// widens_into() says (chapter 4); any other integer conversion,
+// conditional under a conversion that widens it, each arm widened where
+// widens_arms() says, into a register variable's register on each path
+// (chapter 4) or into the join (6.1); any other integer conversion,
 // converted()'s.  An array decays to its address, 6.3.2.1p3, a string
 // literal's included, and a function designator to the pointer to the
 // function, p4, a register variable handed down going to the row that
@@ -3009,10 +3122,12 @@ cast(state_t &s,
     if (retypes(c, to, into))
         return retyped(s, c, target, *into);
 
-    // l = c ? x : y into a register long: ldrsw x19, [x29, #28] on each
-    // path
-    if (widens_into(c, to, into))
-        return conditional(s, *c.arg, into, wanted, &to);
+    // l = c ? x : y into a register long, ldrsw x19, [x29, #28] on each
+    // path; return a ? (*p)++ : b as a long, ldrsw x0, [x29, #32] on the
+    // second
+    if (widens_arms(c, to, into, wanted))
+        return conditional(s, *c.arg, into && !into->taken ? into : nullptr,
+                           wanted, &to);
 
     return converted(s, *c.arg, to, into, wanted);
 }
@@ -3177,12 +3292,13 @@ call(state_t &s, const call_t &c, const type_t &t)
 // register the consumer of e's value names, x0 for a return's, as a set
 // of one, or none (6.1): unary(), binary(), assign() and cast() hand it
 // to the row's last instruction, and a row that writes a fresh register
-// takes it as the lowest free one.  A conditional is not handed it here:
+// takes it as the lowest free one.  A conditional below a cast, a comma
+// or an assignment is handed it where each arm takes it, takes_name():
 // two arms whose places hold a call's result in x0 join in one other
 // register with no move, where a join in x0 moves each, and under a cast
 // that widens, the extension after the join reads that register where it
-// is; rvalue_in() hands the name to a conditional at the top of the
-// value.
+// is.  rvalue_in() hands the name to a conditional at the top of the
+// value whatever its arms.
 value_t
 rvalue(state_t &s, const expr_t &e, into_t *into, unsigned wanted)
 {
@@ -3215,7 +3331,10 @@ rvalue(state_t &s, const expr_t &e, into_t *into, unsigned wanted)
     if (is< cast_t >(e))
         return cast(s, as< cast_t >(e), e.type, into, wanted);
 
-    return conditional(s, e, into);
+    const auto &k = as< conditional_t >(e);
+    const bool arms = takes_name(*k.yes) && takes_name(*k.no);
+
+    return conditional(s, e, into, arms ? wanted : 0);
 }
 
 // The value of e for a consumer that names the register r, a return's

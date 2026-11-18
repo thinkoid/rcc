@@ -1226,8 +1226,11 @@ PINNED_TYPES(RETURNED)
    a truth value and a constant, jn_truth_, and two register
    variables' reads, jn_regs_.  On aarch64 an arm's rows take the name,
    a stored value as the second arm written in x0 with its place
-   outside it, jn_store_.  p points at the main's x at B + at, and the
-   main keeps a divisor from 0 and -1. */
+   outside it, jn_store_; and two stores of a difference through a
+   call's result, which holds x0, join in another register under the
+   widening and are each moved into x0 for a long, jn_called_.
+   p points at the main's x at B + at, and the main keeps a divisor
+   from 0 and -1. */
 #define JOINED(T, N)                                                    \
     T jn_ret_##N(int c, T a, T b) { return c ? a % b : b; }             \
     long jn_sum_##N(int c, T a, T b) { return (c ? a % b : b) + a; }    \
@@ -1247,7 +1250,11 @@ PINNED_TYPES(RETURNED)
         register T y = b;                                               \
         return c ? x : y;                                               \
     }                                                                   \
-    T jn_store_##N(int c, T *p, T b) { return c ? b : (*p = b); }
+    T jn_store_##N(int c, T *p, T b) { return c ? b : (*p = b); }       \
+    long jn_called_##N(int c, T *p, T a, T b)                           \
+    {                                                                   \
+        return c ? (*same_##N(p) = a - b) : (*same_##N(p) = b - a);     \
+    }
 
 PINNED_TYPES(JOINED)
 

@@ -299,6 +299,130 @@ widened_step:
 	ret
 	.cfi_endproc
 	.size	widened_step, .-widened_step
+	.globl	widened_chars
+	.type	widened_chars, @function
+widened_chars:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movq	%rsi, -16(%rbp)
+	movb	%dl, -17(%rbp)
+	cmpl	$0, -4(%rbp)
+	je	.Lwidened_chars.2
+	movq	-16(%rbp), %rcx
+	movsbl	(%rcx), %edx
+	movl	%edx, %eax
+	addl	$1, %edx
+	movb	%dl, (%rcx)
+	jmp	.Lwidened_chars.3
+.Lwidened_chars.2:
+	movsbl	-17(%rbp), %eax
+.Lwidened_chars.3:
+	movslq	%eax, %rax
+	jmp	.Lwidened_chars.1
+.Lwidened_chars.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	widened_chars, .-widened_chars
+	.globl	narrowed_stored
+	.type	narrowed_stored, @function
+narrowed_stored:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movq	%rsi, -16(%rbp)
+	movb	%dl, -17(%rbp)
+	cmpl	$0, -4(%rbp)
+	je	.Lnarrowed_stored.2
+	movsbl	-17(%rbp), %eax
+	jmp	.Lnarrowed_stored.3
+.Lnarrowed_stored.2:
+	movq	-16(%rbp), %rcx
+	movsbl	-17(%rbp), %eax
+	movb	%al, (%rcx)
+.Lnarrowed_stored.3:
+	jmp	.Lnarrowed_stored.1
+.Lnarrowed_stored.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	narrowed_stored, .-narrowed_stored
+	.globl	widened_called
+	.type	widened_called, @function
+widened_called:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$16, %rsp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	cmpl	$0, -4(%rbp)
+	je	.Lwidened_called.2
+	call	first@PLT
+	movl	-8(%rbp), %ecx
+	movl	%ecx, (%rax)
+	movl	%ecx, %eax
+	jmp	.Lwidened_called.3
+.Lwidened_called.2:
+	call	second@PLT
+	movl	-8(%rbp), %ecx
+	movl	%ecx, (%rax)
+	movl	%ecx, %eax
+.Lwidened_called.3:
+	movslq	%eax, %rax
+	jmp	.Lwidened_called.1
+.Lwidened_called.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	widened_called, .-widened_called
+	.globl	joined_called
+	.type	joined_called, @function
+joined_called:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$16, %rsp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	cmpl	$0, -4(%rbp)
+	je	.Ljoined_called.2
+	call	first@PLT
+	movl	-8(%rbp), %ecx
+	movl	%ecx, (%rax)
+	movl	%ecx, %eax
+	jmp	.Ljoined_called.3
+.Ljoined_called.2:
+	call	second@PLT
+	movl	-8(%rbp), %ecx
+	movl	%ecx, (%rax)
+	movl	%ecx, %eax
+.Ljoined_called.3:
+	jmp	.Ljoined_called.1
+.Ljoined_called.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	joined_called, .-joined_called
 	.bss
 	.globl	g
 	.type	g, @object
