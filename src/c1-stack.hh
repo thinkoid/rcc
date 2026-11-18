@@ -191,6 +191,51 @@ read(state_t &s, const symbol_t *sym)
     return { id };
 }
 
+// A register variable's read under conversions that write nothing, and
+// the width the read is valid to after them (backend.md 6.3, the width
+// rule): a narrowing leaves it valid to its width, and a widening
+// writes nothing where the read is valid to its width already, so
+// (int) c on a register char is c's register, valid to 32 bits.  The
+// variable is null for any other e, a read under a widening that
+// extends among them.
+struct register_read_t
+{
+    const symbol_t *variable = nullptr;
+    int valid = 0;
+};
+
+register_read_t
+register_read(const expr_t &e)
+{
+    if (const auto *sym = register_variable(e))
+        return { sym, represented(sym) };
+
+    if (!is< cast_t >(e))
+        return { };
+
+    const auto &from = as< cast_t >(e).arg->type;
+    if (!(is< int_t >(from) || is< pointer_t >(from)) ||
+        !(is< int_t >(e.type) || is< pointer_t >(e.type)))
+        return { };
+
+    const auto inner = register_read(*as< cast_t >(e).arg);
+    const int to = integer(e.type).width;
+    if (!inner.variable || (to > integer(from).width && inner.valid < to))
+        return { };
+
+    return { inner.variable, std::min(inner.valid, to) };
+}
+
+// Whether an arm of ?: is the read of the register variable its paths
+// write, under conversions that write nothing, register_read()'s: the
+// register holds the arm's value already, so its path writes nothing,
+// move_in()'s (chapter 4).
+bool
+own_read(const expr_t &arm, const symbol_t *variable)
+{
+    return register_read(arm).variable == variable;
+}
+
 // The type the row handed into computes the value in: the variable's,
 // or into's as.
 const type_t &

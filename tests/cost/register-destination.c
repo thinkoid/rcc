@@ -257,18 +257,21 @@
    chosen_promoted() ldrb w19, [x29, #28] and ldrb w19, [x29, #29] on
    the two paths, valid to 64 bits, with no instruction after the join,
    and in chosen_calls() the two calls' results joined in w0 and
-   mov w19, w0 after it; in chosen_own_first() nothing written on the
-   first path and ldr w19, [x29, #28] on the second, in
-   chosen_own_second() and chosen_own_pointer() the load into the
-   register on the first path and nothing on the second, and in
-   itself_assigned() nothing after ldr w19, [x29, #24]; in
-   chosen_own_called(), chosen_own_call_first(), chosen_own_both() and
-   chosen_other() the arms joined in w0 and mov w19, w0, or mov w20,
-   w0, after the join; in chosen_own_and(), chosen_own_or(),
-   chosen_own_nested() and chosen_own_retyped() nothing written on the
-   read's path; in chosen_own_narrow() the arms joined in w0 and uxtb
-   w19, w0 after the join, and in chosen_own_returned() the arms joined
-   in w0; add w20, w19,
+   mov w19, w0 after it.  Where an arm is the variable's own read, the
+   listing must show one conditional branch to the join over the other
+   path, and no b: cbnz over ldr w19, [x29, #28] in chosen_own_first(),
+   cbz over the load in chosen_own_second() and over ldr x19, [x29,
+   #32] in chosen_own_pointer(), cbz over the bl and mov w19, w0 in
+   chosen_own_called(), cbnz over the same in chosen_own_call_first(),
+   the cbnz alone in chosen_own_both(), cbz past the second condition
+   and cbnz to the join before mov w19, #0 in chosen_own_and(), two
+   cbnz to the join in chosen_own_or(), the inner conditional's cbnz in
+   chosen_own_nested() beside the outer one's cbz and b, cbz over mov
+   w20, w19 in chosen_other(), and cbz over ldr w19, [x29, #32] in
+   chosen_own_retyped(); in chosen_own_narrow() the arms joined in w0
+   and uxtb w19, w0 after the join, and in chosen_own_returned() the
+   arms joined in w0.  In itself_assigned() nothing after ldr w19,
+   [x29, #24]; add w20, w19,
    #5 in char_operand() and char_operand_left(); sxtw x20, w19 and add
    x20, x20, #5 in
    int_widened(); mul w20, w19, w0 after mov w0, #4 in

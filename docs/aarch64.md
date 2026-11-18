@@ -402,7 +402,12 @@ better:
   from a `long`. The variable's own read is its register's value
   already and writes nothing, as `backend.md` chapter 4 has it: `r =
   r`, a narrow `c = c` among them, and an arm `r` of `r = c ? x : r`,
-  of a register pointer too; a narrow variable re-extended after an
+  of a register pointer too, which leaves the conditional one path
+  past the condition's branch, whatever the other arm is (`backend.md`
+  7.2): `cbnz w0, .L3` over `ldr w19, [x29, #28]` for `r = c ? r : x`,
+  and for `r = c ? f(x) : r` `cbz w0, .L3` over the `bl` and the
+  `mov w19, w0` after it, the move into the register of any arm whose
+  row writes no register, below; a narrow variable re-extended after an
   operation in place is a write of new bits and keeps its extension. A
   constant is the immediate, `mov w20, #0`. `&&`,
   `||` and `?:` are written on two paths, and each path writes the
@@ -1069,7 +1074,11 @@ and the second the test.
 
 ### 7.2 Statements
 
-As `backend.md` 7.2, with `b` for `jmp`. `return e` leaves `e` in
+As `backend.md` 7.2, with `b` for `jmp`. A `?:` path that writes
+nothing has no `b` over it: the condition's branch of 7.1 goes to the
+join, inverted where the first path is the empty one, `cbnz` for
+`cbz`, `b.lt` for `b.ge` and `b.ne` for the `tst`'s `b.eq`. `return
+e` leaves `e` in
 `x0`: the return names it, and the last instruction of `e`'s row
 writes it where no other value holds it, a conditional at the top of
 `e` joining its arms there (6.1). A `mov` puts it there when it is

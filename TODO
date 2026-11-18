@@ -210,28 +210,6 @@ generators for the sites above.
 Check: those sites with no clearing move, =unsigned_int_called()=
 with its own, and no function longer.
 
-** TODO aarch64: a ~?:~ with the variable's own read as an arm joins and branches over nothing
-
-Where an arm of ~?:~ into a ~register int r~ is the variable's own
-read, its path writes nothing. ~r = c ? r : x~ and ~r = c ? x : r~
-still write both branches, =cbz w0, .L2; b .L3= over an empty first
-path and a =b .L3= to the label that follows an empty second one,
-where one conditional branch to the join is the form. Beside a call
-the arms join in =w0=: ~r = c ? f(x) : r~ is =bl f; b .L3; .L2: mov
-w0, w19; .L3: mov w19, w0=, where =mov w19, w0= after the call and
-an empty second path is the form; ~r = c ? r : f(x)~, ~r = c ? r : r~
-and ~q = c ? r : q~ the same. x86-64 writes the one path
-(=one_path()= in =src/c1-x86-64.cc=, =backend.md= 7.2).
-
-Fix: =conditional()= in =src/c1-aarch64.cc= branches straight to the
-join when an arm is the variable's own read, and writes the other
-arm into the variable.
-
-Check: =chosen_own_first()=, =chosen_own_second()=,
-=chosen_own_called()=, =chosen_own_call_first()=, =chosen_own_both()=
-and =chosen_other()= of =register-destination= with one conditional
-branch, no =b= and no move after the join.
-
 * Guarantees
 
 The promises in =docs/guarantees.md=. The entry number is the

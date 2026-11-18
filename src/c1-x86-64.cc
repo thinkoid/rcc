@@ -3005,8 +3005,6 @@ second_path(state_t &s,
     return taken(s, into);
 }
 
-bool own_read(const expr_t &, const symbol_t *);
-
 // A conditional into a register variable an arm of which is the
 // variable's own read, own_read()'s, whose path writes nothing, chapter
 // 4: the condition's jump goes to the join past the other path, the
@@ -3204,51 +3202,6 @@ leaf_apart_from(const expr_t &rhs, const symbol_t *sym)
 }
 
 bool operates_in(const operation_t &, const type_t &, const into_t &);
-
-// A register variable's read under conversions that write nothing, and
-// the width the read is valid to after them (backend.md 6.3, the width
-// rule): a narrowing leaves it valid to its width, and a widening
-// writes nothing where the read is valid to its width already, so
-// (int) c on a register char is c's register, valid to 32 bits.  The
-// variable is null for any other e, a read under a widening that
-// extends among them.
-struct register_read_t
-{
-    const symbol_t *variable = nullptr;
-    int valid = 0;
-};
-
-register_read_t
-register_read(const expr_t &e)
-{
-    if (const auto *sym = register_variable(e))
-        return { sym, represented(sym) };
-
-    if (!is< cast_t >(e))
-        return { };
-
-    const auto &from = as< cast_t >(e).arg->type;
-    if (!(is< int_t >(from) || is< pointer_t >(from)) ||
-        !(is< int_t >(e.type) || is< pointer_t >(e.type)))
-        return { };
-
-    const auto inner = register_read(*as< cast_t >(e).arg);
-    const int to = integer(e.type).width;
-    if (!inner.variable || (to > integer(from).width && inner.valid < to))
-        return { };
-
-    return { inner.variable, std::min(inner.valid, to) };
-}
-
-// Whether an arm of ?: is the read of the register variable its paths
-// write, under conversions that write nothing, register_read()'s: the
-// register holds the arm's value already, so its path writes nothing,
-// move_in()'s (chapter 4).
-bool
-own_read(const expr_t &arm, const symbol_t *variable)
-{
-    return register_read(arm).variable == variable;
-}
 
 // Whether a cast as L of the operation form goes into the variable's
 // register by its own row: an array's decay, the leaq or the GOT's load

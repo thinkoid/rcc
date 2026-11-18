@@ -2615,9 +2615,7 @@ chosen_own_first:
 	str	w1, [x29, #28]
 	ldr	w19, [x29, #28]
 	ldr	w0, [x29, #24]
-	cbz	w0, .Lchosen_own_first.2
-	b	.Lchosen_own_first.3
-.Lchosen_own_first.2:
+	cbnz	w0, .Lchosen_own_first.3
 	ldr	w19, [x29, #28]
 .Lchosen_own_first.3:
 	mov	w0, w19
@@ -2651,10 +2649,8 @@ chosen_own_second:
 	str	w1, [x29, #28]
 	ldr	w19, [x29, #28]
 	ldr	w0, [x29, #24]
-	cbz	w0, .Lchosen_own_second.2
+	cbz	w0, .Lchosen_own_second.3
 	ldr	w19, [x29, #28]
-	b	.Lchosen_own_second.3
-.Lchosen_own_second.2:
 .Lchosen_own_second.3:
 	mov	w0, w19
 	b	.Lchosen_own_second.1
@@ -2687,10 +2683,8 @@ chosen_own_pointer:
 	str	x1, [x29, #32]
 	ldr	x19, [x29, #32]
 	ldr	w0, [x29, #24]
-	cbz	w0, .Lchosen_own_pointer.2
+	cbz	w0, .Lchosen_own_pointer.3
 	ldr	x19, [x29, #32]
-	b	.Lchosen_own_pointer.3
-.Lchosen_own_pointer.2:
 .Lchosen_own_pointer.3:
 	mov	x0, x19
 	b	.Lchosen_own_pointer.1
@@ -2723,16 +2717,13 @@ chosen_own_called:
 	str	w1, [x29, #28]
 	ldr	w19, [x29, #28]
 	ldr	w0, [x29, #24]
-	cbz	w0, .Lchosen_own_called.2
+	cbz	w0, .Lchosen_own_called.3
 	ldr	w0, [x29, #28]
 	str	w0, [x29, #32]
 	ldr	w0, [x29, #32]
 	bl	f
-	b	.Lchosen_own_called.3
-.Lchosen_own_called.2:
-	mov	w0, w19
-.Lchosen_own_called.3:
 	mov	w19, w0
+.Lchosen_own_called.3:
 	mov	w0, w19
 	b	.Lchosen_own_called.1
 .Lchosen_own_called.1:
@@ -2764,16 +2755,13 @@ chosen_own_call_first:
 	str	w1, [x29, #28]
 	ldr	w19, [x29, #28]
 	ldr	w0, [x29, #24]
-	cbz	w0, .Lchosen_own_call_first.2
-	mov	w0, w19
-	b	.Lchosen_own_call_first.3
-.Lchosen_own_call_first.2:
+	cbnz	w0, .Lchosen_own_call_first.3
 	ldr	w0, [x29, #28]
 	str	w0, [x29, #32]
 	ldr	w0, [x29, #32]
 	bl	f
-.Lchosen_own_call_first.3:
 	mov	w19, w0
+.Lchosen_own_call_first.3:
 	mov	w0, w19
 	b	.Lchosen_own_call_first.1
 .Lchosen_own_call_first.1:
@@ -2805,13 +2793,8 @@ chosen_own_both:
 	str	w1, [x29, #28]
 	ldr	w19, [x29, #28]
 	ldr	w0, [x29, #24]
-	cbz	w0, .Lchosen_own_both.2
-	mov	w0, w19
-	b	.Lchosen_own_both.3
-.Lchosen_own_both.2:
-	mov	w0, w19
+	cbnz	w0, .Lchosen_own_both.3
 .Lchosen_own_both.3:
-	mov	w19, w0
 	mov	w0, w19
 	b	.Lchosen_own_both.1
 .Lchosen_own_both.1:
@@ -2844,11 +2827,10 @@ chosen_own_and:
 	str	w2, [x29, #32]
 	ldr	w19, [x29, #32]
 	ldr	w0, [x29, #24]
-	cbz	w0, .Lchosen_own_and.2
+	cbz	w0, .Lchosen_own_and.4
 	ldr	w0, [x29, #28]
-	cbz	w0, .Lchosen_own_and.2
-	b	.Lchosen_own_and.3
-.Lchosen_own_and.2:
+	cbnz	w0, .Lchosen_own_and.3
+.Lchosen_own_and.4:
 	mov	w19, #0
 .Lchosen_own_and.3:
 	mov	w0, w19
@@ -2883,12 +2865,9 @@ chosen_own_or:
 	str	w2, [x29, #32]
 	ldr	w19, [x29, #32]
 	ldr	w0, [x29, #24]
-	cbnz	w0, .Lchosen_own_or.4
+	cbnz	w0, .Lchosen_own_or.3
 	ldr	w0, [x29, #28]
-	cbz	w0, .Lchosen_own_or.2
-.Lchosen_own_or.4:
-	b	.Lchosen_own_or.3
-.Lchosen_own_or.2:
+	cbnz	w0, .Lchosen_own_or.3
 	mov	w19, #0
 .Lchosen_own_or.3:
 	mov	w0, w19
@@ -2925,9 +2904,7 @@ chosen_own_nested:
 	ldr	w0, [x29, #24]
 	cbz	w0, .Lchosen_own_nested.2
 	ldr	w0, [x29, #28]
-	cbz	w0, .Lchosen_own_nested.4
-	b	.Lchosen_own_nested.5
-.Lchosen_own_nested.4:
+	cbnz	w0, .Lchosen_own_nested.5
 	mov	w19, #0
 .Lchosen_own_nested.5:
 	b	.Lchosen_own_nested.3
@@ -2968,13 +2945,9 @@ chosen_other:
 	ldr	w19, [x29, #36]
 	ldr	w20, [x29, #40]
 	ldr	w0, [x29, #32]
-	cbz	w0, .Lchosen_other.2
-	mov	w0, w19
-	b	.Lchosen_other.3
-.Lchosen_other.2:
-	mov	w0, w20
+	cbz	w0, .Lchosen_other.3
+	mov	w20, w19
 .Lchosen_other.3:
-	mov	w20, w0
 	mov	w0, w20
 	b	.Lchosen_other.1
 .Lchosen_other.1:
@@ -3008,10 +2981,8 @@ chosen_own_retyped:
 	str	w2, [x29, #32]
 	ldr	w19, [x29, #28]
 	ldr	w0, [x29, #24]
-	cbz	w0, .Lchosen_own_retyped.2
+	cbz	w0, .Lchosen_own_retyped.3
 	ldr	w19, [x29, #32]
-	b	.Lchosen_own_retyped.3
-.Lchosen_own_retyped.2:
 .Lchosen_own_retyped.3:
 	mov	w0, w19
 	b	.Lchosen_own_retyped.1

@@ -2659,6 +2659,31 @@ second_path(state_t &s,
     return taken(s, into);
 }
 
+// A conditional into a register variable an arm of which is the
+// variable's own read, own_read()'s, whose path writes nothing, chapter
+// 4: the condition's branch goes to the join past the other path, the
+// one path the other arm into the variable, arm_into()'s, its row's last
+// instruction writing the register or move_in()'s mov after it, mov
+// w19, w0 after a call.  Where the first arm is the read, the branch is
+// taken when the condition holds, cbranch()'s sense inverted, cbnz w0,
+// .L3 for r = c ? r : x; where the second is, when it fails, cbz w0,
+// .L3 for r = c ? x : r.  A path that writes nothing has no branch over
+// it, and no label where no branch names one (backend.md 7.2); r = c ?
+// r : r is the condition's branch alone.  The value is the variable's
+// read.
+value_t
+one_path(state_t &s, const conditional_t &c, into_t &into, int end)
+{
+    const bool first = own_read(*c.yes, into.variable);
+
+    cbranch(s, *c.cond, end, first);
+    arm_into(s, first ? *c.no : *c.yes, into);
+
+    place_label(s, end);
+
+    return taken(s, into);
+}
+
 // 6.5.16p5: the arm not chosen is not evaluated, and the jump says so;
 // never csel.  The arms join in one expression register: the one the
 // conditional's consumer names, wanted, where it names one, a return's
@@ -2679,8 +2704,9 @@ second_path(state_t &s,
 // branch.  Where the first arm's row does not write the variable, the
 // first path moves its value in and the second arm's row writes it,
 // where lands_in() says: r = c ? f(x) : a / b is mov w19, w0 after the
-// call and sdiv w19, w0, w1; a read of the variable itself as the first
-// arm is its value already.  Under a conversion that widens the
+// call and sdiv w19, w0, w1; where an arm is the variable's own read,
+// which writes nothing, the condition branches past the other path
+// alone, one_path()'s.  Under a conversion that widens the
 // conditional, to, which cast() hands down where widens_arms(), each arm
 // is converted: into the variable on each path, or into the join, return
 // a ? (*p)++ : b as a long being sxtw x0, w0 after the step and ldrsw
@@ -2707,6 +2733,12 @@ conditional(state_t &s,
     const int no = new_label(s);
     const int end = new_label(s);
 
+    // r = c ? r : x on a register r: cbnz past the second path alone
+    const bool joins = !to && joins_into(e, into);
+    if (joins &&
+        (own_read(*c.yes, into->variable) || own_read(*c.no, into->variable)))
+        return one_path(s, c, *into, end);
+
     cbranch(s, *c.cond, no, false);
 
     if (to && into) {
@@ -2721,7 +2753,6 @@ conditional(state_t &s,
     const auto named = wanted_register(s, { }, wanted);
     const unsigned arm = named ? bit(*named) : 0;
 
-    const bool joins = !to && joins_into(e, into);
     into_t path { joins ? into->variable : nullptr, false,
                   joins ? into->as : nullptr };
     const auto yes = joins ? arm_value(s, *c.yes, path) :
