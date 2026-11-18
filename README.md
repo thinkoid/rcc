@@ -131,7 +131,10 @@ displacement, `movsbl 2(%rax,%rcx,8), %eax` for `p[i][2]`.
 Then `enum`: an enumeration is the integer type `clang` makes
 compatible with it, and each constant its number, so `header-escapes`
 names K&R's escapes by a switch on an `enum escapes` and counts the
-days of a year over an `enum months`.
+days of a year over an `enum months`. Then unary `+`: the promotion
+of its operand and no instruction of its own, so `+c` on a `char` is
+the extending load `movsbl -1(%rbp), %eax` and `+i` on an `int` the
+load alone.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/`, the cost corpus over `tests/cost/`
 and the error corpus over `tests/error/`, the programs rcc refuses

@@ -141,8 +141,13 @@ Three sums.
   difference of two
   pointers is a binary sub of type `long`; a subscript is a
   dereference of an add, as 6.5.3.2p2 defines it; `sizeof` is an
-  integer literal the parser folded. A call's callee is the name of
-  a function, the direct call, or an expression of
+  integer literal the parser folded. A unary `+` has no node: it is
+  the promotion of its operand (6.5.4.3p2), a cast, and over an lvalue
+  that no promotion converts, a cast to the lvalue's own type, since
+  the result is a value and no lvalue; so `+x` is `(T) x`, `T` the
+  promoted type, and the source's `+` is no instruction. A call's
+  callee is the name of a function, the direct call, or an
+  expression of
   pointer-to-function type, the call through a pointer; c1 tells the
   two apart by the callee's type. A function designator where a value
   is wanted, a function's name or `*p` through a pointer to a

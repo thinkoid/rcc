@@ -1409,6 +1409,29 @@ unary_arithmetic(const token_t &op, expr_t arg)
     return expr_t { t, unary_t { u, box(std::move(arg)) } };
 }
 
+// + takes an operand of arithmetic type, an integer here, 6.5.4.3p1,
+// and its result is the operand's value in the promoted type, p2.  The
+// source writes no operation of its own, so the tree holds no node for
+// the +, only the promotion: the cast of a narrow operand, which c1
+// writes as its extending load, and nothing for an int or a wider one.
+// The result is a value and no lvalue, so an operand that is one stands
+// under a cast to its own type, which c1 makes nothing of: +x is (T) x,
+// T the promoted type of x.  + on an integer constant is the constant.
+expr_t
+unary_plus(const token_t &op, expr_t arg)
+{
+    arg = rvalue(op, std::move(arg));
+    require_integer(op, arg);
+
+    arg = promote(std::move(arg));
+    if (!is_lvalue(arg))
+        return arg;
+
+    type_t t = arg.type;
+
+    return expr_t { std::move(t), cast_t { box(std::move(arg)) } };
+}
+
 // ! is an int, its scalar operand left as it is, 6.5.4.3p5.  ! on an
 // integer constant is a constant.
 expr_t
@@ -5250,6 +5273,7 @@ unary_expression(parser_t &p)
     switch (op.kind) {
     case tok_t::inc:
     case tok_t::dec: advance(p); return prefix_step(op, unary_expression(p));
+    case tok_t::plus: advance(p); return unary_plus(op, cast_expression(p));
     case tok_t::minus:
     case tok_t::tilde:
         advance(p);
@@ -5259,7 +5283,6 @@ unary_expression(parser_t &p)
     case tok_t::star: advance(p); return indirection(op, cast_expression(p));
     case tok_t::kw_sizeof: return sizeof_expression(p);
     case tok_t::kw_alignof: not_yet(op, "operator " + quoted(op.text));
-    case tok_t::plus: not_yet(op, "unary +");
     default: return postfix_expression(p);
     }
 }
