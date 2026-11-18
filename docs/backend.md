@@ -656,12 +656,16 @@ writes. A register variable's read as `R` is no such value, since
 its register is the variable, so `r + q` on two of them copies `r`,
 nor is a compound assignment's variable written in place as `L`.
 Pointer arithmetic's `addq` takes the rule too where the index is
-that value: `return p + f()` on a `char *p` is `addq %rcx, %rax`
-after `p`'s reload, and on an `int (*p)[3]` the same after the
-index's `imulq $12, %rax, %rax`; at a size of 2, 4 or 8 the `leaq`
-names its destination already, `leaq (%rcx,%rax,4), %rax`, and `f()
+that value, a spilled pointer read in its slot (6.2): `return p +
+f()` on a `char *p` is `addq -16(%rbp), %rax` and no reload, and on
+an `int (*p)[3]` the same after the index's `imulq $12, %rax, %rax`;
+a pointer stored, `s = p + f()`, the same before the store. A
+register pointer is read in place, `addq %rbx, %rax`, and a pointer
+plus a constant is the `leaq`'s row, which reloads. At a size of 2, 4
+or 8 the `leaq` names its destination already, `leaq (%rcx,%rax,4),
+%rax`, and has no memory base, so the pointer is reloaded; and `f()
 + p`, the index first, adds `p` into the index's register, `addq
--8(%rbp), %rax`. Every operator of the table is
+-8(%rbp), %rax`, the object itself. Every operator of the table is
 written exactly once per node, and nothing looks at a node's
 neighbours, with two exceptions. A node whose right operand's
 top operator is a division or a shift by a variable count generates

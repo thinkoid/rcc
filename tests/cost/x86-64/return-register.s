@@ -908,8 +908,7 @@ written_sum_called:
 	call	f@PLT
 	addl	-40(%rbp), %eax
 	movslq	%eax, %rax
-	movq	-48(%rbp), %rcx
-	addq	%rcx, %rax
+	addq	-48(%rbp), %rax
 	jmp	.Lwritten_sum_called.1
 .Lwritten_sum_called.1:
 	leaq	-8(%rbp), %rsp
@@ -1036,8 +1035,7 @@ pointer_called:
 	movl	-28(%rbp), %edi
 	call	f@PLT
 	movslq	%eax, %rax
-	movq	-24(%rbp), %rcx
-	addq	%rcx, %rax
+	addq	-24(%rbp), %rax
 	jmp	.Lpointer_called.1
 .Lpointer_called.1:
 	leave
@@ -1064,9 +1062,8 @@ row_called:
 	movl	-28(%rbp), %edi
 	call	f@PLT
 	movslq	%eax, %rax
-	movq	-24(%rbp), %rcx
 	imulq	$12, %rax, %rax
-	addq	%rcx, %rax
+	addq	-24(%rbp), %rax
 	jmp	.Lrow_called.1
 .Lrow_called.1:
 	leave
@@ -1158,6 +1155,33 @@ register_row_called:
 	ret
 	.cfi_endproc
 	.size	register_row_called, .-register_row_called
+	.globl	pointer_stored
+	.type	pointer_stored, @function
+pointer_stored:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$32, %rsp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	movq	%rax, -24(%rbp)
+	movl	-12(%rbp), %eax
+	movl	%eax, -28(%rbp)
+	movl	-28(%rbp), %edi
+	call	f@PLT
+	movslq	%eax, %rax
+	addq	-24(%rbp), %rax
+	movq	%rax, stored_pointer(%rip)
+.Lpointer_stored.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	pointer_stored, .-pointer_stored
 	.globl	spilled_add
 	.type	spilled_add, @function
 spilled_add:
@@ -1504,6 +1528,12 @@ spilled_count:
 	.cfi_endproc
 	.size	spilled_count, .-spilled_count
 	.bss
+	.globl	stored_pointer
+	.type	stored_pointer, @object
+	.size	stored_pointer, 8
+	.p2align 3
+stored_pointer:
+	.zero	8
 	.globl	stored_sum
 	.type	stored_sum, @object
 	.size	stored_sum, 4

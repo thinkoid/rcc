@@ -42,10 +42,11 @@
    result's register too: pointer_called() p + f(x) on a char *p,
    row_called() the same on int (*p)[3], whose index's product is in
    rax, and register_row_called() on a register int (*p)[3], whose
-   register the addq reads; beside them scaled_called() on an int *p,
-   whose leaq names rax already, and called_pointer() f(x) + p, the
-   index first, whose addq takes p in memory.  A left operand spilled
-   across a call is read in its spill slot by an operator that
+   register the addq reads, and pointer_stored() stores p + f(x), a
+   consumer that names no register; beside them scaled_called() on an
+   int *p, whose leaq names rax already, and called_pointer() f(x) +
+   p, the index first, whose addq takes p in memory.  A left operand
+   spilled across a call is read in its spill slot by an operator that
    commutes: spilled_add(), spilled_mul(), spilled_and(), spilled_or()
    and spilled_xor() return x + f(y), x * f(y), x & f(y), x | f(y) and
    x ^ f(y) on ints, and the same with a _long on longs and lf(y);
@@ -103,13 +104,14 @@
    subq %rcx, %rax; in written_quotient() the copy movq %rbx, %rax,
    subq %rbx, %rax, movq $4, %rcx, cqto and idivq %rcx; in
    written_sum_called() i read in its slot, addl -40(%rbp), %eax, and
-   the copy reloaded, movq -48(%rbp), %rcx, before the addq, and in
+   the copy read in its slot, addq -48(%rbp), %rax, and in
    written_quotient_called() the copy reloaded, movq -40(%rbp), %rax,
-   before the subq.  In pointer_called()
-   p reloaded into rcx after the call, movq -24(%rbp), %rcx, and addq
-   %rcx, %rax; in row_called() the same after imulq $12, %rax, %rax;
-   in register_row_called() imulq $12, %rax, %rax and addq %rbx, %rax,
-   with no copy of rbx; in scaled_called() leaq (%rcx,%rax,4), %rax;
+   before the subq.  In pointer_called() p read in its slot after the
+   call, addq -24(%rbp), %rax, and no reload; in row_called() the same
+   after imulq $12, %rax, %rax; in register_row_called() imulq $12,
+   %rax, %rax and addq %rbx, %rax, with no copy of rbx; in
+   pointer_stored() addq -24(%rbp), %rax and movq %rax,
+   stored_pointer(%rip); in scaled_called() leaq (%rcx,%rax,4), %rax;
    and in called_pointer() addq -8(%rbp), %rax.  After each spilled_
    function's call the listing must show the row on the slot and the
    call's eax or rax and no reload: addl -16(%rbp), %eax, imull
@@ -162,13 +164,15 @@
    and the sub.  In pointer_called(), scaled_called() and
    called_pointer() the pointer reloaded into x1 after the call and
    add x0, x1, w0, sxtw, with #2 in scaled_called(); in row_called()
-   mul x0, x0, x2 and add x0, x1, x0; and in register_row_called() add
-   x0, x19, x0.  In each spilled_ function the reload after the call,
-   ldr x1, [x29, #24] or ldr x1, [x29, #32], then the row into x0,
-   add w0, w1, w0, mul w0, w1, w0, and, orr and eor the same, and add
-   x0, x1, x0 and the rest on the longs; in spilled_stored() add w1,
-   w1, w0 before the store, in spilled_minus() sub w0, w1, w0, and in
-   spilled_count() add w1, w1, w0 before lsl w0, w0, w1. */
+   mul x0, x0, x2 and add x0, x1, x0; in register_row_called() add
+   x0, x19, x0; and in pointer_stored() the reload into x1 and add x1,
+   x1, w0, sxtw before the store.  In each spilled_ function the
+   reload after the call, ldr x1, [x29, #24] or ldr x1, [x29, #32],
+   then the row into x0, add w0, w1, w0, mul w0, w1, w0, and, orr and
+   eor the same, and add x0, x1, x0 and the rest on the longs; in
+   spilled_stored() add w1, w1, w0 before the store, in
+   spilled_minus() sub w0, w1, w0, and in spilled_count() add w1, w1,
+   w0 before lsl w0, w0, w1. */
 int f(int);
 
 int
@@ -448,6 +452,14 @@ int (*register_row_called(int (*s)[3], int x))[3]
         register int (*p)[3] = s;
 
         return p + f(x);
+}
+
+char *stored_pointer;
+
+void
+pointer_stored(char *p, int x)
+{
+        stored_pointer = p + f(x);
 }
 
 long lf(long);

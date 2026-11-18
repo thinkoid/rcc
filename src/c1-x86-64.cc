@@ -1382,7 +1382,11 @@ unscaled_pointer(state_t &s,
     return index_base(s, pointer, pinned, named);
 }
 
-address_t unscaled(state_t &, const operation_t &, long, unsigned);
+address_t unscaled(state_t &,
+                   const operation_t &,
+                   long,
+                   unsigned,
+                   std::optional< unsigned > = std::nullopt);
 
 // The sum under a cast of an access's pointer between pointer types,
 // backend.md 6.3, whose rows form the access's operand as the sum's own
@@ -2539,15 +2543,36 @@ displaced(state_t &s,
     return offset(s, op, l, n.value, n.scale, true, into);
 }
 
+// Whether the sum of an unscaled_sum() or a byte_sum() as a value, the
+// pointer's address a and the index's product n, is unscaled_value()'s
+// addq with a spilled pointer its source, read in its slot (6.2): the
+// base alone, spilled, and the row written_in_right()'s, the consumer
+// naming wanted, so that return p + f() on a char *p is addq
+// -16(%rbp), %rax and no reload.
+bool
+summed_in_slot(const state_t &s, const address_t &a, value_t n, unsigned wanted)
+{
+    if (a.base.id < 0 || a.displacement != 0)
+        return false;
+
+    const auto &h = s.values[a.base.id];
+    if (h.reg >= 0 || h.variable)
+        return false;
+
+    return written_in_right(s, binary_op_t::add, a.base, n, wanted);
+}
+
 // The index of an unscaled_sum() joined to the pointer's address a,
 // backend.md 6.3: n's product, the imulq the subscript asks for, at
 // scale 1, so that no addq forms the sum.  n is addend()'s, its product
 // already where multiplied() wrote it.  A base and an index spilled
-// across n are reloaded first, as offset() reloads them.
+// across n are reloaded first, as offset() reloads them, but a base
+// the sum reads in its slot, in_slot.
 address_t
-unscaled_index(state_t &s, address_t a, const right_t &n, long size)
+unscaled_index(
+    state_t &s, address_t a, const right_t &n, long size, bool in_slot = false)
 {
-    if (a.base.id >= 0)
+    if (a.base.id >= 0 && !in_slot)
         operands(s, a.base, n.value);
 
     if (n.scale != 1) {
@@ -2610,8 +2635,15 @@ restore_copy(state_t &s, const named_copy_t &outer)
 // writes the register variable the pointer reads has the read's copy
 // in the named register, copied_into()'s, which the addq writes, return
 // p + (i + (p = t, 0)) on a register char *p being addq %rcx, %rax.
+// The sum as a value whose consumer names wanted leaves a spilled
+// pointer in its slot where unscaled_value()'s addq reads it there,
+// summed_in_slot()'s.
 address_t
-unscaled(state_t &s, const operation_t &o, long size, unsigned named)
+unscaled(state_t &s,
+         const operation_t &o,
+         long size,
+         unsigned named,
+         std::optional< unsigned > wanted)
 {
     const auto a = unscaled_pointer(s, *o.lhs, pinned_by(*o.rhs), named);
 
@@ -2625,7 +2657,8 @@ unscaled(state_t &s, const operation_t &o, long size, unsigned named)
         return { .base = displaced(s, o.op, a.base, n),
                  .displacement = a.displacement };
 
-    return unscaled_index(s, a, n, size);
+    return unscaled_index(s, a, n, size,
+                          wanted && summed_in_slot(s, a, n.value, *wanted));
 }
 
 // An unscaled_sum() or a byte_sum() as a value, backend.md 6.3:
@@ -2633,10 +2666,13 @@ unscaled(state_t &s, const operation_t &o, long size, unsigned named)
 // that where an operation that commutes writes its right operand's
 // register (written_in_right(), 6.1), the addq writes the register of
 // the index's product, an owned value, the pointer its source: return
-// p + f() on a char *p is addq %rcx, %rax after p's reload, where the
-// sum was written into rcx and moved, and s = p + f() on a register
-// char *p is addq %rbx, %rax, p not copied.  Not where a register
-// variable is handed down, whose register the leaq writes.
+// p + f() on a char *p is addq -16(%rbp), %rax, the pointer spilled
+// across the call read in its slot (6.2), where the sum was written
+// into rcx after p's reload and moved, s = p + f() on a char *p and a
+// local s the same addq, where no free register is named for the
+// reload, and s = p + f() on a register char *p is addq %rbx, %rax, p
+// not copied.  Not where a register variable is handed down, whose
+// register the leaq writes.
 value_t
 unscaled_value(state_t &s, const address_t &a, into_t *into, unsigned wanted)
 {
@@ -2645,8 +2681,7 @@ unscaled_value(state_t &s, const address_t &a, into_t *into, unsigned wanted)
         return address_of(s, a, into);
 
     const reg_t index = reg_of(s, a.index);
-    const reg_t base = reg_of(s, a.base, bit(index));
-    insn(s, "addq", { reg(base, 64), reg(index, 64) });
+    insn(s, "addq", { source_of(s, a.base, 64), reg(index, 64) });
     wrote(s, a.index, 64, false);
 
     release(s, a.base);
@@ -3680,8 +3715,11 @@ pointer_arithmetic(state_t &s,
 
     // m + i on a local int m[4][3]: leaq -48(%rbp,%rcx), %rax; and
     // p[1] + i on char (*p)[8]: leaq 8(%rax,%rcx,1), %rax
-    if (unscaled_sum(o, size) || byte_sum(o, size))
-        return unscaled_value(s, unscaled(s, o, size, named), into, wanted);
+    if (unscaled_sum(o, size) || byte_sum(o, size)) {
+        const auto value = into ? std::nullopt : std::optional(wanted);
+        return unscaled_value(s, unscaled(s, o, size, named, value), into,
+                              wanted);
+    }
 
     if (!is< pointer_t >(o.lhs->type) && multiplies(o.op, size))
         if (const auto product = multiplied(s, *o.lhs, size, pinned))

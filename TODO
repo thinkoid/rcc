@@ -45,21 +45,6 @@ the call: ~p[f(i) + 1] = x~ holds it, ~p[i + f(j)] = x~ does not.
 Check: =joined_called= with no move on its paths, and no function
 longer.
 
-** TODO x86-64: a pointer plus a call's result reloads the spilled pointer
-
-~return p + f()~ on a ~char *p~ is =movq -16(%rbp), %rcx; addq %rcx,
-%rax=, where the slot is the add's source, =addq -16(%rbp), %rax=, as
-it is for an arithmetic row (=backend.md= 6.2): =unscaled()= forms
-the sum with the base reloaded before =unscaled_value()= writes the
-=addq=. About 13 rows over =tests=, =pointer_called()= and
-=written_sum_called()= of =return-register= and the =cadd_*= rows of
-the pointers probe among them.
-
-Fix: =unscaled_value()= takes a spilled base in its slot,
-=source_of()='s, the sum left unformed.
-
-Check: the count over =tests=, and no function longer.
-
 ** TODO x86-64: a 64-bit object in memory is loaded to be the source of a row into a register variable
 
 ~r &= b~ on a ~register long r~ and a =long= in memory is =movq
