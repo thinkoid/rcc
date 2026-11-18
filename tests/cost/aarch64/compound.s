@@ -79,9 +79,9 @@ in_value:
 	strb	w0, [x29, #24]
 	ldr	w0, [x29, #20]
 	ldrb	w1, [x29, #24]
-	add	w1, w1, w0
-	strb	w1, [x29, #24]
-	uxtb	w0, w1
+	add	w0, w1, w0
+	strb	w0, [x29, #24]
+	uxtb	w0, w0
 	b	.Lin_value.1
 .Lin_value.1:
 	.cfi_def_cfa wsp, 32

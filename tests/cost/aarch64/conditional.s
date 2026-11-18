@@ -49,12 +49,11 @@ stepped:
 	str	w3, [x29, #32]
 	ldr	w0, [x29, #16]
 	cbz	w0, .Lstepped.2
-	ldr	x0, [x29, #24]
-	ldr	w1, [x29, #32]
-	ldr	w2, [x0, w1, sxtw #2]
-	add	w3, w2, #1
-	str	w3, [x0, w1, sxtw #2]
-	mov	w0, w2
+	ldr	x1, [x29, #24]
+	ldr	w2, [x29, #32]
+	ldr	w0, [x1, w2, sxtw #2]
+	add	w3, w0, #1
+	str	w3, [x1, w2, sxtw #2]
 	b	.Lstepped.3
 .Lstepped.2:
 	ldr	w0, [x29, #20]
@@ -287,6 +286,85 @@ widened_stored:
 	ret
 	.cfi_endproc
 	.size	widened_stored, .-widened_stored
+	.globl	summed_arm
+	.type	summed_arm, @function
+summed_arm:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	str	w1, [x29, #20]
+	str	w2, [x29, #24]
+	ldr	w0, [x29, #16]
+	cbz	w0, .Lsummed_arm.2
+	mov	w0, #0
+	b	.Lsummed_arm.3
+.Lsummed_arm.2:
+	ldr	w0, [x29, #20]
+	str	x0, [x29, #32]
+	ldr	w0, [x29, #24]
+	cbz	w0, .Lsummed_arm.4
+	mov	w0, #1
+	b	.Lsummed_arm.5
+.Lsummed_arm.4:
+	mov	w0, #2
+.Lsummed_arm.5:
+	ldr	x1, [x29, #32]
+	add	w0, w1, w0
+.Lsummed_arm.3:
+	b	.Lsummed_arm.1
+.Lsummed_arm.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	summed_arm, .-summed_arm
+	.globl	widened_step
+	.type	widened_step, @function
+widened_step:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	str	x1, [x29, #24]
+	str	w2, [x29, #32]
+	ldr	w0, [x29, #16]
+	cbz	w0, .Lwidened_step.2
+	ldr	x0, [x29, #24]
+	ldr	w1, [x0]
+	add	w2, w1, #1
+	str	w2, [x0]
+	b	.Lwidened_step.3
+.Lwidened_step.2:
+	ldr	w0, [x29, #32]
+	mov	w1, w0
+.Lwidened_step.3:
+	sxtw	x0, w1
+	b	.Lwidened_step.1
+.Lwidened_step.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	widened_step, .-widened_step
 	.bss
 	.globl	g
 	.type	g, @object

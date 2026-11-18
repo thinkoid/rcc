@@ -11,7 +11,9 @@
    returns one of two quotients as a long, each of whose arms would
    need an extension of its own, which keeps the join and the one
    extension after it; widened_stored() stores a remainder or c into a
-   long, a consumer that names no register.
+   long, a consumer that names no register; summed_arm() returns 0 or
+   x + (d ? 1 : 2), whose x is spilled before the inner branch;
+   widened_step() returns a postfix step's old value or b as a long.
 
    On x86-64 the listing must show in conditional() a compared in its
    slot, cmpl $0, -4(%rbp), a je to the arm that loads c, the arm that
@@ -33,20 +35,29 @@
    %rax after the join; in widened_stored() the remainder extended in
    rdx, movslq %edx, %rdx, the second arm's load extended there,
    movslq -12(%rbp), %rdx, and the store movq %rdx, h(%rip) after the
-   join.
+   join.  In summed_arm() the first arm's movl $0, %eax, and on the
+   second x reloaded into rax and addl %ecx, %eax.  In widened_step()
+   the old value copied into eax, movl %edx, %eax, and extended on its
+   own path, movslq %eax, %rax, the second arm's load extended, movslq
+   -20(%rbp), %rax, and nothing after the join.
 
    On aarch64 the listing must show in conditional() a tested with cbz
    w0 to the arm that loads c, the arm that loads b into the same w0
    and branches past it, the two joining at the b to the epilogue
-   label, and no csel.  In stepped() the old value moved into w0, mov
-   w0, w2, before its branch, the return's x0, and the second arm's
+   label, and no csel.  In stepped() the element's address in x1 and
+   w2 and the old value loaded into w0, the return's x0, ldr w0, [x1,
+   w2, sxtw #2], before the step and the store, and the second arm's
    ldr w0, [x29, #20], with no move after the join.  In stored(),
    summed() and widened() msub w0, w2, w1, w0 and the second arm's load
    into w0, then the store, add w0, w0, w1 and sxtw x0, w0.  In
    widened_constants() mov w0, #4 and mov w0, #-5, in
    widened_quotients() the two sdiv w0, w0, w1 and in widened_stored()
    the msub and the load, each then sxtw x0, w0 after the join, and
-   widened_stored()'s str x0, [x16, :lo12:h]. */
+   widened_stored()'s str x0, [x16, :lo12:h].  In summed_arm() the
+   second arm's add w0, w1, w0 after x's reload, with no move after it.
+   In widened_step(), whose conditional is under a cast and gets no
+   name, the arms join in w1, the old value's register, the second
+   arm's mov w1, w0, then sxtw x0, w1. */
 int conditional(int a, int b, int c)
 {
     return a ? b : c;
@@ -96,4 +107,16 @@ void
 widened_stored(int a, int b, int c)
 {
         h = a ? b % c : c;
+}
+
+int
+summed_arm(int a, int x, int d)
+{
+        return a ? 0 : x + (d ? 1 : 2);
+}
+
+long
+widened_step(int a, int *p, int b)
+{
+        return a ? (*p)++ : b;
 }

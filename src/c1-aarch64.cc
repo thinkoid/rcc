@@ -154,6 +154,10 @@ struct state_t
     // operation writes in place
     int in_place = -1;
 
+    // the registers a take leaves for last, the one a consumer names
+    // while the place of an assignment or of a step is generated (6.1)
+    unsigned reserved = 0;
+
     std::string function { };
     int labels = 0;
     int ret = 0;
@@ -417,15 +421,17 @@ reg_t take(state_t &, unsigned avoid);
 
 #include "c1-stack.hh"
 
-// A register for a value: the lowest free one outside avoid, or, when
-// every one is held, the register of the oldest held value outside
-// avoid, which is spilled first.
+// A register for a value: the lowest free one outside avoid and
+// s.reserved, else the lowest free one outside avoid, or, when every one
+// is held, the register of the oldest held value outside avoid, which is
+// spilled first.  The reservation is an order of preference, not a pin.
 reg_t
 take(state_t &s, unsigned avoid)
 {
-    for (const reg_t r : expression_registers)
-        if (s.owner[r] < 0 && !(avoid & bit(r)))
-            return r;
+    for (const unsigned out : { avoid | s.reserved, avoid })
+        for (const reg_t r : expression_registers)
+            if (s.owner[r] < 0 && !(out & bit(r)))
+                return r;
 
     int victim = -1;
     for (const reg_t r : expression_registers) {
@@ -1240,6 +1246,26 @@ address(state_t &s, const expr_t &e, const expr_t *between = nullptr)
         return global_address(s, *g);
 
     return slot_address(slot_of(s, object_of(e)));
+}
+
+// The address of the place of an assignment or of a step, generated
+// with the registers in left taken last, the one the consumer of the
+// value names (6.1): the stored value, the operation of x op= e and the
+// old value of x++ then take it, ldr x0, [x29, #32]; str x0, [x1, w2,
+// sxtw #3] for return p[i] = x on a long *p.  The reservation is an
+// order of preference, not a pin: a call's result within the place is
+// in x0 by the convention, and the name then stops at the instruction.
+address_t
+address_avoiding(state_t &s,
+                 const expr_t &e,
+                 unsigned left,
+                 const expr_t *between = nullptr)
+{
+    const unsigned outer = std::exchange(s.reserved, s.reserved | left);
+    const auto a = address(s, e, between);
+    s.reserved = outer;
+
+    return a;
 }
 
 // The address of an lvalue as a value: &x, and an array's decay,
@@ -2224,20 +2250,22 @@ joins_into(const expr_t &e, const into_t *into)
 // never csel.  The arms join in one expression register: the one the
 // conditional's consumer names, wanted, where it names one, a return's
 // x0 (6.1), and otherwise the first arm's, a borrowed read as the first
-// arm copied into one, mov w0, w19, chapter 4.  Each arm's value is moved
-// into the join where it is elsewhere, by mov at the operation's width,
-// backend.md 7.2: return c ? p[i]++ : 0 is the first arm's mov w0, w2
-// and the second arm's mov w0, #0, and no move after the join.  No row
-// of an arm takes the name.  Handed a register variable that
-// joins_into(), the first arm is computed into it where its row can,
-// arm_value()'s, and then each path writes the variable and no register
-// joins them: r = c ? x : y is ldr w19, [x29, #28] on the first path and
-// the second arm's arm_into(), ldr w19, [x29, #32], and the value is the
-// variable's read.  An arm reads the variable on its own path before the
-// path writes it, and the assignment's preserve() has copied every read
-// of it held across the branch.  Where the first arm's row does not
-// write the variable, the arms join as for any consumer and the
-// assignment moves the join in after it (chapter 4).
+// arm copied into one, mov w0, w19, chapter 4.  Each arm's value is
+// moved into the join where it is elsewhere, by mov at the operation's
+// width, backend.md 7.2.  Each arm is generated for the named join, as
+// for a consumer that names it, so that its last instruction writes it
+// where it can: return c ? p[i]++ : 0 is the first arm's ldr w0, [x1,
+// w2, sxtw #2] and the second arm's mov w0, #0, and no move after the
+// join.  Handed a register variable that joins_into(), the first arm is
+// computed into it where its row can, arm_value()'s, and then each path
+// writes the variable and no register joins them: r = c ? x : y is ldr
+// w19, [x29, #28] on the first path and the second arm's arm_into(),
+// ldr w19, [x29, #32], and the value is the variable's read.  An arm
+// reads the variable on its own path before the path writes it, and the
+// assignment's preserve() has copied every read of it held across the
+// branch.  Where the first arm's row does not write the variable, the
+// arms join as for any consumer and the assignment moves the join in
+// after it (chapter 4).
 value_t
 conditional(state_t &s,
             const expr_t &e,
@@ -2263,11 +2291,13 @@ conditional(state_t &s,
 
     const bool is_signed = integer(t).is_signed;
     const auto named = wanted_register(s, { }, wanted);
+    const unsigned arm = named ? bit(*named) : 0;
 
     const bool joins = joins_into(e, into);
     into_t path { joins ? into->variable : nullptr, false,
                   joins ? into->as : nullptr };
-    const auto yes = joins ? arm_value(s, *c.yes, path) : rvalue(s, *c.yes);
+    const auto yes =
+        joins ? arm_value(s, *c.yes, path) : rvalue(s, *c.yes, nullptr, arm);
 
     if (path.taken) {
         release(s, yes);
@@ -2295,7 +2325,7 @@ conditional(state_t &s,
     jump(s, end);
 
     place_label(s, no);
-    const auto other = rvalue(s, *c.no);
+    const auto other = rvalue(s, *c.no, nullptr, arm);
     const reg_t from = reg_of(s, other);
     int other_valid = s.values[other.id].valid;
     if (from != join) {
@@ -2414,10 +2444,17 @@ step_register(state_t &s,
 // destination, so that the store takes the value from there and the
 // value is the variable's read (chapter 4).  The postfix forms name
 // another register as the destination, add w1, w0, #1, and yield the
-// old value where the load left it: nothing is copied, 6.1.  A register
-// variable's is step_register()'s.
+// old value where the load left it: nothing is copied, 6.1.  The place
+// is generated with the register the consumer names, wanted, left for
+// last, so that the load takes it, ldr w0, [x1, w2, sxtw #2]; add w3,
+// w0, #1 for return p[i]++ (6.1).  A register variable's is
+// step_register()'s.
 value_t
-step(state_t &s, unary_op_t op, const expr_t &arg, into_t *into = nullptr)
+step(state_t &s,
+     unary_op_t op,
+     const expr_t &arg,
+     into_t *into = nullptr,
+     unsigned wanted = 0)
 {
     if (const auto *sym = register_variable(arg))
         return step_register(s, op, sym, into);
@@ -2429,7 +2466,7 @@ step(state_t &s, unary_op_t op, const expr_t &arg, into_t *into = nullptr)
     const bool up = op == unary_op_t::pre_inc || op == unary_op_t::post_inc;
     const bool post = op == unary_op_t::post_inc || op == unary_op_t::post_dec;
 
-    const auto place = address(s, arg);
+    const auto place = address_avoiding(s, arg, wanted);
     const auto l =
         fetch(s, first_access(place), t, width, post ? into : nullptr);
     const reg_t r = reg_of(s, l);
@@ -2471,7 +2508,8 @@ step(state_t &s, unary_op_t op, const expr_t &arg, into_t *into = nullptr)
 // w19, eq, ldr w19, [x0] (chapter 4); a step writes its value before
 // its store, and keeps it in L.  The register the consumer names,
 // wanted, is the destination of neg, mvn and the cset of !, neg w0, w1
-// for a return's (6.1).
+// for a return's, and a step's place is generated with it left for
+// last (6.1).
 value_t
 unary(state_t &s,
       const unary_t &u,
@@ -2516,7 +2554,7 @@ unary(state_t &s,
     case unary_op_t::pre_inc:
     case unary_op_t::pre_dec:
     case unary_op_t::post_inc:
-    case unary_op_t::post_dec: return step(s, u.op, *u.arg, into);
+    case unary_op_t::post_dec: return step(s, u.op, *u.arg, into, wanted);
 
     case unary_op_t::addr: return address_value(s, *u.arg, into, wanted);
 
@@ -2626,9 +2664,10 @@ assign_register(state_t &s, const assign_t &a, const symbol_t *sym)
 // p += n and p -= n are the row of p + n, n its right operand.  An
 // assignment to a register variable is assign_register()'s.  The
 // register the consumer of the value names, wanted, goes to the right
-// operand of a plain one, whose last instruction writes it where the
-// place holds no value in it, ldr x1, [x29, #24]; add w0, w1, w0; str
-// w0, [x29, #20] for return x = a + f(a) (6.1).
+// operand of a plain one and to the operation of a compound one, whose
+// last instruction writes it, and the place is generated with it left
+// for last, address_avoiding()'s: return p[i] = x is ldr x0, [x29,
+// #32]; str x0, [x1, w2, sxtw #3] (6.1).
 value_t
 assign(state_t &s, const assign_t &a, unsigned wanted = 0)
 {
@@ -2644,7 +2683,7 @@ assign(state_t &s, const assign_t &a, unsigned wanted = 0)
     if (const auto *sym = register_variable(*a.lhs))
         return assign_register(s, a, sym);
 
-    const auto place = address(s, *a.lhs, a.rhs.get());
+    const auto place = address_avoiding(s, *a.lhs, wanted, a.rhs.get());
 
     if (!a.op) {
         const auto v = rvalue(s, *a.rhs, nullptr, wanted);
@@ -2660,8 +2699,9 @@ assign(state_t &s, const assign_t &a, unsigned wanted = 0)
     // the value of the expression has the lvalue's type: the bits
     // above its width are the operation's, not the value's extension
     const auto l = fetch(s, first_access(place), t, width);
-    const auto v = stepped ? offset(s, *a.op, l, r, true) :
-                             arithmetic(s, *a.op, l, r, a.common);
+    const auto v = stepped ?
+                       offset(s, *a.op, l, r, true, nullptr, wanted) :
+                       arithmetic(s, *a.op, l, r, a.common, nullptr, wanted);
     store(s, v, last_access(place), t.width);
     release(s, place);
     s.values[v.id].valid = std::min(s.values[v.id].valid, t.width);
@@ -2935,11 +2975,12 @@ call(state_t &s, const call_t &c, const type_t &t)
 // consumer of e's value names, x0 for a return's, as a set of one, or
 // none (6.1): unary(), binary(), assign() and cast() hand it to the
 // row's last instruction, and a row that writes a fresh register takes
-// it as the lowest free one.  A conditional is not handed it here: no
-// row of an arm takes the name, so under a cast that widens, an arm
-// moved into a join in x0 would cost the move the extension after the
-// join saves; rvalue_in() hands it a conditional at the top of the
-// value.
+// it as the lowest free one.  A conditional is not handed it here: two
+// arms whose places hold a call's result in x0 join in one other
+// register with no move, where a join in x0 moves each, and under a
+// cast that widens, the extension after the join reads that register
+// where it is; rvalue_in() hands the name to a conditional at the top
+// of the value.
 value_t
 rvalue(state_t &s, const expr_t &e, into_t *into, unsigned wanted)
 {
@@ -2978,8 +3019,8 @@ rvalue(state_t &s, const expr_t &e, into_t *into, unsigned wanted)
 // The value of e for a consumer that names the register r, a return's
 // for x0 (backend.md 6.1): e's rows compute it in r where the last
 // instruction can write it, a conditional at the top of e joins its
-// arms in r, and the consumer moves the value where it is elsewhere
-// (aarch64.md 6.1).
+// arms in r, each arm's rows handed r, and the consumer moves the value
+// where it is elsewhere (aarch64.md 6.1).
 value_t
 rvalue_in(state_t &s, const expr_t &e, reg_t r)
 {

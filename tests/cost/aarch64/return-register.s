@@ -173,11 +173,10 @@ stored:
 	str	x0, [x29, #16]
 	str	w1, [x29, #24]
 	str	x2, [x29, #32]
-	ldr	x0, [x29, #16]
-	ldr	w1, [x29, #24]
-	ldr	x2, [x29, #32]
-	str	x2, [x0, w1, sxtw #3]
-	mov	x0, x2
+	ldr	x1, [x29, #16]
+	ldr	w2, [x29, #24]
+	ldr	x0, [x29, #32]
+	str	x0, [x1, w2, sxtw #3]
 	b	.Lstored.1
 .Lstored.1:
 	.cfi_def_cfa wsp, 48
@@ -203,13 +202,12 @@ added:
 	str	x0, [x29, #16]
 	str	w1, [x29, #24]
 	str	x2, [x29, #32]
-	ldr	x0, [x29, #16]
-	ldr	w1, [x29, #24]
-	ldr	x2, [x29, #32]
-	ldr	x3, [x0, w1, sxtw #3]
-	add	x3, x3, x2
-	str	x3, [x0, w1, sxtw #3]
-	mov	x0, x3
+	ldr	x1, [x29, #16]
+	ldr	w2, [x29, #24]
+	ldr	x0, [x29, #32]
+	ldr	x3, [x1, w2, sxtw #3]
+	add	x0, x3, x0
+	str	x0, [x1, w2, sxtw #3]
 	b	.Ladded.1
 .Ladded.1:
 	.cfi_def_cfa wsp, 48
@@ -260,12 +258,11 @@ stepped_element:
 	.cfi_def_cfa_register w29
 	str	x0, [x29, #16]
 	str	w1, [x29, #24]
-	ldr	x0, [x29, #16]
-	ldr	w1, [x29, #24]
-	ldr	w2, [x0, w1, sxtw #2]
-	add	w3, w2, #1
-	str	w3, [x0, w1, sxtw #2]
-	mov	w0, w2
+	ldr	x1, [x29, #16]
+	ldr	w2, [x29, #24]
+	ldr	w0, [x1, w2, sxtw #2]
+	add	w3, w0, #1
+	str	w3, [x1, w2, sxtw #2]
 	b	.Lstepped_element.1
 .Lstepped_element.1:
 	.cfi_def_cfa wsp, 32
@@ -673,10 +670,10 @@ stored_widened:
 	.cfi_def_cfa_register w29
 	str	x0, [x29, #16]
 	str	x1, [x29, #24]
-	ldr	x0, [x29, #16]
-	ldr	x1, [x29, #24]
-	str	w1, [x0]
-	mov	w0, w1
+	ldr	x1, [x29, #16]
+	ldr	x0, [x29, #24]
+	str	w0, [x1]
+	mov	w0, w0
 	b	.Lstored_widened.1
 .Lstored_widened.1:
 	.cfi_def_cfa wsp, 32
@@ -703,13 +700,12 @@ stored_held:
 	str	w1, [x29, #24]
 	str	w2, [x29, #28]
 	str	w3, [x29, #32]
-	ldr	x0, [x29, #16]
-	ldr	w1, [x29, #24]
-	ldr	w2, [x29, #28]
+	ldr	x1, [x29, #16]
+	ldr	w2, [x29, #24]
+	ldr	w0, [x29, #28]
 	ldr	w3, [x29, #32]
-	sub	w2, w2, w3
-	str	w2, [x0, w1, sxtw #2]
-	mov	w0, w2
+	sub	w0, w0, w3
+	str	w0, [x1, w2, sxtw #2]
 	b	.Lstored_held.1
 .Lstored_held.1:
 	.cfi_def_cfa wsp, 48
@@ -721,4 +717,104 @@ stored_held:
 	ret
 	.cfi_endproc
 	.size	stored_held, .-stored_held
+	.globl	incremented_element
+	.type	incremented_element, @function
+incremented_element:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	ldr	x1, [x29, #16]
+	ldr	w2, [x29, #24]
+	ldr	w0, [x1, w2, sxtw #2]
+	add	w0, w0, #1
+	str	w0, [x1, w2, sxtw #2]
+	b	.Lincremented_element.1
+.Lincremented_element.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	incremented_element, .-incremented_element
+	.globl	compound_reloaded
+	.type	compound_reloaded, @function
+compound_reloaded:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	str	w1, [x29, #20]
+	ldr	w0, [x29, #16]
+	str	w0, [x29, #24]
+	ldr	w0, [x29, #20]
+	cbz	w0, .Lcompound_reloaded.2
+	mov	w0, #1
+	b	.Lcompound_reloaded.3
+.Lcompound_reloaded.2:
+	mov	w0, #2
+.Lcompound_reloaded.3:
+	ldr	w1, [x29, #24]
+	add	w0, w1, w0
+	str	w0, [x29, #24]
+	b	.Lcompound_reloaded.1
+.Lcompound_reloaded.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	compound_reloaded, .-compound_reloaded
+	.globl	called_place
+	.type	called_place, @function
+called_place:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	str	w2, [x29, #28]
+	ldr	x1, [x29, #16]
+	str	x1, [x29, #32]
+	ldr	w1, [x29, #24]
+	str	w1, [x29, #40]
+	ldr	w0, [x29, #40]
+	bl	f
+	ldr	w1, [x29, #28]
+	ldr	x2, [x29, #32]
+	str	w1, [x2, w0, sxtw #2]
+	mov	w0, w1
+	b	.Lcalled_place.1
+.Lcalled_place.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	called_place, .-called_place
 	.section	.note.GNU-stack,"",@progbits

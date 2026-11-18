@@ -1985,9 +1985,10 @@ division, and for a right operand that writes the variable whose
 read is the left operand. aarch64 names its destination apart from
 its sources, so the value's last instruction writes `x0` with a
 source of it there, `ldr x1, [x29, #24]; add w0, w1, w0` for `return
-x + (c ? 1 : 2)`; the return keeps its `mov` for a register
-variable's value, for a compound assignment's and where the place of
-an assignment or of a step holds `x0` (`aarch64.md` 6.1).
+x + (c ? 1 : 2)`, and generates the place of an assignment or of a
+step outside `x0`; the return keeps its `mov` for a register
+variable's value, where a call's result in the place holds `x0`, and
+for a conditional below a cast (`aarch64.md` 6.1).
 
 ### 7.5 What it buys and what it costs
 

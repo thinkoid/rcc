@@ -2444,8 +2444,9 @@ answers:
     destination apart from its sources and has no copy to place; a
     `return` names `x0` there, and the value's last instruction writes
     it with a source of it there, `add w0, w1, w0` after a left
-    operand's reload, nothing kept out of `x0` before it, where no
-    other value holds `x0` (`aarch64.md` 6.1 and chapter 15, call 13).
+    operand's reload, where no other value holds `x0`; of what comes
+    before it, the place of an assignment or of a step alone is kept
+    out of `x0` (`aarch64.md` 6.1 and chapter 15, call 13).
     The cost is a second hand-down beside the variable's and, on
     x86-64, a boundary: a node whose right operand or place
     holds a call or a division, a right operand that writes the

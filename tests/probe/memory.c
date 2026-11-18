@@ -1182,11 +1182,13 @@ PINNED_TYPES(REMAINDER)
    spilled before a branch, rr_free_; held by a call's result where the
    left operand is reloaded, rr_held_; and pinned by a division within
    the right operand, rr_deep_.  On aarch64 the last instruction writes
-   x0 where no other value holds it: a remainder by a call's result,
-   which the msub reads in x0 as it writes x0, rr_rem_; and the
-   assignment of a - b to an element, whose place holds x0 while the
-   sub is written, rr_kept_.  p points at the main's x at B + at, and
-   the main keeps a divisor from 0 and -1. */
+   x0 where no other value holds it, and the place of an assignment or
+   of a step is generated outside x0: a remainder by a call's result,
+   which the msub reads in x0 as it writes x0, rr_rem_; the assignment
+   of a - b to an element, rr_kept_; and the assignment of a - b
+   through a call's result, which holds x0 at the sub, rr_called_.  p
+   points at the main's x at B + at, and the main keeps a divisor from
+   0 and -1. */
 #define RETURNED(T, N)                                                  \
     long rr_ext_##N(T a, T b) { return a % b; }                         \
     long rr_cmp_##N(T a, T b, T d) { return a < b / d; }                \
@@ -1204,7 +1206,11 @@ PINNED_TYPES(REMAINDER)
     long rr_held_##N(T a, T b) { return a - mix1(b); }                  \
     long rr_deep_##N(T a, T b, T d) { return a - (b / d + 1); }         \
     long rr_rem_##N(T a, T b) { return a % narrowed_##N(b); }           \
-    long rr_kept_##N(T *p, T a, T b, int i) { return p[i] = a - b; }
+    long rr_kept_##N(T *p, T a, T b, int i) { return p[i] = a - b; }    \
+    long rr_called_##N(T *p, T a, T b, int i)                           \
+    {                                                                   \
+        return same_##N(p)[i] = a - b;                                  \
+    }
 
 PINNED_TYPES(RETURNED)
 
@@ -1218,8 +1224,10 @@ PINNED_TYPES(RETURNED)
    pinned by a call or a division, jn_call_ and jn_div_; and, under the
    widening to the returned long, a quotient and a remainder, jn_rem_,
    a truth value and a constant, jn_truth_, and two register
-   variables' reads, jn_regs_.  p points at the main's x at B + at, and
-   the main keeps a divisor from 0 and -1. */
+   variables' reads, jn_regs_.  On aarch64 an arm's rows take the name,
+   a stored value as the second arm written in x0 with its place
+   outside it, jn_store_.  p points at the main's x at B + at, and the
+   main keeps a divisor from 0 and -1. */
 #define JOINED(T, N)                                                    \
     T jn_ret_##N(int c, T a, T b) { return c ? a % b : b; }             \
     long jn_sum_##N(int c, T a, T b) { return (c ? a % b : b) + a; }    \
@@ -1238,7 +1246,8 @@ PINNED_TYPES(RETURNED)
         register T x = a;                                               \
         register T y = b;                                               \
         return c ? x : y;                                               \
-    }
+    }                                                                   \
+    T jn_store_##N(int c, T *p, T b) { return c ? b : (*p = b); }
 
 PINNED_TYPES(JOINED)
 

@@ -13,8 +13,9 @@
    On aarch64, which has no memory form, the listing must show
    compound() loading b into w0, then x into w1, add w1, w1, w0 and
    str w1 back to x's slot; narrow() the same on c, ldrb w1, the add and
-   strb w1; and in_value() the same up to the strb, then uxtb w0, w1,
-   the char value widened for the return into w0. */
+   strb w1; and in_value() the same loads, then add w0, w1, w0, the
+   operation written into the return's w0, strb w0 and uxtb w0, w0, the
+   char value widened for the return. */
 int compound(int a, int b)
 {
     int x = a;

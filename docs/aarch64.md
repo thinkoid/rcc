@@ -639,44 +639,58 @@ A value is computed in the register its consumer names (`backend.md`
 6.1). Two consumers name one here: a register variable (chapter 4) and
 a `return`, which names `x0`. The return's name goes down to the
 instruction that last writes the value, through a cast's operand, `&`
-of a subscript, the comma's right operand and a plain assignment's
-right operand. That instruction writes `x0` where no other value holds
-it: an operation, a shift, the `sdiv` or the `msub` of a division,
-`neg` and `mvn`, an extension, the `cset` of a comparison and of `!`,
-and the `add`, `sub` or `sdiv` of pointer arithmetic and of a pointer
-difference. It names its destination apart from its sources and reads
-every source before it writes, so a source in `x0` is no obstacle, and
-nothing generated before it is kept out of `x0`. A left operand
-reloaded after a branch or a call is `ldr x1, [x29, #24]; add w0, w1,
-w0`, the right operand read in `x0`. A remainder by a call's result is
-`sdiv w2, w1, w0; msub w0, w2, w0, w1`: the `sdiv` writes the
-quotient's register, taken outside both operands, so it overwrites no
-source of the `msub`. No copy precedes an instruction that writes, so
-`return r - p[i]` is `sub w0, w19, w0`, and a remainder returned as a
-`long` is `msub w0, w2, w1, w0; sxtw x0, w0`.
+of a subscript, the comma's right operand, an assignment's right
+operand and each arm of `?:`. That instruction writes `x0` where no
+other value holds it: an operation, a compound assignment's included,
+a shift, the `sdiv` or the `msub` of a division, `neg` and `mvn`, an
+extension, the `cset` of a comparison and of `!`, and the `add`, `sub`
+or `sdiv` of pointer arithmetic and of a pointer difference. It names
+its destination apart from its sources and reads every source before
+it writes, so a source in `x0` is no obstacle. A left operand reloaded
+after a branch or a call is `ldr x1, [x29, #24]; add w0, w1, w0`, the
+right operand read in `x0`. A remainder by a call's result is `sdiv
+w2, w1, w0; msub w0, w2, w0, w1`: the `sdiv` writes the quotient's
+register, taken outside both operands, so it overwrites no source of
+the `msub`. No copy precedes an instruction that writes, so `return r
+- p[i]` is `sub w0, w19, w0`, and a remainder returned as a `long` is
+`msub w0, w2, w1, w0; sxtw x0, w0`.
+
+One thing generated before that instruction is kept out of `x0`: the
+place of an assignment, of a compound assignment or of a step on an
+object in memory, whose address the store reads after the value. The
+place is generated with `x0` left for last, the state's reservation,
+which `take()` honours as an order of preference (6.5), so that the
+value takes `x0`. `return p[i] = x` is `ldr x1, [x29, #16]; ldr w2,
+[x29, #24]; ldr x0, [x29, #32]; str x0, [x1, w2, sxtw #3]`; `return
+p[i] += x` writes `add x0, x3, x0` before the store; and `return
+p[i]++` loads the old value into `w0`, `ldr w0, [x1, w2, sxtw #2]; add
+w3, w0, #1`, the new value in a register of its own. A call's result
+within the place is in `x0` by the convention, and the name stops at
+the store: `return p[f(i)] = x` is `str w1, [x2, w0, sxtw #2]; mov w0,
+w1`.
 
 A conditional takes the name at the top of the returned value: its
-arms join in `x0`, each moved there where its value is elsewhere, so
-`return c ? p[i]++ : b` is the first arm's `mov w0, w2` and the second
-arm's `ldr w0, [x29, #20]`, with no move after the join. No row of an
-arm takes the name, so the name stops at a conditional under a cast,
-a comma or an assignment to an object, which joins in the first arm's
-register, the second moved there where it is elsewhere: under a cast
-that widens, a join in `x0` would move an arm that the extension
-after the join reads where it is.
+arms join in `x0`, and each arm is generated for it, so that its last
+instruction writes `x0` where it can. `return c ? p[i]++ : b` is the
+first arm's `ldr w0, [x1, w2, sxtw #2]` and the second arm's `ldr w0,
+[x29, #20]`, with no move. An arm whose value is elsewhere, a register
+variable's or one whose place holds a call's result, is moved there.
+Below a cast, a comma or an assignment the name stops at a
+conditional, which joins in the first arm's register, the second
+moved there where it is elsewhere. Two arms that both leave their
+value outside `x0`, assignments through a call's result, join in their
+one register with no move, where the name would move each into `x0`;
+under a cast that widens, the extension after the join reads that
+register where it is.
 
-The moves left before the branch to the epilogue are four:
+The moves left before the branch to the epilogue are thus three:
 
 - a register variable's value, `mov w0, w19`, which is the
   instruction;
-- a value whose place holds `x0` at its last instruction: the value
-  of an assignment to an element, `mov x0, x2` for `return p[i] = x`
-  after the address took `x0` and `x1`, and `sub w2, w2, w3`, the
-  store and `mov w0, w2` for `return p[i] = x - y`; and a postfix
-  step's old value, `mov w0, w2` for `return p[i]++`;
-- the value of a compound assignment, whose operation is not handed
-  the name, `add w1, w1, w0; str w1, [x29, #16]; mov w0, w1`;
-- a conditional under a cast, moved after its join.
+- the value of an assignment or of a step whose place holds a call's
+  result;
+- a conditional below a cast, moved after its join, `mov x0, x1` for
+  an `unsigned` conditional returned as an `unsigned long`.
 
 A constant on the left of a comparison or of `+`, `*`, `&`, `|` or
 `^` is taken on the right, as on x86-64 (`backend.md` 6.1): a
@@ -725,9 +739,9 @@ a register variable's where the row leaves its representation
 | `-a`, `~a` | `neg L, L`, `mvn L, L` | |
 | `!a` | `cmp L, #0; cset L, eq`; for an operand with stale upper bits, `tst L, #0xff` in place of the `cmp` (7.1) | as a value |
 | `a < b` and the rest, as a value | `cmp L, R; cset L, lt`; a constant on the left the mirrored comparison (6.1), `5 < x` the load and `cmp w0, #5; cset w0, gt` | `lt`, `le`, `gt`, `ge`, `eq`, `ne` signed; `lo`, `ls`, `hi`, `hs` unsigned and for pointers (G7) |
-| `a && b`, `a \|\| b`, `a ? b : c`, as a value | jump code into `L`, `mov L, #1` and `mov L, #0` on the arms; the arms of a returned `?:` join in `x0`, each moved there where its value is elsewhere (6.1); into a register variable each path writes its register, `mov w19, #1` and `mov w19, #0` for `r = a && b`, where the first arm's row writes it for `?:` (chapter 4) | never `csel`: 6.5.16p5, the arm not chosen is not evaluated |
-| `x = e` | the store of 2.2 to the slot, a return's value written into `x0` by `e`'s last instruction where the place holds no value in it, `add w0, w1, w0; str w0, [x29, #24]` (6.1); for a register variable the last instruction of the row that computes the value writes its register, `add w19, w0, w1`, `ldr w19, [x29, #24]`, where the row writes its destination only after it has read every operand, `adrp x19, buf; add x19, x19, :lo12:buf` for an address in two instructions, and through a conversion that changes the signedness alone, `ldr w19, [x29, #32]` for `register unsigned u = i`, and otherwise the `mov` into it, `mov w20, w0`, `mov x20, x0`, a narrow type's the extension, `sxtb w19, w0`; a constant the immediate, `mov w20, #0` | 6.6 for a constant; chapter 4 |
-| `x op= e`, `++x`, `x++` | the load, the operation, the store, after `e` for `x op= e`; a register variable in place, after `e`, its register `L` and the destination, `add w19, w19, w0`, `add w19, w19, #1`, a narrow one re-extended after, `sxtb w19, w19`, and `%=` with the quotient in a register of its own, `sdiv w0, w19, w20; msub w19, w0, w20, w19`; `x++` on a register variable for its value is G13's copy and the step, `mov w0, w19; add w19, w19, #1`; a pointer's `++` and `--` step by the size, an immediate where `add` encodes it, `add L, L, #4` for an `int *`, and otherwise held in a register | no memory form, 6.6; chapter 4 |
+| `a && b`, `a \|\| b`, `a ? b : c`, as a value | jump code into `L`, `mov L, #1` and `mov L, #0` on the arms; the arms of a returned `?:` join in `x0`, each arm generated for it and moved there where its value is elsewhere, `ldr w0, [x1, w2, sxtw #2]` for a postfix step's old value (6.1); into a register variable each path writes its register, `mov w19, #1` and `mov w19, #0` for `r = a && b`, where the first arm's row writes it for `?:` (chapter 4) | never `csel`: 6.5.16p5, the arm not chosen is not evaluated |
+| `x = e` | the store of 2.2 to the slot, a return's value written into `x0` by `e`'s last instruction, the place generated with `x0` left for last, `add w0, w1, w0; str w0, [x29, #24]` and `ldr x0, [x29, #32]; str x0, [x1, w2, sxtw #3]` (6.1); for a register variable the last instruction of the row that computes the value writes its register, `add w19, w0, w1`, `ldr w19, [x29, #24]`, where the row writes its destination only after it has read every operand, `adrp x19, buf; add x19, x19, :lo12:buf` for an address in two instructions, and through a conversion that changes the signedness alone, `ldr w19, [x29, #32]` for `register unsigned u = i`, and otherwise the `mov` into it, `mov w20, w0`, `mov x20, x0`, a narrow type's the extension, `sxtb w19, w0`; a constant the immediate, `mov w20, #0` | 6.6 for a constant; chapter 4 |
+| `x op= e`, `++x`, `x++` | the load, the operation, the store, after `e` for `x op= e`; for a return's value the place generated with `x0` left for last, the operation writing `x0`, `add x0, x3, x0`, and the postfix form's load, `ldr w0, [x1, w2, sxtw #2]; add w3, w0, #1` (6.1); a register variable in place, after `e`, its register `L` and the destination, `add w19, w19, w0`, `add w19, w19, #1`, a narrow one re-extended after, `sxtb w19, w19`, and `%=` with the quotient in a register of its own, `sdiv w0, w19, w20; msub w19, w0, w20, w19`; `x++` on a register variable for its value is G13's copy and the step, `mov w0, w19; add w19, w19, #1`; a pointer's `++` and `--` step by the size, an immediate where `add` encodes it, `add L, L, #4` for an `int *`, and otherwise held in a register | no memory form, 6.6; chapter 4 |
 | `(T) a` | `sxtw L, L` for `int` to `long`; `sxtb`, `sxth`, `uxtb`, `uxth` from a narrow type; each only when `L` is not already valid to the new width; a signed object in memory under a cast that widens it is the load of 2.2 extended to the new width, `ldrsw x0, [x29, #16]` for an `int` to `long`, `ldrsb x0` and `ldrsh x0` for a `signed char` and a `short`, its displacement scaled by the object's size as the plain load's is, so through `x16` where that one would be (5.3), and no instruction after it, as `backend.md` 6.3's widening by the load has it, the object read under casts that keep its bits included, `ldrsw x0, [x29, #16]` for `(long) (int) u`, the plain `ldr w0` for `(unsigned long) (unsigned) i` and the `ldrb w0` for `(long) (char) c`, valid to 64, while a narrowing cast under the widening keeps its load and the extension after it, `ldr x0; sxtw x0, w0` for `(long) (int) l`; `mov wL, wL` for an `unsigned` not valid to 64; nothing between pointer types and for a pointer to `long`; an integer to a pointer as to `unsigned long`, so `sxtw` for an `int` | G2; the width rule |
 | `&x` | `add L, x29, #d`; for a global the file defines `adrp L, sym; add L, L, :lo12:sym`, as a string literal's; for one it only declares, the load from the GOT; `&x` plus a constant is the same `add` or pair with the constant in it, the name and constant below | two `add`s beyond 4095, 5.3 |
 | `*p` | the load of 2.2 from `[L]` | G8 to G11 |
@@ -902,9 +916,11 @@ bits.
 ### 6.5 The pinned instructions
 
 There are none. `divide()` and `shift()` write their instruction on
-the registers the operands are in. The state's `reserved` mask,
-`pins()`, `pinned_by()`, `vacate()`, `move()` and `pinned()` exist in
-the x86-64 generator only.
+the registers the operands are in. `pins()`, `pinned_by()`,
+`vacate()`, `move()` and `pinned()` exist in the x86-64 generator
+only. The state's `reserved` mask is here for one use: the place of an
+assignment or of a step whose value a `return` names is generated
+with `x0` left for last (6.1).
 
 ### 6.6 The effect context
 
@@ -968,11 +984,9 @@ As `backend.md` 7.2, with `b` for `jmp`. `return e` leaves `e` in
 writes it where no other value holds it, a conditional at the top of
 `e` joining its arms there (6.1). A `mov` puts it there when it is
 held in another register: `mov w0, w19` for a register variable at 32
-bits, and on the `x` names for a `long` or a pointer. `x op= e` for
-its value is such a case: the result is in the object's register,
-taken above `e`'s, so a `return` of it ends in `mov w0, w1`. Every
-`return` jumps to the one epilogue. `main` returns 0 on reaching its
-`}`, `mov w0, #0`, by the rule of `backend.md` 7.2.
+bits, and on the `x` names for a `long` or a pointer. Every `return`
+jumps to the one epilogue. `main` returns 0 on reaching its `}`, `mov
+w0, #0`, by the rule of `backend.md` 7.2.
 
 `do`'s condition at the bottom branches back to the body's label on
 the condition, `b.lt .Lcount.2` or `cbnz`, by jump code (7.1). `break`,
@@ -1565,15 +1579,18 @@ the thirteenth came later. The answers:
     by a call's result. An instruction here names its destination
     apart from its sources and reads every source before it writes, so
     the name goes to the row's last instruction and not to its left
-    operand, and nothing generated before it is kept out of `x0`: a
-    source in `x0` is no obstacle, and a call within an operand, whose
-    result is in `x0`, stops nothing. The cost is a second hand-down
-    beside the variable's, and a boundary: the name stops where
-    another value holds `x0` at the instruction, the place of an
-    assignment whose address took it, `return p[i] = x - y` being `sub
-    w2, w2, w3`, the store and `mov w0, w2`; a compound assignment's
-    operation is not handed it; and a conditional takes it at the top
-    of the returned value alone, since no row of an arm takes it.
+    operand: a source in `x0` is no obstacle, and a call within an
+    operand, whose result is in `x0`, stops nothing. One thing is
+    generated with `x0` left for last, the place of an assignment or
+    of a step, so that the stored value, the operation of `+=` and a
+    postfix step's old value take it: `return p[i] = x` is `ldr x0,
+    [x29, #32]; str x0, [x1, w2, sxtw #3]`. The arms of a returned
+    conditional are generated for `x0`. The cost is a second hand-down
+    beside the variable's, the state's reservation, and a boundary: a
+    call's result within the place holds `x0` at the store, and a
+    conditional takes the name at the top of the returned value alone,
+    since two arms through a call's result join in one register with
+    no move where the name would move each.
 
 Decided by the machine, listed so that nothing is decided silently:
 

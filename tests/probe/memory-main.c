@@ -364,7 +364,8 @@ PINNED_TYPES(DECLARE_REMAINDER)
     BOTH(long, rr_quot_##N, (T, T, T)) BOTH(long, rr_free_##N, (T, T, int)) \
     BOTH(long, rr_held_##N, (T, T)) BOTH(long, rr_deep_##N, (T, T, T))  \
     BOTH(long, rr_rem_##N, (T, T))                                      \
-    BOTH(long, rr_kept_##N, (T *, T, T, int))
+    BOTH(long, rr_kept_##N, (T *, T, T, int))                           \
+    BOTH(long, rr_called_##N, (T *, T, T, int))
 
 PINNED_TYPES(DECLARE_RETURNED)
 
@@ -374,7 +375,7 @@ PINNED_TYPES(DECLARE_RETURNED)
     BOTH(long, jn_kept_##N, (int, T, T))                                \
     BOTH(long, jn_call_##N, (int, T, T)) BOTH(long, jn_div_##N, (int, T, T)) \
     BOTH(long, jn_rem_##N, (int, T, T)) BOTH(long, jn_truth_##N, (int, T, T)) \
-    BOTH(long, jn_regs_##N, (int, T, T))
+    BOTH(long, jn_regs_##N, (int, T, T)) BOTH(T, jn_store_##N, (int, T *, T))
 
 PINNED_TYPES(DECLARE_JOINED)
 
@@ -979,6 +980,8 @@ PINNED_TYPES(TEST_REMAINDER_ALL)
                 CHECK(rr_deep_##N, x, y, ((T) y, (T) z, (T) x));        \
                 CHECK(rr_rem_##N, x, y, ((T) y, (T) x));                \
                 MCHECK(rr_kept_##N, x, y, at, (P(T), (T) y, (T) z, 0)); \
+                MCHECK(rr_called_##N, x, y, at,                         \
+                       (P(T), (T) y, (T) z, 0));                        \
             }                                                           \
         }                                                               \
     }
@@ -1011,6 +1014,7 @@ PINNED_TYPES(TEST_RETURNED_ALL)
                     CHECK(jn_rem_##N, x, y, (c, (T) y, (T) x));         \
                     CHECK(jn_truth_##N, x, y, (c, (T) y, (T) x));       \
                     CHECK(jn_regs_##N, x, y, (c, (T) y, (T) x));        \
+                    MCHECK(jn_store_##N, x, y, at, (c, P(T), (T) y));   \
                 }                                                       \
             }                                                           \
         }                                                               \

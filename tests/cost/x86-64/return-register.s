@@ -590,4 +590,88 @@ stored_held:
 	ret
 	.cfi_endproc
 	.size	stored_held, .-stored_held
+	.globl	incremented_element
+	.type	incremented_element, @function
+incremented_element:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rcx
+	movslq	-12(%rbp), %rdx
+	movl	(%rcx,%rdx,4), %eax
+	addl	$1, %eax
+	movl	%eax, (%rcx,%rdx,4)
+	jmp	.Lincremented_element.1
+.Lincremented_element.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	incremented_element, .-incremented_element
+	.globl	compound_reloaded
+	.type	compound_reloaded, @function
+compound_reloaded:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	movl	-4(%rbp), %eax
+	movl	%eax, -12(%rbp)
+	cmpl	$0, -8(%rbp)
+	je	.Lcompound_reloaded.2
+	movl	$1, %ecx
+	jmp	.Lcompound_reloaded.3
+.Lcompound_reloaded.2:
+	movl	$2, %ecx
+.Lcompound_reloaded.3:
+	movl	-12(%rbp), %eax
+	addl	%ecx, %eax
+	movl	%eax, -12(%rbp)
+	jmp	.Lcompound_reloaded.1
+.Lcompound_reloaded.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	compound_reloaded, .-compound_reloaded
+	.globl	called_place
+	.type	called_place, @function
+called_place:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$32, %rsp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movl	%edx, -16(%rbp)
+	movq	-8(%rbp), %rax
+	movq	%rax, -24(%rbp)
+	movl	-12(%rbp), %eax
+	movl	%eax, -28(%rbp)
+	movl	-28(%rbp), %edi
+	call	f@PLT
+	movslq	%eax, %rax
+	movl	-16(%rbp), %ecx
+	movq	-24(%rbp), %rdx
+	movl	%ecx, (%rdx,%rax,4)
+	movl	%ecx, %eax
+	jmp	.Lcalled_place.1
+.Lcalled_place.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	called_place, .-called_place
 	.section	.note.GNU-stack,"",@progbits

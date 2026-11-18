@@ -718,9 +718,8 @@ compound_value:
 	str	w1, [x29, #20]
 	ldr	w0, [x29, #20]
 	ldr	w1, [x29, #16]
-	add	w1, w1, w0
-	str	w1, [x29, #16]
-	mov	w0, w1
+	add	w0, w1, w0
+	str	w0, [x29, #16]
 	b	.Lcompound_value.1
 .Lcompound_value.1:
 	.cfi_def_cfa wsp, 32
