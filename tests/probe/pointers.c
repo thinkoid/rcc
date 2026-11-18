@@ -158,11 +158,16 @@ POINTEES(POINTER)
 ELEMENTS(SUBSCRIPT_ALL)
 
 /* a constant subscript on each side of the load's reach, read, written
-   and stepped; a constant displacement through a cast to a wider
-   element */
+   and stepped, and written and added to across a call in the right
+   operand; a constant displacement through a cast to a wider element */
 #define KSUB(E, T, S, name, c)                                          \
     long kget_##E##_##name(T *p) { return p[c]; }                       \
     void kput_##E##_##name(T *p, long v) { p[c] = v; }                  \
+    void kcall_##E##_##name(T *p, long v)                               \
+    {                                                                   \
+        p[c] = id(v);                                                   \
+        p[c] += id(v + 1);                                              \
+    }                                                                   \
     long kinc_##E##_##name(T *p) { ++p[c]; return p[c]; }
 #define KSUB_ALL(E, T, S) KSUBS(KSUB, E, T, S)
 

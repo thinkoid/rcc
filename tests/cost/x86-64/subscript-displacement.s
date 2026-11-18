@@ -160,4 +160,46 @@ byte_view_near:
 	ret
 	.cfi_endproc
 	.size	byte_view_near, .-byte_view_near
+	.globl	far_called
+	.type	far_called, @function
+far_called:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$16, %rsp
+	movq	%rdi, -8(%rbp)
+	movq	-8(%rbp), %rax
+	movq	%rax, -16(%rbp)
+	call	g@PLT
+	movq	-16(%rbp), %rcx
+	movl	%eax, 20000(%rcx)
+.Lfar_called.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	far_called, .-far_called
+	.globl	far_stored
+	.type	far_stored, @function
+far_stored:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	movl	-12(%rbp), %ecx
+	movl	%ecx, 20000(%rax)
+.Lfar_stored.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	far_stored, .-far_stored
 	.section	.note.GNU-stack,"",@progbits

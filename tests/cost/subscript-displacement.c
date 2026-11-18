@@ -7,7 +7,9 @@
    p[1][2] on int (*p)[3] being 12 + 8 bytes.  byte_view(),
    byte_view_store() and byte_view_near() read and write an int
    through a char pointer plus a byte offset under a cast,
-   *(int *) (p + 4097), and read *(int *) (p + 1).
+   *(int *) (p + 4097), and read *(int *) (p + 1).  far_called() and
+   far_stored() store through a constant index no displacement of the
+   access holds, p[5000] = g() and p[5000] = v on an int *p.
 
    On x86-64 the listing must show row() reading p[i][2] by the one
    movsbl 2(%rax,%rcx,8), %eax after p's load and i's movslq, local()
@@ -18,7 +20,9 @@
    the one leaq 20(%rax), %rax.  byte_view() adds the byte offset,
    addq $4097, %rax, then reads movl (%rax), %eax, byte_view_store()
    the same before movl %ecx, (%rax), and byte_view_near() addq $1,
-   %rax and movl (%rax), %eax.
+   %rax and movl (%rax), %eax.  far_called() stores movl %eax,
+   20000(%rcx) after the call and p's reload, and far_stored() movl
+   %ecx, 20000(%rax).
 
    On aarch64 the listing must show cell() reading p[1][2] by the one
    ldr w0, [x0, #20] after p's load, and corner() forming &p[1][2] by
@@ -32,7 +36,12 @@
    mov x1, #4097 and ldr w0, [x0, x1], with no add; byte_view_store(),
    whose address is held across the right operand, keeps to one
    register, add x0, x0, x1, then str w1, [x0] after v's load; and
-   byte_view_near() reads by the one ldr w0, [x0, #1]. */
+   byte_view_near() reads by the one ldr w0, [x0, #1].  The constant
+   index of a store is written after its right operand, since it reads
+   nothing: far_called() spills p alone across the call, then bl g;
+   mov x1, #5000; ldr x2, [x29, #24]; str w0, [x2, x1, lsl #2], and
+   far_stored() is mov x2, #5000 after v's load, then str w1, [x0, x2,
+   lsl #2]. */
 int
 row(char (*p)[8], int i)
 {
@@ -81,4 +90,18 @@ int
 byte_view_near(char *p)
 {
         return *(int *) (p + 1);
+}
+
+int g(void);
+
+void
+far_called(int *p)
+{
+        p[5000] = g();
+}
+
+void
+far_stored(int *p, int v)
+{
+        p[5000] = v;
 }

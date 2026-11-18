@@ -946,6 +946,21 @@ and `*(int *) (c + 4097)`, which no displacement reaches, `mov x1,
 `*(int *) (c + 257)` being `add x0, x0, #257; ldr w0, [x0]`, and where
 the address is held across a right operand, `*(int *) (c + 4097) = v`.
 
+A store's address is generated before its right operand and held
+across it (G13), but a constant index reads nothing, so its `mov` is
+written after the right operand, at the access: `p[5000] = f()` on an
+`int *p` spills `p` alone across the call, `bl f; mov x1, #5000; ldr
+x2, [x29, #24]; str w0, [x2, x1, lsl #2]`, and `p[5000] = v` is `mov
+x2, #5000` after `v`'s load. A compound assignment holds the constant
+the same way, its load and store after the right operand both reading
+it. A variable index is read before the right operand, as written;
+where that operand holds a call that would spill both the base and the
+index, the two are summed first and one register is spilled, `add x0,
+x0, w1, sxtw #2` before the call and `str w0, [x1]` after it, but not
+where either is a register variable's read or spilled already. With no
+call the two registers are held, the form being one instruction fewer
+than the sum.
+
 The width rule holds as written. Its facts on this machine:
 
 - a narrow load leaves the value valid to 32, and the load of a

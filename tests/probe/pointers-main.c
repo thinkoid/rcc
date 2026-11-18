@@ -295,6 +295,7 @@ ELEMENTS(DECLARE_SUBSCRIPT_ALL)
 #define DECLARE_KSUB(E, T, S, name, c)                                  \
     BOTH(long, kget_##E##_##name, (T *))                                \
     BOTH(void, kput_##E##_##name, (T *, long))                          \
+    BOTH(void, kcall_##E##_##name, (T *, long))                         \
     BOTH(long, kinc_##E##_##name, (T *))
 #define DECLARE_KSUB_ALL(E, T, S) KSUBS(DECLARE_KSUB, E, T, S)
 
@@ -529,6 +530,7 @@ ELEMENTS(TEST_SUBSCRIPT_ALL)
 #define TEST_KSUB(E, T, S, name, c)                                     \
     MCHECK(kget_##E##_##name, x, at, at, ((T *) P));                    \
     VCHECK(kput_##E##_##name, x, at, at, ((T *) P, x));                 \
+    VCHECK(kcall_##E##_##name, x, at, at, ((T *) P, x));                \
     MCHECK(kinc_##E##_##name, x, at, at, ((T *) P));
 
 #define TEST_KBYTE(E, T, S, name, d)                                    \

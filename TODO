@@ -79,21 +79,6 @@ aarch64.
 Check: those two pins with the displacement in the access, the
 count over =tests=, and no function longer.
 
-** TODO aarch64: an index held in a register is spilled across the right operand's call
-
-~p[5000] = f()~ on an ~int *p~ writes =mov x1, #5000= before the
-call and spills both the pointer and the constant across it, =str x0;
-str x1; bl f; ldr x1; ldr x2; str w0, [x2, x1, lsl #2]=: the constant
-no displacement holds is generated with the address, before the
-right operand. The constant written after the call needs no slot, two
-instructions fewer; a variable index that must be read before the
-call (G13) keeps its spill. The shape is not counted over =tests=.
-
-Fix: none taken; count first. A constant index reads nothing, so its
-=mov= may follow the right operand.
-
-Check: the count over =tests=, and no function longer.
-
 ** TODO =one_path()= is the same text in both generators
 
 =one_path()= in =src/c1-x86-64.cc= and in =src/c1-aarch64.cc= have

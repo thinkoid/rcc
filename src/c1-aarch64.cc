@@ -790,7 +790,9 @@ struct step_t
 // :lo12:n+12] (6.3).  A string literal's address is its label too.  A
 // register pointer stepped by a constant the form encodes is its
 // register as the base and the step, which the access makes, [x19], #1
-// or [x19, #1]!.  The access consumes the values.
+// or [x19, #1]!.  A constant index a store writes after its right
+// operand is the constant, not yet in a register, held_index()'s.  The
+// access consumes the values.
 struct address_t
 {
     value_t base { };
@@ -800,6 +802,7 @@ struct address_t
     int displacement = 0;
     std::string label { };
     step_t step { };
+    std::optional< long long > constant { };
 };
 
 address_t
@@ -855,6 +858,9 @@ stepped_operand(state_t &s, const address_t &a, unsigned avoid)
 std::string
 operand(state_t &s, const address_t &a, int width, unsigned avoid = 0)
 {
+    if (a.constant)
+        throw std::logic_error("c1: a constant index not held");
+
     if (!a.label.empty() && a.base.id >= 0) {
         const auto base = reg(reg_of(s, a.base, avoid), 64);
         return std::format("[{}, :lo12:{}]", base,
@@ -1385,6 +1391,12 @@ access_sum(const expr_t &p,
     return inner == 1 || inner == stride(p.type) ? sum : p;
 }
 
+// index_across() needs right_t and offset(), and calls_within() sits
+// with the conditional's rows: both come after pointed(), their caller.
+address_t index_across(
+    state_t &, value_t, index_t, int shift, bool pointer_first, const expr_t *);
+bool calls_within(const expr_t &);
+
 // The address an access through a dereference designates, 6.5.4.2p4,
 // for a load, a fetch or a store: the pointer's value as the base, [x0],
 // whatever computed it and however it is aligned (G8, G11).  An add of
@@ -1466,15 +1478,20 @@ pointed(state_t &s, const expr_t &p, const expr_t *between = nullptr)
     if (&sum != &p && (between || (d && arithmetic_immediate(*d, 64))))
         return { .base = rvalue(s, p) };
 
+    // p[5000] = f(): a constant index reads nothing, so it is written
+    // after the store's right operand, held_index()'s, and no register
+    // holds it across that operand
+    if (d && between)
+        return { .base = rvalue(s, pointer),
+                 .shift = shift_of(size),
+                 .constant = as< literal_t >(n).value };
+
     // p[i], *(p + i): the pointer is written first, so the base is
     // generated first and the index after it (G13), [x0, w1, sxtw #2].
     if (left) {
         const auto base = rvalue(s, pointer);
         const auto index = index_of(s, n);
-        return { .base = base,
-                 .index = index.value,
-                 .extend = index.extend,
-                 .shift = shift_of(size) };
+        return index_across(s, base, index, shift_of(size), true, between);
     }
 
     // i[p], *(i + p): the integer is written first, so the index is
@@ -1482,10 +1499,7 @@ pointed(state_t &s, const expr_t &p, const expr_t *between = nullptr)
     const auto index = index_of(s, n);
     const auto base = rvalue(s, pointer);
 
-    return { .base = base,
-             .index = index.value,
-             .extend = index.extend,
-             .shift = shift_of(size) };
+    return index_across(s, base, index, shift_of(size), false, between);
 }
 
 // The address of an lvalue: a local's or a parameter's slot, a global's
@@ -1846,25 +1860,50 @@ constant_into(state_t &s, const symbol_t *sym, const expr_t &e)
     return true;
 }
 
+// An address's constant index written after the store's right
+// operand, 6.3: the constant row of 6.4 into a register outside the
+// address's and avoid, the operand's, read by the form, bl f; mov x1,
+// #5000; str w0, [x2, x1, lsl #2].  Any other address is as it is.
+address_t
+held_index(state_t &s, address_t a, unsigned avoid)
+{
+    if (!a.constant)
+        return a;
+
+    const auto held = fresh(s, 64, avoid | registers_of(s, a));
+    constant(s, reg_of(s, held), *a.constant, 64);
+    a.index = held;
+    a.constant.reset();
+
+    return a;
+}
+
 // The store row of an initializer, chapter 6.6: e written into the
 // object at to, at the object's width t, its value not wanted.  A zero
 // constant is the store of the zero register, str wzr, [x29, #16], and
 // no register is held; anything else, any other constant included, is
 // its value in a register and the store, since str takes no immediate.
 // to is a slot, which has no evaluation, or an address the caller
-// evaluated before e, so G13 holds; the caller consumes it.
+// evaluated before e, so G13 holds; the caller consumes it, and a
+// constant index held after e, held_index()'s, is released here.
 void
 initialize(state_t &s, const expr_t &e, const address_t &to, const int_t &t)
 {
     if (is< literal_t >(e) &&
         normalized(as< literal_t >(e).value, t.width) == 0) {
-        const auto operand_to = operand(s, to, t.width);
+        const auto at = held_index(s, to, 0);
+        const auto operand_to = operand(s, at, t.width);
         insn(s, store_of(t.width), { zero(t.width), operand_to });
+        if (to.constant)
+            release(s, at.index);
         return;
     }
 
     const auto v = rvalue(s, e);
-    store(s, v, to, t.width);
+    const auto at = held_index(s, to, bit(reg_of(s, v)));
+    store(s, v, at, t.width);
+    if (to.constant)
+        release(s, at.index);
     release(s, v);
 }
 
@@ -2183,6 +2222,37 @@ offset(state_t &s,
         insn(s, mnemonic, { to, reg(p, 64), index });
 
     return result;
+}
+
+// The address of a base and an index read before a store's right
+// operand, 6.3: the two registers the form reads, [x2, w1, sxtw #2],
+// but where that operand holds a call and the convention would spill
+// both across it, the sum, add x0, x0, w1, sxtw #2, one register held
+// and spilled, and the access through it, [x1].  A register variable's
+// read is no register to spill, and a value an earlier call spilled
+// would be reloaded for the add, so the form stays where either is.
+address_t
+index_across(state_t &s,
+             value_t base,
+             index_t index,
+             int shift,
+             bool pointer_first,
+             const expr_t *between)
+{
+    if (!between || !calls_within(*between) || borrowed(s, base) ||
+        borrowed(s, index.value) || s.values[base.id].reg < 0 ||
+        s.values[index.value.id].reg < 0)
+        return { .base = base,
+                 .index = index.value,
+                 .extend = index.extend,
+                 .shift = shift };
+
+    const right_t n { .value = index.value,
+                      .width = 64,
+                      .extend = index.extend,
+                      .shift = shift };
+
+    return { .base = offset(s, binary_op_t::add, base, n, pointer_first) };
 }
 
 // p + n on a slot's address as a base, the frame pointer the sum's
@@ -3473,9 +3543,11 @@ assign_register(state_t &s, const assign_t &a, const symbol_t *sym)
     return read(s, sym);
 }
 
-// Plain or compound assignment to an object in memory; its value is
-// the value stored, the low bytes of L.  The lvalue's address comes
-// first (G13) and is held across the right operand.  Plain: the right
+// Plain or compound assignment to an object in memory; its value is the
+// value stored, the low bytes of L.  The lvalue's address comes first
+// (G13) and is held across the right operand, but for a constant index,
+// which reads nothing and is written after it, held_index()'s, so that
+// p[5000] = f() spills p alone across the call.  Plain: the right
 // operand, then the store.  Compound: the right operand, then, as one
 // piece and nothing evaluated between, the load of the object through
 // the held address, extended into the common type the parser chose, the
@@ -3509,23 +3581,26 @@ assign(state_t &s, const assign_t &a, unsigned wanted = 0)
 
     if (!a.op) {
         const auto v = rvalue(s, *a.rhs, nullptr, wanted);
-        store(s, v, place, t.width);
-        release(s, place);
+        const auto at = held_index(s, place, bit(reg_of(s, v)));
+        store(s, v, at, t.width);
+        release(s, at);
         return v;
     }
 
     const int width = operation_width(a.common);
     const auto r = stepped ? displacement(s, *a.rhs, stride(a.lhs->type)) :
                              right_operand(s, *a.op, *a.rhs, width);
+    const auto at =
+        held_index(s, place, r.value.id >= 0 ? bit(reg_of(s, r.value)) : 0u);
 
     // the value of the expression has the lvalue's type: the bits
     // above its width are the operation's, not the value's extension
-    const auto l = fetch(s, first_access(place), t, width);
+    const auto l = fetch(s, first_access(at), t, width);
     const auto v = stepped ?
                        offset(s, *a.op, l, r, true, nullptr, wanted) :
                        arithmetic(s, *a.op, l, r, a.common, nullptr, wanted);
-    store(s, v, last_access(place), t.width);
-    release(s, place);
+    store(s, v, last_access(at), t.width);
+    release(s, at);
     s.values[v.id].valid = stored_valid(s.values[v.id].valid, width, t);
 
     return v;
