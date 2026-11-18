@@ -1358,8 +1358,7 @@ address_t unscaled(state_t &, const operation_t &, long, unsigned);
 // rows are the value's, and for a variable index where the address is
 // held_across a pinned instruction, which the sum keeps to one
 // register, and for an index of 64 bits in memory at a stride of 1,
-// which the sum's addq takes as its operand, addq -24(%rbp), %rax,
-// where the index form would load it.
+// memory_indexed()'s.
 const expr_t *
 cast_sum(const state_t &s, const expr_t &p, const into_t *into)
 {
@@ -1375,8 +1374,7 @@ cast_sum(const state_t &s, const expr_t &p, const into_t *into)
         return nullptr;
 
     const auto &n = is< pointer_t >(b.lhs->type) ? *b.rhs : *b.lhs;
-    if (!is< literal_t >(n) &&
-        (s.held_across || (stride(sum.type) == 1 && memory_operand(n, 64))))
+    if ((!is< literal_t >(n) && s.held_across) || memory_indexed(p))
         return nullptr;
 
     return &sum;

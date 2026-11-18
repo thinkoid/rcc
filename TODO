@@ -80,16 +80,6 @@ one displacement, where it is in reach after the sum.
 Check: those three functions with no =add= of a constant, the count
 over =tests=, and no function longer.
 
-** TODO x86-64: the stop for an index in memory at a stride of 1 is written twice
-
-=cast_sum()= and =memory_indexed()= in =src/c1-x86-64.cc= each test
-that a sum at a stride of 1 has an index that is a 64-bit object in
-memory, which the sum's =addq= takes as its operand.
-
-Fix: =cast_sum()= calls =memory_indexed()=.
-
-Check: one test, and no listing changes.
-
 *p~ is =addq $1, %rax; movslq 4(%rax), %rax=, where =movslq 5(%rax),
 %rax= is one instruction: the subscript's pointer is the cast,
 generated as a value; the 80 =kview_index_*= rows of the pointers
