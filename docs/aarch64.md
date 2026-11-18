@@ -363,16 +363,29 @@ better:
   operand keeps the left operand elsewhere. `r = r + x`, on the
   variable's own read, is the one `add` already. The operation is in
   the type the variable's value is computed in: an `int` one widened
-  into a `long`, `l = i + 5`, keeps its `sxtw x19, w0`, a `long` one
-  narrowed into an `int` and one into a narrow variable their own
-  registers, and a constant left operand its `mov`, `mov w0, #5; sub
-  w20, w0, w19` for `r = 5 - s`.
+  into a `long`, `l = i + 5`, keeps its `sxtw x19, w0`, and a `long`
+  one narrowed into an `int` and one into a narrow variable their own
+  registers. A constant left operand is the constant row into the
+  register, `mov w20, #5; sub w20, w20, w19` for `r = 5 - s`, and a
+  constant of two instructions is two writes of it that read no
+  operand, as an address of a page and its offset is, `mov w20,
+  #22136; movk w20, #0x1234, lsl #16` before the `sub`; `r = 5 - r`,
+  whose right operand is the variable, keeps `mov w0, #5; sub w19, w0,
+  w19`. A difference of pointers at a size other than 1 is the same:
+  its `sub` writes the register and its `sdiv` divides it in place,
+  `w = q - a` on a `register int *q` into a `register long w` being
+  `sub x20, x19, x0; mov x0, #4; sdiv x20, x20, x0`, both pointers
+  read by the `sub` and the size's `mov` writing an expression
+  register.
   A conversion that changes the signedness alone is written
   there too: an object under it is loaded at the extension of the
   conversion's type, `ldr w19, [x29, #32]` for `register unsigned u =
   i`, and any other value of 32 bits or more is its own row's, `add
   w19, w0, w1` for `u = a + b` on two `int`s, since a write of a `w`
-  register clears the upper half. The value of a step on an object in
+  register clears the upper half; a second such conversion under the
+  first hands the variable on as the first does, `v = 5 + (int) u`
+  into a `register unsigned v` being `ldr w19, [x29, #24]; add w19,
+  w19, #5`. The value of a step on an object in
   memory, `r = x++`, is the load of `x` into the register, `ldr w19,
   [x29, #24]`, and the step after it on a fresh register and the
   store, `add w0, w19, #1; str w0, [x29, #24]`, except where the

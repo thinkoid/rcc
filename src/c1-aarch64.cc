@@ -1745,16 +1745,24 @@ constant(state_t &s, reg_t r, long long value, int width)
 
 // A constant that must be held, in a register taken for it.  A
 // constant narrower than int is written as its promotion, so the
-// register holds it extended.
+// register holds it extended.  Handed a register variable, the
+// constant is the constant row into its register, mov w20, #5, as an
+// operation's left operand that left_into() hands it (chapter 4).
 value_t
-literal(state_t &s, const literal_t &l, const type_t &t)
+literal(state_t &s, const literal_t &l, const type_t &t, into_t *into = nullptr)
 {
     const auto &type = integer(t);
     const int width = std::max(32, type.width);
     const auto value =
         type.width < 32 ? widened(l.value, type) : normalized(l.value, width);
+    const int valid = written(width, type.is_signed);
 
-    const auto v = fresh(s, written(width, type.is_signed));
+    if (takes(into, valid)) {
+        constant(s, variable_register(into->variable), value, width);
+        return taken(s, *into);
+    }
+
+    const auto v = fresh(s, valid);
     constant(s, reg_of(s, v), value, width);
 
     return v;
@@ -2282,7 +2290,11 @@ pointer_arithmetic(state_t &s,
 // the two pointers are any two addresses.  A size of 1 is the sub
 // alone.  A register variable handed down is the last instruction's
 // destination, the sub's or the sdiv's (chapter 4), and so is the
-// register the consumer names, wanted (6.1).
+// register the consumer names, wanted (6.1).  Before an sdiv the sub
+// writes the variable too, base_into()'s copy, and the sdiv divides it
+// in place, sub x20, x21, x0; mov x0, #4; sdiv x20, x20, x0 for w = q -
+// v: both pointers are read by the sub, and the size's mov writes an
+// expression register, so nothing reads the variable between.
 value_t
 difference(state_t &s,
            const binary_t &b,
@@ -2297,9 +2309,13 @@ difference(state_t &s,
     release(s, r);
 
     const bool last = size == 1;
-    const auto to = reg(
-        final_destination(s, l, 64, last ? into : nullptr, last ? wanted : 0),
-        64);
+    auto onto = last ? std::nullopt : base_into(into);
+    into_t *sub_into = last ? into : nullptr;
+    if (onto)
+        sub_into = &*onto;
+
+    const auto to =
+        reg(final_destination(s, l, 64, sub_into, last ? wanted : 0), 64);
     insn(s, "sub", { to, reg(left, 64), reg(right, 64) });
 
     if (last)
@@ -3482,6 +3498,28 @@ retyped(state_t &s, const cast_t &c, const int_t &target, into_t &into)
     return v;
 }
 
+// Whether a conversion to the type to changes the signedness alone of a
+// value handed a register variable whose value is computed in to
+// already, chapter 4: a second such conversion under the one that
+// retypes() the variable, (int) u under v = 5 + (int) u into a register
+// unsigned v.  The two change no bit at the variable's width, so the
+// operand is computed in its own type as the first's is, ldr w19, [x29,
+// #24].  retypes() takes the first alone, on both targets.
+bool
+retypes_again(const cast_t &c, const type_t &to, const into_t *into)
+{
+    if (!into || into->taken || !into->as || !(to == *into->as))
+        return false;
+
+    if (!is< int_t >(to) || !is< int_t >(c.arg->type))
+        return false;
+
+    const auto &from = integer(c.arg->type);
+    const auto &target = integer(to);
+
+    return from.width == target.width && from.is_signed != target.is_signed;
+}
+
 // A cast: a change of signedness alone that retypes(), retyped()'s; a
 // conditional under a conversion that widens it, each arm widened where
 // widens_arms() says, into a register variable's register on each path
@@ -3512,7 +3550,7 @@ cast(state_t &s,
         return function_pointer(s, *c.arg, through(into, target, false),
                                 wanted);
 
-    if (retypes(c, to, into))
+    if (retypes(c, to, into) || retypes_again(c, to, into))
         return retyped(s, c, target, *into);
 
     // l = c ? x : y into a register long, ldrsw x19, [x29, #28] on each
@@ -3699,7 +3737,7 @@ rvalue(state_t &s, const expr_t &e, into_t *into, unsigned wanted)
         throw std::logic_error("c1: an array as a value");
 
     if (is< literal_t >(e))
-        return literal(s, as< literal_t >(e), e.type);
+        return literal(s, as< literal_t >(e), e.type, into);
 
     if (is< name_t >(e)) {
         if (const auto *sym = register_variable(e))

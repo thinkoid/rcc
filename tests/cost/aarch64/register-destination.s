@@ -3484,8 +3484,8 @@ signedness_left:
 	.cfi_offset w19, -16
 	str	w0, [x29, #24]
 	mov	w19, w19
-	ldr	w0, [x29, #24]
-	add	w19, w0, #5
+	ldr	w19, [x29, #24]
+	add	w19, w19, #5
 	mov	w0, w19
 	b	.Lsignedness_left.1
 .Lsignedness_left.1:

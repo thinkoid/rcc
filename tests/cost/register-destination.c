@@ -283,7 +283,7 @@
    w0, [x29, #24] and uxtb w19, w0; add x19, x0, x1 after the mul by 12
    in row_element() and row_decay(); sxtw x19, w0 in widened_sum() and
    sxtw x20, w19 in widened_register(); mul w19, w0, w1 in
-   widened_product() and add w19, w0, #5 after ldr w0, [x29, #24] in
+   widened_product() and ldr w19, [x29, #24] and add w19, w19, #5 in
    signedness_left().  return r is mov w0, w19, and return p mov x0,
    x19. */
 int
