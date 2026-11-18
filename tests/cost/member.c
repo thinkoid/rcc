@@ -25,8 +25,9 @@
    array's element by a constant, p->a[3] and p->t[2].h, one access,
    the member array's offset and the element's one displacement, [x0,
    #44] and [x0, #98], and by a variable index with a member after it,
-   p->t[i].i, adds the index's product to p, and the member array's
-   64 and the member's 4 are the access's displacement, [x0, #68].
+   p->t[i].i, adds the index to p shifted by the element's 16 bytes,
+   add x0, x0, x1, lsl #4, and the member array's 64 and the member's
+   4 are the access's displacement, [x0, #68].
    p[i].m adds the product to p and reads [x0, #8], and tab[i].m
    on the label is adrp x0, tab+8, the product's add and ldr w0,
    [x0, :lo12:tab+8], with no add of the page's offset; p[i].a[3] and
@@ -37,8 +38,8 @@
    and [x0, #2].  The addresses &p->a[3] and &p->t[2].h are one add,
    add x0, x0, #44 and add x0, x0, #98, &s.a[3] the slot's add x0,
    x29, #60, and &g.a[3] the label's pair, adrp x0, g+44 and add x0,
-   x0, :lo12:g+44.  held_member() adds the index's product before the
-   call and stores str w0, [x1, #68] after it, and held_element()
+   x0, :lo12:g+44.  held_member() adds the index shifted by 4 before
+   the call and stores str w0, [x1, #68] after it, and held_element()
    add x0, x0, x1, lsl #2 before it, then ldr, add and str at [x2,
    #32], the member array's 32 the two accesses' displacement. */
 struct in
@@ -250,4 +251,87 @@ int
 indexed_label_odd(long i)
 {
         return *(int *) ((char *) &tab[i] + 2);
+}
+
+/* A record's member under a variable index at a size that is a power of
+   two: records of 16, 32 and 4096 bytes, p[i].b by an int index with
+   the pointer written first and n[p].c by a long index with the index
+   written first in sixteen(), thirty_two() and page(), the other order
+   of each in sixteen_first(), thirty_two_first() and page_first(), and
+   p[code()].b by an unsigned call's result in sixteen_unsigned().  On
+   x86-64, whose forms scale by 8 at most, each index is multiplied:
+   movslq -12(%rbp), %rcx; imulq $16, %rcx, %rcx and movl
+   8(%rax,%rcx,1), %eax for p[i].b, imulq $16, -24(%rbp), %rcx, the long
+   in memory the multiply's source, then addq -8(%rbp), %rcx and addl
+   12(%rcx), %eax for n[p].c, and the same with imulq $32 and imulq
+   $4096; sixteen_unsigned() movl %eax, %eax, the call's result
+   zero-extended, before imulq $16, %rax, %rax.  On aarch64 the add
+   shifts each index, and the member is the access's displacement: at 16
+   bytes an int by the extended operand, ldr w1, [x29, #24]; add x0, x0,
+   w1, sxtw #4; ldr w0, [x0, #8], a long whole, add x1, x2, x1, lsl #4;
+   ldr w1, [x1, #12], and the unsigned call's result add x1, x1, w0,
+   uxtw #4, whose upper half the convention leaves undefined; above 16
+   the index whole, extended by its load, ldrsw x1, [x29, #24]; add x0,
+   x0, x1, lsl #5 and lsl #12, then [x0, #24] and [x1, #28], [x0, #4088]
+   and [x1, #4092]. */
+struct r16
+{
+        long a;
+        int b, c;
+};
+
+struct r32
+{
+        long a[3];
+        int b, c;
+};
+
+struct page
+{
+        char pad[4088];
+        int b, c;
+};
+
+unsigned code(void);
+
+long
+sixteen(struct r16 *p, int i, long n)
+{
+        return p[i].b + n[p].c;
+}
+
+long
+sixteen_first(struct r16 *p, int i, long n)
+{
+        return i[p].b + p[n].c;
+}
+
+int
+sixteen_unsigned(struct r16 *p)
+{
+        return p[code()].b;
+}
+
+long
+thirty_two(struct r32 *p, int i, long n)
+{
+        return p[i].b + n[p].c;
+}
+
+long
+thirty_two_first(struct r32 *p, int i, long n)
+{
+        return i[p].b + p[n].c;
+}
+
+long
+page(struct page *p, int i, long n)
+{
+        return p[i].b + n[p].c;
+}
+
+long
+page_first(struct page *p, int i, long n)
+{
+        return i[p].b + p[n].c;
 }

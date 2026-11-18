@@ -696,14 +696,6 @@ stride(const type_t &pointer)
     return size_of(*as< pointer_t >(pointer).pointee);
 }
 
-// Whether a size is a scale of the machine's addressing form, 2.3: the
-// sizes of an access, which the form's index is shifted by.
-bool
-is_scale(long size)
-{
-    return size == 1 || size == 2 || size == 4 || size == 8;
-}
-
 // Whether a size is a power of two above 16, which the extended
 // operand of add and sub does not shift by and the shifted one does,
 // 2.3: an index of such a size is read whole, add x0, x0, x1, lsl #5.
@@ -1344,16 +1336,19 @@ row_reaches(const row_access_t &row, const named_offset_t *named, int size)
 
 // Whether a row's index is the access's register offset, 6.3: a row
 // with one, with no constant at all and nothing evaluated between the
-// address and the access, a product of no scale, or an index the
-// access's form scales, at a size of 1 or the access's own.  Not at a
-// power of two above 16, whose index the shifted operand of the add
-// scales, is_wide_scale(), and the access's form does not.
+// address and the access, a product of a size that is no power of two,
+// or an index the access's form scales, at a size of 1 or the access's
+// own.  Not an index of any other power of two, which the add shifts,
+// add x0, x0, w1, sxtw #4, and the access's form does not, nor one
+// above 16, is_wide_scale(), which only the shifted operand of the add
+// scales.
 bool
 offset_index(const row_access_t &row, int size, bool nothing_between)
 {
     return row.index && !row.slot && row.total == 0 && nothing_between &&
            !is_wide_scale(row.stride) &&
-           (!is_scale(row.stride) || row.stride == 1 || row.stride == size);
+           (!std::has_single_bit(static_cast< unsigned long >(row.stride)) ||
+            row.stride == 1 || row.stride == size);
 }
 
 // The access of size bytes at column into a row by a variable index, or
@@ -2326,23 +2321,25 @@ product_length(long long d)
 
 // The n of p + n, n + p and p - n, and of p += n and p -= n, generated
 // as the row takes it, 6.3.  A constant is its product with the size.
-// For a size of 1, 2, 4 or 8 any other n is the index of index_of(),
-// read by the shifted or extended operand of add and sub; for a power
-// of two above 16 it is generated whole, its extension by its load or
-// the cast's sxtw, and read by the shifted operand, ldrsw x1, [x29,
-// #24]; add x0, x0, x1, lsl #5 on records of 32 bytes; for any other
-// size it is generated whole and the row multiplies it by the size.
+// For a size that is a power of two any other n is shifted by the add:
+// up to 16, which the extended operand of add and sub shifts by 4 at
+// most, it is the index of index_of(), add x0, x0, w1, sxtw #2 on ints
+// and add x0, x0, w1, sxtw #4 on records of 16 bytes; above 16 it is
+// generated whole, its extension by its load or the cast's sxtw, and
+// read by the shifted operand, ldrsw x1, [x29, #24]; add x0, x0, x1,
+// lsl #5 on records of 32 bytes.  For any other size it is generated
+// whole and the row multiplies it by the size.
 right_t
 displacement(state_t &s, const expr_t &n, long size)
 {
     if (is< literal_t >(n))
         return product(s, scaled(as< literal_t >(n).value, size));
 
+    if (!std::has_single_bit(static_cast< unsigned long >(size)))
+        return { .value = rvalue(s, n), .width = 64, .factor = size };
+
     if (is_wide_scale(size))
         return { .value = rvalue(s, n), .width = 64, .shift = shift_of(size) };
-
-    if (!is_scale(size))
-        return { .value = rvalue(s, n), .width = 64, .factor = size };
 
     const auto index = index_of(s, n);
 

@@ -570,6 +570,193 @@ indexed_label_odd:
 	ret
 	.cfi_endproc
 	.size	indexed_label_odd, .-indexed_label_odd
+	.globl	sixteen
+	.type	sixteen, @function
+sixteen:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	%rdx, -24(%rbp)
+	movq	-8(%rbp), %rax
+	movslq	-12(%rbp), %rcx
+	imulq	$16, %rcx, %rcx
+	movl	8(%rax,%rcx,1), %eax
+	imulq	$16, -24(%rbp), %rcx
+	addq	-8(%rbp), %rcx
+	addl	12(%rcx), %eax
+	movslq	%eax, %rax
+	jmp	.Lsixteen.1
+.Lsixteen.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	sixteen, .-sixteen
+	.globl	sixteen_first
+	.type	sixteen_first, @function
+sixteen_first:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	%rdx, -24(%rbp)
+	movslq	-12(%rbp), %rax
+	imulq	$16, %rax, %rax
+	addq	-8(%rbp), %rax
+	movl	8(%rax), %eax
+	movq	-8(%rbp), %rcx
+	imulq	$16, -24(%rbp), %rdx
+	addl	12(%rcx,%rdx,1), %eax
+	movslq	%eax, %rax
+	jmp	.Lsixteen_first.1
+.Lsixteen_first.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	sixteen_first, .-sixteen_first
+	.globl	sixteen_unsigned
+	.type	sixteen_unsigned, @function
+sixteen_unsigned:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$16, %rsp
+	movq	%rdi, -8(%rbp)
+	movq	-8(%rbp), %rax
+	movq	%rax, -16(%rbp)
+	call	code@PLT
+	movl	%eax, %eax
+	movq	-16(%rbp), %rcx
+	imulq	$16, %rax, %rax
+	movl	8(%rcx,%rax,1), %eax
+	jmp	.Lsixteen_unsigned.1
+.Lsixteen_unsigned.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	sixteen_unsigned, .-sixteen_unsigned
+	.globl	thirty_two
+	.type	thirty_two, @function
+thirty_two:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	%rdx, -24(%rbp)
+	movq	-8(%rbp), %rax
+	movslq	-12(%rbp), %rcx
+	imulq	$32, %rcx, %rcx
+	movl	24(%rax,%rcx,1), %eax
+	imulq	$32, -24(%rbp), %rcx
+	addq	-8(%rbp), %rcx
+	addl	28(%rcx), %eax
+	movslq	%eax, %rax
+	jmp	.Lthirty_two.1
+.Lthirty_two.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	thirty_two, .-thirty_two
+	.globl	thirty_two_first
+	.type	thirty_two_first, @function
+thirty_two_first:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	%rdx, -24(%rbp)
+	movslq	-12(%rbp), %rax
+	imulq	$32, %rax, %rax
+	addq	-8(%rbp), %rax
+	movl	24(%rax), %eax
+	movq	-8(%rbp), %rcx
+	imulq	$32, -24(%rbp), %rdx
+	addl	28(%rcx,%rdx,1), %eax
+	movslq	%eax, %rax
+	jmp	.Lthirty_two_first.1
+.Lthirty_two_first.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	thirty_two_first, .-thirty_two_first
+	.globl	page
+	.type	page, @function
+page:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	%rdx, -24(%rbp)
+	movq	-8(%rbp), %rax
+	movslq	-12(%rbp), %rcx
+	imulq	$4096, %rcx, %rcx
+	movl	4088(%rax,%rcx,1), %eax
+	imulq	$4096, -24(%rbp), %rcx
+	addq	-8(%rbp), %rcx
+	addl	4092(%rcx), %eax
+	movslq	%eax, %rax
+	jmp	.Lpage.1
+.Lpage.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	page, .-page
+	.globl	page_first
+	.type	page_first, @function
+page_first:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	%rdx, -24(%rbp)
+	movslq	-12(%rbp), %rax
+	imulq	$4096, %rax, %rax
+	addq	-8(%rbp), %rax
+	movl	4088(%rax), %eax
+	movq	-8(%rbp), %rcx
+	imulq	$4096, -24(%rbp), %rdx
+	addl	4092(%rcx,%rdx,1), %eax
+	movslq	%eax, %rax
+	jmp	.Lpage_first.1
+.Lpage_first.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	page_first, .-page_first
 	.bss
 	.globl	g
 	.type	g, @object

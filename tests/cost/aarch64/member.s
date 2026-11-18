@@ -247,9 +247,7 @@ element_member:
 	str	x1, [x29, #24]
 	ldr	x0, [x29, #16]
 	ldr	x1, [x29, #24]
-	mov	x2, #16
-	mul	x1, x1, x2
-	add	x0, x0, x1
+	add	x0, x0, x1, lsl #4
 	ldr	w0, [x0, #68]
 	b	.Lelement_member.1
 .Lelement_member.1:
@@ -610,9 +608,7 @@ held_member:
 	str	w2, [x29, #32]
 	ldr	x0, [x29, #16]
 	ldr	x1, [x29, #24]
-	mov	x2, #16
-	mul	x1, x1, x2
-	add	x0, x0, x1
+	add	x0, x0, x1, lsl #4
 	str	x0, [x29, #40]
 	ldr	x0, [x29, #16]
 	ldr	x0, [x0, #136]
@@ -763,6 +759,245 @@ indexed_label_odd:
 	ret
 	.cfi_endproc
 	.size	indexed_label_odd, .-indexed_label_odd
+	.globl	sixteen
+	.type	sixteen, @function
+sixteen:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	str	x2, [x29, #32]
+	ldr	x0, [x29, #16]
+	ldr	w1, [x29, #24]
+	add	x0, x0, w1, sxtw #4
+	ldr	w0, [x0, #8]
+	ldr	x1, [x29, #32]
+	ldr	x2, [x29, #16]
+	add	x1, x2, x1, lsl #4
+	ldr	w1, [x1, #12]
+	add	w0, w0, w1
+	sxtw	x0, w0
+	b	.Lsixteen.1
+.Lsixteen.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	sixteen, .-sixteen
+	.globl	sixteen_first
+	.type	sixteen_first, @function
+sixteen_first:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	str	x2, [x29, #32]
+	ldr	w0, [x29, #24]
+	ldr	x1, [x29, #16]
+	add	x0, x1, w0, sxtw #4
+	ldr	w0, [x0, #8]
+	ldr	x1, [x29, #16]
+	ldr	x2, [x29, #32]
+	add	x1, x1, x2, lsl #4
+	ldr	w1, [x1, #12]
+	add	w0, w0, w1
+	sxtw	x0, w0
+	b	.Lsixteen_first.1
+.Lsixteen_first.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	sixteen_first, .-sixteen_first
+	.globl	sixteen_unsigned
+	.type	sixteen_unsigned, @function
+sixteen_unsigned:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	ldr	x0, [x29, #16]
+	str	x0, [x29, #24]
+	bl	code
+	ldr	x1, [x29, #24]
+	add	x1, x1, w0, uxtw #4
+	ldr	w0, [x1, #8]
+	b	.Lsixteen_unsigned.1
+.Lsixteen_unsigned.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	sixteen_unsigned, .-sixteen_unsigned
+	.globl	thirty_two
+	.type	thirty_two, @function
+thirty_two:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	str	x2, [x29, #32]
+	ldr	x0, [x29, #16]
+	ldrsw	x1, [x29, #24]
+	add	x0, x0, x1, lsl #5
+	ldr	w0, [x0, #24]
+	ldr	x1, [x29, #32]
+	ldr	x2, [x29, #16]
+	add	x1, x2, x1, lsl #5
+	ldr	w1, [x1, #28]
+	add	w0, w0, w1
+	sxtw	x0, w0
+	b	.Lthirty_two.1
+.Lthirty_two.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	thirty_two, .-thirty_two
+	.globl	thirty_two_first
+	.type	thirty_two_first, @function
+thirty_two_first:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	str	x2, [x29, #32]
+	ldrsw	x0, [x29, #24]
+	ldr	x1, [x29, #16]
+	add	x0, x1, x0, lsl #5
+	ldr	w0, [x0, #24]
+	ldr	x1, [x29, #16]
+	ldr	x2, [x29, #32]
+	add	x1, x1, x2, lsl #5
+	ldr	w1, [x1, #28]
+	add	w0, w0, w1
+	sxtw	x0, w0
+	b	.Lthirty_two_first.1
+.Lthirty_two_first.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	thirty_two_first, .-thirty_two_first
+	.globl	page
+	.type	page, @function
+page:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	str	x2, [x29, #32]
+	ldr	x0, [x29, #16]
+	ldrsw	x1, [x29, #24]
+	add	x0, x0, x1, lsl #12
+	ldr	w0, [x0, #4088]
+	ldr	x1, [x29, #32]
+	ldr	x2, [x29, #16]
+	add	x1, x2, x1, lsl #12
+	ldr	w1, [x1, #4092]
+	add	w0, w0, w1
+	sxtw	x0, w0
+	b	.Lpage.1
+.Lpage.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	page, .-page
+	.globl	page_first
+	.type	page_first, @function
+page_first:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	str	x2, [x29, #32]
+	ldrsw	x0, [x29, #24]
+	ldr	x1, [x29, #16]
+	add	x0, x1, x0, lsl #12
+	ldr	w0, [x0, #4088]
+	ldr	x1, [x29, #16]
+	ldr	x2, [x29, #32]
+	add	x1, x1, x2, lsl #12
+	ldr	w1, [x1, #4092]
+	add	w0, w0, w1
+	sxtw	x0, w0
+	b	.Lpage_first.1
+.Lpage_first.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	page_first, .-page_first
 	.bss
 	.globl	g
 	.type	g, @object
