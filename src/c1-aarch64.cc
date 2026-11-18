@@ -433,7 +433,8 @@ take(state_t &s, unsigned avoid)
     return static_cast< reg_t >(victim);
 }
 
-value_t rvalue(state_t &, const expr_t &, into_t * = nullptr);
+value_t
+rvalue(state_t &, const expr_t &, into_t * = nullptr, unsigned wanted = 0);
 void cbranch(state_t &, const expr_t &, int label, bool sense);
 void effect(state_t &, const expr_t &);
 
@@ -478,22 +479,70 @@ destination(state_t &s, value_t v, int valid, unsigned avoid = 0)
     return r;
 }
 
+// The register of wanted, the set of at most one expression register
+// that the consumer of v's value names, x0 for a return's (6.1), where
+// the instruction about to write v may write it: free, or v's own,
+// since the instruction reads every source before it writes, add w0,
+// w1, w0.  None for an empty set, for a register that holds another
+// live value, which the instruction does not read, and for the read of
+// a compound assignment's own variable, written in place.
+std::optional< reg_t >
+wanted_register(const state_t &s, value_t v, unsigned wanted)
+{
+    if (v.id >= 0 && v.id == s.in_place)
+        return std::nullopt;
+
+    for (const reg_t r : expression_registers)
+        if (wanted & bit(r))
+            return s.owner[r] < 0 || s.owner[r] == v.id ?
+                       std::optional< reg_t >(r) :
+                       std::nullopt;
+
+    return std::nullopt;
+}
+
+// The register a consumer names, r, as the destination of the
+// instruction about to write v, 6.1: v owns it from here on, valid to
+// valid, and the register v held is free, since the instruction has
+// read it.
+reg_t
+named_destination(state_t &s, value_t v, reg_t r, int valid)
+{
+    check_movable(s, v.id);
+
+    auto &h = s.values[v.id];
+    if (h.reg >= 0 && !h.variable)
+        s.owner[h.reg] = -1;
+
+    h.reg = r;
+    h.valid = valid;
+    h.variable = nullptr;
+    s.owner[r] = v.id;
+
+    return r;
+}
+
 // The register a row's last instruction writes, its result valid to
 // valid: the register of a variable handed down, into, where that
 // leaves the variable's representation, and v is then the variable's
-// read, chapter 4, add w19, w0, w1; otherwise destination()'s.  The
-// variable is written after the row has read every operand, so no
-// condition on them is needed.
+// read, chapter 4, add w19, w0, w1; the register the consumer names,
+// wanted, where the instruction may write it, add w0, w1, w0 for a
+// return's (6.1); otherwise destination()'s.  The register is written
+// after the row has read every operand, so no condition on them is
+// needed.
 reg_t
 final_destination(
-    state_t &s, value_t &v, int valid, into_t *into, unsigned avoid = 0)
+    state_t &s, value_t &v, int valid, into_t *into, unsigned wanted = 0)
 {
-    if (!takes(into, valid))
-        return destination(s, v, valid, avoid);
+    if (takes(into, valid)) {
+        v = taken(s, *into, v);
+        return variable_register(into->variable);
+    }
 
-    v = taken(s, *into, v);
+    if (const auto r = wanted_register(s, v, wanted))
+        return named_destination(s, v, *r, valid);
 
-    return variable_register(into->variable);
+    return destination(s, v, valid);
 }
 
 // Before a register variable is written, each of its reads still held
@@ -544,18 +593,23 @@ extension(const int_t &from, int to)
 // it is not valid to it already, the width rule: the instruction is
 // written on the value's own register, sxtw xL, wL.  A borrowed read is
 // extended into a fresh register, sxtw x0, w19, by destination(), 6.1,
-// and a register variable handed down by its cast is written by the
-// extension, sxtw x19, w0, chapter 4.
+// a register variable handed down by its cast is written by the
+// extension, sxtw x19, w0, chapter 4, and so is the register the
+// consumer names, wanted, sxtw x0, w1 for a return's (6.1).
 value_t
-extended(
-    state_t &s, value_t v, const int_t &from, int to, into_t *into = nullptr)
+extended(state_t &s,
+         value_t v,
+         const int_t &from,
+         int to,
+         into_t *into = nullptr,
+         unsigned wanted = 0)
 {
     if (s.values[v.id].valid >= to)
         return v;
 
     const auto [mnemonic, valid] = extension(from, std::max(32, to));
     const reg_t source = reg_of(s, v);
-    const reg_t r = final_destination(s, v, valid, into);
+    const reg_t r = final_destination(s, v, valid, into, wanted);
     const int width = from.is_signed ? valid : 32;
 
     insn(s, mnemonic, { reg(r, width), reg(source, 32) });
@@ -1187,9 +1241,14 @@ address(state_t &s, const expr_t &e, const expr_t *between = nullptr)
 // m.  A global's address is the row of chapter 10, PC-relative or from
 // the GOT.  Anything else is a slot or a string literal, whose address
 // address_of() forms.  A register variable handed down goes to the row
-// that forms the address, chapter 4.
+// that forms the address, chapter 4, and so does the register the
+// consumer names, wanted, to the row of p + n for &p[i], add x0, x1, w0,
+// sxtw #2 for a return's (6.1).
 value_t
-address_value(state_t &s, const expr_t &e, into_t *into = nullptr)
+address_value(state_t &s,
+              const expr_t &e,
+              into_t *into = nullptr,
+              unsigned wanted = 0)
 {
     if (const auto *g = global_of(e))
         return symbol_address(s, *g, into);
@@ -1199,22 +1258,26 @@ address_value(state_t &s, const expr_t &e, into_t *into = nullptr)
 
     const auto &p = *as< unary_t >(e).arg;
     if (const auto *base = bare_base(p))
-        return rvalue(s, *base, into);
+        return rvalue(s, *base, into, wanted);
 
-    return rvalue(s, p, into);
+    return rvalue(s, p, into, wanted);
 }
 
 // A function designator decayed to a pointer, 6.3.2.1p4: a function's
 // name is its address, and *p through a pointer to a function is p's
 // value, the * written as no instruction.  A register variable handed
-// down goes to the row of either (chapter 4).
+// down goes to the row of either (chapter 4), and the register the
+// consumer names, wanted, to p's (6.1).
 value_t
-function_pointer(state_t &s, const expr_t &designator, into_t *into = nullptr)
+function_pointer(state_t &s,
+                 const expr_t &designator,
+                 into_t *into = nullptr,
+                 unsigned wanted = 0)
 {
     if (is< name_t >(designator))
         return symbol_address(s, *as< name_t >(designator).sym, into);
 
-    return rvalue(s, *as< unary_t >(designator).arg, into);
+    return rvalue(s, *as< unary_t >(designator).arg, into, wanted);
 }
 
 // The load row, 6.3.2.1p2: the value at an address into a register at
@@ -1577,14 +1640,19 @@ right_operand(state_t &s, binary_op_t op, const expr_t &rhs, int width)
 // register variable too, sdiv w0, w19, w20; msub w0, w0, w20, w19.  In
 // place the destination is L: sdiv w0, w19, w20; msub w19, w0, w20,
 // w19.  A register variable handed down is the last instruction's
-// destination, msub w19, w2, w1, w0, as in every row (chapter 4).
+// destination, msub w19, w2, w1, w0, as in every row (chapter 4), and
+// so is the register the consumer names, wanted, msub w0, w2, w0, w1
+// for a return's (6.1): the sdiv writes N alone, taken outside L and R,
+// so it overwrites no source of the msub, and the msub reads N, R and L
+// before it writes.
 value_t
 divide(state_t &s,
        binary_op_t op,
        value_t l,
        value_t r,
        const int_t &t,
-       into_t *into = nullptr)
+       into_t *into = nullptr,
+       unsigned wanted = 0)
 {
     const int width = t.width;
     const int valid = written(width, t.is_signed);
@@ -1597,7 +1665,8 @@ divide(state_t &s,
     if (op == binary_op_t::div) {
         release(s, r);
 
-        const auto result = reg(final_destination(s, l, valid, into), width);
+        const auto result =
+            reg(final_destination(s, l, valid, into, wanted), width);
         insn(s, mnemonic, { result, left, right });
     }
     else {
@@ -1608,7 +1677,8 @@ divide(state_t &s,
 
         release(s, r);
 
-        const auto result = reg(final_destination(s, l, valid, into), width);
+        const auto result =
+            reg(final_destination(s, l, valid, into, wanted), width);
         insn(s, "msub", { result, quotient, right, left });
     }
 
@@ -1631,7 +1701,8 @@ shift(state_t &s,
       value_t l,
       const right_t &r,
       const int_t &t,
-      into_t *into = nullptr)
+      into_t *into = nullptr,
+      unsigned wanted = 0)
 {
     const int width = t.width;
     const int valid = written(width, t.is_signed);
@@ -1639,7 +1710,8 @@ shift(state_t &s,
 
     if (!r.immediate.empty()) {
         const auto left = reg(reg_of(s, l), width);
-        const auto to = reg(final_destination(s, l, valid, into), width);
+        const auto to =
+            reg(final_destination(s, l, valid, into, wanted), width);
         insn(s, mnemonic, { to, left, r.immediate });
         return l;
     }
@@ -1647,7 +1719,7 @@ shift(state_t &s,
     const auto [l_reg, r_reg] = operands(s, l, r.value);
     release(s, r.value);
 
-    const auto to = reg(final_destination(s, l, valid, into), width);
+    const auto to = reg(final_destination(s, l, valid, into, wanted), width);
     insn(s, mnemonic, { to, reg(l_reg, width), reg(r_reg, width) });
 
     return l;
@@ -1659,31 +1731,34 @@ shift(state_t &s,
 // writes into a fresh register, op N, L, R, by destination(), unless it
 // is the variable a compound assignment writes in place, add w19, w19,
 // w0; as R it is the operand as it is.  A register variable handed down
-// is the destination, add w19, w0, w1 (chapter 4).  G1: add, sub, mul
-// and lsl wrap; mul is the same instruction for unsigned, the low bits
-// agree.
+// is the destination, add w19, w0, w1 (chapter 4), and so is the
+// register the consumer names, wanted, add w0, w1, w0 for a return's
+// (6.1).  G1: add, sub, mul and lsl wrap; mul is the same instruction
+// for unsigned, the low bits agree.
 value_t
 arithmetic(state_t &s,
            binary_op_t op,
            value_t l,
            const right_t &r,
            const type_t &t,
-           into_t *into = nullptr)
+           into_t *into = nullptr,
+           unsigned wanted = 0)
 {
     const int width = operation_width(t);
     const int valid = written(width, integer(t).is_signed);
 
     if (op == binary_op_t::div || op == binary_op_t::rem)
-        return divide(s, op, l, r.value, integer(t), into);
+        return divide(s, op, l, r.value, integer(t), into, wanted);
 
     if (is_shift(op))
-        return shift(s, op, l, r, integer(t), into);
+        return shift(s, op, l, r, integer(t), into, wanted);
 
     const auto mnemonic = arithmetic_mnemonic(op);
 
     if (!r.immediate.empty()) {
         const auto left = reg(reg_of(s, l), width);
-        const auto to = reg(final_destination(s, l, valid, into), width);
+        const auto to =
+            reg(final_destination(s, l, valid, into, wanted), width);
         insn(s, mnemonic, { to, left, r.immediate });
         return l;
     }
@@ -1691,7 +1766,7 @@ arithmetic(state_t &s,
     const auto [l_reg, r_reg] = operands(s, l, r.value);
     release(s, r.value);
 
-    const auto to = reg(final_destination(s, l, valid, into), width);
+    const auto to = reg(final_destination(s, l, valid, into, wanted), width);
     insn(s, mnemonic, { to, reg(l_reg, width), reg(r_reg, width) });
 
     return l;
@@ -1751,20 +1826,23 @@ displacement(state_t &s, const expr_t &n, long size)
 // += n writes the pointer in place, add x19, x19, w0, sxtw #2, and the
 // product of a factor, which is n's, never lands in it.  A register
 // variable handed down is the last add's or sub's destination, add x19,
-// x0, w1, sxtw #2 (chapter 4).
+// x0, w1, sxtw #2 (chapter 4), and so is the register the consumer
+// names, wanted, add x0, x1, w0, sxtw #2 for a return's (6.1).
 value_t
 offset(state_t &s,
        binary_op_t op,
        value_t pointer,
        const right_t &n,
        bool pointer_first,
-       into_t *into = nullptr)
+       into_t *into = nullptr,
+       unsigned wanted = 0)
 {
     const auto mnemonic = op == binary_op_t::add ? "add" : "sub";
 
     if (!n.immediate.empty()) {
         const auto from = reg(reg_of(s, pointer), 64);
-        const auto to = reg(final_destination(s, pointer, 64, into), 64);
+        const auto to =
+            reg(final_destination(s, pointer, 64, into, wanted), 64);
         insn(s, mnemonic, { to, from, n.immediate });
         return pointer;
     }
@@ -1789,7 +1867,7 @@ offset(state_t &s,
     auto result = pointer_first ? pointer : n.value;
     release(s, pointer_first ? n.value : pointer);
 
-    const auto to = reg(final_destination(s, result, 64, into), 64);
+    const auto to = reg(final_destination(s, result, 64, into, wanted), 64);
 
     if (pointer_first)
         insn(s, mnemonic, { to, reg(p, 64), index });
@@ -1810,9 +1888,13 @@ offset(state_t &s,
 // and the one add of its displacement, add x0, x0, #20 for &p[1][2] on
 // int (*p)[3]; a displacement of 0 is the base and no instruction, as
 // &*p is p.  A register variable handed down goes to the row that
-// writes the sum, chapter 4.
+// writes the sum, chapter 4, and so does the register the consumer
+// names, wanted (6.1).
 value_t
-pointer_arithmetic(state_t &s, const expr_t &e, into_t *into = nullptr)
+pointer_arithmetic(state_t &s,
+                   const expr_t &e,
+                   into_t *into = nullptr,
+                   unsigned wanted = 0)
 {
     if (const auto a = folded(s, e))
         return address_of(s, *a, into);
@@ -1822,7 +1904,8 @@ pointer_arithmetic(state_t &s, const expr_t &e, into_t *into = nullptr)
             return a->base;
 
         return offset(s, binary_op_t::add, a->base,
-                      { .immediate = imm(a->displacement) }, true, into);
+                      { .immediate = imm(a->displacement) }, true, into,
+                      wanted);
     }
 
     const auto &b = as< binary_t >(e);
@@ -1830,13 +1913,14 @@ pointer_arithmetic(state_t &s, const expr_t &e, into_t *into = nullptr)
 
     if (is< pointer_t >(b.lhs->type)) {
         const auto l = rvalue(s, *b.lhs);
-        return offset(s, b.op, l, displacement(s, *b.rhs, size), true, into);
+        return offset(s, b.op, l, displacement(s, *b.rhs, size), true, into,
+                      wanted);
     }
 
     const auto n = displacement(s, *b.lhs, size);
     const auto p = rvalue(s, *b.rhs);
 
-    return offset(s, b.op, p, n, false, into);
+    return offset(s, b.op, p, n, false, into, wanted);
 }
 
 // p - q, 6.5.7p10: the difference of the addresses divided by the size,
@@ -1844,9 +1928,13 @@ pointer_arithmetic(state_t &s, const expr_t &e, into_t *into = nullptr)
 // R, the size held, since sdiv takes no immediate; never a shift, since
 // the two pointers are any two addresses.  A size of 1 is the sub
 // alone.  A register variable handed down is the last instruction's
-// destination, the sub's or the sdiv's (chapter 4).
+// destination, the sub's or the sdiv's (chapter 4), and so is the
+// register the consumer names, wanted (6.1).
 value_t
-difference(state_t &s, const binary_t &b, into_t *into = nullptr)
+difference(state_t &s,
+           const binary_t &b,
+           into_t *into = nullptr,
+           unsigned wanted = 0)
 {
     const long size = stride(b.lhs->type);
 
@@ -1855,17 +1943,19 @@ difference(state_t &s, const binary_t &b, into_t *into = nullptr)
     const auto [left, right] = operands(s, l, r);
     release(s, r);
 
-    const auto to =
-        reg(final_destination(s, l, 64, size == 1 ? into : nullptr), 64);
+    const bool last = size == 1;
+    const auto to = reg(
+        final_destination(s, l, 64, last ? into : nullptr, last ? wanted : 0),
+        64);
     insn(s, "sub", { to, reg(left, 64), reg(right, 64) });
 
-    if (size == 1)
+    if (last)
         return l;
 
     const auto d = fresh(s, 64);
     constant(s, reg_of(s, d), size, 64);
 
-    return divide(s, binary_op_t::div, l, d, int_t { 64, true }, into);
+    return divide(s, binary_op_t::div, l, d, int_t { 64, true }, into, wanted);
 }
 
 // The condition of a comparison, the suffix of b.cc and the operand of
@@ -1947,15 +2037,20 @@ jump_if(state_t &s, binary_op_t op, bool is_signed, int label)
 // (long) (a < b) writes nothing after it.  A borrowed read as L is only
 // read by the cmp, and the cset takes a fresh register, by
 // destination(); a register variable handed down is the cset's, cset
-// w19, lt, an int's, a long's and an unsigned long's (chapter 4).
+// w19, lt, an int's, a long's and an unsigned long's (chapter 4), and
+// so is the register the consumer names, wanted, cset w0, lt for a
+// return's (6.1).
 value_t
-comparison(state_t &s, const operation_t &b, into_t *into = nullptr)
+comparison(state_t &s,
+           const operation_t &b,
+           into_t *into = nullptr,
+           unsigned wanted = 0)
 {
     const bool is_signed = integer(b.lhs->type).is_signed;
 
     auto l = compare(s, b);
     insn(s, "cset",
-         { reg(final_destination(s, l, truth_valid, into), 32),
+         { reg(final_destination(s, l, truth_valid, into, wanted), 32),
            condition(b.op, is_signed) });
 
     return l;
@@ -2115,10 +2210,10 @@ joins_into(const expr_t &e, const into_t *into)
 }
 
 // 6.5.16p5: the arm not chosen is not evaluated, and the jump says so;
-// never csel.  The arms join in one expression register: named, the one
-// the conditional's consumer names, where it names one, a return's x0
-// (6.1), and otherwise the first arm's, a borrowed read as the first arm
-// copied into one, mov w0, w19, chapter 4.  Each arm's value is moved
+// never csel.  The arms join in one expression register: the one the
+// conditional's consumer names, wanted, where it names one, a return's
+// x0 (6.1), and otherwise the first arm's, a borrowed read as the first
+// arm copied into one, mov w0, w19, chapter 4.  Each arm's value is moved
 // into the join where it is elsewhere, by mov at the operation's width,
 // backend.md 7.2: return c ? p[i]++ : 0 is the first arm's mov w0, w2
 // and the second arm's mov w0, #0, and no move after the join.  No row
@@ -2136,7 +2231,7 @@ value_t
 conditional(state_t &s,
             const expr_t &e,
             into_t *into = nullptr,
-            std::optional< reg_t > named = std::nullopt)
+            unsigned wanted = 0)
 {
     const auto &c = as< conditional_t >(e);
     const auto &t = e.type;
@@ -2156,6 +2251,7 @@ conditional(state_t &s,
     const int width = std::max(32, integer(t).width);
 
     const bool is_signed = integer(t).is_signed;
+    const auto named = wanted_register(s, { }, wanted);
 
     const bool joins = joins_into(e, into);
     into_t path { joins ? into->variable : nullptr, false,
@@ -2203,8 +2299,13 @@ conditional(state_t &s,
     return hold(s, join, std::min(valid, other_valid));
 }
 
+// A binary operator's row.  The register the consumer of its value
+// names, wanted, goes to the row's last instruction, which writes it
+// where it is free, add w0, w1, w0 after a right operand that took x0;
+// the operands are generated as for any consumer, since the instruction
+// names its destination apart from its sources (6.1).
 value_t
-binary(state_t &s, const expr_t &e, into_t *into = nullptr)
+binary(state_t &s, const expr_t &e, into_t *into = nullptr, unsigned wanted = 0)
 {
     const auto &b = as< binary_t >(e);
 
@@ -2215,19 +2316,19 @@ binary(state_t &s, const expr_t &e, into_t *into = nullptr)
     // the effect context of chapter 6.6
     case binary_op_t::comma: {
         effect(s, *b.lhs);
-        return rvalue(s, *b.rhs, into);
+        return rvalue(s, *b.rhs, into, wanted);
     }
     default: break;
     }
 
     if (is_comparison(b.op))
-        return comparison(s, ordered(b), into);
+        return comparison(s, ordered(b), into, wanted);
 
     if (is< pointer_t >(e.type))
-        return pointer_arithmetic(s, e, into);
+        return pointer_arithmetic(s, e, into, wanted);
 
     if (is< pointer_t >(b.lhs->type))
-        return difference(s, b, into);
+        return difference(s, b, into, wanted);
 
     // G13: the left operand first, held while the right one is
     // generated; a constant on the left of an operator that commutes is
@@ -2236,7 +2337,7 @@ binary(state_t &s, const expr_t &e, into_t *into = nullptr)
     const auto l = rvalue(s, *o.lhs);
     const auto r = right_operand(s, o.op, *o.rhs, operation_width(e.type));
 
-    return arithmetic(s, o.op, l, r, e.type, into);
+    return arithmetic(s, o.op, l, r, e.type, into, wanted);
 }
 
 // ++ and -- of a register variable, chapter 4: add or sub of 1, or of
@@ -2357,9 +2458,15 @@ step(state_t &s, unary_op_t op, const expr_t &arg, into_t *into = nullptr)
 // The rows of the unary operators.  A register variable handed down is
 // the destination of the row's last instruction, neg w19, w0, cset
 // w19, eq, ldr w19, [x0] (chapter 4); a step writes its value before
-// its store, and keeps it in L.
+// its store, and keeps it in L.  The register the consumer names,
+// wanted, is the destination of neg, mvn and the cset of !, neg w0, w1
+// for a return's (6.1).
 value_t
-unary(state_t &s, const unary_t &u, const type_t &t, into_t *into = nullptr)
+unary(state_t &s,
+      const unary_t &u,
+      const type_t &t,
+      into_t *into = nullptr,
+      unsigned wanted = 0)
 {
     switch (u.op) {
     // G1: neg of INT_MIN is INT_MIN.  A borrowed read writes into a
@@ -2372,7 +2479,8 @@ unary(state_t &s, const unary_t &u, const type_t &t, into_t *into = nullptr)
         auto v = rvalue(s, *u.arg);
         const auto left = reg(reg_of(s, v), width);
         const auto to =
-            reg(final_destination(s, v, written(width, type.is_signed), into),
+            reg(final_destination(s, v, written(width, type.is_signed), into,
+                                  wanted),
                 width);
         insn(s, u.op == unary_op_t::neg ? "neg" : "mvn", { to, left });
 
@@ -2388,7 +2496,8 @@ unary(state_t &s, const unary_t &u, const type_t &t, into_t *into = nullptr)
         test_zero(s, v, integer(u.arg->type), std::nullopt);
 
         insn(s, "cset",
-             { reg(final_destination(s, v, truth_valid, into), 32), "eq" });
+             { reg(final_destination(s, v, truth_valid, into, wanted), 32),
+               "eq" });
 
         return v;
     }
@@ -2398,7 +2507,7 @@ unary(state_t &s, const unary_t &u, const type_t &t, into_t *into = nullptr)
     case unary_op_t::post_inc:
     case unary_op_t::post_dec: return step(s, u.op, *u.arg, into);
 
-    case unary_op_t::addr: return address_value(s, *u.arg, into);
+    case unary_op_t::addr: return address_value(s, *u.arg, into, wanted);
 
     // the load row from [L], at the object's width and extension
     case unary_op_t::deref: {
@@ -2504,9 +2613,13 @@ assign_register(state_t &s, const assign_t &a, const symbol_t *sym)
 // 6.5.17.3p4: "with respect to an indeterminately sequenced function
 // call, the operation of a compound assignment is a single evaluation."
 // p += n and p -= n are the row of p + n, n its right operand.  An
-// assignment to a register variable is assign_register()'s.
+// assignment to a register variable is assign_register()'s.  The
+// register the consumer of the value names, wanted, goes to the right
+// operand of a plain one, whose last instruction writes it where the
+// place holds no value in it, ldr x1, [x29, #24]; add w0, w1, w0; str
+// w0, [x29, #20] for return x = a + f(a) (6.1).
 value_t
-assign(state_t &s, const assign_t &a)
+assign(state_t &s, const assign_t &a, unsigned wanted = 0)
 {
     const auto &t = integer(a.lhs->type);
     const bool stepped = a.op && is< pointer_t >(a.lhs->type);
@@ -2523,7 +2636,7 @@ assign(state_t &s, const assign_t &a)
     const auto place = address(s, *a.lhs, a.rhs.get());
 
     if (!a.op) {
-        const auto v = rvalue(s, *a.rhs);
+        const auto v = rvalue(s, *a.rhs, nullptr, wanted);
         store(s, v, place, t.width);
         release(s, place);
         return v;
@@ -2588,7 +2701,9 @@ extending_load(state_t &s,
 // and to the extension when the operand's row did not take it: the last
 // instruction written for the conversion writes the register, ldrsb
 // w19, [x29, #16] for register int x = c, sxtw x19, w0 for register long
-// y = a + b (chapter 4).
+// y = a + b (chapter 4).  The register the consumer of the value names,
+// wanted, goes on to the operand and to the extension, sxtw x0, w1 for
+// a return's (6.1).
 // The operand of a conversion that retypes(), into the variable's
 // register, chapter 4.  An object in memory, under casts that keep its
 // bits, is loaded at the extension of the conversion's type, ldr w19,
@@ -2620,7 +2735,11 @@ retyped(state_t &s, const cast_t &c, const int_t &target, into_t &into)
 }
 
 value_t
-cast(state_t &s, const cast_t &c, const type_t &to, into_t *into = nullptr)
+cast(state_t &s,
+     const cast_t &c,
+     const type_t &to,
+     into_t *into = nullptr,
+     unsigned wanted = 0)
 {
     if (is< void_t >(to)) {
         effect(s, *c.arg);
@@ -2630,10 +2749,11 @@ cast(state_t &s, const cast_t &c, const type_t &to, into_t *into = nullptr)
     const auto &target = integer(to);
 
     if (is< array_t >(c.arg->type))
-        return address_value(s, *c.arg, through(into, target, false));
+        return address_value(s, *c.arg, through(into, target, false), wanted);
 
     if (is< function_t >(c.arg->type))
-        return function_pointer(s, *c.arg, through(into, target, false));
+        return function_pointer(s, *c.arg, through(into, target, false),
+                                wanted);
 
     if (retypes(c, to, into))
         return retyped(s, c, target, *into);
@@ -2647,9 +2767,9 @@ cast(state_t &s, const cast_t &c, const type_t &to, into_t *into = nullptr)
     const int width = from.is_signed ? target.width : 32;
 
     auto v = loads ? extending_load(s, *object, from, width, onward) :
-                     rvalue(s, *c.arg, onward);
+                     rvalue(s, *c.arg, onward, wanted);
     if (widens)
-        v = extended(s, v, from, target.width, onward);
+        v = extended(s, v, from, target.width, onward, wanted);
 
     auto &valid = s.values[v.id].valid;
     valid = std::min(valid, target.width);
@@ -2800,9 +2920,17 @@ call(state_t &s, const call_t &c, const type_t &t)
 // goes to the row at the top of e, whose last instruction writes the
 // variable's register where it can (chapter 4); a read of a register
 // variable is no row, and a call's result, the arms of && and ?: and
-// an assignment keep their own register.
+// an assignment keep their own register.  wanted is the register the
+// consumer of e's value names, x0 for a return's, as a set of one, or
+// none (6.1): unary(), binary(), assign() and cast() hand it to the
+// row's last instruction, and a row that writes a fresh register takes
+// it as the lowest free one.  A conditional is not handed it here: no
+// row of an arm takes the name, so under a cast that widens, an arm
+// moved into a join in x0 would cost the move the extension after the
+// join saves; rvalue_in() hands it a conditional at the top of the
+// value.
 value_t
-rvalue(state_t &s, const expr_t &e, into_t *into)
+rvalue(state_t &s, const expr_t &e, into_t *into, unsigned wanted)
 {
     if (is< array_t >(e.type))
         throw std::logic_error("c1: an array as a value");
@@ -2819,35 +2947,35 @@ rvalue(state_t &s, const expr_t &e, into_t *into)
     }
 
     if (is< unary_t >(e))
-        return unary(s, as< unary_t >(e), e.type, into);
+        return unary(s, as< unary_t >(e), e.type, into, wanted);
 
     if (is< binary_t >(e))
-        return binary(s, e, into);
+        return binary(s, e, into, wanted);
 
     if (is< assign_t >(e))
-        return assign(s, as< assign_t >(e));
+        return assign(s, as< assign_t >(e), wanted);
 
     if (is< call_t >(e))
         return call(s, as< call_t >(e), e.type);
 
     if (is< cast_t >(e))
-        return cast(s, as< cast_t >(e), e.type, into);
+        return cast(s, as< cast_t >(e), e.type, into, wanted);
 
     return conditional(s, e, into);
 }
 
 // The value of e for a consumer that names the register r, a return's
-// for x0 (backend.md 6.1): a conditional at the top of e joins its arms
-// in r, and otherwise the value is rvalue()'s, since no other row takes
-// the name on aarch64, and the consumer moves it where it is elsewhere
+// for x0 (backend.md 6.1): e's rows compute it in r where the last
+// instruction can write it, a conditional at the top of e joins its
+// arms in r, and the consumer moves the value where it is elsewhere
 // (aarch64.md 6.1).
 value_t
 rvalue_in(state_t &s, const expr_t &e, reg_t r)
 {
     if (is< conditional_t >(e))
-        return conditional(s, e, nullptr, r);
+        return conditional(s, e, nullptr, bit(r));
 
-    return rvalue(s, e);
+    return rvalue(s, e, nullptr, bit(r));
 }
 
 // Jump code, chapter 7.1: a jump to label when e is true (sense) or

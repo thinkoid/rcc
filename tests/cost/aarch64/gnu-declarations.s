@@ -35,8 +35,7 @@ use:
 	ldr	x1, [x29, #80]
 	bl	add
 	ldr	x1, [x29, #64]
-	add	w1, w1, w0
-	mov	w0, w1
+	add	w0, w1, w0
 	b	.Luse.1
 .Luse.1:
 	.cfi_def_cfa wsp, 96

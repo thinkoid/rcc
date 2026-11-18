@@ -173,8 +173,7 @@ remainder_call:
 	ldr	w0, [x0, w1, sxtw #2]
 	ldr	x1, [x29, #24]
 	sdiv	w2, w1, w0
-	msub	w1, w2, w0, w1
-	mov	w0, w1
+	msub	w0, w2, w0, w1
 	b	.Lremainder_call.1
 .Lremainder_call.1:
 	.cfi_def_cfa wsp, 32

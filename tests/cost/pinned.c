@@ -42,8 +42,8 @@
    w3 in shifted and shifted_through, sdiv w3, w3, w2 in
    divided_in_place and lsl w3, w3, w2 in shifted_in_place, each
    between the element's load and its store, sdiv and msub on the
-   reloaded x in remainder_call and its result moved into w0, mov w0,
-   w1, sdiv w1, w1, w2 in less and subscript. */
+   reloaded x in remainder_call, the msub writing w0, msub w0, w2, w0,
+   w1, and sdiv w1, w1, w2 in less and subscript. */
 int a[8];
 
 int *f(void);

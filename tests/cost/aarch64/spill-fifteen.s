@@ -55,8 +55,7 @@ spill_fifteen:
 	ldr	x0, [x29, #56]
 	sub	w0, w0, w2
 	ldr	x1, [x29, #48]
-	sub	w1, w1, w0
-	mov	w0, w1
+	sub	w0, w1, w0
 	b	.Lspill_fifteen.1
 .Lspill_fifteen.1:
 	.cfi_def_cfa wsp, 64

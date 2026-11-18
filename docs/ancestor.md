@@ -1982,8 +1982,11 @@ operand out of `rax` instead. The return keeps its `mov` for a
 remainder, for a node whose right operand or place holds a call or a
 division, and for a right operand that writes the variable whose
 read is the left operand. aarch64 names its destination apart from
-its sources and takes the rule for a returned `?:` alone, whose arms
-join in `x0` (`aarch64.md` 6.1).
+its sources, so the value's last instruction writes `x0` with a
+source of it there, `ldr x1, [x29, #24]; add w0, w1, w0` for `return
+x + (c ? 1 : 2)`; the return keeps its `mov` for a register
+variable's value, for a compound assignment's and where the place of
+an assignment or of a step holds `x0` (`aarch64.md` 6.1).
 
 ### 7.5 What it buys and what it costs
 

@@ -47,8 +47,7 @@ sum:
 	ldr	w0, [x29, #24]
 	bl	f
 	ldr	x1, [x29, #32]
-	add	w1, w1, w0
-	mov	w0, w1
+	add	w0, w1, w0
 	b	.Lsum.1
 .Lsum.1:
 	.cfi_def_cfa wsp, 48

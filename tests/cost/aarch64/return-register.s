@@ -86,8 +86,7 @@ reloaded:
 	mov	w0, #2
 .Lreloaded.3:
 	ldr	x1, [x29, #24]
-	add	w1, w1, w0
-	mov	w0, w1
+	add	w0, w1, w0
 	b	.Lreloaded.1
 .Lreloaded.1:
 	.cfi_def_cfa wsp, 32
@@ -441,4 +440,285 @@ written:
 	ret
 	.cfi_endproc
 	.size	written, .-written
+	.globl	remainder_reloaded
+	.type	remainder_reloaded, @function
+remainder_reloaded:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	str	w1, [x29, #20]
+	ldr	w0, [x29, #16]
+	str	x0, [x29, #24]
+	ldr	w0, [x29, #20]
+	cbz	w0, .Lremainder_reloaded.2
+	mov	w0, #3
+	b	.Lremainder_reloaded.3
+.Lremainder_reloaded.2:
+	mov	w0, #5
+.Lremainder_reloaded.3:
+	ldr	x1, [x29, #24]
+	sdiv	w2, w1, w0
+	msub	w0, w2, w0, w1
+	sxtw	x0, w0
+	b	.Lremainder_reloaded.1
+.Lremainder_reloaded.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	remainder_reloaded, .-remainder_reloaded
+	.globl	compared_reloaded
+	.type	compared_reloaded, @function
+compared_reloaded:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	str	w1, [x29, #20]
+	ldr	w0, [x29, #16]
+	str	x0, [x29, #24]
+	ldr	w0, [x29, #20]
+	cbz	w0, .Lcompared_reloaded.2
+	mov	w0, #1
+	b	.Lcompared_reloaded.3
+.Lcompared_reloaded.2:
+	mov	w0, #2
+.Lcompared_reloaded.3:
+	ldr	x1, [x29, #24]
+	cmp	w1, w0
+	cset	w0, lt
+	b	.Lcompared_reloaded.1
+.Lcompared_reloaded.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	compared_reloaded, .-compared_reloaded
+	.globl	negated_reloaded
+	.type	negated_reloaded, @function
+negated_reloaded:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	str	w1, [x29, #20]
+	ldr	w0, [x29, #16]
+	str	x0, [x29, #24]
+	ldr	w0, [x29, #20]
+	cbz	w0, .Lnegated_reloaded.2
+	mov	w0, #1
+	b	.Lnegated_reloaded.3
+.Lnegated_reloaded.2:
+	mov	w0, #2
+.Lnegated_reloaded.3:
+	ldr	x1, [x29, #24]
+	add	w1, w1, w0
+	neg	w0, w1
+	b	.Lnegated_reloaded.1
+.Lnegated_reloaded.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	negated_reloaded, .-negated_reloaded
+	.globl	difference_reloaded
+	.type	difference_reloaded, @function
+difference_reloaded:
+	.cfi_startproc
+	sub	sp, sp, #64
+	.cfi_def_cfa_offset 64
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -64
+	.cfi_offset w30, -56
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	x1, [x29, #24]
+	str	x2, [x29, #32]
+	str	w3, [x29, #40]
+	ldr	x0, [x29, #16]
+	str	x0, [x29, #48]
+	ldr	w0, [x29, #40]
+	cbz	w0, .Ldifference_reloaded.2
+	ldr	x0, [x29, #24]
+	b	.Ldifference_reloaded.3
+.Ldifference_reloaded.2:
+	ldr	x0, [x29, #32]
+.Ldifference_reloaded.3:
+	ldr	x1, [x29, #48]
+	sub	x1, x1, x0
+	mov	x0, #4
+	sdiv	x0, x1, x0
+	b	.Ldifference_reloaded.1
+.Ldifference_reloaded.1:
+	.cfi_def_cfa wsp, 64
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #64
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	difference_reloaded, .-difference_reloaded
+	.globl	indexed_reloaded
+	.type	indexed_reloaded, @function
+indexed_reloaded:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	str	w2, [x29, #28]
+	ldr	x0, [x29, #16]
+	str	x0, [x29, #32]
+	ldr	w0, [x29, #28]
+	cbz	w0, .Lindexed_reloaded.2
+	ldr	w0, [x29, #24]
+	b	.Lindexed_reloaded.3
+.Lindexed_reloaded.2:
+	mov	w0, #0
+.Lindexed_reloaded.3:
+	ldr	x1, [x29, #32]
+	add	x0, x1, w0, sxtw #2
+	b	.Lindexed_reloaded.1
+.Lindexed_reloaded.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	indexed_reloaded, .-indexed_reloaded
+	.globl	assigned_reloaded
+	.type	assigned_reloaded, @function
+assigned_reloaded:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	str	w1, [x29, #20]
+	ldr	w0, [x29, #16]
+	str	x0, [x29, #32]
+	ldr	w0, [x29, #20]
+	cbz	w0, .Lassigned_reloaded.2
+	mov	w0, #1
+	b	.Lassigned_reloaded.3
+.Lassigned_reloaded.2:
+	mov	w0, #2
+.Lassigned_reloaded.3:
+	ldr	x1, [x29, #32]
+	add	w0, w1, w0
+	str	w0, [x29, #24]
+	b	.Lassigned_reloaded.1
+.Lassigned_reloaded.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	assigned_reloaded, .-assigned_reloaded
+	.globl	stored_widened
+	.type	stored_widened, @function
+stored_widened:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	x1, [x29, #24]
+	ldr	x0, [x29, #16]
+	ldr	x1, [x29, #24]
+	str	w1, [x0]
+	mov	w0, w1
+	b	.Lstored_widened.1
+.Lstored_widened.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	stored_widened, .-stored_widened
+	.globl	stored_held
+	.type	stored_held, @function
+stored_held:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	str	w2, [x29, #28]
+	str	w3, [x29, #32]
+	ldr	x0, [x29, #16]
+	ldr	w1, [x29, #24]
+	ldr	w2, [x29, #28]
+	ldr	w3, [x29, #32]
+	sub	w2, w2, w3
+	str	w2, [x0, w1, sxtw #2]
+	mov	w0, w2
+	b	.Lstored_held.1
+.Lstored_held.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	stored_held, .-stored_held
 	.section	.note.GNU-stack,"",@progbits

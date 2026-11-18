@@ -1181,8 +1181,12 @@ PINNED_TYPES(REMAINDER)
    outside rax, rr_quot_.  rax free for the reload of a left operand
    spilled before a branch, rr_free_; held by a call's result where the
    left operand is reloaded, rr_held_; and pinned by a division within
-   the right operand, rr_deep_.  p points at the main's x at B + at,
-   and the main keeps a divisor from 0 and -1. */
+   the right operand, rr_deep_.  On aarch64 the last instruction writes
+   x0 where no other value holds it: a remainder by a call's result,
+   which the msub reads in x0 as it writes x0, rr_rem_; and the
+   assignment of a - b to an element, whose place holds x0 while the
+   sub is written, rr_kept_.  p points at the main's x at B + at, and
+   the main keeps a divisor from 0 and -1. */
 #define RETURNED(T, N)                                                  \
     long rr_ext_##N(T a, T b) { return a % b; }                         \
     long rr_cmp_##N(T a, T b, T d) { return a < b / d; }                \
@@ -1198,7 +1202,9 @@ PINNED_TYPES(REMAINDER)
     long rr_quot_##N(T a, T b, T d) { return (a + b / d) / d; }         \
     long rr_free_##N(T a, T b, int c) { return a - (c ? b : 2); }       \
     long rr_held_##N(T a, T b) { return a - mix1(b); }                  \
-    long rr_deep_##N(T a, T b, T d) { return a - (b / d + 1); }
+    long rr_deep_##N(T a, T b, T d) { return a - (b / d + 1); }         \
+    long rr_rem_##N(T a, T b) { return a % narrowed_##N(b); }           \
+    long rr_kept_##N(T *p, T a, T b, int i) { return p[i] = a - b; }
 
 PINNED_TYPES(RETURNED)
 

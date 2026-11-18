@@ -81,8 +81,7 @@ in_value:
 	ldrb	w1, [x29, #24]
 	add	w1, w1, w0
 	strb	w1, [x29, #24]
-	uxtb	w1, w1
-	mov	w0, w1
+	uxtb	w0, w1
 	b	.Lin_value.1
 .Lin_value.1:
 	.cfi_def_cfa wsp, 32

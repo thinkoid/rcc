@@ -102,8 +102,7 @@ count_extended:
 	bl	narrow
 	uxtb	w0, w0
 	ldr	x1, [x29, #24]
-	lsl	w1, w1, w0
-	mov	w0, w1
+	lsl	w0, w1, w0
 	b	.Lcount_extended.1
 .Lcount_extended.1:
 	.cfi_def_cfa wsp, 48
@@ -197,8 +196,7 @@ count_called:
 	ldr	w0, [x29, #32]
 	bl	wide
 	ldr	x1, [x29, #24]
-	lsl	w1, w1, w0
-	mov	w0, w1
+	lsl	w0, w1, w0
 	b	.Lcount_called.1
 .Lcount_called.1:
 	.cfi_def_cfa wsp, 48

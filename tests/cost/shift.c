@@ -26,7 +26,9 @@
    asr w0, w0, w1 or lsr w0, w0, w1 per function, and the count where
    its row leaves it: uxtb w0, w0 after bl narrow in count_extended()
    and count_compound(), w1 with add w2, w1, #1 in count_postfix(), w0
-   after bl wide in count_called(), and uxtb w4, w4 in count_held(). */
+   after bl wide in count_called(), and uxtb w4, w4 in count_held().
+   After a call a is reloaded into w1, and the shift writes w0, lsl
+   w0, w1, w0 in count_extended() and count_called(). */
 int shl(int a, int n)
 {
     return a << n;

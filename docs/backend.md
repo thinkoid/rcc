@@ -749,8 +749,10 @@ the value can write that register and no live value holds it. On
 x86-64 three consumers name one: a `register` variable names its own,
 the destination of the value assigned to it (chapter 4), a `return`
 names the result register, `rax` (7.2), and a shift names `rcx` for
-its count, read in `cl` by the instruction (6.5). Any other consumer
-takes the value where its row left it. The name goes down from the
+its count, read in `cl` by the instruction (6.5). On aarch64 two do,
+a register variable and a `return`, and `aarch64.md` 6.1 says how its
+rows take the name. Any other consumer takes the value where its row
+left it. The name goes down from the
 consumer to the instruction that last writes the value, through
 every row whose register is its operand's: an operation's left
 operand, a cast's operand, the operand of `-` and `~`, the comma's
@@ -2351,8 +2353,8 @@ answers:
     register variable's register, `v = 5 + (int) u` into a register
     `unsigned v` from an `unsigned u` in memory.
     `-`, `/`, `%` and the shifts do not commute and keep their order.
-19. **On x86-64 a `return`'s value is computed in the result
-    register** (6.1, 7.2): a value is computed in the register its
+19. **A `return`'s value is computed in the result register** (6.1,
+    7.2): a value is computed in the register its
     consumer names, the general form of call 16, whose consumer is a
     register variable, and a shift names `rcx` for its count, the
     extension of a call's `char` result written there, `movsbl %al,
@@ -2384,10 +2386,12 @@ answers:
     the join. rcc joins in the consumer's register instead, so that a
     second arm a pin puts there needs no move. aarch64 names its
     destination apart from its sources and has no copy to place; a
-    `return` names `x0` there, and the one row that takes the name is
-    a conditional's at the top of the returned value, whose arms join
-    in `x0` (`aarch64.md` 6.1). The cost is a second hand-down beside
-    the variable's and a boundary: a node whose right operand or place
+    `return` names `x0` there, and the value's last instruction writes
+    it with a source of it there, `add w0, w1, w0` after a left
+    operand's reload, nothing kept out of `x0` before it, where no
+    other value holds `x0` (`aarch64.md` 6.1 and chapter 15, call 13).
+    The cost is a second hand-down beside the variable's and, on
+    x86-64, a boundary: a node whose right operand or place
     holds a call or a division, a right operand that writes the
     borrowed read's variable, and a count that is a call's result or
     is generated while `rcx` holds a live value keep the `mov`, a

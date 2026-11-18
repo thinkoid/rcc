@@ -25,8 +25,7 @@ pick:
 	mov	w0, #2
 .Lpick.3:
 	ldr	x1, [x29, #32]
-	add	w1, w1, w0
-	mov	w0, w1
+	add	w0, w1, w0
 	b	.Lpick.1
 .Lpick.1:
 	.cfi_def_cfa wsp, 48
@@ -68,8 +67,7 @@ main:
 	ldr	w1, [x29, #36]
 	bl	pick
 	ldr	x1, [x29, #24]
-	add	w1, w1, w0
-	mov	w0, w1
+	add	w0, w1, w0
 	b	.Lmain.1
 .Lmain.1:
 	.cfi_def_cfa wsp, 48

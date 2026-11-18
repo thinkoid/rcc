@@ -39,30 +39,42 @@ generated, whether the operand's value is valid to the new width.
 
 Check: the count over =tests=, and no function longer.
 
-** TODO aarch64: a =return='s value is moved where an operand generated first took =x0=
+** TODO aarch64: a =return='s value is moved where its place holds =x0=
 
-A =return= names =x0=, and no row of the aarch64 generator takes the
-name (=aarch64.md= 6.1). Over =tests=, 2789 returns move their value
-into =x0= from another register. In 327 the value is a =register=
-variable's, and the move is the instruction. Of the rest, 1918 are an
-operation that wrote its left operand's register after the right
-operand took =x0=, =add w1, w1, w0; mov w0, w1=, where =add w0, w1,
-w0= writes =x0=; 380 are a stored value, and 164 a load or a postfix
-step's copy, where the address took =x0=.
+A =return= names =x0=, and the instruction that last writes the value
+writes it where no other value holds it (=aarch64.md= 6.1). Over
+=tests=, 883 returns still move their value into =x0= from another
+register. In 390 the value is a =register= variable's, and the move is
+the instruction. Of the rest, 231 are a stored value whose place took
+=x0=, =mov x0, x2= after ~return p[i] = x~; 161 the value of a compound
+assignment to a slot or a label, whose operation is not handed the
+name; 99 a postfix step's old value, the address having taken =x0=.
 
 A returned conditional joins its arms in =x0=, but no row of an arm
-takes the name: 7 second arms over =tests= are computed elsewhere and
-moved into the join, and a conditional under a cast gets no name, 2
-moves after a join.
+takes the name: 2 second arms are computed elsewhere and moved into
+the join, 2 first arms are a postfix step's old value, and a
+conditional under a cast gets no name, 2 moves after a join.
 
-Fix: the row's destination is =x0= where the consumer names it and it
-is free at the instruction; the three-address form needs no
-reservation for an operation, and the place of a store or a step is
-generated outside =x0=, as on x86-64. The name goes down through
-=rvalue()= and =cast()= to an arm's rows.
+Fix: the place of a store or a step is generated outside =x0=, as on
+x86-64, and a compound assignment's operation takes the name; an arm's
+rows take the name, and a cast hands it to a conditional.
 
 Check: that count before and after, and the listings over =tests=
 that change, none longer.
+
+** TODO x86-64: a pointer difference with a call moves its quotient out of =rax= and back
+
+~return p - h(q);~ on two ~int *~ writes =idivq %rsi; movq %rax,
+%rcx; movq %rcx, %rax=, two moves that cancel. The name of the
+=return= is withheld from the left operand because a call is in the
+right one, so =divide()= in =src/c1-x86-64.cc= moves the quotient
+into the left operand's register, and the =return= moves it back.
+
+Fix: =difference()= and =divide()= leave the quotient in =rax= where
+the consumer names =rax=, whether or not the name was withheld from
+the left operand.
+
+Check: a cost function ~p - h(q)~ with no =mov= after =idivq=.
 
 ** TODO x86-64: a right operand that writes the variable keeps the =return='s =mov=
 
@@ -163,6 +175,17 @@ first move into it on its own path.
 Check: =register-destination='s =chosen_widened= and
 =chosen_called=, and the count of moves after a join into a register
 variable over =tests=.
+
+** TODO =cast()= stands under no comment of its own in either generator
+
+In =src/c1-x86-64.cc= and =src/c1-aarch64.cc=, =retyped()= sits
+between =cast()='s comment and =cast()=: the two comments run
+together above =retyped()=, and =cast()= stands bare.
+
+Fix: =cast()='s comment moves down to =cast()=.
+
+Check: each of the two functions is under its own comment, in both
+files.
 
 ** TODO A refusal of c1 names no place
 
@@ -320,6 +343,20 @@ on.
 
 Check: every cell of those tables and lists is of a run made after
 the last change to its listing.
+
+** TODO The M1 Max's fib cell of chapter 4 predates its listing
+
+The M1 Max's table of =cost.md= chapter 4 was measured before a
+=return='s value was computed in =x0= on aarch64. That takes one
+instruction, =mov w0, w1=, out of the path of ~rcc fib.c~ that
+recurses, 24 instructions where the cell timed 25. =fib-tuned= and
+the other programs' timed loops are the same.
+
+Fix: =make bench= three times on the M1 Max, and the fib row and
+what is drawn from it taken again.
+
+Check: the cell is of a run made after the last change to fib's
+listing.
 
 ** TODO =slot.md= says a round trip costs "at least six times" the loop
 
