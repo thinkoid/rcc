@@ -19,6 +19,9 @@
    char.  Beside them the edge: widened_called() returns as a long, and
    joined_called() as an int, the value of an assignment through one of
    two calls' results, whose place holds the return's register.
+   widened_chars_stored() stores b or c, two signed chars, into a long,
+   each arm's load the extension, and widened_sums_stored() a sum or a
+   difference, neither of which widens free.
 
    On x86-64 the listing must show in conditional() a compared in its
    slot, cmpl $0, -4(%rbp), a je to the arm that loads c, the arm that
@@ -51,7 +54,11 @@
    movsbl -17(%rbp), %eax and the store movb %al, (%rcx); in
    widened_called() and joined_called() the store through each call's
    result, movl %ecx, (%rax), and movl %ecx, %eax on each path, then
-   movslq %eax, %rax after the join in widened_called().
+   movslq %eax, %rax after the join in widened_called().  In
+   widened_chars_stored() movsbq -5(%rbp), %rax and movsbq -6(%rbp),
+   %rax on the two paths and the store movq %rax, h(%rip) after the
+   join; in widened_sums_stored() the sum and the difference joined in
+   eax, movslq %eax, %rax after the join and the store.
 
    On aarch64 the listing must show in conditional() a tested with cbz
    w0 to the arm that loads c, the arm that loads b into the same w0
@@ -70,10 +77,14 @@
    after the join; in widened_quotients() the two sdiv w0, w0, w1 and
    in widened_chars() the old value loaded into w0 and extended on its
    own path, sxtw x0, w0, and the second arm's ldrb w0, [x29, #32],
-   valid to 64 bits, with nothing after the join; in
-   widened_stored(), whose consumer names no register, the msub and
-   the load, sxtw x0, w0 after the join and str x0, [x16,
-   :lo12:h].  In narrowed_stored() ldrb w0, [x29, #32] on each path
+   valid to 64 bits, with nothing after the join.  Under a consumer
+   that names no register the same: in widened_stored() the msub and
+   sxtw x0, w0 on its path, ldrsw x0, [x29, #24] on the other and str
+   x0, [x16, :lo12:h] after the join, in widened_chars_stored() ldrsb
+   x0, [x29, #20] and ldrsb x0, [x29, #21] and the store, and in
+   widened_sums_stored(), neither of whose arms widens free, the add
+   and the sub joined in w0 and sxtw x0, w0 after the join, then the
+   store.  In narrowed_stored() ldrb w0, [x29, #32] on each path
    and strb w0, [x1], the place in x1.  In summed_arm() the second
    arm's add w0, w1, w0 after x's reload, with no move after it.  In
    widened_called(), whose arms each store through a call's result in
@@ -167,4 +178,16 @@ int
 joined_called(int a, int b)
 {
         return a ? (*first() = b) : (*second() = b);
+}
+
+void
+widened_chars_stored(int a, signed char b, signed char c)
+{
+        h = a ? b : c;
+}
+
+void
+widened_sums_stored(int a, int b, int c)
+{
+        h = a ? b + c : b - c;
 }

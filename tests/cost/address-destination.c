@@ -22,7 +22,10 @@
    array the unit only declares, whose address the GOT gives; column()
    q = &m[1][2] on int (*m)[3], the row's 12 bytes and the column's 8,
    and column_zero() q = &m[1][-3], whose constants sum to 0, so that
-   the address is m's value.
+   the address is m's value.  column_chosen() writes q = &(c ? m :
+   n)[1][2], the base a conditional of two pointers to rows, and
+   chosen_converted() q = (char *) (c ? m : n) on a register char *q,
+   a conditional of another pointer type than the variable's.
 
    On x86-64 the listing must show row() as movq -16(%rbp), %rbx and
    leaq 12(%rbx), %rbx, and element() the same with leaq 4(%rbx),
@@ -35,7 +38,11 @@
    -16(%rbp), %rbx and leaq 20(%rbx), %rbx; and column_zero() as the
    one movq -16(%rbp), %rbx, and no move after it.  Before the
    return's movq into rax, no function names an expression register
-   but called() and through(), whose pp is loaded into rax.
+   but called() and through(), whose pp is loaded into rax, and
+   column_chosen() and chosen_converted(), whose conditional of another
+   pointer type joins in rax: movq -24(%rbp), %rax and movq -32(%rbp),
+   %rax on the two paths, then leaq 20(%rax), %rbx in column_chosen()
+   and movq %rax, %rbx in chosen_converted().
 
    On aarch64 the listing must show row() as ldr x19, [x29, #24] and
    add x19, x19, #12, element() and declared() the same with #4 and
@@ -48,7 +55,11 @@
    x19, #20; and column_zero() as the one ldr x19, [x29, #24], and no
    move after it.  Between the parameter's store and the return's mov
    into x0, no function writes an expression register but called()
-   and through(), whose pp is loaded into x0. */
+   and through(), whose pp is loaded into x0, and the condition's load
+   into w0 in column_chosen() and chosen_converted(), whose arms are
+   ldr x19, [x29, #32] and ldr x19, [x29, #40] on the two paths, with
+   add x19, x19, #20 after the join in column_chosen() and nothing
+   after it in chosen_converted(). */
 int *f(int *);
 extern int xa[];
 
@@ -158,5 +169,23 @@ column_zero(int (*m)[3])
         register int *q;
 
         q = &m[1][-3];
+        return q;
+}
+
+int *
+column_chosen(int c, int (*m)[3], int (*n)[3])
+{
+        register int *q;
+
+        q = &(c ? m : n)[1][2];
+        return q;
+}
+
+char *
+chosen_converted(int c, int *m, int *n)
+{
+        register char *q;
+
+        q = (char *) (c ? m : n);
         return q;
 }

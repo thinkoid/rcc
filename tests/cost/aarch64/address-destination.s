@@ -367,4 +367,79 @@ column_zero:
 	ret
 	.cfi_endproc
 	.size	column_zero, .-column_zero
+	.globl	column_chosen
+	.type	column_chosen, @function
+column_chosen:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -32
+	str	w0, [x29, #24]
+	str	x1, [x29, #32]
+	str	x2, [x29, #40]
+	ldr	w0, [x29, #24]
+	cbz	w0, .Lcolumn_chosen.2
+	ldr	x19, [x29, #32]
+	b	.Lcolumn_chosen.3
+.Lcolumn_chosen.2:
+	ldr	x19, [x29, #40]
+.Lcolumn_chosen.3:
+	add	x19, x19, #20
+	mov	x0, x19
+	b	.Lcolumn_chosen.1
+.Lcolumn_chosen.1:
+	.cfi_def_cfa wsp, 48
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	column_chosen, .-column_chosen
+	.globl	chosen_converted
+	.type	chosen_converted, @function
+chosen_converted:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -32
+	str	w0, [x29, #24]
+	str	x1, [x29, #32]
+	str	x2, [x29, #40]
+	ldr	w0, [x29, #24]
+	cbz	w0, .Lchosen_converted.2
+	ldr	x19, [x29, #32]
+	b	.Lchosen_converted.3
+.Lchosen_converted.2:
+	ldr	x19, [x29, #40]
+.Lchosen_converted.3:
+	mov	x0, x19
+	b	.Lchosen_converted.1
+.Lchosen_converted.1:
+	.cfi_def_cfa wsp, 48
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	chosen_converted, .-chosen_converted
 	.section	.note.GNU-stack,"",@progbits

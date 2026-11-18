@@ -285,4 +285,66 @@ column_zero:
 	ret
 	.cfi_endproc
 	.size	column_zero, .-column_zero
+	.globl	column_chosen
+	.type	column_chosen, @function
+column_chosen:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movq	%rsi, -24(%rbp)
+	movq	%rdx, -32(%rbp)
+	cmpl	$0, -12(%rbp)
+	je	.Lcolumn_chosen.2
+	movq	-24(%rbp), %rax
+	jmp	.Lcolumn_chosen.3
+.Lcolumn_chosen.2:
+	movq	-32(%rbp), %rax
+.Lcolumn_chosen.3:
+	leaq	20(%rax), %rbx
+	movq	%rbx, %rax
+	jmp	.Lcolumn_chosen.1
+.Lcolumn_chosen.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	column_chosen, .-column_chosen
+	.globl	chosen_converted
+	.type	chosen_converted, @function
+chosen_converted:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movq	%rsi, -24(%rbp)
+	movq	%rdx, -32(%rbp)
+	cmpl	$0, -12(%rbp)
+	je	.Lchosen_converted.2
+	movq	-24(%rbp), %rax
+	jmp	.Lchosen_converted.3
+.Lchosen_converted.2:
+	movq	-32(%rbp), %rax
+.Lchosen_converted.3:
+	movq	%rax, %rbx
+	movq	%rbx, %rax
+	jmp	.Lchosen_converted.1
+.Lchosen_converted.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	chosen_converted, .-chosen_converted
 	.section	.note.GNU-stack,"",@progbits

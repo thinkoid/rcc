@@ -423,6 +423,61 @@ joined_called:
 	ret
 	.cfi_endproc
 	.size	joined_called, .-joined_called
+	.globl	widened_chars_stored
+	.type	widened_chars_stored, @function
+widened_chars_stored:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movb	%sil, -5(%rbp)
+	movb	%dl, -6(%rbp)
+	cmpl	$0, -4(%rbp)
+	je	.Lwidened_chars_stored.2
+	movsbq	-5(%rbp), %rax
+	jmp	.Lwidened_chars_stored.3
+.Lwidened_chars_stored.2:
+	movsbq	-6(%rbp), %rax
+.Lwidened_chars_stored.3:
+	movq	%rax, h(%rip)
+.Lwidened_chars_stored.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	widened_chars_stored, .-widened_chars_stored
+	.globl	widened_sums_stored
+	.type	widened_sums_stored, @function
+widened_sums_stored:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	movl	%edx, -12(%rbp)
+	cmpl	$0, -4(%rbp)
+	je	.Lwidened_sums_stored.2
+	movl	-8(%rbp), %eax
+	addl	-12(%rbp), %eax
+	jmp	.Lwidened_sums_stored.3
+.Lwidened_sums_stored.2:
+	movl	-8(%rbp), %eax
+	subl	-12(%rbp), %eax
+.Lwidened_sums_stored.3:
+	movslq	%eax, %rax
+	movq	%rax, h(%rip)
+.Lwidened_sums_stored.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	widened_sums_stored, .-widened_sums_stored
 	.bss
 	.globl	g
 	.type	g, @object

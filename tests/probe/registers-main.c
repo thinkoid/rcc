@@ -186,6 +186,7 @@ compare(const char *name, long x, long y)
     BOTH(long, br_own_or_##N, (int, long, long))                        \
     BOTH(long, br_own_nested_##N, (int, long, long))                    \
     BOTH(long, br_other_##N, (int, long, long))                         \
+    BOTH(long, br_rows_##N, (int, long, long))                          \
     BOTH(long, de_left_##N, (long, long))                               \
     BOTH(long, de_product_##N, (long))                                  \
     BOTH(long, de_returned_##N, (long))                                 \
@@ -411,6 +412,7 @@ fill(long v[12], int i, int k)
                     CHECK(br_own_or_##N, x, y, (c, x, y));              \
                     CHECK(br_own_nested_##N, x, y, (c, x, y));          \
                     CHECK(br_other_##N, x, y, (c, x, y));               \
+                    CHECK(br_rows_##N, x, y, (c, x, y));                \
                     CHECK(de_wide_arms_##N, x, y, (c, x, y));           \
                 }                                                       \
                 COMPARISONS(TEST_COMPARED, T, N)                        \

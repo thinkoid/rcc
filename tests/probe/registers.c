@@ -1450,8 +1450,11 @@ TYPES(RETURNED)
    both arms, br_own_and_ and br_own_or_ as the first arm under && and
    ||, and br_own_nested_ as an arm of the first arm's ?:; br_other_
    has another register variable as the first arm and the variable
-   itself as the second.  A narrow variable is written through the
-   assignment's conversion.  The main keeps a divisor from 0 and -1. */
+   itself as the second; br_rows_ chooses between two arrays of rows as
+   the base of a register pointer's address, and between two element
+   addresses as a register char pointer's value.  A narrow variable is
+   written through the assignment's conversion.  The main keeps a
+   divisor from 0 and -1. */
 #define BRANCHED(T, N)                                                  \
     long br_and_##N(T a, T b)                                           \
     {                                                                   \
@@ -1584,6 +1587,20 @@ TYPES(RETURNED)
         register T q = b;                                               \
         q = c ? r : q;                                                  \
         return r * 7 + q;                                               \
+    }                                                                   \
+    long br_rows_##N(int c, T a, T b)                                   \
+    {                                                                   \
+        T m[2][3];                                                      \
+        T n[2][3];                                                      \
+        register T *q;                                                  \
+        register char *p;                                               \
+        m[1][1] = a;                                                    \
+        m[1][2] = b;                                                    \
+        n[1][1] = b;                                                    \
+        n[1][2] = a;                                                    \
+        q = &(c ? m : n)[1][2];                                         \
+        p = (char *) (c ? &m[1][1] : &n[1][1]);                         \
+        return *q * 7 + q[-1] + (p == (char *) &m[1][1]);               \
     }
 
 TYPES(BRANCHED)

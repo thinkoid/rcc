@@ -427,15 +427,18 @@ better:
   register, by the rule and the edge of `backend.md` chapter 4: `r = a
   && b` is `mov w19, #1` and `mov w19, #0` after the jump code, and `r
   = c ? x : y` each arm by its own row, `ldr w19, [x29, #28]`, a
-  constant by the constant row. More arms' rows write the register
-  here than on x86-64, since a row writes its destination with its
-  last instruction: an operation, a quotient's `sdiv` among them, as
-  well as a constant, an object in memory, a truth value and a step's
-  value. So a first arm whose row does not, a call's result, is moved
-  in on its own path, `mov w19, w0` after the `bl`, where the second
-  arm's row writes the register, and `r = c ? f(x) : a / b` is that
-  move and `sdiv w19, w0, w1`. One the assignment widens, `l = c ? x :
-  y` into a `long`, hands the conversion to each arm, `ldrsw x19,
+  constant by the constant row; a pointer variable takes the paths of
+  a conditional of any pointer type, whose conversion writes nothing
+  (6.3), `q = &(c ? m : n)[1][2]` on two pointers to rows being `ldr
+  x19` on each path and `add x19, x19, #20`. More arms' rows write the
+  register here than on x86-64, since a row writes its destination
+  with its last instruction: an operation, a quotient's `sdiv` among
+  them, as well as a constant, an object in memory, a truth value and a
+  step's value. So a first arm whose row does not, a call's result, is
+  moved in on its own path, `mov w19, w0` after the `bl`, where the
+  second arm's row writes the register, and `r = c ? f(x) : a / b` is
+  that move and `sdiv w19, w0, w1`. One the assignment widens, `l = c
+  ? x : y` into a `long`, hands the conversion to each arm, `ldrsw x19,
   [x29, #28]` and `ldrsw x19, [x29, #32]`, a constant the constant of
   the variable's type, `mov x19, #-1`, and two `char`s, `l = c ? a :
   b`, the promoted load at the width on each path, `ldrb w19, [x29,
@@ -766,11 +769,16 @@ read, whose copy into the join its extension replaces, `sxtw x0, w19`.
 An extension here writes any register from any other, so the other
 arm's extension writes `x0` from wherever its value is: `return a ?
 (*p)++ : b` as a `long` is `sxtw x0, w0` after the step and `ldrsw x0,
-[x29, #32]`, with nothing after the join. Otherwise, and below any
-other cast, a comma or an assignment, the arms join in `x0` where each
-takes the name by its row, with no instruction of its own or with the
-copy it needs in any case: a constant, a load, a call's result, a
-truth value, an operation on integers, a register variable's read, an
+[x29, #32]`, with nothing after the join. A consumer that names no
+register has the same conversion handed to each arm, joined in the
+first arm's register, as `backend.md` 6.1 has it: `h = c ? a : b` on
+two `signed char`s into a `long` in memory is `ldrsb x0, [x29, #20]`
+and `ldrsb x0, [x29, #21]`, the store after the join. Otherwise, and
+below any other cast, a comma or an assignment, the arms join in `x0`
+where each takes the name by its row, with no instruction of its own
+or with the copy it needs in any case: a constant, a load, a call's
+result, a truth value, an operation on integers, a register
+variable's read, an
 assignment or a step whose place holds no call. `return (long) (c ?
 (*p)++ : b)` on two `char`s is the old value's `ldrb w0, [x1]`
 extended on its own path, `sxtw x0, w0`, and the second arm's `ldrb

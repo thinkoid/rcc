@@ -2816,11 +2816,19 @@ widens_free(const expr_t &arm)
 // Whether a conditional handed a register variable may have each path
 // write the variable's register, chapter 4: one of the variable's own
 // type, or of the type into's row computes in, computed_type(), so that
-// each arm is the right operand of an assignment to it.
+// each arm is the right operand of an assignment to it; for a pointer
+// variable, one of any pointer type, whose conversion to the variable's
+// writes nothing (6.3), q = &(c ? m : n)[1][2] on two pointers to rows
+// being ldr x19 on each path and add x19, x19, #20.
 bool
 joins_into(const expr_t &e, const into_t *into)
 {
-    return into && !into->taken && e.type == computed_type(*into);
+    if (!into || into->taken)
+        return false;
+
+    const auto &type = computed_type(*into);
+
+    return e.type == type || (is< pointer_t >(e.type) && is< pointer_t >(type));
 }
 
 // Whether a conditional under a conversion that widens it has the
@@ -2833,18 +2841,17 @@ joins_into(const expr_t &e, const into_t *into)
 // would have moved it.  For a register variable handed down, of the
 // type its row computes in, each path writes the variable, l = c ? x :
 // y into a register long from two ints being ldrsw x19, [x29, #28] and
-// ldrsw x19, [x29, #32]; for a consumer that names a register, wanted,
-// the arms join there extended, return a ? (*p)++ : b as a long being
-// sxtw x0, w0 after the step and ldrsw x0, [x29, #32], where the
-// widening is a signed one, since an unsigned value written at 32 bits
-// is valid to 64 already.  Two arms that each need an extension of
-// their own, two promoted chars or two stores through a call's result,
-// keep the join and the one extension after it.
+// ldrsw x19, [x29, #32]; for any other consumer the arms join extended,
+// in the register it names where it names one, return a ? (*p)++ : b
+// as a long being sxtw x0, w0 after the step and ldrsw x0, [x29, #32],
+// and l = c ? a : b on two signed chars into a long in memory ldrsb
+// x0 on each path and no sxtw after the join, where the widening is a
+// signed one, since an unsigned value written at 32 bits is valid to
+// 64 already.  Two arms that each need an extension of their own, two
+// sums or two stores through a call's result, keep the join and the
+// one extension after it.
 bool
-widens_arms(const cast_t &c,
-            const type_t &to,
-            const into_t *into,
-            unsigned wanted)
+widens_arms(const cast_t &c, const type_t &to, const into_t *into)
 {
     if (!is< conditional_t >(*c.arg) || !is< int_t >(to) ||
         !is< int_t >(c.arg->type) ||
@@ -2855,7 +2862,7 @@ widens_arms(const cast_t &c,
     if (paths && !(to == computed_type(*into)))
         return false;
 
-    if (!paths && (!wanted || !integer(c.arg->type).is_signed))
+    if (!paths && !integer(c.arg->type).is_signed)
         return false;
 
     const auto &k = as< conditional_t >(*c.arg);
@@ -3612,7 +3619,7 @@ cast(state_t &s,
     // l = c ? x : y into a register long, ldrsw x19, [x29, #28] on each
     // path; return a ? (*p)++ : b as a long, ldrsw x0, [x29, #32] on the
     // second
-    if (widens_arms(c, to, into, wanted))
+    if (widens_arms(c, to, into))
         return conditional(s, *c.arg, into && !into->taken ? into : nullptr,
                            wanted, &to);
 

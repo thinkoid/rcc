@@ -94,20 +94,35 @@ Fix: none taken; count first. A constant index reads nothing, so its
 
 Check: the count over =tests=, and no function longer.
 
-** TODO aarch64: a ~?:~ of row pointers into a register pointer joins in an expression register
+** TODO x86-64: a ~?:~ of another pointer type into a register pointer joins in an expression register
 
-~q = &(c ? m : n)[1][2]~ into a ~register int *q~, with ~m~ and ~n~
-pointers to rows, joins the arms in =x0= and writes =add x19, x0,
-#20=: the conditional does not join into a variable of another
-pointer type, so the base handed the variable takes none. =ldr x19=
-on each path takes no expression register, at the same count. No
-test has the shape.
+~q = &(c ? m : n)[1][2]~ and ~q = (char *) (c ? m : n)~ into a
+register pointer join in =rax=, with =leaq 20(%rax), %rbx= and =movq
+%rax, %rbx= after the join, where =movq ..., %rbx= on each path is the
+same count for the first and an instruction fewer for the second:
+=joins_into()= in =src/c1-x86-64.cc= refuses a conditional of another
+pointer type, whose conversion writes nothing. aarch64 takes it
+(=aarch64.md= chapter 4). =column_chosen()= and =chosen_converted()=
+of =address-destination= pin today's form; no other test has the
+shape.
 
-Fix: none taken; say first why the conditional's type test refuses
-the variable.
+Fix: x86-64's =joins_into()= accepts two pointer types, as aarch64's
+does, and the rule is then stated once.
 
-Check: a function of =address-destination= with =x19= alone on both
-paths.
+Check: those two functions with =rbx= alone on both paths, and no
+function longer.
+
+** TODO =one_path()= is the same text in both generators
+
+=one_path()= in =src/c1-x86-64.cc= and in =src/c1-aarch64.cc= have
+one body, and its callees, =cbranch()=, =arm_into()=, =place_label()=
+and =taken()=, one signature each on both targets; only the comments
+differ.
+
+Fix: one copy in =src/c1-stack.hh=, beside =own_read()=, with
+=cbranch()= and =arm_into()= declared before the header is included.
+
+Check: one definition, and no listing changes.
 
 ** TODO aarch64: a narrow or widened prefix step's value is stepped outside the register variable
 
@@ -124,21 +139,6 @@ today. 23 forms over =tests=; x86-64 keeps the same split.
 
 Fix: none taken; it moves the cast's rule on what a register
 variable's register may hold.
-
-Check: the count over =tests=, and no function longer.
-
-** TODO aarch64: a widened ~?:~ whose consumer names no register is extended after its join
-
-~l = c ? a : b~ on two ~signed char~ into a =long= in memory is
-=ldrsb w0= on each path and =sxtw x0, w0= after the join, where
-=ldrsb x0= on each path is the value already, an instruction fewer;
-x86-64 writes =movsbq= on each path and nothing after. The arms'
-conversion is written on the paths only where the consumer names a
-register, a register variable or a return (=aarch64.md= 6.1). 7
-forms over =tests=, =jn_kept_*= and =cond_*= of the probes.
-
-Fix: where each arm widens at no cost of its own, =widens_free()=,
-the arms are converted on their paths under any consumer.
 
 Check: the count over =tests=, and no function longer.
 
