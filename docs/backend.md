@@ -1195,7 +1195,9 @@ widening, `(long) (unsigned) c`, is its load into the 32-bit name,
 stops at the `unsigned`'s 32 bits, and the 32-bit write clears the
 upper half, which is the `unsigned`'s zero extension to 64 bits. A
 value no load writes keeps the zero extension, `movsbl %al, %eax;
-movl %eax, %eax` for a call's `signed char` result, and a register
+movl %eax, %eax` for a call's `signed char` result and `movl %eax,
+%eax` for an `int` one, whose upper half the convention leaves
+undefined (3.2), and a register
 variable's read is its copy, `movl %ebx, %eax`. A register variable
 is no object in memory, so its read is extended into a fresh
 register, `movslq %ebx, %rax`. A cast over any other operand, a call's result, an arithmetic

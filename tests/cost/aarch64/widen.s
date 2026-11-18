@@ -307,7 +307,6 @@ unsigned_promoted:
 	.cfi_def_cfa_register w29
 	strb	w0, [x29, #16]
 	ldrsb	w0, [x29, #16]
-	mov	w0, w0
 	b	.Lunsigned_promoted.1
 .Lunsigned_promoted.1:
 	.cfi_def_cfa wsp, 32
@@ -434,7 +433,6 @@ unsigned_short:
 	.cfi_def_cfa_register w29
 	strh	w0, [x29, #16]
 	ldrsh	w0, [x29, #16]
-	mov	w0, w0
 	b	.Lunsigned_short.1
 .Lunsigned_short.1:
 	.cfi_def_cfa wsp, 32
@@ -446,6 +444,30 @@ unsigned_short:
 	ret
 	.cfi_endproc
 	.size	unsigned_short, .-unsigned_short
+	.globl	unsigned_int_called
+	.type	unsigned_int_called, @function
+unsigned_int_called:
+	.cfi_startproc
+	sub	sp, sp, #16
+	.cfi_def_cfa_offset 16
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -16
+	.cfi_offset w30, -8
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	bl	whole
+	mov	w0, w0
+	b	.Lunsigned_int_called.1
+.Lunsigned_int_called.1:
+	.cfi_def_cfa wsp, 16
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #16
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	unsigned_int_called, .-unsigned_int_called
 	.bss
 	.globl	defined
 	.type	defined, @object

@@ -181,39 +181,51 @@ the arms are converted on their paths under any consumer.
 
 Check: the count over =tests=, and no function longer.
 
-** TODO aarch64: a signed narrow object under an unsigned widening is loaded, then cleared
+** TODO An unsigned compound assignment's or step's value loses its validity to 64 bits
 
-~(long) (unsigned) c~ on a ~signed char~ is =ldrsb w0, [x29, #16];
-mov w0, w0=: the first extension stops at 32 bits, so the two are not
-the one extension =widened_read()= in =src/c1-common.cc= knows. The
-load into the =w= register is the value already, valid to 64 bits as
-an =unsigned=, since a write of a =w= register clears the upper half;
-x86-64 marks its =movsbl= so in =converted()=. =unsigned_promoted()=
-and =unsigned_short()= of =widen= pin the two instructions, and 5
-forms over =tests= have the shape.
+~return *p += e~ on an ~unsigned *p~ widened to =long= ends =addl
+%edx, %eax; movl %eax, (%rcx); movl %eax, %eax= on x86-64 and =add w0,
+w2, w0; str w0, [x1]; mov w0, w0= on aarch64, and a prefix step the
+same: the row's value is cut to the object's width, which loses the
+64 bits a 32-bit write of an =unsigned= is valid to. Over =tests=, 91
+sites on x86-64, 8 of them a =divl='s result, and 94 on aarch64, in
+the memory, pointers, globals, walk and straight probes.
 
-Fix: the load is marked valid to 64 bits where a signed narrow
-object is widened through an =unsigned= of 32 bits, as on x86-64.
+Fix: where the operation's width is 32 and the object is an
+=unsigned= of 32 bits, the row's value is valid as a 32-bit write of
+an =unsigned= is, in the assignment and step rows of each generator.
 
-Check: =unsigned_promoted= and =unsigned_short= with the one load.
+Check: the counts over =tests= with no clearing move after the store,
+and no function longer.
 
 ** TODO A 32-bit write's value widened as an unsigned is cleared again
 
 Any write of a 32-bit register name clears the upper half, so the
-value is valid to 64 bits as an =unsigned=. A value no load wrote
-keeps its clearing move all the same: ~(long) (unsigned) narrow()~ on
-a call's ~signed char~ result is =movsbl %al, %eax; movl %eax, %eax=
-and =sxtb w0, w0; mov w0, w0= (=unsigned_called()= of =widen=), and
-=addl $3, %eax; movl %eax, %eax= is written 4 times in =test_writes=
-of =tests/probe/statics-main.c=. The record of a value's valid width
-is by its operation's own signedness, and the conversion to an
-=unsigned= of the same width writes nothing. The aarch64 sites are
-not counted.
+value is valid to 64 bits as an =unsigned=. A signed value no load
+wrote keeps its clearing move all the same: ~(long) (unsigned)
+narrow()~ on a call's ~signed char~ result is =movsbl %al, %eax; movl
+%eax, %eax= and =sxtb w0, w0; mov w0, w0= (=unsigned_called()= of
+=widen=); =addl $3, %eax; movl %eax, %eax= is written 4 times in
+=test_writes= of =tests/probe/statics-main.c= on each target, with 3
+joins beside them; and on x86-64 a =switch= on a 32-bit sum clears
+its table's index, =addl $1, %eax; cmpl $4, %eax; ja; movl %eax,
+%eax=, 20 sites over =tests=. The record of a value's valid width is
+by its type's signedness, so a signed =int= valid to 32 bits is a
+32-bit write of the generator's, a 64-bit value narrowed, which
+writes nothing, or a call's result, whose upper half the convention
+leaves undefined, and a conversion to =unsigned= cannot tell them
+apart. ~(long) (unsigned) whole()~ on an =int= call must keep its
+move (=unsigned_int_called()= of =widen=).
 
-Fix: a conversion to an =unsigned= of 32 bits of a value whose last
-instruction wrote its 32-bit name marks it valid to 64 bits.
+Fix: none taken. It needs a record of its own on a held value, that
+its register's upper half is zero: set by every 32-bit write, lost
+at a call's result, a narrowing and a 64-bit write, kept by a spill
+and its reload, true past a join only where every path has it, and
+never a register variable's register. That touches most rows of both
+generators for the sites above.
 
-Check: those sites with no clearing move, and no function longer.
+Check: those sites with no clearing move, =unsigned_int_called()=
+with its own, and no function longer.
 
 ** TODO x86-64: a ~?:~ whose second arm is the variable's own read keeps its join after a call
 

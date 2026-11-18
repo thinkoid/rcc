@@ -2308,8 +2308,11 @@ extending_load(state_t &s,
 // promotion, widened_read()'s, (long) (int) c on a signed char the one
 // ldrsb x0, and on an unsigned char the one ldrb w0, valid to 64 bits.
 // A narrowing cast under the widening keeps its load and the extension
-// after it, and so does a signed object under an unsigned widening,
-// (long) (unsigned) c, ldrsb w0 and mov w0, w0.
+// after it.  A signed object widened to an unsigned of 32 bits is its
+// load into the w register, which clears the upper half, so the value
+// is valid to 64 bits as the unsigned it is: (long) (unsigned) c is the
+// one ldrsb w0, and no mov w0, w0 clears it again; not a register
+// variable's read, whose upper half is its own type's (chapter 4).
 // A constant widened into a register variable is the constant of the
 // new type, mov x19, #-1, and so is a signed one for any other
 // consumer, mov x0, #-1.  A change of signedness alone is nothing.  A pointer is its
@@ -2363,6 +2366,12 @@ converted(state_t &s,
 
     auto &valid = s.values[v.id].valid;
     valid = std::min(valid, target.width);
+
+    // (long) (unsigned) c on a signed char: ldrsb w0, [x29, #16], its
+    // write of the w register the zero extension of the unsigned
+    if (loads && read.type->is_signed && !target.is_signed && width == 32 &&
+        !borrowed(s, v))
+        valid = written(32, false);
 
     return v;
 }

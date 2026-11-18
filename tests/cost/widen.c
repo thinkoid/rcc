@@ -10,8 +10,10 @@
    32-bit name is the unsigned's zero extension too, since the write
    clears the upper half; beside them unsigned_called() widens
    (unsigned) narrow() on a call's signed char result, which no load
-   writes, and unsigned_register() (unsigned) c on a register char,
-   whose read is the variable's.
+   writes, unsigned_register() (unsigned) c on a register char,
+   whose read is the variable's, and unsigned_int_called() (unsigned)
+   whole() on a call's int result, whose upper half the convention
+   leaves undefined, so its clearing move stays.
 
    On x86-64 the listing must show signed_char() loading c with
    movsbq -1(%rbp), %rax, short_() s with movswq -2(%rbp), %rax and
@@ -29,8 +31,9 @@
    the one movzbl -1(%rbp), %eax, and unsigned_promoted() the one
    movsbl -1(%rbp), %eax and nothing after it, unsigned_short() the
    one movswl -2(%rbp), %eax, unsigned_called() movsbl %al, %eax and
-   movl %eax, %eax after the call, and unsigned_register() the read's
-   copy movl %ebx, %eax.
+   movl %eax, %eax after the call, unsigned_register() the read's copy
+   movl %ebx, %eax, and unsigned_int_called() movl %eax, %eax after
+   the call.
 
    On aarch64 the listing must show signed_char() loading c with
    ldrsb x0, [x29, #16], short_() s with ldrsh x0, [x29, #16] and
@@ -45,10 +48,11 @@
    the one ldrsb x0, [x29, #16], promoted_unsigned() the one ldrh w0,
    [x29, #16], valid to 64 bits, promoted_signed() ldrsb x0 as
    promoted_char(), unsigned_twice() the one ldrb w0, [x29, #16],
-   unsigned_promoted() ldrsb w0, [x29, #16] and mov w0, w0,
-   unsigned_short() ldrsh w0, [x29, #16] and mov w0, w0,
-   unsigned_called() sxtb w0, w0 and mov w0, w0 after the call, and
-   unsigned_register() mov w0, w19. */
+   unsigned_promoted() the one ldrsb w0, [x29, #16], unsigned_short()
+   the one ldrsh w0, [x29, #16], each write of the w register clearing
+   the upper half, unsigned_called() sxtb w0, w0 and mov w0, w0 after
+   the call, unsigned_register() mov w0, w19, and
+   unsigned_int_called() mov w0, w0 after the call. */
 int defined;
 extern int declared;
 
@@ -162,4 +166,12 @@ long
 unsigned_short(short s)
 {
         return (unsigned) s;
+}
+
+int whole(void);
+
+long
+unsigned_int_called(void)
+{
+        return (unsigned) whole();
 }

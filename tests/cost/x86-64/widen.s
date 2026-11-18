@@ -333,6 +333,24 @@ unsigned_short:
 	ret
 	.cfi_endproc
 	.size	unsigned_short, .-unsigned_short
+	.globl	unsigned_int_called
+	.type	unsigned_int_called, @function
+unsigned_int_called:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	call	whole@PLT
+	movl	%eax, %eax
+	jmp	.Lunsigned_int_called.1
+.Lunsigned_int_called.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	unsigned_int_called, .-unsigned_int_called
 	.bss
 	.globl	defined
 	.type	defined, @object
