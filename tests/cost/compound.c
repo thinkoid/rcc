@@ -75,7 +75,27 @@
    called_value(), ldr w3, [x0, w1, sxtw #2] and mul w3, w3, w2 in
    product_element(), mul x2, x2, x1 in product_pointer(), mul x0, x2,
    x0 in product_value(), sub x0, x1, x0 in called_minus(), and ldrb
-   w2, [x0] and mul w2, w2, w1 in product_char(). */
+   w2, [x0] and mul w2, w2, w1 in product_char().
+
+   A product by a constant into memory is the three-operand imul with
+   the object as its source: times_slot() x *= 12 on an int local as a
+   statement, times_pointer() return *p *= 12, whose return names eax,
+   and times_global() y = scaled_global *= 4 on a long global, a power
+   of two kept a multiply; beside them times_char() *p *= 12 on a char,
+   whose load extends.
+
+   On x86-64 the listing must show imull $12, -8(%rbp), %eax and movl
+   %eax, -8(%rbp) in times_slot(), imull $12, (%rcx), %eax and movl
+   %eax, (%rcx) in times_pointer(), imulq $4, scaled_global(%rip), %rax
+   and the store in times_global(), each object read once, by the imul,
+   and in times_char() movsbl (%rcx), %eax, imull $12, %eax, %eax and
+   movb %al, (%rcx).
+
+   On aarch64 the listing must show each object loaded, the constant
+   held, mov w0, #12 or mov x0, #4, then mul and the store: mul w1, w1,
+   w0 in times_slot(), mul w0, w2, w0 in times_pointer() and in
+   times_char(), whose load is ldrb w2, [x1], and mul x1, x1, x0 in
+   times_global(). */
 int compound(int a, int b)
 {
     int x = a;
@@ -207,4 +227,36 @@ void
 product_char(char *p, int e)
 {
         *p *= e;
+}
+
+long scaled_global;
+
+int
+times_slot(int a)
+{
+        int x = a;
+
+        x *= 12;
+        return x;
+}
+
+int
+times_pointer(int *p)
+{
+        return *p *= 12;
+}
+
+long
+times_global(void)
+{
+        long y;
+
+        y = scaled_global *= 4;
+        return y;
+}
+
+int
+times_char(char *p)
+{
+        return *p *= 12;
 }

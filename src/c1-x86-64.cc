@@ -3814,29 +3814,23 @@ multiplicand(const operation_t &b, int width)
     return memory_operand(*b.lhs, width);
 }
 
-// x * c with x an object in memory: the three-operand imul with the
-// object as its source, imull $4, -4(%rbp), %eax, one instruction and
-// still a multiply (backend.md 6.1, 6.4).  The object is read once, by
-// the imul, where its load would read it, and the constant has no
-// evaluation (G13).  As load() does, the product takes the lowest free
-// register once the address is consumed, or, handed a register
-// variable, the variable's register, imull $4, -4(%rbp), %ebx
-// (chapter 4).
+// The three-operand imul of the object in memory at the operand from by
+// the immediate factor, in type t, backend.md 6.1 and 6.4: into the
+// register variable handed down, into, where its row takes it, else
+// into the register the consumer names, wanted, where it is free, else
+// into the lowest free register outside avoid.
 value_t
-product(state_t &s,
-        const expr_t &object,
-        const expr_t &constant,
-        const int_t &t,
-        into_t *into)
+object_product(state_t &s,
+               std::string_view from,
+               std::string_view factor,
+               const int_t &t,
+               into_t *into,
+               unsigned wanted = 0,
+               unsigned avoid = 0)
 {
     const int width = t.width;
     const int valid = written(width, t.is_signed);
     const auto mnemonic = sized("imul", width);
-    const auto factor = immediate_of(constant, width);
-
-    const auto place = address(s, object);
-    const auto from = operand(s, place);
-    release(s, place);
 
     if (takes(into, valid)) {
         insn(s, mnemonic,
@@ -3844,10 +3838,33 @@ product(state_t &s,
         return taken(s, *into);
     }
 
-    const auto v = fresh(s, valid);
+    const auto named = wanted_register(s, wanted);
+    const auto v = named ? hold(s, *named, valid) : fresh(s, valid, avoid);
     insn(s, mnemonic, { factor, from, reg(reg_of(s, v), width) });
 
     return v;
+}
+
+// x * c with x an object in memory: the three-operand imul with the
+// object as its source, imull $4, -4(%rbp), %eax, one instruction and
+// still a multiply (backend.md 6.1, 6.4), object_product()'s.  The
+// object is read once, by the imul, where its load would read it, and
+// the constant has no evaluation (G13).  As load() does, the product
+// takes the lowest free register once the address is consumed, or,
+// handed a register variable, the variable's register, imull $4,
+// -4(%rbp), %ebx (chapter 4).
+value_t
+product(state_t &s,
+        const expr_t &object,
+        const expr_t &constant,
+        const int_t &t,
+        into_t *into)
+{
+    const auto place = address(s, object);
+    const auto from = operand(s, place);
+    release(s, place);
+
+    return object_product(s, from, immediate_of(constant, t.width), t, into);
 }
 
 // x * c with x a register variable's read, register_read()'s, c a
@@ -4391,6 +4408,21 @@ assign(state_t &s, const assign_t &a, unsigned wanted = 0)
         valid = stored_valid(valid, width, t);
 
         return r.value;
+    }
+
+    // x *= 12 on an int in memory: imull $12, -4(%rbp), %eax, the object
+    // the imul's source, and the store
+    if (!stepped && *a.op == binary_op_t::mul && !r.immediate.empty() &&
+        t.width == width) {
+        const auto v =
+            object_product(s, operand(s, place), r.immediate, integer(a.common),
+                           nullptr, wanted, registers_of(s, place));
+        store(s, v, place, t.width);
+        release(s, place);
+        auto &valid = s.values[v.id].valid;
+        valid = stored_valid(valid, width, t);
+
+        return v;
     }
 
     // the value of the expression has the lvalue's type: the bits

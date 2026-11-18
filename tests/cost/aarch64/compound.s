@@ -592,6 +592,123 @@ product_char:
 	ret
 	.cfi_endproc
 	.size	product_char, .-product_char
+	.globl	times_slot
+	.type	times_slot, @function
+times_slot:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	ldr	w0, [x29, #16]
+	str	w0, [x29, #20]
+	mov	w0, #12
+	ldr	w1, [x29, #20]
+	mul	w1, w1, w0
+	str	w1, [x29, #20]
+	ldr	w0, [x29, #20]
+	b	.Ltimes_slot.1
+.Ltimes_slot.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	times_slot, .-times_slot
+	.globl	times_pointer
+	.type	times_pointer, @function
+times_pointer:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	ldr	x1, [x29, #16]
+	mov	w0, #12
+	ldr	w2, [x1]
+	mul	w0, w2, w0
+	str	w0, [x1]
+	b	.Ltimes_pointer.1
+.Ltimes_pointer.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	times_pointer, .-times_pointer
+	.globl	times_global
+	.type	times_global, @function
+times_global:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	mov	x0, #4
+	adrp	x16, scaled_global
+	ldr	x1, [x16, :lo12:scaled_global]
+	mul	x1, x1, x0
+	adrp	x16, scaled_global
+	str	x1, [x16, :lo12:scaled_global]
+	str	x1, [x29, #16]
+	ldr	x0, [x29, #16]
+	b	.Ltimes_global.1
+.Ltimes_global.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	times_global, .-times_global
+	.globl	times_char
+	.type	times_char, @function
+times_char:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	ldr	x1, [x29, #16]
+	mov	w0, #12
+	ldrb	w2, [x1]
+	mul	w0, w2, w0
+	strb	w0, [x1]
+	uxtb	w0, w0
+	b	.Ltimes_char.1
+.Ltimes_char.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	times_char, .-times_char
 	.bss
 	.globl	counter
 	.type	counter, @object
@@ -599,4 +716,10 @@ product_char:
 	.p2align 2
 counter:
 	.zero	4
+	.globl	scaled_global
+	.type	scaled_global, @object
+	.size	scaled_global, 8
+	.p2align 3
+scaled_global:
+	.zero	8
 	.section	.note.GNU-stack,"",@progbits

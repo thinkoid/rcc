@@ -468,6 +468,90 @@ product_char:
 	ret
 	.cfi_endproc
 	.size	product_char, .-product_char
+	.globl	times_slot
+	.type	times_slot, @function
+times_slot:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	-4(%rbp), %eax
+	movl	%eax, -8(%rbp)
+	imull	$12, -8(%rbp), %eax
+	movl	%eax, -8(%rbp)
+	movl	-8(%rbp), %eax
+	jmp	.Ltimes_slot.1
+.Ltimes_slot.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	times_slot, .-times_slot
+	.globl	times_pointer
+	.type	times_pointer, @function
+times_pointer:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	-8(%rbp), %rcx
+	imull	$12, (%rcx), %eax
+	movl	%eax, (%rcx)
+	jmp	.Ltimes_pointer.1
+.Ltimes_pointer.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	times_pointer, .-times_pointer
+	.globl	times_global
+	.type	times_global, @function
+times_global:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	imulq	$4, scaled_global(%rip), %rax
+	movq	%rax, scaled_global(%rip)
+	movq	%rax, -8(%rbp)
+	movq	-8(%rbp), %rax
+	jmp	.Ltimes_global.1
+.Ltimes_global.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	times_global, .-times_global
+	.globl	times_char
+	.type	times_char, @function
+times_char:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	-8(%rbp), %rcx
+	movsbl	(%rcx), %eax
+	imull	$12, %eax, %eax
+	movb	%al, (%rcx)
+	movsbl	%al, %eax
+	jmp	.Ltimes_char.1
+.Ltimes_char.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	times_char, .-times_char
 	.bss
 	.globl	counter
 	.type	counter, @object
@@ -475,4 +559,10 @@ product_char:
 	.p2align 2
 counter:
 	.zero	4
+	.globl	scaled_global
+	.type	scaled_global, @object
+	.size	scaled_global, 8
+	.p2align 3
+scaled_global:
+	.zero	8
 	.section	.note.GNU-stack,"",@progbits

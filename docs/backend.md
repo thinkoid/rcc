@@ -1597,7 +1597,11 @@ This is the form of the operator on its operand, not a fold: the
 operation is written once, on the object, and nothing is left out.
 `*=`, `/=` and `%=` keep the right operand, then the load, the
 operation and the store, since `imul` has no memory destination and
-`idiv` none at all. The object's width writes the bytes the promoted
+`idiv` none at all; `*=` by a constant the immediate holds, on an
+object of the operation's width, is the three-operand `imul` with the
+object as its source, as `x * 12` is (6.1), and the store, `imull
+$12, -4(%rbp), %eax; movl %eax, -4(%rbp)`, the object read once.
+The object's width writes the bytes the promoted
 operation and the narrow store write: the low bits of `add`, `sub`,
 `and`, `or`, `xor` and `shl` do not depend on the bits above them,
 `sar` on a signed object and `shr` on an unsigned one fill as the
