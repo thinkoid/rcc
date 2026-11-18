@@ -2743,33 +2743,6 @@ extending_load(state_t &s,
     return load(s, address(s, e), from, std::max(32, to), into);
 }
 
-// An integer conversion, 6.3.  G2: narrowing is no instruction, the
-// narrower register name is the value; widening extends by the
-// operand's signedness, and only when the register is not already
-// valid to the new width, as it is after the load of a char or a 32-bit
-// write of an unsigned value.  A signed object in memory is loaded
-// extended to the new width, extending_load(), so the load is the
-// widening; an unsigned one is loaded as any read, valid to 64 bits by
-// the load's own extension.  The object may be under casts that keep
-// its bits, object_under()'s: (long) (int) u is ldrsw x0, [x29, #16],
-// and (unsigned long) (unsigned) i and (long) (char) c the ldr and the
-// ldrb, valid to 64 bits, each reading the object at its own width
-// (G10); a narrowing cast under the widening keeps its load and the
-// extension after it.  A change of signedness alone is nothing.
-// A pointer is its integer view, so pointer to pointer is nothing, an
-// integer widens to a pointer by its own signedness (6.3.2.3p5), sxtw
-// for an int, and a pointer narrows to an integer by its low bits (p6).
-// An array decays to its address, 6.3.2.1p3, a string literal's
-// included, and a function designator to the pointer to the function,
-// p4.  A cast to void evaluates its operand for its effect alone,
-// chapter 6.6.  A register variable handed down goes on to the
-// operand's row through() a conversion that leaves its representation,
-// and to the extension when the operand's row did not take it: the last
-// instruction written for the conversion writes the register, ldrsb
-// w19, [x29, #16] for register int x = c, sxtw x19, w0 for register long
-// y = a + b (chapter 4).  The register the consumer of the value names,
-// wanted, goes on to the operand and to the extension, sxtw x0, w1 for
-// a return's (6.1).
 // The operand of a conversion that retypes(), into the variable's
 // register, chapter 4.  An object in memory, under casts that keep its
 // bits, is loaded at the extension of the conversion's type, ldr w19,
@@ -2800,6 +2773,33 @@ retyped(state_t &s, const cast_t &c, const int_t &target, into_t &into)
     return v;
 }
 
+// An integer conversion, 6.3.  G2: narrowing is no instruction, the
+// narrower register name is the value; widening extends by the
+// operand's signedness, and only when the register is not already
+// valid to the new width, as it is after the load of a char or a 32-bit
+// write of an unsigned value.  A signed object in memory is loaded
+// extended to the new width, extending_load(), so the load is the
+// widening; an unsigned one is loaded as any read, valid to 64 bits by
+// the load's own extension.  The object may be under casts that keep
+// its bits, object_under()'s: (long) (int) u is ldrsw x0, [x29, #16],
+// and (unsigned long) (unsigned) i and (long) (char) c the ldr and the
+// ldrb, valid to 64 bits, each reading the object at its own width
+// (G10); a narrowing cast under the widening keeps its load and the
+// extension after it.  A change of signedness alone is nothing.
+// A pointer is its integer view, so pointer to pointer is nothing, an
+// integer widens to a pointer by its own signedness (6.3.2.3p5), sxtw
+// for an int, and a pointer narrows to an integer by its low bits (p6).
+// An array decays to its address, 6.3.2.1p3, a string literal's
+// included, and a function designator to the pointer to the function,
+// p4.  A cast to void evaluates its operand for its effect alone,
+// chapter 6.6.  A register variable handed down goes on to the
+// operand's row through() a conversion that leaves its representation,
+// and to the extension when the operand's row did not take it: the last
+// instruction written for the conversion writes the register, ldrsb
+// w19, [x29, #16] for register int x = c, sxtw x19, w0 for register long
+// y = a + b (chapter 4).  The register the consumer of the value names,
+// wanted, goes on to the operand and to the extension, sxtw x0, w1 for
+// a return's (6.1).
 value_t
 cast(state_t &s,
      const cast_t &c,
@@ -2997,18 +2997,18 @@ call(state_t &s, const call_t &c, const type_t &t)
 // An array is never a value: the parser decays it, 6.3.2.1p3, and a
 // string literal is an array.  A register variable handed down, into,
 // goes to the row at the top of e, whose last instruction writes the
-// variable's register where it can (chapter 4); a read of a register
-// variable is no row, and a call's result, the arms of && and ?: and
-// an assignment keep their own register.  wanted is the register the
-// consumer of e's value names, x0 for a return's, as a set of one, or
-// none (6.1): unary(), binary(), assign() and cast() hand it to the
-// row's last instruction, and a row that writes a fresh register takes
-// it as the lowest free one.  A conditional is not handed it here: two
-// arms whose places hold a call's result in x0 join in one other
-// register with no move, where a join in x0 moves each, and under a
-// cast that widens, the extension after the join reads that register
-// where it is; rvalue_in() hands the name to a conditional at the top
-// of the value.
+// variable's register where it can (chapter 4): each path of &&, || and
+// ?: writes it, a read of a register variable is no row, and a call's
+// result and an assignment keep their own register.  wanted is the
+// register the consumer of e's value names, x0 for a return's, as a set
+// of one, or none (6.1): unary(), binary(), assign() and cast() hand it
+// to the row's last instruction, and a row that writes a fresh register
+// takes it as the lowest free one.  A conditional is not handed it here:
+// two arms whose places hold a call's result in x0 join in one other
+// register with no move, where a join in x0 moves each, and under a cast
+// that widens, the extension after the join reads that register where it
+// is; rvalue_in() hands the name to a conditional at the top of the
+// value.
 value_t
 rvalue(state_t &s, const expr_t &e, into_t *into, unsigned wanted)
 {

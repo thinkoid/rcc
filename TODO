@@ -192,25 +192,6 @@ Fix: =arm_into()= writes nothing for a read of the variable itself.
 
 Check: a =register-destination= function with no =mov= on that path.
 
-** TODO aarch64: =cast()= stands under no comment of its own
-
-In =src/c1-aarch64.cc=, =retyped()= sits between =cast()='s comment
-and =cast()=: the two comments run together above =retyped()=, and
-=cast()= stands bare.
-
-Fix: =cast()='s comment moves down to =cast()=.
-
-Check: each of the two functions is under its own comment.
-
-* Guarantees
-
-The promises in =docs/guarantees.md=. The entry number is the
-guarantee it belongs to. All are decided; G15 is withdrawn with its
-number reserved. c1 writes none of the guard of G4, the round trip
-of G8 and the laundering of G16, which draft 1 designed against an
-optimizer, because nothing between the source and the instruction
-reasons about the program.
-
 ** TODO No document gathers the implementation-defined choices
 
 4p10 asks for "a document that defines all implementation-defined
