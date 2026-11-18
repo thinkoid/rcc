@@ -1,0 +1,2 @@
+tests/error/universal-character-incomplete.c:6:18: error: incomplete universal character name
+status 1

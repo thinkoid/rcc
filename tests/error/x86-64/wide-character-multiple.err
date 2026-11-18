@@ -1,0 +1,2 @@
+tests/error/wide-character-multiple.c:6:16: error: more than one character in a wide character constant
+status 1

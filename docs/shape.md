@@ -60,10 +60,34 @@ and a location. The lexer keeps no state and knows no names: an
 identifier is an identifier, and whether it names a type is the
 parser's question, answered by scope lookup. A vector gives the
 parser arbitrary lookahead for free. A string or character token
-keeps its spelling, quotes and escapes included; two functions
-beside `tokenize` yield the bytes of a string and the value of a
+keeps its spelling, its encoding prefix, quotes and escapes
+included; the functions beside `tokenize` yield a literal's prefix,
+the elements of a string in an encoding, and the value of a
 character constant, and cannot fail, because the lexer refused every
-malformed escape when it made the token. A floating constant is a
+malformed escape and character when it made the token.
+
+The source reaches the lexer as UTF-8, and its literals keep it. A
+literal of no prefix is in the literal encoding, UTF-8 as `clang`
+has it (J.3.5): its bytes are the text's as written, and a
+universal character name (6.4.3) gives the UTF-8 of its code point. A
+literal of `u8` is the same, its text checked to be UTF-8. One of
+`L`, `u` or `U` has the text's UTF-8 decoded into code points, each
+encoded in the literal's encoding: UTF-32 for `L`, the wide literal
+encoding as `clang` has it (J.3.5), and for `U`, UTF-16 for `u`, a
+code point past `FFFF` a surrogate pair. A sequence that is no UTF-8
+is an error there. An octal or hexadecimal escape gives an element's
+value itself, bounded by the element's type (6.4.4.5p9): a byte, 16
+bits for `u`, 32 for `L` and `U`. A universal character name is four
+or eight hex digits and no surrogate and no code point past `10FFFF`
+(6.4.3p2); in a literal it may name any other code point. A
+character constant holds one character. One of no prefix holds a
+byte, so a character outside ASCII, `'é'`, is an error, as `clang`
+has it; one of `u` holds one UTF-16 code unit, so `u'😀'` is an error
+(6.4.4.5p10); one of a prefix holds no more than one character, and
+one of no prefix with more is not yet. `u8'x'` is C23's, and the
+dialect rcc preprocesses in has none, so it is not yet.
+
+A floating constant is a
 token of its own, in the grammar of 6.4.4.3p1: decimal or
 hexadecimal, a fraction, an exponent, which a hexadecimal one must
 have, and a suffix, `f`, `l` or one of the decimal ones, which p2
@@ -122,7 +146,12 @@ same on both targets, the sizes LP64's; the parser folds `sizeof`
 from them and c1
 sizes and aligns the slots from them. A pointer to a function is a
 pointer as any other: 8 bytes, an address, of a type that compares
-through the function's result and parameters.
+through the function's result and parameters. The types of the wide
+characters are the platform's, as `clang` has them on each target:
+`wchar_t` is `int` on x86-64 and `unsigned int` on aarch64, 4 bytes
+on both, so `(wchar_t) -1 < 0` holds on the first alone; `char16_t`
+is `unsigned short` and `char32_t` `unsigned int` on both. The tree
+keeps no spelling, so each is its integer type.
 
 ## 4. The tree
 
@@ -131,8 +160,10 @@ Three sums.
 - `expr_t`: a type and a node. The nodes are integer or character
   literal, name, string literal, unary, binary, assignment, call,
   cast, conditional. A name holds a non-owning pointer to its
-  symbol. A string literal holds its bytes and is typed `char [N +
-  1]`. Whether an expression is an lvalue follows from its node (the
+  symbol. A string literal holds its elements' bytes and the
+  elements' width and is typed `char [N + 1]`, or for a wide one an
+  array of `N + 1` of its element type (chapter 5). Whether an
+  expression is an lvalue follows from its node (the
   name of an object, a string literal, a dereference of an object
   pointer), it is not stored; a function designator is none. A compound assignment carries the type it is computed in,
   the usual arithmetic conversions of its operands. Pointer
@@ -565,7 +596,22 @@ constant expressions, an error. An array of `char`, `signed char` or
 An array of unknown size takes the literal's size with its
 terminating zero, one with room for the zero takes it, one the
 literal fills exactly takes none, and a literal longer than the array
-is an error (p3).
+is an error (p3). An array of a wide literal's element type takes the
+literal the same way, its elements and its zero (p16): an array of
+`wchar_t` takes `L"..."`, and so does one of `int` on x86-64, where
+`wchar_t` is `int`, and one of `unsigned int` on aarch64, which takes
+`U"..."` too; a wide literal for an array of `char` is an error.
+
+A character constant of no prefix is an `int` (6.4.4.5p11), and one
+of `L`, `u` or `U` its one code unit, of `wchar_t`, `char16_t` or
+`char32_t` (p13 to p15): `L'é'` is 233. A string literal of `u8` is
+an array of `char`, as the dialect rcc preprocesses in has it, C17's
+6.4.5p6, where C23 makes it `char8_t`; one of `L`, `u` or `U` an
+array of the element type (C23 6.4.5p6). Adjacent literals are one
+(p5): the prefixed ones among them have one prefix (p2), an error
+otherwise, and the whole takes it, so `"a" L"b"` is `L"ab"`, each
+literal's text read in that encoding, a literal's of no prefix
+among them, which is then to be UTF-8 too.
 
 Any other array takes a brace-enclosed list (p17), and a scalar may
 take its expression in one pair of braces (p12). The parser walks the
@@ -686,7 +732,10 @@ code of a `backend.md` chapter:
   it, once the frame's size is known, then the body and the one
   epilogue (chapter 5).
 - The string literals are one `.data` block after the last function,
-  one label per joined literal, never merged (chapter 10, G17). The
+  one label per joined literal, never merged (chapter 10, G17); a
+  wide one is aligned to its element, `.p2align 2`, and its elements
+  and the zero are one `.short` or `.long`, `.long 104, 233, 0` for
+  `L"hé"`. The
   objects the file defines follow, those with an initializer in one
   `.data` block and the others in one `.bss` block, in the order of
   their definitions; the text is the same on both targets, and is
@@ -909,7 +958,9 @@ and the size is not evaluated), a designator in
 an initializer list, a local's brace initializer, a scalar's or an
 array's, and a local array's initializer of any kind, `char s[] =
 "..."` among them, a declaration through a typedef of function
-type, wide and `u8` strings, the checks of the qualifiers (`const`
+type, a UTF-8 character constant, `u8'x'`, a character constant of
+more than one character and no prefix, the checks of the qualifiers
+(`const`
 and `volatile` are dropped, so an assignment to a `const` object and
 a conversion that discards a qualifier draw no diagnostic, and
 `(const void)` is taken as `(void)`), an atomic object, GNU C's case

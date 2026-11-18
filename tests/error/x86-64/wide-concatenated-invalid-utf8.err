@@ -1,0 +1,2 @@
+tests/error/wide-concatenated-invalid-utf8.c:6:23: error: invalid UTF-8 sequence in a string literal concatenated with prefix 'L'
+status 1

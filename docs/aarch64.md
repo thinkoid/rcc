@@ -66,9 +66,9 @@ all of it, and keeps c1's three entry points, `rvalue()`, `cbranch()`
 and `effect()`, the width rule, the spill rule, the hidden local of an
 argument, the left-to-right order of G13 and the label names.
 
-c0 carries too, but for three facts it must now take from the target
+c0 carries too, but for four facts it must now take from the target
 (chapter 11): the count of register variables, the signedness of
-plain `char`, and the frame limit.
+plain `char` and of `wchar_t`, and the frame limit.
 
 What does not carry is what `backend.md` built around the shape of
 x86 instructions:
@@ -1228,8 +1228,11 @@ generator's to keep and never the program's.
 
 As `backend.md` chapter 10: one `.text`, one `.data` block of
 literals after the last function, `.Ls<n>` and `.string`, never
-merged, never read-only. A literal's address is the `adrp` and `add`
-pair. A function is `.type f, @function` and `.size`, and `.globl`
+merged, never read-only, and a wide literal aligned to its element,
+under `.long` or `.short`, which an element's read by a constant
+index, `ldr w0, [x16, :lo12:.Ls2+4]`, needs for its scaled offset. A
+literal's address is the `adrp` and `add` pair. A function is `.type
+f, @function` and `.size`, and `.globl`
 first for one of external linkage; a `static` function has none, and
 a call of it is `bl f`, as of any function. No alignment directive is needed before a function: every instruction
 is 4 bytes, and the assembler aligns `.text` to 4. The listing opens
@@ -1289,7 +1292,7 @@ initializes has none.
 
 ## 11. c0 and the driver
 
-c0 learns the target, for three facts:
+c0 learns the target, for four facts:
 
 - **The register variables**, 5 or 10: the count c0 assigns from and
   the number in its warning.
@@ -1299,6 +1302,10 @@ c0 learns the target, for three facts:
   unsigned char." The platform defined it, and rcc follows the
   platform (call 2). A program that needs a signed byte writes
   `signed char`.
+- **`wchar_t`**, `int` on x86-64 and `unsigned int` on aarch64, 32
+  bits on both, as `clang` has it: the type of `L'x'` and the element
+  of `L"..."`, 6.4.4.5p15 and 6.4.5p6. `char16_t` and `char32_t` are
+  `unsigned short` and `unsigned int` on both.
 - **The frame limit**, 2 GiB less 16 on x86-64 and 16 MiB less 16
   on aarch64 (5.2): the largest frame. c0 refuses a local over it at
   its declaration, where its position is known. The generator holds
@@ -1306,7 +1313,7 @@ c0 learns the target, for three facts:
 
 They live in one small description, `target_t`, that c0, the
 generators and the driver read: the name, the name `clang` takes after
-`--target=`, the three facts, and the alignment the convention asks of
+`--target=`, the four facts, and the alignment the convention asks of
 a global array, which c1 reads (chapter 10). Everything else about a target is in its
 generator.
 

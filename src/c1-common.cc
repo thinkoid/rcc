@@ -774,14 +774,35 @@ within_object(const named_offset_t &named)
 
 // functions
 
+namespace {
+
+std::string quoted_bytes(std::string_view bytes);
+std::string wide_elements(const string_t &str, long count);
+
+} // namespace
+
 // A string literal's array, 6.4.5p6: one per literal met, in the order
 // met, never merged with an equal one, which 6.4.5p7 leaves
-// unspecified, and writable (G17).  literals() writes them to .data.
+// unspecified, and writable (G17).  strings holds each one's data as
+// literals() writes it to .data, its label among it: a char literal's
+// bytes under .string, which appends the zero; a wide literal aligned to
+// its element, its elements under the directive of their width and a
+// zero element after them.
 std::string
 string_label(std::vector< std::string > &strings, const string_t &str)
 {
     const auto label = std::format(".Ls{}", strings.size());
-    strings.push_back(str.bytes);
+
+    if (str.width == 1) {
+        strings.push_back(std::format("{}:\n\t.string\t{}\n", label,
+                                      quoted_bytes(str.bytes)));
+        return label;
+    }
+
+    const long count = long(str.bytes.size()) / str.width + 1;
+    strings.push_back(std::format("\t.p2align {}\n{}:\n{}",
+                                  str.width == 2 ? 1 : 2, label,
+                                  wide_elements(str, count)));
 
     return label;
 }
@@ -835,22 +856,6 @@ quoted_bytes(std::string_view bytes)
     return text + '"';
 }
 
-// Chapter 10: the string literals, each its own labeled array in .data,
-// never .rodata and never merged (G17), with no alignment directive,
-// since a char array aligns to 1.
-void
-literals(std::ostream &out, const std::vector< std::string > &strings)
-{
-    if (strings.empty())
-        return;
-
-    out << "\t.data\n";
-
-    for (std::size_t i = 0; i < strings.size(); ++i)
-        out << std::format(".Ls{}:\n\t.string\t{}\n", i,
-                           quoted_bytes(strings[i]));
-}
-
 // The directive of a value of size bytes, which both targets'
 // assemblers take: .byte, .short, .long or .quad.
 std::string_view
@@ -862,6 +867,44 @@ data_directive(long size)
     case 4: return ".long";
     default: return ".quad";
     }
+}
+
+// The first count elements of a wide string literal, as one directive
+// of their width, .short or .long, each read from its bytes,
+// little-endian; the elements past its own are the zero appended,
+// 6.4.5p6.
+std::string
+wide_elements(const string_t &str, long count)
+{
+    const long length = long(str.bytes.size()) / str.width;
+
+    std::string values;
+    for (long i = 0; i < count; ++i) {
+        unsigned long element = 0;
+        for (int b = str.width - 1; b >= 0 && i < length; --b)
+            element = element << 8 | static_cast< unsigned char >(
+                                         str.bytes[i * str.width + b]);
+
+        values += std::format("{}{}", i > 0 ? ", " : "", element);
+    }
+
+    return std::format("\t{}\t{}\n", data_directive(str.width), values);
+}
+
+// Chapter 10: the string literals, each its own labeled array in .data,
+// never .rodata and never merged (G17); a char array aligns to 1, so a
+// char literal has no alignment directive, and a wide one has its
+// element's.
+void
+literals(std::ostream &out, const std::vector< std::string > &strings)
+{
+    if (strings.empty())
+        return;
+
+    out << "\t.data\n";
+
+    for (const std::string &literal : strings)
+        out << literal;
 }
 
 // A constant as its directive writes it: the value of the object's type
@@ -895,14 +938,23 @@ address_value(const address_t &address, std::string_view label)
 // The bytes of an array of char that a string literal initializes,
 // 6.7.11p15, in the escapes of the literals' block: .string, which
 // appends the terminating zero, when the array has room for it, and
-// .ascii, which appends none, when the literal fills the array.
-// Returns the bytes written; the elements past them are zero, p22.
+// .ascii, which appends none, when the literal fills the array.  An
+// array of a wide literal's element type, p16, takes its elements, and
+// the zero element when it has room.  Returns the bytes written; the
+// elements past them are zero, p22.
 long
 string_data(std::ostream &out, const string_t &str, long size)
 {
     const long length = long(str.bytes.size());
-    const auto directive = size > length ? ".string" : ".ascii";
 
+    if (str.width > 1) {
+        const long count = std::min(size, length + str.width) / str.width;
+        out << wide_elements(str, count);
+
+        return count * str.width;
+    }
+
+    const auto directive = size > length ? ".string" : ".ascii";
     out << std::format("\t{}\t{}\n", directive, quoted_bytes(str.bytes));
 
     return std::min(size, length + 1);

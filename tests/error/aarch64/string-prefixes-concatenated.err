@@ -1,0 +1,2 @@
+tests/error/string-prefixes-concatenated.c:6:23: error: string literal of prefix 'u' concatenated with one of prefix 'L'
+status 1

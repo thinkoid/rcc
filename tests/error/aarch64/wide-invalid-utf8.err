@@ -1,0 +1,2 @@
+tests/error/wide-invalid-utf8.c:6:28: error: invalid UTF-8 sequence after encoding prefix 'L'
+status 1

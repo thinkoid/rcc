@@ -1,7 +1,7 @@
 // -*- mode: c++; -*-
 
 // The facts of a target that the front end, the generators and the
-// driver all read: its two names and four numbers.  Everything else
+// driver all read: its two names and five numbers.  Everything else
 // about a target is its generator's.  docs/aarch64.md chapter 11.
 
 #pragma once
@@ -13,17 +13,21 @@ namespace rcc {
 
 // name is the target as -target spells it, clang_name the triple clang
 // takes after --target=.  register_variables is the count of variables
-// a register declaration can place, frame_limit the largest frame in
-// bytes, a multiple of 16.  array_alignment is the convention's for an
-// array object at file scope, which code another compiler writes for
-// its declaration may assume: an array of that many bytes or more is
-// aligned to at least that many, and 1 is no rule.
+// a register declaration can place.  char_is_signed and
+// wchar_is_signed are the signedness of plain char and of wchar_t, a
+// 32-bit integer on both targets, as clang has them.  frame_limit is
+// the largest frame in bytes, a multiple of 16.  array_alignment is
+// the convention's for an array object at file scope, which code
+// another compiler writes for its declaration may assume: an array of
+// that many bytes or more is aligned to at least that many, and 1 is no
+// rule.
 struct target_t
 {
     std::string_view name;
     std::string_view clang_name;
     int register_variables;
     bool char_is_signed;
+    bool wchar_is_signed;
     long frame_limit;
     int array_alignment;
 };
@@ -36,6 +40,7 @@ inline constexpr target_t x86_64 { .name = "x86-64",
                                    .clang_name = "x86_64-linux-gnu",
                                    .register_variables = 5,
                                    .char_is_signed = true,
+                                   .wchar_is_signed = true,
                                    .frame_limit = (1L << 31) - 16,
                                    .array_alignment = 16 };
 
@@ -45,6 +50,7 @@ inline constexpr target_t aarch64 { .name = "aarch64",
                                     .clang_name = "aarch64-linux-gnu",
                                     .register_variables = 10,
                                     .char_is_signed = false,
+                                    .wchar_is_signed = false,
                                     .frame_limit = (1L << 24) - 16,
                                     .array_alignment = 1 };
 

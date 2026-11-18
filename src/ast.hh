@@ -147,11 +147,15 @@ struct name_t
 
 // A string literal: adjacent tokens concatenated and escapes applied,
 // without the terminating zero, which the type counts; the type is
-// char [N + 1].  An object of static storage, one per literal written,
-// and writable (G17).
+// char [N + 1], or for a wide literal an array of N + 1 of its element
+// type, wchar_t, char16_t or char32_t's integer type.  bytes are the
+// elements in memory order, each of width bytes, little-endian as both
+// targets are: a char literal's width is 1.  An object of static
+// storage, one per literal written, and writable (G17).
 struct string_t
 {
     std::string bytes;
+    int width = 1;
 };
 
 // addr yields a pointer to its lvalue operand; deref is the lvalue

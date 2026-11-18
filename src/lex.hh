@@ -7,6 +7,7 @@
 
 #include "error.hh"
 
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -127,10 +128,11 @@ enum class tok_t {
     comma
 };
 
-// The spelling is a view into the source, the quotes included for a
-// character constant or a string literal; an integer token's value is
-// read from it by the parser, a literal's by the two functions below.
-// A floating token's value is not read: the parser refuses its use.
+// The spelling is a view into the source, the encoding prefix and the
+// quotes included for a character constant or a string literal; an
+// integer token's value is read from it by the parser, a literal's by
+// the functions below.  A floating token's value is not read: the
+// parser refuses its use.
 struct token_t
 {
     tok_t kind;
@@ -144,12 +146,34 @@ struct token_t
 // malformed constant, or a malformed line marker.
 std::vector< token_t > tokenize(std::string_view source, std::string_view file);
 
-// The bytes of a string literal token, escapes applied, the quotes and
-// the terminating zero left out; and the value of a character
-// constant, an int (6.4.4.5p11), which depends on the signedness of
-// plain char.  Neither fails: tokenize() refused every malformed
-// escape, and a constant of more than one character is not yet.
+// The encoding prefix of a character constant or a string literal,
+// 6.4.4.5p1, 6.4.5p1, and the encoding it names: none and u8 the UTF-8
+// of the source, u UTF-16, U UTF-32, and L the wide literal encoding,
+// which is UTF-32 on both targets, as clang has it.
+enum class encoding_t { none, utf8, utf16, utf32, wide };
+
+// The decoding functions.  None fails: tokenize() refused every
+// malformed escape and every malformed character of a literal of a
+// prefix, and a constant of more than one character.
+//
+// encoding_of() is a literal's prefix.  string_units() is the elements
+// of a string literal, escapes applied, the quotes and the terminating
+// zero left out, in an encoding: the literal's own, or the one of a
+// prefixed literal it is concatenated with, 6.4.5p5.  An escape gives
+// its element's value, 6.4.4.5p5, p6; a universal character name,
+// 6.4.3p4, and each character of the text, read as UTF-8 for any
+// encoding but none's, give the code units that encode them.
+// string_bytes() is the elements of a literal in the encoding none, each
+// a byte.  character_value() is the value of a character constant of no
+// prefix, an int, 6.4.4.5p11, which depends on the signedness of plain
+// char; wide_character_value() is the one code unit of one of the
+// prefix L, u or U, p13 to p15.  is_utf8() says whether the characters
+// of a literal outside its escapes are UTF-8.
+encoding_t encoding_of(const token_t &);
+std::vector< std::uint32_t > string_units(const token_t &, encoding_t);
 std::string string_bytes(const token_t &);
 int character_value(const token_t &, bool char_is_signed);
+std::uint32_t wide_character_value(const token_t &);
+bool is_utf8(const token_t &);
 
 } // namespace rcc

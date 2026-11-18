@@ -257,6 +257,13 @@ integer type compatible with each enumerated type (J.3.10(7)): by
 its values, =unsigned int=, =unsigned long=, =int= or =long=, as
 =clang= chooses on both targets, which =shape.md= chapter 5 says and
 the =enums= probe pins; an enumeration under =packed= is refused.
+And the encodings and the wide types: a literal of no prefix is its
+bytes in UTF-8 (J.3.5(6)), a wide one UTF-32 (J.3.5(7)); =wchar_t=
+is =int= on x86-64 and =unsigned int= on aarch64, =char16_t= and
+=char32_t= =unsigned short= and =unsigned int=; a constant of no
+prefix with several characters is a not-yet, and a wide one with
+several an error (J.3.5(9), (10)). =shape.md= chapters 2 and 3 and
+=aarch64.md= chapter 11 say so.
 
 Check: every J.3 item the subset reaches has a row for each target,
 and each row agrees with a pin or a probe.
@@ -923,6 +930,9 @@ as C23 and =clang= take it; =extern= and =static= are refused.
 =static_assert= is of the same kind: a keyword in C23 and a macro of
 =assert.h= in the dialect rcc preprocesses in, which is how rcc has
 it; with C23 the lexer takes the keyword.
+=u8= is of the same kind too: a =u8= string is an array of =char=
+in that dialect and of =char8_t= in C23, and ~u8'x'~ is C23's alone,
+refused as a not-yet.
 
 Fix: decide the dialect's answer: the error stays with C17's
 paragraph cited, or the declaration is a block's static.
@@ -1303,20 +1313,6 @@ to =clang -E= and the quote taken by =number()=, the not-yet is
 reached; without, the parser's branch goes.
 
 Check: a program of =tests/error= with ~1'000~ and its pin.
-
-** TODO A character outside ASCII in a character constant is called multi-character
-
-='é'= written in the source reaches the lexer as the two bytes of its
-UTF-8 encoding, and the lexer reports "not yet: multi-character
-constant". The source has one character. The same character in a
-string literal compiles, as its two bytes, with no diagnostic; the
-escape =é= is "not yet: universal character name" in both.
-
-Fix: a byte above 127 in a character constant is refused by its own
-name; whether a string literal takes such bytes in silence is decided
-with it and recorded in the table of implementation-defined choices.
-
-Check: a program of =tests/error= with ='é'= and its pin.
 
 ** TODO The keyword table of =src/lex.cc= does not follow =.clang-format=
 

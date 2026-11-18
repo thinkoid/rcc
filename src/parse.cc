@@ -294,6 +294,24 @@ char_type(const parser_t &p)
     return make_int(8, p.target.char_is_signed);
 }
 
+// The type of an element of a literal of an encoding: char for none and
+// for u8, the dialect rcc preprocesses in giving a UTF-8 string literal
+// char elements, C17's 6.4.5p6, where C23 gives them char8_t; char16_t
+// and char32_t, unsigned short and unsigned int, 6.4.4.5p13, p14; and
+// wchar_t, p15, int on x86-64 and unsigned int on aarch64, as the target
+// has it.
+type_t
+element_type(const parser_t &p, encoding_t encoding)
+{
+    switch (encoding) {
+    case encoding_t::none:
+    case encoding_t::utf8: return char_type(p);
+    case encoding_t::utf16: return make_int(16, false);
+    case encoding_t::utf32: return make_int(32, false);
+    default: return make_int(32, p.target.wchar_is_signed);
+    }
+}
+
 type_t
 long_type()
 {
@@ -2591,20 +2609,40 @@ is_char_array(const type_t &t)
     return is< int_t >(element) && as< int_t >(element).width == 8;
 }
 
+// The words of an array a string literal may initialize, in a message.
+std::string_view
+string_array_words(const type_t &t)
+{
+    return is_char_array(t) ? "char array" : "wide char array";
+}
+
 // Whether the tokens ahead are a string literal alone in its place in a
-// list, "abc" or "ab" "c" before a ',' or the '}': it initializes an
-// array of char whole, 6.7.11p15, where any other expression there
-// initializes the array's first element.
+// list, "abc" or "ab" "c" before a ',' or the '}', that initializes the
+// array t whole: an array of char takes one of no prefix or of u8,
+// 6.7.11p15, and an array of a wide literal's element type takes that
+// literal, p16, so on x86-64 an array of int takes L"..." and on aarch64
+// one of unsigned int takes L"..." and U"...".  Any other expression
+// there initializes the array's first element.  A wide literal ahead of
+// an array of char is the literal string_value() refuses.
 bool
-string_ahead(const parser_t &p)
+string_ahead(const parser_t &p, const type_t &t)
 {
     std::size_t ahead = 0;
-    while (peek(p, ahead).kind == tok_t::string)
-        ++ahead;
+    encoding_t encoding = encoding_t::none;
+    for (; peek(p, ahead).kind == tok_t::string; ++ahead)
+        if (encoding_of(peek(p, ahead)) != encoding_t::none)
+            encoding = encoding_of(peek(p, ahead));
 
     const tok_t after = peek(p, ahead).kind;
+    if (ahead == 0 || (after != tok_t::comma && after != tok_t::rbrace))
+        return false;
 
-    return ahead > 0 && (after == tok_t::comma || after == tok_t::rbrace);
+    if (is_char_array(t))
+        return true;
+
+    const type_t element = element_type(p, encoding);
+
+    return size_of(element) > 1 && *as< array_t >(t).element == element;
 }
 
 // A designation, [2] = or .x =, 6.7.11p1, is not yet.
@@ -2655,13 +2693,25 @@ scalar_subobject(parser_t &p,
     values.push_back(subobject_t { offset, t, std::move(value) });
 }
 
-// A string literal that initializes the array of char t at offset,
-// 6.7.11p15: its bytes, and its terminating zero when the array has
-// room for it or is of unknown size, which takes the literal's size;
-// the elements past the literal's are zero, p22.  A literal longer than
-// the array is an initializer for an object not contained in it, p3.
-// Returns the count of elements the literal gives an array of unknown
-// size, its bytes and the zero.
+// Whether the string literal e initializes the array t whole, as
+// string_ahead() says of one in a list: an array of char takes any,
+// which string_value() checks, and any other array one of its element
+// type.
+bool
+initializes(const type_t &t, const expr_t &e)
+{
+    return is_char_array(t) ||
+           *as< array_t >(t).element == *as< array_t >(e.type).element;
+}
+
+// A string literal that initializes the array t at offset, of char,
+// 6.7.11p15, or of a wide literal's element type, p16: its elements, and
+// its terminating zero when the array has room for it or is of unknown
+// size, which takes the literal's size; the elements past the literal's
+// are zero, p22.  A literal longer than the array is an initializer for
+// an object not contained in it, p3.  A wide literal initializes no
+// array of char, p15.  Returns the count of elements the literal gives
+// an array of unknown size, its elements and the zero.
 long
 string_value(const token_t &start,
              const string_t &str,
@@ -2670,10 +2720,14 @@ string_value(const token_t &start,
              std::vector< subobject_t > &values)
 {
     const auto &array = as< array_t >(t);
-    const long given = long(str.bytes.size()) + 1;
+    const long given = long(str.bytes.size()) / str.width + 1;
+
+    if (is_char_array(t) && str.width > 1)
+        fail(start, "initializing a char array with a wide string literal");
 
     if (array.count >= 0 && given - 1 > array.count)
-        fail(start, "initializer-string for char array is too long");
+        fail(start, "initializer-string for " +
+                        std::string(string_array_words(t)) + " is too long");
 
     const type_t sized =
         array.count >= 0 ? t : make_array(*array.element, given);
@@ -2682,8 +2736,8 @@ string_value(const token_t &start,
     return given;
 }
 
-// The string literal ahead, which string_ahead() found, for the array of
-// char t at offset.
+// The string literal ahead, which string_ahead() found, for the array t
+// at offset.
 long
 listed_string(parser_t &p,
               const type_t &t,
@@ -2792,9 +2846,9 @@ braced_initializer(parser_t &p,
         return 0;
     }
 
-    if (is_char_array(t) && string_ahead(p)) {
+    if (string_ahead(p, t)) {
         const long count = listed_string(p, t, offset, values);
-        close_list(p, true, "char array");
+        close_list(p, true, string_array_words(t));
 
         return count;
     }
@@ -2827,7 +2881,7 @@ subobject_initializer(parser_t &p,
         return 0;
     }
 
-    if (is_char_array(t) && string_ahead(p))
+    if (string_ahead(p, t))
         return listed_string(p, t, offset, values);
 
     return elements(p, as< array_t >(t), offset, values);
@@ -2857,7 +2911,7 @@ object_initializer(parser_t &p,
     const token_t &start = peek(p);
     const expr_t e = assignment_expression(p);
 
-    if (!is_char_array(t) || !is< string_t >(e))
+    if (!is< string_t >(e) || !initializes(t, e))
         fail(start, "array initializer must be an initializer list");
 
     return string_value(start, as< string_t >(e), t, 0, values);
@@ -5669,6 +5723,79 @@ argument_expression_list(parser_t &p,
     return args;
 }
 
+// A literal's encoding prefix as a message names it.
+std::string
+prefix_words(const token_t &t)
+{
+    return quoted(t.text.substr(0, t.text.find_first_of("'\"")));
+}
+
+// Adjacent string literals are one, 6.4.5p5, of the prefix of those of
+// them that have one, which is one prefix, p2, or of none: "a" L"b" is
+// L"ab".  Each literal's elements are read in that encoding, a
+// literal's of no prefix among them, and such a literal's text is to be
+// UTF-8 where the encoding is wide, as one of a prefix's is.  The array
+// is one element longer than the elements, for the zero appended, p6,
+// of the encoding's element type; its bytes are the elements', each at
+// its width, little-endian.
+expr_t
+string_literal(parser_t &p)
+{
+    std::size_t count = 0;
+    encoding_t encoding = encoding_t::none;
+    const token_t *prefixed = nullptr;
+
+    for (; peek(p, count).kind == tok_t::string; ++count) {
+        const token_t &t = peek(p, count);
+        const encoding_t own = encoding_of(t);
+        if (own == encoding_t::none)
+            continue;
+
+        if (prefixed && own != encoding)
+            fail(t, "string literal of prefix " + prefix_words(t) +
+                        " concatenated with one of prefix " +
+                        prefix_words(*prefixed));
+
+        prefixed = &t;
+        encoding = own;
+    }
+
+    const type_t element = element_type(p, encoding);
+    const int width = int(size_of(element));
+    const bool wide = width > 1;
+
+    std::string bytes;
+    for (std::size_t k = 0; k < count; ++k) {
+        const token_t &t = advance(p);
+        if (wide && encoding_of(t) == encoding_t::none && !is_utf8(t))
+            fail(t, "invalid UTF-8 sequence in a string literal "
+                    "concatenated with prefix " +
+                        prefix_words(*prefixed));
+
+        for (const std::uint32_t unit : string_units(t, encoding))
+            for (int b = 0; b < width; ++b)
+                bytes.push_back(static_cast< char >(unit >> (8 * b)));
+    }
+
+    const long elements = long(bytes.size()) / width;
+    type_t type = make_array(element, elements + 1);
+
+    return expr_t { std::move(type), string_t { std::move(bytes), width } };
+}
+
+// A character constant: of no prefix, an int, 6.4.4.5p11; of L, u or
+// U, its one code unit, of wchar_t, char16_t or char32_t, p13 to p15.
+expr_t
+character_constant(const parser_t &p, const token_t &t)
+{
+    const encoding_t encoding = encoding_of(t);
+    if (encoding == encoding_t::none)
+        return expr_t { int_type(), literal_t { character_value(
+                                        t, p.target.char_is_signed) } };
+
+    return constant_of(element_type(p, encoding), wide_character_value(t));
+}
+
 // A name must be declared, 6.5.2p2, as an object or a function: a
 // typedef name names a type.  An enumeration constant is a constant,
 // p2's footnote, of its type and its value, 6.4.4.4p2, 6.7.3.3p10: the
@@ -5681,9 +5808,8 @@ argument_expression_list(parser_t &p,
 // generic selection is not yet.  Parentheses leave the expression as it
 // is, an lvalue included, 6.5.2p6.  A floating constant is not yet: the
 // lexer took its spelling, and its value is not computed.  A character
-// constant is an int, 6.4.4.5p11.  Adjacent string literals are one,
-// 6.4.5p5, an array of char one longer than its bytes for the zero
-// appended, p6.
+// constant is character_constant()'s, and adjacent string literals
+// are one, string_literal()'s.
 expr_t
 primary_expression(parser_t &p)
 {
@@ -5718,21 +5844,8 @@ primary_expression(parser_t &p)
     }
     case tok_t::integer: advance(p); return integer_constant(t);
     case tok_t::floating: not_yet(t, "floating constant");
-    case tok_t::character: {
-        advance(p);
-        const int value = character_value(t, p.target.char_is_signed);
-
-        return expr_t { int_type(), literal_t { value } };
-    }
-    case tok_t::string: {
-        std::string bytes;
-        while (peek(p).kind == tok_t::string)
-            bytes += string_bytes(advance(p));
-
-        type_t type = make_array(char_type(p), long(bytes.size()) + 1);
-
-        return expr_t { std::move(type), string_t { std::move(bytes) } };
-    }
+    case tok_t::character: advance(p); return character_constant(p, t);
+    case tok_t::string: return string_literal(p);
     case tok_t::lparen: {
         advance(p);
 

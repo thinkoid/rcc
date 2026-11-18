@@ -1,0 +1,2 @@
+tests/error/wide-string-too-long.c:5:19: error: initializer-string for wide char array is too long
+status 1

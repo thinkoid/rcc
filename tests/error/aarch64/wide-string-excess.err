@@ -1,0 +1,2 @@
+tests/error/wide-string-excess.c:5:29: error: excess elements in wide char array initializer
+status 1

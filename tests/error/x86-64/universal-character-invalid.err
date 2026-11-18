@@ -1,0 +1,2 @@
+tests/error/universal-character-invalid.c:5:18: error: invalid universal character
+status 1

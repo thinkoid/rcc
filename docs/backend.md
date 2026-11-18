@@ -2170,7 +2170,12 @@ ASCII as itself with `"` and `\` escaped, `\n`, `\t` and `\r` as the C
 escapes, and every other byte as a three-digit octal escape. All the
 literals of a file are one `.data` block after its last function,
 before the note section, with no alignment directive, since a `char`
-array aligns to 1. A literal's address is `lea .Ls<n>(%rip), L`.
+array aligns to 1. A wide literal, `L"..."`, `u"..."` or `U"..."`,
+is aligned to its element, `.p2align 2` or `.p2align 1`, and its
+elements and the zero element are one `.long` or `.short` of their
+values, `.long 104, 233, 0` for `L"hé"`; an array of `wchar_t` a wide
+literal initializes holds its elements the same way. A literal's
+address is `lea .Ls<n>(%rip), L`.
 
 A function is `.type f, @function` and its label, and ends with
 `.size`. One of external linkage is `.globl f` first. A `static`

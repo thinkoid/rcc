@@ -1,0 +1,2 @@
+tests/error/wide-string-char-array.c:3:15: error: initializing a char array with a wide string literal
+status 1

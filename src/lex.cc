@@ -632,60 +632,199 @@ hex_digit_value(char c)
     return (c | 0x20) - 'a' + 10;
 }
 
-// One character of a literal and the position after it.
+// The encoding a prefix spells, 6.4.4.5p1: u8, u, U or L, or none.
+encoding_t
+encoding_named(std::string_view prefix)
+{
+    if (prefix == "u8")
+        return encoding_t::utf8;
+
+    if (prefix == "u")
+        return encoding_t::utf16;
+
+    if (prefix == "U")
+        return encoding_t::utf32;
+
+    if (prefix == "L")
+        return encoding_t::wide;
+
+    return encoding_t::none;
+}
+
+// Whether an encoding is a wide one, whose elements are wider than a
+// byte, 6.4.4.5p2, 6.4.5p3.
+bool
+is_wide(encoding_t encoding)
+{
+    return encoding != encoding_t::none && encoding != encoding_t::utf8;
+}
+
+// The greatest value of an element in the encoding, which bounds an
+// octal or a hexadecimal escape, 6.4.4.5p9: an unsigned char's, or the
+// char8_t's, a byte; char16_t's; char32_t's, and the unsigned type of
+// wchar_t's, both 32 bits on both targets.
+std::uint32_t
+greatest_unit(encoding_t encoding)
+{
+    switch (encoding) {
+    case encoding_t::none:
+    case encoding_t::utf8: return 0xff;
+    case encoding_t::utf16: return 0xffff;
+    default: return 0xffffffff;
+    }
+}
+
+// A character of UTF-8 at i, its code point and its length in bytes, or
+// a length of 0 where the bytes are none: a byte that leads no
+// character, a lead byte without its continuation bytes, an overlong
+// form, a surrogate, or a code point past 10FFFF (RFC 3629).
+struct utf8_t
+{
+    std::uint32_t code_point;
+    std::size_t length;
+};
+
+utf8_t
+utf8_at(std::string_view s, std::size_t i)
+{
+    const auto byte = [&](std::size_t k) -> std::uint32_t {
+        return k < s.size() ? static_cast< unsigned char >(s[k]) : 0;
+    };
+
+    const std::uint32_t lead = byte(i);
+    if (lead < 0x80)
+        return { lead, 1 };
+
+    std::size_t length = 0;
+    std::uint32_t least = 0;
+    std::uint32_t code_point = 0;
+
+    if ((lead & 0xe0) == 0xc0) {
+        length = 2;
+        least = 0x80;
+        code_point = lead & 0x1f;
+    }
+    else if ((lead & 0xf0) == 0xe0) {
+        length = 3;
+        least = 0x800;
+        code_point = lead & 0x0f;
+    }
+    else if ((lead & 0xf8) == 0xf0) {
+        length = 4;
+        least = 0x10000;
+        code_point = lead & 0x07;
+    }
+    else
+        return { 0, 0 };
+
+    for (std::size_t k = 1; k < length; ++k) {
+        const std::uint32_t c = byte(i + k);
+        if ((c & 0xc0) != 0x80)
+            return { 0, 0 };
+
+        code_point = code_point << 6 | (c & 0x3f);
+    }
+
+    const bool surrogate = code_point >= 0xd800 && code_point <= 0xdfff;
+    if (code_point < least || code_point > 0x10ffff || surrogate)
+        return { 0, 0 };
+
+    return { code_point, length };
+}
+
+// One element of a literal's text and the position after it.  value is
+// the element's own value where an escape gives it, a simple one or an
+// octal or hexadecimal one, 6.4.4.5p5, p6, and where the text is read as
+// bytes; it is a code point, code_point set, for a universal character
+// name, 6.4.3p4, and for a character of the text read as UTF-8, which
+// the literal's encoding then encodes.  A hexadecimal escape's value is
+// held past 32 bits, so that escape_end() can refuse it.
 struct char_t
 {
-    int value;
+    std::uint64_t value;
+    bool code_point;
     std::size_t end;
 };
 
-// The character at i in the spelling of a literal, whose escapes
-// tokenize() has checked.  An octal escape takes at most three digits
-// and a hexadecimal one every hex digit that follows, 6.4.4.5p7; a
-// hexadecimal value stops growing once it is past a byte, so a long run
-// of digits cannot overflow.
+// The element at i in the spelling of a literal, whose escapes and
+// characters tokenize() has checked, its text read as UTF-8 when utf8
+// is set and as bytes otherwise.  An octal escape takes at most three
+// digits and a hexadecimal one every hex digit that follows, 6.4.4.5p7;
+// a hexadecimal value stops growing once it is past 32 bits, so a long
+// run of digits cannot overflow.  \u takes four hex digits and \U
+// eight, 6.4.3p1.
 char_t
-next_char(std::string_view s, std::size_t i)
+next_char(std::string_view s, std::size_t i, bool utf8)
 {
     const auto byte_at = [&](std::size_t k) {
         return k < s.size() ? s[k] : '\0';
     };
 
+    if (s[i] != '\\' && utf8) {
+        const utf8_t c = utf8_at(s, i);
+        return { c.code_point, true, i + c.length };
+    }
+
     if (s[i] != '\\')
-        return { static_cast< unsigned char >(s[i]), i + 1 };
+        return { static_cast< unsigned char >(s[i]), false, i + 1 };
 
     const char c = byte_at(i + 1);
     if (const int value = simple_escape(c); value >= 0)
-        return { value, i + 2 };
+        return { std::uint32_t(value), false, i + 2 };
 
-    int value = 0;
+    std::uint64_t value = 0;
 
     if (is_octal_digit(c)) {
         std::size_t k = i + 1;
         for (; k < i + 4 && is_octal_digit(byte_at(k)); ++k)
-            value = value * 8 + (s[k] - '0');
+            value = value * 8 + std::uint64_t(s[k] - '0');
 
-        return { value, k };
+        return { value, false, k };
     }
 
+    const std::size_t digits = c == 'u' ? 4 : c == 'U' ? 8 : 0;
     std::size_t k = i + 2;
-    for (; is_hex_digit(byte_at(k)); ++k)
-        value = std::min(value * 16 + hex_digit_value(s[k]), 0x100);
+    for (; is_hex_digit(byte_at(k)) && (digits == 0 || k < i + 2 + digits); ++k)
+        value = std::min< std::uint64_t >(
+            value * 16 + std::uint64_t(hex_digit_value(s[k])), 1ull << 32);
 
-    return { value, k };
+    return { value, digits > 0, k };
+}
+
+// A universal character name at i, checked against 6.4.3p1, four or
+// eight hex digits, and the constraint of p2: no surrogate and no code
+// point past 10FFFF.  Inside a literal, the only place the lexer reads
+// one, any other code point is taken, the basic characters' included.
+void
+check_universal_name(const state_t &st, std::size_t i)
+{
+    const location_t where = location_of(st, i);
+    const std::size_t digits = at(st, i + 1) == 'u' ? 4 : 8;
+
+    for (std::size_t k = i + 2; k < i + 2 + digits; ++k)
+        if (!is_hex_digit(at(st, k)))
+            fail(where, "incomplete universal character name");
+
+    const auto code_point = std::uint32_t(next_char(st.source, i, false).value);
+    const bool surrogate = code_point >= 0xd800 && code_point <= 0xdfff;
+    if (surrogate || code_point > 0x10ffff)
+        fail(where, "invalid universal character");
 }
 
 // The escape sequence whose backslash is at i, checked against the
 // grammar of 6.4.4.5p1 and the range of p9: an octal or hexadecimal
-// value must fit an unsigned char.  Returns the position after it.
+// value must fit an element of the literal's encoding.  Returns the
+// position after it.
 std::size_t
-escape_end(const state_t &st, std::size_t i)
+escape_end(const state_t &st, std::size_t i, encoding_t encoding)
 {
     const location_t where = location_of(st, i);
     const char c = at(st, i + 1);
 
-    if (c == 'u' || c == 'U')
-        not_yet(where, "universal character name");
+    if (c == 'u' || c == 'U') {
+        check_universal_name(st, i);
+        return next_char(st.source, i, false).end;
+    }
 
     if (c == 'x' && !is_hex_digit(at(st, i + 2)))
         fail(where, "\\x used with no following hex digits");
@@ -694,42 +833,113 @@ escape_end(const state_t &st, std::size_t i)
         fail(where, std::format("unknown escape sequence: '\\' followed by {}",
                                 describe(c)));
 
-    const char_t ch = next_char(st.source, i);
-    if (ch.value > 0xff)
+    const char_t ch = next_char(st.source, i, false);
+    if (ch.value > greatest_unit(encoding))
         fail(where, std::format("{} escape sequence out of range",
                                 c == 'x' ? "hex" : "octal"));
 
     return ch.end;
 }
 
-// A character constant or a string literal, quote to quote, 6.4.4.5p1,
-// 6.4.5p1.  Neither spans a line, and every escape is checked here, so
-// the decoding functions below cannot fail.  A character constant
-// holds one character: none is an error, and the value of more than
-// one is implementation-defined, 6.4.4.5p11, outside the subset.
-token_t
-literal(state_t &st, tok_t kind)
+// The words a message names a literal's prefix by, after the spelling of
+// the token at begin.
+std::string
+prefix_words(const state_t &st, std::size_t begin, std::size_t prefix)
 {
-    const char quote = st.source[st.pos];
-    const location_t where = location_of(st, st.pos);
+    return std::format("'{}'", st.source.substr(begin, prefix));
+}
 
-    std::size_t i = st.pos + 1;
+// One element of a literal's text, the character or the escape at i,
+// checked, and the position after it.  A character of a literal of a
+// prefix is UTF-8, which u8 asks for, 6.4.5p6, and which a wide one is
+// decoded from; a malformed one is an error.  A literal of no prefix
+// takes the bytes of its text as they are, in the literal encoding,
+// which is the source's own, UTF-8.
+char_t
+checked_char(const state_t &st,
+             std::size_t i,
+             std::size_t begin,
+             std::size_t prefix,
+             encoding_t encoding)
+{
+    if (at(st, i) == '\\' && at(st, i + 1) != '\n') {
+        const std::size_t end = escape_end(st, i, encoding);
+        const char_t ch = next_char(st.source, i, false);
+
+        return { ch.value, ch.code_point, end };
+    }
+
+    if (encoding == encoding_t::none)
+        return next_char(st.source, i, false);
+
+    const utf8_t c = utf8_at(st.source, i);
+    if (c.length == 0)
+        fail(location_of(st, i),
+             "invalid UTF-8 sequence after encoding prefix " +
+                 prefix_words(st, begin, prefix));
+
+    return { c.code_point, true, i + c.length };
+}
+
+// What 6.4.4.5 asks of a character constant's one element, ch: one of
+// no prefix holds a byte, its value a char's, p11, so a character outside
+// ASCII, or a universal character name of one, is too large for it, as
+// clang has it; one of u holds a code point of one UTF-16 code unit,
+// p10.  An escape's value is checked by escape_end().
+void
+check_character(const location_t &where,
+                const char_t &ch,
+                bool from_text,
+                encoding_t encoding)
+{
+    const bool character = ch.code_point || from_text;
+    if (encoding == encoding_t::none && character && ch.value > 0x7f)
+        fail(where, "character too large for a character constant");
+
+    if (encoding == encoding_t::utf16 && ch.code_point && ch.value > 0xffff)
+        fail(where, "character too large for a 'u' character constant");
+}
+
+// A character constant or a string literal, its prefix and quote to
+// quote, 6.4.4.5p1, 6.4.5p1.  Neither spans a line, and every escape and
+// every character is checked here, so the decoding functions below
+// cannot fail.  A character constant holds one character: none is an
+// error; one of a prefix holds no more, p10 for u and U, and clang
+// refuses more after L too; the value of more than one without a
+// prefix is implementation-defined, p11, outside the subset.
+token_t
+literal(state_t &st, tok_t kind, std::size_t prefix)
+{
+    const std::size_t begin = st.pos;
+    const char quote = st.source[begin + prefix];
+    const location_t where = location_of(st, begin);
+    const encoding_t encoding = encoding_named(st.source.substr(begin, prefix));
+
+    std::size_t i = begin + prefix + 1;
     int count = 0;
 
     for (char c = at(st, i); c != quote; c = at(st, i), ++count) {
         if (c == '\n' || i >= st.source.size())
             fail(where, std::format("missing terminating {} character", quote));
 
-        i = c == '\\' && at(st, i + 1) != '\n' ? escape_end(st, i) : i + 1;
+        const bool from_text = c != '\\';
+        const char_t ch = checked_char(st, i, begin, prefix, encoding);
+        if (kind == tok_t::character)
+            check_character(where, ch, from_text, encoding);
+
+        i = ch.end;
     }
 
     if (kind == tok_t::character && count == 0)
         fail(where, "empty character constant");
 
+    if (kind == tok_t::character && count > 1 && encoding != encoding_t::none)
+        fail(where, "more than one character in a wide character constant");
+
     if (kind == tok_t::character && count > 1)
         not_yet(where, "multi-character constant");
 
-    return take(st, kind, i + 1 - st.pos);
+    return take(st, kind, i + 1 - begin);
 }
 
 // The length of an encoding prefix at the current position, u8, u, U
@@ -747,6 +957,21 @@ encoding_prefix_length(const state_t &st)
         return 1;
 
     return 0;
+}
+
+// A literal of a prefix.  u8 on a character constant is C23's, and the
+// dialect rcc preprocesses in has none, so it is not yet.
+token_t
+prefixed_literal(state_t &st, std::size_t prefix)
+{
+    if (at(st, st.pos + prefix) == '"')
+        return literal(st, tok_t::string, prefix);
+
+    if (prefix == 2)
+        not_yet(location_of(st, st.pos),
+                "encoding prefix 'u8' on a character constant");
+
+    return literal(st, tok_t::character, prefix);
 }
 
 // The longest punctuator at the current position.
@@ -779,13 +1004,11 @@ tokenize(std::string_view source, std::string_view file)
         if (c == '#' && starts_line(st))
             line_marker(st);
         else if (const std::size_t n = encoding_prefix_length(st); n > 0)
-            not_yet(
-                location_of(st, st.pos),
-                std::format("encoding prefix '{}'", source.substr(st.pos, n)));
+            tokens.push_back(prefixed_literal(st, n));
         else if (c == '\'')
-            tokens.push_back(literal(st, tok_t::character));
+            tokens.push_back(literal(st, tok_t::character, 0));
         else if (c == '"')
-            tokens.push_back(literal(st, tok_t::string));
+            tokens.push_back(literal(st, tok_t::string, 0));
         else if (is_ident_start(c))
             tokens.push_back(identifier(st));
         // a '.' before a digit starts a floating constant, not a
@@ -801,18 +1024,96 @@ tokenize(std::string_view source, std::string_view file)
     return tokens;
 }
 
-// The spelling between the quotes, decoded; no zero is appended.
+namespace {
+
+// The length of a literal's prefix: what comes before its quote.
+std::size_t
+prefix_length(const token_t &t)
+{
+    return t.text.find_first_of("'\"");
+}
+
+// The text between a literal's quotes.
+std::string_view
+literal_body(const token_t &t)
+{
+    const std::size_t open = prefix_length(t) + 1;
+
+    return t.text.substr(open, t.text.size() - open - 1);
+}
+
+// A code point's code units in an encoding: its UTF-8 bytes for none and
+// u8, one or two UTF-16 code units, the second pair of a surrogate past
+// FFFF, or itself in UTF-32.
+void
+encode(std::uint32_t code_point,
+       encoding_t encoding,
+       std::vector< std::uint32_t > &units)
+{
+    if (is_wide(encoding) && encoding != encoding_t::utf16) {
+        units.push_back(code_point);
+        return;
+    }
+
+    if (encoding == encoding_t::utf16) {
+        if (code_point < 0x10000) {
+            units.push_back(code_point);
+            return;
+        }
+
+        const std::uint32_t v = code_point - 0x10000;
+        units.push_back(0xd800 | (v >> 10));
+        units.push_back(0xdc00 | (v & 0x3ff));
+        return;
+    }
+
+    if (code_point < 0x80) {
+        units.push_back(code_point);
+        return;
+    }
+
+    const int length = code_point < 0x800 ? 2 : code_point < 0x10000 ? 3 : 4;
+    const std::uint32_t lead = length == 2 ? 0xc0 : length == 3 ? 0xe0 : 0xf0;
+
+    units.push_back(lead | (code_point >> (6 * (length - 1))));
+    for (int k = length - 2; k >= 0; --k)
+        units.push_back(0x80 | ((code_point >> (6 * k)) & 0x3f));
+}
+
+} // namespace
+
+encoding_t
+encoding_of(const token_t &t)
+{
+    return encoding_named(t.text.substr(0, prefix_length(t)));
+}
+
+std::vector< std::uint32_t >
+string_units(const token_t &t, encoding_t encoding)
+{
+    const std::string_view body = literal_body(t);
+
+    std::vector< std::uint32_t > units;
+    for (std::size_t i = 0; i < body.size();) {
+        const char_t c = next_char(body, i, is_wide(encoding));
+
+        if (c.code_point)
+            encode(std::uint32_t(c.value), encoding, units);
+        else
+            units.push_back(std::uint32_t(c.value));
+
+        i = c.end;
+    }
+
+    return units;
+}
+
 std::string
 string_bytes(const token_t &t)
 {
-    const std::string_view body = t.text.substr(1, t.text.size() - 2);
-
     std::string bytes;
-    for (std::size_t i = 0; i < body.size();) {
-        const char_t c = next_char(body, i);
-        bytes.push_back(static_cast< char >(c.value));
-        i = c.end;
-    }
+    for (const std::uint32_t unit : string_units(t, encoding_t::none))
+        bytes.push_back(static_cast< char >(unit));
 
     return bytes;
 }
@@ -823,11 +1124,38 @@ string_bytes(const token_t &t)
 int
 character_value(const token_t &t, bool char_is_signed)
 {
-    const char_t c = next_char(t.text, 1);
+    const char_t c = next_char(literal_body(t), 0, false);
     if (char_is_signed)
         return static_cast< signed char >(c.value);
 
-    return c.value;
+    return int(c.value);
+}
+
+std::uint32_t
+wide_character_value(const token_t &t)
+{
+    return std::uint32_t(next_char(literal_body(t), 0, true).value);
+}
+
+bool
+is_utf8(const token_t &t)
+{
+    const std::string_view body = literal_body(t);
+
+    for (std::size_t i = 0; i < body.size();) {
+        if (body[i] == '\\') {
+            i = next_char(body, i, false).end;
+            continue;
+        }
+
+        const std::size_t length = utf8_at(body, i).length;
+        if (length == 0)
+            return false;
+
+        i += length;
+    }
+
+    return true;
 }
 
 } // namespace rcc

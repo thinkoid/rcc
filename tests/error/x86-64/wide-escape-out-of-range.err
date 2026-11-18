@@ -1,0 +1,2 @@
+tests/error/wide-escape-out-of-range.c:6:18: error: hex escape sequence out of range
+status 1
