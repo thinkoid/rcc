@@ -615,7 +615,18 @@ forms: the immediate of a constant the instruction takes (6.4), the
 operand of an object in memory (below), or a register, into which
 it is generated; the instruction for the operator is written as
 `op R, L`; `R` is freed; the result is `L`, but for a remainder,
-which is the value in `rdx` (6.5). Every operator of the table is
+which is the value in `rdx` (6.5), and for an operator that commutes,
+`+`, `*`, `&`, `|` or `^`, whose right operand is a value in the
+register its consumer names when the instruction is written: that
+row writes `R`'s register, `op L, R`, `L` freed, so `return g +
+bump()` ends `movq -8(%rbp), %rcx; addl %ecx, %eax` and not `addl
+%eax, %ecx; movl %ecx, %eax`. The instruction is the source's
+operator on the source's two values, evaluated in the order written;
+only its destination is the other operand's register, and the
+result is valid to the instruction's width, whichever register it
+writes. A register variable's read as `R` is no such value, since
+its register is the variable, nor is a compound assignment's
+variable written in place as `L`. Every operator of the table is
 written exactly once per node, and nothing looks at a node's
 neighbours, with two exceptions. A node whose right operand's
 top operator is a division or a shift by a variable count generates
@@ -832,7 +843,9 @@ in `rax` already. The name stops at a node whose right operand or
 place holds a pinned instruction within it, a call or a division:
 there a value held in the named register would be moved out, or a
 value the operand computes outside it would move into the pinned
-one, but for the quotient the division leaves in `rax` (6.5). A right
+one, but for the quotient the division leaves in `rax` (6.5) and for
+a right operand in the named register under an operator that
+commutes, whose instruction writes it (above). A right
 operand that writes the variable whose borrowed read is the left
 operand takes the name too: `preserve()` copies the read
 inside it, so the copy is handed the name, and the right operand is
@@ -1300,8 +1313,9 @@ a variable count as the top operator does the same with `rcx`.
   (6.7), and its result is in `rax` by the convention.
 
 So `a + b / c` loads `a` into `ecx` and `b` into `eax`, divides by
-`c`'s slot, `cltd; idivl -12(%rbp)`, and adds, `addl %eax, %ecx`
-(`div-busy`), and `a[i] = (x >> 16) % 256` on a global array forms
+`c`'s slot, `cltd; idivl -12(%rbp)`, and adds, `addl %eax, %ecx`, or
+`addl %ecx, %eax` under a `return`, which names the quotient's `rax`
+(6.1, `div-busy`), and `a[i] = (x >> 16) % 256` on a global array forms
 the address in `rcx` and `rsi` and shifts and divides `x` in `eax`
 (`pinned`). The rule has no counterpart in the Seventh Edition
 compiler, since the PDP-11's `div` takes any even-odd pair: `oddreg()`
@@ -1830,7 +1844,9 @@ constant.
   its last instruction can write it (6.1); otherwise `e` into `L` and
   `mov L, %eax`, a remainder's `movl %edx, %eax` among them, and the
   value of a node whose right operand holds a call or a division,
-  `movl %ecx, %eax` after `r + f(x)`. Then `jmp .Lret`, where `.Lret`
+  `movl %ecx, %eax` after `r - f(x)`, where `r + f(x)` writes the
+  call's `rax`, `addl %ebx, %eax`, its operator commuting (6.1). Then
+  `jmp .Lret`, where `.Lret`
   is the one epilogue (a name in this document; the listing names it
   `.L<function>.1`, the first label a function takes). `return`
   jumps to the epilogue every time, the last statement of the body
@@ -2545,7 +2561,8 @@ answers:
     The cost is a second hand-down beside the variable's and, on
     x86-64, a boundary: a node whose right operand or place
     holds a call or a division, but a division's own quotient, which
-    stays in `rax` (6.5), a right operand that writes the
+    stays in `rax` (6.5), and an operator that commutes, which writes
+    its right operand's `rax` (6.1), a right operand that writes the
     borrowed read's variable with such a pin within it, and a count
     that is a call's result or is generated while `rcx` holds a live
     value keep the `mov`, a

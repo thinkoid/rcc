@@ -45,24 +45,49 @@ the call: ~p[f(i) + 1] = x~ holds it, ~p[i + f(j)] = x~ does not.
 Check: =joined_called= with no move on its paths, and no function
 longer.
 
-** TODO x86-64: a sum whose right operand holds a call keeps the =return='s =mov=
+** TODO x86-64: a spilled left operand of a row that commutes is reloaded, then used
 
-A =return='s value is computed in =rax= (=backend.md= 6.1), but the
-name stops at a node whose right operand holds a call or a division:
-the left operand is held elsewhere across it, and the row writes the
-left operand's register, ~return g + bump();~ ending =movq -8(%rbp),
-%rcx; addl %eax, %ecx; movl %ecx, %eax=. For an operator that
-commutes, =addl %ecx, %eax= writes the named register from the same
-two values, already evaluated in the order written. 21 functions
-over =tests= have the shape with a =register= variable's copy as the
-left operand; the shape with any left operand is not counted.
+~return g + bump();~ reloads the left operand its call spilled and
+then adds it, =movq -8(%rbp), %rcx; addl %ecx, %eax=, where the slot
+as the instruction's memory operand, =addl -8(%rbp), %eax=, is one
+instruction. 370 rows over =tests= have the shape, of =add=, =imul=,
+=and=, =or= and =xor=, under any consumer. A row of 32 bits would
+read at 4 bytes a spill slot written at 8; the slot is no object of
+the program, so G10 does not speak of it.
 
-Fix: none taken; count first. A row of =+=, =*=, =&=, =|= or =^=
-whose right operand is in the register its consumer names writes
-that register, the left operand its source.
+Fix: none taken; decide whether a spill slot may be read narrower
+than it was written, then the left operand in its slot is the source
+of a row that writes the right operand's register.
 
-Check: the count over =tests=, before and after, and no function
-longer.
+Check: the count over =tests=, and no function longer.
+
+** TODO x86-64: a register variable's read on the left of a row that commutes is copied
+
+~s = r + f(x)~ on a ~register int r~ copies the variable and adds to
+the copy, =movl %ebx, %ecx; addl %eax, %ecx=, where =addl %ebx,
+%eax= writes the right operand's own register from the same two
+values. The row takes that form only where its consumer names the
+register (=backend.md= 6.1). About 319 rows over =tests= have a copy
+directly before such an operation; they are not checked one by one.
+
+Fix: a row that commutes, whose left operand is a register
+variable's read and whose right operand is an owned value, writes
+the right operand's register under any consumer.
+
+Check: the count over =tests=, the fit, and no function longer.
+
+** TODO x86-64: a pointer plus a call's result keeps the =return='s =mov=
+
+~return p + f();~ ends =addq %rax, %rcx; movq %rcx, %rax=: the row
+of =p + n= in =pointer_arithmetic()= writes the pointer's register,
+where an arithmetic sum now writes the register its consumer names
+from the right operand (=backend.md= 6.1). 36 rows over =tests=,
+=cadd_*= of the probes among them.
+
+Fix: the row of =p + n= at a size of 1, or with the product already
+in the named register, writes that register, the pointer its source.
+
+Check: the count over =tests=, and no function longer.
 
 ** TODO aarch64: a row's constant offset is added before an index no addressing form scales by
 
@@ -286,6 +311,10 @@ multiply of a =register= variable by a constant, now the one
 three-operand =imul=, takes an instruction out of the checksum loop
 of ~rcc strings-tuned.c~, =imull $31, %ebx, %eax=, which runs once
 for each string.
+
+A sum whose right operand holds a call, written into the register
+its consumer names, takes one instruction out of the path of ~rcc
+fib.c~ that recurses, which the fib cell times.
 
 Fix: =make bench= three times on the machine of the table, and the
 table and what is drawn from it taken again.

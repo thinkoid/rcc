@@ -24,9 +24,11 @@
 
    On x86-64, where c is the division's operand in its slot (backend.md
    6.1), the listing must show, in div_busy and rem_busy, a loaded into
-   ecx and b into eax, cltd, idivl -12(%rbp), the add, addl %eax, %ecx
-   in div_busy and addl %edx, %ecx in rem_busy, and the return's
-   movl %ecx, %eax, and no other move.
+   ecx and b into eax, cltd, idivl -12(%rbp), then in div_busy addl
+   %ecx, %eax, which writes the quotient's register, the one the return
+   names, and no move, and in rem_busy addl %edx, %ecx and the return's
+   movl %ecx, %eax, since the remainder is in rdx, which the return
+   does not name.
    div_deeper must show a in eax and b in ecx, a moved out of the
    pinned rax, movq %rax, %rsi, b moved into eax, cltd, idivl
    -12(%rbp), the quotient moved into b's register, movl %eax, %ecx,
@@ -35,8 +37,9 @@
    movq %rcx, -32(%rbp), x moved into a's register, movq %rax, %rcx, y
    moved into eax, which is then y's register, since the division
    overwrites edx, cltd, idivl 40(%rbp), the quotient added where idiv
-   left it, addl %eax, %ecx, and a reloaded for its add,
-   movq -32(%rbp), %rcx.
+   left it, addl %eax, %ecx, a reloaded for its add,
+   movq -32(%rbp), %rcx, and the last quotient's register written by
+   the sum, addl %ecx, %eax, with no move.
 
    After each rem_ function's idivl the listing must show the remainder
    taken from edx and no other move: movl %edx, (%rcx) in rem_stored;

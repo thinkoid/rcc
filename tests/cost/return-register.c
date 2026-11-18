@@ -24,21 +24,24 @@
    the left operand reads has the read's copy in rax: written() r + (r
    += 2), written_branched() r + (c ? r++ : 2), whose read is saved
    before the branch and reloaded, and written_nested() r + (y + (r =
-   2)), whose copy is made within an operand of the right one.  Beside
-   them the rule's edge: called() r + f(x), whose call leaves its
-   result in rax; deeper() r - p[i / 2], a division within the right
-   operand; written_called() r + (r = f(x)), whose copy is spilled
-   across the call; and called_place() p[f(i)] = x, whose place holds a
-   call's result.  The pointer rows take the same copy: written_sum()
-   and written_row() p + (i + (p = t, 0)) on a register char *p and on
-   a register int (*p)[3], whose rows of 12 bytes the index's product
-   steps, written_difference() p - (q + (p = t, 0)) on a register char
-   *p, and written_quotient() p - (p = t) on a register int *p, whose
-   copy is the dividend; beside them written_sum_called() and
-   written_quotient_called(), a call within the right operand.
+   2)), whose copy is made within an operand of the right one.  An
+   operator that commutes writes its right operand's register where the
+   return names it: called() r + f(x) and written_called() r + (r =
+   f(x)), whose call leaves its result in rax, and compound_called() x
+   += f(y) on a local.  Beside them the rule's edge: called_minus() r -
+   f(x), whose operator does not commute; deeper() r - p[i / 2], a
+   division within the right operand; and called_place() p[f(i)] = x,
+   whose place holds a call's result.  The pointer rows take the same
+   copy: written_sum() and written_row() p + (i + (p = t, 0)) on a
+   register char *p and on a register int (*p)[3], whose rows of 12
+   bytes the index's product steps, written_difference() p - (q + (p =
+   t, 0)) on a register char *p, and written_quotient() p - (p = t) on
+   a register int *p, whose copy is the dividend; beside them
+   written_sum_called() and written_quotient_called(), a call within
+   the right operand.
 
    On x86-64 the listing must show no move into eax or rax before the
-   jump to the epilogue but in called(), deeper(), written_called() and
+   jump to the epilogue but in called_minus(), deeper() and
    called_place():
    in copied() p in rcx and i in rdx, movslq -20(%rbp), %rdx, then movl
    %ebx, %eax and subl (%rcx,%rdx,4), %eax; in extended() cltd, idivl
@@ -52,8 +55,9 @@
    store from rax; in stepped() movl -4(%rbp), %ecx, movl %ecx, %eax,
    addl $1, %ecx and movl %ecx, -4(%rbp); in stepped_element() the
    element loaded into esi and copied into eax, movl %esi, %eax, then
-   addl $1, %esi and the store from esi; in divided() a + b / c in ecx,
-   movl %ecx, %eax, cltd and idivl -16(%rbp), with no move after it; in
+   addl $1, %esi and the store from esi; in divided() a + b / c in eax,
+   the quotient's register, addl %ecx, %eax, then cltd and idivl
+   -16(%rbp), with no move; in
    multiplied() imull $4, %ebx, %eax, and no copy of ebx; after the
    reload, in remainder_reloaded() idivl %ecx and movslq %edx, %rax, in
    compared_reloaded() cmpl %eax, %ecx and setl %al, in
@@ -66,8 +70,11 @@
    incremented_element() movl (%rcx,%rdx,4), %eax, addl $1, %eax and
    the store from eax; in compound_reloaded() movl -12(%rbp), %eax,
    addl %ecx, %eax and movl %eax, -12(%rbp).  In called_place() the
-   store from ecx and movl %ecx, %eax.  In called() the call, then movl
-   %ebx, %ecx, addl %eax, %ecx and movl %ecx, %eax; in deeper() the
+   store from ecx and movl %ecx, %eax.  In called() the call, then addl
+   %ebx, %eax, r read in its register and no copy of it; in
+   called_minus() the call, then movl %ebx, %ecx, subl %eax, %ecx and
+   movl %ecx, %eax; in compound_called() the call, x loaded into ecx,
+   addl %ecx, %eax and the store from eax; in deeper() the
    quotient in eax, movl %ebx, %edx, subl (%rcx,%rax,4), %edx and movl
    %edx, %eax; in written() the copy preserve() makes, movl %ebx, %eax,
    then addl $2, %ebx and addl %ebx, %eax; in written_branched() movq
@@ -75,15 +82,15 @@
    $2, %ecx, then movq -24(%rbp), %rax and addl %ecx, %eax; in
    written_nested() y loaded into ecx, the copy movl %ebx, %eax, then
    addl %ebx, %ecx and addl %ecx, %eax; in written_called() the copy
-   spilled across the call, movq -24(%rbp), %rcx, addl %eax, %ecx and
-   movl %ecx, %eax.  In written_sum() i in ecx, the copy movq %rbx,
-   %rax, then addq %rcx, %rax; in written_row() the same after imulq
-   $12, %rcx, %rcx; in written_difference() q in rcx, the copy movq
-   %rbx, %rax, then subq %rcx, %rax; in written_quotient() the copy
-   movq %rbx, %rax, subq %rbx, %rax, movq $4, %rcx, cqto and idivq
-   %rcx; in written_sum_called() and written_quotient_called() the copy
-   spilled across the call and reloaded, movq -48(%rbp), %rax and
-   movq -40(%rbp), %rax, before the addq and the subq.
+   spilled across the call, movq -24(%rbp), %rcx, and addl %ecx, %eax.
+   In written_sum() i in ecx, the copy movq %rbx, %rax, then addq
+   %rcx, %rax; in written_row() the same after imulq $12, %rcx, %rcx;
+   in written_difference() q in rcx, the copy movq %rbx, %rax, then
+   subq %rcx, %rax; in written_quotient() the copy movq %rbx, %rax,
+   subq %rbx, %rax, movq $4, %rcx, cqto and idivq %rcx; in
+   written_sum_called() and written_quotient_called() the copy spilled
+   across the call and reloaded, movq -48(%rbp), %rax and movq
+   -40(%rbp), %rax, before the addq and the subq.
 
    On aarch64, where an operation names its destination apart from its
    sources, the row's last instruction writes x0 where no other value
@@ -114,14 +121,16 @@
    holds x0 at the store, str w1, [x2, w0, sxtw #2], and the return
    moves the value, mov w0, w1.  In written_branched() the reload ldr
    x1, [x29, #32] and add w0, w1, w0, in written_nested() the copy mov
-   w1, w19 and add w0, w1, w0, and in written_called() the reload after
-   the call and add w0, w1, w0.  In written_sum() and written_row() the
-   copy mov x1, x19 and add x0, x1, w0, sxtw and add x0, x1, x0, in
-   written_difference() the copy mov x1, x19 and sub x0, x1, x0, in
-   written_quotient() mov x0, x19, sub x0, x0, x19 and sdiv x0, x0, x1,
-   and in written_sum_called() and written_quotient_called() the reload
-   after the call, ldr x0, [x29, #56] and ldr x0, [x29, #48], before
-   the add and the sub. */
+   w1, w19 and add w0, w1, w0, in written_called() the reload after
+   the call and add w0, w1, w0, in called_minus() sub w0, w19, w0, and
+   in compound_called() ldr w1, [x29, #16], add w0, w1, w0 and str w0,
+   [x29, #16].  In written_sum() and written_row() the copy mov x1, x19
+   and add x0, x1, w0, sxtw and add x0, x1, x0, in written_difference()
+   the copy mov x1, x19 and sub x0, x1, x0, in written_quotient() mov
+   x0, x19, sub x0, x0, x19 and sdiv x0, x0, x1, and in
+   written_sum_called() and written_quotient_called() the reload after
+   the call, ldr x0, [x29, #56] and ldr x0, [x29, #48], before the add
+   and the sub. */
 int f(int);
 
 int
@@ -357,4 +366,18 @@ written_quotient_called(int *s, int *t, int i)
         register int *p = s;
 
         return p - (p = t, t + f(i));
+}
+
+int
+called_minus(int x)
+{
+        register int r = x;
+
+        return r - f(x);
+}
+
+int
+compound_called(int x, int y)
+{
+        return x += f(y);
 }

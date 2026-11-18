@@ -238,8 +238,7 @@ divided:
 	movl	-8(%rbp), %eax
 	cltd
 	idivl	-12(%rbp)
-	addl	%eax, %ecx
-	movl	%ecx, %eax
+	addl	%ecx, %eax
 	cltd
 	idivl	-16(%rbp)
 	jmp	.Ldivided.1
@@ -289,9 +288,7 @@ called:
 	movl	%eax, -16(%rbp)
 	movl	-16(%rbp), %edi
 	call	f@PLT
-	movl	%ebx, %ecx
-	addl	%eax, %ecx
-	movl	%ecx, %eax
+	addl	%ebx, %eax
 	jmp	.Lcalled.1
 .Lcalled.1:
 	leaq	-8(%rbp), %rsp
@@ -756,8 +753,7 @@ written_called:
 	call	f@PLT
 	movl	%eax, %ebx
 	movq	-24(%rbp), %rcx
-	addl	%eax, %ecx
-	movl	%ecx, %eax
+	addl	%ecx, %eax
 	jmp	.Lwritten_called.1
 .Lwritten_called.1:
 	leaq	-8(%rbp), %rsp
@@ -967,4 +963,60 @@ written_quotient_called:
 	ret
 	.cfi_endproc
 	.size	written_quotient_called, .-written_quotient_called
+	.globl	called_minus
+	.type	called_minus, @function
+called_minus:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	subq	$8, %rsp
+	movl	%edi, -12(%rbp)
+	movl	-12(%rbp), %ebx
+	movl	-12(%rbp), %eax
+	movl	%eax, -16(%rbp)
+	movl	-16(%rbp), %edi
+	call	f@PLT
+	movl	%ebx, %ecx
+	subl	%eax, %ecx
+	movl	%ecx, %eax
+	jmp	.Lcalled_minus.1
+.Lcalled_minus.1:
+	leaq	-8(%rbp), %rsp
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	called_minus, .-called_minus
+	.globl	compound_called
+	.type	compound_called, @function
+compound_called:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$16, %rsp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	movl	-8(%rbp), %eax
+	movl	%eax, -12(%rbp)
+	movl	-12(%rbp), %edi
+	call	f@PLT
+	movl	-4(%rbp), %ecx
+	addl	%ecx, %eax
+	movl	%eax, -4(%rbp)
+	jmp	.Lcompound_called.1
+.Lcompound_called.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	compound_called, .-compound_called
 	.section	.note.GNU-stack,"",@progbits

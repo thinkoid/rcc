@@ -323,6 +323,48 @@ long far_call(long a, char b, short c)
            + par12(b, c, a, x, b, c, a, x, b, c, b, a) + x;
 }
 
+/* a call's result as the right operand of an operator that commutes,
+   in the register the consumer names, which the instruction writes,
+   the left operand its source: returned, joined and assigned
+   compound; and a register variable's read on either side of a call,
+   read again after */
+long and_called(long a, long b)
+{
+    return a & mix1(b);
+}
+
+long or_called(long a, long b)
+{
+    return a | mix1(b);
+}
+
+long xor_called(long a, long b)
+{
+    return a ^ mix1(b);
+}
+
+unsigned mul_called(unsigned a, long b)
+{
+    return a * (unsigned) mix1(b);
+}
+
+unsigned long compound_called(unsigned long a, long b)
+{
+    return a += mix1(b);
+}
+
+long joined_called(long a, long b)
+{
+    return positive(a) ? (a ^ mix1(b)) & b : a | mix1(b);
+}
+
+unsigned long kept_called(unsigned long a, long b)
+{
+    register unsigned long r = a;
+
+    return (r + mix1(b)) * 3 + (mix1(a) + r) * 5 + r;
+}
+
 /* calls whose outgoing area is past a store's reach, calls.h: the
    arguments x plus the octal constants of the block, then x - 1 - n
    and x * 3 + n over two blocks of eight */

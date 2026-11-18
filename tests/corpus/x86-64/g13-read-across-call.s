@@ -40,8 +40,7 @@ sum:
 	movl	-12(%rbp), %edi
 	call	f@PLT
 	movq	-24(%rbp), %rcx
-	addl	%eax, %ecx
-	movl	%ecx, %eax
+	addl	%ecx, %eax
 	jmp	.Lsum.1
 .Lsum.1:
 	leaq	-8(%rbp), %rsp

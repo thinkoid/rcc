@@ -16,8 +16,7 @@ div_busy:
 	movl	-8(%rbp), %eax
 	cltd
 	idivl	-12(%rbp)
-	addl	%eax, %ecx
-	movl	%ecx, %eax
+	addl	%ecx, %eax
 	jmp	.Ldiv_busy.1
 .Ldiv_busy.1:
 	leave
@@ -120,8 +119,7 @@ div_held:
 	movl	48(%rbp), %eax
 	cltd
 	idivl	56(%rbp)
-	addl	%eax, %ecx
-	movl	%ecx, %eax
+	addl	%ecx, %eax
 	jmp	.Ldiv_held.1
 .Ldiv_held.1:
 	leave

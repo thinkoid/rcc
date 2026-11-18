@@ -2125,6 +2125,27 @@ from_memory(state_t &s,
     release(s, place);
 }
 
+// Whether the row of op on the held values l and r writes r's register,
+// backend.md 6.1: an operator that commutes, +, *, &, | or ^, whose
+// right operand is an owned value in the register its consumer names,
+// wanted, when the instruction is written, so that the instruction on
+// the source's two values names that register its destination and L
+// its source, addl %ecx, %eax for return g + bump(), where L's register
+// would be written and moved.  Not where L is the variable a compound
+// assignment writes in place, nor where R is a register variable's
+// read, whose register is the variable.
+bool
+written_in_right(
+    const state_t &s, binary_op_t op, value_t l, value_t r, unsigned wanted)
+{
+    if (!commutes(op) || l.id == s.in_place || borrowed(s, r))
+        return false;
+
+    const int reg = s.values[r.id].reg;
+
+    return reg >= 0 && (wanted & bit(static_cast< reg_t >(reg)));
+}
+
 // An arithmetic, bitwise or shift operator on the held left value and
 // the generated right operand, in type t, chapter 6.1: op R, L, the
 // result in L.  A constant right operand is an immediate where the
@@ -2136,7 +2157,8 @@ from_memory(state_t &s,
 // is the variable a compound assignment writes in place.  add, sub,
 // and, or and xor set ZF from L, and imul does not (7.1).  wanted is
 // the register the result's consumer names, which a quotient stays in
-// (divide()).
+// (divide()), and which an operator that commutes writes where R is
+// in it, written_in_right()'s.
 value_t
 arithmetic(state_t &s,
            binary_op_t op,
@@ -2179,7 +2201,20 @@ arithmetic(state_t &s,
         return l;
     }
 
-    const reg_t right = operands(s, l, r.value).second;
+    const auto [held, right] = operands(s, l, r.value);
+
+    // return g + bump(): addl %ecx, %eax, the call's result written
+    if (written_in_right(s, op, l, r.value, wanted)) {
+        insn(s, mnemonic, { reg(held, width), reg(right, width) });
+        if (op != binary_op_t::mul)
+            flagged(s, width);
+        wrote(s, r.value, width, integer(t).is_signed);
+
+        release(s, l);
+
+        return r.value;
+    }
+
     const reg_t left =
         writable(s, l, written(width, integer(t).is_signed), bit(right));
     insn(s, mnemonic, { reg(right, width), reg(left, width) });

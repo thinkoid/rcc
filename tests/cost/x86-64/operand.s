@@ -363,8 +363,7 @@ divide_busy:
 	movq	-16(%rbp), %rsi
 	cltd
 	idivl	(%rsi)
-	addl	%eax, %ecx
-	movl	%ecx, %eax
+	addl	%ecx, %eax
 	jmp	.Ldivide_busy.1
 .Ldivide_busy.1:
 	leave
@@ -804,8 +803,7 @@ pointer_operand:
 	movq	$4, %rsi
 	cqto
 	idivq	%rsi
-	addq	%rax, %rcx
-	movq	%rcx, %rax
+	addq	%rcx, %rax
 	jmp	.Lpointer_operand.1
 .Lpointer_operand.1:
 	leave
@@ -839,12 +837,11 @@ signedness:
 	movl	-4(%rbp), %eax
 	xorl	%edx, %edx
 	divl	-8(%rbp)
-	addl	%eax, %ecx
-	movq	-16(%rbp), %rax
+	addl	%ecx, %eax
+	movq	-16(%rbp), %rcx
 	movslq	-20(%rbp), %rdx
-	addq	%rdx, %rax
-	addq	%rax, %rcx
-	movq	%rcx, %rax
+	addq	%rdx, %rcx
+	addq	%rcx, %rax
 	jmp	.Lsignedness.1
 .Lsignedness.1:
 	leave
@@ -1146,8 +1143,7 @@ not_commuted:
 	movl	$1, %eax
 	movl	-4(%rbp), %ecx
 	shll	%cl, %eax
-	addl	%eax, %esi
-	movl	%esi, %eax
+	addl	%esi, %eax
 	jmp	.Lnot_commuted.1
 .Lnot_commuted.1:
 	leave

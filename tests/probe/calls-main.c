@@ -112,6 +112,13 @@ BOTH(int, condition, (long, long))
 BOTH(long, paths, (long, long))
 BOTH(int, loop, (int))
 BOTH(long, far_call, (long, char, short))
+BOTH(long, and_called, (long, long))
+BOTH(long, or_called, (long, long))
+BOTH(long, xor_called, (long, long))
+BOTH(unsigned, mul_called, (unsigned, long))
+BOTH(unsigned long, compound_called, (unsigned long, long))
+BOTH(long, joined_called, (long, long))
+BOTH(unsigned long, kept_called, (unsigned long, long))
 
 #define DECLARE_MANY_CALL(N, BLOCK) BOTH(long, call_many_##N, (long))
 
@@ -259,6 +266,13 @@ test_calls(void)
             CHECK(condition, v[0], v[1], (v[0], v[1]));
             CHECK(paths, v[0], v[1], (v[0], v[1]));
             CHECK(far_call, v[0], v[1], (v[0], (char) v[1], (short) v[2]));
+            CHECK(and_called, v[0], v[1], (v[0], v[1]));
+            CHECK(or_called, v[0], v[1], (v[0], v[1]));
+            CHECK(xor_called, v[0], v[1], (v[0], v[1]));
+            CHECK(mul_called, v[0], v[1], ((unsigned) v[0], v[1]));
+            CHECK(compound_called, v[0], v[1], ((unsigned long) v[0], v[1]));
+            CHECK(joined_called, v[0], v[1], (v[0], v[1]));
+            CHECK(kept_called, v[0], v[1], ((unsigned long) v[0], v[1]));
             CHECK(spin, i % 7, v[0], (i % 7, V9));
         }
 

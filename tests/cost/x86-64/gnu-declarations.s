@@ -34,8 +34,7 @@ use:
 	movq	-72(%rbp), %rsi
 	call	add@PLT
 	movq	-56(%rbp), %rcx
-	addl	%eax, %ecx
-	movl	%ecx, %eax
+	addl	%ecx, %eax
 	jmp	.Luse.1
 .Luse.1:
 	leave

@@ -67,8 +67,9 @@
    then cmpl defined(%rip), %ecx
    and the rest, each before its setl; in test testl -24(%rbp), %eax and
    the rest, each then je.  divide_busy must show a loaded into ecx, b
-   into eax and p into rsi, then cltd, idivl (%rsi) and addl %eax,
-   %ecx, and no move but the return's.  It must show cmpl $5,
+   into eax and p into rsi, then cltd, idivl (%rsi) and addl %ecx,
+   %eax, which writes the quotient's register, the one the return
+   names, and no move.  It must show cmpl $5,
    -4(%rbp) then jge in less_constant, cmpl $0, -4(%rbp) in nonzero,
    cmpb $0, -1(%rbp) in nonzero_char and testl $1, -4(%rbp) in bit,
    each then its jump and no load.  It must show the loads kept:
@@ -93,8 +94,10 @@
    movq -40(%rbp), %rdx, and leaq (%rax,%rdx,4), %rax, then
    subq -32(%rbp), %rax; in signedness addl -8(%rbp), %ecx,
    cmpl -8(%rbp), %esi before setb, imull -8(%rbp), %esi and
-   xorl %edx, %edx; divl -8(%rbp), and for ul + j the widening load
-   kept, movslq -20(%rbp), %rdx; addq %rdx, %rax; in comparison_value
+   xorl %edx, %edx; divl -8(%rbp), the sum then written into the
+   quotient's eax, addl %ecx, %eax, and for ul + j the widening load
+   kept, movslq -20(%rbp), %rdx; addq %rdx, %rcx, and the last sum
+   addq %rcx, %rax, with no move; in comparison_value
    cmpl $5, -4(%rbp) before setl and cmpl $5, -8(%rbp) before setae,
    then cmpl -12(%rbp), %ecx before setl and cmpl -16(%rbp), %ecx
    before seta; in by_constant imull $4, -4(%rbp), %eax,

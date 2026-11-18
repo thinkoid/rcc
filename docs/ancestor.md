@@ -1055,19 +1055,20 @@ load is chapter 6's extending load. The remainder is stored from
 `edx`, where the division leaves it, as the ancestor's row of a
 remainder returns the odd register of its pair (`backend.md` 6.5).
 
-`div_busy()` is six:
+`div_busy()` is five:
 
 ```
 	movl	-4(%rbp), %ecx
 	movl	-8(%rbp), %eax
 	cltd
 	idivl	-12(%rbp)
-	addl	%eax, %ecx
-	movl	%ecx, %eax
+	addl	%ecx, %eax
 ```
 
 The divisor is the operand of `idivl -12(%rbp)` by 4.4, `a` is in
-`ecx` by the second rule, and nothing moves before the division.
+`ecx` by the second rule, and nothing moves before the division. The
+sum writes the quotient's `eax`, which the return names, `+`
+commuting (`backend.md` 6.1).
 
 | Statement | Instructions | Bytes |
 |---|---|---|

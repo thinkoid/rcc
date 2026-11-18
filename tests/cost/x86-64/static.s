@@ -62,8 +62,8 @@ calls:
 	movl	-44(%rbp), %edi
 	call	shown@PLT
 	movq	-40(%rbp), %rcx
-	addl	%eax, %ecx
-	movslq	%ecx, %rax
+	addl	%ecx, %eax
+	movslq	%eax, %rax
 	addq	-16(%rbp), %rax
 	subq	-24(%rbp), %rax
 	jmp	.Lcalls.1
