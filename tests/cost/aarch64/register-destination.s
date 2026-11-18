@@ -2306,11 +2306,11 @@ chosen_called:
 	str	w0, [x29, #32]
 	ldr	w0, [x29, #32]
 	bl	f
+	mov	w19, w0
 	b	.Lchosen_called.3
 .Lchosen_called.2:
-	mov	w0, #0
+	mov	w19, #0
 .Lchosen_called.3:
-	mov	w19, w0
 	mov	w0, w19
 	b	.Lchosen_called.1
 .Lchosen_called.1:
@@ -2343,12 +2343,11 @@ chosen_widened:
 	str	w2, [x29, #32]
 	ldr	w0, [x29, #24]
 	cbz	w0, .Lchosen_widened.2
-	ldr	w0, [x29, #28]
+	ldrsw	x19, [x29, #28]
 	b	.Lchosen_widened.3
 .Lchosen_widened.2:
-	ldr	w0, [x29, #32]
+	ldrsw	x19, [x29, #32]
 .Lchosen_widened.3:
-	sxtw	x19, w0
 	mov	x0, x19
 	b	.Lchosen_widened.1
 .Lchosen_widened.1:
@@ -2386,16 +2385,15 @@ chosen_stepped:
 	str	w0, [x29, #44]
 	ldr	w0, [x29, #44]
 	bl	f
+	mov	w19, w0
 	b	.Lchosen_stepped.3
 .Lchosen_stepped.2:
 	ldr	x0, [x29, #32]
 	ldr	w1, [x29, #40]
-	ldr	w2, [x0, w1, sxtw #2]
-	add	w3, w2, #1
-	str	w3, [x0, w1, sxtw #2]
-	mov	w0, w2
+	ldr	w19, [x0, w1, sxtw #2]
+	add	w2, w19, #1
+	str	w2, [x0, w1, sxtw #2]
 .Lchosen_stepped.3:
-	mov	w19, w0
 	mov	w0, w19
 	b	.Lchosen_stepped.1
 .Lchosen_stepped.1:
@@ -2433,13 +2431,13 @@ chosen_divided:
 	str	w0, [x29, #40]
 	ldr	w0, [x29, #40]
 	bl	f
+	mov	w19, w0
 	b	.Lchosen_divided.3
 .Lchosen_divided.2:
 	ldr	w0, [x29, #32]
 	ldr	w1, [x29, #36]
-	sdiv	w0, w0, w1
+	sdiv	w19, w0, w1
 .Lchosen_divided.3:
-	mov	w19, w0
 	mov	w0, w19
 	b	.Lchosen_divided.1
 .Lchosen_divided.1:
@@ -2471,12 +2469,11 @@ chosen_constant:
 	str	w1, [x29, #28]
 	ldr	w0, [x29, #24]
 	cbz	w0, .Lchosen_constant.2
-	ldr	w0, [x29, #28]
+	ldrsw	x19, [x29, #28]
 	b	.Lchosen_constant.3
 .Lchosen_constant.2:
-	mov	w0, #-1
+	mov	x19, #-1
 .Lchosen_constant.3:
-	sxtw	x19, w0
 	mov	x0, x19
 	b	.Lchosen_constant.1
 .Lchosen_constant.1:
@@ -2529,6 +2526,50 @@ chosen_promoted:
 	ret
 	.cfi_endproc
 	.size	chosen_promoted, .-chosen_promoted
+	.globl	chosen_calls
+	.type	chosen_calls, @function
+chosen_calls:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -32
+	str	w0, [x29, #24]
+	str	w1, [x29, #28]
+	ldr	w0, [x29, #24]
+	cbz	w0, .Lchosen_calls.2
+	ldr	w0, [x29, #28]
+	str	w0, [x29, #32]
+	ldr	w0, [x29, #32]
+	bl	f
+	b	.Lchosen_calls.3
+.Lchosen_calls.2:
+	ldr	w0, [x29, #28]
+	add	w0, w0, #1
+	str	w0, [x29, #36]
+	ldr	w0, [x29, #36]
+	bl	f
+.Lchosen_calls.3:
+	mov	w19, w0
+	mov	w0, w19
+	b	.Lchosen_calls.1
+.Lchosen_calls.1:
+	.cfi_def_cfa wsp, 48
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	chosen_calls, .-chosen_calls
 	.globl	char_operand
 	.type	char_operand, @function
 char_operand:

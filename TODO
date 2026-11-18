@@ -142,31 +142,28 @@ variable handed down, as on x86-64.
 Check: the aarch64 pin of =address-destination= names =x19= alone in
 =row()= and =element()=.
 
-** TODO A ~?:~ into a register variable keeps its join where each arm needs its own write
+** TODO A ~?:~ into a register variable keeps its join where its arms are promoted narrow objects
 
-On x86-64 each path writes the =register= variable where one arm's
-row writes it (=backend.md= chapter 4): a conditional the assignment
-widens hands the conversion to each arm, and a first arm whose row
-writes no variable moves its value in on its own path. A widened
-conditional whose arms are promoted narrow objects keeps the join:
-~l = c ? a : b~ into a =long= on two =char=s is =movsbl -13(%rbp),
-%eax= on each path and =movslq %eax, %rbx= after the join, where
-=movsbq -13(%rbp), %rbx= on each path is one instruction; the
-widening by the load does not look through the promotion. Five
-functions of the probes (=de_widened_c= to =de_widened_us=) and
-=register-destination='s =chosen_promoted= have it. On aarch64 both
-shapes keep the join: =chosen_widened='s =sxtw x19, w0= and
-=chosen_called='s =mov w19, w0= after it.
+Each path of ~?:~ writes the =register= variable where one arm's row
+writes it (=backend.md= chapter 4), a conditional the assignment
+widens handing the conversion to each arm. A widened conditional
+whose arms are promoted narrow objects keeps the join: ~l = c ? a :
+b~ into a =long= on two =char=s is =movsbl -13(%rbp), %eax= on each
+path and =movslq %eax, %rbx= after the join on x86-64, where =movsbq
+-13(%rbp), %rbx= on each path is one instruction; on aarch64 it is
+=ldrb w0= on each path and =sxtw x19, w0= after the join, where =ldrb
+w19=, valid to 64 bits, is one: the promotion's conversion clamps the
+load's width to 32, and the widening by the load does not look through
+the promotion. Five functions of the probes (=de_widened_c= to
+=de_widened_us=) and =register-destination='s =chosen_promoted= have
+it on both targets.
 
-Fix: on x86-64, the load of a narrow object under a promotion and a
-widening is extended to the outer width in one instruction; on
-aarch64, the conversion handed to each arm and the first path's move.
+Fix: the load of a narrow object under a promotion and a widening is
+extended to the outer width in one instruction, on each target.
 
-Check: =chosen_promoted= with =movsbq= on each path and the five
-functions shorter, and =rem_arm_c= and =rem_arm_s= of the memory
-probe, whose promoted arm under a =return= has the same two
-instructions; on aarch64, =chosen_widened= and =chosen_called= with
-no =mov= after the join.
+Check: =chosen_promoted= with =movsbq= and =ldrb w19= on each path and
+the five functions shorter, and =rem_arm_c= and =rem_arm_s= of the
+memory probe.
 
 ** TODO x86-64: a path of ~?:~ whose arm is the variable's own read writes it to itself
 

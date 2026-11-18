@@ -1348,8 +1348,10 @@ TYPES(RETURNED)
    assign_order_; br_call_ and br_div_ have an arm pinned by a call and
    by a division; br_step_ has a call as the first arm and a step of a
    local as the second, and br_own_ the variable itself as the first
-   arm.  A narrow variable is written through the assignment's
-   conversion.  The main keeps a divisor from 0 and -1. */
+   arm; br_quot_ has a call as the first arm and a quotient as the
+   second, whose row writes the variable on aarch64, and br_calls_ two
+   calls, whose results join.  A narrow variable is written through the
+   assignment's conversion.  The main keeps a divisor from 0 and -1. */
 #define BRANCHED(T, N)                                                  \
     long br_and_##N(T a, T b)                                           \
     {                                                                   \
@@ -1414,6 +1416,18 @@ TYPES(RETURNED)
     {                                                                   \
         register T r = a;                                               \
         r = c ? r : b;                                                  \
+        return r;                                                       \
+    }                                                                   \
+    long br_quot_##N(int c, T a, T b)                                   \
+    {                                                                   \
+        register T r;                                                   \
+        r = c ? lret_##N(b) : a / b;                                    \
+        return r;                                                       \
+    }                                                                   \
+    long br_calls_##N(int c, T a, long b)                               \
+    {                                                                   \
+        register T r;                                                   \
+        r = c ? lret_##N(b) : lret_##N(a);                              \
         return r;                                                       \
     }
 

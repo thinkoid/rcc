@@ -359,12 +359,24 @@ better:
   char`, `uxtb w19, w0` for a `char`, `mov w19, w0` for an `unsigned`
   from a `long`. A constant is the immediate, `mov w20, #0`. `&&`,
   `||` and `?:` are written on two paths, and each path writes the
-  register: `r = a && b` is `mov w19, #1` and `mov w19, #0` after the
-  jump code, and `r = c ? x : y` each arm by its own row, `ldr w19,
-  [x29, #28]`, a constant by the constant row, where the first arm's
-  row writes the register; a `?:` whose first arm's does not, a
-  call's result, joins as for any consumer and keeps the `mov`
-  (`backend.md` chapter 4). A declaration's initializer is the same.
+  register, by the rule and the edge of `backend.md` chapter 4: `r = a
+  && b` is `mov w19, #1` and `mov w19, #0` after the jump code, and `r
+  = c ? x : y` each arm by its own row, `ldr w19, [x29, #28]`, a
+  constant by the constant row. More arms' rows write the register
+  here than on x86-64, since a row writes its destination with its
+  last instruction: an operation, a quotient's `sdiv` among them, as
+  well as a constant, an object in memory, a truth value and a step's
+  value. So a first arm whose row does not, a call's result, is moved
+  in on its own path, `mov w19, w0` after the `bl`, where the second
+  arm's row writes the register, and `r = c ? f(x) : a / b` is that
+  move and `sdiv w19, w0, w1`. One the assignment widens, `l = c ? x :
+  y` into a `long`, hands the conversion to each arm, `ldrsw x19,
+  [x29, #28]` and `ldrsw x19, [x29, #32]`, a constant the constant of
+  the variable's type, `mov x19, #-1`. Two arms whose rows write no
+  register, `r = c ? f(x) : f(x + 1)`, or each of which needs an
+  extension of its own, `l = c ? a : b` on two `char`s, join as for
+  any consumer and keep the `mov` or the extension after the join,
+  `sxtw x19, w0`. A declaration's initializer is the same.
   Without one nothing is written (G5), but a narrow or an `unsigned`
   variable is extended in its own register, `sxtb w19, w19` or `mov
   w19, w19`, so that the register holds the representation above.
@@ -740,7 +752,7 @@ a register variable's where the row leaves its representation
 | `-a`, `~a` | `neg L, L`, `mvn L, L` | |
 | `!a` | `cmp L, #0; cset L, eq`; for an operand with stale upper bits, `tst L, #0xff` in place of the `cmp` (7.1) | as a value |
 | `a < b` and the rest, as a value | `cmp L, R; cset L, lt`; a constant on the left the mirrored comparison (6.1), `5 < x` the load and `cmp w0, #5; cset w0, gt` | `lt`, `le`, `gt`, `ge`, `eq`, `ne` signed; `lo`, `ls`, `hi`, `hs` unsigned and for pointers (G7) |
-| `a && b`, `a \|\| b`, `a ? b : c`, as a value | jump code into `L`, `mov L, #1` and `mov L, #0` on the arms; the arms of a returned `?:` join in `x0`, each arm generated for it and moved there where its value is elsewhere, `ldr w0, [x1, w2, sxtw #2]` for a postfix step's old value (6.1); into a register variable each path writes its register, `mov w19, #1` and `mov w19, #0` for `r = a && b`, where the first arm's row writes it for `?:` (chapter 4) | never `csel`: 6.5.16p5, the arm not chosen is not evaluated |
+| `a && b`, `a \|\| b`, `a ? b : c`, as a value | jump code into `L`, `mov L, #1` and `mov L, #0` on the arms; the arms of a returned `?:` join in `x0`, each arm generated for it and moved there where its value is elsewhere, `ldr w0, [x1, w2, sxtw #2]` for a postfix step's old value (6.1); into a register variable each path writes its register, `mov w19, #1` and `mov w19, #0` for `r = a && b`, where an arm's row writes it for `?:`, the other arm's value moved in on its own path, `mov w19, w0` after a call, and under a conversion that widens the conditional each arm extended into it, `ldrsw x19, [x29, #28]` (chapter 4) | never `csel`: 6.5.16p5, the arm not chosen is not evaluated |
 | `x = e` | the store of 2.2 to the slot, a return's value written into `x0` by `e`'s last instruction, the place generated with `x0` left for last, `add w0, w1, w0; str w0, [x29, #24]` and `ldr x0, [x29, #32]; str x0, [x1, w2, sxtw #3]` (6.1); for a register variable the last instruction of the row that computes the value writes its register, `add w19, w0, w1`, `ldr w19, [x29, #24]`, where the row writes its destination only after it has read every operand, `adrp x19, buf; add x19, x19, :lo12:buf` for an address in two instructions, and through a conversion that changes the signedness alone, `ldr w19, [x29, #32]` for `register unsigned u = i`, and otherwise the `mov` into it, `mov w20, w0`, `mov x20, x0`, a narrow type's the extension, `sxtb w19, w0`; a constant the immediate, `mov w20, #0` | 6.6 for a constant; chapter 4 |
 | `x op= e`, `++x`, `x++` | the load, the operation, the store, after `e` for `x op= e`; for a return's value the place generated with `x0` left for last, the operation writing `x0`, `add x0, x3, x0`, and the postfix form's load, `ldr w0, [x1, w2, sxtw #2]; add w3, w0, #1` (6.1); a register variable in place, after `e`, its register `L` and the destination, `add w19, w19, w0`, `add w19, w19, #1`, a narrow one re-extended after, `sxtb w19, w19`, and `%=` with the quotient in a register of its own, `sdiv w0, w19, w20; msub w19, w0, w20, w19`; `x++` on a register variable for its value is G13's copy and the step, `mov w0, w19; add w19, w19, #1`; a pointer's `++` and `--` step by the size, an immediate where `add` encodes it, `add L, L, #4` for an `int *`, and otherwise held in a register | no memory form, 6.6; chapter 4 |
 | `(T) a` | `sxtw L, L` for `int` to `long`; `sxtb`, `sxth`, `uxtb`, `uxth` from a narrow type; each only when `L` is not already valid to the new width; a signed object in memory under a cast that widens it is the load of 2.2 extended to the new width, `ldrsw x0, [x29, #16]` for an `int` to `long`, `ldrsb x0` and `ldrsh x0` for a `signed char` and a `short`, its displacement scaled by the object's size as the plain load's is, so through `x16` where that one would be (5.3), and no instruction after it, as `backend.md` 6.3's widening by the load has it, the object read under casts that keep its bits included, `ldrsw x0, [x29, #16]` for `(long) (int) u`, the plain `ldr w0` for `(unsigned long) (unsigned) i` and the `ldrb w0` for `(long) (char) c`, valid to 64, while a narrowing cast under the widening keeps its load and the extension after it, `ldr x0; sxtw x0, w0` for `(long) (int) l`; `mov wL, wL` for an `unsigned` not valid to 64; nothing between pointer types and for a pointer to `long`; an integer to a pointer as to `unsigned long`, so `sxtw` for an `int` | G2; the width rule |
@@ -1567,7 +1579,11 @@ the thirteenth came later. The answers:
     the two targets' listings part for the same source: `r = a + (b +
     c)` and `r = a - r` write the variable here and keep the `mov` on
     x86-64. On both targets each path of `&&`, `||` and `?:` writes
-    the register, `mov w19, #1` and `mov w19, #0` for `r = a && b`.
+    the register, `mov w19, #1` and `mov w19, #0` for `r = a && b`, a
+    first arm whose row writes no register moved in on its own path,
+    and under a conversion that widens the conditional each arm
+    extended into it; here the arms' rows that write it are more, `r =
+    c ? f(x) : a / b` being `mov w19, w0` and `sdiv w19, w0, w1`.
 12. **A constant on the left is taken on the right** (6.1), of a
     comparison and of `+`, `*`, `&`, `|` and `^`, as on x86-64
     (`backend.md` chapter 13, call 18): `5 < x` is `ldr w0, [x29,

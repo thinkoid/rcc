@@ -1977,6 +1977,45 @@ chosen_promoted:
 	ret
 	.cfi_endproc
 	.size	chosen_promoted, .-chosen_promoted
+	.globl	chosen_calls
+	.type	chosen_calls, @function
+chosen_calls:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	subq	$24, %rsp
+	movl	%edi, -12(%rbp)
+	movl	%esi, -16(%rbp)
+	cmpl	$0, -12(%rbp)
+	je	.Lchosen_calls.2
+	movl	-16(%rbp), %eax
+	movl	%eax, -20(%rbp)
+	movl	-20(%rbp), %edi
+	call	f@PLT
+	jmp	.Lchosen_calls.3
+.Lchosen_calls.2:
+	movl	-16(%rbp), %eax
+	addl	$1, %eax
+	movl	%eax, -24(%rbp)
+	movl	-24(%rbp), %edi
+	call	f@PLT
+.Lchosen_calls.3:
+	movl	%eax, %ebx
+	movl	%ebx, %eax
+	jmp	.Lchosen_calls.1
+.Lchosen_calls.1:
+	leaq	-8(%rbp), %rsp
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	chosen_calls, .-chosen_calls
 	.globl	char_operand
 	.type	char_operand, @function
 char_operand:

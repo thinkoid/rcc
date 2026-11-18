@@ -40,10 +40,11 @@
    0, whose first arm reads it; chosen_called() and chosen_stepped()
    r = c ? f(x) : 0 and r = c ? f(x) : p[i]++, whose first arm's call
    writes no variable, and chosen_divided() r = c ? f(x) : a / b, whose
-   second arm's division writes none either; chosen_widened() and
-   chosen_constant() a conditional widened to a long, r = c ? x : y
+   second arm's division writes none either on x86-64; chosen_widened()
+   and chosen_constant() a conditional widened to a long, r = c ? x : y
    and r = c ? x : -1, and chosen_promoted() r = c ? a : b on two
-   chars, whose arms each need an extension after their load.
+   chars, whose arms each need an extension after their load; and
+   chosen_calls() r = c ? f(x) : f(x + 1), whose arms are two calls.
 
    char_operand() and char_operand_left() write r = c + 5 and r = 5 +
    c on a register char c, whose read is valid to the int's width,
@@ -149,7 +150,9 @@
    -16(%rbp), %rbx and movq $-1, %rbx, with no instruction after the
    join; in chosen_divided() the call's result and the quotient joined
    in eax and movl %eax, %ebx after the join, and in chosen_promoted()
-   the two movsbl joined in eax and movslq %eax, %rbx after it.  In
+   the two movsbl joined in eax and movslq %eax, %rbx after it; and in
+   chosen_calls() the calls' results joined in eax and movl %eax, %ebx
+   after the join, for neither arm's row writes the variable.  In
    char_operand() and char_operand_left() one listing, movl %ebx,
    %r12d; addl $5, %r12d; in int_widened() the extension into the
    register, movslq %ebx, %r12, and addq $5, %r12; in register_product()
@@ -214,11 +217,15 @@
    cbz w19 in logical_itself(); ldr w19, [x29, #28] and ldr w19, [x29,
    #32] in chosen(), and add w19, w19, #1 and mov w19, #0 in
    chosen_reading(), with no mov into w19 after the join; in
-   chosen_called() the call's result and mov w0, #0 joined in w0 and mov
-   w19, w0 after the join, the same in chosen_stepped() after the
-   step's mov w0, w2 and in chosen_divided() after sdiv w0, w0, w1, and
-   in chosen_widened(), chosen_constant() and chosen_promoted() sxtw
-   x19, w0 after it; add w20, w19, #5 in char_operand() and
+   chosen_called(), chosen_stepped() and chosen_divided() mov w19, w0
+   after the call on its own path, and on the other mov w19, #0, the
+   step's load ldr w19, [x0, w1, sxtw #2] and sdiv w19, w0, w1; in
+   chosen_widened() ldrsw x19, [x29, #28] and ldrsw x19, [x29, #32] on
+   the two paths, and in chosen_constant() ldrsw x19, [x29, #28] and
+   mov x19, #-1, with no instruction after the join; in
+   chosen_promoted() the two ldrb joined in w0 and sxtw x19, w0 after
+   it, and in chosen_calls() the two calls' results joined in w0 and
+   mov w19, w0 after it; add w20, w19, #5 in char_operand() and
    char_operand_left(); sxtw x0, w19 and add x20, x0, #5 in
    int_widened(); mul w20, w19, w0 after mov w0, #4 in
    register_product(); in prefix_step() the step written
@@ -924,6 +931,15 @@ chosen_promoted(int c, char a, char b)
         register long r;
 
         r = c ? a : b;
+        return r;
+}
+
+int
+chosen_calls(int c, int x)
+{
+        register int r;
+
+        r = c ? f(x) : f(x + 1);
         return r;
 }
 
