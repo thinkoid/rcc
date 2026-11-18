@@ -1,2 +1,2 @@
-tests/error/attribute-arguments-unclosed.c:4:1: error: expected ')' after attribute arguments
+tests/error/attribute-arguments-unclosed.c:3:63: error: expected ')' after attribute arguments
 status 1

@@ -1061,6 +1061,11 @@ one of a value the initializer does not have is said at its first
 token, so `int x = g();`, for a `void g(void)`, is refused at `g`
 (6.3.2.2p1), at file scope and in a block alike.
 
+An error at the end of the text, a `}` or a `)` the file never writes,
+is said just past the last token, where clang says it: the lexer's
+end-of-file token stands there, on the last token's line, not on a
+line the file does not have.
+
 ## 8. The driver
 
 `rcc [-w] [-S|-c] [-target name] [-o out] file.c`. `-S` stops at the

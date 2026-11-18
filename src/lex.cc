@@ -241,6 +241,18 @@ take(state_t &st, tok_t kind, std::size_t length)
     return tok;
 }
 
+// The location just past a token, where what follows it is said: a
+// token never spans a newline, so it is on the token's line, its
+// length past the token's first byte.
+location_t
+end_of(const token_t &t)
+{
+    location_t where = t.where;
+    where.column += int(t.text.size());
+
+    return where;
+}
+
 // Step over the newline at the current position; the next byte is
 // column 1 of the next line.
 void
@@ -1085,8 +1097,11 @@ tokenize(std::string_view source, std::string_view file)
             tokens.push_back(punctuator(st));
     }
 
-    tokens.push_back(take(st, tok_t::eof, 0));
+    token_t eof = take(st, tok_t::eof, 0);
+    if (!tokens.empty())
+        eof.where = end_of(tokens.back());
 
+    tokens.push_back(eof);
     return tokens;
 }
 

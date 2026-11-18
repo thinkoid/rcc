@@ -140,9 +140,10 @@ struct token_t
     location_t where;
 };
 
-// The whole preprocessed text as tokens, ending in one eof.  The file
-// name is the location of the first line until a line marker says
-// otherwise.  Throws error_t on a character no token starts with, a
+// The whole preprocessed text as tokens, ending in one eof, which
+// stands just past the last token, so that an error at the end of the
+// text names a place the text has.  The file name is the location of
+// the first line until a line marker says otherwise.  Throws error_t on a character no token starts with, a
 // malformed constant, or a malformed line marker.
 std::vector< token_t > tokenize(std::string_view source, std::string_view file);
 
