@@ -787,6 +787,95 @@ register_row:
 	ret
 	.cfi_endproc
 	.size	register_row, .-register_row
+	.globl	byte_sum
+	.type	byte_sum, @function
+byte_sum:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	ldr	x0, [x29, #16]
+	add	x0, x0, #8
+	ldr	w1, [x29, #24]
+	add	x0, x0, w1, sxtw
+	b	.Lbyte_sum.1
+.Lbyte_sum.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	byte_sum, .-byte_sum
+	.globl	byte_sum_long
+	.type	byte_sum_long, @function
+byte_sum_long:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	x1, [x29, #24]
+	ldr	x0, [x29, #16]
+	add	x0, x0, #8
+	ldr	x1, [x29, #24]
+	add	x0, x0, x1
+	b	.Lbyte_sum_long.1
+.Lbyte_sum_long.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	byte_sum_long, .-byte_sum_long
+	.globl	byte_sum_register
+	.type	byte_sum_register, @function
+byte_sum_register:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -32
+	str	x0, [x29, #24]
+	str	w1, [x29, #32]
+	ldr	x0, [x29, #24]
+	add	x0, x0, #8
+	ldr	w1, [x29, #32]
+	add	x19, x0, w1, sxtw
+	mov	x0, x19
+	b	.Lbyte_sum_register.1
+.Lbyte_sum_register.1:
+	.cfi_def_cfa wsp, 48
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	byte_sum_register, .-byte_sum_register
 	.bss
 	.globl	rows
 	.type	rows, @object

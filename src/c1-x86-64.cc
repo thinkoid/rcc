@@ -3381,6 +3381,20 @@ joined_sum(state_t &s,
     return address_of(s, a, into);
 }
 
+// Whether p + n at a size of 1 takes its index into the addressing
+// form, backend.md 6.3: an add, the pointer written first, and n held
+// in a register, no constant and no object of 64 bits in memory, which
+// the p + n row's addq takes as its operand, addq -16(%rbp), %rax.
+// The index then joins a pointer that is a base and a displacement,
+// leaq 8(%rax,%rcx,1), %rax for p[1] + i on char (*p)[8].
+bool
+byte_sum(const operation_t &o, long size)
+{
+    return size == 1 && o.op == binary_op_t::add &&
+           is< pointer_t >(o.lhs->type) && !is< literal_t >(*o.rhs) &&
+           !memory_operand(*o.rhs, 64);
+}
+
 // A binary + or - of a pointer type: the pointer and the integer, the
 // integer widened to 64 bits by the parser, in the order written
 // (G13).  A name's address plus a constant is the leaq of folded()'s
@@ -3430,8 +3444,9 @@ pointer_arithmetic(state_t &s,
     if (scaled_sum(o, size))
         return joined_sum(s, o, size, into, pinned, named);
 
-    // m + i on a local int m[4][3]: leaq -48(%rbp,%rcx), %rax
-    if (unscaled_sum(o, size))
+    // m + i on a local int m[4][3]: leaq -48(%rbp,%rcx), %rax; and
+    // p[1] + i on char (*p)[8]: leaq 8(%rax,%rcx,1), %rax
+    if (unscaled_sum(o, size) || byte_sum(o, size))
         return address_of(s, unscaled(s, o, size, named), into);
 
     if (!is< pointer_t >(o.lhs->type) && multiplies(o.op, size))

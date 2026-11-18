@@ -1070,10 +1070,12 @@ one, `imulq $12, -16(%rbp), R` (6.1). The form does not reach:
 
 The sum `p[1] + i` as a value is the same address, the one `leaq
 12(%rax,%rcx,4), L` at a size of 2, 4 or 8, `i + p[1]` with `i`
-loaded first. At a size of 1 the sum is the `p + n` row's `add` on
-the row's address, `leaq 8(L), L; addq R, L` for `p[1] + i` on `char
-(*p)[8]`: the row's `add` takes an object of 64 bits in memory as its
-operand, where the join would load it.
+loaded first. At a size of 1 an index held in a register joins it
+too, `leaq 8(L,R,1), L` for `p[1] + i` on `char (*p)[8]`, and
+written into a register variable, `leaq 8(L,R,1), %rbx`; an index
+that is an object of 64 bits in memory keeps the `p + n` row's `add`
+on the row's address, `leaq 8(L), L; addq -16(%rbp), L`, since the
+`add` takes it as its operand where the join would load it.
 
 A `char` or `short` lvalue is loaded with the extending `mov` of its
 signedness, to 64 bits under a cast that widens a signed one to

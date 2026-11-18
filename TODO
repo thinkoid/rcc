@@ -78,21 +78,6 @@ Fix: =copied_into()='s hand-down at those two rows.
 Check: a function of =return-register= for each, with no =mov= after
 the row.
 
-** TODO x86-64: a row by a constant index plus a variable index at a size of 1 adds after the row's address
-
-~p[1] + i~ on ~char (*p)[8]~ is =leaq 8(%rax), %rax; movslq
--12(%rbp), %rcx; addq %rcx, %rax=, where =leaq 8(%rax,%rcx,1), %rax=
-holds both. The row of =p + n= at a size of 1 is the =add=, which
-takes a =long= in memory as its operand, so =joined_sum()= in
-=src/c1-x86-64.cc= leaves it. No listing under =tests= has the shape
-but =prow_one_c= of the pointers probe.
-
-Fix: at a size of 1, an index that is no object of 64 bits in memory
-joins =index_base()='s address, where the row commits before the
-pointer is generated.
-
-Check: =prow_one_c= an instruction shorter, and no function longer.
-
 ** TODO aarch64: a row's constant offset is added before an index no addressing form scales by
 
 ~p[1][i][0]~ on ~int (*p)[3][3]~ is =ldr x0, [x29, #16]; add x0, x0,

@@ -579,6 +579,73 @@ register_row:
 	ret
 	.cfi_endproc
 	.size	register_row, .-register_row
+	.globl	byte_sum
+	.type	byte_sum, @function
+byte_sum:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	movslq	-12(%rbp), %rcx
+	leaq	8(%rax,%rcx,1), %rax
+	jmp	.Lbyte_sum.1
+.Lbyte_sum.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	byte_sum, .-byte_sum
+	.globl	byte_sum_long
+	.type	byte_sum_long, @function
+byte_sum_long:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	%rsi, -16(%rbp)
+	movq	-8(%rbp), %rax
+	leaq	8(%rax), %rax
+	addq	-16(%rbp), %rax
+	jmp	.Lbyte_sum_long.1
+.Lbyte_sum_long.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	byte_sum_long, .-byte_sum_long
+	.globl	byte_sum_register
+	.type	byte_sum_register, @function
+byte_sum_register:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movq	%rdi, -16(%rbp)
+	movl	%esi, -20(%rbp)
+	movq	-16(%rbp), %rax
+	movslq	-20(%rbp), %rcx
+	leaq	8(%rax,%rcx,1), %rbx
+	movq	%rbx, %rax
+	jmp	.Lbyte_sum_register.1
+.Lbyte_sum_register.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	byte_sum_register, .-byte_sum_register
 	.bss
 	.globl	rows
 	.type	rows, @object

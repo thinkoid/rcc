@@ -70,7 +70,12 @@
    register, leaq -24(%rbp), %rax, the imulq and addq %rcx, %rax,
    which the call spills once, then subb %al, 1(%rcx); and
    register_row(), q = m[i] into a register variable, is the imulq
-   and the one leaq -60(%rbp,%rax,1), %rbx into it.
+   and the one leaq -60(%rbp,%rax,1), %rbx into it.  On char (*p)[8],
+   byte_sum() forms p[1] + i by the one leaq 8(%rax,%rcx,1), %rax
+   after p's load and i's, byte_sum_register() the same into the
+   variable, leaq 8(%rax,%rcx,1), %rbx, and byte_sum_long(), whose
+   long n is in memory, by leaq 8(%rax), %rax and addq -16(%rbp),
+   %rax.
 
    On aarch64 the listing must show first() returning the array's
    address, add x0, x29, #16, with no instruction after it, element()
@@ -97,7 +102,10 @@
    the label's add or the pointer, then read with the column's offset,
    ldrb w0, [x0, #4] in slot_cell(), and slot_row() is the add of the
    slot and the add of the product; first_cell(), held_cell() and
-   register_row() the same, the last add writing x19. */
+   register_row() the same, the last add writing x19.  byte_sum(),
+   byte_sum_long() and byte_sum_register() add the row's 8, then the
+   index, add x0, x0, w1, sxtw, or add x0, x0, x1 for the long, the
+   last add writing x19 in byte_sum_register(). */
 int *first(void)
 {
     int m[2][3];
@@ -274,5 +282,26 @@ register_row(int i)
         register int *q;
 
         q = m[i];
+        return q;
+}
+
+char *
+byte_sum(char (*p)[8], int i)
+{
+        return p[1] + i;
+}
+
+char *
+byte_sum_long(char (*p)[8], long n)
+{
+        return p[1] + n;
+}
+
+char *
+byte_sum_register(char (*p)[8], int i)
+{
+        register char *q;
+
+        q = p[1] + i;
         return q;
 }
