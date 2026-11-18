@@ -1948,8 +1948,8 @@ constexpr std::string_view dropped_attributes[] = {
     "noreturn", "nothrow", "pure", "returns_nonnull",
 
     // requests for a diagnostic
-    "access", "deprecated", "format", "format_arg", "nodiscard", "sentinel",
-    "unused", "warn_unused_result"
+    "access", "deprecated", "fallthrough", "format", "format_arg", "nodiscard",
+    "sentinel", "unused", "warn_unused_result"
 };
 
 // An attribute's name as GCC reads it: __nonnull__ is nonnull.
@@ -5131,10 +5131,21 @@ block_item_list(parser_t &p, block_t &block)
 }
 
 // An expression whose value is discarded may be void; an empty one is
-// the null statement.
+// the null statement.  Attributes before an empty one's ';' stand on
+// the null statement, as GNU C's __attribute__ ((fallthrough)); does: one
+// dropped is dropped, so the statement writes nothing, and one that
+// marks is not yet, by its name, as on anything else rcc would make.
+// Attributes before an expression are no part of the grammar, and the
+// expression refuses them.
 stmt_t
 expression_statement(parser_t &p)
 {
+    if (peek(p).kind == tok_t::kw_attribute &&
+        peek(p, past_attributes(p, 0)).kind == tok_t::semicolon) {
+        if (const token_t *marking = attribute_specifier_list(p))
+            not_yet(*marking, attribute_words(*marking));
+    }
+
     if (accept(p, tok_t::semicolon))
         return stmt_t { expr_stmt_t { } };
 

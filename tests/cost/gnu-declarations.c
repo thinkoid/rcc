@@ -5,7 +5,9 @@
    chapter 5).  twice is declared as glibc declares scanf, under
    another name in the assembly, and the call of twice calls
    other_name.  In local() an attribute begins a block's declarations
-   and is read among their specifiers, dropped as one at file scope is.
+   and is read among their specifiers, dropped as one at file scope is,
+   and in fall() GNU C's fallthrough stands on a null statement and is
+   dropped too.
 
    On x86-64 the listing must be, byte for byte but for the .file line,
    the listing of this program without the attributes, __restrict,
@@ -32,4 +34,15 @@ local(int n)
         __attribute__((__unused__)) static int calls;
 
         return copy + 1;
+}
+
+int
+fall(int c)
+{
+        switch (c) {
+        case 1: c++; __attribute__((__fallthrough__));
+        case 2: return c;
+        }
+
+        return 0;
 }

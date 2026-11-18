@@ -382,8 +382,10 @@ is said of each declarator, as one after the declarator is, and one
 may begin a declaration, in a block as at file scope:
 `__attribute__ ((unused)) int x = 1;` in a block declares `x`, the
 attribute dropped. Attributes before a `;` or an expression begin no
-declaration, and GNU C's statement attribute, `__attribute__
-((fallthrough));`, is read as an expression and refused. One on a
+declaration. Before a `;` they stand on a null statement, as GNU C's
+`__attribute__ ((fallthrough));` does, dropped or not yet by their
+kind, and the statement writes nothing; before an expression they
+are an error. One on a
 parameter marks the function, whose calls pass the parameter, and its
 definition. On a struct or a union every attribute is dropped, since
 the type is a not-yet type; on an enum one that marks makes the enum

@@ -63,6 +63,42 @@ local:
 	ret
 	.cfi_endproc
 	.size	local, .-local
+	.globl	fall
+	.type	fall, @function
+fall:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	-4(%rbp), %eax
+	subl	$1, %eax
+	cmpl	$1, %eax
+	ja	.Lfall.4
+	leaq	.Lfall.5(%rip), %rcx
+	jmp	*(%rcx,%rax,8)
+	.data
+	.p2align 3
+.Lfall.5:
+	.quad	.Lfall.2
+	.quad	.Lfall.3
+	.text
+.Lfall.2:
+	addl	$1, -4(%rbp)
+.Lfall.3:
+	movl	-4(%rbp), %eax
+	jmp	.Lfall.1
+.Lfall.4:
+	movl	$0, %eax
+	jmp	.Lfall.1
+.Lfall.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	fall, .-fall
 	.bss
 	.type	local.calls, @object
 	.size	local.calls, 4
