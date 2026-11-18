@@ -359,18 +359,6 @@ listing.
 
 * Tests
 
-** TODO =tests/oracle --pin= says nothing of a pin that is the same
-
-=tests/costs --pin= prints a line for every pin, new, changed or the
-same. =tests/oracle --pin= prints one only for a new or a changed
-pin, so a clean run adopts in silence and the two scripts read
-differently.
-
-Fix: the oracle prints "pinned <file> (same)" too.
-
-Check: =tests/oracle --pin= on a clean tree prints one line for each
-program.
-
 ** TODO =tests/oracle --pin= writes a status the oracle then refuses
 
 =--pin= adopts what it measures, so a program that exits 200 gets

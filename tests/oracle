@@ -604,9 +604,10 @@ is_waiting()
 
 ##########
 # adopt_pins(): copies the assembly of the run over the target's pin
-# of every program, printing each pin it made or changed, and leaves a
-# program that is not yet without one; reports 1 when another program
-# wrote no text or a pin could not be written, 0 otherwise
+# of every program, printing for each pin whether it is new, changed
+# or the same, and leaves a program that is not yet without one;
+# reports 1 when another program wrote no text or a pin could not be
+# written, 0 otherwise
 adopt_pins()
 {
     result=0
@@ -631,6 +632,8 @@ adopt_pins()
         elif ! cmp -s "$pin_file" "$asm_file"; then
             cp "$asm_file" "$pin_file" && echo "pinned $pin_file (changed)" ||
                 result=1
+        else
+            echo "pinned $pin_file (same)"
         fi
     done
 
