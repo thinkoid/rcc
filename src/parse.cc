@@ -1576,8 +1576,30 @@ postfix_step(const token_t &op, expr_t arg)
     return expr_t { t, unary_t { u, box(std::move(arg)) } };
 }
 
+// A subscript's pointer points to a complete object type, 6.5.3.2p1:
+// not void, not a function, and not an array of unknown size, which is
+// incomplete, 6.2.5p27.  Each is refused in the subscript's words, before
+// the addition that would refuse it in its own.
+void
+require_subscripted_pointee(const token_t &op, const type_t &t)
+{
+    const type_t &pointee = pointee_of(t);
+
+    if (is< void_t >(pointee))
+        fail(op, "subscript of a pointer to void");
+
+    if (is< function_t >(pointee))
+        fail(op, "subscript of a pointer to a function");
+
+    if (is< array_t >(pointee) && as< array_t >(pointee).count < 0)
+        fail(op, "subscript of a pointer to an array of unknown size");
+}
+
 // E1[E2] is *((E1)+(E2)), 6.5.3.2p2, and is built as exactly that tree,
-// so the pointer may be either operand.
+// so the pointer may be either operand.  One operand is a pointer to a
+// complete object type and the other an integer, p1, which the
+// subscript checks itself, so that its errors name the subscript and
+// not the addition: two pointers make a subscript that is no integer.
 expr_t
 subscript(const token_t &op, expr_t e, expr_t index)
 {
@@ -1585,6 +1607,12 @@ subscript(const token_t &op, expr_t e, expr_t index)
     index = rvalue(op, std::move(index));
     if (!is< pointer_t >(e.type) && !is< pointer_t >(index.type))
         fail(op, "subscripted value is not an array or a pointer");
+
+    if (is< pointer_t >(e.type) && is< pointer_t >(index.type))
+        fail(op, "array subscript is not an integer");
+
+    require_subscripted_pointee(op,
+                                is< pointer_t >(e.type) ? e.type : index.type);
 
     return indirection(op, addition(op, std::move(e), std::move(index)));
 }

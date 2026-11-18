@@ -1,0 +1,2 @@
+tests/error/subscript-function-pointer.c:6:17: error: subscript of a pointer to a function
+status 1

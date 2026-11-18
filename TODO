@@ -1118,23 +1118,6 @@ Fix: the comment says every conversion but an array's decay.
 Check: =grep -n 'cast_t {' src/parse.cc= prints the sites the
 comments name.
 
-** TODO A subscript's errors speak of addition
-
-~p[q]~ with two pointers passes the subscript's own check and fails
-in =addition()= with "cannot add two pointers"; ~v[0]~ on a =void *=
-fails there with "arithmetic on a pointer to void". Both are at the
-=[=, and neither names the subscript. 6.5.3.2p1 states the constraint
-for the subscript itself: one operand a pointer to a complete object
-type, the other an integer. No program of =tests/error= draws either
-through a subscript.
-
-Fix: =subscript()= refuses two pointers, and a pointer to =void=,
-with messages about the subscript, before it calls =addition()=.
-
-Check: two programs of =tests/error=, ~int f(int *p, int *q) { return
-p[q]; }~ and ~int f(void *v) { return v[0]; }~, pinned with the new
-messages.
-
 ** TODO An error at the end of the file names a line the file does not have
 
 A function body the file ends inside is reported at the end-of-file

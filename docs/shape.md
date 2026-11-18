@@ -171,7 +171,9 @@ Three sums.
   integer operand widened to 64 bits in its own signedness; the
   difference of two
   pointers is a binary sub of type `long`; a subscript is a
-  dereference of an add, as 6.5.3.2p2 defines it; `sizeof` is an
+  dereference of an add, as 6.5.3.2p2 defines it, whose operands the
+  parser checks first, a pointer to a complete object type and an
+  integer (p1), so that its errors name the subscript; `sizeof` is an
   integer literal the parser folded. A unary `+` has no node: it is
   the promotion of its operand (6.5.4.3p2), a cast, and over an lvalue
   that no promotion converts, a cast to the lvalue's own type, since

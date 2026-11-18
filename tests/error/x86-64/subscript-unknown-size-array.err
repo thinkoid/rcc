@@ -1,0 +1,2 @@
+tests/error/subscript-unknown-size-array.c:11:17: error: subscript of a pointer to an array of unknown size
+status 1

@@ -1,0 +1,2 @@
+tests/error/subscript-two-pointers.c:6:17: error: array subscript is not an integer
+status 1
