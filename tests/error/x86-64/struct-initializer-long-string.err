@@ -1,0 +1,2 @@
+tests/error/struct-initializer-long-string.c:10:21: error: initializer-string for char array is too long
+status 1

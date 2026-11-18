@@ -1,0 +1,2 @@
+tests/error/struct-initializer-braces.c:9:27: error: too many braces around scalar initializer
+status 1

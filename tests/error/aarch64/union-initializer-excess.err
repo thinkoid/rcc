@@ -1,0 +1,2 @@
+tests/error/union-initializer-excess.c:9:25: error: excess elements in union initializer
+status 1

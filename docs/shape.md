@@ -281,7 +281,9 @@ Three sums.
   initialize an array of `char`. They are in the order of their
   offsets, and every byte none of them holds is zero, so a brace
   list reaches c1 with its brace elision resolved and its omitted
-  elements implied.
+  elements implied. A record's list is the same subobjects, its
+  members' and theirs at their offsets in the object, so the data
+  holds no record and no padding of its own.
 
 A symbol is a name, a type, a storage and a linkage. The storage is
 local, parameter, global, function, type name or enumerator. A global
@@ -555,12 +557,13 @@ an initializer (6.7.11p4) or a tentative definition of internal
 linkage (6.9.3p3); a tentative definition of external linkage takes
 the record as it is at the end of the unit (6.9.3p2), which must then
 be complete. What reads or writes the whole object of a record is not
-yet, each in words of its own: its initializer; a `register` one,
-which no register holds; a record passed or returned by value, by a
-definition's parameter or result, by an argument and by a call; the
-assignment of a record; and its value, read as an operand or for its
-effect, a member's of a record type among them. A cast to a record or
-of one is an error, since a record is no scalar (6.5.5p2).
+yet, each in words of its own: a local's initializer, which is stores
+at run time; a `register` one, which no register holds; a record
+passed or returned by value, by a definition's parameter or result,
+by an argument and by a call; the assignment of a record; and its
+value, read as an operand or for its effect, a member's of a record
+type among them. A cast to a record or of one is an error, since a
+record is no scalar (6.5.5p2).
 
 `E.m` and `P->m` designate a member (6.5.3.4p3, p4): `E` a struct or
 a union, `P` a pointer to one after its decay, complete and laid out,
@@ -775,6 +778,25 @@ second expression for a scalar and a second pair of braces around
 one. A trailing comma is taken (p1). Each element is a constant
 expression as above, converted to the element's type; a designator,
 `[2] = 5` or `.x = 1`, is not yet.
+
+A record takes a brace-enclosed list too (p17), walked against its
+members by the same rule: a struct's in declaration order, a union's
+first member alone (p18), each member that is a record or an array
+taking its own list or as many initializers as it needs (p21), and a
+member that is an array of `char` a string literal alone. The walk is
+one rule at any depth, so an array of records, a record of arrays and
+a record of records take their lists alike, `{ 1, 2, 3, 4 }` the two
+points of a line in order. Every member rcc lays out is named, so
+none is passed over (p10). The bytes no member's value holds, the
+padding included, are zero (p11, p22), which the data writes as any
+other run of zeros. A list that goes on past the record's members, or
+a union's first, is an error (p3). An address constant is a member's
+value as it is a scalar's, `&line.to.x` the line's label and the
+member's offset, and so is a function's name, so a table of records
+holds its function pointers as data. A record's value initializes a
+record (p14), but is no constant expression (p5), an error here,
+whether it stands for the whole object or for a member; any other
+expression without braces initializes no record.
 
 In an expression a global is what a local is, an lvalue of its type;
 one declared elsewhere of a not-yet type is refused where it is named.
@@ -1088,9 +1110,9 @@ a conditional of two void calls.
 
 ## 11. Not yet
 
-The initializer of a struct or a union and each use that reads or
-writes one whole (chapter 5: a `register` one, a record by value, its
-assignment and its value), the layout of a struct or a
+A local's initializer of a struct or a union and each use that
+reads or writes one whole (chapter 5: a `register` one, a record by
+value, its assignment and its value), the layout of a struct or a
 union with a bit-field, an anonymous member, an attribute that marks,
 `packed` and `aligned` among them, a flexible array member, no
 member, or a member of a type rcc does not use yet (chapter 3), C23's

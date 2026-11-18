@@ -1,0 +1,2 @@
+tests/error/struct-local-list-initializer.c:11:24: error: not yet: initializer of local struct 'point'
+status 1

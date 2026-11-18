@@ -1,2 +1,0 @@
-tests/error/struct-global-initializer.c:8:21: error: not yet: initializer of struct 'point'
-status 1

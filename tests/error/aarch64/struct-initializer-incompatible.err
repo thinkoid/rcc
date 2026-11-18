@@ -1,0 +1,2 @@
+tests/error/struct-initializer-incompatible.c:8:23: error: initializing struct 'point' with an expression of incompatible type
+status 1

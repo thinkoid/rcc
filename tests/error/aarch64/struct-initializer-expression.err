@@ -1,0 +1,2 @@
+tests/error/struct-initializer-expression.c:9:21: error: initializer element is not a compile-time constant
+status 1

@@ -2971,13 +2971,19 @@ refuse_designator(const parser_t &p)
 // or a null pointer, which the evaluator made a literal; an address
 // constant, 6.6p9, p11.  Any other expression is no constant
 // expression, an error, and so is an address in an integer narrower
-// than a pointer, which no load writes.  at is the token a conversion's
-// error is said at.
+// than a pointer, which no load writes.  A record's value is none
+// either, p14: in a scalar's place it initializes a record the scalar
+// begins, or no object at all.  at is the token a conversion's error
+// is said at.
 initializer_t
 scalar_value(parser_t &p, const token_t &at, const type_t &t)
 {
     const token_t &start = peek(p);
-    expr_t init = assignment_conversion(at, assignment_expression(p), t);
+    expr_t e = assignment_expression(p);
+    if (is< record_type_t >(e.type))
+        fail(start, "initializer element is not a compile-time constant");
+
+    expr_t init = assignment_conversion(at, std::move(e), t);
 
     if (is< literal_t >(init))
         return as< literal_t >(init);
@@ -3106,6 +3112,33 @@ elements(parser_t &p,
     return count;
 }
 
+// The members of a record at offset, from the initializers ahead in a
+// list, 6.7.11p18: a struct's in declaration order, each from the next
+// initializer, or from as many as it takes when that one does not
+// begin with a brace, p21; a union's first named member alone.  Every
+// member of a record rcc lays out is named, so none is passed over,
+// p10.  An initializer is ahead.  The members end with the last,
+// leaving the rest of the list to the enclosing aggregate or to the
+// list's own check, or with the list.  Returns whether every member the
+// list may give was given.
+bool
+member_values(parser_t &p,
+              const record_t &r,
+              long offset,
+              std::vector< subobject_t > &values)
+{
+    const std::size_t count = r.is_union ? 1 : r.members.size();
+
+    std::size_t given = 0;
+    do {
+        const member_t &m = r.members[given];
+        subobject_initializer(p, m.type, offset + m.offset, values);
+        ++given;
+    } while (given != count && accept_separator(p));
+
+    return given == count;
+}
+
 // The end of a brace-enclosed list after its initializers: a ',' may
 // stand before the '}', 6.7.11p1.  A list that went on once its object
 // held every value it gives would be an initializer for an object not
@@ -3126,8 +3159,9 @@ close_list(parser_t &p, bool full, std::string_view what)
 // offset, its '{' ahead.  The empty initializer, {}, leaves it zero,
 // 6.7.11p11, but an array of unknown size may not take it, p4.  A
 // scalar takes one expression, p12, and no braces of its own inside
-// them; an array of char a string literal alone, p15; any other array
-// its elements, p17.  Returns the count of elements given to an array.
+// them; a record its members, p17, p18; an array of char a string
+// literal alone, p15; any other array its elements, p17.  Returns the
+// count of elements given to an array.
 long
 braced_initializer(parser_t &p,
                    const type_t &t,
@@ -3146,6 +3180,14 @@ braced_initializer(parser_t &p,
     }
 
     refuse_designator(p);
+
+    if (is< record_type_t >(t)) {
+        const record_t &r = *as< record_type_t >(t).record;
+        const bool full = member_values(p, r, offset, values);
+        close_list(p, full, r.is_union ? "union" : "struct");
+
+        return 0;
+    }
 
     if (!is< array_t >(t)) {
         if (peek(p).kind == tok_t::lbrace)
@@ -3174,8 +3216,9 @@ braced_initializer(parser_t &p,
 // The initializer of a subobject of type t at offset from its place in
 // a list, 6.7.11p21: one that begins with a brace is its own; a scalar
 // takes the one expression ahead; an array of char a string literal
-// alone; any other array takes as many initializers from the list as
-// its elements do.  Returns the count of elements given to an array.
+// alone; a record, and any other array, takes as many initializers
+// from the list as its members or its elements do.  Returns the count
+// of elements given to an array.
 long
 subobject_initializer(parser_t &p,
                       const type_t &t,
@@ -3186,6 +3229,11 @@ subobject_initializer(parser_t &p,
 
     if (peek(p).kind == tok_t::lbrace)
         return braced_initializer(p, t, offset, values);
+
+    if (is< record_type_t >(t)) {
+        member_values(p, *as< record_type_t >(t).record, offset, values);
+        return 0;
+    }
 
     if (!is< array_t >(t)) {
         scalar_subobject(p, peek(p), t, offset, values);
@@ -3198,13 +3246,32 @@ subobject_initializer(parser_t &p,
     return elements(p, as< array_t >(t), offset, values);
 }
 
+// The initializer without braces of an object of the record t, the
+// expression ahead: one of a compatible record type, 6.7.11p14, whose
+// value is no constant expression, p5, so that no object the unit
+// defines takes it; any other initializes no record, p17.
+[[noreturn]] void
+refuse_record_expression(parser_t &p, const type_t &t)
+{
+    const token_t &start = peek(p);
+    const expr_t e = assignment_expression(p);
+
+    refuse_tag_twins(start, t, e.type);
+    if (e.type == t)
+        fail(start, "initializer element is not a compile-time constant");
+
+    fail(start, "initializing " + record_words(*as< record_type_t >(t).record) +
+                    " with an expression of incompatible type");
+}
+
 // The initializer of an object the unit defines, after its '=', into
 // the subobjects it gives a value.  A brace-enclosed one is as
 // braced_initializer() takes it.  Without braces, a scalar takes one
 // expression, converted from the '=', 6.7.11p12, and an array a string
 // literal alone, for an array of char, p15: any other array takes a
-// brace-enclosed list, p17.  Returns the count of elements given to an
-// array, which completes one of unknown size, p23.
+// brace-enclosed list, p17, and so does a record, which takes no
+// expression of its own type here.  Returns the count of elements given
+// to an array, which completes one of unknown size, p23.
 long
 object_initializer(parser_t &p,
                    const token_t &op,
@@ -3213,6 +3280,9 @@ object_initializer(parser_t &p,
 {
     if (peek(p).kind == tok_t::lbrace)
         return braced_initializer(p, t, 0, values);
+
+    if (is< record_type_t >(t))
+        refuse_record_expression(p, t);
 
     if (!is< array_t >(t)) {
         scalar_subobject(p, op, t, 0, values);
@@ -3342,14 +3412,11 @@ complete_tentative_arrays(parser_t &p)
 
 // The initializer after the '=' ahead of the object the unit's objects
 // hold at index: the subobjects it gives a value, and the size it gives
-// an array of unknown size, 6.7.11p23.  The initializer of a record, or
-// of an array of records, is not yet.
+// an array of unknown size, 6.7.11p23.
 void
 initialize(parser_t &p, symbol_t &sym, std::size_t index)
 {
     const token_t &op = advance(p);
-    if (const record_t *r = record_in(sym.type))
-        not_yet(op, "initializer of " + record_words(*r));
     std::vector< subobject_t > values;
     const long count = object_initializer(p, op, sym.type, values);
 
@@ -5529,10 +5596,12 @@ init_declarator_list(parser_t &p, const specifiers_t &spec)
 // converted as by assignment, 6.7.11p12.  An object's type must be
 // complete, 6.7.1p8, so an array needs its size; any initializer of an
 // array or of a record, and a brace initializer of anything, is not
-// yet.  A register array is not yet either: its decay is undefined,
-// 6.3.2.1p3, and it has no slot to decay to; nor is a register record,
-// which no register holds.  A local of 2 GiB or more is refused here,
-// where its position is known, since no frame holds it.
+// yet: a local's initializer is stores at run time, where an object of
+// static storage takes its value as data.  A register array is not yet
+// either: its decay is undefined, 6.3.2.1p3, and it has no slot to
+// decay to; nor is a register record, which no register holds.  A local
+// of 2 GiB or more is refused here, where its position is known, since
+// no frame holds it.
 stmt_t
 init_declarator(parser_t &p, const specifiers_t &spec, const declarator_t &d)
 {
@@ -5547,7 +5616,7 @@ init_declarator(parser_t &p, const specifiers_t &spec, const declarator_t &d)
                              record_words(*r));
 
     if (r && peek(p).kind == tok_t::assign)
-        not_yet(peek(p), "initializer of " + record_words(*r));
+        not_yet(peek(p), "initializer of local " + record_words(*r));
 
     if (is< array_t >(d.type) && peek(p).kind == tok_t::assign)
         not_yet(peek(p), "array initializer");

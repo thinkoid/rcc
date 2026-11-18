@@ -165,7 +165,12 @@ plus the member's offset, the tree's own nodes, and each generator
 reads the offset into the access, `movl 8(%rax), %eax` and `ldr w0,
 [x0, #8]`; `header-words` counts the words of a text in K&R's binary
 tree of section 6.5, and `header-lookup` keeps the table of names of
-section 6.6.
+section 6.6. Then the initializers of records of static storage: a
+list walked against the members, a union's first, with the elision
+an array's list has, folded into the object's data, so
+`header-keywords` counts the keywords of a text in the table of
+section 6.3, and the data of the `struct-data` pin is the bytes
+`clang` writes on both targets.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/`, the cost corpus over `tests/cost/`
 and the error corpus over `tests/error/`, the programs rcc refuses

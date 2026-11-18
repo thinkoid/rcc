@@ -1,0 +1,2 @@
+tests/error/struct-initializer-excess.c:9:31: error: excess elements in struct initializer
+status 1

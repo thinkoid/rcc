@@ -1002,7 +1002,8 @@ Fix: decide whether rcc keeps the error or takes the inner braces
 with a warning.
 
 Check: the pin of =global-initializer-scalar-braces= agrees with the
-decision.
+decision, and that of
+=struct-initializer-braces=, a scalar member's, with it.
 
 ** TODO A function definition in a block draws an error about a semicolon
 

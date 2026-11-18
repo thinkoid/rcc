@@ -1,0 +1,2 @@
+tests/error/struct-initializer-member-value.c:15:26: error: initializer element is not a compile-time constant
+status 1

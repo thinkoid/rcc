@@ -1,0 +1,2 @@
+tests/error/struct-initializer-nonconstant.c:12:35: error: initializer element is not a compile-time constant
+status 1
