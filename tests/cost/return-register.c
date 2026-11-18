@@ -38,7 +38,13 @@
    t, 0)) on a register char *p, and written_quotient() p - (p = t) on
    a register int *p, whose copy is the dividend; beside them
    written_sum_called() and written_quotient_called(), a call within
-   the right operand.
+   the right operand.  A pointer plus a call's result writes the
+   result's register too: pointer_called() p + f(x) on a char *p,
+   row_called() the same on int (*p)[3], whose index's product is in
+   rax, and register_row_called() on a register int (*p)[3], whose
+   register the addq reads; beside them scaled_called() on an int *p,
+   whose leaq names rax already, and called_pointer() f(x) + p, the
+   index first, whose addq takes p in memory.
 
    On x86-64 the listing must show no move into eax or rax before the
    jump to the epilogue but in called_minus(), deeper() and
@@ -90,7 +96,12 @@
    subq %rbx, %rax, movq $4, %rcx, cqto and idivq %rcx; in
    written_sum_called() and written_quotient_called() the copy spilled
    across the call and reloaded, movq -48(%rbp), %rax and movq
-   -40(%rbp), %rax, before the addq and the subq.
+   -40(%rbp), %rax, before the addq and the subq.  In pointer_called()
+   p reloaded into rcx after the call, movq -24(%rbp), %rcx, and addq
+   %rcx, %rax; in row_called() the same after imulq $12, %rax, %rax;
+   in register_row_called() imulq $12, %rax, %rax and addq %rbx, %rax,
+   with no copy of rbx; in scaled_called() leaq (%rcx,%rax,4), %rax;
+   and in called_pointer() addq -8(%rbp), %rax.
 
    On aarch64, where an operation names its destination apart from its
    sources, the row's last instruction writes x0 where no other value
@@ -130,7 +141,11 @@
    x0, x19, sub x0, x0, x19 and sdiv x0, x0, x1, and in
    written_sum_called() and written_quotient_called() the reload after
    the call, ldr x0, [x29, #56] and ldr x0, [x29, #48], before the add
-   and the sub. */
+   and the sub.  In pointer_called(), scaled_called() and
+   called_pointer() the pointer reloaded into x1 after the call and
+   add x0, x1, w0, sxtw, with #2 in scaled_called(); in row_called()
+   mul x0, x0, x2 and add x0, x1, x0; and in register_row_called() add
+   x0, x19, x0. */
 int f(int);
 
 int
@@ -380,4 +395,34 @@ int
 compound_called(int x, int y)
 {
         return x += f(y);
+}
+
+char *
+pointer_called(char *p, int x)
+{
+        return p + f(x);
+}
+
+int (*row_called(int (*p)[3], int x))[3]
+{
+        return p + f(x);
+}
+
+int *
+scaled_called(int *p, int x)
+{
+        return p + f(x);
+}
+
+char *
+called_pointer(char *p, int x)
+{
+        return f(x) + p;
+}
+
+int (*register_row_called(int (*s)[3], int x))[3]
+{
+        register int (*p)[3] = s;
+
+        return p + f(x);
 }

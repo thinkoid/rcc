@@ -1225,4 +1225,170 @@ compound_called:
 	ret
 	.cfi_endproc
 	.size	compound_called, .-compound_called
+	.globl	pointer_called
+	.type	pointer_called, @function
+pointer_called:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	ldr	x0, [x29, #16]
+	str	x0, [x29, #32]
+	ldr	w0, [x29, #24]
+	str	w0, [x29, #40]
+	ldr	w0, [x29, #40]
+	bl	f
+	ldr	x1, [x29, #32]
+	add	x0, x1, w0, sxtw
+	b	.Lpointer_called.1
+.Lpointer_called.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	pointer_called, .-pointer_called
+	.globl	row_called
+	.type	row_called, @function
+row_called:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	ldr	x0, [x29, #16]
+	str	x0, [x29, #32]
+	ldr	w0, [x29, #24]
+	str	w0, [x29, #40]
+	ldr	w0, [x29, #40]
+	bl	f
+	sxtw	x0, w0
+	ldr	x1, [x29, #32]
+	mov	x2, #12
+	mul	x0, x0, x2
+	add	x0, x1, x0
+	b	.Lrow_called.1
+.Lrow_called.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	row_called, .-row_called
+	.globl	scaled_called
+	.type	scaled_called, @function
+scaled_called:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	ldr	x0, [x29, #16]
+	str	x0, [x29, #32]
+	ldr	w0, [x29, #24]
+	str	w0, [x29, #40]
+	ldr	w0, [x29, #40]
+	bl	f
+	ldr	x1, [x29, #32]
+	add	x0, x1, w0, sxtw #2
+	b	.Lscaled_called.1
+.Lscaled_called.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	scaled_called, .-scaled_called
+	.globl	called_pointer
+	.type	called_pointer, @function
+called_pointer:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	ldr	w0, [x29, #24]
+	str	w0, [x29, #28]
+	ldr	w0, [x29, #28]
+	bl	f
+	ldr	x1, [x29, #16]
+	add	x0, x1, w0, sxtw
+	b	.Lcalled_pointer.1
+.Lcalled_pointer.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	called_pointer, .-called_pointer
+	.globl	register_row_called
+	.type	register_row_called, @function
+register_row_called:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -32
+	str	x0, [x29, #24]
+	str	w1, [x29, #32]
+	ldr	x19, [x29, #24]
+	ldr	w0, [x29, #32]
+	str	w0, [x29, #36]
+	ldr	w0, [x29, #36]
+	bl	f
+	sxtw	x0, w0
+	mov	x1, #12
+	mul	x0, x0, x1
+	add	x0, x19, x0
+	b	.Lregister_row_called.1
+.Lregister_row_called.1:
+	.cfi_def_cfa wsp, 48
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	register_row_called, .-register_row_called
 	.section	.note.GNU-stack,"",@progbits

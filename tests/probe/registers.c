@@ -880,6 +880,22 @@ POINTEES(KCOL)
     }
 POINTEES(KCOPY)
 
+/* A pointer plus a register variable's read, x86-64, backend.md 6.1:
+   the sum written into the pointer's register, never into the
+   variable's, whose read the operation only reads, v = u + k, and the
+   variable read after it.  Each pointee: sizes 1, 4, 8 and 12. */
+
+#define KREG(E, T)                                                      \
+    long kreg_##E(T *base, long i)                                      \
+    {                                                                   \
+        register long k = i & 3;                                        \
+        T *u = base + 1;                                                \
+        T *v;                                                           \
+        v = u + k;                                                      \
+        return (v - base) * 7 + k;                                      \
+    }
+POINTEES(KREG)
+
 /* A register pointer to a function: the address of a function the
    unit defines, and of one it only declares, from the GOT. */
 long

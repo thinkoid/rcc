@@ -2482,6 +2482,32 @@ unscaled(state_t &s, const operation_t &o, long size, unsigned named)
     return unscaled_index(s, a, n, size);
 }
 
+// An unscaled_sum() or a byte_sum() as a value, backend.md 6.3:
+// address_of()'s leaq, or the p + n row's addq into the pointer, but
+// that where the index's product, an owned value, is in the register
+// the consumer names, wanted, the addq writes that register, the
+// pointer its source, as an operation that commutes does
+// (written_in_right(), 6.1): return p + f() on a char *p is addq %rcx,
+// %rax after p's reload, where the sum was written into rcx and moved.
+// Not where a register variable is handed down, whose register the
+// leaq writes.
+value_t
+unscaled_value(state_t &s, const address_t &a, into_t *into, unsigned wanted)
+{
+    if (into || !a.sum || a.displacement != 0 || a.base.id < 0 ||
+        !written_in_right(s, binary_op_t::add, a.base, a.index, wanted))
+        return address_of(s, a, into);
+
+    const reg_t index = reg_of(s, a.index);
+    const reg_t base = reg_of(s, a.base, bit(index));
+    insn(s, "addq", { reg(base, 64), reg(index, 64) });
+    wrote(s, a.index, 64, false);
+
+    release(s, a.base);
+
+    return a.index;
+}
+
 // n + p with p an object in memory of 64 bits, where the add takes p
 // unscaled: at a size of 1, and at a size no addressing form scales by,
 // after the index is multiplied in its register, imulq $12, %rax, %rax.
@@ -3533,7 +3559,7 @@ pointer_arithmetic(state_t &s,
     // m + i on a local int m[4][3]: leaq -48(%rbp,%rcx), %rax; and
     // p[1] + i on char (*p)[8]: leaq 8(%rax,%rcx,1), %rax
     if (unscaled_sum(o, size) || byte_sum(o, size))
-        return address_of(s, unscaled(s, o, size, named), into);
+        return unscaled_value(s, unscaled(s, o, size, named), into, wanted);
 
     if (!is< pointer_t >(o.lhs->type) && multiplies(o.op, size))
         if (const auto product = multiplied(s, *o.lhs, size, pinned))

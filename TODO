@@ -76,19 +76,6 @@ the right operand's register under any consumer.
 
 Check: the count over =tests=, the fit, and no function longer.
 
-** TODO x86-64: a pointer plus a call's result keeps the =return='s =mov=
-
-~return p + f();~ ends =addq %rax, %rcx; movq %rcx, %rax=: the row
-of =p + n= in =pointer_arithmetic()= writes the pointer's register,
-where an arithmetic sum now writes the register its consumer names
-from the right operand (=backend.md= 6.1). 36 rows over =tests=,
-=cadd_*= of the probes among them.
-
-Fix: the row of =p + n= at a size of 1, or with the product already
-in the named register, writes that register, the pointer its source.
-
-Check: the count over =tests=, and no function longer.
-
 ** TODO aarch64: a row's constant offset is added before an index no addressing form scales by
 
 ~p[1][i][0]~ on ~int (*p)[3][3]~ is =ldr x0, [x29, #16]; add x0, x0,

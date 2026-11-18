@@ -1019,4 +1019,145 @@ compound_called:
 	ret
 	.cfi_endproc
 	.size	compound_called, .-compound_called
+	.globl	pointer_called
+	.type	pointer_called, @function
+pointer_called:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$32, %rsp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	movq	%rax, -24(%rbp)
+	movl	-12(%rbp), %eax
+	movl	%eax, -28(%rbp)
+	movl	-28(%rbp), %edi
+	call	f@PLT
+	movslq	%eax, %rax
+	movq	-24(%rbp), %rcx
+	addq	%rcx, %rax
+	jmp	.Lpointer_called.1
+.Lpointer_called.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	pointer_called, .-pointer_called
+	.globl	row_called
+	.type	row_called, @function
+row_called:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$32, %rsp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	movq	%rax, -24(%rbp)
+	movl	-12(%rbp), %eax
+	movl	%eax, -28(%rbp)
+	movl	-28(%rbp), %edi
+	call	f@PLT
+	movslq	%eax, %rax
+	movq	-24(%rbp), %rcx
+	imulq	$12, %rax, %rax
+	addq	%rcx, %rax
+	jmp	.Lrow_called.1
+.Lrow_called.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	row_called, .-row_called
+	.globl	scaled_called
+	.type	scaled_called, @function
+scaled_called:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$32, %rsp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	movq	%rax, -24(%rbp)
+	movl	-12(%rbp), %eax
+	movl	%eax, -28(%rbp)
+	movl	-28(%rbp), %edi
+	call	f@PLT
+	movslq	%eax, %rax
+	movq	-24(%rbp), %rcx
+	leaq	(%rcx,%rax,4), %rax
+	jmp	.Lscaled_called.1
+.Lscaled_called.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	scaled_called, .-scaled_called
+	.globl	called_pointer
+	.type	called_pointer, @function
+called_pointer:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$16, %rsp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movl	-12(%rbp), %eax
+	movl	%eax, -16(%rbp)
+	movl	-16(%rbp), %edi
+	call	f@PLT
+	movslq	%eax, %rax
+	addq	-8(%rbp), %rax
+	jmp	.Lcalled_pointer.1
+.Lcalled_pointer.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	called_pointer, .-called_pointer
+	.globl	register_row_called
+	.type	register_row_called, @function
+register_row_called:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	subq	$24, %rsp
+	movq	%rdi, -16(%rbp)
+	movl	%esi, -20(%rbp)
+	movq	-16(%rbp), %rbx
+	movl	-20(%rbp), %eax
+	movl	%eax, -24(%rbp)
+	movl	-24(%rbp), %edi
+	call	f@PLT
+	movslq	%eax, %rax
+	imulq	$12, %rax, %rax
+	addq	%rbx, %rax
+	jmp	.Lregister_row_called.1
+.Lregister_row_called.1:
+	leaq	-8(%rbp), %rsp
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	register_row_called, .-register_row_called
 	.section	.note.GNU-stack,"",@progbits
