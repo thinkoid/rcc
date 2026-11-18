@@ -1233,7 +1233,17 @@ variable's read as the base, which no call spills, `movl %eax,
 sum is three; a register variable of 64 bits as the index; and a
 base spilled already, across a call within the index, `p[id(i)] =
 id(v)`, whose slot holds it across the next call. A place on a label
-keeps its form, the label's `leaq` the base. Where nothing is
+holds nothing for the label: its address reads nothing, so the order
+of evaluation has no say in where it is formed, and its `leaq` is
+written after the right operand, where the operand is formed, the
+index alone held: `g[i] = f()` is `movslq -4(%rbp), %rax` and its
+spill, the call, the index's reload, `leaq g(%rip), %rdx` and `movl
+%eax, (%rdx,%rcx,4)`, five instructions where the `leaq` before the
+call and both spills were seven, and at a size no form scales by the
+index's product is held alone, `addl %eax, 4(%rdx,%rcx,1)` after
+`leaq cells(%rip), %rdx` for `cells[i][1] += f()`. A label with a
+constant index or none is its own operand after the call, `movl %eax,
+g+12(%rip)` for `g[3] = f()`, nothing held. Where nothing is
 spilled, a division or a shift by a variable count, whose registers
 the place is formed outside, the base and the index stay where they
 are, `movl %eax, (%rcx,%rsi,4)` after the `idivl`.

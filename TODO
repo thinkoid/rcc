@@ -97,21 +97,6 @@ Fix: remove the value's path of =summed()=.
 Check: no function longer, and the listings that change at the same
 count read.
 
-** TODO x86-64: a place on a label held across a call spills the label's address
-
-~g[i] = f()~ on a global array forms =leaq g(%rip), %rax= before the
-call and spills it and the index, seven instructions, where the
-index alone held and the =leaq= written after the call is five: a
-label's address reads nothing, so the order of evaluation has no say
-in where it is formed (=backend.md= 6.3). A place on a label keeps
-its form under the rule that sums a held base and index. The shape
-is not counted over =tests=.
-
-Fix: none taken; count first. The label's =leaq= after the right
-operand, the index alone held across it.
-
-Check: the count over =tests=, and no function longer.
-
 ** TODO x86-64: an index of no scale is summed before a division that spills nothing
 
 ~p[i] = a / b~ at a size no addressing form scales by adds the

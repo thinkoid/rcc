@@ -1291,6 +1291,124 @@ row_address_under_cast:
 	ret
 	.cfi_endproc
 	.size	row_address_under_cast, .-row_address_under_cast
+	.globl	label_held
+	.type	label_held, @function
+label_held:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	adrp	x0, labels
+	add	x0, x0, :lo12:labels
+	ldr	w1, [x29, #16]
+	add	x0, x0, w1, sxtw #2
+	str	x0, [x29, #24]
+	bl	f
+	ldr	x1, [x29, #24]
+	str	w0, [x1]
+.Llabel_held.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	label_held, .-label_held
+	.globl	label_row_held
+	.type	label_row_held, @function
+label_row_held:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	adrp	x0, cells+4
+	ldrsw	x1, [x29, #16]
+	mov	x2, #12
+	mul	x1, x1, x2
+	add	x0, x0, x1
+	str	x0, [x29, #24]
+	bl	f
+	ldr	x2, [x29, #24]
+	ldr	w1, [x2, :lo12:cells+4]
+	add	w1, w1, w0
+	str	w1, [x2, :lo12:cells+4]
+.Llabel_row_held.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	label_row_held, .-label_row_held
+	.globl	label_constant_held
+	.type	label_constant_held, @function
+label_constant_held:
+	.cfi_startproc
+	sub	sp, sp, #16
+	.cfi_def_cfa_offset 16
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -16
+	.cfi_offset w30, -8
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	bl	f
+	adrp	x16, labels+12
+	str	w0, [x16, :lo12:labels+12]
+.Llabel_constant_held.1:
+	.cfi_def_cfa wsp, 16
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #16
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	label_constant_held, .-label_constant_held
+	.globl	label_divided
+	.type	label_divided, @function
+label_divided:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	str	w1, [x29, #20]
+	str	w2, [x29, #24]
+	adrp	x0, labels
+	add	x0, x0, :lo12:labels
+	ldr	w1, [x29, #16]
+	ldr	w2, [x29, #20]
+	ldr	w3, [x29, #24]
+	sdiv	w2, w2, w3
+	str	w2, [x0, w1, sxtw #2]
+.Llabel_divided.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	label_divided, .-label_divided
 	.bss
 	.globl	rows
 	.type	rows, @object
@@ -1303,4 +1421,10 @@ rows:
 	.p2align 2
 cells:
 	.zero	48
+	.globl	labels
+	.type	labels, @object
+	.size	labels, 32
+	.p2align 2
+labels:
+	.zero	32
 	.section	.note.GNU-stack,"",@progbits

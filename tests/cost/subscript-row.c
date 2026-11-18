@@ -52,7 +52,11 @@
    12))[i][2] in row_before_cast() and (p - 1)[i][2] in
    row_before_rows().  As a value, &((int (*)[3]) (c + 4))[i][2] in
    row_address_under_cast(), the row's constants are one addition
-   past the sum.
+   past the sum.  A place on a label held across a call:
+   label_held(), labels[i] = f(), label_row_held(), cells[i][1] +=
+   f(), at a size no form scales by, and label_constant_held(),
+   labels[3] = f(), with no index; beside them label_divided(),
+   labels[i] = a / b, across a division, which spills nothing.
 
    On x86-64 the listing must show first() returning the array's
    address, leaq -24(%rbp), %rax, with no instruction after it,
@@ -118,7 +122,14 @@
    row_before_rows() by the imulq and the one movl -4(%rax,%rcx,1),
    %eax.
    row_address_under_cast() is the imulq and the one leaq
-   12(%rax,%rcx,1), %rax.
+   12(%rax,%rcx,1), %rax.  label_held() holds the index alone across
+   the call, its movslq spilled once, and forms the label's address
+   after it, leaq labels(%rip), %rdx, then movl %eax, (%rdx,%rcx,4);
+   label_row_held() holds the product of imulq $12 alone and is leaq
+   cells(%rip), %rdx and addl %eax, 4(%rdx,%rcx,1) after the call;
+   label_constant_held() is movl %eax, labels+12(%rip) after the call,
+   nothing held; and label_divided() keeps leaq labels(%rip), %rcx and
+   the index in rsi across the idivl, then movl %eax, (%rcx,%rsi,4).
 
    On aarch64 the listing must show first() returning the array's
    address, add x0, x29, #16, with no instruction after it, element()
@@ -174,7 +185,13 @@
    w0, [x0, #-4] after the product's add.  row_address_under_cast()
    adds the product to the pointer, mov x2, #12, mul and add x0, x0,
    x1 after c's load, and then the one add x0, x0, #12, with no add of
-   the 4 before the index. */
+   the 4 before the index.  label_held() forms the label's address,
+   adrp and add, and adds the index before the call, then str w0, [x1]
+   after it; label_row_held() is adrp x0, cells+4 and the product's
+   add before the call and ldr, add and str at [x2, :lo12:cells+4]
+   after it; label_constant_held() is adrp x16, labels+12 and str w0,
+   [x16, :lo12:labels+12] after the call; and label_divided() str w2,
+   [x0, w1, sxtw #2] after the sdiv. */
 int *first(void)
 {
     int m[2][3];
@@ -459,4 +476,30 @@ int *
 row_address_under_cast(char *c, int i)
 {
         return &((int (*)[3]) (c + 4))[i][2];
+}
+
+int labels[8];
+
+void
+label_held(int i)
+{
+        labels[i] = f();
+}
+
+void
+label_row_held(int i)
+{
+        cells[i][1] += f();
+}
+
+void
+label_constant_held(void)
+{
+        labels[3] = f();
+}
+
+void
+label_divided(int i, int a, int b)
+{
+        labels[i] = a / b;
 }

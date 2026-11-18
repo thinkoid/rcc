@@ -151,6 +151,11 @@ struct state_t
     // holds: an unscaled sum then keeps to one (backend.md 6.3)
     bool held_across = false;
 
+    // an assignment's place is being formed across a right operand that
+    // spills every held value: a label the place's index joins stays the
+    // place's label, for formed() to write after the right operand (6.3)
+    bool defer_label = false;
+
     // the width of the result from which the last instruction written
     // set ZF, or 0 when it set none: flagged() states it after such an
     // instruction, and the next instruction or label withdraws it
@@ -924,10 +929,14 @@ registers_of(const state_t &s, const address_t &a)
 
 // The address in AT&T syntax, d(B,I,s), rbp the base of a slot.  A
 // spilled base or index is reloaded first, outside avoid and outside
-// the other's register.
+// the other's register.  A label with an index has no form: formed()
+// writes it first.
 std::string
 operand(state_t &s, const address_t &a, unsigned avoid = 0)
 {
+    if (!a.label.empty() && a.index.id >= 0)
+        throw std::logic_error("c1: a label with an index has no operand");
+
     if (!a.label.empty())
         return std::format("{}(%rip)", symbol_plus(a.label, a.displacement));
 
@@ -957,6 +966,29 @@ release(state_t &s, const address_t &a)
 {
     release(s, a.base);
     release(s, a.index);
+}
+
+// An assignment's place as an operand holds it, backend.md 6.3: a label
+// beside an index, which place_of() keeps across a right operand that
+// spills, written now, after that right operand, where the place is
+// first wanted: the index reloaded, then the label's leaq into a
+// register outside avoid and the index's, the base, leaq g(%rip), %rdx
+// for movl %eax, (%rdx,%rcx,4).  Any other place is as it is.  The
+// caller consumes the place returned.
+address_t
+formed(state_t &s, address_t place, unsigned avoid = 0)
+{
+    if (place.label.empty() || place.index.id < 0)
+        return place;
+
+    const reg_t index = reg_of(s, place.index, avoid | registers_of(s, place));
+    const auto base = fresh(s, 64, avoid | bit(index));
+    insn(s, "leaq", { place.label + "(%rip)", reg(reg_of(s, base), 64) });
+
+    place.base = base;
+    place.label.clear();
+
+    return place;
 }
 
 // The load row, 6.3.2.1p2: the value at an address into a register at
@@ -1334,13 +1366,22 @@ summed(state_t &s, const expr_t &pointer, into_t *into = nullptr)
 // label takes no index, is its value: the base alone, computed in the
 // register its consumer names, wanted, as rvalue() computes it.  The
 // registers are taken with those in pinned left for last, as
-// rvalue_avoiding() takes them.
+// rvalue_avoiding() takes them.  An assignment's place on a label held
+// across a right operand that spills, defer_label, keeps the label,
+// with no register for it, for formed() to write after the right
+// operand: g[i] = f() holds the index alone across the call, then leaq
+// g(%rip), %rdx and movl %eax, (%rdx,%rcx,4).  A label's address reads
+// nothing, so the order of evaluation has no say in where it is formed.
 address_t
 index_base(state_t &s,
            const expr_t &pointer,
            unsigned pinned = 0,
            unsigned wanted = 0)
 {
+    if (std::exchange(s.defer_label, false))
+        if (const auto f = folded(s, pointer); f && !f->label.empty())
+            return *f;
+
     const unsigned reserved = std::exchange(s.reserved, s.reserved | pinned);
 
     auto a = summed(s, pointer);
@@ -1518,7 +1559,10 @@ pointed(state_t &s,
         return a;
     }
 
+    // the index first: a label it reads is not the place's (place_of())
+    const bool defer = std::exchange(s.defer_label, false);
     const auto index = rvalue_avoiding(s, *b.lhs, pinned_by(*b.rhs));
+    s.defer_label = defer;
 
     auto a = index_base(s, *b.rhs);
     a.index = index;
@@ -2006,23 +2050,28 @@ label_rooted(const expr_t &e,
 // operand where an instruction within it pins a register, a call, a
 // division or a shift by a variable count, so that an unscaled sum
 // keeps to one register (backend.md 6.3).  Where the right operand
-// spills every held value, spills_within()'s, a base and an index that
-// would each be spilled are summed into one register first, the addq
-// of a sum at scale 1 and a leaq at any other scale, the displacement
-// apart: ((int (*)[2]) (c + 400))[i][1] = f() is leaq (%rax,%rcx,8),
-// %rax before the call, one spill and one reload, and movl %eax,
-// 404(%rcx) after it.  Not where either is a register variable's read,
-// which no call spills, or is spilled already, across a call of the
-// index, p[id(i)] = id(v), whose slot holds it across the next; nor on
-// a label's leaq, label_rooted()'s; and
-// not where nothing is spilled, a division's or a shift's registers
-// chosen outside the address.
+// spills every held value, spills_within()'s, a call or a branch
+// within it, a label beside an index stays the place's label, with no
+// register: each consumer, assign(), modify()'s rows and
+// copy_record(), forms the place by formed() after the right operand.
+// There a base and an index that would each be spilled are summed into
+// one register first, the addq of a sum at scale 1 and a leaq at any
+// other scale, the displacement apart: ((int (*)[2]) (c + 400))[i][1]
+// = f() is leaq (%rax,%rcx,8), %rax before the call, one spill and one
+// reload, and movl %eax, 404(%rcx) after it.  Not where either is a
+// register variable's read, which no call spills, or is spilled
+// already, across a call of the index, p[id(i)] = id(v), whose slot
+// holds it across the next; nor on a label's leaq, label_rooted()'s;
+// and not where nothing is spilled, a division's or a shift's
+// registers chosen outside the address.
 address_t
 place_of(state_t &s, const assign_t &a, unsigned pinned)
 {
     const bool outer = std::exchange(s.held_across, pinned_within(*a.rhs) != 0);
     const unsigned reserved = std::exchange(s.reserved, s.reserved | pinned);
+    s.defer_label = spills_within(*a.rhs);
     auto place = address(s, *a.lhs);
+    s.defer_label = false;
     s.held_across = outer;
 
     const bool apart = place.base.id >= 0 && place.index.id >= 0 &&
@@ -2809,7 +2858,7 @@ unscaled(state_t &s,
                           held_out(s, a.base, *o.rhs, named) | copied);
     restore_copy(s, outer);
 
-    if (s.held_across)
+    if (s.held_across && a.label.empty())
         return { .base = displaced(s, o.op, a.base, n),
                  .displacement = a.displacement };
 
@@ -4468,8 +4517,10 @@ assign(state_t &s, const assign_t &a, unsigned wanted = 0)
 
     if (!a.op) {
         const auto v = rvalue(s, *a.rhs, nullptr, wanted);
-        store(s, v, place, t.width);
-        release(s, place);
+        const reg_t r = reg_of(s, v, registers_of(s, place));
+        const auto at = formed(s, place, bit(r));
+        store(s, v, at, t.width);
+        release(s, at);
         return v;
     }
 
@@ -4483,14 +4534,15 @@ assign(state_t &s, const assign_t &a, unsigned wanted = 0)
     if (!stepped && t.width == width && r.immediate.empty() && !r.place &&
         right_written(s, *a.op, r.value, wanted, true)) {
         const reg_t right = reg_of(s, r.value);
+        const auto at = formed(s, place, bit(right));
         insn(s, sized(arithmetic_mnemonic(*a.op), width),
-             { operand(s, place, bit(right)), reg(right, width) });
+             { operand(s, at, bit(right)), reg(right, width) });
         if (*a.op != binary_op_t::mul)
             flagged(s, width);
         wrote(s, r.value, width, t.is_signed);
 
-        store(s, r.value, place, t.width);
-        release(s, place);
+        store(s, r.value, at, t.width);
+        release(s, at);
         auto &valid = s.values[r.value.id].valid;
         valid = stored_valid(valid, width, t);
 
@@ -4501,11 +4553,12 @@ assign(state_t &s, const assign_t &a, unsigned wanted = 0)
     // the imul's source, and the store
     if (!stepped && *a.op == binary_op_t::mul && !r.immediate.empty() &&
         t.width == width) {
+        const auto at = formed(s, place);
         const auto v =
-            object_product(s, operand(s, place), r.immediate, integer(a.common),
-                           nullptr, wanted, registers_of(s, place));
-        store(s, v, place, t.width);
-        release(s, place);
+            object_product(s, operand(s, at), r.immediate, integer(a.common),
+                           nullptr, wanted, registers_of(s, at));
+        store(s, v, at, t.width);
+        release(s, at);
         auto &valid = s.values[v.id].valid;
         valid = stored_valid(valid, width, t);
 
@@ -4514,11 +4567,12 @@ assign(state_t &s, const assign_t &a, unsigned wanted = 0)
 
     // the value of the expression has the lvalue's type: the bits
     // above its width are the operation's, not the value's extension
-    const auto l = fetch(s, place, t, width);
+    const auto at = formed(s, place);
+    const auto l = fetch(s, at, t, width);
     const auto v = stepped ? displaced(s, *a.op, l, r) :
                              arithmetic(s, *a.op, l, r, a.common, wanted);
-    store(s, v, place, t.width);
-    release(s, place);
+    store(s, v, at, t.width);
+    release(s, at);
     s.values[v.id].valid = stored_valid(s.values[v.id].valid, width, t);
 
     return v;
@@ -5127,22 +5181,21 @@ constant_assignment(state_t &s, const assign_t &a)
 // operation at the object's width.  The instruction sets ZF from the
 // object's new value at that width (7.1).
 void
-arithmetic_on(state_t &s,
-              binary_op_t op,
-              const address_t &place,
-              const expr_t &rhs,
-              int width)
+arithmetic_on(
+    state_t &s, binary_op_t op, address_t &place, const expr_t &rhs, int width)
 {
     const auto mnemonic = sized(arithmetic_mnemonic(op), width);
 
     const auto r = right_operand(s, op, rhs, width);
     if (!r.immediate.empty()) {
+        place = formed(s, place);
         insn(s, mnemonic, { r.immediate, operand(s, place) });
         flagged(s, width);
         return;
     }
 
     const reg_t right = reg_of(s, r.value, registers_of(s, place));
+    place = formed(s, place, bit(right));
     insn(s, mnemonic, { reg(right, width), operand(s, place, bit(right)) });
     flagged(s, width);
     release(s, r.value);
@@ -5158,7 +5211,7 @@ arithmetic_on(state_t &s,
 void
 shift_on(state_t &s,
          binary_op_t op,
-         const address_t &place,
+         address_t &place,
          const expr_t &rhs,
          const int_t &t)
 {
@@ -5166,6 +5219,7 @@ shift_on(state_t &s,
 
     const auto r = right_operand(s, op, rhs, t.width);
     if (!r.immediate.empty()) {
+        place = formed(s, place);
         insn(s, mnemonic, { r.immediate, operand(s, place) });
         return;
     }
@@ -5175,6 +5229,7 @@ shift_on(state_t &s,
 
     count_into_cl(s, r, right, held);
 
+    place = formed(s, place, bit(rcx));
     insn(s, mnemonic, { "%cl", operand(s, place, bit(rcx)) });
     release(s, r.value);
 }
@@ -5185,11 +5240,8 @@ shift_on(state_t &s,
 // multiplied()'s imulq $4, -16(%rbp), %rax, then addq R, obj or
 // subq R, obj.  G6.
 void
-displaced_on(state_t &s,
-             binary_op_t op,
-             const address_t &place,
-             const expr_t &n,
-             long size)
+displaced_on(
+    state_t &s, binary_op_t op, address_t &place, const expr_t &n, long size)
 {
     const auto mnemonic = op == binary_op_t::add ? "addq" : "subq";
     const unsigned held = registers_of(s, place);
@@ -5198,6 +5250,7 @@ displaced_on(state_t &s,
     if (is< literal_t >(n)) {
         const auto d = scaled(as< literal_t >(n).value, size);
         if (fits_imm32(d)) {
+            place = formed(s, place);
             insn(s, mnemonic, { imm(d), operand(s, place) });
             return;
         }
@@ -5218,6 +5271,7 @@ displaced_on(state_t &s,
     }
 
     const reg_t right = reg_of(s, r, held);
+    place = formed(s, place, bit(right));
     insn(s, mnemonic, { reg(right, 64), operand(s, place, bit(right)) });
     release(s, r);
 }
@@ -5240,7 +5294,7 @@ modify(state_t &s, const assign_t &a)
         return false;
 
     const auto &t = integer(a.lhs->type);
-    const auto place = place_of(s, a, pinned_by(a));
+    auto place = place_of(s, a, pinned_by(a));
 
     if (op == binary_op_t::shl || op == binary_op_t::shr)
         shift_on(s, op, place, *a.rhs, t);
@@ -5359,14 +5413,13 @@ copy_loop(state_t &s,
 
 // A record's assignment, backend.md 6.6 and G18: an inline copy in
 // units of the record's alignment, at most 8, of which its size is a
-// multiple,
-// lowest address first, each unit loaded and then stored, padding
-// included, and no call.  The left's place is evaluated first, held
-// across the right's as an assignment's is (place_of()), then the
-// right's (G13).  Up to eight units are written out; above that, a
-// loop, copy_loop()'s.  Each place keeps its own form, a slot, a label,
-// a base with a displacement and an index, the unit's offset in the
-// displacement.
+// multiple, lowest address first, each unit loaded and then stored,
+// padding included, and no call.  The left's place is evaluated first,
+// held across the right's as an assignment's is (place_of()), then the
+// right's (G13), and the left's formed() after it.  Up to eight units
+// are written out; above that, a loop, copy_loop()'s.  Each place keeps
+// its own form, a slot, a label, a base with a displacement and an
+// index, the unit's offset in the displacement.
 void
 copy_record(state_t &s, const assign_t &a)
 {
@@ -5378,7 +5431,7 @@ copy_record(state_t &s, const assign_t &a)
     const auto left = place_of(s, a, 0);
     const auto right = address(s, *a.rhs);
 
-    const auto to = reached(s, left, record.size, loop);
+    const auto to = reached(s, formed(s, left), record.size, loop);
     const auto from = reached(s, right, record.size, loop);
     const auto scratch = fresh(s, 64);
     const reg_t r = reg_of(s, scratch);

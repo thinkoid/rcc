@@ -965,6 +965,94 @@ row_address_under_cast:
 	ret
 	.cfi_endproc
 	.size	row_address_under_cast, .-row_address_under_cast
+	.globl	label_held
+	.type	label_held, @function
+label_held:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$16, %rsp
+	movl	%edi, -4(%rbp)
+	movslq	-4(%rbp), %rax
+	movq	%rax, -16(%rbp)
+	call	f@PLT
+	movq	-16(%rbp), %rcx
+	leaq	labels(%rip), %rdx
+	movl	%eax, (%rdx,%rcx,4)
+.Llabel_held.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	label_held, .-label_held
+	.globl	label_row_held
+	.type	label_row_held, @function
+label_row_held:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$16, %rsp
+	movl	%edi, -4(%rbp)
+	movslq	-4(%rbp), %rax
+	imulq	$12, %rax, %rax
+	movq	%rax, -16(%rbp)
+	call	f@PLT
+	movq	-16(%rbp), %rcx
+	leaq	cells(%rip), %rdx
+	addl	%eax, 4(%rdx,%rcx,1)
+.Llabel_row_held.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	label_row_held, .-label_row_held
+	.globl	label_constant_held
+	.type	label_constant_held, @function
+label_constant_held:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	call	f@PLT
+	movl	%eax, labels+12(%rip)
+.Llabel_constant_held.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	label_constant_held, .-label_constant_held
+	.globl	label_divided
+	.type	label_divided, @function
+label_divided:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	movl	%edx, -12(%rbp)
+	leaq	labels(%rip), %rcx
+	movslq	-4(%rbp), %rsi
+	movl	-8(%rbp), %eax
+	cltd
+	idivl	-12(%rbp)
+	movl	%eax, (%rcx,%rsi,4)
+.Llabel_divided.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	label_divided, .-label_divided
 	.bss
 	.globl	rows
 	.type	rows, @object
@@ -978,4 +1066,10 @@ rows:
 	.p2align 4
 cells:
 	.zero	48
+	.globl	labels
+	.type	labels, @object
+	.size	labels, 32
+	.p2align 4
+labels:
+	.zero	32
 	.section	.note.GNU-stack,"",@progbits
