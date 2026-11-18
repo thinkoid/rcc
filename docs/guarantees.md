@@ -173,6 +173,31 @@ eight units a loop of four instructions whatever the size, `ldr x17,
 [x1], #8; str x17, [x0], #8; subs x16, x16, #1; b.ne` after `mov x16,
 #n`; no `bl` (`aarch64.md` 6.6).
 
+**G19. The variable arguments are read where the convention put
+them.** 7.16.1.4p3, 7.16.1.1p2. A variadic definition that calls
+`va_start` stores every argument register, general and vector, into
+its save area at entry, whatever the caller says it passed in vector
+registers, so a list the function hands to the C library reads each
+argument where the convention placed it, a floating one among them,
+which rcc has no type for. `va_start` writes the convention's list
+from the area. `va_arg` takes the next 8-byte slot, the area's while
+a general register is left and then the caller's stack, and loads it
+at the type's width: a type unlike the promoted argument's reads the
+slot's bytes as that type (G10), so a `char` reads the low byte of
+the promoted `int`, and a read past the last argument reads what the
+slot holds (G5). A list handed to a function is the convention's.
+Instruction, on x86-64: after the named parameters' stores, `movq`
+of `%rdi` to `%r9` into the area's 0 to 40 and `movaps` of `%xmm0` to
+`%xmm7` into 48 to 160, with no test of `%al`, then `leaq 16(%rbp),
+%rax`, 8 more for each named parameter past the sixth, stored at
+176; `va_start` four stores, `movl $8, -216(%rbp)` for one named
+parameter, `movl $48`, the address loaded from 176 and the area's
+`leaq`; `va_arg` `cmpl $40` on `gp_offset` and `ja` to the stack's
+path, there the address stepped by `addq $8`, here `addl $8` on the
+offset and the area plus the offset less 8, then the load of the
+type's width; a list handed on is the address of the caller's own
+record, which the callee's `va_arg` advances (`backend.md` chapter 5).
+
 ## Not in this list
 
 Implementation-defined behaviour beyond G2 and G3, fixed per target

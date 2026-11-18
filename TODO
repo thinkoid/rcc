@@ -22,24 +22,6 @@ assembles and links. The reasons are =docs/findings.md= and
 in =docs/design-calls.md=. The chapter holds c1's own defects on both
 targets; the second target's design is =docs/aarch64.md=.
 
-** TODO x86-64: a function that calls =va_start= is not yet
-
-The parser builds the list, the four builtins and the hidden save
-area of a variadic definition that calls =va_start= (=shape.md=
-chapter 4), and c1 stops at such a definition: "not yet: va_start".
-The prologue does not store the argument registers, so the list
-=va_start= fills would read nothing. A function that takes a list
-and reads it with =va_arg= compiles; one that makes a list does not.
-
-Fix: the prologue of a definition with a save area places the area
-at an alignment of 16 and stores into it the six general argument
-registers and the eight vector ones, each whatever =al= says, and
-at offset 176 the address of the first argument on the stack past
-the named ones.
-
-Check: the =variadics= probe runs on x86-64; =tests/cost/variadic.c=
-is pinned; the error row =va-start= leaves.
-
 ** TODO aarch64: a function that calls =va_start=, and a list as an argument, are not yet
 
 c1 stops at a variadic definition that calls =va_start=, "not yet:
@@ -53,8 +35,9 @@ area, and at offset 192 the address of the first argument on the
 stack past the named ones; a call copies a list argument into a slot
 of 32 bytes by the record copy's rule and passes the slot's address.
 
-Check: the =variadics= probe runs on aarch64; the cost program is
-pinned; the error rows =va-start= and =va-list-handed-on= leave.
+Check: the =variadics= probe runs on aarch64, its =format= rows the
+ones that see the vector half; the cost program is pinned; the error
+rows =va-start= and =va-list-handed-on= leave.
 
 ** TODO A returned ~?:~ whose arms store through a call's result moves each into the result register
 

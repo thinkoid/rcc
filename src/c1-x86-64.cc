@@ -5645,6 +5645,40 @@ parameters(state_t &s, const function_decl_t &fd)
     }
 }
 
+// The save area of a variadic definition that calls va_start, chapter
+// 5 and shape.md chapter 4: a slot of its 184 bytes at an alignment of
+// 16, which movaps asks of its vector half.  The six general argument
+// registers are stored at 0 to 40 and the eight vector ones at 48 to
+// 160, every one whatever al says, G19, and at 176 the address of the
+// first argument the caller left on the stack past the named ones: the
+// seventh argument's place, 16(%rbp), past the saved rbp and the return
+// address, 8 bytes on for each named parameter past the sixth.  It
+// follows the named parameters' own stores and moves, which read the
+// argument registers and write none, so the area holds them as they
+// arrived; the address is formed last, in a register of the stack's,
+// once every argument register is stored.
+void
+save_area(state_t &s, const function_decl_t &fd)
+{
+    const int area = allocate(s, size_of(fd.va_area->type), 16);
+    s.slots.emplace(fd.va_area, area);
+
+    const int registers = static_cast< int >(std::size(argument_registers));
+    for (int k = 0; k < registers; ++k)
+        store(s, argument_registers[k], at(area + 8 * k), 64);
+
+    for (int k = 0; k < 8; ++k)
+        insn(s, "movaps", { std::format("%xmm{}", k), at(area + 48 + 16 * k) });
+
+    const int named = static_cast< int >(fd.params.size());
+    const auto first = fresh(s, 64);
+    const reg_t r = reg_of(s, first);
+    insn(s, "leaq",
+         { at(16 + 8 * std::max(0, named - registers)), reg(r, 64) });
+    store(s, r, at(area + 176), 64);
+    release(s, first);
+}
+
 // Chapter 5: rbp is the frame pointer in every function; the registers
 // of the five the function uses are pushed below it, in order, each
 // with its place in the unwind table, -16 - 8k off the canonical frame
@@ -5702,9 +5736,6 @@ epilogue(state_t &s, bool sub)
 void
 function(state_t &s, const function_decl_t &fd)
 {
-    if (fd.va_area)
-        not_yet("va_start");
-
     s.body.str({ });
     s.slots.clear();
     s.calls = false;
@@ -5725,6 +5756,9 @@ function(state_t &s, const function_decl_t &fd)
     s.case_labels.clear();
 
     parameters(s, fd);
+    if (fd.va_area)
+        save_area(s, fd);
+
     block_stmt(s, *fd.body);
 
     if (!s.terminated && s.function == "main")

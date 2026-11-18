@@ -1,6 +1,6 @@
 /* va_start in a variadic definition, which builds the list from the
-   function's save area: the parser builds it, and c1 does not write
-   the save area yet. */
+   function's save area: on x86-64 the prologue fills the area and the
+   program compiles; on aarch64 c1 does not write the area yet. */
 #include <stdarg.h>
 
 int

@@ -1020,10 +1020,12 @@ context the parser lets it stand in. Each copies the object there,
 inline, unit by unit (G18; `backend.md` 6.6, `aarch64.md` 6.6).
 
 A variadic definition that calls `va_start` reaches each generator
-with its save area, and an aarch64 call with a `va_list` argument
-with the list: each generator refuses them yet, `c1: not yet:
-va_start` and `c1: not yet: va_list passed by value`. The trees of
-`va_arg`, `va_copy` and `va_end` are rows the generators have.
+with its save area. The x86-64 generator places the area and fills
+it at the head of the body (`backend.md` chapter 5, G19); the aarch64
+generator refuses it yet, `c1: not yet: va_start`, and an aarch64
+call with a `va_list` argument, `c1: not yet: va_list passed by
+value`. The trees of `va_arg`, `va_copy` and `va_end` are rows the
+generators have.
 
 A reader checking a promise opens c1's source, finds the function that
 writes the row, and reads what is not there.
@@ -1245,8 +1247,8 @@ a conditional of two void calls.
 A local's initializer of a struct or a union and each use that
 reads or writes one whole (chapter 5: a `register` one, a record by
 value but the aarch64 `va_list`, and its value), the save area of a
-variadic definition that calls `va_start` and the copy of an aarch64
-`va_list` argument in the generators, a list operand of `va_arg` or
+variadic definition that calls `va_start` on aarch64 and the copy of
+an aarch64 `va_list` argument, a list operand of `va_arg` or
 `va_start` with a side effect, a function whose parameter list is
 `(...)` alone, the layout of a struct or a
 union with a bit-field, an anonymous member, an attribute that marks,

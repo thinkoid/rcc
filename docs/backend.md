@@ -583,9 +583,12 @@ A function's frame holds, from high addresses to low:
    element's alignment, its displacement the array's lowest address;
    the ABI's alignment of 16 for an array of 16 bytes or more is not
    applied, since nothing rcc writes relies on it.
-5. One slot per argument of each call the function makes, the hidden
+5. In a variadic definition that calls `va_start`, the save area
+   (`shape.md` chapter 4): a slot of 184 bytes at an alignment of 16,
+   after the parameters', which the prologue fills (below).
+6. One slot per argument of each call the function makes, the hidden
    locals of chapter 8, allocated as the call is met.
-6. The spill area for expression values when the nine registers are
+7. The spill area for expression values when the nine registers are
    exhausted (chapter 6) and for values held across a call (chapter
    8), sized by the deepest expression in the function.
 
@@ -614,6 +617,24 @@ debugger that wants the chain has the chain. The directive after
 the canonical frame address is `rsp + 8` from there to `ret`, and
 without the directive the table still computes it from `rbp`, which
 is wrong between `leave` and `ret`.
+
+The save area is filled at the head of the body, after the named
+parameters' stores and moves (4), which read the argument registers
+and write none, and after the pushes (3) and the `sub`, which touch
+no argument register: so it holds each register as it arrived. The
+six general argument registers are stored at 0 to 40, `movq %rdi,
+-192(%rbp)` to `movq %r9, -152(%rbp)` for an area at -192, the named
+parameters' among them, and the eight vector registers at 48 to 160,
+`movaps %xmm0, -144(%rbp)` and on, which needs the alignment of 16,
+whatever `al` says: the caller's count of the vector registers it
+used goes untested, since a test is a branch the source did not
+write, and a caller through a pointer converted to another type may
+leave `al` unset (G16). At 176 goes the address of the first
+argument the caller left on the stack past the named ones, `leaq
+16(%rbp), %rax; movq %rax, -16(%rbp)`, 8 more for each named
+parameter past the sixth, formed last, once every argument register
+is stored, since `rax` is free then. `va_start`'s tree reads the
+area by its name, a slot as any local's (G19).
 
 A frame is at most 2147483632 bytes, 2 GiB less 16, since a slot is
 a 32-bit displacement off `rbp` and the frame, a multiple of 16, is
@@ -2363,6 +2384,7 @@ row here, in the guarantee's voice.
 | G16 a call goes out as written | chapter 8: the convention's argument moves with the call site's types, then `call f@PLT`, or `call *d(%rbp)` through a pointer |
 | G17 a string literal is writable | `.data`, chapter 10 |
 | G18 a record's assignment copies its object | 6.6: per unit of the record's alignment the plain `mov` load into a scratch register and the store, lowest address first; over eight units the loop of one index, `addq` and `jne` |
+| G19 the variable arguments are read where the convention put them | chapter 5: the save area's `movq` of the six general registers and `movaps` of the eight vector ones, no test of `%al`, and the stack's address by `leaq`; `va_arg`'s `cmpl $40` and `ja`, `addl $8` or `addq $8`, and the load of the type's width |
 
 G15 stays withdrawn. The never-emitted table, the IR flags the
 front end withheld from an optimizer that never ran, has no
