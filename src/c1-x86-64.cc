@@ -2502,8 +2502,10 @@ displacement(
 // generated where its load would be, after p (backend.md 6.1); any
 // other n is displacement()'s.  At another size n is scaled in a
 // register: the index of leaq keeps its load, and the imulq's product
-// takes the object as its source.  A compound assignment's n is held
-// in any case, since it is evaluated before the object is read (6.6).
+// takes the object as its source.  A compound assignment's n into an
+// object in memory is held in any case, since it is evaluated before
+// the object is read (6.6); a register pointer's own step takes it,
+// p += n on a register char *p being addq -24(%rbp), %rbx.
 // avoid is reserved for n or its address, held_out()'s.
 right_t
 addend(
@@ -4214,8 +4216,9 @@ computed_into(state_t &s, const symbol_t *sym, const expr_t &e)
 // place, addl %eax, %ebx, but for a division, whose quotient comes
 // back from rax by the mov; p += n at a size of 2, 4 or 8, whose leaq
 // is handed the variable and writes its register, leaq (%rbx,%rax,4),
-// %rbx (chapter 4); the value is a read of the variable after the
-// write.  The variable is read by the operation, after the right
+// %rbx, and at a size of 1 n of 64 bits in memory addend()'s operand,
+// addq -24(%rbp), %rbx (chapter 4); the value is a read of the variable
+// after the write.  The variable is read by the operation, after the right
 // operand, as a slot's object is (G13), so no read of it is held across
 // the right operand: r += (r = 2) is movl $2, %ebx and addl %ebx, %ebx.
 // The read is extended into a fresh register first when the operation is
@@ -4236,7 +4239,7 @@ assign_register(state_t &s, const assign_t &a, const symbol_t *sym)
     const int width = operation_width(a.common);
     const bool stepped = is< pointer_t >(sym->type);
 
-    const auto r = stepped ? displacement(s, *a.op, *a.rhs, stride(sym->type)) :
+    const auto r = stepped ? addend(s, *a.op, *a.rhs, stride(sym->type)) :
                              binary_operand(s, *a.op, *a.rhs, width);
     const auto l = extended(s, read(s, sym), integer(sym->type), width);
 

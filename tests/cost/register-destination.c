@@ -116,13 +116,17 @@
    variable, as itself and as the base of the element's address, p[1],
    refused: the sum computed in eax and in rax and moved, movl %eax,
    %ebx and movq %rax, %rbx; in step_char(), back_char(), step_int(),
-   back_int(), step_row() and back_row(), p += n and p -= n at sizes
-   1, 4 and 12, the step on the register after n's load, addq %rax,
-   %rbx and subq %rax, %rbx, leaq (%rbx,%rax,4), %rbx, which reads
-   both operands before it writes, and after the multiply with n its
-   source, imulq $4, -24(%rbp), %rax and subq %rax, %rbx, and
-   imulq $12, -24(%rbp), %rax and addq %rax, %rbx or subq %rax, %rbx,
-   and no mov into the register.  In function_defined() and
+   back_int(), step_row() and back_row(), p += n and p -= n at sizes 1,
+   4 and 12, the step on the register, at a size of 1 n's slot its
+   operand, addq -24(%rbp), %rbx and subq -24(%rbp), %rbx, and in
+   step_char_global() addq stride_global(%rip), %rbx and subq (%rax),
+   %rbx after s's load, and step_char_int()'s int n kept in its
+   extending load, movslq -20(%rbp), %rax; addq %rax, %rbx; at 4 leaq
+   (%rbx,%rax,4), %rbx after n's load, which reads both operands before
+   it writes, and after the multiply with n its source, imulq $4,
+   -24(%rbp), %rax and subq %rax, %rbx, and imulq $12, -24(%rbp), %rax
+   and addq %rax, %rbx or subq %rax, %rbx, and no mov into the
+   register.  In function_defined() and
    function_declared() the address into the register, leaq
    defined_function(%rip), %rbx and movq
    declared_function@GOTPCREL(%rip), %rbx, and leaq -2008(%rbp), %rbx
@@ -223,7 +227,10 @@
    own_element(); for p += n and p -= n, add x19, x19, x0 and sub x19,
    x19, x0, add x19, x19, x0, lsl #2 and sub x19, x19, x0, lsl #2, and
    add x19, x19, x0 and sub x19, x19, x0 after mov x1, #12 and mul x0,
-   x0, x1; adrp x19, defined_function and add x19, x19,
+   x0, x1, in step_char_global() the loads of stride_global and of *s
+   into x0 before add x19, x19, x0 and sub x19, x19, x0, and in
+   step_char_int() add x19, x19, w0, sxtw; adrp x19, defined_function
+   and add x19, x19,
    :lo12:defined_function in function_defined(), adrp x19,
    :got:declared_function and ldr x19, [x19,
    :got_lo12:declared_function] in function_declared(), and add x19,
@@ -618,6 +625,27 @@ int (*back_row(int (*q)[3], long n))[3]
         register int (*p)[3] = q;
 
         p -= n;
+        return p;
+}
+
+long stride_global;
+
+char *
+step_char_global(char *q, long *s)
+{
+        register char *p = q;
+
+        p += stride_global;
+        p -= *s;
+        return p;
+}
+
+char *
+step_char_int(char *q, int i)
+{
+        register char *p = q;
+
+        p += i;
         return p;
 }
 

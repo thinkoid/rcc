@@ -1168,6 +1168,74 @@ back_row:
 	ret
 	.cfi_endproc
 	.size	back_row, .-back_row
+	.globl	step_char_global
+	.type	step_char_global, @function
+step_char_global:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -32
+	str	x0, [x29, #24]
+	str	x1, [x29, #32]
+	ldr	x19, [x29, #24]
+	adrp	x16, stride_global
+	ldr	x0, [x16, :lo12:stride_global]
+	add	x19, x19, x0
+	ldr	x0, [x29, #32]
+	ldr	x0, [x0]
+	sub	x19, x19, x0
+	mov	x0, x19
+	b	.Lstep_char_global.1
+.Lstep_char_global.1:
+	.cfi_def_cfa wsp, 48
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	step_char_global, .-step_char_global
+	.globl	step_char_int
+	.type	step_char_int, @function
+step_char_int:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -32
+	str	x0, [x29, #24]
+	str	w1, [x29, #32]
+	ldr	x19, [x29, #24]
+	ldr	w0, [x29, #32]
+	add	x19, x19, w0, sxtw
+	mov	x0, x19
+	b	.Lstep_char_int.1
+.Lstep_char_int.1:
+	.cfi_def_cfa wsp, 48
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	step_char_int, .-step_char_int
 	.globl	defined_function
 	.type	defined_function, @function
 defined_function:
@@ -3513,6 +3581,12 @@ defined:
 	.p2align 2
 table:
 	.zero	32
+	.globl	stride_global
+	.type	stride_global, @object
+	.size	stride_global, 8
+	.p2align 3
+stride_global:
+	.zero	8
 	.globl	characters
 	.type	characters, @object
 	.size	characters, 16

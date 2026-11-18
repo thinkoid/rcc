@@ -273,7 +273,9 @@ and a narrow one is re-extended after.
 `p += n` on a pointer at a size of 2, 4 or 8 is the `leaq` of `p +
 n`, the register its base and its destination, `leaq (%rbx,%rax,4),
 %rbx`; `p -= n` and the other sizes are the `addq` or the `subq` on
-the register, after the index's `imulq` at a size other than 1. A
+the register, after the index's `imulq` at a size other than 1, and
+at a size of 1 an `n` of 64 bits in memory is its operand, `addq
+-24(%rbp), %rbx` (6.1). A
 compound assignment generates its right operand first and then
 operates on the register, so no read of the variable is held across
 the right operand: `r += (r = 2)` is `movl $2, %ebx; addl %ebx,
@@ -754,7 +756,9 @@ rows that take the form are:
 - pointer arithmetic, where the `add` or the `sub` takes the operand
   as it is: `q` of `p - q` at any size, `subq -16(%rbp), %rax` before
   the division; `n` of `p + n` and `p - n` at a size of 1, `addq
-  -16(%rbp), %rax`; and `p` of `n + p` at a size of 1 or one no
+  -16(%rbp), %rax`, and of `p += n` and `p -= n` on a register
+  pointer, `addq -24(%rbp), %rbx`; and `p` of `n + p` at a size of 1
+  or one no
   addressing form scales by, `addq -16(%rbp), %rax` after `imulq $12,
   -24(%rbp), %rax`;
 - the multiply of pointer arithmetic's index by the size, at a size
