@@ -1,0 +1,2 @@
+tests/error/static-assert-unclosed.c:2:24: error: expected ')' in static assertion
+status 1

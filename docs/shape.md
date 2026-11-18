@@ -511,6 +511,22 @@ a declaration at file scope, as any call does. A declaration of a
 `for` may declare a function too, as C23 lets it. A function declared
 through a typedef of function type is not yet in a block either.
 
+A static assertion, `_Static_assert (` *constant expression* `,`
+*string literal* `);` or C23's form without the string (6.7.12p1), is
+a declaration of its own at file scope, in a block and as a `for`'s
+first clause, and declares nothing, so the tree keeps nothing of it
+and c1 writes nothing. Its expression is an integer constant
+expression (p3), folded as an array's size is: one that needs what
+rcc does not have yet, `sizeof (struct s)` or a floating constant, is
+refused by its words, and one that compares equal to 0 is the error
+of p2, `static assertion failed: ...` with the string, adjacent
+literals joined. `_Static_assert` is C17's keyword (chapter 2) and
+C23's alternative spelling of `static_assert` (6.4.1p3); in the
+dialect rcc preprocesses in, `static_assert` is a macro of `assert.h`
+that spells `_Static_assert`, and without the header an identifier,
+as `clang` takes it there. One in a struct's or a union's member list
+is skipped with the members, unchecked.
+
 An object at file scope is defined by a declaration with an
 initializer, `extern` or not, and tentatively by one without an
 initializer and without `extern` (6.9.3p1, p2); `extern` alone
@@ -880,7 +896,8 @@ a conditional of two void calls.
 
 Structs, unions, floating point, `_Bool` and `__int128` (each type is
 declared, a struct's or union's members skipped, the tags and the
-enumeration constants they declare among them; a pointer to one is an
+enumeration constants they declare and the static assertions among
+them; a pointer to one is an
 ordinary pointer, and a use that needs the object is refused; a
 floating constant is a token, refused where an expression uses it),
 an enum's fixed underlying type, the use of an enum in its own list
@@ -907,6 +924,6 @@ function or of an object at file scope),
 `__asm__` as a statement, at file scope or on a local, and C's
 keywords outside the subset: `_Complex` outside the specifiers of a
 floating type, `_Imaginary`, the `_Atomic` qualifier outside a
-typedef, `_Alignas`, `_Alignof`, `_Generic`, `_Static_assert`,
-`_Thread_local`. Each arrives when a probe needs it. The
-preprocessor stays external for good.
+typedef, `_Alignas`, `_Alignof`, `_Generic`, `_Thread_local`. Each
+arrives when a probe needs it. The preprocessor stays external for
+good.

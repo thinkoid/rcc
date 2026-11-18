@@ -146,7 +146,10 @@ defined after the block that declares it, and the C library's
 `strlen` without its header. Then `?:` with two `void` operands, a
 void conditional generated for its effect as one whose value is
 dropped, so `header-collatz` takes each step of its walk by
-`n % 2 ? triple(&n) : halve(&n)`.
+`n % 2 ? triple(&n) : halve(&n)`. Then `_Static_assert`, and
+`static_assert` through `assert.h`: a declaration that declares
+nothing and writes nothing, and an error with its string where its
+constant is 0.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/`, the cost corpus over `tests/cost/`
 and the error corpus over `tests/error/`, the programs rcc refuses

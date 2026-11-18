@@ -3085,9 +3085,57 @@ external_declarator(parser_t &p,
         declare_external_object(p, spec, d);
 }
 
+// The string of a static assertion, adjacent literals joined as in an
+// expression, 6.4.5p5, or empty without one.
+std::string
+assertion_message(parser_t &p)
+{
+    if (!accept(p, tok_t::comma))
+        return { };
+
+    if (peek(p).kind != tok_t::string)
+        fail(peek(p), "expected string literal in static assertion");
+
+    std::string message;
+    while (peek(p).kind == tok_t::string)
+        message += string_bytes(advance(p));
+
+    return message;
+}
+
+// _Static_assert ( constant-expression , string-literal ) ;, the string
+// optional, 6.7.12p1; the keyword is C23's alternative spelling of
+// static_assert, 6.4.1p3, and C17's own, and a program that includes
+// assert.h writes static_assert, which the header's macro spells so.  A
+// declaration of its own, at file scope, in a block or as a for's first
+// clause, which declares nothing, so the tree keeps nothing of it and c1
+// writes nothing.  The expression is an integer constant expression,
+// p3, folded as an array's size is, and one that needs what rcc does
+// not have yet is refused by its words; one that compares equal to 0
+// violates p2, and the error says the string, p3.
+void
+static_assert_declaration(parser_t &p)
+{
+    const token_t &keyword = advance(p);
+    expect(p, tok_t::lparen, "expected '(' after " + quoted(keyword.text));
+
+    const token_t &start = peek(p);
+    const expr_t e = rvalue(start, conditional_expression(p));
+    if (!is_integer_constant(e))
+        fail(start, "static assertion is not an integer constant expression");
+
+    const std::string message = assertion_message(p);
+    expect(p, tok_t::rparen, "expected ')' in static assertion");
+    expect(p, tok_t::semicolon, "expected ';' after static assertion");
+
+    if (exact_value(e) == 0)
+        fail(start, "static assertion failed" +
+                        (message.empty() ? "" : ": " + message));
+}
+
 // A function definition, or a declaration of functions, of objects
-// and of type names, or of a tag or enumeration
-// constants alone.  extern on a function changes nothing: a function
+// and of type names, or of a tag or enumeration constants alone, or a
+// static assertion.  extern on a function changes nothing: a function
 // declared without a storage class has the linkage extern gives it,
 // 6.2.2p5, and static gives it internal linkage, p3, on a declaration
 // and on a definition alike.  A definition is a declarator and
@@ -3110,6 +3158,11 @@ external_declaration(parser_t &p)
         not_yet(peek(p), quoted(peek(p).text) + " at file scope");
 
     skip_extension_keywords(p);
+
+    if (peek(p).kind == tok_t::kw_static_assert) {
+        static_assert_declaration(p);
+        return;
+    }
 
     const specifiers_t spec = declaration_specifiers(p);
 
@@ -3602,9 +3655,6 @@ declaration_specifiers(parser_t &p)
             not_yet(t, "storage class " + quoted(t.text));
         case tok_t::kw_alignas:
             not_yet(t, "alignment specifier " + quoted(t.text));
-        // a declaration of its own, refused where a declaration starts
-        case tok_t::kw_static_assert:
-            not_yet(t, quoted(t.text) + " declaration");
         default: {
             if (complex_specifier && !n_float && !n_double)
                 not_yet(*complex_specifier,
@@ -4664,11 +4714,16 @@ linked_declaration(parser_t &p, const specifiers_t &spec, const declarator_t &d)
 }
 
 // A block-scope declaration, perhaps of a tag or enumeration constants
-// alone, which makes no statement.
+// alone, or a static assertion, which make no statement.
 std::vector< stmt_t >
 declaration(parser_t &p)
 {
     skip_extension_keywords(p);
+
+    if (peek(p).kind == tok_t::kw_static_assert) {
+        static_assert_declaration(p);
+        return { };
+    }
 
     const specifiers_t spec = declaration_specifiers(p);
 
@@ -5080,12 +5135,37 @@ do_statement(parser_t &p)
     return stmt_t { do_t { std::move(body), std::move(cond) } };
 }
 
+// The declaration of a for's first clause, as the init statement:
+// several declarators become one block of declaration statements, since
+// the tree holds a single init statement.  The init declares objects
+// only, so neither typedef nor extern is a storage class of it.  A static
+// assertion, a declaration too, 6.7.1p1, makes no statement, and the
+// init is null.
+stmt_ptr_t
+for_declaration(parser_t &p)
+{
+    skip_extension_keywords(p);
+
+    if (peek(p).kind == tok_t::kw_static_assert) {
+        static_assert_declaration(p);
+        return nullptr;
+    }
+
+    const specifiers_t spec = declaration_specifiers(p);
+    if (spec.storage_class && !declared(spec, tok_t::kw_register))
+        fail(*spec.storage_class, quoted(spec.storage_class->text) +
+                                      " in the declaration of a 'for'");
+
+    std::vector< stmt_t > decls = init_declarator_list(p, spec);
+    if (decls.size() == 1)
+        return box(std::move(decls.front()));
+
+    return box(stmt_t { block_t { std::move(decls) } });
+}
+
 // A declaration in the init is in scope for the whole loop, 6.8.6.4p1,
 // so the for opens a scope; a braced body nests inside it.  The init
-// and the step are evaluated as void expressions there.  Several
-// declarators in the init become one block of declaration statements,
-// since the tree holds a single init statement.  The init declares
-// objects only, so neither typedef nor extern is a storage class of it.
+// and the step are evaluated as void expressions there.
 stmt_t
 for_statement(parser_t &p)
 {
@@ -5096,20 +5176,8 @@ for_statement(parser_t &p)
 
     for_t loop;
 
-    if (is_declaration_start(p)) {
-        skip_extension_keywords(p);
-
-        const specifiers_t spec = declaration_specifiers(p);
-        if (spec.storage_class && !declared(spec, tok_t::kw_register))
-            fail(*spec.storage_class, quoted(spec.storage_class->text) +
-                                          " in the declaration of a 'for'");
-
-        std::vector< stmt_t > decls = init_declarator_list(p, spec);
-        if (decls.size() == 1)
-            loop.init = box(std::move(decls.front()));
-        else
-            loop.init = box(stmt_t { block_t { std::move(decls) } });
-    }
+    if (is_declaration_start(p))
+        loop.init = for_declaration(p);
     else if (!accept(p, tok_t::semicolon))
         loop.init = box(expression_statement(p));
 

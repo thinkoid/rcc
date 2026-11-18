@@ -933,6 +933,9 @@ nothing of the storage class; =gcc= and =clang= take it with
 =-std=c23=. The program is valid in the dialect rcc cites and wrong
 in the one it preprocesses in. A function declared there is taken,
 as C23 and =clang= take it; =extern= and =static= are refused.
+=static_assert= is of the same kind: a keyword in C23 and a macro of
+=assert.h= in the dialect rcc preprocesses in, which is how rcc has
+it; with C23 the lexer takes the keyword.
 
 Fix: decide the dialect's answer: the error stays with C17's
 paragraph cited, or the declaration is a block's static.
@@ -1110,6 +1113,30 @@ implementation's choices, or an integer type carries its spelling
 for the compatibility check alone.
 
 Check: both programs fail, or the documents say they compile.
+
+** TODO =offsetof= draws "undeclared"
+
+~offsetof(struct s, b)~ fails with "'__builtin_offsetof'
+undeclared": the header defines the macro by the compiler's builtin,
+which rcc does not know by name. The program is valid, and the
+message calls it wrong.
+
+Fix: until structs are in, =__builtin_offsetof= is refused as a
+not-yet, by its name, with the builtins of =stdatomic.h=; with them,
+it is the member's offset, an integer constant expression.
+
+Check: a row of =tests/error= pinned "not yet", then a static
+assertion on an offset that compiles.
+
+** TODO A static assertion in a struct's member list is not checked
+
+~struct s { int a; _Static_assert(0, "m"); };~ compiles: the parser
+skips a member list whole, the assertion with it (6.7.3.2 lists a
+static assertion among a struct's member declarations).
+
+Fix: the slice that reads member lists checks it.
+
+Check: the declaration fails with "static assertion failed: m".
 
 ** TODO A cast to a struct says not yet
 

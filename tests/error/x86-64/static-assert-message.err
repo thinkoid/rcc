@@ -1,0 +1,2 @@
+tests/error/static-assert-message.c:3:19: error: expected string literal in static assertion
+status 1

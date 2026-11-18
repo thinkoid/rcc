@@ -1,0 +1,2 @@
+tests/error/static-assert-not-constant.c:6:16: error: static assertion is not an integer constant expression
+status 1

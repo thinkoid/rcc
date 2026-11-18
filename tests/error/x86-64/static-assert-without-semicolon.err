@@ -1,0 +1,2 @@
+tests/error/static-assert-without-semicolon.c:4:1: error: expected ';' after static assertion
+status 1

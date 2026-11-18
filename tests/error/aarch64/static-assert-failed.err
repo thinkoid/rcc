@@ -1,0 +1,2 @@
+tests/error/static-assert-failed.c:4:16: error: static assertion failed: int is 64 bits
+status 1

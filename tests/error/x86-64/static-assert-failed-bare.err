@@ -1,0 +1,2 @@
+tests/error/static-assert-failed-bare.c:6:24: error: static assertion failed
+status 1
