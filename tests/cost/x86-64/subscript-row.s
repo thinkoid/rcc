@@ -646,6 +646,54 @@ byte_sum_register:
 	ret
 	.cfi_endproc
 	.size	byte_sum_register, .-byte_sum_register
+	.globl	row_start
+	.type	row_start, @function
+row_start:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	movslq	-12(%rbp), %rcx
+	imulq	$12, %rcx, %rcx
+	movl	(%rax,%rcx,1), %eax
+	jmp	.Lrow_start.1
+.Lrow_start.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	row_start, .-row_start
+	.globl	row_start_stored
+	.type	row_start_stored, @function
+row_start_stored:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$32, %rsp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	movslq	-12(%rbp), %rcx
+	imulq	$12, %rcx, %rcx
+	addq	%rcx, %rax
+	movq	%rax, -24(%rbp)
+	call	f@PLT
+	movq	-24(%rbp), %rcx
+	movl	%eax, (%rcx)
+.Lrow_start_stored.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	row_start_stored, .-row_start_stored
 	.bss
 	.globl	rows
 	.type	rows, @object

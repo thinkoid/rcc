@@ -28,7 +28,13 @@
    with the index generated first, into a register variable, and
    stored; at a size no addressing form scales by, the 12 bytes of
    p[1] + i on int (*p)[2][3], it is the one leaq of the pointer, the
-   product and the row's offset.
+   product and the row's offset.  On aarch64, where one form holds a
+   register offset or a displacement and never both, the product is
+   added to the pointer and the row's offset is the access's
+   displacement past the sum, a label's its offset in the page; with
+   no constant at all the product is the access's register offset
+   instead, p[i][0] in row_start(), but not where the address is held
+   across a right operand, p[i][0] = f() in row_start_stored().
 
    On x86-64 the listing must show first() returning the array's
    address, leaq -24(%rbp), %rax, with no instruction after it,
@@ -75,7 +81,9 @@
    after p's load and i's, byte_sum_register() the same into the
    variable, leaq 8(%rax,%rcx,1), %rbx, and byte_sum_long(), whose
    long n is in memory, by leaq 8(%rax), %rax and addq -16(%rbp),
-   %rax.
+   %rax.  row_start() reads p[i][0] by the imulq and movl
+   (%rax,%rcx,1), %eax, and row_start_stored() forms the address by
+   addq %rcx, %rax, held across the call, then movl %eax, (%rcx).
 
    On aarch64 the listing must show first() returning the array's
    address, add x0, x29, #16, with no instruction after it, element()
@@ -94,15 +102,24 @@
    add x0, x0, #12, or x1 after i's load, then add the index by add
    x0, x0, w1, sxtw #2, the last add writing x19 in
    row_sum_register(), and row_sum_wide() as column_wide().  cell(),
-   cell_column(), cell_register() and cell_first() add the row's 36
-   before the index, add x0, x0, #36, or x19 into x0, or x1 after i's
-   load, then mov x2, #12, mul and add the product, and read by ldr
-   w0, [x0], and by ldr w0, [x0, #8] in cell_column().  The functions
-   on rows of 5 chars and of 3 ints add the product to the slot's add,
-   the label's add or the pointer, then read with the column's offset,
-   ldrb w0, [x0, #4] in slot_cell(), and slot_row() is the add of the
-   slot and the add of the product; first_cell(), held_cell() and
-   register_row() the same, the last add writing x19.  byte_sum(),
+   cell_column(), cell_register() and cell_first() add the product to
+   the pointer, mov x2, #12, mul and add x0, x0, x1, x19's sum written
+   into x0 in cell_register() and the index first in cell_first(), and
+   read with the row's 36 the load's offset, ldr w0, [x0, #36], and
+   ldr w0, [x0, #44] in cell_column(), with no add of the 36.  On the
+   rows of 5 chars and of 3 ints, slot_cell() adds the product to x29,
+   add x0, x29, x0, and reads by ldrb w0, [x0, #24], the slot's 20 and
+   the column's 4; label_cell() is adrp x0, rows+2, the add of the
+   product and ldrb w0, [x0, :lo12:rows+2], with no add of the page's
+   offset; held_cell() the same sum off x29, held across the call, and
+   ldrb w1, [x2, #21] and strb w1, [x2, #21]; pointer_cell() and
+   first_cell(), whose pointer has no constant, the add of the product
+   and ldr w0, [x0, #4]; slot_row() the add of the slot and the add of
+   the product, and register_row() the same, the last add writing
+   x19.  row_start() reads p[i][0] by the register-offset form, ldr
+   w0, [x0, x1] after the mul, with no add, and row_start_stored(),
+   whose address is held across the call, adds the product and stores
+   by str w0, [x1].  byte_sum(),
    byte_sum_long() and byte_sum_register() add the row's 8, then the
    index, add x0, x0, w1, sxtw, or add x0, x0, x1 for the long, the
    last add writing x19 in byte_sum_register(). */
@@ -304,4 +321,16 @@ byte_sum_register(char (*p)[8], int i)
 
         q = p[1] + i;
         return q;
+}
+
+int
+row_start(int (*p)[3], int i)
+{
+        return p[i][0];
+}
+
+void
+row_start_stored(int (*p)[3], int i)
+{
+        p[i][0] = f();
 }

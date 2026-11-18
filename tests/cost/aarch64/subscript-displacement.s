@@ -40,10 +40,9 @@ local:
 	mov	x29, sp
 	.cfi_def_cfa_register w29
 	str	w0, [x29, #16]
-	add	x0, x29, #20
-	ldr	w1, [x29, #16]
-	add	x0, x0, w1, sxtw #3
-	ldrb	w0, [x0, #2]
+	ldr	w0, [x29, #16]
+	add	x0, x29, w0, sxtw #3
+	ldrb	w0, [x0, #22]
 	b	.Llocal.1
 .Llocal.1:
 	.cfi_def_cfa wsp, 64

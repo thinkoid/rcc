@@ -846,13 +846,21 @@ stepped_operand(state_t &s, const address_t &a, unsigned avoid)
 // two instructions an access, and the object's alignment, at its
 // definition, is what the scaled :lo12: form needs.  A displacement of
 // the label is in both, so the page is the element's: adrp x16, n+12
-// and [x16, :lo12:n+12].  A spilled base or index is reloaded first,
-// outside avoid and outside the other's register; the reload is
-// complete before the access, so x16 holds nothing across it.  A step
-// is stepped_operand()'s.
+// and [x16, :lo12:n+12].  A label with a base is the page plus a row's
+// sum held in the base, row_address()'s, and the operand the label's
+// offset in the page, [x0, :lo12:rows+2].  A spilled base or index is
+// reloaded first, outside avoid and outside the other's register; the
+// reload is complete before the access, so x16 holds nothing across
+// it.  A step is stepped_operand()'s.
 std::string
 operand(state_t &s, const address_t &a, int width, unsigned avoid = 0)
 {
+    if (!a.label.empty() && a.base.id >= 0) {
+        const auto base = reg(reg_of(s, a.base, avoid), 64);
+        return std::format("[{}, :lo12:{}]", base,
+                           symbol_plus(a.label, a.displacement));
+    }
+
     if (!a.label.empty()) {
         const auto symbol = symbol_plus(a.label, a.displacement);
         insn(s, "adrp", { "x16", symbol });
@@ -1159,19 +1167,141 @@ based(const expr_t &pointer,
 
 bool arithmetic_immediate(long long value, int width);
 
+// The sum p + n whose dereference a row is, 6.3: the row's decay, or
+// its &, of *(p + n), or the row itself; null for any other pointer.
+const expr_t *
+row_sum(const expr_t &row)
+{
+    const expr_t *top = &row;
+    if (const auto at = lvalue_offset(row);
+        at && at->offset == 0 && is< unary_t >(*at->lvalue) &&
+        as< unary_t >(*at->lvalue).op == unary_op_t::deref)
+        top = as< unary_t >(*at->lvalue).arg.get();
+
+    if (!is< binary_t >(*top) || as< binary_t >(*top).op != binary_op_t::add)
+        return nullptr;
+
+    return top;
+}
+
+// An access through a row by a variable index, read off the tree
+// before anything is generated, 6.3: the sum's pointer and index and
+// their order, the sum's stride, the pointer's address as a slot's or a
+// label's, folded()'s, or as based()'s pointer and displacement, its
+// constant and the total with the access's column, and whether the
+// index is the access's register offset.
+struct row_access_t
+{
+    const expr_t *pointer;
+    const expr_t *index;
+    bool pointer_first;
+    long stride;
+    std::optional< address_t > slot { };
+    std::optional< based_t > plan { };
+    long long carried = 0;
+    long long total = 0;
+    bool label = false;
+    bool register_offset = false;
+};
+
+// Whether a label's offset in the page is an access's displacement
+// past a row's sum, 6.3: within the label's object, as folded() asks,
+// and a multiple of the access's size, which the scaled :lo12: form
+// needs.
+bool
+label_carries(named_offset_t named, long long total, int size)
+{
+    named.offset = total;
+
+    return within_object(named) && total % size == 0 && total <= INT32_MAX;
+}
+
+// Whether an access of size bytes takes a row's constants past the sum,
+// 6.3: a label's by label_carries(), any other where in_reach() holds
+// after the sum.
+bool
+row_reaches(const row_access_t &row, const named_offset_t *named, int size)
+{
+    if (row.label)
+        return label_carries(*named, row.total, size);
+
+    return row.carried == 0 || in_reach(row.total, size);
+}
+
+// Whether a row's index is the access's register offset, 6.3: with no
+// constant at all and nothing evaluated between the address and the
+// access, a product of no scale, or an index the access's form scales,
+// at a size of 1 or the access's own.
+bool
+offset_index(const row_access_t &row, int size, bool nothing_between)
+{
+    return !row.slot && row.total == 0 && nothing_between &&
+           (!is_scale(row.stride) || row.stride == 1 || row.stride == size);
+}
+
+// The access of size bytes at column into a row by a variable index,
+// where it takes the row's constants or its index into its own form,
+// 6.3; none where it takes neither, p[i][2] keeping the sum and [x0,
+// #8].
+std::optional< row_access_t >
+row_access(state_t &s,
+           const expr_t &row,
+           long long column,
+           int size,
+           bool nothing_between)
+{
+    const auto *sum = row_sum(row);
+    if (!sum)
+        return std::nullopt;
+
+    const auto &b = as< binary_t >(*sum);
+    const bool first = is< pointer_t >(b.lhs->type);
+    row_access_t a { .pointer = first ? b.lhs.get() : b.rhs.get(),
+                     .index = first ? b.rhs.get() : b.lhs.get(),
+                     .pointer_first = first,
+                     .stride = stride(sum->type) };
+    if (is< literal_t >(*a.index))
+        return std::nullopt;
+
+    const auto named = named_offset(*a.pointer, s.defined);
+    a.slot = named ? folded(s, *a.pointer) : std::nullopt;
+    if (named && !a.slot)
+        return std::nullopt;
+
+    a.plan = named ? std::nullopt : based(*a.pointer, s.defined);
+    a.carried = a.slot ? a.slot->displacement :
+                a.plan ? a.plan->displacement :
+                         0;
+    a.total = wrapped_add(a.carried, column);
+    a.label = a.slot && !a.slot->label.empty();
+    if (!row_reaches(a, named ? &*named : nullptr, size))
+        return std::nullopt;
+
+    a.register_offset = offset_index(a, size, nothing_between);
+    if (!a.slot && a.carried == 0 && !a.register_offset)
+        return std::nullopt;
+
+    return a;
+}
+
+// row_address() needs right_t, displacement() and offset(), which come
+// after pointed(), summed()'s caller.
+address_t row_address(state_t &, const row_access_t &);
+
 // The operand of an address by any other lvalue and a constant, 6.3:
 // based()'s base, its pointer's value, with the displacement, when the
 // access encodes it (2.3), [x0, #20] for p[1][2] on int (*p)[3], and no
 // instruction forms the intermediate address.  Only the base is
 // evaluated.  A row by a variable index is a base the row of p + n
 // forms, add x0, x0, w1, sxtw #3, since no form holds an index with a
-// displacement.  For the address as a value, as_value, the add of the
-// base and the displacement is to encode it instead (2.4), add x0, x0,
-// #20 for &p[1][2].  None for a displacement out of reach, and the rows
-// of *p and p + n reach the address.  A register variable handed down,
-// with the address as a value, is the destination of the base's row:
-// the variable itself where the displacement is 0, so that q =
-// &m[1][-3] on int (*m)[3] is the one ldr x19, [x29, #24], and
+// displacement, and for an access the row's own constant goes past the
+// sum, row_address()'s.  For the address as a value, as_value, the
+// add of the base and the displacement is to encode it instead (2.4),
+// add x0, x0, #20 for &p[1][2].  None for a displacement out of reach,
+// and the rows of *p and p + n reach the address.  A register variable
+// handed down, with the address as a value, is the destination of the
+// base's row: the variable itself where the displacement is 0, so that
+// q = &m[1][-3] on int (*m)[3] is the one ldr x19, [x29, #24], and
 // base_into()'s copy under any other, so that q = &xa[3] on an array
 // the unit only declares is adrp x19, :got:xa; ldr x19, [x19,
 // :got_lo12:xa], and the add of the displacement after it writes the
@@ -1182,11 +1312,20 @@ std::optional< address_t >
 summed(state_t &s,
        const expr_t &pointer,
        bool as_value = false,
-       into_t *into = nullptr)
+       into_t *into = nullptr,
+       bool nothing_between = true)
 {
     const auto plan = based(pointer, s.defined);
     if (!plan)
         return std::nullopt;
+
+    // p[1][i][0] on int (*p)[3][3]: the sum, then [x0, #36]
+    if (!as_value) {
+        const int size = static_cast< int >(stride(pointer.type));
+        if (const auto row = row_access(s, *plan->pointer, plan->displacement,
+                                        size, nothing_between))
+            return row_address(s, *row);
+    }
 
     const bool reached = as_value ?
                              arithmetic_immediate(plan->displacement, 64) :
@@ -1243,7 +1382,7 @@ pointed(state_t &s, const expr_t &p, const expr_t *between = nullptr)
         return *a;
 
     // p[1][2] on int (*p)[3], other[1][2] through the GOT: [x0, #20]
-    if (const auto a = summed(s, p))
+    if (const auto a = summed(s, p, false, nullptr, !between))
         return *a;
 
     // *p, and *E for any E that is no sum: *f(), *(char *) q, *p++ on
@@ -1980,6 +2119,110 @@ offset(state_t &s,
         insn(s, mnemonic, { to, reg(p, 64), index });
 
     return result;
+}
+
+// p + n on a slot's address as a base, the frame pointer the sum's
+// source: the index's product, mul after mov N, #s at a size no form
+// scales by, then add xR, x29, R in the index's register, add x0, x29,
+// x0, or the form's extend and shift, add x0, x29, w0, sxtw #3.  The
+// value is the sum, in a register of its own.
+value_t
+frame_sum(state_t &s, const right_t &n)
+{
+    reg_t i = reg_of(s, n.value);
+
+    if (n.factor != 1) {
+        const reg_t factor = take(s, bit(i));
+        constant(s, factor, n.factor, 64);
+
+        const reg_t product = destination(s, n.value, 64, bit(factor));
+        insn(s, "mul", { reg(product, 64), reg(i, 64), reg(factor, 64) });
+        i = product;
+    }
+
+    const auto index = index_operand(i, n.extend, n.shift);
+    const reg_t to = destination(s, n.value, 64);
+    insn(s, "add", { reg(to, 64), "x29", index });
+
+    return n.value;
+}
+
+// The base of a row's sum, generated: nothing for a slot, x29 being
+// the base; a label's page at the access's offset, adrp x0, rows+2; or
+// the value of based()'s pointer or of the pointer itself.
+value_t
+row_base(state_t &s, const row_access_t &row)
+{
+    if (row.label) {
+        const auto page = fresh(s, 64);
+        const auto symbol = symbol_plus(row.slot->label, row.total);
+        insn(s, "adrp", { reg(reg_of(s, page), 64), symbol });
+        return page;
+    }
+
+    if (row.slot)
+        return { };
+
+    return rvalue(s, row.plan ? *row.plan->pointer : *row.pointer);
+}
+
+// A row's index as the access's register offset, 6.3: a product of no
+// scale in its own register, mul after mov N, #s, then [x0, x1]; an
+// index the access's form scales as it is, [x0, w1, sxtw #3].
+address_t
+row_register_offset(state_t &s, value_t base, const right_t &index)
+{
+    if (index.factor != 1) {
+        const unsigned held = registers_of(s, { .base = base });
+        const reg_t i = reg_of(s, index.value, held);
+        const reg_t factor = take(s, bit(i) | held);
+        constant(s, factor, index.factor, 64);
+
+        const reg_t product =
+            destination(s, index.value, 64, bit(factor) | held);
+        insn(s, "mul", { reg(product, 64), reg(i, 64), reg(factor, 64) });
+    }
+
+    return address_t { .base = base,
+                       .index = index.value,
+                       .extend = index.extend,
+                       .shift = index.shift };
+}
+
+// The operand of an access through a row by a variable index,
+// row_access()'s, 6.3: the pointer's base and the index in the order
+// written (G13), then the index the register offset, or its product
+// added to the base, to x29 for a slot, and the constants the access's
+// displacement past the sum, so that p[1][i][0] on int (*p)[3][3] is
+// mul x1, x1, x2; add x0, x0, x1; ldr w0, [x0, #36] after p's load, and
+// rows[i][2] on a global adrp x0, rows+2, the product's add and ldrb
+// w0, [x0, :lo12:rows+2].  The sum writes a register of its own, never
+// a register variable's.
+address_t
+row_address(state_t &s, const row_access_t &row)
+{
+    value_t base { };
+    if (row.pointer_first)
+        base = row_base(s, row);
+
+    const auto index = displacement(s, *row.index, row.stride);
+
+    if (!row.pointer_first)
+        base = row_base(s, row);
+
+    if (row.register_offset)
+        return row_register_offset(s, base, index);
+
+    if (row.slot && !row.label)
+        return address_t { .base = frame_sum(s, index),
+                           .displacement = static_cast< int >(row.total) };
+
+    const auto sum =
+        offset(s, binary_op_t::add, base, index, row.pointer_first);
+
+    return address_t { .base = sum,
+                       .displacement = static_cast< int >(row.total),
+                       .label = row.label ? row.slot->label : std::string { } };
 }
 
 // A binary + or - of a pointer type, 6.5.7p9: the pointer and the

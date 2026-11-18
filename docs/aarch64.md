@@ -837,7 +837,7 @@ a register variable's where the row leaves its representation
 | `&x` | `add L, x29, #d`; for a global the file defines `adrp L, sym; add L, L, :lo12:sym`, as a string literal's; for one it only declares, the load from the GOT; `&x` plus a constant is the same `add` or pair with the constant in it, the name and constant below | two `add`s beyond 4095, 5.3 |
 | `*p` | the load of 2.2 from `[L]` | G8 to G11 |
 | `*p++`, `*p--`, `*++p`, `*--p`, `*(p += c)`, `*(p -= c)` on a `register` pointer | the access by a form of 2.3 that steps the variable's register, the borrowed read the base: the post-indexed form for `p++` and `p--`, `ldrb w0, [x19], #1` and `ldrb w0, [x19], #-1`, and the pre-indexed one for the others, `ldrb w0, [x19, #1]!`, `ldr w0, [x19, #16]!` for `*(p += 4)` on an `int *`; a store the same, `strb w0, [x19], #1`, so `*p++ = *q++` is `ldrb w0, [x20], #1; strb w0, [x19], #1`; a compound assignment or a `++` through the pointer, two accesses through one address, steps once, the post form at the store, `ldrb w0, [x19]; add w0, w0, #5; strb w0, [x19], #1`, the pre form at the load; a read of the pointer still held is copied before the access that steps, `mov x0, x19`. The step is its own instructions and the access goes through the old or the new value, as the rows of `x++` and `*p` have it, in three cases: a store whose right operand names the pointer, since G13 completes the step before that operand, `*p++ = *p` being `mov x0, x19; add x19, x19, #1; ldrb w1, [x19]; strb w1, [x0]`; a step out of the form's reach, `*(p += 64)` on an `int *` being `add x19, x19, #256; ldr w0, [x19]`; and a pointer in a slot, whose step is a load, an `add` and a store | `autoincrement.md`; call 9 |
-| `p[i]`, `a[i]` | the load from `[L, R, lsl #k]`, `[L, R]` for a size of 1; from `[L, wR, sxtw #k]` or `[L, wR, uxtw #k]` for an index held at 32 bits; a constant index is `[L, #c*s]` when the displacement encodes, a negative one within 256 bytes the unscaled displacement, `[L, #-4]`; a constant index the access does not encode (2.3) is an index like any other, held in a register by the constant row of 6.4 and read `[L, R, lsl #k]`; on an array reached by its name a constant index is the name and constant below, the slot's own access, `ldr w0, [x29, #28]`, or the row of a global scalar the file defines, `adrp x16, table+12; ldr w0, [x16, :lo12:table+12]` | one instruction; the index's extension is the form's, below (call 5) |
+| `p[i]`, `a[i]` | the load from `[L, R, lsl #k]`, `[L, R]` for a size of 1; from `[L, wR, sxtw #k]` or `[L, wR, uxtw #k]` for an index held at 32 bits; a constant index is `[L, #c*s]` when the displacement encodes, a negative one within 256 bytes the unscaled displacement, `[L, #-4]`; a constant index the access does not encode (2.3) is an index like any other, held in a register by the constant row of 6.4 and read `[L, R, lsl #k]`; on an array reached by its name a constant index is the name and constant below, the slot's own access, `ldr w0, [x29, #28]`, or the row of a global scalar the file defines, `adrp x16, table+12; ldr w0, [x16, :lo12:table+12]`; an element of a row by a variable index the access does not scale, the index's product added to the row's base and the row's constant the access's displacement past the sum, `ldr w0, [x0, #36]` for `p[1][i][0]` on `int (*p)[3][3]`, or with no constant the product the register offset, `ldr w0, [x0, x1]` for `p[i][0]` on `int (*p)[3]` (the lvalue and constant below) | one instruction; the index's extension is the form's, below (call 5) |
 | `&p[i]`, `&*p` | the address of `*E` as a value, and no access made (6.5.4.2p3): a bare base is its own value, so `&*p` is `p`, and so is `&p[0]`, a subscript by a constant 0, whose access is `[L]` as `*p`'s is, no instruction (call 8); any other subscript's address is the row of `p + n`: `&p[3]` is `add L, L, #12` for an `int *`, and `&p[i]` is `add L, L, R, lsl #k`, or `add L, L, wR, sxtw #k` for an index held at 32 bits; a row of an array of arrays decays the same way, `m[0]` to `m`; on an array reached by its name, the name and constant below, the slot's `add L, x29, #d+12` or the label's pair, `adrp L, table+12; add L, L, :lo12:table+12` | the same address by `add`, the machine having no `lea` |
 | `p + n`, `p - n` | `add L, L, R` or `sub` for a size of 1; `add L, L, R, lsl #k` or `sub` for 2, 4 or 8; the index held at 32 bits as for `&p[i]`; `mov N, #s; mul R, R, N` first for any other size; a constant `n` is the immediate `#c*s` when it encodes, and otherwise the product held in a register by 6.4, `add L, L, R`; on a name's address a constant `n` is the name and constant below, the address formed once, `add x0, x29, #28` for `a + 3`; for `n + p` the result is in `L`, the integer's register: a plain register keeps the source's order, `add L, L, R`, and the shifted or extended operand, which the instruction takes last only, is `add L, R, wL, sxtw #2` | G6 |
 | `p - q` | `sub L, L, R`; for a size other than 1, `mov R, #s; sdiv L, L, R` | G6: a division |
@@ -889,7 +889,26 @@ load, with no `add` of the row's 12 bytes first; `other[1][2]` on an
 address with an index has no form with a displacement, so `m[i][2]`
 on `char (*m)[8]` forms the row's address, `add x0, x0, w1, sxtw #3`,
 and reads `ldrb w0, [x0, #2]`; a sum the access does not encode takes
-the rows of the table too. The address as a value is the base and one
+the rows of the table too. The row's own constant goes past the sum:
+the index's product is added to the pointer's base and the constant
+is the access's displacement with the column's, so `p[1][i][0]` on
+`int (*p)[3][3]` is `mov x2, #12; mul x1, x1, x2; add x0, x0, x1;
+ldr w0, [x0, #36]` after `p`'s load, with no `add` of the 36, and
+`m[i][4]` on a local `char m[4][5]` at `[x29, #20]` adds the product
+to the frame pointer, `add x0, x29, x0`, and reads `ldrb w0, [x0,
+#24]`. A label's constant is its offset in the page: `rows[i][2]` on a
+global the file defines is `adrp x0, rows+2`, the add of the product
+and `ldrb w0, [x0, :lo12:rows+2]`, with no add of `:lo12:` before the
+index. With no constant at all, a product of no scale is the access's
+register offset, `p[i][0]` on `int (*p)[3]` being `ldr w0, [x0, x1]`
+after the `mul`, where nothing is evaluated between the address and
+its access; one form holds a register offset or a displacement, never
+both, so `p[i][1]` adds the product and reads `[x0, #4]`, and an
+address held across an assignment's right operand keeps to one
+register, `p[i][0] = f()` adding the product before the call. A
+constant out of reach after the sum, a label's offset outside its
+object, and the address as a value keep the rows of the table. The
+address as a value is the base and one
 `add` of the displacement, where `add` encodes it (2.4): `&p[1][2]`
 and `p[1] + 2` are `add x0, x0, #20` after `p`'s load, and a
 displacement of 0, `p[1] - 3`, is the base and no instruction, as

@@ -430,12 +430,11 @@ cell:
 	str	x0, [x29, #16]
 	str	w1, [x29, #24]
 	ldr	x0, [x29, #16]
-	add	x0, x0, #36
 	ldrsw	x1, [x29, #24]
 	mov	x2, #12
 	mul	x1, x1, x2
 	add	x0, x0, x1
-	ldr	w0, [x0]
+	ldr	w0, [x0, #36]
 	b	.Lcell.1
 .Lcell.1:
 	.cfi_def_cfa wsp, 32
@@ -461,12 +460,11 @@ cell_column:
 	str	x0, [x29, #16]
 	str	w1, [x29, #24]
 	ldr	x0, [x29, #16]
-	add	x0, x0, #36
 	ldrsw	x1, [x29, #24]
 	mov	x2, #12
 	mul	x1, x1, x2
 	add	x0, x0, x1
-	ldr	w0, [x0, #8]
+	ldr	w0, [x0, #44]
 	b	.Lcell_column.1
 .Lcell_column.1:
 	.cfi_def_cfa wsp, 32
@@ -494,12 +492,11 @@ cell_register:
 	str	x0, [x29, #24]
 	str	w1, [x29, #32]
 	ldr	x19, [x29, #24]
-	add	x0, x19, #36
-	ldrsw	x1, [x29, #32]
-	mov	x2, #12
-	mul	x1, x1, x2
-	add	x0, x0, x1
-	ldr	w0, [x0]
+	ldrsw	x0, [x29, #32]
+	mov	x1, #12
+	mul	x0, x0, x1
+	add	x0, x19, x0
+	ldr	w0, [x0, #36]
 	b	.Lcell_register.1
 .Lcell_register.1:
 	.cfi_def_cfa wsp, 48
@@ -528,11 +525,10 @@ cell_first:
 	str	w1, [x29, #24]
 	ldrsw	x0, [x29, #24]
 	ldr	x1, [x29, #16]
-	add	x1, x1, #36
 	mov	x2, #12
 	mul	x0, x0, x2
 	add	x0, x0, x1
-	ldr	w0, [x0]
+	ldr	w0, [x0, #36]
 	b	.Lcell_first.1
 .Lcell_first.1:
 	.cfi_def_cfa wsp, 32
@@ -556,12 +552,11 @@ slot_cell:
 	mov	x29, sp
 	.cfi_def_cfa_register w29
 	str	w0, [x29, #16]
-	add	x0, x29, #20
-	ldrsw	x1, [x29, #16]
-	mov	x2, #5
-	mul	x1, x1, x2
-	add	x0, x0, x1
-	ldrb	w0, [x0, #4]
+	ldrsw	x0, [x29, #16]
+	mov	x1, #5
+	mul	x0, x0, x1
+	add	x0, x29, x0
+	ldrb	w0, [x0, #24]
 	b	.Lslot_cell.1
 .Lslot_cell.1:
 	.cfi_def_cfa wsp, 48
@@ -585,13 +580,12 @@ label_cell:
 	mov	x29, sp
 	.cfi_def_cfa_register w29
 	str	w0, [x29, #16]
-	adrp	x0, rows
-	add	x0, x0, :lo12:rows
+	adrp	x0, rows+2
 	ldrsw	x1, [x29, #16]
 	mov	x2, #5
 	mul	x1, x1, x2
 	add	x0, x0, x1
-	ldrb	w0, [x0, #2]
+	ldrb	w0, [x0, :lo12:rows+2]
 	b	.Llabel_cell.1
 .Llabel_cell.1:
 	.cfi_def_cfa wsp, 32
@@ -733,17 +727,16 @@ held_cell:
 	mov	x29, sp
 	.cfi_def_cfa_register w29
 	str	w0, [x29, #16]
-	add	x0, x29, #20
-	ldrsw	x1, [x29, #16]
-	mov	x2, #5
-	mul	x1, x1, x2
-	add	x0, x0, x1
+	ldrsw	x0, [x29, #16]
+	mov	x1, #5
+	mul	x0, x0, x1
+	add	x0, x29, x0
 	str	x0, [x29, #40]
 	bl	f
 	ldr	x2, [x29, #40]
-	ldrb	w1, [x2, #1]
+	ldrb	w1, [x2, #21]
 	sub	w1, w1, w0
-	strb	w1, [x2, #1]
+	strb	w1, [x2, #21]
 .Lheld_cell.1:
 	.cfi_def_cfa wsp, 48
 	ldp	x29, x30, [sp]
@@ -876,6 +869,67 @@ byte_sum_register:
 	ret
 	.cfi_endproc
 	.size	byte_sum_register, .-byte_sum_register
+	.globl	row_start
+	.type	row_start, @function
+row_start:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	ldr	x0, [x29, #16]
+	ldrsw	x1, [x29, #24]
+	mov	x2, #12
+	mul	x1, x1, x2
+	ldr	w0, [x0, x1]
+	b	.Lrow_start.1
+.Lrow_start.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	row_start, .-row_start
+	.globl	row_start_stored
+	.type	row_start_stored, @function
+row_start_stored:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	ldr	x0, [x29, #16]
+	ldrsw	x1, [x29, #24]
+	mov	x2, #12
+	mul	x1, x1, x2
+	add	x0, x0, x1
+	str	x0, [x29, #32]
+	bl	f
+	ldr	x1, [x29, #32]
+	str	w0, [x1]
+.Lrow_start_stored.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	row_start_stored, .-row_start_stored
 	.bss
 	.globl	rows
 	.type	rows, @object

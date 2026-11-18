@@ -17,10 +17,10 @@
    On aarch64 the listing must show cell() reading p[1][2] by the one
    ldr w0, [x0, #20] after p's load, and corner() forming &p[1][2] by
    the one add x0, x0, #20.  The machine has no form with an index and
-   a displacement, so row() and local() form the row's address by
-   add x0, x0, w1, sxtw #3, local() after the array's
-   add x0, x29, #20, and read ldrb w0, [x0, #2], and address() adds the
-   2 with add x0, x0, #2. */
+   a displacement, so row() forms the row's address by add x0, x0, w1,
+   sxtw #3 and reads ldrb w0, [x0, #2], local() adds the index to x29,
+   add x0, x29, w0, sxtw #3, and reads ldrb w0, [x0, #22], the slot's
+   20 and the 2, and address() adds the 2 with add x0, x0, #2. */
 int
 row(char (*p)[8], int i)
 {

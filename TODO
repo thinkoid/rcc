@@ -61,31 +61,17 @@ of a row that writes the right operand's register.
 
 Check: the count over =tests=, and no function longer.
 
-** TODO aarch64: a row's constant offset is added before an index no addressing form scales by
+** TODO aarch64: a byte offset out of reach is added where it could be the access's register offset
 
-~p[1][i][0]~ on ~int (*p)[3][3]~ is =ldr x0, [x29, #16]; add x0, x0,
-#36; ldrsw x1, [x29, #24]; mov x2, #12; mul x1, x1, x2; add x0, x0,
-x1; ldr w0, [x0]=, where the 36 as the load's offset, =ldr w0, [x0,
-#36]= after the sum, is one instruction fewer; x86-64 carries it so
-(=backend.md= 6.3). =cell()= and =cell_column()= of =subscript-row=
-and =pcube_*= of the pointers probe have the shape.
+~*(int *) (p + 4097)~ on a ~char *p~ is =mov x1, #4097; add x0, x0,
+x1; ldrsw x0, [x0]=, where the constant held in a register is the
+load's register offset at no shift, =ldrsw x0, [x0, x1]=, an
+instruction fewer; ~p[4097]~ on the =char *= itself is written so
+already. 9 forms over =tests=, =kview_*_4097= of the pointers probe
+among them.
 
-Fix: the row's offset is carried as the access's offset past the
-sum, in =src/c1-aarch64.cc='s address rows, as on x86-64.
-
-Check: those pins with the constant in the =ldr=, and no function
-longer.
-
-** TODO aarch64: the product of an index of no scale is added where it could be the access's register offset
-
-~m[i][4]~ on a local ~char m[4][5]~ writes the product's =mov=,
-=mul= and an =add= into the base, then reads with the column's
-offset, =ldrb w0, [x0, #4]=. Where no column offset is needed the
-load's register-offset form, =ldrb w0, [x0, x1]=, takes the product
-as x86-64's operand takes it at scale 1 (=backend.md= 6.3). The
-shape is not counted over =tests=.
-
-Fix: none taken; count first.
+Fix: an offset held in a register for want of an immediate is the
+access's register offset where the access has no other.
 
 Check: the count over =tests=, and no function longer.
 
