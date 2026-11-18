@@ -231,7 +231,6 @@ unsigned_promoted:
 	.cfi_def_cfa_register %rbp
 	movb	%dil, -1(%rbp)
 	movsbl	-1(%rbp), %eax
-	movl	%eax, %eax
 	jmp	.Lunsigned_promoted.1
 .Lunsigned_promoted.1:
 	leave
@@ -275,6 +274,65 @@ unsigned_twice:
 	ret
 	.cfi_endproc
 	.size	unsigned_twice, .-unsigned_twice
+	.globl	unsigned_called
+	.type	unsigned_called, @function
+unsigned_called:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	call	narrow@PLT
+	movsbl	%al, %eax
+	movl	%eax, %eax
+	jmp	.Lunsigned_called.1
+.Lunsigned_called.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	unsigned_called, .-unsigned_called
+	.globl	unsigned_register
+	.type	unsigned_register, @function
+unsigned_register:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movb	%dil, -9(%rbp)
+	movsbl	-9(%rbp), %ebx
+	movl	%ebx, %eax
+	jmp	.Lunsigned_register.1
+.Lunsigned_register.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	unsigned_register, .-unsigned_register
+	.globl	unsigned_short
+	.type	unsigned_short, @function
+unsigned_short:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movw	%di, -2(%rbp)
+	movswl	-2(%rbp), %eax
+	jmp	.Lunsigned_short.1
+.Lunsigned_short.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	unsigned_short, .-unsigned_short
 	.bss
 	.globl	defined
 	.type	defined, @object

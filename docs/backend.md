@@ -1189,11 +1189,16 @@ outer width, the two extensions being one: a signed object under a
 signed widening sign-extended all the way, `(long) (int) c` on a
 `signed char` `movsbq -1(%rbp), %rax` and on a `short` `movswq`, and
 an unsigned one zero-extended, its `movzbl` or `movzwl` valid to 64
-bits and nothing after it; a signed object under an unsigned widening,
-`(long) (unsigned) c`, is two extensions, `movsbl -1(%rbp), %eax;
-movl %eax, %eax`. A register variable is no object in
-memory, so its read is extended into a fresh register, `movslq %ebx,
-%rax`. A cast over any other operand, a call's result, an arithmetic
+bits and nothing after it. A signed object under an unsigned
+widening, `(long) (unsigned) c`, is its load into the 32-bit name,
+`movsbl -1(%rbp), %eax`, and nothing after it: the sign extension
+stops at the `unsigned`'s 32 bits, and the 32-bit write clears the
+upper half, which is the `unsigned`'s zero extension to 64 bits. A
+value no load writes keeps the zero extension, `movsbl %al, %eax;
+movl %eax, %eax` for a call's `signed char` result, and a register
+variable's read is its copy, `movl %ebx, %eax`. A register variable
+is no object in memory, so its read is extended into a fresh
+register, `movslq %ebx, %rax`. A cast over any other operand, a call's result, an arithmetic
 value or another cast, extends the value in its register by the width
 rule. A truth value needs no extension: `(long) (a < b)` and
 `(unsigned long) !x` write nothing after the `movzbl`.

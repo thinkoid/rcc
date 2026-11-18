@@ -181,21 +181,39 @@ the arms are converted on their paths under any consumer.
 
 Check: the count over =tests=, and no function longer.
 
-** TODO A signed narrow object under an unsigned widening is loaded, then cleared
+** TODO aarch64: a signed narrow object under an unsigned widening is loaded, then cleared
 
-~(long) (unsigned) c~ on a ~signed char~ is =movsbl -1(%rbp), %eax;
-movl %eax, %eax= on x86-64 and =ldrsb w0, [x29, #16]; mov w0, w0= on
-aarch64: the first extension stops at 32 bits, so the two are not the
-one extension =widened_read()= in =src/c1-common.cc= knows. The load
-into the 32-bit name is the value already, valid to 64 bits as an
-=unsigned=, since a write of a 32-bit register clears the upper
-half. =unsigned_promoted()= of =widen= pins the two instructions on
-each target; on aarch64 5 forms over =tests= have the shape.
+~(long) (unsigned) c~ on a ~signed char~ is =ldrsb w0, [x29, #16];
+mov w0, w0=: the first extension stops at 32 bits, so the two are not
+the one extension =widened_read()= in =src/c1-common.cc= knows. The
+load into the =w= register is the value already, valid to 64 bits as
+an =unsigned=, since a write of a =w= register clears the upper half;
+x86-64 marks its =movsbl= so in =converted()=. =unsigned_promoted()=
+and =unsigned_short()= of =widen= pin the two instructions, and 5
+forms over =tests= have the shape.
 
 Fix: the load is marked valid to 64 bits where a signed narrow
-object is widened through an =unsigned= of 32 bits.
+object is widened through an =unsigned= of 32 bits, as on x86-64.
 
-Check: =unsigned_promoted= with the one load on each target.
+Check: =unsigned_promoted= and =unsigned_short= with the one load.
+
+** TODO A 32-bit write's value widened as an unsigned is cleared again
+
+Any write of a 32-bit register name clears the upper half, so the
+value is valid to 64 bits as an =unsigned=. A value no load wrote
+keeps its clearing move all the same: ~(long) (unsigned) narrow()~ on
+a call's ~signed char~ result is =movsbl %al, %eax; movl %eax, %eax=
+and =sxtb w0, w0; mov w0, w0= (=unsigned_called()= of =widen=), and
+=addl $3, %eax; movl %eax, %eax= is written 4 times in =test_writes=
+of =tests/probe/statics-main.c=. The record of a value's valid width
+is by its operation's own signedness, and the conversion to an
+=unsigned= of the same width writes nothing. The aarch64 sites are
+not counted.
+
+Fix: a conversion to an =unsigned= of 32 bits of a value whose last
+instruction wrote its 32-bit name marks it valid to 64 bits.
+
+Check: those sites with no clearing move, and no function longer.
 
 ** TODO x86-64: a ~?:~ whose second arm is the variable's own read keeps its join after a call
 

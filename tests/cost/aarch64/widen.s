@@ -367,6 +367,85 @@ unsigned_twice:
 	ret
 	.cfi_endproc
 	.size	unsigned_twice, .-unsigned_twice
+	.globl	unsigned_called
+	.type	unsigned_called, @function
+unsigned_called:
+	.cfi_startproc
+	sub	sp, sp, #16
+	.cfi_def_cfa_offset 16
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -16
+	.cfi_offset w30, -8
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	bl	narrow
+	sxtb	w0, w0
+	mov	w0, w0
+	b	.Lunsigned_called.1
+.Lunsigned_called.1:
+	.cfi_def_cfa wsp, 16
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #16
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	unsigned_called, .-unsigned_called
+	.globl	unsigned_register
+	.type	unsigned_register, @function
+unsigned_register:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -16
+	strb	w0, [x29, #24]
+	ldrsb	w19, [x29, #24]
+	mov	w0, w19
+	b	.Lunsigned_register.1
+.Lunsigned_register.1:
+	.cfi_def_cfa wsp, 32
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	unsigned_register, .-unsigned_register
+	.globl	unsigned_short
+	.type	unsigned_short, @function
+unsigned_short:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	strh	w0, [x29, #16]
+	ldrsh	w0, [x29, #16]
+	mov	w0, w0
+	b	.Lunsigned_short.1
+.Lunsigned_short.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	unsigned_short, .-unsigned_short
 	.bss
 	.globl	defined
 	.type	defined, @object

@@ -5,8 +5,13 @@
    (int) c on a signed char and (long) (int) s on an unsigned short,
    and promoted_signed() and unsigned_twice() (unsigned long) (int) c
    on a signed char and (unsigned long) (unsigned) c on an unsigned
-   char; beside them unsigned_promoted() widens (unsigned) c on a
-   signed char, whose two extensions are not one.
+   char; unsigned_promoted() and unsigned_short() widen (unsigned) c
+   on a signed char and (unsigned) s on a short, whose load into the
+   32-bit name is the unsigned's zero extension too, since the write
+   clears the upper half; beside them unsigned_called() widens
+   (unsigned) narrow() on a call's signed char result, which no load
+   writes, and unsigned_register() (unsigned) c on a register char,
+   whose read is the variable's.
 
    On x86-64 the listing must show signed_char() loading c with
    movsbq -1(%rbp), %rax, short_() s with movswq -2(%rbp), %rax and
@@ -21,8 +26,11 @@
    movl (%rax,%rcx,4), %eax; promoted_char() the one movsbq -1(%rbp),
    %rax, promoted_unsigned() the one movzwl -2(%rbp), %eax,
    promoted_signed() the one movsbq -1(%rbp), %rax, unsigned_twice()
-   the one movzbl -1(%rbp), %eax, and unsigned_promoted() movsbl
-   -1(%rbp), %eax and movl %eax, %eax.
+   the one movzbl -1(%rbp), %eax, and unsigned_promoted() the one
+   movsbl -1(%rbp), %eax and nothing after it, unsigned_short() the
+   one movswl -2(%rbp), %eax, unsigned_called() movsbl %al, %eax and
+   movl %eax, %eax after the call, and unsigned_register() the read's
+   copy movl %ebx, %eax.
 
    On aarch64 the listing must show signed_char() loading c with
    ldrsb x0, [x29, #16], short_() s with ldrsh x0, [x29, #16] and
@@ -36,8 +44,11 @@
    ldr w0, [x0, w1, sxtw #2], the form extending it; promoted_char()
    the one ldrsb x0, [x29, #16], promoted_unsigned() the one ldrh w0,
    [x29, #16], valid to 64 bits, promoted_signed() ldrsb x0 as
-   promoted_char(), unsigned_twice() the one ldrb w0, [x29, #16], and
-   unsigned_promoted() ldrsb w0, [x29, #16] and mov w0, w0. */
+   promoted_char(), unsigned_twice() the one ldrb w0, [x29, #16],
+   unsigned_promoted() ldrsb w0, [x29, #16] and mov w0, w0,
+   unsigned_short() ldrsh w0, [x29, #16] and mov w0, w0,
+   unsigned_called() sxtb w0, w0 and mov w0, w0 after the call, and
+   unsigned_register() mov w0, w19. */
 int defined;
 extern int declared;
 
@@ -129,4 +140,26 @@ unsigned long
 unsigned_twice(unsigned char c)
 {
         return (unsigned) c;
+}
+
+signed char narrow(void);
+
+long
+unsigned_called(void)
+{
+        return (unsigned) narrow();
+}
+
+long
+unsigned_register(signed char x)
+{
+        register signed char c = x;
+
+        return (unsigned) c;
+}
+
+long
+unsigned_short(short s)
+{
+        return (unsigned) s;
 }

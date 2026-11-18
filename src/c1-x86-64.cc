@@ -1639,10 +1639,15 @@ onward(into_t *into, const int_t &from, const int_t &target)
 // (long) (int) u is movslq -4(%rbp), %rax, and (unsigned long)
 // (unsigned) i the movl, valid to 64 bits, each reading the object at
 // its own width (G10); and under a promotion, widened_read()'s, (long)
-// (int) c on a char c the one movsbq.  A signed constant widened is the
-// constant of the new type, its row's mov, movq $-1, %rbx, where an
-// unsigned one's movl leaves it valid to 64 bits already.  A change of
-// signedness alone is nothing.  A pointer is its integer view, so
+// (int) c on a char c the one movsbq.  A signed object widened to an
+// unsigned of 32 bits is its load into the 32-bit name, which clears
+// the upper half, so the value is valid to 64 bits as the unsigned it
+// is: (long) (unsigned) c is the one movsbl, and no movl clears it
+// again; not a register variable's read, whose upper half is its own
+// type's (chapter 4).  A signed constant widened is the constant of
+// the new type, its row's mov, movq $-1, %rbx, where an unsigned one's
+// movl leaves it valid to 64 bits already.  A change of signedness
+// alone is nothing.  A pointer is its integer view, so
 // pointer to pointer is nothing, an integer widens to a pointer by its
 // own signedness (6.3.2.3p5), and a pointer narrows to an integer by
 // its low bits (p6).  A register variable widens into a fresh register,
@@ -1693,6 +1698,12 @@ converted(state_t &s,
 
     auto &valid = s.values[v.id].valid;
     valid = std::min(valid, target.width);
+
+    // (long) (unsigned) c on a char c: movsbl -1(%rbp), %eax, its
+    // 32-bit write the zero extension of the unsigned
+    if (loads && read.type->is_signed && !target.is_signed && width == 32 &&
+        !borrowed(s, v))
+        valid = written(32, false);
 
     return v;
 }
