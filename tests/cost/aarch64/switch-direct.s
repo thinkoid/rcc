@@ -44,7 +44,6 @@ day:
 .Lday.6:
 	mov	w0, #0
 	b	.Lday.1
-.Lday.7:
 .Lday.1:
 	.cfi_def_cfa wsp, 32
 	ldp	x29, x30, [sp]

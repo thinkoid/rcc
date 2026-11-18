@@ -94,7 +94,6 @@ itoa:
 	movl	%eax, -4(%rbp)
 	cmpl	$0, %eax
 	jg	.Litoa.3
-.Litoa.5:
 	cmpl	$0, -24(%rbp)
 	jge	.Litoa.6
 	movq	-16(%rbp), %rax

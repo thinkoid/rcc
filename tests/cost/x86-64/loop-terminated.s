@@ -139,11 +139,6 @@ for_returns:
 	jg	.Lfor_returns.4
 	movl	$3, %eax
 	jmp	.Lfor_returns.1
-.Lfor_returns.3:
-	movl	-8(%rbp), %eax
-	addl	$1, %eax
-	movl	%eax, -8(%rbp)
-	jmp	.Lfor_returns.2
 .Lfor_returns.4:
 	movl	-4(%rbp), %eax
 	jmp	.Lfor_returns.1
@@ -244,7 +239,6 @@ for_ever:
 .Lfor_ever.5:
 .Lfor_ever.3:
 	jmp	.Lfor_ever.2
-.Lfor_ever.4:
 .Lfor_ever.1:
 	leave
 	.cfi_def_cfa %rsp, 8
@@ -270,9 +264,6 @@ do_returns:
 	jg	.Ldo_returns.4
 	movl	$3, %eax
 	jmp	.Ldo_returns.1
-.Ldo_returns.3:
-	cmpl	$0, -4(%rbp)
-	jne	.Ldo_returns.2
 .Ldo_returns.4:
 	movl	-4(%rbp), %eax
 	jmp	.Ldo_returns.1
@@ -304,7 +295,6 @@ do_continues:
 .Ldo_continues.3:
 	cmpl	$0, -4(%rbp)
 	jne	.Ldo_continues.2
-.Ldo_continues.4:
 	movl	-4(%rbp), %eax
 	jmp	.Ldo_continues.1
 .Ldo_continues.1:
@@ -336,7 +326,6 @@ do_falls:
 .Ldo_falls.3:
 	cmpl	$0, -4(%rbp)
 	jne	.Ldo_falls.2
-.Ldo_falls.4:
 	movl	-4(%rbp), %eax
 	jmp	.Ldo_falls.1
 .Ldo_falls.1:
@@ -345,4 +334,72 @@ do_falls:
 	ret
 	.cfi_endproc
 	.size	do_falls, .-do_falls
+	.globl	switch_returns
+	.type	switch_returns, @function
+switch_returns:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	cmpl	$0, -4(%rbp)
+	je	.Lswitch_returns.2
+	movl	-8(%rbp), %eax
+	cmpl	$1, %eax
+	je	.Lswitch_returns.3
+	jmp	.Lswitch_returns.4
+.Lswitch_returns.3:
+	movl	$1, %eax
+	jmp	.Lswitch_returns.1
+.Lswitch_returns.4:
+	movl	$2, %eax
+	jmp	.Lswitch_returns.1
+.Lswitch_returns.2:
+	movl	$3, -8(%rbp)
+	movl	-8(%rbp), %eax
+	jmp	.Lswitch_returns.1
+.Lswitch_returns.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	switch_returns, .-switch_returns
+	.globl	switch_breaks
+	.type	switch_breaks, @function
+switch_breaks:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	cmpl	$0, -4(%rbp)
+	je	.Lswitch_breaks.2
+	movl	-8(%rbp), %eax
+	cmpl	$1, %eax
+	je	.Lswitch_breaks.3
+	jmp	.Lswitch_breaks.4
+.Lswitch_breaks.3:
+	jmp	.Lswitch_breaks.5
+.Lswitch_breaks.4:
+	movl	$2, %eax
+	jmp	.Lswitch_breaks.1
+.Lswitch_breaks.5:
+	jmp	.Lswitch_breaks.6
+.Lswitch_breaks.2:
+	movl	$3, -8(%rbp)
+.Lswitch_breaks.6:
+	movl	-8(%rbp), %eax
+	jmp	.Lswitch_breaks.1
+.Lswitch_breaks.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	switch_breaks, .-switch_breaks
 	.section	.note.GNU-stack,"",@progbits

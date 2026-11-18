@@ -1,16 +1,15 @@
-/* backend.md 7.2 and aarch64.md 7.2, main's return of 0 kept after a
-   loop no jump leaves: the last statement is a for (;;) left only by
-   its return.  No path reaches the end of main, but the loop places the
-   label past it whether or not a jump names it, so the instruction is
-   written all the same: the rule reads what was written, not the
-   program's paths.
+/* backend.md 7.2 and aarch64.md 7.2, main's return of 0 after a loop
+   no jump leaves: the last statement is a for (;;) left only by its
+   return.  No jump names the label past the loop, so the loop does not
+   place it, its jump back is the last instruction, and nothing written
+   reaches the end of main.
 
    On x86-64 the listing must show .Lmain.3, the step's label, and the
-   loop's jmp .Lmain.2, then .Lmain.4, the label past the loop, which
-   no jump names, then movl $0, %eax before .Lmain.1.
+   loop's jmp .Lmain.2 followed at once by .Lmain.1, with no label past
+   the loop and no movl $0, %eax.
 
-   On aarch64 the listing must show the same labels with b for jmp, and
-   mov w0, #0 before .Lmain.1. */
+   On aarch64 the listing must show the same, b .Lmain.2 followed at
+   once by .Lmain.1, with no mov w0, #0. */
 int g;
 
 int

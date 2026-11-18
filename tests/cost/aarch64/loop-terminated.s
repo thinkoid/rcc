@@ -165,11 +165,6 @@ for_returns:
 	b.gt	.Lfor_returns.4
 	mov	w0, #3
 	b	.Lfor_returns.1
-.Lfor_returns.3:
-	ldr	w0, [x29, #20]
-	add	w0, w0, #1
-	str	w0, [x29, #20]
-	b	.Lfor_returns.2
 .Lfor_returns.4:
 	ldr	w0, [x29, #16]
 	b	.Lfor_returns.1
@@ -290,7 +285,6 @@ for_ever:
 .Lfor_ever.5:
 .Lfor_ever.3:
 	b	.Lfor_ever.2
-.Lfor_ever.4:
 .Lfor_ever.1:
 	.cfi_def_cfa wsp, 32
 	ldp	x29, x30, [sp]
@@ -322,9 +316,6 @@ do_returns:
 	b.gt	.Ldo_returns.4
 	mov	w0, #3
 	b	.Ldo_returns.1
-.Ldo_returns.3:
-	ldr	w0, [x29, #16]
-	cbnz	w0, .Ldo_returns.2
 .Ldo_returns.4:
 	ldr	w0, [x29, #16]
 	b	.Ldo_returns.1
@@ -362,7 +353,6 @@ do_continues:
 .Ldo_continues.3:
 	ldr	w0, [x29, #16]
 	cbnz	w0, .Ldo_continues.2
-.Ldo_continues.4:
 	ldr	w0, [x29, #16]
 	b	.Ldo_continues.1
 .Ldo_continues.1:
@@ -400,7 +390,6 @@ do_falls:
 .Ldo_falls.3:
 	ldr	w0, [x29, #16]
 	cbnz	w0, .Ldo_falls.2
-.Ldo_falls.4:
 	ldr	w0, [x29, #16]
 	b	.Ldo_falls.1
 .Ldo_falls.1:
@@ -413,4 +402,86 @@ do_falls:
 	ret
 	.cfi_endproc
 	.size	do_falls, .-do_falls
+	.globl	switch_returns
+	.type	switch_returns, @function
+switch_returns:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	str	w1, [x29, #20]
+	ldr	w0, [x29, #16]
+	cbz	w0, .Lswitch_returns.2
+	ldr	w0, [x29, #20]
+	cmp	w0, #1
+	b.eq	.Lswitch_returns.3
+	b	.Lswitch_returns.4
+.Lswitch_returns.3:
+	mov	w0, #1
+	b	.Lswitch_returns.1
+.Lswitch_returns.4:
+	mov	w0, #2
+	b	.Lswitch_returns.1
+.Lswitch_returns.2:
+	mov	w0, #3
+	str	w0, [x29, #20]
+	ldr	w0, [x29, #20]
+	b	.Lswitch_returns.1
+.Lswitch_returns.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	switch_returns, .-switch_returns
+	.globl	switch_breaks
+	.type	switch_breaks, @function
+switch_breaks:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	str	w1, [x29, #20]
+	ldr	w0, [x29, #16]
+	cbz	w0, .Lswitch_breaks.2
+	ldr	w0, [x29, #20]
+	cmp	w0, #1
+	b.eq	.Lswitch_breaks.3
+	b	.Lswitch_breaks.4
+.Lswitch_breaks.3:
+	b	.Lswitch_breaks.5
+.Lswitch_breaks.4:
+	mov	w0, #2
+	b	.Lswitch_breaks.1
+.Lswitch_breaks.5:
+	b	.Lswitch_breaks.6
+.Lswitch_breaks.2:
+	mov	w0, #3
+	str	w0, [x29, #20]
+.Lswitch_breaks.6:
+	ldr	w0, [x29, #20]
+	b	.Lswitch_breaks.1
+.Lswitch_breaks.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	switch_breaks, .-switch_breaks
 	.section	.note.GNU-stack,"",@progbits

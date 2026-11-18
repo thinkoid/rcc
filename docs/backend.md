@@ -1633,18 +1633,26 @@ constant.
   .Lbody, 1); .Lend:`. The body comes first and the condition at the
   bottom, where it is written, tested once per iteration (6.8.6.3p1);
   the jump back is taken while it holds. `.Lbody` is the loop's head
-  and takes the directive as `while`'s and `for`'s heads do.
+  and takes the directive as `while`'s and `for`'s heads do. After an
+  `s` that ends in a jump, `.Lcond` and the test are written only
+  where a `continue` names `.Lcond`: no other path reaches them.
 - `for (i; e; n) s`: `i; .p2align 5; .Lcond: cbranch(e, .Lend, 0); s;
-  .Lstep: n; jmp .Lcond; .Lend:`.
+  .Lstep: n; jmp .Lcond; .Lend:`. After an `s` that ends in a jump,
+  `.Lstep`, `n` and the `jmp` are written only where a `continue`
+  names `.Lstep`, as `do`'s test is.
 - `break` and `continue`: `jmp` to a label of the innermost loop around
   them. `break` jumps to its `.Lend`, past the loop (6.8.7.4p2).
   `continue` jumps to the loop's continuation (6.8.7.3p2): `.Lcond` in
-  `while` and `do`, `.Lstep` in `for`. Each loop places all three of its
-  labels whether or not a jump names them. c1 keeps the loops and the
-  switches around the statement it generates as a stack of their labels;
-  a `switch` takes a `break`, to the label past its body, and no
-  `continue`, which goes on to the loop around it (7.3). A statement
-  boundary holds no value (6.7), so the jump is the whole statement.
+  `while` and `do`, `.Lstep` in `for`. A loop places `.Lend` only
+  where a jump names it, its condition's exit or a `break`, so a `do`
+  or a `for (;;)` with no `break` has none; its other labels are
+  placed wherever the code they start is written, named or not. c1
+  keeps the loops and the switches around the statement it generates
+  as a stack of their labels, each with a record of whether a `break`
+  or a `continue` has jumped to them; a `switch` takes a `break`, to
+  the label past its body, and no `continue`, which goes on to the
+  loop around it (7.3). A statement boundary holds no value (6.7), so
+  the jump is the whole statement.
 - `goto L` and `L:`: `jmp` to the label and the label where it is
   written. A label of the source is one more label of the function,
   `.L<function>.<n>`, numbered when c1 first meets it, at its definition
@@ -1682,14 +1690,16 @@ constant.
   `s1` does above, so that nothing written can reach the instruction.
   A `main` whose last statement is a `return`, a `goto`, or an `if`
   whose two parts end so, `if (c) return 1; else return 2;`, has
-  none. A `main` whose last statement is an `if` with no `else`, a
-  loop or a `switch` has it, since each places the label past it
-  whether or not a jump names it: the `break` of
-  `while (g) { if (c) break; else return 3; }` reaches the end, and
-  a `for (;;)` left only by a `return` writes the instruction all
-  the same. The rule reads what was written, not the program's
-  paths: it may write the instruction where no path reaches it, but
-  never leaves it out where one does. A
+  none, and so has one whose last statement is a loop or a `switch`
+  that places no label past it, a `for (;;)` left only by a
+  `return`. A `main` whose last statement is an `if` with no `else`
+  has it, and so has one that ends in a loop with a condition or a
+  `break`, since the label past the loop is then placed: the `break`
+  of `while (g) { if (c) break; else return 3; }` reaches the end.
+  The rule reads what was written, not the program's paths: it may
+  write the instruction where no path reaches it, after `while (1)`
+  with no `break`, whose condition's exit c1 writes as for any
+  condition, but it never leaves it out where one does. A
   `void` function whose last statement is not a `return` falls into
   the epilogue's label, with no `jmp`.
 - Blocks and labels are written in source order. A label is `.L`,
@@ -1700,7 +1710,8 @@ constant.
   reordered after the labels.
 - `switch (e) s`: `e` into `L`, the dispatch of 7.3, then `s` in
   source order, each `case` and `default` label where it is written,
-  and the label past the body.
+  and the label past the body where a jump names it: a `break`, or
+  the dispatch when there is no `default`.
 
 ### 7.3 The switch
 

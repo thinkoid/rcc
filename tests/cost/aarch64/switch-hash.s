@@ -102,7 +102,6 @@ reason:
 .Lreason.14:
 	mov	w0, #0
 	b	.Lreason.1
-.Lreason.15:
 .Lreason.1:
 	.cfi_def_cfa wsp, 32
 	ldp	x29, x30, [sp]

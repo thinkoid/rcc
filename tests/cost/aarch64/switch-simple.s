@@ -36,7 +36,6 @@ kind:
 .Lkind.6:
 	mov	w0, #5
 	b	.Lkind.1
-.Lkind.7:
 .Lkind.1:
 	.cfi_def_cfa wsp, 32
 	ldp	x29, x30, [sp]

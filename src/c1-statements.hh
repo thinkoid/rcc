@@ -62,13 +62,17 @@ align_loop_head(state_t &s)
 
 // The body of a loop, backend.md 7.2: a break in it jumps to end and a
 // continue to next, but for one in a loop inside it, which takes its
-// own.
-void
+// own.  Returns the record of which of the two a jump named.
+jump_target_t
 loop_body(state_t &s, const stmt_t &body, int next, int end)
 {
     s.jump_targets.push_back({ end, next });
     statement(s, body);
+
+    const auto named = s.jump_targets.back();
     s.jump_targets.pop_back();
+
+    return named;
 }
 
 // G14: the condition at the top, where it is written, tested once per
@@ -96,8 +100,9 @@ while_stmt(state_t &s, const while_t &w)
 // backend.md 7.2: the body first, then the condition at the bottom,
 // where it is written, tested once per iteration, 6.8.6.3p1, and the
 // jump back taken while it holds.  The body's label is the loop's head.
-// A continue jumps to the condition.  The label past the test is placed
-// whether or not a break jumps to it, as while's and for's are.
+// A continue jumps to the condition, which is written where a path
+// reaches it: out of the body's end, or by a continue.  The label past
+// the test is placed where a break names it.
 void
 do_stmt(state_t &s, const do_t &d)
 {
@@ -107,18 +112,24 @@ do_stmt(state_t &s, const do_t &d)
 
     align_loop_head(s);
     place_label(s, body);
-    loop_body(s, *d.body, cond, end);
+    const auto named = loop_body(s, *d.body, cond, end);
 
-    place_label(s, cond);
-    cbranch(s, d.cond, body, true);
+    if (named.continued || !s.terminated) {
+        place_label(s, cond);
+        cbranch(s, d.cond, body, true);
+    }
 
-    place_label(s, end);
+    if (named.broken)
+        place_label(s, end);
 }
 
 // G14, as for while.  The step has its label, which a continue jumps
-// to.  The init is a statement: a declaration, a block of them for
-// several declarators, or an expression.  Its names are in scope for
-// the whole loop, 6.8.6.4p1.
+// to; the step and the jump back are written where a path reaches
+// them: out of the body's end, or by a continue.  The label past the
+// loop is placed where the condition's exit or a break names it.  The
+// init is a statement: a declaration, a block of them for several
+// declarators, or an expression.  Its names are in scope for the whole
+// loop, 6.8.6.4p1.
 void
 for_stmt(state_t &s, const for_t &f)
 {
@@ -134,14 +145,17 @@ for_stmt(state_t &s, const for_t &f)
     if (f.cond)
         cbranch(s, *f.cond, end, false);
 
-    loop_body(s, *f.body, next, end);
+    const auto named = loop_body(s, *f.body, next, end);
 
-    place_label(s, next);
-    if (f.step)
-        effect(s, *f.step);
-    jump(s, cond);
+    if (named.continued || !s.terminated) {
+        place_label(s, next);
+        if (f.step)
+            effect(s, *f.step);
+        jump(s, cond);
+    }
 
-    place_label(s, end);
+    if (f.cond || named.broken)
+        place_label(s, end);
 }
 
 // A constant of a switch's dispatch, a case's value or a number of the
@@ -291,7 +305,8 @@ number_case_labels(state_t &s, const switch_t &sw)
 // the form the rule of the Seventh Edition compiler chooses, then the
 // body in source order, each label where it is written, and the label
 // past the body, which a break in it jumps to and which stands for the
-// default when there is none.  Nothing is held from the dispatch into
+// default when there is none; with a default and no break, no jump
+// names it, and it is not placed.  Nothing is held from the dispatch into
 // the body.  With no case, the dispatch is the jump to the default or
 // past the body, after the value, since it is written.
 void
@@ -320,18 +335,24 @@ switch_stmt(state_t &s, const switch_t &sw)
 
     s.jump_targets.push_back({ end, std::nullopt });
     statement(s, *sw.body);
+
+    const bool broken = s.jump_targets.back().broken;
     s.jump_targets.pop_back();
 
-    place_label(s, end);
+    if (!sw.default_ || broken)
+        place_label(s, end);
 }
 
 // The label a break jumps to: past the innermost statement around it
-// that takes a break, 6.8.7.4p2.
+// that takes a break, 6.8.7.4p2.  Each caller writes the jump, so the
+// statement's record says a jump names the label.
 int
-break_target(const state_t &s)
+break_target(state_t &s)
 {
     if (s.jump_targets.empty())
         throw std::logic_error("c1: a break outside a loop or a switch");
+
+    s.jump_targets.back().broken = true;
 
     return s.jump_targets.back().break_;
 }
@@ -346,13 +367,16 @@ break_stmt(state_t &s)
 }
 
 // The label a continue jumps to: the continuation of the innermost loop
-// around it, 6.8.7.3p2, past any switch between.
+// around it, 6.8.7.3p2, past any switch between.  The caller writes the
+// jump, as break_target()'s does, and the loop's record says so.
 int
-continue_target(const state_t &s)
+continue_target(state_t &s)
 {
     for (auto t = s.jump_targets.rbegin(); t != s.jump_targets.rend(); ++t)
-        if (t->continue_)
+        if (t->continue_) {
+            t->continued = true;
             return *t->continue_;
+        }
 
     throw std::logic_error("c1: a continue outside a loop");
 }

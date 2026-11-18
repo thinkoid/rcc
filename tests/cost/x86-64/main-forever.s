@@ -21,8 +21,6 @@ main:
 .Lmain.5:
 .Lmain.3:
 	jmp	.Lmain.2
-.Lmain.4:
-	movl	$0, %eax
 .Lmain.1:
 	leave
 	.cfi_def_cfa %rsp, 8

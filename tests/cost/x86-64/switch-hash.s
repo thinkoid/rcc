@@ -98,7 +98,6 @@ reason:
 .Lreason.14:
 	movl	$0, %eax
 	jmp	.Lreason.1
-.Lreason.15:
 .Lreason.1:
 	leave
 	.cfi_def_cfa %rsp, 8

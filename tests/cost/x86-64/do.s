@@ -20,7 +20,6 @@ count:
 	movl	-8(%rbp), %eax
 	cmpl	-4(%rbp), %eax
 	jl	.Lcount.2
-.Lcount.4:
 	movl	-8(%rbp), %eax
 	jmp	.Lcount.1
 .Lcount.1:

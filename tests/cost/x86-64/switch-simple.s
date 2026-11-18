@@ -35,7 +35,6 @@ kind:
 .Lkind.6:
 	movl	$5, %eax
 	jmp	.Lkind.1
-.Lkind.7:
 .Lkind.1:
 	leave
 	.cfi_def_cfa %rsp, 8

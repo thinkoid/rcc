@@ -97,7 +97,6 @@ itoa:
 	str	w1, [x29, #16]
 	cmp	w1, #0
 	b.gt	.Litoa.3
-.Litoa.5:
 	ldr	w0, [x29, #36]
 	cmp	w0, #0
 	b.ge	.Litoa.6

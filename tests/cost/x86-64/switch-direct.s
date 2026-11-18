@@ -40,7 +40,6 @@ day:
 .Lday.6:
 	movl	$0, %eax
 	jmp	.Lday.1
-.Lday.7:
 .Lday.1:
 	leave
 	.cfi_def_cfa %rsp, 8

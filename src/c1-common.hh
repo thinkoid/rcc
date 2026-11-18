@@ -183,11 +183,15 @@ bool retypes(const cast_t &, const type_t &to, const into_t *);
 // A statement a break jumps out of: the label past its end, and for a
 // loop, which a continue goes on with, the label of the loop's
 // continuation, backend.md 7.2.  A switch has none, so a continue in it
-// goes on with the loop around it.
+// goes on with the loop around it.  broken and continued record that a
+// break or a continue has jumped to the label, which the statement
+// places only where a jump names it.
 struct jump_target_t
 {
     int break_;
     std::optional< int > continue_;
+    bool broken = false;
+    bool continued = false;
 };
 
 } // namespace rcc

@@ -22,7 +22,6 @@ count:
 	ldr	w1, [x29, #16]
 	cmp	w0, w1
 	b.lt	.Lcount.2
-.Lcount.4:
 	ldr	w0, [x29, #20]
 	b	.Lcount.1
 .Lcount.1:
