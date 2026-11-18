@@ -1791,11 +1791,11 @@ chosen_called:
 	movl	%eax, -20(%rbp)
 	movl	-20(%rbp), %edi
 	call	f@PLT
+	movl	%eax, %ebx
 	jmp	.Lchosen_called.3
 .Lchosen_called.2:
-	movl	$0, %eax
+	movl	$0, %ebx
 .Lchosen_called.3:
-	movl	%eax, %ebx
 	movl	%ebx, %eax
 	jmp	.Lchosen_called.1
 .Lchosen_called.1:
@@ -1822,12 +1822,11 @@ chosen_widened:
 	movl	%edx, -20(%rbp)
 	cmpl	$0, -12(%rbp)
 	je	.Lchosen_widened.2
-	movl	-16(%rbp), %eax
+	movslq	-16(%rbp), %rbx
 	jmp	.Lchosen_widened.3
 .Lchosen_widened.2:
-	movl	-20(%rbp), %eax
+	movslq	-20(%rbp), %rbx
 .Lchosen_widened.3:
-	movslq	%eax, %rbx
 	movq	%rbx, %rax
 	jmp	.Lchosen_widened.1
 .Lchosen_widened.1:
@@ -1837,6 +1836,147 @@ chosen_widened:
 	ret
 	.cfi_endproc
 	.size	chosen_widened, .-chosen_widened
+	.globl	chosen_stepped
+	.type	chosen_stepped, @function
+chosen_stepped:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	subq	$24, %rsp
+	movl	%edi, -12(%rbp)
+	movl	%esi, -16(%rbp)
+	movq	%rdx, -24(%rbp)
+	movl	%ecx, -28(%rbp)
+	cmpl	$0, -12(%rbp)
+	je	.Lchosen_stepped.2
+	movl	-16(%rbp), %eax
+	movl	%eax, -32(%rbp)
+	movl	-32(%rbp), %edi
+	call	f@PLT
+	movl	%eax, %ebx
+	jmp	.Lchosen_stepped.3
+.Lchosen_stepped.2:
+	movq	-24(%rbp), %rax
+	movslq	-28(%rbp), %rcx
+	movl	(%rax,%rcx,4), %ebx
+	movl	%ebx, %edx
+	addl	$1, %edx
+	movl	%edx, (%rax,%rcx,4)
+.Lchosen_stepped.3:
+	movl	%ebx, %eax
+	jmp	.Lchosen_stepped.1
+.Lchosen_stepped.1:
+	leaq	-8(%rbp), %rsp
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	chosen_stepped, .-chosen_stepped
+	.globl	chosen_divided
+	.type	chosen_divided, @function
+chosen_divided:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	subq	$24, %rsp
+	movl	%edi, -12(%rbp)
+	movl	%esi, -16(%rbp)
+	movl	%edx, -20(%rbp)
+	movl	%ecx, -24(%rbp)
+	cmpl	$0, -12(%rbp)
+	je	.Lchosen_divided.2
+	movl	-16(%rbp), %eax
+	movl	%eax, -28(%rbp)
+	movl	-28(%rbp), %edi
+	call	f@PLT
+	jmp	.Lchosen_divided.3
+.Lchosen_divided.2:
+	movl	-20(%rbp), %eax
+	cltd
+	idivl	-24(%rbp)
+.Lchosen_divided.3:
+	movl	%eax, %ebx
+	movl	%ebx, %eax
+	jmp	.Lchosen_divided.1
+.Lchosen_divided.1:
+	leaq	-8(%rbp), %rsp
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	chosen_divided, .-chosen_divided
+	.globl	chosen_constant
+	.type	chosen_constant, @function
+chosen_constant:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movl	%esi, -16(%rbp)
+	cmpl	$0, -12(%rbp)
+	je	.Lchosen_constant.2
+	movslq	-16(%rbp), %rbx
+	jmp	.Lchosen_constant.3
+.Lchosen_constant.2:
+	movq	$-1, %rbx
+.Lchosen_constant.3:
+	movq	%rbx, %rax
+	jmp	.Lchosen_constant.1
+.Lchosen_constant.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	chosen_constant, .-chosen_constant
+	.globl	chosen_promoted
+	.type	chosen_promoted, @function
+chosen_promoted:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movb	%sil, -13(%rbp)
+	movb	%dl, -14(%rbp)
+	cmpl	$0, -12(%rbp)
+	je	.Lchosen_promoted.2
+	movsbl	-13(%rbp), %eax
+	jmp	.Lchosen_promoted.3
+.Lchosen_promoted.2:
+	movsbl	-14(%rbp), %eax
+.Lchosen_promoted.3:
+	movslq	%eax, %rbx
+	movq	%rbx, %rax
+	jmp	.Lchosen_promoted.1
+.Lchosen_promoted.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	chosen_promoted, .-chosen_promoted
 	.globl	char_operand
 	.type	char_operand, @function
 char_operand:

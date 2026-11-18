@@ -1313,8 +1313,10 @@ TYPES(RETURNED)
    a read of the variable across the branch that writes it, which ISO
    leaves undefined and clang -O0 writes left to right, as
    assign_order_; br_call_ and br_div_ have an arm pinned by a call and
-   by a division.  A narrow variable is written through the
-   assignment's conversion.  The main keeps a divisor from 0 and -1. */
+   by a division; br_step_ has a call as the first arm and a step of a
+   local as the second, and br_own_ the variable itself as the first
+   arm.  A narrow variable is written through the assignment's
+   conversion.  The main keeps a divisor from 0 and -1. */
 #define BRANCHED(T, N)                                                  \
     long br_and_##N(T a, T b)                                           \
     {                                                                   \
@@ -1367,6 +1369,19 @@ TYPES(RETURNED)
         register T r;                                                   \
         r = c ? a / b : a;                                              \
         return r;                                                       \
+    }                                                                   \
+    long br_step_##N(int c, T a, long b)                                \
+    {                                                                   \
+        register T r;                                                   \
+        T x = a;                                                        \
+        r = c ? lret_##N(b) : x++;                                      \
+        return r * 7 + x;                                               \
+    }                                                                   \
+    long br_own_##N(int c, T a, T b)                                    \
+    {                                                                   \
+        register T r = a;                                               \
+        r = c ? r : b;                                                  \
+        return r;                                                       \
     }
 
 TYPES(BRANCHED)
@@ -1382,9 +1397,10 @@ TYPES(BRANCHED)
    a long and of a pointer, de_step_; the address of a row's first
    element and a row's decay, three elements a row, local and global,
    into a register pointer, de_rows_, which the main gives an index of
-   each row; and a value extended into a long and an unsigned long,
-   from an operation, another register variable, a ?: and a product,
-   de_widened_. */
+   each row; a value extended into a long and an unsigned long, from
+   an operation, another register variable, a ?: and a product,
+   de_widened_; and a ?: widened into a long and an unsigned long whose
+   arm is a constant, a truth value or an operation, de_wide_arms_. */
 #define DEST_EDGE(T, N)                                                 \
     T de_global_##N[4][3];                                              \
     long de_left_##N(T a, T b)                                          \
@@ -1482,6 +1498,20 @@ TYPES(BRANCHED)
         l = c ? a : b;                                                  \
         s = s * 7 + l;                                                  \
         l = x * 3;                                                      \
+        return s * 7 + l;                                               \
+    }                                                                   \
+    long de_wide_arms_##N(int c, T a, T b)                              \
+    {                                                                   \
+        register long l;                                                \
+        register unsigned long u;                                       \
+        long s;                                                         \
+        l = c ? a : -1;                                                 \
+        s = l;                                                          \
+        u = c ? -7 : b;                                                 \
+        s = s * 7 + u;                                                  \
+        l = c ? a < b : 5;                                              \
+        s = s * 7 + l;                                                  \
+        l = c ? a + b : b;                                              \
         return s * 7 + l;                                               \
     }
 

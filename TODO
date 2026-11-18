@@ -155,37 +155,50 @@ left operand; with the third, =ordered()='s boundary goes.
 Check: a function of =register-destination= for each, with no =mov=
 into the variable's register.
 
-** TODO A ~?:~ into a register variable keeps its join in two shapes
+** TODO A ~?:~ into a register variable keeps its join where each arm needs its own write
 
-Each path of ~?:~ writes the =register= variable it is assigned to
-(=backend.md= chapter 4), but for two shapes that join in an
-expression register. A conditional the assignment widens, ~l = c ? x
-: y~ into a =long= from two =int= arms, joins in =eax= and is
-extended into the variable after the join, =movslq %eax, %rbx=,
-where each path could load its arm extended, =movslq -16(%rbp),
-%rbx=, an instruction fewer on each. A first arm whose row writes
-no variable, a call's result, joins and is moved, and there a second
-arm that could write the variable is moved too, ~r = c ? f(x) :
-p[i]++~; no test has that shape.
+On x86-64 each path writes the =register= variable where one arm's
+row writes it (=backend.md= chapter 4): a conditional the assignment
+widens hands the conversion to each arm, and a first arm whose row
+writes no variable moves its value in on its own path. A widened
+conditional whose arms are promoted narrow objects keeps the join:
+~l = c ? a : b~ into a =long= on two =char=s is =movsbl -13(%rbp),
+%eax= on each path and =movslq %eax, %rbx= after the join, where
+=movsbq -13(%rbp), %rbx= on each path is one instruction; the
+widening by the load does not look through the promotion. Five
+functions of the probes (=de_widened_c= to =de_widened_us=) and
+=register-destination='s =chosen_promoted= have it. On aarch64 both
+shapes keep the join: =chosen_widened='s =sxtw x19, w0= and
+=chosen_called='s =mov w19, w0= after it.
 
-Fix: none taken. The first wants the conversion handed to each arm;
-for the second, the second path would write the variable and the
-first move into it on its own path.
+Fix: on x86-64, the load of a narrow object under a promotion and a
+widening is extended to the outer width in one instruction; on
+aarch64, the conversion handed to each arm and the first path's move.
 
-Check: =register-destination='s =chosen_widened= and
-=chosen_called=, and the count of moves after a join into a register
-variable over =tests=.
+Check: =chosen_promoted= with =movsbq= on each path and the five
+functions shorter; on aarch64, =chosen_widened= and =chosen_called=
+with no =mov= after the join.
 
-** TODO =cast()= stands under no comment of its own in either generator
+** TODO x86-64: a path of ~?:~ whose arm is the variable's own read writes it to itself
 
-In =src/c1-x86-64.cc= and =src/c1-aarch64.cc=, =retyped()= sits
-between =cast()='s comment and =cast()=: the two comments run
-together above =retyped()=, and =cast()= stands bare.
+~r = c ? x : r~ on a ~register int r~ writes =movl %ebx, %ebx= on
+the second path: =arm_into()= in =src/c1-x86-64.cc= moves every arm
+whose row did not take the variable, its own read included. No test
+has the shape.
+
+Fix: =arm_into()= writes nothing for a read of the variable itself.
+
+Check: a =register-destination= function with no =mov= on that path.
+
+** TODO aarch64: =cast()= stands under no comment of its own
+
+In =src/c1-aarch64.cc=, =retyped()= sits between =cast()='s comment
+and =cast()=: the two comments run together above =retyped()=, and
+=cast()= stands bare.
 
 Fix: =cast()='s comment moves down to =cast()=.
 
-Check: each of the two functions is under its own comment, in both
-files.
+Check: each of the two functions is under its own comment.
 
 ** TODO aarch64: a stack parameter at the frame's limit is refused
 

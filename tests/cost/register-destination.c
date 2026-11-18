@@ -37,11 +37,13 @@
    logical_and() and logical_or() write r = a && b and r = a || b, and
    logical_itself() r = r && b, whose condition reads the variable;
    chosen() writes r = c ? x : y, and chosen_reading() r = c ? r + 1 :
-   0, whose first arm reads it; beside them chosen_called() r = c ?
-   f(x) : 0, whose first arm's call writes no variable, which keeps the
-   join and the mov, and chosen_widened() a conditional widened to a
-   long, which keeps the join and extends it into the register.  Each
-   path of &&, || and ?: writes the register.
+   0, whose first arm reads it; chosen_called() and chosen_stepped()
+   r = c ? f(x) : 0 and r = c ? f(x) : p[i]++, whose first arm's call
+   writes no variable, and chosen_divided() r = c ? f(x) : a / b, whose
+   second arm's division writes none either; chosen_widened() and
+   chosen_constant() a conditional widened to a long, r = c ? x : y
+   and r = c ? x : -1, and chosen_promoted() r = c ? a : b on two
+   chars, whose arms each need an extension after their load.
 
    char_operand() and char_operand_left() write r = c + 5 and r = 5 +
    c on a register char c, whose read is valid to the int's width,
@@ -135,9 +137,15 @@
    the two paths, logical_itself()'s cmpl $0, %ebx before them; in
    chosen() movl -16(%rbp), %ebx and movl -20(%rbp), %ebx on the two
    paths, and in chosen_reading() addl $1, %ebx and movl $0, %ebx, each
-   with no mov into ebx after the join; in chosen_called() the call's
-   result and movl $0, %eax joined in eax and movl %eax, %ebx after the
-   join, and in chosen_widened() movslq %eax, %rbx after it.  In
+   with no mov into ebx after the join; in chosen_called() and
+   chosen_stepped() movl %eax, %ebx after the call on its own path, and
+   on the other movl $0, %ebx and the step's load movl (%rax,%rcx,4),
+   %ebx; in chosen_widened() movslq -16(%rbp), %rbx and movslq
+   -20(%rbp), %rbx on the two paths, and in chosen_constant() movslq
+   -16(%rbp), %rbx and movq $-1, %rbx, with no instruction after the
+   join; in chosen_divided() the call's result and the quotient joined
+   in eax and movl %eax, %ebx after the join, and in chosen_promoted()
+   the two movsbl joined in eax and movslq %eax, %rbx after it.  In
    char_operand() and char_operand_left() one listing, movl %ebx,
    %r12d; addl $5, %r12d; in int_widened() the sum in rax, movslq %ebx,
    %rax and addq $5, %rax, and movq %rax, %r12; in register_product()
@@ -200,10 +208,13 @@
    #32] in chosen(), and add w19, w19, #1 and mov w19, #0 in
    chosen_reading(), with no mov into w19 after the join; in
    chosen_called() the call's result and mov w0, #0 joined in w0 and mov
-   w19, w0 after the join, and in chosen_widened() sxtw x19, w0 after
-   it; add w20, w19, #5 in char_operand() and char_operand_left(); sxtw
-   x0, w19 and add x20, x0, #5 in int_widened(); mul w20, w19, w0 after
-   mov w0, #4 in register_product(); in prefix_step() the step written
+   w19, w0 after the join, the same in chosen_stepped() after the
+   step's mov w0, w2 and in chosen_divided() after sdiv w0, w0, w1, and
+   in chosen_widened(), chosen_constant() and chosen_promoted() sxtw
+   x19, w0 after it; add w20, w19, #5 in char_operand() and
+   char_operand_left(); sxtw x0, w19 and add x20, x0, #5 in
+   int_widened(); mul w20, w19, w0 after mov w0, #4 in
+   register_product(); in prefix_step() the step written
    into the register and the store from it, add w19, w0, #1; str w19,
    [x29, #24], and sub w19, w0, #1, and in prefix_pointer() add x19,
    x0, #4; str x19, [x29, #24]; in prefix_char() add w0, w0, #1, strb
@@ -868,6 +879,42 @@ chosen_widened(int c, int x, int y)
         register long r;
 
         r = c ? x : y;
+        return r;
+}
+
+int
+chosen_stepped(int c, int x, int *p, int i)
+{
+        register int r;
+
+        r = c ? f(x) : p[i]++;
+        return r;
+}
+
+int
+chosen_divided(int c, int x, int a, int b)
+{
+        register int r;
+
+        r = c ? f(x) : a / b;
+        return r;
+}
+
+long
+chosen_constant(int c, int x)
+{
+        register long r;
+
+        r = c ? x : -1;
+        return r;
+}
+
+long
+chosen_promoted(int c, char a, char b)
+{
+        register long r;
+
+        r = c ? a : b;
         return r;
 }
 

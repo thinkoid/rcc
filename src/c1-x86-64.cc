@@ -1349,6 +1349,80 @@ initialize(state_t &s, const expr_t &e, std::string_view to, int width)
     release(s, v);
 }
 
+// The load of a signed object in memory extended to a cast's width,
+// backend.md 6.3: movslq -4(%rbp), %rax for (long) i on an int, movsbq
+// for a signed char.  It reads the bytes the load at 32 bits reads, at
+// the object's width (G10), and the cast then finds the value valid to
+// its width.  The rule is the Seventh Edition compiler's: match(), in
+// c10.c, tries a row again with the conversion dropped, and its tables
+// convert an operand in memory in the instruction that reads it.
+value_t
+extending_load(state_t &s,
+               const expr_t &e,
+               const int_t &from,
+               int to,
+               into_t *into = nullptr)
+{
+    return load(s, address(s, e), from, std::max(32, to), into);
+}
+
+// The integer conversion of the operand e to the type to.  G2:
+// narrowing is no instruction, the narrower register name is the
+// value; widening extends by the operand's signedness, and only when
+// the register is not already valid to the new width, as it is after
+// the load of a char or a 32-bit write of an unsigned value.  A signed
+// object in memory is loaded extended to the new width,
+// extending_load(), so the load is the widening; an unsigned one is
+// loaded as any read, valid to 64 bits by the load's own extension.
+// The object may be under casts that keep its bits, object_under()'s:
+// (long) (int) u is movslq -4(%rbp), %rax, and (unsigned long)
+// (unsigned) i the movl, valid to 64 bits, each reading the object at
+// its own width (G10).  A signed constant widened is the constant of
+// the new type, its row's mov, movq $-1, %rbx, where an unsigned one's
+// movl leaves it valid to 64 bits already.  A change of signedness
+// alone is nothing.  A pointer is its integer view, so pointer to
+// pointer is nothing, an integer widens to a pointer by its own
+// signedness (6.3.2.3p5), and a pointer narrows to an integer by its
+// low bits (p6).  A register variable widens into a fresh register,
+// movslq %ebx, %rax, and narrows as its read: the read, not the
+// variable, is valid to less.  A register variable handed down goes on
+// to the operand's row through() a conversion that leaves its
+// representation, and a load takes it: register int x = c is movsbl
+// -1(%rbp), %ebx (chapter 4).  The register the consumer of the value
+// names, wanted, goes on to the operand, and a widening writes its
+// extension there, extended()'s (6.1).
+value_t
+converted(state_t &s,
+          const expr_t &e,
+          const type_t &to,
+          into_t *into = nullptr,
+          unsigned wanted = 0)
+{
+    const auto &from = integer(e.type);
+    const auto &target = integer(to);
+    const bool widens = target.width > from.width;
+
+    if (widens && from.is_signed && is< literal_t >(e))
+        return literal(s, { widened(as< literal_t >(e).value, from) }, to,
+                       into);
+
+    const auto onward = through(into, target, widens);
+
+    const auto *object = widens ? object_under(e) : nullptr;
+    const bool loads = object && (from.is_signed || object != &e);
+    const int width = from.is_signed ? target.width : 32;
+
+    auto v = loads ? extending_load(s, *object, from, width, onward) :
+                     rvalue(s, e, onward, wanted);
+    if (widens)
+        v = extended(s, v, from, target.width, wanted, into);
+
+    auto &valid = s.values[v.id].valid;
+    valid = std::min(valid, target.width);
+
+    return v;
+}
+
 const char *
 arithmetic_mnemonic(binary_op_t op)
 {
@@ -2361,28 +2435,112 @@ arm(state_t &s, const expr_t &e, reg_t j)
 // operand is, computed_into()'s, by the arm's row where it takes the
 // variable and otherwise by establish()'s mov after it, movl
 // -12(%rbp), %ebx or addl $1, %ebx for an arm r + 1, which reads the
-// variable before the path writes it.  The value is consumed.
+// variable before the path writes it.  Under a conversion that widens
+// the conditional, to, the arm is converted()'s, movslq -16(%rbp), %rbx
+// for an int in memory.  The value is consumed.
 void
-arm_into(state_t &s, const expr_t &arm, const into_t &into)
+arm_into(state_t &s,
+         const expr_t &arm,
+         const into_t &into,
+         const type_t *to = nullptr)
 {
     into_t path { into.variable, false, into.as };
-    const auto v = rvalue(s, arm, &path);
+    const auto v = to ? converted(s, arm, *to, &path) : rvalue(s, arm, &path);
     if (!path.taken)
         establish(s, into.variable, reg_of(s, v));
 
     release(s, v);
 }
 
+// Whether the row of an arm of ?: handed a register variable writes the
+// variable's register itself, its last instruction the one that writes
+// it, chapter 4: a constant, its mov; an object in memory, its load; a
+// truth value, the setcc and the movzbl or the movl $1 and the movl $0;
+// and, the arm unconverted, the value of a step of an object in memory
+// whose address does not read the variable, its load.  Under a
+// conversion that widens the arm, widened, the object may be under
+// casts that keep its bits, and its load is the extending one (6.3).
+bool
+lands_in(const expr_t &arm, const symbol_t *variable, bool widened)
+{
+    if (is< literal_t >(arm))
+        return true;
+
+    if (widened ? object_under(arm) != nullptr : in_memory(arm))
+        return true;
+
+    if (is< binary_t >(arm)) {
+        const auto op = as< binary_t >(arm).op;
+        return is_comparison(op) || op == binary_op_t::log_and ||
+               op == binary_op_t::log_or;
+    }
+
+    if (!is< unary_t >(arm))
+        return false;
+
+    const auto &u = as< unary_t >(arm);
+    if (u.op == unary_op_t::log_not)
+        return true;
+
+    return !widened && is_step(u.op) && in_memory(*u.arg) &&
+           !names(*u.arg, variable);
+}
+
 // Whether a conditional handed a register variable may have each path
 // write the variable's register, chapter 4: one of the variable's own
 // type, or of the type into's row computes in, computed_type(), so that
-// each arm is the right operand of an assignment to it; a conditional
-// under a conversion that widens it to the variable keeps its join and
-// the mov after the conversion.
+// each arm is the right operand of an assignment to it.
 bool
 joins_into(const expr_t &e, const into_t *into)
 {
     return into && !into->taken && e.type == computed_type(*into);
+}
+
+// Whether a conditional under a conversion that widens it to the type
+// into's row computes in has each path write the register variable,
+// the conversion handed to each arm, chapter 4: where the row of one
+// arm at least writes the register, lands_in()'s, so that the paths
+// write no more than the join and the extension after it would, l = c ?
+// x : y into a register long from two ints being movslq -16(%rbp), %rbx
+// and movslq -20(%rbp), %rbx.  Two arms that each need an extension of
+// their own keep the join and the one extension after it.
+bool
+widens_into(const cast_t &c, const type_t &to, const into_t *into)
+{
+    if (!into || into->taken || !is< conditional_t >(*c.arg) ||
+        !(to == computed_type(*into)))
+        return false;
+
+    if (!is< int_t >(to) || !is< int_t >(c.arg->type) ||
+        integer(to).width <= integer(c.arg->type).width)
+        return false;
+
+    const auto &k = as< conditional_t >(*c.arg);
+
+    return lands_in(*k.yes, into->variable, true) ||
+           lands_in(*k.no, into->variable, true);
+}
+
+// The second path of a conditional each of whose paths writes the
+// register variable, chapter 4: the jump past it, the second arm into
+// the variable, arm_into()'s, converted to to where it is given, and
+// the join, after which the value is the variable's read.
+value_t
+second_path(state_t &s,
+            const expr_t &arm,
+            into_t &into,
+            const type_t *to,
+            int no,
+            int end)
+{
+    jump(s, end);
+
+    place_label(s, no);
+    arm_into(s, arm, into, to);
+
+    place_label(s, end);
+
+    return taken(s, into);
 }
 
 // 6.5.16p5: the arm not chosen is not evaluated, and the jump says so;
@@ -2397,17 +2555,24 @@ joins_into(const expr_t &e, const into_t *into)
 // its row can, and then each path writes the variable and no register
 // joins them: r = c ? x : y is movl -16(%rbp), %ebx on the first path
 // and the second arm's arm_into(), movl -20(%rbp), %ebx, and the value
-// is the variable's read.  An arm reads the variable on its own path
+// is the variable's read.  Where the first arm's row does not write the
+// variable, the first path moves its value in, and the second arm's
+// row writes it where lands_in() says, r = c ? f(x) : p[i]++ being
+// movl %eax, %ebx after the call and the step's movl (%rax,%rcx,4),
+// %ebx; a read of the variable itself as the first arm is its value
+// already.  Under a conversion that widens the conditional to the
+// variable, to, which cast() hands down where widens_into(), each arm
+// is converted into it.  An arm reads the variable on its own path
 // before the path writes it, and the assignment's preserve() has copied
-// every read of it held across the branch.  Where the first arm's row
-// does not write the variable, the arms join as for any consumer and
-// the assignment moves the join in after it, a mov a path would
-// otherwise write on each side (chapter 4).
+// every read of it held across the branch.  Otherwise the arms join as
+// for any consumer and the assignment moves the join in after it
+// (chapter 4).
 value_t
 conditional(state_t &s,
             const expr_t &e,
             into_t *into = nullptr,
-            unsigned wanted = 0)
+            unsigned wanted = 0,
+            const type_t *to = nullptr)
 {
     const auto &c = as< conditional_t >(e);
     const auto &t = e.type;
@@ -2424,6 +2589,11 @@ conditional(state_t &s,
 
     cbranch(s, *c.cond, no, false);
 
+    if (to) {
+        arm_into(s, *c.yes, *into, to);
+        return second_path(s, *c.no, *into, to, no, end);
+    }
+
     const int width = std::max(32, integer(t).width);
     const bool is_signed = integer(t).is_signed;
 
@@ -2435,16 +2605,12 @@ conditional(state_t &s,
                      named ? arm(s, *c.yes, *named) :
                              rvalue(s, *c.yes);
 
-    if (path.taken) {
+    if (path.taken || (joins && lands_in(*c.no, into->variable, false))) {
+        if (!path.taken && s.values[yes.id].variable != into->variable)
+            establish(s, into->variable, reg_of(s, yes));
         release(s, yes);
-        jump(s, end);
 
-        place_label(s, no);
-        arm_into(s, *c.no, *into);
-
-        place_label(s, end);
-
-        return taken(s, *into);
+        return second_path(s, *c.no, *into, nullptr, no, end);
     }
 
     if (borrowed(s, yes))
@@ -3410,49 +3576,6 @@ assign(state_t &s, const assign_t &a, unsigned wanted = 0)
     return v;
 }
 
-// The load of a signed object in memory extended to a cast's width,
-// backend.md 6.3: movslq -4(%rbp), %rax for (long) i on an int, movsbq
-// for a signed char.  It reads the bytes the load at 32 bits reads, at
-// the object's width (G10), and the cast then finds the value valid to
-// its width.  The rule is the Seventh Edition compiler's: match(), in
-// c10.c, tries a row again with the conversion dropped, and its tables
-// convert an operand in memory in the instruction that reads it.
-value_t
-extending_load(state_t &s,
-               const expr_t &e,
-               const int_t &from,
-               int to,
-               into_t *into = nullptr)
-{
-    return load(s, address(s, e), from, std::max(32, to), into);
-}
-
-// An integer conversion.  G2: narrowing is no instruction, the narrower
-// register name is the value; widening extends by the operand's
-// signedness, and only when the register is not already valid to the
-// new width, as it is after the load of a char or a 32-bit write of an
-// unsigned value.  A signed object in memory is loaded extended to the
-// new width, extending_load(), so the load is the widening; an unsigned
-// one is loaded as any read, valid to 64 bits by the load's own
-// extension.  The object may be under casts that keep its bits,
-// object_under()'s: (long) (int) u is movslq -4(%rbp), %rax, and
-// (unsigned long) (unsigned) i the movl, valid to 64 bits, each
-// reading the object at its own width (G10).  A change of signedness
-// alone is nothing.  A pointer
-// is its integer view, so pointer to pointer is nothing, an integer
-// widens to a pointer by its own signedness (6.3.2.3p5), and a pointer
-// narrows to an integer by its low bits (p6).  An array decays to its
-// address, 6.3.2.1p3, and a function designator to the pointer to the
-// function, p4.  A cast to void evaluates its operand for its
-// effect alone, chapter 6.6.  A register variable widens into a fresh
-// register, movslq %ebx, %rax, and narrows as its read: the read, not
-// the variable, is valid to less.  A register variable handed down goes
-// on to the operand's row through() a conversion that leaves its
-// representation, and a load takes it: register int x = c is
-// movsbl -1(%rbp), %ebx (chapter 4).  The decay and the function's
-// address take it as & does, leaq buf(%rip), %rbx.  The register the
-// consumer of the value names, wanted, goes on to the operand, and a
-// widening writes its extension there, extended()'s (6.1).
 // The operand of a conversion that retypes(), into the variable's
 // register, backend.md chapter 4.  An object in memory, under casts
 // that keep its bits, is loaded at the extension of the conversion's
@@ -3483,6 +3606,15 @@ retyped(state_t &s, const cast_t &c, const int_t &target, into_t &into)
     return v;
 }
 
+// A cast: a change of signedness alone that retypes(), retyped()'s; a
+// conditional under a conversion that widens it into a register
+// variable, each path's arm widened into the variable's register where
+// widens_into() says (chapter 4); any other integer conversion,
+// converted()'s.  An array decays to its address, 6.3.2.1p3, and a
+// function designator to the pointer to the function, p4.  A cast to
+// void evaluates its operand for its effect alone, chapter 6.6.  The
+// decay and the function's address take a register variable handed down
+// as & does, leaq buf(%rip), %rbx.
 value_t
 cast(state_t &s,
      const cast_t &c,
@@ -3504,24 +3636,12 @@ cast(state_t &s,
     if (retypes(c, to, into))
         return retyped(s, c, integer(to), *into);
 
-    const auto &from = integer(c.arg->type);
-    const auto &target = integer(to);
-    const bool widens = target.width > from.width;
-    const auto onward = through(into, target, widens);
+    // l = c ? x : y into a register long: movslq -16(%rbp), %rbx on each
+    // path
+    if (widens_into(c, to, into))
+        return conditional(s, *c.arg, into, wanted, &to);
 
-    const auto *object = widens ? object_under(c) : nullptr;
-    const bool loads = object && (from.is_signed || object != c.arg.get());
-    const int width = from.is_signed ? target.width : 32;
-
-    auto v = loads ? extending_load(s, *object, from, width, onward) :
-                     rvalue(s, *c.arg, onward, wanted);
-    if (widens)
-        v = extended(s, v, from, target.width, wanted, into);
-
-    auto &valid = s.values[v.id].valid;
-    valid = std::min(valid, target.width);
-
-    return v;
+    return converted(s, *c.arg, to, into, wanted);
 }
 
 // The callee of a call through a pointer, chapter 8: a hidden local of

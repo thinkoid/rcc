@@ -2363,6 +2363,172 @@ chosen_widened:
 	ret
 	.cfi_endproc
 	.size	chosen_widened, .-chosen_widened
+	.globl	chosen_stepped
+	.type	chosen_stepped, @function
+chosen_stepped:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -32
+	str	w0, [x29, #24]
+	str	w1, [x29, #28]
+	str	x2, [x29, #32]
+	str	w3, [x29, #40]
+	ldr	w0, [x29, #24]
+	cbz	w0, .Lchosen_stepped.2
+	ldr	w0, [x29, #28]
+	str	w0, [x29, #44]
+	ldr	w0, [x29, #44]
+	bl	f
+	b	.Lchosen_stepped.3
+.Lchosen_stepped.2:
+	ldr	x0, [x29, #32]
+	ldr	w1, [x29, #40]
+	ldr	w2, [x0, w1, sxtw #2]
+	add	w3, w2, #1
+	str	w3, [x0, w1, sxtw #2]
+	mov	w0, w2
+.Lchosen_stepped.3:
+	mov	w19, w0
+	mov	w0, w19
+	b	.Lchosen_stepped.1
+.Lchosen_stepped.1:
+	.cfi_def_cfa wsp, 48
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	chosen_stepped, .-chosen_stepped
+	.globl	chosen_divided
+	.type	chosen_divided, @function
+chosen_divided:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -32
+	str	w0, [x29, #24]
+	str	w1, [x29, #28]
+	str	w2, [x29, #32]
+	str	w3, [x29, #36]
+	ldr	w0, [x29, #24]
+	cbz	w0, .Lchosen_divided.2
+	ldr	w0, [x29, #28]
+	str	w0, [x29, #40]
+	ldr	w0, [x29, #40]
+	bl	f
+	b	.Lchosen_divided.3
+.Lchosen_divided.2:
+	ldr	w0, [x29, #32]
+	ldr	w1, [x29, #36]
+	sdiv	w0, w0, w1
+.Lchosen_divided.3:
+	mov	w19, w0
+	mov	w0, w19
+	b	.Lchosen_divided.1
+.Lchosen_divided.1:
+	.cfi_def_cfa wsp, 48
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	chosen_divided, .-chosen_divided
+	.globl	chosen_constant
+	.type	chosen_constant, @function
+chosen_constant:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -16
+	str	w0, [x29, #24]
+	str	w1, [x29, #28]
+	ldr	w0, [x29, #24]
+	cbz	w0, .Lchosen_constant.2
+	ldr	w0, [x29, #28]
+	b	.Lchosen_constant.3
+.Lchosen_constant.2:
+	mov	w0, #-1
+.Lchosen_constant.3:
+	sxtw	x19, w0
+	mov	x0, x19
+	b	.Lchosen_constant.1
+.Lchosen_constant.1:
+	.cfi_def_cfa wsp, 32
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	chosen_constant, .-chosen_constant
+	.globl	chosen_promoted
+	.type	chosen_promoted, @function
+chosen_promoted:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -16
+	str	w0, [x29, #24]
+	strb	w1, [x29, #28]
+	strb	w2, [x29, #29]
+	ldr	w0, [x29, #24]
+	cbz	w0, .Lchosen_promoted.2
+	ldrb	w0, [x29, #28]
+	b	.Lchosen_promoted.3
+.Lchosen_promoted.2:
+	ldrb	w0, [x29, #29]
+.Lchosen_promoted.3:
+	sxtw	x19, w0
+	mov	x0, x19
+	b	.Lchosen_promoted.1
+.Lchosen_promoted.1:
+	.cfi_def_cfa wsp, 32
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	chosen_promoted, .-chosen_promoted
 	.globl	char_operand
 	.type	char_operand, @function
 char_operand:

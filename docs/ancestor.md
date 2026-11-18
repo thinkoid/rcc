@@ -1947,10 +1947,11 @@ Other rows keep the `mov`, by `backend.md` chapter 4 and `aarch64.md`
 chapter 4:
 
 - on both targets, a call's result, a `?:` whose first arm's row
-  writes no variable, a call's among them, another register
-  variable's read, a value widened or narrowed into a narrow or an
-  `unsigned` variable, and a step's value whose address reads the
-  variable, `r = a[r]++`; a conversion that changes the signedness
+  writes no variable, a call's among them, on x86-64 only where the
+  second arm's row writes none either, another register variable's
+  read, a value widened or narrowed into a narrow or an `unsigned`
+  variable, and a step's value whose address reads the variable, `r
+  = a[r]++`; a conversion that changes the signedness
   alone is the load or the row into the register, `register unsigned
   u = i` the one load, and a step's value on an object in memory the
   load of the object into the register, `r = x++` being `movl

@@ -314,18 +314,25 @@ same_bits(const cast_t &c, const type_t &to)
     return scalars && integer(from).width == integer(to).width;
 }
 
-// The object in memory a cast's operand reads, or nullptr: the operand,
-// or the read under casts that keep its bits, (long) (int) u's u, an
-// object of the operand's width either way.  The cast's own load may
-// read it (backend.md 6.3, a widening by the load; chapter 4).
+// The object in memory a conversion's operand reads, or nullptr: the
+// operand, or the read under casts that keep its bits, (long) (int) u's
+// u, an object of the operand's width either way.  The conversion's own
+// load may read it (backend.md 6.3, a widening by the load; chapter 4).
 const expr_t *
-object_under(const cast_t &c)
+object_under(const expr_t &operand)
 {
-    const expr_t *top = c.arg.get();
+    const expr_t *top = &operand;
     while (is< cast_t >(*top) && same_bits(as< cast_t >(*top), top->type))
         top = as< cast_t >(*top).arg.get();
 
     return in_memory(*top) ? top : nullptr;
+}
+
+// The object in memory a cast's operand reads, object_under()'s.
+const expr_t *
+object_under(const cast_t &c)
+{
+    return object_under(*c.arg);
 }
 
 // Whether a conversion to the type to changes the signedness alone, of

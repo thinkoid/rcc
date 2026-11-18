@@ -359,13 +359,25 @@ are the others (7.2, 6.5).
   arm read their operands before their path writes, so `r = r && b`
   tests the old `r` and `r = c ? r + 1 : 0` steps it, `addl $1,
   %ebx`; the assignment's `preserve()` has copied every read of the
-  variable held across the paths before they diverge (6.7). A `?:`
-  whose first arm's row does not write the register, a call's
-  result, joins its arms as for any consumer and keeps the `mov`
-  after the join, `r = c ? f(x) : 0`. One of a type the assignment
-  widens, `l = c ? x : y` into a `long`, joins its arms in an
-  expression register too, and the extension after the join writes
-  the variable's register, `movslq %eax, %rbx`.
+  variable held across the paths before they diverge (6.7). The paths
+  write no more than a join would, an expression register and the
+  one `mov` or extension after it. So a `?:` whose first arm's row
+  does not write the register, a call's result, moves that value in
+  on its own path where the second arm's row writes the register: a
+  constant, an object in memory, a truth value, or a step's value on
+  an object in memory whose address does not read the variable. `r =
+  c ? f(x) : 0` is `movl %eax, %ebx` after the `call` and `movl $0,
+  %ebx`, and a first arm that is the variable's own read writes
+  nothing. One of a type the assignment widens, `l = c ? x : y` into
+  a `long`, hands the conversion to each arm, where one arm's row at
+  least writes the register so, each path writing it extended,
+  `movslq -16(%rbp), %rbx` and `movslq -20(%rbp), %rbx`; a signed
+  constant arm is the constant of the variable's type, `movq $-1,
+  %rbx`. Where neither arm's row writes the register, `r = c ? f(x) :
+  a / b`, or each arm needs an extension of its own, `l = c ? a : b`
+  on two `char`s, the arms join as for any consumer, and the `mov` or
+  the extension after the join writes the register, `movslq %eax,
+  %rbx`.
 - A value extended is extended into the register: `r = a + b` into a
   `register long` from two `int`s is the sum, then `movslq %eax,
   %rbx`, and `r = i` from a `register int i` `movslq %ebx, %r12`. The
@@ -770,8 +782,9 @@ made in `eax`, and a remainder returned as a `long` is `movslq %edx,
 `char` result as a shift's count `movsbl %al, %ecx`. The two arms
 of `?:` join in the named register, each moved there where its value
 is elsewhere, and for a register variable each path writes the
-variable's register itself, `&&` and `||` their 1 and 0 (chapter
-4). Where the consumer names none they join in the first
+variable's register itself, through a conversion that widens the
+conditional too, `&&` and `||` their 1 and 0 (chapter 4). Where the
+consumer names none they join in the first
 arm's register, and the second arm is generated for that register as
 for a consumer's name, the registers below it reserved where nothing
 within the arm pins one, so that a load there writes it, `movl
@@ -833,7 +846,7 @@ written for it.
 | `-a`, `~a` | `neg L`, `not L` | G1 for `-INT_MIN` |
 | `!a` | `cmp $0, L`; `sete %Lb`; `movzbl %Lb, L`, or the two into the register a consumer names where the `cmp` leaves it free, `sete %al` after `cmpl $0, %edx` (6.1) | as a value; as a condition, chapter 7 |
 | `a < b` and the rest, as a value | `cmp R, L`, `cmpl -8(%rbp), %eax` for an object in memory, and for an object in memory against a constant the `cmp` of the object, `cmpl $5, -4(%rbp)`, as in a condition (7.1), and against a register variable's read the `cmp` of the object with the variable's register, `cmpl %ebx, -4(%rbp)` (6.1), `L` then taken for the `setcc`; `setcc %Lb`; `movzbl %Lb, L`, or the two into the register a consumer names where the `cmp` leaves it free, `setl %al` after `cmpl %eax, %ecx` (6.1); a constant on the left the mirrored comparison (6.1), `5 < x` `cmpl $5, -4(%rbp); setg %al` | `setl`, `setle`, `setg`, `setge`, `sete`, `setne` signed; `setb`, `setbe`, `seta`, `setae` unsigned and for pointers (G7) |
-| `a && b`, `a \|\| b`, `a ? b : c`, as a value | jump code of chapter 7 into `L`, with `mov $0, L` and `mov $1, L` on the arms; the arms of `?:` join in the register the consumer names and otherwise in the first arm's, each arm's last instruction writing the join where it can and a `mov` into it where its value is elsewhere, `movl %edx, %eax` for `return c ? x % y : y` and the second arm's `movl -12(%rbp), %edx` where no consumer names one (6.1); into a register variable each path writes its register, `movl $1, %ebx` and `movl $0, %ebx` for `r = a && b` and each arm's own row for `r = c ? x : y`, where the first arm's row writes it (chapter 4) | no `setcc` chain |
+| `a && b`, `a \|\| b`, `a ? b : c`, as a value | jump code of chapter 7 into `L`, with `mov $0, L` and `mov $1, L` on the arms; the arms of `?:` join in the register the consumer names and otherwise in the first arm's, each arm's last instruction writing the join where it can and a `mov` into it where its value is elsewhere, `movl %edx, %eax` for `return c ? x % y : y` and the second arm's `movl -12(%rbp), %edx` where no consumer names one (6.1); into a register variable each path writes its register, `movl $1, %ebx` and `movl $0, %ebx` for `r = a && b` and each arm's own row for `r = c ? x : y`, where an arm's row writes it, the other arm's value moved in on its own path, `movl %eax, %ebx` after a call, and under a conversion that widens the conditional each arm extended, `movslq -16(%rbp), %rbx` (chapter 4) | no `setcc` chain |
 | `x = e` | `mov L, slot`, the value staying in `L`, and the place generated outside the register a consumer names, which `L` then is, `movq %rax, (%rcx,%rdx,8)` for a `return`'s value (6.1); into a register variable, the value computed in its register where its last instruction can write it, the load, `movl -12(%rbp), %ebx`, the operation, `addl -16(%rbp), %ebx` after it, the address, `leaq buf(%rip), %rbx`, `-` and `~`, `negl %ebx` after the load, and a comparison's `setl %bl; movzbl %bl, %ebx`, and `&&`, `||` and `?:` on each path, `movl $1, %ebx` and `movl $0, %ebx`, the value then the variable's read, and otherwise `mov L, reg` (chapter 4); a constant goes as the immediate straight into a register variable, `movl $0, %r12d`, or into memory when the assignment is evaluated for its effect alone, `movl $0, -12(%rbp)` (6.6) | a `char` store is `movb %Lb` |
 | `x op= e` | the address of `x` first, then `e`; in the effect context, the op on the object, `addl %eax, -12(%rbp)`, but for `*=`, `/=` and `%=` (6.6); in a value context, the load row, the op row, the store row, after `e`, the load into the register a consumer names, the place outside it (6.1); on a register variable, the op on the register in place, after `e`, and `p += n` on a register pointer at a size of 2, 4 or 8 the `leaq` into the register, `leaq (%rbx,%rax,4), %rbx` | `*=`, `/=` and `%=` are always `e`, then the load, the op and the store: `imul` has no memory destination and `idiv` none at all |
 | `++x`, `x++`, `--x`, `x--` | in the effect context, the op on the object, `addl $1, -8(%rbp)`, and no old value (6.6); in a value context, the load, `add $1` or `sub $1`, the store, the post forms keeping the old value in another register, the one a consumer names, the load and the place generated outside it (6.1) | `add $size` for a pointer |
