@@ -108,23 +108,6 @@ sum, in =src/c1-aarch64.cc='s address rows, as on x86-64.
 Check: those pins with the constant in the =ldr=, and no function
 longer.
 
-** TODO x86-64: a register variable's row of a local array at a size of no scale adds after the slot's =leaq=
-
-~q = m[i]~ into a =register= pointer, with ~m~ a local array of rows
-of 12 bytes, is =leaq -60(%rbp), %rbx; imulq $12, %rax, %rax; addq
-%rax, %rbx=, where =imulq; leaq -60(%rbp,%rax,1), %rbx= is one
-instruction fewer: the product is the operand's index at scale 1
-elsewhere (=backend.md= 6.3), but =offset_in()= in
-=src/c1-x86-64.cc= computes a register variable's sum in place.
-Twenty sites in ten functions of the registers probe have it,
-=de_rows_*= and =pedge_r=.
-
-Fix: the row of a register variable's sum at a size of no scale
-takes the product as the index of the slot's address.
-
-Check: those ten functions an instruction shorter at each site, and
-no function longer.
-
 ** TODO aarch64: the product of an index of no scale is added where it could be the access's register offset
 
 ~m[i][4]~ on a local ~char m[4][5]~ writes the product's =mov=,

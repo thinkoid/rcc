@@ -69,8 +69,8 @@
    f(), whose address is held across the call, forms it in one
    register, leaq -24(%rbp), %rax, the imulq and addq %rcx, %rax,
    which the call spills once, then subb %al, 1(%rcx); and
-   register_row(), q = m[i] into a register variable, is leaq
-   -60(%rbp), %rbx, the imulq and addq %rax, %rbx.
+   register_row(), q = m[i] into a register variable, is the imulq
+   and the one leaq -60(%rbp,%rax,1), %rbx into it.
 
    On aarch64 the listing must show first() returning the array's
    address, add x0, x29, #16, with no instruction after it, element()

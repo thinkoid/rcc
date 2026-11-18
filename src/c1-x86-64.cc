@@ -3220,6 +3220,20 @@ operates_in(const operation_t &b, const type_t &t, const into_t &into)
     return leaf_apart_from(*b.rhs, into.variable) && loads_into(*b.lhs, into);
 }
 
+// Whether P is a local array's slot plus a constant, the base of the
+// addressing form with rbp and no instruction (backend.md 6.3): a name's
+// address plus a constant whose root is a local's or a parameter's
+// name, which named_offset() reaches with no global defined.
+bool
+slot_rooted(const expr_t &p)
+{
+    static const std::unordered_set< const symbol_t * > none;
+
+    const auto named = named_offset(p, none);
+
+    return named && is< name_t >(*named->object);
+}
+
 // Whether r = P + N, N + P or P - N, of pointer type t, is the operation
 // on the variable's register, chapter 4: a row whose last instruction is
 // the addq or the subq on L, so not offset()'s leaq, which a register
@@ -3227,12 +3241,15 @@ operates_in(const operation_t &b, const type_t &t, const into_t &into)
 // type; L that loads_into() the register; and the two conditions on R.
 // The index is multiplied by a size no addressing form scales by in its
 // own register: R's, imulq $12, %rcx, %rcx, or the variable's for the
-// index of N + P.
+// index of N + P.  Not a local array's row by a variable index at such
+// a size, whose product joins the slot in the one leaq, unscaled()'s,
+// leaq -60(%rbp,%rax,1), %rbx for q = m[i] (6.3).
 bool
 offsets_in(const operation_t &b, const type_t &t, const into_t &into)
 {
     const auto &v = computed_type(into);
     if (scaled_sum(b, stride(t)) ||
+        (unscaled_sum(b, stride(t)) && slot_rooted(*b.lhs)) ||
         !(t == v || (is< pointer_t >(t) && is< pointer_t >(v))))
         return false;
 

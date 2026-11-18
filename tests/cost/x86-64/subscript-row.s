@@ -567,10 +567,9 @@ register_row:
 	pushq	%rbx
 	.cfi_offset %rbx, -24
 	movl	%edi, -12(%rbp)
-	leaq	-60(%rbp), %rbx
 	movslq	-12(%rbp), %rax
 	imulq	$12, %rax, %rax
-	addq	%rax, %rbx
+	leaq	-60(%rbp,%rax,1), %rbx
 	movq	%rbx, %rax
 	jmp	.Lregister_row.1
 .Lregister_row.1:

@@ -325,7 +325,10 @@ are the others (7.2, 6.5).
   below, `leaq rows(%rip), %rbx; imulq $12, -16(%rbp), %rax; addq
   %rax, %rbx`, as are a row's first element and a row's decay, `p =
   &rows[i][0]` and `p = rows[i]` into an `int *`, whose sum is the
-  same pointer as a pointer to the row.
+  same pointer as a pointer to the row; on a local array the slot is
+  the `leaq`'s displacement and the product its index, `p = m[i]` on
+  `int m[4][3]` being `imulq $12, %rax, %rax; leaq -60(%rbp,%rax,1),
+  %rbx` (6.3, an index of no scale).
 - A comparison's value is set in the register after the `cmp`, `setl
   %bl; movzbl %bl, %ebx`, and `!`'s the same, `sete %bl; movzbl %bl,
   %ebx`. The `cmp` has read both operands, the
@@ -1058,8 +1061,12 @@ one, `imulq $12, -16(%rbp), R` (6.1). The form does not reach:
 - the index written first, `i[p][1]`, which keeps the `p + n` row,
   `addq -8(%rbp), %rax` of `p` in memory after the `imulq`;
 - a register variable handed down whose sum the variable's register
-  computes in place, `q = m[i]`, `leaq -60(%rbp), %rbx` and the
-  `addq` after the `imulq` (chapter 4).
+  computes in place, on a pointer the register is loaded with, `q = p
+  + i` being `movq -16(%rbp), %rbx` and `addq %rax, %rbx` after the
+  `imulq`, or on the variable itself, `q = q + i` the `imulq` and the
+  `addq` alone (chapter 4); on a local array the product joins the
+  slot in the one `leaq` into the register, `q = m[i]` being `imulq
+  $12, %rax, %rax; leaq -60(%rbp,%rax,1), %rbx`.
 
 The sum `p[1] + i` as a value is the same address, the one `leaq
 12(%rax,%rcx,4), L` at a size of 2, 4 or 8, `i + p[1]` with `i`
