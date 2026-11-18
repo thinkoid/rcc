@@ -192,21 +192,6 @@ Check: =chosen_promoted= with =movsbq= and =ldrb w19= on each path and
 the five functions shorter, and =rem_arm_c= and =rem_arm_s= of the
 memory probe.
 
-** TODO aarch64: a register variable's own read is moved into its own register
-
-~r = c ? x : r~ on a ~register int r~ writes =mov w19, w19= on the
-second path, ~q = c ? p : q~ on a =register= pointer =mov x19, x19=,
-and ~r = r~ =mov w19, w19=; x86-64 writes nothing for each
-(=backend.md= chapter 4). =chosen_own_second()=,
-=chosen_own_pointer()= and =itself_assigned()= of
-=register-destination= pin it.
-
-Fix: the move into a register variable writes nothing for a read of
-the variable itself, in =src/c1-aarch64.cc=, as x86-64's =move_in()=
-does.
-
-Check: those three pins with no =mov= of a register onto itself.
-
 ** TODO x86-64: a ~?:~ whose second arm is the variable's own read keeps its join after a call
 
 ~r = c ? f(x) : r~ and ~r = c ? r : r~ on a ~register int r~ join in

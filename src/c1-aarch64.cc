@@ -668,6 +668,22 @@ establish(state_t &s, const symbol_t *sym, reg_t from)
     insn(s, mnemonic, { reg(variable_register(sym), width), reg(from, width) });
 }
 
+// A value no row wrote into the register variable sym's register moved
+// in, establish()'s mov, but for a read of sym itself, under conversions
+// that write nothing too: the register holds the variable's
+// representation already, which the mov would write again, so r = c ? x
+// : r on a register r writes no mov w19, w19 on the second path, and r =
+// r nothing at all (chapter 4).  A narrow variable's re-extension after
+// an operation in place is a write of new bits, settle()'s, and stays.
+void
+move_in(state_t &s, const symbol_t *sym, value_t v)
+{
+    if (s.values[v.id].variable == sym)
+        return;
+
+    establish(s, sym, reg_of(s, v));
+}
+
 // addresses
 
 // The size of the object a pointer points to, the stride of its
@@ -2324,7 +2340,8 @@ arm_value(state_t &s, const expr_t &arm, into_t &path)
 // One path of a branch into a register variable, chapter 4: the arm's
 // value written into the variable's register as an assignment's right
 // operand is, by arm_value() where the arm's row can, and otherwise by
-// establish()'s mov after it.  Under a conversion that widens the
+// move_in()'s mov after it, none for the variable's own read, r = c ? x
+// : r.  Under a conversion that widens the
 // conditional, to, the arm is converted()'s, its last instruction
 // writing the variable extended, ldrsw x19, [x29, #28] for an int in
 // memory.  The value is consumed.
@@ -2337,7 +2354,7 @@ arm_into(state_t &s,
     into_t path { into.variable, false, into.as };
     const auto v = to ? converted(s, arm, *to, &path) : arm_value(s, arm, path);
     if (!path.taken)
-        establish(s, into.variable, reg_of(s, v));
+        move_in(s, into.variable, v);
 
     release(s, v);
 }
@@ -2653,8 +2670,8 @@ conditional(state_t &s,
                              rvalue(s, *c.yes, nullptr, arm);
 
     if (path.taken || (joins && lands_in(*c.no, into->variable))) {
-        if (!path.taken && s.values[yes.id].variable != into->variable)
-            establish(s, into->variable, reg_of(s, yes));
+        if (!path.taken)
+            move_in(s, into->variable, yes);
         release(s, yes);
 
         return second_path(s, *c.no, *into, nullptr, no, end);
@@ -2941,16 +2958,17 @@ settle(state_t &s, const symbol_t *sym, value_t v, int width)
 // last instruction of the row at the top of e, handed the variable,
 // where that leaves the variable's representation, add w19, w0, w1, ldr
 // w19, [x29, #24], and the value is the variable's read; otherwise into
-// a register of its own, then the mov of establish(), mov w20, w0, or
-// mov w19, w20 from another register variable, and the value stays e's,
-// valid to what it left, as for a slot.
+// a register of its own, then move_in()'s mov, mov w20, w0, or mov w19,
+// w20 from another register variable, and nothing for the variable's
+// own read, r = r; the value stays e's, valid to what it left, as for a
+// slot.
 value_t
 computed_into(state_t &s, const symbol_t *sym, const expr_t &e)
 {
     into_t into { sym };
     const auto v = rvalue(s, e, &into);
     if (!into.taken)
-        establish(s, sym, reg_of(s, v));
+        move_in(s, sym, v);
 
     return v;
 }

@@ -237,10 +237,10 @@
    mov w19, w0 after it; in chosen_own_first() nothing written on the
    first path and ldr w19, [x29, #28] on the second, in
    chosen_own_second() and chosen_own_pointer() the load into the
-   register on the first path and mov w19, w19 and mov x19, x19 on the
-   second, and in itself_assigned() mov w19, w19; add w20, w19, #5 in
-   char_operand() and char_operand_left(); sxtw x0, w19 and add x20,
-   x0, #5 in
+   register on the first path and nothing on the second, and in
+   itself_assigned() nothing after ldr w19, [x29, #24]; add w20, w19,
+   #5 in char_operand() and char_operand_left(); sxtw x0, w19 and add
+   x20, x0, #5 in
    int_widened(); mul w20, w19, w0 after mov w0, #4 in
    register_product(); in prefix_step() the step written
    into the register and the store from it, add w19, w0, #1; str w19,

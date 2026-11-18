@@ -357,7 +357,12 @@ better:
   converted by a narrowing or a widening to a narrow or an `unsigned`
   variable, whose extension is the move, `sxtb w19, w0` for a `signed
   char`, `uxtb w19, w0` for a `char`, `mov w19, w0` for an `unsigned`
-  from a `long`. A constant is the immediate, `mov w20, #0`. `&&`,
+  from a `long`. The variable's own read is its register's value
+  already and writes nothing, as `backend.md` chapter 4 has it: `r =
+  r`, a narrow `c = c` among them, and an arm `r` of `r = c ? x : r`,
+  of a register pointer too; a narrow variable re-extended after an
+  operation in place is a write of new bits and keeps its extension. A
+  constant is the immediate, `mov w20, #0`. `&&`,
   `||` and `?:` are written on two paths, and each path writes the
   register, by the rule and the edge of `backend.md` chapter 4: `r = a
   && b` is `mov w19, #1` and `mov w19, #0` after the jump code, and `r

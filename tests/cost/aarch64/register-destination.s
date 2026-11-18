@@ -336,7 +336,6 @@ itself_assigned:
 	.cfi_offset w19, -16
 	str	w0, [x29, #24]
 	ldr	w19, [x29, #24]
-	mov	w19, w19
 	mov	w0, w19
 	b	.Litself_assigned.1
 .Litself_assigned.1:
@@ -2657,7 +2656,6 @@ chosen_own_second:
 	ldr	w19, [x29, #28]
 	b	.Lchosen_own_second.3
 .Lchosen_own_second.2:
-	mov	w19, w19
 .Lchosen_own_second.3:
 	mov	w0, w19
 	b	.Lchosen_own_second.1
@@ -2694,7 +2692,6 @@ chosen_own_pointer:
 	ldr	x19, [x29, #32]
 	b	.Lchosen_own_pointer.3
 .Lchosen_own_pointer.2:
-	mov	x19, x19
 .Lchosen_own_pointer.3:
 	mov	x0, x19
 	b	.Lchosen_own_pointer.1
