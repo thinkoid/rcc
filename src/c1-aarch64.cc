@@ -1212,16 +1212,38 @@ struct row_access_t
     bool register_offset = false;
 };
 
-// Whether a label's offset in the page is an access's displacement
-// past a row's sum, 6.3: within the label's object, as folded() asks,
-// and a multiple of the access's size, which the scaled :lo12: form
-// needs.
+// Whether a label's offset in the page is an access's displacement, 6.3
+// and chapter 10: within the label's object, as folded() asks, and the
+// label plus the offset a multiple of the access's size, which the
+// scaled :lo12: form needs at link time: the object aligned to the size
+// and the offset a multiple of it.  A char array aligns to 1, so *(int
+// *) (bytes + 4) on a char bytes[16] is no such access.
 bool
 label_carries(named_offset_t named, long long total, int size)
 {
     named.offset = total;
 
-    return within_object(named) && total % size == 0 && total <= INT32_MAX;
+    const auto &object = *named.object;
+    const auto &type =
+        is< name_t >(object) ? as< name_t >(object).sym->type : object.type;
+
+    return within_object(named) && total % size == 0 &&
+           align_of(type) >= size && total <= INT32_MAX;
+}
+
+// Whether the operand of a name and a constant, folded()'s, takes an
+// access of size bytes, 2.3: a slot where slot_operand() encodes its
+// displacement, itself or its low 12 bits past x16's add, which an
+// offset no multiple of the size reaches only in the unscaled 9 bits;
+// a label where label_carries().
+bool
+named_access(const named_offset_t &named, const address_t &a, int size)
+{
+    if (!a.label.empty())
+        return label_carries(named, a.displacement, size);
+
+    return in_reach(a.displacement, size) ||
+           in_reach(a.displacement & 0xfff, size);
 }
 
 // Whether an access of size bytes takes a row's constants past the sum,
@@ -1422,7 +1444,8 @@ bool calls_within(const expr_t &);
 // two, a store's right operand; so the case is not taken when between
 // names the variable, and the step is written here as before, G13.  A
 // name's address plus a constant is the second: the one operand of
-// folded(), and nothing evaluated.  Any other lvalue's address plus a
+// folded(), where the access encodes it, named_access()'s, and nothing
+// evaluated.  Any other lvalue's address plus a
 // constant is the third: summed()'s base, with the constant in the
 // displacement.
 address_t
@@ -1438,7 +1461,9 @@ pointed(state_t &s, const expr_t &p, const expr_t *between = nullptr)
 
     // a[3], table[3], m[1][2], *(a + 3), *a and *&x on an object the
     // slot or the label reaches: [x29, #28], [x16, :lo12:table+12]
-    if (const auto a = folded(s, p))
+    if (const auto a = folded(s, p);
+        a && named_access(*named_offset(p, s.defined), *a,
+                          static_cast< int >(stride(p.type))))
         return *a;
 
     // p[1][2] on int (*p)[3], other[1][2] through the GOT: [x0, #20]

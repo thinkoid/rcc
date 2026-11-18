@@ -394,8 +394,7 @@ byte_slot:
 	str	w0, [x29, #16]
 	ldr	w0, [x29, #16]
 	strb	w0, [x29, #20]
-	add	x0, x29, #24
-	ldr	w0, [x0]
+	ldr	w0, [x29, #24]
 	b	.Lbyte_slot.1
 .Lbyte_slot.1:
 	.cfi_def_cfa wsp, 48
@@ -664,10 +663,144 @@ view_beyond:
 	ret
 	.cfi_endproc
 	.size	view_beyond, .-view_beyond
+	.globl	member_slot
+	.type	member_slot, @function
+member_slot:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	ldr	x0, [x29, #16]
+	str	x0, [x29, #24]
+	ldr	w0, [x29, #28]
+	b	.Lmember_slot.1
+.Lmember_slot.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	member_slot, .-member_slot
+	.globl	member_odd
+	.type	member_odd, @function
+member_odd:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	ldr	x0, [x29, #16]
+	str	x0, [x29, #24]
+	ldr	w0, [x29, #25]
+	b	.Lmember_odd.1
+.Lmember_odd.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	member_odd, .-member_odd
+	.globl	member_far
+	.type	member_far, @function
+member_far:
+	.cfi_startproc
+	sub	sp, sp, #624
+	.cfi_def_cfa_offset 624
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -624
+	.cfi_offset w30, -616
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	ldr	w0, [x29, #16]
+	strb	w0, [x29, #281]
+	add	x0, x29, #281
+	ldr	w0, [x0]
+	b	.Lmember_far.1
+.Lmember_far.1:
+	.cfi_def_cfa wsp, 624
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #624
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	member_far, .-member_far
+	.globl	member_label
+	.type	member_label, @function
+member_label:
+	.cfi_startproc
+	sub	sp, sp, #16
+	.cfi_def_cfa_offset 16
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -16
+	.cfi_offset w30, -8
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	adrp	x16, words+6
+	ldrsh	w0, [x16, :lo12:words+6]
+	b	.Lmember_label.1
+.Lmember_label.1:
+	.cfi_def_cfa wsp, 16
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #16
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	member_label, .-member_label
+	.globl	member_label_odd
+	.type	member_label_odd, @function
+member_label_odd:
+	.cfi_startproc
+	sub	sp, sp, #16
+	.cfi_def_cfa_offset 16
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -16
+	.cfi_offset w30, -8
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	adrp	x0, words+6
+	add	x0, x0, :lo12:words+6
+	ldr	w0, [x0]
+	b	.Lmember_label_odd.1
+.Lmember_label_odd.1:
+	.cfi_def_cfa wsp, 16
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #16
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	member_label_odd, .-member_label_odd
 	.bss
 	.globl	bytes
 	.type	bytes, @object
 	.size	bytes, 16
 bytes:
 	.zero	16
+	.globl	words
+	.type	words, @object
+	.size	words, 32
+	.p2align 2
+words:
+	.zero	32
 	.section	.note.GNU-stack,"",@progbits

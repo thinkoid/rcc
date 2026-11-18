@@ -296,6 +296,10 @@ TYPES(DECLARE_SUMMED)
 
 TYPES(DECLARE_WIDEN_ALL)
 
+#define DECLARE_MEMBER(T, N) BOTH(long, member_##N, (long))
+
+TYPES(DECLARE_MEMBER)
+
 #define DECLARE_OPERAND(T, N, name, op)                                 \
     BOTH(long, od_##name##_##N, (T, T)) BOTH(long, op_##name##_##N, (T *, T)) \
     BOTH(long, oi_##name##_##N, (T *, T, T, int))                       \
@@ -767,6 +771,16 @@ TYPES(TEST_SUMMED)
 
 TYPES(TEST_WIDEN_ALL)
 
+/* a member-like access at each byte offset of 0 to 7, over the table */
+#define TEST_MEMBER(T, N)                                               \
+    static void test_member_##N(void)                                   \
+    {                                                                   \
+        for (int i = 0; i < COUNT; ++i)                                 \
+            CHECK(member_##N, values[i], 0, (values[i]));               \
+    }
+
+TYPES(TEST_MEMBER)
+
 /* an object in memory as an operator's right operand and as a
    condition's object, of one type, over pairs of the table and every
    offset: P(T) holds x, the divisor of op_ and of the divisions with
@@ -1211,7 +1225,7 @@ main(void)
 #define RUN(T, N)                                                       \
     test_access_##N(); test_operators_##N(); test_address_##N();        \
     test_folds_##N(); test_indexed_##N(); test_summed_##N();            \
-    test_widen_##N(); test_operands_##N();
+    test_widen_##N(); test_operands_##N(); test_member_##N();
     TYPES(RUN)
 
 #define RUN_PINNED(T, N) test_pinned_##N();

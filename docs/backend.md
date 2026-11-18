@@ -972,8 +972,12 @@ parameter's slot or the label of a global the file defines or of a
 string literal, is thus one operand at that address plus the
 constant, and no instruction forms the object's address. The lvalue
 under the decay or the `&` may be such a dereference in its turn, so
-`m[1][2]` is one operand. With `int a[8]` at `-32(%rbp)`, `int
-table[8]` a global the file defines and `int m[2][3]` at `-24(%rbp)`:
+`m[1][2]` is one operand, and a cast to another pointer type keeps the
+address (6.3.2.3p7), so the shape reads through it, each sum's
+constant scaled by its own pointee's size: `*(int *) ((char *) &s +
+4)`, the shape of a structure's member, is the slot's own operand.
+With `int a[8]` at `-32(%rbp)`, `int table[8]` a global the file
+defines and `int m[2][3]` at `-24(%rbp)`:
 
 - `a[3]` is `movl -20(%rbp), L` and `movl R, -20(%rbp)`; `table[3]` is
   `movl table+12(%rip), L`; `m[1][2]` is `movl -4(%rbp), L`; `"abc"[1]`
@@ -981,7 +985,11 @@ table[8]` a global the file defines and `int m[2][3]` at `-24(%rbp)`:
 - `&a[3]` and `a + 3` are `leaq -20(%rbp), L`, `table + 3` is `leaq
   table+12(%rip), L`, and `m[1]` as a pointer is `leaq -12(%rbp), L`;
 - `a[3] += e;` and `a[3]++;` are the memory forms of 6.6 on the folded
-  operand, `addl %eax, -20(%rbp)`, as on a scalar local.
+  operand, `addl %eax, -20(%rbp)`, as on a scalar local;
+- `*(int *) ((char *) &x + 4)` on a `long x[2]` at `-24(%rbp)` is
+  `movl -20(%rbp), L`, and `*(int *) ((char *) table + 6)` `movl
+  table+6(%rip), L`, whatever the offset's alignment, which x86-64
+  does not ask.
 
 Any other lvalue's address is the one the table forms for it, a base,
 a base and an index, or a slot and an index (below), and the constant

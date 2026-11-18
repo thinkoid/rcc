@@ -26,7 +26,12 @@
    two_casts() a chain of three casts; and the edges, two_indexes()
    *(short *) ((char *) p + i * 4 + j), two indexes, and view_beyond()
    ((int *) (p + 2000000000))[400000000], displacements no 32-bit
-   field holds together.
+   field holds together.  A name's address plus a constant under a
+   cast, the shape of a structure's member: member_slot() and
+   member_odd() *(int *) ((char *) &x + 4) and + 1 on a local long
+   x[2], member_far() *(int *) (c + 261) on a local char array, and
+   member_label() and member_label_odd() *(short *) ((char *) words +
+   6) and *(int *) ((char *) words + 6) on a global int words[8].
 
    On x86-64 the listing must show row() reading p[i][2] by the one
    movsbl 2(%rax,%rcx,8), %eax after p's load and i's movslq, local()
@@ -52,7 +57,11 @@
    %eax, each after p's load and no add; two_indexes() adds the first
    index, addq %rcx, %rax, before movswl (%rax,%rcx,1), %eax, and
    view_beyond() forms the first part, leaq 2000000000(%rax), %rax,
-   before movl 1600000000(%rax), %eax.
+   before movl 1600000000(%rax), %eax.  The member shapes read the
+   slot's or the label's own operand: member_slot() movl -20(%rbp),
+   %eax, member_odd() movl -23(%rbp), %eax, member_far() movl
+   -343(%rbp), %eax, member_label() movswl words+6(%rip), %eax and
+   member_label_odd() movl words+6(%rip), %eax.
 
    On aarch64 the listing must show cell() reading p[1][2] by the one
    ldr w0, [x0, #20] after p's load, and corner() forming &p[1][2] by
@@ -71,8 +80,9 @@
    access's size, adds the index, add x0, x0, w1, sxtw #1, before ldr
    x0, [x0]; byte_after_index() adds the product, add x0, x0, w1,
    sxtw, before ldrsh w0, [x0, #2]; byte_register() reads ldr w0,
-   [x19, #8]; byte_slot() and byte_label() form the name's address,
-   add x0, x29, #24 and the page's adrp and add, before ldr w0, [x0];
+   [x19, #8]; byte_slot() reads the slot's own ldr w0, [x29, #24], and
+   byte_label() forms the name's address, the page's adrp and add,
+   before ldr w0, [x0], its char array aligned to 1;
    byte_held() adds the index before the call, and byte_value() is
    add x0, x0, #24.  The constant index of a store is written after
    its right operand, since it reads nothing: far_called() spills p
@@ -84,7 +94,16 @@
    before ldrsh w0, [x0, #2], two_casts() adds 1, 4 and 2 before ldr
    w0, [x0, #4], two_indexes() adds the product before ldrsh w0, [x0,
    w1, sxtw], and view_beyond() holds both parts, the second as the
-   register offset, ldr w0, [x0, x1, lsl #2]. */
+   register offset, ldr w0, [x0, x1, lsl #2].  A name's address plus
+   a constant under a cast is the slot's or the label's own operand
+   where the access encodes it: member_slot() reads ldr w0, [x29,
+   #28], member_odd() the unscaled ldr w0, [x29, #25], and
+   member_label() adrp x16, words+6; ldrsh w0, [x16, :lo12:words+6].
+   member_far()'s offset, no multiple of 4 and beyond the unscaled 9
+   bits, keeps add x0, x29, #281 before ldr w0, [x0], and
+   member_label_odd(), whose label plus offset is no multiple of 4,
+   keeps the page's adrp and add before ldr w0, [x0], since the scaled
+   :lo12: form needs that multiple at link time. */
 int
 row(char (*p)[8], int i)
 {
@@ -205,6 +224,8 @@ byte_value(char *p)
         return (int *) (p + 24);
 }
 
+int words[8];
+
 int
 view_subscript(char *p)
 {
@@ -239,4 +260,43 @@ int
 view_beyond(char *p)
 {
         return ((int *) (p + 2000000000))[400000000];
+}
+
+int
+member_slot(long v)
+{
+        long x[2];
+
+        x[0] = v;
+        return *(int *) ((char *) &x + 4);
+}
+
+int
+member_odd(long v)
+{
+        long x[2];
+
+        x[0] = v;
+        return *(int *) ((char *) &x + 1);
+}
+
+int
+member_far(int v)
+{
+        char c[600];
+
+        c[261] = v;
+        return *(int *) (c + 261);
+}
+
+int
+member_label(void)
+{
+        return *(short *) ((char *) words + 6);
+}
+
+int
+member_label_odd(void)
+{
+        return *(int *) ((char *) words + 6);
 }

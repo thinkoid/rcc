@@ -492,6 +492,101 @@ view_beyond:
 	ret
 	.cfi_endproc
 	.size	view_beyond, .-view_beyond
+	.globl	member_slot
+	.type	member_slot, @function
+member_slot:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	-8(%rbp), %rax
+	movq	%rax, -24(%rbp)
+	movl	-20(%rbp), %eax
+	jmp	.Lmember_slot.1
+.Lmember_slot.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	member_slot, .-member_slot
+	.globl	member_odd
+	.type	member_odd, @function
+member_odd:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	-8(%rbp), %rax
+	movq	%rax, -24(%rbp)
+	movl	-23(%rbp), %eax
+	jmp	.Lmember_odd.1
+.Lmember_odd.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	member_odd, .-member_odd
+	.globl	member_far
+	.type	member_far, @function
+member_far:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$608, %rsp
+	movl	%edi, -4(%rbp)
+	movl	-4(%rbp), %eax
+	movb	%al, -343(%rbp)
+	movl	-343(%rbp), %eax
+	jmp	.Lmember_far.1
+.Lmember_far.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	member_far, .-member_far
+	.globl	member_label
+	.type	member_label, @function
+member_label:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movswl	words+6(%rip), %eax
+	jmp	.Lmember_label.1
+.Lmember_label.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	member_label, .-member_label
+	.globl	member_label_odd
+	.type	member_label_odd, @function
+member_label_odd:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	words+6(%rip), %eax
+	jmp	.Lmember_label_odd.1
+.Lmember_label_odd.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	member_label_odd, .-member_label_odd
 	.bss
 	.globl	bytes
 	.type	bytes, @object
@@ -499,4 +594,10 @@ view_beyond:
 	.p2align 4
 bytes:
 	.zero	16
+	.globl	words
+	.type	words, @object
+	.size	words, 32
+	.p2align 4
+words:
+	.zero	32
 	.section	.note.GNU-stack,"",@progbits

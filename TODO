@@ -105,26 +105,6 @@ displacement and an index.
 Check: =kview_index_*= one instruction shorter, =byte_after_index()=
 with the index in the operand, and no function longer.
 
-** TODO A name's address plus a constant under a cast does not fold into the slot or the label
-
-~*(int *) ((char *) &s + 4)~ on a local is =leaq -20(%rbp), %rax;
-movl 4(%rax), %eax= and =add x0, x29, #20; ldr w0, [x0, #4]=, where
-the slot's own operand, =movl -16(%rbp), %eax= and =ldr w0, [x29,
-#24]=, is one instruction: =lvalue_offset()= in =src/c1-common.cc=
-does not read through a cast between pointer types, and aarch64's
-=access_sum()= leaves a name's address plus a constant to it. On
-aarch64 =byte_slot()= and =byte_label()= of =subscript-displacement=
-and =main= of =g11-misaligned= form the address first for the same
-reason.
-
-Fix: =lvalue_offset()= reads through a cast between pointer types,
-its offsets in bytes.
-
-Check: a cost function for the shape on a slot and on a label, those
-three aarch64 listings one instruction shorter, an offset that is no
-multiple of the access's size assembling, =ldr w0, [x29, #21]=, and
-no function longer.
-
 ** TODO aarch64: a narrow or widened prefix step's value is stepped outside the register variable
 
 ~r = ++c~ on a =char= in memory into a ~register int r~ is =ldrb w0,

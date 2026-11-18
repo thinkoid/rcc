@@ -709,7 +709,10 @@ bare_base(const expr_t &p)
 // 6.5.4.2p3, the constant 0, so *a is a[0] and *&x is x; or a sum of
 // such a pointer and an integer constant, p + c, c + p or p - c, the
 // constant times the pointee's size added or subtracted modulo 2^64
-// (G6).  The decay or the &, the lvalue under it, and the offset.  None
+// (G6); or such a pointer under a cast to another pointer type, which
+// keeps the address (6.3.2.3p7), so that (int *) ((char *) &s + 4) is
+// s and 4, each sum's constant scaled by its own pointee's size.  The
+// decay or the &, the lvalue under it, and the offset in bytes.  None
 // for any other pointer, a variable index, a pointer object's value and
 // any other cast among them.
 std::optional< lvalue_offset_t >
@@ -719,6 +722,10 @@ lvalue_offset(const expr_t &pointer)
         return lvalue_offset_t { .address = &pointer,
                                  .lvalue = as< cast_t >(pointer).arg.get(),
                                  .offset = 0 };
+
+    if (is< cast_t >(pointer) && is< pointer_t >(pointer.type) &&
+        is< pointer_t >(as< cast_t >(pointer).arg->type))
+        return lvalue_offset(*as< cast_t >(pointer).arg);
 
     if (is< unary_t >(pointer) && as< unary_t >(pointer).op == unary_op_t::addr)
         return lvalue_offset_t { .address = &pointer,

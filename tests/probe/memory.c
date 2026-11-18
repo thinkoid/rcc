@@ -917,6 +917,37 @@ TYPES(WIDENED_GLOBALS)
 
 TYPES(WIDEN_ALL)
 
+/* A member-like read and write through a name's address plus a byte
+   offset under a cast, *(T *) ((char *) &x + k) for each k of 0 to 7,
+   on a local and on a global the unit defines: the slot's or the
+   label's own operand where the access encodes it, the address formed
+   where it does not, an offset no multiple of the access's size or a
+   label aligned below it (docs/backend.md 6.3; G10, G11). */
+#define MEMBER_AT(T, N, k)                                              \
+    r = r * 7 + *(T *) ((char *) &x + k);                               \
+    *(T *) ((char *) &x + k) = (T) (v + k);                             \
+    r = r * 7 + *(T *) ((char *) &member_global_##N + k);               \
+    *(T *) ((char *) &member_global_##N + k) = (T) (v - k);
+#define MEMBER(T, N)                                                    \
+    long member_global_##N[2];                                          \
+    long member_##N(long v)                                             \
+    {                                                                   \
+        long x[2];                                                      \
+        long r = 0;                                                     \
+        x[0] = v;                                                       \
+        x[1] = ~v;                                                      \
+        member_global_##N[0] = v * 3;                                   \
+        member_global_##N[1] = v ^ 0x5a5a;                              \
+        MEMBER_AT(T, N, 0) MEMBER_AT(T, N, 1)                           \
+        MEMBER_AT(T, N, 2) MEMBER_AT(T, N, 3)                           \
+        MEMBER_AT(T, N, 4) MEMBER_AT(T, N, 5)                           \
+        MEMBER_AT(T, N, 6) MEMBER_AT(T, N, 7)                           \
+        return r * 7 + x[0] + x[1] * 3 + member_global_##N[0] * 5 +     \
+               member_global_##N[1] * 11;                               \
+    }
+
+TYPES(MEMBER)
+
 /* A subscript's index of each type, widened to 64 bits by the parser's
    cast, read from the parameter's slot and through a pointer, and
    holding a negative value: p points into the middle of the main's

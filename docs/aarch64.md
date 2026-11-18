@@ -892,7 +892,28 @@ plus the constant is reached when it is from 0 to 16 MiB less 1, the
 reach of 5.3's `add` into `x16`. A label's offset folds from 0 to the
 object's size, one past the end included, as on x86-64: the linker
 resolves the label and the offset, and one outside the object it may
-not reach, where the rows of the table always link. Anything else, a
+not reach, where the rows of the table always link.
+
+A name's address plus a constant under a cast to another pointer
+type, `*(int *) ((char *) &x + 4)`, the shape of a structure's member,
+is the same operand, but the access is then no element's, and its
+size need not divide the offset. A slot's operand is taken where 5.3's
+forms encode it: the scaled one for a multiple of the access's size,
+the unscaled 9 bits for any other, `ldr w0, [x29, #25]` for `+ 1` on a
+`long x[2]` at `[x29, #24]`, also past `x16`'s add of the upper bits;
+an offset no multiple of the size and out of the 9 bits keeps the
+address formed, `add x0, x29, #281; ldr w0, [x0]`, since `ldr w0,
+[x29, #281]` does not assemble. A label's scaled `:lo12:` form needs
+the label plus the offset a multiple of the access's size at link
+time, so it is taken only where the object is aligned to the size and
+the offset a multiple of it: `*(short *) ((char *) words + 6)` on an
+`int words[8]` is `adrp x16, words+6; ldrsh w0, [x16,
+:lo12:words+6]`, but `*(int *) ((char *) words + 6)`, and `*(int *)
+(bytes + 4)` on a `char bytes[16]`, which aligns to 1, keep the page's
+`adrp` and `add` before `ldr w0, [x0]`: the linker rejects the other,
+"relocation truncated to fit: R_AARCH64_LDST32_ABS_LO12_NC", where the
+label lies at no multiple of 4, and takes it where it lies there by
+chance. Anything else, a
 negative displacement off `x29` and `table[-1]` among them, takes the
 rows of the table: `adrp x0, table; add x0, x0, :lo12:table; ldr w0,
 [x0, #-4]`. No form of 2.3 has a base, an index and a displacement at
