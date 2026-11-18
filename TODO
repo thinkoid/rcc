@@ -166,39 +166,36 @@ operand reads it after.
 
 Check: the count over =tests=, and no function longer.
 
-** TODO aarch64: a narrow object under a promotion and a widening is loaded, then extended
+** TODO aarch64: a widened ~?:~ whose consumer names no register is extended after its join
 
-~(long) (int) c~ on a ~signed char~ is =ldrsb w0, [x29, #16]; sxtw
-x0, w0=, where =ldrsb x0, [x29, #16]= is the one load; x86-64 writes
-=movsbq= (=backend.md= 6.3, "A widening by the load"). At a
-conditional it keeps the join: ~l = c ? a : b~ into a =register
-long= on two =char=s is =ldrb w0= on each path and =sxtw x19, w0=
-after the join, where =ldrb w19=, valid to 64 bits, is one: the
-promotion's conversion clamps the load's width to 32.
-=promoted_char()= of =widen=, =chosen_promoted()= of
-=register-destination= and five functions of the probes
-(=de_widened_c= to =de_widened_us=) have it.
+~l = c ? a : b~ on two ~signed char~ into a =long= in memory is
+=ldrsb w0= on each path and =sxtw x0, w0= after the join, where
+=ldrsb x0= on each path is the value already, an instruction fewer;
+x86-64 writes =movsbq= on each path and nothing after. The arms'
+conversion is written on the paths only where the consumer names a
+register, a register variable or a return (=aarch64.md= 6.1). 7
+forms over =tests=, =jn_kept_*= and =cond_*= of the probes.
 
-Fix: the load of a narrow object under a promotion and a widening is
-extended to the outer width in one instruction, in
-=src/c1-aarch64.cc=, as x86-64's =widened_read()= does.
+Fix: where each arm widens at no cost of its own, =widens_free()=,
+the arms are converted on their paths under any consumer.
 
-Check: =promoted_char= with =ldrsb x0=, =chosen_promoted= with the
-load into =x19= on each path, and the five functions shorter.
+Check: the count over =tests=, and no function longer.
 
-** TODO x86-64: a signed narrow object under an unsigned widening is loaded, then cleared
+** TODO A signed narrow object under an unsigned widening is loaded, then cleared
 
 ~(long) (unsigned) c~ on a ~signed char~ is =movsbl -1(%rbp), %eax;
-movl %eax, %eax=: the first extension stops at 32 bits, so the two
-are not the one extension =widened_read()= in =src/c1-x86-64.cc=
-knows. =movsbl= into the 32-bit name is the value already, valid to
-64 bits as an =unsigned=. =unsigned_promoted()= of =widen= pins the
-two instructions; no other test has the shape.
+movl %eax, %eax= on x86-64 and =ldrsb w0, [x29, #16]; mov w0, w0= on
+aarch64: the first extension stops at 32 bits, so the two are not the
+one extension =widened_read()= in =src/c1-common.cc= knows. The load
+into the 32-bit name is the value already, valid to 64 bits as an
+=unsigned=, since a write of a 32-bit register clears the upper
+half. =unsigned_promoted()= of =widen= pins the two instructions on
+each target; on aarch64 5 forms over =tests= have the shape.
 
 Fix: the load is marked valid to 64 bits where a signed narrow
 object is widened through an =unsigned= of 32 bits.
 
-Check: =unsigned_promoted= with the one =movsbl=.
+Check: =unsigned_promoted= with the one load on each target.
 
 ** TODO x86-64: a ~?:~ whose second arm is the variable's own read keeps its join after a call
 

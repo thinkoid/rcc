@@ -194,6 +194,16 @@ struct into_t
 bool same_bits(const cast_t &, const type_t &to);
 const expr_t *object_under(const expr_t &);
 const expr_t *object_under(const cast_t &);
+
+// The object in memory a widening reads in one load, and the type the
+// load extends it by: widened_read().
+struct widened_read_t
+{
+    const expr_t *object = nullptr;
+    const int_t *type = nullptr;
+};
+
+widened_read_t widened_read(const expr_t &);
 bool retypes(const cast_t &, const type_t &to, const into_t *);
 
 // A statement a break jumps out of: the label past its end, and for a

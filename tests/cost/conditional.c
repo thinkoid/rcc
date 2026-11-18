@@ -68,8 +68,9 @@
    in widened_step() the old value loaded into w0 and sxtw x0, w0 on
    its path, and ldrsw x0, [x29, #32] on the other, each with nothing
    after the join; in widened_quotients() the two sdiv w0, w0, w1 and
-   in widened_chars() the old value loaded into w0 and the second
-   arm's ldrb w0, [x29, #32], each then sxtw x0, w0 after the join; in
+   in widened_chars() the old value loaded into w0 and extended on its
+   own path, sxtw x0, w0, and the second arm's ldrb w0, [x29, #32],
+   valid to 64 bits, with nothing after the join; in
    widened_stored(), whose consumer names no register, the msub and
    the load, sxtw x0, w0 after the join and str x0, [x16,
    :lo12:h].  In narrowed_stored() ldrb w0, [x29, #32] on each path

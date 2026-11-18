@@ -1627,47 +1627,6 @@ onward(into_t *into, const int_t &from, const int_t &target)
     return through(into, target, target.width > from.width);
 }
 
-// The object in memory a widening of e reads in one load, and the type
-// the load extends it by, backend.md 6.3: e's own object, under casts
-// that keep its bits, object_under()'s, extended by e's type; or the
-// object under a widening of e's own, the promotion of a char or a
-// short, extended by the type it is promoted from, where one extension
-// is the two: a signed one under a signed widening, (long) (int) c on
-// a char c being movsbq -1(%rbp), %rax, and any unsigned one, whose
-// zero extension the promotion keeps, movzbl -1(%rbp), %eax on an
-// unsigned char, valid to 64 bits.  The object is read once at its own
-// width (G10).  None for any other e, a signed object under an unsigned
-// widening among them, whose extension to that width is no extension
-// to the outer one.
-struct widened_read_t
-{
-    const expr_t *object = nullptr;
-    const int_t *type = nullptr;
-};
-
-widened_read_t
-widened_read(const expr_t &e)
-{
-    if (const auto *object = object_under(e))
-        return { object, &integer(e.type) };
-
-    if (!is< cast_t >(e) || !is< int_t >(e.type))
-        return { };
-
-    const auto &c = as< cast_t >(e);
-    if (!is< int_t >(c.arg->type))
-        return { };
-
-    const auto &from = integer(c.arg->type);
-    const auto &promoted = integer(e.type);
-    const auto *object = object_under(c);
-    if (!object || promoted.width <= from.width ||
-        (from.is_signed && !promoted.is_signed))
-        return { };
-
-    return { object, &from };
-}
-
 // The integer conversion of the operand e to the type to.  G2:
 // narrowing is no instruction, the narrower register name is the
 // value; widening extends by the operand's signedness, and only when

@@ -383,11 +383,11 @@ widened_chars:
 	ldrb	w0, [x1]
 	add	w2, w0, #1
 	strb	w2, [x1]
+	sxtw	x0, w0
 	b	.Lwidened_chars.3
 .Lwidened_chars.2:
 	ldrb	w0, [x29, #32]
 .Lwidened_chars.3:
-	sxtw	x0, w0
 	b	.Lwidened_chars.1
 .Lwidened_chars.1:
 	.cfi_def_cfa wsp, 48

@@ -239,6 +239,42 @@ unsigned_promoted:
 	ret
 	.cfi_endproc
 	.size	unsigned_promoted, .-unsigned_promoted
+	.globl	promoted_signed
+	.type	promoted_signed, @function
+promoted_signed:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movb	%dil, -1(%rbp)
+	movsbq	-1(%rbp), %rax
+	jmp	.Lpromoted_signed.1
+.Lpromoted_signed.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	promoted_signed, .-promoted_signed
+	.globl	unsigned_twice
+	.type	unsigned_twice, @function
+unsigned_twice:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movb	%dil, -1(%rbp)
+	movzbl	-1(%rbp), %eax
+	jmp	.Lunsigned_twice.1
+.Lunsigned_twice.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	unsigned_twice, .-unsigned_twice
 	.bss
 	.globl	defined
 	.type	defined, @object

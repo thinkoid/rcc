@@ -2535,12 +2535,11 @@ chosen_promoted:
 	strb	w2, [x29, #29]
 	ldr	w0, [x29, #24]
 	cbz	w0, .Lchosen_promoted.2
-	ldrb	w0, [x29, #28]
+	ldrb	w19, [x29, #28]
 	b	.Lchosen_promoted.3
 .Lchosen_promoted.2:
-	ldrb	w0, [x29, #29]
+	ldrb	w19, [x29, #29]
 .Lchosen_promoted.3:
-	sxtw	x19, w0
 	mov	x0, x19
 	b	.Lchosen_promoted.1
 .Lchosen_promoted.1:

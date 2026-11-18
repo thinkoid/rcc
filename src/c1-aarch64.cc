@@ -2304,8 +2304,12 @@ extending_load(state_t &s,
 // The object may be under casts that keep its bits, object_under()'s:
 // (long) (int) u is ldrsw x0, [x29, #16], and (unsigned long)
 // (unsigned) i and (long) (char) c the ldr and the ldrb, valid to 64
-// bits, each reading the object at its own width (G10); a narrowing
-// cast under the widening keeps its load and the extension after it.
+// bits, each reading the object at its own width (G10); and under a
+// promotion, widened_read()'s, (long) (int) c on a signed char the one
+// ldrsb x0, and on an unsigned char the one ldrb w0, valid to 64 bits.
+// A narrowing cast under the widening keeps its load and the extension
+// after it, and so does a signed object under an unsigned widening,
+// (long) (unsigned) c, ldrsb w0 and mov w0, w0.
 // A constant widened into a register variable is the constant of the
 // new type, mov x19, #-1, and so is a signed one for any other
 // consumer, mov x0, #-1.  A change of signedness alone is nothing.  A pointer is its
@@ -2346,12 +2350,14 @@ converted(state_t &s,
             return literal(s, { value }, to);
     }
 
-    const auto *object = widens ? object_under(e) : nullptr;
-    const bool loads = object && (from.is_signed || object != &e);
-    const int width = from.is_signed ? target.width : 32;
+    const auto read = widens ? widened_read(e) : widened_read_t { };
+    const bool loads =
+        read.object && (read.type->is_signed || read.object != &e);
+    const int width = loads && read.type->is_signed ? target.width : 32;
 
-    auto v = loads ? extending_load(s, *object, from, width, onward) :
-                     rvalue(s, e, onward, wanted);
+    auto v = loads ?
+                 extending_load(s, *read.object, *read.type, width, onward) :
+                 rvalue(s, e, onward, wanted);
     if (widens)
         v = extended(s, v, from, target.width, onward, wanted);
 
@@ -2459,14 +2465,16 @@ lands_in(const expr_t &arm, const symbol_t *variable)
 // variable costs the arm no instruction of its own, backend.md 6.1 and
 // chapter 4: its row writes the variable's register extended, a
 // constant, mov x19, #-1, an object in memory, by its extending load,
-// ldrsw x19, [x29, #28], under casts that keep its bits too, and a truth
+// ldrsw x19, [x29, #28], under casts that keep its bits and under a
+// promotion too, widened_read()'s, ldrb w19 on a char, and a truth
 // value, cset w19, lt, valid to 64 bits; or its value is moved into the
 // join in any case, and the extension is written where the move would
 // be, a register variable's read, sxtw x19, w20.
 bool
 widens_free(const expr_t &arm)
 {
-    if (is< literal_t >(arm) || object_under(arm) || register_variable(arm))
+    if (is< literal_t >(arm) || widened_read(arm).object ||
+        register_variable(arm))
         return true;
 
     if (is< unary_t >(arm))

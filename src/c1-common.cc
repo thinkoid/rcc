@@ -335,6 +335,42 @@ object_under(const cast_t &c)
     return object_under(*c.arg);
 }
 
+// The object in memory a widening of e reads in one load, and the type
+// the load extends it by, backend.md 6.3: e's own object, under casts
+// that keep its bits, object_under()'s, extended by e's type; or the
+// object under a widening of e's own, the promotion of a char or a
+// short, extended by the type it is promoted from, where one extension
+// is the two: a signed one under a signed widening, (long) (int) c on
+// a signed char c being movsbq -1(%rbp), %rax on x86-64 and ldrsb x0,
+// [x29, #16] on aarch64, and any unsigned one, whose zero extension the
+// promotion keeps, movzbl -1(%rbp), %eax and ldrb w0, [x29, #16] on an
+// unsigned char, valid to 64 bits.  The object is read once at its own
+// width (G10).  None for any other e, a signed object under an unsigned
+// widening among them, whose extension to that width is no extension
+// to the outer one.
+widened_read_t
+widened_read(const expr_t &e)
+{
+    if (const auto *object = object_under(e))
+        return { object, &integer(e.type) };
+
+    if (!is< cast_t >(e) || !is< int_t >(e.type))
+        return { };
+
+    const auto &c = as< cast_t >(e);
+    if (!is< int_t >(c.arg->type))
+        return { };
+
+    const auto &from = integer(c.arg->type);
+    const auto &promoted = integer(e.type);
+    const auto *object = object_under(c);
+    if (!object || promoted.width <= from.width ||
+        (from.is_signed && !promoted.is_signed))
+        return { };
+
+    return { object, &from };
+}
+
 // Whether a conversion to the type to changes the signedness alone, of
 // a value handed a register variable (backend.md chapter 4): two
 // integer types of one width, the variable not yet written, and its

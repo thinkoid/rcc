@@ -232,8 +232,9 @@
    chosen_widened() ldrsw x19, [x29, #28] and ldrsw x19, [x29, #32] on
    the two paths, and in chosen_constant() ldrsw x19, [x29, #28] and
    mov x19, #-1, with no instruction after the join; in
-   chosen_promoted() the two ldrb joined in w0 and sxtw x19, w0 after
-   it, and in chosen_calls() the two calls' results joined in w0 and
+   chosen_promoted() ldrb w19, [x29, #28] and ldrb w19, [x29, #29] on
+   the two paths, valid to 64 bits, with no instruction after the join,
+   and in chosen_calls() the two calls' results joined in w0 and
    mov w19, w0 after it; in chosen_own_first() nothing written on the
    first path and ldr w19, [x29, #28] on the second, in
    chosen_own_second() and chosen_own_pointer() the load into the
