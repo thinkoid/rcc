@@ -359,19 +359,6 @@ listing.
 
 * Tests
 
-** TODO A G14 corpus program needs a non-constant condition
-
-=for (;;);= hangs under =clang -O2= as well: C11 6.8.5p6 exempts a
-loop whose controlling expression is constant from the
-forward-progress assumption. The divergence G14 promises shows only
-on a loop like =while (x);= with =x= a non-volatile object the loop
-never writes.
-
-Fix: write that program as the G14 entry, expected =timeout= under
-rcc and 0 under clang.
-
-Check: the oracle row.
-
 ** TODO =tests/probes= takes 124 and 137 for its time limit whenever it sees them
 
 The oracle counts a status of 124 or 137 as the limit's only where
