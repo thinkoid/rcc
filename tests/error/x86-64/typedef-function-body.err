@@ -1,0 +1,2 @@
+tests/error/typedef-function-body.c:6:1: error: typedef 'answer' cannot have a function body
+status 1

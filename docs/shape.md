@@ -308,7 +308,9 @@ parameter of function type is adjusted to a pointer to the function,
 as one of array type to a pointer to its element (6.7.7.4p6, p7). A
 typedef name of function type stands for the type, and a pointer
 through it is a pointer to the function; a function declared through
-it is not yet.
+it is not yet. A typedef defines no function: a function definition's
+storage class is `extern` or `static` (6.9.2p4), so a body after a
+typedef's function declarator is an error of its own.
 
 A parameter list opens a scope at its `(` and closes it at its `)`,
 the function prototype scope of 6.2.1p4. Each parameter is declared in

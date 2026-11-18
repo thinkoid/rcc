@@ -921,16 +921,17 @@ with a warning.
 Check: the pin of =global-initializer-scalar-braces= agrees with the
 decision.
 
-** TODO A typedef followed by a function body draws an error about a semicolon
+** TODO A function definition in a block draws an error about a semicolon
 
-~typedef int f(void) { return 0; }~ fails with "expected ';' after
-top level declarator" at the brace. The program is wrong, and the
-message does not say how: a typedef cannot define a function.
+~int main(void) { int g(void) { return 0; } return 0; }~ fails with
+"expected ';' at end of declaration" at the ~{~, where =clang= says
+"function definition is not allowed here": a function definition
+stands only as an external declaration (6.9p1).
 
-Fix: a message of its own where a typedef's function declarator
-meets a brace.
+Fix: a block declaration's function declarator followed by ~{~ gets
+an error of its own.
 
-Check: a program of =tests/error= with its pin.
+Check: a row of =tests/error= pinned with the new message.
 
 ** TODO The comments on typedef and extern cite no paragraph
 

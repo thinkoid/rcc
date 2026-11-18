@@ -2446,11 +2446,14 @@ declare_parameter(parser_t &p, const parameter_t &param)
 // A typedef declares its declarator's name as a name for the type the
 // declarator gives, in the current scope.  The name has no object, so
 // nothing is generated for it, and it takes no initializer and no
-// assembler name.  The type may be a function type, whose parameters
-// share one scope as a prototype's do.  Through a marking attribute the
-// name stands for a not-yet type of its own, of the attribute's words:
-// typedef int register_t __attribute__ ((__mode__ (__word__))) names an
-// integer of a size rcc does not take, and its objects are refused.
+// assembler name.  A typedef of function type defines no function: a
+// function definition's storage class is extern or static, 6.9.2p4, so
+// a body after its declarator is an error of its own.  The type may be
+// a function type, whose parameters share one scope as a prototype's
+// do.  Through a marking attribute the name stands for a not-yet type
+// of its own, of the attribute's words: typedef int register_t
+// __attribute__ ((__mode__ (__word__))) names an integer of a size rcc
+// does not take, and its objects are refused.
 void
 type_definition(parser_t &p, const specifiers_t &spec, const declarator_t &d)
 {
@@ -2462,6 +2465,10 @@ type_definition(parser_t &p, const specifiers_t &spec, const declarator_t &d)
     if (peek(p).kind == tok_t::assign)
         fail(peek(p),
              "typedef " + quoted(d.name->text) + " cannot have an initializer");
+
+    if (d.params && peek(p).kind == tok_t::lbrace)
+        fail(peek(p), "typedef " + quoted(d.name->text) +
+                          " cannot have a function body");
 
     type_t t = d.type;
     if (tail.marking)
