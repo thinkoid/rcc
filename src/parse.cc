@@ -87,6 +87,10 @@ struct open_switch_t
 // identities is the identity the next struct, union or enum type takes.
 // internal_uses are the uses of names of internal linkage, in the order
 // met, checked against their definitions at the end of the unit.
+// block_entities are the functions and the objects of external linkage
+// a block declared first, by name, which no declaration at file scope
+// has met yet: each is the entity a later declaration of the name of
+// external linkage denotes, at file scope or in another block, 6.2.2p2.
 struct parser_t
 {
     const std::vector< token_t > &tokens;
@@ -109,6 +113,7 @@ struct parser_t
     std::vector< open_switch_t > switches = { };
     int case_labels = 0;
     std::vector< internal_use_t > internal_uses = { };
+    std::unordered_map< std::string_view, symbol_t * > block_entities = { };
 };
 
 // The declaration specifiers: the type, and the storage-class specifier
@@ -2113,7 +2118,7 @@ parameter_t parameter_declaration(parser_t &);
 type_t type_name(parser_t &);
 std::vector< stmt_t > declaration(parser_t &);
 std::vector< stmt_t > init_declarator_list(parser_t &, const specifiers_t &);
-stmt_t init_declarator(parser_t &, const specifiers_t &);
+stmt_t init_declarator(parser_t &, const specifiers_t &, const declarator_t &);
 
 stmt_t statement(parser_t &);
 block_t compound_statement(parser_t &);
@@ -2237,14 +2242,41 @@ sized_alike(const type_t &a, const type_t &b)
     return (x.count < 0 || y.count < 0) && *x.element == *y.element;
 }
 
-// The declaration of the name earlier in the current scope, or null
-// when there is none.  A name declared again there is the same kind of
-// entity, of the same type: a function or an object of file scope by
-// the rule of compatible types (6.2.7p2), and a typedef because C11
-// lets a typedef be declared again only as the type it already names.
-// An object declared as an array of unknown size and as one of known
-// size takes the composite type from the later declaration on, p5,
-// which is the array of known size whichever came first.
+// An earlier declaration of the name, met again: the same kind of
+// entity, of the same type, a function or an object of linkage by the
+// rule of compatible types (6.2.7p2), and a typedef because C11 lets a
+// typedef be declared again only as the type it already names.  An
+// object declared as an array of unknown size and as one of known size
+// takes the composite type from the later declaration on, p5, which is
+// the array of known size whichever came first.
+symbol_t &
+redeclared(const token_t &name,
+           symbol_t &earlier,
+           const type_t &t,
+           storage_t storage)
+{
+    if (earlier.storage != storage)
+        fail(name, "redefinition of " + quoted(name.text));
+
+    if (earlier.type == t)
+        return earlier;
+
+    if (storage == storage_t::global && sized_alike(earlier.type, t)) {
+        if (as< array_t >(earlier.type).count < 0)
+            earlier.type = t;
+
+        return earlier;
+    }
+
+    if (storage == storage_t::type_name)
+        fail(name, "redefinition of typedef " + quoted(name.text) +
+                       " with another type");
+
+    fail(name, "conflicting types for " + quoted(name.text));
+}
+
+// The declaration of the name earlier in the current scope, met again
+// by redeclared(), or null when there is none.
 symbol_t *
 earlier_declaration(const parser_t &p,
                     const token_t &name,
@@ -2257,25 +2289,23 @@ earlier_declaration(const parser_t &p,
     if (it == scope.end())
         return nullptr;
 
-    symbol_t &earlier = *it->second;
-    if (earlier.storage != storage)
-        fail(name, "redefinition of " + quoted(name.text));
+    return &redeclared(name, *it->second, t, storage);
+}
 
-    if (earlier.type == t)
-        return &earlier;
+// A function or an object a block declared first with external linkage
+// is the entity a declaration of its name at file scope denotes, 6.2.2p2:
+// the name joins the file's names as that entity, where
+// earlier_declaration() meets it, unless the file declares the name
+// already, as another entity.
+void
+adopt_block_entity(parser_t &p, std::string_view name)
+{
+    const auto it = p.block_entities.find(name);
+    if (it == p.block_entities.end())
+        return;
 
-    if (storage == storage_t::global && sized_alike(earlier.type, t)) {
-        if (as< array_t >(earlier.type).count < 0)
-            earlier.type = t;
-
-        return &earlier;
-    }
-
-    if (storage == storage_t::type_name)
-        fail(name, "redefinition of typedef " + quoted(name.text) +
-                       " with another type");
-
-    fail(name, "conflicting types for " + quoted(name.text));
+    if (p.scopes.front().names.emplace(it->first, it->second).second)
+        p.block_entities.erase(it);
 }
 
 // A new symbol in the current scope, in no register.  The map's key
@@ -2387,10 +2417,10 @@ require_linkage(const token_t &name, const symbol_t &earlier, linkage_t linkage)
 }
 
 // Declares a function at file scope, or meets its earlier declaration,
-// with what the declaration writes after its declarator, and gives it
-// the declaration's linkage.  A marking attribute on a parameter marks
-// the function, whose calls pass the parameter.  Returns the index of
-// its entry in the unit's functions.
+// there or in a block, with what the declaration writes after its
+// declarator, and gives it the declaration's linkage.  A marking
+// attribute on a parameter marks the function, whose calls pass the
+// parameter.  Returns the index of its entry in the unit's functions.
 std::size_t
 declare_function(parser_t &p,
                  const specifiers_t &spec,
@@ -2399,6 +2429,8 @@ declare_function(parser_t &p,
 {
     if (!tail.marking)
         tail.marking = marked_parameter(d);
+
+    adopt_block_entity(p, d.name->text);
 
     symbol_t *earlier =
         earlier_declaration(p, *d.name, d.type, storage_t::function);
@@ -2955,6 +2987,8 @@ declare_external_object(parser_t &p,
                         const declarator_t &d)
 {
     const declarator_tail_t tail = declarator_tail(p, spec);
+
+    adopt_block_entity(p, d.name->text);
 
     symbol_t *sym = earlier_declaration(p, *d.name, d.type, storage_t::global);
     const linkage_t linkage = linkage_of(spec, sym, false);
@@ -4420,26 +4454,34 @@ type_name(parser_t &p)
     return declarator(p, spec.type, naming_t::none).type;
 }
 
-// The declarator of an object declared in a block, with what is
-// checked of every such object, static or not.  A function declared in
-// a block is not yet, and an error with static, which a block's
-// function takes no more than any other storage class but extern,
-// 6.7.2p13.  An object is one rcc makes, so an attribute that marks it
-// is one rcc would have to honour, and is not yet; so is an assembler
-// name, which names a register for a register variable.  An object's
-// type is complete, 6.7.1p8: not void, not a not-yet type, whose size
-// rcc does not know.
+// The declarator of a declaration in a block that is no typedef's.  A
+// function declared in a block takes no storage class but extern,
+// 6.7.2p13, so static and register on one are errors.
 declarator_t
-block_object_declarator(parser_t &p, const specifiers_t &spec)
+block_declarator(parser_t &p, const specifiers_t &spec)
 {
     declarator_t d = declarator(p, spec.type);
-    if (is< function_t >(d.type) && declared(spec, tok_t::kw_static))
-        fail(*d.name, "function " + quoted(d.name->text) +
-                          " declared static in a block");
 
-    if (is< function_t >(d.type))
-        not_yet(*d.name, "function declaration at block scope");
+    const token_t *storage_class = spec.storage_class;
+    if (is< function_t >(d.type) && storage_class &&
+        !declared(spec, tok_t::kw_extern))
+        fail(*d.name, "function " + quoted(d.name->text) + " declared " +
+                          std::string(storage_class->text) + " in a block");
 
+    return d;
+}
+
+// What is checked of every object a block declares that has no
+// linkage, static or not.  An object is one rcc makes, so an attribute
+// that marks it is one rcc would have to honour, and is not yet; so is
+// an assembler name, which names a register for a register variable.
+// An object's type is complete, 6.7.1p8: not void, not a not-yet type,
+// whose size rcc does not know.
+void
+require_block_object(parser_t &p,
+                     const specifiers_t &spec,
+                     const declarator_t &d)
+{
     refuse_function_specifier(spec);
 
     const declarator_tail_t tail = declarator_tail(p, spec);
@@ -4454,8 +4496,6 @@ block_object_declarator(parser_t &p, const specifiers_t &spec)
         fail(*d.name, "variable " + quoted(d.name->text) + " has type void");
 
     require_honoured(*d.name, d.type);
-
-    return d;
 }
 
 // The label of a block's static object, backend.md chapter 10: the
@@ -4487,9 +4527,9 @@ static_label(parser_t &p, const std::string &name)
 // one, 6.7.1p8.  The name is in scope from the end of its declarator,
 // 6.2.1p7, so the initializer sees the object.
 void
-static_local(parser_t &p, const specifiers_t &spec)
+static_local(parser_t &p, const specifiers_t &spec, const declarator_t &d)
 {
-    const declarator_t d = block_object_declarator(p, spec);
+    require_block_object(p, spec, d);
 
     const bool initialized = peek(p).kind == tok_t::assign;
     if (!initialized && is< array_t >(d.type) &&
@@ -4508,21 +4548,119 @@ static_local(parser_t &p, const specifiers_t &spec)
         initialize(p, sym, p.unit.objects.size() - 1);
 }
 
+// The entity of linkage the unit has of a name, or null: the file's
+// declaration of the name, or the one a block declared first.
+symbol_t *
+unit_entity(const parser_t &p, std::string_view name)
+{
+    const auto &file = p.scopes.front().names;
+    if (const auto it = file.find(name);
+        it != file.end() && it->second->linkage != linkage_t::none)
+        return it->second;
+
+    const auto it = p.block_entities.find(name);
+
+    return it == p.block_entities.end() ? nullptr : it->second;
+}
+
+// The entity a declaration in a block of a name of linkage denotes:
+// that of the visible prior declaration of the name, when it has
+// linkage, and its linkage, 6.2.2p4; or else the unit's entity of the
+// name, of external linkage, or none yet.  linkage is the linkage the
+// declaration gives the name.
+symbol_t *
+linked_entity(parser_t &p, std::string_view name, linkage_t &linkage)
+{
+    linkage = linkage_t::external;
+
+    for (auto scope = p.scopes.rbegin(); scope != p.scopes.rend(); ++scope) {
+        const auto it = scope->names.find(name);
+        if (it == scope->names.end())
+            continue;
+
+        if (it->second->linkage == linkage_t::none)
+            break;
+
+        linkage = it->second->linkage;
+        return it->second;
+    }
+
+    return unit_entity(p, name);
+}
+
+// A function or an object a block declares extern, or a function it
+// declares without a storage class, whose linkage is then as if extern,
+// 6.2.2p5.  The name has block scope, 6.2.1p4, and denotes an entity of
+// linkage: the one linked_entity() finds, declared before the block at
+// file scope or in an enclosing block, after it at file scope, or in
+// another block, since every declaration of a name of external linkage
+// denotes one entity, 6.2.2p2.  Every declaration of the entity is of
+// its kind, its type, 6.2.7p2, and its linkage, 6.2.2p7.  A block
+// declares the name once, but for the same entity again, 6.7.1p4.  The
+// declaration takes no initializer, 6.7.11p6, and makes no statement:
+// the block makes no object for it, and c1 calls the function or reaches
+// the object as one declared at file scope.  inline and _Noreturn on a
+// function are dropped, as on a declaration at file scope; a function
+// declared through a typedef of function type is not yet there as here.
+void
+linked_declaration(parser_t &p, const specifiers_t &spec, const declarator_t &d)
+{
+    const bool function = is< function_t >(d.type);
+    if (function && !d.params)
+        not_yet(*d.name, "function " + quoted(d.name->text) +
+                             " declared through a typedef");
+
+    if (!function)
+        refuse_function_specifier(spec);
+
+    refuse_specifier_on_main(spec, d);
+
+    declarator_tail_t tail = declarator_tail(p, spec);
+    if (function && !tail.marking)
+        tail.marking = marked_parameter(d);
+
+    if (peek(p).kind == tok_t::assign)
+        fail(peek(p), quoted(d.name->text) +
+                          " declared with linkage in a block cannot have "
+                          "an initializer");
+
+    const storage_t storage =
+        function ? storage_t::function : storage_t::global;
+
+    linkage_t linkage;
+    symbol_t *entity = linked_entity(p, d.name->text, linkage);
+
+    auto &names = p.scopes.back().names;
+    const auto here = names.find(d.name->text);
+    if (here != names.end() && here->second != entity)
+        fail(*d.name, "redefinition of " + quoted(d.name->text));
+
+    if (entity) {
+        redeclared(*d.name, *entity, d.type, storage);
+        require_linkage(*d.name, *entity, linkage);
+        names.emplace(entity->name, entity);
+    }
+    else {
+        entity = &added(p, d.name->text, d.type, storage);
+        entity->linkage = linkage;
+        p.block_entities.emplace(entity->name, entity);
+
+        if (function)
+            p.unit.functions.push_back(
+                function_decl_t { entity, { }, std::nullopt, 0 });
+    }
+
+    record_tail(*entity, tail);
+}
+
 // A block-scope declaration, perhaps of a tag or enumeration constants
-// alone, which makes no statement.  extern in a block is not yet, and
-// so is static inline.
+// alone, which makes no statement.
 std::vector< stmt_t >
 declaration(parser_t &p)
 {
     skip_extension_keywords(p);
 
     const specifiers_t spec = declaration_specifiers(p);
-
-    const bool static_inline =
-        declared(spec, tok_t::kw_static) && spec.inline_specifier;
-    if (declared(spec, tok_t::kw_extern) || static_inline)
-        not_yet(*spec.storage_class,
-                "storage class " + quoted(spec.storage_class->text));
 
     if (spec.tagged && accept(p, tok_t::semicolon))
         return { };
@@ -4533,7 +4671,9 @@ declaration(parser_t &p)
 // The declarators of a block-scope declaration and its ';': one
 // declaration statement per object, in order.  A typedef's declarators
 // declare type names and make no statement, and so do a static
-// declaration's, whose objects are no locals.
+// declaration's, whose objects are no locals, and the declarators of
+// names of linkage, which declare a function or an object the block
+// does not make.
 std::vector< stmt_t >
 init_declarator_list(parser_t &p, const specifiers_t &spec)
 {
@@ -4545,10 +4685,16 @@ init_declarator_list(parser_t &p, const specifiers_t &spec)
             type_definition(p, spec,
                             declarator(p, spec.type, naming_t::required, true));
         }
-        else if (declared(spec, tok_t::kw_static))
-            static_local(p, spec);
-        else
-            decls.push_back(init_declarator(p, spec));
+        else {
+            const declarator_t d = block_declarator(p, spec);
+
+            if (is< function_t >(d.type) || declared(spec, tok_t::kw_extern))
+                linked_declaration(p, spec, d);
+            else if (declared(spec, tok_t::kw_static))
+                static_local(p, spec, d);
+            else
+                decls.push_back(init_declarator(p, spec, d));
+        }
     } while (accept(p, tok_t::comma));
 
     expect(p, tok_t::semicolon, "expected ';' at end of declaration");
@@ -4566,9 +4712,9 @@ init_declarator_list(parser_t &p, const specifiers_t &spec)
 // has no slot to decay to.  A local of 2 GiB or more is refused here,
 // where its position is known, since no frame holds it.
 stmt_t
-init_declarator(parser_t &p, const specifiers_t &spec)
+init_declarator(parser_t &p, const specifiers_t &spec, const declarator_t &d)
 {
-    const declarator_t d = block_object_declarator(p, spec);
+    require_block_object(p, spec, d);
 
     if (is< array_t >(d.type) && declared(spec, tok_t::kw_register))
         not_yet(*d.name, "register array " + quoted(d.name->text));

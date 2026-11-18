@@ -1,2 +1,0 @@
-tests/error/extern-in-block.c:4:5: error: not yet: storage class 'extern'
-status 1

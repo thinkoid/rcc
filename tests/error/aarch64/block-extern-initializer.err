@@ -1,0 +1,2 @@
+tests/error/block-extern-initializer.c:6:26: error: 'count' declared with linkage in a block cannot have an initializer
+status 1

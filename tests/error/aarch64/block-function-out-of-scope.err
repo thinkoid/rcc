@@ -1,0 +1,2 @@
+tests/error/block-function-out-of-scope.c:11:16: error: 'twice' undeclared
+status 1

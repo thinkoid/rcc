@@ -1,2 +1,2 @@
-tests/error/static-inline-in-block.c:5:9: error: not yet: storage class 'static'
+tests/error/static-inline-in-block.c:6:27: error: function 'twice' declared static in a block
 status 1

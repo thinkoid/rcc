@@ -1,2 +1,2 @@
-tests/error/block-scope-function-typedef.c:8:17: error: not yet: function declaration at block scope
+tests/error/block-scope-function-typedef.c:8:17: error: not yet: function 'g' declared through a typedef
 status 1

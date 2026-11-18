@@ -1,0 +1,2 @@
+tests/error/block-function-register.c:6:22: error: function 'twice' declared register in a block
+status 1

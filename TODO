@@ -924,7 +924,8 @@ declaration of a 'for'". C23 has no such constraint: C17's 6.8.5p3
 allowed only =auto= and =register= there, and N3220's 6.8.6 says
 nothing of the storage class; =gcc= and =clang= take it with
 =-std=c23=. The program is valid in the dialect rcc cites and wrong
-in the one it preprocesses in.
+in the one it preprocesses in. A function declared there is taken,
+as C23 and =clang= take it; =extern= and =static= are refused.
 
 Fix: decide the dialect's answer: the error stays with C17's
 paragraph cited, or the declaration is a block's static.

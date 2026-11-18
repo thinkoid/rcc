@@ -1,0 +1,2 @@
+tests/error/block-function-conflict.c:10:14: error: conflicting types for 'twice'
+status 1

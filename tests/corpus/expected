@@ -28,3 +28,4 @@ header-getch 135 135
 header-itoa 100 100
 header-count 32 32
 header-escapes 35 35
+header-squeeze 85 85

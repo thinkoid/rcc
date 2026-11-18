@@ -195,14 +195,18 @@ Three sums.
 A symbol is a name, a type, a storage and a linkage. The storage is
 local, parameter, global, function, type name or enumerator. A global
 is an object of static storage duration: one declared at file scope,
-or one a block declares `static`. One the unit defines has an entry
-in the unit's objects, and that entry is how c1 tells it from one the
-unit only declares, which has none and for which nothing is written:
-the first is reached PC-relative and the second through the GOT. A
-block's has an entry always. The linkage is external, internal or
-none (6.2.2): a function or an object at file scope has external
-linkage, or internal when declared `static`, and every other name has
-none, a block's `static` object among them. c1 writes `.globl` for a
+or one a block declares `static` or `extern`. One the unit defines
+has an entry in the unit's objects, and that entry is how c1 tells it
+from one the unit only declares, which has none and for which nothing
+is written: the first is reached PC-relative and the second through
+the GOT. A block's `static` object has an entry always. The linkage
+is external, internal or none (6.2.2): a function or an object at
+file scope has external linkage, or internal when declared `static`;
+a function or an object a block declares `extern`, or a function it
+declares, has the linkage of the visible declaration of the name, or
+external without one (chapter 5); and every other name has none, a
+block's `static` object among them. One entity of linkage is one
+symbol, whichever scope declares it first. c1 writes `.globl` for a
 symbol of external linkage alone, so a `static` function or object is
 local to the file's object, which is the one difference in its
 listing. A
@@ -478,6 +482,31 @@ initializer and is an error without one (6.7.1p8). A function declared
 `static` in a block is an error (6.7.2p13), and `static` on a
 parameter, in a type name and in the declaration of a `for` is one
 too.
+
+A block may declare a function, and an object `extern`. The name has
+the block's scope (6.2.1p4) and denotes an entity of linkage: a
+function declared without a storage class has the linkage it would
+have declared `extern` (6.2.2p5), which is that of the visible
+declaration of the name when that one has linkage, and external
+otherwise (p4). Every declaration of a name of external linkage
+denotes one entity (p2), so the block's name is the symbol of the
+name's declaration at file scope before the block, or of an
+enclosing block's, or the first declaration of the symbol, which a
+later one at file scope or in another block meets. Each declaration of
+the entity has its kind and its type (6.2.7p2), an error otherwise:
+`int f(void) { int g(int); return g(1); } long g(int x) { ... }`
+conflicts at the definition. One that gives the name the other
+linkage is the error of 6.2.2p7. A block declares the name of a local
+once and no other name for it (6.7.1p4), so `int n; extern int n;` in
+one block is an error. Such a declaration makes no object and no
+statement, and takes no initializer (6.7.11p6); a call of the function
+and a use of the object are those of one declared at file scope, so
+c1 writes nothing of its own for them. A function of block scope takes
+no storage class but `extern` (6.7.2p13), so `register` on one is an
+error too. After the block's end the name is gone: a call there needs
+a declaration at file scope, as any call does. A declaration of a
+`for` may declare a function too, as C23 lets it. A function declared
+through a typedef of function type is not yet in a block either.
 
 An object at file scope is defined by a declaration with an
 initializer, `extern` or not, and tentatively by one without an
@@ -833,7 +862,11 @@ digits, white space and other characters as K&R's section 3.4 does.
 With `enum`, each enumeration the integer type compatible with it and
 each constant its number (chapter 5), `header-escapes` names K&R's
 `enum escapes` by a switch on one and counts the days of a year over
-an `enum months` (section 2.3).
+an `enum months` (section 2.3). With a function declared in a block
+and an object declared `extern` in one (chapter 5), `header-squeeze`
+calls K&R's `squeeze` and its `strcat` (section 2.8), defined after
+the block that declares them, and the C library's `strlen` and
+`strcmp` without their header.
 
 ## 11. Not yet
 
@@ -847,7 +880,7 @@ but behind a pointer, an object of an enum an attribute marks, an
 object of a typedef whose array size rcc
 cannot compute, a variable length array (a parameter's array of a
 size that is not constant is the pointer the parameter is adjusted to,
-and the size is not evaluated), `extern` in a block, a designator in
+and the size is not evaluated), a designator in
 an initializer list, a local's brace initializer, a scalar's or an
 array's, and a local array's initializer of any kind, `char s[] =
 "..."` among them, a declaration through a typedef of function

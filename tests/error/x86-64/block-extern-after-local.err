@@ -1,0 +1,2 @@
+tests/error/block-extern-after-local.c:11:20: error: redefinition of 'count'
+status 1
