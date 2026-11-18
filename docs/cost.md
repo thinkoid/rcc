@@ -432,11 +432,15 @@ global's and a local's address are the program's, not the probe's to
 place, so their widths are the cost pins' to show and the
 comparison's fit to check.
 
-A probe program runs under a time limit of 10 seconds, as
-`timeout -k 1 10`, so that one a fault of rcc's code keeps in a loop
-does not hold `make test`: SIGTERM stops it at the limit, and SIGKILL
-a second later if it ignores SIGTERM. Its line then says "timeout",
-and the probe fails.
+Each program the oracle runs, and each probe program, runs under a
+time limit of 10 seconds, as `timeout -k 1 10`, since a program may
+hang by promise and a fault of rcc's code may keep one in a loop:
+SIGTERM stops it at the limit, and SIGKILL a second later if it
+ignores SIGTERM. The run then shows as "timeout": an oracle row that
+expects it passes, and a probe fails. `timeout` ends with 124 after
+SIGTERM and 137 after SIGKILL, so no program of the corpus exits with
+either by itself, and the oracle fails one that ends so before the
+limit.
 
 ## 4. The measurement
 

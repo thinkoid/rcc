@@ -1,6 +1,8 @@
 # One line per program in tests/corpus: its name, the exit status of
 # the program built by rcc, and that of the program built by clang -O2.
 # A status is a number, or timeout for a run stopped at the time limit.
+# No program exits with 124 or 137 by itself: timeout(1) gives those
+# for a run it stopped, and the oracle fails a program that does.
 # A run killed by signal n shows as 128 + n: 139 for SIGSEGV.
 g1-add-compare 0 1
 g11-misaligned 52 52

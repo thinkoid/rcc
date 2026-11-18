@@ -479,21 +479,6 @@ Fix: the oracle prints "pinned <file> (same)" too.
 Check: =tests/oracle --pin= on a clean tree prints one line for each
 program.
 
-** TODO The oracle's time limit cannot tell 124 from a timeout
-
-GNU =timeout= exits 124 for a run it stopped and passes the program's
-own status otherwise, so a program that exits 124 by itself is
-recorded as =timeout=. And =timeout= sends SIGTERM, which a program
-may ignore; =timeout -k= would follow with SIGKILL.
-
-Fix: =timeout -k 1 10=, and a corpus rule that no program exits 124.
-With =-k= a program that ignores SIGTERM ends with 137, which the
-script must read as the limit's too, and the shell's "Killed" report
-goes to the terminal unless the run is grouped into the log, as
-=tests/probes= does both.
-
-Check: a program that ignores SIGTERM ends its row.
-
 ** TODO A signal death records as 128 + n, like an exit with 128 + n
 
 A program killed by signal n is recorded as 128 + n: =timeout= dies
@@ -501,9 +486,16 @@ of the child's signal, and the shell reports 128 + n. So the G9
 program's SIGSEGV is the row's 139, and a program that exits 139 by
 itself records the same.
 
-Fix: show a status above 128 by its signal name, =SEGV= from =kill
--l=, in the table and in =expected=, and a corpus rule that no
-program exits above 128.
+Two corpus programs exit above 128 by themselves, =header-getch=
+with 135 and =g13-read-across-branch= with 167, so the rule below
+does not hold today: under it their rows would read as signals.
+
+Fix: none taken; decide. Either those two programs are changed to
+exit at most 128, which moves their pins on both targets, and then
+a status above 128 is shown by its signal name, =SEGV= from =kill
+-l=, in the table and in =expected=; or a small runner the oracle
+builds tells a death by a signal from an exit, and no program
+changes.
 
 Check: the =g9-null-load= row reads =SEGV= and passes.
 

@@ -39,9 +39,15 @@
 # programs were not run.
 #
 # A program may hang by promise, so each run has a time limit of 10
-# seconds when timeout(1) is on the path.  A run it stops, status 124,
-# shows as "timeout", and a row that expects "timeout" passes on it.
-# Without timeout the script says so once and runs without a limit.
+# seconds when timeout(1) is on the path.  The run is timeout -k 1 10:
+# at the limit the program is sent SIGTERM, and SIGKILL a second later
+# if it still runs, so a program that ignores SIGTERM stops too.
+# timeout(1) ends with 124 when SIGTERM ended the program and 137 when
+# SIGKILL did.  Such a run shows as "timeout", and a row that expects
+# "timeout" passes on it.  So no program of the corpus exits with 124
+# or 137 by itself: a run that ends with either before the limit is
+# the program's own, shows as its number, and fails its row.  Without
+# timeout the script says so once and runs without a limit.
 #
 # The script prints a table, one row per program, and a summary, and
 # exits 0 when every row passed or is not yet, 1 otherwise.  It runs
@@ -54,7 +60,7 @@
 # tests/corpus/expected holds one line per program: its name, the
 # exit status of the rcc build and that of the clang build, separated
 # by spaces.  A status is a number, or "timeout" for a run stopped at
-# the time limit.  A # starts a comment.
+# the time limit; never 124 or 137.  A # starts a comment.
 #
 ########################################################################
 #
@@ -130,10 +136,13 @@ unrun=-
 not_yet_status=3
 not_yet_message='c1: not yet:'
 
-# the seconds a program may run, the status timeout(1) gives when it
-# stops one, and the status shown for it
+# the seconds a program may run, the seconds after SIGTERM until
+# SIGKILL, the statuses timeout(1) gives for a program it stops with
+# each, and the status shown for either
 time_limit=10
+kill_after=1
 timeout_status=124
+killed_status=137
 timed_out=timeout
 
 # byte order for the sorted corpus, and diagnostics in one language
@@ -314,14 +323,37 @@ measure()
         return 0
     fi
 
-    logged timeout "$time_limit" "$exe" < /dev/null
+    started=$(date +%s)
+    logged timeout -k "$kill_after" "$time_limit" "$exe" < /dev/null
     status=$?
+    ended=$(date +%s)
 
-    if [ "$status" -eq "$timeout_status" ]; then
+    # 124 or 137 is the limit's only when the run lasted the limit; one
+    # that ended sooner is the program's own status, and shows as it is
+    if { [ "$status" -eq "$timeout_status" ] ||
+         [ "$status" -eq "$killed_status" ]; } &&
+       [ $((ended - started)) -ge "$time_limit" ]; then
         echo "$timed_out"
     else
         echo "$status"
     fi
+}
+
+
+##########
+# own_limit_status(): reports 0 when one of the statuses that follow
+# is 124 or 137 as a number: a program gave by itself a status of the
+# limit's, which no program of the corpus may; 1 otherwise
+own_limit_status()
+{
+    for shown in "$@"; do
+        if [ "$shown" = "$timeout_status" ] ||
+           [ "$shown" = "$killed_status" ]; then
+            return 0
+        fi
+    done
+
+    return 1
 }
 
 
@@ -458,6 +490,9 @@ check_program()
 
     if [ "$run" -ne 0 ] && [ -z "$want" ]; then
         verdict="FAIL (no row in $expected)"
+    elif [ "$run" -ne 0 ] &&
+         own_limit_status "$rcc_status" "$clang_status"; then
+        verdict="FAIL (exits $timeout_status or $killed_status itself)"
     elif [ "$run" -ne 0 ] && [ "$want" != "$rcc_status $clang_status" ]; then
         verdict="FAIL (expected $want)"
     elif [ "$assembled" -eq 0 ]; then
