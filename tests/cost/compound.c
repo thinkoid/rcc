@@ -49,7 +49,33 @@
    w2, w0, #1; unsigned_wide() add x0, x2, x0, str w0, [x1] and mov w0,
    w0; unsigned_narrow() strh w0, [x1] and uxth w0, w0; signed_value()
    str w0, [x1] and sxtw x0, w0; and unsigned_plain() str w0, [x1] and
-   mov w0, w0. */
+   mov w0, w0.
+
+   An operator that commutes reads the object as its source where the
+   row writes the right operand's register (backend.md 6.1):
+   called_value() returns a += mix(b) on a long local, the call's
+   result in the rax the return names, and product_element() p[i] *= e
+   and product_pointer() *p *= e are statements imul has no memory form
+   for.  Beside them product_value() return *p *= e, whose return names
+   rax with e elsewhere, called_minus() a -= mix(b), whose operator
+   does not commute, and product_char() *p *= e on a char, whose load
+   extends.
+
+   On x86-64 the listing must show called_value() addq -16(%rbp), %rax
+   after the call and the store movq %rax, -16(%rbp), product_element()
+   imull (%rax,%rcx,4), %edx and movl %edx, (%rax,%rcx,4), and
+   product_pointer() imulq (%rax), %rcx and movq %rcx, (%rax), the
+   object read once, after the right operand; and the load kept beside
+   them, movq (%rcx), %rax and imulq %rdx, %rax in product_value(),
+   movq -16(%rbp), %rcx and subq %rax, %rcx in called_minus(), and
+   movsbl (%rax), %edx and imull %ecx, %edx in product_char().
+
+   On aarch64 the listing must show each object loaded, then the
+   operation and the store: ldr x1, [x29, #24] and add x0, x1, x0 in
+   called_value(), ldr w3, [x0, w1, sxtw #2] and mul w3, w3, w2 in
+   product_element(), mul x2, x2, x1 in product_pointer(), mul x0, x2,
+   x0 in product_value(), sub x0, x1, x0 in called_minus(), and ldrb
+   w2, [x0] and mul w2, w2, w1 in product_char(). */
 int compound(int a, int b)
 {
     int x = a;
@@ -138,4 +164,47 @@ long
 unsigned_plain(unsigned *p, long l)
 {
         return *p = l;
+}
+
+long mix(long);
+
+long
+called_value(long b)
+{
+        long a = b;
+
+        return a += mix(b);
+}
+
+void
+product_element(int *p, int i, int e)
+{
+        p[i] *= e;
+}
+
+long
+product_pointer(long *p, long e)
+{
+        *p *= e;
+        return e;
+}
+
+long
+product_value(long *p, long e)
+{
+        return *p *= e;
+}
+
+long
+called_minus(long b)
+{
+        long a = b;
+
+        return a -= mix(b);
+}
+
+void
+product_char(char *p, int e)
+{
+        *p *= e;
 }

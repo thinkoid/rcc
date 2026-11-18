@@ -2270,12 +2270,13 @@ source_of(state_t &s, value_t v, int width)
 // in its slot, the instruction's source, addl -8(%rbp), %eax (6.2).
 // Not where L is the variable a compound assignment writes in place,
 // nor where R is a register variable's read, whose register is the
-// variable.
+// variable.  copied says that L would be copied or loaded, right_written()
+// the rest, for L an object in memory as well (assign()).
 bool
-written_in_right(
-    const state_t &s, binary_op_t op, value_t l, value_t r, unsigned wanted)
+right_written(
+    const state_t &s, binary_op_t op, value_t r, unsigned wanted, bool copied)
 {
-    if (!commutes(op) || l.id == s.in_place || borrowed(s, r))
+    if (!commutes(op) || borrowed(s, r))
         return false;
 
     const int reg = s.values[r.id].reg;
@@ -2286,10 +2287,20 @@ written_in_right(
     if (wanted & own)
         return true;
 
-    const bool copied = borrowed(s, l) || s.values[l.id].reg < 0;
-
     return copied && !wanted_register(s, wanted) &&
            !((s.reserved | s.ahead) & own);
+}
+
+bool
+written_in_right(
+    const state_t &s, binary_op_t op, value_t l, value_t r, unsigned wanted)
+{
+    if (l.id == s.in_place)
+        return false;
+
+    const bool copied = borrowed(s, l) || s.values[l.id].reg < 0;
+
+    return right_written(s, op, r, wanted, copied);
 }
 
 // An arithmetic, bitwise or shift operator on the held left value and
@@ -4306,6 +4317,25 @@ assign(state_t &s, const assign_t &a, unsigned wanted = 0)
     const auto r = stepped ? displacement(s, *a.op, *a.rhs, stride(a.lhs->type),
                                           bit(rax)) :
                              right_operand(s, *a.op, *a.rhs, width, bit(rax));
+
+    // a += f(b) on a long a: addq -8(%rbp), %rax, the object the row's
+    // source, and the store
+    if (!stepped && t.width == width && r.immediate.empty() && !r.place &&
+        right_written(s, *a.op, r.value, wanted, true)) {
+        const reg_t right = reg_of(s, r.value);
+        insn(s, sized(arithmetic_mnemonic(*a.op), width),
+             { operand(s, place, bit(right)), reg(right, width) });
+        if (*a.op != binary_op_t::mul)
+            flagged(s, width);
+        wrote(s, r.value, width, t.is_signed);
+
+        store(s, r.value, place, t.width);
+        release(s, place);
+        auto &valid = s.values[r.value.id].valid;
+        valid = stored_valid(valid, width, t);
+
+        return r.value;
+    }
 
     // the value of the expression has the lvalue's type: the bits
     // above its width are the operation's, not the value's extension

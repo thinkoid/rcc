@@ -88,8 +88,8 @@
    store from ecx and movl %ecx, %eax.  In called() the call, then addl
    %ebx, %eax, r read in its register and no copy of it; in
    called_minus() the call, then movl %ebx, %ecx, subl %eax, %ecx and
-   movl %ecx, %eax; in compound_called() the call, x loaded into ecx,
-   addl %ecx, %eax and the store from eax; in deeper() the
+   movl %ecx, %eax; in compound_called() the call, then x the row's
+   source, addl -4(%rbp), %eax, and the store from eax; in deeper() the
    quotient in eax, movl %ebx, %edx, subl (%rcx,%rax,4), %edx and movl
    %edx, %eax; in written() the copy preserve() makes, movl %ebx, %eax,
    then addl $2, %ebx and addl %ebx, %eax; in written_branched() movq

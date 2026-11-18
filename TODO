@@ -45,18 +45,15 @@ the call: ~p[f(i) + 1] = x~ holds it, ~p[i + f(j)] = x~ does not.
 Check: =joined_called= with no move on its paths, and no function
 longer.
 
-** TODO x86-64: a compound assignment into memory reloads its object beside a call's result
+** TODO x86-64: a product into memory by a constant loads the object first
 
-~a += mix(b)~ on a =long= in memory is =call mix; movq -8(%rbp),
-%rcx; addq %rcx, %rax; movq %rax, -8(%rbp)=, where the object is the
-commuting row's source, =addq -8(%rbp), %rax=, and the store
-follows; the object is read once, after the right operand, as it is
-today (G13). A few rows over =tests=, =compound_called()= of the
-calls probe among them.
+~x *= 12~ on an =int= in memory, its value used or not, is the load,
+=imull $12, %eax, %eax= and the store, where the three-operand form
+takes the object as its source, =imull $12, -4(%rbp), %eax=, and the
+store follows. It falls among the 196 compound assignments into
+memory by a constant over =tests=; its own count is not taken.
 
-Fix: none taken; count first. The row writes the right operand's
-register with the object its source where the commuting row's rule
-holds.
+Fix: none taken; count first.
 
 Check: the count over =tests=, and no function longer.
 

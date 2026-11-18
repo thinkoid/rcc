@@ -323,6 +323,151 @@ unsigned_plain:
 	ret
 	.cfi_endproc
 	.size	unsigned_plain, .-unsigned_plain
+	.globl	called_value
+	.type	called_value, @function
+called_value:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$32, %rsp
+	movq	%rdi, -8(%rbp)
+	movq	-8(%rbp), %rax
+	movq	%rax, -16(%rbp)
+	movq	-8(%rbp), %rax
+	movq	%rax, -24(%rbp)
+	movq	-24(%rbp), %rdi
+	call	mix@PLT
+	addq	-16(%rbp), %rax
+	movq	%rax, -16(%rbp)
+	jmp	.Lcalled_value.1
+.Lcalled_value.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	called_value, .-called_value
+	.globl	product_element
+	.type	product_element, @function
+product_element:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movl	%edx, -16(%rbp)
+	movq	-8(%rbp), %rax
+	movslq	-12(%rbp), %rcx
+	movl	-16(%rbp), %edx
+	imull	(%rax,%rcx,4), %edx
+	movl	%edx, (%rax,%rcx,4)
+.Lproduct_element.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	product_element, .-product_element
+	.globl	product_pointer
+	.type	product_pointer, @function
+product_pointer:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	%rsi, -16(%rbp)
+	movq	-8(%rbp), %rax
+	movq	-16(%rbp), %rcx
+	imulq	(%rax), %rcx
+	movq	%rcx, (%rax)
+	movq	-16(%rbp), %rax
+	jmp	.Lproduct_pointer.1
+.Lproduct_pointer.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	product_pointer, .-product_pointer
+	.globl	product_value
+	.type	product_value, @function
+product_value:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	%rsi, -16(%rbp)
+	movq	-8(%rbp), %rcx
+	movq	-16(%rbp), %rdx
+	movq	(%rcx), %rax
+	imulq	%rdx, %rax
+	movq	%rax, (%rcx)
+	jmp	.Lproduct_value.1
+.Lproduct_value.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	product_value, .-product_value
+	.globl	called_minus
+	.type	called_minus, @function
+called_minus:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$32, %rsp
+	movq	%rdi, -8(%rbp)
+	movq	-8(%rbp), %rax
+	movq	%rax, -16(%rbp)
+	movq	-8(%rbp), %rax
+	movq	%rax, -24(%rbp)
+	movq	-24(%rbp), %rdi
+	call	mix@PLT
+	movq	-16(%rbp), %rcx
+	subq	%rax, %rcx
+	movq	%rcx, -16(%rbp)
+	movq	%rcx, %rax
+	jmp	.Lcalled_minus.1
+.Lcalled_minus.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	called_minus, .-called_minus
+	.globl	product_char
+	.type	product_char, @function
+product_char:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	movl	-12(%rbp), %ecx
+	movsbl	(%rax), %edx
+	imull	%ecx, %edx
+	movb	%dl, (%rax)
+.Lproduct_char.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	product_char, .-product_char
 	.bss
 	.globl	counter
 	.type	counter, @object

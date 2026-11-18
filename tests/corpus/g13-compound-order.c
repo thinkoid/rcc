@@ -4,8 +4,9 @@
    11, c is 10, d and r are 4.
 
    On x86-64 the listing shows the call to bump() before the add to
-   a's slot, addl %eax, -12(%rbp), and before the loads of b and c;
-   d = 2 before the add to d's slot; and r, which is ebx, set by
+   a's slot, addl %eax, -12(%rbp), and before the reads of b and c,
+   addl -16(%rbp), %eax and imull -20(%rbp), %eax, each the row's
+   source; d = 2 before the add to d's slot; and r, which is ebx, set by
    movl $2, %ebx before addl %ebx, %ebx.
 
    On aarch64 the listing shows each call to bump() before the load of

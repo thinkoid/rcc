@@ -638,8 +638,10 @@ which is the value in `rdx` (6.5), and for an operator that commutes,
 `+`, `*`, `&`, `|` or `^`, whose right operand is a value in a
 register when the instruction is written, in two cases: the register
 is the one its consumer names, or `L` is a register variable's read,
-which the row would copy, or a spilled value, which it would reload,
-and no free register is named for the copy or the reload. That row
+which the row would copy, a spilled value, which it would reload, or
+a compound assignment's object in memory of the operation's width,
+which it would load (6.6), and no free register is named for the
+copy, the reload or the load. That row
 writes `R`'s register, `op L, R`, `L` freed, a spilled `L` read in
 its slot (6.2), so `return g + bump()` ends `addl -8(%rbp), %eax`
 and not `movq -8(%rbp), %rcx; addl %eax, %ecx; movl %ecx, %eax`, `s
@@ -1602,7 +1604,14 @@ are the load, the operation and the store, and `i++` copies the old
 right operand, then the load of `x`, the operation and the store, so
 `y = x += e` reads `x` after `e`, as `x += e;` does. A constant right
 operand has no evaluation, so `y = x += 5` is the load, `addl $5,
-%eax`, the store.
+%eax`, the store. Where the operator commutes, the object is of the
+operation's width and the right operand's register is the one 6.1's
+row writes, its consumer's or one no free register is named beside,
+the object is the instruction's source instead of its load, read at
+the same point, after the right operand: `a += f(b)` for its value is
+`addq -8(%rbp), %rax` and the store, and `p[i] *= e;`, which `imul`
+has no memory destination for, `imull (%rax,%rcx,4), %edx` and the
+store.
 
 ### 6.7 Held values at a branch and at a call
 

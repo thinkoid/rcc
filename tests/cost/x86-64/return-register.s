@@ -1006,8 +1006,7 @@ compound_called:
 	movl	%eax, -12(%rbp)
 	movl	-12(%rbp), %edi
 	call	f@PLT
-	movl	-4(%rbp), %ecx
-	addl	%ecx, %eax
+	addl	-4(%rbp), %eax
 	movl	%eax, -4(%rbp)
 	jmp	.Lcompound_called.1
 .Lcompound_called.1:

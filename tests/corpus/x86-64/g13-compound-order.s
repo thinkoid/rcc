@@ -46,17 +46,15 @@ main:
 	movq	%rax, -48(%rbp)
 	movq	-48(%rbp), %rdi
 	call	bump@PLT
-	movl	-16(%rbp), %ecx
-	addl	%eax, %ecx
-	movl	%ecx, -16(%rbp)
-	movl	%ecx, -28(%rbp)
+	addl	-16(%rbp), %eax
+	movl	%eax, -16(%rbp)
+	movl	%eax, -28(%rbp)
 	leaq	-20(%rbp), %rax
 	movq	%rax, -56(%rbp)
 	movq	-56(%rbp), %rdi
 	call	bump@PLT
-	movl	-20(%rbp), %ecx
-	imull	%eax, %ecx
-	movl	%ecx, -20(%rbp)
+	imull	-20(%rbp), %eax
+	movl	%eax, -20(%rbp)
 	movl	$2, %eax
 	movl	%eax, -24(%rbp)
 	addl	%eax, -24(%rbp)

@@ -157,9 +157,8 @@ getint:
 .Lgetint.12:
 	movq	-8(%rbp), %rax
 	movl	-16(%rbp), %ecx
-	movl	(%rax), %edx
-	imull	%ecx, %edx
-	movl	%edx, (%rax)
+	imull	(%rax), %ecx
+	movl	%ecx, (%rax)
 	cmpl	$-1, -12(%rbp)
 	je	.Lgetint.13
 	movl	-12(%rbp), %eax
