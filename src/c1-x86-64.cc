@@ -1279,6 +1279,43 @@ unscaled_pointer(state_t &s,
 }
 
 address_t unscaled(state_t &, const operation_t &, long, unsigned);
+const expr_t *memory_operand(const expr_t &, int);
+
+// The sum under a cast of an access's pointer between pointer types,
+// backend.md 6.3, whose rows form the access's operand as the sum's own
+// pointer's: its stride scales the index and its bytes are the
+// displacement, whatever the access's size, since the operand holds any
+// displacement and scales by 1, 2, 4 or 8, so *(int *) (p + 24) on a
+// char *p is 24(%rax) and *(long *) (s + i) on a short *s (%rax,%rcx,2).
+// The access is at the cast's type all the same (G10), at the address
+// the source computes (G11).  None for any other pointer, an array's
+// decay among them, for an address handed a register variable, whose
+// rows are the value's, and for a variable index where the address is
+// held_across a pinned instruction, which the sum keeps to one
+// register, and for an index of 64 bits in memory at a stride of 1,
+// which the sum's addq takes as its operand, addq -24(%rbp), %rax,
+// where the index form would load it.
+const expr_t *
+cast_sum(const state_t &s, const expr_t &p, const into_t *into)
+{
+    if (into || !is< cast_t >(p) || !is< pointer_t >(p.type))
+        return nullptr;
+
+    const auto &sum = *as< cast_t >(p).arg;
+    if (!is< pointer_t >(sum.type) || !is< binary_t >(sum))
+        return nullptr;
+
+    const auto &b = as< binary_t >(sum);
+    if (b.op != binary_op_t::add && b.op != binary_op_t::sub)
+        return nullptr;
+
+    const auto &n = is< pointer_t >(b.lhs->type) ? *b.rhs : *b.lhs;
+    if (!is< literal_t >(n) &&
+        (s.held_across || (stride(sum.type) == 1 && memory_operand(n, 64))))
+        return nullptr;
+
+    return &sum;
+}
 
 // The address a dereference designates, 6.5.4.2p4, of an object of
 // type pointee: the addressing row.  A name's address plus a constant,
@@ -1301,9 +1338,11 @@ address_t unscaled(state_t &, const operation_t &, long, unsigned);
 // scales by, the index's product is the form's index at scale 1, the
 // pointer's address its base and displacement, unscaled()'s, so that
 // m[i][4] on a local char m[4][5] is -23(%rbp,%rcx) after imulq $5,
-// %rcx, %rcx.  Any other pointer, a sum of another size included, is
-// computed into a register and is the base;
-// nothing looks through a cast.  A register variable handed down goes
+// %rcx, %rcx.  A cast of the pointer between pointer types is looked
+// through to the sum under it, cast_sum()'s, so *(int *) (p + 24) on a
+// char *p is 24(%rax).  Any other pointer, a sum of another size
+// included, is computed into a register and is the base.  A register
+// variable handed down goes
 // to the row of a base that is the whole address, p of &*p and &p[0],
 // or the sum of &a[i] at a size no addressing form scales by, to
 // summed()'s, and to constant_indexed()'s pointer (chapter 4).
@@ -1313,6 +1352,10 @@ pointed(state_t &s,
         const type_t &pointee,
         into_t *into = nullptr)
 {
+    // *(int *) (p + 24) on a char *p: 24(%rax)
+    if (const auto *sum = cast_sum(s, p, into))
+        return pointed(s, *sum, *as< pointer_t >(sum->type).pointee);
+
     if (const auto a = folded(s, p))
         return *a;
 

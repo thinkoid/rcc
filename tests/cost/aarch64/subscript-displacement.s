@@ -266,4 +266,233 @@ far_stored:
 	ret
 	.cfi_endproc
 	.size	far_stored, .-far_stored
+	.globl	byte_index
+	.type	byte_index, @function
+byte_index:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	ldr	x0, [x29, #16]
+	ldr	w1, [x29, #24]
+	ldr	w0, [x0, w1, sxtw]
+	b	.Lbyte_index.1
+.Lbyte_index.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	byte_index, .-byte_index
+	.globl	byte_scaled
+	.type	byte_scaled, @function
+byte_scaled:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	ldr	x0, [x29, #16]
+	ldr	w1, [x29, #24]
+	add	x0, x0, w1, sxtw #1
+	ldr	x0, [x0]
+	b	.Lbyte_scaled.1
+.Lbyte_scaled.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	byte_scaled, .-byte_scaled
+	.globl	byte_after_index
+	.type	byte_after_index, @function
+byte_after_index:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	ldr	x0, [x29, #16]
+	ldr	w1, [x29, #24]
+	mov	w2, #4
+	mul	w1, w1, w2
+	add	x0, x0, w1, sxtw
+	ldrsh	w0, [x0, #2]
+	b	.Lbyte_after_index.1
+.Lbyte_after_index.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	byte_after_index, .-byte_after_index
+	.globl	byte_register
+	.type	byte_register, @function
+byte_register:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -16
+	str	x0, [x29, #24]
+	ldr	x19, [x29, #24]
+	ldr	w0, [x19, #8]
+	b	.Lbyte_register.1
+.Lbyte_register.1:
+	.cfi_def_cfa wsp, 32
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	byte_register, .-byte_register
+	.globl	byte_slot
+	.type	byte_slot, @function
+byte_slot:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	ldr	w0, [x29, #16]
+	strb	w0, [x29, #20]
+	add	x0, x29, #24
+	ldr	w0, [x0]
+	b	.Lbyte_slot.1
+.Lbyte_slot.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	byte_slot, .-byte_slot
+	.globl	byte_label
+	.type	byte_label, @function
+byte_label:
+	.cfi_startproc
+	sub	sp, sp, #16
+	.cfi_def_cfa_offset 16
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -16
+	.cfi_offset w30, -8
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	adrp	x0, bytes+4
+	add	x0, x0, :lo12:bytes+4
+	ldr	w0, [x0]
+	b	.Lbyte_label.1
+.Lbyte_label.1:
+	.cfi_def_cfa wsp, 16
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #16
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	byte_label, .-byte_label
+	.globl	byte_held
+	.type	byte_held, @function
+byte_held:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	ldr	x0, [x29, #16]
+	ldr	w1, [x29, #24]
+	add	x0, x0, w1, sxtw
+	str	x0, [x29, #32]
+	bl	step
+	ldr	x2, [x29, #32]
+	ldr	w1, [x2]
+	sub	w1, w1, w0
+	str	w1, [x2]
+.Lbyte_held.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	byte_held, .-byte_held
+	.globl	byte_value
+	.type	byte_value, @function
+byte_value:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	ldr	x0, [x29, #16]
+	add	x0, x0, #24
+	b	.Lbyte_value.1
+.Lbyte_value.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	byte_value, .-byte_value
+	.bss
+	.globl	bytes
+	.type	bytes, @object
+	.size	bytes, 16
+bytes:
+	.zero	16
 	.section	.note.GNU-stack,"",@progbits

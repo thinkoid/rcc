@@ -7,9 +7,18 @@
    p[1][2] on int (*p)[3] being 12 + 8 bytes.  byte_view(),
    byte_view_store() and byte_view_near() read and write an int
    through a char pointer plus a byte offset under a cast,
-   *(int *) (p + 4097), and read *(int *) (p + 1).  far_called() and
-   far_stored() store through a constant index no displacement of the
-   access holds, p[5000] = g() and p[5000] = v on an int *p.
+   *(int *) (p + 4097), and read *(int *) (p + 1).  Beside them,
+   under a cast: byte_index() a variable index, *(int *) (p + i) on a
+   char *p, byte_scaled() *(long *) (s + i) on a short *s, whose
+   stride is no access's size, byte_after_index() a constant after a
+   variable index, *(short *) ((char *) p + i * 4 + 2),
+   byte_register() a register pointer, byte_slot() and byte_label() a
+   local array's and a global's address plus a constant; and the
+   edges, byte_held() *(int *) (p + i) -= step(), whose address is
+   held across the call, and byte_value() (int *) (p + 24), the
+   address as a value.  far_called() and far_stored() store through a
+   constant index no displacement of the access holds, p[5000] = g()
+   and p[5000] = v on an int *p.
 
    On x86-64 the listing must show row() reading p[i][2] by the one
    movsbl 2(%rax,%rcx,8), %eax after p's load and i's movslq, local()
@@ -17,10 +26,17 @@
    plus 2, after i's movslq, cell() reading p[1][2] by the one
    movl 20(%rax), %eax after p's load, address() forming &p[i][2] by
    the one leaq 2(%rax,%rcx,8), %rax, and corner() forming &p[1][2] by
-   the one leaq 20(%rax), %rax.  byte_view() adds the byte offset,
-   addq $4097, %rax, then reads movl (%rax), %eax, byte_view_store()
-   the same before movl %ecx, (%rax), and byte_view_near() addq $1,
-   %rax and movl (%rax), %eax.  far_called() stores movl %eax,
+   the one leaq 20(%rax), %rax.  Under the cast the sum's bytes are
+   the access's operand: byte_view() reads by the one movl 4097(%rax),
+   %eax after p's load, byte_view_store() stores by movl %ecx,
+   4097(%rax), byte_view_near() reads movl 1(%rax), %eax,
+   byte_index() movl (%rax,%rcx,1), %eax, byte_scaled() movq
+   (%rax,%rcx,2), %rax, byte_after_index() movswl 2(%rax), %eax after
+   the product's addq %rcx, %rax, byte_register() the one movl
+   8(%rbx), %eax, byte_slot() movl -16(%rbp), %eax and byte_label()
+   the one movl bytes+4(%rip), %eax; byte_held() keeps addq %rcx,
+   %rax, spilled across the call, and subl %eax, (%rcx) after it, and
+   byte_value() is addq $24, %rax.  far_called() stores movl %eax,
    20000(%rcx) after the call and p's reload, and far_stored() movl
    %ecx, 20000(%rax).
 
@@ -36,12 +52,19 @@
    mov x1, #4097 and ldr w0, [x0, x1], with no add; byte_view_store(),
    whose address is held across the right operand, keeps to one
    register, add x0, x0, x1, then str w1, [x0] after v's load; and
-   byte_view_near() reads by the one ldr w0, [x0, #1].  The constant
-   index of a store is written after its right operand, since it reads
-   nothing: far_called() spills p alone across the call, then bl g;
-   mov x1, #5000; ldr x2, [x29, #24]; str w0, [x2, x1, lsl #2], and
-   far_stored() is mov x2, #5000 after v's load, then str w1, [x0, x2,
-   lsl #2]. */
+   byte_view_near() reads by the one ldr w0, [x0, #1].  byte_index()
+   reads ldr w0, [x0, w1, sxtw]; byte_scaled(), whose stride is no
+   access's size, adds the index, add x0, x0, w1, sxtw #1, before ldr
+   x0, [x0]; byte_after_index() adds the product, add x0, x0, w1,
+   sxtw, before ldrsh w0, [x0, #2]; byte_register() reads ldr w0,
+   [x19, #8]; byte_slot() and byte_label() form the name's address,
+   add x0, x29, #24 and the page's adrp and add, before ldr w0, [x0];
+   byte_held() adds the index before the call, and byte_value() is
+   add x0, x0, #24.  The constant index of a store is written after
+   its right operand, since it reads nothing: far_called() spills p
+   alone across the call, then bl g; mov x1, #5000; ldr x2, [x29,
+   #24]; str w0, [x2, x1, lsl #2], and far_stored() is mov x2, #5000
+   after v's load, then str w1, [x0, x2, lsl #2]. */
 int
 row(char (*p)[8], int i)
 {
@@ -104,4 +127,60 @@ void
 far_stored(int *p, int v)
 {
         p[5000] = v;
+}
+
+char bytes[16];
+int step(void);
+
+int
+byte_index(char *p, int i)
+{
+        return *(int *) (p + i);
+}
+
+long
+byte_scaled(short *s, int i)
+{
+        return *(long *) (s + i);
+}
+
+int
+byte_after_index(int *p, int i)
+{
+        return *(short *) ((char *) p + i * 4 + 2);
+}
+
+int
+byte_register(char *s)
+{
+        register char *r = s;
+
+        return *(int *) (r + 8);
+}
+
+int
+byte_slot(int v)
+{
+        char c[16];
+
+        c[0] = v;
+        return *(int *) (c + 4);
+}
+
+int
+byte_label(void)
+{
+        return *(int *) (bytes + 4);
+}
+
+void
+byte_held(char *p, int i)
+{
+        *(int *) (p + i) -= step();
+}
+
+int *
+byte_value(char *p)
+{
+        return (int *) (p + 24);
 }

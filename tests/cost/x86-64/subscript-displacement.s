@@ -110,8 +110,7 @@ byte_view:
 	.cfi_def_cfa_register %rbp
 	movq	%rdi, -8(%rbp)
 	movq	-8(%rbp), %rax
-	addq	$4097, %rax
-	movl	(%rax), %eax
+	movl	4097(%rax), %eax
 	jmp	.Lbyte_view.1
 .Lbyte_view.1:
 	leave
@@ -131,9 +130,8 @@ byte_view_store:
 	movq	%rdi, -8(%rbp)
 	movl	%esi, -12(%rbp)
 	movq	-8(%rbp), %rax
-	addq	$4097, %rax
 	movl	-12(%rbp), %ecx
-	movl	%ecx, (%rax)
+	movl	%ecx, 4097(%rax)
 .Lbyte_view_store.1:
 	leave
 	.cfi_def_cfa %rsp, 8
@@ -151,8 +149,7 @@ byte_view_near:
 	.cfi_def_cfa_register %rbp
 	movq	%rdi, -8(%rbp)
 	movq	-8(%rbp), %rax
-	addq	$1, %rax
-	movl	(%rax), %eax
+	movl	1(%rax), %eax
 	jmp	.Lbyte_view_near.1
 .Lbyte_view_near.1:
 	leave
@@ -202,4 +199,179 @@ far_stored:
 	ret
 	.cfi_endproc
 	.size	far_stored, .-far_stored
+	.globl	byte_index
+	.type	byte_index, @function
+byte_index:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	movslq	-12(%rbp), %rcx
+	movl	(%rax,%rcx,1), %eax
+	jmp	.Lbyte_index.1
+.Lbyte_index.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	byte_index, .-byte_index
+	.globl	byte_scaled
+	.type	byte_scaled, @function
+byte_scaled:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	movslq	-12(%rbp), %rcx
+	movq	(%rax,%rcx,2), %rax
+	jmp	.Lbyte_scaled.1
+.Lbyte_scaled.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	byte_scaled, .-byte_scaled
+	.globl	byte_after_index
+	.type	byte_after_index, @function
+byte_after_index:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	imull	$4, -12(%rbp), %ecx
+	movslq	%ecx, %rcx
+	addq	%rcx, %rax
+	movswl	2(%rax), %eax
+	jmp	.Lbyte_after_index.1
+.Lbyte_after_index.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	byte_after_index, .-byte_after_index
+	.globl	byte_register
+	.type	byte_register, @function
+byte_register:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movq	%rdi, -16(%rbp)
+	movq	-16(%rbp), %rbx
+	movl	8(%rbx), %eax
+	jmp	.Lbyte_register.1
+.Lbyte_register.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	byte_register, .-byte_register
+	.globl	byte_slot
+	.type	byte_slot, @function
+byte_slot:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	-4(%rbp), %eax
+	movb	%al, -20(%rbp)
+	movl	-16(%rbp), %eax
+	jmp	.Lbyte_slot.1
+.Lbyte_slot.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	byte_slot, .-byte_slot
+	.globl	byte_label
+	.type	byte_label, @function
+byte_label:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	bytes+4(%rip), %eax
+	jmp	.Lbyte_label.1
+.Lbyte_label.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	byte_label, .-byte_label
+	.globl	byte_held
+	.type	byte_held, @function
+byte_held:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$32, %rsp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	movslq	-12(%rbp), %rcx
+	addq	%rcx, %rax
+	movq	%rax, -24(%rbp)
+	call	step@PLT
+	movq	-24(%rbp), %rcx
+	subl	%eax, (%rcx)
+.Lbyte_held.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	byte_held, .-byte_held
+	.globl	byte_value
+	.type	byte_value, @function
+byte_value:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	-8(%rbp), %rax
+	addq	$24, %rax
+	jmp	.Lbyte_value.1
+.Lbyte_value.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	byte_value, .-byte_value
+	.bss
+	.globl	bytes
+	.type	bytes, @object
+	.size	bytes, 16
+	.p2align 4
+bytes:
+	.zero	16
 	.section	.note.GNU-stack,"",@progbits

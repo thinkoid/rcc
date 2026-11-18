@@ -61,23 +61,45 @@ of a row that writes the right operand's register.
 
 Check: the count over =tests=, and no function longer.
 
-** TODO x86-64: a byte offset under a cast of the pointer is added before the access
+** TODO x86-64: a sum under a cast is added where a subscript or a second constant follows it
 
-~*(int *) (p + 24)~ on a ~char *p~ is =addq $24, %rax; movl (%rax),
-%eax=, where the constant as the access's displacement, =movl
-24(%rax), %eax=, is one instruction: nothing looks through a cast of
-the pointer to the sum under it. aarch64 looks through it
-(=access_sum()= in =src/c1-aarch64.cc=, =aarch64.md= 6.3) and writes
-=ldr w0, [x0, #24]=. =byte_view()= and =byte_view_near()= of
-=subscript-displacement= pin the two instructions, and the =kview_*=
-rows of the pointers probe have the shape.
+An access looks through a cast of its pointer to the sum under it
+(=cast_sum()= in =src/c1-x86-64.cc=, =backend.md= 6.3), but two
+shapes still form the sum first. ~((int *) (p + 1))[d]~ on a ~char
+*p~ is =addq $1, %rax; movslq 4(%rax), %rax=, where =movslq 5(%rax),
+%rax= is one instruction: the subscript's pointer is the cast,
+generated as a value; the 80 =kview_index_*= rows of the pointers
+probe have it. ~*(short *) ((char *) p + i * 4 + 2)~ is =addq %rcx,
+%rax; movswl 2(%rax), %eax=, where the index joins the operand,
+=movswl 2(%rax,%rcx,1), %eax=: =byte_after_index()= of
+=subscript-displacement=.
 
-Fix: the access's address rows look through a cast between pointer
-types to a sum whose stride is 1 or the access's own size, as on
-aarch64.
+Fix: =constant_indexed()= and =index_base()= take their pointer
+through =cast_sum()=, the inner sum's rows forming a base, a
+displacement and an index.
 
-Check: those two pins with the displacement in the access, the
-count over =tests=, and no function longer.
+Check: =kview_index_*= one instruction shorter, =byte_after_index()=
+with the index in the operand, and no function longer.
+
+** TODO A name's address plus a constant under a cast does not fold into the slot or the label
+
+~*(int *) ((char *) &s + 4)~ on a local is =leaq -20(%rbp), %rax;
+movl 4(%rax), %eax= and =add x0, x29, #20; ldr w0, [x0, #4]=, where
+the slot's own operand, =movl -16(%rbp), %eax= and =ldr w0, [x29,
+#24]=, is one instruction: =lvalue_offset()= in =src/c1-common.cc=
+does not read through a cast between pointer types, and aarch64's
+=access_sum()= leaves a name's address plus a constant to it. On
+aarch64 =byte_slot()= and =byte_label()= of =subscript-displacement=
+and =main= of =g11-misaligned= form the address first for the same
+reason.
+
+Fix: =lvalue_offset()= reads through a cast between pointer types,
+its offsets in bytes.
+
+Check: a cost function for the shape on a slot and on a label, those
+three aarch64 listings one instruction shorter, an offset that is no
+multiple of the access's size assembling, =ldr w0, [x29, #21]=, and
+no function longer.
 
 ** TODO =one_path()= is the same text in both generators
 
