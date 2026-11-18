@@ -217,59 +217,55 @@ Three sums.
 
 - `expr_t`: a type and a node. The nodes are integer or character
   literal, name, string literal, unary, binary, assignment, call,
-  cast, conditional. A name holds a non-owning pointer to its
-  symbol. A string literal holds its elements' bytes and the
-  elements' width and is typed `char [N + 1]`, or for a wide one an
-  array of `N + 1` of its element type (chapter 5). Whether an
-  expression is an lvalue follows from its node (the
-  name of an object, a string literal, a dereference of an object
-  pointer), it is not stored; a function designator is none. A compound assignment carries the type it is computed in,
-  the usual arithmetic conversions of its operands. A record's
-  assignment is a plain assignment of the record's type, its two
-  operands the lvalues of one record, for the generator to copy the
-  right's object into the left's. Pointer
-  arithmetic is a binary add or sub of the pointer's type with the
-  integer operand widened to 64 bits in its own signedness; the
-  difference of two
-  pointers is a binary sub of type `long`; a subscript is a
-  dereference of an add, as 6.5.3.2p2 defines it, whose operands the
-  parser checks first, a pointer to a complete object type and an
-  integer (p1), so that its errors name the subscript; a member
-  access is the dereference of the record's address plus the
-  member's offset in bytes, `p->m` as `*(T *) ((char *) p + 8)` and
-  `s.m` as `(&s)->m`, as the Seventh Edition compiler's first pass
-  wrote `a->b` as `*(a + offset)`, so it has no node of its own
-  (chapter 5); `sizeof` is an integer literal the parser folded. A
-  unary `+` has no node: it is
-  the promotion of its operand (6.5.4.3p2), a cast, and over an lvalue
-  that no promotion converts, a cast to the lvalue's own type, since
-  the result is a value and no lvalue; so `+x` is `(T) x`, `T` the
-  promoted type, and the source's `+` is no instruction. `!` is the
-  one operator whose operand the tree leaves unpromoted: `!E` is `(0
-  == E)` (6.5.4.3p5), whose comparison would promote a `char`, but a
-  promotion changes no zero, so the operand is tested against zero
-  at its own width, as a condition is, `cmpb $0, -1(%rbp)` for `!c`
-  on a `char`, and the result is the `int` the standard gives. A
-  conditional of two void operands has type `void` (6.5.16p6) and
-  stands where a value is dropped, as a call of a void function does;
-  one void operand and one of a value is an error (p3). Two pointer
-  operands, or a pointer and a null pointer constant, meet at one
-  type (p7): the null pointer constant takes the other's, before a
-  pointer to `void` and an object pointer meet at `void *`, so `c ?
-  (void *) 0 : p` is an `int *` for an `int *p`; `==` and `!=` test a
-  pointer against a null pointer constant in the pointer's type, a
-  test of null (6.5.10p6). A call's
-  callee is the name of a function, the direct call, or an
-  expression of
-  pointer-to-function type, the call through a pointer; c1 tells the
-  two apart by the callee's type. A function designator where a value
-  is wanted, a function's name or `*p` through a pointer to a
+  cast, conditional. A name holds a non-owning pointer to its symbol.
+  A string literal holds its elements' bytes and the elements' width
+  and is typed `char [N + 1]`, or for a wide one an array of `N + 1`
+  of its element type (chapter 5). Whether an expression is an lvalue
+  follows from its node (the name of an object, a string literal, a
+  dereference of an object pointer), it is not stored; a function
+  designator is none. A compound assignment carries the type it is
+  computed in, the usual arithmetic conversions of its operands. A
+  record's assignment is a plain assignment of the record's type, its
+  two operands the lvalues of one record, for the generator to copy
+  the right's object into the left's. Pointer arithmetic is a binary
+  add or sub of the pointer's type with the integer operand widened to
+  64 bits in its own signedness; the difference of two pointers is a
+  binary sub of type `long`; a subscript is a dereference of an add,
+  as 6.5.3.2p2 defines it, whose operands the parser checks first, a
+  pointer to a complete object type and an integer (p1), so that its
+  errors name the subscript; a member access is the dereference of the
+  record's address plus the member's offset in bytes, `p->m` as `*(T
+  *) ((char *) p + 8)` and `s.m` as `(&s)->m`, as the Seventh Edition
+  compiler's first pass wrote `a->b` as `*(a + offset)`, so it has no
+  node of its own (chapter 5); `sizeof` is an integer literal the
+  parser folded. A unary `+` has no node: it is the promotion of its
+  operand (6.5.4.3p2), a cast, and over an lvalue that no promotion
+  converts, a cast to the lvalue's own type, since the result is a
+  value and no lvalue; so `+x` is `(T) x`, `T` the promoted type, and
+  the source's `+` is no instruction. `!` is the one operator whose
+  operand the tree leaves unpromoted: `!E` is `(0 == E)` (6.5.4.3p5),
+  whose comparison would promote a `char`, but a promotion changes no
+  zero, so the operand is tested against zero at its own width, as a
+  condition is, `cmpb $0, -1(%rbp)` for `!c` on a `char`, and the
+  result is the `int` the standard gives. A conditional of two void
+  operands has type `void` (6.5.16p6) and stands where a value is
+  dropped, as a call of a void function does; one void operand and one
+  of a value is an error (p3). Two pointer operands, or a pointer and
+  a null pointer constant, meet at one type (p7): the null pointer
+  constant takes the other's, before a pointer to `void` and an object
+  pointer meet at `void *`, so `c ? (void *) 0 : p` is an `int *` for
+  an `int *p`; `==` and `!=` test a pointer against a null pointer
+  constant in the pointer's type, a test of null (6.5.10p6). A call's
+  callee is the name of a function, the direct call, or an expression
+  of pointer-to-function type, the call through a pointer; c1 tells
+  the two apart by the callee's type. A function designator where a
+  value is wanted, a function's name or `*p` through a pointer to a
   function, decays as an array does, a cast to the pointer over the
   designator: over a name it is the function's address, over `*p` it
-  is `p`'s value. `&f` is that cast too, so `f` and `&f` as values
-  are one node. A value of pointer-to-function type is loaded,
-  stored, passed, returned and compared as any pointer, and no node
-  is particular to it.
+  is `p`'s value. `&f` is that cast too, so `f` and `&f` as values are
+  one node. A value of pointer-to-function type is loaded, stored,
+  passed, returned and compared as any pointer, and no node is
+  particular to it.
 - `stmt_t`: expression, declaration, block, if, switch, while, do,
   for, break, continue, label, case label, goto, return. A `for`
   carries its init as a statement, so a declaration in the init costs
@@ -318,44 +314,43 @@ Three sums.
 A symbol is a name, a type, a storage and a linkage. The storage is
 local, parameter, global, function, type name or enumerator. A global
 is an object of static storage duration: one declared at file scope,
-or one a block declares `static` or `extern`. One the unit defines
-has an entry in the unit's objects, and that entry is how c1 tells it
-from one the unit only declares, which has none and for which nothing
-is written: the first is reached PC-relative and the second through
-the GOT. A block's `static` object has an entry always. The linkage
-is external, internal or none (6.2.2): a function or an object at
-file scope has external linkage, or internal when declared `static`;
-a function or an object a block declares `extern`, or a function it
+or one a block declares `static` or `extern`. One the unit defines has
+an entry in the unit's objects, and that entry is how c1 tells it from
+one the unit only declares, which has none and for which nothing is
+written: the first is reached PC-relative and the second through the
+GOT. A block's `static` object has an entry always. The linkage is
+external, internal or none (6.2.2): a function or an object at file
+scope has external linkage, or internal when declared `static`; a
+function or an object a block declares `extern`, or a function it
 declares, has the linkage of the visible declaration of the name, or
 external without one (chapter 5); and every other name has none, a
 block's `static` object among them. One entity of linkage is one
 symbol, whichever scope declares it first. c1 writes `.globl` for a
 symbol of external linkage alone, so a `static` function or object is
 local to the file's object, which is the one difference in its
-listing. A
-parameter of a prototype is a symbol of storage parameter, never a
-global, even where nothing defines its function. A type name is a typedef's: its type is the type the name stands for,
-it has no object, and nothing is written for it. An enumerator is an
-enumeration constant: it carries its type and its value, and an
-expression that names one is the literal of its value, so no name in
-the tree is an enumerator's. A function or a global may carry two
-facts more: the name
-`__asm__` gives it in the assembly, which c1 writes wherever it writes
-the symbol, and which a block's `static` object takes from the parser
-as its label, `next.count` (`backend.md` chapter 10); and a marking, the words its use is refused with when an
-attribute changes what the program depends on. A local or parameter the
-parser gives a register carries its index, which of the target's
-register variables it takes: each
-takes the next in declaration order and gives it back at its block's
-end (`backend.md` chapter 4), so the index is one above the highest of
-those live where it is declared and of those the closed inner blocks
-of its block took, since its object is live from the entry into its
-block (6.2.4p6). The parser decides this, and the generator
-reads the decision from the tree. Scopes live in the parser and die
-with it; each holds its ordinary identifiers and, apart, its tags of
-structs, unions and enums. After parsing there are only symbols. The
-tree carries no source locations: the parser diagnoses with the token
-in hand, and the generator diagnoses nothing.
+listing. A parameter of a prototype is a symbol of storage parameter,
+never a global, even where nothing defines its function. A type name
+is a typedef's: its type is the type the name stands for, it has no
+object, and nothing is written for it. An enumerator is an enumeration
+constant: it carries its type and its value, and an expression that
+names one is the literal of its value, so no name in the tree is an
+enumerator's. A function or a global may carry two facts more: the
+name `__asm__` gives it in the assembly, which c1 writes wherever it
+writes the symbol, and which a block's `static` object takes from the
+parser as its label, `next.count` (`backend.md` chapter 10); and a
+marking, the words its use is refused with when an attribute changes
+what the program depends on. A local or parameter the parser gives a
+register carries its index, which of the target's register variables
+it takes: each takes the next in declaration order and gives it back
+at its block's end (`backend.md` chapter 4), so the index is one above
+the highest of those live where it is declared and of those the closed
+inner blocks of its block took, since its object is live from the
+entry into its block (6.2.4p6). The parser decides this, and the
+generator reads the decision from the tree. Scopes live in the parser
+and die with it; each holds its ordinary identifiers and, apart, its
+tags of structs, unions and enums. After parsing there are only
+symbols. The tree carries no source locations: the parser diagnoses
+with the token in hand, and the generator diagnoses nothing.
 
 Every conversion is a cast node the parser inserted. The generator
 converts nothing on its own; when it sees an operand, the operand
@@ -1196,9 +1191,9 @@ are in the tree, with their pins and the probes that run rcc's code
 against `clang`'s. Its measurement, on two machines, is in `cost.md`
 chapter 4.
 
-The fourth slice is a program with its headers. `typedef`, `extern`
-at file scope, the types a header declares and the program never
-opens, and the GNU C a system header is written in (chapter 5) bring
+The fourth slice is a program with its headers. `typedef`, `extern` at
+file scope, the types a header declares and the program never opens,
+and the GNU C a system header is written in (chapter 5) bring
 `stdio.h`, `string.h`, `ctype.h`, `unistd.h`, `stdint.h` and
 `stddef.h` through the parser. It is parser work but for the name
 `__asm__` gives a symbol, which c1 writes at the label and at the
@@ -1207,49 +1202,48 @@ call. The milestone program, `header-stdio` in the corpus, includes
 with `strcmp` and prints it: the same line and the same status under
 rcc and under `clang -O2`. The types a header declares for another
 compiler's sake, the body of a header's `static inline` function,
-skipped, and
-the function-pointer declarator bring `stdlib.h`, `sys/types.h`,
-`signal.h` and most headers of the C library and of POSIX through as
-well: `header-stdlib` and `header-signal` in the corpus call `atoi`,
-`strtol`, `signal` and `raise`. A function is a value, its address,
-and a call goes through a pointer to one, in both generators
-(`backend.md` chapters 8 and 10): `header-qsort` sorts with its own
-comparison, and `header-handler` installs its own signal handler and
-raises the signal. `volatile` dropped, `_Atomic` and `_Bool`
-declared, a floating constant taken as a token, and a typedef's array
-of a size rcc cannot compute bring `stdatomic.h` through, and on
-aarch64 `signal.h` and `sys/wait.h` with glibc's default feature set.
-The scope of a parameter list and the qualifiers inside a parameter's
-array brackets bring `regex.h` through, and `header-regex` in the
-corpus declares a function in the shape of `regexec`. So 57 of 58
-headers of the C library and of POSIX parse on each target;
-`tgmath.h` stops at a function declared with `(...)` for its whole
-parameter list. Then the objects at file scope: a program defines,
-declares and uses its own globals, with integer constants as initializers, and reaches the C
-library's, so `header-stdout` writes to `stdout` (`backend.md` and
-`aarch64.md` chapter 10). With address constants and strings as
-initializers, `header-months` keeps a table of names in an array of
-`char` and reaches `stdout`, `putchar` and `fputs` through global
-pointers to them. With brace-enclosed lists, `header-calendar` keeps
-K&R's tables of the days of the months and of their names (sections
-5.7 and 5.8 of the second edition). With `static`, a function and an
-object of internal linkage and a block's object of static storage,
-`header-getch` keeps K&R's buffer of `getch` and `ungetch` (sections
-4.3 and 4.6) private to its file. With `do`, `break`, `continue`,
-`goto` and labels, `header-itoa` runs K&R's `itoa`, `reverse` and
-`trim` (sections 3.6 and 3.7). With `switch`, compiled by the Seventh
-Edition compiler's rule (`backend.md` 7.3), `header-count` counts
-digits, white space and other characters as K&R's section 3.4 does.
-With `enum`, each enumeration the integer type compatible with it and
-each constant its number (chapter 5), `header-escapes` names K&R's
-`enum escapes` by a switch on one and counts the days of a year over
-an `enum months` (section 2.3). With a function declared in a block
-and an object declared `extern` in one (chapter 5), `header-squeeze`
-calls K&R's `squeeze` and its `strcat` (section 2.8), defined after
-the block that declares them, and the C library's `strlen` and
-`strcmp` without their header. With `?:` of two `void` operands
-(chapter 4), `header-collatz` takes each step of the walk from 27 by
-a conditional of two void calls.
+skipped, and the function-pointer declarator bring `stdlib.h`,
+`sys/types.h`, `signal.h` and most headers of the C library and of
+POSIX through as well: `header-stdlib` and `header-signal` in the
+corpus call `atoi`, `strtol`, `signal` and `raise`. A function is a
+value, its address, and a call goes through a pointer to one, in both
+generators (`backend.md` chapters 8 and 10): `header-qsort` sorts with
+its own comparison, and `header-handler` installs its own signal
+handler and raises the signal. `volatile` dropped, `_Atomic` and
+`_Bool` declared, a floating constant taken as a token, and a
+typedef's array of a size rcc cannot compute bring `stdatomic.h`
+through, and on aarch64 `signal.h` and `sys/wait.h` with glibc's
+default feature set. The scope of a parameter list and the qualifiers
+inside a parameter's array brackets bring `regex.h` through, and
+`header-regex` in the corpus declares a function in the shape of
+`regexec`. So 57 of 58 headers of the C library and of POSIX parse on
+each target; `tgmath.h` stops at a function declared with `(...)` for
+its whole parameter list. Then the objects at file scope: a program
+defines, declares and uses its own globals, with integer constants as
+initializers, and reaches the C library's, so `header-stdout` writes
+to `stdout` (`backend.md` and `aarch64.md` chapter 10). With address
+constants and strings as initializers, `header-months` keeps a table
+of names in an array of `char` and reaches `stdout`, `putchar` and
+`fputs` through global pointers to them. With brace-enclosed lists,
+`header-calendar` keeps K&R's tables of the days of the months and of
+their names (sections 5.7 and 5.8 of the second edition). With
+`static`, a function and an object of internal linkage and a block's
+object of static storage, `header-getch` keeps K&R's buffer of `getch`
+and `ungetch` (sections 4.3 and 4.6) private to its file. With `do`,
+`break`, `continue`, `goto` and labels, `header-itoa` runs K&R's
+`itoa`, `reverse` and `trim` (sections 3.6 and 3.7). With `switch`,
+compiled by the Seventh Edition compiler's rule (`backend.md` 7.3),
+`header-count` counts digits, white space and other characters as
+K&R's section 3.4 does. With `enum`, each enumeration the integer type
+compatible with it and each constant its number (chapter 5),
+`header-escapes` names K&R's `enum escapes` by a switch on one and
+counts the days of a year over an `enum months` (section 2.3). With a
+function declared in a block and an object declared `extern` in one
+(chapter 5), `header-squeeze` calls K&R's `squeeze` and its `strcat`
+(section 2.8), defined after the block that declares them, and the C
+library's `strlen` and `strcmp` without their header. With `?:` of two
+`void` operands (chapter 4), `header-collatz` takes each step of the
+walk from 27 by a conditional of two void calls.
 
 ## 11. Not yet
 

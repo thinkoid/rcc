@@ -855,20 +855,6 @@ where a record is wanted.
 
 Check: that row with the error, and a row for the assignment.
 
-** TODO Sixteen lines of the documents run past the margin
-
-The documents are wrapped at about 70 columns. Sixteen lines of
-prose are not, a sentence added to a paragraph and not wrapped with
-it: six in =docs/shape.md=, three each in =aarch64.md= and =cost.md=,
-two in =design-calls.md=, one each in =backend.md= and =findings.md=.
-The rows of a table are one line each by their form and do not
-count.
-
-Fix: each paragraph wrapped again, no word changed.
-
-Check: no line of =docs/*.md= outside a table or a listing is longer
-than 78 columns.
-
 ** TODO A local record's initializer is not yet
 
 ~struct point q = *p;~ and ~struct point q = { 1, 2 };~ in a block

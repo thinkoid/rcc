@@ -1144,31 +1144,31 @@ not hold takes the rows of the table:
 **A cast of the pointer.** An access whose pointer is a cast between
 pointer types of a sum, `*(int *) (p + 24)` on a `char *p`, reads
 through the cast: the sum's own rows form the operand, its stride
-scaling the index and its bytes the displacement, and the access is
-at the cast's type, at the width of its load or store (G10), at the
+scaling the index and its bytes the displacement, and the access is at
+the cast's type, at the width of its load or store (G10), at the
 address the source computes, aligned or not (G11). The operand holds
 any 32-bit displacement and scales by 1, 2, 4 or 8 whatever the
-access's size, so `*(int *) (p + 24)` is `movl 24(%rax), L`, `*(int
-*) (p + i)` `movl (%rax,%rcx,1), L`, `*(long *) (s + i)` on a `short
-*s` `movq (%rax,%rcx,2), L`, a register pointer's `movl 8(%rbx), L`,
-and a local array's or a global's address plus a constant its slot or
-its label, `movl -16(%rbp), L` and `movl bytes+4(%rip), L`. It stops
-at the address as a value, `(int *) (p + 24)` being the `addq $24`;
-at a cast that is no conversion between pointer types, an array's
-decay among them; at an address handed a register variable, whose
-rows are the value's; and at a stride of 1 with an index of 64 bits
-in memory, which the sum's `addq` takes as its operand. A subscript or a constant over such a sum joins the
-sum's own operand: the pointer of a sum by a constant, and of a
-subscript, is taken as the address it denotes, the base, the
-displacement and the index its rows form, through a cast between
-pointer types too, before any instruction forms it, so `((int *) (p +
-1))[3]` on a `char *p` is `movl 13(%rax), L`, `((int *) (p + 1))[i]`
-`movl 1(%rax,%rcx,4), L`, `*(short *) ((char *) p + 4 + i * 4 + 2)`
-`movswl 6(%rax,%rcx,1), L`, and a chain of casts one displacement.
-What the operand cannot hold is formed by a `leaq` and the rest is
-the access's: a second index, `*(short *) ((char *) p + i * 4 + j)`,
-is the `addq` of the first and `(%rax,%rcx,1)`; a sum no 32-bit
-displacement holds is `leaq 2000000000(%rax), %rax` and
+access's size, so `*(int *) (p + 24)` is `movl 24(%rax), L`, `*(int *)
+(p + i)` `movl (%rax,%rcx,1), L`, `*(long *) (s + i)` on a `short *s`
+`movq (%rax,%rcx,2), L`, a register pointer's `movl 8(%rbx), L`, and a
+local array's or a global's address plus a constant its slot or its
+label, `movl -16(%rbp), L` and `movl bytes+4(%rip), L`. It stops at
+the address as a value, `(int *) (p + 24)` being the `addq $24`; at a
+cast that is no conversion between pointer types, an array's decay
+among them; at an address handed a register variable, whose rows are
+the value's; and at a stride of 1 with an index of 64 bits in memory,
+which the sum's `addq` takes as its operand. A subscript or a constant
+over such a sum joins the sum's own operand: the pointer of a sum by a
+constant, and of a subscript, is taken as the address it denotes, the
+base, the displacement and the index its rows form, through a cast
+between pointer types too, before any instruction forms it, so `((int
+*) (p + 1))[3]` on a `char *p` is `movl 13(%rax), L`, `((int *) (p +
+1))[i]` `movl 1(%rax,%rcx,4), L`, `*(short *) ((char *) p + 4 + i * 4
++ 2)` `movswl 6(%rax,%rcx,1), L`, and a chain of casts one
+displacement. What the operand cannot hold is formed by a `leaq` and
+the rest is the access's: a second index, `*(short *) ((char *) p + i
+* 4 + j)`, is the `addq` of the first and `(%rax,%rcx,1)`; a sum no
+32-bit displacement holds is `leaq 2000000000(%rax), %rax` and
 `1600000000(%rax)`; a label's offset, which must stay within its
 object, is the label's `leaq` and the displacement; a scale is always
 the sum's own stride, 1, 2, 4 or 8, or an index of no scale's product
@@ -1352,21 +1352,20 @@ outer width, the two extensions being one: a signed object under a
 signed widening sign-extended all the way, `(long) (int) c` on a
 `signed char` `movsbq -1(%rbp), %rax` and on a `short` `movswq`, and
 an unsigned one zero-extended, its `movzbl` or `movzwl` valid to 64
-bits and nothing after it. A signed object under an unsigned
-widening, `(long) (unsigned) c`, is its load into the 32-bit name,
-`movsbl -1(%rbp), %eax`, and nothing after it: the sign extension
-stops at the `unsigned`'s 32 bits, and the 32-bit write clears the
-upper half, which is the `unsigned`'s zero extension to 64 bits. A
-value no load writes keeps the zero extension, `movsbl %al, %eax;
-movl %eax, %eax` for a call's `signed char` result and `movl %eax,
-%eax` for an `int` one, whose upper half the convention leaves
-undefined (3.2), and a register
-variable's read is its copy, `movl %ebx, %eax`. A register variable
-is no object in memory, so its read is extended into a fresh
-register, `movslq %ebx, %rax`. A cast over any other operand, a call's result, an arithmetic
-value or another cast, extends the value in its register by the width
-rule. A truth value needs no extension: `(long) (a < b)` and
-`(unsigned long) !x` write nothing after the `movzbl`.
+bits and nothing after it. A signed object under an unsigned widening,
+`(long) (unsigned) c`, is its load into the 32-bit name, `movsbl
+-1(%rbp), %eax`, and nothing after it: the sign extension stops at the
+`unsigned`'s 32 bits, and the 32-bit write clears the upper half,
+which is the `unsigned`'s zero extension to 64 bits. A value no load
+writes keeps the zero extension, `movsbl %al, %eax; movl %eax, %eax`
+for a call's `signed char` result and `movl %eax, %eax` for an `int`
+one, whose upper half the convention leaves undefined (3.2), and a
+register variable's read is its copy, `movl %ebx, %eax`. A register
+variable is no object in memory, so its read is extended into a fresh
+register, `movslq %ebx, %rax`. A cast over any other operand, a call's
+result, an arithmetic value or another cast, extends the value in its
+register by the width rule. A truth value needs no extension: `(long)
+(a < b)` and `(unsigned long) !x` write nothing after the `movzbl`.
 
 The rule is the Seventh Edition compiler's. `match()`, in its
 `c10.c`, tries a code table's row for an operator again with the
@@ -2519,19 +2518,19 @@ slot is the displacement of the indexed operand (6.3); by a
 constant it is its label and the element's offset, `movl
 table+12(%rip), %eax`, the name and constant of 6.3.
 
-A function's address as a value has two rows, and so does an
-object's. A function the file defines, wherever in the file its body
-stands, is reached PC-relative, as a literal is, `leaq f(%rip), L`. A function the file
-only declares may be in a shared library, which a PC-relative
-reference does not reach from a position-independent executable:
-GNU ld refuses `R_X86_64_PC32` against a libc function there. Its
-address is loaded from the GOT, `movq f@GOTPCREL(%rip), L`, the
-entry the dynamic linker writes, which holds the address the library
-itself takes of the function, so the two compare equal. The symbol is
-the name `assembly_name()` gives, as a call's is. An object follows
-the same rule: one the file defines, by a definition anywhere in the
-file, is PC-relative, and one it only declares has its address loaded
-from the GOT, `movq stdout@GOTPCREL(%rip), L`, and each access is the
+A function's address as a value has two rows, and so does an object's.
+A function the file defines, wherever in the file its body stands, is
+reached PC-relative, as a literal is, `leaq f(%rip), L`. A function
+the file only declares may be in a shared library, which a PC-relative
+reference does not reach from a position-independent executable: GNU
+ld refuses `R_X86_64_PC32` against a libc function there. Its address
+is loaded from the GOT, `movq f@GOTPCREL(%rip), L`, the entry the
+dynamic linker writes, which holds the address the library itself
+takes of the function, so the two compare equal. The symbol is the
+name `assembly_name()` gives, as a call's is. An object follows the
+same rule: one the file defines, by a definition anywhere in the file,
+is PC-relative, and one it only declares has its address loaded from
+the GOT, `movq stdout@GOTPCREL(%rip), L`, and each access is the
 indirection through that register, as `*p` is. GNU ld links a
 PC-relative reference to a libc object on x86-64 by a copy relocation
 and refuses it on aarch64; the GOT is the one form both link.

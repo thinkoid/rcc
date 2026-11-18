@@ -888,10 +888,10 @@ a register variable's where the row leaves its representation
 | `f(a, b)` | chapter 8 | |
 
 **A name and a constant.** The rule of `backend.md` 6.3 holds as
-written: an object reached by its name plus an integer constant, 0
-for `*a` and `*&x`, is one operand, the constant folded into it, and
-no instruction forms the object's address first. With `int a[8]` at `[x29, #16]` and `int
-table[8]` a global the file defines:
+written: an object reached by its name plus an integer constant, 0 for
+`*a` and `*&x`, is one operand, the constant folded into it, and no
+instruction forms the object's address first. With `int a[8]` at
+`[x29, #16]` and `int table[8]` a global the file defines:
 
 - `a[3]` is the slot's own access, `ldr w0, [x29, #28]`, reached
   through `x16` beyond reach by 5.3; `&a[3]` and `a + 3` are `add x0,
@@ -1482,18 +1482,18 @@ generator's to keep and never the program's.
 
 ## 10. Statics and literals
 
-As `backend.md` chapter 10: one `.text`, one `.data` block of
-literals after the last function, `.Ls<n>` and `.string`, never
-merged, never read-only, and a wide literal aligned to its element,
-under `.long` or `.short`, which an element's read by a constant
-index, `ldr w0, [x16, :lo12:.Ls2+4]`, needs for its scaled offset. A
-literal's address is the `adrp` and `add` pair. A function is `.type
-f, @function` and `.size`, and `.globl`
-first for one of external linkage; a `static` function has none, and
-a call of it is `bl f`, as of any function. No alignment directive is needed before a function: every instruction
-is 4 bytes, and the assembler aligns `.text` to 4. The listing opens
-and closes as on x86-64: `.file` with the source's name and `.text`
-first, `.section .note.GNU-stack,"",@progbits` last.
+As `backend.md` chapter 10: one `.text`, one `.data` block of literals
+after the last function, `.Ls<n>` and `.string`, never merged, never
+read-only, and a wide literal aligned to its element, under `.long` or
+`.short`, which an element's read by a constant index, `ldr w0, [x16,
+:lo12:.Ls2+4]`, needs for its scaled offset. A literal's address is
+the `adrp` and `add` pair. A function is `.type f, @function` and
+`.size`, and `.globl` first for one of external linkage; a `static`
+function has none, and a call of it is `bl f`, as of any function. No
+alignment directive is needed before a function: every instruction is
+4 bytes, and the assembler aligns `.text` to 4. The listing opens and
+closes as on x86-64: `.file` with the source's name and `.text` first,
+`.section .note.GNU-stack,"",@progbits` last.
 
 A function's address as a value has the two rows of `backend.md`
 chapter 10. A function the file defines, wherever its body stands,
@@ -1578,8 +1578,8 @@ c0 learns the target, for five facts:
 They live in one small description, `target_t`, that c0, the
 generators and the driver read: the name, the name `clang` takes after
 `--target=`, the five facts, and the alignment the convention asks of
-a global array, which c1 reads (chapter 10). Everything else about a target is in its
-generator.
+a global array, which c1 reads (chapter 10). Everything else about a
+target is in its generator.
 
 The driver takes `-target x86-64` or `-target aarch64`, and the
 default is the machine rcc was built on. With `-S` either target's
