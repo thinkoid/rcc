@@ -53,9 +53,12 @@
 # and SIGKILL a second later if it still runs, so a program that
 # ignores SIGTERM stops too.  A program the limit stops fails, and its
 # line says "timeout"; timeout(1) exits 124 when SIGTERM ended the
-# program and 137 when SIGKILL did.  No probe exits with either by
-# itself, though a SIGKILL from outside the run reads as the limit's.
-# Without timeout the script says so once and runs without a limit.
+# program and 137 when SIGKILL did, and either is the limit's only
+# where the run lasted the limit, as in tests/oracle: a probe that a
+# SIGKILL from elsewhere stopped sooner reads "stopped, KILL".  The
+# run and its reading are run_under_limit() of tests/status.sh, which
+# the oracle calls too.  Without timeout the script says so once and
+# runs without a limit.
 #
 # The script prints a line per probe, its name and the probe's own
 # count, "<n> checks, <m> differ", "not yet", or the step that failed,
@@ -119,14 +122,6 @@ prefix=ref_
 # construct whose slice is not in the tree yet
 not_yet_status=3
 not_yet_message='c1: not yet:'
-
-# the seconds a probe program may run, the seconds after SIGTERM until
-# SIGKILL, and the statuses timeout(1) gives for a program it stops
-# with each
-time_limit=10
-kill_after=1
-timeout_status=124
-killed_status=137
 
 # byte order for the sorted probes, and diagnostics in one language
 LC_ALL=C
@@ -399,39 +394,34 @@ check_probe()
         return 1
     fi
 
-    if [ "$limited" -eq 1 ]; then
-        logged timeout -k "$kill_after" "$time_limit" "$stem-probe" \
-            < /dev/null
-        ran=$?
+    shown=$(run_under_limit "$stem-probe")
 
-        if [ "$ran" -eq "$timeout_status" ] ||
-           [ "$ran" -eq "$killed_status" ]; then
-            printf '%-12s %s\n' "$name" \
-                "timeout: still running after $time_limit seconds"
-            return 1
-        fi
-    else
-        logged "$stem-probe" < /dev/null
-        ran=$?
+    if [ "$shown" = "$timed_out" ]; then
+        printf '%-12s %s\n' "$name" \
+            "timeout: still running after $time_limit seconds"
+        return 1
     fi
 
     # the probe's count is its last line; a probe stopped by a signal
     # may not have printed it, and shows the signal's name, SEGV
-    if [ "$ran" -gt 1 ]; then
-        shown=$(shown_status "$ran")
-        case "$shown" in
-            [0-9]*)  # a status of its own, or no signal's name
-                shown="status $shown"
-                ;;
-        esac
+    case "$shown" in
+        0 | 1)  # the probe ran to its count
+            ;;
 
-        printf '%-12s %s\n' "$name" "stopped, $shown"
-        return 1
-    fi
+        [0-9]*)  # a status of its own, or no signal's name
+            printf '%-12s %s\n' "$name" "stopped, status $shown"
+            return 1
+            ;;
+
+        *)  # a signal's name
+            printf '%-12s %s\n' "$name" "stopped, $shown"
+            return 1
+            ;;
+    esac
 
     printf '%-12s %s\n' "$name" "$(tail -n 1 "$output")"
 
-    [ "$ran" -eq 0 ]
+    [ "$shown" = 0 ]
 }
 
 
@@ -461,7 +451,8 @@ done
 # without the tree root and a built rcc there is nothing to run
 check_tree || exit 2
 
-# shown_status(), which names a signal's status as tests/oracle does
+# the time limit, run_under_limit() and shown_status(), which time a
+# run and name its status as tests/oracle does
 . tests/status.sh
 
 # a probe program, or rcc, killed by a signal leaves no core file: the

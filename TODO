@@ -325,20 +325,6 @@ listing.
 
 * Tests
 
-** TODO =tests/probes= takes 124 and 137 for its time limit whenever it sees them
-
-The oracle counts a status of 124 or 137 as the limit's only where
-the run lasted the limit, and shows a run killed sooner as =KILL=.
-The probes ask nothing of the time: a probe that a SIGKILL from
-elsewhere stops in its first second reads "timeout" in their table.
-
-Fix: the probes time the run as the oracle does, by the one function
-in =tests/status.sh=, and show =KILL= for a run killed before the
-limit.
-
-Check: a probe that raises SIGKILL at once reads "stopped, KILL",
-and one that loops reads "timeout".
-
 ** TODO =tests/slots= reads the clock of an idle core
 
 The script reads =scaling_cur_freq= once, before the first timed

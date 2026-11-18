@@ -149,15 +149,6 @@ unrun=-
 not_yet_status=3
 not_yet_message='c1: not yet:'
 
-# the seconds a program may run, the seconds after SIGTERM until
-# SIGKILL, the statuses timeout(1) gives for a program it stops with
-# each, and the status shown for either
-time_limit=10
-kill_after=1
-timeout_status=124
-killed_status=137
-timed_out=timeout
-
 # byte order for the sorted corpus, and diagnostics in one language
 LC_ALL=C
 export LC_ALL
@@ -317,8 +308,8 @@ logged()
 # measure(): builds a program with the compiler command that follows
 # the source and the executable, then runs it with no arguments and no
 # standard input, under the time limit when there is one; prints the
-# program's exit status, "timeout" when the limit stopped it, or
-# "unbuilt" when the build failed
+# program's status as run_under_limit() shows it, "timeout" when the
+# limit stopped it, or "unbuilt" when the build failed
 measure()
 {
     source=$1
@@ -330,27 +321,7 @@ measure()
         return 1
     fi
 
-    if [ "$limited" -eq 0 ]; then
-        logged "$exe" < /dev/null
-        shown_status $?
-        return 0
-    fi
-
-    started=$(date +%s)
-    logged timeout -k "$kill_after" "$time_limit" "$exe" < /dev/null
-    status=$?
-    ended=$(date +%s)
-
-    # 124 or 137 is the limit's only when the run lasted the limit; one
-    # that ended sooner is the program's own 124, or a SIGKILL from
-    # elsewhere, 137, and shows as any other status
-    if { [ "$status" -eq "$timeout_status" ] ||
-         [ "$status" -eq "$killed_status" ]; } &&
-       [ $((ended - started)) -ge "$time_limit" ]; then
-        echo "$timed_out"
-    else
-        shown_status "$status"
-    fi
+    run_under_limit "$exe"
 }
 
 
@@ -728,7 +699,8 @@ done
 # without the tree root and a built rcc there is nothing to run
 check_tree || exit 2
 
-# shown_status() and signal_base, which tests/probes reads too
+# the time limit, run_under_limit(), shown_status() and signal_base,
+# which tests/probes reads too
 . tests/status.sh
 
 # a program the oracle runs, or rcc, killed by a signal leaves no core

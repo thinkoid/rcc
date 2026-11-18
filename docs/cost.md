@@ -471,9 +471,13 @@ hang by promise and a fault of rcc's code may keep one in a loop:
 SIGTERM stops it at the limit, and SIGKILL a second later if it
 ignores SIGTERM. The run then shows as "timeout": an oracle row that
 expects it passes, and a probe fails. `timeout` ends with 124 after
-SIGTERM and 137 after SIGKILL; a run that ends with 124 before the
-limit gave the status itself, which no program of the corpus may, and
-the oracle fails it.
+SIGTERM and 137 after SIGKILL, and either is the limit's only where
+the run lasted the limit: one function, `run_under_limit()` in
+`tests/status.sh`, runs and times the program for both scripts. A run
+that ends with 124 before the limit gave the status itself, which no
+program of the corpus may, and the oracle fails it; one that ends
+with 137 sooner was killed from elsewhere, and shows as `KILL`, a
+probe as "stopped, KILL".
 
 The shell reports a run that signal n killed as 128 + n, so the oracle
 shows a status above 128 by the signal's name, as `kill -l` gives it:
