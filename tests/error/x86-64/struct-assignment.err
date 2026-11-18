@@ -1,2 +1,2 @@
-tests/error/struct-assignment.c:10:13: error: not yet: assignment of struct 'point'
-status 1
+rcc: internal error: c1: not yet: struct assignment, in function 'copy'
+status 3

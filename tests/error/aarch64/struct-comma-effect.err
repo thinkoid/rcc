@@ -1,0 +1,2 @@
+tests/error/struct-comma-effect.c:15:9: error: not yet: value of struct 'point'
+status 1

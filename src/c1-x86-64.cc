@@ -5205,6 +5205,9 @@ modify(state_t &s, const unary_t &u)
 void
 effect(state_t &s, const expr_t &e)
 {
+    if (is< assign_t >(e) && is< record_type_t >(e.type))
+        not_yet("struct assignment");
+
     if (is< assign_t >(e)) {
         const auto &a = as< assign_t >(e);
         if (constant_assignment(s, a) || modify(s, a))

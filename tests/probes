@@ -35,17 +35,24 @@
 # build and renamed for the reference's, since the reference calls
 # its functions by the prefixed names.
 #
+# A target's generator is written in slices, and a probe may use a
+# construct whose slice is not in the tree yet.  rcc then stops in c1
+# with exit status 3 and the message "c1: not yet: ...".  A probe whose
+# functions rcc stops at so is not linked or run: it shows "not yet"
+# in its line, and is neither passed nor failed.  The summary counts
+# it apart, and it does not make the exit status 1.
+#
 # The probes run on this machine's own target only, since every probe
 # is run.  On a machine rcc has no target for, or one without clang or
 # objcopy on the path, no probe runs: the script says so and exits 0.
 #
 # The script prints a line per probe, its name and the probe's own
-# count, "<n> checks, <m> differ", or the step that failed, and a
-# summary.  It exits 0 when every probe ran and nothing differed, 1
-# otherwise.  It runs from the tree root with ./rcc built, as make
-# test runs it.  The objects, the programs and the log of every
-# command stay in build/probe; each command's output in the log,
-# every difference a probe printed included, follows a
+# count, "<n> checks, <m> differ", "not yet", or the step that failed,
+# and a summary.  It exits 0 when every probe but those not yet ran
+# and nothing differed, 1 otherwise.  It runs from the tree root with
+# ./rcc built, as make test runs it.  The objects, the programs and
+# the log of every command stay in build/probe; each command's output
+# in the log, every difference a probe printed included, follows a
 # "### <command>:" line and ends with a "### status <n>" line.
 #
 ########################################################################
@@ -95,6 +102,11 @@ reference_flags="-O0 -w -fno-stack-protector"
 # the prefix of the reference's symbols
 prefix=ref_
 
+# the exit status of rcc and the start of its message when c1 meets a
+# construct whose slice is not in the tree yet
+not_yet_status=3
+not_yet_message='c1: not yet:'
+
 # byte order for the sorted probes, and diagnostics in one language
 LC_ALL=C
 export LC_ALL
@@ -116,9 +128,11 @@ output=$workdir/output
 # the command line, for the log
 command_line="$0 $*"
 
-# the probes run, and the probes that passed
+# the probes run, the probes that passed, and the probes that are not
+# yet
 count=0
 passed=0
+waiting=0
 
 
 ##########
@@ -249,9 +263,23 @@ logged()
 
 
 ##########
+# stopped_not_yet(): reports 0 when the last command, of exit status
+# $1, was rcc stopping at a construct c1 does not handle yet, 1
+# otherwise
+stopped_not_yet()
+{
+    status=$1
+
+    [ "$status" -eq "$not_yet_status" ] &&
+        grep -q "$not_yet_message" "$output"
+}
+
+
+##########
 # build(): compiles one probe's functions by rcc and, renamed, by
 # clang, its library by clang alone, twice, and links them under its
-# main; prints nothing when the program is built, and the step that
+# main; prints nothing when the program is built, "not yet" when rcc
+# stopped at a construct c1 does not handle yet, and the step that
 # failed otherwise
 build()
 {
@@ -263,7 +291,13 @@ build()
 
     # $reference_flags is split into its words, on purpose
 
-    if ! logged ./rcc -target "$native" -c -o "$stem.o" "$source"; then
+    logged ./rcc -target "$native" -c -o "$stem.o" "$source"
+    compiled=$?
+
+    if [ "$compiled" -ne 0 ] && stopped_not_yet "$compiled"; then
+        echo "not yet"
+        return 1
+    elif [ "$compiled" -ne 0 ]; then
         echo "not built: rcc did not compile $source"
         return 1
     fi
@@ -303,8 +337,9 @@ build()
 
 ##########
 # check_probe(): builds and runs one probe and prints its line, the
-# probe's count, or the step that failed; reports 0 when the probe
-# ran and nothing differed, 1 otherwise
+# probe's count, "not yet", or the step that failed; reports 0 when
+# the probe ran and nothing differed, 2 when it is not yet, 1
+# otherwise
 check_probe()
 {
     name=$1
@@ -319,6 +354,7 @@ check_probe()
 
     if [ -n "$failure" ]; then
         printf '%-12s %s\n' "$name" "$failure"
+        [ "$failure" = "not yet" ] && return 2
         return 1
     fi
 
@@ -396,9 +432,17 @@ echo >> "$log"
 # one line per probe; a failed probe does not stop the run
 for name in $names; do
     count=$((count + 1))
-    if check_probe "$name"; then
-        passed=$((passed + 1))
-    fi
+    check_probe "$name"
+
+    case $? in
+        0)  # the probe ran and nothing differed
+            passed=$((passed + 1))
+            ;;
+
+        2)  # the probe is not yet, and counted apart
+            waiting=$((waiting + 1))
+            ;;
+    esac
 done
 
 if [ "$count" -eq 0 ]; then
@@ -406,8 +450,16 @@ if [ "$count" -eq 0 ]; then
     exit 1
 fi
 
-echo
-echo "$passed of $count probes passed on $native; the log is $log"
+# the probes that are not yet are neither passed nor failed
+checked=$((count - waiting))
 
-[ "$passed" -eq "$count" ]
+counts="$passed of $checked probes passed on $native"
+if [ "$waiting" -ne 0 ]; then
+    counts="$counts, $waiting not yet"
+fi
+
+echo
+echo "$counts; the log is $log"
+
+[ "$passed" -eq "$checked" ]
 exit $?

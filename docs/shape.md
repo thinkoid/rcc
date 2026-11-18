@@ -205,7 +205,10 @@ Three sums.
   expression is an lvalue follows from its node (the
   name of an object, a string literal, a dereference of an object
   pointer), it is not stored; a function designator is none. A compound assignment carries the type it is computed in,
-  the usual arithmetic conversions of its operands. Pointer
+  the usual arithmetic conversions of its operands. A record's
+  assignment is a plain assignment of the record's type, its two
+  operands the lvalues of one record, for the generator to copy the
+  right's object into the left's. Pointer
   arithmetic is a binary add or sub of the pointer's type with the
   integer operand widened to 64 bits in its own signedness; the
   difference of two
@@ -560,10 +563,28 @@ be complete. What reads or writes the whole object of a record is not
 yet, each in words of its own: a local's initializer, which is stores
 at run time; a `register` one, which no register holds; a record
 passed or returned by value, by a definition's parameter or result,
-by an argument and by a call; the assignment of a record; and its
-value, read as an operand or for its effect, a member's of a record
-type among them. A cast to a record or of one is an error, since a
-record is no scalar (6.5.5p2).
+by an argument and by a call; and its value, read as an operand or
+for its effect, a member's of a record type among them. A cast to a
+record or of one is an error, since a record is no scalar (6.5.5p2).
+
+`a = b` on two records is a simple assignment (6.5.17.2p1): `a` a
+modifiable lvalue of a complete record (6.3.2.1p1), `b` of a
+compatible record, which in rcc is the same record, so two records of
+one tag are not yet and any other right operand is an error. The
+compound assignments take no record (6.5.17.3p1). The tree is the
+assignment node of the record's type, the two lvalues in the order
+written, and nothing else: the generator copies the object, the left
+operand's place first (G13). Its value is not yet as any record's
+value is, so the assignment stands where a value is discarded: a
+statement, a `for`'s first or third clause, the left operand of a
+comma and the operand of a cast to `void`. Used as an operand, `f(a
+= b)` and `a = b = c`, as the record of a member, `(a = b).x`, or as
+the right operand of a comma, even one discarded, it is refused in
+the words of a record's value, and so is a conditional of two
+records. The two objects may overlap (6.5.17.2p3): exactly, as in `a
+= a`, which the standard defines, or in part, which it leaves
+undefined; the tree is the same, and the bytes are those the copy's
+order leaves.
 
 `E.m` and `P->m` designate a member (6.5.3.4p3, p4): `E` a struct or
 a union, `P` a pointer to one after its decay, complete and laid out,
@@ -905,6 +926,10 @@ code of a `backend.md` chapter:
   their definitions; the text is the same on both targets, and is
   `c1-common`'s.
 
+A record's assignment reaches each generator in `effect(e)`, the one
+context the parser lets it stand in, and each refuses it there with
+`c1: not yet: struct assignment`.
+
 A reader checking a promise opens c1's source, finds the function that
 writes the row, and reads what is not there.
 
@@ -1112,7 +1137,8 @@ a conditional of two void calls.
 
 A local's initializer of a struct or a union and each use that
 reads or writes one whole (chapter 5: a `register` one, a record by
-value, its assignment and its value), the layout of a struct or a
+value and its value), the copy of a record's assignment in each
+generator (chapter 6), the layout of a struct or a
 union with a bit-field, an anonymous member, an attribute that marks,
 `packed` and `aligned` among them, a flexible array member, no
 member, or a member of a type rcc does not use yet (chapter 3), C23's

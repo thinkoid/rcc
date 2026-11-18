@@ -215,6 +215,23 @@ generators for the sites above.
 Check: those sites with no clearing move, =unsigned_int_called()=
 with its own, and no function longer.
 
+** TODO Neither generator copies a record
+
+~a = b~ on two structs or unions of one type is an assignment the
+parser builds, the two lvalues and the record's type, and each
+generator stops at it, "c1: not yet: struct assignment". The copy is
+decided: inline, in units of the type's alignment, 1, 2, 4 or 8
+bytes, from the lowest address up, each unit loaded and then stored
+before the next is loaded, padding included, and no call; the left
+operand's place is evaluated first, then the right's.
+
+Fix: the copy in each generator's =effect()=, unrolled up to 8 units
+and a loop above; the guarantee stated in =guarantees.md=.
+
+Check: the =copies= probe runs on each machine with nothing
+differing; =struct-copy= is pinned on each target; the error row
+=struct-assignment= leaves, its program compiling.
+
 * Guarantees
 
 The promises in =docs/guarantees.md=. The entry number is the
@@ -1145,6 +1162,33 @@ Fix: each paragraph wrapped again, no word changed.
 
 Check: no line of =docs/*.md= outside a table or a listing is longer
 than 78 columns.
+
+** TODO A local record's initializer is not yet
+
+~struct point q = *p;~ and ~struct point q = { 1, 2 };~ in a block
+are refused, "not yet: initializer of local struct 'point'"; a
+record of static storage takes its list.
+
+Fix: the first as the declaration and a statement of the record's
+assignment, the copy's own row; the second as a zeroing of the whole
+object and the listed members' assignments in the list's order, the
+zeroing a row of each generator.
+
+Check: =struct-local-initializer= and =struct-local-list-initializer=
+compile, and a probe compares the object's bytes.
+
+** TODO A comma whose right operand is a record's assignment is refused where its value is dropped
+
+~n++, a = b;~ is refused, "not yet: value of struct", though the
+assignment's value is dropped as the statement's is: the check of a
+dropped expression refuses a comma with a record right operand
+before it asks what the operand is. Both generators' effect rows
+reach through a comma's right operand already.
+
+Fix: the check takes a comma whose right operand is a record's
+assignment.
+
+Check: the row =struct-comma-effect= compiles.
 
 * Lexer
 

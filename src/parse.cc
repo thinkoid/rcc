@@ -738,6 +738,19 @@ record_words(const record_t &r)
     return kind + " " + quoted(r.tag);
 }
 
+// A record whose object is read or written whole: complete, 6.3.2.1p1,
+// p2, an error otherwise, and laid out, not yet otherwise.
+void
+require_whole_record(const token_t &at, const type_t &t)
+{
+    const record_t &r = *as< record_type_t >(t).record;
+    if (!r.complete)
+        fail(at, "incomplete type " + record_words(r) +
+                     " where a complete type is required");
+
+    require_honoured(at, t);
+}
+
 // A record converted to the value stored in its object, 6.3.2.1p2, as
 // an operand or for its effect: c1 reads no record yet, so the use is
 // not yet.  An incomplete record has no value to read, p2, and the use
@@ -750,13 +763,8 @@ refuse_record_value(const token_t &at, const type_t &t)
     if (!is< record_type_t >(t))
         return;
 
-    const record_t &r = *as< record_type_t >(t).record;
-    if (!r.complete)
-        fail(at, "incomplete type " + record_words(r) +
-                     " where a complete type is required");
-
-    require_honoured(at, t);
-    not_yet(at, "value of " + record_words(r));
+    require_whole_record(at, t);
+    not_yet(at, "value of " + record_words(*as< record_type_t >(t).record));
 }
 
 // restrict qualifies a pointer to an object type, or an array of such
@@ -837,11 +845,13 @@ rvalue(const token_t &at, expr_t e)
 
 // An operand evaluated for its effect alone, 6.8.4p2, 6.5.18p2: it may
 // be void, and it decays; a record's value it would read is
-// refuse_record_value()'s.
+// refuse_record_value()'s.  A record's assignment reads no value of
+// its own, and is taken for its effect, the copy.
 expr_t
 discarded(const token_t &at, expr_t e)
 {
-    refuse_record_value(at, e.type);
+    if (!is< assign_t >(e))
+        refuse_record_value(at, e.type);
 
     return decayed(std::move(e));
 }
@@ -6146,6 +6156,40 @@ expression(parser_t &p)
     return e;
 }
 
+// A record's simple assignment, 6.5.17.2p1: its left operand a
+// modifiable lvalue of a complete record, 6.3.2.1p1, and its right one
+// of a compatible record, which rcc takes as the same record, so that
+// two records of one tag are not yet.  The right operand is an lvalue
+// too, since a record's value is no operand yet: the value of another
+// assignment or of a comma is refused in refuse_record_value()'s words.
+// The tree is an assign_t of the record's type without an operation,
+// the two lvalues, for c1 to copy the right's object into the left's.
+expr_t
+record_assignment(parser_t &p, const token_t &op, expr_t lhs)
+{
+    const record_t &r = *as< record_type_t >(lhs.type).record;
+    if (!is_lvalue(lhs))
+        fail(op, "expression is not assignable");
+
+    require_whole_record(op, lhs.type);
+
+    const token_t &start = peek(p);
+    expr_t rhs = assignment_expression(p);
+
+    refuse_tag_twins(op, lhs.type, rhs.type);
+    if (!(rhs.type == lhs.type))
+        fail(op,
+             "assigning to " + record_words(r) + " from an incompatible type");
+
+    if (!is_lvalue(rhs))
+        refuse_record_value(start, rhs.type);
+
+    const type_t t = lhs.type;
+
+    return expr_t { t, assign_t { std::nullopt, t, box(std::move(lhs)),
+                                  box(std::move(rhs)) } };
+}
+
 expr_t
 assignment_expression(parser_t &p)
 {
@@ -6154,10 +6198,8 @@ assignment_expression(parser_t &p)
         return lhs;
 
     const token_t &op = advance(p);
-    // before the right operand is parsed, so that this error comes first
     if (op.kind == tok_t::assign && is< record_type_t >(lhs.type))
-        not_yet(op, "assignment of " +
-                        record_words(*as< record_type_t >(lhs.type).record));
+        return record_assignment(p, op, std::move(lhs));
 
     require_modifiable_lvalue(op, lhs);
 

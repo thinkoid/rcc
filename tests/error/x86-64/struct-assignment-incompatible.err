@@ -1,0 +1,2 @@
+tests/error/struct-assignment-incompatible.c:18:11: error: assigning to struct 'point' from an incompatible type
+status 1

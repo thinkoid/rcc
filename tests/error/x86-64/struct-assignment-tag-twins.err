@@ -1,0 +1,2 @@
+tests/error/struct-assignment-tag-twins.c:17:11: error: not yet: compatibility of two types of struct 'point'
+status 1

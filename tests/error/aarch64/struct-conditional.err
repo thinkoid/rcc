@@ -1,0 +1,2 @@
+tests/error/struct-conditional.c:15:15: error: not yet: value of struct 'point'
+status 1

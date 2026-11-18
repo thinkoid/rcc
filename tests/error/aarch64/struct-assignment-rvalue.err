@@ -1,0 +1,2 @@
+tests/error/struct-assignment-rvalue.c:14:16: error: expression is not assignable
+status 1

@@ -1,0 +1,2 @@
+tests/error/struct-assignment-member.c:14:20: error: not yet: member of a value of struct 'point'
+status 1

@@ -1,4 +1,5 @@
-/* An assignment of a struct, which copies its object: not yet. */
+/* An assignment of a struct, which copies its object: the parser takes
+   it, and c1 does not copy a record yet. */
 struct point
 {
         int x, y;

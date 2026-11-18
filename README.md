@@ -170,7 +170,10 @@ list walked against the members, a union's first, with the elision
 an array's list has, folded into the object's data, so
 `header-keywords` counts the keywords of a text in the table of
 section 6.3, and the data of the `struct-data` pin is the bytes
-`clang` writes on both targets.
+`clang` writes on both targets. Then a record's assignment in the
+parser, `a = b` on two objects of one record, which stands where a
+value is discarded and which each generator refuses yet, until it
+copies the object.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/`, the cost corpus over `tests/cost/`
 and the error corpus over `tests/error/`, the programs rcc refuses

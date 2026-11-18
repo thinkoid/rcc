@@ -1,0 +1,2 @@
+tests/error/struct-compound-assignment.c:14:11: error: expression is not assignable
+status 1

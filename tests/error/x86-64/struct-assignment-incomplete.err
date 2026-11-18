@@ -1,0 +1,2 @@
+tests/error/struct-assignment-incomplete.c:8:14: error: incomplete type struct 'opaque' where a complete type is required
+status 1
