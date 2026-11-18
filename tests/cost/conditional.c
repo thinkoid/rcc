@@ -45,8 +45,9 @@
    the old value copied into eax, movl %edx, %eax, and extended on its
    own path, movslq %eax, %rax, the second arm's load extended, movslq
    -20(%rbp), %rax, and nothing after the join.  In widened_chars() the
-   old value copied into eax, the second arm's movsbl -17(%rbp), %eax
-   and movslq %eax, %rax after the join; in narrowed_stored() the two
+   old value copied into eax and extended on its own path, movslq
+   %eax, %rax, the second arm's one load movsbq -17(%rbp), %rax, and
+   nothing after the join; in narrowed_stored() the two
    movsbl -17(%rbp), %eax and the store movb %al, (%rcx); in
    widened_called() and joined_called() the store through each call's
    result, movl %ecx, (%rax), and movl %ecx, %eax on each path, then

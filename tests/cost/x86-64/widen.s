@@ -184,6 +184,61 @@ indexed:
 	ret
 	.cfi_endproc
 	.size	indexed, .-indexed
+	.globl	promoted_char
+	.type	promoted_char, @function
+promoted_char:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movb	%dil, -1(%rbp)
+	movsbq	-1(%rbp), %rax
+	jmp	.Lpromoted_char.1
+.Lpromoted_char.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	promoted_char, .-promoted_char
+	.globl	promoted_unsigned
+	.type	promoted_unsigned, @function
+promoted_unsigned:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movw	%di, -2(%rbp)
+	movzwl	-2(%rbp), %eax
+	jmp	.Lpromoted_unsigned.1
+.Lpromoted_unsigned.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	promoted_unsigned, .-promoted_unsigned
+	.globl	unsigned_promoted
+	.type	unsigned_promoted, @function
+unsigned_promoted:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movb	%dil, -1(%rbp)
+	movsbl	-1(%rbp), %eax
+	movl	%eax, %eax
+	jmp	.Lunsigned_promoted.1
+.Lunsigned_promoted.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	unsigned_promoted, .-unsigned_promoted
 	.bss
 	.globl	defined
 	.type	defined, @object

@@ -392,9 +392,10 @@ are the others (7.2, 6.5).
   `movslq -20(%rbp), %rbx`, a signed constant arm the constant of the
   variable's type, `movq $-1, %rbx`. Where neither arm's row writes
   the register, `r = c ? f(x) : a / b`, or 6.1's edge does not hold,
-  `l = c ? a : b` on two `char`s, the arms join as for any consumer,
-  and the `mov` or the extension after the join writes the register,
-  `movslq %eax, %rbx`.
+  `l = c ? a + b : a - b` on `int`s, the arms join as for any
+  consumer, and the `mov` or the extension after the join writes the
+  register, `movslq %eax, %rbx`; `l = c ? a : b` on two `char`s is the
+  promoted load on each path, `movsbq -13(%rbp), %rbx` (6.3).
 - A value extended is extended into the register: `r = a + b` into a
   `register long` from two `int`s is the sum, then `movslq %eax,
   %rbx`, and `r = i` from a `register int i` `movslq %ebx, %r12`. The
@@ -1126,7 +1127,15 @@ long) (unsigned) i` on an `int i` the `movl`, valid to 64 bits, with
 nothing after it. A narrowing cast is no such cast: `(long) (int) l`
 reads `l` whole, `movq -8(%rbp), %rax`, and extends after, since the
 object is never read narrower than its type. A `char` promoted to
-`int` was loaded extended already. A register variable is no object in
+`int` was loaded extended already, and a widening over the promotion
+of a `char` or a `short` in memory is the one load extended to the
+outer width, the two extensions being one: a signed object under a
+signed widening sign-extended all the way, `(long) (int) c` on a
+`signed char` `movsbq -1(%rbp), %rax` and on a `short` `movswq`, and
+an unsigned one zero-extended, its `movzbl` or `movzwl` valid to 64
+bits and nothing after it; a signed object under an unsigned widening,
+`(long) (unsigned) c`, is two extensions, `movsbl -1(%rbp), %eax;
+movl %eax, %eax`. A register variable is no object in
 memory, so its read is extended into a fresh register, `movslq %ebx,
 %rax`. A cast over any other operand, a call's result, an arithmetic
 value or another cast, extends the value in its register by the width

@@ -285,7 +285,10 @@ TYPES(DECLARE_SUMMED)
     BOTH(W, wdeclared_##N##_##M, (T)) BOTH(W, wderef_##N##_##M, (T *))  \
     BOTH(W, wpconst_##N##_##M, (T *)) BOTH(W, wpvar_##N##_##M, (T *, int)) \
     BOTH(W, waconst_##N##_##M, (T)) BOTH(W, wavar_##N##_##M, (T, int))  \
-    BOTH(W, wgconst_##N##_##M, (T)) BOTH(W, wgvar_##N##_##M, (T, int))
+    BOTH(W, wgconst_##N##_##M, (T)) BOTH(W, wgvar_##N##_##M, (T, int))  \
+    BOTH(W, wpromoted_##N##_##M, (T *))                                 \
+    BOTH(W, wpromoted_u_##N##_##M, (T *))                               \
+    BOTH(W, wpromlocal_##N##_##M, (T))
 #define DECLARE_WIDEN_ALL(T, N)                                         \
     WIDENINGS(DECLARE_WIDEN, T, N)                                      \
     BOTH(long, windex_##N, (long *, T))                                 \
@@ -727,6 +730,7 @@ TYPES(TEST_SUMMED)
         CHECK(wgvar_##N##_##M, x, k, ((T) x, k));                       \
     }                                                                   \
     CHECK(wgconst_##N##_##M, x, 0, ((T) x));                            \
+    CHECK(wpromlocal_##N##_##M, x, 0, ((T) x));                         \
                                                                         \
     for (int o = 0; o < OFFSETS; ++o) {                                 \
         const int at = offsets[o];                                      \
@@ -735,6 +739,8 @@ TYPES(TEST_SUMMED)
         MCHECK(wpconst_##N##_##M, x, at, at, (P(T)));                   \
         for (int k = -3; k <= 3; ++k)                                   \
             MCHECK(wpvar_##N##_##M, x, k, at, (P(T), k));               \
+        MCHECK(wpromoted_##N##_##M, x, at, at, (P(T)));                 \
+        MCHECK(wpromoted_u_##N##_##M, x, at, at, (P(T)));               \
     }
 
 /* a subscript's index of one type, widened by the parser's cast, from

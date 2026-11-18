@@ -183,28 +183,39 @@ variable handed down, as on x86-64.
 Check: the aarch64 pin of =address-destination= names =x19= alone in
 =row()= and =element()=.
 
-** TODO A ~?:~ into a register variable keeps its join where its arms are promoted narrow objects
+** TODO aarch64: a narrow object under a promotion and a widening is loaded, then extended
 
-Each path of ~?:~ writes the =register= variable where one arm's row
-writes it (=backend.md= chapter 4), a conditional the assignment
-widens handing the conversion to each arm. A widened conditional
-whose arms are promoted narrow objects keeps the join: ~l = c ? a :
-b~ into a =long= on two =char=s is =movsbl -13(%rbp), %eax= on each
-path and =movslq %eax, %rbx= after the join on x86-64, where =movsbq
--13(%rbp), %rbx= on each path is one instruction; on aarch64 it is
-=ldrb w0= on each path and =sxtw x19, w0= after the join, where =ldrb
-w19=, valid to 64 bits, is one: the promotion's conversion clamps the
-load's width to 32, and the widening by the load does not look through
-the promotion. Five functions of the probes (=de_widened_c= to
-=de_widened_us=) and =register-destination='s =chosen_promoted= have
-it on both targets.
+~(long) (int) c~ on a ~signed char~ is =ldrsb w0, [x29, #16]; sxtw
+x0, w0=, where =ldrsb x0, [x29, #16]= is the one load; x86-64 writes
+=movsbq= (=backend.md= 6.3, "A widening by the load"). At a
+conditional it keeps the join: ~l = c ? a : b~ into a =register
+long= on two =char=s is =ldrb w0= on each path and =sxtw x19, w0=
+after the join, where =ldrb w19=, valid to 64 bits, is one: the
+promotion's conversion clamps the load's width to 32.
+=promoted_char()= of =widen=, =chosen_promoted()= of
+=register-destination= and five functions of the probes
+(=de_widened_c= to =de_widened_us=) have it.
 
 Fix: the load of a narrow object under a promotion and a widening is
-extended to the outer width in one instruction, on each target.
+extended to the outer width in one instruction, in
+=src/c1-aarch64.cc=, as x86-64's =widened_read()= does.
 
-Check: =chosen_promoted= with =movsbq= and =ldrb w19= on each path and
-the five functions shorter, and =rem_arm_c= and =rem_arm_s= of the
-memory probe.
+Check: =promoted_char= with =ldrsb x0=, =chosen_promoted= with the
+load into =x19= on each path, and the five functions shorter.
+
+** TODO x86-64: a signed narrow object under an unsigned widening is loaded, then cleared
+
+~(long) (unsigned) c~ on a ~signed char~ is =movsbl -1(%rbp), %eax;
+movl %eax, %eax=: the first extension stops at 32 bits, so the two
+are not the one extension =widened_read()= in =src/c1-x86-64.cc=
+knows. =movsbl= into the 32-bit name is the value already, valid to
+64 bits as an =unsigned=. =unsigned_promoted()= of =widen= pins the
+two instructions; no other test has the shape.
+
+Fix: the load is marked valid to 64 bits where a signed narrow
+object is widened through an =unsigned= of 32 bits.
+
+Check: =unsigned_promoted= with the one =movsbl=.
 
 ** TODO x86-64: a ~?:~ whose second arm is the variable's own read keeps its join after a call
 

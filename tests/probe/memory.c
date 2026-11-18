@@ -847,9 +847,11 @@ long summed_pointers(long *p, long *q8, long v, int i)
    aarch64 load (5.3), a global the file defines and one it only
    declares, through a pointer, and an element by a constant and by a
    variable index of an array through a pointer, of a local array and
-   of a global one.  The result is the widened value whole.  p points
-   into the main's buffer, and i is -3 to 3 through it and 0 to 3 into
-   an array. */
+   of a global one; and an object under a conversion to int and to
+   unsigned first, the promotion's, through a pointer and in a local's
+   slot.  The result is the widened value whole.  p points into the
+   main's buffer, and i is -3 to 3 through it and 0 to 3 into an
+   array. */
 #define WIDENED_GLOBALS(T, N)                                           \
     T defined_##N;                                                      \
     T row_##N[4];
@@ -903,6 +905,13 @@ TYPES(WIDENED_GLOBALS)
     {                                                                   \
         row_##N[i] = a;                                                 \
         return (W) row_##N[i];                                          \
+    }                                                                   \
+    W wpromoted_##N##_##M(T *p) { return (W) (int) *p; }                \
+    W wpromoted_u_##N##_##M(T *p) { return (W) (unsigned) *p; }         \
+    W wpromlocal_##N##_##M(T a)                                         \
+    {                                                                   \
+        T x = a;                                                        \
+        return (W) (int) x;                                             \
     }
 #define WIDEN_ALL(T, N) WIDENINGS(WIDEN, T, N)
 

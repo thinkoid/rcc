@@ -43,7 +43,7 @@
    second arm's division writes none either on x86-64; chosen_widened()
    and chosen_constant() a conditional widened to a long, r = c ? x : y
    and r = c ? x : -1, and chosen_promoted() r = c ? a : b on two
-   chars, whose arms each need an extension after their load;
+   chars, each arm a load under a promotion;
    chosen_calls() r = c ? f(x) : f(x + 1), whose arms are two calls;
    and chosen_own_first(), chosen_own_second() and chosen_own_pointer()
    r = c ? r : x, r = c ? x : r and q = c ? p : q on a register pointer
@@ -155,9 +155,9 @@
    -16(%rbp), %rbx and movq $-1, %rbx, with no instruction after the
    join; in chosen_divided() the call's result and the quotient joined
    in eax and movl %eax, %ebx after the join, and in chosen_promoted()
-   the two movsbl joined in eax and movslq %eax, %rbx after it; in
-   chosen_calls() the calls' results joined in eax and movl %eax, %ebx
-   after the join, for neither arm's row writes the variable; in
+   movsbq -13(%rbp), %rbx and movsbq -14(%rbp), %rbx on the two paths;
+   in chosen_calls() the calls' results joined in eax and movl %eax,
+   %ebx after the join, for neither arm's row writes the variable; in
    chosen_own_first() nothing written on the first path and movl
    -16(%rbp), %ebx on the second, in chosen_own_second() the load on
    the first and nothing on the second, and in chosen_own_pointer() the

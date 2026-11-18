@@ -318,11 +318,11 @@ widened_chars:
 	movl	%edx, %eax
 	addl	$1, %edx
 	movb	%dl, (%rcx)
+	movslq	%eax, %rax
 	jmp	.Lwidened_chars.3
 .Lwidened_chars.2:
-	movsbl	-17(%rbp), %eax
+	movsbq	-17(%rbp), %rax
 .Lwidened_chars.3:
-	movslq	%eax, %rax
 	jmp	.Lwidened_chars.1
 .Lwidened_chars.1:
 	leave

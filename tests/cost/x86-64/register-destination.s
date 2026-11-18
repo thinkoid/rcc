@@ -1984,12 +1984,11 @@ chosen_promoted:
 	movb	%dl, -14(%rbp)
 	cmpl	$0, -12(%rbp)
 	je	.Lchosen_promoted.2
-	movsbl	-13(%rbp), %eax
+	movsbq	-13(%rbp), %rbx
 	jmp	.Lchosen_promoted.3
 .Lchosen_promoted.2:
-	movsbl	-14(%rbp), %eax
+	movsbq	-14(%rbp), %rbx
 .Lchosen_promoted.3:
-	movslq	%eax, %rbx
 	movq	%rbx, %rax
 	jmp	.Lchosen_promoted.1
 .Lchosen_promoted.1:

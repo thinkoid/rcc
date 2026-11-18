@@ -246,6 +246,81 @@ indexed:
 	ret
 	.cfi_endproc
 	.size	indexed, .-indexed
+	.globl	promoted_char
+	.type	promoted_char, @function
+promoted_char:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	strb	w0, [x29, #16]
+	ldrsb	w0, [x29, #16]
+	sxtw	x0, w0
+	b	.Lpromoted_char.1
+.Lpromoted_char.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	promoted_char, .-promoted_char
+	.globl	promoted_unsigned
+	.type	promoted_unsigned, @function
+promoted_unsigned:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	strh	w0, [x29, #16]
+	ldrh	w0, [x29, #16]
+	sxtw	x0, w0
+	b	.Lpromoted_unsigned.1
+.Lpromoted_unsigned.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	promoted_unsigned, .-promoted_unsigned
+	.globl	unsigned_promoted
+	.type	unsigned_promoted, @function
+unsigned_promoted:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	strb	w0, [x29, #16]
+	ldrsb	w0, [x29, #16]
+	mov	w0, w0
+	b	.Lunsigned_promoted.1
+.Lunsigned_promoted.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	unsigned_promoted, .-unsigned_promoted
 	.bss
 	.globl	defined
 	.type	defined, @object

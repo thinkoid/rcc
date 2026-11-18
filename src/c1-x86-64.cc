@@ -1590,6 +1590,47 @@ onward(into_t *into, const int_t &from, const int_t &target)
     return through(into, target, target.width > from.width);
 }
 
+// The object in memory a widening of e reads in one load, and the type
+// the load extends it by, backend.md 6.3: e's own object, under casts
+// that keep its bits, object_under()'s, extended by e's type; or the
+// object under a widening of e's own, the promotion of a char or a
+// short, extended by the type it is promoted from, where one extension
+// is the two: a signed one under a signed widening, (long) (int) c on
+// a char c being movsbq -1(%rbp), %rax, and any unsigned one, whose
+// zero extension the promotion keeps, movzbl -1(%rbp), %eax on an
+// unsigned char, valid to 64 bits.  The object is read once at its own
+// width (G10).  None for any other e, a signed object under an unsigned
+// widening among them, whose extension to that width is no extension
+// to the outer one.
+struct widened_read_t
+{
+    const expr_t *object = nullptr;
+    const int_t *type = nullptr;
+};
+
+widened_read_t
+widened_read(const expr_t &e)
+{
+    if (const auto *object = object_under(e))
+        return { object, &integer(e.type) };
+
+    if (!is< cast_t >(e) || !is< int_t >(e.type))
+        return { };
+
+    const auto &c = as< cast_t >(e);
+    if (!is< int_t >(c.arg->type))
+        return { };
+
+    const auto &from = integer(c.arg->type);
+    const auto &promoted = integer(e.type);
+    const auto *object = object_under(c);
+    if (!object || promoted.width <= from.width ||
+        (from.is_signed && !promoted.is_signed))
+        return { };
+
+    return { object, &from };
+}
+
 // The integer conversion of the operand e to the type to.  G2:
 // narrowing is no instruction, the narrower register name is the
 // value; widening extends by the operand's signedness, and only when
@@ -1601,13 +1642,14 @@ onward(into_t *into, const int_t &from, const int_t &target)
 // The object may be under casts that keep its bits, object_under()'s:
 // (long) (int) u is movslq -4(%rbp), %rax, and (unsigned long)
 // (unsigned) i the movl, valid to 64 bits, each reading the object at
-// its own width (G10).  A signed constant widened is the constant of
-// the new type, its row's mov, movq $-1, %rbx, where an unsigned one's
-// movl leaves it valid to 64 bits already.  A change of signedness
-// alone is nothing.  A pointer is its integer view, so pointer to
-// pointer is nothing, an integer widens to a pointer by its own
-// signedness (6.3.2.3p5), and a pointer narrows to an integer by its
-// low bits (p6).  A register variable widens into a fresh register,
+// its own width (G10); and under a promotion, widened_read()'s, (long)
+// (int) c on a char c the one movsbq.  A signed constant widened is the
+// constant of the new type, its row's mov, movq $-1, %rbx, where an
+// unsigned one's movl leaves it valid to 64 bits already.  A change of
+// signedness alone is nothing.  A pointer is its integer view, so
+// pointer to pointer is nothing, an integer widens to a pointer by its
+// own signedness (6.3.2.3p5), and a pointer narrows to an integer by
+// its low bits (p6).  A register variable widens into a fresh register,
 // movslq %ebx, %rax, and narrows as its read: the read, not the
 // variable, is valid to less.  A register variable handed down goes on
 // to the operand's row onward() through a conversion that leaves its
@@ -1641,11 +1683,12 @@ converted(state_t &s,
     into_t computed { zero ? into->variable : nullptr, false, &e.type };
     const auto next = zero ? &computed : onward(into, from, target);
 
-    const auto *object = widens ? object_under(e) : nullptr;
-    const bool loads = object && (from.is_signed || object != &e);
-    const int width = from.is_signed ? target.width : 32;
+    const auto read = widens ? widened_read(e) : widened_read_t { };
+    const bool loads =
+        read.object && (read.type->is_signed || read.object != &e);
+    const int width = loads && read.type->is_signed ? target.width : 32;
 
-    auto v = loads ? extending_load(s, *object, from, width, next) :
+    auto v = loads ? extending_load(s, *read.object, *read.type, width, next) :
                      rvalue(s, e, next, wanted);
     if (computed.taken)
         into->taken = true;
@@ -2776,7 +2819,7 @@ lands_in(const expr_t &arm, const symbol_t *variable, bool widened)
     if (is< literal_t >(arm))
         return true;
 
-    if (widened ? object_under(arm) != nullptr : in_memory(arm))
+    if (widened ? widened_read(arm).object != nullptr : in_memory(arm))
         return true;
 
     if (is< binary_t >(arm)) {
