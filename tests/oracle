@@ -95,10 +95,12 @@
 #         from the measured statuses, printing what changed in each.
 #         On another machine's target nothing was measured, and
 #         tests/corpus/expected is left alone.  A program that did not
-#         build, or wrote no assembly, is left as it was.  A program
-#         that is not yet is left without a pin, keeps its row, and is
-#         not counted as unadopted.  Exits 0 when every other program
-#         was adopted, 1 otherwise.  It is how a new program enters
+#         build, or wrote no assembly, is left as it was, and so is the
+#         row of a program whose measured status no row may hold, a
+#         number above 128 or 124, which is named.  A program that is
+#         not yet is left without a pin, keeps its row, and is not
+#         counted as unadopted.  Exits 0 when every other program was
+#         adopted, 1 otherwise.  It is how a new program enters
 #         the corpus, after a human has read its assembly and its
 #         statuses.  A target's first pins need its directory made
 #         first.
@@ -646,29 +648,49 @@ adopt_pins()
 # from the measured statuses and prints the change as a diff; comments
 # and the order of the rows stay, a program new to the table is
 # appended, a row whose program left the corpus goes, and a program
-# that did not build or was not run keeps its row; reports 1 when a
-# program that should have run could not be adopted or the table could
-# not be written, 0 otherwise
+# that did not build or was not run keeps its row, as does one whose
+# status no row may hold, which is named; reports 1 when a program
+# that should have run could not be adopted or the table could not be
+# written, 0 otherwise
 adopt_expected()
 {
     result=0
     new=$workdir/expected
+    refused=
 
     if grep -q " $unbuilt" "$measured"; then
         echo "$expected: a program that did not build keeps its row"
         result=1
     fi
 
+    # a number above 128 or 124 is no row's, so the run would refuse
+    # the row that held it
+    while read -r name rcc_status clang_status; do
+        if number_above_base "$rcc_status" "$clang_status" ||
+           own_limit_status "$rcc_status" "$clang_status"; then
+            echo "$name: status $rcc_status $clang_status, which no row" \
+                "may hold; row left as it was"
+            refused="$refused $name"
+            result=1
+        fi
+    done < "$measured"
+
     # the table may not exist yet; an empty one gains every row
     if [ ! -e "$expected" ]; then
         : > "$expected" || return 1
     fi
 
-    awk -v unbuilt="$unbuilt" -v unrun="$unrun" '
+    awk -v unbuilt="$unbuilt" -v unrun="$unrun" -v refused="$refused" '
+        BEGIN {
+            split(refused, r)
+            for (i in r)
+                kept[r[i]] = 1
+        }
         FILENAME == ARGV[1] {
             order[++n] = $1
             known[$1] = 1
-            if ($2 != unbuilt && $3 != unbuilt && $2 != unrun && $3 != unrun)
+            if ($2 != unbuilt && $3 != unbuilt && $2 != unrun &&
+                $3 != unrun && !($1 in kept))
                 row[$1] = $1 " " $2 " " $3
             next
         }

@@ -359,20 +359,6 @@ listing.
 
 * Tests
 
-** TODO =tests/oracle --pin= writes a status the oracle then refuses
-
-=--pin= adopts what it measures, so a program that exits 200 gets
-the row =200 200=, and the next run fails that row: a number above
-128 in =tests/corpus/expected=. The pin made a table the oracle does
-not accept, and said nothing.
-
-Fix: =--pin= keeps the old row for a program whose measured status
-is a number above 128 or 124, as it does for a program that did not
-build, and says so by the program's name.
-
-Check: a scratch program that returns 200, pinned: the row is not
-written, the message names the program, and the status is nonzero.
-
 ** TODO =tests/probes= shows a probe's death by a signal as a number
 
 A probe that dies of a signal reads "stopped, status 139" in the
