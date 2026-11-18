@@ -1181,13 +1181,12 @@ one, `imulq $12, -16(%rbp), R` (6.1). The form does not reach:
 - an address with an index of its own: `m[i][j]` forms the row's
   address, its sum the `addq` of the `p + n` row or the `leaq` of an
   address with a displacement, and `j` is the access's index;
-- an address held across a right operand with a pinned instruction
-  within, `m[i][1] -= f()`, a division or a shift by a variable
-  count: the sum is the `addq` and the pointer's displacement the
-  access's, `subb %al, 1(%rcx)` after the reload, the constants under
-  the pointer included, `808(%rcx)` for `((long (*)[2]) (p +
-  800))[i][1] = f()` (an address held across a right operand,
-  below);
+- an address held across a right operand that spills every held
+  value, a call or a branch within it, `m[i][1] -= f()`: the sum is
+  the `addq` and the pointer's displacement the access's, `subb %al,
+  1(%rcx)` after the reload, the constants under the pointer
+  included, `808(%rcx)` for `((long (*)[2]) (p + 800))[i][1] = f()`
+  (an address held across a right operand, below);
 - the index written first on a pointer that is an object of 64 bits
   in memory, `i[p][1]`, which keeps the `p + n` row, `addq -8(%rbp),
   %rax` of `p` after the `imulq`, as many instructions as its load;
@@ -1244,9 +1243,15 @@ index's product is held alone, `addl %eax, 4(%rdx,%rcx,1)` after
 `leaq cells(%rip), %rdx` for `cells[i][1] += f()`. A label with a
 constant index or none is its own operand after the call, `movl %eax,
 g+12(%rip)` for `g[3] = f()`, nothing held. Where nothing is
-spilled, a division or a shift by a variable count, whose registers
-the place is formed outside, the base and the index stay where they
-are, `movl %eax, (%rcx,%rsi,4)` after the `idivl`.
+spilled, a division or a shift by a variable count, the base and the
+index stay where they are, an index of no scale's product among
+them: `movl %eax, (%rcx,%rsi,4)` after the `idivl`, and `movl %eax,
+4(%rcx,%rsi,1)` for `p[i][1] = a / b` on an `int (*p)[3]`, no `addq`.
+The place is formed outside the registers such an instruction pins,
+anywhere in the right operand, `rax` and `rdx` for a division and
+`rcx` for a shift, so nothing held is moved out of them: `p[i][1] =
+1 + a / b` holds `p` in `rcx` and the product in `rsi` across the
+`idivl`, and the `addl $1, %eax` and the store follow it.
 
 A `char` or `short` lvalue is loaded with the extending `mov` of its
 signedness, to 64 bits under a cast that widens a signed one to

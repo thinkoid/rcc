@@ -523,8 +523,11 @@ int turn(int i);
                 long w = p[(r + 2) % ROWS][0] = v * 3;                      \
                 long u = K##m_##N[r][1] -= turn(i);                         \
                 long t = K##m_##N[(r + 2) % ROWS][3] = turn(i + 1);         \
+                long q = p[r][2] = v / (i + 1);                             \
+                long e = p[r][1] = 1 + v % (i + 2);                         \
                                                                             \
                 return x * 3 + y * 5 + z * 7 + w * 11 + u * 13 + t * 37 +   \
+                       q * 41 + e * 43 +                                    \
                        K##m_##N[r + 1][-1] * 17 + p[r][2] * 19 +            \
                        total_##N(&K##m_##N[1][1], 2) * 23 +                 \
                        total_##N(&p[1][1], 2) * 29 +                        \

@@ -1053,6 +1053,85 @@ label_divided:
 	ret
 	.cfi_endproc
 	.size	label_divided, .-label_divided
+	.globl	row_divided
+	.type	row_divided, @function
+row_divided:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movl	%edx, -16(%rbp)
+	movl	%ecx, -20(%rbp)
+	movq	-8(%rbp), %rcx
+	movslq	-12(%rbp), %rsi
+	imulq	$12, %rsi, %rsi
+	movl	-16(%rbp), %eax
+	cltd
+	idivl	-20(%rbp)
+	movl	%eax, 4(%rcx,%rsi,1)
+.Lrow_divided.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	row_divided, .-row_divided
+	.globl	row_divided_deeper
+	.type	row_divided_deeper, @function
+row_divided_deeper:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movl	%edx, -16(%rbp)
+	movl	%ecx, -20(%rbp)
+	movq	-8(%rbp), %rcx
+	movslq	-12(%rbp), %rsi
+	imulq	$12, %rsi, %rsi
+	movl	-16(%rbp), %eax
+	cltd
+	idivl	-20(%rbp)
+	addl	$1, %eax
+	movl	%eax, 4(%rcx,%rsi,1)
+.Lrow_divided_deeper.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	row_divided_deeper, .-row_divided_deeper
+	.globl	row_shifted
+	.type	row_shifted, @function
+row_shifted:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movl	%edx, -16(%rbp)
+	movl	%ecx, -20(%rbp)
+	movq	-8(%rbp), %rax
+	movslq	-12(%rbp), %rdx
+	imulq	$12, %rdx, %rdx
+	movl	-16(%rbp), %esi
+	movl	-20(%rbp), %ecx
+	shll	%cl, %esi
+	movl	%esi, 4(%rax,%rdx,1)
+.Lrow_shifted.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	row_shifted, .-row_shifted
 	.bss
 	.globl	rows
 	.type	rows, @object

@@ -70,21 +70,18 @@ itoa:
 	movl	$0, -20(%rbp)
 	.p2align 5
 .Litoa.3:
-	movq	-16(%rbp), %rax
-	movl	-20(%rbp), %ecx
-	movl	%ecx, %edx
-	addl	$1, %ecx
-	movl	%ecx, -20(%rbp)
-	movslq	%edx, %rdx
-	movl	-4(%rbp), %ecx
+	movq	-16(%rbp), %rcx
+	movl	-20(%rbp), %esi
+	movl	%esi, %edi
+	addl	$1, %esi
+	movl	%esi, -20(%rbp)
+	movslq	%edi, %rdi
+	movl	-4(%rbp), %eax
 	movl	$10, %esi
-	movq	%rax, %rdi
-	movq	%rdx, %r8
-	movl	%ecx, %eax
 	cltd
 	idivl	%esi
 	addl	$48, %edx
-	movb	%dl, (%rdi,%r8,1)
+	movb	%dl, (%rcx,%rdi,1)
 	movl	$10, %ecx
 	movl	-4(%rbp), %eax
 	cltd

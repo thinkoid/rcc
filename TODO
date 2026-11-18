@@ -97,21 +97,6 @@ Fix: remove the value's path of =summed()=.
 Check: no function longer, and the listings that change at the same
 count read.
 
-** TODO x86-64: an index of no scale is summed before a division that spills nothing
-
-~p[i] = a / b~ at a size no addressing form scales by adds the
-index's product to the pointer before the division, =addq %rcx,
-%rax=, though a division or a variable shift spills no register and
-the two could stay apart to be the access's base and index: the row
-of an index of no scale sums under any pinned instruction ahead,
-where only a call or a branch spills. The shape is not counted over
-=tests=.
-
-Fix: none taken; count first. The row asks whether the right operand
-spills, as an assignment's place does.
-
-Check: the count over =tests=, and no function longer.
-
 ** TODO aarch64: a member array's offset under a variable index is added before a call
 
 ~p->a[i] += f()~ adds the member array's 32 to the pointer, =add x0,

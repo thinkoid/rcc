@@ -56,7 +56,11 @@
    label_held(), labels[i] = f(), label_row_held(), cells[i][1] +=
    f(), at a size no form scales by, and label_constant_held(),
    labels[3] = f(), with no index; beside them label_divided(),
-   labels[i] = a / b, across a division, which spills nothing.
+   labels[i] = a / b, across a division, which spills nothing.  A
+   row's sum at a size no form scales by across an instruction that
+   spills nothing: row_divided(), p[i][1] = a / b,
+   row_divided_deeper(), p[i][1] = 1 + a / b, the division under the
+   add, and row_shifted(), p[i][1] = a << b.
 
    On x86-64 the listing must show first() returning the array's
    address, leaq -24(%rbp), %rax, with no instruction after it,
@@ -130,6 +134,12 @@
    label_constant_held() is movl %eax, labels+12(%rip) after the call,
    nothing held; and label_divided() keeps leaq labels(%rip), %rcx and
    the index in rsi across the idivl, then movl %eax, (%rcx,%rsi,4).
+   row_divided() holds p in rcx and the product of imulq $12 in rsi,
+   outside rax and rdx, across the idivl, then movl %eax,
+   4(%rcx,%rsi,1), with no add; row_divided_deeper() the same with
+   addl $1, %eax before the store, no move out of rax; and
+   row_shifted() holds p in rax and the product in rdx, outside rcx,
+   then shll %cl, %esi and movl %esi, 4(%rax,%rdx,1).
 
    On aarch64 the listing must show first() returning the array's
    address, add x0, x29, #16, with no instruction after it, element()
@@ -191,7 +201,9 @@
    add before the call and ldr, add and str at [x2, :lo12:cells+4]
    after it; label_constant_held() is adrp x16, labels+12 and str w0,
    [x16, :lo12:labels+12] after the call; and label_divided() str w2,
-   [x0, w1, sxtw #2] after the sdiv. */
+   [x0, w1, sxtw #2] after the sdiv.  row_divided(),
+   row_divided_deeper() and row_shifted() add the product to p before
+   the sdiv or the lsl and store str w1, [x0, #4]. */
 int *first(void)
 {
     int m[2][3];
@@ -502,4 +514,22 @@ void
 label_divided(int i, int a, int b)
 {
         labels[i] = a / b;
+}
+
+void
+row_divided(int (*p)[3], int i, int a, int b)
+{
+        p[i][1] = a / b;
+}
+
+void
+row_divided_deeper(int (*p)[3], int i, int a, int b)
+{
+        p[i][1] = 1 + a / b;
+}
+
+void
+row_shifted(int (*p)[3], int i, int a, int b)
+{
+        p[i][1] = a << b;
 }

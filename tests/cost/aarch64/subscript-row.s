@@ -1409,6 +1409,109 @@ label_divided:
 	ret
 	.cfi_endproc
 	.size	label_divided, .-label_divided
+	.globl	row_divided
+	.type	row_divided, @function
+row_divided:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	str	w2, [x29, #28]
+	str	w3, [x29, #32]
+	ldr	x0, [x29, #16]
+	ldrsw	x1, [x29, #24]
+	mov	x2, #12
+	mul	x1, x1, x2
+	add	x0, x0, x1
+	ldr	w1, [x29, #28]
+	ldr	w2, [x29, #32]
+	sdiv	w1, w1, w2
+	str	w1, [x0, #4]
+.Lrow_divided.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	row_divided, .-row_divided
+	.globl	row_divided_deeper
+	.type	row_divided_deeper, @function
+row_divided_deeper:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	str	w2, [x29, #28]
+	str	w3, [x29, #32]
+	ldr	x0, [x29, #16]
+	ldrsw	x1, [x29, #24]
+	mov	x2, #12
+	mul	x1, x1, x2
+	add	x0, x0, x1
+	ldr	w1, [x29, #28]
+	ldr	w2, [x29, #32]
+	sdiv	w1, w1, w2
+	add	w1, w1, #1
+	str	w1, [x0, #4]
+.Lrow_divided_deeper.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	row_divided_deeper, .-row_divided_deeper
+	.globl	row_shifted
+	.type	row_shifted, @function
+row_shifted:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	str	w2, [x29, #28]
+	str	w3, [x29, #32]
+	ldr	x0, [x29, #16]
+	ldrsw	x1, [x29, #24]
+	mov	x2, #12
+	mul	x1, x1, x2
+	add	x0, x0, x1
+	ldr	w1, [x29, #28]
+	ldr	w2, [x29, #32]
+	lsl	w1, w1, w2
+	str	w1, [x0, #4]
+.Lrow_shifted.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	row_shifted, .-row_shifted
 	.bss
 	.globl	rows
 	.type	rows, @object

@@ -146,9 +146,9 @@ struct state_t
     int named_read = -1;
     unsigned named_copy = 0;
 
-    // an address being formed is held across a right operand with a
-    // pinned instruction within, which spills or moves each register it
-    // holds: an unscaled sum then keeps to one (backend.md 6.3)
+    // an address being formed is held across a right operand that
+    // spills every held value, a call or a branch within it: an unscaled
+    // sum then keeps to one register (backend.md 6.3)
     bool held_across = false;
 
     // an assignment's place is being formed across a right operand that
@@ -1418,8 +1418,8 @@ unscaled_sum(const operation_t &o, long size)
 // folded()'s, with rbp the base and no instruction, and any other
 // pointer index_base()'s, an address of a base and a displacement or
 // the base alone, generated outside pinned and in the register the
-// consumer names, named.  An address held_across a pinned instruction
-// takes the slot's leaq too, since it keeps to one register.
+// consumer names, named.  An address held_across a right operand that
+// spills takes the slot's leaq too, since it keeps to one register.
 address_t
 unscaled_pointer(state_t &s,
                  const expr_t &pointer,
@@ -2046,30 +2046,32 @@ label_rooted(const expr_t &e,
 }
 
 // The place of an assignment, held across its right operand: the
-// lvalue's address, address_avoiding()'s, held_across the right
-// operand where an instruction within it pins a register, a call, a
-// division or a shift by a variable count, so that an unscaled sum
-// keeps to one register (backend.md 6.3).  Where the right operand
-// spills every held value, spills_within()'s, a call or a branch
-// within it, a label beside an index stays the place's label, with no
-// register: each consumer, assign(), modify()'s rows and
-// copy_record(), forms the place by formed() after the right operand.
-// There a base and an index that would each be spilled are summed into
-// one register first, the addq of a sum at scale 1 and a leaq at any
-// other scale, the displacement apart: ((int (*)[2]) (c + 400))[i][1]
-// = f() is leaq (%rax,%rcx,8), %rax before the call, one spill and one
-// reload, and movl %eax, 404(%rcx) after it.  Not where either is a
-// register variable's read, which no call spills, or is spilled
-// already, across a call of the index, p[id(i)] = id(v), whose slot
-// holds it across the next; nor on a label's leaq, label_rooted()'s;
-// and not where nothing is spilled, a division's or a shift's
-// registers chosen outside the address.
+// lvalue's address, formed outside the registers an instruction within
+// the right operand pins, moved_within()'s and the caller's pinned, so
+// that a division or a shift by a variable count moves nothing out of
+// them, and held_across the right operand where it spills every held
+// value, spills_within()'s, a call or a branch within it, so that an
+// unscaled sum keeps to one register and a label beside an index stays
+// the place's label, with no register (backend.md 6.3): each consumer,
+// assign(), modify()'s rows and copy_record(), forms the place by
+// formed() after the right operand.  There a base and an index that
+// would each be spilled are summed into one register first, the addq of
+// a sum at scale 1 and a leaq at any other scale, the displacement
+// apart: ((int (*)[2]) (c + 400))[i][1] = f() is leaq (%rax,%rcx,8),
+// %rax before the call, one spill and one reload, and movl %eax,
+// 404(%rcx) after it.  Not where either is a register variable's read,
+// which no call spills, or is spilled already, across a call of the
+// index, p[id(i)] = id(v), whose slot holds it across the next; nor on
+// a label's leaq, label_rooted()'s; and not where nothing is spilled, a
+// division's or a shift's registers chosen outside the address.
 address_t
 place_of(state_t &s, const assign_t &a, unsigned pinned)
 {
-    const bool outer = std::exchange(s.held_across, pinned_within(*a.rhs) != 0);
-    const unsigned reserved = std::exchange(s.reserved, s.reserved | pinned);
-    s.defer_label = spills_within(*a.rhs);
+    const bool spills = spills_within(*a.rhs);
+    const bool outer = std::exchange(s.held_across, spills);
+    const unsigned reserved =
+        std::exchange(s.reserved, s.reserved | pinned | moved_within(*a.rhs));
+    s.defer_label = spills;
     auto place = address(s, *a.lhs);
     s.defer_label = false;
     s.held_across = outer;
@@ -2833,8 +2835,8 @@ restore_copy(state_t &s, const named_copy_t &outer)
 // -48(%rbp,%rcx), %rax for m + i on a local int m[4][3], but that a
 // pointer that is its base alone keeps the row's addq.  named is the
 // register a value's consumer names, handed to the pointer and held out
-// of the index as held_out() says.  An address held_across a pinned
-// instruction keeps to one register, which a call spills once: the
+// of the index as held_out() says.  An address held_across a right
+// operand that spills keeps to one register, spilled once: the
 // addq of the p + n row forms the sum, and the pointer's displacement
 // is the access's, 36(%rax) for p[1][i][0].  A right operand that
 // writes the register variable the pointer reads has the read's copy
