@@ -544,4 +544,253 @@ cell_first:
 	ret
 	.cfi_endproc
 	.size	cell_first, .-cell_first
+	.globl	slot_cell
+	.type	slot_cell, @function
+slot_cell:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	add	x0, x29, #20
+	ldrsw	x1, [x29, #16]
+	mov	x2, #5
+	mul	x1, x1, x2
+	add	x0, x0, x1
+	ldrb	w0, [x0, #4]
+	b	.Lslot_cell.1
+.Lslot_cell.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	slot_cell, .-slot_cell
+	.globl	label_cell
+	.type	label_cell, @function
+label_cell:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	adrp	x0, rows
+	add	x0, x0, :lo12:rows
+	ldrsw	x1, [x29, #16]
+	mov	x2, #5
+	mul	x1, x1, x2
+	add	x0, x0, x1
+	ldrb	w0, [x0, #2]
+	b	.Llabel_cell.1
+.Llabel_cell.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	label_cell, .-label_cell
+	.globl	pointer_cell
+	.type	pointer_cell, @function
+pointer_cell:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	ldr	x0, [x29, #16]
+	ldrsw	x1, [x29, #24]
+	mov	x2, #12
+	mul	x1, x1, x2
+	add	x0, x0, x1
+	ldr	w0, [x0, #4]
+	b	.Lpointer_cell.1
+.Lpointer_cell.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	pointer_cell, .-pointer_cell
+	.globl	long_cell
+	.type	long_cell, @function
+long_cell:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	x1, [x29, #24]
+	ldr	x0, [x29, #16]
+	ldr	x1, [x29, #24]
+	mov	x2, #12
+	mul	x1, x1, x2
+	add	x0, x0, x1
+	ldr	w0, [x0, #8]
+	b	.Llong_cell.1
+.Llong_cell.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	long_cell, .-long_cell
+	.globl	slot_row
+	.type	slot_row, @function
+slot_row:
+	.cfi_startproc
+	sub	sp, sp, #80
+	.cfi_def_cfa_offset 80
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -80
+	.cfi_offset w30, -72
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	add	x0, x29, #20
+	ldrsw	x1, [x29, #16]
+	mov	x2, #12
+	mul	x1, x1, x2
+	add	x0, x0, x1
+	b	.Lslot_row.1
+.Lslot_row.1:
+	.cfi_def_cfa wsp, 80
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #80
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	slot_row, .-slot_row
+	.globl	first_cell
+	.type	first_cell, @function
+first_cell:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	ldrsw	x0, [x29, #24]
+	ldr	x1, [x29, #16]
+	mov	x2, #12
+	mul	x0, x0, x2
+	add	x0, x0, x1
+	ldr	w0, [x0, #4]
+	b	.Lfirst_cell.1
+.Lfirst_cell.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	first_cell, .-first_cell
+	.globl	held_cell
+	.type	held_cell, @function
+held_cell:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	add	x0, x29, #20
+	ldrsw	x1, [x29, #16]
+	mov	x2, #5
+	mul	x1, x1, x2
+	add	x0, x0, x1
+	str	x0, [x29, #40]
+	bl	f
+	ldr	x2, [x29, #40]
+	ldrb	w1, [x2, #1]
+	sub	w1, w1, w0
+	strb	w1, [x2, #1]
+.Lheld_cell.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	held_cell, .-held_cell
+	.globl	register_row
+	.type	register_row, @function
+register_row:
+	.cfi_startproc
+	sub	sp, sp, #80
+	.cfi_def_cfa_offset 80
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -80
+	.cfi_offset w30, -72
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -64
+	str	w0, [x29, #24]
+	add	x0, x29, #28
+	ldrsw	x1, [x29, #24]
+	mov	x2, #12
+	mul	x1, x1, x2
+	add	x19, x0, x1
+	mov	x0, x19
+	b	.Lregister_row.1
+.Lregister_row.1:
+	.cfi_def_cfa wsp, 80
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #80
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	register_row, .-register_row
+	.bss
+	.globl	rows
+	.type	rows, @object
+	.size	rows, 20
+rows:
+	.zero	20
 	.section	.note.GNU-stack,"",@progbits

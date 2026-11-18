@@ -140,6 +140,11 @@ struct state_t
     int named_read = -1;
     unsigned named_copy = 0;
 
+    // an address being formed is held across a right operand with a
+    // pinned instruction within, which spills or moves each register it
+    // holds: an unscaled sum then keeps to one (backend.md 6.3)
+    bool held_across = false;
+
     // the width of the result from which the last instruction written
     // set ZF, or 0 when it set none: flagged() states it after such an
     // instruction, and the next instruction or label withdraws it
@@ -845,7 +850,9 @@ extended(state_t &s,
 // its own, table+12(%rip), or the machine's addressing form, a held
 // base with a displacement or with a held index scaled by 1, 2, 4 or 8.
 // A slot with a held index is the form with rbp the base,
-// -24(%rbp,%rcx,4).  The access consumes the values.
+// -24(%rbp,%rcx,4).  The access consumes the values.  sum marks the
+// index as the product of a sum at a size no addressing form scales by,
+// whose value with no displacement is the p + n row's addq (6.3).
 struct address_t
 {
     value_t base { };
@@ -853,6 +860,7 @@ struct address_t
     long scale = 1;
     long long displacement = 0;
     std::string label { };
+    bool sum = false;
 };
 
 address_t
@@ -984,6 +992,23 @@ store(state_t &s, value_t v, const address_t &a, int width)
     store(s, r, operand(s, a, bit(r)), width);
 }
 
+// The value of a sum at a size no addressing form scales by, with no
+// displacement, backend.md 6.3: the p + n row's addq of the index's
+// product into the base, addq %rcx, %rax after imulq $12, %rcx, %rcx,
+// as offset() writes it, where the leaq of the address would only
+// replace it.
+value_t
+summed_base(state_t &s, value_t base, value_t index)
+{
+    const reg_t right = operands(s, base, index).second;
+    const reg_t left = writable(s, base, 64, bit(right));
+    insn(s, "addq", { reg(right, 64), reg(left, 64) });
+
+    release(s, index);
+
+    return base;
+}
+
 // The address as a value, valid to 64: the leaq of the operand form,
 // where the load would have been a mov.  A base alone is its own
 // value, so &*p is p and no instruction, 6.5.4.2p3.  Handed a register
@@ -995,6 +1020,9 @@ address_of(state_t &s, const address_t &a, into_t *into = nullptr)
 {
     if (a.base.id >= 0 && a.index.id < 0 && a.displacement == 0)
         return a.base;
+
+    if (a.sum && a.base.id >= 0 && a.displacement == 0)
+        return summed_base(s, a.base, a.index);
 
     const auto from = operand(s, a);
     release(s, a);
@@ -1152,10 +1180,10 @@ summed(state_t &s, const expr_t &pointer, into_t *into = nullptr)
 }
 
 // The pointer of a subscript or of a sum by a variable index as the
-// address the index joins, backend.md 6.3.  An address of a base and a displacement
-// and no index, summed()'s or constant_indexed()'s, is held whole, so
-// that p[1][i] on int (*p)[3] is 12(%rax,%rcx,4) and no instruction
-// forms the row's address.  Any other address, one with an index or
+// address the index joins, backend.md 6.3.  An address of a base and a
+// displacement and no index, summed()'s or constant_indexed()'s, is
+// held whole, so that p[1][i] on int (*p)[3] is 12(%rax,%rcx,4) and no
+// instruction forms the row's address.  Any other address, one with an index or
 // with no register for its base, is formed by address_of()'s leaq, and
 // any other pointer, a name's address plus a constant among them, whose
 // label takes no index, is its value: the base alone, computed in the
@@ -1185,36 +1213,37 @@ index_base(state_t &s,
     return *a;
 }
 
-value_t pointer_operation(
-    state_t &, const operation_t &, long, value_t, into_t *, unsigned);
-
-// The operand of an address by a pointer and a variable index at a size
-// no addressing form scales by, backend.md 6.3: the pointer the address
-// an index joins, index_base()'s, the index's product added to its base
-// by the row of p + n, and the pointer's displacement the access's, so
-// that p[1][i][0] on int (*p)[3][3] is imulq $12, %rcx, %rcx; addq %rcx,
-// %rax; movl 36(%rax), %eax, and no instruction forms the row's
-// address.  Any other pointer's displacement is 0, and the address is
-// the p + n row's sum, as before.  The pointer is generated first, the
-// index after it (G13).  None for n + p, for -, and where a register
-// variable is handed down, whose address is the sum's own row.
-std::optional< address_t >
-offset_after_sum(state_t &s, const expr_t &p, long size, into_t *into)
+// Whether p + n is a sum at a size no addressing form scales by, size,
+// whose product the addressing form takes as its index at scale 1,
+// backend.md 6.3: an add, the pointer written first, and n no constant.
+bool
+unscaled_sum(const operation_t &o, long size)
 {
-    if (into || is_scale(size) || !is< binary_t >(p))
-        return std::nullopt;
-
-    const auto &b = as< binary_t >(p);
-    if (b.op != binary_op_t::add || !is< pointer_t >(b.lhs->type) ||
-        is< literal_t >(*b.rhs))
-        return std::nullopt;
-
-    const auto a = index_base(s, *b.lhs, pinned_by(*b.rhs));
-    const auto sum =
-        pointer_operation(s, as_written(b), size, a.base, nullptr, 0);
-
-    return address_t { .base = sum, .displacement = a.displacement };
+    return !is_scale(size) && o.op == binary_op_t::add &&
+           is< pointer_t >(o.lhs->type) && !is< literal_t >(*o.rhs);
 }
+
+// The address of the pointer of an unscaled_sum(), which its index's
+// product joins, backend.md 6.3: a local array's slot plus a constant,
+// folded()'s, with rbp the base and no instruction, and any other
+// pointer index_base()'s, an address of a base and a displacement or
+// the base alone, generated outside pinned and in the register the
+// consumer names, named.  An address held_across a pinned instruction
+// takes the slot's leaq too, since it keeps to one register.
+address_t
+unscaled_pointer(state_t &s,
+                 const expr_t &pointer,
+                 unsigned pinned,
+                 unsigned named)
+{
+    if (const auto slot = folded(s, pointer);
+        slot && slot->label.empty() && !s.held_across)
+        return *slot;
+
+    return index_base(s, pointer, pinned, named);
+}
+
+address_t unscaled(state_t &, const operation_t &, long, unsigned);
 
 // The address a dereference designates, 6.5.4.2p4, of an object of
 // type pointee: the addressing row.  A name's address plus a constant,
@@ -1234,9 +1263,11 @@ offset_after_sum(state_t &s, const expr_t &p, long size, into_t *into)
 // on int (*p)[3] being 12(%rax,%rcx,4).  The operand written first is
 // held outside the registers the other's top operator pins, p[x / y]'s
 // p outside rax and rdx (chapter 6.5).  At a size no addressing form
-// scales by, such a pointer's displacement follows the sum of its index,
-// offset_after_sum()'s.  Any other pointer, an add of another size
-// included, is computed into a register and is the base;
+// scales by, the index's product is the form's index at scale 1, the
+// pointer's address its base and displacement, unscaled()'s, so that
+// m[i][4] on a local char m[4][5] is -23(%rbp,%rcx) after imulq $5,
+// %rcx, %rcx.  Any other pointer, a sum of another size included, is
+// computed into a register and is the base;
 // nothing looks through a cast.  A register variable handed down goes
 // to the row of a base that is the whole address, p of &*p and &p[0],
 // or the sum of &a[i] at a size no addressing form scales by, to
@@ -1263,9 +1294,11 @@ pointed(state_t &s,
     if (const auto a = constant_indexed(s, p, size, into))
         return *a;
 
-    // p[1][i][0] on int (*p)[3][3]: the sum, then 36(%rax)
-    if (const auto a = offset_after_sum(s, p, size, into))
-        return *a;
+    // m[i][4] on char m[4][5], p[1][i][0] on int (*p)[3][3]:
+    // -23(%rbp,%rcx), 36(%rax,%rcx) after imulq
+    if (!into && is< binary_t >(p) &&
+        unscaled_sum(as_written(as< binary_t >(p)), size))
+        return unscaled(s, as_written(as< binary_t >(p)), size, 0);
 
     if (!is_scale(size) || !is< binary_t >(p) ||
         as< binary_t >(p).op != binary_op_t::add)
@@ -1679,6 +1712,21 @@ address_avoiding(state_t &s, const expr_t &e, unsigned pinned)
     s.reserved = reserved;
 
     return a;
+}
+
+// The place of an assignment, held across its right operand: the
+// lvalue's address, address_avoiding()'s, held_across the right
+// operand where an instruction within it pins a register, a call, a
+// division or a shift by a variable count, so that an unscaled sum
+// keeps to one register (backend.md 6.3).
+address_t
+place_of(state_t &s, const assign_t &a, unsigned pinned)
+{
+    const bool outer = std::exchange(s.held_across, pinned_within(*a.rhs) != 0);
+    const auto place = address_avoiding(s, *a.lhs, pinned);
+    s.held_across = outer;
+
+    return place;
 }
 
 // A shift's variable count, generated with rax and avoid reserved, and
@@ -2228,6 +2276,56 @@ displaced(state_t &s,
     }
 
     return offset(s, op, l, n.value, n.scale, true, into);
+}
+
+// The index of an unscaled_sum() joined to the pointer's address a,
+// backend.md 6.3: n's product, the imulq the subscript asks for, at
+// scale 1, so that no addq forms the sum.  n is addend()'s, its product
+// already where multiplied() wrote it.  A base and an index spilled
+// across n are reloaded first, as offset() reloads them.
+address_t
+unscaled_index(state_t &s, address_t a, const right_t &n, long size)
+{
+    if (a.base.id >= 0)
+        operands(s, a.base, n.value);
+
+    if (n.scale != 1) {
+        const reg_t index = writable(s, n.value, 64, registers_of(s, a));
+        insn(s, "imulq", { imm(size), reg(index, 64), reg(index, 64) });
+    }
+
+    a.index = n.value;
+    a.scale = 1;
+    a.sum = true;
+
+    return a;
+}
+
+// The address of an unscaled_sum() as an access's operand, backend.md
+// 6.3: the pointer's address, unscaled_pointer()'s, then the index, in
+// the order written (G13), its product the form's index at scale 1,
+// 36(%rax,%rcx) for p[1][i][0] on int (*p)[3][3] and -23(%rbp,%rcx)
+// for m[i][4] on a local char m[4][5], where the sum was the addq of
+// the p + n row.  As a value it is address_of()'s leaq, leaq
+// -48(%rbp,%rcx), %rax for m + i on a local int m[4][3], but that a
+// pointer that is its base alone keeps the row's addq.  named is the
+// register a value's consumer names, handed to the pointer and held out
+// of the index as held_out() says.  An address held_across a pinned
+// instruction keeps to one register, which a call spills once: the
+// addq of the p + n row forms the sum, and the pointer's displacement
+// is the access's, 36(%rax) for p[1][i][0].
+address_t
+unscaled(state_t &s, const operation_t &o, long size, unsigned named)
+{
+    const auto a = unscaled_pointer(s, *o.lhs, pinned_by(*o.rhs), named);
+    const auto n =
+        addend(s, o.op, *o.rhs, size, held_out(s, a.base, *o.rhs, named));
+
+    if (s.held_across)
+        return { .base = displaced(s, o.op, a.base, n),
+                 .displacement = a.displacement };
+
+    return unscaled_index(s, a, n, size);
 }
 
 // n + p with p an object in memory of 64 bits, where the add takes p
@@ -3232,6 +3330,10 @@ pointer_arithmetic(state_t &s,
     if (scaled_sum(o, size))
         return joined_sum(s, o, size, into, pinned, named);
 
+    // m + i on a local int m[4][3]: leaq -48(%rbp,%rcx), %rax
+    if (unscaled_sum(o, size))
+        return address_of(s, unscaled(s, o, size, named), into);
+
     if (!is< pointer_t >(o.lhs->type) && multiplies(o.op, size))
         if (const auto product = multiplied(s, *o.lhs, size, pinned))
             return pointer_operation(s, o, 1, *product, into,
@@ -3791,7 +3893,7 @@ assign(state_t &s, const assign_t &a, unsigned wanted = 0)
 
     const unsigned named =
         pinned_within(*a.lhs) || pinned_within(*a.rhs) ? 0 : wanted;
-    const auto place = address_avoiding(s, *a.lhs, pinned_by(a) | named);
+    const auto place = place_of(s, a, pinned_by(a) | named);
 
     if (!a.op) {
         const auto v = rvalue(s, *a.rhs, nullptr, wanted);
@@ -4533,7 +4635,7 @@ modify(state_t &s, const assign_t &a)
         return false;
 
     const auto &t = integer(a.lhs->type);
-    const auto place = address_avoiding(s, *a.lhs, pinned_by(a));
+    const auto place = place_of(s, a, pinned_by(a));
 
     if (op == binary_op_t::shl || op == binary_op_t::shr)
         shift_on(s, op, place, *a.rhs, t);

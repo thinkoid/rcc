@@ -191,8 +191,7 @@ column_wide:
 	movq	-8(%rbp), %rax
 	movslq	-12(%rbp), %rcx
 	imulq	$12, %rcx, %rcx
-	addq	%rcx, %rax
-	leaq	24(%rax), %rax
+	leaq	24(%rax,%rcx,1), %rax
 	jmp	.Lcolumn_wide.1
 .Lcolumn_wide.1:
 	leave
@@ -302,10 +301,9 @@ row_sum_wide:
 	movq	%rdi, -8(%rbp)
 	movl	%esi, -12(%rbp)
 	movq	-8(%rbp), %rax
-	leaq	24(%rax), %rax
 	movslq	-12(%rbp), %rcx
 	imulq	$12, %rcx, %rcx
-	addq	%rcx, %rax
+	leaq	24(%rax,%rcx,1), %rax
 	jmp	.Lrow_sum_wide.1
 .Lrow_sum_wide.1:
 	leave
@@ -327,8 +325,7 @@ cell:
 	movq	-8(%rbp), %rax
 	movslq	-12(%rbp), %rcx
 	imulq	$12, %rcx, %rcx
-	addq	%rcx, %rax
-	movl	36(%rax), %eax
+	movl	36(%rax,%rcx,1), %eax
 	jmp	.Lcell.1
 .Lcell.1:
 	leave
@@ -350,8 +347,7 @@ cell_column:
 	movq	-8(%rbp), %rax
 	movslq	-12(%rbp), %rcx
 	imulq	$12, %rcx, %rcx
-	addq	%rcx, %rax
-	movl	44(%rax), %eax
+	movl	44(%rax,%rcx,1), %eax
 	jmp	.Lcell_column.1
 .Lcell_column.1:
 	leave
@@ -375,9 +371,7 @@ cell_register:
 	movq	-16(%rbp), %rbx
 	movslq	-20(%rbp), %rax
 	imulq	$12, %rax, %rax
-	movq	%rbx, %rcx
-	addq	%rax, %rcx
-	movl	36(%rcx), %eax
+	movl	36(%rbx,%rax,1), %eax
 	jmp	.Lcell_register.1
 .Lcell_register.1:
 	popq	%rbx
@@ -410,4 +404,187 @@ cell_first:
 	ret
 	.cfi_endproc
 	.size	cell_first, .-cell_first
+	.globl	slot_cell
+	.type	slot_cell, @function
+slot_cell:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movslq	-4(%rbp), %rax
+	imulq	$5, %rax, %rax
+	movsbl	-20(%rbp,%rax,1), %eax
+	jmp	.Lslot_cell.1
+.Lslot_cell.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	slot_cell, .-slot_cell
+	.globl	label_cell
+	.type	label_cell, @function
+label_cell:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	leaq	rows(%rip), %rax
+	movslq	-4(%rbp), %rcx
+	imulq	$5, %rcx, %rcx
+	movsbl	2(%rax,%rcx,1), %eax
+	jmp	.Llabel_cell.1
+.Llabel_cell.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	label_cell, .-label_cell
+	.globl	pointer_cell
+	.type	pointer_cell, @function
+pointer_cell:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	movslq	-12(%rbp), %rcx
+	imulq	$12, %rcx, %rcx
+	movl	4(%rax,%rcx,1), %eax
+	jmp	.Lpointer_cell.1
+.Lpointer_cell.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	pointer_cell, .-pointer_cell
+	.globl	long_cell
+	.type	long_cell, @function
+long_cell:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	%rsi, -16(%rbp)
+	movq	-8(%rbp), %rax
+	imulq	$12, -16(%rbp), %rcx
+	movl	8(%rax,%rcx,1), %eax
+	jmp	.Llong_cell.1
+.Llong_cell.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	long_cell, .-long_cell
+	.globl	slot_row
+	.type	slot_row, @function
+slot_row:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movslq	-4(%rbp), %rax
+	imulq	$12, %rax, %rax
+	leaq	-52(%rbp,%rax,1), %rax
+	jmp	.Lslot_row.1
+.Lslot_row.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	slot_row, .-slot_row
+	.globl	first_cell
+	.type	first_cell, @function
+first_cell:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movslq	-12(%rbp), %rax
+	imulq	$12, %rax, %rax
+	addq	-8(%rbp), %rax
+	movl	4(%rax), %eax
+	jmp	.Lfirst_cell.1
+.Lfirst_cell.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	first_cell, .-first_cell
+	.globl	held_cell
+	.type	held_cell, @function
+held_cell:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$32, %rsp
+	movl	%edi, -4(%rbp)
+	leaq	-24(%rbp), %rax
+	movslq	-4(%rbp), %rcx
+	imulq	$5, %rcx, %rcx
+	addq	%rcx, %rax
+	movq	%rax, -32(%rbp)
+	call	f@PLT
+	movq	-32(%rbp), %rcx
+	subb	%al, 1(%rcx)
+.Lheld_cell.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	held_cell, .-held_cell
+	.globl	register_row
+	.type	register_row, @function
+register_row:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	leaq	-60(%rbp), %rbx
+	movslq	-12(%rbp), %rax
+	imulq	$12, %rax, %rax
+	addq	%rax, %rbx
+	movq	%rbx, %rax
+	jmp	.Lregister_row.1
+.Lregister_row.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	register_row, .-register_row
+	.bss
+	.globl	rows
+	.type	rows, @object
+	.size	rows, 20
+	.p2align 4
+rows:
+	.zero	20
 	.section	.note.GNU-stack,"",@progbits

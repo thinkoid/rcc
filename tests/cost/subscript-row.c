@@ -17,16 +17,18 @@
    displacement, (p[1] + 536870911)[i].  A row whose offset no 32-bit
    displacement holds is the sum of p + n, the access's base,
    p[200000000][i], and an element of a size no addressing form scales
-   by, the row p[1][i] of 12 bytes on int (*p)[2][3], is the sum of
-   p + n on the pointer, and the row's offset follows the sum, on
-   x86-64 as the access's displacement: p[1][i][0] on int (*p)[3][3]
-   reads 36 bytes past the sum, and p[1][i][2] 44, where i[p[1]][0],
-   the index written first, forms the row's address before the sum.
-   The row plus a variable index as a value, p[1] + i, is the same
-   address and one leaq of it on x86-64, returned, i + p[1] with the
-   index generated first, into a register variable, and stored; at a
-   size no addressing form scales by, the 12 bytes of p[1] + i on int
-   (*p)[2][3], it is the sum of p + n.
+   by, the row p[1][i] of 12 bytes on int (*p)[2][3], is on x86-64
+   the index's product at scale 1 beside the pointer, the row's offset
+   the displacement: p[1][i][0] on int (*p)[3][3] reads 36 bytes past
+   the pointer and the product, p[1][i][2] 44, and on a local array
+   the slot is the displacement off rbp, with no address formed;
+   i[p[1]][0], the index written first, forms the row's address and
+   the sum.  The row plus a variable index as a value, p[1] + i, is
+   the same address and one leaq of it on x86-64, returned, i + p[1]
+   with the index generated first, into a register variable, and
+   stored; at a size no addressing form scales by, the 12 bytes of
+   p[1] + i on int (*p)[2][3], it is the one leaq of the pointer, the
+   product and the row's offset.
 
    On x86-64 the listing must show first() returning the array's
    address, leaq -24(%rbp), %rax, with no instruction after it,
@@ -41,20 +43,34 @@
    movabsq and the addq, then movl (%rax,%rcx,4), %eax, column_sum()
    forming p[1]'s address by leaq 12(%rax), %rax and reading by movl
    2147483644(%rax,%rcx,4), %eax, and column_wide() forming p[1][i]
-   by imulq $12, %rcx, %rcx and addq %rcx, %rax after p's load and
-   i's, then leaq 24(%rax), %rax.  row_sum() forms p[1] + i by the one
+   by imulq $12, %rcx, %rcx and the one leaq 24(%rax,%rcx,1), %rax
+   after p's load and i's.  row_sum() forms p[1] + i by the one
    leaq 12(%rax,%rcx,4), %rax after p's load and i's, row_sum_first()
    by leaq 12(%rcx,%rax,4), %rax after i's load and p's,
    row_sum_register() by leaq 12(%rax,%rcx,4), %rbx into the variable,
    row_sum_stored() by leaq 12(%rcx,%rdx,4), %rcx before the store
-   movq %rcx, (%rax), and row_sum_wide() p[1] + i by leaq 24(%rax),
-   %rax, then imulq $12, %rcx, %rcx and addq %rcx, %rax.  cell() reads
-   p[1][i][0] by imulq $12, %rcx, %rcx, addq %rcx, %rax and movl
-   36(%rax), %eax after p's load and i's, with no leaq,
-   cell_column() the same with movl 44(%rax), %eax, cell_register()
-   with movq %rbx, %rcx, addq %rax, %rcx and movl 36(%rcx), %eax, and
-   cell_first() by leaq 36(%rcx), %rcx before the sum and movl (%rax),
-   %eax after it.
+   movq %rcx, (%rax), and row_sum_wide() as column_wide().  cell()
+   reads p[1][i][0] by imulq $12, %rcx, %rcx and the one movl
+   36(%rax,%rcx,1), %eax after p's load and i's, with no leaq and no
+   addq, cell_column() the same with movl 44(%rax,%rcx,1), %eax,
+   cell_register() with movl 36(%rbx,%rax,1), %eax, and cell_first()
+   by leaq 36(%rcx), %rcx and addq %rcx, %rax before movl (%rax),
+   %eax.  On the arrays of rows of 5 chars and of 3 ints, slot_cell()
+   reads m[i][4] by imulq $5, %rax, %rax and the one movsbl
+   -20(%rbp,%rax,1), %eax, with no leaq of the slot, label_cell()
+   rows[i][2] by leaq rows(%rip), %rax, then the imulq and movsbl
+   2(%rax,%rcx,1), %eax, pointer_cell() p[i][1] by movl
+   4(%rax,%rcx,1), %eax after the imulq, long_cell() p[n][2] by imulq
+   $12, -16(%rbp), %rcx, n the multiply's source, and movl
+   8(%rax,%rcx,1), %eax, and slot_row() m[i] as a pointer by the one
+   leaq -52(%rbp,%rax,1), %rax after the imulq.  first_cell(), i[p][1]
+   with the index first, keeps the addq -8(%rbp), %rax of p in memory
+   after the imulq, then movl 4(%rax), %eax; held_cell(), m[i][1] -=
+   f(), whose address is held across the call, forms it in one
+   register, leaq -24(%rbp), %rax, the imulq and addq %rcx, %rax,
+   which the call spills once, then subb %al, 1(%rcx); and
+   register_row(), q = m[i] into a register variable, is leaq
+   -60(%rbp), %rbx, the imulq and addq %rax, %rbx.
 
    On aarch64 the listing must show first() returning the array's
    address, add x0, x29, #16, with no instruction after it, element()
@@ -76,7 +92,12 @@
    cell_column(), cell_register() and cell_first() add the row's 36
    before the index, add x0, x0, #36, or x19 into x0, or x1 after i's
    load, then mov x2, #12, mul and add the product, and read by ldr
-   w0, [x0], and by ldr w0, [x0, #8] in cell_column(). */
+   w0, [x0], and by ldr w0, [x0, #8] in cell_column().  The functions
+   on rows of 5 chars and of 3 ints add the product to the slot's add,
+   the label's add or the pointer, then read with the column's offset,
+   ldrb w0, [x0, #4] in slot_cell(), and slot_row() is the add of the
+   slot and the add of the product; first_cell(), held_cell() and
+   register_row() the same, the last add writing x19. */
 int *first(void)
 {
     int m[2][3];
@@ -193,4 +214,65 @@ int
 cell_first(int (*p)[3][3], int i)
 {
         return i[p[1]][0];
+}
+
+char rows[4][5];
+int f(void);
+
+int
+slot_cell(int i)
+{
+        char m[4][5];
+
+        return m[i][4];
+}
+
+int
+label_cell(int i)
+{
+        return rows[i][2];
+}
+
+int
+pointer_cell(int (*p)[3], int i)
+{
+        return p[i][1];
+}
+
+int
+long_cell(int (*p)[3], long n)
+{
+        return p[n][2];
+}
+
+int *
+slot_row(int i)
+{
+        int m[4][3];
+
+        return m[i];
+}
+
+int
+first_cell(int (*p)[3], int i)
+{
+        return i[p][1];
+}
+
+void
+held_cell(int i)
+{
+        char m[4][5];
+
+        m[i][1] -= f();
+}
+
+int *
+register_row(int i)
+{
+        int m[4][3];
+        register int *q;
+
+        q = m[i];
+        return q;
 }

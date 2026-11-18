@@ -10,10 +10,9 @@ row:
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register %rbp
 	movl	%edi, -4(%rbp)
-	leaq	-28(%rbp), %rax
-	movslq	-4(%rbp), %rcx
-	imulq	$12, %rcx, %rcx
-	addq	%rcx, %rax
+	movslq	-4(%rbp), %rax
+	imulq	$12, %rax, %rax
+	leaq	-28(%rbp,%rax,1), %rax
 	movq	%rax, -40(%rbp)
 	movq	-40(%rbp), %rax
 	jmp	.Lrow.1
