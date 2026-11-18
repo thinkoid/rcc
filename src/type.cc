@@ -47,6 +47,12 @@ equal(const array_t &a, const array_t &b)
 }
 
 bool
+equal(const record_type_t &a, const record_type_t &b)
+{
+    return a.record == b.record;
+}
+
+bool
 equal(const not_yet_t &a, const not_yet_t &b)
 {
     return a.identity == b.identity;
@@ -119,6 +125,12 @@ make_function(type_t result, std::vector< type_t > params, bool variadic)
 }
 
 type_t
+make_record(const record_t &r)
+{
+    return type_t { record_type_t { &r } };
+}
+
+type_t
 make_not_yet(int identity, std::string what)
 {
     return type_t { not_yet_t { identity, std::move(what) } };
@@ -137,6 +149,9 @@ size_of(const type_t &t)
     if (is< array_t >(t) && as< array_t >(t).count >= 0)
         return as< array_t >(t).count * size_of(*as< array_t >(t).element);
 
+    if (is< record_type_t >(t) && laid_out(*as< record_type_t >(t).record))
+        return as< record_type_t >(t).record->size;
+
     throw std::logic_error("size_of: a type without a size");
 }
 
@@ -151,6 +166,9 @@ align_of(const type_t &t)
 
     if (is< array_t >(t))
         return align_of(*as< array_t >(t).element);
+
+    if (is< record_type_t >(t) && laid_out(*as< record_type_t >(t).record))
+        return as< record_type_t >(t).record->alignment;
 
     throw std::logic_error("align_of: a type without an alignment");
 }

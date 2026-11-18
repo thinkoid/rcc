@@ -1,0 +1,2 @@
+tests/error/struct-anonymous-member.c:16:16: error: not yet: anonymous union in struct 'value'
+status 1

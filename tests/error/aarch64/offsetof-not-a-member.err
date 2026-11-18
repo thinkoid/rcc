@@ -1,0 +1,2 @@
+tests/error/offsetof-not-a-member.c:12:49: error: no member named 'z' in struct 'point'
+status 1

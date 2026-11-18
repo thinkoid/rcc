@@ -486,9 +486,13 @@ struct object_decl_t
     std::optional< std::vector< subobject_t > > init;
 };
 
+// The unit owns every record in a deque, as it owns the symbols, so a
+// record type's pointer to its record is stable for the life of the
+// unit.
 struct unit_t
 {
     std::deque< symbol_t > symbols;
+    std::deque< record_t > records;
     std::vector< function_decl_t > functions;
     std::vector< object_decl_t > objects;
 };

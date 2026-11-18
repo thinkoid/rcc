@@ -1,0 +1,2 @@
+tests/error/struct-value.c:11:9: error: not yet: value of struct 'point'
+status 1

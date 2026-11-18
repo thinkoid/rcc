@@ -1,0 +1,2 @@
+tests/error/cast-to-struct.c:12:9: error: cast to a type that is not a scalar
+status 1

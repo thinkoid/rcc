@@ -1,0 +1,2 @@
+tests/error/struct-assignment.c:10:13: error: not yet: assignment of struct 'point'
+status 1

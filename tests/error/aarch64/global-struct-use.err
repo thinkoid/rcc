@@ -1,2 +1,2 @@
-tests/error/global-struct-use.c:9:17: error: not yet: struct
+tests/error/global-struct-use.c:15:9: error: not yet: value of struct 'point'
 status 1

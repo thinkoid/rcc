@@ -1,0 +1,2 @@
+tests/error/struct-call-result.c:14:15: error: not yet: struct 'point' returned by value
+status 1

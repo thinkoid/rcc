@@ -22,7 +22,7 @@ The parts, what each owns, and where they meet. The headers under
   nothing in between.
 - Closed sets are `std::variant`; recursion edges are `unique_ptr`
   for a fixed arity and `vector` for a list. Types are values,
-  compared structurally.
+  compared structurally, and a struct or a union by its identity.
 - The first error is fatal. No recovery.
 - GNU make, one executable, a flat `src/`. The test is four
   scripts: the oracle over `tests/corpus/` and the cost corpus over
@@ -118,13 +118,13 @@ their like are the keyword they spell, and `__attribute__`, `__asm__`,
 
 A type is the machine's view: void, an integer of a width and a
 signedness, a pointer to a type, an array of a type and a count, a
-function of a result and parameters, or a type rcc declares and does
-not use yet: a struct, a union, an enum in its own list or marked by
-an attribute (chapter 5); a floating type, real or
-complex, GNU C's `__float128` among them; `_Bool`; GNU C's
-`__int128`; `__builtin_va_list` and clang's SVE types; an atomic
-type; a type a typedef names through an attribute rcc does not
-honour, or through an array size rcc cannot compute. Such a type
+function of a result and parameters, a struct or a union, or a type
+rcc declares and does not use yet: an enum in its own list or marked
+by an attribute (chapter 5); a floating type, real or complex, GNU
+C's `__float128` among them; `_Bool`; GNU C's `__int128`;
+`__builtin_va_list` and clang's SVE types; an atomic type; a type a
+typedef names through an attribute rcc does not honour, or through an
+array size rcc cannot compute. Such a type
 carries an identity, which equality compares, and the words a
 refusal of its use prints; it has no size and no alignment, and a
 pointer to it is an ordinary pointer. The type carries no qualifier:
@@ -152,6 +152,39 @@ characters are the platform's, as `clang` has them on each target:
 on both, so `(wchar_t) -1 < 0` holds on the first alone; `char16_t`
 is `unsigned short` and `char32_t` `unsigned int` on both. The tree
 keeps no spelling, so each is its integer type.
+
+A struct or a union is a record, and its type holds a pointer to the
+record, which the unit owns in a `deque`, as it owns the symbols. The
+parser makes the record incomplete at the first mention of its tag,
+or at a list without one, and completes it in place at the list's
+`}` (6.7.3.4p5). So `struct internal *p;` before the list points to
+the type the list completes, and a member points to its own record.
+Two records are one type when they are one record: one tag in one
+scope declares one type (6.7.3.4p4), and each list without a tag one
+of its own (p9). Equality stops at a record, so a record compares by
+its identity where every other type compares by its structure, and a
+record whose members point to it compares. C23 makes two complete
+records of one tag and of the same members compatible (6.2.7p1); rcc
+compares no two records' members, so where two such meet, a
+conversion between pointers to them among them, the use is not yet.
+
+A complete record has its members, each a name, a type and an offset,
+its size and its alignment, laid out by the rule `clang` has for both
+targets, which is one rule for the types rcc has: each member of a
+struct at the offset so far rounded up to the member's alignment, in
+the order declared (6.7.3.2p16, p17); each member of a union at 0
+(p18); the record's alignment its members' largest, and its size the
+end of its members rounded up to that alignment (p19), so that each
+element of an array of it is aligned. `size_of` and `align_of` read
+the layout, and the parser folds `sizeof`, `_Alignof` and `offsetof`
+from it. A record whose list holds a construct rcc does not lay out
+yet is complete and has no layout: a bit-field, an anonymous member,
+an attribute that marks, `packed` and `aligned` among them, a
+flexible array member, a list of no member, or a member of a type
+rcc does not use yet. It keeps the words of the first such construct,
+and a use that needs its layout is refused by them, as a not-yet
+type's is; a pointer to it is an ordinary pointer, so a program's
+`FILE *` is what it was.
 
 ## 4. The tree
 
@@ -394,11 +427,12 @@ declaration. Before a `;` they stand on a null statement, as GNU C's
 kind, and the statement writes nothing; before an expression they
 are an error. One on a
 parameter marks the function, whose calls pass the parameter, and its
-definition. On a struct or a union every attribute is dropped, since
-the type is a not-yet type; on an enum one that marks makes the enum
-a not-yet type of its words (below). `__asm__ ("name")` after
-the declarator of a function or of an object at file scope is the
-symbol's name in the assembly: glibc declares `scanf` as
+definition. On a struct or a union, or on a member, one that marks
+changes the layout, as `packed` and `aligned` do, and makes the
+record one rcc does not lay out yet (chapter 3); on an enum one that
+marks makes the enum a not-yet type of its words (below). `__asm__
+("name")` after the declarator of a function or of an object at file
+scope is the symbol's name in the assembly: glibc declares `scanf` as
 `__isoc99_scanf`, and the call names that.
 
 `volatile` is dropped as `const` is, wherever `const` may stand:
@@ -445,11 +479,11 @@ Any other is the previous value plus one, in the previous constant's
 type, or in the 64-bit type of its signedness where that type does
 not hold the sum, and an error past the 64-bit types. So `enum { A =
 0x7fffffff, B, C = sizeof B }` gives `C` the size of a `long`, 8. A
-value that needs what rcc does not have yet, `sizeof (struct s)`
-among them, is refused where it stands, in a system header as in the
-program; the headers that parse write none. A constant's scope begins
-after its enumerator (6.2.1p7), so `enum { A = A + 1 }` in a block
-reads an outer `A`.
+value that needs what rcc does not have yet, the size of a struct rcc
+does not lay out among them, is refused where it stands, in a system
+header as in the program; the headers that parse write none. A
+constant's scope begins after its enumerator (6.2.1p7), so `enum { A
+= A + 1 }` in a block reads an outer `A`.
 
 Until the `}` of its list an enumeration is incomplete (6.7.3.4p5):
 its tag names a not-yet type there, a pointer to which is taken, and
@@ -465,6 +499,49 @@ of its words, since `packed` makes the type the narrowest integer that
 holds its values and rcc does not; the constants keep their values,
 and an `int` constant its use.
 
+A struct or a union specifier with a list reads its members with the
+declaration's own machinery (6.7.3.2p1): specifiers with no storage
+class and no function specifier, then declarators, each a name and a
+type, or a bit-field's width after a `:`. A static assertion among
+them is checked where it stands, and `__extension__` before one is
+dropped. The list opens no scope: a tag or an enumeration constant
+declared in it is declared where the record is (6.2.1p4), so `struct
+s { enum e { A, B } k; };` declares `A` and `B` beside `s`, and the
+members' names are the record's own (6.2.3p1). A member is of a
+complete object type (6.7.3.2p3, p11): a function, `void`, an
+incomplete record, the record being defined among them, and a second
+member of one name are errors, and so is an array of unknown size
+anywhere but last in a struct of two named members or more, where it
+is a flexible array member (p20). A member declaration with no
+declarator declares an anonymous member where its specifier is a
+struct or a union without a tag (p15), and otherwise the tag or the
+constants of its specifier alone. In a list a system header writes,
+the rule for a system header holds as for a typedef's array size: a
+refusal of the not-yet kind makes the record one rcc does not lay out,
+of the refusal's words, and the parse skips to the list's closing
+brace, so a struct with an `_Atomic` member parses there; an error
+stays the error it is, and the program's own list is refused where it
+stands. clang's `__int128_t` and `__uint128_t`, which glibc's
+`sys/user.h` writes in a member list, are the 128-bit integer types.
+
+`sizeof` and `_Alignof ( type-name )` of a record are its layout's
+(6.5.4.4p3, p4), and of an incomplete record errors (p1); `_Alignof`
+of an expression, which GNU C takes, is not yet. `__builtin_offsetof
+( type-name , member-designator )`, which `stddef.h` defines
+`offsetof` by, is the offset in bytes of the subobject the designator
+names (7.21p4), a member's name, then `.name` and `[constant]` in any
+number, folded to a `size_t` constant. A record is an expression only
+as an lvalue, by a name or by an indirection: its address by `&` and
+its size by `sizeof` are taken, and through a pointer to an incomplete
+record the lvalue is not yet, since c1 addresses one by its size.
+What reads or writes the object of a record is not yet, each in words
+of its own: an object of a record, local, static or at file scope;
+`.` and `->`; a record passed or returned by value, by a definition's
+parameter or result, by an argument and by a call; the assignment of
+a record; and its value, read as an operand or for its effect. A cast
+to a record or of one is an error, since a record is no scalar
+(6.5.5p2).
+
 The types a header declares and rcc does not use are not-yet types:
 the complex types, `_Complex` among the specifiers of a floating
 type; GNU C's `__float128` and `__int128`, signed or unsigned;
@@ -478,17 +555,17 @@ and so does a typedef through the `_Atomic` qualifier; the qualifier
 is not yet anywhere else.
 
 A typedef of an array whose size needs what rcc does not have yet
-names a not-yet type whose words say what the size needs: glibc's
-`bits/procfs.h` sizes `elf_gregset_t` by the size of a struct, so
-the typedef is accepted and a local of the type is refused with "not
-yet: struct". The parser catches a refusal of the not-yet kind alone,
-only while it reads the size of a typedef's array suffix, and only
-when it has found the `]` that closes the suffix first, matching the
-brackets and parentheses in the size; the parse goes on there. A size
-that is wrong stays the error it is, and so does such a size outside
-a typedef: of a local, a parameter, a cast or a `sizeof`. Since the
-parse of the size stops at its first refusal, an error of the program
-after it in the size is not seen.
+names a not-yet type whose words say what the size needs, as a size
+by the size of a struct with a bit-field does: the typedef is
+accepted and a local of the type is refused with "not yet: bit-field
+in struct ...". The parser catches a refusal of the not-yet kind
+alone, only while it reads the size of a typedef's array suffix, and
+only when it has found the `]` that closes the suffix first, matching
+the brackets and parentheses in the size; the parse goes on there. A
+size that is wrong stays the error it is, and so does such a size
+outside a typedef: of a local, a parameter, a cast or a `sizeof`.
+Since the parse of the size stops at its first refusal, an error of
+the program after it in the size is not seen.
 
 A function of internal linkage may be an inline function (6.7.5p7),
 and `inline` suggests only that its calls be fast (p6), so it writes
@@ -570,15 +647,16 @@ a declaration of its own at file scope, in a block and as a `for`'s
 first clause, and declares nothing, so the tree keeps nothing of it
 and c1 writes nothing. Its expression is an integer constant
 expression (p3), folded as an array's size is: one that needs what
-rcc does not have yet, `sizeof (struct s)` or a floating constant, is
-refused by its words, and one that compares equal to 0 is the error
-of p2, `static assertion failed: ...` with the string, adjacent
-literals joined. `_Static_assert` is C17's keyword (chapter 2) and
-C23's alternative spelling of `static_assert` (6.4.1p3); in the
-dialect rcc preprocesses in, `static_assert` is a macro of `assert.h`
-that spells `_Static_assert`, and without the header an identifier,
-as `clang` takes it there. One in a struct's or a union's member list
-is skipped with the members, unchecked.
+rcc does not have yet, the size of a struct rcc does not lay out or a
+floating constant, is refused by its words, and one that compares
+equal to 0 is the error of p2, `static assertion failed: ...` with
+the string, adjacent literals joined. `_Static_assert` is C17's
+keyword (chapter 2) and C23's alternative spelling of `static_assert`
+(6.4.1p3); in the dialect rcc preprocesses in, `static_assert` is a
+macro of `assert.h` that spells `_Static_assert`, and without the
+header an identifier, as `clang` takes it there. One in a struct's or
+a union's member list is checked where it stands, as a member
+declaration (6.7.3.2p1).
 
 An object at file scope is defined by a declaration with an
 initializer, `extern` or not, and tentatively by one without an
@@ -970,12 +1048,16 @@ a conditional of two void calls.
 
 ## 11. Not yet
 
-Structs, unions, floating point, `_Bool` and `__int128` (each type is
-declared, a struct's or union's members skipped, the tags and the
-enumeration constants they declare and the static assertions among
-them; a pointer to one is an
-ordinary pointer, and a use that needs the object is refused; a
-floating constant is a token, refused where an expression uses it),
+The object of a struct or a union and each use that reads or writes
+one (chapter 5: an object, `.` and `->`, a record by value, its
+assignment and its value), the layout of a struct or a union with a
+bit-field, an anonymous member, an attribute that marks, `packed` and
+`aligned` among them, a flexible array member, no member, or a member
+of a type rcc does not use yet (chapter 3), C23's compatibility of
+two records of one tag, floating point, `_Bool` and `__int128` (each
+type is declared; a pointer to one is an ordinary pointer, and a use
+that needs the object is refused; a floating constant is a token,
+refused where an expression uses it),
 an enum's fixed underlying type, the use of an enum in its own list
 but behind a pointer, an object of an enum an attribute marks, an
 object of a typedef whose array size rcc
@@ -1002,6 +1084,7 @@ function or of an object at file scope),
 `__asm__` as a statement, at file scope or on a local, and C's
 keywords outside the subset: `_Complex` outside the specifiers of a
 floating type, `_Imaginary`, the `_Atomic` qualifier outside a
-typedef, `_Alignas`, `_Alignof`, `_Generic`, `_Thread_local`. Each
+typedef, `_Alignas`, `_Alignof` of an expression, `_Generic`,
+`_Thread_local`. Each
 arrives when a probe needs it. The preprocessor stays external for
 good.

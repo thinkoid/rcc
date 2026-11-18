@@ -1,2 +1,2 @@
-tests/error/struct-local.c:6:36: error: not yet: struct
+tests/error/struct-local.c:5:36: error: not yet: object of struct 'point'
 status 1

@@ -656,7 +656,8 @@ second is never the first. Three more are made the same way and fail
 the same way: a typedef through =_Atomic=; the atomic type specifier,
 so that ~void f(_Atomic(int) *); void f(_Atomic(int) *);~ fails with
 "conflicting types for 'f'"; and a typedef of an array whose size rcc
-cannot compute, ~typedef int a[sizeof (struct s)];~ written twice.
+cannot compute, ~typedef int a[sizeof (struct s)];~ written twice,
+=s= a struct with a bit-field.
 
 Fix: a type made again by the same means from the same type takes
 the earlier one's identity.
@@ -713,7 +714,8 @@ Check: the second program above is refused by the attribute's name.
 
 ** TODO An error after the first not-yet in a typedef's array size is not seen
 
-~typedef int a[sizeof (struct s) + undeclared];~ compiles: in a
+~typedef int a[sizeof (struct s) + undeclared];~, =s= a struct with a
+bit-field, compiles: in a
 typedef, an array size that needs what rcc does not have yet makes a
 type rcc declares and does not use, and the parse of the size ends at
 its first refusal, so the undeclared name after it is never read.
@@ -725,6 +727,7 @@ Check: the typedef above fails with "'undeclared' undeclared".
 
 ** TODO A parameter of a typedef's array type rcc cannot size is not a pointer
 
+With =s= a struct with a bit-field,
 ~typedef long g_t[sizeof (struct s)]; void f(g_t g); void f(long
 *g);~ fails with "conflicting types for 'f'". A parameter of array
 type is adjusted to a pointer to the element, and =g_t= is an array
@@ -979,18 +982,19 @@ Fix: each rule cited by its paragraph in N3220, read from the text.
 Check: every citation in the comments of =src/parse.cc= that this
 entry names is found at its number in N3220.
 
-** TODO An enumeration declared in a struct's member list declares nothing
+** TODO =may_alias= makes a record one rcc does not lay out
 
-~struct s { enum e { A, B } k; }; int f(void) { return B; }~ fails
-with "'B' undeclared". The constants of an enumeration declared
-among a struct's members have the scope the struct is declared in
-(6.2.1p4), and =clang= compiles the program. The parser skips a
-struct's member list whole, the enum specifier with it.
+~struct sockaddr~, =sockaddr_in=, =sockaddr_storage= and
+=sockaddr_un= carry ~__attribute__ ((may_alias))~ in the system's
+headers, and =may_alias= is no attribute rcc drops, so each is a
+record with no layout: ~sizeof (struct sockaddr_in)~ is "not yet:
+attribute 'may_alias' on struct 'sockaddr_in'". The attribute only
+tells an optimizer what an lvalue may alias, and rcc has none.
 
-Fix: the slice that reads member lists declares them; until then the
-skip parses each enum specifier it meets outside parentheses.
+Fix: =may_alias= joins the attributes rcc drops, on a record, a
+typedef and anything else.
 
-Check: the program compiles and =f= returns 1.
+Check: ~sizeof (struct sockaddr_in)~ is 16.
 
 ** TODO A forward reference to an enumeration is refused
 
@@ -1001,8 +1005,11 @@ write it. A type in the tree is a value with no identity of its tag,
 so a pointer made before the list cannot become a pointer to the
 integer type the list completes.
 
-Fix: with the identity of a tag that structs need (~struct s *p;~
-before its members), the forward enumeration takes the same.
+Fix: a record has its tag's identity, but an enumeration is its
+integer type, so that identity does not carry it. With the fix of "A
+pointer to a type rcc does not honour takes no pointer to the type
+behind it", a pointer made before the list is to a not-yet type, and
+its uses say not yet.
 
 Check: the two declarations compile, and =p= points at an object of
 the type the list gives.
@@ -1020,44 +1027,6 @@ implementation's choices, or an integer type carries its spelling
 for the compatibility check alone.
 
 Check: both programs fail, or the documents say they compile.
-
-** TODO =offsetof= draws "undeclared"
-
-~offsetof(struct s, b)~ fails with "'__builtin_offsetof'
-undeclared": the header defines the macro by the compiler's builtin,
-which rcc does not know by name. The program is valid, and the
-message calls it wrong.
-
-Fix: until structs are in, =__builtin_offsetof= is refused as a
-not-yet, by its name, with the builtins of =stdatomic.h=; with them,
-it is the member's offset, an integer constant expression.
-
-Check: a row of =tests/error= pinned "not yet", then a static
-assertion on an offset that compiles.
-
-** TODO A static assertion in a struct's member list is not checked
-
-~struct s { int a; _Static_assert(0, "m"); };~ compiles: the parser
-skips a member list whole, the assertion with it (6.7.3.2 lists a
-static assertion among a struct's member declarations).
-
-Fix: the slice that reads member lists checks it.
-
-Check: the declaration fails with "static assertion failed: m".
-
-** TODO A cast to a struct says not yet
-
-~(struct S) x~ fails with "not yet: struct". The cast is not waiting
-for a slice: C takes only =void= or a scalar type in a cast, so "cast
-to a type that is not a scalar", which the tree has, is the
-diagnosis. A cast to a floating type is valid C, and "not yet" is
-right for it; a cast to an enum compiles.
-
-Fix: =cast()= refuses a struct or a union as not a scalar, before it
-asks whether the type is one rcc does not use yet.
-
-Check: a program of =tests/error= with ~(struct S) x~, pinned "cast
-to a type that is not a scalar".
 
 ** TODO A ~?:~ with one void arm is refused where =clang= takes it
 

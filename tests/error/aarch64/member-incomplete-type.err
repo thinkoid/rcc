@@ -1,0 +1,2 @@
+tests/error/member-incomplete-type.c:6:21: error: member 'next' has incomplete type struct 'node'
+status 1

@@ -154,7 +154,11 @@ character constants and string literals, and `u8` on string
 literals: the source's UTF-8 decoded into the elements of `wchar_t`,
 `char16_t` and `char32_t`, each a `.long` or a `.short`, so
 `header-wide` counts the letters of `L"crème brûlée"` and passes it
-to `wcslen`.
+to `wcslen`. Then structs and unions laid out: a member list read as
+declarations, and each record laid out by the rule `clang` has on
+both targets, so `sizeof`, `_Alignof` and `offsetof` of one are its
+layout's, which the `layout` probe checks against `clang`'s; an
+object of a record and each use of its members are not yet.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/`, the cost corpus over `tests/cost/`
 and the error corpus over `tests/error/`, the programs rcc refuses

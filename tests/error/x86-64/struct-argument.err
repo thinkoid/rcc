@@ -1,0 +1,2 @@
+tests/error/struct-argument.c:13:22: error: not yet: struct 'point' passed by value
+status 1

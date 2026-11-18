@@ -1,2 +1,2 @@
-tests/error/struct-indirection.c:7:5: error: not yet: struct
+tests/error/struct-indirection.c:7:5: error: not yet: indirection through a pointer to incomplete type struct 'point'
 status 1

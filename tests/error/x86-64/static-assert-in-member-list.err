@@ -1,0 +1,2 @@
+tests/error/static-assert-in-member-list.c:6:24: error: static assertion failed: int is 16 bits
+status 1

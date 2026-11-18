@@ -1,2 +1,2 @@
-tests/error/global-struct.c:4:14: error: not yet: struct
+tests/error/global-struct.c:4:14: error: not yet: object of struct 'point'
 status 1

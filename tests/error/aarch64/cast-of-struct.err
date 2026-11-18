@@ -1,0 +1,2 @@
+tests/error/cast-of-struct.c:10:16: error: operand of a cast is not a scalar
+status 1

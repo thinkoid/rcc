@@ -1,2 +1,2 @@
-tests/error/static-assert-not-yet.c:9:16: error: not yet: struct
+tests/error/static-assert-not-yet.c:8:16: error: not yet: bit-field in struct 'flags'
 status 1

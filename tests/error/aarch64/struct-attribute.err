@@ -1,0 +1,2 @@
+tests/error/struct-attribute.c:12:16: error: not yet: attribute 'packed' on struct 'header'
+status 1

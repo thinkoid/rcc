@@ -1,0 +1,2 @@
+tests/error/flexible-array-not-last.c:6:14: error: flexible array member 'data' not at the end of struct 'buffer'
+status 1

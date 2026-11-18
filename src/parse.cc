@@ -23,13 +23,15 @@ namespace rcc {
 
 namespace {
 
-// A tag: the type it names, the keyword that declared it, and whether
-// a list has defined its content.
+// A tag: the type it names, the keyword that declared it, whether a
+// list has defined its content, and the record of a struct or a union,
+// which the parser completes in place, or null for an enum.
 struct tag_t
 {
     type_t type;
     tok_t keyword;
     bool defined;
+    record_t *record = nullptr;
 };
 
 // The names one scope declares.  The tags of structs, unions and enums
@@ -84,7 +86,10 @@ struct open_switch_t
 // switches are the switches around the parse, the innermost last, which
 // a case or a default label belongs to, 6.8.5.3p4; case_labels is the
 // number the function's next case or default label takes.
-// identities is the identity the next struct, union or enum type takes.
+// identities is the identity the next not-yet type of its own takes:
+// an enum in its own list or marked by an attribute, an atomic type, a
+// typedef through a marking attribute or an array size rcc cannot
+// compute.
 // internal_uses are the uses of names of internal linkage, in the order
 // met, checked against their definitions at the end of the unit.
 // block_entities are the functions and the objects of external linkage
@@ -330,7 +335,7 @@ size_type()
 // The not-yet types that are one type wherever they are written: the
 // real and the complex floating types, __builtin_va_list, GNU C's
 // __float128 and __int128, clang's SVE types, and _Bool, each of a
-// fixed identity.  A struct, a union or an enum takes the next identity
+// fixed identity.  A not-yet type of its own takes the next identity
 // after theirs.
 type_t
 float_type()
@@ -658,12 +663,18 @@ arithmetic_conversions(expr_t &lhs, expr_t &rhs)
 // operand checks
 //
 
-// The not-yet type a type is, or holds as an array's element, or null.
-const not_yet_t *
+// The words of what rcc does not use yet that a type is, or holds as
+// an array's element: a not-yet type's, or those of a record whose list
+// holds a construct rcc does not lay out yet; null for any other type.
+const std::string *
 not_yet_in(const type_t &t)
 {
     if (is< not_yet_t >(t))
-        return &as< not_yet_t >(t);
+        return &as< not_yet_t >(t).what;
+
+    if (is< record_type_t >(t) &&
+        !as< record_type_t >(t).record->not_yet.empty())
+        return &as< record_type_t >(t).record->not_yet;
 
     if (is< array_t >(t))
         return not_yet_in(*as< array_t >(t).element);
@@ -678,12 +689,60 @@ not_yet_in(const type_t &t)
 // is refused with the type's own words.  The parser refuses every
 // expression that would have such a type where it would be made, by
 // indirection, by a call or by a cast, so no expression has one and c1
-// meets one only as a pointee it does not look into.
+// meets one only as a pointee it does not look into.  A record that
+// holds a construct rcc does not lay out yet is refused the same way.
 void
 require_honoured(const token_t &at, const type_t &t)
 {
-    if (const not_yet_t *n = not_yet_in(t))
-        not_yet(at, n->what);
+    if (const std::string *words = not_yet_in(t))
+        not_yet(at, *words);
+}
+
+// The record a type is, or holds as an array's element at any depth, or
+// null.
+const record_t *
+record_in(const type_t &t)
+{
+    if (is< record_type_t >(t))
+        return as< record_type_t >(t).record;
+
+    if (is< array_t >(t))
+        return record_in(*as< array_t >(t).element);
+
+    return nullptr;
+}
+
+// The words a diagnostic names a record by: struct 'point', or untagged
+// union for one declared without a tag.
+std::string
+record_words(const record_t &r)
+{
+    const std::string kind = r.is_union ? "union" : "struct";
+    if (r.tag.empty())
+        return "untagged " + kind;
+
+    return kind + " " + quoted(r.tag);
+}
+
+// A record converted to the value stored in its object, 6.3.2.1p2, as
+// an operand or for its effect: c1 reads no record yet, so the use is
+// not yet.  An incomplete record has no value to read, p2, and the use
+// is an error.  A record is an expression only as an lvalue, by a name
+// or by indirection, and is taken as the operand of sizeof and of &,
+// which read no value.
+void
+refuse_record_value(const token_t &at, const type_t &t)
+{
+    if (!is< record_type_t >(t))
+        return;
+
+    const record_t &r = *as< record_type_t >(t).record;
+    if (!r.complete)
+        fail(at, "incomplete type " + record_words(r) +
+                     " where a complete type is required");
+
+    require_honoured(at, t);
+    not_yet(at, "value of " + record_words(r));
 }
 
 // restrict qualifies a pointer to an object type, or an array of such
@@ -709,12 +768,15 @@ require_restrictable(const token_t &q, const type_t &t)
 }
 
 // A value in the subset is an integer or a pointer, to an object or to
-// a function; a void expression is an error.
+// a function; a void expression is an error, and a record's value is
+// refuse_record_value()'s.
 void
 require_value(const token_t &at, const expr_t &e)
 {
     if (is< void_t >(e.type))
         fail(at, "void expression used as a value");
+
+    refuse_record_value(at, e.type);
 }
 
 // 6.5.17.1p2, 6.5.3.5p1, 6.5.4.1p1: an lvalue of integer or pointer
@@ -759,6 +821,17 @@ rvalue(const token_t &at, expr_t e)
     return decayed(std::move(e));
 }
 
+// An operand evaluated for its effect alone, 6.8.4p2, 6.5.18p2: it may
+// be void, and it decays; a record's value it would read is
+// refuse_record_value()'s.
+expr_t
+discarded(const token_t &at, expr_t e)
+{
+    refuse_record_value(at, e.type);
+
+    return decayed(std::move(e));
+}
+
 // The operands that must be integers: of the arithmetic operators but
 // + and -, 6.5.6p2, 6.5.8p2, 6.5.11p2, 6.5.12p2, 6.5.13p2, and of unary
 // - and ~, 6.5.4.3p1.
@@ -771,9 +844,10 @@ require_integer(const token_t &op, const expr_t &e)
 
 // Pointer arithmetic, ++ and -- included, needs a pointer to a
 // complete object type, 6.5.7p2, p3: not void, which GNU C would take
-// as a byte, not a function, and not an array of unknown size, which is
-// incomplete, 6.2.5p27, and has no size to step by.  The step is the
-// pointee's size, so a not-yet pointee is not yet.
+// as a byte, not a function, and neither an array of unknown size nor
+// an incomplete record, which are incomplete, 6.2.5p27, 6.7.3.4p5, and
+// have no size to step by.  The step is the pointee's size, so a
+// not-yet pointee is not yet.
 void
 require_object_pointee(const token_t &op, const type_t &t)
 {
@@ -787,6 +861,11 @@ require_object_pointee(const token_t &op, const type_t &t)
 
     if (is< array_t >(pointee) && as< array_t >(pointee).count < 0)
         fail(op, "arithmetic on a pointer to an array of unknown size");
+
+    if (is< record_type_t >(pointee) &&
+        !as< record_type_t >(pointee).record->complete)
+        fail(op, "arithmetic on a pointer to incomplete type " +
+                     record_words(*as< record_type_t >(pointee).record));
 
     require_honoured(op, pointee);
 }
@@ -821,6 +900,53 @@ is_null_pointer_constant(const expr_t &e)
     return is< int_t >(e.type) || is_void_pointer(e.type);
 }
 
+// Two distinct complete records of one kind and one tag, which C23
+// makes compatible when their members agree, 6.2.7p1, where the C of
+// before made them two types: the first such pair met walking two
+// types alike, through pointers, arrays and functions, or null.
+const record_t *
+tag_twin(const type_t &a, const type_t &b)
+{
+    if (is< record_type_t >(a) && is< record_type_t >(b)) {
+        const record_t &x = *as< record_type_t >(a).record;
+        const record_t &y = *as< record_type_t >(b).record;
+        const bool twins = &x != &y && x.is_union == y.is_union && x.complete &&
+                           y.complete && !x.tag.empty() && x.tag == y.tag;
+
+        return twins ? &x : nullptr;
+    }
+
+    if (is< pointer_t >(a) && is< pointer_t >(b))
+        return tag_twin(pointee_of(a), pointee_of(b));
+
+    if (is< array_t >(a) && is< array_t >(b))
+        return tag_twin(*as< array_t >(a).element, *as< array_t >(b).element);
+
+    if (!is< function_t >(a) || !is< function_t >(b))
+        return nullptr;
+
+    const auto &f = as< function_t >(a);
+    const auto &g = as< function_t >(b);
+    if (const record_t *r = tag_twin(*f.result, *g.result))
+        return r;
+
+    for (std::size_t i = 0; i < std::min(f.params.size(), g.params.size()); ++i)
+        if (const record_t *r = tag_twin(*f.params[i], *g.params[i]))
+            return r;
+
+    return nullptr;
+}
+
+// rcc compares no two records' members, so a mismatch of two types
+// that holds such a pair is not yet: C23 may make the two compatible.
+// Any other mismatch is the caller's error.
+void
+refuse_tag_twins(const token_t &at, const type_t &a, const type_t &b)
+{
+    if (const record_t *r = tag_twin(a, b))
+        not_yet(at, "compatibility of two types of " + record_words(*r));
+}
+
 // The conversion as if by assignment, of a value to the type of an
 // object: the right operand of =, an initializer, an argument, a value
 // returned.  The constraints are those of simple assignment,
@@ -830,11 +956,16 @@ is_null_pointer_constant(const expr_t &e)
 // to a function included.  An integer and a pointer meet only through a
 // cast, 6.5.5p3, and so do a pointer to a function and a pointer to
 // void.  A value converted to a not-yet type, as an argument meets a
-// parameter of one, is not yet.
+// parameter of one, is not yet, and so is one converted to a record,
+// whose object c1 does not write yet; the callers that may meet one
+// refuse it first in their own words.
 expr_t
 assignment_conversion(const token_t &at, expr_t e, const type_t &t)
 {
     require_honoured(at, t);
+
+    if (is< record_type_t >(t))
+        not_yet(at, "value of " + record_words(*as< record_type_t >(t).record));
 
     e = rvalue(at, std::move(e));
 
@@ -848,8 +979,10 @@ assignment_conversion(const token_t &at, expr_t e, const type_t &t)
         fail(at, "incompatible pointer to integer conversion");
 
     if (to_pointer && from_pointer && !(e.type == t) &&
-        !void_and_object_pointer(t, e.type) && !is_null_pointer_constant(e))
+        !void_and_object_pointer(t, e.type) && !is_null_pointer_constant(e)) {
+        refuse_tag_twins(at, t, e.type);
         fail(at, "incompatible pointer types");
+    }
 
     return convert_to(std::move(e), t);
 }
@@ -1205,8 +1338,10 @@ subtraction(const token_t &op, expr_t lhs, expr_t rhs)
     if (!lp)
         fail(op, "cannot subtract a pointer from an integer");
 
-    if (rp && !(lhs.type == rhs.type))
+    if (rp && !(lhs.type == rhs.type)) {
+        refuse_tag_twins(op, lhs.type, rhs.type);
         fail(op, "subtraction of pointers to different types");
+    }
 
     require_object_pointee(op, lhs.type);
 
@@ -1235,6 +1370,9 @@ comparison(const token_t &op, expr_t lhs, expr_t rhs)
     const bool lp = is< pointer_t >(lhs.type);
     const bool rp = is< pointer_t >(rhs.type);
     const bool equality = op.kind == tok_t::eq || op.kind == tok_t::ne;
+
+    if (lp && rp && !(lhs.type == rhs.type))
+        refuse_tag_twins(op, lhs.type, rhs.type);
 
     if (!lp && !rp)
         arithmetic_conversions(lhs, rhs);
@@ -1287,7 +1425,7 @@ shift(const token_t &op, expr_t lhs, expr_t rhs)
 }
 
 // The result is the right operand's type and value, an array or a
-// function decayed, 6.5.18p2; the left operand comes decayed.
+// function decayed, 6.5.18p2; the left operand comes discarded().
 expr_t
 comma(expr_t lhs, expr_t rhs)
 {
@@ -1378,6 +1516,9 @@ conditional(const token_t &op, expr_t cond, expr_t yes, expr_t no)
 
     const bool pointers = is< pointer_t >(yes.type) && is< pointer_t >(no.type);
 
+    if (pointers)
+        refuse_tag_twins(op, yes.type, no.type);
+
     if (!is< pointer_t >(yes.type) && !is< pointer_t >(no.type))
         arithmetic_conversions(yes, no);
     else if (!common_pointer(yes, no))
@@ -1404,17 +1545,26 @@ conditional(const token_t &op, expr_t cond, expr_t yes, expr_t no)
 // 6.5.5p6 and its footnote, so a cast to the operand's own type is
 // still a node.  A constant cast to an integer or a pointer type is the
 // constant converted_constant() gives, which is not an lvalue either.
-// A cast to a not-yet type is not yet.
+// A struct or a union is no scalar, as the type named and as the
+// operand alike, whatever rcc lays out of it; a cast to a not-yet type
+// is not yet.  A record's value discarded by a cast to void is
+// discarded()'s.
 expr_t
 cast(const token_t &open, const type_t &t, expr_t arg)
 {
+    if (is< record_type_t >(t))
+        fail(open, "cast to a type that is not a scalar");
+
     require_honoured(open, t);
 
     if (is< void_t >(t))
-        return convert_to(decayed(std::move(arg)), t);
+        return convert_to(discarded(open, std::move(arg)), t);
 
     if (!is< int_t >(t) && !is< pointer_t >(t))
         fail(open, "cast to a type that is not a scalar");
+
+    if (is< record_type_t >(arg.type))
+        fail(open, "operand of a cast is not a scalar");
 
     arg = rvalue(open, std::move(arg));
 
@@ -1526,7 +1676,10 @@ address_of(const token_t &op, expr_t arg)
 // designates nothing to read, and a not-yet pointee is not yet.
 // Through a pointer to a function the result is a function designator,
 // p4, which decays back to the pointer where a value is wanted, so
-// (*p)(x), (**p)(x) and p(x) are one call.
+// (*p)(x), (**p)(x) and p(x) are one call.  A record pointee is an
+// lvalue whose value refuse_record_value() refuses, and whose address
+// c1 forms by the record's size; an incomplete one has none, so its
+// lvalue, which only & and sizeof could take, is not yet.
 expr_t
 indirection(const token_t &op, expr_t arg)
 {
@@ -1539,16 +1692,21 @@ indirection(const token_t &op, expr_t arg)
     if (is< void_t >(t))
         fail(op, "indirection through a pointer to void");
 
+    if (is< record_type_t >(t) && !as< record_type_t >(t).record->complete)
+        not_yet(op, "indirection through a pointer to incomplete type " +
+                        record_words(*as< record_type_t >(t).record));
+
     require_honoured(op, t);
 
     return expr_t { t, unary_t { unary_op_t::deref, box(std::move(arg)) } };
 }
 
 // sizeof folds to a constant of type unsigned long, size_t on LP64,
-// 6.5.4.4p2, p5.  A function, void, and an array of unknown size have
-// no size, p1; a not-yet type has one rcc does not know yet.  The name
-// is the operator's, with the underscore a name takes when it is a
-// keyword of C++.
+// 6.5.4.4p2, p5.  A function, void, an array of unknown size and an
+// incomplete record have no size, p1; a not-yet type has one rcc does
+// not know yet.  A record's size is its layout's, its padding included,
+// p4.  The name is the operator's, with the underscore a name takes
+// when it is a keyword of C++.
 expr_t
 sizeof_(const token_t &op, const type_t &t)
 {
@@ -1561,9 +1719,42 @@ sizeof_(const token_t &op, const type_t &t)
     if (is< array_t >(t) && as< array_t >(t).count < 0)
         fail(op, "invalid application of 'sizeof' to an array of unknown size");
 
+    if (is< record_type_t >(t) && !as< record_type_t >(t).record->complete)
+        fail(op, "invalid application of 'sizeof' to incomplete type " +
+                     record_words(*as< record_type_t >(t).record));
+
     require_honoured(op, t);
 
     return expr_t { size_type(), literal_t { size_of(t) } };
+}
+
+// _Alignof ( type-name ) folds to the alignment of the type, a size_t
+// constant, 6.5.4.4p3, p5; of an array, its element's.  A function and
+// an incomplete type have none, p1: void, an array of unknown size and
+// an incomplete record.  A not-yet type has one rcc does not know yet.
+expr_t
+alignof_(const token_t &op, const type_t &t)
+{
+    if (is< void_t >(t))
+        fail(op,
+             "invalid application of " + quoted(op.text) + " to a void type");
+
+    if (is< function_t >(t))
+        fail(op, "invalid application of " + quoted(op.text) +
+                     " to a function type");
+
+    if (is< array_t >(t) && as< array_t >(t).count < 0)
+        fail(op, "invalid application of " + quoted(op.text) +
+                     " to an array of unknown size");
+
+    if (is< record_type_t >(t) && !as< record_type_t >(t).record->complete)
+        fail(op, "invalid application of " + quoted(op.text) +
+                     " to incomplete type " +
+                     record_words(*as< record_type_t >(t).record));
+
+    require_honoured(op, t);
+
+    return expr_t { size_type(), literal_t { align_of(t) } };
 }
 
 // Postfix ++ and -- have the type of their lvalue operand, 6.5.3.5.
@@ -1580,9 +1771,10 @@ postfix_step(const token_t &op, expr_t arg)
 }
 
 // A subscript's pointer points to a complete object type, 6.5.3.2p1:
-// not void, not a function, and not an array of unknown size, which is
-// incomplete, 6.2.5p27.  Each is refused in the subscript's words, before
-// the addition that would refuse it in its own.
+// not void, not a function, and neither an array of unknown size nor an
+// incomplete record, which are incomplete, 6.2.5p27, 6.7.3.4p5.  Each is
+// refused in the subscript's words, before the addition that would
+// refuse it in its own.
 void
 require_subscripted_pointee(const token_t &op, const type_t &t)
 {
@@ -1596,6 +1788,11 @@ require_subscripted_pointee(const token_t &op, const type_t &t)
 
     if (is< array_t >(pointee) && as< array_t >(pointee).count < 0)
         fail(op, "subscript of a pointer to an array of unknown size");
+
+    if (is< record_type_t >(pointee) &&
+        !as< record_type_t >(pointee).record->complete)
+        fail(op, "subscript of a pointer to incomplete type " +
+                     record_words(*as< record_type_t >(pointee).record));
 }
 
 // E1[E2] is *((E1)+(E2)), 6.5.3.2p2, and is built as exactly that tree,
@@ -1636,13 +1833,20 @@ lookup(const parser_t &p, std::string_view name)
 
 // The type a name the compiler declares stands for, or nothing:
 // __builtin_va_list, clang's and gcc's name for the type behind
-// va_list, and clang's names of the SVE types.  No header declares
-// them.
+// va_list; __int128_t and __uint128_t, clang's and gcc's names of the
+// 128-bit integer types, which glibc's sys/user.h writes in a member
+// list; and clang's names of the SVE types.  No header declares them.
 std::optional< type_t >
 builtin_type(std::string_view name)
 {
     if (name == "__builtin_va_list")
         return va_list_type();
+
+    if (name == "__int128_t")
+        return int128_type(true);
+
+    if (name == "__uint128_t")
+        return int128_type(false);
 
     if (name == "__SVFloat32_t")
         return sve_float32_type();
@@ -2217,6 +2421,7 @@ expr_t multiplicative_expression(parser_t &);
 expr_t cast_expression(parser_t &);
 expr_t unary_expression(parser_t &);
 expr_t sizeof_expression(parser_t &);
+expr_t alignof_expression(parser_t &);
 expr_t postfix_expression(parser_t &);
 std::vector< expr_t >
 argument_expression_list(parser_t &, const function_t &, std::string_view);
@@ -2371,6 +2576,8 @@ redeclared(const token_t &name,
 
         return earlier;
     }
+
+    refuse_tag_twins(name, earlier.type, t);
 
     if (storage == storage_t::type_name)
         fail(name, "redefinition of typedef " + quoted(name.text) +
@@ -3012,13 +3219,23 @@ definition_of(const parser_t &p, const symbol_t *sym)
     return std::nullopt;
 }
 
+// An object of a struct or a union, or of an array of them, whose
+// object c1 does not make yet, local or static alike.
+void
+refuse_record_object(const token_t &name, const type_t &t)
+{
+    if (const record_t *r = record_in(t))
+        not_yet(name, "object of " + record_words(*r));
+}
+
 // An object the unit defines is one rcc makes, and its type is
 // complete, 6.7.1p8: not void, not a not-yet type, whose size rcc does
 // not know.  An array may leave its size out: its initializer gives it,
 // 6.7.11p23, or a later declaration, 6.2.7p5, and an array of unknown
 // size still at the end of the unit is one element, 6.9.3p2.  An
 // attribute that marks the object, said on any of its declarations, is
-// one rcc would have to honour, and is not yet.
+// one rcc would have to honour, and is not yet.  A record's object is
+// refuse_record_object()'s.
 void
 require_definable(const token_t &name, const symbol_t &sym)
 {
@@ -3026,6 +3243,7 @@ require_definable(const token_t &name, const symbol_t &sym)
         fail(name, "variable " + quoted(name.text) + " has type void");
 
     require_honoured(name, sym.type);
+    refuse_record_object(name, sym.type);
 
     if (!sym.marking.empty())
         not_yet(name, sym.marking);
@@ -3378,12 +3596,13 @@ defined_parameter(parser_t &p, const parameter_t &param)
 // the list that makes the name a function, with its parameters and its
 // tags, is opened again and the body's items are parsed into it
 // directly.  The result and the parameters are objects the definition
-// makes, so none may be of a not-yet type.  A function a marking
-// attribute marked, on a declaration, among the definition's specifiers
-// or on a parameter, is one rcc would have to define as the attribute
-// says, which is not yet.  function and statics start over, for the
-// labels of the static objects the body declares, and labels, gotos and
-// case_labels, for the body's own labels, which no other function sees.
+// makes, so none may be of a not-yet type, nor yet of a record, which
+// passes by value.  A function a marking attribute marked, on a
+// declaration, among the definition's specifiers or on a parameter, is
+// one rcc would have to define as the attribute says, which is not
+// yet.  function and statics start over, for the labels of the static
+// objects the body declares, and labels, gotos and case_labels, for the
+// body's own labels, which no other function sees.
 void
 function_definition(parser_t &p,
                     const specifiers_t &spec,
@@ -3401,6 +3620,9 @@ function_definition(parser_t &p,
     p.result = *as< function_t >(d.type).result;
     require_honoured(*d.name, p.result);
 
+    if (const record_t *r = record_in(p.result))
+        not_yet(*d.name, record_words(*r) + " returned by value");
+
     p.registers = 0;
     p.function = d.name->text;
     p.statics.clear();
@@ -3415,6 +3637,10 @@ function_definition(parser_t &p,
             fail(*param.start, "parameter name omitted");
 
         require_honoured(*param.name, param.type);
+
+        if (const record_t *r = record_in(param.type))
+            not_yet(*param.name, record_words(*r) + " passed by value");
+
         params.push_back(defined_parameter(p, param));
     }
 
@@ -3470,16 +3696,32 @@ header_function_definition(parser_t &p,
 // (p11); any other mention refers to the type the tag names (p12, p13).
 enum class tag_use_t { defines, declares, refers };
 
-// A new struct, union or enum type, of an identity of its own: an
-// untagged specifier makes one each time, 6.7.3.4p9.
-type_t
-new_tag_type(parser_t &p, const token_t &keyword)
+// A new record of the unit's, incomplete until a list completes it,
+// 6.7.3.4p5, of the kind the keyword says and the tag, empty for none.
+record_t &
+new_record(parser_t &p, const token_t &keyword, std::string_view tag)
 {
-    const std::string_view what = keyword.kind == tok_t::kw_struct ? "struct" :
-                                  keyword.kind == tok_t::kw_union  ? "union" :
-                                                                     "enum";
+    p.unit.records.push_back(
+        record_t { keyword.kind == tok_t::kw_union, std::string(tag) });
 
-    return make_not_yet(p.identities++, std::string(what));
+    return p.unit.records.back();
+}
+
+// A tag met first, declared in the current scope as a new type of an
+// identity of its own, 6.7.3.4p9: a struct or a union a record,
+// new_record()'s; an enum a not-yet type until its list makes it the
+// integer type compatible with it.
+tag_t &
+new_tag(parser_t &p, const token_t &keyword, const token_t &tag)
+{
+    tag_t fresh { make_void(), keyword.kind, false };
+    if (keyword.kind != tok_t::kw_enum)
+        fresh.record = &new_record(p, keyword, tag.text);
+
+    fresh.type = fresh.record ? make_record(*fresh.record) :
+                                make_not_yet(p.identities++, "enum");
+
+    return p.scopes.back().tags.emplace(tag.text, fresh).first->second;
 }
 
 // The tag the scope declares by the name, or null.
@@ -3499,8 +3741,8 @@ tag_in(scope_t &scope, std::string_view name)
 // another kind of type is an error, p1, and so is an enum without its
 // list before the enum is declared, p2.  A second list for one tag in
 // one scope is valid when it defines the same content, p1, which rcc
-// does not compare: it skips a struct's or a union's list, and holds
-// no enum's against the first.  So it is not yet.  A tag
+// does not compare, as it compares no two records' members, nor any
+// enum's list against the first.  So it is not yet.  A tag
 // first declared in a parameter list is declared in the list's scope,
 // 6.2.1p4, and ends with it, or with the body of a definition.
 type_t
@@ -3528,10 +3770,8 @@ tagged_type(parser_t &p,
         not_yet(tag, std::string(keyword.text) + " " + quoted(tag.text) +
                          " defined again");
 
-    if (!found) {
-        tag_t fresh { new_tag_type(p, keyword), keyword.kind, false };
-        found = &p.scopes.back().tags.emplace(tag.text, fresh).first->second;
-    }
+    if (!found)
+        found = &new_tag(p, keyword, tag);
 
     if (use == tag_use_t::defines)
         found->defined = true;
@@ -3827,19 +4067,307 @@ declaration_specifiers(parser_t &p)
     }
 }
 
+// Words that say a construct of a record's list rcc does not lay out
+// yet, kept in the record: the first one met is the one its uses are
+// refused by.
+void
+mark_not_yet(record_t &r, std::string words)
+{
+    if (r.not_yet.empty())
+        r.not_yet = std::move(words);
+}
+
+// The record a member declaration of a list is read into; the token
+// of the member of an array of unknown size it has met, a flexible
+// array member, which only the last member may be; and the count of
+// the named members met, bit-fields among them.
+struct member_list_t
+{
+    record_t &record;
+    const token_t *flexible;
+    int named;
+};
+
+// The width of a bit-field after its ':', an integer constant
+// expression, 6.7.3.2p4, of a bit-field whose type is an integer type,
+// p5, or one rcc does not use yet, _Bool among them.  rcc lays out no
+// bit-field yet, so its record is a not-yet record; attributes after
+// the width are said of the member, and change nothing that is laid
+// out.
+void
+bit_field(parser_t &p, member_list_t &list, const type_t &t)
+{
+    const token_t &colon = advance(p);
+    if (!is< int_t >(t) && !is< not_yet_t >(t))
+        fail(colon, "bit-field of a type that is not an integer type");
+
+    const token_t &start = peek(p);
+    const expr_t width = rvalue(start, conditional_expression(p));
+    if (!is_integer_constant(width))
+        fail(start, "bit-field width is not an integer constant expression");
+
+    attribute_specifier_list(p);
+    mark_not_yet(list.record, "bit-field in " + record_words(list.record));
+}
+
+// A member's type: a complete object type, 6.7.3.2p11, so neither a
+// function, p3, nor void, nor an incomplete record, the record being
+// defined among them, which holds no instance of itself, p3.  An array
+// of unknown size is a flexible array member, p20, which rcc does not
+// lay out yet, and stands last, p3, as member_list() checks; in a union
+// it is an error, p3.  A type rcc does not use yet, a record that holds
+// a construct rcc does not lay out among them, leaves the record
+// without its layout, refused by the member type's words.
+void
+require_member_type(const token_t &name, const type_t &t, member_list_t &list)
+{
+    record_t &r = list.record;
+
+    if (is< function_t >(t))
+        fail(name, "member " + quoted(name.text) + " declared as a function");
+
+    if (is< void_t >(t))
+        fail(name, "member " + quoted(name.text) + " has type void");
+
+    if (is< record_type_t >(t) && !as< record_type_t >(t).record->complete)
+        fail(name, "member " + quoted(name.text) + " has incomplete type " +
+                       record_words(*as< record_type_t >(t).record));
+
+    if (is< array_t >(t) && as< array_t >(t).count < 0) {
+        if (r.is_union)
+            fail(name, "flexible array member " + quoted(name.text) + " in " +
+                           record_words(r));
+
+        list.flexible = &name;
+        mark_not_yet(r, "flexible array member in " + record_words(r));
+    }
+
+    if (const std::string *words = not_yet_in(t))
+        mark_not_yet(r, *words);
+}
+
+// A named member, its type checked and its name one the record has not
+// declared yet, 6.7.3.2p1 and 6.2.3p1: each record is a name space of
+// its own.  A member after a flexible array member is an error, p3.
+void
+add_member(member_list_t &list, const token_t &name, const type_t &t)
+{
+    record_t &r = list.record;
+
+    if (list.flexible)
+        fail(*list.flexible, "flexible array member " +
+                                 quoted(list.flexible->text) +
+                                 " not at the end of " + record_words(r));
+
+    require_member_type(name, t, list);
+
+    for (const member_t &m : r.members)
+        if (m.name == name.text)
+            fail(name, "duplicate member " + quoted(name.text));
+
+    if (!list.flexible)
+        r.members.push_back(member_t { std::string(name.text), t, 0 });
+}
+
+// One member declarator, 6.7.3.2p1: a declarator, which names the
+// member, then a bit-field's width or none; or a width alone, an
+// unnamed bit-field, p14.  An attribute after the declarator is said of
+// the member, and one that marks, aligned and packed among them,
+// changes its layout, which rcc does not honour yet.
+void
+member_declarator(parser_t &p, const specifiers_t &spec, member_list_t &list)
+{
+    if (peek(p).kind == tok_t::colon) {
+        bit_field(p, list, spec.type);
+        return;
+    }
+
+    const declarator_t d = declarator(p, spec.type, naming_t::required, false);
+    ++list.named;
+
+    if (const token_t *marking = attribute_specifier_list(p))
+        mark_not_yet(list.record, attribute_words(*marking) + " in " +
+                                      record_words(list.record));
+
+    if (peek(p).kind == tok_t::colon) {
+        bit_field(p, list, d.type);
+        return;
+    }
+
+    add_member(list, *d.name, d.type);
+}
+
+// A member declaration with no declarator, 6.7.3.2p2: a struct or a
+// union specifier without a tag declares an anonymous member, p15,
+// which rcc does not lay out yet.  Any other struct, union or enum
+// specifier declares its tag or its constants alone, as at file scope;
+// one of no specifier of the kind declares nothing, an error.
+void
+unnamed_member(const token_t &semicolon,
+               const specifiers_t &spec,
+               member_list_t &list)
+{
+    if (!spec.tagged)
+        fail(semicolon, "declaration does not declare anything");
+
+    const record_t *inner = is< record_type_t >(spec.type) ?
+                                as< record_type_t >(spec.type).record :
+                                nullptr;
+    if (inner && inner->tag.empty())
+        mark_not_yet(list.record,
+                     "anonymous " +
+                         std::string(inner->is_union ? "union" : "struct") +
+                         " in " + record_words(list.record));
+}
+
+// A member declaration: its specifiers, which are a specifier-qualifier
+// list, 6.7.3.2p1, with no storage class and no function specifier, and
+// its member declarators.  A marking attribute among the specifiers is
+// said of each member, as after a declarator.
+void
+member_declaration(parser_t &p, member_list_t &list)
+{
+    const specifiers_t spec = declaration_specifiers(p);
+
+    if (const token_t *t = spec.storage_class)
+        fail(*t,
+             "storage class " + quoted(t->text) + " in a member declaration");
+
+    refuse_function_specifier(spec);
+
+    if (spec.marking)
+        mark_not_yet(list.record, attribute_words(*spec.marking) + " in " +
+                                      record_words(list.record));
+
+    if (peek(p).kind == tok_t::semicolon) {
+        unnamed_member(advance(p), spec, list);
+        return;
+    }
+
+    do
+        member_declarator(p, spec, list);
+    while (accept(p, tok_t::comma));
+
+    expect(p, tok_t::semicolon, "expected ';' at end of member declaration");
+}
+
+// The member declarations of a list, up to its '}', 6.7.3.2p1: each a
+// static assertion, checked where it stands, 6.7.12, or a member
+// declaration, __extension__ before it dropped.  The list opens no
+// scope: a tag or an enumeration constant declared in it is declared
+// where the record is, 6.2.1p4, and the members' names are the
+// record's own, 6.2.3p1.  A flexible array member is not the only
+// named member, 6.7.3.2p3, and a list of no member at all makes an empty
+// record, whose behavior p10 leaves undefined and GNU C takes, which
+// rcc does not lay out yet.
+void
+member_list(parser_t &p, record_t &r)
+{
+    member_list_t list { r, nullptr, 0 };
+
+    while (!next_is(p, { tok_t::rbrace, tok_t::eof })) {
+        skip_extension_keywords(p);
+
+        if (peek(p).kind == tok_t::kw_static_assert)
+            static_assert_declaration(p);
+        else
+            member_declaration(p, list);
+    }
+
+    if (list.flexible && list.named < 2)
+        fail(*list.flexible, "flexible array member " +
+                                 quoted(list.flexible->text) +
+                                 " in a struct with no other named member");
+
+    if (r.members.empty())
+        mark_not_yet(r, "empty " + record_words(r));
+}
+
+// The members of the list after the '{' at the position.  The rule for
+// a system header holds here as for a typedef's array size: in a list
+// a system header writes, a refusal of the not-yet kind makes the
+// record a not-yet record of the refusal's words, and the parse skips
+// to the list's closing brace; the scopes are cut back to those open
+// at the brace, as a parameter list inside the list leaves one open.
+// An error stays the error it is, and a list of the program's own
+// source is refused where it stands.
+void
+members(parser_t &p, record_t &r)
+{
+    const token_t &brace = advance(p);
+    if (!brace.where.system_header) {
+        member_list(p, r);
+        return;
+    }
+
+    const std::size_t start = p.pos;
+    const std::size_t depth = p.scopes.size();
+
+    try {
+        member_list(p, r);
+    }
+    catch (const not_yet_error_t &e) {
+        mark_not_yet(r, e.construct);
+        p.pos = start;
+        p.scopes.resize(depth);
+        skip_to_closing_brace(p);
+    }
+}
+
+// The layout of a record its list completed, by the rule clang has for
+// both targets: each member of a struct at the offset so far rounded up
+// to the member's alignment, in the order declared, 6.7.3.2p16, p17;
+// each member of a union at 0, p18; the record's alignment its
+// members' largest, and its size the end of its members rounded up to
+// that alignment, p19, so that each element of an array of it is
+// aligned.  close is the list's '}', where a record too large for a
+// size is refused.
+void
+lay_out(const token_t &close, record_t &r)
+{
+    constexpr long largest = std::numeric_limits< long >::max();
+
+    long end = 0;
+    int alignment = 1;
+
+    for (member_t &m : r.members) {
+        const long size = size_of(m.type);
+        const int align = align_of(m.type);
+
+        if (end > largest - align)
+            fail(close, record_words(r) + " is too large");
+
+        m.offset = r.is_union ? 0 : (end + align - 1) / align * align;
+
+        if (size > largest - m.offset)
+            fail(close, record_words(r) + " is too large");
+
+        end = std::max(end, m.offset + size);
+        alignment = std::max(alignment, align);
+    }
+
+    if (end > largest - alignment)
+        fail(close, record_words(r) + " is too large");
+
+    r.size = (end + alignment - 1) / alignment * alignment;
+    r.alignment = alignment;
+}
+
 // struct or union, then a tag, a member list in braces, or both,
-// 6.7.3.2p1.  The type is a not-yet type: the members are skipped,
-// and nothing that needs the object is taken.  A tag followed by ; is
-// the declaration of the tag alone, 6.7.3.4p11.  Attributes after the
-// keyword and after the list are dropped, of either kind, and so are
-// those the skipped members carry: the type's size and layout are not
-// yet, so packed and aligned change nothing rcc reads, and the slice
-// that lays the type out will have to honour them.
+// 6.7.3.2p1.  A tag followed by ; is the declaration of the tag alone,
+// 6.7.3.4p11; without a list a tag names the type tagged_type() finds.
+// A list completes the record, 6.7.3.4p5: members() reads it, and the
+// record is laid out unless it holds a construct rcc does not lay out
+// yet.  An attribute after the keyword or after the list is said of the
+// record: one of the kind dropped is dropped, and one that marks,
+// packed and aligned among them, changes the layout, which rcc does
+// not honour yet.  An attribute where the specifier names a type
+// without a list is dropped.
 type_t
 struct_or_union_specifier(parser_t &p)
 {
     const token_t &keyword = advance(p);
-    attribute_specifier_list(p);
+    const token_t *before = attribute_specifier_list(p);
 
     const token_t *tag = optional_tag(p, keyword);
 
@@ -3851,15 +4379,26 @@ struct_or_union_specifier(parser_t &p)
         return tagged_type(p, keyword, *tag, use);
     }
 
-    const type_t t = tag ? tagged_type(p, keyword, *tag, tag_use_t::defines) :
-                           new_tag_type(p, keyword);
+    if (tag)
+        tagged_type(p, keyword, *tag, tag_use_t::defines);
 
-    advance(p);
-    skip_to_closing_brace(p);
-    expect(p, tok_t::rbrace, "expected '}' at end of member list");
-    attribute_specifier_list(p);
+    record_t &r = tag ? *tag_in(p.scopes.back(), tag->text)->record :
+                        new_record(p, keyword, { });
 
-    return t;
+    members(p, r);
+    const token_t &close =
+        expect(p, tok_t::rbrace, "expected '}' at end of member list");
+
+    const token_t *after = attribute_specifier_list(p);
+    if (const token_t *marking = before ? before : after)
+        mark_not_yet(r, attribute_words(*marking) + " on " + record_words(r));
+
+    if (r.not_yet.empty())
+        lay_out(close, r);
+
+    r.complete = true;
+
+    return make_record(r);
 }
 
 // An enumeration constant as its list declares it: its symbol, and its
@@ -4468,16 +5007,31 @@ refuse_file_scope_variable_size(const parser_t &p,
                  "scope");
 }
 
+// Whether an object type is incomplete, 6.2.5p1: void, an array of
+// unknown size, or a record before its list completes it, 6.7.3.4p5.
+bool
+is_incomplete(const type_t &t)
+{
+    if (is< void_t >(t))
+        return true;
+
+    if (is< array_t >(t))
+        return as< array_t >(t).count < 0;
+
+    return is< record_type_t >(t) && !as< record_type_t >(t).record->complete;
+}
+
 // One or more [N], N an integer constant expression, or [] for an array
 // of unknown size, 6.7.7.3p1, p4.  The size is an assignment-expression
 // in the grammar, 6.7.7.1p1.  The suffixes nest from the right: int
-// a[2][3] is an array of two arrays of three ints.  An element must be
-// a complete type, so only the first suffix may leave its size out, and
-// the caller decides whether it may.  An array of a not-yet type has no
-// size rcc knows, so its size is not checked; its object is refused
-// where it would be made.  In a typedef's declarator a suffix whose
-// size needs what rcc does not have yet makes a not-yet type of the
-// words of what it needs, in place of the array.  When parameter says
+// a[2][3] is an array of two arrays of three ints.  An element is of a
+// complete type, p1: so only the first suffix may leave its size out,
+// and the caller decides whether it may, and no element is an
+// incomplete record.  An array of a not-yet type has no size rcc knows,
+// so its size is not checked; its object is refused where it would be
+// made.  In a typedef's declarator a suffix whose size needs what rcc
+// does not have yet makes a not-yet type of the words of what it needs,
+// in place of the array.  When parameter says
 // that the first suffix is the array a parameter is adjusted from, its
 // brackets may hold static and type qualifiers, 6.7.7.3p1, and its size
 // need not be an integer constant expression; every other suffix keeps
@@ -4524,7 +5078,7 @@ array_declarator(parser_t &p,
         if (is< function_t >(t))
             fail(*open, "array element type cannot be a function");
 
-        if (is< void_t >(t) || (is< array_t >(t) && as< array_t >(t).count < 0))
+        if (is_incomplete(t))
             fail(*open, "array has incomplete element type");
 
         if (!missing.empty()) {
@@ -4673,7 +5227,8 @@ block_declarator(parser_t &p, const specifiers_t &spec)
 // that marks it is one rcc would have to honour, and is not yet; so is
 // an assembler name, which names a register for a register variable.
 // An object's type is complete, 6.7.1p8: not void, not a not-yet type,
-// whose size rcc does not know.
+// whose size rcc does not know.  A record's object is
+// refuse_record_object()'s.
 void
 require_block_object(parser_t &p,
                      const specifiers_t &spec,
@@ -4693,6 +5248,7 @@ require_block_object(parser_t &p,
         fail(*d.name, "variable " + quoted(d.name->text) + " has type void");
 
     require_honoured(*d.name, d.type);
+    refuse_record_object(*d.name, d.type);
 }
 
 // The label of a block's static object, backend.md chapter 10: the
@@ -5156,11 +5712,12 @@ expression_statement(parser_t &p)
     if (accept(p, tok_t::semicolon))
         return stmt_t { expr_stmt_t { } };
 
+    const token_t &start = peek(p);
     expr_t e = expression(p);
 
     expect(p, tok_t::semicolon, "expected ';' after expression");
 
-    return stmt_t { expr_stmt_t { decayed(std::move(e)) } };
+    return stmt_t { expr_stmt_t { discarded(start, std::move(e)) } };
 }
 
 // A switch, 6.8.5.3: the controlling expression, an integer, p1, and
@@ -5336,8 +5893,10 @@ for_statement(parser_t &p)
 
     expect(p, tok_t::semicolon, "expected ';' after for condition");
 
-    if (peek(p).kind != tok_t::rparen)
-        loop.step = decayed(expression(p));
+    if (peek(p).kind != tok_t::rparen) {
+        const token_t &start = peek(p);
+        loop.step = discarded(start, expression(p));
+    }
 
     expect(p, tok_t::rparen, "expected ')' after for clauses");
 
@@ -5438,8 +5997,8 @@ expression(parser_t &p)
 {
     expr_t e = assignment_expression(p);
 
-    while (accept(p, tok_t::comma)) {
-        e = decayed(std::move(e));
+    while (peek(p).kind == tok_t::comma) {
+        e = discarded(advance(p), std::move(e));
         e = comma(std::move(e), assignment_expression(p));
     }
 
@@ -5455,6 +6014,10 @@ assignment_expression(parser_t &p)
 
     const token_t &op = advance(p);
     // before the right operand is parsed, so that this error comes first
+    if (op.kind == tok_t::assign && is< record_type_t >(lhs.type))
+        not_yet(op, "assignment of " +
+                        record_words(*as< record_type_t >(lhs.type).record));
+
     require_modifiable_lvalue(op, lhs);
 
     return assignment(op, std::move(lhs), assignment_expression(p));
@@ -5654,7 +6217,7 @@ unary_expression(parser_t &p)
     case tok_t::amp: advance(p); return address_of(op, cast_expression(p));
     case tok_t::star: advance(p); return indirection(op, cast_expression(p));
     case tok_t::kw_sizeof: return sizeof_expression(p);
-    case tok_t::kw_alignof: not_yet(op, "operator " + quoted(op.text));
+    case tok_t::kw_alignof: return alignof_expression(p);
     default: return postfix_expression(p);
     }
 }
@@ -5683,6 +6246,22 @@ sizeof_expression(parser_t &p)
                           p.internal_uses.end());
 
     return sizeof_(op, t);
+}
+
+// _Alignof ( T ), 6.5.4.4p1: the operand is a type name alone.  GNU
+// C's alignment of an expression is not yet.
+expr_t
+alignof_expression(parser_t &p)
+{
+    const token_t &op = advance(p);
+    if (!starts_type_name(p))
+        not_yet(op, quoted(op.text) + " of an expression");
+
+    advance(p);
+    const type_t t = type_name(p);
+    expect(p, tok_t::rparen, "expected ')' after type name");
+
+    return alignof_(op, t);
 }
 
 // The callee of a call, 6.5.3.3p1.  A function's name, in parentheses
@@ -5753,6 +6332,9 @@ postfix_expression(parser_t &p)
             const type_t t = *type.result;
             require_honoured(op, t);
 
+            if (const record_t *r = record_in(t))
+                not_yet(op, record_words(*r) + " returned by value");
+
             std::vector< expr_t > args =
                 argument_expression_list(p, type, callee_words(e));
             expect(p, tok_t::rparen, "expected ')' after arguments");
@@ -5796,6 +6378,10 @@ argument_expression_list(parser_t &p,
     if (peek(p).kind != tok_t::rparen) {
         do {
             const token_t &start = peek(p);
+
+            if (args.size() < type.params.size())
+                if (const record_t *r = record_in(*type.params[args.size()]))
+                    not_yet(start, record_words(*r) + " passed by value");
 
             expr_t arg = rvalue(start, assignment_expression(p));
 
@@ -5890,6 +6476,88 @@ character_constant(const parser_t &p, const token_t &t)
     return constant_of(element_type(p, encoding), wide_character_value(t));
 }
 
+// The member a designator of offsetof names in a record: the record
+// laid out, 7.21p4, an incomplete one refused, 6.5.4.4p1's rule, and a
+// not-yet one refused by its words.
+const member_t &
+designated_member(const token_t &at, const type_t &t, const token_t &name)
+{
+    if (!is< record_type_t >(t))
+        fail(at, "offsetof of a member of a type that is not a struct or "
+                 "a union");
+
+    const record_t &r = *as< record_type_t >(t).record;
+    if (!r.complete)
+        fail(at, "offsetof of a member of incomplete type " + record_words(r));
+
+    require_honoured(at, t);
+
+    for (const member_t &m : r.members)
+        if (m.name == name.text)
+            return m;
+
+    fail(name,
+         "no member named " + quoted(name.text) + " in " + record_words(r));
+}
+
+// The element of the array so far that a subscript of an offsetof
+// designator names, by an integer constant expression: its offset is
+// added to offset, and the element's type is the type so far.
+void
+designated_element(parser_t &p, type_t &t, long &offset)
+{
+    const token_t &open = advance(p);
+    if (!is< array_t >(t))
+        fail(open, "subscript in offsetof of a member that is not an array");
+
+    const token_t &start = peek(p);
+    const expr_t index = rvalue(start, expression(p));
+    if (!is_integer_constant(index))
+        fail(start,
+             "subscript in offsetof is not an integer constant expression");
+
+    expect(p, tok_t::rbracket, "expected ']'");
+
+    t = *as< array_t >(t).element;
+    offset += long(exact_value(index)) * size_of(t);
+}
+
+// __builtin_offsetof ( type-name , member-designator ), which the
+// offsetof of the header defines, 7.21p4: the offset in bytes, from the
+// start of an object of the type, of the subobject the designator
+// names, an integer constant of type size_t.  The designator is a
+// member's name, then any number of .name, a member of the record so
+// far, and [constant], designated_element()'s, so that
+// &(t.member-designator) on a static t is an address constant.  The
+// keyword is the identifier ahead's.
+expr_t
+offsetof_expression(parser_t &p, const token_t &keyword)
+{
+    expect(p, tok_t::lparen, "expected '(' after " + quoted(keyword.text));
+    type_t t = type_name(p);
+    expect(p, tok_t::comma, "expected ',' after type name");
+
+    long offset = 0;
+    const token_t *at = &keyword;
+
+    do {
+        const token_t &name =
+            expect(p, tok_t::identifier, "expected member name");
+        const member_t &m = designated_member(*at, t, name);
+        offset += m.offset;
+        t = m.type;
+
+        while (peek(p).kind == tok_t::lbracket)
+            designated_element(p, t, offset);
+
+        at = &peek(p);
+    } while (accept(p, tok_t::dot));
+
+    expect(p, tok_t::rparen, "expected ')' after member designator");
+
+    return expr_t { size_type(), literal_t { offset } };
+}
+
 // A name must be declared, 6.5.2p2, as an object or a function: a
 // typedef name names a type.  An enumeration constant is a constant,
 // p2's footnote, of its type and its value, 6.4.4.4p2, 6.7.3.3p10: the
@@ -5912,6 +6580,9 @@ primary_expression(parser_t &p)
     switch (t.kind) {
     case tok_t::identifier: {
         advance(p);
+
+        if (t.text == "__builtin_offsetof")
+            return offsetof_expression(p, t);
 
         const symbol_t *sym = lookup(p, t.text);
         if (!sym)
