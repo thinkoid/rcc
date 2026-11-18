@@ -28,6 +28,10 @@ long noted(void);
 long tick(long v);
 int positive(long x);
 
+#define MANY_DECLARE(N, BLOCK) long many_##N(MANY_PARAMETERS(N, BLOCK));
+
+MANY_TYPES(MANY_DECLARE)
+
 #define LIBRARY(T, N)                                                   \
     long tmix9_##N(P9(T));                                              \
     long tmix10_##N(P10(T));                                            \
@@ -318,6 +322,23 @@ long far_call(long a, char b, short c)
     return mixed12(b, c, a, x, b, c, a, x, b, c, b, a)
            + par12(b, c, a, x, b, c, a, x, b, c, b, a) + x;
 }
+
+/* calls whose outgoing area is past a store's reach, calls.h: the
+   arguments x plus the octal constants of the block, then x - 1 - n
+   and x * 3 + n over two blocks of eight */
+#define MANY_ARGUMENT(n) , x + n
+#define MANY_ARGUMENT_B(n) , x - 1 - n
+#define MANY_ARGUMENT_C(n) , x * 3 + n
+
+#define MANY_CALLER(N, BLOCK)                                           \
+    long call_many_##N(long x)                                          \
+    {                                                                   \
+        return many_##N(x BLOCK(MANY_ARGUMENT, 0)                       \
+                            W8(MANY_ARGUMENT_B, 1)                      \
+                                W8(MANY_ARGUMENT_C, 2));                \
+    }
+
+MANY_TYPES(MANY_CALLER)
 
 /* The third pairing: rcc's functions calling rcc's.  inc_<n> returns a
    narrow result unextended and its caller extends it. */

@@ -248,6 +248,21 @@ jump(state_t &s, int n)
 
 // the frame
 
+// A size by which sp moves, the frame's or a call's outgoing area, as
+// the immediates of sub and add, 5.2: 12 bits, or 12 bits shifted by
+// 12.  The upper part first; a part that is zero is not written, so a
+// size under 4096 bytes or a multiple of 4096 is one instruction.
+std::vector< long >
+frame_parts(long size)
+{
+    std::vector< long > parts;
+    for (const long part : { size & ~0xfffL, size & 0xfffL })
+        if (part != 0)
+            parts.push_back(part);
+
+    return parts;
+}
+
 // The next slot above the last, of size bytes at align; returns its
 // displacement off x29.  G12: a slot is never shared and never reused
 // inside the activation.  Up to the target's frame limit the frame,
@@ -2830,29 +2845,41 @@ cast(state_t &s,
 
 // The outgoing area of a call with stacked arguments past the eighth,
 // chapter 8: 8 bytes for each, rounded up to 16, since sp is a multiple
-// of 16 at the call (chapter 3).  It is opened by one sub, whose
-// immediate is 12 bits; an area the immediate does not encode is a
-// not-yet.
+// of 16 at the call (chapter 3).  It is opened and closed in the parts
+// of frame_parts(), as the frame is, which reach 16 MiB less 16; an
+// area of 16 MiB or more is a not-yet.
 long
 outgoing_size(std::size_t stacked)
 {
     const long size = (8 * static_cast< long >(stacked) + 15) / 16 * 16;
-    if (size > 0xfff)
-        not_yet("an outgoing area of 4096 bytes or more");
+    if (size >= 1L << 24)
+        not_yet("an outgoing area of 16 MiB or more");
 
     return size;
 }
 
-// The address of the outgoing area's k-th 8 bytes, [sp, #8k]: the
-// ninth argument at [sp], as clang -S writes it, the tenth at [sp, #8].
-// The area is under 4096 bytes, so every one is in reach of the store.
+// The address of the outgoing area's k-th 8 bytes for a store of size
+// bytes, [sp, #8k]: the ninth argument at [sp], as clang -S writes it,
+// the tenth at [sp, #8].  Past the store's reach, 2.3, the address is
+// formed from sp as a far slot's is from x29, 5.3: add x16, sp, #upper
+// and the store to [x16, #lower].  The add is written here, after the
+// argument's load into x17, so x16 holds nothing else.
 std::string
-outgoing_operand(std::size_t k)
+outgoing_operand(state_t &s, std::size_t k, int size)
 {
-    if (k == 0)
-        return "[sp]";
+    const long displacement = 8 * static_cast< long >(k);
+    if (in_reach(displacement, size))
+        return displacement == 0 ? "[sp]" :
+                                   std::format("[sp, #{}]", displacement);
 
-    return std::format("[sp, #{}]", 8 * k);
+    const long upper = displacement & ~0xfffL;
+    const long lower = displacement & 0xfffL;
+
+    insn(s, "add", { "x16", "sp", imm(upper) });
+    if (lower == 0)
+        return "[x16]";
+
+    return std::format("[x16, #{}]", lower);
 }
 
 // The callee of a call through a pointer, chapter 8: a hidden local of
@@ -2933,14 +2960,15 @@ call(state_t &s, const call_t &c, const type_t &t)
         slots.size() > registers ? slots.size() - registers : 0;
     const long area = stacked > 0 ? outgoing_size(stacked) : 0;
 
-    if (area > 0)
-        insn(s, "sub", { "sp", "sp", imm(area) });
+    for (const long part : frame_parts(area))
+        insn(s, "sub", { "sp", "sp", imm(part) });
 
     for (std::size_t i = registers; i < slots.size(); ++i) {
         const auto &[displacement, type] = slots[i];
 
         copy_in(s, displacement, type.width);
-        copy_out(s, outgoing_operand(i - registers), type.width);
+        copy_out(s, outgoing_operand(s, i - registers, type.width / 8),
+                 type.width);
     }
 
     for (std::size_t i = 0; i < std::min(registers, slots.size()); ++i) {
@@ -2956,8 +2984,8 @@ call(state_t &s, const call_t &c, const type_t &t)
     else
         call_through(s, target);
 
-    if (area > 0)
-        insn(s, "add", { "sp", "sp", imm(area) });
+    for (const long part : frame_parts(area))
+        insn(s, "add", { "sp", "sp", imm(part) });
 
     if (is< void_t >(t))
         return { };
@@ -3354,21 +3382,6 @@ stack_parameters(state_t &s, const function_decl_t &fd, long size)
         copy_in(s, static_cast< int >(above), width);
         copy_out(s, slot_operand(s, slot_of(s, p), width / 8), width);
     }
-}
-
-// The frame's size as the immediates of sub and add, 5.2: 12 bits, or
-// 12 bits shifted by 12.  The upper part first; a part that is zero is
-// not written, so a frame under 4096 bytes or a multiple of 4096 is one
-// instruction.
-std::vector< long >
-frame_parts(long size)
-{
-    std::vector< long > parts;
-    for (const long part : { size & ~0xfffL, size & 0xfffL })
-        if (part != 0)
-            parts.push_back(part);
-
-    return parts;
 }
 
 // The displacement off x29 of the k-th register of the save area, 5.1:

@@ -40,3 +40,38 @@
 #define MIXED12                                                         \
     char a, short b, int c, long d, unsigned char e, unsigned short f,  \
     unsigned g, unsigned long h, signed char i, short j, char k, int l
+
+/* The many-argument calls, chapter 8: an outgoing area whose last
+   stores lie past the reach of a store's offset, 4095 bytes for strb,
+   8190 for strh, 16380 for str of a w register and 32760 of an x
+   register, so they go through x16 formed from sp.  MANY_TYPES gives
+   each width's letter and the block of its arguments: many_<n> takes
+   a long, the block, and sixteen more, all of the width, the last
+   stacked one at 4160, 8256, 16448 or 32832 bytes.  W<k>(X, p) is X
+   applied to k names, p followed by the octal digits of each
+   position, so with p 0 it is X applied to the octal constants 0 to
+   k - 1. */
+#define W8(X, p)                                                        \
+    X(p##0) X(p##1) X(p##2) X(p##3) X(p##4) X(p##5) X(p##6) X(p##7)
+#define W64(X, p)                                                       \
+    W8(X, p##0) W8(X, p##1) W8(X, p##2) W8(X, p##3)                     \
+    W8(X, p##4) W8(X, p##5) W8(X, p##6) W8(X, p##7)
+#define W512(X, p)                                                      \
+    W64(X, p##0) W64(X, p##1) W64(X, p##2) W64(X, p##3)                 \
+    W64(X, p##4) W64(X, p##5) W64(X, p##6) W64(X, p##7)
+#define W1024(X, p) W512(X, p##0) W512(X, p##1)
+#define W2048(X, p) W512(X, p##0) W512(X, p##1) W512(X, p##2) W512(X, p##3)
+#define W4096(X, p)                                                     \
+    W512(X, p##0) W512(X, p##1) W512(X, p##2) W512(X, p##3)             \
+    W512(X, p##4) W512(X, p##5) W512(X, p##6) W512(X, p##7)
+
+#define MANY_TYPES(X) X(sc, W512) X(s, W1024) X(i, W2048) X(l, W4096)
+
+#define MANY_PARAMETER_sc(p) , signed char p
+#define MANY_PARAMETER_s(p) , short p
+#define MANY_PARAMETER_i(p) , int p
+#define MANY_PARAMETER_l(p) , long p
+
+#define MANY_PARAMETERS(N, BLOCK)                                       \
+    long n BLOCK(MANY_PARAMETER_##N, a) W8(MANY_PARAMETER_##N, b)       \
+        W8(MANY_PARAMETER_##N, c)

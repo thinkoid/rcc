@@ -418,14 +418,15 @@ the same code.
 
 **The scratch pair: `x16`, `x17`.** Never an expression register and
 never held across a node. `x16` takes an address the instruction
-cannot reach (chapter 5.3), the page of a global the file defines for
-its access (chapter 10), and the callee of a call through a pointer,
-loaded from its slot for the `blr` (chapter 8). `x17`
-carries the bytes of a copy from memory to memory, which the machine
-has no instruction for: a stack argument on its way from its slot to
-the outgoing area, and a stack parameter on its way to its slot. Both
-are dead at every `bl` by the convention, which is what suits them to
-a use that never spans one.
+cannot reach (chapter 5.3), from `x29` for a slot and from `sp` for an
+argument in the outgoing area (chapter 8), the page of a global the
+file defines for its access (chapter 10), and the callee of a call
+through a pointer, loaded from its slot for the `blr` (chapter 8).
+`x17` carries the bytes of a copy from memory to memory, which the
+machine has no instruction for: a stack argument on its way from its
+slot to the outgoing area, and a stack parameter on its way to its
+slot. Both are dead at every `bl` by the convention, which is what
+suits them to a use that never spans one.
 
 `x8` and `x18` are not used. `sp` is the stack pointer, and nothing
 else.
@@ -1092,11 +1093,17 @@ Every argument is a hidden local of its call, as before.
    register is spilled first (`backend.md` 6.7). With more than
    eight arguments, `sub sp, sp, #A` opens the outgoing area, `A`
    being 8 bytes for each argument past the eighth, rounded up to
-   16. Each of those is copied from its slot at its own width, `ldr
-   w17, [x29, #44]; str w17, [sp]`, the ninth at `[sp]`, the tenth
-   at `[sp, #8]`. A `char` is `ldrb` and `strb`, and the seven bytes
-   above it in the area stay as they were: they are padding to the
-   convention (chapter 3). The first eight are loaded from their
+   16; an area of 4096 bytes or more is opened in two parts, as the
+   frame is (5.2), `sub sp, sp, #4096; sub sp, sp, #16`. Each of
+   those is copied from its slot at its own width, `ldr w17, [x29,
+   #44]; str w17, [sp]`, the ninth at `[sp]`, the tenth at `[sp,
+   #8]`. A `char` is `ldrb` and `strb`, and the seven bytes above it
+   in the area stay as they were: they are padding to the convention
+   (chapter 3). An argument past its store's reach (2.3), 4096 bytes
+   above `sp` for a `strb`, 8192 for a `strh`, 16384 for a `str` of a
+   `w` register and 32768 of an `x`, is stored through `x16` formed
+   from `sp`, as a far slot's address is from `x29` (5.3): `add x16,
+   sp, #4096; strb w17, [x16]`. The first eight are loaded from their
    slots into `x0` to `x7`, a narrow one extended by its load. `bl
    f` for a named function. Through a pointer, the callee's slot is
    loaded into `x16` after the argument registers, `ldr x16, [x29,
@@ -1105,7 +1112,7 @@ Every argument is a hidden local of its call, as before.
    A callee's slot beyond the load's reach forms its address in `x16`
    first, as any far slot does (5.3), and `x16` is loaded through it,
    `add x16, x29, #36864; ldr x16, [x16, #3192]` beside a local of
-   40000 bytes. `add sp, sp, #A`.
+   40000 bytes. `add sp, sp, #A`, in the parts that opened it.
 4. The result is in `x0`, valid to its type's width (6.3).
 
 A call through a pointer is made with the types of the pointer's
@@ -1113,10 +1120,10 @@ pointee (G16). `p(x)`, `(*p)(x)` and `(**p)(x)` are one listing, and
 `(*f)(x)` and `(&f)(x)` on a function's name form the address and call
 through it, as `backend.md` chapter 8 has it.
 
-An area of 4096 bytes or more, which the immediate of `sub` does not
-encode, is a not-yet: a call takes 510 arguments past the eighth. No
-unwind directive is written around the area, since the canonical
-frame address is computed from `x29` there.
+An area of 16 MiB or more, past the two parts' reach, is a not-yet:
+a call takes 2097150 arguments past the eighth. No unwind directive
+is written around the area, since the canonical frame address is
+computed from `x29` there.
 
 The outgoing area is opened and closed around the call, as x86's
 pushes are added back after theirs. The alternative, an area at the
@@ -1328,7 +1335,9 @@ compiles them against its own registers and state.
     (5.3);
   - `constant-bits`, a constant by its bits (6.4);
   - `stack-parameter`, the stack parameter's copy (5.2);
-  - `large-frame`, a frame of 4096 bytes or more (5.2).
+  - `large-frame`, a frame of 4096 bytes or more (5.2);
+  - `outgoing-area`, an outgoing area of 4096 bytes or more and an
+    argument past its store's reach (chapter 8).
 
   The subscript by an `int` and by a `long` has `subscript` and
   `subscript-long`, and the subscript's address `subscript-address`

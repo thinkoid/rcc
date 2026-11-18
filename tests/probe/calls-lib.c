@@ -123,3 +123,23 @@ int positive(long x)
     }
 
 TYPES(WRITERS)
+
+/* The many-argument calls' callees: n, then each argument by its
+   position's weight, which an argument stored at another's place
+   changes. */
+#define MANY_ITEM(p) p,
+
+#define MANY_CALLEE(N, BLOCK)                                           \
+    long many_##N(MANY_PARAMETERS(N, BLOCK))                            \
+    {                                                                   \
+        const long v[] = { BLOCK(MANY_ITEM, a) W8(MANY_ITEM, b)         \
+                               W8(MANY_ITEM, c) };                      \
+        long sum = n + SKEW;                                            \
+                                                                        \
+        for (unsigned long k = 0; k < sizeof v / sizeof *v; ++k)        \
+            sum += v[k] * (long) (2 * k + 3);                           \
+                                                                        \
+        return sum;                                                     \
+    }
+
+MANY_TYPES(MANY_CALLEE)

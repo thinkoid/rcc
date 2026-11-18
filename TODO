@@ -202,25 +202,6 @@ Fix: =cast()='s comment moves down to =cast()=.
 
 Check: each of the two functions is under its own comment.
 
-** TODO aarch64: a call takes 510 arguments past the eighth
-
-The outgoing area of a call is opened by one =sub sp, sp, #A=, whose
-immediate is 12 bits, and 8 bytes an argument rounded up to 16 make
-the largest area 4080 bytes: 510 arguments past the eighth, 518 in
-all. A call with more stops the generator with "not yet: an outgoing
-area of 4096 bytes or more". x86-64 has no such limit, since it
-pushes. Under 4096 bytes every store to the area is in reach at
-every width, so the one limit covers the =sub= and the stores;
-5.2.5.2 asks for 127 arguments in one function call.
-
-Fix: the area opened and closed in two parts, as the frame is, and a
-store past its instruction's reach (4095 bytes for =strb=, 8190 for
-=strh=, 16380 for =str= of a =w= register, 32760 of an =x=) through
-=x16= formed from =sp=. Chapter 8 loses its sentence on the limit.
-
-Check: a call with 520 arguments to a function compiled by =clang=
-returns the sum that tells the positions apart.
-
 * Guarantees
 
 The promises in =docs/guarantees.md=. The entry number is the

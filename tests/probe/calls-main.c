@@ -112,6 +112,11 @@ BOTH(int, condition, (long, long))
 BOTH(long, paths, (long, long))
 BOTH(int, loop, (int))
 BOTH(long, far_call, (long, char, short))
+
+#define DECLARE_MANY_CALL(N, BLOCK) BOTH(long, call_many_##N, (long))
+
+MANY_TYPES(DECLARE_MANY_CALL)
+
 BOTH(int, fact, (int))
 BOTH(int, fib, (int))
 BOTH(int, even, (int))
@@ -256,6 +261,11 @@ test_calls(void)
             CHECK(far_call, v[0], v[1], (v[0], (char) v[1], (short) v[2]));
             CHECK(spin, i % 7, v[0], (i % 7, V9));
         }
+
+#define CHECK_MANY_CALL(N, BLOCK)                                       \
+    CHECK(call_many_##N, values[i], 0, (values[i]));
+
+        MANY_TYPES(CHECK_MANY_CALL)
     }
 }
 
