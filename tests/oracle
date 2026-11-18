@@ -627,6 +627,11 @@ done
 # without the tree root and a built rcc there is nothing to run
 check_tree || exit 2
 
+# a program the oracle runs, or rcc, killed by a signal leaves no core
+# file: the log has its status, and a core would land in the tree's
+# root, or where core_pattern says, on every run
+ulimit -c 0
+
 # this machine's own target is the default, and the one whose programs
 # run; a machine rcc has no target for has no default
 native=$(machine_target)

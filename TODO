@@ -517,20 +517,6 @@ program's death by it a failed step.
 Check: a probe made to loop shows as a failed step, and =make test=
 ends.
 
-** TODO A signal death leaves a core file
-
-The oracle runs each program with the caller's core limit. Where it is
-unlimited, every run of =g9-null-load= under rcc leaves a core file
-where =core_pattern= says: in the tree's root where the pattern is
-=core=, as =core.<pid>=, and in =/tmp= where it is
-=/tmp/core.%e.%p.%s=, about 290 KB each; and =timeout= says "the
-monitored command dumped core" in the log.
-
-Fix: =ulimit -c 0= in the script before the runs.
-
-Check: =make test= leaves no new =core.*= in the tree's root and none
-in =/tmp=.
-
 ** TODO A G14 corpus program needs a non-constant condition
 
 =for (;;);= hangs under =clang -O2= as well: C11 6.8.5p6 exempts a

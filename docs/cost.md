@@ -385,6 +385,9 @@ target it also builds each program under `clang -O2` and under
 a construct whose slice is not in the target's generator, and has no
 pin for the target, shows "not yet" in its row of either script and
 is neither passed nor failed; the scripts' headers give the rule.
+Each script of `tests/` sets the core limit to 0 before it runs
+anything, so a program or a compiler that a signal kills leaves its
+status in the log and no core file.
 
 Each program under `tests/cost/` is one row of chapter 2 or one rule
 of chapter 1, and its opening comment says what its listing must
