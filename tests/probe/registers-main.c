@@ -163,6 +163,7 @@ compare(const char *name, long x, long y)
     BOTH(long, ret_pinned_##N, (long, long, long))                      \
     BOTH(long, ret_deep_##N, (long, long, long))                        \
     BOTH(long, ret_written_##N, (long, long))                           \
+    BOTH(long, ret_nested_##N, (long, long))                            \
     BOTH(long, br_and_##N, (long, long))                                \
     BOTH(long, br_or_##N, (long, long))                                 \
     BOTH(long, br_cond_##N, (int, long, long))                          \
@@ -363,6 +364,7 @@ fill(long v[12], int i, int k)
                 CHECK(ret_narrow_##N, x, y, (x, y, w));                 \
                 CHECK(ret_held_##N, x, y, (x, y));                      \
                 CHECK(ret_written_##N, x, y, (x, y));                   \
+                CHECK(ret_nested_##N, x, y, (x, y));                    \
                 if (DIVIDES(T, y)) {                                    \
                     CHECK(ret_pinned_##N, x, y, (w, x, y));             \
                     CHECK(ret_deep_##N, x, y, (w, x, y));               \

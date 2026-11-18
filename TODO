@@ -65,19 +65,38 @@ the left operand.
 
 Check: a cost function ~p - h(q)~ with no =mov= after =idivq=.
 
-** TODO x86-64: a right operand that writes the variable keeps the =return='s =mov=
+** TODO x86-64: a sum whose right operand holds a call keeps the =return='s =mov=
 
-A =return='s value is computed in =rax= (=backend.md= 6.1), but for a
-node whose right operand writes the =register= variable its left
-operand reads: =preserve()= copies the read inside the right operand,
-into the lowest free register, and the result is moved, ~return x +
-(c ? x++ : 2);~ on a ~register int x~. 35 functions of the probes
-have the shape.
+A =return='s value is computed in =rax= (=backend.md= 6.1), but the
+name stops at a node whose right operand holds a call or a division:
+the left operand is held elsewhere across it, and the row writes the
+left operand's register, ~return g + bump();~ ending =movq -8(%rbp),
+%rcx; addl %eax, %ecx; movl %ecx, %eax=. For an operator that
+commutes, =addl %ecx, %eax= writes the named register from the same
+two values, already evaluated in the order written. 21 functions
+over =tests= have the shape with a =register= variable's copy as the
+left operand; the shape with any left operand is not counted.
 
-Fix: none taken; the copy =preserve()= makes would need the name
-handed to it.
+Fix: none taken; count first. A row of =+=, =*=, =&=, =|= or =^=
+whose right operand is in the register its consumer names writes
+that register, the left operand its source.
 
-Check: the count over =tests=, before and after.
+Check: the count over =tests=, before and after, and no function
+longer.
+
+** TODO x86-64: a copy for a pointer row is not handed the consumer's register
+
+The copy =preserve()= makes of a =register= variable's read takes
+the register a =return= names where the node is =binary()='s
+(=backend.md= 6.1). The same shape under =difference()=, ~p - (p =
+q)~ on a =register= pointer, and under =pointer_arithmetic()= takes
+the lowest free register, and the result is moved. No test has
+either shape.
+
+Fix: =copied_into()='s hand-down at those two rows.
+
+Check: a function of =return-register= for each, with no =mov= after
+the row.
 
 ** TODO x86-64: a row by a constant index plus a variable index at a size of 1 adds after the row's address
 

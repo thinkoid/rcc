@@ -820,15 +820,21 @@ in `rax` already. The name stops at a node whose right operand or
 place holds a pinned instruction within it, a call or a division:
 there a value held in the named register would be moved out, or a
 value the operand computes outside it would move into the pinned
-one. It stops too at a right operand that writes the variable whose
-borrowed read is the left operand, since `preserve()` copies the read
-inside it. Each row's form is 6.3's. A register variable's register
-is no expression register and holds no owned value, so its rule puts
-two conditions on the right operand that this one does not need
-(chapter 4). The rule is the Seventh Edition compiler's: its
-`cexpr()` takes the register its caller wants the value in, and a
-`return`'s value, which `rcexpr()` compiles outside its tables, is
-moved to `r0` where it comes back in another register (13, call 19).
+one. A right operand that writes the variable whose borrowed read is
+the left operand takes the name too: `preserve()` copies the read
+inside it, so the copy is handed the name, and the right operand is
+generated with the register left for last, so that nothing of it
+writes the register before the copy, which, held, keeps it to the
+node's instruction; `return x + (c ? x++ : 2)` on a `register int x`
+saves `x` before the branch and reloads it there, `movq -24(%rbp),
+%rax; addl %ecx, %eax`. Each row's form is 6.3's. A register
+variable's register is no expression register and holds no owned
+value, so its rule puts two conditions on the right operand that this
+one does not need (chapter 4). The rule is the Seventh Edition
+compiler's: its `cexpr()` takes the register its caller wants the
+value in, and a `return`'s value, which `rcexpr()` compiles outside
+its tables, is moved to `r0` where it comes back in another register
+(13, call 19).
 
 ### 6.2 Depth and spill
 
@@ -2465,8 +2471,9 @@ answers:
     The cost is a second hand-down beside the variable's and, on
     x86-64, a boundary: a node whose right operand or place
     holds a call or a division, a right operand that writes the
-    borrowed read's variable, and a count that is a call's result or
-    is generated while `rcx` holds a live value keep the `mov`, a
+    borrowed read's variable with such a pin within it, and a count
+    that is a call's result or is generated while `rcx` holds a live
+    value keep the `mov`, a
     remainder is returned by `movl %edx, %eax`, and a widened `?:`
     each of whose arms needs an extension of its own, two quotients,
     keeps the join and the one extension after it, where `return a ?

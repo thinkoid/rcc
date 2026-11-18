@@ -817,4 +817,115 @@ called_place:
 	ret
 	.cfi_endproc
 	.size	called_place, .-called_place
+	.globl	written_branched
+	.type	written_branched, @function
+written_branched:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -32
+	str	w0, [x29, #24]
+	str	w1, [x29, #28]
+	ldr	w19, [x29, #24]
+	str	x19, [x29, #32]
+	ldr	w0, [x29, #28]
+	cbz	w0, .Lwritten_branched.2
+	mov	w0, w19
+	add	w19, w19, #1
+	b	.Lwritten_branched.3
+.Lwritten_branched.2:
+	mov	w0, #2
+.Lwritten_branched.3:
+	ldr	x1, [x29, #32]
+	add	w0, w1, w0
+	b	.Lwritten_branched.1
+.Lwritten_branched.1:
+	.cfi_def_cfa wsp, 48
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	written_branched, .-written_branched
+	.globl	written_nested
+	.type	written_nested, @function
+written_nested:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -16
+	str	w0, [x29, #24]
+	str	w1, [x29, #28]
+	ldr	w19, [x29, #24]
+	ldr	w0, [x29, #28]
+	mov	w1, w19
+	mov	w19, #2
+	add	w0, w0, w19
+	add	w0, w1, w0
+	b	.Lwritten_nested.1
+.Lwritten_nested.1:
+	.cfi_def_cfa wsp, 32
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	written_nested, .-written_nested
+	.globl	written_called
+	.type	written_called, @function
+written_called:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -32
+	str	w0, [x29, #24]
+	ldr	w19, [x29, #24]
+	mov	w0, w19
+	str	x0, [x29, #32]
+	ldr	w0, [x29, #24]
+	str	w0, [x29, #40]
+	ldr	w0, [x29, #40]
+	bl	f
+	mov	w19, w0
+	ldr	x1, [x29, #32]
+	add	w0, w1, w0
+	b	.Lwritten_called.1
+.Lwritten_called.1:
+	.cfi_def_cfa wsp, 48
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	written_called, .-written_called
 	.section	.note.GNU-stack,"",@progbits

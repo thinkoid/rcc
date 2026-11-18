@@ -674,4 +674,97 @@ called_place:
 	ret
 	.cfi_endproc
 	.size	called_place, .-called_place
+	.globl	written_branched
+	.type	written_branched, @function
+written_branched:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movl	%esi, -16(%rbp)
+	movl	-12(%rbp), %ebx
+	movq	%rbx, -24(%rbp)
+	cmpl	$0, -16(%rbp)
+	je	.Lwritten_branched.2
+	movl	%ebx, %ecx
+	addl	$1, %ebx
+	jmp	.Lwritten_branched.3
+.Lwritten_branched.2:
+	movl	$2, %ecx
+.Lwritten_branched.3:
+	movq	-24(%rbp), %rax
+	addl	%ecx, %eax
+	jmp	.Lwritten_branched.1
+.Lwritten_branched.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	written_branched, .-written_branched
+	.globl	written_nested
+	.type	written_nested, @function
+written_nested:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movl	%esi, -16(%rbp)
+	movl	-12(%rbp), %ebx
+	movl	-16(%rbp), %ecx
+	movl	%ebx, %eax
+	movl	$2, %ebx
+	addl	%ebx, %ecx
+	addl	%ecx, %eax
+	jmp	.Lwritten_nested.1
+.Lwritten_nested.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	written_nested, .-written_nested
+	.globl	written_called
+	.type	written_called, @function
+written_called:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	subq	$24, %rsp
+	movl	%edi, -12(%rbp)
+	movl	-12(%rbp), %ebx
+	movl	%ebx, %eax
+	movq	%rax, -24(%rbp)
+	movl	-12(%rbp), %eax
+	movl	%eax, -28(%rbp)
+	movl	-28(%rbp), %edi
+	call	f@PLT
+	movl	%eax, %ebx
+	movq	-24(%rbp), %rcx
+	addl	%eax, %ecx
+	movl	%ecx, %eax
+	jmp	.Lwritten_called.1
+.Lwritten_called.1:
+	leaq	-8(%rbp), %rsp
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	written_called, .-written_called
 	.section	.note.GNU-stack,"",@progbits

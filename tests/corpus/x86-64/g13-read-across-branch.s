@@ -16,15 +16,14 @@ pick:
 	movq	%rbx, -24(%rbp)
 	cmpl	$0, -12(%rbp)
 	je	.Lpick.2
-	movl	%ebx, %eax
+	movl	%ebx, %ecx
 	addl	$1, %ebx
 	jmp	.Lpick.3
 .Lpick.2:
-	movl	$2, %eax
+	movl	$2, %ecx
 .Lpick.3:
-	movq	-24(%rbp), %rcx
-	addl	%eax, %ecx
-	movl	%ecx, %eax
+	movq	-24(%rbp), %rax
+	addl	%ecx, %eax
 	jmp	.Lpick.1
 .Lpick.1:
 	popq	%rbx

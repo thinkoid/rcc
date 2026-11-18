@@ -20,14 +20,20 @@
    and a long x, returned as an unsigned long; stored_held() p[i] = x
    - y, whose place holds p and i while x - y is computed;
    incremented_element() ++p[i]; and compound_reloaded() y += (c ? 1 :
-   2) on a local y.  Beside them the rule's edge: called() r + f(x),
-   whose call leaves its result in rax; deeper() r - p[i / 2], a
-   division within the right operand; written() r + (r += 2), whose
-   right operand writes r; and called_place() p[f(i)] = x, whose place
-   holds a call's result.
+   2) on a local y.  A right operand that writes the register variable
+   the left operand reads has the read's copy in rax: written() r + (r
+   += 2), written_branched() r + (c ? r++ : 2), whose read is saved
+   before the branch and reloaded, and written_nested() r + (y + (r =
+   2)), whose copy is made within an operand of the right one.  Beside
+   them the rule's edge: called() r + f(x), whose call leaves its
+   result in rax; deeper() r - p[i / 2], a division within the right
+   operand; written_called() r + (r = f(x)), whose copy is spilled
+   across the call; and called_place() p[f(i)] = x, whose place holds a
+   call's result.
 
    On x86-64 the listing must show no move into eax or rax before the
-   jump to the epilogue but in called(), deeper() and called_place():
+   jump to the epilogue but in called(), deeper(), written_called() and
+   called_place():
    in copied() p in rcx and i in rdx, movslq -20(%rbp), %rdx, then movl
    %ebx, %eax and subl (%rcx,%rdx,4), %eax; in extended() cltd, idivl
    -8(%rbp) and movslq %edx, %rax; in reloaded() x spilled from rax,
@@ -58,7 +64,13 @@
    %ebx, %ecx, addl %eax, %ecx and movl %ecx, %eax; in deeper() the
    quotient in eax, movl %ebx, %edx, subl (%rcx,%rax,4), %edx and movl
    %edx, %eax; in written() the copy preserve() makes, movl %ebx, %eax,
-   then addl $2, %ebx and addl %ebx, %eax.
+   then addl $2, %ebx and addl %ebx, %eax; in written_branched() movq
+   %rbx, -24(%rbp) before the branch, the arms' movl %ebx, %ecx and movl
+   $2, %ecx, then movq -24(%rbp), %rax and addl %ecx, %eax; in
+   written_nested() y loaded into ecx, the copy movl %ebx, %eax, then
+   addl %ebx, %ecx and addl %ecx, %eax; in written_called() the copy
+   spilled across the call, movq -24(%rbp), %rcx, addl %eax, %ecx and
+   movl %ecx, %eax.
 
    On aarch64, where an operation names its destination apart from its
    sources, the row's last instruction writes x0 where no other value
@@ -87,7 +99,10 @@
    w0, [x29, #24].  stepped() is ldr w0, [x29, #16], add w1, w0, #1 and
    str w1, [x29, #16].  In called_place() the index, the call's result,
    holds x0 at the store, str w1, [x2, w0, sxtw #2], and the return
-   moves the value, mov w0, w1. */
+   moves the value, mov w0, w1.  In written_branched() the reload ldr
+   x1, [x29, #32] and add w0, w1, w0, in written_nested() the copy mov
+   w1, w19 and add w0, w1, w0, and in written_called() the reload after
+   the call and add w0, w1, w0. */
 int f(int);
 
 int
@@ -252,4 +267,28 @@ int
 called_place(int *p, int i, int x)
 {
         return p[f(i)] = x;
+}
+
+int
+written_branched(int x, int c)
+{
+        register int r = x;
+
+        return r + (c ? r++ : 2);
+}
+
+int
+written_nested(int x, int y)
+{
+        register int r = x;
+
+        return r + (y + (r = 2));
+}
+
+int
+written_called(int x)
+{
+        register int r = x;
+
+        return r + (r = f(x));
 }

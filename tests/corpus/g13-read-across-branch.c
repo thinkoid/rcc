@@ -4,7 +4,7 @@
    writes x, and it reloads the slot after the arms meet.
 
    On x86-64 x is ebx: movq %rbx, -24(%rbp) before the test, and
-   movq -24(%rbp), %rcx after the arms.
+   movq -24(%rbp), %rax after the arms, the register the return names.
 
    On aarch64 x is w19: str x19, [x29, #32] before the test, and
    ldr x1, [x29, #32] after the arms.

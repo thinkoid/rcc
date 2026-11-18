@@ -1301,9 +1301,10 @@ TYPES(CALLS)
    operand a call's result in rax when the copy is made, ret_held_;
    pinned, a division as the right operand and within it, ret_pinned_
    and ret_deep_; and a right operand that writes the variable, whose
-   read is copied before the write, ret_written_, which ISO leaves
-   undefined and clang -O0 writes left to right, as assign_order_.  The
-   main keeps a divisor from 0 and -1. */
+   read is copied before the write, ret_written_, and one that does so
+   within an operand of its own, ret_nested_, which ISO leaves undefined
+   and clang -O0 writes left to right, as assign_order_.  The main keeps
+   a divisor from 0 and -1. */
 #define RETURNED(T, N)                                                  \
     long ret_free_##N(T a, T b, T c)                                    \
     {                                                                   \
@@ -1334,6 +1335,11 @@ TYPES(CALLS)
     {                                                                   \
         register T r = a;                                               \
         return r - (r = b);                                             \
+    }                                                                   \
+    long ret_nested_##N(T a, T b)                                       \
+    {                                                                   \
+        register T r = a;                                               \
+        return r - (b + (r = b ^ a));                                   \
     }
 
 TYPES(RETURNED)

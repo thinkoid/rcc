@@ -134,6 +134,12 @@ struct state_t
     // pinned register is generated, so it lands there
     unsigned reserved = 0;
 
+    // the borrowed read whose copy preserve() writes into the register
+    // its node's consumer names, held out of the right operand that
+    // writes the read's variable, and that register, as a set of one
+    int named_read = -1;
+    unsigned named_copy = 0;
+
     // the width of the result from which the last instruction written
     // set ZF, or 0 when it set none: flagged() states it after such an
     // instruction, and the next instruction or label withdraws it
@@ -481,7 +487,8 @@ wanted_register(const state_t &s, unsigned wanted)
 // can take the register its consumer names, wanted (backend.md 6.1):
 // wanted, where l is a borrowed read, which the instruction copies
 // after rhs into the lowest free register, but for a rhs that writes
-// l's variable, whose preserve() copies the read inside rhs; and where
+// l's variable, whose preserve() copies the read inside rhs, which
+// copied_into() hands the name; and where
 // l holds wanted or is spilled, so that a rhs that spills l has it
 // reloaded there.  None where l holds another register, where the
 // result stays.
@@ -735,10 +742,25 @@ wrote(state_t &s, value_t v, int width, bool is_signed)
     s.values[v.id].valid = written(width, is_signed);
 }
 
+// The register preserve() copies the held read id into: the one its
+// node's consumer names, s.named_copy, for the read s.named_read, where
+// it is free (backend.md 6.1), and otherwise the lowest free register.
+reg_t
+copy_register(state_t &s, int id)
+{
+    if (id == s.named_read)
+        for (const reg_t r : expression_registers)
+            if ((s.named_copy & bit(r)) && s.owner[r] < 0)
+                return r;
+
+    return take(s, 0);
+}
+
 // Before a register variable is written, each of its reads still held
 // is copied into an expression register, so it keeps the value it
 // read: G13, an operand's side effects complete before the next operand
-// starts, and i = i++ + ++i has one value.
+// starts, and i = i++ + ++i has one value.  The read a node's consumer
+// names a register for is copied there, copy_register()'s.
 void
 preserve(state_t &s, const symbol_t *sym)
 {
@@ -747,7 +769,8 @@ preserve(state_t &s, const symbol_t *sym)
         if (!h.live || h.variable != sym)
             continue;
 
-        copy(s, { static_cast< int >(id) }, take(s, 0));
+        const int read = static_cast< int >(id);
+        copy(s, { read }, copy_register(s, read));
     }
 }
 
@@ -3252,13 +3275,34 @@ register_product(state_t &s,
     return v;
 }
 
+// The register a node's borrowed left operand l is copied into where
+// its right operand rhs writes l's variable, of those its consumer
+// names, named (backend.md 6.1): preserve() copies the read inside rhs,
+// so the copy is handed the name, and rhs is generated with it left for
+// last, so that nothing of rhs takes it before the copy, and the copy,
+// a held value, keeps it to the node's instruction.  None for any other
+// l, and where named is none, as where an instruction within rhs pins a
+// register, a call or a division.
+unsigned
+copied_into(const state_t &s, value_t l, const expr_t &rhs, unsigned named)
+{
+    if (!named || l.id < 0)
+        return 0;
+
+    const auto *variable = s.values[l.id].variable;
+
+    return variable && writes(rhs, variable) ? named : 0;
+}
+
 // A binary operator's row.  The register the consumer of its value
 // names, wanted, is handed to the left operand, whose register the
 // result is, where the node does not hold it out for its right
 // operand's pins; the right operand, or its address, is then taken
 // outside it where held_out() says, so that the copy of a borrowed read
 // or the reload of a spilled left operand finds it free: return r -
-// p[i] is movl %ebx, %eax; subl (%rcx,%rdx,4), %eax (6.1).
+// p[i] is movl %ebx, %eax; subl (%rcx,%rdx,4), %eax (6.1).  A right
+// operand that writes the variable of a borrowed left operand is taken
+// outside it too, and the read's copy takes it, copied_into()'s.
 value_t
 binary(state_t &s, const expr_t &e, into_t *into = nullptr, unsigned wanted = 0)
 {
@@ -3311,8 +3355,20 @@ binary(state_t &s, const expr_t &e, into_t *into = nullptr, unsigned wanted = 0)
 
     const auto l =
         rvalue_avoiding(s, *o.lhs, own | pinned_by(*o.rhs), nullptr, named);
-    const auto r =
-        binary_operand(s, o.op, *o.rhs, width, held_out(s, l, *o.rhs, named));
+
+    // return x + (c ? x++ : 2) on a register x: x's copy in rax
+    const unsigned copied = copied_into(s, l, *o.rhs, named);
+    const int outer_read = s.named_read;
+    const unsigned outer_copy = s.named_copy;
+    if (copied) {
+        s.named_read = l.id;
+        s.named_copy = copied;
+    }
+
+    const auto r = binary_operand(s, o.op, *o.rhs, width,
+                                  held_out(s, l, *o.rhs, named) | copied);
+    s.named_read = outer_read;
+    s.named_copy = outer_copy;
 
     return arithmetic(s, o.op, l, r, e.type, named);
 }
