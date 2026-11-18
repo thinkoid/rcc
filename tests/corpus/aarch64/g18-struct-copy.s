@@ -100,9 +100,7 @@ fill:
 	adrp	x0, texts
 	add	x0, x0, :lo12:texts
 	ldrsw	x1, [x29, #16]
-	mov	x2, #32
-	mul	x1, x1, x2
-	add	x0, x0, x1
+	add	x0, x0, x1, lsl #5
 	ldr	w1, [x29, #20]
 	ldr	w2, [x29, #16]
 	mov	w3, #32
@@ -300,17 +298,13 @@ rotate:
 	adrp	x0, texts
 	add	x0, x0, :lo12:texts
 	ldrsw	x1, [x29, #64]
-	mov	x2, #32
-	mul	x1, x1, x2
-	add	x0, x0, x1
+	add	x0, x0, x1, lsl #5
 	adrp	x1, texts
 	add	x1, x1, :lo12:texts
 	ldr	w2, [x29, #64]
 	sub	w2, w2, #1
 	sxtw	x2, w2
-	mov	x3, #32
-	mul	x2, x2, x3
-	add	x1, x1, x2
+	add	x1, x1, x2, lsl #5
 	mov	x16, #32
 .Lrotate.18:
 	ldrb	w17, [x1], #1
@@ -464,9 +458,7 @@ sum:
 	adrp	x1, texts
 	add	x1, x1, :lo12:texts
 	ldrsw	x2, [x29, #24]
-	mov	x3, #32
-	mul	x2, x2, x3
-	add	x1, x1, x2
+	add	x1, x1, x2, lsl #5
 	ldr	w2, [x29, #28]
 	ldrb	w1, [x1, w2, sxtw]
 	add	x0, x0, x1

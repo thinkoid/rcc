@@ -186,20 +186,22 @@ generators for the sites above.
 Check: those sites with no clearing move, =unsigned_int_called()=
 with its own, and no function longer.
 
-** TODO aarch64: an element of 32 or 64 bytes by an =int= index is multiplied
+** TODO aarch64: an element of 16 bytes by a variable index is multiplied
 
-~p[i]~ on records of 32 bytes with an =int= index is the row of ~p +
-n~, =mov x2, #32; mul x1, x1, x2; add x0, x0, x1= after the index's
-extending load, where =add x0, x0, x1, lsl #5= after the same load
-is two instructions fewer: the add's extended-register form shifts
-by 4 at most, and the shifted-register form by any count. Records of
-16 bytes take =add x0, x0, w1, sxtw #4=. The shape is not counted
-over =tests=.
+~p[i].b~ on records of 16 bytes is the row of ~p + n~, =ldrsw x1;
+mov x2, #16; mul x1, x1, x2; add x0, x0, x1=, where the add's
+extended operand shifts by 4: =add x0, x0, w1, sxtw #4=, which only
+the index forms of a record's copy write today. An element of 32
+bytes or more takes its shift, =add x0, x0, x1, lsl #5=; 16 is the
+one power of two left to the multiply. Over =tests= it is 2155
+multiplications.
 
-Fix: an element size that is a power of two above 16 is the
-shifted-register add over the index extended by its load.
+Fix: a stride of 16 bytes through the index's extended operand,
+=sxtw #4=, and kept off the register-offset form, which cannot
+shift by 4.
 
-Check: the count over =tests=, and no function longer.
+Check: no multiplication by 16 over =tests=, and no function longer;
+measured in a scratch build, 1104 functions shorter.
 
 * Guarantees
 

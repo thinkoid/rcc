@@ -704,6 +704,15 @@ is_scale(long size)
     return size == 1 || size == 2 || size == 4 || size == 8;
 }
 
+// Whether a size is a power of two above 16, which the extended
+// operand of add and sub does not shift by and the shifted one does,
+// 2.3: an index of such a size is read whole, add x0, x0, x1, lsl #5.
+bool
+is_wide_scale(long size)
+{
+    return std::has_single_bit(static_cast< unsigned long >(size)) && size > 16;
+}
+
 int
 shift_of(long size)
 {
@@ -1328,11 +1337,14 @@ row_reaches(const row_access_t &row, const named_offset_t *named, int size)
 // Whether a row's index is the access's register offset, 6.3: a row
 // with one, with no constant at all and nothing evaluated between the
 // address and the access, a product of no scale, or an index the
-// access's form scales, at a size of 1 or the access's own.
+// access's form scales, at a size of 1 or the access's own.  Not at a
+// power of two above 16, whose index the shifted operand of the add
+// scales, is_wide_scale(), and the access's form does not.
 bool
 offset_index(const row_access_t &row, int size, bool nothing_between)
 {
     return row.index && !row.slot && row.total == 0 && nothing_between &&
+           !is_wide_scale(row.stride) &&
            (!is_scale(row.stride) || row.stride == 1 || row.stride == size);
 }
 
@@ -2300,14 +2312,19 @@ product_length(long long d)
 // The n of p + n, n + p and p - n, and of p += n and p -= n, generated
 // as the row takes it, 6.3.  A constant is its product with the size.
 // For a size of 1, 2, 4 or 8 any other n is the index of index_of(),
-// read by the shifted or extended operand of add and sub; for any other
-// size it is generated whole, the cast writing its extension, and the
-// row multiplies it by the size.
+// read by the shifted or extended operand of add and sub; for a power
+// of two above 16 it is generated whole, its extension by its load or
+// the cast's sxtw, and read by the shifted operand, ldrsw x1, [x29,
+// #24]; add x0, x0, x1, lsl #5 on records of 32 bytes; for any other
+// size it is generated whole and the row multiplies it by the size.
 right_t
 displacement(state_t &s, const expr_t &n, long size)
 {
     if (is< literal_t >(n))
         return product(s, scaled(as< literal_t >(n).value, size));
+
+    if (is_wide_scale(size))
+        return { .value = rvalue(s, n), .width = 64, .shift = shift_of(size) };
 
     if (!is_scale(size))
         return { .value = rvalue(s, n), .width = 64, .factor = size };
