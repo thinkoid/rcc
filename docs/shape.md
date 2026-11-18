@@ -212,8 +212,13 @@ Three sums.
   pointers is a binary sub of type `long`; a subscript is a
   dereference of an add, as 6.5.3.2p2 defines it, whose operands the
   parser checks first, a pointer to a complete object type and an
-  integer (p1), so that its errors name the subscript; `sizeof` is an
-  integer literal the parser folded. A unary `+` has no node: it is
+  integer (p1), so that its errors name the subscript; a member
+  access is the dereference of the record's address plus the
+  member's offset in bytes, `p->m` as `*(T *) ((char *) p + 8)` and
+  `s.m` as `(&s)->m`, as the Seventh Edition compiler's first pass
+  wrote `a->b` as `*(a + offset)`, so it has no node of its own
+  (chapter 5); `sizeof` is an integer literal the parser folded. A
+  unary `+` has no node: it is
   the promotion of its operand (6.5.4.3p2), a cast, and over an lvalue
   that no promotion converts, a cast to the lvalue's own type, since
   the result is a value and no lvalue; so `+x` is `(T) x`, `T` the
@@ -549,13 +554,33 @@ no linkage, by the end of its declarator (6.7.1p8), and so is one with
 an initializer (6.7.11p4) or a tentative definition of internal
 linkage (6.9.3p3); a tentative definition of external linkage takes
 the record as it is at the end of the unit (6.9.3p2), which must then
-be complete. What reads or writes the object of a record is not yet,
-each in words of its own: its initializer; a `register` one, which no
-register holds; `.` and `->`; a record passed or returned by value,
-by a definition's parameter or result, by an argument and by a call;
-the assignment of a record; and its value, read as an operand or for
-its effect. A cast to a record or of one is an error, since a record
-is no scalar (6.5.5p2).
+be complete. What reads or writes the whole object of a record is not
+yet, each in words of its own: its initializer; a `register` one,
+which no register holds; a record passed or returned by value, by a
+definition's parameter or result, by an argument and by a call; the
+assignment of a record; and its value, read as an operand or for its
+effect, a member's of a record type among them. A cast to a record or
+of one is an error, since a record is no scalar (6.5.5p2).
+
+`E.m` and `P->m` designate a member (6.5.3.4p3, p4): `E` a struct or
+a union, `P` a pointer to one after its decay, complete and laid out,
+and `m` a member of it (p1, p2); each is an lvalue, since every record
+rcc makes an expression of is one, and `f().m` has no record to be
+the member of yet. The tree is the dereference of the record's
+address plus the member's offset, `*(T *) ((char *) P + offset)`, a
+cast to the member's pointer type over a sum of a pointer to bytes:
+`P` for `P->m`, `&E` for `E.m` (`(&E)->m` is `E.m`, p4's footnote),
+and `&*X` is `X` (6.5.4.2p3). A member at offset 0 is `*(T *) P`,
+with no sum. The pointer is read through its casts between pointer
+types and the byte sum a member access made, so `s.a.b.c` and
+`p->in.l` are one offset from the record's address. A member of an
+array type decays where its value is used, so `p->a[i]` is a
+subscript of the member; one of a function pointer type is called
+through, `p->f(x)`; and one of a record type is an lvalue whose own
+members are reached. `&p->m`, `sizeof p->m`, `p->m++` and `p->m +=
+e` are those of any lvalue, and a union's members are each at 0, so
+a member read after another written reads the bytes at its own
+width.
 
 The types a header declares and rcc does not use are not-yet types:
 the complex types, `_Complex` among the specifiers of a floating
@@ -1064,8 +1089,8 @@ a conditional of two void calls.
 ## 11. Not yet
 
 The initializer of a struct or a union and each use that reads or
-writes one (chapter 5: a `register` one, `.` and `->`, a record by
-value, its assignment and its value), the layout of a struct or a
+writes one whole (chapter 5: a `register` one, a record by value, its
+assignment and its value), the layout of a struct or a
 union with a bit-field, an anonymous member, an attribute that marks,
 `packed` and `aligned` among them, a flexible array member, no
 member, or a member of a type rcc does not use yet (chapter 3), C23's

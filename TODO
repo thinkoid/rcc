@@ -74,6 +74,26 @@ holds.
 
 Check: the count over =tests=, and no function longer.
 
+** TODO aarch64: an element of a member array adds the member's offset before the access
+
+~p->a[3]~ on a member ~int a[8]~ at offset 32 is =add x0, x0, #32;
+ldr w0, [x0, #12]=, where the offset and the index's 12 are one
+displacement, =ldr w0, [x0, #44]=; ~p->t[2].h~ the same with 64 and
+34. With a variable index, ~p->t[i].i~ adds the 64 before the
+index's product and its add and reads =[x0, #4]=, where the 64 rides
+past the sum, =[x0, #68]=, an =add= fewer. The walk of an access's
+pointer (=denoted()= in =src/c1-aarch64.cc=) steps through a row's
+decay only above its first sum, and a member array's decay stands
+under the subscript's sum. x86-64 writes each as one operand.
+=element_constant()=, =element_constant_member()= and
+=element_member()= of =member= pin the adds.
+
+Fix: the walk steps through the decay of a dereferenced cast under a
+sum, the member's bytes joining the rest.
+
+Check: those three functions an instruction shorter each, and no
+function longer.
+
 ** TODO aarch64: a row's address as a value adds the constants under its index apart from the column
 
 ~&((int (*)[3]) (c + 4))[i][2]~ on a ~char *c~ is =add x0, x0, #4=,

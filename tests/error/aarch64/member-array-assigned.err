@@ -1,0 +1,2 @@
+tests/error/member-array-assigned.c:11:17: error: expression is not assignable
+status 1

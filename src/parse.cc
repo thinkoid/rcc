@@ -6382,6 +6382,161 @@ callee_words(const expr_t &callee)
     return "in a call through a pointer";
 }
 
+// The member of a record by its name, 6.5.3.4p1, p2; a name the record
+// has no member of is an error.
+const member_t &
+named_member(const record_t &r, const token_t &name)
+{
+    for (const member_t &m : r.members)
+        if (m.name == name.text)
+            return m;
+
+    fail(name,
+         "no member named " + quoted(name.text) + " in " + record_words(r));
+}
+
+// The record a member access reads a member of, 6.5.3.4p1, p2: the
+// record E is, for E.m, and the one P points to, for P->m, P decayed.
+// It is complete, since its members are known from its list's '}' on,
+// and laid out, or the access is refused by the words of what rcc does
+// not lay out.
+const record_t &
+accessed_record(const token_t &op, const type_t &t)
+{
+    const bool arrow = op.kind == tok_t::arrow;
+    if (arrow && !is< pointer_t >(t))
+        fail(op, "member reference type is not a pointer");
+
+    const type_t &r = arrow ? pointee_of(t) : t;
+    if (!is< record_type_t >(r))
+        fail(op, arrow ? "member reference type is not a pointer to a "
+                         "struct or a union" :
+                         "member reference base type is not a struct or a "
+                         "union");
+
+    const record_t &record = *as< record_type_t >(r).record;
+    if (!record.complete)
+        fail(op, "member access into incomplete type " + record_words(record));
+
+    require_honoured(op, r);
+
+    return record;
+}
+
+// The pointer through which a member access reaches its record, and
+// the constant in bytes added to it, record_pointer()'s.
+struct record_pointer_t
+{
+    expr_t pointer;
+    long offset;
+};
+
+// A pointer read through its casts between pointer types.
+expr_t
+uncast(expr_t e)
+{
+    while (is< cast_t >(e) && is< pointer_t >(as< cast_t >(e).arg->type)) {
+        expr_t arg = std::move(*std::get< cast_t >(e.v).arg);
+        e = std::move(arg);
+    }
+
+    return e;
+}
+
+// The sum of a pointer to bytes and an integer constant, whose
+// constant a member access takes out of it.
+bool
+is_byte_sum(const expr_t &e)
+{
+    if (!is< binary_t >(e) || as< binary_t >(e).op != binary_op_t::add)
+        return false;
+
+    const type_t &t = pointee_of(e.type);
+
+    return is< int_t >(t) && as< int_t >(t).width == 8 &&
+           is< literal_t >(*as< binary_t >(e).rhs);
+}
+
+// The address of the record of E.m, (&E)->m, 6.5.3.4p4's footnote: E
+// is an lvalue, as every record rcc makes an expression of is, and &*X
+// is X, 6.5.4.2p3.
+expr_t
+record_address(const token_t &op, expr_t e)
+{
+    if (!is_lvalue(e))
+        not_yet(op, "member of a value of " +
+                        record_words(*as< record_type_t >(e.type).record));
+
+    if (is< unary_t >(e) && as< unary_t >(e).op == unary_op_t::deref)
+        return std::move(*std::get< unary_t >(e.v).arg);
+
+    return address_of(op, std::move(e));
+}
+
+// The pointer of P->m, P's value, or of E.m, record_address()'s.  A
+// cast between pointer types changes no address and is read through,
+// and so is a sum of a pointer to bytes and a constant, whose constant
+// is taken out, so that the members of a member, the tree a member
+// access makes, are one offset from the outermost pointer.
+record_pointer_t
+record_pointer(const token_t &op, expr_t e)
+{
+    if (op.kind == tok_t::dot)
+        e = record_address(op, std::move(e));
+
+    e = uncast(std::move(e));
+    if (!is_byte_sum(e))
+        return { std::move(e), 0 };
+
+    auto &sum = std::get< binary_t >(e.v);
+    const long offset = long(as< literal_t >(*sum.rhs).value);
+
+    return { uncast(std::move(*sum.lhs)), offset };
+}
+
+// E.m and P->m, 6.5.3.4: the lvalue of the member, p3, p4, of the
+// member's type, which is *(T *) ((char *) P + offset), the offset the
+// member's in its record plus the one P carries, built of the tree's
+// own nodes, as the Seventh Edition compiler's first pass wrote a->b as
+// *(a + offset).  A member at offset 0 is *(T *) P, with no sum.  A
+// member of an array type decays where its value is used, and one of a
+// record type is an lvalue whose value is refused and whose members
+// are reached.
+expr_t
+member_access(parser_t &p, const token_t &op, expr_t e)
+{
+    const token_t &name = expect(p, tok_t::identifier, "expected member name");
+
+    if (op.kind == tok_t::arrow) {
+        if (is< record_type_t >(e.type))
+            fail(op, "member reference type is not a pointer");
+
+        e = rvalue(op, std::move(e));
+    }
+
+    const member_t &m = named_member(accessed_record(op, e.type), name);
+    auto [pointer, offset] = record_pointer(op, std::move(e));
+    offset += m.offset;
+
+    if (offset != 0) {
+        const type_t bytes = make_pointer(char_type(p));
+        if (!(pointer.type == bytes))
+            pointer = expr_t { bytes, cast_t { box(std::move(pointer)) } };
+
+        expr_t constant { long_type(), literal_t { offset } };
+        pointer = expr_t { bytes,
+                           binary_t { binary_op_t::add, box(std::move(pointer)),
+                                      box(std::move(constant)) } };
+    }
+
+    const type_t to = make_pointer(m.type);
+    if (!(pointer.type == to))
+        pointer = expr_t { to, cast_t { box(std::move(pointer)) } };
+
+    return expr_t { m.type,
+                    unary_t { unary_op_t::deref, box(std::move(pointer)) } };
+}
+
 // 6.5.3.3p5 gives a call the result type of the function it calls, a
 // named one or one through a pointer.  A call of a function whose result
 // is of a not-yet type is not yet, its value used or not: the call
@@ -6429,7 +6584,10 @@ postfix_expression(parser_t &p)
             break;
         }
         case tok_t::dot:
-        case tok_t::arrow: not_yet(op, "member access");
+        case tok_t::arrow:
+            advance(p);
+            e = member_access(p, op, std::move(e));
+            break;
         default: return e;
         }
     }
@@ -6564,12 +6722,7 @@ designated_member(const token_t &at, const type_t &t, const token_t &name)
 
     require_honoured(at, t);
 
-    for (const member_t &m : r.members)
-        if (m.name == name.text)
-            return m;
-
-    fail(name,
-         "no member named " + quoted(name.text) + " in " + record_words(r));
+    return named_member(r, name);
 }
 
 // The element of the array so far that a subscript of an offsetof

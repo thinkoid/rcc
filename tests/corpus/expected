@@ -31,3 +31,5 @@ header-escapes 35 35
 header-squeeze 85 85
 header-collatz 111 111
 header-wide 123 123
+header-words 46 46
+header-lookup 32 32

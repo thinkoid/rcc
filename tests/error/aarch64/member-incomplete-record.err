@@ -1,0 +1,2 @@
+tests/error/member-incomplete-record.c:8:17: error: member access into incomplete type struct 'point'
+status 1

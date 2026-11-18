@@ -160,7 +160,12 @@ both targets, so `sizeof`, `_Alignof` and `offsetof` of one are its
 layout's, which the `layout` probe checks against `clang`'s. Then
 their objects: a local's slot and a global's data at the record's
 size and alignment, so a program takes the address of a struct and
-passes it on.
+passes it on. Then the members: `p->m` is the dereference of `p`
+plus the member's offset, the tree's own nodes, and each generator
+reads the offset into the access, `movl 8(%rax), %eax` and `ldr w0,
+[x0, #8]`; `header-words` counts the words of a text in K&R's binary
+tree of section 6.5, and `header-lookup` keeps the table of names of
+section 6.6.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/`, the cost corpus over `tests/cost/`
 and the error corpus over `tests/error/`, the programs rcc refuses

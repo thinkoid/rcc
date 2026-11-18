@@ -1,0 +1,2 @@
+tests/error/member-arrow-not-record.c:5:17: error: member reference type is not a pointer to a struct or a union
+status 1

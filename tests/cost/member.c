@@ -1,0 +1,167 @@
+/* shape.md chapter 4: a member access is the dereference of the
+   record's address plus the member's offset, *(int *) ((char *) p +
+   8) for p->m, and each generator reads the constant into the
+   operand.  On x86-64 every shape here is one operand: p->m 8(%rax),
+   s.m the slot -136(%rbp), g.m the label g+8(%rip), p->in.i 20(%rax)
+   with the two offsets one, p->a[i] 32(%rax,%rcx,4), p->a[3] 44(%rax),
+   p->t[i].i 68(%rax,%rcx,1) after the imulq $16 of an element no scale
+   covers, p[i].m and tab[i].m 8(%rax,%rcx,1) after imulq $144, the
+   last after the leaq of the label, which takes no index; p->m++ and
+   p->m += v the memory forms, addl $1, 8(%rax); &p->m one leaq
+   8(%rax); a register pointer's r->m 8(%rbx), and its walk r =
+   r->next movq 128(%rbx), %rbx; a union's members each at 0; and
+   p->f(x) the call through the member's load.  On aarch64 p->m is [x0,
+   #8], s.m [x29, #d], g.m [x16, :lo12:g+8], p->in.i [x0, #20], p->a[i]
+   the add of the offset and [x0, x1, lsl #2], since no form holds an
+   index and a displacement, and a register pointer's [x19, #8]; a
+   member array's element by a constant, p->a[3] and p->t[2].h, adds
+   the member's offset first, add x0, x0, #32 and [x0, #12], and by a
+   variable index with a member after it, p->t[i].i, adds the offset
+   before the index's sum, add x0, x0, #64, and the member's 4 is the
+   access's displacement. */
+struct in
+{
+        char c;
+        short h;
+        int i;
+        long l;
+};
+
+struct rec
+{
+        long pad;
+        int m;
+        struct in in;
+        int a[8];
+        struct in t[4];
+        struct rec *next;
+        int (*f)(int);
+};
+
+union freq
+{
+        unsigned short freq;
+        unsigned char lo;
+};
+
+struct rec g;
+struct rec tab[10];
+
+int
+read_ptr(struct rec *p)
+{
+        return p->m;
+}
+
+void
+write_ptr(struct rec *p, int v)
+{
+        p->m = v;
+}
+
+void
+step_ptr(struct rec *p)
+{
+        p->m++;
+}
+
+void
+add_ptr(struct rec *p, int v)
+{
+        p->m += v;
+}
+
+int
+read_slot(void)
+{
+        struct rec s;
+
+        s.m = 1;
+        return s.m;
+}
+
+int
+read_label(void)
+{
+        return g.m;
+}
+
+int
+nested(struct rec *p)
+{
+        return p->in.i;
+}
+
+int
+element(struct rec *p, long i)
+{
+        return p->a[i];
+}
+
+int
+element_constant(struct rec *p)
+{
+        return p->a[3];
+}
+
+int
+element_member(struct rec *p, long i)
+{
+        return p->t[i].i;
+}
+
+int
+element_constant_member(struct rec *p)
+{
+        return p->t[2].h;
+}
+
+int
+indexed(struct rec *p, long i)
+{
+        return p[i].m;
+}
+
+int
+indexed_label(long i)
+{
+        return tab[i].m;
+}
+
+int *
+address(struct rec *p)
+{
+        return &p->m;
+}
+
+int
+in_register(struct rec *q)
+{
+        register struct rec *r = q;
+
+        return r->m;
+}
+
+struct rec *
+last(struct rec *q)
+{
+        register struct rec *r = q;
+
+        while (r->next)
+                r = r->next;
+
+        return r;
+}
+
+int
+pun(union freq *p)
+{
+        p->freq = 0x1234;
+        return p->lo;
+}
+
+int
+call(struct rec *p, int x)
+{
+        return p->f(x);
+}

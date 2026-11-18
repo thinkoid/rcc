@@ -1,0 +1,2 @@
+tests/error/member-not-found.c:10:19: error: no member named 'z' in struct 'point'
+status 1

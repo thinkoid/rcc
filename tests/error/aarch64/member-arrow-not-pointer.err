@@ -1,0 +1,2 @@
+tests/error/member-arrow-not-pointer.c:12:22: error: member reference type is not a pointer
+status 1
