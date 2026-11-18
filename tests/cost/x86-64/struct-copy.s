@@ -177,6 +177,50 @@ effects:
 	ret
 	.cfi_endproc
 	.size	effects, .-effects
+	.globl	comma_effects
+	.type	comma_effects, @function
+comma_effects:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movl	$0, -16(%rbp)
+	.p2align 5
+.Lcomma_effects.2:
+	movl	-16(%rbp), %eax
+	cmpl	-12(%rbp), %eax
+	jge	.Lcomma_effects.4
+	addl	$1, -16(%rbp)
+	movq	-8(%rbp), %rax
+	movslq	-16(%rbp), %rcx
+	movl	(%rax,%rcx,8), %edx
+	movl	%edx, corner(%rip)
+	movl	4(%rax,%rcx,8), %edx
+	movl	%edx, corner+4(%rip)
+	jmp	.Lcomma_effects.2
+.Lcomma_effects.4:
+	addl	$1, -12(%rbp)
+	movl	corner(%rip), %eax
+	movl	%eax, origin(%rip)
+	movl	corner+4(%rip), %eax
+	movl	%eax, origin+4(%rip)
+	addl	$1, -12(%rbp)
+	movl	origin(%rip), %eax
+	movl	%eax, corner(%rip)
+	movl	origin+4(%rip), %eax
+	movl	%eax, corner+4(%rip)
+	movl	-12(%rbp), %eax
+	jmp	.Lcomma_effects.1
+.Lcomma_effects.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	comma_effects, .-comma_effects
 	.globl	codes
 	.type	codes, @function
 codes:

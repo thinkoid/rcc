@@ -577,14 +577,15 @@ written, and nothing else: the generator copies the object, the left
 operand's place first (G13). Its value is not yet as any record's
 value is, so the assignment stands where a value is discarded: a
 statement, a `for`'s first or third clause, the left operand of a
-comma and the operand of a cast to `void`. Used as an operand, `f(a
-= b)` and `a = b = c`, as the record of a member, `(a = b).x`, or as
-the right operand of a comma, even one discarded, it is refused in
-the words of a record's value, and so is a conditional of two
-records. The two objects may overlap (6.5.17.2p3): exactly, as in `a
-= a`, which the standard defines, or in part, which it leaves
-undefined; the tree is the same, and the bytes are those the copy's
-order leaves.
+comma, the right operand of a comma whose own value is discarded, as
+in `n++, a = b;`, and the operand of a cast to `void`. Used as an
+operand, `f(a = b)` and `a = b = c`, as the record of a member, `(a =
+b).x`, or as the right operand of a comma whose value is used, `c =
+(n, a = b)`, it is refused in the words of a record's value, and so is
+a conditional of two records. The two objects may overlap
+(6.5.17.2p3): exactly, as in `a = a`, which the standard defines, or
+in part, which it leaves undefined; the tree is the same, and the
+bytes are those the copy's order leaves.
 
 `E.m` and `P->m` designate a member (6.5.3.4p3, p4): `E` a struct or
 a union, `P` a pointer to one after its decay, complete and laid out,

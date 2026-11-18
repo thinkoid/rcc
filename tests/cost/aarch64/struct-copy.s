@@ -242,6 +242,73 @@ effects:
 	ret
 	.cfi_endproc
 	.size	effects, .-effects
+	.globl	comma_effects
+	.type	comma_effects, @function
+comma_effects:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	str	wzr, [x29, #28]
+.Lcomma_effects.2:
+	ldr	w0, [x29, #28]
+	ldr	w1, [x29, #24]
+	cmp	w0, w1
+	b.ge	.Lcomma_effects.4
+	ldr	w0, [x29, #28]
+	add	w0, w0, #1
+	str	w0, [x29, #28]
+	ldr	x0, [x29, #16]
+	ldr	w1, [x29, #28]
+	add	x0, x0, w1, sxtw #3
+	ldr	w17, [x0]
+	adrp	x16, corner
+	str	w17, [x16, :lo12:corner]
+	ldr	w17, [x0, #4]
+	adrp	x16, corner+4
+	str	w17, [x16, :lo12:corner+4]
+	b	.Lcomma_effects.2
+.Lcomma_effects.4:
+	ldr	w0, [x29, #24]
+	add	w0, w0, #1
+	str	w0, [x29, #24]
+	adrp	x16, corner
+	ldr	w17, [x16, :lo12:corner]
+	adrp	x16, origin
+	str	w17, [x16, :lo12:origin]
+	adrp	x16, corner+4
+	ldr	w17, [x16, :lo12:corner+4]
+	adrp	x16, origin+4
+	str	w17, [x16, :lo12:origin+4]
+	ldr	w0, [x29, #24]
+	add	w0, w0, #1
+	str	w0, [x29, #24]
+	adrp	x16, origin
+	ldr	w17, [x16, :lo12:origin]
+	adrp	x16, corner
+	str	w17, [x16, :lo12:corner]
+	adrp	x16, origin+4
+	ldr	w17, [x16, :lo12:origin+4]
+	adrp	x16, corner+4
+	str	w17, [x16, :lo12:corner+4]
+	ldr	w0, [x29, #24]
+	b	.Lcomma_effects.1
+.Lcomma_effects.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	comma_effects, .-comma_effects
 	.globl	codes
 	.type	codes, @function
 codes:

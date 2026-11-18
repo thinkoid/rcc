@@ -845,14 +845,30 @@ rvalue(const token_t &at, expr_t e)
     return decayed(std::move(e));
 }
 
+// Whether an expression is an assignment, or a comma whose right
+// operand is one, at any depth: the comma's value is its right
+// operand's, 6.5.18p2.
+bool
+ends_in_assignment(const expr_t &e)
+{
+    if (is< assign_t >(e))
+        return true;
+
+    if (!is< binary_t >(e) || as< binary_t >(e).op != binary_op_t::comma)
+        return false;
+
+    return ends_in_assignment(*as< binary_t >(e).rhs);
+}
+
 // An operand evaluated for its effect alone, 6.8.4p2, 6.5.18p2: it may
 // be void, and it decays; a record's value it would read is
 // refuse_record_value()'s.  A record's assignment reads no value of
-// its own, and is taken for its effect, the copy.
+// its own, and is taken for its effect, the copy, and so is a comma
+// whose right operand is one: n++, a = b; reads no record.
 expr_t
 discarded(const token_t &at, expr_t e)
 {
-    if (!is< assign_t >(e))
+    if (!ends_in_assignment(e))
         refuse_record_value(at, e.type);
 
     return decayed(std::move(e));

@@ -1100,19 +1100,6 @@ zeroing a row of each generator.
 Check: =struct-local-initializer= and =struct-local-list-initializer=
 compile, and a probe compares the object's bytes.
 
-** TODO A comma whose right operand is a record's assignment is refused where its value is dropped
-
-~n++, a = b;~ is refused, "not yet: value of struct", though the
-assignment's value is dropped as the statement's is: the check of a
-dropped expression refuses a comma with a record right operand
-before it asks what the operand is. Both generators' effect rows
-reach through a comma's right operand already.
-
-Fix: the check takes a comma whose right operand is a record's
-assignment.
-
-Check: the row =struct-comma-effect= compiles.
-
 * Lexer
 
 ** TODO A digit separator is a missing quote

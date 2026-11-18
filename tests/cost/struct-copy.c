@@ -16,7 +16,9 @@
    by a variable index; text_units() the 32 bytes of a char array, 32
    units of 1, a loop; held() *next() = *last(), the left's place a
    call's result held across the right's call; and registers() *r =
-   *q on two register pointers.
+   *q on two register pointers.  comma_effects() is the copy as the
+   right operand of a comma whose own value is not wanted: in a for's
+   third clause, as a statement and under a cast to void.
 
    On x86-64 each unit is the load of its width into a scratch
    register, the zero-extending movzbl or movzwl for 1 and 2 bytes, and
@@ -46,6 +48,11 @@
    spilled across the call of last, movq %rax, -8(%rbp), and reloaded,
    then two movzwl and movw units; and registers() movzwl (%r12),
    %eax; movw %ax, (%rbx) and at 2, no copy of either register.
+   comma_effects() is the comma's left operand first, addl $1,
+   -16(%rbp) in the clause and addl $1, -12(%rbp) in the other two,
+   then the same two movl units, from (%rax,%rcx,8) and 4(%rax,%rcx,8)
+   into corner in the clause, and between corner and origin in the
+   other two.
 
    On aarch64 each unit is the plain load of its width into x17 and its
    store, lowest address first, and no call: through() ldr w17, [x1];
@@ -74,7 +81,12 @@
    w17 by #1; held() next's result stored to its spill slot across the
    call of last and reloaded once, then two ldrh and strh units; and
    registers() ldrh w17, [x20]; strh w17, [x19] and at #2, the two
-   register pointers the bases. */
+   register pointers the bases.  comma_effects() is the comma's left
+   operand first, the load, add w0, w0, #1 and the store of i in the
+   clause and of n in the other two, then the two units, ldr w17, [x0]
+   and ldr w17, [x0, #4] into corner's page through x16 in the clause
+   after add x0, x0, w1, sxtw #3, and between corner and origin through
+   x16 in the other two. */
 struct point
 {
         int x, y;
@@ -156,6 +168,20 @@ effects(struct point *points, int n)
         (void) (origin = corner);
 
         return (corner = origin, corner.x);
+}
+
+int
+comma_effects(struct point *points, int n)
+{
+        int i;
+
+        for (i = 0; i < n; i++, corner = points[i])
+                ;
+
+        n++, origin = corner;
+        (void) (n++, corner = origin);
+
+        return n;
 }
 
 struct code
