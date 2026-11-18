@@ -4,8 +4,9 @@
    parameters; the arguments of the types a string names; a list handed
    to vsnprintf, whose doubles the caller passed in vector registers,
    directly and through a function of rcc's that takes it; a list
-   copied, started again, and handed to clang's code; and a call of one
-   of them from rcc's code.  See variadics.h. */
+   copied, started again, handed to clang's code, and read again after
+   it was handed on; and a call of one of them from rcc's code.  See
+   variadics.h. */
 
 #include <stdio.h>
 
@@ -172,4 +173,25 @@ long
 called(void)
 {
         return sum3_l(1, 2, 3, 4, -5L, 6L, 0x123456789L, 8L);
+}
+
+/* count longs read by clang's code from the list handed to it, then
+   count more read from the caller's list, 7.16p3: on aarch64 the list
+   passes as the address of a copy the caller makes, so the caller's
+   stands where it stood, and on x86-64 as its own address, so it
+   stands past them */
+long
+handed(int count, ...)
+{
+        va_list ap;
+        long h;
+        int n;
+
+        va_start(ap, count);
+        h = list_sum(count, ap);
+        for (n = count; n > 0; --n)
+                h = h * 7 + va_arg(ap, long);
+        va_end(ap);
+
+        return h;
 }

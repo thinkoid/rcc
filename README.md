@@ -179,12 +179,13 @@ unit of the record's alignment, lowest address first (G18). Then the
 variable argument lists in the parser: `va_list` as the target's
 convention has it, and `va_arg`, `va_start`, `va_copy` and `va_end`
 built of the tree's own nodes, so a function that takes a list reads
-it, which the `lists` probe checks against `clang`'s. Then on x86-64
-a definition's `va_start`: the prologue stores every argument
-register, general and vector, into the function's save area, and
-the list is built from it (G19), so a list made by rcc's code is read
-by `clang`'s and by the C library's `vsnprintf`, which the
-`variadics` probe checks; on aarch64 it is refused yet.
+it, which the `lists` probe checks against `clang`'s. Then a
+definition's `va_start` in both generators: the prologue stores
+every argument register, general and vector, into the function's
+save area, and the list is built from it (G19), so a list made by
+rcc's code is read by `clang`'s and by the C library's `vsnprintf`,
+which the `variadics` probe checks; on aarch64 a list handed to a
+call is the address of a copy the caller makes.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/`, the cost corpus over `tests/cost/`
 and the error corpus over `tests/error/`, the programs rcc refuses

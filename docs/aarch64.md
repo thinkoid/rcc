@@ -650,6 +650,25 @@ the first eight. Every parameter is then a slot at a known offset, at
 two instructions for each one past the eighth. On x86 such a
 parameter stays where the caller pushed it.
 
+A variadic definition that calls `va_start` has the area the list is
+built from (`shape.md` chapter 4), the convention's register save
+area: 200 bytes, the function's first slot, aligned to 16, and written
+first after the save area's stores, before the copies of the
+parameters past the eighth and the stores of the first eight. `x0` to
+`x7` go from its start by four `stp`, `stp x0, x1, [x29, #16]` to `stp
+x6, x7, [x29, #64]`, the named parameters' among them, `q0` to `q7`
+from 64 by four `stp` of `q` registers, `stp q0, q1, [x29, #80]` to
+`stp q6, q7, [x29, #176]`, every register whatever the caller passed,
+since a list handed to the C library may carry a `double` in a vector
+register; and at 192 the address of the first argument the caller left
+on the stack past the named ones, `x29` plus `T` and 8 for each named
+parameter past the eighth, formed in `x16`: `add x16, x29, #272; str
+x16, [x29, #208]`. The parameters' stores and copies read the argument
+registers and write none of them, so the area holds the registers as
+they arrived whatever comes after it. The `stp` of `q` registers takes
+a displacement scaled by 16 up to 1008, and the area, at the bottom of
+the frame, is in its reach.
+
 ### 5.3 A slot beyond reach
 
 A slot's displacement is encodable for its access when it is a
@@ -1379,7 +1398,12 @@ Every argument is a hidden local of its call, as before.
 2. The callee of a call through a pointer is evaluated first and
    written to a slot of 8 bytes of its own, taken before it is
    evaluated, by the store row of 6.6, `str x0, [x29, #32]`. Then each
-   argument in turn is written to its slot by the store row of 6.6.
+   argument in turn is written to its slot by the store row of 6.6. A
+   `va_list` argument, which the convention passes as the address of a
+   copy the caller makes, a record of more than 16 bytes, takes a slot
+   of 32 bytes when its turn comes and is copied into it by the copy
+   of 6.6, four `ldr x17` and `str x17` units, so that an argument
+   after it that reads or steps the list leaves the copy as it was.
 3. The call sequence. What the arguments left held in an expression
    register is spilled first (`backend.md` 6.7). With more than
    eight arguments, `sub sp, sp, #A` opens the outgoing area, `A`
@@ -1395,8 +1419,10 @@ Every argument is a hidden local of its call, as before.
    `w` register and 32768 of an `x`, is stored through `x16` formed
    from `sp`, as a far slot's address is from `x29` (5.3): `add x16,
    sp, #4096; strb w17, [x16]`. The first eight are loaded from their
-   slots into `x0` to `x7`, a narrow one extended by its load. `bl
-   f` for a named function. Through a pointer, the callee's slot is
+   slots into `x0` to `x7`, a narrow one extended by its load. A
+   list's argument is its copy's address, `add x1, x29, #272` into its
+   register, or past the eighth `add x17, x29, #272; str x17, [sp]`.
+   `bl f` for a named function. Through a pointer, the callee's slot is
    loaded into `x16` after the argument registers, `ldr x16, [x29,
    #32]`, and `blr x16`. `x16` is the register the convention lets a
    call destroy, and nothing is held in it across a node (chapter 4).
@@ -1443,6 +1469,7 @@ done, for the sake of a call with nine arguments.
 | G16 a call goes out as written | chapter 8: the convention's argument moves with the call site's types, then `bl f`, or `ldr x16` from the callee's slot and `blr x16` through a pointer |
 | G17 a string literal is writable | `.data`, chapter 10 |
 | G18 a struct assignment copies its object | each unit `ldrb`, `ldrh` or `ldr` into `x17` and its store, lowest address first, unrolled to eight units and a loop of four instructions beyond, 6.6; no `bl` |
+| G19 variable arguments are read where the convention put them | the area of 5.2 at entry, `stp x0, x1` to `stp q6, q7` and the stacked arguments' address; `va_arg` the test of `__gr_offs` and the load at the slot; a list argument the address of a 32-byte copy, chapter 8 |
 
 G4 is the row to read twice. `guarantees.md` already says "x86 `idiv`
 faults on a zero divisor and on `INT_MIN / -1`; aarch64 `sdiv` yields

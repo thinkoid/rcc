@@ -66,6 +66,7 @@ int ref_format_through(char *, size_t, const char *, ...);
 long copied(int, ...), ref_copied(int, ...);
 long restarted(int, ...), ref_restarted(int, ...);
 long relayed(int, ...), ref_relayed(int, ...);
+long handed(int, ...), ref_handed(int, ...);
 long called(void), ref_called(void);
 
 static long total;
@@ -140,6 +141,10 @@ main(void)
                 report("relayed", 0, count, relayed(count, VALUES_l),
                        ref_relayed(count, VALUES_l));
         }
+
+        for (int count = 0; count <= MOST / 2; ++count)
+                report("handed", 0, count, handed(count, VALUES_l),
+                       ref_handed(count, VALUES_l));
 
         report("called", 0, 0, called(), ref_called());
 

@@ -22,23 +22,6 @@ assembles and links. The reasons are =docs/findings.md= and
 in =docs/design-calls.md=. The chapter holds c1's own defects on both
 targets; the second target's design is =docs/aarch64.md=.
 
-** TODO aarch64: a function that calls =va_start=, and a list as an argument, are not yet
-
-c1 stops at a variadic definition that calls =va_start=, "not yet:
-va_start", as on x86-64, and at a call that hands a list on, "not
-yet: va_list passed by value": the convention passes the list's
-record as the address of a copy the caller makes, and c1 makes no
-copy.
-
-Fix: the prologue stores =x0= to =x7= and =q0= to =q7= into the save
-area, and at offset 192 the address of the first argument on the
-stack past the named ones; a call copies a list argument into a slot
-of 32 bytes by the record copy's rule and passes the slot's address.
-
-Check: the =variadics= probe runs on aarch64, its =format= rows the
-ones that see the vector half; the cost program is pinned; the error
-rows =va-start= and =va-list-handed-on= leave.
-
 ** TODO A returned ~?:~ whose arms store through a call's result moves each into the result register
 
 A returned conditional joins in the result register: on aarch64 at

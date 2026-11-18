@@ -197,6 +197,15 @@ path, there the address stepped by `addq $8`, here `addl $8` on the
 offset and the area plus the offset less 8, then the load of the
 type's width; a list handed on is the address of the caller's own
 record, which the callee's `va_arg` advances (`backend.md` chapter 5).
+On aarch64: at entry, before anything of the function's own, four
+`stp` of `x0` to `x7` and four `stp` of `q0` to `q7` into the area,
+then the address of the stacked arguments past the named ones, `add
+x16, x29, #272; str x16, [x29, #208]`; `va_arg` the test of
+`__gr_offs`, the step of the offset or of `__stack`, and the load of
+the slot; a list handed on is copied by G18's four units into a slot
+of the call's own and passed as that slot's address, `add x1, x29,
+#272`, so the callee's `va_arg` advances the copy (`aarch64.md` 5.2,
+chapter 8).
 
 ## Not in this list
 

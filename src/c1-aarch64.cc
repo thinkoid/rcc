@@ -940,27 +940,41 @@ last_access(address_t a)
     return a;
 }
 
+// A slot's address, x29 plus its displacement, into the register r,
+// 5.3: add r, x29, #d, and where the add's 12 bits do not encode d the
+// two adds, the upper part shifted first, and one when the lower part
+// is zero.  The sum is formed in r, so x16 is not used unless it is r.
+void
+frame_address(state_t &s, const std::string &r, long displacement)
+{
+    const long upper = displacement & ~0xfffL;
+    const long lower = displacement & 0xfffL;
+
+    if (upper == 0) {
+        insn(s, "add", { r, "x29", imm(lower) });
+        return;
+    }
+
+    insn(s, "add", { r, "x29", imm(upper) });
+    if (lower != 0)
+        insn(s, "add", { r, r, imm(lower) });
+}
+
 // The address of a slot or of a label as a value, valid to 64, a name's
 // plus a constant included (6.3).  A label is formed PC-relative in two
 // instructions, adrp L, .Ls0 for its 4 KiB page and add L, L,
 // :lo12:.Ls0 for the offset in it, chapter 3, each with the label's
-// displacement, adrp L, table+12.  A slot is add L, x29, #d; a
-// displacement add's 12 bits do not encode is the two adds of 5.3, the
-// upper part shifted first, and one when the lower part is zero.  The
-// sum is formed in L, so x16 is not used.  Any other dereference's
-// address is never here: address_value() takes it as the pointer's
-// value.  The row reads no operand, so a register variable handed down
-// is L, written by the slot's add, add x19, x29, #16, and by the
-// label's pair and the two adds alike, adrp x19, buf; add x19, x19,
-// :lo12:buf (chapter 4).
+// displacement, adrp L, table+12.  A slot is frame_address()'s, add L,
+// x29, #d.  Any other dereference's address is never here:
+// address_value() takes it as the pointer's value.  The row reads no
+// operand, so a register variable handed down is L, written by the
+// slot's add, add x19, x29, #16, and by the label's pair and the two
+// adds alike, adrp x19, buf; add x19, x19, :lo12:buf (chapter 4).
 value_t
 address_of(state_t &s, const address_t &a, into_t *into = nullptr)
 {
     if (a.base.id >= 0)
         throw std::logic_error("c1: a held base taken as a value");
-
-    const int upper = a.displacement & ~0xfff;
-    const int lower = a.displacement & 0xfff;
 
     const bool direct = takes(into, 64);
     const auto v = direct ? value_t { } : fresh(s, 64);
@@ -972,14 +986,8 @@ address_of(state_t &s, const address_t &a, into_t *into = nullptr)
         insn(s, "adrp", { r, symbol });
         insn(s, "add", { r, r, std::format(":lo12:{}", symbol) });
     }
-    else if (upper == 0) {
-        insn(s, "add", { r, "x29", imm(lower) });
-    }
-    else {
-        insn(s, "add", { r, "x29", imm(upper) });
-        if (lower != 0)
-            insn(s, "add", { r, r, imm(lower) });
-    }
+    else
+        frame_address(s, r, a.displacement);
 
     return direct ? taken(s, *into) : v;
 }
@@ -3969,6 +3977,90 @@ outgoing_operand(state_t &s, std::size_t k, int size)
     return std::format("[x16, #{}]", lower);
 }
 
+// copy_object() comes with the copy of a record, after call(), which
+// copies a list argument with it.
+void copy_object(state_t &, address_t, address_t, const record_t &);
+
+// An argument's slot, chapter 8: its displacement and its type, or, for
+// a va_list, the slot of the list's copy, whose address is passed.
+struct argument_slot_t
+{
+    int displacement;
+    int_t type;
+    bool by_reference = false;
+};
+
+// A va_list argument, 7.16p3, chapter 8: the convention passes a record
+// of more than 16 bytes as the address of a copy the caller makes, so
+// the list is copied into a slot of the call's own, 32 bytes, by the
+// copy of a record, copy_object(), four ldr x17 and str x17 units, when
+// the argument's turn comes (G13): an argument after it that reads or
+// steps the list leaves the copy as it was.  The slot's address is the
+// argument, add x2, x29, #d.
+argument_slot_t
+list_copy(state_t &s, const expr_t &arg)
+{
+    const auto &r = *as< record_type_t >(arg.type).record;
+    const int displacement = allocate(s, static_cast< long >(r.size),
+                                      static_cast< int >(r.alignment));
+    copy_object(s, slot_address(displacement), address(s, arg), r);
+
+    return { .displacement = displacement,
+             .type = { .width = 64, .is_signed = false },
+             .by_reference = true };
+}
+
+// Each argument of a call written to a slot of its own, chapter 8, in
+// order and complete before the next (G13): taken before the argument
+// is evaluated and written by the store row of 6.6, or for a va_list
+// the list's copy, list_copy().
+std::vector< argument_slot_t >
+argument_slots(state_t &s, const call_t &c, const function_t &f)
+{
+    std::vector< argument_slot_t > slots;
+    for (std::size_t i = 0; i < c.args.size(); ++i) {
+        const auto &arg = c.args[i];
+
+        if (i < f.params.size() && !(arg.type == *f.params[i]))
+            throw std::logic_error("c1: an argument unlike its parameter");
+
+        if (is< record_type_t >(arg.type)) {
+            slots.push_back(list_copy(s, arg));
+            continue;
+        }
+
+        const auto &type = integer(arg.type);
+        const int displacement =
+            allocate(s, size_of(arg.type), align_of(arg.type));
+        initialize(s, arg, slot_address(displacement), type);
+
+        slots.push_back({ .displacement = displacement, .type = type });
+    }
+
+    return slots;
+}
+
+// The first eight arguments into x0 to x7, chapter 8: each loaded from
+// its slot, a narrow one extended by its load, and a va_list its
+// copy's address, add x1, x29, #272.
+void
+load_arguments(state_t &s, const std::vector< argument_slot_t > &slots)
+{
+    const std::size_t registers = std::size(argument_registers);
+
+    for (std::size_t i = 0; i < std::min(registers, slots.size()); ++i) {
+        const auto &[displacement, type, by_reference] = slots[i];
+        if (by_reference) {
+            frame_address(s, reg(argument_registers[i], 64), displacement);
+            continue;
+        }
+
+        const auto [mnemonic, width] = load_of(type, std::max(32, type.width));
+        const auto from = slot_operand(s, displacement, type.width / 8);
+        insn(s, mnemonic, { reg(argument_registers[i], width), from });
+    }
+}
+
 // The callee of a call through a pointer, chapter 8: a hidden local of
 // its call, as an argument is, an 8-byte slot taken before the callee
 // is evaluated and written by the store row of 6.6.  Returns the slot's
@@ -4000,19 +4092,21 @@ call_through(state_t &s, int displacement)
 // value is spilled; the callee of a call through a pointer is evaluated
 // first, as the source writes it (G13), and written to its slot; each
 // argument, in order and complete before the next, is written to a slot
-// of its own, taken before it is evaluated, by the store row of 6.6;
-// what the arguments left held is spilled in its turn, backend.md 6.7.
-// The arguments past the eighth are copied from their slots to the
-// outgoing area, opened below the frame for this call alone, and the
-// first eight are loaded into x0 to x7, a narrow one extended to 32
-// bits by its type's load.  G16: bl f, the name alone, since the linker
-// makes a PLT entry where one is needed, or the call through the
-// callee's slot, call_through(); a variadic callee gets nothing of its
-// own (chapter 3).  No unwind directive is written around the area,
-// since the canonical frame address is computed from x29.  The result
-// is in x0, valid to its type's width and no further, 6.3: the
-// convention leaves the bits above a narrow one unspecified, and the
-// width rule extends it where it is used wider.
+// of its own, taken before it is evaluated, by the store row of 6.6; a
+// va_list is copied to a slot of its own in its turn, list_copy(), and
+// passes as that slot's address; what the arguments left held is
+// spilled in its turn, backend.md 6.7. The arguments past the eighth
+// are copied from their slots to the outgoing area, opened below the
+// frame for this call alone, and the first eight are loaded into x0 to
+// x7, a narrow one extended to 32 bits by its type's load.  G16: bl f,
+// the name alone, since the linker makes a PLT entry where one is
+// needed, or the call through the callee's slot, call_through(); a
+// variadic callee gets nothing of its own (chapter 3).  No unwind
+// directive is written around the area, since the canonical frame
+// address is computed from x29.  The result is in x0, valid to its
+// type's width and no further, 6.3: the convention leaves the bits
+// above a narrow one unspecified, and the width rule extends it where
+// it is used wider.
 value_t
 call(state_t &s, const call_t &c, const type_t &t)
 {
@@ -4023,23 +4117,7 @@ call(state_t &s, const call_t &c, const type_t &t)
 
     const int target = named ? 0 : callee_slot(s, *c.callee);
 
-    std::vector< std::pair< int, int_t > > slots;
-    for (std::size_t i = 0; i < c.args.size(); ++i) {
-        const auto &arg = c.args[i];
-        if (is< record_type_t >(arg.type))
-            not_yet("va_list passed by value");
-
-        const auto &type = integer(arg.type);
-
-        if (i < f.params.size() && !(arg.type == *f.params[i]))
-            throw std::logic_error("c1: an argument unlike its parameter");
-
-        const int displacement =
-            allocate(s, size_of(arg.type), align_of(arg.type));
-        initialize(s, arg, slot_address(displacement), type);
-
-        slots.emplace_back(displacement, type);
-    }
+    const auto slots = argument_slots(s, c, f);
 
     // the call destroys every expression register: nothing is held
     // from here to the bl
@@ -4054,20 +4132,17 @@ call(state_t &s, const call_t &c, const type_t &t)
         insn(s, "sub", { "sp", "sp", imm(part) });
 
     for (std::size_t i = registers; i < slots.size(); ++i) {
-        const auto &[displacement, type] = slots[i];
+        const auto &[displacement, type, by_reference] = slots[i];
 
-        copy_in(s, displacement, type.width);
+        if (by_reference)
+            frame_address(s, "x17", displacement);
+        else
+            copy_in(s, displacement, type.width);
         copy_out(s, outgoing_operand(s, i - registers, type.width / 8),
                  type.width);
     }
 
-    for (std::size_t i = 0; i < std::min(registers, slots.size()); ++i) {
-        const auto &[displacement, type] = slots[i];
-        const auto [mnemonic, width] = load_of(type, std::max(32, type.width));
-
-        const auto from = slot_operand(s, displacement, type.width / 8);
-        insn(s, mnemonic, { reg(argument_registers[i], width), from });
-    }
+    load_arguments(s, slots);
 
     if (named)
         insn(s, "bl", { assembly_name(*named) });
@@ -4369,22 +4444,14 @@ copy_loop(
     release(s, source);
 }
 
-// A struct or union assignment, 6.5.17.2p2, its value not wanted: the
-// right operand's object copied into the left's in units of the type's
-// alignment, padding included, no call, chapter 6.6.  The left's place
-// first, then the right's (G13), the left's held across the right's by
-// the rule of a store's address, as a scalar assignment's is: one
-// register where the right holds a call, and a constant index written
-// after it, held_index()'s.  A register pointer's step is its own add,
-// before the copy for ++p and after it for p++.  Up to eight units the
-// copy is unrolled, copy_units(); more are copy_loop()'s.
+// The object of record r at from copied to to, both places evaluated,
+// in units of the type's alignment, padding included, no call, chapter
+// 6.6.  A register pointer's step is its own add, before the copy for
+// ++p and after it for p++.  Up to eight units the copy is unrolled,
+// copy_units(); more are copy_loop()'s.
 void
-copy_record(state_t &s, const assign_t &a, const record_t &r)
+copy_object(state_t &s, address_t to, address_t from, const record_t &r)
 {
-    auto to = address(s, *a.lhs, a.rhs.get());
-    auto from = address(s, *a.rhs);
-    to = held_index(s, to, registers_of(s, from));
-
     const step_t steps[] = { to.step, from.step };
     const value_t bases[] = { to.base, from.base };
     for (int k = 0; k < 2; ++k)
@@ -4410,6 +4477,22 @@ copy_record(state_t &s, const assign_t &a, const record_t &r)
     for (int k = 0; k < 2; ++k)
         if (steps[k].variable && !steps[k].before)
             make_step(s, steps[k], bases[k]);
+}
+
+// A struct or union assignment, 6.5.17.2p2, its value not wanted: the
+// right operand's object copied into the left's, copy_object().  The
+// left's place first, then the right's (G13), the left's held across
+// the right's by the rule of a store's address, as a scalar
+// assignment's is: one register where the right holds a call, and a
+// constant index written after it, held_index()'s.
+void
+copy_record(state_t &s, const assign_t &a, const record_t &r)
+{
+    auto to = address(s, *a.lhs, a.rhs.get());
+    auto from = address(s, *a.rhs);
+    to = held_index(s, to, registers_of(s, from));
+
+    copy_object(s, to, from, r);
 }
 
 // The effect context, chapter 6.6, Ritchie's efftab beside regtab and
@@ -4673,6 +4756,41 @@ stack_parameters(state_t &s, const function_decl_t &fd, long size)
     }
 }
 
+// The area va_start reads, fd.va_area, of a variadic definition that
+// calls it, 7.16.1.4, the convention's register save area, chapter 5.2:
+// the 200 bytes of the parser's hidden local, written first after the
+// prologue, before anything of the function's own, so that it holds the
+// argument registers as they arrived: x0 to x7 from its start by four
+// stp, the named parameters' among them, and q0 to q7 from 64 by four
+// stp q, all of them whatever the caller passed, for a callee of
+// another compiler's that reads a double from the list; then at 192 the
+// address of the first argument the caller left on the stack past the
+// named ones, x29 plus the frame's size and 8 for each named parameter
+// past the eighth, formed in x16, add x16, x29, #size.  Its slot is
+// aligned to 16 and is the function's first, so each stp reaches it.
+void
+fill_va_area(state_t &s, const function_decl_t &fd, long size)
+{
+    const int at = slot_of(s, fd.va_area);
+
+    for (int k = 0; k < 8; k += 2)
+        insn(s, "stp",
+             { reg(argument_registers[k], 64),
+               reg(argument_registers[k + 1], 64),
+               std::format("[x29, #{}]", at + 8 * k) });
+
+    for (int k = 0; k < 8; k += 2)
+        insn(s, "stp",
+             { std::format("q{}", k), std::format("q{}", k + 1),
+               std::format("[x29, #{}]", at + 64 + 16 * k) });
+
+    const long named = static_cast< long >(fd.params.size());
+    const long past = std::max(0L, named - 8);
+
+    frame_address(s, "x16", size + 8 * past);
+    insn(s, "str", { "x16", std::format("[x29, #{}]", at + 192) });
+}
+
 // The displacement off x29 of the k-th register of the save area, 5.1:
 // 8 bytes each, from just above the frame record.
 int
@@ -4787,9 +4905,6 @@ epilogue(state_t &s, long size)
 void
 function(state_t &s, const function_decl_t &fd)
 {
-    if (fd.va_area)
-        not_yet("va_start");
-
     s.body.str({ });
     s.slots.clear();
     s.owner.fill(-1);
@@ -4807,6 +4922,9 @@ function(state_t &s, const function_decl_t &fd)
     s.user_labels.clear();
     s.case_labels.clear();
 
+    if (fd.va_area)
+        s.slots.emplace(fd.va_area, allocate(s, size_of(fd.va_area->type), 16));
+
     parameters(s, fd);
     block_stmt(s, *fd.body);
 
@@ -4817,6 +4935,8 @@ function(state_t &s, const function_decl_t &fd)
 
     const auto body = s.body.str();
     s.body.str({ });
+    if (fd.va_area)
+        fill_va_area(s, fd, size);
     stack_parameters(s, fd, size);
 
     const auto name = assembly_name(*fd.sym);
