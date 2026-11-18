@@ -84,10 +84,10 @@ as(const type_t &t)
 // Structural: two pointer types are equal when their pointees are.
 bool operator==(const type_t &, const type_t &);
 
-// The size and the alignment in bytes, the x86-64 ABI's: an integer
-// its width, a pointer 8, an array its count times its element's and
-// its element's alignment.  A void, function or not-yet type has
-// neither; asking throws.
+// The size and the alignment in bytes, the same on both targets, the
+// sizes LP64's: an integer its width, a pointer 8, an array its count
+// times its element's and its element's alignment.  A void, function
+// or not-yet type has neither; asking throws.
 long size_of(const type_t &);
 int align_of(const type_t &);
 

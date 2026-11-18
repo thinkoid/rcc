@@ -212,7 +212,8 @@ object_of(const expr_t &e)
 // register variables
 
 // The register variable an lvalue names, or null.  The parser gave the
-// symbol its register, or declared the sixth an ordinary local.
+// symbol its register, or declared one past the target's count an
+// ordinary local.
 const symbol_t *
 register_variable(const expr_t &e)
 {

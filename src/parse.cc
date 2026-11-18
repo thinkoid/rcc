@@ -1218,8 +1218,8 @@ logical(const token_t &op, expr_t lhs, expr_t rhs)
 
 // << >>: the type of the promoted left operand, 6.5.8p3.  The integer
 // promotions are performed on each operand on its own there, so the
-// count keeps its promoted type; the instruction reads only its low
-// bits, in cl (G3).
+// count keeps its promoted type; the target's instruction reads only
+// its low bits (G3).
 expr_t
 shift(const token_t &op, expr_t lhs, expr_t rhs)
 {

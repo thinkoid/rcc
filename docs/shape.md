@@ -112,7 +112,8 @@ made, so sharing is invisible and copying a type is cheap. Equality
 is structural, through the edges. No interning; a table of types is
 an optimization taken when it is measured. The size and the
 alignment of a type are the type's, `size_of` and `align_of`, the
-x86-64 ABI's numbers; the parser folds `sizeof` from them and c1
+same on both targets, the sizes LP64's; the parser folds `sizeof`
+from them and c1
 sizes and aligns the slots from them. A pointer to a function is a
 pointer as any other: 8 bytes, an address, of a type that compares
 through the function's result and parameters.
@@ -611,9 +612,9 @@ the unit, and the driver prints the unit's warnings after a
 successful parse, on standard error in the error's format, `warning`
 in place of `error`. `-w` silences them, and no warning changes the
 exit status. The one warning is for a `register` variable whose
-register would be past the target's count, the sixth on x86-64,
-which takes a slot
-(`backend.md` chapter 4).
+register would be past the target's count, the sixth on x86-64 and
+the eleventh on aarch64, which takes a slot (`backend.md` chapter
+4).
 
 Exit status: 0; 1 for a diagnosed error or a failed system call; 2
 for a usage error; 3 for an internal error, a construct c1 does not

@@ -171,25 +171,6 @@ Check: =register-destination='s =chosen_widened= and
 =chosen_called=, and the count of moves after a join into a register
 variable over =tests=.
 
-** TODO Four comments of the shared sources describe x86-64 alone
-
-Each is in text both targets read, and each is true of one:
-
-- =src/type.hh= on =size_of= and =align_of=, and =docs/shape.md=
-  chapter 3, call the sizes and alignments "the x86-64 ABI's"; the
-  aarch64 generator reads the same functions.
-- =src/parse.cc= on =shift()= says the instruction reads the count's
-  low bits "in cl".
-- =src/c1-common.cc= on the register variable an lvalue names says
-  the parser "declared the sixth an ordinary local"; on aarch64 it is
-  the eleventh.
-
-Fix: each says what holds for both targets: the sizes are LP64's, and
-the count is the target's.
-
-Check: no comment of =type.hh=, =parse.cc= or =c1-common.cc= names a
-register or a number of one target alone.
-
 ** TODO A refusal of c1 names no place
 
 c1's not-yets print "rcc: internal error: c1: not yet: a frame of 2
