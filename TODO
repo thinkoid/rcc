@@ -169,21 +169,6 @@ Fix: none taken; compare the two forms' counts per case.
 
 Check: the count over =tests=, and no function longer.
 
-*p~ is =addq $1, %rax; movslq 4(%rax), %rax=, where =movslq 5(%rax),
-%rax= is one instruction: the subscript's pointer is the cast,
-generated as a value; the 80 =kview_index_*= rows of the pointers
-probe have it. ~*(short *) ((char *) p + i * 4 + 2)~ is =addq %rcx,
-%rax; movswl 2(%rax), %eax=, where the index joins the operand,
-=movswl 2(%rax,%rcx,1), %eax=: =byte_after_index()= of
-=subscript-displacement=.
-
-Fix: =constant_indexed()= and =index_base()= take their pointer
-through =cast_sum()=, the inner sum's rows forming a base, a
-displacement and an index.
-
-Check: =kview_index_*= one instruction shorter, =byte_after_index()=
-with the index in the operand, and no function longer.
-
 ** TODO aarch64: a narrow or widened prefix step's value is stepped outside the register variable
 
 ~r = ++c~ on a =char= in memory into a ~register int r~ is =ldrb w0,
