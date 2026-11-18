@@ -5280,6 +5280,120 @@ modify(state_t &s, const unary_t &u)
     release(s, place);
 }
 
+// record copies
+
+// One unit of a record's copy, backend.md 6.6: width bits at offset off
+// the right's place loaded into scratch, then stored at the same offset
+// off the left's, movzwl 2(%rcx), %edx; movw %dx, 2(%rax).  The load is
+// the unsigned type's, which writes the whole register, so no unit
+// reads the register's old content (G18).
+void
+copy_unit(state_t &s,
+          const address_t &to,
+          const address_t &from,
+          long offset,
+          int width,
+          reg_t scratch)
+{
+    auto source = from;
+    auto target = to;
+    source.displacement += offset;
+    target.displacement += offset;
+
+    const auto [load, loaded] = extension(int_t { width, false }, 32);
+    insn(s, load, { operand(s, source), reg(scratch, loaded) });
+    insn(s, sized("mov", width), { reg(scratch, width), operand(s, target) });
+}
+
+// A record's place as the copy reaches each of its size bytes from the
+// place's displacement, backend.md 6.6: the place itself where every
+// displacement up to size fits 32 bits, or for a loop, indexed, where
+// it also takes the loop's index, a slot or a base and a displacement;
+// otherwise the address formed by its leaq, the bytes off its register:
+// a label, which takes no index, and an address with an index of its
+// own.  Its registers reloaded, so that no unit reloads one.
+address_t
+reached(state_t &s, const address_t &a, long size, bool indexed)
+{
+    const bool joins = !indexed || (a.label.empty() && a.index.id < 0);
+    const bool near =
+        !a.label.empty() || fits_imm32(wrapped_add(a.displacement, size));
+
+    auto reach = joins && near ? a : address_t { .base = address_of(s, a) };
+    operand(s, reach);
+
+    return reach;
+}
+
+// A record's copy of more than eight units, backend.md 6.6: one index
+// from -size up to 0 by the unit, which both places join, so the unit's
+// two accesses address size bytes above it, and the add that steps the
+// index sets the flag the loop's jne tests: movq $-72, %rcx; then
+// movq -64(%rbp,%rcx,1), %rdx; movq %rdx, (%rax,%rcx,1); addq $8,
+// %rcx; jne back, five instructions whatever the size.  The copy is
+// still lowest address first (G18).
+void
+copy_loop(state_t &s,
+          const address_t &to,
+          const address_t &from,
+          long size,
+          int width,
+          reg_t scratch)
+{
+    const auto index = fresh(s, 64, bit(scratch));
+    const reg_t r = reg_of(s, index);
+    insn(s, "movq", { imm(-size), reg(r, 64) });
+
+    const int top = new_label(s);
+    place_label(s, top);
+
+    auto source = from;
+    auto target = to;
+    source.index = target.index = index;
+    copy_unit(s, target, source, size, width, scratch);
+    insn(s, "addq", { imm(width / 8), reg(r, 64) });
+    jump_if(s, binary_op_t::ne, false, top);
+
+    release(s, index);
+}
+
+// A record's assignment, backend.md 6.6 and G18: an inline copy in
+// units of the record's alignment, at most 8, of which its size is a
+// multiple,
+// lowest address first, each unit loaded and then stored, padding
+// included, and no call.  The left's place is evaluated first, held
+// across the right's as an assignment's is (place_of()), then the
+// right's (G13).  Up to eight units are written out; above that, a
+// loop, copy_loop()'s.  Each place keeps its own form, a slot, a label,
+// a base with a displacement and an index, the unit's offset in the
+// displacement.
+void
+copy_record(state_t &s, const assign_t &a)
+{
+    const auto &record = *as< record_type_t >(a.lhs->type).record;
+    const int unit = std::min(record.alignment, 8);
+    const long units = record.size / unit;
+    const bool loop = units > 8;
+
+    const auto left = place_of(s, a, 0);
+    const auto right = address(s, *a.rhs);
+
+    const auto to = reached(s, left, record.size, loop);
+    const auto from = reached(s, right, record.size, loop);
+    const auto scratch = fresh(s, 64);
+    const reg_t r = reg_of(s, scratch);
+
+    if (loop)
+        copy_loop(s, to, from, record.size, unit * 8, r);
+    else
+        for (long k = 0; k < units; ++k)
+            copy_unit(s, to, from, k * unit, unit * 8, r);
+
+    release(s, scratch);
+    release(s, to);
+    release(s, from);
+}
+
 // The effect context, chapter 6.6, Ritchie's efftab beside regtab and
 // cctab: an expression evaluated for its side effects, its value not
 // wanted.  A constant assigned to memory is stored directly, and a
@@ -5292,8 +5406,10 @@ modify(state_t &s, const unary_t &u)
 void
 effect(state_t &s, const expr_t &e)
 {
-    if (is< assign_t >(e) && is< record_type_t >(e.type))
-        not_yet("struct assignment");
+    if (is< assign_t >(e) && is< record_type_t >(e.type)) {
+        copy_record(s, as< assign_t >(e));
+        return;
+    }
 
     if (is< assign_t >(e)) {
         const auto &a = as< assign_t >(e);

@@ -6,6 +6,7 @@ g1-add-compare 0 1
 g11-misaligned 52 52
 g12-block-slot 5 9
 g17-string-store 122 97
+g18-struct-copy 4 4
 g6-ptr-wrap 0 1
 g7-ptr-equal 1 0
 g8-cross-object 3 2

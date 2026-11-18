@@ -231,22 +231,19 @@ generators for the sites above.
 Check: those sites with no clearing move, =unsigned_int_called()=
 with its own, and no function longer.
 
-** TODO Neither generator copies a record
+** TODO aarch64 does not copy a record
 
-~a = b~ on two structs or unions of one type is an assignment the
-parser builds, the two lvalues and the record's type, and each
-generator stops at it, "c1: not yet: struct assignment". The copy is
-decided: inline, in units of the type's alignment, 1, 2, 4 or 8
-bytes, from the lowest address up, each unit loaded and then stored
-before the next is loaded, padding included, and no call; the left
-operand's place is evaluated first, then the right's.
+~a = b~ on two structs or unions of one type is copied on x86-64,
+inline, unit by unit (G18, =backend.md= 6.6); the aarch64 generator
+stops at the assignment, "c1: not yet: struct assignment".
 
-Fix: the copy in each generator's =effect()=, unrolled up to 8 units
-and a loop above; the guarantee stated in =guarantees.md=.
+Fix: the copy in aarch64's =effect()= by the same rule, its
+instruction added to G18.
 
-Check: the =copies= probe runs on each machine with nothing
-differing; =struct-copy= is pinned on each target; the error row
-=struct-assignment= leaves, its program compiling.
+Check: the =copies= probe runs on the aarch64 machine with nothing
+differing; =struct-copy= and =g18-struct-copy= are pinned for
+aarch64; the error row =struct-assignment= leaves, its program
+compiling on both targets.
 
 * Guarantees
 

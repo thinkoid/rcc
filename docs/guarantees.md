@@ -150,6 +150,23 @@ compiler. Instruction: a `.string` under a label of its own in
 `.data`, one per joined literal, never in `.rodata`, so nothing marks
 it read-only and nothing merges it.
 
+**G18. A record's assignment copies its object, unit by unit.**
+6.5.17.2p2. `a = b` on two structs or unions of one type copies the
+right operand's object into the left's: inline, in units of the
+type's alignment, 1, 2, 4 or 8 bytes, of which its size is a
+multiple, from the lowest address up, each unit loaded and then
+stored before the next is loaded, padding included, with no call.
+The left operand's place is evaluated first, then the right's (G13).
+Only an exact overlap is defined (6.5.17.2p3); any other overlap is
+copied in the same order, and nothing checks for it, so `a = a`
+writes every unit over itself. Up to eight units are written out;
+above that, a loop copies them, in the same order. Instruction, on
+x86-64: per unit the plain load of its width into a scratch
+register, `movzbl`, `movzwl`, `movl` or `movq`, and the store,
+`movb`, `movw`, `movl` or `movq`, the unit's offset in each place's
+displacement; over eight units one index from minus the size up to
+0, the `add` that steps it the loop's test, `jne` back.
+
 ## Not in this list
 
 Implementation-defined behaviour beyond G2 and G3, fixed per target

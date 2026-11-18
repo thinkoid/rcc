@@ -931,7 +931,8 @@ code of a `backend.md` chapter:
   `c1-common`'s.
 
 A record's assignment reaches each generator in `effect(e)`, the one
-context the parser lets it stand in, and each refuses it there with
+context the parser lets it stand in. x86-64 copies the object there,
+inline, unit by unit (G18, `backend.md` 6.6); aarch64 refuses it with
 `c1: not yet: struct assignment`.
 
 A reader checking a promise opens c1's source, finds the function that
@@ -1141,8 +1142,8 @@ a conditional of two void calls.
 
 A local's initializer of a struct or a union and each use that
 reads or writes one whole (chapter 5: a `register` one, a record by
-value and its value), the copy of a record's assignment in each
-generator (chapter 6), the layout of a struct or a
+value and its value), the copy of a record's assignment on aarch64
+(chapter 6), the layout of a struct or a
 union with a bit-field, an anonymous member, an attribute that marks,
 `packed` and `aligned` among them, a flexible array member, no
 member, or a member of a type rcc does not use yet (chapter 3), C23's

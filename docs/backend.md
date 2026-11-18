@@ -1652,6 +1652,36 @@ the same point, after the right operand: `a += f(b)` for its value is
 has no memory destination for, `imull (%rax,%rcx,4), %edx` and the
 store.
 
+A record's assignment, `a = b` on two structs or unions of one type,
+stands only where its value is discarded, so it is this context's:
+`effect()` copies the object (G18). The left's place is evaluated
+first, held across the right's as an assignment's place is (6.3), so
+`*next() = *last()` spills `next`'s result across the call of `last`
+once; then the right's place. The copy is in units of the record's
+alignment, at most 8 bytes, which tile its size: each unit is the
+plain load of its width into a scratch register, the unsigned
+type's, `movzbl` or `movzwl` for 1 and 2 bytes, `movl` and `movq`,
+which writes the whole register and so reads nothing of its old
+content, then the store of the unit's width, before the next unit's
+load. The unit's offset is each place's displacement, and no address
+is formed: `movl (%rcx), %edx; movl %edx, (%rax)` and the same at 4
+for an 8-byte record through two pointers, `movzwl (%rax,%rcx,4),
+%edx; movw %dx, -16(%rbp)` from an element into a slot, `movq
+second+8(%rip), %rax; movq %rax, first+8(%rip)` between globals, and
+a register pointer's `(%rbx)` as it is. Up to eight units are
+written out. Above eight, one loop: an index from minus the size up
+to 0 by the unit, which both places take as their index at scale 1
+with the size in their displacement, so the add that steps it sets
+the flag the loop tests: `movq $-72, %rsi`, then `movq
+72(%rcx,%rsi,1), %rdx; movq %rdx, 72(%rax,%rsi,1); addq $8, %rsi;
+jne` back, five instructions whatever the size, one register for the
+index and one for the unit. Two pointers and a count would hold three
+registers and step two of them each unit. A slot and a base with a
+displacement take the index as they are; a label, which takes none,
+and an address with an index of its own are formed by their `leaq`
+or `addq` first, as is a place whose displacement plus the size no
+32-bit field holds.
+
 ### 6.7 Held values at a branch and at a call
 
 A value is held from the instruction that produces it to the one
@@ -2317,6 +2347,7 @@ row here, in the guarantee's voice.
 | G14 a loop runs until its condition says stop | chapter 7's `while`: a test and a jump, and no code that reasons about the test |
 | G16 a call goes out as written | chapter 8: the convention's argument moves with the call site's types, then `call f@PLT`, or `call *d(%rbp)` through a pointer |
 | G17 a string literal is writable | `.data`, chapter 10 |
+| G18 a record's assignment copies its object | 6.6: per unit of the record's alignment the plain `mov` load into a scratch register and the store, lowest address first; over eight units the loop of one index, `addq` and `jne` |
 
 G15 stays withdrawn. The never-emitted table, the IR flags the
 front end withheld from an optimizer that never ran, has no
