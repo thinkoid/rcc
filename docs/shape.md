@@ -178,7 +178,12 @@ Three sums.
   the promotion of its operand (6.5.4.3p2), a cast, and over an lvalue
   that no promotion converts, a cast to the lvalue's own type, since
   the result is a value and no lvalue; so `+x` is `(T) x`, `T` the
-  promoted type, and the source's `+` is no instruction. A
+  promoted type, and the source's `+` is no instruction. `!` is the
+  one operator whose operand the tree leaves unpromoted: `!E` is `(0
+  == E)` (6.5.4.3p5), whose comparison would promote a `char`, but a
+  promotion changes no zero, so the operand is tested against zero
+  at its own width, as a condition is, `cmpb $0, -1(%rbp)` for `!c`
+  on a `char`, and the result is the `int` the standard gives. A
   conditional of two void operands has type `void` (6.5.16p6) and
   stands where a value is dropped, as a call of a void function does;
   one void operand and one of a value is an error (p3). Two pointer

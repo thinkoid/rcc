@@ -1042,30 +1042,6 @@ is taken as the two compilers take it, the other arm for its effect.
 
 Check: the pin of =conditional-void-arm= agrees with the decision.
 
-** TODO The operand of =!= is not promoted
-
-=!E= is defined as =(0==E)= (6.5.4.3p5), and the equality operator
-promotes a =char= operand to =int=. The parser builds =!c= on the
-unpromoted =char=, and c1 tests it at the =char='s width, =cmpb $0,
--1(%rbp)= and =tst w0, #0xff=. The result is the same, 0 or 1, since
-an extension changes no zero, but the tree does not say what the
-standard says.
-
-With the promotion cast inserted by the parser and nothing else
-changed, c1 extends the value before it tests it: =movsbl -1(%rbp),
-%eax; cmpl $0, %eax=, and =uxtb w0, w0; cmp w0, #0= after a call. Over
-=tests= 285 functions gain an instruction on x86-64 and 15 on
-aarch64, and none loses one.
-
-Fix: none taken; decide. Either the parser promotes and both
-generators test a widened narrow value against zero at its narrow
-width, which then also holds for a ~(int) c == 0~ the source
-writes; or =!= stays on the unpromoted operand, as a condition is
-tested, and =shape.md= says so.
-
-Check: under the first, no function longer over =tests=; under the
-second, the sentence in =shape.md= chapter 5.
-
 ** TODO The comment on a local's declaration says 2 GiB
 
 The comment on =init_declarator()= says "A local of 2 GiB or more is
