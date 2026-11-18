@@ -287,11 +287,16 @@ in_reach(long long displacement, int size)
     return scaled || (displacement >= -256 && displacement <= 255);
 }
 
+void constant(state_t &, reg_t, long long value, int width);
+
 // A slot as the address operand of an access of size bytes, 5.3:
 // [x29, #d] in reach, else through x16, the add of the displacement's
-// upper 12 bits, shifted, and the access of its low 12.  The add is
-// written here, so the operand is formed just before its access, after
-// anything that could spill, since a spill uses x16 too.
+// upper 12 bits, shifted, and the access of its low 12.  An upper part
+// of 16 MiB or more, which the add's immediate does not encode, is held
+// in x16 by the constant row of 6.4 and added, add x16, x29, x16: only
+// a stack parameter of a frame near its limit lies there, 5.2.  The add
+// is written here, so the operand is formed just before its access,
+// after anything that could spill, since a spill uses x16 too.
 std::string
 slot_operand(state_t &s, int displacement, int size)
 {
@@ -301,7 +306,13 @@ slot_operand(state_t &s, int displacement, int size)
     const int upper = displacement & ~0xfff;
     const int lower = displacement & 0xfff;
 
-    insn(s, "add", { "x16", "x29", imm(upper) });
+    if (upper < 1 << 24)
+        insn(s, "add", { "x16", "x29", imm(upper) });
+    else {
+        constant(s, x16, upper, 64);
+        insn(s, "add", { "x16", "x29", "x16" });
+    }
+
     if (lower == 0)
         return "[x16]";
 
@@ -3277,7 +3288,8 @@ parameters(state_t &s, const function_decl_t &fd)
 // parameter is loaded straight into its register instead, by the load
 // of its type, which extends a narrow one, ldrsb w19, [x29, #48], chapter
 // 4.  A frame at its limit puts the third of them 16 MiB above x29,
-// where the add into x16 does not reach, 5.3: a not-yet.
+// past the add's immediate, where slot_operand() holds the upper part
+// in x16, 5.3.
 void
 stack_parameters(state_t &s, const function_decl_t &fd, long size)
 {
@@ -3289,8 +3301,6 @@ stack_parameters(state_t &s, const function_decl_t &fd, long size)
         const int width = t.width;
 
         const long above = size + 8 * static_cast< long >(i - registers);
-        if (above >= 1L << 24)
-            not_yet("a stack parameter 16 MiB or more above the frame record");
 
         if (in_register(*p)) {
             const auto [mnemonic, into] = load_of(t, register_width(p));

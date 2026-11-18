@@ -563,10 +563,7 @@ its own: `ldr w17, [x29, #T]; str w17, [x29, #44]`. The copies follow
 `mov x29, sp` and the save area's stores, and precede the stores of
 the first eight. Every parameter is then a slot at a known offset, at
 two instructions for each one past the eighth. On x86 such a
-parameter stays where the caller pushed it. One that lies 16 MiB or
-more above `x29`, where the `add` into `x16` does not reach (5.3), is
-a not-yet; only a frame within a few bytes of its limit puts one
-there.
+parameter stays where the caller pushed it.
 
 ### 5.3 A slot beyond reach
 
@@ -585,6 +582,20 @@ The `add` takes the displacement's upper 12 bits, shifted, and the
 access takes the low 12. Its address as a value, for `&x` or an
 array's decay, is `add x0, x29, #36864; add x0, x0, #24`, and one
 `add` when either part is zero.
+
+An upper part of 16 MiB or more is past the `add`'s immediate. It is
+held in `x16` by the constant row of 6.4 and added, and the access
+takes the low 12 bits as before:
+
+```
+	mov	x16, #16777216
+	add	x16, x29, x16
+	ldr	x17, [x16]
+```
+
+No slot lies there, since the frame is under 16 MiB (5.2); a
+parameter past the eighth does, when the frame is near its limit, and
+the prologue's copy reaches it so.
 
 A global the file defines is reached by the same mechanism with the
 symbol's page in place of the upper part: `adrp x16, counter`, then
@@ -1299,6 +1310,8 @@ compiles them against its own registers and state.
 
   The rows this target asks for have programs of their own:
   - `far-slot`, a slot beyond reach (5.3);
+  - `far-stack-parameter`, a stack parameter past the `add`'s reach
+    (5.3);
   - `constant-bits`, a constant by its bits (6.4);
   - `stack-parameter`, the stack parameter's copy (5.2);
   - `large-frame`, a frame of 4096 bytes or more (5.2).

@@ -200,26 +200,6 @@ Fix: =cast()='s comment moves down to =cast()=.
 
 Check: each of the two functions is under its own comment.
 
-** TODO aarch64: a stack parameter at the frame's limit is refused
-
-A parameter past the eighth is copied to its slot from above the
-frame, at =[x29, #T + 8(i - 8)]= with =T= the frame's size
-(=aarch64.md= 5.2). Past the load's reach the address is formed by
-an =add= into =x16=, whose immediate is 12 bits shifted by 12 (5.3),
-so it stops short of 16 MiB. The frame's own limit is 16 bytes under
-16 MiB, and a frame there puts the eleventh parameter at 16 MiB:
-~long f(long a, ..., long k) { char pad[16777096]; return k; }~, of
-eleven parameters, stops the generator with "not yet: a stack
-parameter 16 MiB or more above the frame record". With the array 16
-bytes smaller it compiles.
-
-Fix: for a displacement the =add= does not encode, the displacement
-as a constant in =x16=, by the rule for constants, and =add x16,
-x29, x16=. 5.2 loses its sentence on the limit.
-
-Check: the program compiles and its listing assembles; run with the
-stack limit raised, it returns its eleventh argument.
-
 ** TODO aarch64: a call takes 510 arguments past the eighth
 
 The outgoing area of a call is opened by one =sub sp, sp, #A=, whose
