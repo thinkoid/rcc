@@ -198,16 +198,49 @@ Check: =chosen_promoted= with =movsbq= and =ldrb w19= on each path and
 the five functions shorter, and =rem_arm_c= and =rem_arm_s= of the
 memory probe.
 
-** TODO x86-64: a path of ~?:~ whose arm is the variable's own read writes it to itself
+** TODO aarch64: a register variable's own read is moved into its own register
 
-~r = c ? x : r~ on a ~register int r~ writes =movl %ebx, %ebx= on
-the second path: =arm_into()= in =src/c1-x86-64.cc= moves every arm
-whose row did not take the variable, its own read included. No test
-has the shape.
+~r = c ? x : r~ on a ~register int r~ writes =mov w19, w19= on the
+second path, ~q = c ? p : q~ on a =register= pointer =mov x19, x19=,
+and ~r = r~ =mov w19, w19=; x86-64 writes nothing for each
+(=backend.md= chapter 4). =chosen_own_second()=,
+=chosen_own_pointer()= and =itself_assigned()= of
+=register-destination= pin it.
 
-Fix: =arm_into()= writes nothing for a read of the variable itself.
+Fix: the move into a register variable writes nothing for a read of
+the variable itself, in =src/c1-aarch64.cc=, as x86-64's =move_in()=
+does.
 
-Check: a =register-destination= function with no =mov= on that path.
+Check: those three pins with no =mov= of a register onto itself.
+
+** TODO x86-64: a ~?:~ whose second arm is the variable's own read keeps its join after a call
+
+~r = c ? f(x) : r~ and ~r = c ? r : r~ on a ~register int r~ join in
+=eax=, =movl %ebx, %eax= on the second path and =movl %eax, %ebx=
+after the join, where the first path's move after the call and an
+empty second path are the form: =lands_in()= in =src/c1-x86-64.cc=
+does not count the variable's own read, which writes nothing on its
+path. No test has the shape.
+
+Fix: =lands_in()= counts a read of the variable itself as an arm
+whose row writes the register.
+
+Check: a =register-destination= function ~r = c ? f(x) : r~, with
+=movl %eax, %ebx= after the call and nothing after the join.
+
+** TODO A ~?:~ with an empty path jumps over nothing
+
+Where one path of ~?:~ writes nothing, ~r = c ? r : x~ and ~r = c ? x
+: r~ on a =register= ~r~, the jump code still writes both jumps: =je
+.L2; jmp .L3= over an empty first path, and a =jmp .L3= to the label
+that follows an empty second one, where one conditional jump to the
+join is the form.
+
+Fix: =conditional()= writes the condition's jump straight to the
+join when a path writes nothing.
+
+Check: =chosen_own_first()= and =chosen_own_second()= pinned with one
+conditional jump and no =jmp=.
 
 ** TODO No document gathers the implementation-defined choices
 

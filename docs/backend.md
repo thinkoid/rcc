@@ -261,8 +261,11 @@ not change. An assignment writes the register: a constant is the
 immediate, `movl $0, %r12d`, a value is computed in the register
 where its last instruction can write it (below), and any other value
 is moved in, a narrow store by the extending `mov`, `movsbl %al,
-%ebx`. A compound assignment and `++` or `--` operate on the register
-in place, `addl $1, %r13d`, and a narrow one is re-extended after.
+%ebx`, but for the variable's own read, which is its register's value
+already and writes nothing: `r = r`, an arm `r` of `r = c ? x : r`
+and `q = c ? p : q` on a register pointer `q`. A compound assignment
+and `++` or `--` operate on the register in place, `addl $1, %r13d`,
+and a narrow one is re-extended after.
 `p += n` on a pointer at a size of 2, 4 or 8 is the `leaq` of `p +
 n`, the register its base and its destination, `leaq (%rbx,%rax,4),
 %rbx`; `p -= n` and the other sizes are the `addq` or the `subq` on
@@ -382,7 +385,8 @@ are the others (7.2, 6.5).
   an object in memory whose address does not read the variable. `r =
   c ? f(x) : 0` is `movl %eax, %ebx` after the `call` and `movl $0,
   %ebx`, and a first arm that is the variable's own read writes
-  nothing. One of a type the assignment widens, `l = c ? x : y` into
+  nothing (above). One of a type the assignment widens, `l = c ? x :
+  y` into
   a `long`, takes 6.1's conversion handed to each arm, each path
   writing the register extended, `movslq -16(%rbp), %rbx` and
   `movslq -20(%rbp), %rbx`, a signed constant arm the constant of the

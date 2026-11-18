@@ -177,6 +177,7 @@ compare(const char *name, long x, long y)
     BOTH(long, br_own_##N, (int, long, long))                           \
     BOTH(long, br_quot_##N, (int, long, long))                          \
     BOTH(long, br_calls_##N, (int, long, long))                         \
+    BOTH(long, br_kept_##N, (int, long, long))                          \
     BOTH(long, de_left_##N, (long, long))                               \
     BOTH(long, de_product_##N, (long))                                  \
     BOTH(long, de_returned_##N, (long))                                 \
@@ -389,6 +390,7 @@ fill(long v[12], int i, int k)
                     if (DIVIDES(T, y))                                  \
                         CHECK(br_quot_##N, x, y, (c, x, y));            \
                     CHECK(br_calls_##N, x, y, (c, x, y));               \
+                    CHECK(br_kept_##N, x, y, (c, x, y));                \
                     CHECK(de_wide_arms_##N, x, y, (c, x, y));           \
                 }                                                       \
                 COMPARISONS(TEST_COMPARED, T, N)                        \

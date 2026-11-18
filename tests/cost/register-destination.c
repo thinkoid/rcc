@@ -43,8 +43,12 @@
    second arm's division writes none either on x86-64; chosen_widened()
    and chosen_constant() a conditional widened to a long, r = c ? x : y
    and r = c ? x : -1, and chosen_promoted() r = c ? a : b on two
-   chars, whose arms each need an extension after their load; and
-   chosen_calls() r = c ? f(x) : f(x + 1), whose arms are two calls.
+   chars, whose arms each need an extension after their load;
+   chosen_calls() r = c ? f(x) : f(x + 1), whose arms are two calls;
+   and chosen_own_first(), chosen_own_second() and chosen_own_pointer()
+   r = c ? r : x, r = c ? x : r and q = c ? p : q on a register pointer
+   q, an arm that is the variable's own read, beside itself_assigned(),
+   r = r.
 
    char_operand() and char_operand_left() write r = c + 5 and r = 5 +
    c on a register char c, whose read is valid to the int's width,
@@ -75,7 +79,8 @@
    load into the register, movl -16(%rbp), %ebx; in itself(), L the
    variable itself and nothing written for it, addl -16(%rbp), %ebx
    after the initializer's load; in itself_left(), addl $1, %ebx and
-   addl -16(%rbp), %ebx; in quotient(), the division as before,
+   addl -16(%rbp), %ebx; in itself_assigned() nothing written for r = r
+   after the initializer's load; in quotient(), the division as before,
    cltd and idivl -16(%rbp), and the quotient moved, movl %eax, %ebx;
    in initializer(), the initializer's operation on the register,
    movl -12(%rbp), %ebx and imull -16(%rbp), %ebx; in
@@ -150,9 +155,13 @@
    -16(%rbp), %rbx and movq $-1, %rbx, with no instruction after the
    join; in chosen_divided() the call's result and the quotient joined
    in eax and movl %eax, %ebx after the join, and in chosen_promoted()
-   the two movsbl joined in eax and movslq %eax, %rbx after it; and in
+   the two movsbl joined in eax and movslq %eax, %rbx after it; in
    chosen_calls() the calls' results joined in eax and movl %eax, %ebx
-   after the join, for neither arm's row writes the variable.  In
+   after the join, for neither arm's row writes the variable; in
+   chosen_own_first() nothing written on the first path and movl
+   -16(%rbp), %ebx on the second, in chosen_own_second() the load on
+   the first and nothing on the second, and in chosen_own_pointer() the
+   same with movq -24(%rbp), %rbx.  In
    char_operand() and char_operand_left() one listing, movl %ebx,
    %r12d; addl $5, %r12d; in int_widened() the extension into the
    register, movslq %ebx, %r12, and addq $5, %r12; in register_product()
@@ -225,8 +234,13 @@
    mov x19, #-1, with no instruction after the join; in
    chosen_promoted() the two ldrb joined in w0 and sxtw x19, w0 after
    it, and in chosen_calls() the two calls' results joined in w0 and
-   mov w19, w0 after it; add w20, w19, #5 in char_operand() and
-   char_operand_left(); sxtw x0, w19 and add x20, x0, #5 in
+   mov w19, w0 after it; in chosen_own_first() nothing written on the
+   first path and ldr w19, [x29, #28] on the second, in
+   chosen_own_second() and chosen_own_pointer() the load into the
+   register on the first path and mov w19, w19 and mov x19, x19 on the
+   second, and in itself_assigned() mov w19, w19; add w20, w19, #5 in
+   char_operand() and char_operand_left(); sxtw x0, w19 and add x20,
+   x0, #5 in
    int_widened(); mul w20, w19, w0 after mov w0, #4 in
    register_product(); in prefix_step() the step written
    into the register and the store from it, add w19, w0, #1; str w19,
@@ -325,6 +339,15 @@ itself_left(int a, int b)
         register int r = a;
 
         r = (r + 1) + b;
+        return r;
+}
+
+int
+itself_assigned(int a)
+{
+        register int r = a;
+
+        r = r;
         return r;
 }
 
@@ -941,6 +964,33 @@ chosen_calls(int c, int x)
 
         r = c ? f(x) : f(x + 1);
         return r;
+}
+
+int
+chosen_own_first(int c, int x)
+{
+        register int r = x;
+
+        r = c ? r : x;
+        return r;
+}
+
+int
+chosen_own_second(int c, int x)
+{
+        register int r = x;
+
+        r = c ? x : r;
+        return r;
+}
+
+int *
+chosen_own_pointer(int c, int *p)
+{
+        register int *q = p;
+
+        q = c ? p : q;
+        return q;
 }
 
 int

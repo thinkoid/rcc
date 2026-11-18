@@ -1356,8 +1356,10 @@ TYPES(RETURNED)
    local as the second, and br_own_ the variable itself as the first
    arm; br_quot_ has a call as the first arm and a quotient as the
    second, whose row writes the variable on aarch64, and br_calls_ two
-   calls, whose results join.  A narrow variable is written through the
-   assignment's conversion.  The main keeps a divisor from 0 and -1. */
+   calls, whose results join; br_kept_ has the variable itself as the
+   second arm, of a register pointer too, beside the variable assigned
+   to itself.  A narrow variable is written through the assignment's
+   conversion.  The main keeps a divisor from 0 and -1. */
 #define BRANCHED(T, N)                                                  \
     long br_and_##N(T a, T b)                                           \
     {                                                                   \
@@ -1435,6 +1437,18 @@ TYPES(RETURNED)
         register T r;                                                   \
         r = c ? lret_##N(b) : lret_##N(a);                              \
         return r;                                                       \
+    }                                                                   \
+    long br_kept_##N(int c, T a, T b)                                   \
+    {                                                                   \
+        T v[2];                                                         \
+        register T r = a;                                               \
+        register T *q = &v[0];                                          \
+        v[0] = a;                                                       \
+        v[1] = b;                                                       \
+        r = c ? b : r;                                                  \
+        r = r;                                                          \
+        q = c ? &v[1] : q;                                              \
+        return r * 7 + *q;                                              \
     }
 
 TYPES(BRANCHED)

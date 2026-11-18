@@ -689,6 +689,21 @@ establish(state_t &s, const symbol_t *sym, reg_t from)
     establish(s, sym, reg(from, integer(sym->type).width));
 }
 
+// A value no row wrote into the register variable sym's register moved
+// in, establish()'s mov, but for a read of sym itself, under
+// conversions that write nothing too: the register holds the variable's
+// representation already, which the mov would write again, so r = c ?
+// x : r on a register r writes no movl %ebx, %ebx on the second path,
+// and r = r nothing at all (chapter 4).
+void
+move_in(state_t &s, const symbol_t *sym, value_t v)
+{
+    if (s.values[v.id].variable == sym)
+        return;
+
+    establish(s, sym, reg_of(s, v));
+}
+
 // A constant assigned to a register variable, or initializing it, is
 // the immediate into the register, the constant row: mov $c, %r12d.
 // The parser folded the constant to the variable's type, so a narrow
@@ -2644,7 +2659,7 @@ arm_into(state_t &s,
     into_t path { into.variable, false, into.as };
     const auto v = to ? converted(s, arm, *to, &path) : rvalue(s, arm, &path);
     if (!path.taken)
-        establish(s, into.variable, reg_of(s, v));
+        move_in(s, into.variable, v);
 
     release(s, v);
 }
@@ -2782,8 +2797,8 @@ conditional(state_t &s,
                              rvalue(s, *c.yes);
 
     if (path.taken || (joins && lands_in(*c.no, into->variable, false))) {
-        if (!path.taken && s.values[yes.id].variable != into->variable)
-            establish(s, into->variable, reg_of(s, yes));
+        if (!path.taken)
+            move_in(s, into->variable, yes);
         release(s, yes);
 
         return second_path(s, *c.no, *into, nullptr, no, end);
@@ -3687,7 +3702,7 @@ computed_into(state_t &s, const symbol_t *sym, const expr_t &e)
     into_t into { sym };
     const auto v = rvalue(s, e, &into);
     if (!into.taken)
-        establish(s, sym, reg_of(s, v));
+        move_in(s, sym, v);
 
     return v;
 }
