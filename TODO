@@ -92,25 +92,23 @@ Check: a function of =subscript-row= with the one =add=, a probe row
 that returns such an address and reads through it, and no function
 longer.
 
-** TODO x86-64: a row's constant under its index is added before the operand in three shapes
+** TODO x86-64: a scaled row's address held across a call holds its base and its index
 
-A row by a variable index whose pointer has a constant under it
-joins the constant to the access's displacement, =movq 808(%rax,
-%rcx,1), %rax=, but for three shapes, each an instruction more than
-the operand with the constant joined. A store across a call: ~((long
-(*)[2]) (p + 800))[i][1] = f()~ is =addq $800, %rax= before the
-call and =movq %rax, 8(%rcx)= after it, where =808(%rcx)= is the
-form. The index written first at a size no addressing form scales
-by: =addq $1, %rcx; imulq $16, ...; addq %rcx, %rax; movq 8(%rax),
-%rax=. A subtracted constant of rows: ~(q - 1)[i][1]~ is =subq $16,
-%rcx= before =8(%rcx,%rdx,1)=. The =krow_call_*=, =krow_first_l= and
-=krow_past_*= rows of the pointers probe have them, 108 functions.
+~((int (*)[2]) (c + 400))[i][1] = f()~ spills the base and the index
+apart across the call and reloads both, =movq %rax, -24(%rbp); movq
+%rcx, -32(%rbp)= and two reloads, where the two summed into one
+register before the call, =leaq (%rax,%rcx,8), %rax=, are one spill
+and one reload, an instruction fewer; a row of no scale is summed so
+already (=denoted()=, =backend.md= 6.3). The join of a base and a
+scaled index in =pointed()= does not ask whether the address is
+held across a pinned instruction. =row_held_scaled()= of
+=subscript-row= pins the two spills.
 
-Fix: =denoted()= in =src/c1-x86-64.cc= carries the constant where
-the address is held across a call, where the index is written first,
-and through a subtraction.
+Fix: under an address held across a pinned instruction the join
+forms the sum into one register, the displacement apart.
 
-Check: the count over =tests=, and no function longer.
+Check: =row_held_scaled()= with one spill and one reload, the count
+over =tests=, and no function longer.
 
 ** TODO An addition of a constant 0 writes its instruction
 

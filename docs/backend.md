@@ -1137,7 +1137,7 @@ at a cast that is no conversion between pointer types, an array's
 decay among them; at an address handed a register variable, whose
 rows are the value's; at a variable index where the address is held
 across a call, a division or a shift by a variable count (an index of
-no scale, above), whose sum keeps to one register; and at a stride of
+no scale, below), whose sum keeps to one register; and at a stride of
 1 with an index of 64 bits in memory, which the sum's `addq` takes as
 its operand. A subscript or a constant over such a sum joins the
 sum's own operand: the pointer of a sum by a constant, and of a
@@ -1151,12 +1151,21 @@ What the operand cannot hold is formed by a `leaq` and the rest is
 the access's: a second index, `*(short *) ((char *) p + i * 4 + j)`,
 is the `addq` of the first and `(%rax,%rcx,1)`; a sum no 32-bit
 displacement holds is `leaq 2000000000(%rax), %rax` and
-`1600000000(%rax)`; a label's offset, which must stay within its object, is the label's
-`leaq` and the displacement; a scale is always the sum's own stride,
-1, 2, 4 or 8, or an index of no scale's product (above). The same
-stops hold as for the cast at the top: the address held across a
-pinned instruction, and a stride of 1 by an index in memory, keep the
-pointer's value formed first.
+`1600000000(%rax)`; a label's offset, which must stay within its
+object, is the label's `leaq` and the displacement; a scale is always
+the sum's own stride, 1, 2, 4 or 8, or an index of no scale's product
+(below). A constant subtracted is the displacement negated, `(q -
+1)[i][1]` on a `long (*q)[2]` being `movq -8(%rax,%rcx,1), L` after
+the `imulq`. Where the address is held across a pinned instruction,
+which spills or moves each register held, an index is summed into the
+base before it, so that one register is held, and every constant
+stays the access's displacement, which holds none:
+`((long (*)[2]) (p + 800))[i][1] = f()` is the `imulq` and `addq
+%rcx, %rax` before the call and `movq %rax, 808(%rcx)` after, as
+`(q + 50)[i][1] = f()` is; a compound assignment's read and write
+both carry it, `movq 808(%rcx), %rdx` and `movq %rax, 808(%rcx)`. A
+stride of 1 by an index in memory keeps the pointer's value formed
+first, as at the top.
 
 **An index of no scale.** At a size no addressing form scales by,
 the index's product, the `imul` of the `p + n` row, is the form's
@@ -1171,8 +1180,10 @@ m[4][5]` at `-24(%rbp)`, after `imulq $5`, `m[i][4]` is `movsbl
 the sum is the one `leaq`, `leaq -48(%rbp,%rcx,1), L` for `m + i` on
 a local `int m[4][3]` and `leaq 24(%rax,%rcx,1), L` for `p[1] + i` on
 `int (*p)[2][3]`; a pointer that is its base alone keeps the `p + n`
-row's `addq R, L`, which the `leaq` would only replace. The pointer
-is generated first and the index after it (G13), the multiply at 64
+row's `addq R, L`, which the `leaq` would only replace. The two are
+generated in the order written (G13), the index first in `i[q +
+1][1]` on a `long (*q)[2]`, `imulq $16, %rax, %rax` after `i`'s load
+and `q`'s, then `movq 24(%rcx,%rax,1), L`, and the multiply at 64
 bits as before, its source an object of 64 bits in memory where it is
 one, `imulq $12, -16(%rbp), R` (6.1). The form does not reach:
 
@@ -1183,9 +1194,11 @@ one, `imulq $12, -16(%rbp), R` (6.1). The form does not reach:
   within, `m[i][1] -= f()`, a division or a shift by a variable
   count: two registers would each be spilled or moved, so the sum is
   the `addq` and the pointer's displacement the access's, `subb %al,
-  1(%rcx)` after the reload;
-- the index written first, `i[p][1]`, which keeps the `p + n` row,
-  `addq -8(%rbp), %rax` of `p` in memory after the `imulq`;
+  1(%rcx)` after the reload, the constants under the pointer
+  included, `808(%rcx)` for `((long (*)[2]) (p + 800))[i][1] = f()`;
+- the index written first on a pointer that is an object of 64 bits
+  in memory, `i[p][1]`, which keeps the `p + n` row, `addq -8(%rbp),
+  %rax` of `p` after the `imulq`, as many instructions as its load;
 - a register variable handed down whose sum the variable's register
   computes in place, on a pointer the register is loaded with, `q = p
   + i` being `movq -16(%rbp), %rbx` and `addq %rax, %rbx` after the

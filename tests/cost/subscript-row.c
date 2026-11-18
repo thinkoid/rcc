@@ -22,8 +22,8 @@
    the displacement: p[1][i][0] on int (*p)[3][3] reads 36 bytes past
    the pointer and the product, p[1][i][2] 44, and on a local array
    the slot is the displacement off rbp, with no address formed;
-   i[p[1]][0], the index written first, forms the row's address and
-   the sum.  The row plus a variable index as a value, p[1] + i, is
+   i[p[1]][0], the index written first, is the same after the index's
+   product.  The row plus a variable index as a value, p[1] + i, is
    the same address and one leaq of it on x86-64, returned, i + p[1]
    with the index generated first, into a register variable, and
    stored; at a size no addressing form scales by, the 12 bytes of
@@ -42,7 +42,15 @@
    column is no multiple of the access's size keeps its page's add,
    ((int (*)[3]) ((char *) cells + 2))[i][1] in row_label_refused(); and
    constants that cancel the column leave the product the register
-   offset, ((int (*)[1]) (c + 4))[i][-1] in row_cancelled().
+   offset, ((int (*)[1]) (c + 4))[i][-1] in row_cancelled().  The
+   constant under the row is the displacement in three more shapes:
+   a store across a call, ((int (*)[3]) (c + 400))[i][2] = f() in
+   row_held(), the same on rows of 8 bytes in row_held_scaled(), and
+   (p + 1)[i][2] = f() in row_held_rows(); the index written first,
+   i[(int (*)[3]) (c + 4)][2] in row_first_cast() and i[p + 1][2] in
+   row_first_rows(); and a constant subtracted, ((int (*)[3]) (c -
+   12))[i][2] in row_before_cast() and (p - 1)[i][2] in
+   row_before_rows().
 
    On x86-64 the listing must show first() returning the array's
    address, leaq -24(%rbp), %rax, with no instruction after it,
@@ -68,7 +76,7 @@
    36(%rax,%rcx,1), %eax after p's load and i's, with no leaq and no
    addq, cell_column() the same with movl 44(%rax,%rcx,1), %eax,
    cell_register() with movl 36(%rbx,%rax,1), %eax, and cell_first()
-   by leaq 36(%rcx), %rcx and addq %rcx, %rax before movl (%rax),
+   the imulq after i's load and p's and the one movl 36(%rcx,%rax,1),
    %eax.  On the arrays of rows of 5 chars and of 3 ints, slot_cell()
    reads m[i][4] by imulq $5, %rax, %rax and the one movsbl
    -20(%rbp,%rax,1), %eax, with no leaq of the slot, label_cell()
@@ -96,7 +104,16 @@
    12(%rax,%rcx,1), %eax after c's load and i's, row_past_rows() by the
    same and movl 20(%rax,%rcx,1), %eax, row_label_refused() by leaq
    cells+2(%rip), %rax, the imulq and movl 4(%rax,%rcx,1), %eax, and
-   row_cancelled() by the one movl (%rax,%rcx,4), %eax.
+   row_cancelled() by the one movl (%rax,%rcx,4), %eax.  row_held()
+   forms the sum in one register, the imulq and addq %rcx, %rax, which
+   the call spills once, then stores movl %eax, 408(%rcx), with no add
+   of the 400; row_held_scaled() holds the pointer and the index
+   across the call and stores movl %eax, 404(%rdx,%rcx,8);
+   row_held_rows() stores movl %eax, 20(%rcx); row_first_cast() and
+   row_first_rows() read by imulq $12, %rax, %rax after i's load and
+   p's and the one movl 12(%rcx,%rax,1), %eax and movl
+   20(%rcx,%rax,1), %eax; and row_before_cast() and row_before_rows()
+   by the imulq and the one movl -4(%rax,%rcx,1), %eax.
 
    On aarch64 the listing must show first() returning the array's
    address, add x0, x29, #16, with no instruction after it, element()
@@ -142,7 +159,14 @@
    are no multiple of the int's 4 bytes in the page, keeps adrp x0,
    cells+2 and add x0, x0, :lo12:cells+2 before the product's add and
    ldr w0, [x0, #4]; and row_cancelled() is ldr w0, [x0, w1, sxtw #2]
-   after c's load and i's, with no add. */
+   after c's load and i's, with no add.  row_held() and
+   row_held_rows() add the product to the pointer before the call and
+   store str w0, [x1, #408] and str w0, [x1, #20], row_held_scaled()
+   adds the index, add x0, x0, w1, sxtw #3, and stores str w0, [x1,
+   #404]; row_first_cast() and row_first_rows() add the pointer to the
+   index's product, add x0, x0, x1, and read ldr w0, [x0, #12] and ldr
+   w0, [x0, #20]; and row_before_cast() and row_before_rows() read ldr
+   w0, [x0, #-4] after the product's add. */
 int *first(void)
 {
     int m[2][3];
@@ -379,4 +403,46 @@ int
 row_cancelled(char *c, int i)
 {
         return ((int (*)[1]) (c + 4))[i][-1];
+}
+
+void
+row_held(char *c, int i)
+{
+        ((int (*)[3]) (c + 400))[i][2] = f();
+}
+
+void
+row_held_scaled(char *c, int i)
+{
+        ((int (*)[2]) (c + 400))[i][1] = f();
+}
+
+void
+row_held_rows(int (*p)[3], int i)
+{
+        (p + 1)[i][2] = f();
+}
+
+int
+row_first_cast(char *c, int i)
+{
+        return i[(int (*)[3]) (c + 4)][2];
+}
+
+int
+row_first_rows(int (*p)[3], int i)
+{
+        return i[p + 1][2];
+}
+
+int
+row_before_cast(char *c, int i)
+{
+        return ((int (*)[3]) (c - 12))[i][2];
+}
+
+int
+row_before_rows(int (*p)[3], int i)
+{
+        return (p - 1)[i][2];
 }

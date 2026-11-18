@@ -1181,16 +1181,28 @@ memory_indexed(const expr_t &p)
 // pointee, the base, the displacement and the index p's rows form,
 // through a cast between pointer types too, cast_sum()'s, so that a
 // constant or an index over p joins them where the form holds it.
-// None, and p's value formed as before, where the address is held
-// across a pinned instruction, which keeps to one register, and for a
-// sum at a stride of 1 by an index in memory, memory_indexed()'s.
+// Where the address is held across a pinned instruction, which spills
+// or moves each register it holds, an index is summed into the base,
+// address_of()'s, the addq of a sum at scale 1 and a leaq at any other
+// scale, so that one register is held, and the displacement
+// stays the access's, which holds no register: ((long (*)[2]) (p +
+// 800))[i][1] = f() is 808(%rcx) after the call.  None, and p's value
+// formed as before, for a sum at a stride of 1 by an index in memory,
+// memory_indexed()'s.
 std::optional< address_t >
 denoted(state_t &s, const expr_t &p)
 {
-    if (s.held_across || memory_indexed(p))
+    if (memory_indexed(p))
         return std::nullopt;
 
-    return pointed(s, p, *as< pointer_t >(p.type).pointee, nullptr);
+    auto a = pointed(s, p, *as< pointer_t >(p.type).pointee, nullptr);
+    if (!s.held_across || a.base.id < 0 || a.index.id < 0)
+        return a;
+
+    const auto displacement = std::exchange(a.displacement, 0);
+    a.sum = a.scale == 1;
+
+    return address_t { .base = address_of(s, a), .displacement = displacement };
 }
 
 // The operand of an address by a pointer and a constant index,
@@ -1204,7 +1216,9 @@ denoted(state_t &s, const expr_t &p)
 // pointer's row, base_into()'s, so that q = p[1] into a register int *q
 // is movq -16(%rbp), %rbx; leaq 12(%rbx), %rbx (chapter 4); not where
 // the product wraps to 0, since no leaq follows to write the variable.
-// Any other pointer is denoted()'s address, the constant joining its
+// A constant subtracted is the displacement negated, -16(%rcx,%rdx,1)
+// for (q - 1)[i] on long (*q)[2].  Any other pointer is denoted()'s
+// address, the constant joining its
 // displacement, ((int *) (p + 1))[3] on a char *p being 13(%rax) and
 // *(short *) ((char *) p + i * 4 + 2) 2(%rax,%rcx,1); a label's, whose
 // offset must stay within its object, and a sum no 32-bit displacement
@@ -1213,7 +1227,11 @@ denoted(state_t &s, const expr_t &p)
 std::optional< address_t >
 constant_indexed(state_t &s, const expr_t &p, long size, into_t *into = nullptr)
 {
-    if (!is< binary_t >(p) || as< binary_t >(p).op != binary_op_t::add)
+    if (!is< binary_t >(p))
+        return std::nullopt;
+
+    const auto op = as< binary_t >(p).op;
+    if (op != binary_op_t::add && op != binary_op_t::sub)
         return std::nullopt;
 
     const auto &b = as< binary_t >(p);
@@ -1222,7 +1240,8 @@ constant_indexed(state_t &s, const expr_t &p, long size, into_t *into = nullptr)
     if (!is< literal_t >(index))
         return std::nullopt;
 
-    const auto d = scaled(as< literal_t >(index).value, size);
+    const auto d = scaled(as< literal_t >(index).value,
+                          op == binary_op_t::sub ? -size : size);
     if (!fits_imm32(d))
         return std::nullopt;
 
@@ -1387,6 +1406,8 @@ address_t unscaled(state_t &,
                    long,
                    unsigned,
                    std::optional< unsigned > = std::nullopt);
+bool unscaled_first(const binary_t &, long);
+address_t index_unscaled(state_t &, const binary_t &, long);
 
 // The sum under a cast of an access's pointer between pointer types,
 // backend.md 6.3, whose rows form the access's operand as the sum's own
@@ -1443,7 +1464,7 @@ cast_sum(const state_t &s, const expr_t &p, const into_t *into)
 // scales by, the index's product is the form's index at scale 1, the
 // pointer's address its base and displacement, unscaled()'s, so that
 // m[i][4] on a local char m[4][5] is -23(%rbp,%rcx) after imulq $5,
-// %rcx, %rcx.  A cast of the pointer between pointer types is looked
+// %rcx, %rcx, and the index written first the same, index_unscaled()'s.  A cast of the pointer between pointer types is looked
 // through to the sum under it, cast_sum()'s, so *(int *) (p + 24) on a
 // char *p is 24(%rax).  Any other pointer, a sum of another size
 // included, is computed into a register and is the base.  A register
@@ -1482,6 +1503,11 @@ pointed(state_t &s,
     if (!into && is< binary_t >(p) &&
         unscaled_sum(as_written(as< binary_t >(p)), size))
         return unscaled(s, as_written(as< binary_t >(p)), size, 0);
+
+    // i[q + 1][1] on long (*q)[2]: 24(%rcx,%rax,1) after imulq
+    if (!into && !s.held_across && is< binary_t >(p) &&
+        unscaled_first(as< binary_t >(p), size))
+        return index_unscaled(s, as< binary_t >(p), size);
 
     if (!is_scale(size) || !is< binary_t >(p) ||
         as< binary_t >(p).op != binary_op_t::add)
@@ -2598,6 +2624,36 @@ unscaled_index(
     a.sum = true;
 
     return a;
+}
+
+// Whether n + p is a sum at a size no addressing form scales by, size,
+// the index written first, whose product the addressing form takes as
+// its index at scale 1, backend.md 6.3: an add, n no constant, and p
+// no object in memory of 64 bits, which index_first()'s addq takes as
+// its operand, addq -8(%rbp), %rax, as many instructions as its load.
+bool
+unscaled_first(const binary_t &b, long size)
+{
+    return !is_scale(size) && b.op == binary_op_t::add &&
+           !is< pointer_t >(b.lhs->type) && !is< literal_t >(*b.lhs) &&
+           !memory_operand(*b.rhs, 64);
+}
+
+// The address of an unscaled_first() sum as an access's operand,
+// backend.md 6.3: n's product first, in the order written (G13), held
+// outside the registers p's top operator pins, then p's address,
+// unscaled_pointer()'s, which the product joins at scale 1, so that
+// i[(long (*)[2]) (p + 8)][1] is 16(%rcx,%rax,1) after imulq $16, %rax,
+// %rax and i[m][1] on a local long m[4][2] the slot plus 8,
+// -56(%rbp,%rax,1).
+address_t
+index_unscaled(state_t &s, const binary_t &b, long size)
+{
+    const auto n =
+        displacement(s, binary_op_t::add, *b.lhs, size, pinned_by(*b.rhs));
+    const auto a = unscaled_pointer(s, *b.rhs, 0, 0);
+
+    return unscaled_index(s, a, n, size);
 }
 
 unsigned copied_into(const state_t &, value_t, const expr_t &, unsigned);

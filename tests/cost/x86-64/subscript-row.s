@@ -393,10 +393,8 @@ cell_first:
 	movl	%esi, -12(%rbp)
 	movslq	-12(%rbp), %rax
 	movq	-8(%rbp), %rcx
-	leaq	36(%rcx), %rcx
 	imulq	$12, %rax, %rax
-	addq	%rcx, %rax
-	movl	(%rax), %eax
+	movl	36(%rcx,%rax,1), %eax
 	jmp	.Lcell_first.1
 .Lcell_first.1:
 	leave
@@ -780,6 +778,172 @@ row_cancelled:
 	ret
 	.cfi_endproc
 	.size	row_cancelled, .-row_cancelled
+	.globl	row_held
+	.type	row_held, @function
+row_held:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$32, %rsp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	movslq	-12(%rbp), %rcx
+	imulq	$12, %rcx, %rcx
+	addq	%rcx, %rax
+	movq	%rax, -24(%rbp)
+	call	f@PLT
+	movq	-24(%rbp), %rcx
+	movl	%eax, 408(%rcx)
+.Lrow_held.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	row_held, .-row_held
+	.globl	row_held_scaled
+	.type	row_held_scaled, @function
+row_held_scaled:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$32, %rsp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	movslq	-12(%rbp), %rcx
+	movq	%rax, -24(%rbp)
+	movq	%rcx, -32(%rbp)
+	call	f@PLT
+	movq	-32(%rbp), %rcx
+	movq	-24(%rbp), %rdx
+	movl	%eax, 404(%rdx,%rcx,8)
+.Lrow_held_scaled.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	row_held_scaled, .-row_held_scaled
+	.globl	row_held_rows
+	.type	row_held_rows, @function
+row_held_rows:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$32, %rsp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	movslq	-12(%rbp), %rcx
+	imulq	$12, %rcx, %rcx
+	addq	%rcx, %rax
+	movq	%rax, -24(%rbp)
+	call	f@PLT
+	movq	-24(%rbp), %rcx
+	movl	%eax, 20(%rcx)
+.Lrow_held_rows.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	row_held_rows, .-row_held_rows
+	.globl	row_first_cast
+	.type	row_first_cast, @function
+row_first_cast:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movslq	-12(%rbp), %rax
+	movq	-8(%rbp), %rcx
+	imulq	$12, %rax, %rax
+	movl	12(%rcx,%rax,1), %eax
+	jmp	.Lrow_first_cast.1
+.Lrow_first_cast.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	row_first_cast, .-row_first_cast
+	.globl	row_first_rows
+	.type	row_first_rows, @function
+row_first_rows:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movslq	-12(%rbp), %rax
+	movq	-8(%rbp), %rcx
+	imulq	$12, %rax, %rax
+	movl	20(%rcx,%rax,1), %eax
+	jmp	.Lrow_first_rows.1
+.Lrow_first_rows.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	row_first_rows, .-row_first_rows
+	.globl	row_before_cast
+	.type	row_before_cast, @function
+row_before_cast:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	movslq	-12(%rbp), %rcx
+	imulq	$12, %rcx, %rcx
+	movl	-4(%rax,%rcx,1), %eax
+	jmp	.Lrow_before_cast.1
+.Lrow_before_cast.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	row_before_cast, .-row_before_cast
+	.globl	row_before_rows
+	.type	row_before_rows, @function
+row_before_rows:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	movslq	-12(%rbp), %rcx
+	imulq	$12, %rcx, %rcx
+	movl	-4(%rax,%rcx,1), %eax
+	jmp	.Lrow_before_rows.1
+.Lrow_before_rows.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	row_before_rows, .-row_before_rows
 	.bss
 	.globl	rows
 	.type	rows, @object
