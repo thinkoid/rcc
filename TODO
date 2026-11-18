@@ -117,21 +117,36 @@ variable handed down, where the pointer's own row can write it.
 Check: a function of =register-destination= for each of the two, with
 no expression register named.
 
-** TODO =backend.md= 7.2 states another rule for =main='s =movl $0= than c1 applies
+** TODO A loop jumps back after a body that ends in a jump
 
-7.2 says =main= writes =movl $0, %eax= before the epilogue "unless
-its last statement is a =return=". c1 decides by what it last wrote:
-the instruction is left out when the last instruction is an
-unconditional jump and no label was placed after it. So a =main= that
-ends in ~goto again;~ has none, and neither has one that ends in ~if
-(c) break; else return 3;~ inside a loop's last statement, nor one
-that ends in ~if (c) return 1; else return 2;~, where nothing reaches
-the end either.
+~while (c) { ...; if (x) break; else return 3; }~ writes the =jmp= to
+the epilogue and then the loop's =jmp= back to the condition, which
+no path reaches. =while_stmt()= in =src/c1-statements.hh= writes the
+jump back after the body whatever the body ended in, and =for_stmt()=
+does the same where no =continue= placed its step's label. It is the
+shape of an =if= whose body ends in a jump (=backend.md= 7.2), in a
+loop; =tests/cost/main-loop.c= pins it on both targets.
 
-Fix: 7.2 states the rule c1 applies, or c1 applies the stated one.
+Fix: a loop writes no jump back when the state is terminated after
+its body; the label past the loop is still placed, since a =break=
+names it.
 
-Check: a cost program with a =main= ending in each shape, pinned, and
-7.2 agreeing with the pins.
+Check: =main-loop='s pins lose the one =jmp= and =b=; over =tests=,
+each function that differs is shorter by that jump alone.
+
+** TODO =main= writes its return of 0 after a loop no jump leaves
+
+A =main= whose last statement is ~for (;;) { ... return ...; }~
+writes =movl $0, %eax=, on aarch64 =mov w0, #0=, which no path
+reaches: the loop places the label past it whether or not a jump
+names it, and a placed label ends the terminated state (=backend.md=
+7.2). =tests/cost/main-forever.c= pins it on both targets.
+
+Fix: none taken; it wants a loop to know whether a jump names the
+label past it, the condition's exit or a =break=.
+
+Check: =main-forever='s pins with no return of 0, and no label that
+no jump names.
 
 ** TODO x86-64: three shapes beside a register variable's destination still move
 

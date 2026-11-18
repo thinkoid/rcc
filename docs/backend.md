@@ -1676,7 +1676,18 @@ constant.
   G5's "some value of its type"; the `%ret.indeterminate` slot of the
   IR pipeline is gone. `main` is the exception: reaching its closing
   `}` returns 0 (5.1.2.3.4p1), so `main` writes `movl $0, %eax`
-  before the epilogue unless its last statement is a `return`. A
+  before the epilogue, unless its body ends in a jump as an `if`'s
+  `s1` does above, so that nothing written can reach the instruction.
+  A `main` whose last statement is a `return`, a `goto`, or an `if`
+  whose two parts end so, `if (c) return 1; else return 2;`, has
+  none. A `main` whose last statement is an `if` with no `else`, a
+  loop or a `switch` has it, since each places the label past it
+  whether or not a jump names it: the `break` of
+  `while (g) { if (c) break; else return 3; }` reaches the end, and
+  a `for (;;)` left only by a `return` writes the instruction all
+  the same. The rule reads what was written, not the program's
+  paths: it may write the instruction where no path reaches it, but
+  never leaves it out where one does. A
   `void` function whose last statement is not a `return` falls into
   the epilogue's label, with no `jmp`.
 - Blocks and labels are written in source order. A label is `.L`,

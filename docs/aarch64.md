@@ -934,7 +934,8 @@ pointer. `x op= e` for its value is such a case: the result is in
 the object's register, taken above `e`'s, so a `return` of it ends
 in `mov w0, w1`. The return names `x0`, and a conditional at the top
 of `e` joins its arms there (6.1). Every `return` jumps to the one
-epilogue. `main` returns 0 on reaching its `}`, `mov w0, #0`.
+epilogue. `main` returns 0 on reaching its `}`, `mov w0, #0`, by
+the rule of `backend.md` 7.2.
 
 `do`'s condition at the bottom branches back to the body's label on
 the condition, `b.lt .Lcount.2` or `cbnz`, by jump code (7.1). `break`,
