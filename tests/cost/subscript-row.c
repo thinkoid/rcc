@@ -195,15 +195,16 @@
    w0, [x0, #-4] after the product's add.  row_address_under_cast()
    adds the product to the pointer, mov x2, #12, mul and add x0, x0,
    x1 after c's load, and then the one add x0, x0, #12, with no add of
-   the 4 before the index.  label_held() forms the label's address,
-   adrp and add, and adds the index before the call, then str w0, [x1]
-   after it; label_row_held() is adrp x0, cells+4 and the product's
-   add before the call and ldr, add and str at [x2, :lo12:cells+4]
-   after it; label_constant_held() is adrp x16, labels+12 and str w0,
-   [x16, :lo12:labels+12] after the call; and label_divided() str w2,
-   [x0, w1, sxtw #2] after the sdiv.  row_divided(),
-   row_divided_deeper() and row_shifted() add the product to p before
-   the sdiv or the lsl and store str w1, [x0, #4]. */
+   the 4 before the index.  label_held() adds the index to the label's
+   page before the call, adrp x0, labels and add x0, x0, w1, sxtw #2,
+   then str w0, [x1, :lo12:labels] after it, the label's offset in
+   the page the store's; label_row_held() is adrp x0, cells+4 and
+   the product's add before the call and ldr, add and str at [x2,
+   :lo12:cells+4] after it; label_constant_held() is adrp x16,
+   labels+12 and str w0, [x16, :lo12:labels+12] after the call;
+   and label_divided() str w2, [x0, w1, sxtw #2] after the sdiv.
+   row_divided(), row_divided_deeper() and row_shifted() add the product
+   to p before the sdiv or the lsl and store str w1, [x0, #4]. */
 int *first(void)
 {
     int m[2][3];

@@ -97,20 +97,6 @@ Fix: remove the value's path of =summed()=.
 Check: no function longer, and the listings that change at the same
 count read.
 
-** TODO aarch64: a member array's offset under a variable index is added before a call
-
-~p->a[i] += f()~ adds the member array's 32 to the pointer, =add x0,
-x0, #32=, then the index, before the call, and reads and writes
-=[x2]= after it, where the 32 is the two accesses' displacement,
-=[x2, #32]=, an =add= fewer; x86-64 writes =addl %eax, 32(%rcx)=.
-=held_element()= of =member= pins the add.
-
-Fix: under an address held across a right operand the constants stay
-the access's displacement, as on x86-64 (=backend.md= 6.3).
-
-Check: =held_element()= one instruction shorter, the count over
-=tests=, and no function longer.
-
 ** TODO An addition of a constant 0 writes its instruction
 
 ~p + 0~ on a pointer is =addq $0, %rax= and =add x0, x0, #0=, and

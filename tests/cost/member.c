@@ -18,28 +18,29 @@
    imulq and addq %rcx, %rax before the call and movl %eax, 68(%rcx)
    after it, the 64 and the 4 one displacement, and held_element(),
    p->a[i] += p->f(x), leaq (%rax,%rcx,4), %rax before it and addl
-   %eax, 32(%rcx).  On aarch64 p->m is [x0, #8], s.m [x29, #d], g.m [x16,
-   :lo12:g+8], p->in.i [x0, #20], p->a[i] the add of the offset and [x0,
-   x1, lsl #2], since no form holds an index and a displacement, and a
-   register pointer's [x19, #8]; a member array's element by a constant,
-   p->a[3] and p->t[2].h, one access, the member array's offset and the
-   element's one displacement, [x0, #44] and [x0, #98], and by a
-   variable index with a member after it, p->t[i].i, adds the index's
-   product to p, and the member array's 64 and the member's 4 are the
-   access's displacement, [x0, #68].  p[i].m adds the product to p and
-   reads [x0, #8], and tab[i].m on the label is adrp x0, tab+8, the
-   product's add and ldr w0, [x0, :lo12:tab+8], with no add of the
-   page's offset; p[i].a[3] and tab[i].a[3], a member array's element
-   under the record's index, read [x0, #44] and [x0, :lo12:tab+44] past
-   the product's add, and *(int *) ((char *) &tab[i] + 2), whose 2 is no
-   multiple of the int's 4 bytes, keeps adrp x0, tab and add x0, x0,
-   :lo12:tab before the product's add and [x0, #2].  The addresses
-   &p->a[3] and &p->t[2].h are one add, add x0, x0, #44 and add x0, x0,
-   #98, &s.a[3] the slot's add x0, x29, #60, and &g.a[3] the label's
-   pair, adrp x0, g+44 and add x0, x0, :lo12:g+44.  held_member() adds
-   the index's product before the call and stores str w0, [x1, #68]
-   after it, and held_element() add x0, x0, #32 and add x0, x0, x1, lsl
-   #2 before it, then ldr, add and str at [x2]. */
+   %eax, 32(%rcx).  On aarch64 p->m is [x0, #8], s.m [x29, #d],
+   g.m [x16, :lo12:g+8], p->in.i [x0, #20], p->a[i] the add of
+   the offset and [x0, x1, lsl #2], since no form holds an index
+   and a displacement, and a register pointer's [x19, #8]; a member
+   array's element by a constant, p->a[3] and p->t[2].h, one access,
+   the member array's offset and the element's one displacement, [x0,
+   #44] and [x0, #98], and by a variable index with a member after it,
+   p->t[i].i, adds the index's product to p, and the member array's
+   64 and the member's 4 are the access's displacement, [x0, #68].
+   p[i].m adds the product to p and reads [x0, #8], and tab[i].m
+   on the label is adrp x0, tab+8, the product's add and ldr w0,
+   [x0, :lo12:tab+8], with no add of the page's offset; p[i].a[3] and
+   tab[i].a[3], a member array's element under the record's index, read
+   [x0, #44] and [x0, :lo12:tab+44] past the product's add, and *(int *)
+   ((char *) &tab[i] + 2), whose 2 is no multiple of the int's 4 bytes,
+   keeps adrp x0, tab and add x0, x0, :lo12:tab before the product's add
+   and [x0, #2].  The addresses &p->a[3] and &p->t[2].h are one add,
+   add x0, x0, #44 and add x0, x0, #98, &s.a[3] the slot's add x0,
+   x29, #60, and &g.a[3] the label's pair, adrp x0, g+44 and add x0,
+   x0, :lo12:g+44.  held_member() adds the index's product before the
+   call and stores str w0, [x1, #68] after it, and held_element()
+   add x0, x0, x1, lsl #2 before it, then ldr, add and str at [x2,
+   #32], the member array's 32 the two accesses' displacement. */
 struct in
 {
         char c;

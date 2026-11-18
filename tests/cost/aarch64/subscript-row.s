@@ -1304,13 +1304,12 @@ label_held:
 	.cfi_def_cfa_register w29
 	str	w0, [x29, #16]
 	adrp	x0, labels
-	add	x0, x0, :lo12:labels
 	ldr	w1, [x29, #16]
 	add	x0, x0, w1, sxtw #2
 	str	x0, [x29, #24]
 	bl	f
 	ldr	x1, [x29, #24]
-	str	w0, [x1]
+	str	w0, [x1, :lo12:labels]
 .Llabel_held.1:
 	.cfi_def_cfa wsp, 32
 	ldp	x29, x30, [sp]

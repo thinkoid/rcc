@@ -649,7 +649,6 @@ held_element:
 	str	x1, [x29, #24]
 	str	w2, [x29, #32]
 	ldr	x0, [x29, #16]
-	add	x0, x0, #32
 	ldr	x1, [x29, #24]
 	add	x0, x0, x1, lsl #2
 	str	x0, [x29, #40]
@@ -662,9 +661,9 @@ held_element:
 	ldr	x16, [x29, #48]
 	blr	x16
 	ldr	x2, [x29, #40]
-	ldr	w1, [x2]
+	ldr	w1, [x2, #32]
 	add	w1, w1, w0
-	str	w1, [x2]
+	str	w1, [x2, #32]
 .Lheld_element.1:
 	.cfi_def_cfa wsp, 64
 	ldp	x29, x30, [sp]

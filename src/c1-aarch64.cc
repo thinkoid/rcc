@@ -1566,6 +1566,13 @@ sum_address(state_t &s,
         return { .base = rvalue(s, pointer),
                  .displacement = static_cast< int >(*d) };
 
+    // p->a[i] += f(): a place held across a call is one register, its
+    // base and its index summed, and the constants under the pointer stay
+    // the access's displacement, the row's plan's, [x2, #32] after it
+    if (!d && between && calls_within(*between))
+        if (const auto row = row_access(s, sum, 0, access, false))
+            return row_address(s, *row);
+
     // a record's element for a copy, whose index the add of 6.6 takes
     // shifted by at most 4, add x0, x0, w1, sxtw #4 on records of 16
     // bytes; at any other size, p[i] on records of 12 or 32 bytes, the

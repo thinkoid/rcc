@@ -971,7 +971,14 @@ where nothing is evaluated between the address and its access; one
 form holds a register offset or a displacement, never
 both, so `p[i][1]` adds the product and reads `[x0, #4]`, and an
 address held across an assignment's right operand keeps to one
-register, `p[i][0] = f()` adding the product before the call. A
+register, `p[i][0] = f()` adding the product before the call. Across a
+call the base and the index are that one register, and the constants
+under the place stay the access's displacement, as a spill costs a
+register and a constant nothing: `p->a[i] += f()` on a member `int
+a[8]` at 32 is `add x0, x0, x1, lsl #2` before the call and `ldr w1,
+[x2, #32]` and `str w1, [x2, #32]` after it, and on a local array the
+slot's displacement rides the same way, `add x0, x29, w0, sxtw #2` and
+`[x2, #32]`. A
 constant out of reach after the sum, a label's offset outside its
 object, and the address as a value keep the rows of the table. The
 address as a value is the base and one
