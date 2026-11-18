@@ -1003,7 +1003,16 @@ is held and added, `mov x1, #32777; add x0, x0, x1` for
 `&((long *) (c + 1))[4097]`, where that is fewer instructions than the
 parts' rows, three there; `0x10000 + 16` keeps its parts, two `add`s,
 where the sum held would be three. A name's address keeps its label's
-pair with the part within the object, as above.
+pair with the part within the object, as above. The walk goes through
+a row's layer too, the decay of `*q` or `&*q` being `q`: `&p[1][2]` on
+`int (*p)[3]` is `add x0, x0, #20` after `p`'s load, and `&((int
+(*)[3]) (c + 4))[i][2]` on a `char *c` adds the product to `c`, `mov
+x2, #12; mul x1, x1, x2; add x0, x0, x1`, and then the one `add x0,
+x0, #12`, the 4 under the row with the column's 8; a row on a slot or
+a label under its index keeps its own `add` of the part under the
+index, and the column's after the sum. One constant over a row is the
+base and the one `add` of its displacement, `add x0, x0, #-4` after
+the sum for `p[i] - 1`.
 
 A store's address is generated before its right operand and held
 across it (G13), but a constant index reads nothing, so its `mov` is

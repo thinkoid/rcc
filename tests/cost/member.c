@@ -16,9 +16,9 @@
    index and a displacement, and a register pointer's [x19, #8]; a
    member array's element by a constant, p->a[3] and p->t[2].h, adds
    the member's offset first, add x0, x0, #32 and [x0, #12], and by a
-   variable index with a member after it, p->t[i].i, adds the offset
-   before the index's sum, add x0, x0, #64, and the member's 4 is the
-   access's displacement. */
+   variable index with a member after it, p->t[i].i, adds the index's
+   product to p, and the member array's 64 and the member's 4 are the
+   access's displacement, [x0, #68]. */
 struct in
 {
         char c;

@@ -50,7 +50,9 @@
    i[(int (*)[3]) (c + 4)][2] in row_first_cast() and i[p + 1][2] in
    row_first_rows(); and a constant subtracted, ((int (*)[3]) (c -
    12))[i][2] in row_before_cast() and (p - 1)[i][2] in
-   row_before_rows().
+   row_before_rows().  As a value, &((int (*)[3]) (c + 4))[i][2] in
+   row_address_under_cast(), the row's constants are one addition
+   past the sum.
 
    On x86-64 the listing must show first() returning the array's
    address, leaq -24(%rbp), %rax, with no instruction after it,
@@ -114,6 +116,8 @@
    p's and the one movl 12(%rcx,%rax,1), %eax and movl
    20(%rcx,%rax,1), %eax; and row_before_cast() and row_before_rows()
    by the imulq and the one movl -4(%rax,%rcx,1), %eax.
+   row_address_under_cast() is the imulq and the one leaq
+   12(%rax,%rcx,1), %rax.
 
    On aarch64 the listing must show first() returning the array's
    address, add x0, x29, #16, with no instruction after it, element()
@@ -166,7 +170,10 @@
    #404]; row_first_cast() and row_first_rows() add the pointer to the
    index's product, add x0, x0, x1, and read ldr w0, [x0, #12] and ldr
    w0, [x0, #20]; and row_before_cast() and row_before_rows() read ldr
-   w0, [x0, #-4] after the product's add. */
+   w0, [x0, #-4] after the product's add.  row_address_under_cast()
+   adds the product to the pointer, mov x2, #12, mul and add x0, x0,
+   x1 after c's load, and then the one add x0, x0, #12, with no add of
+   the 4 before the index. */
 int *first(void)
 {
     int m[2][3];
@@ -445,4 +452,10 @@ int
 row_before_rows(int (*p)[3], int i)
 {
         return (p - 1)[i][2];
+}
+
+int *
+row_address_under_cast(char *c, int i)
+{
+        return &((int (*)[3]) (c + 4))[i][2];
 }

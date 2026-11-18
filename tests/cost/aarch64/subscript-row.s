@@ -1261,6 +1261,36 @@ row_before_rows:
 	ret
 	.cfi_endproc
 	.size	row_before_rows, .-row_before_rows
+	.globl	row_address_under_cast
+	.type	row_address_under_cast, @function
+row_address_under_cast:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	ldr	x0, [x29, #16]
+	ldrsw	x1, [x29, #24]
+	mov	x2, #12
+	mul	x1, x1, x2
+	add	x0, x0, x1
+	add	x0, x0, #12
+	b	.Lrow_address_under_cast.1
+.Lrow_address_under_cast.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	row_address_under_cast, .-row_address_under_cast
 	.bss
 	.globl	rows
 	.type	rows, @object

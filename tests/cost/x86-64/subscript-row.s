@@ -944,6 +944,28 @@ row_before_rows:
 	ret
 	.cfi_endproc
 	.size	row_before_rows, .-row_before_rows
+	.globl	row_address_under_cast
+	.type	row_address_under_cast, @function
+row_address_under_cast:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	movslq	-12(%rbp), %rcx
+	imulq	$12, %rcx, %rcx
+	leaq	12(%rax,%rcx,1), %rax
+	jmp	.Lrow_address_under_cast.1
+.Lrow_address_under_cast.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	row_address_under_cast, .-row_address_under_cast
 	.bss
 	.globl	rows
 	.type	rows, @object

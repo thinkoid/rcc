@@ -199,7 +199,8 @@ ELEMENTS(KBYTE_ALL)
 
 /* A row by a variable index under a cast and past constants, 6.3: on
    the pointer's value, read, written, stepped, with the index first,
-   and written across a call in the right operand; on a slot and on a
+   written across a call in the right operand, and its address as a
+   value, stepped and read through, the index first too; on a slot and on a
    label, the object's bytes summed after the row is written, stepped
    and read, and on a char array's label, whose alignment is 1; a row
    past a constant of rows, (q + c)[i][1], without a cast; and rows
@@ -225,6 +226,14 @@ ELEMENTS(KBYTE_ALL)
     void krow_call_##E##_##name(char *p, int i, long v)                 \
     {                                                                   \
         ((T (*)[2]) (p + d))[i][1] = id(v);                             \
+    }                                                                   \
+    long krow_address_##E##_##name(char *p, int i, long v)              \
+    {                                                                   \
+        T *q = &((T (*)[2]) (p + d))[i][1];                             \
+        T *r = &i[(T (*)[2]) (p + d)][1];                               \
+        *q += v;                                                        \
+        return ((char *) q - p) * 1000 + *q +                           \
+               ((char *) r - p) * 7 + *r;                               \
     }
 #define KROW_ALL(E, T, S) KROWS(KROW, E, T, S)
 

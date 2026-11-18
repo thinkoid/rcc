@@ -316,7 +316,8 @@ ELEMENTS(DECLARE_KBYTE_ALL)
     BOTH(void, krow_put_##E##_##name, (char *, int, long))              \
     BOTH(long, krow_add_##E##_##name, (char *, int, long))              \
     BOTH(long, krow_first_##E##_##name, (char *, int))                  \
-    BOTH(void, krow_call_##E##_##name, (char *, int, long))
+    BOTH(void, krow_call_##E##_##name, (char *, int, long))             \
+    BOTH(long, krow_address_##E##_##name, (char *, int, long))
 #define DECLARE_KROW_ALL(E, T, S) KROWS(DECLARE_KROW, E, T, S)
 
 ELEMENTS(DECLARE_KROW_ALL)
@@ -575,7 +576,8 @@ ELEMENTS(TEST_SUBSCRIPT_ALL)
     VCHECK(krow_put_##E##_##name, x, at, at, ((char *) P, at, x));      \
     MCHECK(krow_add_##E##_##name, x, at, at, ((char *) P, at, x));      \
     MCHECK(krow_first_##E##_##name, x, at, at, ((char *) P, at));       \
-    VCHECK(krow_call_##E##_##name, x, at, at, ((char *) P, at, x));
+    VCHECK(krow_call_##E##_##name, x, at, at, ((char *) P, at, x));     \
+    MCHECK(krow_address_##E##_##name, x, at, at, ((char *) P, at, x));
 #define TEST_KROW_NAMED(E, T, S, name, d)                               \
     CHECK(krow_slot_##E##_##name, x, at, (at, x));                      \
     CHECK(krow_label_##E##_##name, x, at, (at, x));                     \

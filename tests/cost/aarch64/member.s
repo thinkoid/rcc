@@ -247,12 +247,11 @@ element_member:
 	str	x0, [x29, #16]
 	str	x1, [x29, #24]
 	ldr	x0, [x29, #16]
-	add	x0, x0, #64
 	ldr	x1, [x29, #24]
 	mov	x2, #16
 	mul	x1, x1, x2
 	add	x0, x0, x1
-	ldr	w0, [x0, #4]
+	ldr	w0, [x0, #68]
 	b	.Lelement_member.1
 .Lelement_member.1:
 	.cfi_def_cfa wsp, 32

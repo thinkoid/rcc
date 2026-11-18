@@ -57,40 +57,56 @@ Fix: none taken; count first.
 
 Check: the count over =tests=, and no function longer.
 
-** TODO aarch64: an element of a member array adds the member's offset before the access
+** TODO aarch64: an element of a member array by a constant adds the member's offset first
 
 ~p->a[3]~ on a member ~int a[8]~ at offset 32 is =add x0, x0, #32;
 ldr w0, [x0, #12]=, where the offset and the index's 12 are one
 displacement, =ldr w0, [x0, #44]=; ~p->t[2].h~ the same with 64 and
-34. With a variable index, ~p->t[i].i~ adds the 64 before the
-index's product and its add and reads =[x0, #4]=, where the 64 rides
-past the sum, =[x0, #68]=, an =add= fewer. The walk of an access's
-pointer (=denoted()= in =src/c1-aarch64.cc=) steps through a row's
-decay only above its first sum, and a member array's decay stands
-under the subscript's sum. x86-64 writes each as one operand.
-=element_constant()=, =element_constant_member()= and
-=element_member()= of =member= pin the adds.
+34. A variable index takes the offset past its sum already,
+~p->t[i].i~ being =[x0, #68]=. For a constant index the access's
+rows ask =based()= in =src/c1-common.cc=, which stops at the cast
+over the member's byte sum. x86-64 writes each as one operand.
+=element_constant()= and =element_constant_member()= of =member= pin
+the adds.
 
-Fix: the walk steps through the decay of a dereferenced cast under a
-sum, the member's bytes joining the rest.
+Fix: the constant index's row takes the walk's base and bytes
+through the member array's decay, as the variable index's does.
 
-Check: those three functions an instruction shorter each, and no
+Check: those two functions an instruction shorter each, and no
 function longer.
 
-** TODO aarch64: a row's address as a value adds the constants under its index apart from the column
+** TODO aarch64: a row's value on a slot or a label adds its column after the sum
 
-~&((int (*)[3]) (c + 4))[i][2]~ on a ~char *c~ is =add x0, x0, #4=,
-the index's product and its add, then =add x0, x0, #8=, where the
-two constants are one =add x0, x0, #12= after the sum. An access
-takes them together (=row_access()= in =src/c1-aarch64.cc=); the
-value's path in =summed()= does not ask it. No test has the shape.
+~&((int (*)[3]) ((char *) m + 4))[i][1]~ on a local =m= is =add x0,
+x29, #24=, the index's product and its add, then =add x0, x0, #4=,
+where the column joins the slot's own add, =add x0, x29, #28=, an
+instruction fewer; on a global, =cells+4= in the page's pair and
+=add x0, x0, #4= after the sum, where =cells+8= in the pair is the
+form. The value's walk (=joined()= in =src/c1-aarch64.cc=) refuses a
+name's base. No test has the shape.
 
-Fix: the value's path takes the row's plan, the constants one =add=
-past the sum where it encodes them.
+Fix: the value's rows sum the column into a name's own add, a
+label's within its object.
 
-Check: a function of =subscript-row= with the one =add=, a probe row
-that returns such an address and reads through it, and no function
+Check: a function of =subscript-row= for each, and no function
 longer.
+
+** TODO aarch64: two functions answer an address as a value
+
+=joined()= and the value's path of =summed()= in =src/c1-aarch64.cc=
+each write an address as a value: the first for constants met
+through casts, sums and rows' layers with at most one index, the
+second for one constant over an lvalue's address and for a row on a
+name. With =summed()='s value path removed, =folded()=, =joined()=
+and the general rows answer every value; 27 listings then change at
+the same count, ~p[r] - 1~ being =sub x1, x1, #4= where it is =add
+x1, x1, #-4= today, the form every other ~p - c~ takes, and
+=summed()= loses two parameters.
+
+Fix: remove the value's path of =summed()=.
+
+Check: no function longer, and the listings that change at the same
+count read.
 
 ** TODO x86-64: a scaled row's address held across a call holds its base and its index
 
