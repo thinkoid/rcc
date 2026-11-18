@@ -829,6 +829,26 @@ POINTEES(KDEST)
     }
 POINTEES(KCOL)
 
+/* A return of a pointer row whose right operand writes the register
+   pointer its left operand reads, x86-64, backend.md 6.1: the read's
+   copy in rax, which the sum's addq and the difference's subq write,
+   p + ((i & 3) + (p = t, 0)), which ISO leaves undefined and clang -O0
+   writes left to right, as ret_nested_, and p - (p = t).  Each
+   pointee: sizes 1, 4, 8 and 12. */
+
+#define KCOPY(E, T)                                                     \
+    T *kcopy_sum_##E(T *base, long i)                                   \
+    {                                                                   \
+        register T *p = base + 1;                                       \
+        return p + ((i & 3) + (p = base + 3, 0));                       \
+    }                                                                   \
+    long kcopy_diff_##E(T *base, long i)                                \
+    {                                                                   \
+        register T *p = base + (i & 7);                                 \
+        return p - (p = base + 2);                                      \
+    }
+POINTEES(KCOPY)
+
 /* A register pointer to a function: the address of a function the
    unit defines, and of one it only declares, from the GOT. */
 long

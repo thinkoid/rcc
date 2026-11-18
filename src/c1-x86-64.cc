@@ -2381,6 +2381,38 @@ unscaled_index(state_t &s, address_t a, const right_t &n, long size)
     return a;
 }
 
+unsigned copied_into(const state_t &, value_t, const expr_t &, unsigned);
+
+// The copy preserve() makes of a borrowed read held across a right
+// operand that writes its variable, as binary() hands it (backend.md
+// 6.1): the read and the register named for its copy, copied_into()'s,
+// set for the right operand's generation; the state's own before, for
+// the restore after it.
+struct named_copy_t
+{
+    int read;
+    unsigned copy;
+};
+
+named_copy_t
+hand_copy(state_t &s, value_t l, unsigned copied)
+{
+    const named_copy_t outer { s.named_read, s.named_copy };
+    if (copied) {
+        s.named_read = l.id;
+        s.named_copy = copied;
+    }
+
+    return outer;
+}
+
+void
+restore_copy(state_t &s, const named_copy_t &outer)
+{
+    s.named_read = outer.read;
+    s.named_copy = outer.copy;
+}
+
 // The address of an unscaled_sum() as an access's operand, backend.md
 // 6.3: the pointer's address, unscaled_pointer()'s, then the index, in
 // the order written (G13), its product the form's index at scale 1,
@@ -2393,13 +2425,20 @@ unscaled_index(state_t &s, address_t a, const right_t &n, long size)
 // of the index as held_out() says.  An address held_across a pinned
 // instruction keeps to one register, which a call spills once: the
 // addq of the p + n row forms the sum, and the pointer's displacement
-// is the access's, 36(%rax) for p[1][i][0].
+// is the access's, 36(%rax) for p[1][i][0].  A right operand that
+// writes the register variable the pointer reads has the read's copy
+// in the named register, copied_into()'s, which the addq writes, return
+// p + (i + (p = t, 0)) on a register char *p being addq %rcx, %rax.
 address_t
 unscaled(state_t &s, const operation_t &o, long size, unsigned named)
 {
     const auto a = unscaled_pointer(s, *o.lhs, pinned_by(*o.rhs), named);
-    const auto n =
-        addend(s, o.op, *o.rhs, size, held_out(s, a.base, *o.rhs, named));
+
+    const unsigned copied = copied_into(s, a.base, *o.rhs, named);
+    const auto outer = hand_copy(s, a.base, copied);
+    const auto n = addend(s, o.op, *o.rhs, size,
+                          held_out(s, a.base, *o.rhs, named) | copied);
+    restore_copy(s, outer);
 
     if (s.held_across)
         return { .base = displaced(s, o.op, a.base, n),
@@ -2512,17 +2551,29 @@ subtract_pointer(state_t &s, value_t l, const expr_t &q, unsigned pinned)
 // where held_out() says, as an operation's right operand is (6.1).  At
 // any other size the quotient stays in rax where wanted names it,
 // divide()'s, though p was not handed it for a call within q, return p
-// - h(q) ending in the idivq.
+// - h(q) ending in the idivq.  Where q writes the register variable p
+// reads, p's copy takes the register its difference is wanted in,
+// copied_into()'s: at a size of 1 the one the consumer names, return p
+// - (q + (p = t, 0)) being subq %rcx, %rax, and at any other the
+// dividend's rax, so that the idivq follows the subq with no mov; not
+// for a call or a division within q, which pins rax itself.
 value_t
 difference(state_t &s, const binary_t &b, unsigned wanted = 0)
 {
     const long size = stride(b.lhs->type);
     const unsigned pinned = size != 1 ? bit(rax) | bit(rdx) : 0;
     const unsigned named = size == 1 ? wanted_left(wanted, 0, *b.rhs) : 0;
+    const unsigned dividend =
+        size != 1 && !pinned_within(*b.rhs) ? bit(rax) : named;
 
     const auto l =
         rvalue_avoiding(s, *b.lhs, pinned_by(*b.rhs), nullptr, named);
-    subtract_pointer(s, l, *b.rhs, pinned | held_out(s, l, *b.rhs, named));
+
+    const unsigned copied = copied_into(s, l, *b.rhs, dividend);
+    const auto outer = hand_copy(s, l, copied);
+    subtract_pointer(s, l, *b.rhs,
+                     pinned | held_out(s, l, *b.rhs, named) | copied);
+    restore_copy(s, outer);
 
     if (size == 1)
         return l;

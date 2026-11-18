@@ -242,7 +242,9 @@ SCALARS(DECLARE_PDEST)
     BOTH(long, pedge_##E, (void *, long, int))                          \
     BOTH(long, adiff_##E, (void *, long, int))                          \
     BOTH(long, kdest_##E, (void *, long))                               \
-    BOTH(long, kcol_##E, (void *, long))
+    BOTH(long, kcol_##E, (void *, long))                                \
+    BOTH(T *, kcopy_sum_##E, (T *, long))                               \
+    BOTH(long, kcopy_diff_##E, (T *, long))
 
 POINTEES(DECLARE_ADEST)
 
@@ -513,7 +515,9 @@ test_converts(void)
     MCHECK(adiff_##E, k, m, (B, k, m));                                 \
     MCHECK(adiff_##E, k, m, (B + 5, k, m));                             \
     MCHECK(kdest_##E, k, 0, (B, k));                                    \
-    MCHECK(kcol_##E, k, 0, (B, k));
+    MCHECK(kcol_##E, k, 0, (B, k));                                     \
+    CHECK(kcopy_sum_##E, k, 0, ((T *) base(0), k));                     \
+    CHECK(kcopy_diff_##E, k, 0, ((T *) base(0), k));
 
 static void
 test_pointer_destinations(void)

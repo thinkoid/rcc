@@ -928,4 +928,237 @@ written_called:
 	ret
 	.cfi_endproc
 	.size	written_called, .-written_called
+	.globl	written_sum
+	.type	written_sum, @function
+written_sum:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -32
+	str	x0, [x29, #24]
+	str	x1, [x29, #32]
+	str	w2, [x29, #40]
+	ldr	x19, [x29, #24]
+	ldr	w0, [x29, #40]
+	mov	x1, x19
+	ldr	x19, [x29, #32]
+	mov	w2, #0
+	add	w0, w0, w2
+	add	x0, x1, w0, sxtw
+	b	.Lwritten_sum.1
+.Lwritten_sum.1:
+	.cfi_def_cfa wsp, 48
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	written_sum, .-written_sum
+	.globl	written_row
+	.type	written_row, @function
+written_row:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -32
+	str	x0, [x29, #24]
+	str	x1, [x29, #32]
+	str	w2, [x29, #40]
+	ldr	x19, [x29, #24]
+	ldr	w0, [x29, #40]
+	mov	x1, x19
+	ldr	x19, [x29, #32]
+	mov	w2, #0
+	add	w0, w0, w2
+	sxtw	x0, w0
+	mov	x2, #12
+	mul	x0, x0, x2
+	add	x0, x1, x0
+	b	.Lwritten_row.1
+.Lwritten_row.1:
+	.cfi_def_cfa wsp, 48
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	written_row, .-written_row
+	.globl	written_difference
+	.type	written_difference, @function
+written_difference:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -32
+	str	x0, [x29, #24]
+	str	x1, [x29, #32]
+	str	x2, [x29, #40]
+	ldr	x19, [x29, #24]
+	ldr	x0, [x29, #40]
+	mov	x1, x19
+	ldr	x19, [x29, #32]
+	mov	w2, #0
+	add	x0, x0, w2, sxtw
+	sub	x0, x1, x0
+	b	.Lwritten_difference.1
+.Lwritten_difference.1:
+	.cfi_def_cfa wsp, 48
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	written_difference, .-written_difference
+	.globl	written_quotient
+	.type	written_quotient, @function
+written_quotient:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -32
+	str	x0, [x29, #24]
+	str	x1, [x29, #32]
+	ldr	x19, [x29, #24]
+	mov	x0, x19
+	ldr	x19, [x29, #32]
+	sub	x0, x0, x19
+	mov	x1, #4
+	sdiv	x0, x0, x1
+	b	.Lwritten_quotient.1
+.Lwritten_quotient.1:
+	.cfi_def_cfa wsp, 48
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	written_quotient, .-written_quotient
+	.globl	written_sum_called
+	.type	written_sum_called, @function
+written_sum_called:
+	.cfi_startproc
+	sub	sp, sp, #80
+	.cfi_def_cfa_offset 80
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -80
+	.cfi_offset w30, -72
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -64
+	str	x0, [x29, #24]
+	str	x1, [x29, #32]
+	str	w2, [x29, #40]
+	ldr	x19, [x29, #24]
+	ldr	w0, [x29, #40]
+	mov	x1, x19
+	ldr	x19, [x29, #32]
+	str	x0, [x29, #48]
+	str	x1, [x29, #56]
+	ldr	w0, [x29, #40]
+	str	w0, [x29, #64]
+	ldr	w0, [x29, #64]
+	bl	f
+	ldr	x1, [x29, #48]
+	add	w1, w1, w0
+	ldr	x0, [x29, #56]
+	add	x0, x0, w1, sxtw
+	b	.Lwritten_sum_called.1
+.Lwritten_sum_called.1:
+	.cfi_def_cfa wsp, 80
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #80
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	written_sum_called, .-written_sum_called
+	.globl	written_quotient_called
+	.type	written_quotient_called, @function
+written_quotient_called:
+	.cfi_startproc
+	sub	sp, sp, #80
+	.cfi_def_cfa_offset 80
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -80
+	.cfi_offset w30, -72
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -64
+	str	x0, [x29, #24]
+	str	x1, [x29, #32]
+	str	w2, [x29, #40]
+	ldr	x19, [x29, #24]
+	mov	x0, x19
+	ldr	x19, [x29, #32]
+	ldr	x1, [x29, #32]
+	str	x0, [x29, #48]
+	str	x1, [x29, #56]
+	ldr	w0, [x29, #40]
+	str	w0, [x29, #64]
+	ldr	w0, [x29, #64]
+	bl	f
+	ldr	x1, [x29, #56]
+	add	x1, x1, w0, sxtw #2
+	ldr	x0, [x29, #48]
+	sub	x0, x0, x1
+	mov	x1, #4
+	sdiv	x0, x0, x1
+	b	.Lwritten_quotient_called.1
+.Lwritten_quotient_called.1:
+	.cfi_def_cfa wsp, 80
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #80
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	written_quotient_called, .-written_quotient_called
 	.section	.note.GNU-stack,"",@progbits

@@ -29,7 +29,13 @@
    result in rax; deeper() r - p[i / 2], a division within the right
    operand; written_called() r + (r = f(x)), whose copy is spilled
    across the call; and called_place() p[f(i)] = x, whose place holds a
-   call's result.
+   call's result.  The pointer rows take the same copy: written_sum()
+   and written_row() p + (i + (p = t, 0)) on a register char *p and on
+   a register int (*p)[3], whose rows of 12 bytes the index's product
+   steps, written_difference() p - (q + (p = t, 0)) on a register char
+   *p, and written_quotient() p - (p = t) on a register int *p, whose
+   copy is the dividend; beside them written_sum_called() and
+   written_quotient_called(), a call within the right operand.
 
    On x86-64 the listing must show no move into eax or rax before the
    jump to the epilogue but in called(), deeper(), written_called() and
@@ -70,7 +76,14 @@
    written_nested() y loaded into ecx, the copy movl %ebx, %eax, then
    addl %ebx, %ecx and addl %ecx, %eax; in written_called() the copy
    spilled across the call, movq -24(%rbp), %rcx, addl %eax, %ecx and
-   movl %ecx, %eax.
+   movl %ecx, %eax.  In written_sum() i in ecx, the copy movq %rbx,
+   %rax, then addq %rcx, %rax; in written_row() the same after imulq
+   $12, %rcx, %rcx; in written_difference() q in rcx, the copy movq
+   %rbx, %rax, then subq %rcx, %rax; in written_quotient() the copy
+   movq %rbx, %rax, subq %rbx, %rax, movq $4, %rcx, cqto and idivq
+   %rcx; in written_sum_called() and written_quotient_called() the copy
+   spilled across the call and reloaded, movq -48(%rbp), %rax and
+   movq -40(%rbp), %rax, before the addq and the subq.
 
    On aarch64, where an operation names its destination apart from its
    sources, the row's last instruction writes x0 where no other value
@@ -102,7 +115,13 @@
    moves the value, mov w0, w1.  In written_branched() the reload ldr
    x1, [x29, #32] and add w0, w1, w0, in written_nested() the copy mov
    w1, w19 and add w0, w1, w0, and in written_called() the reload after
-   the call and add w0, w1, w0. */
+   the call and add w0, w1, w0.  In written_sum() and written_row() the
+   copy mov x1, x19 and add x0, x1, w0, sxtw and add x0, x1, x0, in
+   written_difference() the copy mov x1, x19 and sub x0, x1, x0, in
+   written_quotient() mov x0, x19, sub x0, x0, x19 and sdiv x0, x0, x1,
+   and in written_sum_called() and written_quotient_called() the reload
+   after the call, ldr x0, [x29, #56] and ldr x0, [x29, #48], before
+   the add and the sub. */
 int f(int);
 
 int
@@ -291,4 +310,51 @@ written_called(int x)
         register int r = x;
 
         return r + (r = f(x));
+}
+
+char *
+written_sum(char *s, char *t, int i)
+{
+        register char *p = s;
+
+        return p + (i + (p = t, 0));
+}
+
+int (*written_row(int (*s)[3], int (*t)[3], int i))[3]
+{
+        register int (*p)[3] = s;
+
+        return p + (i + (p = t, 0));
+}
+
+long
+written_difference(char *s, char *t, char *q)
+{
+        register char *p = s;
+
+        return p - (q + (p = t, 0));
+}
+
+long
+written_quotient(int *s, int *t)
+{
+        register int *p = s;
+
+        return p - (p = t);
+}
+
+char *
+written_sum_called(char *s, char *t, int i)
+{
+        register char *p = s;
+
+        return p + (i + (p = t, f(i)));
+}
+
+long
+written_quotient_called(int *s, int *t, int i)
+{
+        register int *p = s;
+
+        return p - (p = t, t + f(i));
 }

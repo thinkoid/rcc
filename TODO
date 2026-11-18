@@ -64,20 +64,6 @@ that register, the left operand its source.
 Check: the count over =tests=, before and after, and no function
 longer.
 
-** TODO x86-64: a copy for a pointer row is not handed the consumer's register
-
-The copy =preserve()= makes of a =register= variable's read takes
-the register a =return= names where the node is =binary()='s
-(=backend.md= 6.1). The same shape under =difference()=, ~p - (p =
-q)~ on a =register= pointer, and under =pointer_arithmetic()= takes
-the lowest free register, and the result is moved. No test has
-either shape.
-
-Fix: =copied_into()='s hand-down at those two rows.
-
-Check: a function of =return-register= for each, with no =mov= after
-the row.
-
 ** TODO aarch64: a row's constant offset is added before an index no addressing form scales by
 
 ~p[1][i][0]~ on ~int (*p)[3][3]~ is =ldr x0, [x29, #16]; add x0, x0,

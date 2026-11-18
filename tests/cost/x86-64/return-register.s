@@ -767,4 +767,204 @@ written_called:
 	ret
 	.cfi_endproc
 	.size	written_called, .-written_called
+	.globl	written_sum
+	.type	written_sum, @function
+written_sum:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movq	%rdi, -16(%rbp)
+	movq	%rsi, -24(%rbp)
+	movl	%edx, -28(%rbp)
+	movq	-16(%rbp), %rbx
+	movl	-28(%rbp), %ecx
+	movq	%rbx, %rax
+	movq	-24(%rbp), %rbx
+	movl	$0, %edx
+	addl	%edx, %ecx
+	movslq	%ecx, %rcx
+	addq	%rcx, %rax
+	jmp	.Lwritten_sum.1
+.Lwritten_sum.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	written_sum, .-written_sum
+	.globl	written_row
+	.type	written_row, @function
+written_row:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movq	%rdi, -16(%rbp)
+	movq	%rsi, -24(%rbp)
+	movl	%edx, -28(%rbp)
+	movq	-16(%rbp), %rbx
+	movl	-28(%rbp), %ecx
+	movq	%rbx, %rax
+	movq	-24(%rbp), %rbx
+	movl	$0, %edx
+	addl	%edx, %ecx
+	movslq	%ecx, %rcx
+	imulq	$12, %rcx, %rcx
+	addq	%rcx, %rax
+	jmp	.Lwritten_row.1
+.Lwritten_row.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	written_row, .-written_row
+	.globl	written_difference
+	.type	written_difference, @function
+written_difference:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movq	%rdi, -16(%rbp)
+	movq	%rsi, -24(%rbp)
+	movq	%rdx, -32(%rbp)
+	movq	-16(%rbp), %rbx
+	movq	-32(%rbp), %rcx
+	movq	%rbx, %rax
+	movq	-24(%rbp), %rbx
+	movl	$0, %edx
+	movslq	%edx, %rdx
+	addq	%rdx, %rcx
+	subq	%rcx, %rax
+	jmp	.Lwritten_difference.1
+.Lwritten_difference.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	written_difference, .-written_difference
+	.globl	written_quotient
+	.type	written_quotient, @function
+written_quotient:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movq	%rdi, -16(%rbp)
+	movq	%rsi, -24(%rbp)
+	movq	-16(%rbp), %rbx
+	movq	%rbx, %rax
+	movq	-24(%rbp), %rbx
+	subq	%rbx, %rax
+	movq	$4, %rcx
+	cqto
+	idivq	%rcx
+	jmp	.Lwritten_quotient.1
+.Lwritten_quotient.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	written_quotient, .-written_quotient
+	.globl	written_sum_called
+	.type	written_sum_called, @function
+written_sum_called:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	subq	$56, %rsp
+	movq	%rdi, -16(%rbp)
+	movq	%rsi, -24(%rbp)
+	movl	%edx, -28(%rbp)
+	movq	-16(%rbp), %rbx
+	movl	-28(%rbp), %eax
+	movq	%rbx, %rcx
+	movq	-24(%rbp), %rbx
+	movq	%rax, -40(%rbp)
+	movq	%rcx, -48(%rbp)
+	movl	-28(%rbp), %eax
+	movl	%eax, -52(%rbp)
+	movl	-52(%rbp), %edi
+	call	f@PLT
+	movq	-40(%rbp), %rcx
+	addl	%eax, %ecx
+	movslq	%ecx, %rcx
+	movq	-48(%rbp), %rax
+	addq	%rcx, %rax
+	jmp	.Lwritten_sum_called.1
+.Lwritten_sum_called.1:
+	leaq	-8(%rbp), %rsp
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	written_sum_called, .-written_sum_called
+	.globl	written_quotient_called
+	.type	written_quotient_called, @function
+written_quotient_called:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	subq	$56, %rsp
+	movq	%rdi, -16(%rbp)
+	movq	%rsi, -24(%rbp)
+	movl	%edx, -28(%rbp)
+	movq	-16(%rbp), %rbx
+	movq	%rbx, %rcx
+	movq	-24(%rbp), %rbx
+	movq	-24(%rbp), %rsi
+	movq	%rcx, -40(%rbp)
+	movq	%rsi, -48(%rbp)
+	movl	-28(%rbp), %eax
+	movl	%eax, -52(%rbp)
+	movl	-52(%rbp), %edi
+	call	f@PLT
+	movslq	%eax, %rax
+	movq	-48(%rbp), %rcx
+	leaq	(%rcx,%rax,4), %rcx
+	movq	-40(%rbp), %rax
+	subq	%rcx, %rax
+	movq	$4, %rcx
+	cqto
+	idivq	%rcx
+	jmp	.Lwritten_quotient_called.1
+.Lwritten_quotient_called.1:
+	leaq	-8(%rbp), %rsp
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	written_quotient_called, .-written_quotient_called
 	.section	.note.GNU-stack,"",@progbits

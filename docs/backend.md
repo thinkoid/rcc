@@ -840,7 +840,16 @@ generated with the register left for last, so that nothing of it
 writes the register before the copy, which, held, keeps it to the
 node's instruction; `return x + (c ? x++ : 2)` on a `register int x`
 saves `x` before the branch and reloads it there, `movq -24(%rbp),
-%rax; addl %ecx, %eax`. Each row's form is 6.3's. A register
+%rax; addl %ecx, %eax`. The pointer rows take the copy so too: a sum
+whose `addq` writes the copy, `return p + (i + (p = t, 0))` on a
+`register char *p` being `movq %rbx, %rax` and `addq %rcx, %rax`, and
+`p - q` at a size of 1, `subq %rcx, %rax`; at any other size `p - q`
+gives the copy `rax`, the dividend's register, whatever the consumer
+names, so that `p - (p = t)` on a `register int *p` is `subq %rbx,
+%rax` and the `idivq` with no `mov` between, and not for a call or a
+division within `q`, which pins `rax` itself. A sum whose row ends in
+a `leaq` writes a fresh register and takes no copy's name. Each row's
+form is 6.3's. A register
 variable's register is no expression register and holds no owned
 value, so its rule puts two conditions on the right operand that this
 one does not need (chapter 4). The rule is the Seventh Edition
