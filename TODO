@@ -641,24 +641,23 @@ Fix: a second pair of parentheses, ~while ((*d++ = *s++))~.
 Check: =make bench= on aarch64 writes no warning to the log, and the
 listing of =copy()='s loop under rcc is unchanged.
 
-** TODO No probe sees a read wider than its object
+** TODO No run checks the width of an access to a global or a local
 
-A generator that reads 4 bytes of a =char= object where its row needs
-the low byte alone, =imull $12, (%rcx), %eax= on a =char=, passes
-every probe: the low byte of a product, a sum or a bitwise result
-depends on its operands' low bytes alone, the store writes the low
-byte, and a value used is extended from it again. G10 is broken all
-the same, and the read faults where the byte is the last of a mapped
-page. Only the comparison of listings against the tree before a
-change sees it, by the width of each access, and that comparison is
-not part of =make test=.
+The =bounds= probe makes an access wider than its object fault where
+the object is reached through a pointer, a member's form among them:
+it places the object against an unmapped page. A global's and a
+local's addresses are the program's to place, so a read of 4 bytes
+of a =char= global or local passes every run, for the reason the
+probe was written. Their widths are seen only by the comparison of
+listings against the tree before a change, access by access, which
+is no part of =make test=, and by a reader of the cost pins.
 
-Fix: a probe whose objects end at the last byte of a mapped page,
-the next page unmapped, for each narrow type and each row that takes
-an object in memory as its operand.
+Fix: none taken; a check of each access's width in the listings of
+=tests= against the type the source gives the object, as part of
+=make test=.
 
-Check: the probe faults under a compiler that reads one such object
-wider, and passes on the tree.
+Check: a compiler that reads a =char= local at 4 bytes fails =make
+test=.
 
 * Parser
 

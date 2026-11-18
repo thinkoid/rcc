@@ -416,7 +416,16 @@ pointer whose right operand names the pointer: `clang -O0` evaluates
 that operand before the step, where G13 makes the step first, so the
 main compares with a function of its own that keeps G13's order.
 A probe checks values, not costs: that rcc's code computes what
-`clang`'s does, which no pin shows.
+`clang`'s does, which no pin shows. The bounds probe checks G10's
+width too, which few values show: the low bytes of a sum or a product
+do not depend on the bytes above its operands. It places each narrow
+object at the end of a page mapped beside an unmapped one, and at the
+start of one, and runs each row that reads or writes it, through a
+pointer and as a member at a constant offset, so that an access wider
+than its object, or one below it, faults; the fault names the row. A
+global's and a local's address are the program's, not the probe's to
+place, so their widths are the cost pins' to show and the
+comparison's fit to check.
 
 ## 4. The measurement
 
