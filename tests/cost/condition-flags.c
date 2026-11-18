@@ -22,8 +22,8 @@
    register variable read in ebx and not copied, each then je; the
    memory form then je, addl %eax, -12(%rbp) on the local,
    addb %al, -9(%rbp) on the char, addl %eax, counter(%rip) on the
-   global, and the operation in place, addl %eax, %ebx, on the register
-   variable; the steps
+   global, and the operation in place on the register variable, b's
+   slot its operand, addl -16(%rbp), %ebx; the steps
    addl $1 and subl $1, addb $1 and subb $1 on the char; in equal_zero
    testl -8(%rbp), %eax then jne .Lequal_zero.2, and in unequal_zero
    subl %eax, -12(%rbp) then je .Lunequal_zero.2; in zero_equal

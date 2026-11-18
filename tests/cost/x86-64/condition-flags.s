@@ -292,8 +292,7 @@ add_to_register:
 	movl	%edi, -12(%rbp)
 	movl	%esi, -16(%rbp)
 	movl	-12(%rbp), %ebx
-	movl	-16(%rbp), %eax
-	addl	%eax, %ebx
+	addl	-16(%rbp), %ebx
 	je	.Ladd_to_register.2
 	movl	$1, %eax
 	jmp	.Ladd_to_register.1
@@ -399,8 +398,7 @@ sub_from_register:
 	movl	%edi, -12(%rbp)
 	movl	%esi, -16(%rbp)
 	movl	-12(%rbp), %ebx
-	movl	-16(%rbp), %eax
-	subl	%eax, %ebx
+	subl	-16(%rbp), %ebx
 	je	.Lsub_from_register.2
 	movl	$1, %eax
 	jmp	.Lsub_from_register.1
@@ -506,8 +504,7 @@ and_to_register:
 	movl	%edi, -12(%rbp)
 	movl	%esi, -16(%rbp)
 	movl	-12(%rbp), %ebx
-	movl	-16(%rbp), %eax
-	andl	%eax, %ebx
+	andl	-16(%rbp), %ebx
 	je	.Land_to_register.2
 	movl	$1, %eax
 	jmp	.Land_to_register.1
@@ -613,8 +610,7 @@ or_to_register:
 	movl	%edi, -12(%rbp)
 	movl	%esi, -16(%rbp)
 	movl	-12(%rbp), %ebx
-	movl	-16(%rbp), %eax
-	orl	%eax, %ebx
+	orl	-16(%rbp), %ebx
 	je	.Lor_to_register.2
 	movl	$1, %eax
 	jmp	.Lor_to_register.1
@@ -720,8 +716,7 @@ xor_to_register:
 	movl	%edi, -12(%rbp)
 	movl	%esi, -16(%rbp)
 	movl	-12(%rbp), %ebx
-	movl	-16(%rbp), %eax
-	xorl	%eax, %ebx
+	xorl	-16(%rbp), %ebx
 	je	.Lxor_to_register.2
 	movl	$1, %eax
 	jmp	.Lxor_to_register.1

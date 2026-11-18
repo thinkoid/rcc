@@ -285,10 +285,9 @@ rem_register:
 	movl	%edi, -12(%rbp)
 	movl	%esi, -16(%rbp)
 	movl	-12(%rbp), %ebx
-	movl	-16(%rbp), %ecx
 	movl	%ebx, %eax
 	cltd
-	idivl	%ecx
+	idivl	-16(%rbp)
 	movl	%edx, %ebx
 	movl	%ebx, %eax
 	jmp	.Lrem_register.1

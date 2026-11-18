@@ -1957,11 +1957,153 @@ widen_byte:
 	ret
 	.cfi_endproc
 	.size	widen_byte, .-widen_byte
+	.globl	compound_register
+	.type	compound_register, @function
+compound_register:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -16
+	str	w0, [x29, #24]
+	str	w1, [x29, #28]
+	ldr	w19, [x29, #24]
+	ldr	w0, [x29, #28]
+	add	w19, w19, w0
+	ldr	w0, [x29, #28]
+	sub	w19, w19, w0
+	ldr	w0, [x29, #28]
+	and	w19, w19, w0
+	ldr	w0, [x29, #28]
+	orr	w19, w19, w0
+	ldr	w0, [x29, #28]
+	eor	w19, w19, w0
+	ldr	w0, [x29, #28]
+	mul	w19, w19, w0
+	ldr	w0, [x29, #28]
+	sdiv	w19, w19, w0
+	adrp	x16, changing
+	ldr	w0, [x16, :lo12:changing]
+	add	w19, w19, w0
+	mov	w0, w19
+	b	.Lcompound_register.1
+.Lcompound_register.1:
+	.cfi_def_cfa wsp, 32
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	compound_register, .-compound_register
+	.globl	compound_register_long
+	.type	compound_register_long, @function
+compound_register_long:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -32
+	str	x0, [x29, #24]
+	str	x1, [x29, #32]
+	str	x2, [x29, #40]
+	ldr	x19, [x29, #24]
+	ldr	x0, [x29, #32]
+	add	x19, x19, x0
+	adrp	x16, defined_long
+	ldr	x0, [x16, :lo12:defined_long]
+	sub	x19, x19, x0
+	ldr	x0, [x29, #40]
+	ldr	x0, [x0]
+	and	x19, x19, x0
+	ldr	x0, [x29, #32]
+	orr	x19, x19, x0
+	ldr	x0, [x29, #32]
+	eor	x19, x19, x0
+	ldr	x0, [x29, #32]
+	mul	x19, x19, x0
+	mov	x0, x19
+	b	.Lcompound_register_long.1
+.Lcompound_register_long.1:
+	.cfi_def_cfa wsp, 48
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	compound_register_long, .-compound_register_long
+	.globl	compound_register_widened
+	.type	compound_register_widened, @function
+compound_register_widened:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x19, [x29, #16]
+	.cfi_offset w19, -32
+	str	x0, [x29, #24]
+	str	w1, [x29, #32]
+	strb	w2, [x29, #36]
+	str	w3, [x29, #40]
+	ldr	x19, [x29, #24]
+	ldrsw	x0, [x29, #32]
+	add	x19, x19, x0
+	ldrb	w0, [x29, #36]
+	add	x19, x19, x0
+	ldr	w0, [x29, #40]
+	lsl	x19, x19, x0
+	mov	x0, x19
+	b	.Lcompound_register_widened.1
+.Lcompound_register_widened.1:
+	.cfi_def_cfa wsp, 48
+	ldr	x19, [x29, #16]
+	.cfi_restore w19
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	compound_register_widened, .-compound_register_widened
 	.bss
 	.globl	defined
 	.type	defined, @object
 	.size	defined, 4
 	.p2align 2
 defined:
+	.zero	4
+	.globl	defined_long
+	.type	defined_long, @object
+	.size	defined_long, 8
+	.p2align 3
+defined_long:
+	.zero	8
+	.globl	changing
+	.type	changing, @object
+	.size	changing, 4
+	.p2align 2
+changing:
 	.zero	4
 	.section	.note.GNU-stack,"",@progbits

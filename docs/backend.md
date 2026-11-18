@@ -277,6 +277,9 @@ the register, after the index's `imulq` at a size other than 1. A
 compound assignment generates its right operand first and then
 operates on the register, so no read of the variable is held across
 the right operand: `r += (r = 2)` is `movl $2, %ebx; addl %ebx,
+%ebx`. A right operand that is an object in memory of the operation's
+width is the instruction's operand (6.1), read where its load would
+be, after the right operand's address: `r += y` is `addl -16(%rbp),
 %ebx`.
 
 A read still held when its variable is written would see the new
@@ -745,7 +748,9 @@ rows that take the form are:
 
 - `+`, `-`, `&`, `|`, `^`, `*`, `/` and `%` (6.3, 6.5), the
   comparisons (6.3, 7.1) and `&` as a condition, `testl -8(%rbp),
-  %eax` (7.1);
+  %eax` (7.1), and their compound assignments into a register
+  variable, the variable's register in place, `andq -24(%rbp), %rbx`
+  for `r &= b` on a `register long r` (chapter 4);
 - pointer arithmetic, where the `add` or the `sub` takes the operand
   as it is: `q` of `p - q` at any size, `subq -16(%rbp), %rax` before
   the division; `n` of `p + n` and `p - n` at a size of 1, `addq

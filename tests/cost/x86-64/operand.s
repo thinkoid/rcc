@@ -1485,11 +1485,119 @@ widen_byte:
 	ret
 	.cfi_endproc
 	.size	widen_byte, .-widen_byte
+	.globl	compound_register
+	.type	compound_register, @function
+compound_register:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movl	%edi, -12(%rbp)
+	movl	%esi, -16(%rbp)
+	movl	-12(%rbp), %ebx
+	addl	-16(%rbp), %ebx
+	subl	-16(%rbp), %ebx
+	andl	-16(%rbp), %ebx
+	orl	-16(%rbp), %ebx
+	xorl	-16(%rbp), %ebx
+	imull	-16(%rbp), %ebx
+	movl	%ebx, %eax
+	cltd
+	idivl	-16(%rbp)
+	movl	%eax, %ebx
+	addl	changing(%rip), %ebx
+	movl	%ebx, %eax
+	jmp	.Lcompound_register.1
+.Lcompound_register.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	compound_register, .-compound_register
+	.globl	compound_register_long
+	.type	compound_register_long, @function
+compound_register_long:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movq	%rdi, -16(%rbp)
+	movq	%rsi, -24(%rbp)
+	movq	%rdx, -32(%rbp)
+	movq	-16(%rbp), %rbx
+	addq	-24(%rbp), %rbx
+	subq	defined_long(%rip), %rbx
+	movq	-32(%rbp), %rax
+	andq	(%rax), %rbx
+	orq	-24(%rbp), %rbx
+	xorq	-24(%rbp), %rbx
+	imulq	-24(%rbp), %rbx
+	movq	%rbx, %rax
+	jmp	.Lcompound_register_long.1
+.Lcompound_register_long.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	compound_register_long, .-compound_register_long
+	.globl	compound_register_widened
+	.type	compound_register_widened, @function
+compound_register_widened:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movq	%rdi, -16(%rbp)
+	movl	%esi, -20(%rbp)
+	movb	%dl, -21(%rbp)
+	movl	%ecx, -28(%rbp)
+	movq	-16(%rbp), %rbx
+	movslq	-20(%rbp), %rax
+	addq	%rax, %rbx
+	movsbq	-21(%rbp), %rax
+	addq	%rax, %rbx
+	movl	-28(%rbp), %ecx
+	shlq	%cl, %rbx
+	movq	%rbx, %rax
+	jmp	.Lcompound_register_widened.1
+.Lcompound_register_widened.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	compound_register_widened, .-compound_register_widened
 	.bss
 	.globl	defined
 	.type	defined, @object
 	.size	defined, 4
 	.p2align 2
 defined:
+	.zero	4
+	.globl	defined_long
+	.type	defined_long, @object
+	.size	defined_long, 8
+	.p2align 3
+defined_long:
+	.zero	8
+	.globl	changing
+	.type	changing, @object
+	.size	changing, 4
+	.p2align 2
+changing:
 	.zero	4
 	.section	.note.GNU-stack,"",@progbits

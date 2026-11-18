@@ -4208,8 +4208,10 @@ computed_into(state_t &s, const symbol_t *sym, const expr_t &e)
 // load of L.  Plain: a constant is the immediate into the variable's
 // register and the value is a read of the variable; otherwise the right
 // operand into the register by computed_into().  Compound: the right
-// operand first, then the operation row with the variable's register as
-// L, in place, addl %eax, %ebx, but for a division, whose quotient comes
+// operand first, binary_operand()'s, an object in memory of the
+// operation's width the instruction's own operand, andq -24(%rbp), %rbx
+// (6.1), then the operation row with the variable's register as L, in
+// place, addl %eax, %ebx, but for a division, whose quotient comes
 // back from rax by the mov; p += n at a size of 2, 4 or 8, whose leaq
 // is handed the variable and writes its register, leaq (%rbx,%rax,4),
 // %rbx (chapter 4); the value is a read of the variable after the
@@ -4235,7 +4237,7 @@ assign_register(state_t &s, const assign_t &a, const symbol_t *sym)
     const bool stepped = is< pointer_t >(sym->type);
 
     const auto r = stepped ? displacement(s, *a.op, *a.rhs, stride(sym->type)) :
-                             right_operand(s, *a.op, *a.rhs, width);
+                             binary_operand(s, *a.op, *a.rhs, width);
     const auto l = extended(s, read(s, sym), integer(sym->type), width);
 
     into_t into { sym };

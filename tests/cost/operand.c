@@ -51,7 +51,12 @@
    constant_index_right 3 + p and p + 3, constant_index_into the same
    into a register pointer, from another and from itself, and
    constant_index_wide a constant whose product no 32-bit immediate
-   holds (backend.md 6.1, 6.3).
+   holds (backend.md 6.1, 6.3).  compound_register writes each compound
+   assignment with a memory form into a register int r from a local y,
+   and r += changing on a volatile global, compound_register_long the
+   same into a register long from a local, a global and *p, and
+   compound_register_widened r += i, r += c and r <<= n beside them on
+   a register long, an int and a char widened and a shift's count.
 
    On x86-64 the listing must show each right operand as the
    instruction's operand, after the left operand's load and with no load
@@ -133,7 +138,17 @@
    constant_index and constant_index_right alike, movq -16(%rbp), %rbx;
    addq $12, %rbx; addq $12, %rbx in constant_index_into, and in
    constant_index_wide the constant held first, movq $1073741824, %rax,
-   then leaq (%rcx,%rax,4), %rax.
+   then leaq (%rcx,%rax,4), %rax.  It must show each compound
+   assignment into a register variable on the object as its operand,
+   in place: addl -16(%rbp), %ebx, subl, andl, orl, xorl and imull the
+   same, idivl -16(%rbp) after the variable's move into eax, and addl
+   changing(%rip), %ebx, one read of the volatile object, in
+   compound_register; addq -24(%rbp), %rbx, subq defined_long(%rip),
+   %rbx, andq (%rax), %rbx after p's load, and orq, xorq and imulq on
+   y's slot in compound_register_long; and the loads kept beside them,
+   movslq -20(%rbp), %rax and movsbq -21(%rbp), %rax before each addq,
+   and the count's movl -28(%rbp), %ecx before shlq %cl, %rbx, in
+   compound_register_widened.
 
    On aarch64, a load-store machine with no instruction that takes a
    memory operand, the listing must show each operand loaded into a
@@ -179,7 +194,12 @@
    compare_register; add x0, x0, #12 after the load in constant_index
    and constant_index_right, add x19, x19, #12 then add x19, x19, #12 in
    constant_index_into, and mov x0, #4294967296 before the load in
-   constant_index_wide. */
+   constant_index_wide.  In compound_register and
+   compound_register_long each object loaded into x0, ldr w0, [x29,
+   #28] or ldr x0, [x29, #32], then the operation on w19 or x19, add
+   w19, w19, w0 and the rest, sdiv w19, w19, w0 among them; in
+   compound_register_widened ldrsw x0, ldrb w0 and ldr w0 before the
+   adds and lsl x19, x19, x0. */
 int defined;
 extern int declared;
 
@@ -616,4 +636,48 @@ long
 widen_byte(unsigned char uc)
 {
         return (long) (signed char) uc;
+}
+
+long defined_long;
+volatile int changing;
+
+int
+compound_register(int x, int y)
+{
+        register int r = x;
+
+        r += y;
+        r -= y;
+        r &= y;
+        r |= y;
+        r ^= y;
+        r *= y;
+        r /= y;
+        r += changing;
+        return r;
+}
+
+long
+compound_register_long(long x, long y, long *p)
+{
+        register long r = x;
+
+        r += y;
+        r -= defined_long;
+        r &= *p;
+        r |= y;
+        r ^= y;
+        r *= y;
+        return r;
+}
+
+long
+compound_register_widened(long x, int i, char c, int n)
+{
+        register long r = x;
+
+        r += i;
+        r += c;
+        r <<= n;
+        return r;
 }

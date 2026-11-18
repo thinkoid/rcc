@@ -45,18 +45,32 @@ the call: ~p[f(i) + 1] = x~ holds it, ~p[i + f(j)] = x~ does not.
 Check: =joined_called= with no move on its paths, and no function
 longer.
 
-** TODO x86-64: a 64-bit object in memory is loaded to be the source of a row into a register variable
+** TODO x86-64: a register pointer stepped by an object in memory loads it
 
-~r &= b~ on a ~register long r~ and a =long= in memory is =movq
--24(%rbp), %rax; andq %rax, %rbx=, where the object is the
-instruction's operand at its own width, =andq -24(%rbp), %rbx=.
-About 132 rows over =tests= load a 64-bit local only to be such a
-source, the =cc_*_to_reg_l= rows of the control probe and =mul_l= of
-the inplace probe among them; the count is by pattern, and the rows
-are not read one by one.
+~p += n~ on a ~register char *p~ and a =long= in memory is =movq
+-24(%rbp), %rax; addq %rax, %rbx=, where the object is the add's
+operand, =addq -24(%rbp), %rbx=, as a compound assignment into a
+register variable of arithmetic type takes it (=backend.md= 6.1).
+The step's size is 1, so no product stands between. 13 rows over
+=tests=, =step_char()= and =back_char()= among them.
 
-Fix: none taken; count first, and say why the 32-bit rows take the
-operand and these do not.
+Fix: the stepped pointer's row takes an object of 64 bits in memory
+as its operand at a size of 1.
+
+Check: the count over =tests=, and no function longer.
+
+** TODO x86-64: a compound assignment into memory reloads its object beside a call's result
+
+~a += mix(b)~ on a =long= in memory is =call mix; movq -8(%rbp),
+%rcx; addq %rcx, %rax; movq %rax, -8(%rbp)=, where the object is the
+commuting row's source, =addq -8(%rbp), %rax=, and the store
+follows; the object is read once, after the right operand, as it is
+today (G13). A few rows over =tests=, =compound_called()= of the
+calls probe among them.
+
+Fix: none taken; count first. The row writes the right operand's
+register with the object its source where the commuting row's rule
+holds.
 
 Check: the count over =tests=, and no function longer.
 
