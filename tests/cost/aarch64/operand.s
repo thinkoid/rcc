@@ -1380,9 +1380,9 @@ commuted_into:
 	str	x19, [x29, #16]
 	.cfi_offset w19, -16
 	str	w0, [x29, #24]
-	ldr	w0, [x29, #24]
-	mov	w1, #4
-	mul	w19, w0, w1
+	ldr	w19, [x29, #24]
+	mov	w0, #4
+	mul	w19, w19, w0
 	add	w19, w19, #5
 	mov	w0, w19
 	b	.Lcommuted_into.1

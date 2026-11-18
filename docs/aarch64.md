@@ -348,6 +348,25 @@ better:
   nothing is moved after it. A row by a variable index takes the
   register too, `add x19, x0, x1; add x19, x19, #8` for `p = &m[i][2]`,
   since its `add` is its own instruction whichever register it writes.
+  An operation whose right operand reads nothing the left operand's
+  row could overwrite is the same, a constant, held or an immediate,
+  or another register variable's read: the left operand's row writes
+  the register and the operation is on it, `r = x + 7` being `ldr w19,
+  [x29, #24]; add w19, w19, #7`, `r = x * 4` `ldr w19, [x29, #24]; mov
+  w0, #4; mul w19, w19, w0`, and `r = x % 3` `sdiv w1, w19, w0; msub
+  w19, w1, w0, w19` after the load, `msub` reading every source before
+  it writes. These are x86-64's two conditions on the right operand
+  (`backend.md` chapter 4) for a machine whose instruction reads both
+  sources first: R is generated after the left operand's row has
+  written the register, so R must not read the variable, and `r = x +
+  r` keeps `ldr w0, [x29, #24]; add w19, w0, w19`; any other right
+  operand keeps the left operand elsewhere. `r = r + x`, on the
+  variable's own read, is the one `add` already. The operation is in
+  the type the variable's value is computed in: an `int` one widened
+  into a `long`, `l = i + 5`, keeps its `sxtw x19, w0`, a `long` one
+  narrowed into an `int` and one into a narrow variable their own
+  registers, and a constant left operand its `mov`, `mov w0, #5; sub
+  w20, w0, w19` for `r = 5 - s`.
   A conversion that changes the signedness alone is written
   there too: an object under it is loaded at the extension of the
   conversion's type, `ldr w19, [x29, #32]` for `register unsigned u =

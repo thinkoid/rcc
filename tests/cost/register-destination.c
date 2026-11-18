@@ -181,8 +181,8 @@
 
    On aarch64 the listing must show the last instruction of each
    right operand writing the register, no condition on the operands
-   and nothing refused: ldr w19, [x29, #24] in load(); add w19, w0,
-   #5, add w19, w0, w1 and add w20, w0, w19 for the leaves, the char
+   and nothing refused: ldr w19, [x29, #24] in load(); add w19, w19,
+   #5, add w19, w0, w1 and add w20, w20, w19 for the leaves, the char
    loaded by ldrb w1, [x29, #28]; add w19, w0, w1 after add w1, w1, w2
    in nested(); sub w19, w0, w19 in named(), after the initializer's
    ldr w19, [x29, #28]; add w19, w19, w0 in itself(); add w0, w19, #1
@@ -239,8 +239,8 @@
    chosen_own_second() and chosen_own_pointer() the load into the
    register on the first path and nothing on the second, and in
    itself_assigned() nothing after ldr w19, [x29, #24]; add w20, w19,
-   #5 in char_operand() and char_operand_left(); sxtw x0, w19 and add
-   x20, x0, #5 in
+   #5 in char_operand() and char_operand_left(); sxtw x20, w19 and add
+   x20, x20, #5 in
    int_widened(); mul w20, w19, w0 after mov w0, #4 in
    register_product(); in prefix_step() the load, the step and the
    store on the register, ldr w19, [x29, #24]; add w19, w19, #1; str

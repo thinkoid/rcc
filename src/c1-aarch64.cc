@@ -1089,17 +1089,17 @@ folded(state_t &s, const expr_t &pointer)
                        .label = label };
 }
 
-// The register variable a pointer is generated into where a constant
-// is added to it after, chapter 4: a copy of the one handed down, so
-// that the pointer's own row may write the variable's register and
-// offset()'s add or sub of the constant, which reads nothing else,
-// still writes it after, ldr x19, [x29, #24]; add x19, x19, #12 for q =
-// p[1] on int (*p)[3].  A pointer that no row writes, a register
-// variable's read, the variable's own among them, and a call's result,
-// which the call's row leaves in x0, leave the copy untaken, and the
-// add writes the variable from the pointer's register as before, add
-// x19, x19, #4 for q = q + 1.  None where none is handed down or a row
-// has written the variable.
+// The register variable an operand is generated into where an operation
+// that reads nothing else of it writes the variable after, chapter 4: a
+// copy of the one handed down, so that the operand's own row may write
+// the variable's register and the instruction after it, offset()'s add
+// or sub of a constant, or an operation's, still writes it, ldr x19,
+// [x29, #24]; add x19, x19, #12 for q = p[1] on int (*p)[3].  An operand
+// that no row writes, a register variable's read, the variable's own
+// among them, and a call's result, which the call's row leaves in x0,
+// leave the copy untaken, and the instruction writes the variable from
+// the operand's register as before, add x19, x19, #4 for q = q + 1.
+// None where none is handed down or a row has written the variable.
 std::optional< into_t >
 base_into(const into_t *into)
 {
@@ -2749,11 +2749,42 @@ conditional(state_t &s,
     return hold(s, join, std::min(valid, other_valid));
 }
 
+// Whether the left operand of L op R, of type t, is generated into the
+// register variable handed down, chapter 4, so that its row writes the
+// variable's register and the operation reads it there, ldr w19, [x29,
+// #24]; add w19, w19, #7 for r = x + 7.  R is generated after L's row
+// has written the register, so R reads nothing of the variable: a
+// constant, held or an immediate, or another register variable's read,
+// under any conversion; r = x + r, whose R is the variable, would read
+// x.  The operation is in the type the variable's value is computed
+// in, computed_type(), so that the variable's read after L's row is
+// valid to the operation's width.  r = r + x, whose L is the variable's
+// own read, is the one instruction already.
+bool
+left_into(const operation_t &o, const type_t &t, const into_t *into)
+{
+    if (!into || into->taken || !(t == computed_type(*into)))
+        return false;
+
+    const expr_t *r = o.rhs;
+    while (is< cast_t >(*r))
+        r = as< cast_t >(*r).arg.get();
+
+    if (is< literal_t >(*r))
+        return true;
+
+    const auto *other = register_variable(*r);
+
+    return other && other != into->variable;
+}
+
 // A binary operator's row.  The register the consumer of its value
 // names, wanted, goes to the row's last instruction, which writes it
 // where it is free, add w0, w1, w0 after a right operand that took x0;
 // the operands are generated as for any consumer, since the instruction
-// names its destination apart from its sources (6.1).
+// names its destination apart from its sources (6.1).  A register
+// variable handed down goes to the row's last instruction, and to the
+// left operand's row where left_into() holds (chapter 4).
 value_t
 binary(state_t &s, const expr_t &e, into_t *into = nullptr, unsigned wanted = 0)
 {
@@ -2784,7 +2815,8 @@ binary(state_t &s, const expr_t &e, into_t *into = nullptr, unsigned wanted = 0)
     // generated; a constant on the left of an operator that commutes is
     // taken on the right (6.1)
     const auto o = ordered(b);
-    const auto l = rvalue(s, *o.lhs);
+    auto onto = left_into(o, e.type, into) ? base_into(into) : std::nullopt;
+    const auto l = rvalue(s, *o.lhs, onto ? &*onto : nullptr);
     const auto r = right_operand(s, o.op, *o.rhs, operation_width(e.type));
 
     return arithmetic(s, o.op, l, r, e.type, into, wanted);

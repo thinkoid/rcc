@@ -160,8 +160,8 @@
    same, and ldrb then add w1, w1, #5; in commuted_register
    add w0, w19, #5, mov w1, #4 then mul w1, w19, w1, and
    and w1, w19, #0x7 and the rest on w19; in commuted_call bl f, then
-   add w0, w0, #5, and no spill; in commuted_into the load,
-   mov w1, #4 and mul w19, w0, w1, then add w19, w19, #5;
+   add w0, w0, #5, and no spill; in commuted_into the load into w19,
+   mov w0, #4 and mul w19, w19, w0, then add w19, w19, #5;
    and w0, w0, #0x1 then cbz in commuted_bit; the load before
    mov x1, #4294967296 and add x0, x0, x1 in commuted_wide, the
    constant held on the right; add w20, w19, #5 in

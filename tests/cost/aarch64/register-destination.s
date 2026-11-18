@@ -43,8 +43,8 @@ constant_leaf:
 	str	x19, [x29, #16]
 	.cfi_offset w19, -16
 	str	w0, [x29, #24]
-	ldr	w0, [x29, #24]
-	add	w19, w0, #5
+	ldr	w19, [x29, #24]
+	add	w19, w19, #5
 	mov	w0, w19
 	b	.Lconstant_leaf.1
 .Lconstant_leaf.1:
@@ -107,8 +107,8 @@ register_leaf:
 	.cfi_offset w20, -24
 	mov	w19, w0
 	str	w1, [x29, #32]
-	ldr	w0, [x29, #32]
-	add	w20, w0, w19
+	ldr	w20, [x29, #32]
+	add	w20, w20, w19
 	mov	w0, w20
 	b	.Lregister_leaf.1
 .Lregister_leaf.1:
@@ -2787,8 +2787,8 @@ int_widened:
 	.cfi_offset w20, -24
 	str	w0, [x29, #32]
 	ldr	w19, [x29, #32]
-	sxtw	x0, w19
-	add	x20, x0, #5
+	sxtw	x20, w19
+	add	x20, x20, #5
 	mov	x0, x20
 	b	.Lint_widened.1
 .Lint_widened.1:
