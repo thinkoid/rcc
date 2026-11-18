@@ -20,7 +20,6 @@ sum:
 	movl	-8(%rbp), %eax
 	addl	-12(%rbp), %eax
 	movl	%eax, -8(%rbp)
-.Lsum.3:
 	movl	-12(%rbp), %eax
 	addl	$1, %eax
 	movl	%eax, -12(%rbp)

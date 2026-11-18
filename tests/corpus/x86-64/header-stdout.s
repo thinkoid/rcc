@@ -21,7 +21,6 @@ main:
 	imull	-4(%rbp), %edx
 	movl	%edx, (%rax,%rcx,4)
 	addl	$1, count(%rip)
-.Lmain.3:
 	addl	$1, -4(%rbp)
 	jmp	.Lmain.2
 .Lmain.4:
@@ -35,7 +34,6 @@ main:
 	movslq	-4(%rbp), %rcx
 	movslq	(%rax,%rcx,4), %rax
 	addq	%rax, total(%rip)
-.Lmain.6:
 	addl	$1, -4(%rbp)
 	jmp	.Lmain.5
 .Lmain.7:

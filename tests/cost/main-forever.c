@@ -4,9 +4,9 @@
    place it, its jump back is the last instruction, and nothing written
    reaches the end of main.
 
-   On x86-64 the listing must show .Lmain.3, the step's label, and the
-   loop's jmp .Lmain.2 followed at once by .Lmain.1, with no label past
-   the loop and no movl $0, %eax.
+   On x86-64 the listing must show the loop's jmp .Lmain.2 under no
+   step's label, which no continue names, followed at once by .Lmain.1,
+   with no label past the loop and no movl $0, %eax.
 
    On aarch64 the listing must show the same, b .Lmain.2 followed at
    once by .Lmain.1, with no mov w0, #0. */

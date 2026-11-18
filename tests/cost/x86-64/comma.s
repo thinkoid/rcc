@@ -20,7 +20,6 @@ sum:
 	jge	.Lsum.4
 	movl	-12(%rbp), %eax
 	addl	%eax, -16(%rbp)
-.Lsum.3:
 	addl	$1, -8(%rbp)
 	addl	$2, -12(%rbp)
 	jmp	.Lsum.2

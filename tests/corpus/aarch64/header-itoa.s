@@ -38,7 +38,6 @@ reverse:
 	ldr	w1, [x29, #32]
 	ldr	w2, [x29, #24]
 	strb	w2, [x0, w1, sxtw]
-.Lreverse.3:
 	ldr	w0, [x29, #28]
 	add	w0, w0, #1
 	str	w0, [x29, #28]
@@ -90,7 +89,6 @@ itoa:
 	msub	w2, w4, w3, w2
 	add	w2, w2, #48
 	strb	w2, [x0, w1, sxtw]
-.Litoa.4:
 	mov	w0, #10
 	ldr	w1, [x29, #16]
 	sdiv	w1, w1, w0
@@ -162,7 +160,6 @@ trim:
 	cmp	w0, #10
 	b.ne	.Ltrim.4
 .Ltrim.5:
-.Ltrim.3:
 	ldr	w0, [x29, #24]
 	sub	w0, w0, #1
 	str	w0, [x29, #24]

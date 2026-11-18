@@ -19,7 +19,6 @@ main:
 	movl	-16(%rbp), %ecx
 	addl	-4(%rbp), %ecx
 	movb	%cl, -12(%rbp,%rax,1)
-.Lmain.3:
 	addl	$1, -16(%rbp)
 	jmp	.Lmain.2
 .Lmain.4:

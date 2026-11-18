@@ -203,7 +203,6 @@ for_falls:
 	movl	$3, %eax
 	jmp	.Lfor_falls.1
 .Lfor_falls.5:
-.Lfor_falls.3:
 	movl	-8(%rbp), %eax
 	addl	$1, %eax
 	movl	%eax, -8(%rbp)
@@ -237,7 +236,6 @@ for_ever:
 	movl	$3, %eax
 	jmp	.Lfor_ever.1
 .Lfor_ever.5:
-.Lfor_ever.3:
 	jmp	.Lfor_ever.2
 .Lfor_ever.1:
 	leave
@@ -323,7 +321,6 @@ do_falls:
 	movl	$3, %eax
 	jmp	.Ldo_falls.1
 .Ldo_falls.5:
-.Ldo_falls.3:
 	cmpl	$0, -4(%rbp)
 	jne	.Ldo_falls.2
 	movl	-4(%rbp), %eax

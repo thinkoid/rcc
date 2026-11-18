@@ -177,10 +177,11 @@ The destination comes first: `add w19, w19, #1` adds 1 to `w19`. A
 number. `[x29, #24]` is the address 24 bytes above the frame pointer
 `x29`; `ldr` loads from it and `str` stores to it.
 
-Each loop has three labels. `.Lmain.2` is the head, where the test
-`i != 1000000000` is; `.Lmain.3` is the step `++i`; `.Lmain.4`,
-outside the loop, is the code after it. `b.eq` branches when the
-compare found the two equal, and `b` always branches.
+Each loop has two labels. `.Lmain.2` is the head, where the test
+`i != 1000000000` is; `.Lmain.4`, outside the loop, is the code after
+it. The step `++i` follows the body under no label of its own, since
+no `continue` names one. `b.eq` branches when the compare found the
+two equal, and `b` always branches.
 
 rcc builds the constant 1000000000 in a register on every iteration,
 in two instructions: `mov w0, #51712` writes 0xca00, and `movk w0,
@@ -196,7 +197,6 @@ rest. 0x3b9aca00 is 1000000000.
 	cmp	w19, w0
 	b.eq	.Lmain.4
 	add	w20, w20, w19
-.Lmain.3:
 	add	w19, w19, #1
 	b	.Lmain.2
 ```
@@ -218,7 +218,6 @@ or stores. Each chain is one instruction: `i`'s is the add of 1 to
 	b.eq	.Lmain.4
 	ldr	w0, [x29, #24]
 	add	w19, w19, w0
-.Lmain.3:
 	ldr	w0, [x29, #24]
 	add	w0, w0, #1
 	str	w0, [x29, #24]
@@ -243,7 +242,6 @@ runs from the `str` to the next iteration's loads.
 	ldr	w0, [x29, #24]
 	add	w0, w0, w19
 	str	w0, [x29, #24]
-.Lmain.3:
 	add	w19, w19, #1
 	b	.Lmain.2
 ```
@@ -266,7 +264,6 @@ reads what this `str` wrote.
 	ldr	w1, [x29, #20]
 	add	w1, w1, w0
 	str	w1, [x29, #20]
-.Lmain.3:
 	ldr	w0, [x29, #16]
 	add	w0, w0, #1
 	str	w0, [x29, #16]
@@ -296,7 +293,6 @@ immediate, so the test is two instructions, `cmpl` and `je`.
 	cmpl	$1000000000, %ebx
 	je	.Lmain.4
 	addl	%ebx, %r12d
-.Lmain.3:
 	addl	$1, %ebx
 	jmp	.Lmain.2
 ```
@@ -310,7 +306,6 @@ immediate, so the test is two instructions, `cmpl` and `je`.
 	je	.Lmain.4
 	movl	-12(%rbp), %eax
 	addl	%eax, %ebx
-.Lmain.3:
 	addl	$1, -12(%rbp)
 	jmp	.Lmain.2
 ```
@@ -323,7 +318,6 @@ immediate, so the test is two instructions, `cmpl` and `je`.
 	cmpl	$1000000000, %ebx
 	je	.Lmain.4
 	addl	%ebx, -12(%rbp)
-.Lmain.3:
 	addl	$1, %ebx
 	jmp	.Lmain.2
 ```
@@ -337,7 +331,6 @@ immediate, so the test is two instructions, `cmpl` and `je`.
 	je	.Lmain.4
 	movl	-4(%rbp), %eax
 	addl	%eax, -8(%rbp)
-.Lmain.3:
 	addl	$1, -4(%rbp)
 	jmp	.Lmain.2
 ```

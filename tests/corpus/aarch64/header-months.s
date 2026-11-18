@@ -94,13 +94,11 @@ main:
 	ldr	w0, [x29, #80]
 	ldr	x16, [x29, #72]
 	blr	x16
-.Lmain.7:
 	ldr	w0, [x29, #20]
 	add	w0, w0, #1
 	str	w0, [x29, #20]
 	b	.Lmain.6
 .Lmain.8:
-.Lmain.4:
 	ldr	w0, [x29, #16]
 	add	w0, w0, #1
 	str	w0, [x29, #16]

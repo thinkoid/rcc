@@ -4,16 +4,16 @@
 
    On x86-64 the listing must show .p2align 5 before the body's label,
    the loop's head; the counter loaded, incremented with addl $1, %eax
-   and stored to -8(%rbp); then under a label of its own, which a
-   continue would jump to, the counter loaded and compared with n in
-   its slot, cmpl -4(%rbp), %eax, and the jl back to the head; and no
-   label past the test, which no break jumps to.
+   and stored to -8(%rbp); then, under no label of its own, since no
+   continue names one, the counter loaded and compared with n in its
+   slot, cmpl -4(%rbp), %eax, and the jl back to the head; and no label
+   past the test, which no break jumps to.
 
    On aarch64 the listing must show, with no alignment directive before
    the head, the counter loaded, incremented with add w0, w0, #1 and
-   stored to [x29, #20]; then under the condition's label the counter
-   loaded and compared with cmp w0, w1 and the b.lt back to the head;
-   and no label past the test. */
+   stored to [x29, #20]; then, under no label, the counter loaded and
+   compared with cmp w0, w1 and the b.lt back to the head; and no label
+   past the test. */
 int
 count(int n)
 {

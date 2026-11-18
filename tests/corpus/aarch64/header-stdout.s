@@ -28,7 +28,6 @@ main:
 	add	w0, w0, #1
 	adrp	x16, count
 	str	w0, [x16, :lo12:count]
-.Lmain.3:
 	ldr	w0, [x29, #16]
 	add	w0, w0, #1
 	str	w0, [x29, #16]
@@ -50,7 +49,6 @@ main:
 	add	x1, x1, x0
 	adrp	x16, total
 	str	x1, [x16, :lo12:total]
-.Lmain.6:
 	ldr	w0, [x29, #16]
 	add	w0, w0, #1
 	str	w0, [x29, #16]

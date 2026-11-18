@@ -21,7 +21,6 @@ constant_in_loop:
 	movabsq	$81985529216486895, %rcx
 	addq	%rcx, %rax
 	movq	%rax, -8(%rbp)
-.Lconstant_in_loop.3:
 	movl	-16(%rbp), %eax
 	addl	$1, %eax
 	movl	%eax, -16(%rbp)

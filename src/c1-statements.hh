@@ -100,9 +100,10 @@ while_stmt(state_t &s, const while_t &w)
 // backend.md 7.2: the body first, then the condition at the bottom,
 // where it is written, tested once per iteration, 6.8.6.3p1, and the
 // jump back taken while it holds.  The body's label is the loop's head.
-// A continue jumps to the condition, which is written where a path
-// reaches it: out of the body's end, or by a continue.  The label past
-// the test is placed where a break names it.
+// The condition is written where a path reaches it: out of the body's
+// end, or by a continue, which jumps to its label.  Every label after
+// the head is placed only where a jump names it: the condition's where
+// a continue does, the one past the test where a break does.
 void
 do_stmt(state_t &s, const do_t &d)
 {
@@ -114,19 +115,20 @@ do_stmt(state_t &s, const do_t &d)
     place_label(s, body);
     const auto named = loop_body(s, *d.body, cond, end);
 
-    if (named.continued || !s.terminated) {
+    if (named.continued)
         place_label(s, cond);
+    if (!s.terminated)
         cbranch(s, d.cond, body, true);
-    }
 
     if (named.broken)
         place_label(s, end);
 }
 
-// G14, as for while.  The step has its label, which a continue jumps
-// to; the step and the jump back are written where a path reaches
-// them: out of the body's end, or by a continue.  The label past the
-// loop is placed where the condition's exit or a break names it.  The
+// G14, as for while.  The step and the jump back are written where a
+// path reaches them: out of the body's end, or by a continue, which
+// jumps to the step's label.  Every label after the head is placed
+// only where a jump names it: the step's where a continue does, the
+// one past the loop where the condition's exit or a break does.  The
 // init is a statement: a declaration, a block of them for several
 // declarators, or an expression.  Its names are in scope for the whole
 // loop, 6.8.6.4p1.
@@ -147,8 +149,9 @@ for_stmt(state_t &s, const for_t &f)
 
     const auto named = loop_body(s, *f.body, next, end);
 
-    if (named.continued || !s.terminated) {
+    if (named.continued)
         place_label(s, next);
+    if (!s.terminated) {
         if (f.step)
             effect(s, *f.step);
         jump(s, cond);

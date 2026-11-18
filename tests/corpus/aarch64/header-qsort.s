@@ -95,7 +95,6 @@ main:
 	mov	w0, #1
 	b	.Lmain.1
 .Lmain.5:
-.Lmain.3:
 	ldr	w0, [x29, #40]
 	add	w0, w0, #1
 	str	w0, [x29, #40]

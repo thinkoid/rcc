@@ -24,7 +24,6 @@ main:
 	mov	w0, #3
 	b	.Lmain.1
 .Lmain.5:
-.Lmain.3:
 	b	.Lmain.2
 .Lmain.1:
 	.cfi_def_cfa wsp, 16

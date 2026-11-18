@@ -22,7 +22,6 @@ main:
 	add	x0, x29, #32
 	ldr	w1, [x29, #20]
 	str	wzr, [x0, w1, sxtw #2]
-.Lmain.3:
 	ldr	w0, [x29, #20]
 	add	w0, w0, #1
 	str	w0, [x29, #20]
@@ -114,7 +113,6 @@ main:
 	str	w0, [x29, #28]
 	b	.Lmain.22
 .Lmain.22:
-.Lmain.6:
 	ldr	w0, [x29, #20]
 	add	w0, w0, #1
 	str	w0, [x29, #20]
@@ -140,7 +138,6 @@ main:
 	ldr	x0, [x29, #80]
 	ldr	w1, [x29, #88]
 	bl	printf
-.Lmain.28:
 	ldr	w0, [x29, #20]
 	add	w0, w0, #1
 	str	w0, [x29, #20]

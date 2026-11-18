@@ -26,7 +26,6 @@ constant_in_loop:
 	movk	x1, #0x123, lsl #48
 	add	x0, x0, x1
 	str	x0, [x29, #16]
-.Lconstant_in_loop.3:
 	ldr	w0, [x29, #28]
 	add	w0, w0, #1
 	str	w0, [x29, #28]

@@ -186,7 +186,6 @@ getint:
 	sub	w2, w2, #48
 	add	w1, w1, w2
 	str	w1, [x0]
-.Lgetint.11:
 	bl	getch
 	str	w0, [x29, #24]
 	b	.Lgetint.10

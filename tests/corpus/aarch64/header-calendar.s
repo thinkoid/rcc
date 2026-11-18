@@ -85,7 +85,6 @@ day_of_year:
 	ldr	w1, [x29, #24]
 	add	w1, w1, w0
 	str	w1, [x29, #24]
-.Lday_of_year.3:
 	ldr	w0, [x29, #28]
 	add	w0, w0, #1
 	str	w0, [x29, #28]
@@ -148,7 +147,6 @@ month_day:
 	ldr	w1, [x29, #20]
 	sub	w1, w1, w0
 	str	w1, [x29, #20]
-.Lmonth_day.3:
 	ldr	w0, [x29, #40]
 	add	w0, w0, #1
 	str	w0, [x29, #40]
@@ -263,7 +261,6 @@ round_trip:
 	ldr	w0, [x29, #20]
 	b	.Lround_trip.1
 .Lround_trip.5:
-.Lround_trip.3:
 	ldr	w0, [x29, #20]
 	add	w0, w0, #1
 	str	w0, [x29, #20]

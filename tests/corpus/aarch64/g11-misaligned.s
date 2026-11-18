@@ -23,7 +23,6 @@ main:
 	ldr	w3, [x29, #16]
 	add	w2, w2, w3
 	strb	w2, [x0, w1, sxtw]
-.Lmain.3:
 	ldr	w0, [x29, #28]
 	add	w0, w0, #1
 	str	w0, [x29, #28]

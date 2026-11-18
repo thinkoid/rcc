@@ -37,7 +37,6 @@ reverse:
 	movslq	-20(%rbp), %rcx
 	movl	-12(%rbp), %edx
 	movb	%dl, (%rax,%rcx,1)
-.Lreverse.3:
 	addl	$1, -16(%rbp)
 	subl	$1, -20(%rbp)
 	jmp	.Lreverse.2
@@ -86,7 +85,6 @@ itoa:
 	idivl	%esi
 	addl	$48, %edx
 	movb	%dl, (%rdi,%r8,1)
-.Litoa.4:
 	movl	$10, %ecx
 	movl	-4(%rbp), %eax
 	cltd
@@ -154,7 +152,6 @@ trim:
 	cmpl	$10, %eax
 	jne	.Ltrim.4
 .Ltrim.5:
-.Ltrim.3:
 	subl	$1, -12(%rbp)
 	jmp	.Ltrim.2
 .Ltrim.4:

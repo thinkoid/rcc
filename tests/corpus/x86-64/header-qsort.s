@@ -77,7 +77,6 @@ main:
 	movl	$1, %eax
 	jmp	.Lmain.1
 .Lmain.5:
-.Lmain.3:
 	addl	$1, -28(%rbp)
 	jmp	.Lmain.2
 .Lmain.4:

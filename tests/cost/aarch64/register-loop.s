@@ -23,7 +23,6 @@ sum:
 	cmp	w21, w19
 	b.ge	.Lsum.4
 	add	w20, w20, w21
-.Lsum.3:
 	add	w21, w21, #1
 	b	.Lsum.2
 .Lsum.4:

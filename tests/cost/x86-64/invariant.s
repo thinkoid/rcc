@@ -25,7 +25,6 @@ invariant:
 	idivl	-8(%rbp)
 	addl	%eax, %ecx
 	movl	%ecx, -16(%rbp)
-.Linvariant.3:
 	movl	-20(%rbp), %eax
 	addl	$1, %eax
 	movl	%eax, -20(%rbp)
@@ -59,7 +58,6 @@ invariant_constant:
 	movl	-8(%rbp), %eax
 	addl	$408, %eax
 	movl	%eax, -8(%rbp)
-.Linvariant_constant.3:
 	movl	-12(%rbp), %eax
 	addl	$1, %eax
 	movl	%eax, -12(%rbp)

@@ -23,7 +23,6 @@ sum:
 	cmpl	%ebx, %r13d
 	jge	.Lsum.4
 	addl	%r13d, %r12d
-.Lsum.3:
 	addl	$1, %r13d
 	jmp	.Lsum.2
 .Lsum.4:

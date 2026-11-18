@@ -151,7 +151,6 @@ getint:
 	subl	$48, %edx
 	addl	%edx, %ecx
 	movl	%ecx, (%rax)
-.Lgetint.11:
 	call	getch@PLT
 	movl	%eax, -12(%rbp)
 	jmp	.Lgetint.10

@@ -243,7 +243,6 @@ for_falls:
 	mov	w0, #3
 	b	.Lfor_falls.1
 .Lfor_falls.5:
-.Lfor_falls.3:
 	ldr	w0, [x29, #20]
 	add	w0, w0, #1
 	str	w0, [x29, #20]
@@ -283,7 +282,6 @@ for_ever:
 	mov	w0, #3
 	b	.Lfor_ever.1
 .Lfor_ever.5:
-.Lfor_ever.3:
 	b	.Lfor_ever.2
 .Lfor_ever.1:
 	.cfi_def_cfa wsp, 32
@@ -387,7 +385,6 @@ do_falls:
 	mov	w0, #3
 	b	.Ldo_falls.1
 .Ldo_falls.5:
-.Ldo_falls.3:
 	ldr	w0, [x29, #16]
 	cbnz	w0, .Ldo_falls.2
 	ldr	w0, [x29, #16]

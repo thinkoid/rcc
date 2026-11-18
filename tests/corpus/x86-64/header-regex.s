@@ -22,7 +22,6 @@ sum:
 	movslq	-24(%rbp), %rcx
 	movl	(%rax,%rcx,4), %eax
 	addl	%eax, -20(%rbp)
-.Lsum.3:
 	addl	$1, -24(%rbp)
 	jmp	.Lsum.2
 .Lsum.4:

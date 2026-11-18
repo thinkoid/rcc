@@ -1649,25 +1649,26 @@ constant.
   bottom, where it is written, tested once per iteration (6.8.6.3p1);
   the jump back is taken while it holds. `.Lbody` is the loop's head
   and takes the directive as `while`'s and `for`'s heads do. After an
-  `s` that ends in a jump, `.Lcond` and the test are written only
-  where a `continue` names `.Lcond`: no other path reaches them.
+  `s` that ends in a jump, the test is written only where a
+  `continue` reaches it: no other path does.
 - `for (i; e; n) s`: `i; .p2align 5; .Lcond: cbranch(e, .Lend, 0); s;
   .Lstep: n; jmp .Lcond; .Lend:`. After an `s` that ends in a jump,
-  `.Lstep`, `n` and the `jmp` are written only where a `continue`
-  names `.Lstep`, as `do`'s test is.
+  `n` and the `jmp` are written only where a `continue` reaches them,
+  as `do`'s test is.
 - `break` and `continue`: `jmp` to a label of the innermost loop around
   them. `break` jumps to its `.Lend`, past the loop (6.8.7.4p2).
   `continue` jumps to the loop's continuation (6.8.7.3p2): `.Lcond` in
-  `while` and `do`, `.Lstep` in `for`. A loop places `.Lend` only
-  where a jump names it, its condition's exit or a `break`, so a `do`
-  or a `for (;;)` with no `break` has none; its other labels are
-  placed wherever the code they start is written, named or not. c1
-  keeps the loops and the switches around the statement it generates
-  as a stack of their labels, each with a record of whether a `break`
-  or a `continue` has jumped to them; a `switch` takes a `break`, to
-  the label past its body, and no `continue`, which goes on to the
-  loop around it (7.3). A statement boundary holds no value (6.7), so
-  the jump is the whole statement.
+  `while` and `do`, `.Lstep` in `for`. A loop places a label after
+  its head only where a jump names it: `.Lend` where its condition's
+  exit or a `break` does, `do`'s `.Lcond` and `for`'s `.Lstep` where
+  a `continue` does. So a `do` or a `for (;;)` with no `break` has no
+  `.Lend`, and with no `continue` the test of a `do` and the step of a
+  `for` follow `s` under no label. c1 keeps the loops and the switches
+  around the statement it generates as a stack of their labels, each
+  with a record of whether a `break` or a `continue` has jumped to
+  them; a `switch` takes a `break`, to the label past its body, and no
+  `continue`, which goes on to the loop around it (7.3). A statement
+  boundary holds no value (6.7), so the jump is the whole statement.
 - `goto L` and `L:`: `jmp` to the label and the label where it is
   written. A label of the source is one more label of the function,
   `.L<function>.<n>`, numbered when c1 first meets it, at its definition

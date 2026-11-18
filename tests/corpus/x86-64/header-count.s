@@ -20,7 +20,6 @@ main:
 	jge	.Lmain.4
 	movslq	-8(%rbp), %rax
 	movl	$0, -56(%rbp,%rax,4)
-.Lmain.3:
 	addl	$1, -8(%rbp)
 	jmp	.Lmain.2
 .Lmain.4:
@@ -102,7 +101,6 @@ main:
 	addl	$1, -16(%rbp)
 	jmp	.Lmain.22
 .Lmain.22:
-.Lmain.6:
 	addl	$1, -8(%rbp)
 	jmp	.Lmain.5
 .Lmain.7:
@@ -125,7 +123,6 @@ main:
 	movl	-76(%rbp), %esi
 	movl	$0, %eax
 	call	printf@PLT
-.Lmain.28:
 	addl	$1, -8(%rbp)
 	jmp	.Lmain.27
 .Lmain.29:

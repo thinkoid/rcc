@@ -76,11 +76,9 @@ main:
 	movl	%eax, -68(%rbp)
 	movl	-68(%rbp), %edi
 	call	*-64(%rbp)
-.Lmain.7:
 	addl	$1, -8(%rbp)
 	jmp	.Lmain.6
 .Lmain.8:
-.Lmain.4:
 	addl	$1, -4(%rbp)
 	jmp	.Lmain.3
 .Lmain.5:

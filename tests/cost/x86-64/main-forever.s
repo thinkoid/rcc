@@ -19,7 +19,6 @@ main:
 	movl	$3, %eax
 	jmp	.Lmain.1
 .Lmain.5:
-.Lmain.3:
 	jmp	.Lmain.2
 .Lmain.1:
 	leave

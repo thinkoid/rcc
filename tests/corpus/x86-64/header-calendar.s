@@ -73,7 +73,6 @@ day_of_year:
 	movslq	-16(%rbp), %rcx
 	movsbl	(%rax,%rcx,1), %eax
 	addl	%eax, -12(%rbp)
-.Lday_of_year.3:
 	addl	$1, -16(%rbp)
 	jmp	.Lday_of_year.2
 .Lday_of_year.4:
@@ -123,7 +122,6 @@ month_day:
 	movslq	-28(%rbp), %rcx
 	movsbl	(%rax,%rcx,1), %eax
 	subl	%eax, -8(%rbp)
-.Lmonth_day.3:
 	addl	$1, -28(%rbp)
 	jmp	.Lmonth_day.2
 .Lmonth_day.4:
@@ -220,7 +218,6 @@ round_trip:
 	movl	-8(%rbp), %eax
 	jmp	.Lround_trip.1
 .Lround_trip.5:
-.Lround_trip.3:
 	addl	$1, -8(%rbp)
 	jmp	.Lround_trip.2
 .Lround_trip.4:

@@ -23,7 +23,6 @@ sum:
 	ldr	w1, [x29, #24]
 	add	w0, w0, w1
 	str	w0, [x29, #20]
-.Lsum.3:
 	ldr	w0, [x29, #24]
 	add	w0, w0, #1
 	str	w0, [x29, #24]

@@ -17,7 +17,6 @@ count:
 	ldr	w0, [x29, #20]
 	add	w0, w0, #1
 	str	w0, [x29, #20]
-.Lcount.3:
 	ldr	w0, [x29, #20]
 	ldr	w1, [x29, #16]
 	cmp	w0, w1

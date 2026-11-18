@@ -27,7 +27,6 @@ invariant:
 	sdiv	w1, w1, w2
 	add	w0, w0, w1
 	str	w0, [x29, #28]
-.Linvariant.3:
 	ldr	w0, [x29, #32]
 	add	w0, w0, #1
 	str	w0, [x29, #32]
@@ -67,7 +66,6 @@ invariant_constant:
 	ldr	w0, [x29, #20]
 	add	w0, w0, #408
 	str	w0, [x29, #20]
-.Linvariant_constant.3:
 	ldr	w0, [x29, #24]
 	add	w0, w0, #1
 	str	w0, [x29, #24]

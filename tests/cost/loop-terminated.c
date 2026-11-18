@@ -9,12 +9,14 @@
    condition.  for_continues and do_continues are the third, whose
    continue reaches the step and the condition, so both are written.
    The _falls functions are the edge in each loop: the body falls
-   through past its if and keeps what follows it.  The label past a
-   loop is placed where a jump names it: for_ever, a for (;;) left only
-   by its return, has none.  switch_returns is an if whose body is a
-   switch with a default and no break, which places no label past it,
-   so the if writes no jump over its else part; switch_breaks is the
-   edge, whose break names the label and keeps the jump.
+   through past its if and keeps what follows it, under no label, since
+   no continue names one.  A label after a loop's head is placed only
+   where a jump names it: for_ever, a for (;;) left only by its return,
+   has neither the step's nor the one past the loop.  switch_returns
+   is an if whose body is a switch with a default and no break, which
+   places no label past it, so the if writes no jump over its else
+   part; switch_breaks is the edge, whose break names the label and
+   keeps the jump.
 
    On x86-64 the listing must show while_returns' jmp .Lwhile_returns.1
    followed at once by .Lwhile_returns.3, the label past the loop;
