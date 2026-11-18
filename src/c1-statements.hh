@@ -2,14 +2,15 @@
 
 // The statements of backend.md 7.2 and 7.3 and aarch64.md 7.2 and 7.3:
 // each a shape of labels and jumps around the generator's own
-// functions, with no instruction of its own.  Its text is the same for every target, but
-// it names each target's state and calls each target's functions, so
-// this is not a header in the ordinary sense: it is part of a
-// generator's text, kept in one place, as c1-stack.hh is.  c1-x86-64.cc
-// and c1-aarch64.cc each include it once, inside their unnamed
-// namespace, after the expressions, and so each compiles its own copy
-// against its own state_t and functions.  It includes nothing, since it
-// is read inside a namespace; the generator's own includes serve it.
+// functions, with no instruction of its own.  Its text is the same for
+// every target, but it names each target's state and calls each
+// target's functions, so this is not a header in the ordinary sense: it
+// is part of a generator's text, kept in one place, as c1-stack.hh is.
+// c1-x86-64.cc and c1-aarch64.cc each include it once, inside their
+// unnamed namespace, after the expressions, and so each compiles its
+// own copy against its own state_t and functions.  It includes nothing,
+// since it is read inside a namespace; the generator's own includes
+// serve it.
 //
 // Before the include the generator declares reg_t; state_t with body,
 // live, ret, terminated, jump_targets, user_labels and case_labels;
