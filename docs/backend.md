@@ -633,17 +633,22 @@ which is the value in `rdx` (6.5), and for an operator that commutes,
 `+`, `*`, `&`, `|` or `^`, whose right operand is a value in a
 register when the instruction is written, in two cases: the register
 is the one its consumer names, or `L` is a register variable's read,
-which the row would copy, and no free register is named for the
-copy. That row writes `R`'s register, `op L, R`, `L` freed, so
-`return g + bump()` ends `movq -8(%rbp), %rcx; addl %ecx, %eax` and
-not `addl %eax, %ecx; movl %ecx, %eax`, and `s = r + f(x)` on a
-`register int r` is `addl %ebx, %eax` and not `movl %ebx, %ecx; addl
-%eax, %ecx`. Where a free register is named, the copy is made there,
-`movl %ebx, %eax; addl %ecx, %eax` for `return r + y * z`, as many
-instructions as the row into `R` and a move; and where `R`'s register
-is left for last for a pinned instruction ahead (6.5), the copy
-stays, so that the division of `(r + f(y)) + y / z` finds `rax`
-free. The instruction is the source's
+which the row would copy, or a spilled value, which it would reload,
+and no free register is named for the copy or the reload. That row
+writes `R`'s register, `op L, R`, `L` freed, a spilled `L` read in
+its slot (6.2), so `return g + bump()` ends `addl -8(%rbp), %eax`
+and not `movq -8(%rbp), %rcx; addl %eax, %ecx; movl %ecx, %eax`, `s
+= r + f(x)` on a `register int r` is `addl %ebx, %eax` and not `movl
+%ebx, %ecx; addl %eax, %ecx`, and `g = g + bump()` is `addl
+-8(%rbp), %eax` and the store. Where a free register is named, the
+copy or the reload is made there, `movl %ebx, %eax; addl %ecx, %eax`
+for `return r + y * z`, as many instructions as the row into `R` and
+a move; and where `R`'s register is left for last for a pinned
+instruction ahead (6.5), or an instruction within the right operand
+of an enclosing node pins it, outside a call or a branch, which spill
+every held value first, the copy or the reload stays, so that the
+division of `(r + f(y)) + y / z` finds `rax` free. The instruction
+is the source's
 operator on the source's two values, evaluated in the order written;
 only its destination is the other operand's register, and the
 result is valid to the instruction's width, whichever register it
@@ -911,7 +916,15 @@ be held and no register is free, the oldest held value is stored to
 the next spill slot of the frame and its register reused; when the
 spilled value is consumed it is reloaded, all 8 bytes, into the
 lowest free register, with `movq`. The same slots take a value held
-across a call (chapter 8). The generator counts spill slots as it
+across a call (chapter 8). A spill slot is the generator's own, no
+object of the program: it is written whole, 8 bytes, by the one
+`movq` of `store_spill()`, and read once, at the width of the
+instruction that reads it, up to what was written, its low bytes the
+value at that width as the register's low half is. A row of an
+operator that commutes reads a spilled left operand in its slot,
+`addl -8(%rbp), %eax`, where the reload would take a register (6.1);
+the slot is never written again and never reused (G12). The
+generator counts spill slots as it
 goes, and the frame of chapter 5 is sized after the body is
 generated. Nine registers hold any expression a programmer writes;
 the path is exercised by one cost program of ten nested right
@@ -1659,8 +1672,7 @@ the held read of `x` into `eax`, and the copy is spilled there:
 	movq	%rax, -24(%rbp)
 	movl	-12(%rbp), %edi
 	call	f@PLT
-	movq	-24(%rbp), %rcx
-	addl	%eax, %ecx
+	addl	-24(%rbp), %eax
 ```
 
 The values held on entry to the call are spilled sooner, before the

@@ -1391,4 +1391,432 @@ register_row_called:
 	ret
 	.cfi_endproc
 	.size	register_row_called, .-register_row_called
+	.globl	spilled_add
+	.type	spilled_add, @function
+spilled_add:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	str	w1, [x29, #20]
+	ldr	w0, [x29, #16]
+	str	x0, [x29, #24]
+	ldr	w0, [x29, #20]
+	str	w0, [x29, #32]
+	ldr	w0, [x29, #32]
+	bl	f
+	ldr	x1, [x29, #24]
+	add	w0, w1, w0
+	b	.Lspilled_add.1
+.Lspilled_add.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	spilled_add, .-spilled_add
+	.globl	spilled_mul
+	.type	spilled_mul, @function
+spilled_mul:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	str	w1, [x29, #20]
+	ldr	w0, [x29, #16]
+	str	x0, [x29, #24]
+	ldr	w0, [x29, #20]
+	str	w0, [x29, #32]
+	ldr	w0, [x29, #32]
+	bl	f
+	ldr	x1, [x29, #24]
+	mul	w0, w1, w0
+	b	.Lspilled_mul.1
+.Lspilled_mul.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	spilled_mul, .-spilled_mul
+	.globl	spilled_and
+	.type	spilled_and, @function
+spilled_and:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	str	w1, [x29, #20]
+	ldr	w0, [x29, #16]
+	str	x0, [x29, #24]
+	ldr	w0, [x29, #20]
+	str	w0, [x29, #32]
+	ldr	w0, [x29, #32]
+	bl	f
+	ldr	x1, [x29, #24]
+	and	w0, w1, w0
+	b	.Lspilled_and.1
+.Lspilled_and.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	spilled_and, .-spilled_and
+	.globl	spilled_or
+	.type	spilled_or, @function
+spilled_or:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	str	w1, [x29, #20]
+	ldr	w0, [x29, #16]
+	str	x0, [x29, #24]
+	ldr	w0, [x29, #20]
+	str	w0, [x29, #32]
+	ldr	w0, [x29, #32]
+	bl	f
+	ldr	x1, [x29, #24]
+	orr	w0, w1, w0
+	b	.Lspilled_or.1
+.Lspilled_or.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	spilled_or, .-spilled_or
+	.globl	spilled_xor
+	.type	spilled_xor, @function
+spilled_xor:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	str	w1, [x29, #20]
+	ldr	w0, [x29, #16]
+	str	x0, [x29, #24]
+	ldr	w0, [x29, #20]
+	str	w0, [x29, #32]
+	ldr	w0, [x29, #32]
+	bl	f
+	ldr	x1, [x29, #24]
+	eor	w0, w1, w0
+	b	.Lspilled_xor.1
+.Lspilled_xor.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	spilled_xor, .-spilled_xor
+	.globl	spilled_add_long
+	.type	spilled_add_long, @function
+spilled_add_long:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	x1, [x29, #24]
+	ldr	x0, [x29, #16]
+	str	x0, [x29, #32]
+	ldr	x0, [x29, #24]
+	str	x0, [x29, #40]
+	ldr	x0, [x29, #40]
+	bl	lf
+	ldr	x1, [x29, #32]
+	add	x0, x1, x0
+	b	.Lspilled_add_long.1
+.Lspilled_add_long.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	spilled_add_long, .-spilled_add_long
+	.globl	spilled_mul_long
+	.type	spilled_mul_long, @function
+spilled_mul_long:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	x1, [x29, #24]
+	ldr	x0, [x29, #16]
+	str	x0, [x29, #32]
+	ldr	x0, [x29, #24]
+	str	x0, [x29, #40]
+	ldr	x0, [x29, #40]
+	bl	lf
+	ldr	x1, [x29, #32]
+	mul	x0, x1, x0
+	b	.Lspilled_mul_long.1
+.Lspilled_mul_long.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	spilled_mul_long, .-spilled_mul_long
+	.globl	spilled_and_long
+	.type	spilled_and_long, @function
+spilled_and_long:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	x1, [x29, #24]
+	ldr	x0, [x29, #16]
+	str	x0, [x29, #32]
+	ldr	x0, [x29, #24]
+	str	x0, [x29, #40]
+	ldr	x0, [x29, #40]
+	bl	lf
+	ldr	x1, [x29, #32]
+	and	x0, x1, x0
+	b	.Lspilled_and_long.1
+.Lspilled_and_long.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	spilled_and_long, .-spilled_and_long
+	.globl	spilled_or_long
+	.type	spilled_or_long, @function
+spilled_or_long:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	x1, [x29, #24]
+	ldr	x0, [x29, #16]
+	str	x0, [x29, #32]
+	ldr	x0, [x29, #24]
+	str	x0, [x29, #40]
+	ldr	x0, [x29, #40]
+	bl	lf
+	ldr	x1, [x29, #32]
+	orr	x0, x1, x0
+	b	.Lspilled_or_long.1
+.Lspilled_or_long.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	spilled_or_long, .-spilled_or_long
+	.globl	spilled_xor_long
+	.type	spilled_xor_long, @function
+spilled_xor_long:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	x1, [x29, #24]
+	ldr	x0, [x29, #16]
+	str	x0, [x29, #32]
+	ldr	x0, [x29, #24]
+	str	x0, [x29, #40]
+	ldr	x0, [x29, #40]
+	bl	lf
+	ldr	x1, [x29, #32]
+	eor	x0, x1, x0
+	b	.Lspilled_xor_long.1
+.Lspilled_xor_long.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	spilled_xor_long, .-spilled_xor_long
+	.globl	spilled_stored
+	.type	spilled_stored, @function
+spilled_stored:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	str	w1, [x29, #20]
+	ldr	w0, [x29, #16]
+	str	x0, [x29, #24]
+	ldr	w0, [x29, #20]
+	str	w0, [x29, #32]
+	ldr	w0, [x29, #32]
+	bl	f
+	ldr	x1, [x29, #24]
+	add	w1, w1, w0
+	adrp	x16, stored_sum
+	str	w1, [x16, :lo12:stored_sum]
+.Lspilled_stored.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	spilled_stored, .-spilled_stored
+	.globl	spilled_minus
+	.type	spilled_minus, @function
+spilled_minus:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	str	w1, [x29, #20]
+	ldr	w0, [x29, #16]
+	str	x0, [x29, #24]
+	ldr	w0, [x29, #20]
+	str	w0, [x29, #32]
+	ldr	w0, [x29, #32]
+	bl	f
+	ldr	x1, [x29, #24]
+	sub	w0, w1, w0
+	b	.Lspilled_minus.1
+.Lspilled_minus.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	spilled_minus, .-spilled_minus
+	.globl	spilled_count
+	.type	spilled_count, @function
+spilled_count:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	str	w1, [x29, #20]
+	ldr	w0, [x29, #20]
+	ldr	w1, [x29, #16]
+	str	x0, [x29, #24]
+	str	x1, [x29, #32]
+	ldr	w0, [x29, #20]
+	str	w0, [x29, #40]
+	ldr	w0, [x29, #40]
+	bl	f
+	ldr	x1, [x29, #32]
+	add	w1, w1, w0
+	ldr	x0, [x29, #24]
+	lsl	w0, w0, w1
+	b	.Lspilled_count.1
+.Lspilled_count.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	spilled_count, .-spilled_count
+	.bss
+	.globl	stored_sum
+	.type	stored_sum, @object
+	.size	stored_sum, 4
+	.p2align 2
+stored_sum:
+	.zero	4
 	.section	.note.GNU-stack,"",@progbits

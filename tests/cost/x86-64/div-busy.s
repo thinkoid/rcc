@@ -114,12 +114,11 @@ div_held:
 	addl	%r9d, %r8d
 	addl	%r8d, %edi
 	addl	%edi, %esi
-	movq	-32(%rbp), %rcx
-	addl	%esi, %ecx
+	addl	-32(%rbp), %esi
 	movl	48(%rbp), %eax
 	cltd
 	idivl	56(%rbp)
-	addl	%ecx, %eax
+	addl	%esi, %eax
 	jmp	.Ldiv_held.1
 .Ldiv_held.1:
 	leave

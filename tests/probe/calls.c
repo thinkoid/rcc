@@ -365,6 +365,48 @@ unsigned long kept_called(unsigned long a, long b)
     return (r + mix1(b)) * 3 + (mix1(a) + r) * 5 + r;
 }
 
+/* a left operand spilled across a call, read in its slot by an
+   operator that commutes at 32 bits, whose instruction writes the
+   call's register: returned, widened as an unsigned and stored; beside
+   them - , which reloads it */
+unsigned add_called32(unsigned a, long b)
+{
+    return a + (unsigned) mix1(b);
+}
+
+int and_called32(int a, long b)
+{
+    return a & (int) mix1(b);
+}
+
+int or_called32(int a, long b)
+{
+    return a | (int) mix1(b);
+}
+
+int xor_called32(int a, long b)
+{
+    return a ^ (int) mix1(b);
+}
+
+unsigned long widened_called(unsigned a, long b)
+{
+    return a + (unsigned) mix1(b);
+}
+
+unsigned long stored_called(unsigned long a, long b)
+{
+    unsigned long s;
+
+    s = a + mix1(b);
+    return s;
+}
+
+unsigned long minus_called(unsigned long a, long b)
+{
+    return a - mix1(b);
+}
+
 /* calls whose outgoing area is past a store's reach, calls.h: the
    arguments x plus the octal constants of the block, then x - 1 - n
    and x * 3 + n over two blocks of eight */

@@ -45,19 +45,33 @@ the call: ~p[f(i) + 1] = x~ holds it, ~p[i + f(j)] = x~ does not.
 Check: =joined_called= with no move on its paths, and no function
 longer.
 
-** TODO x86-64: a spilled left operand of a row that commutes is reloaded, then used
+** TODO x86-64: a pointer plus a call's result reloads the spilled pointer
 
-~return g + bump();~ reloads the left operand its call spilled and
-then adds it, =movq -8(%rbp), %rcx; addl %ecx, %eax=, where the slot
-as the instruction's memory operand, =addl -8(%rbp), %eax=, is one
-instruction. 370 rows over =tests= have the shape, of =add=, =imul=,
-=and=, =or= and =xor=, under any consumer. A row of 32 bits would
-read at 4 bytes a spill slot written at 8; the slot is no object of
-the program, so G10 does not speak of it.
+~return p + f()~ on a ~char *p~ is =movq -16(%rbp), %rcx; addq %rcx,
+%rax=, where the slot is the add's source, =addq -16(%rbp), %rax=, as
+it is for an arithmetic row (=backend.md= 6.2): =unscaled()= forms
+the sum with the base reloaded before =unscaled_value()= writes the
+=addq=. About 13 rows over =tests=, =pointer_called()= and
+=written_sum_called()= of =return-register= and the =cadd_*= rows of
+the pointers probe among them.
 
-Fix: none taken; decide whether a spill slot may be read narrower
-than it was written, then the left operand in its slot is the source
-of a row that writes the right operand's register.
+Fix: =unscaled_value()= takes a spilled base in its slot,
+=source_of()='s, the sum left unformed.
+
+Check: the count over =tests=, and no function longer.
+
+** TODO x86-64: a 64-bit object in memory is loaded to be the source of a row into a register variable
+
+~r &= b~ on a ~register long r~ and a =long= in memory is =movq
+-24(%rbp), %rax; andq %rax, %rbx=, where the object is the
+instruction's operand at its own width, =andq -24(%rbp), %rbx=.
+About 132 rows over =tests= load a 64-bit local only to be such a
+source, the =cc_*_to_reg_l= rows of the control probe and =mul_l= of
+the inplace probe among them; the count is by pattern, and the rows
+are not read one by one.
+
+Fix: none taken; count first, and say why the 32-bit rows take the
+operand and these do not.
 
 Check: the count over =tests=, and no function longer.
 

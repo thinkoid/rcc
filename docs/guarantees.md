@@ -87,7 +87,9 @@ where it is mapped.
 
 **G10. Memory is bytes.** 6.5.1p7 and the union rules. A load through
 any lvalue reads the bytes at the address as the lvalue's type.
-Instruction: the same `mov`, at the lvalue's width and extension.
+Instruction: the same `mov`, at the lvalue's width and extension. A
+spill slot is the generator's, no object of the program, and its read
+at a row's width is `backend.md` 6.2's.
 
 **G11. A misaligned access is performed.** 6.3.2.3p7. The access
 happens at the address. Instruction: the same `mov`; x86 has one

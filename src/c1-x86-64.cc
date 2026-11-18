@@ -134,6 +134,12 @@ struct state_t
     // pinned register is generated, so it lands there
     unsigned reserved = 0;
 
+    // the registers a pinned instruction within the right operand of a
+    // node whose left operand is being generated would move that left
+    // operand's value out of, moved_within()'s: a row that chooses its
+    // register writes none of them (6.1)
+    unsigned ahead = 0;
+
     // the borrowed read whose copy preserve() writes into the register
     // its node's consumer names, held out of the right operand that
     // writes the read's variable, and that register, as a set of one
@@ -603,6 +609,38 @@ pinned_within(const expr_t &e)
     }
 
     return own;
+}
+
+// The registers a pinned instruction within e would move a value held
+// across e out of, 6.5: pins() over the tree, but not within a call or
+// a branch of &&, || or ?:, which spill every held value first,
+// wherever it is (6.7).
+unsigned
+moved_within(const expr_t &e)
+{
+    if (is< call_t >(e) || is< conditional_t >(e))
+        return 0;
+
+    if (is< unary_t >(e))
+        return pins(e) | moved_within(*as< unary_t >(e).arg);
+
+    if (is< binary_t >(e)) {
+        const auto &b = as< binary_t >(e);
+        if (b.op == binary_op_t::log_and || b.op == binary_op_t::log_or)
+            return 0;
+
+        return pins(e) | moved_within(*b.lhs) | moved_within(*b.rhs);
+    }
+
+    if (is< assign_t >(e)) {
+        const auto &a = as< assign_t >(e);
+        return pins(e) | moved_within(*a.lhs) | moved_within(*a.rhs);
+    }
+
+    if (is< cast_t >(e))
+        return pins(e) | moved_within(*as< cast_t >(e).arg);
+
+    return pins(e);
 }
 
 // The register a node hands its left operand, of those its consumer
@@ -2201,6 +2239,19 @@ from_memory(state_t &s,
     release(s, place);
 }
 
+// The operand by which an instruction reads the held value v at width:
+// its register, or for a spilled value its slot, read in place at the
+// instruction's width, -8(%rbp), and not reloaded (6.2).
+std::string
+source_of(state_t &s, value_t v, int width)
+{
+    const auto &h = s.values[v.id];
+    if (h.reg < 0 && !h.variable)
+        return at(h.spill);
+
+    return reg(reg_of(s, v), width);
+}
+
 // Whether the row of op on the held values l and r writes r's register,
 // backend.md 6.1: an operator that commutes, +, *, &, | or ^, whose
 // right operand is an owned value in a register when the instruction is
@@ -2209,10 +2260,12 @@ from_memory(state_t &s,
 // one the consumer names, wanted, addl %ecx, %eax for return g +
 // bump(), where L's register would be written and moved; or L is a
 // register variable's read, which the row would copy, addl %ebx, %eax
-// for s = r + f(x), where no free register is named for the copy and
-// R's register is left for last by no pinned instruction ahead.  Not
-// where L is the variable a compound assignment writes in place, nor
-// where R is a register variable's read, whose register is the
+// for s = r + f(x), or a spilled value, which it would reload, where no
+// free register is named for the copy or the reload and R's register
+// is left for last by no pinned instruction ahead.  A spilled L is read
+// in its slot, the instruction's source, addl -8(%rbp), %eax (6.2).
+// Not where L is the variable a compound assignment writes in place,
+// nor where R is a register variable's read, whose register is the
 // variable.
 bool
 written_in_right(
@@ -2229,7 +2282,10 @@ written_in_right(
     if (wanted & own)
         return true;
 
-    return borrowed(s, l) && !wanted_register(s, wanted) && !(s.reserved & own);
+    const bool copied = borrowed(s, l) || s.values[l.id].reg < 0;
+
+    return copied && !wanted_register(s, wanted) &&
+           !((s.reserved | s.ahead) & own);
 }
 
 // An arithmetic, bitwise or shift operator on the held left value and
@@ -2245,7 +2301,8 @@ written_in_right(
 // the register the result's consumer names, which a quotient stays in
 // (divide()), and which an operator that commutes writes where R is
 // in it; such an operator writes R's register too where L is a register
-// variable's read and no free register is named, written_in_right()'s.
+// variable's read or a spilled value and no free register is named,
+// written_in_right()'s, a spilled L read in its slot.
 value_t
 arithmetic(state_t &s,
            binary_op_t op,
@@ -2288,12 +2345,12 @@ arithmetic(state_t &s,
         return l;
     }
 
-    const auto [held, right] = operands(s, l, r.value);
-
-    // return g + bump(): addl %ecx, %eax, the call's result written; s =
-    // r + f(x) on a register r: addl %ebx, %eax, r not copied
+    // return g + bump(): addl -8(%rbp), %eax, g's value read in its slot
+    // and the call's result written; s = r + f(x) on a register r: addl
+    // %ebx, %eax, r not copied
     if (written_in_right(s, op, l, r.value, wanted)) {
-        insn(s, mnemonic, { reg(held, width), reg(right, width) });
+        const reg_t right = reg_of(s, r.value);
+        insn(s, mnemonic, { source_of(s, l, width), reg(right, width) });
         if (op != binary_op_t::mul)
             flagged(s, width);
         wrote(s, r.value, width, integer(t).is_signed);
@@ -2303,6 +2360,7 @@ arithmetic(state_t &s,
         return r.value;
     }
 
+    const reg_t right = operands(s, l, r.value).second;
     const reg_t left =
         writable(s, l, written(width, integer(t).is_signed), bit(right));
     insn(s, mnemonic, { reg(right, width), reg(left, width) });
@@ -3801,8 +3859,11 @@ binary(state_t &s, const expr_t &e, into_t *into = nullptr, unsigned wanted = 0)
     const unsigned own = is_shift(o.op) ? pins(o.op, *o.rhs) : 0;
     const unsigned named = wanted_left(wanted, own, *o.rhs);
 
+    const unsigned ahead =
+        std::exchange(s.ahead, s.ahead | moved_within(*o.rhs));
     const auto l =
         rvalue_avoiding(s, *o.lhs, own | pinned_by(*o.rhs), nullptr, named);
+    s.ahead = ahead;
 
     // return x + (c ? x++ : 2) on a register x: x's copy in rax
     const unsigned copied = copied_into(s, l, *o.rhs, named);

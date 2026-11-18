@@ -1251,11 +1251,10 @@ x86-64:
 	movl	g(%rip), %eax
 	movq	%rax, -8(%rbp)
 	call	bump@PLT
-	movq	-8(%rbp), %rcx
-	addl	%ecx, %eax
+	addl	-8(%rbp), %eax
 ```
 
-The delayed form, `call bump@PLT; addl g(%rip), %eax`, is three
+The delayed form, `call bump@PLT; addl g(%rip), %eax`, is two
 instructions shorter, and it is wrong whenever `bump` writes `g`. So
 in rcc a delayed read must be made before any later operand that
 evaluates anything. Two delays survive that rule:

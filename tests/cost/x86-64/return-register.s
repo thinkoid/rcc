@@ -752,8 +752,7 @@ written_called:
 	movl	-28(%rbp), %edi
 	call	f@PLT
 	movl	%eax, %ebx
-	movq	-24(%rbp), %rcx
-	addl	%ecx, %eax
+	addl	-24(%rbp), %eax
 	jmp	.Lwritten_called.1
 .Lwritten_called.1:
 	leaq	-8(%rbp), %rsp
@@ -907,10 +906,9 @@ written_sum_called:
 	movl	%eax, -52(%rbp)
 	movl	-52(%rbp), %edi
 	call	f@PLT
-	movq	-40(%rbp), %rcx
-	addl	%eax, %ecx
-	movslq	%ecx, %rcx
-	movq	-48(%rbp), %rax
+	addl	-40(%rbp), %eax
+	movslq	%eax, %rax
+	movq	-48(%rbp), %rcx
 	addq	%rcx, %rax
 	jmp	.Lwritten_sum_called.1
 .Lwritten_sum_called.1:
@@ -1160,4 +1158,356 @@ register_row_called:
 	ret
 	.cfi_endproc
 	.size	register_row_called, .-register_row_called
+	.globl	spilled_add
+	.type	spilled_add, @function
+spilled_add:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$32, %rsp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	movl	-4(%rbp), %eax
+	movq	%rax, -16(%rbp)
+	movl	-8(%rbp), %eax
+	movl	%eax, -20(%rbp)
+	movl	-20(%rbp), %edi
+	call	f@PLT
+	addl	-16(%rbp), %eax
+	jmp	.Lspilled_add.1
+.Lspilled_add.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	spilled_add, .-spilled_add
+	.globl	spilled_mul
+	.type	spilled_mul, @function
+spilled_mul:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$32, %rsp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	movl	-4(%rbp), %eax
+	movq	%rax, -16(%rbp)
+	movl	-8(%rbp), %eax
+	movl	%eax, -20(%rbp)
+	movl	-20(%rbp), %edi
+	call	f@PLT
+	imull	-16(%rbp), %eax
+	jmp	.Lspilled_mul.1
+.Lspilled_mul.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	spilled_mul, .-spilled_mul
+	.globl	spilled_and
+	.type	spilled_and, @function
+spilled_and:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$32, %rsp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	movl	-4(%rbp), %eax
+	movq	%rax, -16(%rbp)
+	movl	-8(%rbp), %eax
+	movl	%eax, -20(%rbp)
+	movl	-20(%rbp), %edi
+	call	f@PLT
+	andl	-16(%rbp), %eax
+	jmp	.Lspilled_and.1
+.Lspilled_and.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	spilled_and, .-spilled_and
+	.globl	spilled_or
+	.type	spilled_or, @function
+spilled_or:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$32, %rsp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	movl	-4(%rbp), %eax
+	movq	%rax, -16(%rbp)
+	movl	-8(%rbp), %eax
+	movl	%eax, -20(%rbp)
+	movl	-20(%rbp), %edi
+	call	f@PLT
+	orl	-16(%rbp), %eax
+	jmp	.Lspilled_or.1
+.Lspilled_or.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	spilled_or, .-spilled_or
+	.globl	spilled_xor
+	.type	spilled_xor, @function
+spilled_xor:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$32, %rsp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	movl	-4(%rbp), %eax
+	movq	%rax, -16(%rbp)
+	movl	-8(%rbp), %eax
+	movl	%eax, -20(%rbp)
+	movl	-20(%rbp), %edi
+	call	f@PLT
+	xorl	-16(%rbp), %eax
+	jmp	.Lspilled_xor.1
+.Lspilled_xor.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	spilled_xor, .-spilled_xor
+	.globl	spilled_add_long
+	.type	spilled_add_long, @function
+spilled_add_long:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$32, %rsp
+	movq	%rdi, -8(%rbp)
+	movq	%rsi, -16(%rbp)
+	movq	-8(%rbp), %rax
+	movq	%rax, -24(%rbp)
+	movq	-16(%rbp), %rax
+	movq	%rax, -32(%rbp)
+	movq	-32(%rbp), %rdi
+	call	lf@PLT
+	addq	-24(%rbp), %rax
+	jmp	.Lspilled_add_long.1
+.Lspilled_add_long.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	spilled_add_long, .-spilled_add_long
+	.globl	spilled_mul_long
+	.type	spilled_mul_long, @function
+spilled_mul_long:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$32, %rsp
+	movq	%rdi, -8(%rbp)
+	movq	%rsi, -16(%rbp)
+	movq	-8(%rbp), %rax
+	movq	%rax, -24(%rbp)
+	movq	-16(%rbp), %rax
+	movq	%rax, -32(%rbp)
+	movq	-32(%rbp), %rdi
+	call	lf@PLT
+	imulq	-24(%rbp), %rax
+	jmp	.Lspilled_mul_long.1
+.Lspilled_mul_long.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	spilled_mul_long, .-spilled_mul_long
+	.globl	spilled_and_long
+	.type	spilled_and_long, @function
+spilled_and_long:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$32, %rsp
+	movq	%rdi, -8(%rbp)
+	movq	%rsi, -16(%rbp)
+	movq	-8(%rbp), %rax
+	movq	%rax, -24(%rbp)
+	movq	-16(%rbp), %rax
+	movq	%rax, -32(%rbp)
+	movq	-32(%rbp), %rdi
+	call	lf@PLT
+	andq	-24(%rbp), %rax
+	jmp	.Lspilled_and_long.1
+.Lspilled_and_long.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	spilled_and_long, .-spilled_and_long
+	.globl	spilled_or_long
+	.type	spilled_or_long, @function
+spilled_or_long:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$32, %rsp
+	movq	%rdi, -8(%rbp)
+	movq	%rsi, -16(%rbp)
+	movq	-8(%rbp), %rax
+	movq	%rax, -24(%rbp)
+	movq	-16(%rbp), %rax
+	movq	%rax, -32(%rbp)
+	movq	-32(%rbp), %rdi
+	call	lf@PLT
+	orq	-24(%rbp), %rax
+	jmp	.Lspilled_or_long.1
+.Lspilled_or_long.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	spilled_or_long, .-spilled_or_long
+	.globl	spilled_xor_long
+	.type	spilled_xor_long, @function
+spilled_xor_long:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$32, %rsp
+	movq	%rdi, -8(%rbp)
+	movq	%rsi, -16(%rbp)
+	movq	-8(%rbp), %rax
+	movq	%rax, -24(%rbp)
+	movq	-16(%rbp), %rax
+	movq	%rax, -32(%rbp)
+	movq	-32(%rbp), %rdi
+	call	lf@PLT
+	xorq	-24(%rbp), %rax
+	jmp	.Lspilled_xor_long.1
+.Lspilled_xor_long.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	spilled_xor_long, .-spilled_xor_long
+	.globl	spilled_stored
+	.type	spilled_stored, @function
+spilled_stored:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$32, %rsp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	movl	-4(%rbp), %eax
+	movq	%rax, -16(%rbp)
+	movl	-8(%rbp), %eax
+	movl	%eax, -20(%rbp)
+	movl	-20(%rbp), %edi
+	call	f@PLT
+	addl	-16(%rbp), %eax
+	movl	%eax, stored_sum(%rip)
+.Lspilled_stored.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	spilled_stored, .-spilled_stored
+	.globl	spilled_minus
+	.type	spilled_minus, @function
+spilled_minus:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$32, %rsp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	movl	-4(%rbp), %eax
+	movq	%rax, -16(%rbp)
+	movl	-8(%rbp), %eax
+	movl	%eax, -20(%rbp)
+	movl	-20(%rbp), %edi
+	call	f@PLT
+	movq	-16(%rbp), %rcx
+	subl	%eax, %ecx
+	movl	%ecx, %eax
+	jmp	.Lspilled_minus.1
+.Lspilled_minus.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	spilled_minus, .-spilled_minus
+	.globl	spilled_count
+	.type	spilled_count, @function
+spilled_count:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	subq	$32, %rsp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	movl	-8(%rbp), %eax
+	movl	-4(%rbp), %ecx
+	movq	%rax, -16(%rbp)
+	movq	%rcx, -24(%rbp)
+	movl	-8(%rbp), %eax
+	movl	%eax, -28(%rbp)
+	movl	-28(%rbp), %edi
+	call	f@PLT
+	movq	-24(%rbp), %rcx
+	addl	%eax, %ecx
+	movq	-16(%rbp), %rax
+	shll	%cl, %eax
+	jmp	.Lspilled_count.1
+.Lspilled_count.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	spilled_count, .-spilled_count
+	.bss
+	.globl	stored_sum
+	.type	stored_sum, @object
+	.size	stored_sum, 4
+	.p2align 2
+stored_sum:
+	.zero	4
 	.section	.note.GNU-stack,"",@progbits

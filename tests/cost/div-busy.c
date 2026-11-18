@@ -37,9 +37,9 @@
    movq %rcx, -32(%rbp), x moved into a's register, movq %rax, %rcx, y
    moved into eax, which is then y's register, since the division
    overwrites edx, cltd, idivl 40(%rbp), the quotient added where idiv
-   left it, addl %eax, %ecx, a reloaded for its add,
-   movq -32(%rbp), %rcx, and the last quotient's register written by
-   the sum, addl %ecx, %eax, with no move.
+   left it, addl %eax, %ecx, a read in its spill slot by its add,
+   addl -32(%rbp), %esi, and the last quotient's register written by
+   the sum, addl %esi, %eax, with no move.
 
    After each rem_ function's idivl the listing must show the remainder
    taken from edx and no other move: movl %edx, (%rcx) in rem_stored;

@@ -23,9 +23,8 @@ use:
 	movl	%eax, -44(%rbp)
 	movl	-44(%rbp), %edi
 	call	other_name@PLT
-	movq	-40(%rbp), %rcx
-	addl	%eax, %ecx
-	movq	%rcx, -56(%rbp)
+	addl	-40(%rbp), %eax
+	movq	%rax, -56(%rbp)
 	movq	-16(%rbp), %rax
 	movq	%rax, -64(%rbp)
 	movq	-24(%rbp), %rax
@@ -33,8 +32,7 @@ use:
 	movq	-64(%rbp), %rdi
 	movq	-72(%rbp), %rsi
 	call	add@PLT
-	movq	-56(%rbp), %rcx
-	addl	%ecx, %eax
+	addl	-56(%rbp), %eax
 	jmp	.Luse.1
 .Luse.1:
 	leave

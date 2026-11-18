@@ -44,11 +44,19 @@
    rax, and register_row_called() on a register int (*p)[3], whose
    register the addq reads; beside them scaled_called() on an int *p,
    whose leaq names rax already, and called_pointer() f(x) + p, the
-   index first, whose addq takes p in memory.
+   index first, whose addq takes p in memory.  A left operand spilled
+   across a call is read in its spill slot by an operator that
+   commutes: spilled_add(), spilled_mul(), spilled_and(), spilled_or()
+   and spilled_xor() return x + f(y), x * f(y), x & f(y), x | f(y) and
+   x ^ f(y) on ints, and the same with a _long on longs and lf(y);
+   spilled_stored() stores the sum, a consumer that names no register.
+   Beside them the edge: spilled_minus() x - f(y), whose operator does
+   not commute, and spilled_count() y << (x + f(y)), whose count names
+   rcx, where the reload and the move are one count.
 
    On x86-64 the listing must show no move into eax or rax before the
-   jump to the epilogue but in called_minus(), deeper() and
-   called_place():
+   jump to the epilogue but in called_minus(), deeper(), called_place()
+   and spilled_minus():
    in copied() p in rcx and i in rdx, movslq -20(%rbp), %rdx, then movl
    %ebx, %eax and subl (%rcx,%rdx,4), %eax; in extended() cltd, idivl
    -8(%rbp) and movslq %edx, %rax; in reloaded() x spilled from rax,
@@ -88,20 +96,30 @@
    $2, %ecx, then movq -24(%rbp), %rax and addl %ecx, %eax; in
    written_nested() y loaded into ecx, the copy movl %ebx, %eax, then
    addl %ebx, %ecx and addl %ecx, %eax; in written_called() the copy
-   spilled across the call, movq -24(%rbp), %rcx, and addl %ecx, %eax.
+   spilled across the call and read in its slot, addl -24(%rbp), %eax.
    In written_sum() i in ecx, the copy movq %rbx, %rax, then addq
    %rcx, %rax; in written_row() the same after imulq $12, %rcx, %rcx;
    in written_difference() q in rcx, the copy movq %rbx, %rax, then
    subq %rcx, %rax; in written_quotient() the copy movq %rbx, %rax,
    subq %rbx, %rax, movq $4, %rcx, cqto and idivq %rcx; in
-   written_sum_called() and written_quotient_called() the copy spilled
-   across the call and reloaded, movq -48(%rbp), %rax and movq
-   -40(%rbp), %rax, before the addq and the subq.  In pointer_called()
+   written_sum_called() i read in its slot, addl -40(%rbp), %eax, and
+   the copy reloaded, movq -48(%rbp), %rcx, before the addq, and in
+   written_quotient_called() the copy reloaded, movq -40(%rbp), %rax,
+   before the subq.  In pointer_called()
    p reloaded into rcx after the call, movq -24(%rbp), %rcx, and addq
    %rcx, %rax; in row_called() the same after imulq $12, %rax, %rax;
    in register_row_called() imulq $12, %rax, %rax and addq %rbx, %rax,
    with no copy of rbx; in scaled_called() leaq (%rcx,%rax,4), %rax;
-   and in called_pointer() addq -8(%rbp), %rax.
+   and in called_pointer() addq -8(%rbp), %rax.  After each spilled_
+   function's call the listing must show the row on the slot and the
+   call's eax or rax and no reload: addl -16(%rbp), %eax, imull
+   -16(%rbp), %eax, andl, orl and xorl the same, and addq -24(%rbp),
+   %rax, imulq, andq, orq and xorq the same on the longs; in
+   spilled_stored() addl -16(%rbp), %eax and movl %eax,
+   stored_sum(%rip); in spilled_minus() the reload, movq -16(%rbp),
+   %rcx, subl %eax, %ecx and movl %ecx, %eax; and in spilled_count()
+   the reload into the count's rcx, movq -24(%rbp), %rcx, and addl
+   %eax, %ecx before shll %cl, %eax.
 
    On aarch64, where an operation names its destination apart from its
    sources, the row's last instruction writes x0 where no other value
@@ -145,7 +163,12 @@
    called_pointer() the pointer reloaded into x1 after the call and
    add x0, x1, w0, sxtw, with #2 in scaled_called(); in row_called()
    mul x0, x0, x2 and add x0, x1, x0; and in register_row_called() add
-   x0, x19, x0. */
+   x0, x19, x0.  In each spilled_ function the reload after the call,
+   ldr x1, [x29, #24] or ldr x1, [x29, #32], then the row into x0,
+   add w0, w1, w0, mul w0, w1, w0, and, orr and eor the same, and add
+   x0, x1, x0 and the rest on the longs; in spilled_stored() add w1,
+   w1, w0 before the store, in spilled_minus() sub w0, w1, w0, and in
+   spilled_count() add w1, w1, w0 before lsl w0, w0, w1. */
 int f(int);
 
 int
@@ -425,4 +448,85 @@ int (*register_row_called(int (*s)[3], int x))[3]
         register int (*p)[3] = s;
 
         return p + f(x);
+}
+
+long lf(long);
+int stored_sum;
+
+int
+spilled_add(int x, int y)
+{
+        return x + f(y);
+}
+
+int
+spilled_mul(int x, int y)
+{
+        return x * f(y);
+}
+
+int
+spilled_and(int x, int y)
+{
+        return x & f(y);
+}
+
+int
+spilled_or(int x, int y)
+{
+        return x | f(y);
+}
+
+int
+spilled_xor(int x, int y)
+{
+        return x ^ f(y);
+}
+
+long
+spilled_add_long(long x, long y)
+{
+        return x + lf(y);
+}
+
+long
+spilled_mul_long(long x, long y)
+{
+        return x * lf(y);
+}
+
+long
+spilled_and_long(long x, long y)
+{
+        return x & lf(y);
+}
+
+long
+spilled_or_long(long x, long y)
+{
+        return x | lf(y);
+}
+
+long
+spilled_xor_long(long x, long y)
+{
+        return x ^ lf(y);
+}
+
+void
+spilled_stored(int x, int y)
+{
+        stored_sum = x + f(y);
+}
+
+int
+spilled_minus(int x, int y)
+{
+        return x - f(y);
+}
+
+int
+spilled_count(int x, int y)
+{
+        return y << (x + f(y));
 }

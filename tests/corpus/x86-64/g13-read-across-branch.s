@@ -54,8 +54,7 @@ main:
 	movl	-20(%rbp), %edi
 	movl	-24(%rbp), %esi
 	call	pick@PLT
-	movq	-16(%rbp), %rcx
-	addl	%ecx, %eax
+	addl	-16(%rbp), %eax
 	jmp	.Lmain.1
 .Lmain.1:
 	leave
