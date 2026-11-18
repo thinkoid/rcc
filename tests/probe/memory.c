@@ -1215,9 +1215,11 @@ PINNED_TYPES(RETURNED)
    step's old value as the first arm, jn_step_; with no consumer naming
    one, the arms join in the first arm's register, rdx for a
    remainder, and the second arm writes it, jn_kept_; the second arm
-   pinned by a call or a division, jn_call_ and jn_div_.  p points at
-   the main's x at B + at, and the main keeps a divisor from 0 and
-   -1. */
+   pinned by a call or a division, jn_call_ and jn_div_; and, under the
+   widening to the returned long, a quotient and a remainder, jn_rem_,
+   a truth value and a constant, jn_truth_, and two register
+   variables' reads, jn_regs_.  p points at the main's x at B + at, and
+   the main keeps a divisor from 0 and -1. */
 #define JOINED(T, N)                                                    \
     T jn_ret_##N(int c, T a, T b) { return c ? a % b : b; }             \
     long jn_sum_##N(int c, T a, T b) { return (c ? a % b : b) + a; }    \
@@ -1228,7 +1230,15 @@ PINNED_TYPES(RETURNED)
         return v * 3 + a;                                               \
     }                                                                   \
     long jn_call_##N(int c, T a, T b) { return c ? a % b : mix1(b); }   \
-    long jn_div_##N(int c, T a, T b) { return c ? a % b : a / b; }
+    long jn_div_##N(int c, T a, T b) { return c ? a % b : a / b; }      \
+    long jn_rem_##N(int c, T a, T b) { return c ? a / b : a % b; }      \
+    long jn_truth_##N(int c, T a, T b) { return c ? a < b : -3; }       \
+    long jn_regs_##N(int c, T a, T b)                                   \
+    {                                                                   \
+        register T x = a;                                               \
+        register T y = b;                                               \
+        return c ? x : y;                                               \
+    }
 
 PINNED_TYPES(JOINED)
 

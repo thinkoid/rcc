@@ -372,7 +372,9 @@ PINNED_TYPES(DECLARE_RETURNED)
     BOTH(T, jn_ret_##N, (int, T, T)) BOTH(long, jn_sum_##N, (int, T, T)) \
     BOTH(long, jn_step_##N, (int, T *, T))                              \
     BOTH(long, jn_kept_##N, (int, T, T))                                \
-    BOTH(long, jn_call_##N, (int, T, T)) BOTH(long, jn_div_##N, (int, T, T))
+    BOTH(long, jn_call_##N, (int, T, T)) BOTH(long, jn_div_##N, (int, T, T)) \
+    BOTH(long, jn_rem_##N, (int, T, T)) BOTH(long, jn_truth_##N, (int, T, T)) \
+    BOTH(long, jn_regs_##N, (int, T, T))
 
 PINNED_TYPES(DECLARE_JOINED)
 
@@ -1006,6 +1008,9 @@ PINNED_TYPES(TEST_RETURNED_ALL)
                     CHECK(jn_kept_##N, x, y, (c, (T) y, (T) x));        \
                     CHECK(jn_call_##N, x, y, (c, (T) y, (T) x));        \
                     CHECK(jn_div_##N, x, y, (c, (T) y, (T) x));         \
+                    CHECK(jn_rem_##N, x, y, (c, (T) y, (T) x));         \
+                    CHECK(jn_truth_##N, x, y, (c, (T) y, (T) x));       \
+                    CHECK(jn_regs_##N, x, y, (c, (T) y, (T) x));        \
                 }                                                       \
             }                                                           \
         }                                                               \

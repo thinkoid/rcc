@@ -2461,8 +2461,10 @@ conditional_effect(state_t &s, const expr_t &e)
 // that j is its lowest free register and a row that writes a fresh one
 // writes j, movl -12(%rbp), %edx beside a first arm's remainder.  A
 // pin within the arm decides its registers, as in any operand (6.5).
+// Under a conversion that widens the conditional, to, the arm is
+// converted()'s, its extension written into j, movslq %edx, %rax.
 value_t
-arm(state_t &s, const expr_t &e, reg_t j)
+arm(state_t &s, const expr_t &e, reg_t j, const type_t *to = nullptr)
 {
     unsigned below = 0;
     for (const reg_t r : expression_registers) {
@@ -2471,7 +2473,15 @@ arm(state_t &s, const expr_t &e, reg_t j)
         below |= bit(r);
     }
 
-    return rvalue_avoiding(s, e, pinned_within(e) ? 0 : below, nullptr, bit(j));
+    const unsigned avoid = pinned_within(e) ? 0 : below;
+    if (!to)
+        return rvalue_avoiding(s, e, avoid, nullptr, bit(j));
+
+    const unsigned reserved = std::exchange(s.reserved, s.reserved | avoid);
+    const auto v = converted(s, e, *to, nullptr, bit(j));
+    s.reserved = reserved;
+
+    return v;
 }
 
 // One path of a branch into a register variable, chapter 4: the arm's
@@ -2540,31 +2550,6 @@ joins_into(const expr_t &e, const into_t *into)
     return into && !into->taken && e.type == computed_type(*into);
 }
 
-// Whether a conditional under a conversion that widens it to the type
-// into's row computes in has each path write the register variable,
-// the conversion handed to each arm, chapter 4: where the row of one
-// arm at least writes the register, lands_in()'s, so that the paths
-// write no more than the join and the extension after it would, l = c ?
-// x : y into a register long from two ints being movslq -16(%rbp), %rbx
-// and movslq -20(%rbp), %rbx.  Two arms that each need an extension of
-// their own keep the join and the one extension after it.
-bool
-widens_into(const cast_t &c, const type_t &to, const into_t *into)
-{
-    if (!into || into->taken || !is< conditional_t >(*c.arg) ||
-        !(to == computed_type(*into)))
-        return false;
-
-    if (!is< int_t >(to) || !is< int_t >(c.arg->type) ||
-        integer(to).width <= integer(c.arg->type).width)
-        return false;
-
-    const auto &k = as< conditional_t >(*c.arg);
-
-    return lands_in(*k.yes, into->variable, true) ||
-           lands_in(*k.no, into->variable, true);
-}
-
 // The second path of a conditional each of whose paths writes the
 // register variable, chapter 4: the jump past it, the second arm into
 // the variable, arm_into()'s, converted to to where it is given, and
@@ -2604,9 +2589,11 @@ second_path(state_t &s,
 // row writes it where lands_in() says, r = c ? f(x) : p[i]++ being
 // movl %eax, %ebx after the call and the step's movl (%rax,%rcx,4),
 // %ebx; a read of the variable itself as the first arm is its value
-// already.  Under a conversion that widens the conditional to the
-// variable, to, which cast() hands down where widens_into(), each arm
-// is converted into it.  An arm reads the variable on its own path
+// already.  Under a conversion that widens the conditional, to, which
+// cast() hands down where widens_arms(), each arm is converted: into
+// the variable on each path, or into the join, return a ? b % c : c as
+// a long being movslq %edx, %rax and movslq -12(%rbp), %rax, with no
+// extension after the join.  An arm reads the variable on its own path
 // before the path writes it, and the assignment's preserve() has copied
 // every read of it held across the branch.  Otherwise the arms join as
 // for any consumer and the assignment moves the join in after it
@@ -2633,20 +2620,22 @@ conditional(state_t &s,
 
     cbranch(s, *c.cond, no, false);
 
-    if (to) {
+    if (to && into) {
         arm_into(s, *c.yes, *into, to);
         return second_path(s, *c.no, *into, to, no, end);
     }
 
-    const int width = std::max(32, integer(t).width);
-    const bool is_signed = integer(t).is_signed;
+    const auto &type = to ? *to : t;
+    const int width = std::max(32, integer(type).width);
+    const bool is_signed = integer(type).is_signed;
 
-    const bool joins = joins_into(e, into);
+    const bool joins = !to && joins_into(e, into);
     into_t path { joins ? into->variable : nullptr, false,
                   joins ? into->as : nullptr };
     const auto named = wanted_register(s, wanted);
     const auto yes = joins ? rvalue(s, *c.yes, &path) :
-                     named ? arm(s, *c.yes, *named) :
+                     named ? arm(s, *c.yes, *named, to) :
+                     to    ? converted(s, *c.yes, *to) :
                              rvalue(s, *c.yes);
 
     if (path.taken || (joins && lands_in(*c.no, into->variable, false))) {
@@ -2671,7 +2660,7 @@ conditional(state_t &s,
     jump(s, end);
 
     place_label(s, no);
-    const auto other = arm(s, *c.no, join);
+    const auto other = arm(s, *c.no, join, to);
     const reg_t from = reg_of(s, other);
     int other_valid = s.values[other.id].valid;
     if (from != join) {
@@ -3650,10 +3639,69 @@ retyped(state_t &s, const cast_t &c, const int_t &target, into_t &into)
     return v;
 }
 
+// Whether the conversion that widens an arm of ?: costs the arm no
+// instruction of its own, backend.md 6.1: its row writes the value
+// extended, lands_in()'s; or its value is moved into the join in any
+// case, and the extension is written where the move would be, a
+// register variable's read, which the join copies, and a remainder,
+// which stays in rdx, for a consumer that names another register,
+// named, movslq %edx, %rax for a return.  variable is the register
+// variable the paths write, or null.
+bool
+widens_free(const expr_t &arm,
+            const symbol_t *variable,
+            std::optional< reg_t > named)
+{
+    if (lands_in(arm, variable, true) || register_read(arm).variable)
+        return true;
+
+    return named && *named != rdx && is< binary_t >(arm) &&
+           as< binary_t >(arm).op == binary_op_t::rem;
+}
+
+// Whether a conditional under a conversion that widens it has the
+// conversion handed to each arm, backend.md 6.1 and chapter 4: where
+// one arm at least widens free, widens_free(), so that the other's
+// extension, if it needs one, is the one the join would have had, and
+// no path writes more than the join and the extension after it.  For a
+// register variable handed down, of the type its row computes in, each
+// path writes the variable; for any other consumer, whose register is
+// wanted, the arms join as before, each converted, and nothing follows
+// the join, where the widening is signed: an unsigned value written at
+// 32 bits is valid to 64 already, and its join needs no extension.  Not
+// for a register variable of another type, whose extension after the
+// join is its write.
+bool
+widens_arms(const state_t &s,
+            const cast_t &c,
+            const type_t &to,
+            const into_t *into,
+            unsigned wanted)
+{
+    if (!is< conditional_t >(*c.arg) || !is< int_t >(to) ||
+        !is< int_t >(c.arg->type) ||
+        integer(to).width <= integer(c.arg->type).width)
+        return false;
+
+    const bool paths = into && !into->taken;
+    if (paths && !(to == computed_type(*into)))
+        return false;
+
+    if (!paths && !integer(c.arg->type).is_signed)
+        return false;
+
+    const auto *variable = paths ? into->variable : nullptr;
+    const auto named = paths ? std::nullopt : wanted_register(s, wanted);
+    const auto &k = as< conditional_t >(*c.arg);
+
+    return widens_free(*k.yes, variable, named) ||
+           widens_free(*k.no, variable, named);
+}
+
 // A cast: a change of signedness alone that retypes(), retyped()'s; a
-// conditional under a conversion that widens it into a register
-// variable, each path's arm widened into the variable's register where
-// widens_into() says (chapter 4); any other integer conversion,
+// conditional under a conversion that widens it, each arm widened where
+// widens_arms() says, into a register variable's register on each path
+// (chapter 4) or into the join (6.1); any other integer conversion,
 // converted()'s.  An array decays to its address, 6.3.2.1p3, and a
 // function designator to the pointer to the function, p4.  A cast to
 // void evaluates its operand for its effect alone, chapter 6.6.  The
@@ -3680,10 +3728,11 @@ cast(state_t &s,
     if (retypes(c, to, into))
         return retyped(s, c, integer(to), *into);
 
-    // l = c ? x : y into a register long: movslq -16(%rbp), %rbx on each
-    // path
-    if (widens_into(c, to, into))
-        return conditional(s, *c.arg, into, wanted, &to);
+    // l = c ? x : y into a register long, movslq -16(%rbp), %rbx on each
+    // path; return a ? b % c : c as a long, movslq %edx, %rax
+    if (widens_arms(s, c, to, into, wanted))
+        return conditional(s, *c.arg, into && !into->taken ? into : nullptr,
+                           wanted, &to);
 
     return converted(s, *c.arg, to, into, wanted);
 }

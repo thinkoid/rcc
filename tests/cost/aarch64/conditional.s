@@ -182,6 +182,111 @@ widened:
 	ret
 	.cfi_endproc
 	.size	widened, .-widened
+	.globl	widened_constants
+	.type	widened_constants, @function
+widened_constants:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	ldr	w0, [x29, #16]
+	cbz	w0, .Lwidened_constants.2
+	mov	w0, #4
+	b	.Lwidened_constants.3
+.Lwidened_constants.2:
+	mov	w0, #-5
+.Lwidened_constants.3:
+	sxtw	x0, w0
+	b	.Lwidened_constants.1
+.Lwidened_constants.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	widened_constants, .-widened_constants
+	.globl	widened_quotients
+	.type	widened_quotients, @function
+widened_quotients:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	str	w1, [x29, #20]
+	str	w2, [x29, #24]
+	ldr	w0, [x29, #16]
+	cbz	w0, .Lwidened_quotients.2
+	ldr	w0, [x29, #20]
+	ldr	w1, [x29, #24]
+	sdiv	w0, w0, w1
+	b	.Lwidened_quotients.3
+.Lwidened_quotients.2:
+	ldr	w0, [x29, #24]
+	ldr	w1, [x29, #20]
+	sdiv	w0, w0, w1
+.Lwidened_quotients.3:
+	sxtw	x0, w0
+	b	.Lwidened_quotients.1
+.Lwidened_quotients.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	widened_quotients, .-widened_quotients
+	.globl	widened_stored
+	.type	widened_stored, @function
+widened_stored:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	str	w1, [x29, #20]
+	str	w2, [x29, #24]
+	ldr	w0, [x29, #16]
+	cbz	w0, .Lwidened_stored.2
+	ldr	w0, [x29, #20]
+	ldr	w1, [x29, #24]
+	sdiv	w2, w0, w1
+	msub	w0, w2, w1, w0
+	b	.Lwidened_stored.3
+.Lwidened_stored.2:
+	ldr	w0, [x29, #24]
+.Lwidened_stored.3:
+	sxtw	x0, w0
+	adrp	x16, h
+	str	x0, [x16, :lo12:h]
+.Lwidened_stored.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	widened_stored, .-widened_stored
 	.bss
 	.globl	g
 	.type	g, @object
@@ -189,4 +294,10 @@ widened:
 	.p2align 2
 g:
 	.zero	4
+	.globl	h
+	.type	h, @object
+	.size	h, 8
+	.p2align 3
+h:
+	.zero	8
 	.section	.note.GNU-stack,"",@progbits

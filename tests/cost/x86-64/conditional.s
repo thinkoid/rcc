@@ -136,12 +136,11 @@ widened:
 	movl	-8(%rbp), %eax
 	cltd
 	idivl	-12(%rbp)
-	movl	%edx, %eax
+	movslq	%edx, %rax
 	jmp	.Lwidened.3
 .Lwidened.2:
-	movl	-12(%rbp), %eax
+	movslq	-12(%rbp), %rax
 .Lwidened.3:
-	movslq	%eax, %rax
 	jmp	.Lwidened.1
 .Lwidened.1:
 	leave
@@ -149,6 +148,90 @@ widened:
 	ret
 	.cfi_endproc
 	.size	widened, .-widened
+	.globl	widened_constants
+	.type	widened_constants, @function
+widened_constants:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	cmpl	$0, -4(%rbp)
+	je	.Lwidened_constants.2
+	movq	$4, %rax
+	jmp	.Lwidened_constants.3
+.Lwidened_constants.2:
+	movq	$-5, %rax
+.Lwidened_constants.3:
+	jmp	.Lwidened_constants.1
+.Lwidened_constants.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	widened_constants, .-widened_constants
+	.globl	widened_quotients
+	.type	widened_quotients, @function
+widened_quotients:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	movl	%edx, -12(%rbp)
+	cmpl	$0, -4(%rbp)
+	je	.Lwidened_quotients.2
+	movl	-8(%rbp), %eax
+	cltd
+	idivl	-12(%rbp)
+	jmp	.Lwidened_quotients.3
+.Lwidened_quotients.2:
+	movl	-12(%rbp), %eax
+	cltd
+	idivl	-8(%rbp)
+.Lwidened_quotients.3:
+	movslq	%eax, %rax
+	jmp	.Lwidened_quotients.1
+.Lwidened_quotients.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	widened_quotients, .-widened_quotients
+	.globl	widened_stored
+	.type	widened_stored, @function
+widened_stored:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	movl	%edx, -12(%rbp)
+	cmpl	$0, -4(%rbp)
+	je	.Lwidened_stored.2
+	movl	-8(%rbp), %eax
+	cltd
+	idivl	-12(%rbp)
+	movslq	%edx, %rdx
+	jmp	.Lwidened_stored.3
+.Lwidened_stored.2:
+	movslq	-12(%rbp), %rdx
+.Lwidened_stored.3:
+	movq	%rdx, h(%rip)
+.Lwidened_stored.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	widened_stored, .-widened_stored
 	.bss
 	.globl	g
 	.type	g, @object
@@ -156,4 +239,10 @@ widened:
 	.p2align 2
 g:
 	.zero	4
+	.globl	h
+	.type	h, @object
+	.size	h, 8
+	.p2align 3
+h:
+	.zero	8
 	.section	.note.GNU-stack,"",@progbits

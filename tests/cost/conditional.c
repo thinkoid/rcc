@@ -6,7 +6,12 @@
    old value or b; stored() stores a remainder or d, a consumer that
    names no register; summed() adds e to the joined value, the
    conditional the left operand of a returned sum; widened() returns
-   an int remainder or c as a long.
+   an int remainder or c as a long, the conversion handed to each arm,
+   and widened_constants() 4 or -5 as a long; widened_quotients()
+   returns one of two quotients as a long, each of whose arms would
+   need an extension of its own, which keeps the join and the one
+   extension after it; widened_stored() stores a remainder or c into a
+   long, a consumer that names no register.
 
    On x86-64 the listing must show in conditional() a compared in its
    slot, cmpl $0, -4(%rbp), a je to the arm that loads c, the arm that
@@ -20,8 +25,15 @@
    %edx, and the store from it, movl %edx, g(%rip).  In summed() the
    remainder moved into eax, movl %edx, %eax, before its jump, the
    second arm's load into eax and addl -20(%rbp), %eax after the join.
-   In widened() the remainder moved into eax and the second arm's load
-   into eax, then movslq %eax, %rax after the join.
+   In widened() the remainder extended into rax, movslq %edx, %rax,
+   and the second arm's load extended there, movslq -12(%rbp), %rax,
+   with nothing after the join; in widened_constants() movq $4, %rax
+   and movq $-5, %rax on the two paths and nothing after the join; in
+   widened_quotients() the two quotients joined in eax and movslq %eax,
+   %rax after the join; in widened_stored() the remainder extended in
+   rdx, movslq %edx, %rdx, the second arm's load extended there,
+   movslq -12(%rbp), %rdx, and the store movq %rdx, h(%rip) after the
+   join.
 
    On aarch64 the listing must show in conditional() a tested with cbz
    w0 to the arm that loads c, the arm that loads b into the same w0
@@ -30,7 +42,11 @@
    w0, w2, before its branch, the return's x0, and the second arm's
    ldr w0, [x29, #20], with no move after the join.  In stored(),
    summed() and widened() msub w0, w2, w1, w0 and the second arm's load
-   into w0, then the store, add w0, w0, w1 and sxtw x0, w0. */
+   into w0, then the store, add w0, w0, w1 and sxtw x0, w0.  In
+   widened_constants() mov w0, #4 and mov w0, #-5, in
+   widened_quotients() the two sdiv w0, w0, w1 and in widened_stored()
+   the msub and the load, each then sxtw x0, w0 after the join, and
+   widened_stored()'s str x0, [x16, :lo12:h]. */
 int conditional(int a, int b, int c)
 {
     return a ? b : c;
@@ -60,4 +76,24 @@ long
 widened(int a, int b, int c)
 {
         return a ? b % c : c;
+}
+
+long
+widened_constants(int a)
+{
+        return a ? 4 : -5;
+}
+
+long
+widened_quotients(int a, int b, int c)
+{
+        return a ? b / c : c / b;
+}
+
+long h;
+
+void
+widened_stored(int a, int b, int c)
+{
+        h = a ? b % c : c;
 }

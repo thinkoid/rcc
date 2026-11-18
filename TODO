@@ -22,23 +22,6 @@ assembles and links. The reasons are =docs/findings.md= and
 in =docs/design-calls.md=. The chapter holds c1's own defects on both
 targets; the second target's design is =docs/aarch64.md=.
 
-** TODO x86-64: a joined remainder widened by its consumer is moved, then extended
-
-The arms of ~?:~ join in the register the consumer names
-(=backend.md= 6.1), and the name passes through a cast. In a function
-returning =long=, ~return a ? b % c : c;~ moves the remainder into
-=eax= on its arm and extends after the join, =movl %edx, %eax= and
-=movslq %eax, %rax=, where a join left in =rdx= would be extended
-into =rax= by the one =movslq %edx, %rax=. Ten functions over =tests=
-have the shape. Withholding the name at every signed widening makes
-18 others longer, since a truth value or a quotient under the cast
-needs no extension.
-
-Fix: none taken; the cast would need to know, before its operand is
-generated, whether the operand's value is valid to the new width.
-
-Check: the count over =tests=, and no function longer.
-
 ** TODO aarch64: a =return='s value is moved where its place holds =x0=
 
 A =return= names =x0=, and the instruction that last writes the value
@@ -187,8 +170,10 @@ widening is extended to the outer width in one instruction; on
 aarch64, the conversion handed to each arm and the first path's move.
 
 Check: =chosen_promoted= with =movsbq= on each path and the five
-functions shorter; on aarch64, =chosen_widened= and =chosen_called=
-with no =mov= after the join.
+functions shorter, and =rem_arm_c= and =rem_arm_s= of the memory
+probe, whose promoted arm under a =return= has the same two
+instructions; on aarch64, =chosen_widened= and =chosen_called= with
+no =mov= after the join.
 
 ** TODO x86-64: a path of ~?:~ whose arm is the variable's own read writes it to itself
 

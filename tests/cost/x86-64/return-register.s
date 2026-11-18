@@ -499,12 +499,11 @@ indexed_reloaded:
 	movq	%rax, -24(%rbp)
 	cmpl	$0, -16(%rbp)
 	je	.Lindexed_reloaded.2
-	movl	-12(%rbp), %eax
+	movslq	-12(%rbp), %rax
 	jmp	.Lindexed_reloaded.3
 .Lindexed_reloaded.2:
-	movl	$0, %eax
+	movq	$0, %rax
 .Lindexed_reloaded.3:
-	movslq	%eax, %rax
 	movq	-24(%rbp), %rcx
 	leaq	(%rcx,%rax,4), %rax
 	jmp	.Lindexed_reloaded.1
