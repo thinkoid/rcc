@@ -18,8 +18,10 @@
 // value, which is defined after the include, since it spills; and the
 // three instructions the stack writes: store_spill(), the store of a
 // register to a spill slot, all 8 bytes; reload_spill(), the reload from
-// one, all 8 bytes; and mov(), a register copied into another at a
-// width.  held_t and value_t are c1-common.hh's.
+// one, all 8 bytes; mov(), a register copied into another at a width;
+// and two rows one_path() writes, cbranch(), the jump code, and
+// arm_into(), an arm of ?: into a register variable, each defined after
+// the include.  held_t and value_t are c1-common.hh's.
 
 unsigned
 bit(reg_t r)
@@ -280,6 +282,31 @@ taken(state_t &s, into_t &into, value_t v = { })
     into.taken = true;
 
     return read(s, into.variable);
+}
+
+// A conditional into a register variable an arm of which is the
+// variable's own read, own_read()'s, whose path writes nothing, chapter
+// 4: the condition's jump goes to the join past the other path, the one
+// path the other arm into the variable, arm_into()'s, its row's last
+// instruction writing the register or move_in()'s mov after it, movl
+// %eax, %ebx on x86-64 and mov w19, w0 on aarch64 after a call.  Where
+// the first arm is the read, the jump is taken when the condition
+// holds, cbranch()'s sense inverted, jne .L3 or cbnz w0, .L3 for r = c
+// ? r : x; where the second is, when it fails, je .L3 or cbz w0, .L3
+// for r = c ? x : r.  A path that writes nothing has no jump over it,
+// and no label where no jump names one (7.2); r = c ? r : r is the
+// condition's jump alone.  The value is the variable's read.
+value_t
+one_path(state_t &s, const conditional_t &c, into_t &into, int end)
+{
+    const bool first = own_read(*c.yes, into.variable);
+
+    cbranch(s, *c.cond, end, first);
+    arm_into(s, first ? *c.no : *c.yes, into);
+
+    place_label(s, end);
+
+    return taken(s, into);
 }
 
 // What a conversion to t hands on to the row of its operand.  The

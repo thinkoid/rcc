@@ -433,6 +433,9 @@ mov(state_t &s, reg_t from, reg_t to, int width)
 }
 
 reg_t take(state_t &, unsigned avoid);
+void cbranch(state_t &, const expr_t &, int label, bool sense);
+void
+arm_into(state_t &, const expr_t &, const into_t &, const type_t * = nullptr);
 
 #include "c1-stack.hh"
 
@@ -467,7 +470,6 @@ take(state_t &s, unsigned avoid)
 
 value_t
 rvalue(state_t &, const expr_t &, into_t * = nullptr, unsigned wanted = 0);
-void cbranch(state_t &, const expr_t &, int label, bool sense);
 void effect(state_t &, const expr_t &);
 
 // register variables
@@ -2788,10 +2790,7 @@ arm_value(state_t &s, const expr_t &arm, into_t &path)
 // writing the variable extended, ldrsw x19, [x29, #28] for an int in
 // memory.  The value is consumed.
 void
-arm_into(state_t &s,
-         const expr_t &arm,
-         const into_t &into,
-         const type_t *to = nullptr)
+arm_into(state_t &s, const expr_t &arm, const into_t &into, const type_t *to)
 {
     into_t path { into.variable, false, into.as };
     const auto v = to ? converted(s, arm, *to, &path) : arm_value(s, arm, path);
@@ -3045,31 +3044,6 @@ second_path(state_t &s,
 
     place_label(s, no);
     arm_into(s, arm, into, to);
-
-    place_label(s, end);
-
-    return taken(s, into);
-}
-
-// A conditional into a register variable an arm of which is the
-// variable's own read, own_read()'s, whose path writes nothing, chapter
-// 4: the condition's branch goes to the join past the other path, the
-// one path the other arm into the variable, arm_into()'s, its row's last
-// instruction writing the register or move_in()'s mov after it, mov
-// w19, w0 after a call.  Where the first arm is the read, the branch is
-// taken when the condition holds, cbranch()'s sense inverted, cbnz w0,
-// .L3 for r = c ? r : x; where the second is, when it fails, cbz w0,
-// .L3 for r = c ? x : r.  A path that writes nothing has no branch over
-// it, and no label where no branch names one (backend.md 7.2); r = c ?
-// r : r is the condition's branch alone.  The value is the variable's
-// read.
-value_t
-one_path(state_t &s, const conditional_t &c, into_t &into, int end)
-{
-    const bool first = own_read(*c.yes, into.variable);
-
-    cbranch(s, *c.cond, end, first);
-    arm_into(s, first ? *c.no : *c.yes, into);
 
     place_label(s, end);
 

@@ -101,18 +101,6 @@ three aarch64 listings one instruction shorter, an offset that is no
 multiple of the access's size assembling, =ldr w0, [x29, #21]=, and
 no function longer.
 
-** TODO =one_path()= is the same text in both generators
-
-=one_path()= in =src/c1-x86-64.cc= and in =src/c1-aarch64.cc= have
-one body, and its callees, =cbranch()=, =arm_into()=, =place_label()=
-and =taken()=, one signature each on both targets; only the comments
-differ.
-
-Fix: one copy in =src/c1-stack.hh=, beside =own_read()=, with
-=cbranch()= and =arm_into()= declared before the header is included.
-
-Check: one definition, and no listing changes.
-
 ** TODO aarch64: a narrow or widened prefix step's value is stepped outside the register variable
 
 ~r = ++c~ on a =char= in memory into a ~register int r~ is =ldrb w0,
