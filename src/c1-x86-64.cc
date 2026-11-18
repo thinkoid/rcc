@@ -2976,11 +2976,19 @@ lands_in(const expr_t &arm, const symbol_t *variable, bool widened)
 // Whether a conditional handed a register variable may have each path
 // write the variable's register, chapter 4: one of the variable's own
 // type, or of the type into's row computes in, computed_type(), so that
-// each arm is the right operand of an assignment to it.
+// each arm is the right operand of an assignment to it; for a pointer
+// variable, one of any pointer type, whose conversion to the variable's
+// writes nothing (6.3), q = &(c ? m : n)[1][2] on two pointers to rows
+// being movq -24(%rbp), %rbx on each path and leaq 20(%rbx), %rbx.
 bool
 joins_into(const expr_t &e, const into_t *into)
 {
-    return into && !into->taken && e.type == computed_type(*into);
+    if (!into || into->taken)
+        return false;
+
+    const auto &type = computed_type(*into);
+
+    return e.type == type || (is< pointer_t >(e.type) && is< pointer_t >(type));
 }
 
 // The second path of a conditional each of whose paths writes the

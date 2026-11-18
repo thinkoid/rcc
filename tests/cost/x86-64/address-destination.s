@@ -301,12 +301,12 @@ column_chosen:
 	movq	%rdx, -32(%rbp)
 	cmpl	$0, -12(%rbp)
 	je	.Lcolumn_chosen.2
-	movq	-24(%rbp), %rax
+	movq	-24(%rbp), %rbx
 	jmp	.Lcolumn_chosen.3
 .Lcolumn_chosen.2:
-	movq	-32(%rbp), %rax
+	movq	-32(%rbp), %rbx
 .Lcolumn_chosen.3:
-	leaq	20(%rax), %rbx
+	leaq	20(%rbx), %rbx
 	movq	%rbx, %rax
 	jmp	.Lcolumn_chosen.1
 .Lcolumn_chosen.1:
@@ -332,12 +332,11 @@ chosen_converted:
 	movq	%rdx, -32(%rbp)
 	cmpl	$0, -12(%rbp)
 	je	.Lchosen_converted.2
-	movq	-24(%rbp), %rax
+	movq	-24(%rbp), %rbx
 	jmp	.Lchosen_converted.3
 .Lchosen_converted.2:
-	movq	-32(%rbp), %rax
+	movq	-32(%rbp), %rbx
 .Lchosen_converted.3:
-	movq	%rax, %rbx
 	movq	%rbx, %rax
 	jmp	.Lchosen_converted.1
 .Lchosen_converted.1:

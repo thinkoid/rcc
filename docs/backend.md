@@ -401,7 +401,12 @@ are the others (7.2, 6.5).
   own path: `r = c ? f(x) : r` is `movl %eax, %ebx` after the `call`,
   `q = c ? r : q` on two register variables `movl %ebx, %r12d`, and
   `r = c ? r : r` nothing at all, the empty path with no jump over it
-  (7.2). One of a type the assignment widens, `l = c ? x :
+  (7.2). A pointer variable takes the paths of a `?:` of any pointer
+  type, whose conversion to the variable's writes nothing (6.3): `q =
+  &(c ? m : n)[1][2]` on two pointers to rows is `movq -24(%rbp),
+  %rbx` and `movq -32(%rbp), %rbx` on the paths and `leaq 20(%rbx),
+  %rbx`, and `q = (char *) (c ? m : n)` the two loads and no `mov`
+  after the join. One of a type the assignment widens, `l = c ? x :
   y` into
   a `long`, takes 6.1's conversion handed to each arm, each path
   writing the register extended, `movslq -16(%rbp), %rbx` and

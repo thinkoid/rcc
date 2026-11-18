@@ -38,11 +38,10 @@
    -16(%rbp), %rbx and leaq 20(%rbx), %rbx; and column_zero() as the
    one movq -16(%rbp), %rbx, and no move after it.  Before the
    return's movq into rax, no function names an expression register
-   but called() and through(), whose pp is loaded into rax, and
-   column_chosen() and chosen_converted(), whose conditional of another
-   pointer type joins in rax: movq -24(%rbp), %rax and movq -32(%rbp),
-   %rax on the two paths, then leaq 20(%rax), %rbx in column_chosen()
-   and movq %rax, %rbx in chosen_converted().
+   but called() and through(), whose pp is loaded into rax.
+   column_chosen() and chosen_converted() write movq -24(%rbp), %rbx
+   and movq -32(%rbp), %rbx on the two paths, then leaq 20(%rbx), %rbx
+   in column_chosen() and nothing after the join in chosen_converted().
 
    On aarch64 the listing must show row() as ldr x19, [x29, #24] and
    add x19, x19, #12, element() and declared() the same with #4 and

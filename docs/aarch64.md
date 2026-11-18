@@ -427,18 +427,18 @@ better:
   register, by the rule and the edge of `backend.md` chapter 4: `r = a
   && b` is `mov w19, #1` and `mov w19, #0` after the jump code, and `r
   = c ? x : y` each arm by its own row, `ldr w19, [x29, #28]`, a
-  constant by the constant row; a pointer variable takes the paths of
-  a conditional of any pointer type, whose conversion writes nothing
-  (6.3), `q = &(c ? m : n)[1][2]` on two pointers to rows being `ldr
-  x19` on each path and `add x19, x19, #20`. More arms' rows write the
-  register here than on x86-64, since a row writes its destination
-  with its last instruction: an operation, a quotient's `sdiv` among
-  them, as well as a constant, an object in memory, a truth value and a
-  step's value. So a first arm whose row does not, a call's result, is
-  moved in on its own path, `mov w19, w0` after the `bl`, where the
-  second arm's row writes the register, and `r = c ? f(x) : a / b` is
-  that move and `sdiv w19, w0, w1`. One the assignment widens, `l = c
-  ? x : y` into a `long`, hands the conversion to each arm, `ldrsw x19,
+  constant by the constant row, and a `?:` of another pointer type into
+  a pointer variable a load into `x19` on each path, `add x19, x19,
+  #20` after the join for `q = &(c ? m : n)[1][2]`. More arms' rows
+  write the register here than on x86-64, since a row writes its
+  destination with its last instruction: an operation, a quotient's
+  `sdiv` among them, as well as a constant, an object in memory, a
+  truth value and a step's value. So a first arm whose row does not, a
+  call's result, is moved in on its own path, `mov w19, w0` after the
+  `bl`, where the second arm's row writes the register, and `r = c ?
+  f(x) : a / b` is that move and `sdiv w19, w0, w1`. One the
+  assignment widens, `l = c ? x : y` into a `long`, hands the
+  conversion to each arm, `ldrsw x19,
   [x29, #28]` and `ldrsw x19, [x29, #32]`, a constant the constant of
   the variable's type, `mov x19, #-1`, and two `char`s, `l = c ? a :
   b`, the promoted load at the width on each path, `ldrb w19, [x29,

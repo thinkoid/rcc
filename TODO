@@ -94,24 +94,6 @@ Fix: none taken; count first. A constant index reads nothing, so its
 
 Check: the count over =tests=, and no function longer.
 
-** TODO x86-64: a ~?:~ of another pointer type into a register pointer joins in an expression register
-
-~q = &(c ? m : n)[1][2]~ and ~q = (char *) (c ? m : n)~ into a
-register pointer join in =rax=, with =leaq 20(%rax), %rbx= and =movq
-%rax, %rbx= after the join, where =movq ..., %rbx= on each path is the
-same count for the first and an instruction fewer for the second:
-=joins_into()= in =src/c1-x86-64.cc= refuses a conditional of another
-pointer type, whose conversion writes nothing. aarch64 takes it
-(=aarch64.md= chapter 4). =column_chosen()= and =chosen_converted()=
-of =address-destination= pin today's form; no other test has the
-shape.
-
-Fix: x86-64's =joins_into()= accepts two pointer types, as aarch64's
-does, and the rule is then stated once.
-
-Check: those two functions with =rbx= alone on both paths, and no
-function longer.
-
 ** TODO =one_path()= is the same text in both generators
 
 =one_path()= in =src/c1-x86-64.cc= and in =src/c1-aarch64.cc= have
