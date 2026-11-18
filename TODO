@@ -342,22 +342,6 @@ what is drawn from it taken again.
 Check: the cell is of a run made after the last change to fib's
 listing.
 
-** TODO No row pins a multiply or an unsigned division by a power of two
-
-c1 writes =x * 4= as =imull $4, %eax, %eax=, and an unsigned =x / 4=
-and =x % 4= as =movl $4, %ecx; xorl %edx, %edx; divl %ecx=, the
-remainder then moved from =edx= (=backend.md= 6.4). This is the
-thesis's answer to finding 2 of =findings.md=, the selector's
-strength reduction. But no cost program pins the three: =mul-three=
-multiplies by 3 and =div-four= divides a signed value, so a change to
-c1 that turned the three into a shift or a mask would show in no
-row.
-
-Fix: a cost program pinning =imull $4=, the =movl $4= into a
-register and the =divl= of the unsigned division and remainder.
-
-Check: the row and its pin.
-
 ** TODO No aarch64 pin shows the extension of a signed byte
 
 Plain =char= is unsigned on aarch64 (=aarch64.md= chapter 11), so a

@@ -724,8 +724,8 @@ writes the instruction of its table for the operator, whatever the
 constant: `x * 4` is `imull $4, -4(%rbp), %eax`, and an unsigned
 `x / 4` is `movl $4, %ecx; xorl %edx, %edx; divl %ecx`, the remainder
 of `x % 4` then the value in `edx` (`backend.md` 6.4, 6.5). No code in the
-table looks at a constant's value. No cost row pins the three yet;
-the queue holds the entry.
+table looks at a constant's value. The cost row `power-of-two` pins
+the three, on both targets.
 
 **Finding 3, the switchless late pass**, has no counterpart: no pass
 runs after c1, and the assembler encodes what c1 wrote. A constant
