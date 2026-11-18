@@ -1626,7 +1626,9 @@ constant.
   and tested once per iteration plus once; no rotation, no
   duplicated test at the bottom. The directive aligns the head to 32
   bytes, and the assembler fills the gap with multi-byte `nop`s (13,
-  call 8).
+  call 8). After an `s` that ends in a jump, as an `if`'s `s1` does,
+  no `jmp .Lcond` is written: no path leaves `s` at its end, and a
+  `continue` jumps to `.Lcond` itself.
 - `do s while (e);`: `.p2align 5; .Lbody: s; .Lcond: cbranch(e,
   .Lbody, 1); .Lend:`. The body comes first and the condition at the
   bottom, where it is written, tested once per iteration (6.8.6.3p1);

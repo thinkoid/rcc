@@ -73,7 +73,9 @@ loop_body(state_t &s, const stmt_t &body, int next, int end)
 
 // G14: the condition at the top, where it is written, tested once per
 // iteration and once more; no rotation and no reasoning about it.  A
-// continue jumps to the condition.
+// continue jumps to the condition.  A body that ends in a jump, the
+// state terminated after it, takes no jump back: no path leaves the
+// body at its end to take it (backend.md 7.2).
 void
 while_stmt(state_t &s, const while_t &w)
 {
@@ -85,7 +87,8 @@ while_stmt(state_t &s, const while_t &w)
     cbranch(s, w.cond, end, false);
 
     loop_body(s, *w.body, cond, end);
-    jump(s, cond);
+    if (!s.terminated)
+        jump(s, cond);
 
     place_label(s, end);
 }

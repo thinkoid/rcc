@@ -26,7 +26,6 @@ main:
 	b.gt	.Lmain.3
 	mov	w0, #3
 	b	.Lmain.1
-	b	.Lmain.2
 .Lmain.3:
 	mov	w0, #0
 .Lmain.1:

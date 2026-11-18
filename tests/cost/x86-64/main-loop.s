@@ -20,7 +20,6 @@ main:
 	jg	.Lmain.3
 	movl	$3, %eax
 	jmp	.Lmain.1
-	jmp	.Lmain.2
 .Lmain.3:
 	movl	$0, %eax
 .Lmain.1:
