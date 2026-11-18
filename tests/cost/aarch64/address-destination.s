@@ -261,9 +261,9 @@ global:
 	.cfi_def_cfa_register w29
 	str	x19, [x29, #16]
 	.cfi_offset w19, -16
-	adrp	x0, :got:xa
-	ldr	x0, [x0, :got_lo12:xa]
-	add	x19, x0, #12
+	adrp	x19, :got:xa
+	ldr	x19, [x19, :got_lo12:xa]
+	add	x19, x19, #12
 	mov	x0, x19
 	b	.Lglobal.1
 .Lglobal.1:
@@ -291,9 +291,9 @@ global_sum:
 	.cfi_def_cfa_register w29
 	str	x19, [x29, #16]
 	.cfi_offset w19, -16
-	adrp	x0, :got:xa
-	ldr	x0, [x0, :got_lo12:xa]
-	add	x19, x0, #12
+	adrp	x19, :got:xa
+	ldr	x19, [x19, :got_lo12:xa]
+	add	x19, x19, #12
 	mov	x0, x19
 	b	.Lglobal_sum.1
 .Lglobal_sum.1:
@@ -322,8 +322,8 @@ column:
 	str	x19, [x29, #16]
 	.cfi_offset w19, -16
 	str	x0, [x29, #24]
-	ldr	x0, [x29, #24]
-	add	x19, x0, #20
+	ldr	x19, [x29, #24]
+	add	x19, x19, #20
 	mov	x0, x19
 	b	.Lcolumn.1
 .Lcolumn.1:
@@ -352,8 +352,7 @@ column_zero:
 	str	x19, [x29, #16]
 	.cfi_offset w19, -16
 	str	x0, [x29, #24]
-	ldr	x0, [x29, #24]
-	mov	x19, x0
+	ldr	x19, [x29, #24]
 	mov	x0, x19
 	b	.Lcolumn_zero.1
 .Lcolumn_zero.1:

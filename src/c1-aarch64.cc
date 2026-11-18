@@ -1089,6 +1089,26 @@ folded(state_t &s, const expr_t &pointer)
                        .label = label };
 }
 
+// The register variable a pointer is generated into where a constant
+// is added to it after, chapter 4: a copy of the one handed down, so
+// that the pointer's own row may write the variable's register and
+// offset()'s add or sub of the constant, which reads nothing else,
+// still writes it after, ldr x19, [x29, #24]; add x19, x19, #12 for q =
+// p[1] on int (*p)[3].  A pointer that no row writes, a register
+// variable's read, the variable's own among them, and a call's result,
+// which the call's row leaves in x0, leave the copy untaken, and the
+// add writes the variable from the pointer's register as before, add
+// x19, x19, #4 for q = q + 1.  None where none is handed down or a row
+// has written the variable.
+std::optional< into_t >
+base_into(const into_t *into)
+{
+    if (!into || into->taken)
+        return std::nullopt;
+
+    return into_t { into->variable, false, into->as };
+}
+
 // The base and the displacement of an address by an lvalue and a
 // constant, read off the tree before anything is generated: the pointer
 // whose value is the base, and the displacement in bytes.
@@ -1148,9 +1168,21 @@ bool arithmetic_immediate(long long value, int width);
 // displacement.  For the address as a value, as_value, the add of the
 // base and the displacement is to encode it instead (2.4), add x0, x0,
 // #20 for &p[1][2].  None for a displacement out of reach, and the rows
-// of *p and p + n reach the address.
+// of *p and p + n reach the address.  A register variable handed down,
+// with the address as a value, is the destination of the base's row:
+// the variable itself where the displacement is 0, so that q =
+// &m[1][-3] on int (*m)[3] is the one ldr x19, [x29, #24], and
+// base_into()'s copy under any other, so that q = &xa[3] on an array
+// the unit only declares is adrp x19, :got:xa; ldr x19, [x19,
+// :got_lo12:xa], and the add of the displacement after it writes the
+// variable (chapter 4).  A base that is a sum by a variable index takes
+// it too: its add is its own instruction whichever register it writes,
+// since no form holds an index with a displacement.
 std::optional< address_t >
-summed(state_t &s, const expr_t &pointer, bool as_value = false)
+summed(state_t &s,
+       const expr_t &pointer,
+       bool as_value = false,
+       into_t *into = nullptr)
 {
     const auto plan = based(pointer, s.defined);
     if (!plan)
@@ -1163,7 +1195,10 @@ summed(state_t &s, const expr_t &pointer, bool as_value = false)
     if (!reached)
         return std::nullopt;
 
-    return address_t { .base = rvalue(s, *plan->pointer),
+    auto onto = plan->displacement != 0 ? base_into(into) : std::nullopt;
+    into_t *to = plan->displacement == 0 ? into : onto ? &*onto : nullptr;
+
+    return address_t { .base = rvalue(s, *plan->pointer, to),
                        .displacement = static_cast< int >(plan->displacement) };
 }
 
@@ -1947,29 +1982,6 @@ offset(state_t &s,
     return result;
 }
 
-// The register variable the pointer of p + c, c + p or p - c is
-// generated into, c a constant, chapter 4: a copy of the one handed
-// down, so that the pointer's own row may write the variable's register
-// and offset()'s add or sub of the constant, which reads nothing else,
-// still writes it after, ldr x19, [x29, #24]; add x19, x19, #12 for q =
-// p[1] on int (*p)[3].  A pointer that no row writes, a register
-// variable's read, the variable's own among them, and a call's result,
-// which the call's row leaves in x0, leave the copy untaken, and the
-// add writes the variable from the pointer's register as before, add
-// x19, x19, #4 for q = q + 1.  None where none is handed down or a row
-// has written the variable, and none for an integer that is no
-// constant: generated after the pointer it could read the variable
-// the pointer's row wrote, and generated before it, n + p, its value
-// could be a read of the variable that row overwrites.
-std::optional< into_t >
-base_into(const into_t *into, const expr_t &n)
-{
-    if (!into || into->taken || !is< literal_t >(n))
-        return std::nullopt;
-
-    return into_t { into->variable, false, into->as };
-}
-
 // A binary + or - of a pointer type, 6.5.7p9: the pointer and the
 // integer, the integer widened to 64 bits by the parser, each generated
 // in the order written (G13), a constant as its product with the size,
@@ -1982,7 +1994,10 @@ base_into(const into_t *into, const expr_t &n)
 // writes the sum, chapter 4, and so does the register the consumer
 // names, wanted (6.1); by a constant, to the pointer's row too,
 // base_into()'s, so that q = p[1] into a register int *q is ldr x19,
-// [x29, #24]; add x19, x19, #12.
+// [x29, #24]; add x19, x19, #12, and to summed()'s base.  Not by an
+// integer that is no constant: generated after the pointer it could
+// read the variable the pointer's row wrote, and generated before it,
+// n + p, its value could be a read of the variable that row overwrites.
 value_t
 pointer_arithmetic(state_t &s,
                    const expr_t &e,
@@ -1992,7 +2007,7 @@ pointer_arithmetic(state_t &s,
     if (const auto a = folded(s, e))
         return address_of(s, *a, into);
 
-    if (const auto a = summed(s, e, true)) {
+    if (const auto a = summed(s, e, true, into)) {
         if (a->displacement == 0)
             return a->base;
 
@@ -2005,14 +2020,14 @@ pointer_arithmetic(state_t &s,
     const long size = stride(e.type);
 
     if (is< pointer_t >(b.lhs->type)) {
-        auto onto = base_into(into, *b.rhs);
+        auto onto = is< literal_t >(*b.rhs) ? base_into(into) : std::nullopt;
         const auto l = rvalue(s, *b.lhs, onto ? &*onto : nullptr);
         return offset(s, b.op, l, displacement(s, *b.rhs, size), true, into,
                       wanted);
     }
 
     const auto n = displacement(s, *b.lhs, size);
-    auto onto = base_into(into, *b.lhs);
+    auto onto = is< literal_t >(*b.lhs) ? base_into(into) : std::nullopt;
     const auto p = rvalue(s, *b.rhs, onto ? &*onto : nullptr);
 
     return offset(s, b.op, p, n, false, into, wanted);

@@ -3,10 +3,10 @@
    the add, of the pointer's value and the index times the size, and
    the variable's register is the destination of both, the pointer's
    own row writing it and the leaq or the add after it, so no
-   expression register is taken.  On x86-64 an lvalue's address plus a
-   constant is the same, the GOT's load of an array the unit only
-   declares or the value of the pointer a dereference reads written
-   into the register.  Each function's variable is q, in the first
+   expression register is taken.  An lvalue's address plus a constant
+   is the same, the GOT's load of an array the unit only declares or
+   the value of the pointer a dereference reads written into the
+   register.  Each function's variable is q, in the first
    register variable's register, and in the functions on a register p
    the second.
 
@@ -43,12 +43,12 @@
    #12 and add x20, x19, #4; through() as ldr x19, [x0] and add x19,
    x19, #8 after pp's load; itself() as the one add x19, x19, #4;
    called() as add x19, x0, #4 after the call; global() and
-   global_sum() as adrp x0, :got:xa, ldr x0, [x0, :got_lo12:xa] and
-   add x19, x0, #12; column() as add x19, x0, #20 after m's load into
-   x0, and column_zero() as mov x19, x0 after it.  Between the
-   parameter's store and the return's mov into x0, no function writes
-   an expression register but called(), through(), whose pp is loaded
-   into x0, and the four on an lvalue's address. */
+   global_sum() as adrp x19, :got:xa, ldr x19, [x19, :got_lo12:xa]
+   and add x19, x19, #12; column() as ldr x19, [x29, #24] and add x19,
+   x19, #20; and column_zero() as the one ldr x19, [x29, #24], and no
+   move after it.  Between the parameter's store and the return's mov
+   into x0, no function writes an expression register but called()
+   and through(), whose pp is loaded into x0. */
 int *f(int *);
 extern int xa[];
 

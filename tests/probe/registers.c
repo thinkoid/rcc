@@ -809,11 +809,11 @@ POINTEES(ADIFF)
     }
 POINTEES(KDEST)
 
-/* An lvalue's address plus a constant into a register pointer, x86-64,
+/* An lvalue's address plus a constant into a register pointer,
    backend.md chapter 4: the pointer a dereference reads written into
-   the variable's register, then the leaq on it, &m[1][2]; and constants
-   that sum to 0, &m[1][-3], the pointer's value alone.  Each pointee:
-   sizes 1, 4, 8 and 12. */
+   the variable's register, then the leaq, on aarch64 the add, on it,
+   &m[1][2]; and constants that sum to 0, &m[1][-3], the pointer's
+   value alone.  Each pointee: sizes 1, 4, 8 and 12. */
 
 #define KCOL(E, T)                                                      \
     long kcol_##E(T m[][3], long i)                                     \

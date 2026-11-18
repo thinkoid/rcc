@@ -338,9 +338,16 @@ better:
   variable's own read is the base already, `p = &p[1]` the one `add
   x19, x19, #4`. The pointer of a sum by an integer that is no
   constant is generated elsewhere, since the integer could read the
-  variable after the pointer's row wrote it, and so is the address of
-  an array the file only declares, whose GOT's load stays in `x0`,
-  `ldr x0, [x0, :got_lo12:xa]; add x19, x0, #12`.
+  variable after the pointer's row wrote it. An lvalue's address plus
+  a constant is the same: the GOT's load of an array the file only
+  declares, or the pointer a dereference reads, writes the register,
+  `p = &declared[3]` being `adrp x19, :got:declared; ldr x19, [x19,
+  :got_lo12:declared]; add x19, x19, #12` and `p = &m[1][2]` on `int
+  (*m)[3]` `ldr x19, [x29, #24]; add x19, x19, #20`; where the
+  constants sum to 0, `p = &m[1][-3]`, the load is the whole value and
+  nothing is moved after it. A row by a variable index takes the
+  register too, `add x19, x0, x1; add x19, x19, #8` for `p = &m[i][2]`,
+  since its `add` is its own instruction whichever register it writes.
   A conversion that changes the signedness alone is written
   there too: an object under it is loaded at the extension of the
   conversion's type, `ldr w19, [x29, #32]` for `register unsigned u =

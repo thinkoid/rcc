@@ -106,22 +106,20 @@ Fix: none taken; count first.
 
 Check: the count over =tests=, and no function longer.
 
-** TODO aarch64: an lvalue's address plus a constant into a register variable loads the address elsewhere
+** TODO aarch64: a ~?:~ of row pointers into a register pointer joins in an expression register
 
-~q = &xa[3]~ into a ~register int *q~, with =xa= an array the unit
-only declares, is =adrp x0, :got:xa; ldr x0, [x0, :got_lo12:xa]; add
-x19, x0, #12=, and ~q = &m[1][-3]~ on ~int (*m)[3]~, whose constants
-sum to 0, is =ldr x0, [x29, #24]; mov x19, x0=; x86-64 loads each
-into the variable's register (=backend.md= chapter 4). =global()=,
-=global_sum()=, =column()= and =column_zero()= of
-=address-destination= pin it.
+~q = &(c ? m : n)[1][2]~ into a ~register int *q~, with ~m~ and ~n~
+pointers to rows, joins the arms in =x0= and writes =add x19, x0,
+#20=: the conditional does not join into a variable of another
+pointer type, so the base handed the variable takes none. =ldr x19=
+on each path takes no expression register, at the same count. No
+test has the shape.
 
-Fix: the lvalue's address under a constant is generated into the
-variable handed down, in =src/c1-aarch64.cc=, as x86-64's =summed()=
-and =global_address()= do.
+Fix: none taken; say first why the conditional's type test refuses
+the variable.
 
-Check: those four pins with =x19= alone, and =column_zero()= the one
-=ldr x19=.
+Check: a function of =address-destination= with =x19= alone on both
+paths.
 
 ** TODO aarch64: a prefix step's value into a register variable loads the object elsewhere
 
