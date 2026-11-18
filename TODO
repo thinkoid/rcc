@@ -1087,17 +1087,22 @@ it.
 Check: the pins of =unclosed-function-body= and =unclosed-block=
 name the last line of their programs.
 
-** TODO A void initializer is reported at the ===
+** TODO A record where a scalar is required is "not yet", where it is an error
 
-~int x = g();~ with =g= returning =void= fails with "void expression
-used as a value" at the ===, not at the call: =init_declarator()=
-hands the === token to =assignment_conversion()=, which is the right
-place for a conversion's error and the wrong one for an operand that
-has no value.
+~int x = origin;~ with =origin= a struct fails with "not yet: value
+of struct 'point'". No rule of simple assignment takes a record into
+an arithmetic type (6.5.17.2p1, through 6.7.11p12 for an
+initializer), so this is an error of incompatible types, and "not
+yet" promises an acceptance C does not have. The check of a value
+refuses a record before the conversion is asked what it converts.
+=struct-value-local-initializer= pins today's message; an
+assignment ~i = s~ is not probed.
 
-Fix: the check for a value reports at the initializer's first token.
+Fix: where the type wanted is no record, a record's value is the
+error of incompatible types; "not yet" stays for a record's value
+where a record is wanted.
 
-Check: the pin of =tests/error/void-value= names the column of =g=.
+Check: that row with the error, and a row for the assignment.
 
 ** TODO Sixteen lines of the documents run past the margin
 

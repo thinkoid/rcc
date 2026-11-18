@@ -2986,7 +2986,8 @@ refuse_designator(const parser_t &p)
 // than a pointer, which no load writes.  A record's value is none
 // either, p14: in a scalar's place it initializes a record the scalar
 // begins, or no object at all.  at is the token a conversion's error
-// is said at.
+// is said at; a void expression, which has no value, 6.3.2.2p1, is the
+// error of the expression, said at its first token.
 initializer_t
 scalar_value(parser_t &p, const token_t &at, const type_t &t)
 {
@@ -2994,6 +2995,8 @@ scalar_value(parser_t &p, const token_t &at, const type_t &t)
     expr_t e = assignment_expression(p);
     if (is< record_type_t >(e.type))
         fail(start, "initializer element is not a compile-time constant");
+
+    require_value(start, e);
 
     expr_t init = assignment_conversion(at, std::move(e), t);
 
@@ -5642,15 +5645,17 @@ init_declarator_list(parser_t &p, const specifiers_t &spec)
 // A local, an object of automatic storage duration, 6.2.4p5.  The name
 // is in scope from the end of its declarator, 6.2.1p7, so an
 // initializer sees the object it initializes.  The initializer is
-// converted as by assignment, 6.7.11p12.  An object's type must be
-// complete, 6.7.1p8, so an array needs its size; any initializer of an
-// array or of a record, and a brace initializer of anything, is not
-// yet: a local's initializer is stores at run time, where an object of
-// static storage takes its value as data.  A register array is not yet
-// either: its decay is undefined, 6.3.2.1p3, and it has no slot to
-// decay to; nor is a register record, which no register holds.  A local
-// of 2 GiB or more is refused here, where its position is known, since
-// no frame holds it.
+// converted as by assignment, 6.7.11p12, an error of the conversion
+// said at the =; an initializer that has no value, a void one,
+// 6.3.2.2p1, is the error of the operand, said at its first token.  An
+// object's type must be complete, 6.7.1p8, so an array needs its size;
+// any initializer of an array or of a record, and a brace initializer
+// of anything, is not yet: a local's initializer is stores at run time,
+// where an object of static storage takes its value as data.  A
+// register array is not yet either: its decay is undefined, 6.3.2.1p3,
+// and it has no slot to decay to; nor is a register record, which no
+// register holds.  A local of 2 GiB or more is refused here, where its
+// position is known, since no frame holds it.
 stmt_t
 init_declarator(parser_t &p, const specifiers_t &spec, const declarator_t &d)
 {
@@ -5687,7 +5692,10 @@ init_declarator(parser_t &p, const specifiers_t &spec, const declarator_t &d)
         if (peek(p).kind == tok_t::lbrace)
             not_yet(peek(p), "brace initializer");
 
+        const token_t &start = peek(p);
         expr_t init = assignment_expression(p);
+        require_value(start, init);
+
         decl.init = assignment_conversion(op, std::move(init), d.type);
     }
 

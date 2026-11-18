@@ -1,0 +1,2 @@
+tests/error/struct-value-local-initializer.c:13:17: error: not yet: value of struct 'point'
+status 1

@@ -1,0 +1,2 @@
+tests/error/void-value-file-scope.c:6:9: error: void expression used as a value
+status 1

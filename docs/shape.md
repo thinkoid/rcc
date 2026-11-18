@@ -955,6 +955,12 @@ one diagnostic. Its pin, per target, is what rcc printed on standard
 error and the exit status, so a message reworded or moved, or a
 refusal turned into an acceptance, fails its row.
 
+An initializer's error is said at one of two places. One of its
+conversion as by assignment is said at the `=`, as in `int *p = 1;`;
+one of a value the initializer does not have is said at its first
+token, so `int x = g();`, for a `void g(void)`, is refused at `g`
+(6.3.2.2p1), at file scope and in a block alike.
+
 ## 8. The driver
 
 `rcc [-w] [-S|-c] [-target name] [-o out] file.c`. `-S` stops at the

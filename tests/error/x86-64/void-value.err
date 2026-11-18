@@ -1,2 +1,2 @@
-tests/error/void-value.c:6:11: error: void expression used as a value
+tests/error/void-value.c:6:13: error: void expression used as a value
 status 1
