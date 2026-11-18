@@ -157,6 +157,7 @@ compare(const char *name, long x, long y)
     BOTH(long, rwritten_##N, (long, long, long))                        \
     BOTH(long, rcall_##N, (long, long))                                 \
     BOTH(long, edge_##N, (long, long))                                  \
+    BOTH(long, edge_pre_##N, (long, long))                              \
     BOTH(long, ret_free_##N, (long, long, long))                        \
     BOTH(T, ret_narrow_##N, (long, long, long))                         \
     BOTH(long, ret_held_##N, (long, long))                              \
@@ -364,6 +365,7 @@ fill(long v[12], int i, int k)
                 CHECK(rwritten_##N, x, y, (x, y, w));                   \
                 CHECK(rcall_##N, x, y, (x, y));                         \
                 CHECK(edge_##N, x, y, (x, y));                          \
+                CHECK(edge_pre_##N, x, y, (x, y));                      \
                 CHECK(ret_free_##N, x, y, (x, y, w));                   \
                 CHECK(ret_narrow_##N, x, y, (x, y, w));                 \
                 CHECK(ret_held_##N, x, y, (x, y));                      \

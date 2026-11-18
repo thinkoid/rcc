@@ -746,6 +746,37 @@ pedge_named(long i)
 
 TYPES(EDGE)
 
+/* The value of a prefix step at the edge of the destination, backend.md
+   and aarch64.md chapter 4: r = ++x and r = --x on an object in a slot,
+   loaded into the variable's register and stepped there, and r =
+   ++y[r] and r = --y[r], whose address reads the variable, so that the
+   variable's register holds the index until the store; each read
+   after. */
+#define EDGE_PRE(T, N)                                                  \
+    long edge_pre_##N(T a, T b)                                         \
+    {                                                                   \
+        T x = a;                                                        \
+        T y[4];                                                         \
+        register T r;                                                   \
+        long k;                                                         \
+        y[0] = a;                                                       \
+        y[1] = b;                                                       \
+        y[2] = a ^ b;                                                   \
+        y[3] = 3;                                                       \
+        r = ++x;                                                        \
+        k = r * 7L + x;                                                 \
+        r = --x;                                                        \
+        k = k * 7 + r + x * 3L;                                         \
+        r = 1;                                                          \
+        r = ++y[r];                                                     \
+        k = k * 7 + r + y[1] * 3L;                                      \
+        r = 2;                                                          \
+        r = --y[r];                                                     \
+        return k * 7 + r + y[2] * 3L;                                   \
+    }
+
+TYPES(EDGE_PRE)
+
 /* p - q with a register variable on the left, x86-64, backend.md 6.5:
    at a size other than 1 the right operand is generated outside rax
    and rdx, as a divisor is.  The right operand a parameter, an object

@@ -107,17 +107,23 @@ the variable.
 Check: a function of =address-destination= with =x19= alone on both
 paths.
 
-** TODO aarch64: a prefix step's value into a register variable loads the object elsewhere
+** TODO aarch64: a narrow or widened prefix step's value is stepped outside the register variable
 
-~q = ++p~ into a =register= pointer, on a pointer in memory, is =ldr
-x0, [x29, #24]; add x19, x0, #4; str x19, [x29, #24]=, where the
-load into =x19= takes no expression register; x86-64 writes =movq
--16(%rbp), %rbx; addq $4, %rbx; movq %rbx, -16(%rbp)=. 27 forms over
-=tests=: =de_step_*= of the registers probe and =prefix_pointer()=.
+~r = ++c~ on a =char= in memory into a ~register int r~ is =ldrb w0,
+[x29, #24]; add w0, w0, #1; strb w0, [x29, #24]; uxtb w19, w0=, and
+~l = ++x~ on an =int= into a =register long= ends =sxtw x19, w0=:
+the step is in an expression register, and the conversion's
+extension writes the variable. The load and the step in the
+variable, =ldrb w19; add w19, w19, #1; strb w19; uxtb w19, w19=, is
+the same count and takes no expression register, but the variable's
+register then holds a value outside its representation from the add
+to the extension, which chapter 4 of =aarch64.md= does not allow
+today. 23 forms over =tests=; x86-64 keeps the same split.
 
-Fix: the step's load is generated into the variable handed down.
+Fix: none taken; it moves the cast's rule on what a register
+variable's register may hold.
 
-Check: the count over =tests=, and =prefix_pointer= with =x19= alone.
+Check: the count over =tests=, and no function longer.
 
 ** TODO aarch64: an operation by a constant into a register variable computes its left operand elsewhere
 

@@ -2849,14 +2849,16 @@ step_register(state_t &s,
 // stored, so no operator sees 8 or 16 bits.  The prefix forms operate
 // on the loaded value's register and yield it, and handed a register
 // variable, where the object is 32 bits or more and its address reads
-// no register of the variable, name the variable's register as the
-// destination, so that the store takes the value from there and the
-// value is the variable's read (chapter 4).  The postfix forms name
-// another register as the destination, add w1, w0, #1, and yield the
-// old value where the load left it: nothing is copied, 6.1.  The place
-// is generated with the register the consumer names, wanted, left for
-// last, so that the load takes it, ldr w0, [x1, w2, sxtw #2]; add w3,
-// w0, #1 for return p[i]++ (6.1).  A register variable's is
+// no register of the variable, load into the variable's register and
+// step it there, ldr w19, [x29, #24]; add w19, w19, #1, so that the
+// store takes the value from there and the value is the variable's
+// read (chapter 4).  A narrower object's sum is no value of its type,
+// and the conversion after it writes the variable.  The postfix forms
+// name another register as the destination, add w1, w0, #1, and yield
+// the old value where the load left it: nothing is copied, 6.1.  The
+// place is generated with the register the consumer names, wanted,
+// left for last, so that the load takes it, ldr w0, [x1, w2, sxtw #2];
+// add w3, w0, #1 for return p[i]++ (6.1).  A register variable's is
 // step_register()'s.
 value_t
 step(state_t &s,
@@ -2876,20 +2878,25 @@ step(state_t &s,
     const bool post = op == unary_op_t::post_inc || op == unary_op_t::post_dec;
 
     const auto place = address_avoiding(s, arg, wanted);
-    const auto l =
-        fetch(s, first_access(place), t, width, post ? into : nullptr);
-    const reg_t r = reg_of(s, l);
 
-    // r = ++x: the add writes r's register and the store takes it from
-    // there, add w19, w0, #1; str w19, [x29, #24] (chapter 4)
+    // r = ++x: the load and the add write r's register and the store
+    // takes it from there, ldr w19, [x29, #24]; add w19, w19, #1; str
+    // w19, [x29, #24] (chapter 4); where the load cannot write it, the
+    // add does, add w19, w0, #1
     const bool steps_into =
         !post && t.width >= 32 && takes(into, written(width, t.is_signed)) &&
         !(registers_of(s, place) & bit(variable_register(into->variable)));
 
-    const auto v = post       ? fresh(s, written(width, t.is_signed),
-                                      bit(r) | registers_of(s, place)) :
-                   steps_into ? taken(s, *into) :
-                                l;
+    const auto l = fetch(s, first_access(place), t, width,
+                         post || steps_into ? into : nullptr);
+    const reg_t r = reg_of(s, l);
+    const bool loaded_into = steps_into && into->taken;
+
+    const auto v = post        ? fresh(s, written(width, t.is_signed),
+                                       bit(r) | registers_of(s, place)) :
+                   loaded_into ? l :
+                   steps_into  ? taken(s, *into) :
+                                 l;
     const reg_t result = reg_of(s, v);
 
     const auto n =
@@ -2901,6 +2908,9 @@ step(state_t &s,
 
     store(s, v, last_access(place), t.width);
     release(s, place);
+
+    if (loaded_into)
+        return l;
 
     if (post || steps_into) {
         release(s, post ? v : l);

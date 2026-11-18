@@ -361,10 +361,14 @@ better:
   goes through that register after the load; and `r = s++` on another register
   variable is G13's copy into `r`'s register, `mov w20, w19`, before
   the `add`. The value of a prefix step on an object of 32 bits or
-  more, `r = ++x`, is the step written into the register and the
-  store from it, `ldr w0, [x29, #24]; add w19, w0, #1; str w19, [x29,
-  #24]`, but not where the address of the object reads the variable's
-  register. The variable is written after the row has read every
+  more, `r = ++x`, is the load into the register, the step on it and
+  the store from it, `ldr w19, [x29, #24]; add w19, w19, #1; str w19,
+  [x29, #24]`, but not where the address of the object reads the
+  variable's register; a narrower object's sum is no value of its
+  type, so `r = ++c` on a `char` keeps the step in an expression
+  register and the re-extension, `uxtb w19, w0`, after the store, as
+  a widened one keeps its `sxtw x19, w0`.
+  The variable is written after the row has read every
   operand, so no condition on them is needed, where x86-64 takes two
   (`backend.md` chapter 4). Any other value is computed elsewhere and
   moved in, `mov w20, w0`, or `mov x20, x0` for a `long` or a pointer:

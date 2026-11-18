@@ -2851,13 +2851,13 @@ prefix_step:
 	str	x19, [x29, #16]
 	.cfi_offset w19, -16
 	str	w0, [x29, #24]
-	ldr	w0, [x29, #24]
-	add	w19, w0, #1
+	ldr	w19, [x29, #24]
+	add	w19, w19, #1
 	str	w19, [x29, #24]
 	ldr	w0, [x29, #24]
 	add	w19, w19, w0
-	ldr	w0, [x29, #24]
-	sub	w19, w0, #1
+	ldr	w19, [x29, #24]
+	sub	w19, w19, #1
 	str	w19, [x29, #24]
 	ldr	w0, [x29, #24]
 	add	w0, w19, w0
@@ -2888,8 +2888,8 @@ prefix_pointer:
 	str	x19, [x29, #16]
 	.cfi_offset w19, -16
 	str	x0, [x29, #24]
-	ldr	x0, [x29, #24]
-	add	x19, x0, #4
+	ldr	x19, [x29, #24]
+	add	x19, x19, #4
 	str	x19, [x29, #24]
 	mov	x0, x19
 	b	.Lprefix_pointer.1

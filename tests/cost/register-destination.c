@@ -242,10 +242,11 @@
    #5 in char_operand() and char_operand_left(); sxtw x0, w19 and add
    x20, x0, #5 in
    int_widened(); mul w20, w19, w0 after mov w0, #4 in
-   register_product(); in prefix_step() the step written
-   into the register and the store from it, add w19, w0, #1; str w19,
-   [x29, #24], and sub w19, w0, #1, and in prefix_pointer() add x19,
-   x0, #4; str x19, [x29, #24]; in prefix_char() add w0, w0, #1, strb
+   register_product(); in prefix_step() the load, the step and the
+   store on the register, ldr w19, [x29, #24]; add w19, w19, #1; str
+   w19, [x29, #24], and sub w19, w19, #1, and in prefix_pointer() ldr
+   x19, [x29, #24]; add x19, x19, #4; str x19, [x29, #24]; in
+   prefix_char() add w0, w0, #1, strb
    w0, [x29, #24] and uxtb w19, w0; add x19, x0, x1 after the mul by 12
    in row_element() and row_decay(); sxtw x19, w0 in widened_sum() and
    sxtw x20, w19 in widened_register(); mul w19, w0, w1 in
