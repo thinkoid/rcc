@@ -89,8 +89,9 @@ default_output(const options_t &opts)
 // The command line, or nothing when it is a usage error: an unknown
 // option, -O<n> among them, since there are no optimization levels;
 // -o or -target without a name; a name that is no target; -S with -c;
-// or other than one input file.  A repeated -o or -target takes the
-// last one, as cc does.
+// -o - without -S, since only the assembly is text; or other than one
+// input file.  A repeated -o or -target takes the last one, as cc
+// does.
 std::optional< options_t >
 options_from(int argc, char **argv)
 {
@@ -126,6 +127,9 @@ options_from(int argc, char **argv)
         opts.stage = stage_t::assembly;
     else if (to_object)
         opts.stage = stage_t::object;
+
+    if (opts.out == "-" && opts.stage != stage_t::assembly)
+        return std::nullopt;
 
     if (opts.out.empty())
         opts.out = default_output(opts);
@@ -288,10 +292,21 @@ run(const std::vector< std::string > &args)
     return wait_for(pid);
 }
 
-// Writes the assembly where -S asked for it, replacing any file there.
+// Writes the assembly where -S asked for it: to the standard output for
+// -o -, as cc does, and to the file otherwise, replacing any file
+// there.  The standard output is closed as a file is, so that a write
+// the system reports only at the close is not lost.
 void
-write_file(const std::string &path, std::string_view text)
+write_assembly(const std::string &path, std::string_view text)
 {
+    if (path == "-") {
+        const int err = write_and_close(STDOUT_FILENO, text);
+        if (err != 0)
+            throw_system_error(err, "cannot write the standard output");
+
+        return;
+    }
+
     const int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0666);
     const int err = fd < 0 ? errno : write_and_close(fd, text);
     if (err != 0)
@@ -434,7 +449,7 @@ drive(const options_t &opts)
     }
 
     if (opts.stage == stage_t::assembly) {
-        write_file(opts.out, assembly.str());
+        write_assembly(opts.out, assembly.str());
         return 0;
     }
 

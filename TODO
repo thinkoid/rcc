@@ -466,6 +466,19 @@ named for the save.
 
 Check: the sentence agrees with both pins of =g13-read-across-branch=.
 
+** TODO =cost.md= chapter 3 counts three scripts where =make test= runs five
+
+Chapter 3 opens "Three scripts" and describes =tests/oracle=,
+=tests/costs= and =tests/probes=. =make test= also runs
+=tests/errors=, the pinned diagnostics, and =tests/driver=, the
+driver's command line, and the chapter names neither.
+
+Fix: the chapter's opening counts and names the five, each with what
+it pins.
+
+Check: every script the =Makefile='s =test= runs is named in the
+chapter.
+
 * Tests
 
 ** TODO =tests/oracle --pin= says nothing of a pin that is the same
@@ -548,18 +561,6 @@ shows in no pin:
 Fix: a cost program for each, with its pin.
 
 Check: perturbing each rule in =c1-x86-64.cc= turns a row red.
-
-** TODO =-o -= names a file, not standard output
-
-=rcc -S -o -= writes a file called =-= in the working directory. Every
-cc reads =-o -= as standard output for =-S=, and a reader of the
-assembly expects it.
-
-Fix: with =-S=, an output of =-= writes the text to standard output;
-with =-c= or a link it stays a usage error.
-
-Check: =rcc -S -o - x.c | head -1= prints the first line of the
-assembly and leaves no file.
 
 ** TODO Two corpus programs describe the x86-64 listing only
 

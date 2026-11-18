@@ -19,9 +19,11 @@ build/%.o: src/%.cc | build
 build:
 	mkdir -p $@
 
-# the pins of every target, then the probes, which run what rcc writes
-# and so only for this machine's own target
+# the pins of every target, then the driver's command line, then the
+# probes, which run what rcc writes and so only for this machine's own
+# target
 test: $(TARGETS:%=test-%) rcc
+	tests/driver
 	tests/probes
 
 $(TARGETS:%=test-%): test-%: rcc

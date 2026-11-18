@@ -178,7 +178,8 @@ yet.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/`, the cost corpus over `tests/cost/`
 and the error corpus over `tests/error/`, the programs rcc refuses
-with their diagnostics, for each target, and then the probes of
+with their diagnostics, for each target, then the driver's command
+line, `tests/driver`, and then the probes of
 `tests/probe/`, rcc's code against `clang`'s on the machine's own
 target; `make bench` times the benchmark corpus of `tests/perf/`,
 with a target's own tuned sources from `tests/perf/<target>/`, and

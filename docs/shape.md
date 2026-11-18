@@ -956,7 +956,10 @@ refusal turned into an acceptance, fails its row.
 assembly, and the pins of the oracle and of the cost corpus are what
 `-S` wrote. `-c` stops at the object, which `clang -c` assembled.
 Without either, `clang` links an executable. The default output is
-`<stem>.s`, `<stem>.o` or `a.out`. There is no `-O`: there is one
+`<stem>.s`, `<stem>.o` or `a.out`. With `-S`, `-o -` writes the
+assembly to the standard output, as cc does; an object or an
+executable is no text, so `-o -` with `-c` or a link is a usage
+error, and `tests/driver` checks both. There is no `-O`: there is one
 pipeline, and it is literal, so `-O` is an unknown option and a usage
 error. Processes are spawned by fork and exec, never `system`; the
 temporary `.s` of `-c` and of a link is removed on every way out.
@@ -1039,6 +1042,7 @@ compile database, and three lines of make, a shell script and
     tests/error/aarch64/
                       their pinned standard error and exit status for
                       aarch64
+    tests/driver      the driver's command-line script
     tests/probes      the probe script
     tests/probe/      the probes: rcc's code against clang -O0's
     tests/bench       the measurement script
