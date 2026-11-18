@@ -57,7 +57,7 @@ main:
 	ldr	w0, [x29, #16]
 	ldr	w1, [x29, #20]
 	bl	pick
-	mov	w1, #16
+	mov	w1, #8
 	mul	w0, w0, w1
 	str	x0, [x29, #24]
 	mov	w0, #5

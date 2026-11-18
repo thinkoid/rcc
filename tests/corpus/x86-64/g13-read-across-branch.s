@@ -47,7 +47,7 @@ main:
 	movl	-4(%rbp), %edi
 	movl	-8(%rbp), %esi
 	call	pick@PLT
-	imull	$16, %eax, %eax
+	imull	$8, %eax, %eax
 	movq	%rax, -16(%rbp)
 	movl	$5, -20(%rbp)
 	movl	$0, -24(%rbp)

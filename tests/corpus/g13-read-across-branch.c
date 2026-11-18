@@ -10,11 +10,11 @@
    ldr x1, [x29, #32] after the arms.
 
    pick(5, 1) returns the old x plus the old x, 10, and pick(5, 0)
-   returns 7: exit status 10 * 16 + 7 = 167. The expression is
+   returns 7: exit status 10 * 8 + 7 = 87. The expression is
    undefined in ISO C (6.5.1p2) when c is not zero, since x is read and
    written unsequenced. clang -O2 writes pick as movl $2, %eax,
    cmovnel %edi, %eax and addl %edi, %eax: the old x in both places,
-   167. */
+   87. */
 int pick(register int x, int c)
 {
     return x + (c ? x++ : 2);
@@ -22,5 +22,5 @@ int pick(register int x, int c)
 
 int main(void)
 {
-    return pick(5, 1) * 16 + pick(5, 0);
+    return pick(5, 1) * 8 + pick(5, 0);
 }

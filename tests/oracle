@@ -43,11 +43,21 @@
 # at the limit the program is sent SIGTERM, and SIGKILL a second later
 # if it still runs, so a program that ignores SIGTERM stops too.
 # timeout(1) ends with 124 when SIGTERM ended the program and 137 when
-# SIGKILL did.  Such a run shows as "timeout", and a row that expects
-# "timeout" passes on it.  So no program of the corpus exits with 124
-# or 137 by itself: a run that ends with either before the limit is
-# the program's own, shows as its number, and fails its row.  Without
+# SIGKILL did.  Such a run, one that lasted the limit, shows as
+# "timeout", and a row that expects "timeout" passes on it.  A run that
+# ends with 124 sooner gave the status itself, which no program of the
+# corpus may: it shows as its number and fails its row.  Without
 # timeout the script says so once and runs without a limit.
+#
+# The shell reports a run that signal n killed as 128 + n, and
+# timeout(1) dies of the signal its program died of, so a status above
+# 128 is a signal's.  It shows as the name kill -l gives signal n, SEGV
+# for 139, and 137 before the limit, a SIGKILL from elsewhere, as KILL.
+# No program of the corpus exits above 128 by itself, so no status
+# reads two ways, and a row passes on a signal only when it names it.
+# A status above 128 whose signal kill -l has no name for shows as its
+# number and fails its row, as does a row that holds a number above
+# 128.
 #
 # The script prints a table, one row per program, and a summary, and
 # exits 0 when every row passed or is not yet, 1 otherwise.  It runs
@@ -59,8 +69,9 @@
 #
 # tests/corpus/expected holds one line per program: its name, the
 # exit status of the rcc build and that of the clang build, separated
-# by spaces.  A status is a number, or "timeout" for a run stopped at
-# the time limit; never 124 or 137.  A # starts a comment.
+# by spaces.  A status is a number up to 128 other than 124, a
+# signal's name, or "timeout" for a run stopped at the time limit.  A
+# # starts a comment.
 #
 ########################################################################
 #
@@ -144,6 +155,10 @@ kill_after=1
 timeout_status=124
 killed_status=137
 timed_out=timeout
+
+# the shell's status for a run that a signal killed: this plus the
+# signal's number
+signal_base=128
 
 # byte order for the sorted corpus, and diagnostics in one language
 LC_ALL=C
@@ -319,7 +334,7 @@ measure()
 
     if [ "$limited" -eq 0 ]; then
         logged "$exe" < /dev/null
-        echo $?
+        shown_status $?
         return 0
     fi
 
@@ -329,28 +344,80 @@ measure()
     ended=$(date +%s)
 
     # 124 or 137 is the limit's only when the run lasted the limit; one
-    # that ended sooner is the program's own status, and shows as it is
+    # that ended sooner is the program's own 124, or a SIGKILL from
+    # elsewhere, 137, and shows as any other status
     if { [ "$status" -eq "$timeout_status" ] ||
          [ "$status" -eq "$killed_status" ]; } &&
        [ $((ended - started)) -ge "$time_limit" ]; then
         echo "$timed_out"
     else
-        echo "$status"
+        shown_status "$status"
     fi
 }
 
 
 ##########
+# shown_status(): prints an exit status as the table and the expected
+# table show it: a number up to 128 as it is, and one above as the name
+# kill -l gives its signal, SEGV for 139; the number when kill -l has
+# no name for that signal, which bash prints as nothing and dash as
+# its number or an error
+shown_status()
+{
+    code=$1
+
+    if [ "$code" -le "$signal_base" ]; then
+        echo "$code"
+        return 0
+    fi
+
+    name=$(kill -l $((code - signal_base)) 2> /dev/null)
+
+    case "$name" in
+        "" | [0-9]* | *[!A-Z0-9+-]*)  # no name for the signal
+            echo "$code"
+            ;;
+
+        *)  # the signal's name, without SIG
+            echo "$name"
+            ;;
+    esac
+}
+
+
+##########
 # own_limit_status(): reports 0 when one of the statuses that follow
-# is 124 or 137 as a number: a program gave by itself a status of the
-# limit's, which no program of the corpus may; 1 otherwise
+# is 124 as a number: a program gave by itself the status of the
+# limit's SIGTERM, which no program of the corpus may; 1 otherwise
 own_limit_status()
 {
     for shown in "$@"; do
-        if [ "$shown" = "$timeout_status" ] ||
-           [ "$shown" = "$killed_status" ]; then
+        if [ "$shown" = "$timeout_status" ]; then
             return 0
         fi
+    done
+
+    return 1
+}
+
+
+##########
+# number_above_base(): reports 0 when one of the statuses that follow
+# is a number above 128, which no row may hold and no run passes on,
+# since a signal's status goes by its name; 1 otherwise
+number_above_base()
+{
+    for shown in "$@"; do
+        case "$shown" in
+            "" | *[!0-9]*)  # a name, or no number
+                ;;
+
+            *)  # a number
+                if [ "$shown" -gt "$signal_base" ]; then
+                    return 0
+                fi
+                ;;
+        esac
     done
 
     return 1
@@ -488,11 +555,18 @@ check_program()
 
     want=$(expected_of "$name")
 
+    # $want is split into its two statuses, on purpose
+
     if [ "$run" -ne 0 ] && [ -z "$want" ]; then
         verdict="FAIL (no row in $expected)"
+    elif [ "$run" -ne 0 ] && number_above_base $want; then
+        verdict="FAIL (a number above $signal_base in $expected)"
     elif [ "$run" -ne 0 ] &&
          own_limit_status "$rcc_status" "$clang_status"; then
-        verdict="FAIL (exits $timeout_status or $killed_status itself)"
+        verdict="FAIL (exits $timeout_status itself)"
+    elif [ "$run" -ne 0 ] &&
+         number_above_base "$rcc_status" "$clang_status"; then
+        verdict="FAIL (a status above $signal_base names no signal)"
     elif [ "$run" -ne 0 ] && [ "$want" != "$rcc_status $clang_status" ]; then
         verdict="FAIL (expected $want)"
     elif [ "$assembled" -eq 0 ]; then

@@ -466,25 +466,32 @@ Fix: the oracle prints "pinned <file> (same)" too.
 Check: =tests/oracle --pin= on a clean tree prints one line for each
 program.
 
-** TODO A signal death records as 128 + n, like an exit with 128 + n
+** TODO =tests/oracle --pin= writes a status the oracle then refuses
 
-A program killed by signal n is recorded as 128 + n: =timeout= dies
-of the child's signal, and the shell reports 128 + n. So the G9
-program's SIGSEGV is the row's 139, and a program that exits 139 by
-itself records the same.
+=--pin= adopts what it measures, so a program that exits 200 gets
+the row =200 200=, and the next run fails that row: a number above
+128 in =tests/corpus/expected=. The pin made a table the oracle does
+not accept, and said nothing.
 
-Two corpus programs exit above 128 by themselves, =header-getch=
-with 135 and =g13-read-across-branch= with 167, so the rule below
-does not hold today: under it their rows would read as signals.
+Fix: =--pin= keeps the old row for a program whose measured status
+is a number above 128 or 124, as it does for a program that did not
+build, and says so by the program's name.
 
-Fix: none taken; decide. Either those two programs are changed to
-exit at most 128, which moves their pins on both targets, and then
-a status above 128 is shown by its signal name, =SEGV= from =kill
--l=, in the table and in =expected=; or a small runner the oracle
-builds tells a death by a signal from an exit, and no program
-changes.
+Check: a scratch program that returns 200, pinned: the row is not
+written, the message names the program, and the status is nonzero.
 
-Check: the =g9-null-load= row reads =SEGV= and passes.
+** TODO =tests/probes= shows a probe's death by a signal as a number
+
+A probe that dies of a signal reads "stopped, status 139" in the
+table, where the oracle now shows the signal's name, =SEGV=. The two
+scripts read one status two ways.
+
+Fix: the probes' table shows a status above 128 by the name =kill
+-l= gives its signal, by the oracle's rule; the function that names
+it is one, in a file both scripts read.
+
+Check: a probe made to read through a null pointer shows "stopped,
+SEGV"; =make test= passes on both targets.
 
 ** TODO A G14 corpus program needs a non-constant condition
 

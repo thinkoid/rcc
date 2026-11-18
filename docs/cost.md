@@ -455,9 +455,18 @@ hang by promise and a fault of rcc's code may keep one in a loop:
 SIGTERM stops it at the limit, and SIGKILL a second later if it
 ignores SIGTERM. The run then shows as "timeout": an oracle row that
 expects it passes, and a probe fails. `timeout` ends with 124 after
-SIGTERM and 137 after SIGKILL, so no program of the corpus exits with
-either by itself, and the oracle fails one that ends so before the
-limit.
+SIGTERM and 137 after SIGKILL; a run that ends with 124 before the
+limit gave the status itself, which no program of the corpus may, and
+the oracle fails it.
+
+The shell reports a run that signal n killed as 128 + n, so the oracle
+shows a status above 128 by the signal's name, as `kill -l` gives it:
+`SEGV` for the null load of G9, and `KILL` for a SIGKILL from
+elsewhere before the limit. No program of the corpus exits above 128
+by itself, so no status reads two ways. `tests/corpus/expected` names
+the signal too: a row passes on a signal only when it names it, and a
+row that holds a number above 128 fails, as does a status above 128
+whose signal `kill -l` has no name for.
 
 ## 4. The measurement
 

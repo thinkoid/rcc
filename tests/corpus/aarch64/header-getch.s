@@ -304,7 +304,7 @@ main:
 .Ls1:
 	.string	"%d integers, sum %d\n"
 .Ls2:
-	.string	" 12 -7  +30\t100\n"
+	.string	" 12 -7  +30\t10\n"
 	.data
 	.type	bufp, @object
 	.size	bufp, 4

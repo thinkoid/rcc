@@ -1,9 +1,10 @@
 # One line per program in tests/corpus: its name, the exit status of
 # the program built by rcc, and that of the program built by clang -O2.
-# A status is a number, or timeout for a run stopped at the time limit.
-# No program exits with 124 or 137 by itself: timeout(1) gives those
-# for a run it stopped, and the oracle fails a program that does.
-# A run killed by signal n shows as 128 + n: 139 for SIGSEGV.
+# A status is a number up to 128, the name kill -l gives the signal a
+# run died of, SEGV for SIGSEGV, or timeout for a run stopped at the
+# time limit.  The shell reports a run that signal n killed as 128 + n,
+# and timeout(1) gives 124 for a run it stopped, so no program exits
+# above 128 or with 124 by itself, and no row holds a number above 128.
 g1-add-compare 0 1
 g11-misaligned 52 52
 g12-block-slot 5 9
@@ -12,10 +13,10 @@ g18-struct-copy 4 4
 g6-ptr-wrap 0 1
 g7-ptr-equal 1 0
 g8-cross-object 3 2
-g9-null-load 139 5
+g9-null-load SEGV 5
 g5-register-undef 1 0
 g13-read-across-call 110 110
-g13-read-across-branch 167 167
+g13-read-across-branch 87 87
 g13-compound-order 63 63
 g16-mismatched-call 44 44
 header-stdio 0 0
@@ -27,7 +28,7 @@ header-regex 0 0
 header-stdout 19 19
 header-months 37 37
 header-calendar 61 61
-header-getch 135 135
+header-getch 45 45
 header-itoa 100 100
 header-count 32 32
 header-escapes 35 35

@@ -7,11 +7,11 @@
    read_char() takes its next character, through a static pointer, or
    EOF at its end.  getint() reads an integer in the manner of section
    5.2: blanks skipped, a sign, the digits, and the character after them
-   pushed back.  The program sums the integers of " 12 -7  +30\t100\n",
+   pushed back.  The program sums the integers of " 12 -7  +30\t10\n",
    pushes "abc" back and reads it back reversed, writes the line
-   "4 integers, sum 135", and exits with the sum.
+   "4 integers, sum 45", and exits with the sum.
 
-   Under rcc and under clang -O2 it prints the line and exits 135:
+   Under rcc and under clang -O2 it prints the line and exits 45:
    nothing here is undefined.
 
    On x86-64 and on aarch64 the listing must show read_char() under
@@ -29,7 +29,7 @@
 static char buf[BUFSIZE]; /* buffer for ungetch */
 static int bufp = 0;      /* next free position in buf */
 
-static char *input = " 12 -7  +30\t100\n";
+static char *input = " 12 -7  +30\t10\n";
 
 /* the next character of the input, or EOF at its end */
 static int
