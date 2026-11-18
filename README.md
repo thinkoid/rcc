@@ -172,9 +172,8 @@ an array's list has, folded into the object's data, so
 section 6.3, and the data of the `struct-data` pin is the bytes
 `clang` writes on both targets. Then a record's assignment in the
 parser, `a = b` on two objects of one record, which stands where a
-value is discarded, which x86-64 copies inline, unit by unit of the
-record's alignment, lowest address first (G18), and aarch64 refuses
-yet.
+value is discarded, which each generator copies inline, unit by
+unit of the record's alignment, lowest address first (G18).
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/`, the cost corpus over `tests/cost/`
 and the error corpus over `tests/error/`, the programs rcc refuses

@@ -216,19 +216,20 @@ generators for the sites above.
 Check: those sites with no clearing move, =unsigned_int_called()=
 with its own, and no function longer.
 
-** TODO aarch64 does not copy a record
+** TODO aarch64: an element of 32 or 64 bytes by an =int= index is multiplied
 
-~a = b~ on two structs or unions of one type is copied on x86-64,
-inline, unit by unit (G18, =backend.md= 6.6); the aarch64 generator
-stops at the assignment, "c1: not yet: struct assignment".
+~p[i]~ on records of 32 bytes with an =int= index is the row of ~p +
+n~, =mov x2, #32; mul x1, x1, x2; add x0, x0, x1= after the index's
+extending load, where =add x0, x0, x1, lsl #5= after the same load
+is two instructions fewer: the add's extended-register form shifts
+by 4 at most, and the shifted-register form by any count. Records of
+16 bytes take =add x0, x0, w1, sxtw #4=. The shape is not counted
+over =tests=.
 
-Fix: the copy in aarch64's =effect()= by the same rule, its
-instruction added to G18.
+Fix: an element size that is a power of two above 16 is the
+shifted-register add over the index extended by its load.
 
-Check: the =copies= probe runs on the aarch64 machine with nothing
-differing; =struct-copy= and =g18-struct-copy= are pinned for
-aarch64; the error row =struct-assignment= leaves, its program
-compiling on both targets.
+Check: the count over =tests=, and no function longer.
 
 * Guarantees
 

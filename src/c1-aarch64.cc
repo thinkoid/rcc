@@ -1475,41 +1475,128 @@ address_t index_across(
     state_t &, value_t, index_t, int shift, bool pointer_first, const expr_t *);
 bool calls_within(const expr_t &);
 
+// The index form of an access through a sum, sum_address()'s, 6.3:
+// the base and the index generated in the order written (G13), then
+// held across between by index_across().  p[i], *(p + i): the pointer
+// is written first, so the base is generated first and the index after
+// it, [x0, w1, sxtw #2].  i[p], *(i + p): the integer is written first,
+// so the index is generated first; the operand is the same, [x1, w0,
+// sxtw #2].
+address_t
+indexed_address(state_t &s,
+                const expr_t &pointer,
+                const expr_t &n,
+                long size,
+                bool pointer_first,
+                const expr_t *between)
+{
+    if (pointer_first) {
+        const auto base = rvalue(s, pointer);
+        const auto index = index_of(s, n);
+        return index_across(s, base, index, shift_of(size), true, between);
+    }
+
+    const auto index = index_of(s, n);
+    const auto base = rvalue(s, pointer);
+
+    return index_across(s, base, index, shift_of(size), false, between);
+}
+
+// The address of an access through a sum of a pointer and an integer,
+// pointed()'s, 6.3: the shape of a subscript (6.5.3.2p2) is the
+// machine's addressing form, the pointer the base, the integer the
+// index, each generated in the order written (G13), the index by
+// index_of(), and the scale the size of the pointee, a scalar of 1, 2,
+// 4 or 8 bytes.  A constant index is the displacement c * s when the
+// access encodes it, 2.3; any other is an index like a variable one,
+// held whole, lsl.  A cast between pointer types directly over
+// denoted()'s top sum is looked through, p the cast and sum the sum: a
+// constant's bytes at any stride are the access's displacement, *(int
+// *) (c + 1) on a char *c being ldrsw x0, [x0, #1] and p[1].x at offset
+// 0 of a record of S bytes [x0, #S]; the index form under the cast only
+// at a stride of 1 or the access's size, where its bytes are the
+// offset, unscaled or scaled by the access's size, *(int *) (c + 4097)
+// being mov x1, #4097; ldrsw x0, [x0, x1], where it saves the add and
+// nothing is evaluated between the address and the access.  The
+// constants under the pointer, a variable index among them, are the
+// row's plan's, row_access()'s.
+address_t
+sum_address(state_t &s,
+            const expr_t &p,
+            const expr_t &sum,
+            const expr_t *between)
+{
+    // p[n], n[p], *(p + n) and *(n + p), which are one tree, under a
+    // cast or not.  Either operand may be the pointer; the other is n,
+    // scaled by the sum's stride.
+    const auto &b = as< binary_t >(sum);
+    const bool left = is< pointer_t >(b.lhs->type);
+    const auto &pointer = left ? *b.lhs : *b.rhs;
+    const auto &n = left ? *b.rhs : *b.lhs;
+    const long size = stride(sum.type);
+    const int access = static_cast< int >(stride(p.type));
+
+    // p[3], 3[p], p[-1], *(int *) (c + 1): a constant n whose product
+    // with the size the access encodes is the displacement, [x0, #12],
+    // and n generates nothing.  One it does not encode, p[5000], goes on
+    // as an index.
+    const auto d = is< literal_t >(n) ? scaled(as< literal_t >(n).value, size) :
+                                        std::optional< long long > { };
+
+    // ((int *) (p + 1))[3] on a char *p: the constants under the pointer
+    // and n's are one displacement, [x0, #13]; tab[i].m on a global
+    // array of records the label's row, ldr w0, [x0, :lo12:tab+8]
+    if (d)
+        if (const auto row = row_access(s, pointer, *d, access, !between))
+            return row_address(s, *row);
+
+    if (d && in_reach(*d, access))
+        return { .base = rvalue(s, pointer),
+                 .displacement = static_cast< int >(*d) };
+
+    // a record's element for a copy, whose index the add of 6.6 takes
+    // shifted by at most 4, add x0, x0, w1, sxtw #4 on records of 16
+    // bytes; at any other size, p[i] on records of 12 or 32 bytes, the
+    // row of p + n, the sum in one register
+    if (!std::has_single_bit(static_cast< unsigned long >(size)) || size > 16)
+        return { .base = rvalue(s, p) };
+
+    // under a cast, the index form only where it saves the add: not for
+    // a constant the add encodes, *(int *) (c + 257), and not where
+    // anything is evaluated between the address and the access, since it
+    // holds two registers; and only at a stride the form scales by, 1 or
+    // the access's size
+    if (&sum != &p && (between || (d && arithmetic_immediate(*d, 64)) ||
+                       (size != 1 && size != access)))
+        return { .base = rvalue(s, p) };
+
+    // p[5000] = f(): a constant index reads nothing, so it is written
+    // after the store's right operand, held_index()'s, and no register
+    // holds it across that operand
+    if (d && between)
+        return { .base = rvalue(s, pointer),
+                 .shift = shift_of(size),
+                 .constant = as< literal_t >(n).value };
+
+    return indexed_address(s, pointer, n, size, left, between);
+}
+
 // The address an access through a dereference designates, 6.5.4.2p4,
 // for a load, a fetch or a store: the pointer's value as the base,
-// [x0], whatever computed it and however it is aligned (G8, G11).  An
-// add of a pointer and an integer, the shape of a subscript
-// (6.5.3.2p2), is the machine's addressing form: the pointer the base,
-// the integer the index, each generated in the order written (G13), the
-// index by index_of(), and the scale the size of the pointee, a scalar
-// of 1, 2, 4 or 8 bytes, since an access reads no array.  A constant
-// index is the displacement c * s when the access encodes it, 2.3; any
-// other is an index like a variable one, held whole, lsl.  A cast
-// between pointer types directly over denoted()'s top sum is looked
-// through, not for a name's address plus a constant, whose address is
-// its one add: a constant's bytes at any stride are the access's
-// displacement, *(int *) (c + 1) on a char *c being ldrsw x0, [x0, #1]
-// and p[1].x at offset 0 of a record of S bytes [x0, #S]; the index
-// form under the cast only at a stride of 1 or the access's size, where
-// its bytes are the offset, unscaled or scaled by the access's size,
-// *(int *) (c + 4097) being mov x1, #4097; ldrsw x0, [x0, x1], where it
-// saves the add and nothing is evaluated between the address and the
-// access.  The constants under the pointer, a variable index among
-// them, are the row's plan's, row_access()'s. Any other pointer is
-// computed into a register and is the base.  The pointer is evaluated
-// here, before anything the access goes with.
-//
-// A register pointer stepped by a constant the form encodes is the
-// first case: its register is the base, a borrowed read, and the access
-// makes the step, 6.3.  The step then moves from here to the
-// access, past between, the operand the caller generates between the
-// two, a store's right operand; so the case is not taken when between
-// names the variable, and the step is written here as before, G13.  A
-// name's address plus a constant is the second: the one operand of
-// folded(), where the access encodes it, named_access()'s, and nothing
-// evaluated.  Any other lvalue's address plus a
-// constant is the third: summed()'s base, with the constant in the
-// displacement.
+// [x0], whatever computed it and however it is aligned (G8, G11).  A
+// register pointer stepped by a constant the form encodes is the first
+// case: its register is the base, a borrowed read, and the access makes
+// the step, 6.3.  The step then moves from here to the access, past
+// between, the operand the caller generates between the two, a store's
+// right operand; so the case is not taken when between names the
+// variable, and the step is written here as before, G13.  A name's
+// address plus a constant is the second: the one operand of folded(),
+// where the access encodes it, named_access()'s, and nothing evaluated.
+// Any other lvalue's address plus a constant is the third: summed()'s
+// base, with the constant in the displacement.  A sum of a pointer and
+// an integer, under a cast or not, is sum_address()'s; any other
+// pointer is computed into a register and is the base.  The pointer is
+// evaluated here, before anything the access goes with.
 address_t
 pointed(state_t &s, const expr_t &p, const expr_t *between = nullptr)
 {
@@ -1542,66 +1629,7 @@ pointed(state_t &s, const expr_t &p, const expr_t *between = nullptr)
     if (!is< binary_t >(sum) || as< binary_t >(sum).op != binary_op_t::add)
         return { .base = rvalue(s, p) };
 
-    // From here a sum of a pointer and an integer: p[n], n[p], *(p +
-    // n) and *(n + p), which are one tree, under a cast or not.  Either
-    // operand may be the pointer; the other is n, scaled by the sum's
-    // stride.
-    const auto &b = as< binary_t >(sum);
-    const bool left = is< pointer_t >(b.lhs->type);
-    const auto &pointer = left ? *b.lhs : *b.rhs;
-    const auto &n = left ? *b.rhs : *b.lhs;
-    const long size = stride(sum.type);
-    const int access = static_cast< int >(stride(p.type));
-
-    // p[3], 3[p], p[-1], *(int *) (c + 1): a constant n whose product
-    // with the size the access encodes is the displacement, [x0, #12],
-    // and n generates nothing.  One it does not encode, p[5000], goes on
-    // as an index.
-    const auto d = is< literal_t >(n) ? scaled(as< literal_t >(n).value, size) :
-                                        std::optional< long long > { };
-
-    // ((int *) (p + 1))[3] on a char *p: the constants under the pointer
-    // and n's are one displacement, [x0, #13]; tab[i].m on a global
-    // array of records the label's row, ldr w0, [x0, :lo12:tab+8]
-    if (d)
-        if (const auto row = row_access(s, pointer, *d, access, !between))
-            return row_address(s, *row);
-
-    if (d && in_reach(*d, access))
-        return { .base = rvalue(s, pointer),
-                 .displacement = static_cast< int >(*d) };
-
-    // under a cast, the index form only where it saves the add: not for
-    // a constant the add encodes, *(int *) (c + 257), and not where
-    // anything is evaluated between the address and the access, since it
-    // holds two registers; and only at a stride the form scales by, 1 or
-    // the access's size
-    if (&sum != &p && (between || (d && arithmetic_immediate(*d, 64)) ||
-                       (size != 1 && size != access)))
-        return { .base = rvalue(s, p) };
-
-    // p[5000] = f(): a constant index reads nothing, so it is written
-    // after the store's right operand, held_index()'s, and no register
-    // holds it across that operand
-    if (d && between)
-        return { .base = rvalue(s, pointer),
-                 .shift = shift_of(size),
-                 .constant = as< literal_t >(n).value };
-
-    // p[i], *(p + i): the pointer is written first, so the base is
-    // generated first and the index after it (G13), [x0, w1, sxtw #2].
-    if (left) {
-        const auto base = rvalue(s, pointer);
-        const auto index = index_of(s, n);
-        return index_across(s, base, index, shift_of(size), true, between);
-    }
-
-    // i[p], *(i + p): the integer is written first, so the index is
-    // generated first.  The operand is the same, [x1, w0, sxtw #2].
-    const auto index = index_of(s, n);
-    const auto base = rvalue(s, pointer);
-
-    return index_across(s, base, index, shift_of(size), false, between);
+    return sum_address(s, p, sum, between);
 }
 
 // The address of an lvalue: a local's or a parameter's slot, a global's
@@ -4167,6 +4195,196 @@ modify(state_t &s, const unary_t &u)
     release(s, step(s, prefix, *u.arg));
 }
 
+// the copy of a record
+
+// The step of a register pointer a copy's place carries, 6.6: an add of
+// the variable's own, add x19, x19, #8, its other reads still held
+// copied first, as before any write of it (chapter 4).  A copy makes
+// many accesses, so no one of them makes the step.
+void
+make_step(state_t &s, const step_t &step, value_t base)
+{
+    preserve(s, step.variable, base);
+
+    const auto r = reg(variable_register(step.variable), 64);
+    insn(s, "add", { r, r, imm(step.bytes) });
+}
+
+// A place's held index added to its base, the row of p + n, so that one
+// register holds the address and the units are displacements off it,
+// add x0, x0, x1, lsl #3, 6.6.
+address_t
+index_added(state_t &s, address_t a)
+{
+    if (a.index.id < 0)
+        return a;
+
+    const right_t n {
+        .value = a.index, .width = 64, .extend = a.extend, .shift = a.shift
+    };
+    a.base = offset(s, binary_op_t::add, a.base, n, true);
+    a.index = { };
+
+    return a;
+}
+
+// A place as an address in a register of the copy's own, 6.6: a slot's
+// or a label's address_of(), a base plus its displacement by the row of
+// p + c, a row's page plus its label's offset, add x0, x0,
+// :lo12:rows+2, and a register variable's read copied, since the loop
+// steps the register.
+value_t
+owned_address(state_t &s, const address_t &a)
+{
+    if (a.base.id < 0)
+        return address_of(s, a);
+
+    if (!a.label.empty()) {
+        const right_t lo12 {
+            .immediate = ":lo12:" + symbol_plus(a.label, a.displacement)
+        };
+        return offset(s, binary_op_t::add, a.base, lo12, true);
+    }
+
+    if (a.displacement != 0)
+        return offset(s, binary_op_t::add, a.base, product(s, a.displacement),
+                      true);
+
+    if (borrowed(s, a.base))
+        copy(s, a.base, take(s, registers_of(s, a)));
+
+    return a.base;
+}
+
+// Whether each unit of a copy, at the place's displacement and up, is
+// an access of the place's own form, 2.3: a slot or a base in reach of
+// each unit, a row's page, whose label's offset any unit carries, or a
+// label of one or two units, each its page and its access through x16,
+// two instructions where forming the address is two and a unit one.
+bool
+units_in_place(const address_t &a, long size, int unit)
+{
+    if (!a.label.empty())
+        return a.base.id >= 0 || size / unit <= 2;
+
+    for (long k = 0; k < size; k += unit)
+        if (!in_reach(a.displacement + k, unit))
+            return false;
+
+    return true;
+}
+
+// A copy's place whose units are its displacement plus their offsets,
+// 6.6: the index added first, then the place as it is where each unit
+// reaches, else its address formed once, owned_address()'s.
+address_t
+unit_place(state_t &s, const address_t &a, long size, int unit)
+{
+    const auto at = index_added(s, a);
+    if (units_in_place(at, size, unit))
+        return at;
+
+    return { .base = owned_address(s, at) };
+}
+
+// The copy unrolled, 6.6: each unit loaded into x17 by the plain load
+// of its width and stored before the next is loaded, lowest address
+// first, ldrh w17, [x0]; strh w17, [x1], each operand formed just
+// before its access, so a slot or a label may go through x16 (5.3).
+void
+copy_units(
+    state_t &s, const address_t &to, const address_t &from, long size, int unit)
+{
+    const int width = unit * 8;
+
+    for (long k = 0; k < size; k += unit) {
+        auto source = from;
+        auto target = to;
+        source.displacement += static_cast< int >(k);
+        target.displacement += static_cast< int >(k);
+
+        insn(s, plain_load_of(width),
+             { reg(x17, width), operand(s, source, width) });
+        insn(s, store_of(width),
+             { reg(x17, width), operand(s, target, width) });
+    }
+}
+
+// The copy of more than eight units, 6.6: the two addresses in
+// registers of the copy's own and the count of units in x16, then a
+// loop of four instructions whatever the size, each unit through x17
+// by post-indexed accesses that step both addresses, lowest address
+// first, and the count down to zero: ldr x17, [x1], #8; str x17, [x0],
+// #8; subs x16, x16, #1; b.ne.  Both registers are taken before the
+// loop's label, so nothing is reloaded inside it.
+void
+copy_loop(
+    state_t &s, const address_t &to, const address_t &from, long size, int unit)
+{
+    const auto target = owned_address(s, index_added(s, to));
+    const auto source = owned_address(s, index_added(s, from));
+    const reg_t t = reg_of(s, target);
+    const reg_t f = reg_of(s, source, bit(t));
+    const int width = unit * 8;
+
+    constant(s, x16, size / unit, 64);
+
+    const int head = new_label(s);
+    place_label(s, head);
+    insn(s, plain_load_of(width),
+         { reg(x17, width), std::format("[{}], #{}", reg(f, 64), unit) });
+    insn(s, store_of(width),
+         { reg(x17, width), std::format("[{}], #{}", reg(t, 64), unit) });
+    insn(s, "subs", { "x16", "x16", imm(1) });
+    insn(s, "b.ne", { label_name(s.function, head) });
+
+    release(s, target);
+    release(s, source);
+}
+
+// A struct or union assignment, 6.5.17.2p2, its value not wanted: the
+// right operand's object copied into the left's in units of the type's
+// alignment, padding included, no call, chapter 6.6.  The left's place
+// first, then the right's (G13), the left's held across the right's by
+// the rule of a store's address, as a scalar assignment's is: one
+// register where the right holds a call, and a constant index written
+// after it, held_index()'s.  A register pointer's step is its own add,
+// before the copy for ++p and after it for p++.  Up to eight units the
+// copy is unrolled, copy_units(); more are copy_loop()'s.
+void
+copy_record(state_t &s, const assign_t &a, const record_t &r)
+{
+    auto to = address(s, *a.lhs, a.rhs.get());
+    auto from = address(s, *a.rhs);
+    to = held_index(s, to, registers_of(s, from));
+
+    const step_t steps[] = { to.step, from.step };
+    const value_t bases[] = { to.base, from.base };
+    for (int k = 0; k < 2; ++k)
+        if (steps[k].variable && steps[k].before)
+            make_step(s, steps[k], bases[k]);
+
+    to.step = { };
+    from.step = { };
+
+    const long size = static_cast< long >(r.size);
+    const int unit = static_cast< int >(r.alignment);
+
+    if (size / unit > 8)
+        copy_loop(s, to, from, size, unit);
+    else {
+        const auto target = unit_place(s, to, size, unit);
+        const auto source = unit_place(s, from, size, unit);
+        copy_units(s, target, source, size, unit);
+        release(s, target);
+        release(s, source);
+    }
+
+    for (int k = 0; k < 2; ++k)
+        if (steps[k].variable && !steps[k].before)
+            make_step(s, steps[k], bases[k]);
+}
+
 // The effect context, chapter 6.6, Ritchie's efftab beside regtab and
 // cctab: an expression evaluated for its side effects, its value not
 // wanted.  The machine has no memory forms, so a compound assignment is
@@ -4183,8 +4401,10 @@ modify(state_t &s, const unary_t &u)
 void
 effect(state_t &s, const expr_t &e)
 {
-    if (is< assign_t >(e) && is< record_type_t >(e.type))
-        not_yet("struct assignment");
+    if (is< assign_t >(e) && is< record_type_t >(e.type)) {
+        copy_record(s, as< assign_t >(e), *as< record_type_t >(e.type).record);
+        return;
+    }
 
     if (is< assign_t >(e) && !as< assign_t >(e).op) {
         const auto &a = as< assign_t >(e);

@@ -502,13 +502,14 @@ the same code.
 never held across a node. `x16` takes an address the instruction
 cannot reach (chapter 5.3), from `x29` for a slot and from `sp` for an
 argument in the outgoing area (chapter 8), the page of a global the
-file defines for its access (chapter 10), and the callee of a call
-through a pointer, loaded from its slot for the `blr` (chapter 8).
-`x17` carries the bytes of a copy from memory to memory, which the
-machine has no instruction for: a stack argument on its way from its
-slot to the outgoing area, and a stack parameter on its way to its
-slot. Both are dead at every `bl` by the convention, which is what
-suits them to a use that never spans one.
+file defines for its access (chapter 10), the callee of a call
+through a pointer, loaded from its slot for the `blr` (chapter 8),
+and the count of a record copy's loop (6.6). `x17` carries the bytes
+of a copy from memory to memory, which the machine has no instruction
+for: a stack argument on its way from its slot to the outgoing area,
+a stack parameter on its way to its slot, and each unit of a record's
+copy (6.6). Both are dead at every `bl` by the convention, which is
+what suits them to a use that never spans one.
 
 `x8` and `x18` are not used. `sp` is the stack pointer, and nothing
 else.
@@ -1187,6 +1188,44 @@ because the machine has less:
 
 A register variable is operated on in its register, as before.
 
+**A record's assignment is a copy.** `a = b` on two structs or unions
+of one type stands only where its value is discarded, and is the right
+operand's object copied into the left's in units of the type's
+alignment, 1, 2, 4 or 8 bytes, which tile the object, padding
+included, lowest address first. Each unit is the plain load of its
+width into `x17`, `ldrb`, `ldrh` or `ldr`, the store's mirror, and its
+store, before the next unit is loaded; a unit is bits and no value, so
+no load extends it. Nothing is called. The left's place is evaluated
+first and the right's after it (G13), the left's held across the
+right's as a store's address is across its right operand: one
+register, stored to its spill slot once where the right holds a call,
+`bl f; str x0, [x29, #16]; bl g` and the reload before the first
+store, and a constant index written after it.
+
+A place keeps its own form where every unit reaches (2.3), each unit's
+offset joining the displacement: a slot, `ldrh w17, [x0]; strh w17,
+[x29, #28]` and the same at `#2` and `#30`; a base and a displacement,
+`str w17, [x0, #8]` for a member; a row's page, whose `:lo12:` carries
+the offsets. A label of one or two units is its page and its access
+through `x16` for each, `adrp x16, corner; ldr w17, [x16,
+:lo12:corner]`; beyond two its address is formed once, `adrp x0,
+first; add x0, x0, :lo12:first`, two instructions and then one a unit.
+A slot or a base whose units leave the reach is its address formed
+once, and an index is added to its base once, `add x0, x0, w1, sxtw
+#2`, each unit then a displacement off the sum; an element of a size
+the add's shift does not take, more than 16 bytes or no power of two,
+is the row of `p + n` with its `mul`. A register pointer's step is its
+own `add`, `add x19, x19, #4`, after the copy for `p++` and before it
+for `++p`, since no one of the accesses may make it. `a = a` is the
+copy onto itself, written out.
+
+More than eight units are a loop of four instructions whatever the
+size: the two addresses in registers of the copy's own and the count
+of units in `x16`, `mov x16, #9`, then `ldr x17, [x1], #8; str x17,
+[x0], #8; subs x16, x16, #1; b.ne`, each post-indexed access stepping
+its address. An index from 0 holds the same registers and is a fifth
+instruction a unit, its `cmp`.
+
 ## 7. Conditions and control
 
 ### 7.1 Jump code
@@ -1393,6 +1432,7 @@ done, for the sake of a call with nine arguments.
 | G14 a loop runs until its condition says stop | a test and a jump |
 | G16 a call goes out as written | chapter 8: the convention's argument moves with the call site's types, then `bl f`, or `ldr x16` from the callee's slot and `blr x16` through a pointer |
 | G17 a string literal is writable | `.data`, chapter 10 |
+| G18 a struct assignment copies its object | each unit `ldrb`, `ldrh` or `ldr` into `x17` and its store, lowest address first, unrolled to eight units and a loop of four instructions beyond, 6.6; no `bl` |
 
 G4 is the row to read twice. `guarantees.md` already says "x86 `idiv`
 faults on a zero divisor and on `INT_MIN / -1`; aarch64 `sdiv` yields

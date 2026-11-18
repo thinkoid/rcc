@@ -45,7 +45,36 @@
    32(%rax,%rsi,1); addq $1, %rsi; jne back; held() next's result
    spilled across the call of last, movq %rax, -8(%rbp), and reloaded,
    then two movzwl and movw units; and registers() movzwl (%r12),
-   %eax; movw %ax, (%rbx) and at 2, no copy of either register. */
+   %eax; movw %ax, (%rbx) and at 2, no copy of either register.
+
+   On aarch64 each unit is the plain load of its width into x17 and its
+   store, lowest address first, and no call: through() ldr w17, [x1];
+   str w17, [x0], then the same at #4; globals() the label's page and
+   access through x16 for each of point's two units, adrp x16, corner;
+   ldr w17, [x16, :lo12:corner]; adrp x16, origin; str w17, [x16,
+   :lo12:origin], and for wide's three units each label's address formed
+   once, adrp x0, first; add x0, x0, :lo12:first, then ldr x17, [x1];
+   str x17, [x0] at 0, 8 and 16; local() the three bytes into the slot,
+   ldrb w17, [x0]; strb w17, [x29, #24], and out of it to three's
+   address formed once; member() the element's index added once, add x1,
+   x1, w2, sxtw #3, then ldr w17, [x1]; str w17, [x0, #8], the member's
+   8 the store's displacement, and the reverse with the index added to
+   the left's place; unions() the one unit of 8 bytes through x16; and
+   effects() each copy as a statement's.  codes() adds the index to the
+   pointer once, add x0, x0, x1, lsl #2, then ldrh w17, [x0]; strh w17,
+   [x29, #28] and at #2 and #30, and the same out of the slot after add
+   w1, w1, #1 and the index's add; eight_units() eight ldr w17 and str
+   w17 units at #0 to #28; nine_units() the count in x16, mov x16, #9,
+   then the loop of four instructions, ldr x17, [x1], #8; str x17, [x0],
+   #8; subs x16, x16, #1; b.ne back; nine_named() the slot's address
+   formed first, add x1, x29, #24, then the loop into it, and the
+   label's adrp and add and the loop out of the slot; nine_indexed()
+   each element's address by its mov x2, #72, mul and add, then the
+   loop; text_units() the loop with mov x16, #32 and ldrb w17 and strb
+   w17 by #1; held() next's result stored to its spill slot across the
+   call of last and reloaded once, then two ldrh and strh units; and
+   registers() ldrh w17, [x20]; strh w17, [x19] and at #2, the two
+   register pointers the bases. */
 struct point
 {
         int x, y;

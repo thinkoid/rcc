@@ -165,7 +165,12 @@ x86-64: per unit the plain load of its width into a scratch
 register, `movzbl`, `movzwl`, `movl` or `movq`, and the store,
 `movb`, `movw`, `movl` or `movq`, the unit's offset in each place's
 displacement; over eight units one index from minus the size up to
-0, the `add` that steps it the loop's test, `jne` back.
+0, the `add` that steps it the loop's test, `jne` back. On aarch64:
+per unit the plain load of its width into `x17`, `ldrb`, `ldrh` or
+`ldr`, and its store, `ldrh w17, [x0]; strh w17, [x29, #28]`; over
+eight units a loop of four instructions whatever the size, `ldr x17,
+[x1], #8; str x17, [x0], #8; subs x16, x16, #1; b.ne` after `mov x16,
+#n`; no `bl` (`aarch64.md` 6.6).
 
 ## Not in this list
 
