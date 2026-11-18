@@ -1947,6 +1947,29 @@ offset(state_t &s,
     return result;
 }
 
+// The register variable the pointer of p + c, c + p or p - c is
+// generated into, c a constant, chapter 4: a copy of the one handed
+// down, so that the pointer's own row may write the variable's register
+// and offset()'s add or sub of the constant, which reads nothing else,
+// still writes it after, ldr x19, [x29, #24]; add x19, x19, #12 for q =
+// p[1] on int (*p)[3].  A pointer that no row writes, a register
+// variable's read, the variable's own among them, and a call's result,
+// which the call's row leaves in x0, leave the copy untaken, and the
+// add writes the variable from the pointer's register as before, add
+// x19, x19, #4 for q = q + 1.  None where none is handed down or a row
+// has written the variable, and none for an integer that is no
+// constant: generated after the pointer it could read the variable
+// the pointer's row wrote, and generated before it, n + p, its value
+// could be a read of the variable that row overwrites.
+std::optional< into_t >
+base_into(const into_t *into, const expr_t &n)
+{
+    if (!into || into->taken || !is< literal_t >(n))
+        return std::nullopt;
+
+    return into_t { into->variable, false, into->as };
+}
+
 // A binary + or - of a pointer type, 6.5.7p9: the pointer and the
 // integer, the integer widened to 64 bits by the parser, each generated
 // in the order written (G13), a constant as its product with the size,
@@ -1957,7 +1980,9 @@ offset(state_t &s,
 // int (*p)[3]; a displacement of 0 is the base and no instruction, as
 // &*p is p.  A register variable handed down goes to the row that
 // writes the sum, chapter 4, and so does the register the consumer
-// names, wanted (6.1).
+// names, wanted (6.1); by a constant, to the pointer's row too,
+// base_into()'s, so that q = p[1] into a register int *q is ldr x19,
+// [x29, #24]; add x19, x19, #12.
 value_t
 pointer_arithmetic(state_t &s,
                    const expr_t &e,
@@ -1980,13 +2005,15 @@ pointer_arithmetic(state_t &s,
     const long size = stride(e.type);
 
     if (is< pointer_t >(b.lhs->type)) {
-        const auto l = rvalue(s, *b.lhs);
+        auto onto = base_into(into, *b.rhs);
+        const auto l = rvalue(s, *b.lhs, onto ? &*onto : nullptr);
         return offset(s, b.op, l, displacement(s, *b.rhs, size), true, into,
                       wanted);
     }
 
     const auto n = displacement(s, *b.lhs, size);
-    const auto p = rvalue(s, *b.rhs);
+    auto onto = base_into(into, *b.lhs);
+    const auto p = rvalue(s, *b.rhs, onto ? &*onto : nullptr);
 
     return offset(s, b.op, p, n, false, into, wanted);
 }

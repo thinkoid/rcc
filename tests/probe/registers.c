@@ -776,10 +776,10 @@ TYPES(EDGE)
     }
 POINTEES(ADIFF)
 
-/* A pointer plus a constant index into a register pointer, x86-64,
-   backend.md chapter 4: the pointer's row writes the variable's
-   register and the leaq is on it.  The pointer a parameter's copy in
-   memory, a dereference, another register variable, the variable
+/* A pointer plus a constant index into a register pointer, backend.md
+   chapter 4: the pointer's row writes the variable's register and the
+   leaq, on aarch64 the add, is on it.  The pointer a parameter's copy
+   in memory, a dereference, another register variable, the variable
    itself, a sum by a variable index and a call's result; a read of
    the variable held across the assignment.  Each pointee: sizes 1, 4,
    8 and 12. */

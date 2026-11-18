@@ -193,7 +193,7 @@
    :got:declared and ldr x19, [x19, :got_lo12:declared], and no mov;
    add x19, x29, #24 and add x19, x0, w1, sxtw #2 for the
    local and the element; add x19, x0, x1, lsl #2, add x19, x19, #4,
-   sub x19, x19, x0, lsl #2 and sub x19, x0, #4 for the pointers; neg
+   sub x19, x19, x0, lsl #2 and sub x19, x19, #4 for the pointers; neg
    w19, w0, mvn w19, w0 and neg w19, w19; cset w19, lt and cset w19, eq
    after the cmp; add w19, w0, w1 after the element's ldr in
    element_leaf() and pointer_element_leaf(); add w19, w0, w19 in

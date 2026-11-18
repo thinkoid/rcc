@@ -174,7 +174,7 @@
    and ldrsb x0, [x29, #16] alone in widen_byte, ldr x0 then sxtw x0,
    w0 in widen_narrowed; ldr w0 then cmp w0, w19 in
    compare_register; add x0, x0, #12 after the load in constant_index
-   and constant_index_right, add x19, x0, #12 then add x19, x19, #12 in
+   and constant_index_right, add x19, x19, #12 then add x19, x19, #12 in
    constant_index_into, and mov x0, #4294967296 before the load in
    constant_index_wide. */
 int defined;

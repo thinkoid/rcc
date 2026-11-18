@@ -329,7 +329,19 @@ better:
   operand, `adrp x19, buf; add x19, x19, :lo12:buf`, and so is the
   GOT's, `adrp x19, :got:f; ldr x19, [x19, :got_lo12:f]`, and a slot
   beyond the reach of an `add`, `add x19, x29, #4096; add x19, x19,
-  #1928`. A conversion that changes the signedness alone is written
+  #1928`. A pointer plus a constant is two writes where the pointer's
+  own row can write the register, the `add` of the constant reading
+  nothing else: `p = q[1]` on an `int (*q)[3]` in memory is `ldr x19,
+  [x29, #24]; add x19, x19, #12`, and no expression register is taken.
+  A pointer whose row writes no register variable keeps its register,
+  `p = &f(x)[1]` being `add x19, x0, #4` after the `bl`, and the
+  variable's own read is the base already, `p = &p[1]` the one `add
+  x19, x19, #4`. The pointer of a sum by an integer that is no
+  constant is generated elsewhere, since the integer could read the
+  variable after the pointer's row wrote it, and so is the address of
+  an array the file only declares, whose GOT's load stays in `x0`,
+  `ldr x0, [x0, :got_lo12:xa]; add x19, x0, #12`.
+  A conversion that changes the signedness alone is written
   there too: an object under it is loaded at the extension of the
   conversion's type, `ldr w19, [x29, #32]` for `register unsigned u =
   i`, and any other value of 32 bits or more is its own row's, `add

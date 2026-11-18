@@ -14,8 +14,8 @@ row:
 	str	x19, [x29, #16]
 	.cfi_offset w19, -16
 	str	x0, [x29, #24]
-	ldr	x0, [x29, #24]
-	add	x19, x0, #12
+	ldr	x19, [x29, #24]
+	add	x19, x19, #12
 	mov	x0, x19
 	b	.Lrow.1
 .Lrow.1:
@@ -44,8 +44,8 @@ element:
 	str	x19, [x29, #16]
 	.cfi_offset w19, -16
 	str	x0, [x29, #24]
-	ldr	x0, [x29, #24]
-	add	x19, x0, #4
+	ldr	x19, [x29, #24]
+	add	x19, x19, #4
 	mov	x0, x19
 	b	.Lelement.1
 .Lelement.1:
@@ -138,8 +138,8 @@ declared:
 	str	x19, [x29, #16]
 	.cfi_offset w19, -16
 	str	x0, [x29, #24]
-	ldr	x0, [x29, #24]
-	add	x19, x0, #12
+	ldr	x19, [x29, #24]
+	add	x19, x19, #12
 	mov	x0, x19
 	b	.Ldeclared.1
 .Ldeclared.1:
@@ -169,8 +169,8 @@ through:
 	.cfi_offset w19, -16
 	str	x0, [x29, #24]
 	ldr	x0, [x29, #24]
-	ldr	x0, [x0]
-	add	x19, x0, #8
+	ldr	x19, [x0]
+	add	x19, x19, #8
 	mov	x0, x19
 	b	.Lthrough.1
 .Lthrough.1:

@@ -1866,8 +1866,8 @@ constant_index_into:
 	str	x19, [x29, #16]
 	.cfi_offset w19, -16
 	str	x0, [x29, #24]
-	ldr	x0, [x29, #24]
-	add	x19, x0, #12
+	ldr	x19, [x29, #24]
+	add	x19, x19, #12
 	add	x19, x19, #12
 	mov	x0, x19
 	b	.Lconstant_index_into.1

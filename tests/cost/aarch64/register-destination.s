@@ -640,8 +640,8 @@ pointer_before:
 	str	x19, [x29, #16]
 	.cfi_offset w19, -16
 	str	x0, [x29, #24]
-	ldr	x0, [x29, #24]
-	sub	x19, x0, #4
+	ldr	x19, [x29, #24]
+	sub	x19, x19, #4
 	mov	x0, x19
 	b	.Lpointer_before.1
 .Lpointer_before.1:
