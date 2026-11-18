@@ -1,0 +1,2 @@
+tests/error/struct-static-incomplete.c:5:21: error: variable 'origin' has incomplete type struct 'point'
+status 1

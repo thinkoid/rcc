@@ -998,20 +998,6 @@ Fix: each rule cited by its paragraph in N3220, read from the text.
 Check: every citation in the comments of =src/parse.cc= that this
 entry names is found at its number in N3220.
 
-** TODO =may_alias= makes a record one rcc does not lay out
-
-~struct sockaddr~, =sockaddr_in=, =sockaddr_storage= and
-=sockaddr_un= carry ~__attribute__ ((may_alias))~ in the system's
-headers, and =may_alias= is no attribute rcc drops, so each is a
-record with no layout: ~sizeof (struct sockaddr_in)~ is "not yet:
-attribute 'may_alias' on struct 'sockaddr_in'". The attribute only
-tells an optimizer what an lvalue may alias, and rcc has none.
-
-Fix: =may_alias= joins the attributes rcc drops, on a record, a
-typedef and anything else.
-
-Check: ~sizeof (struct sockaddr_in)~ is 16.
-
 ** TODO A forward reference to an enumeration is refused
 
 ~enum e; enum e *p;~ before the list of =e= fails with "enum 'e'

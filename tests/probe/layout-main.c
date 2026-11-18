@@ -27,7 +27,8 @@ report(const char *name, long got, long want)
     long size_##N(void), ref_size_##N(void);                            \
     long align_##N(void), ref_align_##N(void);                          \
     long array_##N(void), ref_array_##N(void);                          \
-    long stride_##N(K N *), ref_stride_##N(K N *);
+    long stride_##N(K N *), ref_stride_##N(K N *);                      \
+    long place_##N(void), ref_place_##N(void);
 
 #define OFFSET(K, N, M)                                                 \
     long offset_##N##_##M(void), ref_offset_##N##_##M(void);
@@ -74,6 +75,7 @@ int mode_two(void), ref_mode_two(void);
         report("align_" #N, align_##N(), ref_align_##N());              \
         report("array_" #N, array_##N(), ref_array_##N());              \
         report("stride_" #N, stride_##N(two), ref_stride_##N(two));     \
+        report("place_" #N, place_##N(), ref_place_##N());              \
     }
 
 #define CHECK_OFFSET(K, N, M)                                           \

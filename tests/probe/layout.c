@@ -1,18 +1,29 @@
 /* The layout probe: the size, the alignment and the member offsets of
-   structs and unions, in rcc's C, docs/shape.md chapter 3, and the
-   stride of an array of each, which c1 computes from the size.  See
-   layout.h. */
+   structs and unions, in rcc's C, docs/shape.md chapter 3, the stride
+   of an array of each, which c1 computes from the size, and the place
+   of an object of each.  See layout.h. */
 
 #include "layout.h"
 
 /* the functions every record has: its size, its alignment, the size of
-   an array of three, and the distance from an element's address to the
-   next one's */
+   an array of three, the distance from an element's address to the
+   next one's, and whether a local and a global of it, each after a char
+   that would leave it at an odd address, are aligned: 0 when both are */
 #define RECORD(K, N)                                                    \
     long size_##N(void) { return sizeof(K N); }                         \
     long align_##N(void) { return _Alignof(K N); }                      \
     long array_##N(void) { return sizeof(K N[3]); }                     \
-    long stride_##N(K N *p) { return (char *) &p[1] - (char *) p; }
+    long stride_##N(K N *p) { return (char *) &p[1] - (char *) p; }     \
+    char before_##N;                                                    \
+    K N global_##N;                                                     \
+    long place_##N(void)                                                \
+    {                                                                   \
+        char c;                                                         \
+        K N local;                                                      \
+                                                                        \
+        return ((unsigned long) &local % _Alignof(K N) != 0) * 2 +      \
+               ((unsigned long) &global_##N % _Alignof(K N) != 0);      \
+    }
 
 /* the offset of a member */
 #define OFFSET(K, N, M)                                                 \

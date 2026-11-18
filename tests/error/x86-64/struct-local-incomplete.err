@@ -1,0 +1,2 @@
+tests/error/struct-local-incomplete.c:7:22: error: variable 'p' has incomplete type struct 'point'
+status 1

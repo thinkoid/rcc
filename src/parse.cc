@@ -58,6 +58,15 @@ struct internal_use_t
     const token_t *at;
 };
 
+// A tentative definition at file scope of an object of a record
+// incomplete where it is written, 6.9.3p2: its symbol and the token that
+// names it.
+struct tentative_t
+{
+    const symbol_t *sym;
+    const token_t *at;
+};
+
 // A switch whose body the parse is in, 6.8.5.3: the promoted type of
 // its controlling expression, which each case's constant is converted
 // to, p5; its cases so far, as the tree takes them, and the token of
@@ -98,6 +107,10 @@ struct open_switch_t
 // external linkage denotes, at file scope or in another block, 6.2.2p2.
 // warnings is the driver's list, which the parse adds each warning to
 // as it meets it, and which outlives an error the parse throws.
+// incomplete_definitions are the tentative definitions at file scope
+// of an object of a record incomplete where it is declared, with the
+// token that names it, checked against the record at the end of the
+// unit.
 struct parser_t
 {
     const std::vector< token_t > &tokens;
@@ -122,6 +135,7 @@ struct parser_t
     int case_labels = 0;
     std::vector< internal_use_t > internal_uses = { };
     std::unordered_map< std::string_view, symbol_t * > block_entities = { };
+    std::vector< tentative_t > incomplete_definitions = { };
 };
 
 // The declaration specifiers: the type, and the storage-class specifier
@@ -2153,6 +2167,9 @@ constexpr std::string_view dropped_attributes[] = {
     "alloc_align", "alloc_size", "cold", "const", "leaf", "malloc", "nonnull",
     "noreturn", "nothrow", "pure", "returns_nonnull",
 
+    // what an optimizer may assume of what an lvalue aliases
+    "may_alias",
+
     // requests for a diagnostic
     "access", "deprecated", "fallthrough", "format", "format_arg", "nodiscard",
     "sentinel", "unused", "warn_unused_result"
@@ -2525,6 +2542,7 @@ declared(const specifiers_t &spec, tok_t storage_class)
 }
 
 void complete_tentative_arrays(parser_t &);
+void require_completed_definitions(const parser_t &);
 void require_internal_definitions(const parser_t &);
 
 void
@@ -2534,6 +2552,7 @@ translation_unit(parser_t &p)
         external_declaration(p);
 
     complete_tentative_arrays(p);
+    require_completed_definitions(p);
     require_internal_definitions(p);
 }
 
@@ -3221,13 +3240,25 @@ definition_of(const parser_t &p, const symbol_t *sym)
     return std::nullopt;
 }
 
-// An object of a struct or a union, or of an array of them, whose
-// object c1 does not make yet, local or static alike.
-void
-refuse_record_object(const token_t &name, const type_t &t)
+// The record of an object's type, or of its array's element, when the
+// record is incomplete, or null.
+const record_t *
+incomplete_record_in(const type_t &t)
 {
-    if (const record_t *r = record_in(t))
-        not_yet(name, "object of " + record_words(*r));
+    const record_t *r = record_in(t);
+
+    return r && !r->complete ? r : nullptr;
+}
+
+// An object of no linkage is of a complete type by the end of its
+// declarator, 6.7.1p8: an incomplete record is an error, an array of
+// one among them.
+void
+require_complete_record(const token_t &name, const type_t &t)
+{
+    if (const record_t *r = incomplete_record_in(t))
+        fail(name, "variable " + quoted(name.text) + " has incomplete type " +
+                       record_words(*r));
 }
 
 // An object the unit defines is one rcc makes, and its type is
@@ -3236,19 +3267,47 @@ refuse_record_object(const token_t &name, const type_t &t)
 // 6.7.11p23, or a later declaration, 6.2.7p5, and an array of unknown
 // size still at the end of the unit is one element, 6.9.3p2.  An
 // attribute that marks the object, said on any of its declarations, is
-// one rcc would have to honour, and is not yet.  A record's object is
-// refuse_record_object()'s.
+// one rcc would have to honour, and is not yet.  An object of a record
+// incomplete where it is declared is an error with an initializer,
+// 6.7.11p4, and in a tentative definition of internal linkage, 6.9.3p3;
+// a tentative definition of external linkage takes the record as it is
+// at the end of the unit, 6.9.3p2, which
+// require_completed_definitions() checks then.
 void
-require_definable(const token_t &name, const symbol_t &sym)
+require_definable(parser_t &p,
+                  const token_t &name,
+                  const symbol_t &sym,
+                  bool initialized)
 {
     if (is< void_t >(sym.type))
         fail(name, "variable " + quoted(name.text) + " has type void");
 
     require_honoured(name, sym.type);
-    refuse_record_object(name, sym.type);
+
+    if (incomplete_record_in(sym.type)) {
+        if (initialized || sym.linkage == linkage_t::internal)
+            require_complete_record(name, sym.type);
+
+        p.incomplete_definitions.push_back({ &sym, &name });
+    }
 
     if (!sym.marking.empty())
         not_yet(name, sym.marking);
+}
+
+// 6.9.3p2: a tentative definition of an object of a record incomplete
+// where it was written takes the record as it is at the end of the
+// unit, which must be complete, and laid out for rcc to make the object.
+void
+require_completed_definitions(const parser_t &p)
+{
+    for (const auto &[sym, at] : p.incomplete_definitions) {
+        if (const record_t *r = incomplete_record_in(sym->type))
+            fail(*at, "tentative definition of " + quoted(sym->name) +
+                          " has incomplete type " + record_words(*r));
+
+        require_honoured(*at, sym->type);
+    }
 }
 
 // The type of an array of unknown size that an initializer completes,
@@ -3283,11 +3342,14 @@ complete_tentative_arrays(parser_t &p)
 
 // The initializer after the '=' ahead of the object the unit's objects
 // hold at index: the subobjects it gives a value, and the size it gives
-// an array of unknown size, 6.7.11p23.
+// an array of unknown size, 6.7.11p23.  The initializer of a record, or
+// of an array of records, is not yet.
 void
 initialize(parser_t &p, symbol_t &sym, std::size_t index)
 {
     const token_t &op = advance(p);
+    if (const record_t *r = record_in(sym.type))
+        not_yet(op, "initializer of " + record_words(*r));
     std::vector< subobject_t > values;
     const long count = object_initializer(p, op, sym.type, values);
 
@@ -3372,7 +3434,7 @@ declare_external_object(parser_t &p,
     if (!initialized && declared(spec, tok_t::kw_extern))
         return;
 
-    require_definable(*d.name, *sym);
+    require_definable(p, *d.name, *sym, initialized);
 
     std::optional< std::size_t > index = definition_of(p, sym);
     if (index && initialized && p.unit.objects[*index].init)
@@ -5229,8 +5291,7 @@ block_declarator(parser_t &p, const specifiers_t &spec)
 // that marks it is one rcc would have to honour, and is not yet; so is
 // an assembler name, which names a register for a register variable.
 // An object's type is complete, 6.7.1p8: not void, not a not-yet type,
-// whose size rcc does not know.  A record's object is
-// refuse_record_object()'s.
+// whose size rcc does not know, and not an incomplete record.
 void
 require_block_object(parser_t &p,
                      const specifiers_t &spec,
@@ -5250,7 +5311,7 @@ require_block_object(parser_t &p,
         fail(*d.name, "variable " + quoted(d.name->text) + " has type void");
 
     require_honoured(*d.name, d.type);
-    refuse_record_object(*d.name, d.type);
+    require_complete_record(*d.name, d.type);
 }
 
 // The label of a block's static object, backend.md chapter 10: the
@@ -5467,9 +5528,10 @@ init_declarator_list(parser_t &p, const specifiers_t &spec)
 // initializer sees the object it initializes.  The initializer is
 // converted as by assignment, 6.7.11p12.  An object's type must be
 // complete, 6.7.1p8, so an array needs its size; any initializer of an
-// array, and a brace initializer of anything, is not yet.  A register
-// array is not yet either: its decay is undefined, 6.3.2.1p3, and it
-// has no slot to decay to.  A local of 2 GiB or more is refused here,
+// array or of a record, and a brace initializer of anything, is not
+// yet.  A register array is not yet either: its decay is undefined,
+// 6.3.2.1p3, and it has no slot to decay to; nor is a register record,
+// which no register holds.  A local of 2 GiB or more is refused here,
 // where its position is known, since no frame holds it.
 stmt_t
 init_declarator(parser_t &p, const specifiers_t &spec, const declarator_t &d)
@@ -5478,6 +5540,14 @@ init_declarator(parser_t &p, const specifiers_t &spec, const declarator_t &d)
 
     if (is< array_t >(d.type) && declared(spec, tok_t::kw_register))
         not_yet(*d.name, "register array " + quoted(d.name->text));
+
+    const record_t *r = record_in(d.type);
+    if (r && declared(spec, tok_t::kw_register))
+        not_yet(*d.name, "register object " + quoted(d.name->text) + " of " +
+                             record_words(*r));
+
+    if (r && peek(p).kind == tok_t::assign)
+        not_yet(peek(p), "initializer of " + record_words(*r));
 
     if (is< array_t >(d.type) && peek(p).kind == tok_t::assign)
         not_yet(peek(p), "array initializer");

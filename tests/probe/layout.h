@@ -7,8 +7,12 @@
    hold records.  The layout is the parser's, docs/shape.md chapter 3,
    and each function returns what the parser folds, a size, an
    alignment or an offset, but for the stride of an array of the record,
-   which c1 computes from the record's size. */
+   which c1 computes from the record's size, and for the place of an
+   object of the record, a local's and a global's, which c1 aligns.
+   struct sockaddr_in is a header's record, whose may_alias attribute
+   rcc drops. */
 
+#include <netinet/in.h>
 #include <stddef.h>
 
 /* the member kinds that are no record, spelled as one type each */
@@ -124,7 +128,7 @@ struct tagged
 /* the records of no list above, and the keyword each is declared by */
 #define RECORDS(X)                                                      \
     X(struct, inner) X(union, either) X(struct, nest) X(union, choice)  \
-    X(struct, tagged)
+    X(struct, tagged) X(struct, sockaddr_in)
 
 /* the designators of offsetof into those records: a name, the record,
    the designator */

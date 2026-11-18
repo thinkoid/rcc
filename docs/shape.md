@@ -419,11 +419,12 @@ declaration, are dropped, and so is `__extension__` before one. An
 attribute is of one of two kinds. One that only licenses an
 optimizer, asks for a diagnostic, or describes what a compiler that
 calls each function as written does not depend on, `nonnull`, `pure`,
-`format` and their like, is dropped. Any other, known or not, marks
-what it is said of: a typedef through one names a not-yet type of its
-own, a marked function or object at file scope is refused where an
-expression names it, and on a local or the definition of an object,
-which rcc would make, the attribute is not yet. An attribute among the declaration specifiers
+`format`, `may_alias` and their like, is dropped. Any other, known or
+not, marks what it is said of: a typedef through one names a not-yet
+type of its own, a marked function or object at file scope is refused
+where an expression names it, and on a local or the definition of an
+object, which rcc would make, the attribute is not yet. An attribute
+among the declaration specifiers
 is said of each declarator, as one after the declarator is, and one
 may begin a declaration, in a block as at file scope:
 `__attribute__ ((unused)) int x = 1;` in a block declares `x`, the
@@ -540,13 +541,21 @@ number, folded to a `size_t` constant. A record is an expression only
 as an lvalue, by a name or by an indirection: its address by `&` and
 its size by `sizeof` are taken, and through a pointer to an incomplete
 record the lvalue is not yet, since c1 addresses one by its size.
-What reads or writes the object of a record is not yet, each in words
-of its own: an object of a record, local, static or at file scope;
-`.` and `->`; a record passed or returned by value, by a definition's
-parameter or result, by an argument and by a call; the assignment of
-a record; and its value, read as an operand or for its effect. A cast
-to a record or of one is an error, since a record is no scalar
-(6.5.5p2).
+An object of a complete record is an object as any other, a local, a
+static one, one at file scope and one declared `extern`: c1 sizes and
+aligns its slot and its data by the layout, and its address and its
+size are taken. One of an incomplete record is an error where it has
+no linkage, by the end of its declarator (6.7.1p8), and so is one with
+an initializer (6.7.11p4) or a tentative definition of internal
+linkage (6.9.3p3); a tentative definition of external linkage takes
+the record as it is at the end of the unit (6.9.3p2), which must then
+be complete. What reads or writes the object of a record is not yet,
+each in words of its own: its initializer; a `register` one, which no
+register holds; `.` and `->`; a record passed or returned by value,
+by a definition's parameter or result, by an argument and by a call;
+the assignment of a record; and its value, read as an operand or for
+its effect. A cast to a record or of one is an error, since a record
+is no scalar (6.5.5p2).
 
 The types a header declares and rcc does not use are not-yet types:
 the complex types, `_Complex` among the specifiers of a floating
@@ -1054,16 +1063,16 @@ a conditional of two void calls.
 
 ## 11. Not yet
 
-The object of a struct or a union and each use that reads or writes
-one (chapter 5: an object, `.` and `->`, a record by value, its
-assignment and its value), the layout of a struct or a union with a
-bit-field, an anonymous member, an attribute that marks, `packed` and
-`aligned` among them, a flexible array member, no member, or a member
-of a type rcc does not use yet (chapter 3), C23's compatibility of
-two records of one tag, floating point, `_Bool` and `__int128` (each
-type is declared; a pointer to one is an ordinary pointer, and a use
-that needs the object is refused; a floating constant is a token,
-refused where an expression uses it),
+The initializer of a struct or a union and each use that reads or
+writes one (chapter 5: a `register` one, `.` and `->`, a record by
+value, its assignment and its value), the layout of a struct or a
+union with a bit-field, an anonymous member, an attribute that marks,
+`packed` and `aligned` among them, a flexible array member, no
+member, or a member of a type rcc does not use yet (chapter 3), C23's
+compatibility of two records of one tag, floating point, `_Bool` and
+`__int128` (each type is declared; a pointer to one is an ordinary
+pointer, and a use that needs the object is refused; a floating
+constant is a token, refused where an expression uses it),
 an enum's fixed underlying type, the use of an enum in its own list
 but behind a pointer, an object of an enum an attribute marks, an
 object of a typedef whose array size rcc

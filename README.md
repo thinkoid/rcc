@@ -157,8 +157,10 @@ literals: the source's UTF-8 decoded into the elements of `wchar_t`,
 to `wcslen`. Then structs and unions laid out: a member list read as
 declarations, and each record laid out by the rule `clang` has on
 both targets, so `sizeof`, `_Alignof` and `offsetof` of one are its
-layout's, which the `layout` probe checks against `clang`'s; an
-object of a record and each use of its members are not yet.
+layout's, which the `layout` probe checks against `clang`'s. Then
+their objects: a local's slot and a global's data at the record's
+size and alignment, so a program takes the address of a struct and
+passes it on.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/`, the cost corpus over `tests/cost/`
 and the error corpus over `tests/error/`, the programs rcc refuses

@@ -1,2 +1,0 @@
-tests/error/struct-local.c:5:36: error: not yet: object of struct 'point'
-status 1

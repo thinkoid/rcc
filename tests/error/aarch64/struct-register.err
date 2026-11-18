@@ -1,0 +1,2 @@
+tests/error/struct-register.c:10:31: error: not yet: register object 'p' of struct 'point'
+status 1
