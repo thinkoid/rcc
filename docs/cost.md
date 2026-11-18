@@ -371,24 +371,41 @@ bytes or more.
 
 ## 3. Verification
 
-Three scripts. `make test` runs the first two for every target with
-a pin directory, and both take the target as `--target <target>`;
-the default is the machine's own. A pin is one target's listing, so it
-sits under a directory named for its target. `tests/oracle` runs
-first: it diffs the assembly `./rcc -target <target> -S` writes for
-each divergence program of `tests/corpus/` against the pin,
-`tests/corpus/<target>/<name>.s`, and proves with
-`./rcc -target <target> -c` that it assembles. On the machine's own
-target it also builds each program under `clang -O2` and under
-`./rcc`, runs both, and compares the exit statuses with
-`tests/corpus/expected`; on another target the programs are not run.
-`tests/costs` runs after it and pins this page. A program that uses
-a construct whose slice is not in the target's generator, and has no
-pin for the target, shows "not yet" in its row of either script and
-is neither passed nor failed; the scripts' headers give the rule.
-Each script of `tests/` sets the core limit to 0 before it runs
-anything, so a program or a compiler that a signal kills leaves its
-status in the log and no core file.
+Five scripts, in the order `make test` runs them. The first three run
+for every target with a pin directory, and each takes the target as
+`--target <target>`; the default is the machine's own. A pin is one
+target's listing or diagnostics, so it sits under a directory named
+for its target. The last two run once.
+
+- `tests/oracle` diffs the assembly `./rcc -target <target> -S`
+  writes for each divergence program of `tests/corpus/` against the
+  pin, `tests/corpus/<target>/<name>.s`, and proves with
+  `./rcc -target <target> -c` that it assembles. On the machine's
+  own target it also builds each program under `clang -O2` and under
+  `./rcc`, runs both, and compares the exit statuses with
+  `tests/corpus/expected`; on another target the programs are not
+  run.
+- `tests/costs` pins this page: the listing of each program of
+  `tests/cost/`, as the next paragraph tells.
+- `tests/errors` pins the diagnostics: for each program of
+  `tests/error/`, one rcc refuses, what rcc prints on standard error
+  and the exit status it leaves with,
+  `tests/error/<target>/<name>.err`.
+- `tests/driver` checks the driver's command line, where the output
+  goes: `-S -o -` writes the assembly to the standard output, and
+  `-o -` with `-c` or a link is a usage error.
+- `tests/probes` checks values, on the machine's own target only:
+  rcc's code against `clang -O0`'s, function by function, as told
+  below.
+
+A program that uses a construct whose slice is not in the target's
+generator, and has no pin for the target, shows "not yet" in its row
+of the oracle or the cost corpus, and a probe whose functions rcc
+stops at so shows "not yet" in its line; neither is passed nor
+failed, and the scripts' headers give the rule. Each script of
+`tests/` sets the core limit to 0 before it runs anything, so a
+program or a compiler that a signal kills leaves its status in the
+log and no core file.
 
 Each program under `tests/cost/` is one row of chapter 2 or one rule
 of chapter 1, and its opening comment says what its listing must

@@ -452,19 +452,6 @@ named for the save.
 
 Check: the sentence agrees with both pins of =g13-read-across-branch=.
 
-** TODO =cost.md= chapter 3 counts three scripts where =make test= runs five
-
-Chapter 3 opens "Three scripts" and describes =tests/oracle=,
-=tests/costs= and =tests/probes=. =make test= also runs
-=tests/errors=, the pinned diagnostics, and =tests/driver=, the
-driver's command line, and the chapter names neither.
-
-Fix: the chapter's opening counts and names the five, each with what
-it pins.
-
-Check: every script the =Makefile='s =test= runs is named in the
-chapter.
-
 * Tests
 
 ** TODO =tests/oracle --pin= says nothing of a pin that is the same
