@@ -242,7 +242,10 @@ SCALARS(WALKS)
    and through a register variable, written, operated on in place,
    read, and its address; and such a row plus a variable index as a
    value, m[1] + j into a register variable, j + m[2], and r[3] + j on
-   a register variable. */
+   a register variable; an element of a row of rows by a constant
+   and a variable index, whose rows are of a size no addressing form
+   scales by, m[1][j][2], written, operated on in place and read,
+   through a register variable, by j[m[1]], and its address. */
 #define ARRAYS(E, T, S)                                                 \
     long mat_##E(int i, int j, long v)                                  \
     {                                                                   \
@@ -317,6 +320,15 @@ SCALARS(WALKS)
         return ((char *) q - (char *) m) +                              \
                ((char *) (j + m[2]) - (char *) m) * 1000 +              \
                ((char *) (r[3] + j) - (char *) m) * 1000000;            \
+    }                                                                   \
+    long pcube_##E(T m[][4][5], int j, long v)                          \
+    {                                                                   \
+        register T (*r)[4][5] = m;                                      \
+        m[1][j][2] = v;                                                 \
+        m[1][j][3] += v;                                                \
+        r[2][j][0]++;                                                   \
+        return m[1][j][2] * 3 + m[1][j][3] * 5 + r[2][j][0] * 7 +       \
+               j[m[1]][4] + ((char *) &m[2][j][1] - (char *) m);        \
     }
 
 SCALARS(ARRAYS)

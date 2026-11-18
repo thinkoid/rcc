@@ -18,11 +18,15 @@
    displacement holds is the sum of p + n, the access's base,
    p[200000000][i], and an element of a size no addressing form scales
    by, the row p[1][i] of 12 bytes on int (*p)[2][3], is the sum of
-   p + n on the row's address.  The row plus a variable index as a
-   value, p[1] + i, is the same address and one leaq of it on x86-64,
-   returned, i + p[1] with the index generated first, into a register
-   variable, and stored; at a size no addressing form scales by, the
-   12 bytes of p[1] + i on int (*p)[2][3], it is the sum of p + n.
+   p + n on the pointer, and the row's offset follows the sum, on
+   x86-64 as the access's displacement: p[1][i][0] on int (*p)[3][3]
+   reads 36 bytes past the sum, and p[1][i][2] 44, where i[p[1]][0],
+   the index written first, forms the row's address before the sum.
+   The row plus a variable index as a value, p[1] + i, is the same
+   address and one leaq of it on x86-64, returned, i + p[1] with the
+   index generated first, into a register variable, and stored; at a
+   size no addressing form scales by, the 12 bytes of p[1] + i on int
+   (*p)[2][3], it is the sum of p + n.
 
    On x86-64 the listing must show first() returning the array's
    address, leaq -24(%rbp), %rax, with no instruction after it,
@@ -36,15 +40,21 @@
    12(%rcx,%rax,4), %eax after i's load and p's, column_beyond() the
    movabsq and the addq, then movl (%rax,%rcx,4), %eax, column_sum()
    forming p[1]'s address by leaq 12(%rax), %rax and reading by movl
-   2147483644(%rax,%rcx,4), %eax, and column_wide() forming p[1]'s
-   address by leaq 24(%rax), %rax, then imulq $12, %rcx, %rcx and addq
-   %rcx, %rax.  row_sum() forms p[1] + i by the one leaq
-   12(%rax,%rcx,4), %rax after p's load and i's, row_sum_first() by
-   leaq 12(%rcx,%rax,4), %rax after i's load and p's,
+   2147483644(%rax,%rcx,4), %eax, and column_wide() forming p[1][i]
+   by imulq $12, %rcx, %rcx and addq %rcx, %rax after p's load and
+   i's, then leaq 24(%rax), %rax.  row_sum() forms p[1] + i by the one
+   leaq 12(%rax,%rcx,4), %rax after p's load and i's, row_sum_first()
+   by leaq 12(%rcx,%rax,4), %rax after i's load and p's,
    row_sum_register() by leaq 12(%rax,%rcx,4), %rbx into the variable,
    row_sum_stored() by leaq 12(%rcx,%rdx,4), %rcx before the store
-   movq %rcx, (%rax), and row_sum_wide() as column_wide(), leaq
-   24(%rax), %rax, then imulq $12, %rcx, %rcx and addq %rcx, %rax.
+   movq %rcx, (%rax), and row_sum_wide() p[1] + i by leaq 24(%rax),
+   %rax, then imulq $12, %rcx, %rcx and addq %rcx, %rax.  cell() reads
+   p[1][i][0] by imulq $12, %rcx, %rcx, addq %rcx, %rax and movl
+   36(%rax), %eax after p's load and i's, with no leaq,
+   cell_column() the same with movl 44(%rax), %eax, cell_register()
+   with movq %rbx, %rcx, addq %rax, %rcx and movl 36(%rcx), %eax, and
+   cell_first() by leaq 36(%rcx), %rcx before the sum and movl (%rax),
+   %eax after it.
 
    On aarch64 the listing must show first() returning the array's
    address, add x0, x29, #16, with no instruction after it, element()
@@ -62,7 +72,11 @@
    row_sum_register() and row_sum_stored() form p[1]'s address by
    add x0, x0, #12, or x1 after i's load, then add the index by add
    x0, x0, w1, sxtw #2, the last add writing x19 in
-   row_sum_register(), and row_sum_wide() as column_wide(). */
+   row_sum_register(), and row_sum_wide() as column_wide().  cell(),
+   cell_column(), cell_register() and cell_first() add the row's 36
+   before the index, add x0, x0, #36, or x19 into x0, or x1 after i's
+   load, then mov x2, #12, mul and add the product, and read by ldr
+   w0, [x0], and by ldr w0, [x0, #8] in cell_column(). */
 int *first(void)
 {
     int m[2][3];
@@ -153,4 +167,30 @@ row_sum_stored(int (*p)[3], int i, int **out)
 int (*row_sum_wide(int (*p)[2][3], int i))[3]
 {
         return p[1] + i;
+}
+
+int
+cell(int (*p)[3][3], int i)
+{
+        return p[1][i][0];
+}
+
+int
+cell_column(int (*p)[3][3], int i)
+{
+        return p[1][i][2];
+}
+
+int
+cell_register(int (*s)[3][3], int i)
+{
+        register int (*p)[3][3] = s;
+
+        return p[1][i][0];
+}
+
+int
+cell_first(int (*p)[3][3], int i)
+{
+        return i[p[1]][0];
 }

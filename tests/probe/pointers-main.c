@@ -326,7 +326,8 @@ ELEMENTS(DECLARE_KBYTE_ALL)
     BOTH(long, loop_walk_##E, (int, long))                              \
     BOTH(long, ends_##E, (int, long)) BOTH(long, vast_##E, (long, long)) \
     BOTH(long, pmat_one_##E, (T m[][5], int, long))                     \
-    BOTH(long, prow_one_##E, (T m[][5], int))
+    BOTH(long, prow_one_##E, (T m[][5], int))                           \
+    BOTH(long, pcube_##E, (T m[][4][5], int, long))
 
 SCALARS(DECLARE_WALKS)
 
@@ -593,6 +594,7 @@ ELEMENTS(TEST_CONSTANTS)
             CHECK(vast_##E, 69999, x, (69999, x));                      \
             MCHECK(pmat_one_##E, i % 5, x, at, (P, i % 5, x));          \
             MCHECK(prow_one_##E, i % 5, 0, at, (P, i % 5));             \
+            MCHECK(pcube_##E, i % 4, x, at, (P, i % 4, x));             \
         }                                                               \
     }
 

@@ -113,21 +113,36 @@ pointer is generated.
 
 Check: =prow_one_c= an instruction shorter, and no function longer.
 
-** TODO A row's constant offset is added before an index no addressing form scales by
+** TODO aarch64: a row's constant offset is added before an index no addressing form scales by
 
-~p[1][i][0]~ on ~int (*p)[3][3]~ is =leaq 36(%rax), %rax; movslq
--12(%rbp), %rcx; imulq $12, %rcx, %rcx; addq %rcx, %rax; movl (%rax),
-%eax= on x86-64, where the 36 as the access's displacement, =movl
-36(%rax), %eax= after the =addq=, is one instruction fewer. aarch64
-has the shape too, =add x0, x0, #24= before the index and =ldr [x0]=
-after. The shape is not counted over =tests=: a scan for =leaq d(%r),
-%r= followed by an =addq= into the same register matches 44
-functions, many of them a local's address, whose =leaq= is needed.
+~p[1][i][0]~ on ~int (*p)[3][3]~ is =ldr x0, [x29, #16]; add x0, x0,
+#36; ldrsw x1, [x29, #24]; mov x2, #12; mul x1, x1, x2; add x0, x0,
+x1; ldr w0, [x0]=, where the 36 as the load's offset, =ldr w0, [x0,
+#36]= after the sum, is one instruction fewer; x86-64 carries it so
+(=backend.md= 6.3). =cell()= and =cell_column()= of =subscript-row=
+and =pcube_*= of the pointers probe have the shape.
 
-Fix: none taken; count first.
+Fix: the row's offset is carried as the access's offset past the
+sum, in =src/c1-aarch64.cc='s address rows, as on x86-64.
 
-Check: the count over =tests=, and a cost function of
-=subscript-row= with the constant in the access.
+Check: those pins with the constant in the =ldr=, and no function
+longer.
+
+** TODO x86-64: an index of a size no addressing form scales by is added where its product could be the operand's index
+
+~m[i][4]~ on a local ~char m[4][5]~ and ~dm[i][2]~ on a global the
+file defines are =leaq slot(%rbp)= or =leaq sym(%rip)=, =imulq $5,
+R, R=, =addq R, L=, then the access =4(L)=, where the product is the
+addressing form's index at scale 1: =-23(%rbp,R)= on a slot, and
+=4(L,R)= after a label's =leaq=. Over =tests=: 40 sites in 22
+functions on slots and 36 in 12 on labels; as a value, =leaq d(L,R),
+L= for the =addq=, 70 sites on slots and 65 on labels.
+
+Fix: at a size no form scales by, the product is the index of
+=index_base()='s address, or of the slot's with =rbp= the base, at
+scale 1.
+
+Check: the counts before and after, and no function longer.
 
 ** TODO x86-64: an lvalue's address plus a constant into a register variable loads the address elsewhere
 

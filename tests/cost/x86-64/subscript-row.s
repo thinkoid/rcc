@@ -189,10 +189,10 @@ column_wide:
 	movq	%rdi, -8(%rbp)
 	movl	%esi, -12(%rbp)
 	movq	-8(%rbp), %rax
-	leaq	24(%rax), %rax
 	movslq	-12(%rbp), %rcx
 	imulq	$12, %rcx, %rcx
 	addq	%rcx, %rax
+	leaq	24(%rax), %rax
 	jmp	.Lcolumn_wide.1
 .Lcolumn_wide.1:
 	leave
@@ -313,4 +313,101 @@ row_sum_wide:
 	ret
 	.cfi_endproc
 	.size	row_sum_wide, .-row_sum_wide
+	.globl	cell
+	.type	cell, @function
+cell:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	movslq	-12(%rbp), %rcx
+	imulq	$12, %rcx, %rcx
+	addq	%rcx, %rax
+	movl	36(%rax), %eax
+	jmp	.Lcell.1
+.Lcell.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	cell, .-cell
+	.globl	cell_column
+	.type	cell_column, @function
+cell_column:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	movslq	-12(%rbp), %rcx
+	imulq	$12, %rcx, %rcx
+	addq	%rcx, %rax
+	movl	44(%rax), %eax
+	jmp	.Lcell_column.1
+.Lcell_column.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	cell_column, .-cell_column
+	.globl	cell_register
+	.type	cell_register, @function
+cell_register:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	movq	%rdi, -16(%rbp)
+	movl	%esi, -20(%rbp)
+	movq	-16(%rbp), %rbx
+	movslq	-20(%rbp), %rax
+	imulq	$12, %rax, %rax
+	movq	%rbx, %rcx
+	addq	%rax, %rcx
+	movl	36(%rcx), %eax
+	jmp	.Lcell_register.1
+.Lcell_register.1:
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	cell_register, .-cell_register
+	.globl	cell_first
+	.type	cell_first, @function
+cell_first:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movslq	-12(%rbp), %rax
+	movq	-8(%rbp), %rcx
+	leaq	36(%rcx), %rcx
+	imulq	$12, %rax, %rax
+	addq	%rcx, %rax
+	movl	(%rax), %eax
+	jmp	.Lcell_first.1
+.Lcell_first.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	cell_first, .-cell_first
 	.section	.note.GNU-stack,"",@progbits

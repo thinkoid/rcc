@@ -1170,6 +1170,37 @@ index_base(state_t &s,
     return *a;
 }
 
+value_t pointer_operation(
+    state_t &, const operation_t &, long, value_t, into_t *, unsigned);
+
+// The operand of an address by a pointer and a variable index at a size
+// no addressing form scales by, backend.md 6.3: the pointer the address
+// an index joins, index_base()'s, the index's product added to its base
+// by the row of p + n, and the pointer's displacement the access's, so
+// that p[1][i][0] on int (*p)[3][3] is imulq $12, %rcx, %rcx; addq %rcx,
+// %rax; movl 36(%rax), %eax, and no instruction forms the row's
+// address.  Any other pointer's displacement is 0, and the address is
+// the p + n row's sum, as before.  The pointer is generated first, the
+// index after it (G13).  None for n + p, for -, and where a register
+// variable is handed down, whose address is the sum's own row.
+std::optional< address_t >
+offset_after_sum(state_t &s, const expr_t &p, long size, into_t *into)
+{
+    if (into || is_scale(size) || !is< binary_t >(p))
+        return std::nullopt;
+
+    const auto &b = as< binary_t >(p);
+    if (b.op != binary_op_t::add || !is< pointer_t >(b.lhs->type) ||
+        is< literal_t >(*b.rhs))
+        return std::nullopt;
+
+    const auto a = index_base(s, *b.lhs, pinned_by(*b.rhs));
+    const auto sum =
+        pointer_operation(s, as_written(b), size, a.base, nullptr, 0);
+
+    return address_t { .base = sum, .displacement = a.displacement };
+}
+
 // The address a dereference designates, 6.5.4.2p4, of an object of
 // type pointee: the addressing row.  A name's address plus a constant,
 // 0 for *a and *&x, is the one operand of folded(), and any other
@@ -1187,8 +1218,10 @@ index_base(state_t &s,
 // base and a displacement joins that address, index_base()'s, p[1][i]
 // on int (*p)[3] being 12(%rax,%rcx,4).  The operand written first is
 // held outside the registers the other's top operator pins, p[x / y]'s
-// p outside rax and rdx (chapter 6.5).  Any other pointer, an add of
-// another size included, is computed into a register and is the base;
+// p outside rax and rdx (chapter 6.5).  At a size no addressing form
+// scales by, such a pointer's displacement follows the sum of its index,
+// offset_after_sum()'s.  Any other pointer, an add of another size
+// included, is computed into a register and is the base;
 // nothing looks through a cast.  A register variable handed down goes
 // to the row of a base that is the whole address, p of &*p and &p[0],
 // or the sum of &a[i] at a size no addressing form scales by, to
@@ -1213,6 +1246,10 @@ pointed(state_t &s,
 
     // p[3], and the row p[1] on int (*p)[3]: 12(%rax)
     if (const auto a = constant_indexed(s, p, size, into))
+        return *a;
+
+    // p[1][i][0] on int (*p)[3][3]: the sum, then 36(%rax)
+    if (const auto a = offset_after_sum(s, p, size, into))
         return *a;
 
     if (!is_scale(size) || !is< binary_t >(p) ||
