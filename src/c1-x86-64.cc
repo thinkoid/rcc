@@ -2127,13 +2127,17 @@ from_memory(state_t &s,
 
 // Whether the row of op on the held values l and r writes r's register,
 // backend.md 6.1: an operator that commutes, +, *, &, | or ^, whose
-// right operand is an owned value in the register its consumer names,
-// wanted, when the instruction is written, so that the instruction on
-// the source's two values names that register its destination and L
-// its source, addl %ecx, %eax for return g + bump(), where L's register
-// would be written and moved.  Not where L is the variable a compound
-// assignment writes in place, nor where R is a register variable's
-// read, whose register is the variable.
+// right operand is an owned value in a register when the instruction is
+// written, so that the instruction on the source's two values names
+// that register its destination and L its source.  The register is the
+// one the consumer names, wanted, addl %ecx, %eax for return g +
+// bump(), where L's register would be written and moved; or L is a
+// register variable's read, which the row would copy, addl %ebx, %eax
+// for s = r + f(x), where no free register is named for the copy and
+// R's register is left for last by no pinned instruction ahead.  Not
+// where L is the variable a compound assignment writes in place, nor
+// where R is a register variable's read, whose register is the
+// variable.
 bool
 written_in_right(
     const state_t &s, binary_op_t op, value_t l, value_t r, unsigned wanted)
@@ -2142,8 +2146,14 @@ written_in_right(
         return false;
 
     const int reg = s.values[r.id].reg;
+    if (reg < 0)
+        return false;
 
-    return reg >= 0 && (wanted & bit(static_cast< reg_t >(reg)));
+    const unsigned own = bit(static_cast< reg_t >(reg));
+    if (wanted & own)
+        return true;
+
+    return borrowed(s, l) && !wanted_register(s, wanted) && !(s.reserved & own);
 }
 
 // An arithmetic, bitwise or shift operator on the held left value and
@@ -2158,7 +2168,8 @@ written_in_right(
 // and, or and xor set ZF from L, and imul does not (7.1).  wanted is
 // the register the result's consumer names, which a quotient stays in
 // (divide()), and which an operator that commutes writes where R is
-// in it, written_in_right()'s.
+// in it; such an operator writes R's register too where L is a register
+// variable's read and no free register is named, written_in_right()'s.
 value_t
 arithmetic(state_t &s,
            binary_op_t op,
@@ -2203,7 +2214,8 @@ arithmetic(state_t &s,
 
     const auto [held, right] = operands(s, l, r.value);
 
-    // return g + bump(): addl %ecx, %eax, the call's result written
+    // return g + bump(): addl %ecx, %eax, the call's result written; s =
+    // r + f(x) on a register r: addl %ebx, %eax, r not copied
     if (written_in_right(s, op, l, r.value, wanted)) {
         insn(s, mnemonic, { reg(held, width), reg(right, width) });
         if (op != binary_op_t::mul)
@@ -2484,13 +2496,13 @@ unscaled(state_t &s, const operation_t &o, long size, unsigned named)
 
 // An unscaled_sum() or a byte_sum() as a value, backend.md 6.3:
 // address_of()'s leaq, or the p + n row's addq into the pointer, but
-// that where the index's product, an owned value, is in the register
-// the consumer names, wanted, the addq writes that register, the
-// pointer its source, as an operation that commutes does
-// (written_in_right(), 6.1): return p + f() on a char *p is addq %rcx,
-// %rax after p's reload, where the sum was written into rcx and moved.
-// Not where a register variable is handed down, whose register the
-// leaq writes.
+// that where an operation that commutes writes its right operand's
+// register (written_in_right(), 6.1), the addq writes the register of
+// the index's product, an owned value, the pointer its source: return
+// p + f() on a char *p is addq %rcx, %rax after p's reload, where the
+// sum was written into rcx and moved, and s = p + f() on a register
+// char *p is addq %rbx, %rax, p not copied.  Not where a register
+// variable is handed down, whose register the leaq writes.
 value_t
 unscaled_value(state_t &s, const address_t &a, into_t *into, unsigned wanted)
 {

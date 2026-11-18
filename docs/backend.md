@@ -257,7 +257,11 @@ A read is the register as an operand where the instruction only
 reads it: `cmpl %ebx, %r13d`. Where the instruction would write its
 destination, the register is first copied into an expression
 register, `movl %ebx, %eax; subl %r12d, %eax`, so the variable does
-not change. An assignment writes the register: a constant is the
+not change, but under an operator that commutes whose right operand
+is a value in a register, where no free register is named for the
+copy, the instruction writes that register, the variable its source,
+`addl %ebx, %eax` for `s = r + f(x)` (6.1). An
+assignment writes the register: a constant is the
 immediate, `movl $0, %r12d`, a value is computed in the register
 where its last instruction can write it (below), and any other value
 is moved in, a narrow store by the extending `mov`, `movsbl %al,
@@ -616,24 +620,34 @@ operand of an object in memory (below), or a register, into which
 it is generated; the instruction for the operator is written as
 `op R, L`; `R` is freed; the result is `L`, but for a remainder,
 which is the value in `rdx` (6.5), and for an operator that commutes,
-`+`, `*`, `&`, `|` or `^`, whose right operand is a value in the
-register its consumer names when the instruction is written: that
-row writes `R`'s register, `op L, R`, `L` freed, so `return g +
-bump()` ends `movq -8(%rbp), %rcx; addl %ecx, %eax` and not `addl
-%eax, %ecx; movl %ecx, %eax`. The instruction is the source's
+`+`, `*`, `&`, `|` or `^`, whose right operand is a value in a
+register when the instruction is written, in two cases: the register
+is the one its consumer names, or `L` is a register variable's read,
+which the row would copy, and no free register is named for the
+copy. That row writes `R`'s register, `op L, R`, `L` freed, so
+`return g + bump()` ends `movq -8(%rbp), %rcx; addl %ecx, %eax` and
+not `addl %eax, %ecx; movl %ecx, %eax`, and `s = r + f(x)` on a
+`register int r` is `addl %ebx, %eax` and not `movl %ebx, %ecx; addl
+%eax, %ecx`. Where a free register is named, the copy is made there,
+`movl %ebx, %eax; addl %ecx, %eax` for `return r + y * z`, as many
+instructions as the row into `R` and a move; and where `R`'s register
+is left for last for a pinned instruction ahead (6.5), the copy
+stays, so that the division of `(r + f(y)) + y / z` finds `rax`
+free. The instruction is the source's
 operator on the source's two values, evaluated in the order written;
 only its destination is the other operand's register, and the
 result is valid to the instruction's width, whichever register it
 writes. A register variable's read as `R` is no such value, since
-its register is the variable, nor is a compound assignment's
-variable written in place as `L`. Pointer arithmetic's `addq` takes
-the rule too where the index is that value: `return p + f()` on a
-`char *p` is `addq %rcx, %rax` after `p`'s reload, and on an `int
-(*p)[3]` the same after the index's `imulq $12, %rax, %rax`; at a
-size of 2, 4 or 8 the `leaq` names its destination already, `leaq
-(%rcx,%rax,4), %rax`, and `f() + p`, the index first, adds `p` into
-the index's register, `addq -8(%rbp), %rax`. Every operator of the
-table is written exactly once per node, and nothing looks at a node's
+its register is the variable, so `r + q` on two of them copies `r`,
+nor is a compound assignment's variable written in place as `L`.
+Pointer arithmetic's `addq` takes the rule too where the index is
+that value: `return p + f()` on a `char *p` is `addq %rcx, %rax`
+after `p`'s reload, and on an `int (*p)[3]` the same after the
+index's `imulq $12, %rax, %rax`; at a size of 2, 4 or 8 the `leaq`
+names its destination already, `leaq (%rcx,%rax,4), %rax`, and `f()
++ p`, the index first, adds `p` into the index's register, `addq
+-8(%rbp), %rax`. Every operator of the table is
+written exactly once per node, and nothing looks at a node's
 neighbours, with two exceptions. A node whose right operand's
 top operator is a division or a shift by a variable count generates
 its left operand outside the registers that instruction pins (6.5).

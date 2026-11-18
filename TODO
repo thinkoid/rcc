@@ -61,21 +61,6 @@ of a row that writes the right operand's register.
 
 Check: the count over =tests=, and no function longer.
 
-** TODO x86-64: a register variable's read on the left of a row that commutes is copied
-
-~s = r + f(x)~ on a ~register int r~ copies the variable and adds to
-the copy, =movl %ebx, %ecx; addl %eax, %ecx=, where =addl %ebx,
-%eax= writes the right operand's own register from the same two
-values. The row takes that form only where its consumer names the
-register (=backend.md= 6.1). About 319 rows over =tests= have a copy
-directly before such an operation; they are not checked one by one.
-
-Fix: a row that commutes, whose left operand is a register
-variable's read and whose right operand is an owned value, writes
-the right operand's register under any consumer.
-
-Check: the count over =tests=, the fit, and no function longer.
-
 ** TODO aarch64: a row's constant offset is added before an index no addressing form scales by
 
 ~p[1][i][0]~ on ~int (*p)[3][3]~ is =ldr x0, [x29, #16]; add x0, x0,
