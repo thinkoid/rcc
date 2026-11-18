@@ -812,8 +812,8 @@ is no expression register and holds no owned value, so its rule puts
 two conditions on the right operand that this one does not need
 (chapter 4). The rule is the Seventh Edition compiler's: its
 `cexpr()` takes the register its caller wants the value in, and a
-`return`'s row asks for `r0` and moves the value there where it comes
-back in another (13, call 19).
+`return`'s value, which `rcexpr()` compiles outside its tables, is
+moved to `r0` where it comes back in another register (13, call 19).
 
 ### 6.2 Depth and spill
 
