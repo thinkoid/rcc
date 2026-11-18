@@ -245,15 +245,14 @@ main:
 	str	w0, [x29, #48]
 	cmp	w0, #0
 	b.lt	.Lmain.8
-	adrp	x0, keytab
-	add	x0, x0, :lo12:keytab
+	adrp	x0, keytab+8
 	ldrsw	x1, [x29, #48]
 	mov	x2, #16
 	mul	x1, x1, x2
 	add	x0, x0, x1
-	ldr	w1, [x0, #8]
+	ldr	w1, [x0, :lo12:keytab+8]
 	add	w1, w1, #1
-	str	w1, [x0, #8]
+	str	w1, [x0, :lo12:keytab+8]
 .Lmain.8:
 .Lmain.7:
 	b	.Lmain.5
@@ -265,25 +264,23 @@ main:
 	ldr	w0, [x29, #48]
 	cmp	w0, #32
 	b.ge	.Lmain.11
-	adrp	x0, keytab
-	add	x0, x0, :lo12:keytab
+	adrp	x0, keytab+8
 	ldrsw	x1, [x29, #48]
 	mov	x2, #16
 	mul	x1, x1, x2
 	add	x0, x0, x1
-	ldr	w0, [x0, #8]
+	ldr	w0, [x0, :lo12:keytab+8]
 	cmp	w0, #0
 	b.le	.Lmain.12
 	adrp	x0, .Ls1
 	add	x0, x0, :lo12:.Ls1
 	str	x0, [x29, #120]
-	adrp	x0, keytab
-	add	x0, x0, :lo12:keytab
+	adrp	x0, keytab+8
 	ldrsw	x1, [x29, #48]
 	mov	x2, #16
 	mul	x1, x1, x2
 	add	x0, x0, x1
-	ldr	w0, [x0, #8]
+	ldr	w0, [x0, :lo12:keytab+8]
 	str	w0, [x29, #128]
 	adrp	x0, keytab
 	add	x0, x0, :lo12:keytab
@@ -297,13 +294,12 @@ main:
 	ldr	w1, [x29, #128]
 	ldr	x2, [x29, #136]
 	bl	printf
-	adrp	x0, keytab
-	add	x0, x0, :lo12:keytab
+	adrp	x0, keytab+8
 	ldrsw	x1, [x29, #48]
 	mov	x2, #16
 	mul	x1, x1, x2
 	add	x0, x0, x1
-	ldr	w0, [x0, #8]
+	ldr	w0, [x0, :lo12:keytab+8]
 	ldr	w1, [x29, #108]
 	add	w1, w1, w0
 	str	w1, [x29, #108]

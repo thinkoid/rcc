@@ -15,7 +15,9 @@ held(long v)
 /* the functions of member M, of kind A, of record N declared by K: its
    scalar read, written, stepped, added to and its offset by ->, read by
    . on the second element of an array, written and added to there
-   across a call, and written and read on a local and on a global */
+   across a call, written and read on a local and on a global, and
+   written, stepped and read by . on an element of an array by a
+   variable index, through a pointer and on a global's label */
 #define MEMBER(K, N, M, A)                                              \
     long get_##N##_##M(K N *p) { return (long) p->M PATH_##A; }         \
     void set_##N##_##M(K N *p, long v)                                  \
@@ -48,11 +50,25 @@ held(long v)
     {                                                                   \
         object_##N.M PATH_##A = (SCALAR_##A) v;                         \
         return (long) object_##N.M PATH_##A;                            \
+    }                                                                   \
+    long row_##N##_##M(K N *p, long i, long v)                          \
+    {                                                                   \
+        p[i].M PATH_##A = (SCALAR_##A) v;                               \
+        (void) STEP_##A(p[i].M PATH_##A);                               \
+        return (long) p[i].M PATH_##A;                                  \
+    }                                                                   \
+    long table_##N##_##M(long i, long v)                                \
+    {                                                                   \
+        table_##N[i].M PATH_##A = (SCALAR_##A) v;                       \
+        (void) STEP_##A(table_##N[i].M PATH_##A);                       \
+        return (long) table_##N[i].M PATH_##A;                          \
     }
 
 #define PAIR_MEMBERS(A, TA, B, TB)                                      \
     struct p_##A##B object_p_##A##B;                                    \
     union u_##A##B object_u_##A##B;                                     \
+    struct p_##A##B table_p_##A##B[3];                                  \
+    union u_##A##B table_u_##A##B[3];                                   \
     MEMBER(struct, p_##A##B, x, A)                                      \
     MEMBER(struct, p_##A##B, y, B)                                      \
     MEMBER(union, u_##A##B, x, A)                                       \
@@ -64,6 +80,7 @@ KINDS(PAIRS_MEMBERS)
 
 #define TRIPLE_MEMBERS(A, TA, B, TB, C, TC)                             \
     struct t_##A##B##C object_t_##A##B##C;                              \
+    struct t_##A##B##C table_t_##A##B##C[3];                            \
     MEMBER(struct, t_##A##B##C, x, A)                                   \
     MEMBER(struct, t_##A##B##C, y, B)                                   \
     MEMBER(struct, t_##A##B##C, z, C)
@@ -122,4 +139,16 @@ int
 apply(struct ops *o, int x)
 {
         return o->twice(x) + o->bias + (*o).twice(o->bias);
+}
+
+/* a row by a variable index on a label, at an offset no multiple of
+   the access's size, whose label's address the access keeps */
+struct link odd_links[4];
+
+long
+odd_row(long i, long v)
+{
+        *(int *) ((char *) &odd_links[i] + 2) = (int) v;
+        *(int *) ((char *) &odd_links[i] + 2) += 5;
+        return odd_links[i].value + *(short *) ((char *) &odd_links[i] + 6);
 }

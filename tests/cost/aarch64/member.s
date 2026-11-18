@@ -329,13 +329,12 @@ indexed_label:
 	mov	x29, sp
 	.cfi_def_cfa_register w29
 	str	x0, [x29, #16]
-	adrp	x0, tab
-	add	x0, x0, :lo12:tab
+	adrp	x0, tab+8
 	ldr	x1, [x29, #16]
 	mov	x2, #144
 	mul	x1, x1, x2
 	add	x0, x0, x1
-	ldr	w0, [x0, #8]
+	ldr	w0, [x0, :lo12:tab+8]
 	b	.Lindexed_label.1
 .Lindexed_label.1:
 	.cfi_def_cfa wsp, 32
@@ -676,6 +675,95 @@ held_element:
 	ret
 	.cfi_endproc
 	.size	held_element, .-held_element
+	.globl	element_indexed
+	.type	element_indexed, @function
+element_indexed:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	x1, [x29, #24]
+	ldr	x0, [x29, #16]
+	ldr	x1, [x29, #24]
+	mov	x2, #144
+	mul	x1, x1, x2
+	add	x0, x0, x1
+	ldr	w0, [x0, #44]
+	b	.Lelement_indexed.1
+.Lelement_indexed.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	element_indexed, .-element_indexed
+	.globl	element_indexed_label
+	.type	element_indexed_label, @function
+element_indexed_label:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	adrp	x0, tab+44
+	ldr	x1, [x29, #16]
+	mov	x2, #144
+	mul	x1, x1, x2
+	add	x0, x0, x1
+	ldr	w0, [x0, :lo12:tab+44]
+	b	.Lelement_indexed_label.1
+.Lelement_indexed_label.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	element_indexed_label, .-element_indexed_label
+	.globl	indexed_label_odd
+	.type	indexed_label_odd, @function
+indexed_label_odd:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	adrp	x0, tab
+	add	x0, x0, :lo12:tab
+	ldr	x1, [x29, #16]
+	mov	x2, #144
+	mul	x1, x1, x2
+	add	x0, x0, x1
+	ldr	w0, [x0, #2]
+	b	.Lindexed_label_odd.1
+.Lindexed_label_odd.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	indexed_label_odd, .-indexed_label_odd
 	.bss
 	.globl	g
 	.type	g, @object

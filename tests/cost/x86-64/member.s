@@ -509,6 +509,67 @@ held_element:
 	ret
 	.cfi_endproc
 	.size	held_element, .-held_element
+	.globl	element_indexed
+	.type	element_indexed, @function
+element_indexed:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	%rsi, -16(%rbp)
+	movq	-8(%rbp), %rax
+	imulq	$144, -16(%rbp), %rcx
+	movl	44(%rax,%rcx,1), %eax
+	jmp	.Lelement_indexed.1
+.Lelement_indexed.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	element_indexed, .-element_indexed
+	.globl	element_indexed_label
+	.type	element_indexed_label, @function
+element_indexed_label:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	leaq	tab(%rip), %rax
+	imulq	$144, -8(%rbp), %rcx
+	movl	44(%rax,%rcx,1), %eax
+	jmp	.Lelement_indexed_label.1
+.Lelement_indexed_label.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	element_indexed_label, .-element_indexed_label
+	.globl	indexed_label_odd
+	.type	indexed_label_odd, @function
+indexed_label_odd:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	leaq	tab(%rip), %rax
+	imulq	$144, -8(%rbp), %rcx
+	movl	2(%rax,%rcx,1), %eax
+	jmp	.Lindexed_label_odd.1
+.Lindexed_label_odd.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	indexed_label_odd, .-indexed_label_odd
 	.bss
 	.globl	g
 	.type	g, @object

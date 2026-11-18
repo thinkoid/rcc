@@ -61,7 +61,10 @@ fill(void *p, size_t size)
     long held_add_##N##_##M(K N *, int);                                \
     long ref_held_add_##N##_##M(K N *, int);                            \
     long local_##N##_##M(long), ref_local_##N##_##M(long);              \
-    long global_##N##_##M(long), ref_global_##N##_##M(long);
+    long global_##N##_##M(long), ref_global_##N##_##M(long);            \
+    long row_##N##_##M(K N *, long, long),                              \
+        ref_row_##N##_##M(K N *, long, long);                           \
+    long table_##N##_##M(long, long), ref_table_##N##_##M(long, long);
 
 #define PAIR_MEMBERS(A, TA, B, TB)                                      \
     MEMBER(struct, p_##A##B, x, A)                                      \
@@ -87,11 +90,13 @@ long walk(struct link *), ref_walk(struct link *);
 long walk_pairs(struct link *), ref_walk_pairs(struct link *);
 long walk_count(struct link *), ref_walk_count(struct link *);
 int apply(struct ops *, int), ref_apply(struct ops *, int);
+long odd_row(long, long), ref_odd_row(long, long);
 
 /* a member's checks for each value: written, read, stepped and added
    to on two records filled alike, its offset, the second element's
-   read, written and added to across a call, and a local's and a
-   global's write and read */
+   read, written and added to across a call, a local's and a global's
+   write and read, and an element's by a variable index through a
+   pointer, the records compared after, and on a global */
 #define CHECK_MEMBER(K, N, M, A)                                        \
     for (int k = 0; k < COUNT; ++k) {                                   \
         K N a[2], b[2];                                                 \
@@ -124,6 +129,11 @@ int apply(struct ops *, int), ref_apply(struct ops *, int);
                ref_local_##N##_##M(v));                                 \
         report("global_" #N "_" #M, v, global_##N##_##M(v),             \
                ref_global_##N##_##M(v));                                \
+        report("row_" #N "_" #M, v, row_##N##_##M(a, k % 2, v),         \
+               ref_row_##N##_##M(b, k % 2, v));                         \
+        same("row_" #N "_" #M, v, a, b, sizeof a);                      \
+        report("table_" #N "_" #M, v, table_##N##_##M(k % 3, v),        \
+               ref_table_##N##_##M(k % 3, v));                          \
     }
 
 #define CHECK_PAIR(A, TA, B, TB)                                        \
@@ -148,8 +158,9 @@ twice(int x)
         return 2 * x;
 }
 
-/* the walks over lists of each length up to eight, and the call
-   through a member */
+/* the walks over lists of each length up to eight, the call through
+   a member, and the row on a label at an offset no multiple of the
+   access's size */
 static void
 test_links(void)
 {
@@ -173,6 +184,10 @@ test_links(void)
         for (int k = 0; k < COUNT; ++k)
                 report("apply", values[k], apply(&o, (int) values[k]),
                        ref_apply(&o, (int) values[k]));
+
+        for (int k = 0; k < COUNT; ++k)
+                report("odd_row", values[k], odd_row(k % 4, values[k]),
+                       ref_odd_row(k % 4, values[k]));
 }
 
 int
