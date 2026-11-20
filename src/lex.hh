@@ -132,19 +132,24 @@ enum class tok_t {
 // quotes included for a character constant or a string literal; an
 // integer token's value is read from it by the parser, a literal's by
 // the functions below.  A floating token's value is not read: the
-// parser refuses its use.
+// parser refuses its use.  packed is whether a #pragma pack sets a
+// packing where the token stands: clang packs a record whose list
+// opens there, which rcc does not do yet.
 struct token_t
 {
     tok_t kind;
     std::string_view text;
     location_t where;
+    bool packed;
 };
 
 // The whole preprocessed text as tokens, ending in one eof, which
 // stands just past the last token, so that an error at the end of the
 // text names a place the text has.  The file name is the location of
-// the first line until a line marker says otherwise.  Throws error_t on a character no token starts with, a
-// malformed constant, or a malformed line marker.
+// the first line until a line marker says otherwise.  Every other
+// directive is skipped, but a #pragma pack sets the packing of the
+// tokens after it.  Throws error_t on a character no token starts
+// with, a malformed constant, or a malformed line marker.
 std::vector< token_t > tokenize(std::string_view source, std::string_view file);
 
 // The encoding prefix of a character constant or a string literal,

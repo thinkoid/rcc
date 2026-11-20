@@ -21,10 +21,20 @@ namespace rcc {
 
 namespace {
 
+// A packing a #pragma pack(push) saved, under the label the push names
+// or none, for the pop that restores it.
+struct saved_packing_t
+{
+    std::string_view label;
+    bool packed;
+};
+
 // Where the lexer stands.  The column of a position is its distance
 // from origin, the offset of the first byte of the current line.
 // system_header is what the last line marker said of the text after
-// it.
+// it.  packed is whether the #pragma pack in force sets a packing,
+// saved the packings its pushes saved; unread is whether one was in a
+// form rcc does not read, after which any packing may be in force.
 struct state_t
 {
     std::string_view source;
@@ -33,6 +43,9 @@ struct state_t
     int line;
     std::size_t origin;
     bool system_header;
+    bool packed;
+    std::vector< saved_packing_t > saved;
+    bool unread;
 };
 
 struct keyword_t
@@ -230,11 +243,12 @@ not_yet(const location_t &where, std::string_view construct)
 
 // The token of the given length at the current position.  A token
 // never spans a newline, so its location is that of its first byte.
+// A packing rcc cannot read leaves every token after it packed.
 token_t
 take(state_t &st, tok_t kind, std::size_t length)
 {
     const token_t tok { kind, st.source.substr(st.pos, length),
-                        location_of(st, st.pos) };
+                        location_of(st, st.pos), st.packed || st.unread };
 
     st.pos += length;
 
@@ -378,10 +392,162 @@ system_header_flag(state_t &st)
     return system;
 }
 
+// The next word of a directive, the blanks before it skipped: a run of
+// identifier characters, which is a name or a number, or one other
+// character; empty at the end of the line.
+std::string_view
+directive_word(state_t &st)
+{
+    skip_line_blanks(st);
+    const std::size_t first = st.pos;
+
+    if (is_ident_char(at(st, st.pos)))
+        while (is_ident_char(at(st, st.pos)))
+            ++st.pos;
+    else if (st.pos < st.source.size() && at(st, st.pos) != '\n')
+        ++st.pos;
+
+    return st.source.substr(first, st.pos - first);
+}
+
+// The arguments of a #pragma pack, each one word: ( ), or a word and
+// more after commas, in parentheses that end the line.  False for any
+// other spelling, which the arguments then do not hold.
+bool
+pack_arguments(state_t &st, std::vector< std::string_view > &args)
+{
+    if (directive_word(st) != "(")
+        return false;
+
+    std::string_view word = directive_word(st);
+    if (word != ")")
+        for (;;) {
+            if (word.empty() || !is_ident_char(word[0]))
+                return false;
+            args.push_back(word);
+
+            word = directive_word(st);
+            if (word == ")")
+                break;
+            if (word != ",")
+                return false;
+
+            word = directive_word(st);
+        }
+
+    return directive_word(st).empty();
+}
+
+// Whether a number of a #pragma pack sets a packing: any but zero,
+// which sets none, as clang reads 0 and 0x0.
+bool
+sets_packing(std::string_view number)
+{
+    return number.find_first_not_of("0xX") != std::string_view::npos;
+}
+
+// The packing saved last under the label, or the end of the saved
+// ones where none is.
+std::vector< saved_packing_t >::iterator
+saved_under(state_t &st, std::string_view label)
+{
+    for (auto it = st.saved.end(); it != st.saved.begin(); --it)
+        if (it[-1].label == label)
+            return it - 1;
+
+    return st.saved.end();
+}
+
+// pack(pop) restores the packing saved last, and changes nothing with
+// nothing saved, as clang has it; pack(pop, label) the one saved
+// under the label, which apply_pack() found saved, dropping those
+// saved after it.
+void
+pop_packing(state_t &st, std::string_view label)
+{
+    if (st.saved.empty())
+        return;
+
+    const auto it = label.empty() ? st.saved.end() - 1 : saved_under(st, label);
+    st.packed = it->packed;
+    st.saved.erase(it, st.saved.end());
+}
+
+// The arguments of a #pragma pack in clang's forms: none, a packing of
+// none; a number; show, which changes nothing; push or pop, then a
+// label, a number, or both in that order.  push saves the packing in
+// force, pop restores one, and the number then sets the packing.
+// clang -E writes the pragma as the source does, a macro in it
+// unexpanded, where clang expands it, so a name is a label only where
+// it can be nothing else: before a number after push, and after pop
+// where a push saved a packing under it.  A bare name where a number
+// may stand may be a macro for one.  False for that and for any other
+// form.
+bool
+apply_pack(state_t &st, const std::vector< std::string_view > &args)
+{
+    if (args.empty() || (args.size() == 1 && is_digit(args[0][0]))) {
+        st.packed = !args.empty() && sets_packing(args[0]);
+        return true;
+    }
+
+    if (args.size() == 1 && args[0] == "show")
+        return true;
+
+    if ((args[0] != "push" && args[0] != "pop") || args.size() > 3)
+        return false;
+
+    const bool push = args[0] == "push";
+    const bool labelled = args.size() > 1 && !is_digit(args[1][0]);
+    const std::size_t numbers = args.size() - 1 - (labelled ? 1 : 0);
+    if (numbers > 1 || (numbers == 1 && !is_digit(args.back()[0])))
+        return false;
+
+    const std::string_view label = labelled ? args[1] : std::string_view();
+    const bool only_label =
+        push ? numbers == 1 : saved_under(st, label) != st.saved.end();
+    if (labelled && !only_label)
+        return false;
+
+    if (push)
+        st.saved.push_back(saved_packing_t { label, st.packed });
+    else
+        pop_packing(st, label);
+
+    if (numbers == 1)
+        st.packed = sets_packing(args.back());
+
+    return true;
+}
+
+// A #pragma pack sets the packing of the tokens after it, which clang
+// applies to a record whose list opens there (shape.md chapter 2).
+// After a form rcc does not read, any packing may be in force, so
+// every token after it is packed.
+void
+pack_pragma(state_t &st)
+{
+    std::vector< std::string_view > args;
+
+    if (!pack_arguments(st, args) || !apply_pack(st, args))
+        st.unread = true;
+}
+
+// A directive other than a line marker: a #pragma pack is read, every
+// other one skipped whole.
+void
+directive(state_t &st)
+{
+    if (directive_word(st) == "pragma" && directive_word(st) == "pack")
+        pack_pragma(st);
+
+    skip_rest_of_line(st);
+}
+
 // A line opening with '#'.  A line marker, # N "name" flags or
 // #line N "name", sets the file and the number of the next line, and
 // says anew whether the text after it is a system header's; any other
-// directive (a #pragma) is skipped whole.
+// is a directive().
 void
 line_marker(state_t &st)
 {
@@ -390,7 +556,7 @@ line_marker(state_t &st)
     skip_line_keyword(st);
 
     if (!is_digit(at(st, st.pos))) {
-        skip_rest_of_line(st);
+        directive(st);
         return;
     }
 
@@ -1071,7 +1237,7 @@ punctuator(state_t &st)
 std::vector< token_t >
 tokenize(std::string_view source, std::string_view file)
 {
-    state_t st { source, 0, file, 1, 0, false };
+    state_t st { source, 0, file, 1, 0, false, false, { }, false };
     std::vector< token_t > tokens;
 
     for (skip_blanks(st); st.pos < source.size(); skip_blanks(st)) {

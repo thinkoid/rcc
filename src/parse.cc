@@ -4749,8 +4749,9 @@ va_record(parser_t &p)
 // yet.  An attribute after the keyword or after the list is said of the
 // record: one of the kind dropped is dropped, and one that marks,
 // packed and aligned among them, changes the layout, which rcc does
-// not honour yet.  An attribute where the specifier names a type
-// without a list is dropped.
+// not honour yet; so does a #pragma pack that sets a packing where the
+// list opens (shape.md chapter 2).  An attribute where the specifier
+// names a type without a list is dropped.
 type_t
 struct_or_union_specifier(parser_t &p)
 {
@@ -4773,6 +4774,7 @@ struct_or_union_specifier(parser_t &p)
     record_t &r = tag ? *tag_in(p.scopes.back(), tag->text)->record :
                         new_record(p, keyword, { });
 
+    const token_t &open = peek(p);
     members(p, r);
     const token_t &close =
         expect(p, tok_t::rbrace, "expected '}' at end of member list");
@@ -4780,6 +4782,9 @@ struct_or_union_specifier(parser_t &p)
     const token_t *after = attribute_specifier_list(p);
     if (const token_t *marking = before ? before : after)
         mark_not_yet(r, attribute_words(*marking) + " on " + record_words(r));
+
+    if (open.packed)
+        mark_not_yet(r, "pragma 'pack' on " + record_words(r));
 
     if (r.not_yet.empty())
         lay_out(close, r);

@@ -56,7 +56,8 @@ it.
 
 `tokenize(source, file)` returns the whole file as a vector of
 tokens. A token is a kind, its spelling as a view into the source,
-and a location. The lexer keeps no state and knows no names: an
+a location, and whether a packing is in force where it stands. The
+lexer takes nothing from the parser and knows no names: an
 identifier is an identifier, and whether it names a type is the
 parser's question, answered by scope lookup. A vector gives the
 parser arbitrary lookahead for free. A string or character token
@@ -112,6 +113,31 @@ whether it came from a system header; the parser asks it of a `static
 inline` function (chapter 5). The other flags change nothing. A
 program may write a line marker itself, and `clang -E` writes it into
 its output again, flags included, as a marker of its own.
+
+Every other directive is skipped but `#pragma pack`, which sets the
+packing of the tokens after it. The lexer reads `clang`'s forms,
+each of the label and the number optional:
+
+- `pack(n)` sets a packing of n, and `pack()` and `pack(0)` none;
+- `pack(push, label, n)` saves the packing in force, under the
+  label, then sets n;
+- `pack(pop, label, n)` restores the packing saved last, or the one
+  saved under the label, dropping those saved after it, then sets n;
+  with nothing saved it restores nothing;
+- `pack(show)` changes nothing.
+
+`clang` packs a record whose list opens while a packing is in force,
+so the `{` of such a list makes a record rcc does not lay out yet
+(chapter 3). `clang -E` writes a pragma as the source does, a macro
+in it unexpanded, where `clang` expands it, so a name is a label only
+where it can be nothing else: before a number after `push`, and after
+`pop` where a push saved a packing under it. A bare name where a
+number may stand, `pack(N)`, `pack(push, N)` or a `pop` of a name no
+push saved, may be a macro for the number, and the lexer does not
+read it. After a form the lexer does not read, any packing may be in
+force, so every token after it is packed. A header that packs its
+own records and pops the packing leaves the program's records laid
+out.
 
 The keywords are C17's, those outside the subset included, so the
 parser refuses each by its name. GNU C's spellings in the
@@ -186,6 +212,7 @@ the layout, and the parser folds `sizeof`, `_Alignof` and `offsetof`
 from it. A record whose list holds a construct rcc does not lay out
 yet is complete and has no layout: a bit-field, an anonymous member,
 an attribute that marks, `packed` and `aligned` among them, a
+packing of `#pragma pack` where the list opens (chapter 2), a
 flexible array member, a list of no member, or a member of a type
 rcc does not use yet. It keeps the words of the first such construct,
 and a use that needs its layout is refused by them, as a not-yet
@@ -1271,8 +1298,9 @@ value but the aarch64 `va_list`, and its value where a record is
 wanted), a function whose parameter list is `(...)` alone, the layout
 of a struct or a
 union with a bit-field, an anonymous member, an attribute that marks,
-`packed` and `aligned` among them, a flexible array member, no
-member, or a member of a type rcc does not use yet (chapter 3), C23's
+`packed` and `aligned` among them, a packing of `#pragma pack`, a
+flexible array member, no member, or a member of a type rcc does not
+use yet (chapter 3), C23's
 compatibility of two records of one tag, floating point, `_Bool` and
 `__int128` (each type is declared; a pointer to one is an ordinary
 pointer, and a use that needs the object is refused; a floating

@@ -769,25 +769,24 @@ probe, or one beside it, compares the object's bytes.
 
 * Lexer
 
-** TODO A =#pragma= is skipped, =pack= among them
+** TODO =#pragma weak= and =#pragma GCC visibility= are skipped
 
-=clang -E= passes a =#pragma= on, and the lexer skips every directive
-that is no line marker (=line_marker()= in =src/lex.cc=). So under
-=#pragma pack(1)= rcc lays ~struct s { char c; int i; }~ out in 8
-bytes where =clang= lays it out in 5, with no diagnostic: an object
-of the record passed between the two compilers' code is read at two
-layouts. The =packed= attribute, the same request in another
-spelling, leaves the record a not-yet (=docs/shape.md= chapter 5).
-=#pragma weak= and =#pragma GCC visibility= are skipped the same way.
-=docs/choices.md= has the row, J.3.12(10), fixed by no pin.
+=clang -E= passes a =#pragma= on, and the lexer reads =pack= alone
+(=docs/shape.md= chapter 2). Under =#pragma weak f= =clang= writes
+=.weak f= where rcc writes =.globl f= for a definition, and adds
+=.weak f= for a symbol only declared: rcc's reference to an undefined
+weak function fails at link, and its weak definition is strong.
+=#pragma weak a = f= gives =clang='s =a = f=, and rcc writes no =a=.
+Under =#pragma GCC visibility push(hidden)= =clang= writes =.hidden=
+for each symbol the region declares and reaches a hidden object
+directly, not through the GOT: an executable links and runs the
+same, and a shared object exports what =clang= hides.
 
-Fix: a record declared under a packing is a not-yet, as one under
-the attribute is, and a header that sets a packing around its own
-records and pops it still parses. A pragma that changes nothing rcc
-writes stays skipped; =weak= and =visibility= are decided one by one.
+Fix: decide each pragma: write its directives, or refuse it as not
+yet.
 
-Check: a program of =tests/error= that takes ~sizeof~ of a record
-under =#pragma pack(1)=, with its pin; the row names it.
+Check: a program for each, pinned in =tests/cost= if written, in
+=tests/error= if refused; the J.3.12(10) row names them.
 
 ** TODO A digit separator is a missing quote
 

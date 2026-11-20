@@ -1,0 +1,2 @@
+tests/error/pragma-pack-name.c:20:16: error: not yet: pragma 'pack' on struct 'header'
+status 1
