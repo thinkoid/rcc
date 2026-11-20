@@ -489,6 +489,33 @@ comma_effects:
 	ret
 	.cfi_endproc
 	.size	comma_effects, .-comma_effects
+	.globl	sixteen_units
+	.type	sixteen_units, @function
+sixteen_units:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	%rsi, -16(%rbp)
+	movq	-8(%rbp), %rax
+	movq	-16(%rbp), %rcx
+	movq	(%rcx), %rdx
+	movq	%rdx, (%rax)
+	movq	8(%rcx), %rdx
+	movq	%rdx, 8(%rax)
+	movq	16(%rcx), %rdx
+	movq	%rdx, 16(%rax)
+	movq	24(%rcx), %rdx
+	movq	%rdx, 24(%rax)
+.Lsixteen_units.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	sixteen_units, .-sixteen_units
 	.bss
 	.globl	origin
 	.type	origin, @object

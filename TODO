@@ -314,21 +314,6 @@ Fix: none taken; a check of each access's width in the listings of
 Check: a compiler that reads a =char= local at 4 bytes fails =make
 test=.
 
-** TODO No test copies a record aligned to 16, or runs the copy's loop at a unit of 8
-
-A record with a ~long double~ member is aligned to 16 and copied in
-units of 8 on both targets; no cost program and no probe holds one,
-and a copy in units of the alignment, which moved 4 bytes of each 16
-on aarch64, passed every test. The =copies= probe's largest record
-aligned to 8 is of eight units, which is written out, so neither
-target's copy loop is run at a unit of 8.
-
-Fix: such a record in =struct-copy.c= and in the =copies= probe;
-=a8_72= and =a8_200= among the probe's sized records.
-
-Check: a compiler that copies in units of 16 fails =make test= on
-aarch64, and the probe's count rises with 0 differ on both targets.
-
 * Parser
 
 ** TODO A static or a weak alias is not yet

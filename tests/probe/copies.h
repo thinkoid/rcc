@@ -8,8 +8,11 @@
    copy writes.  The records are defined here, so the main, rcc's build
    and clang's see one set: an array of char, short, int or long, of
    each size from 1 to 64 bytes that is a multiple of its element's,
-   so of each alignment from 1 to 8, and records with padding between
-   their members or after the last, and unions. */
+   so of each alignment from 1 to 8, and arrays of long of 9 and 25
+   elements, past eight units of 8; records with padding between their
+   members or after the last, one of them aligned to 16 by a long
+   double, which the copy takes in units of 8 as it takes any record's
+   bytes, no member read; and unions. */
 
 /* the records of one array member: the name, by alignment and size,
    the element's type and the count of elements */
@@ -54,7 +57,8 @@
     X(a4_52, int, 13) X(a4_56, int, 14) X(a4_60, int, 15)               \
     X(a4_64, int, 16) X(a8_8, long, 1) X(a8_16, long, 2)                \
     X(a8_24, long, 3) X(a8_32, long, 4) X(a8_40, long, 5)               \
-    X(a8_48, long, 6) X(a8_56, long, 7) X(a8_64, long, 8)
+    X(a8_48, long, 6) X(a8_56, long, 7) X(a8_64, long, 8)               \
+    X(a8_72, long, 9) X(a8_200, long, 25)
 /* clang-format on */
 
 /* the records with padding: the name and the members */
@@ -66,6 +70,7 @@
         X(p_lc, long l; char c;)                 \
         X(p_cl, char c; long l;)                 \
         X(p_cil, char c; int i; char d; long l;) \
+        X(p_ldi, long double d; int x;)          \
         X(p_nest, char c; struct p_ci in; short s;)
 
 /* the unions: the name and the members */

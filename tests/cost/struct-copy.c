@@ -20,7 +20,9 @@
    two register pointers, each step made before or after the copy.
    comma_effects() is the copy as the right operand of a comma whose
    own value is not wanted: in a for's third clause, as a statement and
-   under a cast to void.
+   under a cast to void.  sixteen_units() copies a record of 32
+   bytes at an alignment of 16, a long double and an int, through two
+   pointers: a unit is at most 8 bytes, so the copy is four units.
 
    On x86-64 each unit is the load of its width into a scratch
    register, the zero-extending movzbl or movzwl for 1 and 2 bytes, and
@@ -58,7 +60,9 @@
    -16(%rbp) in the clause and addl $1, -12(%rbp) in the other two,
    then the same two movl units, from (%rax,%rcx,8) and 4(%rax,%rcx,8)
    into corner in the clause, and between corner and origin in the
-   other two.
+   other two.  sixteen_units() is four movq units after the two
+   pointers' loads, movq (%rcx), %rdx; movq %rdx, (%rax) and the same
+   at 8, 16 and 24.
 
    On aarch64 each unit is the plain load of its width into x17 and its
    store, lowest address first, and no call: through() ldr w17, [x1];
@@ -95,7 +99,9 @@
    of n in the other two, then the two units, ldr w17, [x0] and ldr
    w17, [x0, #4] into corner's page through x16 in the clause after add
    x0, x0, w1, sxtw #3, and between corner and origin through x16 in
-   the other two. */
+   the other two.  sixteen_units() is four units of 8, ldr x17, [x1];
+   str x17, [x0] and the same at #8, #16 and #24, not units of the
+   alignment's 16 bytes. */
 struct point
 {
         int x, y;
@@ -281,4 +287,16 @@ comma_effects(struct point *points, int n)
         (void) (n++, corner = origin);
 
         return n;
+}
+
+struct sixteen
+{
+        long double d;
+        int x;
+};
+
+void
+sixteen_units(struct sixteen *to, struct sixteen *from)
+{
+        *to = *from;
 }

@@ -15,7 +15,7 @@
 #define GUARD 16
 
 /* the bytes of three objects of the largest record and the guards */
-#define BYTES (GUARD + 3 * 64 + GUARD)
+#define BYTES (GUARD + 3 * 200 + GUARD)
 
 /* the bytes of three objects of T and the guards */
 #define SPAN(T) (GUARD + 3 * sizeof(T) + GUARD)
