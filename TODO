@@ -318,6 +318,39 @@ test=.
 
 * Parser
 
+** TODO An =alias= attribute on a declaration no one uses drops its symbol
+
+~int a(void) __attribute__((__alias__("t")));~ compiles, and the
+object file has =t= and no =a=: =alias= is an attribute that marks,
+so a use of =a= in the unit is a not-yet, and with no use nothing is
+refused and nothing is written. The declaration is the symbol's
+definition, so another unit's call of =a= does not link.
+
+Fix: the alias is written where its target is defined in the unit,
+=.globl a= and =a = t=; where it is not, the declaration is the
+not-yet.
+
+Check: a program of =tests/cost= whose listing has the two lines on
+each target, and a program of two units that calls the alias.
+
+** TODO A zero-length array in a system header is an error
+
+=#include <fcntl.h>= under =_GNU_SOURCE= fails,
+"/usr/include/bits/fcntl-linux.h:370:26: error: array size must be
+greater than zero": the C library's =struct file_handle= ends in
+~unsigned char f_handle[0];~, GNU C's spelling of a flexible array
+member. The size is a constraint violation (6.7.7.3p1), and the
+headers of a system are read as they are (=docs/shape.md= chapter
+5).
+
+Fix: in a system header's text the member leaves its record with no
+layout, a not-yet, as an attribute that marks does; a use that needs
+the layout says so. In the program's own text: to decide, the error
+or the same not-yet.
+
+Check: a program that includes =fcntl.h= under =_GNU_SOURCE=
+compiles; a program of =tests/error= takes the size of such a record.
+
 ** TODO A =main= of any type compiles
 
 ~void main(void)~ compiles, and reaching its =}= returns 0; so does
@@ -594,22 +627,21 @@ at the unit's end, its object made once the record is complete.
 Check: by the decision; a row of =tests/error= or a program that
 compiles.
 
-** TODO A =static= definition after a header's =static inline= one is "not yet"
+** TODO A header's =static inline= definition under a marking attribute is not remembered as a definition
 
-A system header's =static inline= definition is accepted, its body
-skipped, and the function left with a mark and no body. A program
-that then defines a =static= function of that name gets "not yet:
-static function 'f'" at its own definition. It is a redefinition, and
-the message says something is missing: =function_definition()= asks
-whether the function has a body before it asks for the mark, and the
-skipped definition left none. Two definitions in the program's own
-source draw "redefinition of 'f'".
+A system header's =static inline= definition whose specifiers carry
+a marking attribute, ~static inline __attribute__((__always_inline__))
+int f(int x) { ... }~, leaves the attribute's words on the function,
+not the words of a skipped body. A second definition in the header
+is then accepted with no diagnostic, and one in the program draws
+"not yet: attribute 'always_inline'"; =clang= says "redefinition of
+'f'" for both (6.9.1p3).
 
-Fix: the mark of a skipped definition counts as a definition where a
-second one is met.
+Fix: the skipped definition is recorded apart from the mark, a flag
+of the function's, and =is_defined()= asks it.
 
-Check: a program of =tests/error= that marks its first definition as
-a system header's, pinned "redefinition of 'f'".
+Check: a program of =tests/error= with the header's two definitions,
+pinned "redefinition of 'f'".
 
 ** TODO A string in parentheses initializes an array of char only without braces
 

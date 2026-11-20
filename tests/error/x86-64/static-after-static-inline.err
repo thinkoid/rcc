@@ -1,0 +1,2 @@
+tests/error/static-after-static-inline.c:18:1: error: redefinition of 'twice'
+status 1

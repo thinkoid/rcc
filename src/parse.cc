@@ -3935,6 +3935,26 @@ declare_temporaries(parser_t &p, block_t &body)
     p.temporaries.reset();
 }
 
+// The words a system header's static inline definition leaves on its
+// function, whose body is skipped: a call of it, which would need the
+// body compiled, is refused by them.
+std::string
+skipped_body_words(std::string_view name)
+{
+    return "static function " + quoted(name);
+}
+
+// Whether the unit has defined the function: by a body, or by a system
+// header's definition whose body was skipped and left its words.  A
+// second definition is then a redefinition, 6.9.1p3.
+bool
+is_defined(const parser_t &p, std::size_t index)
+{
+    const function_decl_t &f = p.unit.functions[index];
+
+    return f.body || f.sym->marking == skipped_body_words(f.sym->name);
+}
+
 // The parameter type list and the body are one block, 6.9.2p10,
 // 6.8.3p2, so a local cannot redeclare a parameter there: the scope of
 // the list that makes the name a function, with its parameters and its
@@ -3956,7 +3976,7 @@ function_definition(parser_t &p,
 {
     const std::size_t index =
         declare_function(p, spec, d, { nullptr, { }, spec.marking });
-    if (p.unit.functions[index].body)
+    if (is_defined(p, index))
         fail(*d.name, "redefinition of " + quoted(d.name->text));
 
     const symbol_t &sym = *p.unit.functions[index].sym;
@@ -4019,14 +4039,12 @@ header_function_definition(parser_t &p,
     const std::size_t index =
         declare_function(p, spec, d, { nullptr, { }, spec.marking });
 
-    const std::string words = "static function " + quoted(d.name->text);
-
-    symbol_t &sym = *p.scopes.back().names.at(d.name->text);
-    if (p.unit.functions[index].body || sym.marking == words)
+    if (is_defined(p, index))
         fail(*d.name, "redefinition of " + quoted(d.name->text));
 
+    symbol_t &sym = *p.scopes.back().names.at(d.name->text);
     if (sym.marking.empty())
-        sym.marking = words;
+        sym.marking = skipped_body_words(d.name->text);
 
     expect(p, tok_t::lbrace, "expected '{' before function body");
     skip_to_closing_brace(p);
