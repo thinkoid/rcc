@@ -1,0 +1,2 @@
+tests/error/pragma-visibility.c:6:9: error: not yet: pragma 'GCC visibility'
+status 1

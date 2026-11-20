@@ -149,7 +149,8 @@ struct token_t
 // the first line until a line marker says otherwise.  Every other
 // directive is skipped, but a #pragma pack sets the packing of the
 // tokens after it.  Throws error_t on a character no token starts
-// with, a malformed constant, or a malformed line marker.
+// with, a malformed constant, a malformed line marker, or a #pragma
+// weak or GCC visibility, which are not yet.
 std::vector< token_t > tokenize(std::string_view source, std::string_view file);
 
 // The encoding prefix of a character constant or a string literal,

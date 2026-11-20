@@ -533,13 +533,32 @@ pack_pragma(state_t &st)
         st.unread = true;
 }
 
-// A directive other than a line marker: a #pragma pack is read, every
-// other one skipped whole.
+// A #pragma: pack is read; weak, which makes a symbol weak or names
+// an alias of it, and GCC visibility, which hides the symbols a region
+// declares, are not yet, refused at their name, since rcc writes each
+// symbol strong and visible (shape.md chapter 2); any other is
+// skipped.
+void
+pragma(state_t &st)
+{
+    const std::string_view name = directive_word(st);
+    const location_t where = location_of(st, st.pos - name.size());
+
+    if (name == "pack")
+        pack_pragma(st);
+    else if (name == "weak")
+        not_yet(where, "pragma 'weak'");
+    else if (name == "GCC" && directive_word(st) == "visibility")
+        not_yet(where, "pragma 'GCC visibility'");
+}
+
+// A directive other than a line marker: a #pragma is read, every other
+// one skipped whole.
 void
 directive(state_t &st)
 {
-    if (directive_word(st) == "pragma" && directive_word(st) == "pack")
-        pack_pragma(st);
+    if (directive_word(st) == "pragma")
+        pragma(st);
 
     skip_rest_of_line(st);
 }

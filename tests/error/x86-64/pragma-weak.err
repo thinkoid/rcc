@@ -1,0 +1,2 @@
+tests/error/pragma-weak.c:5:9: error: not yet: pragma 'weak'
+status 1

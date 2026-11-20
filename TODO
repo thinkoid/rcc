@@ -807,25 +807,6 @@ head's words.
 
 * Lexer
 
-** TODO =#pragma weak= and =#pragma GCC visibility= are skipped
-
-=clang -E= passes a =#pragma= on, and the lexer reads =pack= alone
-(=docs/shape.md= chapter 2). Under =#pragma weak f= =clang= writes
-=.weak f= where rcc writes =.globl f= for a definition, and adds
-=.weak f= for a symbol only declared: rcc's reference to an undefined
-weak function fails at link, and its weak definition is strong.
-=#pragma weak a = f= gives =clang='s =a = f=, and rcc writes no =a=.
-Under =#pragma GCC visibility push(hidden)= =clang= writes =.hidden=
-for each symbol the region declares and reaches a hidden object
-directly, not through the GOT: an executable links and runs the
-same, and a shared object exports what =clang= hides.
-
-Fix: each is refused as not yet, by name, until its directives are
-written.
-
-Check: a program of =tests/error= for each, with its pin; the
-J.3.12(10) row names them.
-
 ** TODO The dialect rcc preprocesses in is =clang='s default
 
 rcc runs =clang -E= with no =-std=, so the dialect is the one
@@ -840,4 +821,19 @@ names the dialect; the parser's branch for the separator goes.
 
 Check: =tests/driver= shows the flag, and a program of =tests/error=
 with ~1'000~ has its pin.
+
+** TODO ~#pragma GCC visibility push(default)~ is refused
+
+Every =#pragma GCC visibility= is "not yet", the push of =default=
+among them. Default visibility is what rcc writes, so a region under
+it is translated as the program asks, and a header that brackets its
+declarations with ~push(default)~ and =pop=, the compiler's own
+=unwind.h= among them, is refused for nothing.
+
+Fix: the lexer keeps the visibility in force, as it keeps a packing,
+and a declaration made under one that is not =default= is the
+not-yet.
+
+Check: a program that includes =unwind.h= compiles, and the pin of
+=pragma-visibility= is refused at its declaration.
 

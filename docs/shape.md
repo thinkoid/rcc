@@ -116,9 +116,9 @@ inline` function (chapter 5). The other flags change nothing. A
 program may write a line marker itself, and `clang -E` writes it into
 its output again, flags included, as a marker of its own.
 
-Every other directive is skipped but `#pragma pack`, which sets the
-packing of the tokens after it. The lexer reads `clang`'s forms,
-each of the label and the number optional:
+Every other directive is skipped but three pragmas. `#pragma pack`
+sets the packing of the tokens after it. The lexer reads `clang`'s
+forms, each of the label and the number optional:
 
 - `pack(n)` sets a packing of n, and `pack()` and `pack(0)` none;
 - `pack(push, label, n)` saves the packing in force, under the
@@ -140,6 +140,15 @@ read it. After a form the lexer does not read, any packing may be in
 force, so every token after it is packed. A header that packs its
 own records and pops the packing leaves the program's records laid
 out.
+
+`#pragma weak` and `#pragma GCC visibility` are not yet, refused at
+their name. `clang` writes `.weak` for a symbol `weak` names and an
+alias for `weak a = f`, and `.hidden` for each symbol a `visibility`
+region hides; rcc writes every symbol strong and visible, so a weak
+reference left undefined would fail at link and a shared object
+would export what `clang` hides. A program that includes a header
+holding either, `clang`'s `unwind.h` among them, is refused at the
+header's pragma.
 
 The keywords are C17's, those outside the subset included, so the
 parser refuses each by its name. GNU C's spellings in the
@@ -1403,7 +1412,8 @@ an initializer list, a local's brace initializer, a scalar's or an
 array's, and a local array's initializer of any kind, `char s[] =
 "..."` among them, a declaration through a typedef of function
 type, a UTF-8 character constant, `u8'x'`, a character constant of
-more than one character and no prefix, the checks of the qualifiers
+more than one character and no prefix, `#pragma weak` and `#pragma
+GCC visibility` (chapter 2), the checks of the qualifiers
 (`const`
 and `volatile` are dropped, so an assignment to a `const` object and
 a conversion that discards a qualifier draw no diagnostic, and
