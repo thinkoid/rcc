@@ -39,6 +39,10 @@ namespace {
 // The program rcc runs, found on PATH.
 constexpr const char *clang = "clang";
 
+// The dialect clang preprocesses in, C17 with GNU's extensions, named
+// so that it does not move with clang's default (shape.md chapter 1).
+constexpr const char *dialect = "-std=gnu17";
+
 constexpr const char *usage =
     "usage: rcc [-w] [-S|-c] [-target name] [-o out] file.c";
 
@@ -429,7 +433,7 @@ assemble(const options_t &opts, std::string_view text)
 int
 drive(const options_t &opts)
 {
-    const auto pp = capture(clang_with(opts, { "-E", opts.file }));
+    const auto pp = capture(clang_with(opts, { dialect, "-E", opts.file }));
     if (pp.status != 0)
         return pp.status;
 

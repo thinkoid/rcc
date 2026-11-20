@@ -2494,9 +2494,6 @@ integer_constant(const token_t &t)
         value = value * base + digit;
     }
 
-    if (i < s.size() && s[i] == '\'')
-        not_yet(t, "digit separator");
-
     const suffix_t suffix = integer_suffix(t, s.substr(i));
 
     const auto type = integer_constant_type(value, base == 10, suffix);

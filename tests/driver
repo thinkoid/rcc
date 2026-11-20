@@ -14,6 +14,8 @@
 #     object      -c -o - is a usage error: exit status 2, the usage
 #                 line on standard error, nothing on standard output
 #     link        -o - for a link is the same usage error
+#     dialect     -S runs clang -E with -std=gnu17, as a clang earlier
+#                 on PATH, which the script writes, records it
 #
 # No case may leave a file named -.  The runs are made in the work
 # directory, so a file rcc writes by mistake lands there and not in
@@ -57,7 +59,7 @@ myname=${0##*/}
 workdir=build/driver
 
 # the cases, in the order they run
-cases="assembly object link"
+cases="assembly object link dialect"
 
 # the program the cases compile, and the assembly -S -o writes for it,
 # both in the work directory
@@ -67,6 +69,13 @@ assembly=driver.s
 # the exit status of a usage error, and the start of the usage line
 usage_status=2
 usage_line='usage: rcc'
+
+# the flag that names the dialect of clang -E; the directory of the
+# clang that records its arguments, and the file it records them in,
+# both in the work directory
+dialect_flag=-std=gnu17
+shims=bin
+arguments=clang-arguments
 
 # diagnostics in one language
 LC_ALL=C
@@ -183,6 +192,40 @@ check_usage()
 
 
 ##########
+# check_dialect(): -S runs clang -E with the dialect's flag; a clang
+# put before the real one on PATH appends its arguments to a file and
+# runs the real one; prints what differed, or nothing
+check_dialect()
+{
+    real=$(command -v clang)
+    if [ -z "$real" ]; then
+        echo "not run: no clang on PATH"
+        return
+    fi
+
+    if ! mkdir -p "$workdir/$shims" || ! : > "$workdir/$arguments" ||
+       ! printf '#!/bin/sh\necho "$*" >> %s\nexec %s "$@"\n' \
+            "$(pwd)/$workdir/$arguments" "$real" > "$workdir/$shims/clang" ||
+       ! chmod +x "$workdir/$shims/clang"; then
+        echo "not run: cannot write the recording clang"
+        return
+    fi
+
+    if ! logged env PATH="$(pwd)/$workdir/$shims:$PATH" \
+            "$rcc" -S -o "$assembly" "$source"; then
+        echo "not run: -S -o $assembly failed"
+        return
+    fi
+
+    cat "$workdir/$arguments" >> "$log"
+    if ! grep -e '-E ' "$workdir/$arguments" |
+         grep -q -e "$dialect_flag"; then
+        echo "clang -E ran without $dialect_flag"
+    fi
+}
+
+
+##########
 # check_case(): runs one case and prints its line, "pass" or what
 # differed; reports 0 when the case passed, 1 otherwise
 check_case()
@@ -203,6 +246,10 @@ check_case()
 
         link)  # nor is an executable
             failure=$(check_usage -o -)
+            ;;
+
+        dialect)  # the preprocessor's dialect is named
+            failure=$(check_dialect)
             ;;
     esac
 

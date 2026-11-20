@@ -1,0 +1,2 @@
+tests/error/digit-separator.c:7:17: error: missing terminating ' character
+status 1

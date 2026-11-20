@@ -639,28 +639,6 @@ it is inside a parameter declaration, not only right after the name.
 Check: the two prototypes say "not yet: variable length array" at
 the =*=, and ~int x[*];~ is pinned in =tests/error= with its message.
 
-** TODO =static= in the declaration of a =for= is an error
-
-~for (static int i = 0; i < 3; i++)~ fails with "'static' in the
-declaration of a 'for'". C23 has no such constraint: C17's 6.8.5p3
-allowed only =auto= and =register= there, and N3220's 6.8.6 says
-nothing of the storage class; =gcc= and =clang= take it with
-=-std=c23=. The program is valid in the dialect rcc cites and wrong
-in the one it preprocesses in. A function declared there is taken,
-as C23 and =clang= take it; =extern= and =static= are refused.
-=static_assert= is of the same kind: a keyword in C23 and a macro of
-=assert.h= in the dialect rcc preprocesses in, which is how rcc has
-it; with C23 the lexer takes the keyword.
-=u8= is of the same kind too: a =u8= string is an array of =char=
-in that dialect and of =char8_t= in C23, and ~u8'x'~ is C23's alone,
-refused as a not-yet.
-
-Fix: the error stays: the dialect is C17's (the Lexer chapter's
-entry on the dialect), and =shape.md= cites C17's 6.8.5p3.
-
-Check: the pin of =static-in-for= is the error, and the document
-names the paragraph.
-
 ** TODO An incomplete record of internal linkage is refused where it is declared
 
 ~static struct S s; struct S { int x; };~ is refused at the first
@@ -805,22 +783,18 @@ head.
 Check: that program compiles, and a call of =f= is refused by the
 head's words.
 
+** TODO A function declared in the declaration of a =for= is taken
+
+~for (int f(void); ;)~ compiles with no diagnostic. C17's 6.8.5p3,
+which =shape.md= cites for the =static= refused there, allows only
+objects of storage class =auto= or =register=; C23 allows the
+function, and the dialect is C17's.
+
+Fix: refused as =static= is, an error.
+
+Check: the program is pinned in =tests/error=.
+
 * Lexer
-
-** TODO The dialect rcc preprocesses in is =clang='s default
-
-rcc runs =clang -E= with no =-std=, so the dialect is the one
-=clang= has by default, C17 with GNU extensions today, and it moves
-when that default does. ~1'000~ shows it: C23's digit separator
-(6.4.4.2) is an open character constant to =clang= and to the lexer,
-"missing terminating ' character", and the parser's "not yet: digit
-separator" is never reached.
-
-Fix: =-std=gnu17= on the command line of =clang -E=; =shape.md=
-names the dialect; the parser's branch for the separator goes.
-
-Check: =tests/driver= shows the flag, and a program of =tests/error=
-with ~1'000~ has its pin.
 
 ** TODO ~#pragma GCC visibility push(default)~ is refused
 

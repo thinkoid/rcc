@@ -54,6 +54,11 @@ column in the preprocessed text: after a macro use on the line it
 drifts from the source, and `clang -E` carries nothing to correct
 it.
 
+`clang -E` runs with `-std=gnu17`, so the dialect rcc preprocesses in
+is C17 with GNU's extensions and does not move with `clang`'s
+default. C23's digit separator, `1'000` (6.4.4.2), is thus an open
+character constant, an error of the lexer.
+
 ## 2. The lexer
 
 `tokenize(source, file)` returns the whole file as a vector of
@@ -867,8 +872,9 @@ statement. An array of unknown size takes its size from its
 initializer and is an error without one (6.7.1p8). A function declared
 `static` in a block is an error (6.7.2p13), and `static` on a
 parameter (6.7.7.4p2), in a type name and in the declaration of a
-`for` is one too, the last by C17's rule (its 6.8.5p3), which C23
-drops.
+`for` is one too, the last by C17's rule, the dialect's (chapter 1):
+its 6.8.5p3 allows only `auto` and `register` there, and C23 drops
+it.
 
 A block may declare a function, and an object `extern`. The name has
 the block's scope (6.2.1p4) and denotes an entity of linkage: a
