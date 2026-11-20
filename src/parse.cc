@@ -3889,11 +3889,10 @@ require_complete_record(const token_t &name, const type_t &t)
 // which require_completed_definitions() checks.  An attribute that
 // marks the object, said on any of its declarations, is one rcc would
 // have to honour, and is not yet.  An object of a record incomplete
-// where it is declared is an error with an initializer, 6.7.11p4, and
-// in a tentative definition of internal linkage, 6.9.3p3; a tentative
-// definition of external linkage takes the record as it is at the end
-// of the unit, 6.9.3p2, which require_completed_definitions() checks
-// then.
+// where it is declared is an error with an initializer, 6.7.11p4; a
+// tentative definition takes the record as it is at the end of the
+// unit, 6.9.3p2, which require_completed_definitions() checks then, of
+// internal linkage as of external, as an array of unknown size is.
 void
 require_definable(parser_t &p,
                   const token_t &name,
@@ -3906,7 +3905,7 @@ require_definable(parser_t &p,
     require_honoured(name, sym.type);
 
     if (incomplete_record_in(sym.type)) {
-        if (initialized || sym.linkage == linkage_t::internal)
+        if (initialized)
             require_complete_record(name, sym.type);
 
         p.incomplete_definitions.push_back({ &sym, &name });
@@ -3926,8 +3925,9 @@ require_definable(parser_t &p,
 // unit, which must be complete, and laid out for rcc to make the object.
 // One of internal linkage is not of an incomplete type, p3.  p3 says
 // the declared type; rcc takes the composite type at the end of the
-// unit, so static int a[]; static int a[3]; declares the int [3] it
-// does elsewhere, 6.2.7p5, and an array no declaration sizes is an
+// unit, so static struct s x; struct s { int i; }; defines an object of
+// the struct, and static int a[]; static int a[3]; declares the int [3]
+// it does elsewhere, 6.2.7p5, and an array no declaration sizes is an
 // error at the name of its first tentative definition, where one of
 // external linkage is one element.  The check comes before
 // complete_tentative_arrays() gives it that element.

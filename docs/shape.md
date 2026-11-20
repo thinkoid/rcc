@@ -657,10 +657,11 @@ static one, one at file scope and one declared `extern`: c1 sizes and
 aligns its slot and its data by the layout, and its address and its
 size are taken. One of an incomplete record is an error where it has
 no linkage, by the end of its declarator (6.7.1p8), and so is one with
-an initializer (6.7.11p4) or a tentative definition of internal
-linkage (6.9.3p3); a tentative definition of external linkage takes
-the record as it is at the end of the unit (6.9.3p2), which must then
-be complete. A local's initializer that is a record's value is the
+an initializer (6.7.11p4); a tentative definition takes the record as
+it is at the end of the unit (6.9.3p2), which must then be complete.
+One of internal linkage is no exception: rcc asks p3's complete type
+of the record at the end of the unit, as of an array below. A local's
+initializer that is a record's value is the
 declaration and the record's assignment of the value to the object
 (6.7.11p14), the copy, and one that is a list is stores at run time,
 which the paragraph on a local's list below describes. Anything else

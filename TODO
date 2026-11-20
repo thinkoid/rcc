@@ -583,21 +583,6 @@ it is inside a parameter declaration, not only right after the name.
 Check: the two prototypes say "not yet: variable length array" at
 the =*=, and ~int x[*];~ is pinned in =tests/error= with its message.
 
-** TODO An incomplete record of internal linkage is refused where it is declared
-
-~static struct S s; struct S { int x; };~ is refused at the first
-declaration, "incomplete type", where an array of unknown size of
-internal linkage is judged at the unit's end, by the type the unit's
-declarations give it together, and =clang= takes both. 6.9.3p3 asks
-that a tentative definition of internal linkage not be of an
-incomplete type, and says nothing of when.
-
-Fix: a record follows the array: judged at the unit's end, its
-object made once the record is complete.
-
-Check: the program above compiles, and one whose record is never
-completed is an error at the unit's end, pinned.
-
 ** TODO A header's =static inline= definition under a marking attribute is not remembered as a definition
 
 A system header's =static inline= definition whose specifiers carry
