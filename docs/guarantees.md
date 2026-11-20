@@ -226,7 +226,12 @@ x86-64: per unit the store of the immediate 0 at its width into the
 slot, `movb`, `movw`, `movl` or `movq`, `movl $0, -8(%rbp)`, with no
 register; over eight units G18's loop of one index, `movq $-200,
 %rax; movq $0, (%rbp,%rax,1); addq $8, %rax; jne` back
-(`backend.md` 6.6).
+(`backend.md` 6.6). On aarch64: per unit the store of the zero
+register at its width, `strb wzr`, `strh wzr`, `str wzr` or `str
+xzr`, `str wzr, [x29, #16]`, with no other register; over eight
+units a loop of three instructions whatever the size, `str xzr,
+[x0], #8; subs x16, x16, #1; b.ne` after `add x0, x29, #16; mov x16,
+#25` (`aarch64.md` 6.6).
 
 ## Not in this list
 

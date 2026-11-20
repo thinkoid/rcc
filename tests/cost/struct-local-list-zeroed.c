@@ -22,7 +22,22 @@
    %al, -20(%rbp), movl %eax, -16(%rbp) and movb %al, -12(%rbp);
    point_empty() the two movl $0 alone; and union_shorter() movw $0,
    -4(%rbp); movw $0, -2(%rbp), then movb $97, -4(%rbp), the rest of
-   the union left zero. */
+   the union left zero.
+
+   On aarch64 each unit is the store of the zero register at its
+   width into the slot, lowest address first, and takes no other
+   register: point_fewer() str wzr, [x29, #20]; str wzr, [x29, #24],
+   then x's load and its store at #20; wide_fewer() str xzr at #24,
+   #32 and #40, then a and a + 1 stored at #24 and #32; large_fewer()
+   the slot's address and the count first, add x0, x29, #16; mov x16,
+   #25, then the loop of three instructions, str xzr, [x0], #8; subs
+   x16, x16, #1; b.ne back, and mov x0, #1; str x0, [x29, #16] and the
+   2 at #24 after it; padded_full() three str wzr at #24 to #32, the
+   padding after each char among them, then the members' stores, strb
+   w0, [x29, #24], str w0, [x29, #28] and strb w0, [x29, #32];
+   point_empty() the two str wzr alone; and union_shorter() strh wzr,
+   [x29, #16]; strh wzr, [x29, #18], then mov w0, #97; strb w0, [x29,
+   #16], the rest of the union left zero. */
 struct point
 {
         int x, y;

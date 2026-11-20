@@ -193,6 +193,13 @@ save area, and the list is built from it (G19), so a list made by
 rcc's code is read by `clang`'s and by the C library's `vsnprintf`,
 which the `variadics` probe checks; on aarch64 a list handed to a
 call is the address of a copy the caller makes.
+Then a local record initialized by a list: the parser walks the list
+as an object of static storage's is walked and stores each value at
+its place in the local, in the list's order, and each generator
+zeroes the whole object first, padding included, in the copy's units
+(G20), so every byte the list leaves out is zero, which the `zeroing`
+probe checks, the members against `clang`'s and the padding against
+zero.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/`, the cost corpus over `tests/cost/`
 and the error corpus over `tests/error/`, the programs rcc refuses

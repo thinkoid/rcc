@@ -1352,8 +1352,7 @@ walk from 27 by a conditional of two void calls.
 
 ## 11. Not yet
 
-The zeroing of a local record a list initializes, in aarch64's
-generator, and each use that reads or writes a record whole (chapter
+Each use that reads or writes a record whole (chapter
 5: a `register` one, a record by value but the aarch64 `va_list`, and
 its value where a record is wanted, a scalar's place in a local's
 list among them), a string literal for an array in a local's list, a

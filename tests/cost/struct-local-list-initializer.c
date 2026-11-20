@@ -23,7 +23,23 @@
    called() the two movl $0, then call f@PLT; movl %eax, -8(%rbp) and
    call g@PLT; movl %eax, -4(%rbp); and counted() movl $0, -12(%rbp);
    movl $0, -8(%rbp), then movl $0, -12(%rbp) and movl $3, -8(%rbp),
-   all before the loop's head. */
+   all before the loop's head.
+
+   On aarch64 the zeroing is struct-local-list-zeroed's, the store of
+   the zero register at each unit of the slot, and each value is then
+   stored at its offset, a constant through a register and a zero from
+   the zero register: full() str wzr, [x29, #16]; str wzr, [x29, #20],
+   then mov w0, #1; str w0, [x29, #16] and the 2 at #20; nested() four
+   str wzr from #16 to #28, then the four values there; arrays() four
+   str wzr into each record of 16 bytes, then for n mov w0, #97; strb
+   w0, [x29, #16] and the 1 and the 2 at #20 and #24, its third element
+   left zero, and for m the 98 at #32 and its three elements at #36 to
+   #44; first() strh wzr, [x29, #16]; strh wzr, [x29, #18], then mov
+   w0, #120; strb w0, [x29, #16] and the two others at #17 and #18;
+   called() the two str wzr, then bl f; str w0, [x29, #16] and bl g;
+   str w0, [x29, #20]; and counted() str wzr, [x29, #20]; str wzr,
+   [x29, #24] after n's, then str wzr, [x29, #20] and mov w0, #3; str
+   w0, [x29, #24], all before the loop's head. */
 struct point
 {
         int x, y;

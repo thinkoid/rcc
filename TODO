@@ -786,20 +786,20 @@ Fix: the comment says every conversion but an array's decay.
 Check: =grep -n 'cast_t {' src/parse.cc= prints the sites the
 comments name.
 
-** TODO aarch64: a local record's initializer list is not yet
+** TODO A local array's list, a designator and a string for a member array are not yet
 
-~struct point q = { 1, 2 };~ in a block compiles on x86-64: the
-declaration zeroes the object and the listed values are stored (G20).
-aarch64's generator refuses the zeroed declaration, "c1: not yet: a
-local's initializer list".
+A local record takes its initializer list (G20). Three forms beside
+it are refused by name: a local array's list, an array of records'
+among them, "not yet: array initializer"; a designator, ~.x = 1~ and
+~[2] = 3~, in any list, "not yet: designator"; and a string literal
+for a member array of =char= in a local's list, whose bytes need a
+copy's row that arrays do not have.
 
-Fix: aarch64's row of the zeroing, in the copy's units, stores of
-the zero register and the loop above eight; =aarch64.md= 6.6 and
-chapter 9, and G20's aarch64 sentence.
+Fix: none taken; each is built when a program needs it, the array's
+list on the record's zeroing and stores.
 
-Check: =struct-local-list-initializer= and
-=struct-local-list-zeroed= are pinned on aarch64, and the =zeroing=
-probe runs there.
+Check: a cost program for each form on both targets, and the
+=zeroing= probe with a local array.
 
 * Lexer
 

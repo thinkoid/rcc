@@ -4562,6 +4562,70 @@ copy_record(state_t &s, const assign_t &a, const record_t &r)
     copy_object(s, to, from, r);
 }
 
+// The zeroing unrolled, 6.6: the store of the zero register at the
+// unit's width at each unit, lowest address first, str wzr, [x29, #16];
+// str wzr, [x29, #20], each operand formed just before its store.
+void
+zero_units(state_t &s, const address_t &to, long size, int unit)
+{
+    const int width = unit * 8;
+
+    for (long k = 0; k < size; k += unit) {
+        auto target = to;
+        target.displacement += static_cast< int >(k);
+        insn(s, store_of(width), { zero(width), operand(s, target, width) });
+    }
+}
+
+// The zeroing of more than eight units, 6.6, copy_loop()'s: the slot's
+// address in a register of the zeroing's own, then the count of units
+// in x16, in copy_loop()'s order, and a loop of three instructions
+// whatever the size, the store of the zero register by a post-indexed
+// access that steps the address, lowest address first, and the count
+// down to zero: add x0, x29, #16; mov x16, #25; then str xzr, [x0],
+// #8; subs x16, x16, #1; b.ne back.
+void
+zero_loop(state_t &s, int displacement, const units_t &units)
+{
+    const auto target = owned_address(s, slot_address(displacement));
+    const reg_t t = reg_of(s, target);
+    const int width = units.unit * 8;
+
+    constant(s, x16, units.count, 64);
+
+    const int head = new_label(s);
+    place_label(s, head);
+    insn(s, store_of(width),
+         { zero(width), std::format("[{}], #{}", reg(t, 64), units.unit) });
+    insn(s, "subs", { "x16", "x16", imm(1) });
+    insn(s, "b.ne", { label_name(s.function, head) });
+
+    release(s, target);
+}
+
+// The zeroing of a local record a list initializes, G20: its whole
+// slot, padding included, in units_of() the record from the lowest
+// address up, before the first listed value is evaluated.  Each unit is
+// the store of the zero register that initialize() writes for a zero,
+// str wzr, [x29, #16], at the slot as unit_place() reaches each unit;
+// more than eight are zero_loop()'s.
+void
+zero_slot(state_t &s, int displacement, const record_t &record)
+{
+    const long size = static_cast< long >(record.size);
+    const auto units = units_of(record);
+
+    if (units.loop) {
+        zero_loop(s, displacement, units);
+        return;
+    }
+
+    const auto target =
+        unit_place(s, slot_address(displacement), size, units.unit);
+    zero_units(s, target, size, units.unit);
+    release(s, target);
+}
+
 // The effect context, chapter 6.6, Ritchie's efftab beside regtab and
 // cctab: an expression evaluated for its side effects, its value not
 // wanted.  The machine has no memory forms, so a compound assignment is
@@ -4726,7 +4790,8 @@ register_decl(state_t &s, const decl_stmt_t &d)
 // stored; the slot holds what it holds.  The initializer is the store
 // row of chapter 6.6, into the slot.  An array's slot is at the type's
 // alignment, chapter 5.1, its displacement the array's lowest address.
-// The zeroing a record's list asks of its declaration is not yet.
+// A record its list initializes is zeroed whole, zero_slot(), and the
+// statements after the declaration store the listed values (G20).
 void
 decl_stmt(state_t &s, const decl_stmt_t &d)
 {
@@ -4736,12 +4801,12 @@ decl_stmt(state_t &s, const decl_stmt_t &d)
         return;
     }
 
-    if (d.zeroed)
-        not_yet("a local's initializer list");
-
     const int displacement =
         allocate(s, size_of(sym->type), align_of(sym->type));
     s.slots.emplace(sym, displacement);
+
+    if (d.zeroed)
+        zero_slot(s, displacement, *as< record_type_t >(sym->type).record);
 
     if (!d.init)
         return;
