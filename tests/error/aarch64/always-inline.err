@@ -1,0 +1,2 @@
+tests/error/always-inline.c:4:34: warning: attribute 'always_inline' dropped: rcc inlines nothing
+status 0

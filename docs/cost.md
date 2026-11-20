@@ -109,7 +109,10 @@ the listing of its twin written so (`void-return`). A pointer to
 `void` and a pointer to a function converted as if by assignment,
 which GNU C takes, are the conversion a cast makes, so a program
 compiles to the listing of its twin with the cast written
-(`void-function-pointer`).
+(`void-function-pointer`). Nor does the attribute `always_inline`,
+which rcc drops with a warning: it asks that each call be inlined, c1
+inlines none and writes the call, so a program compiles to the
+listing of its twin without it (`always-inline`).
 
 What the compiler may do:
 

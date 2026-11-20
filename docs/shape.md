@@ -518,6 +518,10 @@ optimizer, asks for a diagnostic, or describes what a compiler that
 calls each function as written does not depend on, `nonnull`, `pure`,
 `format`, `may_alias` and their like, is dropped; so is `noinline`,
 which asks for what rcc does to every call, since it inlines none.
+`always_inline` asks that each call be inlined, and `gcc` and `clang`
+refuse a call they cannot inline; it is dropped too, with a warning
+that rcc inlines nothing (chapter 8), and the call is written, as a
+compiler that does not inline writes it.
 Any other, known or not, marks what it is said of: a typedef through
 one names a not-yet type of its own, a marked function or object at
 file scope is refused where an expression names it, and on a local or
@@ -1248,7 +1252,9 @@ the warnings, and no warning changes the exit status. The warnings:
   it (chapter 5);
 - `return E;` of a void `E` in a void function (chapter 5);
 - a pointer to `void` and a pointer to a function converted as if by
-  assignment (chapter 5).
+  assignment (chapter 5);
+- the attribute `always_inline`, dropped, since rcc inlines nothing
+  (chapter 5).
 
 Exit status: 0; 1 for a diagnosed error or a failed system call; 2
 for a usage error; 3 for an internal error, a construct c1 does not

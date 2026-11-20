@@ -2642,6 +2642,17 @@ skip_attribute_arguments(parser_t &p)
     expect(p, tok_t::rparen, "expected ')' after attribute arguments");
 }
 
+// always_inline asks that each call of the function be inlined, and
+// gcc and clang refuse a call they cannot inline.  rcc inlines none
+// and writes the call, as a compiler that does not inline does, so the
+// attribute is dropped, with a warning that says so (shape.md chapter
+// 5).
+bool
+is_always_inline(std::string_view attribute)
+{
+    return attribute == "always_inline";
+}
+
 // One attribute of a list: empty, a name, or a name and its arguments
 // in parentheses.  The name's token when the attribute marks, or null.
 const token_t *
@@ -2658,6 +2669,11 @@ attribute(parser_t &p)
 
     if (peek(p).kind == tok_t::lparen)
         skip_attribute_arguments(p);
+
+    if (is_always_inline(attribute_name(name))) {
+        warn(p, name, attribute_words(name) + " dropped: rcc inlines nothing");
+        return nullptr;
+    }
 
     return is_dropped(attribute_name(name)) ? nullptr : &name;
 }

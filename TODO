@@ -331,19 +331,6 @@ aarch64, and the probe's count rises with 0 differ on both targets.
 
 * Parser
 
-** TODO =always_inline= marks
-
-A function declared =always_inline= is "not yet: attribute
-'always_inline'" at its use or its definition. rcc inlines nothing,
-and =gcc= and =clang= make the attribute an error where they cannot
-inline the call; rcc writing the call is what a compiler at =-O0=
-does for a function not declared inline.
-
-Fix: dropped, with a warning that rcc inlines nothing: the call is
-written.
-
-Check: a cost program with the call, and the warning pinned.
-
 ** TODO A static or a weak alias is not yet
 
 ~static int a(void) __attribute__((alias("t")));~ and
@@ -544,22 +531,6 @@ it is inside a parameter declaration, not only right after the name.
 Check: the two prototypes say "not yet: variable length array" at
 the =*=, and ~int x[*];~ is pinned in =tests/error= with its message.
 
-** TODO A header's =static inline= definition under a marking attribute is not remembered as a definition
-
-A system header's =static inline= definition whose specifiers carry
-a marking attribute, ~static inline __attribute__((__always_inline__))
-int f(int x) { ... }~, leaves the attribute's words on the function,
-not the words of a skipped body. A second definition in the header
-is then accepted with no diagnostic, and one in the program draws
-"not yet: attribute 'always_inline'"; =clang= says "redefinition of
-'f'" for both (6.9.1p3).
-
-Fix: the skipped definition is recorded apart from the mark, a flag
-of the function's, and =is_defined()= asks it.
-
-Check: a program of =tests/error= with the header's two definitions,
-pinned "redefinition of 'f'".
-
 ** TODO Pointers to two integer types of one representation convert with no diagnostic
 
 ~long *p; long long *q = p;~ compiles, and so does an assignment of
@@ -686,6 +657,37 @@ one.
 Fix: a definition counts as a use.
 
 Check: that program is refused at the attribute, pinned.
+
+** TODO A header's =static inline= definition under a marking attribute is not remembered as a definition
+
+A system header's =static inline= definition whose specifiers carry
+a marking attribute, ~static inline __attribute__((__artificial__))
+int f(int x) { ... }~, leaves the attribute's words on the function,
+not the words of a skipped body. A second definition in the header
+is then accepted with no diagnostic, and one in the program draws
+"not yet: attribute 'artificial'"; =clang= says "redefinition of
+'f'" for both (6.9.1p3).
+
+Fix: the skipped definition is recorded apart from the mark, by the
+flag a body the parser stopped in sets, and =is_defined()= asks it
+alone.
+
+Check: a program of =tests/error= with the header's two definitions,
+pinned "redefinition of 'f'".
+
+** TODO The warning of a dropped =always_inline= is printed for a system header's text
+
+~#include <stdbit.h>~ alone prints 56 warnings, "attribute
+'always_inline' dropped: rcc inlines nothing", one for each function
+the header declares so. A system header's text is read as it is
+(=docs/shape.md= chapter 5), and its =static inline= bodies are
+skipped whatever the attribute.
+
+Fix: no warning where the attribute's name is a system header's
+text.
+
+Check: a program with the attribute under a system header's line
+marker compiles with no word, pinned.
 
 * Lexer
 
