@@ -424,9 +424,10 @@ failed, and the scripts' headers give the rule. Each script of
 program or a compiler that a signal kills leaves its status in the
 log and no core file.
 
-Each program under `tests/cost/` is one row of chapter 2 or one rule
-of chapter 1, and its opening comment says what its listing must
-show on each target, in a paragraph per target. Its pin,
+Each program under `tests/cost/` is one row of chapter 2, one rule
+of chapter 1 or one row of `choices.md`, and its opening comment
+says what its listing must show on each target, in a paragraph per
+target. Its pin,
 `tests/cost/<target>/<name>.s`, is the text
 `./rcc -target <target> -S` writes, whole. The script assembles each
 program with `./rcc -target <target> -c`, which hands `clang` the

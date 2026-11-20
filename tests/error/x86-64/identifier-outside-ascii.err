@@ -1,0 +1,2 @@
+tests/error/identifier-outside-ascii.c:3:8: error: unexpected character 0xc3
+status 1

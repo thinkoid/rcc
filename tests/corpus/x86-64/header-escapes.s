@@ -12,19 +12,19 @@ escape_name:
 	movl	-4(%rbp), %eax
 	subl	$7, %eax
 	cmpl	$6, %eax
-	ja	.Lescape_name.8
-	leaq	.Lescape_name.9(%rip), %rcx
+	ja	.Lescape_name.9
+	leaq	.Lescape_name.10(%rip), %rcx
 	jmp	*(%rcx,%rax,8)
 	.data
 	.p2align 3
-.Lescape_name.9:
+.Lescape_name.10:
 	.quad	.Lescape_name.2
 	.quad	.Lescape_name.3
 	.quad	.Lescape_name.4
 	.quad	.Lescape_name.5
 	.quad	.Lescape_name.6
-	.quad	.Lescape_name.8
 	.quad	.Lescape_name.7
+	.quad	.Lescape_name.8
 	.text
 .Lescape_name.2:
 	leaq	.Ls0(%rip), %rax
@@ -45,6 +45,9 @@ escape_name:
 	leaq	.Ls5(%rip), %rax
 	jmp	.Lescape_name.1
 .Lescape_name.8:
+	leaq	.Ls6(%rip), %rax
+	jmp	.Lescape_name.1
+.Lescape_name.9:
 	movq	$0, %rax
 	jmp	.Lescape_name.1
 .Lescape_name.1:
@@ -200,7 +203,7 @@ main:
 	jle	.Lmain.5
 	leaq	names(%rip), %rax
 	movq	%rax, -40(%rbp)
-	leaq	.Ls6(%rip), %rax
+	leaq	.Ls7(%rip), %rax
 	movq	%rax, -48(%rbp)
 	movq	-40(%rbp), %rdi
 	movq	-48(%rbp), %rsi
@@ -217,7 +220,7 @@ main:
 	addl	$1, -24(%rbp)
 	jmp	.Lmain.2
 .Lmain.4:
-	leaq	.Ls7(%rip), %rax
+	leaq	.Ls8(%rip), %rax
 	movq	%rax, -72(%rbp)
 	leaq	names(%rip), %rax
 	movq	%rax, -80(%rbp)
@@ -237,7 +240,7 @@ main:
 	call	printf@PLT
 	leaq	names(%rip), %rax
 	movq	%rax, -104(%rbp)
-	leaq	.Ls8(%rip), %rax
+	leaq	.Ls9(%rip), %rax
 	movq	%rax, -112(%rbp)
 	movq	-104(%rbp), %rdi
 	movq	-112(%rbp), %rsi
@@ -331,13 +334,15 @@ main:
 .Ls4:
 	.string	"VTAB"
 .Ls5:
-	.string	"RETURN"
+	.string	"FORMFEED"
 .Ls6:
-	.string	" "
+	.string	"RETURN"
 .Ls7:
-	.string	"%s; 1988 has %d days, 1900 has %d\n"
+	.string	" "
 .Ls8:
-	.string	"TAB NEWLINE BELL RETURN VTAB BACKSPACE"
+	.string	"%s; 1988 has %d days, 1900 has %d\n"
+.Ls9:
+	.string	"TAB NEWLINE BELL RETURN VTAB BACKSPACE FORMFEED"
 	.data
 	.type	month_days, @object
 	.size	month_days, 52
@@ -357,9 +362,9 @@ month_days:
 	.long	30
 	.long	31
 	.type	text, @object
-	.size	text, 13
+	.size	text, 15
 text:
-	.string	"a\tb\nc\007d\re\013f\010"
+	.string	"a\tb\nc\007d\re\013f\010g\014"
 	.bss
 	.type	names, @object
 	.size	names, 64

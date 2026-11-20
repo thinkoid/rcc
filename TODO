@@ -316,32 +316,22 @@ Fix: none taken; a check of each access's width in the listings of
 Check: a compiler that reads a =char= local at 4 bytes fails =make
 test=.
 
-** TODO Five rows of =docs/choices.md= are fixed by no pin
-
-Each choice is what the compiler does, and nothing fails if it
-changes:
-
-- J.3.3(4): ~int main(int argc, char **argv, char **envp)~ and ~void
-  main(void)~ compile, and reaching the =}= returns 0. So does a
-  =main= of any other type, ~char *main(void)~, with no diagnostic;
-  5.1.2.3.2p1 is no constraint, so none is required. Whether rcc
-  refuses one is to decide.
-- J.3.4(1): ~int café;~ is "unexpected character 0xc3", and
-  =tests/error/unexpected-character.c= pins =@= alone.
-- J.3.4(2): every character of an identifier is significant, and no
-  pin has two names that differ past the 63rd character.
-- J.3.5(3): =tests/corpus/header-escapes.c= pins =\a=, =\b=, =\t=,
-  =\n=, =\r= and =\v=, and not =\f=.
-- J.3.5(4), (6), (8): ="é"= is =.string "\303\251"=, and
-  =tests/corpus/header-wide.c= pins its size alone.
-
-Fix: a pin for each: a corpus program whose =main= takes =envp=; an
-error pin of an identifier outside ASCII; a cost pin of two long
-names, one of =\f= and one of ~char s[] = "é";~.
-
-Check: each of the five rows names its pin.
-
 * Parser
+
+** TODO A =main= of any type compiles
+
+~void main(void)~ compiles, and reaching its =}= returns 0; so does
+a =main= of any other type, ~char *main(void)~ and ~long main(long,
+long, long, long)~ among them, with no diagnostic. 5.1.2.3.2p1 gives
+the two forms and "some other implementation-defined manner", and is
+no constraint, so no diagnostic is required. The row J.3.3(4) of
+=docs/choices.md= says any function type, and its pin,
+=tests/corpus/main-envp.c=, holds =envp= and the =}= alone.
+
+Fix: none taken; decide whether rcc refuses a =main= that is neither
+of the two forms nor the one with =envp=, then pin the choice.
+
+Check: the row names a pin for what the decision says.
 
 ** TODO Assignment to a const object is not diagnosed
 

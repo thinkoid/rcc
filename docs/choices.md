@@ -36,17 +36,17 @@ point there. A row fixed by none has its entry in `TODO`.
 | J.3 | Clause | x86-64 | aarch64 | Fixed by |
 |---|---|---|---|---|
 | J.3.2(1) | 3.13, 5.1.1.3 | `file:line:column: error: message` on standard error, the first error fatal, exit status 1; a warning in the same form, `warning` for `error` (`shape.md` chapters 7 and 8) | the same | every pin of `tests/error/`: `undeclared-name.c`, and `warning-before-error.c` for a warning |
-| J.3.3(4) | 5.1.2.3.2 | any function type: a definition of `main` is compiled as written, `int main(int argc, char **argv, char **envp)` and `void main(void)` among them, and reaching its `}` returns 0 | the same | none |
-| J.3.4(1) | 6.4.2 | none: an identifier is ASCII letters, digits and `_`; a character outside ASCII is an error, and so is a universal character name, which the preprocessor writes as its UTF-8 | the same | none |
-| J.3.4(2) | 5.2.5.2, 6.4.2 | all: the symbol is the whole name | the same | none |
+| J.3.3(4) | 5.1.2.3.2 | any function type: a definition of `main` is compiled as written, `int main(int argc, char **argv, char **envp)` and `void main(void)` among them, and reaching its `}` returns 0 | the same | `tests/corpus/main-envp.c`, for `envp` and the `}` |
+| J.3.4(1) | 6.4.2 | none: an identifier is ASCII letters, digits and `_`; a character outside ASCII is an error, and so is a universal character name, which the preprocessor writes as its UTF-8 | the same | `tests/error/identifier-outside-ascii.c` |
+| J.3.4(2) | 5.2.5.2, 6.4.2 | all: the symbol is the whole name | the same | `tests/cost/long-names.c` |
 | J.3.5(1) | 3.7 | 8 | the same | the `braces` probe |
 | J.3.5(2) | 5.2.1 | ASCII for the basic character set, `'A'` is 65; past it, J.3.5(6) | the same | `tests/cost/volatile.c` |
-| J.3.5(3) | 5.2.3 | `\a` 7, `\b` 8, `\f` 12, `\n` 10, `\r` 13, `\t` 9, `\v` 11 | the same | `tests/corpus/header-escapes.c`, all but `\f` |
-| J.3.5(4) | 6.2.5 | a byte of the character's UTF-8, read as plain `char`: `"é"[0]` is -61 | `"é"[0]` is 195 | `tests/cost/widen.c` for the read; none for the byte |
+| J.3.5(3) | 5.2.3 | `\a` 7, `\b` 8, `\f` 12, `\n` 10, `\r` 13, `\t` 9, `\v` 11 | the same | `tests/corpus/header-escapes.c` |
+| J.3.5(4) | 6.2.5 | a byte of the character's UTF-8, read as plain `char`: `"é"[0]` is -61 | `"é"[0]` is 195 | `tests/cost/widen.c` for the read, `tests/cost/utf8-string.c` for the byte |
 | J.3.5(5) | 6.2.5, 6.3.1.1 | `signed char` | `unsigned char` | `tests/cost/widen.c`, `tests/cost/string.c`, the `straight` probe |
-| J.3.5(6) | 6.2.9, 6.4.4.5 | UTF-8: the text's bytes as written, `"é"` is `\303\251` | the same | `tests/corpus/header-wide.c`, by the size of `"é"` alone |
+| J.3.5(6) | 6.2.9, 6.4.4.5 | UTF-8: the text's bytes as written, `"é"` is `\303\251` | the same | `tests/cost/utf8-string.c`, and `tests/corpus/header-wide.c` by the size of `"é"` |
 | J.3.5(7) | 6.2.9, 6.4.4.5 | UTF-32, a code point per element of `wchar_t`, which is `int`: `L'é'` is 233 | the same, of `wchar_t`, which is `unsigned int` | `tests/cost/wide-string.c`, `tests/corpus/header-wide.c` |
-| J.3.5(8) | 6.4.4.5, 5.1.1.2 | the identity: the source is UTF-8, and a literal of no prefix keeps its bytes | the same | as J.3.5(6) |
+| J.3.5(8) | 6.4.4.5, 5.1.1.2 | the identity: the source is UTF-8, and a literal of no prefix keeps its bytes | the same | `tests/cost/utf8-string.c` |
 | J.3.5(9) | 6.4.4.5 | none: two characters or more, `'ab'`, are not yet, and a character of more than one byte of UTF-8, `'é'`, is an error | the same | `tests/error/multi-character-constant.c`, `tests/error/character-too-large.c` |
 | J.3.5(10) | 6.4.4.5 | none, an error: two characters, `L'ab'`; a character of two UTF-16 units after `u`, `u'😀'`; an escape past the element's width | the same | `tests/error/wide-character-multiple.c`, `tests/error/wide-character-too-large.c`, `tests/error/wide-escape-out-of-range.c` |
 | J.3.5(11) | 6.4.4.5 | no locale: the source's UTF-8 decoded to the code point | the same | `tests/cost/wide-string.c` |

@@ -7,19 +7,19 @@
    DEC + 1 elements, February's one more in a leap year, and
    year_days() sums them over a loop from JAN to DEC.
 
-   The program names the escapes of "a\tb\nc\ad\re\vf\b", counts the
+   The program names the escapes of "a\tb\nc\ad\re\vf\bg\f", counts the
    days of 1988, 1900 and 2000, and checks each result with strcmp or
    ==, and that an enum boolean is unsigned, so one that holds -1 is no
    less than NO.  It writes the line "TAB NEWLINE BELL RETURN VTAB
-   BACKSPACE; 1988 has 366 days, 1900 has 365" and exits 35, the 29
-   days of February 1988 and the six escapes, or exits 100 plus the
-   number of the first check that failed.
+   BACKSPACE FORMFEED; 1988 has 366 days, 1900 has 365" and exits 36,
+   the 29 days of February 1988 and the seven escapes, or exits 100
+   plus the number of the first check that failed.
 
-   Under rcc and under clang -O2 it prints the line and exits 35:
+   Under rcc and under clang -O2 it prints the line and exits 36:
    nothing here is undefined.
 
    On x86-64 and on aarch64 the listing must show escape_name()'s
-   switch as the direct form (backend.md 7.3), six cases from BELL, 7,
+   switch as the direct form (backend.md 7.3), seven cases from BELL, 7,
    to RETURN, 13, range 6: the first value subtracted, subl $7, %eax and
    sub w0, w0, #7, the compare with the range, unsigned, cmpl $6, %eax;
    ja and cmp w0, #6; b.hi, and a table of seven addresses; and the
@@ -38,6 +38,7 @@ enum escapes {
         TAB = '\t',
         NEWLINE = '\n',
         VTAB = '\v',
+        FORMFEED = '\f',
         RETURN = '\r'
 };
 
@@ -50,7 +51,7 @@ static int month_days[DEC + 1] = { 0,  31, 28, 31, 30, 31, 30,
 
 /* the text whose escapes the program names, and their names, a blank
    between two */
-static char text[] = "a\tb\nc\ad\re\vf\b";
+static char text[] = "a\tb\nc\ad\re\vf\bg\f";
 static char names[64];
 
 /* the name of the escape c is, or a null pointer */
@@ -63,6 +64,7 @@ escape_name(enum escapes c)
         case TAB: return "TAB";
         case NEWLINE: return "NEWLINE";
         case VTAB: return "VTAB";
+        case FORMFEED: return "FORMFEED";
         case RETURN: return "RETURN";
         }
 
@@ -120,7 +122,8 @@ main(void)
         printf("%s; 1988 has %d days, 1900 has %d\n", names, year_days(1988),
                year_days(1900));
 
-        if (strcmp(names, "TAB NEWLINE BELL RETURN VTAB BACKSPACE") != 0)
+        if (strcmp(names, "TAB NEWLINE BELL RETURN VTAB BACKSPACE FORMFEED") !=
+            0)
                 return 101;
         if (year_days(1988) != 366 || year_days(1900) != 365 ||
             year_days(2000) != 366)

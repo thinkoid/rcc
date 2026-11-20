@@ -14,21 +14,21 @@ escape_name:
 	ldr	w0, [x29, #16]
 	sub	w0, w0, #7
 	cmp	w0, #6
-	b.hi	.Lescape_name.8
-	adrp	x16, .Lescape_name.9
-	add	x16, x16, :lo12:.Lescape_name.9
+	b.hi	.Lescape_name.9
+	adrp	x16, .Lescape_name.10
+	add	x16, x16, :lo12:.Lescape_name.10
 	ldr	x16, [x16, w0, uxtw #3]
 	br	x16
 	.data
 	.p2align 3
-.Lescape_name.9:
+.Lescape_name.10:
 	.quad	.Lescape_name.2
 	.quad	.Lescape_name.3
 	.quad	.Lescape_name.4
 	.quad	.Lescape_name.5
 	.quad	.Lescape_name.6
-	.quad	.Lescape_name.8
 	.quad	.Lescape_name.7
+	.quad	.Lescape_name.8
 	.text
 .Lescape_name.2:
 	adrp	x0, .Ls0
@@ -55,6 +55,10 @@ escape_name:
 	add	x0, x0, :lo12:.Ls5
 	b	.Lescape_name.1
 .Lescape_name.8:
+	adrp	x0, .Ls6
+	add	x0, x0, :lo12:.Ls6
+	b	.Lescape_name.1
+.Lescape_name.9:
 	mov	x0, #0
 	b	.Lescape_name.1
 .Lescape_name.1:
@@ -243,8 +247,8 @@ main:
 	adrp	x0, names
 	add	x0, x0, :lo12:names
 	str	x0, [x29, #48]
-	adrp	x0, .Ls6
-	add	x0, x0, :lo12:.Ls6
+	adrp	x0, .Ls7
+	add	x0, x0, :lo12:.Ls7
 	str	x0, [x29, #56]
 	ldr	x0, [x29, #48]
 	ldr	x1, [x29, #56]
@@ -264,8 +268,8 @@ main:
 	str	w0, [x29, #36]
 	b	.Lmain.2
 .Lmain.4:
-	adrp	x0, .Ls7
-	add	x0, x0, :lo12:.Ls7
+	adrp	x0, .Ls8
+	add	x0, x0, :lo12:.Ls8
 	str	x0, [x29, #80]
 	adrp	x0, names
 	add	x0, x0, :lo12:names
@@ -288,8 +292,8 @@ main:
 	adrp	x0, names
 	add	x0, x0, :lo12:names
 	str	x0, [x29, #112]
-	adrp	x0, .Ls8
-	add	x0, x0, :lo12:.Ls8
+	adrp	x0, .Ls9
+	add	x0, x0, :lo12:.Ls9
 	str	x0, [x29, #120]
 	ldr	x0, [x29, #112]
 	ldr	x1, [x29, #120]
@@ -398,13 +402,15 @@ main:
 .Ls4:
 	.string	"VTAB"
 .Ls5:
-	.string	"RETURN"
+	.string	"FORMFEED"
 .Ls6:
-	.string	" "
+	.string	"RETURN"
 .Ls7:
-	.string	"%s; 1988 has %d days, 1900 has %d\n"
+	.string	" "
 .Ls8:
-	.string	"TAB NEWLINE BELL RETURN VTAB BACKSPACE"
+	.string	"%s; 1988 has %d days, 1900 has %d\n"
+.Ls9:
+	.string	"TAB NEWLINE BELL RETURN VTAB BACKSPACE FORMFEED"
 	.data
 	.type	month_days, @object
 	.size	month_days, 52
@@ -424,9 +430,9 @@ month_days:
 	.long	30
 	.long	31
 	.type	text, @object
-	.size	text, 13
+	.size	text, 15
 text:
-	.string	"a\tb\nc\007d\re\013f\010"
+	.string	"a\tb\nc\007d\re\013f\010g\014"
 	.bss
 	.type	names, @object
 	.size	names, 64
