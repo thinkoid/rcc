@@ -32,7 +32,10 @@ computed.
 signed left shift wraps; a signed right shift is arithmetic.
 Instruction: `shl`, `sar`, `shr` by `cl` or by an immediate, the count
 as written; the instruction masks the count to the width, on x86 and
-on aarch64.
+on aarch64. A constant count that is a multiple of the width of the
+promoted left operand is a shift by 0, the identity, and writes no
+instruction (`cost.md` chapter 0): `x << 32` on an `int` and `x >> 64`
+on a `long` are `x`, and `x << 33` keeps its instruction.
 
 **G4. Division does what the target's instruction does.** 6.5.6p6, p7.
 x86 `idiv` faults on a zero divisor and on `INT_MIN / -1`; aarch64

@@ -5,7 +5,9 @@
    and conversions all kept.  A constant on the left of + * & | ^ is the
    same, and so is a constant the parser folded to one, (2 - 2).  What
    does work stays: a * 0, whose value is not a's, & 0xffffffff on a
-   long, 0 - a, 0 << a and 1 / a.
+   long, 0 - a, 0 << a and 1 / a.  A shift's count is taken modulo the
+   width of the promoted left operand (G3), so a shift by a multiple of
+   that width is the identity, and a shift by any other count is not.
 
    On x86-64 the listing must show add_zero() to slashed_one(),
    masked_unsigned() on an unsigned, the five of a constant on the left
@@ -20,7 +22,10 @@
    row() as the product's addq %rcx, %rax and through() as movq (%rax),
    %rax, with no addq after either; called() as the call with nothing
    after it, loaded() as movl (%rax), %eax, and divided() as cltd and
-   idivl -8(%rbp) with no imull.
+   idivl -8(%rbp) with no imull.  It must show shifted_width() as
+   movl -4(%rbp), %eax alone, shifted_right_width() as movq -8(%rbp),
+   %rax alone, shifted_promoted() on a signed char as movsbl -1(%rbp),
+   %eax alone, and shifted_past() as shll $33, %eax.
 
    On aarch64 the listing must show the same functions each as ldr w0,
    [x29, #16] alone, wider_one() as ldr x0, promoted() as ldrsb w0 and
@@ -31,7 +36,10 @@
    ldr x0 alone; row() as the product's add x0, x0, x1 and through() as
    ldr x0, [x0], with no add x0, x0, #0 after either; called() as bl f
    with nothing after it, loaded() as ldr w0, [x0], and divided() as
-   sdiv w0, w0, w1 with no mul. */
+   sdiv w0, w0, w1 with no mul; shifted_width() as ldr w0, [x29, #16]
+   alone, shifted_right_width() as ldr x0 alone, shifted_promoted() as
+   ldrsb w0 alone, and shifted_past() as lsl w0, w0, #1, the immediate
+   masked to the width. */
 int
 add_zero(int a)
 {
@@ -224,4 +232,28 @@ int
 spelled(int a)
 {
         return a + (2 - 2);
+}
+
+int
+shifted_width(int a)
+{
+        return a << 32;
+}
+
+long
+shifted_right_width(long a)
+{
+        return a >> 64;
+}
+
+int
+shifted_promoted(signed char c)
+{
+        return c << 32;
+}
+
+int
+shifted_past(int a)
+{
+        return a << 33;
 }

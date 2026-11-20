@@ -1344,10 +1344,13 @@ folded_unary(unary_op_t op, const type_t &t, const expr_t &arg)
 //
 
 // Whether the constant c, the right operand of op in the type t, makes
-// op the identity (backend.md 6.4): + - | ^ << >> by 0, * and / by 1,
-// & by every bit of t's width.  c is the constant as folded and
-// converted to the operation's type, or a shift count in its own, so
-// u & -1 on an unsigned is one and l & 0xffffffff on a long is not.
+// op the identity (backend.md 6.4): + - | ^ by 0, << >> by a multiple
+// of t's width, * and / by 1, & by every bit of t's width.  c is the
+// constant as folded and converted to the operation's type, or a shift
+// count in its own, so u & -1 on an unsigned is one and l & 0xffffffff
+// on a long is not.  A count is taken modulo the width of t, the
+// promoted left operand, as the instruction masks it (G3): x << 32 on
+// an int is x, and x << 33 is no identity.
 bool
 is_identity_by(binary_op_t op, const type_t &t, const expr_t &c)
 {
@@ -1360,9 +1363,10 @@ is_identity_by(binary_op_t op, const type_t &t, const expr_t &c)
     case binary_op_t::add:
     case binary_op_t::sub:
     case binary_op_t::bit_or:
-    case binary_op_t::bit_xor:
+    case binary_op_t::bit_xor: return v == 0;
     case binary_op_t::shl:
-    case binary_op_t::shr: return v == 0;
+    case binary_op_t::shr:
+        return (bits_of(c) & unsigned(as< int_t >(t).width - 1)) == 0;
     case binary_op_t::mul:
     case binary_op_t::div: return v == 1;
     case binary_op_t::bit_and: return v == wrapped(-1, as< int_t >(t));

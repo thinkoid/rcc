@@ -99,22 +99,6 @@ it does not write.
 Check: a cost program with each form, pinned on both targets, and no
 function longer.
 
-** TODO A shift of an =int= by a multiple of its width writes its instruction
-
-~x << 32~ on an =int= is =shll $32, %eax= on x86-64, which the
-machine masks to a shift by 0, and =lsl w0, w0, #0= on aarch64. G3
-takes the count modulo the width, so the constant makes the operator
-the identity, and ~x << 0~ writes nothing.
-
-Fix: a constant count is taken modulo the width of the promoted left
-operand before the identity's rule is applied, for a shift and its
-compound form; G3's instruction sentence, "the count as written",
-says so.
-
-Check: a cost program where ~x << 32~ on an =int= and ~x >> 64~ on a
-=long= write nothing on both targets, and ~x << 33~ keeps its
-instruction.
-
 ** TODO x86-64: a register destination's right operand through a cast that keeps the bits keeps a move
 
 ~z = b - ((int *) q)[0]~ into a register variable =z=, =q= a register
@@ -192,6 +176,21 @@ Fix: find which the parser does, by a program for each, and make the
 other document say so.
 
 Check: the two passages agree with the compiler.
+
+** TODO G3's "the count as written" does not hold on aarch64
+
+G3's instruction sentence says a shift is "by =cl= or by an
+immediate, the count as written". On aarch64 the generator masks an
+immediate count to the width, since the instruction's immediate
+cannot hold more: ~x << 33~ on an =int= is =lsl w0, w0, #1=, as the
+shift's row of =docs/aarch64.md= says. x86-64 writes =shll $33,
+%eax=, and the machine masks it.
+
+Fix: G3 says the count is written as it stands on x86-64 and masked
+to the width on aarch64.
+
+Check: G3 and the row of =aarch64.md= agree with the pin of
+=add-zero='s =shifted_past()= on each target.
 
 * Cost model
 

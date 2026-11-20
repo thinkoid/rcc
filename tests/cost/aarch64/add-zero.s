@@ -790,4 +790,101 @@ spelled:
 	ret
 	.cfi_endproc
 	.size	spelled, .-spelled
+	.globl	shifted_width
+	.type	shifted_width, @function
+shifted_width:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	ldr	w0, [x29, #16]
+	b	.Lshifted_width.1
+.Lshifted_width.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	shifted_width, .-shifted_width
+	.globl	shifted_right_width
+	.type	shifted_right_width, @function
+shifted_right_width:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	ldr	x0, [x29, #16]
+	b	.Lshifted_right_width.1
+.Lshifted_right_width.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	shifted_right_width, .-shifted_right_width
+	.globl	shifted_promoted
+	.type	shifted_promoted, @function
+shifted_promoted:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	strb	w0, [x29, #16]
+	ldrsb	w0, [x29, #16]
+	b	.Lshifted_promoted.1
+.Lshifted_promoted.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	shifted_promoted, .-shifted_promoted
+	.globl	shifted_past
+	.type	shifted_past, @function
+shifted_past:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	ldr	w0, [x29, #16]
+	lsl	w0, w0, #1
+	b	.Lshifted_past.1
+.Lshifted_past.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	shifted_past, .-shifted_past
 	.section	.note.GNU-stack,"",@progbits

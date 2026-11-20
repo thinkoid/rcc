@@ -596,4 +596,77 @@ spelled:
 	ret
 	.cfi_endproc
 	.size	spelled, .-spelled
+	.globl	shifted_width
+	.type	shifted_width, @function
+shifted_width:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	-4(%rbp), %eax
+	jmp	.Lshifted_width.1
+.Lshifted_width.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	shifted_width, .-shifted_width
+	.globl	shifted_right_width
+	.type	shifted_right_width, @function
+shifted_right_width:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movq	-8(%rbp), %rax
+	jmp	.Lshifted_right_width.1
+.Lshifted_right_width.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	shifted_right_width, .-shifted_right_width
+	.globl	shifted_promoted
+	.type	shifted_promoted, @function
+shifted_promoted:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movb	%dil, -1(%rbp)
+	movsbl	-1(%rbp), %eax
+	jmp	.Lshifted_promoted.1
+.Lshifted_promoted.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	shifted_promoted, .-shifted_promoted
+	.globl	shifted_past
+	.type	shifted_past, @function
+shifted_past:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	-4(%rbp), %eax
+	shll	$33, %eax
+	jmp	.Lshifted_past.1
+.Lshifted_past.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	shifted_past, .-shifted_past
 	.section	.note.GNU-stack,"",@progbits
