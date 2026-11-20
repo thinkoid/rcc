@@ -1,0 +1,2 @@
+tests/error/flexible-union-element.c:16:19: error: array element of type union 'either', which holds a flexible array member
+status 1

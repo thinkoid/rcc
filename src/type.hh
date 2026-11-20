@@ -108,7 +108,10 @@ struct member_t
 // size and its alignment, laid out by the rule clang has for both
 // targets, unless its list holds a construct rcc does not lay out yet:
 // not_yet is then the words its use is refused with, and the record has
-// no size and no alignment, as a not-yet type has none.
+// no size and no alignment, as a not-yet type has none.  flexible says
+// that the record is a struct with a flexible array member, or a union
+// with a member of such a record, possibly through other unions, which
+// 6.7.3.2p3 keeps out of a struct and out of an array.
 struct record_t
 {
     bool is_union;
@@ -118,6 +121,7 @@ struct record_t
     long size = 0;
     int alignment = 0;
     std::string not_yet = { };
+    bool flexible = false;
 };
 
 // Whether a record has its layout: complete, and of no construct rcc

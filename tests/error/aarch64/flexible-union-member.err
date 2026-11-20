@@ -1,0 +1,2 @@
+tests/error/flexible-union-member.c:27:19: error: member 'body' of struct 'frame' has type union 'any', which holds a flexible array member
+status 1

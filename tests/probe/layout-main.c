@@ -71,6 +71,13 @@ FEW(FLOATING_TRIPLES_FUNCTIONS)
 
 RECORDS(RECORD)
 
+#define FLEXIBLE_RECORD(K, N)                      \
+        long size_##N(void), ref_size_##N(void);   \
+        long align_##N(void), ref_align_##N(void); \
+        long place_##N(void), ref_place_##N(void);
+
+FLEXIBLE(FLEXIBLE_RECORD)
+
 #define DESIGNATED(N, R, D) long designated_##N(void), ref_designated_##N(void);
 
 DESIGNATORS(DESIGNATED)
@@ -91,6 +98,15 @@ int mode_two(void), ref_mode_two(void);
                 report("array_" #N, array_##N(), ref_array_##N());          \
                 report("stride_" #N, stride_##N(two), ref_stride_##N(two)); \
                 report("place_" #N, place_##N(), ref_place_##N());          \
+        }
+
+/* a record's checks when it holds a flexible array member, which is no
+   element of an array */
+#define CHECK_FLEXIBLE(K, N)                                       \
+        {                                                          \
+                report("size_" #N, size_##N(), ref_size_##N());    \
+                report("align_" #N, align_##N(), ref_align_##N()); \
+                report("place_" #N, place_##N(), ref_place_##N()); \
         }
 
 #define CHECK_OFFSET(K, N, M) \
@@ -136,6 +152,7 @@ main(void)
         FLOATING(CHECK_FLOATING_PAIRS)
         FEW(CHECK_FLOATING_TRIPLES)
         RECORDS(CHECK_RECORD)
+        FLEXIBLE(CHECK_FLEXIBLE)
         DESIGNATORS(CHECK_DESIGNATED)
         LIST_MEMBERS(CHECK_LIST)
         report("mode_two", mode_two(), ref_mode_two());

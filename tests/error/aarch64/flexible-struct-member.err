@@ -1,0 +1,2 @@
+tests/error/flexible-struct-member.c:13:23: error: member 'payload' of struct 'frame' has type struct 'buffer', which holds a flexible array member
+status 1

@@ -655,7 +655,13 @@ is a flexible array member (p20). A member's own array of size zero,
 C's spelling of one: where a flexible array member may stand it is
 read as `[]`, with no word in a system header's text and a warning in
 the program's own, and anywhere else its size is the error it is
-(6.7.7.3p1). A member declaration with no
+(6.7.7.3p1). A struct with a flexible array member, and a union that
+holds one through its members, possibly through other unions, is no
+member of a struct, an anonymous one included, and no element of an
+array (p3): in the program's own text either is an error, at the
+member or at the array's `[`, and a system header's, as the kernel's
+netfilter headers write, is read as it is and laid out. A member
+declaration with no
 declarator declares an anonymous member where its specifier is a
 struct or a union without a tag (p15), and otherwise the tag or the
 constants of its specifier alone. In a list a system header writes,

@@ -819,6 +819,25 @@ record_words(const record_t &r)
     return kind + " " + quoted(r.tag);
 }
 
+// The record a type is when it holds a flexible array member, as
+// record_t's flexible says, or null.
+const record_t *
+flexible_record(const type_t &t)
+{
+    if (!is< record_type_t >(t) || !as< record_type_t >(t).record->flexible)
+        return nullptr;
+
+    return as< record_type_t >(t).record;
+}
+
+// The words of a record that holds a flexible array member, for the
+// refusal of one where 6.7.3.2p3 keeps it out.
+std::string
+flexible_words(const record_t &r)
+{
+    return record_words(r) + ", which holds a flexible array member";
+}
+
 // A record whose object is read or written whole: complete, 6.3.2.1p1,
 // p2, an error otherwise, and laid out, not yet otherwise.
 void
@@ -4525,12 +4544,13 @@ function_body(parser_t &p)
 // nothing when it stops at a refusal of the not-yet kind, whose words
 // go to missing.  A header defines such a function for each file that
 // includes it, and a file that never calls it does not pay for its
-// body, as for a system header's.  Only the refusal of the not-yet kind is caught,
-// so an error before it stays the error it is; the parse resumes at
-// the body's closing brace, and the text after the refusal is not
-// read.  What the body changed of the parse is undone: the scopes and
-// the statements it opened, the switches, loops and temporaries, and
-// the static objects it declared, which nothing outside it names.
+// body, as for a system header's.  Only the refusal of the not-yet
+// kind is caught, so an error before it stays the error it is; the
+// parse resumes at the body's closing brace, and the text after the
+// refusal is not read.  What the body changed of the parse is undone:
+// the scopes and the statements it opened, the switches, loops and
+// temporaries, and the static objects it declared, which nothing
+// outside it names.
 std::optional< block_t >
 inline_body(parser_t &p, std::string &missing)
 {
@@ -5120,11 +5140,13 @@ is_sized(const type_t &t)
 // defined among them, which holds no instance of itself, p3.  An array
 // of unknown size is a flexible array member, p20, which stands last,
 // p3, as member_list() checks; in a union it is an error, p3.  zero is
-// the size of such an array written as zero, or null.  A type rcc does
-// not use yet, a record that holds a
-// construct rcc does not lay out among them, leaves the record without
-// its layout, refused by the member type's words, but for one
-// is_sized() says is laid out.
+// the size of such an array written as zero, or null.  A record that
+// holds a flexible array member is no member of a struct, p3, an error
+// in the program's own text; a system header's struct is read as it is
+// and laid out.  A union with such a member holds one too.  A type rcc
+// does not use yet, a record that holds a construct rcc does not lay
+// out among them, leaves the record without its layout, refused by the
+// member type's words, but for one is_sized() says is laid out.
 void
 require_member_type(const token_t &name,
                     const type_t &t,
@@ -5150,6 +5172,17 @@ require_member_type(const token_t &name,
         if (r.is_union)
             refuse_flexible(list, "flexible array member " + quoted(name.text) +
                                       " in " + record_words(r));
+
+        r.flexible = true;
+    }
+
+    if (const record_t *inner = flexible_record(t)) {
+        if (r.is_union)
+            r.flexible = true;
+        else if (!name.where.system_header)
+            fail(name, "member " + quoted(name.text) + " of " +
+                           record_words(r) + " has type " +
+                           flexible_words(*inner));
     }
 
     if (const std::string *words = not_yet_in(t); words && !is_sized(t))
@@ -5212,9 +5245,11 @@ member_declarator(parser_t &p, const specifiers_t &spec, member_list_t &list)
 
 // A member declaration with no declarator, 6.7.3.2p2: a struct or a
 // union specifier without a tag declares an anonymous member, p15,
-// which rcc does not lay out yet.  Any other struct, union or enum
-// specifier declares its tag or its constants alone, as at file scope;
-// one of no specifier of the kind declares nothing, an error.
+// which rcc does not lay out yet, and which is no member of a struct
+// when it holds a flexible array member, p3, as require_member_type()
+// says of a named one.  Any other struct, union or enum specifier
+// declares its tag or its constants alone, as at file scope; one of no
+// specifier of the kind declares nothing, an error.
 void
 unnamed_member(const token_t &semicolon,
                const specifiers_t &spec,
@@ -5226,6 +5261,14 @@ unnamed_member(const token_t &semicolon,
     const record_t *inner = is< record_type_t >(spec.type) ?
                                 as< record_type_t >(spec.type).record :
                                 nullptr;
+    if (inner && inner->tag.empty() && inner->flexible) {
+        if (list.record.is_union)
+            list.record.flexible = true;
+        else if (!semicolon.where.system_header)
+            fail(semicolon, "anonymous member of " + record_words(list.record) +
+                                " has type " + flexible_words(*inner));
+    }
+
     if (inner && inner->tag.empty())
         mark_not_yet(list.record,
                      "anonymous " +
@@ -6203,7 +6246,9 @@ is_incomplete(const type_t &t)
 // in star; every other suffix keeps the rules of any array, so a
 // variable length array behind the parameter's pointer is not yet.
 // When member says that the first suffix is a member's own array, its
-// size may be zero, returned in zero.
+// size may be zero, returned in zero.  No element is a record that
+// holds a flexible array member, 6.7.3.2p3, in the program's own text;
+// a system header's array of one is read as it is and laid out.
 type_t
 array_declarator(parser_t &p,
                  const type_t &element,
@@ -6256,6 +6301,10 @@ array_declarator(parser_t &p,
 
         if (is_incomplete(t))
             fail(*open, "array has incomplete element type");
+
+        if (const record_t *r = flexible_record(t);
+            r && !open->where.system_header)
+            fail(*open, "array element of type " + flexible_words(*r));
 
         if (!missing.empty()) {
             t = make_not_yet(p.identities++, missing);

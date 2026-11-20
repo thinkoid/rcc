@@ -195,7 +195,11 @@ struct flexible_r
 /* clang-format off */
 #define RECORDS(X)                                                      \
     X(struct, inner) X(union, either) X(struct, nest) X(union, choice)  \
-    X(struct, tagged) X(struct, sockaddr_in) X(, va_list)               \
+    X(struct, tagged) X(struct, sockaddr_in) X(, va_list)
+
+/* the records that hold a flexible array member, which are no element
+   of an array, 6.7.3.2p3 */
+#define FLEXIBLE(X)                                                     \
     X(struct, flexible_c) X(struct, flexible_i) X(struct, flexible_l)   \
     X(struct, flexible_r) X(struct, file_handle)
 

@@ -82,6 +82,31 @@ FEW(FLOATING_TRIPLES_FUNCTIONS)
 
 RECORDS(RECORD)
 
+/* the functions of a record that holds a flexible array member, which
+   is no element of an array, 6.7.3.2p3: its size, its alignment, and
+   whether a local and a global of it are aligned, as above */
+#define FLEXIBLE_RECORD(K, N)                                              \
+        long size_##N(void)                                                \
+        {                                                                  \
+                return sizeof(K N);                                        \
+        }                                                                  \
+        long align_##N(void)                                               \
+        {                                                                  \
+                return _Alignof(K N);                                      \
+        }                                                                  \
+        char before_##N;                                                   \
+        K N global_##N;                                                    \
+        long place_##N(void)                                               \
+        {                                                                  \
+                char c;                                                    \
+                K N local;                                                 \
+                                                                           \
+                return ((unsigned long) &local % _Alignof(K N) != 0) * 2 + \
+                       ((unsigned long) &global_##N % _Alignof(K N) != 0); \
+        }
+
+FLEXIBLE(FLEXIBLE_RECORD)
+
 /* offsetof by a designator that goes into the members' records */
 #define DESIGNATED(N, R, D)            \
         long designated_##N(void)      \

@@ -1,0 +1,2 @@
+tests/error/flexible-struct-element.c:9:22: error: array element of type struct 'buffer', which holds a flexible array member
+status 1

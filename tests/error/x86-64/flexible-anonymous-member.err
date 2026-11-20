@@ -1,0 +1,2 @@
+tests/error/flexible-anonymous-member.c:11:10: error: anonymous member of struct 'frame' has type untagged struct, which holds a flexible array member
+status 1
