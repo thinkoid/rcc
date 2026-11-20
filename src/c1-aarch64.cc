@@ -1205,13 +1205,15 @@ int constant_length(long long value, int width);
 // constant met on the way, their constants summed in bytes, each scaled
 // by its own sum's stride, and at most one sum by a variable index, its
 // index, its stride and whether it is written first; the walk stops at
-// any other pointer, the base.  ((char *) p + 4 + i * 4) on an int *p
-// is p, 4, and the index i * 4 at a stride of 1.  It steps through each
-// row's decay of *q, or &*q, to q (6.5.4.2p3), p[i][2]'s row on int
-// (*p)[3] being p + i, and p[1] + 2 being p and 20; top is the first
-// sum it meets.  constants counts the sums by a constant, and written
-// the instructions the row of p + n writes for them, one by one,
-// product_length()'s.
+// any other pointer, the base, a second sum by a variable index and a
+// difference by one among them, m[i][j] on an int m[4][4] being m + i
+// and the index j, and (p - i + 1)[3] p - i and 16.  ((char *) p + 4 +
+// i * 4) on an int *p is p, 4, and the index i * 4 at a stride of 1.
+// It steps through each row's decay of *q, or &*q, to q (6.5.4.2p3),
+// p[i][2]'s row on int (*p)[3] being p + i, and p[1] + 2 being p and
+// 20; top is the first sum it meets.  constants counts the sums by a
+// constant, and written the instructions the row of p + n writes for
+// them, one by one, product_length()'s.
 struct denoted_t
 {
     const expr_t *base;
@@ -1256,6 +1258,9 @@ denoted(const expr_t &p)
 
         const bool left = is< pointer_t >(b.lhs->type);
         const auto &n = left ? *b.rhs : *b.lhs;
+        if (!is< literal_t >(n) && (b.op != binary_op_t::add || d.index))
+            return d;
+
         d.base = left ? b.lhs.get() : b.rhs.get();
 
         if (is< literal_t >(n)) {
@@ -1267,13 +1272,11 @@ denoted(const expr_t &p)
             ++d.constants;
             d.written += product_length(bytes);
         }
-        else if (b.op == binary_op_t::add && !d.index) {
+        else {
             d.index = &n;
             d.index_stride = stride(e.type);
             d.index_first = !left;
         }
-        else
-            return d;
     }
 }
 
