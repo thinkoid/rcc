@@ -36,7 +36,7 @@ point there. A row fixed by none has its entry in `TODO`.
 | J.3 | Clause | x86-64 | aarch64 | Fixed by |
 |---|---|---|---|---|
 | J.3.2(1) | 3.13, 5.1.1.3 | `file:line:column: error: message` on standard error, the first error fatal, exit status 1; a warning in the same form, `warning` for `error` (`shape.md` chapters 7 and 8) | the same | every pin of `tests/error/`: `undeclared-name.c`, and `warning-before-error.c` for a warning |
-| J.3.3(4) | 5.1.2.3.2 | any function type: a definition of `main` is compiled as written, `int main(int argc, char **argv, char **envp)` and `void main(void)` among them, and reaching its `}` returns 0 | the same | `tests/corpus/main-envp.c`, for `envp` and the `}` |
+| J.3.3(4) | 5.1.2.3.2 | any function type: a definition of `main` is compiled as written, `int main(int argc, char **argv, char **envp)` and `void main(void)` among them, and reaching its `}` returns 0 | the same | `tests/corpus/main-envp.c`, for `envp` and the `}`; `tests/corpus/main-void.c`, for `void main(void)` |
 | J.3.4(1) | 6.4.2 | none: an identifier is ASCII letters, digits and `_`; a character outside ASCII is an error, and so is a universal character name, which the preprocessor writes as its UTF-8 | the same | `tests/error/identifier-outside-ascii.c` |
 | J.3.4(2) | 5.2.5.2, 6.4.2 | all: the symbol is the whole name | the same | `tests/cost/long-names.c` |
 | J.3.5(1) | 3.7 | 8 | the same | the `braces` probe |
