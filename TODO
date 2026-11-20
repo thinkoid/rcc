@@ -515,20 +515,6 @@ list on the record's zeroing and stores.
 Check: a cost program for each form on both targets, and the
 =zeroing= probe with a local array.
 
-** TODO A bit-field or an anonymous member after a flexible array member is accepted
-
-~struct s { int n; int a[]; int x : 3; };~ compiles, and so does an
-unnamed bit-field or an anonymous struct after =a=: 6.7.3.2p3 lets
-only the last member be a flexible array member, and =clang= says
-"flexible array member 'a' ... is not at the end". A named member
-after it is refused; =bit_field()= and =unnamed_member()= in
-=src/parse.cc= do not look.
-
-Fix: both refuse as =add_member()= does.
-
-Check: a program of =tests/error= for each form, pinned "not at the
-end".
-
 ** TODO A not-yet of c1 in an uncalled =static inline= body stops the file
 
 A =static inline= body that stops at a not-yet of the parser's is

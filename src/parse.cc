@@ -5101,15 +5101,30 @@ refuse_flexible(const member_list_t &list, std::string what)
     fail(*list.flexible, std::move(what));
 }
 
+// A member after a flexible array member, a bit-field and an anonymous
+// one among them, is an error: the flexible array member is the last,
+// 6.7.3.2p3.
+void
+refuse_member_after_flexible(const member_list_t &list)
+{
+    if (list.flexible)
+        refuse_flexible(list,
+                        "flexible array member " + quoted(list.flexible->text) +
+                            " not at the end of " + record_words(list.record));
+}
+
 // The width of a bit-field after its ':', an integer constant
 // expression, 6.7.3.2p4, of a bit-field whose type is an integer type,
 // p5, or one rcc does not use yet, _Bool among them.  rcc lays out no
 // bit-field yet, so its record is a not-yet record; attributes after
 // the width are said of the member, and change nothing that is laid
-// out.
+// out.  A bit-field after a flexible array member is an error, as any
+// member there is.
 void
 bit_field(parser_t &p, member_list_t &list, const type_t &t)
 {
+    refuse_member_after_flexible(list);
+
     const token_t &colon = advance(p);
     if (!is< int_t >(t) && !is< not_yet_t >(t))
         fail(colon, "bit-field of a type that is not an integer type");
@@ -5201,10 +5216,7 @@ add_member(member_list_t &list,
 {
     record_t &r = list.record;
 
-    if (list.flexible)
-        refuse_flexible(list, "flexible array member " +
-                                  quoted(list.flexible->text) +
-                                  " not at the end of " + record_words(r));
+    refuse_member_after_flexible(list);
 
     require_member_type(name, t, zero, list);
 
@@ -5247,9 +5259,10 @@ member_declarator(parser_t &p, const specifiers_t &spec, member_list_t &list)
 // union specifier without a tag declares an anonymous member, p15,
 // which rcc does not lay out yet, and which is no member of a struct
 // when it holds a flexible array member, p3, as require_member_type()
-// says of a named one.  Any other struct, union or enum specifier
-// declares its tag or its constants alone, as at file scope; one of no
-// specifier of the kind declares nothing, an error.
+// says of a named one, and after a flexible array member, as any
+// member there.  Any other struct, union or enum specifier declares its
+// tag or its constants alone, as at file scope; one of no specifier of
+// the kind declares nothing, an error.
 void
 unnamed_member(const token_t &semicolon,
                const specifiers_t &spec,
@@ -5261,6 +5274,9 @@ unnamed_member(const token_t &semicolon,
     const record_t *inner = is< record_type_t >(spec.type) ?
                                 as< record_type_t >(spec.type).record :
                                 nullptr;
+    if (inner && inner->tag.empty())
+        refuse_member_after_flexible(list);
+
     if (inner && inner->tag.empty() && inner->flexible) {
         if (list.record.is_union)
             list.record.flexible = true;
