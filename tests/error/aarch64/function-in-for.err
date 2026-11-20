@@ -1,0 +1,2 @@
+tests/error/function-in-for.c:7:18: error: function 'next' declared in the declaration of a 'for'
+status 1

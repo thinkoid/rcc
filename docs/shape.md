@@ -900,10 +900,11 @@ call to call; without one it is zero. Its declaration makes no
 statement. An array of unknown size takes its size from its
 initializer and is an error without one (6.7.1p8). A function declared
 `static` in a block is an error (6.7.2p13), and `static` on a
-parameter (6.7.7.4p2), in a type name and in the declaration of a
-`for` is one too, the last by C17's rule, the dialect's (chapter 1):
-its 6.8.5p3 allows only `auto` and `register` there, and C23 drops
-it.
+parameter (6.7.7.4p2) and in a type name is one too. The declaration
+of a `for` declares objects of storage class `auto` or `register`
+alone, by C17's rule, the dialect's (chapter 1, its 6.8.5p3), which
+C23 drops: `static`, `extern` and `typedef` there are each an error,
+and so is a function declared there.
 
 A block may declare a function, and an object `extern`. The name has
 the block's scope (6.2.1p4) and denotes an entity of linkage: a

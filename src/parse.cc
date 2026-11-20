@@ -2869,7 +2869,9 @@ bool parameter_type_list(parser_t &, std::vector< parameter_t > &);
 parameter_t parameter_declaration(parser_t &);
 type_t type_name(parser_t &);
 std::vector< stmt_t > declaration(parser_t &);
-std::vector< stmt_t > init_declarator_list(parser_t &, const specifiers_t &);
+std::vector< stmt_t > init_declarator_list(parser_t &,
+                                           const specifiers_t &,
+                                           bool objects_only = false);
 void init_declarator(parser_t &,
                      const specifiers_t &,
                      const declarator_t &,
@@ -6618,9 +6620,10 @@ declaration(parser_t &p)
 // declare type names and make no statement, and so do a static
 // declaration's, whose objects are no locals, and the declarators of
 // names of linkage, which declare a function or an object the block
-// does not make.
+// does not make.  objects_only is a for's declaration, which declares
+// no function (for_declaration()).
 std::vector< stmt_t >
-init_declarator_list(parser_t &p, const specifiers_t &spec)
+init_declarator_list(parser_t &p, const specifiers_t &spec, bool objects_only)
 {
     std::vector< stmt_t > decls;
 
@@ -6632,6 +6635,9 @@ init_declarator_list(parser_t &p, const specifiers_t &spec)
         }
         else {
             const declarator_t d = block_declarator(p, spec);
+            if (objects_only && is< function_t >(d.type))
+                fail(*d.name, "function " + quoted(d.name->text) +
+                                  " declared in the declaration of a 'for'");
 
             if (is< function_t >(d.type) || declared(spec, tok_t::kw_extern))
                 linked_declaration(p, spec, d);
@@ -7110,11 +7116,11 @@ do_statement(parser_t &p)
 // The declaration of a for's first clause, as the init statement:
 // several declarators become one block of declaration statements, since
 // the tree holds a single init statement.  A storage class but register
-// is refused there, by C17's rule that the declaration declare objects
-// of storage class auto or register only, its 6.8.5p3; N3220 has no
-// such rule, and a function declared there without one is taken, as C23
-// lets it.  A static assertion, a declaration too, 6.7.1p1, makes no
-// statement, and the init is null.
+// is refused there, and so is a function, by C17's rule that the
+// declaration declare objects of storage class auto or register only,
+// its 6.8.5p3, the dialect's (shape.md chapter 1).  A static
+// assertion, a declaration too, 6.7.1p1, makes no statement, and the
+// init is null.
 stmt_ptr_t
 for_declaration(parser_t &p)
 {
@@ -7130,7 +7136,7 @@ for_declaration(parser_t &p)
         fail(*spec.storage_class, quoted(spec.storage_class->text) +
                                       " in the declaration of a 'for'");
 
-    std::vector< stmt_t > decls = init_declarator_list(p, spec);
+    std::vector< stmt_t > decls = init_declarator_list(p, spec, true);
     if (decls.size() == 1)
         return box(std::move(decls.front()));
 

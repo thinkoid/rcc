@@ -570,17 +570,6 @@ head.
 Check: that program compiles, and a call of =f= is refused by the
 head's words.
 
-** TODO A function declared in the declaration of a =for= is taken
-
-~for (int f(void); ;)~ compiles with no diagnostic. C17's 6.8.5p3,
-which =shape.md= cites for the =static= refused there, allows only
-objects of storage class =auto= or =register=; C23 allows the
-function, and the dialect is C17's.
-
-Fix: refused as =static= is, an error.
-
-Check: the program is pinned in =tests/error=.
-
 ** TODO A constant expression out of its type's range wraps with no diagnostic
 
 6.6p4 is a constraint: "Each constant expression shall evaluate to a
