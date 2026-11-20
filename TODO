@@ -600,31 +600,21 @@ the two errors take messages of their own.
 Check: the first two declarations compile; the other two are pinned
 in =tests/error= with their messages.
 
-** TODO =(const void)= is taken as =(void)=
+** TODO A qualified =void= is taken as the =void= of an empty parameter list
 
-~int f(const void);~, ~int f(register void);~ and a parameter of a
-typedef for =const void= declare a function of no parameters. The
-empty list is "an unnamed parameter of type void as the only item"
-(6.7.7.4p9), and a qualified =void=, or one with a storage class, is
-not that; =clang= and =gcc= refuse each. rcc drops qualifiers where
-it reads them and tests the parameter's type, so it cannot tell.
+~int f(const void);~, ~int f(void const);~ and a parameter of a
+typedef for ~const void~ declare a function of no parameters. The
+special case is "an unnamed parameter of type void" (6.7.7.4p9), and
+a qualified =void= is a distinct type (6.2.5p31), whose use there
+J.2 (75) leaves undefined; =clang= refuses it. rcc drops a qualifier
+where it reads it, so it cannot tell. A storage class on that =void=
+is refused.
 
-Fix: with qualifiers in the type model, the entry on =const=; the
-storage class is refused where the list is taken as empty.
+Fix: with the qualifiers the entry on =const= keeps on the symbol, a
+typedef's included.
 
 Check: the three declarations fail with "'void' must be the only
 parameter".
-
-** TODO A parameter that takes an enumeration constant's name is called a parameter twice
-
-~int f(enum { A } x, int A);~ fails with "redefinition of parameter
-'A'". It should fail: the constant and the parameter are declared in
-one scope. But the first =A= is no parameter.
-
-Fix: the message names what the name was first declared as.
-
-Check: a program of =tests/error= with the declaration above, pinned
-"redefinition of 'A'".
 
 ** TODO =static= in the declaration of a =for= is an error
 

@@ -400,7 +400,8 @@ body sees the parameters and the tags of the list that makes the name
 a function, which in `int (*g(int a))(int b) { ... }` is `(int a)`
 alone. An unnamed parameter of type `void` as the only one is the
 empty list (6.7.7.4p9), whatever spells the type, a typedef name
-included.
+included; `(register void)`, which J.2 (75) leaves undefined, is
+refused.
 
 The array a parameter is adjusted from, the suffix right after the
 parameter's name or the place of it, takes `static` and the type

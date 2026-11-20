@@ -1,0 +1,2 @@
+tests/error/parameter-redefines-enumerator.c:4:25: error: redefinition of 'A'
+status 1

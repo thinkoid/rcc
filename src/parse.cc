@@ -2771,17 +2771,25 @@ added(parser_t &p, std::string_view name, type_t t, storage_t storage)
 // its declarator, 6.2.1p7, so that a later parameter's declarator sees
 // it: as an array's size, or as the object that hides a typedef name.
 // The parameters of one list share that scope, 6.7.1p4, whether a body
-// follows or not.  The parameter takes no register here: register is
-// ignored but in a definition, 6.7.7.4p12, which gives the registers.
+// follows or not, and so does an enumeration constant a parameter's
+// type declares, 6.2.1p4; so the message names a parameter only when
+// the earlier declaration is one.  The parameter takes no register
+// here: register is ignored but in a definition, 6.7.7.4p12, which
+// gives the registers.
 void
 declare_parameter(parser_t &p, const parameter_t &param)
 {
     if (!param.name)
         return;
 
-    if (p.scopes.back().names.contains(param.name->text))
+    const auto &scope = p.scopes.back().names;
+
+    const auto it = scope.find(param.name->text);
+    if (it != scope.end())
         fail(*param.name,
-             "redefinition of parameter " + quoted(param.name->text));
+             it->second->storage == storage_t::parameter ?
+                 "redefinition of parameter " + quoted(param.name->text) :
+                 "redefinition of " + quoted(param.name->text));
 
     added(p, param.name->text, param.type, storage_t::parameter);
 }
@@ -5486,8 +5494,10 @@ array_declarator(parser_t &p,
 // 6.7.7.4p13; before C23 it declared a function without a prototype,
 // which this parser does not take.  An unnamed parameter of type void
 // as the only one is no parameter, p9, whatever spells the type, a
-// typedef name among them; void stands nowhere else.  Each parameter
-// is declared as it is read, so that the next one sees it.
+// typedef name among them; void stands nowhere else.  A storage class
+// on it leaves the behavior undefined, J.2 (75), so (register void) is
+// refused.  Each parameter is declared as it is read, so that the next
+// one sees it.
 bool
 parameter_type_list(parser_t &p, std::vector< parameter_t > &params)
 {
@@ -5508,7 +5518,8 @@ parameter_type_list(parser_t &p, std::vector< parameter_t > &params)
 
         parameter_t param = parameter_declaration(p);
         if (is< void_t >(param.type)) {
-            if (params.empty() && !param.name && accept(p, tok_t::rparen))
+            if (params.empty() && !param.name && !param.in_register &&
+                accept(p, tok_t::rparen))
                 return false;
 
             fail(*param.start, "'void' must be the only parameter");

@@ -1,0 +1,2 @@
+tests/error/register-void-parameter.c:4:7: error: 'void' must be the only parameter
+status 1
