@@ -1758,9 +1758,6 @@ address_value(state_t &s,
         return address_of(s, address(s, e), into);
 
     const auto &p = *as< unary_t >(e).arg;
-    if (const auto *base = bare_base(p))
-        return rvalue(s, *base, into, wanted);
-
     return rvalue(s, p, into, wanted);
 }
 

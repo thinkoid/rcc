@@ -1519,9 +1519,6 @@ pointed(state_t &s,
     if (const auto a = summed(s, p, into))
         return *a;
 
-    if (const auto *base = bare_base(p))
-        return { .base = rvalue(s, *base, into) };
-
     const long size = size_of(pointee);
 
     // p[3], and the row p[1] on int (*p)[3]: 12(%rax)

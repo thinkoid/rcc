@@ -683,27 +683,6 @@ defined_symbols(const unit_t &unit)
     return defined;
 }
 
-// The pointer of a subscript by a constant 0, p[0] or 0[p]: the pointer
-// operand of the add, or null for any other pointer.  The address such
-// a subscript designates has no displacement and no index, whatever the
-// pointee's size; it is the bare base, as *p's is.  A row of an array
-// of arrays is the same case, m[0] the address of m.
-const expr_t *
-bare_base(const expr_t &p)
-{
-    if (!is< binary_t >(p) || as< binary_t >(p).op != binary_op_t::add)
-        return nullptr;
-
-    const auto &b = as< binary_t >(p);
-    const bool left = is< pointer_t >(b.lhs->type);
-    const auto &n = left ? *b.rhs : *b.lhs;
-
-    if (!is< literal_t >(n) || as< literal_t >(n).value != 0)
-        return nullptr;
-
-    return left ? b.lhs.get() : b.rhs.get();
-}
-
 // A pointer that is an lvalue's address plus a constant (backend.md
 // 6.3): the decay of an array lvalue, 6.3.2.1p3, or & of an lvalue,
 // 6.5.4.2p3, the constant 0, so *a is a[0] and *&x is x; or a sum of

@@ -440,7 +440,6 @@ each function.
 | `bitmask_immediate()` | `src/c1-aarch64.cc:1465` | whether `and`, `orr`, `eor` and `tst` encode a constant | | x | |
 | `in_memory()` | `src/c1-common.cc:246` | whether an expression reads an object in memory | | | x |
 | `object_under()`, two | `src/c1-common.cc:322`, `src/c1-common.cc:333` | which object in memory a conversion's operand reads | | | x |
-| `bare_base()` | `src/c1-common.cc:640` | whether a subscript by 0 is its pointer alone | | | x |
 
 The first count's list at 4b95569 also holds `widens_into()`. bb736a0
 removed it and added `widens_free()` and `widens_arms()` (2.3), which

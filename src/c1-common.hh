@@ -64,7 +64,6 @@ bool in_memory(const expr_t &);
 const symbol_t *named_callee(const call_t &);
 const function_t &callee_type(const call_t &);
 std::unordered_set< const symbol_t * > defined_symbols(const unit_t &);
-const expr_t *bare_base(const expr_t &);
 
 // A pointer that is an lvalue's address plus a constant (backend.md
 // 6.3): the decay or the & that takes the address, the lvalue under

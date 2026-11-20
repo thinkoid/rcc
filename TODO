@@ -115,18 +115,6 @@ Check: a cost program where ~x << 32~ on an =int= and ~x >> 64~ on a
 =long= write nothing on both targets, and ~x << 33~ keeps its
 instruction.
 
-** TODO =bare_base()= answers nothing
-
-=bare_base()= in =src/c1-common.cc=, called once by each generator,
-matched a subscript's base under a sum of 0. The parser leaves an
-identity's node out, so no tree reaches it: over every compile of
-the tests it matches nothing.
-
-Fix: remove it and its two calls, and the row of =docs/designs.md=
-that names it.
-
-Check: no listing over =tests= changes.
-
 ** TODO x86-64: a register destination's right operand through a cast that keeps the bits keeps a move
 
 ~z = b - ((int *) q)[0]~ into a register variable =z=, =q= a register
