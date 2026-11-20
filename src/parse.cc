@@ -673,12 +673,18 @@ converted_constant(const expr_t &e, const type_t &t)
     return constant_of(t, exact_value(e));
 }
 
-// The one place a conversion enters the tree.  An expression already
+// The place a conversion the language implies enters the tree, every
+// one but a decay.  The other casts are made by their construct:
+// decayed() an array's or a function's decay, cast() the cast the
+// source writes, unary_plus() the cast that makes +x a value,
+// lvalue_at() the pointer casts of an access at an offset, and
+// pure_node() the copy of a cast it rebuilds.  An expression already
 // of the type passes through, so no inserted cast converts a type to
-// itself; only a cast the source writes may, since it yields no lvalue.
-// A constant converted is the constant of the new type: the source
-// wrote a number, not a conversion, so a char constant of 300 does not
-// exist and the tree holds 44, as the conversion would have computed.
+// itself; only cast() and unary_plus() make one, since each yields no
+// lvalue.  A constant converted is the constant of the new type: the
+// source wrote a number, not a conversion, so a char constant of 300
+// does not exist and the tree holds 44, as the conversion would have
+// computed.
 expr_t
 convert_to(expr_t e, const type_t &t)
 {

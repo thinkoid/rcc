@@ -166,17 +166,6 @@ of G8 and the laundering of G16, which draft 1 designed against an
 optimizer, because nothing between the source and the instruction
 reasons about the program.
 
-** TODO Two documents disagree on a constant expression out of range
-
-=docs/design-calls.md= 4.3 says an integer constant expression out
-of its type's range is "diagnosed, not wrapped"; =docs/backend.md=
-6.4 says it wraps, and is refused only as an array's size.
-
-Fix: find which the parser does, by a program for each, and make the
-other document say so.
-
-Check: the two passages agree with the compiler.
-
 ** TODO G3's "the count as written" does not hold on aarch64
 
 G3's instruction sentence says a shift is "by =cl= or by an
@@ -589,23 +578,6 @@ not yet, by name.
 
 Check: the call above fails with "not yet", pinned in =tests/error=.
 
-** TODO =tgmath.h= does not parse
-
-=clang='s =tgmath.h= stops at its line 34, ~static
-_Argument_type_is_not_arithmetic __tg_promote(...) __attribute__
-((__unavailable__, __overloadable__));~, "not yet: variadic function
-without named parameters": a function with =(...)= for its whole
-parameter list, overloaded by an attribute, which no other C header
-does. More than a thousand overloaded declarations follow. Every
-other header of the 58 surveyed parses.
-
-Fix: =shape.md= chapter 11 says a program that includes =tgmath.h=
-is not yet: the type-generic macros need overloading, which is not
-C, and floating point first.
-
-Check: the documents say what a program that includes =tgmath.h=
-gets.
-
 ** TODO A qualified =void= is taken as the =void= of an empty parameter list
 
 ~int f(const void);~, ~int f(void const);~ and a parameter of a
@@ -700,19 +672,6 @@ which =_Generic= needs of it too, so the two are built together.
 Check: both programs fail with "incompatible pointer types", and
 compile with the cast written.
 
-** TODO =convert_to()= is not the one place a conversion enters the tree
-
-The comment on =convert_to()= in =src/parse.cc= calls it "The one
-place a conversion enters the tree". =decayed()= makes a cast node of
-its own, for an array's decay, which =src/ast.hh= calls "a cast too".
-The cast the source writes, made in =cast()=, the
-comment does allow for.
-
-Fix: the comment says every conversion but an array's decay.
-
-Check: =grep -n 'cast_t {' src/parse.cc= prints the sites the
-comments name.
-
 ** TODO A local array's list, a designator and a string for a member array are not yet
 
 A local record takes its initializer list (G20). Three forms beside
@@ -793,6 +752,25 @@ function, and the dialect is C17's.
 Fix: refused as =static= is, an error.
 
 Check: the program is pinned in =tests/error=.
+
+** TODO A constant expression out of its type's range wraps with no diagnostic
+
+6.6p4 is a constraint: "Each constant expression shall evaluate to a
+constant that is in the range of representable values for its type."
+Where the grammar requires a constant expression, an array's size, a
+=case= label, an enumerator, a static initializer and
+=_Static_assert=, the parser takes the wrapped value silently, as G1
+makes the same arithmetic wrap at run time: ~int a[(2147483647 + 1)
+/ 4 + 600000000];~ has 63129088 elements. =clang= warns in each. The
+comment on the evaluator in =src/parse.cc=, "the wrapped value is
+refused there", says what the documents no longer say.
+
+Fix: none taken; decide: a diagnostic where a constant expression is
+required, or the documents' sentence that rcc gives none. The
+comment follows either.
+
+Check: ~case 2147483647 + 1:~ draws the diagnostic, or =shape.md=
+says why not; the comment agrees.
 
 * Lexer
 

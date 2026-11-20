@@ -306,8 +306,7 @@ and `x + 0`, whose node the parser leaves out (`backend.md` 6.4):
 when every leaf under a node is a constant, and the result takes the
 type C gives the expression, so `-1` is an `int` and `-1L` a `long`,
 and then meets the implicit conversion like any constant. A value
-outside the type's range is a constraint violation (6.6p4) and is
-diagnosed, not wrapped.
+outside the type's range wraps, with no diagnostic (4.4).
 
 ### 4.4 Where it lands
 
@@ -317,15 +316,17 @@ size, the `case` label and the static initializer require. The cost
 model's constant row then reads as it should: a constant is an
 immediate.
 
-One sentence of 4.3 was revised when the evaluator landed: an
-out-of-range result is not diagnosed but wraps, as G1 makes the
+An out-of-range result is not diagnosed but wraps, as G1 makes the
 instruction wrap, and a division with no value stays unfolded for G4's
 trap. The fold is the spelling of a number only while the number is
 the one the instruction computes; `2147483647 + 1` in an ordinary
 expression is the run-time overflow of 6.5p5, which G1 defines, and
 not the constant expression of 6.6p4, which the grammar names only
-where it requires one. There, in an array size, the wrapped value is
-refused.
+where it requires one. There too the parser takes the wrapped value
+without a diagnostic: an array size is refused only when the value is
+not greater than zero (6.7.7.3p1), so `int a[2147483647 + 3]` is an
+error and `int a[(2147483647 + 1) / 4 + 600000000]` has 63129088
+elements.
 
 ## 5. Call 4: the red zone
 

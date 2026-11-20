@@ -1395,8 +1395,10 @@ instruction would compute: a signed result the type cannot hold wraps
 zero or of the most negative value by -1, is left unfolded for the
 instruction to trap on (G4), so folding changes no program. 6.6p4,
 which makes an out-of-range constant expression a constraint
-violation, governs where the grammar requires one, the size of an
-array, and the wrapped value is refused there. A variable never folds:
+violation, governs where the grammar requires one, and the parser
+takes the wrapped value there too, with no diagnostic: an array's
+size is refused only when the value is not greater than zero
+(6.7.7.3p1), as `design-calls.md` 4.4 shows. A variable never folds:
 `x - x` subtracts and `x * 0` multiplies. The rule of `cost.md`
 chapter 0, that the work the source writes is the work executed, is
 about operations on the program's data; a constant expression is the

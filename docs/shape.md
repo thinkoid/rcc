@@ -1438,5 +1438,8 @@ keywords outside the subset: `_Complex` outside the specifiers of a
 floating type, `_Imaginary`, the `_Atomic` qualifier outside a
 typedef, `_Alignas`, `_Alignof` of an expression, `_Generic`,
 `_Thread_local`. Each
-arrives when a probe needs it. The preprocessor stays external for
+arrives when a probe needs it. A program that includes `tgmath.h` is
+not yet, refused at the header's first overloaded declaration
+(chapter 10): its type-generic macros need overloading, which is not
+C, and floating point first. The preprocessor stays external for
 good.
