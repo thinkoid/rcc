@@ -3132,16 +3132,25 @@ scalar_value(parser_t &p, const token_t &at, const type_t &t)
     fail(start, "initializer element is not a compile-time constant");
 }
 
+// Where the walk over an initializer puts each value it finds,
+// 6.7.11p18.  For an object of static storage it is the object's data:
+// each subobject's constant at its offset in the object, which c1
+// writes (shape.md chapter 4).
+struct destination_t
+{
+    std::vector< subobject_t > *data;
+};
+
 // The scalar t at offset, given the value of the expression ahead.
 void
 scalar_subobject(parser_t &p,
                  const token_t &at,
                  const type_t &t,
                  long offset,
-                 std::vector< subobject_t > &values)
+                 destination_t &to)
 {
     initializer_t value = scalar_value(p, at, t);
-    values.push_back(subobject_t { offset, t, std::move(value) });
+    to.data->push_back(subobject_t { offset, t, std::move(value) });
 }
 
 // Whether the string literal e initializes the array t whole, as
@@ -3190,15 +3199,12 @@ string_value(const token_t &start,
 // The string literal ahead, which string_ahead() found, for the array t
 // at offset.
 long
-listed_string(parser_t &p,
-              const type_t &t,
-              long offset,
-              std::vector< subobject_t > &values)
+listed_string(parser_t &p, const type_t &t, long offset, destination_t &to)
 {
     const token_t &start = peek(p);
     const expr_t e = assignment_expression(p);
 
-    return string_value(start, as< string_t >(e), t, offset, values);
+    return string_value(start, as< string_t >(e), t, offset, *to.data);
 }
 
 // Takes the ',' before another initializer of the list, and says
@@ -3215,10 +3221,8 @@ accept_separator(parser_t &p)
     return true;
 }
 
-long subobject_initializer(parser_t &,
-                           const type_t &,
-                           long offset,
-                           std::vector< subobject_t > &);
+long
+subobject_initializer(parser_t &, const type_t &, long offset, destination_t &);
 
 // The elements of an array at offset, from the initializers ahead in a
 // list, in increasing subscript order, 6.7.11p18: each element from
@@ -3229,17 +3233,14 @@ long subobject_initializer(parser_t &,
 // an array of unknown size ends only with the list.  Returns the count
 // of elements given, which completes such an array, p23.
 long
-elements(parser_t &p,
-         const array_t &array,
-         long offset,
-         std::vector< subobject_t > &values)
+elements(parser_t &p, const array_t &array, long offset, destination_t &to)
 {
     const type_t &element = *array.element;
     const long size = size_of(element);
 
     long count = 0;
     do {
-        subobject_initializer(p, element, offset + count * size, values);
+        subobject_initializer(p, element, offset + count * size, to);
         ++count;
     } while (count != array.count && accept_separator(p));
 
@@ -3256,17 +3257,14 @@ elements(parser_t &p,
 // list's own check, or with the list.  Returns whether every member the
 // list may give was given.
 bool
-member_values(parser_t &p,
-              const record_t &r,
-              long offset,
-              std::vector< subobject_t > &values)
+member_values(parser_t &p, const record_t &r, long offset, destination_t &to)
 {
     const std::size_t count = r.is_union ? 1 : r.members.size();
 
     std::size_t given = 0;
     do {
         const member_t &m = r.members[given];
-        subobject_initializer(p, m.type, offset + m.offset, values);
+        subobject_initializer(p, m.type, offset + m.offset, to);
         ++given;
     } while (given != count && accept_separator(p));
 
@@ -3297,10 +3295,7 @@ close_list(parser_t &p, bool full, std::string_view what)
 // literal alone, p15; any other array its elements, p17.  Returns the
 // count of elements given to an array.
 long
-braced_initializer(parser_t &p,
-                   const type_t &t,
-                   long offset,
-                   std::vector< subobject_t > &values)
+braced_initializer(parser_t &p, const type_t &t, long offset, destination_t &to)
 {
     const token_t &brace = advance(p);
 
@@ -3317,7 +3312,7 @@ braced_initializer(parser_t &p,
 
     if (is< record_type_t >(t)) {
         const record_t &r = *as< record_type_t >(t).record;
-        const bool full = member_values(p, r, offset, values);
+        const bool full = member_values(p, r, offset, to);
         close_list(p, full, r.is_union ? "union" : "struct");
 
         return 0;
@@ -3327,21 +3322,21 @@ braced_initializer(parser_t &p,
         if (peek(p).kind == tok_t::lbrace)
             fail(peek(p), "too many braces around scalar initializer");
 
-        scalar_subobject(p, peek(p), t, offset, values);
+        scalar_subobject(p, peek(p), t, offset, to);
         close_list(p, true, "scalar");
 
         return 0;
     }
 
     if (string_ahead(p, t)) {
-        const long count = listed_string(p, t, offset, values);
+        const long count = listed_string(p, t, offset, to);
         close_list(p, true, string_array_words(t));
 
         return count;
     }
 
     const auto &array = as< array_t >(t);
-    const long count = elements(p, array, offset, values);
+    const long count = elements(p, array, offset, to);
     close_list(p, count == array.count, "array");
 
     return count;
@@ -3357,27 +3352,27 @@ long
 subobject_initializer(parser_t &p,
                       const type_t &t,
                       long offset,
-                      std::vector< subobject_t > &values)
+                      destination_t &to)
 {
     refuse_designator(p);
 
     if (peek(p).kind == tok_t::lbrace)
-        return braced_initializer(p, t, offset, values);
+        return braced_initializer(p, t, offset, to);
 
     if (is< record_type_t >(t)) {
-        member_values(p, *as< record_type_t >(t).record, offset, values);
+        member_values(p, *as< record_type_t >(t).record, offset, to);
         return 0;
     }
 
     if (!is< array_t >(t)) {
-        scalar_subobject(p, peek(p), t, offset, values);
+        scalar_subobject(p, peek(p), t, offset, to);
         return 0;
     }
 
     if (string_ahead(p, t))
-        return listed_string(p, t, offset, values);
+        return listed_string(p, t, offset, to);
 
-    return elements(p, as< array_t >(t), offset, values);
+    return elements(p, as< array_t >(t), offset, to);
 }
 
 // The initializer without braces of an object of the record t, the
@@ -3412,14 +3407,16 @@ object_initializer(parser_t &p,
                    const type_t &t,
                    std::vector< subobject_t > &values)
 {
+    destination_t to { &values };
+
     if (peek(p).kind == tok_t::lbrace)
-        return braced_initializer(p, t, 0, values);
+        return braced_initializer(p, t, 0, to);
 
     if (is< record_type_t >(t))
         refuse_record_expression(p, t);
 
     if (!is< array_t >(t)) {
-        scalar_subobject(p, op, t, 0, values);
+        scalar_subobject(p, op, t, 0, to);
         return 0;
     }
 
