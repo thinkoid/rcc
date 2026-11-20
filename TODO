@@ -196,37 +196,17 @@ of G8 and the laundering of G16, which draft 1 designed against an
 optimizer, because nothing between the source and the instruction
 reasons about the program.
 
-** TODO No document gathers the implementation-defined choices
+** TODO Two lists of the documents leave documents out
 
-4p10 asks for "a document that defines all implementation-defined
-and locale-specific characteristics and all extensions". rcc fixes
-each choice per target in its code, and the documents record them
-piecemeal: plain =char='s signedness on aarch64 in =docs/aarch64.md=,
-the extent of =register= in =docs/cost.md= chapter 1, the narrowing
-and the right shift of a negative value in G2 and G3.
-=docs/guarantees.md= and =docs/rationale.md= say that no table
-gathers them.
+=README.md= names the documents of =docs/= and does not name
+=autoincrement.md=, =design-calls.md= or =rationale.md=. The file
+list of =docs/shape.md= chapter 9 does not name =ancestor.md=,
+=designs.md= or =shape.md= itself.
 
-Fix: one table, per target, of the items of Annex J.3 that the
-implemented subset reaches, each with its choice and the code or pin
-that fixes it; the "Not in this list" of both documents points at it.
-Among them what an access to a volatile object is (6.7.4.1p8): each
-load and each store the source writes, at the object's width, which
-=shape.md= chapter 5 says and =tests/cost/volatile.c= pins. And the
-integer type compatible with each enumerated type (J.3.10(7)): by
-its values, =unsigned int=, =unsigned long=, =int= or =long=, as
-=clang= chooses on both targets, which =shape.md= chapter 5 says and
-the =enums= probe pins; an enumeration under =packed= is refused.
-And the encodings and the wide types: a literal of no prefix is its
-bytes in UTF-8 (J.3.5(6)), a wide one UTF-32 (J.3.5(7)); =wchar_t=
-is =int= on x86-64 and =unsigned int= on aarch64, =char16_t= and
-=char32_t= =unsigned short= and =unsigned int=; a constant of no
-prefix with several characters is a not-yet, and a wide one with
-several an error (J.3.5(9), (10)). =shape.md= chapters 2 and 3 and
-=aarch64.md= chapter 11 say so.
+Fix: each list names every document of =docs/=, or says which it
+leaves out and why.
 
-Check: every J.3 item the subset reaches has a row for each target,
-and each row agrees with a pin or a probe.
+Check: every =docs/*.md= is named in both files.
 
 * Cost model
 
@@ -372,6 +352,31 @@ Fix: none taken; a check of each access's width in the listings of
 
 Check: a compiler that reads a =char= local at 4 bytes fails =make
 test=.
+
+** TODO Five rows of =docs/choices.md= are fixed by no pin
+
+Each choice is what the compiler does, and nothing fails if it
+changes:
+
+- J.3.3(4): ~int main(int argc, char **argv, char **envp)~ and ~void
+  main(void)~ compile, and reaching the =}= returns 0. So does a
+  =main= of any other type, ~char *main(void)~, with no diagnostic;
+  5.1.2.3.2p1 is no constraint, so none is required. Whether rcc
+  refuses one is to decide.
+- J.3.4(1): ~int café;~ is "unexpected character 0xc3", and
+  =tests/error/unexpected-character.c= pins =@= alone.
+- J.3.4(2): every character of an identifier is significant, and no
+  pin has two names that differ past the 63rd character.
+- J.3.5(3): =tests/corpus/header-escapes.c= pins =\a=, =\b=, =\t=,
+  =\n=, =\r= and =\v=, and not =\f=.
+- J.3.5(4), (6), (8): ="é"= is =.string "\303\251"=, and
+  =tests/corpus/header-wide.c= pins its size alone.
+
+Fix: a pin for each: a corpus program whose =main= takes =envp=; an
+error pin of an identifier outside ASCII; a cost pin of two long
+names, one of =\f= and one of ~char s[] = "é";~.
+
+Check: each of the five rows names its pin.
 
 * Parser
 
@@ -774,6 +779,26 @@ Check: =struct-local-list-initializer= compiles, and the =copies=
 probe, or one beside it, compares the object's bytes.
 
 * Lexer
+
+** TODO A =#pragma= is skipped, =pack= among them
+
+=clang -E= passes a =#pragma= on, and the lexer skips every directive
+that is no line marker (=line_marker()= in =src/lex.cc=). So under
+=#pragma pack(1)= rcc lays ~struct s { char c; int i; }~ out in 8
+bytes where =clang= lays it out in 5, with no diagnostic: an object
+of the record passed between the two compilers' code is read at two
+layouts. The =packed= attribute, the same request in another
+spelling, leaves the record a not-yet (=docs/shape.md= chapter 5).
+=#pragma weak= and =#pragma GCC visibility= are skipped the same way.
+=docs/choices.md= has the row, J.3.12(10), fixed by no pin.
+
+Fix: a record declared under a packing is a not-yet, as one under
+the attribute is, and a header that sets a packing around its own
+records and pops it still parses. A pragma that changes nothing rcc
+writes stays skipped; =weak= and =visibility= are decided one by one.
+
+Check: a program of =tests/error= that takes ~sizeof~ of a record
+under =#pragma pack(1)=, with its pin; the row names it.
 
 ** TODO A digit separator is a missing quote
 

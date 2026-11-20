@@ -1114,6 +1114,7 @@ compile database, and three lines of make, a shell script and
     Makefile          build, test, bench, slots, clean
     compile_flags.txt what clangd needs
     docs/guarantees.md  the meaning: what happens where ISO C says nothing
+    docs/choices.md     the choices ISO C leaves to the implementation, per target
     docs/cost.md        the cost: what each construct compiles to
     docs/rationale.md   the reasoning behind draft 1 of the guarantees
     docs/findings.md    what the measurement found, explained from the ground up

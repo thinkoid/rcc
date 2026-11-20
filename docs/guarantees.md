@@ -209,10 +209,10 @@ chapter 8).
 
 ## Not in this list
 
-Implementation-defined behaviour beyond G2 and G3, fixed per target
-but gathered in no table yet. Library undefined behaviour. Threads,
-out of scope for now. Floating point, the target's IEEE 754, no
-fast-math flags.
+Implementation-defined behaviour beyond G2 and G3: fixed per
+target, not promised, and gathered in `choices.md`. Library
+undefined behaviour. Threads, out of scope for now. Floating point,
+the target's IEEE 754, no fast-math flags.
 
 ## What the front end never writes
 

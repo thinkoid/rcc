@@ -303,8 +303,8 @@ after a store of `'z'` and drops the store
 
 ## Not in this list
 
-- Implementation-defined behaviour is fixed per target, but in no
-  table yet (`char` signedness, widths, bit-field layout, `>>` of
+- Implementation-defined behaviour is fixed per target, and
+  `choices.md` gathers it (`char` signedness, widths; `>>` of
   negatives is in G3). Not promises, just fixed.
 - Library undefined behaviour (overlapping `strcpy`, bad `printf`
   formats): the library's, not the compiler's.

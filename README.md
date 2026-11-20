@@ -9,7 +9,8 @@ The name says where it comes from. The syntax stays near ISO C, so
 existing programs compile; the promises are the project. They are
 listed in `docs/guarantees.md`: each names the ISO paragraph, the
 machine behaviour promised, the instruction that delivers it, and
-what the optimizer loses.
+what the optimizer loses. The choices ISO C leaves to the
+implementation, per target, are `docs/choices.md`.
 
 ## Design
 
