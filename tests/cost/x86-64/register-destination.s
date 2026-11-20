@@ -2810,6 +2810,90 @@ signedness_left:
 	ret
 	.cfi_endproc
 	.size	signedness_left, .-signedness_left
+	.globl	plain_element
+	.type	plain_element, @function
+plain_element:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	pushq	%r12
+	.cfi_offset %r12, -32
+	movq	%rdi, -24(%rbp)
+	movl	%esi, -28(%rbp)
+	movq	-24(%rbp), %rbx
+	movl	-28(%rbp), %r12d
+	subl	(%rbx), %r12d
+	movl	%r12d, %eax
+	jmp	.Lplain_element.1
+.Lplain_element.1:
+	popq	%r12
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	plain_element, .-plain_element
+	.globl	cast_element
+	.type	cast_element, @function
+cast_element:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	pushq	%r12
+	.cfi_offset %r12, -32
+	movq	%rdi, -24(%rbp)
+	movl	%esi, -28(%rbp)
+	movq	-24(%rbp), %rbx
+	movl	-28(%rbp), %r12d
+	subl	(%rbx), %r12d
+	movl	%r12d, %eax
+	jmp	.Lcast_element.1
+.Lcast_element.1:
+	popq	%r12
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	cast_element, .-cast_element
+	.globl	cast_displaced
+	.type	cast_displaced, @function
+cast_displaced:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	pushq	%r12
+	.cfi_offset %r12, -32
+	movq	%rdi, -24(%rbp)
+	movl	%esi, -28(%rbp)
+	movq	-24(%rbp), %rbx
+	movl	-28(%rbp), %r12d
+	subl	12(%rbx), %r12d
+	movl	%r12d, %eax
+	jmp	.Lcast_displaced.1
+.Lcast_displaced.1:
+	popq	%r12
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	cast_displaced, .-cast_displaced
 	.bss
 	.globl	defined
 	.type	defined, @object

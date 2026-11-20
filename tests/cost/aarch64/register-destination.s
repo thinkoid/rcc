@@ -3568,6 +3568,111 @@ signedness_left:
 	ret
 	.cfi_endproc
 	.size	signedness_left, .-signedness_left
+	.globl	plain_element
+	.type	plain_element, @function
+plain_element:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	stp	x19, x20, [x29, #16]
+	.cfi_offset w19, -32
+	.cfi_offset w20, -24
+	str	x0, [x29, #32]
+	str	w1, [x29, #40]
+	ldr	x19, [x29, #32]
+	ldr	w0, [x29, #40]
+	ldr	w1, [x19]
+	sub	w20, w0, w1
+	mov	w0, w20
+	b	.Lplain_element.1
+.Lplain_element.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x19, x20, [x29, #16]
+	.cfi_restore w19
+	.cfi_restore w20
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	plain_element, .-plain_element
+	.globl	cast_element
+	.type	cast_element, @function
+cast_element:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	stp	x19, x20, [x29, #16]
+	.cfi_offset w19, -32
+	.cfi_offset w20, -24
+	str	x0, [x29, #32]
+	str	w1, [x29, #40]
+	ldr	x19, [x29, #32]
+	ldr	w0, [x29, #40]
+	ldr	w1, [x19]
+	sub	w20, w0, w1
+	mov	w0, w20
+	b	.Lcast_element.1
+.Lcast_element.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x19, x20, [x29, #16]
+	.cfi_restore w19
+	.cfi_restore w20
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	cast_element, .-cast_element
+	.globl	cast_displaced
+	.type	cast_displaced, @function
+cast_displaced:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	stp	x19, x20, [x29, #16]
+	.cfi_offset w19, -32
+	.cfi_offset w20, -24
+	str	x0, [x29, #32]
+	str	w1, [x29, #40]
+	ldr	x19, [x29, #32]
+	ldr	w0, [x29, #40]
+	ldr	w1, [x19, #12]
+	sub	w20, w0, w1
+	mov	w0, w20
+	b	.Lcast_displaced.1
+.Lcast_displaced.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x19, x20, [x29, #16]
+	.cfi_restore w19
+	.cfi_restore w20
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	cast_displaced, .-cast_displaced
 	.bss
 	.globl	defined
 	.type	defined, @object

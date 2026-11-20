@@ -76,6 +76,10 @@
    widening; and signedness_left() v = 5 + (int) u into a register
    unsigned from an unsigned in memory, whose (int) u, a load under a
    conversion of the signedness alone, is the left operand.
+   plain_element(), cast_element() and cast_displaced() write r = b -
+   q[0], r = b - ((int *) q)[0] and r = b - ((int *) q)[3] on a register
+   int *q, which takes the first register and r the second, the right
+   operand's pointer under a cast that keeps every bit.
 
    On x86-64 the listing must show: in load(), the load of a into the
    register, movl -12(%rbp), %ebx; in constant_leaf(), named_leaf(),
@@ -202,8 +206,10 @@
    widened_register() movslq %ebx, %r12; in widened_product() movl
    -12(%rbp), %ebx; imull -16(%rbp), %ebx, and in signedness_left()
    movl -12(%rbp), %ebx; addl $5, %ebx, each with no mov into the
-   register.  return r is movl %ebx, %eax, and return p movq %rbx,
-   %rax.
+   register.  In plain_element() and cast_element() one listing, movl
+   -28(%rbp), %r12d; subl (%rbx), %r12d, and in cast_displaced() the
+   same with subl 12(%rbx), %r12d, no mov into the register.  return r
+   is movl %ebx, %eax, and return p movq %rbx, %rax.
 
    On aarch64 the listing must show the last instruction of each
    right operand writing the register, no condition on the operands
@@ -291,8 +297,10 @@
    in row_element() and row_decay(); sxtw x19, w0 in widened_sum() and
    sxtw x20, w19 in widened_register(); mul w19, w0, w1 in
    widened_product() and ldr w19, [x29, #24] and add w19, w19, #5 in
-   signedness_left().  return r is mov w0, w19, and return p mov x0,
-   x19. */
+   signedness_left(); in plain_element() and cast_element() one
+   listing, ldr w1, [x19] and sub w20, w0, w1, and in cast_displaced()
+   the same with ldr w1, [x19, #12].  return r is mov w0, w19, and
+   return p mov x0, x19. */
 int
 load(int a)
 {
@@ -1267,4 +1275,34 @@ signedness_left(unsigned u)
 
         v = 5 + (int) u;
         return v;
+}
+
+int
+plain_element(int *p, int b)
+{
+        register int *q = p;
+        register int r;
+
+        r = b - q[0];
+        return r;
+}
+
+int
+cast_element(int *p, int b)
+{
+        register int *q = p;
+        register int r;
+
+        r = b - ((int *) q)[0];
+        return r;
+}
+
+int
+cast_displaced(int *p, int b)
+{
+        register int *q = p;
+        register int r;
+
+        r = b - ((int *) q)[3];
+        return r;
 }

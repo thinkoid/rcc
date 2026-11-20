@@ -99,17 +99,6 @@ it does not write.
 Check: a cost program with each form, pinned on both targets, and no
 function longer.
 
-** TODO x86-64: a register destination's right operand through a cast that keeps the bits keeps a move
-
-~z = b - ((int *) q)[0]~ into a register variable =z=, =q= a register
-pointer to =int=, is =movl -20(%rbp), %eax; subl (%rbx), %eax; movl
-%eax, %r12d=, where ~z = b - q[0]~ is =movl -20(%rbp), %r12d; subl
-(%rbx), %r12d=. aarch64 writes the two alike. No test has the shape.
-
-Fix: the row sees through a cast that keeps every bit.
-
-Check: a cost program with both forms, pinned alike.
-
 ** TODO aarch64: a narrow or widened prefix step's value is stepped outside the register variable
 
 ~r = ++c~ on a =char= in memory into a ~register int r~ is =ldrb w0,
@@ -156,6 +145,17 @@ generators for the sites above.
 
 Check: those sites with no clearing move, =unsigned_int_called()=
 with its own, and no function longer.
+
+** TODO The walk under the casts that keep the bits is written four times
+
+=object_under()= in =src/c1-common.cc=, and =memory_operand()=,
+=register_operand()= and =under_kept_bits()= in =src/c1-x86-64.cc=
+each step through the casts =same_bits()= accepts, in a loop of
+their own.
+
+Fix: one function in =src/c1-common.cc=, called by the four.
+
+Check: no listing over =tests= changes.
 
 * Guarantees
 

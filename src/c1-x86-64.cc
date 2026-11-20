@@ -3522,6 +3522,18 @@ conditional(state_t &s,
     return hold(s, join, std::min(valid, other_valid));
 }
 
+// The operand under the casts that keep its bits, same_bits()'s, which
+// write no instruction (backend.md 6.3): q of (int *) q on an int *q.
+const expr_t &
+under_kept_bits(const expr_t &e)
+{
+    const expr_t *top = &e;
+    while (is< cast_t >(*top) && same_bits(as< cast_t >(*top), top->type))
+        top = as< cast_t >(*top).arg.get();
+
+    return *top;
+}
+
 // Whether a pointer reaches its object by one operand that evaluates
 // nothing but, it may be, the load of one named pointer: the pointer a
 // name, *p; a named object's address plus a constant, a[3] on an array
@@ -3529,9 +3541,13 @@ conditional(state_t &s,
 // folded in; or a named pointer, or such an address's dereference, plus
 // a constant, p[3] and p[1][2], whose operand is the pointer's register
 // with the constant as its displacement, 12(%rax), as *p's is (%rax).
+// The pointer and the named pointer of a sum are seen through casts
+// that keep their bits, which write nothing: ((int *) q)[0] is *q's
+// operand, and ((int *) q)[3] is q[3]'s.
 bool
-named_pointer(const expr_t &p)
+named_pointer(const expr_t &e)
 {
+    const expr_t &p = under_kept_bits(e);
     if (is< name_t >(p))
         return true;
 
@@ -3554,7 +3570,7 @@ named_pointer(const expr_t &p)
     const auto &n = left ? *b.rhs : *b.lhs;
 
     return b.op == binary_op_t::add && is< literal_t >(n) &&
-           is< name_t >(pointer);
+           is< name_t >(under_kept_bits(pointer));
 }
 
 // Whether the right operand of the operation form is a leaf, the

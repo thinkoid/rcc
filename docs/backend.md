@@ -460,8 +460,9 @@ operand, both required:
   variable, `*` of a named pointer, or an element by a constant
   index, `a[3]` on an array, whose operand is the slot or the label
   with the offset folded in (6.3), or `p[3]` on a named pointer,
-  which reads `p` as `*p` does; read through the parser's
-  conversions, so that a `char` promoted is one;
+  which reads `p` as `*p` does, the pointer under casts that keep its
+  bits, which write nothing, so that `((int *) q)[0]` is one; read
+  through the parser's conversions, so that a `char` promoted is one;
 - it does not name the variable, as itself or as the base of its
   address.
 
