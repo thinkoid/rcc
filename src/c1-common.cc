@@ -150,6 +150,20 @@ stored_valid(int valid, int width, const int_t &object)
     return std::min(valid, cut);
 }
 
+// The units of a record's copy and of its zeroing, backend.md 6.6: the
+// record's alignment, at most 8 bytes, a unit the machine loads and
+// stores in one access, which tiles the size; more than eight units
+// are a loop, which writes the same instructions whatever the count
+// (G18, G20).
+units_t
+units_of(const record_t &r)
+{
+    const int unit = std::min(r.alignment, 8);
+    const long count = r.size / unit;
+
+    return { unit, count, count > 8 };
+}
+
 // operands
 
 // The name the assembly gives a symbol, at its label and at every use:

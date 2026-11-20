@@ -8,7 +8,21 @@
    holds 3.  point_fewer(), wide_fewer() and large_fewer() list fewer
    values than members, padded_full() every member, point_empty() none,
    and union_shorter() the union's first member, which leaves its last
-   byte. */
+   byte.
+
+   On x86-64 each unit is the store of the immediate 0 at its width
+   into the slot, lowest address first, and takes no register:
+   point_fewer() movl $0, -12(%rbp); movl $0, -8(%rbp), then x's load
+   and its store at -12; wide_fewer() movq $0 at -32, -24 and -16,
+   then a and a + 1 stored at -32 and -24; large_fewer() the loop of
+   one index, movq $-200, %rax, then movq $0, (%rbp,%rax,1); addq $8,
+   %rax; jne back, four instructions, and movq $1, -200(%rbp); movq $2,
+   -192(%rbp) after it; padded_full() three movl $0 at -20 to -12, the
+   padding after each char among them, then the members' stores, movb
+   %al, -20(%rbp), movl %eax, -16(%rbp) and movb %al, -12(%rbp);
+   point_empty() the two movl $0 alone; and union_shorter() movw $0,
+   -4(%rbp); movw $0, -2(%rbp), then movb $97, -4(%rbp), the rest of
+   the union left zero. */
 struct point
 {
         int x, y;

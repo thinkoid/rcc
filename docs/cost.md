@@ -295,6 +295,7 @@ yet.
 | `if (p)`, `p == 0` | as a condition the pointer's slot compared, `cmpq $0, -8(%rbp)`, then `je`; as a value the slot compared the same, `cmpq $0, -8(%rbp)`, then `sete %al; movzbl %al, %eax` | `ptr-null` |
 | `*p` | `movl (%rax), %eax`, `movl %ecx, (%rax)`; x86 has one `mov` for every alignment | `deref` |
 | `a = b` on two records | an inline copy in units of the record's alignment, at most 8 bytes, lowest address first, each unit's load into a scratch register then its store, padding included, no call: `movl (%rcx), %edx; movl %edx, (%rax)` and the same at 4 for an 8-byte record of alignment 4 through two pointers, `movzwl` and `movw` for a unit of 2, `movzbl` and `movb` for 1; the unit's offset in each place's displacement, a slot's `-16(%rbp)`, a label's `corner+4(%rip)`, an element's `4(%rax,%rcx,8)`, no address formed; over eight units one loop, `movq $-72, %rsi`, then `movq 72(%rcx,%rsi,1), %rdx; movq %rdx, 72(%rax,%rsi,1); addq $8, %rsi; jne`, five instructions whatever the size, a label's address and an indexed element's formed first (G18, `backend.md` 6.6) | `struct-copy` |
+| a local record initialized by a list | the slot zeroed whole at the declaration, in the copy's units, lowest address first, each the store of the immediate 0 at the unit's width, `movl $0, -8(%rbp); movl $0, -4(%rbp)` for an 8-byte record of alignment 4, padding included, no register; over eight units the copy's loop of one index, `movq $-200, %rax`, then `movq $0, (%rbp,%rax,1); addq $8, %rax; jne`, four instructions whatever the size; then each listed value stored at its member's offset in the slot, in the list's order, a constant by the one store of the immediate, `movl $1, -8(%rbp)`, a call's result by its store, `movl %eax, -8(%rbp)`, before the next value is evaluated (G20, `backend.md` 6.6) | `struct-local-list-initializer`, `struct-local-list-zeroed` |
 | a variadic definition that calls `va_start`, and `va_arg` | the save area, a slot of 184 bytes at an alignment of 16 after the parameters', filled after their stores: `movq %rdi, -192(%rbp)` to `movq %r9, -152(%rbp)`, `movaps %xmm0, -144(%rbp)` to `movaps %xmm7, -32(%rbp)` with no test of `%al`, and `leaq 16(%rbp), %rax; movq %rax, -16(%rbp)`; `va_start` four stores into the list, `movl $8, -216(%rbp)`, `movl $48, -212(%rbp)`, the address at 176 loaded and stored, the area's `leaq` stored; `va_arg` `cmpl $40, -216(%rbp); ja`, then `addl $8, -216(%rbp)` and the area plus the offset less 8, or the stack's address stepped by `addq $8`, and the load of the type's width, `movq (%rax), %rax`; `va_copy` the record's copy, three `movq` units; `va_end` the list's `leaq`, discarded; a list handed on its address, `leaq -216(%rbp), %rax` (G19, `backend.md` chapter 5) | `variadic` |
 | `*p++` on a `register` pointer | the row of `p++` on a register variable, the read copied and the variable stepped in place, then the access through the copy, `movq %rbx, %rax; addq $1, %rbx; movsbl (%rax), %eax`; `*--q` is the step and the access through the variable, `subq $1, %r12; movsbl (%r12), %ecx`; the copy loop, `while (*p++ = *q++)`, is nine instructions, `movq %rbx, %rax; addq $1, %rbx; movq %r12, %rcx; addq $1, %r12; movsbl (%rcx), %ecx; movb %cl, (%rax); cmpb $0, %cl; je .Lcopy.3; jmp .Lcopy.2` | `register-walk` |
 | `&x` | `leaq -8(%rbp), %rax` | `address-of` |
@@ -476,13 +477,17 @@ ways, each calling the other and rcc calling rcc. The memory and
 pointers probes compare the memory each function writes as well, byte
 by byte, the first over loads and stores through pointers and the
 second over pointer arithmetic and the subscript. A probe does not
-compare with `clang` in two places. One is `p - q` for a negative
+compare with `clang` in three places. One is `p - q` for a negative
 difference that is no multiple of a size of 2, 4 or 8: `clang -O0`
 shifts, and the probe's main computes the truncated quotient itself.
-The other is the walk probe's store through a stepped `register`
+Another is the walk probe's store through a stepped `register`
 pointer whose right operand names the pointer: `clang -O0` evaluates
 that operand before the step, where G13 makes the step first, so the
 main compares with a function of its own that keeps G13's order.
+The third is the padding of a local record a list initializes, which
+C23 leaves unspecified where the list is not empty: the zeroing probe
+checks each byte of rcc's object outside its members against zero
+(G20), and reads none of `clang`'s.
 A probe checks values, not costs: that rcc's code computes what
 `clang`'s does, which no pin shows. The bounds probe checks G10's
 width too, which few values show: the low bytes of a sum or a product

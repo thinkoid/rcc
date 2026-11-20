@@ -5439,27 +5439,74 @@ void
 copy_record(state_t &s, const assign_t &a)
 {
     const auto &record = *as< record_type_t >(a.lhs->type).record;
-    const int unit = std::min(record.alignment, 8);
-    const long units = record.size / unit;
-    const bool loop = units > 8;
+    const auto units = units_of(record);
 
     const auto left = place_of(s, a, 0);
     const auto right = address(s, *a.rhs);
 
-    const auto to = reached(s, formed(s, left), record.size, loop);
-    const auto from = reached(s, right, record.size, loop);
+    const auto to = reached(s, formed(s, left), record.size, units.loop);
+    const auto from = reached(s, right, record.size, units.loop);
     const auto scratch = fresh(s, 64);
     const reg_t r = reg_of(s, scratch);
 
-    if (loop)
-        copy_loop(s, to, from, record.size, unit * 8, r);
+    if (units.loop)
+        copy_loop(s, to, from, record.size, units.unit * 8, r);
     else
-        for (long k = 0; k < units; ++k)
-            copy_unit(s, to, from, k * unit, unit * 8, r);
+        for (long k = 0; k < units.count; ++k)
+            copy_unit(s, to, from, k * units.unit, units.unit * 8, r);
 
     release(s, scratch);
     release(s, to);
     release(s, from);
+}
+
+// The zeroing of more than eight units, backend.md 6.6: copy_loop()'s
+// index from -size up to 0 by the unit, which the slot joins with the
+// size in its displacement, and at each unit the store of the
+// immediate 0: movq $-200, %rax; then movq $0, (%rbp,%rax,1); addq $8,
+// %rax; jne back, four instructions whatever the size.
+void
+zero_loop(state_t &s, int displacement, long size, int width)
+{
+    const auto index = fresh(s, 64);
+    const reg_t r = reg_of(s, index);
+    insn(s, "movq", { imm(-size), reg(r, 64) });
+
+    const int top = new_label(s);
+    place_label(s, top);
+
+    auto unit = slot_address(displacement);
+    unit.displacement += size;
+    unit.index = index;
+    insn(s, sized("mov", width), { imm(0), operand(s, unit) });
+    insn(s, "addq", { imm(width / 8), reg(r, 64) });
+    jump_if(s, binary_op_t::ne, false, top);
+
+    release(s, index);
+}
+
+// The zeroing of a local record a list initializes, G20: its whole
+// slot, padding included, in units_of() the record from the lowest
+// address up, before the first listed value is evaluated.  Each unit is
+// the store of the immediate 0 that initialize() writes for a
+// constant, movl $0, -8(%rbp), and takes no register; more than eight
+// are zero_loop()'s.
+void
+zero_slot(state_t &s, int displacement, const record_t &record)
+{
+    const auto units = units_of(record);
+    const int width = units.unit * 8;
+
+    if (units.loop) {
+        zero_loop(s, displacement, record.size, width);
+        return;
+    }
+
+    for (long k = 0; k < units.count; ++k) {
+        const long offset = k * units.unit;
+        insn(s, sized("mov", width),
+             { imm(0), at(displacement + static_cast< int >(offset)) });
+    }
 }
 
 // The effect context, chapter 6.6, Ritchie's efftab beside regtab and
@@ -5592,8 +5639,9 @@ register_decl(state_t &s, const decl_stmt_t &d)
 // stored; the slot holds what it holds.  The initializer is the store
 // row of chapter 6.6, into the slot.  An array's slot is at the
 // type's alignment, chapter 5, and its displacement is the array's
-// lowest address, the elements upward from it.  The zeroing a record's
-// list asks of its declaration is not yet.
+// lowest address, the elements upward from it.  A record its list
+// initializes is zeroed whole, zero_slot(), and the statements after
+// the declaration store the listed values (G20).
 void
 decl_stmt(state_t &s, const decl_stmt_t &d)
 {
@@ -5603,12 +5651,12 @@ decl_stmt(state_t &s, const decl_stmt_t &d)
         return;
     }
 
-    if (d.zeroed)
-        not_yet("a local's initializer list");
-
     const int displacement =
         allocate(s, size_of(sym->type), align_of(sym->type));
     s.slots.emplace(sym, displacement);
+
+    if (d.zeroed)
+        zero_slot(s, displacement, *as< record_type_t >(sym->type).record);
 
     if (!d.init)
         return;

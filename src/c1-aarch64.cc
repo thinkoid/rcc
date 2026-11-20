@@ -4512,9 +4512,9 @@ copy_loop(
 }
 
 // The object of record r at from copied to to, both places evaluated,
-// in units of the type's alignment, padding included, no call, chapter
-// 6.6.  A register pointer's step is its own add, before the copy for
-// ++p and after it for p++.  Up to eight units the copy is unrolled,
+// in units_of() the record, padding included, no call, chapter 6.6.  A
+// register pointer's step is its own add, before the copy for ++p and
+// after it for p++.  Up to eight units the copy is unrolled,
 // copy_units(); more are copy_loop()'s.
 void
 copy_object(state_t &s, address_t to, address_t from, const record_t &r)
@@ -4529,14 +4529,14 @@ copy_object(state_t &s, address_t to, address_t from, const record_t &r)
     from.step = { };
 
     const long size = static_cast< long >(r.size);
-    const int unit = static_cast< int >(r.alignment);
+    const auto units = units_of(r);
 
-    if (size / unit > 8)
-        copy_loop(s, to, from, size, unit);
+    if (units.loop)
+        copy_loop(s, to, from, size, units.unit);
     else {
-        const auto target = unit_place(s, to, size, unit);
-        const auto source = unit_place(s, from, size, unit);
-        copy_units(s, target, source, size, unit);
+        const auto target = unit_place(s, to, size, units.unit);
+        const auto source = unit_place(s, from, size, units.unit);
+        copy_units(s, target, source, size, units.unit);
         release(s, target);
         release(s, source);
     }

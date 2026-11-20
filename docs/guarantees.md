@@ -214,6 +214,20 @@ of the call's own and passed as that slot's address, `add x1, x29,
 #272`, so the callee's `va_arg` advances the copy (`aarch64.md` 5.2,
 chapter 8).
 
+**G20. A local's initializer list writes every byte of its object.**
+6.7.11p20, p22; 6.2.6.1p6. Every byte of a local object initialized
+by a list is a listed value or zero, padding included, as an object of
+static storage holds the same list; C23 leaves the padding
+unspecified where a list is not empty. The declaration zeroes the
+whole object first, in G18's units from the lowest address up, before
+the first initializer is evaluated, whatever the list names; then the
+listed values are stored in the list's order (G13). Instruction, on
+x86-64: per unit the store of the immediate 0 at its width into the
+slot, `movb`, `movw`, `movl` or `movq`, `movl $0, -8(%rbp)`, with no
+register; over eight units G18's loop of one index, `movq $-200,
+%rax; movq $0, (%rbp,%rax,1); addq $8, %rax; jne` back
+(`backend.md` 6.6).
+
 ## Not in this list
 
 Implementation-defined behaviour beyond G2 and G3: fixed per

@@ -325,6 +325,21 @@ Fix: none taken; a check of each access's width in the listings of
 Check: a compiler that reads a =char= local at 4 bytes fails =make
 test=.
 
+** TODO No test copies a record aligned to 16, or runs the copy's loop at a unit of 8
+
+A record with a ~long double~ member is aligned to 16 and copied in
+units of 8 on both targets; no cost program and no probe holds one,
+and a copy in units of the alignment, which moved 4 bytes of each 16
+on aarch64, passed every test. The =copies= probe's largest record
+aligned to 8 is of eight units, which is written out, so neither
+target's copy loop is run at a unit of 8.
+
+Fix: such a record in =struct-copy.c= and in the =copies= probe;
+=a8_72= and =a8_200= among the probe's sized records.
+
+Check: a compiler that copies in units of 16 fails =make test= on
+aarch64, and the probe's count rises with 0 differ on both targets.
+
 * Parser
 
 ** TODO =always_inline= marks
@@ -771,32 +786,20 @@ Fix: the comment says every conversion but an array's decay.
 Check: =grep -n 'cast_t {' src/parse.cc= prints the sites the
 comments name.
 
-** TODO A local record's initializer list is not yet
+** TODO aarch64: a local record's initializer list is not yet
 
-~struct point q = { 1, 2 };~ in a block is taken by the parser and
-refused by each generator, "c1: not yet: a local's initializer
-list"; a record of static storage takes its list, and a local one
-initialized by a record's value is its copy.
+~struct point q = { 1, 2 };~ in a block compiles on x86-64: the
+declaration zeroes the object and the listed values are stored (G20).
+aarch64's generator refuses the zeroed declaration, "c1: not yet: a
+local's initializer list".
 
-The listed values are run-time expressions, each converted as if by
-assignment (6.7.11p12), and the unlisted rest is zero (6.7.11p20,
-p22). The parser writes each value's store at its place in the
-local, in the list's order, and marks the declaration as zeroed; no
-generator has the zeroing's row. A string for a member array of
-char needs its bytes copied, and arrays have no copy's row: it is a
-not-yet of its own.
-
-Fix: a zeroing of the whole object, padding included, then the
-listed members' assignments in the list's order; the zeroing a row
-of each generator in the copy's units, stores of zero by the
-record's alignment and the loop above eight. G20 of
-=docs/guarantees.md=, a guarantee of its own, is written with the
-first generator's row.
+Fix: aarch64's row of the zeroing, in the copy's units, stores of
+the zero register and the loop above eight; =aarch64.md= 6.6 and
+chapter 9, and G20's aarch64 sentence.
 
 Check: =struct-local-list-initializer= and
-=struct-local-list-zeroed= compile and are pinned on both targets,
-and a probe beside =copies= compares the members against =clang= and
-every padding byte against zero.
+=struct-local-list-zeroed= are pinned on aarch64, and the =zeroing=
+probe runs there.
 
 * Lexer
 

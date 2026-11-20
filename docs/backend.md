@@ -1737,6 +1737,22 @@ and an address with an index of its own are formed by their `leaq`
 or `addq` first, as is a place whose displacement plus the size no
 32-bit field holds.
 
+A local record a brace-enclosed list initializes is zeroed whole at
+its declaration, and the statements the parser writes after it store
+the listed values, each an assignment of this context (G20,
+`shape.md` chapter 5). The zeroing goes through the slot in the
+copy's units, lowest address first: one rule, `units_of()`, gives the
+copy and the zeroing their unit and their loop above eight units.
+Each unit is the write of the immediate 0 at the unit's width, `movl
+$0, -8(%rbp); movl $0, -4(%rbp)` for an 8-byte record of alignment
+4, and takes no register. Above eight units the zeroing is the copy's
+loop of one index, which the slot takes as it is: `movq $-200,
+%rax`, then `movq $0, (%rbp,%rax,1); addq $8, %rax; jne` back, four
+instructions whatever the size. The zeroing comes before the first
+listed value is evaluated, whatever the list names: a list of every
+member still zeroes the padding between them first, and `{}` is the
+zeroing alone.
+
 ### 6.7 Held values at a branch and at a call
 
 A value is held from the instruction that produces it to the one
@@ -2404,6 +2420,7 @@ row here, in the guarantee's voice.
 | G17 a string literal is writable | `.data`, chapter 10 |
 | G18 a record's assignment copies its object | 6.6: per unit of the record's alignment the plain `mov` load into a scratch register and the store, lowest address first; over eight units the loop of one index, `addq` and `jne` |
 | G19 the variable arguments are read where the convention put them | chapter 5: the save area's `movq` of the six general registers and `movaps` of the eight vector ones, no test of `%al`, and the stack's address by `leaq`; `va_arg`'s `cmpl $40` and `ja`, `addl $8` or `addq $8`, and the load of the type's width |
+| G20 a local's initializer list writes every byte of its object | 6.6: the slot zeroed first, per unit of the record's alignment the store of the immediate 0, lowest address first; over eight units the loop of one index, `movq $0`, `addq` and `jne`; then the listed values' stores, in the list's order |
 
 G15 stays withdrawn. The never-emitted table, the IR flags the
 front end withheld from an optimizer that never ran, has no
