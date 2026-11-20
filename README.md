@@ -15,11 +15,14 @@ implementation, per target, are `docs/choices.md`.
 
 ## Design
 
-- A literal compiler. The instruction written is the instruction
-  executed: `x / 4` divides, `a + 0` adds, a loop-invariant is
-  computed every iteration. Choosing the cheaper form is the
-  programmer's job, and the compiler never second-guesses it.
-  `docs/cost.md` says what each construct compiles to.
+- A literal compiler. The work the source writes is the work
+  executed, in the written order: `x / 4` divides, `x * 4`
+  multiplies, a loop-invariant is computed every iteration. An
+  operator its constant makes the identity, `a + 0` or `a * 1`, does
+  no work and writes no instruction, and its operand is still
+  evaluated. Choosing the cheaper form is the programmer's job, and
+  the compiler never second-guesses it. `docs/cost.md` says what each
+  construct compiles to.
 - Own tree, own back end. rcc writes the machine's assembly from the
   tree and owns its registers, in Ritchie's model: every local in its
   stack slot, `register` variables in the callee-saved registers,

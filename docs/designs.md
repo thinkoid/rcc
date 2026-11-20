@@ -106,9 +106,9 @@ registers across statements.
 
 Three rules bind any design:
 
-- **Literal.** "The instruction written is the instruction executed:
-  `x / 4` divides, `a + 0` adds, a loop-invariant is computed every
-  iteration" (`README.md:16-18`).
+- **Literal.** "The work the source writes is the work executed, in
+  the written order: `x / 4` divides, `x * 4` multiplies, a
+  loop-invariant is computed every iteration" (`README.md:18-20`).
 - **G13, left to right.** "Operands and arguments are evaluated left
   to right, and an operand's side effects complete before the next
   operand starts" (`docs/guarantees.md:106-108`).
@@ -673,8 +673,7 @@ The Seventh Edition compiler writes:
 |---|---|---|
 | `a + f(b)` | `mov _b,(sp); jsr pc,*$_f; add _a,r0` | G13: `f` runs before `a` is read |
 | `a + b / c` | `mov _b,r1; sxt r0; div _c,r0; add _a,r0` | G13: the division comes before `a` |
-| `y = x + 0;` | `mov _x,_y` | literalness: the `+ 0` is dropped |
-| `x =+ 0;` | nothing | literalness: `ci70`'s empty body (`table.s:1098-1102`) |
+| `x =+ 0;` | nothing | literalness: the store the source writes is left out, `ci70`'s empty body (`table.s:1098-1102`) |
 | `return(p[i] = a);` | `mov _a,(r0); mov (r0),r0` | a read of the object the source did not write, cr80's `%n*,aw` (`table.s:202-205`) |
 
 `x =+ 0` is the dialect's spelling of `x += 0`. The reorders are
@@ -1216,8 +1215,8 @@ and not run:
 - `a[i] + 1`: `AddOp` with a constant right operand loads the left
   item (`ORG.Mod:436`), and `RegI`'s load is one load at the register
   plus 16 (`ORG.Mod:180`); then the add of 1, which `AddOp` writes
-  only for a constant that is not 0 (`ORG.Mod:437`), a `+ 0` rcc's
-  literal rule would keep.
+  only for a constant that is not 0 (`ORG.Mod:437`), as rcc writes
+  nothing for an identity (`backend.md` 6.4).
 
 The offset rides in the item until an instruction reads the object, so
 an element's address is never formed by an add of its own. The same

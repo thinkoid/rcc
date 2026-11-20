@@ -22,12 +22,14 @@ under what licence.
   read the optional peephole pass, `c2`, whole too, and the parser,
   `c0`, in part, and it read rcc's c1 against them.
 - The surprise: the ancestor was not a literal compiler. Its c1 wrote
-  `x * 8` as a shift and an unsigned `x / 8` as a shift, dropped `x +
-  0`, gathered `x + 1 + 2` into `x + 3`, computed the harder operand
-  first and moved a postfix `++` past the rest of its expression. Its
-  c2 did none of these. So rcc is stricter than its ancestor, by its
-  own rules, and "what Ritchie's c1 did, c1 may do" is a necessary
-  test and not a sufficient one.
+  `x * 8` as a shift and an unsigned `x / 8` as a shift, gathered
+  `x + 1 + 2` into `x + 3`, computed the harder operand first and
+  moved a postfix `++` past the rest of its expression. Its c2 did
+  none of these. So rcc is stricter than its ancestor, by its own
+  rules, and "what Ritchie's c1 did, c1 may do" is a necessary test
+  and not a sufficient one. The identities are common ground: the
+  ancestor's `x + 0` and `x * 1` are the load of `x` alone, as rcc's
+  are (2.1).
 - What rcc already took: the register model, jump code for
   conditions, the three contexts with the memory forms of the effect
   context, `pswitch`, the constant subsumed in an address, and
@@ -424,13 +426,17 @@ has no counterpart of `sptab` (3.3).
 
 ### 2.1 The rule rcc keeps
 
-`cost.md` puts it first: "The instruction written is the instruction
-executed. `x / 4` divides; `x >>= 2` shifts; `a + 0` adds."
-(`cost.md` chapter 0). The parser folds an integer constant
-expression, the spelling of a number, and nothing else (`backend.md`
-6.4). The second rule is G13: "Operands and arguments are evaluated
-left to right, and an operand's side effects complete before the next
-operand starts" (`guarantees.md`, G13).
+`cost.md` puts it first: "The work the source writes is the work
+executed." Every load, store, call and operation is made, in the
+written order, and nothing is inferred; an operator whose constant
+operand makes it the identity, `a + 0` or `a * 1`, does no work and
+writes no instruction, and its operand is still evaluated (`cost.md`
+chapter 0). The parser does two things to the tree of its own: it
+folds an integer constant expression, the spelling of a number, and
+it leaves out an identity's node (`backend.md` 6.4). The second rule
+is G13: "Operands and arguments are evaluated left to right, and an
+operand's side effects complete before the next operand starts"
+(`guarantees.md`, G13).
 
 The ancestor kept neither rule, and its c1, not its peephole pass,
 broke them.
@@ -645,8 +651,12 @@ machine:
 
 ### 2.5 What it means
 
-Every rewrite of 2.2 is c1's, and rcc's rules exclude every one: the
-algebra by literalness, the reorders and `delay()` by G13. So the
+Every rewrite of 2.2 is c1's. The identities among them are rcc's
+too: `x + 0`, `x * 1`, `x / 1` and a shift by 0 are the load of `x`
+alone there, as cr40's `%n,z` is, and so they are in rcc (2.1).
+rcc's rules exclude the rest: the algebra by literalness, the store
+an assignment by 1 or by 0 leaves out, since rcc makes every store
+the source writes, and the reorders and `delay()` by G13. So the
 lens "what Ritchie's c1 did, c1 may do" is necessary and not
 sufficient. rcc is stricter than its ancestor here, and that is the
 project's rule. A mechanism of the ancestor is a candidate when it
@@ -2439,23 +2449,21 @@ not.
 Each mechanism below is the ancestor's c1's, and one of rcc's rules
 excludes it.
 
-**Literalness**, "the instruction written is the instruction
+**Literalness**, "the work the source writes is the work
 executed":
 
 - a multiply by a power of two as a shift (`c10.c:320-325`,
   `c11.c:496-510`), and an unsigned division and remainder by a power
   of two as a shift and a mask (`c12.c:188-191`);
-- `acommute()`'s algebra: constants gathered (`c12.c:620-633`), `+ 0`
-  dropped (`c12.c:634-640`), `* 0`, `& 0` and `* 1` simplified
+- `acommute()`'s algebra: constants gathered (`c12.c:620-633`), `* 0`
+  and `& 0` made the constant, so `f() * 0` calls nothing
   (`c12.c:653-666`), and constants distributed over a sum
   (`c12.c:706-777`, `c12.c:960-977`);
-- the rows that write nothing for a 0, cr40's `%n,z` and `ci70`'s
-  empty body (2.2);
 - `x + -1` as `x - 1` (`c10.c:456-464`), and `x - c` as `x + -c`
   (`c12.c:65-74`);
-- a division and a multiply-assign by 1, and a shift by 0, dropped
-  (`c12.c:182-187`, `c12.c:208-210`), and `& ~0` dropped
-  (`c12.c:167-170`);
+- an assignment by `*=` or `/=` 1, or by `<<=` or `>>=` 0, made its
+  left operand with no store (`c12.c:182-187`, `c12.c:208-210`), and
+  `ci70`'s empty body, which writes no store for `x += 0` (2.2);
 - a comparison of a comparison with 0 folded into the inner one
   (`c12.c:247-260`), and `-(-x)` and `~~x` cancelled
   (`c12.c:473-474`, `c12.c:506-507`);

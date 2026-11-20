@@ -12,7 +12,6 @@ unused:
 	movl	%edi, -4(%rbp)
 	movl	%esi, -8(%rbp)
 	movl	-4(%rbp), %eax
-	addl	$0, %eax
 	movl	-4(%rbp), %eax
 	cltd
 	idivl	-8(%rbp)

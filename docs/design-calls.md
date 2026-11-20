@@ -290,7 +290,7 @@ built the constant instead. Every C compiler since has.
 
 ### 4.3 What it means
 
-The literal rule is "the instruction written is the instruction
+The literal rule is "the work the source writes is the work
 executed", and it is a rule about the program's data: `x * 4`
 multiplies `x`, a value the compiler does not know. A constant
 expression has no data in it; it is a spelling of a number, and ISO
@@ -299,12 +299,13 @@ runtime". Folding it does not change which instructions operate on
 data; it changes how a number is written in the listing, `$-1`
 instead of `xor; sub; cltq`.
 
-What is not folded matters as much. A node with one constant
-operand stays: `x * 1` is `imul $1`, `x + 0` is `add $0`, `0 * x` is
-a multiply, `x - x` is a subtract. The evaluator fires only when
-every leaf under a node is a constant, and the result takes the type
-C gives the expression, so `-1` is an `int` and `-1L` a `long`, and
-then meets the implicit conversion like any constant. A value
+What is not folded matters as much. A node with one constant operand
+stays, but where the constant makes its operator the identity, `x * 1`
+and `x + 0`, whose node the parser leaves out (`backend.md` 6.4):
+`0 * x` is a multiply, `x - x` is a subtract. The evaluator fires only
+when every leaf under a node is a constant, and the result takes the
+type C gives the expression, so `-1` is an `int` and `-1L` a `long`,
+and then meets the implicit conversion like any constant. A value
 outside the type's range is a constraint violation (6.6p4) and is
 diagnosed, not wrapped.
 

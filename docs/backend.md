@@ -1396,18 +1396,37 @@ instruction to trap on (G4), so folding changes no program. 6.6p4,
 which makes an out-of-range constant expression a constraint
 violation, governs where the grammar requires one, the size of an
 array, and the wrapped value is refused there. A variable never folds:
-`x * 1` multiplies, `x - x` subtracts, `x + 0` adds. The rule "the
-instruction written is the instruction executed" is about operations
-on the program's data; a constant expression is the spelling of a
-number, which ISO C says "can be evaluated during translation" (6.6p2)
-and which Ritchie's `c0` evaluated. So `-1` is the immediate `$-1`,
-`p[-1]` is the displacement `-4(L)`, and `int a[96 * 96]` has 9216
-elements. This closes findings 4 and 5 of `findings.md`, and the
-evaluator is not an addition: the size of an array (6.7.7.3p4), the
-label of a `case` (6.8.5.3p3) and every expression in a static
-initializer (6.7.11p5) require one, and the last of these cannot
-compile without it, since there is no instruction to compute a
-static's initial bytes at (`design-calls.md` chapter 4).
+`x - x` subtracts and `x * 0` multiplies. The rule of `cost.md`
+chapter 0, that the work the source writes is the work executed, is
+about operations on the program's data; a constant expression is the
+spelling of a number, which ISO C says "can be evaluated during
+translation" (6.6p2) and which Ritchie's `c0` evaluated. So `-1` is
+the immediate `$-1`, `p[-1]` is the displacement `-4(L)`, and
+`int a[96 * 96]` has 9216 elements. This closes findings 4 and 5 of
+`findings.md`, and the evaluator is not an addition: the size of an
+array (6.7.7.3p4), the label of a `case` (6.8.5.3p3) and every
+expression in a static initializer (6.7.11p5) require one, and the
+last of these cannot compile without it, since there is no instruction
+to compute a static's initial bytes at (`design-calls.md` chapter 4).
+
+An operator whose constant operand makes it the identity does no work
+and writes no instruction (`cost.md` chapter 0): `+`, `-`, `|`, `^`,
+`<<` and `>>` by 0, `*` and `/` by 1, and `&` by every bit of its
+type, the constant on the right, or on the left of `+`, `*`, `&`, `|`
+and `^`. The constant is the one the evaluator folded, converted to
+the operator's type by the usual arithmetic conversions, so `u & -1`
+on an `unsigned` is an identity and `l & 0xffffffff` on a `long` is
+not; a shift's count is read in its own type. The parser builds the
+node as written and leaves it out once the function's body is whole,
+its other operand in its place. That operand has the node's type
+already, the promotion or the conversion the operator asked of it
+included, so `c + 0` on a `char` is `(int) c` and `sizeof (c + 0)` is
+4. The node stays while the body is parsed, since it is no lvalue:
+`&(a + 0)` is an error, and `&a` is not. c1 thus never meets an
+identity, and each row reads the operand where the node stood:
+`x + (a + 0)` is `addl -8(%rbp), %eax`, the operand in memory,
+`if (a & -1)` is `cmpl $0, -4(%rbp)`, and `p[i] + 0` over a row is
+the row's address on both targets, with no `add` of 0.
 
 A constant operand of an arithmetic instruction is an immediate when
 the instruction has an immediate form, which on x86-64 every one of

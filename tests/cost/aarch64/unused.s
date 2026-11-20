@@ -14,7 +14,6 @@ unused:
 	str	w0, [x29, #16]
 	str	w1, [x29, #20]
 	ldr	w0, [x29, #16]
-	add	w0, w0, #0
 	ldr	w0, [x29, #16]
 	ldr	w1, [x29, #20]
 	sdiv	w0, w0, w1

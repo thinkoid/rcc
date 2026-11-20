@@ -7,9 +7,20 @@ does what the source says, and only that.
 
 ## 0. tl;dr
 
-- The instruction written is the instruction executed. `x / 4`
-  divides; `x >>= 2` shifts; `a + 0` adds. Choosing between them is
-  the programmer's job, and the compiler never second-guesses it.
+- The work the source writes is the work executed. Every load,
+  store, call and operation is made, in the written order, and nothing
+  is inferred: `x / 4` divides, `x * 4` multiplies, `x % 1` divides,
+  `x >>= 2` shifts, and a loop invariant is computed at every
+  iteration. Choosing the cheaper way to do the work is the
+  programmer's job, and the compiler never second-guesses it. An
+  operator whose constant operand makes it the identity does no work
+  and writes no instruction: `a + 0`, `a - 0`, `a | 0`, `a ^ 0`,
+  `a << 0`, `a >> 0`, `a * 1`, `a / 1` and `a & -1`, and `0 + a`,
+  `1 * a`, `0 | a`, `0 ^ a` and `-1 & a`. Its other operand is still
+  evaluated, with every load, call and fault in it, and converted as
+  the operator's type asks: `f() + 0` calls `f`, and `c + 0` on a
+  `char` is the extending load. `a * 0` is no identity, since its
+  value is not `a`'s.
 - The compiler decides three things of its own: the register that
   holds a value, by the discipline of `backend.md` chapter 4; the
   machine form of each operator, by the table of chapter 2; and the
@@ -17,8 +28,8 @@ does what the source says, and only that.
   aarch64. Nothing else, but a convention of the target like the
   stack's 16 bytes at a call: on x86-64 every loop head is aligned to
   32 bytes, and on aarch64 none is (4.2).
-- Every statement is written, its value used or not. `a + 0;` adds
-  and `a / b;` divides, and the division can fault.
+- Every statement is written, its value used or not. `a + 0;` is the
+  load of `a`, and `a / b;` divides, and the division can fault.
 - Locals live in memory, one stack slot each, for the whole call. A
   local or parameter declared `register` lives in one of five
   callee-saved registers on x86-64, `rbx` and `r12` to `r15`, or one
@@ -51,7 +62,15 @@ sequence, per operator (`backend.md` 6.1). Between the parser and the
 assembler, nothing reasons about the program. The parser folds an
 integer constant expression to the number it spells, since it is a
 spelling and not an operation on data (`backend.md` 6.4); a variable
-never folds. A typedef name is another spelling of its type and
+never folds. An identity of chapter 0 is no operator of the tree c1
+reads: the parser leaves its node out and keeps its other operand, of
+the operator's type, so a program compiles to the listing of its twin
+with each identity's operand converted in its place, `(int) c` for
+`c + 0` on a `char` (`add-zero`). A compound assignment is no
+identity: `x += 0` is a read and a store the source writes, and it
+writes its operator with them, `addl $0, -4(%rbp)` on x86-64 and
+`add w0, w0, #0` between the `ldr` and the `str` on aarch64.
+A typedef name is another spelling of its type and
 writes nothing: a program compiles to the listing of its twin with
 every type spelled out (`typedef` in the cost corpus). An enumerated
 type is another spelling of the integer type compatible with it, and
@@ -177,8 +196,9 @@ What the compiler may do:
 
 What the compiler never does:
 
-- Fold. `a + 0` is an add, `x * 3` is a multiply, `x / 4` is a
-  division, `a == a` is a compare.
+- Fold. `x * 3` is a multiply, `x / 4` is a division, `a * 0` is a
+  multiply, `a == a` is a compare. An identity, which does no work,
+  writes nothing (chapter 0).
 - Move. A loop-invariant expression is computed every iteration. A
   constant used in a loop is materialized in the loop.
 - Merge. The same expression written twice is computed twice.
@@ -216,7 +236,7 @@ yet.
 | `a + b`, `a - b` | `addl -8(%rbp), %eax`, `subl -8(%rbp), %eax`, the right operand's slot the instruction's operand after the left operand's load; the left operand's register is the result's | `add-sub`, `parameter` |
 | an object in memory as the right operand | of the operation's width, the instruction's own operand, and no load of its own: in `add`, `addl -24(%rbp), %eax` for a local, `addl defined(%rip), %eax` for a global the file defines, `addl (%rcx), %eax` after the GOT's load, `movq declared@GOTPCREL(%rip), %rcx`, and after `p`'s, and `addl -40(%rbp,%rcx,4), %eax` after `movslq -20(%rbp), %rcx` for `a[i]`; `subl`, `andl`, `orl`, `xorl`, `imull`, `idivl` and `cmpl` the same; an `int` under the cast to `unsigned` of `u + i` the same, `addl -8(%rbp), %ecx`, and `cmpl`, `imull` and `divl -8(%rbp)` in `signedness`; the load kept for a `char` promoted, `movsbl -5(%rbp), %ecx; addl %ecx, %eax`, an `int` widened, `movslq -12(%rbp), %rcx; addq %rcx, %rax`, a compound assignment's right operand into an object in memory, `movl -8(%rbp), %eax; addl %eax, -4(%rbp)`, where into a register variable it is the operand, `addl -16(%rbp), %ebx`, `andq -24(%rbp), %rbx` on a `long`, a shift's count, `movl -8(%rbp), %ecx; shll %cl, %eax`, and an index pointer arithmetic scales, `movq -40(%rbp), %rdx; leaq (%rax,%rdx,4), %rax`; a global read before a call on the right, loaded, spilled across the call and reloaded, `movq -8(%rbp), %rcx; cmpl %eax, %ecx` (`backend.md` 6.1) | `operand` |
 | an object in memory compared with a `register` variable | the object the `cmp`'s own operand and the variable's register its source, `cmpl %ebx, -12(%rbp)`, then the jump or the `setcc`, and no load; an expression on the right keeps the object's load, `movl -12(%rbp), %eax; movl %ebx, %ecx; addl $1, %ecx; cmpl %ecx, %eax` for `x == r + 1` (`backend.md` 6.1) | `operand` |
-| `a + 0` | `addl $0, %eax`: a constant operand is the immediate, whatever its value | `add-zero` |
+| an identity, `a + 0`, `a * 1`, `a & -1` and the rest of chapter 0 | no instruction: the other operand's row alone, `movl -4(%rbp), %eax` for `a + 0`, `movsbl -1(%rbp), %eax` for `c + 0` on a `signed char` and `movslq -4(%rbp), %rax` for `i + 0L`, the extension kept; `a * 0` is no identity, `imull $0, -4(%rbp), %eax`, a constant operand the immediate whatever its value | `add-zero` |
 | `a * b` | `imull -8(%rbp), %eax`; by a constant, the three-operand form with the object in memory as its source and no load, `imull $3, -4(%rbp), %eax`, by a power of two the same, `imull $4, -4(%rbp), %eax` and no shift, and `imulq $1000, -16(%rbp), %rcx` for a `long`; on a value in a register `imull $3, %eax, %eax`; on a register variable the three-operand form with its register as the source, `imull $4, %ebx, %ecx`, and `imull $4, %ebx, %eax` for a return; `4 * x` as `x * 4` is, `imull $4, -4(%rbp), %ecx` (`backend.md` 6.1) | `mul`, `mul-three`, `operand`, `return-register`, `power-of-two` |
 | `a / b`, `a % b` | `cltd; idivl -8(%rbp)` signed, `xorl %edx, %edx; divl -8(%rbp)` unsigned, the divisor's slot the operand; the quotient in `eax`, the remainder the value in `edx`, which a return moves, `movl %edx, %eax`, and a store or a next row takes from there (`backend.md` 6.5) | `div-rem`, `udiv-urem` |
 | `a % b` on a `register` variable | the left operand copied from its register to where the division wants it, `movl %ebx, %eax`, then the row above, `cltd; idivl %ecx; movl %edx, %eax`, and `xorl %edx, %edx; divl %ecx` unsigned; the variable is not written | `register-remainder` |
@@ -247,7 +267,7 @@ yet.
 | `switch`, hash | the unsigned division by the table's size, `movl $5, %ecx; xorl %edx, %edx; divl %ecx`; the jump through the table by the remainder, `leaq .Lreason.16(%rip), %rcx; jmp *(%rcx,%rdx,8)`; in each bucket the quotient compared with each of its cases' value divided by the size, `cmpl $40, %eax; je .Lreason.2`, then `jmp .Lreason.14` to the default | `switch-hash` |
 | a switch's body | the labels where they are written, nothing between one case's statements and the next label, so control falls through, `addl $1, -8(%rbp)` then `.Lscore.3:` and `addl $2, -8(%rbp)`; a `break` is `jmp .Lscore.7` past the body; a default in the middle is one more label | `switch-fall` |
 | `return e` | `e` computed in `eax`, which the return names, where its last instruction can write it, what is generated before that instruction outside `rax`: `movq -16(%rbp), %rcx; movslq -20(%rbp), %rdx; movl %ebx, %eax; subl (%rcx,%rdx,4), %eax` for `r - p[i]` on a `register int r`, `movslq %edx, %rax` for a remainder returned as a `long`, `setl %al` after `cmpl %eax, %ecx` for `a < b / c`, the quotient of `(a + b / c) / d` left in `eax`, and an assignment's value, a `+=`'s load and a postfix step's copy of the old value in `eax`, their place in `rcx` and `rdx`, and a register variable's read that the right operand writes copied or reloaded there, `movq -24(%rbp), %rax; addl %ecx, %eax` for `r + (c ? r++ : 2)`, a pointer plus a call's result written into `rax`, `addq -24(%rbp), %rax` for `p + f(x)` on a `char *p`, `p` read in its spill slot and not reloaded, and for a register pointer `p` `movq %rbx, %rax` and `addq %rcx, %rax` for `p + (i + (p = t, 0))`, `subq %rbx, %rax` before `cqto; idivq %rcx` for `p - (p = t)`; moved in otherwise, `movl %edx, %eax` for a remainder, `movl %ecx, %eax` after `r - f(x)`, and `movl %edx, %eax` after `r - p[i / 2]`, a division within the right operand, but a quotient left in `rax`, `idivq %rsi` last for `p - h(q)`, and an operator that commutes writing its right operand's `rax`, `addl %ebx, %eax` for `r + f(x)` and `addl -24(%rbp), %eax` for `r + (r = f(x))`, the copy read in its spill slot (`backend.md` 6.1, 6.5); then `jmp .L<function>.1` to the one epilogue, `jmp .Lsum.1` in `for`, the last statement included; a `return` with no value as an `if`'s body is the `if`'s one jump, `jne .Learly.1` | every program, `return-register`, `if-jump` |
-| a statement whose value is unused | written: `a + 0;` is `addl $0, %eax`, `a / b;` is `cltd; idivl -8(%rbp)`, and the division can fault | `unused` |
+| a statement whose value is unused | written: `a + 0;` is the load of `a`, `movl -4(%rbp), %eax`, `a / b;` is `cltd; idivl -8(%rbp)`, and the division can fault | `unused` |
 | `f(a, b)` | each argument evaluated into a register and stored to a slot of its own, `movl %eax, -12(%rbp)`, a constant argument in one store of the immediate, `movl $1, -4(%rbp)` in `stack-args`; the slots loaded into `edi`, `esi` and on; `call f@PLT`; the result in `eax` | `call` |
 | a seventh argument and on | stored to their slots as the first six are, a constant in one instruction, `movl $7, -28(%rbp)`, then pushed from their slots right to left, each loaded into `eax` and pushed from `rax`, `movl -28(%rbp), %eax; pushq %rax`, a `char` by its extending load, `movsbl -33(%rbp), %eax`; `subq $8, %rsp` first for an odd count; the bytes added back after the call, `addq $16, %rsp` for one or two, `addq $32, %rsp` for three or four | `stack-args`, `stack-args-nine` |
 | `p(a, b)` | the callee first: `p` loaded and stored to a slot of its own, `movq %rax, -24(%rbp)`, a hidden local as each argument is; then the arguments as for `f(a, b)`; the call through the slot, `call *-24(%rbp)`, the machine's call through memory, with no register; the result in `eax` | `call-pointer` |
@@ -320,7 +340,7 @@ bytes or more.
 | a frame of 4096 bytes or more | opened by two `sub`s, the upper part first, `sub sp, sp, #8192` and `sub sp, sp, #16`, each followed by its `.cfi_def_cfa_offset`, and closed by two `add`s in the same order; by one, `sub sp, sp, #8192`, when its low 12 bits are zero | `large-frame` |
 | `a + b`, `a - b` | `add w0, w0, w1`, `sub w0, w0, w1`; the left operand's register is the result's | `add-sub`, `parameter` |
 | an object in memory as the right operand | loaded into a register as any operand, `ldr w1, [x29, #36]`, and the operation on registers, `add w0, w0, w1`, since the machine has no instruction with a memory operand; a global through `x16` or the GOT's load, `*p` and `a[i]` loaded the same | `operand` |
-| `a + 0` | `add w0, w0, #0`: a constant operand is the immediate where the instruction encodes it | `add-zero` |
+| an identity, `a + 0`, `a * 1`, `a & -1` and the rest of chapter 0 | no instruction: the other operand's row alone, `ldr w0, [x29, #16]` for `a + 0`, `ldrsb w0, [x29, #16]` for `c + 0` on a `signed char` and `ldrsw x0, [x29, #16]` for `i + 0L`, the extension kept; `a * 0` is no identity, `mov w1, #0; mul w0, w0, w1` | `add-zero` |
 | `a * b` | `mul w0, w0, w1`; by a constant, the constant held first, `mov w1, #3`, since `mul` takes no immediate, and by a power of two the same, `mov w1, #4` and no `lsl` | `mul`, `mul-three`, `power-of-two` |
 | `a / b`, `a % b` | `sdiv w0, w0, w1` signed, `udiv w0, w0, w1` unsigned; the remainder is the quotient multiplied back and subtracted, `sdiv w2, w0, w1; msub w0, w2, w1, w0`, and `udiv w2, w0, w1` first unsigned | `div-rem`, `udiv-urem` |
 | `a % b` on a `register` variable | the quotient in a register taken for it, and the result in the register the right operand leaves, `sdiv w1, w19, w0; msub w0, w1, w0, w19`, `udiv` unsigned; no copy and no move, and the variable is not written | `register-remainder` |
@@ -350,7 +370,7 @@ bytes or more.
 | `switch`, hash | the size held and the unsigned division, quotient and remainder, `mov w1, #5; udiv w2, w0, w1; msub w0, w2, w1, w0`; the branch through the table by the remainder, `ldr x16, [x16, w0, uxtw #3]; br x16`; in each bucket the quotient compared, `cmp w2, #40; b.eq .Lreason.2`, then `b .Lreason.14` to the default | `switch-hash` |
 | a switch's body | as on x86-64: the labels where they are written, each case's load, add and store with no branch before the next label; a `break` is `b .Lscore.7` past the body | `switch-fall` |
 | `return e` | `e` into `w0`: the return names `x0`, and the value's last instruction writes it where no other value holds it, a source in it included, `sub w0, w19, w0` for `r - p[i]`, `ldr x1, [x29, #24]; add w0, w1, w0` for `x + (c ? 1 : 2)`, `msub w0, w2, w1, w0; sxtw x0, w0` for a remainder returned as a `long`; the place of an assignment or of a step generated with `x0` left for last, `ldr x0, [x29, #32]; str x0, [x1, w2, sxtw #3]` for `p[i] = x`; by a `mov` when it is held in another register, a register variable's, `mov w0, w19`, and one whose place holds a call's result, `mov w0, w1` for `p[f(i)] = x` (`aarch64.md` 6.1); then the branch to the one epilogue, `b .Lsum.1` in `for`, the last statement included; a `return` with no value as an `if`'s body is the `if`'s one branch, `cbnz w0, .Learly.1` | every program, `return-register`, `if-jump` |
-| a statement whose value is unused | written: `a + 0;` is `add w0, w0, #0`, `a / b;` is `sdiv w0, w0, w1`, and the division does not trap | `unused` |
+| a statement whose value is unused | written: `a + 0;` is the load of `a`, `ldr w0, [x29, #16]`, `a / b;` is `sdiv w0, w0, w1`, and the division does not trap | `unused` |
 | `f(a, b)` | each argument evaluated into a register and stored to a slot of its own, `str w0, [x29, #24]`, a constant argument through a register, `mov w0, #1; str w0, [x29, #16]` in `stack-args`; the slots loaded into `w0`, `w1` and on, `ldr w0, [x29, #24]`; `bl f`; the result in `w0` | `call` |
 | a seventh and an eighth argument | in registers as the first six are, `ldr w6, [x29, #40]` and `ldr w7, [x29, #44]`; nothing on the stack | `stack-args` |
 | a ninth argument and on | stored to their slots as the first eight are, a `char` at its width, `strb w0, [x29, #48]`; after the stores the outgoing area opened below the frame, 8 bytes an argument rounded up to 16, `sub sp, sp, #16`; each copied from its slot through `x17` at its width, the ninth to `[sp]` and the tenth to `[sp, #8]`, `ldrb w17, [x29, #48]; strb w17, [sp]` for a `char`, `ldr w17, [x29, #52]; str w17, [sp, #8]`; then the first eight loaded, `bl f9`, and `add sp, sp, #16` | `stack-args-nine` |

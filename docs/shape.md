@@ -10,12 +10,13 @@ The parts, what each owns, and where they meet. The headers under
   and generator, typed as it is built. The generator is c1, rcc's own
   back end, and `backend.md` is its design; `llvm.md` records the
   LLVM pipeline it replaced.
-- rcc is a literal compiler. The instruction written is the
-  instruction executed. c1 writes the instruction of `backend.md`'s
-  table for each operator of the tree, in the written order, and owns
-  the registers by the discipline of `backend.md` chapter 4; nothing
-  between the tree and the assembler reasons about the program.
-  `cost.md` is the record of what each construct compiles to.
+- rcc is a literal compiler. The work the source writes is the work
+  executed (`cost.md` chapter 0). c1 writes the instruction of
+  `backend.md`'s table for each operator of the tree, in the written
+  order, and owns the registers by the discipline of `backend.md`
+  chapter 4; nothing between the tree and the assembler reasons about
+  the program. `cost.md` is the record of what each construct compiles
+  to.
 - The guarantees in `guarantees.md` are the meaning half: what a
   program denotes where ISO C says nothing. Under a literal back end
   most of them are the machine's own behaviour, reached by writing

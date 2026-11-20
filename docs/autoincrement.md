@@ -396,7 +396,8 @@ Decided by the mechanism, listed so that nothing is decided silently:
 - the copy of a held read of the pointer is made at the access that
   steps, so for the post form of two accesses it stands before the
   store, not before the load;
-- a step of zero, `*(p += 0)`, is the pre form with `#0`, as `p + 0`
-  is an `add` of 0;
+- a step of zero, `*(p += 0)`, is the pre form with `#0`, as `p += 0`
+  is an `add` of 0, a compound assignment being no identity
+  (`cost.md` chapter 1);
 - `*p++ = 0;` stores the zero register through the form, `strb wzr,
   [x19], #1`, since the zero store goes through the same address.

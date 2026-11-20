@@ -1074,7 +1074,8 @@ above it, into the name's own address, then adds the product:
 global `cells` the label's pair at `cells+8`. A total out of 5.3's
 reach or outside the label's object keeps the rows of `p + n`. One
 constant over any other row is the row of `p + n` or `p - n` after
-the sum, as over any pointer, `sub x0, x0, #4` for `p[i] - 1`.
+the sum, as over any pointer, `sub x0, x0, #4` for `p[i] - 1`; a 0
+there is an identity, and the row's address alone (6.4).
 
 A store's address is generated before its right operand and held
 across it (G13), but a constant index reads nothing, so its `mov` is
@@ -1162,6 +1163,9 @@ index and a `long` one cost the same.
 c0's folding is unchanged, and is the same on both targets: a
 division with no value stays unfolded, and on this machine the
 instruction left to compute it yields a number instead of a trap.
+An identity's node is left out on both alike (`backend.md` 6.4), so
+`x + 0` and `x * 1` are `x`'s load alone, and `p[i] + 0` over a row
+is the row's address with no `add x0, x0, #0`.
 
 A constant operand is an immediate when the instruction, as the
 source writes it, has an encoding for the value:
@@ -1868,23 +1872,18 @@ the thirteenth came later. The answers:
    cores the best directive nets half a percent or less over the
    tuned sources, and `clang -O2` aligns no loop head on this target
    (`cost.md` 4.2).
-8. **The address of a subscript by a constant 0 is the pointer, and
-   no instruction** (6.3), on both targets. Two readings meet here.
-   6.5.4.2p3 has `&p[0]` "as if the & operator were removed and the
-   [] operator were changed to a + operator", and `p + 0` adds
-   (`backend.md` 6.4: `x + 0` adds), so `&p[0]` would be an `add` of
-   0. Against it, `p[0]` and `*p` are one access on either machine,
-   `movl (%rax), %eax` and `ldr w0, [x0]`: the constant is the
-   displacement of the addressing form, and a displacement of 0 is
-   the bare base. The address of one access is thus the address of
-   the other, and `&*p` is `p`. The page takes the second, since no
-   `+` was written. The cost is that `&p[0]` and `p + 0`, one value,
-   are two listings. `subscript-address` pins the row on both
-   targets, and `subscript-row` a row of an array of arrays, `m[0]`.
-   On an array reached by its name the constant 0 is the name and
-   constant of 6.3 with nothing to add: `a[0]` and `*a` are the
-   slot's own access, and `&a[0]` and `a + 0` are one listing, the
-   array's address.
+8. **The address of a subscript by a constant 0 is the pointer, and no
+   instruction** (6.3), on both targets. 6.5.4.2p3 has `&p[0]` "as if
+   the & operator were removed and the [] operator were changed to a +
+   operator", and `p + 0` is an identity, which writes no instruction
+   (`backend.md` 6.4), so `&p[0]`, `p + 0` and `p` are one listing.
+   `p[0]` and `*p` are one access on either machine,
+   `movl (%rax), %eax` and `ldr w0, [x0]`. `subscript-address` pins
+   the row on both targets, and `subscript-row` a row of an array of
+   arrays, `m[0]`. On an array reached by its name the constant 0 is
+   the name and constant of 6.3 with nothing to add: `a[0]` and `*a`
+   are the slot's own access, and `&a[0]` and `a + 0` are one listing,
+   the array's address.
 9. **An access through a stepped `register` pointer makes the step**
    (6.3), by the form of 2.3 that writes its base: `*p++` is `ldrb
    w0, [x19], #1`, and `*(p += c)` takes the pre-indexed form when

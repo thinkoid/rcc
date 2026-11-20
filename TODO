@@ -79,21 +79,55 @@ x86-64; or the chapter states aarch64's order and why it differs.
 
 Check: =stacked()= on aarch64 against the chapter's sentence.
 
-** TODO An addition of a constant 0 writes its instruction
+** TODO A compound assignment by an identity's constant writes its operator
 
-~p + 0~ on a pointer is =addq $0, %rax= and =add x0, x0, #0=, and
-~x + 0~ on an =int= the same =addl $0, %eax= and =add w0, w0, #0=,
-where constants that sum to 0 through a chain of casts write nothing
-(=aarch64.md= 6.3). The two targets differ on one shape: a constant 0
-over a row or over a dereference's address, ~p[i] + 0~ on an ~int
-(*p)[3]~ and ~&**pp + 0~, is =add x0, x0, #0= on aarch64 and no
-instruction on x86-64, whose =summed()= answers the base where the
-displacement is 0. No test has the shape.
+~x += 0~, ~x *= 1~, ~x <<= 0~ and ~p += 0~ write their operator: an
+operator whose constant makes it the identity writes no instruction
+(=docs/cost.md= chapter 0), but a compound assignment is a read and
+a store the source writes, and the rule leaves them. With the
+operator gone and the read and the store kept, the statement's own
+instructions would be:
 
-Fix: none taken; decide whether a sum by a constant 0 the source
-wrote is an instruction.
+| source | x86-64 today | x86-64 without | aarch64 today | aarch64 without |
+|---|---|---|---|---|
+| ~x += 0~ and ~-=~, ~<<=~, ~>>=~ on a slot | 1, =addl $0, -4(%rbp)= | 2 | 3 | 2 |
+| the same by or, xor and and, by 0 and by -1 | 1 | 2 | 4 | 2 |
+| ~x *= 1~ | 2 | 2 | 4 | 2 |
+| ~x /= 1~ | 5 | 2 | 4 | 2 |
+| ~*p += 0~ | 2 | 3 | 4 | 3 |
+| ~r += 0~ on a register variable | 1 | 0 | 1 | 0 |
+
+On x86-64 the instruction that adds in memory is itself the read and
+the store, so the slot's forms would be longer by one; on aarch64
+every form is shorter or the same.
+
+Fix: none taken; decide whether ~x op= c~ drops its operator, on
+both targets alike or only where the statement is not longer.
 
 Check: by the decision.
+
+** TODO =bare_base()= answers nothing
+
+=bare_base()= in =src/c1-common.cc=, called once by each generator,
+matched a subscript's base under a sum of 0. The parser leaves an
+identity's node out, so no tree reaches it: over every compile of
+the tests it matches nothing.
+
+Fix: remove it and its two calls, and the row of =docs/designs.md=
+that names it.
+
+Check: no listing over =tests= changes.
+
+** TODO x86-64: a register destination's right operand through a cast that keeps the bits keeps a move
+
+~z = b - ((int *) q)[0]~ into a register variable =z=, =q= a register
+pointer to =int=, is =movl -20(%rbp), %eax; subl (%rbx), %eax; movl
+%eax, %r12d=, where ~z = b - q[0]~ is =movl -20(%rbp), %r12d; subl
+(%rbx), %r12d=. aarch64 writes the two alike. No test has the shape.
+
+Fix: the row sees through a cast that keeps every bit.
+
+Check: a cost program with both forms, pinned alike.
 
 ** TODO aarch64: a narrow or widened prefix step's value is stepped outside the register variable
 
@@ -150,6 +184,17 @@ number reserved. c1 writes none of the guard of G4, the round trip
 of G8 and the laundering of G16, which draft 1 designed against an
 optimizer, because nothing between the source and the instruction
 reasons about the program.
+
+** TODO Two documents disagree on a constant expression out of range
+
+=docs/design-calls.md= 4.3 says an integer constant expression out
+of its type's range is "diagnosed, not wrapped"; =docs/backend.md=
+6.4 says it wraps, and is refused only as an array's size.
+
+Fix: find which the parser does, by a program for each, and make the
+other document say so.
+
+Check: the two passages agree with the compiler.
 
 * Cost model
 

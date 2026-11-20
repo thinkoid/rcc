@@ -1340,6 +1340,193 @@ folded_unary(unary_op_t op, const type_t &t, const expr_t &arg)
 }
 
 //
+// identities
+//
+
+// Whether the constant c, the right operand of op in the type t, makes
+// op the identity (backend.md 6.4): + - | ^ << >> by 0, * and / by 1,
+// & by every bit of t's width.  c is the constant as folded and
+// converted to the operation's type, or a shift count in its own, so
+// u & -1 on an unsigned is one and l & 0xffffffff on a long is not.
+bool
+is_identity_by(binary_op_t op, const type_t &t, const expr_t &c)
+{
+    if (!is_integer_constant(c))
+        return false;
+
+    const long long v = as< literal_t >(c).value;
+
+    switch (op) {
+    case binary_op_t::add:
+    case binary_op_t::sub:
+    case binary_op_t::bit_or:
+    case binary_op_t::bit_xor:
+    case binary_op_t::shl:
+    case binary_op_t::shr: return v == 0;
+    case binary_op_t::mul:
+    case binary_op_t::div: return v == 1;
+    case binary_op_t::bit_and: return v == wrapped(-1, as< int_t >(t));
+    default: return false;
+    }
+}
+
+// Whether a constant on the left of op makes it the identity as one on
+// the right does: + * & | ^, which commute.  0 - a, 0 << a and 1 / a
+// are no identity.
+bool
+is_identity_after(binary_op_t op, const type_t &t, const expr_t &c)
+{
+    const bool commutes = op == binary_op_t::add || op == binary_op_t::mul ||
+                          op == binary_op_t::bit_and ||
+                          op == binary_op_t::bit_or ||
+                          op == binary_op_t::bit_xor;
+
+    return commutes && is_identity_by(op, t, c);
+}
+
+// The operand a binary node of type t is the value of, its other one
+// a constant that makes the operator the identity, or null.
+expr_t *
+identity_operand(binary_t &b, const type_t &t)
+{
+    if (is_identity_by(b.op, t, *b.rhs))
+        return b.lhs.get();
+
+    if (is_identity_after(b.op, t, *b.lhs))
+        return b.rhs.get();
+
+    return nullptr;
+}
+
+void drop_identities(expr_t &);
+
+// drop_identities() of each operand of a node.
+void
+drop_identities_under(expr_t &e)
+{
+    if (auto *u = std::get_if< unary_t >(&e.v))
+        return drop_identities(*u->arg);
+
+    if (auto *b = std::get_if< binary_t >(&e.v)) {
+        drop_identities(*b->lhs);
+        return drop_identities(*b->rhs);
+    }
+
+    if (auto *a = std::get_if< assign_t >(&e.v)) {
+        drop_identities(*a->lhs);
+        return drop_identities(*a->rhs);
+    }
+
+    if (auto *c = std::get_if< call_t >(&e.v)) {
+        drop_identities(*c->callee);
+        for (expr_t &arg : c->args)
+            drop_identities(arg);
+        return;
+    }
+
+    if (auto *c = std::get_if< cast_t >(&e.v))
+        return drop_identities(*c->arg);
+
+    if (auto *c = std::get_if< conditional_t >(&e.v)) {
+        drop_identities(*c->cond);
+        drop_identities(*c->yes);
+        drop_identities(*c->no);
+    }
+}
+
+// Each identity's node under e and e's own left out, its other operand
+// in its place (backend.md 6.4).  The operand has the node's type, the
+// conversions the operator asked of it included, so the tree's types
+// stay: sizeof (c + 0) is 4, and c + 0 on a char is the promoted c.
+// The node is built as written and dropped once the function's body is
+// whole, since it is no lvalue: &(a + 0) is an error and &a is not.
+void
+drop_identities(expr_t &e)
+{
+    drop_identities_under(e);
+
+    auto *b = std::get_if< binary_t >(&e.v);
+    if (!b)
+        return;
+
+    expr_t *kept = identity_operand(*b, e.type);
+    if (!kept)
+        return;
+
+    expr_t operand = std::move(*kept);
+    e = std::move(operand);
+}
+
+void drop_identities(stmt_t &);
+
+void
+drop_identities(block_t &b)
+{
+    for (stmt_t &item : b.body)
+        drop_identities(item);
+}
+
+void
+drop_identities(std::optional< expr_t > &e)
+{
+    if (e)
+        drop_identities(*e);
+}
+
+void
+drop_identities(stmt_ptr_t &s)
+{
+    if (s)
+        drop_identities(*s);
+}
+
+// drop_identities() of every expression of a statement and of the
+// statements in it.
+void
+drop_identities(stmt_t &s)
+{
+    if (auto *x = std::get_if< expr_stmt_t >(&s.v))
+        return drop_identities(x->e);
+
+    if (auto *d = std::get_if< decl_stmt_t >(&s.v))
+        return drop_identities(d->init);
+
+    if (auto *b = std::get_if< block_t >(&s.v))
+        return drop_identities(*b);
+
+    if (auto *i = std::get_if< if_t >(&s.v)) {
+        drop_identities(i->cond);
+        drop_identities(i->yes);
+        return drop_identities(i->no);
+    }
+
+    if (auto *w = std::get_if< switch_t >(&s.v)) {
+        drop_identities(w->cond);
+        return drop_identities(w->body);
+    }
+
+    if (auto *w = std::get_if< while_t >(&s.v)) {
+        drop_identities(w->cond);
+        return drop_identities(w->body);
+    }
+
+    if (auto *d = std::get_if< do_t >(&s.v)) {
+        drop_identities(d->body);
+        return drop_identities(d->cond);
+    }
+
+    if (auto *f = std::get_if< for_t >(&s.v)) {
+        drop_identities(f->init);
+        drop_identities(f->cond);
+        drop_identities(f->step);
+        return drop_identities(f->body);
+    }
+
+    if (auto *r = std::get_if< return_t >(&s.v))
+        drop_identities(r->value);
+}
+
+//
 // typed operators
 //
 
@@ -4228,7 +4415,7 @@ is_defined(const parser_t &p, std::size_t index)
 // for the labels of the static objects the body declares, and labels,
 // gotos and case_labels, for the body's own labels, which no other
 // function sees; and variadic, named and va_area, for the body's
-// va_start.
+// va_start.  The body's identities are dropped once it is whole.
 void
 function_definition(parser_t &p,
                     const specifiers_t &spec,
@@ -4268,6 +4455,7 @@ function_definition(parser_t &p,
     block_item_list(p, body);
     expect(p, tok_t::rbrace, "expected '}' at end of function body");
     declare_temporaries(p, body);
+    drop_identities(body);
 
     p.scopes.pop_back();
 
