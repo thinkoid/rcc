@@ -1,0 +1,2 @@
+tests/error/struct-local-list-record-value.c:18:27: error: not yet: value of struct 'point'
+status 1

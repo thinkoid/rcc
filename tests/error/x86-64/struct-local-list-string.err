@@ -1,0 +1,2 @@
+tests/error/struct-local-list-string.c:14:29: error: not yet: string initializer of an array in local struct 'name'
+status 1

@@ -297,8 +297,11 @@ Three sums.
 - `stmt_t`: expression, declaration, block, if, switch, while, do,
   for, break, continue, label, case label, goto, return. A `for`
   carries its init as a statement, so a declaration in the init costs
-  nothing. `break` and `continue` name no statement: c1 finds the loop
-  or the switch they leave or go on with as it generates the
+  nothing. A declaration carries a scalar's initializer, converted to
+  its type, or for a record's list the mark that it zeroes the whole
+  object, the stores of the list's values the statements after it
+  (chapter 5). `break` and `continue` name no statement: c1 finds
+  the loop or the switch they leave or go on with as it generates the
   statements around them. A label and a `goto` carry the label's name.
   A label is a statement of its own, so it may stand before a
   declaration and before a block's closing brace; a labeled statement
@@ -614,11 +617,12 @@ no linkage, by the end of its declarator (6.7.1p8), and so is one with
 an initializer (6.7.11p4) or a tentative definition of internal
 linkage (6.9.3p3); a tentative definition of external linkage takes
 the record as it is at the end of the unit (6.9.3p2), which must then
-be complete. What reads or writes the whole object of a record is not
-yet, each in words of its own: a local's initializer that is a list,
-which is stores at run time, where one that is a record's value is the
+be complete. A local's initializer that is a record's value is the
 declaration and the record's assignment of the value to the object
-(6.7.11p14), the copy; a `register` one, which no register holds; a
+(6.7.11p14), the copy, and one that is a list is stores at run time,
+which the paragraph on a local's list below describes. Anything else
+that reads or writes the whole object of a record is not yet, each in
+words of its own: a `register` one, which no register holds; a
 record passed or returned by value, by a definition's parameter or
 result, by an argument and by a call; and its value where a record is
 wanted, an arm of a conditional of two records or an argument past a
@@ -954,6 +958,25 @@ holds its function pointers as data. A record's value initializes a
 record (p14), but is no constant expression (p5), an error here,
 whether it stands for the whole object or for a member; any other
 expression without braces initializes no record.
+
+A local record takes a brace-enclosed list by the same walk, but its
+values are expressions evaluated at run time, each converted as by
+assignment (p12) and stored. The declaration zeroes the whole object,
+padding included, from the lowest address up, before the first value
+is evaluated, whatever the list names, `{}` and a list of every
+member alike; then each listed scalar is assigned its value, in the
+list's order (G13), `*(T *) ((char *) &q + offset) = value`, the tree
+of a member's access, so `struct point q = { 1 };` is the zeroing and
+`q.x = 1`. Every member and element the list leaves out is thus zero
+(p20, p22), and so is the padding, which C23 leaves unspecified where
+a list is not empty (6.2.6.1p6). The assignments are the parser's own:
+initialization is no assignment, and p12 takes the scalar's
+unqualified type. A designator is not yet, as above; so is a string
+literal for an array in the list, which an object of static storage
+holds as the array's own bytes, and a record's value in a scalar's
+place, which may initialize a record the scalar begins (p14). A local
+array takes no initializer yet, an array of records among them, and a
+local scalar no braces.
 
 In an expression a global is what a local is, an lvalue of its type;
 one declared elsewhere of a not-yet type is refused where it is named.
@@ -1301,10 +1324,12 @@ walk from 27 by a conditional of two void calls.
 
 ## 11. Not yet
 
-A local's initializer list of a struct or a union and each use that
-reads or writes one whole (chapter 5: a `register` one, a record by
-value but the aarch64 `va_list`, and its value where a record is
-wanted), a function whose parameter list is `(...)` alone, the layout
+The zeroing of a local record a list initializes, in either
+generator, and each use that reads or writes a record whole (chapter
+5: a `register` one, a record by value but the aarch64 `va_list`, and
+its value where a record is wanted, a scalar's place in a local's
+list among them), a string literal for an array in a local's list, a
+function whose parameter list is `(...)` alone, the layout
 of a struct or a
 union with a bit-field, an anonymous member, an attribute that marks,
 `packed` and `aligned` among them, a packing of `#pragma pack`, a

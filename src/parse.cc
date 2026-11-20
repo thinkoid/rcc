@@ -1798,6 +1798,33 @@ address_of(const token_t &op, expr_t arg)
                     unary_t { unary_op_t::addr, box(std::move(arg)) } };
 }
 
+// The lvalue of type t at offset bytes from what pointer points to,
+// *(T *) ((char *) pointer + offset), built of the tree's own nodes, as
+// the Seventh Edition compiler's first pass wrote a->b as *(a + offset);
+// at offset 0 it is *(T *) pointer, with no sum.  The tree of a member's
+// access and of a local list's subobject, which c1 reads as one offset
+// from the outermost pointer.
+expr_t
+lvalue_at(const parser_t &p, expr_t pointer, long offset, const type_t &t)
+{
+    if (offset != 0) {
+        const type_t bytes = make_pointer(char_type(p));
+        if (!(pointer.type == bytes))
+            pointer = expr_t { bytes, cast_t { box(std::move(pointer)) } };
+
+        expr_t constant { long_type(), literal_t { offset } };
+        pointer = expr_t { bytes,
+                           binary_t { binary_op_t::add, box(std::move(pointer)),
+                                      box(std::move(constant)) } };
+    }
+
+    const type_t to = make_pointer(t);
+    if (!(pointer.type == to))
+        pointer = expr_t { to, cast_t { box(std::move(pointer)) } };
+
+    return expr_t { t, unary_t { unary_op_t::deref, box(std::move(pointer)) } };
+}
+
 // *E: the operand a pointer, after decay; the result the lvalue it
 // points to, of the pointee type, 6.5.4.2p2, p4.  A void pointee
 // designates nothing to read, and a not-yet pointee is not yet.
@@ -3135,13 +3162,50 @@ scalar_value(parser_t &p, const token_t &at, const type_t &t)
 // Where the walk over an initializer puts each value it finds,
 // 6.7.11p18.  For an object of static storage it is the object's data:
 // each subobject's constant at its offset in the object, which c1
-// writes (shape.md chapter 4).
+// writes (shape.md chapter 4).  For a local it is the statements after
+// the declaration of the object local, stores: each scalar's value
+// assigned to its place in the object, in the list's order (G13).
 struct destination_t
 {
-    std::vector< subobject_t > *data;
+    std::vector< subobject_t > *data = nullptr;
+    const symbol_t *local = nullptr;
+    std::vector< stmt_t > *stores = nullptr;
 };
 
-// The scalar t at offset, given the value of the expression ahead.
+// The store of the scalar t at offset in a local, the expression ahead
+// converted to t as by simple assignment, 6.7.11p12, at the token a
+// conversion's error is said at: the assignment of the value to the
+// place *(T *) ((char *) &local + offset), lvalue_at()'s, appended to
+// the local's statements.  The parser makes the node, since initialization
+// is no assignment and p12 takes the scalar's unqualified type.  A
+// record's value in a scalar's place, which may initialize a record the
+// scalar begins, p14, is not yet; a void expression has no value,
+// 6.3.2.2p1, the error of the expression said at its first token.
+void
+local_store(parser_t &p,
+            const token_t &at,
+            const type_t &t,
+            long offset,
+            destination_t &to)
+{
+    const token_t &start = peek(p);
+    expr_t e = assignment_expression(p);
+    refuse_record_value(start, e.type);
+    require_value(start, e);
+
+    expr_t value = assignment_conversion(at, std::move(e), t);
+
+    expr_t object { to.local->type, name_t { to.local } };
+    expr_t place = lvalue_at(p, address_of(at, std::move(object)), offset, t);
+
+    expr_t store { t, assign_t { std::nullopt, t, box(std::move(place)),
+                                 box(std::move(value)) } };
+    to.stores->push_back(stmt_t { expr_stmt_t { std::move(store) } });
+}
+
+// The scalar t at offset, given the value of the expression ahead: a
+// constant in the data of an object of static storage, a store in a
+// local.
 void
 scalar_subobject(parser_t &p,
                  const token_t &at,
@@ -3149,6 +3213,11 @@ scalar_subobject(parser_t &p,
                  long offset,
                  destination_t &to)
 {
+    if (to.local) {
+        local_store(p, at, t, offset, to);
+        return;
+    }
+
     initializer_t value = scalar_value(p, at, t);
     to.data->push_back(subobject_t { offset, t, std::move(value) });
 }
@@ -3197,11 +3266,17 @@ string_value(const token_t &start,
 }
 
 // The string literal ahead, which string_ahead() found, for the array t
-// at offset.
+// at offset.  An object of static storage holds the literal's bytes as
+// the array's own; a local's array would take them at run time, which
+// is not yet.
 long
 listed_string(parser_t &p, const type_t &t, long offset, destination_t &to)
 {
     const token_t &start = peek(p);
+    if (to.local)
+        not_yet(start, "string initializer of an array in local " +
+                           record_words(*record_in(to.local->type)));
+
     const expr_t e = assignment_expression(p);
 
     return string_value(start, as< string_t >(e), t, offset, *to.data);
@@ -5987,18 +6062,32 @@ record_initializer(parser_t &p, const token_t &op, const symbol_t &sym)
                                   box(std::move(init)) } };
 }
 
+// The list that initializes the local record sym, its '{' ahead: the
+// walk of an object of static storage's, 6.7.11p17 to p23, whose
+// scalars are stores at run time, local_store()'s, appended to stores
+// in the list's order after the declaration, which zeroes the whole
+// object, so every member, element and byte of padding no value is
+// listed for is zero, p20, p22 (shape.md chapter 5).
+void
+local_list(parser_t &p, const symbol_t &sym, std::vector< stmt_t > &stores)
+{
+    destination_t to { .local = &sym, .stores = &stores };
+    braced_initializer(p, sym.type, 0, to);
+}
+
 // A local, an object of automatic storage duration, 6.2.4p5, appended
 // to decls as its declaration, and for a record initialized by an
-// expression the record_initializer() statement after it.  The name is
-// in scope from the end of its declarator, 6.2.1p7, so an initializer
-// sees the object it initializes.  The initializer is converted as by
+// expression the record_initializer() statement after it, or by a list
+// the declaration zeroed and local_list()'s statements.  The name is in
+// scope from the end of its declarator, 6.2.1p7, so an initializer sees
+// the object it initializes.  The initializer is converted as by
 // assignment, 6.7.11p12, an error of the conversion said at the =; an
 // initializer that has no value, a void one, 6.3.2.2p1, is the error
 // of the operand, said at its first token.  An object's type must be
 // complete, 6.7.1p8, so an array needs its size; any initializer of an
-// array, a list of a record, and a brace initializer of anything, is
-// not yet: a local's initializer is stores at run time, where an
-// object of static storage takes its value as data.  A register array
+// array, an array of records' among them, and a brace initializer of a
+// scalar is not yet: a local's initializer is stores at run time, where
+// an object of static storage takes its value as data.  A register array
 // is not yet either: its decay is undefined, 6.3.2.1p3, and it has no
 // slot to decay to; nor is a register record, which no register holds.
 // A local larger than the target's largest frame, its frame_limit, is
@@ -6019,11 +6108,6 @@ init_declarator(parser_t &p,
         not_yet(*d.name, "register object " + quoted(d.name->text) + " of " +
                              record_words(*r));
 
-    const bool record = is< record_type_t >(d.type);
-    const bool listed = peek(p, 1).kind == tok_t::lbrace;
-    if (r && peek(p).kind == tok_t::assign && (!record || listed))
-        not_yet(peek(p), "initializer of local " + record_words(*r));
-
     if (is< array_t >(d.type) && peek(p).kind == tok_t::assign)
         not_yet(peek(p), "array initializer");
 
@@ -6037,6 +6121,18 @@ init_declarator(parser_t &p,
     decl_stmt_t decl { declare(p, *d.name, d.type, storage_t::local,
                                declared(spec, tok_t::kw_register)),
                        std::nullopt };
+
+    const bool record = is< record_type_t >(d.type);
+    if (peek(p).kind == tok_t::assign && record &&
+        peek(p, 1).kind == tok_t::lbrace) {
+        advance(p);
+        const symbol_t &sym = *decl.sym;
+        decl.zeroed = true;
+
+        decls.push_back(stmt_t { std::move(decl) });
+        local_list(p, sym, decls);
+        return;
+    }
 
     if (peek(p).kind == tok_t::assign && record) {
         const token_t &op = advance(p);
@@ -7017,33 +7113,14 @@ record_pointer(const token_t &op, expr_t e)
 
 // The lvalue of the member m of the record E is, for E.m, or of the one
 // P points to, for P->m, P an rvalue, op saying which, 6.5.3.4p3, p4:
-// *(T *) ((char *) P + offset), of the member's type, the offset the
-// member's in its record plus the one P carries, built of the tree's
-// own nodes, as the Seventh Edition compiler's first pass wrote a->b as
-// *(a + offset).  A member at offset 0 is *(T *) P, with no sum.
+// *(T *) ((char *) P + offset), lvalue_at()'s, of the member's type,
+// the offset the member's in its record plus the one P carries.
 expr_t
 member_lvalue(const parser_t &p, const token_t &op, expr_t e, const member_t &m)
 {
     auto [pointer, offset] = record_pointer(op, std::move(e));
-    offset += m.offset;
 
-    if (offset != 0) {
-        const type_t bytes = make_pointer(char_type(p));
-        if (!(pointer.type == bytes))
-            pointer = expr_t { bytes, cast_t { box(std::move(pointer)) } };
-
-        expr_t constant { long_type(), literal_t { offset } };
-        pointer = expr_t { bytes,
-                           binary_t { binary_op_t::add, box(std::move(pointer)),
-                                      box(std::move(constant)) } };
-    }
-
-    const type_t to = make_pointer(m.type);
-    if (!(pointer.type == to))
-        pointer = expr_t { to, cast_t { box(std::move(pointer)) } };
-
-    return expr_t { m.type,
-                    unary_t { unary_op_t::deref, box(std::move(pointer)) } };
+    return lvalue_at(p, std::move(pointer), offset + m.offset, m.type);
 }
 
 // E.m and P->m, 6.5.3.4: the lvalue of the member, p3, p4, member_lvalue()'s.

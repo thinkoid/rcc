@@ -713,26 +713,28 @@ comments name.
 
 ** TODO A local record's initializer list is not yet
 
-~struct point q = { 1, 2 };~ in a block is refused, "not yet:
-initializer of local struct 'point'"; a record of static storage
-takes its list, and a local one initialized by a record's value is
-its copy.
+~struct point q = { 1, 2 };~ in a block is taken by the parser and
+refused by each generator, "c1: not yet: a local's initializer
+list"; a record of static storage takes its list, and a local one
+initialized by a record's value is its copy.
 
 The listed values are run-time expressions, each converted as if by
 assignment (6.7.11p12), and the unlisted rest is zero (6.7.11p20,
-p22).
-The tree has no node that zeroes an object, and the walk over
-designators that the static path has yields constants at offsets,
-where a local needs places. A string for a member array of char
-needs its bytes copied; arrays have no copy's row.
+p22). The parser writes each value's store at its place in the
+local, in the list's order, and marks the declaration as zeroed; no
+generator has the zeroing's row. A string for a member array of
+char needs its bytes copied, and arrays have no copy's row: it is a
+not-yet of its own.
 
 Fix: a zeroing of the whole object, padding included, then the
 listed members' assignments in the list's order; the zeroing a row
 of each generator in the copy's units, stores of zero by the
 record's alignment and the loop above eight.
 
-Check: =struct-local-list-initializer= compiles, and the =copies=
-probe, or one beside it, compares the object's bytes.
+Check: =struct-local-list-initializer= and
+=struct-local-list-zeroed= compile and are pinned on both targets,
+and a probe beside =copies= compares the members against =clang= and
+every padding byte against zero.
 
 * Lexer
 

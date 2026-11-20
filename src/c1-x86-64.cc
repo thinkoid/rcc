@@ -5579,7 +5579,8 @@ register_decl(state_t &s, const decl_stmt_t &d)
 // stored; the slot holds what it holds.  The initializer is the store
 // row of chapter 6.6, into the slot.  An array's slot is at the
 // type's alignment, chapter 5, and its displacement is the array's
-// lowest address, the elements upward from it.
+// lowest address, the elements upward from it.  The zeroing a record's
+// list asks of its declaration is not yet.
 void
 decl_stmt(state_t &s, const decl_stmt_t &d)
 {
@@ -5588,6 +5589,9 @@ decl_stmt(state_t &s, const decl_stmt_t &d)
         register_decl(s, d);
         return;
     }
+
+    if (d.zeroed)
+        not_yet("a local's initializer list");
 
     const int displacement =
         allocate(s, size_of(sym->type), align_of(sym->type));

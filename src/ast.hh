@@ -289,10 +289,15 @@ struct expr_stmt_t
     std::optional< expr_t > e;
 };
 
+// A local's declaration: init is a scalar's initializer, converted to
+// its type.  zeroed is a record's list, 6.7.11p17: the declaration
+// zeroes the whole object, padding included, and the statements after
+// it store the listed values, in the list's order.
 struct decl_stmt_t
 {
     const symbol_t *sym;
     std::optional< expr_t > init;
+    bool zeroed = false;
 };
 
 struct block_t

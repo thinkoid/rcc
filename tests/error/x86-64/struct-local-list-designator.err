@@ -1,0 +1,2 @@
+tests/error/struct-local-list-designator.c:11:28: error: not yet: designator
+status 1

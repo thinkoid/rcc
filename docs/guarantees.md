@@ -106,19 +106,23 @@ none reused within the call.
 
 ## Control
 
-**G13. Left to right.** 6.5.1p2, p3. Operands and arguments are
-evaluated left to right, and an operand's side effects complete before
-the next operand starts; `i = i++ + ++i` has one value. The one choice
-the machine never made; the written order is the order. An assignment
-operator's left operand is evaluated first, for its place: the
-address, and any side effect in computing it. A compound assignment
-then evaluates its right operand and reads the object as part of its
-operation, the read, the operator and the store with nothing between:
-`x += e` is `e`, then the `add` on `x`. So, with `x` 1 before,
-`x += (x = 2)` leaves 4 where `x = x + (x = 2)` leaves 3. The first
-stores 2, then reads `x` as 2 and adds the assignment's 2. The second
-names `x` as an operand of `+`, so it reads 1 first, then stores 2,
-then stores 1 + 2.
+**G13. Left to right.** 6.5.1p2, p3, 6.7.11p24. Operands and arguments
+are evaluated left to right, and an operand's side effects complete
+before the next operand starts; `i = i++ + ++i` has one value. The one
+choice the machine never made; the written order is the order. An
+assignment operator's left operand is evaluated first, for its place:
+the address, and any side effect in computing it. A compound
+assignment then evaluates its right operand and reads the object as
+part of its operation, the read, the operator and the store with
+nothing between: `x += e` is `e`, then the `add` on `x`. So, with `x`
+1 before, `x += (x = 2)` leaves 4 where `x = x + (x = 2)` leaves 3.
+The first stores 2, then reads `x` as 2 and adds the assignment's 2.
+The second names `x` as an operand of `+`, so it reads 1 first, then
+stores 2, then stores 1 + 2. An initializer list is evaluated in its
+written order, which 6.7.11p24 leaves unspecified: each initializer is
+evaluated and stored into its subobject before the next is evaluated,
+so `struct point q = { f(), g() };` calls `f`, stores `q.x`, then
+calls `g`.
 
 **G14. A loop runs until its condition says stop.** 6.8.6.1p4. `for
 (;;);` hangs. Instruction: the test at the top of the loop and a
