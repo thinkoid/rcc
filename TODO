@@ -74,37 +74,46 @@ chapter 4 does not say where the load stands, and =backend.md=
 chapter 4 states x86-64's order as the rule. =register-rules='s
 =stacked()= pins both.
 
-Fix: decide. The load takes its place in parameter order, as on
-x86-64; or the chapter states aarch64's order and why it differs.
+Fix: the load takes its place in parameter order, as on x86-64, and
+=aarch64.md= chapter 4 says so.
 
-Check: =stacked()= on aarch64 against the chapter's sentence.
+Check: =stacked()= on aarch64 is pinned in parameter order, and the
+chapter's sentence agrees.
 
 ** TODO A compound assignment by an identity's constant writes its operator
 
-~x += 0~, ~x *= 1~, ~x <<= 0~ and ~p += 0~ write their operator: an
-operator whose constant makes it the identity writes no instruction
-(=docs/cost.md= chapter 0), but a compound assignment is a read and
-a store the source writes, and the rule leaves them. With the
-operator gone and the read and the store kept, the statement's own
-instructions would be:
+~x += 0~, ~x *= 1~, ~x <<= 0~ and ~p += 0~ write their operator and
+their store: =addl $0, -4(%rbp)= on x86-64, =ldr; add w0, w0, #0;
+str= on aarch64, and ~x /= 1~ divides. An operator whose constant
+makes it the identity writes no instruction (=docs/cost.md= chapter
+0), and the rule stops at a compound assignment.
 
-| source | x86-64 today | x86-64 without | aarch64 today | aarch64 without |
-|---|---|---|---|---|
-| ~x += 0~ and ~-=~, ~<<=~, ~>>=~ on a slot | 1, =addl $0, -4(%rbp)= | 2 | 3 | 2 |
-| the same by or, xor and and, by 0 and by -1 | 1 | 2 | 4 | 2 |
-| ~x *= 1~ | 2 | 2 | 4 | 2 |
-| ~x /= 1~ | 5 | 2 | 4 | 2 |
-| ~*p += 0~ | 2 | 3 | 4 | 3 |
-| ~r += 0~ on a register variable | 1 | 0 | 1 | 0 |
+Fix: a compound assignment by its operator's identity is its left
+operand, generated as that expression is. The statement ~*p += 0;~
+is ~*p;~: the load a discarded lvalue keeps, and no store. ~r += 0;~
+on a register variable writes nothing. A call in the left operand is
+made: ~p[f()] += 0;~ calls =f=. As a value, ~y = (x += 0)~, it is
+the load of =x=. =cost.md= chapter 0 states the rule and the store
+it does not write.
 
-On x86-64 the instruction that adds in memory is itself the read and
-the store, so the slot's forms would be longer by one; on aarch64
-every form is shorter or the same.
+Check: a cost program with each form, pinned on both targets, and no
+function longer.
 
-Fix: none taken; decide whether ~x op= c~ drops its operator, on
-both targets alike or only where the statement is not longer.
+** TODO A shift of an =int= by a multiple of its width writes its instruction
 
-Check: by the decision.
+~x << 32~ on an =int= is =shll $32, %eax= on x86-64, which the
+machine masks to a shift by 0, and =lsl w0, w0, #0= on aarch64. G3
+takes the count modulo the width, so the constant makes the operator
+the identity, and ~x << 0~ writes nothing.
+
+Fix: a constant count is taken modulo the width of the promoted left
+operand before the identity's rule is applied, for a shift and its
+compound form; G3's instruction sentence, "the count as written",
+says so.
+
+Check: a cost program where ~x << 32~ on an =int= and ~x >> 64~ on a
+=long= write nothing on both targets, and ~x << 33~ keeps its
+instruction.
 
 ** TODO =bare_base()= answers nothing
 
@@ -339,10 +348,10 @@ and =gcc= and =clang= make the attribute an error where they cannot
 inline the call; rcc writing the call is what a compiler at =-O0=
 does for a function not declared inline.
 
-Fix: none taken; decide: dropped as =noinline= is, or a not-yet as
-today.
+Fix: dropped, with a warning that rcc inlines nothing: the call is
+written.
 
-Check: a cost program with the call, or the pinned not-yet.
+Check: a cost program with the call, and the warning pinned.
 
 ** TODO A static or a weak alias is not yet
 
@@ -366,13 +375,99 @@ member. The size is a constraint violation (6.7.7.3p1), and the
 headers of a system are read as they are (=docs/shape.md= chapter
 5).
 
-Fix: in a system header's text the member leaves its record with no
-layout, a not-yet, as an attribute that marks does; a use that needs
-the layout says so. In the program's own text: to decide, the error
-or the same not-yet.
+Fix: a zero-length array as a record's last member is read as a
+flexible array member, =[]=: in a system header's text with no word,
+in the program's own with a warning. Anywhere else the error stays.
 
 Check: a program that includes =fcntl.h= under =_GNU_SOURCE=
-compiles; a program of =tests/error= takes the size of such a record.
+compiles; a program with the member in its own text draws the
+warning, pinned.
+
+** TODO A record with a flexible array member has no layout
+
+~struct h { int n; unsigned char b[]; };~ is declared, and a use
+that needs its layout is "not yet: flexible array member in struct
+'h'": =sizeof=, and a member's access, ~p->n~ among them.
+
+Fix: the layout =clang= has: the record's size is that of its other
+members, padded to its alignment, the member stands at its own
+alignment past them, and ~p->b[i]~ is its offset plus the index. An
+initializer for the member is a not-yet of its own.
+
+Check: the =layout= probe compares such records with =clang='s, and
+a cost program reads and writes a header and its bytes on both
+targets.
+
+** TODO Arithmetic on a pointer to =void= is an error
+
+~p + 1~ on a ~void *~ fails with "arithmetic on a pointer to void":
+6.5.7p2 and p3 ask a pointer to a complete object type. GNU C takes
+it, the pointee's size 1, and a program written for =gcc= and
+=clang= may have it.
+
+Fix: taken as GNU C takes it, with a warning: the sum, the
+difference and the step count bytes, as on a ~char *~. ~sizeof
+(void)~ stays an error.
+
+Check: a cost program pinned like its ~char *~ twin on both targets,
+and the warning pinned.
+
+** TODO ~return f();~ of a void =f= in a void function is an error
+
+It fails with "void function should not return a value": 6.8.7.5p1
+allows a void function no =return= with an expression. GNU C takes a
+void expression there.
+
+Fix: taken with a warning where the expression is void: the
+expression for its effect, then the return. An expression of a value
+stays an error.
+
+Check: a cost program pinned like ~f(); return;~ on both targets,
+and the warning pinned.
+
+** TODO A ~void *~ and a pointer to a function convert only under a cast
+
+~void (*fp)(void) = p;~ with =p= a ~void *~ fails with "incompatible
+pointer types": 6.5.17.2p1 lets a ~void *~ meet a pointer to an
+object type alone. GNU C takes it, in both directions.
+
+Fix: taken with a warning, in both directions. It has no instruction
+of its own: the address is moved as under the cast.
+
+Check: a cost program pinned like its twin with the cast written,
+and the warning pinned.
+
+** TODO A statement expression, ~a ?: b~ and =alloca= are refused in an error's words
+
+~({ ... })~ and ~a ?: b~ fail with "expected expression", and
+=alloca= with "'__builtin_alloca' undeclared": the program is GNU C
+that rcc does not compile yet, and the message calls it wrong.
+
+Fix: each is taken, in this order: the statement expression, a block
+whose last expression is its value; ~a ?: b~, =a= evaluated once; a
+variable length array; =alloca=. Until one is built, its refusal
+says "not yet" and names it.
+
+Check: a program of =tests/error= for each until it compiles, then a
+cost program on both targets.
+
+** TODO A not-yet in the body of a header's =static inline= function stops every file that includes it
+
+A =static inline= definition in the program's own header is compiled
+as the static function it is (=docs/shape.md= chapter 5), called or
+not. A body that holds what rcc does not compile yet, a floating
+constant, is then the not-yet of every file that includes the
+header, those that never call the function among them.
+
+Fix: a body that stops at a not-yet is kept as a function not yet
+compiled: c1 writes nothing for it, and an expression that names it
+is refused with the body's not-yet. An error before the not-yet is
+still an error; the text after it is not checked, and =shape.md=
+says so.
+
+Check: a program that includes a header with such a function and
+does not call it compiles; one that calls it is refused, pinned in
+=tests/error=.
 
 ** TODO A =main= of any type compiles
 
@@ -384,10 +479,10 @@ no constraint, so no diagnostic is required. The row J.3.3(4) of
 =docs/choices.md= says any function type, and its pin,
 =tests/corpus/main-envp.c=, holds =envp= and the =}= alone.
 
-Fix: none taken; decide whether rcc refuses a =main= that is neither
-of the two forms nor the one with =envp=, then pin the choice.
+Fix: any type stays, as the row says; a program of the corpus with a
+=main= of another type, ~void main(void)~, is the row's second pin.
 
-Check: the row names a pin for what the decision says.
+Check: the row names that pin.
 
 ** TODO Assignment to a const object is not diagnosed
 
@@ -451,11 +546,10 @@ written, and the call parsed before it was accepted. GNU C lets a
 later declaration add an attribute, and the use rcc cannot honour has
 then been taken.
 
-Fix: decide whether an attribute rcc does not honour, met after a
-use of the symbol, is refused where it is written.
+Fix: an attribute rcc does not honour, met after a use of the
+symbol, is refused where it is written, a not-yet.
 
-Check: the program above is refused, at the attribute or at the
-call.
+Check: the program above is refused at the attribute.
 
 ** TODO The other target is preprocessed with this machine's headers
 
@@ -554,9 +648,9 @@ parameter list, overloaded by an attribute, which no other C header
 does. More than a thousand overloaded declarations follow. Every
 other header of the 58 surveyed parses.
 
-Fix: decide whether =clang='s own headers are read: the type-generic
-macros need overloading, which is not C; a program that includes
-=tgmath.h= needs floating point first.
+Fix: =shape.md= chapter 11 says a program that includes =tgmath.h=
+is not yet: the type-generic macros need overloading, which is not
+C, and floating point first.
 
 Check: the documents say what a program that includes =tgmath.h=
 gets.
@@ -610,10 +704,11 @@ it; with C23 the lexer takes the keyword.
 in that dialect and of =char8_t= in C23, and ~u8'x'~ is C23's alone,
 refused as a not-yet.
 
-Fix: decide the dialect's answer: the error stays with C17's
-paragraph cited, or the declaration is a block's static.
+Fix: the error stays: the dialect is C17's (the Lexer chapter's
+entry on the dialect), and =shape.md= cites C17's 6.8.5p3.
 
-Check: the pin of =static-in-for= agrees with the decision.
+Check: the pin of =static-in-for= is the error, and the document
+names the paragraph.
 
 ** TODO An incomplete record of internal linkage is refused where it is declared
 
@@ -624,11 +719,11 @@ declarations give it together, and =clang= takes both. 6.9.3p3 asks
 that a tentative definition of internal linkage not be of an
 incomplete type, and says nothing of when.
 
-Fix: none taken; decide whether a record follows the array: judged
-at the unit's end, its object made once the record is complete.
+Fix: a record follows the array: judged at the unit's end, its
+object made once the record is complete.
 
-Check: by the decision; a row of =tests/error= or a program that
-compiles.
+Check: the program above compiles, and one whose record is never
+completed is an error at the unit's end, pinned.
 
 ** TODO A header's =static inline= definition under a marking attribute is not remembered as a definition
 
@@ -655,44 +750,11 @@ closing brace; outside a list the parentheses are looked through.
 =clang= takes both, and 6.7.11p15 says "a string literal", which a
 parenthesized one is not in so many words.
 
-Fix: one answer for both spellings: both taken, or both refused with
-a message that names the parentheses.
+Fix: both are taken: the parentheses are looked through in a list
+too.
 
-Check: the two declarations behave alike, pinned in =tests/error= or
-in =tests/cost=.
-
-** TODO Two pairs of braces around a scalar's initializer are an error
-
-~int n = { { 1 } };~ fails with "too many braces around scalar
-initializer". 6.7.11p12 gives a scalar "a single expression,
-optionally enclosed in braces", one pair, in its Semantics and not as
-a constraint, so the program is undefined and not wrong; =clang= and
-=gcc= compile it with a warning.
-
-Fix: decide whether rcc keeps the error or takes the inner braces
-with a warning.
-
-Check: the pin of =global-initializer-scalar-braces= agrees with the
-decision, and that of
-=struct-initializer-braces=, a scalar member's, with it.
-
-** TODO A forward reference to an enumeration is refused
-
-~enum e; enum e *p;~ before the list of =e= fails with "enum 'e'
-used before its list". That is the constraint of 6.7.3.4p2, but
-=clang= takes it without a word as an extension, and a header may
-write it. A type in the tree is a value with no identity of its tag,
-so a pointer made before the list cannot become a pointer to the
-integer type the list completes.
-
-Fix: a record has its tag's identity, but an enumeration is its
-integer type, so that identity does not carry it. With the fix of "A
-pointer to a type rcc does not honour takes no pointer to the type
-behind it", a pointer made before the list is to a not-yet type, and
-its uses say not yet.
-
-Check: the two declarations compile, and =p= points at an object of
-the type the list gives.
+Check: the two declarations compile to the same data, pinned in
+=tests/cost=.
 
 ** TODO Pointers to two integer types of one representation convert with no diagnostic
 
@@ -702,24 +764,12 @@ an ~enum a *~ to an ~enum b *~ where both have one integer type:
 type is its integer type (=shape.md= chapter 3). 6.5.17.2p1 asks
 compatible pointee types, and =clang= rejects both programs.
 
-Fix: none taken; either the documents say these compile, with the
-implementation's choices, or an integer type carries its spelling
-for the compatibility check alone.
+Fix: both are errors, and the cast is the program's to write. An
+integer type carries its identity for the check of compatibility,
+which =_Generic= needs of it too, so the two are built together.
 
-Check: both programs fail, or the documents say they compile.
-
-** TODO A ~?:~ with one void arm is refused where =clang= takes it
-
-~c ? f() : g()~ with ~f~ returning =void= and ~g~ an =int= fails
-with "void and non-void operands in conditional expression".
-6.5.16p3 allows no such pair, but =gcc= and =clang= take it as GNU C,
-the result =void=, with a warning only under =-pedantic=; a header
-written for them may have it.
-
-Fix: decide: the error stays, as the constraint has it, or the pair
-is taken as the two compilers take it, the other arm for its effect.
-
-Check: the pin of =conditional-void-arm= agrees with the decision.
+Check: both programs fail with "incompatible pointer types", and
+compile with the cast written.
 
 ** TODO =convert_to()= is not the one place a conversion enters the tree
 
@@ -752,7 +802,9 @@ not-yet of its own.
 Fix: a zeroing of the whole object, padding included, then the
 listed members' assignments in the list's order; the zeroing a row
 of each generator in the copy's units, stores of zero by the
-record's alignment and the loop above eight.
+record's alignment and the loop above eight. G20 of
+=docs/guarantees.md=, a guarantee of its own, is written with the
+first generator's row.
 
 Check: =struct-local-list-initializer= and
 =struct-local-list-zeroed= compile and are pinned on both targets,
@@ -774,23 +826,24 @@ for each symbol the region declares and reaches a hidden object
 directly, not through the GOT: an executable links and runs the
 same, and a shared object exports what =clang= hides.
 
-Fix: decide each pragma: write its directives, or refuse it as not
-yet.
+Fix: each is refused as not yet, by name, until its directives are
+written.
 
-Check: a program for each, pinned in =tests/cost= if written, in
-=tests/error= if refused; the J.3.12(10) row names them.
+Check: a program of =tests/error= for each, with its pin; the
+J.3.12(10) row names them.
 
-** TODO A digit separator is a missing quote
+** TODO The dialect rcc preprocesses in is =clang='s default
 
-~1'000~ is C23's (6.4.4.2). The parser's "not yet: digit separator"
-is never reached: rcc runs =clang -E= with no =-std=, clang's default
-dialect has no separator, so clang warns of an open character
-constant, and the lexer, which ends the number at the quote, reports
-"missing terminating ' character".
+rcc runs =clang -E= with no =-std=, so the dialect is the one
+=clang= has by default, C17 with GNU extensions today, and it moves
+when that default does. ~1'000~ shows it: C23's digit separator
+(6.4.4.2) is an open character constant to =clang= and to the lexer,
+"missing terminating ' character", and the parser's "not yet: digit
+separator" is never reached.
 
-Fix: decide the dialect rcc preprocesses in. With =-std=c23= passed
-to =clang -E= and the quote taken by =number()=, the not-yet is
-reached; without, the parser's branch goes.
+Fix: =-std=gnu17= on the command line of =clang -E=; =shape.md=
+names the dialect; the parser's branch for the separator goes.
 
-Check: a program of =tests/error= with ~1'000~ and its pin.
+Check: =tests/driver= shows the flag, and a program of =tests/error=
+with ~1'000~ has its pin.
 
