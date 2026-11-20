@@ -195,7 +195,9 @@ an optimization taken when it is measured. The size and the
 alignment of a type are the type's, `size_of` and `align_of`, the
 same on both targets, the sizes LP64's; the parser folds `sizeof`
 from them and c1
-sizes and aligns the slots from them. A pointer to a function is a
+sizes and aligns the slots from them. `void` has GNU C's size, 1,
+for the arithmetic on a pointer to it alone (chapter 5): `sizeof
+(void)` is an error. A pointer to a function is a
 pointer as any other: 8 bytes, an address, of a type that compares
 through the function's result and parameters. The types of the wide
 characters are the platform's, as `clang` has them on each target:
@@ -547,6 +549,16 @@ marks makes the enum a not-yet type of its words (below). `__asm__
 ("name")` after the declarator of a function or of an object at file
 scope is the symbol's name in the assembly: glibc declares `scanf` as
 `__isoc99_scanf`, and the call names that.
+
+A program written for `gcc` and `clang` may have GNU C that ISO C
+makes a constraint violation. The parser takes each such construct
+below as GNU C does, with a warning (chapter 8), and the program
+compiles to the listing of its ISO C twin (`cost.md` chapter 1):
+
+- arithmetic on a pointer to `void`, `p + n`, `p - q`, `++p` and
+  `p += n` among them, which 6.5.7p2 and p3 refuse, since `void` is
+  no complete object type: it counts bytes, as on a `char *`, by the
+  size `size_of` gives `void` (chapter 3).
 
 `volatile` is dropped as `const` is, wherever `const` may stand:
 among the declaration specifiers, after a `*`, in a type name, once
@@ -1217,12 +1229,15 @@ the list once, on standard error in the error's format, `warning` in
 place of `error`: after a parse that succeeds, or before the error
 that ends one, the order in which the parse met them all, as each
 warning stands before the first error in the source. `-w` silences
-the warnings, and no warning changes the exit status. One warning is
-for a `register` variable whose register would be past the
-target's count, the sixth on x86-64 and the eleventh on aarch64,
-which takes a slot (`backend.md` chapter 4); one is for a member's
-array of size zero in the program's own text, read as a flexible
-array member (chapter 5).
+the warnings, and no warning changes the exit status. The warnings:
+
+- a `register` variable whose register would be past the target's
+  count, the sixth on x86-64 and the eleventh on aarch64, which takes
+  a slot (`backend.md` chapter 4);
+- a member's array of size zero in the program's own text, read as a
+  flexible array member (chapter 5);
+- arithmetic on a pointer to `void`, which counts bytes as GNU C has
+  it (chapter 5).
 
 Exit status: 0; 1 for a diagnosed error or a failed system call; 2
 for a usage error; 3 for an internal error, a construct c1 does not

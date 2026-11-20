@@ -266,6 +266,14 @@ not_yet(const token_t &at, std::string_view construct)
                             std::string(construct) };
 }
 
+// A warning at the token, added to the driver's list (shape.md chapter
+// 8); the parse goes on.
+void
+warn(parser_t &p, const token_t &at, std::string what)
+{
+    p.warnings.push_back({ at.where, std::move(what) });
+}
+
 std::string
 quoted(std::string_view name)
 {
@@ -967,18 +975,16 @@ require_integer(const token_t &op, const expr_t &e)
 }
 
 // Pointer arithmetic, ++ and -- included, needs a pointer to a
-// complete object type, 6.5.7p2, p3: not void, which GNU C would take
-// as a byte, not a function, and neither an array of unknown size nor
-// an incomplete record, which are incomplete, 6.2.5p27, 6.7.3.4p5, and
-// have no size to step by.  The step is the pointee's size, so a
-// not-yet pointee is not yet.
+// complete object type, 6.5.7p2, p3: not a function, and neither an
+// array of unknown size nor an incomplete record, which are
+// incomplete, 6.2.5p27, 6.7.3.4p5, and have no size to step by.  void
+// is taken as GNU C takes it, a byte, and the production warns of it
+// (shape.md chapter 5).  The step is the pointee's size, so a not-yet
+// pointee is not yet.
 void
 require_object_pointee(const token_t &op, const type_t &t)
 {
     const type_t &pointee = pointee_of(t);
-
-    if (is< void_t >(pointee))
-        fail(op, "arithmetic on a pointer to void");
 
     if (is< function_t >(pointee))
         fail(op, "arithmetic on a pointer to a function");
@@ -1003,6 +1009,19 @@ require_steppable(const token_t &op, const expr_t &e)
 
     if (is< pointer_t >(e.type))
         require_object_pointee(op, e.type);
+}
+
+// Arithmetic on a pointer to void breaks the constraint of 6.5.7p2,
+// p3, and GNU C takes it, a step of a byte: rcc takes it so, with a
+// warning once the operation is built (shape.md chapter 5).  pointer
+// is the type of the operand that points, or of either.
+void
+warn_void_arithmetic(parser_t &p, const token_t &op, const type_t &pointer)
+{
+    if (is_void_pointer(pointer))
+        warn(p, op,
+             "arithmetic on a pointer to void counts bytes, as GNU C "
+             "allows");
 }
 
 //
@@ -7264,7 +7283,12 @@ assignment_expression(parser_t &p)
 
     require_modifiable_lvalue(op, lhs);
 
-    return assignment(op, std::move(lhs), assignment_expression(p));
+    const type_t t = lhs.type;
+    expr_t e = assignment(op, std::move(lhs), assignment_expression(p));
+    if (op.kind != tok_t::assign)
+        warn_void_arithmetic(p, op, t);
+
+    return e;
 }
 
 // The condition is a scalar and stays as it is, 6.5.16p2.
@@ -7399,9 +7423,12 @@ additive_expression(parser_t &p)
         const token_t &op = advance(p);
 
         expr_t rhs = multiplicative_expression(p);
+        const type_t t = is< pointer_t >(e.type) ? e.type : rhs.type;
+
         e = op.kind == tok_t::plus ?
                 addition(op, std::move(e), std::move(rhs)) :
                 subtraction(op, std::move(e), std::move(rhs));
+        warn_void_arithmetic(p, op, t);
     }
 
     return e;
@@ -7451,7 +7478,14 @@ unary_expression(parser_t &p)
 
     switch (op.kind) {
     case tok_t::inc:
-    case tok_t::dec: advance(p); return prefix_step(op, unary_expression(p));
+    case tok_t::dec: {
+        advance(p);
+
+        expr_t e = prefix_step(op, unary_expression(p));
+        warn_void_arithmetic(p, op, e.type);
+
+        return e;
+    }
     case tok_t::plus: advance(p); return unary_plus(op, cast_expression(p));
     case tok_t::minus:
     case tok_t::tilde:
@@ -8251,6 +8285,7 @@ postfix_expression(parser_t &p)
         case tok_t::dec:
             advance(p);
             e = postfix_step(op, std::move(e));
+            warn_void_arithmetic(p, op, e.type);
             break;
         case tok_t::lbracket: {
             advance(p);

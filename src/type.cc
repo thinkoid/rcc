@@ -144,9 +144,14 @@ make_floating(int identity, std::string what, long size)
 }
 
 // An array of unknown size has no size; asking is the caller's error.
+// void has GNU C's size, 1, the step of arithmetic on a pointer to it;
+// the parser refuses sizeof (void) before it asks.
 long
 size_of(const type_t &t)
 {
+    if (is< void_t >(t))
+        return 1;
+
     if (is< int_t >(t))
         return as< int_t >(t).width / 8;
 

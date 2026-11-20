@@ -12,8 +12,9 @@
 # any machine.
 #
 # Each program tests/error/<name>.c draws one diagnostic: an error of
-# the lexer or the parser, exit status 1, or a construct c1 does not
-# handle yet, "c1: not yet: ...", exit status 3.  ./rcc -target
+# the lexer or the parser, exit status 1, a construct c1 does not
+# handle yet, "c1: not yet: ...", exit status 3, or a warning of a
+# program rcc compiles, exit status 0.  ./rcc -target
 # <target> -S writes it, from the tree root, so the file in each
 # message is the relative path tests/error/<name>.c, or the name a
 # line marker of the program gives, where the program marks a part of

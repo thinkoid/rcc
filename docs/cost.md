@@ -100,7 +100,10 @@ at all (`static-inline-not-yet`). Nor does
 inlines none, so a program compiles to the listing of its twin
 without it (`noinline`). An alias declares a symbol of its target's
 address, which the assembler gives it, and costs no instruction: its
-lines follow the data (`alias`).
+lines follow the data (`alias`). Arithmetic on a pointer to `void`,
+which GNU C takes, counts bytes, so a program compiles to the listing
+of its twin with `char *` in place of each `void *`
+(`void-arithmetic`).
 
 What the compiler may do:
 

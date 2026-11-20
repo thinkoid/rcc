@@ -356,20 +356,6 @@ for 6.9.1p3.
 
 Check: a cost program with both forms, pinned on each target.
 
-** TODO Arithmetic on a pointer to =void= is an error
-
-~p + 1~ on a ~void *~ fails with "arithmetic on a pointer to void":
-6.5.7p2 and p3 ask a pointer to a complete object type. GNU C takes
-it, the pointee's size 1, and a program written for =gcc= and
-=clang= may have it.
-
-Fix: taken as GNU C takes it, with a warning: the sum, the
-difference and the step count bytes, as on a ~char *~. ~sizeof
-(void)~ stays an error.
-
-Check: a cost program pinned like its ~char *~ twin on both targets,
-and the warning pinned.
-
 ** TODO ~return f();~ of a void =f= in a void function is an error
 
 It fails with "void function should not return a value": 6.8.7.5p1

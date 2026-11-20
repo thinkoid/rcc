@@ -1,2 +1,2 @@
-tests/error/void-pointer-arithmetic.c:7:15: error: arithmetic on a pointer to void
-status 1
+tests/error/void-pointer-arithmetic.c:9:15: warning: arithmetic on a pointer to void counts bytes, as GNU C allows
+status 0

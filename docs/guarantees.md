@@ -64,8 +64,10 @@ of its type as it was.
 **G6. Pointer arithmetic is address arithmetic.** 6.5.7p9, p10. `p + n`
 is `p + n * sizeof *p` modulo 2^N; `p - q` is the address difference
 divided by the size, for any two pointers. The type constraints of
-6.5.7p2, p3 stand: no arithmetic on a `void *` or a function pointer,
-and `p - q` only on pointers to compatible types; rcc refuses the
+6.5.7p2, p3 stand, but for GNU C's arithmetic on a `void *`, a step
+of a byte, which rcc takes with a warning (`shape.md` chapter 5): no
+arithmetic on a function pointer, and `p - q` only on pointers to
+compatible types; rcc refuses the
 rest with an error. Instruction: `lea`, `add` or `sub` on the 64-bit
 registers, `imul` by the size; the difference is `sub`, `cqto` and
 `idiv` by the size. The difference costs a division (`cost.md`).
