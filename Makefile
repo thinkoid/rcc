@@ -1,5 +1,6 @@
-# rcc: build, test, bench, slots, clean.  GNU make; the dependency
-# files and the pattern rules are GNU.
+# rcc: build, test, test-long, bench, slots, clean.  GNU make; the
+# dependency files, the pattern rules and the target-specific
+# variable are GNU.
 
 CXX      = clang++
 CXXFLAGS = -std=c++20 -Wall -Wextra -g -MMD -MP
@@ -19,6 +20,10 @@ build/%.o: src/%.cc | build
 build:
 	mkdir -p $@
 
+# the oracle's options: none for make test, which leaves the programs
+# of the long rows unrun
+ORACLE_FLAGS =
+
 # the pins of every target, then the driver's command line, then the
 # probes, which run what rcc writes and so only for this machine's own
 # target
@@ -27,9 +32,14 @@ test: $(TARGETS:%=test-%) rcc
 	tests/probes
 
 $(TARGETS:%=test-%): test-%: rcc
-	tests/oracle --target $*
+	tests/oracle --target $* $(ORACLE_FLAGS)
 	tests/costs --target $*
 	tests/errors --target $*
+
+# make test, with the oracle's long rows run on this machine's own
+# target, each to the time limit; another target's runs nothing
+test-long: ORACLE_FLAGS = --long
+test-long: test
 
 bench: rcc
 	tests/bench
@@ -42,4 +52,4 @@ clean:
 	rm -rf build rcc
 
 -include $(OBJ:.o=.d)
-.PHONY: test $(TARGETS:%=test-%) bench slots clean
+.PHONY: test $(TARGETS:%=test-%) test-long bench slots clean

@@ -1111,7 +1111,7 @@ whole; meson would add dependency scanning, a test runner and a
 compile database, and three lines of make, a shell script and
 `compile_flags.txt` cover the three.
 
-    Makefile          build, test, bench, slots, clean
+    Makefile          build, test, test-long, bench, slots, clean
     compile_flags.txt what clangd needs
     docs/guarantees.md  the meaning: what happens where ISO C says nothing
     docs/choices.md     the choices ISO C leaves to the implementation, per target

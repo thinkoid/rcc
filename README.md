@@ -193,7 +193,10 @@ and the error corpus over `tests/error/`, the programs rcc refuses
 with their diagnostics, for each target, then the driver's command
 line, `tests/driver`, and then the probes of
 `tests/probe/`, rcc's code against `clang`'s on the machine's own
-target; `make bench` times the benchmark corpus of `tests/perf/`,
+target; `make test-long` is `make test` with the programs of the
+oracle's long rows run too, those whose run lasts the time limit,
+which `make test` only diffs; `make bench` times the benchmark
+corpus of `tests/perf/`,
 with a target's own tuned sources from `tests/perf/<target>/`, and
 `make slots` times the four loops of `tests/slot/`, the cost of a
 stack slot.

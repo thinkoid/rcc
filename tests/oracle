@@ -49,6 +49,15 @@
 # corpus may: it shows as its number and fails its row.  Without
 # timeout the script says so once and runs without a limit.
 #
+# A row that holds "timeout" in either status column is a long row:
+# a program of it runs until the limit stops it, so its run lasts the
+# limit.  The programs of a long row are built and run only when the
+# script is given --long.  Without it the row is checked as on another
+# machine's target: the rcc and clang columns show "-", the row passes
+# when the object assembled and the pin matches the assembly, and the
+# summary counts the long rows whose programs were not run.  make test
+# runs the script without --long, and make test-long with it.
+#
 # The shell reports a run that signal n killed as 128 + n, and
 # timeout(1) dies of the signal its program died of, so a status above
 # 128 is a signal's.  It shows as the name kill -l gives signal n, SEGV
@@ -77,7 +86,7 @@
 #
 # USAGE:
 #
-#     tests/oracle [ --target <name> ] [ --pin ] [ --help ]
+#     tests/oracle [ --target <name> ] [ --long ] [ --pin ] [ --help ]
 #
 # OPTIONS:
 #
@@ -88,16 +97,24 @@
 #         error.  A target without a pin directory is an error, exit
 #         status 2.
 #
+#     --long
+#         Runs the programs of the long rows too, on this machine's
+#         own target, so the run lasts the time limit for each that
+#         the limit stops.  On another machine's target no program
+#         runs, and it changes nothing.
+#
 #     --pin
 #         Adopts the run for the target.  Copies the assembly of
 #         every program over its pin, and, on this machine's own
 #         target, rewrites the status columns of tests/corpus/expected
 #         from the measured statuses, printing what changed in each.
 #         On another machine's target nothing was measured, and
-#         tests/corpus/expected is left alone.  A program that did not
-#         build, or wrote no assembly, is left as it was, and so is the
-#         row of a program whose measured status no row may hold, a
-#         number above 128 or 124, which is named.  A program that is
+#         tests/corpus/expected is left alone; without --long a long
+#         row was not measured either, and keeps its status columns.
+#         A program that did not build, or wrote no assembly, is left
+#         as it was, and so is the row of a program whose measured
+#         status no row may hold, a number above 128 or 124, which is
+#         named.  A program that is
 #         not yet is left without a pin, keeps its row, and is not
 #         counted as unadopted.  Exits 0 when every other program was
 #         adopted, 1 otherwise.  It is how a new program enters
@@ -121,6 +138,11 @@
 #     Writes, assembles and diffs every program for x86-64, on any
 #     machine, and runs the programs only on an x86-64 machine; the
 #     log is build/oracle/x86-64/log.
+#
+#     tests/oracle --long
+#
+#     The same run as the first, with the programs of the long rows
+#     run too.
 #
 #     tests/oracle --pin
 #
@@ -159,6 +181,9 @@ export LC_ALL
 # with --pin, the run is adopted as the pins and the expected statuses
 pin=0
 
+# with --long, the programs of the long rows are run too
+long=0
+
 # the target the run checks, from --target or this machine's own, and
 # the directory of its pins
 target=
@@ -193,14 +218,18 @@ passed=0
 waiting=0
 waiting_names=
 
+# the long rows whose programs were not run, without --long
+unrun_long=0
+
 
 ##########
 # usage(): prints the usage
 usage()
 {
-    echo "usage: $0 [ --target <name> ] [ --pin ] [ --help ]"
+    echo "usage: $0 [ --target <name> ] [ --long ] [ --pin ] [ --help ]"
     echo
     echo "    --target  check the target <name>, x86-64 or aarch64; this machine's by default"
+    echo "    --long    run the programs of the long rows too, each to the time limit"
     echo "    --pin     adopt the run: rewrite the pins and the expected statuses"
     echo "    --help    print this usage"
 }
@@ -365,6 +394,22 @@ number_above_base()
 
 
 ##########
+# is_long(): reports 0 when one of the statuses that follow, a row's,
+# is "timeout": the row is long, and its run lasts the time limit; 1
+# otherwise
+is_long()
+{
+    for shown in "$@"; do
+        if [ "$shown" = "$timed_out" ]; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+
+##########
 # not_yet(): writes the program's assembly for the target with rcc -S
 # and reports 0 when rcc stopped in c1 at a construct whose slice is
 # not in the tree yet, 1 when it wrote the text or stopped otherwise
@@ -453,7 +498,8 @@ print_row()
 
 ##########
 # check_program(): on this machine's own target, builds and runs one
-# program both ways and records its statuses; on any target, diffs its
+# program both ways and records its statuses, a long row's only with
+# --long, which it counts otherwise; on any target, diffs its
 # assembly against the pin and assembles it; prints its row; reports
 # 0 when the row passed, 1 when it failed, and 2 when it is not yet:
 # the program has no pin and c1 does not handle it yet
@@ -478,14 +524,26 @@ check_program()
         return 2
     fi
 
-    if [ "$run" -ne 0 ]; then
+    want=$(expected_of "$name")
+
+    # a long row's programs run only with --long; without it the row is
+    # not measured, and its row in expected stays as it is; $want is
+    # split into its two statuses, on purpose
+    ran=$run
+    if [ "$run" -ne 0 ] && [ "$long" -eq 0 ] && is_long $want; then
+        ran=0
+        unrun_long=$((unrun_long + 1))
+        echo "$name $unrun $unrun" >> "$measured"
+    fi
+
+    if [ "$ran" -ne 0 ]; then
         rcc_status=$(measure "$source" "$stem.rcc" ./rcc -target "$target")
         clang_status=$(measure "$source" "$stem.clang" clang -O2)
 
         echo "$name $rcc_status $clang_status" >> "$measured"
     else
-        rcc_status=-
-        clang_status=-
+        rcc_status=$unrun
+        clang_status=$unrun
     fi
 
     pin_state=$(check_pin "$name")
@@ -493,21 +551,19 @@ check_program()
     assembled=1
     assemble "$name" || assembled=0
 
-    want=$(expected_of "$name")
-
     # $want is split into its two statuses, on purpose
 
-    if [ "$run" -ne 0 ] && [ -z "$want" ]; then
+    if [ "$ran" -ne 0 ] && [ -z "$want" ]; then
         verdict="FAIL (no row in $expected)"
-    elif [ "$run" -ne 0 ] && number_above_base $want; then
+    elif [ "$ran" -ne 0 ] && number_above_base $want; then
         verdict="FAIL (a number above $signal_base in $expected)"
-    elif [ "$run" -ne 0 ] &&
+    elif [ "$ran" -ne 0 ] &&
          own_limit_status "$rcc_status" "$clang_status"; then
         verdict="FAIL (exits $timeout_status itself)"
-    elif [ "$run" -ne 0 ] &&
+    elif [ "$ran" -ne 0 ] &&
          number_above_base "$rcc_status" "$clang_status"; then
         verdict="FAIL (a status above $signal_base names no signal)"
-    elif [ "$run" -ne 0 ] && [ "$want" != "$rcc_status $clang_status" ]; then
+    elif [ "$ran" -ne 0 ] && [ "$want" != "$rcc_status $clang_status" ]; then
         verdict="FAIL (expected $want)"
     elif [ "$assembled" -eq 0 ]; then
         verdict="FAIL (did not assemble)"
@@ -679,6 +735,10 @@ while [ $# -gt 0 ]; do
             shift
             ;;
 
+        --long)  # run the programs of the long rows too
+            long=1
+            ;;
+
         --pin)  # adopt the run as the pins and the expected statuses
             pin=1
             ;;
@@ -787,8 +847,18 @@ if [ "$waiting" -ne 0 ]; then
     counts="$counts, $waiting not yet"
 fi
 
+# a long row whose programs were not run passed or failed on its pin
+long_rows="$unrun_long long rows"
+if [ "$unrun_long" -eq 1 ]; then
+    long_rows="1 long row"
+fi
+
 echo
-if [ "$run" -ne 0 ]; then
+if [ "$run" -ne 0 ] && [ "$unrun_long" -ne 0 ]; then
+    echo "$counts;" \
+        "the programs of $long_rows were not run without --long;" \
+        "the log is $log"
+elif [ "$run" -ne 0 ]; then
     echo "$counts; the log is $log"
 else
     echo "$counts;" \
@@ -797,7 +867,8 @@ else
 fi
 
 # with --pin, the exit status is the adoption's, not the run's; on
-# another machine's target nothing was measured, and the table stays
+# another machine's target nothing was measured, and the table stays,
+# as a long row does without --long
 if [ "$pin" -ne 0 ]; then
     echo
     adopt_pins

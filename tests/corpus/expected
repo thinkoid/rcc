@@ -5,6 +5,9 @@
 # time limit.  The shell reports a run that signal n killed as 128 + n,
 # and timeout(1) gives 124 for a run it stopped, so no program exits
 # above 128 or with 124 by itself, and no row holds a number above 128.
+# A row with timeout in either column is long: tests/oracle runs its
+# programs only when given --long, as make test-long gives it, and
+# diffs and assembles the program on every run.
 g1-add-compare 0 1
 g11-misaligned 52 52
 g12-block-slot 5 9

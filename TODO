@@ -221,6 +221,16 @@ quotes the loop itself.
 Check: what the passage quotes is in the file, or is called a
 reduction of it.
 
+** TODO =docs/shape.md= counts four test scripts where =make test= runs five
+
+Chapter 0 says "The test is four" scripts. =make test= runs five,
+the driver's among them, as chapter 3 of =docs/cost.md= lists them.
+
+Fix: the sentence says five and names =tests/driver=.
+
+Check: the count and the names agree with chapter 3 of
+=docs/cost.md=.
+
 * Cost model
 
 The record in =docs/cost.md=: what each construct compiles to under

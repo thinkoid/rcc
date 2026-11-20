@@ -400,7 +400,8 @@ for its target. The last two run once.
   own target it also builds each program under `clang -O2` and under
   `./rcc`, runs both, and compares the exit statuses with
   `tests/corpus/expected`; on another target the programs are not
-  run.
+  run, nor are those of a long row, as the limit's paragraph below
+  tells, unless the oracle is given `--long`.
 - `tests/costs` pins this page: the listing of each program of
   `tests/cost/`, as the next paragraph tells.
 - `tests/errors` pins the diagnostics: for each program of
@@ -478,6 +479,17 @@ that ends with 124 before the limit gave the status itself, which no
 program of the corpus may, and the oracle fails it; one that ends
 with 137 sooner was killed from elsewhere, and shows as `KILL`, a
 probe as "stopped, KILL".
+
+A row of `tests/corpus/expected` that holds "timeout" in either
+column is a long row: a program of it runs until the limit stops
+it, so its run lasts the limit, as G14's endless loop does under
+rcc. The oracle runs the programs of a long row only when it is
+given `--long`. Without it the row is checked as on another target,
+by its pin and its object alone; the table shows "-" for both
+statuses, the summary counts the long rows whose programs were not
+run, and `--pin` leaves the row's statuses as they are. `make test`
+runs the oracle without `--long`, so it waits out no long row's
+limit; `make test-long` is `make test` with the oracle's `--long`.
 
 The shell reports a run that signal n killed as 128 + n, so the oracle
 shows a status above 128 by the signal's name, as `kill -l` gives it:
