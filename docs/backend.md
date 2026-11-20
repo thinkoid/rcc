@@ -2494,6 +2494,15 @@ value has one of three forms, and each form has its data:
 
 An object the file only declares writes nothing.
 
+An alias the file declares, GNU C's `alias` attribute on a function
+or an object of external linkage whose target the file defines, is
+a symbol of the target's address, which the assembler gives it. The
+aliases follow the objects, in the order of their declarations, as
+`clang` writes them: `.globl a`, then `.type a, @function` for a
+function, then `a = t`. They cost no instruction. A reference to the
+alias is one to a symbol the file only declares, through the GOT
+and the PLT, which the linker resolves to the target.
+
 An object a block declares `static` has static storage duration
 (6.2.4p3) and is one more object the file defines: in the `.data` or
 the `.bss` block with the others, in the order of the definitions,

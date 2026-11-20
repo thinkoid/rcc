@@ -77,7 +77,9 @@ twin without the specifier (`static-inline`). Nor does
 `(long)(e)` in its place (`builtin-expect`). Nor does the attribute
 `noinline`: it asks that calls of a function not be inlined, and c1
 inlines none, so a program compiles to the listing of its twin
-without it (`noinline`).
+without it (`noinline`). An alias declares a symbol of its target's
+address, which the assembler gives it, and costs no instruction: its
+lines follow the data (`alias`).
 
 What the compiler may do:
 

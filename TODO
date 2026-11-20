@@ -286,20 +286,30 @@ test=.
 
 * Parser
 
-** TODO An =alias= attribute on a declaration no one uses drops its symbol
+** TODO =always_inline= marks
 
-~int a(void) __attribute__((__alias__("t")));~ compiles, and the
-object file has =t= and no =a=: =alias= is an attribute that marks,
-so a use of =a= in the unit is a not-yet, and with no use nothing is
-refused and nothing is written. The declaration is the symbol's
-definition, so another unit's call of =a= does not link.
+A function declared =always_inline= is "not yet: attribute
+'always_inline'" at its use or its definition. rcc inlines nothing,
+and =gcc= and =clang= make the attribute an error where they cannot
+inline the call; rcc writing the call is what a compiler at =-O0=
+does for a function not declared inline.
 
-Fix: the alias is written where its target is defined in the unit,
-=.globl a= and =a = t=; where it is not, the declaration is the
-not-yet.
+Fix: none taken; decide: dropped as =noinline= is, or a not-yet as
+today.
 
-Check: a program of =tests/cost= whose listing has the two lines on
-each target, and a program of two units that calls the alias.
+Check: a cost program with the call, or the pinned not-yet.
+
+** TODO A static or a weak alias is not yet
+
+~static int a(void) __attribute__((alias("t")));~ and
+~__attribute__((weak, alias("t")))~ are "not yet" where declared;
+=clang= writes the first without =.globl= and the second with =.weak=
+in its place.
+
+Fix: write them; a static alias counts as its symbol's definition
+for 6.9.1p3.
+
+Check: a cost program with both forms, pinned on each target.
 
 ** TODO A zero-length array in a system header is an error
 

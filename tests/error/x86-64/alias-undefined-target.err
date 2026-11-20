@@ -1,0 +1,2 @@
+tests/error/alias-undefined-target.c:7:5: error: not yet: alias 'bgcmd' of 'fgcmd', which the unit does not define
+status 1

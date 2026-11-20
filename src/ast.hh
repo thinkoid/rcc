@@ -501,15 +501,27 @@ struct object_decl_t
     std::optional< std::vector< subobject_t > > init;
 };
 
+// One per alias the unit declares, GNU C's alias attribute: a function
+// or an object of external linkage that the unit does not define, and
+// the function or the object of the same kind the unit defines and the
+// alias names.  c1 writes the alias as a symbol of the target's
+// address.
+struct alias_t
+{
+    const symbol_t *sym;
+    const symbol_t *target;
+};
+
 // The unit owns every record in a deque, as it owns the symbols, so a
 // record type's pointer to its record is stable for the life of the
-// unit.
+// unit.  The aliases are in the order of their declarations.
 struct unit_t
 {
     std::deque< symbol_t > symbols;
     std::deque< record_t > records;
     std::vector< function_decl_t > functions;
     std::vector< object_decl_t > objects;
+    std::vector< alias_t > aliases;
 };
 
 } // namespace rcc

@@ -68,6 +68,25 @@ struct tentative_t
     const token_t *at;
 };
 
+// A declaration at file scope that an alias attribute makes the alias
+// of another symbol, checked at the end of the unit: the token that
+// names the declared symbol, the attribute's name, and whether the
+// symbol is a function.
+struct pending_alias_t
+{
+    const token_t *name;
+    const token_t *attribute;
+    bool function;
+};
+
+// The marking attributes of a run of attributes, or of all a
+// declaration writes: how many, and the first alias among them.
+struct markings_t
+{
+    int count = 0;
+    const token_t *alias = nullptr;
+};
+
 // A switch whose body the parse is in, 6.8.5.3: the promoted type of
 // its controlling expression, which each case's constant is converted
 // to, p5; its cases so far, as the tree takes them, and the token of
@@ -117,7 +136,8 @@ struct open_switch_t
 // too: whether it takes variable arguments, and the count of its named
 // parameters; va_area is its save area, made at its first va_start.
 // temporaries are the locals its builtins made, which no declaration
-// names, while its body is parsed, and nothing at file scope.
+// names, while its body is parsed, and nothing at file scope.  aliases
+// are the declarations an alias attribute makes aliases.
 struct parser_t
 {
     const std::vector< token_t > &tokens;
@@ -143,6 +163,7 @@ struct parser_t
     std::vector< internal_use_t > internal_uses = { };
     std::unordered_map< std::string_view, symbol_t * > block_entities = { };
     std::vector< tentative_t > incomplete_definitions = { };
+    std::vector< pending_alias_t > aliases = { };
     const record_t *va_record = nullptr;
     bool variadic = false;
     std::size_t named = 0;
@@ -159,7 +180,8 @@ struct parser_t
 // for the caller to drop or refuse, and inline_specifier the first
 // inline, or null.  marking is the name's token of the first marking
 // attribute among the specifiers, or null: it marks each declarator of
-// the declaration, as one after the declarator does.
+// the declaration, as one after the declarator does.  markings are all
+// the marking attributes among the specifiers.
 struct specifiers_t
 {
     type_t type;
@@ -168,6 +190,7 @@ struct specifiers_t
     const token_t *function_specifier;
     const token_t *inline_specifier;
     const token_t *marking;
+    markings_t markings;
 };
 
 // A parameter as written: its type, its name token when it has one,
@@ -2401,11 +2424,21 @@ attribute(parser_t &p)
     return is_dropped(attribute_name(name)) ? nullptr : &name;
 }
 
+// A marking attribute counted among a declaration's.
+void
+count_marking(markings_t &markings, const token_t &name)
+{
+    ++markings.count;
+    if (!markings.alias && attribute_name(name) == "alias")
+        markings.alias = &name;
+}
+
 // Each __attribute__ ((list)), also spelled __attribute, of the run at
 // the position, none or more, its attributes separated by commas.  The
-// name's token of the first marking attribute, or null.
+// name's token of the first marking attribute, or null; each marking
+// one is counted in seen, where the caller gives it.
 const token_t *
-attribute_specifier_list(parser_t &p)
+attribute_specifier_list(parser_t &p, markings_t *seen = nullptr)
 {
     const token_t *marking = nullptr;
 
@@ -2419,6 +2452,9 @@ attribute_specifier_list(parser_t &p)
             const token_t *name = attribute(p);
             if (!marking)
                 marking = name;
+
+            if (name && seen)
+                count_marking(*seen, *name);
         } while (accept(p, tok_t::comma));
 
         if (!accept(p, tok_t::rparen) || !accept(p, tok_t::rparen))
@@ -2457,12 +2493,14 @@ asm_label(parser_t &p)
 // What GNU C writes after a declarator, before the comma, the semicolon
 // or the initializer that follow it: attributes, and an assembler name
 // among them.  asm_keyword is the __asm__ written, or null, and marking
-// the name's token of the first marking attribute, or null.
+// the name's token of the first marking attribute, or null; markings
+// are all the declaration's, its specifiers' among them.
 struct declarator_tail_t
 {
     const token_t *asm_keyword;
     std::string asm_name;
     const token_t *marking;
+    markings_t markings;
 };
 
 // The tail of a declarator of the declaration the specifiers begin.  A
@@ -2471,9 +2509,9 @@ struct declarator_tail_t
 declarator_tail_t
 declarator_tail(parser_t &p, const specifiers_t &spec)
 {
-    declarator_tail_t tail { nullptr, { }, spec.marking };
+    declarator_tail_t tail { nullptr, { }, spec.marking, spec.markings };
 
-    const token_t *marking = attribute_specifier_list(p);
+    const token_t *marking = attribute_specifier_list(p, &tail.markings);
     if (!tail.marking)
         tail.marking = marking;
 
@@ -2482,7 +2520,7 @@ declarator_tail(parser_t &p, const specifiers_t &spec)
         tail.asm_name = asm_label(p);
     }
 
-    marking = attribute_specifier_list(p);
+    marking = attribute_specifier_list(p, &tail.markings);
     if (!tail.marking)
         tail.marking = marking;
 
@@ -2698,6 +2736,7 @@ declared(const specifiers_t &spec, tok_t storage_class)
 void complete_tentative_arrays(parser_t &);
 void require_completed_definitions(const parser_t &);
 void require_internal_definitions(const parser_t &);
+void resolve_aliases(parser_t &);
 
 void
 translation_unit(parser_t &p)
@@ -2708,6 +2747,7 @@ translation_unit(parser_t &p)
     require_completed_definitions(p);
     complete_tentative_arrays(p);
     require_internal_definitions(p);
+    resolve_aliases(p);
 }
 
 // Whether two array types are one but for the size one of them leaves
@@ -2919,6 +2959,71 @@ require_linkage(const token_t &name, const symbol_t &earlier, linkage_t linkage)
                    " follows static declaration");
 }
 
+// The target an alias attribute names, its one argument, ( "name" ),
+// adjacent literals joined.  The arguments were skipped as the
+// attribute was read, and are read here from the tokens after its name.
+std::string
+alias_target(const parser_t &p, const token_t &attribute)
+{
+    std::size_t i = std::size_t(&attribute - p.tokens.data()) + 1;
+    if (p.tokens[i].kind != tok_t::lparen ||
+        p.tokens[i + 1].kind != tok_t::string)
+        fail(attribute, "expected a string literal as the argument of " +
+                            attribute_words(attribute));
+
+    std::string target;
+    for (++i; p.tokens[i].kind == tok_t::string; ++i)
+        target += string_bytes(p.tokens[i]);
+
+    if (p.tokens[i].kind != tok_t::rparen)
+        fail(p.tokens[i],
+             "expected ')' after the target of " + attribute_words(attribute));
+
+    return target;
+}
+
+// A declaration at file scope that alias ("target") makes an alias,
+// GNU C's: the alias is a symbol of the target's address, which the
+// assembler gives it, so the declaration does not mark its symbol, and
+// a use of it is a use of a symbol.  rcc writes the alias where it is
+// the declaration's one marking attribute, on a function none of whose
+// parameters an attribute marks, or on an object declared extern, and
+// the declarator has no assembler name; any other alias is not yet
+// where it is declared.  A definition is no alias, an error, as GNU C
+// has it: a function's body, an object's initializer or a tentative
+// definition.  The symbol and the target are checked at the end of
+// the unit, resolve_aliases().
+void
+declared_alias(parser_t &p,
+               const specifiers_t &spec,
+               const declarator_t &d,
+               declarator_tail_t &tail,
+               bool function)
+{
+    const token_t &attribute = *tail.markings.alias;
+    const std::string words = attribute_words(attribute);
+
+    if (tail.markings.count > 1)
+        not_yet(attribute, words + " beside another attribute that marks");
+
+    if (tail.asm_keyword)
+        not_yet(attribute, words + " with an assembler name");
+
+    if (const token_t *marked = function ? marked_parameter(d) : nullptr)
+        not_yet(*marked, attribute_words(*marked));
+
+    const bool defined = function ? peek(p).kind == tok_t::lbrace :
+                                    !declared(spec, tok_t::kw_extern) ||
+                                        peek(p).kind == tok_t::assign;
+    if (defined)
+        fail(*d.name, "definition of " + quoted(d.name->text) +
+                          " cannot also be an alias");
+
+    alias_target(p, attribute);
+    p.aliases.push_back(pending_alias_t { d.name, &attribute, function });
+    tail.marking = nullptr;
+}
+
 // Declares a function at file scope, or meets its earlier declaration,
 // there or in a block, with what the declaration writes after its
 // declarator, and gives it the declaration's linkage.  A marking
@@ -2930,6 +3035,9 @@ declare_function(parser_t &p,
                  const declarator_t &d,
                  declarator_tail_t tail)
 {
+    if (tail.markings.alias)
+        declared_alias(p, spec, d, tail, true);
+
     if (!tail.marking)
         tail.marking = marked_parameter(d);
 
@@ -3690,6 +3798,67 @@ require_internal_definitions(const parser_t &p)
     }
 }
 
+// The symbol an alias names, at file scope: a function or an object the
+// unit defines, of the alias's kind, with no assembler name, since
+// GNU C reads the name as the target's assembly name.  A name the unit
+// does not define, a system header's static inline function among
+// them, whose body rcc skips, leaves the alias not yet; a target of the
+// other kind is an error.
+const symbol_t &
+alias_of(const parser_t &p, const pending_alias_t &a, const std::string &target)
+{
+    const auto &names = p.scopes.front().names;
+    const auto it = names.find(target);
+    const symbol_t *t = it == names.end() ? nullptr : it->second;
+
+    const std::string alias = "alias " + quoted(a.name->text);
+    if (!t || !defines(p, t))
+        not_yet(*a.name, alias + " of " + quoted(target) +
+                             ", which the unit does not define");
+
+    if (a.function != (t->storage == storage_t::function))
+        fail(*a.name, alias + " of " +
+                          (a.function ? "a function" : "an object") +
+                          " names " + quoted(target) + ", which is not one");
+
+    if (!t->asm_name.empty())
+        not_yet(*a.name, alias + " of " + quoted(target) +
+                             ", which has an assembler name");
+
+    return *t;
+}
+
+// The aliases the unit declares, checked once its definitions are all
+// read, and each added to the unit with its target: the alias is of
+// external linkage, which a static alias is not yet, has no assembler
+// name, and is defined by no declaration, as a second alias of it would
+// define it again.
+void
+resolve_aliases(parser_t &p)
+{
+    for (std::size_t i = 0; i < p.aliases.size(); ++i) {
+        const pending_alias_t &a = p.aliases[i];
+        const symbol_t &sym = *p.scopes.front().names.at(a.name->text);
+        const std::string alias = "alias " + quoted(a.name->text);
+
+        if (sym.linkage != linkage_t::external)
+            not_yet(*a.name, alias + " of internal linkage");
+
+        if (!sym.asm_name.empty())
+            not_yet(*a.name, alias + " with an assembler name");
+
+        bool defined = defines(p, &sym);
+        for (std::size_t k = 0; k < i; ++k)
+            defined |= p.aliases[k].name->text == a.name->text;
+
+        if (defined)
+            fail(*a.name, "redefinition of " + quoted(a.name->text));
+
+        const symbol_t &target = alias_of(p, a, alias_target(p, *a.attribute));
+        p.unit.aliases.push_back(alias_t { &sym, &target });
+    }
+}
+
 // An object at file scope, 6.9.3.  A declaration with an initializer
 // defines it, p1, extern or not; one without an initializer and
 // without extern is a tentative definition, p2; extern alone, neither
@@ -3713,7 +3882,9 @@ declare_external_object(parser_t &p,
                         const specifiers_t &spec,
                         const declarator_t &d)
 {
-    const declarator_tail_t tail = declarator_tail(p, spec);
+    declarator_tail_t tail = declarator_tail(p, spec);
+    if (tail.markings.alias)
+        declared_alias(p, spec, d, tail, false);
 
     adopt_block_entity(p, d.name->text);
 
@@ -4063,8 +4234,8 @@ function_definition(parser_t &p,
                     const specifiers_t &spec,
                     const declarator_t &d)
 {
-    const std::size_t index =
-        declare_function(p, spec, d, { nullptr, { }, spec.marking });
+    const std::size_t index = declare_function(
+        p, spec, d, { nullptr, { }, spec.marking, spec.markings });
     if (is_defined(p, index))
         fail(*d.name, "redefinition of " + quoted(d.name->text));
 
@@ -4125,8 +4296,8 @@ header_function_definition(parser_t &p,
                            const specifiers_t &spec,
                            const declarator_t &d)
 {
-    const std::size_t index =
-        declare_function(p, spec, d, { nullptr, { }, spec.marking });
+    const std::size_t index = declare_function(
+        p, spec, d, { nullptr, { }, spec.marking, spec.markings });
 
     if (is_defined(p, index))
         fail(*d.name, "redefinition of " + quoted(d.name->text));
@@ -4294,6 +4465,7 @@ declaration_specifiers(parser_t &p)
     const token_t *inline_specifier = nullptr;
     const token_t *complex_specifier = nullptr;
     const token_t *marking = nullptr;
+    markings_t markings;
 
     // the type the specifiers name, once they end
     const auto specified = [&]() -> type_t {
@@ -4375,7 +4547,7 @@ declaration_specifiers(parser_t &p)
         }
 
         if (t.kind == tok_t::kw_attribute) {
-            const token_t *name = attribute_specifier_list(p);
+            const token_t *name = attribute_specifier_list(p, &markings);
             if (!marking)
                 marking = name;
 
@@ -4504,7 +4676,8 @@ declaration_specifiers(parser_t &p)
                      tagged,
                      function_specifier,
                      inline_specifier,
-                     marking };
+                     marking,
+                     markings };
         }
         }
 
@@ -5961,6 +6134,9 @@ linked_declaration(parser_t &p, const specifiers_t &spec, const declarator_t &d)
     declarator_tail_t tail = declarator_tail(p, spec);
     if (function && !tail.marking)
         tail.marking = marked_parameter(d);
+
+    if (const token_t *alias = tail.markings.alias)
+        not_yet(*alias, attribute_words(*alias) + " in a block");
 
     if (function && peek(p).kind == tok_t::lbrace)
         fail(peek(p),

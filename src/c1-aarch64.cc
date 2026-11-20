@@ -5034,9 +5034,9 @@ function(state_t &s, const function_decl_t &fd)
 
 // The functions the unit defines, in order; one it only declares
 // writes nothing, since the assembler leaves its symbol to the link.
-// The string literals follow the last function, and the objects the
-// unit defines follow them, chapter 10.  The note section marks the
-// stack not executable.
+// The string literals follow the last function, the objects the unit
+// defines follow them, and the aliases it declares follow those,
+// chapter 10.  The note section marks the stack not executable.
 void
 generate_aarch64(const unit_t &unit,
                  const target_t &target,
@@ -5062,6 +5062,7 @@ generate_aarch64(const unit_t &unit,
     }
 
     data(s.out, s.strings, unit.objects, target);
+    aliases(s.out, unit.aliases);
 
     out << "\t.section\t.note.GNU-stack,\"\",@progbits\n";
 }

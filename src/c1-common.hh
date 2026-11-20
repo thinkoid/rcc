@@ -134,6 +134,7 @@ void data(std::ostream &,
           std::vector< std::string > strings,
           const std::vector< object_decl_t > &objects,
           const target_t &);
+void aliases(std::ostream &, const std::vector< alias_t > &);
 
 // A value the generator holds: in an expression register, or in its
 // spill slot once the register was needed for another.  The age orders

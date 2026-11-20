@@ -501,7 +501,15 @@ Any other, known or not, marks what it is said of: a typedef through
 one names a not-yet type of its own, a marked function or object at
 file scope is refused where an expression names it, and on a local or
 the definition of an object, which rcc would make, the attribute is
-not yet. An attribute among the declaration specifiers
+not yet. `alias ("t")` marks too, but where it is the one marking
+attribute of a declaration at file scope, on a function or on an
+object declared `extern` of external linkage, with no assembler name,
+and the unit defines `t`, a function or an object of the alias's
+kind, the declaration is the alias, which c1 writes after the data
+(`backend.md` chapter 10): the symbol is not marked, and a use of it
+is a use of the symbol. Any other alias is not yet where it is
+declared, and an alias on a definition is an error. An attribute
+among the declaration specifiers
 is said of each declarator, as one after the declarator is, and one
 may begin a declaration, in a block as at file scope:
 `__attribute__ ((unused)) int x = 1;` in a block declares `x`, the
