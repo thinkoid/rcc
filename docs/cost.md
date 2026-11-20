@@ -103,7 +103,9 @@ address, which the assembler gives it, and costs no instruction: its
 lines follow the data (`alias`). Arithmetic on a pointer to `void`,
 which GNU C takes, counts bytes, so a program compiles to the listing
 of its twin with `char *` in place of each `void *`
-(`void-arithmetic`).
+(`void-arithmetic`). `return E;` of a void `E` in a void function,
+which GNU C takes, is `E;` and `return;`, so a program compiles to
+the listing of its twin written so (`void-return`).
 
 What the compiler may do:
 

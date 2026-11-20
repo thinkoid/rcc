@@ -1,0 +1,2 @@
+tests/error/return-void-expression.c:12:9: warning: void function returns a void expression, as GNU C allows
+status 0

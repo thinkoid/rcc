@@ -1020,8 +1020,7 @@ warn_void_arithmetic(parser_t &p, const token_t &op, const type_t &pointer)
 {
     if (is_void_pointer(pointer))
         warn(p, op,
-             "arithmetic on a pointer to void counts bytes, as GNU C "
-             "allows");
+             "arithmetic on a pointer to void counts bytes, as GNU C allows");
 }
 
 //
@@ -7180,9 +7179,31 @@ break_statement(parser_t &p)
     return stmt_t { break_t { } };
 }
 
+// return E; of a void E in a void function breaks 6.8.7.5p1, and GNU C
+// takes it: rcc takes it with a warning, as the block of E for its
+// effect and the return, a block of no scope (shape.md chapter 5).
+stmt_t
+void_return(parser_t &p,
+            const token_t &keyword,
+            const token_t &start,
+            expr_t value)
+{
+    warn(p, keyword,
+         "void function returns a void expression, as GNU C allows");
+    expect(p, tok_t::semicolon, "expected ';' after return statement");
+
+    block_t block;
+    block.body.push_back(
+        stmt_t { expr_stmt_t { discarded(start, std::move(value)) } });
+    block.body.push_back(stmt_t { return_t { } });
+
+    return stmt_t { std::move(block) };
+}
+
 // A value is converted to the result type as if by assignment,
 // 6.8.7.5p3; a void function takes no value and a non-void one
-// requires one, 6.8.7.5p1.
+// requires one, 6.8.7.5p1, but for GNU C's void value of a void
+// function.
 stmt_t
 return_statement(parser_t &p)
 {
@@ -7194,6 +7215,9 @@ return_statement(parser_t &p)
         const token_t &start = peek(p);
 
         expr_t value = expression(p);
+        if (is< void_t >(p.result) && is< void_t >(value.type))
+            return void_return(p, keyword, start, std::move(value));
+
         if (is< void_t >(p.result))
             fail(keyword, "void function should not return a value");
 

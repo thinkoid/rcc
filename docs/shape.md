@@ -558,7 +558,10 @@ compiles to the listing of its ISO C twin (`cost.md` chapter 1):
 - arithmetic on a pointer to `void`, `p + n`, `p - q`, `++p` and
   `p += n` among them, which 6.5.7p2 and p3 refuse, since `void` is
   no complete object type: it counts bytes, as on a `char *`, by the
-  size `size_of` gives `void` (chapter 3).
+  size `size_of` gives `void` (chapter 3);
+- `return E;` of a void `E` in a void function, which 6.8.7.5p1
+  refuses: it is `E;` and `return;`, a block of no scope, so `E` is
+  evaluated for its effect; an `E` of a value stays an error.
 
 `volatile` is dropped as `const` is, wherever `const` may stand:
 among the declaration specifiers, after a `*`, in a type name, once
@@ -1237,7 +1240,8 @@ the warnings, and no warning changes the exit status. The warnings:
 - a member's array of size zero in the program's own text, read as a
   flexible array member (chapter 5);
 - arithmetic on a pointer to `void`, which counts bytes as GNU C has
-  it (chapter 5).
+  it (chapter 5);
+- `return E;` of a void `E` in a void function (chapter 5).
 
 Exit status: 0; 1 for a diagnosed error or a failed system call; 2
 for a usage error; 3 for an internal error, a construct c1 does not
