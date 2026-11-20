@@ -212,7 +212,7 @@
    product's add before the call and ldr, add and str at [x2,
    :lo12:cells+4] after it; label_constant_held() is adrp x16, labels+12
    and str w0, [x16, :lo12:labels+12] after the call; and
-   label_divided() str w2, [x0, w1, sxtw #2] after the sdiv.
+   label_divided() str w1, [x0, :lo12:labels] after the sdiv.
    row_divided(), row_divided_deeper() and row_shifted() add the product
    to p before the sdiv or the lsl and store str w1, [x0, #4]. */
 int *

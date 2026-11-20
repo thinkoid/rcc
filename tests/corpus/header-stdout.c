@@ -18,8 +18,8 @@
    movq (%rax), %rax; count and table in .bss and total in .data.
 
    On aarch64 the listing must show each access of count through
-   adrp x16, count and [x16, :lo12:count], table's address formed by
-   adrp x0, table and add x0, x0, :lo12:table, and stdout's address
+   adrp x16, count and [x16, :lo12:count], table's elements through
+   its page, adrp x0, table, and [x0, :lo12:table], and stdout's address
    loaded from the GOT, adrp x0, :got:stdout and
    ldr x0, [x0, :got_lo12:stdout], then stdout read through it,
    ldr x0, [x0]; the data as on x86-64. */

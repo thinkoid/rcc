@@ -1449,12 +1449,12 @@ label_divided:
 	str	w1, [x29, #20]
 	str	w2, [x29, #24]
 	adrp	x0, labels
-	add	x0, x0, :lo12:labels
 	ldr	w1, [x29, #16]
-	ldr	w2, [x29, #20]
-	ldr	w3, [x29, #24]
-	sdiv	w2, w2, w3
-	str	w2, [x0, w1, sxtw #2]
+	add	x0, x0, w1, sxtw #2
+	ldr	w1, [x29, #20]
+	ldr	w2, [x29, #24]
+	sdiv	w1, w1, w2
+	str	w1, [x0, :lo12:labels]
 .Llabel_divided.1:
 	.cfi_def_cfa wsp, 32
 	ldp	x29, x30, [sp]

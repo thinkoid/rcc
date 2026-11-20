@@ -38,7 +38,7 @@
 
    On aarch64, where no instruction pins a register, the listing is the
    operations on the registers the loads took, and the rows are not
-   reached: udiv w4, w2, w3 and msub w2, w4, w3, w2 in fill, lsl w2, w2,
+   reached: udiv w3, w1, w2 and msub w1, w3, w2, w1 in fill, lsl w2, w2,
    w3 in shifted and shifted_through, sdiv w3, w3, w2 in
    divided_in_place and lsl w3, w3, w2 in shifted_in_place, each
    between the element's load and its store, sdiv and msub on the

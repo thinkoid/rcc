@@ -963,7 +963,13 @@ to the frame pointer, `add x0, x29, x0`, and reads `ldrb w0, [x0,
 #24]`. A label's constant is its offset in the page: `rows[i][2]` on a
 global the file defines is `adrp x0, rows+2`, the add of the product
 and `ldrb w0, [x0, :lo12:rows+2]`, with no add of `:lo12:` before the
-index. The constants under the row's index, through its casts, join
+index. A row on a label takes that form with no constant too, so a
+label's row has one form: `table[i]` on an `int table[8]` is `adrp
+x0, table; add x0, x0, w1, sxtw #2; ldr w0, [x0, :lo12:table]`, the
+same count as the pair and `[x0, w1, sxtw #2]`, and `tab[i].x` at
+offset 0 of records of 8 bytes the same at `tab`, an instruction
+fewer than the pair and the product's add before `[x0]`. The
+constants under the row's index, through its casts, join
 its own: `((int (*)[3]) (c + 4))[i][2]` on a `char *c` is `mov x2,
 #12; mul x1, x1, x2; add x0, x0, x1; ldr w0, [x0, #12]` after `c`'s
 load, and `(p + 1)[i][2]` on `int (*p)[3]` reads `[x0, #20]`, with no
@@ -1556,8 +1562,8 @@ nothing across them. A `static` object and a block's are such
 objects, a block's under its label, `adrp x16, next.count` and
 `[x16, :lo12:next.count]`. Its address as a value is the pair a literal's
 is, `adrp x0, counter; add x0, x0, :lo12:counter`, and an array the
-file defines is indexed by a variable after that pair, as a local
-array is after its `add`; by a constant it is the element's own pair,
+file defines is indexed by a variable through the label's row of
+6.3; by a constant it is the element's own pair,
 `adrp x16, table+12` and `[x16, :lo12:table+12]`, the name and
 constant of 6.3. The `:lo12:` form of a load or a store is scaled by
 the access's size, so the object's low 12 bits must be a multiple of

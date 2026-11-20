@@ -130,9 +130,9 @@ days:
 	str	w0, [x29, #16]
 	str	w1, [x29, #20]
 	adrp	x0, month_days
-	add	x0, x0, :lo12:month_days
 	ldr	w1, [x29, #16]
-	ldr	w0, [x0, x1, lsl #2]
+	add	x0, x0, x1, lsl #2
+	ldr	w0, [x0, :lo12:month_days]
 	str	x0, [x29, #24]
 	ldr	w0, [x29, #16]
 	cmp	w0, #2
@@ -223,15 +223,15 @@ main:
 	str	wzr, [x29, #36]
 .Lmain.2:
 	adrp	x0, text
-	add	x0, x0, :lo12:text
 	ldr	w1, [x29, #36]
-	ldrb	w0, [x0, w1, sxtw]
+	add	x0, x0, w1, sxtw
+	ldrb	w0, [x0, :lo12:text]
 	cmp	w0, #0
 	b.eq	.Lmain.4
 	adrp	x0, text
-	add	x0, x0, :lo12:text
 	ldr	w1, [x29, #36]
-	ldrb	w0, [x0, w1, sxtw]
+	add	x0, x0, w1, sxtw
+	ldrb	w0, [x0, :lo12:text]
 	str	w0, [x29, #40]
 	ldr	w0, [x29, #40]
 	bl	escape_name

@@ -14,14 +14,14 @@ fill:
 	str	w0, [x29, #16]
 	str	w1, [x29, #20]
 	adrp	x0, a
-	add	x0, x0, :lo12:a
 	ldr	w1, [x29, #16]
-	ldr	w2, [x29, #20]
-	lsr	w2, w2, #16
-	mov	w3, #256
-	udiv	w4, w2, w3
-	msub	w2, w4, w3, w2
-	str	w2, [x0, w1, sxtw #2]
+	add	x0, x0, w1, sxtw #2
+	ldr	w1, [x29, #20]
+	lsr	w1, w1, #16
+	mov	w2, #256
+	udiv	w3, w1, w2
+	msub	w1, w3, w2, w1
+	str	w1, [x0, :lo12:a]
 .Lfill.1:
 	.cfi_def_cfa wsp, 32
 	ldp	x29, x30, [sp]

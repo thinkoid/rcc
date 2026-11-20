@@ -13,9 +13,9 @@ get:
 	.cfi_def_cfa_register w29
 	str	w0, [x29, #16]
 	adrp	x0, table
-	add	x0, x0, :lo12:table
 	ldr	w1, [x29, #16]
-	ldr	w0, [x0, w1, sxtw #2]
+	add	x0, x0, w1, sxtw #2
+	ldr	w0, [x0, :lo12:table]
 	b	.Lget.1
 .Lget.1:
 	.cfi_def_cfa wsp, 32
@@ -65,10 +65,10 @@ put:
 	str	w0, [x29, #16]
 	str	w1, [x29, #20]
 	adrp	x0, table
-	add	x0, x0, :lo12:table
 	ldr	w1, [x29, #16]
-	ldr	w2, [x29, #20]
-	str	w2, [x0, w1, sxtw #2]
+	add	x0, x0, w1, sxtw #2
+	ldr	w1, [x29, #20]
+	str	w1, [x0, :lo12:table]
 .Lput.1:
 	.cfi_def_cfa wsp, 32
 	ldp	x29, x30, [sp]

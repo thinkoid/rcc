@@ -192,9 +192,9 @@ month_name:
 	b	.Lmonth_name.3
 .Lmonth_name.2:
 	adrp	x0, name
-	add	x0, x0, :lo12:name
 	ldr	w1, [x29, #16]
-	ldr	x0, [x0, w1, sxtw #3]
+	add	x0, x0, w1, sxtw #3
+	ldr	x0, [x0, :lo12:name]
 .Lmonth_name.3:
 	b	.Lmonth_name.1
 .Lmonth_name.1:

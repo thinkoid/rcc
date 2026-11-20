@@ -52,13 +52,13 @@ getch:
 	cmp	w0, #0
 	b.le	.Lgetch.2
 	adrp	x0, buf
-	add	x0, x0, :lo12:buf
 	adrp	x16, bufp
 	ldr	w1, [x16, :lo12:bufp]
 	sub	w1, w1, #1
 	adrp	x16, bufp
 	str	w1, [x16, :lo12:bufp]
-	ldrb	w0, [x0, w1, sxtw]
+	add	x0, x0, w1, sxtw
+	ldrb	w0, [x0, :lo12:buf]
 	b	.Lgetch.3
 .Lgetch.2:
 	bl	read_char
@@ -98,14 +98,14 @@ ungetch:
 	b	.Lungetch.3
 .Lungetch.2:
 	adrp	x0, buf
-	add	x0, x0, :lo12:buf
 	adrp	x16, bufp
 	ldr	w1, [x16, :lo12:bufp]
 	add	w2, w1, #1
 	adrp	x16, bufp
 	str	w2, [x16, :lo12:bufp]
-	ldr	w2, [x29, #16]
-	strb	w2, [x0, w1, sxtw]
+	add	x0, x0, w1, sxtw
+	ldr	w1, [x29, #16]
+	strb	w1, [x0, :lo12:buf]
 .Lungetch.3:
 .Lungetch.1:
 	.cfi_def_cfa wsp, 32

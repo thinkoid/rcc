@@ -16,19 +16,19 @@ getword:
 	str	x0, [x29, #32]
 .Lgetword.2:
 	adrp	x0, text
-	add	x0, x0, :lo12:text
 	adrp	x16, at
 	ldr	w1, [x16, :lo12:at]
-	ldrb	w0, [x0, w1, sxtw]
+	add	x0, x0, w1, sxtw
+	ldrb	w0, [x0, :lo12:text]
 	cmp	w0, #0
 	b.eq	.Lgetword.3
 	bl	__ctype_b_loc
 	ldr	x0, [x0]
 	adrp	x1, text
-	add	x1, x1, :lo12:text
 	adrp	x16, at
 	ldr	w2, [x16, :lo12:at]
-	ldrb	w1, [x1, w2, sxtw]
+	add	x1, x1, w2, sxtw
+	ldrb	w1, [x1, :lo12:text]
 	ldrh	w0, [x0, w1, sxtw #1]
 	and	w0, w0, #0x400
 	cbnz	w0, .Lgetword.3
@@ -40,10 +40,10 @@ getword:
 	b	.Lgetword.2
 .Lgetword.3:
 	adrp	x0, text
-	add	x0, x0, :lo12:text
 	adrp	x16, at
 	ldr	w1, [x16, :lo12:at]
-	ldrb	w0, [x0, w1, sxtw]
+	add	x0, x0, w1, sxtw
+	ldrb	w0, [x0, :lo12:text]
 	cmp	w0, #0
 	b.ne	.Lgetword.4
 	mov	w0, #0
@@ -53,10 +53,10 @@ getword:
 	bl	__ctype_b_loc
 	ldr	x0, [x0]
 	adrp	x1, text
-	add	x1, x1, :lo12:text
 	adrp	x16, at
 	ldr	w2, [x16, :lo12:at]
-	ldrb	w1, [x1, w2, sxtw]
+	add	x1, x1, w2, sxtw
+	ldrb	w1, [x1, :lo12:text]
 	ldrh	w0, [x0, w1, sxtw #1]
 	and	w0, w0, #0x400
 	cbz	w0, .Lgetword.6
@@ -69,13 +69,13 @@ getword:
 	add	x1, x0, #1
 	str	x1, [x29, #32]
 	adrp	x1, text
-	add	x1, x1, :lo12:text
 	adrp	x16, at
 	ldr	w2, [x16, :lo12:at]
 	add	w3, w2, #1
 	adrp	x16, at
 	str	w3, [x16, :lo12:at]
-	ldrb	w1, [x1, w2, sxtw]
+	add	x1, x1, w2, sxtw
+	ldrb	w1, [x1, :lo12:text]
 	strb	w1, [x0]
 	b	.Lgetword.5
 .Lgetword.6:

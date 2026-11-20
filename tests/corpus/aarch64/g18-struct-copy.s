@@ -44,14 +44,13 @@ fill:
 	cmp	w0, #8
 	b.ge	.Lfill.4
 	adrp	x0, codes
-	add	x0, x0, :lo12:codes
 	ldr	w1, [x29, #16]
 	add	x0, x0, w1, sxtw #2
 	ldr	w1, [x29, #16]
 	mov	w2, #7
 	mul	w1, w1, w2
 	add	w1, w1, #1
-	strb	w1, [x0]
+	strb	w1, [x0, :lo12:codes]
 	adrp	x0, codes+1
 	ldr	w1, [x29, #16]
 	add	x0, x0, w1, sxtw #2
@@ -67,14 +66,13 @@ fill:
 	add	w1, w1, #17
 	strh	w1, [x0, :lo12:codes+2]
 	adrp	x0, points
-	add	x0, x0, :lo12:points
 	ldr	w1, [x29, #16]
 	add	x0, x0, w1, sxtw #3
 	ldr	w1, [x29, #16]
 	mov	w2, #11
 	mul	w1, w1, w2
 	sub	w1, w1, #5
-	str	w1, [x0]
+	str	w1, [x0, :lo12:points]
 	adrp	x0, points+4
 	ldr	w1, [x29, #16]
 	add	x0, x0, w1, sxtw #3
@@ -402,10 +400,9 @@ sum:
 	mov	x1, #31
 	mul	x0, x0, x1
 	adrp	x1, codes
-	add	x1, x1, :lo12:codes
 	ldr	w2, [x29, #24]
 	add	x1, x1, w2, sxtw #2
-	ldrb	w1, [x1]
+	ldrb	w1, [x1, :lo12:codes]
 	add	x0, x0, x1
 	adrp	x1, codes+1
 	ldr	w2, [x29, #24]
@@ -424,10 +421,9 @@ sum:
 	sxtw	x1, w1
 	add	x0, x0, x1
 	adrp	x1, points
-	add	x1, x1, :lo12:points
 	ldr	w2, [x29, #24]
 	add	x1, x1, w2, sxtw #3
-	ldrsw	x1, [x1]
+	ldrsw	x1, [x1, :lo12:points]
 	mov	x2, #5
 	mul	x1, x1, x2
 	add	x0, x0, x1

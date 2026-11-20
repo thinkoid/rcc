@@ -275,10 +275,9 @@ main:
 	ldr	w0, [x0, :lo12:keytab+8]
 	str	w0, [x29, #128]
 	adrp	x0, keytab
-	add	x0, x0, :lo12:keytab
 	ldr	w1, [x29, #48]
 	add	x0, x0, w1, sxtw #4
-	ldr	x0, [x0]
+	ldr	x0, [x0, :lo12:keytab]
 	str	x0, [x29, #136]
 	ldr	x0, [x29, #120]
 	ldr	w1, [x29, #128]

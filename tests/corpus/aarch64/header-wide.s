@@ -53,15 +53,15 @@ main:
 	str	wzr, [x29, #28]
 .Lmain.2:
 	adrp	x0, word
-	add	x0, x0, :lo12:word
 	ldr	w1, [x29, #28]
-	ldr	w0, [x0, w1, sxtw #2]
+	add	x0, x0, w1, sxtw #2
+	ldr	w0, [x0, :lo12:word]
 	cmp	w0, #0
 	b.eq	.Lmain.4
 	adrp	x0, word
-	add	x0, x0, :lo12:word
 	ldr	w1, [x29, #28]
-	ldr	w0, [x0, w1, sxtw #2]
+	add	x0, x0, w1, sxtw #2
+	ldr	w0, [x0, :lo12:word]
 	cmp	w0, #127
 	b.ls	.Lmain.5
 	ldr	w0, [x29, #24]

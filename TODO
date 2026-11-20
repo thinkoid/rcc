@@ -45,25 +45,6 @@ the call: ~p[f(i) + 1] = x~ holds it, ~p[i + f(j)] = x~ does not.
 Check: =joined_called= with no move on its paths, and no function
 longer.
 
-** TODO aarch64: a row by a variable index on a label with no constant forms the label's address
-
-~table[i].x~ with =x= at offset 0, and ~g[i]~ on any global array,
-form the label's whole address, =adrp x0, table; add x0, x0,
-:lo12:table=, then the index, and read =[x0]= or =[x0, x1, lsl #2]=.
-The label row's form, the page, the index's add and =[x0,
-:lo12:table]=, is one instruction fewer where the index's product is
-added anyway, and the same count where the access's own form scales
-the index. A row with a constant takes that form already
-(=row_access()= in =src/c1-aarch64.cc=). 1230 accesses of the
-=members= probe's =table_*= rows are the first kind; taken for every
-global array it changes 1513 functions over =tests=, 456 shorter and
-1057 at the same count with another access form.
-
-Fix: none taken; decide its scope: records alone, rows whose index
-is a product, or every global array by a variable index.
-
-Check: the count over =tests=, and no function longer.
-
 ** TODO A compound assignment by an identity's constant writes its operator
 
 ~x += 0~, ~x *= 1~, ~x <<= 0~ and ~p += 0~ write their operator and

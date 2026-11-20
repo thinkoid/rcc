@@ -1562,7 +1562,10 @@ indexed_address(state_t &s,
 // nothing is evaluated between the address and the access.  The
 // constants under the pointer, a variable index among them, are the
 // row's plan's, row_access()'s; a total of them out of the access's
-// reach is held once where that is shorter, holds_total()'s.
+// reach is held once where that is shorter, holds_total()'s.  A row on
+// a label by a variable index takes the label's row with no constant
+// too, table[i] being adrp x0, table, the index's add and ldr w0, [x0,
+// :lo12:table], one form for every row on a label.
 address_t
 sum_address(state_t &s,
             const expr_t &p,
@@ -1608,6 +1611,14 @@ sum_address(state_t &s,
     if (d && in_reach(*d, access))
         return { .base = rvalue(s, pointer),
                  .displacement = static_cast< int >(*d) };
+
+    // g[i] and tab[i].x at offset 0 on a global array by a variable
+    // index alone: the label's row as with a constant, adrp x0, g, the
+    // index's add and ldr w0, [x0, :lo12:g]
+    if (!d)
+        if (const auto row = row_access(s, sum, 0, access, !between);
+            row && row->label)
+            return row_address(s, *row);
 
     // p->a[i] += f(): a place held across a call is one register, its
     // base and its index summed, and the constants under the pointer stay

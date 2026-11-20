@@ -17,12 +17,12 @@ main:
 	cmp	w0, #10
 	b.ge	.Lmain.4
 	adrp	x0, table
-	add	x0, x0, :lo12:table
+	ldr	w1, [x29, #16]
+	add	x0, x0, w1, sxtw #2
 	ldr	w1, [x29, #16]
 	ldr	w2, [x29, #16]
-	ldr	w3, [x29, #16]
-	mul	w2, w2, w3
-	str	w2, [x0, w1, sxtw #2]
+	mul	w1, w1, w2
+	str	w1, [x0, :lo12:table]
 	adrp	x16, count
 	ldr	w0, [x16, :lo12:count]
 	add	w0, w0, #1
@@ -41,9 +41,9 @@ main:
 	cmp	w0, w1
 	b.ge	.Lmain.7
 	adrp	x0, table
-	add	x0, x0, :lo12:table
 	ldr	w1, [x29, #16]
-	ldrsw	x0, [x0, w1, sxtw #2]
+	add	x0, x0, w1, sxtw #2
+	ldrsw	x0, [x0, :lo12:table]
 	adrp	x16, total
 	ldr	x1, [x16, :lo12:total]
 	add	x1, x1, x0

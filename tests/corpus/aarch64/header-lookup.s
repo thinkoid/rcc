@@ -56,14 +56,14 @@ lookup:
 	.cfi_def_cfa_register w29
 	str	x0, [x29, #16]
 	adrp	x0, hashtab
-	add	x0, x0, :lo12:hashtab
 	str	x0, [x29, #32]
 	ldr	x0, [x29, #16]
 	str	x0, [x29, #40]
 	ldr	x0, [x29, #40]
 	bl	hash
 	ldr	x1, [x29, #32]
-	ldr	x0, [x1, w0, uxtw #3]
+	add	x1, x1, w0, uxtw #3
+	ldr	x0, [x1, :lo12:hashtab]
 	str	x0, [x29, #24]
 .Llookup.2:
 	ldr	x0, [x29, #24]
@@ -148,15 +148,15 @@ install:
 	str	w0, [x29, #72]
 	ldr	x0, [x29, #32]
 	adrp	x1, hashtab
-	add	x1, x1, :lo12:hashtab
 	ldr	w2, [x29, #72]
-	ldr	x1, [x1, x2, lsl #3]
+	add	x1, x1, x2, lsl #3
+	ldr	x1, [x1, :lo12:hashtab]
 	str	x1, [x0]
 	adrp	x0, hashtab
-	add	x0, x0, :lo12:hashtab
 	ldr	w1, [x29, #72]
-	ldr	x2, [x29, #32]
-	str	x2, [x0, x1, lsl #3]
+	add	x0, x0, x1, lsl #3
+	ldr	x1, [x29, #32]
+	str	x1, [x0, :lo12:hashtab]
 	b	.Linstall.5
 .Linstall.2:
 	ldr	x0, [x29, #32]
@@ -280,9 +280,9 @@ main:
 	cmp	w0, #7
 	b.ge	.Lmain.4
 	adrp	x0, names
-	add	x0, x0, :lo12:names
 	ldr	w1, [x29, #148]
-	ldr	x0, [x0, w1, sxtw #3]
+	add	x0, x0, w1, sxtw #3
+	ldr	x0, [x0, :lo12:names]
 	str	x0, [x29, #160]
 	ldr	x0, [x29, #160]
 	bl	lookup
@@ -354,15 +354,15 @@ main:
 	cmp	w0, #101
 	b.ge	.Lmain.10
 	adrp	x0, hashtab
-	add	x0, x0, :lo12:hashtab
 	ldr	w1, [x29, #236]
-	ldr	x0, [x0, w1, sxtw #3]
+	add	x0, x0, w1, sxtw #3
+	ldr	x0, [x0, :lo12:hashtab]
 	cmp	x0, #0
 	b.eq	.Lmain.11
 	adrp	x0, hashtab
-	add	x0, x0, :lo12:hashtab
 	ldr	w1, [x29, #236]
-	ldr	x0, [x0, w1, sxtw #3]
+	add	x0, x0, w1, sxtw #3
+	ldr	x0, [x0, :lo12:hashtab]
 	ldr	x0, [x0]
 	cmp	x0, #0
 	b.eq	.Lmain.11

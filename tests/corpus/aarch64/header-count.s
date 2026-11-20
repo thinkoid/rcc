@@ -30,9 +30,9 @@ main:
 	str	wzr, [x29, #20]
 .Lmain.5:
 	adrp	x0, text
-	add	x0, x0, :lo12:text
 	ldr	w1, [x29, #20]
-	ldrb	w0, [x0, w1, sxtw]
+	add	x0, x0, w1, sxtw
+	ldrb	w0, [x0, :lo12:text]
 	str	w0, [x29, #16]
 	cmp	w0, #0
 	b.eq	.Lmain.7
