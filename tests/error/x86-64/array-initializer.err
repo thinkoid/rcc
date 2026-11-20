@@ -1,2 +1,2 @@
-tests/error/array-initializer.c:5:14: error: not yet: array initializer
+tests/error/array-initializer.c:6:18: error: not yet: array initializer
 status 1

@@ -1,7 +1,8 @@
 /* A for whose clauses lack their closing ')'. */
-int main(void)
+int
+main(void)
 {
-    int i;
+        int i;
 
     for (i = 0; i < 3; i = i + 1 {
     }

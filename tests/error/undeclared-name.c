@@ -1,5 +1,6 @@
 /* A name used without a declaration. */
-int main(void)
+int
+main(void)
 {
-    return x;
+        return x;
 }

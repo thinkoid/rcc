@@ -121,39 +121,39 @@ report(const char *name, long x, long y, long got, long want)
         R f parameters;        \
         R ref_##f parameters;
 
-#define DECLARE_TYPE(T, N, LO, HI)        \
-        BOTH(int, direct_zero_##N, (T))   \
-        BOTH(int, direct_up_##N, (T))     \
-        BOTH(int, direct_down_##N, (T))   \
-        BOTH(int, direct_top_##N, (T))    \
-        BOTH(int, direct_bottom_##N, (T)) \
-        BOTH(int, edge_direct_##N, (T))   \
-        BOTH(int, edge_simple_##N, (T))   \
-        BOTH(int, simple_##N, (T))        \
-        BOTH(int, simple_limits_##N, (T)) \
-        BOTH(int, single_##N, (T))        \
-        BOTH(int, nine_##N, (T))          \
-        BOTH(int, none_##N, (T))          \
-        BOTH(int, only_default_##N, (T))  \
-        BOTH(int, hash_##N, (T))          \
-        BOTH(int, fall_##N, (T))          \
+#define DECLARE_TYPE(T, N, LO, HI) \
+        BOTH(int, direct_zero_##N, (T))                       \
+        BOTH(int, direct_up_##N, (T))                       \
+        BOTH(int, direct_down_##N, (T))                       \
+        BOTH(int, direct_top_##N, (T))                       \
+        BOTH(int, direct_bottom_##N, (T))                       \
+        BOTH(int, edge_direct_##N, (T))                       \
+        BOTH(int, edge_simple_##N, (T))                       \
+        BOTH(int, simple_##N, (T))                       \
+        BOTH(int, simple_limits_##N, (T))                       \
+        BOTH(int, single_##N, (T))                       \
+        BOTH(int, nine_##N, (T))                       \
+        BOTH(int, none_##N, (T))                       \
+        BOTH(int, only_default_##N, (T))                       \
+        BOTH(int, hash_##N, (T))                       \
+        BOTH(int, fall_##N, (T))                       \
         BOTH(int, register_##N, (T))
 
 LIMITS(DECLARE_TYPE)
 
-#define DECLARE_NARROW(T, N)       \
-        BOTH(int, narrow_##N, (T)) \
+#define DECLARE_NARROW(T, N) \
+        BOTH(int, narrow_##N, (T))                 \
         BOTH(int, letters_##N, (T))
 
 NARROW(DECLARE_NARROW)
 
-BOTH(int, nested, (int, int) )
-BOTH(long, in_loop, (int) )
-BOTH(int, loop_in_switch, (int) )
-BOTH(int, nested_block, (int) )
-BOTH(int, labels, (int) )
-BOTH(int, duff, (int) )
-BOTH(int, once, (int) )
+BOTH(int, nested, (int, int))
+BOTH(long, in_loop, (int))
+BOTH(int, loop_in_switch, (int))
+BOTH(int, nested_block, (int))
+BOTH(int, labels, (int))
+BOTH(int, duff, (int))
+BOTH(int, once, (int))
 
 /* the switches of one type over x */
 #define TEST_TYPE(T, N, LO, HI)                  \

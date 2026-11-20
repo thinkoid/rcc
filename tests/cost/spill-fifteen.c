@@ -20,8 +20,16 @@
    and str x1, [x29, #56] when the sixteenth and the seventeenth need
    a register; and each reloaded with ldr, into x0 or x1, when the
    subtraction that consumes it comes. */
-int spill_fifteen(int a, int b, int c, int d, int e, int f, int g, int h)
+int
+spill_fifteen(int a, int b, int c, int d, int e, int f, int g, int h)
 {
-    return a - (b - (c - (d - (e - (f - (g - (h - (a - (b - (c - (d - (e -
-           (f - (g - (h - a)))))))))))))));
+        return a -
+               (b -
+                (c -
+                 (d -
+                  (e -
+                   (f -
+                    (g -
+                     (h -
+                      (a - (b - (c - (d - (e - (f - (g - (h - a)))))))))))))));
 }

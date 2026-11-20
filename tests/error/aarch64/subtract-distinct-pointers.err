@@ -1,2 +1,2 @@
-tests/error/subtract-distinct-pointers.c:9:14: error: subtraction of pointers to different types
+tests/error/subtract-distinct-pointers.c:10:18: error: subtraction of pointers to different types
 status 1

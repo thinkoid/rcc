@@ -1,7 +1,8 @@
 /* An enumerator list without an enumerator. */
 enum color { };
 
-int main(void)
+int
+main(void)
 {
-    return 0;
+        return 0;
 }

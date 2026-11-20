@@ -15,22 +15,26 @@
    widened() negating (unsigned) a by neg w0, w0 with no instruction
    between it and the branch to the epilogue; and signed_() negating a
    by neg w0, w0 and widening the result to long with sxtw x0, w0. */
-int neg(int a)
+int
+neg(int a)
 {
-    return -a;
+        return -a;
 }
 
-int complement(int a)
+int
+complement(int a)
 {
-    return ~a;
+        return ~a;
 }
 
-unsigned long widened(int a)
+unsigned long
+widened(int a)
 {
-    return -(unsigned) a;
+        return -(unsigned) a;
 }
 
-long signed_(int a)
+long
+signed_(int a)
 {
-    return -a;
+        return -a;
 }

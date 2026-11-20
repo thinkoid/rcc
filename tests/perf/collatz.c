@@ -11,32 +11,33 @@
    the programmer knows.  collatz-tuned.c is the same program written
    for a literal compiler. */
 #define COUNT 1000
-#define REPS 3000
+#define REPS  3000
 
-int main(void)
+int
+main(void)
 {
-    unsigned seed = 1;
-    long total = 0;
+        unsigned seed = 1;
+        long total = 0;
 
-    for (int rep = 0; rep < REPS; ++rep) {
-        seed = seed * 1103515245 + 12345;
+        for (int rep = 0; rep < REPS; ++rep) {
+                seed = seed * 1103515245 + 12345;
 
-        long start = 1 + (seed >> 16);
+                long start = 1 + (seed >> 16);
 
-        for (long v = start; v < start + COUNT; ++v) {
-            long x = v;
-            int steps = 0;
+                for (long v = start; v < start + COUNT; ++v) {
+                        long x = v;
+                        int steps = 0;
 
-            while (x != 1) {
-                if (x % 2 == 0)
-                    x = x / 2;
-                else
-                    x = 3 * x + 1;
-                ++steps;
-            }
-            total += steps;
+                        while (x != 1) {
+                                if (x % 2 == 0)
+                                        x = x / 2;
+                                else
+                                        x = 3 * x + 1;
+                                ++steps;
+                        }
+                        total += steps;
+                }
         }
-    }
 
-    return total & 255;
+        return total & 255;
 }

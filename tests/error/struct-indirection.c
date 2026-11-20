@@ -2,12 +2,14 @@
    is ordinary, and the lvalue, which has no size to address it by, is
    not yet. */
 struct point;
-int touch(struct point *p)
+int
+touch(struct point *p)
 {
-    *p;
-    return 0;
+        *p;
+        return 0;
 }
-int main(void)
+int
+main(void)
 {
-    return touch(0);
+        return touch(0);
 }

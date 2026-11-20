@@ -1,2 +1,2 @@
-tests/error/brace-initializer.c:4:13: error: not yet: brace initializer
+tests/error/brace-initializer.c:5:17: error: not yet: brace initializer
 status 1

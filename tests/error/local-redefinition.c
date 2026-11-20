@@ -1,8 +1,9 @@
 /* A name declared twice in one block. */
-int main(void)
+int
+main(void)
 {
-    int x = 1;
-    int x = 2;
+        int x = 1;
+        int x = 2;
 
-    return x;
+        return x;
 }

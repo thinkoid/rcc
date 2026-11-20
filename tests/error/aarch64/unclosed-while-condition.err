@@ -1,2 +1,2 @@
-tests/error/unclosed-while-condition.c:5:9: error: expected ')' after condition
+tests/error/unclosed-while-condition.c:6:9: error: expected ')' after condition
 status 1

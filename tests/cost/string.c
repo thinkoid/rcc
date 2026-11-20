@@ -13,9 +13,10 @@
    index as the displacement and the load the unsigned one, since plain
    char is unsigned; and the literal after the function, under .data,
    as .Ls0 and its .string, in no read-only section. */
-int second(void)
+int
+second(void)
 {
-    char *s = "abc";
+        char *s = "abc";
 
-    return s[1];
+        return s[1];
 }

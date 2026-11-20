@@ -1,2 +1,2 @@
-tests/error/octal-digit.c:4:12: error: invalid digit '9' in octal constant
+tests/error/octal-digit.c:5:16: error: invalid digit '9' in octal constant
 status 1

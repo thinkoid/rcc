@@ -1,2 +1,2 @@
-tests/error/unclosed-call.c:6:15: error: expected ')' after arguments
+tests/error/unclosed-call.c:7:15: error: expected ')' after arguments
 status 1

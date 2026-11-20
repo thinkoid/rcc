@@ -7,7 +7,8 @@
    On aarch64, where mul takes no immediate, the listing must show
    mov w1, #3 and mul w0, w0, w1, not an add of a shifted operand or a
    shift and an add. */
-int mul_three(int x)
+int
+mul_three(int x)
 {
-    return x * 3;
+        return x * 3;
 }

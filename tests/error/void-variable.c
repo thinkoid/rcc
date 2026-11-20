@@ -1,7 +1,8 @@
 /* A variable of type void. */
-int main(void)
+int
+main(void)
 {
-    void x;
+        void x;
 
-    return 0;
+        return 0;
 }

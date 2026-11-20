@@ -10,12 +10,14 @@
    On aarch64 the listing must show load() loading p into x0 with ldr
    and reading through it with ldr w0, [x0], and store() writing v
    with str w1, [x0] and no b after it. */
-int load(int *p)
+int
+load(int *p)
 {
-    return *p;
+        return *p;
 }
 
-void store(int *p, int v)
+void
+store(int *p, int v)
 {
-    *p = v;
+        *p = v;
 }

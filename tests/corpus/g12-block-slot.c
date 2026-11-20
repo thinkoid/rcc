@@ -8,21 +8,22 @@
    argc. */
 int printf(char *, ...);
 
-int main(int argc)
+int
+main(int argc)
 {
-    int *p;
+        int *p;
 
-    {
-        int x = 4 + argc;
+        {
+                int x = 4 + argc;
 
-        p = &x;
-        printf("%p\n", p);
-    }
-    {
-        int y = 9;
+                p = &x;
+                printf("%p\n", p);
+        }
+        {
+                int y = 9;
 
-        printf("%p\n", &y);
-    }
+                printf("%p\n", &y);
+        }
 
-    return *p;
+        return *p;
 }

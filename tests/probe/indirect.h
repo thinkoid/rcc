@@ -33,9 +33,9 @@ typedef void (*note_t)(long);
 /* pointers to functions of each type: a result and a parameter of the
    type, a result of the type from a long, and ten parameters of the
    type */
-#define POINTERS(T, N)              \
-    typedef T (*inc_##N##_t)(T);    \
-    typedef T (*ret_##N##_t)(long); \
-    typedef long (*tmix10_##N##_t)(P10(T));
+#define POINTERS(T, N)                  \
+        typedef T (*inc_##N##_t)(T);    \
+        typedef T (*ret_##N##_t)(long); \
+        typedef long (*tmix10_##N##_t)(P10(T));
 
 TYPES(POINTERS)

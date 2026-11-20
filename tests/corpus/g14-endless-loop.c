@@ -15,12 +15,13 @@
    cmpl $0, %edx and je out, addl $2, -8(%rbp) and jmp back; on aarch64
    udiv and msub, cbz out, add w0, w0, #2 and str back to the slot, and
    b back. */
-int main(int argc)
+int
+main(int argc)
 {
-    unsigned u = argc;
+        unsigned u = argc;
 
-    while (u % 2)
-        u += 2;
+        while (u % 2)
+                u += 2;
 
-    return 0;
+        return 0;
 }

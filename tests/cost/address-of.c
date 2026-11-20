@@ -11,10 +11,11 @@
    x's at [x29, #20], x's address taken with add x0, x29, #20 and
    stored to p's slot with str x0, p loaded back with ldr x0, and *p
    read through it with ldr w0, [x0]. */
-int address(int a)
+int
+address(int a)
 {
-    int x = a;
-    int *p = &x;
+        int x = a;
+        int *p = &x;
 
-    return *p;
+        return *p;
 }

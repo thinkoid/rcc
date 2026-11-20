@@ -3,7 +3,8 @@
    declaration before it, inline is dropped. */
 inline int twice(int x);
 
-inline int twice(int x)
+inline int
+twice(int x)
 {
-    return x + x;
+        return x + x;
 }

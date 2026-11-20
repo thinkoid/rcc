@@ -13,10 +13,11 @@
    with ldr w1 and not widened; then the store str w2, [x0, w1, sxtw #2]
    and the load ldr w0, [x0, w1, sxtw #2], the operand extending and
    scaling the index, and no other instruction for the address. */
-int subscript(int i, int v)
+int
+subscript(int i, int v)
 {
-    int a[4];
+        int a[4];
 
-    a[i] = v;
-    return a[i];
+        a[i] = v;
+        return a[i];
 }

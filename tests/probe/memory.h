@@ -20,9 +20,11 @@
    G7, G8, G10 and G11 of chapter 9 and the literals of chapter 10. */
 
 /* the integer types and the letter each takes in a function's name */
+/* clang-format off */
 #define NARROW(X)                                                       \
     X(char, c) X(signed char, sc) X(unsigned char, uc)                  \
     X(short, s) X(unsigned short, us)
+/* clang-format on */
 
 #define WIDE(X) X(int, i) X(unsigned, u) X(long, l) X(unsigned long, ul)
 
@@ -39,15 +41,18 @@
 /* a compound assignment through a pointer: a name and the operator.
    The shifts are apart, since their count is an int whatever the
    object's type. */
+/* clang-format off */
 #define COMPOUNDS(X, T, N)                                              \
     X(T, N, add, +=) X(T, N, sub, -=) X(T, N, mul, *=)                  \
     X(T, N, div, /=) X(T, N, rem, %=) X(T, N, and, &=)                  \
     X(T, N, or, |=) X(T, N, xor, ^=)
+/* clang-format on */
 
 #define SHIFTS(X, T, N) X(T, N, shl, <<=) X(T, N, shr, >>=)
 
 /* the types of the pinned rows: int, long and their unsigned types,
    and a char and a short beside them */
+/* clang-format off */
 #define PINNED_TYPES(X)                                                 \
     X(char, c) X(short, s) X(int, i) X(unsigned, u) X(long, l)          \
     X(unsigned long, ul)
@@ -121,6 +126,7 @@
     X(__VA_ARGS__, lt, <) X(__VA_ARGS__, le, <=)                        \
     X(__VA_ARGS__, gt, >) X(__VA_ARGS__, ge, >=)                        \
     X(__VA_ARGS__, eq, ==) X(__VA_ARGS__, ne, !=)
+/* clang-format on */
 
 /* the pointers row c compares with the null pointer: the type and the
    letter of its globals */
@@ -128,7 +134,9 @@
 
 /* the constant of x * c: a name and the constant; those an imul
    immediate holds, and one it does not, which keeps the load */
+/* clang-format off */
 #define FACTORS(X, T, N)                                                \
     X(T, N, 4, 4) X(T, N, m3, -3) X(T, N, 1000, 1000)                   \
     X(T, N, max, 0x7fffffff) X(T, N, min, -0x7fffffff - 1)              \
     X(T, N, big, 0x123456789)
+/* clang-format on */

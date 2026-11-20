@@ -1,2 +1,2 @@
-tests/error/expected-expression.c:6:9: error: expected expression
+tests/error/expected-expression.c:7:13: error: expected expression
 status 1

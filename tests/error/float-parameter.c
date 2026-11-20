@@ -3,12 +3,14 @@
    yet. */
 int truncated(float x);
 
-int truncated(float x)
+int
+truncated(float x)
 {
-    return (int) x;
+        return (int) x;
 }
 
-int main(void)
+int
+main(void)
 {
-    return 0;
+        return 0;
 }

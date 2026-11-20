@@ -8,9 +8,11 @@
    docs/aarch64.md chapter 4 and backend.md chapters 4 and 6.7. */
 
 /* the integer types and the letter each takes in a function's name */
+/* clang-format off */
 #define NARROW(X)                                                       \
     X(char, c) X(signed char, sc) X(unsigned char, uc)                  \
     X(short, s) X(unsigned short, us)
+/* clang-format on */
 
 #define WIDE(X) X(int, i) X(unsigned, u) X(long, l) X(unsigned long, ul)
 
@@ -20,6 +22,7 @@
    instruction encodes and one it does not.  4095 is an add and sub
    immediate on aarch64 and 0xff a logical one; 0x12345 is neither,
    and x86-64 encodes both.  mul takes no immediate on aarch64. */
+/* clang-format off */
 #define COMPOUNDS(X, T, N)                                              \
     X(T, N, add, +=, 4095, 0x12345) X(T, N, sub, -=, 4095, 0x12345)     \
     X(T, N, mul, *=, 3, 0x12345) X(T, N, and, &=, 0xff, 0x12345)        \
@@ -29,6 +32,7 @@
    0 and -1 */
 #define DIVISIONS(X, T, N)                                              \
     X(T, N, div, /=, 7, 0x12345) X(T, N, rem, %=, 7, 0x12345)
+/* clang-format on */
 
 /* the shifts, whose count the main keeps below 32 */
 #define SHIFTS(X, T, N) X(T, N, shl, <<=) X(T, N, shr, >>=)
@@ -36,9 +40,11 @@
 /* The pointees of a stepped pointer: a name, a type and the declarator
    suffix that makes a parameter a pointer to it.  Sizes 1, 2, 4 and 8,
    and a row of 12 bytes, which no addressing form scales by. */
+/* clang-format off */
 #define POINTEES(X)                                                     \
     X(c, char, []) X(s, short, []) X(i, int, []) X(l, long, [])         \
     X(r12, int, [][3])
+/* clang-format on */
 
 /* the scalar pointees alone, for the loads and stores of a walk */
 #define SCALARS(X) X(c, char) X(s, short) X(i, int) X(l, long)

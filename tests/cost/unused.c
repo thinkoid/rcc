@@ -12,9 +12,10 @@
    mov w0, #0 for the return: the division does not trap, and yields 0
    when b is 0 and INT_MIN when a is INT_MIN and b is -1
    (aarch64.md chapter 9). */
-int unused(int a, int b)
+int
+unused(int a, int b)
 {
-    a + 0;
-    a / b;
-    return 0;
+        a + 0;
+        a / b;
+        return 0;
 }

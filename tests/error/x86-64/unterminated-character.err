@@ -1,2 +1,2 @@
-tests/error/unterminated-character.c:5:12: error: missing terminating ' character
+tests/error/unterminated-character.c:6:16: error: missing terminating ' character
 status 1

@@ -1,2 +1,2 @@
-tests/error/tag-of-another-kind.c:6:11: error: use of 'node' with tag type that does not match previous declaration
+tests/error/tag-of-another-kind.c:7:15: error: use of 'node' with tag type that does not match previous declaration
 status 1

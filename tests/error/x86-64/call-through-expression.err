@@ -1,2 +1,2 @@
-tests/error/call-through-expression.c:9:16: error: called object is not a function or a pointer to one
+tests/error/call-through-expression.c:10:20: error: called object is not a function or a pointer to one
 status 1

@@ -37,9 +37,10 @@
    x1, x0 after the call, mov x0, #4 and sdiv x0, x1, x0 and sdiv x1,
    x1, x0, the latter's count read by lsl x0, x0, x1; in called_char()
    sub x0, x1, x0. */
-long diff(int *p, int *q)
+long
+diff(int *p, int *q)
 {
-    return p - q;
+        return p - q;
 }
 
 char chars[8];

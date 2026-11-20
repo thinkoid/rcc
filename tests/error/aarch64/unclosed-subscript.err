@@ -1,2 +1,2 @@
-tests/error/unclosed-subscript.c:6:15: error: expected ']' after subscript
+tests/error/unclosed-subscript.c:7:15: error: expected ']' after subscript
 status 1

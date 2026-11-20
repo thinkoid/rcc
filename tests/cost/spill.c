@@ -15,7 +15,8 @@
    to w7 and w9 to w11, then the ten subtractions, with no spill slot,
    since fifteen expression registers hold eleven values; the row is not
    reached there, and spill-fifteen.c reaches it. */
-int spill(int a, int b, int c, int d, int e, int f)
+int
+spill(int a, int b, int c, int d, int e, int f)
 {
-    return a - (b - (c - (d - (e - (f - (a - (b - (c - (d - e)))))))));
+        return a - (b - (c - (d - (e - (f - (a - (b - (c - (d - e)))))))));
 }

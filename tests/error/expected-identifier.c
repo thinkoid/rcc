@@ -1,7 +1,8 @@
 /* A declaration whose declarator has no name. */
-int main(void)
+int
+main(void)
 {
-    int *;
+        int *;
 
-    return 0;
+        return 0;
 }

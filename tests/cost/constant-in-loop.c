@@ -8,9 +8,10 @@
    On aarch64 the listing must show the four instructions that form the
    64-bit constant, mov x1, #52719 and three movk, inside the loop,
    after the test at the top and its b.ge, and not once before it. */
-long constant_in_loop(long s, int n)
+long
+constant_in_loop(long s, int n)
 {
-    for (int i = 0; i < n; i = i + 1)
-        s = s + 81985529216486895;
-    return s;
+        for (int i = 0; i < n; i = i + 1)
+                s = s + 81985529216486895;
+        return s;
 }

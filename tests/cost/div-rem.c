@@ -10,12 +10,14 @@
    a loaded into w0 and b into w1, then sdiv() as sdiv w0, w0, w1, and
    srem() as sdiv w2, w0, w1, the quotient in a register of its own, and
    msub w0, w2, w1, w0, the quotient multiplied back and subtracted. */
-int sdiv(int a, int b)
+int
+sdiv(int a, int b)
 {
-    return a / b;
+        return a / b;
 }
 
-int srem(int a, int b)
+int
+srem(int a, int b)
 {
-    return a % b;
+        return a % b;
 }

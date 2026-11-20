@@ -1,2 +1,2 @@
-tests/error/member-access.c:6:13: error: member reference base type is not a struct or a union
+tests/error/member-access.c:7:17: error: member reference base type is not a struct or a union
 status 1

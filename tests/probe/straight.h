@@ -5,6 +5,7 @@
    6: no call, no branch, no pointer. */
 
 /* the integer types and the letter each takes in a function's name */
+/* clang-format off */
 #define TYPES(X)                                                        \
     X(char, c) X(signed char, sc) X(unsigned char, uc)                  \
     X(short, s) X(unsigned short, us)                                   \
@@ -36,6 +37,7 @@
     X(P, F, S, unsigned short, us) X(P, F, S, int, i)                   \
     X(P, F, S, unsigned, u) X(P, F, S, long, l)                         \
     X(P, F, S, unsigned long, ul)
+/* clang-format on */
 
 /* the types a constant operand is tried on */
 #define WIDE(X) X(int, i) X(unsigned, u) X(long, l) X(unsigned long, ul)
@@ -43,6 +45,7 @@
 /* the binary operators whose right operand an object in memory may be,
    the instruction's own operand on x86-64, docs/backend.md 6.1: a name
    and the operator */
+/* clang-format off */
 #define MEMORY_OPERATORS(X, T, N)                                       \
     X(T, N, add, +) X(T, N, sub, -) X(T, N, mul, *) X(T, N, div, /)     \
     X(T, N, rem, %) X(T, N, and, &) X(T, N, or, |) X(T, N, xor, ^)      \
@@ -96,3 +99,4 @@
     X(hlmid, long, 0x0000ffff00000000) X(hlneg3, long, -0x123456789abL) \
     X(hlmin, long, -9223372036854775807L - 1) X(hc, char, 200)          \
     X(hsc, signed char, -100) X(hs, short, -30000) X(hus, unsigned short, 60000)
+/* clang-format on */

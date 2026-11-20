@@ -14,17 +14,20 @@
    each with one add, the machine having no lea: add x0, x0, #12, and
    add x0, x0, w1, sxtw #2, the operand extending and scaling the
    index. */
-int *zero(int *p)
+int *
+zero(int *p)
 {
-    return &p[0];
+        return &p[0];
 }
 
-int *third(int *p)
+int *
+third(int *p)
 {
-    return &p[3];
+        return &p[3];
 }
 
-int *at(int *p, int i)
+int *
+at(int *p, int i)
 {
-    return &p[i];
+        return &p[i];
 }

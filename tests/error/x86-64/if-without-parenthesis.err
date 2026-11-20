@@ -1,2 +1,2 @@
-tests/error/if-without-parenthesis.c:4:8: error: expected '(' after 'if'
+tests/error/if-without-parenthesis.c:6:17: error: expected '(' after 'if'
 status 1

@@ -1,2 +1,2 @@
-tests/error/void-variable.c:4:10: error: variable 'x' has type void
+tests/error/void-variable.c:5:14: error: variable 'x' has type void
 status 1

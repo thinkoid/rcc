@@ -1,2 +1,2 @@
-tests/error/typedef-in-type-name.c:5:13: error: 'typedef' in a type name
+tests/error/typedef-in-type-name.c:6:17: error: 'typedef' in a type name
 status 1

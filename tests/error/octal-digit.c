@@ -1,5 +1,6 @@
 /* An octal constant with the digit 9. */
-int main(void)
+int
+main(void)
 {
-    return 09;
+        return 09;
 }

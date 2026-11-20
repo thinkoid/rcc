@@ -11,12 +11,14 @@
    On aarch64 the listing of twice() must show two loads of a, two of b,
    two mul and the add w0, w0, w1 of the two products; and of
    twice_constant(), two add w0, w0, #408 and no mul. */
-int twice(int a, int b)
+int
+twice(int a, int b)
 {
-    return a * b + a * b;
+        return a * b + a * b;
 }
 
-int twice_constant(int a)
+int
+twice_constant(int a)
 {
-    return a + 12 * 34 + 12 * 34;
+        return a + 12 * 34 + 12 * 34;
 }

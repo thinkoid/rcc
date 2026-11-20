@@ -2,7 +2,8 @@
    scope, 6.7.1p4. */
 int f(int a, int a);
 
-int main(void)
+int
+main(void)
 {
-    return 0;
+        return 0;
 }

@@ -1,2 +1,2 @@
-tests/error/unclosed-block.c:6:18: error: expected '}' at end of block
+tests/error/unclosed-block.c:7:26: error: expected '}' at end of block
 status 1

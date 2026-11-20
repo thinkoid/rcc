@@ -9,15 +9,15 @@
 #include "lists.h"
 
 /* count arguments of T, each mixed into the result */
-#define READ(A, T)                                                      \
-    long read_##A(int count, va_list ap)                                \
-    {                                                                   \
-        long h = 17;                                                    \
-                                                                        \
-        while (count-- > 0)                                             \
-            h = h * 1000003 + (long) va_arg(ap, T);                     \
-        return h;                                                       \
-    }
+#define READ(A, T)                                              \
+        long read_##A(int count, va_list ap)                    \
+        {                                                       \
+                long h = 17;                                    \
+                                                                \
+                while (count-- > 0)                             \
+                        h = h * 1000003 + (long) va_arg(ap, T); \
+                return h;                                       \
+        }
 
 TYPES(READ)
 

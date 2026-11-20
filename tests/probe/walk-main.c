@@ -27,6 +27,7 @@
 
 #include "walk.h"
 
+/* clang-format off */
 static const long values[] = {
     0, 1, 2, 3, 5, 7, 85, 100, 127, 128, 200, 255, 256, 4095, 4096, 4097,
     5000, 32767, 32768, 65535, 65536, 0x12345, 0xfff000, 0x12345678,
@@ -34,12 +35,13 @@ static const long values[] = {
     -1, -2, -3, -7, -128, -129, -4096, -5000, -32768, -32769, -65536,
     -2147483647L - 1, -2147483649L, LONG_MAX, LONG_MIN
 };
+/* clang-format on */
 
 #define COUNT ((int) (sizeof values / sizeof *values))
 
 /* the bytes on each side of B a function reaches, *(p += 300) on a
    char and a little more; the guard beyond it */
-#define SPAN 384
+#define SPAN  384
 #define GUARD 32
 #define CELLS 8
 
@@ -55,7 +57,7 @@ static long shown = 40;
 static unsigned char *
 base(int k)
 {
-    return area[k] + GUARD + SPAN;
+        return area[k] + GUARD + SPAN;
 }
 
 /* both buffers filled with the same bytes, which change from check to
@@ -63,71 +65,74 @@ base(int k)
 static void
 prime(void)
 {
-    ++seed;
+        ++seed;
 
-    for (int i = -SPAN - GUARD; i < SPAN + GUARD; ++i)
-        base(0)[i] = base(1)[i] =
-            (unsigned char) (seed * 0x9e3779b1UL + i * 151UL + (i >> 3));
+        for (int i = -SPAN - GUARD; i < SPAN + GUARD; ++i)
+                base(0)[i] = base(1)[i] =
+                    (unsigned char) (seed * 0x9e3779b1UL + i * 151UL +
+                                     (i >> 3));
 
-    for (int k = 0; k < 2; ++k)
-        for (int c = 0; c < CELLS; ++c)
-            cell[k][c] = base(k) - 200 + 48 * c + c % 3;
+        for (int k = 0; k < 2; ++k)
+                for (int c = 0; c < CELLS; ++c)
+                        cell[k][c] = base(k) - 200 + 48 * c + c % 3;
 }
 
 /* a pointer as its offset from the base of its build's buffer */
 static long
 offset(const void *p, const unsigned char *b)
 {
-    return (long) ((unsigned long) p - (unsigned long) b);
+        return (long) ((unsigned long) p - (unsigned long) b);
 }
 
 static void
 report(const char *name, long x, long y, long got, long want)
 {
-    ++total;
+        ++total;
 
-    if (got == want)
-        return;
+        if (got == want)
+                return;
 
-    if (++bad <= shown)
-        printf("%s(%ld, %ld, ...): rcc %ld, clang %ld\n", name, x, y, got,
-               want);
+        if (++bad <= shown)
+                printf("%s(%ld, %ld, ...): rcc %ld, clang %ld\n", name, x, y,
+                       got, want);
 }
 
 /* the buffers byte by byte, guards included, and the cells */
 static void
 compare(const char *name, long x, long y)
 {
-    ++total;
+        ++total;
 
-    for (int i = -SPAN - GUARD; i < SPAN + GUARD; ++i) {
-        if (base(0)[i] == base(1)[i])
-            continue;
+        for (int i = -SPAN - GUARD; i < SPAN + GUARD; ++i) {
+                if (base(0)[i] == base(1)[i])
+                        continue;
 
-        if (++bad <= shown)
-            printf("%s(%ld, %ld, ...): byte B%+d: rcc %d, clang %d\n", name,
-                   x, y, i, base(0)[i], base(1)[i]);
-        return;
-    }
+                if (++bad <= shown)
+                        printf(
+                            "%s(%ld, %ld, ...): byte B%+d: rcc %d, clang %d\n",
+                            name, x, y, i, base(0)[i], base(1)[i]);
+                return;
+        }
 
-    for (int c = 0; c < CELLS; ++c) {
-        const long got = offset(cell[0][c], base(0));
-        const long want = offset(cell[1][c], base(1));
+        for (int c = 0; c < CELLS; ++c) {
+                const long got = offset(cell[0][c], base(0));
+                const long want = offset(cell[1][c], base(1));
 
-        if (got == want)
-            continue;
+                if (got == want)
+                        continue;
 
-        if (++bad <= shown)
-            printf("%s(%ld, %ld, ...): cell %d: rcc B%+ld, clang B%+ld\n",
-                   name, x, y, c, got, want);
-        return;
-    }
+                if (++bad <= shown)
+                        printf("%s(%ld, %ld, ...): cell %d: rcc B%+ld, clang "
+                               "B%+ld\n",
+                               name, x, y, c, got, want);
+                return;
+        }
 }
 
 /* f and its reference on the same arguments, no memory of the main's */
-#define CHECK(f, x, y, arguments)                                       \
-    report(#f, (long) (x), (long) (y), (long) f arguments,              \
-           (long) ref_##f arguments)
+#define CHECK(f, x, y, arguments)                              \
+        report(#f, (long) (x), (long) (y), (long) f arguments, \
+               (long) ref_##f arguments)
 
 /* the result of a call, as a long or as nothing for a void function */
 #define AS_LONG(e) ((long) (e))
@@ -136,38 +141,39 @@ compare(const char *name, long x, long y)
 /* f and the reference ref on the same arguments, each with its own
    buffer and cells, filled alike; the results compared, then the
    memory */
-#define SIDES(as, f, ref, x, y, arguments)                              \
-    do {                                                                \
-        long got_;                                                      \
-        long want_;                                                     \
-                                                                        \
-        prime();                                                        \
-        {                                                               \
-            unsigned char *const B = base(0);                           \
-            void **const C = cell[0];                                   \
-            got_ = as(f arguments);                                     \
-        }                                                               \
-        {                                                               \
-            unsigned char *const B = base(1);                           \
-            void **const C = cell[1];                                   \
-            want_ = as(ref arguments);                                  \
-        }                                                               \
-        report(#f, (long) (x), (long) (y), got_, want_);                \
-        compare(#f, (long) (x), (long) (y));                            \
-    } while (0)
+#define SIDES(as, f, ref, x, y, arguments)                       \
+        do {                                                     \
+                long got_;                                       \
+                long want_;                                      \
+                                                                 \
+                prime();                                         \
+                {                                                \
+                        unsigned char *const B = base(0);        \
+                        void **const C = cell[0];                \
+                        got_ = as(f arguments);                  \
+                }                                                \
+                {                                                \
+                        unsigned char *const B = base(1);        \
+                        void **const C = cell[1];                \
+                        want_ = as(ref arguments);               \
+                }                                                \
+                report(#f, (long) (x), (long) (y), got_, want_); \
+                compare(#f, (long) (x), (long) (y));             \
+        } while (0)
 
-#define MCHECK(f, x, y, arguments)                                      \
-    SIDES(AS_LONG, f, ref_##f, x, y, arguments)
-#define VCHECK(f, x, y, arguments)                                      \
-    SIDES(AS_VOID, f, ref_##f, x, y, arguments)
+#define MCHECK(f, x, y, arguments) SIDES(AS_LONG, f, ref_##f, x, y, arguments)
+#define VCHECK(f, x, y, arguments) SIDES(AS_VOID, f, ref_##f, x, y, arguments)
 
 /* f against left_first_f, G13's order, in place of clang's build */
-#define LCHECK(f, x, y, arguments)                                      \
-    SIDES(AS_LONG, f, left_first_##f, x, y, arguments)
+#define LCHECK(f, x, y, arguments) \
+        SIDES(AS_LONG, f, left_first_##f, x, y, arguments)
 
 /* declarations: each function and its reference */
-#define BOTH(R, f, parameters) R f parameters; R ref_##f parameters;
+#define BOTH(R, f, parameters) \
+        R f parameters;        \
+        R ref_##f parameters;
 
+/* clang-format off */
 #define DECLARE_POINTEE(T, N)                                           \
     BOTH(long, load_##N, (void *))                                      \
     BOTH(long, store_##N, (void *, long, long))                         \
@@ -176,11 +182,12 @@ compare(const char *name, long x, long y)
     BOTH(long, held_##N, (void *, int))                                 \
     BOTH(long, discard_##N, (void *, int))                              \
     BOTH(long, other_##N, (void *, long))
+/* clang-format on */
 
 POINTEES(DECLARE_POINTEE)
 
 #define DECLARE_JUMP(T, N, c) BOTH(long, jump_##N##_##c, (void *, long))
-#define DECLARE_JUMPS(T, N) NEAR(DECLARE_JUMP, T, N)
+#define DECLARE_JUMPS(T, N)   NEAR(DECLARE_JUMP, T, N)
 
 POINTEES(DECLARE_JUMPS)
 FAR(DECLARE_JUMP)
@@ -200,47 +207,47 @@ long lid(long a);
    its address and its step, then the right operand, then the store,
    or the load, the operation and the store of a compound one; the
    value of an assignment is what it stored, read back. */
-#define LEFT_FIRST(T, N)                                                \
-    static long left_first_names_##N(void *b)                           \
-    {                                                                   \
-        T *const base = b;                                              \
-        T *p = base;                                                    \
-        T *a;                                                           \
-        T *c;                                                           \
-        long r;                                                         \
-                                                                        \
-        a = p++;                                                        \
-        *a = *p;                                                        \
-        a = p++;                                                        \
-        *a = (T) (p - base);                                            \
-        a = ++p;                                                        \
-        *a = *p;                                                        \
-        a = p++;                                                        \
-        c = p++;                                                        \
-        *a = *c;                                                        \
-        a = p--;                                                        \
-        *a = (T) lid((long) p - (long) base);                           \
-        a = --p;                                                        \
-        *a = (T) ((long) p - (long) base);                              \
-        a = p++;                                                        \
-        *a += (long) *p;                                                \
-        r = p - base;                                                   \
-        a = p++;                                                        \
-        *a = *p;                                                        \
-        r = r * 31 + (long) *a;                                         \
-        a = ++p;                                                        \
-        *a = (T) (p - base);                                            \
-        r = r * 31 + (long) *a;                                         \
-        a = p--;                                                        \
-        c = p--;                                                        \
-        *a = *c;                                                        \
-        r = r * 31 + (long) *a;                                         \
-        a = p--;                                                        \
-        *a -= (long) *p;                                                \
-        r = r * 31 + (long) *a;                                         \
-                                                                        \
-        return r * 31 + (p - base);                                     \
-    }
+#define LEFT_FIRST(T, N)                              \
+        static long left_first_names_##N(void *b)     \
+        {                                             \
+                T *const base = b;                    \
+                T *p = base;                          \
+                T *a;                                 \
+                T *c;                                 \
+                long r;                               \
+                                                      \
+                a = p++;                              \
+                *a = *p;                              \
+                a = p++;                              \
+                *a = (T) (p - base);                  \
+                a = ++p;                              \
+                *a = *p;                              \
+                a = p++;                              \
+                c = p++;                              \
+                *a = *c;                              \
+                a = p--;                              \
+                *a = (T) lid((long) p - (long) base); \
+                a = --p;                              \
+                *a = (T) ((long) p - (long) base);    \
+                a = p++;                              \
+                *a += (long) *p;                      \
+                r = p - base;                         \
+                a = p++;                              \
+                *a = *p;                              \
+                r = r * 31 + (long) *a;               \
+                a = ++p;                              \
+                *a = (T) (p - base);                  \
+                r = r * 31 + (long) *a;               \
+                a = p--;                              \
+                c = p--;                              \
+                *a = *c;                              \
+                r = r * 31 + (long) *a;               \
+                a = p--;                              \
+                *a -= (long) *p;                      \
+                r = r * 31 + (long) *a;               \
+                                                      \
+                return r * 31 + (p - base);           \
+        }
 
 POINTEES(LEFT_FIRST)
 
@@ -250,26 +257,26 @@ POINTEES(LEFT_FIRST)
 /* the functions of one pointee over the values, on B and up to 7
    bytes past it, so that a wide pointee is also walked misaligned */
 #define TEST_JUMP(T, N, c) MCHECK(jump_##N##_##c, x, at, (P, x));
-#define TEST_POINTEE(T, N)                                              \
-    static void test_##N(void)                                          \
-    {                                                                   \
-        for (int i = 0; i < COUNT; ++i) {                               \
-            const long x = values[i];                                   \
-            const long y = values[(i * 7 + 3) % COUNT];                 \
-            const int at = i % 8;                                       \
-                                                                        \
-            MCHECK(load_##N, at, 0, (P));                               \
-            MCHECK(store_##N, x, y, (P, x, y));                         \
-            MCHECK(ends_##N, at, 0, (P));                               \
-            LCHECK(names_##N, at, 0, (P));                              \
-            MCHECK(rmw_##N, x, at, (P, x));                             \
-            MCHECK(held_##N, at, 0, (P, 0));                            \
-            MCHECK(held_##N, at, 1, (P, 1));                            \
-            MCHECK(discard_##N, at, i % 21, (P, i % 21));               \
-            MCHECK(other_##N, x, at, (P, x));                           \
-            NEAR(TEST_JUMP, T, N)                                       \
-        }                                                               \
-    }
+#define TEST_POINTEE(T, N)                                            \
+        static void test_##N(void)                                    \
+        {                                                             \
+                for (int i = 0; i < COUNT; ++i) {                     \
+                        const long x = values[i];                     \
+                        const long y = values[(i * 7 + 3) % COUNT];   \
+                        const int at = i % 8;                         \
+                                                                      \
+                        MCHECK(load_##N, at, 0, (P));                 \
+                        MCHECK(store_##N, x, y, (P, x, y));           \
+                        MCHECK(ends_##N, at, 0, (P));                 \
+                        LCHECK(names_##N, at, 0, (P));                \
+                        MCHECK(rmw_##N, x, at, (P, x));               \
+                        MCHECK(held_##N, at, 0, (P, 0));              \
+                        MCHECK(held_##N, at, 1, (P, 1));              \
+                        MCHECK(discard_##N, at, i % 21, (P, i % 21)); \
+                        MCHECK(other_##N, x, at, (P, x));             \
+                        NEAR(TEST_JUMP, T, N)                         \
+                }                                                     \
+        }
 
 POINTEES(TEST_POINTEE)
 
@@ -278,14 +285,14 @@ POINTEES(TEST_POINTEE)
 static void
 test_far(void)
 {
-    for (int i = 0; i < COUNT; ++i) {
-        const long x = values[i];
-        const int at = i % 8;
+        for (int i = 0; i < COUNT; ++i) {
+                const long x = values[i];
+                const int at = i % 8;
 
-        FAR(TEST_JUMP)
-        MCHECK(cells, i, 0, ((void *) C));
-        MCHECK(row, x, at, (P, x));
-    }
+                FAR(TEST_JUMP)
+                MCHECK(cells, i, 0, ((void *) C));
+                MCHECK(row, x, at, (P, x));
+        }
 }
 
 /* the string idioms over strings of each kind, the reverse over every
@@ -293,41 +300,45 @@ test_far(void)
 static void
 test_strings(void)
 {
-    static char *strings[] = {
-        "", "a", "walked to its terminator", "\001\177\200\377xyz",
-        "walked", "walked to", "\200", "walked\377"
-    };
-    const int strings_count = (int) (sizeof strings / sizeof *strings);
+        static char *strings[] = { "",
+                                   "a",
+                                   "walked to its terminator",
+                                   "\001\177\200\377xyz",
+                                   "walked",
+                                   "walked to",
+                                   "\200",
+                                   "walked\377" };
+        const int strings_count = (int) (sizeof strings / sizeof *strings);
 
-    for (int i = 0; i < strings_count; ++i) {
-        CHECK(wlength, i, 0, (strings[i]));
-        MCHECK(wcopy, i, 0, (B - 40, strings[i]));
+        for (int i = 0; i < strings_count; ++i) {
+                CHECK(wlength, i, 0, (strings[i]));
+                MCHECK(wcopy, i, 0, (B - 40, strings[i]));
 
-        for (int j = 0; j < strings_count; ++j)
-            CHECK(wcompare, i, j, (strings[i], strings[j]));
-    }
+                for (int j = 0; j < strings_count; ++j)
+                        CHECK(wcompare, i, j, (strings[i], strings[j]));
+        }
 
-    for (int n = 0; n < 21; ++n)
-        for (int at = 0; at < 8; at += 3)
-            VCHECK(wreverse, n, at, (P, n));
+        for (int n = 0; n < 21; ++n)
+                for (int at = 0; at < 8; at += 3)
+                        VCHECK(wreverse, n, at, (P, n));
 }
 
 int
 main(void)
 {
-    if (getenv("PROBE_ALL"))
-        shown = LONG_MAX;
+        if (getenv("PROBE_ALL"))
+                shown = LONG_MAX;
 
-    for (int i = 0; i < COUNT; ++i)
-        CHECK(twice, values[i], 0, (values[i]));
+        for (int i = 0; i < COUNT; ++i)
+                CHECK(twice, values[i], 0, (values[i]));
 
 #define RUN(T, N) test_##N();
-    POINTEES(RUN)
+        POINTEES(RUN)
 
-    test_far();
-    test_strings();
+        test_far();
+        test_strings();
 
-    printf("%ld checks, %ld differ\n", total, bad);
+        printf("%ld checks, %ld differ\n", total, bad);
 
-    return bad != 0;
+        return bad != 0;
 }

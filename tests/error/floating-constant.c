@@ -1,5 +1,6 @@
 /* A floating constant that starts with its decimal point. */
-int main(void)
+int
+main(void)
 {
-    return .5;
+        return .5;
 }

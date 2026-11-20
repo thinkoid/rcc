@@ -1,2 +1,2 @@
-tests/error/enumerator-list-unclosed.c:2:24: error: expected '}' at end of enumerator list
+tests/error/enumerator-list-unclosed.c:3:19: error: expected '}' at end of enumerator list
 status 1

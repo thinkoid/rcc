@@ -19,10 +19,11 @@
    mov w20, #0 and mov w21, #0, the test cmp w21, w19 with both
    registers as operands, and each assignment's add writing its
    register, add w20, w20, w21 and add w21, w21, #1; no slot at all. */
-int sum(register int n)
+int
+sum(register int n)
 {
-    register int s = 0;
-    for (register int i = 0; i < n; i = i + 1)
-        s = s + i;
-    return s;
+        register int s = 0;
+        for (register int i = 0; i < n; i = i + 1)
+                s = s + i;
+        return s;
 }

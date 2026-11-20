@@ -9,7 +9,7 @@
 
 /* ptr_<pointee>, the type of a pointer to each pointee of
    POINTER_TYPES: ptr_c is char *, ptr_r12 is int (*)[3] */
-#define POINTER_TYPE(E, T, R) typedef T (*ptr_##E) R;
+#define POINTER_TYPE(E, T, R) typedef T(*ptr_##E) R;
 
 POINTER_TYPES(POINTER_TYPE)
 
@@ -23,35 +23,59 @@ long id(long a);
 
 /* p + n, n + p and p - n, 6.5.7p9, G6: n of each type as a variable,
    and as a call's result, which is valid to its own width only */
-#define ARITH(E, T, S, I, N)                                            \
-    char *add_##E##_##N(T p S, I n) { return (char *) (p + n); }        \
-    char *radd_##E##_##N(T p S, I n) { return (char *) (n + p); }       \
-    char *sub_##E##_##N(T p S, I n) { return (char *) (p - n); }        \
-    char *cadd_##E##_##N(T p S, long x)                                 \
-    {                                                                   \
-        return (char *) (p + wide_##N(x));                              \
-    }                                                                   \
-    char *csub_##E##_##N(T p S, long x)                                 \
-    {                                                                   \
-        return (char *) (p - wide_##N(x));                              \
-    }
+#define ARITH(E, T, S, I, N)                       \
+        char *add_##E##_##N(T p S, I n)            \
+        {                                          \
+                return (char *) (p + n);           \
+        }                                          \
+        char *radd_##E##_##N(T p S, I n)           \
+        {                                          \
+                return (char *) (n + p);           \
+        }                                          \
+        char *sub_##E##_##N(T p S, I n)            \
+        {                                          \
+                return (char *) (p - n);           \
+        }                                          \
+        char *cadd_##E##_##N(T p S, long x)        \
+        {                                          \
+                return (char *) (p + wide_##N(x)); \
+        }                                          \
+        char *csub_##E##_##N(T p S, long x)        \
+        {                                          \
+                return (char *) (p - wide_##N(x)); \
+        }
 #define ARITH_ALL(E, T, S) INDEXES(ARITH, E, T, S)
 
 POINTEES(ARITH_ALL)
 
 /* p + n with n a constant, p += n, and &p[n], the address by a
    constant index */
-#define KARITH(E, T, S, name, n)                                        \
-    char *kadd_##E##_##name(T p S) { return (char *) (p + (n)); }       \
-    char *kradd_##E##_##name(T p S) { return (char *) ((n) + p); }      \
-    char *ksub_##E##_##name(T p S) { return (char *) (p - (n)); }       \
-    char *kaddeq_##E##_##name(T p S)                                    \
-    {                                                                   \
-        p += n;                                                         \
-        return (char *) p;                                              \
-    }                                                                   \
-    char *ksubeq_##E##_##name(T p S) { return (char *) (p -= n); }      \
-    char *kaddr_##E##_##name(T p S) { return (char *) &p[n]; }
+#define KARITH(E, T, S, name, n)           \
+        char *kadd_##E##_##name(T p S)     \
+        {                                  \
+                return (char *) (p + (n)); \
+        }                                  \
+        char *kradd_##E##_##name(T p S)    \
+        {                                  \
+                return (char *) ((n) + p); \
+        }                                  \
+        char *ksub_##E##_##name(T p S)     \
+        {                                  \
+                return (char *) (p - (n)); \
+        }                                  \
+        char *kaddeq_##E##_##name(T p S)   \
+        {                                  \
+                p += n;                    \
+                return (char *) p;         \
+        }                                  \
+        char *ksubeq_##E##_##name(T p S)   \
+        {                                  \
+                return (char *) (p -= n);  \
+        }                                  \
+        char *kaddr_##E##_##name(T p S)    \
+        {                                  \
+                return (char *) &p[n];     \
+        }
 #define KARITH_ALL(E, T, S) KONSTS(KARITH, E, T, S)
 
 POINTEES(KARITH_ALL)
@@ -59,100 +83,178 @@ POINTEES(KARITH_ALL)
 /* p - q, 6.5.7p10, G6: a division by the size, truncating; ++ and --
    of a pointer and p += n, p -= n, as values and in the effect
    context; G7 on pointers derived by arithmetic */
-#define POINTER(E, T, S)                                                \
-    long diff_##E(T p S, T q S) { return p - q; }                       \
-    int diff_less_##E(T p S, T q S) { return p - q < 0; }               \
-    long diff_held_##E(T p S, T q S, long n) { return p + n - q; }      \
-    char *preinc_##E(T p S) { return (char *) ++p; }                    \
-    char *postinc_##E(T p S) { return (char *) p++; }                   \
-    char *predec_##E(T p S) { return (char *) --p; }                    \
-    char *postdec_##E(T p S) { return (char *) p--; }                   \
-    long post_both_##E(T p S)                                           \
-    {                                                                   \
-        char *a = (char *) p++;                                         \
-        char *b = (char *) p--;                                         \
-        return (char *) p - a + ((char *) p - b) * 1000;                \
-    }                                                                   \
-    char *steps_##E(T p S)                                              \
-    {                                                                   \
-        ++p;                                                            \
-        p++;                                                            \
-        --p;                                                            \
-        p++;                                                            \
-        p++;                                                            \
-        return (char *) p;                                              \
-    }                                                                   \
-    char *addeq_##E(T p S, long n) { return (char *) (p += n); }        \
-    char *subeq_##E(T p S, long n) { return (char *) (p -= n); }        \
-    char *addeq_int_##E(T p S, int n)                                   \
-    {                                                                   \
-        p += n;                                                         \
-        return (char *) p;                                              \
-    }                                                                   \
-    char *subeq_unsigned_##E(T p S, unsigned n)                         \
-    {                                                                   \
-        p -= n;                                                         \
-        return (char *) p;                                              \
-    }                                                                   \
-    char *addeq_char_##E(T p S, signed char n)                          \
-    {                                                                   \
-        p += n;                                                         \
-        p -= n;                                                         \
-        p += n;                                                         \
-        return (char *) p;                                              \
-    }                                                                   \
-    int lt_derived_##E(T p S, long n, long m) { return p + n < p + m; } \
-    int ge_derived_##E(T p S, long n, T q S) { return p + n >= q; }     \
-    int eq_derived_##E(T p S, long n, T q S) { return p + n == q - n; } \
-    int le_stepped_##E(T p S, T q S) { return ++p <= q; }               \
-    long wrap_##E(T p S, long n) { return (long) (p + n) - (long) p; }
+#define POINTER(E, T, S)                                         \
+        long diff_##E(T p S, T q S)                              \
+        {                                                        \
+                return p - q;                                    \
+        }                                                        \
+        int diff_less_##E(T p S, T q S)                          \
+        {                                                        \
+                return p - q < 0;                                \
+        }                                                        \
+        long diff_held_##E(T p S, T q S, long n)                 \
+        {                                                        \
+                return p + n - q;                                \
+        }                                                        \
+        char *preinc_##E(T p S)                                  \
+        {                                                        \
+                return (char *) ++p;                             \
+        }                                                        \
+        char *postinc_##E(T p S)                                 \
+        {                                                        \
+                return (char *) p++;                             \
+        }                                                        \
+        char *predec_##E(T p S)                                  \
+        {                                                        \
+                return (char *) --p;                             \
+        }                                                        \
+        char *postdec_##E(T p S)                                 \
+        {                                                        \
+                return (char *) p--;                             \
+        }                                                        \
+        long post_both_##E(T p S)                                \
+        {                                                        \
+                char *a = (char *) p++;                          \
+                char *b = (char *) p--;                          \
+                return (char *) p - a + ((char *) p - b) * 1000; \
+        }                                                        \
+        char *steps_##E(T p S)                                   \
+        {                                                        \
+                ++p;                                             \
+                p++;                                             \
+                --p;                                             \
+                p++;                                             \
+                p++;                                             \
+                return (char *) p;                               \
+        }                                                        \
+        char *addeq_##E(T p S, long n)                           \
+        {                                                        \
+                return (char *) (p += n);                        \
+        }                                                        \
+        char *subeq_##E(T p S, long n)                           \
+        {                                                        \
+                return (char *) (p -= n);                        \
+        }                                                        \
+        char *addeq_int_##E(T p S, int n)                        \
+        {                                                        \
+                p += n;                                          \
+                return (char *) p;                               \
+        }                                                        \
+        char *subeq_unsigned_##E(T p S, unsigned n)              \
+        {                                                        \
+                p -= n;                                          \
+                return (char *) p;                               \
+        }                                                        \
+        char *addeq_char_##E(T p S, signed char n)               \
+        {                                                        \
+                p += n;                                          \
+                p -= n;                                          \
+                p += n;                                          \
+                return (char *) p;                               \
+        }                                                        \
+        int lt_derived_##E(T p S, long n, long m)                \
+        {                                                        \
+                return p + n < p + m;                            \
+        }                                                        \
+        int ge_derived_##E(T p S, long n, T q S)                 \
+        {                                                        \
+                return p + n >= q;                               \
+        }                                                        \
+        int eq_derived_##E(T p S, long n, T q S)                 \
+        {                                                        \
+                return p + n == q - n;                           \
+        }                                                        \
+        int le_stepped_##E(T p S, T q S)                         \
+        {                                                        \
+                return ++p <= q;                                 \
+        }                                                        \
+        long wrap_##E(T p S, long n)                             \
+        {                                                        \
+                return (long) (p + n) - (long) p;                \
+        }
 
 POINTEES(POINTER)
 
 /* The subscript, p[i] and i[p], read, written, under op= and ++ and
    --, for each element size and each index type, the index a variable
    and a call's result; &p[i] and &*(p + i); a local array's a[i]. */
-#define SUBSCRIPT(E, T, S, I, N)                                        \
-    long get_##E##_##N(T *p, I i) { return p[i]; }                      \
-    long rget_##E##_##N(T *p, I i) { return i[p]; }                     \
-    void put_##E##_##N(T *p, I i, long v) { p[i] = v; }                 \
-    long putv_##E##_##N(T *p, I i, long v) { return p[i] = v; }         \
-    long addto_##E##_##N(T *p, I i, T v) { return p[i] += v; }          \
-    void addon_##E##_##N(T *p, I i, T v) { p[i] += v; }                 \
-    void mulon_##E##_##N(T *p, I i, T v) { p[i] *= v; }                 \
-    long inc_##E##_##N(T *p, I i) { return ++p[i]; }                    \
-    long postdec_##E##_##N(T *p, I i) { return p[i]--; }                \
-    void steps_##E##_##N(T *p, I i)                                     \
-    {                                                                   \
-        p[i]++;                                                         \
-        --p[i];                                                         \
-        p[i]++;                                                         \
-    }                                                                   \
-    char *addr_##E##_##N(T *p, I i) { return (char *) &p[i]; }          \
-    char *addr_star_##E##_##N(T *p, I i)                                \
-    {                                                                   \
-        return (char *) &*(p + i);                                      \
-    }                                                                   \
-    long cget_##E##_##N(T *p, long x) { return p[wide_##N(x)]; }        \
-    void cput_##E##_##N(T *p, long x, long v) { p[wide_##N(x)] = v; }   \
-    char *caddr_##E##_##N(T *p, long x)                                 \
-    {                                                                   \
-        return (char *) &p[wide_##N(x)];                                \
-    }                                                                   \
-    long aget_##E##_##N(I i, long v)                                    \
-    {                                                                   \
-        T a[16];                                                        \
-        for (int k = 0; k < 16; k++)                                    \
-            a[k] = v + k * 3;                                           \
-        a[i] += 1;                                                      \
-        a[i]++;                                                         \
-        return a[i] * 2 + a[0] + a[15];                                 \
-    }                                                                   \
-    long aaddr_##E##_##N(I i)                                           \
-    {                                                                   \
-        T a[16];                                                        \
-        return (&a[i] - &a[1]) * 100 + ((char *) &a[i] - (char *) a);   \
-    }
+#define SUBSCRIPT(E, T, S, I, N)                                              \
+        long get_##E##_##N(T *p, I i)                                         \
+        {                                                                     \
+                return p[i];                                                  \
+        }                                                                     \
+        long rget_##E##_##N(T *p, I i)                                        \
+        {                                                                     \
+                return i[p];                                                  \
+        }                                                                     \
+        void put_##E##_##N(T *p, I i, long v)                                 \
+        {                                                                     \
+                p[i] = v;                                                     \
+        }                                                                     \
+        long putv_##E##_##N(T *p, I i, long v)                                \
+        {                                                                     \
+                return p[i] = v;                                              \
+        }                                                                     \
+        long addto_##E##_##N(T *p, I i, T v)                                  \
+        {                                                                     \
+                return p[i] += v;                                             \
+        }                                                                     \
+        void addon_##E##_##N(T *p, I i, T v)                                  \
+        {                                                                     \
+                p[i] += v;                                                    \
+        }                                                                     \
+        void mulon_##E##_##N(T *p, I i, T v)                                  \
+        {                                                                     \
+                p[i] *= v;                                                    \
+        }                                                                     \
+        long inc_##E##_##N(T *p, I i)                                         \
+        {                                                                     \
+                return ++p[i];                                                \
+        }                                                                     \
+        long postdec_##E##_##N(T *p, I i)                                     \
+        {                                                                     \
+                return p[i]--;                                                \
+        }                                                                     \
+        void steps_##E##_##N(T *p, I i)                                       \
+        {                                                                     \
+                p[i]++;                                                       \
+                --p[i];                                                       \
+                p[i]++;                                                       \
+        }                                                                     \
+        char *addr_##E##_##N(T *p, I i)                                       \
+        {                                                                     \
+                return (char *) &p[i];                                        \
+        }                                                                     \
+        char *addr_star_##E##_##N(T *p, I i)                                  \
+        {                                                                     \
+                return (char *) &*(p + i);                                    \
+        }                                                                     \
+        long cget_##E##_##N(T *p, long x)                                     \
+        {                                                                     \
+                return p[wide_##N(x)];                                        \
+        }                                                                     \
+        void cput_##E##_##N(T *p, long x, long v)                             \
+        {                                                                     \
+                p[wide_##N(x)] = v;                                           \
+        }                                                                     \
+        char *caddr_##E##_##N(T *p, long x)                                   \
+        {                                                                     \
+                return (char *) &p[wide_##N(x)];                              \
+        }                                                                     \
+        long aget_##E##_##N(I i, long v)                                      \
+        {                                                                     \
+                T a[16];                                                      \
+                for (int k = 0; k < 16; k++)                                  \
+                        a[k] = v + k * 3;                                     \
+                a[i] += 1;                                                    \
+                a[i]++;                                                       \
+                return a[i] * 2 + a[0] + a[15];                               \
+        }                                                                     \
+        long aaddr_##E##_##N(I i)                                             \
+        {                                                                     \
+                T a[16];                                                      \
+                return (&a[i] - &a[1]) * 100 + ((char *) &a[i] - (char *) a); \
+        }
 #define SUBSCRIPT_ALL(E, T, S) INDEXES(SUBSCRIPT, E, T, S)
 
 ELEMENTS(SUBSCRIPT_ALL)
@@ -163,36 +265,54 @@ ELEMENTS(SUBSCRIPT_ALL)
    read, written, under a subscript, and after a variable index; and
    the address of such a subscript as a value, past an index and past a
    constant subtracted, read through */
-#define KSUB(E, T, S, name, c)                                          \
-    long kget_##E##_##name(T *p) { return p[c]; }                       \
-    void kput_##E##_##name(T *p, long v) { p[c] = v; }                  \
-    void kcall_##E##_##name(T *p, long v)                               \
-    {                                                                   \
-        p[c] = id(v);                                                   \
-        p[c] += id(v + 1);                                              \
-    }                                                                   \
-    long kinc_##E##_##name(T *p) { ++p[c]; return p[c]; }
+#define KSUB(E, T, S, name, c)                \
+        long kget_##E##_##name(T *p)          \
+        {                                     \
+                return p[c];                  \
+        }                                     \
+        void kput_##E##_##name(T *p, long v)  \
+        {                                     \
+                p[c] = v;                     \
+        }                                     \
+        void kcall_##E##_##name(T *p, long v) \
+        {                                     \
+                p[c] = id(v);                 \
+                p[c] += id(v + 1);            \
+        }                                     \
+        long kinc_##E##_##name(T *p)          \
+        {                                     \
+                ++p[c];                       \
+                return p[c];                  \
+        }
 #define KSUB_ALL(E, T, S) KSUBS(KSUB, E, T, S)
 
 ELEMENTS(KSUB_ALL)
 
-#define KBYTE(E, T, S, name, d)                                         \
-    long kview_##E##_##name(char *p) { return *(T *) (p + d); }         \
-    void kview_put_##E##_##name(char *p, long v) { *(T *) (p + d) = v; } \
-    long kview_index_##E##_##name(char *p) { return ((T *) (p + 1))[d]; } \
-    long kview_after_##E##_##name(char *p, int i)                       \
-    {                                                                   \
-        return *(T *) (p + i * 3 + d);                                  \
-    }                                                                   \
-    long kview_address_##E##_##name(char *p, int i)                     \
-    {                                                                   \
-        T *q = &((T *) (p + 1))[d];                                     \
-        T *r = &((T *) (p + i * 3 + 1))[d];                             \
-        T *t = &((T *) (p + 3 - 2))[d];                                 \
-        return ((char *) q - p) * 1000 + *q +                           \
-               ((char *) r - p) * 7 + *r +                              \
-               ((char *) t - p) * 3 + *t;                               \
-    }
+#define KBYTE(E, T, S, name, d)                                              \
+        long kview_##E##_##name(char *p)                                     \
+        {                                                                    \
+                return *(T *) (p + d);                                       \
+        }                                                                    \
+        void kview_put_##E##_##name(char *p, long v)                         \
+        {                                                                    \
+                *(T *) (p + d) = v;                                          \
+        }                                                                    \
+        long kview_index_##E##_##name(char *p)                               \
+        {                                                                    \
+                return ((T *) (p + 1))[d];                                   \
+        }                                                                    \
+        long kview_after_##E##_##name(char *p, int i)                        \
+        {                                                                    \
+                return *(T *) (p + i * 3 + d);                               \
+        }                                                                    \
+        long kview_address_##E##_##name(char *p, int i)                      \
+        {                                                                    \
+                T *q = &((T *) (p + 1))[d];                                  \
+                T *r = &((T *) (p + i * 3 + 1))[d];                          \
+                T *t = &((T *) (p + 3 - 2))[d];                              \
+                return ((char *) q - p) * 1000 + *q + ((char *) r - p) * 7 + \
+                       *r + ((char *) t - p) * 3 + *t;                       \
+        }
 #define KBYTE_ALL(E, T, S) KBYTES(KBYTE, E, T, S)
 
 ELEMENTS(KBYTE_ALL)
@@ -206,35 +326,35 @@ ELEMENTS(KBYTE_ALL)
    past a constant of rows, (q + c)[i][1], without a cast; and rows
    whose constants cancel the column, stepped and read, the index
    first too. */
-#define KROW(E, T, S, name, d)                                          \
-    long krow_##E##_##name(char *p, int i)                              \
-    {                                                                   \
-        return ((T (*)[2]) (p + d))[i][1];                              \
-    }                                                                   \
-    void krow_put_##E##_##name(char *p, int i, long v)                  \
-    {                                                                   \
-        ((T (*)[2]) (p + d))[i][1] = v;                                 \
-    }                                                                   \
-    long krow_add_##E##_##name(char *p, int i, long v)                  \
-    {                                                                   \
-        return ((T (*)[2]) (p + d))[i][1] += v;                         \
-    }                                                                   \
-    long krow_first_##E##_##name(char *p, int i)                        \
-    {                                                                   \
-        return i[(T (*)[2]) (p + d)][1];                                \
-    }                                                                   \
-    void krow_call_##E##_##name(char *p, int i, long v)                 \
-    {                                                                   \
-        ((T (*)[2]) (p + d))[i][1] = id(v);                             \
-    }                                                                   \
-    long krow_address_##E##_##name(char *p, int i, long v)              \
-    {                                                                   \
-        T *q = &((T (*)[2]) (p + d))[i][1];                             \
-        T *r = &i[(T (*)[2]) (p + d)][1];                               \
-        *q += v;                                                        \
-        return ((char *) q - p) * 1000 + *q +                           \
-               ((char *) r - p) * 7 + *r;                               \
-    }
+#define KROW(E, T, S, name, d)                                               \
+        long krow_##E##_##name(char *p, int i)                               \
+        {                                                                    \
+                return ((T(*)[2])(p + d))[i][1];                             \
+        }                                                                    \
+        void krow_put_##E##_##name(char *p, int i, long v)                   \
+        {                                                                    \
+                ((T(*)[2])(p + d))[i][1] = v;                                \
+        }                                                                    \
+        long krow_add_##E##_##name(char *p, int i, long v)                   \
+        {                                                                    \
+                return ((T(*)[2])(p + d))[i][1] += v;                        \
+        }                                                                    \
+        long krow_first_##E##_##name(char *p, int i)                         \
+        {                                                                    \
+                return i[(T(*)[2])(p + d)][1];                               \
+        }                                                                    \
+        void krow_call_##E##_##name(char *p, int i, long v)                  \
+        {                                                                    \
+                ((T(*)[2])(p + d))[i][1] = id(v);                            \
+        }                                                                    \
+        long krow_address_##E##_##name(char *p, int i, long v)               \
+        {                                                                    \
+                T *q = &((T(*)[2])(p + d))[i][1];                            \
+                T *r = &i[(T(*)[2])(p + d)][1];                              \
+                *q += v;                                                     \
+                return ((char *) q - p) * 1000 + *q + ((char *) r - p) * 7 + \
+                       *r;                                                   \
+        }
 #define KROW_ALL(E, T, S) KROWS(KROW, E, T, S)
 
 ELEMENTS(KROW_ALL)
@@ -250,69 +370,69 @@ unsigned char krow_bytes[KROW_ROWS * 16];
 static void
 krow_fill(unsigned char *b, long n, long v)
 {
-    for (long k = 0; k < n; ++k)
-        b[k] = (unsigned char) (k * 7 + v);
+        for (long k = 0; k < n; ++k)
+                b[k] = (unsigned char) (k * 7 + v);
 }
 
 static long
 krow_sum(const unsigned char *b, long n)
 {
-    long sum = 0;
+        long sum = 0;
 
-    for (long k = 0; k < n; ++k)
-        sum = sum * 31 + b[k];
+        for (long k = 0; k < n; ++k)
+                sum = sum * 31 + b[k];
 
-    return sum;
+        return sum;
 }
 
-#define KROW_NAMED(E, T, S, name, d)                                    \
-    long krow_slot_##E##_##name(int i, long v)                          \
-    {                                                                   \
-        T m[KROW_ROWS][2];                                              \
-        krow_fill((unsigned char *) m, sizeof m, v);                    \
-        ((T (*)[2]) ((char *) m + d))[i][1] = v;                        \
-        ((T (*)[2]) ((char *) m + d))[i][1] += v >> 3;                  \
-        long r = i[(T (*)[2]) ((char *) m + d)][1];                     \
-        return r + krow_sum((unsigned char *) m, sizeof m);             \
-    }                                                                   \
-    long krow_label_##E##_##name(int i, long v)                         \
-    {                                                                   \
-        unsigned char *b = (unsigned char *) krow_rows_##E;             \
-        krow_fill(b, sizeof krow_rows_##E, v);                          \
-        ((T (*)[2]) ((char *) krow_rows_##E + d))[i][1] = v;            \
-        ((T (*)[2]) ((char *) krow_rows_##E + d))[i][1] += v >> 3;      \
-        long r = i[(T (*)[2]) ((char *) krow_rows_##E + d)][1];         \
-        return r + krow_sum(b, sizeof krow_rows_##E);                   \
-    }                                                                   \
-    long krow_bytes_##E##_##name(int i, long v)                         \
-    {                                                                   \
-        krow_fill(krow_bytes, sizeof krow_bytes, v);                    \
-        ((T (*)[2]) ((char *) krow_bytes + d))[i][1] = v;               \
-        ((T (*)[2]) ((char *) krow_bytes + d))[i][1] += v >> 3;         \
-        long r = i[(T (*)[2]) ((char *) krow_bytes + d)][1];            \
-        return r + krow_sum(krow_bytes, sizeof krow_bytes);             \
-    }
+#define KROW_NAMED(E, T, S, name, d)                                     \
+        long krow_slot_##E##_##name(int i, long v)                       \
+        {                                                                \
+                T m[KROW_ROWS][2];                                       \
+                krow_fill((unsigned char *) m, sizeof m, v);             \
+                ((T(*)[2])((char *) m + d))[i][1] = v;                   \
+                ((T(*)[2])((char *) m + d))[i][1] += v >> 3;             \
+                long r = i[(T(*)[2])((char *) m + d)][1];                \
+                return r + krow_sum((unsigned char *) m, sizeof m);      \
+        }                                                                \
+        long krow_label_##E##_##name(int i, long v)                      \
+        {                                                                \
+                unsigned char *b = (unsigned char *) krow_rows_##E;      \
+                krow_fill(b, sizeof krow_rows_##E, v);                   \
+                ((T(*)[2])((char *) krow_rows_##E + d))[i][1] = v;       \
+                ((T(*)[2])((char *) krow_rows_##E + d))[i][1] += v >> 3; \
+                long r = i[(T(*)[2])((char *) krow_rows_##E + d)][1];    \
+                return r + krow_sum(b, sizeof krow_rows_##E);            \
+        }                                                                \
+        long krow_bytes_##E##_##name(int i, long v)                      \
+        {                                                                \
+                krow_fill(krow_bytes, sizeof krow_bytes, v);             \
+                ((T(*)[2])((char *) krow_bytes + d))[i][1] = v;          \
+                ((T(*)[2])((char *) krow_bytes + d))[i][1] += v >> 3;    \
+                long r = i[(T(*)[2])((char *) krow_bytes + d)][1];       \
+                return r + krow_sum(krow_bytes, sizeof krow_bytes);      \
+        }
 #define KROW_NAMED_ALL(E, T, S) KROWS_NEAR(KROW_NAMED, E, T, S)
 
 ELEMENTS(KROW_NAMED_ALL)
 
-#define KROW_PAST(E, T, S)                                              \
-    long krow_past_##E(char *p, int i)                                  \
-    {                                                                   \
-        T (*q)[2] = (T (*)[2]) p;                                       \
-        return (q + 1)[i][1] * 3 + (q + 300)[i][1] * 5 +                \
-               (q + 2048)[i][1] * 7 + (q - 1)[i][1];                    \
-    }
+#define KROW_PAST(E, T, S)                                       \
+        long krow_past_##E(char *p, int i)                       \
+        {                                                        \
+                T(*q)[2] = (T(*)[2]) p;                          \
+                return (q + 1)[i][1] * 3 + (q + 300)[i][1] * 5 + \
+                       (q + 2048)[i][1] * 7 + (q - 1)[i][1];     \
+        }
 
 ELEMENTS(KROW_PAST)
 
-#define KROW_CANCEL(E, T, S)                                            \
-    long krow_cancel_##E(char *p, int i, long v)                        \
-    {                                                                   \
-        ((T (*)[1]) (p + (long) sizeof (T)))[i][-1] += v;               \
-        return ((T (*)[2]) (p + 2 * (long) sizeof (T)))[i][-2] * 3 +    \
-               i[(T (*)[1]) (p + 3 * (long) sizeof (T))][-3];           \
-    }
+#define KROW_CANCEL(E, T, S)                                              \
+        long krow_cancel_##E(char *p, int i, long v)                      \
+        {                                                                 \
+                ((T(*)[1])(p + (long) sizeof(T)))[i][-1] += v;            \
+                return ((T(*)[2])(p + 2 * (long) sizeof(T)))[i][-2] * 3 + \
+                       i[(T(*)[1])(p + 3 * (long) sizeof(T))][-3];        \
+        }
 
 ELEMENTS(KROW_CANCEL)
 
@@ -320,56 +440,71 @@ ELEMENTS(KROW_CANCEL)
    walks, *p++, *++p, *p++ = v, and (*p)++ against *p++; a buffer
    filled and summed by a walking pointer, a comparison of pointers
    the condition. */
-#define WALKS(E, T, S)                                                  \
-    void cell_steps_##E(T **pp)                                         \
-    {                                                                   \
-        (*pp)++;                                                        \
-        ++*pp;                                                          \
-        *pp += 3;                                                       \
-        *pp -= 1;                                                       \
-        --*pp;                                                          \
-    }                                                                   \
-    char *cell_post_##E(T **pp) { return (char *) (*pp)++; }            \
-    char *cell_pre_##E(T **pp) { return (char *) --*pp; }               \
-    char *cell_addeq_##E(T **pp, long n) { return (char *) (*pp += n); } \
-    long walk_##E(T *p, long v)                                         \
-    {                                                                   \
-        long a = *p++;                                                  \
-        long b = *++p;                                                  \
-        *p++ = v;                                                       \
-        long c = (*p)++;                                                \
-        long d = *p++;                                                  \
-        return a + b * 3 + c * 5 + d * 7 + *p;                          \
-    }                                                                   \
-    long walk_back_##E(T *p)                                            \
-    {                                                                   \
-        long a = *p--;                                                  \
-        long b = *--p;                                                  \
-        *p-- = a;                                                       \
-        return a - b + *p;                                              \
-    }                                                                   \
-    long sum_##E(T *p, T *end)                                          \
-    {                                                                   \
-        long s = 0;                                                     \
-        while (p < end)                                                 \
-            s = s * 3 + *p++;                                           \
-        return s;                                                       \
-    }                                                                   \
-    long sum_back_##E(T *p, T *end)                                     \
-    {                                                                   \
-        long s = 0;                                                     \
-        while (end > p)                                                 \
-            s = s * 3 + *--end;                                         \
-        return s;                                                       \
-    }                                                                   \
-    long fill_##E(T *p, T *end, long v)                                 \
-    {                                                                   \
-        while (p != end)                                                \
-            *p++ = v++;                                                 \
-        return v;                                                       \
-    }                                                                   \
-    long pp_##E(T **p, long i, long j) { return p[i][j]; }              \
-    void pp_put_##E(T **p, int i, int j, long v) { p[i][j] = v; }
+#define WALKS(E, T, S)                                 \
+        void cell_steps_##E(T **pp)                    \
+        {                                              \
+                (*pp)++;                               \
+                ++*pp;                                 \
+                *pp += 3;                              \
+                *pp -= 1;                              \
+                --*pp;                                 \
+        }                                              \
+        char *cell_post_##E(T **pp)                    \
+        {                                              \
+                return (char *) (*pp)++;               \
+        }                                              \
+        char *cell_pre_##E(T **pp)                     \
+        {                                              \
+                return (char *) --*pp;                 \
+        }                                              \
+        char *cell_addeq_##E(T **pp, long n)           \
+        {                                              \
+                return (char *) (*pp += n);            \
+        }                                              \
+        long walk_##E(T *p, long v)                    \
+        {                                              \
+                long a = *p++;                         \
+                long b = *++p;                         \
+                *p++ = v;                              \
+                long c = (*p)++;                       \
+                long d = *p++;                         \
+                return a + b * 3 + c * 5 + d * 7 + *p; \
+        }                                              \
+        long walk_back_##E(T *p)                       \
+        {                                              \
+                long a = *p--;                         \
+                long b = *--p;                         \
+                *p-- = a;                              \
+                return a - b + *p;                     \
+        }                                              \
+        long sum_##E(T *p, T *end)                     \
+        {                                              \
+                long s = 0;                            \
+                while (p < end)                        \
+                        s = s * 3 + *p++;              \
+                return s;                              \
+        }                                              \
+        long sum_back_##E(T *p, T *end)                \
+        {                                              \
+                long s = 0;                            \
+                while (end > p)                        \
+                        s = s * 3 + *--end;            \
+                return s;                              \
+        }                                              \
+        long fill_##E(T *p, T *end, long v)            \
+        {                                              \
+                while (p != end)                       \
+                        *p++ = v++;                    \
+                return v;                              \
+        }                                              \
+        long pp_##E(T **p, long i, long j)             \
+        {                                              \
+                return p[i][j];                        \
+        }                                              \
+        void pp_put_##E(T **p, int i, int j, long v)   \
+        {                                              \
+                p[i][j] = v;                           \
+        }
 
 SCALARS(WALKS)
 
@@ -386,170 +521,245 @@ SCALARS(WALKS)
    and a variable index, whose rows are of a size no addressing form
    scales by, m[1][j][2], written, operated on in place and read,
    through a register variable, by j[m[1]], and its address. */
-#define ARRAYS(E, T, S)                                                 \
-    long mat_##E(int i, int j, long v)                                  \
-    {                                                                   \
-        T m[4][5];                                                      \
-        for (int r = 0; r < 4; r++)                                     \
-            for (int c = 0; c < 5; c++)                                 \
-                m[r][c] = v + r * 5 + c;                                \
-        m[i][j] += 1;                                                   \
-        return m[i][j] * 3 + m[3 - i][4 - j] + *m[i] + (m[3] - m[i]);   \
-    }                                                                   \
-    long pmat_##E(T m[][5], long i, long j) { return m[i][j]; }         \
-    void pmat_put_##E(T m[][5], int i, unsigned j, long v)              \
-    {                                                                   \
-        m[i][j] = v;                                                    \
-    }                                                                   \
-    char *prow_##E(T m[][5], long i) { return (char *) m[i]; }          \
-    long loop_index_##E(int n, long v)                                  \
-    {                                                                   \
-        T a[64];                                                        \
-        long s = 0;                                                     \
-        for (int k = 0; k < n; k++)                                     \
-            a[k] = v * k + 1;                                           \
-        for (int k = n - 1; k >= 0; k--)                                \
-            s = s * 3 + a[k];                                           \
-        return s;                                                       \
-    }                                                                   \
-    long loop_walk_##E(int n, long v)                                   \
-    {                                                                   \
-        T a[64];                                                        \
-        T *end = a + n;                                                 \
-        long s = 0;                                                     \
-        for (T *q = a; q < end; q++)                                    \
-            *q = v + (q - a);                                           \
-        for (T *q = end; q > a;)                                        \
-            s = s * 3 + *--q;                                           \
-        for (T *q = a; q != end; ++q)                                   \
-            s += *q;                                                    \
-        return s;                                                       \
-    }                                                                   \
-    long ends_##E(int i, long v)                                        \
-    {                                                                   \
-        T a[5000];                                                      \
-        a[0] = v;                                                       \
-        a[4999] = v + 1;                                                \
-        a[i] = v + 2;                                                   \
-        a[4999 - i] += 3;                                               \
-        return a[0] * 3 + a[4999] * 5 + a[i] + (&a[4999] - &a[i]);      \
-    }                                                                   \
-    long vast_##E(long i, long v)                                       \
-    {                                                                   \
-        T a[70000];                                                     \
-        T x = v;                                                        \
-        a[0] = v;                                                       \
-        a[69999] = x + 1;                                               \
-        a[i] = x - 1;                                                   \
-        a[69999 - i]++;                                                 \
-        return a[0] * 3 + a[69999] * 5 + a[i] + (&a[69999] - a);        \
-    }                                                                   \
-    long pmat_one_##E(T m[][5], int j, long v)                          \
-    {                                                                   \
-        register T (*r)[5] = m;                                         \
-        m[1][j] = v;                                                    \
-        m[2][j] += v;                                                   \
-        r[3][j]++;                                                      \
-        return m[1][j] * 3 + j[m[2]] * 5 + r[3][j] * 7 +                \
-               ((char *) &m[3][j] - (char *) m);                        \
-    }                                                                   \
-    long prow_one_##E(T m[][5], int j)                                  \
-    {                                                                   \
-        register T (*r)[5] = m;                                         \
-        register T *q = m[1] + j;                                       \
-        return ((char *) q - (char *) m) +                              \
-               ((char *) (j + m[2]) - (char *) m) * 1000 +              \
-               ((char *) (r[3] + j) - (char *) m) * 1000000;            \
-    }                                                                   \
-    long pcube_##E(T m[][4][5], int j, long v)                          \
-    {                                                                   \
-        register T (*r)[4][5] = m;                                      \
-        m[1][j][2] = v;                                                 \
-        m[1][j][3] += v;                                                \
-        r[2][j][0]++;                                                   \
-        return m[1][j][2] * 3 + m[1][j][3] * 5 + r[2][j][0] * 7 +       \
-               j[m[1]][4] + ((char *) &m[2][j][1] - (char *) m);        \
-    }
+#define ARRAYS(E, T, S)                                                       \
+        long mat_##E(int i, int j, long v)                                    \
+        {                                                                     \
+                T m[4][5];                                                    \
+                for (int r = 0; r < 4; r++)                                   \
+                        for (int c = 0; c < 5; c++)                           \
+                                m[r][c] = v + r * 5 + c;                      \
+                m[i][j] += 1;                                                 \
+                return m[i][j] * 3 + m[3 - i][4 - j] + *m[i] + (m[3] - m[i]); \
+        }                                                                     \
+        long pmat_##E(T m[][5], long i, long j)                               \
+        {                                                                     \
+                return m[i][j];                                               \
+        }                                                                     \
+        void pmat_put_##E(T m[][5], int i, unsigned j, long v)                \
+        {                                                                     \
+                m[i][j] = v;                                                  \
+        }                                                                     \
+        char *prow_##E(T m[][5], long i)                                      \
+        {                                                                     \
+                return (char *) m[i];                                         \
+        }                                                                     \
+        long loop_index_##E(int n, long v)                                    \
+        {                                                                     \
+                T a[64];                                                      \
+                long s = 0;                                                   \
+                for (int k = 0; k < n; k++)                                   \
+                        a[k] = v * k + 1;                                     \
+                for (int k = n - 1; k >= 0; k--)                              \
+                        s = s * 3 + a[k];                                     \
+                return s;                                                     \
+        }                                                                     \
+        long loop_walk_##E(int n, long v)                                     \
+        {                                                                     \
+                T a[64];                                                      \
+                T *end = a + n;                                               \
+                long s = 0;                                                   \
+                for (T *q = a; q < end; q++)                                  \
+                        *q = v + (q - a);                                     \
+                for (T *q = end; q > a;)                                      \
+                        s = s * 3 + *--q;                                     \
+                for (T *q = a; q != end; ++q)                                 \
+                        s += *q;                                              \
+                return s;                                                     \
+        }                                                                     \
+        long ends_##E(int i, long v)                                          \
+        {                                                                     \
+                T a[5000];                                                    \
+                a[0] = v;                                                     \
+                a[4999] = v + 1;                                              \
+                a[i] = v + 2;                                                 \
+                a[4999 - i] += 3;                                             \
+                return a[0] * 3 + a[4999] * 5 + a[i] + (&a[4999] - &a[i]);    \
+        }                                                                     \
+        long vast_##E(long i, long v)                                         \
+        {                                                                     \
+                T a[70000];                                                   \
+                T x = v;                                                      \
+                a[0] = v;                                                     \
+                a[69999] = x + 1;                                             \
+                a[i] = x - 1;                                                 \
+                a[69999 - i]++;                                               \
+                return a[0] * 3 + a[69999] * 5 + a[i] + (&a[69999] - a);      \
+        }                                                                     \
+        long pmat_one_##E(T m[][5], int j, long v)                            \
+        {                                                                     \
+                register T(*r)[5] = m;                                        \
+                m[1][j] = v;                                                  \
+                m[2][j] += v;                                                 \
+                r[3][j]++;                                                    \
+                return m[1][j] * 3 + j[m[2]] * 5 + r[3][j] * 7 +              \
+                       ((char *) &m[3][j] - (char *) m);                      \
+        }                                                                     \
+        long prow_one_##E(T m[][5], int j)                                    \
+        {                                                                     \
+                register T(*r)[5] = m;                                        \
+                register T *q = m[1] + j;                                     \
+                return ((char *) q - (char *) m) +                            \
+                       ((char *) (j + m[2]) - (char *) m) * 1000 +            \
+                       ((char *) (r[3] + j) - (char *) m) * 1000000;          \
+        }                                                                     \
+        long pcube_##E(T m[][4][5], int j, long v)                            \
+        {                                                                     \
+                register T(*r)[4][5] = m;                                     \
+                m[1][j][2] = v;                                               \
+                m[1][j][3] += v;                                              \
+                r[2][j][0]++;                                                 \
+                return m[1][j][2] * 3 + m[1][j][3] * 5 + r[2][j][0] * 7 +     \
+                       j[m[1]][4] + ((char *) &m[2][j][1] - (char *) m);      \
+        }
 
 SCALARS(ARRAYS)
 
 /* string literals subscripted and walked */
-int lit_index(int i) { return "abcdef"[i]; }
-
-int lit_rindex(long i) { return i["\001\177\200\377xyz"]; }
-
-long lit_walk(void)
+int
+lit_index(int i)
 {
-    char *s = "walked to its terminator";
-    long h = 0;
-
-    while (*s)
-        h = h * 31 + *s++;
-
-    return h;
+        return "abcdef"[i];
 }
 
-long lit_length(void)
+int
+lit_rindex(long i)
 {
-    char *s = "seventeen bytes..";
-    char *t = s;
+        return i["\001\177\200\377xyz"];
+}
 
-    while (*t)
-        t++;
+long
+lit_walk(void)
+{
+        char *s = "walked to its terminator";
+        long h = 0;
 
-    return t - s;
+        while (*s)
+                h = h * 31 + *s++;
+
+        return h;
+}
+
+long
+lit_length(void)
+{
+        char *s = "seventeen bytes..";
+        char *t = s;
+
+        while (*t)
+                t++;
+
+        return t - s;
 }
 
 /* Depth, 6.2: a subscript with eighteen values held, read and
    written, and an address; an index that is a call, so the base is
    held across it, on a pointer and on a local array. */
-long deep_index(P8(long), long *p, int i)
+long
+deep_index(P8(long), long *p, int i)
 {
-    return a - (b - (c - (d - (e - (f - (g - (h - (a - (b - (c - (d - (e -
-           (f - (g - (h - (a - (b - p[i])))))))))))))))));
+        return a -
+               (b -
+                (c -
+                 (d -
+                  (e -
+                   (f -
+                    (g -
+                     (h -
+                      (a -
+                       (b -
+                        (c -
+                         (d -
+                          (e - (f - (g - (h - (a - (b - p[i])))))))))))))))));
 }
 
-long deep_put(P8(long), int *p, long i)
+long
+deep_put(P8(long), int *p, long i)
 {
-    return a - (b - (c - (d - (e - (f - (g - (h - (a - (b - (c - (d - (e -
-           (f - (g - (h - (a - (b - (p[i] = a ^ h))))))))))))))))));
+        return a -
+               (b -
+                (c -
+                 (d -
+                  (e -
+                   (f -
+                    (g -
+                     (h -
+                      (a -
+                       (b -
+                        (c -
+                         (d -
+                          (e -
+                           (f -
+                            (g - (h - (a - (b - (p[i] = a ^ h))))))))))))))))));
 }
 
-long deep_addr(P8(long), short *p, int i)
+long
+deep_addr(P8(long), short *p, int i)
 {
-    return a * (b + (c * (d + (e * (f + (g * (h + (a * (b + (c * (d + (e *
-           (f + (g * (h + (a * (b + (&p[i] - p))))))))))))))))));
+        return a *
+               (b +
+                (c *
+                 (d +
+                  (e *
+                   (f +
+                    (g *
+                     (h +
+                      (a *
+                       (b +
+                        (c *
+                         (d +
+                          (e * (f + (g * (h + (a * (b + (&p[i] -
+                                                         p))))))))))))))))));
 }
 
-long deep_diff(P8(long), int *p, int *q)
+long
+deep_diff(P8(long), int *p, int *q)
 {
-    return a - (b - (c - (d - (e - (f - (g - (h - (a - (b - (c - (d - (e -
-           (f - (g - (h - (a - (b - (p - q))))))))))))))))));
+        return a -
+               (b -
+                (c -
+                 (d -
+                  (e -
+                   (f -
+                    (g -
+                     (h -
+                      (a -
+                       (b -
+                        (c -
+                         (d -
+                          (e -
+                           (f - (g - (h - (a - (b - (p - q))))))))))))))))));
 }
 
-long call_index(long *p, long i)
+long
+call_index(long *p, long i)
 {
-    return p[id(i)] - p[id(i + 1)] * p[i];
+        return p[id(i)] - p[id(i + 1)] * p[i];
 }
 
-long call_put(int *p, long i, long v)
+long
+call_put(int *p, long i, long v)
 {
-    p[id(i)] = id(v);
+        p[id(i)] = id(v);
 
-    return p[i];
+        return p[i];
 }
 
-long call_local(int i, long v)
+long
+call_local(int i, long v)
 {
-    long a[8];
+        long a[8];
 
-    for (int k = 0; k < 8; k++)
-        a[k] = v - k;
+        for (int k = 0; k < 8; k++)
+                a[k] = v - k;
 
-    return a[id(i)] * 2 + a[id(7 - i)];
+        return a[id(i)] * 2 + a[id(7 - i)];
 }
 
-char *call_add(short *p, long n) { return (char *) (p + id(n)); }
+char *
+call_add(short *p, long n)
+{
+        return (char *) (p + id(n));
+}
 
 /* p - q, p + n, p - n and n + p with the right operand an object in
    memory, on x86-64 the add's or the sub's own operand where the
@@ -563,50 +773,50 @@ char *call_add(short *p, long n) { return (char *) (p + id(n)); }
    declares, _dec; *r, _ptr, r a local pointer to a local; and a local
    array's element by a variable index, _idx.  The parameter is
    ARITH's and POINTER's own. */
-#define FORMS(f, A, U, G, EXPR)                                         \
-    long f##_loc(A a, U v)                                              \
-    {                                                                   \
-        U x = v;                                                        \
-        return (long) EXPR(a, x);                                       \
-    }                                                                   \
-    long f##_def(A a, U v)                                              \
-    {                                                                   \
-        G##_defined = v;                                                \
-        return (long) EXPR(a, G##_defined);                             \
-    }                                                                   \
-    long f##_dec(A a, U v)                                              \
-    {                                                                   \
-        G##_declared = v;                                               \
-        return (long) EXPR(a, G##_declared);                            \
-    }                                                                   \
-    long f##_ptr(A a, U v)                                              \
-    {                                                                   \
-        U x = v;                                                        \
-        U *r = &x;                                                      \
-        return (long) EXPR(a, *r);                                      \
-    }                                                                   \
-    long f##_idx(A a, U v)                                              \
-    {                                                                   \
-        int i = 2;                                                      \
-        U x[4];                                                         \
-        x[i] = v;                                                       \
-        return (long) EXPR(a, x[i]);                                    \
-    }
+#define FORMS(f, A, U, G, EXPR)                      \
+        long f##_loc(A a, U v)                       \
+        {                                            \
+                U x = v;                             \
+                return (long) EXPR(a, x);            \
+        }                                            \
+        long f##_def(A a, U v)                       \
+        {                                            \
+                G##_defined = v;                     \
+                return (long) EXPR(a, G##_defined);  \
+        }                                            \
+        long f##_dec(A a, U v)                       \
+        {                                            \
+                G##_declared = v;                    \
+                return (long) EXPR(a, G##_declared); \
+        }                                            \
+        long f##_ptr(A a, U v)                       \
+        {                                            \
+                U x = v;                             \
+                U *r = &x;                           \
+                return (long) EXPR(a, *r);           \
+        }                                            \
+        long f##_idx(A a, U v)                       \
+        {                                            \
+                int i = 2;                           \
+                U x[4];                              \
+                x[i] = v;                            \
+                return (long) EXPR(a, x[i]);         \
+        }
 
-#define PLUS(a, o) ((a) + (o))
+#define PLUS(a, o)  ((a) + (o))
 #define MINUS(a, o) ((a) - (o))
 
 /* p -= n for its value, and p -= n and p += n for their effect, the
    memory form on a pointer in its slot */
-#define MINUS_TO(a, o) ((a) -= (o))
+#define MINUS_TO(a, o)     ((a) -= (o))
 #define MINUS_EFFECT(a, o) ((a) -= (o), (a))
-#define PLUS_EFFECT(a, o) ((a) += (o), (a))
+#define PLUS_EFFECT(a, o)  ((a) += (o), (a))
 
 /* the globals of the objects: a pointer of each pointee, an index of
    each type of LONG_INDEXES; the declared ones pointers-lib.c's */
-#define POINTER_GLOBALS(E, T, R)                                        \
-    ptr_##E q_##E##_defined;                                            \
-    extern ptr_##E q_##E##_declared;
+#define POINTER_GLOBALS(E, T, R) \
+        ptr_##E q_##E##_defined; \
+        extern ptr_##E q_##E##_declared;
 
 POINTER_TYPES(POINTER_GLOBALS)
 
@@ -618,31 +828,31 @@ extern unsigned long n_ul_declared;
 /* Beside them, p -= n on a register pointer, and the value of p - n
    and of n + p into a register pointer, whose register the multiply or
    the sub writes, backend.md chapter 4. */
-#define INDEX_OBJECTS(E, I, N)                                          \
-    FORMS(mem_add_##E##_##N, ptr_##E, I, n_##N, PLUS)                   \
-    FORMS(mem_sub_##E##_##N, ptr_##E, I, n_##N, MINUS)                  \
-    FORMS(mem_radd_##E##_##N, I, ptr_##E, q_##E, PLUS)                  \
-    FORMS(mem_subto_##E##_##N, ptr_##E, I, n_##N, MINUS_TO)             \
-    FORMS(mem_subeff_##E##_##N, ptr_##E, I, n_##N, MINUS_EFFECT)        \
-    FORMS(mem_addeff_##E##_##N, ptr_##E, I, n_##N, PLUS_EFFECT)         \
-    FORMS(mem_rsubto_##E##_##N, register ptr_##E, I, n_##N, MINUS_TO)   \
-    long mem_into_##E##_##N(ptr_##E a, I v)                             \
-    {                                                                   \
-        register ptr_##E p;                                             \
-        I x = v;                                                        \
-        p = a - x;                                                      \
-        return (long) p;                                                \
-    }                                                                   \
-    long mem_rinto_##E##_##N(ptr_##E a, I v)                            \
-    {                                                                   \
-        register ptr_##E p;                                             \
-        I x = v;                                                        \
-        p = x + a;                                                      \
-        return (long) p;                                                \
-    }
-#define OBJECTS(E, T, R)                                                \
-    FORMS(mem_diff_##E, ptr_##E, ptr_##E, q_##E, MINUS)                 \
-    LONG_INDEXES(INDEX_OBJECTS, E)
+#define INDEX_OBJECTS(E, I, N)                                            \
+        FORMS(mem_add_##E##_##N, ptr_##E, I, n_##N, PLUS)                 \
+        FORMS(mem_sub_##E##_##N, ptr_##E, I, n_##N, MINUS)                \
+        FORMS(mem_radd_##E##_##N, I, ptr_##E, q_##E, PLUS)                \
+        FORMS(mem_subto_##E##_##N, ptr_##E, I, n_##N, MINUS_TO)           \
+        FORMS(mem_subeff_##E##_##N, ptr_##E, I, n_##N, MINUS_EFFECT)      \
+        FORMS(mem_addeff_##E##_##N, ptr_##E, I, n_##N, PLUS_EFFECT)       \
+        FORMS(mem_rsubto_##E##_##N, register ptr_##E, I, n_##N, MINUS_TO) \
+        long mem_into_##E##_##N(ptr_##E a, I v)                           \
+        {                                                                 \
+                register ptr_##E p;                                       \
+                I x = v;                                                  \
+                p = a - x;                                                \
+                return (long) p;                                          \
+        }                                                                 \
+        long mem_rinto_##E##_##N(ptr_##E a, I v)                          \
+        {                                                                 \
+                register ptr_##E p;                                       \
+                I x = v;                                                  \
+                p = x + a;                                                \
+                return (long) p;                                          \
+        }
+#define OBJECTS(E, T, R)                                    \
+        FORMS(mem_diff_##E, ptr_##E, ptr_##E, q_##E, MINUS) \
+        LONG_INDEXES(INDEX_OBJECTS, E)
 
 POINTER_TYPES(OBJECTS)
 
@@ -650,14 +860,14 @@ POINTER_TYPES(OBJECTS)
    pointer and from itself, backend.md 6.1: p + n's immediate where a
    32-bit immediate holds the product, the order of the source where
    none does; each constant of KONSTS */
-#define KINTO(E, T, R, name, n)                                         \
-    char *kinto_##E##_##name(ptr_##E a)                                 \
-    {                                                                   \
-        register ptr_##E p;                                             \
-        p = (n) + a;                                                    \
-        p = (n) + p;                                                    \
-        return (char *) p;                                              \
-    }
+#define KINTO(E, T, R, name, n)             \
+        char *kinto_##E##_##name(ptr_##E a) \
+        {                                   \
+                register ptr_##E p;         \
+                p = (n) + a;                \
+                p = (n) + p;                \
+                return (char *) p;          \
+        }
 #define KINTO_ALL(E, T, R) KONSTS(KINTO, E, T, R)
 
 POINTER_TYPES(KINTO_ALL)

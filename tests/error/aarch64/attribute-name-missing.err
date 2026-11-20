@@ -1,2 +1,2 @@
-tests/error/attribute-name-missing.c:2:29: error: expected attribute name
+tests/error/attribute-name-missing.c:2:28: error: expected attribute name
 status 1

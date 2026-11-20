@@ -17,20 +17,25 @@
 long lid(long a);
 long lmix12(P12(long));
 
-#define LIBRARY(T, N)                                                   \
-    T lret_##N(long x);                                                 \
-    T lwide_##N(long x);
+#define LIBRARY(T, N)       \
+        T lret_##N(long x); \
+        T lwide_##N(long x);
 
 TYPES(LIBRARY)
 
 /* rcc's own callees, in rcc's build: a long, and a narrow result,
    which the callee does not extend */
-long twice(long v)
+long
+twice(long v)
 {
-    return v * 2 + 1;
+        return v * 2 + 1;
 }
 
-#define OWN(T, N) T own_##N(long x) { return x; }
+#define OWN(T, N)         \
+        T own_##N(long x) \
+        {                 \
+                return x; \
+        }
 
 TYPES(OWN)
 
@@ -39,35 +44,35 @@ TYPES(OWN)
    aarch64, negative, 64-bit, each converted to the type; declared
    without an initializer and assigned later.  Each is read back wide
    with its own weight. */
-#define INIT(T, N)                                                      \
-    long init_##N(T a, T b)                                             \
-    {                                                                   \
-        register T p = a;                                               \
-        register T e = a * 3 - b;                                       \
-        register T q = p;                                               \
-        register T d;                                                   \
-        register T z = 0;                                               \
-        d = b;                                                          \
-        return p + e * 3L + q * 5L + d * 7L + z * 11L;                  \
-    }                                                                   \
-    long kinit_##N(void)                                                \
-    {                                                                   \
-        register T z = 0;                                               \
-        register T k = 5;                                               \
-        register T w = 0x12345;                                         \
-        register T n = -5;                                              \
-        register T h = 0x123456789abcdef0;                              \
-        return z + k * 3L + w * 5L + n * 7L + h * 11L;                  \
-    }                                                                   \
-    long kinit2_##N(void)                                               \
-    {                                                                   \
-        register T m = -0x12345;                                        \
-        register T f = 0xfff000;                                        \
-        register T g = -1;                                              \
-        register T v = 0x80000000;                                      \
-        register T u = 0x7fffffff00000080;                              \
-        return m + f * 3L + g * 5L + v * 7L + u * 11L;                  \
-    }
+#define INIT(T, N)                                             \
+        long init_##N(T a, T b)                                \
+        {                                                      \
+                register T p = a;                              \
+                register T e = a * 3 - b;                      \
+                register T q = p;                              \
+                register T d;                                  \
+                register T z = 0;                              \
+                d = b;                                         \
+                return p + e * 3L + q * 5L + d * 7L + z * 11L; \
+        }                                                      \
+        long kinit_##N(void)                                   \
+        {                                                      \
+                register T z = 0;                              \
+                register T k = 5;                              \
+                register T w = 0x12345;                        \
+                register T n = -5;                             \
+                register T h = 0x123456789abcdef0;             \
+                return z + k * 3L + w * 5L + n * 7L + h * 11L; \
+        }                                                      \
+        long kinit2_##N(void)                                  \
+        {                                                      \
+                register T m = -0x12345;                       \
+                register T f = 0xfff000;                       \
+                register T g = -1;                             \
+                register T v = 0x80000000;                     \
+                register T u = 0x7fffffff00000080;             \
+                return m + f * 3L + g * 5L + v * 7L + u * 11L; \
+        }
 
 TYPES(INIT)
 
@@ -75,67 +80,69 @@ TYPES(INIT)
    variable, a slot, a constant the instruction encodes and one it does
    not; every value then reads both variables again, so an instruction
    that wrote its result into a variable's register shows. */
-#define BINARY(T, N, name, op, small, large)                            \
-    long name##_##N(T a, T b)                                           \
-    {                                                                   \
-        register T x = a;                                               \
-        register T y = b;                                               \
-        T s = b;                                                        \
-        long r = (x op y) + x * 3L + y * 5L;                            \
-        r = r * 7 + (y op x) + x * 3L + y * 5L;                         \
-        r = r * 7 + (x op s) + x * 3L;                                  \
-        r = r * 7 + (s op x) + x * 3L;                                  \
-        r = r * 7 + (x op small) + x * 3L;                              \
-        r = r * 7 + (small op x) + x * 3L;                              \
-        r = r * 7 + (x op large) + x * 3L;                              \
-        r = r * 7 + (large op x) + x * 3L;                              \
-        return r * 7 + x * 3L + y * 5L;                                 \
-    }
+#define BINARY(T, N, name, op, small, large)            \
+        long name##_##N(T a, T b)                       \
+        {                                               \
+                register T x = a;                       \
+                register T y = b;                       \
+                T s = b;                                \
+                long r = (x op y) + x * 3L + y * 5L;    \
+                r = r * 7 + (y op x) + x * 3L + y * 5L; \
+                r = r * 7 + (x op s) + x * 3L;          \
+                r = r * 7 + (s op x) + x * 3L;          \
+                r = r * 7 + (x op small) + x * 3L;      \
+                r = r * 7 + (small op x) + x * 3L;      \
+                r = r * 7 + (x op large) + x * 3L;      \
+                r = r * 7 + (large op x) + x * 3L;      \
+                return r * 7 + x * 3L + y * 5L;         \
+        }
 
 /* a shift by a register count, of a register, a slot and a constant */
-#define SHIFT(T, N, name, op)                                           \
-    long name##_##N(T a, T n)                                           \
-    {                                                                   \
-        register T x = a;                                               \
-        register T c = n;                                               \
-        T s = a;                                                        \
-        T t = n;                                                        \
-        long r = (x op c) + x * 3L + c * 5L;                            \
-        r = r * 7 + (x op t) + x * 3L;                                  \
-        r = r * 7 + (s op c) + c * 3L;                                  \
-        r = r * 7 + (x op 1) + x * 3L;                                  \
-        r = r * 7 + (x op 31) + x * 3L;                                 \
-        r = r * 7 + (5 op c) + c * 3L;                                  \
-        r = r * 7 + (0x12345 op c) + c * 3L;                            \
-        return r * 7 + x * 3L + c * 5L;                                 \
-    }
+#define SHIFT(T, N, name, op)                        \
+        long name##_##N(T a, T n)                    \
+        {                                            \
+                register T x = a;                    \
+                register T c = n;                    \
+                T s = a;                             \
+                T t = n;                             \
+                long r = (x op c) + x * 3L + c * 5L; \
+                r = r * 7 + (x op t) + x * 3L;       \
+                r = r * 7 + (s op c) + c * 3L;       \
+                r = r * 7 + (x op 1) + x * 3L;       \
+                r = r * 7 + (x op 31) + x * 3L;      \
+                r = r * 7 + (5 op c) + c * 3L;       \
+                r = r * 7 + (0x12345 op c) + c * 3L; \
+                return r * 7 + x * 3L + c * 5L;      \
+        }
 
 /* unary -, ~ and !, each value followed by a read of the variable */
-#define UNARY(T, N)                                                     \
-    long unary_##N(T a)                                                 \
-    {                                                                   \
-        register T x = a;                                               \
-        long r = -x + x * 3L;                                           \
-        r = r * 7 + ~x + x * 3L;                                        \
-        r = r * 7 + !x + x * 3L;                                        \
-        r = r * 7 + !!x + (-x) * 5L + ~x;                               \
-        return r * 7 + x;                                               \
-    }
+#define UNARY(T, N)                               \
+        long unary_##N(T a)                       \
+        {                                         \
+                register T x = a;                 \
+                long r = -x + x * 3L;             \
+                r = r * 7 + ~x + x * 3L;          \
+                r = r * 7 + !x + x * 3L;          \
+                r = r * 7 + !!x + (-x) * 5L + ~x; \
+                return r * 7 + x;                 \
+        }
 
+/* clang-format off */
 #define BINARY_ALL(T, N)                                                \
     OPERATORS(BINARY, T, N) DIVISIONS(BINARY, T, N) SHIFTS(SHIFT, T, N) \
     UNARY(T, N)
+/* clang-format on */
 
 TYPES(BINARY_ALL)
 
 /* every cast of a register variable to a wider and a narrower type,
    the variable read again after */
-#define CAST(F, FN, T, TN)                                              \
-    long cast_##FN##_##TN(F a)                                          \
-    {                                                                   \
-        register F x = a;                                               \
-        return (long) (T) x * 3 + x;                                    \
-    }
+#define CAST(F, FN, T, TN)                   \
+        long cast_##FN##_##TN(F a)           \
+        {                                    \
+                register F x = a;            \
+                return (long) (T) x * 3 + x; \
+        }
 #define CASTS(F, FN) TYPES2(CAST, F, FN)
 
 TYPES(CASTS)
@@ -143,43 +150,43 @@ TYPES(CASTS)
 /* Plain assignment, as a statement and for its value, from a constant,
    a slot, another register variable, a call's result; a value wider
    than the type, its truncation read back wide. */
-#define ASSIGN(T, N)                                                    \
-    long assign_##N(T a, T b, long w)                                   \
-    {                                                                   \
-        register T x;                                                   \
-        register T y = a;                                               \
-        T s = b;                                                        \
-        long r;                                                         \
-        x = 5;                                                          \
-        r = x;                                                          \
-        x = 0x12345;                                                    \
-        r = r * 7 + x;                                                  \
-        x = -0x123456789;                                               \
-        r = r * 7 + x;                                                  \
-        x = s;                                                          \
-        r = r * 7 + x;                                                  \
-        x = y;                                                          \
-        r = r * 7 + x + y * 3L;                                         \
-        x = lid(w);                                                     \
-        r = r * 7 + x;                                                  \
-        x = twice(w);                                                   \
-        r = r * 7 + x;                                                  \
-        x = w;                                                          \
-        r = r * 7 + x;                                                  \
-        x = w * 3 + 1;                                                  \
-        r = r * 7 + x;                                                  \
-        y = x = w - 3;                                                  \
-        r = r * 7 + x + y * 3L;                                         \
-        r = r * 7 + (x = b) + x;                                        \
-        r = r * 7 + (long) (x = w) + x;                                 \
-        r = r * 7 + (y = x = w + 7) * 5L + x + y;                       \
-        return r * 7 + x + y * 3L;                                      \
-    }                                                                   \
-    long assign_order_##N(T a, T b)                                     \
-    {                                                                   \
-        register T x = a;                                               \
-        return x + (x = b) + x * 3L;                                    \
-    }
+#define ASSIGN(T, N)                                      \
+        long assign_##N(T a, T b, long w)                 \
+        {                                                 \
+                register T x;                             \
+                register T y = a;                         \
+                T s = b;                                  \
+                long r;                                   \
+                x = 5;                                    \
+                r = x;                                    \
+                x = 0x12345;                              \
+                r = r * 7 + x;                            \
+                x = -0x123456789;                         \
+                r = r * 7 + x;                            \
+                x = s;                                    \
+                r = r * 7 + x;                            \
+                x = y;                                    \
+                r = r * 7 + x + y * 3L;                   \
+                x = lid(w);                               \
+                r = r * 7 + x;                            \
+                x = twice(w);                             \
+                r = r * 7 + x;                            \
+                x = w;                                    \
+                r = r * 7 + x;                            \
+                x = w * 3 + 1;                            \
+                r = r * 7 + x;                            \
+                y = x = w - 3;                            \
+                r = r * 7 + x + y * 3L;                   \
+                r = r * 7 + (x = b) + x;                  \
+                r = r * 7 + (long) (x = w) + x;           \
+                r = r * 7 + (y = x = w + 7) * 5L + x + y; \
+                return r * 7 + x + y * 3L;                \
+        }                                                 \
+        long assign_order_##N(T a, T b)                   \
+        {                                                 \
+                register T x = a;                         \
+                return x + (x = b) + x * 3L;              \
+        }
 
 TYPES(ASSIGN)
 
@@ -208,186 +215,188 @@ TYPES(GLOBAL)
 
 int g_count;
 
-#define LOAD(T, N)                                                      \
-    long load_##N(T a, T b)                                             \
-    {                                                                   \
-        register T x;                                                   \
-        T s = b;                                                        \
-        T v[4];                                                         \
-        T *p = &s;                                                      \
-        register T *q = v;                                              \
-        int k = (int) (a & 3);                                          \
-        long r;                                                         \
-        v[0] = a;                                                       \
-        v[1] = b;                                                       \
-        v[2] = a ^ b;                                                   \
-        v[3] = a - b;                                                   \
-        g_##N = a - 1;                                                  \
-        x = a;                                                          \
-        r = x;                                                          \
-        x = s;                                                          \
-        r = r * 7 + x;                                                  \
-        x = g_##N;                                                      \
-        r = r * 7 + x;                                                  \
-        x = *p;                                                         \
-        r = r * 7 + x;                                                  \
-        x = *q;                                                         \
-        r = r * 7 + x;                                                  \
-        x = v[k];                                                       \
-        r = r * 7 + x;                                                  \
-        x = q[k];                                                       \
-        r = r * 7 + x;                                                  \
-        x = v[2];                                                       \
-        r = r * 7 + x;                                                  \
-        r = r * 7 + (x + (x = s)) + x * 3L;                             \
-        r = r * 7 + (x = v[3]) * 5L + x;                                \
-        return r * 7 + x;                                               \
-    }                                                                   \
-    long iload_##N(T a, T b)                                            \
-    {                                                                   \
-        T s = b;                                                        \
-        T *p = &s;                                                      \
-        register T x = a;                                               \
-        register T y = s;                                               \
-        register T z = *p;                                              \
-        register T w = a * 3 - b;                                       \
-        register T e = y - x;                                           \
-        return x + y * 3L + z * 5L + w * 7L + e * 11L;                  \
-    }
+#define LOAD(T, N)                                             \
+        long load_##N(T a, T b)                                \
+        {                                                      \
+                register T x;                                  \
+                T s = b;                                       \
+                T v[4];                                        \
+                T *p = &s;                                     \
+                register T *q = v;                             \
+                int k = (int) (a & 3);                         \
+                long r;                                        \
+                v[0] = a;                                      \
+                v[1] = b;                                      \
+                v[2] = a ^ b;                                  \
+                v[3] = a - b;                                  \
+                g_##N = a - 1;                                 \
+                x = a;                                         \
+                r = x;                                         \
+                x = s;                                         \
+                r = r * 7 + x;                                 \
+                x = g_##N;                                     \
+                r = r * 7 + x;                                 \
+                x = *p;                                        \
+                r = r * 7 + x;                                 \
+                x = *q;                                        \
+                r = r * 7 + x;                                 \
+                x = v[k];                                      \
+                r = r * 7 + x;                                 \
+                x = q[k];                                      \
+                r = r * 7 + x;                                 \
+                x = v[2];                                      \
+                r = r * 7 + x;                                 \
+                r = r * 7 + (x + (x = s)) + x * 3L;            \
+                r = r * 7 + (x = v[3]) * 5L + x;               \
+                return r * 7 + x;                              \
+        }                                                      \
+        long iload_##N(T a, T b)                               \
+        {                                                      \
+                T s = b;                                       \
+                T *p = &s;                                     \
+                register T x = a;                              \
+                register T y = s;                              \
+                register T z = *p;                             \
+                register T w = a * 3 - b;                      \
+                register T e = y - x;                          \
+                return x + y * 3L + z * 5L + w * 7L + e * 11L; \
+        }
 
 TYPES(LOAD)
 
-#define DEST(T, N, name, op, small, large)                              \
-    long dest_##name##_##N(T a, T b, char c)                            \
-    {                                                                   \
-        register T x;                                                   \
-        register T y = b;                                               \
-        T s = b;                                                        \
-        T *p = &s;                                                      \
-        register T *q = &s;                                             \
-        long r;                                                         \
-        g_##N = b;                                                      \
-        x = a op small;                                                 \
-        r = x;                                                          \
-        x = a op large;                                                 \
-        r = r * 7 + x;                                                  \
-        x = a op s;                                                     \
-        r = r * 7 + x;                                                  \
-        x = a op b;                                                     \
-        r = r * 7 + x;                                                  \
-        x = a op y;                                                     \
-        r = r * 7 + x + y;                                              \
-        x = a op *p;                                                    \
-        r = r * 7 + x;                                                  \
-        x = a op *q;                                                    \
-        r = r * 7 + x;                                                  \
-        x = a op g_##N;                                                 \
-        r = r * 7 + x;                                                  \
-        x = a op c;                                                     \
-        r = r * 7 + x;                                                  \
-        x = (a op s) op y;                                              \
-        r = r * 7 + x;                                                  \
-        x = x op s;                                                     \
-        r = r * 7 + x;                                                  \
-        x = (x op small) op s;                                          \
-        r = r * 7 + x;                                                  \
-        x = s op x;                                                     \
-        r = r * 7 + x;                                                  \
-        x = a op (s op y);                                              \
-        r = r * 7 + x;                                                  \
-        r = r * 7 + (x + (x = a op s)) + x * 3L;                        \
-        r = r * 7 + (x + (x = (x op 1) op y)) * 5L + x;                 \
-        return r * 7 + x * 3L + y;                                      \
-    }                                                                   \
-    long idest_##name##_##N(T a, T b)                                   \
-    {                                                                   \
-        T s = b;                                                        \
-        register T y = b;                                               \
-        register T x = a op s;                                          \
-        register T z = (a op large) op y;                               \
-        register T w = x op y;                                          \
-        return x + z * 3L + w * 5L + y;                                 \
-    }
+#define DEST(T, N, name, op, small, large)                      \
+        long dest_##name##_##N(T a, T b, char c)                \
+        {                                                       \
+                register T x;                                   \
+                register T y = b;                               \
+                T s = b;                                        \
+                T *p = &s;                                      \
+                register T *q = &s;                             \
+                long r;                                         \
+                g_##N = b;                                      \
+                x = a op small;                                 \
+                r = x;                                          \
+                x = a op large;                                 \
+                r = r * 7 + x;                                  \
+                x = a op s;                                     \
+                r = r * 7 + x;                                  \
+                x = a op b;                                     \
+                r = r * 7 + x;                                  \
+                x = a op y;                                     \
+                r = r * 7 + x + y;                              \
+                x = a op * p;                                   \
+                r = r * 7 + x;                                  \
+                x = a op * q;                                   \
+                r = r * 7 + x;                                  \
+                x = a op g_##N;                                 \
+                r = r * 7 + x;                                  \
+                x = a op c;                                     \
+                r = r * 7 + x;                                  \
+                x = (a op s) op y;                              \
+                r = r * 7 + x;                                  \
+                x = x op s;                                     \
+                r = r * 7 + x;                                  \
+                x = (x op small) op s;                          \
+                r = r * 7 + x;                                  \
+                x = s op x;                                     \
+                r = r * 7 + x;                                  \
+                x = a op(s op y);                               \
+                r = r * 7 + x;                                  \
+                r = r * 7 + (x + (x = a op s)) + x * 3L;        \
+                r = r * 7 + (x + (x = (x op 1) op y)) * 5L + x; \
+                return r * 7 + x * 3L + y;                      \
+        }                                                       \
+        long idest_##name##_##N(T a, T b)                       \
+        {                                                       \
+                T s = b;                                        \
+                register T y = b;                               \
+                register T x = a op s;                          \
+                register T z = (a op large) op y;               \
+                register T w = x op y;                          \
+                return x + z * 3L + w * 5L + y;                 \
+        }
 
 /* the divisions: no divisor is the variable or c, which the main does
    not keep from 0 and -1, and the right operand that is no leaf is
    kept from them by its own bits */
-#define DEST_DIVISION(T, N, name, op, small, large)                     \
-    long dest_##name##_##N(T a, T b)                                    \
-    {                                                                   \
-        register T x;                                                   \
-        register T y = b;                                               \
-        T s = b;                                                        \
-        T *p = &s;                                                      \
-        register T *q = &s;                                             \
-        long r;                                                         \
-        g_##N = b;                                                      \
-        x = a op small;                                                 \
-        r = x;                                                          \
-        x = a op large;                                                 \
-        r = r * 7 + x;                                                  \
-        x = a op s;                                                     \
-        r = r * 7 + x;                                                  \
-        x = a op y;                                                     \
-        r = r * 7 + x + y;                                              \
-        x = a op *p;                                                    \
-        r = r * 7 + x;                                                  \
-        x = a op *q;                                                    \
-        r = r * 7 + x;                                                  \
-        x = a op g_##N;                                                 \
-        r = r * 7 + x;                                                  \
-        x = (a op s) op y;                                              \
-        r = r * 7 + x;                                                  \
-        x = x op s;                                                     \
-        r = r * 7 + x;                                                  \
-        x = a op ((s & 0x7f) | 1);                                      \
-        r = r * 7 + x;                                                  \
-        r = r * 7 + (x + (x = a op s)) + x * 3L;                        \
-        return r * 7 + x * 3L + y;                                      \
-    }
+#define DEST_DIVISION(T, N, name, op, small, large)      \
+        long dest_##name##_##N(T a, T b)                 \
+        {                                                \
+                register T x;                            \
+                register T y = b;                        \
+                T s = b;                                 \
+                T *p = &s;                               \
+                register T *q = &s;                      \
+                long r;                                  \
+                g_##N = b;                               \
+                x = a op small;                          \
+                r = x;                                   \
+                x = a op large;                          \
+                r = r * 7 + x;                           \
+                x = a op s;                              \
+                r = r * 7 + x;                           \
+                x = a op y;                              \
+                r = r * 7 + x + y;                       \
+                x = a op * p;                            \
+                r = r * 7 + x;                           \
+                x = a op * q;                            \
+                r = r * 7 + x;                           \
+                x = a op g_##N;                          \
+                r = r * 7 + x;                           \
+                x = (a op s) op y;                       \
+                r = r * 7 + x;                           \
+                x = x op s;                              \
+                r = r * 7 + x;                           \
+                x = a op((s & 0x7f) | 1);                \
+                r = r * 7 + x;                           \
+                r = r * 7 + (x + (x = a op s)) + x * 3L; \
+                return r * 7 + x * 3L + y;               \
+        }
 
 /* the shifts, every count below 32; the count that names the variable
    is the variable set to the count first */
-#define DEST_SHIFT(T, N, name, op)                                      \
-    long dest_##name##_##N(T a, int n)                                  \
-    {                                                                   \
-        register T x;                                                   \
-        register int k = n;                                             \
-        int t = n;                                                      \
-        int *p = &t;                                                    \
-        register int *q = &t;                                           \
-        long r;                                                         \
-        g_count = n;                                                    \
-        x = a op 1;                                                     \
-        r = x;                                                          \
-        x = a op 31;                                                    \
-        r = r * 7 + x;                                                  \
-        x = a op t;                                                     \
-        r = r * 7 + x;                                                  \
-        x = a op n;                                                     \
-        r = r * 7 + x;                                                  \
-        x = a op k;                                                     \
-        r = r * 7 + x;                                                  \
-        x = a op *p;                                                    \
-        r = r * 7 + x;                                                  \
-        x = a op *q;                                                    \
-        r = r * 7 + x;                                                  \
-        x = a op g_count;                                               \
-        r = r * 7 + x;                                                  \
-        x = x op t;                                                     \
-        r = r * 7 + x;                                                  \
-        x = n;                                                          \
-        x = a op x;                                                     \
-        r = r * 7 + x;                                                  \
-        x = a op (t & 15);                                              \
-        r = r * 7 + x;                                                  \
-        r = r * 7 + (x + (x = a op t)) + x * 3L;                        \
-        return r * 7 + x * 3L + k;                                      \
-    }
+#define DEST_SHIFT(T, N, name, op)                       \
+        long dest_##name##_##N(T a, int n)               \
+        {                                                \
+                register T x;                            \
+                register int k = n;                      \
+                int t = n;                               \
+                int *p = &t;                             \
+                register int *q = &t;                    \
+                long r;                                  \
+                g_count = n;                             \
+                x = a op 1;                              \
+                r = x;                                   \
+                x = a op 31;                             \
+                r = r * 7 + x;                           \
+                x = a op t;                              \
+                r = r * 7 + x;                           \
+                x = a op n;                              \
+                r = r * 7 + x;                           \
+                x = a op k;                              \
+                r = r * 7 + x;                           \
+                x = a op * p;                            \
+                r = r * 7 + x;                           \
+                x = a op * q;                            \
+                r = r * 7 + x;                           \
+                x = a op g_count;                        \
+                r = r * 7 + x;                           \
+                x = x op t;                              \
+                r = r * 7 + x;                           \
+                x = n;                                   \
+                x = a op x;                              \
+                r = r * 7 + x;                           \
+                x = a op(t & 15);                        \
+                r = r * 7 + x;                           \
+                r = r * 7 + (x + (x = a op t)) + x * 3L; \
+                return r * 7 + x * 3L + k;               \
+        }
 
+/* clang-format off */
 #define DEST_ALL(T, N)                                                  \
     OPERATORS(DEST, T, N) DIVISIONS(DEST_DIVISION, T, N)                \
     SHIFTS(DEST_SHIFT, T, N)
+/* clang-format on */
 
 TYPES(DEST_ALL)
 
@@ -396,37 +405,37 @@ TYPES(DEST_ALL)
    - q.  x86-64 writes it for the address, and for the comparison, -
    and ~ into a variable of the operator's type, and keeps the mov
    after the rest */
-#define DEST_OTHER(T, N)                                                \
-    long dother_##N(T a, T b)                                           \
-    {                                                                   \
-        T s = b;                                                        \
-        T v[2];                                                         \
-        register T x;                                                   \
-        register long w;                                                \
-        register T *q;                                                  \
-        long r;                                                         \
-        v[0] = a;                                                       \
-        v[1] = b;                                                       \
-        x = a < s;                                                      \
-        r = x;                                                          \
-        x = -s;                                                         \
-        r = r * 7 + x;                                                  \
-        x = ~s;                                                         \
-        r = r * 7 + x;                                                  \
-        x = !s;                                                         \
-        r = r * 7 + x;                                                  \
-        w = a + s;                                                      \
-        r = r * 7 + w;                                                  \
-        w = a;                                                          \
-        r = r * 7 + w;                                                  \
-        q = v;                                                          \
-        r = r * 7 + *q;                                                 \
-        q = &v[1];                                                      \
-        r = r * 7 + *q;                                                 \
-        w = q - v;                                                      \
-        r = r * 7 + w;                                                  \
-        return r * 7 + x + w * 3L;                                      \
-    }
+#define DEST_OTHER(T, N)                   \
+        long dother_##N(T a, T b)          \
+        {                                  \
+                T s = b;                   \
+                T v[2];                    \
+                register T x;              \
+                register long w;           \
+                register T *q;             \
+                long r;                    \
+                v[0] = a;                  \
+                v[1] = b;                  \
+                x = a < s;                 \
+                r = x;                     \
+                x = -s;                    \
+                r = r * 7 + x;             \
+                x = ~s;                    \
+                r = r * 7 + x;             \
+                x = !s;                    \
+                r = r * 7 + x;             \
+                w = a + s;                 \
+                r = r * 7 + w;             \
+                w = a;                     \
+                r = r * 7 + w;             \
+                q = v;                     \
+                r = r * 7 + *q;            \
+                q = &v[1];                 \
+                r = r * 7 + *q;            \
+                w = q - v;                 \
+                r = r * 7 + w;             \
+                return r * 7 + x + w * 3L; \
+        }
 
 TYPES(DEST_OTHER)
 
@@ -438,65 +447,65 @@ TYPES(DEST_OTHER)
    through a pointer; and after a 32-bit operation that makes it
    negative, - 2 and ~, which leaves it valid to 32 bits again, widened
    to long.  The operands of each type. */
-#define TRUTH(T, N)                                                     \
-    long truth_##N(T a, T b)                                            \
-    {                                                                   \
-        T s = b;                                                        \
-        long w = 11;                                                    \
-        long *p = &w;                                                   \
-        long v[2];                                                      \
-        register long l;                                                \
-        register unsigned long u;                                       \
-        long r;                                                         \
-        v[0] = 3;                                                       \
-        v[1] = 5;                                                       \
-        r = (long) (a < s);                                             \
-        r = r * 7 + (unsigned long) (s >= a);                           \
-        r = r * 7 + (long) !a;                                          \
-        r = r * 7 + (unsigned long) !s;                                 \
-        r = r * 7 + (long) (a && s);                                    \
-        r = r * 7 + (unsigned long) (a || s);                           \
-        r = r * 7 + v[a == s];                                          \
-        r = r * 7 + w + (a != s);                                       \
-        r = r * 7 + ((long) (a < s) << 40);                             \
-        r = r * 7 - (long) (a > s);                                     \
-        r = r * 7 + (long) ((a < s) - 2);                               \
-        r = r * 7 + (long) (!a - 2);                                    \
-        r = r * 7 + (long) ~(a && s);                                   \
-        l = a < s;                                                      \
-        r = r * 7 + l;                                                  \
-        l = !a;                                                         \
-        r = r * 7 + l;                                                  \
-        l = a && s;                                                     \
-        r = r * 7 + l;                                                  \
-        u = a > s;                                                      \
-        r = r * 7 + u;                                                  \
-        u = a || s;                                                     \
-        r = r * 7 + u;                                                  \
-        *p = a <= s;                                                    \
-        r = r * 7 + w;                                                  \
-        return r * 7 + l * 3 + u * 5;                                   \
-    }
+#define TRUTH(T, N)                                   \
+        long truth_##N(T a, T b)                      \
+        {                                             \
+                T s = b;                              \
+                long w = 11;                          \
+                long *p = &w;                         \
+                long v[2];                            \
+                register long l;                      \
+                register unsigned long u;             \
+                long r;                               \
+                v[0] = 3;                             \
+                v[1] = 5;                             \
+                r = (long) (a < s);                   \
+                r = r * 7 + (unsigned long) (s >= a); \
+                r = r * 7 + (long) !a;                \
+                r = r * 7 + (unsigned long) !s;       \
+                r = r * 7 + (long) (a && s);          \
+                r = r * 7 + (unsigned long) (a || s); \
+                r = r * 7 + v[a == s];                \
+                r = r * 7 + w + (a != s);             \
+                r = r * 7 + ((long) (a < s) << 40);   \
+                r = r * 7 - (long) (a > s);           \
+                r = r * 7 + (long) ((a < s) - 2);     \
+                r = r * 7 + (long) (!a - 2);          \
+                r = r * 7 + (long) ~(a && s);         \
+                l = a < s;                            \
+                r = r * 7 + l;                        \
+                l = !a;                               \
+                r = r * 7 + l;                        \
+                l = a && s;                           \
+                r = r * 7 + l;                        \
+                u = a > s;                            \
+                r = r * 7 + u;                        \
+                u = a || s;                           \
+                r = r * 7 + u;                        \
+                *p = a <= s;                          \
+                r = r * 7 + w;                        \
+                return r * 7 + l * 3 + u * 5;         \
+        }
 
 TYPES(TRUTH)
 
 /* a load into a register variable of every other type, from a
    parameter, a local, through a pointer and from a global, by the
    initializer and by the assignment */
-#define CONVERT(F, FN, T, TN)                                           \
-    long convert_##FN##_##TN(F a, F b)                                  \
-    {                                                                   \
-        F s = b;                                                        \
-        F *p = &s;                                                      \
-        register T x = a;                                               \
-        register T y = s;                                               \
-        register T z = *p;                                              \
-        g_##FN = a ^ b;                                                 \
-        long r = x + y * 3L + z * 5L;                                   \
-        y = g_##FN;                                                     \
-        x = b;                                                          \
-        return r * 7 + x + y * 3L;                                      \
-    }
+#define CONVERT(F, FN, T, TN)                 \
+        long convert_##FN##_##TN(F a, F b)    \
+        {                                     \
+                F s = b;                      \
+                F *p = &s;                    \
+                register T x = a;             \
+                register T y = s;             \
+                register T z = *p;            \
+                g_##FN = a ^ b;               \
+                long r = x + y * 3L + z * 5L; \
+                y = g_##FN;                   \
+                x = b;                        \
+                return r * 7 + x + y * 3L;    \
+        }
 #define CONVERTS(F, FN) TYPES2(CONVERT, F, FN)
 
 TYPES(CONVERTS)
@@ -506,38 +515,39 @@ TYPES(CONVERTS)
    pointer plus a constant, &p[i], another register pointer; its read
    held across the assignment.  The main's buffer is the memory, and a
    result is an offset in it. */
-#define PDEST(E, T)                                                     \
-    T *gp_##E;                                                          \
-    long pdest_##E(T *base, long i)                                     \
-    {                                                                   \
-        T *s = base;                                                    \
-        T *v[2];                                                        \
-        T **pp = &s;                                                    \
-        register T *q;                                                  \
-        register T *w = base + 1;                                       \
-        long r;                                                         \
-        v[0] = base;                                                    \
-        v[1] = base + 2;                                                \
-        gp_##E = base + 3;                                              \
-        q = s;                                                          \
-        r = q - base;                                                   \
-        q = *pp;                                                        \
-        r = r * 7 + (q - base);                                         \
-        q = gp_##E;                                                     \
-        r = r * 7 + (q - base);                                         \
-        q = v[i & 1];                                                   \
-        r = r * 7 + (q - base);                                         \
-        q = s + i;                                                      \
-        r = r * 7 + (q - base);                                         \
-        q = w + 2;                                                      \
-        r = r * 7 + (q - base);                                         \
-        q = &s[i];                                                      \
-        r = r * 7 + (q - base);                                         \
-        q = w;                                                          \
-        r = r * 7 + (q - base);                                         \
-        r = r * 7 + (q - base) + ((q = s + 1) - base) + (q - base) * 3; \
-        return r * 7 + (q - base) + (w - base) * 3;                     \
-    }
+#define PDEST(E, T)                                             \
+        T *gp_##E;                                              \
+        long pdest_##E(T *base, long i)                         \
+        {                                                       \
+                T *s = base;                                    \
+                T *v[2];                                        \
+                T **pp = &s;                                    \
+                register T *q;                                  \
+                register T *w = base + 1;                       \
+                long r;                                         \
+                v[0] = base;                                    \
+                v[1] = base + 2;                                \
+                gp_##E = base + 3;                              \
+                q = s;                                          \
+                r = q - base;                                   \
+                q = *pp;                                        \
+                r = r * 7 + (q - base);                         \
+                q = gp_##E;                                     \
+                r = r * 7 + (q - base);                         \
+                q = v[i & 1];                                   \
+                r = r * 7 + (q - base);                         \
+                q = s + i;                                      \
+                r = r * 7 + (q - base);                         \
+                q = w + 2;                                      \
+                r = r * 7 + (q - base);                         \
+                q = &s[i];                                      \
+                r = r * 7 + (q - base);                         \
+                q = w;                                          \
+                r = r * 7 + (q - base);                         \
+                r = r * 7 + (q - base) + ((q = s + 1) - base) + \
+                    (q - base) * 3;                             \
+                return r * 7 + (q - base) + (w - base) * 3;     \
+        }
 
 SCALARS(PDEST)
 
@@ -552,106 +562,108 @@ SCALARS(PDEST)
    is an offset from the main's buffer, a local array or a global one,
    or an equality. */
 
-#define ADEST(E, T)                                                     \
-    T gav_##E[8];                                                       \
-    T *gaq_##E;                                                         \
-    extern T lga_##E[8];                                                \
-    long adest_##E(T *base, long i, int j)                              \
-    {                                                                   \
-        T a[4];                                                         \
-        T x;                                                            \
-        T *s = base;                                                    \
-        long n = i;                                                     \
-        long *pn = &n;                                                  \
-        register T *w = base + 2;                                       \
-        register long k = i;                                            \
-        register T *q;                                                  \
-        long r;                                                         \
-        gaq_##E = base + 1;                                             \
-        g_l = i;                                                        \
-        q = &x;                                                         \
-        r = q == &x;                                                    \
-        q = a;                                                          \
-        r = r * 7 + (q - a);                                            \
-        q = &a[j & 3];                                                  \
-        r = r * 7 + (q - a);                                            \
-        q = &a[2];                                                      \
-        r = r * 7 + (q - a);                                            \
-        q = gav_##E;                                                    \
-        r = r * 7 + (q - gav_##E);                                      \
-        q = &gav_##E[j & 7];                                            \
-        r = r * 7 + (q - gav_##E);                                      \
-        q = lga_##E;                                                    \
-        r = r * 7 + (q - lga_##E);                                      \
-        q = lga_##E + 3;                                                \
-        r = r * 7 + (q - lga_##E);                                      \
-        q = &lga_##E[j & 7];                                            \
-        r = r * 7 + (q - lga_##E);                                      \
-        q = base + i;                                                   \
-        r = r * 7 + (q - base);                                         \
-        q = base + j;                                                   \
-        r = r * 7 + (q - base);                                         \
-        q = s + n;                                                      \
-        r = r * 7 + (q - base);                                         \
-        q = n + s;                                                      \
-        r = r * 7 + (q - base);                                         \
-        q = s - n;                                                      \
-        r = r * 7 + (q - base);                                         \
-        q = s + 3;                                                      \
-        r = r * 7 + (q - base);                                         \
-        q = s - 3;                                                      \
-        r = r * 7 + (q - base);                                         \
-        q = s + *pn;                                                    \
-        r = r * 7 + (q - base);                                         \
-        q = gaq_##E + g_l;                                              \
-        r = r * 7 + (q - base);                                         \
-        q = gaq_##E - g_l;                                              \
-        r = r * 7 + (q - base);                                         \
-        q = w + k;                                                      \
-        r = r * 7 + (q - base);                                         \
-        q = k + w;                                                      \
-        r = r * 7 + (q - base);                                         \
-        q = w - k;                                                      \
-        r = r * 7 + (q - base);                                         \
-        q = w + 1;                                                      \
-        r = r * 7 + (q - base);                                         \
-        q = w - 1;                                                      \
-        r = r * 7 + (q - base);                                         \
-        q = q + 1;                                                      \
-        r = r * 7 + (q - base);                                         \
-        q = q - n;                                                      \
-        r = r * 7 + (q - base);                                         \
-        q = q + n;                                                      \
-        r = r * 7 + (q - base);                                         \
-        q = n + q;                                                      \
-        r = r * 7 + (q - base);                                         \
-        q = q - k;                                                      \
-        r = r * 7 + (q - base);                                         \
-        q = s + (n - 1);                                                \
-        r = r * 7 + (q - base);                                         \
-        q = s - (n + 1);                                                \
-        r = r * 7 + (q - base);                                         \
-        q = s + (q - base);                                             \
-        r = r * 7 + (q - base);                                         \
-        q = s - (q - base);                                             \
-        r = r * 7 + (q - base);                                         \
-        r = r * 7 + (q - base) + ((q = s + n) - base) + (q - base) * 3; \
-        r = r * 7 + (q - base) + ((q = s - 1) - base) + (q - base) * 3; \
-        r = r * 7 + (q - base) + ((q = &a[1]) - a) + (q - a) * 3;       \
-        r = r * 7 + ((q = q - n) - a) * 5 + (q - a);                    \
-        return r * 7 + (q - a);                                         \
-    }                                                                   \
-    long iadest_##E(T *base, long i)                                    \
-    {                                                                   \
-        T a[4];                                                         \
-        register T *p = a;                                              \
-        register T *q = base + i;                                       \
-        register T *z = q - 1;                                          \
-        register T *u = &gav_##E[2];                                    \
-        register T *v = lga_##E;                                        \
-        return (p - a) + (q - base) * 3 + (z - base) * 5                \
-               + (u - gav_##E) * 7 + (v - lga_##E) * 11;                \
-    }
+#define ADEST(E, T)                                                       \
+        T gav_##E[8];                                                     \
+        T *gaq_##E;                                                       \
+        extern T lga_##E[8];                                              \
+        long adest_##E(T *base, long i, int j)                            \
+        {                                                                 \
+                T a[4];                                                   \
+                T x;                                                      \
+                T *s = base;                                              \
+                long n = i;                                               \
+                long *pn = &n;                                            \
+                register T *w = base + 2;                                 \
+                register long k = i;                                      \
+                register T *q;                                            \
+                long r;                                                   \
+                gaq_##E = base + 1;                                       \
+                g_l = i;                                                  \
+                q = &x;                                                   \
+                r = q == &x;                                              \
+                q = a;                                                    \
+                r = r * 7 + (q - a);                                      \
+                q = &a[j & 3];                                            \
+                r = r * 7 + (q - a);                                      \
+                q = &a[2];                                                \
+                r = r * 7 + (q - a);                                      \
+                q = gav_##E;                                              \
+                r = r * 7 + (q - gav_##E);                                \
+                q = &gav_##E[j & 7];                                      \
+                r = r * 7 + (q - gav_##E);                                \
+                q = lga_##E;                                              \
+                r = r * 7 + (q - lga_##E);                                \
+                q = lga_##E + 3;                                          \
+                r = r * 7 + (q - lga_##E);                                \
+                q = &lga_##E[j & 7];                                      \
+                r = r * 7 + (q - lga_##E);                                \
+                q = base + i;                                             \
+                r = r * 7 + (q - base);                                   \
+                q = base + j;                                             \
+                r = r * 7 + (q - base);                                   \
+                q = s + n;                                                \
+                r = r * 7 + (q - base);                                   \
+                q = n + s;                                                \
+                r = r * 7 + (q - base);                                   \
+                q = s - n;                                                \
+                r = r * 7 + (q - base);                                   \
+                q = s + 3;                                                \
+                r = r * 7 + (q - base);                                   \
+                q = s - 3;                                                \
+                r = r * 7 + (q - base);                                   \
+                q = s + *pn;                                              \
+                r = r * 7 + (q - base);                                   \
+                q = gaq_##E + g_l;                                        \
+                r = r * 7 + (q - base);                                   \
+                q = gaq_##E - g_l;                                        \
+                r = r * 7 + (q - base);                                   \
+                q = w + k;                                                \
+                r = r * 7 + (q - base);                                   \
+                q = k + w;                                                \
+                r = r * 7 + (q - base);                                   \
+                q = w - k;                                                \
+                r = r * 7 + (q - base);                                   \
+                q = w + 1;                                                \
+                r = r * 7 + (q - base);                                   \
+                q = w - 1;                                                \
+                r = r * 7 + (q - base);                                   \
+                q = q + 1;                                                \
+                r = r * 7 + (q - base);                                   \
+                q = q - n;                                                \
+                r = r * 7 + (q - base);                                   \
+                q = q + n;                                                \
+                r = r * 7 + (q - base);                                   \
+                q = n + q;                                                \
+                r = r * 7 + (q - base);                                   \
+                q = q - k;                                                \
+                r = r * 7 + (q - base);                                   \
+                q = s + (n - 1);                                          \
+                r = r * 7 + (q - base);                                   \
+                q = s - (n + 1);                                          \
+                r = r * 7 + (q - base);                                   \
+                q = s + (q - base);                                       \
+                r = r * 7 + (q - base);                                   \
+                q = s - (q - base);                                       \
+                r = r * 7 + (q - base);                                   \
+                r = r * 7 + (q - base) + ((q = s + n) - base) +           \
+                    (q - base) * 3;                                       \
+                r = r * 7 + (q - base) + ((q = s - 1) - base) +           \
+                    (q - base) * 3;                                       \
+                r = r * 7 + (q - base) + ((q = &a[1]) - a) + (q - a) * 3; \
+                r = r * 7 + ((q = q - n) - a) * 5 + (q - a);              \
+                return r * 7 + (q - a);                                   \
+        }                                                                 \
+        long iadest_##E(T *base, long i)                                  \
+        {                                                                 \
+                T a[4];                                                   \
+                register T *p = a;                                        \
+                register T *q = base + i;                                 \
+                register T *z = q - 1;                                    \
+                register T *u = &gav_##E[2];                              \
+                register T *v = lga_##E;                                  \
+                return (p - a) + (q - base) * 3 + (z - base) * 5 +        \
+                       (u - gav_##E) * 7 + (v - lga_##E) * 11;            \
+        }
 POINTEES(ADEST)
 
 /* The address rows at the edge of the destination, backend.md chapter
@@ -661,30 +673,30 @@ POINTEES(ADEST)
    address of an element of a local array by an index, &a[i]; beside
    them a sum whose right operand names the variable, which keeps the
    mov. */
-#define PEDGE(E, T)                                                     \
-    long pedge_##E(T *base, long i, int j)                              \
-    {                                                                   \
-        T a[8];                                                         \
-        register T *w = base + j;                                       \
-        register T *q;                                                  \
-        long r;                                                         \
-        q = gav_##E + i;                                                \
-        r = q - gav_##E;                                                \
-        q = lga_##E + i;                                                \
-        r = r * 7 + (q - lga_##E);                                      \
-        q = a + i;                                                      \
-        r = r * 7 + (q - a);                                            \
-        q = gav_##E + i + j;                                            \
-        r = r * 7 + (q - gav_##E);                                      \
-        q = &*w;                                                        \
-        r = r * 7 + (q - base);                                         \
-        q = &w[0];                                                      \
-        r = r * 7 + (q - base);                                         \
-        q = &a[i];                                                      \
-        r = r * 7 + (q - a);                                            \
-        q = a + (q - a);                                                \
-        return r * 7 + (q - a);                                         \
-    }
+#define PEDGE(E, T)                            \
+        long pedge_##E(T *base, long i, int j) \
+        {                                      \
+                T a[8];                        \
+                register T *w = base + j;      \
+                register T *q;                 \
+                long r;                        \
+                q = gav_##E + i;               \
+                r = q - gav_##E;               \
+                q = lga_##E + i;               \
+                r = r * 7 + (q - lga_##E);     \
+                q = a + i;                     \
+                r = r * 7 + (q - a);           \
+                q = gav_##E + i + j;           \
+                r = r * 7 + (q - gav_##E);     \
+                q = &*w;                       \
+                r = r * 7 + (q - base);        \
+                q = &w[0];                     \
+                r = r * 7 + (q - base);        \
+                q = &a[i];                     \
+                r = r * 7 + (q - a);           \
+                q = a + (q - a);               \
+                return r * 7 + (q - a);        \
+        }
 POINTEES(PEDGE)
 
 /* a sum whose right operand is a leaf that names the variable, *q,
@@ -709,40 +721,40 @@ pedge_named(long i)
    whose address reads the variable, and beside them a step widened to
    long; r = !x into the variable and into a long; each read after.
    G13: the value is the old one, and the object holds the new one. */
-#define EDGE(T, N)                                                      \
-    long edge_##N(T a, T b)                                             \
-    {                                                                   \
-        T x = a;                                                        \
-        T *p = &x;                                                      \
-        T y[4];                                                         \
-        register T r;                                                   \
-        register T s = b;                                               \
-        register long l;                                                \
-        long k;                                                         \
-        y[0] = a;                                                       \
-        y[1] = b;                                                       \
-        y[2] = a ^ b;                                                   \
-        y[3] = 3;                                                       \
-        r = x++;                                                        \
-        k = r * 7L + x;                                                 \
-        r = x--;                                                        \
-        k = k * 7 + r + x * 3L;                                         \
-        r = (*p)++;                                                     \
-        k = k * 7 + r + x * 3L;                                         \
-        r = s++;                                                        \
-        k = k * 7 + r + s * 3L;                                         \
-        r = s--;                                                        \
-        k = k * 7 + r + s * 3L;                                         \
-        r = 1;                                                          \
-        r = y[r]++;                                                     \
-        k = k * 7 + r + y[1] * 3L;                                      \
-        l = x++;                                                        \
-        k = k * 7 + l + x * 3L;                                         \
-        r = !a;                                                         \
-        k = k * 7 + r;                                                  \
-        l = !s;                                                         \
-        return k * 7 + l;                                               \
-    }
+#define EDGE(T, N)                         \
+        long edge_##N(T a, T b)            \
+        {                                  \
+                T x = a;                   \
+                T *p = &x;                 \
+                T y[4];                    \
+                register T r;              \
+                register T s = b;          \
+                register long l;           \
+                long k;                    \
+                y[0] = a;                  \
+                y[1] = b;                  \
+                y[2] = a ^ b;              \
+                y[3] = 3;                  \
+                r = x++;                   \
+                k = r * 7L + x;            \
+                r = x--;                   \
+                k = k * 7 + r + x * 3L;    \
+                r = (*p)++;                \
+                k = k * 7 + r + x * 3L;    \
+                r = s++;                   \
+                k = k * 7 + r + s * 3L;    \
+                r = s--;                   \
+                k = k * 7 + r + s * 3L;    \
+                r = 1;                     \
+                r = y[r]++;                \
+                k = k * 7 + r + y[1] * 3L; \
+                l = x++;                   \
+                k = k * 7 + l + x * 3L;    \
+                r = !a;                    \
+                k = k * 7 + r;             \
+                l = !s;                    \
+                return k * 7 + l;          \
+        }
 
 TYPES(EDGE)
 
@@ -752,28 +764,28 @@ TYPES(EDGE)
    ++y[r] and r = --y[r], whose address reads the variable, so that the
    variable's register holds the index until the store; each read
    after. */
-#define EDGE_PRE(T, N)                                                  \
-    long edge_pre_##N(T a, T b)                                         \
-    {                                                                   \
-        T x = a;                                                        \
-        T y[4];                                                         \
-        register T r;                                                   \
-        long k;                                                         \
-        y[0] = a;                                                       \
-        y[1] = b;                                                       \
-        y[2] = a ^ b;                                                   \
-        y[3] = 3;                                                       \
-        r = ++x;                                                        \
-        k = r * 7L + x;                                                 \
-        r = --x;                                                        \
-        k = k * 7 + r + x * 3L;                                         \
-        r = 1;                                                          \
-        r = ++y[r];                                                     \
-        k = k * 7 + r + y[1] * 3L;                                      \
-        r = 2;                                                          \
-        r = --y[r];                                                     \
-        return k * 7 + r + y[2] * 3L;                                   \
-    }
+#define EDGE_PRE(T, N)                        \
+        long edge_pre_##N(T a, T b)           \
+        {                                     \
+                T x = a;                      \
+                T y[4];                       \
+                register T r;                 \
+                long k;                       \
+                y[0] = a;                     \
+                y[1] = b;                     \
+                y[2] = a ^ b;                 \
+                y[3] = 3;                     \
+                r = ++x;                      \
+                k = r * 7L + x;               \
+                r = --x;                      \
+                k = k * 7 + r + x * 3L;       \
+                r = 1;                        \
+                r = ++y[r];                   \
+                k = k * 7 + r + y[1] * 3L;    \
+                r = 2;                        \
+                r = --y[r];                   \
+                return k * 7 + r + y[2] * 3L; \
+        }
 
 TYPES(EDGE_PRE)
 
@@ -786,25 +798,28 @@ TYPES(EDGE_PRE)
    value; a quotient held across the difference, and a remainder of
    it.  Each pointee: sizes 1, 4, 8 and 12. */
 
-#define ADIFF(E, T)                                                     \
-    T *apick_##E(T *p, long i) { return p + (i & 7); }                  \
-    long adiff_##E(T *base, long i, int j)                              \
-    {                                                                   \
-        T *s = base + (j & 7);                                          \
-        T **pp = &s;                                                    \
-        register T *q = base + i;                                       \
-        register T *w = base - 2;                                       \
-        long r;                                                         \
-        r = q - base;                                                   \
-        r = r * 7 + (q - *pp);                                          \
-        r = r * 7 + (q - w);                                            \
-        r = r * 7 + (q - &base[j]);                                     \
-        r = r * 7 + (q - &base[i / 3]);                                 \
-        r = r * 7 + (q - apick_##E(base, i));                           \
-        r = r * 7 + ((q = &base[j]) - &base[i]);                        \
-        r = r * 7 + (i / (j | 1) + (q - &s[1]));                        \
-        return r * 7 + (q - s) % 5;                                     \
-    }
+#define ADIFF(E, T)                                      \
+        T *apick_##E(T *p, long i)                       \
+        {                                                \
+                return p + (i & 7);                      \
+        }                                                \
+        long adiff_##E(T *base, long i, int j)           \
+        {                                                \
+                T *s = base + (j & 7);                   \
+                T **pp = &s;                             \
+                register T *q = base + i;                \
+                register T *w = base - 2;                \
+                long r;                                  \
+                r = q - base;                            \
+                r = r * 7 + (q - *pp);                   \
+                r = r * 7 + (q - w);                     \
+                r = r * 7 + (q - &base[j]);              \
+                r = r * 7 + (q - &base[i / 3]);          \
+                r = r * 7 + (q - apick_##E(base, i));    \
+                r = r * 7 + ((q = &base[j]) - &base[i]); \
+                r = r * 7 + (i / (j | 1) + (q - &s[1])); \
+                return r * 7 + (q - s) % 5;              \
+        }
 POINTEES(ADIFF)
 
 /* A pointer plus a constant index into a register pointer, backend.md
@@ -815,29 +830,30 @@ POINTEES(ADIFF)
    the variable held across the assignment.  Each pointee: sizes 1, 4,
    8 and 12. */
 
-#define KDEST(E, T)                                                     \
-    long kdest_##E(T *base, long i)                                     \
-    {                                                                   \
-        T *s = base;                                                    \
-        T **ps = &s;                                                    \
-        register T *w = base + 1;                                       \
-        register T *q;                                                  \
-        long r;                                                         \
-        q = &s[1];                                                      \
-        r = q - base;                                                   \
-        q = &(*ps)[2];                                                  \
-        r = r * 7 + (q - base);                                         \
-        q = &w[2];                                                      \
-        r = r * 7 + (q - base);                                         \
-        q = &q[1];                                                      \
-        r = r * 7 + (q - base);                                         \
-        q = &(s + (i & 3))[1];                                          \
-        r = r * 7 + (q - base);                                         \
-        q = &apick_##E(base, i)[1];                                     \
-        r = r * 7 + (q - base);                                         \
-        r = r * 7 + (q - base) + ((q = &s[3]) - base) + (q - base) * 3; \
-        return r * 7 + (q - base);                                      \
-    }
+#define KDEST(E, T)                                             \
+        long kdest_##E(T *base, long i)                         \
+        {                                                       \
+                T *s = base;                                    \
+                T **ps = &s;                                    \
+                register T *w = base + 1;                       \
+                register T *q;                                  \
+                long r;                                         \
+                q = &s[1];                                      \
+                r = q - base;                                   \
+                q = &(*ps)[2];                                  \
+                r = r * 7 + (q - base);                         \
+                q = &w[2];                                      \
+                r = r * 7 + (q - base);                         \
+                q = &q[1];                                      \
+                r = r * 7 + (q - base);                         \
+                q = &(s + (i & 3))[1];                          \
+                r = r * 7 + (q - base);                         \
+                q = &apick_##E(base, i)[1];                     \
+                r = r * 7 + (q - base);                         \
+                r = r * 7 + (q - base) + ((q = &s[3]) - base) + \
+                    (q - base) * 3;                             \
+                return r * 7 + (q - base);                      \
+        }
 POINTEES(KDEST)
 
 /* An lvalue's address plus a constant into a register pointer,
@@ -846,18 +862,18 @@ POINTEES(KDEST)
    &m[1][2]; and constants that sum to 0, &m[1][-3], the pointer's
    value alone.  Each pointee: sizes 1, 4, 8 and 12. */
 
-#define KCOL(E, T)                                                      \
-    long kcol_##E(T m[][3], long i)                                     \
-    {                                                                   \
-        register T *q;                                                  \
-        long r;                                                         \
-        q = &m[1][2];                                                   \
-        r = q - &m[0][0];                                               \
-        q = &m[1][-3];                                                  \
-        r = r * 7 + (q - &m[0][0]);                                     \
-        q = &m[2][1];                                                   \
-        return r * 7 + (q - &m[0][0]) + i;                              \
-    }
+#define KCOL(E, T)                                 \
+        long kcol_##E(T m[][3], long i)            \
+        {                                          \
+                register T *q;                     \
+                long r;                            \
+                q = &m[1][2];                      \
+                r = q - &m[0][0];                  \
+                q = &m[1][-3];                     \
+                r = r * 7 + (q - &m[0][0]);        \
+                q = &m[2][1];                      \
+                return r * 7 + (q - &m[0][0]) + i; \
+        }
 POINTEES(KCOL)
 
 /* A return of a pointer row whose right operand writes the register
@@ -867,17 +883,17 @@ POINTEES(KCOL)
    writes left to right, as ret_nested_, and p - (p = t).  Each
    pointee: sizes 1, 4, 8 and 12. */
 
-#define KCOPY(E, T)                                                     \
-    T *kcopy_sum_##E(T *base, long i)                                   \
-    {                                                                   \
-        register T *p = base + 1;                                       \
-        return p + ((i & 3) + (p = base + 3, 0));                       \
-    }                                                                   \
-    long kcopy_diff_##E(T *base, long i)                                \
-    {                                                                   \
-        register T *p = base + (i & 7);                                 \
-        return p - (p = base + 2);                                      \
-    }
+#define KCOPY(E, T)                                       \
+        T *kcopy_sum_##E(T *base, long i)                 \
+        {                                                 \
+                register T *p = base + 1;                 \
+                return p + ((i & 3) + (p = base + 3, 0)); \
+        }                                                 \
+        long kcopy_diff_##E(T *base, long i)              \
+        {                                                 \
+                register T *p = base + (i & 7);           \
+                return p - (p = base + 2);                \
+        }
 POINTEES(KCOPY)
 
 /* A pointer plus a register variable's read, x86-64, backend.md 6.1:
@@ -885,15 +901,15 @@ POINTEES(KCOPY)
    variable's, whose read the operation only reads, v = u + k, and the
    variable read after it.  Each pointee: sizes 1, 4, 8 and 12. */
 
-#define KREG(E, T)                                                      \
-    long kreg_##E(T *base, long i)                                      \
-    {                                                                   \
-        register long k = i & 3;                                        \
-        T *u = base + 1;                                                \
-        T *v;                                                           \
-        v = u + k;                                                      \
-        return (v - base) * 7 + k;                                      \
-    }
+#define KREG(E, T)                         \
+        long kreg_##E(T *base, long i)     \
+        {                                  \
+                register long k = i & 3;   \
+                T *u = base + 1;           \
+                T *v;                      \
+                v = u + k;                 \
+                return (v - base) * 7 + k; \
+        }
 POINTEES(KREG)
 
 /* A register pointer to a function: the address of a function the
@@ -918,49 +934,49 @@ fdest(long a)
    initializers.  The narrow types convert the int the operator
    yields, and are DEST_OTHER's. */
 
-#define NDEST(T, N)                                                     \
-    long ndest_##N(T a, T b)                                            \
-    {                                                                   \
-        T s = b;                                                        \
-        T *p = &s;                                                      \
-        register T y = b;                                               \
-        register T x;                                                   \
-        long r;                                                         \
-        g_##N = a ^ b;                                                  \
-        x = -a;                                                         \
-        r = x;                                                          \
-        x = ~s;                                                         \
-        r = r * 7 + x;                                                  \
-        x = -g_##N;                                                     \
-        r = r * 7 + x;                                                  \
-        x = ~*p;                                                        \
-        r = r * 7 + x;                                                  \
-        x = -y;                                                         \
-        r = r * 7 + x + y;                                              \
-        x = ~x;                                                         \
-        r = r * 7 + x;                                                  \
-        x = -x;                                                         \
-        r = r * 7 + x;                                                  \
-        x = -(a + s);                                                   \
-        r = r * 7 + x;                                                  \
-        x = ~(x - b);                                                   \
-        r = r * 7 + x;                                                  \
-        x = -(a * 3);                                                   \
-        r = r * 7 + x;                                                  \
-        r = r * 7 + (x + (x = -s)) + x * 3L;                            \
-        r = r * 7 + (x + (x = ~x)) * 5L + x;                            \
-        r = r * 7 + (x = -b) * 5L + x;                                  \
-        return r * 7 + x + y * 3L;                                      \
-    }                                                                   \
-    long indest_##N(T a, T b)                                           \
-    {                                                                   \
-        T s = b;                                                        \
-        register T x = -a;                                              \
-        register T y = ~s;                                              \
-        register T z = -x;                                              \
-        register T w = ~(y + a);                                        \
-        return x + y * 3L + z * 5L + w * 7L;                            \
-    }
+#define NDEST(T, N)                                  \
+        long ndest_##N(T a, T b)                     \
+        {                                            \
+                T s = b;                             \
+                T *p = &s;                           \
+                register T y = b;                    \
+                register T x;                        \
+                long r;                              \
+                g_##N = a ^ b;                       \
+                x = -a;                              \
+                r = x;                               \
+                x = ~s;                              \
+                r = r * 7 + x;                       \
+                x = -g_##N;                          \
+                r = r * 7 + x;                       \
+                x = ~*p;                             \
+                r = r * 7 + x;                       \
+                x = -y;                              \
+                r = r * 7 + x + y;                   \
+                x = ~x;                              \
+                r = r * 7 + x;                       \
+                x = -x;                              \
+                r = r * 7 + x;                       \
+                x = -(a + s);                        \
+                r = r * 7 + x;                       \
+                x = ~(x - b);                        \
+                r = r * 7 + x;                       \
+                x = -(a * 3);                        \
+                r = r * 7 + x;                       \
+                r = r * 7 + (x + (x = -s)) + x * 3L; \
+                r = r * 7 + (x + (x = ~x)) * 5L + x; \
+                r = r * 7 + (x = -b) * 5L + x;       \
+                return r * 7 + x + y * 3L;           \
+        }                                            \
+        long indest_##N(T a, T b)                    \
+        {                                            \
+                T s = b;                             \
+                register T x = -a;                   \
+                register T y = ~s;                   \
+                register T z = -x;                   \
+                register T w = ~(y + a);             \
+                return x + y * 3L + z * 5L + w * 7L; \
+        }
 /* A comparison's value into the variable's register, x86-64: an int
    variable, the operands of each type, a parameter, a local, a
    constant the instruction encodes and one it does not, a global, * of
@@ -969,53 +985,53 @@ fdest(long a)
    for an int; a read held across the assignment; its value used;
    initializers. */
 
-#define CDEST(T, N)                                                     \
-    long cdest_##N(T a, T b)                                            \
-    {                                                                   \
-        T s = b;                                                        \
-        T *p = &s;                                                      \
-        register T y = b;                                               \
-        register T t = a;                                               \
-        register int x;                                                 \
-        long r;                                                         \
-        g_##N = a - b;                                                  \
-        x = a < s;                                                      \
-        r = x;                                                          \
-        x = s >= a;                                                     \
-        r = r * 7 + x;                                                  \
-        x = a == 5;                                                     \
-        r = r * 7 + x;                                                  \
-        x = s != 0x12345;                                               \
-        r = r * 7 + x;                                                  \
-        x = g_##N <= a;                                                 \
-        r = r * 7 + x;                                                  \
-        x = *p > a;                                                     \
-        r = r * 7 + x;                                                  \
-        x = y < t;                                                      \
-        r = r * 7 + x;                                                  \
-        x = x < y;                                                      \
-        r = r * 7 + x;                                                  \
-        x = y > x;                                                      \
-        r = r * 7 + x;                                                  \
-        x = (a + s) < y;                                                \
-        r = r * 7 + x;                                                  \
-        t = a < s;                                                      \
-        r = r * 7 + t;                                                  \
-        t = t == y;                                                     \
-        r = r * 7 + t;                                                  \
-        r = r * 7 + (x + (x = a < s)) + x * 3L;                         \
-        r = r * 7 + (x + (x = x == 0)) * 5L + x;                        \
-        r = r * 7 + (x = s == a) * 5L + x;                              \
-        return r * 7 + x + y * 3L + t * 5L;                             \
-    }                                                                   \
-    long icdest_##N(T a, T b)                                           \
-    {                                                                   \
-        T s = b;                                                        \
-        register int x = a < s;                                         \
-        register int z = x == 0;                                        \
-        register T t = s >= a;                                          \
-        return x + z * 3L + t * 5L;                                     \
-    }
+#define CDEST(T, N)                                      \
+        long cdest_##N(T a, T b)                         \
+        {                                                \
+                T s = b;                                 \
+                T *p = &s;                               \
+                register T y = b;                        \
+                register T t = a;                        \
+                register int x;                          \
+                long r;                                  \
+                g_##N = a - b;                           \
+                x = a < s;                               \
+                r = x;                                   \
+                x = s >= a;                              \
+                r = r * 7 + x;                           \
+                x = a == 5;                              \
+                r = r * 7 + x;                           \
+                x = s != 0x12345;                        \
+                r = r * 7 + x;                           \
+                x = g_##N <= a;                          \
+                r = r * 7 + x;                           \
+                x = *p > a;                              \
+                r = r * 7 + x;                           \
+                x = y < t;                               \
+                r = r * 7 + x;                           \
+                x = x < y;                               \
+                r = r * 7 + x;                           \
+                x = y > x;                               \
+                r = r * 7 + x;                           \
+                x = (a + s) < y;                         \
+                r = r * 7 + x;                           \
+                t = a < s;                               \
+                r = r * 7 + t;                           \
+                t = t == y;                              \
+                r = r * 7 + t;                           \
+                r = r * 7 + (x + (x = a < s)) + x * 3L;  \
+                r = r * 7 + (x + (x = x == 0)) * 5L + x; \
+                r = r * 7 + (x = s == a) * 5L + x;       \
+                return r * 7 + x + y * 3L + t * 5L;      \
+        }                                                \
+        long icdest_##N(T a, T b)                        \
+        {                                                \
+                T s = b;                                 \
+                register int x = a < s;                  \
+                register int z = x == 0;                 \
+                register T t = s >= a;                   \
+                return x + z * 3L + t * 5L;              \
+        }
 /* An element by a constant index as the operation form's right
    operand, x86-64: of a local array and a global one, through a
    pointer in a slot and a register one, at index 0 and * of the
@@ -1024,74 +1040,74 @@ fdest(long a)
    element; the variable as the right operand, refused; a read held
    across the assignment; its value used; initializers. */
 
-#define EDEST(T, N)                                                     \
-    T gel_##N[4];                                                       \
-    long edest_##N(T a, T b, int n)                                     \
-    {                                                                   \
-        T v[4];                                                         \
-        T *p = v;                                                       \
-        char c[4];                                                      \
-        int k[2];                                                       \
-        register T *q = v;                                              \
-        register T y = b;                                               \
-        register T x;                                                   \
-        long r;                                                         \
-        v[0] = a;                                                       \
-        v[1] = b;                                                       \
-        v[2] = a ^ b;                                                   \
-        v[3] = a - b;                                                   \
-        gel_##N[0] = b;                                                 \
-        gel_##N[1] = a;                                                 \
-        gel_##N[2] = a + b;                                             \
-        gel_##N[3] = b * 3;                                             \
-        c[0] = a;                                                       \
-        c[3] = b;                                                       \
-        k[0] = n & 15;                                                  \
-        k[1] = (n >> 4) & 15;                                           \
-        x = a + v[3];                                                   \
-        r = x;                                                          \
-        x = a - gel_##N[2];                                             \
-        r = r * 7 + x;                                                  \
-        x = a & p[1];                                                   \
-        r = r * 7 + x;                                                  \
-        x = a | q[2];                                                   \
-        r = r * 7 + x;                                                  \
-        x = a ^ v[0];                                                   \
-        r = r * 7 + x;                                                  \
-        x = a * gel_##N[3];                                             \
-        r = r * 7 + x;                                                  \
-        x = a + *v;                                                     \
-        r = r * 7 + x;                                                  \
-        x = a - c[3];                                                   \
-        r = r * 7 + x;                                                  \
-        x = a << k[1];                                                  \
-        r = r * 7 + x;                                                  \
-        x = a >> k[0];                                                  \
-        r = r * 7 + x;                                                  \
-        x = x - v[1];                                                   \
-        r = r * 7 + x;                                                  \
-        x = y + v[2];                                                   \
-        r = r * 7 + x;                                                  \
-        x = (a + v[1]) - p[2];                                          \
-        r = r * 7 + x;                                                  \
-        x = gel_##N[1] + v[0];                                          \
-        r = r * 7 + x;                                                  \
-        x = v[2] - x;                                                   \
-        r = r * 7 + x;                                                  \
-        r = r * 7 + (x + (x = a + v[3])) + x * 3L;                      \
-        r = r * 7 + (x = b - p[3]) * 5L + x;                            \
-        return r * 7 + x + y * 3L;                                      \
-    }                                                                   \
-    long iedest_##N(T a, T b)                                           \
-    {                                                                   \
-        T v[2];                                                         \
-        register T *q = v;                                              \
-        v[0] = a;                                                       \
-        v[1] = b;                                                       \
-        register T x = a + v[1];                                        \
-        register T z = b - q[0];                                        \
-        return x + z * 3L;                                              \
-    }
+#define EDEST(T, N)                                        \
+        T gel_##N[4];                                      \
+        long edest_##N(T a, T b, int n)                    \
+        {                                                  \
+                T v[4];                                    \
+                T *p = v;                                  \
+                char c[4];                                 \
+                int k[2];                                  \
+                register T *q = v;                         \
+                register T y = b;                          \
+                register T x;                              \
+                long r;                                    \
+                v[0] = a;                                  \
+                v[1] = b;                                  \
+                v[2] = a ^ b;                              \
+                v[3] = a - b;                              \
+                gel_##N[0] = b;                            \
+                gel_##N[1] = a;                            \
+                gel_##N[2] = a + b;                        \
+                gel_##N[3] = b * 3;                        \
+                c[0] = a;                                  \
+                c[3] = b;                                  \
+                k[0] = n & 15;                             \
+                k[1] = (n >> 4) & 15;                      \
+                x = a + v[3];                              \
+                r = x;                                     \
+                x = a - gel_##N[2];                        \
+                r = r * 7 + x;                             \
+                x = a & p[1];                              \
+                r = r * 7 + x;                             \
+                x = a | q[2];                              \
+                r = r * 7 + x;                             \
+                x = a ^ v[0];                              \
+                r = r * 7 + x;                             \
+                x = a * gel_##N[3];                        \
+                r = r * 7 + x;                             \
+                x = a + *v;                                \
+                r = r * 7 + x;                             \
+                x = a - c[3];                              \
+                r = r * 7 + x;                             \
+                x = a << k[1];                             \
+                r = r * 7 + x;                             \
+                x = a >> k[0];                             \
+                r = r * 7 + x;                             \
+                x = x - v[1];                              \
+                r = r * 7 + x;                             \
+                x = y + v[2];                              \
+                r = r * 7 + x;                             \
+                x = (a + v[1]) - p[2];                     \
+                r = r * 7 + x;                             \
+                x = gel_##N[1] + v[0];                     \
+                r = r * 7 + x;                             \
+                x = v[2] - x;                              \
+                r = r * 7 + x;                             \
+                r = r * 7 + (x + (x = a + v[3])) + x * 3L; \
+                r = r * 7 + (x = b - p[3]) * 5L + x;       \
+                return r * 7 + x + y * 3L;                 \
+        }                                                  \
+        long iedest_##N(T a, T b)                          \
+        {                                                  \
+                T v[2];                                    \
+                register T *q = v;                         \
+                v[0] = a;                                  \
+                v[1] = b;                                  \
+                register T x = a + v[1];                   \
+                register T z = b - q[0];                   \
+                return x + z * 3L;                         \
+        }
 #define ROWS(T, N) NDEST(T, N) CDEST(T, N) EDEST(T, N)
 WIDE(ROWS)
 
@@ -1099,17 +1115,18 @@ WIDE(ROWS)
    memory through the variable's own register, which x86-64 refuses;
    and on aarch64 the load through a register pointer stepped into the
    same pointer, whose data register cannot be its base */
-long own_base(long a, long b)
+long
+own_base(long a, long b)
 {
-    long cell[2];
-    register long r;
+        long cell[2];
+        register long r;
 
-    cell[0] = b;
-    cell[1] = a;
-    r = (long) cell;
-    r = a + *(long *) r;
+        cell[0] = b;
+        cell[1] = a;
+        r = (long) cell;
+        r = a + *(long *) r;
 
-    return r;
+        return r;
 }
 
 long
@@ -1138,23 +1155,24 @@ own_index(char *base, long i)
         return p - base;
 }
 
-long own_step(long a)
+long
+own_step(long a)
 {
-    long cell[4];
-    register long *w = cell;
+        long cell[4];
+        register long *w = cell;
 
-    cell[0] = (long) &cell[2];
-    cell[1] = (long) &cell[3];
-    cell[2] = a;
-    cell[3] = a * 3;
-    w = (long *) *w++;
+        cell[0] = (long) &cell[2];
+        cell[1] = (long) &cell[3];
+        cell[2] = a;
+        cell[3] = a * 3;
+        w = (long *) *w++;
 
-    long r = *w;
+        long r = *w;
 
-    w = cell + 1;
-    w = (long *) *w;
+        w = cell + 1;
+        w = (long *) *w;
 
-    return r * 7 + *w + (w - cell) * 11;
+        return r * 7 + *w + (w - cell) * 11;
 }
 
 /* A register variable as the condition of if, while and for, and as
@@ -1162,44 +1180,45 @@ long own_step(long a)
    and a constant; a narrow one tested for zero.  k & (k - 1) clears
    the lowest bit set, so each loop runs once per bit of the type. */
 #define CONDITION(T, N)                                                 \
-    long cond_##N(T a, T b)                                             \
-    {                                                                   \
-        register T x = a;                                               \
-        register T y = b;                                               \
-        register T k;                                                   \
-        T s = b;                                                        \
-        long r = 0;                                                     \
-        if (x)                                                          \
-            r = r + 1;                                                  \
-        if (!x)                                                         \
-            r = r + 2;                                                  \
-        if (x < y)                                                      \
-            r = r + 4;                                                  \
-        if (x == s)                                                     \
-            r = r + 8;                                                  \
-        if (x >= 4095)                                                  \
-            r = r + 16;                                                 \
-        if (x != 0x12345)                                               \
-            r = r + 32;                                                 \
-        if (x && y)                                                     \
-            r = r + 64;                                                 \
-        if (x || s)                                                     \
-            r = r + 128;                                                \
-        if (y > x ? x : y)                                              \
-            r = r + 256;                                                \
-        r = r * 7 + (x ? y : s) + (x && y) * 3 + (x || y) * 5 + !x * 9  \
-            + (x > y ? 1 : 2) * 11 + (s <= x) * 13 + (x == 0) * 17;     \
-        k = x;                                                          \
-        while (k) {                                                     \
-            k = k & (k - 1);                                            \
-            r = r + 1000;                                               \
-        }                                                               \
-        for (k = y; k; k = k & (k - 1))                                 \
-            r = r + 100000;                                             \
-        for (register int i = 0; i < x && i < 5; i = i + 1)             \
-            r = r + 10000000;                                           \
-        return r + x + y * 3L;                                          \
-    }
+        long cond_##N(T a, T b)                                         \
+        {                                                               \
+                register T x = a;                                       \
+                register T y = b;                                       \
+                register T k;                                           \
+                T s = b;                                                \
+                long r = 0;                                             \
+                if (x)                                                  \
+                        r = r + 1;                                      \
+                if (!x)                                                 \
+                        r = r + 2;                                      \
+                if (x < y)                                              \
+                        r = r + 4;                                      \
+                if (x == s)                                             \
+                        r = r + 8;                                      \
+                if (x >= 4095)                                          \
+                        r = r + 16;                                     \
+                if (x != 0x12345)                                       \
+                        r = r + 32;                                     \
+                if (x && y)                                             \
+                        r = r + 64;                                     \
+                if (x || s)                                             \
+                        r = r + 128;                                    \
+                if (y > x ? x : y)                                      \
+                        r = r + 256;                                    \
+                r = r * 7 + (x ? y : s) + (x && y) * 3 + (x || y) * 5 + \
+                    !x * 9 + (x > y ? 1 : 2) * 11 + (s <= x) * 13 +     \
+                    (x == 0) * 17;                                      \
+                k = x;                                                  \
+                while (k) {                                             \
+                        k = k & (k - 1);                                \
+                        r = r + 1000;                                   \
+                }                                                       \
+                for (k = y; k; k = k & (k - 1))                         \
+                        r = r + 100000;                                 \
+                for (register int i = 0; i < x && i < 5; i = i + 1)     \
+                        r = r + 10000000;                               \
+                return r + x + y * 3L;                                  \
+        }
 
 TYPES(CONDITION)
 
@@ -1209,23 +1228,23 @@ TYPES(CONDITION)
    left, as a condition and as a value, and beside them an expression
    on the right, which keeps the object's load.  A char or a short is
    promoted, and keeps its load too. */
-#define COMPARED(T, N, name, op)                                        \
-    long cm_##name##_##N(T a, T b)                                      \
-    {                                                                   \
-        register T x = b;                                               \
-        T s = a;                                                        \
-        T *p = &s;                                                      \
-        long r = 0;                                                     \
-        g_##N = a;                                                      \
-        if (s op x)                                                     \
-            r = r + 1;                                                  \
-        if (g_##N op x)                                                 \
-            r = r + 2;                                                  \
-        if (*p op x)                                                    \
-            r = r + 4;                                                  \
-        r = r * 7 + (s op x) + (g_##N op x) * 3 + (*p op x) * 5;        \
-        return r * 7 + (s op x + 1) + x;                                \
-    }
+#define COMPARED(T, N, name, op)                                         \
+        long cm_##name##_##N(T a, T b)                                   \
+        {                                                                \
+                register T x = b;                                        \
+                T s = a;                                                 \
+                T *p = &s;                                               \
+                long r = 0;                                              \
+                g_##N = a;                                               \
+                if (s op x)                                              \
+                        r = r + 1;                                       \
+                if (g_##N op x)                                          \
+                        r = r + 2;                                       \
+                if (*p op x)                                             \
+                        r = r + 4;                                       \
+                r = r * 7 + (s op x) + (g_##N op x) * 3 + (*p op x) * 5; \
+                return r * 7 + (s op x + 1) + x;                         \
+        }
 #define COMPARED_ALL(T, N) COMPARISONS(COMPARED, T, N)
 
 TYPES(COMPARED_ALL)
@@ -1239,54 +1258,57 @@ TYPES(COMPARED_ALL)
    operand an object under the conversion, a + (T) b, and a char
    promoted, c + b.  Beside them two narrowings and a call keep the
    mov. */
-#define RETYPE(F, FN, T, TN)                                            \
-    F rt_object_##FN##_##TN;                                            \
-    F rt_call_##FN##_##TN(F a) { return a; }                            \
-    long retype_##FN##_##TN(F a, F b)                                   \
-    {                                                                   \
-        F s = a;                                                        \
-        F *p = &s;                                                      \
-        register T x = a + b;                                           \
-        register T y = s;                                               \
-        long r = x;                                                     \
-        r = r * 7 + y;                                                  \
-        rt_object_##FN##_##TN = b;                                      \
-        y = rt_object_##FN##_##TN;                                      \
-        r = r * 7 + y;                                                  \
-        y = *p;                                                         \
-        r = r * 7 + y;                                                  \
-        y = a - b;                                                      \
-        r = r * 7 + y;                                                  \
-        y = a * b;                                                      \
-        r = r * 7 + y;                                                  \
-        y = a & b;                                                      \
-        r = r * 7 + y;                                                  \
-        y = a | b;                                                      \
-        r = r * 7 + y;                                                  \
-        y = a ^ b;                                                      \
-        r = r * 7 + y;                                                  \
-        y = a >> (b & 7);                                               \
-        r = r * 7 + y;                                                  \
-        y = a < b;                                                      \
-        r = r * 7 + y;                                                  \
-        y = -a;                                                         \
-        r = r * 7 + y;                                                  \
-        y = ~a;                                                         \
-        r = r * 7 + y;                                                  \
-        y = (int) (a * 3L);                                             \
-        r = r * 7 + y;                                                  \
-        y = a * 3L;                                                     \
-        r = r * 7 + y;                                                  \
-        y = a + (T) b;                                                  \
-        r = r * 7 + y;                                                  \
-        {                                                               \
-            char c = a;                                                 \
-            y = c + b;                                                  \
-            r = r * 7 + y;                                              \
-        }                                                               \
-        y = rt_call_##FN##_##TN(b);                                     \
-        return r * 7 + y;                                               \
-    }
+#define RETYPE(F, FN, T, TN)                \
+        F rt_object_##FN##_##TN;            \
+        F rt_call_##FN##_##TN(F a)          \
+        {                                   \
+                return a;                   \
+        }                                   \
+        long retype_##FN##_##TN(F a, F b)   \
+        {                                   \
+                F s = a;                    \
+                F *p = &s;                  \
+                register T x = a + b;       \
+                register T y = s;           \
+                long r = x;                 \
+                r = r * 7 + y;              \
+                rt_object_##FN##_##TN = b;  \
+                y = rt_object_##FN##_##TN;  \
+                r = r * 7 + y;              \
+                y = *p;                     \
+                r = r * 7 + y;              \
+                y = a - b;                  \
+                r = r * 7 + y;              \
+                y = a * b;                  \
+                r = r * 7 + y;              \
+                y = a & b;                  \
+                r = r * 7 + y;              \
+                y = a | b;                  \
+                r = r * 7 + y;              \
+                y = a ^ b;                  \
+                r = r * 7 + y;              \
+                y = a >> (b & 7);           \
+                r = r * 7 + y;              \
+                y = a < b;                  \
+                r = r * 7 + y;              \
+                y = -a;                     \
+                r = r * 7 + y;              \
+                y = ~a;                     \
+                r = r * 7 + y;              \
+                y = (int) (a * 3L);         \
+                r = r * 7 + y;              \
+                y = a * 3L;                 \
+                r = r * 7 + y;              \
+                y = a + (T) b;              \
+                r = r * 7 + y;              \
+                {                           \
+                        char c = a;         \
+                        y = c + b;          \
+                        r = r * 7 + y;      \
+                }                           \
+                y = rt_call_##FN##_##TN(b); \
+                return r * 7 + y;           \
+        }
 
 RETYPES(RETYPE)
 
@@ -1308,27 +1330,27 @@ far_address(long i)
    immediate left operand of the branch, so it is held, unconsumed,
    where the paths diverge; each write is of a variable whose read is
    held.  See the main on the order. */
-#define HELD(T, N)                                                      \
-    long held_##N(T a, T b, int c)                                      \
-    {                                                                   \
-        register T x = a;                                               \
-        register T y = b;                                               \
-        long r = x + (c ? 1 : 2);                                       \
-        r = r * 7 + (x + (c ? y : 2)) + y;                              \
-        r = r * 7 + (x + (c ? (x = 9) : 2));                            \
-        x = a;                                                          \
-        r = r * 7 + (x + (c && (x = 9)));                               \
-        x = a;                                                          \
-        r = r * 7 + (x + (c || (x = 0)));                               \
-        x = a;                                                          \
-        r = r * 7 + (x + (y + (c ? (b ? (x = 9) : y) : (y = 11))));     \
-        r = r * 7 + x + y;                                              \
-        x = a;                                                          \
-        y = b;                                                          \
-        r = r * 7 + (x + (y + (c ? x : y ? (x = y) : 7)));              \
-        r = r * 7 + (x + (y + (c && y || (x = 3) && (y = 5))));         \
-        return r * 7 + x + y * 3L;                                      \
-    }
+#define HELD(T, N)                                                          \
+        long held_##N(T a, T b, int c)                                      \
+        {                                                                   \
+                register T x = a;                                           \
+                register T y = b;                                           \
+                long r = x + (c ? 1 : 2);                                   \
+                r = r * 7 + (x + (c ? y : 2)) + y;                          \
+                r = r * 7 + (x + (c ? (x = 9) : 2));                        \
+                x = a;                                                      \
+                r = r * 7 + (x + (c && (x = 9)));                           \
+                x = a;                                                      \
+                r = r * 7 + (x + (c || (x = 0)));                           \
+                x = a;                                                      \
+                r = r * 7 + (x + (y + (c ? (b ? (x = 9) : y) : (y = 11)))); \
+                r = r * 7 + x + y;                                          \
+                x = a;                                                      \
+                y = b;                                                      \
+                r = r * 7 + (x + (y + (c ? x : y ? (x = y) : 7)));          \
+                r = r * 7 + (x + (y + (c && y || (x = 3) && (y = 5))));     \
+                return r * 7 + x + y * 3L;                                  \
+        }
 
 TYPES(HELD)
 
@@ -1337,46 +1359,46 @@ TYPES(HELD)
    twelve; a call's narrow result into a narrow and a wide register
    variable, by the initializer and by the assignment; x + f(x), and
    x + f(x = 3), on the order. */
-#define CALLS(T, N)                                                     \
-    long across_##N(T a, T b)                                           \
-    {                                                                   \
-        register T x = a;                                               \
-        register T y = b;                                               \
-        long r = lid(b);                                                \
-        r = r * 7 + x + y * 3L;                                         \
-        r = r * 7 + twice(a);                                           \
-        r = r * 7 + x + y * 3L;                                         \
-        r = r * 7 + lmix12(x, y, x, y, x, y, x, y, x, y, x, y);         \
-        r = r * 7 + lmix12(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, x);       \
-        r = r * 7 + lmix12(y, 2, 3, 4, 5, 6, x, 8, y, 10, 11, 12);      \
-        r = r * 7 + (x + lid(x));                                       \
-        r = r * 7 + (x + twice(x)) + y;                                 \
-        return r * 7 + x + y * 3L;                                      \
-    }                                                                   \
-    long result_##N(long w)                                             \
-    {                                                                   \
-        register T n = lret_##N(w);                                     \
-        register long l = lret_##N(w + 1);                              \
-        register T m = lwide_##N(w);                                    \
-        register long k = lwide_##N(w - 1);                             \
-        register T o = own_##N(w + 2);                                  \
-        long r = n + l * 3 + m * 5 + k * 7 + o * 11;                    \
-        n = lwide_##N(w + 3);                                           \
-        l = lwide_##N(w + 4);                                           \
-        m = own_##N(w + 5);                                             \
-        k = own_##N(w + 6);                                             \
-        return r * 7 + n + l * 3 + m * 5 + k * 7 + o * 11;              \
-    }                                                                   \
-    long call_order_##N(T a)                                            \
-    {                                                                   \
-        register T x = a;                                               \
-        return x + lid(x = 3) + x * 5L;                                 \
-    }                                                                   \
-    long own_order_##N(T a)                                             \
-    {                                                                   \
-        register T x = a;                                               \
-        return x + twice(x = 3) + x * 5L;                               \
-    }
+#define CALLS(T, N)                                                        \
+        long across_##N(T a, T b)                                          \
+        {                                                                  \
+                register T x = a;                                          \
+                register T y = b;                                          \
+                long r = lid(b);                                           \
+                r = r * 7 + x + y * 3L;                                    \
+                r = r * 7 + twice(a);                                      \
+                r = r * 7 + x + y * 3L;                                    \
+                r = r * 7 + lmix12(x, y, x, y, x, y, x, y, x, y, x, y);    \
+                r = r * 7 + lmix12(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, x);  \
+                r = r * 7 + lmix12(y, 2, 3, 4, 5, 6, x, 8, y, 10, 11, 12); \
+                r = r * 7 + (x + lid(x));                                  \
+                r = r * 7 + (x + twice(x)) + y;                            \
+                return r * 7 + x + y * 3L;                                 \
+        }                                                                  \
+        long result_##N(long w)                                            \
+        {                                                                  \
+                register T n = lret_##N(w);                                \
+                register long l = lret_##N(w + 1);                         \
+                register T m = lwide_##N(w);                               \
+                register long k = lwide_##N(w - 1);                        \
+                register T o = own_##N(w + 2);                             \
+                long r = n + l * 3 + m * 5 + k * 7 + o * 11;               \
+                n = lwide_##N(w + 3);                                      \
+                l = lwide_##N(w + 4);                                      \
+                m = own_##N(w + 5);                                        \
+                k = own_##N(w + 6);                                        \
+                return r * 7 + n + l * 3 + m * 5 + k * 7 + o * 11;         \
+        }                                                                  \
+        long call_order_##N(T a)                                           \
+        {                                                                  \
+                register T x = a;                                          \
+                return x + lid(x = 3) + x * 5L;                            \
+        }                                                                  \
+        long own_order_##N(T a)                                            \
+        {                                                                  \
+                register T x = a;                                          \
+                return x + twice(x = 3) + x * 5L;                          \
+        }
 
 TYPES(CALLS)
 
@@ -1392,42 +1414,42 @@ TYPES(CALLS)
    within an operand of its own, ret_nested_, which ISO leaves undefined
    and clang -O0 writes left to right, as assign_order_.  The main keeps
    a divisor from 0 and -1. */
-#define RETURNED(T, N)                                                  \
-    long ret_free_##N(T a, T b, T c)                                    \
-    {                                                                   \
-        register T r = a;                                               \
-        return r - (b ^ c);                                             \
-    }                                                                   \
-    T ret_narrow_##N(T a, T b, T c)                                     \
-    {                                                                   \
-        register T r = a;                                               \
-        return r - (b ^ c);                                             \
-    }                                                                   \
-    long ret_held_##N(T a, long b)                                      \
-    {                                                                   \
-        register T r = a;                                               \
-        return r - lid(b);                                              \
-    }                                                                   \
-    long ret_pinned_##N(T a, T b, T c)                                  \
-    {                                                                   \
-        register T r = a;                                               \
-        return r - b / c;                                               \
-    }                                                                   \
-    long ret_deep_##N(T a, T b, T c)                                    \
-    {                                                                   \
-        register T r = a;                                               \
-        return r - (b / c + 1);                                         \
-    }                                                                   \
-    long ret_written_##N(T a, T b)                                      \
-    {                                                                   \
-        register T r = a;                                               \
-        return r - (r = b);                                             \
-    }                                                                   \
-    long ret_nested_##N(T a, T b)                                       \
-    {                                                                   \
-        register T r = a;                                               \
-        return r - (b + (r = b ^ a));                                   \
-    }
+#define RETURNED(T, N)                        \
+        long ret_free_##N(T a, T b, T c)      \
+        {                                     \
+                register T r = a;             \
+                return r - (b ^ c);           \
+        }                                     \
+        T ret_narrow_##N(T a, T b, T c)       \
+        {                                     \
+                register T r = a;             \
+                return r - (b ^ c);           \
+        }                                     \
+        long ret_held_##N(T a, long b)        \
+        {                                     \
+                register T r = a;             \
+                return r - lid(b);            \
+        }                                     \
+        long ret_pinned_##N(T a, T b, T c)    \
+        {                                     \
+                register T r = a;             \
+                return r - b / c;             \
+        }                                     \
+        long ret_deep_##N(T a, T b, T c)      \
+        {                                     \
+                register T r = a;             \
+                return r - (b / c + 1);       \
+        }                                     \
+        long ret_written_##N(T a, T b)        \
+        {                                     \
+                register T r = a;             \
+                return r - (r = b);           \
+        }                                     \
+        long ret_nested_##N(T a, T b)         \
+        {                                     \
+                register T r = a;             \
+                return r - (b + (r = b ^ a)); \
+        }
 
 TYPES(RETURNED)
 
@@ -1455,153 +1477,153 @@ TYPES(RETURNED)
    addresses as a register char pointer's value.  A narrow variable is
    written through the assignment's conversion.  The main keeps a
    divisor from 0 and -1. */
-#define BRANCHED(T, N)                                                  \
-    long br_and_##N(T a, T b)                                           \
-    {                                                                   \
-        register T r;                                                   \
-        r = a && b;                                                     \
-        return r;                                                       \
-    }                                                                   \
-    long br_or_##N(T a, T b)                                            \
-    {                                                                   \
-        register T r;                                                   \
-        r = a || b;                                                     \
-        return r;                                                       \
-    }                                                                   \
-    long br_cond_##N(int c, T a, T b)                                   \
-    {                                                                   \
-        register T r;                                                   \
-        r = c ? a : b;                                                  \
-        return r;                                                       \
-    }                                                                   \
-    long br_init_##N(int c, T a, T b)                                   \
-    {                                                                   \
-        register T r = c ? a : b;                                       \
-        return r;                                                       \
-    }                                                                   \
-    long br_self_##N(T a, T b)                                          \
-    {                                                                   \
-        register T r = a;                                               \
-        r = r && b;                                                     \
-        return r;                                                       \
-    }                                                                   \
-    long br_read_##N(int c, T a, T b)                                   \
-    {                                                                   \
-        register T r = a;                                               \
-        r = c ? r + 1 : b;                                              \
-        return r;                                                       \
-    }                                                                   \
-    long br_held_##N(int c, T a, T b)                                   \
-    {                                                                   \
-        register T r = a;                                               \
-        return r + (r = c ? b : 7) * 3L;                                \
-    }                                                                   \
-    long br_call_##N(int c, T a, long b)                                \
-    {                                                                   \
-        register T r;                                                   \
-        r = c ? lid(b) : a;                                             \
-        return r;                                                       \
-    }                                                                   \
-    long br_div_##N(int c, T a, T b)                                    \
-    {                                                                   \
-        register T r;                                                   \
-        r = c ? a / b : a;                                              \
-        return r;                                                       \
-    }                                                                   \
-    long br_step_##N(int c, T a, long b)                                \
-    {                                                                   \
-        register T r;                                                   \
-        T x = a;                                                        \
-        r = c ? lret_##N(b) : x++;                                      \
-        return r * 7 + x;                                               \
-    }                                                                   \
-    long br_own_##N(int c, T a, T b)                                    \
-    {                                                                   \
-        register T r = a;                                               \
-        r = c ? r : b;                                                  \
-        return r;                                                       \
-    }                                                                   \
-    long br_quot_##N(int c, T a, T b)                                   \
-    {                                                                   \
-        register T r;                                                   \
-        r = c ? lret_##N(b) : a / b;                                    \
-        return r;                                                       \
-    }                                                                   \
-    long br_calls_##N(int c, T a, long b)                               \
-    {                                                                   \
-        register T r;                                                   \
-        r = c ? lret_##N(b) : lret_##N(a);                              \
-        return r;                                                       \
-    }                                                                   \
-    long br_kept_##N(int c, T a, T b)                                   \
-    {                                                                   \
-        T v[2];                                                         \
-        register T r = a;                                               \
-        register T *q = &v[0];                                          \
-        v[0] = a;                                                       \
-        v[1] = b;                                                       \
-        r = c ? b : r;                                                  \
-        r = r;                                                          \
-        q = c ? &v[1] : q;                                              \
-        return r * 7 + *q;                                              \
-    }                                                                   \
-    long br_own_call_##N(int c, T a, long b)                            \
-    {                                                                   \
-        register T r = a;                                               \
-        r = c ? lret_##N(b) : r;                                        \
-        return r;                                                       \
-    }                                                                   \
-    long br_call_own_##N(int c, T a, long b)                            \
-    {                                                                   \
-        register T r = a;                                               \
-        r = c ? r : lret_##N(b);                                        \
-        return r;                                                       \
-    }                                                                   \
-    long br_own_both_##N(int c, T a, T b)                               \
-    {                                                                   \
-        register T r = a;                                               \
-        r = c ? r : r;                                                  \
-        return r * 7 + b;                                               \
-    }                                                                   \
-    long br_own_and_##N(int c, T a, T b)                                \
-    {                                                                   \
-        register T r = a;                                               \
-        r = c && a < b ? r : b;                                         \
-        return r;                                                       \
-    }                                                                   \
-    long br_own_or_##N(int c, T a, T b)                                 \
-    {                                                                   \
-        register T r = a;                                               \
-        r = c || a < b ? r : b;                                         \
-        return r;                                                       \
-    }                                                                   \
-    long br_own_nested_##N(int c, T a, T b)                             \
-    {                                                                   \
-        register T r = a;                                               \
-        r = c ? (a < b ? r : b) : b;                                    \
-        return r;                                                       \
-    }                                                                   \
-    long br_other_##N(int c, T a, T b)                                  \
-    {                                                                   \
-        register T r = a;                                               \
-        register T q = b;                                               \
-        q = c ? r : q;                                                  \
-        return r * 7 + q;                                               \
-    }                                                                   \
-    long br_rows_##N(int c, T a, T b)                                   \
-    {                                                                   \
-        T m[2][3];                                                      \
-        T n[2][3];                                                      \
-        register T *q;                                                  \
-        register char *p;                                               \
-        m[1][1] = a;                                                    \
-        m[1][2] = b;                                                    \
-        n[1][1] = b;                                                    \
-        n[1][2] = a;                                                    \
-        q = &(c ? m : n)[1][2];                                         \
-        p = (char *) (c ? &m[1][1] : &n[1][1]);                         \
-        return *q * 7 + q[-1] + (p == (char *) &m[1][1]);               \
-    }
+#define BRANCHED(T, N)                                            \
+        long br_and_##N(T a, T b)                                 \
+        {                                                         \
+                register T r;                                     \
+                r = a && b;                                       \
+                return r;                                         \
+        }                                                         \
+        long br_or_##N(T a, T b)                                  \
+        {                                                         \
+                register T r;                                     \
+                r = a || b;                                       \
+                return r;                                         \
+        }                                                         \
+        long br_cond_##N(int c, T a, T b)                         \
+        {                                                         \
+                register T r;                                     \
+                r = c ? a : b;                                    \
+                return r;                                         \
+        }                                                         \
+        long br_init_##N(int c, T a, T b)                         \
+        {                                                         \
+                register T r = c ? a : b;                         \
+                return r;                                         \
+        }                                                         \
+        long br_self_##N(T a, T b)                                \
+        {                                                         \
+                register T r = a;                                 \
+                r = r && b;                                       \
+                return r;                                         \
+        }                                                         \
+        long br_read_##N(int c, T a, T b)                         \
+        {                                                         \
+                register T r = a;                                 \
+                r = c ? r + 1 : b;                                \
+                return r;                                         \
+        }                                                         \
+        long br_held_##N(int c, T a, T b)                         \
+        {                                                         \
+                register T r = a;                                 \
+                return r + (r = c ? b : 7) * 3L;                  \
+        }                                                         \
+        long br_call_##N(int c, T a, long b)                      \
+        {                                                         \
+                register T r;                                     \
+                r = c ? lid(b) : a;                               \
+                return r;                                         \
+        }                                                         \
+        long br_div_##N(int c, T a, T b)                          \
+        {                                                         \
+                register T r;                                     \
+                r = c ? a / b : a;                                \
+                return r;                                         \
+        }                                                         \
+        long br_step_##N(int c, T a, long b)                      \
+        {                                                         \
+                register T r;                                     \
+                T x = a;                                          \
+                r = c ? lret_##N(b) : x++;                        \
+                return r * 7 + x;                                 \
+        }                                                         \
+        long br_own_##N(int c, T a, T b)                          \
+        {                                                         \
+                register T r = a;                                 \
+                r = c ? r : b;                                    \
+                return r;                                         \
+        }                                                         \
+        long br_quot_##N(int c, T a, T b)                         \
+        {                                                         \
+                register T r;                                     \
+                r = c ? lret_##N(b) : a / b;                      \
+                return r;                                         \
+        }                                                         \
+        long br_calls_##N(int c, T a, long b)                     \
+        {                                                         \
+                register T r;                                     \
+                r = c ? lret_##N(b) : lret_##N(a);                \
+                return r;                                         \
+        }                                                         \
+        long br_kept_##N(int c, T a, T b)                         \
+        {                                                         \
+                T v[2];                                           \
+                register T r = a;                                 \
+                register T *q = &v[0];                            \
+                v[0] = a;                                         \
+                v[1] = b;                                         \
+                r = c ? b : r;                                    \
+                r = r;                                            \
+                q = c ? &v[1] : q;                                \
+                return r * 7 + *q;                                \
+        }                                                         \
+        long br_own_call_##N(int c, T a, long b)                  \
+        {                                                         \
+                register T r = a;                                 \
+                r = c ? lret_##N(b) : r;                          \
+                return r;                                         \
+        }                                                         \
+        long br_call_own_##N(int c, T a, long b)                  \
+        {                                                         \
+                register T r = a;                                 \
+                r = c ? r : lret_##N(b);                          \
+                return r;                                         \
+        }                                                         \
+        long br_own_both_##N(int c, T a, T b)                     \
+        {                                                         \
+                register T r = a;                                 \
+                r = c ? r : r;                                    \
+                return r * 7 + b;                                 \
+        }                                                         \
+        long br_own_and_##N(int c, T a, T b)                      \
+        {                                                         \
+                register T r = a;                                 \
+                r = c && a < b ? r : b;                           \
+                return r;                                         \
+        }                                                         \
+        long br_own_or_##N(int c, T a, T b)                       \
+        {                                                         \
+                register T r = a;                                 \
+                r = c || a < b ? r : b;                           \
+                return r;                                         \
+        }                                                         \
+        long br_own_nested_##N(int c, T a, T b)                   \
+        {                                                         \
+                register T r = a;                                 \
+                r = c ? (a < b ? r : b) : b;                      \
+                return r;                                         \
+        }                                                         \
+        long br_other_##N(int c, T a, T b)                        \
+        {                                                         \
+                register T r = a;                                 \
+                register T q = b;                                 \
+                q = c ? r : q;                                    \
+                return r * 7 + q;                                 \
+        }                                                         \
+        long br_rows_##N(int c, T a, T b)                         \
+        {                                                         \
+                T m[2][3];                                        \
+                T n[2][3];                                        \
+                register T *q;                                    \
+                register char *p;                                 \
+                m[1][1] = a;                                      \
+                m[1][2] = b;                                      \
+                n[1][1] = b;                                      \
+                n[1][2] = a;                                      \
+                q = &(c ? m : n)[1][2];                           \
+                p = (char *) (c ? &m[1][1] : &n[1][1]);           \
+                return *q * 7 + q[-1] + (p == (char *) &m[1][1]); \
+        }
 
 TYPES(BRANCHED)
 
@@ -1623,152 +1645,154 @@ TYPES(BRANCHED)
    object under a conversion of the signedness alone as the left
    operand of a row computing in int into a register unsigned,
    de_retyped_. */
-#define DEST_EDGE(T, N)                                                 \
-    T de_global_##N[4][3];                                              \
-    long de_left_##N(T a, T b)                                          \
-    {                                                                   \
-        register T c = a;                                               \
-        register int r;                                                 \
-        register unsigned u;                                            \
-        register long l;                                                \
-        long s;                                                         \
-        r = c + 5;                                                      \
-        s = r;                                                          \
-        r = 5 + c;                                                      \
-        s = s * 7 + r;                                                  \
-        r = c - b;                                                      \
-        s = s * 7 + r;                                                  \
-        u = c + 5;                                                      \
-        s = s * 7 + u;                                                  \
-        l = c + 5L;                                                     \
-        s = s * 7 + l;                                                  \
-        l = 0x12345 + c;                                                \
-        return s * 7 + l;                                               \
-    }                                                                   \
-    long de_product_##N(T a)                                            \
-    {                                                                   \
-        register T x = a;                                               \
-        register T r;                                                   \
-        register long l;                                                \
-        long s;                                                         \
-        r = x * 3;                                                      \
-        s = r;                                                          \
-        r = x * -5;                                                     \
-        s = s * 7 + r;                                                  \
-        l = x * 0x12345L;                                               \
-        s = s * 7 + l;                                                  \
-        s = s * 7 + x * 4;                                              \
-        return s * 7 + (x * 4 + r) * 3L;                                \
-    }                                                                   \
-    long de_returned_##N(T a)                                           \
-    {                                                                   \
-        register T x = a;                                               \
-        return x * 4;                                                   \
-    }                                                                   \
-    long de_step_##N(T a, T b)                                          \
-    {                                                                   \
-        T x = a;                                                        \
-        T buffer[4];                                                    \
-        T *p = buffer;                                                  \
-        register T r;                                                   \
-        register long l;                                                \
-        register T *q;                                                  \
-        long s;                                                         \
-        r = ++x;                                                        \
-        s = r + x * 3L;                                                 \
-        r = --x;                                                        \
-        s = s * 7 + r + x * 3L;                                         \
-        x = b;                                                          \
-        l = ++x;                                                        \
-        s = s * 7 + l + x * 3L;                                         \
-        l = --x;                                                        \
-        s = s * 7 + l + x * 3L;                                         \
-        q = ++p;                                                        \
-        s = s * 7 + (q - buffer);                                       \
-        q = --p;                                                        \
-        return s * 7 + (q - buffer) + (p - buffer) * 3L;                \
-    }                                                                   \
-    long de_rows_##N(long i)                                            \
-    {                                                                   \
-        T a[4][3];                                                      \
-        register T *p;                                                  \
-        register T *q;                                                  \
-        long s;                                                         \
-        p = &a[i][0];                                                   \
-        s = (char *) p - (char *) a;                                    \
-        q = a[i];                                                       \
-        s = s * 7 + ((char *) q - (char *) a);                          \
-        p = &de_global_##N[i][0];                                       \
-        s = s * 7 + ((char *) p - (char *) de_global_##N);              \
-        q = de_global_##N[i];                                           \
-        return s * 7 + ((char *) q - (char *) de_global_##N);           \
-    }                                                                   \
-    long de_widened_##N(int c, T a, T b)                                \
-    {                                                                   \
-        register T x = a;                                               \
-        register long l;                                                \
-        register unsigned long u;                                       \
-        long s;                                                         \
-        l = a + b;                                                      \
-        s = l;                                                          \
-        u = a - b;                                                      \
-        s = s * 7 + u;                                                  \
-        l = x;                                                          \
-        s = s * 7 + l;                                                  \
-        u = x;                                                          \
-        s = s * 7 + u;                                                  \
-        l = c ? a : b;                                                  \
-        s = s * 7 + l;                                                  \
-        l = x * 3;                                                      \
-        return s * 7 + l;                                               \
-    }                                                                   \
-    long de_wide_arms_##N(int c, T a, T b)                              \
-    {                                                                   \
-        register long l;                                                \
-        register unsigned long u;                                       \
-        long s;                                                         \
-        l = c ? a : -1;                                                 \
-        s = l;                                                          \
-        u = c ? -7 : b;                                                 \
-        s = s * 7 + u;                                                  \
-        l = c ? a < b : 5;                                              \
-        s = s * 7 + l;                                                  \
-        l = c ? a + b : b;                                              \
-        return s * 7 + l;                                               \
-    }                                                                   \
-    long de_retyped_##N(T a, T b)                                       \
-    {                                                                   \
-        register unsigned v;                                            \
-        long s;                                                         \
-        v = 5 + (int) a;                                                \
-        s = v;                                                          \
-        v = (int) b - 3;                                                \
-        return s * 7 + v;                                               \
-    }
+#define DEST_EDGE(T, N)                                               \
+        T de_global_##N[4][3];                                        \
+        long de_left_##N(T a, T b)                                    \
+        {                                                             \
+                register T c = a;                                     \
+                register int r;                                       \
+                register unsigned u;                                  \
+                register long l;                                      \
+                long s;                                               \
+                r = c + 5;                                            \
+                s = r;                                                \
+                r = 5 + c;                                            \
+                s = s * 7 + r;                                        \
+                r = c - b;                                            \
+                s = s * 7 + r;                                        \
+                u = c + 5;                                            \
+                s = s * 7 + u;                                        \
+                l = c + 5L;                                           \
+                s = s * 7 + l;                                        \
+                l = 0x12345 + c;                                      \
+                return s * 7 + l;                                     \
+        }                                                             \
+        long de_product_##N(T a)                                      \
+        {                                                             \
+                register T x = a;                                     \
+                register T r;                                         \
+                register long l;                                      \
+                long s;                                               \
+                r = x * 3;                                            \
+                s = r;                                                \
+                r = x * -5;                                           \
+                s = s * 7 + r;                                        \
+                l = x * 0x12345L;                                     \
+                s = s * 7 + l;                                        \
+                s = s * 7 + x * 4;                                    \
+                return s * 7 + (x * 4 + r) * 3L;                      \
+        }                                                             \
+        long de_returned_##N(T a)                                     \
+        {                                                             \
+                register T x = a;                                     \
+                return x * 4;                                         \
+        }                                                             \
+        long de_step_##N(T a, T b)                                    \
+        {                                                             \
+                T x = a;                                              \
+                T buffer[4];                                          \
+                T *p = buffer;                                        \
+                register T r;                                         \
+                register long l;                                      \
+                register T *q;                                        \
+                long s;                                               \
+                r = ++x;                                              \
+                s = r + x * 3L;                                       \
+                r = --x;                                              \
+                s = s * 7 + r + x * 3L;                               \
+                x = b;                                                \
+                l = ++x;                                              \
+                s = s * 7 + l + x * 3L;                               \
+                l = --x;                                              \
+                s = s * 7 + l + x * 3L;                               \
+                q = ++p;                                              \
+                s = s * 7 + (q - buffer);                             \
+                q = --p;                                              \
+                return s * 7 + (q - buffer) + (p - buffer) * 3L;      \
+        }                                                             \
+        long de_rows_##N(long i)                                      \
+        {                                                             \
+                T a[4][3];                                            \
+                register T *p;                                        \
+                register T *q;                                        \
+                long s;                                               \
+                p = &a[i][0];                                         \
+                s = (char *) p - (char *) a;                          \
+                q = a[i];                                             \
+                s = s * 7 + ((char *) q - (char *) a);                \
+                p = &de_global_##N[i][0];                             \
+                s = s * 7 + ((char *) p - (char *) de_global_##N);    \
+                q = de_global_##N[i];                                 \
+                return s * 7 + ((char *) q - (char *) de_global_##N); \
+        }                                                             \
+        long de_widened_##N(int c, T a, T b)                          \
+        {                                                             \
+                register T x = a;                                     \
+                register long l;                                      \
+                register unsigned long u;                             \
+                long s;                                               \
+                l = a + b;                                            \
+                s = l;                                                \
+                u = a - b;                                            \
+                s = s * 7 + u;                                        \
+                l = x;                                                \
+                s = s * 7 + l;                                        \
+                u = x;                                                \
+                s = s * 7 + u;                                        \
+                l = c ? a : b;                                        \
+                s = s * 7 + l;                                        \
+                l = x * 3;                                            \
+                return s * 7 + l;                                     \
+        }                                                             \
+        long de_wide_arms_##N(int c, T a, T b)                        \
+        {                                                             \
+                register long l;                                      \
+                register unsigned long u;                             \
+                long s;                                               \
+                l = c ? a : -1;                                       \
+                s = l;                                                \
+                u = c ? -7 : b;                                       \
+                s = s * 7 + u;                                        \
+                l = c ? a < b : 5;                                    \
+                s = s * 7 + l;                                        \
+                l = c ? a + b : b;                                    \
+                return s * 7 + l;                                     \
+        }                                                             \
+        long de_retyped_##N(T a, T b)                                 \
+        {                                                             \
+                register unsigned v;                                  \
+                long s;                                               \
+                v = 5 + (int) a;                                      \
+                s = v;                                                \
+                v = (int) b - 3;                                      \
+                return s * 7 + v;                                     \
+        }
 
 TYPES(DEST_EDGE)
 
 /* recursion with live register variables, the parameters register too */
-long rsum(register int n, register long acc)
+long
+rsum(register int n, register long acc)
 {
-    register long m = n * 3;
+        register long m = n * 3;
 
-    if (n <= 0)
-        return acc;
+        if (n <= 0)
+                return acc;
 
-    return rsum(n - 1, acc + m) + m - n;
+        return rsum(n - 1, acc + m) + m - n;
 }
 
-int rfib(register int n)
+int
+rfib(register int n)
 {
-    register int a;
+        register int a;
 
-    if (n < 2)
-        return n;
+        if (n < 2)
+                return n;
 
-    a = rfib(n - 1);
+        a = rfib(n - 1);
 
-    return a + rfib(n - 2);
+        return a + rfib(n - 2);
 }
 
 /* The callee-saved registers: clobber<k> declares and writes k
@@ -1777,128 +1801,138 @@ int rfib(register int n)
    with distinct weights.  On x86-64 the sixth to the tenth take slots,
    with the warning.  The save area of aarch64 stores pairs and an odd
    last one, so k runs from 1 to 10. */
-long clobber1(long v)
+long
+clobber1(long v)
 {
-    register long a = v + 1;
-    return a;
+        register long a = v + 1;
+        return a;
 }
 
-long clobber2(long v)
+long
+clobber2(long v)
 {
-    register long a = v + 1;
-    register long b = v * 3;
-    return a + b;
+        register long a = v + 1;
+        register long b = v * 3;
+        return a + b;
 }
 
-long clobber3(long v)
+long
+clobber3(long v)
 {
-    register long a = v + 1;
-    register long b = v * 3;
-    register long c = v ^ 0x55;
-    return a + b + c;
+        register long a = v + 1;
+        register long b = v * 3;
+        register long c = v ^ 0x55;
+        return a + b + c;
 }
 
-long clobber4(long v)
+long
+clobber4(long v)
 {
-    register long a = v + 1;
-    register long b = v * 3;
-    register long c = v ^ 0x55;
-    register long d = ~v;
-    return a + b + c + d;
+        register long a = v + 1;
+        register long b = v * 3;
+        register long c = v ^ 0x55;
+        register long d = ~v;
+        return a + b + c + d;
 }
 
-long clobber5(long v)
+long
+clobber5(long v)
 {
-    register long a = v + 1;
-    register long b = v * 3;
-    register long c = v ^ 0x55;
-    register long d = ~v;
-    register long e = v - 0x12345;
-    return a + b + c + d + e;
+        register long a = v + 1;
+        register long b = v * 3;
+        register long c = v ^ 0x55;
+        register long d = ~v;
+        register long e = v - 0x12345;
+        return a + b + c + d + e;
 }
 
-long clobber6(long v)
+long
+clobber6(long v)
 {
-    register long a = v + 1;
-    register long b = v * 3;
-    register long c = v ^ 0x55;
-    register long d = ~v;
-    register long e = v - 0x12345;
-    register long f = v * 5;
-    return a + b + c + d + e + f;
+        register long a = v + 1;
+        register long b = v * 3;
+        register long c = v ^ 0x55;
+        register long d = ~v;
+        register long e = v - 0x12345;
+        register long f = v * 5;
+        return a + b + c + d + e + f;
 }
 
-long clobber7(long v)
+long
+clobber7(long v)
 {
-    register long a = v + 1;
-    register long b = v * 3;
-    register long c = v ^ 0x55;
-    register long d = ~v;
-    register long e = v - 0x12345;
-    register long f = v * 5;
-    register long g = v + 77;
-    return a + b + c + d + e + f + g;
+        register long a = v + 1;
+        register long b = v * 3;
+        register long c = v ^ 0x55;
+        register long d = ~v;
+        register long e = v - 0x12345;
+        register long f = v * 5;
+        register long g = v + 77;
+        return a + b + c + d + e + f + g;
 }
 
-long clobber8(long v)
+long
+clobber8(long v)
 {
-    register long a = v + 1;
-    register long b = v * 3;
-    register long c = v ^ 0x55;
-    register long d = ~v;
-    register long e = v - 0x12345;
-    register long f = v * 5;
-    register long g = v + 77;
-    register long h = v << 3;
-    return a + b + c + d + e + f + g + h;
+        register long a = v + 1;
+        register long b = v * 3;
+        register long c = v ^ 0x55;
+        register long d = ~v;
+        register long e = v - 0x12345;
+        register long f = v * 5;
+        register long g = v + 77;
+        register long h = v << 3;
+        return a + b + c + d + e + f + g + h;
 }
 
-long clobber9(long v)
+long
+clobber9(long v)
 {
-    register long a = v + 1;
-    register long b = v * 3;
-    register long c = v ^ 0x55;
-    register long d = ~v;
-    register long e = v - 0x12345;
-    register long f = v * 5;
-    register long g = v + 77;
-    register long h = v << 3;
-    register long i = -v;
-    return a + b + c + d + e + f + g + h + i;
+        register long a = v + 1;
+        register long b = v * 3;
+        register long c = v ^ 0x55;
+        register long d = ~v;
+        register long e = v - 0x12345;
+        register long f = v * 5;
+        register long g = v + 77;
+        register long h = v << 3;
+        register long i = -v;
+        return a + b + c + d + e + f + g + h + i;
 }
 
-long clobber10(long v)
+long
+clobber10(long v)
 {
-    register long a = v + 1;
-    register long b = v * 3;
-    register long c = v ^ 0x55;
-    register long d = ~v;
-    register long e = v - 0x12345;
-    register long f = v * 5;
-    register long g = v + 77;
-    register long h = v << 3;
-    register long i = -v;
-    register long j = v * 7 + 1;
-    return a + b + c + d + e + f + g + h + i + j;
+        register long a = v + 1;
+        register long b = v * 3;
+        register long c = v ^ 0x55;
+        register long d = ~v;
+        register long e = v - 0x12345;
+        register long f = v * 5;
+        register long g = v + 77;
+        register long h = v << 3;
+        register long i = -v;
+        register long j = v * 7 + 1;
+        return a + b + c + d + e + f + g + h + i + j;
 }
 
-#define KEEP(k)                                                         \
-    long keep##k(long v)                                                \
-    {                                                                   \
-        register long r0 = v + 11;                                      \
-        register long r1 = v * 3 - 7;                                   \
-        register long r2 = v ^ 0x5a5a;                                  \
-        register long r3 = ~v;                                          \
-        register long r4 = v * 17;                                      \
-        register long r5 = v - 1000;                                    \
-        register long r6 = v * 5 + 2;                                   \
-        register long r7 = v ^ -1000;                                   \
-        register long r8 = v * 9;                                       \
-        register long r9 = 12345 - v;                                   \
-        long c = clobber##k(v * 5 + 1);                                 \
-        return r0 * 3 + r1 * 5 + r2 * 7 + r3 * 11 + r4 * 13 + r5 * 17  \
-               + r6 * 19 + r7 * 23 + r8 * 29 + r9 * 31 + c;             \
-    }
+#define KEEP(k)                                                             \
+        long keep##k(long v)                                                \
+        {                                                                   \
+                register long r0 = v + 11;                                  \
+                register long r1 = v * 3 - 7;                               \
+                register long r2 = v ^ 0x5a5a;                              \
+                register long r3 = ~v;                                      \
+                register long r4 = v * 17;                                  \
+                register long r5 = v - 1000;                                \
+                register long r6 = v * 5 + 2;                               \
+                register long r7 = v ^ -1000;                               \
+                register long r8 = v * 9;                                   \
+                register long r9 = 12345 - v;                               \
+                long c = clobber##k(v * 5 + 1);                             \
+                return r0 * 3 + r1 * 5 + r2 * 7 + r3 * 11 + r4 * 13 +       \
+                       r5 * 17 + r6 * 19 + r7 * 23 + r8 * 29 + r9 * 31 + c; \
+        }
 
 KEEP(1)
 KEEP(2)
@@ -1919,195 +1953,240 @@ KEEP(10)
    and promoted first, since the first reads the type's bits alone and
    the second the whole of what the callee keeps.  The rcc pairing
    calls them with the type's values. */
-#define PARAMETERS(T, N)                                                \
-    long rpar1_##N(register T a) { return a; }                          \
-    long rfirst_##N(PFIRST(T)) { return (S12) + N12 * 43; }             \
-    long rmiddle_##N(PMIDDLE(T)) { return (S12) + N12 * 43; }           \
-    long rlast_##N(PLAST(T)) { return (S12) + N12 * 43; }               \
-    long rall_##N(PALL(T)) { return (S12) + N12 * 43; }                 \
-    long rwritten_##N(register T a, T b, register T c)                  \
-    {                                                                   \
-        long r = a + c * 3L;                                            \
-        a = b;                                                          \
-        c = a + c;                                                      \
-        return r * 7 + a + c * 3L + b * 5L;                             \
-    }                                                                   \
-    long rcall_##N(T a, T b)                                            \
-    {                                                                   \
-        return rpar1_##N(a)                                             \
-               + rfirst_##N(a, b, a, b, a, b, a, b, a, b, a + b, a - b) \
-               + rmiddle_##N(b, a, b, a, b, a, b, a, b, a, b * 3, a)    \
-               + rlast_##N(a, b, a + 1, b, a, b, a, b, a, b, a, b)      \
-               + rall_##N(a, a, b, b, a, a, b, b, a, a, b, b)           \
-               + rwritten_##N(a, b, b - a);                             \
-    }
+#define PARAMETERS(T, N)                                                     \
+        long rpar1_##N(register T a)                                         \
+        {                                                                    \
+                return a;                                                    \
+        }                                                                    \
+        long rfirst_##N(PFIRST(T))                                           \
+        {                                                                    \
+                return (S12) + N12 * 43;                                     \
+        }                                                                    \
+        long rmiddle_##N(PMIDDLE(T))                                         \
+        {                                                                    \
+                return (S12) + N12 * 43;                                     \
+        }                                                                    \
+        long rlast_##N(PLAST(T))                                             \
+        {                                                                    \
+                return (S12) + N12 * 43;                                     \
+        }                                                                    \
+        long rall_##N(PALL(T))                                               \
+        {                                                                    \
+                return (S12) + N12 * 43;                                     \
+        }                                                                    \
+        long rwritten_##N(register T a, T b, register T c)                   \
+        {                                                                    \
+                long r = a + c * 3L;                                         \
+                a = b;                                                       \
+                c = a + c;                                                   \
+                return r * 7 + a + c * 3L + b * 5L;                          \
+        }                                                                    \
+        long rcall_##N(T a, T b)                                             \
+        {                                                                    \
+                return rpar1_##N(a) +                                        \
+                       rfirst_##N(a, b, a, b, a, b, a, b, a, b, a + b,       \
+                                  a - b) +                                   \
+                       rmiddle_##N(b, a, b, a, b, a, b, a, b, a, b * 3, a) + \
+                       rlast_##N(a, b, a + 1, b, a, b, a, b, a, b, a, b) +   \
+                       rall_##N(a, a, b, b, a, a, b, b, a, a, b, b) +        \
+                       rwritten_##N(a, b, b - a);                            \
+        }
 
 TYPES(PARAMETERS)
 
 /* Blocks: sibling blocks whose variables share registers, an inner
    block's with the outer's still live, and eleven live at once, more
    than either target has, so the eleventh takes a slot. */
-long blocks(long a, long b)
+long
+blocks(long a, long b)
 {
-    register long x = a;
-    long r = 0;
+        register long x = a;
+        long r = 0;
 
-    {
-        register long y = b;
-        register long z = a ^ b;
-        r = y * 3 + z;
-    }
-
-    {
-        register int u = a;
-        register char c = b;
-        register unsigned short h = a - b;
-        r = r * 7 + u + c * 5 + h * 9 + x;
-    }
-
-    {
-        register long p = a + 1;
         {
-            register long q = b + 2;
-            r = r * 7 + p * 3 + q + x;
+                register long y = b;
+                register long z = a ^ b;
+                r = y * 3 + z;
         }
-        register signed char q = a;
-        r = r * 7 + p * 3 + q + x;
-    }
 
-    return r * 7 + x;
+        {
+                register int u = a;
+                register char c = b;
+                register unsigned short h = a - b;
+                r = r * 7 + u + c * 5 + h * 9 + x;
+        }
+
+        {
+                register long p = a + 1;
+                {
+                        register long q = b + 2;
+                        r = r * 7 + p * 3 + q + x;
+                }
+                register signed char q = a;
+                r = r * 7 + p * 3 + q + x;
+        }
+
+        return r * 7 + x;
 }
 
-long eleven(long a, long b)
+long
+eleven(long a, long b)
 {
-    register long r0 = a;
-    register long r1 = b;
-    register long r2 = a + b;
-    register long r3 = a - b;
-    register long r4 = a ^ b;
-    register long r5 = a * 3;
-    register long r6 = b * 5;
-    register long r7 = ~a;
-    register long r8 = ~b;
-    register long r9 = a * b;
-    register long r10 = a | b;
+        register long r0 = a;
+        register long r1 = b;
+        register long r2 = a + b;
+        register long r3 = a - b;
+        register long r4 = a ^ b;
+        register long r5 = a * 3;
+        register long r6 = b * 5;
+        register long r7 = ~a;
+        register long r8 = ~b;
+        register long r9 = a * b;
+        register long r10 = a | b;
 
-    return r0 + r1 * 3 + r2 * 5 + r3 * 7 + r4 * 11 + r5 * 13 + r6 * 17
-           + r7 * 19 + r8 * 23 + r9 * 29 + r10 * 31 + lid(r10);
+        return r0 + r1 * 3 + r2 * 5 + r3 * 7 + r4 * 11 + r5 * 13 + r6 * 17 +
+               r7 * 19 + r8 * 23 + r9 * 29 + r10 * 31 + lid(r10);
 }
 
 /* Pointers: a register pointer the base of *p, p[i], p[3] and a store
    through it, the index a register int and a register long; p + n,
    p - n, p - q, comparison, &p[i] and &p[0] on register operands.  The
    main's buffer is the memory; a pointer result is an offset. */
-#define POINTER(E, T)                                                   \
-    long pread_##E(T *base, long i, int j)                              \
-    {                                                                   \
-        register T *p = base;                                           \
-        register long k = i;                                            \
-        register int m = j;                                             \
-        long r = *p + p[k] * 3L + p[m] * 5L + p[3] * 7L + *(p + k) * 11L; \
-        return r * 7 + p[k + m] + (p[0] == *p) + (long) (p - base);     \
-    }                                                                   \
-    void pwrite_##E(T *base, long i, int j, long v)                     \
-    {                                                                   \
-        register T *p = base;                                           \
-        register long k = i;                                            \
-        register int m = j;                                             \
-        *p = v;                                                         \
-        p[k] = v + 1;                                                   \
-        p[m] = v + 2;                                                   \
-        p[3] = v + 3;                                                   \
-        *(p + k + m) = v + 4;                                           \
-    }                                                                   \
-    long parith_##E(T *base, long n, int m)                             \
-    {                                                                   \
-        register T *p = base;                                           \
-        register T *q = base + 4;                                       \
-        register long k = n;                                            \
-        register int j = m;                                             \
-        register T *z = 0;                                              \
-        long r = (p + k) - q;                                           \
-        r = r * 7 + ((p - k) - q);                                      \
-        r = r * 7 + (q - p) + (p - q) * 3;                              \
-        r = r * 7 + (p < q) + (p + k <= q) * 2 + (p + j > q) * 4        \
-            + (p + k == q) * 8 + (p != q - j) * 16 + (z == 0) * 32      \
-            + (q >= p) * 64;                                            \
-        r = r * 7 + (&p[k] - p) + (&p[j] - q) * 3 + (&p[0] - p) * 5     \
-            + (&p[0] == p) * 9;                                         \
-        r = r * 7 + ((char *) (q - j) - (char *) base);                 \
-        p = q + k;                                                      \
-        return r * 7 + (p - base) + (q - base) * 3;                     \
-    }
+#define POINTER(E, T)                                                         \
+        long pread_##E(T *base, long i, int j)                                \
+        {                                                                     \
+                register T *p = base;                                         \
+                register long k = i;                                          \
+                register int m = j;                                           \
+                long r =                                                      \
+                    *p + p[k] * 3L + p[m] * 5L + p[3] * 7L + *(p + k) * 11L;  \
+                return r * 7 + p[k + m] + (p[0] == *p) + (long) (p - base);   \
+        }                                                                     \
+        void pwrite_##E(T *base, long i, int j, long v)                       \
+        {                                                                     \
+                register T *p = base;                                         \
+                register long k = i;                                          \
+                register int m = j;                                           \
+                *p = v;                                                       \
+                p[k] = v + 1;                                                 \
+                p[m] = v + 2;                                                 \
+                p[3] = v + 3;                                                 \
+                *(p + k + m) = v + 4;                                         \
+        }                                                                     \
+        long parith_##E(T *base, long n, int m)                               \
+        {                                                                     \
+                register T *p = base;                                         \
+                register T *q = base + 4;                                     \
+                register long k = n;                                          \
+                register int j = m;                                           \
+                register T *z = 0;                                            \
+                long r = (p + k) - q;                                         \
+                r = r * 7 + ((p - k) - q);                                    \
+                r = r * 7 + (q - p) + (p - q) * 3;                            \
+                r = r * 7 + (p < q) + (p + k <= q) * 2 + (p + j > q) * 4 +    \
+                    (p + k == q) * 8 + (p != q - j) * 16 + (z == 0) * 32 +    \
+                    (q >= p) * 64;                                            \
+                r = r * 7 + (&p[k] - p) + (&p[j] - q) * 3 + (&p[0] - p) * 5 + \
+                    (&p[0] == p) * 9;                                         \
+                r = r * 7 + ((char *) (q - j) - (char *) base);               \
+                p = q + k;                                                    \
+                return r * 7 + (p - base) + (q - base) * 3;                   \
+        }
 
 SCALARS(POINTER)
 
 /* p = p + 1 walks a string */
-long pwalk(char *s)
+long
+pwalk(char *s)
 {
-    register char *p = s;
-    register long h = 0;
+        register char *p = s;
+        register long h = 0;
 
-    while (*p) {
-        h = h * 31 + *p;
-        p = p + 1;
-    }
+        while (*p) {
+                h = h * 31 + *p;
+                p = p + 1;
+        }
 
-    return h * 7 + (p - s);
+        return h * 7 + (p - s);
 }
 
-long puwalk(unsigned char *s, int n)
+long
+puwalk(unsigned char *s, int n)
 {
-    register unsigned char *p = s;
-    register unsigned char *end = s + n;
-    register long h = 0;
+        register unsigned char *p = s;
+        register unsigned char *end = s + n;
+        register long h = 0;
 
-    for (; p < end; p = p + 1)
-        h = h * 31 + *p;
+        for (; p < end; p = p + 1)
+                h = h * 31 + *p;
 
-    return h * 7 + (end - p);
+        return h * 7 + (end - p);
 }
 
 /* Frames: register variables before and after an array of 40000
    bytes, a slot beyond the reach of a load beside the save area, and a
    call. */
-long frame_far(long a, long b)
+long
+frame_far(long a, long b)
 {
-    register long x = a;
-    register int y = b;
-    char pad[40000];
-    register long z = a - b;
-    register char c = b;
-    long s = a ^ b;
+        register long x = a;
+        register int y = b;
+        char pad[40000];
+        register long z = a - b;
+        register char c = b;
+        long s = a ^ b;
 
-    pad[0] = c;
-    pad[39999] = y;
-    s = s + x + lid(z);
+        pad[0] = c;
+        pad[39999] = y;
+        s = s + x + lid(z);
 
-    return x * 3 + y * 5 + z * 7 + c * 11 + s + pad[0] + pad[39999] * 13;
+        return x * 3 + y * 5 + z * 7 + c * 11 + s + pad[0] + pad[39999] * 13;
 }
 
 /* Depth, backend.md 6.2: an expression of nineteen operands held at
    once, register reads among them, one narrow, so its extension needs
    a register too; then the same over a call. */
-long deep_reg(P8(long))
+long
+deep_reg(P8(long))
 {
-    register long x = a;
-    register long y = b;
-    register short z = c;
+        register long x = a;
+        register long y = b;
+        register short z = c;
 
-    return x - (y - (z - (d - (e - (f - (g - (h - (x - (y - (z - (d - (e -
-           (f - (g - (h - (x - (y - z)))))))))))))))));
+        return x -
+               (y -
+                (z -
+                 (d -
+                  (e -
+                   (f -
+                    (g -
+                     (h -
+                      (x -
+                       (y -
+                        (z -
+                         (d - (e - (f - (g - (h - (x - (y - z)))))))))))))))));
 }
 
-long deep_reg_call(P8(long))
+long
+deep_reg_call(P8(long))
 {
-    register long x = a;
-    register int y = b;
-    register unsigned char z = c;
+        register long x = a;
+        register int y = b;
+        register unsigned char z = c;
 
-    return x * (y + (z * (d + (e * (f + (g * (h + (x * (y + (z * (d + (e *
-           (f + (g * (h + (x * (y + lid(z))))))))))))))))));
+        return x *
+               (y +
+                (z *
+                 (d +
+                  (e *
+                   (f +
+                    (g *
+                     (h +
+                      (x *
+                       (y +
+                        (z *
+                         (d +
+                          (e * (f + (g * (h + (x * (y + lid(z))))))))))))))))));
 }
 
 /* G5, the unwritten narrow variable: fill<n> sets ten register longs to
@@ -2119,38 +2198,38 @@ long deep_reg_call(P8(long))
    the type has. */
 #define FACTS(c, T) ((c == (T) c) + ((long) c == (long) (T) c) * 2)
 
-#define UNWRITTEN(T, N)                                                 \
-    long unwritten_##N(void)                                            \
-    {                                                                   \
-        register T c0;                                                  \
-        register T c1;                                                  \
-        register T c2;                                                  \
-        register T c3;                                                  \
-        register T c4;                                                  \
-        register T c5;                                                  \
-        register T c6;                                                  \
-        register T c7;                                                  \
-        register T c8;                                                  \
-        register T c9;                                                  \
-        return FACTS(c0, T) + FACTS(c1, T) * 4 + FACTS(c2, T) * 16      \
-               + FACTS(c3, T) * 64 + FACTS(c4, T) * 256                 \
-               + FACTS(c5, T) * 1024 + FACTS(c6, T) * 4096              \
-               + FACTS(c7, T) * 16384 + FACTS(c8, T) * 65536            \
-               + FACTS(c9, T) * 262144;                                 \
-    }                                                                   \
-    long fill_##N(long v)                                               \
-    {                                                                   \
-        register long r0 = v;                                           \
-        register long r1 = v;                                           \
-        register long r2 = v;                                           \
-        register long r3 = v;                                           \
-        register long r4 = v;                                           \
-        register long r5 = v;                                           \
-        register long r6 = v;                                           \
-        register long r7 = v;                                           \
-        register long r8 = v;                                           \
-        register long r9 = v;                                           \
-        return unwritten_##N() + (r0 ^ r9);                             \
-    }
+#define UNWRITTEN(T, N)                                                      \
+        long unwritten_##N(void)                                             \
+        {                                                                    \
+                register T c0;                                               \
+                register T c1;                                               \
+                register T c2;                                               \
+                register T c3;                                               \
+                register T c4;                                               \
+                register T c5;                                               \
+                register T c6;                                               \
+                register T c7;                                               \
+                register T c8;                                               \
+                register T c9;                                               \
+                return FACTS(c0, T) + FACTS(c1, T) * 4 + FACTS(c2, T) * 16 + \
+                       FACTS(c3, T) * 64 + FACTS(c4, T) * 256 +              \
+                       FACTS(c5, T) * 1024 + FACTS(c6, T) * 4096 +           \
+                       FACTS(c7, T) * 16384 + FACTS(c8, T) * 65536 +         \
+                       FACTS(c9, T) * 262144;                                \
+        }                                                                    \
+        long fill_##N(long v)                                                \
+        {                                                                    \
+                register long r0 = v;                                        \
+                register long r1 = v;                                        \
+                register long r2 = v;                                        \
+                register long r3 = v;                                        \
+                register long r4 = v;                                        \
+                register long r5 = v;                                        \
+                register long r6 = v;                                        \
+                register long r7 = v;                                        \
+                register long r8 = v;                                        \
+                register long r9 = v;                                        \
+                return unwritten_##N() + (r0 ^ r9);                          \
+        }
 
 CLAIMED(UNWRITTEN)

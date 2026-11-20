@@ -1,2 +1,2 @@
-tests/error/missing-semicolon-declaration.c:5:5: error: expected ';' at end of declaration
+tests/error/missing-semicolon-declaration.c:5:19: error: expected ';' at end of declaration
 status 1

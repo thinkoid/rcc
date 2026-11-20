@@ -11,38 +11,40 @@
 #define SIZE 9216
 #define REPS 1200
 
-int main(void)
+int
+main(void)
 {
-    int a[SIZE];
-    int b[SIZE];
-    int c[SIZE];
-    int n = 96;
-    unsigned seed = 1;
-    unsigned sum = 0;
+        int a[SIZE];
+        int b[SIZE];
+        int c[SIZE];
+        int n = 96;
+        unsigned seed = 1;
+        unsigned sum = 0;
 
-    for (int i = 0; i < SIZE; ++i) {
-        seed = seed * 1103515245 + 12345;
-        a[i] = (seed >> 16) % 256;
-        seed = seed * 1103515245 + 12345;
-        b[i] = (seed >> 16) % 256;
-    }
+        for (int i = 0; i < SIZE; ++i) {
+                seed = seed * 1103515245 + 12345;
+                a[i] = (seed >> 16) % 256;
+                seed = seed * 1103515245 + 12345;
+                b[i] = (seed >> 16) % 256;
+        }
 
-    for (int rep = 0; rep < REPS; ++rep) {
-        seed = seed * 1103515245 + 12345;
-        a[(seed >> 16) % SIZE] = (seed >> 8) % 256;
+        for (int rep = 0; rep < REPS; ++rep) {
+                seed = seed * 1103515245 + 12345;
+                a[(seed >> 16) % SIZE] = (seed >> 8) % 256;
 
-        for (int i = 0; i < n; ++i)
-            for (int j = 0; j < n; ++j)
-                c[i * n + j] = 0;
+                for (int i = 0; i < n; ++i)
+                        for (int j = 0; j < n; ++j)
+                                c[i * n + j] = 0;
 
-        for (int i = 0; i < n; ++i)
-            for (int j = 0; j < n; ++j)
-                for (int k = 0; k < n; ++k)
-                    c[i * n + j] += a[i * n + k] * b[k * n + j];
+                for (int i = 0; i < n; ++i)
+                        for (int j = 0; j < n; ++j)
+                                for (int k = 0; k < n; ++k)
+                                        c[i * n + j] +=
+                                            a[i * n + k] * b[k * n + j];
 
-        for (int i = 0; i < SIZE; ++i)
-            sum = sum * 31 + c[i];
-    }
+                for (int i = 0; i < SIZE; ++i)
+                        sum = sum * 31 + c[i];
+        }
 
-    return sum & 255;
+        return sum & 255;
 }

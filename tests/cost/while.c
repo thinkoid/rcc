@@ -11,10 +11,11 @@
    b.ge out, then the counter loaded, incremented with add w0, w0, #1
    and stored to [x29, #20] on every iteration, and the b back to the
    test. */
-int count(int n)
+int
+count(int n)
 {
-    int i = 0;
-    while (i < n)
-        i = i + 1;
-    return i;
+        int i = 0;
+        while (i < n)
+                i = i + 1;
+        return i;
 }

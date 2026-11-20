@@ -1,2 +1,2 @@
-tests/error/array-too-large.c:4:11: error: array is too large
+tests/error/array-too-large.c:5:15: error: array is too large
 status 1

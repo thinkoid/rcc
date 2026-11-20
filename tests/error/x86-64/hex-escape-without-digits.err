@@ -1,2 +1,2 @@
-tests/error/hex-escape-without-digits.c:4:13: error: \x used with no following hex digits
+tests/error/hex-escape-without-digits.c:5:17: error: \x used with no following hex digits
 status 1

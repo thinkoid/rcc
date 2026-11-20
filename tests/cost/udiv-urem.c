@@ -9,12 +9,14 @@
    On aarch64, which has no remainder instruction, the listing must show
    udiv() as udiv w0, w0, w1, and urem() as udiv w2, w0, w1 and
    msub w0, w2, w1, w0, the quotient multiplied back and subtracted. */
-unsigned udiv(unsigned a, unsigned b)
+unsigned
+udiv(unsigned a, unsigned b)
 {
-    return a / b;
+        return a / b;
 }
 
-unsigned urem(unsigned a, unsigned b)
+unsigned
+urem(unsigned a, unsigned b)
 {
-    return a % b;
+        return a % b;
 }

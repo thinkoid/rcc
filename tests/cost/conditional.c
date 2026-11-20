@@ -90,9 +90,10 @@
    widened_called(), whose arms each store through a call's result in
    x0, the arms join in w1 and sxtw x0, w1 after the join; in
    joined_called() mov w0, w1 on each path. */
-int conditional(int a, int b, int c)
+int
+conditional(int a, int b, int c)
 {
-    return a ? b : c;
+        return a ? b : c;
 }
 
 int g;

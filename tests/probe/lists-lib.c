@@ -16,34 +16,34 @@ long stepped(int, va_list);
 long fetched(int, va_list);
 
 /* after k named parameters, count arguments of T read by read_A */
-#define WRAP(K, A)                                                      \
-    long wrap##K##_##A(NAMED_##K int count, ...)                        \
-    {                                                                   \
-        va_list ap;                                                     \
-        long r;                                                         \
-                                                                        \
-        va_start(ap, count);                                            \
-        r = read_##A(count, ap);                                        \
-        va_end(ap);                                                     \
-        return r;                                                       \
-    }
+#define WRAP(K, A)                                   \
+        long wrap##K##_##A(NAMED_##K int count, ...) \
+        {                                            \
+                va_list ap;                          \
+                long r;                              \
+                                                     \
+                va_start(ap, count);                 \
+                r = read_##A(count, ap);             \
+                va_end(ap);                          \
+                return r;                            \
+        }
 
 #define WRAPS(A, T) COUNTS(WRAP, A)
 
 TYPES(WRAPS)
 
 /* after k named parameters, the arguments of the types named */
-#define WRAP_MIXED(K, A)                                                \
-    long wrap##K##_mixed(NAMED_##K const char *types, ...)              \
-    {                                                                   \
-        va_list ap;                                                     \
-        long r;                                                         \
-                                                                        \
-        va_start(ap, types);                                            \
-        r = mixed(types, ap);                                           \
-        va_end(ap);                                                     \
-        return r;                                                       \
-    }
+#define WRAP_MIXED(K, A)                                       \
+        long wrap##K##_mixed(NAMED_##K const char *types, ...) \
+        {                                                      \
+                va_list ap;                                    \
+                long r;                                        \
+                                                               \
+                va_start(ap, types);                           \
+                r = mixed(types, ap);                          \
+                va_end(ap);                                    \
+                return r;                                      \
+        }
 
 COUNTS(WRAP_MIXED, )
 

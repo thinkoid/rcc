@@ -1,8 +1,9 @@
 /* An assignment with no right operand. */
-int main(void)
+int
+main(void)
 {
-    int x;
+        int x;
 
-    x = ;
-    return x;
+        x = ;
+        return x;
 }

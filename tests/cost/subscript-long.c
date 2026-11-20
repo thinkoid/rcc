@@ -13,10 +13,11 @@
    with ldr x1; then the store str w2, [x0, x1, lsl #2] and the load
    ldr w0, [x0, x1, lsl #2], lsl where subscript has sxtw, and as many
    instructions as subscript. */
-int subscript(long i, int v)
+int
+subscript(long i, int v)
 {
-    int a[4];
+        int a[4];
 
-    a[i] = v;
-    return a[i];
+        a[i] = v;
+        return a[i];
 }

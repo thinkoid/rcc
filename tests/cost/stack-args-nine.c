@@ -21,12 +21,14 @@
 int f9(int, int, int, int, int, int, int, int, char);
 int f10(int, int, int, int, int, int, int, int, int, int);
 
-int nine(void)
+int
+nine(void)
 {
-    return f9(1, 2, 3, 4, 5, 6, 7, 8, 9);
+        return f9(1, 2, 3, 4, 5, 6, 7, 8, 9);
 }
 
-int ten(void)
+int
+ten(void)
 {
-    return f10(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+        return f10(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
 }

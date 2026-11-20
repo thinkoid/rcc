@@ -8,9 +8,10 @@
 
    The compare is true: exit status 1. clang -O2 reads x as undef,
    which may be any value at each read, and folds main to return 0. */
-int main(void)
+int
+main(void)
 {
-    register int x;
+        register int x;
 
-    return x == x;
+        return x == x;
 }

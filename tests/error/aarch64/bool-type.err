@@ -1,2 +1,2 @@
-tests/error/bool-type.c:5:11: error: not yet: '_Bool'
+tests/error/bool-type.c:6:15: error: not yet: '_Bool'
 status 1

@@ -5,7 +5,8 @@
 #define HASH #
 HASH 1 "error.c
 
-int main(void)
+    int
+    main(void)
 {
-    return 0;
+        return 0;
 }

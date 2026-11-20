@@ -1,2 +1,2 @@
-tests/error/conditional-pointer-integer.c:8:16: error: pointer/integer type mismatch in conditional expression
+tests/error/conditional-pointer-integer.c:9:20: error: pointer/integer type mismatch in conditional expression
 status 1

@@ -7,7 +7,8 @@
    On aarch64 the listing must show x loaded into w0, mov w1, #4, since
    sdiv takes no immediate, then sdiv w0, w0, w1, and no asr, lsr or add
    of the sign. */
-int div_four(int x)
+int
+div_four(int x)
 {
-    return x / 4;
+        return x / 4;
 }

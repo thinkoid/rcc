@@ -1,5 +1,6 @@
 /* An integer constant followed by letters that are no suffix. */
-int main(void)
+int
+main(void)
 {
-    return 12abc;
+        return 12abc;
 }

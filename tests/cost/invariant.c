@@ -16,18 +16,20 @@
    the b back, on the registers the loads took and with no move
    (aarch64.md 6.5); and of invariant_constant(), add w0, w0, #408
    inside the loop and no mul. */
-int invariant(int a, int b, int n)
+int
+invariant(int a, int b, int n)
 {
-    int s = 0;
-    for (int i = 0; i < n; i = i + 1)
-        s = s + a / b;
-    return s;
+        int s = 0;
+        for (int i = 0; i < n; i = i + 1)
+                s = s + a / b;
+        return s;
 }
 
-int invariant_constant(int n)
+int
+invariant_constant(int n)
 {
-    int s = 0;
-    for (int i = 0; i < n; i = i + 1)
-        s = s + 12 * 34;
-    return s;
+        int s = 0;
+        for (int i = 0; i < n; i = i + 1)
+                s = s + 12 * 34;
+        return s;
 }

@@ -14,19 +14,21 @@ typedef unsigned long count_t;
 typedef char *text_t;
 typedef int row_t[4];
 
-count_t length(text_t s)
+count_t
+length(text_t s)
 {
-    count_t n = 0;
-    while (s[n])
-        n++;
-    return n;
+        count_t n = 0;
+        while (s[n])
+                n++;
+        return n;
 }
 
-int sum(int a)
+int
+sum(int a)
 {
-    row_t r;
-    text_t t = (text_t) &r[0];
-    r[0] = a;
-    r[1] = (int) sizeof (text_t);
-    return r[0] + r[1] + (int) (count_t) t[0];
+        row_t r;
+        text_t t = (text_t) &r[0];
+        r[0] = a;
+        r[1] = (int) sizeof(text_t);
+        return r[0] + r[1] + (int) (count_t) t[0];
 }

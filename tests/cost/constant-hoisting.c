@@ -15,7 +15,8 @@
    mov x1, #52727, and the add: two sequences of four, each after the
    operand it is added to, and the second not computed from the
    first. */
-long two_constants(long s, long t)
+long
+two_constants(long s, long t)
 {
-    return s + 81985529216486895 + t + 81985529216486903;
+        return s + 81985529216486895 + t + 81985529216486903;
 }

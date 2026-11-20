@@ -7,35 +7,36 @@
    version: every variable is a slot local, and the shift indexes the
    array by subscript.  sort-tuned.c is the same program written for a
    literal compiler. */
-#define N 2048
+#define N    2048
 #define REPS 1000
 
-int main(void)
+int
+main(void)
 {
-    int a[N];
-    unsigned seed = 1;
-    unsigned sum = 0;
+        int a[N];
+        unsigned seed = 1;
+        unsigned sum = 0;
 
-    for (int rep = 0; rep < REPS; ++rep) {
-        for (int i = 0; i < N; ++i) {
-            seed = seed * 1103515245 + 12345;
-            a[i] = seed >> 16;
+        for (int rep = 0; rep < REPS; ++rep) {
+                for (int i = 0; i < N; ++i) {
+                        seed = seed * 1103515245 + 12345;
+                        a[i] = seed >> 16;
+                }
+
+                for (int i = 1; i < N; ++i) {
+                        int key = a[i];
+                        int j = i - 1;
+
+                        while (j >= 0 && a[j] > key) {
+                                a[j + 1] = a[j];
+                                --j;
+                        }
+                        a[j + 1] = key;
+                }
+
+                for (int i = 0; i < N; ++i)
+                        sum = sum * 31 + a[i];
         }
 
-        for (int i = 1; i < N; ++i) {
-            int key = a[i];
-            int j = i - 1;
-
-            while (j >= 0 && a[j] > key) {
-                a[j + 1] = a[j];
-                --j;
-            }
-            a[j + 1] = key;
-        }
-
-        for (int i = 0; i < N; ++i)
-            sum = sum * 31 + a[i];
-    }
-
-    return sum & 255;
+        return sum & 255;
 }

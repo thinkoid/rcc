@@ -1,2 +1,2 @@
-tests/error/for-missing-semicolon.c:6:22: error: expected ';' after for condition
+tests/error/for-missing-semicolon.c:7:26: error: expected ';' after for condition
 status 1

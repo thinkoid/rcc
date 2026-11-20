@@ -22,26 +22,29 @@
    then ldrb w0, [x19], #1 for *p++, and ldrb w1, [x20, #-1]! for *--q
    after it.  No add or sub writes x19 or x20, and no mov copies either
    but copy()'s start = p, mov x21, x19. */
-char *copy(register char *p, register char *q)
+char *
+copy(register char *p, register char *q)
 {
-    register char *start = p;
-    while (*p++ = *q++)
-        ;
-    return start;
+        register char *start = p;
+        while (*p++ = *q++)
+                ;
+        return start;
 }
 
-int length(register char *p)
+int
+length(register char *p)
 {
-    register int n = 0;
-    while (*p++)
-        n++;
-    return n;
+        register int n = 0;
+        while (*p++)
+                n++;
+        return n;
 }
 
-int compare(register char *p, register char *q)
+int
+compare(register char *p, register char *q)
 {
-    while (*p == *q++)
-        if (*p++ == 0)
-            return 0;
-    return *p - *--q;
+        while (*p == *q++)
+                if (*p++ == 0)
+                        return 0;
+        return *p - *--q;
 }

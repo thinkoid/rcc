@@ -10,17 +10,20 @@
    stored to the slot with str and loaded back with ldr, nothing
    between; and from_int() widening the int by its load,
    ldrsw x0, [x29, #16]. */
-long to_long(int *p)
+long
+to_long(int *p)
 {
-    return (long) p;
+        return (long) p;
 }
 
-int *from_long(long l)
+int *
+from_long(long l)
 {
-    return (int *) l;
+        return (int *) l;
 }
 
-int *from_int(int i)
+int *
+from_int(int i)
 {
-    return (int *) i;
+        return (int *) i;
 }

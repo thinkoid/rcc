@@ -1,2 +1,2 @@
-tests/error/empty-character-constant.c:5:12: error: empty character constant
+tests/error/empty-character-constant.c:6:16: error: empty character constant
 status 1

@@ -1,5 +1,6 @@
 /* An if condition without its closing ')'. */
-int main(void)
+int
+main(void)
 {
     if (1
         return 1;

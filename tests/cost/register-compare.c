@@ -12,8 +12,9 @@
    ordinary parameter, stored to [x29, #24] above it, loaded into w19,
    ldr w19, [x29, #24], then cmp w19, w19 with the register as both
    operands, and cset w0, eq into a fresh register. */
-int same(int n)
+int
+same(int n)
 {
-    register int x = n;
-    return x == x;
+        register int x = n;
+        return x == x;
 }

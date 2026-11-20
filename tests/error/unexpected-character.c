@@ -1,5 +1,6 @@
 /* A character that starts no token of C. */
-int main(void)
+int
+main(void)
 {
-    return @;
+        return @;
 }

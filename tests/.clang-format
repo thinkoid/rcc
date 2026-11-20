@@ -1,0 +1,14 @@
+# The layout of the tests' sources: the tree's, but for two things.
+#
+# The formatter takes a .h for C++, and every source here is C, so a
+# header is indented by 8 as a C source is.
+#
+# BOTH's last argument is a parameter list, (T *, long); the formatter
+# reads it as a cast and writes a space before the closing
+# parenthesis, so the arguments of BOTH are left as written.
+
+BasedOnStyle: InheritParentConfig
+WhitespaceSensitiveMacros: [BOTH]
+---
+Language: Cpp
+IndentWidth: 8

@@ -14,12 +14,14 @@
    last instruction to read the right operand, so its result takes that
    operand's register, w19 is read twice and not written, and no mov
    follows before the branch to the epilogue. */
-int rem(register int a, int b)
+int
+rem(register int a, int b)
 {
-    return a % (b + 1);
+        return a % (b + 1);
 }
 
-unsigned urem(register unsigned a, unsigned b)
+unsigned
+urem(register unsigned a, unsigned b)
 {
-    return a % (b + 1);
+        return a % (b + 1);
 }

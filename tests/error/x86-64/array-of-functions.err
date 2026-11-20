@@ -1,2 +1,2 @@
-tests/error/array-of-functions.c:4:13: error: array element type cannot be a function
+tests/error/array-of-functions.c:5:17: error: array element type cannot be a function
 status 1

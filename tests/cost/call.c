@@ -15,7 +15,8 @@
    into w0 and w1, bl f, and the result left in w0. */
 int f(int a, int b);
 
-int call(int a, int b)
+int
+call(int a, int b)
 {
-    return f(b, a);
+        return f(b, a);
 }

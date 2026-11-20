@@ -16,6 +16,7 @@
    without an else; both of the first two inside a switch in the loop;
    and break alone in a block.  The conditions are a comparison, a &&,
    a ! and a plain value. */
+/* clang-format off */
 #define IF_JUMP_CONDITIONS(X, row, loop)                                \
     X(row, loop, cmp) X(row, loop, land) X(row, loop, lnot)             \
     X(row, loop, value)
@@ -30,3 +31,4 @@
     IF_JUMP_LOOPS(X, goto) IF_JUMP_LOOPS(X, goto_else)                  \
     IF_JUMP_LOOPS(X, return) IF_JUMP_LOOPS(X, return_else)              \
     IF_JUMP_LOOPS(X, switch) IF_JUMP_LOOPS(X, braced)
+/* clang-format on */

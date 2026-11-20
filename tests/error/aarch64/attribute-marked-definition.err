@@ -1,2 +1,2 @@
-tests/error/attribute-marked-definition.c:5:5: error: not yet: attribute 'weak'
+tests/error/attribute-marked-definition.c:6:1: error: not yet: attribute 'weak'
 status 1

@@ -1,2 +1,2 @@
-tests/error/va-list-argument.c:10:19: error: incompatible type for a va_list argument
+tests/error/va-list-argument.c:11:23: error: incompatible type for a va_list argument
 status 1

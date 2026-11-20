@@ -2,7 +2,8 @@
 typedef int word;
 typedef long word;
 
-int main(void)
+int
+main(void)
 {
-    return 0;
+        return 0;
 }

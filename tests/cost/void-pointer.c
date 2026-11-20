@@ -8,10 +8,11 @@
    On aarch64 the listing must show p stored to its slot, loaded and
    stored to v's slot, v loaded and stored to q's slot, all with str and
    ldr of x0, and no instruction between a load and the next store. */
-int *round(int *p)
+int *
+round(int *p)
 {
-    void *v = p;
-    int *q = v;
+        void *v = p;
+        int *q = v;
 
-    return q;
+        return q;
 }

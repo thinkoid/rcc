@@ -1,2 +1,2 @@
-tests/error/register-in-type-name.c:5:13: error: 'register' in a type name
+tests/error/register-in-type-name.c:6:17: error: 'register' in a type name
 status 1

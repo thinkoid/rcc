@@ -205,22 +205,25 @@
    and label_divided() str w2, [x0, w1, sxtw #2] after the sdiv.
    row_divided(), row_divided_deeper() and row_shifted() add the product
    to p before the sdiv or the lsl and store str w1, [x0, #4]. */
-int *first(void)
+int *
+first(void)
 {
-    int m[2][3];
-    return m[0];
+        int m[2][3];
+        return m[0];
 }
 
-int element(void)
+int
+element(void)
 {
-    int m[2][3];
-    return m[0][1];
+        int m[2][3];
+        return m[0][1];
 }
 
-int *second(void)
+int *
+second(void)
 {
-    int m[2][3];
-    return m[1];
+        int m[2][3];
+        return m[1];
 }
 
 int *
@@ -420,7 +423,7 @@ row_start_stored(int (*p)[3], int i)
 int
 row_under_cast(char *c, int i)
 {
-        return ((int (*)[3]) (c + 4))[i][2];
+        return ((int (*)[3])(c + 4))[i][2];
 }
 
 int
@@ -434,25 +437,25 @@ int cells[4][3];
 int
 row_label_refused(int i)
 {
-        return ((int (*)[3]) ((char *) cells + 2))[i][1];
+        return ((int (*)[3])((char *) cells + 2))[i][1];
 }
 
 int
 row_cancelled(char *c, int i)
 {
-        return ((int (*)[1]) (c + 4))[i][-1];
+        return ((int (*)[1])(c + 4))[i][-1];
 }
 
 void
 row_held(char *c, int i)
 {
-        ((int (*)[3]) (c + 400))[i][2] = f();
+        ((int (*)[3])(c + 400))[i][2] = f();
 }
 
 void
 row_held_scaled(char *c, int i)
 {
-        ((int (*)[2]) (c + 400))[i][1] = f();
+        ((int (*)[2])(c + 400))[i][1] = f();
 }
 
 void
@@ -464,7 +467,7 @@ row_held_rows(int (*p)[3], int i)
 int
 row_first_cast(char *c, int i)
 {
-        return i[(int (*)[3]) (c + 4)][2];
+        return i[(int (*)[3])(c + 4)][2];
 }
 
 int
@@ -476,7 +479,7 @@ row_first_rows(int (*p)[3], int i)
 int
 row_before_cast(char *c, int i)
 {
-        return ((int (*)[3]) (c - 12))[i][2];
+        return ((int (*)[3])(c - 12))[i][2];
 }
 
 int
@@ -488,7 +491,7 @@ row_before_rows(int (*p)[3], int i)
 int *
 row_address_under_cast(char *c, int i)
 {
-        return &((int (*)[3]) (c + 4))[i][2];
+        return &((int (*)[3])(c + 4))[i][2];
 }
 
 int labels[8];

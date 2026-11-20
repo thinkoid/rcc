@@ -19,16 +19,18 @@
    cset w0, eq.  through() joins mov x0, #0 and the load of p in x0,
    then reads the int, ldr w0, [x0]; stepped() joins them the same and
    adds an int's size, add x0, x0, #4. */
-int test(int *p)
+int
+test(int *p)
 {
-    if (p)
-        return 1;
-    return 0;
+        if (p)
+                return 1;
+        return 0;
 }
 
-int equal(int *p)
+int
+equal(int *p)
 {
-    return p == 0;
+        return p == 0;
 }
 
 int

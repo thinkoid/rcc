@@ -2,7 +2,8 @@
    class a parameter takes. */
 int f(typedef int word);
 
-int main(void)
+int
+main(void)
 {
-    return 0;
+        return 0;
 }

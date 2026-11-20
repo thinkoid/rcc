@@ -19,17 +19,20 @@
    lsl #16; 0x0000ffff00000000 by one, mov x1, #281470681743360; and
    the bitmask 0xffff0000ffff0000 by one, mov x1,
    #0xffff0000ffff0000. */
-unsigned add_bits(unsigned x)
+unsigned
+add_bits(unsigned x)
 {
-    return x + 4095 + 4096 + 5000 + -5000 + 0x80000001 + 0x80000002;
+        return x + 4095 + 4096 + 5000 + -5000 + 0x80000001 + 0x80000002;
 }
 
-unsigned and_bits(unsigned x)
+unsigned
+and_bits(unsigned x)
 {
-    return x & 0xff & 5;
+        return x & 0xff & 5;
 }
 
-long long_bits(long x)
+long
+long_bits(long x)
 {
-    return x + -100000L + 0x0000ffff00000000 + 0xffff0000ffff0000;
+        return x + -100000L + 0x0000ffff00000000 + 0xffff0000ffff0000;
 }

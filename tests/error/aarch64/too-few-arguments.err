@@ -1,2 +1,2 @@
-tests/error/too-few-arguments.c:7:15: error: too few arguments to function 'f'
+tests/error/too-few-arguments.c:8:19: error: too few arguments to function 'f'
 status 1

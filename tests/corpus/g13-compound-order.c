@@ -18,27 +18,29 @@
    in ISO C; d += (d = 2) and r += (r = 2) are (6.5.1p2), since the
    object is read and written unsequenced. clang -O2 writes main as
    movl $63, %eax: 63. */
-int bump(int *p)
+int
+bump(int *p)
 {
-    *p = 10;
-    return 1;
+        *p = 10;
+        return 1;
 }
 
-int main(void)
+int
+main(void)
 {
-    int a = 1;
-    int b = 1;
-    int c = 1;
-    int d = 1;
-    int y;
-    register int r = 1;
+        int a = 1;
+        int b = 1;
+        int c = 1;
+        int d = 1;
+        int y;
+        register int r = 1;
 
-    a += bump(&a);
-    y = b += bump(&b);
-    c *= bump(&c);
-    d += (d = 2);
-    r += (r = 2);
+        a += bump(&a);
+        y = b += bump(&b);
+        c *= bump(&c);
+        d += (d = 2);
+        r += (r = 2);
 
-    return (a == 11) + (b == 11) * 2 + (y == 11) * 4
-           + (c == 10) * 8 + (d == 4) * 16 + (r == 4) * 32;
+        return (a == 11) + (b == 11) * 2 + (y == 11) * 4 + (c == 10) * 8 +
+               (d == 4) * 16 + (r == 4) * 32;
 }

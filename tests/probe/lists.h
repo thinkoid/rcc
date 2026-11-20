@@ -13,6 +13,7 @@
 
 /* the types an argument is read at: a letter, for the names, and the
    type; char and short read the low bytes of the promoted argument */
+/* clang-format off */
 #define TYPES(X)                                                        \
     X(i, int) X(u, unsigned) X(l, long) X(m, unsigned long)             \
     X(p, char *) X(c, char) X(s, short)
@@ -24,6 +25,7 @@
 #define COUNTS(X, A)                                                    \
     X(0, A) X(1, A) X(2, A) X(3, A) X(4, A) X(5, A) X(6, A) X(7, A)     \
     X(8, A)
+/* clang-format on */
 
 #define NAMED_0
 #define NAMED_1 long a1,
@@ -32,11 +34,9 @@
 #define NAMED_4 long a1, long a2, long a3, long a4,
 #define NAMED_5 long a1, long a2, long a3, long a4, long a5,
 #define NAMED_6 long a1, long a2, long a3, long a4, long a5, long a6,
-#define NAMED_7                                                         \
-    long a1, long a2, long a3, long a4, long a5, long a6, long a7,
-#define NAMED_8                                                         \
-    long a1, long a2, long a3, long a4, long a5, long a6, long a7,      \
-        long a8,
+#define NAMED_7 long a1, long a2, long a3, long a4, long a5, long a6, long a7,
+#define NAMED_8 \
+        long a1, long a2, long a3, long a4, long a5, long a6, long a7, long a8,
 
 #define NAMED_ARGS_0
 #define NAMED_ARGS_1 1,

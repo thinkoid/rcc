@@ -44,6 +44,7 @@ typedef union either either_t;
 typedef inner_t inners_t[2];
 
 /* the member kinds: a letter, for the record's name, and the type */
+/* clang-format off */
 #define KINDS(X)                                                        \
     X(c, char) X(s, short) X(i, int) X(l, long) X(p, pointer_t)         \
     X(f, function_t) X(a, chars_t) X(h, shorts_t) X(r, inner_t)         \
@@ -70,35 +71,36 @@ typedef inner_t inners_t[2];
     X(A, TA, B, TB, c, char) X(A, TA, B, TB, s, short)                  \
     X(A, TA, B, TB, l, long) X(A, TA, B, TB, a, chars_t)                \
     X(A, TA, B, TB, r, inner_t) X(A, TA, B, TB, u, either_t)
+/* clang-format on */
 
 /* the pairs: struct p_AB and union u_AB, members x and y */
-#define PAIR(A, TA, B, TB)                                              \
-    struct p_##A##B                                                     \
-    {                                                                   \
-        TA x;                                                           \
-        TB y;                                                           \
-    };                                                                  \
-    union u_##A##B                                                      \
-    {                                                                   \
-        TA x;                                                           \
-        TB y;                                                           \
-    };
+#define PAIR(A, TA, B, TB) \
+        struct p_##A##B    \
+        {                  \
+                TA x;      \
+                TB y;      \
+        };                 \
+        union u_##A##B     \
+        {                  \
+                TA x;      \
+                TB y;      \
+        };
 
 #define PAIRS(A, TA) KINDS2(PAIR, A, TA)
 
 KINDS(PAIRS)
 
 /* the triples: struct t_ABC, members x, y and z */
-#define TRIPLE(A, TA, B, TB, C, TC)                                     \
-    struct t_##A##B##C                                                  \
-    {                                                                   \
-        TA x;                                                           \
-        TB y;                                                           \
-        TC z;                                                           \
-    };
+#define TRIPLE(A, TA, B, TB, C, TC) \
+        struct t_##A##B##C          \
+        {                           \
+                TA x;               \
+                TB y;               \
+                TC z;               \
+        };
 
 #define TRIPLES_OF(A, TA, B, TB) FEW3(TRIPLE, A, TA, B, TB)
-#define TRIPLES(A, TA) FEW2(TRIPLES_OF, A, TA)
+#define TRIPLES(A, TA)           FEW2(TRIPLES_OF, A, TA)
 
 FEW(TRIPLES)
 
@@ -129,6 +131,7 @@ struct tagged
 };
 
 /* the records of no list above, and the keyword each is declared by */
+/* clang-format off */
 #define RECORDS(X)                                                      \
     X(struct, inner) X(union, either) X(struct, nest) X(union, choice)  \
     X(struct, tagged) X(struct, sockaddr_in) X(, va_list)
@@ -141,14 +144,19 @@ struct tagged
     X(nest_triple_1_x_l, struct nest, triples[1].x.l)                   \
     X(nest_either_x_l, struct nest, either.x.l)                         \
     X(choice_b_z, union choice, b.z) X(tagged_c, struct tagged, c)
+/* clang-format on */
 
 /* the members of the target's list record, and the list's address */
 #if defined(__x86_64__)
+/* clang-format off */
 #define LIST_MEMBERS(X)                                                 \
     X(gp_offset) X(fp_offset) X(overflow_arg_area) X(reg_save_area)
-#define LIST(L) (L)
+/* clang-format on */
+#  define LIST(L) (L)
 #else
+/* clang-format off */
 #define LIST_MEMBERS(X)                                                 \
     X(__stack) X(__gr_top) X(__vr_top) X(__gr_offs) X(__vr_offs)
-#define LIST(L) (&(L))
+/* clang-format on */
+#  define LIST(L) (&(L))
 #endif

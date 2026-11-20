@@ -9,9 +9,10 @@
    On aarch64 the listing must show x stored to its slot at [x29, #20]
    at the initializer and at the assignment, and loaded from it at each
    of the two reads, x + 1 as add w0, w0, #1. */
-int local(int a)
+int
+local(int a)
 {
-    int x = a;
-    x = x + 1;
-    return x;
+        int x = a;
+        x = x + 1;
+        return x;
 }

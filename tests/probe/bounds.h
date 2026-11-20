@@ -11,6 +11,7 @@
 
 /* the narrow types and the letter each takes in a function's name; a
    long has nothing wider to be read as */
+/* clang-format off */
 #define TYPES(X)                                                        \
     X(char, c) X(signed char, sc) X(unsigned char, uc) X(short, s)      \
     X(unsigned short, us) X(int, i) X(unsigned, u)
@@ -37,11 +38,13 @@
     X(T, N, times_on, O *= 12) X(T, N, add_constant, O += 3)            \
     X(T, N, pre_inc, ++O) X(T, N, post_inc, O++) X(T, N, pre_dec, --O)  \
     X(T, N, post_dec, O--) X(T, N, store_value, O = y)
+/* clang-format on */
 
 /* rows whose divisor is the object, which the main keeps from 0 */
 #define DIVIDED(X, T, N, O) X(T, N, div, y / O) X(T, N, rem, y % O)
 
 /* rows for their effect alone, the memory forms among them */
+/* clang-format off */
 #define STATEMENTS(X, T, N, O)                                          \
     X(T, N, add_statement, O += y) X(T, N, sub_statement, O -= y)       \
     X(T, N, and_statement, O &= y) X(T, N, or_statement, O |= y)        \
@@ -56,7 +59,8 @@
     X(T, N, test, O) X(T, N, test_not, !O) X(T, N, test_less, O < y)    \
     X(T, N, test_equal, O == y) X(T, N, test_and, O & y)                \
     X(T, N, test_add, (O += y) != 0)
+/* clang-format on */
 
 /* the object through p, and as a member at offset 8 through q */
 #define POINTED(T) (*p)
-#define MEMBER(T) (*(T *) (q + 8))
+#define MEMBER(T)  (*(T *) (q + 8))

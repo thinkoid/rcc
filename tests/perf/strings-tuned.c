@@ -12,57 +12,60 @@
 #define SIZE 8192
 #define REPS 66000
 
-int length(register char *s)
+int
+length(register char *s)
 {
-    register char *p = s;
+        register char *p = s;
 
-    while (*p != 0)
-        ++p;
-    return p - s;
+        while (*p != 0)
+                ++p;
+        return p - s;
 }
 
-void copy(register char *d, register char *s)
+void
+copy(register char *d, register char *s)
 {
-    while ((*d = *s) != 0) {
-        ++d;
-        ++s;
-    }
-}
-
-int main(void)
-{
-    char src[SIZE];
-    char dst[SIZE];
-    unsigned seed = 1;
-    register unsigned sum = 0;
-
-    for (int i = 0; i < SIZE; ++i) {
-        seed = seed * 1103515245 + 12345;
-        if ((seed >> 16) % 32 == 0)
-            src[i] = 0;
-        else
-            src[i] = 'a' + (seed >> 16) % 26;
-    }
-    src[SIZE - 1] = 0;
-
-    for (int rep = 0; rep < REPS; ++rep) {
-        seed = seed * 1103515245 + 12345;
-        if ((seed >> 8) % 32 == 0)
-            src[(seed >> 16) % (SIZE - 1)] = 0;
-        else
-            src[(seed >> 16) % (SIZE - 1)] = 'a' + (seed >> 8) % 26;
-
-        register char *p = src;
-        register char *end = src + SIZE;
-
-        while (p != end) {
-            register int n = length(p);
-
-            copy(dst, p);
-            sum = sum * 31 + n + dst[n >> 1];
-            p += n + 1;
+        while ((*d = *s) != 0) {
+                ++d;
+                ++s;
         }
-    }
+}
 
-    return sum & 255;
+int
+main(void)
+{
+        char src[SIZE];
+        char dst[SIZE];
+        unsigned seed = 1;
+        register unsigned sum = 0;
+
+        for (int i = 0; i < SIZE; ++i) {
+                seed = seed * 1103515245 + 12345;
+                if ((seed >> 16) % 32 == 0)
+                        src[i] = 0;
+                else
+                        src[i] = 'a' + (seed >> 16) % 26;
+        }
+        src[SIZE - 1] = 0;
+
+        for (int rep = 0; rep < REPS; ++rep) {
+                seed = seed * 1103515245 + 12345;
+                if ((seed >> 8) % 32 == 0)
+                        src[(seed >> 16) % (SIZE - 1)] = 0;
+                else
+                        src[(seed >> 16) % (SIZE - 1)] = 'a' + (seed >> 8) % 26;
+
+                register char *p = src;
+                register char *end = src + SIZE;
+
+                while (p != end) {
+                        register int n = length(p);
+
+                        copy(dst, p);
+                        sum = sum * 31 + n + dst[n >> 1];
+                        p += n + 1;
+                }
+        }
+
+        return sum & 255;
 }

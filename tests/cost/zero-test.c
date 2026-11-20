@@ -11,14 +11,16 @@
    On aarch64 the listing of never() must show mov w0, #0 and cbz w0
    past the body of the if, the body present, and each return branching
    to the epilogue label; and of not_zero(), mov w0, #1 and no cmp. */
-int never(void)
+int
+never(void)
 {
-    if (0)
-        return 1;
-    return 2;
+        if (0)
+                return 1;
+        return 2;
 }
 
-int not_zero(void)
+int
+not_zero(void)
 {
-    return !0;
+        return !0;
 }

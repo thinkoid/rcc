@@ -1,2 +1,2 @@
-tests/error/struct-pointer-arithmetic.c:6:14: error: arithmetic on a pointer to incomplete type struct 'point'
+tests/error/struct-pointer-arithmetic.c:7:18: error: arithmetic on a pointer to incomplete type struct 'point'
 status 1

@@ -11,12 +11,13 @@
    save area, no slot and no load, both compares cmp w19, #10 against
    the register itself, the inverse branches b.ge and b.lt, and each
    return jumping to the epilogue label, the last one included. */
-int which(void)
+int
+which(void)
 {
-    register int x;
-    if (x < 10)
-        return 1;
-    if (x >= 10)
-        return 2;
-    return 3;
+        register int x;
+        if (x < 10)
+                return 1;
+        if (x >= 10)
+                return 2;
+        return 3;
 }

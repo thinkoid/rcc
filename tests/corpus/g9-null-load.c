@@ -5,10 +5,11 @@
    clang -O2 takes the load as undefined, the branch as unreachable,
    and returns 5 without testing argc. The condition comes through
    argc, so the null access is the only reason to drop the branch. */
-int main(int argc)
+int
+main(int argc)
 {
-    if (argc == 1)
-        return *(int *) 0;
+        if (argc == 1)
+                return *(int *) 0;
 
-    return 5;
+        return 5;
 }

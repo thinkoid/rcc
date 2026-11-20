@@ -1,5 +1,6 @@
 /* sizeof applied to void, which has no size. */
-int main(void)
+int
+main(void)
 {
-    return sizeof (void);
+        return sizeof(void);
 }

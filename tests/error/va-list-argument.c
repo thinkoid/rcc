@@ -5,7 +5,8 @@
    the record, which no integer converts to, an error. */
 int vcount(__builtin_va_list ap);
 
-int main(void)
+int
+main(void)
 {
-    return vcount(0);
+        return vcount(0);
 }

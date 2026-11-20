@@ -1,2 +1,2 @@
-tests/error/missing-semicolon-return.c:5:1: error: expected ';' after return statement
+tests/error/missing-semicolon-return.c:3:23: error: expected ';' after return statement
 status 1

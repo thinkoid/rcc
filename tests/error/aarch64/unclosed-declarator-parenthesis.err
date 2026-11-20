@@ -1,2 +1,2 @@
-tests/error/unclosed-declarator-parenthesis.c:5:15: error: expected ')'
+tests/error/unclosed-declarator-parenthesis.c:6:15: error: expected ')'
 status 1

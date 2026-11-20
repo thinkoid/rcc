@@ -1,2 +1,2 @@
-tests/error/void-return-value.c:4:5: error: void function should not return a value
+tests/error/void-return-value.c:5:9: error: void function should not return a value
 status 1

@@ -12,236 +12,389 @@
    and ?: for their values; each as the condition of an if; the test of
    zero, also on the operand of a narrowing cast, whose upper bits are
    stale; and values held across the paths of a branch */
-#define CONDITIONS(T, N)                                                \
-    int lt_##N(T a, T b) { return a < b; }                              \
-    int le_##N(T a, T b) { return a <= b; }                             \
-    int gt_##N(T a, T b) { return a > b; }                              \
-    int ge_##N(T a, T b) { return a >= b; }                             \
-    int eq_##N(T a, T b) { return a == b; }                             \
-    int ne_##N(T a, T b) { return a != b; }                             \
-    int not_##N(T a) { return !a; }                                     \
-    int notnot_##N(T a) { return !!a; }                                 \
-    int notlt_##N(T a, T b) { return !(a < b); }                        \
-    int and_##N(T a, T b) { return a && b; }                            \
-    int or_##N(T a, T b) { return a || b; }                             \
-    T sel_##N(T a, T b) { return a ? b : a; }                           \
-    T min_##N(T a, T b) { return a < b ? a : b; }                       \
-    int iflt_##N(T a, T b) { if (a < b) return 1; return 2; }           \
-    int ifle_##N(T a, T b) { if (a <= b) return 1; return 2; }          \
-    int ifgt_##N(T a, T b) { if (a > b) return 1; return 2; }           \
-    int ifge_##N(T a, T b) { if (a >= b) return 1; return 2; }          \
-    int ifeq_##N(T a, T b) { if (a == b) return 1; return 2; }          \
-    int ifne_##N(T a, T b) { if (a != b) return 1; else return 2; }     \
-    int truth_##N(T a) { if (a) return 1; else return 0; }              \
-    int false_##N(T a) { if (!a) return 1; return 0; }                  \
-    int both_##N(T a, T b) { if (a && b) return 1; return 0; }          \
-    int either_##N(T a, T b) { if (a || b) return 1; return 0; }        \
-    int neither_##N(T a, T b) { if (!(a || b)) return 1; return 0; }    \
-    int stale_##N(long a) { if ((T) a) return 1; return 0; }            \
-    int stale_not_##N(long a, long b) { return !(T) (a + b); }          \
-    int stale_and_##N(long a, long b) { return (T) a && (T) (b + 1); }  \
-    int mixed_##N(T a, T b)                                             \
-    {                                                                   \
-        T x = a;                                                        \
-        int r = 0;                                                      \
-        if (a < b && (x += b) || a == b)                                \
-            r = 1;                                                      \
-        return r + (x != a) * 2;                                        \
-    }                                                                   \
-    T held_##N(T a, T b)                                                \
-    {                                                                   \
-        return a + (a < b) * 2 + (b && a) * 4 + (a ? b : a) + (a || b)  \
-               + (b ? a < b ? 1 : 2 : a ? 3 : 4);                       \
-    }                                                                   \
-    T arms_##N(T a, T b)                                                \
-    {                                                                   \
-        T x = 0;                                                        \
-        T y = 0;                                                        \
-        T r;                                                            \
-        a ? (x = b) : (y = b);                                          \
-        (void) (b && (x += 1));                                         \
-        a || (y -= 1);                                                  \
-        r = a < b ? x++ : y--;                                          \
-        return r + x + y;                                               \
-    }
+#define CONDITIONS(T, N)                                              \
+        int lt_##N(T a, T b)                                          \
+        {                                                             \
+                return a < b;                                         \
+        }                                                             \
+        int le_##N(T a, T b)                                          \
+        {                                                             \
+                return a <= b;                                        \
+        }                                                             \
+        int gt_##N(T a, T b)                                          \
+        {                                                             \
+                return a > b;                                         \
+        }                                                             \
+        int ge_##N(T a, T b)                                          \
+        {                                                             \
+                return a >= b;                                        \
+        }                                                             \
+        int eq_##N(T a, T b)                                          \
+        {                                                             \
+                return a == b;                                        \
+        }                                                             \
+        int ne_##N(T a, T b)                                          \
+        {                                                             \
+                return a != b;                                        \
+        }                                                             \
+        int not_##N(T a)                                              \
+        {                                                             \
+                return !a;                                            \
+        }                                                             \
+        int notnot_##N(T a)                                           \
+        {                                                             \
+                return !!a;                                           \
+        }                                                             \
+        int notlt_##N(T a, T b)                                       \
+        {                                                             \
+                return !(a < b);                                      \
+        }                                                             \
+        int and_##N(T a, T b)                                         \
+        {                                                             \
+                return a && b;                                        \
+        }                                                             \
+        int or_##N(T a, T b)                                          \
+        {                                                             \
+                return a || b;                                        \
+        }                                                             \
+        T sel_##N(T a, T b)                                           \
+        {                                                             \
+                return a ? b : a;                                     \
+        }                                                             \
+        T min_##N(T a, T b)                                           \
+        {                                                             \
+                return a < b ? a : b;                                 \
+        }                                                             \
+        int iflt_##N(T a, T b)                                        \
+        {                                                             \
+                if (a < b)                                            \
+                        return 1;                                     \
+                return 2;                                             \
+        }                                                             \
+        int ifle_##N(T a, T b)                                        \
+        {                                                             \
+                if (a <= b)                                           \
+                        return 1;                                     \
+                return 2;                                             \
+        }                                                             \
+        int ifgt_##N(T a, T b)                                        \
+        {                                                             \
+                if (a > b)                                            \
+                        return 1;                                     \
+                return 2;                                             \
+        }                                                             \
+        int ifge_##N(T a, T b)                                        \
+        {                                                             \
+                if (a >= b)                                           \
+                        return 1;                                     \
+                return 2;                                             \
+        }                                                             \
+        int ifeq_##N(T a, T b)                                        \
+        {                                                             \
+                if (a == b)                                           \
+                        return 1;                                     \
+                return 2;                                             \
+        }                                                             \
+        int ifne_##N(T a, T b)                                        \
+        {                                                             \
+                if (a != b)                                           \
+                        return 1;                                     \
+                else                                                  \
+                        return 2;                                     \
+        }                                                             \
+        int truth_##N(T a)                                            \
+        {                                                             \
+                if (a)                                                \
+                        return 1;                                     \
+                else                                                  \
+                        return 0;                                     \
+        }                                                             \
+        int false_##N(T a)                                            \
+        {                                                             \
+                if (!a)                                               \
+                        return 1;                                     \
+                return 0;                                             \
+        }                                                             \
+        int both_##N(T a, T b)                                        \
+        {                                                             \
+                if (a && b)                                           \
+                        return 1;                                     \
+                return 0;                                             \
+        }                                                             \
+        int either_##N(T a, T b)                                      \
+        {                                                             \
+                if (a || b)                                           \
+                        return 1;                                     \
+                return 0;                                             \
+        }                                                             \
+        int neither_##N(T a, T b)                                     \
+        {                                                             \
+                if (!(a || b))                                        \
+                        return 1;                                     \
+                return 0;                                             \
+        }                                                             \
+        int stale_##N(long a)                                         \
+        {                                                             \
+                if ((T) a)                                            \
+                        return 1;                                     \
+                return 0;                                             \
+        }                                                             \
+        int stale_not_##N(long a, long b)                             \
+        {                                                             \
+                return !(T) (a + b);                                  \
+        }                                                             \
+        int stale_and_##N(long a, long b)                             \
+        {                                                             \
+                return (T) a && (T) (b + 1);                          \
+        }                                                             \
+        int mixed_##N(T a, T b)                                       \
+        {                                                             \
+                T x = a;                                              \
+                int r = 0;                                            \
+                if (a < b && (x += b) || a == b)                      \
+                        r = 1;                                        \
+                return r + (x != a) * 2;                              \
+        }                                                             \
+        T held_##N(T a, T b)                                          \
+        {                                                             \
+                return a + (a < b) * 2 + (b && a) * 4 + (a ? b : a) + \
+                       (a || b) +                                     \
+                       (b ? a < b ? 1 : 2 :                           \
+                        a ? 3 :                                       \
+                            4);                                       \
+        }                                                             \
+        T arms_##N(T a, T b)                                          \
+        {                                                             \
+                T x = 0;                                              \
+                T y = 0;                                              \
+                T r;                                                  \
+                a ? (x = b) : (y = b);                                \
+                (void) (b && (x += 1));                               \
+                a || (y -= 1);                                        \
+                r = a < b ? x++ : y--;                                \
+                return r + x + y;                                     \
+        }
 
 TYPES(CONDITIONS)
 
 /* a comparison with a constant, as a value and as a condition */
-#define KCMP(T, N, name, op, constant)                                  \
-    int k##N##_##name(T a) { return a op constant; }                    \
-    int j##N##_##name(T a) { if (a op constant) return 1; return 0; }
+#define KCMP(T, N, name, op, constant) \
+        int k##N##_##name(T a)         \
+        {                              \
+                return a op constant;  \
+        }                              \
+        int j##N##_##name(T a)         \
+        {                              \
+                if (a op constant)     \
+                        return 1;      \
+                return 0;              \
+        }
 #define KCMP_ALL(T, N) KCMPS(KCMP, T, N)
 
 WIDE(KCMP_ALL)
 
 /* the arms of a conditional in two types: the common type is long */
-long arms_mixed(int c, int i, long l)
+long
+arms_mixed(int c, int i, long l)
 {
-    return c ? i : l;
+        return c ? i : l;
 }
 
-unsigned long arms_unsigned(int c, unsigned u, long l)
+unsigned long
+arms_unsigned(int c, unsigned u, long l)
 {
-    return c ? u : l;
+        return c ? u : l;
 }
 
 /* a condition that is a constant is still a test, docs/backend.md 7.1 */
-int constant_conditions(int a)
+int
+constant_conditions(int a)
 {
-    int r = 0;
+        int r = 0;
 
-    if (0)
-        r += 1;
-    if (1)
-        r += 2;
-    while (0)
-        r += 4;
-    if (a, 0)
-        r += 8;
+        if (0)
+                r += 1;
+        if (1)
+                r += 2;
+        while (0)
+                r += 4;
+        if (a, 0)
+                r += 8;
 
-    return r + (1 ? a : 2) + (0 || a) + (1 && a);
+        return r + (1 ? a : 2) + (0 || a) + (1 && a);
 }
 
 /* while, docs/aarch64.md 7.2 */
-int count(int n)
+int
+count(int n)
 {
-    int i = 0;
-    int s = 0;
+        int i = 0;
+        int s = 0;
 
-    while (i < n) {
-        s += i;
-        i++;
-    }
+        while (i < n) {
+                s += i;
+                i++;
+        }
 
-    return s;
+        return s;
 }
 
 /* for, with a declaration and with an expression; an empty body */
-int sum(int n)
+int
+sum(int n)
 {
-    int s = 0;
+        int s = 0;
 
-    for (int i = 0; i < n; i++)
-        s += i;
+        for (int i = 0; i < n; i++)
+                s += i;
 
-    return s;
+        return s;
 }
 
-int last(int n)
+int
+last(int n)
 {
-    int i;
+        int i;
 
-    for (i = 0; i < n; i++)
-        ;
+        for (i = 0; i < n; i++)
+                ;
 
-    return i;
+        return i;
 }
 
 /* the comma in a for's initializer and step, and as a condition */
-int pairs(int n)
+int
+pairs(int n)
 {
-    int i;
-    int j;
-    int s = 0;
+        int i;
+        int j;
+        int s = 0;
 
-    for (i = 0, j = 0; i < n; i++, j += 2)
-        s += j;
+        for (i = 0, j = 0; i < n; i++, j += 2)
+                s += j;
 
-    while (i--, i > 0)
-        s -= 1;
+        while (i--, i > 0)
+                s -= 1;
 
-    return s + i;
+        return s + i;
 }
 
 /* loops in loops, and an if and else inside */
-long nested(int n, int m)
+long
+nested(int n, int m)
 {
-    long s = 0;
+        long s = 0;
 
-    for (int i = 0; i < n; i++)
-        for (int j = 0; j < m; j++)
-            if ((i ^ j) & 1)
-                s += i * j;
-            else
-                s -= j;
+        for (int i = 0; i < n; i++)
+                for (int j = 0; j < m; j++)
+                        if ((i ^ j) & 1)
+                                s += i * j;
+                        else
+                                s -= j;
 
-    return s;
+        return s;
 }
 
 /* a loop whose condition is a value, and a return from inside it */
-int gcd(int a, int b)
+int
+gcd(int a, int b)
 {
-    while (b) {
-        int t = a % b;
-        a = b;
-        b = t;
-    }
+        while (b) {
+                int t = a % b;
+                a = b;
+                b = t;
+        }
 
-    return a;
+        return a;
 }
 
-unsigned collatz(unsigned n)
+unsigned
+collatz(unsigned n)
 {
-    unsigned steps = 0;
+        unsigned steps = 0;
 
-    while (n != 1) {
-        if (n & 1)
-            n = 3 * n + 1;
-        else
-            n = n / 2;
-        steps++;
-    }
+        while (n != 1) {
+                if (n & 1)
+                        n = 3 * n + 1;
+                else
+                        n = n / 2;
+                steps++;
+        }
 
-    return steps;
+        return steps;
 }
 
-int first_bit(unsigned x)
+int
+first_bit(unsigned x)
 {
-    int i = 0;
+        int i = 0;
 
-    while (1) {
-        if (x & 1)
-            return i;
-        if (i == 31)
-            return 32;
-        x >>= 1;
-        i++;
-    }
+        while (1) {
+                if (x & 1)
+                        return i;
+                if (i == 31)
+                        return 32;
+                x >>= 1;
+                i++;
+        }
 }
 
 /* conditions of several operators, in a loop */
-int primes(int n)
+int
+primes(int n)
 {
-    int count = 0;
+        int count = 0;
 
-    for (int i = 2; i < n; i++) {
-        int prime = 1;
+        for (int i = 2; i < n; i++) {
+                int prime = 1;
 
-        for (int d = 2; d * d <= i && prime; d++)
-            if (i % d == 0)
-                prime = 0;
+                for (int d = 2; d * d <= i && prime; d++)
+                        if (i % d == 0)
+                                prime = 0;
 
-        if (prime || i == 2)
-            count++;
-    }
+                if (prime || i == 2)
+                        count++;
+        }
 
-    return count;
+        return count;
 }
 
 /* eighteen values held when the paths of a conditional come: all are
    saved before the first jump, docs/backend.md 6.7 */
-int deep(int a, int b, int c, int d, int e, int f, int g, int h)
+int
+deep(int a, int b, int c, int d, int e, int f, int g, int h)
 {
-    return a - (b - (c - (d - (e - (f - (g - (h - (a - (b - (c - (d - (e -
-           (f - (g - (h - (a - (b - (c ? d && e : f || g))))))))))))))))));
+        return a -
+               (b -
+                (c -
+                 (d -
+                  (e -
+                   (f -
+                    (g -
+                     (h -
+                      (a -
+                       (b -
+                        (c -
+                         (d -
+                          (e -
+                           (f -
+                            (g - (h - (a - (b - (c ? d && e :
+                                                     f || g))))))))))))))))));
 }
 
 /* the same in long, the branch in the middle of the held values */
-long deep_long(long a, long b, long c, long d, long e, long f, long g, long h)
+long
+deep_long(long a, long b, long c, long d, long e, long f, long g, long h)
 {
-    return a + (b * (c + (d * (e + (f * (g + (h * (a < b ? c : d)
-           + (e && f)) - (g || h)) + (a ? b : c)) - !d) + (e == f)) - g) + h);
+        return a + (b * (c +
+                         (d * (e +
+                               (f * (g + (h * (a < b ? c : d) + (e && f)) -
+                                     (g || h)) +
+                                (a ? b : c)) -
+                               !d) +
+                          (e == f)) -
+                         g) +
+                    h);
 }
 
 /* docs/backend.md 7.1 on x86-64, a condition that jumps on the flags of
@@ -255,93 +408,93 @@ long deep_long(long a, long b, long c, long d, long e, long f, long g, long h)
    object, so a write wider than a local object reaches r, which the
    result holds, and neither the frame record nor the count of a
    loop. */
-#define CC_PLACES(O, C)                                                 \
-    O = a;                                                              \
-    if (C)                                                              \
-        r = 1;                                                          \
-    r = r * 7 + O;                                                      \
-    O = a;                                                              \
-    n = 0;                                                              \
-    while (C)                                                           \
-        if (++n == 3)                                                   \
-            break;                                                      \
-    r = (r * 7 + n) * 7 + O;                                            \
-    O = a;                                                              \
-    n = 0;                                                              \
-    do                                                                  \
-        if (++n == 3)                                                   \
-            break;                                                      \
-    while (C);                                                          \
-    r = (r * 7 + n) * 7 + O;                                            \
-    O = a;                                                              \
-    for (n = 0; C;)                                                     \
-        if (++n == 3)                                                   \
-            break;                                                      \
-    r = (r * 7 + n) * 7 + O;                                            \
-    O = a;                                                              \
-    r = r * 7 + ((C) && b) * 2 + (b && (C));                            \
-    r = r * 7 + O;                                                      \
-    O = a;                                                              \
-    if ((C) || b)                                                       \
-        r = r * 7 + 1;                                                  \
-    if (!b || (C))                                                      \
-        r = r * 7 + 2;                                                  \
-    r = r * 7 + O;                                                      \
-    O = a;                                                              \
-    if (!(C))                                                           \
-        r = r * 7 + 3;                                                  \
-    r = r * 7 + O;                                                      \
-    O = a;                                                              \
-    r = r * 7 + ((C) ? 4 : 5);                                          \
-    return r * 7 + O;
+#define CC_PLACES(O, C)                          \
+        O = a;                                   \
+        if (C)                                   \
+                r = 1;                           \
+        r = r * 7 + O;                           \
+        O = a;                                   \
+        n = 0;                                   \
+        while (C)                                \
+                if (++n == 3)                    \
+                        break;                   \
+        r = (r * 7 + n) * 7 + O;                 \
+        O = a;                                   \
+        n = 0;                                   \
+        do                                       \
+                if (++n == 3)                    \
+                        break;                   \
+        while (C);                               \
+        r = (r * 7 + n) * 7 + O;                 \
+        O = a;                                   \
+        for (n = 0; C;)                          \
+                if (++n == 3)                    \
+                        break;                   \
+        r = (r * 7 + n) * 7 + O;                 \
+        O = a;                                   \
+        r = r * 7 + ((C) && b) * 2 + (b && (C)); \
+        r = r * 7 + O;                           \
+        O = a;                                   \
+        if ((C) || b)                            \
+                r = r * 7 + 1;                   \
+        if (!b || (C))                           \
+                r = r * 7 + 2;                   \
+        r = r * 7 + O;                           \
+        O = a;                                   \
+        if (!(C))                                \
+                r = r * 7 + 3;                   \
+        r = r * 7 + O;                           \
+        O = a;                                   \
+        r = r * 7 + ((C) ? 4 : 5);               \
+        return r * 7 + O;
 
 /* a condition of a and b alone; x is the object the places reset */
-#define CC_VALUE(T, N, name, C)                                         \
-    long cc_##name##_##N(T a, T b)                                      \
-    {                                                                   \
-        int n;                                                          \
-        long r = 0;                                                     \
-        T x;                                                            \
-        CC_PLACES(x, C)                                                 \
-    }
+#define CC_VALUE(T, N, name, C)        \
+        long cc_##name##_##N(T a, T b) \
+        {                              \
+                int n;                 \
+                long r = 0;            \
+                T x;                   \
+                CC_PLACES(x, C)        \
+        }
 
 /* a condition on an object: a local, a global and a register
    variable, the function cc_<name>_<kind>_<type> */
-#define CC_ON_LOCAL(T, N, K, O, name, C)                                \
-    long cc_##name##_##K##_##N(T a, T b)                                \
-    {                                                                   \
-        int n;                                                          \
-        long r = 0;                                                     \
-        T O;                                                            \
-        CC_PLACES(O, C)                                                 \
-    }
+#define CC_ON_LOCAL(T, N, K, O, name, C)     \
+        long cc_##name##_##K##_##N(T a, T b) \
+        {                                    \
+                int n;                       \
+                long r = 0;                  \
+                T O;                         \
+                CC_PLACES(O, C)              \
+        }
 
-#define CC_ON_GLOBAL(T, N, K, O, name, C)                               \
-    long cc_##name##_##K##_##N(T a, T b)                                \
-    {                                                                   \
-        int n;                                                          \
-        long r = 0;                                                     \
-        CC_PLACES(O, C)                                                 \
-    }
+#define CC_ON_GLOBAL(T, N, K, O, name, C)    \
+        long cc_##name##_##K##_##N(T a, T b) \
+        {                                    \
+                int n;                       \
+                long r = 0;                  \
+                CC_PLACES(O, C)              \
+        }
 
-#define CC_ON_REGISTER(T, N, K, O, name, C)                             \
-    long cc_##name##_##K##_##N(T a, T b)                                \
-    {                                                                   \
-        int n;                                                          \
-        long r = 0;                                                     \
-        register T O;                                                   \
-        CC_PLACES(O, C)                                                 \
-    }
+#define CC_ON_REGISTER(T, N, K, O, name, C)  \
+        long cc_##name##_##K##_##N(T a, T b) \
+        {                                    \
+                int n;                       \
+                long r = 0;                  \
+                register T O;                \
+                CC_PLACES(O, C)              \
+        }
 
 #define CC_GLOBAL(T, N) T cc_object_##N;
 
 TYPES(CC_GLOBAL)
 
-#define CC_ALL(T, N)                                                    \
-    CC_VALUES(CC_VALUE, T, N)                                           \
-    CC_OBJECT(CC_ON_LOCAL, T, N, local, x)                              \
-    CC_OBJECT(CC_ON_GLOBAL, T, N, global, cc_object_##N)                \
-    CC_OBJECT(CC_ON_REGISTER, T, N, reg, x)
+#define CC_ALL(T, N)                                         \
+        CC_VALUES(CC_VALUE, T, N)                            \
+        CC_OBJECT(CC_ON_LOCAL, T, N, local, x)               \
+        CC_OBJECT(CC_ON_GLOBAL, T, N, global, cc_object_##N) \
+        CC_OBJECT(CC_ON_REGISTER, T, N, reg, x)
 
 TYPES(CC_ALL)
 
@@ -353,37 +506,41 @@ TYPES(CC_ALL)
    condition and as a value, and under ! and && and before the ? of
    ?:.  The function kl_<name>_<type> of an integer type, and of
    char *, whose constants are cast to it. */
-#define KLEFT_PLACES(T, N, op, k, e, f)                                 \
-    register T x = a;                                                   \
-    long r = 0;                                                         \
-    if (k op a)                                                         \
-        r += 1;                                                         \
-    if (k op x)                                                         \
-        r += 2;                                                         \
-    if (k op (e))                                                       \
-        r += 4;                                                         \
-    if (k op (f))                                                       \
-        r += 8;                                                         \
-    if (k op kl_same_##N(b))                                            \
-        r += 16;                                                        \
-    if (!(k op a) && k op b)                                            \
-        r += 32;                                                        \
-    r = r * 2 + (k op a);                                               \
-    r = r * 2 + (k op x);                                               \
-    r = r * 2 + (k op (e));                                             \
-    r = r * 2 + (k op (f));                                             \
-    r = r * 2 + (k op kl_same_##N(a));                                  \
-    return r * 2 + (k op b ? 1 : 0);
+#define KLEFT_PLACES(T, N, op, k, e, f)    \
+        register T x = a;                  \
+        long r = 0;                        \
+        if (k op a)                        \
+                r += 1;                    \
+        if (k op x)                        \
+                r += 2;                    \
+        if (k op(e))                       \
+                r += 4;                    \
+        if (k op(f))                       \
+                r += 8;                    \
+        if (k op kl_same_##N(b))           \
+                r += 16;                   \
+        if (!(k op a) && k op b)           \
+                r += 32;                   \
+        r = r * 2 + (k op a);              \
+        r = r * 2 + (k op x);              \
+        r = r * 2 + (k op(e));             \
+        r = r * 2 + (k op(f));             \
+        r = r * 2 + (k op kl_same_##N(a)); \
+        return r * 2 + (k op b ? 1 : 0);
 
-#define KLEFT_SAME(T, N, least, most) T kl_same_##N(T a) { return a; }
+#define KLEFT_SAME(T, N, least, most) \
+        T kl_same_##N(T a)            \
+        {                             \
+                return a;             \
+        }
 
 LEFT_TYPES(KLEFT_SAME)
 
-#define KLEFT(T, N, name, op, k)                                        \
-    long kl_##name##_##N(T a, T b)                                      \
-    {                                                                   \
-        KLEFT_PLACES(T, N, op, (k), a & b, a + b)                       \
-    }
+#define KLEFT(T, N, name, op, k)                          \
+        long kl_##name##_##N(T a, T b)                    \
+        {                                                 \
+                KLEFT_PLACES(T, N, op, (k), a & b, a + b) \
+        }
 #define KLEFT_ALL(T, N, least, most) KLEFTS(KLEFT, T, N, least, most)
 
 LEFT_TYPES(KLEFT_ALL)
@@ -394,11 +551,11 @@ kl_same_p(char *a)
         return a;
 }
 
-#define KLEFT_POINTER(T, N, name, op, k)                                \
-    long kl_##name##_##N(T a, T b)                                      \
-    {                                                                   \
-        KLEFT_PLACES(T, N, op, ((T) (k)), a + 1, b - 1)                 \
-    }
+#define KLEFT_POINTER(T, N, name, op, k)                        \
+        long kl_##name##_##N(T a, T b)                          \
+        {                                                       \
+                KLEFT_PLACES(T, N, op, ((T) (k)), a + 1, b - 1) \
+        }
 
 KLEFTS(KLEFT_POINTER, char *, p, 0, -1)
 
@@ -425,23 +582,23 @@ kl_null(char *a, char *b)
    into a register variable of the type, y, and of an int, z, and into
    the variable it reads, x; and as a condition.  The function
    kf_<name>_<type>. */
-#define KFIRST(T, N, name, op, k)                                       \
-    long kf_##name##_##N(T a, T b)                                      \
-    {                                                                   \
-        register T x = a;                                               \
-        register T y;                                                   \
-        register int z;                                                 \
-        long r = (k) op a;                                              \
-        r = r * 3 + ((k) op x);                                         \
-        r = r * 3 + ((k) op kl_same_##N(b));                            \
-        y = (k) op b;                                                   \
-        z = (k) op x;                                                   \
-        x = (k) op x;                                                   \
-        r = r * 3 + y + z + x;                                          \
-        if ((k) op a)                                                   \
-            r += 1;                                                     \
-        return r;                                                       \
-    }
+#define KFIRST(T, N, name, op, k)                    \
+        long kf_##name##_##N(T a, T b)               \
+        {                                            \
+                register T x = a;                    \
+                register T y;                        \
+                register int z;                      \
+                long r = (k) op a;                   \
+                r = r * 3 + ((k) op x);              \
+                r = r * 3 + ((k) op kl_same_##N(b)); \
+                y = (k) op b;                        \
+                z = (k) op x;                        \
+                x = (k) op x;                        \
+                r = r * 3 + y + z + x;               \
+                if ((k) op a)                        \
+                        r += 1;                      \
+                return r;                            \
+        }
 #define KFIRST_ALL(T, N, least, most) KFIRSTS(KFIRST, T, N, least, most)
 
 LEFT_TYPES(KFIRST_ALL)
@@ -454,65 +611,71 @@ LEFT_TYPES(KFIRST_ALL)
    constant and in && and while, tz_p_, tz_l_ and tz_g_.  A char or a
    short is promoted by a comparison and by &, and keeps its load
    there; tested alone it is compared at its own width. */
-#define KSIDE_PLACES(O, op, constant)                                   \
-    int r = 0;                                                          \
-    if (O op constant)                                                  \
-        r += 1;                                                         \
-    if (constant op O)                                                  \
-        r += 2;                                                         \
-    if (!(O op constant))                                               \
-        r += 4;                                                         \
-    return r + ((O op constant) && (constant op O) ? 8 : 16);
+#define KSIDE_PLACES(O, op, constant) \
+        int r = 0;                    \
+        if (O op constant)            \
+                r += 1;               \
+        if (constant op O)            \
+                r += 2;               \
+        if (!(O op constant))         \
+                r += 4;               \
+        return r + ((O op constant) && (constant op O) ? 8 : 16);
 
-#define TRUTH_PLACES(O)                                                 \
-    int r = 0;                                                          \
-    if (O)                                                              \
-        r += 1;                                                         \
-    if (!O)                                                             \
-        r += 2;                                                         \
-    if (O & 1)                                                          \
-        r += 4;                                                         \
-    if ((O & 0x81) == 0)                                                \
-        r += 8;                                                         \
-    if (O && b)                                                         \
-        r += 16;                                                        \
-    while (O) {                                                         \
-        r += 32;                                                        \
-        break;                                                          \
-    }                                                                   \
-    return r + (O ? 64 : 128);
+#define TRUTH_PLACES(O)      \
+        int r = 0;           \
+        if (O)               \
+                r += 1;      \
+        if (!O)              \
+                r += 2;      \
+        if (O & 1)           \
+                r += 4;      \
+        if ((O & 0x81) == 0) \
+                r += 8;      \
+        if (O && b)          \
+                r += 16;     \
+        while (O) {          \
+                r += 32;     \
+                break;       \
+        }                    \
+        return r + (O ? 64 : 128);
 
 #define KSIDE_GLOBAL(T, N) T ks_object_##N;
 
 TYPES(KSIDE_GLOBAL)
 
-#define KSIDE(T, N, name, op, constant)                                 \
-    int ks_p_##name##_##N(T a) { KSIDE_PLACES(a, op, constant) }        \
-    int ks_l_##name##_##N(T a)                                          \
-    {                                                                   \
-        T x = a;                                                        \
-        KSIDE_PLACES(x, op, constant)                                   \
-    }                                                                   \
-    int ks_g_##name##_##N(T a)                                          \
-    {                                                                   \
-        ks_object_##N = a;                                              \
-        KSIDE_PLACES(ks_object_##N, op, constant)                       \
-    }
+#define KSIDE(T, N, name, op, constant)                   \
+        int ks_p_##name##_##N(T a)                        \
+        {                                                 \
+                KSIDE_PLACES(a, op, constant)             \
+        }                                                 \
+        int ks_l_##name##_##N(T a)                        \
+        {                                                 \
+                T x = a;                                  \
+                KSIDE_PLACES(x, op, constant)             \
+        }                                                 \
+        int ks_g_##name##_##N(T a)                        \
+        {                                                 \
+                ks_object_##N = a;                        \
+                KSIDE_PLACES(ks_object_##N, op, constant) \
+        }
 #define KSIDE_ALL(T, N) KSIDES(KSIDE, T, N)
 
 TYPES(KSIDE_ALL)
 
-#define TRUTHS(T, N)                                                    \
-    int tz_p_##N(T a, T b) { TRUTH_PLACES(a) }                          \
-    int tz_l_##N(T a, T b)                                              \
-    {                                                                   \
-        T x = a;                                                        \
-        TRUTH_PLACES(x)                                                 \
-    }                                                                   \
-    int tz_g_##N(T a, T b)                                              \
-    {                                                                   \
-        ks_object_##N = a;                                              \
-        TRUTH_PLACES(ks_object_##N)                                     \
-    }
+#define TRUTHS(T, N)                        \
+        int tz_p_##N(T a, T b)              \
+        {                                   \
+                TRUTH_PLACES(a)             \
+        }                                   \
+        int tz_l_##N(T a, T b)              \
+        {                                   \
+                T x = a;                    \
+                TRUTH_PLACES(x)             \
+        }                                   \
+        int tz_g_##N(T a, T b)              \
+        {                                   \
+                ks_object_##N = a;          \
+                TRUTH_PLACES(ks_object_##N) \
+        }
 
 TYPES(TRUTHS)

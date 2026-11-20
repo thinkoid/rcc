@@ -1,2 +1,2 @@
-tests/error/register-twice.c:4:14: error: cannot combine 'register' with the storage class before it
+tests/error/register-twice.c:5:18: error: cannot combine 'register' with the storage class before it
 status 1

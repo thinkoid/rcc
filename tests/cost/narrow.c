@@ -23,17 +23,20 @@
    into w0 and w1 with ldrb and ldrsh, and extending f's result with
    uxtb w0, w0 after the bl, since the result is valid to 8 bits as it
    comes. */
-char f(char c, short s)
+char
+f(char c, short s)
 {
-    return c / 4 + s;
+        return c / 4 + s;
 }
 
-unsigned char g(unsigned char u)
+unsigned char
+g(unsigned char u)
 {
-    return u + 1;
+        return u + 1;
 }
 
-int h(int x)
+int
+h(int x)
 {
-    return f(x, x);
+        return f(x, x);
 }

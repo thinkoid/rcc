@@ -18,75 +18,87 @@ held(long v)
    across a call, written and read on a local and on a global, and
    written, stepped and read by . on an element of an array by a
    variable index, through a pointer and on a global's label */
-#define MEMBER(K, N, M, A)                                              \
-    long get_##N##_##M(K N *p) { return (long) p->M PATH_##A; }         \
-    void set_##N##_##M(K N *p, long v)                                  \
-    {                                                                   \
-        p->M PATH_##A = (SCALAR_##A) v;                                 \
-    }                                                                   \
-    long step_##N##_##M(K N *p) { return STEP_##A(p->M PATH_##A); }     \
-    long add_##N##_##M(K N *p) { return ADD_##A(p->M PATH_##A); }       \
-    long where_##N##_##M(K N *p)                                        \
-    {                                                                   \
-        return (char *) &p->M PATH_##A - (char *) p;                    \
-    }                                                                   \
-    long second_##N##_##M(K N *p) { return (long) p[1].M PATH_##A; }    \
-    void held_##N##_##M(K N *p, int i, long v)                          \
-    {                                                                   \
-        p[i].M PATH_##A = (SCALAR_##A) held(v);                         \
-    }                                                                   \
-    long held_add_##N##_##M(K N *p, int i)                              \
-    {                                                                   \
-        return HELD_ADD_##A(p[i].M PATH_##A);                           \
-    }                                                                   \
-    long local_##N##_##M(long v)                                        \
-    {                                                                   \
-        K N s;                                                          \
-                                                                        \
-        s.M PATH_##A = (SCALAR_##A) v;                                  \
-        return (long) s.M PATH_##A;                                     \
-    }                                                                   \
-    long global_##N##_##M(long v)                                       \
-    {                                                                   \
-        object_##N.M PATH_##A = (SCALAR_##A) v;                         \
-        return (long) object_##N.M PATH_##A;                            \
-    }                                                                   \
-    long row_##N##_##M(K N *p, long i, long v)                          \
-    {                                                                   \
-        p[i].M PATH_##A = (SCALAR_##A) v;                               \
-        (void) STEP_##A(p[i].M PATH_##A);                               \
-        return (long) p[i].M PATH_##A;                                  \
-    }                                                                   \
-    long table_##N##_##M(long i, long v)                                \
-    {                                                                   \
-        table_##N[i].M PATH_##A = (SCALAR_##A) v;                       \
-        (void) STEP_##A(table_##N[i].M PATH_##A);                       \
-        return (long) table_##N[i].M PATH_##A;                          \
-    }
+#define MEMBER(K, N, M, A)                                   \
+        long get_##N##_##M(K N *p)                           \
+        {                                                    \
+                return (long) p->M PATH_##A;                 \
+        }                                                    \
+        void set_##N##_##M(K N *p, long v)                   \
+        {                                                    \
+                p->M PATH_##A = (SCALAR_##A) v;              \
+        }                                                    \
+        long step_##N##_##M(K N *p)                          \
+        {                                                    \
+                return STEP_##A(p->M PATH_##A);              \
+        }                                                    \
+        long add_##N##_##M(K N *p)                           \
+        {                                                    \
+                return ADD_##A(p->M PATH_##A);               \
+        }                                                    \
+        long where_##N##_##M(K N *p)                         \
+        {                                                    \
+                return (char *) &p->M PATH_##A - (char *) p; \
+        }                                                    \
+        long second_##N##_##M(K N *p)                        \
+        {                                                    \
+                return (long) p[1].M PATH_##A;               \
+        }                                                    \
+        void held_##N##_##M(K N *p, int i, long v)           \
+        {                                                    \
+                p[i].M PATH_##A = (SCALAR_##A) held(v);      \
+        }                                                    \
+        long held_add_##N##_##M(K N *p, int i)               \
+        {                                                    \
+                return HELD_ADD_##A(p[i].M PATH_##A);        \
+        }                                                    \
+        long local_##N##_##M(long v)                         \
+        {                                                    \
+                K N s;                                       \
+                                                             \
+                s.M PATH_##A = (SCALAR_##A) v;               \
+                return (long) s.M PATH_##A;                  \
+        }                                                    \
+        long global_##N##_##M(long v)                        \
+        {                                                    \
+                object_##N.M PATH_##A = (SCALAR_##A) v;      \
+                return (long) object_##N.M PATH_##A;         \
+        }                                                    \
+        long row_##N##_##M(K N *p, long i, long v)           \
+        {                                                    \
+                p[i].M PATH_##A = (SCALAR_##A) v;            \
+                (void) STEP_##A(p[i].M PATH_##A);            \
+                return (long) p[i].M PATH_##A;               \
+        }                                                    \
+        long table_##N##_##M(long i, long v)                 \
+        {                                                    \
+                table_##N[i].M PATH_##A = (SCALAR_##A) v;    \
+                (void) STEP_##A(table_##N[i].M PATH_##A);    \
+                return (long) table_##N[i].M PATH_##A;       \
+        }
 
-#define PAIR_MEMBERS(A, TA, B, TB)                                      \
-    struct p_##A##B object_p_##A##B;                                    \
-    union u_##A##B object_u_##A##B;                                     \
-    struct p_##A##B table_p_##A##B[3];                                  \
-    union u_##A##B table_u_##A##B[3];                                   \
-    MEMBER(struct, p_##A##B, x, A)                                      \
-    MEMBER(struct, p_##A##B, y, B)                                      \
-    MEMBER(union, u_##A##B, x, A)                                       \
-    MEMBER(union, u_##A##B, y, B)
+#define PAIR_MEMBERS(A, TA, B, TB)         \
+        struct p_##A##B object_p_##A##B;   \
+        union u_##A##B object_u_##A##B;    \
+        struct p_##A##B table_p_##A##B[3]; \
+        union u_##A##B table_u_##A##B[3];  \
+        MEMBER(struct, p_##A##B, x, A)     \
+        MEMBER(struct, p_##A##B, y, B)     \
+        MEMBER(union, u_##A##B, x, A)      \
+        MEMBER(union, u_##A##B, y, B)
 
 #define PAIRS_MEMBERS(A, TA) KINDS2(PAIR_MEMBERS, A, TA)
 
 KINDS(PAIRS_MEMBERS)
 
-#define TRIPLE_MEMBERS(A, TA, B, TB, C, TC)                             \
-    struct t_##A##B##C object_t_##A##B##C;                              \
-    struct t_##A##B##C table_t_##A##B##C[3];                            \
-    MEMBER(struct, t_##A##B##C, x, A)                                   \
-    MEMBER(struct, t_##A##B##C, y, B)                                   \
-    MEMBER(struct, t_##A##B##C, z, C)
+#define TRIPLE_MEMBERS(A, TA, B, TB, C, TC)      \
+        struct t_##A##B##C object_t_##A##B##C;   \
+        struct t_##A##B##C table_t_##A##B##C[3]; \
+        MEMBER(struct, t_##A##B##C, x, A)        \
+        MEMBER(struct, t_##A##B##C, y, B)        \
+        MEMBER(struct, t_##A##B##C, z, C)
 
 #define TRIPLES_OF_MEMBERS(A, TA, B, TB) FEW3(TRIPLE_MEMBERS, A, TA, B, TB)
-#define TRIPLES_MEMBERS(A, TA) FEW2(TRIPLES_OF_MEMBERS, A, TA)
+#define TRIPLES_MEMBERS(A, TA)           FEW2(TRIPLES_OF_MEMBERS, A, TA)
 
 FEW(TRIPLES_MEMBERS)
 

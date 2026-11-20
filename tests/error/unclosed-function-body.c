@@ -1,4 +1,5 @@
 /* A function body the file ends inside. */
-int main(void)
+int
+main(void)
 {
-    return 0;
+        return 0;

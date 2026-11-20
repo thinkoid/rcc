@@ -16,17 +16,20 @@
    expression is undefined in ISO C (6.5.1p2), since x is read and
    written unsequenced. clang -O2 writes sum as leal 100(,%rdi,2),
    %eax, twice x plus 100: 110. */
-int f(int n)
+int
+f(int n)
 {
-    return n + 100;
+        return n + 100;
 }
 
-int sum(register int x)
+int
+sum(register int x)
 {
-    return x + f(x++);
+        return x + f(x++);
 }
 
-int main(void)
+int
+main(void)
 {
-    return sum(5);
+        return sum(5);
 }

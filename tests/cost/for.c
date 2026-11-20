@@ -11,10 +11,11 @@
    own, and the sum at [x29, #20] and the counter at [x29, #24], each
    set with str wzr, loaded from its slot at every read and stored at
    every write. */
-int sum(int n)
+int
+sum(int n)
 {
-    int s = 0;
-    for (int i = 0; i < n; i = i + 1)
-        s = s + i;
-    return s;
+        int s = 0;
+        for (int i = 0; i < n; i = i + 1)
+                s = s + i;
+        return s;
 }

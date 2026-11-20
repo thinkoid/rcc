@@ -81,20 +81,20 @@ report(const char *name, long x, long y, long got, long want)
         R f parameters;        \
         R ref_##f parameters;
 
-#define DECLARE_TYPE(T, N)              \
-        BOTH(int, dlt_##N, (T, T))      \
-        BOTH(int, dle_##N, (T, T))      \
-        BOTH(int, dgt_##N, (T, T))      \
-        BOTH(int, dge_##N, (T, T))      \
-        BOTH(int, deq_##N, (T, T))      \
-        BOTH(int, dne_##N, (T, T))      \
-        BOTH(int, dtruth_##N, (T))      \
-        BOTH(int, dnot_##N, (T))        \
-        BOTH(int, dnotlt_##N, (T, T))   \
-        BOTH(int, dand_##N, (T, T))     \
-        BOTH(int, dor_##N, (T, T))      \
-        BOTH(int, dneither_##N, (T, T)) \
-        BOTH(int, dstale_##N, (long) )  \
+#define DECLARE_TYPE(T, N) \
+        BOTH(int, dlt_##N, (T, T))               \
+        BOTH(int, dle_##N, (T, T))               \
+        BOTH(int, dgt_##N, (T, T))               \
+        BOTH(int, dge_##N, (T, T))               \
+        BOTH(int, deq_##N, (T, T))               \
+        BOTH(int, dne_##N, (T, T))               \
+        BOTH(int, dtruth_##N, (T))               \
+        BOTH(int, dnot_##N, (T))               \
+        BOTH(int, dnotlt_##N, (T, T))               \
+        BOTH(int, dand_##N, (T, T))               \
+        BOTH(int, dor_##N, (T, T))               \
+        BOTH(int, dneither_##N, (T, T))               \
+        BOTH(int, dstale_##N, (long))               \
         BOTH(int, dmixed_##N, (T, T))
 
 TYPES(DECLARE_TYPE)
@@ -104,36 +104,36 @@ TYPES(DECLARE_TYPE)
 
 WIDE(DECLARE_KCMP_ALL)
 
-BOTH(int, count_up, (int) )
-BOTH(int, digits, (unsigned) )
-BOTH(int, commas, (int) )
-BOTH(int, constants, (int) )
-BOTH(int, empty_body, (int) )
-BOTH(int, while_jumps, (int) )
-BOTH(int, do_jumps, (int) )
-BOTH(int, for_jumps, (int) )
-BOTH(int, for_ever, (int) )
-BOTH(long, nested_jumps, (int, int) )
-BOTH(int, nested_do, (int) )
-BOTH(int, skip, (int) )
-BOTH(int, goto_loop, (int) )
-BOTH(int, find, (int, int) )
-BOTH(int, into_block, (int) )
-BOTH(int, into_loop, (int) )
-BOTH(int, registers, (int) )
-BOTH(int, register_into, (int) )
-BOTH(int, later_block, (int) )
-BOTH(int, later_for, (int) )
-BOTH(int, later_deep, (int) )
-BOTH(int, later_loop, (int) )
-BOTH(int, later_case, (int) )
-BOTH(int, label_declaration, (int) )
-BOTH(int, label_end, (int) )
-BOTH(void, clamp, (int *) )
-BOTH(int, names, (int) )
+BOTH(int, count_up, (int))
+BOTH(int, digits, (unsigned))
+BOTH(int, commas, (int))
+BOTH(int, constants, (int))
+BOTH(int, empty_body, (int))
+BOTH(int, while_jumps, (int))
+BOTH(int, do_jumps, (int))
+BOTH(int, for_jumps, (int))
+BOTH(int, for_ever, (int))
+BOTH(long, nested_jumps, (int, int))
+BOTH(int, nested_do, (int))
+BOTH(int, skip, (int))
+BOTH(int, goto_loop, (int))
+BOTH(int, find, (int, int))
+BOTH(int, into_block, (int))
+BOTH(int, into_loop, (int))
+BOTH(int, registers, (int))
+BOTH(int, register_into, (int))
+BOTH(int, later_block, (int))
+BOTH(int, later_for, (int))
+BOTH(int, later_deep, (int))
+BOTH(int, later_loop, (int))
+BOTH(int, later_case, (int))
+BOTH(int, label_declaration, (int))
+BOTH(int, label_end, (int))
+BOTH(void, clamp, (int *))
+BOTH(int, names, (int))
 
 #define DECLARE_IF_JUMP(row, loop, condition) \
-        BOTH(void, if_##row##_##loop##_##condition, (int, int, int *) )
+        BOTH(void, if_##row##_##loop##_##condition, (int, int, int *))
 
 IF_JUMPS(DECLARE_IF_JUMP)
 

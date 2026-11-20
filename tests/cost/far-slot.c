@@ -15,18 +15,20 @@
    more instruction, add x16, x29, #36864 and then str w0, [x16, #20]
    or ldr w0, [x16, #20]; and near()'s x at [x29, #20], one
    instruction each. */
-int far(int a)
+int
+far(int a)
 {
-    int pad[9216];
-    int x = a;
+        int pad[9216];
+        int x = a;
 
-    return x + 1;
+        return x + 1;
 }
 
-int near(int a)
+int
+near(int a)
 {
-    int x = a;
-    int pad[9216];
+        int x = a;
+        int pad[9216];
 
-    return x + 1;
+        return x + 1;
 }

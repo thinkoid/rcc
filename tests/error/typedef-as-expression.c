@@ -2,7 +2,8 @@
    type. */
 typedef int word;
 
-int main(void)
+int
+main(void)
 {
-    return word;
+        return word;
 }

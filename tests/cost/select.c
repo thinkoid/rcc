@@ -8,7 +8,8 @@
    On aarch64 the listing must show cmp w0, w1 and a b.ge to the arm
    that loads b, the arm that loads a into the same w0 and branches past
    it, no cset and no csel. */
-int select(int a, int b)
+int
+select(int a, int b)
 {
-    return a < b ? a : b;
+        return a < b ? a : b;
 }

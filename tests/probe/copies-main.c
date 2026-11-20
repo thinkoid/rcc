@@ -71,17 +71,17 @@ compare(const char *name, unsigned seed, size_t span)
 }
 
 /* each function of copies.c, as rcc compiled it and as clang did */
-#define DECLARE(K, N)                                                   \
-    void copy_##N(K N *, K N *), ref_copy_##N(K N *, K N *);            \
-    void element_##N(K N *, K N *, int);                                \
-    void ref_element_##N(K N *, K N *, int);                            \
-    void local_##N(K N *, K N *), ref_local_##N(K N *, K N *);          \
-    void initialized_##N(K N *, K N *);                                 \
-    void ref_initialized_##N(K N *, K N *);
+#define DECLARE(K, N)                                              \
+        void copy_##N(K N *, K N *), ref_copy_##N(K N *, K N *);   \
+        void element_##N(K N *, K N *, int);                       \
+        void ref_element_##N(K N *, K N *, int);                   \
+        void local_##N(K N *, K N *), ref_local_##N(K N *, K N *); \
+        void initialized_##N(K N *, K N *);                        \
+        void ref_initialized_##N(K N *, K N *);
 
 #define SIZED_DECLARE(N, T, COUNT) DECLARE(struct, N)
 #define PADDED_DECLARE(N, MEMBERS) DECLARE(struct, N)
-#define UNION_DECLARE(N, MEMBERS) DECLARE(union, N)
+#define UNION_DECLARE(N, MEMBERS)  DECLARE(union, N)
 
 SIZED(SIZED_DECLARE)
 PADDED(PADDED_DECLARE)
@@ -89,23 +89,23 @@ UNIONS(UNION_DECLARE)
 
 /* one function F of the record T, by both builds, on the buffers
    filled for seed, its arguments after the two arrays the rest */
-#define CALL(F, T, seed, ...)                                           \
-    prepare(seed);                                                      \
-    F(OBJECTS(T, to[0]), OBJECTS(T, from[0]) __VA_ARGS__);              \
-    ref_##F(OBJECTS(T, to[1]), OBJECTS(T, from[1]) __VA_ARGS__);        \
-    compare(#F, seed, SPAN(T));
+#define CALL(F, T, seed, ...)                                        \
+        prepare(seed);                                               \
+        F(OBJECTS(T, to[0]), OBJECTS(T, from[0]) __VA_ARGS__);       \
+        ref_##F(OBJECTS(T, to[1]), OBJECTS(T, from[1]) __VA_ARGS__); \
+        compare(#F, seed, SPAN(T));
 
-#define CHECK(K, N)                                                     \
-    for (unsigned seed = 0; seed < 2; ++seed) {                         \
-        CALL(copy_##N, K N, seed, )                                     \
-        CALL(element_##N, K N, seed, , 1)                               \
-        CALL(local_##N, K N, seed, )                                    \
-        CALL(initialized_##N, K N, seed, )                              \
-    }
+#define CHECK(K, N)                                 \
+        for (unsigned seed = 0; seed < 2; ++seed) { \
+                CALL(copy_##N, K N, seed, )         \
+                CALL(element_##N, K N, seed, , 1)   \
+                CALL(local_##N, K N, seed, )        \
+                CALL(initialized_##N, K N, seed, )  \
+        }
 
 #define SIZED_CHECK(N, T, COUNT) CHECK(struct, N)
 #define PADDED_CHECK(N, MEMBERS) CHECK(struct, N)
-#define UNION_CHECK(N, MEMBERS) CHECK(union, N)
+#define UNION_CHECK(N, MEMBERS)  CHECK(union, N)
 
 int
 main(void)

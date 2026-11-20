@@ -12,9 +12,11 @@
 
 /* the integer types, of an index, and the letter each takes in a
    function's name */
+/* clang-format off */
 #define NARROW(X)                                                       \
     X(char, c) X(signed char, sc) X(unsigned char, uc)                  \
     X(short, s) X(unsigned short, us)
+/* clang-format on */
 
 #define WIDE(X) X(int, i) X(unsigned, u) X(long, l) X(unsigned long, ul)
 
@@ -22,6 +24,7 @@
 
 /* the same list crossed with one entry of another, the pointee or the
    element */
+/* clang-format off */
 #define INDEXES(X, E, T, S)                                             \
     X(E, T, S, char, c) X(E, T, S, signed char, sc)                     \
     X(E, T, S, unsigned char, uc) X(E, T, S, short, s)                  \
@@ -49,6 +52,7 @@
     X(s, short, []) X(us, unsigned short, [])                           \
     X(i, int, []) X(u, unsigned, []) X(l, long, [])                     \
     X(ul, unsigned long, [])
+/* clang-format on */
 
 /* the size of what p points to, a constant the parser folds */
 #define SIZE ((long) sizeof *p)
@@ -58,6 +62,7 @@
    holds, 4095, a multiple of 4096 up to 0xfff000, beyond it, beyond
    32 bits, and their negatives.  For a size that is no scale the
    product is the multiple of the size nearest the bound. */
+/* clang-format off */
 #define KONSTS(X, E, T, S)                                              \
     X(E, T, S, 0, 0) X(E, T, S, 1, 1) X(E, T, S, m1, -1)                \
     X(E, T, S, below, 4095 / SIZE) X(E, T, S, above, (4095 + SIZE) / SIZE) \
@@ -101,6 +106,7 @@
     X(E, T, S, s4095, 4095 * (long) sizeof (T))
 #define KROWS(X, E, T, S)                                               \
     KROWS_NEAR(X, E, T, S) X(E, T, S, m3, -3) X(E, T, S, m300, -300)
+/* clang-format on */
 
 /* the rows of two elements an object under such a row needs: the
    farthest bytes, an index of 3 and the element past it */
@@ -109,9 +115,11 @@
 /* The pointees of POINTEES once more, each with the suffix that makes
    (*x) a pointer to it, (*x)[3] to a row of three ints, for a pointer
    declared as an object: a local, a global, an element of an array. */
+/* clang-format off */
 #define POINTER_TYPES(X)                                                \
     X(c, char, ) X(s, short, ) X(i, int, ) X(l, long, )                 \
     X(r3, char, [3]) X(r12, int, [3]) X(r40, long, [5])
+/* clang-format on */
 
 /* the indexes of 64 bits, which p + n and p - n take as they are,
    crossed with one entry of POINTER_TYPES */

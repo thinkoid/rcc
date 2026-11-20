@@ -1,9 +1,10 @@
 /* A tag declared for a struct, then used for a union. */
 struct node;
 
-int main(void)
+int
+main(void)
 {
-    union node *p = 0;
+        union node *p = 0;
 
-    return 0;
+        return 0;
 }

@@ -9,7 +9,8 @@
    On aarch64 the listing must show the two addresses loaded into x0
    and x1, one cmp x0, x1 of the 64-bit registers, and cset w0, lo, the
    unsigned condition, not lt. */
-int less(int *p, int *q)
+int
+less(int *p, int *q)
 {
-    return p < q;
+        return p < q;
 }

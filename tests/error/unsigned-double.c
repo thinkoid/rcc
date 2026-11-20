@@ -1,7 +1,8 @@
 /* unsigned with the floating type double. */
 unsigned double half(int);
 
-int main(void)
+int
+main(void)
 {
-    return 0;
+        return 0;
 }

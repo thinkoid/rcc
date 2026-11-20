@@ -14,21 +14,21 @@
 
 /* after k named parameters, count arguments of T, each mixed into the
    result */
-#define SUM(K, A, T)                                                    \
-    long sum##K##_##A(NAMED_##K int count, ...)                         \
-    {                                                                   \
-        va_list ap;                                                     \
-        long h = 17;                                                    \
-                                                                        \
-        va_start(ap, count);                                            \
-        while (count-- > 0)                                             \
-            h = h * 1000003 + (long) va_arg(ap, T);                     \
-        va_end(ap);                                                     \
-        return h;                                                       \
-    }
+#define SUM(K, A, T)                                            \
+        long sum##K##_##A(NAMED_##K int count, ...)             \
+        {                                                       \
+                va_list ap;                                     \
+                long h = 17;                                    \
+                                                                \
+                va_start(ap, count);                            \
+                while (count-- > 0)                             \
+                        h = h * 1000003 + (long) va_arg(ap, T); \
+                va_end(ap);                                     \
+                return h;                                       \
+        }
 
 #define SUM_K(K, A) SUM(K, A, TYPE_##A)
-#define SUMS(A, T) COUNTS(SUM_K, A)
+#define SUMS(A, T)  COUNTS(SUM_K, A)
 
 #define TYPE_i int
 #define TYPE_u unsigned
@@ -61,18 +61,18 @@ next(char type, va_list *ap)
 }
 
 /* after k named parameters, the arguments of the types named */
-#define MIXED(K, A)                                                     \
-    long mixed##K(NAMED_##K const char *types, ...)                     \
-    {                                                                   \
-        va_list ap;                                                     \
-        long h = 29;                                                    \
-                                                                        \
-        va_start(ap, types);                                            \
-        for (; *types != '\0'; ++types)                                 \
-            h = h * 1000003 + next(*types, &ap);                        \
-        va_end(ap);                                                     \
-        return h;                                                       \
-    }
+#define MIXED(K, A)                                          \
+        long mixed##K(NAMED_##K const char *types, ...)      \
+        {                                                    \
+                va_list ap;                                  \
+                long h = 29;                                 \
+                                                             \
+                va_start(ap, types);                         \
+                for (; *types != '\0'; ++types)              \
+                        h = h * 1000003 + next(*types, &ap); \
+                va_end(ap);                                  \
+                return h;                                    \
+        }
 
 COUNTS(MIXED, )
 

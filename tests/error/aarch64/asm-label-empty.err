@@ -1,2 +1,2 @@
-tests/error/asm-label-empty.c:3:22: error: empty assembler name
+tests/error/asm-label-empty.c:3:21: error: empty assembler name
 status 1

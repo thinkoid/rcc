@@ -1,2 +1,2 @@
-tests/error/frame-of-2-gib.c:6:10: error: variable 'a' is too large for a local
+tests/error/frame-of-2-gib.c:7:14: error: variable 'a' is too large for a local
 status 1

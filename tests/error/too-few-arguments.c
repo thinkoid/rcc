@@ -2,7 +2,8 @@
    6.5.3.3p2. */
 int f(int a, int b);
 
-int main(void)
+int
+main(void)
 {
-    return f(1);
+        return f(1);
 }

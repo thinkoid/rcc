@@ -13,16 +13,18 @@
    part first, each followed by its .cfi_def_cfa_offset, and closed by
    two adds in the same order; and aligned()'s opened by one, sub sp,
    sp, #8192, its low 12 bits being zero, and closed by one add. */
-int large(int a)
+int
+large(int a)
 {
-    char pad[8180];
+        char pad[8180];
 
-    return a;
+        return a;
 }
 
-int aligned(int a)
+int
+aligned(int a)
 {
-    char pad[8172];
+        char pad[8172];
 
-    return a;
+        return a;
 }

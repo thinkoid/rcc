@@ -1,2 +1,2 @@
-tests/error/union-result.c:7:12: error: not yet: union 'word' returned by value
+tests/error/union-result.c:12:1: error: not yet: union 'word' returned by value
 status 1

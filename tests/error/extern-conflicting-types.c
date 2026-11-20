@@ -2,7 +2,8 @@
 extern int count;
 extern long count;
 
-int main(void)
+int
+main(void)
 {
-    return 0;
+        return 0;
 }

@@ -1,2 +1,2 @@
-tests/error/asm-label-on-register.c:5:20: error: not yet: '__asm__' on a local variable
+tests/error/asm-label-on-register.c:6:24: error: not yet: '__asm__' on a local variable
 status 1

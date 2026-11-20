@@ -1,2 +1,2 @@
-tests/error/conditional-without-colon.c:4:17: error: expected ':' in conditional expression
+tests/error/conditional-without-colon.c:5:21: error: expected ':' in conditional expression
 status 1

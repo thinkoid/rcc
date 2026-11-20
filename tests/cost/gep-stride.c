@@ -14,11 +14,12 @@
    ldrsw x1, [x29, #16] before the multiply, the size held with
    mov x2, #12, since mul takes no immediate, the index scaled by
    mul x1, x1, x2 and added with add x0, x0, x1. */
-int *row(int i)
+int *
+row(int i)
 {
-    int m[2][3];
-    int *p;
+        int m[2][3];
+        int *p;
 
-    p = m[i];
-    return p;
+        p = m[i];
+        return p;
 }

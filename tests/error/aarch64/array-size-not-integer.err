@@ -1,2 +1,2 @@
-tests/error/array-size-not-integer.c:5:11: error: size of array has non-integer type
+tests/error/array-size-not-integer.c:6:15: error: size of array has non-integer type
 status 1

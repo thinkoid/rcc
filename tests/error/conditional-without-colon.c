@@ -1,5 +1,6 @@
 /* A conditional expression without its ':'. */
-int main(void)
+int
+main(void)
 {
-    return 1 ? 2;
+        return 1 ? 2;
 }

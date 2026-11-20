@@ -1,2 +1,2 @@
-tests/error/unclosed-array-size.c:4:12: error: expected ']'
+tests/error/unclosed-array-size.c:5:12: error: expected ']'
 status 1

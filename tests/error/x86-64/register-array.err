@@ -1,2 +1,2 @@
-tests/error/register-array.c:5:18: error: not yet: register array 'a'
+tests/error/register-array.c:6:22: error: not yet: register array 'a'
 status 1

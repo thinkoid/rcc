@@ -15,12 +15,14 @@
    written unsequenced. clang -O2 writes pick as movl $2, %eax,
    cmovnel %edi, %eax and addl %edi, %eax: the old x in both places,
    87. */
-int pick(register int x, int c)
+int
+pick(register int x, int c)
 {
-    return x + (c ? x++ : 2);
+        return x + (c ? x++ : 2);
 }
 
-int main(void)
+int
+main(void)
 {
-    return pick(5, 1) * 8 + pick(5, 0);
+        return pick(5, 1) * 8 + pick(5, 0);
 }

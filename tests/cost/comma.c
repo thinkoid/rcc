@@ -18,27 +18,30 @@
    last(), a++ as the load, add w0, w0, #1 and the store, and then b
    loaded for the value; and of test(), a = b as b loaded and stored to
    a's slot, then c loaded and tested with cbz w0 for the jump. */
-int sum(int n)
+int
+sum(int n)
 {
-    int i;
-    int j;
-    int s = 0;
+        int i;
+        int j;
+        int s = 0;
 
-    for (i = 0, j = 0; i < n; i++, j += 2)
-        s += j;
+        for (i = 0, j = 0; i < n; i++, j += 2)
+                s += j;
 
-    return s;
+        return s;
 }
 
-int last(int a, int b)
+int
+last(int a, int b)
 {
-    return (a++, b);
+        return (a++, b);
 }
 
-int test(int a, int b, int c)
+int
+test(int a, int b, int c)
 {
-    if (a = b, c)
-        return a;
+        if (a = b, c)
+                return a;
 
-    return 0;
+        return 0;
 }

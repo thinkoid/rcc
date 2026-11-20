@@ -1,2 +1,2 @@
-tests/error/zero-size-array.c:5:11: error: array size must be greater than zero
+tests/error/zero-size-array.c:6:15: error: array size must be greater than zero
 status 1

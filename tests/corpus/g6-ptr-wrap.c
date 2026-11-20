@@ -5,11 +5,12 @@
    (probe 2), which is true: 1. argv is an object the optimizer cannot
    size, and the shift count comes through argc, so n is unknown until
    the fold has applied. */
-int main(int argc, char **argv)
+int
+main(int argc, char **argv)
 {
-    char **p = argv;
-    unsigned long ones = -1;
-    long n = ones >> (argc + 2);
+        char **p = argv;
+        unsigned long ones = -1;
+        long n = ones >> (argc + 2);
 
-    return p < p + n;
+        return p < p + n;
 }

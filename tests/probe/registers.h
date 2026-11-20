@@ -9,9 +9,11 @@
    -- of a register variable, which are the inplace probe's. */
 
 /* the integer types and the letter each takes in a function's name */
+/* clang-format off */
 #define NARROW(X)                                                       \
     X(char, c) X(signed char, sc) X(unsigned char, uc)                  \
     X(short, s) X(unsigned short, us)
+/* clang-format on */
 
 #define WIDE(X) X(int, i) X(unsigned, u) X(long, l) X(unsigned long, ul)
 
@@ -21,6 +23,7 @@
 #define CLAIMED(X) NARROW(X) X(unsigned, u)
 
 /* the same list under a second name, for the pairs of the cast matrix */
+/* clang-format off */
 #define TYPES2(X, F, FN)                                                \
     X(F, FN, char, c) X(F, FN, signed char, sc) X(F, FN, unsigned char, uc) \
     X(F, FN, short, s) X(F, FN, unsigned short, us)                     \
@@ -55,6 +58,7 @@
 /* the divisions, whose right operand the main keeps from 0 and -1 */
 #define DIVISIONS(X, T, N)                                              \
     X(T, N, div, /, 7, 0x12345) X(T, N, rem, %, 7, 0x12345)
+/* clang-format on */
 
 /* the shifts, whose count the main keeps below 32 */
 #define SHIFTS(X, T, N) X(T, N, shl, <<) X(T, N, shr, >>)
@@ -71,18 +75,18 @@ typedef int row_t[3];
 
 /* parameter lists of one type, and the sum that tells the positions
    apart */
-#define P8(T) T a, T b, T c, T d, T e, T f, T g, T h
+#define P8(T)  T a, T b, T c, T d, T e, T f, T g, T h
 #define P12(T) P8(T), T i, T j, T k, T l
 
-#define S1 a * 3L
-#define S2 S1 + b * 5L
-#define S3 S2 + c * 7L
-#define S4 S3 + d * 11L
-#define S5 S4 + e * 13L
-#define S6 S5 + f * 17L
-#define S7 S6 + g * 19L
-#define S8 S7 + h * 23L
-#define S9 S8 + i * 29L
+#define S1  a * 3L
+#define S2  S1 + b * 5L
+#define S3  S2 + c * 7L
+#define S4  S3 + d * 11L
+#define S5  S4 + e * 13L
+#define S6  S5 + f * 17L
+#define S7  S6 + g * 19L
+#define S8  S7 + h * 23L
+#define S9  S8 + i * 29L
 #define S10 S9 + j * 31L
 #define S11 S10 + k * 37L
 #define S12 S11 + l * 41L
@@ -90,10 +94,10 @@ typedef int row_t[3];
 /* The same sum over the parameters as they promote: each is read at
    its promoted width before it is widened, so what a narrow one's
    register holds above the type's bits counts too. */
-#define N12                                                             \
-    ((a + 1) * 3L + (b + 1) * 5L + (c + 1) * 7L + (d + 1) * 11L +       \
-     (e + 1) * 13L + (f + 1) * 17L + (g + 1) * 19L + (h + 1) * 23L +    \
-     (i + 1) * 29L + (j + 1) * 31L + (k + 1) * 37L + (l + 1) * 41L)
+#define N12                                                              \
+        ((a + 1) * 3L + (b + 1) * 5L + (c + 1) * 7L + (d + 1) * 11L +    \
+         (e + 1) * 13L + (f + 1) * 17L + (g + 1) * 19L + (h + 1) * 23L + \
+         (i + 1) * 29L + (j + 1) * 31L + (k + 1) * 37L + (l + 1) * 41L)
 
 /* Twelve parameters of one type, R the positions declared register:
    the first five, which are the five registers of x86-64; the sixth
@@ -102,11 +106,11 @@ typedef int row_t[3];
    ordinary ones; all twelve, more than either target has registers
    for. */
 #define PARAMS(T, ra, rb, rc, rd, re, rf, rg, rh, ri, rj, rk, rl)       \
-    ra T a, rb T b, rc T c, rd T d, re T e, rf T f, rg T g, rh T h,     \
-    ri T i, rj T j, rk T k, rl T l
+        ra T a, rb T b, rc T c, rd T d, re T e, rf T f, rg T g, rh T h, \
+            ri T i, rj T j, rk T k, rl T l
 
-#define R register
-#define PFIRST(T) PARAMS(T, R, R, R, R, R, , , , , , , )
+#define R          register
+#define PFIRST(T)  PARAMS(T, R, R, R, R, R, , , , , , , )
 #define PMIDDLE(T) PARAMS(T, , , , , , R, R, R, R, R, , )
-#define PLAST(T) PARAMS(T, , R, , R, , , , , R, , R, R)
-#define PALL(T) PARAMS(T, R, R, R, R, R, R, R, R, R, R, R, R)
+#define PLAST(T)   PARAMS(T, , R, , R, , , , , R, , R, R)
+#define PALL(T)    PARAMS(T, R, R, R, R, R, R, R, R, R, R, R, R)

@@ -9,33 +9,34 @@
    slot and back at each step; the repetition counter and the range
    start take slots. */
 #define COUNT 1000
-#define REPS 3000
+#define REPS  3000
 
-int main(void)
+int
+main(void)
 {
-    unsigned seed = 1;
-    register long total = 0;
+        unsigned seed = 1;
+        register long total = 0;
 
-    for (int rep = 0; rep != REPS; ++rep) {
-        seed = seed * 1103515245 + 12345;
+        for (int rep = 0; rep != REPS; ++rep) {
+                seed = seed * 1103515245 + 12345;
 
-        long start = 1 + (seed >> 16);
-        register long end = start + COUNT;
+                long start = 1 + (seed >> 16);
+                register long end = start + COUNT;
 
-        for (register long v = start; v != end; ++v) {
-            register long x = v;
-            register int steps = 0;
+                for (register long v = start; v != end; ++v) {
+                        register long x = v;
+                        register int steps = 0;
 
-            while (x != 1) {
-                if (x & 1)
-                    x = 3 * x + 1;
-                else
-                    x = x >> 1;
-                ++steps;
-            }
-            total += steps;
+                        while (x != 1) {
+                                if (x & 1)
+                                        x = 3 * x + 1;
+                                else
+                                        x = x >> 1;
+                                ++steps;
+                        }
+                        total += steps;
+                }
         }
-    }
 
-    return total & 255;
+        return total & 255;
 }

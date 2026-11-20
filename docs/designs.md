@@ -262,7 +262,7 @@ a fresh one (`src/c1-aarch64.cc:557-578`). It has 13 call sites.
 ### 2.3 One edge, walked through
 
 The cost program `conditional` has this function
-(`tests/cost/conditional.c:86-90`):
+(`tests/cost/conditional.c:119-123`):
 
 ```c
 long

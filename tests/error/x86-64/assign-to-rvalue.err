@@ -1,2 +1,2 @@
-tests/error/assign-to-rvalue.c:7:11: error: expression is not assignable
+tests/error/assign-to-rvalue.c:8:15: error: expression is not assignable
 status 1

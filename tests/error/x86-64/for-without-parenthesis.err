@@ -1,2 +1,2 @@
-tests/error/for-without-parenthesis.c:4:9: error: expected '(' after 'for'
+tests/error/for-without-parenthesis.c:6:13: error: expected '(' after 'for'
 status 1

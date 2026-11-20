@@ -14,12 +14,14 @@
    or b is 0, and otherwise writing mov w0, #1; and either() branching
    with cbnz w0 past b's test to mov w0, #1 when a is not 0, and b's
    test branching with cbz w0 to mov w0, #0. */
-int both(int a, int b)
+int
+both(int a, int b)
 {
-    return a && b;
+        return a && b;
 }
 
-int either(int a, int b)
+int
+either(int a, int b)
 {
-    return a || b;
+        return a || b;
 }

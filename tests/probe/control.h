@@ -7,10 +7,12 @@
    left, docs/backend.md 6.1. */
 
 /* the integer types and the letter each takes in a function's name */
+/* clang-format off */
 #define TYPES(X)                                                        \
     X(char, c) X(signed char, sc) X(unsigned char, uc)                  \
     X(short, s) X(unsigned short, us)                                   \
     X(int, i) X(unsigned, u) X(long, l) X(unsigned long, ul)
+/* clang-format on */
 
 /* the types a constant operand is tried on */
 #define WIDE(X) X(int, i) X(unsigned, u) X(long, l) X(unsigned long, ul)
@@ -18,6 +20,7 @@
 /* a comparison with a constant: a name, the operator, the constant.
    The constants walk the immediates cmp encodes and those it does not,
    docs/aarch64.md 2.4 and 6.4. */
+/* clang-format off */
 #define KCMPS(X, T, N)                                                  \
     X(T, N, lt_5, <, 5) X(T, N, eq_m1, ==, -1) X(T, N, gt_4095, >, 4095) \
     X(T, N, ge_4096, >=, 4096) X(T, N, ne_5000, !=, 5000)               \
@@ -61,15 +64,17 @@
     X(T, N, K, O, dec, --O) X(T, N, K, O, add_to_eq, (O += b) == 0)     \
     X(T, N, K, O, dec_ne, (--O) != 0) X(T, N, K, O, and_object, O & b)  \
     X(T, N, K, O, post_inc, O++)
+/* clang-format on */
 
 /* the least and the greatest char, whose signedness is the target's */
 #define CHAR_LEAST ((char) -1 < 0 ? -128 : 0)
-#define CHAR_MOST ((char) -1 < 0 ? 127 : 255)
+#define CHAR_MOST  ((char) -1 < 0 ? 127 : 255)
 
 /* The types a comparison with the constant on the left is tried on,
    docs/backend.md 6.1: the type, the letter of its name, its least and
    its greatest value.  The pointer is tried apart, its constants cast
    to it. */
+/* clang-format off */
 #define LEFT_TYPES(X)                                                   \
     X(char, c, CHAR_LEAST, CHAR_MOST) X(unsigned char, uc, 0, 255)      \
     X(short, s, -32768, 32767) X(unsigned short, us, 0, 65535)          \
@@ -107,3 +112,4 @@
     KFIRST_OPS(X, T, N, m5, -5) KFIRST_OPS(X, T, N, 0, 0)               \
     KFIRST_OPS(X, T, N, 5, 5) KFIRST_OPS(X, T, N, 5000, 5000)           \
     KFIRST_OPS(X, T, N, min, least) KFIRST_OPS(X, T, N, max, most)
+/* clang-format on */

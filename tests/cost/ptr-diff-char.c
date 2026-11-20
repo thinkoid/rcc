@@ -7,7 +7,8 @@
 
    On aarch64 the listing must show sub x0, x0, x1 of the two addresses
    and no sdiv. */
-long diff(char *p, char *q)
+long
+diff(char *p, char *q)
 {
-    return p - q;
+        return p - q;
 }

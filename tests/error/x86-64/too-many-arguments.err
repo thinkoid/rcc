@@ -1,2 +1,2 @@
-tests/error/too-many-arguments.c:7:17: error: too many arguments to function 'f'
+tests/error/too-many-arguments.c:8:21: error: too many arguments to function 'f'
 status 1

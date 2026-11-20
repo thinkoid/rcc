@@ -38,47 +38,47 @@
 #define SCALAR_u int
 #define SCALAR_n char
 
-#define STEP(E) ((long) (E)++)
-#define STEP_c STEP
-#define STEP_s STEP
-#define STEP_i STEP
-#define STEP_l STEP
-#define STEP_p STEP
+#define STEP(E)   ((long) (E)++)
+#define STEP_c    STEP
+#define STEP_s    STEP
+#define STEP_i    STEP
+#define STEP_l    STEP
+#define STEP_p    STEP
 #define STEP_f(E) 0L
-#define STEP_a STEP
-#define STEP_h STEP
-#define STEP_r STEP
-#define STEP_u STEP
-#define STEP_n STEP
+#define STEP_a    STEP
+#define STEP_h    STEP
+#define STEP_r    STEP
+#define STEP_u    STEP
+#define STEP_n    STEP
 
-#define ADD(E) ((long) ((E) += 3))
-#define ADD_c ADD
-#define ADD_s ADD
-#define ADD_i ADD
-#define ADD_l ADD
-#define ADD_p ADD
+#define ADD(E)   ((long) ((E) += 3))
+#define ADD_c    ADD
+#define ADD_s    ADD
+#define ADD_i    ADD
+#define ADD_l    ADD
+#define ADD_p    ADD
 #define ADD_f(E) 0L
-#define ADD_a ADD
-#define ADD_h ADD
-#define ADD_r ADD
-#define ADD_u ADD
-#define ADD_n ADD
+#define ADD_a    ADD
+#define ADD_h    ADD
+#define ADD_r    ADD
+#define ADD_u    ADD
+#define ADD_n    ADD
 
 /* the scalar added to across a call, held(): the address of p[i]'s
    member is held across it */
 long held(long);
-#define HELD_ADD(E) ((long) ((E) += held(3)))
-#define HELD_ADD_c HELD_ADD
-#define HELD_ADD_s HELD_ADD
-#define HELD_ADD_i HELD_ADD
-#define HELD_ADD_l HELD_ADD
-#define HELD_ADD_p HELD_ADD
+#define HELD_ADD(E)   ((long) ((E) += held(3)))
+#define HELD_ADD_c    HELD_ADD
+#define HELD_ADD_s    HELD_ADD
+#define HELD_ADD_i    HELD_ADD
+#define HELD_ADD_l    HELD_ADD
+#define HELD_ADD_p    HELD_ADD
 #define HELD_ADD_f(E) 0L
-#define HELD_ADD_a HELD_ADD
-#define HELD_ADD_h HELD_ADD
-#define HELD_ADD_r HELD_ADD
-#define HELD_ADD_u HELD_ADD
-#define HELD_ADD_n HELD_ADD
+#define HELD_ADD_a    HELD_ADD
+#define HELD_ADD_h    HELD_ADD
+#define HELD_ADD_r    HELD_ADD
+#define HELD_ADD_u    HELD_ADD
+#define HELD_ADD_n    HELD_ADD
 
 /* a list a register pointer walks */
 struct link

@@ -3,8 +3,9 @@
    yet, though its value is dropped. */
 long double half(int);
 
-int main(void)
+int
+main(void)
 {
-    half(1);
-    return 0;
+        half(1);
+        return 0;
 }

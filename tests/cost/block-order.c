@@ -12,13 +12,14 @@
    b.ne past the then-block, the then-block's mov w0, #1 and b to the
    epilogue label, and only then the increment and the b back to the
    test. */
-int block_order(int a, int n)
+int
+block_order(int a, int n)
 {
-    int i = 0;
-    while (i < n) {
-        if (i == a)
-            return 1;
-        i = i + 1;
-    }
-    return 0;
+        int i = 0;
+        while (i < n) {
+                if (i == a)
+                        return 1;
+                i = i + 1;
+        }
+        return 0;
 }

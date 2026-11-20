@@ -27,14 +27,16 @@
    written into the register on each path, mov w19, #1 and mov w19, #0,
    with no move after the join.  In less_plus_long(), add w0, w0, #1
    and then sxtw x0, w0. */
-int less(int a, int b)
+int
+less(int a, int b)
 {
-    return a < b;
+        return a < b;
 }
 
-int equal(int a, int b)
+int
+equal(int a, int b)
 {
-    return a == b;
+        return a == b;
 }
 
 long

@@ -73,25 +73,39 @@
    move.  quotient_nested is sdiv w1, w1, w2 and sdiv w0, w0, w1,
    quotient_compound sdiv w0, w1, w0 after the call and the store from
    w0, and remainder_called sdiv w2, w1, w0 and msub w0, w2, w0, w1. */
-int div_busy(int a, int b, int c)
+int
+div_busy(int a, int b, int c)
 {
-    return a + b / c;
+        return a + b / c;
 }
 
-int rem_busy(int a, int b, int c)
+int
+rem_busy(int a, int b, int c)
 {
-    return a + b % c;
+        return a + b % c;
 }
 
-int div_deeper(int a, int b, int c)
+int
+div_deeper(int a, int b, int c)
 {
-    return a + (b / c + 1);
+        return a + (b / c + 1);
 }
 
-int div_held(int a, int b, int c, int d, int e, int f, int g, int x, int y,
-             int z, int u, int v)
+int
+div_held(int a,
+         int b,
+         int c,
+         int d,
+         int e,
+         int f,
+         int g,
+         int x,
+         int y,
+         int z,
+         int u,
+         int v)
 {
-    return (a + (b + (c + (d + (e + (f + (g + (x + y / z)))))))) + u / v;
+        return (a + (b + (c + (d + (e + (f + (g + (x + y / z)))))))) + u / v;
 }
 
 int f(int);

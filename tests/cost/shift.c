@@ -29,19 +29,22 @@
    after bl wide in count_called(), and uxtb w4, w4 in count_held().
    After a call a is reloaded into w1, and the shift writes w0, lsl
    w0, w1, w0 in count_extended() and count_called(). */
-int shl(int a, int n)
+int
+shl(int a, int n)
 {
-    return a << n;
+        return a << n;
 }
 
-int sar(int a, int n)
+int
+sar(int a, int n)
 {
-    return a >> n;
+        return a >> n;
 }
 
-unsigned shr(unsigned a, int n)
+unsigned
+shr(unsigned a, int n)
 {
-    return a >> n;
+        return a >> n;
 }
 
 char narrow(int);

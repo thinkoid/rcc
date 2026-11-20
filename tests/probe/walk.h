@@ -11,9 +11,11 @@
 /* The pointees of a walk: the type and the letter it takes in a
    function's name.  Sizes 1, 2, 4 and 8, each in both signednesses
    where the load's extension tells them apart, and a pointer. */
+/* clang-format off */
 #define INTEGERS(X)                                                     \
     X(char, c) X(signed char, sc) X(short, s) X(unsigned short, us)     \
     X(int, i) X(unsigned, u) X(long, l)
+/* clang-format on */
 
 #define POINTEES(X) INTEGERS(X) X(char *, p)
 
@@ -24,6 +26,8 @@
 /* Products at the edge of the form's reach, -256 to 255 bytes, and
    past it: 255 and 256 on a char, 300 on a char, 64 on an int, whose
    -256 is in reach and 256 is not, and 33 on a long, 264 either way. */
+/* clang-format off */
 #define FAR(X)                                                          \
     X(char, c, 255) X(char, c, 256) X(char, c, 300) X(int, i, 64)       \
     X(long, l, 33)
+/* clang-format on */

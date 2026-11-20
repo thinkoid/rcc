@@ -10,12 +10,13 @@
    the label that follows at once, and only then the second if, a
    compared with cmp w0, #1 and a b.le past the store of 1 to x's slot,
    mov w0, #1 and str w0, [x29, #20]. */
-int empty_if(int a)
+int
+empty_if(int a)
 {
-    int x = 0;
-    if (a) {
-    }
-    if (a > 1)
-        x = 1;
-    return x;
+        int x = 0;
+        if (a) {
+        }
+        if (a > 1)
+                x = 1;
+        return x;
 }

@@ -69,39 +69,39 @@ report(const char *name, long x, long y, long got, long want)
         R f parameters;        \
         R ref_##f parameters;
 
-#define DECLARE_TYPED(T, N)                \
-        BOTH(T, id_##N, (T))               \
-        BOTH(long, widen_##N, (T))         \
-        BOTH(T, cast_##N, (long) )         \
-        BOTH(long, assign_##N, (long) )    \
-        BOTH(int, negative_##N, (T))       \
-        BOTH(int, below_##N, (T))          \
-        BOTH(long, add_##N, (T, int) )     \
-        BOTH(long, sub_##N, (T, T))        \
-        BOTH(int, less_##N, (T, T))        \
-        BOTH(long, shift_##N, (T))         \
-        BOTH(long, size_##N, (T))          \
-        BOTH(long, pointer_##N, (long) )   \
-        BOTH(long, array_##N, (long) )     \
-        BOTH(long, global_rw_##N, (long) ) \
-        BOTH(long, register_##N, (long) )  \
+#define DECLARE_TYPED(T, N) \
+        BOTH(T, id_##N, (T))                \
+        BOTH(long, widen_##N, (T))                \
+        BOTH(T, cast_##N, (long))                \
+        BOTH(long, assign_##N, (long))                \
+        BOTH(int, negative_##N, (T))                \
+        BOTH(int, below_##N, (T))                \
+        BOTH(long, add_##N, (T, int))                \
+        BOTH(long, sub_##N, (T, T))                \
+        BOTH(int, less_##N, (T, T))                \
+        BOTH(long, shift_##N, (T))                \
+        BOTH(long, size_##N, (T))                \
+        BOTH(long, pointer_##N, (long))                \
+        BOTH(long, array_##N, (long))                \
+        BOTH(long, global_rw_##N, (long))                \
+        BOTH(long, register_##N, (long))                \
         BOTH(int, which_##N, (T))
 
 ENUMS(DECLARE_TYPED)
 
-#define DECLARE_CONSTANT(K)            \
-        BOTH(long, value_##K, (void) ) \
-        BOTH(long, size_##K, (void) )  \
-        BOTH(int, negative_##K, (void) )
+#define DECLARE_CONSTANT(K) \
+        BOTH(long, value_##K, (void))                \
+        BOTH(long, size_##K, (void))                \
+        BOTH(int, negative_##K, (void))
 
 CONSTANTS(DECLARE_CONSTANT)
 
-BOTH(int, label, (int) )
-BOTH(long, sizes, (void) )
-BOTH(long, initial, (int) )
-BOTH(long, scope, (void) )
-BOTH(int, listed, (unsigned) )
-BOTH(long, kinds, (kind_t, kind_t *) )
+BOTH(int, label, (int))
+BOTH(long, sizes, (void))
+BOTH(long, initial, (int))
+BOTH(long, scope, (void))
+BOTH(int, listed, (unsigned))
+BOTH(long, kinds, (kind_t, kind_t *))
 
 /* the value of each constant, a second table the functions of each type
    are called over */

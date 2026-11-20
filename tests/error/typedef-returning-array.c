@@ -4,7 +4,8 @@ typedef int triple[3];
 
 triple f(void);
 
-int main(void)
+int
+main(void)
 {
-    return 0;
+        return 0;
 }

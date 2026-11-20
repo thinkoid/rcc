@@ -1,2 +1,2 @@
-tests/error/missing-return-value.c:5:5: error: non-void function should return a value
+tests/error/missing-return-value.c:6:9: error: non-void function should return a value
 status 1

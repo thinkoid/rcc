@@ -4,11 +4,12 @@
    initializer's 'a', 97, and the store into constant memory is
    dropped, so it never reaches the read-only section and nothing
    faults. The fold needs no value from outside; argc is not used. */
-int main(int argc)
+int
+main(int argc)
 {
-    char *s = "abc";
+        char *s = "abc";
 
-    s[0] = 'z';
+        s[0] = 'z';
 
-    return s[0];
+        return s[0];
 }

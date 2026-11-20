@@ -8,7 +8,8 @@
 
    On aarch64 the listing must show w0 and w1 stored to [x29, #16]
    and [x29, #20], and a, read twice, loaded twice from [x29, #16]. */
-int parameter(int a, int b)
+int
+parameter(int a, int b)
 {
-    return a - b + a;
+        return a - b + a;
 }

@@ -527,9 +527,8 @@ int turn(int i);
                 long e = p[r][1] = 1 + v % (i + 2);                         \
                                                                             \
                 return x * 3 + y * 5 + z * 7 + w * 11 + u * 13 + t * 37 +   \
-                       q * 41 + e * 43 +                                    \
-                       K##m_##N[r + 1][-1] * 17 + p[r][2] * 19 +            \
-                       total_##N(&K##m_##N[1][1], 2) * 23 +                 \
+                       q * 41 + e * 43 + K##m_##N[r + 1][-1] * 17 +         \
+                       p[r][2] * 19 + total_##N(&K##m_##N[1][1], 2) * 23 +  \
                        total_##N(&p[1][1], 2) * 29 +                        \
                        total_##N(p[2] - 1, 2) * 31;                         \
         }                                                                   \
@@ -544,11 +543,13 @@ int turn(int i);
                        ((long) (p[r] - 1) - (long) K##m_##N) * 1000000;     \
         }
 
+/* clang-format off */
 #define KIND(T, N, K) \
         SCALAR(T, N, K) ARRAYS(T, N, K) ADDRESSES(T, N, K) POINTERS(T, N, K)
 #define FOLD_KIND(T, N, K) \
         FOLDS(T, N, K) CELLS_OF(T, N, K) INDEXED(T, N, K) SUMMED(T, N, K)
-#define BOTH_KINDS(T, N)   KINDS(KIND, T, N) KINDS(FOLD_KIND, T, N)
+/* clang-format on */
+#define BOTH_KINDS(T, N) KINDS(KIND, T, N) KINDS(FOLD_KIND, T, N)
 
 TYPES(BOTH_KINDS)
 

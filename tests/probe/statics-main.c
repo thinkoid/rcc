@@ -68,60 +68,60 @@ same_name(void)
         R f parameters;        \
         R ref_##f parameters;
 
-#define DECLARE(T, N, V)                    \
-        BOTH(long, read_f_##N, (void) )     \
-        BOTH(void, write_f_##N, (long) )    \
-        BOTH(long, add_f_##N, (long) )      \
-        BOTH(long, read_fi_##N, (void) )    \
-        BOTH(T *, address_fi_##N, (void) )  \
-        BOTH(T *, pointer_fpi_##N, (void) ) \
-        BOTH(long, deref_fpi_##N, (void) )  \
-        BOTH(int, null_fp_##N, (void) )     \
-        BOTH(void, set_fp_##N, (T *) )      \
-        BOTH(long, store_fp_##N, (long) )   \
-        BOTH(long, swap_b_##N, (long) )     \
-        BOTH(long, step_bi_##N, (void) )    \
-        BOTH(T *, keep_bp_##N, (T *) )      \
-        BOTH(long, block_pointer_##N, (long) )
+#define DECLARE(T, N, V) \
+        BOTH(long, read_f_##N, (void))             \
+        BOTH(void, write_f_##N, (long))             \
+        BOTH(long, add_f_##N, (long))             \
+        BOTH(long, read_fi_##N, (void))             \
+        BOTH(T *, address_fi_##N, (void))             \
+        BOTH(T *, pointer_fpi_##N, (void))             \
+        BOTH(long, deref_fpi_##N, (void))             \
+        BOTH(int, null_fp_##N, (void))             \
+        BOTH(void, set_fp_##N, (T *))             \
+        BOTH(long, store_fp_##N, (long))             \
+        BOTH(long, swap_b_##N, (long))             \
+        BOTH(long, step_bi_##N, (void))             \
+        BOTH(T *, keep_bp_##N, (T *))             \
+        BOTH(long, block_pointer_##N, (long))
 
 INITIAL(DECLARE)
 
-BOTH(long, file_table, (int) )
-BOTH(long, file_grid, (int, int) )
-BOTH(long, file_word, (int) )
-BOTH(long, file_exact, (int) )
-BOTH(long, file_sized, (int) )
-BOTH(long, file_name, (int) )
-BOTH(long, file_names, (int, int) )
-BOTH(long, file_braced, (void) )
-BOTH(long, file_empty, (int) )
-BOTH(long, file_element, (void) )
-BOTH(long, file_suffix, (int) )
-BOTH(long, file_sizes, (void) )
-BOTH(long, block_table, (int) )
-BOTH(long, block_grid, (int, int) )
-BOTH(long, block_word, (int) )
-BOTH(long, block_exact, (int) )
-BOTH(long, block_names, (int, int) )
-BOTH(long, block_braced, (void) )
-BOTH(long, block_empty, (int) )
-BOTH(long, block_element, (void) )
-BOTH(long, block_sizes, (void) )
-BOTH(int, counter, (void) )
-BOTH(int, first, (int) )
-BOTH(int, second, (int) )
-BOTH(int, blocks, (int, int) )
-BOTH(int, file_shade, (void) )
-BOTH(int, hides, (void) )
-BOTH(long, call_helper, (long) )
-BOTH(long, call_through, (long) )
-BOTH(helper_t, helper_address, (void) )
-BOTH(int, same_helper, (void) )
-BOTH(int, own_shared, (void) )
-BOTH(int, own_same_name, (void) )
-BOTH(int, lib_shared, (void) )
-BOTH(int, lib_same_name, (void) )
-BOTH(long, read_again, (void) )
+BOTH(long, file_table, (int))
+BOTH(long, file_grid, (int, int))
+BOTH(long, file_word, (int))
+BOTH(long, file_exact, (int))
+BOTH(long, file_sized, (int))
+BOTH(long, file_name, (int))
+BOTH(long, file_names, (int, int))
+BOTH(long, file_braced, (void))
+BOTH(long, file_empty, (int))
+BOTH(long, file_element, (void))
+BOTH(long, file_suffix, (int))
+BOTH(long, file_sizes, (void))
+BOTH(long, block_table, (int))
+BOTH(long, block_grid, (int, int))
+BOTH(long, block_word, (int))
+BOTH(long, block_exact, (int))
+BOTH(long, block_names, (int, int))
+BOTH(long, block_braced, (void))
+BOTH(long, block_empty, (int))
+BOTH(long, block_element, (void))
+BOTH(long, block_sizes, (void))
+BOTH(int, counter, (void))
+BOTH(int, first, (int))
+BOTH(int, second, (int))
+BOTH(int, blocks, (int, int))
+BOTH(int, file_shade, (void))
+BOTH(int, hides, (void))
+BOTH(long, call_helper, (long))
+BOTH(long, call_through, (long))
+BOTH(helper_t, helper_address, (void))
+BOTH(int, same_helper, (void))
+BOTH(int, own_shared, (void))
+BOTH(int, own_same_name, (void))
+BOTH(int, lib_shared, (void))
+BOTH(int, lib_same_name, (void))
+BOTH(long, read_again, (void))
 
 static void
 report(const char *name, long got, long want)

@@ -1,2 +1,2 @@
-tests/error/integer-to-pointer.c:5:12: error: incompatible integer to pointer conversion
+tests/error/integer-to-pointer.c:6:16: error: incompatible integer to pointer conversion
 status 1

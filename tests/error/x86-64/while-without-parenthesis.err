@@ -1,2 +1,2 @@
-tests/error/while-without-parenthesis.c:4:11: error: expected '(' after 'while'
+tests/error/while-without-parenthesis.c:6:17: error: expected '(' after 'while'
 status 1

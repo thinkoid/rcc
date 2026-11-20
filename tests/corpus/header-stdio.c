@@ -18,18 +18,19 @@
 #include <stdio.h>
 #include <string.h>
 
-int main(void)
+int
+main(void)
 {
-    char line[32];
-    int n;
+        char line[32];
+        int n;
 
-    n = snprintf(line, sizeof line, "hello, %s %d", "world", 42);
-    if (n != 15)
-        return 1;
+        n = snprintf(line, sizeof line, "hello, %s %d", "world", 42);
+        if (n != 15)
+                return 1;
 
-    if (strcmp(line, "hello, world 42") != 0)
-        return 2;
+        if (strcmp(line, "hello, world 42") != 0)
+                return 2;
 
-    printf("%s\n", line);
-    return 0;
+        printf("%s\n", line);
+        return 0;
 }

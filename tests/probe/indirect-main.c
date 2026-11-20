@@ -80,59 +80,59 @@ report(const char *name, long x, long y, long got, long want)
         R ref_##f parameters;
 
 /* indirect-lib.c, linked as it is and under the prefix */
-BOTH(long, mix1, (long) )
-BOTH(long, mix2, (long, long) )
+BOTH(long, mix1, (long))
+BOTH(long, mix2, (long, long))
 
-BOTH(long, twice, (long) )
-BOTH(fn1_t, defined_address, (void) )
-BOTH(fn1_t, declared_address, (void) )
-BOTH(int, declared_same, (void) )
-BOTH(int, defined_same, (void) )
+BOTH(long, twice, (long))
+BOTH(fn1_t, defined_address, (void))
+BOTH(fn1_t, declared_address, (void))
+BOTH(int, declared_same, (void))
+BOTH(int, defined_same, (void))
 BOTH(int, null_tests, (fn1_t))
-BOTH(int, address_forms, (int) )
-BOTH(long, through_local, (long) )
-BOTH(long, through_parameter, (fn1_t, long) )
-BOTH(long, through_register, (long, long) )
-BOTH(long, through_array, (int, long) )
-BOTH(fn1_t, pick, (int) )
-BOTH(long, through_call, (int, long) )
-BOTH(long, through_conditional, (int, long, long) )
-BOTH(long, through_cast, (long, long) )
-BOTH(long, through_name, (long) )
-BOTH(long, ifact, (long) )
-BOTH(fn1_t, ifact_address, (void) )
-BOTH(long, icall0, (void) )
-BOTH(long, icall1, (long) )
-BOTH(long, icall2, (long, long) )
-BOTH(long, icall3, (long, long, long) )
-BOTH(long, icall4, (long, long, long, long) )
-BOTH(long, icall5, (long, long, long, long, long) )
-BOTH(long, icall6, (long, long, long, long, long, long) )
-BOTH(long, icall7, (long, long, long, long, long, long, long) )
+BOTH(int, address_forms, (int))
+BOTH(long, through_local, (long))
+BOTH(long, through_parameter, (fn1_t, long))
+BOTH(long, through_register, (long, long))
+BOTH(long, through_array, (int, long))
+BOTH(fn1_t, pick, (int))
+BOTH(long, through_call, (int, long))
+BOTH(long, through_conditional, (int, long, long))
+BOTH(long, through_cast, (long, long))
+BOTH(long, through_name, (long))
+BOTH(long, ifact, (long))
+BOTH(fn1_t, ifact_address, (void))
+BOTH(long, icall0, (void))
+BOTH(long, icall1, (long))
+BOTH(long, icall2, (long, long))
+BOTH(long, icall3, (long, long, long))
+BOTH(long, icall4, (long, long, long, long))
+BOTH(long, icall5, (long, long, long, long, long))
+BOTH(long, icall6, (long, long, long, long, long, long))
+BOTH(long, icall7, (long, long, long, long, long, long, long))
 BOTH(long, icall8, (P8(long)))
 BOTH(long, icall9, (P8(long)))
 BOTH(long, icall10, (P8(long)))
 BOTH(long, icall11, (P8(long)))
 BOTH(long, icall12, (P8(long)))
-BOTH(long, icall_mixed, (long, long) )
-BOTH(long, ivariadic, (int, long, char, short) )
-BOTH(long, ieffects, (int, int) )
-BOTH(long, callee_first, (long) )
-BOTH(long, callee_order, (long, long) )
-BOTH(long, iheld, (long, long, long) )
-BOTH(long, inest, (long, long, long) )
+BOTH(long, icall_mixed, (long, long))
+BOTH(long, ivariadic, (int, long, char, short))
+BOTH(long, ieffects, (int, int))
+BOTH(long, callee_first, (long))
+BOTH(long, callee_order, (long, long))
+BOTH(long, iheld, (long, long, long))
+BOTH(long, inest, (long, long, long))
 BOTH(long, ideep, (P8(long)))
-BOTH(int, icondition, (long, long) )
-BOTH(long, ipaths, (long, long) )
-BOTH(long, far_icall, (long, char, short) )
+BOTH(int, icondition, (long, long))
+BOTH(long, ipaths, (long, long))
+BOTH(long, far_icall, (long, char, short))
 
-#define DECLARE_TYPE(T, N)                       \
-        BOTH(T, inc_##N, (T))                    \
-        BOTH(inc_##N##_t, pick_inc_##N, (void) ) \
-        BOTH(long, ichain_##N, (T))              \
-        BOTH(long, iret_##N, (long) )            \
-        BOTH(long, itmix10_##N, (T, T))          \
-        BOTH(long, ipar10_##N, (T, T))           \
+#define DECLARE_TYPE(T, N) \
+        BOTH(T, inc_##N, (T))               \
+        BOTH(inc_##N##_t, pick_inc_##N, (void))               \
+        BOTH(long, ichain_##N, (T))               \
+        BOTH(long, iret_##N, (long))               \
+        BOTH(long, itmix10_##N, (T, T))               \
+        BOTH(long, ipar10_##N, (T, T))               \
         BOTH(long, iapply_##N, (inc_##N##_t, T))
 
 TYPES(DECLARE_TYPE)

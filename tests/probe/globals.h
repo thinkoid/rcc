@@ -37,21 +37,21 @@
 /* initialized objects: a name, its type and its initializer, each
    entry a statement of its own; the constant converted to the object's
    type as an initializer is, which the main computes again for each */
-#define INITIALIZED(X)                            \
-    X(char, i_c, 'x');                            \
-    X(signed char, i_sc, -100);                   \
-    X(unsigned char, i_uc, 200);                  \
-    X(short, i_s, -30000);                        \
-    X(unsigned short, i_us, 60000);               \
-    X(int, i_i, -123456789);                      \
-    X(unsigned, i_u, 4000000000u);                \
-    X(long, i_l, -1234567890123L);                \
-    X(unsigned long, i_ul, 0xfedcba9876543210ul); \
-    X(char, i_wrap, 300);                         \
-    X(unsigned char, i_m1, -1);                   \
-    X(unsigned short, i_trunc, 0x12345);          \
-    X(int, i_expr, 40 + 2 * 3);                   \
-    X(long, i_sum, 0x7fffffff + 1u);              \
-    X(int, i_zero, 0);                            \
-    X(unsigned long, i_ones, ~0ul);               \
-    X(short, i_size, sizeof(long));
+#define INITIALIZED(X)                                \
+        X(char, i_c, 'x');                            \
+        X(signed char, i_sc, -100);                   \
+        X(unsigned char, i_uc, 200);                  \
+        X(short, i_s, -30000);                        \
+        X(unsigned short, i_us, 60000);               \
+        X(int, i_i, -123456789);                      \
+        X(unsigned, i_u, 4000000000u);                \
+        X(long, i_l, -1234567890123L);                \
+        X(unsigned long, i_ul, 0xfedcba9876543210ul); \
+        X(char, i_wrap, 300);                         \
+        X(unsigned char, i_m1, -1);                   \
+        X(unsigned short, i_trunc, 0x12345);          \
+        X(int, i_expr, 40 + 2 * 3);                   \
+        X(long, i_sum, 0x7fffffff + 1u);              \
+        X(int, i_zero, 0);                            \
+        X(unsigned long, i_ones, ~0ul);               \
+        X(short, i_size, sizeof(long));

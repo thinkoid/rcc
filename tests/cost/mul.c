@@ -5,7 +5,8 @@
 
    On aarch64 the listing must show a loaded into w0 and b into w1, and
    one mul w0, w0, w1. */
-int mul(int a, int b)
+int
+mul(int a, int b)
 {
-    return a * b;
+        return a * b;
 }

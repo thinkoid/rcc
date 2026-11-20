@@ -1,2 +1,2 @@
-tests/error/typedef-in-for.c:5:10: error: 'typedef' in the declaration of a 'for'
+tests/error/typedef-in-for.c:6:14: error: 'typedef' in the declaration of a 'for'
 status 1

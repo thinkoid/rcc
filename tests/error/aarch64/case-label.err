@@ -1,2 +1,2 @@
-tests/error/case-label.c:4:5: error: 'case' label not in a switch
+tests/error/case-label.c:5:1: error: 'case' label not in a switch
 status 1

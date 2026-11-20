@@ -12,14 +12,16 @@
    between the load of p from its slot and the store back; and
    in_value() writing p -= 2 the same way, sub x0, x0, #8 between the
    load and the store, its value left in x0. */
-int *step(int *p)
+int *
+step(int *p)
 {
-    ++p;
-    p -= 2;
-    return p;
+        ++p;
+        p -= 2;
+        return p;
 }
 
-int *in_value(int *p)
+int *
+in_value(int *p)
 {
-    return p -= 2;
+        return p -= 2;
 }

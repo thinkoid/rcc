@@ -9,10 +9,12 @@
 
 #include "members.h"
 
+/* clang-format off */
 static const long values[] = { 0,      1,           -1,
                                0x7f,   0x80,        0xff,
                                0x1234, -0x5678,     0x12345678,
                                -2,     0x123456789abcdef0L };
+/* clang-format on */
 
 #define COUNT ((int) (sizeof values / sizeof *values))
 
@@ -49,40 +51,40 @@ fill(void *p, size_t size)
 }
 
 /* each function of members.c, as rcc compiled it and as clang did */
-#define MEMBER(K, N, M, A)                                              \
-    long get_##N##_##M(K N *), ref_get_##N##_##M(K N *);                \
-    void set_##N##_##M(K N *, long), ref_set_##N##_##M(K N *, long);    \
-    long step_##N##_##M(K N *), ref_step_##N##_##M(K N *);              \
-    long add_##N##_##M(K N *), ref_add_##N##_##M(K N *);                \
-    long where_##N##_##M(K N *), ref_where_##N##_##M(K N *);            \
-    long second_##N##_##M(K N *), ref_second_##N##_##M(K N *);          \
-    void held_##N##_##M(K N *, int, long);                              \
-    void ref_held_##N##_##M(K N *, int, long);                          \
-    long held_add_##N##_##M(K N *, int);                                \
-    long ref_held_add_##N##_##M(K N *, int);                            \
-    long local_##N##_##M(long), ref_local_##N##_##M(long);              \
-    long global_##N##_##M(long), ref_global_##N##_##M(long);            \
-    long row_##N##_##M(K N *, long, long),                              \
-        ref_row_##N##_##M(K N *, long, long);                           \
-    long table_##N##_##M(long, long), ref_table_##N##_##M(long, long);
+#define MEMBER(K, N, M, A)                                               \
+        long get_##N##_##M(K N *), ref_get_##N##_##M(K N *);             \
+        void set_##N##_##M(K N *, long), ref_set_##N##_##M(K N *, long); \
+        long step_##N##_##M(K N *), ref_step_##N##_##M(K N *);           \
+        long add_##N##_##M(K N *), ref_add_##N##_##M(K N *);             \
+        long where_##N##_##M(K N *), ref_where_##N##_##M(K N *);         \
+        long second_##N##_##M(K N *), ref_second_##N##_##M(K N *);       \
+        void held_##N##_##M(K N *, int, long);                           \
+        void ref_held_##N##_##M(K N *, int, long);                       \
+        long held_add_##N##_##M(K N *, int);                             \
+        long ref_held_add_##N##_##M(K N *, int);                         \
+        long local_##N##_##M(long), ref_local_##N##_##M(long);           \
+        long global_##N##_##M(long), ref_global_##N##_##M(long);         \
+        long row_##N##_##M(K N *, long, long),                           \
+            ref_row_##N##_##M(K N *, long, long);                        \
+        long table_##N##_##M(long, long), ref_table_##N##_##M(long, long);
 
-#define PAIR_MEMBERS(A, TA, B, TB)                                      \
-    MEMBER(struct, p_##A##B, x, A)                                      \
-    MEMBER(struct, p_##A##B, y, B)                                      \
-    MEMBER(union, u_##A##B, x, A)                                       \
-    MEMBER(union, u_##A##B, y, B)
+#define PAIR_MEMBERS(A, TA, B, TB)     \
+        MEMBER(struct, p_##A##B, x, A) \
+        MEMBER(struct, p_##A##B, y, B) \
+        MEMBER(union, u_##A##B, x, A)  \
+        MEMBER(union, u_##A##B, y, B)
 
 #define PAIRS_MEMBERS(A, TA) KINDS2(PAIR_MEMBERS, A, TA)
 
 KINDS(PAIRS_MEMBERS)
 
-#define TRIPLE_MEMBERS(A, TA, B, TB, C, TC)                             \
-    MEMBER(struct, t_##A##B##C, x, A)                                   \
-    MEMBER(struct, t_##A##B##C, y, B)                                   \
-    MEMBER(struct, t_##A##B##C, z, C)
+#define TRIPLE_MEMBERS(A, TA, B, TB, C, TC) \
+        MEMBER(struct, t_##A##B##C, x, A)   \
+        MEMBER(struct, t_##A##B##C, y, B)   \
+        MEMBER(struct, t_##A##B##C, z, C)
 
 #define TRIPLES_OF_MEMBERS(A, TA, B, TB) FEW3(TRIPLE_MEMBERS, A, TA, B, TB)
-#define TRIPLES_MEMBERS(A, TA) FEW2(TRIPLES_OF_MEMBERS, A, TA)
+#define TRIPLES_MEMBERS(A, TA)           FEW2(TRIPLES_OF_MEMBERS, A, TA)
 
 FEW(TRIPLES_MEMBERS)
 
@@ -97,60 +99,60 @@ long odd_row(long, long), ref_odd_row(long, long);
    read, written and added to across a call, a local's and a global's
    write and read, and an element's by a variable index through a
    pointer, the records compared after, and on a global */
-#define CHECK_MEMBER(K, N, M, A)                                        \
-    for (int k = 0; k < COUNT; ++k) {                                   \
-        K N a[2], b[2];                                                 \
-        const long v = values[k];                                       \
-                                                                        \
-        fill(a, sizeof a);                                              \
-        fill(b, sizeof b);                                              \
-        set_##N##_##M(a, v);                                            \
-        ref_set_##N##_##M(b, v);                                        \
-        same("set_" #N "_" #M, v, a, b, sizeof a);                      \
-        report("get_" #N "_" #M, v, get_##N##_##M(a),                   \
-               ref_get_##N##_##M(b));                                   \
-        report("step_" #N "_" #M, v, step_##N##_##M(a),                 \
-               ref_step_##N##_##M(b));                                  \
-        same("step_" #N "_" #M, v, a, b, sizeof a);                     \
-        report("add_" #N "_" #M, v, add_##N##_##M(a),                   \
-               ref_add_##N##_##M(b));                                   \
-        same("add_" #N "_" #M, v, a, b, sizeof a);                      \
-        report("where_" #N "_" #M, v, where_##N##_##M(a),               \
-               ref_where_##N##_##M(b));                                 \
-        report("second_" #N "_" #M, v, second_##N##_##M(a),             \
-               ref_second_##N##_##M(b));                                \
-        held_##N##_##M(a, 1, v);                                        \
-        ref_held_##N##_##M(b, 1, v);                                    \
-        same("held_" #N "_" #M, v, a, b, sizeof a);                     \
-        report("held_add_" #N "_" #M, v, held_add_##N##_##M(a, 1),      \
-               ref_held_add_##N##_##M(b, 1));                           \
-        same("held_add_" #N "_" #M, v, a, b, sizeof a);                 \
-        report("local_" #N "_" #M, v, local_##N##_##M(v),               \
-               ref_local_##N##_##M(v));                                 \
-        report("global_" #N "_" #M, v, global_##N##_##M(v),             \
-               ref_global_##N##_##M(v));                                \
-        report("row_" #N "_" #M, v, row_##N##_##M(a, k % 2, v),         \
-               ref_row_##N##_##M(b, k % 2, v));                         \
-        same("row_" #N "_" #M, v, a, b, sizeof a);                      \
-        report("table_" #N "_" #M, v, table_##N##_##M(k % 3, v),        \
-               ref_table_##N##_##M(k % 3, v));                          \
-    }
+#define CHECK_MEMBER(K, N, M, A)                                           \
+        for (int k = 0; k < COUNT; ++k) {                                  \
+                K N a[2], b[2];                                            \
+                const long v = values[k];                                  \
+                                                                           \
+                fill(a, sizeof a);                                         \
+                fill(b, sizeof b);                                         \
+                set_##N##_##M(a, v);                                       \
+                ref_set_##N##_##M(b, v);                                   \
+                same("set_" #N "_" #M, v, a, b, sizeof a);                 \
+                report("get_" #N "_" #M, v, get_##N##_##M(a),              \
+                       ref_get_##N##_##M(b));                              \
+                report("step_" #N "_" #M, v, step_##N##_##M(a),            \
+                       ref_step_##N##_##M(b));                             \
+                same("step_" #N "_" #M, v, a, b, sizeof a);                \
+                report("add_" #N "_" #M, v, add_##N##_##M(a),              \
+                       ref_add_##N##_##M(b));                              \
+                same("add_" #N "_" #M, v, a, b, sizeof a);                 \
+                report("where_" #N "_" #M, v, where_##N##_##M(a),          \
+                       ref_where_##N##_##M(b));                            \
+                report("second_" #N "_" #M, v, second_##N##_##M(a),        \
+                       ref_second_##N##_##M(b));                           \
+                held_##N##_##M(a, 1, v);                                   \
+                ref_held_##N##_##M(b, 1, v);                               \
+                same("held_" #N "_" #M, v, a, b, sizeof a);                \
+                report("held_add_" #N "_" #M, v, held_add_##N##_##M(a, 1), \
+                       ref_held_add_##N##_##M(b, 1));                      \
+                same("held_add_" #N "_" #M, v, a, b, sizeof a);            \
+                report("local_" #N "_" #M, v, local_##N##_##M(v),          \
+                       ref_local_##N##_##M(v));                            \
+                report("global_" #N "_" #M, v, global_##N##_##M(v),        \
+                       ref_global_##N##_##M(v));                           \
+                report("row_" #N "_" #M, v, row_##N##_##M(a, k % 2, v),    \
+                       ref_row_##N##_##M(b, k % 2, v));                    \
+                same("row_" #N "_" #M, v, a, b, sizeof a);                 \
+                report("table_" #N "_" #M, v, table_##N##_##M(k % 3, v),   \
+                       ref_table_##N##_##M(k % 3, v));                     \
+        }
 
-#define CHECK_PAIR(A, TA, B, TB)                                        \
-    CHECK_MEMBER(struct, p_##A##B, x, A)                                \
-    CHECK_MEMBER(struct, p_##A##B, y, B)                                \
-    CHECK_MEMBER(union, u_##A##B, x, A)                                 \
-    CHECK_MEMBER(union, u_##A##B, y, B)
+#define CHECK_PAIR(A, TA, B, TB)             \
+        CHECK_MEMBER(struct, p_##A##B, x, A) \
+        CHECK_MEMBER(struct, p_##A##B, y, B) \
+        CHECK_MEMBER(union, u_##A##B, x, A)  \
+        CHECK_MEMBER(union, u_##A##B, y, B)
 
 #define CHECK_PAIRS(A, TA) KINDS2(CHECK_PAIR, A, TA)
 
-#define CHECK_TRIPLE(A, TA, B, TB, C, TC)                               \
-    CHECK_MEMBER(struct, t_##A##B##C, x, A)                             \
-    CHECK_MEMBER(struct, t_##A##B##C, y, B)                             \
-    CHECK_MEMBER(struct, t_##A##B##C, z, C)
+#define CHECK_TRIPLE(A, TA, B, TB, C, TC)       \
+        CHECK_MEMBER(struct, t_##A##B##C, x, A) \
+        CHECK_MEMBER(struct, t_##A##B##C, y, B) \
+        CHECK_MEMBER(struct, t_##A##B##C, z, C)
 
 #define CHECK_TRIPLES_OF(A, TA, B, TB) FEW3(CHECK_TRIPLE, A, TA, B, TB)
-#define CHECK_TRIPLES(A, TA) FEW2(CHECK_TRIPLES_OF, A, TA)
+#define CHECK_TRIPLES(A, TA)           FEW2(CHECK_TRIPLES_OF, A, TA)
 
 static int
 twice(int x)

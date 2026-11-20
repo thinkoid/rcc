@@ -1,2 +1,2 @@
-tests/error/conflicting-type-specifiers.c:5:9: error: cannot combine 'char' with the type specifiers before it
+tests/error/conflicting-type-specifiers.c:6:13: error: cannot combine 'char' with the type specifiers before it
 status 1

@@ -21,12 +21,14 @@
 int f7(int, int, int, int, int, int, int);
 int f8(int, int, int, int, int, int, int, int);
 
-int seven(void)
+int
+seven(void)
 {
-    return f7(1, 2, 3, 4, 5, 6, 7);
+        return f7(1, 2, 3, 4, 5, 6, 7);
 }
 
-int eight(void)
+int
+eight(void)
 {
-    return f8(1, 2, 3, 4, 5, 6, 7, 8);
+        return f8(1, 2, 3, 4, 5, 6, 7, 8);
 }

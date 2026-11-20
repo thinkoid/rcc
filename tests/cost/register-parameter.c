@@ -12,7 +12,8 @@
    w1 into w20, no slot and no copy: sub w0, w19, w20 writes a fresh
    register with the variables' registers as its operands, then
    add w0, w0, w19. */
-int parameter(register int a, register int b)
+int
+parameter(register int a, register int b)
 {
-    return a - b + a;
+        return a - b + a;
 }

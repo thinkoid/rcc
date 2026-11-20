@@ -1,2 +1,2 @@
-tests/error/indirection-of-void-pointer.c:8:5: error: indirection through a pointer to void
+tests/error/indirection-of-void-pointer.c:9:9: error: indirection through a pointer to void
 status 1

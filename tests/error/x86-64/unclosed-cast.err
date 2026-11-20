@@ -1,2 +1,2 @@
-tests/error/unclosed-cast.c:4:18: error: expected ')' after type name
+tests/error/unclosed-cast.c:5:18: error: expected ')' after type name
 status 1

@@ -1,8 +1,8 @@
 /* An expression statement without its closing ';'. */
-int main(void)
+int
+main(void)
 {
-    int a;
+        int a;
 
-    a = 1
-    return a;
+        a = 1 return a;
 }

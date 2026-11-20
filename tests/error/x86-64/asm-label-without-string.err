@@ -1,2 +1,2 @@
-tests/error/asm-label-without-string.c:2:22: error: expected string literal in '__asm__'
+tests/error/asm-label-without-string.c:2:21: error: expected string literal in '__asm__'
 status 1

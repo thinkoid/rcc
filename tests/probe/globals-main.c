@@ -119,111 +119,111 @@ extern int late, ref_late;
         R f parameters;        \
         R ref_##f parameters;
 
-#define DECLARE_KIND(T, N, K)                             \
-        BOTH(long, read_##K##_##N, (void) )               \
-        BOTH(int, read_int_##K##_##N, (void) )            \
-        BOTH(void, write_##K##_##N, (long) )              \
-        BOTH(long, write_value_##K##_##N, (long) )        \
-        BOTH(void, zero_##K##_##N, (void) )               \
-        BOTH(void, constant_##K##_##N, (void) )           \
-        BOTH(void, add_##K##_##N, (long) )                \
-        BOTH(void, add_five_##K##_##N, (void) )           \
-        BOTH(long, add_value_##K##_##N, (long) )          \
-        BOTH(void, sub_##K##_##N, (int) )                 \
-        BOTH(void, xor_##K##_##N, (long) )                \
-        BOTH(void, shl_##K##_##N, (int) )                 \
-        BOTH(void, shr_##K##_##N, (int) )                 \
-        BOTH(long, shr_value_##K##_##N, (int) )           \
-        BOTH(void, mul_##K##_##N, (long) )                \
-        BOTH(long, div_value_##K##_##N, (int) )           \
-        BOTH(void, inc_##K##_##N, (void) )                \
-        BOTH(void, dec_##K##_##N, (void) )                \
-        BOTH(long, postinc_##K##_##N, (void) )            \
-        BOTH(long, preinc_##K##_##N, (void) )             \
-        BOTH(long, postdec_##K##_##N, (void) )            \
-        BOTH(long, again_##K##_##N, (void) )              \
-        BOTH(long, around_##K##_##N, (long) )             \
-        BOTH(long, elem_##K##_##N, (void) )               \
-        BOTH(long, elem_at_##K##_##N, (int) )             \
-        BOTH(void, put_##K##_##N, (long) )                \
-        BOTH(void, put_at_##K##_##N, (int, long) )        \
-        BOTH(void, bump_at_##K##_##N, (int, long) )       \
-        BOTH(long, inc_at_##K##_##N, (int) )              \
-        BOTH(long, last_##K##_##N, (void) )               \
-        BOTH(long, cell_##K##_##N, (int, int) )           \
-        BOTH(long, corner_##K##_##N, (void) )             \
-        BOTH(long, origin_##K##_##N, (void) )             \
-        BOTH(void, set_cell_##K##_##N, (int, int, long) ) \
-        BOTH(void, set_row_one_##K##_##N, (int, long) )   \
-        BOTH(long, row_##K##_##N, (int) )                 \
-        BOTH(T *, address_##K##_##N, (void) )             \
-        BOTH(T *, array_##K##_##N, (void) )               \
-        BOTH(T *, elem_address_##K##_##N, (int) )         \
-        BOTH(T *, row_address_##K##_##N, (int) )          \
-        BOTH(long, pass_##K##_##N, (long) )               \
-        BOTH(long, pass_array_##K##_##N, (long) )         \
-        BOTH(T *, pointer_##K##_##N, (void) )             \
-        BOTH(void, set_pointer_##K##_##N, (T *) )         \
-        BOTH(long, deref_##K##_##N, (void) )              \
-        BOTH(void, store_through_##K##_##N, (long) )      \
-        BOTH(long, index_##K##_##N, (int) )               \
-        BOTH(void, step_##K##_##N, (void) )               \
-        BOTH(void, step_by_##K##_##N, (int) )             \
-        BOTH(void, back_##K##_##N, (void) )               \
-        BOTH(T *, step_value_##K##_##N, (void) )          \
-        BOTH(T *, step_by_value_##K##_##N, (int) )        \
-        BOTH(long, walk_##K##_##N, (void) )               \
-        BOTH(void, walk_store_##K##_##N, (long) )         \
-        BOTH(long, fold_before_##K##_##N, (void) )        \
-        BOTH(long, fold_beyond_##K##_##N, (void) )        \
-        BOTH(void, fold_put_##K##_##N, (long) )           \
-        BOTH(void, fold_bump_##K##_##N, (long) )          \
-        BOTH(void, fold_shift_##K##_##N, (int) )          \
-        BOTH(void, fold_tick_##K##_##N, (void) )          \
-        BOTH(long, fold_tick_value_##K##_##N, (void) )    \
-        BOTH(long, fold_bump_value_##K##_##N, (long) )    \
-        BOTH(long, fold_sum_##K##_##N, (void) )           \
-        BOTH(long, fold_minus_##K##_##N, (void) )         \
-        BOTH(long, fold_nested_##K##_##N, (void) )        \
-        BOTH(T *, fold_third_##K##_##N, (void) )          \
-        BOTH(T *, fold_plus_##K##_##N, (void) )           \
-        BOTH(T *, fold_back_##K##_##N, (void) )           \
-        BOTH(T *, fold_row_##K##_##N, (void) )            \
-        BOTH(long, fold_zero_##K##_##N, (long) )          \
-        BOTH(T *, fold_below_##K##_##N, (void) )          \
-        BOTH(T *, fold_past_##K##_##N, (void) )           \
-        BOTH(T *, fold_end_##K##_##N, (void) )            \
-        BOTH(T *, fold_row_past_##K##_##N, (void) )       \
-        BOTH(long, fold_distance_##K##_##N, (void) )      \
-        BOTH(void, indexed_##K##_##N, (long, int) )       \
-        BOTH(long, indexed_value_##K##_##N, (long, int) ) \
-        BOTH(long, indexed_cells_##K##_##N, (long, int) ) \
-        BOTH(long, indexed_distance_##K##_##N, (int) )    \
-        BOTH(void, summed_##K##_##N, (long, int) )        \
-        BOTH(long, summed_value_##K##_##N, (long, int) )  \
-        BOTH(long, summed_distance_##K##_##N, (int) )     \
-        BOTH(T *, cell_get_##K##_##N, (void) )            \
-        BOTH(void, cell_put_##K##_##N, (T *) )            \
-        BOTH(long, cell_deref_##K##_##N, (void) )         \
-        BOTH(long, cell_index_##K##_##N, (void) )         \
-        BOTH(void, cell_step_##K##_##N, (void) )          \
-        BOTH(void, cell_store_##K##_##N, (long) )
+#define DECLARE_KIND(T, N, K) \
+        BOTH(long, read_##K##_##N, (void))                  \
+        BOTH(int, read_int_##K##_##N, (void))                  \
+        BOTH(void, write_##K##_##N, (long))                  \
+        BOTH(long, write_value_##K##_##N, (long))                  \
+        BOTH(void, zero_##K##_##N, (void))                  \
+        BOTH(void, constant_##K##_##N, (void))                  \
+        BOTH(void, add_##K##_##N, (long))                  \
+        BOTH(void, add_five_##K##_##N, (void))                  \
+        BOTH(long, add_value_##K##_##N, (long))                  \
+        BOTH(void, sub_##K##_##N, (int))                  \
+        BOTH(void, xor_##K##_##N, (long))                  \
+        BOTH(void, shl_##K##_##N, (int))                  \
+        BOTH(void, shr_##K##_##N, (int))                  \
+        BOTH(long, shr_value_##K##_##N, (int))                  \
+        BOTH(void, mul_##K##_##N, (long))                  \
+        BOTH(long, div_value_##K##_##N, (int))                  \
+        BOTH(void, inc_##K##_##N, (void))                  \
+        BOTH(void, dec_##K##_##N, (void))                  \
+        BOTH(long, postinc_##K##_##N, (void))                  \
+        BOTH(long, preinc_##K##_##N, (void))                  \
+        BOTH(long, postdec_##K##_##N, (void))                  \
+        BOTH(long, again_##K##_##N, (void))                  \
+        BOTH(long, around_##K##_##N, (long))                  \
+        BOTH(long, elem_##K##_##N, (void))                  \
+        BOTH(long, elem_at_##K##_##N, (int))                  \
+        BOTH(void, put_##K##_##N, (long))                  \
+        BOTH(void, put_at_##K##_##N, (int, long))                  \
+        BOTH(void, bump_at_##K##_##N, (int, long))                  \
+        BOTH(long, inc_at_##K##_##N, (int))                  \
+        BOTH(long, last_##K##_##N, (void))                  \
+        BOTH(long, cell_##K##_##N, (int, int))                  \
+        BOTH(long, corner_##K##_##N, (void))                  \
+        BOTH(long, origin_##K##_##N, (void))                  \
+        BOTH(void, set_cell_##K##_##N, (int, int, long))                  \
+        BOTH(void, set_row_one_##K##_##N, (int, long))                  \
+        BOTH(long, row_##K##_##N, (int))                  \
+        BOTH(T *, address_##K##_##N, (void))                  \
+        BOTH(T *, array_##K##_##N, (void))                  \
+        BOTH(T *, elem_address_##K##_##N, (int))                  \
+        BOTH(T *, row_address_##K##_##N, (int))                  \
+        BOTH(long, pass_##K##_##N, (long))                  \
+        BOTH(long, pass_array_##K##_##N, (long))                  \
+        BOTH(T *, pointer_##K##_##N, (void))                  \
+        BOTH(void, set_pointer_##K##_##N, (T *))                  \
+        BOTH(long, deref_##K##_##N, (void))                  \
+        BOTH(void, store_through_##K##_##N, (long))                  \
+        BOTH(long, index_##K##_##N, (int))                  \
+        BOTH(void, step_##K##_##N, (void))                  \
+        BOTH(void, step_by_##K##_##N, (int))                  \
+        BOTH(void, back_##K##_##N, (void))                  \
+        BOTH(T *, step_value_##K##_##N, (void))                  \
+        BOTH(T *, step_by_value_##K##_##N, (int))                  \
+        BOTH(long, walk_##K##_##N, (void))                  \
+        BOTH(void, walk_store_##K##_##N, (long))                  \
+        BOTH(long, fold_before_##K##_##N, (void))                  \
+        BOTH(long, fold_beyond_##K##_##N, (void))                  \
+        BOTH(void, fold_put_##K##_##N, (long))                  \
+        BOTH(void, fold_bump_##K##_##N, (long))                  \
+        BOTH(void, fold_shift_##K##_##N, (int))                  \
+        BOTH(void, fold_tick_##K##_##N, (void))                  \
+        BOTH(long, fold_tick_value_##K##_##N, (void))                  \
+        BOTH(long, fold_bump_value_##K##_##N, (long))                  \
+        BOTH(long, fold_sum_##K##_##N, (void))                  \
+        BOTH(long, fold_minus_##K##_##N, (void))                  \
+        BOTH(long, fold_nested_##K##_##N, (void))                  \
+        BOTH(T *, fold_third_##K##_##N, (void))                  \
+        BOTH(T *, fold_plus_##K##_##N, (void))                  \
+        BOTH(T *, fold_back_##K##_##N, (void))                  \
+        BOTH(T *, fold_row_##K##_##N, (void))                  \
+        BOTH(long, fold_zero_##K##_##N, (long))                  \
+        BOTH(T *, fold_below_##K##_##N, (void))                  \
+        BOTH(T *, fold_past_##K##_##N, (void))                  \
+        BOTH(T *, fold_end_##K##_##N, (void))                  \
+        BOTH(T *, fold_row_past_##K##_##N, (void))                  \
+        BOTH(long, fold_distance_##K##_##N, (void))                  \
+        BOTH(void, indexed_##K##_##N, (long, int))                  \
+        BOTH(long, indexed_value_##K##_##N, (long, int))                  \
+        BOTH(long, indexed_cells_##K##_##N, (long, int))                  \
+        BOTH(long, indexed_distance_##K##_##N, (int))                  \
+        BOTH(void, summed_##K##_##N, (long, int))                  \
+        BOTH(long, summed_value_##K##_##N, (long, int))                  \
+        BOTH(long, summed_distance_##K##_##N, (int))                  \
+        BOTH(T *, cell_get_##K##_##N, (void))                  \
+        BOTH(void, cell_put_##K##_##N, (T *))                  \
+        BOTH(long, cell_deref_##K##_##N, (void))                  \
+        BOTH(long, cell_index_##K##_##N, (void))                  \
+        BOTH(void, cell_step_##K##_##N, (void))                  \
+        BOTH(void, cell_store_##K##_##N, (long))
 #define DECLARE_KINDS(T, N) KINDS(DECLARE_KIND, T, N)
 
 TYPES(DECLARE_KINDS)
 
-BOTH(long, read_twice, (void) )
-BOTH(void, write_twice, (long) )
-BOTH(long, read_extern, (void) )
-BOTH(long, read_late, (void) )
-BOTH(void, bump_late, (int) )
-BOTH(char *, big_base, (void) )
-BOTH(long, big_read, (void) )
-BOTH(void, big_write, (long) )
-BOTH(char *, big_middle, (void) )
-BOTH(char *, big_end, (void) )
-BOTH(char *, big_beyond, (void) )
-BOTH(char *, big_below, (void) )
+BOTH(long, read_twice, (void))
+BOTH(void, write_twice, (long))
+BOTH(long, read_extern, (void))
+BOTH(long, read_late, (void))
+BOTH(void, bump_late, (int))
+BOTH(char *, big_base, (void))
+BOTH(long, big_read, (void))
+BOTH(void, big_write, (long))
+BOTH(char *, big_middle, (void))
+BOTH(char *, big_end, (void))
+BOTH(char *, big_beyond, (void))
+BOTH(char *, big_below, (void))
 
 static unsigned char *
 base(int k)

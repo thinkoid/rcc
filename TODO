@@ -208,6 +208,19 @@ leaves out and why.
 
 Check: every =docs/*.md= is named in both files.
 
+** TODO =docs/findings.md= shows a =step()= that its source does not have
+
+Chapter 3.2 shows "the Collatz step, taken out of
+=tests/perf/collatz.c=", a function =step()= on an =int= tested by
+~x % 2 != 0~. The file has no such function: its step is inline in
+the loop, on a =long=, tested by ~x % 2 == 0~.
+
+Fix: the passage says the function is a reduction of the loop, or
+quotes the loop itself.
+
+Check: what the passage quotes is in the file, or is called a
+reduction of it.
+
 * Cost model
 
 The record in =docs/cost.md=: what each construct compiles to under
@@ -308,32 +321,20 @@ Check: on an x86-64 core with its boost on, =make slots= prints =rr=
 at about one cycle an iteration, or prints no cycle column and says
 why.
 
-** TODO The C sources of the tests do not follow =.clang-format=
+** TODO Fenced text in the tests keeps an indentation of 4
 
-=clang-format --dry-run tests/perf/*.c= flags all twelve: each keeps
-a definition's return type on the line of its name, and =collatz*.c=
-and =sort*.c= align their =#define= lines otherwise than the tree's
-=.clang-format= does. The two files of =tests/perf/aarch64= follow
-it, so they differ from their shared siblings by that layout.
+The C sources of =tests/= are laid out by =clang-format=, indented
+by 8. What the formatter cannot read, a list of macro invocations
+side by side or a table it would write one element a line, stands
+between =/* clang-format off */= and =/* clang-format on */=, 84
+places in 32 files, and keeps the layout it had: continuation lines
+indented by 4, the backslash at its old column.
 
-The two corpora are laid out as the twelve are: =clang-format
---dry-run= prints 112 warnings over =tests/cost/*.c= and 24 over
-=tests/corpus/*.c=, each program keeping a definition's return type
-on the line of its name. The C sources of the tests follow
-=.clang-format=, with one difference from the C++ sources: C is
-indented by 8 spaces, C++ by 4. The file is written for C++ alone and
-has no section for C.
+Fix: the fenced text indented by 8 by rule, its backslash column
+moved with it.
 
-Fix: a section for C in =.clang-format=, the C++ rules with an
-indentation of 8; then every C source under =tests/= laid out by it.
-No listing changes. A pin of =tests/error= changes in the line and
-the column of its diagnostic and in nothing else, and a program that
-is malformed on purpose is laid out by hand where the formatter
-cannot read it.
-
-Check: =clang-format --dry-run= over every =.c= and =.h= under
-=tests/= prints nothing, every listing is byte-identical, and =make
-test= passes.
+Check: no fenced line of =tests/= begins with exactly 4 spaces, and
+every listing is byte-identical.
 
 ** TODO No run checks the width of an access to a global or a local
 
@@ -764,7 +765,8 @@ takes its list, and a local one initialized by a record's value is
 its copy.
 
 The listed values are run-time expressions, each converted as if by
-assignment (6.7.11p12), and the unlisted rest is zero (6.7.11p21).
+assignment (6.7.11p12), and the unlisted rest is zero (6.7.11p20,
+p22).
 The tree has no node that zeroes an object, and the walk over
 designators that the static path has yields constants at offsets,
 where a local needs places. A string for a member array of char

@@ -13,6 +13,7 @@
 
 /* the records of one array member: the name, by alignment and size,
    the element's type and the count of elements */
+/* clang-format off */
 #define SIZED(X)                                                        \
     X(a1_1, char, 1) X(a1_2, char, 2) X(a1_3, char, 3)                  \
     X(a1_4, char, 4) X(a1_5, char, 5) X(a1_6, char, 6)                  \
@@ -54,42 +55,43 @@
     X(a4_64, int, 16) X(a8_8, long, 1) X(a8_16, long, 2)                \
     X(a8_24, long, 3) X(a8_32, long, 4) X(a8_40, long, 5)               \
     X(a8_48, long, 6) X(a8_56, long, 7) X(a8_64, long, 8)
+/* clang-format on */
 
 /* the records with padding: the name and the members */
-#define PADDED(X)                                                       \
-    X(p_sc, short s; char c;)                                           \
-    X(p_csc, char c; short s; char d;)                                  \
-    X(p_ci, char c; int i;)                                             \
-    X(p_ic5, int i; char c[5];)                                         \
-    X(p_lc, long l; char c;)                                            \
-    X(p_cl, char c; long l;)                                            \
-    X(p_cil, char c; int i; char d; long l;)                            \
-    X(p_nest, char c; struct p_ci in; short s;)
+#define PADDED(X)                                \
+        X(p_sc, short s; char c;)                \
+        X(p_csc, char c; short s; char d;)       \
+        X(p_ci, char c; int i;)                  \
+        X(p_ic5, int i; char c[5];)              \
+        X(p_lc, long l; char c;)                 \
+        X(p_cl, char c; long l;)                 \
+        X(p_cil, char c; int i; char d; long l;) \
+        X(p_nest, char c; struct p_ci in; short s;)
 
 /* the unions: the name and the members */
-#define UNIONS(X)                                                       \
-    X(u_cs, char c[3]; short s;)                                        \
-    X(u_ci, char c[5]; int i;)                                          \
-    X(u_cl, char c[9]; long l;)                                         \
-    X(u_rl, struct p_lc r; long l;)
+#define UNIONS(X)                    \
+        X(u_cs, char c[3]; short s;) \
+        X(u_ci, char c[5]; int i;)   \
+        X(u_cl, char c[9]; long l;)  \
+        X(u_rl, struct p_lc r; long l;)
 
-#define SIZED_RECORD(N, T, COUNT)                                       \
-    struct N                                                            \
-    {                                                                   \
-        T m[COUNT];                                                     \
-    };
+#define SIZED_RECORD(N, T, COUNT) \
+        struct N                  \
+        {                         \
+                T m[COUNT];       \
+        };
 
-#define PADDED_RECORD(N, MEMBERS)                                       \
-    struct N                                                            \
-    {                                                                   \
-        MEMBERS                                                         \
-    };
+#define PADDED_RECORD(N, MEMBERS) \
+        struct N                  \
+        {                         \
+                MEMBERS           \
+        };
 
-#define UNION_RECORD(N, MEMBERS)                                        \
-    union N                                                             \
-    {                                                                   \
-        MEMBERS                                                         \
-    };
+#define UNION_RECORD(N, MEMBERS) \
+        union N                  \
+        {                        \
+                MEMBERS          \
+        };
 
 SIZED(SIZED_RECORD)
 PADDED(PADDED_RECORD)

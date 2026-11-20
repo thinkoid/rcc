@@ -16,15 +16,17 @@
 
    On aarch64 the listing must be the same twin's listing, byte for
    byte but for the .file line. */
-extern int count(const char *__restrict s) __attribute__ ((__nothrow__))
-    __attribute__ ((__pure__, __nonnull__ (1)));
-extern int twice(int x) __asm__ ("" "other_name") __attribute__ ((__const__));
+extern int count(const char *__restrict s) __attribute__((__nothrow__))
+__attribute__((__pure__, __nonnull__(1)));
+extern int twice(int x) __asm__(""
+                                "other_name") __attribute__((__const__));
 __extension__ extern __inline int add(int *__restrict a, int *__restrict b)
-    __attribute__ ((__nothrow__, __leaf__));
+    __attribute__((__nothrow__, __leaf__));
 
-int use(const char *s, int *a, int *b)
+int
+use(const char *s, int *a, int *b)
 {
-    return count(s) + twice(*a) + add(a, b);
+        return count(s) + twice(*a) + add(a, b);
 }
 
 int

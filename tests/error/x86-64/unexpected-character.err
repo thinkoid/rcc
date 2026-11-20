@@ -1,2 +1,2 @@
-tests/error/unexpected-character.c:4:12: error: unexpected character '@'
+tests/error/unexpected-character.c:5:16: error: unexpected character '@'
 status 1

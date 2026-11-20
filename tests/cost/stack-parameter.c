@@ -15,8 +15,8 @@
    [x29, #64], at the frame's size, and strb w17, [x29, #48] for i;
    ldr x17, [x29, #72] and str x17, [x29, #56] for j.  The body then
    loads both from their slots, i with ldrb. */
-long ten(int a, int b, int c, int d, int e, int f, int g, int h,
-         char i, long j)
+long
+ten(int a, int b, int c, int d, int e, int f, int g, int h, char i, long j)
 {
-    return a + i + j;
+        return a + i + j;
 }

@@ -10,16 +10,17 @@
    scalar access, so G11 removes no fold a status can show. The program
    stays as the guarantee's only entry: it shows the load is made at
    the odd address and reads the bytes there. */
-int main(int argc)
+int
+main(int argc)
 {
-    char c[8];
-    int i;
-    int v;
+        char c[8];
+        int i;
+        int v;
 
-    for (i = 0; i < 8; i++)
-        c[i] = i + argc;
+        for (i = 0; i < 8; i++)
+                c[i] = i + argc;
 
-    v = *(int *) (c + 1);
+        v = *(int *) (c + 1);
 
-    return (v >> 24) * 10 + (v & 255);
+        return (v >> 24) * 10 + (v & 255);
 }

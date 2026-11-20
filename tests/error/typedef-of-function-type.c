@@ -6,7 +6,8 @@ typedef int handler(int);
 handler *pointer_to_one(handler *h);
 handler on_signal;
 
-int main(void)
+int
+main(void)
 {
-    return 0;
+        return 0;
 }

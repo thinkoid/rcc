@@ -96,24 +96,27 @@
    w0 in times_slot(), mul w0, w2, w0 in times_pointer() and in
    times_char(), whose load is ldrb w2, [x1], and mul x1, x1, x0 in
    times_global(). */
-int compound(int a, int b)
+int
+compound(int a, int b)
 {
-    int x = a;
-    x += b;
-    return x;
+        int x = a;
+        x += b;
+        return x;
 }
 
-int narrow(int a, int b)
+int
+narrow(int a, int b)
 {
-    char c = a;
-    c += b;
-    return c;
+        char c = a;
+        c += b;
+        return c;
 }
 
-int in_value(int a, int b)
+int
+in_value(int a, int b)
 {
-    char c = a;
-    return c += b;
+        char c = a;
+        return c += b;
 }
 
 unsigned counter;

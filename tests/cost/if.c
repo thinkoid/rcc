@@ -9,12 +9,13 @@
    On aarch64 the listing must show a < b as cmp w0, w1 and a b.ge past
    the then-block, no cset, the then-block's store of a to x's slot and
    its b over the else-block, and the else-block's store of b. */
-int choose(int a, int b)
+int
+choose(int a, int b)
 {
-    int x;
-    if (a < b)
-        x = a;
-    else
-        x = b;
-    return x;
+        int x;
+        if (a < b)
+                x = a;
+        else
+                x = b;
+        return x;
 }

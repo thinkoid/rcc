@@ -1,2 +1,2 @@
-tests/error/sizeof-void.c:4:12: error: invalid application of 'sizeof' to a void type
+tests/error/sizeof-void.c:5:16: error: invalid application of 'sizeof' to a void type
 status 1

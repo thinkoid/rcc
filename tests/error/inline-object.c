@@ -2,7 +2,8 @@
    declaration of a function. */
 inline int x;
 
-int main(void)
+int
+main(void)
 {
-    return 0;
+        return 0;
 }

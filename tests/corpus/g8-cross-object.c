@@ -5,14 +5,15 @@
    store cannot change b, and returns the 2 stored in b (probe 4). The
    difference is known only at run time, so nothing folds before the
    promise applies. */
-int main(int argc)
+int
+main(int argc)
 {
-    int a = 1;
-    int b = 2;
-    long d = (char *) &b - (char *) &a;
-    char *pa = (char *) &a;
+        int a = 1;
+        int b = 2;
+        long d = (char *) &b - (char *) &a;
+        char *pa = (char *) &a;
 
-    *(int *) (pa + d) = 3;
+        *(int *) (pa + d) = 3;
 
-    return b;
+        return b;
 }

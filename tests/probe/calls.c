@@ -32,15 +32,15 @@ int positive(long x);
 
 MANY_TYPES(MANY_DECLARE)
 
-#define LIBRARY(T, N)                                                   \
-    long tmix9_##N(P9(T));                                              \
-    long tmix10_##N(P10(T));                                            \
-    T ret_##N(long x);                                                  \
-    T wide_##N(long x);                                                 \
-    extern T moved_##N;                                                 \
-    T put_##N(T v);                                                     \
-    T bump_##N(T v);                                                    \
-    T put_at_##N(T *p, T v);
+#define LIBRARY(T, N)            \
+        long tmix9_##N(P9(T));   \
+        long tmix10_##N(P10(T)); \
+        T ret_##N(long x);       \
+        T wide_##N(long x);      \
+        extern T moved_##N;      \
+        T put_##N(T v);          \
+        T bump_##N(T v);         \
+        T put_at_##N(T *p, T v);
 
 TYPES(LIBRARY)
 
@@ -48,112 +48,218 @@ TYPES(LIBRARY)
    register and one past the registers, read at its type's width,
    whatever the caller left above it; a stack parameter written; a
    narrow result, which the callee does not extend. */
-#define CALLEE(T, N)                                                    \
-    long par1_##N(T a) { return a; }                                    \
-    long par8_##N(P8(T)) { return S8; }                                 \
-    long par9_##N(P9(T)) { return S9; }                                 \
-    long par10_##N(P10(T)) { return S10; }                              \
-    long step10_##N(P10(T))                                             \
-    {                                                                   \
-        i += a;                                                         \
-        j++;                                                            \
-        h = i;                                                          \
-        return S10;                                                     \
-    }                                                                   \
-    T res_##N(long x) { return x; }                                     \
-    T inc_##N(T a) { return a + 1; }
+#define CALLEE(T, N)            \
+        long par1_##N(T a)      \
+        {                       \
+                return a;       \
+        }                       \
+        long par8_##N(P8(T))    \
+        {                       \
+                return S8;      \
+        }                       \
+        long par9_##N(P9(T))    \
+        {                       \
+                return S9;      \
+        }                       \
+        long par10_##N(P10(T))  \
+        {                       \
+                return S10;     \
+        }                       \
+        long step10_##N(P10(T)) \
+        {                       \
+                i += a;         \
+                j++;            \
+                h = i;          \
+                return S10;     \
+        }                       \
+        T res_##N(long x)       \
+        {                       \
+                return x;       \
+        }                       \
+        T inc_##N(T a)          \
+        {                       \
+                return a + 1;   \
+        }
 
 TYPES(CALLEE)
 
-long par12(MIXED12)
+long
+par12(MIXED12)
 {
-    return S12;
+        return S12;
 }
 
 /* stack parameters above a frame the load's offset does not reach */
-long far_param(long a, long b, long c, long d, long e, long f, long g,
-               long h, char i, short j, long k, int l)
+long
+far_param(long a,
+          long b,
+          long c,
+          long d,
+          long e,
+          long f,
+          long g,
+          long h,
+          char i,
+          short j,
+          long k,
+          int l)
 {
-    char pad[40000];
+        char pad[40000];
 
-    i += 1;
+        i += 1;
 
-    return S12;
+        return S12;
 }
 
 /* The caller's side, chapter 8: nought to twelve arguments to clang's
    functions. */
-long call0(void) { return mix0(); }
-long call1(long a) { return mix1(a); }
-long call2(long a, long b) { return mix2(a, b); }
-long call3(long a, long b, long c) { return mix3(a, b, c); }
-long call4(long a, long b, long c, long d) { return mix4(a, b, c, d); }
-long call5(long a, long b, long c, long d, long e) { return mix5(a, b, c, d, e); }
-long call6(long a, long b, long c, long d, long e, long f) { return mix6(a, b, c, d, e, f); }
-long call7(long a, long b, long c, long d, long e, long f, long g) { return mix7(a, b, c, d, e, f, g); }
-long call8(P8(long)) { return mix8(a, b, c, d, e, f, g, h); }
-long call9(P8(long)) { return mix9(a, b, c, d, e, f, g, h, a - b); }
-long call10(P8(long)) { return mix10(a, b, c, d, e, f, g, h, a - b, c * d); }
-long call11(P8(long)) { return mix11(a, b, c, d, e, f, g, h, a - b, c * d, e ^ f); }
-long call12(P8(long)) { return mix12(a, b, c, d, e, f, g, h, a - b, c * d, e ^ f, g + h); }
+long
+call0(void)
+{
+        return mix0();
+}
+long
+call1(long a)
+{
+        return mix1(a);
+}
+long
+call2(long a, long b)
+{
+        return mix2(a, b);
+}
+long
+call3(long a, long b, long c)
+{
+        return mix3(a, b, c);
+}
+long
+call4(long a, long b, long c, long d)
+{
+        return mix4(a, b, c, d);
+}
+long
+call5(long a, long b, long c, long d, long e)
+{
+        return mix5(a, b, c, d, e);
+}
+long
+call6(long a, long b, long c, long d, long e, long f)
+{
+        return mix6(a, b, c, d, e, f);
+}
+long
+call7(long a, long b, long c, long d, long e, long f, long g)
+{
+        return mix7(a, b, c, d, e, f, g);
+}
+long
+call8(P8(long))
+{
+        return mix8(a, b, c, d, e, f, g, h);
+}
+long
+call9(P8(long))
+{
+        return mix9(a, b, c, d, e, f, g, h, a - b);
+}
+long
+call10(P8(long))
+{
+        return mix10(a, b, c, d, e, f, g, h, a - b, c * d);
+}
+long
+call11(P8(long))
+{
+        return mix11(a, b, c, d, e, f, g, h, a - b, c * d, e ^ f);
+}
+long
+call12(P8(long))
+{
+        return mix12(a, b, c, d, e, f, g, h, a - b, c * d, e ^ f, g + h);
+}
 
 /* arguments that are constants, the store row of 6.6 */
-long call_constants(long a)
+long
+call_constants(long a)
 {
-    return mix12(0, 1, -1, 4096, 0x12345, a, 0, -5000, 0x123456789abcdef0, 0, 7, a)
-           + mixed12(0, -2, 300000, a, 255, 65535, 0, 1, -128, 0, 65, -1);
+        return mix12(0, 1, -1, 4096, 0x12345, a, 0, -5000, 0x123456789abcdef0,
+                     0, 7, a) +
+               mixed12(0, -2, 300000, a, 255, 65535, 0, 1, -128, 0, 65, -1);
 }
 
 /* arguments of every type, a parameter passed on and an expression,
    which is converted to the parameter's type */
-#define CALLER(T, N)                                                    \
-    long tcall9_##N(T a, T b)                                           \
-    {                                                                   \
-        return tmix9_##N(a, b, a, b, a, b, a, b, a + b);                \
-    }                                                                   \
-    long tcall10_##N(T a, T b)                                          \
-    {                                                                   \
-        return tmix10_##N(a, b, a - b, b, a, a * b, a, b, a, b + 1);    \
-    }
+#define CALLER(T, N)                                                         \
+        long tcall9_##N(T a, T b)                                            \
+        {                                                                    \
+                return tmix9_##N(a, b, a, b, a, b, a, b, a + b);             \
+        }                                                                    \
+        long tcall10_##N(T a, T b)                                           \
+        {                                                                    \
+                return tmix10_##N(a, b, a - b, b, a, a * b, a, b, a, b + 1); \
+        }
 
 TYPES(CALLER)
 
-long call_mixed(long a, long b)
+long
+call_mixed(long a, long b)
 {
-    return mixed12(a, b, a, b, a, b, a, b, a, b, a, b)
-           + mixed12(b, a + 1, b - a, a, b, a, b, a, b, a, b, a);
+        return mixed12(a, b, a, b, a, b, a, b, a, b, a, b) +
+               mixed12(b, a + 1, b - a, a, b, a, b, a, b, a, b, a);
 }
 
 /* A result in each place a value goes, 6.3: the caller reads it valid
    to its type's width and no further.  F is ret, an honest function of
    the type, and wide, a long behind a declaration of the type. */
-#define RESULT(F, T, N)                                                 \
-    long F##_long_##N(long x) { return F##_##N(x); }                    \
-    int F##_plus_##N(long x) { return F##_##N(x) + 1; }                 \
-    int F##_test_##N(long x) { if (F##_##N(x)) return 1; return 0; }    \
-    int F##_not_##N(long x) { return !F##_##N(x); }                     \
-    int F##_less_##N(long x, long y) { return F##_##N(x) < F##_##N(y); } \
-    T F##_return_##N(long x) { return F##_##N(x); }                     \
-    long F##_store_##N(long x)                                          \
-    {                                                                   \
-        T t = F##_##N(x);                                               \
-        long l;                                                         \
-        l = F##_##N(x + 1);                                             \
-        t += F##_##N(l);                                                \
-        return t + l;                                                   \
-    }                                                                   \
-    long F##_pass_##N(long x)                                           \
-    {                                                                   \
-        return tmix9_##N(F##_##N(x), 1, 2, 3, 4, 5, 6, 7, F##_##N(x + 1)) \
-               + mix1(F##_##N(x));                                      \
-    }                                                                   \
-    long F##_paths_##N(long x, long y)                                  \
-    {                                                                   \
-        return (x < y ? F##_##N(x) : F##_##N(y))                        \
-               + (F##_##N(x) && F##_##N(y)) * 2;                        \
-    }
+#define RESULT(F, T, N)                                           \
+        long F##_long_##N(long x)                                 \
+        {                                                         \
+                return F##_##N(x);                                \
+        }                                                         \
+        int F##_plus_##N(long x)                                  \
+        {                                                         \
+                return F##_##N(x) + 1;                            \
+        }                                                         \
+        int F##_test_##N(long x)                                  \
+        {                                                         \
+                if (F##_##N(x))                                   \
+                        return 1;                                 \
+                return 0;                                         \
+        }                                                         \
+        int F##_not_##N(long x)                                   \
+        {                                                         \
+                return !F##_##N(x);                               \
+        }                                                         \
+        int F##_less_##N(long x, long y)                          \
+        {                                                         \
+                return F##_##N(x) < F##_##N(y);                   \
+        }                                                         \
+        T F##_return_##N(long x)                                  \
+        {                                                         \
+                return F##_##N(x);                                \
+        }                                                         \
+        long F##_store_##N(long x)                                \
+        {                                                         \
+                T t = F##_##N(x);                                 \
+                long l;                                           \
+                l = F##_##N(x + 1);                               \
+                t += F##_##N(l);                                  \
+                return t + l;                                     \
+        }                                                         \
+        long F##_pass_##N(long x)                                 \
+        {                                                         \
+                return tmix9_##N(F##_##N(x), 1, 2, 3, 4, 5, 6, 7, \
+                                 F##_##N(x + 1)) +                \
+                       mix1(F##_##N(x));                          \
+        }                                                         \
+        long F##_paths_##N(long x, long y)                        \
+        {                                                         \
+                return (x < y ? F##_##N(x) : F##_##N(y)) +        \
+                       (F##_##N(x) && F##_##N(y)) * 2;            \
+        }
 
-#define RESULT_RET(T, N) RESULT(ret, T, N)
+#define RESULT_RET(T, N)  RESULT(ret, T, N)
 #define RESULT_WIDE(T, N) RESULT(wide, T, N)
 
 TYPES(RESULT_RET)
@@ -161,45 +267,48 @@ TYPES(RESULT_WIDE)
 
 /* a variable number of arguments: they are passed as any others are,
    the narrow ones promoted to int */
-long variadic(int a, long b, char c, short d)
+long
+variadic(int a, long b, char c, short d)
 {
-    return vmix(0) + vmix(1, b) + vmix(3, b, (long) a, b)
-           + vmix(11, b, b + 1, b + 2, b + 3, b + 4, b + 5, b + 6, b + 7,
-                  b + 8, b + 9, (long) d)
-           + vmix_i(4, a, c, d, c + d)
-           + vmix_i(9, a, c, d, a, c, d, a, c, d);
+        return vmix(0) + vmix(1, b) + vmix(3, b, (long) a, b) +
+               vmix(11, b, b + 1, b + 2, b + 3, b + 4, b + 5, b + 6, b + 7,
+                    b + 8, b + 9, (long) d) +
+               vmix_i(4, a, c, d, c + d) + vmix_i(9, a, c, d, a, c, d, a, c, d);
 }
 
 /* a call for its effect, a result dropped, and a function of void */
-long effects(int a, int b)
+long
+effects(int a, int b)
 {
-    note(a);
-    note(b);
-    a < b ? tick(1) : tick(2);
-    mix1(a);
-    (void) mix2(a, b);
+        note(a);
+        note(b);
+        a < b ? tick(1) : tick(2);
+        mix1(a);
+        (void) mix2(a, b);
 
-    for (int k = 0; k < 3; note(k), k++)
-        ;
+        for (int k = 0; k < 3; note(k), k++)
+                ;
 
-    return noted();
+        return noted();
 }
 
 /* The arguments left to right, G13.  The standard leaves the order
    open; clang's is the same. */
-long order(long a, long b)
+long
+order(long a, long b)
 {
-    long r = mix3(tick(a), tick(b), tick(a + b));
+        long r = mix3(tick(a), tick(b), tick(a + b));
 
-    return r + noted();
+        return r + noted();
 }
 
-long order10(long a)
+long
+order10(long a)
 {
-    long r = mix10(tick(a), tick(2), tick(3), tick(4), tick(5), tick(6),
-                   tick(7), tick(8), tick(9), tick(10));
+        long r = mix10(tick(a), tick(2), tick(3), tick(4), tick(5), tick(6),
+                       tick(7), tick(8), tick(9), tick(10));
 
-    return r + noted();
+        return r + noted();
 }
 
 /* The left operand before the right at an operator whose right operand
@@ -209,118 +318,153 @@ long order10(long a)
    docs/backend.md 6.1 and 7.1).  order_<n> is a global this file
    defines, written by put_<n>; moved_<n> one it only declares, written
    by bump_<n>; x a local whose address put_at_<n> is given. */
-#define ORDERED(T, N)                                                   \
-    T order_##N;                                                        \
-    int lt_call_##N(T a, T b)                                           \
-    {                                                                   \
-        order_##N = a;                                                  \
-        if (order_##N < put_##N(b))                                     \
-            return 1;                                                   \
-        return 0;                                                       \
-    }                                                                   \
-    int lt_call_value_##N(T a, T b)                                     \
-    {                                                                   \
-        order_##N = a;                                                  \
-        return order_##N < put_##N(b);                                  \
-    }                                                                   \
-    long add_call_##N(T a, T b)                                         \
-    {                                                                   \
-        order_##N = a;                                                  \
-        return order_##N + put_##N(b);                                  \
-    }                                                                   \
-    int eq_call_##N(T a, T b)                                           \
-    {                                                                   \
-        moved_##N = a;                                                  \
-        if (moved_##N == bump_##N(b))                                   \
-            return 1;                                                   \
-        return 0;                                                       \
-    }                                                                   \
-    int eq_call_value_##N(T a, T b)                                     \
-    {                                                                   \
-        moved_##N = a;                                                  \
-        return moved_##N == bump_##N(b);                                \
-    }                                                                   \
-    int lt_call_local_##N(T a, T b)                                     \
-    {                                                                   \
-        T x = a;                                                        \
-        if (x < put_at_##N(&x, b))                                      \
-            return 1;                                                   \
-        return 0;                                                       \
-    }
+#define ORDERED(T, N)                            \
+        T order_##N;                             \
+        int lt_call_##N(T a, T b)                \
+        {                                        \
+                order_##N = a;                   \
+                if (order_##N < put_##N(b))      \
+                        return 1;                \
+                return 0;                        \
+        }                                        \
+        int lt_call_value_##N(T a, T b)          \
+        {                                        \
+                order_##N = a;                   \
+                return order_##N < put_##N(b);   \
+        }                                        \
+        long add_call_##N(T a, T b)              \
+        {                                        \
+                order_##N = a;                   \
+                return order_##N + put_##N(b);   \
+        }                                        \
+        int eq_call_##N(T a, T b)                \
+        {                                        \
+                moved_##N = a;                   \
+                if (moved_##N == bump_##N(b))    \
+                        return 1;                \
+                return 0;                        \
+        }                                        \
+        int eq_call_value_##N(T a, T b)          \
+        {                                        \
+                moved_##N = a;                   \
+                return moved_##N == bump_##N(b); \
+        }                                        \
+        int lt_call_local_##N(T a, T b)          \
+        {                                        \
+                T x = a;                         \
+                if (x < put_at_##N(&x, b))       \
+                        return 1;                \
+                return 0;                        \
+        }
 
 TYPES(ORDERED)
 
 /* values held when a call comes, and calls in the arguments of calls */
-long held(long a, long b, long c)
+long
+held(long a, long b, long c)
 {
-    return a + mix1(b) - c * mix2(a, b) + (mix1(a) - mix1(b)) * mix3(a, b, c);
+        return a + mix1(b) - c * mix2(a, b) +
+               (mix1(a) - mix1(b)) * mix3(a, b, c);
 }
 
-long nest(long a, long b, long c)
+long
+nest(long a, long b, long c)
 {
-    return mix3(mix1(a), mix2(b, mix1(c)), mix3(a, mix1(b), mix2(c, a)));
+        return mix3(mix1(a), mix2(b, mix1(c)), mix3(a, mix1(b), mix2(c, a)));
 }
 
-long nest10(long a, long b)
+long
+nest10(long a, long b)
 {
-    return mix10(a, mix9(b, a, b, a, b, a, b, a, b), b, a, b, a, b, a,
-                 mix10(a, b, a, b, a, b, a, b, a, mix1(b)), mix1(b) - a);
+        return mix10(a, mix9(b, a, b, a, b, a, b, a, b), b, a, b, a, b, a,
+                     mix10(a, b, a, b, a, b, a, b, a, mix1(b)), mix1(b) - a);
 }
 
 /* eighteen values held when the call comes */
-long deep_call(P8(long))
+long
+deep_call(P8(long))
 {
-    return a - (b - (c - (d - (e - (f - (g - (h - (a - (b - (c - (d - (e -
-           (f - (g - (h - (a - (b - mix2(g, h))))))))))))))))));
+        return a -
+               (b -
+                (c -
+                 (d -
+                  (e -
+                   (f -
+                    (g -
+                     (h -
+                      (a -
+                       (b -
+                        (c -
+                         (d -
+                          (e -
+                           (f - (g - (h - (a - (b - mix2(g, h))))))))))))))))));
 }
 
 /* an argument that needs every register, and a call inside it */
-long deep_argument(P8(long))
+long
+deep_argument(P8(long))
 {
-    return mix2(a - (b - (c - (d - (e - (f - (g - (h - (a - (b - (c - (d -
-                (e - (f - (g - (h - (a - (b - mix1(c)))))))))))))))))), h);
+        return mix2(
+            a - (b -
+                 (c -
+                  (d -
+                   (e -
+                    (f -
+                     (g -
+                      (h -
+                       (a -
+                        (b -
+                         (c -
+                          (d -
+                           (e -
+                            (f - (g - (h - (a - (b - mix1(c)))))))))))))))))),
+            h);
 }
 
 /* a call as a condition, and calls on the paths of a branch with a
    value held across them */
-int condition(long a, long b)
+int
+condition(long a, long b)
 {
-    if (positive(a) && positive(b))
-        return 1;
+        if (positive(a) && positive(b))
+                return 1;
 
-    if (positive(a) || !positive(b))
-        return 2;
+        if (positive(a) || !positive(b))
+                return 2;
 
-    return positive(a + b) ? 3 : 4;
+        return positive(a + b) ? 3 : 4;
 }
 
-long paths(long a, long b)
+long
+paths(long a, long b)
 {
-    return a + (positive(a) ? mix1(b) : mix2(a, b))
-           + (positive(b) && positive(a)) + b;
+        return a + (positive(a) ? mix1(b) : mix2(a, b)) +
+               (positive(b) && positive(a)) + b;
 }
 
-int loop(int n)
+int
+loop(int n)
 {
-    int s = 0;
+        int s = 0;
 
-    for (int k = 0; positive(n - k); k++)
-        s += mix1(k);
+        for (int k = 0; positive(n - k); k++)
+                s += mix1(k);
 
-    while (positive(n))
-        n = n - 1 - positive(n);
+        while (positive(n))
+                n = n - 1 - positive(n);
 
-    return s + n;
+        return s + n;
 }
 
 /* a call from a frame whose slots the load's offset does not reach */
-long far_call(long a, char b, short c)
+long
+far_call(long a, char b, short c)
 {
-    char pad[40000];
-    long x = mix1(a);
+        char pad[40000];
+        long x = mix1(a);
 
-    return mixed12(b, c, a, x, b, c, a, x, b, c, b, a)
-           + par12(b, c, a, x, b, c, a, x, b, c, b, a) + x;
+        return mixed12(b, c, a, x, b, c, a, x, b, c, b, a) +
+               par12(b, c, a, x, b, c, a, x, b, c, b, a) + x;
 }
 
 /* a call's result as the right operand of an operator that commutes,
@@ -328,92 +472,107 @@ long far_call(long a, char b, short c)
    the left operand its source: returned, joined and assigned
    compound; and a register variable's read on either side of a call,
    read again after */
-long and_called(long a, long b)
+long
+and_called(long a, long b)
 {
-    return a & mix1(b);
+        return a & mix1(b);
 }
 
-long or_called(long a, long b)
+long
+or_called(long a, long b)
 {
-    return a | mix1(b);
+        return a | mix1(b);
 }
 
-long xor_called(long a, long b)
+long
+xor_called(long a, long b)
 {
-    return a ^ mix1(b);
+        return a ^ mix1(b);
 }
 
-unsigned mul_called(unsigned a, long b)
+unsigned
+mul_called(unsigned a, long b)
 {
-    return a * (unsigned) mix1(b);
+        return a * (unsigned) mix1(b);
 }
 
-unsigned long compound_called(unsigned long a, long b)
+unsigned long
+compound_called(unsigned long a, long b)
 {
-    return a += mix1(b);
+        return a += mix1(b);
 }
 
-long joined_called(long a, long b)
+long
+joined_called(long a, long b)
 {
-    return positive(a) ? (a ^ mix1(b)) & b : a | mix1(b);
+        return positive(a) ? (a ^ mix1(b)) & b : a | mix1(b);
 }
 
-unsigned long kept_called(unsigned long a, long b)
+unsigned long
+kept_called(unsigned long a, long b)
 {
-    register unsigned long r = a;
+        register unsigned long r = a;
 
-    return (r + mix1(b)) * 3 + (mix1(a) + r) * 5 + r;
+        return (r + mix1(b)) * 3 + (mix1(a) + r) * 5 + r;
 }
 
 /* a left operand spilled across a call, read in its slot by an
    operator that commutes at 32 bits, whose instruction writes the
    call's register: returned, widened as an unsigned and stored; beside
    them - , which reloads it */
-unsigned add_called32(unsigned a, long b)
+unsigned
+add_called32(unsigned a, long b)
 {
-    return a + (unsigned) mix1(b);
+        return a + (unsigned) mix1(b);
 }
 
-int and_called32(int a, long b)
+int
+and_called32(int a, long b)
 {
-    return a & (int) mix1(b);
+        return a & (int) mix1(b);
 }
 
-int or_called32(int a, long b)
+int
+or_called32(int a, long b)
 {
-    return a | (int) mix1(b);
+        return a | (int) mix1(b);
 }
 
-int xor_called32(int a, long b)
+int
+xor_called32(int a, long b)
 {
-    return a ^ (int) mix1(b);
+        return a ^ (int) mix1(b);
 }
 
-unsigned long widened_called(unsigned a, long b)
+unsigned long
+widened_called(unsigned a, long b)
 {
-    return a + (unsigned) mix1(b);
+        return a + (unsigned) mix1(b);
 }
 
-unsigned long stored_called(unsigned long a, long b)
+unsigned long
+stored_called(unsigned long a, long b)
 {
-    unsigned long s;
+        unsigned long s;
 
-    s = a + mix1(b);
-    return s;
+        s = a + mix1(b);
+        return s;
 }
 
-unsigned long minus_called(unsigned long a, long b)
+unsigned long
+minus_called(unsigned long a, long b)
 {
-    return a - mix1(b);
+        return a - mix1(b);
 }
 
 /* calls whose outgoing area is past a store's reach, calls.h: the
    arguments x plus the octal constants of the block, then x - 1 - n
    and x * 3 + n over two blocks of eight */
-#define MANY_ARGUMENT(n) , x + n
+#define MANY_ARGUMENT(n)   , x + n
 #define MANY_ARGUMENT_B(n) , x - 1 - n
 #define MANY_ARGUMENT_C(n) , x * 3 + n
 
+/* clang-format off */
 #define MANY_CALLER(N, BLOCK)                                           \
     long call_many_##N(long x)                                          \
     {                                                                   \
@@ -421,66 +580,84 @@ unsigned long minus_called(unsigned long a, long b)
                             W8(MANY_ARGUMENT_B, 1)                      \
                                 W8(MANY_ARGUMENT_C, 2));                \
     }
+/* clang-format on */
 
 MANY_TYPES(MANY_CALLER)
 
 /* The third pairing: rcc's functions calling rcc's.  inc_<n> returns a
    narrow result unextended and its caller extends it. */
-#define CHAIN(T, N)                                                     \
-    long chain_##N(T a) { return inc_##N(a); }                          \
-    long chain_twice_##N(T a) { return inc_##N(inc_##N(a)) + inc_##N(a); } \
-    int chain_test_##N(T a) { return inc_##N(a) ? 1 : 2; }              \
-    long chain10_##N(T a, T b)                                          \
-    {                                                                   \
-        return par10_##N(a, b, a, b, a, b, a, b, inc_##N(a), inc_##N(b)) \
-               + par9_##N(b, a, b, a, b, a, b, a, b)                    \
-               + step10_##N(a, b, a, b, a, b, a, b, a, b);              \
-    }
+#define CHAIN(T, N)                                                  \
+        long chain_##N(T a)                                          \
+        {                                                            \
+                return inc_##N(a);                                   \
+        }                                                            \
+        long chain_twice_##N(T a)                                    \
+        {                                                            \
+                return inc_##N(inc_##N(a)) + inc_##N(a);             \
+        }                                                            \
+        int chain_test_##N(T a)                                      \
+        {                                                            \
+                return inc_##N(a) ? 1 : 2;                           \
+        }                                                            \
+        long chain10_##N(T a, T b)                                   \
+        {                                                            \
+                return par10_##N(a, b, a, b, a, b, a, b, inc_##N(a), \
+                                 inc_##N(b)) +                       \
+                       par9_##N(b, a, b, a, b, a, b, a, b) +         \
+                       step10_##N(a, b, a, b, a, b, a, b, a, b);     \
+        }
 
 TYPES(CHAIN)
 
 /* recursion */
-int fact(int n)
+int
+fact(int n)
 {
-    return n < 2 ? 1 : n * fact(n - 1);
+        return n < 2 ? 1 : n * fact(n - 1);
 }
 
-int fib(int n)
+int
+fib(int n)
 {
-    if (n < 2)
-        return n;
+        if (n < 2)
+                return n;
 
-    return fib(n - 1) + fib(n - 2);
+        return fib(n - 1) + fib(n - 2);
 }
 
 int odd(int n);
 
-int even(int n)
+int
+even(int n)
 {
-    return n == 0 ? 1 : odd(n - 1);
+        return n == 0 ? 1 : odd(n - 1);
 }
 
-int odd(int n)
+int
+odd(int n)
 {
-    return n == 0 ? 0 : even(n - 1);
+        return n == 0 ? 0 : even(n - 1);
 }
 
-int ack(int m, int n)
+int
+ack(int m, int n)
 {
-    if (m == 0)
-        return n + 1;
+        if (m == 0)
+                return n + 1;
 
-    if (n == 0)
-        return ack(m - 1, 1);
+        if (n == 0)
+                return ack(m - 1, 1);
 
-    return ack(m - 1, ack(m, n - 1));
+        return ack(m - 1, ack(m, n - 1));
 }
 
 /* ten parameters turned through the registers and the stack */
-long spin(int n, P9(long))
+long
+spin(int n, P9(long))
 {
-    if (n == 0)
-        return a - b * 2 + c * 3 - d * 4 + e * 5 - f * 6 + g * 7 - h * 8 + i * 9;
+        if (n == 0)
+                return a - b * 2 + c * 3 - d * 4 + e * 5 - f * 6 + g * 7 -
+                       h * 8 + i * 9;
 
-    return spin(n - 1, b, c, d, e, f, g, h, i, a + n);
+        return spin(n - 1, b, c, d, e, f, g, h, i, a + n);
 }

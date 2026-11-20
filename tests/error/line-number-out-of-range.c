@@ -4,7 +4,8 @@
 #define HASH #
 HASH 99999999999 "error.c"
 
-int main(void)
+    int
+    main(void)
 {
-    return 0;
+        return 0;
 }

@@ -19,16 +19,16 @@
 
 /* the value each type's initialized objects take, an entry a type; the
    main converts it to the type itself */
-#define INITIAL(X)               \
-    X(char, c, 'x')              \
-    X(signed char, sc, -100)     \
-    X(unsigned char, uc, 200)    \
-    X(short, s, -30000)          \
-    X(unsigned short, us, 60000) \
-    X(int, i, -123456789)        \
-    X(unsigned, u, 4000000000u)  \
-    X(long, l, -1234567890123L)  \
-    X(unsigned long, ul, 0xfedcba9876543210ul)
+#define INITIAL(X)                   \
+        X(char, c, 'x')              \
+        X(signed char, sc, -100)     \
+        X(unsigned char, uc, 200)    \
+        X(short, s, -30000)          \
+        X(unsigned short, us, 60000) \
+        X(int, i, -123456789)        \
+        X(unsigned, u, 4000000000u)  \
+        X(long, l, -1234567890123L)  \
+        X(unsigned long, ul, 0xfedcba9876543210ul)
 
 /* the type of a pointer to the static function, one name for an
    object and its reference */

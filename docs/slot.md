@@ -144,11 +144,11 @@ The four sources are in `tests/slot`. `rr.c` is the baseline:
 int
 main(void)
 {
-    register int i;
-    register unsigned s = 0;
-    for (i = 0; i != 1000000000; ++i)
-        s += i;
-    return (s >> 8) & 255;
+        register int i;
+        register unsigned s = 0;
+        for (i = 0; i != 1000000000; ++i)
+                s += i;
+        return (s >> 8) & 255;
 }
 ```
 

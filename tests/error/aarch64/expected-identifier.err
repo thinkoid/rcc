@@ -1,2 +1,2 @@
-tests/error/expected-identifier.c:4:10: error: expected identifier
+tests/error/expected-identifier.c:5:14: error: expected identifier
 status 1

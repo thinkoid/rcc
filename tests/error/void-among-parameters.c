@@ -2,7 +2,8 @@
    6.7.7.4p9. */
 int f(int a, void);
 
-int main(void)
+int
+main(void)
 {
-    return 0;
+        return 0;
 }

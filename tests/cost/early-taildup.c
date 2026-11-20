@@ -10,13 +10,14 @@
    else-arm, the then-arm adding 1 to i and branching to the join, the
    else-arm adding 2 and falling into it, and the join's one b back to
    the test. */
-int join(int a, int n)
+int
+join(int a, int n)
 {
-    int i = 0;
-    while (i < n)
-        if (a)
-            i = i + 1;
-        else
-            i = i + 2;
-    return i;
+        int i = 0;
+        while (i < n)
+                if (a)
+                        i = i + 1;
+                else
+                        i = i + 2;
+        return i;
 }

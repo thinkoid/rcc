@@ -1,2 +1,2 @@
-tests/error/attribute-without-parentheses.c:2:28: error: expected '((' after '__attribute__'
+tests/error/attribute-without-parentheses.c:2:27: error: expected '((' after '__attribute__'
 status 1

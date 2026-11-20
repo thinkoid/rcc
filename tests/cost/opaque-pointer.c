@@ -11,12 +11,14 @@
    byte but for the .file line. */
 struct node;
 
-struct node *pass(struct node *p)
+struct node *
+pass(struct node *p)
 {
-    return p;
+        return p;
 }
 
-int same(struct node *p, struct node *q)
+int
+same(struct node *p, struct node *q)
 {
-    return p == q;
+        return p == q;
 }

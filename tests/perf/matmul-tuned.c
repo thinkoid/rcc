@@ -13,53 +13,54 @@
 #define SIZE 9216
 #define REPS 1200
 
-int main(void)
+int
+main(void)
 {
-    int a[SIZE];
-    int b[SIZE];
-    int c[SIZE];
-    register int n = 96;
-    unsigned seed = 1;
-    unsigned sum = 0;
+        int a[SIZE];
+        int b[SIZE];
+        int c[SIZE];
+        register int n = 96;
+        unsigned seed = 1;
+        unsigned sum = 0;
 
-    for (int i = 0; i < SIZE; ++i) {
-        seed = seed * 1103515245 + 12345;
-        a[i] = (seed >> 16) % 256;
-        seed = seed * 1103515245 + 12345;
-        b[i] = (seed >> 16) % 256;
-    }
-
-    for (int rep = 0; rep < REPS; ++rep) {
-        seed = seed * 1103515245 + 12345;
-        a[(seed >> 16) % SIZE] = (seed >> 8) % 256;
-
-        int *bend = b + n;
-
-        for (int i = 0; i != n; ++i) {
-            int *arow = a + i * n;
-            register int *aend = arow + n;
-            int *pc = c + i * n;
-            int *bcol = b;
-
-            while (bcol != bend) {
-                register int *pa = arow;
-                register int *pb = bcol;
-                register int s = 0;
-
-                while (pa != aend) {
-                    s += *pa * *pb;
-                    ++pa;
-                    pb += n;
-                }
-                *pc = s;
-                ++pc;
-                ++bcol;
-            }
+        for (int i = 0; i < SIZE; ++i) {
+                seed = seed * 1103515245 + 12345;
+                a[i] = (seed >> 16) % 256;
+                seed = seed * 1103515245 + 12345;
+                b[i] = (seed >> 16) % 256;
         }
 
-        for (int i = 0; i < SIZE; ++i)
-            sum = sum * 31 + c[i];
-    }
+        for (int rep = 0; rep < REPS; ++rep) {
+                seed = seed * 1103515245 + 12345;
+                a[(seed >> 16) % SIZE] = (seed >> 8) % 256;
 
-    return sum & 255;
+                int *bend = b + n;
+
+                for (int i = 0; i != n; ++i) {
+                        int *arow = a + i * n;
+                        register int *aend = arow + n;
+                        int *pc = c + i * n;
+                        int *bcol = b;
+
+                        while (bcol != bend) {
+                                register int *pa = arow;
+                                register int *pb = bcol;
+                                register int s = 0;
+
+                                while (pa != aend) {
+                                        s += *pa * *pb;
+                                        ++pa;
+                                        pb += n;
+                                }
+                                *pc = s;
+                                ++pc;
+                                ++bcol;
+                        }
+                }
+
+                for (int i = 0; i < SIZE; ++i)
+                        sum = sum * 31 + c[i];
+        }
+
+        return sum & 255;
 }

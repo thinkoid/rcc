@@ -1,2 +1,2 @@
-tests/error/member-list-unclosed.c:2:29: error: expected '}' at end of member list
+tests/error/member-list-unclosed.c:5:15: error: expected '}' at end of member list
 status 1

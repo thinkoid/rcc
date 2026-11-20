@@ -10,10 +10,11 @@
    0. The addresses exist only at run time, so nothing but the fold
    decides the comparison. `<` between the two locals is not folded:
    clang compares the addresses too. */
-int main(int argc)
+int
+main(int argc)
 {
-    int a;
-    int b;
+        int a;
+        int b;
 
-    return (&a + 1 == &b) + (&b + 1 == &a);
+        return (&a + 1 == &b) + (&b + 1 == &a);
 }

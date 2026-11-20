@@ -5,7 +5,8 @@
 
    On aarch64 the listing must show a loaded into w0 and add w0, w0, #0,
    the constant an immediate, and not a bare move. */
-int add_zero(int a)
+int
+add_zero(int a)
 {
-    return a + 0;
+        return a + 0;
 }
