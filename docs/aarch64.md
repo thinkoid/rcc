@@ -968,7 +968,10 @@ label's row has one form: `table[i]` on an `int table[8]` is `adrp
 x0, table; add x0, x0, w1, sxtw #2; ldr w0, [x0, :lo12:table]`, the
 same count as the pair and `[x0, w1, sxtw #2]`, and `tab[i].x` at
 offset 0 of records of 8 bytes the same at `tab`, an instruction
-fewer than the pair and the product's add before `[x0]`. The
+fewer than the pair and the product's add before `[x0]`. A row by
+several indices adds each in the order written: `months[i][j]` on a
+`char months[][4]` is `adrp x0, months; add x0, x0, w1, sxtw #2; add
+x0, x0, w2, sxtw; ldrb w0, [x0, :lo12:months]`. The
 constants under the row's index, through its casts, join
 its own: `((int (*)[3]) (c + 4))[i][2]` on a `char *c` is `mov x2,
 #12; mul x1, x1, x2; add x0, x0, x1; ldr w0, [x0, #12]` after `c`'s

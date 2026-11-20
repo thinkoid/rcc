@@ -49,7 +49,6 @@ fill:
 	cmp	w0, #4
 	b.ge	.Lfill.7
 	adrp	x0, grid
-	add	x0, x0, :lo12:grid
 	ldr	w1, [x29, #16]
 	add	x0, x0, w1, sxtw #4
 	ldr	w1, [x29, #20]
@@ -57,7 +56,7 @@ fill:
 	str	x0, [x29, #24]
 	bl	number
 	ldr	x1, [x29, #24]
-	str	w0, [x1]
+	str	w0, [x1, :lo12:grid]
 	ldr	w0, [x29, #20]
 	add	w0, w0, #1
 	str	w0, [x29, #20]
@@ -79,11 +78,11 @@ fill:
 	cmp	w0, #4
 	b.ge	.Lfill.13
 	adrp	x0, grid
-	add	x0, x0, :lo12:grid
 	ldr	w1, [x29, #16]
 	add	x0, x0, w1, sxtw #4
 	ldr	w1, [x29, #20]
-	ldr	w0, [x0, w1, sxtw #2]
+	add	x0, x0, w1, sxtw #2
+	ldr	w0, [x0, :lo12:grid]
 	ldr	w1, [x29, #16]
 	mov	w2, #4
 	mul	w1, w1, w2
@@ -201,8 +200,7 @@ layer:
 	.cfi_def_cfa_register w29
 	str	w0, [x29, #16]
 	str	w1, [x29, #20]
-	adrp	x0, cube
-	add	x0, x0, :lo12:cube
+	adrp	x0, cube+8
 	ldrsw	x1, [x29, #16]
 	mov	x2, #36
 	mul	x1, x1, x2
@@ -211,7 +209,7 @@ layer:
 	mov	x2, #12
 	mul	x1, x1, x2
 	add	x0, x0, x1
-	ldr	w0, [x0, #8]
+	ldr	w0, [x0, :lo12:cube+8]
 	b	.Llayer.1
 .Llayer.1:
 	.cfi_def_cfa wsp, 32
@@ -290,7 +288,6 @@ main:
 	cmp	w0, #3
 	b.ge	.Lmain.12
 	adrp	x0, cube
-	add	x0, x0, :lo12:cube
 	ldrsw	x1, [x29, #16]
 	mov	x2, #36
 	mul	x1, x1, x2
@@ -300,16 +297,17 @@ main:
 	mul	x1, x1, x2
 	add	x0, x0, x1
 	ldr	w1, [x29, #24]
-	ldr	w2, [x29, #16]
-	mov	w3, #9
+	add	x0, x0, w1, sxtw #2
+	ldr	w1, [x29, #16]
+	mov	w2, #9
+	mul	w1, w1, w2
+	ldr	w2, [x29, #20]
+	mov	w3, #3
 	mul	w2, w2, w3
-	ldr	w3, [x29, #20]
-	mov	w4, #3
-	mul	w3, w3, w4
-	add	w2, w2, w3
-	ldr	w3, [x29, #24]
-	add	w2, w2, w3
-	str	w2, [x0, w1, sxtw #2]
+	add	w1, w1, w2
+	ldr	w2, [x29, #24]
+	add	w1, w1, w2
+	str	w1, [x0, :lo12:cube]
 	ldr	w0, [x29, #24]
 	add	w0, w0, #1
 	str	w0, [x29, #24]

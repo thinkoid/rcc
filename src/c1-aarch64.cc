@@ -1280,19 +1280,72 @@ denoted(const expr_t &p)
     }
 }
 
+// A variable index of a row, read off the tree, 6.3: the index, the
+// stride it is scaled by, and whether its sum's pointer is written
+// first.
+struct row_index_t
+{
+    const expr_t *index;
+    long stride;
+    bool pointer_first;
+};
+
+// A row's layers, 6.3: denoted()'s base and bytes, and the variable
+// indices under the row's own, outermost first.  Where the walk stops at
+// a sum by another variable index, m[i][j]'s at m + i, it goes on under
+// that sum, each layer's constants joining the bytes, down to a name's
+// address; so a row on a label by several indices is the label's row
+// too.  None are taken where the walk ends at anything but a label:
+// m[i][j] on a local array or on int (*p)[4] keeps its rows.
+struct layers_t
+{
+    const expr_t *base;
+    long long bytes;
+    std::vector< row_index_t > under { };
+};
+
+layers_t
+layers(state_t &s, const denoted_t &at)
+{
+    const layers_t own { .base = at.base, .bytes = at.bytes };
+    if (!at.index)
+        return own;
+
+    auto l = own;
+    auto named = named_offset(*l.base, s.defined);
+    while (!named) {
+        const auto inner = denoted(*l.base);
+        if (!inner.index)
+            return own;
+
+        l.under.push_back(
+            { inner.index, inner.index_stride, !inner.index_first });
+        l.bytes = wrapped_add(l.bytes, inner.bytes);
+        l.base = inner.base;
+        named = named_offset(*l.base, s.defined);
+    }
+
+    const auto &object = *named->object;
+    if (is< name_t >(object) && !global_of(object))
+        return own;
+
+    return l;
+}
+
 // An access through a row by a variable index, or by a constant only,
 // read off the tree before anything is generated, 6.3: denoted()'s
-// index, if any, its order and stride, and its base; the base's address
-// as a slot's or a label's, folded()'s, or as based()'s pointer and
-// displacement, the constant with the walk's bytes and the total with
-// the access's column, and whether the index is the access's register
-// offset.
+// index, if any, its order and stride, the indices under it on a label,
+// layers()'s, and its base; the base's address as a slot's or a
+// label's, folded()'s, or as based()'s pointer and displacement, the
+// constant with the walk's bytes and the total with the access's
+// column, and whether the index is the access's register offset.
 struct row_access_t
 {
     const expr_t *pointer;
     const expr_t *index;
     bool pointer_first;
     long stride;
+    std::vector< row_index_t > under { };
     std::optional< address_t > slot { };
     std::optional< based_t > plan { };
     long long carried = 0;
@@ -1389,14 +1442,16 @@ row_access(state_t &s,
            bool nothing_between)
 {
     const auto at = denoted(row);
+    const auto l = layers(s, at);
 
-    row_access_t a { .pointer = at.base,
+    row_access_t a { .pointer = l.base,
                      .index = at.index,
                      .pointer_first = !at.index_first,
-                     .stride = at.index_stride };
+                     .stride = at.index_stride,
+                     .under = l.under };
 
     const auto named = named_offset(*a.pointer, s.defined);
-    if (!a.index && (at.bytes == 0 || named))
+    if (!a.index && (l.bytes == 0 || named))
         return std::nullopt;
 
     a.slot = named ? folded(s, *a.pointer) : std::nullopt;
@@ -1404,9 +1459,9 @@ row_access(state_t &s,
         return std::nullopt;
 
     a.plan = named ? std::nullopt : based(*a.pointer, s.defined);
-    a.carried = wrapped_add(at.bytes, a.slot ? a.slot->displacement :
-                                      a.plan ? a.plan->displacement :
-                                               0);
+    a.carried = wrapped_add(l.bytes, a.slot ? a.slot->displacement :
+                                     a.plan ? a.plan->displacement :
+                                              0);
     a.total = wrapped_add(a.carried, column);
     a.label = a.slot && !a.slot->label.empty();
     if (!row_reaches(a, named ? &*named : nullptr, size))
@@ -2563,6 +2618,32 @@ row_register_offset(state_t &s, value_t base, const right_t &index)
                        .shift = index.shift };
 }
 
+// The base of a row with variable indices under its own, from the
+// layer k down, 6.3: each layer's pointer and its index generated in
+// the order written (G13), and the index's product added to the sum
+// under it, the label's page at the bottom, row_base()'s.  months[i][j]
+// on a char months[][4] is adrp x0, months, then i's add, add x0, x0,
+// w1, sxtw #2, before j's.
+value_t
+layered_base(state_t &s, const row_access_t &row, std::size_t k)
+{
+    if (k == row.under.size())
+        return row_base(s, row);
+
+    const auto &layer = row.under[k];
+
+    value_t base { };
+    if (layer.pointer_first)
+        base = layered_base(s, row, k + 1);
+
+    const auto index = displacement(s, *layer.index, layer.stride);
+
+    if (!layer.pointer_first)
+        base = layered_base(s, row, k + 1);
+
+    return offset(s, binary_op_t::add, base, index, layer.pointer_first);
+}
+
 // The operand of an access through a row by a variable index,
 // row_access()'s, 6.3: the pointer's base and the index in the order
 // written (G13), then the index the register offset, or its product
@@ -2582,12 +2663,12 @@ row_address(state_t &s, const row_access_t &row)
 
     value_t base { };
     if (row.pointer_first)
-        base = row_base(s, row);
+        base = layered_base(s, row, 0);
 
     const auto index = displacement(s, *row.index, row.stride);
 
     if (!row.pointer_first)
-        base = row_base(s, row);
+        base = layered_base(s, row, 0);
 
     if (row.register_offset)
         return row_register_offset(s, base, index);

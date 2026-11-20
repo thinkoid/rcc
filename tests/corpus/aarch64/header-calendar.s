@@ -75,13 +75,13 @@ day_of_year:
 	cmp	w0, w1
 	b.ge	.Lday_of_year.4
 	adrp	x0, daytab
-	add	x0, x0, :lo12:daytab
 	ldrsw	x1, [x29, #32]
 	mov	x2, #13
 	mul	x1, x1, x2
 	add	x0, x0, x1
 	ldr	w1, [x29, #28]
-	ldrb	w0, [x0, w1, sxtw]
+	add	x0, x0, w1, sxtw
+	ldrb	w0, [x0, :lo12:daytab]
 	ldr	w1, [x29, #24]
 	add	w1, w1, w0
 	str	w1, [x29, #24]
@@ -127,23 +127,23 @@ month_day:
 .Lmonth_day.2:
 	ldr	w0, [x29, #20]
 	adrp	x1, daytab
-	add	x1, x1, :lo12:daytab
 	ldrsw	x2, [x29, #44]
 	mov	x3, #13
 	mul	x2, x2, x3
 	add	x1, x1, x2
 	ldr	w2, [x29, #40]
-	ldrb	w1, [x1, w2, sxtw]
+	add	x1, x1, w2, sxtw
+	ldrb	w1, [x1, :lo12:daytab]
 	cmp	w0, w1
 	b.le	.Lmonth_day.4
 	adrp	x0, daytab
-	add	x0, x0, :lo12:daytab
 	ldrsw	x1, [x29, #44]
 	mov	x2, #13
 	mul	x1, x1, x2
 	add	x0, x0, x1
 	ldr	w1, [x29, #40]
-	ldrb	w0, [x0, w1, sxtw]
+	add	x0, x0, w1, sxtw
+	ldrb	w0, [x0, :lo12:daytab]
 	ldr	w1, [x29, #20]
 	sub	w1, w1, w0
 	str	w1, [x29, #20]

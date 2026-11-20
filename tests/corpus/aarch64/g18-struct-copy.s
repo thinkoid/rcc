@@ -96,16 +96,16 @@ fill:
 	cmp	w0, #32
 	b.ge	.Lfill.10
 	adrp	x0, texts
-	add	x0, x0, :lo12:texts
 	ldrsw	x1, [x29, #16]
 	add	x0, x0, x1, lsl #5
 	ldr	w1, [x29, #20]
-	ldr	w2, [x29, #16]
-	mov	w3, #32
-	mul	w2, w2, w3
-	ldr	w3, [x29, #20]
-	add	w2, w2, w3
-	strb	w2, [x0, w1, sxtw]
+	add	x0, x0, w1, sxtw
+	ldr	w1, [x29, #16]
+	mov	w2, #32
+	mul	w1, w1, w2
+	ldr	w2, [x29, #20]
+	add	w1, w1, w2
+	strb	w1, [x0, :lo12:texts]
 	ldr	w0, [x29, #20]
 	add	w0, w0, #1
 	str	w0, [x29, #20]
@@ -127,19 +127,19 @@ fill:
 	cmp	w0, #9
 	b.ge	.Lfill.16
 	adrp	x0, nines
-	add	x0, x0, :lo12:nines
 	ldrsw	x1, [x29, #16]
 	mov	x2, #72
 	mul	x1, x1, x2
 	add	x0, x0, x1
 	ldr	w1, [x29, #20]
-	ldrsw	x2, [x29, #16]
-	mov	x3, #16963
-	movk	x3, #0xf, lsl #16
-	mul	x2, x2, x3
-	ldrsw	x3, [x29, #20]
-	add	x2, x2, x3
-	str	x2, [x0, w1, sxtw #3]
+	add	x0, x0, w1, sxtw #3
+	ldrsw	x1, [x29, #16]
+	mov	x2, #16963
+	movk	x2, #0xf, lsl #16
+	mul	x1, x1, x2
+	ldrsw	x2, [x29, #20]
+	add	x1, x1, x2
+	str	x1, [x0, :lo12:nines]
 	ldr	w0, [x29, #20]
 	add	w0, w0, #1
 	str	w0, [x29, #20]
@@ -452,11 +452,11 @@ sum:
 	mov	x1, #31
 	mul	x0, x0, x1
 	adrp	x1, texts
-	add	x1, x1, :lo12:texts
 	ldrsw	x2, [x29, #24]
 	add	x1, x1, x2, lsl #5
 	ldr	w2, [x29, #28]
-	ldrb	w1, [x1, w2, sxtw]
+	add	x1, x1, w2, sxtw
+	ldrb	w1, [x1, :lo12:texts]
 	add	x0, x0, x1
 	str	x0, [x29, #16]
 	ldr	w0, [x29, #28]
@@ -473,13 +473,13 @@ sum:
 	mov	x1, #31
 	mul	x0, x0, x1
 	adrp	x1, nines
-	add	x1, x1, :lo12:nines
 	ldrsw	x2, [x29, #24]
 	mov	x3, #72
 	mul	x2, x2, x3
 	add	x1, x1, x2
 	ldr	w2, [x29, #28]
-	ldr	x1, [x1, w2, sxtw #3]
+	add	x1, x1, w2, sxtw #3
+	ldr	x1, [x1, :lo12:nines]
 	add	x0, x0, x1
 	str	x0, [x29, #16]
 	ldr	w0, [x29, #28]
