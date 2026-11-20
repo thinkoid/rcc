@@ -519,7 +519,10 @@ Any other, known or not, marks what it is said of: a typedef through
 one names a not-yet type of its own, a marked function or object at
 file scope is refused where an expression names it, and on a local or
 the definition of an object, which rcc would make, the attribute is
-not yet. `alias ("t")` marks too, but where it is the one marking
+not yet. GNU C lets a later declaration mark the uses before it too,
+so the attribute is not yet on a declaration after an expression
+named the symbol. `alias ("t")` marks too, but where it is the one
+marking
 attribute of a declaration at file scope, on a function or on an
 object declared `extern` of external linkage, with no assembler name,
 and the unit defines `t`, a function or an object of the alias's

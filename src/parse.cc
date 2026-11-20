@@ -16,6 +16,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -137,7 +138,9 @@ struct open_switch_t
 // parameters; va_area is its save area, made at its first va_start.
 // temporaries are the locals its builtins made, which no declaration
 // names, while its body is parsed, and nothing at file scope.  aliases
-// are the declarations an alias attribute makes aliases.
+// are the declarations an alias attribute makes aliases.  used are the
+// symbols of linkage an expression has named so far, which a marking
+// attribute on a later declaration comes too late for.
 struct parser_t
 {
     const std::vector< token_t > &tokens;
@@ -169,6 +172,7 @@ struct parser_t
     std::size_t named = 0;
     const symbol_t *va_area = nullptr;
     std::optional< std::vector< const symbol_t * > > temporaries = { };
+    std::unordered_set< const symbol_t * > used = { };
 };
 
 // The declaration specifiers: the type, and the storage-class specifier
@@ -2729,10 +2733,15 @@ declarator_tail(parser_t &p, const specifiers_t &spec)
 // its declarations.  The assembler name of one holds for the others,
 // and two that differ name two symbols for one name, an error.  A
 // marking attribute marks the symbol, and every use of it after the
-// declaration is refused.
+// declaration is refused.  GNU C lets a later declaration add the
+// attribute to the uses before it too, which rcc has taken unmarked,
+// so the attribute is refused where it is written then.
 void
-record_tail(symbol_t &sym, const declarator_tail_t &tail)
+record_tail(const parser_t &p, symbol_t &sym, const declarator_tail_t &tail)
 {
+    if (tail.marking && p.used.contains(&sym))
+        not_yet(*tail.marking, attribute_words(*tail.marking));
+
     if (tail.asm_keyword) {
         if (!sym.asm_name.empty() && sym.asm_name != tail.asm_name)
             fail(*tail.asm_keyword,
@@ -3253,7 +3262,7 @@ declare_function(parser_t &p,
 
     if (earlier) {
         require_linkage(*d.name, *earlier, linkage);
-        record_tail(*earlier, tail);
+        record_tail(p, *earlier, tail);
 
         for (std::size_t i = 0; i < p.unit.functions.size(); ++i)
             if (p.unit.functions[i].sym == earlier)
@@ -3262,7 +3271,7 @@ declare_function(parser_t &p,
 
     symbol_t &sym = added(p, d.name->text, d.type, storage_t::function);
     sym.linkage = linkage;
-    record_tail(sym, tail);
+    record_tail(p, sym, tail);
     p.unit.functions.push_back(function_decl_t { &sym, { }, std::nullopt, 0 });
 
     return p.unit.functions.size() - 1;
@@ -4117,7 +4126,7 @@ declare_external_object(parser_t &p,
     }
 
     require_linkage(*d.name, *sym, linkage);
-    record_tail(*sym, tail);
+    record_tail(p, *sym, tail);
 
     const bool initialized = peek(p).kind == tok_t::assign;
     if (!initialized && declared(spec, tok_t::kw_extern))
@@ -6524,7 +6533,7 @@ linked_declaration(parser_t &p, const specifiers_t &spec, const declarator_t &d)
                 function_decl_t { entity, { }, std::nullopt, 0 });
     }
 
-    record_tail(*entity, tail);
+    record_tail(p, *entity, tail);
 }
 
 // A block-scope declaration, perhaps of a tag or enumeration constants
@@ -8582,6 +8591,9 @@ primary_expression(parser_t &p)
 
         if (!sym->marking.empty())
             not_yet(t, sym->marking);
+
+        if (sym->linkage != linkage_t::none)
+            p.used.insert(sym);
 
         if (sym->storage == storage_t::global ||
             sym->storage == storage_t::enumerator)

@@ -463,19 +463,6 @@ the earlier one's identity.
 Check: the programs above compile; with =mode (byte)= in the second
 typedef the first still fails.
 
-** TODO A marking attribute on a later declaration does not reach an earlier call
-
-~int f(void); int g(void) { return f(); } int f(void) __attribute__
-((weak));~ compiles. The attribute marks the symbol from where it is
-written, and the call parsed before it was accepted. GNU C lets a
-later declaration add an attribute, and the use rcc cannot honour has
-then been taken.
-
-Fix: an attribute rcc does not honour, met after a use of the
-symbol, is refused where it is written, a not-yet.
-
-Check: the program above is refused at the attribute.
-
 ** TODO The other target is preprocessed with this machine's headers
 
 =rcc -target x86-64= on an aarch64 machine runs =clang -E
@@ -741,6 +728,18 @@ comment follows either.
 
 Check: ~case 2147483647 + 1:~ draws the diagnostic, or =shape.md=
 says why not; the comment agrees.
+
+** TODO A marking attribute after the definition is taken
+
+~int f(void) { return 0; } int f(void) __attribute__ ((weak));~
+compiles, and =f= is strong. =gcc= writes =.weak f=; =clang= ignores
+the attribute, with a warning. An attribute rcc does not honour is
+refused after a use of the symbol; a definition is not counted as
+one.
+
+Fix: a definition counts as a use.
+
+Check: that program is refused at the attribute, pinned.
 
 * Lexer
 
