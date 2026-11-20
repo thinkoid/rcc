@@ -7284,23 +7284,31 @@ struct list_operand_t
     std::optional< expr_t > set = { };
 };
 
-// A temporary that no declaration names, a pointer to the list's
-// record, for one builtin's list with a side effect.  In a body it is
+// A temporary that no declaration names, of the type, for a builtin
+// that holds a value across another evaluation.  In a body it is
 // declared at the body's head, declare_temporaries(), so its slot is
 // the activation's, G12.  At file scope, where no expression is
 // generated, an initializer's being folded or refused, and sizeof's
 // operand not evaluated, it is declared nowhere.
 const symbol_t &
-list_temporary(parser_t &p)
+temporary(parser_t &p, std::string_view name, const type_t &type)
 {
     symbol_t &t = p.unit.symbols.emplace_back(
-        symbol_t { "__va_list_address", make_pointer(make_record(*p.va_record)),
-                   storage_t::local, false, -1 });
+        symbol_t { std::string(name), type, storage_t::local, false, -1 });
 
     if (p.temporaries)
         p.temporaries->push_back(&t);
 
     return t;
+}
+
+// The temporary of one builtin's list with a side effect, a pointer to
+// the list's record.
+const symbol_t &
+list_temporary(parser_t &p)
+{
+    return temporary(p, "__va_list_address",
+                     make_pointer(make_record(*p.va_record)));
 }
 
 // The list ahead, the first operand of the builtin of the macro named.
@@ -7941,6 +7949,47 @@ offsetof_expression(parser_t &p, const token_t &keyword)
     return expr_t { size_type(), literal_t { offset } };
 }
 
+// __builtin_expect ( e , c ), which a program's likely() and
+// unlikely() write: e, its value converted as if by assignment to
+// long, as clang declares long __builtin_expect(long, long), and no
+// lvalue.  It says only which value e is likely to have, so it writes
+// nothing of its own.  c, checked as converted alike, is evaluated for
+// its effect alone, after e, G13, and as clang has it at -O0 not at all
+// where it has none; where it has one, e's value is held in a
+// temporary across it: (t = e, c, t).
+expr_t
+expect_expression(parser_t &p, const token_t &keyword)
+{
+    expect(p, tok_t::lparen, "expected '(' after " + quoted(keyword.text));
+    const token_t &e_at = peek(p);
+    expr_t e =
+        assignment_conversion(e_at, assignment_expression(p), long_type());
+    expect(p, tok_t::comma, "expected ',' after the expression");
+    const token_t &c_at = peek(p);
+    expr_t c =
+        assignment_conversion(c_at, assignment_expression(p), long_type());
+    expect(p, tok_t::rparen, "expected ')' after the expected value");
+
+    // the cast makes no lvalue of e where it is already a long; c's
+    // value is discarded, so its conversion is checked and not made
+    e = cast(keyword, long_type(), std::move(e));
+    if (pure_copy(c))
+        return e;
+
+    if (is< cast_t >(c)) {
+        expr_t unconverted = std::move(*as< cast_t >(c).arg);
+        c = std::move(unconverted);
+    }
+
+    const symbol_t &t = temporary(p, "__expected", long_type());
+    expr_t set = assignment(operator_at(keyword, tok_t::assign),
+                            expr_t { t.type, name_t { &t } }, std::move(e));
+
+    return comma(
+        discarded(keyword, std::move(set)),
+        comma(discarded(c_at, std::move(c)), expr_t { t.type, name_t { &t } }));
+}
+
 // A name must be declared, 6.5.2p2, as an object or a function: a
 // typedef name names a type.  An enumeration constant is a constant,
 // p2's footnote, of its type and its value, 6.4.4.4p2, 6.7.3.3p10: the
@@ -7966,6 +8015,9 @@ primary_expression(parser_t &p)
 
         if (t.text == "__builtin_offsetof")
             return offsetof_expression(p, t);
+
+        if (t.text == "__builtin_expect")
+            return expect_expression(p, t);
 
         if (std::optional< expr_t > e = va_builtin(p, t))
             return std::move(*e);

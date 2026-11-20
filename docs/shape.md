@@ -732,6 +732,16 @@ name reads as `*symbol`, the list; and an argument for such a
 parameter is an lvalue of the list, whose copy c1 makes. Every other
 record by value is not yet.
 
+`__builtin_expect(e, c)`, which a program's `likely()` and
+`unlikely()` write, is `e`, converted as if by assignment to `long`,
+the type `clang` declares it to return, and no lvalue. It says only
+which value `e` is likely to have, so it writes nothing of its own.
+`c` is checked as converted alike and evaluated for its effect alone,
+after `e` (G13). As `clang` has it at `-O0`, one without a side effect
+is not evaluated at all, and before one with a side effect `e`'s value
+goes into a temporary of its own, as a list's address does above:
+`(t = e, c, t)`.
+
 The types a header declares and rcc does not use are not-yet types:
 the complex types, `_Complex` among the specifiers of a floating
 type; GNU C's `__float128` and `__int128`, signed or unsigned;
