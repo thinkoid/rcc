@@ -1,0 +1,2 @@
+tests/error/array-static-star.c:3:13: error: 'static' with '*' for the array size
+status 1

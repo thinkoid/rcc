@@ -538,43 +538,6 @@ macros need overloading, which is not C; a program that includes
 Check: the documents say what a program that includes =tgmath.h=
 gets.
 
-** TODO =[*]= in a parameter is "expected expression"
-
-~void f(int n, int a[*]);~ fails with "expected expression" at the
-=*=. It is valid in a declaration that is no definition: 6.7.7.3p4
-lets =*= stand for the size of a variable length array of unspecified
-size, at function prototype scope alone. A parameter's size that
-names another parameter is taken as unspecified already; the spelling
-that says so is not read.
-
-Fix: =[*]= in a parameter's brackets is the size left out; in a
-definition it is the error it is.
-
-Check: the declaration above compiles; ~void f(int n, int a[*]) { }~
-fails with a message about the =*=.
-
-** TODO =static= and a qualifier in a parameter's brackets are read in one place only
-
-A parameter's array declarator takes =static= and type qualifiers
-inside its brackets, in the array type derivation the parameter is
-adjusted from. The parser reads them in the suffix written right
-after the parameter's name. Three spellings draw "expected
-expression" where another message, or none, is due:
-
-- ~int f(int (a)[static 3]);~ and ~int f(int n, int (a)[n]);~ are
-  valid, the parentheses redundant, and are refused;
-- ~int f(int a[3][const 4]);~ is an error, of a qualifier in an array
-  derivation that is not the outermost (6.7.7.3p1), and the message
-  does not say so;
-- ~int f(int a[static]);~ is an error, of =static= without a size, and
-  the message does not say so.
-
-Fix: the suffix after redundant parentheses is the parameter's own;
-the two errors take messages of their own.
-
-Check: the first two declarations compile; the other two are pinned
-in =tests/error= with their messages.
-
 ** TODO A qualified =void= is taken as the =void= of an empty parameter list
 
 ~int f(const void);~, ~int f(void const);~ and a parameter of a
@@ -590,6 +553,23 @@ typedef's included.
 
 Check: the three declarations fail with "'void' must be the only
 parameter".
+
+** TODO =[*]= in brackets other than the outermost is "expected expression"
+
+~void f(int a[3][*]);~ and ~void f(int n, int (*a)[*]);~ are valid
+prototypes (6.7.7.3p4, 6.7.7.4p11), which =clang= takes, and fail
+with "expected expression": =[*]= is read in the brackets a
+parameter is adjusted from and nowhere else. ~int x[*];~ and
+~typedef int t[*];~ draw the same words, where the error is of the
+star outside a prototype.
+
+Fix: in a parameter declaration's other brackets =[*]= is a variable
+length array, a not-yet as =[n]= is there; outside a parameter
+declaration it is an error in words of its own. The parser must know
+it is inside a parameter declaration, not only right after the name.
+
+Check: the two prototypes say "not yet: variable length array" at
+the =*=, and ~int x[*];~ is pinned in =tests/error= with its message.
 
 ** TODO =static= in the declaration of a =for= is an error
 

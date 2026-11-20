@@ -1,0 +1,2 @@
+tests/error/array-static-without-size.c:3:13: error: 'static' without an array size
+status 1

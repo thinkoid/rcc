@@ -432,15 +432,19 @@ included; `(register void)`, which J.2 (75) leaves undefined, is
 refused.
 
 The array a parameter is adjusted from, the suffix right after the
-parameter's name or the place of it, takes `static` and the type
+parameter's name or the place of it, or after redundant parentheses
+around the name, as in `int (a)[3]`, takes `static` and the type
 qualifiers inside its brackets before the size, as `regex.h` writes
 `regmatch_t __pmatch[__restrict __nmatch]`. They are dropped,
 `restrict` is checked as on a pointer, and `_Atomic` there is not yet.
-Its size need not be constant: one that is not is taken as left out,
-as 6.7.7.3p5 takes it in a prototype, since the parameter is the
-pointer either way, and nothing is evaluated for it. Every other array
-suffix keeps the rules of an array, so `int (*a)[n]` points to a
-variable length array, which is not yet. At file scope such a size is
+`static` takes a size (6.7.7.3p3), and in any other brackets `static`
+and the qualifiers are refused (p1). The size need not be constant:
+one that is not is taken as left out, as 6.7.7.3p5 takes it in a
+prototype, since the parameter is the pointer either way, and nothing
+is evaluated for it. `[*]` is the size left out too; in a function
+definition it is refused (6.9.2p6). Every other array suffix keeps
+the rules of an array, so `int (*a)[n]` points to a variable length
+array, which is not yet. At file scope such a size is
 an error of the program, not a construct to come: an object of static
 storage duration has no variable length array type, and an identifier
 of a variably modified type has block or prototype scope (6.7.7.3p2),

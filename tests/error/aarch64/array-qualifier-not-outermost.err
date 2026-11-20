@@ -1,0 +1,2 @@
+tests/error/array-qualifier-not-outermost.c:4:16: error: 'const' outside a parameter's outermost array type derivation
+status 1

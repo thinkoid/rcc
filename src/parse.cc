@@ -171,8 +171,9 @@ struct specifiers_t
 };
 
 // A parameter as written: its type, its name token when it has one,
-// whether it was declared register, and the name's token of the first
-// marking attribute said of it, or null.
+// whether it was declared register, the name's token of the first
+// marking attribute said of it, or null, and the '*' that sizes the
+// array it is adjusted from, or null.
 struct parameter_t
 {
     type_t type;
@@ -180,6 +181,7 @@ struct parameter_t
     const token_t *name;
     bool in_register;
     const token_t *marking;
+    const token_t *star;
 };
 
 // A declarator: a name, absent from a parameter that leaves it out and
@@ -189,13 +191,15 @@ struct parameter_t
 // declares no function, so it has none.  scope is that list's scope,
 // closed at its ')', with the parameters and the tags the list
 // declares, which a definition opens again as its body's; empty when
-// there are no params.
+// there are no params.  star is the '*' that sizes the array a
+// parameter is adjusted from, 6.7.7.3p4, or null.
 struct declarator_t
 {
     const token_t *name;
     type_t type;
     std::optional< std::vector< parameter_t > > params;
     scope_t scope;
+    const token_t *star = nullptr;
 };
 
 // Whether a declarator names what it declares: a declaration's does, a
@@ -2515,8 +2519,11 @@ parenthesized_declarator(parser_t &, const type_t &, naming_t, bool typedef_);
 declarator_t declarator_suffix(
     parser_t &, const token_t *, const type_t &, bool typedef_, bool parameter);
 type_t pointer(parser_t &, type_t);
-type_t
-array_declarator(parser_t &, const type_t &, bool typedef_, bool parameter);
+type_t array_declarator(parser_t &,
+                        const type_t &,
+                        bool typedef_,
+                        bool parameter,
+                        const token_t *&star);
 bool parameter_type_list(parser_t &, std::vector< parameter_t > &);
 parameter_t parameter_declaration(parser_t &);
 type_t type_name(parser_t &);
@@ -3897,7 +3904,8 @@ defined_parameter(parser_t &p, const parameter_t &param)
 // The parameters of a definition, each named, defined_parameter()'s.
 // Each is an object the definition makes, so none may be of a not-yet
 // type, nor of a record, which passes by value in no rule rcc has yet
-// but the aarch64 va_list's.
+// but the aarch64 va_list's.  No array of unspecified size, [*], is
+// part of the declaration of one, 6.9.2p6.
 std::vector< const symbol_t * >
 defined_parameters(parser_t &p, const declarator_t &d)
 {
@@ -3905,6 +3913,9 @@ defined_parameters(parser_t &p, const declarator_t &d)
     for (const parameter_t &param : *d.params) {
         if (!param.name)
             fail(*param.start, "parameter name omitted");
+
+        if (param.star)
+            fail(*param.star, "'*' as an array size in a function definition");
 
         require_honoured(*param.name, param.type);
 
@@ -5106,6 +5117,29 @@ declarator(parser_t &p, const type_t &base, naming_t naming, bool typedef_)
                              naming == naming_t::optional);
 }
 
+// Whether the tokens from inside to close, those of a declarator in
+// parentheses, are a name alone, in parentheses or not, as in (a) or
+// ((a)), so that the parentheses are redundant and derive nothing.  A
+// typedef name there opens a parameter list, 6.7.7.4p10, so it is no
+// such name.
+bool
+names_alone(const parser_t &p, std::size_t inside, std::size_t close)
+{
+    std::size_t open = inside;
+    while (open < close && p.tokens[open].kind == tok_t::lparen)
+        ++open;
+
+    if (open == close || p.tokens[open].kind != tok_t::identifier ||
+        names_type(p, p.tokens[open]))
+        return false;
+
+    for (std::size_t i = open + 1; i < close; ++i)
+        if (p.tokens[i].kind != tok_t::rparen)
+            return false;
+
+    return close - (open + 1) == open - inside;
+}
+
 // ( D ) and the suffixes after it.  The declarator in parentheses
 // derives from what the suffixes derive from the type so far, 6.7.7.1p6:
 // in void (*f)(int) the '*' derives a pointer from void (int), the
@@ -5118,8 +5152,9 @@ declarator(parser_t &p, const type_t &base, naming_t naming, bool typedef_)
 // parameter list is read once, the suffix's before the rewind and the
 // inner one's after it, and the list that is the name's brings its
 // scope.  An array suffix after the parentheses is read as an array's
-// that no parameter is adjusted from, as it is in int (*a)[3], though
-// in int (a)[3] it is the parameter's own.
+// that no parameter is adjusted from, as it is in int (*a)[3], unless
+// the parentheses are redundant: in int (a)[3] it is the parameter's
+// own.
 declarator_t
 parenthesized_declarator(parser_t &p,
                          const type_t &t,
@@ -5130,9 +5165,11 @@ parenthesized_declarator(parser_t &p,
 
     const std::size_t inside = p.pos;
     skip_parenthesized_declarator(p);
+    const bool parameter =
+        naming == naming_t::optional && names_alone(p, inside, p.pos);
     expect(p, tok_t::rparen, "expected ')'");
 
-    declarator_t suffix = declarator_suffix(p, nullptr, t, typedef_, false);
+    declarator_t suffix = declarator_suffix(p, nullptr, t, typedef_, parameter);
     const std::size_t after = p.pos;
 
     p.pos = inside;
@@ -5143,6 +5180,7 @@ parenthesized_declarator(parser_t &p,
     if (d.type == suffix.type) {
         d.params = std::move(suffix.params);
         d.scope = std::move(suffix.scope);
+        d.star = suffix.star;
     }
 
     return d;
@@ -5171,7 +5209,7 @@ declarator_suffix(parser_t &p,
     declarator_t d { name, t, std::nullopt, { } };
 
     if (peek(p).kind == tok_t::lbracket) {
-        d.type = array_declarator(p, t, typedef_, parameter);
+        d.type = array_declarator(p, t, typedef_, parameter, d.star);
 
         if (peek(p).kind == tok_t::lparen)
             fail(peek(p), "array element type cannot be a function");
@@ -5374,12 +5412,13 @@ parameter_array_count(const token_t &at, const expr_t &size)
 // for the caller to check on that pointer.  _Atomic is not yet, as on a
 // pointer.  static promises that each argument points to the first of
 // at least as many elements as the size says, p6, which no call rcc
-// writes depends on, and is dropped; whether it was written is
-// returned, since a size must follow it.
-bool
+// writes depends on, and is dropped; its token is returned, or null,
+// since a size must follow it.
+const token_t *
 parameter_array_qualifiers(parser_t &p, const token_t *&restrict_)
 {
-    bool static_ = accept(p, tok_t::kw_static);
+    const token_t *static_ =
+        peek(p).kind == tok_t::kw_static ? &advance(p) : nullptr;
 
     for (;;) {
         const token_t &q = peek(p);
@@ -5394,10 +5433,48 @@ parameter_array_qualifiers(parser_t &p, const token_t *&restrict_)
             break;
     }
 
-    if (!static_)
-        static_ = accept(p, tok_t::kw_static);
+    if (!static_ && peek(p).kind == tok_t::kw_static)
+        static_ = &advance(p);
 
     return static_;
+}
+
+// The '*' in a parameter's brackets after the qualifiers, 6.7.7.3p3,
+// which makes a variable length array of unspecified size, p4: the
+// parameter is the pointer either way, so it is the size left out.
+// Null when the brackets hold none.  static takes a size, so with the
+// '*' or with nothing after it, it is refused.
+const token_t *
+unspecified_size(parser_t &p, const token_t *static_)
+{
+    const bool star =
+        peek(p).kind == tok_t::star && peek(p, 1).kind == tok_t::rbracket;
+
+    if (static_ && star)
+        fail(*static_, "'static' with '*' for the array size");
+
+    if (static_ && peek(p).kind == tok_t::rbracket)
+        fail(*static_, "'static' without an array size");
+
+    return star ? &advance(p) : nullptr;
+}
+
+// static and the type qualifiers stand only in the outermost array type
+// derivation of a parameter, 6.7.7.3p1, and are refused in any other
+// brackets.
+void
+refuse_array_qualifier(const token_t &t)
+{
+    switch (t.kind) {
+    case tok_t::kw_static:
+    case tok_t::kw_const:
+    case tok_t::kw_volatile:
+    case tok_t::kw_restrict:
+    case tok_t::kw_atomic:
+        fail(t, quoted(t.text) +
+                    " outside a parameter's outermost array type derivation");
+    default: break;
+    }
 }
 
 // A size that is no integer constant expression at file scope, extern
@@ -5445,14 +5522,15 @@ is_incomplete(const type_t &t)
 // in place of the array.  When parameter says
 // that the first suffix is the array a parameter is adjusted from, its
 // brackets may hold static and type qualifiers, 6.7.7.3p1, and its size
-// need not be an integer constant expression; every other suffix keeps
-// the rules of any array, so a variable length array behind the
-// parameter's pointer is not yet.
+// need not be an integer constant expression, or may be '*', returned
+// in star; every other suffix keeps the rules of any array, so a
+// variable length array behind the parameter's pointer is not yet.
 type_t
 array_declarator(parser_t &p,
                  const type_t &element,
                  bool typedef_,
-                 bool parameter)
+                 bool parameter,
+                 const token_t *&star)
 {
     std::vector< array_suffix_t > suffixes;
     const token_t *restrict_ = nullptr;
@@ -5461,10 +5539,14 @@ array_declarator(parser_t &p,
         array_suffix_t suffix { &advance(p), -1, { } };
         const bool adjusted = parameter && suffixes.empty();
 
-        const bool static_ =
-            adjusted && parameter_array_qualifiers(p, restrict_);
+        if (adjusted) {
+            const token_t *static_ = parameter_array_qualifiers(p, restrict_);
+            star = unspecified_size(p, static_);
+        }
+        else
+            refuse_array_qualifier(peek(p));
 
-        if (static_ || peek(p).kind != tok_t::rbracket) {
+        if (!(adjusted && star) && peek(p).kind != tok_t::rbracket) {
             const token_t &start = peek(p);
 
             const std::optional< expr_t > size =
@@ -5593,8 +5675,9 @@ parameter_declaration(parser_t &p)
     else if (is< function_t >(t))
         t = make_pointer(std::move(t));
 
-    return parameter_t { std::move(t), &start, d.name,
-                         declared(spec, tok_t::kw_register), marking };
+    return parameter_t { std::move(t), &start,
+                         d.name,       declared(spec, tok_t::kw_register),
+                         marking,      d.star };
 }
 
 // Specifiers and an abstract declarator, the declarator of a

@@ -1,0 +1,2 @@
+tests/error/array-star-in-definition.c:5:16: error: '*' as an array size in a function definition
+status 1
