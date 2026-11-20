@@ -1,0 +1,2 @@
+tests/error/conditional-omitted-operand.c:8:18: error: not yet: '?:' without a middle operand
+status 1

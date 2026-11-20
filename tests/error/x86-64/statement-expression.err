@@ -1,0 +1,2 @@
+tests/error/statement-expression.c:6:17: error: not yet: statement expression
+status 1

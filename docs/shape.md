@@ -1462,7 +1462,10 @@ GCC visibility` (chapter 2), the checks of the qualifiers
 and `volatile` are dropped, so an assignment to a `const` object and
 a conversion that discards a qualifier draw no diagnostic, and
 `(const void)` is taken as `(void)`), an atomic object, GNU C's case
-range, `case 1 ... 5:`, the body of a system header's `static inline`
+range, `case 1 ... 5:`, GNU C's statement expression, `({ ... })`,
+its conditional without a middle operand, `a ?: b`, and `alloca`,
+which `alloca.h` defines as `__builtin_alloca`, each refused by its
+name, the body of a system header's `static inline`
 function, whose use is refused, and of the program's own one whose
 body holds a not-yet, whose use is refused by the body's words,
 and a system header's `static inline` declaration without a body, a

@@ -7361,6 +7361,10 @@ conditional_expression(parser_t &p)
     // before the arms are parsed, so that this error comes first
     cond = rvalue(op, std::move(cond));
 
+    // GNU C's a ?: b, the condition its own middle operand
+    if (peek(p).kind == tok_t::colon)
+        not_yet(op, "'?:' without a middle operand");
+
     expr_t yes = expression(p);
     expect(p, tok_t::colon, "expected ':' in conditional expression");
     expr_t no = conditional_expression(p);
@@ -8653,7 +8657,9 @@ expect_expression(parser_t &p, const token_t &keyword)
 // attribute marked, by the type's.  A use of a name of internal linkage
 // is kept for the check of its definition at the end of the unit.  A
 // generic selection is not yet.  Parentheses leave the expression as it
-// is, an lvalue included, 6.5.2p6.  A floating constant is not yet: the
+// is, an lvalue included, 6.5.2p6; GNU C's statement expression, ({
+// ... }), is not yet, and so is alloca, which glibc's alloca.h defines
+// as __builtin_alloca.  A floating constant is not yet: the
 // lexer took its spelling, and its value is not computed.  A character
 // constant is character_constant()'s, and adjacent string literals
 // are one, string_literal()'s.
@@ -8671,6 +8677,9 @@ primary_expression(parser_t &p)
 
         if (t.text == "__builtin_expect")
             return expect_expression(p, t);
+
+        if (t.text == "__builtin_alloca")
+            not_yet(t, "alloca, " + quoted(t.text));
 
         if (std::optional< expr_t > e = va_builtin(p, t))
             return std::move(*e);
@@ -8710,6 +8719,8 @@ primary_expression(parser_t &p)
     case tok_t::string: return string_literal(p);
     case tok_t::lparen: {
         advance(p);
+        if (peek(p).kind == tok_t::lbrace)
+            not_yet(t, "statement expression");
 
         expr_t e = expression(p);
         expect(p, tok_t::rparen, "expected ')'");

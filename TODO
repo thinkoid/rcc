@@ -343,20 +343,6 @@ for 6.9.1p3.
 
 Check: a cost program with both forms, pinned on each target.
 
-** TODO A statement expression, ~a ?: b~ and =alloca= are refused in an error's words
-
-~({ ... })~ and ~a ?: b~ fail with "expected expression", and
-=alloca= with "'__builtin_alloca' undeclared": the program is GNU C
-that rcc does not compile yet, and the message calls it wrong.
-
-Fix: each is taken, in this order: the statement expression, a block
-whose last expression is its value; ~a ?: b~, =a= evaluated once; a
-variable length array; =alloca=. Until one is built, its refusal
-says "not yet" and names it.
-
-Check: a program of =tests/error= for each until it compiles, then a
-cost program on both targets.
-
 ** TODO Assignment to a const object is not diagnosed
 
 The parser accepts =const= and drops it: the type is the machine's
@@ -688,6 +674,20 @@ text.
 
 Check: a program with the attribute under a system header's line
 marker compiles with no word, pinned.
+
+** TODO A statement expression, ~a ?: b~, a variable length array and =alloca= are not yet
+
+Each is GNU C, or C a program for =gcc= and =clang= writes, refused
+by name: "not yet: statement expression", "not yet: '?:' without a
+middle operand", "not yet: variable length array", "not yet: alloca,
+'__builtin_alloca'".
+
+Fix: each is taken, in this order: the statement expression, a block
+whose last expression is its value; ~a ?: b~, =a= evaluated once; a
+variable length array; =alloca=.
+
+Check: the program of =tests/error= for each becomes a cost program
+on both targets.
 
 * Lexer
 

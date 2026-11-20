@@ -1,0 +1,2 @@
+tests/error/alloca.c:8:19: error: not yet: alloca, '__builtin_alloca'
+status 1
