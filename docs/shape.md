@@ -495,12 +495,13 @@ declaration, are dropped, and so is `__extension__` before one. An
 attribute is of one of two kinds. One that only licenses an
 optimizer, asks for a diagnostic, or describes what a compiler that
 calls each function as written does not depend on, `nonnull`, `pure`,
-`format`, `may_alias` and their like, is dropped. Any other, known or
-not, marks what it is said of: a typedef through one names a not-yet
-type of its own, a marked function or object at file scope is refused
-where an expression names it, and on a local or the definition of an
-object, which rcc would make, the attribute is not yet. An attribute
-among the declaration specifiers
+`format`, `may_alias` and their like, is dropped; so is `noinline`,
+which asks for what rcc does to every call, since it inlines none.
+Any other, known or not, marks what it is said of: a typedef through
+one names a not-yet type of its own, a marked function or object at
+file scope is refused where an expression names it, and on a local or
+the definition of an object, which rcc would make, the attribute is
+not yet. An attribute among the declaration specifiers
 is said of each declarator, as one after the declarator is, and one
 may begin a declaration, in a block as at file scope:
 `__attribute__ ((unused)) int x = 1;` in a block declares `x`, the

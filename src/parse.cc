@@ -2314,6 +2314,10 @@ constexpr std::string_view dropped_attributes[] = {
     // what an optimizer may assume of what an lvalue aliases
     "may_alias",
 
+    // what rcc does to every call, which it writes as written, inlining
+    // none
+    "noinline",
+
     // requests for a diagnostic
     "access", "deprecated", "fallthrough", "format", "format_arg", "nodiscard",
     "sentinel", "unused", "warn_unused_result"

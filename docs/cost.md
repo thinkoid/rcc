@@ -74,7 +74,10 @@ as it is either way, so a program compiles to the listing of its
 twin without the specifier (`static-inline`). Nor does
 `__builtin_expect(e, c)` of a constant `c`: it is `e` converted to
 `long`, so a program compiles to the listing of its twin with
-`(long)(e)` in its place (`builtin-expect`).
+`(long)(e)` in its place (`builtin-expect`). Nor does the attribute
+`noinline`: it asks that calls of a function not be inlined, and c1
+inlines none, so a program compiles to the listing of its twin
+without it (`noinline`).
 
 What the compiler may do:
 
