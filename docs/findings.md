@@ -323,7 +323,9 @@ already 2, and a second `mov $2,%ecx` in B is redundant.
 
 ### 3.2 The observation
 
-The Collatz step, taken out of `tests/perf/collatz.c`:
+The Collatz step, reduced to a function of its own. In
+`tests/perf/collatz.c` the step is inline in the loop, on a `long`,
+and tests `x % 2 == 0`; the reduction keeps its two divisions by 2:
 
 ```c
 int step(int x)

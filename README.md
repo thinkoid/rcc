@@ -9,7 +9,8 @@ The name says where it comes from. The syntax stays near ISO C, so
 existing programs compile; the promises are the project. They are
 listed in `docs/guarantees.md`: each names the ISO paragraph, the
 machine behaviour promised, the instruction that delivers it, and
-what the optimizer loses. The choices ISO C leaves to the
+what the optimizer loses; the reasoning behind draft 1 of the list
+is `docs/rationale.md`. The choices ISO C leaves to the
 implementation, per target, are `docs/choices.md`.
 
 ## Design
@@ -24,7 +25,8 @@ implementation, per target, are `docs/choices.md`.
   stack slot, `register` variables in the callee-saved registers,
   expressions in the rest. The system cc preprocesses, assembles and
   links. The design is `docs/backend.md`, and the reasons are
-  `docs/findings.md`. The tree compiled through LLVM's `llc` with
+  `docs/findings.md`; `docs/design-calls.md` weighs the design's
+  open calls one by one. The tree compiled through LLVM's `llc` with
   FastISel and every rewriting pass switched off until c1 replaced
   it; `docs/llvm.md` is the record of that pipeline.
   `docs/ancestor.md` reads the Seventh Edition compiler's code
@@ -71,8 +73,9 @@ c1 also writes aarch64, for the constructs of the same three slices:
 the integer types, control and calls; pointers, arrays and string
 literals; register variables. Its design is `docs/aarch64.md`, and
 its measurement, on two machines, is in chapter 4 of `docs/cost.md`
-beside x86-64's. `docs/slot.md` explains what a stack slot costs on
-three aarch64 cores and one x86-64 core.
+beside x86-64's. `docs/autoincrement.md` designs `*p++` on a
+register pointer for aarch64. `docs/slot.md` explains what a stack
+slot costs on three aarch64 cores and one x86-64 core.
 Then a program with its headers: `typedef`, `extern` at file scope,
 structs, unions, enums and floating types declared and not yet used,
 and the GNU C of a system header read as it is, so that a program

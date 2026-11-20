@@ -24,13 +24,14 @@ The parts, what each owns, and where they meet. The headers under
   for a fixed arity and `vector` for a list. Types are values,
   compared structurally, and a struct or a union by its identity.
 - The first error is fatal. No recovery.
-- GNU make, one executable, a flat `src/`. The test is four
+- GNU make, one executable, a flat `src/`. The test is five
   scripts: the oracle over `tests/corpus/` and the cost corpus over
   `tests/cost/`, each diffing the assembly `rcc -S` writes against
   its pin; the error corpus over `tests/error/`, diffing what
   `rcc -S` prints on standard error and its exit status against
-  theirs; and the probes of `tests/probe/`, which run rcc's code
-  against `clang`'s.
+  theirs; `tests/driver`, which checks the driver's command line;
+  and the probes of `tests/probe/`, which run rcc's code against
+  `clang`'s.
 
 ## 1. The pipeline
 
@@ -1141,6 +1142,7 @@ compile database, and three lines of make, a shell script and
 
     Makefile          build, test, test-long, bench, slots, clean
     compile_flags.txt what clangd needs
+    docs/shape.md       the shape of the compiler: this page
     docs/guarantees.md  the meaning: what happens where ISO C says nothing
     docs/choices.md     the choices ISO C leaves to the implementation, per target
     docs/cost.md        the cost: what each construct compiles to
@@ -1151,6 +1153,8 @@ compile database, and three lines of make, a shell script and
     docs/autoincrement.md  the design of *p++ on a register pointer, for aarch64
     docs/llvm.md        the LLVM sprint: the literal pipeline, where its judgment showed, why it left
     docs/design-calls.md  the back end's open calls, weighed one by one
+    docs/ancestor.md    the Seventh Edition compiler's code generator, read against c1
+    docs/designs.md     four organizing designs, read against c1
     docs/slot.md        what a stack slot costs, explained from the ground up
     src/lex.hh .cc    tokens and tokenize()
     src/type.hh .cc   type_t, constructors, equality

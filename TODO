@@ -183,41 +183,6 @@ of G8 and the laundering of G16, which draft 1 designed against an
 optimizer, because nothing between the source and the instruction
 reasons about the program.
 
-** TODO Two lists of the documents leave documents out
-
-=README.md= names the documents of =docs/= and does not name
-=autoincrement.md=, =design-calls.md= or =rationale.md=. The file
-list of =docs/shape.md= chapter 9 does not name =ancestor.md=,
-=designs.md= or =shape.md= itself.
-
-Fix: each list names every document of =docs/=, or says which it
-leaves out and why.
-
-Check: every =docs/*.md= is named in both files.
-
-** TODO =docs/findings.md= shows a =step()= that its source does not have
-
-Chapter 3.2 shows "the Collatz step, taken out of
-=tests/perf/collatz.c=", a function =step()= on an =int= tested by
-~x % 2 != 0~. The file has no such function: its step is inline in
-the loop, on a =long=, tested by ~x % 2 == 0~.
-
-Fix: the passage says the function is a reduction of the loop, or
-quotes the loop itself.
-
-Check: what the passage quotes is in the file, or is called a
-reduction of it.
-
-** TODO =docs/shape.md= counts four test scripts where =make test= runs five
-
-Chapter 0 says "The test is four" scripts. =make test= runs five,
-the driver's among them, as chapter 3 of =docs/cost.md= lists them.
-
-Fix: the sentence says five and names =tests/driver=.
-
-Check: the count and the names agree with chapter 3 of
-=docs/cost.md=.
-
 * Cost model
 
 The record in =docs/cost.md=: what each construct compiles to under
