@@ -420,24 +420,6 @@ says "not yet" and names it.
 Check: a program of =tests/error= for each until it compiles, then a
 cost program on both targets.
 
-** TODO A not-yet in the body of a header's =static inline= function stops every file that includes it
-
-A =static inline= definition in the program's own header is compiled
-as the static function it is (=docs/shape.md= chapter 5), called or
-not. A body that holds what rcc does not compile yet, a floating
-constant, is then the not-yet of every file that includes the
-header, those that never call the function among them.
-
-Fix: a body that stops at a not-yet is kept as a function not yet
-compiled: c1 writes nothing for it, and an expression that names it
-is refused with the body's not-yet. An error before the not-yet is
-still an error; the text after it is not checked, and =shape.md=
-says so.
-
-Check: a program that includes a header with such a function and
-does not call it compiles; one that calls it is refused, pinned in
-=tests/error=.
-
 ** TODO A =main= of any type compiles
 
 ~void main(void)~ compiles, and reaching its =}= returns 0; so does
@@ -794,6 +776,34 @@ it is laid out with no word.
 
 Check: a program of =tests/error= for the member and for the
 element.
+
+** TODO A not-yet of c1 in an uncalled =static inline= body stops the file
+
+A =static inline= body that stops at a not-yet of the parser's is
+kept as a function not yet compiled (=docs/shape.md= chapter 5). A
+construct the parser takes and a generator refuses is not caught: an
+uncalled =static inline= function whose body holds one is "rcc:
+internal error: c1: not yet: ..." for every file that includes its
+header.
+
+Fix: the generator's refusal of such a function is kept as the
+parser's is; or the parser refuses the construct itself.
+
+Check: a program whose uncalled =static inline= function holds a
+construct only c1 refuses compiles.
+
+** TODO A not-yet in the head of an uncalled =static inline= definition stops the file
+
+~static inline struct p f(void) { ... }~, never called, is "not yet:
+struct 'p' returned by value": the refusal is in the result type,
+outside the body, where the parser does not catch it. A parameter's
+type is the same.
+
+Fix: the catch that keeps a body uncompiled covers the definition's
+head.
+
+Check: that program compiles, and a call of =f= is refused by the
+head's words.
 
 * Lexer
 

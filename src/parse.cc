@@ -4410,15 +4410,72 @@ skipped_body_words(std::string_view name)
     return "static function " + quoted(name);
 }
 
-// Whether the unit has defined the function: by a body, or by a system
-// header's definition whose body was skipped and left its words.  A
-// second definition is then a redefinition, 6.9.1p3.
+// Whether the unit has defined the function: by a body, by one it
+// stopped in, or by a system header's definition whose body was skipped
+// and left its words.  A second definition is then a redefinition,
+// 6.9.1p3.
 bool
 is_defined(const parser_t &p, std::size_t index)
 {
     const function_decl_t &f = p.unit.functions[index];
 
-    return f.body || f.sym->marking == skipped_body_words(f.sym->name);
+    return f.body || f.uncompiled ||
+           f.sym->marking == skipped_body_words(f.sym->name);
+}
+
+// A function's body, its braces included, its items parsed into the
+// scope of the parameter list, which the caller opened again.
+block_t
+function_body(parser_t &p)
+{
+    block_t body;
+    p.temporaries.emplace();
+    expect(p, tok_t::lbrace, "expected '{' before function body");
+    block_item_list(p, body);
+    expect(p, tok_t::rbrace, "expected '}' at end of function body");
+    declare_temporaries(p, body);
+    drop_identities(body);
+
+    return body;
+}
+
+// The body of a static inline definition of the program's own text, or
+// nothing when it stops at a refusal of the not-yet kind, whose words
+// go to missing.  A header defines such a function for each file that
+// includes it, and a file that never calls it does not pay for its
+// body, as for a system header's.  Only the refusal of the not-yet kind is caught,
+// so an error before it stays the error it is; the parse resumes at
+// the body's closing brace, and the text after the refusal is not
+// read.  What the body changed of the parse is undone: the scopes and
+// the statements it opened, the switches, loops and temporaries, and
+// the static objects it declared, which nothing outside it names.
+std::optional< block_t >
+inline_body(parser_t &p, std::string &missing)
+{
+    const std::size_t start = p.pos;
+    const std::size_t depth = p.scopes.size();
+    const std::size_t objects = p.unit.objects.size();
+    const std::size_t switches = p.switches.size();
+    const int breaks = p.break_targets;
+    const int continues = p.continue_targets;
+
+    try {
+        return function_body(p);
+    }
+    catch (const not_yet_error_t &e) {
+        missing = e.construct;
+        p.pos = start + 1;
+        skip_to_closing_brace(p);
+        expect(p, tok_t::rbrace, "expected '}' at end of function body");
+        p.scopes.resize(depth);
+        p.unit.objects.resize(objects);
+        p.switches.erase(p.switches.begin() + switches, p.switches.end());
+        p.break_targets = breaks;
+        p.continue_targets = continues;
+        p.temporaries.reset();
+    }
+
+    return std::nullopt;
 }
 
 // The parameter type list and the body are one block, 6.9.2p10,
@@ -4434,7 +4491,11 @@ is_defined(const parser_t &p, std::size_t index)
 // for the labels of the static objects the body declares, and labels,
 // gotos and case_labels, for the body's own labels, which no other
 // function sees; and variadic, named and va_area, for the body's
-// va_start.  The body's identities are dropped once it is whole.
+// va_start.  The body's identities are dropped once it is whole.  A
+// static inline function whose body stops at a construct rcc does not
+// compile yet is kept uncompiled, inline_body()'s: an expression that
+// names it, before the definition or after it, is refused by the
+// words of what its body needs, which the symbol keeps.
 void
 function_definition(parser_t &p,
                     const specifiers_t &spec,
@@ -4468,24 +4529,30 @@ function_definition(parser_t &p,
 
     std::vector< const symbol_t * > params = defined_parameters(p, d);
 
-    block_t body;
-    p.temporaries.emplace();
-    expect(p, tok_t::lbrace, "expected '{' before function body");
-    block_item_list(p, body);
-    expect(p, tok_t::rbrace, "expected '}' at end of function body");
-    declare_temporaries(p, body);
-    drop_identities(body);
+    const bool inline_ =
+        declared(spec, tok_t::kw_static) && spec.inline_specifier;
+    std::string missing;
+    std::optional< block_t > body =
+        inline_ ? inline_body(p, missing) : function_body(p);
 
     p.scopes.pop_back();
 
+    function_decl_t &f = p.unit.functions[index];
+    p.variadic = false;
+
+    if (!body) {
+        p.scopes.back().names.at(d.name->text)->marking =
+            missing + " in the body of static function " + quoted(d.name->text);
+        f.uncompiled = true;
+        return;
+    }
+
     require_labels(p);
 
-    function_decl_t &f = p.unit.functions[index];
     f.params = std::move(params);
     f.body = std::move(body);
     f.registers = p.registers;
     f.va_area = p.va_area;
-    p.variadic = false;
 }
 
 // The definition of a static inline function a system header writes,

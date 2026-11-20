@@ -442,6 +442,9 @@ as(const stmt_t &s)
 // every argument register as it arrives, and the address of the first
 // argument the caller left on the stack past the named ones; null for
 // any other function.  docs/shape.md chapter 4 gives its layout.
+// uncompiled says that the unit defines the function by a body the
+// parser stopped in at a construct rcc does not compile yet: there is
+// no body, and c1 writes nothing for it.
 struct function_decl_t
 {
     const symbol_t *sym;
@@ -449,6 +452,7 @@ struct function_decl_t
     std::optional< block_t > body;
     int registers;
     const symbol_t *va_area = nullptr;
+    bool uncompiled = false;
 };
 
 // An address constant, 6.6p9, p11, as the parser folds it: the address

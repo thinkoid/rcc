@@ -90,7 +90,9 @@ to the listing of its twin without the qualifier (`volatile`). Nor
 does `inline` on the definition of a program's own `static`
 function: it suggests that calls be fast, and each call is written
 as it is either way, so a program compiles to the listing of its
-twin without the specifier (`static-inline`). Nor does
+twin without the specifier (`static-inline`). One whose body holds
+what rcc does not compile yet is kept uncompiled and writes nothing
+at all (`static-inline-not-yet`). Nor does
 `__builtin_expect(e, c)` of a constant `c`: it is `e` converted to
 `long`, so a program compiles to the listing of its twin with
 `(long)(e)` in its place (`builtin-expect`). Nor does the attribute

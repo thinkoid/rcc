@@ -1,0 +1,2 @@
+tests/error/static-inline-not-yet-call.c:18:16: error: not yet: floating constant in the body of static function 'half'
+status 1

@@ -809,6 +809,19 @@ so a second one, the program's or the header's, is a redefinition
 body is not yet. The line marker in force at the declaration's
 `static` says which of the two it is (chapter 2).
 
+A `static inline` definition of the program's own, which a header
+of the program writes for every file that includes it, may hold what
+rcc does not compile yet, a floating constant among them. Its body
+then stops at the first refusal of the not-yet kind, and the
+function is kept uncompiled: c1 writes nothing for it, the static
+objects its body declares among them, so a file that never calls it
+compiles, and an expression that names it, before the definition as
+after it, is refused by the body's words, `not yet: floating
+constant in the body of static function 'half'`. It is still a
+definition, so a second one is a redefinition. An error in the body
+before the refusal stays the error it is; the text after it is not
+checked, so an error there is not seen.
+
 `static` at file scope gives a function or an object internal
 linkage (6.2.2p3). The rules of linkage are the standard's: `extern`
 on a later declaration keeps the linkage of the earlier one (p4), and
@@ -1396,7 +1409,8 @@ and `volatile` are dropped, so an assignment to a `const` object and
 a conversion that discards a qualifier draw no diagnostic, and
 `(const void)` is taken as `(void)`), an atomic object, GNU C's case
 range, `case 1 ... 5:`, the body of a system header's `static inline`
-function, whose use is refused,
+function, whose use is refused, and of the program's own one whose
+body holds a not-yet, whose use is refused by the body's words,
 and a system header's `static inline` declaration without a body, a
 `register` array (6.3.2.1p3), `inline` on a function
 definition without `static`, what an attribute that rcc does
