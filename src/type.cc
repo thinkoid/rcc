@@ -136,6 +136,13 @@ make_not_yet(int identity, std::string what)
     return type_t { not_yet_t { identity, std::move(what) } };
 }
 
+// A real floating type is aligned to its size on both targets.
+type_t
+make_floating(int identity, std::string what, long size)
+{
+    return type_t { not_yet_t { identity, std::move(what), size, int(size) } };
+}
+
 // An array of unknown size has no size; asking is the caller's error.
 long
 size_of(const type_t &t)
@@ -151,6 +158,9 @@ size_of(const type_t &t)
 
     if (is< record_type_t >(t) && laid_out(*as< record_type_t >(t).record))
         return as< record_type_t >(t).record->size;
+
+    if (is< not_yet_t >(t) && as< not_yet_t >(t).size > 0)
+        return as< not_yet_t >(t).size;
 
     throw std::logic_error("size_of: a type without a size");
 }
@@ -169,6 +179,9 @@ align_of(const type_t &t)
 
     if (is< record_type_t >(t) && laid_out(*as< record_type_t >(t).record))
         return as< record_type_t >(t).record->alignment;
+
+    if (is< not_yet_t >(t) && as< not_yet_t >(t).alignment > 0)
+        return as< not_yet_t >(t).alignment;
 
     throw std::logic_error("align_of: a type without an alignment");
 }

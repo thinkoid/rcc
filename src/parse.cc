@@ -365,23 +365,25 @@ size_type()
 // The not-yet types that are one type wherever they are written: the
 // real and the complex floating types, GNU C's __float128 and
 // __int128, clang's SVE types, and _Bool, each of a fixed identity.  A
-// not-yet type of its own takes the next identity after theirs.
+// not-yet type of its own takes the next identity after theirs.  The
+// real floating types have clang's sizes, the same on both targets, so
+// that a record lays them out as members.
 type_t
 float_type()
 {
-    return make_not_yet(0, "floating type 'float'");
+    return make_floating(0, "floating type 'float'", 4);
 }
 
 type_t
 double_type()
 {
-    return make_not_yet(1, "floating type 'double'");
+    return make_floating(1, "floating type 'double'", 8);
 }
 
 type_t
 long_double_type()
 {
-    return make_not_yet(2, "floating type 'long double'");
+    return make_floating(2, "floating type 'long double'", 16);
 }
 
 // __builtin_va_list, the type behind va_list, 7.16p4, the convention's:
@@ -4554,6 +4556,18 @@ bit_field(parser_t &p, member_list_t &list, const type_t &t)
     mark_not_yet(list.record, "bit-field in " + record_words(list.record));
 }
 
+// Whether a member's type has a size though rcc does not use its
+// object yet: a real floating type, or an array of one, takes its place
+// in the layout, and an access of it is refused where it stands.
+bool
+is_sized(const type_t &t)
+{
+    if (is< array_t >(t))
+        return is_sized(*as< array_t >(t).element);
+
+    return is< not_yet_t >(t) && as< not_yet_t >(t).size > 0;
+}
+
 // A member's type: a complete object type, 6.7.3.2p11, so neither a
 // function, p3, nor void, nor an incomplete record, the record being
 // defined among them, which holds no instance of itself, p3.  An array
@@ -4561,7 +4575,8 @@ bit_field(parser_t &p, member_list_t &list, const type_t &t)
 // lay out yet, and stands last, p3, as member_list() checks; in a union
 // it is an error, p3.  A type rcc does not use yet, a record that holds
 // a construct rcc does not lay out among them, leaves the record
-// without its layout, refused by the member type's words.
+// without its layout, refused by the member type's words, but for one
+// is_sized() says is laid out.
 void
 require_member_type(const token_t &name, const type_t &t, member_list_t &list)
 {
@@ -4586,7 +4601,7 @@ require_member_type(const token_t &name, const type_t &t, member_list_t &list)
         mark_not_yet(r, "flexible array member in " + record_words(r));
     }
 
-    if (const std::string *words = not_yet_in(t))
+    if (const std::string *words = not_yet_in(t); words && !is_sized(t))
         mark_not_yet(r, *words);
 }
 
@@ -7126,7 +7141,9 @@ member_lvalue(const parser_t &p, const token_t &op, expr_t e, const member_t &m)
 // E.m and P->m, 6.5.3.4: the lvalue of the member, p3, p4, member_lvalue()'s.
 // A member of an array type decays where its value is used, and one of
 // a record type is an lvalue whose value is refused and whose members
-// are reached.
+// are reached.  A member of a floating type, or an array of one, which
+// the record lays out and rcc does not use yet, is refused by the
+// type's words, its address as its value.
 expr_t
 member_access(parser_t &p, const token_t &op, expr_t e)
 {
@@ -7140,6 +7157,8 @@ member_access(parser_t &p, const token_t &op, expr_t e)
     }
 
     const member_t &m = named_member(accessed_record(op, e.type), name);
+    if (is_sized(m.type))
+        not_yet(name, *not_yet_in(m.type));
 
     return member_lvalue(p, op, std::move(e), m);
 }

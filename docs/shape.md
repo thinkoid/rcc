@@ -159,8 +159,11 @@ SVE types; an atomic type; a type a
 typedef names through an attribute rcc does not honour, or through an
 array size rcc cannot compute. Such a type
 carries an identity, which equality compares, and the words a
-refusal of its use prints; it has no size and no alignment, and a
-pointer to it is an ordinary pointer. The type carries no qualifier:
+refusal of its use prints; a pointer to it is an ordinary pointer.
+It has no size and no alignment, but a real floating type has
+`clang`'s, the same on both targets, so that a record lays it out:
+`float` 4, `double` 8 and `long double` 16, each aligned to its size.
+The type carries no qualifier:
 `const`, `volatile` and `restrict` are dropped (chapter 5). The C
 spelling is not kept:
 `long` and `long long` are one type on a target where both are 64
@@ -218,7 +221,12 @@ flexible array member, a list of no member, or a member of a type
 rcc does not use yet. It keeps the words of the first such construct,
 and a use that needs its layout is refused by them, as a not-yet
 type's is; a pointer to it is an ordinary pointer, so a program's
-`FILE *` is what it was.
+`FILE *` is what it was. A member of a real floating type, or an
+array of one, takes its place in the layout at its size and
+alignment, so `sizeof`, `_Alignof` and `offsetof` of the record are
+its layout's and its other members are reached; an access of the
+floating member itself, its address as its value, is refused by its
+type's words.
 
 `__builtin_va_list`, the type behind `va_list` (7.16p4), is the
 target's, since a list is handed to the C library, which reads it as
@@ -1344,7 +1352,8 @@ of a struct or a
 union with a bit-field, an anonymous member, an attribute that marks,
 `packed` and `aligned` among them, a packing of `#pragma pack`, a
 flexible array member, no member, or a member of a type rcc does not
-use yet (chapter 3), C23's
+use yet but a real floating one (chapter 3), an access of a floating
+member, C23's
 compatibility of two records of one tag, floating point, `_Bool` and
 `__int128` (each type is declared; a pointer to one is an ordinary
 pointer, and a use that needs the object is refused; a floating

@@ -67,12 +67,16 @@ struct record_type_t
 // through an array size rcc cannot compute.  Any other enum is the
 // integer type compatible with it, an int_t.  Two not-yet types are one
 // type when their identities are equal.  what is the words a refusal
-// prints.  It has no size and no alignment, and a pointer to it is an
-// ordinary pointer.
+// prints.  A pointer to it is an ordinary pointer.  It has no size and
+// no alignment, size and alignment 0, but for a real floating type,
+// which a record lays out as a member (shape.md chapter 3): its size
+// and alignment are then clang's.
 struct not_yet_t
 {
     int identity;
     std::string what;
+    long size = 0;
+    int alignment = 0;
 };
 
 struct type_t
@@ -146,8 +150,10 @@ bool operator==(const type_t &, const type_t &);
 // The size and the alignment in bytes, the same on both targets, the
 // sizes LP64's: an integer its width, a pointer 8, an array its count
 // times its element's and its element's alignment, and a record its
-// layout's.  A void, function or not-yet type has neither, and neither
-// has a record without its layout; asking throws.
+// layout's, and a real floating type clang's, the size for both: 4 for
+// float, 8 for double and 16 for long double.  A void, function or
+// other not-yet type has neither, and neither has a record without its
+// layout; asking throws.
 long size_of(const type_t &);
 int align_of(const type_t &);
 
@@ -159,5 +165,6 @@ type_t
 make_function(type_t result, std::vector< type_t > params, bool variadic);
 type_t make_record(const record_t &);
 type_t make_not_yet(int identity, std::string what);
+type_t make_floating(int identity, std::string what, long size);
 
 } // namespace rcc

@@ -4,7 +4,11 @@
    compares.  The records are defined here, so the main, rcc's build and
    clang's see one set: a struct and a union of each pair of member
    kinds, a struct of each triple of a smaller set, and records that
-   hold records.  The layout is the parser's, docs/shape.md chapter 3,
+   hold records.  The floating kinds, a real floating type or an array
+   of double, which a record lays out though rcc uses no floating
+   object, are a list apart: each pairs with every kind and stands
+   between two of the smaller set, and the members probe, which reads
+   each member of the other lists, leaves them out.  The layout is the parser's, docs/shape.md chapter 3,
    and each function returns what the parser folds, a size, an
    alignment or an offset, but for the stride of an array of the record,
    which c1 computes from the record's size, and for the place of an
@@ -23,6 +27,7 @@ typedef char *pointer_t;
 typedef int (*function_t)(int);
 typedef char chars_t[3];
 typedef short shorts_t[3];
+typedef double doubles_t[2];
 
 /* the records that stand as members: a struct whose second member is
    aligned past its first, a union of two widths, and an array of the
@@ -71,6 +76,14 @@ typedef inner_t inners_t[2];
     X(A, TA, B, TB, c, char) X(A, TA, B, TB, s, short)                  \
     X(A, TA, B, TB, l, long) X(A, TA, B, TB, a, chars_t)                \
     X(A, TA, B, TB, r, inner_t) X(A, TA, B, TB, u, either_t)
+
+/* the floating kinds, under a first and a second name */
+#define FLOATING(X)                                                     \
+    X(g, float) X(d, double) X(q, long double) X(v, doubles_t)
+
+#define FLOATING2(X, A, TA)                                             \
+    X(A, TA, g, float) X(A, TA, d, double) X(A, TA, q, long double)     \
+    X(A, TA, v, doubles_t)
 /* clang-format on */
 
 /* the pairs: struct p_AB and union u_AB, members x and y */
@@ -103,6 +116,20 @@ KINDS(PAIRS)
 #define TRIPLES(A, TA)           FEW2(TRIPLES_OF, A, TA)
 
 FEW(TRIPLES)
+
+/* the pairs of a floating kind and any kind, either way round, and of
+   two floating kinds; the triples of a floating kind between two of
+   the smaller set */
+#define FLOATING_PAIRS(A, TA) FLOATING2(PAIR, A, TA)
+
+KINDS(FLOATING_PAIRS)
+FLOATING(PAIRS)
+FLOATING(FLOATING_PAIRS)
+
+#define FLOATING_TRIPLES_OF(A, TA, B, TB) FEW3(TRIPLE, A, TA, B, TB)
+#define FLOATING_TRIPLES(A, TA)           FLOATING2(FLOATING_TRIPLES_OF, A, TA)
+
+FEW(FLOATING_TRIPLES)
 
 /* records of records: a struct of a pair and of an array of triples,
    whose designators reach into both; a union of two structs; and a
