@@ -1,0 +1,2 @@
+tests/error/zero-length-member.c:8:19: warning: array 'data' of size zero read as a flexible array member
+status 0

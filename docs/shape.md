@@ -605,7 +605,12 @@ complete object type (6.7.3.2p3, p11): a function, `void`, an
 incomplete record, the record being defined among them, and a second
 member of one name are errors, and so is an array of unknown size
 anywhere but last in a struct of two named members or more, where it
-is a flexible array member (p20). A member declaration with no
+is a flexible array member (p20). A member's own array of size zero,
+`unsigned char f_handle[0];` in glibc's `struct file_handle`, is GNU
+C's spelling of one: where a flexible array member may stand it is
+read as `[]`, with no word in a system header's text and a warning in
+the program's own, and anywhere else its size is the error it is
+(6.7.7.3p1). A member declaration with no
 declarator declares an anonymous member where its specifier is a
 struct or a union without a tag (p15), and otherwise the tag or the
 constants of its specifier alone. In a list a system header writes,
@@ -1173,10 +1178,12 @@ the list once, on standard error in the error's format, `warning` in
 place of `error`: after a parse that succeeds, or before the error
 that ends one, the order in which the parse met them all, as each
 warning stands before the first error in the source. `-w` silences
-the warnings, and no warning changes the exit status. The one warning
-is for a `register` variable whose register would be past the
+the warnings, and no warning changes the exit status. One warning is
+for a `register` variable whose register would be past the
 target's count, the sixth on x86-64 and the eleventh on aarch64,
-which takes a slot (`backend.md` chapter 4).
+which takes a slot (`backend.md` chapter 4); one is for a member's
+array of size zero in the program's own text, read as a flexible
+array member (chapter 5).
 
 Exit status: 0; 1 for a diagnosed error or a failed system call; 2
 for a usage error; 3 for an internal error, a construct c1 does not

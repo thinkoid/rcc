@@ -1,0 +1,2 @@
+tests/error/zero-length-member-not-last.c:7:19: error: array size must be greater than zero
+status 1

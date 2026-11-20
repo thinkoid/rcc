@@ -215,7 +215,8 @@ struct parameter_t
 // closed at its ')', with the parameters and the tags the list
 // declares, which a definition opens again as its body's; empty when
 // there are no params.  star is the '*' that sizes the array a
-// parameter is adjusted from, 6.7.7.3p4, or null.
+// parameter is adjusted from, 6.7.7.3p4, or null.  zero is the size of
+// zero of a member's own array, read as left out, or null.
 struct declarator_t
 {
     const token_t *name;
@@ -223,12 +224,15 @@ struct declarator_t
     std::optional< std::vector< parameter_t > > params;
     scope_t scope;
     const token_t *star = nullptr;
+    const token_t *zero = nullptr;
 };
 
 // Whether a declarator names what it declares: a declaration's does, a
 // parameter's may, 6.7.7.1p1, and a type name's, an abstract
-// declarator, does not, 6.7.8p1.
-enum class naming_t { required, optional, none };
+// declarator, does not, 6.7.8p1.  A member's names it as a
+// declaration's does, and its own array may have a size of zero, GNU
+// C's spelling of a flexible array member, which member_list() judges.
+enum class naming_t { required, optional, none, member };
 
 //
 // diagnostics
@@ -2778,14 +2782,20 @@ declarator_t declarator(parser_t &,
                         bool typedef_ = false);
 declarator_t
 parenthesized_declarator(parser_t &, const type_t &, naming_t, bool typedef_);
-declarator_t declarator_suffix(
-    parser_t &, const token_t *, const type_t &, bool typedef_, bool parameter);
+declarator_t declarator_suffix(parser_t &,
+                               const token_t *,
+                               const type_t &,
+                               bool typedef_,
+                               bool parameter,
+                               bool member);
 type_t pointer(parser_t &, type_t);
 type_t array_declarator(parser_t &,
                         const type_t &,
                         bool typedef_,
                         bool parameter,
-                        const token_t *&star);
+                        bool member,
+                        const token_t *&star,
+                        const token_t *&zero);
 bool parameter_type_list(parser_t &, std::vector< parameter_t > &);
 parameter_t parameter_declaration(parser_t &);
 type_t type_name(parser_t &);
@@ -4894,14 +4904,28 @@ mark_not_yet(record_t &r, std::string words)
 
 // The record a member declaration of a list is read into; the token
 // of the member of an array of unknown size it has met, a flexible
-// array member, which only the last member may be; and the count of
-// the named members met, bit-fields among them.
+// array member, which only the last member may be, and the token of
+// its size when it was written as zero; and the count of the named
+// members met, bit-fields among them.
 struct member_list_t
 {
     record_t &record;
     const token_t *flexible;
+    const token_t *zero;
     int named;
 };
+
+// The refusal of a flexible array member where none may stand; one
+// written with a size of zero is refused as any array of that size,
+// 6.7.7.3p1, at its size.
+[[noreturn]] void
+refuse_flexible(const member_list_t &list, std::string what)
+{
+    if (list.zero)
+        fail(*list.zero, "array size must be greater than zero");
+
+    fail(*list.flexible, std::move(what));
+}
 
 // The width of a bit-field after its ':', an integer constant
 // expression, 6.7.3.2p4, of a bit-field whose type is an integer type,
@@ -4942,12 +4966,16 @@ is_sized(const type_t &t)
 // defined among them, which holds no instance of itself, p3.  An array
 // of unknown size is a flexible array member, p20, which rcc does not
 // lay out yet, and stands last, p3, as member_list() checks; in a union
-// it is an error, p3.  A type rcc does not use yet, a record that holds
-// a construct rcc does not lay out among them, leaves the record
-// without its layout, refused by the member type's words, but for one
+// it is an error, p3.  zero is the size of such an array written as
+// zero, or null.  A type rcc does not use yet, a record that holds a
+// construct rcc does not lay out among them, leaves the record without
+// its layout, refused by the member type's words, but for one
 // is_sized() says is laid out.
 void
-require_member_type(const token_t &name, const type_t &t, member_list_t &list)
+require_member_type(const token_t &name,
+                    const type_t &t,
+                    const token_t *zero,
+                    member_list_t &list)
 {
     record_t &r = list.record;
 
@@ -4962,11 +4990,13 @@ require_member_type(const token_t &name, const type_t &t, member_list_t &list)
                        record_words(*as< record_type_t >(t).record));
 
     if (is< array_t >(t) && as< array_t >(t).count < 0) {
-        if (r.is_union)
-            fail(name, "flexible array member " + quoted(name.text) + " in " +
-                           record_words(r));
-
         list.flexible = &name;
+        list.zero = zero;
+
+        if (r.is_union)
+            refuse_flexible(list, "flexible array member " + quoted(name.text) +
+                                      " in " + record_words(r));
+
         mark_not_yet(r, "flexible array member in " + record_words(r));
     }
 
@@ -4977,17 +5007,21 @@ require_member_type(const token_t &name, const type_t &t, member_list_t &list)
 // A named member, its type checked and its name one the record has not
 // declared yet, 6.7.3.2p1 and 6.2.3p1: each record is a name space of
 // its own.  A member after a flexible array member is an error, p3.
+// zero is the member's own array's size written as zero, or null.
 void
-add_member(member_list_t &list, const token_t &name, const type_t &t)
+add_member(member_list_t &list,
+           const token_t &name,
+           const type_t &t,
+           const token_t *zero)
 {
     record_t &r = list.record;
 
     if (list.flexible)
-        fail(*list.flexible, "flexible array member " +
-                                 quoted(list.flexible->text) +
-                                 " not at the end of " + record_words(r));
+        refuse_flexible(list, "flexible array member " +
+                                  quoted(list.flexible->text) +
+                                  " not at the end of " + record_words(r));
 
-    require_member_type(name, t, list);
+    require_member_type(name, t, zero, list);
 
     for (const member_t &m : r.members)
         if (m.name == name.text)
@@ -5010,7 +5044,7 @@ member_declarator(parser_t &p, const specifiers_t &spec, member_list_t &list)
         return;
     }
 
-    const declarator_t d = declarator(p, spec.type, naming_t::required, false);
+    const declarator_t d = declarator(p, spec.type, naming_t::member, false);
     ++list.named;
 
     if (const token_t *marking = attribute_specifier_list(p))
@@ -5022,7 +5056,7 @@ member_declarator(parser_t &p, const specifiers_t &spec, member_list_t &list)
         return;
     }
 
-    add_member(list, *d.name, d.type);
+    add_member(list, *d.name, d.type, d.zero);
 }
 
 // A member declaration with no declarator, 6.7.3.2p2: a struct or a
@@ -5087,11 +5121,14 @@ member_declaration(parser_t &p, member_list_t &list)
 // record's own, 6.2.3p1.  A flexible array member is not the only
 // named member, 6.7.3.2p3, and a list of no member at all makes an empty
 // record, whose behavior p10 leaves undefined and GNU C takes, which
-// rcc does not lay out yet.
+// rcc does not lay out yet.  A flexible array member written with a
+// size of zero, as GNU C writes one, is taken with a warning in the
+// program's own text and with none in a system header's, which is read
+// as it is.
 void
 member_list(parser_t &p, record_t &r)
 {
-    member_list_t list { r, nullptr, 0 };
+    member_list_t list { r, nullptr, nullptr, 0 };
 
     while (!next_is(p, { tok_t::rbrace, tok_t::eof })) {
         skip_extension_keywords(p);
@@ -5103,9 +5140,15 @@ member_list(parser_t &p, record_t &r)
     }
 
     if (list.flexible && list.named < 2)
-        fail(*list.flexible, "flexible array member " +
-                                 quoted(list.flexible->text) +
-                                 " in a struct with no other named member");
+        refuse_flexible(list, "flexible array member " +
+                                  quoted(list.flexible->text) +
+                                  " in a struct with no other named member");
+
+    if (list.zero && !list.zero->where.system_header)
+        p.warnings.push_back(
+            { list.zero->where, "array " + quoted(list.flexible->text) +
+                                    " of size zero read as a flexible array "
+                                    "member" });
 
     if (r.members.empty())
         mark_not_yet(r, "empty " + record_words(r));
@@ -5506,7 +5549,7 @@ starts_parenthesized_declarator(const parser_t &p, naming_t naming)
     if (peek(p).kind != tok_t::lparen)
         return false;
 
-    if (naming == naming_t::required)
+    if (naming == naming_t::required || naming == naming_t::member)
         return true;
 
     const token_t &t = peek(p, 1);
@@ -5555,7 +5598,8 @@ skip_parenthesized_declarator(parser_t &p)
 // array suffix right after a parameter's name, or the place of it, is
 // the parameter's outermost array type derivation, the one 6.7.7.4p6
 // adjusts to a pointer; a parameter's is the declarator whose name is
-// optional.
+// optional.  The array suffix right after a member's name is the
+// member's own array, which may have a size of zero.
 declarator_t
 declarator(parser_t &p, const type_t &base, naming_t naming, bool typedef_)
 {
@@ -5565,12 +5609,12 @@ declarator(parser_t &p, const type_t &base, naming_t naming, bool typedef_)
         return parenthesized_declarator(p, t, naming, typedef_);
 
     const token_t *name = nullptr;
-    if (naming == naming_t::required ||
+    if (naming == naming_t::required || naming == naming_t::member ||
         (naming == naming_t::optional && peek(p).kind == tok_t::identifier))
         name = &expect(p, tok_t::identifier, "expected identifier");
 
-    return declarator_suffix(p, name, t, typedef_,
-                             naming == naming_t::optional);
+    return declarator_suffix(p, name, t, typedef_, naming == naming_t::optional,
+                             naming == naming_t::member);
 }
 
 // Whether the tokens from inside to close, those of a declarator in
@@ -5610,7 +5654,7 @@ names_alone(const parser_t &p, std::size_t inside, std::size_t close)
 // scope.  An array suffix after the parentheses is read as an array's
 // that no parameter is adjusted from, as it is in int (*a)[3], unless
 // the parentheses are redundant: in int (a)[3] it is the parameter's
-// own.
+// own, and a member's own likewise.
 declarator_t
 parenthesized_declarator(parser_t &p,
                          const type_t &t,
@@ -5621,11 +5665,13 @@ parenthesized_declarator(parser_t &p,
 
     const std::size_t inside = p.pos;
     skip_parenthesized_declarator(p);
-    const bool parameter =
-        naming == naming_t::optional && names_alone(p, inside, p.pos);
+    const bool alone = names_alone(p, inside, p.pos);
+    const bool parameter = naming == naming_t::optional && alone;
+    const bool member = naming == naming_t::member && alone;
     expect(p, tok_t::rparen, "expected ')'");
 
-    declarator_t suffix = declarator_suffix(p, nullptr, t, typedef_, parameter);
+    declarator_t suffix =
+        declarator_suffix(p, nullptr, t, typedef_, parameter, member);
     const std::size_t after = p.pos;
 
     p.pos = inside;
@@ -5637,6 +5683,7 @@ parenthesized_declarator(parser_t &p,
         d.params = std::move(suffix.params);
         d.scope = std::move(suffix.scope);
         d.star = suffix.star;
+        d.zero = suffix.zero;
     }
 
     return d;
@@ -5654,18 +5701,20 @@ parenthesized_declarator(parser_t &p,
 // the name's or one a pointer points to; the declarator keeps it for a
 // definition.  parameter says that the suffixes follow a parameter's
 // name or the place of it, so that their first array is the
-// parameter's own.
+// parameter's own; member says the same of a member's name.
 declarator_t
 declarator_suffix(parser_t &p,
                   const token_t *name,
                   const type_t &t,
                   bool typedef_,
-                  bool parameter)
+                  bool parameter,
+                  bool member)
 {
     declarator_t d { name, t, std::nullopt, { } };
 
     if (peek(p).kind == tok_t::lbracket) {
-        d.type = array_declarator(p, t, typedef_, parameter, d.star);
+        d.type =
+            array_declarator(p, t, typedef_, parameter, member, d.star, d.zero);
 
         if (peek(p).kind == tok_t::lparen)
             fail(peek(p), "array element type cannot be a function");
@@ -5861,6 +5910,23 @@ parameter_array_count(const token_t &at, const expr_t &size)
     return array_count(at, size);
 }
 
+// The count of a member's own array: as any array's, but for a
+// constant size of zero, GNU C's spelling of a flexible array member,
+// which is taken as left out and its token kept in zero.  Only the
+// place of a flexible array member takes it, and member_list() refuses
+// it anywhere else as any array of size zero, 6.7.7.3p1.
+long
+member_array_count(const token_t &at, const expr_t &size, const token_t *&zero)
+{
+    if (is< int_t >(size.type) && is< literal_t >(size) &&
+        exact_value(size) == 0) {
+        zero = &at;
+        return -1;
+    }
+
+    return array_count(at, size);
+}
+
 // static and the type qualifiers inside a parameter's brackets, before
 // the size, 6.7.7.3p3: static first or after the qualifiers, once.  The
 // qualifiers are the pointer's the parameter is adjusted to, 6.7.7.4p6,
@@ -5981,12 +6047,16 @@ is_incomplete(const type_t &t)
 // need not be an integer constant expression, or may be '*', returned
 // in star; every other suffix keeps the rules of any array, so a
 // variable length array behind the parameter's pointer is not yet.
+// When member says that the first suffix is a member's own array, its
+// size may be zero, returned in zero.
 type_t
 array_declarator(parser_t &p,
                  const type_t &element,
                  bool typedef_,
                  bool parameter,
-                 const token_t *&star)
+                 bool member,
+                 const token_t *&star,
+                 const token_t *&zero)
 {
     std::vector< array_suffix_t > suffixes;
     const token_t *restrict_ = nullptr;
@@ -5994,6 +6064,7 @@ array_declarator(parser_t &p,
     while (peek(p).kind == tok_t::lbracket) {
         array_suffix_t suffix { &advance(p), -1, { } };
         const bool adjusted = parameter && suffixes.empty();
+        const bool own = member && suffixes.empty();
 
         if (adjusted) {
             const token_t *static_ = parameter_array_qualifiers(p, restrict_);
@@ -6011,7 +6082,8 @@ array_declarator(parser_t &p,
             if (size) {
                 refuse_file_scope_variable_size(p, start, *size);
                 suffix.count = adjusted ? parameter_array_count(start, *size) :
-                                          array_count(start, *size);
+                               own ? member_array_count(start, *size, zero) :
+                                     array_count(start, *size);
             }
         }
 

@@ -367,24 +367,6 @@ for 6.9.1p3.
 
 Check: a cost program with both forms, pinned on each target.
 
-** TODO A zero-length array in a system header is an error
-
-=#include <fcntl.h>= under =_GNU_SOURCE= fails,
-"/usr/include/bits/fcntl-linux.h:370:26: error: array size must be
-greater than zero": the C library's =struct file_handle= ends in
-~unsigned char f_handle[0];~, GNU C's spelling of a flexible array
-member. The size is a constraint violation (6.7.7.3p1), and the
-headers of a system are read as they are (=docs/shape.md= chapter
-5).
-
-Fix: a zero-length array as a record's last member is read as a
-flexible array member, =[]=: in a system header's text with no word,
-in the program's own with a warning. Anywhere else the error stays.
-
-Check: a program that includes =fcntl.h= under =_GNU_SOURCE=
-compiles; a program with the member in its own text draws the
-warning, pinned.
-
 ** TODO A record with a flexible array member has no layout
 
 ~struct h { int n; unsigned char b[]; };~ is declared, and a use
