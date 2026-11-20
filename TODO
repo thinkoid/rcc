@@ -80,23 +80,6 @@ label's within its object.
 Check: a function of =subscript-row= for each, and no function
 longer.
 
-** TODO aarch64: two functions answer an address as a value
-
-=joined()= and the value's path of =summed()= in =src/c1-aarch64.cc=
-each write an address as a value: the first for constants met
-through casts, sums and rows' layers with at most one index, the
-second for one constant over an lvalue's address and for a row on a
-name. With =summed()='s value path removed, =folded()=, =joined()=
-and the general rows answer every value; 27 listings then change at
-the same count, ~p[r] - 1~ being =sub x1, x1, #4= where it is =add
-x1, x1, #-4= today, the form every other ~p - c~ takes, and
-=summed()= loses two parameters.
-
-Fix: remove the value's path of =summed()=.
-
-Check: no function longer, and the listings that change at the same
-count read.
-
 ** TODO aarch64: a register parameter from the stack is loaded before the other parameters' stores
 
 A =register= parameter past the eighth is loaded from the caller's
@@ -117,7 +100,11 @@ Check: =stacked()= on aarch64 against the chapter's sentence.
 ~p + 0~ on a pointer is =addq $0, %rax= and =add x0, x0, #0=, and
 ~x + 0~ on an =int= the same =addl $0, %eax= and =add w0, w0, #0=,
 where constants that sum to 0 through a chain of casts write nothing
-(=aarch64.md= 6.3).
+(=aarch64.md= 6.3). The two targets differ on one shape: a constant 0
+over a row or over a dereference's address, ~p[i] + 0~ on an ~int
+(*p)[3]~ and ~&**pp + 0~, is =add x0, x0, #0= on aarch64 and no
+instruction on x86-64, whose =summed()= answers the base where the
+displacement is 0. No test has the shape.
 
 Fix: none taken; decide whether a sum by a constant 0 the source
 wrote is an instruction.

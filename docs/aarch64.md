@@ -1054,8 +1054,8 @@ x2, #12; mul x1, x1, x2; add x0, x0, x1`, and then the one `add x0,
 x0, #12`, the 4 under the row with the column's 8; a row on a slot or
 a label under its index keeps its own `add` of the part under the
 index, and the column's after the sum. One constant over a row is the
-base and the one `add` of its displacement, `add x0, x0, #-4` after
-the sum for `p[i] - 1`.
+row of `p + n` or `p - n` after the sum, as over any pointer, `sub
+x0, x0, #4` for `p[i] - 1`.
 
 A store's address is generated before its right operand and held
 across it (G13), but a constant index reads nothing, so its `mov` is
