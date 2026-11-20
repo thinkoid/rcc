@@ -64,22 +64,6 @@ is a product, or every global array by a variable index.
 
 Check: the count over =tests=, and no function longer.
 
-** TODO aarch64: a row's value on a slot or a label adds its column after the sum
-
-~&((int (*)[3]) ((char *) m + 4))[i][1]~ on a local =m= is =add x0,
-x29, #24=, the index's product and its add, then =add x0, x0, #4=,
-where the column joins the slot's own add, =add x0, x29, #28=, an
-instruction fewer; on a global, =cells+4= in the page's pair and
-=add x0, x0, #4= after the sum, where =cells+8= in the pair is the
-form. The value's walk (=joined()= in =src/c1-aarch64.cc=) refuses a
-name's base. No test has the shape.
-
-Fix: the value's rows sum the column into a name's own add, a
-label's within its object.
-
-Check: a function of =subscript-row= for each, and no function
-longer.
-
 ** TODO aarch64: a register parameter from the stack is loaded before the other parameters' stores
 
 A =register= parameter past the eighth is loaded from the caller's

@@ -1089,18 +1089,14 @@ in_frame_reach(long long displacement)
 // a label's offset outside its object, and the rows of *p and p + n
 // reach the address.
 std::optional< address_t >
-folded(state_t &s, const expr_t &pointer)
+named_operand(state_t &s, const named_offset_t &named)
 {
-    const auto named = named_offset(pointer, s.defined);
-    if (!named)
-        return std::nullopt;
-
-    const auto &object = *named->object;
+    const auto &object = *named.object;
     const bool slot = is< name_t >(object) && !global_of(object);
     const auto displacement =
-        wrapped_add(slot ? slot_of(s, object_of(object)) : 0, named->offset);
+        wrapped_add(slot ? slot_of(s, object_of(object)) : 0, named.offset);
     if (slot ? !in_frame_reach(displacement) :
-               !within_object(*named) || displacement > INT32_MAX)
+               !within_object(named) || displacement > INT32_MAX)
         return std::nullopt;
 
     if (slot)
@@ -1112,6 +1108,18 @@ folded(state_t &s, const expr_t &pointer)
 
     return address_t { .displacement = static_cast< int >(displacement),
                        .label = label };
+}
+
+// The operand of a pointer that is a name's address plus a constant,
+// named_offset()'s, named_operand()'s; none for any other pointer.
+std::optional< address_t >
+folded(state_t &s, const expr_t &pointer)
+{
+    const auto named = named_offset(pointer, s.defined);
+    if (!named)
+        return std::nullopt;
+
+    return named_operand(s, *named);
 }
 
 // The register variable an operand is generated into where an operation
@@ -2534,6 +2542,46 @@ row_address(state_t &s, const row_access_t &row)
                        .label = row.label ? row.slot->label : std::string { } };
 }
 
+// The value of a row on a name by a variable index, 6.3: denoted()'s
+// base a slot's or a label's address, the walk's constants under the
+// index and above it in the name's own add, named_operand()'s, and then
+// the index added in the order written (G13).  On a local int m[4][3]
+// at [x29, #20], &((int (*)[3]) ((char *) m + 4))[i][1] is add x0, x29,
+// #28, the index's product and its add, and on a global the label's
+// pair at cells+8.  The rows add each constant above the index after
+// the sum, and the name's address is one or two instructions either
+// way, so this is never longer.  A register variable handed down, and
+// the register the consumer names, wanted (6.1), are the last add's.
+// None with no constant, whose rows are the same, and where the total
+// is out of the name's reach, a slot's 5.3 or a label's object.
+std::optional< value_t >
+named_row(state_t &s, const expr_t &e, into_t *into, unsigned wanted)
+{
+    const auto at = denoted(e);
+    if (!at.index || at.constants == 0)
+        return std::nullopt;
+
+    auto named = named_offset(*at.base, s.defined);
+    if (!named)
+        return std::nullopt;
+
+    named->offset = wrapped_add(named->offset, at.bytes);
+    const auto a = named_operand(s, *named);
+    if (!a)
+        return std::nullopt;
+
+    value_t base { };
+    if (!at.index_first)
+        base = address_of(s, *a);
+
+    const auto n = displacement(s, *at.index, at.index_stride);
+
+    if (at.index_first)
+        base = address_of(s, *a);
+
+    return offset(s, binary_op_t::add, base, n, !at.index_first, into, wanted);
+}
+
 // The value of a pointer whose sums by a constant, through its casts
 // and its rows' layers, are more than one, 6.3: denoted()'s base, a
 // variable index on the way added to it in the order written, and the
@@ -2551,8 +2599,7 @@ row_address(state_t &s, const row_access_t &row)
 // destination, and with no index the base's row's too, base_into()'s,
 // as for p + c.  None for one constant, whose add is the rows' own, and
 // for a name's address, whose slot's or label's add carries the part
-// within its object, folded()'s, a row's on a name under its index
-// included.
+// within its object, folded()'s, and named_row()'s under an index.
 std::optional< value_t >
 joined(state_t &s, const expr_t &e, into_t *into, unsigned wanted)
 {
@@ -2597,15 +2644,18 @@ joined(state_t &s, const expr_t &e, into_t *into, unsigned wanted)
 // in the order written (G13), a constant as its product with the size,
 // whose immediate takes no register.  A name's address plus a constant
 // is the address of folded()'s one operand, add x0, x29, #28 for a + 3,
-// 6.3; constants under the pointer, through its casts and its rows'
-// layers, are one add with this one, joined()'s, add x0, x0, #20 for
-// &p[1][2] on int (*p)[3]; and one constant over any other pointer is
-// the row's add or sub after the pointer's value, sub x0, x0, #4 after
-// the sum for p[i] - 1.  A register variable handed down goes to the
-// row that writes the sum, chapter 4, and so does the register the
-// consumer names, wanted (6.1); by a constant, to the pointer's row
-// too, base_into()'s, so that q = p[1] into a register int *q is ldr
-// x19, [x29, #24]; add x19, x19, #12.  Not by an integer that is no
+// 6.3, and a row on a name by an index carries the constants in the
+// name's own add, named_row()'s, add x0, x29, #28 before the index's
+// add for &m[i][2] on a local int m[4][3] at [x29, #20]; constants
+// under the pointer, through its casts and its rows' layers, are one
+// add with this one, joined()'s, add x0, x0, #20 for &p[1][2] on int
+// (*p)[3]; and one constant over any other pointer is the row's add or
+// sub after the pointer's value, sub x0, x0, #4 after the sum for
+// p[i] - 1.  A register variable handed down goes to the row that
+// writes the sum, chapter 4, and so does the register the consumer
+// names, wanted (6.1); by a constant, to the pointer's row too,
+// base_into()'s, so that q = p[1] into a register int *q is ldr x19,
+// [x29, #24]; add x19, x19, #12.  Not by an integer that is no
 // constant: generated after the pointer it could read the variable the
 // pointer's row wrote, and generated before it, n + p, its value could
 // be a read of the variable that row overwrites.
@@ -2617,6 +2667,11 @@ pointer_arithmetic(state_t &s,
 {
     if (const auto a = folded(s, e))
         return address_of(s, *a, into);
+
+    // &m[i][2] on a local int m[4][3] at [x29, #20]: add x0, x29, #28,
+    // then the index's product and its add
+    if (const auto v = named_row(s, e, into, wanted))
+        return *v;
 
     // &((int *) (p + 1))[3] on a char *p: add x0, x0, #13
     if (const auto v = joined(s, e, into, wanted))

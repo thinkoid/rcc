@@ -52,7 +52,10 @@
    12))[i][2] in row_before_cast() and (p - 1)[i][2] in
    row_before_rows().  As a value, &((int (*)[3]) (c + 4))[i][2] in
    row_address_under_cast(), the row's constants are one addition
-   past the sum.  A place on a label held across a call:
+   past the sum; on a local array and on a label they join the name's
+   own address, &((int (*)[3]) ((char *) m + 4))[i][1] in
+   row_address_slot() and the same on cells in row_address_label().
+   A place on a label held across a call:
    label_held(), labels[i] = f(), label_row_held(), cells[i][1] +=
    f(), at a size no form scales by, and label_constant_held(),
    labels[3] = f(), with no index; beside them label_divided(),
@@ -126,7 +129,10 @@
    row_before_rows() by the imulq and the one movl -4(%rax,%rcx,1),
    %eax.
    row_address_under_cast() is the imulq and the one leaq
-   12(%rax,%rcx,1), %rax.  label_held() holds the index alone across
+   12(%rax,%rcx,1), %rax, row_address_slot() the imulq and the one
+   leaq -44(%rbp,%rax,1), %rax, and row_address_label() leaq
+   cells+4(%rip), %rax, the imulq and leaq 4(%rax,%rcx,1), %rax.
+   label_held() holds the index alone across
    the call, its movslq spilled once, and forms the label's address
    after it, leaq labels(%rip), %rdx, then movl %eax, (%rdx,%rcx,4);
    label_row_held() holds the product of imulq $12 alone and is leaq
@@ -195,14 +201,18 @@
    w0, [x0, #-4] after the product's add.  row_address_under_cast()
    adds the product to the pointer, mov x2, #12, mul and add x0, x0,
    x1 after c's load, and then the one add x0, x0, #12, with no add of
-   the 4 before the index.  label_held() adds the index to the label's
-   page before the call, adrp x0, labels and add x0, x0, w1, sxtw #2,
-   then str w0, [x1, :lo12:labels] after it, the label's offset in
-   the page the store's; label_row_held() is adrp x0, cells+4 and
-   the product's add before the call and ldr, add and str at [x2,
-   :lo12:cells+4] after it; label_constant_held() is adrp x16,
-   labels+12 and str w0, [x16, :lo12:labels+12] after the call;
-   and label_divided() str w2, [x0, w1, sxtw #2] after the sdiv.
+   the 4 before the index.  row_address_slot() forms the slot's
+   address with the 4 and the column's 4 in it, add x0, x29, #28, and
+   then adds the product, with no add after the sum, and
+   row_address_label() the same on the label's pair, adrp x0, cells+8
+   and add x0, x0, :lo12:cells+8.  label_held() adds the index to the
+   label's page before the call, adrp x0, labels and add x0, x0, w1,
+   sxtw #2, then str w0, [x1, :lo12:labels] after it, the label's offset
+   in the page the store's; label_row_held() is adrp x0, cells+4 and the
+   product's add before the call and ldr, add and str at [x2,
+   :lo12:cells+4] after it; label_constant_held() is adrp x16, labels+12
+   and str w0, [x16, :lo12:labels+12] after the call; and
+   label_divided() str w2, [x0, w1, sxtw #2] after the sdiv.
    row_divided(), row_divided_deeper() and row_shifted() add the product
    to p before the sdiv or the lsl and store str w1, [x0, #4]. */
 int *
@@ -492,6 +502,20 @@ int *
 row_address_under_cast(char *c, int i)
 {
         return &((int (*)[3])(c + 4))[i][2];
+}
+
+int *
+row_address_slot(int i)
+{
+        int m[4][3];
+
+        return &((int (*)[3])((char *) m + 4))[i][1];
+}
+
+int *
+row_address_label(int i)
+{
+        return &((int (*)[3])((char *) cells + 4))[i][1];
 }
 
 int labels[8];

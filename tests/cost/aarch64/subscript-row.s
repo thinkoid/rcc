@@ -1291,6 +1291,63 @@ row_address_under_cast:
 	ret
 	.cfi_endproc
 	.size	row_address_under_cast, .-row_address_under_cast
+	.globl	row_address_slot
+	.type	row_address_slot, @function
+row_address_slot:
+	.cfi_startproc
+	sub	sp, sp, #80
+	.cfi_def_cfa_offset 80
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -80
+	.cfi_offset w30, -72
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	add	x0, x29, #28
+	ldrsw	x1, [x29, #16]
+	mov	x2, #12
+	mul	x1, x1, x2
+	add	x0, x0, x1
+	b	.Lrow_address_slot.1
+.Lrow_address_slot.1:
+	.cfi_def_cfa wsp, 80
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #80
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	row_address_slot, .-row_address_slot
+	.globl	row_address_label
+	.type	row_address_label, @function
+row_address_label:
+	.cfi_startproc
+	sub	sp, sp, #32
+	.cfi_def_cfa_offset 32
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -32
+	.cfi_offset w30, -24
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	w0, [x29, #16]
+	adrp	x0, cells+8
+	add	x0, x0, :lo12:cells+8
+	ldrsw	x1, [x29, #16]
+	mov	x2, #12
+	mul	x1, x1, x2
+	add	x0, x0, x1
+	b	.Lrow_address_label.1
+.Lrow_address_label.1:
+	.cfi_def_cfa wsp, 32
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #32
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	row_address_label, .-row_address_label
 	.globl	label_held
 	.type	label_held, @function
 label_held:

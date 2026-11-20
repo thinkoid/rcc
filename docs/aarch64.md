@@ -1051,11 +1051,15 @@ a row's layer too, the decay of `*q` or `&*q` being `q`: `&p[1][2]` on
 `int (*p)[3]` is `add x0, x0, #20` after `p`'s load, and `&((int
 (*)[3]) (c + 4))[i][2]` on a `char *c` adds the product to `c`, `mov
 x2, #12; mul x1, x1, x2; add x0, x0, x1`, and then the one `add x0,
-x0, #12`, the 4 under the row with the column's 8; a row on a slot or
-a label under its index keeps its own `add` of the part under the
-index, and the column's after the sum. One constant over a row is the
-row of `p + n` or `p - n` after the sum, as over any pointer, `sub
-x0, x0, #4` for `p[i] - 1`.
+x0, #12`, the 4 under the row with the column's 8. A row on a slot or
+a label under its index takes its constants, under the index and
+above it, into the name's own address, then adds the product:
+`&((int (*)[3]) ((char *) m + 4))[i][1]` on a local `int m[4][3]` at
+`[x29, #20]` is `add x0, x29, #28` and the product's add, and on a
+global `cells` the label's pair at `cells+8`. A total out of 5.3's
+reach or outside the label's object keeps the rows of `p + n`. One
+constant over any other row is the row of `p + n` or `p - n` after
+the sum, as over any pointer, `sub x0, x0, #4` for `p[i] - 1`.
 
 A store's address is generated before its right operand and held
 across it (G13), but a constant index reads nothing, so its `mov` is

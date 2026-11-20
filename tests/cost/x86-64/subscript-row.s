@@ -965,6 +965,47 @@ row_address_under_cast:
 	ret
 	.cfi_endproc
 	.size	row_address_under_cast, .-row_address_under_cast
+	.globl	row_address_slot
+	.type	row_address_slot, @function
+row_address_slot:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movslq	-4(%rbp), %rax
+	imulq	$12, %rax, %rax
+	leaq	-44(%rbp,%rax,1), %rax
+	jmp	.Lrow_address_slot.1
+.Lrow_address_slot.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	row_address_slot, .-row_address_slot
+	.globl	row_address_label
+	.type	row_address_label, @function
+row_address_label:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	leaq	cells+4(%rip), %rax
+	movslq	-4(%rbp), %rcx
+	imulq	$12, %rcx, %rcx
+	leaq	4(%rax,%rcx,1), %rax
+	jmp	.Lrow_address_label.1
+.Lrow_address_label.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	row_address_label, .-row_address_label
 	.globl	label_held
 	.type	label_held, @function
 label_held:
