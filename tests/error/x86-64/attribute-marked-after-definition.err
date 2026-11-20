@@ -1,0 +1,2 @@
+tests/error/attribute-marked-after-definition.c:11:31: error: not yet: attribute 'weak'
+status 1

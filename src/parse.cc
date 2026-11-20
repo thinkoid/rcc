@@ -2786,12 +2786,17 @@ declarator_tail(parser_t &p, const specifiers_t &spec)
 // and two that differ name two symbols for one name, an error.  A
 // marking attribute marks the symbol, and every use of it after the
 // declaration is refused.  GNU C lets a later declaration add the
-// attribute to the uses before it too, which rcc has taken unmarked,
-// so the attribute is refused where it is written then.
+// attribute to the uses before it too, and to a definition before it,
+// which rcc has taken unmarked: a function's body, written strong, and
+// an object's entry, initialized or tentative, which c1 writes strong
+// after the parse.  So the attribute is refused where it is written
+// then.
+bool defines(const parser_t &, const symbol_t *);
+
 void
 record_tail(const parser_t &p, symbol_t &sym, const declarator_tail_t &tail)
 {
-    if (tail.marking && p.used.contains(&sym))
+    if (tail.marking && (p.used.contains(&sym) || defines(p, &sym)))
         not_yet(*tail.marking, attribute_words(*tail.marking));
 
     if (tail.asm_keyword) {
