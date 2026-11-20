@@ -16,8 +16,13 @@
    struct sockaddr_in is a header's record, whose may_alias attribute
    rcc drops.  va_list is the target's list, 7.16p4, an array of one
    record on x86-64 and a record on aarch64, whose members are read
-   through the list's address. */
+   through the list's address.  struct file_handle is a header's record
+   under _GNU_SOURCE, whose last member glibc writes as an array of size
+   zero, a flexible array member. */
 
+#define _GNU_SOURCE
+
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <stdarg.h>
 #include <stddef.h>
@@ -157,11 +162,42 @@ struct tagged
         _Static_assert(sizeof(struct p_lc) == 16, "p_lc");
 };
 
+/* records whose last member is a flexible array member, 6.7.3.2p20,
+   which stands at its element's alignment past the other members and
+   adds no size: of chars after an int, of ints after a char, of longs
+   after a char and a short, and of records after a short */
+struct flexible_c
+{
+        int n;
+        unsigned char b[];
+};
+
+struct flexible_i
+{
+        char c;
+        int b[];
+};
+
+struct flexible_l
+{
+        char c;
+        short s;
+        long b[];
+};
+
+struct flexible_r
+{
+        short s;
+        struct inner b[];
+};
+
 /* the records of no list above, and the keyword each is declared by */
 /* clang-format off */
 #define RECORDS(X)                                                      \
     X(struct, inner) X(union, either) X(struct, nest) X(union, choice)  \
-    X(struct, tagged) X(struct, sockaddr_in) X(, va_list)
+    X(struct, tagged) X(struct, sockaddr_in) X(, va_list)               \
+    X(struct, flexible_c) X(struct, flexible_i) X(struct, flexible_l)   \
+    X(struct, flexible_r) X(struct, file_handle)
 
 /* the designators of offsetof into those records: a name, the record,
    the designator */
@@ -170,7 +206,13 @@ struct tagged
     X(nest_triple_1_z, struct nest, triples[1].z)                       \
     X(nest_triple_1_x_l, struct nest, triples[1].x.l)                   \
     X(nest_either_x_l, struct nest, either.x.l)                         \
-    X(choice_b_z, union choice, b.z) X(tagged_c, struct tagged, c)
+    X(choice_b_z, union choice, b.z) X(tagged_c, struct tagged, c)     \
+    X(flexible_c_b, struct flexible_c, b)                               \
+    X(flexible_i_b, struct flexible_i, b)                               \
+    X(flexible_l_b, struct flexible_l, b)                               \
+    X(flexible_r_b, struct flexible_r, b)                               \
+    X(flexible_r_b_1_l, struct flexible_r, b[1].l)                      \
+    X(file_handle_f_handle, struct file_handle, f_handle)
 /* clang-format on */
 
 /* the members of the target's list record, and the list's address */

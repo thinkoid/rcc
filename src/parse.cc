@@ -3645,7 +3645,8 @@ elements(parser_t &p, const array_t &array, long offset, destination_t &to)
 // p10.  An initializer is ahead.  The members end with the last,
 // leaving the rest of the list to the enclosing aggregate or to the
 // list's own check, or with the list.  Returns whether every member the
-// list may give was given.
+// list may give was given.  A flexible array member takes an
+// initializer only in GNU C, which rcc does not take yet.
 bool
 member_values(parser_t &p, const record_t &r, long offset, destination_t &to)
 {
@@ -3654,6 +3655,10 @@ member_values(parser_t &p, const record_t &r, long offset, destination_t &to)
     std::size_t given = 0;
     do {
         const member_t &m = r.members[given];
+        if (is< array_t >(m.type) && as< array_t >(m.type).count < 0)
+            not_yet(peek(p),
+                    "initializer of flexible array member " + quoted(m.name));
+
         subobject_initializer(p, m.type, offset + m.offset, to);
         ++given;
     } while (given != count && accept_separator(p));
@@ -4964,10 +4969,10 @@ is_sized(const type_t &t)
 // A member's type: a complete object type, 6.7.3.2p11, so neither a
 // function, p3, nor void, nor an incomplete record, the record being
 // defined among them, which holds no instance of itself, p3.  An array
-// of unknown size is a flexible array member, p20, which rcc does not
-// lay out yet, and stands last, p3, as member_list() checks; in a union
-// it is an error, p3.  zero is the size of such an array written as
-// zero, or null.  A type rcc does not use yet, a record that holds a
+// of unknown size is a flexible array member, p20, which stands last,
+// p3, as member_list() checks; in a union it is an error, p3.  zero is
+// the size of such an array written as zero, or null.  A type rcc does
+// not use yet, a record that holds a
 // construct rcc does not lay out among them, leaves the record without
 // its layout, refused by the member type's words, but for one
 // is_sized() says is laid out.
@@ -4996,8 +5001,6 @@ require_member_type(const token_t &name,
         if (r.is_union)
             refuse_flexible(list, "flexible array member " + quoted(name.text) +
                                       " in " + record_words(r));
-
-        mark_not_yet(r, "flexible array member in " + record_words(r));
     }
 
     if (const std::string *words = not_yet_in(t); words && !is_sized(t))
@@ -5027,8 +5030,7 @@ add_member(member_list_t &list,
         if (m.name == name.text)
             fail(name, "duplicate member " + quoted(name.text));
 
-    if (!list.flexible)
-        r.members.push_back(member_t { std::string(name.text), t, 0 });
+    r.members.push_back(member_t { std::string(name.text), t, 0 });
 }
 
 // One member declarator, 6.7.3.2p1: a declarator, which names the
@@ -5191,8 +5193,10 @@ members(parser_t &p, record_t &r)
 // each member of a union at 0, p18; the record's alignment its
 // members' largest, and its size the end of its members rounded up to
 // that alignment, p19, so that each element of an array of it is
-// aligned.  close is the list's '}', where a record too large for a
-// size is refused.
+// aligned.  A flexible array member stands at its element's alignment
+// past the other members and adds no size, p20, as clang lays it out.
+// close is the list's '}', where a record too large for a size is
+// refused.
 void
 lay_out(const token_t &close, record_t &r)
 {
@@ -5202,7 +5206,9 @@ lay_out(const token_t &close, record_t &r)
     int alignment = 1;
 
     for (member_t &m : r.members) {
-        const long size = size_of(m.type);
+        const bool flexible =
+            is< array_t >(m.type) && as< array_t >(m.type).count < 0;
+        const long size = flexible ? 0 : size_of(m.type);
         const int align = align_of(m.type);
 
         if (end > largest - align)

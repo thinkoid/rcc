@@ -367,21 +367,6 @@ for 6.9.1p3.
 
 Check: a cost program with both forms, pinned on each target.
 
-** TODO A record with a flexible array member has no layout
-
-~struct h { int n; unsigned char b[]; };~ is declared, and a use
-that needs its layout is "not yet: flexible array member in struct
-'h'": =sizeof=, and a member's access, ~p->n~ among them.
-
-Fix: the layout =clang= has: the record's size is that of its other
-members, padded to its alignment, the member stands at its own
-alignment past them, and ~p->b[i]~ is its offset plus the index. An
-initializer for the member is a not-yet of its own.
-
-Check: the =layout= probe compares such records with =clang='s, and
-a cost program reads and writes a header and its bytes on both
-targets.
-
 ** TODO Arithmetic on a pointer to =void= is an error
 
 ~p + 1~ on a ~void *~ fails with "arithmetic on a pointer to void":
@@ -782,6 +767,33 @@ list on the record's zeroing and stores.
 
 Check: a cost program for each form on both targets, and the
 =zeroing= probe with a local array.
+
+** TODO A bit-field or an anonymous member after a flexible array member is accepted
+
+~struct s { int n; int a[]; int x : 3; };~ compiles, and so does an
+unnamed bit-field or an anonymous struct after =a=: 6.7.3.2p3 lets
+only the last member be a flexible array member, and =clang= says
+"flexible array member 'a' ... is not at the end". A named member
+after it is refused; =bit_field()= and =unnamed_member()= in
+=src/parse.cc= do not look.
+
+Fix: both refuse as =add_member()= does.
+
+Check: a program of =tests/error= for each form, pinned "not at the
+end".
+
+** TODO A record with a flexible array member is taken as a member and as an element
+
+~struct h { int n; char b[]; }; struct o { int k; struct h x; };
+struct h arr[3];~ compiles with no diagnostic, laid out as =clang=
+lays it out. 6.7.3.2p3 says such a structure "shall not be a member
+of a structure or an element of an array"; GNU C takes it.
+
+Fix: an error in the program's own text; in a system header's text
+it is laid out with no word.
+
+Check: a program of =tests/error= for the member and for the
+element.
 
 * Lexer
 

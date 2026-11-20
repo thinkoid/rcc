@@ -1,11 +1,12 @@
 /* The layout probe's main, compiled by clang -O0: calls every function
    of layout.c as rcc compiled it and as clang did (ref_), and compares.
    Prints each difference and a summary; exits 0 when nothing differs,
-   1 otherwise. */
-
-#include <stdio.h>
+   1 otherwise.  layout.h comes first, since it asks for GNU's
+   declarations before any header is read. */
 
 #include "layout.h"
+
+#include <stdio.h>
 
 static long total;
 static long bad;

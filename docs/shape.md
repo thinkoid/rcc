@@ -212,14 +212,17 @@ struct at the offset so far rounded up to the member's alignment, in
 the order declared (6.7.3.2p16, p17); each member of a union at 0
 (p18); the record's alignment its members' largest, and its size the
 end of its members rounded up to that alignment (p19), so that each
-element of an array of it is aligned. `size_of` and `align_of` read
-the layout, and the parser folds `sizeof`, `_Alignof` and `offsetof`
-from it. A record whose list holds a construct rcc does not lay out
-yet is complete and has no layout: a bit-field, an anonymous member,
-an attribute that marks, `packed` and `aligned` among them, a
-packing of `#pragma pack` where the list opens (chapter 2), a
-flexible array member, a list of no member, or a member of a type
-rcc does not use yet. It keeps the words of the first such construct,
+element of an array of it is aligned. A flexible array member stands
+at its element's alignment past the other members and adds no size
+(p20): `struct { char c; long b[]; }` is 8 bytes and `b` is at 8, and
+`p->b[i]` is the member's offset plus the index. `size_of` and
+`align_of` read the layout, and the parser folds `sizeof`, `_Alignof`
+and `offsetof` from it. A record whose list holds a construct rcc
+does not lay out yet is complete and has no layout: a bit-field, an
+anonymous member, an attribute that marks, `packed` and `aligned`
+among them, a packing of `#pragma pack` where the list opens
+(chapter 2), a list of no member, or a member of a type rcc does not
+use yet. It keeps the words of the first such construct,
 and a use that needs its layout is refused by them, as a not-yet
 type's is; a pointer to it is an ordinary pointer, so a program's
 `FILE *` is what it was. A member of a real floating type, or an
@@ -984,7 +987,9 @@ points of a line in order. Every member rcc lays out is named, so
 none is passed over (p10). The bytes no member's value holds, the
 padding included, are zero (p11, p22), which the data writes as any
 other run of zeros. A list that goes on past the record's members, or
-a union's first, is an error (p3). An address constant is a member's
+a union's first, is an error (p3). A list that reaches a flexible
+array member, which GNU C takes, is not yet. An address constant is
+a member's
 value as it is a scalar's, `&line.to.x` the line's label and the
 member's offset, and so is a function's name, so a table of records
 holds its function pointers as data. A record's value initializes a
@@ -1366,9 +1371,10 @@ list among them), a string literal for an array in a local's list, a
 function whose parameter list is `(...)` alone, the layout
 of a struct or a
 union with a bit-field, an anonymous member, an attribute that marks,
-`packed` and `aligned` among them, a packing of `#pragma pack`, a
-flexible array member, no member, or a member of a type rcc does not
-use yet but a real floating one (chapter 3), an access of a floating
+`packed` and `aligned` among them, a packing of `#pragma pack`, no
+member, or a member of a type rcc does not
+use yet but a real floating one (chapter 3), an initializer of a
+flexible array member, an access of a floating
 member, C23's
 compatibility of two records of one tag, floating point, `_Bool` and
 `__int128` (each type is declared; a pointer to one is an ordinary
