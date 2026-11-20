@@ -627,21 +627,6 @@ of the function's, and =is_defined()= asks it.
 Check: a program of =tests/error= with the header's two definitions,
 pinned "redefinition of 'f'".
 
-** TODO A string in parentheses initializes an array of char only without braces
-
-~char s[] = ("abc");~ compiles, and ~char t[] = { ("abc") };~ fails
-with "incompatible pointer to integer conversion". In a list the
-string is known by its tokens, a string literal before a comma or the
-closing brace; outside a list the parentheses are looked through.
-=clang= takes both, and 6.7.11p15 says "a string literal", which a
-parenthesized one is not in so many words.
-
-Fix: both are taken: the parentheses are looked through in a list
-too.
-
-Check: the two declarations compile to the same data, pinned in
-=tests/cost=.
-
 ** TODO Pointers to two integer types of one representation convert with no diagnostic
 
 ~long *p; long long *q = p;~ compiles, and so does an assignment of

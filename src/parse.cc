@@ -3408,20 +3408,31 @@ string_array_words(const type_t &t)
 // array t whole: an array of char takes one of no prefix or of u8,
 // 6.7.11p15, and an array of a wide literal's element type takes that
 // literal, p16, so on x86-64 an array of int takes L"..." and on aarch64
-// one of unsigned int takes L"..." and U"...".  Any other expression
-// there initializes the array's first element.  A wide literal ahead of
-// an array of char is the literal string_value() refuses.
+// one of unsigned int takes L"..." and U"...".  The literal may stand in
+// parentheses, ("abc"), which is the literal, 6.5.2p6, as it is outside
+// a list.  Any other expression there initializes the array's first
+// element.  A wide literal ahead of an array of char is the literal
+// string_value() refuses.
 bool
 string_ahead(const parser_t &p, const type_t &t)
 {
-    std::size_t ahead = 0;
+    std::size_t opened = 0;
+    while (peek(p, opened).kind == tok_t::lparen)
+        ++opened;
+
+    std::size_t ahead = opened;
     encoding_t encoding = encoding_t::none;
     for (; peek(p, ahead).kind == tok_t::string; ++ahead)
         if (encoding_of(peek(p, ahead)) != encoding_t::none)
             encoding = encoding_of(peek(p, ahead));
 
-    const tok_t after = peek(p, ahead).kind;
-    if (ahead == 0 || (after != tok_t::comma && after != tok_t::rbrace))
+    std::size_t closed = 0;
+    while (closed < opened && peek(p, ahead + closed).kind == tok_t::rparen)
+        ++closed;
+
+    const tok_t after = peek(p, ahead + closed).kind;
+    if (ahead == opened || closed != opened ||
+        (after != tok_t::comma && after != tok_t::rbrace))
         return false;
 
     if (is_char_array(t))

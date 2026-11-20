@@ -994,7 +994,9 @@ and `{ 1, 2, 3, 4, 5, 6 }` gives the six in order. A string literal
 alone in its place, before a `,` or the `}`, initializes an element
 that is an array of `char` whole, so `char names[][4] = { "Jan", "Feb"
 };` holds two strings and `{ { 'J', 'a', 'n' }, "Feb" }` spells the
-first. The elements the list leaves out are zero (p22); the empty
+first. In parentheses it is the literal (6.5.2p6), in a list as
+without one: `{ ("Jan") }` is `{ "Jan" }`. The elements the list
+leaves out are zero (p22); the empty
 initializer `{}` leaves the whole object zero (p11), and is an error
 for an array of unknown size (p4), which otherwise takes its size from
 the elements the list gives (p23). A list that goes on past what its
