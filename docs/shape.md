@@ -485,7 +485,8 @@ refused in words of their own.
 A pointer to a function is a value as any pointer is, with the type
 rules of the standard: assignment and argument passing take one of
 its own type or a null pointer constant, and a pointer to void only
-through a cast (6.5.17.2p1); `==` and `!=` compare it with one of its
+through a cast (6.5.17.2p1) or as GNU C has it (below);
+`==` and `!=` compare it with one of its
 type or a null pointer constant (6.5.10p2), and `<`, `<=`, `>` and
 `>=` are an error on it (6.5.9p2); it is a condition, an operand of
 `!`, `&&` and `||`, and an arm of `?:`; a cast converts it to any
@@ -561,7 +562,11 @@ compiles to the listing of its ISO C twin (`cost.md` chapter 1):
   size `size_of` gives `void` (chapter 3);
 - `return E;` of a void `E` in a void function, which 6.8.7.5p1
   refuses: it is `E;` and `return;`, a block of no scope, so `E` is
-  evaluated for its effect; an `E` of a value stays an error.
+  evaluated for its effect; an `E` of a value stays an error;
+- a pointer to `void` converted as if by assignment to a pointer to a
+  function, or a pointer to a function to a pointer to `void`, which
+  6.5.17.2p1 converts only through a cast: it is the conversion the
+  cast makes, no instruction.
 
 `volatile` is dropped as `const` is, wherever `const` may stand:
 among the declaration specifiers, after a `*`, in a type name, once
@@ -1241,7 +1246,9 @@ the warnings, and no warning changes the exit status. The warnings:
   flexible array member (chapter 5);
 - arithmetic on a pointer to `void`, which counts bytes as GNU C has
   it (chapter 5);
-- `return E;` of a void `E` in a void function (chapter 5).
+- `return E;` of a void `E` in a void function (chapter 5);
+- a pointer to `void` and a pointer to a function converted as if by
+  assignment (chapter 5).
 
 Exit status: 0; 1 for a diagnosed error or a failed system call; 2
 for a usage error; 3 for an internal error, a construct c1 does not

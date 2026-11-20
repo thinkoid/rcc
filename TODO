@@ -356,18 +356,6 @@ for 6.9.1p3.
 
 Check: a cost program with both forms, pinned on each target.
 
-** TODO A ~void *~ and a pointer to a function convert only under a cast
-
-~void (*fp)(void) = p;~ with =p= a ~void *~ fails with "incompatible
-pointer types": 6.5.17.2p1 lets a ~void *~ meet a pointer to an
-object type alone. GNU C takes it, in both directions.
-
-Fix: taken with a warning, in both directions. It has no instruction
-of its own: the address is moved as under the cast.
-
-Check: a cost program pinned like its twin with the cast written,
-and the warning pinned.
-
 ** TODO A statement expression, ~a ?: b~ and =alloca= are refused in an error's words
 
 ~({ ... })~ and ~a ?: b~ fail with "expected expression", and

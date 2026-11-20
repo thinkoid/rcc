@@ -105,7 +105,11 @@ which GNU C takes, counts bytes, so a program compiles to the listing
 of its twin with `char *` in place of each `void *`
 (`void-arithmetic`). `return E;` of a void `E` in a void function,
 which GNU C takes, is `E;` and `return;`, so a program compiles to
-the listing of its twin written so (`void-return`).
+the listing of its twin written so (`void-return`). A pointer to
+`void` and a pointer to a function converted as if by assignment,
+which GNU C takes, are the conversion a cast makes, so a program
+compiles to the listing of its twin with the cast written
+(`void-function-pointer`).
 
 What the compiler may do:
 

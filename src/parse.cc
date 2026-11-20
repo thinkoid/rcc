@@ -1118,6 +1118,16 @@ require_record_conversion(const token_t &at,
                      conversion_words(to) + " conversion");
 }
 
+// A pointer to void and a pointer to a function, in either order, which
+// 6.5.17.2p1 converts only through a cast, and GNU C as if by
+// assignment too.
+bool
+void_and_function_pointer(const type_t &a, const type_t &b)
+{
+    return (is_void_pointer(a) && is_function_pointer(b)) ||
+           (is_function_pointer(a) && is_void_pointer(b));
+}
+
 // The conversion as if by assignment, of a value to the type of an
 // object: the right operand of =, an initializer, 6.7.11p12, an
 // argument, 6.5.3.3p2, a value returned, 6.8.7.5p3.  The constraints
@@ -1125,14 +1135,16 @@ require_record_conversion(const token_t &at,
 // other; a pointer takes a pointer of its own type, a pointer to void
 // and an object pointer convert either way, and a null pointer
 // constant converts to any pointer, one to a function included.  An
-// integer and a pointer meet only through a cast, 6.5.5p3, and so do a
-// pointer to a function and a pointer to void; a record and a scalar
-// never meet.  A value converted to a not-yet type, as an argument
+// integer and a pointer meet only through a cast, 6.5.5p3; a record and
+// a scalar never meet.  A pointer to a function and a pointer to void
+// meet only through a cast too, and GNU C converts them either way: rcc
+// does so, with a warning, the conversion the cast would make (shape.md
+// chapter 5).  A value converted to a not-yet type, as an argument
 // meets a parameter of one, is not yet, and so is a record converted
 // to its own type, whose object c1 does not write yet; the callers
 // that may meet one refuse it first in their own words.
 expr_t
-assignment_conversion(const token_t &at, expr_t e, const type_t &t)
+assignment_conversion(parser_t &p, const token_t &at, expr_t e, const type_t &t)
 {
     require_honoured(at, t);
     require_value(at, e);
@@ -1153,10 +1165,16 @@ assignment_conversion(const token_t &at, expr_t e, const type_t &t)
         fail(at, "incompatible pointer to integer conversion");
 
     if (to_pointer && from_pointer && !(e.type == t) &&
-        !void_and_object_pointer(t, e.type) && !is_null_pointer_constant(e)) {
+        !void_and_object_pointer(t, e.type) &&
+        !void_and_function_pointer(t, e.type) && !is_null_pointer_constant(e)) {
         refuse_tag_twins(at, t, e.type);
         fail(at, "incompatible pointer types");
     }
+
+    if (void_and_function_pointer(t, e.type) && !is_null_pointer_constant(e))
+        warn(p, at,
+             "conversion between a pointer to void and a pointer to a "
+             "function, as GNU C allows");
 
     return convert_to(std::move(e), t);
 }
@@ -1813,12 +1831,12 @@ comma(expr_t lhs, expr_t rhs)
 // pointer's type with the right operand widened as for p + n.  The left
 // operand comes checked as a modifiable lvalue.
 expr_t
-assignment(const token_t &op, expr_t lhs, expr_t rhs)
+assignment(parser_t &p, const token_t &op, expr_t lhs, expr_t rhs)
 {
     const type_t t = lhs.type;
 
     if (op.kind == tok_t::assign) {
-        rhs = assignment_conversion(op, std::move(rhs), t);
+        rhs = assignment_conversion(p, op, std::move(rhs), t);
 
         return expr_t { t, assign_t { std::nullopt, t, box(std::move(lhs)),
                                       box(std::move(rhs)) } };
@@ -3500,7 +3518,7 @@ scalar_value(parser_t &p, const token_t &at, const type_t &t)
 
     require_value(start, e);
 
-    expr_t init = assignment_conversion(at, std::move(e), t);
+    expr_t init = assignment_conversion(p, at, std::move(e), t);
 
     if (is< literal_t >(init))
         return as< literal_t >(init);
@@ -3549,7 +3567,7 @@ local_store(parser_t &p,
     refuse_record_value(start, e.type);
     require_value(start, e);
 
-    expr_t value = assignment_conversion(at, std::move(e), t);
+    expr_t value = assignment_conversion(p, at, std::move(e), t);
 
     expr_t object { to.local->type, name_t { to.local } };
     expr_t place = lvalue_at(p, address_of(at, std::move(object)), offset, t);
@@ -6726,7 +6744,7 @@ init_declarator(parser_t &p,
         expr_t init = assignment_expression(p);
         require_value(start, init);
 
-        decl.init = assignment_conversion(op, std::move(init), d.type);
+        decl.init = assignment_conversion(p, op, std::move(init), d.type);
     }
 
     decls.push_back(stmt_t { std::move(decl) });
@@ -7221,7 +7239,7 @@ return_statement(parser_t &p)
         if (is< void_t >(p.result))
             fail(keyword, "void function should not return a value");
 
-        ret.value = assignment_conversion(start, std::move(value), p.result);
+        ret.value = assignment_conversion(p, start, std::move(value), p.result);
     }
     else if (!is< void_t >(p.result))
         fail(keyword, "non-void function should return a value");
@@ -7308,7 +7326,7 @@ assignment_expression(parser_t &p)
     require_modifiable_lvalue(op, lhs);
 
     const type_t t = lhs.type;
-    expr_t e = assignment(op, std::move(lhs), assignment_expression(p));
+    expr_t e = assignment(p, op, std::move(lhs), assignment_expression(p));
     if (op.kind != tok_t::assign)
         warn_void_arithmetic(p, op, t);
 
@@ -7950,7 +7968,7 @@ list_operand(parser_t &p, std::string_view macro)
     expr_t address = list_pointer(p, at, words, std::move(e));
     const symbol_t &t = list_temporary(p);
     expr_t set =
-        assignment(operator_at(at, tok_t::assign),
+        assignment(p, operator_at(at, tok_t::assign),
                    expr_t { t.type, name_t { &t } }, std::move(address));
 
     expr_t list { t.type, name_t { &t } };
@@ -8031,7 +8049,7 @@ list_bytes(const parser_t &p, const list_operand_t &l, std::size_t k, long n)
 // (char *) overflow_arg_area + 8, (char *) overflow_arg_area - 8); on
 // aarch64 the same of __gr_offs < 0, __gr_top and __stack.
 expr_t
-next_argument(const parser_t &p, const list_operand_t &l)
+next_argument(parser_t &p, const list_operand_t &l)
 {
     const list_layout_t m = list_layout(p);
     const token_t &at = l.at;
@@ -8039,7 +8057,7 @@ next_argument(const parser_t &p, const list_operand_t &l)
     expr_t test = comparison(operator_at(at, m.test),
                              list_member(p, l, m.offset), int_constant(m.end));
 
-    expr_t step = assignment(operator_at(at, tok_t::add_assign),
+    expr_t step = assignment(p, operator_at(at, tok_t::add_assign),
                              list_member(p, l, m.offset), int_constant(8));
     expr_t slot =
         addition(operator_at(at, tok_t::plus), list_bytes(p, l, m.area, 0),
@@ -8048,8 +8066,8 @@ next_argument(const parser_t &p, const list_operand_t &l)
     expr_t in_area = comma(discarded(at, std::move(step)), std::move(slot));
 
     expr_t past =
-        assignment(operator_at(at, tok_t::assign), list_member(p, l, m.stack),
-                   list_bytes(p, l, m.stack, 8));
+        assignment(p, operator_at(at, tok_t::assign),
+                   list_member(p, l, m.stack), list_bytes(p, l, m.stack, 8));
     expr_t on_stack =
         comma(discarded(at, std::move(past)), list_bytes(p, l, m.stack, -8));
 
@@ -8203,11 +8221,12 @@ va_start_expression(parser_t &p, const token_t &keyword)
     std::vector< expr_t > values = start_values(p, keyword);
     const token_t assign = operator_at(keyword, tok_t::assign);
 
-    expr_t e = assignment(assign, list_member(p, l, 0), std::move(values[0]));
+    expr_t e =
+        assignment(p, assign, list_member(p, l, 0), std::move(values[0]));
     for (std::size_t k = 1; k < values.size(); ++k)
         e = comma(
             discarded(keyword, std::move(e)),
-            assignment(assign, list_member(p, l, k), std::move(values[k])));
+            assignment(p, assign, list_member(p, l, k), std::move(values[k])));
 
     return cast(keyword, make_void(), after_list(keyword, l, std::move(e)));
 }
@@ -8382,7 +8401,7 @@ argument(parser_t &p,
     }
 
     if (param)
-        return assignment_conversion(start, std::move(arg), *param);
+        return assignment_conversion(p, start, std::move(arg), *param);
 
     if (!type.variadic)
         fail(start, "too many arguments " + std::string(words));
@@ -8581,11 +8600,11 @@ expect_expression(parser_t &p, const token_t &keyword)
     expect(p, tok_t::lparen, "expected '(' after " + quoted(keyword.text));
     const token_t &e_at = peek(p);
     expr_t e =
-        assignment_conversion(e_at, assignment_expression(p), long_type());
+        assignment_conversion(p, e_at, assignment_expression(p), long_type());
     expect(p, tok_t::comma, "expected ',' after the expression");
     const token_t &c_at = peek(p);
     expr_t c =
-        assignment_conversion(c_at, assignment_expression(p), long_type());
+        assignment_conversion(p, c_at, assignment_expression(p), long_type());
     expect(p, tok_t::rparen, "expected ')' after the expected value");
 
     // the cast makes no lvalue of e where it is already a long; c's
@@ -8600,7 +8619,7 @@ expect_expression(parser_t &p, const token_t &keyword)
     }
 
     const symbol_t &t = temporary(p, "__expected", long_type());
-    expr_t set = assignment(operator_at(keyword, tok_t::assign),
+    expr_t set = assignment(p, operator_at(keyword, tok_t::assign),
                             expr_t { t.type, name_t { &t } }, std::move(e));
 
     return comma(

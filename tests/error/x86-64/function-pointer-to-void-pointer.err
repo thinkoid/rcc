@@ -1,2 +1,2 @@
-tests/error/function-pointer-to-void-pointer.c:9:11: error: incompatible pointer types
-status 1
+tests/error/function-pointer-to-void-pointer.c:11:11: warning: conversion between a pointer to void and a pointer to a function, as GNU C allows
+status 0
