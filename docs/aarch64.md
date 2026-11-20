@@ -478,10 +478,11 @@ better:
 - A `register` parameter is moved from its argument register in the
   prologue, by the extending form for a narrow one, `sxth w19, w1`
   for a `short`, since the convention leaves its upper bits
-  unspecified. The moves come in parameter order among the stores of
-  the other parameters. One past the eighth is loaded straight into
-  its register from where the caller stored it, `ldrsb w19, [x29,
-  #64]`.
+  unspecified. One past the eighth is loaded straight into its
+  register from where the caller stored it, `ldrsb w19, [x29, #64]`.
+  The moves and the loads come in parameter order among the stores of
+  the first eight, as on x86-64 (`backend.md` chapter 4): a load
+  follows those stores.
 
 **The frame pointer: `x29`.** Set in every function's prologue, leaf
 included, and every slot is a displacement off it.

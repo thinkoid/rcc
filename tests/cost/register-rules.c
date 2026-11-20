@@ -49,8 +49,8 @@
    mov w0, w19, and reload the saved read where the paths meet, ldr
    x1, [x29, #32].  The argument registers are eight: stacked() moves
    s from its register, mov w19, w6, among the stores, and loads only
-   k from the caller's area, ldr w20, [x29, #64], first, before the
-   stores of the other parameters.  mixed() is str w0, [x29, #32], mov
+   k from the caller's area, ldr w20, [x29, #64], last, after the
+   stores, in parameter order.  mixed() is str w0, [x29, #32], mov
    w19, w1, str w2, [x29, #36] and mov w20, w3, in that order.  The
    epilogue loads the saved registers from the save area off x29,
    ldr x19, [x29, #16], with no counterpart of x86-64's leaq, whatever

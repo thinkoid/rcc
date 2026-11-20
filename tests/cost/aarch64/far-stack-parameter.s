@@ -66,9 +66,6 @@ eleventh_register:
 	add	x16, x29, #16773120
 	ldr	x17, [x16, #4088]
 	str	x17, [x29, #96]
-	mov	x16, #16777216
-	add	x16, x29, x16
-	ldr	x19, [x16]
 	str	x0, [x29, #24]
 	str	x1, [x29, #32]
 	str	x2, [x29, #40]
@@ -77,6 +74,9 @@ eleventh_register:
 	str	x5, [x29, #64]
 	str	x6, [x29, #72]
 	str	x7, [x29, #80]
+	mov	x16, #16777216
+	add	x16, x29, x16
+	ldr	x19, [x16]
 	mov	x0, x19
 	b	.Leleventh_register.1
 .Leleventh_register.1:

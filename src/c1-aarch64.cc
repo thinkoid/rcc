@@ -4825,15 +4825,16 @@ decl_stmt(state_t &s, const decl_stmt_t &d)
 // body's slots come after theirs.  Each takes the next slot, in
 // declaration order.  Each of the first eight is stored there from its
 // argument register at its width, str w0, [x29, #16], 5.2; one past the
-// eighth is copied there by stack_parameters(), once the frame's size
-// says where the caller left it.  A register parameter is in the one of
+// eighth is copied there by stack_copies(), once the frame's size says
+// where the caller left it.  A register parameter is in the one of
 // the ten its index names, the next in parameter order, chapter 4, and
 // has no slot.  One of the first eight is moved into it from its
 // argument register by establish(), which extends a narrow one, sxtb
 // w19, w0: the convention leaves the bits above a narrow argument
 // unspecified, and the argument register is caller-saved, so it would
 // not survive the first call.  The moves and the stores are written in
-// parameter order, after the save area.
+// parameter order, after the save area and the copies, and the loads of
+// stack_registers() follow them.
 void
 parameters(state_t &s, const function_decl_t &fd)
 {
@@ -4859,39 +4860,59 @@ parameters(state_t &s, const function_decl_t &fd)
     }
 }
 
-// The parameters past the eighth, copied to their slots, 5.2: the
-// caller left the one of index i above the frame, at [x29, #T + 8(i -
-// 8)], and T, the frame's size, is known only once the body is done.
-// The copy is the plain load of the parameter's width, which reads a
-// narrow one at its width, since the convention leaves the bits above it
-// unspecified (chapter 3), and the store to its slot.  A register
-// parameter is loaded straight into its register instead, by the load
-// of its type, which extends a narrow one, ldrsb w19, [x29, #48], chapter
-// 4.  A frame at its limit puts the third of them 16 MiB above x29,
-// past the add's immediate, where slot_operand() holds the upper part
-// in x16, 5.3.
-void
-stack_parameters(state_t &s, const function_decl_t &fd, long size)
+// The displacement off x29 of the parameter of index i past the eighth,
+// 5.2: the caller left it above the frame, at [x29, #T + 8(i - 8)], and
+// T, the frame's size, is known only once the body is done.  A frame at
+// its limit puts the third of them 16 MiB above x29, past the add's
+// immediate, where slot_operand() holds the upper part in x16, 5.3.
+int
+above_frame(std::size_t i, long size)
 {
-    const std::size_t registers = std::size(argument_registers);
+    const long past = static_cast< long >(i - std::size(argument_registers));
 
-    for (std::size_t i = registers; i < fd.params.size(); ++i) {
+    return static_cast< int >(size + 8 * past);
+}
+
+// The parameters past the eighth that have slots, copied to them, 5.2,
+// before the stores of the first eight: the plain load of the
+// parameter's width, which reads a narrow one at its width, since the
+// convention leaves the bits above it unspecified (chapter 3), and the
+// store to its slot.
+void
+stack_copies(state_t &s, const function_decl_t &fd, long size)
+{
+    for (std::size_t i = std::size(argument_registers); i < fd.params.size();
+         ++i) {
+        const auto *p = fd.params[i];
+        const int width = integer(p->type).width;
+
+        if (in_register(*p))
+            continue;
+
+        copy_in(s, above_frame(i, size), width);
+        copy_out(s, slot_operand(s, slot_of(s, p), width / 8), width);
+    }
+}
+
+// The register parameters past the eighth, each loaded straight into its
+// register by the load of its type, which extends a narrow one, ldrsb
+// w19, [x29, #48], chapter 4.  The loads follow the moves and the stores
+// of the first eight, so that every register parameter takes its place
+// in parameter order.
+void
+stack_registers(state_t &s, const function_decl_t &fd, long size)
+{
+    for (std::size_t i = std::size(argument_registers); i < fd.params.size();
+         ++i) {
         const auto *p = fd.params[i];
         const auto &t = integer(p->type);
-        const int width = t.width;
 
-        const long above = size + 8 * static_cast< long >(i - registers);
-
-        if (in_register(*p)) {
-            const auto [mnemonic, into] = load_of(t, register_width(p));
-            const auto from =
-                slot_operand(s, static_cast< int >(above), width / 8);
-            insn(s, mnemonic, { reg(variable_register(p), into), from });
+        if (!in_register(*p))
             continue;
-        }
 
-        copy_in(s, static_cast< int >(above), width);
-        copy_out(s, slot_operand(s, slot_of(s, p), width / 8), width);
+        const auto [mnemonic, into] = load_of(t, register_width(p));
+        const auto from = slot_operand(s, above_frame(i, size), t.width / 8);
+        insn(s, mnemonic, { reg(variable_register(p), into), from });
     }
 }
 
@@ -5033,14 +5054,15 @@ epilogue(state_t &s, long size)
 
 // A definition.  The registers the save area holds are the parser's
 // count, the registers the function's variables take, chapter 5.1,
-// known before the body, since every slot lies above them; the body is
-// generated next, into the buffer, and the prologue written after it,
-// when the frame's size is known; so are the copies of the parameters
-// past the eighth, which follow the prologue and precede the body.  The
-// first slot lies above the frame record and the save area, and this is
-// the one place that says so.  The one epilogue is reached with x0 as
-// it is, G5's some value, but for main, which returns 0 when it falls
-// off its end, 5.1.2.3.4.
+// known before the body, since every slot lies above them; the
+// parameters' stores and moves are generated first, then the body, each
+// into a buffer of its own, and the prologue written after them, when
+// the frame's size is known.  So are the copies and the loads of the
+// parameters past the eighth, the copies before the parameters' stores
+// and the loads after them.  The first slot lies above the frame record
+// and the save area, and this is the one place that says so.  The one
+// epilogue is reached with x0 as it is, G5's some value, but for main,
+// which returns 0 when it falls off its end, 5.1.2.3.4.
 void
 function(state_t &s, const function_decl_t &fd)
 {
@@ -5065,6 +5087,9 @@ function(state_t &s, const function_decl_t &fd)
         s.slots.emplace(fd.va_area, allocate(s, size_of(fd.va_area->type), 16));
 
     parameters(s, fd);
+    const auto stores = s.body.str();
+    s.body.str({ });
+
     block_stmt(s, *fd.body);
 
     if (!s.terminated && s.function == "main")
@@ -5076,7 +5101,9 @@ function(state_t &s, const function_decl_t &fd)
     s.body.str({ });
     if (fd.va_area)
         fill_va_area(s, fd, size);
-    stack_parameters(s, fd, size);
+    stack_copies(s, fd, size);
+    s.body << stores;
+    stack_registers(s, fd, size);
 
     const auto name = assembly_name(*fd.sym);
     binding(s.out, *fd.sym);

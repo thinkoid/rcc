@@ -64,22 +64,6 @@ is a product, or every global array by a variable index.
 
 Check: the count over =tests=, and no function longer.
 
-** TODO aarch64: a register parameter from the stack is loaded before the other parameters' stores
-
-A =register= parameter past the eighth is loaded from the caller's
-frame first, =ldr w20, [x29, #64]=, before the stores and moves of
-the parameters that arrive in registers; x86-64 loads its stack
-parameters in parameter order, after the six stores. =aarch64.md=
-chapter 4 does not say where the load stands, and =backend.md=
-chapter 4 states x86-64's order as the rule. =register-rules='s
-=stacked()= pins both.
-
-Fix: the load takes its place in parameter order, as on x86-64, and
-=aarch64.md= chapter 4 says so.
-
-Check: =stacked()= on aarch64 is pinned in parameter order, and the
-chapter's sentence agrees.
-
 ** TODO A compound assignment by an identity's constant writes its operator
 
 ~x += 0~, ~x *= 1~, ~x <<= 0~ and ~p += 0~ write their operator and
@@ -156,6 +140,24 @@ their own.
 Fix: one function in =src/c1-common.cc=, called by the four.
 
 Check: no listing over =tests= changes.
+
+** TODO aarch64: an ordinary parameter past the eighth is copied before the stores of the first eight
+
+The moves, the stores and the loads of a function's parameters are
+written in parameter order on aarch64, but for the copies of the
+ordinary parameters past the eighth to their slots, which
+=aarch64.md= 5.2 puts before the stores of the first eight: with a
+=register= parameter at index 8 and an ordinary one at index 9, the
+ninth's copy, =ldrb w17, [x29, #72]; strb w17, [x29, #62]=, is
+written before the eight stores and the eighth's load after them.
+
+Fix: none taken; decide: the copies follow the stores, every
+parameter's instructions in parameter order, with 5.2 and
+=cost.md='s row saying so; or the documents say why the copies come
+first. Taken, 11 listings over =tests= reorder at the same count.
+
+Check: =stack-parameter='s pin in parameter order, and no function
+longer; or the sentence in 5.2.
 
 * Guarantees
 

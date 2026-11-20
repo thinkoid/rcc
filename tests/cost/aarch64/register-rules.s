@@ -295,7 +295,6 @@ stacked:
 	stp	x19, x20, [x29, #16]
 	.cfi_offset w19, -48
 	.cfi_offset w20, -40
-	ldr	w20, [x29, #64]
 	str	w0, [x29, #32]
 	str	w1, [x29, #36]
 	str	w2, [x29, #40]
@@ -304,6 +303,7 @@ stacked:
 	str	w5, [x29, #52]
 	mov	w19, w6
 	str	w7, [x29, #56]
+	ldr	w20, [x29, #64]
 	ldr	w0, [x29, #32]
 	ldr	w1, [x29, #36]
 	add	w0, w0, w1
