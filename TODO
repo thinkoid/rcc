@@ -95,22 +95,6 @@ wrote is an instruction.
 
 Check: by the decision.
 
-** TODO aarch64: constants whose sum is out of the access's reach are each added
-
-~((int *) (p + 2000000000))[400000000]~ holds each part in a register
-and adds the first, five instructions before the load in
-=view_beyond()= of =subscript-displacement=, where the total held
-once is the load's register offset, two instructions before it. The
-total can need more
-=movk= than its parts do, so the sum is the shorter only by case:
-=p + 0x10000= is one =add=, and a total of 0x10010 held is two
-instructions. 13 forms over =tests=, 12 of them =kview_index_*= rows
-at an odd total above 255.
-
-Fix: none taken; compare the two forms' counts per case.
-
-Check: the count over =tests=, and no function longer.
-
 ** TODO aarch64: a narrow or widened prefix step's value is stepped outside the register variable
 
 ~r = ++c~ on a =char= in memory into a ~register int r~ is =ldrb w0,

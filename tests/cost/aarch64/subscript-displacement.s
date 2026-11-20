@@ -641,12 +641,9 @@ view_beyond:
 	.cfi_def_cfa_register w29
 	str	x0, [x29, #16]
 	ldr	x0, [x29, #16]
-	mov	x1, #37888
-	movk	x1, #0x7735, lsl #16
-	add	x0, x0, x1
-	mov	x1, #33792
-	movk	x1, #0x17d7, lsl #16
-	ldr	w0, [x0, x1, lsl #2]
+	mov	x1, #41984
+	movk	x1, #0xd693, lsl #16
+	ldr	w0, [x0, x1]
 	b	.Lview_beyond.1
 .Lview_beyond.1:
 	.cfi_def_cfa wsp, 32

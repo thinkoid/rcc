@@ -1194,9 +1194,11 @@ based(const expr_t &pointer,
 // the constant row of 6.4, after them.
 bool arithmetic_immediate(long long value, int width);
 
-// denoted() counts p + n's rows by product_length(), which comes with
-// the constant row of 6.4, after it.
+// denoted() counts p + n's rows by product_length(), and
+// holds_total() the constant row's by constant_length(), which come
+// with the constant row of 6.4, after them.
 int product_length(long long);
+int constant_length(long long value, int width);
 
 // The address a pointer denotes before any instruction forms it, 6.3:
 // the pointer under the casts between pointer types and the sums by a
@@ -1476,6 +1478,42 @@ address_t index_across(
     state_t &, value_t, index_t, int shift, bool pointer_first, const expr_t *);
 bool calls_within(const expr_t &);
 
+// Whether an access of size bytes holds its constants' total, 6.3:
+// denoted()'s walk under the pointer, with no index and on a base that
+// is no name's address, folded()'s, and the access's own d, whose total
+// no displacement reaches.  The total is held once by the constant row
+// of 6.4 and read as the access's register offset, held_offset()'s,
+// where that is fewer instructions than the parts take at the least:
+// the rows of p + n write one constant under the pointer as
+// product_length() counts it and two or more as at least one add
+// unless they cancel, and the access's own part, out of its reach, is
+// one instruction or more.  Where the pointer's value may be formed
+// whole, whole, under a cast or at a size no form scales by, the rows
+// may instead add the total once, joined()'s, and that is the least
+// where it is shorter: *(int *) ((char *) p + 1052972 + -300) keeps add
+// x0, x0, #1052672 before [x0].  ((int *) (p + 2000000000))[400000000]
+// holds 3600000000 in two instructions, mov and movk, where the parts
+// take five, and ((int *) (p + 1))[4097] holds 16389 in one where the
+// parts take two; ((int *) (p + 1))[255] keeps add x0, x0, #1 and [x0,
+// #1020], the same count, and no register more.
+bool
+holds_total(state_t &s, const denoted_t &at, long long d, int size, bool whole)
+{
+    if (at.index || at.constants == 0 || named_offset(*at.base, s.defined))
+        return false;
+
+    const auto total = wrapped_add(at.bytes, d);
+    if (in_reach(total, size))
+        return false;
+
+    const int under = at.constants == 1 ? at.written : at.bytes != 0;
+    const int own = in_reach(d, size) ? 0 : 1;
+    const int least =
+        whole ? std::min(under + own, product_length(total)) : under + own;
+
+    return constant_length(total, 64) < least;
+}
+
 // The index form of an access through a sum, sum_address()'s, 6.3:
 // the base and the index generated in the order written (G13), then
 // held across between by index_across().  p[i], *(p + i): the pointer
@@ -1520,7 +1558,8 @@ indexed_address(state_t &s,
 // being mov x1, #4097; ldrsw x0, [x0, x1], where it saves the add and
 // nothing is evaluated between the address and the access.  The
 // constants under the pointer, a variable index among them, are the
-// row's plan's, row_access()'s.
+// row's plan's, row_access()'s; a total of them out of the access's
+// reach is held once where that is shorter, holds_total()'s.
 address_t
 sum_address(state_t &s,
             const expr_t &p,
@@ -1550,6 +1589,18 @@ sum_address(state_t &s,
     if (d)
         if (const auto row = row_access(s, pointer, *d, access, !between))
             return row_address(s, *row);
+
+    // ((int *) (p + 2000000000))[400000000]: the total no displacement
+    // reaches held once, mov x1, #41984; movk x1, #0xd693, lsl #16; ldr
+    // w0, [x0, x1], where that is fewer instructions than the parts
+    const bool whole =
+        &sum != &p ||
+        !std::has_single_bit(static_cast< unsigned long >(size)) || size > 16;
+    if (d && !between)
+        if (const auto at = denoted(pointer);
+            holds_total(s, at, *d, access, whole))
+            return held_offset(s, rvalue(s, *at.base),
+                               wrapped_add(at.bytes, *d));
 
     if (d && in_reach(*d, access))
         return { .base = rvalue(s, pointer),

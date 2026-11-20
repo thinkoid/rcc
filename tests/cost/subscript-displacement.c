@@ -106,8 +106,9 @@
    holds a displacement or an index, never both, so view_indexed()
    adds the 1 before ldr w0, [x0, w1, sxtw #2] and two_indexes() the
    product before ldrsh w0, [x0, w1, sxtw]; and view_beyond(), whose
-   sum no displacement reaches, holds both parts, the second as the
-   register offset, ldr w0, [x0, x1, lsl #2].  A name's address plus
+   sum no displacement reaches, holds the total once, mov x1, #41984
+   and movk x1, #0xd693, lsl #16, as the register offset, ldr w0, [x0,
+   x1], where the two parts would take five.  A name's address plus
    a constant under a cast is the slot's or the label's own operand
    where the access encodes it: member_slot() reads ldr w0, [x29,
    #28], member_odd() the unscaled ldr w0, [x29, #25], and

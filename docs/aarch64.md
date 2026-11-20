@@ -1032,8 +1032,23 @@ never both: `*(short *) ((char *) p + 4 + i * 4 + 2)` is the product's
 `add x0, x0, w1, sxtw` and `ldrsh w0, [x0, #6]`; where the access's
 own operand is the index, `((int *) (c + 1))[i]`, the constant keeps
 its `add` before `[x0, w1, sxtw #2]`, the same count. A total out of
-reach, `((int *) (c + 1))[255]` at 1021 bytes, keeps the rows as they
-were. As a value the address is the same walk: two or more constants
+reach is held once and read as the register offset, unscaled, where
+that is fewer instructions than the parts take at the least: one
+constant's row, or one `add` for two or more that do not cancel, and
+one instruction for the access's own part out of its reach. So
+`((int *) (c + 1))[4097]` is `mov x1, #16389; ldr w0, [x0, x1]`
+where the parts are `add x0, x0, #1; mov x1, #4097` before `[x0, x1,
+lsl #2]`, and `((int *) (p + 2000000000))[400000000]` is `mov x1,
+#41984; movk x1, #0xd693, lsl #16` before `[x0, x1]`, two where the
+parts are five. The total can need more `movk` than its parts, so the
+count decides: `((int *) (c + 1))[255]`, 1021 bytes, keeps `add x0,
+x0, #1` and `[x0, #1020]`, the same count with no register more, and
+`((int *) (c + 65536))[4]` keeps its one `add` where 65552 held is
+two. Under a cast, or at a size no form scales by, the pointer's value
+may be formed whole, the total one `add`, and that bounds the count
+too: `*(int *) ((char *) p + 1052972 + -300)` keeps `add x0, x0,
+#1052672` before `[x0]`, where the total held is two.
+As a value the address is the same walk: two or more constants
 are one `add` of their sum where its immediate encodes it,
 `&((int *) (c + 1))[3]` being `add x0, x0, #13` and
 `&((int *) (c + 4))[-1]`, whose constants sum to 0, `c` and no
