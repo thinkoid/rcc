@@ -1268,6 +1268,37 @@ refuse_tag_twins(const token_t &at, const type_t &a, const type_t &b)
         not_yet(at, "compatibility of two types of " + record_words(*r));
 }
 
+// Whether a type may be compatible with a not-yet type made from
+// another, which rcc cannot tell: any type may be for a typedef
+// through a marking attribute, and an array, or another such type, for
+// a typedef of an array of a size rcc cannot compute, 6.2.7p1.
+bool
+may_be_compatible(const not_yet_t &made, const type_t &t)
+{
+    if (!made.element)
+        return true;
+
+    return is< array_t >(t) || (is< not_yet_t >(t) && as< not_yet_t >(t).made);
+}
+
+// rcc does not know what a typedef through a marking attribute or an
+// array size it cannot compute makes of the type, so a conversion
+// between a pointer to one and a pointer to another type that may be
+// compatible with it is not yet, by the typedef's words.  Any other
+// mismatch is the caller's error.
+void
+refuse_made_pointees(const token_t &at, const type_t &a, const type_t &b)
+{
+    const type_t &x = pointee_of(a);
+    const type_t &y = pointee_of(b);
+
+    for (const auto &[made, other] : { std::pair { &x, &y }, { &y, &x } })
+        if (is< not_yet_t >(*made) && as< not_yet_t >(*made).made &&
+            may_be_compatible(as< not_yet_t >(*made), *other))
+            not_yet(at, "conversion of a pointer to a type of " +
+                            as< not_yet_t >(*made).what);
+}
+
 // The words a conversion's error names a type by: a record by its
 // own, a scalar by its kind.
 std::string
@@ -1347,6 +1378,7 @@ assignment_conversion(parser_t &p, const token_t &at, expr_t e, const type_t &t)
         !void_and_object_pointer(t, e.type) &&
         !void_and_function_pointer(t, e.type) && !is_null_pointer_constant(e)) {
         refuse_tag_twins(at, t, e.type);
+        refuse_made_pointees(at, t, e.type);
         fail(at, "incompatible pointer types");
     }
 
@@ -3466,7 +3498,7 @@ type_definition(parser_t &p, const specifiers_t &spec, const declarator_t &d)
             tail.markings.count == 1 ?
                 identity_of(p, attribute_spelling(p, *tail.marking), t) :
                 p.identities++;
-        t = make_not_yet(identity, attribute_words(*tail.marking));
+        t = make_not_yet(identity, attribute_words(*tail.marking), true);
     }
 
     if (!earlier_declaration(p, *d.name, t, storage_t::type_name))

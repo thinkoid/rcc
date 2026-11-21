@@ -334,21 +334,6 @@ type itself stays unqualified.
 Check: the three programs above fail with a diagnostic; =const= in
 every other position still parses.
 
-** TODO A pointer to a type rcc does not honour takes no pointer to the type behind it
-
-~typedef int word_t __attribute__ ((mode (word))); void f(word_t *);
-void g(int *p) { f(p); }~ fails with "incompatible pointer types";
-so does the same program with ~typedef _Atomic int a_t;~. The error
-calls the program invalid where rcc has not looked: a typedef through
-a marking attribute or =_Atomic= names a type of an identity of its
-own, which keeps nothing of the type it was made from.
-
-Fix: the refusal says "not yet" and names the typedef's words, where
-one of the two pointees is such a type; or the type keeps what it was
-made from.
-
-Check: the first program is refused as not yet, or compiles.
-
 ** TODO The other target is preprocessed with this machine's headers
 
 =rcc -target x86-64= on an aarch64 machine runs =clang -E
@@ -617,6 +602,20 @@ Fix: the means spell every marking attribute of the declaration, in
 their order.
 
 Check: that typedef written twice compiles.
+
+** TODO A pointer to a type rcc does not honour compared, joined or redeclared with another is an error
+
+A conversion between a pointer to a typedef through a marking
+attribute and a pointer to a type it may be is "not yet", since rcc
+has not looked. The same pair in a redeclaration, ~void f(word_t *);
+void f(long *);~, is "conflicting types for 'f'", and in ~==~ and
+~?:~ "distinct pointer types"; a pointer to such a pointer is not
+looked into. =clang= takes the first where =word_t= is =long=.
+
+Fix: the same not-yet in the comparison, the conditional's arms and
+the redeclaration, the types walked as for a tag declared twice.
+
+Check: that redeclaration is refused as not yet.
 
 * Lexer
 

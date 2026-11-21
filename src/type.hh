@@ -96,7 +96,12 @@ struct record_type_t
 // and alignment are then clang's.  element is the element of the array
 // a typedef names through a size rcc cannot compute, which a parameter
 // of the type is adjusted to a pointer to, 6.7.7.4p6; null for any
-// other.  Equality reads neither.
+// other.  made is whether the type was made from another by a typedef
+// through a marking attribute or an array size rcc cannot compute:
+// rcc does not know what the attribute or the size makes of that
+// type, so it cannot tell whether another type is compatible with it.
+// An atomic type is compatible with none but itself, 6.7.4.1p11, so
+// _Atomic makes none.  Equality reads none of the three.
 struct not_yet_t
 {
     int identity;
@@ -104,6 +109,7 @@ struct not_yet_t
     long size = 0;
     int alignment = 0;
     type_ptr_t element = nullptr;
+    bool made = false;
 };
 
 struct type_t
@@ -198,7 +204,7 @@ type_t make_array(type_t element, long count);
 type_t
 make_function(type_t result, std::vector< type_t > params, bool variadic);
 type_t make_record(const record_t &);
-type_t make_not_yet(int identity, std::string what);
+type_t make_not_yet(int identity, std::string what, bool made = false);
 type_t make_not_yet_array(int identity, std::string what, type_t element);
 type_t make_floating(int identity, std::string what, long size);
 

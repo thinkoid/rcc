@@ -131,9 +131,10 @@ make_record(const record_t &r)
 }
 
 type_t
-make_not_yet(int identity, std::string what)
+make_not_yet(int identity, std::string what, bool made)
 {
-    return type_t { not_yet_t { identity, std::move(what) } };
+    return type_t { not_yet_t { identity, std::move(what), 0, 0, nullptr,
+                                made } };
 }
 
 // The type a typedef names through an array size rcc cannot compute,
@@ -142,7 +143,7 @@ type_t
 make_not_yet_array(int identity, std::string what, type_t element)
 {
     return type_t { not_yet_t { identity, std::move(what), 0, 0,
-                                share(std::move(element)) } };
+                                share(std::move(element)), true } };
 }
 
 // A real floating type is aligned to its size on both targets.

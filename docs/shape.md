@@ -196,6 +196,13 @@ again (6.7.1p4) and a function with it: a marking attribute with its
 arguments, `__x__` read as `x`, where it is the declaration's one
 marking attribute; `_Atomic`, the qualifier or the specifier; and an
 array size rcc cannot compute, by the words of the size.
+A pointer to a type made by a typedef through a marking attribute
+or an array size rcc cannot compute, converted to or from a pointer
+to another type that may be compatible with it, is not yet, by the
+typedef's words: rcc does not know what the attribute or the size
+makes of the type. An atomic type is compatible with no other
+(6.7.4.1p11), so a pointer to one and a pointer to another type stay
+incompatible.
 It has no size and no alignment, but a real floating type has
 `clang`'s, the same on both targets, so that a record lays it out:
 `float` 4, `double` 8 and `long double` 16, each aligned to its size.

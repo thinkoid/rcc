@@ -1,0 +1,2 @@
+tests/error/atomic-typedef-pointer.c:13:11: error: incompatible pointer types
+status 1
