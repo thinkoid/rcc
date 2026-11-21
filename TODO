@@ -563,18 +563,6 @@ types whose marks differ is a not-yet.
 Check: that program is refused by the attribute's name, or
 =docs/shape.md= says why not.
 
-** TODO A cast of 0 to a qualified =void *= is taken as a null pointer constant
-
-=is_null_pointer_constant()= takes 0 cast to any pointer to =void=,
-so ~(const void *) 0~ is one, though 6.3.2.3p3 names a cast "to type
-void *" alone. So ~int *p = (const void *) 0;~ draws no warning of
-the =const= it discards, where =clang= warns.
-
-Fix: the pointee unqualified too.
-
-Check: an error program of the initialization, pinned with the
-warning at status 0.
-
 ** TODO An address converted to =_Bool= in a static initializer is refused
 
 ~int x; _Bool g = &x;~ is "initializer element is not a compile-time

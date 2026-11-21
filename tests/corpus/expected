@@ -51,3 +51,4 @@ parameter-size-entry 42 42
 compatible-types 42 42
 g21-bool-byte 39 101
 register-names 42 42
+null-pointer-constant-qualified 42 42

@@ -1,0 +1,2 @@
+tests/error/discarded-const-null-pointer.c:9:16: warning: conversion discards the 'const' of the pointed-to type
+status 0

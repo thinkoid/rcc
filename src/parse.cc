@@ -1324,14 +1324,18 @@ warn_void_arithmetic(parser_t &p, const token_t &op, const type_t &pointer)
 // literal, and the cast of one to a pointer type to a literal of that
 // type, so the two are an integer literal 0 and a void * literal 0.
 // A literal 0 of another pointer type, (int *) 0, is a null pointer
-// but not a null pointer constant.
+// but not a null pointer constant, and so is one of a pointer to a
+// qualified void, (const void *) 0: p3 names void * alone.
 bool
 is_null_pointer_constant(const expr_t &e)
 {
     if (!is< literal_t >(e) || as< literal_t >(e).value != 0)
         return false;
 
-    return is< int_t >(e.type) || is_void_pointer(e.type);
+    if (is_void_pointer(e.type))
+        return as< pointer_t >(e.type).qualifiers == qualifiers_t { };
+
+    return is< int_t >(e.type);
 }
 
 // Two distinct complete records of one kind and one tag, which C23

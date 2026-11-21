@@ -394,7 +394,9 @@ Three sums.
   a null pointer constant, meet at one type (p7): the null pointer
   constant takes the other's, before a pointer to `void` and an object
   pointer meet at `void *`, so `c ? (void *) 0 : p` is an `int *` for
-  an `int *p`; two pointers to compatible types meet at the pointer to
+  an `int *p`, and `c ? (const void *) 0 : p` a `const void *`, since
+  0 cast to a qualified `void *` is no null pointer constant
+  (6.3.2.3p3); two pointers to compatible types meet at the pointer to
   their composite, qualified as both pointees are, so `c ? cp : p` is
   a `const int *` for a `const int *cp`; `==` and `!=` test a pointer
   against a null pointer
