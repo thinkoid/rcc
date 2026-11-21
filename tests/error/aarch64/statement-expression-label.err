@@ -1,0 +1,2 @@
+tests/error/statement-expression-label.c:11:9: error: not yet: label in a statement expression
+status 1

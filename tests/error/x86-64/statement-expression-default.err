@@ -1,0 +1,2 @@
+tests/error/statement-expression-default.c:12:25: error: 'default' label of a switch outside the statement expression
+status 1

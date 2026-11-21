@@ -4929,7 +4929,7 @@ pinned(const expr_t &e)
 // value names, rax for a return's, as a set of one, or none (6.1): the
 // rows that write a fresh register take it as the lowest free one,
 // unary(), binary(), assign() and cast() hand it on, and a conditional
-// joins its arms there.
+// joins its arms there.  GNU C's statement expression is not yet.
 value_t
 rvalue(state_t &s, const expr_t &e, into_t *into, unsigned wanted)
 {
@@ -4969,6 +4969,9 @@ rvalue(state_t &s, const expr_t &e, into_t *into, unsigned wanted)
 
     if (is< cast_t >(e))
         return cast(s, as< cast_t >(e), e.type, into, wanted);
+
+    if (is< statement_expression_t >(e))
+        not_yet("statement expression");
 
     return conditional(s, e, into, wanted);
 }

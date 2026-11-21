@@ -4425,7 +4425,7 @@ call(state_t &s, const call_t &c, const type_t &t)
 // register with no move, where a join in x0 moves each, and under a cast
 // that widens, the extension after the join reads that register where it
 // is.  rvalue_in() hands the name to a conditional at the top of the
-// value whatever its arms.
+// value whatever its arms.  GNU C's statement expression is not yet.
 value_t
 rvalue(state_t &s, const expr_t &e, into_t *into, unsigned wanted)
 {
@@ -4457,6 +4457,9 @@ rvalue(state_t &s, const expr_t &e, into_t *into, unsigned wanted)
 
     if (is< cast_t >(e))
         return cast(s, as< cast_t >(e), e.type, into, wanted);
+
+    if (is< statement_expression_t >(e))
+        not_yet("statement expression");
 
     const auto &k = as< conditional_t >(e);
     // a ?: b: the condition is the first arm

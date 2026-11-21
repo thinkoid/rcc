@@ -1,0 +1,2 @@
+tests/error/statement-expression-case.c:12:25: error: 'case' label of a switch outside the statement expression
+status 1

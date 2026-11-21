@@ -284,7 +284,8 @@ Three sums.
 
 - `expr_t`: a type and a node. The nodes are integer or character
   literal, name, string literal, unary, binary, assignment, call,
-  cast, conditional. A name holds a non-owning pointer to its symbol.
+  cast, conditional, statement expression. A name holds a non-owning
+  pointer to its symbol.
   A string literal holds its elements' bytes and the elements' width
   and is typed `char [N + 1]`, or for a wide one an array of `N + 1`
   of its element type (chapter 5). Whether an expression is an lvalue
@@ -335,7 +336,10 @@ Three sums.
   is `p`'s value. `&f` is that cast too, so `f` and `&f` as values are
   one node. A value of pointer-to-function type is loaded, stored,
   passed, returned and compared as any pointer, and no node is
-  particular to it.
+  particular to it. GNU C's statement expression, `({ ... })`, holds
+  its block's statements and, where the block ends in an expression
+  statement, that statement's expression apart, the value; its type is
+  the value's, `void` without one, and it is no lvalue (chapter 5).
 - `stmt_t`: expression, declaration, block, if, switch, while, do,
   for, break, continue, label, case label, goto, return. A `for`
   carries its init as a statement, so a declaration in the init costs
@@ -845,6 +849,28 @@ The converted value is zero where `a` is, so c1 tests it and takes it
 as the first arm's: no temporary holds `a`, and nothing reads it
 twice (`cost.md` 2.1, 2.2). On a constant `a` and a constant `b` the
 node is the operand `a` selects, as for any conditional.
+
+GNU C's statement expression, `({ ... })`, is a compound statement in
+parentheses where an expression stands. Its block is a block of its
+own (6.8.3p2), which opens a scope, and its statements run where the
+expression stands (G13). Its value is the expression of its last item
+where that item is an expression statement, decayed as a discarded
+operand is; its type is the value's, `char` for a `char`'s, and `void`
+where the value is void or the block ends in anything else, a
+declaration among them, though a record's list writes its stores as
+statements after it. It is no lvalue: `({ x; }) = 1` is an error, and
+the value's lvalue conversion is c1's load. A record's value there is
+not yet, as any record's value is. Its statements run in a function's
+body, so outside one, in an initializer or an array size at file scope
+or in a definition's parameter list, it is an error, as `clang` has
+it. A jump out of it is taken: a `break`, a `continue`, a `goto` or a
+`return` in it goes to what it names around the expression. A jump
+into it is refused: a `case` or a `default` label inside one whose
+switch is outside it is an error, as `clang` has it, and a label
+inside one is not yet, since a `goto` from outside would jump in.
+Where a constant expression is wanted, a `case` label's or a static
+object's initializer, it is not yet: `clang` folds it to its value,
+and rcc does not.
 
 The types a header declares and rcc does not use are not-yet types:
 the complex types, `_Complex` among the specifiers of a floating
@@ -1541,7 +1567,8 @@ and `volatile` are dropped, so an assignment to a `const` object and
 a conversion that discards a qualifier draw no diagnostic, and
 `(const void)` is taken as `(void)`), an atomic object, GNU C's case
 range, `case 1 ... 5:`, GNU C's statement expression, `({ ... })`,
-and `alloca`,
+in c1, a label in one and one where a constant expression is wanted
+(chapter 5), and `alloca`,
 which `alloca.h` defines as `__builtin_alloca`, each refused by its
 name, the body of a system header's `static inline`
 function, whose use is refused, and of the program's own one whose

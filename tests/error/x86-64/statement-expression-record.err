@@ -1,0 +1,2 @@
+tests/error/statement-expression-record.c:14:12: error: not yet: value of struct 'point'
+status 1

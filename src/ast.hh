@@ -232,6 +232,21 @@ struct conditional_t
     expr_ptr_t cond, yes, no;
 };
 
+struct stmt_t;
+
+// GNU C's statement expression, ({ ... }): a block whose statements run
+// where the expression stands, G13, in a scope of their own.  body is
+// the block's items but the last expression statement's expression,
+// which is value, the expression's value, decayed as any operand
+// discarded is; value is null where the block ends in anything else,
+// and the expression is then void.  Its type is the value's, and it is
+// no lvalue, the value's lvalue conversion being c1's load.
+struct statement_expression_t
+{
+    std::vector< stmt_t > body;
+    expr_ptr_t value;
+};
+
 struct expr_t
 {
     type_t type;
@@ -243,7 +258,8 @@ struct expr_t
                   assign_t,
                   call_t,
                   cast_t,
-                  conditional_t >
+                  conditional_t,
+                  statement_expression_t >
         v;
 };
 

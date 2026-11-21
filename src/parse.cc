@@ -95,9 +95,12 @@ struct markings_t
 // to, p5; its cases so far, as the tree takes them, and the token of
 // each one's constant by its value, for the words of a duplicate, p3;
 // and its default's number and keyword, once one is met.
+// statement_expressions is the count of statement expressions around
+// the switch, which a label of it inside one more is a jump into.
 struct open_switch_t
 {
     type_t type;
+    int statement_expressions;
     std::vector< case_t > cases = { };
     std::unordered_map< long long, const token_t * > values = { };
     std::optional< int > default_ = { };
@@ -118,6 +121,8 @@ struct open_switch_t
 // switches are the switches around the parse, the innermost last, which
 // a case or a default label belongs to, 6.8.5.3p4; case_labels is the
 // number the function's next case or default label takes.
+// statement_expressions is the count of GNU C's statement expressions
+// around the parse.
 // identities is the identity the next not-yet type of its own takes:
 // an enum in its own list or marked by an attribute, an atomic type, a
 // typedef through a marking attribute or an array size rcc cannot
@@ -165,6 +170,7 @@ struct parser_t
     int continue_targets = 0;
     std::vector< open_switch_t > switches = { };
     int case_labels = 0;
+    int statement_expressions = 0;
     std::vector< internal_use_t > internal_uses = { };
     std::unordered_map< std::string_view, symbol_t * > block_entities = { };
     std::vector< tentative_t > incomplete_definitions = { };
@@ -654,6 +660,56 @@ bool
 is_integer_constant(const expr_t &e)
 {
     return is< literal_t >(e) && is< int_t >(e.type);
+}
+
+// Whether a statement expression stands anywhere in e.
+bool
+holds_statement_expression(const expr_t &e)
+{
+    if (is< statement_expression_t >(e))
+        return true;
+
+    if (is< unary_t >(e))
+        return holds_statement_expression(*as< unary_t >(e).arg);
+
+    if (is< binary_t >(e))
+        return holds_statement_expression(*as< binary_t >(e).lhs) ||
+               holds_statement_expression(*as< binary_t >(e).rhs);
+
+    if (is< assign_t >(e))
+        return holds_statement_expression(*as< assign_t >(e).lhs) ||
+               holds_statement_expression(*as< assign_t >(e).rhs);
+
+    if (is< call_t >(e)) {
+        const auto &c = as< call_t >(e);
+        return holds_statement_expression(*c.callee) ||
+               std::ranges::any_of(c.args, holds_statement_expression);
+    }
+
+    if (is< cast_t >(e))
+        return holds_statement_expression(*as< cast_t >(e).arg);
+
+    if (is< conditional_t >(e)) {
+        const auto &c = as< conditional_t >(e);
+        return holds_statement_expression(*c.cond) ||
+               (c.yes && holds_statement_expression(*c.yes)) ||
+               holds_statement_expression(*c.no);
+    }
+
+    return false;
+}
+
+// The refusal of e where a constant expression is wanted and e folded
+// to none: the error words say, but for a statement expression in it,
+// which clang folds to its value as GNU C's extension, and rcc does not
+// fold yet.
+[[noreturn]] void
+refuse_unfolded(const token_t &at, const expr_t &e, std::string words)
+{
+    if (holds_statement_expression(e))
+        not_yet(at, "statement expression in a constant expression");
+
+    fail(at, std::move(words));
 }
 
 exact_t
@@ -1539,8 +1595,10 @@ identity_operand(binary_t &b, const type_t &t)
 }
 
 void drop_identities(expr_t &);
+void drop_identities(stmt_t &);
 
-// drop_identities() of each operand of a node.
+// drop_identities() of each operand of a node, and of each statement
+// of a statement expression's block.
 void
 drop_identities_under(expr_t &e)
 {
@@ -1573,6 +1631,13 @@ drop_identities_under(expr_t &e)
             drop_identities(*c->yes);
         drop_identities(*c->no);
     }
+
+    if (auto *x = std::get_if< statement_expression_t >(&e.v)) {
+        for (stmt_t &item : x->body)
+            drop_identities(item);
+        if (x->value)
+            drop_identities(*x->value);
+    }
 }
 
 // Each identity's node under e and e's own left out, its other operand
@@ -1597,8 +1662,6 @@ drop_identities(expr_t &e)
     expr_t operand = std::move(*kept);
     e = std::move(operand);
 }
-
-void drop_identities(stmt_t &);
 
 void
 drop_identities(block_t &b)
@@ -3773,7 +3836,8 @@ scalar_value(parser_t &p, const token_t &at, const type_t &t)
     if (std::optional< initializer_t > address = address_constant(init))
         return std::move(*address);
 
-    fail(start, "initializer element is not a compile-time constant");
+    refuse_unfolded(start, init,
+                    "initializer element is not a compile-time constant");
 }
 
 // Where the walk over an initializer puts each value it finds,
@@ -4845,7 +4909,8 @@ static_assert_declaration(parser_t &p)
     const token_t &start = peek(p);
     const expr_t e = rvalue(start, conditional_expression(p));
     if (!is_integer_constant(e))
-        fail(start, "static assertion is not an integer constant expression");
+        refuse_unfolded(
+            start, e, "static assertion is not an integer constant expression");
 
     const std::string message = assertion_message(p);
     expect(p, tok_t::rparen, "expected ')' in static assertion");
@@ -5663,7 +5728,9 @@ bit_field(parser_t &p, member_list_t &list, const type_t &t)
     const token_t &start = peek(p);
     const expr_t width = rvalue(start, conditional_expression(p));
     if (!is_integer_constant(width))
-        fail(start, "bit-field width is not an integer constant expression");
+        refuse_unfolded(
+            start, width,
+            "bit-field width is not an integer constant expression");
 
     attribute_specifier_list(p);
     mark_not_yet(list.record, "bit-field in " + record_words(list.record));
@@ -6162,8 +6229,9 @@ enumerator_value(parser_t &p, const token_t &name, const expr_t *previous)
 
         expr_t e = rvalue(start, conditional_expression(p));
         if (!is_integer_constant(e))
-            fail(start,
-                 "enumerator value is not an integer constant expression");
+            refuse_unfolded(
+                start, e,
+                "enumerator value is not an integer constant expression");
 
         if (holds(int_type(), exact_value(e)))
             return constant_of(int_type(), exact_value(e));
@@ -7520,12 +7588,17 @@ is_label_start(const parser_t &p)
 }
 
 // A label, identifier :, which defines its name in the function's
-// labels, 6.2.1p3; a name is defined once in a function, 6.8.2p3.
+// labels, 6.2.1p3; a name is defined once in a function, 6.8.2p3.  One
+// inside a statement expression is not yet: a goto from outside would
+// jump into the expression, which GNU C does not permit.
 stmt_t
 named_label(parser_t &p)
 {
     const token_t &name = advance(p);
     advance(p);
+
+    if (p.statement_expressions > 0)
+        not_yet(name, "label in a statement expression");
 
     if (!p.labels.emplace(name.text, &name).second)
         fail(name, "redefinition of label " + quoted(name.text));
@@ -7545,6 +7618,18 @@ case_value(long long value, const type_t &t)
     return std::to_string(value);
 }
 
+// A case or a default label inside a statement expression its switch is
+// outside of: the switch would jump into the expression, which GNU C
+// does not permit.
+void
+refuse_jump_into(const parser_t &p, const token_t &keyword)
+{
+    if (p.switches.back().statement_expressions != p.statement_expressions)
+        fail(keyword,
+             quoted(keyword.text) +
+                 " label of a switch outside the statement expression");
+}
+
 // case, an integer constant expression and a colon, 6.8.2p1.  It stands
 // only in a switch, p2, and belongs to the innermost, 6.8.5.3p4.  Its
 // constant is converted to the promoted type of the controlling
@@ -7556,11 +7641,13 @@ case_label(parser_t &p)
     const token_t &keyword = advance(p);
     if (p.switches.empty())
         fail(keyword, "'case' label not in a switch");
+    refuse_jump_into(p, keyword);
 
     const token_t &start = peek(p);
     expr_t constant = rvalue(start, conditional_expression(p));
     if (!is_integer_constant(constant))
-        fail(start, "case label is not an integer constant expression");
+        refuse_unfolded(start, constant,
+                        "case label is not an integer constant expression");
 
     if (peek(p).kind == tok_t::ellipsis)
         not_yet(peek(p), "case range");
@@ -7590,6 +7677,7 @@ default_label(parser_t &p)
     const token_t &keyword = advance(p);
     if (p.switches.empty())
         fail(keyword, "'default' label not in a switch");
+    refuse_jump_into(p, keyword);
 
     open_switch_t &sw = p.switches.back();
     if (sw.default_)
@@ -7674,22 +7762,39 @@ compound_statement(parser_t &p)
     return block;
 }
 
-// The items up to the closing brace, which is left for the caller.  A
-// label is an item of its own, 6.8.3p1, so it may stand before a
-// declaration and before the closing brace.
+// One block item, appended to items: a label, which is an item of its
+// own, 6.8.3p1, so it may stand before a declaration and before the
+// closing brace; a declaration, of the statements it makes; or a
+// statement.  Whether it is an expression statement with an expression,
+// whose expression is a statement expression's value when the item is
+// its block's last: a declaration is not one, though a record's list
+// makes stores of it after the declaration (shape.md chapter 5).
+bool
+block_item(parser_t &p, std::vector< stmt_t > &items)
+{
+    if (is_label_start(p)) {
+        items.push_back(label(p));
+        return false;
+    }
+
+    if (is_declaration_start(p)) {
+        for (stmt_t &decl : declaration(p))
+            items.push_back(std::move(decl));
+        return false;
+    }
+
+    items.push_back(statement(p));
+    const stmt_t &st = items.back();
+
+    return is< expr_stmt_t >(st) && as< expr_stmt_t >(st).e;
+}
+
+// The items up to the closing brace, which is left for the caller.
 void
 block_item_list(parser_t &p, block_t &block)
 {
-    while (!next_is(p, { tok_t::rbrace, tok_t::eof })) {
-        if (is_label_start(p))
-            block.body.push_back(label(p));
-        else if (is_declaration_start(p)) {
-            for (stmt_t &decl : declaration(p))
-                block.body.push_back(std::move(decl));
-        }
-        else
-            block.body.push_back(statement(p));
-    }
+    while (!next_is(p, { tok_t::rbrace, tok_t::eof }))
+        block_item(p, block.body);
 }
 
 // An expression whose value is discarded may be void; an empty one is
@@ -7738,7 +7843,7 @@ switch_statement(parser_t &p)
 
     expect(p, tok_t::rparen, "expected ')' after controlling expression");
 
-    p.switches.push_back({ cond.type });
+    p.switches.push_back({ cond.type, p.statement_expressions });
     ++p.break_targets;
 
     stmt_ptr_t body = box(statement(p));
@@ -9304,8 +9409,9 @@ designated_element(parser_t &p, type_t &t, long &offset)
     const token_t &start = peek(p);
     const expr_t index = rvalue(start, expression(p));
     if (!is_integer_constant(index))
-        fail(start,
-             "subscript in offsetof is not an integer constant expression");
+        refuse_unfolded(
+            start, index,
+            "subscript in offsetof is not an integer constant expression");
 
     expect(p, tok_t::rbracket, "expected ']'");
 
@@ -9390,6 +9496,93 @@ expect_expression(parser_t &p, const token_t &keyword)
         comma(discarded(c_at, std::move(c)), expr_t { t.type, name_t { &t } }));
 }
 
+// The parse state a statement expression's block changes and gives
+// back at its end: the count of statement expressions around the
+// parse, one more inside it, and the loops and the switches its
+// statements open.  The destructor gives them back however the parse of
+// the block ends, so a refusal of the not-yet kind that a caller
+// catches, as typedef_array_size() does, leaves no loop, no switch and
+// no statement expression open behind it.
+class [[nodiscard]] statement_expression_depth_t
+{
+public:
+
+    explicit statement_expression_depth_t(parser_t &p)
+        : m_p(p), m_breaks(p.break_targets), m_continues(p.continue_targets),
+          m_switches(p.switches.size())
+    {
+        ++m_p.statement_expressions;
+    }
+
+    ~statement_expression_depth_t()
+    {
+        --m_p.statement_expressions;
+        m_p.break_targets = m_breaks;
+        m_p.continue_targets = m_continues;
+        m_p.switches.erase(m_p.switches.begin() +
+                               static_cast< std::ptrdiff_t >(m_switches),
+                           m_p.switches.end());
+    }
+
+    statement_expression_depth_t(const statement_expression_depth_t &) = delete;
+    statement_expression_depth_t &
+    operator=(const statement_expression_depth_t &) = delete;
+
+private:
+
+    parser_t &m_p;
+    int m_breaks;
+    int m_continues;
+    std::size_t m_switches;
+};
+
+// GNU C's statement expression, a compound statement in parentheses,
+// the '(' at open and the '{' ahead: the block's items in a scope of
+// their own, as a compound statement's, 6.8.3p2, and the value, the
+// expression of the last item where that is an expression statement,
+// decayed, or void, as discarded() leaves an expression statement's; a
+// block that ends in anything else, a declaration among them, is void.
+// It stands in a function's body alone, where its statements run; an
+// initializer, an array size or a parameter list outside one is an
+// error, as clang has it.  A value of a record is not yet, as anywhere
+// rcc would read the whole object.
+expr_t
+statement_expression(parser_t &p, const token_t &open)
+{
+    if (!p.temporaries)
+        fail(open, "statement expression outside a function body");
+
+    const statement_expression_depth_t depth(p);
+    advance(p);
+    p.scopes.emplace_back();
+
+    std::vector< stmt_t > body;
+    const token_t *last = nullptr;
+    bool valued = false;
+    while (!next_is(p, { tok_t::rbrace, tok_t::eof })) {
+        last = &peek(p);
+        valued = block_item(p, body);
+    }
+
+    close_block(p);
+    expect(p, tok_t::rbrace, "expected '}' at end of block");
+    expect(p, tok_t::rparen, "expected ')' after statement expression");
+
+    if (!valued)
+        return expr_t { make_void(),
+                        statement_expression_t { std::move(body), nullptr } };
+
+    expr_t value = std::move(*std::get< expr_stmt_t >(body.back().v).e);
+    body.pop_back();
+    refuse_record_value(*last, value.type);
+
+    type_t t = value.type;
+
+    return expr_t { std::move(t),
+                    statement_expression_t { std::move(body),
+                                             box(std::move(value)) } };
+}
+
 // A name must be declared, 6.5.2p2, as an object or a function: a
 // typedef name names a type.  An enumeration constant is a constant,
 // p2's footnote, of its type and its value, 6.4.4.4p2, 6.7.3.3p10: the
@@ -9400,12 +9593,12 @@ expect_expression(parser_t &p, const token_t &keyword)
 // attribute marked, by the type's.  A use of a name of internal linkage
 // is kept for the check of its definition at the end of the unit.  A
 // generic selection is not yet.  Parentheses leave the expression as it
-// is, an lvalue included, 6.5.2p6; GNU C's statement expression, ({
-// ... }), is not yet, and so is alloca, which glibc's alloca.h defines
-// as __builtin_alloca.  A floating constant is not yet: the
-// lexer took its spelling, and its value is not computed.  A character
-// constant is character_constant()'s, and adjacent string literals
-// are one, string_literal()'s.
+// is, an lvalue included, 6.5.2p6, but for GNU C's statement
+// expression, ({ ... }), statement_expression()'s.  alloca, which
+// glibc's alloca.h defines as __builtin_alloca, is not yet.  A floating
+// constant is not yet: the lexer took its spelling, and its value is
+// not computed.  A character constant is character_constant()'s, and
+// adjacent string literals are one, string_literal()'s.
 expr_t
 primary_expression(parser_t &p)
 {
@@ -9463,7 +9656,7 @@ primary_expression(parser_t &p)
     case tok_t::lparen: {
         advance(p);
         if (peek(p).kind == tok_t::lbrace)
-            not_yet(t, "statement expression");
+            return statement_expression(p, t);
 
         expr_t e = expression(p);
         expect(p, tok_t::rparen, "expected ')'");

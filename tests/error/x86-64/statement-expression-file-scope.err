@@ -1,0 +1,2 @@
+tests/error/statement-expression-file-scope.c:5:9: error: statement expression outside a function body
+status 1
