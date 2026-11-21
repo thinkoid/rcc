@@ -896,7 +896,13 @@ variable's register itself, `&&` and `||` their 1 and 0 (chapter
 arm's register, and the second arm is generated for that register as
 for a consumer's name, the registers below it reserved where nothing
 within the arm pins one, so that a load there writes it, `movl
--12(%rbp), %edx` beside a remainder. A conversion that widens a `?:`
+-12(%rbp), %edx` beside a remainder. A `?:` without its middle
+operand, `a ?: b`, joins as one whose first arm is `a`: `a` is
+computed into the join, compared with 0 there and taken by a `jne`
+past `b`, which is generated for the join, so `return f() ?: g()` is
+`call f@PLT; cmpl $0, %eax; jne` and `call g@PLT`, with no slot and
+no second read of `a` (`cost.md` 2.1).
+A conversion that widens a `?:`
 is handed to each arm, so that each writes the join extended, or a
 register variable's paths the variable, and nothing follows the join:
 `return a ? b % c : c` in a function returning `long` is `movslq

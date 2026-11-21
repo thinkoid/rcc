@@ -141,17 +141,6 @@ conditional, its arms as conditions of the same jump.
 
 Check: the count over =tests=, and no function longer.
 
-** TODO =backend.md= 6.1 and =aarch64.md= 6.1 do not state the row of ~a ?: b~
-
-The two chapters state where a conditional's arms join. The row of a
-conditional without a middle operand, the condition's value computed
-into the join and tested there, is stated in =docs/cost.md= 2.1 and
-2.2 and in the generators' comments alone.
-
-Fix: the sentence in each chapter.
-
-Check: each 6.1 names the row.
-
 ** TODO A statement expression saves the values held beside it where its statements cannot move them
 
 Values held when a statement expression starts are saved as at a

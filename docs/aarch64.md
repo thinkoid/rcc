@@ -785,6 +785,12 @@ first arm's `ldr w0, [x1, w2, sxtw #2]` and the second arm's `ldr w0,
 [x29, #20]`, with no move. An arm whose value is elsewhere, a register
 variable's or one whose place holds a call's result, is moved there.
 
+A conditional without its middle operand, `a ?: b`, joins as one
+whose first arm is `a`: `a` is computed into the join and tested
+there by a `cbnz` past `b`, which is generated for the join, so
+`return f() ?: g()` is `bl f; cbnz w0` and `bl g`, with no slot and
+no second read of `a` (`cost.md` 2.2).
+
 Below a cast, a comma or an assignment a conditional takes the name
 by the rule and the edge of `backend.md` 6.1, read for this machine's
 rows. Under a cast that widens it, the conversion goes to each arm
