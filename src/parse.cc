@@ -122,7 +122,9 @@ struct open_switch_t
 // a case or a default label belongs to, 6.8.5.3p4; case_labels is the
 // number the function's next case or default label takes.
 // statement_expressions is the count of GNU C's statement expressions
-// around the parse.
+// around the parse; statement_expression_spans are the function's, each
+// by its '(' and its ')', which a label inside one is checked against
+// at the function's end.
 // identities is the identity the next not-yet type of its own takes:
 // an enum in its own list or marked by an attribute, an atomic type, a
 // typedef through a marking attribute or an array size rcc cannot
@@ -171,6 +173,8 @@ struct parser_t
     std::vector< open_switch_t > switches = { };
     int case_labels = 0;
     int statement_expressions = 0;
+    std::vector< std::pair< const token_t *, const token_t * > >
+        statement_expression_spans = { };
     std::vector< internal_use_t > internal_uses = { };
     std::unordered_map< std::string_view, symbol_t * > block_entities = { };
     std::vector< tentative_t > incomplete_definitions = { };
@@ -5025,17 +5029,42 @@ external_declaration(parser_t &p)
     expect(p, tok_t::semicolon, "expected ';' after top level declarator");
 }
 
+// Whether a goto at the token from would jump into a statement
+// expression of the function: one the label at the token to stands in
+// and the goto outside it.
+bool
+jumps_into(const parser_t &p, const token_t &to, const token_t &from)
+{
+    const auto inside = [](const auto &span, const token_t &t) {
+        return span.first < &t && &t < span.second;
+    };
+
+    for (const auto &span : p.statement_expression_spans)
+        if (inside(span, to) && !inside(span, from))
+            return true;
+
+    return false;
+}
+
 // Each goto of the function names a label the function defines,
 // 6.8.7.2p1, before the goto or after it, since a label has function
-// scope, 6.2.1p3.  So the check waits for the function's end, and the
-// first goto that names none is the error.
+// scope, 6.2.1p3, and stands inside each statement expression its label
+// stands in: GNU C takes no jump into one, as clang has it.  So the
+// check waits for the function's end, and the first goto that names
+// none, or jumps in, is the error.
 void
 require_labels(const parser_t &p)
 {
-    for (const token_t *name : p.gotos)
-        if (!p.labels.contains(name->text))
+    for (const token_t *name : p.gotos) {
+        const auto label = p.labels.find(name->text);
+        if (label == p.labels.end())
             fail(*name,
                  "label " + quoted(name->text) + " used but not defined");
+
+        if (jumps_into(p, *label->second, *name))
+            fail(*name, "goto " + quoted(name->text) +
+                            " from outside the label's statement expression");
+    }
 }
 
 // A parameter of a definition, declared already in the scope of its
@@ -5227,6 +5256,7 @@ function_definition(parser_t &p,
     p.statics.clear();
     p.labels.clear();
     p.gotos.clear();
+    p.statement_expression_spans.clear();
     p.case_labels = 0;
     p.scopes.push_back(d.scope);
 
@@ -7612,16 +7642,14 @@ is_label_start(const parser_t &p)
 
 // A label, identifier :, which defines its name in the function's
 // labels, 6.2.1p3; a name is defined once in a function, 6.8.2p3.  One
-// inside a statement expression is not yet: a goto from outside would
-// jump into the expression, which GNU C does not permit.
+// inside a statement expression is a label of the function too, and a
+// goto from outside the expression, which would jump into it, is
+// require_labels()'s error.
 stmt_t
 named_label(parser_t &p)
 {
     const token_t &name = advance(p);
     advance(p);
-
-    if (p.statement_expressions > 0)
-        not_yet(name, "label in a statement expression");
 
     if (!p.labels.emplace(name.text, &name).second)
         fail(name, "redefinition of label " + quoted(name.text));
@@ -9568,7 +9596,8 @@ private:
 // It stands in a function's body alone, where its statements run; an
 // initializer, an array size or a parameter list outside one is an
 // error, as clang has it.  A value of a record is not yet, as anywhere
-// rcc would read the whole object.
+// rcc would read the whole object.  Its span goes to the function's,
+// for the check of its labels, require_labels().
 expr_t
 statement_expression(parser_t &p, const token_t &open)
 {
@@ -9589,7 +9618,9 @@ statement_expression(parser_t &p, const token_t &open)
 
     close_block(p);
     expect(p, tok_t::rbrace, "expected '}' at end of block");
-    expect(p, tok_t::rparen, "expected ')' after statement expression");
+    const token_t &close =
+        expect(p, tok_t::rparen, "expected ')' after statement expression");
+    p.statement_expression_spans.emplace_back(&open, &close);
 
     if (!valued)
         return expr_t { make_void(),

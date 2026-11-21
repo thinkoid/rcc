@@ -388,3 +388,41 @@ pointer(long a, long b)
                 p + (b & 1);
         });
 }
+
+/* a loop of a label and a goto in its block, a value held beside it */
+long
+labeled(long a, long b)
+{
+        return a * 3 + ({
+                       long r = 0;
+                       long n = b & 15;
+               again:
+                       if (n-- > 0) {
+                               r += mark(n);
+                               goto again;
+                       }
+                       r;
+               });
+}
+
+/* a goto out of a statement expression to a label of the one around
+   it, a value held beside each */
+long
+escaped(long a, long b)
+{
+        long n = 0;
+        long t = 0;
+
+        return a + ({
+                       long s;
+               next:
+                       s = b * 2 + ({
+                                   if (++n < (a & 7)) {
+                                           t += mark(n);
+                                           goto next;
+                                   }
+                                   n;
+                           });
+                       s + t;
+               });
+}

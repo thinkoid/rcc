@@ -1876,7 +1876,13 @@ expression's, takes its register (chapter 4). A `break`, a `continue`,
 a `goto` or a `return` out of the block writes its jump alone: no
 expression register holds a value then, so the target, a statement
 boundary, finds what it expects, and the spill slots are left as they
-are. A statement expression is a call to the walks that look ahead,
+are. A label in the block and a `goto` to it from inside need nothing
+more: both stand at boundaries of statements over the block's floor,
+where no expression register holds a value and each value held beside
+the block stays where it was saved, or in its variable's register,
+marked so that nothing moves it; so the jump finds at the label what
+the path through it finds (`statement-expression-label`).
+A statement expression is a call to the walks that look ahead,
 `pinned_within()`, `moved_within()` and `spills_within()`, since it
 spills every held value first.
 

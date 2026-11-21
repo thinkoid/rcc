@@ -1,0 +1,2 @@
+tests/error/statement-expression-goto-into.c:9:14: error: goto 'again' from outside the label's statement expression
+status 1

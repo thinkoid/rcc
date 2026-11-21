@@ -667,19 +667,6 @@ Fix: each is taken, the variable length array first, then =alloca=.
 Check: the program of =tests/error= for each becomes a cost program
 on both targets.
 
-** TODO A label in a statement expression is not yet
-
-A label inside ~({ ... })~ is "not yet: label in a statement
-expression". GNU C takes one with a =goto= from inside the same
-statement expression, and forbids a jump into one from outside.
-
-Fix: the label is taken, and a =goto= that stands outside its
-label's statement expression is an error, judged at the function's
-end.
-
-Check: =tests/error/statement-expression-label.c= becomes a cost
-program, and the jump from outside is pinned as the error.
-
 ** TODO A statement expression in a constant expression is not yet
 
 ~case ({ 1; }):~ and ~static int k = ({ 1; });~ are "not yet:

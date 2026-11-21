@@ -866,8 +866,10 @@ or in a definition's parameter list, it is an error, as `clang` has
 it. A jump out of it is taken: a `break`, a `continue`, a `goto` or a
 `return` in it goes to what it names around the expression. A jump
 into it is refused: a `case` or a `default` label inside one whose
-switch is outside it is an error, as `clang` has it, and a label
-inside one is not yet, since a `goto` from outside would jump in.
+switch is outside it is an error, as `clang` has it, and so is a
+`goto` outside it to a label inside it, found at the function's end,
+where each `goto`'s label is checked. A label inside one is a label
+of the function, and a `goto` inside the expression jumps to it.
 Where a constant expression is wanted, a `case` label's or a static
 object's initializer, it is not yet: `clang` folds it to its value,
 and rcc does not.
@@ -1579,8 +1581,8 @@ GCC visibility` (chapter 2), the checks of the qualifiers
 and `volatile` are dropped, so an assignment to a `const` object and
 a conversion that discards a qualifier draw no diagnostic, and
 `(const void)` is taken as `(void)`), an atomic object, GNU C's case
-range, `case 1 ... 5:`, a label in GNU C's statement expression and
-one where a constant expression is wanted (chapter 5), and `alloca`,
+range, `case 1 ... 5:`, GNU C's statement expression where a
+constant expression is wanted (chapter 5), and `alloca`,
 which `alloca.h` defines as `__builtin_alloca`, each refused by its
 name, the body of a system header's `static inline`
 function, whose use is refused, and of the program's own one whose
