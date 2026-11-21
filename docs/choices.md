@@ -9,7 +9,9 @@ writes it. A pin of `tests/cost/`, `tests/corpus/` or `tests/error/`
 holds the output for both targets; a probe of `tests/probe/` checks
 rcc against `clang` on the target of the machine that runs it. Two
 choices are promises, G2 and G3 of `guarantees.md`, and their rows
-point there. A row fixed by none has its entry in `TODO`.
+point there. A row fixed by none has its entry in `TODO`. One choice
+the text leaves to the implementation and J.3 does not list, of
+6.2.7p3, has the last row.
 
 ## What the table leaves out
 
@@ -66,3 +68,4 @@ point there. A row fixed by none has its entry in `TODO`.
 | J.3.12(10) | 6.10.8 | `pack`: a record whose list opens while it sets a packing is not yet, and one after the packing is popped or reset is laid out (`shape.md` chapter 2); `weak` is not yet, refused at its name; `GCC visibility` is read, and a declaration of a symbol of external linkage under a visibility other than `default` is not yet, refused at its name; each other `#pragma` the preprocessor passes on is skipped | the same | `tests/error/pragma-pack.c`, `tests/error/pragma-pack-pop.c`, `tests/error/pragma-pack-name.c`, `tests/error/pragma-weak.c`, `tests/error/pragma-visibility.c` |
 | J.3.14(3) | 6.2.6.1 | J.3.14(6)'s sizes, little-endian, two's complement: `0x01020304` is the bytes `04 03 02 01` | the same | the `memory` probe |
 | J.3.14(6) | 6.5.4.4 | LP64: `short` 2, `int` 4, `long`, `long long` and a pointer 8, each aligned to its size; a record by J.3.10(6) | the same | the `layout` probe |
+| none | 6.2.7 | the composite of an enumerated type and its integer type is the integer type, whichever declaration comes first, as `clang` has it (`shape.md` chapter 3) | the same | `tests/corpus/compatible-types.c` |

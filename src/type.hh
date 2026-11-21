@@ -48,7 +48,7 @@ enum class int_kind_t {
 // width in bits.  kind is the C type the parser made it as, and
 // enumeration the identity of the enumerated type it is, 6.2.5p21, or
 // 0, its kind then that of its compatible integer type.  Equality reads
-// neither, and nothing does yet.
+// neither; compatible() and its kin below read both.
 struct int_t
 {
     int width;
@@ -227,6 +227,18 @@ as(const type_t &t)
 // is equal to one of its own length alone, the type its declaration
 // made.
 bool operator==(const type_t &, const type_t &);
+
+// C's view, which reads the integer types' kinds and enumerations: two
+// types compatible, 6.2.7p1, as declarations of one entity are, 6.7.1p5,
+// and the operands of an assignment and a comparison point to; the
+// same type, as a typedef name declared again denotes, 6.7.1p4; and
+// the composite type of two compatible types, 6.2.7p3, which the later
+// declaration of an entity takes, p5.  Each walks the edges as
+// equality does and stops at a record and a not-yet type, which each
+// compares by identity.
+bool compatible(const type_t &, const type_t &);
+bool same_type(const type_t &, const type_t &);
+type_t composite(const type_t &, const type_t &);
 
 // The size and the alignment in bytes, the same on both targets, the
 // sizes LP64's: an integer its width, a pointer 8, an array its count

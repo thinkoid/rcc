@@ -1,0 +1,2 @@
+tests/error/typedef-redefinition-enumeration.c:6:22: error: redefinition of typedef 'hue' with another type
+status 1

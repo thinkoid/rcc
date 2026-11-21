@@ -1,0 +1,2 @@
+tests/error/relational-long-long-pointers.c:12:18: error: comparison of distinct pointer types
+status 1

@@ -1,0 +1,2 @@
+tests/error/incompatible-pointers-enumerations.c:13:23: error: incompatible pointer types
+status 1

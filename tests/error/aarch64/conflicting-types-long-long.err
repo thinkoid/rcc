@@ -1,0 +1,2 @@
+tests/error/conflicting-types-long-long.c:5:11: error: conflicting types for 'f'
+status 1

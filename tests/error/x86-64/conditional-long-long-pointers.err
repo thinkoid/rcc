@@ -1,0 +1,2 @@
+tests/error/conditional-long-long-pointers.c:12:20: error: pointer type mismatch in conditional expression
+status 1

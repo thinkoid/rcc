@@ -1496,9 +1496,11 @@ void_and_function_pointer(const type_t &a, const type_t &b)
 // object: the right operand of =, an initializer, 6.7.11p12, an
 // argument, 6.5.3.3p2, a value returned, 6.8.7.5p3.  The constraints
 // are those of simple assignment, 6.5.17.2p1: integers convert to each
-// other; a pointer takes a pointer of its own type, a pointer to void
-// and an object pointer convert either way, and a null pointer
-// constant converts to any pointer, one to a function included.  An
+// other; a pointer takes a pointer to a compatible type, so a long *
+// takes no long long * and an enum a * no enum b * of one integer type,
+// a pointer to void and an object pointer convert either way, and a
+// null pointer constant converts to any pointer, one to a function
+// included.  An
 // integer and a pointer meet only through a cast, 6.5.5p3; a record and
 // a scalar never meet.  A pointer to a function and a pointer to void
 // meet only through a cast too, and GNU C converts them either way: rcc
@@ -1528,7 +1530,8 @@ assignment_conversion(parser_t &p, const token_t &at, expr_t e, const type_t &t)
     if (!to_pointer && from_pointer)
         fail(at, "incompatible pointer to integer conversion");
 
-    if (to_pointer && from_pointer && !(e.type == t) &&
+    if (to_pointer && from_pointer &&
+        !compatible(pointee_of(t), pointee_of(e.type)) &&
         !void_and_object_pointer(t, e.type) &&
         !void_and_function_pointer(t, e.type) && !is_null_pointer_constant(e)) {
         refuse_tag_twins(at, t, e.type);
@@ -1550,9 +1553,10 @@ assignment_conversion(parser_t &p, const token_t &at, expr_t e, const type_t &t)
 
 // Two values, at least one a pointer, brought to one pointer type, as
 // == and != and the arms of ?: take them, 6.5.10p2, p6, 6.5.16p3, p7:
-// pointers of one type stay as they are, a null pointer constant goes
-// to the other operand's type, and a pointer to void and an object
-// pointer meet at void *.  The null pointer constant comes first, as
+// pointers to compatible types meet at the pointer to their composite
+// type, a null pointer constant goes to the other operand's type, and
+// a pointer to void and an object pointer meet at void *.  The null
+// pointer constant comes first, as
 // p7's "if one operand is a null pointer constant, the result has the
 // type of the other operand" does before its pointer to void, so
 // c ? (void *) 0 : p is an int * for an int *p, and a (void *) 0 met by
@@ -1577,8 +1581,9 @@ common_pointer(expr_t &lhs, expr_t &rhs)
             t = rhs.type;
         else if (is_null_pointer_constant(rhs))
             t = lhs.type;
-        else if (lhs.type == rhs.type)
-            t = make_pointer(pointee_of(lhs.type), both);
+        else if (compatible(pointee_of(lhs.type), pointee_of(rhs.type)))
+            t = make_pointer(
+                composite(pointee_of(lhs.type), pointee_of(rhs.type)), both);
         else if (void_and_object_pointer(lhs.type, rhs.type))
             t = make_pointer(make_void(), both);
         else
@@ -2087,10 +2092,10 @@ addition(const token_t &op, expr_t lhs, expr_t rhs)
 }
 
 // - with a pointer, 6.5.7p3, p9, p10: a pointer less an integer has
-// the pointer's type, and two pointers to one complete object type
-// subtract to long, ptrdiff_t on LP64.  The type is the machine's
-// view, so no qualifier is left to tell two compatible pointee types
-// apart.
+// the pointer's type, and two pointers to compatible complete object
+// types, qualified or not, subtract to long, ptrdiff_t on LP64.  Both
+// pointees are complete, since an array of unknown size is compatible
+// with one of a size.
 expr_t
 subtraction(const token_t &op, expr_t lhs, expr_t rhs)
 {
@@ -2106,16 +2111,18 @@ subtraction(const token_t &op, expr_t lhs, expr_t rhs)
     if (!lp)
         fail(op, "cannot subtract a pointer from an integer");
 
-    if (rp && !(lhs.type == rhs.type)) {
+    if (rp && !compatible(pointee_of(lhs.type), pointee_of(rhs.type))) {
         refuse_tag_twins(op, lhs.type, rhs.type);
         fail(op, "subtraction of pointers to different types");
     }
 
     require_object_pointee(op, lhs.type);
 
-    if (rp)
+    if (rp) {
+        require_object_pointee(op, rhs.type);
         return make_binary(binary_op_t::sub, long_type(), std::move(lhs),
                            std::move(rhs));
+    }
 
     const type_t t = lhs.type;
     rhs = widened_index(std::move(rhs));
@@ -2125,10 +2132,11 @@ subtraction(const token_t &op, expr_t lhs, expr_t rhs)
 
 // < > <= >= == !=: the result an int (6.5.9p7, 6.5.10p4), integer
 // operands in their common type (6.5.9p4, 6.5.10p5).  Pointers compare
-// as addresses (G7): a relational operator takes two pointers of one
-// object type, 6.5.9p2, so not two pointers to a function, and == and
-// != what common_pointer() brings to one, 6.5.10p2.  A pointer and any
-// other integer meet only through a cast.
+// as addresses (G7): a relational operator takes two pointers to
+// compatible object types, qualified or not, 6.5.9p2, so not two
+// pointers to a function, and == and != what common_pointer() brings
+// to one, 6.5.10p2.  A pointer and any other integer meet only through
+// a cast.
 expr_t
 comparison(const token_t &op, expr_t lhs, expr_t rhs)
 {
@@ -2151,7 +2159,8 @@ comparison(const token_t &op, expr_t lhs, expr_t rhs)
     }
     else if (!equality && !(lp && rp))
         fail(op, "comparison between pointer and integer");
-    else if (!equality && !(lhs.type == rhs.type)) {
+    else if (!equality &&
+             !compatible(pointee_of(lhs.type), pointee_of(rhs.type))) {
         refuse_made_pointees(op, lhs.type, rhs.type, compatibility_words);
         fail(op, "comparison of distinct pointer types");
     }
@@ -3516,30 +3525,16 @@ translation_unit(parser_t &p)
     keep_named_functions(p);
 }
 
-// Whether two array types are one but for the size one of them leaves
-// out: compatible, 6.7.7.3p6, since the elements are one type, and the
-// composite type of the two is the one of known size, 6.2.7p3.  Only
-// the outermost bound may be left out, so the elements are complete.
-bool
-sized_alike(const type_t &a, const type_t &b)
-{
-    if (!is< array_t >(a) || !is< array_t >(b))
-        return false;
-
-    const auto &x = as< array_t >(a);
-    const auto &y = as< array_t >(b);
-
-    return (x.count < 0 || y.count < 0) && *x.element == *y.element;
-}
-
 // An earlier declaration of the name, met again: the same kind of
-// entity, of the same type, a function or an object of linkage by the
-// rule of compatible types (6.2.7p2), and a typedef because a typedef
-// name may be declared again only as the type it already denotes
-// (6.7.1p4).  An
-// object declared as an array of unknown size and as one of known size
-// takes the composite type from the later declaration on, p5, which is
-// the array of known size whichever came first.
+// entity, a function or an object of linkage of a compatible type
+// (6.7.1p5), and a typedef of the same type, since a typedef name may
+// be declared again only as the type it already denotes (p4).  The
+// entity takes the composite type from the later declaration on,
+// 6.2.7p5: an object declared as an array of unknown size and as one
+// of known size is the array of known size whichever came first, and
+// so is a pointer to one in a parameter, as in int f(int (*)[]); int
+// f(int (*)[3]);, and an enumerated type met by its integer type is
+// the integer type.
 symbol_t &
 redeclared(const token_t &name,
            symbol_t &earlier,
@@ -3549,13 +3544,9 @@ redeclared(const token_t &name,
     if (earlier.storage != storage)
         fail(name, "redefinition of " + quoted(name.text));
 
-    if (earlier.type == t)
-        return earlier;
-
-    if (storage == storage_t::global && sized_alike(earlier.type, t)) {
-        if (as< array_t >(earlier.type).count < 0)
-            earlier.type = t;
-
+    if (storage == storage_t::type_name ? same_type(earlier.type, t) :
+                                          compatible(earlier.type, t)) {
+        earlier.type = composite(earlier.type, t);
         return earlier;
     }
 

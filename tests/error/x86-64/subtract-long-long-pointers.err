@@ -1,0 +1,2 @@
+tests/error/subtract-long-long-pointers.c:12:18: error: subtraction of pointers to different types
+status 1

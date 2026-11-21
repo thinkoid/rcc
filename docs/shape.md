@@ -222,14 +222,25 @@ machine's view, and reads no qualifier:
 `long` and `long long` are one type on a target where both are 64
 bits. Any other enumerated type is the integer type compatible with
 it (chapter 5), so `enum color { red, green }` and `unsigned int`
-are one type, and so are two enumerations of one integer type, which
-C makes distinct types (6.7.3.4p9): a conversion between pointers to
-the two draws no diagnostic, as one between `long *` and `long long
-*` draws none. An integer type also remembers the C type it is, its
-kind, `char`, `signed char` and `unsigned char` apart and `long`
-apart from `long long`, and an enumerated type an identity of its
-own; nothing reads either yet. The edges from a type to the types it
-names are
+are one type to equality, and so are two enumerations of one integer
+type. An integer type also remembers the C type it is, its kind,
+`char`, `signed char` and `unsigned char` apart and `long` apart from
+`long long`, and an enumerated type an identity, since each
+enumeration is a type of its own (6.2.5p21). C's relations read both,
+through the edges as equality walks them. Two integer types are
+compatible (6.2.7p1) when their kinds are one, an enumerated type
+with its integer type and with no other enumerated type, and two
+arrays when their elements are and their sizes, where both are
+known; so a conversion between `long *` and `long long *`, or between
+pointers to two enumerations of one integer type, is an error but
+through a cast, which writes no instruction. Two types are the same
+type, as a typedef declared again must be (6.7.1p4), when they are
+compatible and agree in each enumeration and each array size too.
+The composite of two compatible types (6.2.7p3) has the array size
+either knows, and of an enumerated type and its integer type it is
+the integer type, whichever comes first, as `clang` has it
+(`choices.md`); a later declaration of an entity takes it (p5). The
+edges from a type to the types it names are
 `shared_ptr< const type_t >`: a type is never written after it is
 made, so sharing is invisible and copying a type is cheap. Equality
 is structural, through the edges. No interning; a table of types is
@@ -372,7 +383,10 @@ Three sums.
   a null pointer constant, meet at one type (p7): the null pointer
   constant takes the other's, before a pointer to `void` and an object
   pointer meet at `void *`, so `c ? (void *) 0 : p` is an `int *` for
-  an `int *p`; `==` and `!=` test a pointer against a null pointer
+  an `int *p`; two pointers to compatible types meet at the pointer to
+  their composite, qualified as both pointees are, so `c ? cp : p` is
+  a `const int *` for a `const int *cp`; `==` and `!=` test a pointer
+  against a null pointer
   constant in the pointer's type, a test of null (6.5.10p6). A call's
   callee is the name of a function, the direct call, or an expression
   of pointer-to-function type, the call through a pointer; c1 tells
@@ -1162,7 +1176,7 @@ An object at file scope is defined by a declaration with an
 initializer, `extern` or not, and tentatively by one without an
 initializer and without `extern` (6.9.3p1, p2); `extern` alone
 declares it. Every declaration of the name is of one object, of one
-linkage, and of one type by the tree's equality: `extern int n;
+linkage, and of compatible types (6.7.1p5): `extern int n;
 int n; int n = 1;` declare one object, and two tentative definitions
 define one, which is zero (6.9.3p2). A second initializer is a second
 external definition, an error (6.9.1p5). An array declared without its
@@ -1566,7 +1580,7 @@ compile database, and three lines of make, a shell script and
     docs/designs.md     four organizing designs, read against c1
     docs/slot.md        what a stack slot costs, explained from the ground up
     src/lex.hh .cc    tokens and tokenize()
-    src/type.hh .cc   type_t, constructors, equality
+    src/type.hh .cc   type_t, constructors, equality, compatibility
     src/ast.hh        the tree
     src/parse.hh .cc  parse()
     src/target.hh     target_t, the facts of a target
