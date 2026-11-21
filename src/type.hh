@@ -75,7 +75,9 @@ struct array_t
 // marking is the words of the first marking attribute said of a
 // parameter, empty for none: the parser refuses a call through a
 // pointer to the function as it refuses a call of a function the
-// attribute marks.  Equality does not read it, and no generator does.
+// attribute marks.  Equality does not read it, and no generator does,
+// so the parser refuses a pointer conversion and a conditional's arms
+// that would lose it.
 struct function_t
 {
     type_ptr_t result;

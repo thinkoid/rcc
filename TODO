@@ -536,19 +536,6 @@ macro reaches it.
 Check: such a program links and runs, or =docs/shape.md= says why
 not.
 
-** TODO A conversion to a pointer to the unmarked function type loses a parameter's marking
-
-A function type carries the words of a parameter a marking attribute
-marked, and a call through a pointer to it is refused. Equality does
-not read the mark, so ~int (*q)(int) = p; q(1);~, with =p= a pointer
-to the marked type, compiles and passes an =int=, and so does
-~(c ? q : p)(1)~.
-
-Fix: a pointer conversion and a conditional's arms whose function
-pointees' marks differ are refused as not yet.
-
-Check: both programs are refused by the attribute's name.
-
 ** TODO A variable length array's storage and =alloca= are not yet
 
 The parser takes a local array whose outermost size is not a
@@ -636,6 +623,19 @@ in a redeclaration and a typedef written again with other
 arguments; the subtraction takes the pointers' refusal.
 
 Check: each pair is refused in the decided words.
+
+** TODO A cast loses a parameter's marking
+
+~((int (*)(int)) p)(1)~, with =p= a pointer to a function type whose
+parameter a marking attribute marked, compiles and passes an =int=;
+so does a round trip through ~void *~. A conversion as if by
+assignment between the two types is refused.
+
+Fix: none taken; decide whether a cast between pointers to function
+types whose marks differ is a not-yet.
+
+Check: that program is refused by the attribute's name, or
+=docs/shape.md= says why not.
 
 * Lexer
 

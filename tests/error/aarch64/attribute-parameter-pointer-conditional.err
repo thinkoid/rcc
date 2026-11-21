@@ -1,0 +1,2 @@
+tests/error/attribute-parameter-pointer-conditional.c:11:19: error: not yet: attribute 'mode'
+status 1

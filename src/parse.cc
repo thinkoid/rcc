@@ -1376,6 +1376,51 @@ refuse_made_pointees(const token_t &at,
         not_yet(at, std::string(construct) + made->what);
 }
 
+// The words of the marking attribute on a parameter of one of two
+// functions met walking two types alike, through pointers, arrays and
+// functions, as tag_twin() walks them, where the other's marks differ,
+// or null.  Equality does not read the mark, so the two types may be
+// equal.
+const std::string *
+marked_twin(const type_t &a, const type_t &b)
+{
+    if (is< pointer_t >(a) && is< pointer_t >(b))
+        return marked_twin(pointee_of(a), pointee_of(b));
+
+    if (is< array_t >(a) && is< array_t >(b))
+        return marked_twin(*as< array_t >(a).element,
+                           *as< array_t >(b).element);
+
+    if (!is< function_t >(a) || !is< function_t >(b))
+        return nullptr;
+
+    const auto &f = as< function_t >(a);
+    const auto &g = as< function_t >(b);
+    if (f.marking != g.marking)
+        return f.marking.empty() ? &g.marking : &f.marking;
+
+    if (const std::string *words = marked_twin(*f.result, *g.result))
+        return words;
+
+    for (std::size_t i = 0; i < std::min(f.params.size(), g.params.size()); ++i)
+        if (const std::string *words = marked_twin(*f.params[i], *g.params[i]))
+            return words;
+
+    return nullptr;
+}
+
+// A function type carries the words of a marking attribute on its
+// parameter, and a call through a pointer to it is refused by them.  A
+// pointer converted to a pointer to a function of other marks, or met
+// by one in a conditional's arms, would lose them, so the two are not
+// yet, by the attribute's words, marked_twin()'s.
+void
+refuse_marked_twins(const token_t &at, const type_t &a, const type_t &b)
+{
+    if (const std::string *words = marked_twin(a, b))
+        not_yet(at, *words);
+}
+
 // The words a conversion's error names a type by: a record by its
 // own, a scalar by its kind.
 std::string
@@ -1459,6 +1504,9 @@ assignment_conversion(parser_t &p, const token_t &at, expr_t e, const type_t &t)
                              "conversion of a pointer to a type of ");
         fail(at, "incompatible pointer types");
     }
+
+    if (to_pointer && from_pointer)
+        refuse_marked_twins(at, t, e.type);
 
     if (void_and_function_pointer(t, e.type) && !is_null_pointer_constant(e))
         warn(p, at,
@@ -2206,8 +2254,10 @@ joined_arms(const token_t &op, expr_t &yes, expr_t &no)
 
     const bool pointers = is< pointer_t >(yes.type) && is< pointer_t >(no.type);
 
-    if (pointers)
+    if (pointers) {
         refuse_tag_twins(op, yes.type, no.type);
+        refuse_marked_twins(op, yes.type, no.type);
+    }
 
     if (!is< pointer_t >(yes.type) && !is< pointer_t >(no.type))
         arithmetic_conversions(yes, no);

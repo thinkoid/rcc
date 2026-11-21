@@ -1,0 +1,2 @@
+tests/error/attribute-parameter-pointer-conversion.c:11:23: error: not yet: attribute 'mode'
+status 1
