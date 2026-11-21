@@ -460,10 +460,10 @@ as(const stmt_t &s)
 // every argument register as it arrives, and the address of the first
 // argument the caller left on the stack past the named ones; null for
 // any other function.  docs/shape.md chapter 4 gives its layout.
-// uncompiled says that the unit defines the function by a body the
-// parser stopped in at a construct rcc does not compile yet, or by a
-// system header's static inline definition, whose body it skipped:
-// there is no body, and c1 writes nothing for it.
+// uncompiled says that the unit defines the function by a definition
+// whose head or body the parser stopped in at a construct rcc does not
+// compile yet, or by a system header's static inline definition, whose
+// body it skipped: there is no body, and c1 writes nothing for it.
 struct function_decl_t
 {
     const symbol_t *sym;

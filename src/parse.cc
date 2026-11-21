@@ -5088,32 +5088,80 @@ defined_parameter(parser_t &p, const parameter_t &param)
     return &sym;
 }
 
-// The parameters of a definition, each named, defined_parameter()'s.
-// Each is an object the definition makes, so none may be of a not-yet
-// type, nor of a record, which passes by value in no rule rcc has yet
-// but the aarch64 va_list's.  No array of unspecified size, [*], is
-// part of the declaration of one, 6.9.2p6.
+// The parameters of a definition, defined_parameter()'s, which
+// require_definition_parameters() and require_definable_head() checked.
 std::vector< const symbol_t * >
 defined_parameters(parser_t &p, const declarator_t &d)
 {
     std::vector< const symbol_t * > params;
+    for (const parameter_t &param : *d.params)
+        params.push_back(defined_parameter(p, param));
+
+    return params;
+}
+
+// The errors of a definition's parameters: each is named, and no array
+// of unspecified size, [*], is part of the declaration of one, 6.9.2p6.
+// They are checked before any refusal of the not-yet kind in the head,
+// so that an error stays the error it is.
+void
+require_definition_parameters(const declarator_t &d)
+{
     for (const parameter_t &param : *d.params) {
         if (!param.name)
             fail(*param.start, "parameter name omitted");
 
         if (param.star)
             fail(*param.star, "'*' as an array size in a function definition");
+    }
+}
 
+// The refusals of the not-yet kind in a definition's head.  A function
+// a marking attribute marked, on a declaration, among the definition's
+// specifiers or on a parameter, is one rcc would have to define as the
+// attribute says.  The result and each parameter are objects the
+// definition makes, so none may be of a not-yet type, nor of a record,
+// which returns and passes by value in no rule rcc has yet but the
+// aarch64 va_list's.
+void
+require_definable_head(const parser_t &p,
+                       const symbol_t &sym,
+                       const declarator_t &d)
+{
+    if (!sym.marking.empty())
+        not_yet(*d.name, sym.marking);
+
+    const type_t &result = *as< function_t >(d.type).result;
+    require_honoured(*d.name, result);
+
+    if (const record_t *r = record_in(result))
+        not_yet(*d.name, record_words(*r) + " returned by value");
+
+    for (const parameter_t &param : *d.params) {
         require_honoured(*param.name, param.type);
 
         const record_t *r = record_in(param.type);
         if (r && !is_list_by_reference(p, param.type))
             not_yet(*param.name, record_words(*r) + " passed by value");
+    }
+}
 
-        params.push_back(defined_parameter(p, param));
+// The words of the first refusal of the not-yet kind in the head of a
+// static inline definition of the program's own text, or nothing when
+// the head has none: such a function is kept uncompiled, as for its
+// body, inline_body()'s.  The checks change nothing of the parse, so
+// nothing is undone.
+std::optional< std::string >
+inline_head(const parser_t &p, const symbol_t &sym, const declarator_t &d)
+{
+    try {
+        require_definable_head(p, sym, d);
+    }
+    catch (const not_yet_error_t &e) {
+        return e.construct;
     }
 
-    return params;
+    return std::nullopt;
 }
 
 // The temporaries the body's builtins made, list_temporary()'s, each
@@ -5140,6 +5188,16 @@ std::string
 skipped_body_words(std::string_view name)
 {
     return "static function " + quoted(name);
+}
+
+// A function's body, its braces included, skipped unread, for a
+// definition that is not compiled.
+void
+skip_body(parser_t &p)
+{
+    expect(p, tok_t::lbrace, "expected '{' before function body");
+    skip_to_closing_brace(p);
+    expect(p, tok_t::rbrace, "expected '}' at end of function body");
 }
 
 // Whether the unit has defined the function: by a body, or by one it
@@ -5210,24 +5268,42 @@ inline_body(parser_t &p, std::string &missing)
     return std::nullopt;
 }
 
+// A static inline definition whose head needs what rcc does not
+// compile yet, inline_head()'s: its body is skipped and the function
+// kept uncompiled, and an expression that names it, before the
+// definition or after it, is refused by the head's words, which the
+// symbol keeps, or by a marking attribute's, which it keeps already.
+void
+uncompiled_head(parser_t &p,
+                std::size_t index,
+                const declarator_t &d,
+                const std::string &missing)
+{
+    skip_body(p);
+
+    std::string &marking = p.scopes.back().names.at(d.name->text)->marking;
+    if (marking.empty())
+        marking = missing;
+
+    p.unit.functions[index].uncompiled = true;
+}
+
 // The parameter type list and the body are one block, 6.9.2p10,
 // 6.8.3p2, so a local cannot redeclare a parameter there: the scope of
 // the list that makes the name a function, with its parameters and its
 // tags, is opened again and the body's items are parsed into it
-// directly.  The result is an object the definition makes, so it may
-// not be of a not-yet type, nor yet of a record, which returns by
-// value; the parameters are defined_parameters()'s.  A function a
-// marking attribute marked, on a declaration, among the definition's
-// specifiers or on a parameter, is one rcc would have to define as the
-// attribute says, which is not yet.  function and statics start over,
-// for the labels of the static objects the body declares, and labels,
-// gotos and case_labels, for the body's own labels, which no other
-// function sees; and variadic, named and va_area, for the body's
+// directly.  The head is checked first, its errors and then its
+// refusals of the not-yet kind, require_definable_head()'s; the
+// parameters are defined_parameters()'s.  function and statics start
+// over, for the labels of the static objects the body declares, and
+// labels, gotos and case_labels, for the body's own labels, which no
+// other function sees; and variadic, named and va_area, for the body's
 // va_start.  The body's identities are dropped once it is whole.  A
-// static inline function whose body stops at a construct rcc does not
-// compile yet is kept uncompiled, inline_body()'s: an expression that
-// names it, before the definition or after it, is refused by the
-// words of what its body needs, which the symbol keeps.
+// static inline function whose head or body needs a construct rcc does
+// not compile yet is kept uncompiled, uncompiled_head()'s or
+// inline_body()'s: an expression that names it, before the definition
+// or after it, is refused by the words of what it needs, which the
+// symbol keeps.
 void
 function_definition(parser_t &p,
                     const specifiers_t &spec,
@@ -5238,16 +5314,19 @@ function_definition(parser_t &p,
     if (is_defined(p, index))
         fail(*d.name, "redefinition of " + quoted(d.name->text));
 
+    require_definition_parameters(d);
+
     const symbol_t &sym = *p.unit.functions[index].sym;
-    if (!sym.marking.empty())
-        not_yet(*d.name, sym.marking);
+    const bool inline_ =
+        declared(spec, tok_t::kw_static) && spec.inline_specifier;
+    if (!inline_)
+        require_definable_head(p, sym, d);
+    else if (const std::optional< std::string > head = inline_head(p, sym, d)) {
+        uncompiled_head(p, index, d, *head);
+        return;
+    }
 
     p.result = *as< function_t >(d.type).result;
-    require_honoured(*d.name, p.result);
-
-    if (const record_t *r = record_in(p.result))
-        not_yet(*d.name, record_words(*r) + " returned by value");
-
     p.registers = 0;
     p.function = d.name->text;
     p.variadic = as< function_t >(d.type).variadic;
@@ -5262,8 +5341,6 @@ function_definition(parser_t &p,
 
     std::vector< const symbol_t * > params = defined_parameters(p, d);
 
-    const bool inline_ =
-        declared(spec, tok_t::kw_static) && spec.inline_specifier;
     std::string missing;
     std::optional< block_t > body =
         inline_ ? inline_body(p, missing) : function_body(p);
@@ -5317,9 +5394,7 @@ header_function_definition(parser_t &p,
     if (sym.marking.empty())
         sym.marking = skipped_body_words(d.name->text);
 
-    expect(p, tok_t::lbrace, "expected '{' before function body");
-    skip_to_closing_brace(p);
-    expect(p, tok_t::rbrace, "expected '}' at end of function body");
+    skip_body(p);
 }
 
 // How a struct, union or enum specifier uses its tag, 6.7.3.4: a list

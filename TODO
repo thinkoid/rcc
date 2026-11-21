@@ -528,19 +528,6 @@ parser's is; or the parser refuses the construct itself.
 Check: a program whose uncalled =static inline= function holds a
 construct only c1 refuses compiles.
 
-** TODO A not-yet in the head of an uncalled =static inline= definition stops the file
-
-~static inline struct p f(void) { ... }~, never called, is "not yet:
-struct 'p' returned by value": the refusal is in the result type,
-outside the body, where the parser does not catch it. A parameter's
-type is the same.
-
-Fix: the catch that keeps a body uncompiled covers the definition's
-head.
-
-Check: that program compiles, and a call of =f= is refused by the
-head's words.
-
 ** TODO A constant expression out of its type's range wraps with no diagnostic
 
 6.6p4 is a constraint: "Each constant expression shall evaluate to a

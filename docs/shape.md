@@ -926,7 +926,16 @@ after it, is refused by the body's words, `not yet: floating
 constant in the body of static function 'half'`. It is still a
 definition, so a second one is a redefinition. An error in the body
 before the refusal stays the error it is; the text after it is not
-checked, so an error there is not seen.
+checked, so an error there is not seen. The head is kept the same way
+when it needs what rcc does not compile yet: a struct returned or
+passed by value, a result or a parameter of a not-yet type, an
+attribute that marks the function. The body is then skipped unread,
+and a use is refused by the head's words, `not yet: struct 'pair'
+returned by value`. The head's errors, a parameter without a name or
+with `[*]`, are checked before its refusals, so each stays the error
+it is. A refusal in the declarator itself, `(...)` among them, is the
+declaration's, made before the parser knows that a body follows, and
+stops the file as on a declaration.
 
 `static` at file scope gives a function or an object internal
 linkage (6.2.2p3). The rules of linkage are the standard's: `extern`
@@ -1586,7 +1595,7 @@ constant expression is wanted (chapter 5), and `alloca`,
 which `alloca.h` defines as `__builtin_alloca`, each refused by its
 name, the body of a system header's `static inline`
 function, whose use is refused, and of the program's own one whose
-body holds a not-yet, whose use is refused by the body's words,
+head or body holds a not-yet, whose use is refused by its words,
 and a system header's `static inline` declaration without a body, a
 `register` array (6.3.2.1p3), `inline` on a function
 definition without `static`, what an attribute that rcc does
