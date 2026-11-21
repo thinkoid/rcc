@@ -94,9 +94,9 @@ make_void()
 }
 
 type_t
-make_int(int width, bool is_signed)
+make_int(int width, bool is_signed, int_kind_t kind, int enumeration)
 {
-    return type_t { int_t { width, is_signed } };
+    return type_t { int_t { width, is_signed, kind, enumeration } };
 }
 
 type_t

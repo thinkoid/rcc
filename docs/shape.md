@@ -179,15 +179,19 @@ It has no size and no alignment, but a real floating type has
 `clang`'s, the same on both targets, so that a record lays it out:
 `float` 4, `double` 8 and `long double` 16, each aligned to its size.
 The type carries no qualifier:
-`const`, `volatile` and `restrict` are dropped (chapter 5). The C
-spelling is not kept:
+`const`, `volatile` and `restrict` are dropped (chapter 5). Equality
+is the machine's view:
 `long` and `long long` are one type on a target where both are 64
 bits. Any other enumerated type is the integer type compatible with
 it (chapter 5), so `enum color { red, green }` and `unsigned int`
 are one type, and so are two enumerations of one integer type, which
 C makes distinct types (6.7.3.4p9): a conversion between pointers to
 the two draws no diagnostic, as one between `long *` and `long long
-*` draws none. The edges from a type to the types it names are
+*` draws none. An integer type also remembers the C type it is, its
+kind, `char`, `signed char` and `unsigned char` apart and `long`
+apart from `long long`, and an enumerated type an identity of its
+own; nothing reads either yet. The edges from a type to the types it
+names are
 `shared_ptr< const type_t >`: a type is never written after it is
 made, so sharing is invisible and copying a type is cheap. Equality
 is structural, through the edges. No interning; a table of types is
@@ -204,7 +208,7 @@ characters are the platform's, as `clang` has them on each target:
 `wchar_t` is `int` on x86-64 and `unsigned int` on aarch64, 4 bytes
 on both, so `(wchar_t) -1 < 0` holds on the first alone; `char16_t`
 is `unsigned short` and `char32_t` `unsigned int` on both. The tree
-keeps no spelling, so each is its integer type.
+keeps no typedef's name, so each is its integer type, of its kind.
 
 A struct or a union is a record, and its type holds a pointer to the
 record, which the unit owns in a `deque`, as it owns the symbols. The

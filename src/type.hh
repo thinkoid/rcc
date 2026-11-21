@@ -2,9 +2,9 @@
 
 // The C types as the machine sees them.  A type is a value; the edges
 // to the types it names are shared and never written after
-// construction, so copying is cheap and sharing is invisible.  The C
-// spelling is not kept: two integer types of one width and signedness
-// are one type here.
+// construction, so copying is cheap and sharing is invisible.
+// Equality is the machine's view: two integer types of one width and
+// signedness are one type to it, whatever C type each remembers.
 
 #pragma once
 
@@ -24,11 +24,34 @@ struct void_t
 {
 };
 
-// width in bits
+// The C type an integer type is, of the standard ones, 6.2.5p4, p6,
+// p20: char, signed char and unsigned char are three of one width, and
+// long and long long two.  none is a type c1 makes for itself.
+enum class int_kind_t {
+    none,
+    char_,
+    signed_char,
+    unsigned_char,
+    short_,
+    unsigned_short,
+    int_,
+    unsigned_,
+    long_,
+    unsigned_long,
+    long_long,
+    unsigned_long_long
+};
+
+// width in bits.  kind is the C type the parser made it as, and
+// enumeration the identity of the enumerated type it is, 6.2.5p21, or
+// 0, its kind then that of its compatible integer type.  Equality reads
+// neither, and nothing does yet.
 struct int_t
 {
     int width;
     bool is_signed;
+    int_kind_t kind = int_kind_t::none;
+    int enumeration = 0;
 };
 
 struct pointer_t
@@ -162,7 +185,10 @@ long size_of(const type_t &);
 int align_of(const type_t &);
 
 type_t make_void();
-type_t make_int(int width, bool is_signed);
+type_t make_int(int width,
+                bool is_signed,
+                int_kind_t kind = int_kind_t::none,
+                int enumeration = 0);
 type_t make_pointer(type_t pointee);
 type_t make_array(type_t element, long count);
 type_t

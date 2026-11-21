@@ -14,6 +14,7 @@
 #include <limits>
 #include <map>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -120,7 +121,7 @@ struct open_switch_t
 // identities is the identity the next not-yet type of its own takes:
 // an enum in its own list or marked by an attribute, an atomic type, a
 // typedef through a marking attribute or an array size rcc cannot
-// compute.
+// compute; and the next enumerated type's enumeration.
 // internal_uses are the uses of names of internal linkage, in the order
 // met, checked against their definitions at the end of the unit.
 // block_entities are the functions and the objects of external linkage
@@ -360,16 +361,16 @@ skip_to_closing_brace(parser_t &p)
 type_t
 int_type()
 {
-    return make_int(32, true);
+    return make_int(32, true, int_kind_t::int_);
 }
 
-// Plain char is signed or unsigned as the target has it, 6.2.5p20;
-// long is the 64-bit signed type, and unsigned long the type of
-// sizeof, 6.5.4.4p5.
+// Plain char is signed or unsigned as the target has it, and a type of
+// its own, 6.2.5p20; long is the 64-bit signed type, and unsigned long
+// the type of sizeof, 6.5.4.4p5.
 type_t
 char_type(const parser_t &p)
 {
-    return make_int(8, p.target.char_is_signed);
+    return make_int(8, p.target.char_is_signed, int_kind_t::char_);
 }
 
 // The type of an element of a literal of an encoding: char for none and
@@ -384,22 +385,26 @@ element_type(const parser_t &p, encoding_t encoding)
     switch (encoding) {
     case encoding_t::none:
     case encoding_t::utf8: return char_type(p);
-    case encoding_t::utf16: return make_int(16, false);
-    case encoding_t::utf32: return make_int(32, false);
-    default: return make_int(32, p.target.wchar_is_signed);
+    case encoding_t::utf16:
+        return make_int(16, false, int_kind_t::unsigned_short);
+    case encoding_t::utf32: return make_int(32, false, int_kind_t::unsigned_);
+    default:
+        return make_int(32, p.target.wchar_is_signed,
+                        p.target.wchar_is_signed ? int_kind_t::int_ :
+                                                   int_kind_t::unsigned_);
     }
 }
 
 type_t
 long_type()
 {
-    return make_int(64, true);
+    return make_int(64, true, int_kind_t::long_);
 }
 
 type_t
 size_type()
 {
-    return make_int(64, false);
+    return make_int(64, false, int_kind_t::unsigned_long);
 }
 
 // The not-yet types that are one type wherever they are written: the
@@ -539,33 +544,88 @@ void_and_object_pointer(const type_t &a, const type_t &b)
 }
 
 // The integer promotions, 6.3.1.1p2: every type narrower than int
-// converts to int, which holds all of its values, signed or not.
+// converts to int, which holds all of its values, signed or not.  An
+// enumerated type converts to its compatible integer type, as clang
+// converts it, so one of unsigned int is unsigned int and one of long
+// is long.
 type_t
 promoted(const type_t &t)
 {
-    return as< int_t >(t).width < 32 ? int_type() : t;
+    const int_t &i = as< int_t >(t);
+    if (i.width < 32)
+        return int_type();
+
+    if (i.enumeration != 0)
+        return make_int(i.width, i.is_signed, i.kind);
+
+    return t;
+}
+
+// The rank of an integer type, 6.3.1.1p1, by its kind: the three char
+// types, then short, int, long and long long, each with its unsigned
+// version.  The parser makes no integer type without a kind, and
+// asking a type c1 made throws.
+int
+rank(const int_t &t)
+{
+    switch (t.kind) {
+    case int_kind_t::char_:
+    case int_kind_t::signed_char:
+    case int_kind_t::unsigned_char: return 1;
+    case int_kind_t::short_:
+    case int_kind_t::unsigned_short: return 2;
+    case int_kind_t::int_:
+    case int_kind_t::unsigned_: return 3;
+    case int_kind_t::long_:
+    case int_kind_t::unsigned_long: return 4;
+    case int_kind_t::long_long:
+    case int_kind_t::unsigned_long_long: return 5;
+    default: throw std::logic_error("rank: an integer type of no kind");
+    }
+}
+
+// The unsigned type of a signed type's rank, the last conversion of
+// 6.3.1.8p1's list.
+int_kind_t
+unsigned_kind(int_kind_t kind)
+{
+    switch (kind) {
+    case int_kind_t::signed_char: return int_kind_t::unsigned_char;
+    case int_kind_t::short_: return int_kind_t::unsigned_short;
+    case int_kind_t::int_: return int_kind_t::unsigned_;
+    case int_kind_t::long_: return int_kind_t::unsigned_long;
+    case int_kind_t::long_long: return int_kind_t::unsigned_long_long;
+    default: return kind;
+    }
 }
 
 // The common type of the usual arithmetic conversions, 6.3.1.8p1, on
-// the promoted operands.  The rank of a type is its width here: the
-// tree keeps no spelling, and on LP64 long and long long are one type.
+// the promoted operands, by their ranks: on LP64 long and long long are
+// of one width and two ranks, so unsigned long and long long meet at
+// unsigned long long.
 type_t
 common_type(const type_t &a, const type_t &b)
 {
-    const int_t x = as< int_t >(promoted(a));
-    const int_t y = as< int_t >(promoted(b));
+    const type_t x = promoted(a);
+    const type_t y = promoted(b);
+    const int_t &i = as< int_t >(x);
+    const int_t &j = as< int_t >(y);
 
-    if (x.is_signed == y.is_signed)
-        return make_int(std::max(x.width, y.width), x.is_signed);
+    if (i.is_signed == j.is_signed)
+        return rank(i) >= rank(j) ? x : y;
 
-    const int_t &u = x.is_signed ? y : x;
-    const int_t &s = x.is_signed ? x : y;
+    const type_t &u = i.is_signed ? y : x;
+    const type_t &s = i.is_signed ? x : y;
+
+    if (rank(as< int_t >(u)) >= rank(as< int_t >(s)))
+        return u;
 
     // a signed type wider than the unsigned one holds all its values
-    if (u.width >= s.width)
-        return make_int(u.width, false);
+    if (as< int_t >(s).width > as< int_t >(u).width)
+        return s;
 
-    return make_int(s.width, true);
+    return make_int(as< int_t >(s).width, false,
+                    unsigned_kind(as< int_t >(s).kind));
 }
 
 expr_ptr_t
@@ -692,17 +752,20 @@ converted_constant(const expr_t &e, const type_t &t)
 // source writes, unary_plus() the cast that makes +x a value,
 // lvalue_at() the pointer casts of an access at an offset, and
 // pure_node() the copy of a cast it rebuilds.  An expression already
-// of the type passes through, so no inserted cast converts a type to
-// itself; only cast() and unary_plus() make one, since each yields no
-// lvalue.  A constant converted is the constant of the new type: the
-// source wrote a number, not a conversion, so a char constant of 300
-// does not exist and the tree holds 44, as the conversion would have
-// computed.
+// of the type in the machine's view passes through, taking the C type
+// t remembers with no node, as long does to long long, so no inserted
+// cast converts a type to itself; only cast() and unary_plus() make
+// one, since each yields no lvalue.  A constant converted is the
+// constant of the new type: the source wrote a number, not a
+// conversion, so a char constant of 300 does not exist and the tree
+// holds 44, as the conversion would have computed.
 expr_t
 convert_to(expr_t e, const type_t &t)
 {
-    if (e.type == t)
+    if (e.type == t) {
+        e.type = t;
         return e;
+    }
 
     if (converts_to_constant(e, t))
         return converted_constant(e, t);
@@ -725,7 +788,10 @@ promote(expr_t e)
 expr_t
 widened_index(expr_t e)
 {
-    const type_t t = make_int(64, as< int_t >(promoted(e.type)).is_signed);
+    const bool is_signed = as< int_t >(promoted(e.type)).is_signed;
+    const type_t t =
+        make_int(64, is_signed,
+                 is_signed ? int_kind_t::long_ : int_kind_t::unsigned_long);
 
     return convert_to(std::move(e), t);
 }
@@ -2527,28 +2593,33 @@ integer_suffix(const token_t &t, std::string_view s)
 
 // The type of a constant is the first of its list in 6.4.4.2p6 that
 // holds the value.  A decimal constant without u stays signed; an
-// octal, hexadecimal or binary one may go unsigned.  long long is long on
-// LP64, so the lists end at the 64-bit types.
+// octal, hexadecimal or binary one may go unsigned.  long long is as
+// wide as long on LP64, so the lists end at the 64-bit types: long and
+// unsigned long, or after ll long long and unsigned long long.
 std::optional< type_t >
 integer_constant_type(std::uint64_t value, bool decimal, suffix_t suffix)
 {
     const bool may_be_signed = !suffix.is_unsigned;
     const bool may_be_unsigned = suffix.is_unsigned || !decimal;
+    const bool long_long = suffix.longs == 2;
 
     if (may_be_signed && suffix.longs == 0 &&
         value <= std::uint64_t(std::numeric_limits< std::int32_t >::max()))
-        return make_int(32, true);
+        return make_int(32, true, int_kind_t::int_);
 
     if (may_be_unsigned && suffix.longs == 0 &&
         value <= std::numeric_limits< std::uint32_t >::max())
-        return make_int(32, false);
+        return make_int(32, false, int_kind_t::unsigned_);
 
     if (may_be_signed &&
         value <= std::uint64_t(std::numeric_limits< std::int64_t >::max()))
-        return make_int(64, true);
+        return make_int(64, true,
+                        long_long ? int_kind_t::long_long : int_kind_t::long_);
 
     if (may_be_unsigned)
-        return make_int(64, false);
+        return make_int(64, false,
+                        long_long ? int_kind_t::unsigned_long_long :
+                                    int_kind_t::unsigned_long);
 
     return std::nullopt;
 }
@@ -3829,7 +3900,11 @@ zeroed_again(parser_t &p,
         return;
 
     const int unit = std::min(alignment, 8);
-    const type_t t = make_int(unit * 8, false);
+    const int_kind_t kind = unit == 1 ? int_kind_t::unsigned_char :
+                            unit == 2 ? int_kind_t::unsigned_short :
+                            unit == 4 ? int_kind_t::unsigned_ :
+                                        int_kind_t::unsigned_long;
+    const type_t t = make_int(unit * 8, false, kind);
     for (long k = 0; k < size; k += unit)
         local_assignment(p, at, t, offset + k, expr_t { t, literal_t { 0 } },
                          to);
@@ -5241,8 +5316,8 @@ refuse_atomic_qualifier(const token_t &q, const token_t *storage_class)
 }
 
 // The type specifiers in any valid order and combination, 6.7.3.1p2.
-// The tree keeps no spelling: char and signed char are one type, long
-// and long long another.  Each keyword is checked against the ones
+// The type keeps its kind: char and signed char are two kinds, long
+// and long long two more.  Each keyword is checked against the ones
 // before it, so an error names the keyword that breaks the set.  const
 // and volatile may stand anywhere among them, once or more, 6.7.4.1p6,
 // and are dropped: the type is the machine's view.  volatile asks that
@@ -5313,11 +5388,25 @@ declaration_specifiers(parser_t &p)
         if (n_char && !n_signed && !n_unsigned)
             return char_type(p);
 
-        return make_int(n_char  ? 8 :
-                        n_short ? 16 :
-                        n_long  ? 64 :
-                                  32,
-                        n_unsigned == 0);
+        const bool is_signed = n_unsigned == 0;
+        const auto of = [&](int width, int_kind_t s, int_kind_t u) {
+            return make_int(width, is_signed, is_signed ? s : u);
+        };
+
+        if (n_char)
+            return of(8, int_kind_t::signed_char, int_kind_t::unsigned_char);
+
+        if (n_short)
+            return of(16, int_kind_t::short_, int_kind_t::unsigned_short);
+
+        if (n_long == 2)
+            return of(64, int_kind_t::long_long,
+                      int_kind_t::unsigned_long_long);
+
+        if (n_long)
+            return of(64, int_kind_t::long_, int_kind_t::unsigned_long);
+
+        return of(32, int_kind_t::int_, int_kind_t::unsigned_);
     };
 
     for (;;) {
@@ -5965,8 +6054,8 @@ va_members(const parser_t &p)
     const type_t pointer = make_pointer(make_void());
 
     if (p.target.va_list == va_list_t::psabi)
-        return { { "gp_offset", make_int(32, false), 0 },
-                 { "fp_offset", make_int(32, false), 0 },
+        return { { "gp_offset", make_int(32, false, int_kind_t::unsigned_), 0 },
+                 { "fp_offset", make_int(32, false, int_kind_t::unsigned_), 0 },
                  { "overflow_arg_area", pointer, 0 },
                  { "reg_save_area", pointer, 0 } };
 
@@ -6089,7 +6178,10 @@ enumerator_value(parser_t &p, const token_t &name, const expr_t *previous)
     if (holds(previous->type, next))
         return constant_of(previous->type, next);
 
-    const type_t wider = make_int(64, as< int_t >(previous->type).is_signed);
+    const bool is_signed = as< int_t >(previous->type).is_signed;
+    const type_t wider =
+        make_int(64, is_signed,
+                 is_signed ? int_kind_t::long_ : int_kind_t::unsigned_long);
     if (!holds(wider, next))
         fail(name, "value of " + quoted(name.text) +
                        " is too large for any integer type");
@@ -6142,15 +6234,30 @@ compatible_type(const token_t &at, const std::vector< enumerator_t > &list)
         list, { }, [](const enumerator_t &e) { return e.value; });
     const bool negative = least.value < 0;
 
-    for (const int width : { 32, 64 }) {
-        const type_t t = make_int(width, negative);
+    const type_t types[] = {
+        make_int(32, negative,
+                 negative ? int_kind_t::int_ : int_kind_t::unsigned_),
+        make_int(64, negative,
+                 negative ? int_kind_t::long_ : int_kind_t::unsigned_long)
+    };
+
+    for (const type_t &t : types)
         if (holds(t, least.value) && holds(t, most.value))
             return t;
-    }
 
     const std::string what =
         at.kind == tok_t::identifier ? "enum " + quoted(at.text) : "the enum";
     fail(at, "no integer type holds every value of " + what);
+}
+
+// The enumerated type a list defines, 6.2.5p21: the machine's view and
+// the kind of its compatible integer type, and an identity of its own.
+type_t
+enumerated(parser_t &p, const type_t &compatible)
+{
+    const int_t &t = as< int_t >(compatible);
+
+    return make_int(t.width, t.is_signed, t.kind, p.identities++);
 }
 
 // The constants of an enumeration whose list is complete take its
@@ -6196,7 +6303,8 @@ open_enum_tag(parser_t &p, const token_t &keyword, const token_t &tag)
 
 // enum, then a tag, an enumerator list in braces, or both, 6.7.3.3p1.
 // A list defines an enumerated type, and the tree keeps the integer type
-// compatible with it, compatible_type()'s, as it keeps the type a
+// compatible with it, compatible_type()'s, of an identity of its own,
+// enumerated()'s, which nothing reads yet, as it keeps the type a
 // typedef names: an object, a parameter, a result, a cast, sizeof, a
 // switch and the arithmetic of one are its integer type's.  Its
 // constants take the types and the values of p10, p12 and p15.  A tag
@@ -6232,7 +6340,7 @@ enum_specifier(parser_t &p)
     if (!marking)
         marking = after;
 
-    type_t t = compatible_type(tag ? *tag : keyword, list);
+    type_t t = enumerated(p, compatible_type(tag ? *tag : keyword, list));
     if (marking)
         t = make_not_yet(p.identities++, attribute_words(*marking));
 
@@ -8791,9 +8899,10 @@ va_area(parser_t &p)
     const long size = p.target.va_list == va_list_t::psabi ? 184 : 200;
 
     if (!p.va_area)
-        p.va_area = &p.unit.symbols.emplace_back(
-            symbol_t { "__va_area", make_array(make_int(8, false), size),
-                       storage_t::local, false, -1 });
+        p.va_area = &p.unit.symbols.emplace_back(symbol_t {
+            "__va_area",
+            make_array(make_int(8, false, int_kind_t::unsigned_char), size),
+            storage_t::local, false, -1 });
 
     return *p.va_area;
 }
