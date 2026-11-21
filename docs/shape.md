@@ -259,7 +259,8 @@ array of one, takes its place in the layout at its size and
 alignment, so `sizeof`, `_Alignof` and `offsetof` of the record are
 its layout's and its other members are reached; an access of the
 floating member itself, its address as its value, is refused by its
-type's words.
+type's words. `sizeof` and `_Alignof` of the floating type, or of an
+array of it, fold its size and its alignment as well.
 
 `__builtin_va_list`, the type behind `va_list` (7.16p4), is the
 target's, since a list is handed to the C library, which reads it as

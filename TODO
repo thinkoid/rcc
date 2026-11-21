@@ -506,20 +506,6 @@ comment follows either.
 Check: ~case 2147483647 + 1:~ draws the diagnostic, or =shape.md=
 says why not; the comment agrees.
 
-** TODO ~sizeof (double)~ is refused though the type has its size
-
-~sizeof (double)~ and ~_Alignof (double)~ are "not yet: floating
-type 'double'". =docs/shape.md= chapter 3 says a real floating type
-has =clang='s size, a record lays one out, and =sizeof= of a union
-that holds a =double= folds. The comment of
-=tests/error/double-sizeof.c= says the size is not yet.
-
-Fix: =sizeof= and =_Alignof= fold the size and the alignment the
-type carries.
-
-Check: =double-sizeof= leaves the error corpus for a cost program
-pinned on both targets.
-
 ** TODO The =visibility= attribute marks
 
 ~extern int f(void) __attribute__ ((visibility ("internal")));~ marks
@@ -622,6 +608,18 @@ the catch of a =static inline= body then takes.
 Check: ~static inline int f(void) { char a[20000000]; return a[0];
 }~, never called, compiles on aarch64, and a call of it is refused
 by the limit's words.
+
+** TODO =sizeof= of a floating member is refused
+
+~sizeof s.d~ on a =double= member is "not yet: floating type
+'double'": the member's access is refused before =sizeof= sees its
+type, where ~sizeof (double)~ folds the size the type carries.
+
+Fix: =sizeof= and =_Alignof= of an expression take the operand's
+type without refusing an access of a type that has its size.
+
+Check: a function returning ~sizeof s.d~ in
+=tests/cost/floating-size.c=, pinned on both targets.
 
 * Lexer
 

@@ -909,6 +909,20 @@ require_honoured(const token_t &at, const type_t &t)
         not_yet(at, *words);
 }
 
+// Whether a type has a size though rcc does not use its object yet: a
+// real floating type, or an array of one, carries clang's size and
+// alignment (shape.md chapter 3), which a record lays out as a member's
+// and sizeof and _Alignof fold, and an access of it is refused where it
+// stands.
+bool
+is_sized(const type_t &t)
+{
+    if (is< array_t >(t))
+        return is_sized(*as< array_t >(t).element);
+
+    return is< not_yet_t >(t) && as< not_yet_t >(t).size > 0;
+}
+
 // The record a type is, or holds as an array's element at any depth, or
 // null.
 const record_t *
@@ -2306,8 +2320,8 @@ indirection(const token_t &op, expr_t arg)
 // sizeof folds to a constant of type unsigned long, size_t on LP64,
 // 6.5.4.4p2, p5.  A function, void, an array of unknown size and an
 // incomplete record have no size, p1; a not-yet type has one rcc does
-// not know yet.  A record's size is its layout's, its padding included,
-// p4.  The name is the operator's, with the underscore a name takes
+// not know yet, but for one is_sized() says has its size.  A record's
+// size is its layout's, its padding included, p4.  The name is the operator's, with the underscore a name takes
 // when it is a keyword of C++.
 expr_t
 sizeof_(const token_t &op, const type_t &t)
@@ -2325,7 +2339,8 @@ sizeof_(const token_t &op, const type_t &t)
         fail(op, "invalid application of 'sizeof' to incomplete type " +
                      record_words(*as< record_type_t >(t).record));
 
-    require_honoured(op, t);
+    if (!is_sized(t))
+        require_honoured(op, t);
 
     return expr_t { size_type(), literal_t { size_of(t) } };
 }
@@ -2333,7 +2348,8 @@ sizeof_(const token_t &op, const type_t &t)
 // _Alignof ( type-name ) folds to the alignment of the type, a size_t
 // constant, 6.5.4.4p3, p5; of an array, its element's.  A function and
 // an incomplete type have none, p1: void, an array of unknown size and
-// an incomplete record.  A not-yet type has one rcc does not know yet.
+// an incomplete record.  A not-yet type has one rcc does not know yet,
+// but for one is_sized() says has its alignment.
 expr_t
 alignof_(const token_t &op, const type_t &t)
 {
@@ -2354,7 +2370,8 @@ alignof_(const token_t &op, const type_t &t)
                      " to incomplete type " +
                      record_words(*as< record_type_t >(t).record));
 
-    require_honoured(op, t);
+    if (!is_sized(t))
+        require_honoured(op, t);
 
     return expr_t { size_type(), literal_t { align_of(t) } };
 }
@@ -5908,18 +5925,6 @@ bit_field(parser_t &p, member_list_t &list, const type_t &t)
 
     attribute_specifier_list(p);
     mark_not_yet(list.record, "bit-field in " + record_words(list.record));
-}
-
-// Whether a member's type has a size though rcc does not use its
-// object yet: a real floating type, or an array of one, takes its place
-// in the layout, and an access of it is refused where it stands.
-bool
-is_sized(const type_t &t)
-{
-    if (is< array_t >(t))
-        return is_sized(*as< array_t >(t).element);
-
-    return is< not_yet_t >(t) && as< not_yet_t >(t).size > 0;
 }
 
 // A member's type: a complete object type, 6.7.3.2p11, so neither a
