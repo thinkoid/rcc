@@ -2692,8 +2692,8 @@ skip_attribute_arguments(parser_t &p)
 // always_inline asks that each call of the function be inlined, and
 // gcc and clang refuse a call they cannot inline.  rcc inlines none
 // and writes the call, as a compiler that does not inline does, so the
-// attribute is dropped, with a warning that says so (shape.md chapter
-// 5).
+// attribute is dropped, with a warning that says so in the program's
+// own text; a system header's is read as it is (shape.md chapter 5).
 bool
 is_always_inline(std::string_view attribute)
 {
@@ -2718,7 +2718,10 @@ attribute(parser_t &p)
         skip_attribute_arguments(p);
 
     if (is_always_inline(attribute_name(name))) {
-        warn(p, name, attribute_words(name) + " dropped: rcc inlines nothing");
+        if (!name.where.system_header)
+            warn(p, name,
+                 attribute_words(name) + " dropped: rcc inlines nothing");
+
         return nullptr;
     }
 

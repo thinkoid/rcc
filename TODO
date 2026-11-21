@@ -602,20 +602,6 @@ alone.
 Check: a program of =tests/error= with the header's two definitions,
 pinned "redefinition of 'f'".
 
-** TODO The warning of a dropped =always_inline= is printed for a system header's text
-
-~#include <stdbit.h>~ alone prints 56 warnings, "attribute
-'always_inline' dropped: rcc inlines nothing", one for each function
-the header declares so. A system header's text is read as it is
-(=docs/shape.md= chapter 5), and its =static inline= bodies are
-skipped whatever the attribute.
-
-Fix: no warning where the attribute's name is a system header's
-text.
-
-Check: a program with the attribute under a system header's line
-marker compiles with no word, pinned.
-
 ** TODO ~sizeof (double)~ is refused though the type has its size
 
 ~sizeof (double)~ and ~_Alignof (double)~ are "not yet: floating
