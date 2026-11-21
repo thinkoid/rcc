@@ -97,13 +97,14 @@ struct made_type_t
 };
 
 // The marking attributes of a run of attributes, or of all a
-// declaration writes: how many, and the first alias and the first weak
-// among them.
+// declaration writes: how many, the first alias and the first weak
+// among them, and the name's token of each, in their order.
 struct markings_t
 {
     int count = 0;
     const token_t *alias = nullptr;
     const token_t *weak = nullptr;
+    std::vector< const token_t * > names = { };
 };
 
 // A switch whose body the parse is in, 6.8.5.3: the promoted type of
@@ -2994,6 +2995,8 @@ count_marking(markings_t &markings, const token_t &name)
 
     if (!markings.weak && attribute_name(name) == "weak")
         markings.weak = &name;
+
+    markings.names.push_back(&name);
 }
 
 // Each __attribute__ ((list)), also spelled __attribute, of the run at
@@ -3511,6 +3514,19 @@ attribute_spelling(const parser_t &p, const token_t &attribute)
     return spelling(p, first, end);
 }
 
+// The words of every marking attribute of a declaration and their
+// arguments, attribute_spelling()'s, in their order: the means a
+// typedef through them is made by.
+std::string
+markings_spelling(const parser_t &p, const markings_t &markings)
+{
+    std::string words;
+    for (const token_t *name : markings.names)
+        words += attribute_spelling(p, *name);
+
+    return words;
+}
+
 // A typedef declares its declarator's name as a name for the type the
 // declarator gives, in the current scope, 6.7.9p3.  The name has no
 // object, so nothing is generated for it, and it takes no assembler
@@ -3522,9 +3538,9 @@ attribute_spelling(const parser_t &p, const token_t &attribute)
 // do.  Through a marking attribute the name stands for a not-yet type
 // of its own, of the attribute's words: typedef int register_t
 // __attribute__ ((__mode__ (__word__))) names an integer of a size rcc
-// does not take, and its objects are refused.  The attribute, its
-// arguments included, made from the same type is the same type again,
-// where it is the declaration's one marking attribute.  A typedef of a
+// does not take, and its objects are refused.  The attributes, their
+// arguments included, made from the same type are the same type again,
+// markings_spelling()'s.  A typedef of a
 // variable length array, whose size the typedef fixes, 6.7.9p8, is not
 // yet.
 void
@@ -3550,9 +3566,7 @@ type_definition(parser_t &p, const specifiers_t &spec, const declarator_t &d)
     type_t t = d.type;
     if (tail.marking) {
         const int identity =
-            tail.markings.count == 1 ?
-                identity_of(p, attribute_spelling(p, *tail.marking), t) :
-                p.identities++;
+            identity_of(p, markings_spelling(p, tail.markings), t);
         t = make_not_yet(identity, attribute_words(*tail.marking), true);
     }
 

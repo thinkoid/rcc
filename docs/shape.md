@@ -193,9 +193,9 @@ carries an identity, which equality compares, and the words a
 refusal of its use prints; a pointer to it is an ordinary pointer.
 The means that makes one from another type makes the same type
 from the same type again, so a typedef through it may be declared
-again (6.7.1p4) and a function with it: a marking attribute with its
-arguments, `__x__` read as `x`, where it is the declaration's one
-marking attribute; `_Atomic`, the qualifier or the specifier; and an
+again (6.7.1p4) and a function with it: the declaration's marking
+attributes with their arguments, in their order, `__x__` read as `x`;
+`_Atomic`, the qualifier or the specifier; and an
 array size rcc cannot compute, by the words of the size.
 A pointer to a type made by a typedef through a marking attribute
 or an array size rcc cannot compute, converted to or from a pointer

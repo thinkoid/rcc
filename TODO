@@ -536,19 +536,6 @@ macro reaches it.
 Check: such a program links and runs, or =docs/shape.md= says why
 not.
 
-** TODO A typedef through two marking attributes cannot be written twice
-
-~typedef int w __attribute__ ((mode (word), aligned (8)));~ written
-twice fails with "redefinition of typedef 'w' with another type". A
-type made again by the same means from the same type takes the
-earlier one's identity, and the means are spelled for a declaration
-of one marking attribute alone.
-
-Fix: the means spell every marking attribute of the declaration, in
-their order.
-
-Check: that typedef written twice compiles.
-
 ** TODO A pointer to a type rcc does not honour compared, joined or redeclared with another is an error
 
 A conversion between a pointer to a typedef through a marking
