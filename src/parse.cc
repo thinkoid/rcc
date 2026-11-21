@@ -3132,6 +3132,22 @@ attribute_specifier_list(parser_t &p, markings_t *seen = nullptr)
     return marking;
 }
 
+// A string of the __asm__ the keyword begins, adjacent literals joined
+// as in an expression, 6.4.5p5: an assembler name, the template of an
+// __asm__ statement, or one of its clobbers.
+std::string
+asm_string(parser_t &p, const token_t &keyword)
+{
+    if (peek(p).kind != tok_t::string)
+        fail(peek(p), "expected string literal in " + quoted(keyword.text));
+
+    std::string bytes;
+    while (peek(p).kind == tok_t::string)
+        bytes += string_bytes(advance(p));
+
+    return bytes;
+}
+
 // __asm__ ("name"), also spelled __asm: the string, adjacent literals
 // joined as in an expression, is the symbol's name in the assembly.
 // glibc declares scanf with __asm__ ("" "__isoc99_scanf"), and a call
@@ -3143,13 +3159,7 @@ asm_label(parser_t &p)
     expect(p, tok_t::lparen, "expected '(' after " + quoted(keyword.text));
 
     const token_t &first = peek(p);
-    if (first.kind != tok_t::string)
-        fail(first, "expected string literal in " + quoted(keyword.text));
-
-    std::string name;
-    while (peek(p).kind == tok_t::string)
-        name += string_bytes(advance(p));
-
+    const std::string name = asm_string(p, keyword);
     if (name.empty())
         fail(first, "empty assembler name");
 
@@ -8539,6 +8549,100 @@ labeled_statement(parser_t &p)
     return stmt_t { std::move(block) };
 }
 
+// An __asm__ statement rcc does not compile, refused at its keyword in
+// one message whatever it holds: a template with text, an operand, a
+// label, goto, a clobber of another name.
+[[noreturn]] void
+refuse_asm_statement(const token_t &keyword)
+{
+    not_yet(keyword, quoted(keyword.text) + " statement");
+}
+
+// The outputs or the inputs of an __asm__ statement, after their colon,
+// which rcc takes empty alone.  A token there that is neither the next
+// colon nor the ')' begins an operand, refused before its grammar, the
+// constraint string, the [name] and the expression, is read: so a
+// malformed operand is refused too, and is no error.
+void
+require_no_asm_operand(const parser_t &p, const token_t &keyword)
+{
+    if (!next_is(p, { tok_t::colon, tok_t::rparen }))
+        refuse_asm_statement(keyword);
+}
+
+// The clobbers of an __asm__ statement, the strings after its third
+// colon separated by commas, or none: whether each is "memory" or "cc",
+// a barrier's.  No name is checked against the target's registers.
+bool
+asm_clobbers_are_barrier(parser_t &p, const token_t &keyword)
+{
+    if (next_is(p, { tok_t::colon, tok_t::rparen }))
+        return true;
+
+    bool barrier = true;
+    do {
+        const std::string name = asm_string(p, keyword);
+        barrier = barrier && (name == "memory" || name == "cc");
+    } while (accept(p, tok_t::comma));
+
+    return barrier;
+}
+
+// The sections after an __asm__ statement's template, each opened by a
+// colon: the outputs, the inputs, the clobbers and the labels.  Whether
+// the clobbers are a barrier's; an operand or a label is refused.  The
+// lexer has no '::' token, so ::: is three colons.
+bool
+asm_sections_are_barrier(parser_t &p, const token_t &keyword)
+{
+    if (!accept(p, tok_t::colon))
+        return true;
+    require_no_asm_operand(p, keyword);
+
+    if (!accept(p, tok_t::colon))
+        return true;
+    require_no_asm_operand(p, keyword);
+
+    if (!accept(p, tok_t::colon))
+        return true;
+    const bool barrier = asm_clobbers_are_barrier(p, keyword);
+
+    if (peek(p).kind == tok_t::colon)
+        refuse_asm_statement(keyword);
+
+    return barrier;
+}
+
+// GNU C's __asm__ statement, also spelled asm and __asm, after which
+// volatile, inline and goto may stand.  The barrier, of an empty
+// template, no operand, no label, no goto, and clobbers of "memory" and
+// "cc" alone or none, is the null statement (shape.md chapter 5); every
+// other one is not yet.  volatile and inline change nothing: a
+// statement with no output is volatile already, and the null statement
+// has nothing to inline.
+stmt_t
+asm_statement(parser_t &p)
+{
+    const token_t &keyword = advance(p);
+
+    bool goto_ = false;
+    while (next_is(p, { tok_t::kw_volatile, tok_t::kw_inline, tok_t::kw_goto }))
+        goto_ = advance(p).kind == tok_t::kw_goto || goto_;
+
+    expect(p, tok_t::lparen, "expected '(' after " + quoted(keyword.text));
+    const bool empty = asm_string(p, keyword).empty();
+    const bool barrier = asm_sections_are_barrier(p, keyword);
+    expect(p, tok_t::rparen,
+           "expected ')' in " + quoted(keyword.text) + " statement");
+    expect(p, tok_t::semicolon,
+           "expected ';' after " + quoted(keyword.text) + " statement");
+
+    if (goto_ || !empty || !barrier)
+        refuse_asm_statement(keyword);
+
+    return stmt_t { expr_stmt_t { } };
+}
+
 // A declaration is a block item, not a statement: it cannot be the
 // body of an if or of a loop.
 stmt_t
@@ -8557,7 +8661,7 @@ statement(parser_t &p)
     case tok_t::kw_break:
     case tok_t::kw_continue:
     case tok_t::kw_goto: return jump_statement(p);
-    case tok_t::kw_asm: not_yet(t, quoted(t.text) + " statement");
+    case tok_t::kw_asm: return asm_statement(p);
     default: break;
     }
 

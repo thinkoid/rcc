@@ -698,6 +698,23 @@ volatile or not. Every other local is in its slot and keeps the value
 last stored. No conversion that discards `const` or `volatile` is
 diagnosed, nor an assignment to a `const` object (chapter 11).
 
+The barrier, `__asm__ __volatile__ ("" : : : "memory")`, is GNU C's
+`__asm__` statement of an empty template, no operand, no label, no
+`goto`, and the clobbers `"memory"` and `"cc"` alone or none. A
+program writes it in a macro, most often as the one statement of a
+statement expression. The parser takes it as the null statement, so
+c1 writes nothing for it. Each spelling of the keyword is the same
+statement, and `volatile` and `inline` after it change nothing. The
+empty template is no instruction. The `"memory"` clobber asks that no
+value read from memory be held in a register across the statement
+and that no access be moved over it, and rcc's code is so already:
+c1 makes every load and store the source writes, in the written order
+(G13), a statement boundary holds no value (`backend.md` 7.2), and a
+`register` variable has no address (6.5.4.2p1), so it is no memory.
+Every other `__asm__` statement is not yet, by its keyword: a template
+with text, an operand, a label, `goto`, or a clobber of another name,
+which is not checked against the target's registers.
+
 An enumeration is the integer type compatible with it, and each of
 its constants is its number, so an object, a parameter, a result, a
 cast, `sizeof`, a `switch` and the arithmetic of one are those of its
@@ -1722,8 +1739,9 @@ declaration without a body, a `register` array (6.3.2.1p3), `inline`
 on a function definition without `static`, what an attribute that rcc
 does not honour marks (an object of a typedef so declared, the use of
 a function or of an object at file scope, a local, the definition of a
-function or of an object at file scope), `__asm__` as a statement, at
-file scope or on a local, and C's keywords outside the subset:
+function or of an object at file scope), `__asm__` as a statement but
+the barrier (chapter 5), at file scope or on a local, and C's
+keywords outside the subset:
 `_Complex` outside the specifiers of a floating type, `_Imaginary`,
 the `_Atomic` qualifier outside a typedef, `_Alignas`, `_Alignof` of
 an expression, `_Generic`, `_Thread_local`. Each arrives when a probe

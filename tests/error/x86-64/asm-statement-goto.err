@@ -1,0 +1,2 @@
+tests/error/asm-statement-goto.c:5:9: error: not yet: 'asm' statement
+status 1

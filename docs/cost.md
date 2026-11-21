@@ -87,6 +87,11 @@ declarator changes the name a call writes and nothing else.
 `volatile` writes nothing either: it asks that every access written
 be made, and every access of every object is, so a program compiles
 to the listing of its twin without the qualifier (`volatile`). Nor
+does the barrier, an `__asm__` statement of an empty template whose
+clobbers are `"memory"` and `"cc"` alone or none: it asks that no
+value be held across it and no access moved over it, which is so of
+every statement, so a program compiles to the listing of its twin
+with `;` in its place (`asm-barrier`). Nor
 does `inline` on the definition of a program's own `static`
 function: it suggests that calls be fast, and each call is written
 as it is either way, so a program compiles to the listing of its

@@ -207,6 +207,14 @@ branch, so a program's `({ pending++; 0; })` is its statements and the
 `0` its statement writes, which the `blocks` probe checks against
 `clang`'s, jumps out of it and a loop of a label and a `goto` in it
 among them.
+Then the barrier, `__asm__ __volatile__ ("" : : : "memory")`: an
+`__asm__` statement of an empty template, no operands, no labels and
+the clobbers `"memory"` and `"cc"` alone or none is the null
+statement, since every load and store the source writes is made in
+the written order and no value is held across a statement, so a
+program's `({ __asm__ __volatile__ ("" : : : "memory"); })` writes
+nothing, which the cost corpus pins against its twin; every other
+`__asm__` statement is not yet.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/`, the cost corpus over `tests/cost/`
 and the error corpus over `tests/error/`, the programs rcc refuses

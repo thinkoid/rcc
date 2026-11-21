@@ -3,7 +3,7 @@
 int
 main(void)
 {
-        asm("" : : : "memory");
+        asm("nop");
 
         return 0;
 }

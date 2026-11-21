@@ -481,23 +481,6 @@ or the refusal is an error.
 
 Check: the two programs of =tests/error= have the pin decided.
 
-** TODO An =__asm__= statement of an empty template is refused
-
-~__asm__ __volatile__ ("" : : : "memory");~ is "not yet: '__asm__'
-statement". The empty template is no instruction, and the clobber
-asks that no value be cached in a register across the statement and
-no access to memory moved over it, which every statement of rcc's
-already is: each load and store the source writes is made, in
-order, and nothing is held across a statement.
-
-Fix: none taken; decide: such a statement, of an empty template, no
-operands and no labels, is the null statement, whatever its
-clobbers; or only with the clobbers =memory= and =cc=. Any other
-=__asm__= statement stays a not-yet.
-
-Check: a cost program pinned like its twin without the statement, on
-both targets; =tests/error/asm-statement.c= keeps its pin.
-
 ** TODO A local over the frame's limit is an error
 
 ~char a[1500000000];~ in a block is "error: variable 'a' is too
@@ -646,6 +629,18 @@ that does not unwind, a value of a not-yet kind every expression's
 builder carries.
 
 Check: the document says so beside the typedef's array.
+
+** TODO An =__asm__= statement's qualifier written twice is taken
+
+~__asm__ volatile volatile ("" : : : "memory");~ compiles as the
+barrier, the null statement. =gcc= and =clang= refuse it, "duplicate
+asm qualifier 'volatile'", and the same of =inline= and =goto=: each
+qualifier may stand once. The parser reads the qualifiers in a loop
+and counts none.
+
+Fix: a qualifier written a second time is an error at its token.
+
+Check: a program of =tests/error= with =volatile= twice, pinned.
 
 * Lexer
 
