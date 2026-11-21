@@ -1,0 +1,2 @@
+tests/error/label-address.c:5:19: error: not yet: address of a label
+status 1

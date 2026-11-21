@@ -8167,11 +8167,14 @@ for_statement(parser_t &p)
 }
 
 // A goto names a label of the function, defined before it or after
-// it, so the name is checked at the function's end, 6.8.7.2p1.
+// it, so the name is checked at the function's end, 6.8.7.2p1.  GNU
+// C's computed goto, goto *p, is not yet.
 stmt_t
 goto_statement(parser_t &p)
 {
-    advance(p);
+    const token_t &keyword = advance(p);
+    if (peek(p).kind == tok_t::star)
+        not_yet(keyword, "computed " + quoted(keyword.text));
 
     const token_t &name =
         expect(p, tok_t::identifier, "expected label name after 'goto'");
@@ -8532,7 +8535,7 @@ cast_expression(parser_t &p)
 }
 
 // GNU C's __extension__ before a cast expression is dropped, as it is
-// before a declaration.
+// before a declaration.  Its address of a label, &&next, is not yet.
 expr_t
 unary_expression(parser_t &p)
 {
@@ -8559,6 +8562,7 @@ unary_expression(parser_t &p)
     case tok_t::kw_sizeof: return sizeof_expression(p);
     case tok_t::kw_alignof: return alignof_expression(p);
     case tok_t::kw_extension: advance(p); return cast_expression(p);
+    case tok_t::log_and: not_yet(op, "address of a label");
     default: return postfix_expression(p);
     }
 }

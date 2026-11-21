@@ -1,0 +1,2 @@
+tests/error/goto-computed.c:9:17: error: not yet: computed 'goto'
+status 1

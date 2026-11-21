@@ -561,17 +561,6 @@ Fix: none taken; the directives and the direct reference, with
 Check: a cost program with a hidden function and a hidden object,
 defined and only declared, pinned on both targets.
 
-** TODO Labels as values are refused in an error's words
-
-~void *p = &&next; goto *p;~ fails with "expected expression": GNU
-C's address of a label and its computed =goto=, which rcc does not
-compile yet, and the message calls the program wrong.
-
-Fix: each refusal says "not yet" and names the construct.
-
-Check: a program of =tests/error= for ~&&next~ and for ~goto *p~,
-pinned.
-
 ** TODO An anonymous struct of bit-fields alone does not count before a flexible array member
 
 ~struct s { struct { int b : 3; }; int a[]; };~ is refused, "flexible
