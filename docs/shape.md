@@ -1003,7 +1003,8 @@ does not pay for it. Its body is skipped to the closing brace, c1
 writes nothing for it, and an expression that names the function is
 refused, before the definition as after it. It is still a definition,
 so a second one, the program's or the header's, is a redefinition
-(6.9.1p3). A system header's `static inline` declaration without a
+(6.9.1p3), and its parameters keep a definition's errors, `[*]`
+among them (6.9.2p6). A system header's `static inline` declaration without a
 body is not yet. The line marker in force at the declaration's
 `static` says which of the two it is (chapter 2).
 

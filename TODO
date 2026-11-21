@@ -536,19 +536,6 @@ macro reaches it.
 Check: such a program links and runs, or =docs/shape.md= says why
 not.
 
-** TODO A system header's =static inline= definition takes =[*]= in a parameter
-
-A definition's parameter of a variable length array type of
-unspecified size is an error (6.9.2p6), and the program's own
-definitions draw it. A system header's =static inline= definition,
-whose body is skipped, is not checked: =header_function_definition()=
-does not call =require_definition_parameters()=.
-
-Fix: it calls it.
-
-Check: a program of =tests/error= with such a definition under a
-system header's line marker, pinned with the error.
-
 ** TODO A typedef through two marking attributes cannot be written twice
 
 ~typedef int w __attribute__ ((mode (word), aligned (8)));~ written

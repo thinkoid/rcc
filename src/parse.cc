@@ -5713,7 +5713,8 @@ function_definition(parser_t &p, const specifiers_t &spec, declarator_t &d)
 // refused by name, and so is a use before the definition, at the end of
 // the unit.  The function is uncompiled, which is_defined() reads, so a
 // second definition is a redefinition whatever words the symbol keeps,
-// a marking attribute's among them.
+// a marking attribute's among them.  Its parameters are a definition's
+// and keep their errors, require_definition_parameters()'s.
 void
 header_function_definition(parser_t &p,
                            const specifiers_t &spec,
@@ -5724,6 +5725,8 @@ header_function_definition(parser_t &p,
 
     if (is_defined(p, index))
         fail(*d.name, "redefinition of " + quoted(d.name->text));
+
+    require_definition_parameters(d);
 
     p.unit.functions[index].uncompiled = true;
 
