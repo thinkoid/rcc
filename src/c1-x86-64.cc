@@ -5216,7 +5216,8 @@ cbranch(state_t &s, const expr_t &e, int label, bool sense)
         return;
     }
 
-    if (is< conditional_t >(e) && jumps_on_arms(as< conditional_t >(e))) {
+    if (is< conditional_t >(e) &&
+        jumps_on_arms(as< conditional_t >(e), truth_value)) {
         conditional_branch(s, e, label, sense);
         return;
     }

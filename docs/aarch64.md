@@ -1335,9 +1335,13 @@ subs x16, x16, #1; b.ne`.
   the same shapes. `if (c ? a < b : d)` is `cmp w0, w1; b.ge .L2; b
   .L4` on the first arm's path and `ldr w0, [x29, #28]; cbz w0, .L2`
   on the second's, as many instructions as the join's `cset` and
-  `cbz`. Two arms that are no truth value are joined and the join's
-  one `cbz` tests both, where `ldr; cbz` on each path would be an
-  instruction more.
+  `cbz`. A read of a register variable is such an arm here too, since
+  `cbz` tests it in its register: `if (y > x ? x : y)` on two register
+  variables is `cbz w19` on one path and `cbz w20` on the other, an
+  instruction fewer than `mov w0, w19` and `mov w0, w20` and the
+  join's `cbz w0`. Two other arms are joined and the join's one `cbz`
+  tests both, where `ldr; cbz` on each path would be an instruction
+  more.
 - `a, b`: `effect(a)`, then `cbranch(b, label, sense)`.
 - Any other expression: its value into `L`, then the test of zero,
   `cbnz L, label` or `cbz L, label`, one instruction (call 3). This

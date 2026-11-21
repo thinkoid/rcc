@@ -129,22 +129,6 @@ first. Taken, 11 listings over =tests= reorder at the same count.
 Check: =stack-parameter='s pin in parameter order, and no function
 longer; or the sentence in 5.2.
 
-** TODO aarch64: a conditional of two register variables' reads as a condition is joined
-
-~if (y > x ? x : y)~ on two register variables is =mov w0, w19; b;
-mov w0, w20; cbz w0=, where =cbz w19= and =cbz w20=, one on each
-path, are an instruction fewer: a read of a register variable is
-tested where it lies. A conditional as a condition is jump code
-where an arm is a truth value, and joins otherwise; on x86-64 the
-two forms are the same count here. 9 functions of the =registers=
-probe have the shape.
-
-Fix: none taken; an arm's predicate for each target: a register
-variable's read is such an arm on aarch64 alone.
-
-Check: those functions an instruction shorter on aarch64, and no
-function longer.
-
 ** TODO A statement expression that saves nothing is still read as a call ahead
 
 The walks that look ahead of an operand, and the test of a register

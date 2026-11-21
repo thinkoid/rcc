@@ -12,7 +12,9 @@
    beside a register variable's read, which an arm writes; converted()
    the second with an unsigned second arm, which converts the
    comparison to unsigned; narrow() with a char second arm, which is
-   promoted.  Each arm is tested without its conversion.
+   promoted; registers() two register variables' reads, which on
+   aarch64 alone are arms tested in place.  Each arm is tested without
+   its conversion.
 
    On x86-64 the listing must show in joined() c compared in its slot,
    cmpl $0, -4(%rbp), and je to the second arm, each arm loaded into
@@ -33,7 +35,8 @@
    -32(%rbp), %rax; in converted() the same as compared(), the
    comparison's jge and the unsigned arm's cmpl $0, -16(%rbp); and in
    narrow() the char compared in its slot at its width, cmpb $0,
-   -13(%rbp).
+   -13(%rbp); and in registers() the arms joined in eax, movl %ebx,
+   %eax and movl %r12d, %eax, and the join's cmpl $0, %eax; je.
 
    On aarch64 the listing must show in joined() and called() the arms
    joined in w0 and the join's one cbz w0; in compared() the
@@ -46,8 +49,9 @@
    conditional's join; and in written() r's register saved, str x19,
    [x29, #40], the first arm's ldr w19 and cmp w19, w0, the second
    arm's cbz w19, and ldr x1, [x29, #40] after the join; in converted()
-   the same as compared(); and in narrow() the char's ldrb w0, [x29,
-   #28]; cbz w0. */
+   the same as compared(); in narrow() the char's ldrb w0, [x29,
+   #28]; cbz w0; and in registers() each arm tested in its register,
+   cbz w19 and cbz w20, with no join. */
 void g(void);
 int f(void);
 
@@ -118,5 +122,15 @@ void
 narrow(int c, int a, int b, char d)
 {
         if (c ? a < b : d)
+                g();
+}
+
+void
+registers(int c, int x, int y)
+{
+        register int a = x;
+        register int b = y;
+
+        if (c ? a : b)
                 g();
 }

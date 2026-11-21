@@ -4506,13 +4506,24 @@ rvalue_in(state_t &s, const expr_t &e, reg_t r)
     return rvalue(s, e, nullptr, bit(r));
 }
 
+// Whether a conditional's arm is tested as a condition by an
+// instruction its value does not write, chapter 7.1: a truth value,
+// truth_value()'s, or a read of a register variable, under the
+// conversions under_widening() looks through, which cbz and cbnz test
+// in its register where a join would move it first.
+bool
+tested_arm(const expr_t &e)
+{
+    return truth_value(e) || register_variable(under_widening(e));
+}
+
 // Jump code, chapter 7.1: a jump to label when e is true (sense) or
 // false (!sense), a fall through otherwise, and no value.  A comparison
 // is cmp and b.cc; ! flips the sense; && and || are the shape of the
 // short circuit, 6.5.14p4, 6.5.15p4, the right operand not reached when
-// the left decides, and so is a conditional that jumps_on_arms(),
-// conditional_branch()'s.  Any other scalar, a constant included, is its
-// value and the test of zero.
+// the left decides, and so is a conditional that jumps_on_arms() by
+// tested_arm(), conditional_branch()'s.  Any other scalar, a constant
+// included, is its value and the test of zero.
 void
 cbranch(state_t &s, const expr_t &e, int label, bool sense)
 {
@@ -4521,7 +4532,8 @@ cbranch(state_t &s, const expr_t &e, int label, bool sense)
         return;
     }
 
-    if (is< conditional_t >(e) && jumps_on_arms(as< conditional_t >(e))) {
+    if (is< conditional_t >(e) &&
+        jumps_on_arms(as< conditional_t >(e), tested_arm)) {
         conditional_branch(s, e, label, sense);
         return;
     }

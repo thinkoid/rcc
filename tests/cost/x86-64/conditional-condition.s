@@ -335,4 +335,43 @@ narrow:
 	ret
 	.cfi_endproc
 	.size	narrow, .-narrow
+	.globl	registers
+	.type	registers, @function
+registers:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	pushq	%rbx
+	.cfi_offset %rbx, -24
+	pushq	%r12
+	.cfi_offset %r12, -32
+	subq	$16, %rsp
+	movl	%edi, -20(%rbp)
+	movl	%esi, -24(%rbp)
+	movl	%edx, -28(%rbp)
+	movl	-24(%rbp), %ebx
+	movl	-28(%rbp), %r12d
+	cmpl	$0, -20(%rbp)
+	je	.Lregisters.3
+	movl	%ebx, %eax
+	jmp	.Lregisters.4
+.Lregisters.3:
+	movl	%r12d, %eax
+.Lregisters.4:
+	cmpl	$0, %eax
+	je	.Lregisters.2
+	call	g@PLT
+.Lregisters.2:
+.Lregisters.1:
+	leaq	-16(%rbp), %rsp
+	popq	%r12
+	popq	%rbx
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	registers, .-registers
 	.section	.note.GNU-stack,"",@progbits

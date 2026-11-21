@@ -815,13 +815,14 @@ truth_value(const expr_t &e)
 
 // Whether a conditional as a condition is jump code, backend.md 7.1:
 // GNU C's a ?: b, which holds where a || b does, and one an arm of which
-// at least is a truth value, truth_value()'s.  Two other arms are
-// joined and the join tested once, where each arm's own test would be
-// one test more.
+// at least is one the target's predicate tested says its own test
+// writes no instruction its value does not, a truth value on either
+// target, truth_value()'s.  Two other arms are joined and the join
+// tested once, where each arm's own test would be one test more.
 bool
-jumps_on_arms(const conditional_t &c)
+jumps_on_arms(const conditional_t &c, bool (*tested)(const expr_t &))
 {
-    return !c.yes || truth_value(*c.yes) || truth_value(*c.no);
+    return !c.yes || tested(*c.yes) || tested(*c.no);
 }
 
 // Whether a and b may change places under op: +, *, &, | and ^, whose

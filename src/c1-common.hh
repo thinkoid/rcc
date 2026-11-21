@@ -108,7 +108,7 @@ bool is_shift(binary_op_t);
 bool is_comparison(binary_op_t);
 const expr_t &under_widening(const expr_t &);
 bool truth_value(const expr_t &);
-bool jumps_on_arms(const conditional_t &);
+bool jumps_on_arms(const conditional_t &, bool (*tested)(const expr_t &));
 bool commutes(binary_op_t);
 binary_op_t inverse(binary_op_t);
 binary_op_t mirrored(binary_op_t);
