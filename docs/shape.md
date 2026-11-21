@@ -198,10 +198,13 @@ attributes with their arguments, in their order, `__x__` read as `x`;
 `_Atomic`, the qualifier or the specifier; and an
 array size rcc cannot compute, by the words of the size.
 A pointer to a type made by a typedef through a marking attribute
-or an array size rcc cannot compute, converted to or from a pointer
-to another type that may be compatible with it, is not yet, by the
-typedef's words: rcc does not know what the attribute or the size
-makes of the type. An atomic type is compatible with no other
+or an array size rcc cannot compute, met by a pointer to another type
+that may be compatible with it, is not yet, by the typedef's words:
+converted to or from it, compared with it, joined with it in a
+conditional's arms or in its place in a redeclaration, behind any
+pointers, arrays and functions, as `void f(word_t *); void f(long
+*);`. rcc does not know what the attribute or the size makes of the
+type. An atomic type is compatible with no other
 (6.7.4.1p11), so a pointer to one and a pointer to another type stay
 incompatible.
 It has no size and no alignment, but a real floating type has

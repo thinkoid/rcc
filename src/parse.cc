@@ -1313,22 +1313,67 @@ may_be_compatible(const not_yet_t &made, const type_t &t)
     return is< array_t >(t) || (is< not_yet_t >(t) && as< not_yet_t >(t).made);
 }
 
-// rcc does not know what a typedef through a marking attribute or an
-// array size it cannot compute makes of the type, so a conversion
-// between a pointer to one and a pointer to another type that may be
-// compatible with it is not yet, by the typedef's words.  Any other
-// mismatch is the caller's error.
-void
-refuse_made_pointees(const token_t &at, const type_t &a, const type_t &b)
+// The first not-yet type made from another, by a typedef through a
+// marking attribute or an array size rcc cannot compute, that two
+// pointers of two types point to where the other pointee may be
+// compatible with it, may_be_compatible()'s; met walking the two types
+// alike, through pointers, arrays and functions, as tag_twin() walks
+// them; or null.
+const not_yet_t *
+made_pointee(const type_t &a, const type_t &b)
 {
-    const type_t &x = pointee_of(a);
-    const type_t &y = pointee_of(b);
+    if (is< pointer_t >(a) && is< pointer_t >(b)) {
+        const type_t &x = pointee_of(a);
+        const type_t &y = pointee_of(b);
 
-    for (const auto &[made, other] : { std::pair { &x, &y }, { &y, &x } })
-        if (is< not_yet_t >(*made) && as< not_yet_t >(*made).made &&
-            may_be_compatible(as< not_yet_t >(*made), *other))
-            not_yet(at, "conversion of a pointer to a type of " +
-                            as< not_yet_t >(*made).what);
+        for (const auto &[made, other] : { std::pair { &x, &y }, { &y, &x } })
+            if (!(x == y) && is< not_yet_t >(*made) &&
+                as< not_yet_t >(*made).made &&
+                may_be_compatible(as< not_yet_t >(*made), *other))
+                return &as< not_yet_t >(*made);
+
+        return made_pointee(x, y);
+    }
+
+    if (is< array_t >(a) && is< array_t >(b))
+        return made_pointee(*as< array_t >(a).element,
+                            *as< array_t >(b).element);
+
+    if (!is< function_t >(a) || !is< function_t >(b))
+        return nullptr;
+
+    const auto &f = as< function_t >(a);
+    const auto &g = as< function_t >(b);
+    if (const not_yet_t *made = made_pointee(*f.result, *g.result))
+        return made;
+
+    for (std::size_t i = 0; i < std::min(f.params.size(), g.params.size()); ++i)
+        if (const not_yet_t *made = made_pointee(*f.params[i], *g.params[i]))
+            return made;
+
+    return nullptr;
+}
+
+// The words of refuse_made_pointees() for a comparison, a conditional's
+// arms and a redeclaration, which convert nothing.
+constexpr std::string_view compatibility_words =
+    "compatibility of a pointer to a type of ";
+
+// rcc does not know what a typedef through a marking attribute or an
+// array size it cannot compute makes of the type, so two types that
+// differ by a pointer to one and a pointer to another type that may be
+// compatible with it, made_pointee()'s, are not yet, by the construct's
+// words and the typedef's: a conversion between them, their comparison,
+// a conditional's arms and a redeclaration.  Any other mismatch is the
+// caller's error.
+void
+refuse_made_pointees(const token_t &at,
+                     const type_t &a,
+                     const type_t &b,
+                     std::string_view construct)
+{
+    if (const not_yet_t *made = made_pointee(a, b))
+        not_yet(at, std::string(construct) + made->what);
 }
 
 // The words a conversion's error names a type by: a record by its
@@ -1410,7 +1455,8 @@ assignment_conversion(parser_t &p, const token_t &at, expr_t e, const type_t &t)
         !void_and_object_pointer(t, e.type) &&
         !void_and_function_pointer(t, e.type) && !is_null_pointer_constant(e)) {
         refuse_tag_twins(at, t, e.type);
-        refuse_made_pointees(at, t, e.type);
+        refuse_made_pointees(at, t, e.type,
+                             "conversion of a pointer to a type of ");
         fail(at, "incompatible pointer types");
     }
 
@@ -2010,13 +2056,17 @@ comparison(const token_t &op, expr_t lhs, expr_t rhs)
 
     if (!lp && !rp)
         arithmetic_conversions(lhs, rhs);
-    else if (equality && !common_pointer(lhs, rhs))
+    else if (equality && !common_pointer(lhs, rhs)) {
+        refuse_made_pointees(op, lhs.type, rhs.type, compatibility_words);
         fail(op, lp && rp ? "comparison of distinct pointer types" :
                             "comparison between pointer and integer");
+    }
     else if (!equality && !(lp && rp))
         fail(op, "comparison between pointer and integer");
-    else if (!equality && !(lhs.type == rhs.type))
+    else if (!equality && !(lhs.type == rhs.type)) {
+        refuse_made_pointees(op, lhs.type, rhs.type, compatibility_words);
         fail(op, "comparison of distinct pointer types");
+    }
     else if (!equality && is_function_pointer(lhs.type))
         fail(op, "ordered comparison of pointers to functions");
 
@@ -2161,10 +2211,12 @@ joined_arms(const token_t &op, expr_t &yes, expr_t &no)
 
     if (!is< pointer_t >(yes.type) && !is< pointer_t >(no.type))
         arithmetic_conversions(yes, no);
-    else if (!common_pointer(yes, no))
+    else if (!common_pointer(yes, no)) {
+        refuse_made_pointees(op, yes.type, no.type, compatibility_words);
         fail(op, pointers ?
                      "pointer type mismatch in conditional expression" :
                      "pointer/integer type mismatch in conditional expression");
+    }
 
     return yes.type;
 }
@@ -3383,6 +3435,7 @@ redeclared(const token_t &name,
     }
 
     refuse_tag_twins(name, earlier.type, t);
+    refuse_made_pointees(name, earlier.type, t, compatibility_words);
 
     if (storage == storage_t::type_name)
         fail(name, "redefinition of typedef " + quoted(name.text) +

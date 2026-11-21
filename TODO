@@ -536,20 +536,6 @@ macro reaches it.
 Check: such a program links and runs, or =docs/shape.md= says why
 not.
 
-** TODO A pointer to a type rcc does not honour compared, joined or redeclared with another is an error
-
-A conversion between a pointer to a typedef through a marking
-attribute and a pointer to a type it may be is "not yet", since rcc
-has not looked. The same pair in a redeclaration, ~void f(word_t *);
-void f(long *);~, is "conflicting types for 'f'", and in ~==~ and
-~?:~ "distinct pointer types"; a pointer to such a pointer is not
-looked into. =clang= takes the first where =word_t= is =long=.
-
-Fix: the same not-yet in the comparison, the conditional's arms and
-the redeclaration, the types walked as for a tag declared twice.
-
-Check: that redeclaration is refused as not yet.
-
 ** TODO A conversion to a pointer to the unmarked function type loses a parameter's marking
 
 A function type carries the words of a parameter a marking attribute
@@ -634,6 +620,22 @@ Fix: the three constraints on the width and the duplicate name are
 errors where the field is declared; the sentence of 4.1 follows.
 
 Check: a program of =tests/error= for each, pinned.
+
+** TODO A type rcc does not honour redeclared with the type behind it is an error
+
+~void f(word_t); void f(long);~, =word_t= a typedef through a
+marking attribute, is "conflicting types for 'f'", where a pointer
+to such a type in the same place is "not yet", and =clang= takes the
+pair where =word_t= is =long=. The same holds of two subtracted
+pointers, ~w - l~, "subtraction of pointers to different types".
+A typedef written a second time through another mode, or another
+alignment, is "another type", which =clang= takes for the alignment.
+
+Fix: none taken; decide whether the not-yet covers the type itself
+in a redeclaration and a typedef written again with other
+arguments; the subtraction takes the pointers' refusal.
+
+Check: each pair is refused in the decided words.
 
 * Lexer
 
