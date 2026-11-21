@@ -607,6 +607,58 @@ variable length array; =alloca=.
 Check: the program of =tests/error= for each becomes a cost program
 on both targets.
 
+** TODO ~sizeof (double)~ is refused though the type has its size
+
+~sizeof (double)~ and ~_Alignof (double)~ are "not yet: floating
+type 'double'". =docs/shape.md= chapter 3 says a real floating type
+has =clang='s size, a record lays one out, and =sizeof= of a union
+that holds a =double= folds. The comment of
+=tests/error/double-sizeof.c= says the size is not yet.
+
+Fix: =sizeof= and =_Alignof= fold the size and the alignment the
+type carries.
+
+Check: =double-sizeof= leaves the error corpus for a cost program
+pinned on both targets.
+
+** TODO The =visibility= attribute marks
+
+~extern int f(void) __attribute__ ((visibility ("internal")));~ marks
+=f=, and a call or a definition of it is "not yet: attribute
+'visibility'". A program that hides its internal functions by a
+macro of that attribute is refused in every file that declares one.
+The directives are =.hidden= and =.internal=, and a hidden symbol
+the file defines is reached directly, not through the GOT.
+
+Fix: none taken; the directives and the direct reference, with
+~#pragma GCC visibility~, which asks the same of a region.
+
+Check: a cost program with a hidden function and a hidden object,
+defined and only declared, pinned on both targets.
+
+** TODO =__extension__= before an expression is "expected expression"
+
+~p = __extension__ (void *) q;~ fails with "expected expression".
+GNU C's =__extension__= silences a pedantic warning and changes
+nothing; the parser drops it before a declaration (=docs/shape.md=
+chapter 5) and not before a cast or a unary expression.
+
+Fix: dropped before an expression too.
+
+Check: a cost program with the keyword before a cast, pinned like
+its twin without it.
+
+** TODO Labels as values are refused in an error's words
+
+~void *p = &&next; goto *p;~ fails with "expected expression": GNU
+C's address of a label and its computed =goto=, which rcc does not
+compile yet, and the message calls the program wrong.
+
+Fix: each refusal says "not yet" and names the construct.
+
+Check: a program of =tests/error= for ~&&next~ and for ~goto *p~,
+pinned.
+
 * Lexer
 
 ** TODO ~#pragma GCC visibility push(default)~ is refused
