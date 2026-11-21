@@ -10364,7 +10364,9 @@ is_atomic_builtin(std::string_view name)
 // marked is refused here, with the name in hand, by the attribute's
 // words, and so is a global's of a not-yet type, which an object
 // declared elsewhere may have, and a constant's of one, an enum's an
-// attribute marked, by the type's.  A use of a name of internal linkage
+// attribute marked, by the type's; but for a global of a type
+// is_sized() says has its size, where the name is the whole operand of
+// sizeof, ends_sizeof_operand()'s, as for a member's access.  A use of a name of internal linkage
 // is kept for the check of its definition at the end of the unit.  A
 // generic selection is not yet.  Parentheses leave the expression as it
 // is, an lvalue included, 6.5.2p6, but for GNU C's statement
@@ -10381,6 +10383,7 @@ primary_expression(parser_t &p)
 
     switch (t.kind) {
     case tok_t::identifier: {
+        const bool sized_operand = ends_sizeof_operand(p, p.pos);
         advance(p);
 
         if (t.text == "__builtin_offsetof")
@@ -10412,8 +10415,10 @@ primary_expression(parser_t &p)
         if (sym->linkage != linkage_t::none)
             p.used.insert(sym);
 
-        if (sym->storage == storage_t::global ||
-            sym->storage == storage_t::enumerator)
+        const bool sized = is_sized(sym->type) && sized_operand;
+        if ((sym->storage == storage_t::global ||
+             sym->storage == storage_t::enumerator) &&
+            !sized)
             require_honoured(t, sym->type);
 
         if (sym->storage == storage_t::enumerator)

@@ -292,7 +292,9 @@ its layout's and its other members are reached; an access of the
 floating member itself, its address as its value, is refused by its
 type's words, but as the whole operand of `sizeof`, which folds the
 member's size. `sizeof` and `_Alignof` of the floating type, or of an
-array of it, fold its size and its alignment as well.
+array of it, fold its size and its alignment as well, and `sizeof`
+of a name of an object of it folds its size, `sizeof x` for `extern
+double x;`, though a use of the name is refused anywhere else.
 
 `__builtin_va_list`, the type behind `va_list` (7.16p4), is the
 target's, since a list is handed to the C library, which reads it as

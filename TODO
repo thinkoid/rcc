@@ -536,18 +536,6 @@ macro reaches it.
 Check: such a program links and runs, or =docs/shape.md= says why
 not.
 
-** TODO =sizeof= of a named object of a floating type is refused
-
-~extern double x;~ and ~sizeof x~ is "not yet: floating type
-'double'": the name's type is refused where the name is read, before
-=sizeof= sees it. ~sizeof (double)~ and ~sizeof s.d~ fold.
-
-Fix: a name that is the whole operand of =sizeof= is not refused, as
-a member's access there is not.
-
-Check: a function returning ~sizeof x~ in
-=tests/cost/floating-size.c=, pinned on both targets.
-
 ** TODO A system header's =static inline= definition takes =[*]= in a parameter
 
 A definition's parameter of a variable length array type of

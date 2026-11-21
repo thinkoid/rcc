@@ -119,4 +119,21 @@ double_member_size:
 	ret
 	.cfi_endproc
 	.size	double_member_size, .-double_member_size
+	.globl	double_object_size
+	.type	double_object_size, @function
+double_object_size:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	$8, %rax
+	jmp	.Ldouble_object_size.1
+.Ldouble_object_size.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	double_object_size, .-double_object_size
 	.section	.note.GNU-stack,"",@progbits
