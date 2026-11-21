@@ -1,0 +1,2 @@
+tests/error/atomic-builtin.c:8:16: error: not yet: atomic operation '__c11_atomic_exchange'
+status 1

@@ -452,19 +452,6 @@ Fix: the specifier refuses an array and a function type.
 
 Check: two programs of =tests/error= with their pins.
 
-** TODO A macro of =stdatomic.h= draws "undeclared"
-
-~atomic_flag_test_and_set(p)~ fails with "'__c11_atomic_exchange'
-undeclared": the header's macros expand to =clang='s builtin
-functions, which rcc takes for identifiers. The program is valid, and
-the message says a name is missing where an atomic access is not
-yet.
-
-Fix: a name that begins =__c11_atomic_= or =__atomic_= is refused as
-not yet, by name.
-
-Check: the call above fails with "not yet", pinned in =tests/error=.
-
 ** TODO A qualified =void= is taken as the =void= of an empty parameter list
 
 ~int f(const void);~, ~int f(void const);~ and a parameter of a

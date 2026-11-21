@@ -9765,6 +9765,15 @@ statement_expression(parser_t &p, const token_t &open)
                                              box(std::move(value)) } };
 }
 
+// Whether an undeclared name is one of clang's builtin functions of
+// the atomic operations, which the macros of stdatomic.h call:
+// __c11_atomic_exchange for atomic_flag_test_and_set, and their like.
+bool
+is_atomic_builtin(std::string_view name)
+{
+    return name.starts_with("__c11_atomic_") || name.starts_with("__atomic_");
+}
+
 // A name must be declared, 6.5.2p2, as an object or a function: a
 // typedef name names a type.  An enumeration constant is a constant,
 // p2's footnote, of its type and its value, 6.4.4.4p2, 6.7.3.3p10: the
@@ -9777,7 +9786,8 @@ statement_expression(parser_t &p, const token_t &open)
 // generic selection is not yet.  Parentheses leave the expression as it
 // is, an lvalue included, 6.5.2p6, but for GNU C's statement
 // expression, ({ ... }), statement_expression()'s.  alloca, which
-// glibc's alloca.h defines as __builtin_alloca, is not yet.  A floating
+// glibc's alloca.h defines as __builtin_alloca, is not yet, and so is
+// an atomic operation, is_atomic_builtin()'s, by its name.  A floating
 // constant is not yet: the lexer took its spelling, and its value is
 // not computed.  A character constant is character_constant()'s, and
 // adjacent string literals are one, string_literal()'s.
@@ -9803,6 +9813,9 @@ primary_expression(parser_t &p)
             return std::move(*e);
 
         const symbol_t *sym = lookup(p, t.text);
+        if (!sym && is_atomic_builtin(t.text))
+            not_yet(t, "atomic operation " + quoted(t.text));
+
         if (!sym)
             fail(t, quoted(t.text) + " undeclared");
 
