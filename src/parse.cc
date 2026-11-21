@@ -8835,15 +8835,50 @@ member_lvalue(const parser_t &p, const token_t &op, expr_t e, const member_t &m)
     return lvalue_at(p, std::move(pointer), offset + m.offset, m.type);
 }
 
+// Whether a token continues a postfix expression, 6.5.3.1p1.
+bool
+is_postfix_operator(tok_t kind)
+{
+    return kind == tok_t::lparen || kind == tok_t::lbracket ||
+           kind == tok_t::dot || kind == tok_t::arrow || kind == tok_t::inc ||
+           kind == tok_t::dec;
+}
+
+// Whether the member access whose member's name is the token ahead ends
+// the whole operand of a sizeof, in the postfix expression begun at the
+// token start: the keyword, then only '(' up to start, as many ')'
+// after the member's name, and no postfix operator after them.  Such
+// an operand is the member's lvalue alone, whose type sizeof takes,
+// 6.5.4.4p2, and no operator uses its value.
+bool
+ends_sizeof_operand(const parser_t &p, std::size_t start)
+{
+    std::size_t open = 0;
+    while (open < start && p.tokens[start - open - 1].kind == tok_t::lparen)
+        ++open;
+
+    if (open == start || p.tokens[start - open - 1].kind != tok_t::kw_sizeof)
+        return false;
+
+    for (std::size_t close = 0; close < open; ++close)
+        if (peek(p, 1 + close).kind != tok_t::rparen)
+            return false;
+
+    return !is_postfix_operator(peek(p, 1 + open).kind);
+}
+
 // E.m and P->m, 6.5.3.4: the lvalue of the member, p3, p4, member_lvalue()'s.
 // A member of an array type decays where its value is used, and one of
 // a record type is an lvalue whose value is refused and whose members
 // are reached.  A member of a floating type, or an array of one, which
 // the record lays out and rcc does not use yet, is refused by the
-// type's words, its address as its value.
+// type's words, its address as its value, but where the access is the
+// whole operand of sizeof, ends_sizeof_operand()'s.  start is the
+// token the postfix expression begins at.
 expr_t
-member_access(parser_t &p, const token_t &op, expr_t e)
+member_access(parser_t &p, const token_t &op, expr_t e, std::size_t start)
 {
+    const bool sized_operand = ends_sizeof_operand(p, start);
     const token_t &name = expect(p, tok_t::identifier, "expected member name");
 
     if (op.kind == tok_t::arrow) {
@@ -8854,7 +8889,7 @@ member_access(parser_t &p, const token_t &op, expr_t e)
     }
 
     const member_t m = named_member(accessed_record(op, e.type), name);
-    if (is_sized(m.type))
+    if (is_sized(m.type) && !sized_operand)
         not_yet(name, *not_yet_in(m.type));
 
     return member_lvalue(p, op, std::move(e), m);
@@ -9383,6 +9418,7 @@ va_builtin(parser_t &p, const token_t &keyword)
 expr_t
 postfix_expression(parser_t &p)
 {
+    const std::size_t start = p.pos;
     expr_t e = primary_expression(p);
 
     for (;;) {
@@ -9426,7 +9462,7 @@ postfix_expression(parser_t &p)
         case tok_t::dot:
         case tok_t::arrow:
             advance(p);
-            e = member_access(p, op, std::move(e));
+            e = member_access(p, op, std::move(e), start);
             break;
         default: return e;
         }

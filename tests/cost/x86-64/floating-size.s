@@ -102,4 +102,21 @@ long_double_alignment:
 	ret
 	.cfi_endproc
 	.size	long_double_alignment, .-long_double_alignment
+	.globl	double_member_size
+	.type	double_member_size, @function
+double_member_size:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	$8, %rax
+	jmp	.Ldouble_member_size.1
+.Ldouble_member_size.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	double_member_size, .-double_member_size
 	.section	.note.GNU-stack,"",@progbits
