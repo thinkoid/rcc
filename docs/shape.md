@@ -920,7 +920,9 @@ A typedef of an array whose size needs what rcc does not have yet
 names a not-yet type whose words say what the size needs, as a size
 by the size of a struct with a bit-field does: the typedef is
 accepted and a local of the type is refused with "not yet: bit-field
-in struct ...". The parser catches a refusal of the not-yet kind
+in struct ...". The type keeps the array's element, so a parameter of
+it is adjusted to a pointer to the element (6.7.7.4p6), as one of any
+array type is. The parser catches a refusal of the not-yet kind
 alone, only while it reads the size of a typedef's array suffix, and
 only when it has found the `]` that closes the suffix first, matching
 the brackets and parentheses in the size; the parse goes on there. A

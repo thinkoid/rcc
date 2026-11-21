@@ -93,13 +93,17 @@ struct record_type_t
 // prints.  A pointer to it is an ordinary pointer.  It has no size and
 // no alignment, size and alignment 0, but for a real floating type,
 // which a record lays out as a member (shape.md chapter 3): its size
-// and alignment are then clang's.
+// and alignment are then clang's.  element is the element of the array
+// a typedef names through a size rcc cannot compute, which a parameter
+// of the type is adjusted to a pointer to, 6.7.7.4p6; null for any
+// other.  Equality reads neither.
 struct not_yet_t
 {
     int identity;
     std::string what;
     long size = 0;
     int alignment = 0;
+    type_ptr_t element = nullptr;
 };
 
 struct type_t
@@ -195,6 +199,7 @@ type_t
 make_function(type_t result, std::vector< type_t > params, bool variadic);
 type_t make_record(const record_t &);
 type_t make_not_yet(int identity, std::string what);
+type_t make_not_yet_array(int identity, std::string what, type_t element);
 type_t make_floating(int identity, std::string what, long size);
 
 } // namespace rcc

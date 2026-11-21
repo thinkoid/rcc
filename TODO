@@ -415,21 +415,6 @@ or the documents say that a size rcc cannot compute is not checked.
 
 Check: the typedef above fails with "'undeclared' undeclared".
 
-** TODO A parameter of a typedef's array type rcc cannot size is not a pointer
-
-With =s= a struct with a bit-field,
-~typedef long g_t[sizeof (struct s)]; void f(g_t g); void f(long
-*g);~ fails with "conflicting types for 'f'". A parameter of array
-type is adjusted to a pointer to the element, and =g_t= is an array
-of =long=; but the typedef names a type rcc does not use, which is
-no array in the tree, so nothing is adjusted. glibc declares no such
-parameter in the headers surveyed.
-
-Fix: the type keeps its element, so that a parameter of it is
-adjusted.
-
-Check: the program above compiles.
-
 ** TODO A qualified =void= is taken as the =void= of an empty parameter list
 
 ~int f(const void);~, ~int f(void const);~ and a parameter of a

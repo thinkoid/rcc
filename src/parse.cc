@@ -7321,7 +7321,7 @@ array_declarator(parser_t &p,
             fail(*open, "array element of type " + flexible_words(*r));
 
         if (!missing.empty()) {
-            t = make_not_yet(p.identities++, missing);
+            t = make_not_yet_array(p.identities++, missing, std::move(t));
             continue;
         }
 
@@ -7391,7 +7391,8 @@ parameter_type_list(parser_t &p, std::vector< parameter_t > &params)
 // of array type is adjusted to a pointer to the element, 6.7.7.4p6, so
 // its size may be left out, and one of function type to a pointer to
 // the function, p7, so int atexit(void f(void)) and int atexit(void
-// (*f)(void)) declare one function.  A parameter of type void is left
+// (*f)(void)) declare one function.  A typedef's array of a size rcc
+// cannot compute keeps its element for the adjustment.  A parameter of type void is left
 // for the list to take or refuse.
 parameter_t
 parameter_declaration(parser_t &p)
@@ -7418,6 +7419,8 @@ parameter_declaration(parser_t &p)
     type_t t = d.type;
     if (is< array_t >(t))
         t = make_pointer(*as< array_t >(t).element);
+    else if (is< not_yet_t >(t) && as< not_yet_t >(t).element)
+        t = make_pointer(*as< not_yet_t >(t).element);
     else if (is< function_t >(t))
         t = make_pointer(std::move(t));
 
