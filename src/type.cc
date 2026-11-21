@@ -101,9 +101,9 @@ make_int(int width, bool is_signed, int_kind_t kind, int enumeration)
 }
 
 type_t
-make_pointer(type_t pointee)
+make_pointer(type_t pointee, qualifiers_t qualifiers)
 {
-    return type_t { pointer_t { share(std::move(pointee)) } };
+    return type_t { pointer_t { share(std::move(pointee)), qualifiers } };
 }
 
 type_t

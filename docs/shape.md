@@ -210,9 +210,15 @@ incompatible.
 It has no size and no alignment, but a real floating type has
 `clang`'s, the same on both targets, so that a record lays it out:
 `float` 4, `double` 8 and `long double` 16, each aligned to its size.
-The type carries no qualifier:
-`const`, `volatile` and `restrict` are dropped (chapter 5). Equality
-is the machine's view:
+The type carries no qualifier at its top: `const` and `volatile` are
+said of what holds it, an object, a parameter, a typedef name or a
+member, and a pointer keeps them as its pointee's, so `const char *`
+is a pointer to `char` that says `const` of it; `restrict` is dropped
+(chapter 5). An array is qualified as its element, as C23 has it
+(6.7.4.1p10) and C17 does not (6.7.3p10), and rcc reads C23 here:
+`const int a[3]` is a `const` object of `int [3]`, whose decay points
+to `const int`. Nothing reads the qualifiers yet. Equality is the
+machine's view, and reads no qualifier:
 `long` and `long long` are one type on a target where both are 64
 bits. Any other enumerated type is the integer type compatible with
 it (chapter 5), so `enum color { red, green }` and `unsigned int`
@@ -529,8 +535,10 @@ The array a parameter is adjusted from, the suffix right after the
 parameter's name or the place of it, or after redundant parentheses
 around the name, as in `int (a)[3]`, takes `static` and the type
 qualifiers inside its brackets before the size, as `regex.h` writes
-`regmatch_t __pmatch[__restrict __nmatch]`. They are dropped,
-`restrict` is checked as on a pointer, and `_Atomic` there is not yet.
+`regmatch_t __pmatch[__restrict __nmatch]`. `static` is dropped,
+`const` and `volatile` qualify the pointer the parameter is adjusted
+to (6.7.7.4p6), `restrict` is checked as on a pointer and dropped, and
+`_Atomic` there is not yet.
 `static` takes a size (6.7.7.3p3), and in any other brackets `static`
 and the qualifiers are refused (p1). The size need not be constant:
 one that is not is taken as left out, as 6.7.7.3p5 takes it in a
@@ -681,15 +689,16 @@ compiles to the listing of its ISO C twin (`cost.md` chapter 1):
   6.5.17.2p1 converts only through a cast: it is the conversion the
   cast makes, no instruction.
 
-`volatile` is dropped as `const` is, wherever `const` may stand:
-among the declaration specifiers, after a `*`, in a type name, once
-or more. It asks that each access the source writes be made
+`volatile` is kept as `const` is, wherever `const` may stand: among
+the declaration specifiers, after a `*`, in a type name, once or more
+(chapter 3). It asks that each access the source writes be made
 (6.7.4.1p8), and c1 writes every access of every object, an unused
 one included, at the object's width: `*p;` is a load, and `*p + *p`
 is two. What an access to a volatile object is, which p8 leaves to
 the implementation, is thus each load and each store c1 writes. A
-typedef through `volatile` names the type itself: glibc's
-`pthread_spinlock_t` is `int`. A `register volatile` variable is a
+typedef through `volatile` names the type and says `volatile` of it,
+as its use does: glibc's `pthread_spinlock_t` is a `volatile int`. A
+`register volatile` variable is a
 register variable as any other, and there rcc departs from
 7.13.2.1p3, which keeps the value of a volatile local of the function
 that called `setjmp`: `longjmp` restores the callee-saved registers,
@@ -1725,8 +1734,9 @@ constant of more than one character and no prefix, `#pragma weak`, a
 declaration of a symbol of external linkage under a `#pragma GCC
 visibility` other than `default` (chapter 2), the checks of the
 qualifiers
-(`const` and `volatile` are dropped, so an assignment to a `const`
-object and a conversion that discards a qualifier draw no diagnostic,
+(`const` and `volatile` are kept and not read, so an assignment to a
+`const` object and a conversion that discards a qualifier draw no
+diagnostic,
 and `(const void)` is taken as `(void)`), an atomic object, GNU C's
 case range, `case 1 ... 5:`, its labels as values, `&&next` and `goto
 *p`, its statement expression where a constant expression is wanted

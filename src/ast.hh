@@ -79,7 +79,12 @@ enum class linkage_t { none, internal, external };
 // name as the object it points to: a parameter whose argument the
 // convention passes as the address of a copy the caller makes, the
 // aarch64 va_list, and a variable length array, whose storage the
-// declaration takes at run time.
+// declaration takes at run time.  qualifiers are those the declaration
+// says of the object, which its type does not carry (type.hh): an
+// array's, which are its element's too, 6.7.4.1p10; a parameter's
+// own, which its function's type leaves out, 6.7.7.4p14; a typedef's,
+// those of the type it names.  A function has none, and neither has the
+// pointer of a symbol by_reference, whose pointee keeps them.
 struct symbol_t
 {
     std::string name;
@@ -92,6 +97,7 @@ struct symbol_t
     linkage_t linkage = linkage_t::none;
     long long value = 0;
     bool by_reference = false;
+    qualifiers_t qualifiers = { };
 };
 
 inline bool

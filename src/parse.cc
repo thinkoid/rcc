@@ -227,7 +227,9 @@ struct parser_t
 // inline, or null.  marking is the name's token of the first marking
 // attribute among the specifiers, or null: it marks each declarator of
 // the declaration, as one after the declarator does.  markings are all
-// the marking attributes among the specifiers.
+// the marking attributes among the specifiers.  qualifiers are the const
+// and the volatile among them, joined with a typedef name's, 6.7.4.1p6,
+// which the type does not carry.
 struct specifiers_t
 {
     type_t type;
@@ -237,6 +239,7 @@ struct specifiers_t
     const token_t *inline_specifier;
     const token_t *marking;
     markings_t markings;
+    qualifiers_t qualifiers;
 };
 
 // A parameter as written: its type, its name token when it has one,
@@ -245,7 +248,10 @@ struct specifiers_t
 // array it is adjusted from, or null, the first '*' that sizes an
 // array in its other brackets, or null, and the size of the array it
 // is adjusted from when that is no constant, which a definition
-// evaluates on entry, or nothing.
+// evaluates on entry, or nothing.  qualifiers are the parameter's own,
+// for its symbol, which the function's type leaves out, 6.7.7.4p14:
+// those its declaration says of it, or for one adjusted from an array
+// those in the array's brackets, the pointer's, p6.
 struct parameter_t
 {
     type_t type;
@@ -256,6 +262,7 @@ struct parameter_t
     const token_t *star;
     const token_t *inner_star;
     std::optional< expr_t > size;
+    qualifiers_t qualifiers = { };
 };
 
 // A declarator: a name, absent from a parameter that leaves it out and
@@ -273,16 +280,23 @@ struct parameter_t
 // variable length array the declarator's type is, for its declaration
 // to evaluate, or of the array a parameter is adjusted from when that
 // is no constant, for a definition to evaluate on entry; absent for
-// any other type.
+// any other type.  qualifiers are those said of what the name declares,
+// at the top of its type, which the type does not carry: an array's
+// element's, which are the array's, 6.7.4.1p10, and none for a function,
+// whose result is unqualified, 6.7.7.4p4.  bracket_qualifiers are those
+// in the brackets of the array a parameter is adjusted from, the
+// pointer's, p6.
 struct declarator_t
 {
     const token_t *name;
     type_t type;
+    qualifiers_t qualifiers;
     std::optional< std::vector< parameter_t > > params;
     scope_t scope;
     const token_t *star = nullptr;
     const token_t *zero = nullptr;
     const token_t *inner_star = nullptr;
+    qualifiers_t bracket_qualifiers = { };
     std::optional< expr_t > variable_size = { };
 };
 
@@ -1112,13 +1126,31 @@ require_modifiable_lvalue(const token_t &at, const expr_t &e)
         fail(at, "expression is not assignable");
 }
 
+// The qualifiers of an lvalue's type, a function of the tree, since no
+// type carries them at its top: a name's, its symbol's; *E's, those of
+// the pointee of E's type, a member's access among them (lvalue_at()).
+// A string literal has none, as any other expression: a value is of the
+// unqualified type, 6.3.2.1p2.
+qualifiers_t
+qualifiers_of(const expr_t &e)
+{
+    if (is< name_t >(e))
+        return as< name_t >(e).sym->qualifiers;
+
+    if (is< unary_t >(e) && as< unary_t >(e).op == unary_op_t::deref)
+        return as< pointer_t >(as< unary_t >(e).arg->type).qualifiers;
+
+    return { };
+}
+
 // Array decay, 6.3.2.1p3: but as the operand of sizeof or of unary &,
 // an array becomes a pointer to its first element, a cast c1 reads as
-// that address.  A function designator decays the same way, p4: a
-// function's name, or *E through a pointer to a function, becomes the
-// pointer to the function, a cast c1 reads as the function's address,
-// or as E's value with no instruction for the *.  Lvalue conversion,
-// p2, is c1's load and needs no node.
+// that address, which points to the element qualified as the array is.
+// A function designator decays the same way, p4: a function's name, or
+// *E through a pointer to a function, becomes the pointer to the
+// function, a cast c1 reads as the function's address, or as E's value
+// with no instruction for the *.  Lvalue conversion, p2, is c1's load
+// and needs no node.
 expr_t
 decayed(expr_t e)
 {
@@ -1130,7 +1162,7 @@ decayed(expr_t e)
     if (!is< array_t >(e.type))
         return e;
 
-    type_t t = make_pointer(*as< array_t >(e.type).element);
+    type_t t = make_pointer(*as< array_t >(e.type).element, qualifiers_of(e));
 
     return expr_t { std::move(t), cast_t { box(std::move(e)) } };
 }
@@ -1525,7 +1557,10 @@ assignment_conversion(parser_t &p, const token_t &at, expr_t e, const type_t &t)
 // type of the other operand" does before its pointer to void, so
 // c ? (void *) 0 : p is an int * for an int *p, and a (void *) 0 met by
 // a pointer to a function, which meets no other void *, goes to the
-// function pointer's type.  False when none of the three applies.
+// function pointer's type.  Two pointers of no null pointer constant
+// meet at a pointee qualified with the qualifiers of both, p7, so
+// c ? cp : p is a const int * for a const int *cp.  False when none of
+// the three applies.
 bool
 common_pointer(expr_t &lhs, expr_t &rhs)
 {
@@ -1534,13 +1569,18 @@ common_pointer(expr_t &lhs, expr_t &rhs)
 
     type_t t = lp ? lhs.type : rhs.type;
 
-    if (lp && rp && !(lhs.type == rhs.type)) {
+    if (lp && rp) {
+        const qualifiers_t both = as< pointer_t >(lhs.type).qualifiers |
+                                  as< pointer_t >(rhs.type).qualifiers;
+
         if (is_null_pointer_constant(lhs))
             t = rhs.type;
         else if (is_null_pointer_constant(rhs))
             t = lhs.type;
+        else if (lhs.type == rhs.type)
+            t = make_pointer(pointee_of(lhs.type), both);
         else if (void_and_object_pointer(lhs.type, rhs.type))
-            t = make_pointer(make_void());
+            t = make_pointer(make_void(), both);
         else
             return false;
     }
@@ -2420,7 +2460,8 @@ logical_not(const token_t &op, expr_t arg)
 // type, 6.5.4.2p1, p3.  On a function designator it yields the pointer
 // to the function, p3, which is the designator's decay, p4: &f and f
 // where a value is wanted are one node, and &*p is p's value, as if
-// both operators were omitted.  The address of a variable length array
+// both operators were omitted.  The pointer points to the lvalue's type
+// qualified as the lvalue is.  The address of a variable length array
 // is a pointer to one, which is not yet; the array's lvalue is its
 // name, which reads as *symbol (shape.md chapter 5).
 expr_t
@@ -2445,7 +2486,7 @@ address_of(const token_t &op, expr_t arg)
                      quoted(as< name_t >(arg).sym->name) +
                      ", declared register");
 
-    type_t t = make_pointer(arg.type);
+    type_t t = make_pointer(arg.type, qualifiers_of(arg));
 
     return expr_t { std::move(t),
                     unary_t { unary_op_t::addr, box(std::move(arg)) } };
@@ -2456,9 +2497,15 @@ address_of(const token_t &op, expr_t arg)
 // the Seventh Edition compiler's first pass wrote a->b as *(a + offset);
 // at offset 0 it is *(T *) pointer, with no sum.  The tree of a member's
 // access and of a local list's subobject, which c1 reads as one offset
-// from the outermost pointer.
+// from the outermost pointer.  The lvalue is qualified as qualifiers
+// say: the T * points to them, and a pointer already a T * in the
+// machine's view takes them with no cast.
 expr_t
-lvalue_at(const parser_t &p, expr_t pointer, long offset, const type_t &t)
+lvalue_at(const parser_t &p,
+          expr_t pointer,
+          long offset,
+          const type_t &t,
+          qualifiers_t qualifiers)
 {
     if (offset != 0) {
         const type_t bytes = make_pointer(char_type(p));
@@ -2471,9 +2518,11 @@ lvalue_at(const parser_t &p, expr_t pointer, long offset, const type_t &t)
                                       box(std::move(constant)) } };
     }
 
-    const type_t to = make_pointer(t);
+    const type_t to = make_pointer(t, qualifiers);
     if (!(pointer.type == to))
         pointer = expr_t { to, cast_t { box(std::move(pointer)) } };
+    else
+        pointer.type = to;
 
     return expr_t { t, unary_t { unary_op_t::deref, box(std::move(pointer)) } };
 }
@@ -2707,6 +2756,19 @@ bool
 names_type(const parser_t &p, const token_t &t)
 {
     return named_type(p, t).has_value();
+}
+
+// The qualifiers said of the type a typedef name names, its symbol's,
+// which its use joins to those written beside it, 6.7.4.1p6: none for
+// a builtin type's name.
+qualifiers_t
+named_qualifiers(const parser_t &p, const token_t &t)
+{
+    const symbol_t *sym = lookup(p, t.text);
+    if (sym && sym->storage == storage_t::type_name)
+        return sym->qualifiers;
+
+    return { };
 }
 
 // One above the highest register index of the register variables live
@@ -3270,18 +3332,20 @@ type_t enum_specifier(parser_t &);
 type_t atomic_type_specifier(parser_t &);
 declarator_t declarator(parser_t &,
                         const type_t &,
+                        qualifiers_t,
                         naming_t = naming_t::required,
                         bool typedef_ = false);
-declarator_t
-parenthesized_declarator(parser_t &, const type_t &, naming_t, bool typedef_);
+declarator_t parenthesized_declarator(
+    parser_t &, const type_t &, qualifiers_t, naming_t, bool typedef_);
 declarator_t declarator_suffix(parser_t &,
                                const token_t *,
                                const type_t &,
+                               qualifiers_t,
                                bool typedef_,
                                bool parameter,
                                bool member,
                                bool in_parameter);
-type_t pointer(parser_t &, type_t);
+type_t pointer(parser_t &, type_t, qualifiers_t &);
 type_t array_declarator(parser_t &,
                         const type_t &,
                         bool typedef_,
@@ -3291,6 +3355,7 @@ type_t array_declarator(parser_t &,
                         const token_t *&star,
                         const token_t *&zero,
                         const token_t *&inner_star,
+                        qualifiers_t &bracket_qualifiers,
                         std::optional< expr_t > &variable_size);
 bool parameter_type_list(parser_t &, std::vector< parameter_t > &);
 parameter_t parameter_declaration(parser_t &);
@@ -3557,7 +3622,8 @@ added(parser_t &p, std::string_view name, type_t t, storage_t storage)
 // type declares, 6.2.1p4; so the message names a parameter only when
 // the earlier declaration is one.  The parameter takes no register
 // here: register is ignored but in a definition, 6.7.7.4p12, which
-// gives the registers.
+// gives the registers.  The symbol keeps the parameter's qualifiers,
+// for its use in a definition's body.
 void
 declare_parameter(parser_t &p, const parameter_t &param)
 {
@@ -3573,7 +3639,8 @@ declare_parameter(parser_t &p, const parameter_t &param)
                  "redefinition of parameter " + quoted(param.name->text) :
                  "redefinition of " + quoted(param.name->text));
 
-    added(p, param.name->text, param.type, storage_t::parameter);
+    added(p, param.name->text, param.type, storage_t::parameter).qualifiers =
+        param.qualifiers;
 }
 
 // The identity of a not-yet type that a means makes from a type: the
@@ -3641,7 +3708,9 @@ markings_spelling(const parser_t &p, const markings_t &markings)
 }
 
 // A typedef declares its declarator's name as a name for the type the
-// declarator gives, in the current scope, 6.7.9p3.  The name has no
+// declarator gives, in the current scope, 6.7.9p3, and its symbol keeps
+// the qualifiers the declarator says of the type, which a use of the
+// name joins to its own, declaration_specifiers().  The name has no
 // object, so nothing is generated for it, and it takes no assembler
 // name and no initializer, which gives the value stored in an object,
 // 6.7.11p9.  A typedef of function type defines no function: a
@@ -3684,7 +3753,8 @@ type_definition(parser_t &p, const specifiers_t &spec, const declarator_t &d)
     }
 
     if (!earlier_declaration(p, *d.name, t, storage_t::type_name))
-        added(p, d.name->text, std::move(t), storage_t::type_name);
+        added(p, d.name->text, std::move(t), storage_t::type_name).qualifiers =
+            d.qualifiers;
 }
 
 // The name's token of the first marking attribute said of a parameter
@@ -4307,7 +4377,8 @@ dropped(destination_t &to, long offset, long size)
 // the assignment of the value to the place *(T *) ((char *) &local +
 // offset), lvalue_at()'s, at the token at, appended to the local's
 // statements.  The parser makes the node, since initialization is no
-// assignment, 6.7.11p12.
+// assignment, 6.7.11p12, and the place is of the unqualified type, as
+// p12 takes it.
 void
 local_assignment(parser_t &p,
                  const token_t &at,
@@ -4317,7 +4388,8 @@ local_assignment(parser_t &p,
                  destination_t &to)
 {
     expr_t object { to.local->type, name_t { to.local } };
-    expr_t place = lvalue_at(p, address_of(at, std::move(object)), offset, t);
+    expr_t place =
+        lvalue_at(p, address_of(at, std::move(object)), offset, t, { });
 
     expr_t store { t, assign_t { std::nullopt, t, box(std::move(place)),
                                  box(std::move(value)) } };
@@ -5196,6 +5268,7 @@ declare_external_object(parser_t &p,
     if (!sym) {
         sym = &added(p, d.name->text, d.type, storage_t::global);
         sym->linkage = linkage;
+        sym->qualifiers = d.qualifiers;
     }
 
     require_linkage(*d.name, *sym, linkage);
@@ -5405,7 +5478,8 @@ external_declaration(parser_t &p)
     const type_t &base = spec.type;
     const bool typedef_ = declared(spec, tok_t::kw_typedef);
 
-    declarator_t d = declarator(p, base, naming_t::required, typedef_);
+    declarator_t d =
+        declarator(p, base, spec.qualifiers, naming_t::required, typedef_);
 
     const bool defines_function = d.params && peek(p).kind == tok_t::lbrace;
     if (defines_function && !typedef_) {
@@ -5434,8 +5508,9 @@ external_declaration(parser_t &p)
     external_declarator(p, spec, d);
 
     while (accept(p, tok_t::comma))
-        external_declarator(p, spec,
-                            declarator(p, base, naming_t::required, typedef_));
+        external_declarator(
+            p, spec,
+            declarator(p, base, spec.qualifiers, naming_t::required, typedef_));
 
     expect(p, tok_t::semicolon, "expected ';' after top level declarator");
 }
@@ -5507,7 +5582,8 @@ require_labels(const parser_t &p)
 // list, which is open again as the body's, takes its register in the
 // order of the parameters, as a local does.  An aarch64 va_list arrives
 // as the address of the caller's copy, is_list_by_reference(): the
-// symbol is that pointer, and its name reads as the list it points to.
+// symbol is that pointer, and its name reads as the list it points to,
+// qualified as the parameter is.
 const symbol_t *
 defined_parameter(parser_t &p, const parameter_t &param)
 {
@@ -5517,7 +5593,8 @@ defined_parameter(parser_t &p, const parameter_t &param)
     sym.register_index = register_index(p, *param.name, param.in_register);
 
     if (is_list_by_reference(p, sym.type)) {
-        sym.type = make_pointer(sym.type);
+        sym.type = make_pointer(sym.type, sym.qualifiers);
+        sym.qualifiers = { };
         sym.by_reference = true;
     }
 
@@ -5964,6 +6041,24 @@ optional_tag(parser_t &p, const token_t &keyword)
                    "expected identifier or '{' after " + quoted(keyword.text));
 }
 
+// A const or a volatile ahead, taken into the qualifiers, once or more,
+// 6.7.4.1p6; false for any other token.
+bool
+accept_qualifier(parser_t &p, qualifiers_t &qualifiers)
+{
+    if (accept(p, tok_t::kw_const)) {
+        qualifiers.const_ = true;
+        return true;
+    }
+
+    if (accept(p, tok_t::kw_volatile)) {
+        qualifiers.volatile_ = true;
+        return true;
+    }
+
+    return false;
+}
+
 // _Atomic as a qualifier makes an atomic type, whose access, ++ on it
 // among them, is one atomic instruction, which c1 does not write.
 // After typedef the qualifier is taken, and the typedef names a not-yet
@@ -5980,10 +6075,11 @@ refuse_atomic_qualifier(const token_t &q, const token_t *storage_class)
 // and long long two more.  Each keyword is checked against the ones
 // before it, so an error names the keyword that breaks the set.  const
 // and volatile may stand anywhere among them, once or more, 6.7.4.1p6,
-// and are dropped: the type is the machine's view.  volatile asks that
-// each access the source writes be made, p8, and c1 writes every access
-// of every object, an unused one included, at the object's width, so
-// the qualifier asks for nothing c1 does not do.  _Atomic as a qualifier
+// and are kept beside the type, which is the machine's view, joined
+// with those of a typedef name's type, p6.  volatile asks that each
+// access the source writes be made, p8, and c1 writes every access of
+// every object, an unused one included, at the object's width, so the
+// qualifier asks for nothing c1 does not do.  _Atomic as a qualifier
 // is taken after typedef alone.  A storage-class specifier, register,
 // typedef, extern or static, may stand anywhere too, one of them,
 // 6.7.2p2, and is reported to the caller, since what it may declare
@@ -6019,6 +6115,7 @@ declaration_specifiers(parser_t &p)
     const token_t *complex_specifier = nullptr;
     const token_t *marking = nullptr;
     markings_t markings;
+    qualifiers_t qualifiers;
 
     // the type the specifiers name, once they end
     const auto specified = [&]() -> type_t {
@@ -6072,7 +6169,7 @@ declaration_specifiers(parser_t &p)
     for (;;) {
         const token_t &t = peek(p);
 
-        if (accept(p, tok_t::kw_const) || accept(p, tok_t::kw_volatile))
+        if (accept_qualifier(p, qualifiers))
             continue;
 
         if (t.kind == tok_t::kw_restrict) {
@@ -6134,6 +6231,7 @@ declaration_specifiers(parser_t &p)
 
         if (!any && names_type(p, t)) {
             whole = named_type(p, t);
+            qualifiers = qualifiers | named_qualifiers(p, t);
 
             advance(p);
             any = true;
@@ -6244,7 +6342,8 @@ declaration_specifiers(parser_t &p)
                      function_specifier,
                      inline_specifier,
                      marking,
-                     markings };
+                     markings,
+                     qualifiers };
         }
         }
 
@@ -6388,9 +6487,9 @@ require_member_type(const token_t &name,
 // The member of the name in a record, at its offset from the start of
 // the record, or none: a member the record declares, or one of an
 // anonymous member's, at any depth, at the anonymous member's offset
-// plus its own, since its members are the record's, 6.7.3.2p15.  An
-// anonymous member is the one member of no name: an unnamed bit-field
-// is not kept.
+// plus its own, and qualified as it is too, since its members are the
+// record's, 6.7.3.2p15, reached through it.  An anonymous member is the
+// one member of no name: an unnamed bit-field is not kept.
 std::optional< member_t >
 member_named(const record_t &r, std::string_view name)
 {
@@ -6404,6 +6503,7 @@ member_named(const record_t &r, std::string_view name)
         auto inner = member_named(*as< record_type_t >(m.type).record, name);
         if (inner) {
             inner->offset += m.offset;
+            inner->qualifiers = inner->qualifiers | m.qualifiers;
             return inner;
         }
     }
@@ -6435,11 +6535,13 @@ member_names(const record_t &r)
 // declared yet, its anonymous members' among them, 6.7.3.2p1, p15 and
 // 6.2.3p1: each record is a name space of its own.  A member after a
 // flexible array member is an error, p3.  zero is the member's own
-// array's size written as zero, or null.
+// array's size written as zero, or null.  qualifiers are those its
+// declaration says of it.
 void
 add_member(member_list_t &list,
            const token_t &name,
            const type_t &t,
+           qualifiers_t qualifiers,
            const token_t *zero)
 {
     record_t &r = list.record;
@@ -6451,7 +6553,7 @@ add_member(member_list_t &list,
     if (member_named(r, name.text))
         fail(name, "duplicate member " + quoted(name.text));
 
-    r.members.push_back(member_t { std::string(name.text), t, 0 });
+    r.members.push_back(member_t { std::string(name.text), t, 0, qualifiers });
 }
 
 // An anonymous member, 6.7.3.2p15: a member of no name and of the
@@ -6461,9 +6563,13 @@ add_member(member_list_t &list,
 // yet, refused at the ';', since the member's own list was read before
 // it was known to be anonymous, and each counts among the record's
 // named members, p10.  A record rcc does not lay out leaves the
-// enclosing one without its layout, by its words.
+// enclosing one without its layout, by its words.  qualifiers are those
+// the specifiers say of the member.
 void
-anonymous_member(const token_t &semicolon, member_list_t &list, const type_t &t)
+anonymous_member(const token_t &semicolon,
+                 member_list_t &list,
+                 const type_t &t,
+                 qualifiers_t qualifiers)
 {
     record_t &r = list.record;
     const record_t &inner = *as< record_type_t >(t).record;
@@ -6478,7 +6584,7 @@ anonymous_member(const token_t &semicolon, member_list_t &list, const type_t &t)
     if (const std::string *words = not_yet_in(t))
         mark_not_yet(r, *words);
 
-    r.members.push_back(member_t { { }, t, 0 });
+    r.members.push_back(member_t { { }, t, 0, qualifiers });
 }
 
 // One member declarator, 6.7.3.2p1: a declarator, which names the
@@ -6496,7 +6602,8 @@ member_declarator(parser_t &p, const specifiers_t &spec, member_list_t &list)
         return;
     }
 
-    const declarator_t d = declarator(p, spec.type, naming_t::member, false);
+    const declarator_t d =
+        declarator(p, spec.type, spec.qualifiers, naming_t::member, false);
     if (is_variable_array(d.type))
         fail(*d.name, "member " + quoted(d.name->text) +
                           " of a variable length array type");
@@ -6512,7 +6619,7 @@ member_declarator(parser_t &p, const specifiers_t &spec, member_list_t &list)
         return;
     }
 
-    add_member(list, *d.name, d.type, d.zero);
+    add_member(list, *d.name, d.type, d.qualifiers, d.zero);
 }
 
 // A member declaration with no declarator, 6.7.3.2p2: a struct or a
@@ -6546,7 +6653,7 @@ unnamed_member(const token_t &semicolon,
     }
 
     if (inner && inner->tag.empty())
-        anonymous_member(semicolon, list, spec.type);
+        anonymous_member(semicolon, list, spec.type, spec.qualifiers);
 }
 
 // A member declaration: its specifiers, which are a specifier-qualifier
@@ -7100,23 +7207,29 @@ skip_parenthesized_declarator(parser_t &p)
 // the parameter's outermost array type derivation, the one 6.7.7.4p6
 // adjusts to a pointer; a parameter's is the declarator whose name is
 // optional.  The array suffix right after a member's name is the
-// member's own array, which may have a size of zero.
+// member's own array, which may have a size of zero.  qualifiers are
+// those said of the base type, which the declarator derives from with
+// it.
 declarator_t
-declarator(parser_t &p, const type_t &base, naming_t naming, bool typedef_)
+declarator(parser_t &p,
+           const type_t &base,
+           qualifiers_t qualifiers,
+           naming_t naming,
+           bool typedef_)
 {
-    const type_t t = pointer(p, base);
+    const type_t t = pointer(p, base, qualifiers);
 
     if (starts_parenthesized_declarator(p, naming))
-        return parenthesized_declarator(p, t, naming, typedef_);
+        return parenthesized_declarator(p, t, qualifiers, naming, typedef_);
 
     const token_t *name = nullptr;
     if (naming == naming_t::required || naming == naming_t::member ||
         (naming == naming_t::optional && peek(p).kind == tok_t::identifier))
         name = &expect(p, tok_t::identifier, "expected identifier");
 
-    return declarator_suffix(p, name, t, typedef_, naming == naming_t::optional,
-                             naming == naming_t::member,
-                             naming == naming_t::optional);
+    return declarator_suffix(
+        p, name, t, qualifiers, typedef_, naming == naming_t::optional,
+        naming == naming_t::member, naming == naming_t::optional);
 }
 
 // Whether the tokens from inside to close, those of a declarator in
@@ -7156,10 +7269,13 @@ names_alone(const parser_t &p, std::size_t inside, std::size_t close)
 // scope.  An array suffix after the parentheses is read as an array's
 // that no parameter is adjusted from, as it is in int (*a)[3], unless
 // the parentheses are redundant: in int (a)[3] it is the parameter's
-// own, and a member's own likewise.
+// own, and a member's own likewise.  The declarator inside derives from
+// the suffixes' type with the qualifiers the suffixes leave it, so the
+// pointer of const int (*a)[3] points to a const array.
 declarator_t
 parenthesized_declarator(parser_t &p,
                          const type_t &t,
+                         qualifiers_t qualifiers,
                          naming_t naming,
                          bool typedef_)
 {
@@ -7173,12 +7289,13 @@ parenthesized_declarator(parser_t &p,
     expect(p, tok_t::rparen, "expected ')'");
 
     declarator_t suffix =
-        declarator_suffix(p, nullptr, t, typedef_, parameter, member,
-                          naming == naming_t::optional);
+        declarator_suffix(p, nullptr, t, qualifiers, typedef_, parameter,
+                          member, naming == naming_t::optional);
     const std::size_t after = p.pos;
 
     p.pos = inside;
-    declarator_t d = declarator(p, suffix.type, naming, typedef_);
+    declarator_t d =
+        declarator(p, suffix.type, suffix.qualifiers, naming, typedef_);
     expect(p, tok_t::rparen, "expected ')'");
     p.pos = after;
 
@@ -7187,6 +7304,7 @@ parenthesized_declarator(parser_t &p,
         d.scope = std::move(suffix.scope);
         d.star = suffix.star;
         d.zero = suffix.zero;
+        d.bracket_qualifiers = suffix.bracket_qualifiers;
         d.variable_size = std::move(suffix.variable_size);
     }
 
@@ -7212,21 +7330,24 @@ parenthesized_declarator(parser_t &p,
 // in_parameter says that they are in a parameter's declarators, at any
 // depth, where '*' may size an array, 6.7.7.3p4; a list that may not
 // be a definition's refuses its parameters' stars, refuse_inner_stars().
+// qualifiers are those said of t: an array keeps them as its element's,
+// 6.7.4.1p10, and a function drops them from its result, 6.7.7.4p4.
 declarator_t
 declarator_suffix(parser_t &p,
                   const token_t *name,
                   const type_t &t,
+                  qualifiers_t qualifiers,
                   bool typedef_,
                   bool parameter,
                   bool member,
                   bool in_parameter)
 {
-    declarator_t d { name, t, std::nullopt, { } };
+    declarator_t d { name, t, qualifiers, std::nullopt, { } };
 
     if (peek(p).kind == tok_t::lbracket) {
-        d.type =
-            array_declarator(p, t, typedef_, parameter, member, in_parameter,
-                             d.star, d.zero, d.inner_star, d.variable_size);
+        d.type = array_declarator(p, t, typedef_, parameter, member,
+                                  in_parameter, d.star, d.zero, d.inner_star,
+                                  d.bracket_qualifiers, d.variable_size);
 
         if (peek(p).kind == tok_t::lparen)
             fail(peek(p), "array element type cannot be a function");
@@ -7265,26 +7386,31 @@ declarator_suffix(parser_t &p,
         const token_t *marked = marked_parameter(d);
         d.type = make_function(t, std::move(types), variadic,
                                marked ? attribute_words(*marked) : "");
+        d.qualifiers = { };
     }
 
     return d;
 }
 
-// Each '*' derives a pointer to the type so far, 6.7.7.2p1.  A const, a
-// volatile or a restrict after it qualifies the pointer and is dropped,
-// as in the specifiers; the pointer is one restrict may qualify unless
-// it points to a function, as in void (*restrict f)(void).  An _Atomic
-// pointer is not yet, and so is a pointer to a variable length array,
-// int (*p)[n], whose type is variably modified, 6.7.7.1p3.
+// Each '*' derives a pointer to the type so far, 6.7.7.2p1, which keeps
+// the qualifiers said of that type as its pointee's: qualifiers holds
+// them on entry, and on return those said of the type derived last, a
+// const or a volatile after its '*', which qualify the pointer, p1.  A
+// restrict there qualifies it too and is dropped, as in the specifiers;
+// the pointer is one restrict may qualify unless it points to a
+// function, as in void (*restrict f)(void).  An _Atomic pointer is not
+// yet, and so is a pointer to a variable length array, int (*p)[n],
+// whose type is variably modified, 6.7.7.1p3.
 type_t
-pointer(parser_t &p, type_t t)
+pointer(parser_t &p, type_t t, qualifiers_t &qualifiers)
 {
     while (peek(p).kind == tok_t::star) {
         const token_t &star = advance(p);
         if (is_variable_array(t))
             not_yet(star, "pointer to variable length array");
 
-        t = make_pointer(std::move(t));
+        t = make_pointer(std::move(t), qualifiers);
+        qualifiers = { };
 
         for (;;) {
             const token_t &q = peek(p);
@@ -7294,7 +7420,7 @@ pointer(parser_t &p, type_t t)
             if (q.kind == tok_t::kw_restrict)
                 require_restrictable(q, t);
 
-            if (!accept(p, tok_t::kw_const) && !accept(p, tok_t::kw_volatile) &&
+            if (!accept_qualifier(p, qualifiers) &&
                 !accept(p, tok_t::kw_restrict))
                 break;
         }
@@ -7456,14 +7582,16 @@ member_array_count(const token_t &at, const expr_t &size, const token_t *&zero)
 // static and the type qualifiers inside a parameter's brackets, before
 // the size, 6.7.7.3p3: static first or after the qualifiers, once.  The
 // qualifiers are the pointer's the parameter is adjusted to, 6.7.7.4p6,
-// and are dropped as after a '*'; restrict is returned in restrict_,
-// for the caller to check on that pointer.  _Atomic is not yet, as on a
-// pointer.  static promises that each argument points to the first of
-// at least as many elements as the size says, p6, which no call rcc
-// writes depends on, and is dropped; its token is returned, or null,
-// since a size must follow it.
+// taken into qualifiers as after a '*'; restrict is returned in
+// restrict_, for the caller to check on that pointer, and dropped.
+// _Atomic is not yet, as on a pointer.  static promises that each
+// argument points to the first of at least as many elements as the
+// size says, p6, which no call rcc writes depends on, and is dropped;
+// its token is returned, or null, since a size must follow it.
 const token_t *
-parameter_array_qualifiers(parser_t &p, const token_t *&restrict_)
+parameter_array_qualifiers(parser_t &p,
+                           const token_t *&restrict_,
+                           qualifiers_t &qualifiers)
 {
     const token_t *static_ =
         peek(p).kind == tok_t::kw_static ? &advance(p) : nullptr;
@@ -7476,8 +7604,7 @@ parameter_array_qualifiers(parser_t &p, const token_t *&restrict_)
         if (q.kind == tok_t::kw_restrict && !restrict_)
             restrict_ = &q;
 
-        if (!accept(p, tok_t::kw_const) && !accept(p, tok_t::kw_volatile) &&
-            !accept(p, tok_t::kw_restrict))
+        if (!accept_qualifier(p, qualifiers) && !accept(p, tok_t::kw_restrict))
             break;
     }
 
@@ -7603,9 +7730,10 @@ array_length(parser_t &p)
 // does not have yet makes a not-yet type of the words of what it needs,
 // in place of the array.  When parameter says
 // that the first suffix is the array a parameter is adjusted from, its
-// brackets may hold static and type qualifiers, 6.7.7.3p1, and its size
-// need not be an integer constant expression, or may be '*', returned
-// in star; every other suffix keeps the rules of any array, so a
+// brackets may hold static and type qualifiers, 6.7.7.3p1, the
+// qualifiers returned in bracket_qualifiers, and its size need not be
+// an integer constant expression, or may be '*', returned in star;
+// every other suffix keeps the rules of any array, so a
 // variable length array behind the parameter's pointer is a pointer to
 // one, not yet: one of a size in a parameter's declarators,
 // in_parameter, is refused at its size, and its '*' makes a not-yet
@@ -7632,6 +7760,7 @@ array_declarator(parser_t &p,
                  const token_t *&star,
                  const token_t *&zero,
                  const token_t *&inner_star,
+                 qualifiers_t &bracket_qualifiers,
                  std::optional< expr_t > &variable_size)
 {
     std::vector< array_suffix_t > suffixes;
@@ -7644,7 +7773,8 @@ array_declarator(parser_t &p,
 
         bool unspecified = false;
         if (adjusted) {
-            const token_t *static_ = parameter_array_qualifiers(p, restrict_);
+            const token_t *static_ =
+                parameter_array_qualifiers(p, restrict_, bracket_qualifiers);
             star = unspecified_size(p, static_);
         }
         else {
@@ -7788,8 +7918,10 @@ parameter_type_list(parser_t &p, std::vector< parameter_t > &params)
 // its size may be left out, and one of function type to a pointer to
 // the function, p7, so int atexit(void f(void)) and int atexit(void
 // (*f)(void)) declare one function.  A typedef's array of a size rcc
-// cannot compute keeps its element for the adjustment.  A parameter of type void is left
-// for the list to take or refuse.
+// cannot compute keeps its element for the adjustment.  The pointer an
+// array is adjusted to points to the element qualified as the array is,
+// and is itself qualified as the brackets say, p6.  A parameter of type
+// void is left for the list to take or refuse.
 parameter_t
 parameter_declaration(parser_t &p)
 {
@@ -7804,7 +7936,8 @@ parameter_declaration(parser_t &p)
 
     refuse_function_specifier(spec);
 
-    declarator_t d = declarator(p, spec.type, naming_t::optional);
+    declarator_t d =
+        declarator(p, spec.type, spec.qualifiers, naming_t::optional);
 
     const token_t *marking = attribute_specifier_list(p);
     if (spec.marking)
@@ -7813,24 +7946,32 @@ parameter_declaration(parser_t &p)
     // a register parameter of array or function type is a register
     // pointer, since the adjustment comes first
     type_t t = d.type;
-    if (is< array_t >(t))
-        t = make_pointer(*as< array_t >(t).element);
-    else if (is< not_yet_t >(t) && as< not_yet_t >(t).element)
-        t = make_pointer(*as< not_yet_t >(t).element);
+    qualifiers_t qualifiers = d.qualifiers;
+    if (is< array_t >(t)) {
+        t = make_pointer(*as< array_t >(t).element, d.qualifiers);
+        qualifiers = d.bracket_qualifiers;
+    }
+    else if (is< not_yet_t >(t) && as< not_yet_t >(t).element) {
+        t = make_pointer(*as< not_yet_t >(t).element, d.qualifiers);
+        qualifiers = d.bracket_qualifiers;
+    }
     else if (is< function_t >(t))
         t = make_pointer(std::move(t));
 
     return parameter_t { std::move(t), &start,
                          d.name,       declared(spec, tok_t::kw_register),
                          marking,      d.star,
-                         d.inner_star, std::move(d.variable_size) };
+                         d.inner_star, std::move(d.variable_size),
+                         qualifiers };
 }
 
 // Specifiers and an abstract declarator, the declarator of a
 // declaration without its name, 6.7.8p1, p2: int *, int [3],
 // void (*)(int).  A marking attribute would make the type one rcc does
 // not use, which no name stands for here, so it is not yet, and so is
-// a variable length array, sizeof (char [n]).
+// a variable length array, sizeof (char [n]).  The qualifiers at the
+// top of the type are left out: a cast converts to the unqualified
+// type, 6.5.5p6, and no other use reads them.
 type_t
 type_name(parser_t &p)
 {
@@ -7847,7 +7988,7 @@ type_name(parser_t &p)
     if (spec.marking)
         not_yet(*spec.marking, attribute_words(*spec.marking));
 
-    type_t t = declarator(p, spec.type, naming_t::none).type;
+    type_t t = declarator(p, spec.type, spec.qualifiers, naming_t::none).type;
     if (is_variable_array(t))
         not_yet(start, "variable length array in a type name");
 
@@ -7860,7 +8001,7 @@ type_name(parser_t &p)
 declarator_t
 block_declarator(parser_t &p, const specifiers_t &spec)
 {
-    declarator_t d = declarator(p, spec.type);
+    declarator_t d = declarator(p, spec.type, spec.qualifiers);
 
     const token_t *storage_class = spec.storage_class;
     if (is< function_t >(d.type) && storage_class &&
@@ -7947,6 +8088,7 @@ static_local(parser_t &p, const specifiers_t &spec, const declarator_t &d)
 
     symbol_t &sym = added(p, d.name->text, d.type, storage_t::global);
     sym.asm_name = static_label(p, sym.name);
+    sym.qualifiers = d.qualifiers;
 
     p.unit.objects.push_back(object_decl_t { &sym, std::nullopt });
 
@@ -8065,6 +8207,7 @@ linked_declaration(parser_t &p, const specifiers_t &spec, const declarator_t &d)
     else {
         entity = &added(p, d.name->text, d.type, storage);
         entity->linkage = linkage;
+        entity->qualifiers = d.qualifiers;
         p.block_entities.emplace(entity->name, entity);
 
         if (function)
@@ -8111,7 +8254,8 @@ init_declarator_list(parser_t &p, const specifiers_t &spec, bool objects_only)
         if (declared(spec, tok_t::kw_typedef)) {
             refuse_function_specifier(spec);
             type_definition(p, spec,
-                            declarator(p, spec.type, naming_t::required, true));
+                            declarator(p, spec.type, spec.qualifiers,
+                                       naming_t::required, true));
         }
         else {
             declarator_t d = block_declarator(p, spec);
@@ -8261,8 +8405,8 @@ local_variable_array(parser_t &p, declarator_t &d, std::vector< stmt_t > &decls)
 
     decls.push_back(stmt_t { decl_stmt_t { &length, std::move(size) } });
 
-    symbol_t *sym =
-        declare(p, *d.name, make_pointer(d.type), storage_t::local, false);
+    symbol_t *sym = declare(p, *d.name, make_pointer(d.type, d.qualifiers),
+                            storage_t::local, false);
     sym->by_reference = true;
     p.scopes.back().variable_arrays.push_back(d.name);
 
@@ -8331,6 +8475,7 @@ init_declarator(parser_t &p,
 
     symbol_t *sym = declare(p, *d.name, d.type, storage_t::local,
                             declared(spec, tok_t::kw_register));
+    sym->qualifiers = d.qualifiers;
     decl_stmt_t decl { sym, std::nullopt };
 
     if (listed) {
@@ -9554,13 +9699,19 @@ record_pointer(const token_t &op, expr_t e)
 // The lvalue of the member m of the record E is, for E.m, or of the one
 // P points to, for P->m, P an rvalue, op saying which, 6.5.3.4p3, p4:
 // *(T *) ((char *) P + offset), lvalue_at()'s, of the member's type,
-// the offset the member's in its record plus the one P carries.
+// the offset the member's in its record plus the one P carries.  It is
+// qualified as the member is and as E is, or as P's pointee is, p3, p4,
+// which is read before record_pointer() reads P through its casts.
 expr_t
 member_lvalue(const parser_t &p, const token_t &op, expr_t e, const member_t &m)
 {
+    const qualifiers_t record = op.kind == tok_t::dot ?
+                                    qualifiers_of(e) :
+                                    as< pointer_t >(e.type).qualifiers;
     auto [pointer, offset] = record_pointer(op, std::move(e));
 
-    return lvalue_at(p, std::move(pointer), offset + m.offset, m.type);
+    return lvalue_at(p, std::move(pointer), offset + m.offset, m.type,
+                     record | m.qualifiers);
 }
 
 // Whether a token continues a postfix expression, 6.5.3.1p1.

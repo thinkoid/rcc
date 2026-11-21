@@ -4,7 +4,9 @@
 // to the types it names are shared and never written after
 // construction, so copying is cheap and sharing is invisible.
 // Equality is the machine's view: two integer types of one width and
-// signedness are one type to it, whatever C type each remembers.
+// signedness are one type to it, whatever C type each remembers, and
+// two pointers to one type are one, whatever qualifiers each says of
+// its pointee.
 
 #pragma once
 
@@ -55,9 +57,34 @@ struct int_t
     int enumeration = 0;
 };
 
+// The type qualifiers rcc keeps, 6.7.4.1: const and volatile.  restrict
+// is read and dropped, and _Atomic makes a type of its own.  No type
+// carries them at its top: they are said of what holds the type, an
+// object, a member, or a pointer to it, which keeps them as its
+// pointee's.  Equality reads none.
+struct qualifiers_t
+{
+    bool const_ = false;
+    bool volatile_ = false;
+
+    bool operator==(const qualifiers_t &) const = default;
+};
+
+// The qualifiers of both, as a typedef name's join those written beside
+// it, 6.7.4.1p6, and a conditional's pointers join theirs, 6.5.16p7.
+inline qualifiers_t
+operator|(qualifiers_t a, qualifiers_t b)
+{
+    return { a.const_ || b.const_, a.volatile_ || b.volatile_ };
+}
+
+// qualifiers are the pointee's: a pointer to const int is a pointer to
+// int whose qualifiers say const, and a const pointer to int has none,
+// its const said of the object, 6.7.7.2p1.
 struct pointer_t
 {
     type_ptr_t pointee;
+    qualifiers_t qualifiers = { };
 };
 
 // A count of -1 is an array of unknown size.  length is a variable
@@ -138,12 +165,14 @@ struct type_t
 };
 
 // A member of a record: its name, its type and its offset in bytes
-// from the start of the record, 6.7.3.2p17.
+// from the start of the record, 6.7.3.2p17, and the qualifiers it is
+// declared with, which an access joins to the record's, 6.5.3.4p3, p4.
 struct member_t
 {
     std::string name;
     type_t type;
     long offset;
+    qualifiers_t qualifiers = { };
 };
 
 // A struct or a union as its declarations describe it, 6.7.3.2.  The
@@ -215,7 +244,7 @@ type_t make_int(int width,
                 bool is_signed,
                 int_kind_t kind = int_kind_t::none,
                 int enumeration = 0);
-type_t make_pointer(type_t pointee);
+type_t make_pointer(type_t pointee, qualifiers_t qualifiers = { });
 type_t make_array(type_t element, long count);
 type_t make_variable_array(type_t element, const symbol_t &length);
 type_t make_function(type_t result,
