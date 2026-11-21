@@ -3474,12 +3474,14 @@ alias_target(const parser_t &p, const token_t &attribute)
 // a use of it is a use of a symbol.  rcc writes the alias where it is
 // the declaration's one marking attribute, or one of two beside weak,
 // which makes the alias a weak symbol, on a function none of whose
-// parameters an attribute marks, or on an object declared extern, and
-// the declarator has no assembler name; any other alias is not yet
-// where it is declared.  A definition is no alias, an error, as GNU C
-// has it: a function's body, an object's initializer or a tentative
-// definition.  The symbol and the target are checked at the end of
-// the unit, resolve_aliases().
+// parameters an attribute marks, or on an object declared extern or
+// static, and the declarator has no assembler name; any other alias is
+// not yet where it is declared.  A definition is no alias, an error, as
+// GNU C has it: a function's body, an object's initializer or a
+// tentative definition of external linkage; a static object's
+// declaration that the alias marks is no tentative definition, and
+// defines nothing.  The symbol and the target are checked at the end
+// of the unit, resolve_aliases().
 void
 declared_alias(parser_t &p,
                const specifiers_t &spec,
@@ -3500,9 +3502,10 @@ declared_alias(parser_t &p,
     if (const token_t *marked = function ? marked_parameter(d) : nullptr)
         not_yet(*marked, attribute_words(*marked));
 
+    const bool tentative =
+        !declared(spec, tok_t::kw_extern) && !declared(spec, tok_t::kw_static);
     const bool defined = function ? peek(p).kind == tok_t::lbrace :
-                                    !declared(spec, tok_t::kw_extern) ||
-                                        peek(p).kind == tok_t::assign;
+                                    tentative || peek(p).kind == tok_t::assign;
     if (defined)
         fail(*d.name, "definition of " + quoted(d.name->text) +
                           " cannot also be an alias");
@@ -4748,9 +4751,9 @@ is_alias(const parser_t &p, const symbol_t *sym)
 // external definition in the unit.  Without one the assembler would
 // leave its symbol undefined, and the linker would bind it to another
 // file's symbol of the name, which is not the program.  Only a
-// function can lack one, since every object of internal linkage has a
-// tentative definition at least; a static alias, whose symbol the
-// assembler gives the target's address, is its definition.  A use of a system header's static
+// function can lack one, since every object of internal linkage but an
+// alias has a tentative definition at least; a static alias, whose
+// symbol the assembler gives the target's address, is its definition.  A use of a system header's static
 // inline function before its definition, which rcc does not compile,
 // is not yet, in the function's words.  The first use is the one
 // refused.
@@ -4891,7 +4894,8 @@ declare_external_object(parser_t &p,
     record_tail(p, *sym, tail);
 
     const bool initialized = peek(p).kind == tok_t::assign;
-    if (!initialized && declared(spec, tok_t::kw_extern))
+    if (!initialized &&
+        (declared(spec, tok_t::kw_extern) || tail.markings.alias))
         return;
 
     require_definable(p, *d.name, *sym, initialized);

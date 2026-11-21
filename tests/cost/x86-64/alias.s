@@ -34,6 +34,24 @@ statically:
 	ret
 	.cfi_endproc
 	.size	statically, .-statically
+	.globl	statically_counted
+	.type	statically_counted, @function
+statically_counted:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	salias@GOTPCREL(%rip), %rax
+	movl	(%rax), %eax
+	jmp	.Lstatically_counted.1
+.Lstatically_counted.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	statically_counted, .-statically_counted
 	.data
 	.globl	count
 	.type	count, @object
@@ -53,4 +71,5 @@ fgalias = fgcmd
 wbgcmd = fgcmd
 	.weak	wtotal
 wtotal = count
+salias = count
 	.section	.note.GNU-stack,"",@progbits

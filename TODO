@@ -600,20 +600,6 @@ Check: ~static inline int f(void) { char a[20000000]; return a[0];
 }~, never called, compiles on aarch64, and a call of it is refused
 by the limit's words.
 
-** TODO A static object's alias is an error
-
-~static int s __attribute__ ((alias ("count")));~ fails with
-"definition of 's' cannot also be an alias": a static object with no
-initializer is a tentative definition, and the alias makes it none.
-=gcc= and =clang= take it and write ~s = count~ with no binding, as a
-static function's alias is written.
-
-Fix: a static object without an initializer that an alias marks is
-no definition, and is written as a static alias.
-
-Check: such an alias in =tests/cost/alias.c=, pinned on both
-targets.
-
 ** TODO A definition's parameter array size is not evaluated on entry
 
 ~int f(int n, int a[n++]) { return n; }~ returns 3 from ~f(3, 0)~,
