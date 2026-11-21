@@ -626,6 +626,38 @@ no definition, and is written as a static alias.
 Check: such an alias in =tests/cost/alias.c=, pinned on both
 targets.
 
+** TODO A definition's parameter array size is not evaluated on entry
+
+~int f(int n, int a[n++]) { return n; }~ returns 3 from ~f(3, 0)~,
+where =gcc= and =clang= return 4. A definition's parameters have
+block scope (6.2.1p4), so the size of a parameter declared as an
+array is evaluated on entry to the function (6.9.2p11); "as if
+replaced by =*=" (6.7.7.3p5) is of a prototype that is no
+definition. The comment on =parameter_array_count()= in
+=src/parse.cc= reads 6.9.2p11 the other way, and =docs/shape.md=
+chapter 5 says nothing is evaluated for it.
+
+Fix: the sizes are evaluated at the head of the body, in parameter
+order, each for its effects; the comment and the chapter follow.
+
+Check: a corpus program in which a parameter's size has an effect
+returns what the reference returns.
+
+** TODO A call of a declared =alloca= by its name does not link
+
+With ~void *alloca(unsigned long);~ declared and no macro of the
+name, ~alloca(n)~ is a call of a function =alloca=, and the C
+library has none: "undefined reference to `alloca'". =gcc= and
+=clang= take the name as their builtin in the GNU dialects, which is
+rcc's. G16 says nothing rewrites a call.
+
+Fix: none taken; decide: the name is the builtin, as
+=__builtin_alloca= is, or the documents say that only the header's
+macro reaches it.
+
+Check: such a program links and runs, or =docs/shape.md= says why
+not.
+
 * Lexer
 
 ** TODO ~#pragma GCC visibility push(default)~ is refused
