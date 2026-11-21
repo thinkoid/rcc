@@ -151,6 +151,50 @@ long scalar_long = { -2 };
 char *string_pointer = { "abc" };
 int *pointer_empty = { };
 
+/* designators, p18 to p20: the walk moved to the subobject a
+   designation names, going on from the next one; a later value of a
+   subobject over an earlier one, a braced list's over every earlier
+   value in its subobject; another member of a union over the whole
+   union; an element over its part of a string; the size of an array
+   of unknown size from its highest index, p23 */
+int designated[6] = { [4] = 5, [1] = 2, 3 };
+int g_designated = GUARD;
+int designated_counted[] = { [9] = 1, [2] = 7, 8 };
+int g_designated_counted = GUARD;
+int designated_again[4] = { 1, 2, 3, 4, [1] = 9, [0] = 8 };
+int g_designated_again = GUARD;
+int designated_rows[3][COLUMNS] = { [1][1] = 5, 6, [0] = { 7 },
+                                    [2][0] = 8, 9, [1] = { [2] = 4 } };
+int g_designated_rows = GUARD;
+short designated_deep[2][2][2] = { [1][0] = { 1, 2 }, [0][1][1] = 3, 4 };
+short g_designated_deep = GUARD;
+char designated_words[3][4] = {
+        [2] = "ab", [0][1] = 'c', 'd', [1] = "ef", [2][1] = 'x'
+};
+char g_designated_words = GUARD;
+char *designated_names[4] = { [3] = "Dec", [1] = "Feb", [3] = "Mar" };
+long g_designated_names = GUARD;
+struct designated_line designated_lines[3] = {
+        [1] = { .to = { 7 } },
+        [0].to.y = 8,
+        [1].from.x = 9,
+        10,
+        [2] = { .to.x = 3, 4, .from.y = 2, .from = { 1 } },
+};
+int g_designated_lines = GUARD;
+union designated_number designated_numbers[3] = { [0].i = -1,
+                                                  [0].c = 'x',
+                                                  [1] = { .c = 'y' },
+                                                  [2].c = 'z',
+                                                  [2].i = 0x01020304 };
+int g_designated_numbers = GUARD;
+struct designated_named designated_named[] = {
+        [0] = { .name = "abc", .name[1] = 'X', 'Y', .n = 5 },
+        [1].name = "pq",
+        [1].name[2] = 'r',
+};
+int g_designated_named = GUARD;
+
 int
 twice(int v)
 {
@@ -210,6 +254,18 @@ long
 size_braced_words(void)
 {
         return sizeof braced_words;
+}
+
+long
+size_designated_counted(void)
+{
+        return sizeof designated_counted;
+}
+
+long
+size_designated_named(void)
+{
+        return sizeof designated_named;
 }
 
 /* the objects read through the code */

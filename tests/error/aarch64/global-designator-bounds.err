@@ -1,0 +1,2 @@
+tests/error/global-designator-bounds.c:3:19: error: array designator index (3) exceeds array bounds (3)
+status 1

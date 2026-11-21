@@ -1,0 +1,2 @@
+tests/error/global-designator-no-member.c:8:26: error: no member named 'z' in struct 'point'
+status 1

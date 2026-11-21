@@ -1,0 +1,2 @@
+tests/error/global-designator-missing-assign.c:7:28: error: expected '=' or another designator
+status 1

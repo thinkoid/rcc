@@ -1064,8 +1064,7 @@ the elements the list gives (p23). A list that goes on past what its
 object holds, `int a[2] = { 1, 2, 3 }`, is an error (p3), and so is a
 second expression for a scalar and a second pair of braces around
 one. A trailing comma is taken (p1). Each element is a constant
-expression as above, converted to the element's type; a designator,
-`[2] = 5` or `.x = 1`, is not yet.
+expression as above, converted to the element's type.
 
 A record takes a brace-enclosed list too (p17), walked against its
 members by the same rule: a struct's in declaration order, a union's
@@ -1092,6 +1091,27 @@ record (p14), but is no constant expression (p5), an error here,
 whether it stands for the whole object or for a member; any other
 expression without braces initializes no record.
 
+A designation moves the walk (p18, p19): `[2] = 5` gives the element
+of index 2, `.x = 1` the member `x`, and `[1].x = 4` the member of an
+element, each designator naming a subobject of the one before, the
+first one of the object of the closest braces. The walk goes on from
+the subobject after the one named, in order, so `{ [1].x = 4, 5 }`
+gives `[1].y` the 5, and an array of unknown size takes its size from
+its highest index (p23): `int a[] = { [9] = 1 }` has ten elements. A
+later value of a subobject overrides an earlier one (p20), so the data
+holds the last value given each byte: `int a[2] = { 1, 2, [0] = 9 }`
+holds 9 and 2. A braced list for a subobject overrides every earlier
+value in it, the elements it leaves out zero again; a value of another
+member of a union overrides the whole union, so `{ .i = -1, .c = 'x'
+}` holds `c` and zero; an element's value overrides its part of a
+string, so `{ .s = "abc", .s[1] = 'X' }` holds `"aXc"`. Each is as
+clang holds it. The data is written in the order of the offsets. An
+index is an integer constant expression of an element the array holds
+(p3, p7), and a name a member's of the record (p8); a designator in a
+scalar's braces, `[2]` for a record and `.x` for an array are errors.
+GNU C's range, `[1 ... 3] = 0`, and its array designator without the
+`=`, `[2] 5`, are not yet.
+
 A local record takes a brace-enclosed list by the same walk, but its
 values are expressions evaluated at run time, each converted as by
 assignment (p12) and stored. The declaration zeroes the whole object,
@@ -1104,7 +1124,7 @@ of a member's access, so `struct point q = { 1 };` is the zeroing and
 (p20, p22), and so is the padding, which C23 leaves unspecified where
 a list is not empty (6.2.6.1p6). The assignments are the parser's own:
 initialization is no assignment, and p12 takes the scalar's
-unqualified type. A designator is not yet, as above; so is a string
+unqualified type. A local's designator is not yet; so is a string
 literal for an array in the list, which an object of static storage
 holds as the array's own bytes, and a record's value in a scalar's
 place, which may initialize a record the scalar begins (p14). A local
@@ -1489,7 +1509,8 @@ object of a typedef whose array size rcc
 cannot compute, a variable length array (a parameter's array of a
 size that is not constant is the pointer the parameter is adjusted to,
 and the size is not evaluated), a designator in
-an initializer list, a local's brace initializer, a scalar's or an
+a local's list, GNU C's range designator and its array designator
+without the `=`, a local's brace initializer, a scalar's or an
 array's, and a local array's initializer of any kind, `char s[] =
 "..."` among them, a declaration through a typedef of function
 type, a UTF-8 character constant, `u8'x'`, a character constant of

@@ -1,0 +1,2 @@
+tests/error/global-designator-scalar.c:3:15: error: initialization of non-aggregate type with a designated initializer list
+status 1

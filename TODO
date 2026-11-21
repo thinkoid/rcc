@@ -497,21 +497,6 @@ which =_Generic= needs of it too, so the two are built together.
 Check: both programs fail with "incompatible pointer types", and
 compile with the cast written.
 
-** TODO A local array's list, a designator and a string for a member array are not yet
-
-A local record takes its initializer list (G20). Three forms beside
-it are refused by name: a local array's list, an array of records'
-among them, "not yet: array initializer"; a designator, ~.x = 1~ and
-~[2] = 3~, in any list, "not yet: designator"; and a string literal
-for a member array of =char= in a local's list, whose bytes need a
-copy's row that arrays do not have.
-
-Fix: none taken; each is built when a program needs it, the array's
-list on the record's zeroing and stores.
-
-Check: a cost program for each form on both targets, and the
-=zeroing= probe with a local array.
-
 ** TODO A not-yet of c1 in an uncalled =static inline= body stops the file
 
 A =static inline= body that stops at a not-yet of the parser's is
@@ -636,6 +621,46 @@ Fix: with the layout of bit-fields, which keeps them as named
 members.
 
 Check: that program reaches the bit-field's not-yet.
+
+** TODO A local array's list, a designator in a local's list and a string for a member array are not yet
+
+A local record takes its initializer list (G20), and a list of
+static storage takes designators. Three forms beside them are
+refused by name: a local array's list, an array of records' among
+them, "not yet: array initializer"; a designator, ~.x = 1~ and ~[2]
+= 3~, in a local's list, "not yet: designator"; and a string literal
+for a member array of =char= in a local's list, whose bytes need a
+copy's row that arrays do not have.
+
+Fix: none taken; each is built when a program needs it, the array's
+list on the record's zeroing and stores.
+
+Check: a cost program for each form on both targets, and the
+=zeroing= probe with a local array.
+
+** TODO A designator of a member of an anonymous member is not yet
+
+~struct v { int tag; union { long l; char c; }; } x = { .l = 1 };~
+is "not yet: designator of a member of an anonymous member". The
+member is the record's (6.7.3.2p15), and the designation enters the
+anonymous member as ~.s.l~ enters a named one.
+
+Fix: the walk enters the anonymous member that holds the name, at
+any depth, and goes on as after a nested designator.
+
+Check: a cost program of static and of local lists that designate
+such members, and the =braces= probe against =clang='s bytes.
+
+** TODO GNU C's old-style designator is "undeclared"
+
+~struct p d = { y: 2 };~ fails with "'y' undeclared": GNU C's
+obsolete spelling of ~.y = 2~, which =clang= takes with a warning,
+and the message calls the program wrong.
+
+Fix: a not-yet by name where a designation is looked for: an
+identifier before a colon starts no expression in a list.
+
+Check: a program of =tests/error=, pinned "not yet".
 
 * Lexer
 

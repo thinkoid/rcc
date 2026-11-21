@@ -1,0 +1,2 @@
+tests/error/global-designator-gnu-missing-assign.c:3:22: error: not yet: designator without '='
+status 1

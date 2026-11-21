@@ -1,0 +1,2 @@
+tests/error/global-designator-member-of-array.c:3:18: error: field designator cannot initialize a non-struct, non-union type
+status 1

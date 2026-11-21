@@ -1,0 +1,2 @@
+tests/error/global-designator-negative.c:3:19: error: array designator value '-1' is negative
+status 1

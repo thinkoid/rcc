@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <initializer_list>
 #include <limits>
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -3561,12 +3562,110 @@ string_ahead(const parser_t &p, const type_t &t)
     return size_of(element) > 1 && *as< array_t >(t).element == element;
 }
 
-// A designation, [2] = or .x =, 6.7.11p1, is not yet.
-void
+// Whether a designation, [2] = or .x =, 6.7.11p1, is ahead: its first
+// designator.
+bool
+designation_ahead(const parser_t &p)
+{
+    return next_is(p, { tok_t::lbracket, tok_t::dot });
+}
+
+// Whether the ',' ahead is followed by a designation, which begins at
+// the current object of the closest brace pair, 6.7.11p19.
+bool
+designation_after_separator(const parser_t &p)
+{
+    const tok_t after = peek(p, 1).kind;
+
+    return peek(p).kind == tok_t::comma &&
+           (after == tok_t::lbracket || after == tok_t::dot);
+}
+
+// A designator ahead for an object of a kind it names no subobject of,
+// 6.7.11p7, p8: [2] for one that is no array, .x for one that is no
+// struct or union.
+[[noreturn]] void
 refuse_designator(const parser_t &p)
 {
-    if (next_is(p, { tok_t::lbracket, tok_t::dot }))
-        not_yet(peek(p), "designator");
+    if (peek(p).kind == tok_t::lbracket)
+        fail(peek(p), "array designator cannot initialize non-array type");
+
+    fail(peek(p),
+         "field designator cannot initialize a non-struct, non-union type");
+}
+
+// An array designator, [ constant-expression ], 6.7.11p1, of an element
+// of array: the index, an integer constant expression, p7, of an
+// element the array holds, p3, or any nonnegative one for an array of
+// unknown size, p7.  GNU C's range of elements, [1 ... 3], is not yet.
+long
+array_designator(parser_t &p, const array_t &array)
+{
+    if (peek(p).kind != tok_t::lbracket)
+        refuse_designator(p);
+
+    advance(p);
+
+    const token_t &start = peek(p);
+    const expr_t index = rvalue(start, conditional_expression(p));
+    if (!is_integer_constant(index))
+        fail(start, "expression is not an integer constant expression");
+
+    if (peek(p).kind == tok_t::ellipsis)
+        not_yet(peek(p), "range designator");
+
+    expect(p, tok_t::rbracket, "expected ']'");
+
+    const exact_t value = exact_value(index);
+    if (value < 0)
+        fail(start, "array designator value '" +
+                        std::to_string(static_cast< long long >(value)) +
+                        "' is negative");
+
+    if (array.count >= 0 && value >= array.count)
+        fail(start,
+             "array designator index (" +
+                 std::to_string(static_cast< unsigned long long >(value)) +
+                 ") exceeds array bounds (" + std::to_string(array.count) +
+                 ")");
+
+    return long(value);
+}
+
+member_t named_member(const record_t &, const token_t &);
+
+// A member designator, . identifier, 6.7.11p1, of a member of r: the
+// index of the member it names, p8.  A member of an anonymous member
+// is the record's too, 6.7.3.2p15, and its designator is not yet.
+std::size_t
+member_designator(parser_t &p, const record_t &r)
+{
+    if (peek(p).kind != tok_t::dot)
+        refuse_designator(p);
+
+    advance(p);
+
+    const token_t &name = expect(p, tok_t::identifier, "expected member name");
+    for (std::size_t i = 0; i < r.members.size(); ++i)
+        if (r.members[i].name == name.text)
+            return i;
+
+    named_member(r, name);
+    not_yet(name, "designator of a member of an anonymous member");
+}
+
+// The '=' that ends a designation, 6.7.11p1.  GNU C leaves it out after
+// an array designator, [2] 5, which is not yet.
+void
+designation_end(parser_t &p)
+{
+    if (accept(p, tok_t::assign))
+        return;
+
+    if (p.tokens[p.pos - 1].kind == tok_t::rbracket)
+        not_yet(peek(p), "designator without '='");
+
+    fail(peek(p), "expected '=' or another designator");
 }
 
 // The value of a scalar at file scope, the expression ahead.  Every
@@ -3612,12 +3711,105 @@ scalar_value(parser_t &p, const token_t &at, const type_t &t)
 // writes (shape.md chapter 4).  For a local it is the statements after
 // the declaration of the object local, stores: each scalar's value
 // assigned to its place in the object, in the list's order (G13).
+// reached is the end of the highest byte a value has gone to, so a
+// value at or past it overrides none, p20, as every value of a list
+// without designators is; members is the member each union holds a
+// value of, by the union's offset in the object and its record.
 struct destination_t
 {
     std::vector< subobject_t > *data = nullptr;
     const symbol_t *local = nullptr;
     std::vector< stmt_t > *stores = nullptr;
+    long reached = 0;
+    std::map< std::pair< long, const record_t * >, std::size_t > members = { };
 };
+
+// The elements of the array that the string of sub initializes, each a
+// constant of the element's type at its offset: the literal's, as far
+// as the array holds them.  Its terminating zero and the elements past
+// it are zero, 6.7.11p22, and take none.
+std::vector< subobject_t >
+string_elements(const subobject_t &sub)
+{
+    const auto &str = std::get< string_t >(sub.value);
+    const auto &array = as< array_t >(sub.type);
+    const long count =
+        std::min(array.count, long(str.bytes.size()) / str.width);
+
+    std::vector< subobject_t > elements;
+    for (long i = 0; i < count; ++i) {
+        exact_t bits = 0;
+        for (int b = str.width - 1; b >= 0; --b)
+            bits = bits << 8 |
+                   static_cast< unsigned char >(str.bytes[i * str.width + b]);
+
+        const literal_t value { wrapped(bits, as< int_t >(*array.element)) };
+        elements.push_back(
+            subobject_t { sub.offset + i * str.width, *array.element, value });
+    }
+
+    return elements;
+}
+
+// A later initializer of a subobject overrides an earlier one, 6.7.11p20:
+// the values the data of an object of static storage holds in the size
+// bytes at offset are dropped.  A string whose array the bytes cover in
+// part, { .s = "abc", .s[1] = 'x' }, is its elements first, and those
+// outside the bytes stay.
+void
+overridden(destination_t &to, long offset, long size)
+{
+    if (offset >= to.reached)
+        return;
+
+    const auto inside = [offset, size](const subobject_t &sub) {
+        return sub.offset < offset + size &&
+               offset < sub.offset + size_of(sub.type);
+    };
+
+    std::vector< subobject_t > kept;
+    for (subobject_t &sub : *to.data) {
+        if (!inside(sub)) {
+            kept.push_back(std::move(sub));
+            continue;
+        }
+
+        if (!std::holds_alternative< string_t >(sub.value))
+            continue;
+
+        for (subobject_t &element : string_elements(sub))
+            if (!inside(element))
+                kept.push_back(std::move(element));
+    }
+
+    *to.data = std::move(kept);
+}
+
+// A value of size bytes at offset has gone to the object.
+void
+reach(destination_t &to, long offset, long size)
+{
+    to.reached = std::max(to.reached, offset + size);
+}
+
+// The member of the union r at offset that the walk initializes,
+// 6.7.11p18, p19.  A union holds the value of one member, so an
+// initializer of a member other than the one an earlier initializer
+// gave a value overrides the whole union, p20: { .i = 1, .c = 2 } holds
+// c alone, the rest of the union zero, as clang holds it.
+void
+union_member(destination_t &to,
+             const record_t &r,
+             long offset,
+             std::size_t member)
+{
+    const auto [held, added] = to.members.try_emplace({ offset, &r }, member);
+    if (added || held->second == member)
+        return;
+
+    held->second = member;
+    overridden(to, offset, r.size);
+}
 
 // The store of the scalar t at offset in a local, the expression ahead
 // converted to t as by simple assignment, 6.7.11p12, at the token a
@@ -3666,7 +3858,9 @@ scalar_subobject(parser_t &p,
     }
 
     initializer_t value = scalar_value(p, at, t);
+    overridden(to, offset, size_of(t));
     to.data->push_back(subobject_t { offset, t, std::move(value) });
+    reach(to, offset, size_of(t));
 }
 
 // Whether the string literal e initializes the array t whole, as
@@ -3726,7 +3920,14 @@ listed_string(parser_t &p, const type_t &t, long offset, destination_t &to)
 
     const expr_t e = assignment_expression(p);
 
-    return string_value(start, as< string_t >(e), t, offset, *to.data);
+    if (offset < to.reached)
+        overridden(to, offset, size_of(t));
+
+    const long count =
+        string_value(start, as< string_t >(e), t, offset, *to.data);
+    reach(to, offset, size_of(to.data->back().type));
+
+    return count;
 }
 
 // Takes the ',' before another initializer of the list, and says
@@ -3746,58 +3947,172 @@ accept_separator(parser_t &p)
 long
 subobject_initializer(parser_t &, const type_t &, long offset, destination_t &);
 
+// How a walk over the subobjects of an aggregate meets a designation,
+// 6.7.11p19, whose designators begin at the current object of the
+// closest brace pair: the walk of a brace-enclosed list takes each
+// designation in it; a walk a designator entered takes the rest of that
+// designation first and ends at the next one; the walk of a
+// subaggregate without braces, p21, ends at one.  A walk that ends at a
+// designation leaves it, and its ',', to the walk of the list.
+enum class walk_t { braced, designated, elided };
+
+// Whether a walk takes a designation before its first initializer: one
+// a designator entered does, and a list's walk when one is ahead.  A
+// designation in a local's list is not yet.
+bool
+starts_designated(const parser_t &p, walk_t walk, const destination_t &to)
+{
+    const bool designated = walk == walk_t::designated ||
+                            (walk == walk_t::braced && designation_ahead(p));
+    if (designated && to.local)
+        not_yet(peek(p), "designator");
+
+    return designated;
+}
+
+// Whether the walk takes the designation after the ',' ahead, which it
+// takes: the walk of a list does.  A designation in a local's list is
+// not yet.
+bool
+takes_designation(parser_t &p, walk_t walk, const destination_t &to)
+{
+    if (walk != walk_t::braced || !designation_after_separator(p))
+        return false;
+
+    advance(p);
+    if (to.local)
+        not_yet(peek(p), "designator");
+
+    return true;
+}
+
+// Whether the walk goes on to another initializer after one, and takes
+// the ',' before it: not past the last subobject, at, nor at a
+// designation, which another walk takes, nor at the list's end.
+bool
+goes_on(parser_t &p, bool at_end)
+{
+    return !at_end && !designation_after_separator(p) && accept_separator(p);
+}
+
+void
+designated_subobject(parser_t &, const type_t &, long offset, destination_t &);
+
 // The elements of an array at offset, from the initializers ahead in a
 // list, in increasing subscript order, 6.7.11p18: each element from
 // the next initializer, or from as many as it takes when that one does
-// not begin with a brace, p21.  An initializer is ahead.  The elements
-// end with the array's count, leaving the rest of the list to the
-// enclosing aggregate or to the list's own check, or with the list;
-// an array of unknown size ends only with the list.  Returns the count
-// of elements given, which completes such an array, p23.
+// not begin with a brace, p21.  A designation moves the walk to the
+// element it names, p18, p19: the walk goes on from the next one, and a
+// later initializer of an element overrides an earlier one, p20.  An
+// initializer is ahead.  The elements end with the array's count,
+// leaving the rest of the list to the enclosing aggregate or to the
+// list's own check, or with the list; an array of unknown size ends
+// only with the list.  Returns the count of elements given, past the
+// highest index initialized, which completes such an array, p23.
 long
-elements(parser_t &p, const array_t &array, long offset, destination_t &to)
+elements(parser_t &p,
+         const array_t &array,
+         long offset,
+         destination_t &to,
+         walk_t walk)
 {
     const type_t &element = *array.element;
     const long size = size_of(element);
 
+    long next = 0;
     long count = 0;
-    do {
-        subobject_initializer(p, element, offset + count * size, to);
-        ++count;
-    } while (count != array.count && accept_separator(p));
+    bool designated = starts_designated(p, walk, to);
+    for (;;) {
+        if (designated) {
+            next = array_designator(p, array);
+            designated_subobject(p, element, offset + next * size, to);
+        }
+        else
+            subobject_initializer(p, element, offset + next * size, to);
 
-    return count;
+        count = std::max(count, ++next);
+
+        designated = takes_designation(p, walk, to);
+        if (!designated && !goes_on(p, next == array.count))
+            return count;
+    }
 }
 
 // The members of a record at offset, from the initializers ahead in a
 // list, 6.7.11p18: a struct's in declaration order, each from the next
 // initializer, or from as many as it takes when that one does not
-// begin with a brace, p21; a union's first member alone.  An anonymous
-// member is given as a member of its record type is, its members being
-// the record's, 6.7.3.2p15, as clang gives it; an unnamed bit-field,
-// which p10 passes over, is in no record rcc lays out.  An initializer
-// is ahead.  The members end with the last,
+// begin with a brace, p21; a union's first member alone.  A
+// designation moves the walk to the member it names, p18, p19: a
+// struct's walk goes on from the next member, a union's ends, and a
+// later initializer of a member overrides an earlier one, p20.  An
+// anonymous member is given as a member of its record type is, its
+// members being the record's, 6.7.3.2p15, as clang gives it; an
+// unnamed bit-field, which p10 passes over, is in no record rcc lays
+// out.  An initializer is ahead.  The members end with the last,
 // leaving the rest of the list to the enclosing aggregate or to the
-// list's own check, or with the list.  Returns whether every member the
-// list may give was given.  A flexible array member takes an
-// initializer only in GNU C, which rcc does not take yet.
+// list's own check, or with the list.  Returns whether the walk ended
+// past the last member the list may give.  A flexible array member
+// takes an initializer only in GNU C, which rcc does not take yet.
 bool
-member_values(parser_t &p, const record_t &r, long offset, destination_t &to)
+member_values(
+    parser_t &p, const record_t &r, long offset, destination_t &to, walk_t walk)
 {
-    const std::size_t count = r.is_union ? 1 : r.members.size();
+    const std::size_t end = r.members.size();
 
-    std::size_t given = 0;
-    do {
-        const member_t &m = r.members[given];
+    std::size_t next = 0;
+    bool designated = starts_designated(p, walk, to);
+    for (;;) {
+        if (designated)
+            next = member_designator(p, r);
+
+        const member_t &m = r.members[next];
         if (is< array_t >(m.type) && as< array_t >(m.type).count < 0)
             not_yet(peek(p),
                     "initializer of flexible array member " + quoted(m.name));
 
-        subobject_initializer(p, m.type, offset + m.offset, to);
-        ++given;
-    } while (given != count && accept_separator(p));
+        if (r.is_union)
+            union_member(to, r, offset, next);
 
-    return given == count;
+        if (designated)
+            designated_subobject(p, m.type, offset + m.offset, to);
+        else
+            subobject_initializer(p, m.type, offset + m.offset, to);
+
+        next = r.is_union ? end : next + 1;
+
+        designated = takes_designation(p, walk, to);
+        if (!designated && !goes_on(p, next == end))
+            return next == end;
+    }
+}
+
+// The subobject of type t at offset that a designator named, 6.7.11p19:
+// a designator after it names a subobject of it, and a walk entered
+// there takes the rest of the designation and goes on in t, p18; else
+// the designation's '=' and the subobject's initializer.  A designator
+// names no subobject of a scalar.
+void
+designated_subobject(parser_t &p,
+                     const type_t &t,
+                     long offset,
+                     destination_t &to)
+{
+    if (designation_ahead(p) && is< array_t >(t)) {
+        elements(p, as< array_t >(t), offset, to, walk_t::designated);
+        return;
+    }
+
+    if (designation_ahead(p) && is< record_type_t >(t)) {
+        member_values(p, *as< record_type_t >(t).record, offset, to,
+                      walk_t::designated);
+        return;
+    }
+
+    if (designation_ahead(p))
+        refuse_designator(p);
+
+    designation_end(p);
+    subobject_initializer(p, t, offset, to);
 }
 
 // The end of a brace-enclosed list after its initializers: a ',' may
@@ -3828,6 +4143,9 @@ braced_initializer(parser_t &p, const type_t &t, long offset, destination_t &to)
 {
     const token_t &brace = advance(p);
 
+    if (offset < to.reached)
+        overridden(to, offset, size_of(t));
+
     if (peek(p).kind == tok_t::rbrace) {
         if (is< array_t >(t) && as< array_t >(t).count < 0)
             fail(brace, "empty initializer for an array of unknown size");
@@ -3837,11 +4155,9 @@ braced_initializer(parser_t &p, const type_t &t, long offset, destination_t &to)
         return 0;
     }
 
-    refuse_designator(p);
-
     if (is< record_type_t >(t)) {
         const record_t &r = *as< record_type_t >(t).record;
-        const bool full = member_values(p, r, offset, to);
+        const bool full = member_values(p, r, offset, to, walk_t::braced);
         close_list(p, full, r.is_union ? "union" : "struct");
 
         return 0;
@@ -3850,6 +4166,10 @@ braced_initializer(parser_t &p, const type_t &t, long offset, destination_t &to)
     if (!is< array_t >(t)) {
         if (peek(p).kind == tok_t::lbrace)
             fail(peek(p), "too many braces around scalar initializer");
+
+        if (designation_ahead(p))
+            fail(peek(p), "initialization of non-aggregate type with a "
+                          "designated initializer list");
 
         scalar_subobject(p, peek(p), t, offset, to);
         close_list(p, true, "scalar");
@@ -3865,7 +4185,7 @@ braced_initializer(parser_t &p, const type_t &t, long offset, destination_t &to)
     }
 
     const auto &array = as< array_t >(t);
-    const long count = elements(p, array, offset, to);
+    const long count = elements(p, array, offset, to, walk_t::braced);
     close_list(p, count == array.count, "array");
 
     return count;
@@ -3883,13 +4203,12 @@ subobject_initializer(parser_t &p,
                       long offset,
                       destination_t &to)
 {
-    refuse_designator(p);
-
     if (peek(p).kind == tok_t::lbrace)
         return braced_initializer(p, t, offset, to);
 
     if (is< record_type_t >(t)) {
-        member_values(p, *as< record_type_t >(t).record, offset, to);
+        member_values(p, *as< record_type_t >(t).record, offset, to,
+                      walk_t::elided);
         return 0;
     }
 
@@ -3901,7 +4220,7 @@ subobject_initializer(parser_t &p,
     if (string_ahead(p, t))
         return listed_string(p, t, offset, to);
 
-    return elements(p, as< array_t >(t), offset, to);
+    return elements(p, as< array_t >(t), offset, to, walk_t::elided);
 }
 
 // The initializer without braces of an object of the record t, the
@@ -3922,6 +4241,19 @@ refuse_record_expression(parser_t &p, const type_t &t)
                     " with an expression of incompatible type");
 }
 
+// The subobjects a list gave values, in the order of their offsets,
+// which a designation may have given out of it, 6.7.11p19; none
+// overlaps another, since a later value overrides any earlier one in
+// its bytes, p20.
+void
+in_offset_order(std::vector< subobject_t > &values)
+{
+    std::stable_sort(values.begin(), values.end(),
+                     [](const subobject_t &a, const subobject_t &b) {
+                         return a.offset < b.offset;
+                     });
+}
+
 // The initializer of an object the unit defines, after its '=', into
 // the subobjects it gives a value.  A brace-enclosed one is as
 // braced_initializer() takes it.  Without braces, a scalar takes one
@@ -3938,8 +4270,12 @@ object_initializer(parser_t &p,
 {
     destination_t to { &values };
 
-    if (peek(p).kind == tok_t::lbrace)
-        return braced_initializer(p, t, 0, to);
+    if (peek(p).kind == tok_t::lbrace) {
+        const long count = braced_initializer(p, t, 0, to);
+        in_offset_order(values);
+
+        return count;
+    }
 
     if (is< record_type_t >(t))
         refuse_record_expression(p, t);

@@ -1,0 +1,2 @@
+tests/error/global-designator-range.c:3:21: error: not yet: range designator
+status 1

@@ -81,6 +81,16 @@ OBJECT(int, scalar_empty);
 OBJECT(long, scalar_long);
 OBJECT(char_pointer_t, string_pointer);
 OBJECT(int_pointer_t, pointer_empty);
+OBJECT(int, g_designated);
+OBJECT(int, g_designated_counted);
+OBJECT(int, g_designated_again);
+OBJECT(int, g_designated_rows);
+OBJECT(short, g_designated_deep);
+OBJECT(char, g_designated_words);
+OBJECT(long, g_designated_names);
+OBJECT(int, g_designated_lines);
+OBJECT(int, g_designated_numbers);
+OBJECT(int, g_designated_named);
 
 #define ARRAY_OBJECT(T, name, dimensions) \
         extern T name dimensions, ref_##name dimensions
@@ -123,6 +133,16 @@ ARRAY_OBJECT(char, words, [2][2][4]);
 ARRAY_OBJECT(char, spelled, [2][3]);
 ARRAY_OBJECT(char, braced_string, [4]);
 ARRAY_OBJECT(char, braced_words, [2][3]);
+ARRAY_OBJECT(int, designated, [6]);
+ARRAY_OBJECT(int, designated_counted, [10]);
+ARRAY_OBJECT(int, designated_again, [4]);
+ARRAY_OBJECT(int, designated_rows, [3][COLUMNS]);
+ARRAY_OBJECT(short, designated_deep, [2][2][2]);
+ARRAY_OBJECT(char, designated_words, [3][4]);
+ARRAY_OBJECT(char_pointer_t, designated_names, [4]);
+ARRAY_OBJECT(struct designated_line, designated_lines, [3]);
+ARRAY_OBJECT(union designated_number, designated_numbers, [3]);
+ARRAY_OBJECT(struct designated_named, designated_named, [2]);
 
 /* declarations: each function and its reference */
 #define BOTH(R, f, parameters) \
@@ -157,6 +177,8 @@ BOTH(long, read_lib_table, (int, int))
 BOTH(long, read_lib_elided, (int, int))
 BOTH(long, read_lib_names, (int, int))
 BOTH(long, read_lib_words, (int, int))
+BOTH(long, size_designated_counted, (void))
+BOTH(long, size_designated_named, (void))
 
 /* the lists the arrays should hold, every element written out */
 static const int want_counted[] = { 1, 2, 3 };
@@ -189,6 +211,21 @@ static const char want_spelled[6] = "abcd";
 static const char want_braced_string[] = "abc";
 static const char want_braced_words[] = "ab\0c\0";
 static const char *const want_names[] = { "Jan", "Feb", "Mar" };
+static const int want_designated[] = { 0, 2, 3, 0, 5, 0 };
+static const int want_designated_counted[] = { 0, 0, 7, 8, 0, 0, 0, 0, 0, 1 };
+static const int want_designated_again[] = { 8, 9, 3, 4 };
+static const int want_designated_rows[] = { 7, 0, 0, 0, 0, 4, 8, 9, 0 };
+static const short want_designated_deep[] = { 0, 0, 0, 3, 4, 2, 0, 0 };
+static const char want_designated_words[12] = "\0cd\0ef\0\0ax";
+static const char *const want_designated_names[] = { 0, "Feb", 0, "Mar" };
+static const int want_designated_lines[] = {
+        0, 0, 0, 8, 9, 10, 7, 0, 1, 0, 3, 4
+};
+static const signed char want_designated_numbers[] = { 120, 0, 0, 0, 121, 0,
+                                                       0,   0, 4, 3, 2,   1 };
+static const signed char want_designated_named[] = { 'a', 'X', 'Y', 0,   5,   0,
+                                                     0,   0,   'p', 'q', 'r', 0,
+                                                     0,   0,   0,   0 };
 
 static void
 report(const char *name, long got, long want)
@@ -541,6 +578,50 @@ test_library(void)
         }
 }
 
+/* Lists with designators: each array against the list written out,
+   and its bytes against the reference's; the sizes the highest indices
+   complete. */
+static void
+test_designators(void)
+{
+        ELEMENTS(designated, want_designated);
+        GUARDED(designated);
+        ELEMENTS(designated_counted, want_designated_counted);
+        GUARDED(designated_counted);
+        ELEMENTS(designated_again, want_designated_again);
+        GUARDED(designated_again);
+        ELEMENTS(designated_rows, want_designated_rows);
+        GUARDED(designated_rows);
+        ELEMENTS(designated_deep, want_designated_deep);
+        GUARDED(designated_deep);
+        ELEMENTS(designated_words, want_designated_words);
+        GUARDED(designated_words);
+        ELEMENTS(designated_lines, want_designated_lines);
+        GUARDED(designated_lines);
+        ELEMENTS(designated_numbers, want_designated_numbers);
+        GUARDED(designated_numbers);
+        ELEMENTS(designated_named, want_designated_named);
+        GUARDED(designated_named);
+
+        for (int i = 0; i < 4; ++i) {
+                const char *want = want_designated_names[i];
+
+                if (want)
+                        PAIR("designated_names",
+                             strcmp(designated_names[i], want),
+                             strcmp(ref_designated_names[i], want), 0);
+                else
+                        PAIR("designated_names", designated_names[i] == 0,
+                             ref_designated_names[i] == 0, 1);
+        }
+        GUARDED(designated_names);
+
+        PAIR("size_designated_counted", size_designated_counted(),
+             ref_size_designated_counted(), 10 * sizeof(int));
+        PAIR("size_designated_named", size_designated_named(),
+             ref_size_designated_named(), 2 * sizeof(struct designated_named));
+}
+
 int
 main(void)
 {
@@ -555,6 +636,7 @@ main(void)
         test_sizes();
         test_code();
         test_library();
+        test_designators();
 
         printf("%ld checks, %ld differ\n", total, bad);
 

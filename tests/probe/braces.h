@@ -39,3 +39,26 @@ extern int lib_table[ROWS][COLUMNS];
 extern int lib_elided[ROWS][COLUMNS];
 extern char *lib_names[];
 extern char lib_words[][4];
+
+/* the records of the lists with designators */
+struct designated_point
+{
+        int x, y;
+};
+
+struct designated_line
+{
+        struct designated_point from, to;
+};
+
+union designated_number
+{
+        int i;
+        char c;
+};
+
+struct designated_named
+{
+        char name[4];
+        int n;
+};
