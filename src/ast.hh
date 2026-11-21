@@ -225,6 +225,8 @@ struct cast_t
     expr_ptr_t arg;
 };
 
+// GNU C's a ?: b has no yes: the condition, converted to the type of
+// the whole, is the first arm's value too, and is evaluated once.
 struct conditional_t
 {
     expr_ptr_t cond, yes, no;

@@ -1502,7 +1502,8 @@ drop_identities_under(expr_t &e)
 
     if (auto *c = std::get_if< conditional_t >(&e.v)) {
         drop_identities(*c->cond);
-        drop_identities(*c->yes);
+        if (c->yes)
+            drop_identities(*c->yes);
         drop_identities(*c->no);
     }
 }
@@ -1892,25 +1893,21 @@ assignment(parser_t &p, const token_t &op, expr_t lhs, expr_t rhs)
 }
 
 // The arms go to their common type, 6.5.16p6, or two pointers to the
-// one common_pointer() finds, p7.  A pointer and an integer other than
-// a null pointer constant do not meet, p3.  Two void arms make a void
-// conditional, p3, p6, which stands where a value is dropped, as a
-// call of a void function does, and c1 generates its arms for their
-// effect; one void arm and one of a value meet in none of p3's pairs.
-// Two arms of one record are a record's value, not yet; a record and
-// any other arm meet in none of them either.  On a constant condition
-// and two constant arms, the node is the arm the condition selects,
-// p5.  The condition comes as an rvalue.
-expr_t
-conditional(const token_t &op, expr_t cond, expr_t yes, expr_t no)
+// one common_pointer() finds, p7, which is returned.  A pointer and an
+// integer other than a null pointer constant do not meet, p3.  Two void
+// arms make a void conditional, p3, p6, which stands where a value is
+// dropped, as a call of a void function does, and c1 generates its
+// arms for their effect; one void arm and one of a value meet in none
+// of p3's pairs.  Two arms of one record are a record's value, not
+// yet; a record and any other arm meet in none of them either.
+type_t
+joined_arms(const token_t &op, expr_t &yes, expr_t &no)
 {
     const bool void_yes = is< void_t >(yes.type);
     const bool void_no = is< void_t >(no.type);
 
     if (void_yes && void_no)
-        return expr_t { make_void(), conditional_t { box(std::move(cond)),
-                                                     box(std::move(yes)),
-                                                     box(std::move(no)) } };
+        return make_void();
 
     if (void_yes || void_no)
         fail(op, "void and non-void operands in conditional expression");
@@ -1938,7 +1935,16 @@ conditional(const token_t &op, expr_t cond, expr_t yes, expr_t no)
                      "pointer type mismatch in conditional expression" :
                      "pointer/integer type mismatch in conditional expression");
 
-    const type_t t = yes.type;
+    return yes.type;
+}
+
+// The conditional of two arms, joined_arms() at its type.  On a
+// constant condition and two constant arms, the node is the arm the
+// condition selects, 6.5.16p5.  The condition comes as an rvalue.
+expr_t
+conditional(const token_t &op, expr_t cond, expr_t yes, expr_t no)
+{
+    const type_t t = joined_arms(op, yes, no);
 
     if (is_integer_constant(cond) && is_integer_constant(yes) &&
         is_integer_constant(no))
@@ -1947,6 +1953,28 @@ conditional(const token_t &op, expr_t cond, expr_t yes, expr_t no)
     return expr_t { t,
                     conditional_t { box(std::move(cond)), box(std::move(yes)),
                                     box(std::move(no)) } };
+}
+
+// GNU C's a ?: b, which is a ? a : b with a evaluated once: the
+// condition is the first arm as well, so joined_arms() converts it to
+// the type of the whole as it would the first arm, and the node has no
+// first arm.  c1 tests the converted value and takes it as the first
+// arm's.  It is zero where a is: an integer converted keeps 0 and
+// takes no other value to 0, 6.3.1.3p1, p2; a null pointer constant
+// and a null pointer convert to a null pointer, 6.3.2.3p3, p4, and no
+// conversion of one pointer to another writes a bit.  On a constant
+// condition and a constant second arm, the node is the arm the
+// condition selects, 6.5.16p5.  The condition comes as an rvalue.
+expr_t
+omitted_middle(const token_t &op, expr_t cond, expr_t no)
+{
+    const type_t t = joined_arms(op, cond, no);
+
+    if (is_integer_constant(cond) && is_integer_constant(no))
+        return exact_value(cond) != 0 ? std::move(cond) : std::move(no);
+
+    return expr_t { t, conditional_t { box(std::move(cond)), nullptr,
+                                       box(std::move(no)) } };
 }
 
 // The type name is void or a scalar, 6.5.5p2: to void the operand is
@@ -7425,7 +7453,8 @@ assignment_expression(parser_t &p)
     return e;
 }
 
-// The condition is a scalar and stays as it is, 6.5.16p2.
+// The condition is a scalar and stays as it is, 6.5.16p2, but in GNU
+// C's a ?: b, omitted_middle()'s.
 expr_t
 conditional_expression(parser_t &p)
 {
@@ -7438,8 +7467,10 @@ conditional_expression(parser_t &p)
     cond = rvalue(op, std::move(cond));
 
     // GNU C's a ?: b, the condition its own middle operand
-    if (peek(p).kind == tok_t::colon)
-        not_yet(op, "'?:' without a middle operand");
+    if (peek(p).kind == tok_t::colon) {
+        advance(p);
+        return omitted_middle(op, std::move(cond), conditional_expression(p));
+    }
 
     expr_t yes = expression(p);
     expect(p, tok_t::colon, "expected ':' in conditional expression");
@@ -7942,9 +7973,11 @@ pure_node(const expr_t &e)
 
     if (is< conditional_t >(e)) {
         const auto &c = as< conditional_t >(e);
-        expr_ptr_t cond = pure_operand(c.cond), yes = pure_operand(c.yes),
+        // a ?: b has no first arm to copy
+        expr_ptr_t cond = pure_operand(c.cond),
+                   yes = c.yes ? pure_operand(c.yes) : nullptr,
                    no = pure_operand(c.no);
-        if (cond && yes && no)
+        if (cond && (yes || !c.yes) && no)
             return expr_t { e.type,
                             conditional_t { std::move(cond), std::move(yes),
                                             std::move(no) } };

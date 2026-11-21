@@ -609,8 +609,8 @@ pinned_within(const expr_t &e)
 
     if (is< conditional_t >(e)) {
         const auto &c = as< conditional_t >(e);
-        return own | pinned_within(*c.cond) | pinned_within(*c.yes) |
-               pinned_within(*c.no);
+        return own | pinned_within(*c.cond) |
+               (c.yes ? pinned_within(*c.yes) : 0) | pinned_within(*c.no);
     }
 
     return own;
@@ -3269,12 +3269,25 @@ logical(state_t &s, const expr_t &e, into_t *into = nullptr)
 // A conditional whose value is not wanted, a void one or one in the
 // effect context: the jump code of 6.5.16p5, and each arm for its
 // effect, chapter 6.6, so a constant assigned in an arm is one store.
+// GNU C's a ?: b has no first arm, and its condition jumps past the
+// second when it holds: f() ?: g(); is call f@PLT, cmpl $0, %eax, jne
+// and call g@PLT.
 void
 conditional_effect(state_t &s, const expr_t &e)
 {
     const auto &c = as< conditional_t >(e);
 
     const auto incoming = before_paths(s, e);
+
+    if (!c.yes) {
+        const int end = new_label(s);
+
+        cbranch(s, *c.cond, end, true);
+        effect(s, *c.no);
+
+        place_label(s, end);
+        return;
+    }
 
     const int no = new_label(s);
     const int end = new_label(s);
@@ -3413,6 +3426,80 @@ second_path(state_t &s,
     return taken(s, into);
 }
 
+// GNU C's a ?: b, a ? a : b with a evaluated once (shape.md chapter
+// 5): the condition's value is the first arm's, so it is computed into
+// the join, compared with 0 there, and taken by a jne past the second
+// arm, which is written into the same register, return f() ?: g()
+// being call f@PLT, cmpl $0, %eax, jne and call g@PLT, with no slot
+// and no second read of a.  The join is the register the consumer
+// names, wanted, where it names one, and otherwise the condition's, a
+// register variable's read copied into one, as conditional() joins its
+// first arm.  The cmp is left out where the condition's own
+// instruction set ZF at its width, as flag_branch() leaves it out.
+// Handed a register variable that joins_into(), the condition is
+// computed into the variable, arm_into()'s, the test reads it there,
+// and the second path writes it: r = a ?: b is movl -12(%rbp), %ebx,
+// cmpl $0, %ebx, jne and movl -16(%rbp), %ebx, and the value is the
+// variable's read.  Not where the second arm reads the variable, which
+// would find the condition's value in it; that one joins as for any
+// consumer, and the assignment moves the join in (chapter 4).
+value_t
+omitted_middle(state_t &s, const expr_t &e, into_t *into, unsigned wanted)
+{
+    const auto &c = as< conditional_t >(e);
+    const auto &t = integer(e.type);
+
+    const auto incoming = before_paths(s, e);
+
+    const int end = new_label(s);
+
+    if (joins_into(e, into) && !names(*c.no, into->variable)) {
+        arm_into(s, *c.cond, *into, nullptr);
+        if (s.zero_flag != t.width)
+            insn(s, sized("cmp", t.width),
+                 { imm(0), reg(variable_register(into->variable), t.width) });
+        jump_if(s, binary_op_t::ne, true, end);
+
+        arm_into(s, *c.no, *into, nullptr);
+
+        place_label(s, end);
+
+        return taken(s, *into);
+    }
+
+    const auto named = wanted_register(s, wanted);
+    const auto value = named ? arm(s, *c.cond, *named) : rvalue(s, *c.cond);
+    if (borrowed(s, value))
+        copy(s, value, named ? *named : take(s, 0));
+
+    reg_t join = reg_of(s, value);
+    int valid = s.values[value.id].valid;
+    if (named && join != *named) {
+        mov(s, join, *named, t.width);
+        join = *named;
+        valid = written(t.width, t.is_signed);
+    }
+    release(s, value);
+
+    if (s.zero_flag != t.width)
+        insn(s, sized("cmp", t.width), { imm(0), reg(join, t.width) });
+    jump_if(s, binary_op_t::ne, true, end);
+
+    const auto other = arm(s, *c.no, join);
+    const reg_t from = reg_of(s, other);
+    int other_valid = s.values[other.id].valid;
+    if (from != join) {
+        mov(s, from, join, t.width);
+        other_valid = written(t.width, t.is_signed);
+    }
+    release(s, other);
+
+    place_label(s, end);
+
+    // valid to what both arms left
+    return hold(s, join, std::min(valid, other_valid));
+}
+
 // 6.5.16p5: the arm not chosen is not evaluated, and the jump says so;
 // never cmov.  The arms join in one expression register: the one the
 // conditional's consumer names, wanted, where it names one, and
@@ -3454,6 +3541,9 @@ conditional(state_t &s,
         conditional_effect(s, e);
         return { };
     }
+
+    if (!c.yes)
+        return omitted_middle(s, e, into, wanted);
 
     const auto incoming = before_paths(s, e);
 
@@ -4654,7 +4744,8 @@ widens_free(const expr_t &arm,
 // the join, where the widening is signed: an unsigned value written at
 // 32 bits is valid to 64 already, and its join needs no extension.  Not
 // for a register variable of another type, whose extension after the
-// join is its write.
+// join is its write, nor for GNU C's a ?: b, whose first arm is the
+// condition's value, tested before any extension.
 bool
 widens_arms(const state_t &s,
             const cast_t &c,
@@ -4678,8 +4769,8 @@ widens_arms(const state_t &s,
     const auto named = paths ? std::nullopt : wanted_register(s, wanted);
     const auto &k = as< conditional_t >(*c.arg);
 
-    return widens_free(*k.yes, variable, named) ||
-           widens_free(*k.no, variable, named);
+    return k.yes && (widens_free(*k.yes, variable, named) ||
+                     widens_free(*k.no, variable, named));
 }
 
 // A cast: a change of signedness alone that retypes(), retyped()'s; a

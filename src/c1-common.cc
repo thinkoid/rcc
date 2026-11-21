@@ -322,7 +322,7 @@ writes(const expr_t &e, const symbol_t *sym)
 
     if (is< conditional_t >(e)) {
         const auto &c = as< conditional_t >(e);
-        return writes(*c.cond, sym) || writes(*c.yes, sym) ||
+        return writes(*c.cond, sym) || (c.yes && writes(*c.yes, sym)) ||
                writes(*c.no, sym);
     }
 
@@ -453,7 +453,8 @@ names(const expr_t &e, const symbol_t *sym)
 
     if (is< conditional_t >(e)) {
         const auto &c = as< conditional_t >(e);
-        return names(*c.cond, sym) || names(*c.yes, sym) || names(*c.no, sym);
+        return names(*c.cond, sym) || (c.yes && names(*c.yes, sym)) ||
+               names(*c.no, sym);
     }
 
     return false;

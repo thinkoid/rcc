@@ -140,6 +140,29 @@ first. Taken, 11 listings over =tests= reorder at the same count.
 Check: =stack-parameter='s pin in parameter order, and no function
 longer; or the sentence in 5.2.
 
+** TODO A conditional as a condition is joined and then tested
+
+~if (c ? x : y)~ and ~if (a ?: b)~ compute the conditional's value
+into its join and test it there, =cmpl $0, %eax; je= and =cbz w0=,
+where ~if (a || b)~ is jump code: each arm tested where it is
+computed, with no join.
+
+Fix: none taken; a row of each generator's condition for a
+conditional, its arms as conditions of the same jump.
+
+Check: the count over =tests=, and no function longer.
+
+** TODO =backend.md= 6.1 and =aarch64.md= 6.1 do not state the row of ~a ?: b~
+
+The two chapters state where a conditional's arms join. The row of a
+conditional without a middle operand, the condition's value computed
+into the join and tested there, is stated in =docs/cost.md= 2.1 and
+2.2 and in the generators' comments alone.
+
+Fix: the sentence in each chapter.
+
+Check: each 6.1 names the row.
+
 * Guarantees
 
 The promises in =docs/guarantees.md=. The entry number is the
@@ -593,20 +616,6 @@ text.
 Check: a program with the attribute under a system header's line
 marker compiles with no word, pinned.
 
-** TODO A statement expression, ~a ?: b~, a variable length array and =alloca= are not yet
-
-Each is GNU C, or C a program for =gcc= and =clang= writes, refused
-by name: "not yet: statement expression", "not yet: '?:' without a
-middle operand", "not yet: variable length array", "not yet: alloca,
-'__builtin_alloca'".
-
-Fix: each is taken, in this order: the statement expression, a block
-whose last expression is its value; ~a ?: b~, =a= evaluated once; a
-variable length array; =alloca=.
-
-Check: the program of =tests/error= for each becomes a cost program
-on both targets.
-
 ** TODO ~sizeof (double)~ is refused though the type has its size
 
 ~sizeof (double)~ and ~_Alignof (double)~ are "not yet: floating
@@ -658,6 +667,19 @@ Fix: each refusal says "not yet" and names the construct.
 
 Check: a program of =tests/error= for ~&&next~ and for ~goto *p~,
 pinned.
+
+** TODO A statement expression, a variable length array and =alloca= are not yet
+
+Each is GNU C, or C a program for =gcc= and =clang= writes, refused
+by name: "not yet: statement expression", "not yet: variable length
+array", "not yet: alloca, '__builtin_alloca'".
+
+Fix: each is taken, in this order: the statement expression, a block
+whose last expression is its value; a variable length array;
+=alloca=.
+
+Check: the program of =tests/error= for each becomes a cost program
+on both targets.
 
 * Lexer
 

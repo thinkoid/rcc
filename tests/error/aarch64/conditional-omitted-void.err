@@ -1,0 +1,2 @@
+tests/error/conditional-omitted-void.c:8:20: error: void expression used as a value
+status 1

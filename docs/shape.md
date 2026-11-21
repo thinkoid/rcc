@@ -306,7 +306,10 @@ Three sums.
   result is the `int` the standard gives. A conditional of two void
   operands has type `void` (6.5.16p6) and stands where a value is
   dropped, as a call of a void function does; one void operand and one
-  of a value is an error (p3). Two pointer operands, or a pointer and
+  of a value is an error (p3). GNU C's `a ?: b` is a conditional
+  with no first arm: its condition, converted to the type of the
+  whole, is the first arm's value too (chapter 5). Two pointer
+  operands, or a pointer and
   a null pointer constant, meet at one type (p7): the null pointer
   constant takes the other's, before a pointer to `void` and an object
   pointer meet at `void *`, so `c ? (void *) 0 : p` is an `int *` for
@@ -816,6 +819,17 @@ after `e` (G13). As `clang` has it at `-O0`, one without a side effect
 is not evaluated at all, and before one with a side effect `e`'s value
 goes into a temporary of its own, as a list's address does above:
 `(t = e, c, t)`.
+
+GNU C's conditional without a middle operand, `a ?: b`, is `a ? a :
+b` with `a` evaluated once. Its type is that of `a ? a : b`, the
+usual arithmetic conversions of `a` and `b` or the pointer the two
+meet at (6.5.16p6, p7), and `a` is a scalar (p2), so a void or a
+record `a` is the condition's error. The parser converts `a` to that
+type and keeps it as the condition, and the node has no first arm.
+The converted value is zero where `a` is, so c1 tests it and takes it
+as the first arm's: no temporary holds `a`, and nothing reads it
+twice (`cost.md` 2.1, 2.2). On a constant `a` and a constant `b` the
+node is the operand `a` selects, as for any conditional.
 
 The types a header declares and rcc does not use are not-yet types:
 the complex types, `_Complex` among the specifiers of a floating
@@ -1471,7 +1485,7 @@ and `volatile` are dropped, so an assignment to a `const` object and
 a conversion that discards a qualifier draw no diagnostic, and
 `(const void)` is taken as `(void)`), an atomic object, GNU C's case
 range, `case 1 ... 5:`, GNU C's statement expression, `({ ... })`,
-its conditional without a middle operand, `a ?: b`, and `alloca`,
+and `alloca`,
 which `alloca.h` defines as `__builtin_alloca`, each refused by its
 name, the body of a system header's `static inline`
 function, whose use is refused, and of the program's own one whose
