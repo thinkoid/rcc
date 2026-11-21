@@ -62,3 +62,41 @@ struct designated_named
         char name[4];
         int n;
 };
+
+/* the records of the lists that designate a member of an anonymous
+   member, 6.7.3.2p15: an anonymous union's, an anonymous struct's, and
+   one of an anonymous struct in an anonymous union */
+struct designated_variant
+{
+        int tag;
+        union
+        {
+                int i;
+                char c;
+        };
+        int after;
+};
+
+struct designated_pair
+{
+        int tag;
+        struct
+        {
+                int a, b;
+        };
+        int after;
+};
+
+struct designated_nested
+{
+        int tag;
+        union
+        {
+                struct
+                {
+                        int x, y;
+                };
+                int whole;
+        };
+        int after;
+};

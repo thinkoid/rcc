@@ -625,19 +625,6 @@ members.
 
 Check: that program reaches the bit-field's not-yet.
 
-** TODO A designator of a member of an anonymous member is not yet
-
-~struct v { int tag; union { long l; char c; }; } x = { .l = 1 };~
-is "not yet: designator of a member of an anonymous member". The
-member is the record's (6.7.3.2p15), and the designation enters the
-anonymous member as ~.s.l~ enters a named one.
-
-Fix: the walk enters the anonymous member that holds the name, at
-any depth, and goes on as after a nested designator.
-
-Check: a cost program of static and of local lists that designate
-such members, and the =braces= probe against =clang='s bytes.
-
 ** TODO GNU C's old-style designator is "undeclared"
 
 ~struct p d = { y: 2 };~ fails with "'y' undeclared": GNU C's

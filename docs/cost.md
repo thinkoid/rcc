@@ -116,7 +116,7 @@ listing of its twin without it (`always-inline`). Nor does an
 anonymous member: its members are the enclosing record's, each at the
 anonymous member's offset plus its own, so a program compiles to the
 listing of its twin with each anonymous member named and each access
-written through the name (`anonymous-member`).
+and each designator written through the name (`anonymous-member`).
 
 What the compiler may do:
 

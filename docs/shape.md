@@ -1124,10 +1124,17 @@ expression without braces initializes no record.
 A designation moves the walk (p18, p19): `[2] = 5` gives the element
 of index 2, `.x = 1` the member `x`, and `[1].x = 4` the member of an
 element, each designator naming a subobject of the one before, the
-first one of the object of the closest braces. The walk goes on from
+first one of the object of the closest braces. A member of an
+anonymous member is the record's (6.7.3.2p15), and its designator
+enters the anonymous member that holds it, at any depth, as `.u.l`
+enters a named `u`. The walk goes on from
 the subobject after the one named, in order, so `{ [1].x = 4, 5 }`
 gives `[1].y` the 5, and an array of unknown size takes its size from
-its highest index (p23): `int a[] = { [9] = 1 }` has ten elements. A
+its highest index (p23): `int a[] = { [9] = 1 }` has ten elements.
+After `.l = 1` of a member of an anonymous union, the union's walk
+ends and the next value goes to the record's member after the union;
+after one of an anonymous struct, to the struct's next member, then
+to the record's, as `clang` has it. A
 later value of a subobject overrides an earlier one (p20), so the data
 holds the last value given each byte: `int a[2] = { 1, 2, [0] = 9 }`
 holds 9 and 2. A braced list for a subobject overrides every earlier

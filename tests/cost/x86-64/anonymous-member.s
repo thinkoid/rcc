@@ -164,6 +164,30 @@ listed:
 	ret
 	.cfi_endproc
 	.size	listed, .-listed
+	.globl	designated_local
+	.type	designated_local, @function
+designated_local:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	$0, -24(%rbp)
+	movq	$0, -16(%rbp)
+	movq	$0, -8(%rbp)
+	movq	$1, -16(%rbp)
+	movw	$2, -8(%rbp)
+	movl	$3, -4(%rbp)
+	movl	$4, -24(%rbp)
+	movl	-4(%rbp), %eax
+	jmp	.Ldesignated_local.1
+.Ldesignated_local.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	designated_local, .-designated_local
 	.data
 	.globl	preset
 	.type	preset, @object
@@ -177,6 +201,27 @@ preset:
 	.short	3
 	.zero	2
 	.long	4
+	.globl	designated
+	.type	designated, @object
+	.size	designated, 24
+	.p2align 3
+designated:
+	.long	4
+	.zero	4
+	.quad	1
+	.short	2
+	.zero	2
+	.long	3
+	.globl	overridden
+	.type	overridden, @object
+	.size	overridden, 24
+	.p2align 3
+overridden:
+	.zero	8
+	.quad	6
+	.short	7
+	.zero	2
+	.long	8
 	.bss
 	.globl	g
 	.type	g, @object

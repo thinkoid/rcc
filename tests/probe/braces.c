@@ -156,7 +156,9 @@ int *pointer_empty = { };
    subobject over an earlier one, a braced list's over every earlier
    value in its subobject; another member of a union over the whole
    union; an element over its part of a string; the size of an array
-   of unknown size from its highest index, p23 */
+   of unknown size from its highest index, p23; a member of an
+   anonymous member, 6.7.3.2p15, the walk entering the anonymous
+   member and going on in it */
 int designated[6] = { [4] = 5, [1] = 2, 3 };
 int g_designated = GUARD;
 int designated_counted[] = { [9] = 1, [2] = 7, 8 };
@@ -194,6 +196,24 @@ struct designated_named designated_named[] = {
         [1].name[2] = 'r',
 };
 int g_designated_named = GUARD;
+struct designated_variant designated_variants[3] = {
+        [0] = { .i = 1, 2 },
+        [1] = { .i = -1, .c = 'x', 3 },
+        [2].c = 'y',
+        4,
+};
+int g_designated_variants = GUARD;
+struct designated_pair designated_pairs[2] = {
+        [0] = { .a = 1, 2, 3 },
+        [1] = { .b = 4, 5, .tag = 6 },
+};
+int g_designated_pairs = GUARD;
+struct designated_nested designated_nested[3] = {
+        [0] = { .y = 1, 2 },
+        [1] = { .x = 3, .whole = 4, 5 },
+        [2] = { .whole = 6, .y = 7 },
+};
+int g_designated_nested = GUARD;
 
 int
 twice(int v)

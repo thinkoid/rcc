@@ -91,6 +91,9 @@ OBJECT(long, g_designated_names);
 OBJECT(int, g_designated_lines);
 OBJECT(int, g_designated_numbers);
 OBJECT(int, g_designated_named);
+OBJECT(int, g_designated_variants);
+OBJECT(int, g_designated_pairs);
+OBJECT(int, g_designated_nested);
 
 #define ARRAY_OBJECT(T, name, dimensions) \
         extern T name dimensions, ref_##name dimensions
@@ -143,6 +146,9 @@ ARRAY_OBJECT(char_pointer_t, designated_names, [4]);
 ARRAY_OBJECT(struct designated_line, designated_lines, [3]);
 ARRAY_OBJECT(union designated_number, designated_numbers, [3]);
 ARRAY_OBJECT(struct designated_named, designated_named, [2]);
+ARRAY_OBJECT(struct designated_variant, designated_variants, [3]);
+ARRAY_OBJECT(struct designated_pair, designated_pairs, [2]);
+ARRAY_OBJECT(struct designated_nested, designated_nested, [3]);
 
 /* declarations: each function and its reference */
 #define BOTH(R, f, parameters) \
@@ -226,6 +232,11 @@ static const signed char want_designated_numbers[] = { 120, 0, 0, 0, 121, 0,
 static const signed char want_designated_named[] = { 'a', 'X', 'Y', 0,   5,   0,
                                                      0,   0,   'p', 'q', 'r', 0,
                                                      0,   0,   0,   0 };
+static const int want_designated_variants[] = { 0, 1, 2, 0, 120, 3, 0, 121, 4 };
+static const int want_designated_pairs[] = { 0, 1, 2, 3, 6, 0, 4, 5 };
+static const int want_designated_nested[] = {
+        0, 0, 1, 2, 0, 4, 0, 5, 0, 0, 7, 0
+};
 
 static void
 report(const char *name, long got, long want)
@@ -602,6 +613,12 @@ test_designators(void)
         GUARDED(designated_numbers);
         ELEMENTS(designated_named, want_designated_named);
         GUARDED(designated_named);
+        ELEMENTS(designated_variants, want_designated_variants);
+        GUARDED(designated_variants);
+        ELEMENTS(designated_pairs, want_designated_pairs);
+        GUARDED(designated_pairs);
+        ELEMENTS(designated_nested, want_designated_nested);
+        GUARDED(designated_nested);
 
         for (int i = 0; i < 4; ++i) {
                 const char *want = want_designated_names[i];

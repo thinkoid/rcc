@@ -11,7 +11,14 @@
    list gives an anonymous member its values as it gives a member of
    its record's type, by brace elision, 6.7.11p21: preset's data is 1,
    2 at 8 and 3 and 4 at 16 and 20, and listed()'s local the stores of
-   5 and 6 at 0 and 4 after its zeroing.
+   5 and 6 at 0 and 4 after its zeroing.  A designator of a member of an
+   anonymous member enters the anonymous member, 6.7.11p19, as one
+   through its name would, and the walk goes on there, p18: after .l,
+   the union's walk ends, and the list goes on at h and n, so
+   designated's data is 4, 1 at 8, 2 and 3 at 16 and 20; overridden's
+   .l overrides its .i, p20, its data 6 at 8, 7 and 8 at 16 and 20; and
+   designated_local()'s local the same stores as designated's data,
+   in the list's order, after its zeroing.
 
    On x86-64 the listing must be, byte for byte but for the .file line,
    the listing of this program with each anonymous member named and
@@ -102,4 +109,15 @@ listed(void)
         union cell c = { 5, 6 };
 
         return c.hi;
+}
+
+struct value designated = { .l = 1, 2, 3, .kind = 4 };
+struct value overridden = { .i = 5, .l = 6, .h = 7, 8 };
+
+int
+designated_local(void)
+{
+        struct value s = { .l = 1, 2, 3, .kind = 4 };
+
+        return s.n;
 }

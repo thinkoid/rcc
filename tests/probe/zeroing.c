@@ -8,7 +8,9 @@
    before a braced list of the array, which zeroes it again.  The arrays
    are a record's array member as a local of its own, and an array of
    two records with padding, every scalar of both listed or the second's
-   alone.  Each function reaches its declaration twice in one
+   alone.  A record's anonymous members' members are designated
+   through them, 6.7.3.2p15, and a list goes on after such a
+   designator.  Each function reaches its declaration twice in one
    activation, and so in one slot (G12): the library's taken() keeps the
    local's bytes and then fills the local with 0xa5, so the second
    zeroing finds no zero byte in the slot, and the bytes kept are the
@@ -97,3 +99,10 @@ UNIONS(UNION_DESIGNATED)
 
 SIZED(SIZED_ARRAY)
 PADDED(PADDED_ARRAY)
+
+/* a list that designates a member of an anonymous member and goes on
+   after it */
+#define ONWARD_LISTED(N, MEMBERS, SCALARS, ...) \
+        LISTED(struct, N, onward, __VA_ARGS__)
+
+ONWARD(ONWARD_LISTED)

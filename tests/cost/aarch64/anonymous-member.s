@@ -223,6 +223,40 @@ listed:
 	ret
 	.cfi_endproc
 	.size	listed, .-listed
+	.globl	designated_local
+	.type	designated_local, @function
+designated_local:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	xzr, [x29, #16]
+	str	xzr, [x29, #24]
+	str	xzr, [x29, #32]
+	mov	x0, #1
+	str	x0, [x29, #24]
+	mov	w0, #2
+	strh	w0, [x29, #32]
+	mov	w0, #3
+	str	w0, [x29, #36]
+	mov	w0, #4
+	str	w0, [x29, #16]
+	ldr	w0, [x29, #36]
+	b	.Ldesignated_local.1
+.Ldesignated_local.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	designated_local, .-designated_local
 	.data
 	.globl	preset
 	.type	preset, @object
@@ -236,6 +270,27 @@ preset:
 	.short	3
 	.zero	2
 	.long	4
+	.globl	designated
+	.type	designated, @object
+	.size	designated, 24
+	.p2align 3
+designated:
+	.long	4
+	.zero	4
+	.quad	1
+	.short	2
+	.zero	2
+	.long	3
+	.globl	overridden
+	.type	overridden, @object
+	.size	overridden, 24
+	.p2align 3
+overridden:
+	.zero	8
+	.quad	6
+	.short	7
+	.zero	2
+	.long	8
 	.bss
 	.globl	g
 	.type	g, @object

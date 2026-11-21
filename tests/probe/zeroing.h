@@ -12,8 +12,10 @@
    int or long, of each size from 1 to 64 bytes that is a multiple of
    its element's, so of each alignment from 1 to 8, and arrays of long
    of 9 and 25 elements, past eight units of 8; records with padding
-   between their members or after the last; and unions, whose first
-   member is the one listed. */
+   between their members or after the last, anonymous members among
+   them, whose members a designator names through them, 6.7.3.2p15;
+   unions, whose first member is the one listed; and records whose list
+   goes on after such a designator. */
 
 /* the records of one array member: the name, by alignment and size,
    the element's type and the count of elements */
@@ -78,7 +80,11 @@
       F(c, 1) F(in.c, 2) F(in.i, 3) F(s, 4))                            \
     X(p_cl9, char c; long l[9];,                                        \
       F(c, 1) F(l[0], 2) F(l[1], 3) F(l[2], 4) F(l[3], 5) F(l[4], 6)    \
-      F(l[5], 7) F(l[6], 8) F(l[7], 9) F(l[8], 10))
+      F(l[5], 7) F(l[6], 8) F(l[7], 9) F(l[8], 10))                     \
+    X(p_au, char c; union { short s; long l; }; int i;,                 \
+      F(c, 1) F(s, 2) F(i, 3))                                          \
+    X(p_as, char c; struct { short s; struct { char d; long n; }; };    \
+      int i;, F(c, 1) F(s, 2) F(d, 3) F(n, 4) F(i, 5))
 
 /* the unions: the name, the members, and each scalar of the first by
    F, as for a record with padding */
@@ -92,6 +98,21 @@
     X(u_rl, struct p_lc r; long l;, F(r.l, 1) F(r.c, 2))                \
     X(u_sl, short s; long l;, F(s, 1))                                  \
     X(u_cl9, char c; long l[9];, F(c, 1))
+
+/* the records whose list designates a member of an anonymous member
+   and goes on after it, 6.7.11p18: the name, the members, each scalar
+   of them by F, as for a record with padding, and the list.  After an
+   anonymous union's member the list goes on at the record's next
+   member; after an anonymous struct's, at the struct's next, then at
+   the record's; a union's other member overrides the whole union,
+   p20. */
+#define ONWARD(X)                                                       \
+    X(o_union, char c; union { short s; long l; }; int i;,              \
+      F(c, 1) F(s, 2) F(i, 3), .s = v, v + 1)                           \
+    X(o_override, char c; union { short s; long l; }; int i;,           \
+      F(c, 1) F(s, 2) F(i, 3), .l = v, .s = v + 1, v + 2)               \
+    X(o_struct, char c; struct { short s; long l; }; int i;,            \
+      F(c, 1) F(s, 2) F(l, 3) F(i, 4), .s = v, v + 1, v + 2, .c = v + 3)
 /* clang-format on */
 
 #define SIZED_RECORD(N, T, COUNT) \
@@ -115,6 +136,11 @@
 SIZED(SIZED_RECORD)
 PADDED(PADDED_RECORD)
 UNIONS(UNION_RECORD)
+
+#define ONWARD_RECORD(N, MEMBERS, SCALARS, ...) \
+        PADDED_RECORD(N, MEMBERS, SCALARS)
+
+ONWARD(ONWARD_RECORD)
 
 /* the library's: the local's bytes kept at to and the local filled */
 void taken(void *to, void *from, unsigned long size);

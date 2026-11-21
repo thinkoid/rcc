@@ -3767,25 +3767,48 @@ array_designator(parser_t &p, const array_t &array)
 }
 
 member_t named_member(const record_t &, const token_t &);
+std::optional< member_t > member_named(const record_t &, std::string_view);
+
+// Whether the member m is the member of the name, or an anonymous
+// member that holds it, at any depth, 6.7.3.2p15.
+bool
+holds_member(const member_t &m, std::string_view name)
+{
+    if (!m.name.empty())
+        return m.name == name;
+
+    return member_named(*as< record_type_t >(m.type).record, name).has_value();
+}
 
 // A member designator, . identifier, 6.7.11p1, of a member of r: the
-// index of the member it names, p8.  A member of an anonymous member
-// is the record's too, 6.7.3.2p15, and its designator is not yet.
+// index of the member it names, p8.  A member of an anonymous member is
+// the record's too, 6.7.3.2p15: its designator gives the anonymous
+// member that holds it, at any depth, and is left ahead, so that the
+// walk enters the anonymous member as it enters s at .s.l, p19, and
+// goes on there, p18.  A name r has no member of is named_member()'s
+// error.
 std::size_t
 member_designator(parser_t &p, const record_t &r)
 {
     if (peek(p).kind != tok_t::dot)
         refuse_designator(p);
 
-    advance(p);
-
-    const token_t &name = expect(p, tok_t::identifier, "expected member name");
-    for (std::size_t i = 0; i < r.members.size(); ++i)
-        if (r.members[i].name == name.text)
-            return i;
+    const token_t &name = peek(p, 1);
+    if (name.kind != tok_t::identifier)
+        fail(name, "expected member name");
 
     named_member(r, name);
-    not_yet(name, "designator of a member of an anonymous member");
+
+    std::size_t i = 0;
+    while (!holds_member(r.members[i], name.text))
+        ++i;
+
+    if (!r.members[i].name.empty()) {
+        advance(p);
+        advance(p);
+    }
+
+    return i;
 }
 
 // The '=' that ends a designation, 6.7.11p1.  GNU C leaves it out after

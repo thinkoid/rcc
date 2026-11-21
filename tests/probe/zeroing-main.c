@@ -126,6 +126,12 @@ UNIONS(UNION_DESIGNATED_DECLARE)
 SIZED(SIZED_ARRAY_DECLARE)
 PADDED(PADDED_ARRAY_DECLARE)
 
+/* each function of zeroing.c of a list that goes on after a designator
+   of a member of an anonymous member */
+#define ONWARD_DECLARE(N, MEMBERS, SCALARS, ...) DECLARE(struct, N, onward)
+
+ONWARD(ONWARD_DECLARE)
+
 /* one function F of record N declared by K, by both builds, for each
    value, each object filled with a byte no zeroing writes before the
    call */
@@ -241,6 +247,14 @@ paired(struct span *pair, const struct span *members, size_t count, size_t size)
                 ARRAY_CALL(record_t, 2, N, array_second, pair)            \
         }
 
+#define ONWARD_CHECK(N, MEMBERS, SCALARS, ...)                    \
+        {                                                         \
+                typedef struct N record_t;                        \
+                static const struct span members[] = { SCALARS }; \
+                                                                  \
+                CALL(struct, N, onward, members)                  \
+        }
+
 int
 main(void)
 {
@@ -252,6 +266,7 @@ main(void)
         UNIONS(UNION_DESIGNATED_CHECK)
         SIZED(SIZED_ARRAY_CHECK)
         PADDED(PADDED_ARRAY_CHECK)
+        ONWARD(ONWARD_CHECK)
 
         printf("%ld checks, %ld differ\n", total, bad);
 
