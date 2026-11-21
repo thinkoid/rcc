@@ -7,7 +7,8 @@
    two ints in memory, a consumer that names no register; called()
    returns f() or g(); pointer() returns p or q; narrow() returns c, a
    char, or i, the char converted to int before its test; condition()
-   tests a ?: b in an if; into_register() assigns a ?: b to a register
+   tests a ?: b in an if, where it holds as a || b does and is its jump
+   code (backend.md 7.1); into_register() assigns a ?: b to a register
    variable; returned() returns x or y; discarded() calls f() and, when
    its result is 0, g(), the value dropped.
 
@@ -17,8 +18,9 @@
    f@PLT; cmpl $0, %eax; jne .Lcalled.2; call g@PLT, with no spill of
    f()'s result; pointer() the same at 64 bits, movq -8(%rbp), %rax;
    cmpq $0, %rax; narrow() the extending load movsbl -1(%rbp), %eax
-   before cmpl $0, %eax; condition() the join, then cmpl $0, %eax;
-   je .Lcondition.2 for the if; into_register() the condition loaded
+   before cmpl $0, %eax; condition() a compared in its slot,
+   cmpl $0, -4(%rbp), and jne past b's cmpl $0, -8(%rbp); je
+   .Lcondition.2, with no join; into_register() the condition loaded
    into the variable, movl -12(%rbp), %ebx; cmpl $0, %ebx; jne, and
    the second arm's movl -16(%rbp), %ebx, with no join in another
    register; returned() as in_memory() with nothing after the join but
@@ -30,8 +32,9 @@
    store str w0, [x16, :lo12:h]; called() as bl f; cbnz w0,
    .Lcalled.2; bl g; pointer() the same at 64 bits, cbnz x0; narrow()
    the load ldrb w0, [x29, #16], a char being unsigned there, before
-   cbnz w0; condition() the join, then cbz w0, .Lcondition.2 for the
-   if; into_register() ldr w19, [x29, #24]; cbnz w19 and the second
+   cbnz w0; condition() cbnz w0 past the second arm's load, ldr w0,
+   [x29, #20], and its cbz w0, .Lcondition.2, with no join;
+   into_register() ldr w19, [x29, #24]; cbnz w19 and the second
    arm's ldr w19, [x29, #28]; returned() as in_memory() with nothing
    after the join but the branch to the epilogue; and discarded() as
    called() with no value after the label. */

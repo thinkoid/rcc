@@ -1328,6 +1328,13 @@ subs x16, x16, #1; b.ne`.
   comparison mirrored (6.1), so `if (5 < x)` is `cmp w0, #5` and
   `b.le`.
 - `!e`, `&&`, `||`: the same shapes.
+- `c ? a : b` where an arm at least is a truth value, and `a ?: b`:
+  the same shapes. `if (c ? a < b : d)` is `cmp w0, w1; b.ge .L2; b
+  .L4` on the first arm's path and `ldr w0, [x29, #28]; cbz w0, .L2`
+  on the second's, as many instructions as the join's `cset` and
+  `cbz`. Two arms that are no truth value are joined and the join's
+  one `cbz` tests both, where `ldr; cbz` on each path would be an
+  instruction more.
 - `a, b`: `effect(a)`, then `cbranch(b, label, sense)`.
 - Any other expression: its value into `L`, then the test of zero,
   `cbnz L, label` or `cbz L, label`, one instruction (call 3). This

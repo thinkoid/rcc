@@ -64,7 +64,10 @@ report(const char *name, long x, long y, long got, long want)
     BOTH(int, stale_##N, (long)) BOTH(int, stale_not_##N, (long, long)) \
     BOTH(int, stale_and_##N, (long, long))                              \
     BOTH(int, mixed_##N, (T, T)) BOTH(T, held_##N, (T, T))              \
-    BOTH(T, arms_##N, (T, T))
+    BOTH(T, arms_##N, (T, T))                                           \
+    BOTH(int, ifsel_##N, (T, T)) BOTH(int, notsel_##N, (T, T))          \
+    BOTH(int, bothsel_##N, (T, T)) BOTH(int, loopsel_##N, (T, T))       \
+    BOTH(int, orsel_##N, (T, T)) BOTH(T, heldsel_##N, (T, T))
 /* clang-format on */
 
 TYPES(DECLARE_TYPE)
@@ -170,6 +173,12 @@ BOTH(long, deep_long, (long, long, long, long, long, long, long, long))
                                 CHECK(mixed_##N, x, y, ((T) x, (T) y));   \
                                 CHECK(held_##N, x, y, ((T) x, (T) y));    \
                                 CHECK(arms_##N, x, y, ((T) x, (T) y));    \
+                                CHECK(ifsel_##N, x, y, ((T) x, (T) y));   \
+                                CHECK(notsel_##N, x, y, ((T) x, (T) y));  \
+                                CHECK(bothsel_##N, x, y, ((T) x, (T) y)); \
+                                CHECK(loopsel_##N, x, y, ((T) x, (T) y)); \
+                                CHECK(orsel_##N, x, y, ((T) x, (T) y));   \
+                                CHECK(heldsel_##N, x, y, ((T) x, (T) y)); \
                         }                                                 \
                 }                                                         \
         }

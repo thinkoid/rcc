@@ -19,9 +19,10 @@
 // three instructions the stack writes: store_spill(), the store of a
 // register to a spill slot, all 8 bytes; reload_spill(), the reload from
 // one, all 8 bytes; mov(), a register copied into another at a width;
-// and two rows one_path() writes, cbranch(), the jump code, and
-// arm_into(), an arm of ?: into a register variable, each defined after
-// the include.  held_t and value_t are c1-common.hh's.
+// and two rows one_path() writes, cbranch(), the jump code, which
+// conditional_branch() writes too, and arm_into(), an arm of ?: into a
+// register variable, each defined after the include.  held_t and
+// value_t are c1-common.hh's.
 
 unsigned
 bit(reg_t r)
@@ -432,4 +433,49 @@ before_paths(state_t &s, const expr_t &e)
     spill_all(s);
 
     return incoming_t { s };
+}
+
+// A conditional as a condition, where jumps_on_arms(), backend.md 7.1
+// and aarch64.md 7.1: jump code, as && and || are, and no join.  The
+// condition jumps to the second arm when it fails, and each arm is a
+// condition of the same jump, the first followed by a jump past the
+// second.  GNU C's a ?: b holds where a || b does, and is its jump
+// code.  Each operand is tested without its conversion to the
+// conditional's type, under_widening()'s, which keeps whether it is 0.
+// Held values are saved as for the conditional's value,
+// before_paths()'s.
+void
+conditional_branch(state_t &s, const expr_t &e, int label, bool sense)
+{
+    const auto &c = as< conditional_t >(e);
+    const auto incoming = before_paths(s, e);
+
+    const auto &cond = under_widening(*c.cond);
+    const auto &no_arm = under_widening(*c.no);
+
+    if (!c.yes) {
+        if (sense) {
+            cbranch(s, cond, label, true);
+            cbranch(s, no_arm, label, true);
+            return;
+        }
+
+        const int past = new_label(s);
+        cbranch(s, cond, past, true);
+        cbranch(s, no_arm, label, false);
+        place_label(s, past);
+        return;
+    }
+
+    const int no = new_label(s);
+    const int end = new_label(s);
+
+    cbranch(s, cond, no, false);
+    cbranch(s, under_widening(*c.yes), label, sense);
+    jump(s, end);
+
+    place_label(s, no);
+    cbranch(s, no_arm, label, sense);
+
+    place_label(s, end);
 }

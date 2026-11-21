@@ -1920,6 +1920,26 @@ otherwise, without producing a value:
   skip:`. `||` is the mirror. Short circuit is the shape of the code;
   the second operand is not evaluated when the first decides (6.5.14p4,
   6.5.15p4).
+- `c ? a : b` where an arm at least is a truth value, a comparison,
+  `!`, `&&` or `||`: `cbranch(c, no, 0); cbranch(a, label, sense)`, a
+  jump past `b`, then `no: cbranch(b, label, sense)`, and no join.
+  Each operand is tested without its conversion to the conditional's
+  type, a widening or a change of signedness, which keeps whether it
+  is 0 (6.3.1.3p1, p2): `a < b` converted to `unsigned` is a truth
+  value still, and a `char` is tested at its width, `cmpb $0,
+  -1(%rbp)`. `if (c ? a < b : d)` on ints in memory is `cmpl $0,
+  -4(%rbp); je .L3; movl -8(%rbp), %eax; cmpl -12(%rbp), %eax; jge
+  .L2; jmp .L4; .L3: cmpl $0, -16(%rbp); je .L2`, two instructions
+  fewer than the join and its test. A truth value's jump code writes
+  no instruction its value does not, so the other arm's test on its
+  own path costs no more than the join's. Two arms that are no truth
+  value are a value, by the last row: the join is tested once, where a
+  test on each path would be one more, `cmpl $0, %eax; je` after the
+  call of `c ? f() : y` beside the second arm's own. GNU C's `a ?: b`
+  holds where `a || b` does and is its jump code, `cmpl $0, -4(%rbp);
+  jne` past `b`'s `cmpl $0, -8(%rbp); je`. Where the condition is an
+  operand's, the values held are saved before the first jump as for
+  the conditional's value (6.7).
 - `a, b`: `effect(a)`, then `cbranch(b, label, sense)` (6.6).
 - An operator whose own instruction sets the zero flag from the
   condition's value, and `== 0` or `!= 0` over one: that instruction,

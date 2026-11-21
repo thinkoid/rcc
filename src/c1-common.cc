@@ -592,6 +592,59 @@ is_comparison(binary_op_t op)
     }
 }
 
+// The operand under the conversions that keep whether a value is 0: an
+// integer or a pointer converted to one as wide or wider, which keeps 0
+// and takes no other value to 0 (6.3.1.3p1, p2; a pointer's conversion
+// writes no bit or extends, backend.md 6.3), so that a conditional's arm
+// converted to the conditional's type is tested as it is, (unsigned) (a
+// < b) as a < b and (int) c on a char as c (backend.md 7.1).
+const expr_t &
+under_widening(const expr_t &e)
+{
+    if (!is< cast_t >(e))
+        return e;
+
+    const auto &from = as< cast_t >(e).arg->type;
+    const bool scalars = (is< int_t >(from) || is< pointer_t >(from)) &&
+                         (is< int_t >(e.type) || is< pointer_t >(e.type));
+    if (!scalars || integer(e.type).width < integer(from).width)
+        return e;
+
+    return under_widening(*as< cast_t >(e).arg);
+}
+
+// Whether e is a truth value by its row, under the conversions
+// under_widening() looks through: a comparison, !, && or ||, whose value
+// is 0 or 1 set from a jump or a compare.  As a condition its jump code
+// writes no instruction its value does not (backend.md 7.1).
+bool
+truth_value(const expr_t &e)
+{
+    const auto &tested = under_widening(e);
+
+    if (is< unary_t >(tested))
+        return as< unary_t >(tested).op == unary_op_t::log_not;
+
+    if (!is< binary_t >(tested))
+        return false;
+
+    const auto op = as< binary_t >(tested).op;
+
+    return is_comparison(op) || op == binary_op_t::log_and ||
+           op == binary_op_t::log_or;
+}
+
+// Whether a conditional as a condition is jump code, backend.md 7.1:
+// GNU C's a ?: b, which holds where a || b does, and one an arm of which
+// at least is a truth value, truth_value()'s.  Two other arms are
+// joined and the join tested once, where each arm's own test would be
+// one test more.
+bool
+jumps_on_arms(const conditional_t &c)
+{
+    return !c.yes || truth_value(*c.yes) || truth_value(*c.no);
+}
+
 // Whether a and b may change places under op: +, *, &, | and ^, whose
 // value is the same either way (backend.md 6.1).
 bool

@@ -127,8 +127,8 @@ condition:
 	ldr	w0, [x29, #16]
 	cbnz	w0, .Lcondition.3
 	ldr	w0, [x29, #20]
-.Lcondition.3:
 	cbz	w0, .Lcondition.2
+.Lcondition.3:
 	mov	w0, #1
 	b	.Lcondition.1
 .Lcondition.2:

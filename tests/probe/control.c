@@ -11,7 +11,9 @@
 /* docs/aarch64.md 6.3 and 7.1, per type: the comparisons, !, && and ||
    and ?: for their values; each as the condition of an if; the test of
    zero, also on the operand of a narrowing cast, whose upper bits are
-   stale; and values held across the paths of a branch */
+   stale; values held across the paths of a branch; and ?: and a ?: b
+   as the condition of an if, of a while and under !, beside a value
+   held and a register variable an arm writes, docs/backend.md 7.1 */
 #define CONDITIONS(T, N)                                              \
         int lt_##N(T a, T b)                                          \
         {                                                             \
@@ -173,6 +175,46 @@
                 a || (y -= 1);                                        \
                 r = a < b ? x++ : y--;                                \
                 return r + x + y;                                     \
+        }                                                             \
+        int ifsel_##N(T a, T b)                                       \
+        {                                                             \
+                if (a ? a < b : b)                                    \
+                        return 1;                                     \
+                return 2;                                             \
+        }                                                             \
+        int notsel_##N(T a, T b)                                      \
+        {                                                             \
+                if (!(b ? a : a >= b))                                \
+                        return 1;                                     \
+                return 2;                                             \
+        }                                                             \
+        int bothsel_##N(T a, T b)                                     \
+        {                                                             \
+                if (a < b ? a != 0 : b > a || b == 0)                 \
+                        return 1;                                     \
+                return 2;                                             \
+        }                                                             \
+        int loopsel_##N(T a, T b)                                     \
+        {                                                             \
+                int n = 0;                                            \
+                while (n < 2 ? a < b : n < 5 && a != b)               \
+                        n = n + 1;                                    \
+                return n;                                             \
+        }                                                             \
+        int orsel_##N(T a, T b)                                       \
+        {                                                             \
+                if (a ?: b < a)                                       \
+                        return 1;                                     \
+                if (!(b ?: a))                                        \
+                        return 2;                                     \
+                return 3;                                             \
+        }                                                             \
+        T heldsel_##N(T a, T b)                                       \
+        {                                                             \
+                register T r = a;                                     \
+                T s = a + ((a ? a < b : b) ? b : 3);                  \
+                s = s + ((b ?: a) && a);                              \
+                return s + (r + ((b ? (r = b) < a : r) ? 1 : 2)) + r; \
         }
 
 TYPES(CONDITIONS)

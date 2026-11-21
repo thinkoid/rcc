@@ -13,11 +13,13 @@
 
    On x86-64 the listing must show each a ?: b as the value of a in a
    register, cmpl $0 of that register and a jne past b, which is
-   written into the same register, and call next@PLT once for each use.
+   written into the same register, and call next@PLT once for each use;
+   as a condition, the jne goes past b's own test.
 
    On aarch64 the listing must show each as the value of a in a
    register, cbnz on it past b, which is written into the same
-   register, and bl next once for each use. */
+   register, and bl next once for each use; as a condition, the cbnz
+   goes past b's own test. */
 int counter, calls;
 
 int

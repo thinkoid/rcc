@@ -4506,13 +4506,19 @@ rvalue_in(state_t &s, const expr_t &e, reg_t r)
 // false (!sense), a fall through otherwise, and no value.  A comparison
 // is cmp and b.cc; ! flips the sense; && and || are the shape of the
 // short circuit, 6.5.14p4, 6.5.15p4, the right operand not reached when
-// the left decides.  Any other scalar, a constant included, is its
+// the left decides, and so is a conditional that jumps_on_arms(),
+// conditional_branch()'s.  Any other scalar, a constant included, is its
 // value and the test of zero.
 void
 cbranch(state_t &s, const expr_t &e, int label, bool sense)
 {
     if (is< statement_expression_t >(e)) {
         statement_expression_branch(s, e, label, sense);
+        return;
+    }
+
+    if (is< conditional_t >(e) && jumps_on_arms(as< conditional_t >(e))) {
+        conditional_branch(s, e, label, sense);
         return;
     }
 

@@ -5189,7 +5189,8 @@ comparison_branch(state_t &s, const operation_t &b, int label, bool sense)
 // is cmp and jcc, a constant on its left mirrored to the right by
 // ordered(); ! flips the sense; && and || are the shape of the
 // short circuit, 6.5.14p4, 6.5.15p4, the right operand not reached when
-// the left decides.  A flag condition, and one compared with 0 by == or
+// the left decides, and so is a conditional that jumps_on_arms(),
+// conditional_branch()'s.  A flag condition, and one compared with 0 by == or
 // !=, jumps on its operator's own flags.  Any other scalar, a constant
 // or a pointer included, is its value compared with 0 at its own width.
 // An object in memory is compared in place, by condition_on(): alone,
@@ -5201,6 +5202,11 @@ cbranch(state_t &s, const expr_t &e, int label, bool sense)
 {
     if (is< statement_expression_t >(e)) {
         statement_expression_branch(s, e, label, sense);
+        return;
+    }
+
+    if (is< conditional_t >(e) && jumps_on_arms(as< conditional_t >(e))) {
+        conditional_branch(s, e, label, sense);
         return;
     }
 

@@ -101,13 +101,11 @@ condition:
 	.cfi_def_cfa_register %rbp
 	movl	%edi, -4(%rbp)
 	movl	%esi, -8(%rbp)
-	movl	-4(%rbp), %eax
-	cmpl	$0, %eax
+	cmpl	$0, -4(%rbp)
 	jne	.Lcondition.3
-	movl	-8(%rbp), %eax
-.Lcondition.3:
-	cmpl	$0, %eax
+	cmpl	$0, -8(%rbp)
 	je	.Lcondition.2
+.Lcondition.3:
 	movl	$1, %eax
 	jmp	.Lcondition.1
 .Lcondition.2:

@@ -136,8 +136,8 @@ main:
 	bl	next
 	cbnz	w0, .Lmain.20
 	mov	w0, #0
-.Lmain.20:
 	cbz	w0, .Lmain.19
+.Lmain.20:
 	mov	w0, #107
 	b	.Lmain.1
 .Lmain.19:

@@ -121,9 +121,9 @@ main:
 	cmpl	$0, %eax
 	jne	.Lmain.20
 	movl	$0, %eax
-.Lmain.20:
 	cmpl	$0, %eax
 	je	.Lmain.19
+.Lmain.20:
 	movl	$107, %eax
 	jmp	.Lmain.1
 .Lmain.19:
