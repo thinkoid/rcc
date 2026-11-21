@@ -299,6 +299,20 @@ Fix: none taken; a check of each access's width in the listings of
 Check: a compiler that reads a =char= local at 4 bytes fails =make
 test=.
 
+** TODO Paragraphs of the documents are ragged
+
+A sentence added to a paragraph of =docs/= or of =README.md= is
+written where it stands and the lines after it are left as they
+were, so that a change shows as itself. Many paragraphs now hold
+lines of a few words where the next word fits, and a few lines pass
+the margin, =docs/aarch64.md= line 394 among them.
+
+Fix: one pass that fills every paragraph to 70 columns, its text
+unchanged; tables, lists' markers and fenced text as they are.
+
+Check: a paragraph's words before and after are the same, and no
+line of a paragraph can take the next line's first word.
+
 * Parser
 
 ** TODO Assignment to a const object is not diagnosed

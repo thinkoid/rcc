@@ -1584,59 +1584,50 @@ walk from 27 by a conditional of two void calls.
 
 ## 11. Not yet
 
-Each use that reads or writes a record whole (chapter
-5: a `register` one, a record by value but the aarch64 `va_list`, and
-its value where a record is wanted, a scalar's place in a local's
-list among them), a string literal for a local array or for an array
-in a local's list, `char s[] = "..."` among them, a
-function whose parameter list is `(...)` alone, the layout
-of a struct or a
-union with a bit-field, an attribute that marks,
-`packed` and `aligned` among them, a packing of `#pragma pack`, no
-member, or a member of a type rcc does not
-use yet but a real floating one (chapter 3), an initializer of a
-flexible array member, an access of a floating
-member, C23's
-compatibility of two records of one tag, floating point, `_Bool` and
-`__int128` (each type is declared; a pointer to one is an ordinary
-pointer, and a use that needs the object is refused; a floating
-constant is a token, refused where an expression uses it),
-an enum's fixed underlying type, the use of an enum in its own list
-but behind a pointer, an object of an enum an attribute marks, an
-object of a typedef whose array size rcc
-cannot compute, a variable length array (a parameter's array of a
+Each use that reads or writes a record whole (chapter 5: a `register`
+one, a record by value but the aarch64 `va_list`, and its value where
+a record is wanted, a scalar's place in a local's list among them), a
+string literal for a local array or for an array in a local's list,
+`char s[] = "..."` among them, a function whose parameter list is
+`(...)` alone, the layout of a struct or a union with a bit-field, an
+attribute that marks, `packed` and `aligned` among them, a packing of
+`#pragma pack`, no member, or a member of a type rcc does not use yet
+but a real floating one (chapter 3), an initializer of a flexible
+array member, an access of a floating member, C23's compatibility of
+two records of one tag, floating point, `_Bool` and `__int128` (each
+type is declared; a pointer to one is an ordinary pointer, and a use
+that needs the object is refused; a floating constant is a token,
+refused where an expression uses it), an enum's fixed underlying type,
+the use of an enum in its own list but behind a pointer, an object of
+an enum an attribute marks, an object of a typedef whose array size
+rcc cannot compute, a variable length array (a parameter's array of a
 size that is not constant is the pointer the parameter is adjusted to,
-and the size is not evaluated), GNU C's range designator, its
-array designator without the `=` and its obsolete member designator,
-a local scalar's brace
-initializer, a declaration through a typedef of function
-type, a UTF-8 character constant, `u8'x'`, a character constant of
-more than one character and no prefix, `#pragma weak` and `#pragma
-GCC visibility` (chapter 2), the checks of the qualifiers
-(`const`
-and `volatile` are dropped, so an assignment to a `const` object and
-a conversion that discards a qualifier draw no diagnostic, and
-`(const void)` is taken as `(void)`), an atomic object, GNU C's case
-range, `case 1 ... 5:`, its labels as values, `&&next` and `goto *p`,
-its statement expression where a
-constant expression is wanted (chapter 5), and `alloca`,
-which `alloca.h` defines as `__builtin_alloca`, each refused by its
-name, the body of a system header's `static inline`
-function, whose use is refused, and of the program's own one whose
-head or body holds a not-yet, whose use is refused by its words,
-and a system header's `static inline` declaration without a body, a
-`register` array (6.3.2.1p3), `inline` on a function
-definition without `static`, what an attribute that rcc does
-not honour marks (an object of a typedef so declared, the use of a
-function or of an object at file scope, a local, the definition of a
-function or of an object at file scope),
-`__asm__` as a statement, at file scope or on a local, and C's
-keywords outside the subset: `_Complex` outside the specifiers of a
-floating type, `_Imaginary`, the `_Atomic` qualifier outside a
-typedef, `_Alignas`, `_Alignof` of an expression, `_Generic`,
-`_Thread_local`. Each
-arrives when a probe needs it. A program that includes `tgmath.h` is
-not yet, refused at the header's first overloaded declaration
-(chapter 10): its type-generic macros need overloading, which is not
-C, and floating point first. The preprocessor stays external for
-good.
+and the size is not evaluated), GNU C's range designator, its array
+designator without the `=` and its obsolete member designator, a local
+scalar's brace initializer, a declaration through a typedef of
+function type, a UTF-8 character constant, `u8'x'`, a character
+constant of more than one character and no prefix, `#pragma weak` and
+`#pragma GCC visibility` (chapter 2), the checks of the qualifiers
+(`const` and `volatile` are dropped, so an assignment to a `const`
+object and a conversion that discards a qualifier draw no diagnostic,
+and `(const void)` is taken as `(void)`), an atomic object, GNU C's
+case range, `case 1 ... 5:`, its labels as values, `&&next` and `goto
+*p`, its statement expression where a constant expression is wanted
+(chapter 5), and `alloca`, which `alloca.h` defines as
+`__builtin_alloca`, each refused by its name, the body of a system
+header's `static inline` function, whose use is refused, and of the
+program's own one whose head or body holds a not-yet, whose use is
+refused by its words, and a system header's `static inline`
+declaration without a body, a `register` array (6.3.2.1p3), `inline`
+on a function definition without `static`, what an attribute that rcc
+does not honour marks (an object of a typedef so declared, the use of
+a function or of an object at file scope, a local, the definition of a
+function or of an object at file scope), `__asm__` as a statement, at
+file scope or on a local, and C's keywords outside the subset:
+`_Complex` outside the specifiers of a floating type, `_Imaginary`,
+the `_Atomic` qualifier outside a typedef, `_Alignas`, `_Alignof` of
+an expression, `_Generic`, `_Thread_local`. Each arrives when a probe
+needs it. A program that includes `tgmath.h` is not yet, refused at
+the header's first overloaded declaration (chapter 10): its
+type-generic macros need overloading, which is not C, and floating
+point first. The preprocessor stays external for good.
