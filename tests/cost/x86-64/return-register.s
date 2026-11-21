@@ -780,8 +780,7 @@ written_sum:
 	movl	-28(%rbp), %ecx
 	movq	%rbx, %rax
 	movq	-24(%rbp), %rbx
-	movl	$0, %edx
-	addl	%edx, %ecx
+	addl	$0, %ecx
 	movslq	%ecx, %rcx
 	addq	%rcx, %rax
 	jmp	.Lwritten_sum.1
@@ -810,8 +809,7 @@ written_row:
 	movl	-28(%rbp), %ecx
 	movq	%rbx, %rax
 	movq	-24(%rbp), %rbx
-	movl	$0, %edx
-	addl	%edx, %ecx
+	addl	$0, %ecx
 	movslq	%ecx, %rcx
 	imulq	$12, %rcx, %rcx
 	addq	%rcx, %rax

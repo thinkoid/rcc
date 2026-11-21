@@ -5830,8 +5830,11 @@ take_back(state_t &s, const context_t &c)
 
 #include "c1-statements.hh"
 
-// The operand a row takes for e, backend.md 6.1: e, but for a statement
-// expression that leaves the values held beside it where they are,
+// The operand a row takes for e, backend.md 6.1: e, but for a comma,
+// whose left operand is generated for its effect, 6.5.18p2, and whose
+// right operand's operand the row then takes in its own form, addl
+// -12(%rbp), %eax for a + (t = b, t); and for a statement expression
+// that leaves the values held beside it where they are,
 // saves_beside()'s, and whose value is no read of a register variable
 // its block declares: its statements, marked as for its value, then its
 // value's operand, which the row takes in its own form, an object in
@@ -5840,6 +5843,11 @@ take_back(state_t &s, const context_t &c)
 const expr_t &
 operand_of(state_t &s, const expr_t &e)
 {
+    if (is< binary_t >(e) && as< binary_t >(e).op == binary_op_t::comma) {
+        effect(s, *as< binary_t >(e).lhs);
+        return operand_of(s, *as< binary_t >(e).rhs);
+    }
+
     if (!is< statement_expression_t >(e))
         return e;
 

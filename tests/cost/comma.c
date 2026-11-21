@@ -7,8 +7,11 @@
    movl $0, -12(%rbp), and the step as addl $1, -8(%rbp) and
    addl $2, -12(%rbp), with no load, no copy of an old value and no
    store; of last(), a++ as addl $1, -4(%rbp) and then b loaded for the
-   value; and of test(), a = b as b loaded and stored to a's slot, then
-   c compared in its slot, cmpl $0, -12(%rbp), for the jump.
+   value; of test(), a = b as b loaded and stored to a's slot, then
+   c compared in its slot, cmpl $0, -12(%rbp), for the jump; and of
+   operand(), t = b as b loaded and stored to t's slot, then t's slot
+   the add's own operand, addl -12(%rbp), %eax, as in a + ({ t = b;
+   t; }).
 
    On aarch64 the listing of sum() must show the initializer's two
    constants, both zero, each stored in one instruction,
@@ -16,8 +19,10 @@
    an add and a store for each, add w0, w0, #1 and add w0, w0, #2, since
    the machine has no memory form, with no copy of an old value; of
    last(), a++ as the load, add w0, w0, #1 and the store, and then b
-   loaded for the value; and of test(), a = b as b loaded and stored to
-   a's slot, then c loaded and tested with cbz w0 for the jump. */
+   loaded for the value; of test(), a = b as b loaded and stored to
+   a's slot, then c loaded and tested with cbz w0 for the jump; and of
+   operand(), t = b as b loaded and stored to t's slot, then t loaded,
+   ldr w1, [x29, #24], for add w0, w0, w1. */
 int
 sum(int n)
 {
@@ -44,4 +49,12 @@ test(int a, int b, int c)
                 return a;
 
         return 0;
+}
+
+int
+operand(int a, int b)
+{
+        int t;
+
+        return a + (t = b, t);
 }

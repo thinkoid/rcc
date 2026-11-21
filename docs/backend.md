@@ -772,7 +772,9 @@ bytes at the width are the value. `x + y` on two locals is `movl
 `int` is `addl -8(%rbp), %eax`, the `int` under `(unsigned)`. The
 read may be the value of a statement expression whose statements
 leave the values held beside it where they are, read after its
-statements (6.7). The rows that take the form are:
+statements (6.7), or the right operand of a comma, read after the
+left operand's effect (6.6): `a + (t = b, t)` is `addl -12(%rbp),
+%eax` after the store to `t`. The rows that take the form are:
 
 - `+`, `-`, `&`, `|`, `^`, `*`, `/` and `%` (6.3, 6.5), the
   comparisons (6.3, 7.1) and `&` as a condition, `testl -8(%rbp),

@@ -145,18 +145,6 @@ variable's read is such an arm on aarch64 alone.
 Check: those functions an instruction shorter on aarch64, and no
 function longer.
 
-** TODO x86-64: a comma as a binary operator's right operand is generated as a value
-
-~a + (t = b, t)~ is =movl -12(%rbp), %ecx; addl %ecx, %eax=, where
-~a + ({ t = b; t; })~ is =addl -12(%rbp), %eax=: a statement
-expression's value is taken in the row's own form after its
-statements, and a comma's right operand is not.
-
-Fix: the comma's right operand is taken in the row's form after the
-left operand's effect.
-
-Check: the two listings are the same, and no function longer.
-
 ** TODO A statement expression that saves nothing is still read as a call ahead
 
 The walks that look ahead of an operand, and the test of a register
