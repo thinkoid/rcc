@@ -1,0 +1,2 @@
+tests/error/bit-field-negative-width.c:5:17: error: bit-field 'w' of negative width
+status 1

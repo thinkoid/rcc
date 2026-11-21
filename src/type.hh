@@ -189,13 +189,16 @@ struct member_t
 // no size and no alignment, as a not-yet type has none.  flexible says
 // that the record is a struct with a flexible array member, or a union
 // with a member of such a record, possibly through other unions, which
-// 6.7.3.2p3 keeps out of a struct and out of an array.
+// 6.7.3.2p3 keeps out of a struct and out of an array.  bit_fields is
+// the names of its named bit-fields, which rcc lays out none of yet and
+// keeps for their names alone, so that no other member takes one.
 struct record_t
 {
     bool is_union;
     std::string tag;
     bool complete = false;
     std::vector< member_t > members = { };
+    std::vector< std::string > bit_fields = { };
     long size = 0;
     int alignment = 0;
     std::string not_yet = { };

@@ -1,0 +1,2 @@
+tests/error/bit-field-bool-wider-than-one.c:6:19: error: bit-field 'b' of 2 bits, wider than its type's 1
+status 1

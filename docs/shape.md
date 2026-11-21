@@ -867,7 +867,12 @@ complete object type (6.7.3.2p3, p11): a function, `void`, an
 incomplete record, the record being defined among them, and a second
 member of one name are errors, and so is an array of unknown size
 anywhere but last in a struct of two named members or more, where it
-is a flexible array member (p20). A member's own array of size zero,
+is a flexible array member (p20). A bit-field's width is not
+negative, does not exceed its type's width, 1 for `_Bool` and its
+bits for any other, and is zero only on a field of no name (p4); a
+named bit-field's name is a member's, kept though rcc lays out no
+bit-field yet. Each is an error where the field is declared.
+A member's own array of size zero,
 `unsigned char f_handle[0];` in glibc's `struct file_handle`, is GNU
 C's spelling of one: where a flexible array member may stand it is
 read as `[]`, with no word in a system header's text and a warning in

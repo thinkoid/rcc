@@ -1,0 +1,2 @@
+tests/error/bit-field-duplicate-in-anonymous.c:11:10: error: duplicate member 'a'
+status 1

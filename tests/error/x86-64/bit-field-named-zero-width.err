@@ -1,0 +1,2 @@
+tests/error/bit-field-named-zero-width.c:6:22: error: named bit-field 'y' of zero width
+status 1

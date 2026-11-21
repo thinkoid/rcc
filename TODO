@@ -534,24 +534,6 @@ read at run time.
 Check: the six programs of =tests/error= for these, each a cost
 program when built.
 
-** TODO A bit-field's width and name are not checked
-
-~int y : 0;~ with a name, ~int w : -1;~ and ~int z : 33;~ compile,
-though 6.7.3.2p4 asks a width that is not negative and does not
-exceed the type's, and no declarator where it is zero; =clang=
-refuses each. A field's name is not looked for among the record's
-members either: ~int a : 3; int a;~ and a field of the name of an
-anonymous member's compile, where a member declared twice is an
-error. The record is not laid out, so nothing is written wrong; the
-program is taken where it is invalid. =docs/design-calls.md= 4.1
-says rcc has every constant expression "but the width of a
-bit-field", and the parser evaluates the width.
-
-Fix: the three constraints on the width and the duplicate name are
-errors where the field is declared; the sentence of 4.1 follows.
-
-Check: a program of =tests/error= for each, pinned.
-
 ** TODO A type rcc does not honour redeclared with the type behind it is an error
 
 ~void f(word_t); void f(long);~, =word_t= a typedef through a

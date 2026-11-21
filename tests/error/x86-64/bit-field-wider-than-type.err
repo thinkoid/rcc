@@ -1,0 +1,2 @@
+tests/error/bit-field-wider-than-type.c:5:17: error: bit-field 'z' of 33 bits, wider than its type's 32
+status 1

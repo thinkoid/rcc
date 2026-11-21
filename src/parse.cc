@@ -6678,13 +6678,19 @@ refuse_member_after_flexible(const member_list_t &list)
 
 // The width of a bit-field after its ':', an integer constant
 // expression, 6.7.3.2p4, of a bit-field whose type is an integer type,
-// p5, _Bool among them, or one rcc does not use yet.  rcc lays out no
-// bit-field yet, so its record is a not-yet record; attributes after
-// the width are said of the member, and change nothing that is laid
-// out.  A bit-field after a flexible array member is an error, as any
-// member there is.
+// p5, _Bool among them, or one rcc does not use yet.  The width is not
+// negative, does not exceed the type's, 1 for _Bool by p4's footnote
+// and its bits for any other, and is zero only where the field has no
+// name, p4; a type rcc does not use yet has no width to exceed.  name
+// is the field's, or null.  rcc lays out no bit-field yet, so its
+// record is a not-yet record; attributes after the width are said of
+// the member, and change nothing that is laid out.  A bit-field after
+// a flexible array member is an error, as any member there is.
 void
-bit_field(parser_t &p, member_list_t &list, const type_t &t)
+bit_field(parser_t &p,
+          member_list_t &list,
+          const type_t &t,
+          const token_t *name)
 {
     refuse_member_after_flexible(list);
 
@@ -6698,6 +6704,22 @@ bit_field(parser_t &p, member_list_t &list, const type_t &t)
         refuse_unfolded(
             start, width,
             "bit-field width is not an integer constant expression");
+
+    const std::string field =
+        name ? "bit-field " + quoted(name->text) : "unnamed bit-field";
+    const exact_t bits = exact_value(width);
+    if (bits < 0)
+        fail(start, field + " of negative width");
+
+    if (bits == 0 && name)
+        fail(start, "named " + field + " of zero width");
+
+    const int most = is_bool(t) ? 1 : is< int_t >(t) ? as< int_t >(t).width : 0;
+    if (most > 0 && bits > most)
+        fail(start,
+             field + " of " +
+                 std::to_string(static_cast< unsigned long long >(bits)) +
+                 " bits, wider than its type's " + std::to_string(most));
 
     attribute_specifier_list(p);
     mark_not_yet(list.record, "bit-field in " + record_words(list.record));
@@ -6784,6 +6806,35 @@ member_named(const record_t &r, std::string_view name)
     return std::nullopt;
 }
 
+// The names of a record's named bit-fields, its anonymous members' at
+// any depth among them, 6.7.3.2p15.
+std::vector< std::string >
+bit_field_names(const record_t &r)
+{
+    std::vector< std::string > names = r.bit_fields;
+
+    for (const member_t &m : r.members) {
+        if (!m.name.empty())
+            continue;
+
+        const auto inner = bit_field_names(*as< record_type_t >(m.type).record);
+        names.insert(names.end(), inner.begin(), inner.end());
+    }
+
+    return names;
+}
+
+// Whether a record declares a member of the name, a bit-field among
+// them, its anonymous members' at any depth among them, 6.7.3.2p15.
+bool
+declares_member(const record_t &r, std::string_view name)
+{
+    const auto bit_fields = bit_field_names(r);
+
+    return member_named(r, name) ||
+           std::ranges::find(bit_fields, name) != bit_fields.end();
+}
+
 // The names of a record's members, its anonymous members' at any depth
 // among them, 6.7.3.2p15.
 std::vector< std::string >
@@ -6805,8 +6856,8 @@ member_names(const record_t &r)
 }
 
 // A named member, its type checked and its name one the record has not
-// declared yet, its anonymous members' among them, 6.7.3.2p1, p15 and
-// 6.2.3p1: each record is a name space of its own.  A member after a
+// declared yet, its anonymous members' and its bit-fields' among them,
+// 6.7.3.2p1, p15 and 6.2.3p1: each record is a name space of its own.  A member after a
 // flexible array member is an error, p3.  zero is the member's own
 // array's size written as zero, or null.  qualifiers are those its
 // declaration says of it.
@@ -6823,7 +6874,7 @@ add_member(member_list_t &list,
 
     require_member_type(name, t, zero, list);
 
-    if (member_named(r, name.text))
+    if (declares_member(r, name.text))
         fail(name, "duplicate member " + quoted(name.text));
 
     r.members.push_back(member_t { std::string(name.text), t, 0, qualifiers });
@@ -6848,16 +6899,34 @@ anonymous_member(const token_t &semicolon,
     const record_t &inner = *as< record_type_t >(t).record;
 
     for (const std::string &name : member_names(inner)) {
-        if (member_named(r, name))
+        if (declares_member(r, name))
             fail(semicolon, "duplicate member " + quoted(name));
 
         ++list.named;
     }
 
+    for (const std::string &name : bit_field_names(inner))
+        if (declares_member(r, name))
+            fail(semicolon, "duplicate member " + quoted(name));
+
     if (const std::string *words = not_yet_in(t))
         mark_not_yet(r, *words);
 
     r.members.push_back(member_t { { }, t, 0, qualifiers });
+}
+
+// A named bit-field's name, one the record has not declared yet, its
+// anonymous members' and its bit-fields' among them, 6.7.3.2p1, p15 and
+// 6.2.3p1, kept for the members declared after it.
+void
+add_bit_field(member_list_t &list, const token_t &name)
+{
+    record_t &r = list.record;
+
+    if (declares_member(r, name.text))
+        fail(name, "duplicate member " + quoted(name.text));
+
+    r.bit_fields.emplace_back(name.text);
 }
 
 // One member declarator, 6.7.3.2p1: a declarator, which names the
@@ -6871,7 +6940,7 @@ void
 member_declarator(parser_t &p, const specifiers_t &spec, member_list_t &list)
 {
     if (peek(p).kind == tok_t::colon) {
-        bit_field(p, list, spec.type);
+        bit_field(p, list, spec.type, nullptr);
         return;
     }
 
@@ -6888,7 +6957,8 @@ member_declarator(parser_t &p, const specifiers_t &spec, member_list_t &list)
                                       record_words(list.record));
 
     if (peek(p).kind == tok_t::colon) {
-        bit_field(p, list, d.type);
+        bit_field(p, list, d.type, d.name);
+        add_bit_field(list, *d.name);
         return;
     }
 
