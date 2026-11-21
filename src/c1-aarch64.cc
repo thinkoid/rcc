@@ -146,6 +146,11 @@ struct state_t
     long age = 0;
     int live = 0;
 
+    // the values held, live's count, by the expression around the
+    // statement expression whose statements are generated, which a
+    // statement leaves as it finds them; 0 outside one
+    int floor = 0;
+
     // the registers the save area holds, which the body's first slot
     // lies above
     int saved = 0;
@@ -5258,6 +5263,7 @@ function(state_t &s, const function_decl_t &fd)
     s.values.clear();
     s.age = 0;
     s.live = 0;
+    s.floor = 0;
     s.saved = fd.registers;
     s.in_place = -1;
     s.frame = saved_at(s.saved);

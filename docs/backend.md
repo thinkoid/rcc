@@ -1617,8 +1617,10 @@ is pushed as it is evaluated. The three entry points:
 The effect context reaches through the operators that discard a
 value: the operand of a cast to void, the arms of a conditional
 whose value is not wanted, a void one or one in the effect context,
-and the left operand of a comma. `(void) (i = 0);` and `c ? (i = 1) :
-(i = 2);` thus store each constant in one instruction.
+the left operand of a comma, and the value of a statement expression
+in the effect context, whose statements are statements (6.7). `(void)
+(i = 0);` and `c ? (i = 1) : (i = 2);` thus store each constant in one
+instruction.
 
 The comma's left operand is in the effect context wherever the comma
 stands: "The left operand of a comma operator is evaluated as a void
@@ -1851,10 +1853,37 @@ A borrowed read needs nothing at a call. Its register is
 callee-saved (3.2), and the callee cannot write a variable that has
 no address.
 
+**A statement expression.** GNU C's `({ ... })` holds statements where
+an expression stands, and they may branch, loop, call and write a
+register variable whose read is held. The invariant is the branch's,
+and it is established the same way, before the first statement: every
+owned value is spilled, every borrowed read that the block writes is
+saved, and every held value is marked until the value is computed. The
+statements are then generated as statements: the values held are below
+a floor, `s.floor`, which each statement leaves as it finds them, and
+the context the rows around the expression left, the registers
+reserved and held out, the copy a consumer names, the read written in
+place, is set aside for them, so each statement's listing is its own;
+`held()` of `statement-expression` is `movl -4(%rbp), %eax; movq
+%rax, -16(%rbp); call g@PLT; movl -8(%rbp), %eax; addl -16(%rbp),
+%eax` for `a + ({ g(); b; })`. The value is then generated in the
+expression's context, handed the register its consumer names and a
+register variable as a comma's right operand is (6.1). A borrowed read
+of a register variable the block declares is copied into an
+expression register, `movl %ebx, %eax`: the variable's life ends with
+the block (6.2.4p6), and a block after it, a sibling statement
+expression's, takes its register (chapter 4). A `break`, a `continue`,
+a `goto` or a `return` out of the block writes its jump alone: no
+expression register holds a value then, so the target, a statement
+boundary, finds what it expects, and the spill slots are left as they
+are. A statement expression is a call to the walks that look ahead,
+`pinned_within()`, `moved_within()` and `spills_within()`, since it
+spills every held value first.
+
 **One operation saves a held value**, whichever kind it is: the
 spill of 6.2 for an owned one, the store of the variable's register
-for a borrowed read. A branch uses both halves and a call the
-first.
+for a borrowed read. A branch and a statement expression use both
+halves and a call the first.
 
 ## 7. Conditions and control
 

@@ -13,7 +13,8 @@
 // serve it.
 //
 // Before the include the generator declares reg_t; state_t with body,
-// live, ret, terminated, jump_targets, user_labels and case_labels;
+// live, floor, ret, terminated, jump_targets, user_labels and
+// case_labels;
 // loop_alignment, the power of two of .p2align before a loop's head,
 // 0 for none;
 // result_register, the register the convention returns a result in;
@@ -542,7 +543,10 @@ if_stmt(state_t &s, const if_t &i)
 }
 
 // Every value an expression statement holds is consumed by its end;
-// nothing is held from one statement to the next.
+// nothing is held from one statement to the next.  A statement
+// expression's statements run with the values of the expression around
+// it held below the floor, which they leave as they find them
+// (backend.md 6.7).
 void
 statement(state_t &s, const stmt_t &st)
 {
@@ -575,6 +579,6 @@ statement(state_t &s, const stmt_t &st)
     else
         return_stmt(s, as< return_t >(st));
 
-    if (s.live != 0)
+    if (s.live != s.floor)
         throw std::logic_error("c1: a value held across a statement");
 }

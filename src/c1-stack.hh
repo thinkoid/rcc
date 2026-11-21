@@ -417,7 +417,9 @@ private:
 // would leave the paths with two register maps, so each value is then
 // marked held across the paths until they meet, where the caller's
 // incoming_t ends, and a copy, a spill or a reload of one inside them is
-// an error of the generator, not a wrong listing.
+// an error of the generator, not a wrong listing.  A statement
+// expression's statements, which may branch, loop and call, are taken
+// as such paths, from their first to the expression's value.
 incoming_t
 before_paths(state_t &s, const expr_t &e)
 {

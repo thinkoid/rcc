@@ -289,11 +289,104 @@ is_step(unary_op_t op)
            op == unary_op_t::post_inc || op == unary_op_t::post_dec;
 }
 
+namespace {
+
+template< typename F >
+bool any_expression(const stmt_t &, const F &);
+
+// Whether test holds of an expression of the statements, at any depth of
+// the statements they hold: an expression statement's, a declaration's
+// initializer, the condition of an if, a switch or a loop, a for's step
+// and a return's value.
+template< typename F >
+bool
+any_expression(const std::vector< stmt_t > &items, const F &test)
+{
+    return std::ranges::any_of(
+        items, [&test](const stmt_t &st) { return any_expression(st, test); });
+}
+
+template< typename F >
+bool
+any_expression(const stmt_ptr_t &st, const F &test)
+{
+    return st && any_expression(*st, test);
+}
+
+template< typename F >
+bool
+any_expression(const std::optional< expr_t > &e, const F &test)
+{
+    return e && test(*e);
+}
+
+template< typename F >
+bool
+any_expression(const stmt_t &st, const F &test)
+{
+    if (is< expr_stmt_t >(st))
+        return any_expression(as< expr_stmt_t >(st).e, test);
+
+    if (is< decl_stmt_t >(st))
+        return any_expression(as< decl_stmt_t >(st).init, test);
+
+    if (is< block_t >(st))
+        return any_expression(as< block_t >(st).body, test);
+
+    if (is< if_t >(st)) {
+        const auto &i = as< if_t >(st);
+        return test(i.cond) || any_expression(i.yes, test) ||
+               any_expression(i.no, test);
+    }
+
+    if (is< switch_t >(st))
+        return test(as< switch_t >(st).cond) ||
+               any_expression(as< switch_t >(st).body, test);
+
+    if (is< while_t >(st))
+        return test(as< while_t >(st).cond) ||
+               any_expression(as< while_t >(st).body, test);
+
+    if (is< do_t >(st))
+        return any_expression(as< do_t >(st).body, test) ||
+               test(as< do_t >(st).cond);
+
+    if (is< for_t >(st)) {
+        const auto &f = as< for_t >(st);
+        return any_expression(f.init, test) || any_expression(f.cond, test) ||
+               any_expression(f.step, test) || any_expression(f.body, test);
+    }
+
+    if (is< return_t >(st))
+        return any_expression(as< return_t >(st).value, test);
+
+    return false;
+}
+
+// Whether test holds of an expression of a statement expression: of its
+// statements, or of its value.
+template< typename F >
+bool
+any_expression(const statement_expression_t &x, const F &test)
+{
+    return any_expression(x.body, test) || (x.value && test(*x.value));
+}
+
+} // namespace
+
 // Whether evaluating e may write the register variable sym: an
-// assignment to it or a ++ or -- of it anywhere in e.
+// assignment to it or a ++ or -- of it anywhere in e, in the statements
+// of a statement expression in e among them.  A declaration there
+// writes the block's own variable, which no read held outside the block
+// is of.
 bool
 writes(const expr_t &e, const symbol_t *sym)
 {
+    if (is< statement_expression_t >(e))
+        return any_expression(
+            as< statement_expression_t >(e),
+            [sym](const expr_t &operand) { return writes(operand, sym); });
+
     if (is< unary_t >(e)) {
         const auto &u = as< unary_t >(e);
         return (is_step(u.op) && register_variable(*u.arg) == sym) ||
@@ -432,13 +525,19 @@ retypes(const cast_t &c, const type_t &to, const into_t *into)
 }
 
 // Whether e names the register variable sym anywhere, to read it or to
-// write it.  Such a variable has no address, 6.5.4.2p1, so no other
+// write it, in the statements of a statement expression in e among
+// them.  Such a variable has no address, 6.5.4.2p1, so no other
 // expression can reach it.
 bool
 names(const expr_t &e, const symbol_t *sym)
 {
     if (is< name_t >(e))
         return as< name_t >(e).sym == sym;
+
+    if (is< statement_expression_t >(e))
+        return any_expression(
+            as< statement_expression_t >(e),
+            [sym](const expr_t &operand) { return names(operand, sym); });
 
     if (is< unary_t >(e))
         return names(*as< unary_t >(e).arg, sym);

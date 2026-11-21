@@ -122,6 +122,11 @@ struct state_t
     long age = 0;
     int live = 0;
 
+    // the values held, live's count, by the expression around the
+    // statement expression whose statements are generated, which a
+    // statement leaves as it finds them; 0 outside one
+    int floor = 0;
+
     // the registers the prologue pushes, which the body's first slot
     // lies below
     int saved = 0;
@@ -575,11 +580,14 @@ pins(const expr_t &e)
 // may have to move out of one of them, as 6.5's boundary has it for a
 // division deeper in a right operand, and a value of e generated
 // outside one may have to move into it, as ?:'s second arm into a
-// first arm's call result.
+// first arm's call result.  A statement expression is taken as a call:
+// its statements may call, and it spills every held value first, as a
+// call does (6.7).
 unsigned
 pinned_within(const expr_t &e)
 {
-    const unsigned own = is< call_t >(e) ? bit(rax) : pins(e);
+    const bool calls = is< call_t >(e) || is< statement_expression_t >(e);
+    const unsigned own = calls ? bit(rax) : pins(e);
 
     if (is< unary_t >(e))
         return own | pinned_within(*as< unary_t >(e).arg);
@@ -617,13 +625,14 @@ pinned_within(const expr_t &e)
 }
 
 // The registers a pinned instruction within e would move a value held
-// across e out of, 6.5: pins() over the tree, but not within a call or
-// a branch of &&, || or ?:, which spill every held value first,
-// wherever it is (6.7).
+// across e out of, 6.5: pins() over the tree, but not within a call, a
+// branch of &&, || or ?:, or a statement expression, which spill every
+// held value first, wherever it is (6.7).
 unsigned
 moved_within(const expr_t &e)
 {
-    if (is< call_t >(e) || is< conditional_t >(e))
+    if (is< call_t >(e) || is< conditional_t >(e) ||
+        is< statement_expression_t >(e))
         return 0;
 
     if (is< unary_t >(e))
@@ -692,6 +701,12 @@ pinned_by(const assign_t &a)
 value_t
 rvalue(state_t &, const expr_t &, into_t * = nullptr, unsigned wanted = 0);
 void effect(state_t &, const expr_t &);
+
+// GNU C's statement expression's rows, which generate its statements and
+// so come after them.
+value_t statement_expression(state_t &, const expr_t &, into_t *, unsigned);
+void statement_expression_effect(state_t &, const expr_t &);
+void statement_expression_branch(state_t &, const expr_t &, int, bool);
 
 // The value of e generated while the registers in pinned are left for
 // last, so that it does not land where an instruction generated after
@@ -1964,11 +1979,12 @@ address_avoiding(state_t &s, const expr_t &e, unsigned pinned)
 }
 
 // Whether generating e spills every value held across it, 6.7: a call
-// within it, or a branch of &&, || or ?:.
+// within it, a branch of &&, || or ?:, or a statement expression.
 bool
 spills_within(const expr_t &e)
 {
-    if (is< call_t >(e) || is< conditional_t >(e))
+    if (is< call_t >(e) || is< conditional_t >(e) ||
+        is< statement_expression_t >(e))
         return true;
 
     if (is< unary_t >(e))
@@ -4929,7 +4945,8 @@ pinned(const expr_t &e)
 // value names, rax for a return's, as a set of one, or none (6.1): the
 // rows that write a fresh register take it as the lowest free one,
 // unary(), binary(), assign() and cast() hand it on, and a conditional
-// joins its arms there.  GNU C's statement expression is not yet.
+// joins its arms there, and a statement expression hands both to its
+// value.
 value_t
 rvalue(state_t &s, const expr_t &e, into_t *into, unsigned wanted)
 {
@@ -4971,7 +4988,7 @@ rvalue(state_t &s, const expr_t &e, into_t *into, unsigned wanted)
         return cast(s, as< cast_t >(e), e.type, into, wanted);
 
     if (is< statement_expression_t >(e))
-        not_yet("statement expression");
+        return statement_expression(s, e, into, wanted);
 
     return conditional(s, e, into, wanted);
 }
@@ -5182,6 +5199,11 @@ comparison_branch(state_t &s, const operation_t &b, int label, bool sense)
 void
 cbranch(state_t &s, const expr_t &e, int label, bool sense)
 {
+    if (is< statement_expression_t >(e)) {
+        statement_expression_branch(s, e, label, sense);
+        return;
+    }
+
     if (is< unary_t >(e) && as< unary_t >(e).op == unary_op_t::log_not) {
         cbranch(s, *as< unary_t >(e).arg, label, !sense);
         return;
@@ -5626,6 +5648,11 @@ effect(state_t &s, const expr_t &e)
         return;
     }
 
+    if (is< statement_expression_t >(e)) {
+        statement_expression_effect(s, e);
+        return;
+    }
+
     release(s, rvalue(s, e));
 }
 
@@ -5742,7 +5769,130 @@ decl_stmt(state_t &s, const decl_stmt_t &d)
     initialize(s, *d.init, at(displacement), integer(sym->type).width);
 }
 
+// The context the rows of an expression leave for the rows below them:
+// the registers left for last, reserved and ahead, the copy of a
+// borrowed read a consumer names, the read a compound assignment writes
+// in place, and an address formed across a right operand that spills.
+// A statement expression's statements are generated with none of it,
+// so each is the statement it would be at a boundary of statements, and
+// its value with all of it, as the operand it is.
+struct context_t
+{
+    unsigned reserved;
+    unsigned ahead;
+    int named_read;
+    unsigned named_copy;
+    int in_place;
+    bool held_across;
+    bool defer_label;
+};
+
+context_t
+set_aside(state_t &s)
+{
+    return { .reserved = std::exchange(s.reserved, 0u),
+             .ahead = std::exchange(s.ahead, 0u),
+             .named_read = std::exchange(s.named_read, -1),
+             .named_copy = std::exchange(s.named_copy, 0u),
+             .in_place = std::exchange(s.in_place, -1),
+             .held_across = std::exchange(s.held_across, false),
+             .defer_label = std::exchange(s.defer_label, false) };
+}
+
+void
+take_back(state_t &s, const context_t &c)
+{
+    s.reserved = c.reserved;
+    s.ahead = c.ahead;
+    s.named_read = c.named_read;
+    s.named_copy = c.named_copy;
+    s.in_place = c.in_place;
+    s.held_across = c.held_across;
+    s.defer_label = c.defer_label;
+}
+
 #include "c1-statements.hh"
+
+// GNU C's statement expression (shape.md chapter 5)
+
+// Whether a statement expression's block declares sym among its own
+// items, an object whose life ends with the block, 6.2.4p6.
+bool
+declares(const statement_expression_t &x, const symbol_t *sym)
+{
+    return std::ranges::any_of(x.body, [sym](const stmt_t &st) {
+        return is< decl_stmt_t >(st) && as< decl_stmt_t >(st).sym == sym;
+    });
+}
+
+// A statement expression's statements, where it stands (G13), each the
+// statement it would be at a boundary of statements: the values the
+// expression around holds are saved by then, held below the floor and
+// marked held across the statements by the caller's before_paths(), and
+// that expression's context is set aside, set_aside()'s.
+void
+statement_expression_body(state_t &s, const statement_expression_t &x)
+{
+    const auto context = set_aside(s);
+    const int floor = std::exchange(s.floor, s.live);
+
+    for (const auto &st : x.body)
+        statement(s, st);
+
+    s.floor = floor;
+    take_back(s, context);
+}
+
+// The value of a statement expression, backend.md 6.7: the values held
+// when it starts saved as at a branch, before_paths()'s, since its
+// statements may branch, loop, call and write a register variable whose
+// read is held, and kept where they are until the value is computed;
+// then its statements; then its value, handed into and wanted as the
+// comma's right operand is.  A borrowed read of a register variable the
+// block declares is copied into an expression register: the variable's
+// register is given back at the block's end, and a block after it, a
+// sibling statement expression's, takes it.
+value_t
+statement_expression(state_t &s, const expr_t &e, into_t *into, unsigned wanted)
+{
+    const auto &x = as< statement_expression_t >(e);
+    const auto incoming = before_paths(s, e);
+
+    statement_expression_body(s, x);
+    if (!x.value)
+        return { };
+
+    const auto v = rvalue(s, *x.value, into, wanted);
+    if (borrowed(s, v) && declares(x, s.values[v.id].variable))
+        copy(s, v, take(s, 0));
+
+    return v;
+}
+
+// A statement expression for its effect: its statements, then its
+// value's effect, the values held saved first as for its value.
+void
+statement_expression_effect(state_t &s, const expr_t &e)
+{
+    const auto &x = as< statement_expression_t >(e);
+    const auto incoming = before_paths(s, e);
+
+    statement_expression_body(s, x);
+    if (x.value)
+        effect(s, *x.value);
+}
+
+// A statement expression as a condition: its statements, then its
+// value's jump code, the values held saved first as for its value.
+void
+statement_expression_branch(state_t &s, const expr_t &e, int label, bool sense)
+{
+    const auto &x = as< statement_expression_t >(e);
+    const auto incoming = before_paths(s, e);
+
+    statement_expression_body(s, x);
+    cbranch(s, *x.value, label, sense);
+}
 
 // functions
 
@@ -5886,6 +6036,7 @@ function(state_t &s, const function_decl_t &fd)
     s.values.clear();
     s.age = 0;
     s.live = 0;
+    s.floor = 0;
     s.saved = fd.registers;
     s.in_place = -1;
     s.reserved = 0;

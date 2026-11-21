@@ -134,7 +134,11 @@ so `struct point q = { f(), g() };` calls `f`, stores `q.x`, then
 calls `g`. An initializer a later one overrides (p20) is evaluated
 and stored all the same, which the paragraph's footnote lets an
 implementation leave out: `{ .x = f(), .x = g() }` calls `f` and
-stores its value, then calls `g` and stores over it.
+stores its value, then calls `g` and stores over it. GNU C's
+statement expression is one operand: its statements run where it
+stands, after the operands to its left and before those to its
+right, so `f() + ({ g(); 1; }) + h()` calls `f`, then `g`, then `h`,
+and a jump out of it leaves the operands to its right unevaluated.
 
 **G14. A loop runs until its condition says stop.** 6.8.6.1p4. `for
 (;;);` hangs. Instruction: the test at the top of the loop and a
