@@ -1,2 +1,2 @@
-tests/error/array-star-inner.c:5:17: error: not yet: variable length array
+tests/error/array-star-inner.c:5:17: error: not yet: pointer to variable length array
 status 1

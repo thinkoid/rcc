@@ -1,0 +1,2 @@
+tests/error/member-variable-length-array.c:9:22: error: member 'buf' of a variable length array type
+status 1

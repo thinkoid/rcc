@@ -74,10 +74,12 @@ enum class linkage_t { none, internal, external };
 // attribute changes or may change what the program depends on, as weak
 // or alias change the symbol a name links to, or when the symbol is a
 // static inline function, whose definition rcc does not compile; empty
-// when none of these holds.  by_reference marks a parameter whose
-// argument the convention passes as the address of a copy the caller
-// makes, the aarch64 va_list: the symbol is that pointer, and the
-// parser reads the parameter's name as the object it points to.
+// when none of these holds.  by_reference marks a symbol that is a
+// pointer to the object its name designates, and the parser reads the
+// name as the object it points to: a parameter whose argument the
+// convention passes as the address of a copy the caller makes, the
+// aarch64 va_list, and a variable length array, whose storage the
+// declaration takes at run time.
 struct symbol_t
 {
     std::string name;
@@ -247,6 +249,15 @@ struct statement_expression_t
     expr_ptr_t value;
 };
 
+// A stack allocation: storage of size bytes, its operand a size_t,
+// taken from the stack at run time; the value is its address, a
+// void *.  The parser makes one for the storage of a variable length
+// array (shape.md chapter 5).
+struct alloca_t
+{
+    expr_ptr_t size;
+};
+
 struct expr_t
 {
     type_t type;
@@ -259,7 +270,8 @@ struct expr_t
                   call_t,
                   cast_t,
                   conditional_t,
-                  statement_expression_t >
+                  statement_expression_t,
+                  alloca_t >
         v;
 };
 

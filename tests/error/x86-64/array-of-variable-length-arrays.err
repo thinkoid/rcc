@@ -1,0 +1,2 @@
+tests/error/array-of-variable-length-arrays.c:6:14: error: not yet: array of variable length arrays
+status 1

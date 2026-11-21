@@ -1,0 +1,2 @@
+tests/error/address-of-variable-length-array.c:8:16: error: not yet: address of variable length array 'buf'
+status 1

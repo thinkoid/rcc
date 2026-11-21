@@ -1,0 +1,2 @@
+tests/error/extern-variable-length-array.c:6:21: error: variable length array 'buf' declared 'extern'
+status 1

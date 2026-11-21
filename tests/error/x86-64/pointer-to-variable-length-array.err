@@ -1,0 +1,2 @@
+tests/error/pointer-to-variable-length-array.c:6:15: error: not yet: pointer to variable length array
+status 1

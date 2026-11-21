@@ -1,0 +1,2 @@
+tests/error/goto-into-variable-length-array.c:7:14: error: goto 'in' into the scope of variable length array 'buf'
+status 1

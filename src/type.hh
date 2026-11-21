@@ -17,6 +17,7 @@ namespace rcc {
 
 struct type_t;
 struct record_t;
+struct symbol_t;
 
 using type_ptr_t = std::shared_ptr< const type_t >;
 
@@ -59,11 +60,16 @@ struct pointer_t
     type_ptr_t pointee;
 };
 
-// A count of -1 is an array of unknown size.
+// A count of -1 is an array of unknown size.  length is a variable
+// length array's, 6.7.7.3p4: the local no declaration names that holds
+// the size in bytes its declaration evaluated, which does not change,
+// p5; count is then 0 and means nothing, since the size is known only
+// at run time.  It is null for any other array.
 struct array_t
 {
     type_ptr_t element;
     long count;
+    const symbol_t *length = nullptr;
 };
 
 // marking is the words of the first marking attribute said of a
@@ -186,7 +192,9 @@ as(const type_t &t)
 
 // Structural: two pointer types are equal when their pointees are.  A
 // record is equal to itself alone, so the walk stops there, and a
-// record whose members point to it compares.
+// record whose members point to it compares.  A variable length array
+// is equal to one of its own length alone, the type its declaration
+// made.
 bool operator==(const type_t &, const type_t &);
 
 // The size and the alignment in bytes, the same on both targets, the
@@ -195,7 +203,8 @@ bool operator==(const type_t &, const type_t &);
 // layout's, and a real floating type clang's, the size for both: 4 for
 // float, 8 for double and 16 for long double.  A void, function or
 // other not-yet type has neither, and neither has a record without its
-// layout; asking throws.
+// layout; asking throws.  A variable length array has its element's
+// alignment and no size but at run time, so asking its size throws.
 long size_of(const type_t &);
 int align_of(const type_t &);
 
@@ -206,6 +215,7 @@ type_t make_int(int width,
                 int enumeration = 0);
 type_t make_pointer(type_t pointee);
 type_t make_array(type_t element, long count);
+type_t make_variable_array(type_t element, const symbol_t &length);
 type_t make_function(type_t result,
                      std::vector< type_t > params,
                      bool variadic,

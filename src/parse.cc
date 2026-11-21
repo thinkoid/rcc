@@ -45,12 +45,16 @@ struct tag_t
 // the highest register index taken in the scope or in a closed block
 // nested in it: a later declaration of the scope's block takes a
 // register above it, since its object is live from the entry into the
-// block, 6.2.4p6, and so through the nested block.
+// block, 6.2.4p6, and so through the nested block.  variable_arrays
+// are the variable length arrays the scope declares so far, by their
+// names' tokens, in order: each is in scope from its declarator to the
+// scope's end, which a jump into is checked against.
 struct scope_t
 {
     std::unordered_map< std::string_view, symbol_t * > names;
     std::unordered_map< std::string_view, tag_t > tags;
     int registers = 0;
+    std::vector< const token_t * > variable_arrays = { };
 };
 
 // A name of internal linkage where an expression uses it, 6.9.1p3: its
@@ -108,11 +112,14 @@ struct markings_t
 // each one's constant by its value, for the words of a duplicate, p3;
 // and its default's number and keyword, once one is met.
 // statement_expressions is the count of statement expressions around
-// the switch, which a label of it inside one more is a jump into.
+// the switch, which a label of it inside one more is a jump into, and
+// variable_arrays the count of variable length arrays in scope at the
+// switch, which a label of it in the scope of one more is a jump into.
 struct open_switch_t
 {
     type_t type;
     int statement_expressions;
+    std::size_t variable_arrays;
     std::vector< case_t > cases = { };
     std::unordered_map< long long, const token_t * > values = { };
     std::optional< int > default_ = { };
@@ -129,7 +136,12 @@ struct open_switch_t
 // goto's label name, in the order met, checked against the labels at
 // the function's end.  break_targets and continue_targets are the
 // statements around the parse a break may leave and a continue go on
-// with: the loops, for both, and a switch, for a break alone.
+// with: the loops, for both, and a switch, for a break alone.  loops is
+// the count of the loops whose condition, step or body the parse is in,
+// a for's first clause, which runs once, outside.  jump_scopes are the
+// variable length arrays in scope at each label and each goto of the
+// function that stands in the scope of one, by its name's token,
+// checked at the function's end.
 // switches are the switches around the parse, the innermost last, which
 // a case or a default label belongs to, 6.8.5.3p4; case_labels is the
 // number the function's next case or default label takes.
@@ -183,6 +195,9 @@ struct parser_t
     std::vector< const token_t * > gotos = { };
     int break_targets = 0;
     int continue_targets = 0;
+    int loops = 0;
+    std::unordered_map< const token_t *, std::vector< const token_t * > >
+        jump_scopes = { };
     std::vector< open_switch_t > switches = { };
     int case_labels = 0;
     int statement_expressions = 0;
@@ -250,7 +265,9 @@ struct parameter_t
 // parameter is adjusted from, 6.7.7.3p4, or null, and inner_star the
 // first '*' that sizes an array in a parameter's other brackets, or
 // null.  zero is the size of zero of a member's own array, read as
-// left out, or null.
+// left out, or null.  variable_size is the size as written of the
+// variable length array the declarator's type is, for its declaration
+// to evaluate; absent for any other type.
 struct declarator_t
 {
     const token_t *name;
@@ -260,6 +277,7 @@ struct declarator_t
     const token_t *star = nullptr;
     const token_t *zero = nullptr;
     const token_t *inner_star = nullptr;
+    std::optional< expr_t > variable_size = { };
 };
 
 // Whether a declarator names what it declares: a declaration's does, a
@@ -940,6 +958,14 @@ is_sized(const type_t &t)
         return is_sized(*as< array_t >(t).element);
 
     return is< not_yet_t >(t) && as< not_yet_t >(t).size > 0;
+}
+
+// Whether a type is a variable length array, 6.7.7.3p4: an array whose
+// size its declaration evaluates at run time into the type's length.
+bool
+is_variable_array(const type_t &t)
+{
+    return is< array_t >(t) && as< array_t >(t).length;
 }
 
 // The record a type is, or holds as an array's element at any depth, or
@@ -2286,7 +2312,9 @@ logical_not(const token_t &op, expr_t arg)
 // type, 6.5.4.2p1, p3.  On a function designator it yields the pointer
 // to the function, p3, which is the designator's decay, p4: &f and f
 // where a value is wanted are one node, and &*p is p's value, as if
-// both operators were omitted.
+// both operators were omitted.  The address of a variable length array
+// is a pointer to one, which is not yet; the array's lvalue is its
+// name, which reads as *symbol (shape.md chapter 5).
 expr_t
 address_of(const token_t &op, expr_t arg)
 {
@@ -2295,6 +2323,11 @@ address_of(const token_t &op, expr_t arg)
 
     if (!is_lvalue(arg))
         fail(op, "cannot take the address of an rvalue");
+
+    if (is_variable_array(arg.type)) {
+        const symbol_t &array = *as< name_t >(*as< unary_t >(arg).arg).sym;
+        not_yet(op, "address of variable length array " + quoted(array.name));
+    }
 
     // 6.5.4.2p1: not an object declared register, whether or not it
     // got a register: 6.7.2p12's footnote says that addressable
@@ -2373,10 +2406,21 @@ indirection(const token_t &op, expr_t arg)
 // incomplete record have no size, p1; a not-yet type has one rcc does
 // not know yet, but for one is_sized() says has its size.  A record's
 // size is its layout's, its padding included, p4.  The name is the operator's, with the underscore a name takes
-// when it is a keyword of C++.
+// when it is a keyword of C++.  A variable length array's size is no
+// constant: it is the value of the type's length, which the declaration
+// evaluated, p2, in a cast, which makes no lvalue of it.  The operand,
+// which p2 evaluates, is the array's name, whose evaluation has no
+// effect, so nothing else is evaluated.
 expr_t
 sizeof_(const token_t &op, const type_t &t)
 {
+    if (is_variable_array(t)) {
+        const symbol_t &length = *as< array_t >(t).length;
+        expr_t size { length.type, name_t { &length } };
+
+        return expr_t { size_type(), cast_t { box(std::move(size)) } };
+    }
+
     if (is< void_t >(t))
         fail(op, "invalid application of 'sizeof' to a void type");
 
@@ -3127,7 +3171,8 @@ type_t array_declarator(parser_t &,
                         bool in_parameter,
                         const token_t *&star,
                         const token_t *&zero,
-                        const token_t *&inner_star);
+                        const token_t *&inner_star,
+                        std::optional< expr_t > &variable_size);
 bool parameter_type_list(parser_t &, std::vector< parameter_t > &);
 parameter_t parameter_declaration(parser_t &);
 type_t type_name(parser_t &);
@@ -3137,7 +3182,7 @@ std::vector< stmt_t > init_declarator_list(parser_t &,
                                            bool objects_only = false);
 void init_declarator(parser_t &,
                      const specifiers_t &,
-                     const declarator_t &,
+                     declarator_t &,
                      std::vector< stmt_t > &);
 
 stmt_t statement(parser_t &);
@@ -3475,7 +3520,9 @@ attribute_spelling(const parser_t &p, const token_t &attribute)
 // __attribute__ ((__mode__ (__word__))) names an integer of a size rcc
 // does not take, and its objects are refused.  The attribute, its
 // arguments included, made from the same type is the same type again,
-// where it is the declaration's one marking attribute.
+// where it is the declaration's one marking attribute.  A typedef of a
+// variable length array, whose size the typedef fixes, 6.7.9p8, is not
+// yet.
 void
 type_definition(parser_t &p, const specifiers_t &spec, const declarator_t &d)
 {
@@ -3491,6 +3538,10 @@ type_definition(parser_t &p, const specifiers_t &spec, const declarator_t &d)
     if (d.params && peek(p).kind == tok_t::lbrace)
         fail(peek(p), "typedef " + quoted(d.name->text) +
                           " cannot have a function body");
+
+    if (is_variable_array(d.type))
+        not_yet(*d.name,
+                "typedef of variable length array " + quoted(d.name->text));
 
     type_t t = d.type;
     if (tail.marking) {
@@ -5072,19 +5123,19 @@ in_system_header(const specifiers_t &spec)
 
 // A '*' in a parameter's brackets other than those it is adjusted from
 // makes a variable length array of unspecified size behind its
-// pointer, 6.7.7.3p4, which is not yet, as a variable length array of
-// a size is there.  In a parameter of a function definition it is an
-// error, 6.9.2p6, so a list that may be a definition's, the list after
-// a name at file scope, keeps its stars for the declaration to refuse,
-// external_declarator(), or the definition, which errs
-// (require_definition_parameters()); every other list refuses its own
-// at its ')'.
+// pointer, 6.7.7.3p4, a pointer to a variable length array, which is
+// not yet, as one of a size is there.  In a parameter of a function
+// definition it is an error, 6.9.2p6, so a list that may be a
+// definition's, the list after a name at file scope, keeps its stars
+// for the declaration to refuse, external_declarator(), or the
+// definition, which errs (require_definition_parameters()); every other
+// list refuses its own at its ')'.
 void
 refuse_inner_stars(const std::vector< parameter_t > &params)
 {
     for (const parameter_t &param : params)
         if (param.inner_star)
-            not_yet(*param.inner_star, "variable length array");
+            not_yet(*param.inner_star, "pointer to variable length array");
 }
 
 // One declarator of a file-scope declaration: a type name, a function,
@@ -5275,12 +5326,32 @@ jumps_into(const parser_t &p, const token_t &to, const token_t &from)
     return false;
 }
 
+// The first variable length array in scope at the label to and not at
+// the goto from, which the goto would jump into the scope of, 6.8.7.2p1,
+// or null.
+const token_t *
+jumped_array(const parser_t &p, const token_t &to, const token_t &from)
+{
+    const auto label = p.jump_scopes.find(&to);
+    if (label == p.jump_scopes.end())
+        return nullptr;
+
+    const auto jump = p.jump_scopes.find(&from);
+    for (const token_t *array : label->second)
+        if (jump == p.jump_scopes.end() ||
+            std::ranges::find(jump->second, array) == jump->second.end())
+            return array;
+
+    return nullptr;
+}
+
 // Each goto of the function names a label the function defines,
 // 6.8.7.2p1, before the goto or after it, since a label has function
 // scope, 6.2.1p3, and stands inside each statement expression its label
-// stands in: GNU C takes no jump into one, as clang has it.  So the
-// check waits for the function's end, and the first goto that names
-// none, or jumps in, is the error.
+// stands in: GNU C takes no jump into one, as clang has it.  Nor does
+// it stand outside the scope of a variable length array the label is
+// in, p1.  So the check waits for the function's end, and the first
+// goto that names none, or jumps in, is the error.
 void
 require_labels(const parser_t &p)
 {
@@ -5293,6 +5364,11 @@ require_labels(const parser_t &p)
         if (jumps_into(p, *label->second, *name))
             fail(*name, "goto " + quoted(name->text) +
                             " from outside the label's statement expression");
+
+        if (const token_t *array = jumped_array(p, *label->second, *name))
+            fail(*name, "goto " + quoted(name->text) +
+                            " into the scope of variable length array " +
+                            quoted(array->text));
     }
 }
 
@@ -5478,6 +5554,7 @@ inline_body(parser_t &p, std::string &missing)
     const std::size_t switches = p.switches.size();
     const int breaks = p.break_targets;
     const int continues = p.continue_targets;
+    const int loops = p.loops;
 
     try {
         return function_body(p);
@@ -5492,6 +5569,7 @@ inline_body(parser_t &p, std::string &missing)
         p.switches.erase(p.switches.begin() + switches, p.switches.end());
         p.break_targets = breaks;
         p.continue_targets = continues;
+        p.loops = loops;
         p.temporaries.reset();
     }
 
@@ -5567,6 +5645,7 @@ function_definition(parser_t &p,
     p.statics.clear();
     p.labels.clear();
     p.gotos.clear();
+    p.jump_scopes.clear();
     p.statement_expression_spans.clear();
     p.case_labels = 0;
     p.scopes.push_back(d.scope);
@@ -6254,7 +6333,9 @@ anonymous_member(const token_t &semicolon, member_list_t &list, const type_t &t)
 // member, then a bit-field's width or none; or a width alone, an
 // unnamed bit-field, p14.  An attribute after the declarator is said of
 // the member, and one that marks, aligned and packed among them,
-// changes its layout, which rcc does not honour yet.
+// changes its layout, which rcc does not honour yet.  A member is no
+// ordinary identifier, so it has no variable length array type,
+// 6.7.7.3p2.
 void
 member_declarator(parser_t &p, const specifiers_t &spec, member_list_t &list)
 {
@@ -6264,6 +6345,10 @@ member_declarator(parser_t &p, const specifiers_t &spec, member_list_t &list)
     }
 
     const declarator_t d = declarator(p, spec.type, naming_t::member, false);
+    if (is_variable_array(d.type))
+        fail(*d.name, "member " + quoted(d.name->text) +
+                          " of a variable length array type");
+
     ++list.named;
 
     if (const token_t *marking = attribute_specifier_list(p))
@@ -6950,6 +7035,7 @@ parenthesized_declarator(parser_t &p,
         d.scope = std::move(suffix.scope);
         d.star = suffix.star;
         d.zero = suffix.zero;
+        d.variable_size = std::move(suffix.variable_size);
     }
 
     if (!d.inner_star)
@@ -6986,8 +7072,9 @@ declarator_suffix(parser_t &p,
     declarator_t d { name, t, std::nullopt, { } };
 
     if (peek(p).kind == tok_t::lbracket) {
-        d.type = array_declarator(p, t, typedef_, parameter, member,
-                                  in_parameter, d.star, d.zero, d.inner_star);
+        d.type =
+            array_declarator(p, t, typedef_, parameter, member, in_parameter,
+                             d.star, d.zero, d.inner_star, d.variable_size);
 
         if (peek(p).kind == tok_t::lparen)
             fail(peek(p), "array element type cannot be a function");
@@ -7035,11 +7122,16 @@ declarator_suffix(parser_t &p,
 // volatile or a restrict after it qualifies the pointer and is dropped,
 // as in the specifiers; the pointer is one restrict may qualify unless
 // it points to a function, as in void (*restrict f)(void).  An _Atomic
-// pointer is not yet.
+// pointer is not yet, and so is a pointer to a variable length array,
+// int (*p)[n], whose type is variably modified, 6.7.7.1p3.
 type_t
 pointer(parser_t &p, type_t t)
 {
-    while (accept(p, tok_t::star)) {
+    while (peek(p).kind == tok_t::star) {
+        const token_t &star = advance(p);
+        if (is_variable_array(t))
+            not_yet(star, "pointer to variable length array");
+
         t = make_pointer(std::move(t));
 
         for (;;) {
@@ -7062,17 +7154,15 @@ pointer(parser_t &p, type_t t)
 // The count of an array, from its size: an expression of integer type,
 // 6.7.7.3p1, which for an array that is not a variable length array is
 // an integer constant expression, p4, folded by now to a literal; any
-// other size makes a variable length array.  A constant size is
-// greater than zero, p1.  An unsigned size past LONG_MAX is LONG_MAX,
-// which no element size lets through as an array's size.
+// other size makes a variable length array, which array_declarator()
+// takes before it asks.  A constant size is greater than zero, p1.  An
+// unsigned size past LONG_MAX is LONG_MAX, which no element size lets
+// through as an array's size.
 long
 array_count(const token_t &at, const expr_t &size)
 {
     if (!is< int_t >(size.type))
         fail(at, "size of array has non-integer type");
-
-    if (!is< literal_t >(size))
-        not_yet(at, "variable length array");
 
     const exact_t value = exact_value(size);
     if (value <= 0)
@@ -7084,13 +7174,15 @@ array_count(const token_t &at, const expr_t &size)
 // An array suffix as written: its '[', its count, -1 when the size is
 // left out, and the words of what the size needs that rcc does not
 // have yet, empty when it needs nothing, with the words of the size,
-// the means its not-yet type is made by.
+// the means its not-yet type is made by.  variable_size is a variable
+// length array's size, absent for any other suffix.
 struct array_suffix_t
 {
     const token_t *open;
     long count;
     std::string missing;
     std::string size = { };
+    std::optional< expr_t > variable_size = { };
 };
 
 // The size of an array suffix, read up to the ']' that closes it.
@@ -7336,6 +7428,17 @@ is_incomplete(const type_t &t)
     return is< record_type_t >(t) && !as< record_type_t >(t).record->complete;
 }
 
+// A variable length array type's length, 6.7.7.3p5: the local of
+// size_t that holds the size in bytes, which the array's declaration
+// declares before it, local_variable_array()'s.  No name stands for it,
+// so it is in no scope.
+const symbol_t &
+array_length(parser_t &p)
+{
+    return p.unit.symbols.emplace_back(
+        symbol_t { "__array_size", size_type(), storage_t::local, false, -1 });
+}
+
 // One or more [N], N an integer constant expression, or [] for an array
 // of unknown size, 6.7.7.3p1, p4.  The size is an assignment-expression
 // in the grammar, 6.7.7.1p1.  The suffixes nest from the right: int
@@ -7351,14 +7454,20 @@ is_incomplete(const type_t &t)
 // brackets may hold static and type qualifiers, 6.7.7.3p1, and its size
 // need not be an integer constant expression, or may be '*', returned
 // in star; every other suffix keeps the rules of any array, so a
-// variable length array behind the parameter's pointer is not yet, and
-// its '*' in a parameter's declarators, in_parameter, makes a not-yet
+// variable length array behind the parameter's pointer is a pointer to
+// one, not yet: one of a size in a parameter's declarators,
+// in_parameter, is refused at its size, and its '*' makes a not-yet
 // type in place of the array until its refusal
 // (inner_unspecified_size()).
 // When member says that the first suffix is a member's own array, its
 // size may be zero, returned in zero.  No element is a record that
 // holds a flexible array member, 6.7.3.2p3, in the program's own text;
-// a system header's array of one is read as it is and laid out.
+// a system header's array of one is read as it is and laid out.  Any
+// other size that is no integer constant expression makes a variable
+// length array, p4, of a length of its own, its size returned in
+// variable_size for the declaration to evaluate, and the caller decides
+// whether its context takes one; an array of variable length arrays is
+// not yet.
 type_t
 array_declarator(parser_t &p,
                  const type_t &element,
@@ -7368,7 +7477,8 @@ array_declarator(parser_t &p,
                  bool in_parameter,
                  const token_t *&star,
                  const token_t *&zero,
-                 const token_t *&inner_star)
+                 const token_t *&inner_star,
+                 std::optional< expr_t > &variable_size)
 {
     std::vector< array_suffix_t > suffixes;
     const token_t *restrict_ = nullptr;
@@ -7395,14 +7505,23 @@ array_declarator(parser_t &p,
             peek(p).kind != tok_t::rbracket) {
             const token_t &start = peek(p);
 
-            const std::optional< expr_t > size =
+            std::optional< expr_t > size =
                 typedef_ ? typedef_array_size(p, suffix.missing) :
                            array_size(p);
             if (size) {
                 refuse_file_scope_variable_size(p, start, *size);
-                suffix.count = adjusted ? parameter_array_count(start, *size) :
-                               own ? member_array_count(start, *size, zero) :
-                                     array_count(start, *size);
+                if (!adjusted && is< int_t >(size->type) &&
+                    !is< literal_t >(*size)) {
+                    if (in_parameter)
+                        not_yet(start, "pointer to variable length array");
+
+                    suffix.variable_size = std::move(size);
+                }
+                else
+                    suffix.count =
+                        adjusted ? parameter_array_count(start, *size) :
+                        own      ? member_array_count(start, *size, zero) :
+                                   array_count(start, *size);
             }
         }
 
@@ -7418,7 +7537,7 @@ array_declarator(parser_t &p,
     type_t t = element;
 
     for (auto it = suffixes.rbegin(); it != suffixes.rend(); ++it) {
-        const auto &[open, count, missing, size] = *it;
+        auto &[open, count, missing, size, variable] = *it;
 
         if (is< function_t >(t))
             fail(*open, "array element type cannot be a function");
@@ -7430,9 +7549,18 @@ array_declarator(parser_t &p,
             r && !open->where.system_header)
             fail(*open, "array element of type " + flexible_words(*r));
 
+        if (is_variable_array(t))
+            not_yet(*open, "array of variable length arrays");
+
         if (!missing.empty()) {
             const int identity = identity_of(p, size, t);
             t = make_not_yet_array(identity, missing, std::move(t));
+            continue;
+        }
+
+        if (variable) {
+            t = make_variable_array(std::move(t), array_length(p));
+            variable_size = std::move(variable);
             continue;
         }
 
@@ -7544,10 +7672,12 @@ parameter_declaration(parser_t &p)
 // Specifiers and an abstract declarator, the declarator of a
 // declaration without its name, 6.7.8p1, p2: int *, int [3],
 // void (*)(int).  A marking attribute would make the type one rcc does
-// not use, which no name stands for here, so it is not yet.
+// not use, which no name stands for here, so it is not yet, and so is
+// a variable length array, sizeof (char [n]).
 type_t
 type_name(parser_t &p)
 {
+    const token_t &start = peek(p);
     const specifiers_t spec = declaration_specifiers(p);
 
     // 6.7.8p1: a specifier-qualifier list, no storage class
@@ -7560,7 +7690,11 @@ type_name(parser_t &p)
     if (spec.marking)
         not_yet(*spec.marking, attribute_words(*spec.marking));
 
-    return declarator(p, spec.type, naming_t::none).type;
+    type_t t = declarator(p, spec.type, naming_t::none).type;
+    if (is_variable_array(t))
+        not_yet(start, "variable length array in a type name");
+
+    return t;
 }
 
 // The declarator of a declaration in a block that is no typedef's.  A
@@ -7635,10 +7769,15 @@ static_label(parser_t &p, const std::string &name)
 // 6.7.11p11.  Its declaration makes no statement.  An array of unknown
 // size takes its size from its initializer, and is an error without
 // one, 6.7.1p8.  The name is in scope from the end of its declarator,
-// 6.2.1p7, so the initializer sees the object.
+// 6.2.1p7, so the initializer sees the object.  An object of static
+// storage duration has no variable length array type, 6.7.7.3p2.
 void
 static_local(parser_t &p, const specifiers_t &spec, const declarator_t &d)
 {
+    if (is_variable_array(d.type))
+        fail(*d.name, "variable length array " + quoted(d.name->text) +
+                          " declared 'static'");
+
     require_block_object(p, spec, d);
 
     const bool initialized = peek(p).kind == tok_t::assign;
@@ -7714,10 +7853,15 @@ linked_entity(parser_t &p, std::string_view name, linkage_t &linkage)
 // declared through a typedef of function type is not yet there as here.
 // A body after a function's declarator is an error of its own: a
 // function definition is an external declaration, 6.9.1p1, and a
-// block holds declarations and statements, 6.8.3p1.
+// block holds declarations and statements, 6.8.3p1.  A name of linkage
+// has no variable length array type, 6.7.7.3p2.
 void
 linked_declaration(parser_t &p, const specifiers_t &spec, const declarator_t &d)
 {
+    if (is_variable_array(d.type))
+        fail(*d.name, "variable length array " + quoted(d.name->text) +
+                          " declared 'extern'");
+
     const bool function = is< function_t >(d.type);
     if (function && !d.params)
         not_yet(*d.name, "function " + quoted(d.name->text) +
@@ -7813,7 +7957,7 @@ init_declarator_list(parser_t &p, const specifiers_t &spec, bool objects_only)
                             declarator(p, spec.type, naming_t::required, true));
         }
         else {
-            const declarator_t d = block_declarator(p, spec);
+            declarator_t d = block_declarator(p, spec);
             if (objects_only && is< function_t >(d.type))
                 fail(*d.name, "function " + quoted(d.name->text) +
                                   " declared in the declaration of a 'for'");
@@ -7906,6 +8050,73 @@ require_frame(const parser_t &p, const token_t &name, const type_t &t)
              "variable " + quoted(name.text) + " is too large for a local");
 }
 
+// The initializer of a variable length array: none but the empty one,
+// 6.7.11p4, which C23 adds and rcc does not take yet, since it zeroes
+// an object whose size is known at run time alone.
+void
+refuse_variable_array_initializer(const parser_t &p, const declarator_t &d)
+{
+    if (peek(p).kind != tok_t::assign)
+        return;
+
+    if (peek(p, 1).kind == tok_t::lbrace && peek(p, 2).kind == tok_t::rbrace)
+        not_yet(peek(p, 1), "empty initializer of variable length array " +
+                                quoted(d.name->text));
+
+    fail(peek(p), "variable length array " + quoted(d.name->text) +
+                      " cannot have an initializer");
+}
+
+// A local variable length array, 6.7.7.3p4.  Its declaration evaluates
+// the size where it is reached, 6.8.1p3, converted to size_t as by
+// assignment and multiplied by the element's size, into the type's
+// length, so that sizeof reads the size of the instance, which does not
+// change, 6.7.7.3p5; a multiplication by 1 is the identity and is left
+// out.  The array's own symbol is a pointer to it, by_reference, which
+// a stack allocation of the length's bytes initializes, and its name
+// reads as the array (shape.md chapter 5).  A declaration that may be
+// reached again in one activation is not yet, since how long the
+// storage lasts is not decided: one in a loop's condition, step or
+// body, p.loops, and one after a label of the function in the text.
+// The name's token goes to its scope's variable length arrays, for the
+// checks of a jump into its scope.
+void
+local_variable_array(parser_t &p, declarator_t &d, std::vector< stmt_t > &decls)
+{
+    refuse_variable_array_initializer(p, d);
+
+    if (p.loops > 0)
+        not_yet(*d.name, "variable length array in a loop");
+
+    if (!p.labels.empty())
+        not_yet(*d.name, "variable length array after a label");
+
+    const symbol_t &length = *as< array_t >(d.type).length;
+    const long element = size_of(*as< array_t >(d.type).element);
+
+    expr_t size = convert_to(std::move(*d.variable_size), size_type());
+    if (element != 1) {
+        expr_t factor { size_type(), literal_t { element } };
+        size = expr_t { size_type(),
+                        binary_t { binary_op_t::mul, box(std::move(size)),
+                                   box(std::move(factor)) } };
+    }
+
+    decls.push_back(stmt_t { decl_stmt_t { &length, std::move(size) } });
+
+    symbol_t *sym =
+        declare(p, *d.name, make_pointer(d.type), storage_t::local, false);
+    sym->by_reference = true;
+    p.scopes.back().variable_arrays.push_back(d.name);
+
+    expr_t bytes { length.type, name_t { &length } };
+    expr_t storage { make_pointer(make_void()),
+                     alloca_t { box(std::move(bytes)) } };
+
+    decls.push_back(stmt_t {
+        decl_stmt_t { sym, convert_to(std::move(storage), sym->type) } });
+}
+
 // A local, an object of automatic storage duration, 6.2.4p5, appended
 // to decls as its declaration, and for a record initialized by an
 // expression the record_initializer() statement after it, or for a
@@ -7924,11 +8135,11 @@ require_frame(const parser_t &p, const token_t &name, const type_t &t)
 // and it has no slot to decay to; nor is a register record, which no
 // register holds.  A local too large for a frame is refused,
 // require_frame(), an array of unknown size once its list has given
-// the size.
+// the size.  A variable length array is local_variable_array()'s.
 void
 init_declarator(parser_t &p,
                 const specifiers_t &spec,
-                const declarator_t &d,
+                declarator_t &d,
                 std::vector< stmt_t > &decls)
 {
     require_block_object(p, spec, d);
@@ -7940,6 +8151,11 @@ init_declarator(parser_t &p,
     if (r && declared(spec, tok_t::kw_register))
         not_yet(*d.name, "register object " + quoted(d.name->text) + " of " +
                              record_words(*r));
+
+    if (is_variable_array(d.type)) {
+        local_variable_array(p, d, decls);
+        return;
+    }
 
     const bool array = is< array_t >(d.type);
     const bool record = is< record_type_t >(d.type);
@@ -8013,11 +8229,35 @@ is_label_start(const parser_t &p)
     return peek(p).kind == tok_t::identifier && peek(p, 1).kind == tok_t::colon;
 }
 
+// The variable length arrays in scope where the parse stands, by their
+// names' tokens, the outermost scope's first.
+std::vector< const token_t * >
+variable_arrays_in_scope(const parser_t &p)
+{
+    std::vector< const token_t * > arrays;
+    for (const scope_t &scope : p.scopes)
+        arrays.insert(arrays.end(), scope.variable_arrays.begin(),
+                      scope.variable_arrays.end());
+
+    return arrays;
+}
+
+// The variable length arrays in scope at a label or a goto, kept by its
+// name's token where there is one, for require_labels().
+void
+record_jump_scope(parser_t &p, const token_t &name)
+{
+    std::vector< const token_t * > arrays = variable_arrays_in_scope(p);
+    if (!arrays.empty())
+        p.jump_scopes.emplace(&name, std::move(arrays));
+}
+
 // A label, identifier :, which defines its name in the function's
 // labels, 6.2.1p3; a name is defined once in a function, 6.8.2p3.  One
 // inside a statement expression is a label of the function too, and a
 // goto from outside the expression, which would jump into it, is
-// require_labels()'s error.
+// require_labels()'s error, as is one from outside the scope of a
+// variable length array the label is in.
 stmt_t
 named_label(parser_t &p)
 {
@@ -8026,6 +8266,8 @@ named_label(parser_t &p)
 
     if (!p.labels.emplace(name.text, &name).second)
         fail(name, "redefinition of label " + quoted(name.text));
+
+    record_jump_scope(p, name);
 
     return stmt_t { label_t { std::string(name.text) } };
 }
@@ -8044,7 +8286,9 @@ case_value(long long value, const type_t &t)
 
 // A case or a default label inside a statement expression its switch is
 // outside of: the switch would jump into the expression, which GNU C
-// does not permit.
+// does not permit.  So is one in the scope of a variable length array
+// its switch is outside of, 6.8.5.3p2: one the switch's body declares
+// before the label, whose scope the label is still in.
 void
 refuse_jump_into(const parser_t &p, const token_t &keyword)
 {
@@ -8052,6 +8296,14 @@ refuse_jump_into(const parser_t &p, const token_t &keyword)
         fail(keyword,
              quoted(keyword.text) +
                  " label of a switch outside the statement expression");
+
+    const std::size_t outside = p.switches.back().variable_arrays;
+    const std::vector< const token_t * > arrays = variable_arrays_in_scope(p);
+    if (arrays.size() > outside)
+        fail(keyword, quoted(keyword.text) +
+                          " label of a switch outside the scope of variable "
+                          "length array " +
+                          quoted(arrays[outside]->text));
 }
 
 // case, an integer constant expression and a colon, 6.8.2p1.  It stands
@@ -8267,7 +8519,8 @@ switch_statement(parser_t &p)
 
     expect(p, tok_t::rparen, "expected ')' after controlling expression");
 
-    p.switches.push_back({ cond.type, p.statement_expressions });
+    p.switches.push_back({ cond.type, p.statement_expressions,
+                           variable_arrays_in_scope(p).size() });
     ++p.break_targets;
 
     stmt_ptr_t body = box(statement(p));
@@ -8336,6 +8589,7 @@ while_statement(parser_t &p)
 {
     advance(p);
     expect(p, tok_t::lparen, "expected '(' after 'while'");
+    ++p.loops;
 
     const token_t &start = peek(p);
     expr_t cond = rvalue(start, expression(p));
@@ -8343,6 +8597,7 @@ while_statement(parser_t &p)
     expect(p, tok_t::rparen, "expected ')' after condition");
 
     stmt_ptr_t body = loop_body(p);
+    --p.loops;
 
     return stmt_t { while_t { std::move(cond), std::move(body) } };
 }
@@ -8353,6 +8608,7 @@ stmt_t
 do_statement(parser_t &p)
 {
     advance(p);
+    ++p.loops;
 
     stmt_ptr_t body = loop_body(p);
 
@@ -8364,6 +8620,7 @@ do_statement(parser_t &p)
 
     expect(p, tok_t::rparen, "expected ')' after condition");
     expect(p, tok_t::semicolon, "expected ';' after do statement");
+    --p.loops;
 
     return stmt_t { do_t { std::move(body), std::move(cond) } };
 }
@@ -8400,7 +8657,8 @@ for_declaration(parser_t &p)
 
 // A declaration in the init is in scope for the whole loop, 6.8.6.4p1,
 // so the for opens a scope; a braced body nests inside it.  The init
-// and the step are evaluated as void expressions there.
+// and the step are evaluated as void expressions there.  The init runs
+// once, so the loop counts in p.loops from the condition on.
 stmt_t
 for_statement(parser_t &p)
 {
@@ -8415,6 +8673,8 @@ for_statement(parser_t &p)
         loop.init = for_declaration(p);
     else if (!accept(p, tok_t::semicolon))
         loop.init = box(expression_statement(p));
+
+    ++p.loops;
 
     if (peek(p).kind != tok_t::semicolon) {
         const token_t &start = peek(p);
@@ -8431,6 +8691,7 @@ for_statement(parser_t &p)
     expect(p, tok_t::rparen, "expected ')' after for clauses");
 
     loop.body = loop_body(p);
+    --p.loops;
 
     close_block(p);
 
@@ -8450,6 +8711,7 @@ goto_statement(parser_t &p)
     const token_t &name =
         expect(p, tok_t::identifier, "expected label name after 'goto'");
     p.gotos.push_back(&name);
+    record_jump_scope(p, name);
 
     expect(p, tok_t::semicolon, "expected ';' after goto statement");
 
@@ -9980,7 +10242,7 @@ public:
 
     explicit statement_expression_depth_t(parser_t &p)
         : m_p(p), m_breaks(p.break_targets), m_continues(p.continue_targets),
-          m_switches(p.switches.size())
+          m_loops(p.loops), m_switches(p.switches.size())
     {
         ++m_p.statement_expressions;
     }
@@ -9990,6 +10252,7 @@ public:
         --m_p.statement_expressions;
         m_p.break_targets = m_breaks;
         m_p.continue_targets = m_continues;
+        m_p.loops = m_loops;
         m_p.switches.erase(m_p.switches.begin() +
                                static_cast< std::ptrdiff_t >(m_switches),
                            m_p.switches.end());
@@ -10004,6 +10267,7 @@ private:
     parser_t &m_p;
     int m_breaks;
     int m_continues;
+    int m_loops;
     std::size_t m_switches;
 };
 

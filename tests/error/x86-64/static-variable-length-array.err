@@ -1,0 +1,2 @@
+tests/error/static-variable-length-array.c:6:21: error: variable length array 'buf' declared 'static'
+status 1

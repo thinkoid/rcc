@@ -1,0 +1,2 @@
+tests/error/initialized-variable-length-array.c:6:21: error: variable length array 'buf' cannot have an initializer
+status 1

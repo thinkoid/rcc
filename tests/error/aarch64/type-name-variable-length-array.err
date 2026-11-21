@@ -1,0 +1,2 @@
+tests/error/type-name-variable-length-array.c:6:23: error: not yet: variable length array in a type name
+status 1

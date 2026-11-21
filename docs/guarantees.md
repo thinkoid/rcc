@@ -138,7 +138,9 @@ stores its value, then calls `g` and stores over it. GNU C's statement
 expression is one operand: its statements run where it stands, after
 the operands to its left and before those to its right, so `f() + ({
 g(); 1; }) + h()` calls `f`, then `g`, then `h`, and a jump out of it
-leaves the operands to its right unevaluated.
+leaves the operands to its right unevaluated. A variable length
+array's size is evaluated where its declaration is reached, after the
+declarators before it (6.8.1p3, p4).
 
 **G14. A loop runs until its condition says stop.** 6.8.6.1p4. `for
 (;;);` hangs. Instruction: the test at the top of the loop and a

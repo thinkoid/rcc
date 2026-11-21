@@ -1,0 +1,2 @@
+tests/error/empty-initialized-variable-length-array.c:7:23: error: not yet: empty initializer of variable length array 'buf'
+status 1

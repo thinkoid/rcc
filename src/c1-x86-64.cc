@@ -4997,6 +4997,10 @@ rvalue(state_t &s, const expr_t &e, into_t *into, unsigned wanted)
     if (is< statement_expression_t >(e))
         return statement_expression(s, e, into, wanted);
 
+    // a stack allocation, a variable length array's storage, is not yet
+    if (is< alloca_t >(e))
+        not_yet("stack allocation");
+
     return conditional(s, e, into, wanted);
 }
 

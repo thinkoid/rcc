@@ -43,7 +43,8 @@ equal(const pointer_t &a, const pointer_t &b)
 bool
 equal(const array_t &a, const array_t &b)
 {
-    return a.count == b.count && *a.element == *b.element;
+    return a.count == b.count && a.length == b.length &&
+           *a.element == *b.element;
 }
 
 bool
@@ -112,6 +113,12 @@ make_array(type_t element, long count)
 }
 
 type_t
+make_variable_array(type_t element, const symbol_t &length)
+{
+    return type_t { array_t { share(std::move(element)), 0, &length } };
+}
+
+type_t
 make_function(type_t result,
               std::vector< type_t > params,
               bool variadic,
@@ -156,9 +163,10 @@ make_floating(int identity, std::string what, long size)
     return type_t { not_yet_t { identity, std::move(what), size, int(size) } };
 }
 
-// An array of unknown size has no size; asking is the caller's error.
-// void has GNU C's size, 1, the step of arithmetic on a pointer to it;
-// the parser refuses sizeof (void) before it asks.
+// An array of unknown size has no size, and a variable length array
+// none but at run time; asking is the caller's error.  void has GNU C's
+// size, 1, the step of arithmetic on a pointer to it; the parser
+// refuses sizeof (void) before it asks.
 long
 size_of(const type_t &t)
 {
@@ -171,7 +179,8 @@ size_of(const type_t &t)
     if (is< pointer_t >(t))
         return 8;
 
-    if (is< array_t >(t) && as< array_t >(t).count >= 0)
+    if (is< array_t >(t) && as< array_t >(t).count >= 0 &&
+        !as< array_t >(t).length)
         return as< array_t >(t).count * size_of(*as< array_t >(t).element);
 
     if (is< record_type_t >(t) && laid_out(*as< record_type_t >(t).record))

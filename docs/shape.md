@@ -180,7 +180,8 @@ their like are the keyword they spell, and `__attribute__`, `__asm__`,
 ## 3. The types
 
 A type is the machine's view: void, an integer of a width and a
-signedness, a pointer to a type, an array of a type and a count, a
+signedness, a pointer to a type, an array of a type and a count, or
+of a type and a length, a variable length array (chapter 5), a
 function of a result and parameters, a struct or a union, or a type
 rcc declares and does not use yet: an enum in its own list or marked
 by an attribute (chapter 5); a floating type, real or complex, GNU
@@ -227,7 +228,11 @@ an optimization taken when it is measured. The size and the
 alignment of a type are the type's, `size_of` and `align_of`, the
 same on both targets, the sizes LP64's; the parser folds `sizeof`
 from them and c1
-sizes and aligns the slots from them. `void` has GNU C's size, 1,
+sizes and aligns the slots from them. A variable length array's size
+is known at run time alone: its length is the local that holds it,
+which the array's declaration writes and `sizeof` reads, so
+`size_of` has no size to give, and the type is equal to one of its
+own length alone. `void` has GNU C's size, 1,
 for the arithmetic on a pointer to it alone (chapter 5): `sizeof
 (void)` is an error. A pointer to a function is a
 pointer as any other: 8 bytes, an address, of a type that compares
@@ -314,8 +319,8 @@ Three sums.
 
 - `expr_t`: a type and a node. The nodes are integer or character
   literal, name, string literal, unary, binary, assignment, call,
-  cast, conditional, statement expression. A name holds a non-owning
-  pointer to its symbol.
+  cast, conditional, statement expression, stack allocation. A name
+  holds a non-owning pointer to its symbol.
   A string literal holds its elements' bytes and the elements' width
   and is typed `char [N + 1]`, or for a wide one an array of `N + 1`
   of its element type (chapter 5). Whether an expression is an lvalue
@@ -336,7 +341,8 @@ Three sums.
   *) ((char *) p + 8)` and `s.m` as `(&s)->m`, as the Seventh Edition
   compiler's first pass wrote `a->b` as `*(a + offset)`, so it has no
   node of its own (chapter 5); `sizeof` is an integer literal the
-  parser folded. A unary `+` has no node: it is the promotion of its
+  parser folded, or of a variable length array its length's value
+  (chapter 5). A unary `+` has no node: it is the promotion of its
   operand (6.5.4.3p2), a cast, and over an lvalue that no promotion
   converts, a cast to the lvalue's own type, since the result is a
   value and no lvalue; so `+x` is `(T) x`, `T` the promoted type, and
@@ -369,7 +375,11 @@ Three sums.
   particular to it. GNU C's statement expression, `({ ... })`, holds
   its block's statements and, where the block ends in an expression
   statement, that statement's expression apart, the value; its type is
-  the value's, `void` without one, and it is no lvalue (chapter 5).
+  the value's, `void` without one, and it is no lvalue (chapter 5). A
+  stack allocation takes storage from the stack at run time: its
+  operand a `size_t`, and its value, a `void *`, the address of that
+  many bytes; the parser makes one for the storage of a variable
+  length array (chapter 5).
 - `stmt_t`: expression, declaration, block, if, switch, while, do,
   for, break, continue, label, case label, goto, return. A `for`
   carries its init as a statement, so a declaration in the init costs
@@ -522,8 +532,8 @@ one that is not is taken as left out, as 6.7.7.3p5 takes it in a
 prototype, since the parameter is the pointer either way, and nothing
 is evaluated for it. `[*]` is the size left out too. Every other
 array suffix keeps the rules of an array, so `int (*a)[n]` and
-`int (*a)[*]` point to a variable length array, which is not yet. At
-file scope such a size is
+`int (*a)[*]` are pointers to a variable length array, which are not
+yet, refused at the size (below). At file scope such a size is
 an error of the program, not a construct to come: an object of static
 storage duration has no variable length array type, and an identifier
 of a variably modified type has block or prototype scope (6.7.7.3p2),
@@ -532,6 +542,34 @@ refused in words of their own. `[*]` in any of the brackets of a
 function definition's parameter is refused (6.9.2p6), and outside the
 declarators of a parameter declaration, its array sizes included, it
 is an error in words of its own (6.7.7.3p4), `int x[*];` among them.
+
+An array of block scope whose size is not an integer constant
+expression, and whose element has a constant size, is a variable
+length array (6.7.7.3p4), an object rcc takes: `char buf[n]` and `int
+a[n][3]`. Its declaration evaluates the size where it is reached,
+after the declarators before it (6.8.1p3, p4), converts it to `size_t`
+as by assignment and multiplies it by the element's size, the identity
+`* 1` left out, into the array type's length, a local no declaration
+names. So `sizeof buf` is that local's value, the size of the
+instance, which does not change though its operands do (6.7.7.3p5),
+and no constant, which no constant expression holds. The array's own
+symbol is a pointer to it, initialized by a stack allocation of the
+length's bytes (chapter 4), and its name reads as `*symbol`, the
+array, as an aarch64 `va_list` parameter's does: its decay is the
+pointer's value, and an element is reached through it. No initializer
+is taken but C23's `{}`, which is not yet (6.7.11p4); any other is an
+error, and so is the array declared `static` or `extern`, and a member
+of one, which is no ordinary identifier (6.7.7.3p2). A declaration
+that may be reached again in one activation is not yet, since how long
+the storage lasts is not decided: one in a loop's condition, step or
+body, a statement expression's there among them, a `for`'s first
+clause, which runs once, outside; and one after a label of its
+function in the text. The other variably modified types are not yet,
+each in words of its own: an array of variable length arrays, `int
+a[3][n]` and `int a[n][m]`; a pointer to one, `int (*p)[n]`, a
+parameter's among them; a typedef of one; one in a type name, `sizeof
+(char [n])`; and the address of one, `&buf`. A jump into the scope of
+one is an error (below).
 
 A pointer to a function is a value as any pointer is, with the type
 rules of the standard: assignment and argument passing take one of
@@ -1267,7 +1305,8 @@ from its scopes. A label defined twice in a function is an error
 the function, so each `goto`'s name is checked at the function's end,
 and the first that names no label is the error (6.8.7.2p1). A `goto`
 into the scope of a variable length array is an error by the same
-paragraph; rcc has no such array, so nothing is checked. The parser
+paragraph, checked there too: one to a label in the scope of an array
+it is outside of. The parser
 counts the statements around the parse that a `break` may leave and
 that a `continue` may go on with: a loop counts for both, and a
 `switch` for a `break` alone. A `break` with neither around it is an
@@ -1286,8 +1325,10 @@ switch with the same value after the conversion is an error that names
 the value and the line of the first (p3), so `case 1:` and `case
 4294967297:` collide on an `int`. A second `default` in one switch is
 an error that names the line of the first (p3), and a `case` or a
-`default` outside a switch is one too (6.8.2p2). GNU C's case range,
-`case 1 ... 5:`, is not yet.
+`default` outside a switch is one too (6.8.2p2). So is one in the
+scope of a variable length array its switch is outside of, one the
+switch's body declares before the label (6.8.5.3p2). GNU C's case
+range, `case 1 ... 5:`, is not yet.
 
 ## 6. The generator
 
@@ -1382,6 +1423,11 @@ code, shared by the two, where it stands, the values held around it
 saved first as at a branch where the statements may move them, and
 its value then in the context asked (G13; `backend.md` 6.7,
 `aarch64.md` chapter 4).
+
+A stack allocation is not yet in either generator: each refuses it,
+`c1: not yet: stack allocation`, so a function that declares a
+variable length array is refused, or dropped where it is droppable
+(chapter 5).
 
 A reader checking a promise opens c1's source, finds the function that
 writes the row, and reads what is not there.
@@ -1637,9 +1683,12 @@ that needs the object is refused; a floating constant is a token,
 refused where an expression uses it), an enum's fixed underlying type,
 the use of an enum in its own list but behind a pointer, an object of
 an enum an attribute marks, an object of a typedef whose array size
-rcc cannot compute, a variable length array (a parameter's array of a
-size that is not constant is the pointer the parameter is adjusted to,
-and the size is not evaluated), GNU C's range designator, its array
+rcc cannot compute, a variable length array's storage, which neither
+generator writes, one that may be reached again in one activation,
+and every other variably modified type (chapter 5; a parameter's
+array of a size that is not constant is the pointer the parameter is
+adjusted to, and the size is not evaluated), GNU C's range
+designator, its array
 designator without the `=` and its obsolete member designator, a local
 scalar's brace initializer, a declaration through a typedef of
 function type, a UTF-8 character constant, `u8'x'`, a character

@@ -1,0 +1,2 @@
+tests/error/case-into-variable-length-array.c:9:9: error: 'case' label of a switch outside the scope of variable length array 'buf'
+status 1

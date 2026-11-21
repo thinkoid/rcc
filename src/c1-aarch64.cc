@@ -4481,6 +4481,10 @@ rvalue(state_t &s, const expr_t &e, into_t *into, unsigned wanted)
     if (is< statement_expression_t >(e))
         return statement_expression(s, e, into, wanted);
 
+    // a stack allocation, a variable length array's storage, is not yet
+    if (is< alloca_t >(e))
+        not_yet("stack allocation");
+
     const auto &k = as< conditional_t >(e);
     // a ?: b: the condition is the first arm
     const bool arms = takes_name(k.yes ? *k.yes : *k.cond) && takes_name(*k.no);

@@ -1,0 +1,2 @@
+tests/error/typedef-variable-length-array.c:6:22: error: not yet: typedef of variable length array 'row_t'
+status 1

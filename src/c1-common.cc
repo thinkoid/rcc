@@ -621,13 +621,15 @@ pins_on_either(binary_op_t op, const expr_t &lhs, const expr_t &rhs)
 // expression whose block holds e: a call, which spills every held value
 // (chapter 8); &&, || and ?:, whose paths save them first (6.7); an
 // operator or a compound assignment whose instruction pins a register,
-// pins_on_either()'s; and a statement expression that saves them
-// itself.  A load, a store, a constant, a cast and the other operators
-// take free registers and write their own.
+// pins_on_either()'s; a statement expression that saves them itself;
+// and a stack allocation, a variable length array's storage, which
+// moves the stack pointer, and which neither generator writes yet.  A
+// load, a store, a constant, a cast and the other operators take free
+// registers and write their own.
 bool
 moves_beside(const expr_t &e)
 {
-    if (is< call_t >(e) || is< conditional_t >(e))
+    if (is< call_t >(e) || is< conditional_t >(e) || is< alloca_t >(e))
         return true;
 
     if (is< statement_expression_t >(e))
@@ -663,11 +665,15 @@ moves_beside(const expr_t &e)
 // value held is one node's, an address's base and index its operands',
 // a row's fresh register its own node's, and a record's copy, its two
 // places, its unit and its index, holds four of its five nodes at most.
+// A stack allocation is a node of its own over its size's.
 int
 nodes_of(const expr_t &e)
 {
     if (is< unary_t >(e))
         return 1 + nodes_of(*as< unary_t >(e).arg);
+
+    if (is< alloca_t >(e))
+        return 1 + nodes_of(*as< alloca_t >(e).size);
 
     if (is< binary_t >(e)) {
         const auto &b = as< binary_t >(e);
