@@ -11,10 +11,6 @@ ten:
 	.cfi_offset w30, -56
 	mov	x29, sp
 	.cfi_def_cfa_register w29
-	ldrb	w17, [x29, #64]
-	strb	w17, [x29, #48]
-	ldr	x17, [x29, #72]
-	str	x17, [x29, #56]
 	str	w0, [x29, #16]
 	str	w1, [x29, #20]
 	str	w2, [x29, #24]
@@ -23,6 +19,10 @@ ten:
 	str	w5, [x29, #36]
 	str	w6, [x29, #40]
 	str	w7, [x29, #44]
+	ldrb	w17, [x29, #64]
+	strb	w17, [x29, #48]
+	ldr	x17, [x29, #72]
+	str	x17, [x29, #56]
 	ldr	w0, [x29, #16]
 	ldrb	w1, [x29, #48]
 	add	w0, w0, w1

@@ -653,16 +653,16 @@ position counted from 0: the ninth parameter, `i` = 8, is at `T`, and
 the tenth at `T + 8`. `T` is not known while the body is generated. So
 the prologue, which is written after the body, copies it to a slot of
 its own: `ldr w17, [x29, #T]; str w17, [x29, #44]`. The copies follow
-`mov x29, sp` and the save area's stores, and precede the stores of
-the first eight. Every parameter is then a slot at a known offset, at
-two instructions for each one past the eighth. On x86 such a
+the stores of the first eight, so every parameter's instructions come
+in parameter order. Every parameter is then a slot at a known offset,
+at two instructions for each one past the eighth. On x86 such a
 parameter stays where the caller pushed it.
 
 A variadic definition that calls `va_start` has the area the list is
 built from (`shape.md` chapter 4), the convention's register save
 area: 200 bytes, the function's first slot, aligned to 16, and written
-first after the save area's stores, before the copies of the
-parameters past the eighth and the stores of the first eight. `x0` to
+first after the save area's stores, before the stores of the first
+eight and the copies of the parameters past the eighth. `x0` to
 `x7` go from its start by four `stp`, `stp x0, x1, [x29, #16]` to `stp
 x6, x7, [x29, #64]`, the named parameters' among them, `q0` to `q7`
 from 64 by four `stp` of `q` registers, `stp q0, q1, [x29, #80]` to

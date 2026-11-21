@@ -9,8 +9,8 @@
    pushed them, movsbl 32(%rbp), %ecx and addq 40(%rbp), %rax, with no
    copy.
 
-   On aarch64 the listing must show, after mov x29, sp and before the
-   stores of the eight register parameters, each stack parameter
+   On aarch64 the listing must show, after the stores of the eight
+   register parameters, each stack parameter in parameter order
    copied through x17 to a slot of its own at its width: ldrb w17,
    [x29, #64], at the frame's size, and strb w17, [x29, #48] for i;
    ldr x17, [x29, #72] and str x17, [x29, #56] for j.  The body then

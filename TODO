@@ -111,24 +111,6 @@ generators for the sites above.
 Check: those sites with no clearing move, =unsigned_int_called()=
 with its own, and no function longer.
 
-** TODO aarch64: an ordinary parameter past the eighth is copied before the stores of the first eight
-
-The moves, the stores and the loads of a function's parameters are
-written in parameter order on aarch64, but for the copies of the
-ordinary parameters past the eighth to their slots, which
-=aarch64.md= 5.2 puts before the stores of the first eight: with a
-=register= parameter at index 8 and an ordinary one at index 9, the
-ninth's copy, =ldrb w17, [x29, #72]; strb w17, [x29, #62]=, is
-written before the eight stores and the eighth's load after them.
-
-Fix: none taken; decide: the copies follow the stores, every
-parameter's instructions in parameter order, with 5.2 and
-=cost.md='s row saying so; or the documents say why the copies come
-first. Taken, 11 listings over =tests= reorder at the same count.
-
-Check: =stack-parameter='s pin in parameter order, and no function
-longer; or the sentence in 5.2.
-
 ** TODO A statement expression that saves nothing is still read as a call ahead
 
 The walks that look ahead of an operand, and the test of a register

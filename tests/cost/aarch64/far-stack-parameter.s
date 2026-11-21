@@ -13,6 +13,14 @@ eleventh:
 	.cfi_offset w30, -16777192
 	mov	x29, sp
 	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	x1, [x29, #24]
+	str	x2, [x29, #32]
+	str	x3, [x29, #40]
+	str	x4, [x29, #48]
+	str	x5, [x29, #56]
+	str	x6, [x29, #64]
+	str	x7, [x29, #72]
 	add	x16, x29, #16773120
 	ldr	x17, [x16, #4080]
 	str	x17, [x29, #80]
@@ -23,14 +31,6 @@ eleventh:
 	add	x16, x29, x16
 	ldr	x17, [x16]
 	str	x17, [x29, #96]
-	str	x0, [x29, #16]
-	str	x1, [x29, #24]
-	str	x2, [x29, #32]
-	str	x3, [x29, #40]
-	str	x4, [x29, #48]
-	str	x5, [x29, #56]
-	str	x6, [x29, #64]
-	str	x7, [x29, #72]
 	ldr	x0, [x29, #96]
 	b	.Leleventh.1
 .Leleventh.1:
@@ -60,12 +60,6 @@ eleventh_register:
 	.cfi_def_cfa_register w29
 	str	x19, [x29, #16]
 	.cfi_offset w19, -16777184
-	add	x16, x29, #16773120
-	ldr	x17, [x16, #4080]
-	str	x17, [x29, #88]
-	add	x16, x29, #16773120
-	ldr	x17, [x16, #4088]
-	str	x17, [x29, #96]
 	str	x0, [x29, #24]
 	str	x1, [x29, #32]
 	str	x2, [x29, #40]
@@ -74,6 +68,12 @@ eleventh_register:
 	str	x5, [x29, #64]
 	str	x6, [x29, #72]
 	str	x7, [x29, #80]
+	add	x16, x29, #16773120
+	ldr	x17, [x16, #4080]
+	str	x17, [x29, #88]
+	add	x16, x29, #16773120
+	ldr	x17, [x16, #4088]
+	str	x17, [x29, #96]
 	mov	x16, #16777216
 	add	x16, x29, x16
 	ldr	x19, [x16]
