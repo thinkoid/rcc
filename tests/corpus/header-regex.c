@@ -12,9 +12,10 @@
    and the row is the same on both sides.
 
    On x86-64 the listing must be, byte for byte but for the .file line,
-   the listing of this program with const int *a for sum's parameter
-   and without the #include, and nothing for any declaration of the
-   header.
+   the listing of this program with const int *a for sum's parameter,
+   n; at the head of sum's body, since a definition evaluates the size
+   on entry (6.9.2p11), and without the #include, and nothing for any
+   declaration of the header.
 
    On aarch64 the listing must be the same twin's listing, byte for
    byte but for the .file line. */

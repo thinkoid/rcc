@@ -13,6 +13,7 @@ sum:
 	.cfi_def_cfa_register w29
 	str	w0, [x29, #16]
 	str	x1, [x29, #24]
+	ldr	w0, [x29, #16]
 	str	wzr, [x29, #32]
 	str	wzr, [x29, #36]
 .Lsum.2:

@@ -11,6 +11,7 @@ sum:
 	.cfi_def_cfa_register %rbp
 	movl	%edi, -4(%rbp)
 	movq	%rsi, -16(%rbp)
+	movl	-4(%rbp), %eax
 	movl	$0, -20(%rbp)
 	movl	$0, -24(%rbp)
 	.p2align 5

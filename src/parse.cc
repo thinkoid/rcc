@@ -241,8 +241,10 @@ struct specifiers_t
 // A parameter as written: its type, its name token when it has one,
 // whether it was declared register, the name's token of the first
 // marking attribute said of it, or null, the '*' that sizes the
-// array it is adjusted from, or null, and the first '*' that sizes an
-// array in its other brackets, or null.
+// array it is adjusted from, or null, the first '*' that sizes an
+// array in its other brackets, or null, and the size of the array it
+// is adjusted from when that is no constant, which a definition
+// evaluates on entry, or nothing.
 struct parameter_t
 {
     type_t type;
@@ -252,6 +254,7 @@ struct parameter_t
     const token_t *marking;
     const token_t *star;
     const token_t *inner_star;
+    std::optional< expr_t > size;
 };
 
 // A declarator: a name, absent from a parameter that leaves it out and
@@ -267,7 +270,9 @@ struct parameter_t
 // null.  zero is the size of zero of a member's own array, read as
 // left out, or null.  variable_size is the size as written of the
 // variable length array the declarator's type is, for its declaration
-// to evaluate; absent for any other type.
+// to evaluate, or of the array a parameter is adjusted from when that
+// is no constant, for a definition to evaluate on entry; absent for
+// any other type.
 struct declarator_t
 {
     const token_t *name;
@@ -3140,8 +3145,7 @@ skip_extension_keywords(parser_t &p)
 //
 
 void external_declaration(parser_t &);
-void
-function_definition(parser_t &, const specifiers_t &, const declarator_t &);
+void function_definition(parser_t &, const specifiers_t &, declarator_t &);
 void header_function_definition(parser_t &,
                                 const specifiers_t &,
                                 const declarator_t &);
@@ -5274,7 +5278,7 @@ external_declaration(parser_t &p)
     const type_t &base = spec.type;
     const bool typedef_ = declared(spec, tok_t::kw_typedef);
 
-    const declarator_t d = declarator(p, base, naming_t::required, typedef_);
+    declarator_t d = declarator(p, base, naming_t::required, typedef_);
 
     const bool defines_function = d.params && peek(p).kind == tok_t::lbrace;
     if (defines_function && !typedef_) {
@@ -5519,11 +5523,12 @@ is_defined(const parser_t &p, std::size_t index)
 }
 
 // A function's body, its braces included, its items parsed into the
-// scope of the parameter list, which the caller opened again.
+// scope of the parameter list, which the caller opened again, after the
+// statements entry holds, parameter_sizes()'s.
 block_t
-function_body(parser_t &p)
+function_body(parser_t &p, std::vector< stmt_t > entry)
 {
-    block_t body;
+    block_t body { std::move(entry) };
     p.temporaries.emplace();
     expect(p, tok_t::lbrace, "expected '{' before function body");
     block_item_list(p, body);
@@ -5546,7 +5551,7 @@ function_body(parser_t &p)
 // temporaries, and the static objects it declared, which nothing
 // outside it names.
 std::optional< block_t >
-inline_body(parser_t &p, std::string &missing)
+inline_body(parser_t &p, std::string &missing, std::vector< stmt_t > entry)
 {
     const std::size_t start = p.pos;
     const std::size_t depth = p.scopes.size();
@@ -5557,7 +5562,7 @@ inline_body(parser_t &p, std::string &missing)
     const int loops = p.loops;
 
     try {
-        return function_body(p);
+        return function_body(p, std::move(entry));
     }
     catch (const not_yet_error_t &e) {
         missing = e.construct;
@@ -5574,6 +5579,23 @@ inline_body(parser_t &p, std::string &missing)
     }
 
     return std::nullopt;
+}
+
+// The sizes of the arrays a definition's parameters are adjusted from
+// that are no constants, each an expression statement for the head of
+// the body, in the order of the parameters.  The parameters have block
+// scope, 6.2.1p4, so the sizes are evaluated on entry, 6.9.2p11, for
+// their effects alone, since each parameter is the pointer; a constant
+// size has none and writes nothing.
+std::vector< stmt_t >
+parameter_sizes(declarator_t &d)
+{
+    std::vector< stmt_t > sizes;
+    for (parameter_t &param : *d.params)
+        if (param.size)
+            sizes.push_back(stmt_t { expr_stmt_t { std::move(param.size) } });
+
+    return sizes;
 }
 
 // A static inline definition whose head needs what rcc does not
@@ -5615,9 +5637,7 @@ uncompiled_head(parser_t &p,
 // nothing for it if it refuses the body, with the static objects the
 // body declares, unless keep_named_functions() finds it named.
 void
-function_definition(parser_t &p,
-                    const specifiers_t &spec,
-                    const declarator_t &d)
+function_definition(parser_t &p, const specifiers_t &spec, declarator_t &d)
 {
     const std::size_t index = declare_function(
         p, spec, d, { nullptr, { }, spec.marking, spec.markings });
@@ -5654,8 +5674,10 @@ function_definition(parser_t &p,
 
     const std::size_t statics = p.unit.objects.size();
     std::string missing;
+    std::vector< stmt_t > sizes = parameter_sizes(d);
     std::optional< block_t > body =
-        inline_ ? inline_body(p, missing) : function_body(p);
+        inline_ ? inline_body(p, missing, std::move(sizes)) :
+                  function_body(p, std::move(sizes));
 
     p.scopes.pop_back();
 
@@ -7272,9 +7294,9 @@ typedef_array_size(parser_t &p, std::string &missing)
 // any array's, but for a size that is no integer constant expression,
 // as one that names an earlier parameter, which is taken as left out.
 // At prototype scope such a size stands for '*', 6.7.7.3p5, and the
-// parameter is the pointer either way.  In a definition the size is not
-// evaluated on entry, as 6.9.2p11 asks, which only a size with a side
-// effect shows.
+// parameter is the pointer either way.  In a definition the parameter
+// has block scope, 6.2.1p4, and the size is evaluated on entry for its
+// effects, 6.9.2p11, which array_declarator() keeps it for.
 long
 parameter_array_count(const token_t &at, const expr_t &size)
 {
@@ -7467,7 +7489,9 @@ array_length(parser_t &p)
 // length array, p4, of a length of its own, its size returned in
 // variable_size for the declaration to evaluate, and the caller decides
 // whether its context takes one; an array of variable length arrays is
-// not yet.
+// not yet.  The size of the array a parameter is adjusted from is
+// returned in variable_size too when it is no constant, for a
+// definition to evaluate.
 type_t
 array_declarator(parser_t &p,
                  const type_t &element,
@@ -7522,6 +7546,9 @@ array_declarator(parser_t &p,
                         adjusted ? parameter_array_count(start, *size) :
                         own      ? member_array_count(start, *size, zero) :
                                    array_count(start, *size);
+
+                if (adjusted && !is< literal_t >(*size))
+                    variable_size = std::move(size);
             }
         }
 
@@ -7647,7 +7674,7 @@ parameter_declaration(parser_t &p)
 
     refuse_function_specifier(spec);
 
-    const declarator_t d = declarator(p, spec.type, naming_t::optional);
+    declarator_t d = declarator(p, spec.type, naming_t::optional);
 
     const token_t *marking = attribute_specifier_list(p);
     if (spec.marking)
@@ -7666,7 +7693,7 @@ parameter_declaration(parser_t &p)
     return parameter_t { std::move(t), &start,
                          d.name,       declared(spec, tok_t::kw_register),
                          marking,      d.star,
-                         d.inner_star };
+                         d.inner_star, std::move(d.variable_size) };
 }
 
 // Specifiers and an abstract declarator, the declarator of a

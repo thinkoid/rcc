@@ -529,8 +529,12 @@ qualifiers inside its brackets before the size, as `regex.h` writes
 `static` takes a size (6.7.7.3p3), and in any other brackets `static`
 and the qualifiers are refused (p1). The size need not be constant:
 one that is not is taken as left out, as 6.7.7.3p5 takes it in a
-prototype, since the parameter is the pointer either way, and nothing
-is evaluated for it. `[*]` is the size left out too. Every other
+prototype, since the parameter is the pointer either way. `[*]` is
+the size left out too. A definition's parameters have block scope
+(6.2.1p4), so there a size that is not constant is evaluated on entry
+(6.9.2p11), at the head of the body in the order of the parameters,
+for its effects alone: `int a[n++]` steps `n` and `int a[n]` reads
+it; a constant size writes nothing. Every other
 array suffix keeps the rules of an array, so `int (*a)[n]` and
 `int (*a)[*]` are pointers to a variable length array, which are not
 yet, refused at the size (below). At file scope such a size is
@@ -1687,7 +1691,7 @@ rcc cannot compute, a variable length array's storage, which neither
 generator writes, one that may be reached again in one activation,
 and every other variably modified type (chapter 5; a parameter's
 array of a size that is not constant is the pointer the parameter is
-adjusted to, and the size is not evaluated), GNU C's range
+adjusted to), GNU C's range
 designator, its array
 designator without the `=` and its obsolete member designator, a local
 scalar's brace initializer, a declaration through a typedef of

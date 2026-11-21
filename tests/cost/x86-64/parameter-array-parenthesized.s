@@ -11,6 +11,7 @@ f:
 	.cfi_def_cfa_register %rbp
 	movl	%edi, -4(%rbp)
 	movq	%rsi, -16(%rbp)
+	movl	-4(%rbp), %eax
 	movq	-16(%rbp), %rax
 	movl	(%rax), %eax
 	jmp	.Lf.1

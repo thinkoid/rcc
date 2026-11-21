@@ -13,6 +13,7 @@ f:
 	.cfi_def_cfa_register w29
 	str	w0, [x29, #16]
 	str	x1, [x29, #24]
+	ldr	w0, [x29, #16]
 	ldr	x0, [x29, #24]
 	ldr	w0, [x0]
 	b	.Lf.1

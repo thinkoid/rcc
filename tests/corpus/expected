@@ -47,3 +47,4 @@ main-envp 0 0
 main-void 0 10
 conditional-omitted-once 42 42
 statement-expression-order 42 105
+parameter-size-entry 42 42
