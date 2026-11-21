@@ -563,18 +563,6 @@ types whose marks differ is a not-yet.
 Check: that program is refused by the attribute's name, or
 =docs/shape.md= says why not.
 
-** TODO An =__asm__= statement's qualifier written twice is taken
-
-~__asm__ volatile volatile ("" : : : "memory");~ compiles as the
-barrier, the null statement. =gcc= and =clang= refuse it, "duplicate
-asm qualifier 'volatile'", and the same of =inline= and =goto=: each
-qualifier may stand once. The parser reads the qualifiers in a loop
-and counts none.
-
-Fix: a qualifier written a second time is an error at its token.
-
-Check: a program of =tests/error= with =volatile= twice, pinned.
-
 ** TODO A cast of 0 to a qualified =void *= is taken as a null pointer constant
 
 =is_null_pointer_constant()= takes 0 cast to any pointer to =void=,

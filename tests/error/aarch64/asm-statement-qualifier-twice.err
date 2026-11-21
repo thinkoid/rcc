@@ -1,0 +1,2 @@
+tests/error/asm-statement-qualifier-twice.c:7:26: error: duplicate qualifier 'volatile' in '__asm__' statement
+status 1

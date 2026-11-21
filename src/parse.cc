@@ -9115,6 +9115,36 @@ asm_sections_are_barrier(parser_t &p, const token_t &keyword)
     return barrier;
 }
 
+// Whether a token is a qualifier of an __asm__ statement: volatile,
+// inline or goto, in any spelling.
+bool
+is_asm_qualifier(const token_t &t)
+{
+    return t.kind == tok_t::kw_volatile || t.kind == tok_t::kw_inline ||
+           t.kind == tok_t::kw_goto;
+}
+
+// The qualifiers after an __asm__ statement's keyword, volatile, inline
+// and goto in any order and each once: one written a second time, in
+// any spelling, is an error at its token, as GNU C has it.  Whether
+// goto is among them.
+bool
+asm_qualifiers_have_goto(parser_t &p, const token_t &keyword)
+{
+    std::vector< tok_t > seen;
+
+    while (is_asm_qualifier(peek(p))) {
+        const token_t &qualifier = advance(p);
+        if (std::ranges::find(seen, qualifier.kind) != seen.end())
+            fail(qualifier, "duplicate qualifier " + quoted(qualifier.text) +
+                                " in " + quoted(keyword.text) + " statement");
+
+        seen.push_back(qualifier.kind);
+    }
+
+    return std::ranges::find(seen, tok_t::kw_goto) != seen.end();
+}
+
 // GNU C's __asm__ statement, also spelled asm and __asm, after which
 // volatile, inline and goto may stand.  The barrier, of an empty
 // template, no operand, no label, no goto, and clobbers of "memory" and
@@ -9127,9 +9157,7 @@ asm_statement(parser_t &p)
 {
     const token_t &keyword = advance(p);
 
-    bool goto_ = false;
-    while (next_is(p, { tok_t::kw_volatile, tok_t::kw_inline, tok_t::kw_goto }))
-        goto_ = advance(p).kind == tok_t::kw_goto || goto_;
+    const bool goto_ = asm_qualifiers_have_goto(p, keyword);
 
     expect(p, tok_t::lparen, "expected '(' after " + quoted(keyword.text));
     const bool empty = asm_string(p, keyword).empty();

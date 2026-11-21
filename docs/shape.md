@@ -774,8 +774,9 @@ The barrier, `__asm__ __volatile__ ("" : : : "memory")`, is GNU C's
 program writes it in a macro, most often as the one statement of a
 statement expression. The parser takes it as the null statement, so
 c1 writes nothing for it. Each spelling of the keyword is the same
-statement, and `volatile` and `inline` after it change nothing. The
-empty template is no instruction. The `"memory"` clobber asks that no
+statement, and `volatile` and `inline` after it change nothing; each
+qualifier stands once, and one written a second time is an error at
+its token, as GNU C has it. The empty template is no instruction. The `"memory"` clobber asks that no
 value read from memory be held in a register across the statement
 and that no access be moved over it, and rcc's code is so already:
 c1 makes every load and store the source writes, in the written order
