@@ -349,26 +349,6 @@ made from.
 
 Check: the first program is refused as not yet, or compiles.
 
-** TODO A type rcc does not honour cannot be written twice
-
-~typedef int w __attribute__ ((mode (word))); typedef int w
-__attribute__ ((mode (word)));~ fails with "redefinition of typedef
-'w' with another type". A typedef may be declared again as the same
-type, and these two are. Each declaration through an attribute rcc
-does not honour makes a type of an identity of its own, so the
-second is never the first. Three more are made the same way and fail
-the same way: a typedef through =_Atomic=; the atomic type specifier,
-so that ~void f(_Atomic(int) *); void f(_Atomic(int) *);~ fails with
-"conflicting types for 'f'"; and a typedef of an array whose size rcc
-cannot compute, ~typedef int a[sizeof (struct s)];~ written twice,
-=s= a struct with a bit-field.
-
-Fix: a type made again by the same means from the same type takes
-the earlier one's identity.
-
-Check: the programs above compile; with =mode (byte)= in the second
-typedef the first still fails.
-
 ** TODO The other target is preprocessed with this machine's headers
 
 =rcc -target x86-64= on an aarch64 machine runs =clang -E
@@ -624,6 +604,19 @@ Fix: it calls it.
 
 Check: a program of =tests/error= with such a definition under a
 system header's line marker, pinned with the error.
+
+** TODO A typedef through two marking attributes cannot be written twice
+
+~typedef int w __attribute__ ((mode (word), aligned (8)));~ written
+twice fails with "redefinition of typedef 'w' with another type". A
+type made again by the same means from the same type takes the
+earlier one's identity, and the means are spelled for a declaration
+of one marking attribute alone.
+
+Fix: the means spell every marking attribute of the declaration, in
+their order.
+
+Check: that typedef written twice compiles.
 
 * Lexer
 

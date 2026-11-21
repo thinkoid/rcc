@@ -190,6 +190,12 @@ typedef names through an attribute rcc does not honour, or through an
 array size rcc cannot compute. Such a type
 carries an identity, which equality compares, and the words a
 refusal of its use prints; a pointer to it is an ordinary pointer.
+The means that makes one from another type makes the same type
+from the same type again, so a typedef through it may be declared
+again (6.7.1p4) and a function with it: a marking attribute with its
+arguments, `__x__` read as `x`, where it is the declaration's one
+marking attribute; `_Atomic`, the qualifier or the specifier; and an
+array size rcc cannot compute, by the words of the size.
 It has no size and no alignment, but a real floating type has
 `clang`'s, the same on both targets, so that a record lays it out:
 `float` 4, `double` 8 and `long double` 16, each aligned to its size.

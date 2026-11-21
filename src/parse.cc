@@ -83,6 +83,15 @@ struct pending_alias_t
     bool weak;
 };
 
+// A not-yet type of an identity of its own, as made: the means that
+// made it, in words, the type it was made from, and its identity.
+struct made_type_t
+{
+    std::string means;
+    type_t from;
+    int identity;
+};
+
 // The marking attributes of a run of attributes, or of all a
 // declaration writes: how many, and the first alias and the first weak
 // among them.
@@ -131,7 +140,8 @@ struct open_switch_t
 // identities is the identity the next not-yet type of its own takes:
 // an enum in its own list or marked by an attribute, an atomic type, a
 // typedef through a marking attribute or an array size rcc cannot
-// compute; and the next enumerated type's enumeration.
+// compute; and the next enumerated type's enumeration.  made are the
+// not-yet types made from another type so far, identity_of()'s.
 // internal_uses are the uses of names of internal linkage, in the order
 // met, checked against their definitions at the end of the unit.
 // block_entities are the functions and the objects of external linkage
@@ -188,6 +198,7 @@ struct parser_t
     const symbol_t *va_area = nullptr;
     std::optional< std::vector< const symbol_t * > > temporaries = { };
     std::unordered_set< const symbol_t * > used = { };
+    std::vector< made_type_t > made = { };
 };
 
 // The declaration specifiers: the type, and the storage-class specifier
@@ -3368,6 +3379,57 @@ declare_parameter(parser_t &p, const parameter_t &param)
     added(p, param.name->text, param.type, storage_t::parameter);
 }
 
+// The identity of a not-yet type that a means makes from a type: the
+// earlier one's where the same means made one from the same type, so
+// that the type written twice is one type, as a typedef declared again
+// must be, 6.7.1p4, and a function declared again, p5; a new one
+// otherwise.
+int
+identity_of(parser_t &p, std::string means, const type_t &from)
+{
+    for (const made_type_t &m : p.made)
+        if (m.means == means && m.from == from)
+            return m.identity;
+
+    p.made.push_back({ std::move(means), from, p.identities });
+
+    return p.identities++;
+}
+
+// The words of a run of tokens, an identifier spelled __x__ read as x,
+// as an attribute's name is, so that two spellings of one attribute or
+// one argument are one means.
+std::string
+spelling(const parser_t &p, std::size_t first, std::size_t end)
+{
+    std::string words;
+    for (std::size_t i = first; i < end; ++i)
+        words += std::string(attribute_name(p.tokens[i])) + " ";
+
+    return words;
+}
+
+// The words of a marking attribute and its arguments, from its name to
+// the ')' that closes them, the means a typedef through it is made by.
+std::string
+attribute_spelling(const parser_t &p, const token_t &attribute)
+{
+    const std::size_t first = std::size_t(&attribute - p.tokens.data());
+    std::size_t end = first + 1;
+
+    if (p.tokens[end].kind == tok_t::lparen)
+        for (int depth = 0; end < p.tokens.size(); ++end) {
+            depth += p.tokens[end].kind == tok_t::lparen;
+            depth -= p.tokens[end].kind == tok_t::rparen;
+            if (depth == 0) {
+                ++end;
+                break;
+            }
+        }
+
+    return spelling(p, first, end);
+}
+
 // A typedef declares its declarator's name as a name for the type the
 // declarator gives, in the current scope, 6.7.9p3.  The name has no
 // object, so nothing is generated for it, and it takes no assembler
@@ -3379,7 +3441,9 @@ declare_parameter(parser_t &p, const parameter_t &param)
 // do.  Through a marking attribute the name stands for a not-yet type
 // of its own, of the attribute's words: typedef int register_t
 // __attribute__ ((__mode__ (__word__))) names an integer of a size rcc
-// does not take, and its objects are refused.
+// does not take, and its objects are refused.  The attribute, its
+// arguments included, made from the same type is the same type again,
+// where it is the declaration's one marking attribute.
 void
 type_definition(parser_t &p, const specifiers_t &spec, const declarator_t &d)
 {
@@ -3397,8 +3461,13 @@ type_definition(parser_t &p, const specifiers_t &spec, const declarator_t &d)
                           " cannot have a function body");
 
     type_t t = d.type;
-    if (tail.marking)
-        t = make_not_yet(p.identities++, attribute_words(*tail.marking));
+    if (tail.marking) {
+        const int identity =
+            tail.markings.count == 1 ?
+                identity_of(p, attribute_spelling(p, *tail.marking), t) :
+                p.identities++;
+        t = make_not_yet(identity, attribute_words(*tail.marking));
+    }
 
     if (!earlier_declaration(p, *d.name, t, storage_t::type_name))
         added(p, d.name->text, std::move(t), storage_t::type_name);
@@ -5902,7 +5971,7 @@ declaration_specifiers(parser_t &p)
                 require_restrictable(*restrict_qualifier, type);
 
             if (atomic_qualifier)
-                type = make_not_yet(p.identities++,
+                type = make_not_yet(identity_of(p, "_Atomic", type),
                                     "type qualifier " +
                                         quoted(atomic_qualifier->text));
 
@@ -6674,8 +6743,8 @@ enum_specifier(parser_t &p)
 // _Atomic ( type-name ), the atomic type specifier, 6.7.3.5p1, which
 // _Atomic is when a parenthesis follows it, p4, as clang's stdatomic.h
 // declares atomic_int.  The type is atomic, as the qualifier makes it,
-// so it is a not-yet type of its own wherever it is written, and the
-// use of its object is refused.  The type name is no array type and no
+// so it is the not-yet type the qualifier makes of the type name's
+// type, identity_of()'s, and the use of its object is refused.  The type name is no array type and no
 // function type, p3; an atomic or a qualified one cannot be told, since
 // the type is not-yet and qualifiers are dropped.
 type_t
@@ -6695,7 +6764,7 @@ atomic_type_specifier(parser_t &p)
 
     expect(p, tok_t::rparen, "expected ')' after type name");
 
-    return make_not_yet(p.identities++,
+    return make_not_yet(identity_of(p, "_Atomic", t),
                         "type specifier " + quoted(keyword.text));
 }
 
@@ -6980,12 +7049,14 @@ array_count(const token_t &at, const expr_t &size)
 
 // An array suffix as written: its '[', its count, -1 when the size is
 // left out, and the words of what the size needs that rcc does not
-// have yet, empty when it needs nothing.
+// have yet, empty when it needs nothing, with the words of the size,
+// the means its not-yet type is made by.
 struct array_suffix_t
 {
     const token_t *open;
     long count;
     std::string missing;
+    std::string size = { };
 };
 
 // The size of an array suffix, read up to the ']' that closes it.
@@ -7302,13 +7373,18 @@ array_declarator(parser_t &p,
         }
 
         expect(p, tok_t::rbracket, "expected ']'");
+
+        const auto first = std::size_t(suffix.open - p.tokens.data()) + 1;
+        if (!suffix.missing.empty())
+            suffix.size = "[" + spelling(p, first, p.pos - 1) + "]";
+
         suffixes.push_back(std::move(suffix));
     }
 
     type_t t = element;
 
     for (auto it = suffixes.rbegin(); it != suffixes.rend(); ++it) {
-        const auto &[open, count, missing] = *it;
+        const auto &[open, count, missing, size] = *it;
 
         if (is< function_t >(t))
             fail(*open, "array element type cannot be a function");
@@ -7321,7 +7397,8 @@ array_declarator(parser_t &p,
             fail(*open, "array element of type " + flexible_words(*r));
 
         if (!missing.empty()) {
-            t = make_not_yet_array(p.identities++, missing, std::move(t));
+            const int identity = identity_of(p, size, t);
+            t = make_not_yet_array(identity, missing, std::move(t));
             continue;
         }
 

@@ -1,0 +1,2 @@
+tests/error/attribute-mode-typedef-twice.c:5:13: error: redefinition of typedef 'word_t' with another type
+status 1
