@@ -1171,8 +1171,8 @@ clang holds it. The data is written in the order of the offsets. An
 index is an integer constant expression of an element the array holds
 (p3, p7), and a name a member's of the record (p8); a designator in a
 scalar's braces, `[2]` for a record and `.x` for an array are errors.
-GNU C's range, `[1 ... 3] = 0`, and its array designator without the
-`=`, `[2] 5`, are not yet.
+GNU C's range, `[1 ... 3] = 0`, its array designator without the
+`=`, `[2] 5`, and its obsolete member designator, `y: 2`, are not yet.
 
 A local record takes a brace-enclosed list by the same walk, but its
 values are expressions evaluated at run time, each converted as by
@@ -1597,8 +1597,9 @@ but behind a pointer, an object of an enum an attribute marks, an
 object of a typedef whose array size rcc
 cannot compute, a variable length array (a parameter's array of a
 size that is not constant is the pointer the parameter is adjusted to,
-and the size is not evaluated), GNU C's range designator and its
-array designator without the `=`, a local scalar's brace
+and the size is not evaluated), GNU C's range designator, its
+array designator without the `=` and its obsolete member designator,
+a local scalar's brace
 initializer, a declaration through a typedef of function
 type, a UTF-8 character constant, `u8'x'`, a character constant of
 more than one character and no prefix, `#pragma weak` and `#pragma

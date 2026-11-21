@@ -1,0 +1,2 @@
+tests/error/global-designator-gnu-colon.c:8:16: error: not yet: old-style designator 'y:'
+status 1

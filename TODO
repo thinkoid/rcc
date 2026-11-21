@@ -574,17 +574,6 @@ members.
 
 Check: that program reaches the bit-field's not-yet.
 
-** TODO GNU C's old-style designator is "undeclared"
-
-~struct p d = { y: 2 };~ fails with "'y' undeclared": GNU C's
-obsolete spelling of ~.y = 2~, which =clang= takes with a warning,
-and the message calls the program wrong.
-
-Fix: a not-yet by name where a designation is looked for: an
-identifier before a colon starts no expression in a list.
-
-Check: a program of =tests/error=, pinned "not yet".
-
 ** TODO A string literal for a local array of =char= is not yet
 
 ~char s[4] = "abc";~ and ~char s[] = { "abc" };~ in a block are "not

@@ -3702,11 +3702,27 @@ string_ahead(const parser_t &p, const type_t &t)
     return size_of(element) > 1 && *as< array_t >(t).element == element;
 }
 
+// GNU C's obsolete designation, y: 2 for .y = 2, at the token ahead
+// past the given count, is not yet: an identifier before a colon starts
+// no expression in a list, so one where a designation may stand is
+// this one.
+void
+refuse_old_designation(const parser_t &p, std::size_t ahead)
+{
+    const token_t &name = peek(p, ahead);
+    if (name.kind == tok_t::identifier &&
+        peek(p, ahead + 1).kind == tok_t::colon)
+        not_yet(name,
+                "old-style designator " + quoted(std::string(name.text) + ":"));
+}
+
 // Whether a designation, [2] = or .x =, 6.7.11p1, is ahead: its first
 // designator.
 bool
 designation_ahead(const parser_t &p)
 {
+    refuse_old_designation(p, 0);
+
     return next_is(p, { tok_t::lbracket, tok_t::dot });
 }
 
@@ -3715,6 +3731,9 @@ designation_ahead(const parser_t &p)
 bool
 designation_after_separator(const parser_t &p)
 {
+    if (peek(p).kind == tok_t::comma)
+        refuse_old_designation(p, 1);
+
     const tok_t after = peek(p, 1).kind;
 
     return peek(p).kind == tok_t::comma &&
