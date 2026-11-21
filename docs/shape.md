@@ -361,7 +361,10 @@ Three sums.
   computed in, the usual arithmetic conversions of its operands. A
   record's assignment is a plain assignment of the record's type, its
   two operands the lvalues of one record, for the generator to copy
-  the right's object into the left's. Pointer arithmetic is a binary
+  the right's object into the left's; the parser's copy of a string
+  literal into a local array is one of an array type, its left operand
+  the array's first elements and its right the literal, from which
+  the copy reads as many (chapter 5). Pointer arithmetic is a binary
   add or sub of the pointer's type with the integer operand widened to
   64 bits in its own signedness; the difference of two pointers is a
   binary sub of type `long`; a subscript is a dereference of an add,
@@ -424,7 +427,10 @@ Three sums.
   nothing. A declaration carries a scalar's initializer, converted to
   its type, or for a record's list the mark that it zeroes the whole
   object, the stores of the list's values the statements after it
-  (chapter 5). `break` and `continue` name no statement: c1 finds
+  (chapter 5), or for an array a string literal initializes the copy
+  of the literal into it and the mark that it zeroes the elements
+  past the copy, after it. `break` and `continue` name no statement:
+  c1 finds
   the loop or the switch they leave or go on with as it generates the
   statements around them. A label and a `goto` carry the label's name.
   A label is a statement of its own, so it may stand before a
@@ -1404,16 +1410,24 @@ of a member's access, so `struct point q = { 1 };` is the zeroing and
 (p20, p22), and so is the padding, which C23 leaves unspecified where
 a list is not empty (6.2.6.1p6). The assignments are the parser's own:
 initialization is no assignment, and p12 takes the scalar's
-unqualified type. A string literal for an array in the list is not
-yet, which an object of static storage holds as the array's own
-bytes, and so is a record's value in a scalar's place, which may
-initialize a record the scalar begins (p14). A local array takes a
+unqualified type. A string literal for an array in the list is a
+store of the list's too: the copy of the literal's elements into the
+array's place, with no zeroing of its own (G22). A record's value in
+a scalar's place, which may initialize a record the scalar begins
+(p14), is not yet. A local array takes a
 list by the same walk and the same zeroing, an array of records among
 them, the zeroing in units of the array's alignment, its element's,
 so `int a[3] = { 1, 2 };` is three stores of 0 and the stores of 1
 and 2; an array of unknown size takes its size from the list (p23).
-A string literal for a local array of `char` is not yet, braced or
-not, and a local scalar takes no braces.
+A string literal for a local array, braced or not, is the copy of its
+elements from the literal's own object (G17), the declaration's
+initializer: an assignment of the array's first elements, as many as
+the literal has with its zero or the array holds, from the literal,
+which each generator writes by the copy of a record's assignment
+(G18). The declaration then zeroes the elements past the copy, after
+it, and only those, so each byte of the array is written once (G22):
+`char u[100] = "abc";` is a copy of 4 bytes and a zeroing of 96. A
+local scalar takes no braces.
 
 A designation moves the walk as in an object of static storage's list,
 and the stores follow the list's order (G13): `{ .y = f(), .x = g() }`
@@ -1543,7 +1557,11 @@ code of a `backend.md` chapter:
 
 A record's assignment reaches each generator in `effect(e)`, the one
 context the parser lets it stand in. Each copies the object there,
-inline, unit by unit (G18; `backend.md` 6.6, `aarch64.md` 6.6).
+inline, unit by unit (G18; `backend.md` 6.6, `aarch64.md` 6.6). So
+does a string literal's copy into a local array, an assignment of
+array type: the declaration's initializer, which the declaration
+follows by the zeroing of the elements past the copy, or a store of
+a local's list (G22).
 
 A variadic definition that calls `va_start` reaches each generator
 with its save area, which the generator places and fills at entry
@@ -1807,8 +1825,7 @@ walk from 27 by a conditional of two void calls.
 Each use that reads or writes a record whole (chapter 5: a `register`
 one, a record by value but the aarch64 `va_list`, and its value where
 a record is wanted, a scalar's place in a local's list among them), a
-string literal for a local array or for an array in a local's list,
-`char s[] = "..."` among them, a function whose parameter list is
+function whose parameter list is
 `(...)` alone, the layout of a struct or a union with a bit-field, an
 attribute that marks, `packed` and `aligned` among them, a packing of
 `#pragma pack`, no member, or a member of a type rcc does not use yet

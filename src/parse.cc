@@ -4352,15 +4352,16 @@ string_array_words(const type_t &t)
 // parentheses, ("abc"), which is the literal, 6.5.2p6, as it is outside
 // a list.  Any other expression there initializes the array's first
 // element.  A wide literal ahead of an array of char is the literal
-// string_value() refuses.
+// string_value() refuses.  The tokens are looked at from the from'th
+// ahead, past a declaration's = and { for its own list.
 bool
-string_ahead(const parser_t &p, const type_t &t)
+string_ahead(const parser_t &p, const type_t &t, std::size_t from = 0)
 {
     std::size_t opened = 0;
-    while (peek(p, opened).kind == tok_t::lparen)
+    while (peek(p, from + opened).kind == tok_t::lparen)
         ++opened;
 
-    std::size_t ahead = opened;
+    std::size_t ahead = from + opened;
     encoding_t encoding = encoding_t::none;
     for (; peek(p, ahead).kind == tok_t::string; ++ahead)
         if (encoding_of(peek(p, ahead)) != encoding_t::none)
@@ -4371,7 +4372,7 @@ string_ahead(const parser_t &p, const type_t &t)
         ++closed;
 
     const tok_t after = peek(p, ahead + closed).kind;
-    if (ahead == opened || closed != opened ||
+    if (ahead == from + opened || closed != opened ||
         (after != tok_t::comma && after != tok_t::rbrace))
         return false;
 
@@ -4574,7 +4575,8 @@ scalar_value(parser_t &p, const token_t &at, const type_t &t)
 // each subobject's constant at its offset in the object, which c1
 // writes (shape.md chapter 4).  For a local it is the statements after
 // the declaration of the object local, stores: each scalar's value
-// assigned to its place in the object, in the list's order (G13).
+// assigned to its place in the object, and each string literal copied
+// to its array's, in the list's order (G13).
 // reached is the end of the highest byte a value has gone to, so a
 // value at or past it overrides none, p20, as every value of a list
 // without designators is; members is the member each union holds a
@@ -4844,36 +4846,65 @@ string_value(const token_t &start,
     return given;
 }
 
-// The words of a string literal's refusal for an array in the local
-// sym, not yet: the local's own array, or one in its record.
-std::string
-local_string_words(const symbol_t &sym)
+// The copy of the string literal str into the array of type t at offset
+// in local, 6.7.11p15, p16: a record's assignment's node on an array,
+// which each generator writes by the copy's row (G18, G22).  Its left
+// operand is the array's first elements, as many as the literal has
+// with its terminating zero, or as the array holds where that is fewer,
+// the lvalue at offset in the local, lvalue_at()'s; its right is the
+// literal itself, an object of its own (G17), of which the copy reads
+// as many.  The parser makes the node, since initialization is no
+// assignment, 6.7.11p12, and the place is of the unqualified type, as
+// local_assignment()'s is.
+expr_t
+string_copy(const parser_t &p,
+            const token_t &at,
+            const symbol_t &local,
+            const type_t &t,
+            long offset,
+            expr_t str)
 {
-    if (const record_t *r = record_in(sym.type))
-        return "string initializer of an array in local " + record_words(*r);
+    const auto &array = as< array_t >(t);
+    const long given = size_of(str.type) / size_of(*array.element);
+    const type_t copied =
+        make_array(*array.element, std::min(array.count, given));
 
-    return "string initializer of local array " + quoted(sym.name);
+    expr_t object { local.type, name_t { &local } };
+    expr_t place =
+        lvalue_at(p, address_of(at, std::move(object)), offset, copied, { });
+
+    return expr_t { copied,
+                    assign_t { std::nullopt, copied, box(std::move(place)),
+                               box(std::move(str)) } };
 }
 
 // The string literal ahead, which string_ahead() found, for the array t
 // at offset.  An object of static storage holds the literal's bytes as
-// the array's own; a local's array would take them at run time, which
-// is not yet.
+// the array's own; a local's array takes them by their copy,
+// string_copy()'s, a store of the list's after the declaration's
+// zeroing (G20), which goes to the bytes copied.
 long
 listed_string(parser_t &p, const type_t &t, long offset, destination_t &to)
 {
     const token_t &start = peek(p);
-    if (to.local)
-        not_yet(start, local_string_words(*to.local));
-
-    const expr_t e = assignment_expression(p);
+    expr_t e = assignment_expression(p);
 
     if (offset < to.reached)
         overridden(p, start, to, offset, size_of(t), align_of(t));
 
+    std::vector< subobject_t > checked;
+    auto &values = to.local ? checked : *to.data;
     const long count =
-        string_value(start, as< string_t >(e), t, offset, *to.data);
-    reach(to, offset, size_of(to.data->back().type));
+        string_value(start, as< string_t >(e), t, offset, values);
+    const type_t sized = values.back().type;
+    reach(to, offset, size_of(sized));
+
+    if (to.local) {
+        expr_t copy =
+            string_copy(p, start, *to.local, sized, offset, std::move(e));
+        to.stored.emplace_back(offset, size_of(copy.type));
+        to.stores->push_back(stmt_t { expr_stmt_t { std::move(copy) } });
+    }
 
     return count;
 }
@@ -8681,25 +8712,35 @@ local_list(parser_t &p, symbol_t &sym, std::vector< stmt_t > &stores)
     sym.type = completed_type(sym.type, count);
 }
 
-// The initializer of a local array that is an expression, after its
-// '=': a string literal for an array of char, 6.7.11p15, or of a wide
-// literal's element type, p16, whose bytes a local would take at run
-// time, which is not yet, once string_value() has checked it; any
-// other expression initializes no array, p17.
-[[noreturn]] void
-refuse_array_expression(parser_t &p, const declarator_t &d)
+// The string literal that initializes the local array sym, after its
+// '=', alone or in braces: one for an array of char, 6.7.11p15, or of a
+// wide literal's element type, p16, as string_value() checks it, and an
+// array of unknown size takes its elements and the terminating zero,
+// p23.  The declaration's initializer is the copy of the literal into
+// the array, string_copy()'s, and the declaration zeroes the elements
+// past the copy after it, p22, so each byte of the array is written
+// once (G22).  Any other expression initializes no array, p17.
+void
+local_string(parser_t &p, symbol_t &sym, decl_stmt_t &decl)
 {
     advance(p);
+    const bool braced = accept(p, tok_t::lbrace);
 
     const token_t &start = peek(p);
-    const expr_t e = assignment_expression(p);
-
-    if (!is< string_t >(e) || !initializes(d.type, e))
+    expr_t e = assignment_expression(p);
+    if (!is< string_t >(e) || !initializes(sym.type, e))
         fail(start, "array initializer must be an initializer list");
 
     std::vector< subobject_t > checked;
-    string_value(start, as< string_t >(e), d.type, 0, checked);
-    not_yet(start, "string initializer of local array " + quoted(d.name->text));
+    const long count =
+        string_value(start, as< string_t >(e), sym.type, 0, checked);
+
+    if (braced)
+        close_list(p, true, string_array_words(sym.type));
+
+    sym.type = completed_type(sym.type, count);
+    decl.init = string_copy(p, start, sym, sym.type, 0, std::move(e));
+    decl.zeroed = size_of(decl.init->type) < size_of(sym.type);
 }
 
 // A local larger than the target's largest frame, its frame_limit, is
@@ -8783,21 +8824,23 @@ local_variable_array(parser_t &p, declarator_t &d, std::vector< stmt_t > &decls)
 // to decls as its declaration, and for a record initialized by an
 // expression the record_initializer() statement after it, or for a
 // record or an array initialized by a list the declaration zeroed and
-// local_list()'s statements.  The name is in scope from the end of its
-// declarator, 6.2.1p7, so an initializer sees the object it
-// initializes.  The initializer is converted as by assignment,
-// 6.7.11p12, an error of the conversion said at the =; an initializer
-// that has no value, a void one, 6.3.2.2p1, is the error of the
-// operand, said at its first token.  An object's type must be
-// complete, 6.7.1p8, so an array needs its size, or a list to give it,
-// 6.7.11p23.  A string literal for an array and a brace initializer of
-// a scalar are not yet: a local's initializer is stores at run time,
+// local_list()'s statements, or for an array a string literal
+// initializes the declaration with its copy, local_string()'s.  The
+// name is in scope from the end of its declarator, 6.2.1p7, so an
+// initializer sees the object it initializes.  The initializer is
+// converted as by assignment, 6.7.11p12, an error of the conversion
+// said at the =; an initializer that has no value, a void one,
+// 6.3.2.2p1, is the error of the operand, said at its first token.  An
+// object's type must be complete, 6.7.1p8, so an array needs its size,
+// or a list or a string to give it, 6.7.11p23.  A brace initializer of
+// a scalar is not yet: a local's initializer is stores at run time,
 // where an object of static storage takes its value as data.  A
 // register array is not yet either: its decay is undefined, 6.3.2.1p3,
 // and it has no slot to decay to; nor is a register record, which no
 // register holds.  A local too large for a frame is refused,
-// require_frame(), an array of unknown size once its list has given
-// the size.  A variable length array is local_variable_array()'s.
+// require_frame(), an array of unknown size once its list or its
+// string has given the size.  A variable length array is
+// local_variable_array()'s.
 void
 init_declarator(parser_t &p,
                 const specifiers_t &spec,
@@ -8823,12 +8866,11 @@ init_declarator(parser_t &p,
     const bool record = is< record_type_t >(d.type);
     const bool listed = peek(p).kind == tok_t::assign &&
                         peek(p, 1).kind == tok_t::lbrace && (array || record);
-
-    if (array && peek(p).kind == tok_t::assign && !listed)
-        refuse_array_expression(p, d);
+    const bool string = array && peek(p).kind == tok_t::assign &&
+                        (!listed || string_ahead(p, d.type, 2));
 
     const bool sized = !array || as< array_t >(d.type).count >= 0;
-    if (!sized && !listed)
+    if (!sized && !listed && !string)
         fail(*d.name, "array size missing in " + quoted(d.name->text));
 
     if (sized)
@@ -8838,6 +8880,16 @@ init_declarator(parser_t &p,
                             declared(spec, tok_t::kw_register));
     sym->qualifiers = d.qualifiers;
     decl_stmt_t decl { sym, std::nullopt };
+
+    if (string) {
+        local_string(p, *sym, decl);
+
+        decls.push_back(stmt_t { std::move(decl) });
+        if (!sized)
+            require_frame(p, *d.name, sym->type);
+
+        return;
+    }
 
     if (listed) {
         advance(p);

@@ -63,6 +63,8 @@ struct units_t
 };
 
 units_t units_of(long size, int alignment);
+bool copies_object(const expr_t &);
+long zeroed_from(const decl_stmt_t &);
 
 std::string_view assembly_name(const symbol_t &);
 std::string symbol_plus(std::string_view symbol, long long offset);

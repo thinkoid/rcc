@@ -5543,31 +5543,33 @@ copy_loop(state_t &s,
     release(s, index);
 }
 
-// A record's assignment, backend.md 6.6 and G18: an inline copy in
-// units of the record's alignment, at most 8, of which its size is a
-// multiple, lowest address first, each unit loaded and then stored,
-// padding included, and no call.  The left's place is evaluated first,
-// held across the right's as an assignment's is (place_of()), then the
-// right's (G13), and the left's formed() after it.  Up to eight units
-// are written out; above that, a loop, copy_loop()'s.  Each place keeps
-// its own form, a slot, a label, a base with a displacement and an
-// index, the unit's offset in the displacement.
+// A record's assignment, backend.md 6.6 and G18, and the copy of a
+// string literal into a local array, G22: an inline copy of the left's
+// type in units of its alignment, at most 8, of which its size is a
+// multiple, an array's its element's, lowest address first, each unit
+// loaded and then stored, padding included, and no call.  The left's
+// place is evaluated first, held across the right's as an assignment's
+// is (place_of()), then the right's (G13), and the left's formed()
+// after it.  Up to eight units are written out; above that, a loop,
+// copy_loop()'s.  Each place keeps its own form, a slot, a label, a
+// base with a displacement and an index, the unit's offset in the
+// displacement.
 void
 copy_record(state_t &s, const assign_t &a)
 {
-    const auto &record = *as< record_type_t >(a.lhs->type).record;
-    const auto units = units_of(record.size, record.alignment);
+    const long size = size_of(a.lhs->type);
+    const auto units = units_of(size, align_of(a.lhs->type));
 
     const auto left = place_of(s, a, 0);
     const auto right = address(s, *a.rhs);
 
-    const auto to = reached(s, formed(s, left), record.size, units.loop);
-    const auto from = reached(s, right, record.size, units.loop);
+    const auto to = reached(s, formed(s, left), size, units.loop);
+    const auto from = reached(s, right, size, units.loop);
     const auto scratch = fresh(s, 64);
     const reg_t r = reg_of(s, scratch);
 
     if (units.loop)
-        copy_loop(s, to, from, record.size, units.unit * 8, r);
+        copy_loop(s, to, from, size, units.unit * 8, r);
     else
         for (long k = 0; k < units.count; ++k)
             copy_unit(s, to, from, k * units.unit, units.unit * 8, r);
@@ -5602,17 +5604,18 @@ zero_loop(state_t &s, int displacement, long size, int width)
     release(s, index);
 }
 
-// The zeroing of a local record or array of type t a list initializes,
-// G20: its whole slot, padding included, in units_of() the object from
-// the lowest address up, before the first listed value is evaluated.
-// Each unit is the store of the immediate 0 that initialize() writes
-// for a constant, movl $0, -8(%rbp), and takes no register; more than
-// eight are zero_loop()'s.
+// The zeroing of size bytes at displacement of a local's slot, in
+// units_of() the object's alignment, from the lowest address up: a
+// record or an array a list initializes zeroed whole, padding included,
+// before the first listed value is evaluated, G20, and an array a
+// string literal initializes zeroed past the copy, after it, G22.  Each
+// unit is the store of the immediate 0 that initialize() writes for a
+// constant, movl $0, -8(%rbp), and takes no register; more than eight
+// are zero_loop()'s.
 void
-zero_slot(state_t &s, int displacement, const type_t &t)
+zero_slot(state_t &s, int displacement, long size, int alignment)
 {
-    const long size = size_of(t);
-    const auto units = units_of(size, align_of(t));
+    const auto units = units_of(size, alignment);
     const int width = units.unit * 8;
 
     if (units.loop) {
@@ -5639,7 +5642,7 @@ zero_slot(state_t &s, int displacement, const type_t &t)
 void
 effect(state_t &s, const expr_t &e)
 {
-    if (is< assign_t >(e) && is< record_type_t >(e.type)) {
+    if (copies_object(e)) {
         copy_record(s, as< assign_t >(e));
         return;
     }
@@ -5764,7 +5767,10 @@ register_decl(state_t &s, const decl_stmt_t &d)
 // type's alignment, chapter 5, and its displacement is the array's
 // lowest address, the elements upward from it.  A record or an array
 // its list initializes is zeroed whole, zero_slot(), and the statements
-// after the declaration store the listed values (G20).
+// after the declaration store the listed values (G20).  An array a
+// string literal initializes is the copy of the literal, effect()'s
+// row of a record's assignment, then the zeroing of the bytes past the
+// copy, zero_slot() over them (G22).
 void
 decl_stmt(state_t &s, const decl_stmt_t &d)
 {
@@ -5778,13 +5784,17 @@ decl_stmt(state_t &s, const decl_stmt_t &d)
         allocate(s, size_of(sym->type), align_of(sym->type));
     s.slots.emplace(sym, displacement);
 
-    if (d.zeroed)
-        zero_slot(s, displacement, sym->type);
+    if (d.init && copies_object(*d.init))
+        effect(s, *d.init);
+    else if (d.init)
+        initialize(s, *d.init, at(displacement), integer(sym->type).width);
 
-    if (!d.init)
+    if (!d.zeroed)
         return;
 
-    initialize(s, *d.init, at(displacement), integer(sym->type).width);
+    const long from = zeroed_from(d);
+    zero_slot(s, displacement + static_cast< int >(from),
+              size_of(sym->type) - from, align_of(sym->type));
 }
 
 // The context the rows of an expression leave for the rows below them:

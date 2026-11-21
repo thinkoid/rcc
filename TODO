@@ -433,26 +433,6 @@ members.
 
 Check: that program reaches the bit-field's not-yet.
 
-** TODO A string literal for a local array of =char= is not yet
-
-~char s[4] = "abc";~ and ~char s[] = { "abc" };~ in a block are "not
-yet: string initializer of local array 's'", and ~struct name one =
-{ "abc", 1 };~ is the same of an array in a local record. Two ways
-write it: the stores of the literal's bytes as constants, in the
-zeroing's units, which is the list ~{ 'a', 'b', 'c', '\0' }~ and the
-parser's alone, 104 instructions on x86-64 for a string of 100
-bytes; or a copy from the literal's label by the copy's row, 6
-instructions there for any length past eight units, which asks each
-generator a copy of array type and a rule for the zeros after a
-short literal.
-
-Fix: none taken; decide the way, and G20, or a guarantee of its own,
-says what a string writes.
-
-Check: a cost program of ~char s[4] = "abc";~ and of a string of 100
-bytes on both targets, and the =zeroing= probe with a local array of
-=char= a string initializes.
-
 ** TODO A statement expression in a constant expression is not yet
 
 ~case ({ 1; }):~ and ~static int k = ({ 1; });~ are "not yet:

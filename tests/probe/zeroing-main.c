@@ -132,6 +132,13 @@ PADDED(PADDED_ARRAY_DECLARE)
 
 ONWARD(ONWARD_DECLARE)
 
+/* each function of zeroing.c of a local array a string literal
+   initializes */
+#define STRING_DECLARE(N, T, ELEMENTS, LITERAL) \
+        void string_##N(T *), ref_string_##N(T *);
+
+STRINGS(STRING_DECLARE)
+
 /* one function F of record N declared by K, by both builds, for each
    value, each object filled with a byte no zeroing writes before the
    call */
@@ -255,6 +262,27 @@ paired(struct span *pair, const struct span *members, size_t count, size_t size)
                 CALL(struct, N, onward, members)                  \
         }
 
+/* the bytes a string literal gives an array of size bytes: its
+   elements and its zero, as many as the array holds */
+#define COPIED(LITERAL, SIZE) \
+        (sizeof(LITERAL) < (SIZE) ? sizeof(LITERAL) : (SIZE))
+
+/* one function of a local array a string literal initializes, by both
+   builds, each object filled with a byte no copy or zeroing writes:
+   the bytes the literal gives compared, and those past them, which
+   compare() takes as padding, against zero */
+#define STRING_CHECK(N, T, ELEMENTS, LITERAL)                             \
+        {                                                                 \
+                static const struct span copied[] = {                     \
+                        { 0, COPIED(LITERAL, sizeof(T[ELEMENTS])) }       \
+                };                                                        \
+                                                                          \
+                memset(objects, 0x5a, sizeof objects);                    \
+                string_##N((T *) objects[0]);                             \
+                ref_string_##N((T *) objects[1]);                         \
+                compare("string_" #N, 0, sizeof(T[ELEMENTS]), copied, 1); \
+        }
+
 int
 main(void)
 {
@@ -267,6 +295,7 @@ main(void)
         SIZED(SIZED_ARRAY_CHECK)
         PADDED(PADDED_ARRAY_CHECK)
         ONWARD(ONWARD_CHECK)
+        STRINGS(STRING_CHECK)
 
         printf("%ld checks, %ld differ\n", total, bad);
 

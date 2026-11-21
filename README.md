@@ -232,6 +232,11 @@ Then `_Bool`: a byte, read as an `unsigned char` is, to which a
 conversion is a comparison with 0 that the parser writes into the
 tree, so that every store into one, an operator's among them, stores
 0 or 1; the generators see an `unsigned char`.
+Then a string literal for a local array: the literal's bytes copied
+from its own object into the array by the row that copies a record,
+and the bytes past them zeroed after the copy, so `char u[100] =
+"abc";` writes each byte once (G22), which the `zeroing` probe checks
+against `clang`'s.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/`, the cost corpus over `tests/cost/`
 and the error corpus over `tests/error/`, the programs rcc refuses

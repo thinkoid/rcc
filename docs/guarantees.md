@@ -264,6 +264,37 @@ store replaces it: 2 is true in a condition, 2 in arithmetic, and
 unequal to 1. Instruction: `movzbl` on x86-64, `ldrb` on aarch64, as
 for `unsigned char`; no test, no mask.
 
+**G22. A string literal for a local array is a copy of its object.**
+6.7.11p15, p16, p22. A local array of `char`, or of a wide literal's
+element type, that a string literal initializes, alone or in braces,
+takes the literal's elements from the literal's own object (G17) by
+G18's copy: inline, in units of the element's size, 1 byte for
+`char`, 2 or 4 for a wide literal, from the lowest address up, each
+unit loaded and then stored before the next is loaded, with no call.
+The copy is as many elements as the literal has with its terminating
+zero, or as the array holds where that is fewer: `char s[3] =
+"abc";` copies three bytes and no zero. Where the array is longer,
+the elements past the copy are zeroed after it by G20's zeroing, in
+the same units, and only those, so each byte of the array is written
+once: `char u[100] = "abc";` is a copy of 4 bytes and a zeroing of
+96. In a local's list the string is a listed value (G20): the whole
+object is zeroed first, and the copy is the string's store in the
+list's order, with no second zeroing. Instruction, on x86-64: per
+unit the load and the store of G18, `movzbl .Ls0+1(%rip), %eax; movb
+%al, -3(%rbp)`, `movl` for a `wchar_t`; over eight units G18's loop,
+the literal's address formed first, `leaq .Ls1(%rip), %rax; movq
+$-17, %rdx`, then `movzbl 17(%rax,%rdx,1), %ecx; movb %cl,
+(%rbp,%rdx,1); addq $1, %rdx; jne` back; the elements past the copy
+G20's stores of 0, over eight units its loop, `movq $-96, %rax; movb
+$0, (%rbp,%rax,1); addq $1, %rax; jne` (`backend.md` 6.6). On
+aarch64: the literal's address formed once, `adrp x0, .Ls0; add x0,
+x0, :lo12:.Ls0`, then per unit `ldrb w17, [x0, #1]; strb w17, [x29,
+#17]`; over eight units G18's loop of four instructions after `mov
+x16, #17`; the elements past the copy G20's stores of the zero
+register, over eight units its loop, `add x0, x29, #20; mov x16,
+#96`, then `strb wzr, [x0], #1; subs x16, x16, #1; b.ne`
+(`aarch64.md` 6.6).
+
 ## Not in this list
 
 Implementation-defined behaviour beyond G2 and G3: fixed per

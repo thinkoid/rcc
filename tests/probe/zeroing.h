@@ -15,7 +15,13 @@
    between their members or after the last, anonymous members among
    them, whose members a designator names through them, 6.7.3.2p15;
    unions, whose first member is the one listed; and records whose list
-   goes on after such a designator. */
+   goes on after such a designator.  A local array a string literal
+   initializes, 6.7.11p15, p16, holds the literal's elements, its zero
+   where the array has room, and zero in every element past them, p22:
+   the elements copied are compared, and every byte of rcc's array past
+   them is checked against zero (G22). */
+
+#include <stddef.h>
 
 /* the records of one array member: the name, by alignment and size,
    the element's type and the count of elements */
@@ -113,6 +119,18 @@
       F(c, 1) F(s, 2) F(i, 3), .l = v, .s = v + 1, v + 2)               \
     X(o_struct, char c; struct { short s; long l; }; int i;,            \
       F(c, 1) F(s, 2) F(l, 3) F(i, 4), .s = v, v + 1, v + 2, .c = v + 3)
+
+/* the local arrays a string literal initializes: the name, the
+   element's type, the count of elements and the literal, which is
+   shorter than the array, shorter past eight units of the copy and of
+   the zeroing, exactly as long with its zero, one element short of its
+   zero, and a wide one shorter than its array */
+#define STRINGS(X)                                                      \
+    X(s_short, char, 8, "abc")                                          \
+    X(s_long, char, 40, "a longer message")                             \
+    X(s_exact, char, 4, "abc")                                          \
+    X(s_cut, char, 3, "abc")                                            \
+    X(s_wide, wchar_t, 8, L"ab")
 /* clang-format on */
 
 #define SIZED_RECORD(N, T, COUNT) \

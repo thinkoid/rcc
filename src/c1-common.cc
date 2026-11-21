@@ -150,12 +150,12 @@ stored_valid(int valid, int width, const int_t &object)
     return std::min(valid, cut);
 }
 
-// The units of a record's copy and of the zeroing of a record or an
-// array, backend.md 6.6, from the object's size and alignment, an
-// array's its element's: the alignment, at most 8 bytes, a unit the
-// machine loads and stores in one access, which tiles the size; more
-// than eight units are a loop, which writes the same instructions
-// whatever the count (G18, G20).
+// The units of a record's or an array's copy and of the zeroing of a
+// record or an array, backend.md 6.6, from the object's size and
+// alignment, an array's its element's: the alignment, at most 8 bytes,
+// a unit the machine loads and stores in one access, which tiles the
+// size; more than eight units are a loop, which writes the same
+// instructions whatever the count (G18, G20, G22).
 units_t
 units_of(long size, int alignment)
 {
@@ -163,6 +163,26 @@ units_of(long size, int alignment)
     const long count = size / unit;
 
     return { unit, count, count > 8 };
+}
+
+// Whether e is an assignment that copies an object by the copy's row,
+// backend.md 6.6: a record's assignment (G18), or the parser's copy of
+// a string literal into a local array (G22).
+bool
+copies_object(const expr_t &e)
+{
+    return is< assign_t >(e) &&
+           (is< record_type_t >(e.type) || is< array_t >(e.type));
+}
+
+// The offset in a local's object from which its declaration zeroes the
+// object, after the initializer: 0 for a list's, whose stores follow
+// the declaration (G20), and the end of the bytes the copy writes for
+// an array a string literal initializes (G22).
+long
+zeroed_from(const decl_stmt_t &d)
+{
+    return d.init ? size_of(d.init->type) : 0;
 }
 
 // operands

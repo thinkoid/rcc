@@ -1767,7 +1767,9 @@ loop of one index, which the slot takes as it is: `movq $-200,
 instructions whatever the size. The zeroing comes before the first
 listed value is evaluated, whatever the list names: a list of every
 member still zeroes the padding between them first, and `{}` is the
-zeroing alone.
+zeroing alone. A local array a string literal initializes is the
+copy from the literal's label, in units of the element, then the
+zeroing of the elements past the copy alone, after it (G22).
 
 ### 6.7 Held values at a branch and at a call
 
@@ -2523,6 +2525,7 @@ row here, in the guarantee's voice.
 | G19 the variable arguments are read where the convention put them | chapter 5: the save area's `movq` of the six general registers and `movaps` of the eight vector ones, no test of `%al`, and the stack's address by `leaq`; `va_arg`'s `cmpl $40` and `ja`, `addl $8` or `addq $8`, and the load of the type's width |
 | G20 a local's initializer list writes every byte of its object | 6.6: the slot zeroed first, per unit of the object's alignment the store of the immediate 0, lowest address first; over eight units the loop of one index, `movq $0`, `addq` and `jne`; then the listed values' stores, in the list's order |
 | G21 a `_Bool` reads as its byte | `movzbl`, an `unsigned char`'s load, with no test and no mask; a conversion to it the parser's comparison with 0, `cmpl $0` and `setne`, before the `movb` |
+| G22 a string literal for a local array is a copy of its object | 6.6: G18's copy from the literal's label in units of the element, `movzbl .Ls0+1(%rip), %eax; movb %al, -3(%rbp)`, the label's `leaq` and the loop of one index over eight units; then G20's stores of 0 over the elements past the copy alone |
 
 G15 stays withdrawn. The never-emitted table, the IR flags the
 front end withheld from an optimizer that never ran, has no

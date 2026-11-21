@@ -198,7 +198,10 @@ struct binary_t
 // own (6.5.8p3); c1 converts the loaded lhs into it and the result
 // back to the lhs type.  On a pointer, += and -= carry the pointer type
 // as common and the rhs widened to 64 bits as for binary +, and c1
-// steps the pointer by it.
+// steps the pointer by it.  A plain assignment of a record or an array
+// type copies the rhs's object, as many bytes as the lhs's type has:
+// a record's assignment, or the parser's copy of a string literal into
+// a local array (shape.md chapter 5).
 struct assign_t
 {
     std::optional< binary_op_t > op;
@@ -326,9 +329,13 @@ struct expr_stmt_t
 };
 
 // A local's declaration: init is a scalar's initializer, converted to
-// its type.  zeroed is a record's or an array's list, 6.7.11p17: the
-// declaration zeroes the whole object, padding included, and the
-// statements after it store the listed values, in the list's order.
+// its type, or for an array a string literal initializes, 6.7.11p15,
+// p16, the copy of the literal into the array's first elements, an
+// assignment of array type.  zeroed says that the declaration zeroes
+// the bytes of the object past those init writes, after it: for a
+// record's or an array's list, 6.7.11p17, the whole object, padding
+// included, and the statements after it store the listed values, in
+// the list's order; for a string, the elements past the copy, p22.
 struct decl_stmt_t
 {
     const symbol_t *sym;

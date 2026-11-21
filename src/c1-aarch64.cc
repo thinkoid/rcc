@@ -4249,7 +4249,7 @@ outgoing_operand(state_t &s, std::size_t k, int size)
 
 // copy_object() comes with the copy of a record, after call(), which
 // copies a list argument with it.
-void copy_object(state_t &, address_t, address_t, const record_t &);
+void copy_object(state_t &, address_t, address_t, const type_t &);
 
 // An argument's slot, chapter 8: its displacement and its type, or, for
 // a va_list, the slot of the list's copy, whose address is passed.
@@ -4273,7 +4273,7 @@ list_copy(state_t &s, const expr_t &arg)
     const auto &r = *as< record_type_t >(arg.type).record;
     const int displacement = allocate(s, static_cast< long >(r.size),
                                       static_cast< int >(r.alignment));
-    copy_object(s, slot_address(displacement), address(s, arg), r);
+    copy_object(s, slot_address(displacement), address(s, arg), arg.type);
 
     return { .displacement = displacement,
              .type = { .width = 64, .is_signed = false },
@@ -4788,13 +4788,13 @@ copy_loop(
     release(s, source);
 }
 
-// The object of record r at from copied to to, both places evaluated,
-// in units_of() the record, padding included, no call, chapter 6.6.  A
-// register pointer's step is its own add, before the copy for ++p and
-// after it for p++.  Up to eight units the copy is unrolled,
-// copy_units(); more are copy_loop()'s.
+// The object of type t at from copied to to, both places evaluated, in
+// units_of() the type, a record's padding included, an array's its
+// element's, no call, chapter 6.6.  A register pointer's step is its
+// own add, before the copy for ++p and after it for p++.  Up to eight
+// units the copy is unrolled, copy_units(); more are copy_loop()'s.
 void
-copy_object(state_t &s, address_t to, address_t from, const record_t &r)
+copy_object(state_t &s, address_t to, address_t from, const type_t &t)
 {
     const step_t steps[] = { to.step, from.step };
     const value_t bases[] = { to.base, from.base };
@@ -4805,8 +4805,8 @@ copy_object(state_t &s, address_t to, address_t from, const record_t &r)
     to.step = { };
     from.step = { };
 
-    const long size = static_cast< long >(r.size);
-    const auto units = units_of(size, r.alignment);
+    const long size = size_of(t);
+    const auto units = units_of(size, align_of(t));
 
     if (units.loop)
         copy_loop(s, to, from, size, units.unit);
@@ -4823,20 +4823,21 @@ copy_object(state_t &s, address_t to, address_t from, const record_t &r)
             make_step(s, steps[k], bases[k]);
 }
 
-// A struct or union assignment, 6.5.17.2p2, its value not wanted: the
-// right operand's object copied into the left's, copy_object().  The
-// left's place first, then the right's (G13), the left's held across
-// the right's by the rule of a store's address, as a scalar
-// assignment's is: one register where the right holds a call, and a
-// constant index written after it, held_index()'s.
+// A struct or union assignment, 6.5.17.2p2, its value not wanted, and
+// the copy of a string literal into a local array (G22): the right
+// operand's object copied into the left's, copy_object(), as many bytes
+// as the left's type has.  The left's place first, then the right's
+// (G13), the left's held across the right's by the rule of a store's
+// address, as a scalar assignment's is: one register where the right
+// holds a call, and a constant index written after it, held_index()'s.
 void
-copy_record(state_t &s, const assign_t &a, const record_t &r)
+copy_record(state_t &s, const assign_t &a)
 {
     auto to = address(s, *a.lhs, a.rhs.get());
     auto from = address(s, *a.rhs);
     to = held_index(s, to, registers_of(s, from));
 
-    copy_object(s, to, from, r);
+    copy_object(s, to, from, a.lhs->type);
 }
 
 // The zeroing unrolled, 6.6: the store of the zero register at the
@@ -4880,17 +4881,18 @@ zero_loop(state_t &s, int displacement, const units_t &units)
     release(s, target);
 }
 
-// The zeroing of a local record or array of type t a list initializes,
-// G20: its whole slot, padding included, in units_of() the object from
-// the lowest address up, before the first listed value is evaluated.
-// Each unit is the store of the zero register that initialize() writes
-// for a zero, str wzr, [x29, #16], at the slot as unit_place() reaches
-// each unit; more than eight are zero_loop()'s.
+// The zeroing of size bytes at displacement of a local's slot, in
+// units_of() the object's alignment, from the lowest address up: a
+// record or an array a list initializes zeroed whole, padding included,
+// before the first listed value is evaluated, G20, and an array a
+// string literal initializes zeroed past the copy, after it, G22.  Each
+// unit is the store of the zero register that initialize() writes for
+// a zero, str wzr, [x29, #16], at the slot as unit_place() reaches each
+// unit; more than eight are zero_loop()'s.
 void
-zero_slot(state_t &s, int displacement, const type_t &t)
+zero_slot(state_t &s, int displacement, long size, int alignment)
 {
-    const long size = size_of(t);
-    const auto units = units_of(size, align_of(t));
+    const auto units = units_of(size, alignment);
 
     if (units.loop) {
         zero_loop(s, displacement, units);
@@ -4919,8 +4921,8 @@ zero_slot(state_t &s, int displacement, const type_t &t)
 void
 effect(state_t &s, const expr_t &e)
 {
-    if (is< assign_t >(e) && is< record_type_t >(e.type)) {
-        copy_record(s, as< assign_t >(e), *as< record_type_t >(e.type).record);
+    if (copies_object(e)) {
+        copy_record(s, as< assign_t >(e));
         return;
     }
 
@@ -5074,7 +5076,9 @@ register_decl(state_t &s, const decl_stmt_t &d)
 // alignment, chapter 5.1, its displacement the array's lowest address.
 // A record or an array its list initializes is zeroed whole,
 // zero_slot(), and the statements after the declaration store the
-// listed values (G20).
+// listed values (G20).  An array a string literal initializes is the
+// copy of the literal, effect()'s row of a record's assignment, then
+// the zeroing of the bytes past the copy, zero_slot() over them (G22).
 void
 decl_stmt(state_t &s, const decl_stmt_t &d)
 {
@@ -5088,13 +5092,17 @@ decl_stmt(state_t &s, const decl_stmt_t &d)
         allocate(s, size_of(sym->type), align_of(sym->type));
     s.slots.emplace(sym, displacement);
 
-    if (d.zeroed)
-        zero_slot(s, displacement, sym->type);
+    if (d.init && copies_object(*d.init))
+        effect(s, *d.init);
+    else if (d.init)
+        initialize(s, *d.init, slot_address(displacement), integer(sym->type));
 
-    if (!d.init)
+    if (!d.zeroed)
         return;
 
-    initialize(s, *d.init, slot_address(displacement), integer(sym->type));
+    const long from = zeroed_from(d);
+    zero_slot(s, displacement + static_cast< int >(from),
+              size_of(sym->type) - from, align_of(sym->type));
 }
 
 // The context the rows of an expression leave for the rows below them:

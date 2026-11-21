@@ -10,7 +10,9 @@
    two records with padding, every scalar of both listed or the second's
    alone.  A record's anonymous members' members are designated
    through them, 6.7.3.2p15, and a list goes on after such a
-   designator.  Each function reaches its declaration twice in one
+   designator.  A local array is initialized by a string literal,
+   6.7.11p15, p16, which is copied and the elements past it zeroed
+   (G22).  Each function reaches its declaration twice in one
    activation, and so in one slot (G12): the library's taken() keeps the
    local's bytes and then fills the local with 0xa5, so the second
    zeroing finds no zero byte in the slot, and the bytes kept are the
@@ -106,3 +108,17 @@ PADDED(PADDED_ARRAY)
         LISTED(struct, N, onward, __VA_ARGS__)
 
 ONWARD(ONWARD_LISTED)
+
+/* the function of a local array of ELEMENTS of T that the string
+   literal LITERAL initializes */
+#define STRING_COPIED(N, T, ELEMENTS, LITERAL)         \
+        void string_##N(T *to)                         \
+        {                                              \
+                for (int pass = 0; pass < 2; ++pass) { \
+                        T t[ELEMENTS] = LITERAL;       \
+                                                       \
+                        taken(to, t, sizeof t);        \
+                }                                      \
+        }
+
+STRINGS(STRING_COPIED)
