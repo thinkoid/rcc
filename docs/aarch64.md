@@ -1557,7 +1557,7 @@ alignment directive is needed before a function: every instruction is
 4 bytes, and the assembler aligns `.text` to 4. The listing opens and
 closes as on x86-64: `.file` with the source's name and `.text` first,
 `.section .note.GNU-stack,"",@progbits` last. An alias is written as
-on x86-64, after the data, `.globl a`, `.type a, @function` for a
+on x86-64, after the data: its binding, `.type a, @function` for a
 function and `a = t`.
 
 A function's address as a value has the two rows of `backend.md`

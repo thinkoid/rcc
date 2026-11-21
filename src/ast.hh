@@ -533,15 +533,16 @@ struct object_decl_t
     std::optional< std::vector< subobject_t > > init;
 };
 
-// One per alias the unit declares, GNU C's alias attribute: a function
-// or an object of external linkage that the unit does not define, and
-// the function or the object of the same kind the unit defines and the
-// alias names.  c1 writes the alias as a symbol of the target's
-// address.
+// One per alias the unit declares, GNU C's alias attribute: a function,
+// or an object of external linkage, that the unit does not define, the
+// function or the object of the same kind the unit defines and the
+// alias names, and whether the alias is weak.  c1 writes the alias as a
+// symbol of the target's address.
 struct alias_t
 {
     const symbol_t *sym;
     const symbol_t *target;
+    bool weak;
 };
 
 // The unit owns every record in a deque, as it owns the symbols, so a

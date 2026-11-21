@@ -553,13 +553,16 @@ definition before it too, so the attribute is not yet on a
 declaration after an expression named the symbol or after the
 symbol's definition, a function's body or an object's, tentative or
 not. `alias ("t")` marks too, but where it is the one marking
-attribute of a declaration at file scope, on a function or on an
-object declared `extern` of external linkage, with no assembler name,
-and the unit defines `t`, a function or an object of the alias's
-kind, the declaration is the alias, which c1 writes after the data
-(`backend.md` chapter 10): the symbol is not marked, and a use of it
-is a use of the symbol. Any other alias is not yet where it is
-declared, and an alias on a definition is an error. An attribute
+attribute of a declaration at file scope, or one of two beside
+`weak`, which makes the alias a weak symbol, on a function, `static`
+or not, or on an object declared `extern` of external linkage, with
+no assembler name, and the unit defines `t`, a function or an object
+of the alias's kind, the declaration is the alias, which c1 writes
+after the data (`backend.md` chapter 10): the symbol is not marked,
+and a use of it is a use of the symbol. A `static` alias is its
+symbol's definition (6.9.1p3), and a weak `static` one is an error,
+as in GNU C. Any other alias is not yet where it is declared, and an
+alias on a definition is an error. An attribute
 among the declaration specifiers
 is said of each declarator, as one after the declarator is, and one
 may begin a declaration, in a block as at file scope:

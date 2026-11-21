@@ -1,0 +1,2 @@
+tests/error/alias-weak-static.c:10:12: error: weak alias 'bgcmd' of internal linkage
+status 1

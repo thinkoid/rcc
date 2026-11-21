@@ -2577,10 +2577,11 @@ value has one of three forms, and each form has its data:
 An object the file only declares writes nothing.
 
 An alias the file declares, GNU C's `alias` attribute on a function
-or an object of external linkage whose target the file defines, is
+or on an object of external linkage whose target the file defines, is
 a symbol of the target's address, which the assembler gives it. The
 aliases follow the objects, in the order of their declarations, as
-`clang` writes them: `.globl a`, then `.type a, @function` for a
+`clang` writes them: `.globl a`, `.weak a` for a weak alias or no
+binding for a `static` one, then `.type a, @function` for a
 function, then `a = t`. They cost no instruction. A reference to the
 alias is one to a symbol the file only declares, through the GOT
 and the PLT, which the linker resolves to the target.

@@ -73,21 +73,24 @@ struct tentative_t
 
 // A declaration at file scope that an alias attribute makes the alias
 // of another symbol, checked at the end of the unit: the token that
-// names the declared symbol, the attribute's name, and whether the
-// symbol is a function.
+// names the declared symbol, the attribute's name, whether the symbol
+// is a function, and whether weak makes it a weak one.
 struct pending_alias_t
 {
     const token_t *name;
     const token_t *attribute;
     bool function;
+    bool weak;
 };
 
 // The marking attributes of a run of attributes, or of all a
-// declaration writes: how many, and the first alias among them.
+// declaration writes: how many, and the first alias and the first weak
+// among them.
 struct markings_t
 {
     int count = 0;
     const token_t *alias = nullptr;
+    const token_t *weak = nullptr;
 };
 
 // A switch whose body the parse is in, 6.8.5.3: the promoted type of
@@ -2891,6 +2894,9 @@ count_marking(markings_t &markings, const token_t &name)
     ++markings.count;
     if (!markings.alias && attribute_name(name) == "alias")
         markings.alias = &name;
+
+    if (!markings.weak && attribute_name(name) == "weak")
+        markings.weak = &name;
 }
 
 // Each __attribute__ ((list)), also spelled __attribute, of the run at
@@ -3466,7 +3472,8 @@ alias_target(const parser_t &p, const token_t &attribute)
 // GNU C's: the alias is a symbol of the target's address, which the
 // assembler gives it, so the declaration does not mark its symbol, and
 // a use of it is a use of a symbol.  rcc writes the alias where it is
-// the declaration's one marking attribute, on a function none of whose
+// the declaration's one marking attribute, or one of two beside weak,
+// which makes the alias a weak symbol, on a function none of whose
 // parameters an attribute marks, or on an object declared extern, and
 // the declarator has no assembler name; any other alias is not yet
 // where it is declared.  A definition is no alias, an error, as GNU C
@@ -3482,8 +3489,9 @@ declared_alias(parser_t &p,
 {
     const token_t &attribute = *tail.markings.alias;
     const std::string words = attribute_words(attribute);
+    const bool weak = tail.markings.weak != nullptr;
 
-    if (tail.markings.count > 1)
+    if (tail.markings.count > (weak ? 2 : 1))
         not_yet(attribute, words + " beside another attribute that marks");
 
     if (tail.asm_keyword)
@@ -3500,7 +3508,7 @@ declared_alias(parser_t &p,
                           " cannot also be an alias");
 
     alias_target(p, attribute);
-    p.aliases.push_back(pending_alias_t { d.name, &attribute, function });
+    p.aliases.push_back(pending_alias_t { d.name, &attribute, function, weak });
     tail.marking = nullptr;
 }
 
@@ -4724,12 +4732,25 @@ defines(const parser_t &p, const symbol_t *sym)
     return definition_of(p, sym).has_value();
 }
 
+// Whether a declaration of sym at file scope made it an alias.
+bool
+is_alias(const parser_t &p, const symbol_t *sym)
+{
+    const auto &names = p.scopes.front().names;
+    for (const pending_alias_t &a : p.aliases)
+        if (names.at(a.name->text) == sym)
+            return true;
+
+    return false;
+}
+
 // 6.9.1p3: a name of internal linkage that an expression uses has its
 // external definition in the unit.  Without one the assembler would
 // leave its symbol undefined, and the linker would bind it to another
 // file's symbol of the name, which is not the program.  Only a
 // function can lack one, since every object of internal linkage has a
-// tentative definition at least.  A use of a system header's static
+// tentative definition at least; a static alias, whose symbol the
+// assembler gives the target's address, is its definition.  A use of a system header's static
 // inline function before its definition, which rcc does not compile,
 // is not yet, in the function's words.  The first use is the one
 // refused.
@@ -4737,7 +4758,7 @@ void
 require_internal_definitions(const parser_t &p)
 {
     for (const auto &[sym, at] : p.internal_uses) {
-        if (defines(p, sym))
+        if (defines(p, sym) || is_alias(p, sym))
             continue;
 
         if (!sym->marking.empty())
@@ -4779,10 +4800,11 @@ alias_of(const parser_t &p, const pending_alias_t &a, const std::string &target)
 }
 
 // The aliases the unit declares, checked once its definitions are all
-// read, and each added to the unit with its target: the alias is of
-// external linkage, which a static alias is not yet, has no assembler
-// name, and is defined by no declaration, as a second alias of it would
-// define it again.
+// read, and each added to the unit with its target: the alias has no
+// assembler name, is defined by no declaration, as a second alias of it
+// would define it again, and is of external linkage where it is weak,
+// as GNU C has it, since a weak symbol of internal linkage is one no
+// other file could stand in for.
 void
 resolve_aliases(parser_t &p)
 {
@@ -4791,8 +4813,8 @@ resolve_aliases(parser_t &p)
         const symbol_t &sym = *p.scopes.front().names.at(a.name->text);
         const std::string alias = "alias " + quoted(a.name->text);
 
-        if (sym.linkage != linkage_t::external)
-            not_yet(*a.name, alias + " of internal linkage");
+        if (a.weak && sym.linkage != linkage_t::external)
+            fail(*a.name, "weak " + alias + " of internal linkage");
 
         if (!sym.asm_name.empty())
             not_yet(*a.name, alias + " with an assembler name");
@@ -4805,7 +4827,7 @@ resolve_aliases(parser_t &p)
             fail(*a.name, "redefinition of " + quoted(a.name->text));
 
         const symbol_t &target = alias_of(p, a, alias_target(p, *a.attribute));
-        p.unit.aliases.push_back(alias_t { &sym, &target });
+        p.unit.aliases.push_back(alias_t { &sym, &target, a.weak });
     }
 }
 

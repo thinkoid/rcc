@@ -301,18 +301,6 @@ test=.
 
 * Parser
 
-** TODO A static or a weak alias is not yet
-
-~static int a(void) __attribute__((alias("t")));~ and
-~__attribute__((weak, alias("t")))~ are "not yet" where declared;
-=clang= writes the first without =.globl= and the second with =.weak=
-in its place.
-
-Fix: write them; a static alias counts as its symbol's definition
-for 6.9.1p3.
-
-Check: a cost program with both forms, pinned on each target.
-
 ** TODO Assignment to a const object is not diagnosed
 
 The parser accepts =const= and drops it: the type is the machine's
@@ -609,6 +597,20 @@ type without refusing an access of a type that has its size.
 
 Check: a function returning ~sizeof s.d~ in
 =tests/cost/floating-size.c=, pinned on both targets.
+
+** TODO A static object's alias is an error
+
+~static int s __attribute__ ((alias ("count")));~ fails with
+"definition of 's' cannot also be an alias": a static object with no
+initializer is a tentative definition, and the alias makes it none.
+=gcc= and =clang= take it and write ~s = count~ with no binding, as a
+static function's alias is written.
+
+Fix: a static object without an initializer that an alias marks is
+no definition, and is written as a static alias.
+
+Check: such an alias in =tests/cost/alias.c=, pinned on both
+targets.
 
 * Lexer
 

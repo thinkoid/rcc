@@ -1325,17 +1325,20 @@ written_objects(const unit_t &unit,
 
 // Chapter 10: the aliases after the data, as clang writes them.  Each
 // is a symbol the assembler gives its target's address: its binding,
-// .globl, as an alias is of external linkage; a function's kind,
-// .type, which the linker and a debugger read; and the assignment of
-// the target's symbol.  The target is the unit's, so no relocation
-// names the alias.
+// .weak for a weak alias and otherwise its linkage's, .globl or none
+// for a static one; a function's kind, .type, which the linker and a
+// debugger read; and the assignment of the target's symbol.  The
+// target is the unit's, so no relocation names the alias.
 void
 aliases(std::ostream &out, const std::vector< alias_t > &aliases)
 {
     for (const alias_t &a : aliases) {
         const auto name = assembly_name(*a.sym);
 
-        binding(out, *a.sym);
+        if (a.weak)
+            out << std::format("\t.weak\t{}\n", name);
+        else
+            binding(out, *a.sym);
         if (a.sym->storage == storage_t::function)
             out << std::format("\t.type\t{}, @function\n", name);
 
