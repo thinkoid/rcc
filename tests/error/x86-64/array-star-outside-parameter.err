@@ -1,0 +1,2 @@
+tests/error/array-star-outside-parameter.c:4:7: error: '*' as an array size outside a parameter declaration
+status 1

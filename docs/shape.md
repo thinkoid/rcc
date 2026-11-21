@@ -507,15 +507,18 @@ qualifiers inside its brackets before the size, as `regex.h` writes
 and the qualifiers are refused (p1). The size need not be constant:
 one that is not is taken as left out, as 6.7.7.3p5 takes it in a
 prototype, since the parameter is the pointer either way, and nothing
-is evaluated for it. `[*]` is the size left out too; in a function
-definition it is refused (6.9.2p6). Every other array suffix keeps
-the rules of an array, so `int (*a)[n]` points to a variable length
-array, which is not yet. At file scope such a size is
+is evaluated for it. `[*]` is the size left out too. Every other
+array suffix keeps the rules of an array, so `int (*a)[n]` and
+`int (*a)[*]` point to a variable length array, which is not yet. At
+file scope such a size is
 an error of the program, not a construct to come: an object of static
 storage duration has no variable length array type, and an identifier
 of a variably modified type has block or prototype scope (6.7.7.3p2),
 so `extern int n; int a[n];` and a typedef of the array there are
-refused in words of their own.
+refused in words of their own. `[*]` in any of the brackets of a
+function definition's parameter is refused (6.9.2p6), and outside the
+declarators of a parameter declaration, its array sizes included, it
+is an error in words of its own (6.7.7.3p4), `int x[*];` among them.
 
 A pointer to a function is a value as any pointer is, with the type
 rules of the standard: assignment and argument passing take one of

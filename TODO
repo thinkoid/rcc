@@ -446,23 +446,6 @@ typedef's included.
 Check: the three declarations fail with "'void' must be the only
 parameter".
 
-** TODO =[*]= in brackets other than the outermost is "expected expression"
-
-~void f(int a[3][*]);~ and ~void f(int n, int (*a)[*]);~ are valid
-prototypes (6.7.7.3p4, 6.7.7.4p11), which =clang= takes, and fail
-with "expected expression": =[*]= is read in the brackets a
-parameter is adjusted from and nowhere else. ~int x[*];~ and
-~typedef int t[*];~ draw the same words, where the error is of the
-star outside a prototype.
-
-Fix: in a parameter declaration's other brackets =[*]= is a variable
-length array, a not-yet as =[n]= is there; outside a parameter
-declaration it is an error in words of its own. The parser must know
-it is inside a parameter declaration, not only right after the name.
-
-Check: the two prototypes say "not yet: variable length array" at
-the =*=, and ~int x[*];~ is pinned in =tests/error= with its message.
-
 ** TODO Pointers to two integer types of one representation convert with no diagnostic
 
 ~long *p; long long *q = p;~ compiles, and so does an assignment of
@@ -643,6 +626,19 @@ a member's access there is not.
 
 Check: a function returning ~sizeof x~ in
 =tests/cost/floating-size.c=, pinned on both targets.
+
+** TODO A system header's =static inline= definition takes =[*]= in a parameter
+
+A definition's parameter of a variable length array type of
+unspecified size is an error (6.9.2p6), and the program's own
+definitions draw it. A system header's =static inline= definition,
+whose body is skipped, is not checked: =header_function_definition()=
+does not call =require_definition_parameters()=.
+
+Fix: it calls it.
+
+Check: a program of =tests/error= with such a definition under a
+system header's line marker, pinned with the error.
 
 * Lexer
 
