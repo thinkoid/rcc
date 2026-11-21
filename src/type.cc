@@ -104,11 +104,14 @@ related(const int_t &a, const int_t &b, relation_t r)
            (a.enumeration == 0 || b.enumeration == 0);
 }
 
-// By the pointees, 6.7.7.2p2.
+// By the pointees, 6.7.7.2p2, each qualified as the pointer says: two
+// qualified types are compatible when their qualifiers are the same,
+// 6.7.4.1p11, so const char * and char * are not, and neither are
+// const char ** and char **.
 bool
 related(const pointer_t &a, const pointer_t &b, relation_t r)
 {
-    return related(*a.pointee, *b.pointee, r);
+    return a.qualifiers == b.qualifiers && related(*a.pointee, *b.pointee, r);
 }
 
 // By the elements, and by the counts where both are constant, 6.7.7.3p6;

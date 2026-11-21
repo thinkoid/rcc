@@ -1,0 +1,2 @@
+tests/error/conflicting-types-qualifier.c:6:5: error: conflicting types for 'limit'
+status 1

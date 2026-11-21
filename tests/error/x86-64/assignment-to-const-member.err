@@ -1,0 +1,2 @@
+tests/error/assignment-to-const-member.c:13:14: error: cannot assign to a const-qualified lvalue
+status 1

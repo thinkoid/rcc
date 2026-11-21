@@ -336,25 +336,6 @@ line of a paragraph can take the next line's first word.
 
 * Parser
 
-** TODO Assignment to a const object is not diagnosed
-
-The parser accepts =const= and drops it: the type is the machine's
-view and carries no qualifier. So =const int c = 1; c = 2;= compiles,
-though 6.5.17.1p2 requires a modifiable lvalue and 6.3.2.1p1 excludes
-a const-qualified one; a conforming compiler must diagnose it. The
-same silence covers a =const= pointee assigned through, and a
-=T *= initialized from a =const T *=. =volatile= is dropped the same
-way, and a =T *= initialized from a =volatile T *= is not diagnosed
-either, though 6.5.17.2p1 asks that the left pointee have every
-qualifier of the right.
-
-Fix: qualifiers on the symbol and on the pointee, checked by
-=require_modifiable_lvalue= and by the assignment conversion; the
-type itself stays unqualified.
-
-Check: the three programs above fail with a diagnostic; =const= in
-every other position still parses.
-
 ** TODO The other target is preprocessed with this machine's headers
 
 =rcc -target x86-64= on an aarch64 machine runs =clang -E
@@ -371,22 +352,6 @@ another machine when the program includes one; or take a sysroot.
 
 Check: the documents and the driver agree on what =-target= does to
 =#include <...>=.
-
-** TODO A qualified =void= is taken as the =void= of an empty parameter list
-
-~int f(const void);~, ~int f(void const);~ and a parameter of a
-typedef for ~const void~ declare a function of no parameters. The
-special case is "an unnamed parameter of type void" (6.7.7.4p9), and
-a qualified =void= is a distinct type (6.2.5p31), whose use there
-J.2 (75) leaves undefined; =clang= refuses it. rcc drops a qualifier
-where it reads it, so it cannot tell. A storage class on that =void=
-is refused.
-
-Fix: with the qualifiers the entry on =const= keeps on the symbol, a
-typedef's included.
-
-Check: the three declarations fail with "'void' must be the only
-parameter".
 
 ** TODO A constant expression out of its type's range wraps with no diagnostic
 
@@ -626,6 +591,18 @@ and counts none.
 Fix: a qualifier written a second time is an error at its token.
 
 Check: a program of =tests/error= with =volatile= twice, pinned.
+
+** TODO A cast of 0 to a qualified =void *= is taken as a null pointer constant
+
+=is_null_pointer_constant()= takes 0 cast to any pointer to =void=,
+so ~(const void *) 0~ is one, though 6.3.2.3p3 names a cast "to type
+void *" alone. So ~int *p = (const void *) 0;~ draws no warning of
+the =const= it discards, where =clang= warns.
+
+Fix: the pointee unqualified too.
+
+Check: an error program of the initialization, pinned with the
+warning at status 0.
 
 * Lexer
 

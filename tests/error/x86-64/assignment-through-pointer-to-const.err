@@ -1,0 +1,2 @@
+tests/error/assignment-through-pointer-to-const.c:10:12: error: cannot assign to a const-qualified lvalue
+status 1

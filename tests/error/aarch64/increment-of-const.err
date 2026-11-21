@@ -1,0 +1,2 @@
+tests/error/increment-of-const.c:8:9: error: cannot assign to 'count', declared const
+status 1

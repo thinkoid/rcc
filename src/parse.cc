@@ -1117,15 +1117,6 @@ refuse_record_operand(const token_t &at, const type_t &t)
                      " where a scalar is required");
 }
 
-// 6.5.17.1p2, 6.5.3.5p1, 6.5.4.1p1: an lvalue of integer or pointer
-// type.  An array is an lvalue but not a modifiable one, 6.3.2.1p1.
-void
-require_modifiable_lvalue(const token_t &at, const expr_t &e)
-{
-    if (!is_lvalue(e) || !(is< int_t >(e.type) || is< pointer_t >(e.type)))
-        fail(at, "expression is not assignable");
-}
-
 // The qualifiers of an lvalue's type, a function of the tree, since no
 // type carries them at its top: a name's, its symbol's; *E's, those of
 // the pointee of E's type, a member's access among them (lvalue_at()).
@@ -1141,6 +1132,53 @@ qualifiers_of(const expr_t &e)
         return as< pointer_t >(as< unary_t >(e).arg->type).qualifiers;
 
     return { };
+}
+
+// A const lvalue is no modifiable lvalue, 6.3.2.1p1: the name of an
+// object declared const, said by its name, or any other lvalue of a
+// const-qualified type, *p through a pointer to const and a member
+// declared const or of a const record among them.
+void
+refuse_const_lvalue(const token_t &at, const expr_t &e)
+{
+    if (!qualifiers_of(e).const_)
+        return;
+
+    if (is< name_t >(e))
+        fail(at, "cannot assign to " + quoted(as< name_t >(e).sym->name) +
+                     ", declared const");
+
+    fail(at, "cannot assign to a const-qualified lvalue");
+}
+
+// Whether a record holds a member declared const, its own or one of a
+// record or an array of records it holds, at any depth, which makes an
+// lvalue of it no modifiable one, 6.3.2.1p1.
+bool
+holds_const_member(const record_t &r)
+{
+    for (const member_t &m : r.members) {
+        if (m.qualifiers.const_)
+            return true;
+
+        const record_t *inner = record_in(m.type);
+        if (inner && holds_const_member(*inner))
+            return true;
+    }
+
+    return false;
+}
+
+// 6.5.17.1p2, 6.5.3.5p1, 6.5.4.1p1: a modifiable lvalue of integer or
+// pointer type.  An array is an lvalue but not a modifiable one,
+// 6.3.2.1p1, and neither is a const lvalue.
+void
+require_modifiable_lvalue(const token_t &at, const expr_t &e)
+{
+    if (!is_lvalue(e) || !(is< int_t >(e.type) || is< pointer_t >(e.type)))
+        fail(at, "expression is not assignable");
+
+    refuse_const_lvalue(at, e);
 }
 
 // Array decay, 6.3.2.1p3: but as the operand of sizeof or of unary &,
@@ -1492,23 +1530,56 @@ void_and_function_pointer(const type_t &a, const type_t &b)
            (is_function_pointer(a) && is_void_pointer(b));
 }
 
+// The words of qualifiers, 'const', 'volatile', or both joined.
+std::string
+qualifier_words(qualifiers_t q)
+{
+    if (q.const_ && q.volatile_)
+        return "'const' and 'volatile'";
+
+    return q.const_ ? "'const'" : "'volatile'";
+}
+
+// A pointer converted as if by assignment keeps each qualifier of its
+// pointee, 6.5.17.2p1: one that would lose a const or a volatile, from
+// to to, breaks the constraint and is converted with a warning, the
+// diagnostic 5.1.1.3 asks for, as the cast would convert it.  A system
+// header's text is read as it is, and draws none.
+void
+warn_discarded(parser_t &p,
+               const token_t &at,
+               qualifiers_t from,
+               qualifiers_t to)
+{
+    const qualifiers_t lost { from.const_ && !to.const_,
+                              from.volatile_ && !to.volatile_ };
+    if (lost == qualifiers_t { } || at.where.system_header)
+        return;
+
+    warn(p, at,
+         "conversion discards the " + qualifier_words(lost) +
+             " of the pointed-to type");
+}
+
 // The conversion as if by assignment, of a value to the type of an
 // object: the right operand of =, an initializer, 6.7.11p12, an
 // argument, 6.5.3.3p2, a value returned, 6.8.7.5p3.  The constraints
 // are those of simple assignment, 6.5.17.2p1: integers convert to each
-// other; a pointer takes a pointer to a compatible type, so a long *
-// takes no long long * and an enum a * no enum b * of one integer type,
-// a pointer to void and an object pointer convert either way, and a
-// null pointer constant converts to any pointer, one to a function
-// included.  An
-// integer and a pointer meet only through a cast, 6.5.5p3; a record and
-// a scalar never meet.  A pointer to a function and a pointer to void
-// meet only through a cast too, and GNU C converts them either way: rcc
-// does so, with a warning, the conversion the cast would make (shape.md
-// chapter 5).  A value converted to a not-yet type, as an argument
-// meets a parameter of one, is not yet, and so is a record converted
-// to its own type, whose object c1 does not write yet; the callers
-// that may meet one refuse it first in their own words.
+// other; a pointer takes a pointer to a qualified or unqualified
+// version of a compatible type, so a long * takes no long long *, an
+// enum a * no enum b * of one integer type and a const char ** no
+// char **, a pointer to void and an object pointer convert either way,
+// and a null pointer constant converts to any pointer, one to a
+// function included.  A pointer whose pointee would lose a qualifier
+// converts with a warning, warn_discarded()'s.  An integer and a
+// pointer meet only through a cast, 6.5.5p3; a record and a scalar
+// never meet.  A pointer to a function and a pointer to void meet only
+// through a cast too, and GNU C converts them either way: rcc does so,
+// with a warning, the conversion the cast would make (shape.md chapter
+// 5).  A value converted to a not-yet type, as an argument meets a
+// parameter of one, is not yet, and so is a record converted to its
+// own type, whose object c1 does not write yet; the callers that may
+// meet one refuse it first in their own words.
 expr_t
 assignment_conversion(parser_t &p, const token_t &at, expr_t e, const type_t &t)
 {
@@ -1543,6 +1614,10 @@ assignment_conversion(parser_t &p, const token_t &at, expr_t e, const type_t &t)
     if (to_pointer && from_pointer)
         refuse_marked_twins(at, t, e.type);
 
+    if (to_pointer && from_pointer && !is_null_pointer_constant(e))
+        warn_discarded(p, at, as< pointer_t >(e.type).qualifiers,
+                       as< pointer_t >(t).qualifiers);
+
     if (void_and_function_pointer(t, e.type) && !is_null_pointer_constant(e))
         warn(p, at,
              "conversion between a pointer to void and a pointer to a "
@@ -1556,15 +1631,14 @@ assignment_conversion(parser_t &p, const token_t &at, expr_t e, const type_t &t)
 // pointers to compatible types meet at the pointer to their composite
 // type, a null pointer constant goes to the other operand's type, and
 // a pointer to void and an object pointer meet at void *.  The null
-// pointer constant comes first, as
-// p7's "if one operand is a null pointer constant, the result has the
-// type of the other operand" does before its pointer to void, so
-// c ? (void *) 0 : p is an int * for an int *p, and a (void *) 0 met by
-// a pointer to a function, which meets no other void *, goes to the
-// function pointer's type.  Two pointers of no null pointer constant
-// meet at a pointee qualified with the qualifiers of both, p7, so
-// c ? cp : p is a const int * for a const int *cp.  False when none of
-// the three applies.
+// pointer constant comes first, as p7's "if one operand is a null
+// pointer constant, the result has the type of the other operand" does
+// before its pointer to void, so c ? (void *) 0 : p is an int * for an
+// int *p, and a (void *) 0 met by a pointer to a function, which meets
+// no other void *, goes to the function pointer's type.  Two pointers
+// of no null pointer constant meet at a pointee qualified with the
+// qualifiers of both, p7, so c ? cp : p is a const int * for a
+// const int *cp.  False when none of the three applies.
 bool
 common_pointer(expr_t &lhs, expr_t &rhs)
 {
@@ -3534,18 +3608,23 @@ translation_unit(parser_t &p)
 // of known size is the array of known size whichever came first, and
 // so is a pointer to one in a parameter, as in int f(int (*)[]); int
 // f(int (*)[3]);, and an enumerated type met by its integer type is
-// the integer type.
+// the integer type.  qualifiers are those the declaration says of the
+// object or of the typedef's type, which are the same as the earlier
+// one's in either case, 6.7.4.1p11.
 symbol_t &
 redeclared(const token_t &name,
            symbol_t &earlier,
            const type_t &t,
+           qualifiers_t qualifiers,
            storage_t storage)
 {
     if (earlier.storage != storage)
         fail(name, "redefinition of " + quoted(name.text));
 
-    if (storage == storage_t::type_name ? same_type(earlier.type, t) :
-                                          compatible(earlier.type, t)) {
+    const bool alike = storage == storage_t::type_name ?
+                           same_type(earlier.type, t) :
+                           compatible(earlier.type, t);
+    if (alike && earlier.qualifiers == qualifiers) {
         earlier.type = composite(earlier.type, t);
         return earlier;
     }
@@ -3566,6 +3645,7 @@ symbol_t *
 earlier_declaration(const parser_t &p,
                     const token_t &name,
                     const type_t &t,
+                    qualifiers_t qualifiers,
                     storage_t storage)
 {
     const auto &scope = p.scopes.back().names;
@@ -3574,7 +3654,7 @@ earlier_declaration(const parser_t &p,
     if (it == scope.end())
         return nullptr;
 
-    return &redeclared(name, *it->second, t, storage);
+    return &redeclared(name, *it->second, t, qualifiers, storage);
 }
 
 // A function or an object a block declared first with external linkage
@@ -3743,7 +3823,7 @@ type_definition(parser_t &p, const specifiers_t &spec, const declarator_t &d)
         t = make_not_yet(identity, attribute_words(*tail.marking), true);
     }
 
-    if (!earlier_declaration(p, *d.name, t, storage_t::type_name))
+    if (!earlier_declaration(p, *d.name, t, d.qualifiers, storage_t::type_name))
         added(p, d.name->text, std::move(t), storage_t::type_name).qualifiers =
             d.qualifiers;
 }
@@ -3902,7 +3982,7 @@ declare_function(parser_t &p,
     adopt_block_entity(p, d.name->text);
 
     symbol_t *earlier =
-        earlier_declaration(p, *d.name, d.type, storage_t::function);
+        earlier_declaration(p, *d.name, d.type, { }, storage_t::function);
     const linkage_t linkage = linkage_of(spec, earlier, true);
     refuse_visibility(*d.name, linkage);
 
@@ -5252,7 +5332,8 @@ declare_external_object(parser_t &p,
 
     adopt_block_entity(p, d.name->text);
 
-    symbol_t *sym = earlier_declaration(p, *d.name, d.type, storage_t::global);
+    symbol_t *sym = earlier_declaration(p, *d.name, d.type, d.qualifiers,
+                                        storage_t::global);
     const linkage_t linkage = linkage_of(spec, sym, false);
     refuse_visibility(*d.name, linkage);
 
@@ -7863,9 +7944,10 @@ array_declarator(parser_t &p,
 // which this parser does not take.  An unnamed parameter of type void
 // as the only one is no parameter, p9, whatever spells the type, a
 // typedef name among them; void stands nowhere else.  A storage class
-// on it leaves the behavior undefined, J.2 (75), so (register void) is
-// refused.  Each parameter is declared as it is read, so that the next
-// one sees it.
+// or a type qualifier on it leaves the behavior undefined, J.2 (75), so
+// (register void) and (const void) are refused, and so is a typedef
+// name of a qualified void, a type of its own, 6.2.5p31.  Each
+// parameter is declared as it is read, so that the next one sees it.
 bool
 parameter_type_list(parser_t &p, std::vector< parameter_t > &params)
 {
@@ -7887,6 +7969,7 @@ parameter_type_list(parser_t &p, std::vector< parameter_t > &params)
         parameter_t param = parameter_declaration(p);
         if (is< void_t >(param.type)) {
             if (params.empty() && !param.name && !param.in_register &&
+                param.qualifiers == qualifiers_t { } &&
                 accept(p, tok_t::rparen))
                 return false;
 
@@ -8191,7 +8274,7 @@ linked_declaration(parser_t &p, const specifiers_t &spec, const declarator_t &d)
         fail(*d.name, "redefinition of " + quoted(d.name->text));
 
     if (entity) {
-        redeclared(*d.name, *entity, d.type, storage);
+        redeclared(*d.name, *entity, d.type, d.qualifiers, storage);
         require_linkage(*d.name, *entity, linkage);
         names.emplace(entity->name, entity);
     }
@@ -9213,13 +9296,15 @@ expression(parser_t &p)
 }
 
 // A record's simple assignment, 6.5.17.2p1: its left operand a
-// modifiable lvalue of a complete record, 6.3.2.1p1, and its right one
-// of a compatible record, which rcc takes as the same record, so that
-// two records of one tag are not yet.  The right operand is an lvalue
-// too, since a record's value is no operand yet: the value of another
-// assignment or of a comma is refused in refuse_record_value()'s words.
-// The tree is an assign_t of the record's type without an operation,
-// the two lvalues, for c1 to copy the right's object into the left's.
+// modifiable lvalue of a complete record, 6.3.2.1p1, so neither const
+// nor holding a member declared const, holds_const_member()'s, and its
+// right one of a compatible record, which rcc takes as the same record,
+// so that two records of one tag are not yet.  The right operand is an
+// lvalue too, since a record's value is no operand yet: the value of
+// another assignment or of a comma is refused in refuse_record_value()'s
+// words.  The tree is an assign_t of the record's type without an
+// operation, the two lvalues, for c1 to copy the right's object into
+// the left's.
 expr_t
 record_assignment(parser_t &p, const token_t &op, expr_t lhs)
 {
@@ -9228,6 +9313,11 @@ record_assignment(parser_t &p, const token_t &op, expr_t lhs)
         fail(op, "expression is not assignable");
 
     require_whole_record(op, lhs.type);
+    refuse_const_lvalue(op, lhs);
+
+    if (holds_const_member(r))
+        fail(op, "cannot assign to " + record_words(r) +
+                     ", which holds a member declared const");
 
     const token_t &start = peek(p);
     expr_t rhs = assignment_expression(p);

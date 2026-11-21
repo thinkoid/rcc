@@ -1,0 +1,2 @@
+tests/error/discarded-volatile.c:9:16: warning: conversion discards the 'volatile' of the pointed-to type
+status 0

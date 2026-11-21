@@ -1,0 +1,2 @@
+tests/error/assignment-to-const.c:9:15: error: cannot assign to 'limit', declared const
+status 1

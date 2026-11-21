@@ -1,0 +1,2 @@
+tests/error/conflicting-types-pointee-qualifier.c:5:5: error: conflicting types for 'length'
+status 1

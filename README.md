@@ -215,6 +215,14 @@ the written order and no value is held across a statement, so a
 program's `({ __asm__ __volatile__ ("" : : : "memory"); })` writes
 nothing, which the cost corpus pins against its twin; every other
 `__asm__` statement is not yet.
+Then what C says of a type beside the machine's view of it: an
+integer type remembers which type it is and an enumerated type which
+enumeration, and `const` and `volatile` are kept on an object, on a
+member and on what a pointer points to. So two types are compatible
+as C has them: a `long *` takes no `long long *` without its cast,
+an assignment to a `const` object is an error, and a conversion that
+discards a qualifier of what a pointer points to draws a warning. No
+listing changes: the generators read the machine's view alone.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/`, the cost corpus over `tests/cost/`
 and the error corpus over `tests/error/`, the programs rcc refuses

@@ -214,11 +214,15 @@ The type carries no qualifier at its top: `const` and `volatile` are
 said of what holds it, an object, a parameter, a typedef name or a
 member, and a pointer keeps them as its pointee's, so `const char *`
 is a pointer to `char` that says `const` of it; `restrict` is dropped
-(chapter 5). An array is qualified as its element, as C23 has it
-(6.7.4.1p10) and C17 does not (6.7.3p10), and rcc reads C23 here:
+(chapter 5), so `int *restrict *` and `int **` are one type to C's
+relations below too, where C makes them two, and a conversion between
+them draws nothing. An array is qualified as its element, as C23 has
+it (6.7.4.1p10) and C17 does not (6.7.3p10), and rcc reads C23 here:
 `const int a[3]` is a `const` object of `int [3]`, whose decay points
-to `const int`. Nothing reads the qualifiers yet. Equality is the
-machine's view, and reads no qualifier:
+to `const int`, and `const int (*p)[3] = q;` adds a qualifier for an
+`int (*q)[3]`. The parser's checks read the qualifiers (chapter 5),
+and c1 reads none. Equality is the machine's view, and reads no
+qualifier:
 `long` and `long long` are one type on a target where both are 64
 bits. Any other enumerated type is the integer type compatible with
 it (chapter 5), so `enum color { red, green }` and `unsigned int`
@@ -229,9 +233,11 @@ type. An integer type also remembers the C type it is, its kind,
 enumeration is a type of its own (6.2.5p21). C's relations read both,
 through the edges as equality walks them. Two integer types are
 compatible (6.2.7p1) when their kinds are one, an enumerated type
-with its integer type and with no other enumerated type, and two
+with its integer type and with no other enumerated type; two
+pointers when their pointees are and are qualified alike
+(6.7.4.1p11), so `char **` and `const char **` are not; and two
 arrays when their elements are and their sizes, where both are
-known; so a conversion between `long *` and `long long *`, or between
+known. So a conversion between `long *` and `long long *`, or between
 pointers to two enumerations of one integer type, is an error but
 through a cast, which writes no instruction. Two types are the same
 type, as a typedef declared again must be (6.7.1p4), when they are
@@ -542,8 +548,9 @@ body sees the parameters and the tags of the list that makes the name
 a function, which in `int (*g(int a))(int b) { ... }` is `(int a)`
 alone. An unnamed parameter of type `void` as the only one is the
 empty list (6.7.7.4p9), whatever spells the type, a typedef name
-included; `(register void)`, which J.2 (75) leaves undefined, is
-refused.
+included; `(register void)` and a qualified `void`, `(const void)`
+and a typedef of `const void` among them, which J.2 (75) leaves
+undefined, are refused.
 
 The array a parameter is adjusted from, the suffix right after the
 parameter's name or the place of it, or after redundant parentheses
@@ -718,8 +725,24 @@ register variable as any other, and there rcc departs from
 that called `setjmp`: `longjmp` restores the callee-saved registers,
 so a register variable takes back the value it had at `setjmp`,
 volatile or not. Every other local is in its slot and keeps the value
-last stored. No conversion that discards `const` or `volatile` is
-diagnosed, nor an assignment to a `const` object (chapter 11).
+last stored.
+
+An assignment, compound or not, `++` and `--` of a `const` lvalue are
+errors: it is no modifiable lvalue (6.3.2.1p1), which 6.5.17.1p2,
+6.5.3.5p1 and 6.5.4.1p1 ask for. Such an lvalue is the name of an
+object declared `const`, `*p` through a pointer to `const`, and a
+member declared `const` or of a `const` record; so is a record that
+holds a member declared `const`, in a record or an array of records
+it holds at any depth, as the left operand of its assignment. An
+initializer assigns nothing (6.7.11p12), so
+`const int a[3] = { 1, 2, 3 };` stores its values. A pointer
+converted as if by assignment keeps each qualifier of its pointee
+(6.5.17.2p1): one whose pointee would lose a `const` or a `volatile`,
+to `void *` among them, converts as the cast would, with a warning,
+but in a system header's text, which draws none; one to a pointer
+that would gain one, `char **` to `const char **`, points to an
+incompatible type, an error. A conversion that adds a qualifier draws
+nothing, and so does a cast.
 
 The barrier, `__asm__ __volatile__ ("" : : : "memory")`, is GNU C's
 `__asm__` statement of an empty template, no operand, no label, no
@@ -1176,7 +1199,8 @@ An object at file scope is defined by a declaration with an
 initializer, `extern` or not, and tentatively by one without an
 initializer and without `extern` (6.9.3p1, p2); `extern` alone
 declares it. Every declaration of the name is of one object, of one
-linkage, and of compatible types (6.7.1p5): `extern int n;
+linkage, and of compatible types (6.7.1p5), each saying the same
+qualifiers of it (6.7.4.1p11): `extern int n;
 int n; int n = 1;` declare one object, and two tentative definitions
 define one, which is zero (6.9.3p2). A second initializer is a second
 external definition, an error (6.9.1p5). An array declared without its
@@ -1540,6 +1564,8 @@ the warnings, and no warning changes the exit status. The warnings:
 - `return E;` of a void `E` in a void function (chapter 5);
 - a pointer to `void` and a pointer to a function converted as if by
   assignment (chapter 5);
+- a pointer converted as if by assignment whose pointee loses a
+  `const` or a `volatile`, in the program's own text (chapter 5);
 - the attribute `always_inline` in the program's own text, dropped,
   since rcc inlines nothing (chapter 5).
 
@@ -1746,12 +1772,8 @@ scalar's brace initializer, a declaration through a typedef of
 function type, a UTF-8 character constant, `u8'x'`, a character
 constant of more than one character and no prefix, `#pragma weak`, a
 declaration of a symbol of external linkage under a `#pragma GCC
-visibility` other than `default` (chapter 2), the checks of the
-qualifiers
-(`const` and `volatile` are kept and not read, so an assignment to a
-`const` object and a conversion that discards a qualifier draw no
-diagnostic,
-and `(const void)` is taken as `(void)`), an atomic object, GNU C's
+visibility` other than `default` (chapter 2), an atomic object,
+GNU C's
 case range, `case 1 ... 5:`, its labels as values, `&&next` and `goto
 *p`, its statement expression where a constant expression is wanted
 (chapter 5), and `alloca`, which `alloca.h` defines as

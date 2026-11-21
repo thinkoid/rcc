@@ -1,0 +1,2 @@
+tests/error/nested-pointer-qualifier.c:12:26: error: incompatible pointer types
+status 1

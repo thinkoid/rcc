@@ -1,0 +1,2 @@
+tests/error/void-parameter-const-after.c:4:7: error: 'void' must be the only parameter
+status 1

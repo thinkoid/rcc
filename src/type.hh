@@ -61,7 +61,8 @@ struct int_t
 // is read and dropped, and _Atomic makes a type of its own.  No type
 // carries them at its top: they are said of what holds the type, an
 // object, a member, or a pointer to it, which keeps them as its
-// pointee's.  Equality reads none.
+// pointee's.  Equality reads none; compatible() and its kin below read
+// a pointee's.
 struct qualifiers_t
 {
     bool const_ = false;
@@ -228,14 +229,14 @@ as(const type_t &t)
 // made.
 bool operator==(const type_t &, const type_t &);
 
-// C's view, which reads the integer types' kinds and enumerations: two
-// types compatible, 6.2.7p1, as declarations of one entity are, 6.7.1p5,
-// and the operands of an assignment and a comparison point to; the
-// same type, as a typedef name declared again denotes, 6.7.1p4; and
-// the composite type of two compatible types, 6.2.7p3, which the later
-// declaration of an entity takes, p5.  Each walks the edges as
-// equality does and stops at a record and a not-yet type, which each
-// compares by identity.
+// C's view, which reads the integer types' kinds and enumerations and
+// the pointees' qualifiers: two types compatible, 6.2.7p1, as
+// declarations of one entity are, 6.7.1p5, and the operands of an
+// assignment and a comparison point to; the same type, as a typedef
+// name declared again denotes, 6.7.1p4; and the composite type of two
+// compatible types, 6.2.7p3, which the later declaration of an entity
+// takes, p5.  Each walks the edges as equality does and stops at a
+// record and a not-yet type, which each compares by identity.
 bool compatible(const type_t &, const type_t &);
 bool same_type(const type_t &, const type_t &);
 type_t composite(const type_t &, const type_t &);

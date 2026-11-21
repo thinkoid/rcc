@@ -1,0 +1,2 @@
+tests/error/typedef-redefinition-qualifier.c:5:19: error: redefinition of typedef 'count' with another type
+status 1

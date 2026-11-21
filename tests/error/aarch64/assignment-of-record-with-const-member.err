@@ -1,0 +1,2 @@
+tests/error/assignment-of-record-with-const-member.c:19:13: error: cannot assign to struct 'outer', which holds a member declared const
+status 1
