@@ -563,23 +563,6 @@ types whose marks differ is a not-yet.
 Check: that program is refused by the attribute's name, or
 =docs/shape.md= says why not.
 
-** TODO An error after the first not-yet in a typedef's array size is not seen
-
-~typedef int a[sizeof (struct s) + undeclared];~, =s= a packed
-struct, compiles: in a typedef, an array size that needs what rcc
-does not have yet makes a type rcc declares and does not use, and
-the parse of the size ends at its first refusal, so the undeclared
-name after it is never read. A refusal unwinds every level of the
-parse and leaves no place to go on from: the text after it is no
-expression of its own.
-
-Fix: =docs/shape.md= says that a size rcc cannot compute is not
-checked past its first refusal. Reading on would take a refusal
-that does not unwind, a value of a not-yet kind every expression's
-builder carries.
-
-Check: the document says so beside the typedef's array.
-
 ** TODO An =__asm__= statement's qualifier written twice is taken
 
 ~__asm__ volatile volatile ("" : : : "memory");~ compiles as the

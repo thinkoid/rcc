@@ -1108,7 +1108,11 @@ the brackets and parentheses in the size; the parse goes on there. A
 size that is wrong stays the error it is, and so does such a size
 outside a typedef: of a local, a parameter, a cast or a `sizeof`.
 Since the parse of the size stops at its first refusal, an error of
-the program after it in the size is not seen.
+the program after it in the size is not seen:
+`typedef int a[sizeof (struct s) + undeclared];`, `s` a struct with
+a bit-field, is accepted. A refusal unwinds every level of the parse,
+and reading on would take one that does not, a value of a not-yet
+kind that every expression's builder carries.
 
 A function of internal linkage may be an inline function (6.7.5p7),
 and `inline` suggests only that its calls be fast (p6), so it writes
