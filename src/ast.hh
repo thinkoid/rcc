@@ -464,6 +464,12 @@ as(const stmt_t &s)
 // whose head or body the parser stopped in at a construct rcc does not
 // compile yet, or by a system header's static inline definition, whose
 // body it skipped: there is no body, and c1 writes nothing for it.
+// droppable says that the function is a static inline one of the
+// program's own text whose body is whole and that no expression and no
+// alias names: c1 writes nothing for it when it refuses the body, as
+// the parser writes nothing for one it stops in.  statics_begin and
+// statics_end bound the static objects its body declares in the unit's
+// objects, which go with it, since nothing outside the body names them.
 struct function_decl_t
 {
     const symbol_t *sym;
@@ -472,6 +478,9 @@ struct function_decl_t
     int registers;
     const symbol_t *va_area = nullptr;
     bool uncompiled = false;
+    bool droppable = false;
+    std::size_t statics_begin = 0;
+    std::size_t statics_end = 0;
 };
 
 // An address constant, 6.6p9, p11, as the parser folds it: the address

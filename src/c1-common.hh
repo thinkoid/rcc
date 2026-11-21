@@ -145,6 +145,9 @@ void data(std::ostream &,
           std::vector< std::string > strings,
           const std::vector< object_decl_t > &objects,
           const target_t &);
+std::vector< object_decl_t >
+written_objects(const unit_t &,
+                const std::vector< const function_decl_t * > &dropped);
 void aliases(std::ostream &, const std::vector< alias_t > &);
 
 // A value the generator holds: in an expression register, or in its

@@ -93,7 +93,8 @@ as it is either way, so a program compiles to the listing of its
 twin without the specifier (`static-inline`). One whose head or body
 holds what rcc does not compile yet is kept uncompiled and writes
 nothing at all (`static-inline-head-not-yet`,
-`static-inline-not-yet`). Nor does
+`static-inline-not-yet`), and so does one that nothing names whose
+body c1 refuses (`static-inline-c1-not-yet`). Nor does
 `__builtin_expect(e, c)` of a constant `c`: it is `e` converted to
 `long`, so a program compiles to the listing of its twin with
 `(long)(e)` in its place (`builtin-expect`). Nor does the attribute

@@ -3198,6 +3198,7 @@ void complete_tentative_arrays(parser_t &);
 void require_completed_definitions(const parser_t &);
 void require_internal_definitions(const parser_t &);
 void resolve_aliases(parser_t &);
+void keep_named_functions(parser_t &);
 
 void
 translation_unit(parser_t &p)
@@ -3209,6 +3210,7 @@ translation_unit(parser_t &p)
     complete_tentative_arrays(p);
     require_internal_definitions(p);
     resolve_aliases(p);
+    keep_named_functions(p);
 }
 
 // Whether two array types are one but for the size one of them leaves
@@ -4771,6 +4773,25 @@ resolve_aliases(parser_t &p)
     }
 }
 
+// A static inline function that an expression or an alias names, before
+// its definition or after it, is not droppable: a use of it would name
+// a symbol c1 did not write, so c1's refusal of its body stops the file
+// as any other's does.  A name in a body the parser stopped in counts,
+// as does a call of the function in its own body.
+void
+keep_named_functions(parser_t &p)
+{
+    for (function_decl_t &f : p.unit.functions) {
+        const bool aliased =
+            std::ranges::any_of(p.unit.aliases, [&f](const alias_t &a) {
+                return a.target == f.sym;
+            });
+
+        if (p.used.contains(f.sym) || aliased)
+            f.droppable = false;
+    }
+}
+
 // An object at file scope, 6.9.3.  A declaration with an initializer
 // defines it, p1, extern or not; one without an initializer and
 // without extern is a tentative definition, p2; extern alone, neither
@@ -5303,7 +5324,9 @@ uncompiled_head(parser_t &p,
 // not compile yet is kept uncompiled, uncompiled_head()'s or
 // inline_body()'s: an expression that names it, before the definition
 // or after it, is refused by the words of what it needs, which the
-// symbol keeps.
+// symbol keeps.  One whose body is whole is droppable, for c1 to write
+// nothing for it if it refuses the body, with the static objects the
+// body declares, unless keep_named_functions() finds it named.
 void
 function_definition(parser_t &p,
                     const specifiers_t &spec,
@@ -5341,6 +5364,7 @@ function_definition(parser_t &p,
 
     std::vector< const symbol_t * > params = defined_parameters(p, d);
 
+    const std::size_t statics = p.unit.objects.size();
     std::string missing;
     std::optional< block_t > body =
         inline_ ? inline_body(p, missing) : function_body(p);
@@ -5363,6 +5387,9 @@ function_definition(parser_t &p,
     f.body = std::move(body);
     f.registers = p.registers;
     f.va_area = p.va_area;
+    f.droppable = inline_;
+    f.statics_begin = statics;
+    f.statics_end = p.unit.objects.size();
 }
 
 // The definition of a static inline function a system header writes,

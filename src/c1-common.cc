@@ -1302,6 +1302,27 @@ data(std::ostream &out,
     object_block(out, objects, labels, target, false);
 }
 
+// The objects c1 writes after the functions: the unit's, but the static
+// objects the body of each function it dropped declares, which nothing
+// outside that body names (shape.md chapter 5).
+std::vector< object_decl_t >
+written_objects(const unit_t &unit,
+                const std::vector< const function_decl_t * > &dropped)
+{
+    const auto declared_by_dropped = [&dropped](std::size_t i) {
+        return std::ranges::any_of(dropped, [i](const function_decl_t *fd) {
+            return i >= fd->statics_begin && i < fd->statics_end;
+        });
+    };
+
+    std::vector< object_decl_t > written;
+    for (std::size_t i = 0; i < unit.objects.size(); ++i)
+        if (!declared_by_dropped(i))
+            written.push_back(unit.objects[i]);
+
+    return written;
+}
+
 // Chapter 10: the aliases after the data, as clang writes them.  Each
 // is a symbol the assembler gives its target's address: its binding,
 // .globl, as an alias is of external linkage; a function's kind,

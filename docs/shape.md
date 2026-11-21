@@ -937,6 +937,17 @@ it is. A refusal in the declarator itself, `(...)` among them, is the
 declaration's, made before the parser knows that a body follows, and
 stops the file as on a declaration.
 
+A body the parser reads whole may still hold what c1 does not
+compile yet, a frame past the target's limit among them. When no
+expression and no alias names the function, before the definition
+or after it, the function is droppable, and c1 drops it at its
+refusal: it writes nothing for it, the string literals and the
+static objects of its body among them, so a file that never names it
+compiles. A function that is named is refused by c1 as any other is:
+a use of it would name a symbol c1 did not write, and the parser,
+which refuses a use, has finished by the time c1 runs. A name in the
+function's own body, or in a body the parser stopped in, counts.
+
 `static` at file scope gives a function or an object internal
 linkage (6.2.2p3). The rules of linkage are the standard's: `extern`
 on a later declaration keeps the linkage of the earlier one (p4), and
@@ -1245,7 +1256,8 @@ code of a `backend.md` chapter:
 - The state is per function, reset at each definition: the slots,
   the held values, the frame's size, the label numbers. Only the
   string literals and the symbols the file defines run across the
-  file.
+  file. A droppable function's refusal (chapter 5) is caught, and
+  the literals it met are taken back, so it leaves nothing behind.
 - Every local and parameter not declared `register` has a slot off
   `rbp`, assigned at its declaration, none shared; every read is a
   load and every write a store (chapter 5, G12).
@@ -1393,7 +1405,9 @@ error: c1: not yet: a frame of 2 GiB or more, in function 'main'`.
 The tree carries no positions (chapter 4), so the place it names is
 the function c1 was generating, quoted as the parser quotes a name.
 The message starts as every refusal of c1 does, `c1: not yet:`, which
-`tests/costs` reads as a construct whose slice is not in the tree.
+`tests/costs` reads as a construct whose slice is not in the tree. In
+a droppable `static inline` function there is no message: c1 drops
+the function (chapter 5).
 
 ## 9. The build and the layout
 

@@ -513,21 +513,6 @@ which =_Generic= needs of it too, so the two are built together.
 Check: both programs fail with "incompatible pointer types", and
 compile with the cast written.
 
-** TODO A not-yet of c1 in an uncalled =static inline= body stops the file
-
-A =static inline= body that stops at a not-yet of the parser's is
-kept as a function not yet compiled (=docs/shape.md= chapter 5). A
-construct the parser takes and a generator refuses is not caught: an
-uncalled =static inline= function whose body holds one is "rcc:
-internal error: c1: not yet: ..." for every file that includes its
-header.
-
-Fix: the generator's refusal of such a function is kept as the
-parser's is; or the parser refuses the construct itself.
-
-Check: a program whose uncalled =static inline= function holds a
-construct only c1 refuses compiles.
-
 ** TODO A constant expression out of its type's range wraps with no diagnostic
 
 6.6p4 is a constraint: "Each constant expression shall evaluate to a
@@ -681,6 +666,22 @@ clobbers; or only with the clobbers =memory= and =cc=. Any other
 
 Check: a cost program pinned like its twin without the statement, on
 both targets; =tests/error/asm-statement.c= keeps its pin.
+
+** TODO A local over the frame's limit is an error
+
+~char a[1500000000];~ in a block is "error: variable 'a' is too
+large for a local", and on aarch64 so is a local of 16 MiB, the
+generator's limit and not C's; =clang= takes both. The program is
+valid and the limit is rcc's, so the refusal is a not-yet, and as an
+error it stops a file whose uncalled =static inline= function
+declares such a local.
+
+Fix: none taken; decide: a not-yet in the words of the limit, which
+the catch of a =static inline= body then takes.
+
+Check: ~static inline int f(void) { char a[20000000]; return a[0];
+}~, never called, compiles on aarch64, and a call of it is refused
+by the limit's words.
 
 * Lexer
 

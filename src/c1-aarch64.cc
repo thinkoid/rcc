@@ -5304,7 +5304,10 @@ epilogue(state_t &s, long size)
 // and the loads after them.  The first slot lies above the frame record
 // and the save area, and this is the one place that says so.  The one
 // epilogue is reached with x0 as it is, G5's some value, but for main,
-// which returns 0 when it falls off its end, 5.1.2.3.4.
+// which returns 0 when it falls off its end, 5.1.2.3.4.  Each field a
+// function's generation changes starts over, but the literals, so that
+// a refusal caught midway through the function before leaves nothing
+// behind.
 void
 function(state_t &s, const function_decl_t &fd)
 {
@@ -5317,6 +5320,7 @@ function(state_t &s, const function_decl_t &fd)
     s.floor = 0;
     s.saved = fd.registers;
     s.in_place = -1;
+    s.reserved = 0;
     s.frame = saved_at(s.saved);
     s.function = fd.sym->name;
     s.labels = 0;
@@ -5371,7 +5375,11 @@ function(state_t &s, const function_decl_t &fd)
 // writes nothing, since the assembler leaves its symbol to the link.
 // The string literals follow the last function, the objects the unit
 // defines follow them, and the aliases it declares follow those,
-// chapter 10.  The note section marks the stack not executable.
+// chapter 10.  The note section marks the stack not executable.  A
+// droppable function whose body c1 refuses writes nothing either, the
+// string literals it met and the static objects its body declares among
+// them, and the next function() starts its state over; any other
+// refusal is thrown again with the function's name.
 void
 generate_aarch64(const unit_t &unit,
                  const target_t &target,
@@ -5384,19 +5392,25 @@ generate_aarch64(const unit_t &unit,
 
     out << std::format("\t.file\t{}\n\t.text\n", quoted_file(file));
 
+    std::vector< const function_decl_t * > dropped;
     for (const auto &fd : unit.functions) {
         if (!fd.body)
             continue;
 
+        const std::size_t strings = s.strings.size();
         try {
             function(s, fd);
         }
         catch (const refusal_t &e) {
-            refused_in(fd.sym->name, e);
+            if (!fd.droppable)
+                refused_in(fd.sym->name, e);
+
+            s.strings.resize(strings);
+            dropped.push_back(&fd);
         }
     }
 
-    data(s.out, s.strings, unit.objects, target);
+    data(s.out, s.strings, written_objects(unit, dropped), target);
     aliases(s.out, unit.aliases);
 
     out << "\t.section\t.note.GNU-stack,\"\",@progbits\n";
