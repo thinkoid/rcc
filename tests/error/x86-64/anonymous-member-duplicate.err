@@ -1,0 +1,2 @@
+tests/error/anonymous-member-duplicate.c:13:10: error: duplicate member 'x'
+status 1

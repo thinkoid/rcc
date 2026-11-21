@@ -231,11 +231,18 @@ end of its members rounded up to that alignment (p19), so that each
 element of an array of it is aligned. A flexible array member stands
 at its element's alignment past the other members and adds no size
 (p20): `struct { char c; long b[]; }` is 8 bytes and `b` is at 8, and
-`p->b[i]` is the member's offset plus the index. `size_of` and
+`p->b[i]` is the member's offset plus the index. An anonymous member,
+a struct or a union without a tag declared with no declarator, is a
+member of no name and of its record's type, laid out as such a member
+is, as `clang` lays it out: "The members of an anonymous structure or
+union are members of the containing structure or union, keeping their
+structure or union layout" (6.7.3.2p15). So a member access and
+`offsetof` find a name through anonymous members at any depth, its
+offset theirs plus its own. `size_of` and
 `align_of` read the layout, and the parser folds `sizeof`, `_Alignof`
 and `offsetof` from it. A record whose list holds a construct rcc
 does not lay out yet is complete and has no layout: a bit-field, an
-anonymous member, an attribute that marks, `packed` and `aligned`
+attribute that marks, `packed` and `aligned`
 among them, a packing of `#pragma pack` where the list opens
 (chapter 2), a list of no member, or a member of a type rcc does not
 use yet. It keeps the words of the first such construct,
@@ -666,8 +673,12 @@ member or at the array's `[`, and a system header's, as the kernel's
 netfilter headers write, is read as it is and laid out. A member
 declaration with no
 declarator declares an anonymous member where its specifier is a
-struct or a union without a tag (p15), and otherwise the tag or the
-constants of its specifier alone. In a list a system header writes,
+struct or a union without a tag (p15), whose members' names, at any
+depth, are the record's, each counted among its named members (p10):
+one the record already has is a second member of one name, refused
+at the `;` that ends the anonymous member. Otherwise the declaration
+declares the tag or the constants of its specifier alone. In a list
+a system header writes,
 the rule for a system header holds as for a typedef's array size: a
 refusal of the not-yet kind makes the record one rcc does not lay out,
 of the refusal's words, and the parse skips to the list's closing
@@ -1063,8 +1074,12 @@ taking its own list or as many initializers as it needs (p21), and a
 member that is an array of `char` a string literal alone. The walk is
 one rule at any depth, so an array of records, a record of arrays and
 a record of records take their lists alike, `{ 1, 2, 3, 4 }` the two
-points of a line in order. Every member rcc lays out is named, so
-none is passed over (p10). The bytes no member's value holds, the
+points of a line in order. An anonymous member takes its values as a
+member of its record's type does, its members being the record's
+(6.7.3.2p15), as `clang` gives them: `{ 1, 2, 3 }` for
+`struct { int a; union { int b; char c; }; int d; }` gives `a`, `b`
+and `d`. An unnamed bit-field, which p10 passes over, is in no record
+rcc lays out. The bytes no member's value holds, the
 padding included, are zero (p11, p22), which the data writes as any
 other run of zeros. A list that goes on past the record's members, or
 a union's first, is an error (p3). A list that reaches a flexible
@@ -1458,7 +1473,7 @@ its value where a record is wanted, a scalar's place in a local's
 list among them), a string literal for an array in a local's list, a
 function whose parameter list is `(...)` alone, the layout
 of a struct or a
-union with a bit-field, an anonymous member, an attribute that marks,
+union with a bit-field, an attribute that marks,
 `packed` and `aligned` among them, a packing of `#pragma pack`, no
 member, or a member of a type rcc does not
 use yet but a real floating one (chapter 3), an initializer of a

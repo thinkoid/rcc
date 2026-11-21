@@ -112,7 +112,11 @@ compiles to the listing of its twin with the cast written
 (`void-function-pointer`). Nor does the attribute `always_inline`,
 which rcc drops with a warning: it asks that each call be inlined, c1
 inlines none and writes the call, so a program compiles to the
-listing of its twin without it (`always-inline`).
+listing of its twin without it (`always-inline`). Nor does an
+anonymous member: its members are the enclosing record's, each at the
+anonymous member's offset plus its own, so a program compiles to the
+listing of its twin with each anonymous member named and each access
+written through the name (`anonymous-member`).
 
 What the compiler may do:
 

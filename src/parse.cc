@@ -3772,9 +3772,11 @@ elements(parser_t &p, const array_t &array, long offset, destination_t &to)
 // The members of a record at offset, from the initializers ahead in a
 // list, 6.7.11p18: a struct's in declaration order, each from the next
 // initializer, or from as many as it takes when that one does not
-// begin with a brace, p21; a union's first named member alone.  Every
-// member of a record rcc lays out is named, so none is passed over,
-// p10.  An initializer is ahead.  The members end with the last,
+// begin with a brace, p21; a union's first member alone.  An anonymous
+// member is given as a member of its record type is, its members being
+// the record's, 6.7.3.2p15, as clang gives it; an unnamed bit-field,
+// which p10 passes over, is in no record rcc lays out.  An initializer
+// is ahead.  The members end with the last,
 // leaving the rest of the list to the enclosing aggregate or to the
 // list's own check, or with the list.  Returns whether every member the
 // list may give was given.  A flexible array member takes an
@@ -5238,10 +5240,57 @@ require_member_type(const token_t &name,
         mark_not_yet(r, *words);
 }
 
+// The member of the name in a record, at its offset from the start of
+// the record, or none: a member the record declares, or one of an
+// anonymous member's, at any depth, at the anonymous member's offset
+// plus its own, since its members are the record's, 6.7.3.2p15.  An
+// anonymous member is the one member of no name: an unnamed bit-field
+// is not kept.
+std::optional< member_t >
+member_named(const record_t &r, std::string_view name)
+{
+    for (const member_t &m : r.members) {
+        if (m.name == name)
+            return m;
+
+        if (!m.name.empty())
+            continue;
+
+        auto inner = member_named(*as< record_type_t >(m.type).record, name);
+        if (inner) {
+            inner->offset += m.offset;
+            return inner;
+        }
+    }
+
+    return std::nullopt;
+}
+
+// The names of a record's members, its anonymous members' at any depth
+// among them, 6.7.3.2p15.
+std::vector< std::string >
+member_names(const record_t &r)
+{
+    std::vector< std::string > names;
+
+    for (const member_t &m : r.members) {
+        if (!m.name.empty()) {
+            names.push_back(m.name);
+            continue;
+        }
+
+        const auto inner = member_names(*as< record_type_t >(m.type).record);
+        names.insert(names.end(), inner.begin(), inner.end());
+    }
+
+    return names;
+}
+
 // A named member, its type checked and its name one the record has not
-// declared yet, 6.7.3.2p1 and 6.2.3p1: each record is a name space of
-// its own.  A member after a flexible array member is an error, p3.
-// zero is the member's own array's size written as zero, or null.
+// declared yet, its anonymous members' among them, 6.7.3.2p1, p15 and
+// 6.2.3p1: each record is a name space of its own.  A member after a
+// flexible array member is an error, p3.  zero is the member's own
+// array's size written as zero, or null.
 void
 add_member(member_list_t &list,
            const token_t &name,
@@ -5254,11 +5303,37 @@ add_member(member_list_t &list,
 
     require_member_type(name, t, zero, list);
 
-    for (const member_t &m : r.members)
-        if (m.name == name.text)
-            fail(name, "duplicate member " + quoted(name.text));
+    if (member_named(r, name.text))
+        fail(name, "duplicate member " + quoted(name.text));
 
     r.members.push_back(member_t { std::string(name.text), t, 0 });
+}
+
+// An anonymous member, 6.7.3.2p15: a member of no name and of the
+// record of the specifier, laid out as a member of its type is, as
+// clang lays it out, so its own layout is kept.  Its members are the
+// enclosing record's: each name is one the record has not declared
+// yet, refused at the ';', since the member's own list was read before
+// it was known to be anonymous, and each counts among the record's
+// named members, p10.  A record rcc does not lay out leaves the
+// enclosing one without its layout, by its words.
+void
+anonymous_member(const token_t &semicolon, member_list_t &list, const type_t &t)
+{
+    record_t &r = list.record;
+    const record_t &inner = *as< record_type_t >(t).record;
+
+    for (const std::string &name : member_names(inner)) {
+        if (member_named(r, name))
+            fail(semicolon, "duplicate member " + quoted(name));
+
+        ++list.named;
+    }
+
+    if (const std::string *words = not_yet_in(t))
+        mark_not_yet(r, *words);
+
+    r.members.push_back(member_t { { }, t, 0 });
 }
 
 // One member declarator, 6.7.3.2p1: a declarator, which names the
@@ -5291,12 +5366,12 @@ member_declarator(parser_t &p, const specifiers_t &spec, member_list_t &list)
 
 // A member declaration with no declarator, 6.7.3.2p2: a struct or a
 // union specifier without a tag declares an anonymous member, p15,
-// which rcc does not lay out yet, and which is no member of a struct
-// when it holds a flexible array member, p3, as require_member_type()
-// says of a named one, and after a flexible array member, as any
-// member there.  Any other struct, union or enum specifier declares its
-// tag or its constants alone, as at file scope; one of no specifier of
-// the kind declares nothing, an error.
+// which is no member of a struct when it holds a flexible array
+// member, p3, as require_member_type() says of a named one, and none
+// after a flexible array member, as any member there.  Any other
+// struct, union or enum specifier declares its tag or its constants
+// alone, as at file scope; one of no specifier of the kind declares
+// nothing, an error.
 void
 unnamed_member(const token_t &semicolon,
                const specifiers_t &spec,
@@ -5320,10 +5395,7 @@ unnamed_member(const token_t &semicolon,
     }
 
     if (inner && inner->tag.empty())
-        mark_not_yet(list.record,
-                     "anonymous " +
-                         std::string(inner->is_union ? "union" : "struct") +
-                         " in " + record_words(list.record));
+        anonymous_member(semicolon, list, spec.type);
 }
 
 // A member declaration: its specifiers, which are a specifier-qualifier
@@ -7763,14 +7835,14 @@ callee_words(const expr_t &callee)
     return "in a call through a pointer";
 }
 
-// The member of a record by its name, 6.5.3.4p1, p2; a name the record
-// has no member of is an error.
-const member_t &
+// The member of a record by its name, 6.5.3.4p1, p2, member_named()'s,
+// at its offset in the record; a name the record has no member of is
+// an error.
+member_t
 named_member(const record_t &r, const token_t &name)
 {
-    for (const member_t &m : r.members)
-        if (m.name == name.text)
-            return m;
+    if (auto m = member_named(r, name.text))
+        return std::move(*m);
 
     fail(name,
          "no member named " + quoted(name.text) + " in " + record_words(r));
@@ -7905,7 +7977,7 @@ member_access(parser_t &p, const token_t &op, expr_t e)
         e = rvalue(op, std::move(e));
     }
 
-    const member_t &m = named_member(accessed_record(op, e.type), name);
+    const member_t m = named_member(accessed_record(op, e.type), name);
     if (is_sized(m.type))
         not_yet(name, *not_yet_in(m.type));
 
@@ -8647,7 +8719,7 @@ character_constant(const parser_t &p, const token_t &t)
 // The member a designator of offsetof names in a record: the record
 // laid out, 7.21p4, an incomplete one refused, 6.5.4.4p1's rule, and a
 // not-yet one refused by its words.
-const member_t &
+member_t
 designated_member(const token_t &at, const type_t &t, const token_t &name)
 {
     if (!is< record_type_t >(t))
@@ -8706,7 +8778,7 @@ offsetof_expression(parser_t &p, const token_t &keyword)
     do {
         const token_t &name =
             expect(p, tok_t::identifier, "expected member name");
-        const member_t &m = designated_member(*at, t, name);
+        const member_t m = designated_member(*at, t, name);
         offset += m.offset;
         t = m.type;
 

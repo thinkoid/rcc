@@ -18,7 +18,8 @@
    record on x86-64 and a record on aarch64, whose members are read
    through the list's address.  struct file_handle is a header's record
    under _GNU_SOURCE, whose last member glibc writes as an array of size
-   zero, a flexible array member. */
+   zero, a flexible array member.  struct termios is a header's record
+   whose last two members glibc writes as anonymous unions. */
 
 #define _GNU_SOURCE
 
@@ -26,6 +27,7 @@
 #include <netinet/in.h>
 #include <stdarg.h>
 #include <stddef.h>
+#include <termios.h>
 
 /* the member kinds that are no record, spelled as one type each */
 typedef char *pointer_t;
@@ -191,17 +193,72 @@ struct flexible_r
         struct inner b[];
 };
 
+/* records of anonymous members, 6.7.3.2p15, whose members are the
+   enclosing record's, laid out as the anonymous member's own record: a
+   union of a char and a long between a char and a short, a struct of a
+   char and a long in a union, the union of the EXAMPLE 2 there, of an
+   anonymous struct beside a named one, and the struct of its EXAMPLE 4,
+   an anonymous struct's member and a flexible array member */
+struct anonymous_union
+{
+        char c;
+        union
+        {
+                char a;
+                long l;
+        };
+        short s;
+};
+
+union anonymous_struct
+{
+        int i;
+        struct
+        {
+                char c;
+                long l;
+        };
+};
+
+struct anonymous_nest
+{
+        union
+        {
+                struct
+                {
+                        int i, j;
+                };
+                struct
+                {
+                        long k, l;
+                } w;
+        };
+        int m;
+};
+
+struct anonymous_flexible
+{
+        struct
+        {
+                int i;
+        };
+        int a[];
+};
+
 /* the records of no list above, and the keyword each is declared by */
 /* clang-format off */
 #define RECORDS(X)                                                      \
     X(struct, inner) X(union, either) X(struct, nest) X(union, choice)  \
-    X(struct, tagged) X(struct, sockaddr_in) X(, va_list)
+    X(struct, tagged) X(struct, sockaddr_in) X(, va_list)               \
+    X(struct, anonymous_union) X(union, anonymous_struct)               \
+    X(struct, anonymous_nest) X(struct, termios)
 
 /* the records that hold a flexible array member, which are no element
    of an array, 6.7.3.2p3 */
 #define FLEXIBLE(X)                                                     \
     X(struct, flexible_c) X(struct, flexible_i) X(struct, flexible_l)   \
-    X(struct, flexible_r) X(struct, file_handle)
+    X(struct, flexible_r) X(struct, file_handle)                        \
+    X(struct, anonymous_flexible)
 
 /* the designators of offsetof into those records: a name, the record,
    the designator */
@@ -216,7 +273,19 @@ struct flexible_r
     X(flexible_l_b, struct flexible_l, b)                               \
     X(flexible_r_b, struct flexible_r, b)                               \
     X(flexible_r_b_1_l, struct flexible_r, b[1].l)                      \
-    X(file_handle_f_handle, struct file_handle, f_handle)
+    X(file_handle_f_handle, struct file_handle, f_handle)               \
+    X(anonymous_union_a, struct anonymous_union, a)                     \
+    X(anonymous_union_l, struct anonymous_union, l)                     \
+    X(anonymous_union_s, struct anonymous_union, s)                     \
+    X(anonymous_struct_c, union anonymous_struct, c)                    \
+    X(anonymous_struct_l, union anonymous_struct, l)                    \
+    X(anonymous_nest_j, struct anonymous_nest, j)                       \
+    X(anonymous_nest_w_l, struct anonymous_nest, w.l)                   \
+    X(anonymous_nest_m, struct anonymous_nest, m)                       \
+    X(anonymous_flexible_a, struct anonymous_flexible, a)               \
+    X(termios_c_cc, struct termios, c_cc)                               \
+    X(termios_c_ispeed, struct termios, c_ispeed)                       \
+    X(termios_c_ospeed, struct termios, c_ospeed)
 /* clang-format on */
 
 /* the members of the target's list record, and the list's address */

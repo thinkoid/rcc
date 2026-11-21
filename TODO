@@ -624,6 +624,19 @@ whose last expression is its value; a variable length array;
 Check: the program of =tests/error= for each becomes a cost program
 on both targets.
 
+** TODO An anonymous struct of bit-fields alone does not count before a flexible array member
+
+~struct s { struct { int b : 3; }; int a[]; };~ is refused, "flexible
+array member 'a' in a struct with no other named member", which
+=clang= takes: the members of an anonymous struct are the record's
+(6.7.3.2p15), and =b= is a named member. A bit-field is not kept as
+a member, so its name is not counted.
+
+Fix: with the layout of bit-fields, which keeps them as named
+members.
+
+Check: that program reaches the bit-field's not-yet.
+
 * Lexer
 
 ** TODO ~#pragma GCC visibility push(default)~ is refused
@@ -640,4 +653,16 @@ not-yet.
 
 Check: a program that includes =unwind.h= compiles, and the pin of
 =pragma-visibility= is refused at its declaration.
+
+** TODO =asm= is an identifier
+
+~asm ("" : : : "memory");~ fails with "'asm' undeclared". In the
+dialect rcc preprocesses in, =-std=gnu17=, =asm= is a keyword, as
+=__asm__= is in every dialect; the lexer's table has the second
+alone.
+
+Fix: =asm= is the keyword =__asm__= is.
+
+Check: a program of =tests/error= whose pin says "not yet: 'asm'
+statement".
 
