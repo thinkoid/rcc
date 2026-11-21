@@ -196,6 +196,21 @@ test of zero of its other operand.
 Check: a cost program of both senses on an =int= and a =long=, each
 the listing of its bare twin, and no function longer.
 
+** TODO A constant condition is loaded and tested
+
+~while (1)~ loads its constant and tests it on every turn, =movl $1,
+%eax; cmpl $0, %eax; je= on x86-64 and =mov w0, #1; cbz w0= on
+aarch64, and ~if (0)~ the same once, where ~for (;;)~ writes its
+jump alone. The Seventh Edition compiler tests the constant too,
+with the one instruction its machine has for it, =tst $1; jeq=.
+
+Fix: none taken; decide: a condition that is an integer constant is
+its jump or nothing, as ~for (;;)~ is; or the test stays, as the
+source writes one, in the fewest instructions the target has.
+
+Check: a cost program of ~while (1)~, ~if (0)~ and ~if (1)~, pinned
+on both targets.
+
 * Guarantees
 
 The promises in =docs/guarantees.md=. The entry number is the
