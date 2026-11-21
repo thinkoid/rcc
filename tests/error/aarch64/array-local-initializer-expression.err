@@ -1,0 +1,2 @@
+tests/error/array-local-initializer-expression.c:6:20: error: array initializer must be an initializer list
+status 1

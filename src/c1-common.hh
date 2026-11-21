@@ -52,7 +52,7 @@ long long wrapped_add(long long a, long long b);
 int written(int width, bool is_signed);
 int stored_valid(int valid, int width, const int_t &object);
 
-// A record's object as its copy and its zeroing go through it,
+// An object as a record's copy and the zeroing go through it,
 // backend.md 6.6: count units of unit bytes, from the lowest address
 // up, written out up to eight and a loop's above (G18, G20).
 struct units_t
@@ -62,7 +62,7 @@ struct units_t
     bool loop;
 };
 
-units_t units_of(const record_t &);
+units_t units_of(long size, int alignment);
 
 std::string_view assembly_name(const symbol_t &);
 std::string symbol_plus(std::string_view symbol, long long offset);

@@ -292,9 +292,9 @@ struct expr_stmt_t
 };
 
 // A local's declaration: init is a scalar's initializer, converted to
-// its type.  zeroed is a record's list, 6.7.11p17: the declaration
-// zeroes the whole object, padding included, and the statements after
-// it store the listed values, in the list's order.
+// its type.  zeroed is a record's or an array's list, 6.7.11p17: the
+// declaration zeroes the whole object, padding included, and the
+// statements after it store the listed values, in the list's order.
 struct decl_stmt_t
 {
     const symbol_t *sym;

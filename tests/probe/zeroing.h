@@ -1,12 +1,12 @@
 /* The lists the zeroing probe is generated from.  zeroing.c makes the
    functions of each record, compiled by rcc and, as the reference, by
    clang -O0 under the prefix ref_; zeroing-main.c calls both and
-   compares what each leaves.  A local record a list initializes holds
-   the listed values, and zero in every member the list leaves out,
-   6.7.11p20, p22, which the two builds are compared on, member by
-   member.  rcc zeroes the padding too (G20), which C23 leaves
-   unspecified where a list is not empty, 6.2.6.1p6: every byte of
-   rcc's object outside its members is checked against zero, and
+   compares what each leaves.  A local record or array a list
+   initializes holds the listed values, and zero in every member the
+   list leaves out, 6.7.11p20, p22, which the two builds are compared
+   on, member by member.  rcc zeroes the padding too (G20), which C23
+   leaves unspecified where a list is not empty, 6.2.6.1p6: every byte
+   of rcc's object outside its members is checked against zero, and
    clang's padding is not read.  The records are defined here, so the
    main, rcc's build and clang's see one set: an array of char, short,
    int or long, of each size from 1 to 64 bytes that is a multiple of

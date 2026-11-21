@@ -2426,7 +2426,7 @@ register_index(parser_t &p, const token_t &name, bool in_register)
 // declared once per scope (6.7.1p4); an inner scope may shadow it.  The
 // map's key views the symbol's own name, which the deque keeps in
 // place.
-const symbol_t *
+symbol_t *
 declare(parser_t &p,
         const token_t &name,
         type_t t,
@@ -3974,6 +3974,17 @@ string_value(const token_t &start,
     return given;
 }
 
+// The words of a string literal's refusal for an array in the local
+// sym, not yet: the local's own array, or one in its record.
+std::string
+local_string_words(const symbol_t &sym)
+{
+    if (const record_t *r = record_in(sym.type))
+        return "string initializer of an array in local " + record_words(*r);
+
+    return "string initializer of local array " + quoted(sym.name);
+}
+
 // The string literal ahead, which string_ahead() found, for the array t
 // at offset.  An object of static storage holds the literal's bytes as
 // the array's own; a local's array would take them at run time, which
@@ -3983,8 +3994,7 @@ listed_string(parser_t &p, const type_t &t, long offset, destination_t &to)
 {
     const token_t &start = peek(p);
     if (to.local)
-        not_yet(start, "string initializer of an array in local " +
-                           record_words(*record_in(to.local->type)));
+        not_yet(start, local_string_words(*to.local));
 
     const expr_t e = assignment_expression(p);
 
@@ -4047,7 +4057,7 @@ takes_designation(parser_t &p, walk_t walk)
 }
 
 // Whether the walk goes on to another initializer after one, and takes
-// the ',' before it: not past the last subobject, at, nor at a
+// the ',' before it: not past its last subobject, at_end, nor at a
 // designation, which another walk takes, nor at the list's end.
 bool
 goes_on(parser_t &p, bool at_end)
@@ -7247,36 +7257,72 @@ record_initializer(parser_t &p, const token_t &op, const symbol_t &sym)
                                   box(std::move(init)) } };
 }
 
-// The list that initializes the local record sym, its '{' ahead: the
-// walk of an object of static storage's, 6.7.11p17 to p23, whose
-// scalars are stores at run time, local_store()'s, appended to stores
-// in the list's order after the declaration, which zeroes the whole
-// object, so every member, element and byte of padding no value is
-// listed for is zero, p20, p22 (shape.md chapter 5).
+// The list that initializes the local record or array sym, its '{'
+// ahead: the walk of an object of static storage's, 6.7.11p17 to p23,
+// whose scalars are stores at run time, local_store()'s, appended to
+// stores in the list's order after the declaration, which zeroes the
+// whole object, so every member, element and byte of padding no value
+// is listed for is zero, p20, p22 (shape.md chapter 5).  An array of
+// unknown size takes its size from the list, p23.
 void
-local_list(parser_t &p, const symbol_t &sym, std::vector< stmt_t > &stores)
+local_list(parser_t &p, symbol_t &sym, std::vector< stmt_t > &stores)
 {
     destination_t to { .local = &sym, .stores = &stores };
-    braced_initializer(p, sym.type, 0, to);
+    const long count = braced_initializer(p, sym.type, 0, to);
+
+    sym.type = completed_type(sym.type, count);
+}
+
+// The initializer of a local array that is an expression, after its
+// '=': a string literal for an array of char, 6.7.11p15, or of a wide
+// literal's element type, p16, whose bytes a local would take at run
+// time, which is not yet, once string_value() has checked it; any
+// other expression initializes no array, p17.
+[[noreturn]] void
+refuse_array_expression(parser_t &p, const declarator_t &d)
+{
+    advance(p);
+
+    const token_t &start = peek(p);
+    const expr_t e = assignment_expression(p);
+
+    if (!is< string_t >(e) || !initializes(d.type, e))
+        fail(start, "array initializer must be an initializer list");
+
+    std::vector< subobject_t > checked;
+    string_value(start, as< string_t >(e), d.type, 0, checked);
+    not_yet(start, "string initializer of local array " + quoted(d.name->text));
+}
+
+// A local larger than the target's largest frame, its frame_limit, is
+// refused at its name, since no frame holds it.
+void
+require_frame(const parser_t &p, const token_t &name, const type_t &t)
+{
+    if (size_of(t) > p.target.frame_limit)
+        fail(name,
+             "variable " + quoted(name.text) + " is too large for a local");
 }
 
 // A local, an object of automatic storage duration, 6.2.4p5, appended
 // to decls as its declaration, and for a record initialized by an
-// expression the record_initializer() statement after it, or by a list
-// the declaration zeroed and local_list()'s statements.  The name is in
-// scope from the end of its declarator, 6.2.1p7, so an initializer sees
-// the object it initializes.  The initializer is converted as by
-// assignment, 6.7.11p12, an error of the conversion said at the =; an
-// initializer that has no value, a void one, 6.3.2.2p1, is the error
-// of the operand, said at its first token.  An object's type must be
-// complete, 6.7.1p8, so an array needs its size; any initializer of an
-// array, an array of records' among them, and a brace initializer of a
-// scalar is not yet: a local's initializer is stores at run time, where
-// an object of static storage takes its value as data.  A register array
-// is not yet either: its decay is undefined, 6.3.2.1p3, and it has no
-// slot to decay to; nor is a register record, which no register holds.
-// A local larger than the target's largest frame, its frame_limit, is
-// refused here, where its position is known, since no frame holds it.
+// expression the record_initializer() statement after it, or for a
+// record or an array initialized by a list the declaration zeroed and
+// local_list()'s statements.  The name is in scope from the end of its
+// declarator, 6.2.1p7, so an initializer sees the object it
+// initializes.  The initializer is converted as by assignment,
+// 6.7.11p12, an error of the conversion said at the =; an initializer
+// that has no value, a void one, 6.3.2.2p1, is the error of the
+// operand, said at its first token.  An object's type must be
+// complete, 6.7.1p8, so an array needs its size, or a list to give it,
+// 6.7.11p23.  A string literal for an array and a brace initializer of
+// a scalar are not yet: a local's initializer is stores at run time,
+// where an object of static storage takes its value as data.  A
+// register array is not yet either: its decay is undefined, 6.3.2.1p3,
+// and it has no slot to decay to; nor is a register record, which no
+// register holds.  A local too large for a frame is refused,
+// require_frame(), an array of unknown size once its list has given
+// the size.
 void
 init_declarator(parser_t &p,
                 const specifiers_t &spec,
@@ -7293,29 +7339,34 @@ init_declarator(parser_t &p,
         not_yet(*d.name, "register object " + quoted(d.name->text) + " of " +
                              record_words(*r));
 
-    if (is< array_t >(d.type) && peek(p).kind == tok_t::assign)
-        not_yet(peek(p), "array initializer");
+    const bool array = is< array_t >(d.type);
+    const bool record = is< record_type_t >(d.type);
+    const bool listed = peek(p).kind == tok_t::assign &&
+                        peek(p, 1).kind == tok_t::lbrace && (array || record);
 
-    if (is< array_t >(d.type) && as< array_t >(d.type).count < 0)
+    if (array && peek(p).kind == tok_t::assign && !listed)
+        refuse_array_expression(p, d);
+
+    const bool sized = !array || as< array_t >(d.type).count >= 0;
+    if (!sized && !listed)
         fail(*d.name, "array size missing in " + quoted(d.name->text));
 
-    if (size_of(d.type) > p.target.frame_limit)
-        fail(*d.name,
-             "variable " + quoted(d.name->text) + " is too large for a local");
+    if (sized)
+        require_frame(p, *d.name, d.type);
 
-    decl_stmt_t decl { declare(p, *d.name, d.type, storage_t::local,
-                               declared(spec, tok_t::kw_register)),
-                       std::nullopt };
+    symbol_t *sym = declare(p, *d.name, d.type, storage_t::local,
+                            declared(spec, tok_t::kw_register));
+    decl_stmt_t decl { sym, std::nullopt };
 
-    const bool record = is< record_type_t >(d.type);
-    if (peek(p).kind == tok_t::assign && record &&
-        peek(p, 1).kind == tok_t::lbrace) {
+    if (listed) {
         advance(p);
-        const symbol_t &sym = *decl.sym;
         decl.zeroed = true;
 
         decls.push_back(stmt_t { std::move(decl) });
-        local_list(p, sym, decls);
+        local_list(p, *sym, decls);
+        if (!sized)
+            require_frame(p, *d.name, sym->type);
+
         return;
     }
 

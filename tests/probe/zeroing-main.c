@@ -110,6 +110,22 @@ SIZED(SIZED_DESIGNATED_DECLARE)
 PADDED(PADDED_DESIGNATED_DECLARE)
 UNIONS(UNION_DESIGNATED_DECLARE)
 
+/* each function of zeroing.c of a local array of T */
+#define ARRAY_DECLARE(T, N, F) \
+        void F##_##N(T *, long), ref_##F##_##N(T *, long);
+
+#define SIZED_ARRAY_DECLARE(N, T, COUNT) \
+        ARRAY_DECLARE(T, N, array_first) \
+        ARRAY_DECLARE(T, N, array_empty) \
+        ARRAY_DECLARE(T, N, array_designated)
+
+#define PADDED_ARRAY_DECLARE(N, MEMBERS, SCALARS) \
+        ARRAY_DECLARE(struct N, N, array_full)    \
+        ARRAY_DECLARE(struct N, N, array_second)
+
+SIZED(SIZED_ARRAY_DECLARE)
+PADDED(PADDED_ARRAY_DECLARE)
+
 /* one function F of record N declared by K, by both builds, for each
    value, each object filled with a byte no zeroing writes before the
    call */
@@ -180,6 +196,51 @@ UNIONS(UNION_DESIGNATED_DECLARE)
                 CALL(union, N, designated, members)               \
         }
 
+/* one function F of a local array of ELEMENTS of T, by both builds, as
+   CALL() calls a record's */
+#define ARRAY_CALL(T, ELEMENTS, N, F, SPANS)                              \
+        for (int i = 0; i < COUNT; ++i) {                                 \
+                memset(objects, 0x5a, sizeof objects);                    \
+                F##_##N((T *) objects[0], values[i]);                     \
+                ref_##F##_##N((T *) objects[1], values[i]);               \
+                compare(#F "_" #N, values[i], sizeof(T[ELEMENTS]), SPANS, \
+                        sizeof SPANS / sizeof *SPANS);                    \
+        }
+
+/* the members of two records of size bytes in an array, from the count
+   members of one, to pair */
+static void
+paired(struct span *pair, const struct span *members, size_t count, size_t size)
+{
+        for (size_t k = 0; k < count; ++k) {
+                pair[k] = members[k];
+                pair[count + k] = members[k];
+                pair[count + k].offset += size;
+        }
+}
+
+#define SIZED_ARRAY_CHECK(N, T, COUNT)                                       \
+        {                                                                    \
+                static const struct span whole[] = { { 0,                    \
+                                                       sizeof(T[COUNT]) } }; \
+                                                                             \
+                ARRAY_CALL(T, COUNT, N, array_first, whole)                  \
+                ARRAY_CALL(T, COUNT, N, array_empty, whole)                  \
+                ARRAY_CALL(T, COUNT, N, array_designated, whole)             \
+        }
+
+#define PADDED_ARRAY_CHECK(N, MEMBERS, SCALARS)                           \
+        {                                                                 \
+                typedef struct N record_t;                                \
+                static const struct span members[] = { SCALARS };         \
+                struct span pair[2 * (sizeof members / sizeof *members)]; \
+                                                                          \
+                paired(pair, members, sizeof members / sizeof *members,   \
+                       sizeof(record_t));                                 \
+                ARRAY_CALL(record_t, 2, N, array_full, pair)              \
+                ARRAY_CALL(record_t, 2, N, array_second, pair)            \
+        }
+
 int
 main(void)
 {
@@ -189,6 +250,8 @@ main(void)
         SIZED(SIZED_DESIGNATED_CHECK)
         PADDED(PADDED_DESIGNATED_CHECK)
         UNIONS(UNION_DESIGNATED_CHECK)
+        SIZED(SIZED_ARRAY_CHECK)
+        PADDED(PADDED_ARRAY_CHECK)
 
         printf("%ld checks, %ld differ\n", total, bad);
 

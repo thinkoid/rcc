@@ -1,5 +1,5 @@
-/* An array with an initializer, here a string literal, which is not
-   yet. */
+/* A local array of char initialized by a string literal, 6.7.11p15,
+   whose bytes a local would take at run time, which is not yet. */
 int
 main(void)
 {

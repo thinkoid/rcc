@@ -1127,9 +1127,13 @@ initialization is no assignment, and p12 takes the scalar's
 unqualified type. A string literal for an array in the list is not
 yet, which an object of static storage holds as the array's own
 bytes, and so is a record's value in a scalar's place, which may
-initialize a record the scalar begins (p14). A local array takes no
-initializer yet, an array of records among them, and a local scalar
-no braces.
+initialize a record the scalar begins (p14). A local array takes a
+list by the same walk and the same zeroing, an array of records among
+them, the zeroing in units of the array's alignment, its element's,
+so `int a[3] = { 1, 2 };` is three stores of 0 and the stores of 1
+and 2; an array of unknown size takes its size from the list (p23).
+A string literal for a local array of `char` is not yet, braced or
+not, and a local scalar takes no braces.
 
 A designation moves the walk as in an object of static storage's list,
 and the stores follow the list's order (G13): `{ .y = f(), .x = g() }`
@@ -1503,7 +1507,8 @@ walk from 27 by a conditional of two void calls.
 Each use that reads or writes a record whole (chapter
 5: a `register` one, a record by value but the aarch64 `va_list`, and
 its value where a record is wanted, a scalar's place in a local's
-list among them), a string literal for an array in a local's list, a
+list among them), a string literal for a local array or for an array
+in a local's list, `char s[] = "..."` among them, a
 function whose parameter list is `(...)` alone, the layout
 of a struct or a
 union with a bit-field, an attribute that marks,
@@ -1522,10 +1527,8 @@ object of a typedef whose array size rcc
 cannot compute, a variable length array (a parameter's array of a
 size that is not constant is the pointer the parameter is adjusted to,
 and the size is not evaluated), GNU C's range designator and its
-array designator without the `=`, a local's brace initializer, a
-scalar's or an
-array's, and a local array's initializer of any kind, `char s[] =
-"..."` among them, a declaration through a typedef of function
+array designator without the `=`, a local scalar's brace
+initializer, a declaration through a typedef of function
 type, a UTF-8 character constant, `u8'x'`, a character constant of
 more than one character and no prefix, `#pragma weak` and `#pragma
 GCC visibility` (chapter 2), the checks of the qualifiers

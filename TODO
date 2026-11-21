@@ -646,19 +646,25 @@ identifier before a colon starts no expression in a list.
 
 Check: a program of =tests/error=, pinned "not yet".
 
-** TODO A local array's list and a string for a member array are not yet
+** TODO A string literal for a local array of =char= is not yet
 
-A local record takes its initializer list, designators among it
-(G20). Two forms beside it are refused by name: a local array's
-list, an array of records' among them, "not yet: array initializer";
-and a string literal for a member array of =char= in a local's list,
-whose bytes need a copy's row that arrays do not have.
+~char s[4] = "abc";~ and ~char s[] = { "abc" };~ in a block are "not
+yet: string initializer of local array 's'", and ~struct name one =
+{ "abc", 1 };~ is the same of an array in a local record. Two ways
+write it: the stores of the literal's bytes as constants, in the
+zeroing's units, which is the list ~{ 'a', 'b', 'c', '\0' }~ and the
+parser's alone, 104 instructions on x86-64 for a string of 100
+bytes; or a copy from the literal's label by the copy's row, 6
+instructions there for any length past eight units, which asks each
+generator a copy of array type and a rule for the zeros after a
+short literal.
 
-Fix: none taken; the array's list on the record's zeroing and
-stores.
+Fix: none taken; decide the way, and G20, or a guarantee of its own,
+says what a string writes.
 
-Check: a cost program for each form on both targets, and the
-=zeroing= probe with a local array.
+Check: a cost program of ~char s[4] = "abc";~ and of a string of 100
+bytes on both targets, and the =zeroing= probe with a local array of
+=char= a string initializes.
 
 * Lexer
 

@@ -1,2 +1,0 @@
-tests/error/struct-local-array-initializer.c:12:27: error: not yet: array initializer
-status 1

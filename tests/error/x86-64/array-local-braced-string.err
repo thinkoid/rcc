@@ -1,0 +1,2 @@
+tests/error/array-local-braced-string.c:6:23: error: not yet: string initializer of local array 's'
+status 1

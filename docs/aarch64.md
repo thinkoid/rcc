@@ -1290,14 +1290,15 @@ of units in `x16`, `mov x16, #9`, then `ldr x17, [x1], #8; str x17,
 its address. An index from 0 holds the same registers and is a fifth
 instruction a unit, its `cmp`.
 
-**A local record a list initializes is zeroed first.** The
+**A local record or array a list initializes is zeroed first.** The
 declaration zeroes the whole slot, padding included, before the first
 listed value is evaluated, and the statements the parser writes after
 it store the listed values, each an assignment of this context (G20).
 The units and the loop are the copy's, by the one rule of
-`backend.md` 6.6. Each unit is the store of the zero register at its
-width, `str wzr, [x29, #16]; str wzr, [x29, #20]` for an 8-byte
-record of alignment 4, and takes no other register; a slot whose
+`backend.md` 6.6, an array's unit its element's alignment. Each unit
+is the store of the zero register at its width, `str wzr, [x29, #16];
+str wzr, [x29, #20]` for an 8-byte record of alignment 4, `strb wzr`
+for a char array, and takes no other register; a slot whose
 units leave the reach is its address formed once, as the copy's is,
 each unit a displacement off it. More than eight units are the copy's
 loop with one address, the slot's address formed first and the count

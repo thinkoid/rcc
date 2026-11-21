@@ -1,2 +1,2 @@
-tests/error/array-initializer.c:6:18: error: not yet: array initializer
+tests/error/array-initializer.c:6:20: error: not yet: string initializer of local array 's'
 status 1

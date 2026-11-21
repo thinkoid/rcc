@@ -4714,7 +4714,7 @@ copy_object(state_t &s, address_t to, address_t from, const record_t &r)
     from.step = { };
 
     const long size = static_cast< long >(r.size);
-    const auto units = units_of(r);
+    const auto units = units_of(size, r.alignment);
 
     if (units.loop)
         copy_loop(s, to, from, size, units.unit);
@@ -4788,17 +4788,17 @@ zero_loop(state_t &s, int displacement, const units_t &units)
     release(s, target);
 }
 
-// The zeroing of a local record a list initializes, G20: its whole
-// slot, padding included, in units_of() the record from the lowest
-// address up, before the first listed value is evaluated.  Each unit is
-// the store of the zero register that initialize() writes for a zero,
-// str wzr, [x29, #16], at the slot as unit_place() reaches each unit;
-// more than eight are zero_loop()'s.
+// The zeroing of a local record or array of type t a list initializes,
+// G20: its whole slot, padding included, in units_of() the object from
+// the lowest address up, before the first listed value is evaluated.
+// Each unit is the store of the zero register that initialize() writes
+// for a zero, str wzr, [x29, #16], at the slot as unit_place() reaches
+// each unit; more than eight are zero_loop()'s.
 void
-zero_slot(state_t &s, int displacement, const record_t &record)
+zero_slot(state_t &s, int displacement, const type_t &t)
 {
-    const long size = static_cast< long >(record.size);
-    const auto units = units_of(record);
+    const long size = size_of(t);
+    const auto units = units_of(size, align_of(t));
 
     if (units.loop) {
         zero_loop(s, displacement, units);
@@ -4975,8 +4975,9 @@ register_decl(state_t &s, const decl_stmt_t &d)
 // stored; the slot holds what it holds.  The initializer is the store
 // row of chapter 6.6, into the slot.  An array's slot is at the type's
 // alignment, chapter 5.1, its displacement the array's lowest address.
-// A record its list initializes is zeroed whole, zero_slot(), and the
-// statements after the declaration store the listed values (G20).
+// A record or an array its list initializes is zeroed whole,
+// zero_slot(), and the statements after the declaration store the
+// listed values (G20).
 void
 decl_stmt(state_t &s, const decl_stmt_t &d)
 {
@@ -4991,7 +4992,7 @@ decl_stmt(state_t &s, const decl_stmt_t &d)
     s.slots.emplace(sym, displacement);
 
     if (d.zeroed)
-        zero_slot(s, displacement, *as< record_type_t >(sym->type).record);
+        zero_slot(s, displacement, sym->type);
 
     if (!d.init)
         return;
