@@ -192,6 +192,46 @@ parser made.
 Check: =tests/cost/bool.c= with ~b++;~ and ~b--;~ as statements,
 each the listing of its prefix step.
 
+** TODO x86-64: a test of one bit of a narrow member loads it first
+
+~if (p->flags & 8)~ on an ~unsigned char~ member is =movzbl 4(%rax),
+%eax; testl $8, %eax; je=, where the object in memory is the =test='s
+own operand, =testb $8, 4(%rax); je=, an instruction fewer. A local
+in its slot is tested so already, =testl $1, -4(%rbp)=; the member
+reached through a register is not.
+
+Fix: none taken; the condition's row takes an addressable narrow
+operand at its own width where the mask fits it.
+
+Check: a cost program of the test on a =char=, a =short= and an
+=int= member, pinned without the load, and no function longer.
+
+** TODO aarch64: a test of one bit is an =and= and a =cbz=
+
+~if (x & 8)~ is =and w0, w0, #0x8; cbz w0, .L= after the operand's
+load, where =tbz w0, #3, .L= tests the bit and branches in one
+instruction; ~if (!(x & 8))~ the same with =tbnz=. Neither
+generator's sources write a =tbz=.
+
+Fix: none taken; a condition that is an =&= with a constant of one
+bit set is =tbz= or =tbnz= on the operand's register.
+
+Check: a cost program of both senses on an =int= and a =long=,
+pinned, and no function longer.
+
+** TODO aarch64: a comparison with zero as a condition is a =cmp= and a branch
+
+~if (l != 0)~ is =cmp x0, #0; b.eq .L=, and ~if (l == 0)~ =cmp x0,
+#0; b.ne .L=, where ~if (l)~ and ~if (!l)~, the same tests, are the
+one =cbz= or =cbnz=. The condition's row takes the bare operand's
+test of zero and not the comparison's with a constant 0.
+
+Fix: none taken; an equality with a constant 0 as a condition is the
+test of zero of its other operand.
+
+Check: a cost program of both senses on an =int= and a =long=, each
+the listing of its bare twin, and no function longer.
+
 * Guarantees
 
 The promises in =docs/guarantees.md=. The entry number is the
@@ -630,6 +670,38 @@ Fix: none taken; decide: the fold of a non-null address constant to
 1, or a not-yet in its own words.
 
 Check: a cost program of the initializer, or its error pin.
+
+** TODO A compound assignment of a =_Bool= reached through a pointer loads the pointer twice
+
+~p->b |= x~ on a =_Bool= member is the tree of ~p->b = (_Bool)
+(p->b | x)~, its left operand read through a second copy, so =p= is
+loaded from its slot twice, =movq -8(%rbp), %rax; movq -8(%rbp),
+%rcx= and =ldr x0, [x29, #16]; ldr x1, [x29, #16]=: a load the
+source does not write. An ~int~ member's ~p->n |= x~ loads =p=
+once.
+
+Fix: none taken; the place computed once and both the read and the
+store made through it, as the compound assignment's own node has
+it, with the conversion to =_Bool= before the store.
+
+Check: =tests/cost/bool.c= with the member's compound assignment,
+one load of =p=, on both targets.
+
+** TODO A call that returns an incomplete record is not yet, where it is an error
+
+~struct s; struct s give(void); ... give();~ is "not yet: struct 's'
+returned by value", and so are a definition's result and parameter
+of a record never completed. Each is a constraint violation: a
+call's function returns "void or a complete object type" (6.5.3.3p1),
+and a definition's result is "void or a complete object type other
+than array type" (6.9.2p3). =clang= gives an error for each. The
+refusal by value is raised before the record's completeness is
+asked.
+
+Fix: with records by value, whose first step judges completeness
+first; until then the three are errors in their own words.
+
+Check: an error program of each, pinned.
 
 * Lexer
 
