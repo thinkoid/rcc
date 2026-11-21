@@ -223,6 +223,11 @@ as C has them: a `long *` takes no `long long *` without its cast,
 an assignment to a `const` object is an error, and a conversion that
 discards a qualifier of what a pointer points to draws a warning. No
 listing changes: the generators read the machine's view alone.
+Then `_Generic`: a selection is the expression of the association
+whose type is compatible with the controlling expression's, as C has
+the types, so glibc's macros that keep a pointer to `const char` a
+pointer to `const` select as `clang` selects, and the selection
+writes that expression alone.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/`, the cost corpus over `tests/cost/`
 and the error corpus over `tests/error/`, the programs rcc refuses

@@ -300,6 +300,14 @@ struct declarator_t
     std::optional< expr_t > variable_size = { };
 };
 
+// A type and the qualifiers at its top, which the type does not carry,
+// as a type name gives them: a generic association compares both.
+struct qualified_type_t
+{
+    type_t type;
+    qualifiers_t qualifiers;
+};
+
 // Whether a declarator names what it declares: a declaration's does, a
 // parameter's may, 6.7.7.1p1, and a type name's, an abstract
 // declarator, does not, 6.7.8p1.  A member's names it as a
@@ -7116,11 +7124,13 @@ complete_constants(const std::vector< enumerator_t > &list, const type_t &t)
 // C23's enum type specifier, a ':' and a type's specifiers after enum or
 // its tag, 6.7.3.3p1, which fixes the enumerated type, p5, is not yet:
 // no header and no program at hand writes it, and its constraints, p3
-// and p6 to p8, each need a diagnostic of their own.
+// and p6 to p8, each need a diagnostic of their own.  A ':' before
+// anything but a type's specifiers is the context's, as a generic
+// association's in _Generic (e, enum color: 1).
 void
 refuse_fixed_underlying_type(const parser_t &p)
 {
-    if (peek(p).kind == tok_t::colon)
+    if (peek(p).kind == tok_t::colon && is_declaration_start(p, 1))
         not_yet(peek(p), "enum with a fixed underlying type");
 }
 
@@ -8041,13 +8051,12 @@ parameter_declaration(parser_t &p)
 
 // Specifiers and an abstract declarator, the declarator of a
 // declaration without its name, 6.7.8p1, p2: int *, int [3],
-// void (*)(int).  A marking attribute would make the type one rcc does
-// not use, which no name stands for here, so it is not yet, and so is
-// a variable length array, sizeof (char [n]).  The qualifiers at the
-// top of the type are left out: a cast converts to the unqualified
-// type, 6.5.5p6, and no other use reads them.
-type_t
-type_name(parser_t &p)
+// void (*)(int), with the qualifiers at the top of the type.  A marking
+// attribute would make the type one rcc does not use, which no name
+// stands for here, so it is not yet, and so is a variable length
+// array, sizeof (char [n]).
+qualified_type_t
+qualified_type_name(parser_t &p)
 {
     const token_t &start = peek(p);
     const specifiers_t spec = declaration_specifiers(p);
@@ -8062,11 +8071,22 @@ type_name(parser_t &p)
     if (spec.marking)
         not_yet(*spec.marking, attribute_words(*spec.marking));
 
-    type_t t = declarator(p, spec.type, spec.qualifiers, naming_t::none).type;
-    if (is_variable_array(t))
+    const declarator_t d =
+        declarator(p, spec.type, spec.qualifiers, naming_t::none);
+    if (is_variable_array(d.type))
         not_yet(start, "variable length array in a type name");
 
-    return t;
+    return { d.type, d.qualifiers };
+}
+
+// A type name's type, its qualifiers at the top left out: a cast
+// converts to the unqualified type, 6.5.5p6, and sizeof, _Alignof,
+// va_arg and offsetof read none.  A generic association reads them,
+// qualified_type_name()'s.
+type_t
+type_name(parser_t &p)
+{
+    return qualified_type_name(p).type;
 }
 
 // The declarator of a declaration in a block that is no typedef's.  A
@@ -10813,6 +10833,154 @@ is_atomic_builtin(std::string_view name)
     return name.starts_with("__c11_atomic_") || name.starts_with("__atomic_");
 }
 
+// The type a generic association names is a complete object type,
+// 6.5.2.1p2: no function, and no incomplete type, void, an array of
+// unknown size or a record before its list among them.
+void
+require_association_type(const token_t &at, const type_t &t)
+{
+    if (is< function_t >(t))
+        fail(at, "generic association of a function type");
+
+    if (is_incomplete(t))
+        fail(at, "generic association of an incomplete type");
+}
+
+// Whether two types a generic selection meets are compatible, the
+// qualifiers at the top of each read too, 6.7.4.1p11: const int and int
+// are not.  A pair rcc cannot tell, of two records of one tag or of a
+// type a typedef made through a marking attribute or an array size rcc
+// cannot compute, is not yet, as in a comparison.
+bool
+selection_compatible(const token_t &at,
+                     const qualified_type_t &a,
+                     const qualified_type_t &b)
+{
+    if (a.qualifiers == b.qualifiers && compatible(a.type, b.type))
+        return true;
+
+    refuse_tag_twins(at, a.type, b.type);
+    refuse_made_pointees(at, make_pointer(a.type), make_pointer(b.type),
+                         compatibility_words);
+
+    return false;
+}
+
+// A generic selection as its associations are read: the controlling
+// expression's type and its first token; the types named so far; the
+// expression of the association selected, and the default's, with the
+// uses of names of internal linkage the default's makes, kept apart
+// until the default is known to be the one selected.
+struct selection_t
+{
+    qualified_type_t controlling;
+    const token_t *start;
+    std::vector< qualified_type_t > named = { };
+    std::optional< expr_t > selected = { };
+    std::optional< expr_t > fallback = { };
+    std::vector< internal_use_t > fallback_uses = { };
+};
+
+// default : e, the one default of a selection, 6.5.2.1p2.
+void
+default_association(parser_t &p, selection_t &s)
+{
+    const token_t &keyword = advance(p);
+    if (s.fallback)
+        fail(keyword, "generic selection with a second default association");
+
+    expect(p, tok_t::colon, "expected ':' after 'default'");
+
+    const auto uses = std::ssize(p.internal_uses);
+    s.fallback = assignment_expression(p);
+    s.fallback_uses.assign(p.internal_uses.begin() + uses,
+                           p.internal_uses.end());
+    p.internal_uses.erase(p.internal_uses.begin() + uses,
+                          p.internal_uses.end());
+}
+
+// T : e, 6.5.2.1p2: T a complete object type compatible with no type
+// an earlier association names, and e selected when T is compatible
+// with the controlling expression's type, which may be so of one T
+// alone.  The uses of names of internal linkage of an e not selected
+// are dropped, C23's 6.9.1p3.
+void
+generic_association(parser_t &p, selection_t &s)
+{
+    if (peek(p).kind == tok_t::kw_default) {
+        default_association(p, s);
+        return;
+    }
+
+    const token_t &start = peek(p);
+    const qualified_type_t t = qualified_type_name(p);
+    require_association_type(start, t.type);
+
+    for (const qualified_type_t &earlier : s.named)
+        if (selection_compatible(start, t, earlier))
+            fail(start, "generic association compatible with an earlier one");
+
+    s.named.push_back(t);
+    expect(p, tok_t::colon, "expected ':' after the type name");
+
+    const auto uses = std::ssize(p.internal_uses);
+    expr_t e = assignment_expression(p);
+
+    if (!selection_compatible(start, t, s.controlling)) {
+        p.internal_uses.erase(p.internal_uses.begin() + uses,
+                              p.internal_uses.end());
+        return;
+    }
+
+    if (s.selected)
+        fail(*s.start,
+             "controlling expression compatible with two generic associations");
+
+    s.selected = std::move(e);
+}
+
+// _Generic ( E , association, ... ), 6.5.2.1: the expression of the
+// association whose type is compatible with E's, or else the default's,
+// p3.  E's type is that of an operand, decayed, and of no qualifier at
+// its top, since an lvalue conversion drops them, p2 and its footnote;
+// E is not evaluated, p3, so the tree keeps nothing of it, nor of any
+// association but the one selected, whose node the selection is, of
+// its type and its value, an lvalue where it is one, p4.  The uses of
+// names of internal linkage E makes are dropped, as sizeof's are, C23's
+// 6.9.1p3.  An E compatible with no association's type and a selection
+// of no default is an error, p2.
+expr_t
+generic_selection(parser_t &p)
+{
+    const token_t &keyword = advance(p);
+    expect(p, tok_t::lparen, "expected '(' after " + quoted(keyword.text));
+
+    const token_t &start = peek(p);
+    const auto uses = std::ssize(p.internal_uses);
+    selection_t s { { decayed(assignment_expression(p)).type, { } }, &start };
+    p.internal_uses.erase(p.internal_uses.begin() + uses,
+                          p.internal_uses.end());
+
+    expect(p, tok_t::comma, "expected ',' after the controlling expression");
+    do
+        generic_association(p, s);
+    while (accept(p, tok_t::comma));
+
+    expect(p, tok_t::rparen, "expected ')' after the generic associations");
+
+    if (s.selected)
+        return std::move(*s.selected);
+
+    if (!s.fallback)
+        fail(start, "controlling expression compatible with no generic "
+                    "association");
+
+    p.internal_uses.insert(p.internal_uses.end(), s.fallback_uses.begin(),
+                           s.fallback_uses.end());
+
+    return std::move(*s.fallback);
+}
+
 // A name must be declared, 6.5.2p2, as an object or a function: a
 // typedef name names a type.  An enumeration constant is a constant,
 // p2's footnote, of its type and its value, 6.4.4.4p2, 6.7.3.3p10: the
@@ -10823,8 +10991,8 @@ is_atomic_builtin(std::string_view name)
 // attribute marked, by the type's; but for a global of a type
 // is_sized() says has its size, where the name is the whole operand of
 // sizeof, ends_sizeof_operand()'s, as for a member's access.  A use of a name of internal linkage
-// is kept for the check of its definition at the end of the unit.  A
-// generic selection is not yet.  Parentheses leave the expression as it
+// is kept for the check of its definition at the end of the unit.
+// Parentheses leave the expression as it
 // is, an lvalue included, 6.5.2p6, but for GNU C's statement
 // expression, ({ ... }), statement_expression()'s.  alloca, which
 // glibc's alloca.h defines as __builtin_alloca, is not yet, and so is
@@ -10902,7 +11070,7 @@ primary_expression(parser_t &p)
 
         return e;
     }
-    case tok_t::kw_generic: not_yet(t, quoted(t.text) + " selection");
+    case tok_t::kw_generic: return generic_selection(p);
     default: fail(t, "expected expression");
     }
 }

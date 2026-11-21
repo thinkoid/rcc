@@ -1,0 +1,2 @@
+tests/error/generic-no-association.c:9:25: error: controlling expression compatible with no generic association
+status 1

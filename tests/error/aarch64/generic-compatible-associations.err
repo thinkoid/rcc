@@ -1,0 +1,2 @@
+tests/error/generic-compatible-associations.c:8:37: error: generic association compatible with an earlier one
+status 1

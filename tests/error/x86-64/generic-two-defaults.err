@@ -1,0 +1,2 @@
+tests/error/generic-two-defaults.c:8:40: error: generic selection with a second default association
+status 1

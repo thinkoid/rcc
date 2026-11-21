@@ -1,0 +1,2 @@
+tests/error/generic-restrict-associations.c:11:49: error: generic association compatible with an earlier one
+status 1

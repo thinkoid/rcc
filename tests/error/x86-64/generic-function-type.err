@@ -1,0 +1,2 @@
+tests/error/generic-function-type.c:8:28: error: generic association of a function type
+status 1

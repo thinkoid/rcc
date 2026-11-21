@@ -1,0 +1,2 @@
+tests/error/generic-two-associations-match.c:11:25: error: controlling expression compatible with two generic associations
+status 1

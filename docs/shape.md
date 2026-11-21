@@ -215,8 +215,10 @@ said of what holds it, an object, a parameter, a typedef name or a
 member, and a pointer keeps them as its pointee's, so `const char *`
 is a pointer to `char` that says `const` of it; `restrict` is dropped
 (chapter 5), so `int *restrict *` and `int **` are one type to C's
-relations below too, where C makes them two, and a conversion between
-them draws nothing. An array is qualified as its element, as C23 has
+relations below too, where C makes them two: a conversion between
+them draws nothing, and a generic selection that names both is
+refused, two associations of compatible types (chapter 5). An array
+is qualified as its element, as C23 has
 it (6.7.4.1p10) and C17 does not (6.7.3p10), and rcc reads C23 here:
 `const int a[3]` is a `const` object of `int [3]`, whose decay points
 to `const int`, and `const int (*p)[3] = q;` adds a qualifier for an
@@ -370,7 +372,9 @@ Three sums.
   compiler's first pass wrote `a->b` as `*(a + offset)`, so it has no
   node of its own (chapter 5); `sizeof` is an integer literal the
   parser folded, or of a variable length array its length's value
-  (chapter 5). A unary `+` has no node: it is the promotion of its
+  (chapter 5), and a generic selection is the node of the expression
+  it selects, so it has none of its own either. A unary `+` has no
+  node: it is the promotion of its
   operand (6.5.4.3p2), a cast, and over an lvalue that no promotion
   converts, a cast to the lvalue's own type, since the result is a
   value and no lvalue; so `+x` is `(T) x`, `T` the promoted type, and
@@ -633,6 +637,25 @@ type, as from a named function's; that is the call site's type,
 whatever function the pointer was converted from (G16). A function's
 name, in parentheses or not, stays the callee of a direct call;
 `(*f)(x)` and `(&f)(x)` go through the pointer the source formed.
+
+A generic selection, `_Generic (E, T: e, default: d)` (6.5.2.1), is
+the expression of the association it selects: the tree keeps that
+expression's node, of its type and its value, an lvalue where it is
+one (p4), and nothing of `E` or of the other associations, since none
+is evaluated (p3). `E` is typed as an operand is, decayed and of no
+qualifier at its top (p2 and its footnote), and an association is
+selected by C's compatibility (chapter 3), its own qualifiers at its
+top counted, so `const int:` is selected by no `E` and is not
+compatible with `int:` (6.7.4.1p11). glibc's `__glibc_const_generic`
+selects its `const void *:` arm for a pointer to `const char`, a
+`const char` array among them, through the qualifiers the
+conditional `0 ? (p) : (void *) 1` joins (6.5.16p7). Two associations
+of compatible types, two defaults, an `E` compatible with no
+association and no default, or with two associations, and an
+association of a function type or of an incomplete one are errors
+(6.5.2.1p2); C2y takes the incomplete one, C23 does not. A name of
+internal linkage that `E` or an association not selected uses needs
+no definition, as C23's 6.9.1p3 has it.
 
 A system header is written in GNU C, and the parser reads it as it
 is. It conforms with what a correct program depends on, the size and
@@ -1126,7 +1149,8 @@ no `main`. So is a function specifier on any declaration of `main`, a
 definition among them (6.7.5p4). A static object at file scope keeps
 every rule of an object at file scope below, and its tentative
 definition defines it in the file. A name of internal linkage that an
-expression uses, outside the operand of `sizeof`, has its definition
+expression uses, outside the operand of `sizeof` and the parts of a
+generic selection it does not evaluate, has its definition
 in the file (6.9.1p3), so a `static` function called and never defined
 is an error at the end of the file: the assembler would leave its
 symbol undefined, and the linker would bind the call to another file's
@@ -1790,7 +1814,7 @@ the barrier (chapter 5), at file scope or on a local, and C's
 keywords outside the subset:
 `_Complex` outside the specifiers of a floating type, `_Imaginary`,
 the `_Atomic` qualifier outside a typedef, `_Alignas`, `_Alignof` of
-an expression, `_Generic`, `_Thread_local`. Each arrives when a probe
+an expression, `_Thread_local`. Each arrives when a probe
 needs it. A program that includes `tgmath.h` is not yet, refused at
 the header's first overloaded declaration (chapter 10): its
 type-generic macros need overloading, which is not C, and floating

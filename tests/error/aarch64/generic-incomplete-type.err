@@ -1,0 +1,2 @@
+tests/error/generic-incomplete-type.c:11:28: error: generic association of an incomplete type
+status 1

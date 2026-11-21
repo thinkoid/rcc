@@ -78,7 +78,11 @@ an enumeration constant of its number: a program compiles to the
 listing of its twin with the integer types and the numbers spelled
 out (`enum`). A static assertion declares nothing and writes
 nothing: a program compiles to the listing of its twin without its
-assertions (`static-assert`). A binary constant is the spelling of its
+assertions (`static-assert`). A generic selection writes the
+expression it selects alone, since nothing else of it is evaluated:
+a program compiles to the listing of its twin with each selection
+replaced by that expression (`generic`). A binary constant is the
+spelling of its
 number as a hexadecimal one is (`binary-constant`). Neither do
 `restrict`, `inline` on a declaration, `__extension__` and the
 attributes rcc drops, which are licences for an optimizer or
