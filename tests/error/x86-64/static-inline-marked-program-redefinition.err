@@ -1,0 +1,2 @@
+tests/error/static-inline-marked-program-redefinition.c:17:1: error: redefinition of 'f'
+status 1

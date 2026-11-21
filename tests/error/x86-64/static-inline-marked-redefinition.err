@@ -1,0 +1,2 @@
+header.h:8:1: error: redefinition of 'f'
+status 1

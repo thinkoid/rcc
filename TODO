@@ -559,23 +559,6 @@ comment follows either.
 Check: ~case 2147483647 + 1:~ draws the diagnostic, or =shape.md=
 says why not; the comment agrees.
 
-** TODO A header's =static inline= definition under a marking attribute is not remembered as a definition
-
-A system header's =static inline= definition whose specifiers carry
-a marking attribute, ~static inline __attribute__((__artificial__))
-int f(int x) { ... }~, leaves the attribute's words on the function,
-not the words of a skipped body. A second definition in the header
-is then accepted with no diagnostic, and one in the program draws
-"not yet: attribute 'artificial'"; =clang= says "redefinition of
-'f'" for both (6.9.1p3).
-
-Fix: the skipped definition is recorded apart from the mark, by the
-flag a body the parser stopped in sets, and =is_defined()= asks it
-alone.
-
-Check: a program of =tests/error= with the header's two definitions,
-pinned "redefinition of 'f'".
-
 ** TODO ~sizeof (double)~ is refused though the type has its size
 
 ~sizeof (double)~ and ~_Alignof (double)~ are "not yet: floating

@@ -4542,17 +4542,16 @@ skipped_body_words(std::string_view name)
     return "static function " + quoted(name);
 }
 
-// Whether the unit has defined the function: by a body, by one it
-// stopped in, or by a system header's definition whose body was skipped
-// and left its words.  A second definition is then a redefinition,
+// Whether the unit has defined the function: by a body, or by one it
+// stopped in or skipped, which the flag uncompiled records whatever
+// words the symbol keeps.  A second definition is then a redefinition,
 // 6.9.1p3.
 bool
 is_defined(const parser_t &p, std::size_t index)
 {
     const function_decl_t &f = p.unit.functions[index];
 
-    return f.body || f.uncompiled ||
-           f.sym->marking == skipped_body_words(f.sym->name);
+    return f.body || f.uncompiled;
 }
 
 // A function's body, its braces included, its items parsed into the
@@ -4697,7 +4696,9 @@ function_definition(parser_t &p,
 // skipped to the brace that closes it, and the function stays
 // declared, so c1 writes nothing for it; an expression that names it is
 // refused by name, and so is a use before the definition, at the end of
-// the unit.  A function that carries the words was defined so before.
+// the unit.  The function is uncompiled, which is_defined() reads, so a
+// second definition is a redefinition whatever words the symbol keeps,
+// a marking attribute's among them.
 void
 header_function_definition(parser_t &p,
                            const specifiers_t &spec,
@@ -4708,6 +4709,8 @@ header_function_definition(parser_t &p,
 
     if (is_defined(p, index))
         fail(*d.name, "redefinition of " + quoted(d.name->text));
+
+    p.unit.functions[index].uncompiled = true;
 
     symbol_t &sym = *p.scopes.back().names.at(d.name->text);
     if (sym.marking.empty())
