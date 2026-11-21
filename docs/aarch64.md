@@ -1504,7 +1504,7 @@ done, for the sake of a call with nine arguments.
 |---|---|
 | G1 signed arithmetic wraps | `add`, `sub`, `mul`, `lsl`, `neg`: modulo 2^N |
 | G2 narrowing truncates | `strb`, `strh`, `str w`, or the `w` name; nothing is computed |
-| G3 shifts | `lsl`, `asr`, `lsr`: the instruction masks the count to the width |
+| G3 shifts | `lsl`, `asr`, `lsr`: the instruction masks a register's count to the width, and an immediate is written masked |
 | G4 division is the instruction's | `sdiv`, `udiv`: 0 for a zero divisor, `INT_MIN` for `INT_MIN / -1`, and no trap |
 | G5 an uninitialized object holds a value | a slot's bytes or a register's content, unwritten until the program writes, `cmp w19, w19`; but a narrow or an `unsigned` register variable is extended in its own register, `sxtb w19, w19`, which leaves the value of its type as it was (chapter 4) |
 | G6 pointer arithmetic is address arithmetic | `add`, `sub` on `x` registers, `mul` by the size; `p - q` is `sub`, `sdiv` |

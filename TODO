@@ -172,21 +172,6 @@ of G8 and the laundering of G16, which draft 1 designed against an
 optimizer, because nothing between the source and the instruction
 reasons about the program.
 
-** TODO G3's "the count as written" does not hold on aarch64
-
-G3's instruction sentence says a shift is "by =cl= or by an
-immediate, the count as written". On aarch64 the generator masks an
-immediate count to the width, since the instruction's immediate
-cannot hold more: ~x << 33~ on an =int= is =lsl w0, w0, #1=, as the
-shift's row of =docs/aarch64.md= says. x86-64 writes =shll $33,
-%eax=, and the machine masks it.
-
-Fix: G3 says the count is written as it stands on x86-64 and masked
-to the width on aarch64.
-
-Check: G3 and the row of =aarch64.md= agree with the pin of
-=add-zero='s =shifted_past()= on each target.
-
 * Cost model
 
 The record in =docs/cost.md=: what each construct compiles to under
