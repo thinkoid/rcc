@@ -7022,8 +7022,10 @@ declarator_suffix(parser_t &p,
         for (const parameter_t &param : params)
             types.push_back(param.type);
 
-        d.type = make_function(t, std::move(types), variadic);
         d.params = std::move(params);
+        const token_t *marked = marked_parameter(d);
+        d.type = make_function(t, std::move(types), variadic,
+                               marked ? attribute_words(*marked) : "");
     }
 
     return d;
@@ -9627,7 +9629,9 @@ va_builtin(parser_t &p, const token_t &keyword)
 // 6.5.3.3p5 gives a call the result type of the function it calls, a
 // named one or one through a pointer.  A call of a function whose result
 // is of a not-yet type is not yet, its value used or not: the call
-// makes the object it returns.
+// makes the object it returns.  So is a call through a function type a
+// marking attribute on a parameter marks, which would pass the
+// parameter as the attribute says.
 expr_t
 postfix_expression(parser_t &p)
 {
@@ -9643,6 +9647,8 @@ postfix_expression(parser_t &p)
 
             e = callee(op, std::move(e));
             const function_t &type = callee_type(e);
+            if (!type.marking.empty())
+                not_yet(op, type.marking);
 
             const type_t t = *type.result;
             require_honoured(op, t);

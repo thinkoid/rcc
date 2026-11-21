@@ -604,7 +604,10 @@ declaration. Before a `;` they stand on a null statement, as GNU C's
 kind, and the statement writes nothing; before an expression they
 are an error. One on a
 parameter marks the function, whose calls pass the parameter, and its
-definition. On a struct or a union, or on a member, one that marks
+definition; the function type carries its words, so a call through a
+pointer to the type, or through a typedef of it, is refused as a call
+of the function is. Equality does not read them, so a conversion to a
+pointer of the unmarked type loses them. On a struct or a union, or on a member, one that marks
 changes the layout, as `packed` and `aligned` do, and makes the
 record one rcc does not lay out yet (chapter 3); on an enum one that
 marks makes the enum a not-yet type of its words (below). `__asm__

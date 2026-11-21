@@ -66,11 +66,16 @@ struct array_t
     long count;
 };
 
+// marking is the words of the first marking attribute said of a
+// parameter, empty for none: the parser refuses a call through a
+// pointer to the function as it refuses a call of a function the
+// attribute marks.  Equality does not read it, and no generator does.
 struct function_t
 {
     type_ptr_t result;
     std::vector< type_ptr_t > params;
     bool variadic;
+    std::string marking = { };
 };
 
 // A struct or a union, 6.7.3.2: the record its declarations describe,
@@ -201,8 +206,10 @@ type_t make_int(int width,
                 int enumeration = 0);
 type_t make_pointer(type_t pointee);
 type_t make_array(type_t element, long count);
-type_t
-make_function(type_t result, std::vector< type_t > params, bool variadic);
+type_t make_function(type_t result,
+                     std::vector< type_t > params,
+                     bool variadic,
+                     std::string marking = { });
 type_t make_record(const record_t &);
 type_t make_not_yet(int identity, std::string what, bool made = false);
 type_t make_not_yet_array(int identity, std::string what, type_t element);

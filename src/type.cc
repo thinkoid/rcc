@@ -112,7 +112,10 @@ make_array(type_t element, long count)
 }
 
 type_t
-make_function(type_t result, std::vector< type_t > params, bool variadic)
+make_function(type_t result,
+              std::vector< type_t > params,
+              bool variadic,
+              std::string marking)
 {
     std::vector< type_ptr_t > edges;
     edges.reserve(params.size());
@@ -121,7 +124,7 @@ make_function(type_t result, std::vector< type_t > params, bool variadic)
         edges.push_back(share(std::move(param)));
 
     return type_t { function_t { share(std::move(result)), std::move(edges),
-                                 variadic } };
+                                 variadic, std::move(marking) } };
 }
 
 type_t

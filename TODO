@@ -351,22 +351,6 @@ another machine when the program includes one; or take a sysroot.
 Check: the documents and the driver agree on what =-target= does to
 =#include <...>=.
 
-** TODO A call through a pointer passes a parameter a marking attribute marked
-
-~int f(int x __attribute__ ((mode (word))));~ marks =f=, and a call
-of it is refused, "not yet: attribute 'mode'": rcc would pass the
-argument as an =int= where the attribute asks for another size. The
-same parameter in a pointer's prototype is not refused: ~int call(int
-(*p)(int x __attribute__ ((mode (word))))) { return p(1); }~ compiles,
-and the call passes an =int=. The mark is the symbol's; a function
-type has none, so the attribute is lost on a pointer's prototype and
-on a typedef of function type.
-
-Fix: the function type carries the marking, so that a call through a
-pointer to it is refused as a call of a marked function is.
-
-Check: the second program above is refused by the attribute's name.
-
 ** TODO An error after the first not-yet in a typedef's array size is not seen
 
 ~typedef int a[sizeof (struct s) + undeclared];~, =s= a struct with a
@@ -616,6 +600,19 @@ Fix: the same not-yet in the comparison, the conditional's arms and
 the redeclaration, the types walked as for a tag declared twice.
 
 Check: that redeclaration is refused as not yet.
+
+** TODO A conversion to a pointer to the unmarked function type loses a parameter's marking
+
+A function type carries the words of a parameter a marking attribute
+marked, and a call through a pointer to it is refused. Equality does
+not read the mark, so ~int (*q)(int) = p; q(1);~, with =p= a pointer
+to the marked type, compiles and passes an =int=, and so does
+~(c ? q : p)(1)~.
+
+Fix: a pointer conversion and a conditional's arms whose function
+pointees' marks differ are refused as not yet.
+
+Check: both programs are refused by the attribute's name.
 
 * Lexer
 
