@@ -702,8 +702,8 @@ value_t
 rvalue(state_t &, const expr_t &, into_t * = nullptr, unsigned wanted = 0);
 void effect(state_t &, const expr_t &);
 
-// GNU C's statement expression's rows, which generate its statements and
-// so come after them.
+// GNU C's statement expression's rows, c1-statements.hh's, which
+// generate its statements and so come after them.
 value_t statement_expression(state_t &, const expr_t &, into_t *, unsigned);
 void statement_expression_effect(state_t &, const expr_t &);
 void statement_expression_branch(state_t &, const expr_t &, int, bool);
@@ -5812,87 +5812,6 @@ take_back(state_t &s, const context_t &c)
 }
 
 #include "c1-statements.hh"
-
-// GNU C's statement expression (shape.md chapter 5)
-
-// Whether a statement expression's block declares sym among its own
-// items, an object whose life ends with the block, 6.2.4p6.
-bool
-declares(const statement_expression_t &x, const symbol_t *sym)
-{
-    return std::ranges::any_of(x.body, [sym](const stmt_t &st) {
-        return is< decl_stmt_t >(st) && as< decl_stmt_t >(st).sym == sym;
-    });
-}
-
-// A statement expression's statements, where it stands (G13), each the
-// statement it would be at a boundary of statements: the values the
-// expression around holds are saved by then, held below the floor and
-// marked held across the statements by the caller's before_paths(), and
-// that expression's context is set aside, set_aside()'s.
-void
-statement_expression_body(state_t &s, const statement_expression_t &x)
-{
-    const auto context = set_aside(s);
-    const int floor = std::exchange(s.floor, s.live);
-
-    for (const auto &st : x.body)
-        statement(s, st);
-
-    s.floor = floor;
-    take_back(s, context);
-}
-
-// The value of a statement expression, backend.md 6.7: the values held
-// when it starts saved as at a branch, before_paths()'s, since its
-// statements may branch, loop, call and write a register variable whose
-// read is held, and kept where they are until the value is computed;
-// then its statements; then its value, handed into and wanted as the
-// comma's right operand is.  A borrowed read of a register variable the
-// block declares is copied into an expression register: the variable's
-// register is given back at the block's end, and a block after it, a
-// sibling statement expression's, takes it.
-value_t
-statement_expression(state_t &s, const expr_t &e, into_t *into, unsigned wanted)
-{
-    const auto &x = as< statement_expression_t >(e);
-    const auto incoming = before_paths(s, e);
-
-    statement_expression_body(s, x);
-    if (!x.value)
-        return { };
-
-    const auto v = rvalue(s, *x.value, into, wanted);
-    if (borrowed(s, v) && declares(x, s.values[v.id].variable))
-        copy(s, v, take(s, 0));
-
-    return v;
-}
-
-// A statement expression for its effect: its statements, then its
-// value's effect, the values held saved first as for its value.
-void
-statement_expression_effect(state_t &s, const expr_t &e)
-{
-    const auto &x = as< statement_expression_t >(e);
-    const auto incoming = before_paths(s, e);
-
-    statement_expression_body(s, x);
-    if (x.value)
-        effect(s, *x.value);
-}
-
-// A statement expression as a condition: its statements, then its
-// value's jump code, the values held saved first as for its value.
-void
-statement_expression_branch(state_t &s, const expr_t &e, int label, bool sense)
-{
-    const auto &x = as< statement_expression_t >(e);
-    const auto incoming = before_paths(s, e);
-
-    statement_expression_body(s, x);
-    cbranch(s, *x.value, label, sense);
-}
 
 // functions
 

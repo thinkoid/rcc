@@ -200,6 +200,12 @@ zeroes the whole object first, padding included, in the copy's units
 (G20), so every byte the list leaves out is zero, which the `zeroing`
 probe checks, the members against `clang`'s and the padding against
 zero.
+Then GNU C's statement expression, `({ ... })`: a block whose
+statements run where it stands and whose last expression is its value,
+in both generators, the values held beside it saved first as at a
+branch, so a program's `({ pending++; 0; })` is its statements and the
+`0` its statement writes, which the `blocks` probe checks against
+`clang`'s, jumps out of it among them.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/`, the cost corpus over `tests/cost/`
 and the error corpus over `tests/error/`, the programs rcc refuses

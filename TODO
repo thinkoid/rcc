@@ -152,6 +152,22 @@ Fix: the sentence in each chapter.
 
 Check: each 6.1 names the row.
 
+** TODO A statement expression saves the values held beside it where its statements cannot move them
+
+Values held when a statement expression starts are saved as at a
+branch, whatever its statements are. ~return a + ({ b; });~ on
+x86-64 is =movl -4(%rbp), %eax; movq %rax, -16(%rbp); movl -8(%rbp),
+%eax; addl -16(%rbp), %eax=, where ~a + (b)~ is =movl -4(%rbp),
+%eax; addl -8(%rbp), %eax=; on aarch64 the cost is =str x0, [x29,
+#24]= and =ldr x1, [x29, #24]=.
+
+Fix: none taken; the save only where the body holds a call, a
+branch, a loop, a =switch=, a jump, ~?:~, =&&=, =||=, or a write of
+a held read's variable.
+
+Check: a cost program with ~a + ({ b; })~ pinned at the listing of
+~a + (b)~ on both targets, and no function longer.
+
 * Guarantees
 
 The promises in =docs/guarantees.md=. The entry number is the
@@ -596,19 +612,6 @@ Fix: each refusal says "not yet" and names the construct.
 Check: a program of =tests/error= for ~&&next~ and for ~goto *p~,
 pinned.
 
-** TODO A statement expression, a variable length array and =alloca= are not yet
-
-Each is GNU C, or C a program for =gcc= and =clang= writes, refused
-by name: "not yet: statement expression", "not yet: variable length
-array", "not yet: alloca, '__builtin_alloca'".
-
-Fix: each is taken, in this order: the statement expression, a block
-whose last expression is its value; a variable length array;
-=alloca=.
-
-Check: the program of =tests/error= for each becomes a cost program
-on both targets.
-
 ** TODO An anonymous struct of bit-fields alone does not count before a flexible array member
 
 ~struct s { struct { int b : 3; }; int a[]; };~ is refused, "flexible
@@ -665,6 +668,58 @@ says what a string writes.
 Check: a cost program of ~char s[4] = "abc";~ and of a string of 100
 bytes on both targets, and the =zeroing= probe with a local array of
 =char= a string initializes.
+
+** TODO A variable length array and =alloca= are not yet
+
+Each is C, or GNU C, a program for =gcc= and =clang= writes, refused
+by name: "not yet: variable length array", "not yet: alloca,
+'__builtin_alloca'".
+
+Fix: each is taken, the variable length array first, then =alloca=.
+
+Check: the program of =tests/error= for each becomes a cost program
+on both targets.
+
+** TODO A label in a statement expression is not yet
+
+A label inside ~({ ... })~ is "not yet: label in a statement
+expression". GNU C takes one with a =goto= from inside the same
+statement expression, and forbids a jump into one from outside.
+
+Fix: the label is taken, and a =goto= that stands outside its
+label's statement expression is an error, judged at the function's
+end.
+
+Check: =tests/error/statement-expression-label.c= becomes a cost
+program, and the jump from outside is pinned as the error.
+
+** TODO A statement expression in a constant expression is not yet
+
+~case ({ 1; }):~ and ~static int k = ({ 1; });~ are "not yet:
+statement expression in a constant expression"; =clang= folds both.
+6.6 makes neither a constant expression.
+
+Fix: none taken; decide: a block whose one item is its value folds,
+or the refusal is an error.
+
+Check: the two programs of =tests/error= have the pin decided.
+
+** TODO An =__asm__= statement of an empty template is refused
+
+~__asm__ __volatile__ ("" : : : "memory");~ is "not yet: '__asm__'
+statement". The empty template is no instruction, and the clobber
+asks that no value be cached in a register across the statement and
+no access to memory moved over it, which every statement of rcc's
+already is: each load and store the source writes is made, in
+order, and nothing is held across a statement.
+
+Fix: none taken; decide: such a statement, of an empty template, no
+operands and no labels, is the null statement, whatever its
+clobbers; or only with the clobbers =memory= and =cc=. Any other
+=__asm__= statement stays a not-yet.
+
+Check: a cost program pinned like its twin without the statement, on
+both targets; =tests/error/asm-statement.c= keeps its pin.
 
 * Lexer
 

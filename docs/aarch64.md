@@ -463,10 +463,14 @@ better:
 - G13's copy stays: a read still held when its variable is written is
   copied into an expression register first. A postfix `++` or `--`
   for its value is such a write, and the copy is the value: `i++` is
-  `mov w0, w19; add w19, w19, #1`. The two invariants of
-  `backend.md` 6.7, at a branch and at a call, carry as written; a
-  borrowed read is the common case here, since no instruction copies
-  one.
+  `mov w0, w19; add w19, w19, #1`. The invariants of `backend.md`
+  6.7, at a branch, at a call and at a statement expression, carry as
+  written; a borrowed read is the common case here, since no
+  instruction copies one. A value held beside a statement expression
+  is spilled before its first statement, `ldr w0, [x29, #16]; str x0,
+  [x29, #24]` before `bl g` and `ldr x1, [x29, #24]; add w0, w1, w0`
+  after its value for `a + ({ g(); b; })`, and the read of a register
+  variable its block declares is copied as its value, `mov w0, w19`.
 - An access through a `register` pointer stepped by `++`, `--` or a
   compound assignment by a constant makes the step itself, by a form
   of 2.3 that writes the variable's register: `*p++` on a `char *`
@@ -1230,7 +1234,8 @@ with `x0` left for last (6.1).
 
 The three contexts stay, and `effect()` still reaches through a cast
 to void, a conditional's arms and a comma, whose left operand is in
-this context wherever the comma stands. What it finds there is less,
+this context wherever the comma stands, and a statement expression's
+value. What it finds there is less,
 because the machine has less:
 
 - **No memory forms.** `x++;` on a slot is `ldr w0, [x29, #40]; add

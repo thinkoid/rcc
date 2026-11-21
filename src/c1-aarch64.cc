@@ -477,6 +477,12 @@ value_t
 rvalue(state_t &, const expr_t &, into_t * = nullptr, unsigned wanted = 0);
 void effect(state_t &, const expr_t &);
 
+// GNU C's statement expression's rows, c1-statements.hh's, which
+// generate its statements and so come after them.
+value_t statement_expression(state_t &, const expr_t &, into_t *, unsigned);
+void statement_expression_effect(state_t &, const expr_t &);
+void statement_expression_branch(state_t &, const expr_t &, int, bool);
+
 // register variables
 
 // The register a row writes its result into, chapter 6.1: an owned
@@ -3383,11 +3389,13 @@ widens_arms(const cast_t &c, const type_t &to, const into_t *into)
 }
 
 // Whether e holds a call anywhere, whose result the convention puts in
-// x0 (chapter 8).
+// x0 (chapter 8).  A statement expression is taken as one: its
+// statements may call, and it spills every held value first, as a call
+// does (backend.md 6.7).
 bool
 calls_within(const expr_t &e)
 {
-    if (is< call_t >(e))
+    if (is< call_t >(e) || is< statement_expression_t >(e))
         return true;
 
     if (is< unary_t >(e))
@@ -3421,14 +3429,15 @@ calls_within(const expr_t &e)
 // row writes its destination last, after it has read its sources, and
 // nothing but the arm is held at its top, so those named are the ones
 // certain to: a constant, a load, a call's result, a truth value, an
-// operation on integers, - and ~, a conversion of an arm that does, and
-// the comma's right operand; a register variable's read, an assignment
-// to one and a step of one, whose value is copied into the join in any
-// case; and an assignment, a compound assignment or a step of an object
-// in memory whose place holds no call, since the place is generated with
-// x0 left for last, and for a plain assignment whose right operand
-// writes x0.  A place that holds a call's result holds x0 at the store:
-// *g() = a writes no x0, and nor does any row not named.
+// operation on integers, - and ~, a conversion of an arm that does, the
+// comma's right operand and a statement expression's value, its
+// statements holding nothing at its end; a register variable's read, an
+// assignment to one and a step of one, whose value is copied into the
+// join in any case; and an assignment, a compound assignment or a step
+// of an object in memory whose place holds no call, since the place is
+// generated with x0 left for last, and for a plain assignment whose
+// right operand writes x0.  A place that holds a call's result holds x0
+// at the store: *g() = a writes no x0, and nor does any row not named.
 bool
 takes_name(const expr_t &arm)
 {
@@ -3438,6 +3447,11 @@ takes_name(const expr_t &arm)
 
     if (is< cast_t >(arm))
         return takes_name(*as< cast_t >(arm).arg);
+
+    if (is< statement_expression_t >(arm)) {
+        const auto &x = as< statement_expression_t >(arm);
+        return x.value && takes_name(*x.value);
+    }
 
     if (is< binary_t >(arm)) {
         const auto &b = as< binary_t >(arm);
@@ -4430,7 +4444,8 @@ call(state_t &s, const call_t &c, const type_t &t)
 // register with no move, where a join in x0 moves each, and under a cast
 // that widens, the extension after the join reads that register where it
 // is.  rvalue_in() hands the name to a conditional at the top of the
-// value whatever its arms.  GNU C's statement expression is not yet.
+// value whatever its arms, and a statement expression hands the name
+// and into to its value.
 value_t
 rvalue(state_t &s, const expr_t &e, into_t *into, unsigned wanted)
 {
@@ -4464,7 +4479,7 @@ rvalue(state_t &s, const expr_t &e, into_t *into, unsigned wanted)
         return cast(s, as< cast_t >(e), e.type, into, wanted);
 
     if (is< statement_expression_t >(e))
-        not_yet("statement expression");
+        return statement_expression(s, e, into, wanted);
 
     const auto &k = as< conditional_t >(e);
     // a ?: b: the condition is the first arm
@@ -4496,6 +4511,11 @@ rvalue_in(state_t &s, const expr_t &e, reg_t r)
 void
 cbranch(state_t &s, const expr_t &e, int label, bool sense)
 {
+    if (is< statement_expression_t >(e)) {
+        statement_expression_branch(s, e, label, sense);
+        return;
+    }
+
     if (is< unary_t >(e) && as< unary_t >(e).op == unary_op_t::log_not) {
         cbranch(s, *as< unary_t >(e).arg, label, !sense);
         return;
@@ -4870,6 +4890,11 @@ effect(state_t &s, const expr_t &e)
         return;
     }
 
+    if (is< statement_expression_t >(e)) {
+        statement_expression_effect(s, e);
+        return;
+    }
+
     release(s, rvalue(s, e));
 }
 
@@ -5006,6 +5031,32 @@ decl_stmt(state_t &s, const decl_stmt_t &d)
         return;
 
     initialize(s, *d.init, slot_address(displacement), integer(sym->type));
+}
+
+// The context the rows of an expression leave for the rows below them:
+// the registers left for last, reserved, and the read a compound
+// assignment writes in place.  A statement expression's statements are
+// generated with none of it, so each is the statement it would be at a
+// boundary of statements, and its value with all of it, as the operand
+// it is (backend.md 6.7).
+struct context_t
+{
+    unsigned reserved;
+    int in_place;
+};
+
+context_t
+set_aside(state_t &s)
+{
+    return { .reserved = std::exchange(s.reserved, 0u),
+             .in_place = std::exchange(s.in_place, -1) };
+}
+
+void
+take_back(state_t &s, const context_t &c)
+{
+    s.reserved = c.reserved;
+    s.in_place = c.in_place;
 }
 
 #include "c1-statements.hh"

@@ -2,7 +2,8 @@
 
 // The statements of backend.md 7.2 and 7.3 and aarch64.md 7.2 and 7.3:
 // each a shape of labels and jumps around the generator's own
-// functions, with no instruction of its own.  Its text is the same for
+// functions, with no instruction of its own; and GNU C's statement
+// expression, whose rows generate statements (backend.md 6.7).  Its text is the same for
 // every target, but it names each target's state and calls each
 // target's functions, so this is not a header in the ordinary sense: it
 // is part of a generator's text, kept in one place, as c1-stack.hh is.
@@ -28,9 +29,15 @@
 // a binary operator; compare_with(), the comparison row of a held value
 // and a constant; jump_if(), the conditional jump on its flags;
 // equal_jump(), a case's test; table_jump(), the jump through a table;
-// and divided(), the hash's division.  It includes c1-stack.hh first,
-// whose reg_of() and release() the statements call, with mov(), the
-// stack's copy of a register into another, for the result.  integer(),
+// and divided(), the hash's division.  For a statement expression it
+// declares context_t, set_aside() and take_back(), the context of the
+// expression around set aside for the statements and taken back for
+// the value, and the three rows themselves, which its entry points
+// call.  It includes c1-stack.hh first, whose reg_of() and release()
+// the statements call, with mov(), the stack's copy of a register into
+// another, for the result, and whose before_paths(), borrowed() and
+// copy() a statement expression's rows call, with take(), the
+// generator's.  integer(),
 // jump_target_t and the rule of a switch are c1-common.hh's, and the
 // tree ast.hh's.
 
@@ -581,4 +588,85 @@ statement(state_t &s, const stmt_t &st)
 
     if (s.live != s.floor)
         throw std::logic_error("c1: a value held across a statement");
+}
+
+// GNU C's statement expression (shape.md chapter 5)
+
+// Whether a statement expression's block declares sym among its own
+// items, an object whose life ends with the block, 6.2.4p6.
+bool
+declares(const statement_expression_t &x, const symbol_t *sym)
+{
+    return std::ranges::any_of(x.body, [sym](const stmt_t &st) {
+        return is< decl_stmt_t >(st) && as< decl_stmt_t >(st).sym == sym;
+    });
+}
+
+// A statement expression's statements, where it stands (G13), each the
+// statement it would be at a boundary of statements: the values the
+// expression around holds are saved by then, held below the floor and
+// marked held across the statements by the caller's before_paths(), and
+// that expression's context is set aside, set_aside()'s.
+void
+statement_expression_body(state_t &s, const statement_expression_t &x)
+{
+    const auto context = set_aside(s);
+    const int floor = std::exchange(s.floor, s.live);
+
+    for (const auto &st : x.body)
+        statement(s, st);
+
+    s.floor = floor;
+    take_back(s, context);
+}
+
+// The value of a statement expression, backend.md 6.7: the values held
+// when it starts saved as at a branch, before_paths()'s, since its
+// statements may branch, loop, call and write a register variable whose
+// read is held, and kept where they are until the value is computed;
+// then its statements; then its value, handed into and wanted as the
+// comma's right operand is.  A borrowed read of a register variable the
+// block declares is copied into an expression register: the variable's
+// register is given back at the block's end, and a block after it, a
+// sibling statement expression's, takes it.
+value_t
+statement_expression(state_t &s, const expr_t &e, into_t *into, unsigned wanted)
+{
+    const auto &x = as< statement_expression_t >(e);
+    const auto incoming = before_paths(s, e);
+
+    statement_expression_body(s, x);
+    if (!x.value)
+        return { };
+
+    const auto v = rvalue(s, *x.value, into, wanted);
+    if (borrowed(s, v) && declares(x, s.values[v.id].variable))
+        copy(s, v, take(s, 0));
+
+    return v;
+}
+
+// A statement expression for its effect: its statements, then its
+// value's effect, the values held saved first as for its value.
+void
+statement_expression_effect(state_t &s, const expr_t &e)
+{
+    const auto &x = as< statement_expression_t >(e);
+    const auto incoming = before_paths(s, e);
+
+    statement_expression_body(s, x);
+    if (x.value)
+        effect(s, *x.value);
+}
+
+// A statement expression as a condition: its statements, then its
+// value's jump code, the values held saved first as for its value.
+void
+statement_expression_branch(state_t &s, const expr_t &e, int label, bool sense)
+{
+    const auto &x = as< statement_expression_t >(e);
+    const auto incoming = before_paths(s, e);
+
+    statement_expression_body(s, x);
+    cbranch(s, *x.value, label, sense);
 }

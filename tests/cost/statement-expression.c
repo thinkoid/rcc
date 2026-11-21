@@ -24,7 +24,20 @@
    -12(%rbp), after the second argument's, -8(%rbp), which the call
    took before the argument was evaluated; tested() as call g@PLT, then
    cmpl $0, -4(%rbp); je; and copied() as call f@PLT; movl %eax, %ebx
-   and the read copied, movl %ebx, %eax. */
+   and the read copied, movl %ebx, %eax.
+
+   On aarch64 the listing must show interrupts_off() as pending's load,
+   add w0, w0, #1 and its store, then mov w0, #0; assigned() as bl f;
+   str w0, [x29, #20]; ldr w0, [x29, #20]; add w0, w0, #1;
+   str w0, [x29, #16]; held() as a's load, ldr w0, [x29, #16], spilled
+   before the block by str x0, [x29, #24], then bl g, b's load, the
+   reload ldr x1, [x29, #24] and add w0, w1, w0; argument() as
+   mov w0, #1; str w0, [x29, #16], bl g, mov w0, #2;
+   str w0, [x29, #20] and the third argument's store before the loads
+   into x0 to x2; declared() with t's slot, [x29, #24], after the second
+   argument's, [x29, #20]; tested() as bl g, then a's load and
+   cbz w0; and copied() as bl f; mov w19, w0 and the read copied,
+   mov w0, w19. */
 int pending;
 
 int f(void);
