@@ -128,6 +128,8 @@ operation_t mirrored(const binary_t &);
 
 bool writes(const expr_t &, const symbol_t *);
 bool names(const expr_t &, const symbol_t *);
+bool moves_beside(const statement_expression_t &);
+int held_at_most(const statement_expression_t &);
 
 // The forms of a switch's dispatch, backend.md 7.3: none, when there
 // is no case; a direct jump through a table; a simple compare chain; a

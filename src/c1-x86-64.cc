@@ -582,7 +582,7 @@ pins(const expr_t &e)
 // outside one may have to move into it, as ?:'s second arm into a
 // first arm's call result.  A statement expression is taken as a call:
 // its statements may call, and it spills every held value first, as a
-// call does (6.7).
+// call does, where they may move one, and holds no pin elsewhere (6.7).
 unsigned
 pinned_within(const expr_t &e)
 {
@@ -627,7 +627,8 @@ pinned_within(const expr_t &e)
 // The registers a pinned instruction within e would move a value held
 // across e out of, 6.5: pins() over the tree, but not within a call, a
 // branch of &&, || or ?:, or a statement expression, which spill every
-// held value first, wherever it is (6.7).
+// held value first, wherever it is, the last but where its statements
+// hold no pin (6.7).
 unsigned
 moved_within(const expr_t &e)
 {
@@ -707,6 +708,7 @@ void effect(state_t &, const expr_t &);
 value_t statement_expression(state_t &, const expr_t &, into_t *, unsigned);
 void statement_expression_effect(state_t &, const expr_t &);
 void statement_expression_branch(state_t &, const expr_t &, int, bool);
+const expr_t &operand_of(state_t &, const expr_t &);
 
 // The value of e generated while the registers in pinned are left for
 // last, so that it does not land where an instruction generated after
@@ -1979,7 +1981,8 @@ address_avoiding(state_t &s, const expr_t &e, unsigned pinned)
 }
 
 // Whether generating e spills every value held across it, 6.7: a call
-// within it, a branch of &&, || or ?:, or a statement expression.
+// within it, a branch of &&, || or ?:, or a statement expression, taken
+// as one that does whatever its statements.
 bool
 spills_within(const expr_t &e)
 {
@@ -2163,6 +2166,9 @@ right_operand(state_t &s,
 // held to the instruction, which reads the object, so the reads keep
 // their order (G13).  A divisor's address is generated with rax and rdx
 // reserved, as a divisor is.  A shift's count keeps its register, cl.
+// A statement expression whose statements leave the values held beside
+// it where they are is its statements and then its value as the
+// operand, operand_of()'s (6.7).
 // avoid is reserved for the operand or its address, held_out()'s.  The
 // rule is the Seventh Edition compiler's: the row %n,aw of its table's
 // cr40 writes the left operand into the register and the instruction
@@ -2174,11 +2180,12 @@ binary_operand(state_t &s,
                int width,
                unsigned avoid = 0)
 {
-    const auto *object = is_shift(op) ? nullptr : memory_operand(rhs, width);
+    const auto &e = operand_of(s, rhs);
+    const auto *object = is_shift(op) ? nullptr : memory_operand(e, width);
     if (!object)
-        return right_operand(s, op, rhs, width, avoid);
+        return right_operand(s, op, e, width, avoid);
 
-    return { .place = address_avoiding(s, *object, pins(op, rhs) | avoid),
+    return { .place = address_avoiding(s, *object, pins(op, e) | avoid),
              .width = width };
 }
 
@@ -5818,6 +5825,35 @@ take_back(state_t &s, const context_t &c)
 }
 
 #include "c1-statements.hh"
+
+// The operand a row takes for e, backend.md 6.1: e, but for a statement
+// expression that leaves the values held beside it where they are,
+// saves_beside()'s, and whose value is no read of a register variable
+// its block declares: its statements, marked as for its value, then its
+// value's operand, which the row takes in its own form, an object in
+// memory as the instruction's operand, addl -8(%rbp), %eax for a + ({
+// b; }), as for a + (b).
+const expr_t &
+operand_of(state_t &s, const expr_t &e)
+{
+    if (!is< statement_expression_t >(e))
+        return e;
+
+    const auto &x = as< statement_expression_t >(e);
+    if (!x.value || saves_beside(s, e))
+        return e;
+
+    const auto *read = register_read(*x.value).variable;
+    if (read && declares(x, read))
+        return e;
+
+    {
+        const incoming_t incoming { s };
+        statement_expression_body(s, x);
+    }
+
+    return operand_of(s, *x.value);
+}
 
 // functions
 

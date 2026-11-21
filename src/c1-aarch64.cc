@@ -3391,7 +3391,7 @@ widens_arms(const cast_t &c, const type_t &to, const into_t *into)
 // Whether e holds a call anywhere, whose result the convention puts in
 // x0 (chapter 8).  A statement expression is taken as one: its
 // statements may call, and it spills every held value first, as a call
-// does (backend.md 6.7).
+// does, where they may move one (backend.md 6.7).
 bool
 calls_within(const expr_t &e)
 {

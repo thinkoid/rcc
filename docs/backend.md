@@ -770,7 +770,9 @@ bytes at the width are the value. `x + y` on two locals is `movl
 -4(%rbp), %eax; addl -8(%rbp), %eax`, `x / d` is `movl -4(%rbp),
 %eax; cltd; idivl -8(%rbp)`, and `u + i` on an `unsigned` and an
 `int` is `addl -8(%rbp), %eax`, the `int` under `(unsigned)`. The
-rows that take the form are:
+read may be the value of a statement expression whose statements
+leave the values held beside it where they are, read after its
+statements (6.7). The rows that take the form are:
 
 - `+`, `-`, `&`, `|`, `^`, `*`, `/` and `%` (6.3, 6.5), the
   comparisons (6.3, 7.1) and `&` as a condition, `testl -8(%rbp),
@@ -1861,11 +1863,42 @@ no address.
 
 **A statement expression.** GNU C's `({ ... })` holds statements where
 an expression stands, and they may branch, loop, call and write a
-register variable whose read is held. The invariant is the branch's,
-and it is established the same way, before the first statement: every
-owned value is spilled, every borrowed read that the block writes is
-saved, and every held value is marked until the value is computed. The
-statements are then generated as statements: the values held are below
+register variable whose read is held. Where they may move a value held
+beside the block, the invariant is the branch's, and it is established
+the same way, before the first statement: every owned value is
+spilled, every borrowed read that the block writes is saved, and every
+held value is marked until the value is computed. They may move one
+where the block holds:
+
+- a statement that branches, loops, switches, jumps or is a label, an
+  `if`, a `switch`, a loop, a `break`, a `continue`, a `goto`, a
+  `return`, a label or a case's, whose paths find a value where they
+  expect it only if it has one location;
+- a call, which spills every held value (chapter 8); `&&`, `||` and
+  `?:`, whose paths save them first; and a statement expression that
+  saves them itself;
+- a division, a remainder, a pointer difference and a shift by a count
+  that is no constant, whose instruction pins registers on x86-64 and
+  moves a value held there (6.5);
+- a write of a register variable whose read is held, which
+  `preserve()` copies first (chapter 4);
+- one statement, or the value, that may hold more values at once than
+  expression registers are free, counted as the nodes of its
+  expressions, where a register taken would spill the oldest value
+  held, which is one beside the block.
+
+Elsewhere the statements cannot move a value held beside the block,
+and each stays where it is, marked until the value is computed, so
+that an instruction that would move one is an error of the generator.
+`return a + ({ b; })` is thus the listing of `a + (b)`, `movl
+-4(%rbp), %eax; addl -8(%rbp), %eax` on x86-64 and `ldr w0, [x29,
+#16]; ldr w1, [x29, #20]; add w0, w0, w1` on aarch64. On x86-64 a
+right operand that is such a statement expression is its statements
+and then its value as the operand, so an object in memory is the
+instruction's own operand (6.1): `return a + ({ int t = b; t; })` is
+`movl -4(%rbp), %eax; movl -8(%rbp), %ecx; movl %ecx, -12(%rbp); addl
+-12(%rbp), %eax`. Either way the statements are generated as
+statements: the values held are below
 a floor, `s.floor`, which each statement leaves as it finds them, and
 the context the rows around the expression left, the registers
 reserved and held out, the copy a consumer names, the read written in
@@ -1889,8 +1922,9 @@ the block stays where it was saved, or in its variable's register,
 marked so that nothing moves it; so the jump finds at the label what
 the path through it finds (`statement-expression-label`).
 A statement expression is a call to the walks that look ahead,
-`pinned_within()`, `moved_within()` and `spills_within()`, since it
-spills every held value first.
+`pinned_within()`, `moved_within()` and `spills_within()`, whether it
+saves or not: one that saves spills every held value first, and one
+that does not holds no pin.
 
 **One operation saves a held value**, whichever kind it is: the
 spill of 6.2 for an owned one, the store of the variable's register

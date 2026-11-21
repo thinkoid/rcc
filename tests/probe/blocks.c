@@ -426,3 +426,36 @@ escaped(long a, long b)
                        s + t;
                });
 }
+
+/* no statement that moves a value held beside it: the value alone,
+   which a + (b) is, and a local declared and read */
+long
+beside(long a, long b)
+{
+        return a + ({ b; });
+}
+
+long
+local(long a, long b)
+{
+        return a + ({
+                       long t = b;
+                       t;
+               });
+}
+
+/* straight-line stores and loads in its block, three values held
+   beside it in their registers */
+long
+straight(long a, long b)
+{
+        long u;
+        long v;
+
+        return a + (b * 3 + ((a ^ b) - ({
+                                     u = a;
+                                     v = b + u;
+                                     long w = v - a;
+                                     w * 2 + u;
+                             })));
+}

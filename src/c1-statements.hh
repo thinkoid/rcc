@@ -35,9 +35,9 @@
 // the value, and the three rows themselves, which its entry points
 // call.  It includes c1-stack.hh first, whose reg_of() and release()
 // the statements call, with mov(), the stack's copy of a register into
-// another, for the result, and whose before_paths(), borrowed() and
-// copy() a statement expression's rows call, with take(), the
-// generator's.  integer(),
+// another, for the result, and whose before_paths(), incoming_t,
+// borrowed() and copy() a statement expression's rows call, with take()
+// and expression_registers, the generator's.  integer(),
 // jump_target_t and the rule of a switch are c1-common.hh's, and the
 // tree ast.hh's.
 
@@ -620,20 +620,57 @@ statement_expression_body(state_t &s, const statement_expression_t &x)
     take_back(s, context);
 }
 
+// Whether the statements of a statement expression may move a value held
+// beside it, backend.md 6.7: a node of moves_beside()'s; a write of a
+// register variable whose read is held; or more values held at once in
+// one statement or in the value, held_at_most()'s, than expression
+// registers are free, where take() would spill the oldest value held,
+// one beside the block.
+bool
+saves_beside(const state_t &s, const expr_t &e)
+{
+    const auto &x = as< statement_expression_t >(e);
+    if (moves_beside(x))
+        return true;
+
+    for (const auto &h : s.values)
+        if (h.live && h.variable && writes(e, h.variable))
+            return true;
+
+    int free = 0;
+    for (const reg_t r : expression_registers)
+        free += s.owner[r] < 0;
+
+    return held_at_most(x) > free;
+}
+
+// The values held when a statement expression starts, backend.md 6.7:
+// saved as at a branch where its statements may move them,
+// before_paths()'s, and otherwise left where they are, each marked until
+// the value is computed, so that an instruction that would move one is
+// an error of the generator.
+incoming_t
+beside(state_t &s, const expr_t &e)
+{
+    if (saves_beside(s, e))
+        return before_paths(s, e);
+
+    return incoming_t { s };
+}
+
 // The value of a statement expression, backend.md 6.7: the values held
-// when it starts saved as at a branch, before_paths()'s, since its
-// statements may branch, loop, call and write a register variable whose
-// read is held, and kept where they are until the value is computed;
-// then its statements; then its value, handed into and wanted as the
-// comma's right operand is.  A borrowed read of a register variable the
-// block declares is copied into an expression register: the variable's
+// when it starts saved where its statements may move them, beside()'s,
+// and kept where they are until the value is computed; then its
+// statements; then its value, handed into and wanted as the comma's
+// right operand is.  A borrowed read of a register variable the block
+// declares is copied into an expression register: the variable's
 // register is given back at the block's end, and a block after it, a
 // sibling statement expression's, takes it.
 value_t
 statement_expression(state_t &s, const expr_t &e, into_t *into, unsigned wanted)
 {
     const auto &x = as< statement_expression_t >(e);
-    const auto incoming = before_paths(s, e);
+    const auto incoming = beside(s, e);
 
     statement_expression_body(s, x);
     if (!x.value)
@@ -652,7 +689,7 @@ void
 statement_expression_effect(state_t &s, const expr_t &e)
 {
     const auto &x = as< statement_expression_t >(e);
-    const auto incoming = before_paths(s, e);
+    const auto incoming = beside(s, e);
 
     statement_expression_body(s, x);
     if (x.value)
@@ -665,7 +702,7 @@ void
 statement_expression_branch(state_t &s, const expr_t &e, int label, bool sense)
 {
     const auto &x = as< statement_expression_t >(e);
-    const auto incoming = before_paths(s, e);
+    const auto incoming = beside(s, e);
 
     statement_expression_body(s, x);
     cbranch(s, *x.value, label, sense);

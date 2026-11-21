@@ -129,22 +129,6 @@ first. Taken, 11 listings over =tests= reorder at the same count.
 Check: =stack-parameter='s pin in parameter order, and no function
 longer; or the sentence in 5.2.
 
-** TODO A statement expression saves the values held beside it where its statements cannot move them
-
-Values held when a statement expression starts are saved as at a
-branch, whatever its statements are. ~return a + ({ b; });~ on
-x86-64 is =movl -4(%rbp), %eax; movq %rax, -16(%rbp); movl -8(%rbp),
-%eax; addl -16(%rbp), %eax=, where ~a + (b)~ is =movl -4(%rbp),
-%eax; addl -8(%rbp), %eax=; on aarch64 the cost is =str x0, [x29,
-#24]= and =ldr x1, [x29, #24]=.
-
-Fix: none taken; the save only where the body holds a call, a
-branch, a loop, a =switch=, a jump, ~?:~, =&&=, =||=, or a write of
-a held read's variable.
-
-Check: a cost program with ~a + ({ b; })~ pinned at the listing of
-~a + (b)~ on both targets, and no function longer.
-
 ** TODO aarch64: a conditional of two register variables' reads as a condition is joined
 
 ~if (y > x ? x : y)~ on two register variables is =mov w0, w19; b;
@@ -160,6 +144,33 @@ variable's read is such an arm on aarch64 alone.
 
 Check: those functions an instruction shorter on aarch64, and no
 function longer.
+
+** TODO x86-64: a comma as a binary operator's right operand is generated as a value
+
+~a + (t = b, t)~ is =movl -12(%rbp), %ecx; addl %ecx, %eax=, where
+~a + ({ t = b; t; })~ is =addl -12(%rbp), %eax=: a statement
+expression's value is taken in the row's own form after its
+statements, and a comma's right operand is not.
+
+Fix: the comma's right operand is taken in the row's form after the
+left operand's effect.
+
+Check: the two listings are the same, and no function longer.
+
+** TODO A statement expression that saves nothing is still read as a call ahead
+
+The walks that look ahead of an operand, and the test of a register
+destination's leaf, take every statement expression as a call, the
+one that leaves the values beside it in their registers too. ~r = a
++ ({ b; })~ into a register variable on x86-64 is =movl -12(%rbp),
+%eax; addl -16(%rbp), %eax; movl %eax, %ebx=, where ~r = a + (b)~
+is =movl -12(%rbp), %ebx; addl -16(%rbp), %ebx=.
+
+Fix: none taken; the walks read such a statement expression as its
+value. Whether it saves depends on what is held when it starts,
+which a walk ahead does not know.
+
+Check: the two listings are the same, and no function longer.
 
 * Guarantees
 

@@ -467,10 +467,13 @@ better:
   6.7, at a branch, at a call and at a statement expression, carry as
   written; a borrowed read is the common case here, since no
   instruction copies one. A value held beside a statement expression
-  is spilled before its first statement, `ldr w0, [x29, #16]; str x0,
-  [x29, #24]` before `bl g` and `ldr x1, [x29, #24]; add w0, w1, w0`
-  after its value for `a + ({ g(); b; })`, and the read of a register
-  variable its block declares is copied as its value, `mov w0, w19`.
+  whose statements may move it is spilled before its first statement,
+  `ldr w0, [x29, #16]; str x0, [x29, #24]` before `bl g` and `ldr x1,
+  [x29, #24]; add w0, w1, w0` after its value for `a + ({ g(); b;
+  })`, and one beside statements that cannot stays in its register,
+  `ldr w0, [x29, #16]; ldr w1, [x29, #20]; add w0, w0, w1` for `a + ({
+  b; })` (`backend.md` 6.7); the read of a register variable its block
+  declares is copied as its value, `mov w0, w19`.
 - An access through a `register` pointer stepped by `++`, `--` or a
   compound assignment by a constant makes the step itself, by a form
   of 2.3 that writes the variable's register: `*p++` on a `char *`

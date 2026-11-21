@@ -166,6 +166,48 @@ copied:
 	ret
 	.cfi_endproc
 	.size	copied, .-copied
+	.globl	bare
+	.type	bare, @function
+bare:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	movl	-4(%rbp), %eax
+	addl	-8(%rbp), %eax
+	jmp	.Lbare.1
+.Lbare.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	bare, .-bare
+	.globl	local
+	.type	local, @function
+local:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movl	%edi, -4(%rbp)
+	movl	%esi, -8(%rbp)
+	movl	-4(%rbp), %eax
+	movl	-8(%rbp), %ecx
+	movl	%ecx, -12(%rbp)
+	addl	-12(%rbp), %eax
+	jmp	.Llocal.1
+.Llocal.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	local, .-local
 	.bss
 	.globl	pending
 	.type	pending, @object

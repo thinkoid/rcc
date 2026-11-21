@@ -6,8 +6,10 @@
    the results and the record of the calls each build made.  GNU C's
    statement expression, docs/shape.md chapter 5 and docs/backend.md
    6.7: its statements where it stands, values held beside it saved as
-   at a branch, its value in each context, a jump out of it, and a
-   label in it with a goto to it from inside. */
+   at a branch where the statements may move them and left in their
+   registers beside straight-line statements, its value in each
+   context, a jump out of it, and a label in it with a goto to it from
+   inside. */
 
 /* clang-format off */
 #define FUNCTIONS(X)                                                    \
@@ -15,7 +17,8 @@
     X(looped) X(siblings) X(arguments) X(rewritten) X(switched)         \
     X(counted) X(left) X(tested) X(narrow) X(effect) X(into_register)   \
     X(compound) X(placed) X(shifted) X(divided) X(arms) X(pressure)     \
-    X(logical) X(pointer) X(labeled) X(escaped)
+    X(logical) X(pointer) X(labeled) X(escaped) X(beside) X(local)      \
+    X(straight)
 /* clang-format on */
 
 #define DECLARE(name)          \

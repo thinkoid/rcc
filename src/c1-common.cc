@@ -570,6 +570,179 @@ names(const expr_t &e, const symbol_t *sym)
     return false;
 }
 
+namespace {
+
+bool moves_beside(const expr_t &);
+
+// Whether a statement of a statement expression's block may move a value
+// held beside the block, backend.md 6.7: an expression statement or a
+// declaration by its expression, a block by its statements, and every
+// other statement, a branch, a loop, a switch, a jump or a label, whose
+// paths would find the value in one place each.
+bool
+moves_beside(const stmt_t &st)
+{
+    if (is< expr_stmt_t >(st)) {
+        const auto &e = as< expr_stmt_t >(st).e;
+        return e && moves_beside(*e);
+    }
+
+    if (is< decl_stmt_t >(st)) {
+        const auto &init = as< decl_stmt_t >(st).init;
+        return init && moves_beside(*init);
+    }
+
+    if (is< block_t >(st))
+        return std::ranges::any_of(
+            as< block_t >(st).body,
+            [](const stmt_t &item) { return moves_beside(item); });
+
+    return true;
+}
+
+// Whether an operator's instruction pins a register on x86-64 (backend.md
+// 6.5): a division, a remainder and a pointer difference, which divide in
+// rax and rdx, and a shift by a count that is no constant, in cl.  The
+// pin moves a value held there out of the way.
+bool
+pins_on_either(binary_op_t op, const expr_t &lhs, const expr_t &rhs)
+{
+    if (op == binary_op_t::div || op == binary_op_t::rem)
+        return true;
+
+    if (is_shift(op))
+        return !is< literal_t >(rhs);
+
+    return op == binary_op_t::sub && is< pointer_t >(lhs.type) &&
+           is< pointer_t >(rhs.type);
+}
+
+// Whether evaluating e may move a value held beside a statement
+// expression whose block holds e: a call, which spills every held value
+// (chapter 8); &&, || and ?:, whose paths save them first (6.7); an
+// operator or a compound assignment whose instruction pins a register,
+// pins_on_either()'s; and a statement expression that saves them
+// itself.  A load, a store, a constant, a cast and the other operators
+// take free registers and write their own.
+bool
+moves_beside(const expr_t &e)
+{
+    if (is< call_t >(e) || is< conditional_t >(e))
+        return true;
+
+    if (is< statement_expression_t >(e))
+        return moves_beside(as< statement_expression_t >(e));
+
+    if (is< unary_t >(e))
+        return moves_beside(*as< unary_t >(e).arg);
+
+    if (is< binary_t >(e)) {
+        const auto &b = as< binary_t >(e);
+        if (b.op == binary_op_t::log_and || b.op == binary_op_t::log_or ||
+            pins_on_either(b.op, *b.lhs, *b.rhs))
+            return true;
+
+        return moves_beside(*b.lhs) || moves_beside(*b.rhs);
+    }
+
+    if (is< assign_t >(e)) {
+        const auto &a = as< assign_t >(e);
+        if (a.op && pins_on_either(*a.op, *a.lhs, *a.rhs))
+            return true;
+
+        return moves_beside(*a.lhs) || moves_beside(*a.rhs);
+    }
+
+    if (is< cast_t >(e))
+        return moves_beside(*as< cast_t >(e).arg);
+
+    return false;
+}
+
+// The nodes of e, which bound the values its rows hold at once: each
+// value held is one node's, an address's base and index its operands',
+// a row's fresh register its own node's, and a record's copy, its two
+// places, its unit and its index, holds four of its five nodes at most.
+int
+nodes_of(const expr_t &e)
+{
+    if (is< unary_t >(e))
+        return 1 + nodes_of(*as< unary_t >(e).arg);
+
+    if (is< binary_t >(e)) {
+        const auto &b = as< binary_t >(e);
+        return 1 + nodes_of(*b.lhs) + nodes_of(*b.rhs);
+    }
+
+    if (is< assign_t >(e)) {
+        const auto &a = as< assign_t >(e);
+        return 1 + nodes_of(*a.lhs) + nodes_of(*a.rhs);
+    }
+
+    if (is< cast_t >(e))
+        return 1 + nodes_of(*as< cast_t >(e).arg);
+
+    if (is< statement_expression_t >(e))
+        return 1 + held_at_most(as< statement_expression_t >(e));
+
+    return 1;
+}
+
+// The most values a statement of a block that moves nothing beside it
+// holds at once, nodes_of() its expression's: a declaration's one more,
+// the index of a zeroing loop; a block's its statements' most.  No other
+// statement stands in such a block.
+int
+held_by(const stmt_t &st)
+{
+    if (is< expr_stmt_t >(st)) {
+        const auto &e = as< expr_stmt_t >(st).e;
+        return e ? nodes_of(*e) : 0;
+    }
+
+    if (is< decl_stmt_t >(st)) {
+        const auto &init = as< decl_stmt_t >(st).init;
+        return 1 + (init ? nodes_of(*init) : 0);
+    }
+
+    if (!is< block_t >(st))
+        return 0;
+
+    int most = 0;
+    for (const auto &item : as< block_t >(st).body)
+        most = std::max(most, held_by(item));
+
+    return most;
+}
+
+} // namespace
+
+// Whether the statements or the value of a statement expression may move
+// a value held beside it, by the nodes they hold (backend.md 6.7): a
+// statement that branches, loops, switches, jumps or is a label, and an
+// expression that calls, branches, pins a register or is a statement
+// expression that saves, moves_beside()'s.
+bool
+moves_beside(const statement_expression_t &x)
+{
+    return std::ranges::any_of(
+               x.body, [](const stmt_t &st) { return moves_beside(st); }) ||
+           (x.value && moves_beside(*x.value));
+}
+
+// The most values a statement expression that moves nothing beside it
+// holds at once, in one of its statements or in its value: no statement
+// holds a value into the next.
+int
+held_at_most(const statement_expression_t &x)
+{
+    int most = x.value ? nodes_of(*x.value) : 0;
+    for (const auto &st : x.body)
+        most = std::max(most, held_by(st));
+
+    return most;
+}
+
 // expressions
 
 bool
