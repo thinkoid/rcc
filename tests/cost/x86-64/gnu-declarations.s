@@ -97,6 +97,36 @@ fall:
 	ret
 	.cfi_endproc
 	.size	fall, .-fall
+	.globl	extended
+	.type	extended, @function
+extended:
+	.cfi_startproc
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+	movq	%rdi, -8(%rbp)
+	movl	%esi, -12(%rbp)
+	movq	-8(%rbp), %rax
+	movq	%rax, -24(%rbp)
+	addl	$1, -12(%rbp)
+	movl	-12(%rbp), %eax
+	negl	%eax
+	cmpl	$0, %eax
+	jge	.Lextended.2
+	movq	-24(%rbp), %rax
+	jmp	.Lextended.3
+.Lextended.2:
+	movq	$0, %rax
+.Lextended.3:
+	jmp	.Lextended.1
+.Lextended.1:
+	leave
+	.cfi_def_cfa %rsp, 8
+	ret
+	.cfi_endproc
+	.size	extended, .-extended
 	.bss
 	.type	local.calls, @object
 	.size	local.calls, 4

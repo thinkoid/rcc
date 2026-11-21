@@ -120,6 +120,44 @@ fall:
 	ret
 	.cfi_endproc
 	.size	fall, .-fall
+	.globl	extended
+	.type	extended, @function
+extended:
+	.cfi_startproc
+	sub	sp, sp, #48
+	.cfi_def_cfa_offset 48
+	stp	x29, x30, [sp]
+	.cfi_offset w29, -48
+	.cfi_offset w30, -40
+	mov	x29, sp
+	.cfi_def_cfa_register w29
+	str	x0, [x29, #16]
+	str	w1, [x29, #24]
+	ldr	x0, [x29, #16]
+	str	x0, [x29, #32]
+	ldr	w0, [x29, #24]
+	add	w0, w0, #1
+	str	w0, [x29, #24]
+	ldr	w0, [x29, #24]
+	neg	w0, w0
+	cmp	w0, #0
+	b.ge	.Lextended.2
+	ldr	x0, [x29, #32]
+	b	.Lextended.3
+.Lextended.2:
+	mov	x0, #0
+.Lextended.3:
+	b	.Lextended.1
+.Lextended.1:
+	.cfi_def_cfa wsp, 48
+	ldp	x29, x30, [sp]
+	.cfi_restore w29
+	.cfi_restore w30
+	add	sp, sp, #48
+	.cfi_def_cfa_offset 0
+	ret
+	.cfi_endproc
+	.size	extended, .-extended
 	.bss
 	.type	local.calls, @object
 	.size	local.calls, 4

@@ -1,8 +1,9 @@
 /* What a system header writes beside its declarations costs nothing,
    and an assembler name is the symbol a call names.  The attributes
    here, the qualifier __restrict, the function specifier __inline and
-   __extension__ are dropped, so none of them writes anything (shape.md
-   chapter 5).  twice is declared as glibc declares scanf, under
+   __extension__, before a declaration and, in extended(), before a
+   cast, a unary expression and a statement's expression, are dropped,
+   so none of them writes anything (shape.md chapter 5).  twice is declared as glibc declares scanf, under
    another name in the assembly, and the call of twice calls
    other_name.  In local() an attribute begins a block's declarations
    and is read among their specifiers, dropped as one at file scope is,
@@ -47,4 +48,14 @@ fall(int c)
         }
 
         return 0;
+}
+
+const void *
+extended(const int *q, int n)
+{
+        const void *p = __extension__(const void *) q;
+
+        __extension__ n++;
+
+        return __extension__ - n < 0 ? p : 0;
 }

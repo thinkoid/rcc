@@ -561,18 +561,6 @@ Fix: none taken; the directives and the direct reference, with
 Check: a cost program with a hidden function and a hidden object,
 defined and only declared, pinned on both targets.
 
-** TODO =__extension__= before an expression is "expected expression"
-
-~p = __extension__ (void *) q;~ fails with "expected expression".
-GNU C's =__extension__= silences a pedantic warning and changes
-nothing; the parser drops it before a declaration (=docs/shape.md=
-chapter 5) and not before a cast or a unary expression.
-
-Fix: dropped before an expression too.
-
-Check: a cost program with the keyword before a cast, pinned like
-its twin without it.
-
 ** TODO Labels as values are refused in an error's words
 
 ~void *p = &&next; goto *p;~ fails with "expected expression": GNU

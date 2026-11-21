@@ -8531,6 +8531,8 @@ cast_expression(parser_t &p)
     return cast(open, t, cast_expression(p));
 }
 
+// GNU C's __extension__ before a cast expression is dropped, as it is
+// before a declaration.
 expr_t
 unary_expression(parser_t &p)
 {
@@ -8556,6 +8558,7 @@ unary_expression(parser_t &p)
     case tok_t::star: advance(p); return indirection(op, cast_expression(p));
     case tok_t::kw_sizeof: return sizeof_expression(p);
     case tok_t::kw_alignof: return alignof_expression(p);
+    case tok_t::kw_extension: advance(p); return cast_expression(p);
     default: return postfix_expression(p);
     }
 }

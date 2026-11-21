@@ -532,7 +532,8 @@ is. It conforms with what a correct program depends on, the size and
 the layout of a type and the symbol a name links to, and leaves hints
 and warnings for later: a declaration it cannot honour is accepted,
 and its use is refused. `restrict`, `_Noreturn`, and `inline` on a
-declaration, are dropped, and so is `__extension__` before one. An
+declaration, are dropped, and so is `__extension__` before one or
+before an expression. An
 attribute is of one of two kinds. One that only licenses an
 optimizer, asks for a diagnostic, or describes what a compiler that
 calls each function as written does not depend on, `nonnull`, `pure`,
