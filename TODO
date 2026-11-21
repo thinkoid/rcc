@@ -700,15 +700,3 @@ not-yet.
 Check: a program that includes =unwind.h= compiles, and the pin of
 =pragma-visibility= is refused at its declaration.
 
-** TODO =asm= is an identifier
-
-~asm ("" : : : "memory");~ fails with "'asm' undeclared". In the
-dialect rcc preprocesses in, =-std=gnu17=, =asm= is a keyword, as
-=__asm__= is in every dialect; the lexer's table has the second
-alone.
-
-Fix: =asm= is the keyword =__asm__= is.
-
-Check: a program of =tests/error= whose pin says "not yet: 'asm'
-statement".
-

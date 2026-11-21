@@ -161,6 +161,8 @@ implementation's name space, which a system header writes, are
 keywords too: `__const`, `__restrict__`, `__signed__`, `__inline` and
 their like are the keyword they spell, and `__attribute__`, `__asm__`,
 `__extension__`, `__int128` and `__float128` are tokens of their own.
+`asm`, a keyword of the dialect rcc preprocesses in, is the keyword
+`__asm__`.
 
 ## 3. The types
 

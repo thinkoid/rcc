@@ -102,6 +102,10 @@ const keyword_t keywords[] = {
     { "_Thread_local", tok_t::kw_thread_local },
     { "inline", tok_t::kw_inline },
 
+    // GNU C's keyword of the dialect rcc preprocesses in, -std=gnu17,
+    // which ISO C leaves to the program: the keyword __asm__ spells
+    { "asm", tok_t::kw_asm },
+
     // GNU C's spellings in the implementation's name space, which a
     // header writes so that no dialect and no macro of the program's
     // takes them: each is a keyword of C's, or one of GNU C's own
