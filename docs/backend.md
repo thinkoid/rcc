@@ -2522,6 +2522,7 @@ row here, in the guarantee's voice.
 | G18 a record's assignment copies its object | 6.6: per unit of the record's alignment the plain `mov` load into a scratch register and the store, lowest address first; over eight units the loop of one index, `addq` and `jne` |
 | G19 the variable arguments are read where the convention put them | chapter 5: the save area's `movq` of the six general registers and `movaps` of the eight vector ones, no test of `%al`, and the stack's address by `leaq`; `va_arg`'s `cmpl $40` and `ja`, `addl $8` or `addq $8`, and the load of the type's width |
 | G20 a local's initializer list writes every byte of its object | 6.6: the slot zeroed first, per unit of the object's alignment the store of the immediate 0, lowest address first; over eight units the loop of one index, `movq $0`, `addq` and `jne`; then the listed values' stores, in the list's order |
+| G21 a `_Bool` reads as its byte | `movzbl`, an `unsigned char`'s load, with no test and no mask; a conversion to it the parser's comparison with 0, `cmpl $0` and `setne`, before the `movb` |
 
 G15 stays withdrawn. The never-emitted table, the IR flags the
 front end withheld from an optimizer that never ran, has no

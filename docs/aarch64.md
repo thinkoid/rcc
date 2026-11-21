@@ -1547,6 +1547,7 @@ done, for the sake of a call with nine arguments.
 | G18 a struct assignment copies its object | each unit `ldrb`, `ldrh` or `ldr` into `x17` and its store, lowest address first, unrolled to eight units and a loop of four instructions beyond, 6.6; no `bl` |
 | G19 variable arguments are read where the convention put them | the area of 5.2 at entry, `stp x0, x1` to `stp q6, q7` and the stacked arguments' address; `va_arg` the test of `__gr_offs` and the load at the slot; a list argument the address of a 32-byte copy, chapter 8 |
 | G20 a local's initializer list writes every byte of its object | the slot zeroed first, each unit of the copy the store of `wzr` or `xzr`, `str wzr, [x29, #16]`, lowest address first, unrolled to eight units and a loop of three instructions beyond, `str xzr, [x0], #8; subs x16, x16, #1; b.ne`, 6.6; then the listed values' stores, in the list's order |
+| G21 a `_Bool` reads as its byte | `ldrb`, an `unsigned char`'s load, with no test and no mask; a conversion to it the parser's comparison with 0, `cmp w0, #0` and `cset w0, ne`, before the `strb` |
 
 G4 is the row to read twice. `guarantees.md` already says "x86 `idiv`
 faults on a zero divisor and on `INT_MIN / -1`; aarch64 `sdiv` yields

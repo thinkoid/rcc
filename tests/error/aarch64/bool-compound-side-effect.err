@@ -1,0 +1,2 @@
+tests/error/bool-compound-side-effect.c:11:14: error: not yet: '|=' on a '_Bool' whose lvalue has a side effect
+status 1

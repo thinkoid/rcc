@@ -253,6 +253,17 @@ units a loop of three instructions whatever the size, `str xzr,
 [x0], #8; subs x16, x16, #1; b.ne` after `add x0, x29, #16; mov x16,
 #25` (`aarch64.md` 6.6).
 
+**G21. A `_Bool` reads as its byte.** 6.2.6.1p5, 6.2.6.2p1. A
+`_Bool` is one byte, read and written at its width as `unsigned char`
+is. A conversion to `_Bool` stores 0 or 1 (6.3.1.2), and so does
+every operator that stores into one, whose result is converted. A
+`_Bool` assigned to a `_Bool` is copied as it is. A read yields the
+byte the object holds, so one holding another value, written through
+another type (G10) or never written (G5), reads as that byte until a
+store replaces it: 2 is true in a condition, 2 in arithmetic, and
+unequal to 1. Instruction: `movzbl` on x86-64, `ldrb` on aarch64, as
+for `unsigned char`; no test, no mask.
+
 ## Not in this list
 
 Implementation-defined behaviour beyond G2 and G3: fixed per

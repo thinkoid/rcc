@@ -178,6 +178,20 @@ extension.
 Check: a cost program of ~b = i != 0~ and ~b = x == y~ pinned on
 x86-64 without the =movzbl=, and no function longer.
 
+** TODO A postfix step on a =_Bool= whose value is discarded reads its temporary
+
+~b++;~ on a =_Bool= is ~(t = b, b = (_Bool) (t + 1), t)~, and the
+discarded =t= at its end is a load no source wrote, =movzbl
+-1(%rbp), %eax= on x86-64 and =ldrb w0, [x29, #16]= on aarch64. The
+prefix step ~++b;~ writes neither the temporary nor the load.
+
+Fix: none taken; a postfix step whose value is discarded is the
+prefix step, or the discard drops the read of a temporary the
+parser made.
+
+Check: =tests/cost/bool.c= with ~b++;~ and ~b--;~ as statements,
+each the listing of its prefix step.
+
 * Guarantees
 
 The promises in =docs/guarantees.md=. The entry number is the
@@ -603,6 +617,19 @@ Fix: the pointee unqualified too.
 
 Check: an error program of the initialization, pinned with the
 warning at status 0.
+
+** TODO An address converted to =_Bool= in a static initializer is refused
+
+~int x; _Bool g = &x;~ is "initializer element is not a compile-time
+constant". The conversion is the comparison of an address constant
+with a null pointer, which the evaluator of a static initializer
+does not fold; an object's address is never null, and =clang=
+writes =.byte 1=.
+
+Fix: none taken; decide: the fold of a non-null address constant to
+1, or a not-yet in its own words.
+
+Check: a cost program of the initializer, or its error pin.
 
 * Lexer
 

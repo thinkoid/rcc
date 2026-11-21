@@ -228,6 +228,10 @@ whose type is compatible with the controlling expression's, as C has
 the types, so glibc's macros that keep a pointer to `const char` a
 pointer to `const` select as `clang` selects, and the selection
 writes that expression alone.
+Then `_Bool`: a byte, read as an `unsigned char` is, to which a
+conversion is a comparison with 0 that the parser writes into the
+tree, so that every store into one, an operator's among them, stores
+0 or 1; the generators see an `unsigned char`.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/`, the cost corpus over `tests/cost/`
 and the error corpus over `tests/error/`, the programs rcc refuses

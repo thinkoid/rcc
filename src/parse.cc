@@ -439,6 +439,16 @@ int_type()
     return make_int(32, true, int_kind_t::int_);
 }
 
+// C's boolean type, 6.2.5p2: to the machine an unsigned char, a byte,
+// of a kind of its own, so that c1 reads and writes it as the byte it
+// is (G21) and no generator sees a _Bool; the parser converts to it,
+// converted_to_bool().
+type_t
+bool_type()
+{
+    return make_int(8, false, int_kind_t::bool_);
+}
+
 // Plain char is signed or unsigned as the target has it, and a type of
 // its own, 6.2.5p20; long is the 64-bit signed type, and unsigned long
 // the type of sizeof, 6.5.4.4p5.
@@ -484,7 +494,7 @@ size_type()
 
 // The not-yet types that are one type wherever they are written: the
 // real and the complex floating types, GNU C's __float128 and
-// __int128, clang's SVE types, and _Bool, each of a fixed identity.  A
+// __int128, and clang's SVE types, each of a fixed identity.  A
 // not-yet type of its own takes the next identity after theirs.  The
 // real floating types have clang's sizes, the same on both targets, so
 // that a record lays them out as members.
@@ -576,15 +586,7 @@ sve_bool_type()
     return make_not_yet(12, "'__SVBool_t'");
 }
 
-// C's boolean type, whose conversion from a scalar, false for a zero
-// and true for any other value, 6.3.1.2p1, rcc does not make yet.
-type_t
-bool_type()
-{
-    return make_not_yet(13, "'_Bool'");
-}
-
-constexpr int first_tag_identity = 14;
+constexpr int first_tag_identity = 13;
 
 const type_t &
 pointee_of(const type_t &t)
@@ -636,14 +638,15 @@ promoted(const type_t &t)
     return t;
 }
 
-// The rank of an integer type, 6.3.1.1p1, by its kind: the three char
-// types, then short, int, long and long long, each with its unsigned
-// version.  The parser makes no integer type without a kind, and
-// asking a type c1 made throws.
+// The rank of an integer type, 6.3.1.1p1, by its kind: _Bool, below
+// all, then the three char types, short, int, long and long long, each
+// with its unsigned version.  The parser makes no integer type without
+// a kind, and asking a type c1 made throws.
 int
 rank(const int_t &t)
 {
     switch (t.kind) {
+    case int_kind_t::bool_: return 0;
     case int_kind_t::char_:
     case int_kind_t::signed_char:
     case int_kind_t::unsigned_char: return 1;
@@ -1538,6 +1541,79 @@ void_and_function_pointer(const type_t &a, const type_t &b)
            (is_function_pointer(a) && is_void_pointer(b));
 }
 
+// Whether a type is _Bool.
+bool
+is_bool(const type_t &t)
+{
+    return is< int_t >(t) && as< int_t >(t).kind == int_kind_t::bool_;
+}
+
+// Whether an expression's value is 0 or 1 already, as C gives the
+// result of a comparison, 6.5.9p7, 6.5.10p4, of !, 6.5.4.3p5, and of &&
+// and ||, 6.5.14p3, 6.5.15p3.
+bool
+is_truth_value(const expr_t &e)
+{
+    if (is< unary_t >(e))
+        return as< unary_t >(e).op == unary_op_t::log_not;
+
+    if (!is< binary_t >(e))
+        return false;
+
+    switch (as< binary_t >(e).op) {
+    case binary_op_t::lt:
+    case binary_op_t::gt:
+    case binary_op_t::le:
+    case binary_op_t::ge:
+    case binary_op_t::eq:
+    case binary_op_t::ne:
+    case binary_op_t::log_and:
+    case binary_op_t::log_or: return true;
+    default: return false;
+    }
+}
+
+// E != 0, an int, as the source would write it: an integer promoted,
+// as the comparison's usual arithmetic conversions promote it,
+// 6.5.10p5, and a pointer against its null pointer, p6.
+expr_t
+nonzero(expr_t e)
+{
+    if (is< int_t >(e.type))
+        e = promote(std::move(e));
+
+    expr_t zero { e.type, literal_t { 0 } };
+
+    return expr_t { int_type(), binary_t { binary_op_t::ne, box(std::move(e)),
+                                           box(std::move(zero)) } };
+}
+
+// The conversion of a scalar to _Bool, 6.3.1.2p1: 0 for a zero or a
+// null pointer, 1 for any other value.  It is the parser's tree,
+// (_Bool) (E != 0): a comparison, and the narrowing of its 0 or 1 to
+// the byte, which c1 writes as any other, so no generator sees a _Bool
+// (shape.md chapter 3).  A constant converts to its constant; a value
+// that is 0 or 1 already is narrowed alone, is_truth_value()'s; and a
+// _Bool is no conversion, its byte taken as it is (G21).
+expr_t
+converted_to_bool(expr_t e)
+{
+    const type_t b = bool_type();
+
+    if (is< literal_t >(e))
+        return expr_t { b, literal_t { as< literal_t >(e).value != 0 } };
+
+    if (is_bool(e.type)) {
+        e.type = b;
+        return e;
+    }
+
+    if (!is_truth_value(e))
+        e = nonzero(std::move(e));
+
+    return expr_t { b, cast_t { box(std::move(e)) } };
+}
+
 // The words of qualifiers, 'const', 'volatile', or both joined.
 std::string
 qualifier_words(qualifiers_t q)
@@ -1573,15 +1649,16 @@ warn_discarded(parser_t &p,
 // object: the right operand of =, an initializer, 6.7.11p12, an
 // argument, 6.5.3.3p2, a value returned, 6.8.7.5p3.  The constraints
 // are those of simple assignment, 6.5.17.2p1: integers convert to each
-// other; a pointer takes a pointer to a qualified or unqualified
-// version of a compatible type, so a long * takes no long long *, an
-// enum a * no enum b * of one integer type and a const char ** no
-// char **, a pointer to void and an object pointer convert either way,
-// and a null pointer constant converts to any pointer, one to a
-// function included.  A pointer whose pointee would lose a qualifier
-// converts with a warning, warn_discarded()'s.  An integer and a
-// pointer meet only through a cast, 6.5.5p3; a record and a scalar
-// never meet.  A pointer to a function and a pointer to void meet only
+// other, and a scalar to _Bool, a pointer among them, by
+// converted_to_bool(); a pointer takes a pointer to a qualified or
+// unqualified version of a compatible type, so a long * takes no
+// long long *, an enum a * no enum b * of one integer type and a
+// const char ** no char **, a pointer to void and an object pointer
+// convert either way, and a null pointer constant converts to any
+// pointer, one to a function included.  A pointer whose pointee would
+// lose a qualifier converts with a warning, warn_discarded()'s.  Any
+// other integer and pointer meet only through a cast, 6.5.5p3; a record
+// and a scalar never meet.  A pointer to a function and a pointer to void meet only
 // through a cast too, and GNU C converts them either way: rcc does so,
 // with a warning, the conversion the cast would make (shape.md chapter
 // 5).  A value converted to a not-yet type, as an argument meets a
@@ -1606,7 +1683,7 @@ assignment_conversion(parser_t &p, const token_t &at, expr_t e, const type_t &t)
     if (to_pointer && !from_pointer && !is_null_pointer_constant(e))
         fail(at, "incompatible integer to pointer conversion");
 
-    if (!to_pointer && from_pointer)
+    if (!to_pointer && from_pointer && !is_bool(t))
         fail(at, "incompatible pointer to integer conversion");
 
     if (to_pointer && from_pointer &&
@@ -1630,6 +1707,9 @@ assignment_conversion(parser_t &p, const token_t &at, expr_t e, const type_t &t)
         warn(p, at,
              "conversion between a pointer to void and a pointer to a "
              "function, as GNU C allows");
+
+    if (is_bool(t))
+        return converted_to_bool(std::move(e));
 
     return convert_to(std::move(e), t);
 }
@@ -2299,6 +2379,96 @@ comma(expr_t lhs, expr_t rhs)
     return make_binary(binary_op_t::comma, t, std::move(lhs), std::move(rhs));
 }
 
+std::optional< expr_t > pure_copy(const expr_t &);
+const symbol_t &temporary(parser_t &, std::string_view, const type_t &);
+
+// The operation of E1 op= E2 on its operands, as op's own production
+// builds it: a shift's, whose operands are promoted apart, 6.5.8p3, or
+// the usual arithmetic conversions' of any other.
+expr_t
+compound_operation(const token_t &op, expr_t lhs, expr_t rhs)
+{
+    const binary_op_t b = binary_operator(op.kind);
+    if (b == binary_op_t::shl || b == binary_op_t::shr)
+        return shift(op, std::move(lhs), std::move(rhs));
+
+    return arithmetic(op, std::move(lhs), std::move(rhs));
+}
+
+// The copy that reads a _Bool lvalue that a rewrite of op also stores
+// into: the lvalue is evaluated once, 6.5.17.3p4, so one with a side
+// effect, *p++ in *p++ |= x, has no second copy, and is not yet.
+expr_t
+bool_read(const token_t &op, const expr_t &lvalue)
+{
+    std::optional< expr_t > copy = pure_copy(lvalue);
+    if (!copy)
+        not_yet(op, quoted(op.text) +
+                        " on a '_Bool' whose lvalue has a side effect");
+
+    return std::move(*copy);
+}
+
+// The store of value into a _Bool lvalue, converted_to_bool()'s 0 or 1.
+expr_t
+bool_store(expr_t lvalue, expr_t value)
+{
+    const type_t t = lvalue.type;
+
+    return expr_t { t, assign_t { std::nullopt, t, box(std::move(lvalue)),
+                                  box(converted_to_bool(std::move(value))) } };
+}
+
+// E1 op= E2 on a _Bool E1, built as C defines it, E1 = (_Bool) (E1 op
+// (E2)), 6.5.17.3p4, so that the byte stored is 0 or 1 (G21): op is
+// its production's on E1 promoted, an identity of op among its rules,
+// as for any E1 op E2, and the conversion converted_to_bool()'s.
+expr_t
+bool_compound(const token_t &op, expr_t lhs, expr_t rhs)
+{
+    expr_t value = compound_operation(op, bool_read(op, lhs), std::move(rhs));
+
+    return bool_store(std::move(lhs), std::move(value));
+}
+
+// The compound assignment a step on a _Bool is, ++E E += 1 and --E
+// E -= 1, 6.5.4.1p2, p3, at the step's place and of its spelling, so
+// that a diagnostic names the step.
+token_t
+step_assignment(const token_t &op)
+{
+    token_t compound = op;
+    compound.kind =
+        op.kind == tok_t::inc ? tok_t::add_assign : tok_t::sub_assign;
+
+    return compound;
+}
+
+// E++ and E-- on a _Bool E: the value is E's before the store,
+// 6.5.3.5p2, held in a temporary, (t = E, E = (_Bool) (t +- 1), t), so
+// that E is read once, and stored as the prefix step would store it.
+expr_t
+bool_postfix_step(parser_t &p, const token_t &op, expr_t arg)
+{
+    expr_t read = bool_read(op, arg);
+
+    const symbol_t &before = temporary(p, "__bool_before", arg.type);
+    const auto held = [&before] {
+        return expr_t { before.type, name_t { &before } };
+    };
+    expr_t hold { before.type, assign_t { std::nullopt, before.type,
+                                          box(held()), box(std::move(read)) } };
+
+    expr_t one { int_type(), literal_t { 1 } };
+    expr_t store =
+        bool_store(std::move(arg), compound_operation(step_assignment(op),
+                                                      held(), std::move(one)));
+
+    return comma(
+        discarded(op, comma(discarded(op, std::move(hold)), std::move(store))),
+        held());
+}
+
 // The type of the whole is the type of the left operand, 6.5.17.1p3,
 // 6.5.17.2p2, and a plain assignment converts the right operand to it
 // as by assignment.  E1 op= E2 is E1 = E1 op (E2) with E1 evaluated
@@ -2308,8 +2478,9 @@ comma(expr_t lhs, expr_t rhs)
 // count is promoted on its own, as in the shift production.  c1 takes
 // the loaded left operand into it and the result back to the left
 // type.  A pointer takes += and -= only, 6.5.17.3p1, computed in the
-// pointer's type with the right operand widened as for p + n.  The left
-// operand comes checked as a modifiable lvalue.
+// pointer's type with the right operand widened as for p + n.  A _Bool
+// is bool_compound()'s, so that c1 meets no compound assignment of one.
+// The left operand comes checked as a modifiable lvalue.
 expr_t
 assignment(parser_t &p, const token_t &op, expr_t lhs, expr_t rhs)
 {
@@ -2324,6 +2495,9 @@ assignment(parser_t &p, const token_t &op, expr_t lhs, expr_t rhs)
 
     rhs = rvalue(op, std::move(rhs));
     require_integer(op, rhs);
+
+    if (is_bool(t))
+        return bool_compound(op, std::move(lhs), std::move(rhs));
 
     const binary_op_t compound = binary_operator(op.kind);
     const bool additive =
@@ -2452,7 +2626,8 @@ omitted_middle(const token_t &op, expr_t cond, expr_t no)
 // A struct or a union is no scalar, as the type named and as the
 // operand alike, whatever rcc lays out of it; a cast to a not-yet type
 // is not yet.  A record's value discarded by a cast to void is
-// discarded()'s.
+// discarded()'s.  A cast to _Bool is converted_to_bool()'s, under a
+// cast of its own where that leaves an lvalue, a _Bool's.
 expr_t
 cast(const token_t &open, const type_t &t, expr_t arg)
 {
@@ -2472,17 +2647,31 @@ cast(const token_t &open, const type_t &t, expr_t arg)
 
     arg = rvalue(open, std::move(arg));
 
+    if (is_bool(t))
+        arg = converted_to_bool(std::move(arg));
+
+    if (is_bool(t) && !is_lvalue(arg))
+        return arg;
+
     if (converts_to_constant(arg, t))
         return converted_constant(arg, t);
 
     return expr_t { t, cast_t { box(std::move(arg)) } };
 }
 
-// Prefix ++ and -- have the type of their lvalue operand, 6.5.4.1.
+// Prefix ++ and -- have the type of their lvalue operand, 6.5.4.1.  On
+// a _Bool each is the compound assignment it is, p2, p3,
+// bool_compound()'s.
 expr_t
 prefix_step(const token_t &op, expr_t arg)
 {
     require_steppable(op, arg);
+
+    if (is_bool(arg.type)) {
+        expr_t one { int_type(), literal_t { 1 } };
+        return bool_compound(step_assignment(op), std::move(arg),
+                             std::move(one));
+    }
 
     const type_t t = arg.type;
     const unary_op_t u =
@@ -2719,11 +2908,15 @@ alignof_(const token_t &op, const type_t &t)
     return expr_t { size_type(), literal_t { align_of(t) } };
 }
 
-// Postfix ++ and -- have the type of their lvalue operand, 6.5.3.5.
+// Postfix ++ and -- have the type of their lvalue operand, 6.5.3.5; on
+// a _Bool each is bool_postfix_step()'s.
 expr_t
-postfix_step(const token_t &op, expr_t arg)
+postfix_step(parser_t &p, const token_t &op, expr_t arg)
 {
     require_steppable(op, arg);
+
+    if (is_bool(arg.type))
+        return bool_postfix_step(p, op, std::move(arg));
 
     const type_t t = arg.type;
     const unary_op_t u =
@@ -6485,7 +6678,7 @@ refuse_member_after_flexible(const member_list_t &list)
 
 // The width of a bit-field after its ':', an integer constant
 // expression, 6.7.3.2p4, of a bit-field whose type is an integer type,
-// p5, or one rcc does not use yet, _Bool among them.  rcc lays out no
+// p5, _Bool among them, or one rcc does not use yet.  rcc lays out no
 // bit-field yet, so its record is a not-yet record; attributes after
 // the width are said of the member, and change nothing that is laid
 // out.  A bit-field after a flexible array member is an error, as any
@@ -9905,8 +10098,6 @@ is_step_operator(unary_op_t op)
            op == unary_op_t::post_inc || op == unary_op_t::post_dec;
 }
 
-std::optional< expr_t > pure_copy(const expr_t &);
-
 // pure_copy() of an operand, boxed, or null when it has a side effect.
 expr_ptr_t
 pure_operand(const expr_ptr_t &e)
@@ -10431,7 +10622,7 @@ postfix_expression(parser_t &p)
         case tok_t::inc:
         case tok_t::dec:
             advance(p);
-            e = postfix_step(op, std::move(e));
+            e = postfix_step(p, op, std::move(e));
             warn_void_arithmetic(p, op, e.type);
             break;
         case tok_t::lbracket: {

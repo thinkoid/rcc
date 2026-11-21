@@ -185,7 +185,7 @@ of a type and a length, a variable length array (chapter 5), a
 function of a result and parameters, a struct or a union, or a type
 rcc declares and does not use yet: an enum in its own list or marked
 by an attribute (chapter 5); a floating type, real or complex, GNU
-C's `__float128` among them; `_Bool`; GNU C's `__int128`; clang's
+C's `__float128` among them; GNU C's `__int128`; clang's
 SVE types; an atomic type; a type a
 typedef names through an attribute rcc does not honour, or through an
 array size rcc cannot compute. Such a type
@@ -230,25 +230,26 @@ bits. Any other enumerated type is the integer type compatible with
 it (chapter 5), so `enum color { red, green }` and `unsigned int`
 are one type to equality, and so are two enumerations of one integer
 type. An integer type also remembers the C type it is, its kind,
-`char`, `signed char` and `unsigned char` apart and `long` apart from
-`long long`, and an enumerated type an identity, since each
-enumeration is a type of its own (6.2.5p21). C's relations read both,
-through the edges as equality walks them. Two integer types are
-compatible (6.2.7p1) when their kinds are one, an enumerated type
-with its integer type and with no other enumerated type; two
-pointers when their pointees are and are qualified alike
-(6.7.4.1p11), so `char **` and `const char **` are not; and two
-arrays when their elements are and their sizes, where both are
-known. So a conversion between `long *` and `long long *`, or between
-pointers to two enumerations of one integer type, is an error but
-through a cast, which writes no instruction. Two types are the same
-type, as a typedef declared again must be (6.7.1p4), when they are
-compatible and agree in each enumeration and each array size too.
-The composite of two compatible types (6.2.7p3) has the array size
-either knows, and of an enumerated type and its integer type it is
-the integer type, whichever comes first, as `clang` has it
-(`choices.md`); a later declaration of an entity takes it (p5). The
-edges from a type to the types it names are
+`char`, `signed char` and `unsigned char` apart, `long` apart from
+`long long`, and `_Bool` apart from `unsigned char`, whose machine
+view it has, a byte (chapter 5), and an enumerated type an identity,
+since each enumeration is a type of its own (6.2.5p21). C's relations
+read both, through the edges as equality walks them. Two integer types
+are compatible (6.2.7p1) when their kinds are one, an enumerated type
+with its integer type and with no other enumerated type; two pointers
+when their pointees are and are qualified alike (6.7.4.1p11), so
+`char **` and `const char **` are not; and two arrays when their
+elements are and their sizes, where both are known. So a conversion
+between `long *` and `long long *`, or between pointers to two
+enumerations of one integer type, is an error but through a cast,
+which writes no instruction. Two types are the same type, as a typedef
+declared again must be (6.7.1p4), when they are compatible and agree
+in each enumeration and each array size too. The composite of two
+compatible types (6.2.7p3) has the array size either knows, and of an
+enumerated type and its integer type it is the integer type, whichever
+comes first, as `clang` has it (`choices.md`); a later declaration of
+an entity takes it (p5). The edges from a type to the types it
+names are
 `shared_ptr< const type_t >`: a type is never written after it is
 made, so sharing is invisible and copying a type is cheap. Equality
 is structural, through the edges. No interning; a table of types is
@@ -784,6 +785,28 @@ Every other `__asm__` statement is not yet, by its keyword: a template
 with text, an operand, a label, `goto`, or a clobber of another name,
 which is not checked against the target's registers.
 
+`_Bool` (6.2.5p2) is a byte, an `unsigned char` to equality and so
+to c1, of a kind of its own (chapter 3), so no generator sees a
+`_Bool`. A conversion to it, as if by assignment or through a cast,
+is the parser's tree `(_Bool) (E != 0)` (6.3.1.2p1): the comparison
+of `E` with 0, a pointer's with its null pointer, and the narrowing
+of its 0 or 1 to the byte, a comparison and a set the source does
+not write (`cost.md`). A constant converts to its constant, so
+`_Bool g = 5;` is `.byte 1`; a value already 0 or 1, a comparison's,
+`!`'s, `&&`'s or `||`'s, is narrowed alone; and a `_Bool` met as a
+`_Bool`, in an assignment, an argument or a `return`, is its byte as
+it is. A read is the byte's zero-extending load, with no test and no
+mask, so a byte that holds neither 0 nor 1 reads as itself (G21). An
+operator that stores into a `_Bool` stores the conversion of its
+result, as C defines each: `b op= e` is `b = (_Bool) (b op (e))`
+(6.5.17.3p4), the operation by its own rules on `b` promoted, `++b`
+and `--b` are `b += 1` and `b -= 1` (6.5.4.1p2, p3), and `b++` and
+`b--` yield the value before the store (6.5.3.5p2), which a temporary
+holds, `(t = b, b = (_Bool) (t + 1), t)`. The left operand is
+evaluated once (6.5.17.3p4), so the parser reads it through a copy,
+which one without a side effect has; one with a side effect,
+`*p++ |= x`, is not yet.
+
 An enumeration is the integer type compatible with it, and each of
 its constants is its number, so an object, a parameter, a result, a
 cast, `sizeof`, a `switch` and the arithmetic of one are those of its
@@ -1053,9 +1076,9 @@ and rcc does not.
 The types a header declares and rcc does not use are not-yet types:
 the complex types, `_Complex` among the specifiers of a floating
 type; GNU C's `__float128` and `__int128`, signed or unsigned;
-clang's names of the SVE types, which no header declares; `_Bool`,
-which `stdatomic.h` declares functions to return. An atomic type is a
-not-yet type of its own, since an access of an atomic object, `x++`
+clang's names of the SVE types, which no header declares. An atomic
+type is a not-yet type of its own, since an access of an atomic
+object, `x++`
 on one among them, is one atomic instruction, which c1 does not
 write. `_Atomic (` *type name* `)`, the atomic type specifier, names
 one wherever it is written, as `stdatomic.h` declares `atomic_int`,
@@ -1779,7 +1802,7 @@ attribute that marks, `packed` and `aligned` among them, a packing of
 `#pragma pack`, no member, or a member of a type rcc does not use yet
 but a real floating one (chapter 3), an initializer of a flexible
 array member, an access of a floating member, C23's compatibility of
-two records of one tag, floating point, `_Bool` and `__int128` (each
+two records of one tag, floating point and `__int128` (each
 type is declared; a pointer to one is an ordinary pointer, and a use
 that needs the object is refused; a floating constant is a token,
 refused where an expression uses it), an enum's fixed underlying type,

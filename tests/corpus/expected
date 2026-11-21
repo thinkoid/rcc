@@ -49,3 +49,4 @@ conditional-omitted-once 42 42
 statement-expression-order 42 105
 parameter-size-entry 42 42
 compatible-types 42 42
+g21-bool-byte 39 101

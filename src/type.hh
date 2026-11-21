@@ -28,10 +28,12 @@ struct void_t
 };
 
 // The C type an integer type is, of the standard ones, 6.2.5p4, p6,
-// p20: char, signed char and unsigned char are three of one width, and
-// long and long long two.  none is a type c1 makes for itself.
+// p8, p20: char, signed char and unsigned char are three of one width,
+// and long and long long two; _Bool, bool_, is unsigned char's width
+// and signedness.  none is a type c1 makes for itself.
 enum class int_kind_t {
     none,
+    bool_,
     char_,
     signed_char,
     unsigned_char,
@@ -126,7 +128,7 @@ struct record_type_t
 };
 
 // A type rcc declares and does not use yet: an enum in its own list or
-// marked by an attribute, a floating type, _Bool, __builtin_va_list, an
+// marked by an attribute, a floating type, __builtin_va_list, an
 // atomic type, the type a typedef names through a marking attribute or
 // through an array size rcc cannot compute.  Any other enum is the
 // integer type compatible with it, an int_t.  Two not-yet types are one
