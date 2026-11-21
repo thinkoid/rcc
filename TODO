@@ -126,24 +126,6 @@ which a walk ahead does not know.
 
 Check: the two listings are the same, and no function longer.
 
-** TODO aarch64: a call of a function named as a register does not assemble
-
-~int h1(void);~ and a call of it is =bl h1=, which the assembler
-refuses, "expected label or encodable integer pc offset": =h1= is a
-register's name there, as are =x0= to =x30=, =w0= to =w30=, =sp=,
-and the =b=, =h=, =s=, =d=, =q= and =v= names of the vector
-registers, and the operand of a branch is read as a register first.
-The program is valid, and the listing =clang -S= writes for it does
-not assemble either. An object so named is reached through =adrp=
-and =:lo12:=, which take the name.
-
-Fix: the callee's name in quotes where it is a register's, =bl
-"h1"=, which the assembler takes; the same for =b= to a function, if
-any row writes one.
-
-Check: a corpus program with functions named =h1=, =x0=, =w2= and
-=sp= and an object named =x1=, run on both targets.
-
 ** TODO x86-64: a comparison's value stored into a byte is extended first
 
 ~b = i != 0~ on an ~unsigned char b~ is =cmpl $0, i(%rip); setne %al;

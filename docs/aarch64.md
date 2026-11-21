@@ -1498,7 +1498,14 @@ Every argument is a hidden local of its call, as before.
    slots into `x0` to `x7`, a narrow one extended by its load. A
    list's argument is its copy's address, `add x1, x29, #272` into its
    register, or past the eighth `add x17, x29, #272; str x17, [sp]`.
-   `bl f` for a named function. Through a pointer, the callee's slot is
+   `bl f` for a named function. The operand of a branch is read as a
+   register first, so a name the assembler takes for a register's is
+   quoted, `bl "h1"`, in any case: `x0` to `x31`, `w0` to `w31`, the
+   `b`, `h`, `s`, `d`, `q` and `v` names of the vector registers 0 to
+   31, `sp`, `wsp`, `xzr`, `wzr`, `lr`, `fp`, and `nzcv`, `fpcr`,
+   `fpsr`, `fpmr`, `ffr`, `vg`, `vgx2`, `vgx4` and `zt0`. An object of
+   such a name is reached through `adrp` and `:lo12:` (chapter 10),
+   which take it unquoted. Through a pointer, the callee's slot is
    loaded into `x16` after the argument registers, `ldr x16, [x29,
    #32]`, and `blr x16`. `x16` is the register the convention lets a
    call destroy, and nothing is held in it across a node (chapter 4).

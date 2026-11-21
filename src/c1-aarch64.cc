@@ -4358,6 +4358,47 @@ call_through(state_t &s, int displacement)
     insn(s, "blr", { "x16" });
 }
 
+// The names the assembler reads as a register's where a branch's
+// operand may be a symbol's, chapter 8, in lower case: x0 to x31 and w0
+// to w31, the b, h, s, d, q and v names of the vector registers 0 to
+// 31, sp, wsp, xzr, wzr, lr and fp, and the special registers it names
+// beside them.  It reads them so in any case.
+const std::unordered_set< std::string > &
+register_names()
+{
+    static const auto names = [] {
+        std::unordered_set< std::string > set {
+            "sp",   "wsp",  "xzr", "wzr", "lr",   "fp",   "nzcv", "fpcr",
+            "fpsr", "fpmr", "ffr", "vg",  "vgx2", "vgx4", "zt0",
+        };
+        for (const char letter : std::string_view("xwbhsdqv"))
+            for (int n = 0; n < 32; ++n)
+                set.insert(std::format("{}{}", letter, n));
+
+        return set;
+    }();
+
+    return names;
+}
+
+// A callee's name as the operand of bl, chapter 8: in quotes where the
+// assembler would read it as a register's, bl "h1", which it takes for
+// the symbol, and as it is elsewhere.  The operands of adrp and :lo12:
+// are read as expressions, which take the name unquoted.
+std::string
+branch_target(std::string_view name)
+{
+    std::string lower { name };
+    for (char &c : lower)
+        if (c >= 'A' && c <= 'Z')
+            c = static_cast< char >(c - 'A' + 'a');
+
+    if (register_names().contains(lower))
+        return std::format("\"{}\"", name);
+
+    return std::string { name };
+}
+
 // Chapter 8, every argument a hidden local of its call.  Every held
 // value is spilled; the callee of a call through a pointer is evaluated
 // first, as the source writes it (G13), and written to its slot; each
@@ -4370,7 +4411,8 @@ call_through(state_t &s, int displacement)
 // frame for this call alone, and the first eight are loaded into x0 to
 // x7, a narrow one extended to 32 bits by its type's load.  G16: bl f,
 // the name alone, since the linker makes a PLT entry where one is
-// needed, or the call through the callee's slot, call_through(); a
+// needed, quoted where it is a register's, branch_target(), or the
+// call through the callee's slot, call_through(); a
 // variadic callee gets nothing of its own (chapter 3).  No unwind
 // directive is written around the area, since the canonical frame
 // address is computed from x29.  The result is in x0, valid to its
@@ -4415,7 +4457,7 @@ call(state_t &s, const call_t &c, const type_t &t)
     load_arguments(s, slots);
 
     if (named)
-        insn(s, "bl", { assembly_name(*named) });
+        insn(s, "bl", { branch_target(assembly_name(*named)) });
     else
         call_through(s, target);
 
