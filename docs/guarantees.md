@@ -115,7 +115,7 @@ none reused within the call.
 
 ## Control
 
-**G13. Left to right.** 6.5.1p2, p3, 6.7.11p24. Operands and arguments
+**G13. Left to right.** 6.5.1p2, p3, 6.7.11p20, p24. Operands and arguments
 are evaluated left to right, and an operand's side effects complete
 before the next operand starts; `i = i++ + ++i` has one value. The one
 choice the machine never made; the written order is the order. An
@@ -131,7 +131,10 @@ stores 2, then stores 1 + 2. An initializer list is evaluated in its
 written order, which 6.7.11p24 leaves unspecified: each initializer is
 evaluated and stored into its subobject before the next is evaluated,
 so `struct point q = { f(), g() };` calls `f`, stores `q.x`, then
-calls `g`.
+calls `g`. An initializer a later one overrides (p20) is evaluated
+and stored all the same, which the paragraph's footnote lets an
+implementation leave out: `{ .x = f(), .x = g() }` calls `f` and
+stores its value, then calls `g` and stores over it.
 
 **G14. A loop runs until its condition says stop.** 6.8.6.1p4. `for
 (;;);` hangs. Instruction: the test at the top of the loop and a
@@ -227,7 +230,12 @@ static storage holds the same list; C23 leaves the padding
 unspecified where a list is not empty. The declaration zeroes the
 whole object first, in G18's units from the lowest address up, before
 the first initializer is evaluated, whatever the list names; then the
-listed values are stored in the list's order (G13). Instruction, on
+listed values are stored in the list's order (G13). A braced list for
+a subobject, or a value of another member of a union, that overrides
+a value stored before zeroes the subobject's bytes again first, in
+units of its alignment, at most 8 bytes, written out at any count, so
+each byte holds what an object of static storage holds for the list.
+Instruction, on
 x86-64: per unit the store of the immediate 0 at its width into the
 slot, `movb`, `movw`, `movl` or `movq`, `movl $0, -8(%rbp)`, with no
 register; over eight units G18's loop of one index, `movq $-200,

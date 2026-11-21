@@ -622,22 +622,6 @@ members.
 
 Check: that program reaches the bit-field's not-yet.
 
-** TODO A local array's list, a designator in a local's list and a string for a member array are not yet
-
-A local record takes its initializer list (G20), and a list of
-static storage takes designators. Three forms beside them are
-refused by name: a local array's list, an array of records' among
-them, "not yet: array initializer"; a designator, ~.x = 1~ and ~[2]
-= 3~, in a local's list, "not yet: designator"; and a string literal
-for a member array of =char= in a local's list, whose bytes need a
-copy's row that arrays do not have.
-
-Fix: none taken; each is built when a program needs it, the array's
-list on the record's zeroing and stores.
-
-Check: a cost program for each form on both targets, and the
-=zeroing= probe with a local array.
-
 ** TODO A designator of a member of an anonymous member is not yet
 
 ~struct v { int tag; union { long l; char c; }; } x = { .l = 1 };~
@@ -661,6 +645,20 @@ Fix: a not-yet by name where a designation is looked for: an
 identifier before a colon starts no expression in a list.
 
 Check: a program of =tests/error=, pinned "not yet".
+
+** TODO A local array's list and a string for a member array are not yet
+
+A local record takes its initializer list, designators among it
+(G20). Two forms beside it are refused by name: a local array's
+list, an array of records' among them, "not yet: array initializer";
+and a string literal for a member array of =char= in a local's list,
+whose bytes need a copy's row that arrays do not have.
+
+Fix: none taken; the array's list on the record's zeroing and
+stores.
+
+Check: a cost program for each form on both targets, and the
+=zeroing= probe with a local array.
 
 * Lexer
 

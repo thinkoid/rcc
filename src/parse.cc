@@ -3714,7 +3714,9 @@ scalar_value(parser_t &p, const token_t &at, const type_t &t)
 // reached is the end of the highest byte a value has gone to, so a
 // value at or past it overrides none, p20, as every value of a list
 // without designators is; members is the member each union holds a
-// value of, by the union's offset in the object and its record.
+// value of, by the union's offset in the object and its record; stored
+// is the bytes of a local each store has gone to, its offset and its
+// size.
 struct destination_t
 {
     std::vector< subobject_t > *data = nullptr;
@@ -3722,6 +3724,7 @@ struct destination_t
     std::vector< stmt_t > *stores = nullptr;
     long reached = 0;
     std::map< std::pair< long, const record_t * >, std::size_t > members = { };
+    std::vector< std::pair< long, long > > stored = { };
 };
 
 // The elements of the array that the string of sub initializes, each a
@@ -3751,17 +3754,14 @@ string_elements(const subobject_t &sub)
     return elements;
 }
 
-// A later initializer of a subobject overrides an earlier one, 6.7.11p20:
-// the values the data of an object of static storage holds in the size
-// bytes at offset are dropped.  A string whose array the bytes cover in
-// part, { .s = "abc", .s[1] = 'x' }, is its elements first, and those
-// outside the bytes stay.
+// The values the data of an object of static storage holds in the size
+// bytes at offset, which a later initializer overrides, 6.7.11p20,
+// dropped.  A string whose array the bytes cover in part, { .s = "abc",
+// .s[1] = 'x' }, is its elements first, and those outside the bytes
+// stay.
 void
-overridden(destination_t &to, long offset, long size)
+dropped(destination_t &to, long offset, long size)
 {
-    if (offset >= to.reached)
-        return;
-
     const auto inside = [offset, size](const subobject_t &sub) {
         return sub.offset < offset + size &&
                offset < sub.offset + size_of(sub.type);
@@ -3785,6 +3785,78 @@ overridden(destination_t &to, long offset, long size)
     *to.data = std::move(kept);
 }
 
+// The store of value into the local at offset, of the scalar type t:
+// the assignment of the value to the place *(T *) ((char *) &local +
+// offset), lvalue_at()'s, at the token at, appended to the local's
+// statements.  The parser makes the node, since initialization is no
+// assignment, 6.7.11p12.
+void
+local_assignment(parser_t &p,
+                 const token_t &at,
+                 const type_t &t,
+                 long offset,
+                 expr_t value,
+                 destination_t &to)
+{
+    expr_t object { to.local->type, name_t { to.local } };
+    expr_t place = lvalue_at(p, address_of(at, std::move(object)), offset, t);
+
+    expr_t store { t, assign_t { std::nullopt, t, box(std::move(place)),
+                                 box(std::move(value)) } };
+    to.stores->push_back(stmt_t { expr_stmt_t { std::move(store) } });
+}
+
+// The size bytes at offset of a local, of a subobject a later
+// initializer overrides, 6.7.11p20, zeroed again when a store of the
+// list has gone to them: the stores of 0 in units of the subobject's
+// alignment, at most 8 bytes, lowest address first, after the stores
+// before and before the later initializer's, as the declaration zeroes
+// the whole object (G20).  The bytes then hold what the bytes of an
+// object of static storage of the same list hold.
+void
+zeroed_again(parser_t &p,
+             const token_t &at,
+             destination_t &to,
+             long offset,
+             long size,
+             int alignment)
+{
+    const auto inside = [offset, size](const std::pair< long, long > &s) {
+        return s.first < offset + size && offset < s.first + s.second;
+    };
+
+    if (std::erase_if(to.stored, inside) == 0)
+        return;
+
+    const int unit = std::min(alignment, 8);
+    const type_t t = make_int(unit * 8, false);
+    for (long k = 0; k < size; k += unit)
+        local_assignment(p, at, t, offset + k, expr_t { t, literal_t { 0 } },
+                         to);
+}
+
+// A later initializer of a subobject overrides an earlier one, 6.7.11p20:
+// in an object of static storage the values in the size bytes at offset
+// are dropped, and a local's bytes are zeroed again.  at is the token
+// of the later initializer.  No value has gone to the bytes at or past
+// the highest one reached.
+void
+overridden(parser_t &p,
+           const token_t &at,
+           destination_t &to,
+           long offset,
+           long size,
+           int alignment)
+{
+    if (offset >= to.reached)
+        return;
+
+    if (to.local)
+        zeroed_again(p, at, to, offset, size, alignment);
+    else
+        dropped(to, offset, size);
+}
+
 // A value of size bytes at offset has gone to the object.
 void
 reach(destination_t &to, long offset, long size)
@@ -3798,7 +3870,8 @@ reach(destination_t &to, long offset, long size)
 // gave a value overrides the whole union, p20: { .i = 1, .c = 2 } holds
 // c alone, the rest of the union zero, as clang holds it.
 void
-union_member(destination_t &to,
+union_member(parser_t &p,
+             destination_t &to,
              const record_t &r,
              long offset,
              std::size_t member)
@@ -3808,18 +3881,16 @@ union_member(destination_t &to,
         return;
 
     held->second = member;
-    overridden(to, offset, r.size);
+    overridden(p, peek(p), to, offset, r.size, r.alignment);
 }
 
 // The store of the scalar t at offset in a local, the expression ahead
 // converted to t as by simple assignment, 6.7.11p12, at the token a
-// conversion's error is said at: the assignment of the value to the
-// place *(T *) ((char *) &local + offset), lvalue_at()'s, appended to
-// the local's statements.  The parser makes the node, since initialization
-// is no assignment and p12 takes the scalar's unqualified type.  A
-// record's value in a scalar's place, which may initialize a record the
-// scalar begins, p14, is not yet; a void expression has no value,
-// 6.3.2.2p1, the error of the expression said at its first token.
+// conversion's error is said at, local_assignment()'s; p12 takes the
+// scalar's unqualified type.  A record's value in a scalar's place,
+// which may initialize a record the scalar begins, p14, is not yet; a
+// void expression has no value, 6.3.2.2p1, the error of the expression
+// said at its first token.
 void
 local_store(parser_t &p,
             const token_t &at,
@@ -3833,13 +3904,10 @@ local_store(parser_t &p,
     require_value(start, e);
 
     expr_t value = assignment_conversion(p, at, std::move(e), t);
+    local_assignment(p, at, t, offset, std::move(value), to);
 
-    expr_t object { to.local->type, name_t { to.local } };
-    expr_t place = lvalue_at(p, address_of(at, std::move(object)), offset, t);
-
-    expr_t store { t, assign_t { std::nullopt, t, box(std::move(place)),
-                                 box(std::move(value)) } };
-    to.stores->push_back(stmt_t { expr_stmt_t { std::move(store) } });
+    to.stored.emplace_back(offset, size_of(t));
+    reach(to, offset, size_of(t));
 }
 
 // The scalar t at offset, given the value of the expression ahead: a
@@ -3858,7 +3926,7 @@ scalar_subobject(parser_t &p,
     }
 
     initializer_t value = scalar_value(p, at, t);
-    overridden(to, offset, size_of(t));
+    overridden(p, at, to, offset, size_of(t), align_of(t));
     to.data->push_back(subobject_t { offset, t, std::move(value) });
     reach(to, offset, size_of(t));
 }
@@ -3921,7 +3989,7 @@ listed_string(parser_t &p, const type_t &t, long offset, destination_t &to)
     const expr_t e = assignment_expression(p);
 
     if (offset < to.reached)
-        overridden(to, offset, size_of(t));
+        overridden(p, start, to, offset, size_of(t), align_of(t));
 
     const long count =
         string_value(start, as< string_t >(e), t, offset, *to.data);
@@ -3957,31 +4025,23 @@ subobject_initializer(parser_t &, const type_t &, long offset, destination_t &);
 enum class walk_t { braced, designated, elided };
 
 // Whether a walk takes a designation before its first initializer: one
-// a designator entered does, and a list's walk when one is ahead.  A
-// designation in a local's list is not yet.
+// a designator entered does, and a list's walk when one is ahead.
 bool
-starts_designated(const parser_t &p, walk_t walk, const destination_t &to)
+starts_designated(const parser_t &p, walk_t walk)
 {
-    const bool designated = walk == walk_t::designated ||
-                            (walk == walk_t::braced && designation_ahead(p));
-    if (designated && to.local)
-        not_yet(peek(p), "designator");
-
-    return designated;
+    return walk == walk_t::designated ||
+           (walk == walk_t::braced && designation_ahead(p));
 }
 
 // Whether the walk takes the designation after the ',' ahead, which it
-// takes: the walk of a list does.  A designation in a local's list is
-// not yet.
+// takes: the walk of a list does.
 bool
-takes_designation(parser_t &p, walk_t walk, const destination_t &to)
+takes_designation(parser_t &p, walk_t walk)
 {
     if (walk != walk_t::braced || !designation_after_separator(p))
         return false;
 
     advance(p);
-    if (to.local)
-        not_yet(peek(p), "designator");
 
     return true;
 }
@@ -4021,7 +4081,7 @@ elements(parser_t &p,
 
     long next = 0;
     long count = 0;
-    bool designated = starts_designated(p, walk, to);
+    bool designated = starts_designated(p, walk);
     for (;;) {
         if (designated) {
             next = array_designator(p, array);
@@ -4032,7 +4092,7 @@ elements(parser_t &p,
 
         count = std::max(count, ++next);
 
-        designated = takes_designation(p, walk, to);
+        designated = takes_designation(p, walk);
         if (!designated && !goes_on(p, next == array.count))
             return count;
     }
@@ -4060,7 +4120,7 @@ member_values(
     const std::size_t end = r.members.size();
 
     std::size_t next = 0;
-    bool designated = starts_designated(p, walk, to);
+    bool designated = starts_designated(p, walk);
     for (;;) {
         if (designated)
             next = member_designator(p, r);
@@ -4071,7 +4131,7 @@ member_values(
                     "initializer of flexible array member " + quoted(m.name));
 
         if (r.is_union)
-            union_member(to, r, offset, next);
+            union_member(p, to, r, offset, next);
 
         if (designated)
             designated_subobject(p, m.type, offset + m.offset, to);
@@ -4080,7 +4140,7 @@ member_values(
 
         next = r.is_union ? end : next + 1;
 
-        designated = takes_designation(p, walk, to);
+        designated = takes_designation(p, walk);
         if (!designated && !goes_on(p, next == end))
             return next == end;
     }
@@ -4144,7 +4204,7 @@ braced_initializer(parser_t &p, const type_t &t, long offset, destination_t &to)
     const token_t &brace = advance(p);
 
     if (offset < to.reached)
-        overridden(to, offset, size_of(t));
+        overridden(p, brace, to, offset, size_of(t), align_of(t));
 
     if (peek(p).kind == tok_t::rbrace) {
         if (is< array_t >(t) && as< array_t >(t).count < 0)

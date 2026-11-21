@@ -1124,12 +1124,25 @@ of a member's access, so `struct point q = { 1 };` is the zeroing and
 (p20, p22), and so is the padding, which C23 leaves unspecified where
 a list is not empty (6.2.6.1p6). The assignments are the parser's own:
 initialization is no assignment, and p12 takes the scalar's
-unqualified type. A local's designator is not yet; so is a string
-literal for an array in the list, which an object of static storage
-holds as the array's own bytes, and a record's value in a scalar's
-place, which may initialize a record the scalar begins (p14). A local
-array takes no initializer yet, an array of records among them, and a
-local scalar no braces.
+unqualified type. A string literal for an array in the list is not
+yet, which an object of static storage holds as the array's own
+bytes, and so is a record's value in a scalar's place, which may
+initialize a record the scalar begins (p14). A local array takes no
+initializer yet, an array of records among them, and a local scalar
+no braces.
+
+A designation moves the walk as in an object of static storage's list,
+and the stores follow the list's order (G13): `{ .y = f(), .x = g() }`
+calls `f`, stores `q.y`, then calls `g`. A later value of a subobject
+goes over an earlier one by its store, and the earlier initializer is
+evaluated and stored too, which p20's footnote lets an implementation
+leave unevaluated: `{ .x = f(), .x = g() }` calls both and stores
+both, `g`'s last. A braced list for a subobject, or a value of another
+member of a union, that overrides a store the list made first zeroes
+the subobject's bytes again, in units of its alignment and written
+out, lowest address first; `{ .from = { 1, 2 }, .from = { 3 } }`
+stores 1 and 2, then 0 over both, then 3. The bytes are then those an
+object of static storage holds for the same list.
 
 In an expression a global is what a local is, an lvalue of its type;
 one declared elsewhere of a not-yet type is refused where it is named.
@@ -1508,9 +1521,9 @@ but behind a pointer, an object of an enum an attribute marks, an
 object of a typedef whose array size rcc
 cannot compute, a variable length array (a parameter's array of a
 size that is not constant is the pointer the parameter is adjusted to,
-and the size is not evaluated), a designator in
-a local's list, GNU C's range designator and its array designator
-without the `=`, a local's brace initializer, a scalar's or an
+and the size is not evaluated), GNU C's range designator and its
+array designator without the `=`, a local's brace initializer, a
+scalar's or an
 array's, and a local array's initializer of any kind, `char s[] =
 "..."` among them, a declaration through a typedef of function
 type, a UTF-8 character constant, `u8'x'`, a character constant of

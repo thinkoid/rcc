@@ -96,6 +96,20 @@ SIZED(SIZED_DECLARE)
 PADDED(PADDED_DECLARE)
 UNIONS(UNION_DECLARE)
 
+#define SIZED_DESIGNATED_DECLARE(N, T, COUNT) \
+        DECLARE(struct, N, designated)        \
+        DECLARE(struct, N, rebraced)
+
+#define PADDED_DESIGNATED_DECLARE(N, MEMBERS, SCALARS) \
+        DECLARE(struct, N, designated)
+
+#define UNION_DESIGNATED_DECLARE(N, MEMBERS, SCALARS) \
+        DECLARE(union, N, designated)
+
+SIZED(SIZED_DESIGNATED_DECLARE)
+PADDED(PADDED_DESIGNATED_DECLARE)
+UNIONS(UNION_DESIGNATED_DECLARE)
+
 /* one function F of record N declared by K, by both builds, for each
    value, each object filled with a byte no zeroing writes before the
    call */
@@ -141,12 +155,40 @@ UNIONS(UNION_DECLARE)
                 CALL(union, N, empty, members)                    \
         }
 
+#define SIZED_DESIGNATED_CHECK(N, T, COUNT)                       \
+        {                                                         \
+                typedef struct N record_t;                        \
+                static const struct span members[] = { F(m, 0) }; \
+                                                                  \
+                CALL(struct, N, designated, members)              \
+                CALL(struct, N, rebraced, members)                \
+        }
+
+#define PADDED_DESIGNATED_CHECK(N, MEMBERS, SCALARS)              \
+        {                                                         \
+                typedef struct N record_t;                        \
+                static const struct span members[] = { SCALARS }; \
+                                                                  \
+                CALL(struct, N, designated, members)              \
+        }
+
+#define UNION_DESIGNATED_CHECK(N, MEMBERS, SCALARS)               \
+        {                                                         \
+                typedef union N record_t;                         \
+                static const struct span members[] = { SCALARS }; \
+                                                                  \
+                CALL(union, N, designated, members)               \
+        }
+
 int
 main(void)
 {
         SIZED(SIZED_CHECK)
         PADDED(PADDED_CHECK)
         UNIONS(UNION_CHECK)
+        SIZED(SIZED_DESIGNATED_CHECK)
+        PADDED(PADDED_DESIGNATED_CHECK)
+        UNIONS(UNION_DESIGNATED_CHECK)
 
         printf("%ld checks, %ld differ\n", total, bad);
 
