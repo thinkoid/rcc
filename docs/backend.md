@@ -599,17 +599,19 @@ offset below the last; the first lies below the pushes, at
 written into the prologue's `sub $N,%rsp` after the body is generated
 and rounded up so that `rsp` is a multiple of 16 at every `call` the
 function makes: `8k + N` is a multiple of 16. A function that makes
-no call puts a frame of up to 128 bytes in the red zone and writes no
-`sub`; the 128 are measured from `rsp` after the pushes, so a leaf's
-pushes do not count against them. The ABI reserves the
+no call and takes no storage from the stack puts a frame of up to 128
+bytes in the red zone and writes no `sub`; the 128 are measured from
+`rsp` after the pushes, so a leaf's pushes do not count against them.
+The ABI reserves the
 128 bytes below `rsp` for exactly this (`design-calls.md` chapter
 5), and every leaf pin of `tests/cost` shows the shape. A leaf with
 a larger frame writes the `sub`, as any other function does. The
 prologue is `push %rbp; mov %rsp,%rbp`, then the pushes of 3, then
 the `sub` if any; the one epilogue at `.Lret` writes `leaq
--8k(%rbp), %rsp` when the prologue wrote a `sub`, so that `rsp` is
-back at the pushes, then pops the registers of 3 and ends in `leave;
-.cfi_def_cfa %rsp, 8; ret` (`leave` is `mov %rbp,%rsp; pop %rbp`).
+-8k(%rbp), %rsp` when the prologue wrote a `sub` or the body takes
+storage from the stack, so that `rsp` is back at the pushes, then
+pops the registers of 3 and ends in `leave; .cfi_def_cfa %rsp, 8;
+ret` (`leave` is `mov %rbp,%rsp; pop %rbp`).
 The prologue carries `.cfi_startproc`, `.cfi_def_cfa_offset 16`,
 `.cfi_offset %rbp, -16` and `.cfi_def_cfa_register %rbp`, and the
 function `.cfi_endproc`, so that an unwinder has the table and a
@@ -636,6 +638,21 @@ argument the caller left on the stack past the named ones, `leaq
 parameter past the sixth, formed last, once every argument register
 is stored, since `rax` is free then. `va_start`'s tree reads the
 area by its name, a slot as any local's (G19).
+
+A variable length array's storage lies below the frame, taken at
+run time (G23). Its declaration keeps `rsp` in a slot of its own,
+`movq %rsp, -24(%rbp)`, moves `rsp` down by the size and down again
+to a multiple of 16, `subq %rax, %rsp; andq $-16, %rsp`, and stores
+`rsp` after the move to the array's slot as the storage's address,
+`movq %rsp, %rax; movq %rax, -32(%rbp)`. Leaving the array's scope
+puts `rsp` back from the slot, `movq -24(%rbp), %rsp` (7.2). No slot
+moves, since each is a displacement off `rbp`, and `rsp` stays a
+multiple of 16, so a call's pad is as it was and its pushes lie below
+the storage (chapter 8). A function that takes such storage writes
+the `sub` though it calls nothing, since a frame in the red zone
+would lie inside the storage, and its epilogue writes the `leaq`
+above, since a `return` inside the array's scope reaches it with
+`rsp` below the pushes.
 
 A frame is at most 2147483632 bytes, 2 GiB less 16, since a slot is
 a 32-bit displacement off `rbp` and the frame, a multiple of 16, is
@@ -1018,6 +1035,8 @@ written for it.
 | `f`, `&f` as a value | `leaq f(%rip), L` for a function the file defines; for one it only declares, the load from the GOT, `movq f@GOTPCREL(%rip), L` | 6.3.2.1p4: a function's name converts to a pointer to the function, and `&f` is the same value; one instruction either way, chapter 10; a call by the name forms no address, chapter 8 |
 | `f(a, b)` | chapter 8 | |
 | `sizeof` | an immediate | folded in the parser |
+| `T a[n]`, a variable length array's declaration | the size into a hidden local, `n` converted to `size_t` and times the element's size, `movslq -4(%rbp), %rax; imulq $4, %rax, %rax; movq %rax, -16(%rbp)`; `movq %rsp, -24(%rbp)`, the stack pointer kept in another; then the size's load and `subq L, %rsp; andq $-16, %rsp; movq %rsp, L`, and `L` stored to the array's slot | G23, chapter 5: no check of the size, and no page touched |
+| `a`, `sizeof a`, on a variable length array | `movq slot(%rbp), L`, the address the declaration stored, then the pointer's rows, `movb $1, (L)` for `a[0] = 1`; `sizeof a` the hidden local's load, `movq -16(%rbp), L` | the size of the instance, which no later write of `n` changes (6.7.7.3p5) |
 
 **A name and a constant.** An lvalue's address plus a constant is
 the lvalue's own address with the constant added to its
@@ -2146,7 +2165,9 @@ constant.
   `s1` is one jump, a `break`, a `continue`, a `goto L` or a `return`
   with no value, bare or alone in braces, the `if` is `cbranch(e,
   target, 1)` to that jump's target, then `s2`: no `jmp` and no label.
-  `if (n & 1) break;` is `testl $1, -4(%rbp); jne .Llow.3` (7.1).
+  `if (n & 1) break;` is `testl $1, -4(%rbp); jne .Llow.3` (7.1). A
+  jump that leaves a variable length array's scope is not one jump,
+  since it puts `rsp` back first (below).
   The rule is the first pass's of the Seventh Edition compiler,
   `statement()` in its `c02.c`, which takes the bare jump; rcc takes
   it in braces as well, since the braces write nothing. A `return e`
@@ -2202,6 +2223,28 @@ constant.
   their type (G5). A label may stand before a declaration and
   before a block's closing brace (6.8.3p1), and is then the null
   statement it is translated as followed by (p2).
+- A variable length array's scope (G23, chapter 5): every way out of
+  it puts `rsp` back from the slot the declaration kept it in,
+  `movq -24(%rbp), %rsp`, which gives back the array's storage and
+  that of each array declared after it. The end of the array's block
+  writes it where a path reaches the end, before a loop's step or jump
+  back; so does the end of a statement expression, after its value,
+  and of a `for` that declares one, past `.Lend`. A `break`, a
+  `continue` or a `goto` writes it before its `jmp` when the statement
+  it leaves, the loop it goes on with or its label is outside the
+  scope: c1 keeps the arrays in scope as a stack, each loop and
+  switch records how many are in scope at it, and the parser counts
+  them at each label; the first array past the count is the one whose
+  slot `rsp` goes back from. A jump back to before the declaration in
+  its block leaves the scope too (6.2.4p7's footnote), so a
+  declaration reached again takes its storage from where `rsp` stood
+  the time before. So `if (k < 2) goto again;` back over the
+  declaration is `cmpl $2, -8(%rbp); jge .Lf.3; movq -24(%rbp), %rsp;
+  jmp .Lf.2`. A `return` writes nothing: `leave` gives the frame back
+  whole. A statement expression as a condition whose block declares
+  one computes its value into a register first, puts `rsp` back, then
+  tests the register, `movsbl (%rax), %eax; movq -24(%rbp), %rsp;
+  cmpb $0, %al; je`.
 - `e ? a : b` for its value: `cbranch(e, .Lelse, 0)`, `a` into `L`,
   `jmp .Lend`, `.Lelse:` `b` into the same `L`, `.Lend:`. `L` is the
   register the consumer names, where it names one, and otherwise
@@ -2441,7 +2484,10 @@ pointer is a hidden local of its call as every argument is.
 3. The call sequence. Whatever the arguments left held in an expression
    register is spilled first (6.7), so nothing is held in a register
    from here to the `call`. If the arguments past the sixth are an odd
-   number, `sub $8,%rsp`, so that the `call` lands on a multiple of 16.
+   number, `sub $8,%rsp`, so that the `call` lands on a multiple of
+   16: `rsp` is a multiple of 16 before the pad, after the prologue as
+   after a variable length array's storage is taken (chapter 5), and
+   the pushes then lie below that storage.
    The arguments past the sixth are pushed from their slots right to
    left, so that the seventh is lowest, as the ABI wants (3.2.3): an
    8-byte slot in one instruction, `pushq -40(%rbp)`. A slot narrower
@@ -2526,6 +2572,7 @@ row here, in the guarantee's voice.
 | G20 a local's initializer list writes every byte of its object | 6.6: the slot zeroed first, per unit of the object's alignment the store of the immediate 0, lowest address first; over eight units the loop of one index, `movq $0`, `addq` and `jne`; then the listed values' stores, in the list's order |
 | G21 a `_Bool` reads as its byte | `movzbl`, an `unsigned char`'s load, with no test and no mask; a conversion to it the parser's comparison with 0, `cmpl $0` and `setne`, before the `movb` |
 | G22 a string literal for a local array is a copy of its object | 6.6: G18's copy from the literal's label in units of the element, `movzbl .Ls0+1(%rip), %eax; movb %al, -3(%rbp)`, the label's `leaq` and the loop of one index over eight units; then G20's stores of 0 over the elements past the copy alone |
+| G23 a variable length array's storage is the stack's until its scope is left | chapter 5: `movq %rsp, d(%rbp)` to keep the stack pointer, `subq %rax, %rsp; andq $-16, %rsp; movq %rsp, %rax` for the storage, and `movq d(%rbp), %rsp` at every way out of the scope (7.2); `leave` for a `return` |
 
 G15 stays withdrawn. The never-emitted table, the IR flags the
 front end withheld from an optimizer that never ran, has no

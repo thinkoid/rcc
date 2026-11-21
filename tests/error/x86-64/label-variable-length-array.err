@@ -1,2 +1,0 @@
-tests/error/label-variable-length-array.c:12:22: error: not yet: variable length array after a label
-status 1

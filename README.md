@@ -237,6 +237,11 @@ from its own object into the array by the row that copies a record,
 and the bytes past them zeroed after the copy, so `char u[100] =
 "abc";` writes each byte once (G22), which the `zeroing` probe checks
 against `clang`'s.
+Then the variable length array: a local array whose size is no
+constant takes its storage from the stack where its declaration is
+reached, in both generators, and gives it back on every way out of
+its scope, so a loop that declares one takes it at the same address
+each time around, which the `stack` probe checks against `clang`'s.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/`, the cost corpus over `tests/cost/`
 and the error corpus over `tests/error/`, the programs rcc refuses

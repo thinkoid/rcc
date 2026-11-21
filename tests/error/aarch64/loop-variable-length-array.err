@@ -1,2 +1,0 @@
-tests/error/loop-variable-length-array.c:10:22: error: not yet: variable length array in a loop
-status 1

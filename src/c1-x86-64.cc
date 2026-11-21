@@ -112,9 +112,11 @@ struct state_t
     std::unordered_map< const symbol_t *, int > slots { };
 
     // the bytes the slots take below rbp, and whether the function
-    // calls, which keeps it out of the red zone
+    // calls or takes storage from the stack, either of which keeps it
+    // out of the red zone
     long frame = 0;
     bool calls = false;
+    bool allocates = false;
 
     // the value each register holds, or -1; values[i] is the value i
     std::array< int, register_count > owner { };
@@ -184,6 +186,13 @@ struct state_t
     std::vector< jump_target_t > jump_targets { };
     std::unordered_map< std::string, int > user_labels { };
     std::unordered_map< int, int > case_labels { };
+
+    // the slot of the stack pointer each variable length array in scope
+    // kept, the outermost first, and the parser's count of them at each
+    // label the source names (shape.md chapter 5)
+    std::vector< const symbol_t * > arrays { };
+    const std::unordered_map< std::string, std::size_t > *label_arrays =
+        nullptr;
 };
 
 // types
@@ -353,6 +362,23 @@ slot_of(const state_t &s, const symbol_t *sym)
         throw std::logic_error("c1: a name read before its declaration");
 
     return it->second;
+}
+
+// The stack pointer kept in a variable length array's slot for it,
+// before the array takes its storage, chapter 5: movq %rsp, -24(%rbp).
+void
+save_stack_pointer(state_t &s, const symbol_t *saved)
+{
+    insn(s, "movq", { "%rsp", at(slot_of(s, saved)) });
+}
+
+// The stack pointer put back from that slot, which gives back the
+// storage of the array and of each taken after it: movq -24(%rbp),
+// %rsp.  No register is written, so a value held across it stays.
+void
+restore_stack_pointer(state_t &s, const symbol_t *saved)
+{
+    insn(s, "movq", { at(slot_of(s, saved)), "%rsp" });
 }
 
 // The extending mov that brings a value of type from to a width of 32
@@ -4940,6 +4966,30 @@ pinned(const expr_t &e)
     return is< call_t >(e) || (pins(e) & bit(rax));
 }
 
+// A stack allocation, chapter 5: the size in a register, the stack
+// pointer moved down by it and down again to a multiple of 16, and the
+// address read back from it into the lowest free register, subq %rax,
+// %rsp; andq $-16, %rsp; movq %rsp, %rax.  Nothing checks the size, and
+// nothing touches the pages the move passes (G23).  rsp stays a
+// multiple of 16, so the pad of chapter 8 at a call is as it was, and
+// no slot moves, since each is a displacement off rbp; the function
+// gives up the red zone, which the storage would overlap.
+value_t
+allocation(state_t &s, const alloca_t &a)
+{
+    const auto size = rvalue(s, *a.size);
+    insn(s, "subq", { reg(reg_of(s, size), 64), "%rsp" });
+    release(s, size);
+
+    insn(s, "andq", { imm(-16), "%rsp" });
+    s.allocates = true;
+
+    const auto address = fresh(s, 64);
+    insn(s, "movq", { "%rsp", reg(reg_of(s, address), 64) });
+
+    return address;
+}
+
 // The value of an expression in a register, its code written first.
 // An array is never a value: the parser decays it, 6.3.2.1p3, and a
 // string literal is an array.  A call or a division keeps its own pin:
@@ -4997,9 +5047,8 @@ rvalue(state_t &s, const expr_t &e, into_t *into, unsigned wanted)
     if (is< statement_expression_t >(e))
         return statement_expression(s, e, into, wanted);
 
-    // a stack allocation, a variable length array's storage, is not yet
     if (is< alloca_t >(e))
-        not_yet("stack allocation");
+        return allocation(s, as< alloca_t >(e));
 
     return conditional(s, e, into, wanted);
 }
@@ -5195,6 +5244,16 @@ comparison_branch(state_t &s, const operation_t &b, int label, bool sense)
     jump_if(s, sense ? b.op : inverse(b.op), is_signed, label);
 }
 
+// The test of zero of a held value v of type t, 7.1: cmp with 0 at the
+// type's width, then a jump to label when v is nonzero (sense) or zero
+// (!sense), cmpl $0, %eax; jne.  v stays held.
+void
+test_zero(state_t &s, value_t v, const int_t &t, int label, bool sense)
+{
+    insn(s, sized("cmp", t.width), { imm(0), reg(reg_of(s, v), t.width) });
+    insn(s, sense ? "jne" : "je", { label_name(s.function, label) });
+}
+
 // Jump code, chapter 7.1: a jump to label when e is true (sense) or
 // false (!sense), a fall through otherwise, and no value.  A comparison
 // is cmp and jcc, a constant on its left mirrored to the right by
@@ -5269,14 +5328,13 @@ cbranch(state_t &s, const expr_t &e, int label, bool sense)
     const int width = integer(e.type).width;
     if (const auto *object = memory_operand(e, width)) {
         condition_on(s, "cmp", *object, imm(0), width);
-    }
-    else {
-        const auto v = rvalue(s, e);
-        insn(s, sized("cmp", width), { imm(0), reg(reg_of(s, v), width) });
-        release(s, v);
+        insn(s, sense ? "jne" : "je", { label_name(s.function, label) });
+        return;
     }
 
-    insn(s, sense ? "jne" : "je", { label_name(s.function, label) });
+    const auto v = rvalue(s, e);
+    test_zero(s, v, integer(e.type), label, sense);
+    release(s, v);
 }
 
 // A plain assignment of a constant to an object in memory, for its
@@ -5962,8 +6020,9 @@ save_area(state_t &s, const function_decl_t &fd)
 // address for the k-th.  The frame is the slots below the pushes, sized
 // so that rsp is a multiple of 16 at every call: after pushq %rbp it
 // is, so the pushes and the subq together are.  A function that calls
-// nothing keeps up to 128 bytes of slots in the red zone, measured from
-// rsp after the pushes, and moves no rsp.
+// nothing and takes no storage from the stack keeps up to 128 bytes of
+// slots in the red zone, measured from rsp after the pushes, and moves
+// no rsp.
 void
 prologue(state_t &s, long size, bool sub)
 {
@@ -5983,16 +6042,16 @@ prologue(state_t &s, long size, bool sub)
         s.out << std::format("\tsubq\t${}, %rsp\n", size);
 }
 
-// The one epilogue: rsp back to the pushes, if the prologue moved it
-// below them, the pops in reverse order, then leave; the directive after
-// it is the unwind table's, since the canonical frame address is rsp + 8
-// from leave to ret.
+// The one epilogue: rsp back to the pushes, if the prologue or a stack
+// allocation moved it below them, below, the pops in reverse order,
+// then leave; the directive after it is the unwind table's, since the
+// canonical frame address is rsp + 8 from leave to ret.
 void
-epilogue(state_t &s, bool sub)
+epilogue(state_t &s, bool below)
 {
     s.out << label_name(s.function, s.ret) << ":\n";
 
-    if (sub && s.saved > 0)
+    if (below && s.saved > 0)
         s.out << std::format("\tleaq\t{}, %rsp\n", at(-8 * s.saved));
 
     for (int k = s.saved; k-- > 0;)
@@ -6018,6 +6077,7 @@ function(state_t &s, const function_decl_t &fd)
     s.body.str({ });
     s.slots.clear();
     s.calls = false;
+    s.allocates = false;
     s.owner.fill(-1);
     s.values.clear();
     s.age = 0;
@@ -6040,6 +6100,8 @@ function(state_t &s, const function_decl_t &fd)
     s.jump_targets.clear();
     s.user_labels.clear();
     s.case_labels.clear();
+    s.arrays.clear();
+    s.label_arrays = &fd.label_arrays;
 
     parameters(s, fd);
     if (fd.va_area)
@@ -6052,7 +6114,8 @@ function(state_t &s, const function_decl_t &fd)
 
     const int pushed = 8 * s.saved;
     const long size = (s.frame + 15) / 16 * 16 - pushed;
-    const bool sub = size > 0 && (s.calls || s.frame - pushed > 128);
+    const bool sub =
+        size > 0 && (s.calls || s.allocates || s.frame - pushed > 128);
 
     const auto name = assembly_name(*fd.sym);
     binding(s.out, *fd.sym);
@@ -6065,7 +6128,7 @@ function(state_t &s, const function_decl_t &fd)
 
     s.out << s.body.str();
 
-    epilogue(s, sub);
+    epilogue(s, sub || s.allocates);
     s.out << std::format("\t.cfi_endproc\n"
                          "\t.size\t{}, .-{}\n",
                          name, name);

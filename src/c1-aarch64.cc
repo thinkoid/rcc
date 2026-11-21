@@ -137,8 +137,10 @@ struct state_t
     // each local's and parameter's displacement off x29
     std::unordered_map< const symbol_t *, int > slots { };
 
-    // the bytes from x29 to the end of the last slot
+    // the bytes from x29 to the end of the last slot, and whether the
+    // function takes storage from the stack, which leaves sp below x29
     long frame = 0;
+    bool allocates = false;
 
     // the value each register holds, or -1; values[i] is the value i
     std::array< int, register_count > owner { };
@@ -181,6 +183,13 @@ struct state_t
     std::vector< jump_target_t > jump_targets { };
     std::unordered_map< std::string, int > user_labels { };
     std::unordered_map< int, int > case_labels { };
+
+    // the slot of the stack pointer each variable length array in scope
+    // kept, the outermost first, and the parser's count of them at each
+    // label the source names (shape.md chapter 5)
+    std::vector< const symbol_t * > arrays { };
+    const std::unordered_map< std::string, std::size_t > *label_arrays =
+        nullptr;
 };
 
 // operands
@@ -407,6 +416,28 @@ void
 copy_out(state_t &s, std::string_view to, int width)
 {
     insn(s, store_of(width), { reg(x17, width), to });
+}
+
+// The stack pointer kept in a variable length array's slot for it,
+// before the array takes its storage, 5.2: through x17, since a store
+// cannot name sp as the register it stores, mov x17, sp; str x17, [x29,
+// #32].
+void
+save_stack_pointer(state_t &s, const symbol_t *saved)
+{
+    insn(s, "mov", { "x17", "sp" });
+    insn(s, "str", { "x17", slot_operand(s, slot_of(s, saved), 8) });
+}
+
+// The stack pointer put back from that slot, which gives back the
+// storage of the array and of each taken after it, through x17 as the
+// load cannot name sp either: ldr x17, [x29, #32]; mov sp, x17.  x17
+// never holds a value, so a value held across it stays.
+void
+restore_stack_pointer(state_t &s, const symbol_t *saved)
+{
+    insn(s, "ldr", { "x17", slot_operand(s, slot_of(s, saved), 8) });
+    insn(s, "mov", { "sp", "x17" });
 }
 
 // the register stack
@@ -4470,6 +4501,30 @@ call(state_t &s, const call_t &c, const type_t &t)
     return hold(s, x0, integer(t).width);
 }
 
+// A stack allocation, 5.2: the size in a register, the storage's
+// address formed below sp by it and rounded down to a multiple of 16 in
+// the lowest free register, then sp moved there, sub x0, sp, x0; and
+// x0, x0, #0xfffffffffffffff0; mov sp, x0, so sp is never misaligned.
+// Nothing checks the size, and nothing touches the pages the move
+// passes (G23).  No slot moves, since each is a displacement off x29,
+// and a call's outgoing area opens below the storage (chapter 8).
+value_t
+allocation(state_t &s, const alloca_t &a)
+{
+    const auto size = rvalue(s, *a.size);
+    const reg_t from = reg_of(s, size);
+    release(s, size);
+
+    const auto address = fresh(s, 64);
+    const auto to = reg(reg_of(s, address), 64);
+    insn(s, "sub", { to, "sp", reg(from, 64) });
+    insn(s, "and", { to, to, bitmask_of(-16, 64) });
+    insn(s, "mov", { "sp", to });
+    s.allocates = true;
+
+    return address;
+}
+
 // The value of an expression in a register, its code written first.
 // An array is never a value: the parser decays it, 6.3.2.1p3, and a
 // string literal is an array.  A register variable handed down, into,
@@ -4523,9 +4578,8 @@ rvalue(state_t &s, const expr_t &e, into_t *into, unsigned wanted)
     if (is< statement_expression_t >(e))
         return statement_expression(s, e, into, wanted);
 
-    // a stack allocation, a variable length array's storage, is not yet
     if (is< alloca_t >(e))
-        not_yet("stack allocation");
+        return allocation(s, as< alloca_t >(e));
 
     const auto &k = as< conditional_t >(e);
     // a ?: b: the condition is the first arm
@@ -5321,18 +5375,24 @@ prologue(state_t &s, long size)
 }
 
 // The one epilogue: the save area loaded, the frame record loaded, the
-// frame closed by add.  The label is reached with sp equal to x29, so
-// the canonical frame address moves to sp + size there, before the load
-// gives x29 back to the caller.  Each register of the save area is
-// loaded as the prologue stored it, and each load is followed by the
-// note that the register holds the caller's value again; after the
-// record's load x29 and x30 are in their registers again, and each add
-// leaves the address at what is left of the frame above sp.
+// frame closed by add.  The label is reached with sp equal to x29, but
+// in a function that takes storage from the stack, which may reach it
+// with sp below and moves sp back first, mov sp, x29; so the canonical
+// frame address moves to sp + size there, before the load gives x29
+// back to the caller.  Each register of the save area is loaded as the
+// prologue stored it, and each load is followed by the note that the
+// register holds the caller's value again; after the record's load x29
+// and x30 are in their registers again, and each add leaves the address
+// at what is left of the frame above sp.
 void
 epilogue(state_t &s, long size)
 {
-    s.out << label_name(s.function, s.ret) << ":\n"
-          << std::format("\t.cfi_def_cfa wsp, {}\n", size);
+    s.out << label_name(s.function, s.ret) << ":\n";
+
+    if (s.allocates)
+        s.out << "\tmov\tsp, x29\n";
+
+    s.out << std::format("\t.cfi_def_cfa wsp, {}\n", size);
 
     for (int k = 0; k < s.saved; k += 2) {
         const reg_t first = variable_registers[k];
@@ -5395,6 +5455,7 @@ function(state_t &s, const function_decl_t &fd)
     s.in_place = -1;
     s.reserved = 0;
     s.frame = saved_at(s.saved);
+    s.allocates = false;
     s.function = fd.sym->name;
     s.labels = 0;
     s.ret = new_label(s);
@@ -5402,6 +5463,8 @@ function(state_t &s, const function_decl_t &fd)
     s.jump_targets.clear();
     s.user_labels.clear();
     s.case_labels.clear();
+    s.arrays.clear();
+    s.label_arrays = &fd.label_arrays;
 
     if (fd.va_area)
         s.slots.emplace(fd.va_area, allocate(s, size_of(fd.va_area->type), 16));

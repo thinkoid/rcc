@@ -235,13 +235,16 @@ bool retypes(const cast_t &, const type_t &to, const into_t *);
 // continuation, backend.md 7.2.  A switch has none, so a continue in it
 // goes on with the loop around it.  broken and continued record that a
 // break or a continue has jumped to the label, which the statement
-// places only where a jump names it.
+// places only where a jump names it.  arrays is the count of the
+// variable length arrays in scope at the statement: a jump to either
+// label leaves the scope of those past it (shape.md chapter 5).
 struct jump_target_t
 {
     int break_;
     std::optional< int > continue_;
     bool broken = false;
     bool continued = false;
+    std::size_t arrays = 0;
 };
 
 } // namespace rcc

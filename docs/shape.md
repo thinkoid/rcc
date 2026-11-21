@@ -429,8 +429,11 @@ Three sums.
   object, the stores of the list's values the statements after it
   (chapter 5), or for an array a string literal initializes the copy
   of the literal into it and the mark that it zeroes the elements
-  past the copy, after it. `break` and `continue` name no statement:
-  c1 finds
+  past the copy, after it; a variable length array's carries the
+  local its declaration keeps the stack pointer in. A block carries
+  whether it is a compound statement's, whose end is the end of a
+  scope; a block of no scope and a function's body have none.
+  `break` and `continue` name no statement: c1 finds
   the loop or the switch they leave or go on with as it generates the
   statements around them. A label and a `goto` carry the label's name.
   A label is a statement of its own, so it may stand before a
@@ -457,7 +460,9 @@ Three sums.
   stack past the named ones. On x86-64 it is 184 bytes, `rdi` to `r9`
   from 0, `xmm0` to `xmm7` from 48 and the address at 176; on aarch64
   200, `x0` to `x7` from 0, `q0` to `q7` from 64 and the address at
-  192. It holds one `object_decl_t` per
+  192. A definition carries too the count of the variable length
+  arrays in scope at each label that stands in the scope of one
+  (chapter 5). It holds one `object_decl_t` per
   object it defines, in the order of the definitions, with the
   initializer when one was written: c1 writes the data from them. The
   parser folds an initializer into that data, the subobjects it gives
@@ -607,15 +612,22 @@ and no constant, which no constant expression holds. The array's own
 symbol is a pointer to it, initialized by a stack allocation of the
 length's bytes (chapter 4), and its name reads as `*symbol`, the
 array, as an aarch64 `va_list` parameter's does: its decay is the
-pointer's value, and an element is reached through it. No initializer
+pointer's value, a cast of the symbol with no `*`, so c1 meets no type
+without a size, and an element is reached through it. No initializer
 is taken but C23's `{}`, which is not yet (6.7.11p4); any other is an
 error, and so is the array declared `static` or `extern`, and a member
-of one, which is no ordinary identifier (6.7.7.3p2). A declaration
-that may be reached again in one activation is not yet, since how long
-the storage lasts is not decided: one in a loop's condition, step or
-body, a statement expression's there among them, a `for`'s first
-clause, which runs once, outside; and one after a label of its
-function in the text. The other variably modified types are not yet,
+of one, which is no ordinary identifier (6.7.7.3p2). The storage
+lasts until the program leaves the declaration's scope (6.2.4p7): the
+declaration keeps the stack pointer in a local of its own before the
+allocation, and every way out of the scope puts it back from there
+(G23). So a declaration reached again, in a loop or after a jump
+back, takes its storage from where the stack pointer stood the time
+before. c1 finds each way out: a block's end by the mark of a compound
+statement's block, a `for`'s end and a statement expression's, and a
+jump by the count of the arrays in scope where it lands. The parser
+gives that count for each label, from the record it keeps for the
+check of a `goto` into a scope (below), since a `goto` may name a
+label after it. The other variably modified types are not yet,
 each in words of its own: an array of variable length arrays, `int
 a[3][n]` and `int a[n][m]`; a pointer to one, `int (*p)[n]`, a
 parameter's among them; a typedef of one; one in a type name, `sizeof
@@ -1577,10 +1589,13 @@ saved first as at a branch where the statements may move them, and
 its value then in the context asked (G13; `backend.md` 6.7,
 `aarch64.md` chapter 4).
 
-A stack allocation is not yet in either generator: each refuses it,
-`c1: not yet: stack allocation`, so a function that declares a
-variable length array is refused, or dropped where it is droppable
-(chapter 5).
+A variable length array's declaration reaches each generator as the
+stack pointer kept in a slot, then a stack allocation. Each generator
+moves the stack pointer down by the size and to a multiple of 16, and
+reads it back as the storage's address (G23; `backend.md` chapter 5,
+`aarch64.md` 5.2). The statements' shared code keeps the arrays in
+scope and writes the generator's restore of the stack pointer at
+every way out of a scope (`backend.md` 7.2).
 
 A reader checking a promise opens c1's source, finds the function that
 writes the row, and reads what is not there.
@@ -1837,9 +1852,8 @@ that needs the object is refused; a floating constant is a token,
 refused where an expression uses it), an enum's fixed underlying type,
 the use of an enum in its own list but behind a pointer, an object of
 an enum an attribute marks, an object of a typedef whose array size
-rcc cannot compute, a variable length array's storage, which neither
-generator writes, one that may be reached again in one activation,
-and every other variably modified type (chapter 5; a parameter's
+rcc cannot compute, every variably modified type but a local
+variable length array (chapter 5; a parameter's
 array of a size that is not constant is the pointer the parameter is
 adjusted to), GNU C's range
 designator, its array

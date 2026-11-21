@@ -367,6 +367,19 @@ unchanged; tables, lists' markers and fenced text as they are.
 Check: a paragraph's words before and after are the same, and no
 line of a paragraph can take the next line's first word.
 
+** TODO No listing pins a variable length array's restore at a =break=, a =continue= or a statement expression's end
+
+The cost programs pin the restore of the stack pointer at a block's
+end, at a loop's turn and at a =goto= back before the declaration.
+The restores before a =break= and a =continue=, at a =for='s end for
+an array its first clause declares, and at the end of a statement
+expression, as a value and as a condition, are run by the =stack=
+probe and pinned by no listing.
+
+Fix: one cost program of those shapes.
+
+Check: it is pinned on both targets.
+
 * Parser
 
 ** TODO The other target is preprocessed with this machine's headers
@@ -475,43 +488,6 @@ macro reaches it.
 Check: such a program links and runs, or =docs/shape.md= says why
 not.
 
-** TODO A variable length array's storage and =alloca= are not yet
-
-The parser takes a local array whose outermost size is not a
-constant, over an element of a constant size, with its =sizeof=:
-the size is evaluated where the declaration is reached and kept in
-a hidden local, and the array's storage is asked of a node each
-generator refuses, "c1: not yet: stack allocation". =alloca= is
-refused by name, "not yet: alloca, '__builtin_alloca'".
-
-Fix: each generator's row, the stack pointer moved down by the size
-and to a multiple of 16, the frame given back by the epilogue; then
-=__builtin_alloca= as the same node.
-
-Check: =tests/cost/variable-length-array.c= and
-=array-sized-by-parameter.c= pinned on both targets, a probe that
-reads such storage through =clang='s code, and =tests/error/alloca.c=
-a cost program.
-
-** TODO A variable length array in a loop or after a label is not yet
-
-A variable length array declared in a loop, its condition and its
-step among it, or after a label of its function, is "not yet:
-variable length array in a loop" and "... after a label": its
-declaration can be reached again in one activation, and what
-becomes of the storage taken before is not decided. C ends the
-array's lifetime at its block's end and at a jump back before its
-declaration (6.2.4p7); =gcc= and =clang= give the storage back
-there.
-
-Fix: none taken; decide the storage's lifetime: the activation's,
-as a slot is (G12), or given back at the block's end and at such a
-jump.
-
-Check: =tests/error/loop-variable-length-array.c= and
-=label-variable-length-array.c= become cost programs, and a probe
-runs a loop of many turns over one.
-
 ** TODO A variably modified type other than a local's array is not yet
 
 Each is refused by name: a pointer to a variable length array, a
@@ -602,6 +578,23 @@ Fix: with records by value, whose first step judges completeness
 first; until then the three are errors in their own words.
 
 Check: an error program of each, pinned.
+
+** TODO =__builtin_alloca= and =alloca= are not yet
+
+A variable length array's storage is taken and given back by each
+generator's stack allocation (G23). =alloca= is refused by name,
+"not yet: alloca, '__builtin_alloca'", through the header's macro as
+through the builtin.
+
+Fix: =__builtin_alloca(e)= as the allocation's node with no kept
+stack pointer, =e= converted as by assignment to =size_t=. Its
+storage lasts to the return, but for one taken inside a variable
+length array's scope, which that scope's end gives back with the
+array's. Decide with it: a constant size as the immediate, rounded
+up to 16, or the general row.
+
+Check: =tests/error/alloca.c= a cost program pinned on both targets,
+and the =stack= probe with =alloca= in an argument and in a loop.
 
 * Lexer
 

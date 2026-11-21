@@ -15,6 +15,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <variant>
 #include <vector>
 
@@ -336,16 +337,26 @@ struct expr_stmt_t
 // record's or an array's list, 6.7.11p17, the whole object, padding
 // included, and the statements after it store the listed values, in
 // the list's order; for a string, the elements past the copy, p22.
+// saved is a variable length array's: the hidden local the declaration
+// keeps the stack pointer in before its initializer takes the storage,
+// and which every way out of the array's scope puts the stack pointer
+// back from (shape.md chapter 5); null for any other declaration.
 struct decl_stmt_t
 {
     const symbol_t *sym;
     std::optional< expr_t > init;
     bool zeroed = false;
+    const symbol_t *saved = nullptr;
 };
 
+// scope says the block is a compound statement's, whose end leaves the
+// scope of the variable length arrays it declares; a block of no scope
+// has none, and neither has a function's body, whose end is the
+// epilogue.
 struct block_t
 {
     std::vector< stmt_t > body;
+    bool scope = false;
 };
 
 // no is null without an else
@@ -495,6 +506,10 @@ as(const stmt_t &s)
 // the parser writes nothing for one it stops in.  statics_begin and
 // statics_end bound the static objects its body declares in the unit's
 // objects, which go with it, since nothing outside the body names them.
+// label_arrays is, for each label the source names in the scope of a
+// variable length array, the count of those in scope at it: a goto to
+// the label leaves the scope of those past the count (shape.md chapter
+// 5).
 struct function_decl_t
 {
     const symbol_t *sym;
@@ -506,6 +521,7 @@ struct function_decl_t
     bool droppable = false;
     std::size_t statics_begin = 0;
     std::size_t statics_end = 0;
+    std::unordered_map< std::string, std::size_t > label_arrays = { };
 };
 
 // An address constant, 6.6p9, p11, as the parser folds it: the address

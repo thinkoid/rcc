@@ -15,15 +15,19 @@
 //
 // Before the include the generator declares reg_t; state_t with body,
 // live, floor, ret, terminated, jump_targets, user_labels and
-// case_labels;
+// case_labels, and arrays and label_arrays, the variable length arrays
+// in scope and the count at each label (shape.md chapter 5);
 // loop_alignment, the power of two of .p2align before a loop's head,
 // 0 for none;
 // result_register, the register the convention returns a result in;
 // new_label(), place_label() and jump(); the three entry points,
 // rvalue(), cbranch() and effect(), and rvalue_in(), a value for a
-// consumer that names its register; and decl_stmt(), a declaration,
-// which is the generator's own, since the store row of its initializer
-// takes the target's form of the slot's address.  For a switch's
+// consumer that names its register; test_zero(), the jump on a held
+// value's test of zero; decl_stmt(), a declaration, which is the
+// generator's own, since the store row of its initializer takes the
+// target's form of the slot's address; and save_stack_pointer() and
+// restore_stack_pointer(), the stack pointer kept in a slot and put
+// back from it, a variable length array's rows.  For a switch's
 // dispatch, whose form is chosen here and whose instructions are the
 // generator's, it declares right_operand() and arithmetic(), the rows of
 // a binary operator; compare_with(), the comparison row of a held value
@@ -50,11 +54,58 @@ expr_stmt(state_t &s, const expr_stmt_t &x)
         effect(s, *x.e);
 }
 
+// The storage of the variable length arrays in scope past count given
+// back, 6.2.4p7: the stack pointer put back where it stood before the
+// first of them, which its declaration kept; each one declared after it
+// took its storage below there.  Nothing when there is none.
+void
+give_back(state_t &s, std::size_t count)
+{
+    if (s.arrays.size() > count)
+        restore_stack_pointer(s, s.arrays[count]);
+}
+
+// The end of a scope, whose own arrays are those in scope past count:
+// their storage given back where a path reaches the end, and they leave
+// the arrays in scope.
+void
+close_scope(state_t &s, std::size_t count)
+{
+    if (!s.terminated)
+        give_back(s, count);
+
+    s.arrays.resize(count);
+}
+
+// A declaration, the generator's row.  A variable length array's keeps
+// the stack pointer first, in the slot the parser declared for it, and
+// the array is in scope from there, so that every way out of the scope
+// puts the stack pointer back (shape.md chapter 5).
+void
+declaration(state_t &s, const decl_stmt_t &d)
+{
+    if (!d.saved) {
+        decl_stmt(s, d);
+        return;
+    }
+
+    save_stack_pointer(s, d.saved);
+    decl_stmt(s, d);
+    s.arrays.push_back(d.saved);
+}
+
+// A block's statements, in order; a compound statement's end is the
+// end of its scope.
 void
 block_stmt(state_t &s, const block_t &b)
 {
+    const std::size_t arrays = s.arrays.size();
+
     for (const auto &st : b.body)
         statement(s, st);
+
+    if (b.scope)
+        close_scope(s, arrays);
 }
 
 // The directive before a loop's head, by the target's loop_alignment,
@@ -71,11 +122,13 @@ align_loop_head(state_t &s)
 
 // The body of a loop, backend.md 7.2: a break in it jumps to end and a
 // continue to next, but for one in a loop inside it, which takes its
-// own.  Returns the record of which of the two a jump named.
+// own; either leaves the scope of the arrays the body declares.
+// Returns the record of which of the two a jump named.
 jump_target_t
 loop_body(state_t &s, const stmt_t &body, int next, int end)
 {
-    s.jump_targets.push_back({ end, next });
+    s.jump_targets.push_back(
+        { .break_ = end, .continue_ = next, .arrays = s.arrays.size() });
     statement(s, body);
 
     const auto named = s.jump_targets.back();
@@ -140,10 +193,12 @@ do_stmt(state_t &s, const do_t &d)
 // one past the loop where the condition's exit or a break does.  The
 // init is a statement: a declaration, a block of them for several
 // declarators, or an expression.  Its names are in scope for the whole
-// loop, 6.8.6.4p1.
+// loop, 6.8.6.4p1, so the statement's end is the end of their scope.
 void
 for_stmt(state_t &s, const for_t &f)
 {
+    const std::size_t arrays = s.arrays.size();
+
     if (f.init)
         statement(s, *f.init);
 
@@ -168,6 +223,8 @@ for_stmt(state_t &s, const for_t &f)
 
     if (f.cond || named.broken)
         place_label(s, end);
+
+    close_scope(s, arrays);
 }
 
 // A constant of a switch's dispatch, a case's value or a number of the
@@ -345,7 +402,9 @@ switch_stmt(state_t &s, const switch_t &sw)
         jump(s, otherwise);
     }
 
-    s.jump_targets.push_back({ end, std::nullopt });
+    s.jump_targets.push_back({ .break_ = end,
+                               .continue_ = std::nullopt,
+                               .arrays = s.arrays.size() });
     statement(s, *sw.body);
 
     const bool broken = s.jump_targets.back().broken;
@@ -355,49 +414,69 @@ switch_stmt(state_t &s, const switch_t &sw)
         place_label(s, end);
 }
 
-// The label a break jumps to: past the innermost statement around it
-// that takes a break, 6.8.7.4p2.  Each caller writes the jump, so the
-// statement's record says a jump names the label.
-int
-break_target(state_t &s)
+// The record of the innermost statement around the one generated that
+// takes a break, 6.8.7.4p2.
+jump_target_t &
+innermost_breakable(state_t &s)
 {
     if (s.jump_targets.empty())
         throw std::logic_error("c1: a break outside a loop or a switch");
 
-    s.jump_targets.back().broken = true;
-
-    return s.jump_targets.back().break_;
+    return s.jump_targets.back();
 }
 
-// A jump out of the innermost statement around it that takes a break.
-// Nothing is held at a statement's start, so the jump is the whole of
-// it.
+// The label a break jumps to: past the innermost statement around it
+// that takes a break.  Each caller writes the jump, so the statement's
+// record says a jump names the label.
+int
+break_target(state_t &s)
+{
+    jump_target_t &t = innermost_breakable(s);
+    t.broken = true;
+
+    return t.break_;
+}
+
+// A jump out of the innermost statement around it that takes a break,
+// the storage of the arrays it leaves given back first.  Nothing is held
+// at a statement's start, so the two are the whole of it.
 void
 break_stmt(state_t &s)
 {
+    give_back(s, innermost_breakable(s).arrays);
     jump(s, break_target(s));
 }
 
-// The label a continue jumps to: the continuation of the innermost loop
-// around it, 6.8.7.3p2, past any switch between.  The caller writes the
-// jump, as break_target()'s does, and the loop's record says so.
-int
-continue_target(state_t &s)
+// The record of the innermost loop around the one generated, which a
+// continue goes on with, 6.8.7.3p2, past any switch between.
+jump_target_t &
+innermost_loop(state_t &s)
 {
     for (auto t = s.jump_targets.rbegin(); t != s.jump_targets.rend(); ++t)
-        if (t->continue_) {
-            t->continued = true;
-            return *t->continue_;
-        }
+        if (t->continue_)
+            return *t;
 
     throw std::logic_error("c1: a continue outside a loop");
 }
 
-// A jump to the continuation of the innermost loop around it; the whole
-// of the statement, as a break is.
+// The label a continue jumps to: the continuation of the innermost loop
+// around it.  The caller writes the jump, as break_target()'s does, and
+// the loop's record says so.
+int
+continue_target(state_t &s)
+{
+    jump_target_t &t = innermost_loop(s);
+    t.continued = true;
+
+    return *t.continue_;
+}
+
+// A jump to the continuation of the innermost loop around it, the
+// storage of the arrays it leaves given back first, as for a break.
 void
 continue_stmt(state_t &s)
 {
+    give_back(s, innermost_loop(s).arrays);
     jump(s, continue_target(s));
 }
 
@@ -431,9 +510,24 @@ case_label_stmt(state_t &s, const case_label_t &l)
     place_label(s, s.case_labels.at(l.label));
 }
 
+// The count of the variable length arrays in scope at a label the
+// source names, the parser's, and none for a label in the scope of
+// none.
+std::size_t
+label_arrays(const state_t &s, const std::string &name)
+{
+    const auto at = s.label_arrays->find(name);
+
+    return at == s.label_arrays->end() ? 0 : at->second;
+}
+
+// A jump to the label, the storage of the arrays it leaves given back
+// first: those in scope past its label's count, since the arrays in
+// scope at the label are the first of those in scope at the goto.
 void
 goto_stmt(state_t &s, const goto_t &g)
 {
+    give_back(s, label_arrays(s, g.name));
     jump(s, user_label(s, g.name));
 }
 
@@ -464,13 +558,34 @@ return_stmt(state_t &s, const return_t &r)
     jump(s, s.ret);
 }
 
+// The count of the variable length arrays in scope where a jump lands:
+// at the statement a break leaves, at the loop a continue goes on with,
+// at a goto's label.  Every array in scope for any other statement, a
+// return among them, which leaves its storage to the epilogue.
+std::size_t
+landing_arrays(state_t &s, const stmt_t &st)
+{
+    if (is< break_t >(st))
+        return innermost_breakable(s).arrays;
+    if (is< continue_t >(st))
+        return innermost_loop(s).arrays;
+    if (is< goto_t >(st))
+        return label_arrays(s, as< goto_t >(st).name);
+
+    return s.arrays.size();
+}
+
 // The label of a statement that is one jump, backend.md 7.2: a break's,
 // a continue's, a goto's, or the epilogue's for a return with no value.
 // Nothing for any other statement, a return with a value among them,
-// whose value is code of its own.
+// whose value is code of its own, nor for a jump that gives back the
+// storage of an array it leaves, which is code of its own too.
 std::optional< int >
 target_of(state_t &s, const stmt_t &st)
 {
+    if (s.arrays.size() > landing_arrays(s, st))
+        return std::nullopt;
+
     if (is< break_t >(st))
         return break_target(s);
     if (is< continue_t >(st))
@@ -560,7 +675,7 @@ statement(state_t &s, const stmt_t &st)
     if (is< expr_stmt_t >(st))
         expr_stmt(s, as< expr_stmt_t >(st));
     else if (is< decl_stmt_t >(st))
-        decl_stmt(s, as< decl_stmt_t >(st));
+        declaration(s, as< decl_stmt_t >(st));
     else if (is< block_t >(st))
         block_stmt(s, as< block_t >(st));
     else if (is< if_t >(st))
@@ -665,45 +780,67 @@ beside(state_t &s, const expr_t &e)
 // right operand is.  A borrowed read of a register variable the block
 // declares is copied into an expression register: the variable's
 // register is given back at the block's end, and a block after it, a
-// sibling statement expression's, takes it.
+// sibling statement expression's, takes it.  The end of its scope
+// follows the value, which is computed in it.
 value_t
 statement_expression(state_t &s, const expr_t &e, into_t *into, unsigned wanted)
 {
     const auto &x = as< statement_expression_t >(e);
     const auto incoming = beside(s, e);
+    const std::size_t arrays = s.arrays.size();
 
     statement_expression_body(s, x);
-    if (!x.value)
+    if (!x.value) {
+        close_scope(s, arrays);
         return { };
+    }
 
     const auto v = rvalue(s, *x.value, into, wanted);
     if (borrowed(s, v) && declares(x, s.values[v.id].variable))
         copy(s, v, take(s, 0));
 
+    close_scope(s, arrays);
+
     return v;
 }
 
 // A statement expression for its effect: its statements, then its
-// value's effect, the values held saved first as for its value.
+// value's effect, the values held saved first as for its value, and the
+// end of its scope.
 void
 statement_expression_effect(state_t &s, const expr_t &e)
 {
     const auto &x = as< statement_expression_t >(e);
     const auto incoming = beside(s, e);
+    const std::size_t arrays = s.arrays.size();
 
     statement_expression_body(s, x);
     if (x.value)
         effect(s, *x.value);
+
+    close_scope(s, arrays);
 }
 
 // A statement expression as a condition: its statements, then its
-// value's jump code, the values held saved first as for its value.
+// value's jump code, the values held saved first as for its value.  A
+// block that declares a variable length array ends its scope after the
+// value and before the jump: the value is computed into a register, the
+// storage given back, and the register's test of zero is the jump.
 void
 statement_expression_branch(state_t &s, const expr_t &e, int label, bool sense)
 {
     const auto &x = as< statement_expression_t >(e);
     const auto incoming = beside(s, e);
+    const std::size_t arrays = s.arrays.size();
 
     statement_expression_body(s, x);
-    cbranch(s, *x.value, label, sense);
+    if (s.arrays.size() == arrays) {
+        cbranch(s, *x.value, label, sense);
+        return;
+    }
+
+    const auto v = rvalue(s, *x.value);
+    close_scope(s, arrays);
+    test_zero(s, v, integer(x.value->type), label, sense);
+    release(s, v);
 }

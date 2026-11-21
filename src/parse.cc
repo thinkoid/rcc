@@ -137,12 +137,11 @@ struct open_switch_t
 // goto's label name, in the order met, checked against the labels at
 // the function's end.  break_targets and continue_targets are the
 // statements around the parse a break may leave and a continue go on
-// with: the loops, for both, and a switch, for a break alone.  loops is
-// the count of the loops whose condition, step or body the parse is in,
-// a for's first clause, which runs once, outside.  jump_scopes are the
-// variable length arrays in scope at each label and each goto of the
-// function that stands in the scope of one, by its name's token,
-// checked at the function's end.
+// with: the loops, for both, and a switch, for a break alone.
+// jump_scopes are the variable length arrays in scope at each label and
+// each goto of the function that stands in the scope of one, by its
+// name's token, checked at the function's end and counted at each label
+// for c1, label_arrays().
 // switches are the switches around the parse, the innermost last, which
 // a case or a default label belongs to, 6.8.5.3p4; case_labels is the
 // number the function's next case or default label takes.
@@ -196,7 +195,6 @@ struct parser_t
     std::vector< const token_t * > gotos = { };
     int break_targets = 0;
     int continue_targets = 0;
-    int loops = 0;
     std::unordered_map< const token_t *, std::vector< const token_t * > >
         jump_scopes = { };
     std::vector< open_switch_t > switches = { };
@@ -1198,8 +1196,10 @@ require_modifiable_lvalue(const token_t &at, const expr_t &e)
 // A function designator decays the same way, p4: a function's name, or
 // *E through a pointer to a function, becomes the pointer to the
 // function, a cast c1 reads as the function's address, or as E's value
-// with no instruction for the *.  Lvalue conversion, p2, is c1's load
-// and needs no node.
+// with no instruction for the *.  A variable length array is *p, p the
+// pointer its declaration initialized, and decays to p's value, a cast
+// of p with no * (shape.md chapter 5): c1 sees no type without a size.
+// Lvalue conversion, p2, is c1's load and needs no node.
 expr_t
 decayed(expr_t e)
 {
@@ -1212,6 +1212,10 @@ decayed(expr_t e)
         return e;
 
     type_t t = make_pointer(*as< array_t >(e.type).element, qualifiers_of(e));
+
+    if (is_variable_array(e.type))
+        return expr_t { std::move(t),
+                        cast_t { std::move(std::get< unary_t >(e.v).arg) } };
 
     return expr_t { std::move(t), cast_t { box(std::move(e)) } };
 }
@@ -5886,6 +5890,23 @@ require_labels(const parser_t &p)
     }
 }
 
+// The count of the variable length arrays in scope at each label of the
+// function that stands in the scope of one, by its name, for c1: a goto
+// leaves the scope of the arrays past the count, since no goto jumps
+// into the scope of one, require_labels(), so those at its label are
+// the first of those at the goto (shape.md chapter 5).
+std::unordered_map< std::string, std::size_t >
+label_arrays(const parser_t &p)
+{
+    std::unordered_map< std::string, std::size_t > counts;
+    for (const auto &[name, label] : p.labels)
+        if (const auto at = p.jump_scopes.find(label);
+            at != p.jump_scopes.end())
+            counts.emplace(name, at->second.size());
+
+    return counts;
+}
+
 // A parameter of a definition, declared already in the scope of its
 // list, which is open again as the body's, takes its register in the
 // order of the parameters, as a local does.  An aarch64 va_list arrives
@@ -6071,7 +6092,6 @@ inline_body(parser_t &p, std::string &missing, std::vector< stmt_t > entry)
     const std::size_t switches = p.switches.size();
     const int breaks = p.break_targets;
     const int continues = p.continue_targets;
-    const int loops = p.loops;
 
     try {
         return function_body(p, std::move(entry));
@@ -6086,7 +6106,6 @@ inline_body(parser_t &p, std::string &missing, std::vector< stmt_t > entry)
         p.switches.erase(p.switches.begin() + switches, p.switches.end());
         p.break_targets = breaks;
         p.continue_targets = continues;
-        p.loops = loops;
         p.temporaries.reset();
     }
 
@@ -6212,6 +6231,7 @@ function_definition(parser_t &p, const specifiers_t &spec, declarator_t &d)
     f.droppable = inline_;
     f.statics_begin = statics;
     f.statics_end = p.unit.objects.size();
+    f.label_arrays = label_arrays(p);
 }
 
 // The definition of a static inline function a system header writes,
@@ -8770,6 +8790,18 @@ refuse_variable_array_initializer(const parser_t &p, const declarator_t &d)
                       " cannot have an initializer");
 }
 
+// The local a variable length array's declaration keeps the stack
+// pointer in before it takes the storage, a pointer's 8 bytes, which
+// the declaration declares before the array, local_variable_array()'s.
+// No name stands for it, so it is in no scope.
+const symbol_t &
+saved_stack_pointer(parser_t &p)
+{
+    return p.unit.symbols.emplace_back(
+        symbol_t { "__stack_pointer", make_pointer(make_void()),
+                   storage_t::local, false, -1 });
+}
+
 // A local variable length array, 6.7.7.3p4.  Its declaration evaluates
 // the size where it is reached, 6.8.1p3, converted to size_t as by
 // assignment and multiplied by the element's size, into the type's
@@ -8777,22 +8809,18 @@ refuse_variable_array_initializer(const parser_t &p, const declarator_t &d)
 // change, 6.7.7.3p5; a multiplication by 1 is the identity and is left
 // out.  The array's own symbol is a pointer to it, by_reference, which
 // a stack allocation of the length's bytes initializes, and its name
-// reads as the array (shape.md chapter 5).  A declaration that may be
-// reached again in one activation is not yet, since how long the
-// storage lasts is not decided: one in a loop's condition, step or
-// body, p.loops, and one after a label of the function in the text.
-// The name's token goes to its scope's variable length arrays, for the
-// checks of a jump into its scope.
+// reads as the array (shape.md chapter 5).  The storage lasts until the
+// program leaves the declaration's scope, 6.2.4p7, so the declaration
+// keeps the stack pointer first, in a local of the array's own,
+// saved_stack_pointer()'s, which every way out of the scope puts back:
+// a declaration reached again, in a loop or after a jump back, takes
+// its storage from where the stack pointer stood the time before.  The
+// name's token goes to its scope's variable length arrays, for the
+// checks of a jump into its scope and the count at each label.
 void
 local_variable_array(parser_t &p, declarator_t &d, std::vector< stmt_t > &decls)
 {
     refuse_variable_array_initializer(p, d);
-
-    if (p.loops > 0)
-        not_yet(*d.name, "variable length array in a loop");
-
-    if (!p.labels.empty())
-        not_yet(*d.name, "variable length array after a label");
 
     const symbol_t &length = *as< array_t >(d.type).length;
     const long element = size_of(*as< array_t >(d.type).element);
@@ -8807,6 +8835,9 @@ local_variable_array(parser_t &p, declarator_t &d, std::vector< stmt_t > &decls)
 
     decls.push_back(stmt_t { decl_stmt_t { &length, std::move(size) } });
 
+    const symbol_t &saved = saved_stack_pointer(p);
+    decls.push_back(stmt_t { decl_stmt_t { &saved, std::nullopt } });
+
     symbol_t *sym = declare(p, *d.name, make_pointer(d.type, d.qualifiers),
                             storage_t::local, false);
     sym->by_reference = true;
@@ -8816,8 +8847,8 @@ local_variable_array(parser_t &p, declarator_t &d, std::vector< stmt_t > &decls)
     expr_t storage { make_pointer(make_void()),
                      alloca_t { box(std::move(bytes)) } };
 
-    decls.push_back(stmt_t {
-        decl_stmt_t { sym, convert_to(std::move(storage), sym->type) } });
+    decls.push_back(stmt_t { decl_stmt_t {
+        sym, convert_to(std::move(storage), sym->type), false, &saved } });
 }
 
 // A local, an object of automatic storage duration, 6.2.4p5, appended
@@ -9260,11 +9291,12 @@ statement(parser_t &p)
     return expression_statement(p);
 }
 
-// A new scope for the block's declarations.
+// A new scope for the block's declarations, whose end c1 knows by the
+// block's scope.
 block_t
 compound_statement(parser_t &p)
 {
-    block_t block;
+    block_t block { .body = { }, .scope = true };
 
     expect(p, tok_t::lbrace, "expected '{'");
     p.scopes.emplace_back();
@@ -9426,7 +9458,6 @@ while_statement(parser_t &p)
 {
     advance(p);
     expect(p, tok_t::lparen, "expected '(' after 'while'");
-    ++p.loops;
 
     const token_t &start = peek(p);
     expr_t cond = rvalue(start, expression(p));
@@ -9434,7 +9465,6 @@ while_statement(parser_t &p)
     expect(p, tok_t::rparen, "expected ')' after condition");
 
     stmt_ptr_t body = loop_body(p);
-    --p.loops;
 
     return stmt_t { while_t { std::move(cond), std::move(body) } };
 }
@@ -9445,7 +9475,6 @@ stmt_t
 do_statement(parser_t &p)
 {
     advance(p);
-    ++p.loops;
 
     stmt_ptr_t body = loop_body(p);
 
@@ -9457,7 +9486,6 @@ do_statement(parser_t &p)
 
     expect(p, tok_t::rparen, "expected ')' after condition");
     expect(p, tok_t::semicolon, "expected ';' after do statement");
-    --p.loops;
 
     return stmt_t { do_t { std::move(body), std::move(cond) } };
 }
@@ -9494,8 +9522,7 @@ for_declaration(parser_t &p)
 
 // A declaration in the init is in scope for the whole loop, 6.8.6.4p1,
 // so the for opens a scope; a braced body nests inside it.  The init
-// and the step are evaluated as void expressions there.  The init runs
-// once, so the loop counts in p.loops from the condition on.
+// and the step are evaluated as void expressions there.
 stmt_t
 for_statement(parser_t &p)
 {
@@ -9510,8 +9537,6 @@ for_statement(parser_t &p)
         loop.init = for_declaration(p);
     else if (!accept(p, tok_t::semicolon))
         loop.init = box(expression_statement(p));
-
-    ++p.loops;
 
     if (peek(p).kind != tok_t::semicolon) {
         const token_t &start = peek(p);
@@ -9528,7 +9553,6 @@ for_statement(parser_t &p)
     expect(p, tok_t::rparen, "expected ')' after for clauses");
 
     loop.body = loop_body(p);
-    --p.loops;
 
     close_block(p);
 
@@ -11090,7 +11114,7 @@ public:
 
     explicit statement_expression_depth_t(parser_t &p)
         : m_p(p), m_breaks(p.break_targets), m_continues(p.continue_targets),
-          m_loops(p.loops), m_switches(p.switches.size())
+          m_switches(p.switches.size())
     {
         ++m_p.statement_expressions;
     }
@@ -11100,7 +11124,6 @@ public:
         --m_p.statement_expressions;
         m_p.break_targets = m_breaks;
         m_p.continue_targets = m_continues;
-        m_p.loops = m_loops;
         m_p.switches.erase(m_p.switches.begin() +
                                static_cast< std::ptrdiff_t >(m_switches),
                            m_p.switches.end());
@@ -11115,7 +11138,6 @@ private:
     parser_t &m_p;
     int m_breaks;
     int m_continues;
-    int m_loops;
     std::size_t m_switches;
 };
 

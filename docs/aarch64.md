@@ -629,7 +629,8 @@ frame's size: their displacement is signed and scaled by 8, -512 to
 504, and the last pair of the ten registers is at `[x29, #80]`.
 
 `sp` equals `x29` from the prologue to the epilogue, but inside a
-call that passes arguments on the stack (chapter 8). It is a multiple
+call that passes arguments on the stack (chapter 8) and in the scope
+of a variable length array (below). It is a multiple
 of 16 throughout, since `T` is. The immediate of `sub` is 12 bits, or
 12 bits shifted by 12, so a frame of 4096 bytes or more is opened in
 two instructions, `sub sp, sp, #110592; sub sp, sp, #48`, the upper
@@ -676,6 +677,21 @@ registers and write none of them, so the area holds the registers as
 they arrived whatever comes after it. The `stp` of `q` registers takes
 a displacement scaled by 16 up to 1008, and the area, at the bottom of
 the frame, is in its reach.
+
+A variable length array's storage lies below the frame, taken at run
+time (G23). Its declaration keeps `sp` in a slot of its own, through
+`x17`, since a store cannot name `sp` as the register it stores, `mov
+x17, sp; str x17, [x29, #32]`. It forms the storage's address in a
+register, `sp` less the size rounded down to a multiple of 16, then
+moves `sp` there, `sub x0, sp, x0; and x0, x0, #0xfffffffffffffff0;
+mov sp, x0`, so `sp` is never misaligned, and stores the address to
+the array's slot. Leaving the array's scope puts `sp` back from the
+slot, through `x17` again, `ldr x17, [x29, #32]; mov sp, x17`
+(`backend.md` 7.2). No slot moves, since each is a displacement off
+`x29`, and a call's outgoing area opens below the storage (chapter
+8). A `return` inside the array's scope reaches the epilogue with `sp`
+below `x29`, so the epilogue of a function that takes such storage
+moves it back first, `mov sp, x29`, before `.cfi_def_cfa wsp, T`.
 
 ### 5.3 A slot beyond reach
 
@@ -900,6 +916,8 @@ a register variable's where the row leaves its representation
 | `"abc"` | `adrp L, .Ls<n>; add L, L, :lo12:.Ls<n>`; an element by a constant, the name and constant below, `adrp x16, .Ls0+1; ldrb w0, [x16, :lo12:.Ls0+1]` | two instructions, chapter 10 |
 | `f`, `&f` as a value | `adrp L, f; add L, L, :lo12:f` for a function the file defines; for one it only declares, the load from the GOT, `adrp L, :got:f; ldr L, [L, :got_lo12:f]` | two instructions either way, chapter 10; a call by the name forms no address, chapter 8 |
 | `f(a, b)` | chapter 8 | |
+| `T a[n]`, a variable length array's declaration | the size into a hidden local, `n` converted to `size_t` and times the element's size, `ldrsw x0, [x29, #16]; mov x1, #4; mul x0, x0, x1; str x0, [x29, #24]`; `mov x17, sp; str x17, [x29, #32]`, the stack pointer kept in another; then the size's load and `sub L, sp, L; and L, L, #0xfffffffffffffff0; mov sp, L`, and `L` stored to the array's slot | G23, 5.2: no check of the size, and no page touched |
+| `a`, `sizeof a`, on a variable length array | `ldr L, [x29, #d]`, the address the declaration stored, then the pointer's rows, `strb w1, [x0]` for `a[0] = 1`; `sizeof a` the hidden local's load, `ldr x0, [x29, #24]` | the size of the instance, which no later write of `n` changes (6.7.7.3p5) |
 
 **A name and a constant.** The rule of `backend.md` 6.3 holds as
 written: an object reached by its name plus an integer constant, 0 for
@@ -1381,7 +1399,9 @@ w0, #0`, by the rule of `backend.md` 7.2.
 `do`'s condition at the bottom branches back to the body's label on
 the condition, `b.lt .Lcount.2` or `cbnz`, by jump code (7.1). `break`,
 `continue` and `goto` are each one `b`, to the label `backend.md` 7.2
-names, and a label of the source is one more label of the function.
+names, after the restore of `sp` where one leaves a variable length
+array's scope, `ldr x17, [x29, #32]; mov sp, x17`, and a label of the
+source is one more label of the function.
 An `if` whose body is one of them, or a `return` with no value, is the
 condition's branch to its target, by the rule of `backend.md` 7.2:
 `if (n & 1) break;` is `and w0, w0, #0x1; cbnz w0, .Llow.3`. A
@@ -1529,7 +1549,9 @@ is written around the area, since the canonical frame address is
 computed from `x29` there.
 
 The outgoing area is opened and closed around the call, as x86's
-pushes are added back after theirs. The alternative, an area at the
+pushes are added back after theirs, so a call in the scope of a
+variable length array opens it below the array's storage (5.2). The
+alternative, an area at the
 bottom of the frame sized by the function's largest call, would put
 the frame record above it at an offset unknown until the body is
 done, for the sake of a call with nine arguments.
@@ -1559,6 +1581,7 @@ done, for the sake of a call with nine arguments.
 | G20 a local's initializer list writes every byte of its object | the slot zeroed first, each unit of the copy the store of `wzr` or `xzr`, `str wzr, [x29, #16]`, lowest address first, unrolled to eight units and a loop of three instructions beyond, `str xzr, [x0], #8; subs x16, x16, #1; b.ne`, 6.6; then the listed values' stores, in the list's order |
 | G21 a `_Bool` reads as its byte | `ldrb`, an `unsigned char`'s load, with no test and no mask; a conversion to it the parser's comparison with 0, `cmp w0, #0` and `cset w0, ne`, before the `strb` |
 | G22 a string literal for a local array is a copy of its object | the literal's address `adrp` and `add`, then each unit of the element `ldrb`, `ldrh` or `ldr` into `x17` and its store, lowest address first, unrolled to eight units and a loop of four instructions beyond, 6.6; then the stores of `wzr` over the elements past the copy alone |
+| G23 a variable length array's storage is the stack's until its scope is left | 5.2: `mov x17, sp; str x17, [x29, #d]` to keep `sp`, `sub x0, sp, x0; and x0, x0, #0xfffffffffffffff0; mov sp, x0` for the storage, `ldr x17, [x29, #d]; mov sp, x17` at every way out of the scope (`backend.md` 7.2), and `mov sp, x29` at the head of the epilogue |
 
 G4 is the row to read twice. `guarantees.md` already says "x86 `idiv`
 faults on a zero divisor and on `INT_MIN / -1`; aarch64 `sdiv` yields

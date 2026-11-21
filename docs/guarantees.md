@@ -61,7 +61,8 @@ otherwise as the last variable to hold it left it. The one
 instruction G5 costs is the extension of an unwritten `char`, `short`
 or `unsigned` register variable in its own register at its
 declaration, `movsbl %bl, %ebx` for a `char`, which leaves the value
-of its type as it was.
+of its type as it was. A variable length array's elements hold the
+bytes the stack held where its storage lies (G23).
 
 ## Pointers and memory
 
@@ -111,7 +112,9 @@ block ends, within the call; a `register` local has no address
 (6.5.4.2p1), so no pointer reaches it after its block. Instruction:
 the frame of `backend.md` chapter 5, in which every local's slot is a
 displacement off `rbp`, assigned at its declaration, none shared and
-none reused within the call.
+none reused within the call. A variable length array's slot holds the
+address of its storage, which is G23's, given back where the array's
+scope is left.
 
 ## Control
 
@@ -294,6 +297,45 @@ x16, #17`; the elements past the copy G20's stores of the zero
 register, over eight units its loop, `add x0, x29, #20; mov x16,
 #96`, then `strb wzr, [x0], #1; subs x16, x16, #1; b.ne`
 (`aarch64.md` 6.6).
+
+**G23. A variable length array's storage is the stack's until its
+scope is left.** 6.7.7.3p5, 6.8.1p3, 6.2.4p7. Each time an array's
+declaration is reached, its size is evaluated once, converted to
+`size_t` as by assignment, an `int` sign-extended, and multiplied by
+its element's size, modulo 2^64; `sizeof` of the array reads that
+size, whatever its operands hold later. The declaration keeps the
+stack pointer in a slot of the array's own, then moves it down by the
+size, modulo 2^64, and down again to a multiple of 16; the storage's
+address is the stack pointer after the move. Nothing checks the size,
+and nothing touches the pages the move passes. A size of zero, which
+6.7.7.3p5 leaves undefined as it leaves a negative one, takes
+nothing: the address is the stack pointer as it stood. A negative
+size converts to 2^64 less its magnitude, so the stack pointer moves
+up by the magnitude rounded down to a multiple of 16: the storage
+lies in the frame or above it, and the next call writes over it. A
+size the stack does not hold moves the stack pointer past the stack's
+mapping: the first access there faults where nothing is mapped, and
+reads or writes another mapping's bytes where one is. The storage is
+the block's: every way out of the array's scope puts the stack
+pointer back from the array's slot, which gives back its storage and
+that of each array declared after it. The ways out are the end of its
+block, a `break`, a `continue` or a `goto` that leaves the scope, the
+end of a statement expression that declares it, and a jump back to
+before its declaration, which leaves the scope by 6.2.4p7's footnote;
+a `return` leaves the storage to the epilogue. So a declaration
+reached again, in a loop or after a jump back, takes its storage from
+where the stack pointer stood the time before. A pointer to the
+storage is indeterminate once the scope is left (6.2.4p2): the bytes
+lie below the stack pointer, where the next call's frame, or a signal
+handler's, writes over them. `__STDC_NO_VLA__` is not defined
+(6.10.10.4). Instruction, on x86-64: `movq %rsp, -24(%rbp)` to keep
+the stack pointer; the size in a register, then `subq %rax, %rsp;
+andq $-16, %rsp; movq %rsp, %rax`; `movq -24(%rbp), %rsp` at each
+way out of the scope (`backend.md` 7.2), and the epilogue's `leave`
+for a `return`. On aarch64: `mov x17, sp; str x17, [x29, #32]`; `sub
+x0, sp, x0; and x0, x0, #0xfffffffffffffff0; mov sp, x0`; `ldr x17,
+[x29, #32]; mov sp, x17`; and `mov sp, x29` at the head of the
+epilogue (`aarch64.md` 5.2).
 
 ## Not in this list
 
