@@ -6598,14 +6598,24 @@ enum_specifier(parser_t &p)
 // _Atomic is when a parenthesis follows it, p4, as clang's stdatomic.h
 // declares atomic_int.  The type is atomic, as the qualifier makes it,
 // so it is a not-yet type of its own wherever it is written, and the
-// use of its object is refused.
+// use of its object is refused.  The type name is no array type and no
+// function type, p3; an atomic or a qualified one cannot be told, since
+// the type is not-yet and qualifiers are dropped.
 type_t
 atomic_type_specifier(parser_t &p)
 {
     const token_t &keyword = advance(p);
     advance(p);
 
-    type_name(p);
+    const type_t t = type_name(p);
+    if (is< array_t >(t))
+        fail(keyword, "invalid application of " + quoted(keyword.text) +
+                          " to an array type");
+
+    if (is< function_t >(t))
+        fail(keyword, "invalid application of " + quoted(keyword.text) +
+                          " to a function type");
+
     expect(p, tok_t::rparen, "expected ')' after type name");
 
     return make_not_yet(p.identities++,

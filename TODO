@@ -439,19 +439,6 @@ adjusted.
 
 Check: the program above compiles.
 
-** TODO =_Atomic ( type-name )= takes an array and a function type
-
-~typedef _Atomic(int [3]) a_t;~ and ~typedef _Atomic(int (void))
-f_t;~ are accepted. 6.7.3.5p3 says the type name "shall not refer to
-an array type, a function type, an atomic type, or a qualified
-type". The specifier makes a type rcc declares and does not use and
-looks at nothing inside the parentheses; a qualified type cannot be
-told, since qualifiers are dropped.
-
-Fix: the specifier refuses an array and a function type.
-
-Check: two programs of =tests/error= with their pins.
-
 ** TODO A qualified =void= is taken as the =void= of an empty parameter list
 
 ~int f(const void);~, ~int f(void const);~ and a parameter of a

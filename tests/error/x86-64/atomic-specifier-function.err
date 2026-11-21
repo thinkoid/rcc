@@ -1,0 +1,2 @@
+tests/error/atomic-specifier-function.c:3:9: error: invalid application of '_Atomic' to a function type
+status 1

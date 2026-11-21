@@ -887,10 +887,12 @@ on one among them, is one atomic instruction, which c1 does not
 write. `_Atomic (` *type name* `)`, the atomic type specifier, names
 one wherever it is written, as `stdatomic.h` declares `atomic_int`,
 and so does a typedef through the `_Atomic` qualifier; the qualifier
-is not yet anywhere else. A macro of `stdatomic.h` that accesses an
-atomic object, `atomic_flag_test_and_set` among them, calls a builtin
-function of `clang`'s, whose name begins `__c11_atomic_` or
-`__atomic_`; such a name, undeclared, is not yet by its name.
+is not yet anywhere else. The specifier's type name of an array or a
+function type is an error (6.7.3.5p3). A macro of `stdatomic.h`
+that accesses an atomic object, `atomic_flag_test_and_set` among
+them, calls a builtin function of `clang`'s, whose name begins
+`__c11_atomic_` or `__atomic_`; such a name, undeclared, is not yet
+by its name.
 
 A typedef of an array whose size needs what rcc does not have yet
 names a not-yet type whose words say what the size needs, as a size
