@@ -646,18 +646,3 @@ Check: a function returning ~sizeof x~ in
 
 * Lexer
 
-** TODO ~#pragma GCC visibility push(default)~ is refused
-
-Every =#pragma GCC visibility= is "not yet", the push of =default=
-among them. Default visibility is what rcc writes, so a region under
-it is translated as the program asks, and a header that brackets its
-declarations with ~push(default)~ and =pop=, the compiler's own
-=unwind.h= among them, is refused for nothing.
-
-Fix: the lexer keeps the visibility in force, as it keeps a packing,
-and a declaration made under one that is not =default= is the
-not-yet.
-
-Check: a program that includes =unwind.h= compiles, and the pin of
-=pragma-visibility= is refused at its declaration.
-

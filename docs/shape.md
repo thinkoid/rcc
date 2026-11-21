@@ -146,14 +146,27 @@ force, so every token after it is packed. A header that packs its
 own records and pops the packing leaves the program's records laid
 out.
 
-`#pragma weak` and `#pragma GCC visibility` are not yet, refused at
-their name. `clang` writes `.weak` for a symbol `weak` names and an
-alias for `weak a = f`, and `.hidden` for each symbol a `visibility`
-region hides; rcc writes every symbol strong and visible, so a weak
-reference left undefined would fail at link and a shared object
-would export what `clang` hides. A program that includes a header
-holding either, `clang`'s `unwind.h` among them, is refused at the
-header's pragma.
+`#pragma GCC visibility` sets the visibility of the tokens after it:
+`push(v)` makes `v` the one in force, of `default`, `hidden`,
+`internal` and `protected`, and `pop` restores the one before the
+last push, or changes nothing with none pushed. After a form the
+lexer does not read, any visibility may be in force, so every token
+after it is under one that is not `default`. `clang` gives the
+visibility in force to each symbol of external linkage a declaration
+names, a definition or not, at file scope or in a block, and writes
+`.hidden` or `.protected` for it; a typedef, a tag and a name of
+internal linkage or of none it leaves as they are. rcc writes every
+symbol visible, so a declaration of a symbol of external linkage
+whose declarator's name stands under a visibility that is not
+`default` is not yet, refused at the name by the pragma's words, and
+a region under `push(default)`, which `clang`'s `unwind.h` brackets
+its declarations in, is translated as the program asks.
+
+`#pragma weak` is not yet, refused at its name. `clang` writes
+`.weak` for a symbol `weak` names and an alias for `weak a = f`; rcc
+writes every symbol strong, so a weak reference left undefined would
+fail at link. A program that includes a header holding it is refused
+at the header's pragma.
 
 The keywords are C17's, those outside the subset included, so the
 parser refuses each by its name. GNU C's spellings in the
@@ -1608,8 +1621,10 @@ and the size is not evaluated), GNU C's range designator, its array
 designator without the `=` and its obsolete member designator, a local
 scalar's brace initializer, a declaration through a typedef of
 function type, a UTF-8 character constant, `u8'x'`, a character
-constant of more than one character and no prefix, `#pragma weak` and
-`#pragma GCC visibility` (chapter 2), the checks of the qualifiers
+constant of more than one character and no prefix, `#pragma weak`, a
+declaration of a symbol of external linkage under a `#pragma GCC
+visibility` other than `default` (chapter 2), the checks of the
+qualifiers
 (`const` and `volatile` are dropped, so an assignment to a `const`
 object and a conversion that discards a qualifier draw no diagnostic,
 and `(const void)` is taken as `(void)`), an atomic object, GNU C's

@@ -3428,6 +3428,21 @@ linkage_of(const specifiers_t &spec, const symbol_t *earlier, bool function)
     return linkage_t::external;
 }
 
+// A declaration under a #pragma GCC visibility other than default
+// gives that visibility to the symbol it names where the symbol has
+// external linkage, as clang has it: a definition and a declaration
+// alike, of a function or an object, at file scope or in a block.  rcc
+// writes every symbol visible, so such a declaration is not yet,
+// judged at the declarator's name; one of a name of internal linkage,
+// a typedef and a local are what they are without the pragma
+// (shape.md chapter 2).
+void
+refuse_visibility(const token_t &name, linkage_t linkage)
+{
+    if (name.nondefault_visibility && linkage == linkage_t::external)
+        not_yet(name, "pragma 'GCC visibility'");
+}
+
 // A name of internal and of external linkage in one unit is undefined,
 // 6.2.2p7, and refused: int n; static int n; and static int n; int n;,
 // whose second declaration gives the name the other linkage.
@@ -3537,6 +3552,7 @@ declare_function(parser_t &p,
     symbol_t *earlier =
         earlier_declaration(p, *d.name, d.type, storage_t::function);
     const linkage_t linkage = linkage_of(spec, earlier, true);
+    refuse_visibility(*d.name, linkage);
 
     if (earlier) {
         require_linkage(*d.name, *earlier, linkage);
@@ -4884,6 +4900,7 @@ declare_external_object(parser_t &p,
 
     symbol_t *sym = earlier_declaration(p, *d.name, d.type, storage_t::global);
     const linkage_t linkage = linkage_of(spec, sym, false);
+    refuse_visibility(*d.name, linkage);
 
     if (!sym) {
         sym = &added(p, d.name->text, d.type, storage_t::global);
@@ -7539,6 +7556,7 @@ linked_declaration(parser_t &p, const specifiers_t &spec, const declarator_t &d)
 
     linkage_t linkage;
     symbol_t *entity = linked_entity(p, d.name->text, linkage);
+    refuse_visibility(*d.name, linkage);
 
     auto &names = p.scopes.back().names;
     const auto here = names.find(d.name->text);

@@ -119,6 +119,11 @@ anonymous member: its members are the enclosing record's, each at the
 anonymous member's offset plus its own, so a program compiles to the
 listing of its twin with each anonymous member named and each access
 and each designator written through the name (`anonymous-member`).
+Nor does a `#pragma GCC visibility` region of `default`, the
+visibility every symbol rcc writes has, nor a region of another
+around a typedef and a function of internal linkage, which take no
+visibility, so a program compiles to the listing of its twin without
+its pragmas (`pragma-visibility`).
 
 What the compiler may do:
 

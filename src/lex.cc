@@ -35,6 +35,10 @@ struct saved_packing_t
 // it.  packed is whether the #pragma pack in force sets a packing,
 // saved the packings its pushes saved; unread is whether one was in a
 // form rcc does not read, after which any packing may be in force.
+// visibilities are the visibilities the #pragma GCC visibility pushes
+// in force pushed, the innermost last, and unread_visibility is whether
+// one was in a form rcc does not read, after which any visibility may
+// be in force.
 struct state_t
 {
     std::string_view source;
@@ -46,6 +50,8 @@ struct state_t
     bool packed;
     std::vector< saved_packing_t > saved;
     bool unread;
+    std::vector< std::string_view > visibilities;
+    bool unread_visibility;
 };
 
 struct keyword_t
@@ -245,6 +251,15 @@ not_yet(const location_t &where, std::string_view construct)
     fail(where, "not yet: " + std::string(construct));
 }
 
+// Whether a visibility other than default is in force: the one pushed
+// last, or any after a form rcc cannot read.
+bool
+nondefault_visibility(const state_t &st)
+{
+    return st.unread_visibility ||
+           (!st.visibilities.empty() && st.visibilities.back() != "default");
+}
+
 // The token of the given length at the current position.  A token
 // never spans a newline, so its location is that of its first byte.
 // A packing rcc cannot read leaves every token after it packed.
@@ -252,7 +267,8 @@ token_t
 take(state_t &st, tok_t kind, std::size_t length)
 {
     const token_t tok { kind, st.source.substr(st.pos, length),
-                        location_of(st, st.pos), st.packed || st.unread };
+                        location_of(st, st.pos), st.packed || st.unread,
+                        nondefault_visibility(st) };
 
     st.pos += length;
 
@@ -415,8 +431,9 @@ directive_word(state_t &st)
 }
 
 // The arguments of a #pragma pack, each one word: ( ), or a word and
-// more after commas, in parentheses that end the line.  False for any
-// other spelling, which the arguments then do not hold.
+// more after commas, in parentheses that end the line; a #pragma GCC
+// visibility push takes one.  False for any other spelling, which the
+// arguments then do not hold.
 bool
 pack_arguments(state_t &st, std::vector< std::string_view > &args)
 {
@@ -537,11 +554,59 @@ pack_pragma(state_t &st)
         st.unread = true;
 }
 
-// A #pragma: pack is read; weak, which makes a symbol weak or names
-// an alias of it, and GCC visibility, which hides the symbols a region
-// declares, are not yet, refused at their name, since rcc writes each
-// symbol strong and visible (shape.md chapter 2); any other is
-// skipped.
+// Whether a name is a visibility a #pragma GCC visibility pushes, as
+// clang reads them.
+bool
+is_visibility(std::string_view name)
+{
+    return name == "default" || name == "hidden" || name == "internal" ||
+           name == "protected";
+}
+
+// The arguments of a #pragma GCC visibility in clang's forms:
+// push(name), which makes the name's visibility the one in force, and
+// pop, which restores the one in force before the last push, and
+// changes nothing with none pushed.  False for any other form.
+bool
+apply_visibility(state_t &st)
+{
+    const std::string_view verb = directive_word(st);
+    if (verb == "pop") {
+        if (!directive_word(st).empty())
+            return false;
+
+        if (!st.visibilities.empty())
+            st.visibilities.pop_back();
+
+        return true;
+    }
+
+    std::vector< std::string_view > args;
+    if (verb != "push" || !pack_arguments(st, args) || args.size() != 1 ||
+        !is_visibility(args[0]))
+        return false;
+
+    st.visibilities.push_back(args[0]);
+
+    return true;
+}
+
+// A #pragma GCC visibility sets the visibility of the symbols the
+// tokens after it declare, which the parser judges at each declarator's
+// name (shape.md chapter 2).  After a form rcc does not read, any
+// visibility may be in force, so every token after it is under one
+// that is not default.
+void
+visibility_pragma(state_t &st)
+{
+    if (!apply_visibility(st))
+        st.unread_visibility = true;
+}
+
+// A #pragma: pack and GCC visibility are read; weak, which makes a
+// symbol weak or names an alias of it, is not yet, refused at its
+// name, since rcc writes each symbol strong (shape.md chapter 2); any
+// other is skipped.
 void
 pragma(state_t &st)
 {
@@ -553,7 +618,7 @@ pragma(state_t &st)
     else if (name == "weak")
         not_yet(where, "pragma 'weak'");
     else if (name == "GCC" && directive_word(st) == "visibility")
-        not_yet(where, "pragma 'GCC visibility'");
+        visibility_pragma(st);
 }
 
 // A directive other than a line marker: a #pragma is read, every other
@@ -1260,7 +1325,7 @@ punctuator(state_t &st)
 std::vector< token_t >
 tokenize(std::string_view source, std::string_view file)
 {
-    state_t st { source, 0, file, 1, 0, false, false, { }, false };
+    state_t st { source, 0, file, 1, 0, false, false, { }, false, { }, false };
     std::vector< token_t > tokens;
 
     for (skip_blanks(st); st.pos < source.size(); skip_blanks(st)) {

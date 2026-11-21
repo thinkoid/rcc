@@ -134,13 +134,17 @@ enum class tok_t {
 // the functions below.  A floating token's value is not read: the
 // parser refuses its use.  packed is whether a #pragma pack sets a
 // packing where the token stands: clang packs a record whose list
-// opens there, which rcc does not do yet.
+// opens there, which rcc does not do yet.  nondefault_visibility is
+// whether a #pragma GCC visibility sets a visibility other than
+// default there: clang gives it to a symbol of external linkage a
+// declaration names there, which rcc does not do yet.
 struct token_t
 {
     tok_t kind;
     std::string_view text;
     location_t where;
     bool packed;
+    bool nondefault_visibility;
 };
 
 // The whole preprocessed text as tokens, ending in one eof, which
@@ -148,9 +152,10 @@ struct token_t
 // text names a place the text has.  The file name is the location of
 // the first line until a line marker says otherwise.  Every other
 // directive is skipped, but a #pragma pack sets the packing of the
-// tokens after it.  Throws error_t on a character no token starts
-// with, a malformed constant, a malformed line marker, or a #pragma
-// weak or GCC visibility, which are not yet.
+// tokens after it, and a #pragma GCC visibility their visibility.
+// Throws error_t on a character no token starts with, a malformed
+// constant, a malformed line marker, or a #pragma weak, which is not
+// yet.
 std::vector< token_t > tokenize(std::string_view source, std::string_view file);
 
 // The encoding prefix of a character constant or a string literal,
