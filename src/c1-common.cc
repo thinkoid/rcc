@@ -344,6 +344,18 @@ same_bits(const cast_t &c, const type_t &to)
     return scalars && integer(from).width == integer(to).width;
 }
 
+// The operand under the casts that keep its bits, same_bits()'s, which
+// write no instruction (backend.md 6.3): q of (int *) q on an int *q.
+const expr_t &
+under_kept_bits(const expr_t &e)
+{
+    const expr_t *top = &e;
+    while (is< cast_t >(*top) && same_bits(as< cast_t >(*top), top->type))
+        top = as< cast_t >(*top).arg.get();
+
+    return *top;
+}
+
 // The object in memory a conversion's operand reads, or nullptr: the
 // operand, or the read under casts that keep its bits, (long) (int) u's
 // u, an object of the operand's width either way.  The conversion's own
@@ -351,11 +363,9 @@ same_bits(const cast_t &c, const type_t &to)
 const expr_t *
 object_under(const expr_t &operand)
 {
-    const expr_t *top = &operand;
-    while (is< cast_t >(*top) && same_bits(as< cast_t >(*top), top->type))
-        top = as< cast_t >(*top).arg.get();
+    const expr_t &top = under_kept_bits(operand);
 
-    return in_memory(*top) ? top : nullptr;
+    return in_memory(top) ? &top : nullptr;
 }
 
 // The object in memory a cast's operand reads, object_under()'s.

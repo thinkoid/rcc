@@ -205,6 +205,7 @@ struct into_t
 };
 
 bool same_bits(const cast_t &, const type_t &to);
+const expr_t &under_kept_bits(const expr_t &);
 const expr_t *object_under(const expr_t &);
 const expr_t *object_under(const cast_t &);
 

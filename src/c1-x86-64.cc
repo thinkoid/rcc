@@ -1693,14 +1693,11 @@ immediate_of(const expr_t &e, int width)
 const expr_t *
 memory_operand(const expr_t &e, int width)
 {
-    const expr_t *top = &e;
-    while (is< cast_t >(*top) && same_bits(as< cast_t >(*top), top->type))
-        top = as< cast_t >(*top).arg.get();
-
-    if (!in_memory(*top) || integer(top->type).width != width)
+    const expr_t &top = under_kept_bits(e);
+    if (!in_memory(top) || integer(top.type).width != width)
         return nullptr;
 
-    return top;
+    return &top;
 }
 
 // The register variable whose register an instruction of width bits
@@ -1711,12 +1708,10 @@ memory_operand(const expr_t &e, int width)
 const symbol_t *
 register_operand(const expr_t &e, int width)
 {
-    const expr_t *top = &e;
-    while (is< cast_t >(*top) && same_bits(as< cast_t >(*top), top->type))
-        top = as< cast_t >(*top).arg.get();
+    const expr_t &top = under_kept_bits(e);
 
-    const auto *sym = register_variable(*top);
-    if (!sym || integer(top->type).width != width)
+    const auto *sym = register_variable(top);
+    if (!sym || integer(top.type).width != width)
         return nullptr;
 
     return sym;
@@ -3610,18 +3605,6 @@ conditional(state_t &s,
 
     // valid to what both arms left
     return hold(s, join, std::min(valid, other_valid));
-}
-
-// The operand under the casts that keep its bits, same_bits()'s, which
-// write no instruction (backend.md 6.3): q of (int *) q on an int *q.
-const expr_t &
-under_kept_bits(const expr_t &e)
-{
-    const expr_t *top = &e;
-    while (is< cast_t >(*top) && same_bits(as< cast_t >(*top), top->type))
-        top = as< cast_t >(*top).arg.get();
-
-    return *top;
 }
 
 // Whether a pointer reaches its object by one operand that evaluates

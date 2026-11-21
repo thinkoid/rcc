@@ -111,17 +111,6 @@ generators for the sites above.
 Check: those sites with no clearing move, =unsigned_int_called()=
 with its own, and no function longer.
 
-** TODO The walk under the casts that keep the bits is written four times
-
-=object_under()= in =src/c1-common.cc=, and =memory_operand()=,
-=register_operand()= and =under_kept_bits()= in =src/c1-x86-64.cc=
-each step through the casts =same_bits()= accepts, in a loop of
-their own.
-
-Fix: one function in =src/c1-common.cc=, called by the four.
-
-Check: no listing over =tests= changes.
-
 ** TODO aarch64: an ordinary parameter past the eighth is copied before the stores of the first eight
 
 The moves, the stores and the loads of a function's parameters are
