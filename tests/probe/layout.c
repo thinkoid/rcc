@@ -170,3 +170,45 @@ FIELD_OFFSETS(OFFSET)
         }
 
 LIBRARY_OFFSETS(LIBRARY_OFFSET)
+
+/* the place of a named bit-field by the static data alone: the field
+   given all ones, -1 converted, in a static union of the record and
+   its bytes, and the bytes read back, as the lowest bit set times 100
+   plus the count of bits set; no offsetof and no access of the field */
+#define BITS(K, N, F)                                            \
+        long bits_##N##_##F(void)                                \
+        {                                                        \
+                static union                                     \
+                {                                                \
+                        K N s;                                   \
+                        unsigned char b[sizeof(K N)];            \
+                } u = { .s.F = -1 };                             \
+                long low = -1, count = 0;                        \
+                                                                 \
+                for (long i = 0; i < 8 * (long) sizeof u.b; ++i) \
+                        if ((u.b[i / 8] >> i % 8) & 1) {         \
+                                if (low < 0)                     \
+                                        low = i;                 \
+                                ++count;                         \
+                        }                                        \
+                                                                 \
+                return low * 100 + count;                        \
+        }
+
+#define FIELD_PAIR_BITS(F, TF, WF, K, TK) \
+        BITS(struct, fk_##F##_##K, f)     \
+        BITS(struct, kf_##F##_##K, f)
+
+#define FIELD_PAIRS_BITS(F, TF, WF) FIELD_KINDS(FIELD_PAIR_BITS, F, TF, WF)
+
+FIELDS(FIELD_PAIRS_BITS)
+
+#define FIELD_TWO_BITS(A, TA, WA, B, TB, WB) \
+        BITS(struct, ff_##A##_##B, x)        \
+        BITS(struct, ff_##A##_##B, y)
+
+#define FIELD_TWOS_BITS(A, TA, WA) FEW_FIELDS2(FIELD_TWO_BITS, A, TA, WA)
+
+FEW_FIELDS(FIELD_TWOS_BITS)
+
+FIELD_BITS(BITS)

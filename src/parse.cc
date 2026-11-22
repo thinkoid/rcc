@@ -5017,6 +5017,94 @@ elements(parser_t &p,
     }
 }
 
+// The constant of a named bit-field in the data of an object of static
+// storage, the field's record at offset in the object: the value of its
+// declared type cut to its width, 6.7.3.2p12 (G2), in the bytes the
+// field's bits lie in, from the lowest bit up (shape.md chapter 3).
+// Each such byte is an unsigned char subobject, which the bits of the
+// other fields in it share, so a later value of the field clears the
+// field's own bits first, 6.7.11p20, and no other: a neighbour's value
+// stays.  No other subobject holds a byte of a field's bits.
+void
+field_data(destination_t &to, const member_t &m, long offset, long long value)
+{
+    const long first = (offset + m.offset) * 8 + m.bit;
+    const exact_t mask = (exact_t(1) << m.width) - 1;
+    const exact_t cut =
+        exact_t(static_cast< unsigned long long >(value)) & mask;
+    const exact_t bits = cut << (first % 8);
+    const exact_t clear = mask << (first % 8);
+    const type_t byte = make_int(8, false, int_kind_t::unsigned_char);
+
+    for (long k = first / 8; k <= (first + m.width - 1) / 8; ++k) {
+        const int shift = int(k - first / 8) * 8;
+        const long long in = static_cast< long long >((bits >> shift) & 0xff);
+        const long long out = static_cast< long long >((clear >> shift) & 0xff);
+
+        const auto held = std::ranges::find_if(
+            *to.data, [k](const subobject_t &sub) { return sub.offset == k; });
+        if (held == to.data->end()) {
+            to.data->push_back(subobject_t { k, byte, literal_t { in } });
+            reach(to, k, 1);
+            continue;
+        }
+
+        if (size_of(held->type) != 1 ||
+            !std::holds_alternative< literal_t >(held->value))
+            throw std::logic_error("field_data: a byte held by another value");
+
+        auto &held_value = std::get< literal_t >(held->value).value;
+        held_value = (held_value & ~out) | in;
+    }
+}
+
+void close_list(parser_t &, bool, std::string_view);
+
+// The initializer of a named bit-field m of the record at offset in an
+// object of static storage, its designation's '=' ahead when it was
+// designated: a constant of the field's declared type, converted as by
+// assignment, 6.7.11p12, alone or in one pair of braces, or {}, which
+// is 0, p11, as for a scalar; field_data()'s.  An address constant is
+// no value of a bit-field's bits, the loader fills in no part of a
+// byte, so it is an error.
+void
+field_initializer(parser_t &p,
+                  const member_t &m,
+                  long offset,
+                  destination_t &to,
+                  bool designated)
+{
+    if (designated) {
+        if (designation_ahead(p))
+            refuse_designator(p);
+
+        designation_end(p);
+    }
+
+    const bool braced = accept(p, tok_t::lbrace);
+    if (braced && accept(p, tok_t::rbrace)) {
+        field_data(to, m, offset, 0);
+        return;
+    }
+
+    if (braced && peek(p).kind == tok_t::lbrace)
+        fail(peek(p), "too many braces around scalar initializer");
+
+    if (braced && designation_ahead(p))
+        fail(peek(p), "initialization of non-aggregate type with a "
+                      "designated initializer list");
+
+    const token_t &start = peek(p);
+    const initializer_t value = scalar_value(p, start, m.type);
+    if (!std::holds_alternative< literal_t >(value))
+        fail(start, "initializer element is not a compile-time constant");
+
+    field_data(to, m, offset, std::get< literal_t >(value).value);
+
+    if (braced)
+        close_list(p, true, "scalar");
+}
+
 // The index of the first member of r at i or after it that takes an
 // initializer, no unnamed bit-field, 6.7.11p10, or the count of the
 // members when none does.
@@ -5044,8 +5132,9 @@ initialized_member(const record_t &r, std::size_t i)
 // leaving the rest of the list to the enclosing aggregate or to the
 // list's own check, or with the list.  Returns whether the walk ended
 // past the last member the list may give.  A flexible array member
-// takes an initializer only in GNU C, which rcc does not take yet, and
-// a named bit-field one rcc does not store yet.
+// takes an initializer only in GNU C, which rcc does not take yet; a
+// named bit-field takes its constant in an object of static storage,
+// field_initializer()'s, and in a local's list it is not yet.
 bool
 member_values(
     parser_t &p, const record_t &r, long offset, destination_t &to, walk_t walk)
@@ -5062,7 +5151,7 @@ member_values(
             next = member_designator(p, r);
 
         const member_t &m = r.members[next];
-        if (is_bit_field(m))
+        if (is_bit_field(m) && to.local)
             not_yet(peek(p), "initializer of bit-field " + quoted(m.name));
 
         if (is< array_t >(m.type) && as< array_t >(m.type).count < 0)
@@ -5072,7 +5161,9 @@ member_values(
         if (r.is_union)
             union_member(p, to, r, offset, next);
 
-        if (designated)
+        if (is_bit_field(m))
+            field_initializer(p, m, offset, to, designated);
+        else if (designated)
             designated_subobject(p, m.type, offset + m.offset, to);
         else
             subobject_initializer(p, m.type, offset + m.offset, to);

@@ -116,6 +116,26 @@ FIELD_OFFSETS(OFFSET)
 
 LIBRARY_OFFSETS(LIBRARY_OFFSET)
 
+#define BITS(K, N, F) long bits_##N##_##F(void), ref_bits_##N##_##F(void);
+
+#define FIELD_PAIR_BITS(F, TF, WF, K, TK) \
+        BITS(struct, fk_##F##_##K, f)     \
+        BITS(struct, kf_##F##_##K, f)
+
+#define FIELD_PAIRS_BITS(F, TF, WF) FIELD_KINDS(FIELD_PAIR_BITS, F, TF, WF)
+
+FIELDS(FIELD_PAIRS_BITS)
+
+#define FIELD_TWO_BITS(A, TA, WA, B, TB, WB) \
+        BITS(struct, ff_##A##_##B, x)        \
+        BITS(struct, ff_##A##_##B, y)
+
+#define FIELD_TWOS_BITS(A, TA, WA) FEW_FIELDS2(FIELD_TWO_BITS, A, TA, WA)
+
+FEW_FIELDS(FIELD_TWOS_BITS)
+
+FIELD_BITS(BITS)
+
 /* a record's checks; the stride is of two elements of the record */
 #define CHECK_RECORD(K, N)                                                  \
         {                                                                   \
@@ -187,6 +207,23 @@ LIBRARY_OFFSETS(LIBRARY_OFFSET)
 #define CHECK_LIBRARY(N, T, M) \
         report("library_" #N, library_##N(), ref_library_##N());
 
+#define CHECK_BITS(K, N, F) \
+        report("bits_" #N "_" #F, bits_##N##_##F(), ref_bits_##N##_##F());
+
+#define CHECK_FIELD_PAIR_BITS(F, TF, WF, K, TK) \
+        CHECK_BITS(struct, fk_##F##_##K, f)     \
+        CHECK_BITS(struct, kf_##F##_##K, f)
+
+#define CHECK_FIELD_PAIRS_BITS(F, TF, WF) \
+        FIELD_KINDS(CHECK_FIELD_PAIR_BITS, F, TF, WF)
+
+#define CHECK_FIELD_TWO_BITS(A, TA, WA, B, TB, WB) \
+        CHECK_BITS(struct, ff_##A##_##B, x)        \
+        CHECK_BITS(struct, ff_##A##_##B, y)
+
+#define CHECK_FIELD_TWOS_BITS(A, TA, WA) \
+        FEW_FIELDS2(CHECK_FIELD_TWO_BITS, A, TA, WA)
+
 int
 main(void)
 {
@@ -207,6 +244,9 @@ main(void)
         CHECK_FLEXIBLE(struct, anonymous_field_flexible)
         FIELD_OFFSETS(CHECK_OFFSET)
         LIBRARY_OFFSETS(CHECK_LIBRARY)
+        FIELDS(CHECK_FIELD_PAIRS_BITS)
+        FEW_FIELDS(CHECK_FIELD_TWOS_BITS)
+        FIELD_BITS(CHECK_BITS)
 
         printf("%ld checks, %ld differ\n", total, bad);
 

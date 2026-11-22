@@ -360,7 +360,7 @@ and its unit is the 4 bytes at 0. The member holds the unit's offset
 and size, and the field's width and its first bit in the unit. A
 field has no offset in bytes of its own, so `offsetof` of one, which
 7.21p4 leaves undefined, is an error; its access and its initializer
-are not yet.
+in a local's list are not yet.
 
 `__builtin_va_list`, the type behind `va_list` (7.16p4), is the
 target's, since a list is handed to the C library, which reads it as
@@ -512,7 +512,15 @@ Three sums.
   list reaches c1 with its brace elision resolved and its omitted
   elements implied. A record's list is the same subobjects, its
   members' and theirs at their offsets in the object, so the data
-  holds no record and no padding of its own.
+  holds no record and no padding of its own. A bit-field's constant,
+  of its declared type cut to its width (G2), is its bits in the
+  bytes they lie in, from the lowest bit up (chapter 3): each such
+  byte is an `unsigned char` subobject, which holds the bits of every
+  field the list gives in it. A later value of a field clears the
+  field's own bits first (6.7.11p20) and no other field's, so a
+  neighbour's value stays. An address constant is no value of a
+  field's bits, since the loader fills in no part of a byte: it is an
+  error.
 
 A symbol is a name, a type, a storage and a linkage. The storage is
 local, parameter, global, function, type name or enumerator. A global
@@ -1408,8 +1416,8 @@ member of its record's type does, its members being the record's
 (6.7.3.2p15), as `clang` gives them: `{ 1, 2, 3 }` for
 `struct { int a; union { int b; char c; }; int d; }` gives `a`, `b`
 and `d`. The walk passes over an unnamed bit-field, which takes no
-value (p10), and a named one's value is not yet. The bytes no
-member's value holds, the
+value (p10), and a named one takes its constant (chapter 4). The
+bytes no member's value holds, the
 padding included, are zero (p11, p22), which the data writes as any
 other run of zeros. A list that goes on past the record's members, or
 a union's first, is an error (p3). A list that reaches a flexible
@@ -1886,8 +1894,9 @@ attribute that marks, `packed` and `aligned` among them, a packing of
 `#pragma pack`, no member, or a member of a type rcc does not use yet
 but a real floating one (chapter 3), an initializer of a flexible
 array member, an access of a floating member, an access of a
-bit-field and an initializer of one (chapter 3), C23's compatibility
-of two records of one tag, floating point and `__int128` (each
+bit-field and its initializer in a local's list (chapter 3), C23's
+compatibility of two records of one tag, floating point and
+`__int128` (each
 type is declared; a pointer to one is an ordinary pointer, and a use
 that needs the object is refused; a floating constant is a token,
 refused where an expression uses it), an enum's fixed underlying type,

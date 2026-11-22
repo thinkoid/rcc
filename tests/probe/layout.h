@@ -753,3 +753,44 @@ struct anonymous_field_flexible
     X(regex_re_nsub, regex_t, re_nsub)                                  \
     X(regex_translate, regex_t, translate)
 /* clang-format on */
+
+/* the named bit-fields of those records, and of the flexible one: the
+   keyword, the record, the field */
+/* clang-format off */
+#define FIELD_BITS(X)                                                   \
+    X(struct, rule_flags, a) X(struct, rule_flags, b)                   \
+    X(struct, rule_straddle, a) X(struct, rule_straddle, b)             \
+    X(struct, rule_after_char, f) X(struct, rule_after_char_28, f)      \
+    X(struct, rule_after_char_24, f)                                    \
+    X(struct, rule_unit_in_container, f) X(struct, rule_long, a)        \
+    X(struct, rule_long, b) X(struct, rule_shorts, a)                   \
+    X(struct, rule_shorts, b) X(struct, rule_after_chars, f)            \
+    X(struct, rule_low_first, a) X(struct, rule_low_first, b)           \
+    X(struct, rule_mixed, a) X(struct, rule_mixed, b)                   \
+    X(struct, rule_mixed, c) X(struct, rule_int_long, a)                \
+    X(struct, rule_int_long, b) X(struct, rule_long_int, a)             \
+    X(struct, rule_long_int, b) X(struct, rule_char_long_long, f)       \
+    X(struct, rule_short_between, b) X(struct, rule_zero_int, a)        \
+    X(struct, rule_zero_int, b) X(struct, rule_zero_char, a)            \
+    X(struct, rule_zero_char, b) X(struct, rule_signedness, a)          \
+    X(struct, rule_signedness, b) X(struct, rule_signedness, c)         \
+    X(struct, rule_enum, e) X(struct, rule_bools, a)                    \
+    X(struct, rule_bools, b) X(struct, rule_chars, a)                   \
+    X(struct, rule_chars, b) X(struct, rule_chars, c)                   \
+    X(struct, rule_named_long, f) X(struct, rule_unnamed_between, a)    \
+    X(struct, rule_unnamed_between, b) X(union, rule_union_field, a)    \
+    X(union, rule_union_long, a) X(union, rule_union_after, a)          \
+    X(struct, like_file, flags2) X(struct, like_fenv, op)               \
+    X(struct, like_fenv, r) X(struct, like_job, nprocs)                 \
+    X(struct, like_job, state) X(struct, like_job, sigint)              \
+    X(struct, like_job, jobctl) X(struct, like_job, waited)             \
+    X(struct, like_job, used) X(struct, like_job, changed)              \
+    X(struct, like_g, a) X(struct, like_g, f) X(struct, like_g, u)      \
+    X(struct, like_g, l) X(struct, anonymous_fields, a)                 \
+    X(struct, anonymous_fields, b)                                      \
+    X(struct, anonymous_field_flexible, b) X(, FILE, _flags2)           \
+    X(, regex_t, can_be_null) X(, regex_t, regs_allocated)              \
+    X(, regex_t, fastmap_accurate) X(, regex_t, no_sub)                 \
+    X(, regex_t, not_bol) X(, regex_t, not_eol)                         \
+    X(, regex_t, newline_anchor)
+/* clang-format on */
