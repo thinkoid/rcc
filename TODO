@@ -183,6 +183,38 @@ bit set is =tbz= or =tbnz= on the operand's register.
 Check: a cost program of both senses on an =int= and a =long=,
 pinned, and no function longer.
 
+** TODO A condition on a pair of shifts that leaves one bit shifts twice
+
+~if (x << 28 >> 31)~ on an ~unsigned~, the test of bit 3 written as
+the two shifts that take a field out of a word, is =shll $28, %eax;
+shrl $31, %eax; cmpl $0, %eax; je= on x86-64 and =lsl w0, w0, #28;
+lsr w0, w0, #31; cbz w0, .L= on aarch64 after the operand's load,
+where ~if (x & 8)~, the same test, is =testl $8, -4(%rbp); je= and
+=and w0, w0, #0x8; cbz w0, .L=.
+
+Fix: none taken; a condition that is a left shift by a constant
+under a logical right shift by a constant, the two leaving one bit,
+is the test of that bit, as the condition's rows have ~x & 8~.
+
+Check: a cost program of the pair on an ~unsigned~ and an ~unsigned
+long~, each the listing of its ~&~ twin, on both targets, and no
+function longer.
+
+** TODO A pair of equal shifts, left then logical right, is not the one =and=
+
+~x << 25 >> 25~ on an ~unsigned~ is =shll $25, %eax; shrl $25, %eax=
+on x86-64 and =lsl w0, w0, #25; lsr w0, w0, #25= on aarch64, where
+~x & 127~, the same value, is =andl $127, %eax= and =and w0, w0,
+#0x7f=.
+
+Fix: none taken; a logical right shift by a constant of a left shift
+by the same constant is the =and= of the mask the pair leaves, where
+the mask is an immediate of the instruction.
+
+Check: a cost program of the pair on an ~unsigned~ and an ~unsigned
+long~, each the listing of its ~&~ twin, on both targets, and no
+function longer.
+
 ** TODO aarch64: a comparison with zero as a condition is a =cmp= and a branch
 
 ~if (l != 0)~ is =cmp x0, #0; b.eq .L=, and ~if (l == 0)~ =cmp x0,
@@ -445,6 +477,27 @@ Fix: with the layout of bit-fields, which keeps them as named
 members.
 
 Check: that program reaches the bit-field's not-yet.
+
+** TODO =_Atomic= is not yet, where it is dropped with a warning
+
+~_Atomic int x;~ is "not yet: type qualifier '_Atomic'" and
+~_Atomic(int) x;~ "not yet: type specifier '_Atomic'"; an object of a
+record with such a member is refused by the same words. =shape.md=
+calls an atomic type a not-yet type of its own, for the atomic
+instruction an access of one would be. C99 has no atomic type, and a
+program that wants an atomic operation writes one.
+
+Fix: the qualifier and the specifier are dropped in every place, a
+bit-field's among them, with a warning where the program's own text
+writes one and none for a system header's: ~_Atomic int~ and
+~_Atomic(int)~ are =int=, and an access is the plain load and store.
+The specifier's type name of an array or a function type stays an
+error, and a builtin whose name begins =__atomic_= stays not yet by
+its name. =shape.md= and =choices.md= say so.
+
+Check: the error programs that pin the refusal pin the warning, and a
+cost program of an ~_Atomic int~ object has the listing of its =int=
+twin, on both targets.
 
 ** TODO A statement expression in a constant expression is not yet
 
