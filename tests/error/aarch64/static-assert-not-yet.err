@@ -1,2 +1,2 @@
-tests/error/static-assert-not-yet.c:8:16: error: not yet: bit-field in struct 'flags'
+tests/error/static-assert-not-yet.c:9:16: error: not yet: attribute 'packed' on struct 'flags'
 status 1

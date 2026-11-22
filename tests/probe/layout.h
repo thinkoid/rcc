@@ -24,9 +24,13 @@
 #define _GNU_SOURCE
 
 #include <fcntl.h>
+#include <fenv.h>
 #include <netinet/in.h>
+#include <regex.h>
 #include <stdarg.h>
 #include <stddef.h>
+#include <stdio.h>
+#include <sys/timex.h>
 #include <termios.h>
 
 /* the member kinds that are no record, spelled as one type each */
@@ -302,3 +306,450 @@ struct anonymous_flexible
 /* clang-format on */
 #  define LIST(L) (&(L))
 #endif
+
+/* The bit-fields, 6.7.3.2p11, laid out as clang lays them out on the
+   target, docs/shape.md chapter 3.  A bit-field has no offset in bytes,
+   so the functions of a record of bit-fields are those of any record
+   and the offsets of its ordinary members, which show where the fields
+   before them end. */
+
+/* the enumerated type of a bit-field, of unsigned int */
+enum two_bits { TB0, TB1, TB2, TB3 };
+
+/* the bit-fields: a name, the declared type and the width; three widths
+   of each integer type, 1, one past its half and its own, and those of
+   _Bool and of an enumerated type */
+/* clang-format off */
+#define FIELDS(X)                                                       \
+    X(c1, char, 1) X(c5, char, 5) X(c8, char, 8)                        \
+    X(a1, signed char, 1) X(a5, signed char, 5) X(a8, signed char, 8)   \
+    X(h1, unsigned char, 1) X(h5, unsigned char, 5)                     \
+    X(h8, unsigned char, 8)                                             \
+    X(s1, short, 1) X(s9, short, 9) X(s16, short, 16)                   \
+    X(t1, unsigned short, 1) X(t9, unsigned short, 9)                   \
+    X(t16, unsigned short, 16)                                          \
+    X(i1, int, 1) X(i17, int, 17) X(i32, int, 32)                       \
+    X(u1, unsigned, 1) X(u17, unsigned, 17) X(u32, unsigned, 32)        \
+    X(l1, long, 1) X(l33, long, 33) X(l64, long, 64)                    \
+    X(m1, unsigned long, 1) X(m33, unsigned long, 33)                   \
+    X(m64, unsigned long, 64)                                           \
+    X(q1, long long, 1) X(q33, long long, 33) X(q64, long long, 64)     \
+    X(r1, unsigned long long, 1) X(r33, unsigned long long, 33)         \
+    X(r64, unsigned long long, 64)                                      \
+    X(b1, _Bool, 1) X(e2, enum two_bits, 2) X(e32, enum two_bits, 32)
+
+/* the member kinds after a bit-field's name, type and width */
+#define FIELD_KINDS(X, F, TF, WF)                                       \
+    X(F, TF, WF, c, char) X(F, TF, WF, s, short) X(F, TF, WF, i, int)   \
+    X(F, TF, WF, l, long) X(F, TF, WF, p, pointer_t)                    \
+    X(F, TF, WF, f, function_t) X(F, TF, WF, a, chars_t)                \
+    X(F, TF, WF, h, shorts_t) X(F, TF, WF, r, inner_t)                  \
+    X(F, TF, WF, u, either_t) X(F, TF, WF, n, inners_t)
+
+/* a smaller set of bit-fields for the pairs of two, under a first and a
+   second name */
+#define FEW_FIELDS(X)                                                   \
+    X(c5, char, 5) X(h8, unsigned char, 8) X(s9, short, 9)              \
+    X(u17, unsigned, 17) X(l33, long, 33) X(b1, _Bool, 1)
+
+#define FEW_FIELDS2(X, A, TA, WA)                                       \
+    X(A, TA, WA, c5, char, 5) X(A, TA, WA, h8, unsigned char, 8)        \
+    X(A, TA, WA, s9, short, 9) X(A, TA, WA, u17, unsigned, 17)          \
+    X(A, TA, WA, l33, long, 33) X(A, TA, WA, b1, _Bool, 1)
+/* clang-format on */
+
+/* a bit-field and a member of each kind, either way round: struct fk_FK,
+   members f and y, and struct kf_FK, members x and f */
+#define FIELD_PAIR(F, TF, WF, K, TK) \
+        struct fk_##F##_##K          \
+        {                            \
+                TF f : WF;           \
+                TK y;                \
+        };                           \
+        struct kf_##F##_##K          \
+        {                            \
+                TK x;                \
+                TF f : WF;           \
+        };
+
+#define FIELD_PAIRS(F, TF, WF) FIELD_KINDS(FIELD_PAIR, F, TF, WF)
+
+FIELDS(FIELD_PAIRS)
+
+/* two bit-fields, of one type or of two, and a char after them: struct
+   ff_AB, members x, y and z */
+#define FIELD_TWO(A, TA, WA, B, TB, WB) \
+        struct ff_##A##_##B             \
+        {                               \
+                TA x : WA;              \
+                TB y : WB;              \
+                char z;                 \
+        };
+
+#define FIELD_TWOS(A, TA, WA) FEW_FIELDS2(FIELD_TWO, A, TA, WA)
+
+FEW_FIELDS(FIELD_TWOS)
+
+/* the rules of the layout, one record or more each: a field in the rest
+   of its container or in the next one, never across two; fields from
+   the lowest bit up; fields of different types packed while each fits
+   its own container; an ordinary member at the next byte past the
+   fields, in a field's container; a width of 0 to the next container
+   boundary of its type; the field's signedness, which moves nothing;
+   the alignment of a named field's type and of an unnamed one's, which
+   clang counts on aarch64 alone; a union's fields at bit 0 */
+struct rule_flags
+{
+        unsigned a : 1;
+        unsigned b : 3;
+};
+
+struct rule_straddle
+{
+        int a : 30;
+        int b : 4;
+        char c;
+};
+
+struct rule_after_char
+{
+        char c;
+        int f : 4;
+        char d;
+};
+
+struct rule_after_char_28
+{
+        char c;
+        int f : 28;
+        char d;
+};
+
+struct rule_after_char_24
+{
+        char c;
+        int f : 24;
+        char d;
+};
+
+struct rule_unit_in_container
+{
+        char c;
+        int f : 16;
+        char d;
+};
+
+struct rule_long
+{
+        long a : 40;
+        long b : 30;
+        char c;
+};
+
+struct rule_shorts
+{
+        short a : 9, b : 9;
+        char c;
+};
+
+struct rule_after_chars
+{
+        char c[3];
+        int f : 9;
+        char d;
+};
+
+struct rule_low_first
+{
+        int a : 3, b : 5;
+        char c;
+};
+
+struct rule_mixed
+{
+        unsigned char a : 3;
+        unsigned short b : 7;
+        unsigned c : 9;
+        char d;
+};
+
+struct rule_int_long
+{
+        int a : 20;
+        long b : 40;
+        char c;
+};
+
+struct rule_long_int
+{
+        long a : 40;
+        int b : 20;
+        char c;
+};
+
+struct rule_char_long_long
+{
+        char c;
+        long long f : 33;
+        char d;
+};
+
+struct rule_short_between
+{
+        char a;
+        short b : 4;
+        char c;
+};
+
+struct rule_zero_int
+{
+        int a : 3;
+        int : 0;
+        int b : 3;
+        char c;
+};
+
+struct rule_zero_char
+{
+        int a : 3;
+        char : 0;
+        int b : 3;
+        char c;
+};
+
+struct rule_signedness
+{
+        int a : 3;
+        unsigned b : 3;
+        signed c : 3;
+        char d;
+};
+
+struct rule_enum
+{
+        enum two_bits e : 2;
+        char c;
+};
+
+struct rule_bools
+{
+        _Bool a : 1, b : 1;
+        char c;
+};
+
+struct rule_chars
+{
+        char a : 4, b : 4, c : 4;
+        char d;
+};
+
+struct rule_named_long
+{
+        char c;
+        long f : 1;
+};
+
+struct rule_unnamed_4
+{
+        char c;
+        int : 4;
+        char d;
+};
+
+struct rule_unnamed_0
+{
+        char c;
+        int : 0;
+        char d;
+};
+
+struct rule_unnamed_long
+{
+        char c;
+        long : 1;
+};
+
+struct rule_unnamed_first
+{
+        int : 0;
+        char c;
+};
+
+struct rule_unnamed_last
+{
+        char c;
+        int : 4;
+};
+
+struct rule_unnamed_short
+{
+        char c;
+        short : 0;
+        char d;
+};
+
+struct rule_unnamed_long_first
+{
+        long : 0;
+        char c;
+};
+
+struct rule_unnamed_between
+{
+        char a : 3;
+        int : 0;
+        char b : 3;
+};
+
+union rule_union_field
+{
+        int a : 3;
+        char c;
+};
+
+union rule_union_unnamed
+{
+        char c;
+        int : 3;
+};
+
+union rule_union_long
+{
+        long a : 3;
+};
+
+union rule_union_after
+{
+        char c;
+        int a : 3;
+};
+
+union rule_union_zero
+{
+        char c;
+        int : 0;
+};
+
+/* records in the shape of the C library's: FILE's _flags2 between an int
+   and a char of its container, fenv_t's opcode after a short on x86-64,
+   and the shell's struct job, whose fields fill a word between an int
+   and a pointer; and a struct of fields of three types before a long
+   field */
+struct like_file
+{
+        int fileno;
+        int flags2 : 24;
+        char backup[1];
+        long off;
+};
+
+struct like_fenv
+{
+        unsigned short cs;
+        unsigned op : 11;
+        unsigned r : 5;
+        unsigned d;
+};
+
+struct like_job
+{
+        int stop;
+        unsigned nprocs : 16, state : 8, sigint : 1, jobctl : 1, waited : 1,
+            used : 1, changed : 1;
+        struct like_job *prev;
+};
+
+struct like_g
+{
+        unsigned a : 3;
+        int f : 5;
+        unsigned u : 7;
+        long l : 40;
+        char c;
+};
+
+/* bit-fields in an anonymous struct, whose members are the record's,
+   6.7.3.2p15, and an anonymous struct of a bit-field alone before a
+   flexible array member, which it counts as a named member before, p3 */
+struct anonymous_fields
+{
+        char c;
+        struct
+        {
+                int a : 3;
+                char d;
+                int b : 5;
+        };
+        short s;
+};
+
+struct anonymous_field_flexible
+{
+        struct
+        {
+                int b : 3;
+        };
+        int a[];
+};
+
+/* the records of bit-fields of no list above, the C library's among
+   them, and the keyword each is declared by */
+/* clang-format off */
+#define FIELD_RECORDS(X)                                                \
+    X(struct, rule_flags) X(struct, rule_straddle)                      \
+    X(struct, rule_after_char)                                          \
+    X(struct, rule_after_char_28) X(struct, rule_after_char_24)         \
+    X(struct, rule_unit_in_container) X(struct, rule_long)              \
+    X(struct, rule_shorts) X(struct, rule_after_chars)                  \
+    X(struct, rule_low_first) X(struct, rule_mixed)                     \
+    X(struct, rule_int_long) X(struct, rule_long_int)                   \
+    X(struct, rule_char_long_long) X(struct, rule_short_between)        \
+    X(struct, rule_zero_int) X(struct, rule_zero_char)                  \
+    X(struct, rule_signedness) X(struct, rule_enum)                     \
+    X(struct, rule_bools) X(struct, rule_chars)                         \
+    X(struct, rule_named_long) X(struct, rule_unnamed_4)                \
+    X(struct, rule_unnamed_0) X(struct, rule_unnamed_long)              \
+    X(struct, rule_unnamed_first) X(struct, rule_unnamed_last)          \
+    X(struct, rule_unnamed_short) X(struct, rule_unnamed_long_first)    \
+    X(struct, rule_unnamed_between) X(union, rule_union_field)          \
+    X(union, rule_union_unnamed) X(union, rule_union_long)              \
+    X(union, rule_union_after) X(union, rule_union_zero)                \
+    X(struct, like_file) X(struct, like_fenv) X(struct, like_job)       \
+    X(struct, like_g) X(struct, anonymous_fields) X(, FILE)             \
+    X(, regex_t) X(, fenv_t) X(struct, timex)
+
+/* the ordinary members of those records, and of the flexible one: the
+   keyword, the record, the member */
+#define FIELD_OFFSETS(X)                                                \
+    X(struct, rule_straddle, c) X(struct, rule_after_char, c)           \
+    X(struct, rule_after_char, d) X(struct, rule_after_char_28, d)      \
+    X(struct, rule_after_char_24, d)                                    \
+    X(struct, rule_unit_in_container, d) X(struct, rule_long, c)        \
+    X(struct, rule_shorts, c) X(struct, rule_after_chars, d)            \
+    X(struct, rule_low_first, c) X(struct, rule_mixed, d)               \
+    X(struct, rule_int_long, c) X(struct, rule_long_int, c)             \
+    X(struct, rule_char_long_long, d)                                   \
+    X(struct, rule_short_between, c) X(struct, rule_zero_int, c)        \
+    X(struct, rule_zero_char, c) X(struct, rule_signedness, d)          \
+    X(struct, rule_enum, c) X(struct, rule_bools, c)                    \
+    X(struct, rule_chars, d) X(struct, rule_unnamed_4, d)               \
+    X(struct, rule_unnamed_0, d) X(struct, rule_unnamed_first, c)       \
+    X(struct, rule_unnamed_short, d)                                    \
+    X(struct, rule_unnamed_long_first, c) X(union, rule_union_field, c) \
+    X(union, rule_union_unnamed, c) X(union, rule_union_after, c)       \
+    X(union, rule_union_zero, c) X(struct, like_file, backup)           \
+    X(struct, like_file, off) X(struct, like_fenv, d)                   \
+    X(struct, like_job, prev) X(struct, like_g, c)                      \
+    X(struct, anonymous_fields, d) X(struct, anonymous_fields, s)       \
+    X(struct, anonymous_field_flexible, a)
+
+/* the ordinary members of the C library's records, by offsetof of a
+   type name: a name, the type, the member */
+#define LIBRARY_OFFSETS(X)                                              \
+    X(file_fileno, FILE, _fileno)                                       \
+    X(file_short_backupbuf, FILE, _short_backupbuf)                     \
+    X(file_old_offset, FILE, _old_offset)                               \
+    X(file_lock, FILE, _lock)                                           \
+    X(regex_re_nsub, regex_t, re_nsub)                                  \
+    X(regex_translate, regex_t, translate)
+/* clang-format on */

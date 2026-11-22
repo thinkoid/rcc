@@ -465,19 +465,6 @@ Fix: none taken; the directives and the direct reference, with
 Check: a cost program with a hidden function and a hidden object,
 defined and only declared, pinned on both targets.
 
-** TODO An anonymous struct of bit-fields alone does not count before a flexible array member
-
-~struct s { struct { int b : 3; }; int a[]; };~ is refused, "flexible
-array member 'a' in a struct with no other named member", which
-=clang= takes: the members of an anonymous struct are the record's
-(6.7.3.2p15), and =b= is a named member. A bit-field is not kept as
-a member, so its name is not counted.
-
-Fix: with the layout of bit-fields, which keeps them as named
-members.
-
-Check: that program reaches the bit-field's not-yet.
-
 ** TODO =_Atomic= is not yet, where it is dropped with a warning
 
 ~_Atomic int x;~ is "not yet: type qualifier '_Atomic'" and

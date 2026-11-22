@@ -289,7 +289,8 @@ conversion between pointers to them among them, the use is not yet.
 
 A complete record has its members, each a name, a type and an offset,
 its size and its alignment, laid out by the rule `clang` has for both
-targets, which is one rule for the types rcc has: each member of a
+targets, which is one rule for the types rcc has but for an unnamed
+bit-field (below): each member of a
 struct at the offset so far rounded up to the member's alignment, in
 the order declared (6.7.3.2p16, p17); each member of a union at 0
 (p18); the record's alignment its members' largest, and its size the
@@ -307,7 +308,7 @@ structure or union layout" (6.7.3.2p15). So a member access and
 offset theirs plus its own. `size_of` and
 `align_of` read the layout, and the parser folds `sizeof`, `_Alignof`
 and `offsetof` from it. A record whose list holds a construct rcc
-does not lay out yet is complete and has no layout: a bit-field, an
+does not lay out yet is complete and has no layout: an
 attribute that marks, `packed` and `aligned`
 among them, a packing of `#pragma pack` where the list opens
 (chapter 2), a list of no member, or a member of a type rcc does not
@@ -324,6 +325,42 @@ member's size. `sizeof` and `_Alignof` of the floating type, or of an
 array of it, fold its size and its alignment as well, and `sizeof`
 of a name of an object of it folds its size, `sizeof x` for `extern
 double x;`, though a use of the name is refused anywhere else.
+
+A bit-field (6.7.3.2p11) is a member of a width, laid out as `clang`
+lays it out. Its container is the unit of its declared type, that
+type's size at a multiple of it from the record's start, a byte for a
+`_Bool` field. A field of a struct takes the next free bit where the
+rest of the container that holds that bit has room for its width, and
+the next container's first bit where it does not, so no field
+straddles two containers (J.3.10(4), `choices.md`); fields fill a
+container from its lowest bit up. A width of 0 moves the next free
+bit to the next container's first, unless it is one already (p14). A
+member that is no bit-field takes the next byte past the fields before
+it, at its own alignment, so it may lie in a field's container:
+`struct { char c; int f : 4; }` has `f` at bit 8. In a union every
+field is at bit 0. A field's declared type counts in the record's
+alignment, and the record's size is the end of its last bit, in bytes,
+rounded up to that alignment. The one difference between the targets
+is an unnamed field's type, which counts in the alignment on aarch64
+and not on x86-64: `struct { char c; int : 4; }` is 2 bytes of
+alignment 1 on x86-64 and 4 of alignment 4 on aarch64, and the next
+member's place is the same on both. That is the alignment of the
+storage unit, which p13 leaves unspecified (J.1(19)), no choice of
+J.3. An unnamed field is kept among the members for the layout alone:
+no name finds it, and no list gives it a value (chapter 5).
+
+A named field's access unit is the narrowest unit of 1, 2, 4 or 8
+bytes, at a multiple of its size from the record's start, that holds
+the field's bits. Units of sizes that are powers of two nest, so the
+unit lies in the field's container, and so in the record, whose
+alignment counts the container's type. The unit may hold bytes of
+other members, a `char` beside the field or another field's bits:
+`struct { char c; int f : 16; char d; }` has `f` in bytes 1 and 2,
+and its unit is the 4 bytes at 0. The member holds the unit's offset
+and size, and the field's width and its first bit in the unit. A
+field has no offset in bytes of its own, so `offsetof` of one, which
+7.21p4 leaves undefined, is an error; its access and its initializer
+are not yet.
 
 `__builtin_va_list`, the type behind `va_list` (7.16p4), is the
 target's, since a list is handed to the C library, which reads it as
@@ -891,8 +928,10 @@ anywhere but last in a struct of two named members or more, where it
 is a flexible array member (p20). A bit-field's width is not
 negative, does not exceed its type's width, 1 for `_Bool` and its
 bits for any other, and is zero only on a field of no name (p4); a
-named bit-field's name is a member's, kept though rcc lays out no
-bit-field yet. Each is an error where the field is declared.
+named bit-field is a member as any other, counted among the named
+members. Each is an error where the field is declared. A bit-field
+of a type rcc does not use yet leaves the record without its layout,
+by the type's words, as a member of the type does.
 A member's own array of size zero,
 `unsigned char f_handle[0];` in glibc's `struct file_handle`, is GNU
 C's spelling of one: where a flexible array member may stand it is
@@ -1118,9 +1157,9 @@ by its name.
 
 A typedef of an array whose size needs what rcc does not have yet
 names a not-yet type whose words say what the size needs, as a size
-by the size of a struct with a bit-field does: the typedef is
-accepted and a local of the type is refused with "not yet: bit-field
-in struct ...". The type keeps the array's element, so a parameter of
+by the size of a packed struct does: the typedef is accepted and a
+local of the type is refused with "not yet: attribute 'packed' on
+struct ...". The type keeps the array's element, so a parameter of
 it is adjusted to a pointer to the element (6.7.7.4p6), as one of any
 array type is. The parser catches a refusal of the not-yet kind
 alone, only while it reads the size of a typedef's array suffix, and
@@ -1130,8 +1169,8 @@ size that is wrong stays the error it is, and so does such a size
 outside a typedef: of a local, a parameter, a cast or a `sizeof`.
 Since the parse of the size stops at its first refusal, an error of
 the program after it in the size is not seen:
-`typedef int a[sizeof (struct s) + undeclared];`, `s` a struct with
-a bit-field, is accepted. A refusal unwinds every level of the parse,
+`typedef int a[sizeof (struct s) + undeclared];`, `s` a packed
+struct, is accepted. A refusal unwinds every level of the parse,
 and reading on would take one that does not, a value of a not-yet
 kind that every expression's builder carries.
 
@@ -1368,8 +1407,9 @@ points of a line in order. An anonymous member takes its values as a
 member of its record's type does, its members being the record's
 (6.7.3.2p15), as `clang` gives them: `{ 1, 2, 3 }` for
 `struct { int a; union { int b; char c; }; int d; }` gives `a`, `b`
-and `d`. An unnamed bit-field, which p10 passes over, is in no record
-rcc lays out. The bytes no member's value holds, the
+and `d`. The walk passes over an unnamed bit-field, which takes no
+value (p10), and a named one's value is not yet. The bytes no
+member's value holds, the
 padding included, are zero (p11, p22), which the data writes as any
 other run of zeros. A list that goes on past the record's members, or
 a union's first, is an error (p3). A list that reaches a flexible
@@ -1841,12 +1881,13 @@ Each use that reads or writes a record whole (chapter 5: a `register`
 one, a record by value but the aarch64 `va_list`, and its value where
 a record is wanted, a scalar's place in a local's list among them), a
 function whose parameter list is
-`(...)` alone, the layout of a struct or a union with a bit-field, an
+`(...)` alone, the layout of a struct or a union with an
 attribute that marks, `packed` and `aligned` among them, a packing of
 `#pragma pack`, no member, or a member of a type rcc does not use yet
 but a real floating one (chapter 3), an initializer of a flexible
-array member, an access of a floating member, C23's compatibility of
-two records of one tag, floating point and `__int128` (each
+array member, an access of a floating member, an access of a
+bit-field and an initializer of one (chapter 3), C23's compatibility
+of two records of one tag, floating point and `__int128` (each
 type is declared; a pointer to one is an ordinary pointer, and a use
 that needs the object is refused; a floating constant is a token,
 refused where an expression uses it), an enum's fixed underlying type,

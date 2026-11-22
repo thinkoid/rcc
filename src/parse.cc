@@ -4481,12 +4481,16 @@ member_t named_member(const record_t &, const token_t &);
 std::optional< member_t > member_named(const record_t &, std::string_view);
 
 // Whether the member m is the member of the name, or an anonymous
-// member that holds it, at any depth, 6.7.3.2p15.
+// member that holds it, at any depth, 6.7.3.2p15; an unnamed bit-field
+// is neither.
 bool
 holds_member(const member_t &m, std::string_view name)
 {
     if (!m.name.empty())
         return m.name == name;
+
+    if (!is_anonymous(m))
+        return false;
 
     return member_named(*as< record_type_t >(m.type).record, name).has_value();
 }
@@ -5013,6 +5017,19 @@ elements(parser_t &p,
     }
 }
 
+// The index of the first member of r at i or after it that takes an
+// initializer, no unnamed bit-field, 6.7.11p10, or the count of the
+// members when none does.
+std::size_t
+initialized_member(const record_t &r, std::size_t i)
+{
+    while (i < r.members.size() && is_bit_field(r.members[i]) &&
+           r.members[i].name.empty())
+        ++i;
+
+    return i;
+}
+
 // The members of a record at offset, from the initializers ahead in a
 // list, 6.7.11p18: a struct's in declaration order, each from the next
 // initializer, or from as many as it takes when that one does not
@@ -5022,25 +5039,32 @@ elements(parser_t &p,
 // later initializer of a member overrides an earlier one, p20.  An
 // anonymous member is given as a member of its record type is, its
 // members being the record's, 6.7.3.2p15, as clang gives it; an
-// unnamed bit-field, which p10 passes over, is in no record rcc lays
-// out.  An initializer is ahead.  The members end with the last,
+// unnamed bit-field takes no initializer, p10, and the walk passes over
+// it.  An initializer is ahead.  The members end with the last,
 // leaving the rest of the list to the enclosing aggregate or to the
 // list's own check, or with the list.  Returns whether the walk ended
 // past the last member the list may give.  A flexible array member
-// takes an initializer only in GNU C, which rcc does not take yet.
+// takes an initializer only in GNU C, which rcc does not take yet, and
+// a named bit-field one rcc does not store yet.
 bool
 member_values(
     parser_t &p, const record_t &r, long offset, destination_t &to, walk_t walk)
 {
     const std::size_t end = r.members.size();
 
-    std::size_t next = 0;
+    std::size_t next = initialized_member(r, 0);
     bool designated = starts_designated(p, walk);
+    if (!designated && next == end)
+        return true;
+
     for (;;) {
         if (designated)
             next = member_designator(p, r);
 
         const member_t &m = r.members[next];
+        if (is_bit_field(m))
+            not_yet(peek(p), "initializer of bit-field " + quoted(m.name));
+
         if (is< array_t >(m.type) && as< array_t >(m.type).count < 0)
             not_yet(peek(p),
                     "initializer of flexible array member " + quoted(m.name));
@@ -5053,7 +5077,7 @@ member_values(
         else
             subobject_initializer(p, m.type, offset + m.offset, to);
 
-        next = r.is_union ? end : next + 1;
+        next = r.is_union ? end : initialized_member(r, next + 1);
 
         designated = takes_designation(p, walk);
         if (!designated && !goes_on(p, next == end))
@@ -6737,11 +6761,11 @@ refuse_member_after_flexible(const member_list_t &list)
 // negative, does not exceed the type's, 1 for _Bool by p4's footnote
 // and its bits for any other, and is zero only where the field has no
 // name, p4; a type rcc does not use yet has no width to exceed.  name
-// is the field's, or null.  rcc lays out no bit-field yet, so its
-// record is a not-yet record; attributes after the width are said of
-// the member, and change nothing that is laid out.  A bit-field after
-// a flexible array member is an error, as any member there is.
-void
+// is the field's, or null.  Attributes after the width are said of the
+// member, and change nothing that is laid out.  A bit-field after a
+// flexible array member is an error, as any member there is.  Returns
+// the width.
+int
 bit_field(parser_t &p,
           member_list_t &list,
           const type_t &t,
@@ -6777,7 +6801,8 @@ bit_field(parser_t &p,
                  " bits, wider than its type's " + std::to_string(most));
 
     attribute_specifier_list(p);
-    mark_not_yet(list.record, "bit-field in " + record_words(list.record));
+
+    return int(std::min(bits, exact_t(std::numeric_limits< int >::max())));
 }
 
 // A member's type: a complete object type, 6.7.3.2p11, so neither a
@@ -6838,8 +6863,8 @@ require_member_type(const token_t &name,
 // the record, or none: a member the record declares, or one of an
 // anonymous member's, at any depth, at the anonymous member's offset
 // plus its own, and qualified as it is too, since its members are the
-// record's, 6.7.3.2p15, reached through it.  An anonymous member is the
-// one member of no name: an unnamed bit-field is not kept.
+// record's, 6.7.3.2p15, reached through it.  A named bit-field is found
+// as any member is; an unnamed one, p14, names nothing.
 std::optional< member_t >
 member_named(const record_t &r, std::string_view name)
 {
@@ -6847,7 +6872,7 @@ member_named(const record_t &r, std::string_view name)
         if (m.name == name)
             return m;
 
-        if (!m.name.empty())
+        if (!is_anonymous(m))
             continue;
 
         auto inner = member_named(*as< record_type_t >(m.type).record, name);
@@ -6861,37 +6886,8 @@ member_named(const record_t &r, std::string_view name)
     return std::nullopt;
 }
 
-// The names of a record's named bit-fields, its anonymous members' at
-// any depth among them, 6.7.3.2p15.
-std::vector< std::string >
-bit_field_names(const record_t &r)
-{
-    std::vector< std::string > names = r.bit_fields;
-
-    for (const member_t &m : r.members) {
-        if (!m.name.empty())
-            continue;
-
-        const auto inner = bit_field_names(*as< record_type_t >(m.type).record);
-        names.insert(names.end(), inner.begin(), inner.end());
-    }
-
-    return names;
-}
-
-// Whether a record declares a member of the name, a bit-field among
-// them, its anonymous members' at any depth among them, 6.7.3.2p15.
-bool
-declares_member(const record_t &r, std::string_view name)
-{
-    const auto bit_fields = bit_field_names(r);
-
-    return member_named(r, name) ||
-           std::ranges::find(bit_fields, name) != bit_fields.end();
-}
-
-// The names of a record's members, its anonymous members' at any depth
-// among them, 6.7.3.2p15.
+// The names of a record's members, its named bit-fields and its
+// anonymous members' at any depth among them, 6.7.3.2p15.
 std::vector< std::string >
 member_names(const record_t &r)
 {
@@ -6902,6 +6898,9 @@ member_names(const record_t &r)
             names.push_back(m.name);
             continue;
         }
+
+        if (!is_anonymous(m))
+            continue;
 
         const auto inner = member_names(*as< record_type_t >(m.type).record);
         names.insert(names.end(), inner.begin(), inner.end());
@@ -6929,7 +6928,7 @@ add_member(member_list_t &list,
 
     require_member_type(name, t, zero, list);
 
-    if (declares_member(r, name.text))
+    if (member_named(r, name.text))
         fail(name, "duplicate member " + quoted(name.text));
 
     r.members.push_back(member_t { std::string(name.text), t, 0, qualifiers });
@@ -6954,15 +6953,11 @@ anonymous_member(const token_t &semicolon,
     const record_t &inner = *as< record_type_t >(t).record;
 
     for (const std::string &name : member_names(inner)) {
-        if (declares_member(r, name))
+        if (member_named(r, name))
             fail(semicolon, "duplicate member " + quoted(name));
 
         ++list.named;
     }
-
-    for (const std::string &name : bit_field_names(inner))
-        if (declares_member(r, name))
-            fail(semicolon, "duplicate member " + quoted(name));
 
     if (const std::string *words = not_yet_in(t))
         mark_not_yet(r, *words);
@@ -6970,18 +6965,30 @@ anonymous_member(const token_t &semicolon,
     r.members.push_back(member_t { { }, t, 0, qualifiers });
 }
 
-// A named bit-field's name, one the record has not declared yet, its
-// anonymous members' and its bit-fields' among them, 6.7.3.2p1, p15 and
-// 6.2.3p1, kept for the members declared after it.
+// A bit-field of the width, named or not, 6.7.3.2p11, p14: a member,
+// kept for the layout, lay_out()'s.  A named one's name is one the
+// record has not declared yet, its anonymous members' and its
+// bit-fields' among them, p1, p15 and 6.2.3p1, and qualifiers are those
+// its declaration says of it.  A field of a type rcc does not use yet
+// leaves the record without its layout, by the type's words, as a
+// member of the type does.
 void
-add_bit_field(member_list_t &list, const token_t &name)
+add_bit_field(member_list_t &list,
+              const token_t *name,
+              const type_t &t,
+              qualifiers_t qualifiers,
+              int width)
 {
     record_t &r = list.record;
 
-    if (declares_member(r, name.text))
-        fail(name, "duplicate member " + quoted(name.text));
+    if (name && member_named(r, name->text))
+        fail(*name, "duplicate member " + quoted(name->text));
 
-    r.bit_fields.emplace_back(name.text);
+    if (const std::string *words = not_yet_in(t))
+        mark_not_yet(r, *words);
+
+    const std::string named = name ? std::string(name->text) : std::string();
+    r.members.push_back(member_t { named, t, 0, qualifiers, width });
 }
 
 // One member declarator, 6.7.3.2p1: a declarator, which names the
@@ -6995,7 +7002,8 @@ void
 member_declarator(parser_t &p, const specifiers_t &spec, member_list_t &list)
 {
     if (peek(p).kind == tok_t::colon) {
-        bit_field(p, list, spec.type, nullptr);
+        const int width = bit_field(p, list, spec.type, nullptr);
+        add_bit_field(list, nullptr, spec.type, { }, width);
         return;
     }
 
@@ -7012,8 +7020,8 @@ member_declarator(parser_t &p, const specifiers_t &spec, member_list_t &list)
                                       record_words(list.record));
 
     if (peek(p).kind == tok_t::colon) {
-        bit_field(p, list, d.type, d.name);
-        add_bit_field(list, *d.name);
+        const int width = bit_field(p, list, d.type, d.name);
+        add_bit_field(list, d.name, d.type, d.qualifiers, width);
         return;
     }
 
@@ -7157,25 +7165,114 @@ members(parser_t &p, record_t &r)
     }
 }
 
-// The layout of a record its list completed, by the rule clang has for
-// both targets: each member of a struct at the offset so far rounded up
+// The next free bit of a struct as its layout goes: the byte, and the
+// count of its bits, 0 to 7, that the bit-fields before took.
+struct next_bit_t
+{
+    long byte = 0;
+    int bit = 0;
+};
+
+// The access unit of a named bit-field, its container's offset and its
+// first bit in the container in hand: the narrowest unit of 1, 2, 4 or
+// 8 bytes, at a multiple of its size from the record's start, that
+// holds the field's bits.  Its offset, its size and the field's first
+// bit in it become the member's (docs/shape.md chapter 3).  Units of
+// sizes that are powers of two nest, and the container is one, so the
+// unit lies in the container.
+void
+access_unit(member_t &m)
+{
+    const int size = int(size_of(m.type));
+
+    for (int unit = 1; unit <= size; unit *= 2) {
+        const int start = m.bit / (8 * unit) * unit;
+        if (m.bit + m.width <= (start + unit) * 8) {
+            m.offset += start;
+            m.unit = unit;
+            m.bit -= start * 8;
+            return;
+        }
+    }
+
+    throw std::logic_error("access_unit: a bit-field past its container");
+}
+
+// The place of a bit-field, 6.7.3.2p13, p14, in its container, the unit
+// of its declared type, of the type's size at a multiple of it from the
+// record's start: the next free bit, next, where the rest of that
+// container holds the field's width, and the next container's first
+// bit where it does not, so no field straddles two; a width of 0 moves
+// to the next container's first bit, unless next is one.  Fields fill
+// a container from its lowest bit up.  In a union next stays at the
+// record's start, so every field is at bit 0, p18.  A named field
+// takes its access unit, access_unit()'s.  Returns the end of the
+// field's bits, in bytes; close is the list's '}', where a record too
+// large for a size is refused.
+long
+bit_field_place(const token_t &close,
+                const record_t &r,
+                member_t &m,
+                next_bit_t &next)
+{
+    constexpr long largest = std::numeric_limits< long >::max();
+    const long size = size_of(m.type);
+
+    if (next.byte > largest - 2 * size)
+        fail(close, record_words(r) + " is too large");
+
+    long container = next.byte / size * size;
+    int bit = int(next.byte - container) * 8 + next.bit;
+
+    const bool moves = m.width == 0 ? bit > 0 : bit + m.width > size * 8;
+    if (moves) {
+        container += size;
+        bit = 0;
+    }
+
+    m.offset = container;
+    m.bit = bit;
+    if (!m.name.empty())
+        access_unit(m);
+
+    if (!r.is_union)
+        next = { container + (bit + m.width) / 8, (bit + m.width) % 8 };
+
+    return container + (bit + m.width + 7) / 8;
+}
+
+// The layout of a record its list completed, as clang lays it out on
+// the target: each member of a struct at the offset so far rounded up
 // to the member's alignment, in the order declared, 6.7.3.2p16, p17;
 // each member of a union at 0, p18; the record's alignment its
 // members' largest, and its size the end of its members rounded up to
 // that alignment, p19, so that each element of an array of it is
 // aligned.  A flexible array member stands at its element's alignment
 // past the other members and adds no size, p20, as clang lays it out.
-// close is the list's '}', where a record too large for a size is
-// refused.
+// A bit-field takes its bits, bit_field_place()'s, and the member after
+// it the next byte past them, at its own alignment, so it may lie in
+// the field's container; the end of a field is the end of its last
+// bit.  A field's declared type counts in the record's alignment, an
+// unnamed field's only where the target says so.  close is the list's
+// '}', where a record too large for a size is refused.
 void
-lay_out(const token_t &close, record_t &r)
+lay_out(const token_t &close, record_t &r, const target_t &target)
 {
     constexpr long largest = std::numeric_limits< long >::max();
 
+    next_bit_t next;
     long end = 0;
     int alignment = 1;
 
     for (member_t &m : r.members) {
+        if (is_bit_field(m)) {
+            end = std::max(end, bit_field_place(close, r, m, next));
+            if (!m.name.empty() || target.unnamed_field_aligns)
+                alignment = std::max(alignment, align_of(m.type));
+
+            continue;
+        }
+
         const bool flexible =
             is< array_t >(m.type) && as< array_t >(m.type).count < 0;
         const long size = flexible ? 0 : size_of(m.type);
@@ -7188,6 +7285,9 @@ lay_out(const token_t &close, record_t &r)
 
         if (size > largest - m.offset)
             fail(close, record_words(r) + " is too large");
+
+        if (!r.is_union)
+            next = { m.offset + size, 0 };
 
         end = std::max(end, m.offset + size);
         alignment = std::max(alignment, align);
@@ -7240,7 +7340,7 @@ va_record(parser_t &p)
         record_t { false, psabi ? "__va_list_tag" : "__va_list" });
     r.members = va_members(p);
     r.complete = true;
-    lay_out(p.tokens.front(), r);
+    lay_out(p.tokens.front(), r, p.target);
 
     return &r;
 }
@@ -7291,7 +7391,7 @@ struct_or_union_specifier(parser_t &p)
         mark_not_yet(r, "pragma 'pack' on " + record_words(r));
 
     if (r.not_yet.empty())
-        lay_out(close, r);
+        lay_out(close, r, p.target);
 
     r.complete = true;
 
@@ -10224,8 +10324,9 @@ ends_sizeof_operand(const parser_t &p, std::size_t start)
 // are reached.  A member of a floating type, or an array of one, which
 // the record lays out and rcc does not use yet, is refused by the
 // type's words, its address as its value, but where the access is the
-// whole operand of sizeof, ends_sizeof_operand()'s.  start is the
-// token the postfix expression begins at.
+// whole operand of sizeof, ends_sizeof_operand()'s.  A bit-field's
+// access is not yet.  start is the token the postfix expression begins
+// at.
 expr_t
 member_access(parser_t &p, const token_t &op, expr_t e, std::size_t start)
 {
@@ -10240,6 +10341,9 @@ member_access(parser_t &p, const token_t &op, expr_t e, std::size_t start)
     }
 
     const member_t m = named_member(accessed_record(op, e.type), name);
+    if (is_bit_field(m))
+        not_yet(name, "access of bit-field " + quoted(m.name));
+
     if (is_sized(m.type) && !sized_operand)
         not_yet(name, *not_yet_in(m.type));
 
@@ -11031,7 +11135,8 @@ designated_element(parser_t &p, type_t &t, long &offset)
 // member's name, then any number of .name, a member of the record so
 // far, and [constant], designated_element()'s, so that
 // &(t.member-designator) on a static t is an address constant.  The
-// keyword is the identifier ahead's.
+// keyword is the identifier ahead's.  A bit-field has no offset in
+// bytes, and its offsetof is an error: p4 leaves it undefined.
 expr_t
 offsetof_expression(parser_t &p, const token_t &keyword)
 {
@@ -11046,6 +11151,9 @@ offsetof_expression(parser_t &p, const token_t &keyword)
         const token_t &name =
             expect(p, tok_t::identifier, "expected member name");
         const member_t m = designated_member(*at, t, name);
+        if (is_bit_field(m))
+            fail(name, "offsetof of bit-field " + quoted(m.name));
+
         offset += m.offset;
         t = m.type;
 

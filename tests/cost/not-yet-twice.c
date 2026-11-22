@@ -5,8 +5,8 @@
    attributes with their arguments, in their order, mode (word) here,
    spelled __mode__ (__word__) the second time, and mode (word) and
    aligned (8) together; _Atomic, the qualifier or the type specifier;
-   and an array size rcc cannot compute, the size of a struct with a
-   bit-field.  Each declaration writes nothing.
+   and an array size rcc cannot compute, the size of a packed struct.
+   Each declaration writes nothing.
 
    On x86-64 the listing must be, byte for byte but for the .file line,
    the listing of this program without the second declaration of each
@@ -26,8 +26,8 @@ void bump(_Atomic(int) *count);
 struct regs
 {
         long r[2];
-        unsigned live : 1;
-};
+        int live;
+} __attribute__((packed));
 
 typedef long regs_t[sizeof(struct regs)];
 typedef long regs_t[sizeof(struct regs)];

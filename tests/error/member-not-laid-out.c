@@ -1,10 +1,10 @@
-/* A member access into a struct with a bit-field, which rcc does not
-   lay out yet: refused by the bit-field's words. */
+/* A member access into a packed struct, which rcc does not lay out
+   yet: refused by the attribute's words. */
 struct flags
 {
         int count;
-        unsigned dirty : 1;
-};
+        char dirty;
+} __attribute__((packed));
 
 int
 first(struct flags *p)

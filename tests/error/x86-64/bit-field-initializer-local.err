@@ -1,0 +1,2 @@
+tests/error/bit-field-initializer-local.c:12:35: error: not yet: initializer of bit-field 'dirty'
+status 1

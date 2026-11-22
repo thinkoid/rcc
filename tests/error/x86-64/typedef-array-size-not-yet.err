@@ -1,2 +1,2 @@
-tests/error/typedef-array-size-not-yet.c:20:19: error: not yet: bit-field in struct 'regs'
+tests/error/typedef-array-size-not-yet.c:20:19: error: not yet: attribute 'packed' on struct 'regs'
 status 1

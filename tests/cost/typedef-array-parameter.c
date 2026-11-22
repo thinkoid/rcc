@@ -1,6 +1,6 @@
 /* shape.md chapter 5: a typedef of an array whose size rcc cannot
-   compute, here by the size of a struct with a bit-field, names a type
-   rcc does not use yet, which keeps the array's element, so a
+   compute, here by the size of a packed struct, names a type rcc
+   does not use yet, which keeps the array's element, so a
    parameter of the type is adjusted to a pointer to the element,
    6.7.7.4p6.  second() is declared with such a parameter and with a
    long *, which is one function.
@@ -14,8 +14,8 @@
 struct regs
 {
         long r[2];
-        unsigned live : 1;
-};
+        int live;
+} __attribute__((packed));
 
 typedef long regs_t[sizeof(struct regs)];
 

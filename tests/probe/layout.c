@@ -133,3 +133,40 @@ mode_two(void)
 {
         return M2;
 }
+
+/* the functions of the records of bit-fields: a bit-field and a member
+   of each kind, either way round; two bit-fields and a char; the rules
+   and the C library's records; and the offsets of their ordinary
+   members, since a bit-field has none */
+#define FIELD_PAIR_FUNCTIONS(F, TF, WF, K, TK) \
+        RECORD(struct, fk_##F##_##K)           \
+        OFFSET(struct, fk_##F##_##K, y)        \
+        RECORD(struct, kf_##F##_##K)           \
+        OFFSET(struct, kf_##F##_##K, x)
+
+#define FIELD_PAIRS_FUNCTIONS(F, TF, WF) \
+        FIELD_KINDS(FIELD_PAIR_FUNCTIONS, F, TF, WF)
+
+FIELDS(FIELD_PAIRS_FUNCTIONS)
+
+#define FIELD_TWO_FUNCTIONS(A, TA, WA, B, TB, WB) \
+        RECORD(struct, ff_##A##_##B)              \
+        OFFSET(struct, ff_##A##_##B, z)
+
+#define FIELD_TWOS_FUNCTIONS(A, TA, WA) \
+        FEW_FIELDS2(FIELD_TWO_FUNCTIONS, A, TA, WA)
+
+FEW_FIELDS(FIELD_TWOS_FUNCTIONS)
+
+FIELD_RECORDS(RECORD)
+FLEXIBLE_RECORD(struct, anonymous_field_flexible)
+FIELD_OFFSETS(OFFSET)
+
+/* offsetof of a member of a record of the C library by its type name */
+#define LIBRARY_OFFSET(N, T, M)        \
+        long library_##N(void)         \
+        {                              \
+                return offsetof(T, M); \
+        }
+
+LIBRARY_OFFSETS(LIBRARY_OFFSET)

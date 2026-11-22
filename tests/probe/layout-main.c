@@ -88,6 +88,34 @@ LIST_MEMBERS(LIST_OFFSET)
 
 int mode_two(void), ref_mode_two(void);
 
+#define FIELD_PAIR_FUNCTIONS(F, TF, WF, K, TK) \
+        RECORD(struct, fk_##F##_##K)           \
+        OFFSET(struct, fk_##F##_##K, y)        \
+        RECORD(struct, kf_##F##_##K)           \
+        OFFSET(struct, kf_##F##_##K, x)
+
+#define FIELD_PAIRS_FUNCTIONS(F, TF, WF) \
+        FIELD_KINDS(FIELD_PAIR_FUNCTIONS, F, TF, WF)
+
+FIELDS(FIELD_PAIRS_FUNCTIONS)
+
+#define FIELD_TWO_FUNCTIONS(A, TA, WA, B, TB, WB) \
+        RECORD(struct, ff_##A##_##B)              \
+        OFFSET(struct, ff_##A##_##B, z)
+
+#define FIELD_TWOS_FUNCTIONS(A, TA, WA) \
+        FEW_FIELDS2(FIELD_TWO_FUNCTIONS, A, TA, WA)
+
+FEW_FIELDS(FIELD_TWOS_FUNCTIONS)
+
+FIELD_RECORDS(RECORD)
+FLEXIBLE_RECORD(struct, anonymous_field_flexible)
+FIELD_OFFSETS(OFFSET)
+
+#define LIBRARY_OFFSET(N, T, M) long library_##N(void), ref_library_##N(void);
+
+LIBRARY_OFFSETS(LIBRARY_OFFSET)
+
 /* a record's checks; the stride is of two elements of the record */
 #define CHECK_RECORD(K, N)                                                  \
         {                                                                   \
@@ -142,6 +170,23 @@ int mode_two(void), ref_mode_two(void);
 
 #define CHECK_LIST(M) report("list_" #M, list_##M(), ref_list_##M());
 
+#define CHECK_FIELD_PAIR(F, TF, WF, K, TK)    \
+        CHECK_RECORD(struct, fk_##F##_##K)    \
+        CHECK_OFFSET(struct, fk_##F##_##K, y) \
+        CHECK_RECORD(struct, kf_##F##_##K)    \
+        CHECK_OFFSET(struct, kf_##F##_##K, x)
+
+#define CHECK_FIELD_PAIRS(F, TF, WF) FIELD_KINDS(CHECK_FIELD_PAIR, F, TF, WF)
+
+#define CHECK_FIELD_TWO(A, TA, WA, B, TB, WB) \
+        CHECK_RECORD(struct, ff_##A##_##B)    \
+        CHECK_OFFSET(struct, ff_##A##_##B, z)
+
+#define CHECK_FIELD_TWOS(A, TA, WA) FEW_FIELDS2(CHECK_FIELD_TWO, A, TA, WA)
+
+#define CHECK_LIBRARY(N, T, M) \
+        report("library_" #N, library_##N(), ref_library_##N());
+
 int
 main(void)
 {
@@ -156,6 +201,12 @@ main(void)
         DESIGNATORS(CHECK_DESIGNATED)
         LIST_MEMBERS(CHECK_LIST)
         report("mode_two", mode_two(), ref_mode_two());
+        FIELDS(CHECK_FIELD_PAIRS)
+        FEW_FIELDS(CHECK_FIELD_TWOS)
+        FIELD_RECORDS(CHECK_RECORD)
+        CHECK_FLEXIBLE(struct, anonymous_field_flexible)
+        FIELD_OFFSETS(CHECK_OFFSET)
+        LIBRARY_OFFSETS(CHECK_LIBRARY)
 
         printf("%ld checks, %ld differ\n", total, bad);
 

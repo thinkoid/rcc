@@ -170,35 +170,56 @@ struct type_t
 // A member of a record: its name, its type and its offset in bytes
 // from the start of the record, 6.7.3.2p17, and the qualifiers it is
 // declared with, which an access joins to the record's, 6.5.3.4p3, p4.
+// width is a bit-field's, p11, and -1 for a member that is none.  A
+// named bit-field's offset is its access unit's, unit the unit's size
+// in bytes, and bit the field's first bit in the unit, the lowest
+// being 0 (docs/shape.md chapter 3).  An unnamed bit-field, p14, is
+// kept for the layout alone, at its container's offset.
 struct member_t
 {
     std::string name;
     type_t type;
     long offset;
     qualifiers_t qualifiers = { };
+    int width = -1;
+    int unit = 0;
+    int bit = 0;
 };
+
+// Whether a member is a bit-field, 6.7.3.2p11, named or not.
+inline bool
+is_bit_field(const member_t &m)
+{
+    return m.width >= 0;
+}
+
+// Whether a member is an anonymous member, 6.7.3.2p15: one of no name
+// that is no bit-field.  An unnamed bit-field, p14, is a member of no
+// name too, and holds no members.
+inline bool
+is_anonymous(const member_t &m)
+{
+    return m.name.empty() && !is_bit_field(m);
+}
 
 // A struct or a union as its declarations describe it, 6.7.3.2.  The
 // parser makes one incomplete at the first mention of its tag, or at a
 // list without one, and completes it in place at the list's '}',
 // 6.7.3.4p5; nothing writes it after the parse.  tag is empty for a
 // record declared without one.  A complete record has its members, its
-// size and its alignment, laid out by the rule clang has for both
-// targets, unless its list holds a construct rcc does not lay out yet:
+// size and its alignment, laid out as clang lays it out on the target,
+// unless its list holds a construct rcc does not lay out yet:
 // not_yet is then the words its use is refused with, and the record has
 // no size and no alignment, as a not-yet type has none.  flexible says
 // that the record is a struct with a flexible array member, or a union
 // with a member of such a record, possibly through other unions, which
-// 6.7.3.2p3 keeps out of a struct and out of an array.  bit_fields is
-// the names of its named bit-fields, which rcc lays out none of yet and
-// keeps for their names alone, so that no other member takes one.
+// 6.7.3.2p3 keeps out of a struct and out of an array.
 struct record_t
 {
     bool is_union;
     std::string tag;
     bool complete = false;
     std::vector< member_t > members = { };
-    std::vector< std::string > bit_fields = { };
     long size = 0;
     int alignment = 0;
     std::string not_yet = { };

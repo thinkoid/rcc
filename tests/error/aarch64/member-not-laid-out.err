@@ -1,2 +1,2 @@
-tests/error/member-not-laid-out.c:12:17: error: not yet: bit-field in struct 'flags'
+tests/error/member-not-laid-out.c:12:17: error: not yet: attribute 'packed' on struct 'flags'
 status 1

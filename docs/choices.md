@@ -24,10 +24,10 @@ the text leaves to the implementation and J.3 does not list, of
   and has its row.
 - Floating point, J.3.7: rcc has no floating arithmetic, and refuses
   a floating constant where an expression uses it.
-- What rcc refuses: a bit-field, J.3.10(1) to (5); an alignment
-  specifier, and an `aligned` attribute on a record, so no extended
-  alignment, J.3.14(4) and (5). It has no extended integer type, so
-  J.3.6(2) has none to rank.
+- What rcc refuses: the access and the initializer of a bit-field,
+  J.3.10(1) and (5); an alignment specifier, and an `aligned`
+  attribute on a record, so no extended alignment, J.3.14(4) and (5).
+  It has no extended integer type, so J.3.6(2) has none to rank.
 - The C library's and the host's: a freestanding environment,
   J.3.3(2), (3) and (7), since rcc compiles for a hosted one; the
   environment, J.3.3(5) to (12); the library, J.3.13. Threads,
@@ -62,6 +62,9 @@ the text leaves to the implementation and J.3 does not list, of
 | J.3.8(2) | 6.5.7 | `long`, 64 bits | the same | `tests/cost/ptr-diff.c` |
 | J.3.9(1) | 6.7.2 | five registers, `rbx` and `r12` to `r15`, taken by declaration; a variable past them takes a slot, with a warning (`cost.md` chapter 1) | ten, `x19` to `x28` | `tests/cost/register-rules.c`, `tests/error/warning-before-error.c` |
 | J.3.9(2) | 6.7.5 | none: a `static inline` function is compiled as the static function it is, each call made; `inline` on a definition of external linkage is not yet | the same | `tests/cost/static-inline.c`, `tests/error/inline-definition.c` |
+| J.3.10(2) | 6.7.3.2 | every integer type rcc has: `char`, `signed char`, `unsigned char`, `short`, `int`, `long` and `long long`, the unsigned types of the four, and an enumerated type | the same | the `layout` probe |
+| J.3.10(3) | 6.7.3.2 | none: rcc has no atomic type, and a bit-field of one is not yet, by the type's name | the same | `tests/error/bit-field-atomic.c` |
+| J.3.10(4) | 6.7.3.2 | no: a bit-field the rest of its container cannot hold starts the next container, the unit of its declared type, of that type's size at a multiple of it (`shape.md` chapter 3) | the same | the `layout` probe |
 | J.3.10(6) | 6.7.3.2 | each member at its type's alignment, which for a scalar is its size, by `clang`'s rule (`shape.md` chapter 3) | the same | the `layout` probe, `tests/cost/struct-object.c` |
 | J.3.10(7) | 6.7.3.3 | by its values, `unsigned int`, `unsigned long`, `int` or `long`, as `clang` chooses (`shape.md` chapter 5); under `packed`, not yet | the same | `tests/cost/enum.c`, the `enums` probe, `tests/error/enum-attribute.c` |
 | J.3.11(1) | 6.7.4 | each load and each store the source writes, at the object's width (`shape.md` chapter 5) | the same | `tests/cost/volatile.c` |

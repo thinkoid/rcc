@@ -1,0 +1,2 @@
+tests/error/bit-field-offsetof.c:14:49: error: offsetof of bit-field 'dirty'
+status 1

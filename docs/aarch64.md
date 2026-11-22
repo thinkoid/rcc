@@ -1662,7 +1662,7 @@ initializes has none.
 
 ## 11. c0 and the driver
 
-c0 learns the target, for five facts:
+c0 learns the target, for six facts:
 
 - **The register variables**, 5 or 10: the count c0 assigns from and
   the number in its warning.
@@ -1688,10 +1688,13 @@ c0 learns the target, for five facts:
   offsets below them, which a call passes as the address of a copy.
   c0 makes the record and builds `va_start` and `va_arg` from it
   (`shape.md` chapter 5).
+- **An unnamed bit-field's type**, which counts in its record's
+  alignment on aarch64 and not on x86-64, as `clang` lays the record
+  out (`shape.md` chapter 3).
 
 They live in one small description, `target_t`, that c0, the
 generators and the driver read: the name, the name `clang` takes after
-`--target=`, the five facts, and the alignment the convention asks of
+`--target=`, the six facts, and the alignment the convention asks of
 a global array, which c1 reads (chapter 10). Everything else about a
 target is in its generator.
 
