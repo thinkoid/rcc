@@ -1,0 +1,2 @@
+tests/error/bit-field-address.c:12:16: error: cannot take the address of bit-field 'dirty'
+status 1

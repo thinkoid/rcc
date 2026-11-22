@@ -127,6 +127,20 @@ struct open_switch_t
     const token_t *default_at = nullptr;
 };
 
+// A member access of a bit-field: the positions of the first token of
+// its postfix expression and of the token past the member's name, the
+// name, and whether the field fills its access unit.  A store into a
+// field that does not fill its unit is not yet, and & and sizeof of
+// any field are errors, each found by the positions (shape.md chapter
+// 5).
+struct field_access_t
+{
+    std::size_t first;
+    std::size_t end;
+    std::string_view name;
+    bool fills;
+};
+
 // The state of one parse.  Scope 0 is file scope; the scopes die with
 // the parser and leave only the symbols in the unit.  result,
 // registers, function and statics are the function being defined: its
@@ -174,7 +188,8 @@ struct open_switch_t
 // names, while its body is parsed, and nothing at file scope.  aliases
 // are the declarations an alias attribute makes aliases.  used are the
 // symbols of linkage an expression has named so far, which a marking
-// attribute on a later declaration comes too late for.
+// attribute on a later declaration comes too late for.  field is the
+// last access of a bit-field a member access made, field_access_t's.
 struct parser_t
 {
     const std::vector< token_t > &tokens;
@@ -213,6 +228,7 @@ struct parser_t
     std::optional< std::vector< const symbol_t * > > temporaries = { };
     std::unordered_set< const symbol_t * > used = { };
     std::vector< made_type_t > made = { };
+    std::optional< field_access_t > field = { };
 };
 
 // The declaration specifiers: the type, and the storage-class specifier
@@ -9918,12 +9934,60 @@ record_assignment(parser_t &p, const token_t &op, expr_t lhs)
                                   box(std::move(rhs)) } };
 }
 
+// The last access of a bit-field, when it is the whole of the tokens
+// of the parse from first to before last, in as many parentheses as
+// they open, or null.
+const field_access_t *
+field_operand(const parser_t &p, std::size_t first, std::size_t last)
+{
+    if (!p.field || p.field->first < first || p.field->end > last)
+        return nullptr;
+
+    const std::size_t open = p.field->first - first;
+    if (last - p.field->end != open)
+        return nullptr;
+
+    for (std::size_t k = 0; k < open; ++k)
+        if (p.tokens[first + k].kind != tok_t::lparen ||
+            p.tokens[p.field->end + k].kind != tok_t::rparen)
+            return nullptr;
+
+    return &*p.field;
+}
+
+// The store op makes into its operand, the tokens of the parse from
+// first to before last, refused where the operand is a bit-field that
+// does not fill its access unit, which rcc does not store into yet: an
+// assignment, a compound assignment and a step, each by its words.
+void
+refuse_field_store(const parser_t &p,
+                   const token_t &op,
+                   std::size_t first,
+                   std::size_t last)
+{
+    const field_access_t *f = field_operand(p, first, last);
+    if (!f || f->fills)
+        return;
+
+    const std::string field = "bit-field " + quoted(f->name);
+    if (op.kind == tok_t::assign)
+        not_yet(op, "store into " + field);
+
+    if (op.kind == tok_t::inc || op.kind == tok_t::dec)
+        not_yet(op, "step of " + field);
+
+    not_yet(op, "compound assignment of " + field);
+}
+
 expr_t
 assignment_expression(parser_t &p)
 {
+    const std::size_t first = p.pos;
     expr_t lhs = conditional_expression(p);
     if (!is_assignment_operator(peek(p).kind))
         return lhs;
+
+    refuse_field_store(p, peek(p), first, p.pos);
 
     const token_t &op = advance(p);
     if (op.kind == tok_t::assign && is< record_type_t >(lhs.type))
@@ -10138,7 +10202,11 @@ unary_expression(parser_t &p)
     case tok_t::dec: {
         advance(p);
 
-        expr_t e = prefix_step(op, unary_expression(p));
+        const std::size_t first = p.pos;
+        expr_t arg = unary_expression(p);
+        refuse_field_store(p, op, first, p.pos);
+
+        expr_t e = prefix_step(op, std::move(arg));
         warn_void_arithmetic(p, op, e.type);
 
         return e;
@@ -10149,7 +10217,16 @@ unary_expression(parser_t &p)
         advance(p);
         return unary_arithmetic(op, cast_expression(p));
     case tok_t::bang: advance(p); return logical_not(op, cast_expression(p));
-    case tok_t::amp: advance(p); return address_of(op, cast_expression(p));
+    case tok_t::amp: {
+        advance(p);
+
+        const std::size_t first = p.pos;
+        expr_t arg = cast_expression(p);
+        if (const field_access_t *f = field_operand(p, first, p.pos))
+            fail(op, "cannot take the address of bit-field " + quoted(f->name));
+
+        return address_of(op, std::move(arg));
+    }
     case tok_t::star: advance(p); return indirection(op, cast_expression(p));
     case tok_t::kw_sizeof: return sizeof_expression(p);
     case tok_t::kw_alignof: return alignof_expression(p);
@@ -10176,8 +10253,13 @@ sizeof_expression(parser_t &p)
         t = type_name(p);
         expect(p, tok_t::rparen, "expected ')' after type name");
     }
-    else
+    else {
+        const std::size_t first = p.pos;
         t = unary_expression(p).type;
+        if (const field_access_t *f = field_operand(p, first, p.pos))
+            fail(op, "invalid application of 'sizeof' to bit-field " +
+                         quoted(f->name));
+    }
 
     p.internal_uses.erase(p.internal_uses.begin() + uses,
                           p.internal_uses.end());
@@ -10409,15 +10491,88 @@ ends_sizeof_operand(const parser_t &p, std::size_t start)
     return !is_postfix_operator(peek(p, 1 + open).kind);
 }
 
+// The integer type of size bytes, of the signedness and of the kind of
+// that width: the type a bit-field's access unit is read as.
+type_t
+unit_type(int size, bool is_signed)
+{
+    const auto of = [size, is_signed](int_kind_t s, int_kind_t u) {
+        return make_int(size * 8, is_signed, is_signed ? s : u);
+    };
+
+    switch (size) {
+    case 1: return of(int_kind_t::signed_char, int_kind_t::unsigned_char);
+    case 2: return of(int_kind_t::short_, int_kind_t::unsigned_short);
+    case 4: return of(int_kind_t::int_, int_kind_t::unsigned_);
+    default: return of(int_kind_t::long_, int_kind_t::unsigned_long);
+    }
+}
+
+// The type of a bit-field's value, its promotion, 6.3.1.1p2: int, which
+// holds every value of a field narrower than 32 bits; at 32 bits int or
+// unsigned int by the field's signedness; and past them its declared
+// type promoted, as clang has it for the types p2 leaves to the
+// implementation (shape.md chapter 3).
+type_t
+field_promoted(const member_t &m)
+{
+    const int_t &declared = as< int_t >(m.type);
+
+    if (m.width < 32)
+        return int_type();
+
+    if (m.width == 32)
+        return unit_type(4, declared.is_signed);
+
+    return promoted(m.type);
+}
+
+// The read of a bit-field m whose unit's lvalue is unit, of the unit's
+// size and the field's signedness, shape.md chapter 5: the unit loaded
+// once, as R bits, 32 for a unit of 1, 2 or 4 bytes and 64 for one of 8,
+// and the field's bits moved to the bottom by shifts alone, no mask.
+// Where the field reaches the unit's top, the load's extension has done
+// a left shift's work, and one right shift by the field's bit is left;
+// otherwise a left shift by R less the bit and the width puts the
+// field's top at R's, and a right shift by R less the width brings it
+// down.  The right shift is arithmetic for a signed field and logical
+// for an unsigned one, by the type of R bits of the field's signedness.
+// No shift is by 0.  The value is of the field's promoted type.
+expr_t
+field_read(expr_t unit, const member_t &m)
+{
+    const int r = m.unit == 8 ? 64 : 32;
+    const type_t wide = unit_type(r / 8, as< int_t >(m.type).is_signed);
+    const auto count = [](int n) {
+        return expr_t { int_type(), literal_t { n } };
+    };
+
+    expr_t e = convert_to(std::move(unit), wide);
+    if (m.bit + m.width == m.unit * 8) {
+        e = make_binary(binary_op_t::shr, wide, std::move(e), count(m.bit));
+        return convert_to(std::move(e), field_promoted(m));
+    }
+
+    e = make_binary(binary_op_t::shl, wide, std::move(e),
+                    count(r - m.bit - m.width));
+    e = make_binary(binary_op_t::shr, wide, std::move(e), count(r - m.width));
+
+    return convert_to(std::move(e), field_promoted(m));
+}
+
 // E.m and P->m, 6.5.3.4: the lvalue of the member, p3, p4, member_lvalue()'s.
 // A member of an array type decays where its value is used, and one of
 // a record type is an lvalue whose value is refused and whose members
 // are reached.  A member of a floating type, or an array of one, which
 // the record lays out and rcc does not use yet, is refused by the
 // type's words, its address as its value, but where the access is the
-// whole operand of sizeof, ends_sizeof_operand()'s.  A bit-field's
-// access is not yet.  start is the token the postfix expression begins
-// at.
+// whole operand of sizeof, ends_sizeof_operand()'s.  A bit-field is
+// reached through its access unit's lvalue, of the unit's size and of
+// the field's signedness: where the field fills the unit, starting at
+// its bit 0 and as wide, it is that lvalue, an object as any member of
+// the unit's type; any other field is its read, field_read()'s, a
+// value.  The access is the parse's last, field_access_t's.  start is
+// the token the postfix expression begins at.
 expr_t
 member_access(parser_t &p, const token_t &op, expr_t e, std::size_t start)
 {
@@ -10432,8 +10587,19 @@ member_access(parser_t &p, const token_t &op, expr_t e, std::size_t start)
     }
 
     const member_t m = named_member(accessed_record(op, e.type), name);
-    if (is_bit_field(m))
-        not_yet(name, "access of bit-field " + quoted(m.name));
+    if (is_bit_field(m)) {
+        const bool fills = m.bit == 0 && m.width == m.unit * 8;
+        member_t unit = m;
+        unit.type = unit_type(m.unit, as< int_t >(m.type).is_signed);
+
+        expr_t lvalue = member_lvalue(p, op, std::move(e), unit);
+        p.field = field_access_t { start, p.pos, name.text, fills };
+
+        if (fills)
+            return lvalue;
+
+        return field_read(std::move(lvalue), m);
+    }
 
     if (is_sized(m.type) && !sized_operand)
         not_yet(name, *not_yet_in(m.type));
@@ -10994,6 +11160,8 @@ postfix_expression(parser_t &p)
         }
         case tok_t::inc:
         case tok_t::dec:
+            refuse_field_store(p, op, start, p.pos);
+
             advance(p);
             e = postfix_step(p, op, std::move(e));
             warn_void_arithmetic(p, op, e.type);

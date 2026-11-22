@@ -359,8 +359,8 @@ other members, a `char` beside the field or another field's bits:
 and its unit is the 4 bytes at 0. The member holds the unit's offset
 and size, and the field's width and its first bit in the unit. A
 field has no offset in bytes of its own, so `offsetof` of one, which
-7.21p4 leaves undefined, is an error; its access and its initializer
-in a local's list are not yet.
+7.21p4 leaves undefined, is an error; its read is the parser's tree
+(chapter 5).
 
 `__builtin_va_list`, the type behind `va_list` (7.16p4), is the
 target's, since a list is handed to the C library, which reads it as
@@ -1044,6 +1044,34 @@ members are reached. `&p->m`, `sizeof p->m`, `p->m++` and `p->m +=
 e` are those of any lvalue, and a union's members are each at 0, so
 a member read after another written reads the bytes at its own
 width.
+
+A bit-field is reached through its access unit (chapter 3), the
+lvalue `*(U *) ((char *) P + offset)` of the unit's offset, U the
+integer type of the unit's size and of the field's signedness: plain
+`int` is signed, as `clang` has it (`choices.md`), plain `char` is the
+target's, an enumerated type is its compatible type's, and `_Bool` is
+unsigned. A field that fills its unit, at its bit 0 and as wide as
+it, is that lvalue, an object of U as a member of U is, so every
+operator on it is that member's. Any other field is a value, its
+read, written by the parser of the tree's own nodes and with no mask:
+the unit's load converted to R bits, 32 for a unit of 1, 2 or 4 bytes
+and 64 for one of 8, of the field's signedness, then shifts. Where the
+field's bits reach the unit's top, the load's extension has done a
+left shift's work, and one right shift by the field's bit s is left,
+`(int) *(signed char *) P >> 3` for `int f : 5` at bit 3 of a byte;
+otherwise a left shift by R - s - w puts the field's top at R's top,
+and a right shift by R - w brings it down, `(*(int *) P << 12) >> 12`
+for `int f : 20` at bit 0 of a 4-byte unit. The right shift is
+arithmetic for a signed field and logical for an unsigned one, by the
+type of the R bits, and no shift is by 0. The read's type is the
+field's promotion (6.3.1.1p2): `int` for a field narrower than 32
+bits, `int` or `unsigned int` by its signedness at 32, and past them
+its declared type promoted, as `clang` has it. The operand of `&` is
+no bit-field (6.5.4.2p1), nor is the operand of `sizeof` (6.5.4.4p1),
+a filling one included, so either is an error; a store into a field
+that does not fill its unit, its compound assignment and its step are
+not yet. The parser finds each by the operator's operand, the tokens
+of the field's access alone, in any parentheses.
 
 The macros of `stdarg.h` (7.16.1) are `clang`'s builtins in the
 dialect rcc preprocesses in, and the parser builds each of the tree's
@@ -1893,8 +1921,9 @@ function whose parameter list is
 attribute that marks, `packed` and `aligned` among them, a packing of
 `#pragma pack`, no member, or a member of a type rcc does not use yet
 but a real floating one (chapter 3), an initializer of a flexible
-array member, an access of a floating member, an access of a
-bit-field and its initializer in a local's list (chapter 3), C23's
+array member, an access of a floating member, a store into a
+bit-field that does not fill its unit, its compound assignment and
+its step, and its initializer in a local's list (chapter 5), C23's
 compatibility of two records of one tag, floating point and
 `__int128` (each
 type is declared; a pointer to one is an ordinary pointer, and a use

@@ -1,0 +1,2 @@
+tests/error/bit-field-address-filling.c:13:16: error: cannot take the address of bit-field 'state'
+status 1

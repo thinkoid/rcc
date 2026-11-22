@@ -1,0 +1,2 @@
+tests/error/bit-field-sizeof.c:14:16: error: invalid application of 'sizeof' to bit-field 'dirty'
+status 1
