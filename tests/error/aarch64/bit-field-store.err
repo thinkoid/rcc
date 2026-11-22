@@ -1,2 +1,0 @@
-tests/error/bit-field-store.c:18:18: error: not yet: store into bit-field 'dirty'
-status 1

@@ -1,0 +1,2 @@
+tests/error/bit-field-store-side-effect.c:21:22: error: not yet: store into bit-field 'level' through a place with a side effect
+status 1

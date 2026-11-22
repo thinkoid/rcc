@@ -55,7 +55,7 @@ the text leaves to the implementation and J.3 does not list, of
 | J.3.5(13) | 6.4.5 | an escape is the byte it names, `"\xff"` is `\377`; a universal character name is its UTF-8 | the same | `tests/cost/global-string.c`, `tests/corpus/header-wide.c` |
 | J.3.5(14) | 6.10.10.3 | UTF-32, as where the macro is defined: the C library's headers define it, so a unit that includes none has it undefined | the same | `tests/cost/wide-string.c`, whose one header, `stddef.h`, leaves it undefined |
 | J.3.6(1) | 6.2.5 | none: `__int128` is not yet | the same | `tests/error/int128-local.c` |
-| J.3.6(3) | 6.3.1.3 | G2 | G2 | the `memory` probe |
+| J.3.6(3) | 6.3.1.3 | G2 | G2 | the `memory` probe, the `fields` probe |
 | J.3.6(4) | 6.5.1 | the bits of two's complement; `>>`, G3 | the same | `tests/cost/shift.c`, the `straight` probe |
 | J.3.8(1) | 6.3.2.3 | the address as a 64-bit integer: to a narrower integer its low bits, from an integer extended by the integer's signedness | the same | the `memory` probe, `tests/cost/ptr-int.c` |
 | J.3.8(2) | 6.5.7 | `long`, 64 bits | the same | `tests/cost/ptr-diff.c` |
@@ -68,7 +68,7 @@ the text leaves to the implementation and J.3 does not list, of
 | J.3.10(5) | 6.7.3.2 | low-order to high-order: the first field of a container in its lowest bits, and each next field in the bits above (`shape.md` chapter 3) | the same | the `layout` probe, `tests/cost/bit-field-data.c` |
 | J.3.10(6) | 6.7.3.2 | each member at its type's alignment, which for a scalar is its size, by `clang`'s rule (`shape.md` chapter 3) | the same | the `layout` probe, `tests/cost/struct-object.c` |
 | J.3.10(7) | 6.7.3.3 | by its values, `unsigned int`, `unsigned long`, `int` or `long`, as `clang` chooses (`shape.md` chapter 5); under `packed`, not yet | the same | `tests/cost/enum.c`, the `enums` probe, `tests/error/enum-attribute.c` |
-| J.3.11(1) | 6.7.4 | each load and each store the source writes, at the object's width, a bit-field's at its unit's width (`shape.md` chapter 5) | the same | `tests/cost/volatile.c` |
+| J.3.11(1) | 6.7.4 | each load and each store the source writes, at the object's width, a bit-field's at its unit's width (`shape.md` chapter 5) | the same | `tests/cost/volatile.c`, `tests/cost/bit-field-volatile.c` |
 | J.3.12(10) | 6.10.8 | `pack`: a record whose list opens while it sets a packing is not yet, and one after the packing is popped or reset is laid out (`shape.md` chapter 2); `weak` is not yet, refused at its name; `GCC visibility` is read, and a declaration of a symbol of external linkage under a visibility other than `default` is not yet, refused at its name; each other `#pragma` the preprocessor passes on is skipped | the same | `tests/error/pragma-pack.c`, `tests/error/pragma-pack-pop.c`, `tests/error/pragma-pack-name.c`, `tests/error/pragma-weak.c`, `tests/error/pragma-visibility.c` |
 | J.3.14(3) | 6.2.6.1 | J.3.14(6)'s sizes, little-endian, two's complement: `0x01020304` is the bytes `04 03 02 01` | the same | the `memory` probe |
 | J.3.14(6) | 6.5.4.4 | LP64: `short` 2, `int` 4, `long`, `long long` and a pointer 8, each aligned to its size; a record by J.3.10(6) | the same | the `layout` probe |

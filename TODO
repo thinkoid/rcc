@@ -486,6 +486,76 @@ Check: the error programs that pin the refusal pin the warning, and a
 cost program of an ~_Atomic int~ object has the listing of its =int=
 twin, on both targets.
 
+** TODO A store into a bit-field loads its pointer twice, and is not yet through a place with a side effect
+
+~p->f = v~ on a field that does not fill its access unit is the
+parser's tree ~u = ((v << s) & M) | (u & ~M)~, whose place stands
+twice, the second a copy of its expression, so the pointer is loaded
+twice. For ~struct small { unsigned a : 3; int f : 5; }~ it is, on
+x86-64, =movq -8(%rbp), %rax; movl -12(%rbp), %ecx; shll $3, %ecx;
+andl $248, %ecx; movq -8(%rbp), %rdx; movsbl (%rdx), %edx; andl
+$-249, %edx; orl %edx, %ecx; movb %cl, (%rax)=, and on aarch64 =ldr
+x0, [x29, #16]; ldr w1, [x29, #24]; lsl w1, w1, #3; and w1, w1,
+#0xf8; ldr x2, [x29, #16]; ldrsb w2, [x2]; and w2, w2, #0xffffff07;
+orr w1, w1, w2; strb w1, [x0]=: the second =movq -8(%rbp)= and =ldr
+x2, [x29, #16]= are a load the source does not write. A place with a
+side effect has no copy, so ~f[i++].level = v~ is "not yet: store
+into bit-field 'level' through a place with a side effect"; a store
+of 0 or of all ones is one compound assignment, writes its place
+once and compiles. A compound assignment's and a step's tree writes
+its place twice as well, and the operator below does not cover them.
+
+Fix: one insert operator in the generators, of the place, the
+field's bit, width and unit, and the value: it computes the place
+once, evaluates the right operand, then loads the unit, clears the
+field's bits, sets the value's and stores the unit; on aarch64 the
+machine's insert is =bfi=. The parser writes it for ~=~ in place of
+the copied tree.
+
+Check: =tests/cost/bit-field-write.c='s ~store~, ~five~ and
+~store_bool~ pinned with one load of the pointer each, on both
+targets; =tests/error/bit-field-store-side-effect.c= compiles; the
+=fields= probe, 0 differ.
+
+** TODO A bit-field store's value dropped under a comma or a cast to =void= is still computed
+
+The value of ~p->f = v~ is the stored unit shifted as a read of the
+field is, and the parser leaves the shifts out where the store is an
+expression statement, the left operand of a comma or a ~for~'s third
+clause, which it finds by the store's tokens. ~g (), p->f = v;~ and
+~(void) (p->f = v);~ are not found: after the unit's store each
+writes =movsbl %cl, %ecx; sarl $3, %ecx= on x86-64 and =sxtb w1, w1;
+asr w1, w1, #3= on aarch64, two instructions whose value nothing
+reads.
+
+Fix: the store's value is left out wherever the parser discards an
+expression's value, by the discard itself and not by the tokens.
+
+Check: a cost program of the two forms, each the listing of the
+statement ~p->f = v;~ after the comma's left operand, on both
+targets.
+
+** TODO A bit-field through a generic selection is not seen as a bit-field
+
+The parser finds a bit-field as an operand by its tokens, the
+field's access alone in parentheses. A generic selection that
+selects the access is other tokens. On ~struct s { unsigned f : 8;
+int x; }~, whose field fills its unit, ~&_Generic (0, int: p->f)~
+compiles to the byte's address and ~sizeof _Generic (0, int: p->f)~
+to 1, where 6.5.4.2p1 and 6.5.4.4p1 make both errors, as =clang=
+does. On ~unsigned f : 3~, ~sizeof~ of the selection is 4, and
+~_Generic (0, int: p->f) = 1~ is "expression is not assignable",
+where the selection is the field's lvalue (6.5.2.1p4) and =clang=
+stores.
+
+Fix: a generic selection whose selected expression is the last
+field's access alone takes that access's place in the parser's
+record, so the operand checks and the store see it.
+
+Check: error programs for ~&~ and ~sizeof~ of a field through
+~_Generic~, filling and not; the store through ~_Generic~ in the
+=fields= probe.
+
 ** TODO A statement expression in a constant expression is not yet
 
 ~case ({ 1; }):~ and ~static int k = ({ 1; });~ are "not yet:

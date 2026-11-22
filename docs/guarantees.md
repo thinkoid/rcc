@@ -24,9 +24,11 @@ Instruction: `add`, `sub`, `imul`, `shl`, `neg`; the machine
 computes modulo 2^N.
 
 **G2. Narrowing to a signed type truncates.** 6.3.1.3p3. The low N
-bits, as two's complement. Instruction: a narrow store, `movb`,
-`movw` or `movl`, or the narrower name of the register; nothing is
-computed.
+bits, as two's complement; a value stored into a bit-field of width N,
+of either signedness, keeps its low N bits (6.7.3.2p12), so `f = 17`
+on an `int f : 5` holds -15. Instruction: a narrow store, `movb`,
+`movw` or `movl`, or the narrower name of the register; for a field
+the `and` of its mask; nothing else is computed.
 
 **G3. Shifts.** 6.5.8p3, p4, p5. The count is taken modulo the width; a
 signed left shift wraps; a signed right shift is arithmetic.
@@ -336,6 +338,31 @@ for a `return`. On aarch64: `mov x17, sp; str x17, [x29, #32]`; `sub
 x0, sp, x0; and x0, x0, #0xfffffffffffffff0; mov sp, x0`; `ldr x17,
 [x29, #32]; mov sp, x17`; and `mov sp, x29` at the head of the
 epilogue (`aarch64.md` 5.2).
+
+**G24. A bit-field is accessed in its unit.** 6.7.3.2p13; 3.17. A
+bit-field is read and written in its access unit: the narrowest unit
+of 1, 2, 4 or 8 bytes, at a multiple of its size, that holds the
+field's bits (`shape.md` chapter 3). A read loads the unit once, then
+shifts the value left and right, or right alone where the field
+reaches its unit's top, the right shift arithmetic for a signed
+field; a read has no mask. A store evaluates its right operand
+first, then loads the unit once, clears the field's bits, sets the
+value's and stores the unit once, so everything else in the unit is
+written back as it is after the right operand has run. Where the unit
+holds a byte of another member, the store writes that byte too, with
+the value it read. C11 makes a field and the member beside it separate
+memory locations (3.17); rcc does not keep that inside a field's unit,
+and a program that stores into such a field and into that member from
+two threads, or from a signal handler, synchronizes the two itself. A
+store of 0 or of all ones is the one `and` or `or` on the unit. A
+`volatile` field is accessed as any other: a read is one load of its
+unit, and a store is one load and one store of it. On aarch64 the
+AAPCS64 asks the container's width for such a field; rcc uses the
+unit. A field that fills its unit, of 8, 16, 32 or 64 bits at its
+start, is an object of the unit's integer type and is read and written
+as one. Instruction: the load, the shifts, the `and`, the `or` and the
+store that the same expression written by hand compiles to; no
+instruction is a field's own.
 
 ## Not in this list
 

@@ -129,15 +129,16 @@ struct open_switch_t
 
 // A member access of a bit-field: the positions of the first token of
 // its postfix expression and of the token past the member's name, the
-// name, and whether the field fills its access unit.  A store into a
-// field that does not fill its unit is not yet, and & and sizeof of
+// field's member, and whether the field fills its access unit.  A store
+// into a field that does not fill its unit is the parser's tree, its
+// compound assignment and its step are not yet, and & and sizeof of
 // any field are errors, each found by the positions (shape.md chapter
 // 5).
 struct field_access_t
 {
     std::size_t first;
     std::size_t end;
-    std::string_view name;
+    member_t member;
     bool fills;
 };
 
@@ -189,7 +190,10 @@ struct field_access_t
 // are the declarations an alias attribute makes aliases.  used are the
 // symbols of linkage an expression has named so far, which a marking
 // attribute on a later declaration comes too late for.  field is the
-// last access of a bit-field a member access made, field_access_t's.
+// last access of a bit-field a member access made, field_access_t's,
+// and field_store the positions of the first token of the last store
+// into a bit-field that does not fill its unit and of the token past
+// its right operand, which stored_effect() reads.
 struct parser_t
 {
     const std::vector< token_t > &tokens;
@@ -229,6 +233,7 @@ struct parser_t
     std::unordered_set< const symbol_t * > used = { };
     std::vector< made_type_t > made = { };
     std::optional< field_access_t > field = { };
+    std::optional< std::pair< std::size_t, std::size_t > > field_store = { };
 };
 
 // The declaration specifiers: the type, and the storage-class specifier
@@ -5033,6 +5038,169 @@ elements(parser_t &p,
     }
 }
 
+// The integer type of size bytes, of the signedness and of the kind of
+// that width: the type a bit-field's access unit is read as.
+type_t
+unit_type(int size, bool is_signed)
+{
+    const auto of = [size, is_signed](int_kind_t s, int_kind_t u) {
+        return make_int(size * 8, is_signed, is_signed ? s : u);
+    };
+
+    switch (size) {
+    case 1: return of(int_kind_t::signed_char, int_kind_t::unsigned_char);
+    case 2: return of(int_kind_t::short_, int_kind_t::unsigned_short);
+    case 4: return of(int_kind_t::int_, int_kind_t::unsigned_);
+    default: return of(int_kind_t::long_, int_kind_t::unsigned_long);
+    }
+}
+
+// The type of a bit-field's value, its promotion, 6.3.1.1p2: int, which
+// holds every value of a field narrower than 32 bits; at 32 bits int or
+// unsigned int by the field's signedness; and past them its declared
+// type promoted, as clang has it for the types p2 leaves to the
+// implementation (shape.md chapter 3).
+type_t
+field_promoted(const member_t &m)
+{
+    const int_t &declared = as< int_t >(m.type);
+
+    if (m.width < 32)
+        return int_type();
+
+    if (m.width == 32)
+        return unit_type(4, declared.is_signed);
+
+    return promoted(m.type);
+}
+
+// The read of a bit-field m whose unit's lvalue is unit, of the unit's
+// size and the field's signedness, shape.md chapter 5: the unit loaded
+// once, as R bits, 32 for a unit of 1, 2 or 4 bytes and 64 for one of 8,
+// and the field's bits moved to the bottom by shifts alone, no mask.
+// Where the field reaches the unit's top, the load's extension has done
+// a left shift's work, and one right shift by the field's bit is left;
+// otherwise a left shift by R less the bit and the width puts the
+// field's top at R's, and a right shift by R less the width brings it
+// down.  The right shift is arithmetic for a signed field and logical
+// for an unsigned one, by the type of R bits of the field's signedness.
+// No shift is by 0.  The value is of the field's promoted type.
+expr_t
+field_read(expr_t unit, const member_t &m)
+{
+    const int r = m.unit == 8 ? 64 : 32;
+    const type_t wide = unit_type(r / 8, as< int_t >(m.type).is_signed);
+    const auto count = [](int n) {
+        return expr_t { int_type(), literal_t { n } };
+    };
+
+    expr_t e = convert_to(std::move(unit), wide);
+    if (m.bit + m.width == m.unit * 8) {
+        e = make_binary(binary_op_t::shr, wide, std::move(e), count(m.bit));
+        return convert_to(std::move(e), field_promoted(m));
+    }
+
+    e = make_binary(binary_op_t::shl, wide, std::move(e),
+                    count(r - m.bit - m.width));
+    e = make_binary(binary_op_t::shr, wide, std::move(e), count(r - m.width));
+
+    return convert_to(std::move(e), field_promoted(m));
+}
+
+// The node a field's read is of, the access unit's lvalue or a store's
+// assignment: field_read()'s tree undone, its conversions and shifts
+// taken off, each of which is of its first operand.
+expr_t
+read_operand(expr_t read)
+{
+    while (
+        !is< assign_t >(read) &&
+        !(is< unary_t >(read) && as< unary_t >(read).op == unary_op_t::deref)) {
+        expr_t inner = is< cast_t >(read) ?
+                           std::move(*std::get< cast_t >(read.v).arg) :
+                           std::move(*std::get< binary_t >(read.v).lhs);
+        read = std::move(inner);
+    }
+
+    return read;
+}
+
+token_t operator_at(const token_t &, tok_t);
+std::optional< expr_t > pure_copy(const expr_t &);
+
+// The store of rhs into the bit-field m whose access unit's lvalue is
+// place, at the token op, the parser's tree of the tree's own nodes, by
+// R bits, 32 for a unit of 1, 2 or 4 bytes and 64 for one of 8
+// (shape.md chapter 5).  The value keeps the field's low bits, of either
+// signedness, 6.7.3.2p12 (G2), so an integer is taken in R bits as it
+// is, and anything else is converted as if by assignment, 6.5.17.2p2, a
+// _Bool field's value its comparison with 0, 6.3.1.2, the 0 or 1 of the
+// comparison taken as it is, with no narrowing to the byte.  A constant that
+// is 0 in the field's bits is one compound assignment on the unit, u &=
+// ~M, M the field's mask in the unit, and one that is all ones is u |=
+// M, so the place is written once.  Any other value is u = ((v << s) &
+// M) | (u & ~M), s the field's bit, the value on the left of the |, so
+// that it is computed before the unit is read, 6.5.1p3 (G13); a
+// constant's placed bits are one constant, and no shift is by 0.  The
+// place stands twice, the second a copy of its expression, so one with
+// a side effect is not yet.  The store is of the unit's type.
+expr_t
+field_store(
+    parser_t &p, const token_t &op, expr_t place, const member_t &m, expr_t rhs)
+{
+    const type_t wide = unit_type(m.unit == 8 ? 8 : 4, true);
+    const exact_t low = (exact_t(1) << m.width) - 1;
+    const exact_t mask = low << m.bit;
+    const auto constant = [&wide](exact_t v) {
+        return expr_t { wide, literal_t { wrapped(v, as< int_t >(wide)) } };
+    };
+
+    if (is_bool(m.type) || !is< int_t >(rhs.type))
+        rhs = assignment_conversion(p, op, std::move(rhs), m.type);
+    else
+        rhs = rvalue(op, std::move(rhs));
+
+    if (is_bool(m.type) && is< cast_t >(rhs) && is_bool(rhs.type))
+        rhs = expr_t { std::move(*std::get< cast_t >(rhs.v).arg) };
+
+    expr_t value = convert_to(std::move(rhs), wide);
+    if (is< literal_t >(value)) {
+        const exact_t bits = exact_t(bits_of(value)) & low;
+        if (bits == 0)
+            return assignment(p, operator_at(op, tok_t::and_assign),
+                              std::move(place), constant(~mask));
+
+        if (bits == low)
+            return assignment(p, operator_at(op, tok_t::or_assign),
+                              std::move(place), constant(mask));
+
+        value = constant(bits << m.bit);
+    }
+    else {
+        if (m.bit > 0)
+            value = make_binary(binary_op_t::shl, wide, std::move(value),
+                                expr_t { int_type(), literal_t { m.bit } });
+
+        value = make_binary(binary_op_t::bit_and, wide, std::move(value),
+                            constant(mask));
+    }
+
+    std::optional< expr_t > copy = pure_copy(place);
+    if (!copy)
+        not_yet(op, "store into bit-field " + quoted(m.name) +
+                        " through a place with a side effect");
+
+    expr_t kept =
+        make_binary(binary_op_t::bit_and, wide,
+                    convert_to(std::move(*copy), wide), constant(~mask));
+    expr_t unit = make_binary(binary_op_t::bit_or, wide, std::move(value),
+                              std::move(kept));
+
+    const type_t t = place.type;
+    return expr_t { t, assign_t { std::nullopt, t, box(std::move(place)),
+                                  box(convert_to(std::move(unit), t)) } };
+}
+
 // The constant of a named bit-field in the data of an object of static
 // storage, the field's record at offset in the object: the value of its
 // declared type cut to its width, 6.7.3.2p12 (G2), in the bytes the
@@ -5076,13 +5244,40 @@ field_data(destination_t &to, const member_t &m, long offset, long long value)
 
 void close_list(parser_t &, bool, std::string_view);
 
-// The initializer of a named bit-field m of the record at offset in an
-// object of static storage, its designation's '=' ahead when it was
-// designated: a constant of the field's declared type, converted as by
-// assignment, 6.7.11p12, alone or in one pair of braces, or {}, which
-// is 0, p11, as for a scalar; field_data()'s.  An address constant is
-// no value of a bit-field's bits, the loader fills in no part of a
-// byte, so it is an error.
+// The store of value into the named bit-field m of the record at
+// offset in a local, at the token at: field_store()'s on the place of
+// the field's unit in the local, lvalue_at()'s, appended to the
+// local's statements, its bytes among those stored, as a scalar's are
+// (G20).  Initialization is no assignment, 6.7.11p12, so a const field
+// takes its value.
+void
+field_local_store(parser_t &p,
+                  const token_t &at,
+                  const member_t &m,
+                  long offset,
+                  expr_t value,
+                  destination_t &to)
+{
+    expr_t object { to.local->type, name_t { to.local } };
+    const type_t t = unit_type(m.unit, as< int_t >(m.type).is_signed);
+    expr_t place = lvalue_at(p, address_of(at, std::move(object)),
+                             offset + m.offset, t, { });
+
+    expr_t store = field_store(p, at, std::move(place), m, std::move(value));
+    to.stores->push_back(stmt_t { expr_stmt_t { std::move(store) } });
+
+    to.stored.emplace_back(offset + m.offset, m.unit);
+    reach(to, offset + m.offset, m.unit);
+}
+
+// The initializer of a named bit-field m of the record at offset, its
+// designation's '=' ahead when it was designated: alone or in one pair
+// of braces, or {}, which is 0, p11, as for a scalar.  In an object of
+// static storage it is a constant of the field's declared type,
+// converted as by assignment, 6.7.11p12, field_data()'s; an address
+// constant is no value of a bit-field's bits, the loader fills in no
+// part of a byte, so it is an error.  In a local it is any value, the
+// store field_local_store() makes, in the list's order (G13).
 void
 field_initializer(parser_t &p,
                   const member_t &m,
@@ -5097,9 +5292,15 @@ field_initializer(parser_t &p,
         designation_end(p);
     }
 
+    const token_t &brace = peek(p);
     const bool braced = accept(p, tok_t::lbrace);
     if (braced && accept(p, tok_t::rbrace)) {
-        field_data(to, m, offset, 0);
+        if (to.local)
+            field_local_store(p, brace, m, offset,
+                              expr_t { int_type(), literal_t { 0 } }, to);
+        else
+            field_data(to, m, offset, 0);
+
         return;
     }
 
@@ -5111,11 +5312,20 @@ field_initializer(parser_t &p,
                       "designated initializer list");
 
     const token_t &start = peek(p);
-    const initializer_t value = scalar_value(p, start, m.type);
-    if (!std::holds_alternative< literal_t >(value))
-        fail(start, "initializer element is not a compile-time constant");
+    if (to.local) {
+        expr_t e = assignment_expression(p);
+        refuse_record_value(start, e.type);
+        require_value(start, e);
 
-    field_data(to, m, offset, std::get< literal_t >(value).value);
+        field_local_store(p, start, m, offset, std::move(e), to);
+    }
+    else {
+        const initializer_t value = scalar_value(p, start, m.type);
+        if (!std::holds_alternative< literal_t >(value))
+            fail(start, "initializer element is not a compile-time constant");
+
+        field_data(to, m, offset, std::get< literal_t >(value).value);
+    }
 
     if (braced)
         close_list(p, true, "scalar");
@@ -5149,8 +5359,7 @@ initialized_member(const record_t &r, std::size_t i)
 // list's own check, or with the list.  Returns whether the walk ended
 // past the last member the list may give.  A flexible array member
 // takes an initializer only in GNU C, which rcc does not take yet; a
-// named bit-field takes its constant in an object of static storage,
-// field_initializer()'s, and in a local's list it is not yet.
+// named bit-field takes its value by field_initializer().
 bool
 member_values(
     parser_t &p, const record_t &r, long offset, destination_t &to, walk_t walk)
@@ -5167,8 +5376,6 @@ member_values(
             next = member_designator(p, r);
 
         const member_t &m = r.members[next];
-        if (is_bit_field(m) && to.local)
-            not_yet(peek(p), "initializer of bit-field " + quoted(m.name));
 
         if (is< array_t >(m.type) && as< array_t >(m.type).count < 0)
             not_yet(peek(p),
@@ -9549,6 +9756,40 @@ block_item_list(parser_t &p, block_t &block)
         block_item(p, block.body);
 }
 
+// Whether the tokens of the parse from first to before last are those
+// from inner to before end alone, in as many parentheses as they open.
+bool
+spans(const parser_t &p,
+      std::size_t first,
+      std::size_t last,
+      std::size_t inner,
+      std::size_t end)
+{
+    if (inner < first || end > last || inner - first != last - end)
+        return false;
+
+    for (std::size_t k = 0; k < inner - first; ++k)
+        if (p.tokens[first + k].kind != tok_t::lparen ||
+            p.tokens[end + k].kind != tok_t::rparen)
+            return false;
+
+    return true;
+}
+
+// An expression evaluated for its effect alone, e, the tokens of the
+// parse from first to before last: where it is the value of the last
+// store into a bit-field, field_value()'s, alone in any parentheses,
+// spans()'s, the store alone, since nothing reads the value.
+expr_t
+stored_effect(const parser_t &p, expr_t e, std::size_t first, std::size_t last)
+{
+    if (!p.field_store ||
+        !spans(p, first, last, p.field_store->first, p.field_store->second))
+        return e;
+
+    return read_operand(std::move(e));
+}
+
 // An expression whose value is discarded may be void; an empty one is
 // the null statement.  Attributes before an empty one's ';' stand on
 // the null statement, as GNU C's __attribute__ ((fallthrough)); does: one
@@ -9569,7 +9810,9 @@ expression_statement(parser_t &p)
         return stmt_t { expr_stmt_t { } };
 
     const token_t &start = peek(p);
+    const std::size_t first = p.pos;
     expr_t e = expression(p);
+    e = stored_effect(p, std::move(e), first, p.pos);
 
     expect(p, tok_t::semicolon, "expected ';' after expression");
 
@@ -9754,7 +9997,10 @@ for_statement(parser_t &p)
 
     if (peek(p).kind != tok_t::rparen) {
         const token_t &start = peek(p);
-        loop.step = discarded(start, expression(p));
+        const std::size_t first = p.pos;
+        expr_t step = expression(p);
+        step = stored_effect(p, std::move(step), first, p.pos);
+        loop.step = discarded(start, std::move(step));
     }
 
     expect(p, tok_t::rparen, "expected ')' after for clauses");
@@ -9883,10 +10129,14 @@ jump_statement(parser_t &p)
 expr_t
 expression(parser_t &p)
 {
+    std::size_t first = p.pos;
     expr_t e = assignment_expression(p);
 
     while (peek(p).kind == tok_t::comma) {
+        e = stored_effect(p, std::move(e), first, p.pos);
         e = discarded(advance(p), std::move(e));
+
+        first = p.pos;
         e = comma(std::move(e), assignment_expression(p));
     }
 
@@ -9935,30 +10185,20 @@ record_assignment(parser_t &p, const token_t &op, expr_t lhs)
 }
 
 // The last access of a bit-field, when it is the whole of the tokens
-// of the parse from first to before last, in as many parentheses as
-// they open, or null.
+// of the parse from first to before last, spans()'s, or null.
 const field_access_t *
 field_operand(const parser_t &p, std::size_t first, std::size_t last)
 {
-    if (!p.field || p.field->first < first || p.field->end > last)
+    if (!p.field || !spans(p, first, last, p.field->first, p.field->end))
         return nullptr;
-
-    const std::size_t open = p.field->first - first;
-    if (last - p.field->end != open)
-        return nullptr;
-
-    for (std::size_t k = 0; k < open; ++k)
-        if (p.tokens[first + k].kind != tok_t::lparen ||
-            p.tokens[p.field->end + k].kind != tok_t::rparen)
-            return nullptr;
 
     return &*p.field;
 }
 
 // The store op makes into its operand, the tokens of the parse from
 // first to before last, refused where the operand is a bit-field that
-// does not fill its access unit, which rcc does not store into yet: an
-// assignment, a compound assignment and a step, each by its words.
+// does not fill its access unit and op is no '=', which rcc does not
+// compile yet: a compound assignment and a step, each by its words.
 void
 refuse_field_store(const parser_t &p,
                    const token_t &op,
@@ -9966,19 +10206,22 @@ refuse_field_store(const parser_t &p,
                    std::size_t last)
 {
     const field_access_t *f = field_operand(p, first, last);
-    if (!f || f->fills)
+    if (!f || f->fills || op.kind == tok_t::assign)
         return;
 
-    const std::string field = "bit-field " + quoted(f->name);
-    if (op.kind == tok_t::assign)
-        not_yet(op, "store into " + field);
-
+    const std::string field = "bit-field " + quoted(f->member.name);
     if (op.kind == tok_t::inc || op.kind == tok_t::dec)
         not_yet(op, "step of " + field);
 
     not_yet(op, "compound assignment of " + field);
 }
 
+// An assignment expression, 6.5.17.  A store into a bit-field that does
+// not fill its unit, the left operand the field's read alone, is
+// field_store()'s, and its value, 6.5.17.1p3, the field's read of the
+// unit the store leaves, field_read()'s: the right operand converted to
+// the field and promoted, with no second load of the unit.  Where
+// nothing reads the value, stored_effect() takes the store alone.
 expr_t
 assignment_expression(parser_t &p)
 {
@@ -9988,10 +10231,23 @@ assignment_expression(parser_t &p)
         return lhs;
 
     refuse_field_store(p, peek(p), first, p.pos);
+    const field_access_t *field = field_operand(p, first, p.pos);
 
     const token_t &op = advance(p);
     if (op.kind == tok_t::assign && is< record_type_t >(lhs.type))
         return record_assignment(p, op, std::move(lhs));
+
+    if (field && !field->fills) {
+        const member_t m = field->member;
+        expr_t place = read_operand(std::move(lhs));
+        require_modifiable_lvalue(op, place);
+
+        expr_t store =
+            field_store(p, op, std::move(place), m, assignment_expression(p));
+        p.field_store = { first, p.pos };
+
+        return field_read(std::move(store), m);
+    }
 
     require_modifiable_lvalue(op, lhs);
 
@@ -10223,7 +10479,8 @@ unary_expression(parser_t &p)
         const std::size_t first = p.pos;
         expr_t arg = cast_expression(p);
         if (const field_access_t *f = field_operand(p, first, p.pos))
-            fail(op, "cannot take the address of bit-field " + quoted(f->name));
+            fail(op, "cannot take the address of bit-field " +
+                         quoted(f->member.name));
 
         return address_of(op, std::move(arg));
     }
@@ -10258,7 +10515,7 @@ sizeof_expression(parser_t &p)
         t = unary_expression(p).type;
         if (const field_access_t *f = field_operand(p, first, p.pos))
             fail(op, "invalid application of 'sizeof' to bit-field " +
-                         quoted(f->name));
+                         quoted(f->member.name));
     }
 
     p.internal_uses.erase(p.internal_uses.begin() + uses,
@@ -10491,75 +10748,6 @@ ends_sizeof_operand(const parser_t &p, std::size_t start)
     return !is_postfix_operator(peek(p, 1 + open).kind);
 }
 
-// The integer type of size bytes, of the signedness and of the kind of
-// that width: the type a bit-field's access unit is read as.
-type_t
-unit_type(int size, bool is_signed)
-{
-    const auto of = [size, is_signed](int_kind_t s, int_kind_t u) {
-        return make_int(size * 8, is_signed, is_signed ? s : u);
-    };
-
-    switch (size) {
-    case 1: return of(int_kind_t::signed_char, int_kind_t::unsigned_char);
-    case 2: return of(int_kind_t::short_, int_kind_t::unsigned_short);
-    case 4: return of(int_kind_t::int_, int_kind_t::unsigned_);
-    default: return of(int_kind_t::long_, int_kind_t::unsigned_long);
-    }
-}
-
-// The type of a bit-field's value, its promotion, 6.3.1.1p2: int, which
-// holds every value of a field narrower than 32 bits; at 32 bits int or
-// unsigned int by the field's signedness; and past them its declared
-// type promoted, as clang has it for the types p2 leaves to the
-// implementation (shape.md chapter 3).
-type_t
-field_promoted(const member_t &m)
-{
-    const int_t &declared = as< int_t >(m.type);
-
-    if (m.width < 32)
-        return int_type();
-
-    if (m.width == 32)
-        return unit_type(4, declared.is_signed);
-
-    return promoted(m.type);
-}
-
-// The read of a bit-field m whose unit's lvalue is unit, of the unit's
-// size and the field's signedness, shape.md chapter 5: the unit loaded
-// once, as R bits, 32 for a unit of 1, 2 or 4 bytes and 64 for one of 8,
-// and the field's bits moved to the bottom by shifts alone, no mask.
-// Where the field reaches the unit's top, the load's extension has done
-// a left shift's work, and one right shift by the field's bit is left;
-// otherwise a left shift by R less the bit and the width puts the
-// field's top at R's, and a right shift by R less the width brings it
-// down.  The right shift is arithmetic for a signed field and logical
-// for an unsigned one, by the type of R bits of the field's signedness.
-// No shift is by 0.  The value is of the field's promoted type.
-expr_t
-field_read(expr_t unit, const member_t &m)
-{
-    const int r = m.unit == 8 ? 64 : 32;
-    const type_t wide = unit_type(r / 8, as< int_t >(m.type).is_signed);
-    const auto count = [](int n) {
-        return expr_t { int_type(), literal_t { n } };
-    };
-
-    expr_t e = convert_to(std::move(unit), wide);
-    if (m.bit + m.width == m.unit * 8) {
-        e = make_binary(binary_op_t::shr, wide, std::move(e), count(m.bit));
-        return convert_to(std::move(e), field_promoted(m));
-    }
-
-    e = make_binary(binary_op_t::shl, wide, std::move(e),
-                    count(r - m.bit - m.width));
-    e = make_binary(binary_op_t::shr, wide, std::move(e), count(r - m.width));
-
-    return convert_to(std::move(e), field_promoted(m));
-}
-
 // E.m and P->m, 6.5.3.4: the lvalue of the member, p3, p4, member_lvalue()'s.
 // A member of an array type decays where its value is used, and one of
 // a record type is an lvalue whose value is refused and whose members
@@ -10593,7 +10781,7 @@ member_access(parser_t &p, const token_t &op, expr_t e, std::size_t start)
         unit.type = unit_type(m.unit, as< int_t >(m.type).is_signed);
 
         expr_t lvalue = member_lvalue(p, op, std::move(e), unit);
-        p.field = field_access_t { start, p.pos, name.text, fills };
+        p.field = field_access_t { start, p.pos, m, fills };
 
         if (fills)
             return lvalue;

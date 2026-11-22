@@ -9,8 +9,13 @@
    one bit, and at the container's top past an unnamed field of the
    rest, alone, before a char and after one; and _Bool's and an
    enumerated type's fields.  A field is read by the parser's shifts of
-   its access unit, and one that fills its unit is an object of the
-   unit's type, docs/shape.md chapter 5. */
+   its access unit and stored into by its masks, and one that fills its
+   unit is an object of the unit's type, docs/shape.md chapter 5.
+
+   struct order holds two fields of one unit, for the order of a store:
+   its value is computed before the unit is loaded, so a store the
+   right operand makes into the other field, or into the same one,
+   stays where the field's own bits do not cover it. */
 
 /* the enumerated type of a bit-field, of unsigned int */
 enum two_bits { TB0, TB1, TB2, TB3 };
@@ -102,3 +107,9 @@ enum two_bits { TB0, TB1, TB2, TB3 };
 #define RECORDS(N, T, W, PAD) SHAPES(RECORD, N, T, W, PAD)
 
 CASES(RECORDS)
+
+struct order
+{
+        unsigned a : 3;
+        int f : 5;
+};

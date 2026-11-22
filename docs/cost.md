@@ -90,7 +90,11 @@ requests for a warning (`gnu-declarations`); `__asm__` after a
 declarator changes the name a call writes and nothing else.
 `volatile` writes nothing either: it asks that every access written
 be made, and every access of every object is, so a program compiles
-to the listing of its twin without the qualifier (`volatile`). Nor
+to the listing of its twin without the qualifier (`volatile`), a
+bit-field's among them, each access of its unit (`bit-field-volatile`).
+Nor does a bit-field that fills its access unit: it is an object of
+the unit's type, so a program compiles to the listing of its twin with
+the field declared as a member of that type (`bit-field-whole`). Nor
 does the barrier, an `__asm__` statement of an empty template whose
 clobbers are `"memory"` and `"cc"` alone or none: it asks that no
 value be held across it and no access moved over it, which is so of

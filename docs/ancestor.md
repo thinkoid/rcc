@@ -2511,7 +2511,8 @@ subject.
 
 Floating point is not yet in rcc (`shape.md` chapter 11). Structs,
 unions and enums are, as 11.1 and 11.2 say, and bit-fields are laid
-out and read, as 11.3 says, but not yet stored into. The ancestor's
+out, read and stored into, as 11.3 says, but for a compound
+assignment and a step. The ancestor's
 rows for each say what carries to today's two machines and what does
 not.
 
@@ -2598,14 +2599,19 @@ insertion. Unsigned-only fields do not carry either: a field
 declared `signed int` must extend its sign when it is read.
 
 What rcc took: c0's placement, no field across a boundary of its
-type's unit and the first field in the low bits. What it did not
+type's unit and the first field in the low bits; the store of 0 or of
+all ones as the clear or the set alone, one compound assignment on the
+unit, `andb $-17, 7(%rax)` and `orb $8, 7(%rax)` on x86-64; and the
+select dropped where a store's value is not used. What it did not
 take: the read by a shift and a mask, and the unsigned field. rcc
 reads a field by a pair of shifts, or one where the field reaches its
 unit's top, with no mask, the right shift arithmetic for a signed
 field and logical for an unsigned one, so a plain `int` field is
 signed; and its unit is the narrowest of 1, 2, 4 or 8 bytes that holds
 the field's bits, where the ancestor's is the declared type's word or
-byte (`shape.md` chapters 3 and 5).
+byte. Nor did it take the one node of any other store, the `bic` and
+the `bis` on the place: rcc's store is the parser's tree, which
+writes the place twice (`shape.md` chapters 3 and 5).
 
 ### 11.4 Floating point
 
