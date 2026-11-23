@@ -7,12 +7,15 @@
    other value v is u = ((v << s) & M) | (u & ~M), s the field's bit,
    the value first, then the unit's one load, its and with the
    complement of the mask, the or and the one store; the place is
-   written twice, its pointer loaded twice.  A constant's placed bits
-   are one constant.  A _Bool field's value is its comparison with 0.
-   The value of a store, in stored(), is the field's read of the value
-   stored, with no second load of the unit.  job's used is bit 3 and
-   changed bit 4 of the byte at 7; small's f is bits 3 to 7 of the byte
-   at 0, u bits 0 to 6 and b bit 7 of the byte at 1.
+   written twice, its pointer loaded twice.  Where the field reaches
+   its unit's top, as f and b do, the value is v << s with no and: the
+   shift clears the bits below the field, and the store of the byte
+   drops those above it.  A constant's placed bits are one constant.  A
+   _Bool field's value is its comparison with 0.  The value of a store,
+   in stored(), is the field's read of the value stored, with no second
+   load of the unit.  job's used is bit 3 and changed bit 4 of the byte
+   at 7; small's f is bits 3 to 7 of the byte at 0, u bits 0 to 6 and b
+   bit 7 of the byte at 1.
 
    On x86-64: set_used is orb $8, 7(%rax), clear_changed andb $-17,
    7(%rax), clear_f andb $7, (%rax), fill_f orb $-8, (%rax), clear_u
@@ -20,27 +23,25 @@
    pointer's one load.  five is the pointer's load, its second load
    movq -8(%rbp), %rcx, then movsbl (%rcx), %ecx; andl $-249, %ecx;
    orl $40, %ecx; movb %cl, (%rax).  store is the pointer's load, then
-   movl -12(%rbp), %ecx; shll $3, %ecx; andl $248, %ecx, the pointer's
-   second load movq -8(%rbp), %rdx, then movsbl (%rdx), %edx; andl
-   $-249, %edx; orl %edx, %ecx; movb %cl, (%rax).  store_bool is cmpl
-   $0, -12(%rbp); setne %cl; movzbl %cl, %ecx; shll $7, %ecx; andl
-   $128, %ecx, then the second load and movzbl 1(%rdx), %edx; andl
-   $-129, %edx; orl; movb %cl, 1(%rax).  stored is store's sequence
-   into eax, then movsbl %al, %eax; sarl $3, %eax.  mark steps i, then
-   orb $8, 7(%rax,%rdx,1) after the index's scaling.
+   movl -12(%rbp), %ecx; shll $3, %ecx, the pointer's second load movq
+   -8(%rbp), %rdx, then movsbl (%rdx), %edx; andl $-249, %edx; orl %edx,
+   %ecx; movb %cl, (%rax).  store_bool is cmpl $0, -12(%rbp); setne %cl;
+   movzbl %cl, %ecx; shll $7, %ecx, then the second load and movzbl
+   1(%rdx), %edx; andl $-129, %edx; orl; movb %cl, 1(%rax).  stored is
+   store's sequence into eax, then movsbl %al, %eax; sarl $3, %eax.
+   mark steps i, then orb $8, 7(%rax,%rdx,1) after the index's scaling.
 
    On aarch64: the constant cases are the unit's load, and or orr of
    the mask and the store, ldrb w1, [x0, #7]; orr w1, w1, #0x8; strb
    w1, [x0, #7] for set_used and and w1, w1, #0xffffffef for
    clear_changed; five is the second load ldr x1, [x29, #16], then
    ldrsb w1, [x1]; and w1, w1, #0xffffff07; mov w2, #40; orr w1, w1,
-   w2; strb w1, [x0]; store is ldr w1, [x29, #24]; lsl w1, w1, #3; and
-   w1, w1, #0xf8, the second load ldr x2, [x29, #16], then ldrsb w2,
-   [x2]; and w2, w2, #0xffffff07; orr w1, w1, w2; strb w1, [x0];
-   store_bool cmp w1, #0; cset w1, ne, then the same shape at bit 7;
-   stored store's sequence, then sxtb w1, w1; asr w0, w1, #3; and mark
-   steps i, then add x0, x0, w1, sxtw #4 and the load, orr and store
-   of the byte at 7. */
+   w2; strb w1, [x0]; store is ldr w1, [x29, #24]; lsl w1, w1, #3, the
+   second load ldr x2, [x29, #16], then ldrsb w2, [x2]; and w2, w2,
+   #0xffffff07; orr w1, w1, w2; strb w1, [x0]; store_bool cmp w1, #0;
+   cset w1, ne, then the same shape at bit 7; stored store's sequence,
+   then sxtb w1, w1; asr w0, w1, #3; and mark steps i, then add x0, x0,
+   w1, sxtw #4 and the load, orr and store of the byte at 7. */
 struct job
 {
         int stop;

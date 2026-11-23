@@ -20,7 +20,6 @@ bump:
 	lsr	w1, w1, #4
 	add	w1, w1, #2
 	lsl	w1, w1, #4
-	and	w1, w1, #0xf0
 	ldrb	w2, [x29, #24]
 	and	w2, w2, #0xffffff0f
 	orr	w1, w1, w2
@@ -55,7 +54,6 @@ raised:
 	lsr	w1, w1, #4
 	add	w1, w1, #2
 	lsl	w1, w1, #4
-	and	w1, w1, #0xf0
 	ldrb	w2, [x29, #24]
 	and	w2, w2, #0xffffff0f
 	orr	w1, w1, w2

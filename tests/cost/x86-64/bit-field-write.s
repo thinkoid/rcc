@@ -144,7 +144,6 @@ store:
 	movq	-8(%rbp), %rax
 	movl	-12(%rbp), %ecx
 	shll	$3, %ecx
-	andl	$248, %ecx
 	movq	-8(%rbp), %rdx
 	movsbl	(%rdx), %edx
 	andl	$-249, %edx
@@ -172,7 +171,6 @@ store_bool:
 	setne	%cl
 	movzbl	%cl, %ecx
 	shll	$7, %ecx
-	andl	$128, %ecx
 	movq	-8(%rbp), %rdx
 	movzbl	1(%rdx), %edx
 	andl	$-129, %edx
@@ -198,7 +196,6 @@ stored:
 	movq	-8(%rbp), %rcx
 	movl	-12(%rbp), %eax
 	shll	$3, %eax
-	andl	$248, %eax
 	movq	-8(%rbp), %rdx
 	movsbl	(%rdx), %edx
 	andl	$-249, %edx

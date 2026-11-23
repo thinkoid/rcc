@@ -498,29 +498,6 @@ Check: =tests/cost/bit-field-write.c='s ~store~, ~five~ and
 targets; =tests/error/bit-field-store-side-effect.c= compiles; the
 =fields= probe, 0 differ.
 
-** TODO A store into a bit-field at its unit's top masks what the shift cleared
-
-~p->f = v~ on ~struct small { unsigned a : 3; int f : 5; }~, whose
-field reaches its unit's top, shifts the value into place and masks
-it, =shll $3, %ecx; andl $248, %ecx= on x86-64 and =lsl w1, w1, #3;
-and w1, w1, #0xf8= on aarch64. The shift has cleared the bits below
-the field, and the store of the unit's one byte drops the bits above
-it, so the =and= changes no bit that is stored; where the store's
-value is used, it is read from that byte again. A compound
-assignment and a step place their result alike: ~p->high += 2~ on a
-field of the byte's top four bits has =shll $4, %ecx; andl $240,
-%ecx=. G2 names the =and= of a field's mask as the instruction that
-keeps a stored value's low bits.
-
-Fix: the parser's tree for a field that reaches its unit's top is
-~u = (v << s) | (u & ~M)~, in a store, a compound assignment and a
-step. G2 names, for such a field, the shift that places the value
-and the unit's own store in place of the =and=.
-
-Check: =tests/cost/bit-field-write.c='s ~store~ and
-=bit-field-compound.c='s ~bump~ pinned without the =and= on both
-targets; the =fields= probe, 0 differ.
-
 ** TODO A bit-field store's value dropped under a comma or a cast to =void= is still computed
 
 The value of ~p->f = v~ is the stored unit shifted as a read of the

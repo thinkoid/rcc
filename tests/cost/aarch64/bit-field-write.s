@@ -201,7 +201,6 @@ store:
 	ldr	x0, [x29, #16]
 	ldr	w1, [x29, #24]
 	lsl	w1, w1, #3
-	and	w1, w1, #0xf8
 	ldr	x2, [x29, #16]
 	ldrsb	w2, [x2]
 	and	w2, w2, #0xffffff07
@@ -235,7 +234,6 @@ store_bool:
 	cmp	w1, #0
 	cset	w1, ne
 	lsl	w1, w1, #7
-	and	w1, w1, #0x80
 	ldr	x2, [x29, #16]
 	ldrb	w2, [x2, #1]
 	and	w2, w2, #0xffffff7f
@@ -267,7 +265,6 @@ stored:
 	ldr	x0, [x29, #16]
 	ldr	w1, [x29, #24]
 	lsl	w1, w1, #3
-	and	w1, w1, #0xf8
 	ldr	x2, [x29, #16]
 	ldrsb	w2, [x2]
 	and	w2, w2, #0xffffff07

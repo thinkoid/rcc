@@ -5440,7 +5440,9 @@ field_mask(const member_t &m)
 
 // The field's bits of a value of R bits for a store into the bit-field
 // m, (v << s) & M, s the field's bit and M its mask in the unit
-// (shape.md chapter 5).  No shift is by 0.
+// (shape.md chapter 5).  Where the field reaches its unit's top, the
+// shift has cleared the bits below the field and the unit's store drops
+// those above it, so the bits are v << s alone.  No shift is by 0.
 expr_t
 placed_bits(expr_t value, const member_t &m)
 {
@@ -5450,6 +5452,9 @@ placed_bits(expr_t value, const member_t &m)
     if (m.bit > 0)
         value = make_binary(binary_op_t::shl, wide, std::move(value),
                             expr_t { int_type(), literal_t { m.bit } });
+
+    if (m.bit + m.width == m.unit * 8)
+        return value;
 
     return make_binary(
         binary_op_t::bit_and, wide, std::move(value),
@@ -5487,7 +5492,8 @@ merged_unit(expr_t bits, expr_t unit, const member_t &m, const type_t &t)
 // ~M, M the field's mask in the unit, and one that is all ones is u |=
 // M, so the place is written once.  Any other value is u = ((v << s) &
 // M) | (u & ~M), s the field's bit, the value on the left of the |, so
-// that it is computed before the unit is read, 6.5.1p3 (G13); a
+// that it is computed before the unit is read, 6.5.1p3 (G13), with no
+// & M where the field reaches its unit's top, placed_bits()'s; a
 // constant's placed bits are one constant, and no shift is by 0.  The
 // place stands twice, the second a copy of its expression, so one with
 // a side effect is not yet.  The store is of the unit's type.
@@ -5573,10 +5579,11 @@ field_operation(const token_t &op,
 // temporary of its own first, so that it runs before the unit is
 // loaded, 6.5.1p3 (G13), and a store it makes into the unit stays; any
 // other is v as it is.  The result keeps the field's low bits, of
-// either signedness, 6.7.3.2p12 (G2), by the mask alone.  The place
-// stands twice, the second a copy of its expression, so one with a
-// side effect is not yet.  The tree is the comma whose right operand
-// is the store, of the unit's type.
+// either signedness, 6.7.3.2p12 (G2), by the mask alone, or, where
+// the field reaches its unit's top, by the shift and the unit's store,
+// placed_bits()'s.  The place stands twice, the second a copy of its
+// expression, so one with a side effect is not yet.  The tree is the
+// comma whose right operand is the store, of the unit's type.
 expr_t
 field_update(parser_t &p,
              const token_t &op,

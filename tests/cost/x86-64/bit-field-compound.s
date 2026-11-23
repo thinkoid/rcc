@@ -18,7 +18,6 @@ bump:
 	shrl	$4, %ecx
 	addl	$2, %ecx
 	shll	$4, %ecx
-	andl	$240, %ecx
 	movzbl	-9(%rbp), %edx
 	andl	$-241, %edx
 	orl	%edx, %ecx
@@ -47,7 +46,6 @@ raised:
 	shrl	$4, %eax
 	addl	$2, %eax
 	shll	$4, %eax
-	andl	$240, %eax
 	movzbl	-9(%rbp), %edx
 	andl	$-241, %edx
 	orl	%edx, %eax

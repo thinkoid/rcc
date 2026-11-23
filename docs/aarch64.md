@@ -1561,7 +1561,7 @@ done, for the sake of a call with nine arguments.
 | Guarantee | Instruction |
 |---|---|
 | G1 signed arithmetic wraps | `add`, `sub`, `mul`, `lsl`, `neg`: modulo 2^N |
-| G2 narrowing truncates | `strb`, `strh`, `str w`, or the `w` name; for a bit-field the `and w1, w1, #0xf8` of its mask in the parser's store; nothing else is computed |
+| G2 narrowing truncates | `strb`, `strh`, `str w`, or the `w` name; for a bit-field the `and w1, w1, #0xf` of its mask in the parser's store, or, where the field reaches its unit's top, the `lsl w1, w1, #4` that places the value and the unit's `strb`; nothing else is computed |
 | G3 shifts | `lsl`, `asr`, `lsr`: the instruction masks a register's count to the width, and an immediate is written masked |
 | G4 division is the instruction's | `sdiv`, `udiv`: 0 for a zero divisor, `INT_MIN` for `INT_MIN / -1`, and no trap |
 | G5 an uninitialized object holds a value | a slot's bytes or a register's content, unwritten until the program writes, `cmp w19, w19`; but a narrow or an `unsigned` register variable is extended in its own register, `sxtb w19, w19`, which leaves the value of its type as it was (chapter 4) |
@@ -1582,7 +1582,7 @@ done, for the sake of a call with nine arguments.
 | G21 a `_Bool` reads as its byte | `ldrb`, an `unsigned char`'s load, with no test and no mask; a conversion to it the parser's comparison with 0, `cmp w0, #0` and `cset w0, ne`, before the `strb` |
 | G22 a string literal for a local array is a copy of its object | the literal's address `adrp` and `add`, then each unit of the element `ldrb`, `ldrh` or `ldr` into `x17` and its store, lowest address first, unrolled to eight units and a loop of four instructions beyond, 6.6; then the stores of `wzr` over the elements past the copy alone |
 | G23 a variable length array's storage is the stack's until its scope is left | 5.2: `mov x17, sp; str x17, [x29, #d]` to keep `sp`, `sub x0, sp, x0; and x0, x0, #0xfffffffffffffff0; mov sp, x0` for the storage, `ldr x17, [x29, #d]; mov sp, x17` at every way out of the scope (`backend.md` 7.2), and `mov sp, x29` at the head of the epilogue |
-| G24 a bit-field is accessed in its unit | no row of its own: the parser's tree (`shape.md` chapter 5), the unit's `ldrsb`, `ldrb`, `ldrsh`, `ldrh`, `ldr w` or `ldr x`, then `lsl` and `asr` or `lsr`, one right shift where the field reaches the unit's top; a store's `lsl w1, w1, #3; and w1, w1, #0xf8`, the unit's load, `and w2, w2, #0xffffff07; orr w1, w1, w2` and the narrow store; a store of 0 or of all ones the unit's load, `and` or `orr` and its store |
+| G24 a bit-field is accessed in its unit | no row of its own: the parser's tree (`shape.md` chapter 5), the unit's `ldrsb`, `ldrb`, `ldrsh`, `ldrh`, `ldr w` or `ldr x`, then `lsl` and `asr` or `lsr`, one right shift where the field reaches the unit's top; a store's `lsl w1, w1, #3`, the unit's load, `and w2, w2, #0xffffff07; orr w1, w1, w2` and the narrow store, the `and` of the field's mask after the shift where the field is below its unit's top; a store of 0 or of all ones the unit's load, `and` or `orr` and its store |
 
 G4 is the row to read twice. `guarantees.md` already says "x86 `idiv`
 faults on a zero divisor and on `INT_MIN / -1`; aarch64 `sdiv` yields

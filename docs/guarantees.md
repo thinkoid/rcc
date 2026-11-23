@@ -28,7 +28,9 @@ bits, as two's complement; a value stored into a bit-field of width N,
 of either signedness, keeps its low N bits (6.7.3.2p12), so `f = 17`
 on an `int f : 5` holds -15. Instruction: a narrow store, `movb`,
 `movw` or `movl`, or the narrower name of the register; for a field
-the `and` of its mask; nothing else is computed.
+the `and` of its mask, or, where the field reaches its unit's top,
+the shift that places the value and the unit's own store; nothing
+else is computed.
 
 **G3. Shifts.** 6.5.8p3, p4, p5. The count is taken modulo the width; a
 signed left shift wraps; a signed right shift is arithmetic.

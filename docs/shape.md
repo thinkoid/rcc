@@ -1112,7 +1112,10 @@ is written once and may have a side effect: `a[i++].f = 1` compiles.
 Any other value v is `u = ((v << s) & M) | (u & ~M)`, the value on
 the left of the `|`, so that it is computed before the unit is loaded
 (G13); a constant's placed bits are one constant, and no shift is by
-0. The place stands twice, the second a copy of its expression, so its
+0. Where the field reaches the unit's top, the value's bits are
+`v << s` alone, `u = (v << s) | (u & ~M)`: the shift clears the bits
+below the field, and the unit's store drops those above it. The
+place stands twice, the second a copy of its expression, so its
 pointer is loaded twice, and a place with a side effect, `a[i++].f =
 v`, is not yet. Where the store's value is used, it is the field's
 read of the unit's value the store leaves, so the right operand
@@ -1130,10 +1133,12 @@ u = (((F (t) op v) << s) & M) | (t & ~M))`, F (t) the field's read of
 t, so the unit is loaded once and stored once. A step is `f += 1` or
 `f -= 1`. The operation is op's on the promoted field and v, in their
 common type, or in the promoted field's for a shift (6.5.17.3p4), and
-the mask keeps the result's low w bits (G2); a `_Bool` field's result
-is compared with 0 first. A right operand with a side effect, `f +=
-h ()`, is held in a temporary of its own before the unit is loaded,
-so a store it makes into the unit stays (G13); any other stands as v.
+the mask keeps the result's low w bits (G2), or, where the field
+reaches the unit's top, the shift and the unit's store, as in a store,
+with no mask; a `_Bool` field's result is compared with 0 first. A
+right operand with a side effect, `f += h ()`, is held in a temporary
+of its own before the unit is loaded, so a store it makes into the
+unit stays (G13); any other stands as v.
 Where the value is used, a prefix step's and a compound assignment's
 is the field's read of the unit stored, as a store's is, and a postfix
 step's is F (t); where it is not, the update stands alone, found by

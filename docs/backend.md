@@ -2553,7 +2553,7 @@ row here, in the guarantee's voice.
 | Guarantee | Instruction |
 |---|---|
 | G1 signed arithmetic wraps | `add`, `sub`, `imul`, `shl`, `neg`: the machine computes modulo 2^N |
-| G2 narrowing truncates | a narrow store `movb`, `movw`, `movl`, or the narrower register name; for a bit-field the `andl $248, %ecx` of its mask in the parser's store; nothing else is computed |
+| G2 narrowing truncates | a narrow store `movb`, `movw`, `movl`, or the narrower register name; for a bit-field the `andl $15, %ecx` of its mask in the parser's store, or, where the field reaches its unit's top, the `shll $4, %ecx` that places the value and the unit's `movb`; nothing else is computed |
 | G3 shifts | `shl`, `sar`, `shr` by `cl` or an immediate: the instruction masks the count to the width |
 | G4 division is the instruction's | `idiv`, `div`: `#DE` on a zero divisor and on `INT_MIN / -1`, by the machine |
 | G5 an uninitialized object holds a value | a slot's bytes, or a register's content, unwritten until the program writes; nothing in the generator touches either, but for the extension of an unwritten `char`, `short` or `unsigned` register variable in its own register, which leaves the value of its type as it was |
@@ -2574,7 +2574,7 @@ row here, in the guarantee's voice.
 | G21 a `_Bool` reads as its byte | `movzbl`, an `unsigned char`'s load, with no test and no mask; a conversion to it the parser's comparison with 0, `cmpl $0` and `setne`, before the `movb` |
 | G22 a string literal for a local array is a copy of its object | 6.6: G18's copy from the literal's label in units of the element, `movzbl .Ls0+1(%rip), %eax; movb %al, -3(%rbp)`, the label's `leaq` and the loop of one index over eight units; then G20's stores of 0 over the elements past the copy alone |
 | G23 a variable length array's storage is the stack's until its scope is left | chapter 5: `movq %rsp, d(%rbp)` to keep the stack pointer, `subq %rax, %rsp; andq $-16, %rsp; movq %rsp, %rax` for the storage, and `movq d(%rbp), %rsp` at every way out of the scope (7.2); `leave` for a `return` |
-| G24 a bit-field is accessed in its unit | no row of its own: the parser's tree (`shape.md` chapter 5), the unit's `movsbl`, `movzbl`, `movswl`, `movzwl`, `movl` or `movq`, then `shl` and `sar` or `shr`, one right shift where the field reaches the unit's top; a store's `shll $3, %ecx; andl $248, %ecx`, the unit's load, `andl $-249, %edx; orl %edx, %ecx` and the narrow store; a store of 0 or of all ones the one `andb $-17, 7(%rax)` or `orb $8, 7(%rax)` |
+| G24 a bit-field is accessed in its unit | no row of its own: the parser's tree (`shape.md` chapter 5), the unit's `movsbl`, `movzbl`, `movswl`, `movzwl`, `movl` or `movq`, then `shl` and `sar` or `shr`, one right shift where the field reaches the unit's top; a store's `shll $3, %ecx`, the unit's load, `andl $-249, %edx; orl %edx, %ecx` and the narrow store, the `and` of the field's mask after the shift where the field is below its unit's top; a store of 0 or of all ones the one `andb $-17, 7(%rax)` or `orb $8, 7(%rax)` |
 
 G15 stays withdrawn. The never-emitted table, the IR flags the
 front end withheld from an optimizer that never ran, has no
