@@ -728,11 +728,12 @@ aarch64. One whose single local passes the limit is the parser's
 error at the local, which stops the file: the same function with
 ~char a[20000000];~.
 
-Fix: none taken; decide: both dropped, the parser's refusal one that
-the catch of a =static inline= body takes, or both the error.
+Fix: both are the error. A frame over the limit is an error of the
+program whether the function is called or not, so the frame's
+refusal is not one that the catch of a =static inline= body takes.
 
-Check: the two functions, never called, compile alike or are refused
-alike, on aarch64.
+Check: an error program of the function with two locals, never
+called, pins the frame's error on aarch64.
 
 ** TODO A bit-field's width that overflows draws no warning
 
@@ -773,19 +774,23 @@ type.
 
 Check: an error program of each, pinned.
 
-** TODO =_Atomic (_Atomic int)= is accepted
+** TODO =_Atomic (_Atomic int)= is accepted, with no word that it is not judged
 
 6.7.3.5p3 forbids an atomic type specifier's type name that is "an
 atomic type, or a qualified type". ~_Atomic (_Atomic int) x;~
-compiles with two warnings that the word is dropped; =clang= gives
-an error. Through a typedef, ~_Atomic (atomic_int)~, the parser
-cannot tell, since the typedef's =_Atomic= is dropped where it is
-read.
+compiles with two warnings that the word is dropped, and
+~_Atomic (const int) x;~ with one; =clang= gives an error for each.
+Through a typedef, ~_Atomic (atomic_int)~, the parser cannot tell,
+since the typedef's =_Atomic= is dropped where it is read. No
+document says which of the paragraph's rules rcc keeps.
 
-Fix: none taken; decide: the case written directly is an error, or
-=shape.md= chapter 3 says that a dropped word is not judged.
+Fix: =shape.md= chapter 3 says that the specifier's type name is
+judged for an array type and a function type alone: an atomic or a
+qualified type name is taken, and each =_Atomic= written draws its
+warning.
 
-Check: an error program, or the sentence.
+Check: the sentence, and an error program that pins the warnings of
+both declarations.
 
 ** TODO =__STDC_NO_ATOMICS__= is not defined
 
