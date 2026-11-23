@@ -436,14 +436,19 @@ it. And a place the parser writes twice is read twice: ~*p |= x~ on
 a ~_Bool *volatile p~ is =movq p(%rip), %rax; movq p(%rip), %rcx=
 and two =ldr= of =p=, where the source reads =p= once.
 
-Fix: =pure_copy()= gives nothing for a tree that reads through a
-~volatile~ lvalue, so each of its callers takes the way it has for
-an operand with a side effect: the temporary, or the not-yet by
-name.
+Fix: two tests where there is one. An operand the parser may drop
+is kept where it reads through a ~volatile~ lvalue. A place the
+parser reads through a copy is still copied where the place itself
+is ~volatile~, since the copy is the one read the source writes: a
+store into a field of a ~volatile~ record is one load and one store
+of its unit (G24). Where the expression that computes the place's
+address reads a ~volatile~ object, the place takes the way of one
+with a side effect, the temporary or the not-yet by name.
 
 Check: a cost program of ~__builtin_expect (e, v)~ pinned on both
 targets with one load of =v=; ~*p |= x~ on the ~volatile~ pointer
-with one load of =p=, or refused by name.
+with one load of =p=, or refused by name; and
+=tests/cost/bit-field-volatile.c= keeps its listings.
 
 ** TODO The other target is preprocessed with this machine's headers
 
@@ -558,16 +563,20 @@ it, =shll $3, %ecx; andl $248, %ecx= on x86-64 and =lsl w1, w1, #3;
 and w1, w1, #0xf8= on aarch64. The shift has cleared the bits below
 the field, and the store of the unit's one byte drops the bits above
 it, so the =and= changes no bit that is stored; where the store's
-value is used, it is read from that byte again. G2 names the =and=
-of a field's mask as the instruction that keeps a stored value's low
-bits.
+value is used, it is read from that byte again. A compound
+assignment and a step place their result alike: ~p->high += 2~ on a
+field of the byte's top four bits has =shll $4, %ecx; andl $240,
+%ecx=. G2 names the =and= of a field's mask as the instruction that
+keeps a stored value's low bits.
 
-Fix: none taken; the parser's tree for a field that reaches its
-unit's top is ~u = (v << s) | (u & ~M)~, and G2 says where the shift
-and the store's width do the mask's work.
+Fix: the parser's tree for a field that reaches its unit's top is
+~u = (v << s) | (u & ~M)~, in a store, a compound assignment and a
+step. G2 names, for such a field, the shift that places the value
+and the unit's own store in place of the =and=.
 
-Check: =tests/cost/bit-field-write.c='s ~store~ pinned without the
-=and= on both targets; the =fields= probe, 0 differ.
+Check: =tests/cost/bit-field-write.c='s ~store~ and
+=bit-field-compound.c='s ~bump~ pinned without the =and= on both
+targets; the =fields= probe, 0 differ.
 
 ** TODO A bit-field store's value dropped under a comma or a cast to =void= is still computed
 
