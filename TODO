@@ -621,24 +621,6 @@ array's. A constant size is the immediate, rounded up to 16.
 Check: =tests/error/alloca.c= a cost program pinned on both targets,
 and the =stack= probe with =alloca= in an argument and in a loop.
 
-** TODO =_Atomic (_Atomic int)= is accepted, with no word that it is not judged
-
-6.7.3.5p3 forbids an atomic type specifier's type name that is "an
-atomic type, or a qualified type". ~_Atomic (_Atomic int) x;~
-compiles with two warnings that the word is dropped, and
-~_Atomic (const int) x;~ with one; =clang= gives an error for each.
-Through a typedef, ~_Atomic (atomic_int)~, the parser cannot tell,
-since the typedef's =_Atomic= is dropped where it is read. No
-document says which of the paragraph's rules rcc keeps.
-
-Fix: =shape.md= chapter 3 says that the specifier's type name is
-judged for an array type and a function type alone: an atomic or a
-qualified type name is taken, and each =_Atomic= written draws its
-warning.
-
-Check: the sentence, and an error program that pins the warnings of
-both declarations.
-
 ** TODO A pointer to a type an attribute made, against a pointer to a type of another kind, is refused where it conflicts
 
 ~void f(word_t *); void f(char **);~, =word_t= a typedef of =int=
@@ -671,6 +653,22 @@ Fix: the walk goes through a function's result and parameters too,
 and the conversion is refused by the attribute's words, of its kind.
 
 Check: an error program of that assignment pins the refusal.
+
+** TODO =_Atomic (const int)= declares an object that is not =const=
+
+~_Atomic (const int) y;~ declares a plain =int=: ~y = 1;~ compiles,
+where the same store into a ~const int y;~ is an error. The
+specifier's type name is read without its qualifiers, so the
+=const= is dropped with no word, and the one warning is the
+=_Atomic='s. 6.7.3.5p3 forbids a qualified type name there, and
+=shape.md= chapter 3 says that rcc does not judge it.
+
+Fix: none taken; decide: the type name's qualifiers are kept on the
+declared type, or a qualified type name is the error the paragraph
+asks.
+
+Check: an error program of the declaration and the store pins the
+error of one or the other.
 
 * Lexer
 

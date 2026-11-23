@@ -234,7 +234,12 @@ dropped wherever it stands, a bit-field's among them, as C99 has no
 atomic type: `_Atomic int` and `_Atomic(int)` are `int`, an access of
 the object is the plain load and store, and `_Atomic int *` and `int
 *` are one type where 6.7.4.1p11 makes them two. The program's own
-`_Atomic` draws a warning, a system header's none (chapter 8). An
+`_Atomic` draws a warning, a system header's none (chapter 8). The
+specifier's type name is judged for an array type and a function
+type alone, each an error (chapter 5): an atomic or a qualified type
+name, which 6.7.3.5p3 forbids too, is taken, so `_Atomic (_Atomic
+int)` and `_Atomic (const int)` are `int`, the `const` dropped with no
+word of its own, and each `_Atomic` written draws its warning. An
 array is qualified as its element, as C23 has
 it (6.7.4.1p10) and C17 does not (6.7.3p10), and rcc reads C23 here:
 `const int a[3]` is a `const` object of `int [3]`, whose decay points
