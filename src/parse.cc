@@ -343,22 +343,34 @@ fail(const token_t &at, std::string what)
     throw error_t { at.where, std::move(what) };
 }
 
-// The refusal of a construct of C outside the subset, apart from an
-// error of the program, so that the one place where the rule for a
-// system header turns a refusal into a not-yet type catches this kind
-// alone; the driver catches it as any error_t.  construct is the words
-// after "not yet: ".
+// The refusal of a construct outside the subset, not yet or
+// unsupported, apart from an error of the program, so that the one
+// place where the rule for a system header turns a refusal into a
+// not-yet type catches this kind alone; the driver catches it as any
+// error_t.  refusal is its words and kind, which the message writes
+// after "not yet: " or "unsupported: " (shape.md chapter 7).
 struct not_yet_error_t: error_t
 {
-    std::string construct;
+    refusal_words_t refusal;
 };
 
-// A construct of C outside the subset this parser takes.
+// A construct outside the subset this parser takes, refused by its
+// words and of its kind.
+[[noreturn]] void
+refuse(const token_t &at, const refusal_words_t &refusal)
+{
+    const std::string kind =
+        refusal.unsupported ? "unsupported: " : "not yet: ";
+
+    throw not_yet_error_t { { at.where, kind + refusal.words }, refusal };
+}
+
+// A construct of C outside the subset this parser takes, which rcc is
+// to compile.
 [[noreturn]] void
 not_yet(const token_t &at, std::string_view construct)
 {
-    throw not_yet_error_t { { at.where, "not yet: " + std::string(construct) },
-                            std::string(construct) };
+    refuse(at, { std::string(construct) });
 }
 
 // A warning at the token, added to the driver's list (shape.md chapter
@@ -551,25 +563,25 @@ va_list_type(const parser_t &p)
 type_t
 complex_float_type()
 {
-    return make_not_yet(4, "complex type 'float _Complex'");
+    return make_not_yet(4, { "complex type 'float _Complex'" });
 }
 
 type_t
 complex_double_type()
 {
-    return make_not_yet(5, "complex type 'double _Complex'");
+    return make_not_yet(5, { "complex type 'double _Complex'" });
 }
 
 type_t
 complex_long_double_type()
 {
-    return make_not_yet(6, "complex type 'long double _Complex'");
+    return make_not_yet(6, { "complex type 'long double _Complex'" });
 }
 
 type_t
 float128_type()
 {
-    return make_not_yet(7, "floating type '__float128'");
+    return make_not_yet(7, { "floating type '__float128'" });
 }
 
 // GNU C's 128-bit integer types: __int128 and signed __int128 are one
@@ -578,9 +590,9 @@ type_t
 int128_type(bool is_signed)
 {
     if (is_signed)
-        return make_not_yet(8, "integer type '__int128'");
+        return make_not_yet(8, { "integer type '__int128'" });
 
-    return make_not_yet(9, "integer type 'unsigned __int128'");
+    return make_not_yet(9, { "integer type 'unsigned __int128'" });
 }
 
 // clang's names for three of the aarch64 vector types of SVE, those
@@ -589,19 +601,19 @@ int128_type(bool is_signed)
 type_t
 sve_float32_type()
 {
-    return make_not_yet(10, "'__SVFloat32_t'");
+    return make_not_yet(10, { "'__SVFloat32_t'" });
 }
 
 type_t
 sve_float64_type()
 {
-    return make_not_yet(11, "'__SVFloat64_t'");
+    return make_not_yet(11, { "'__SVFloat64_t'" });
 }
 
 type_t
 sve_bool_type()
 {
-    return make_not_yet(12, "'__SVBool_t'");
+    return make_not_yet(12, { "'__SVBool_t'" });
 }
 
 constexpr int first_tag_identity = 13;
@@ -1009,14 +1021,14 @@ arithmetic_conversions(expr_t &lhs, expr_t &rhs)
 // The words of what rcc does not use yet that a type is, or holds as
 // an array's element: a not-yet type's, or those of a record whose list
 // holds a construct rcc does not lay out yet; null for any other type.
-const std::string *
+const refusal_words_t *
 not_yet_in(const type_t &t)
 {
     if (is< not_yet_t >(t))
         return &as< not_yet_t >(t).what;
 
     if (is< record_type_t >(t) &&
-        !as< record_type_t >(t).record->not_yet.empty())
+        !as< record_type_t >(t).record->not_yet.words.empty())
         return &as< record_type_t >(t).record->not_yet;
 
     if (is< array_t >(t))
@@ -1037,8 +1049,8 @@ not_yet_in(const type_t &t)
 void
 require_honoured(const token_t &at, const type_t &t)
 {
-    if (const std::string *words = not_yet_in(t))
-        not_yet(at, *words);
+    if (const refusal_words_t *refusal = not_yet_in(t))
+        refuse(at, *refusal);
 }
 
 // Whether a type has a size though rcc does not use its object yet: a
@@ -1517,8 +1529,9 @@ constexpr std::string_view compatibility_words =
 // rcc does not know what a typedef through a marking attribute or an
 // array size it cannot compute makes of the type, so two types that
 // differ by a pointer to one and a pointer to another type that may be
-// compatible with it, made_pointee()'s, are not yet, by the construct's
-// words and the typedef's: a conversion between them, their comparison,
+// compatible with it, made_pointee()'s, are refused by the construct's
+// words and the typedef's, of the typedef's kind: a conversion between
+// them, their comparison,
 // a conditional's arms and a redeclaration.  Any other mismatch is the
 // caller's error.
 void
@@ -1528,7 +1541,8 @@ refuse_made_pointees(const token_t &at,
                      std::string_view construct)
 {
     if (const not_yet_t *made = made_pointee(a, b))
-        not_yet(at, std::string(construct) + made->what);
+        refuse(at, { std::string(construct) + made->what.words,
+                     made->what.unsupported });
 }
 
 // The words of the marking attribute on a parameter of one of two
@@ -1536,7 +1550,7 @@ refuse_made_pointees(const token_t &at,
 // functions, as tag_twin() walks them, where the other's marks differ,
 // or null.  Equality does not read the mark, so the two types may be
 // equal.
-const std::string *
+const refusal_words_t *
 marked_twin(const type_t &a, const type_t &b)
 {
     if (is< pointer_t >(a) && is< pointer_t >(b))
@@ -1552,14 +1566,15 @@ marked_twin(const type_t &a, const type_t &b)
     const auto &f = as< function_t >(a);
     const auto &g = as< function_t >(b);
     if (f.marking != g.marking)
-        return f.marking.empty() ? &g.marking : &f.marking;
+        return f.marking.words.empty() ? &g.marking : &f.marking;
 
-    if (const std::string *words = marked_twin(*f.result, *g.result))
-        return words;
+    if (const refusal_words_t *refusal = marked_twin(*f.result, *g.result))
+        return refusal;
 
     for (std::size_t i = 0; i < std::min(f.params.size(), g.params.size()); ++i)
-        if (const std::string *words = marked_twin(*f.params[i], *g.params[i]))
-            return words;
+        if (const refusal_words_t *refusal =
+                marked_twin(*f.params[i], *g.params[i]))
+            return refusal;
 
     return nullptr;
 }
@@ -1567,13 +1582,13 @@ marked_twin(const type_t &a, const type_t &b)
 // A function type carries the words of a marking attribute on its
 // parameter, and a call through a pointer to it is refused by them.  A
 // pointer converted to a pointer to a function of other marks, or met
-// by one in a conditional's arms, would lose them, so the two are not
-// yet, by the attribute's words, marked_twin()'s.
+// by one in a conditional's arms, would lose them, so the two are
+// refused by the attribute's words, marked_twin()'s.
 void
 refuse_marked_twins(const token_t &at, const type_t &a, const type_t &b)
 {
-    if (const std::string *words = marked_twin(a, b))
-        not_yet(at, *words);
+    if (const refusal_words_t *refusal = marked_twin(a, b))
+        refuse(at, *refusal);
 }
 
 // The words a conversion's error names a type by: a record by its
@@ -3483,8 +3498,10 @@ integer_constant(const token_t &t)
 // changes a type's size, aligned and packed a layout, weak, alias and
 // visibility a symbol.  A marking attribute does not stop the
 // declaration, but the use of what it marks is refused with its name,
-// as the use of a not-yet type is.  The names are GCC's, each the same
-// with and without its double underscores.
+// as the use of a not-yet type is: not yet for an attribute rcc may
+// come to honour, unsupported for any other, which rcc declines.  The
+// names are GCC's, each the same with and without its double
+// underscores.
 
 // The attributes dropped, by name.
 constexpr std::string_view dropped_attributes[] = {
@@ -3503,6 +3520,12 @@ constexpr std::string_view dropped_attributes[] = {
     "access", "deprecated", "fallthrough", "format", "format_arg", "nodiscard",
     "sentinel", "unused", "warn_unused_result"
 };
+
+// The marking attributes rcc may come to honour, by name: each changes
+// a layout, which rcc may come to compute as clang does, so the
+// refusal of what one marks is not yet.
+constexpr std::string_view attributes_honoured_later[] = { "aligned",
+                                                           "packed" };
 
 // An attribute's name as GCC reads it: __nonnull__ is nonnull.
 std::string_view
@@ -3523,11 +3546,29 @@ is_dropped(std::string_view attribute)
            std::ranges::end(dropped_attributes);
 }
 
+// Whether the attribute of the name is one rcc may come to honour.
+bool
+is_honoured_later(std::string_view attribute)
+{
+    return std::ranges::find(attributes_honoured_later, attribute) !=
+           std::ranges::end(attributes_honoured_later);
+}
+
 // The words a refusal of what an attribute marks prints.
 std::string
 attribute_words(const token_t &name)
 {
     return "attribute " + quoted(attribute_name(name));
+}
+
+// The refusal of what an attribute marks, by its words and those of
+// the place, if any: not yet for one rcc may come to honour, unsupported
+// for any other, which rcc reads and declines (shape.md chapter 5).
+refusal_words_t
+attribute_refusal(const token_t &name, std::string_view place = { })
+{
+    return { attribute_words(name) + std::string(place),
+             !is_honoured_later(attribute_name(name)) };
 }
 
 // An attribute's name is a word, an identifier or a keyword: const and
@@ -3735,7 +3776,7 @@ void
 record_tail(const parser_t &p, symbol_t &sym, const declarator_tail_t &tail)
 {
     if (tail.marking && (p.used.contains(&sym) || defines(p, &sym)))
-        not_yet(*tail.marking, attribute_words(*tail.marking));
+        refuse(*tail.marking, attribute_refusal(*tail.marking));
 
     if (tail.asm_keyword) {
         if (!sym.asm_name.empty() && sym.asm_name != tail.asm_name)
@@ -3745,8 +3786,8 @@ record_tail(const parser_t &p, symbol_t &sym, const declarator_tail_t &tail)
         sym.asm_name = tail.asm_name;
     }
 
-    if (tail.marking && sym.marking.empty())
-        sym.marking = attribute_words(*tail.marking);
+    if (tail.marking && sym.marking.words.empty())
+        sym.marking = attribute_refusal(*tail.marking);
 }
 
 // A function specifier stands only in the declaration of a function,
@@ -4189,7 +4230,7 @@ type_definition(parser_t &p, const specifiers_t &spec, const declarator_t &d)
     if (tail.marking) {
         const int identity =
             identity_of(p, markings_spelling(p, tail.markings), t);
-        t = make_not_yet(identity, attribute_words(*tail.marking), true);
+        t = make_not_yet(identity, attribute_refusal(*tail.marking), true);
     }
 
     if (!earlier_declaration(p, *d.name, t, d.qualifiers, storage_t::type_name))
@@ -4292,7 +4333,7 @@ alias_target(const parser_t &p, const token_t &attribute)
 // which makes the alias a weak symbol, on a function none of whose
 // parameters an attribute marks, or on an object declared extern or
 // static, and the declarator has no assembler name; any other alias is
-// not yet where it is declared.  A definition is no alias, an error, as
+// refused where it is declared.  A definition is no alias, an error, as
 // GNU C has it: a function's body, an object's initializer or a
 // tentative definition of external linkage; a static object's
 // declaration that the alias marks is no tentative definition, and
@@ -4306,17 +4347,19 @@ declared_alias(parser_t &p,
                bool function)
 {
     const token_t &attribute = *tail.markings.alias;
-    const std::string words = attribute_words(attribute);
     const bool weak = tail.markings.weak != nullptr;
 
     if (tail.markings.count > (weak ? 2 : 1))
-        not_yet(attribute, words + " beside another attribute that marks");
+        refuse(attribute,
+               attribute_refusal(attribute,
+                                 " beside another attribute that marks"));
 
     if (tail.asm_keyword)
-        not_yet(attribute, words + " with an assembler name");
+        refuse(attribute,
+               attribute_refusal(attribute, " with an assembler name"));
 
     if (const token_t *marked = function ? marked_parameter(d) : nullptr)
-        not_yet(*marked, attribute_words(*marked));
+        refuse(*marked, attribute_refusal(*marked));
 
     const bool tentative =
         !declared(spec, tok_t::kw_extern) && !declared(spec, tok_t::kw_static);
@@ -5974,7 +6017,7 @@ require_complete_record(const token_t &name, const type_t &t)
 // linkage is external; of internal linkage it is an error then, p3,
 // which require_completed_definitions() checks.  An attribute that
 // marks the object, said on any of its declarations, is one rcc would
-// have to honour, and is not yet.  An object of a record incomplete
+// have to honour, and is refused.  An object of a record incomplete
 // where it is declared is an error with an initializer, 6.7.11p4; a
 // tentative definition takes the record as it is at the end of the
 // unit, 6.9.3p2, which require_completed_definitions() checks then, of
@@ -6002,8 +6045,8 @@ require_definable(parser_t &p,
     if (unknown_size && !initialized && sym.linkage == linkage_t::internal)
         p.incomplete_definitions.push_back({ &sym, &name });
 
-    if (!sym.marking.empty())
-        not_yet(name, sym.marking);
+    if (!sym.marking.words.empty())
+        refuse(name, sym.marking);
 }
 
 // 6.9.3p2: a tentative definition of an object of a record incomplete
@@ -6118,8 +6161,8 @@ require_internal_definitions(const parser_t &p)
         if (defines(p, sym) || is_alias(p, sym))
             continue;
 
-        if (!sym->marking.empty())
-            not_yet(*at, sym->marking);
+        if (!sym->marking.words.empty())
+            refuse(*at, sym->marking);
 
         fail(*at, "static function " + quoted(sym->name) +
                       " is used but never defined");
@@ -6637,8 +6680,8 @@ require_definable_head(const parser_t &p,
                        const symbol_t &sym,
                        const declarator_t &d)
 {
-    if (!sym.marking.empty())
-        not_yet(*d.name, sym.marking);
+    if (!sym.marking.words.empty())
+        refuse(*d.name, sym.marking);
 
     const type_t &result = *as< function_t >(d.type).result;
     require_honoured(*d.name, result);
@@ -6660,14 +6703,14 @@ require_definable_head(const parser_t &p,
 // the head has none: such a function is kept uncompiled, as for its
 // body, inline_body()'s.  The checks change nothing of the parse, so
 // nothing is undone.
-std::optional< std::string >
+std::optional< refusal_words_t >
 inline_head(const parser_t &p, const symbol_t &sym, const declarator_t &d)
 {
     try {
         require_definable_head(p, sym, d);
     }
     catch (const not_yet_error_t &e) {
-        return e.construct;
+        return e.refusal;
     }
 
     return std::nullopt;
@@ -6750,7 +6793,7 @@ function_body(parser_t &p, std::vector< stmt_t > entry)
 // temporaries, and the static objects it declared, which nothing
 // outside it names.
 std::optional< block_t >
-inline_body(parser_t &p, std::string &missing, std::vector< stmt_t > entry)
+inline_body(parser_t &p, refusal_words_t &missing, std::vector< stmt_t > entry)
 {
     const std::size_t start = p.pos;
     const std::size_t depth = p.scopes.size();
@@ -6763,7 +6806,7 @@ inline_body(parser_t &p, std::string &missing, std::vector< stmt_t > entry)
         return function_body(p, std::move(entry));
     }
     catch (const not_yet_error_t &e) {
-        missing = e.construct;
+        missing = e.refusal;
         p.pos = start + 1;
         skip_to_closing_brace(p);
         expect(p, tok_t::rbrace, "expected '}' at end of function body");
@@ -6804,12 +6847,12 @@ void
 uncompiled_head(parser_t &p,
                 std::size_t index,
                 const declarator_t &d,
-                const std::string &missing)
+                const refusal_words_t &missing)
 {
     skip_body(p);
 
-    std::string &marking = p.scopes.back().names.at(d.name->text)->marking;
-    if (marking.empty())
+    refusal_words_t &marking = p.scopes.back().names.at(d.name->text)->marking;
+    if (marking.words.empty())
         marking = missing;
 
     p.unit.functions[index].uncompiled = true;
@@ -6848,7 +6891,8 @@ function_definition(parser_t &p, const specifiers_t &spec, declarator_t &d)
         declared(spec, tok_t::kw_static) && spec.inline_specifier;
     if (!inline_)
         require_definable_head(p, sym, d);
-    else if (const std::optional< std::string > head = inline_head(p, sym, d)) {
+    else if (const std::optional< refusal_words_t > head =
+                 inline_head(p, sym, d)) {
         uncompiled_head(p, index, d, *head);
         return;
     }
@@ -6870,7 +6914,7 @@ function_definition(parser_t &p, const specifiers_t &spec, declarator_t &d)
     std::vector< const symbol_t * > params = defined_parameters(p, d);
 
     const std::size_t statics = p.unit.objects.size();
-    std::string missing;
+    refusal_words_t missing;
     std::vector< stmt_t > sizes = parameter_sizes(d);
     std::optional< block_t > body =
         inline_ ? inline_body(p, missing, std::move(sizes)) :
@@ -6882,8 +6926,11 @@ function_definition(parser_t &p, const specifiers_t &spec, declarator_t &d)
     p.variadic = false;
 
     if (!body) {
-        p.scopes.back().names.at(d.name->text)->marking =
-            missing + " in the body of static function " + quoted(d.name->text);
+        p.scopes.back().names.at(d.name->text)->marking = {
+            missing.words + " in the body of static function " +
+                quoted(d.name->text),
+            missing.unsupported
+        };
         f.uncompiled = true;
         return;
     }
@@ -6929,8 +6976,8 @@ header_function_definition(parser_t &p,
     p.unit.functions[index].uncompiled = true;
 
     symbol_t &sym = *p.scopes.back().names.at(d.name->text);
-    if (sym.marking.empty())
-        sym.marking = skipped_body_words(d.name->text);
+    if (sym.marking.words.empty())
+        sym.marking = { skipped_body_words(d.name->text) };
 
     skip_body(p);
 }
@@ -6963,7 +7010,7 @@ new_tag(parser_t &p, const token_t &keyword, const token_t &tag)
         fresh.record = &new_record(p, keyword, tag.text);
 
     fresh.type = fresh.record ? make_record(*fresh.record) :
-                                make_not_yet(p.identities++, "enum");
+                                make_not_yet(p.identities++, { "enum" });
 
     return p.scopes.back().tags.emplace(tag.text, fresh).first->second;
 }
@@ -7354,10 +7401,10 @@ declaration_specifiers(parser_t &p)
 // yet, kept in the record: the first one met is the one its uses are
 // refused by.
 void
-mark_not_yet(record_t &r, std::string words)
+mark_not_yet(record_t &r, refusal_words_t refusal)
 {
-    if (r.not_yet.empty())
-        r.not_yet = std::move(words);
+    if (r.not_yet.words.empty())
+        r.not_yet = std::move(refusal);
 }
 
 // The record a member declaration of a list is read into; the token
@@ -7497,8 +7544,8 @@ require_member_type(const token_t &name,
                            flexible_words(*inner));
     }
 
-    if (const std::string *words = not_yet_in(t); words && !is_sized(t))
-        mark_not_yet(r, *words);
+    if (const refusal_words_t *refusal = not_yet_in(t); refusal && !is_sized(t))
+        mark_not_yet(r, *refusal);
 }
 
 // The member of the name in a record, at its offset from the start of
@@ -7601,8 +7648,8 @@ anonymous_member(const token_t &semicolon,
         ++list.named;
     }
 
-    if (const std::string *words = not_yet_in(t))
-        mark_not_yet(r, *words);
+    if (const refusal_words_t *refusal = not_yet_in(t))
+        mark_not_yet(r, *refusal);
 
     r.members.push_back(member_t { { }, t, 0, qualifiers });
 }
@@ -7626,8 +7673,8 @@ add_bit_field(member_list_t &list,
     if (name && member_named(r, name->text))
         fail(*name, "duplicate member " + quoted(name->text));
 
-    if (const std::string *words = not_yet_in(t))
-        mark_not_yet(r, *words);
+    if (const refusal_words_t *refusal = not_yet_in(t))
+        mark_not_yet(r, *refusal);
 
     const std::string named = name ? std::string(name->text) : std::string();
     r.members.push_back(member_t { named, t, 0, qualifiers, width });
@@ -7658,8 +7705,9 @@ member_declarator(parser_t &p, const specifiers_t &spec, member_list_t &list)
     ++list.named;
 
     if (const token_t *marking = attribute_specifier_list(p))
-        mark_not_yet(list.record, attribute_words(*marking) + " in " +
-                                      record_words(list.record));
+        mark_not_yet(
+            list.record,
+            attribute_refusal(*marking, " in " + record_words(list.record)));
 
     if (peek(p).kind == tok_t::colon) {
         const int width = bit_field(p, list, d.type, d.name);
@@ -7720,8 +7768,9 @@ member_declaration(parser_t &p, member_list_t &list)
     refuse_function_specifier(spec);
 
     if (spec.marking)
-        mark_not_yet(list.record, attribute_words(*spec.marking) + " in " +
-                                      record_words(list.record));
+        mark_not_yet(list.record,
+                     attribute_refusal(*spec.marking,
+                                       " in " + record_words(list.record)));
 
     if (peek(p).kind == tok_t::semicolon) {
         unnamed_member(advance(p), spec, list);
@@ -7773,7 +7822,7 @@ member_list(parser_t &p, record_t &r)
                                     "member" });
 
     if (r.members.empty())
-        mark_not_yet(r, "empty " + record_words(r));
+        mark_not_yet(r, { "empty " + record_words(r) });
 }
 
 // The members of the list after the '{' at the position.  The rule for
@@ -7800,7 +7849,7 @@ members(parser_t &p, record_t &r)
         member_list(p, r);
     }
     catch (const not_yet_error_t &e) {
-        mark_not_yet(r, e.construct);
+        mark_not_yet(r, e.refusal);
         p.pos = start;
         p.scopes.resize(depth);
         skip_to_closing_brace(p);
@@ -8027,12 +8076,12 @@ struct_or_union_specifier(parser_t &p)
 
     const token_t *after = attribute_specifier_list(p);
     if (const token_t *marking = before ? before : after)
-        mark_not_yet(r, attribute_words(*marking) + " on " + record_words(r));
+        mark_not_yet(r, attribute_refusal(*marking, " on " + record_words(r)));
 
     if (open.packed)
-        mark_not_yet(r, "pragma 'pack' on " + record_words(r));
+        mark_not_yet(r, { "pragma 'pack' on " + record_words(r) });
 
-    if (r.not_yet.empty())
+    if (r.not_yet.words.empty())
         lay_out(close, r, p.target);
 
     r.complete = true;
@@ -8206,7 +8255,7 @@ open_enum_tag(parser_t &p, const token_t &keyword, const token_t &tag)
     tagged_type(p, keyword, tag, tag_use_t::defines);
 
     tag_in(p.scopes.back(), tag.text)->type = make_not_yet(
-        p.identities++, "enum " + quoted(tag.text) + " in its own list");
+        p.identities++, { "enum " + quoted(tag.text) + " in its own list" });
 }
 
 // enum, then a tag, an enumerator list in braces, or both, 6.7.3.3p1.
@@ -8250,7 +8299,7 @@ enum_specifier(parser_t &p)
 
     type_t t = enumerated(p, compatible_type(tag ? *tag : keyword, list));
     if (marking)
-        t = make_not_yet(p.identities++, attribute_words(*marking));
+        t = make_not_yet(p.identities++, attribute_refusal(*marking));
 
     complete_constants(list, t);
 
@@ -8529,7 +8578,8 @@ declarator_suffix(parser_t &p,
         d.params = std::move(params);
         const token_t *marked = marked_parameter(d);
         d.type = make_function(t, std::move(types), variadic,
-                               marked ? attribute_words(*marked) : "");
+                               marked ? attribute_refusal(*marked) :
+                                        refusal_words_t { });
         d.qualifiers = { };
     }
 
@@ -8596,15 +8646,15 @@ array_count(const token_t &at, const expr_t &size)
 }
 
 // An array suffix as written: its '[', its count, -1 when the size is
-// left out, and the words of what the size needs that rcc does not
-// have yet, empty when it needs nothing, with the words of the size,
+// left out, and the refusal of what the size needs that rcc does not
+// have, empty when it needs nothing, with the words of the size,
 // the means its not-yet type is made by.  variable_size is a variable
 // length array's size, absent for any other suffix.
 struct array_suffix_t
 {
     const token_t *open;
     long count;
-    std::string missing;
+    refusal_words_t missing;
     std::string size = { };
     std::optional< expr_t > variable_size = { };
 };
@@ -8677,7 +8727,7 @@ closing_bracket(const parser_t &p)
 // that list's scope open, and the scopes are cut back to those open
 // before the size.
 std::optional< expr_t >
-typedef_array_size(parser_t &p, std::string &missing)
+typedef_array_size(parser_t &p, refusal_words_t &missing)
 {
     const std::optional< std::size_t > close = closing_bracket(p);
     if (!close)
@@ -8689,7 +8739,7 @@ typedef_array_size(parser_t &p, std::string &missing)
         return array_size(p);
     }
     catch (const not_yet_error_t &e) {
-        missing = e.construct;
+        missing = e.refusal;
         p.pos = *close;
         p.scopes.resize(depth);
     }
@@ -8936,7 +8986,7 @@ array_declarator(parser_t &p,
         }
 
         if (unspecified)
-            suffix.missing = "variable length array";
+            suffix.missing = { "variable length array" };
 
         if (!(adjusted && star) && !unspecified &&
             peek(p).kind != tok_t::rbracket) {
@@ -8968,7 +9018,7 @@ array_declarator(parser_t &p,
         expect(p, tok_t::rbracket, "expected ']'");
 
         const auto first = std::size_t(suffix.open - p.tokens.data()) + 1;
-        if (!suffix.missing.empty())
+        if (!suffix.missing.words.empty())
             suffix.size = "[" + spelling(p, first, p.pos - 1) + "]";
 
         suffixes.push_back(std::move(suffix));
@@ -8992,7 +9042,7 @@ array_declarator(parser_t &p,
         if (is_variable_array(t))
             not_yet(*open, "array of variable length arrays");
 
-        if (!missing.empty()) {
+        if (!missing.words.empty()) {
             const int identity = identity_of(p, size, t);
             t = make_not_yet_array(identity, missing, std::move(t));
             continue;
@@ -9124,8 +9174,8 @@ parameter_declaration(parser_t &p)
 // declaration without its name, 6.7.8p1, p2: int *, int [3],
 // void (*)(int), with the qualifiers at the top of the type.  A marking
 // attribute would make the type one rcc does not use, which no name
-// stands for here, so it is not yet, and so is a variable length
-// array, sizeof (char [n]).
+// stands for here, so it is refused, and a variable length array,
+// sizeof (char [n]), is not yet.
 qualified_type_t
 qualified_type_name(parser_t &p)
 {
@@ -9140,7 +9190,7 @@ qualified_type_name(parser_t &p)
     refuse_function_specifier(spec);
 
     if (spec.marking)
-        not_yet(*spec.marking, attribute_words(*spec.marking));
+        refuse(*spec.marking, attribute_refusal(*spec.marking));
 
     const declarator_t d =
         declarator(p, spec.type, spec.qualifiers, naming_t::none);
@@ -9179,8 +9229,9 @@ block_declarator(parser_t &p, const specifiers_t &spec)
 
 // What is checked of every object a block declares that has no
 // linkage, static or not.  An object is one rcc makes, so an attribute
-// that marks it is one rcc would have to honour, and is not yet; so is
-// an assembler name, which names a register for a register variable.
+// that marks it is one rcc would have to honour, and is refused; an
+// assembler name, which names a register for a register variable, is
+// not yet.
 // An object's type is complete, 6.7.1p8: not void, not a not-yet type,
 // whose size rcc does not know, and not an incomplete record.
 void
@@ -9196,7 +9247,7 @@ require_block_object(parser_t &p,
                 quoted(tail.asm_keyword->text) + " on a local variable");
 
     if (tail.marking)
-        not_yet(*tail.marking, attribute_words(*tail.marking));
+        refuse(*tail.marking, attribute_refusal(*tail.marking));
 
     if (is< void_t >(d.type))
         fail(*d.name, "variable " + quoted(d.name->text) + " has type void");
@@ -9341,7 +9392,7 @@ linked_declaration(parser_t &p, const specifiers_t &spec, const declarator_t &d)
         tail.marking = marked_parameter(d);
 
     if (const token_t *alias = tail.markings.alias)
-        not_yet(*alias, attribute_words(*alias) + " in a block");
+        refuse(*alias, attribute_refusal(*alias, " in a block"));
 
     if (function && peek(p).kind == tok_t::lbrace)
         fail(peek(p),
@@ -10138,7 +10189,7 @@ stored_effect(const parser_t &p, expr_t e, std::size_t first, std::size_t last)
 // the null statement.  Attributes before an empty one's ';' stand on
 // the null statement, as GNU C's __attribute__ ((fallthrough)); does: one
 // dropped is dropped, so the statement writes nothing, and one that
-// marks is not yet, by its name, as on anything else rcc would make.
+// marks is refused, by its name, as on anything else rcc would make.
 // Attributes before an expression are no part of the grammar, and the
 // expression refuses them.
 stmt_t
@@ -10147,7 +10198,7 @@ expression_statement(parser_t &p)
     if (peek(p).kind == tok_t::kw_attribute &&
         peek(p, past_attributes(p, 0)).kind == tok_t::semicolon) {
         if (const token_t *marking = attribute_specifier_list(p))
-            not_yet(*marking, attribute_words(*marking));
+            refuse(*marking, attribute_refusal(*marking));
     }
 
     if (accept(p, tok_t::semicolon))
@@ -11153,7 +11204,7 @@ member_access(parser_t &p, const token_t &op, expr_t e, std::size_t start)
     }
 
     if (is_sized(m.type) && !sized_operand)
-        not_yet(name, *not_yet_in(m.type));
+        refuse(name, *not_yet_in(m.type));
 
     return member_lvalue(p, op, std::move(e), m);
 }
@@ -11674,10 +11725,10 @@ va_builtin(parser_t &p, const token_t &keyword)
 
 // 6.5.3.3p5 gives a call the result type of the function it calls, a
 // named one or one through a pointer.  A call of a function whose result
-// is of a not-yet type is not yet, its value used or not: the call
-// makes the object it returns.  So is a call through a function type a
-// marking attribute on a parameter marks, which would pass the
-// parameter as the attribute says.
+// is of a not-yet type is refused by the type's words, its value used
+// or not: the call makes the object it returns.  A call through a
+// function type a marking attribute on a parameter marks, which would
+// pass the parameter as the attribute says, is refused by its words.
 expr_t
 postfix_expression(parser_t &p)
 {
@@ -11693,8 +11744,8 @@ postfix_expression(parser_t &p)
 
             e = callee(op, std::move(e));
             const function_t &type = callee_type(e);
-            if (!type.marking.empty())
-                not_yet(op, type.marking);
+            if (!type.marking.words.empty())
+                refuse(op, type.marking);
 
             const type_t t = *type.result;
             require_honoured(op, t);
@@ -12139,7 +12190,7 @@ require_association_type(const token_t &at, const type_t &t)
 // qualifiers at the top of each read too, 6.7.4.1p11: const int and int
 // are not.  A pair rcc cannot tell, of two records of one tag or of a
 // type a typedef made through a marking attribute or an array size rcc
-// cannot compute, is not yet, as in a comparison.
+// cannot compute, is refused as in a comparison.
 bool
 selection_compatible(const token_t &at,
                      const qualified_type_t &a,
@@ -12322,8 +12373,8 @@ primary_expression(parser_t &p)
             fail(t, "unexpected type name " + quoted(t.text) +
                         ": expected expression");
 
-        if (!sym->marking.empty())
-            not_yet(t, sym->marking);
+        if (!sym->marking.words.empty())
+            refuse(t, sym->marking);
 
         if (sym->linkage != linkage_t::none)
             p.used.insert(sym);

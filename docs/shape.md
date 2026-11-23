@@ -198,7 +198,8 @@ attributes with their arguments, in their order, `__x__` read as `x`;
 and an array size rcc cannot compute, by the words of the size.
 A pointer to a type made by a typedef through a marking attribute
 or an array size rcc cannot compute, met by a pointer to another type
-that may be compatible with it, is not yet, by the typedef's words:
+that may be compatible with it, is refused by the typedef's words,
+of its attribute's kind (chapter 5) or not yet for its size:
 converted to or from it, compared with it, joined with it in a
 conditional's arms or in its place in a redeclaration, behind any
 pointers, arrays and functions, as `void f(word_t *); void f(long
@@ -746,12 +747,18 @@ Any other, known or not, marks what it is said of: a typedef through
 one names a not-yet type of its own, a marked function or object at
 file scope is refused where an expression names it, and on a local or
 the definition of an object, which rcc would make, the attribute is
-not yet. GNU C lets a later declaration mark the uses and the
-definition before it too, so the attribute is not yet on a
+refused. GNU C lets a later declaration mark the uses and the
+definition before it too, so the attribute is refused on a
 declaration after an expression named the symbol or after the
 symbol's definition, a function's body or an object's, tentative or
-not. `alias ("t")` marks too, but where it is the one marking
-attribute of a declaration at file scope, or one of two beside
+not. Each such refusal is by the attribute's words, of the
+attribute's kind (chapter 7). `packed` and `aligned` change a layout,
+which rcc may come to compute, so what one marks is not yet, `not
+yet: attribute 'packed'`; rcc reads any other and declines it, so
+what it marks is unsupported, `unsupported: attribute 'mode'`. A
+refusal that names two attributes is of the kind of the one whose
+words lead it. `alias ("t")` marks too, but where it is the one
+marking attribute of a declaration at file scope, or one of two beside
 `weak`, which makes the alias a weak symbol, on a function, `static`
 or not, or on an object declared `extern` of external linkage or
 `static` with no initializer, which is then no tentative definition,
@@ -760,15 +767,20 @@ object of the alias's kind, the declaration is the alias, which c1
 writes after the data (`backend.md` chapter 10): the symbol is not
 marked, and a use of it is a use of the symbol. A `static` alias is
 its symbol's definition (6.9.1p3), and a weak `static` one is an
-error, as in GNU C. Any other alias is not yet where it is declared,
-and an alias on a definition is an error. An attribute
+error, as in GNU C. Any other alias is refused where it is declared:
+by the attribute's words where the declaration stands against it, by
+another marking attribute, an assembler name or a marked parameter;
+not yet where the unit does, by a target it does not define or by an
+assembler name another declaration gives, `not yet: alias 'a' of 't',
+which the unit does not define`. An alias on a definition is an
+error. An attribute
 among the declaration specifiers
 is said of each declarator, as one after the declarator is, and one
 may begin a declaration, in a block as at file scope:
 `__attribute__ ((unused)) int x = 1;` in a block declares `x`, the
 attribute dropped. Attributes before a `;` or an expression begin no
 declaration. Before a `;` they stand on a null statement, as GNU C's
-`__attribute__ ((fallthrough));` does, dropped or not yet by their
+`__attribute__ ((fallthrough));` does, dropped or refused by their
 kind, and the statement writes nothing; before an expression they
 are an error. One on a
 parameter marks the function, whose calls pass the parameter, and its
@@ -777,7 +789,7 @@ pointer to the type, or through a typedef of it, is refused as a call
 of the function is. Equality does not read them, so a conversion
 between pointers to function types whose marks differ, and the join
 of two such pointers as a conditional's arms, would lose them, and
-each is refused as not yet by them. On a struct or a union, or on a member, one that marks
+each is refused by them. On a struct or a union, or on a member, one that marks
 changes the layout, as `packed` and `aligned` do, and makes the
 record one rcc does not lay out yet (chapter 3); on an enum one that
 marks makes the enum a not-yet type of its words (below). `__asm__
@@ -1409,7 +1421,8 @@ tentative definition of internal linkage is not of an incomplete type
 at the name in its first tentative definition. rcc asks this of the
 composite type at the end of the file, so `static int a[]; static int
 a[3];` declare one `int [3]` (6.2.7p5). The definition of an object of
-a not-yet type, or of one an attribute marks, is not yet.
+a not-yet type, or of one an attribute marks, is refused by the
+type's or the attribute's words.
 
 The initializer is a constant expression (6.7.11p5), converted to the
 object's type as by assignment (p12) and folded. It is an integer
@@ -1727,6 +1740,20 @@ one diagnostic. Its pin, per target, is what rcc printed on standard
 error and the exit status, so a message reworded or moved, or a
 refusal turned into an acceptance, fails its row.
 
+A diagnostic is of one of four kinds. An error of the program is the
+message alone. A refusal of a construct outside the subset is an
+error of one of two kinds, its message after a word that names it. A
+construct rcc is to compile, of C or of GNU C, is not yet: `error:
+not yet: floating constant`. A GNU extension rcc reads and declines
+is unsupported, `error: unsupported: attribute 'mode'`, and so is a
+refusal built on its words, `unsupported: compatibility of a pointer
+to a type of attribute 'mode'`: what an attribute rcc declines marks
+is the one such extension, and `packed` and `aligned`, which rcc may
+come to honour, are not yet (chapter 5). The parser takes the two
+kinds of refusal alike but for the word, so a refusal of the not-yet
+kind, in chapter 5, is either. A warning is the fourth kind (chapter
+8).
+
 An initializer's error is said at one of two places. One of its
 conversion as by assignment is said at the `=`, as in `int *p = 1;`;
 one of a value the initializer does not have is said at its first
@@ -1973,8 +2000,8 @@ Each use that reads or writes a record whole (chapter 5: a `register`
 one, a record by value but the aarch64 `va_list`, and its value where
 a record is wanted, a scalar's place in a local's list among them), a
 function whose parameter list is
-`(...)` alone, the layout of a struct or a union with an
-attribute that marks, `packed` and `aligned` among them, a packing of
+`(...)` alone, the layout of a struct or a union with the
+attribute `packed` or `aligned`, a packing of
 `#pragma pack`, no member, or a member of a type rcc does not use yet
 but a real floating one (chapter 3), an initializer of a flexible
 array member, an access of a floating member, a store of a value
@@ -1986,7 +2013,8 @@ type is declared; a pointer to one is an ordinary pointer, and a use
 that needs the object is refused; a floating constant is a token,
 refused where an expression uses it), an enum's fixed underlying type,
 the use of an enum in its own list but behind a pointer, an object of
-an enum an attribute marks, an object of a typedef whose array size
+an enum `packed` or `aligned` marks, an object of a typedef whose
+array size
 rcc cannot compute, every variably modified type but a local
 variable length array (chapter 5; a parameter's
 array of a size that is not constant is the pointer the parameter is
@@ -2006,15 +2034,17 @@ header's `static inline` function, whose use is refused, and of the
 program's own one whose head or body holds a not-yet, whose use is
 refused by its words, and a system header's `static inline`
 declaration without a body, a `register` array (6.3.2.1p3), `inline`
-on a function definition without `static`, what an attribute that rcc
-does not honour marks (an object of a typedef so declared, the use of
+on a function definition without `static`, what `packed` or `aligned`
+marks (an object of a typedef so declared, the use of
 a function or of an object at file scope, a local, the definition of a
 function or of an object at file scope), `__asm__` as a statement but
 the barrier (chapter 5), at file scope or on a local, and C's
 keywords outside the subset:
 `_Complex` outside the specifiers of a floating type, `_Imaginary`,
 `_Alignas`, `_Alignof` of an expression, `_Thread_local`. Each
-arrives when a probe needs it. A program that includes `tgmath.h` is
+arrives when a probe needs it. What any other attribute rcc does not
+honour marks is no part of the list: it is unsupported (chapter 5). A
+program that includes `tgmath.h` is
 not yet, refused at the header's first overloaded declaration
 (chapter 10): its type-generic macros need overloading, which is not
 C, and floating point first. The preprocessor stays external for

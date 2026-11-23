@@ -1,2 +1,2 @@
-tests/error/attribute-mode-pointer-conditional.c:11:18: error: not yet: compatibility of a pointer to a type of attribute 'mode'
+tests/error/attribute-mode-pointer-conditional.c:11:18: error: unsupported: compatibility of a pointer to a type of attribute 'mode'
 status 1

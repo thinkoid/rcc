@@ -71,7 +71,7 @@ enum class linkage_t { none, internal, external };
 // in the assembly, empty when the symbol is named as it is in C; a
 // block's static object takes one from the parser, the label of
 // backend.md chapter 10, since two blocks may declare one name.
-// marking is the words a use of the symbol is refused with, when an
+// marking is the refusal a use of the symbol meets, when an
 // attribute changes or may change what the program depends on, as weak
 // or alias change the symbol a name links to, or when the symbol is a
 // static inline function, whose definition rcc does not compile; empty
@@ -94,7 +94,7 @@ struct symbol_t
     bool declared_register;
     int register_index;
     std::string asm_name = { };
-    std::string marking = { };
+    refusal_words_t marking = { };
     linkage_t linkage = linkage_t::none;
     long long value = 0;
     bool by_reference = false;

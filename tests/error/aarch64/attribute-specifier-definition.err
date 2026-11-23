@@ -1,2 +1,2 @@
-tests/error/attribute-specifier-definition.c:4:1: error: not yet: attribute 'weak'
+tests/error/attribute-specifier-definition.c:4:1: error: unsupported: attribute 'weak'
 status 1

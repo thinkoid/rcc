@@ -101,7 +101,20 @@ struct array_t
     const symbol_t *length = nullptr;
 };
 
-// marking is the words of the first marking attribute said of a
+// The words a refusal of what rcc does not compile prints, and its
+// kind (shape.md chapter 7): unsupported for what an attribute rcc
+// declines marks, a GNU extension rcc does not mean to compile, and
+// not yet for a construct it is to compile.  A refusal built on
+// another's words is of its kind.  Empty words refuse nothing.
+struct refusal_words_t
+{
+    std::string words;
+    bool unsupported = false;
+
+    bool operator==(const refusal_words_t &) const = default;
+};
+
+// marking is the refusal of the first marking attribute said of a
 // parameter, empty for none: the parser refuses a call through a
 // pointer to the function as it refuses a call of a function the
 // attribute marks.  Equality does not read it, and no generator does,
@@ -112,7 +125,7 @@ struct function_t
     type_ptr_t result;
     std::vector< type_ptr_t > params;
     bool variadic;
-    std::string marking = { };
+    refusal_words_t marking = { };
 };
 
 // A struct or a union, 6.7.3.2: the record its declarations describe,
@@ -131,8 +144,8 @@ struct record_type_t
 // a typedef names through a marking attribute or through an array size
 // rcc cannot compute.  Any other enum is the
 // integer type compatible with it, an int_t.  Two not-yet types are one
-// type when their identities are equal.  what is the words a refusal
-// prints.  A pointer to it is an ordinary pointer.  It has no size and
+// type when their identities are equal.  what is the refusal of its
+// use.  A pointer to it is an ordinary pointer.  It has no size and
 // no alignment, size and alignment 0, but for a real floating type,
 // which a record lays out as a member (shape.md chapter 3): its size
 // and alignment are then clang's.  element is the element of the array
@@ -146,7 +159,7 @@ struct record_type_t
 struct not_yet_t
 {
     int identity;
-    std::string what;
+    refusal_words_t what;
     long size = 0;
     int alignment = 0;
     type_ptr_t element = nullptr;
@@ -207,7 +220,7 @@ is_anonymous(const member_t &m)
 // record declared without one.  A complete record has its members, its
 // size and its alignment, laid out as clang lays it out on the target,
 // unless its list holds a construct rcc does not lay out yet:
-// not_yet is then the words its use is refused with, and the record has
+// not_yet is then the refusal its uses meet, and the record has
 // no size and no alignment, as a not-yet type has none.  flexible says
 // that the record is a struct with a flexible array member, or a union
 // with a member of such a record, possibly through other unions, which
@@ -220,7 +233,7 @@ struct record_t
     std::vector< member_t > members = { };
     long size = 0;
     int alignment = 0;
-    std::string not_yet = { };
+    refusal_words_t not_yet = { };
     bool flexible = false;
 };
 
@@ -229,7 +242,7 @@ struct record_t
 inline bool
 laid_out(const record_t &r)
 {
-    return r.complete && r.not_yet.empty();
+    return r.complete && r.not_yet.words.empty();
 }
 
 template< typename T >
@@ -287,10 +300,10 @@ type_t make_variable_array(type_t element, const symbol_t &length);
 type_t make_function(type_t result,
                      std::vector< type_t > params,
                      bool variadic,
-                     std::string marking = { });
+                     refusal_words_t marking = { });
 type_t make_record(const record_t &);
-type_t make_not_yet(int identity, std::string what, bool made = false);
-type_t make_not_yet_array(int identity, std::string what, type_t element);
+type_t make_not_yet(int identity, refusal_words_t what, bool made = false);
+type_t make_not_yet_array(int identity, refusal_words_t what, type_t element);
 type_t make_floating(int identity, std::string what, long size);
 
 } // namespace rcc

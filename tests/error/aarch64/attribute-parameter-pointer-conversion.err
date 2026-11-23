@@ -1,2 +1,2 @@
-tests/error/attribute-parameter-pointer-conversion.c:11:23: error: not yet: attribute 'mode'
+tests/error/attribute-parameter-pointer-conversion.c:11:23: error: unsupported: attribute 'mode'
 status 1

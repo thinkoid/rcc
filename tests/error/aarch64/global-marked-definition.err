@@ -1,2 +1,2 @@
-tests/error/global-marked-definition.c:4:5: error: not yet: attribute 'weak'
+tests/error/global-marked-definition.c:4:5: error: unsupported: attribute 'weak'
 status 1

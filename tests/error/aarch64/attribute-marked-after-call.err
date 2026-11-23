@@ -1,2 +1,2 @@
-tests/error/attribute-marked-after-call.c:13:31: error: not yet: attribute 'weak'
+tests/error/attribute-marked-after-call.c:13:31: error: unsupported: attribute 'weak'
 status 1

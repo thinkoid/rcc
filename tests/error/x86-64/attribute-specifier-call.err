@@ -1,2 +1,2 @@
-tests/error/attribute-specifier-call.c:9:16: error: not yet: attribute 'aarch64_vector_pcs'
+tests/error/attribute-specifier-call.c:9:16: error: unsupported: attribute 'aarch64_vector_pcs'
 status 1

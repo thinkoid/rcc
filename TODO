@@ -420,6 +420,22 @@ Fix: one cost program of those shapes.
 
 Check: it is pinned on both targets.
 
+** TODO Fifteen error programs' comments call an unsupported refusal a not-yet
+
+The comment of an error program says what its pin shows. Fifteen
+programs of =tests/error= whose pin reads "unsupported:" say "not
+yet" of that refusal in their comment: the five
+=attribute-mode-pointer*.c= and =attribute-mode-typedef.c= of them,
+the three =attribute-specifier-*.c=, the two
+=attribute-parameter-pointer-*.c=, the three =attribute-marked-*.c=
+and the two =global-marked-*.c=.
+
+Fix: each comment says "unsupported", in as many lines as it has,
+so that no pin's line moves.
+
+Check: no source of =tests/error= whose pin reads "unsupported:"
+says "not yet" of that refusal; no pin changes.
+
 * Parser
 
 ** TODO A read of a =volatile= object is taken as no side effect
@@ -466,26 +482,6 @@ another machine when the program includes one; or take a sysroot.
 
 Check: the documents and the driver agree on what =-target= does to
 =#include <...>=.
-
-** TODO An attribute rcc does not honour is refused as not yet
-
-A use of what an attribute marks is "error: not yet: attribute
-'packed'", the words of a construct rcc is to compile. rcc reads
-GNU C because the system headers are written in it, and honours an
-attribute only where a program cannot be compiled without it: the
-others it declines, and "not yet" promises what is not meant. The
-error corpus pins such refusals in three forms, "attribute 'packed'",
-"attribute 'packed' on struct 'p'" and "compatibility of a pointer
-to a type of attribute 'aligned'".
-
-Fix: a third kind of refusal beside the error and the not-yet,
-"error: unsupported: attribute 'packed'", with the error's exit
-status, for every refusal by an attribute's words. =shape.md=
-chapter 7 names the three kinds, and chapter 5 says which an
-attribute's is.
-
-Check: no pin of =tests/error= reads "not yet:" before an
-attribute's words; each reads "unsupported:" in its place.
 
 ** TODO =hot= and =artificial= mark, where an attribute of their kind is dropped
 
@@ -807,6 +803,21 @@ runs, on both targets, and =choices.md= says so where it says that
 
 Check: a cost program that tests the macro compiles its
 ~#ifdef __STDC_NO_ATOMICS__~ branch, pinned on both targets.
+
+** TODO "A refusal of the not-yet kind" names both kinds of refusal
+
+Eight comments of =src/parse.cc= and three passages of
+=docs/shape.md= say "a refusal of the not-yet kind" for what the
+parser throws apart from an error of the program, and the type
+thrown is =not_yet_error_t=. A refusal is now not yet or
+unsupported, and those places mean either; chapter 7 of =shape.md=
+bridges the two wordings with a sentence.
+
+Fix: the type is =refusal_error_t=, the places say "a refusal", and
+the bridging sentence leaves. The not-yet type keeps its name.
+
+Check: ~grep -rn "not-yet kind" src docs~ is empty; no listing and
+no pin changes.
 
 * Lexer
 

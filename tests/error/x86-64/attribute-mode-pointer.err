@@ -1,2 +1,2 @@
-tests/error/attribute-mode-pointer.c:12:11: error: not yet: conversion of a pointer to a type of attribute 'mode'
+tests/error/attribute-mode-pointer.c:12:11: error: unsupported: conversion of a pointer to a type of attribute 'mode'
 status 1

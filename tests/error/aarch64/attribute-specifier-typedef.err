@@ -1,2 +1,2 @@
-tests/error/attribute-specifier-typedef.c:13:17: error: not yet: attribute 'neon_vector_type'
+tests/error/attribute-specifier-typedef.c:13:17: error: unsupported: attribute 'neon_vector_type'
 status 1

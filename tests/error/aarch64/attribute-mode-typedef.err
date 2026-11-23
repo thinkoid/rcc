@@ -1,2 +1,2 @@
-tests/error/attribute-mode-typedef.c:12:16: error: not yet: attribute 'mode'
+tests/error/attribute-mode-typedef.c:12:16: error: unsupported: attribute 'mode'
 status 1

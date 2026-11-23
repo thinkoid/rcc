@@ -1,2 +1,2 @@
-tests/error/attribute-parameter-pointer-call.c:9:17: error: not yet: attribute 'mode'
+tests/error/attribute-parameter-pointer-call.c:9:17: error: unsupported: attribute 'mode'
 status 1

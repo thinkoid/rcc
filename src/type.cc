@@ -271,7 +271,7 @@ type_t
 make_function(type_t result,
               std::vector< type_t > params,
               bool variadic,
-              std::string marking)
+              refusal_words_t marking)
 {
     std::vector< type_ptr_t > edges;
     edges.reserve(params.size());
@@ -290,7 +290,7 @@ make_record(const record_t &r)
 }
 
 type_t
-make_not_yet(int identity, std::string what, bool made)
+make_not_yet(int identity, refusal_words_t what, bool made)
 {
     return type_t { not_yet_t { identity, std::move(what), 0, 0, nullptr,
                                 made } };
@@ -299,7 +299,7 @@ make_not_yet(int identity, std::string what, bool made)
 // The type a typedef names through an array size rcc cannot compute,
 // which keeps the array's element.
 type_t
-make_not_yet_array(int identity, std::string what, type_t element)
+make_not_yet_array(int identity, refusal_words_t what, type_t element)
 {
     return type_t { not_yet_t { identity, std::move(what), 0, 0,
                                 share(std::move(element)), true } };
@@ -309,7 +309,8 @@ make_not_yet_array(int identity, std::string what, type_t element)
 type_t
 make_floating(int identity, std::string what, long size)
 {
-    return type_t { not_yet_t { identity, std::move(what), size, int(size) } };
+    return type_t { not_yet_t {
+        identity, { std::move(what) }, size, int(size) } };
 }
 
 // An array of unknown size has no size, and a variable length array
