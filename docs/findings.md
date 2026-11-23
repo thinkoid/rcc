@@ -564,7 +564,8 @@ instruction would (G1). 6.6p4 makes an out-of-range constant
 expression a constraint violation ("shall evaluate to a constant
 that is in the range of representable values for its type"), and it
 governs where the grammar requires a constant expression, the size
-of an array; there the evaluator refuses the wrapped value. The
+of an array among them; there the evaluator takes the wrapped value
+too, with a warning (`backend.md` 6.4). The
 result is typed as the expression would be (`-1` is an `int`, `-1L`
 a `long`) and then goes through the same implicit conversion as any
 constant.
@@ -740,8 +741,8 @@ parser, before c1 replaced the pipeline. `long x = -1` is `movq $-1,
 %rax` and the store, `p[-1]` is the displacement of one load, `movl
 -4(%rax), %eax`, and `int a[96 * 96]` has 9216 elements. 6.6p3
 restricts the operators the evaluator folds and 6.6p8 the operands;
-it wraps a signed result the type cannot hold, and refuses the
-wrapped value only where 6.6p4 governs, the size of an array.
+it wraps a signed result the type cannot hold, and takes the wrapped
+value where 6.6p4 governs too, with a warning.
 
 **Finding 6, the rematerialized frame address**, has no place to
 happen either, since a `register` variable is its register and no

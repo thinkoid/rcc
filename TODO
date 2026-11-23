@@ -697,18 +697,6 @@ refusal is not one that the catch of a =static inline= body takes.
 Check: an error program of the function with two locals, never
 called, pins the frame's error on aarch64.
 
-** TODO =findings.md= says the evaluator refuses a wrapped constant
-
-=docs/findings.md= says of a constant expression out of its type's
-range that "there the evaluator refuses the wrapped value", and
-again that it refuses one "only where 6.6p4 governs, the size of an
-array". The evaluator takes the wrapped value in every place, with a
-warning where a constant expression is required (=backend.md= 6.4).
-
-Fix: both passages say what the evaluator does.
-
-Check: the passages agree with =backend.md= 6.4.
-
 ** TODO =_Atomic= on an array or a function type through a typedef is accepted
 
 6.7.4.1p4: "The type modified by the _Atomic qualifier shall not be
