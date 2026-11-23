@@ -1,5 +1,5 @@
 /* A statement expression as a case label's constant, which clang folds
-   to its value, GNU C's extension: rcc does not fold one yet. */
+   to its value: it is no operand of a constant expression, 6.6p8. */
 int
 main(void)
 {

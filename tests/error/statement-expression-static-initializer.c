@@ -1,6 +1,6 @@
 /* A statement expression as the initializer of a block's static
-   object, which clang folds to its value, GNU C's extension: rcc does
-   not fold one yet. */
+   object, which clang folds to its value: it is no operand of a
+   constant expression, 6.6p10. */
 int
 main(void)
 {

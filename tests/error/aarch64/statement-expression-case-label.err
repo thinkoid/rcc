@@ -1,2 +1,2 @@
-tests/error/statement-expression-case-label.c:9:14: error: not yet: statement expression in a constant expression
+tests/error/statement-expression-case-label.c:9:14: error: statement expression in a constant expression
 status 1

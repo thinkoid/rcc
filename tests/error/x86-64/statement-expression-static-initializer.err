@@ -1,2 +1,2 @@
-tests/error/statement-expression-static-initializer.c:7:24: error: not yet: statement expression in a constant expression
+tests/error/statement-expression-static-initializer.c:7:24: error: statement expression in a constant expression
 status 1

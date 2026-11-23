@@ -1210,8 +1210,8 @@ switch is outside it is an error, as `clang` has it, and so is a
 where each `goto`'s label is checked. A label inside one is a label
 of the function, and a `goto` inside the expression jumps to it.
 Where a constant expression is wanted, a `case` label's or a static
-object's initializer, it is not yet: `clang` folds it to its value,
-and rcc does not.
+object's initializer, it is an error: it is no operand of a constant
+expression (6.6p8, p10), though `clang` folds it to its value.
 
 The types a header declares and rcc does not use are not-yet types:
 the complex types, `_Complex` among the specifiers of a floating
@@ -1984,8 +1984,7 @@ declaration of a symbol of external linkage under a `#pragma GCC
 visibility` other than `default` (chapter 2), an atomic object,
 GNU C's
 case range, `case 1 ... 5:`, its labels as values, `&&next` and `goto
-*p`, its statement expression where a constant expression is wanted
-(chapter 5), and `alloca`, which `alloca.h` defines as
+*p`, and `alloca`, which `alloca.h` defines as
 `__builtin_alloca`, each refused by its name, the body of a system
 header's `static inline` function, whose use is refused, and of the
 program's own one whose head or body holds a not-yet, whose use is

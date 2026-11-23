@@ -643,18 +643,6 @@ Check: error programs for ~&~ and ~sizeof~ of a field through
 ~_Generic~, filling and not; the store, a compound assignment and a
 step through ~_Generic~ in the =fields= probe.
 
-** TODO A statement expression in a constant expression is a not-yet, where it is an error
-
-~case ({ 1; }):~ and ~static int k = ({ 1; });~ are "not yet:
-statement expression in a constant expression"; =clang= folds both.
-6.6 makes neither a constant expression, so each is an error and no
-construct rcc is to compile.
-
-Fix: the refusal is an error, its words without the "not yet";
-nothing is folded.
-
-Check: the two programs of =tests/error= pin the error.
-
 ** TODO A frame over the limit is an error for one local and a not-yet for two
 
 A local larger than the target's largest frame, 2 GiB less 16 on

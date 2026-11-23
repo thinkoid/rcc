@@ -791,13 +791,13 @@ holds_statement_expression(const expr_t &e)
 
 // The refusal of e where a constant expression is wanted and e folded
 // to none: the error words say, but for a statement expression in it,
-// which clang folds to its value as GNU C's extension, and rcc does not
-// fold yet.
+// which is no operand of a constant expression (6.6p8, p10) and which
+// the error names (shape.md chapter 5).
 [[noreturn]] void
 refuse_unfolded(const token_t &at, const expr_t &e, std::string words)
 {
     if (holds_statement_expression(e))
-        not_yet(at, "statement expression in a constant expression");
+        fail(at, "statement expression in a constant expression");
 
     fail(at, std::move(words));
 }
