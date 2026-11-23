@@ -85,8 +85,9 @@ replaced by that expression (`generic`). A binary constant is the
 spelling of its
 number as a hexadecimal one is (`binary-constant`). Neither do
 `restrict`, `inline` on a declaration, `__extension__` and the
-attributes rcc drops, which are licences for an optimizer or
-requests for a warning (`gnu-declarations`); `__asm__` after a
+attributes rcc drops, which are licences for an optimizer, requests
+for a warning or what a debugger is told (`gnu-declarations`,
+`hot-artificial`); `__asm__` after a
 declarator changes the name a call writes and nothing else.
 `volatile` writes nothing either: it asks that every access written
 be made, and every access of every object is, so a program compiles

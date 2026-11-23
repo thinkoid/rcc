@@ -3506,8 +3506,11 @@ integer_constant(const token_t &t)
 // The attributes dropped, by name.
 constexpr std::string_view dropped_attributes[] = {
     // what an optimizer may assume of a call, or where to lay it out
-    "alloc_align", "alloc_size", "cold", "const", "leaf", "malloc", "nonnull",
-    "noreturn", "nothrow", "pure", "returns_nonnull",
+    "alloc_align", "alloc_size", "cold", "const", "hot", "leaf", "malloc",
+    "nonnull", "noreturn", "nothrow", "pure", "returns_nonnull",
+
+    // what a debugger is told of a function, which rcc tells nothing
+    "artificial",
 
     // what an optimizer may assume of what an lvalue aliases
     "may_alias",
