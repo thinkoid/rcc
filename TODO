@@ -697,20 +697,6 @@ refusal is not one that the catch of a =static inline= body takes.
 Check: an error program of the function with two locals, never
 called, pins the frame's error on aarch64.
 
-** TODO =_Atomic= on an array or a function type through a typedef is accepted
-
-6.7.4.1p4: "The type modified by the _Atomic qualifier shall not be
-an array type or a function type." ~typedef int A[3]; typedef
-_Atomic A B;~ and the same on ~typedef int F(void);~ compile with
-the warning that the qualifier is dropped, where each is a
-constraint violation and =clang= gives an error. The specifier's
-type name of such a type is the error already.
-
-Fix: an error where the qualifier meets an array type or a function
-type.
-
-Check: an error program of each, pinned.
-
 ** TODO =_Atomic (_Atomic int)= is accepted, with no word that it is not judged
 
 6.7.3.5p3 forbids an atomic type specifier's type name that is "an

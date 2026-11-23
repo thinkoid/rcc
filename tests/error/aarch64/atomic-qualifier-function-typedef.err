@@ -1,0 +1,2 @@
+tests/error/atomic-qualifier-function-typedef.c:5:9: error: invalid application of '_Atomic' to a function type
+status 1

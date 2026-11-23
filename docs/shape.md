@@ -1241,7 +1241,10 @@ clang's names of the SVE types, which no header declares. `_Atomic`
 makes no type: the qualifier and the specifier `_Atomic (` *type
 name* `)`, as `stdatomic.h` declares `atomic_int`, are dropped
 (chapter 3). The specifier's type name of an array or a function
-type is an error (6.7.3.5p3). A macro of `stdatomic.h`
+type is an error (6.7.3.5p3), and so is the qualifier on one, which
+only a typedef among the specifiers can bring, `typedef _Atomic
+triple_t t;` for an array `triple_t` (6.7.4.1p4). A macro of
+`stdatomic.h`
 that accesses an atomic object, `atomic_flag_test_and_set` among
 them, calls a builtin function of `clang`'s, whose name begins
 `__c11_atomic_` or `__atomic_`; such a name, undeclared, is not yet

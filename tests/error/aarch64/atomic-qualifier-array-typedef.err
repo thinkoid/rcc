@@ -1,0 +1,2 @@
+tests/error/atomic-qualifier-array-typedef.c:4:9: error: invalid application of '_Atomic' to an array type
+status 1

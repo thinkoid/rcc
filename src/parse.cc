@@ -7206,6 +7206,23 @@ drop_atomic(parser_t &p, const token_t &keyword, std::string_view kind)
                  " dropped: rcc makes no access atomic");
 }
 
+// The type _Atomic modifies is no array type and no function type,
+// 6.7.4.1p4 for the qualifier and 6.7.3.5p3 for the specifier's type
+// name; a typedef's is the type it names, an array of a size rcc cannot
+// compute among them.  The qualifier is dropped otherwise, as the
+// specifier is.
+void
+require_atomic_applicable(const token_t &keyword, const type_t &t)
+{
+    if (is< array_t >(t) || (is< not_yet_t >(t) && as< not_yet_t >(t).element))
+        fail(keyword, "invalid application of " + quoted(keyword.text) +
+                          " to an array type");
+
+    if (is< function_t >(t))
+        fail(keyword, "invalid application of " + quoted(keyword.text) +
+                          " to a function type");
+}
+
 // Whether the token ahead is _Atomic as a qualifier: the keyword with
 // no parenthesis after it, which would make it the specifier,
 // 6.7.3.5p4.
@@ -7225,9 +7242,10 @@ atomic_qualifier_ahead(const parser_t &p)
 // access the source writes be made, p8, and c1 writes every access of
 // every object, an unused one included, at the object's width, so the
 // qualifier asks for nothing c1 does not do.  _Atomic as a qualifier
-// is dropped, drop_atomic()'s.  A storage-class specifier, register,
-// typedef, extern or static, may stand anywhere too, one of them,
-// 6.7.2p2, and is reported to the caller, since what it may declare
+// is dropped, drop_atomic()'s, once the type is known to be one it may
+// modify, require_atomic_applicable()'s.  A storage-class specifier,
+// register, typedef, extern or static, may stand anywhere too, one of
+// them, 6.7.2p2, and is reported to the caller, since what it may declare
 // depends on where the declaration is.  A typedef name denotes its
 // type, 6.7.9p3, and is the type specifier where no type specifier has
 // been seen, one of 6.7.3.1p2's sets alone; after one, an
@@ -7254,6 +7272,7 @@ declaration_specifiers(parser_t &p)
     bool tagged = false;
     const token_t *storage_class = nullptr;
     const token_t *restrict_qualifier = nullptr;
+    std::vector< const token_t * > atomic_qualifiers;
     const token_t *function_specifier = nullptr;
     const token_t *inline_specifier = nullptr;
     const token_t *complex_specifier = nullptr;
@@ -7345,7 +7364,7 @@ declaration_specifiers(parser_t &p)
         }
 
         if (atomic_qualifier_ahead(p)) {
-            drop_atomic(p, advance(p), "type qualifier");
+            atomic_qualifiers.push_back(&advance(p));
             continue;
         }
 
@@ -7469,6 +7488,11 @@ declaration_specifiers(parser_t &p)
             type_t type = specified();
             if (restrict_qualifier)
                 require_restrictable(*restrict_qualifier, type);
+
+            for (const token_t *atomic : atomic_qualifiers) {
+                require_atomic_applicable(*atomic, type);
+                drop_atomic(p, *atomic, "type qualifier");
+            }
 
             return { type,
                      storage_class,
@@ -8409,7 +8433,8 @@ enum_specifier(parser_t &p)
 // _Atomic is when a parenthesis follows it, p4, as clang's stdatomic.h
 // declares atomic_int.  It is dropped as the qualifier is,
 // drop_atomic()'s, and the type is the type name's.  The type name is
-// no array type and no function type, p3; a qualified one cannot be
+// no array type and no function type, p3, require_atomic_applicable()'s;
+// a qualified one cannot be
 // told, since a type name's qualifiers are dropped, and an atomic one
 // is its plain type.
 type_t
@@ -8419,13 +8444,7 @@ atomic_type_specifier(parser_t &p)
     advance(p);
 
     const type_t t = type_name(p);
-    if (is< array_t >(t))
-        fail(keyword, "invalid application of " + quoted(keyword.text) +
-                          " to an array type");
-
-    if (is< function_t >(t))
-        fail(keyword, "invalid application of " + quoted(keyword.text) +
-                          " to a function type");
+    require_atomic_applicable(keyword, t);
 
     expect(p, tok_t::rparen, "expected ')' after type name");
     drop_atomic(p, keyword, "type specifier");
@@ -8688,7 +8707,8 @@ declarator_suffix(parser_t &p,
 // const or a volatile after its '*', which qualify the pointer, p1.  A
 // restrict there qualifies it too and is dropped, as in the specifiers;
 // the pointer is one restrict may qualify unless it points to a
-// function, as in void (*restrict f)(void).  _Atomic there is dropped,
+// function, as in void (*restrict f)(void).  _Atomic there modifies the
+// pointer, never an array or a function, and is dropped,
 // drop_atomic()'s.  A pointer to a variable length array, int (*p)[n],
 // whose type is variably modified, 6.7.7.1p3, is not yet.
 type_t
@@ -8881,10 +8901,11 @@ member_array_count(const token_t &at, const expr_t &size, const token_t *&zero)
 // qualifiers are the pointer's the parameter is adjusted to, 6.7.7.4p6,
 // taken into qualifiers as after a '*'; restrict is returned in
 // restrict_, for the caller to check on that pointer, and dropped.
-// _Atomic is dropped, as on a pointer.  static promises that each
-// argument points to the first of at least as many elements as the
-// size says, p6, which no call rcc writes depends on, and is dropped;
-// its token is returned, or null, since a size must follow it.
+// _Atomic modifies that pointer and is dropped, as after a '*'.  static
+// promises that each argument points to the first of at least as many
+// elements as the size says, p6, which no call rcc writes depends on,
+// and is dropped; its token is returned, or null, since a size must
+// follow it.
 const token_t *
 parameter_array_qualifiers(parser_t &p,
                            const token_t *&restrict_,
