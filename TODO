@@ -653,15 +653,22 @@ Check: an error program of each of the three pins that refusal.
 ** TODO A cast loses a parameter's marking
 
 ~((int (*)(int)) p)(1)~, with =p= a pointer to a function type whose
-parameter a marking attribute marked, compiles and passes an =int=;
-so does a round trip through ~void *~. A conversion as if by
-assignment between the two types is refused.
+parameter a marking attribute marked, compiles and passes an =int=,
+where ~p (1)~ is refused by the attribute's name. The cast compiles
+with no call too, ~q = (int (*)(int)) p;~, and so does one of a
+pointer to a function type whose result is marked. A conversion as
+if by assignment between the two types is an error.
 
-Fix: none taken; decide whether a cast between pointers to function
-types whose marks differ is a not-yet.
+Fix: a cast between two pointers to function types is refused by
+the attribute's words where a parameter or the result of one is
+marked and the other's is not, at the cast, called or not. A
+pointer that reaches the other type through ~void *~ or an integer
+is not followed: once converted it carries no type to judge, and
+=docs/shape.md= says so.
 
-Check: that program is refused by the attribute's name, or
-=docs/shape.md= says why not.
+Check: an error program pins the refusal of the cast that is called,
+of the cast that is stored, and of a marked result; the round trip
+through ~void *~ compiles, pinned.
 
 ** TODO A compound assignment of a =_Bool= reached through a pointer loads the pointer twice
 
