@@ -58,11 +58,13 @@ operand, generated as that expression is. The statement ~*p += 0;~
 is ~*p;~: the load a discarded lvalue keeps, and no store. ~r += 0;~
 on a register variable writes nothing. A call in the left operand is
 made: ~p[f()] += 0;~ calls =f=. As a value, ~y = (x += 0)~, it is
-the load of =x=. =cost.md= chapter 0 states the rule and the store
-it does not write.
+the load of =x=. A ~volatile~ lvalue is no exception: its load is
+kept and its store is not written. =cost.md= chapter 0 states the
+rule and the store it does not write, and =choices.md= J.3.11(1)
+names it beside what a volatile access is.
 
-Check: a cost program with each form, pinned on both targets, and no
-function longer.
+Check: a cost program with each form, a ~volatile~ object's among
+them, pinned on both targets, and no function longer.
 
 ** TODO aarch64: a narrow or widened prefix step's value is stepped outside the register variable
 
@@ -233,15 +235,21 @@ the listing of its bare twin, and no function longer.
 ~while (1)~ loads its constant and tests it on every turn, =movl $1,
 %eax; cmpl $0, %eax; je= on x86-64 and =mov w0, #1; cbz w0= on
 aarch64, and ~if (0)~ the same once, where ~for (;;)~ writes its
-jump alone. The Seventh Edition compiler tests the constant too,
-with the one instruction its machine has for it, =tst $1; jeq=.
+jump alone. The first operand of ~1 ? a : b~ and the left operand of
+~1 && x~ are loaded and tested alike. The Seventh Edition compiler
+tests the constant too, with the one instruction its machine has for
+it, =tst $1; jeq=.
 
-Fix: none taken; decide: a condition that is an integer constant is
-its jump or nothing, as ~for (;;)~ is; or the test stays, as the
-source writes one, in the fewest instructions the target has.
+Fix: a condition that is an integer constant, as the parser folds
+one, is its jump or nothing, as ~for (;;)~ is: ~while (1)~ is its
+body and the jump back, ~if (1)~ its body alone, and ~if (0)~ the
+jump over its body, which is still written. The first operand of a
+~?:~ and an operand of ~&&~ and ~||~ follow the same rule. =cost.md=
+chapter 0 states it beside the identity's.
 
-Check: a cost program of ~while (1)~, ~if (0)~ and ~if (1)~, pinned
-on both targets.
+Check: a cost program of ~while (1)~, ~if (0)~, ~if (1)~, a ~do~
+with ~while (0)~, ~1 ? a : b~ and ~1 && x~, pinned on both targets
+with no load and no test of the constant, and no function longer.
 
 * Guarantees
 
@@ -414,6 +422,29 @@ Check: it is pinned on both targets.
 
 * Parser
 
+** TODO A read of a =volatile= object is taken as no side effect
+
+5.1.2.4p2: "An access to an object through the use of an lvalue of
+volatile-qualified type is a volatile access", and a volatile access
+is a side effect. The parser's test of an operand it may copy or
+drop, =pure_copy()=, looks for an assignment, a step and a call, and
+takes a read of a ~volatile~ object for none. So an operand dropped
+for having no effect is not read: ~__builtin_expect (e, v)~ with a
+~volatile int v~ writes the load of =e= alone, =movslq e(%rip),
+%rax= and =ldrsw x0, [x16, :lo12:e]=, where =clang= loads =v= after
+it. And a place the parser writes twice is read twice: ~*p |= x~ on
+a ~_Bool *volatile p~ is =movq p(%rip), %rax; movq p(%rip), %rcx=
+and two =ldr= of =p=, where the source reads =p= once.
+
+Fix: =pure_copy()= gives nothing for a tree that reads through a
+~volatile~ lvalue, so each of its callers takes the way it has for
+an operand with a side effect: the temporary, or the not-yet by
+name.
+
+Check: a cost program of ~__builtin_expect (e, v)~ pinned on both
+targets with one load of =v=; ~*p |= x~ on the ~volatile~ pointer
+with one load of =p=, or refused by name.
+
 ** TODO The other target is preprocessed with this machine's headers
 
 =rcc -target x86-64= on an aarch64 machine runs =clang -E
@@ -443,12 +474,14 @@ makes the same arithmetic wrap at run time: ~int a[(2147483647 + 1)
 comment on the evaluator in =src/parse.cc=, "the wrapped value is
 refused there", says what the documents no longer say.
 
-Fix: none taken; decide: a diagnostic where a constant expression is
-required, or the documents' sentence that rcc gives none. The
-comment follows either.
+Fix: a warning in each of those places, and the wrapped value is
+taken as today, as G1 has the same arithmetic at run time.
+=shape.md= names the warning, and the comment says what the
+evaluator does.
 
-Check: ~case 2147483647 + 1:~ draws the diagnostic, or =shape.md=
-says why not; the comment agrees.
+Check: ~case 2147483647 + 1:~ draws the warning and compiles to the
+listing of its wrapped value; a program pins the warning in each of
+the five places; the comment agrees.
 
 ** TODO The =visibility= attribute marks
 
@@ -567,21 +600,27 @@ or the refusal is an error.
 
 Check: the two programs of =tests/error= have the pin decided.
 
-** TODO A local over the frame's limit is an error
+** TODO A frame over the limit is an error for one local and a not-yet for two
 
-~char a[1500000000];~ in a block is "error: variable 'a' is too
-large for a local", and on aarch64 so is a local of 16 MiB, the
-generator's limit and not C's; =clang= takes both. The program is
-valid and the limit is rcc's, so the refusal is a not-yet, and as an
-error it stops a file whose uncalled =static inline= function
-declares such a local.
+A local larger than the target's largest frame, 2 GiB less 16 on
+x86-64 and 16 MiB on aarch64, is the parser's "error: variable 'a'
+is too large for a local", status 1: ~char a[2200000000];~ on
+x86-64 and ~char a[20000000];~ on aarch64. Two locals that pass the
+limit together, ~char a[10000000]; char b[10000000];~ on aarch64,
+are the generator's "internal error: c1: not yet: a frame of 16 MiB
+or more, in function 'f'", status 3. =gcc= and =clang= compile
+each. The one local's refusal is an error and stays one: the limit
+is the implementation's (5.2.5.2). Neither message says which limit
+it is, and =shape.md= chapter 8 calls the frame's refusal a
+construct not handled yet.
 
-Fix: none taken; decide: a not-yet in the words of the limit, which
-the catch of a =static inline= body then takes.
+Fix: the frame's refusal is the same error as the local's, status 1,
+and each message names the target's limit. The two limits, each its
+machine's, are a row of =choices.md=, and =shape.md= chapter 8 takes
+another example of a construct not handled yet.
 
-Check: ~static inline int f(void) { char a[20000000]; return a[0];
-}~, never called, compiles on aarch64, and a call of it is refused
-by the limit's words.
+Check: the programs above on each target, each an error with status
+1 that names the limit; =shape.md= agrees.
 
 ** TODO A call of a declared =alloca= by its name does not link
 
@@ -591,12 +630,12 @@ library has none: "undefined reference to `alloca'". =gcc= and
 =clang= take the name as their builtin in the GNU dialects, which is
 rcc's. G16 says nothing rewrites a call.
 
-Fix: none taken; decide: the name is the builtin, as
-=__builtin_alloca= is, or the documents say that only the header's
-macro reaches it.
+Fix: the name is the builtin, as =__builtin_alloca= is: a call of
+=alloca=, a function the file declares and does not define, is the
+allocation, and no call is made. =shape.md= says so, and G16 names
+it as the one call that is not made as written.
 
-Check: such a program links and runs, or =docs/shape.md= says why
-not.
+Check: such a program links and runs, in the =stack= probe.
 
 ** TODO A variably modified type other than a local's array is not yet
 
@@ -644,19 +683,6 @@ types whose marks differ is a not-yet.
 Check: that program is refused by the attribute's name, or
 =docs/shape.md= says why not.
 
-** TODO An address converted to =_Bool= in a static initializer is refused
-
-~int x; _Bool g = &x;~ is "initializer element is not a compile-time
-constant". The conversion is the comparison of an address constant
-with a null pointer, which the evaluator of a static initializer
-does not fold; an object's address is never null, and =clang=
-writes =.byte 1=.
-
-Fix: none taken; decide: the fold of a non-null address constant to
-1, or a not-yet in its own words.
-
-Check: a cost program of the initializer, or its error pin.
-
 ** TODO A compound assignment of a =_Bool= reached through a pointer loads the pointer twice
 
 ~p->b |= x~ on a =_Bool= member is the tree of ~p->b = (_Bool)
@@ -700,8 +726,7 @@ Fix: =__builtin_alloca(e)= as the allocation's node with no kept
 stack pointer, =e= converted as by assignment to =size_t=. Its
 storage lasts to the return, but for one taken inside a variable
 length array's scope, which that scope's end gives back with the
-array's. Decide with it: a constant size as the immediate, rounded
-up to 16, or the general row.
+array's. A constant size is the immediate, rounded up to 16.
 
 Check: =tests/error/alloca.c= a cost program pinned on both targets,
 and the =stack= probe with =alloca= in an argument and in a loop.
