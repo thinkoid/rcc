@@ -43,6 +43,12 @@ constexpr const char *clang = "clang";
 // so that it does not move with clang's default (shape.md chapter 1).
 constexpr const char *dialect = "-std=gnu17";
 
+// The macro by which an implementation says it has no atomic types,
+// 6.10.10.4p1: rcc drops _Atomic and makes no access atomic, so a
+// program's test of the macro takes its branch for such an
+// implementation (shape.md chapter 1).
+constexpr const char *no_atomics = "-D__STDC_NO_ATOMICS__=1";
+
 constexpr const char *usage =
     "usage: rcc [-w] [-S|-c] [-target name] [-o out] file.c";
 
@@ -433,7 +439,8 @@ assemble(const options_t &opts, std::string_view text)
 int
 drive(const options_t &opts)
 {
-    const auto pp = capture(clang_with(opts, { dialect, "-E", opts.file }));
+    const auto pp =
+        capture(clang_with(opts, { dialect, no_atomics, "-E", opts.file }));
     if (pp.status != 0)
         return pp.status;
 

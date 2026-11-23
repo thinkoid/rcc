@@ -59,6 +59,13 @@ is C17 with GNU's extensions and does not move with `clang`'s
 default. C23's digit separator, `1'000` (6.4.4.2), is thus an open
 character constant, an error of the lexer.
 
+The driver has `clang -E` define `__STDC_NO_ATOMICS__` as 1, as an
+implementation without atomic types does (6.10.10.4p1): rcc drops
+`_Atomic` (chapter 3), so a program's `#ifdef __STDC_NO_ATOMICS__`
+takes the branch written for such an implementation. `clang`'s
+`stdatomic.h` does not test the macro, and a program that includes it
+reads it as before.
+
 ## 2. The lexer
 
 `tokenize(source, file)` returns the whole file as a vector of

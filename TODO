@@ -699,22 +699,6 @@ warning.
 Check: the sentence, and an error program that pins the warnings of
 both declarations.
 
-** TODO =__STDC_NO_ATOMICS__= is not defined
-
-6.10.10.4 has an implementation define =__STDC_NO_ATOMICS__= to say
-that it has no atomic types, the qualifier among them, and no
-=stdatomic.h=. rcc drops =_Atomic= and makes no access atomic, and
-the preprocessor it runs does not define the macro, so a program's
-~#ifdef __STDC_NO_ATOMICS__~ takes the branch written for a compiler
-that has atomics.
-
-Fix: the driver defines the macro as 1 for the preprocessor it
-runs, on both targets, and =choices.md= says so where it says that
-=_Atomic= is dropped.
-
-Check: a cost program that tests the macro compiles its
-~#ifdef __STDC_NO_ATOMICS__~ branch, pinned on both targets.
-
 ** TODO A pointer to a type an attribute made, against a pointer to a type of another kind, is refused where it conflicts
 
 ~void f(word_t *); void f(char **);~, =word_t= a typedef of =int=
