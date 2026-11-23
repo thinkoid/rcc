@@ -488,20 +488,25 @@ Check: ~case 2147483647 + 1:~ draws the warning and compiles to the
 listing of its wrapped value; a program pins the warning in each of
 the five places; the comment agrees.
 
-** TODO The =visibility= attribute marks
+** TODO An attribute rcc does not honour is refused as not yet
 
-~extern int f(void) __attribute__ ((visibility ("internal")));~ marks
-=f=, and a call or a definition of it is "not yet: attribute
-'visibility'". A program that hides its internal functions by a
-macro of that attribute is refused in every file that declares one.
-The directives are =.hidden= and =.internal=, and a hidden symbol
-the file defines is reached directly, not through the GOT.
+A use of what an attribute marks is "error: not yet: attribute
+'packed'", the words of a construct rcc is to compile. rcc reads
+GNU C because the system headers are written in it, and honours an
+attribute only where a program cannot be compiled without it: the
+others it declines, and "not yet" promises what is not meant. The
+error corpus pins such refusals in three forms, "attribute 'packed'",
+"attribute 'packed' on struct 'p'" and "compatibility of a pointer
+to a type of attribute 'aligned'".
 
-Fix: none taken; the directives and the direct reference, with
-~#pragma GCC visibility~, which asks the same of a region.
+Fix: a third kind of refusal beside the error and the not-yet,
+"error: unsupported: attribute 'packed'", with the error's exit
+status, for every refusal by an attribute's words. =shape.md=
+chapter 7 names the three kinds, and chapter 5 says which an
+attribute's is.
 
-Check: a cost program with a hidden function and a hidden object,
-defined and only declared, pinned on both targets.
+Check: no pin of =tests/error= reads "not yet:" before an
+attribute's words; each reads "unsupported:" in its place.
 
 ** TODO =hot= and =artificial= mark, where an attribute of their kind is dropped
 
@@ -714,12 +719,12 @@ pointers, ~w - l~, "subtraction of pointers to different types".
 A typedef written a second time through another mode, or another
 alignment, is "another type", which =clang= takes for the alignment.
 
-Fix: each is a not-yet by the attribute's words, as the pointer's
+Fix: each is refused by the attribute's words, as the pointer's
 is: a redeclaration that sets such a type against the type behind
 it, the typedef written again through other arguments of its
 attribute, and the subtraction of pointers to the two.
 
-Check: an error program of each of the three pins the not-yet.
+Check: an error program of each of the three pins that refusal.
 
 ** TODO A cast loses a parameter's marking
 
