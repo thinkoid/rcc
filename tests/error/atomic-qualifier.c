@@ -1,5 +1,5 @@
-/* The type qualifier _Atomic among the declaration specifiers, which
-   is not yet. */
+/* The type qualifier _Atomic among the declaration specifiers, dropped
+   with a warning: n is an int, and the program compiles. */
 int
 main(void)
 {

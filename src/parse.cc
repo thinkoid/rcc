@@ -164,9 +164,9 @@ struct field_access_t
 // by its '(' and its ')', which a label inside one is checked against
 // at the function's end.
 // identities is the identity the next not-yet type of its own takes:
-// an enum in its own list or marked by an attribute, an atomic type, a
-// typedef through a marking attribute or an array size rcc cannot
-// compute; and the next enumerated type's enumeration.  made are the
+// an enum in its own list or marked by an attribute, a typedef through
+// a marking attribute or an array size rcc cannot compute; and the
+// next enumerated type's enumeration.  made are the
 // not-yet types made from another type so far, identity_of()'s.
 // internal_uses are the uses of names of internal linkage, in the order
 // met, checked against their definitions at the end of the unit.
@@ -7053,15 +7053,26 @@ accept_qualifier(parser_t &p, qualifiers_t &qualifiers)
     return false;
 }
 
-// _Atomic as a qualifier makes an atomic type, whose access, ++ on it
-// among them, is one atomic instruction, which c1 does not write.
-// After typedef the qualifier is taken, and the typedef names a not-yet
-// type of its own; anywhere else it is not yet.
+// _Atomic, the qualifier or the specifier, is dropped: the object is
+// its plain type's, and every access of it is the plain load and store,
+// as in C99, which has no atomic type (shape.md chapter 3).  The
+// program's own text draws a warning, a system header's none.
 void
-refuse_atomic_qualifier(const token_t &q, const token_t *storage_class)
+drop_atomic(parser_t &p, const token_t &keyword, std::string_view kind)
 {
-    if (!storage_class || storage_class->kind != tok_t::kw_typedef)
-        not_yet(q, "type qualifier " + quoted(q.text));
+    if (!keyword.where.system_header)
+        warn(p, keyword,
+             std::string(kind) + " " + quoted(keyword.text) +
+                 " dropped: rcc makes no access atomic");
+}
+
+// Whether the token ahead is _Atomic as a qualifier: the keyword with
+// no parenthesis after it, which would make it the specifier,
+// 6.7.3.5p4.
+bool
+atomic_qualifier_ahead(const parser_t &p)
+{
+    return peek(p).kind == tok_t::kw_atomic && peek(p, 1).kind != tok_t::lparen;
 }
 
 // The type specifiers in any valid order and combination, 6.7.3.1p2.
@@ -7074,7 +7085,7 @@ refuse_atomic_qualifier(const token_t &q, const token_t *storage_class)
 // access the source writes be made, p8, and c1 writes every access of
 // every object, an unused one included, at the object's width, so the
 // qualifier asks for nothing c1 does not do.  _Atomic as a qualifier
-// is taken after typedef alone.  A storage-class specifier, register,
+// is dropped, drop_atomic()'s.  A storage-class specifier, register,
 // typedef, extern or static, may stand anywhere too, one of them,
 // 6.7.2p2, and is reported to the caller, since what it may declare
 // depends on where the declaration is.  A typedef name denotes its
@@ -7102,7 +7113,6 @@ declaration_specifiers(parser_t &p)
     std::optional< type_t > whole;
     bool tagged = false;
     const token_t *storage_class = nullptr;
-    const token_t *atomic_qualifier = nullptr;
     const token_t *restrict_qualifier = nullptr;
     const token_t *function_specifier = nullptr;
     const token_t *inline_specifier = nullptr;
@@ -7194,13 +7204,8 @@ declaration_specifiers(parser_t &p)
             continue;
         }
 
-        if (t.kind == tok_t::kw_atomic && peek(p, 1).kind != tok_t::lparen) {
-            refuse_atomic_qualifier(t, storage_class);
-
-            if (!atomic_qualifier)
-                atomic_qualifier = &t;
-
-            advance(p);
+        if (atomic_qualifier_ahead(p)) {
+            drop_atomic(p, advance(p), "type qualifier");
             continue;
         }
 
@@ -7324,11 +7329,6 @@ declaration_specifiers(parser_t &p)
             type_t type = specified();
             if (restrict_qualifier)
                 require_restrictable(*restrict_qualifier, type);
-
-            if (atomic_qualifier)
-                type = make_not_yet(identity_of(p, "_Atomic", type),
-                                    "type qualifier " +
-                                        quoted(atomic_qualifier->text));
 
             return { type,
                      storage_class,
@@ -8262,11 +8262,11 @@ enum_specifier(parser_t &p)
 
 // _Atomic ( type-name ), the atomic type specifier, 6.7.3.5p1, which
 // _Atomic is when a parenthesis follows it, p4, as clang's stdatomic.h
-// declares atomic_int.  The type is atomic, as the qualifier makes it,
-// so it is the not-yet type the qualifier makes of the type name's
-// type, identity_of()'s, and the use of its object is refused.  The type name is no array type and no
-// function type, p3; an atomic or a qualified one cannot be told, since
-// the type is not-yet and qualifiers are dropped.
+// declares atomic_int.  It is dropped as the qualifier is,
+// drop_atomic()'s, and the type is the type name's.  The type name is
+// no array type and no function type, p3; a qualified one cannot be
+// told, since a type name's qualifiers are dropped, and an atomic one
+// is its plain type.
 type_t
 atomic_type_specifier(parser_t &p)
 {
@@ -8283,9 +8283,9 @@ atomic_type_specifier(parser_t &p)
                           " to a function type");
 
     expect(p, tok_t::rparen, "expected ')' after type name");
+    drop_atomic(p, keyword, "type specifier");
 
-    return make_not_yet(identity_of(p, "_Atomic", t),
-                        "type specifier " + quoted(keyword.text));
+    return t;
 }
 
 // Whether the parenthesis ahead opens a declarator in parentheses,
@@ -8542,9 +8542,9 @@ declarator_suffix(parser_t &p,
 // const or a volatile after its '*', which qualify the pointer, p1.  A
 // restrict there qualifies it too and is dropped, as in the specifiers;
 // the pointer is one restrict may qualify unless it points to a
-// function, as in void (*restrict f)(void).  An _Atomic pointer is not
-// yet, and so is a pointer to a variable length array, int (*p)[n],
-// whose type is variably modified, 6.7.7.1p3.
+// function, as in void (*restrict f)(void).  _Atomic there is dropped,
+// drop_atomic()'s.  A pointer to a variable length array, int (*p)[n],
+// whose type is variably modified, 6.7.7.1p3, is not yet.
 type_t
 pointer(parser_t &p, type_t t, qualifiers_t &qualifiers)
 {
@@ -8558,8 +8558,10 @@ pointer(parser_t &p, type_t t, qualifiers_t &qualifiers)
 
         for (;;) {
             const token_t &q = peek(p);
-            if (q.kind == tok_t::kw_atomic)
-                not_yet(q, "type qualifier " + quoted(q.text));
+            if (atomic_qualifier_ahead(p)) {
+                drop_atomic(p, advance(p), "type qualifier");
+                continue;
+            }
 
             if (q.kind == tok_t::kw_restrict)
                 require_restrictable(q, t);
@@ -8733,7 +8735,7 @@ member_array_count(const token_t &at, const expr_t &size, const token_t *&zero)
 // qualifiers are the pointer's the parameter is adjusted to, 6.7.7.4p6,
 // taken into qualifiers as after a '*'; restrict is returned in
 // restrict_, for the caller to check on that pointer, and dropped.
-// _Atomic is not yet, as on a pointer.  static promises that each
+// _Atomic is dropped, as on a pointer.  static promises that each
 // argument points to the first of at least as many elements as the
 // size says, p6, which no call rcc writes depends on, and is dropped;
 // its token is returned, or null, since a size must follow it.
@@ -8747,8 +8749,10 @@ parameter_array_qualifiers(parser_t &p,
 
     for (;;) {
         const token_t &q = peek(p);
-        if (q.kind == tok_t::kw_atomic)
-            not_yet(q, "type qualifier " + quoted(q.text));
+        if (atomic_qualifier_ahead(p)) {
+            drop_atomic(p, advance(p), "type qualifier");
+            continue;
+        }
 
         if (q.kind == tok_t::kw_restrict && !restrict_)
             restrict_ = &q;

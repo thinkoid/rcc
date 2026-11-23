@@ -186,7 +186,7 @@ function of a result and parameters, a struct or a union, or a type
 rcc declares and does not use yet: an enum in its own list or marked
 by an attribute (chapter 5); a floating type, real or complex, GNU
 C's `__float128` among them; GNU C's `__int128`; clang's
-SVE types; an atomic type; a type a
+SVE types; a type a
 typedef names through an attribute rcc does not honour, or through an
 array size rcc cannot compute. Such a type
 carries an identity, which equality compares, and the words a
@@ -195,8 +195,7 @@ The means that makes one from another type makes the same type
 from the same type again, so a typedef through it may be declared
 again (6.7.1p4) and a function with it: the declaration's marking
 attributes with their arguments, in their order, `__x__` read as `x`;
-`_Atomic`, the qualifier or the specifier; and an
-array size rcc cannot compute, by the words of the size.
+and an array size rcc cannot compute, by the words of the size.
 A pointer to a type made by a typedef through a marking attribute
 or an array size rcc cannot compute, met by a pointer to another type
 that may be compatible with it, is not yet, by the typedef's words:
@@ -204,9 +203,7 @@ converted to or from it, compared with it, joined with it in a
 conditional's arms or in its place in a redeclaration, behind any
 pointers, arrays and functions, as `void f(word_t *); void f(long
 *);`. rcc does not know what the attribute or the size makes of the
-type. An atomic type is compatible with no other
-(6.7.4.1p11), so a pointer to one and a pointer to another type stay
-incompatible.
+type.
 It has no size and no alignment, but a real floating type has
 `clang`'s, the same on both targets, so that a record lays it out:
 `float` 4, `double` 8 and `long double` 16, each aligned to its size.
@@ -217,8 +214,14 @@ is a pointer to `char` that says `const` of it; `restrict` is dropped
 (chapter 5), so `int *restrict *` and `int **` are one type to C's
 relations below too, where C makes them two: a conversion between
 them draws nothing, and a generic selection that names both is
-refused, two associations of compatible types (chapter 5). An array
-is qualified as its element, as C23 has
+refused, two associations of compatible types (chapter 5). `_Atomic`,
+the qualifier or the specifier `_Atomic (` *type name* `)`, is
+dropped wherever it stands, a bit-field's among them, as C99 has no
+atomic type: `_Atomic int` and `_Atomic(int)` are `int`, an access of
+the object is the plain load and store, and `_Atomic int *` and `int
+*` are one type where 6.7.4.1p11 makes them two. The program's own
+`_Atomic` draws a warning, a system header's none (chapter 8). An
+array is qualified as its element, as C23 has
 it (6.7.4.1p10) and C17 does not (6.7.3p10), and rcc reads C23 here:
 `const int a[3]` is a `const` object of `int [3]`, whose decay points
 to `const int`, and `const int (*p)[3] = q;` adds a qualifier for an
@@ -622,7 +625,7 @@ qualifiers inside its brackets before the size, as `regex.h` writes
 `regmatch_t __pmatch[__restrict __nmatch]`. `static` is dropped,
 `const` and `volatile` qualify the pointer the parameter is adjusted
 to (6.7.7.4p6), `restrict` is checked as on a pointer and dropped, and
-`_Atomic` there is not yet.
+`_Atomic` there is dropped (chapter 3).
 `static` takes a size (6.7.7.3p3), and in any other brackets `static`
 and the qualifiers are refused (p1). The size need not be constant:
 one that is not is taken as left out, as 6.7.7.3p5 takes it in a
@@ -962,7 +965,7 @@ a system header writes,
 the rule for a system header holds as for a typedef's array size: a
 refusal of the not-yet kind makes the record one rcc does not lay out,
 of the refusal's words, and the parse skips to the list's closing
-brace, so a struct with an `_Atomic` member parses there; an error
+brace, so a struct with an `_Alignas` member parses there; an error
 stays the error it is, and the program's own list is refused where it
 stands. clang's `__int128_t` and `__uint128_t`, which glibc's
 `sys/user.h` writes in a member list, are the 128-bit integer types.
@@ -1216,15 +1219,11 @@ expression (6.6p8, p10), though `clang` folds it to its value.
 The types a header declares and rcc does not use are not-yet types:
 the complex types, `_Complex` among the specifiers of a floating
 type; GNU C's `__float128` and `__int128`, signed or unsigned;
-clang's names of the SVE types, which no header declares. An atomic
-type is a not-yet type of its own, since an access of an atomic
-object, `x++`
-on one among them, is one atomic instruction, which c1 does not
-write. `_Atomic (` *type name* `)`, the atomic type specifier, names
-one wherever it is written, as `stdatomic.h` declares `atomic_int`,
-and so does a typedef through the `_Atomic` qualifier; the qualifier
-is not yet anywhere else. The specifier's type name of an array or a
-function type is an error (6.7.3.5p3). A macro of `stdatomic.h`
+clang's names of the SVE types, which no header declares. `_Atomic`
+makes no type: the qualifier and the specifier `_Atomic (` *type
+name* `)`, as `stdatomic.h` declares `atomic_int`, are dropped
+(chapter 3). The specifier's type name of an array or a function
+type is an error (6.7.3.5p3). A macro of `stdatomic.h`
 that accesses an atomic object, `atomic_flag_test_and_set` among
 them, calls a builtin function of `clang`'s, whose name begins
 `__c11_atomic_` or `__atomic_`; such a name, undeclared, is not yet
@@ -1790,7 +1789,9 @@ the warnings, and no warning changes the exit status. The warnings:
   in the program's own text: an array's size, a `case` label, an
   enumerator, a static initializer or `_Static_assert`, whose value
   6.6p4 bounds by its type; the wrapped value is taken, as G1 has the
-  same arithmetic at run time (`backend.md` 6.4).
+  same arithmetic at run time (`backend.md` 6.4);
+- `_Atomic`, the qualifier or the specifier, in the program's own
+  text, dropped, since rcc makes no access atomic (chapter 3).
 
 Exit status: 0; 1 for a diagnosed error or a failed system call; 2
 for a usage error; 3 for an internal error, a construct c1 does not
@@ -1930,7 +1931,7 @@ corpus call `atoi`, `strtol`, `signal` and `raise`. A function is a
 value, its address, and a call goes through a pointer to one, in both
 generators (`backend.md` chapters 8 and 10): `header-qsort` sorts with
 its own comparison, and `header-handler` installs its own signal
-handler and raises the signal. `volatile` dropped, `_Atomic` and
+handler and raises the signal. `volatile` and `_Atomic` dropped,
 `_Bool` declared, a floating constant taken as a token, and a
 typedef's array of a size rcc cannot compute bring `stdatomic.h`
 through, and on aarch64 `signal.h` and `sys/wait.h` with glibc's
@@ -1996,7 +1997,7 @@ scalar's brace initializer, a declaration through a typedef of
 function type, a UTF-8 character constant, `u8'x'`, a character
 constant of more than one character and no prefix, `#pragma weak`, a
 declaration of a symbol of external linkage under a `#pragma GCC
-visibility` other than `default` (chapter 2), an atomic object,
+visibility` other than `default` (chapter 2),
 GNU C's
 case range, `case 1 ... 5:`, its labels as values, `&&next` and `goto
 *p`, and `alloca`, which `alloca.h` defines as
@@ -2012,9 +2013,9 @@ function or of an object at file scope), `__asm__` as a statement but
 the barrier (chapter 5), at file scope or on a local, and C's
 keywords outside the subset:
 `_Complex` outside the specifiers of a floating type, `_Imaginary`,
-the `_Atomic` qualifier outside a typedef, `_Alignas`, `_Alignof` of
-an expression, `_Thread_local`. Each arrives when a probe
-needs it. A program that includes `tgmath.h` is not yet, refused at
-the header's first overloaded declaration (chapter 10): its
-type-generic macros need overloading, which is not C, and floating
-point first. The preprocessor stays external for good.
+`_Alignas`, `_Alignof` of an expression, `_Thread_local`. Each
+arrives when a probe needs it. A program that includes `tgmath.h` is
+not yet, refused at the header's first overloaded declaration
+(chapter 10): its type-generic macros need overloading, which is not
+C, and floating point first. The preprocessor stays external for
+good.

@@ -1,2 +1,2 @@
-tests/error/bit-field-atomic.c:13:16: error: not yet: type specifier '_Atomic'
-status 1
+tests/error/bit-field-atomic.c:6:9: warning: type specifier '_Atomic' dropped: rcc makes no access atomic
+status 0

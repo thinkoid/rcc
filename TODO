@@ -504,27 +504,6 @@ attribute that marks.
 Check: a call of a =hot= function and of an =artificial= one
 compiles to the listing of its twin without the attribute.
 
-** TODO =_Atomic= is not yet, where it is dropped with a warning
-
-~_Atomic int x;~ is "not yet: type qualifier '_Atomic'" and
-~_Atomic(int) x;~ "not yet: type specifier '_Atomic'"; an object of a
-record with such a member is refused by the same words. =shape.md=
-calls an atomic type a not-yet type of its own, for the atomic
-instruction an access of one would be. C99 has no atomic type, and a
-program that wants an atomic operation writes one.
-
-Fix: the qualifier and the specifier are dropped in every place, a
-bit-field's among them, with a warning where the program's own text
-writes one and none for a system header's: ~_Atomic int~ and
-~_Atomic(int)~ are =int=, and an access is the plain load and store.
-The specifier's type name of an array or a function type stays an
-error, and a builtin whose name begins =__atomic_= stays not yet by
-its name. =shape.md= and =choices.md= say so.
-
-Check: the error programs that pin the refusal pin the warning, and a
-cost program of an ~_Atomic int~ object has the listing of its =int=
-twin, on both targets.
-
 ** TODO A store into a bit-field loads its pointer twice, and is not yet through a place with a side effect
 
 ~p->f = v~ on a field that does not fill its access unit is the
@@ -772,6 +751,49 @@ warning where a constant expression is required (=backend.md= 6.4).
 Fix: both passages say what the evaluator does.
 
 Check: the passages agree with =backend.md= 6.4.
+
+** TODO =_Atomic= on an array or a function type through a typedef is accepted
+
+6.7.4.1p4: "The type modified by the _Atomic qualifier shall not be
+an array type or a function type." ~typedef int A[3]; typedef
+_Atomic A B;~ and the same on ~typedef int F(void);~ compile with
+the warning that the qualifier is dropped, where each is a
+constraint violation and =clang= gives an error. The specifier's
+type name of such a type is the error already.
+
+Fix: an error where the qualifier meets an array type or a function
+type.
+
+Check: an error program of each, pinned.
+
+** TODO =_Atomic (_Atomic int)= is accepted
+
+6.7.3.5p3 forbids an atomic type specifier's type name that is "an
+atomic type, or a qualified type". ~_Atomic (_Atomic int) x;~
+compiles with two warnings that the word is dropped; =clang= gives
+an error. Through a typedef, ~_Atomic (atomic_int)~, the parser
+cannot tell, since the typedef's =_Atomic= is dropped where it is
+read.
+
+Fix: none taken; decide: the case written directly is an error, or
+=shape.md= chapter 3 says that a dropped word is not judged.
+
+Check: an error program, or the sentence.
+
+** TODO =__STDC_NO_ATOMICS__= is not defined
+
+6.10.10.4 has an implementation define =__STDC_NO_ATOMICS__= to say
+that it has no atomic types, the qualifier among them, and no
+=stdatomic.h=. rcc drops =_Atomic= and makes no access atomic, and
+the preprocessor it runs does not define the macro, so a program's
+~#ifdef __STDC_NO_ATOMICS__~ takes the branch written for a compiler
+that has atomics.
+
+Fix: none taken; decide: the driver defines the macro for the
+preprocessor, which may change what a header declares, or
+=choices.md= says that it does not.
+
+Check: a program that tests the macro, pinned.
 
 * Lexer
 

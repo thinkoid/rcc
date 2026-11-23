@@ -1,6 +1,6 @@
-/* A typedef through the qualifier _Atomic: the typedef is accepted
-   and names a type rcc does not use yet, and the object a pointer to
-   it points to is not yet. */
+/* A typedef through the qualifier _Atomic, dropped with a warning: the
+   typedef names int, and the object a pointer to it points to is read
+   with the plain load. */
 typedef _Atomic int counter_t;
 
 counter_t *counter(void);

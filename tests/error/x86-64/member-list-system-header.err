@@ -1,2 +1,2 @@
-tests/error/member-list-system-header.c:18:16: error: not yet: type qualifier '_Atomic'
+tests/error/member-list-system-header.c:18:16: error: not yet: alignment specifier '_Alignas'
 status 1

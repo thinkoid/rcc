@@ -1,2 +1,2 @@
-tests/error/atomic-typedef.c:11:16: error: not yet: type qualifier '_Atomic'
-status 1
+tests/error/atomic-typedef.c:4:9: warning: type qualifier '_Atomic' dropped: rcc makes no access atomic
+status 0

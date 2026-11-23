@@ -60,11 +60,10 @@ struct int_t
 };
 
 // The type qualifiers rcc keeps, 6.7.4.1: const and volatile.  restrict
-// is read and dropped, and _Atomic makes a type of its own.  No type
-// carries them at its top: they are said of what holds the type, an
-// object, a member, or a pointer to it, which keeps them as its
-// pointee's.  Equality reads none; compatible() and its kin below read
-// a pointee's.
+// and _Atomic are read and dropped.  No type carries them at its top:
+// they are said of what holds the type, an object, a member, or a
+// pointer to it, which keeps them as its pointee's.  Equality reads
+// none; compatible() and its kin below read a pointee's.
 struct qualifiers_t
 {
     bool const_ = false;
@@ -128,9 +127,9 @@ struct record_type_t
 };
 
 // A type rcc declares and does not use yet: an enum in its own list or
-// marked by an attribute, a floating type, __builtin_va_list, an
-// atomic type, the type a typedef names through a marking attribute or
-// through an array size rcc cannot compute.  Any other enum is the
+// marked by an attribute, a floating type, __builtin_va_list, the type
+// a typedef names through a marking attribute or through an array size
+// rcc cannot compute.  Any other enum is the
 // integer type compatible with it, an int_t.  Two not-yet types are one
 // type when their identities are equal.  what is the words a refusal
 // prints.  A pointer to it is an ordinary pointer.  It has no size and
@@ -143,8 +142,7 @@ struct record_type_t
 // through a marking attribute or an array size rcc cannot compute:
 // rcc does not know what the attribute or the size makes of that
 // type, so it cannot tell whether another type is compatible with it.
-// An atomic type is compatible with none but itself, 6.7.4.1p11, so
-// _Atomic makes none.  Equality reads none of the three.
+// Equality reads none of the three.
 struct not_yet_t
 {
     int identity;

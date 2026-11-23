@@ -92,6 +92,9 @@ declarator changes the name a call writes and nothing else.
 be made, and every access of every object is, so a program compiles
 to the listing of its twin without the qualifier (`volatile`), a
 bit-field's among them, each access of its unit (`bit-field-volatile`).
+Nor does `_Atomic`, which rcc drops, with a warning: an object of an
+atomic type, a bit-field among them, compiles to the listing of its
+twin without it (`atomic`).
 Nor does a bit-field that fills its access unit: it is an object of
 the unit's type, so a program compiles to the listing of its twin with
 the field declared as a member of that type (`bit-field-whole`). Nor

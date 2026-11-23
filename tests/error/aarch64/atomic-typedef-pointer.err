@@ -1,2 +1,2 @@
-tests/error/atomic-typedef-pointer.c:13:11: error: incompatible pointer types
-status 1
+tests/error/atomic-typedef-pointer.c:6:9: warning: type qualifier '_Atomic' dropped: rcc makes no access atomic
+status 0

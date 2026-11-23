@@ -1,6 +1,6 @@
-/* A bit-field of an atomic type, which rcc does not use yet: the record
-   is not laid out, and its size is refused by the type's words, as for
-   a member of the type. */
+/* A bit-field of an atomic type, J.3.10(3): the specifier is dropped
+   with a warning, the field is an int bit-field, and the record is
+   laid out as with int, two ints. */
 struct counter
 {
         _Atomic(int) count : 3;

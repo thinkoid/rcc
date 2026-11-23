@@ -85,7 +85,7 @@ and the GNU C of a system header read as it is, so that a program
 includes `stdio.h` and calls `printf`. Then the rest of the headers:
 the declarator in parentheses, the types a header declares for
 another compiler and the `static inline` bodies it defines,
-`volatile` dropped as `const` is, `_Atomic` and `_Bool` declared,
+`volatile` and `_Atomic` dropped, `_Bool` declared,
 floating constants taken by the lexer, a typedef of an array of a
 size rcc cannot compute, and the scope a parameter list opens, so
 that 57 of 58 headers of the C library and of POSIX parse on each

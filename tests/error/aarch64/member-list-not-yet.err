@@ -1,2 +1,2 @@
-tests/error/member-list-not-yet.c:5:9: error: not yet: type qualifier '_Atomic'
+tests/error/member-list-not-yet.c:5:9: error: not yet: alignment specifier '_Alignas'
 status 1

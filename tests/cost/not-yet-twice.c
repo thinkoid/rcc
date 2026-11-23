@@ -4,8 +4,8 @@
    function declared again with it.  The means are the marking
    attributes with their arguments, in their order, mode (word) here,
    spelled __mode__ (__word__) the second time, and mode (word) and
-   aligned (8) together; _Atomic, the qualifier or the type specifier;
-   and an array size rcc cannot compute, the size of a packed struct.
+   aligned (8) together; and an array size rcc cannot compute, the size
+   of a packed struct.
    Each declaration writes nothing.
 
    On x86-64 the listing must be, byte for byte but for the .file line,
@@ -16,12 +16,6 @@
    byte but for the .file line. */
 typedef int word_t __attribute__((mode(word)));
 typedef int word_t __attribute__((__mode__(__word__)));
-
-typedef _Atomic int counter_t;
-typedef _Atomic int counter_t;
-
-void bump(_Atomic(int) *count);
-void bump(_Atomic(int) *count);
 
 struct regs
 {

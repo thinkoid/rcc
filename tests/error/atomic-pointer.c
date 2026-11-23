@@ -1,4 +1,4 @@
-/* A pointer qualified _Atomic after its '*', which is not yet. */
+/* A pointer qualified _Atomic after its '*', dropped with a warning. */
 int
 main(void)
 {

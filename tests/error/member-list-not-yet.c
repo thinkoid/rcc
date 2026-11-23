@@ -2,7 +2,7 @@
    as not yet is refused where it stands. */
 struct counter
 {
-        _Atomic int count;
+        _Alignas(8) int count;
 };
 
 int

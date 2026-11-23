@@ -1,6 +1,6 @@
-/* The atomic type specifier, as stdatomic.h declares atomic_int: the
-   typedef is accepted and names a type rcc does not use yet, and a
-   local of it is not yet. */
+/* The atomic type specifier, as stdatomic.h declares atomic_int,
+   dropped with a warning: the typedef names int, and a local of it is
+   an int. */
 typedef _Atomic(int) atomic_int;
 
 int
