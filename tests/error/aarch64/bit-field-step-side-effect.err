@@ -1,0 +1,2 @@
+tests/error/bit-field-step-side-effect.c:14:9: error: not yet: step of bit-field 'level' through a place with a side effect
+status 1

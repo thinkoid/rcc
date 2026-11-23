@@ -1,8 +1,10 @@
 /* The fields probe's main, compiled by clang -O0: calls every function
    of fields.c as rcc compiled it and as clang did (ref_), each on the
-   bytes of its record filled by a set of patterns, the stores over a
-   table of values, and compares what each returns and, after a store,
-   every byte of the record.  Then the two order cases.  Prints each
+   bytes of its record filled by a set of patterns, the stores and the
+   compound assignments over a table of values, and compares what each
+   returns and, after a store, a compound assignment or a step, every
+   byte of the record; the compound assignments and the steps on the
+   field alone, and beside a char the bytes written back.  Then the four order cases.  Prints each
    difference and a summary; exits 0 when nothing differs, 1
    otherwise. */
 
@@ -95,6 +97,17 @@ static const long values[] = { 0,
 
 #define VALUES ((int) (sizeof values / sizeof *values))
 
+/* the functions of a compound assignment and of a step of fields.c, as
+   rcc compiled them and as clang did */
+#define DECLARE_COMPOUND(N, NAME, OP, RIGHT, TAKEN)                            \
+        void NAME##_##N(struct N *, long), ref_##NAME##_##N(struct N *, long); \
+        long NAME##_value_##N(struct N *, long),                               \
+            ref_##NAME##_value_##N(struct N *, long);
+
+#define DECLARE_STEP(N, NAME, STEPPED)                             \
+        void NAME##_##N(struct N *), ref_##NAME##_##N(struct N *); \
+        long NAME##_value_##N(struct N *), ref_##NAME##_value_##N(struct N *);
+
 /* each function of fields.c, as rcc compiled it and as clang did */
 #define DECLARE(N, MEMBERS)                                                \
         long get_##N(struct N *), ref_get_##N(struct N *);                 \
@@ -106,12 +119,25 @@ static const long values[] = { 0,
         void clear_##N(struct N *), ref_clear_##N(struct N *);             \
         void fill_##N(struct N *), ref_fill_##N(struct N *);
 
-#define CASE_DECLARE(N, T, W, PAD) SHAPES(DECLARE, N, T, W, PAD)
+#define DECLARE_UPDATES(N, MEMBERS) \
+        COMPOUNDS(DECLARE_COMPOUND, N) STEPS(DECLARE_STEP, N)
+
+#define DECLARE_WRITTEN_BACK(N, MEMBERS)         \
+        long add_value_##N(struct N *, long),    \
+            ref_add_value_##N(struct N *, long); \
+        void postinc_##N(struct N *), ref_postinc_##N(struct N *);
+
+#define CASE_DECLARE(N, T, W, PAD)           \
+        SHAPES(DECLARE, N, T, W, PAD)        \
+        ALONE(DECLARE_UPDATES, N, T, W, PAD) \
+            BESIDE(DECLARE_WRITTEN_BACK, N, T, W, PAD)
 
 CASES(CASE_DECLARE)
 
 int order_other(void), ref_order_other(void);
 int order_same(void), ref_order_same(void);
+int order_compound_other(void), ref_order_compound_other(void);
+int order_compound_same(void), ref_order_compound_same(void);
 
 /* the store S of record N on pattern k, by rcc and by clang, its bytes
    compared */
@@ -122,6 +148,33 @@ int order_same(void), ref_order_same(void);
         fill(k, sizeof(struct N));              \
         ref_##S##_##N ARGUMENTS;                \
         report_bytes(#S "_" #N, k, v, saved, bytes, sizeof(struct N));
+
+/* the store S of record N on pattern k for its value, by rcc and by
+   clang, the values and the bytes compared */
+#define VALUED(N, k, v, S, ARGUMENTS)                                          \
+        {                                                                      \
+                long got;                                                      \
+                                                                               \
+                fill(k, sizeof(struct N));                                     \
+                got = S##_##N ARGUMENTS;                                       \
+                memcpy(saved, bytes, sizeof(struct N));                        \
+                fill(k, sizeof(struct N));                                     \
+                report(#S "_" #N, k, got, ref_##S##_##N ARGUMENTS);            \
+                report_bytes(#S "_" #N, k, v, saved, bytes, sizeof(struct N)); \
+        }
+
+/* the compound assignment NAME of record N on pattern k and value v,
+   where v is taken */
+#define CHECK_COMPOUND(N, NAME, OP, RIGHT, TAKEN)     \
+        if (TAKEN) {                                  \
+                STORED(N, k, v, NAME, (p, v))         \
+                VALUED(N, k, v, NAME##_value, (p, v)) \
+        }
+
+/* the step NAME of record N on pattern k */
+#define CHECK_STEP(N, NAME, STEPPED) \
+        STORED(N, k, 0L, NAME, (p))  \
+        VALUED(N, k, 0L, NAME##_value, (p))
 
 /* the reads and the stores of record N on each pattern and value */
 #define CHECK(N, MEMBERS)                                                 \
@@ -153,7 +206,40 @@ int order_same(void), ref_order_same(void);
                 STORED(N, k, -1L, fill, (p))                              \
         }
 
-#define CASE_CHECK(N, T, W, PAD) SHAPES(CHECK, N, T, W, PAD)
+/* the compound assignments and the steps of record N on each pattern
+   and value */
+#define CHECK_UPDATES(N, MEMBERS)                    \
+        for (int k = 0; k < PATTERNS; ++k) {         \
+                struct N *p = (struct N *) bytes;    \
+                                                     \
+                for (int i = 0; i < VALUES; ++i) {   \
+                        const long v = values[i];    \
+                                                     \
+                        COMPOUNDS(CHECK_COMPOUND, N) \
+                }                                    \
+                                                     \
+                STEPS(CHECK_STEP, N)                 \
+        }
+
+/* the bytes beside the field of record N written back, on each
+   pattern and value */
+#define CHECK_WRITTEN_BACK(N, MEMBERS)                     \
+        for (int k = 0; k < PATTERNS; ++k) {               \
+                struct N *p = (struct N *) bytes;          \
+                                                           \
+                for (int i = 0; i < VALUES; ++i) {         \
+                        const long v = values[i];          \
+                                                           \
+                        VALUED(N, k, v, add_value, (p, v)) \
+                }                                          \
+                                                           \
+                STORED(N, k, 0L, postinc, (p))             \
+        }
+
+#define CASE_CHECK(N, T, W, PAD)           \
+        SHAPES(CHECK, N, T, W, PAD)        \
+        ALONE(CHECK_UPDATES, N, T, W, PAD) \
+            BESIDE(CHECK_WRITTEN_BACK, N, T, W, PAD)
 
 int
 main(void)
@@ -162,6 +248,10 @@ main(void)
 
         report("order_other", 0, order_other(), ref_order_other());
         report("order_same", 0, order_same(), ref_order_same());
+        report("order_compound_other", 0, order_compound_other(),
+               ref_order_compound_other());
+        report("order_compound_same", 0, order_compound_same(),
+               ref_order_compound_same());
 
         printf("%ld checks, %ld differ\n", total, bad);
 

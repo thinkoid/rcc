@@ -1,0 +1,2 @@
+tests/error/bit-field-const-step.c:12:16: error: cannot assign to a const-qualified lvalue
+status 1

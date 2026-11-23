@@ -359,8 +359,8 @@ other members, a `char` beside the field or another field's bits:
 and its unit is the 4 bytes at 0. The member holds the unit's offset
 and size, and the field's width and its first bit in the unit. A
 field has no offset in bytes of its own, so `offsetof` of one, which
-7.21p4 leaves undefined, is an error; its read and its store are the
-parser's trees (chapter 5).
+7.21p4 leaves undefined, is an error; its read, its store, its
+compound assignment and its step are the parser's trees (chapter 5).
 
 `__builtin_va_list`, the type behind `va_list` (7.16p4), is the
 target's, since a list is handed to the C library, which reads it as
@@ -1068,10 +1068,10 @@ field's promotion (6.3.1.1p2): `int` for a field narrower than 32
 bits, `int` or `unsigned int` by its signedness at 32, and past them
 its declared type promoted, as `clang` has it. The operand of `&` is
 no bit-field (6.5.4.2p1), nor is the operand of `sizeof` (6.5.4.4p1),
-a filling one included, so either is an error; the compound
-assignment and the step of a field that does not fill its unit are not
-yet. The parser finds each by the operator's operand, the tokens of
-the field's access alone, in any parentheses.
+a filling one included, so either is an error. The parser finds
+each, and the store, the compound assignment and the step of a field,
+by the operator's operand, the tokens of the field's access alone, in
+any parentheses.
 
 A store into a field that does not fill its unit is the parser's tree
 too, in the R bits of the read, M the field's mask in the unit. The
@@ -1095,6 +1095,22 @@ a `for`'s third clause, the store stands alone; the parser knows it by
 the tokens, as above. A local's list stores into a field by the same
 tree (G20), and an object of static storage takes its constant in its
 data (chapter 4).
+
+A compound assignment `f op= v` and a step of a field that does not
+fill its unit go through one temporary t of the unit's type: `(t = u,
+u = (((F (t) op v) << s) & M) | (t & ~M))`, F (t) the field's read of
+t, so the unit is loaded once and stored once. A step is `f += 1` or
+`f -= 1`. The operation is op's on the promoted field and v, in their
+common type, or in the promoted field's for a shift (6.5.17.3p4), and
+the mask keeps the result's low w bits (G2); a `_Bool` field's result
+is compared with 0 first. A right operand with a side effect, `f +=
+h ()`, is held in a temporary of its own before the unit is loaded,
+so a store it makes into the unit stays (G13); any other stands as v.
+Where the value is used, a prefix step's and a compound assignment's
+is the field's read of the unit stored, as a store's is, and a postfix
+step's is F (t); where it is not, the update stands alone, found by
+the tokens as a store is. The place stands twice, as a store's does,
+and a place with a side effect, `a[i++].f += v`, is not yet.
 
 The macros of `stdarg.h` (7.16.1) are `clang`'s builtins in the
 dialect rcc preprocesses in, and the parser builds each of the tree's
@@ -1945,10 +1961,9 @@ function whose parameter list is
 attribute that marks, `packed` and `aligned` among them, a packing of
 `#pragma pack`, no member, or a member of a type rcc does not use yet
 but a real floating one (chapter 3), an initializer of a flexible
-array member, an access of a floating member, the compound
-assignment and the step of a bit-field that does not fill its unit,
-and a store of a value into one through a place with a side effect
-(chapter 5), C23's
+array member, an access of a floating member, a store of a value
+into a bit-field that does not fill its unit, its compound assignment
+and its step, through a place with a side effect (chapter 5), C23's
 compatibility of two records of one tag, floating point and
 `__int128` (each
 type is declared; a pointer to one is an ordinary pointer, and a use

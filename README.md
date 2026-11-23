@@ -242,6 +242,12 @@ constant takes its storage from the stack where its declaration is
 reached, in both generators, and gives it back on every way out of
 its scope, so a loop that declares one takes it at the same address
 each time around, which the `stack` probe checks against `clang`'s.
+Then bit-fields: a record with fields is laid out as `clang` lays it
+out, a field's constant is its bits in the object's bytes, and the
+parser writes each read, store, compound assignment and step of a
+field as the tree's own nodes on the field's access unit, so the
+generators see no field, which the `layout` and `fields` probes check
+against `clang`'s.
 The shape is `docs/shape.md`; `make` builds `rcc`, `make test` runs
 the oracle over `tests/corpus/`, the cost corpus over `tests/cost/`
 and the error corpus over `tests/error/`, the programs rcc refuses

@@ -354,6 +354,8 @@ the value it read. C11 makes a field and the member beside it separate
 memory locations (3.17); rcc does not keep that inside a field's unit,
 and a program that stores into such a field and into that member from
 two threads, or from a signal handler, synchronizes the two itself. A
+compound assignment and a step load the unit once, into a temporary,
+and store it once. A
 store of 0 or of all ones is the one `and` or `or` on the unit. A
 `volatile` field is accessed as any other: a read is one load of its
 unit, and a store is one load and one store of it. On aarch64 the

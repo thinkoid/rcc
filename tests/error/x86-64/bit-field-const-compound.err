@@ -1,0 +1,2 @@
+tests/error/bit-field-const-compound.c:13:17: error: cannot assign to a const-qualified lvalue
+status 1

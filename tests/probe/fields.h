@@ -9,13 +9,15 @@
    one bit, and at the container's top past an unnamed field of the
    rest, alone, before a char and after one; and _Bool's and an
    enumerated type's fields.  A field is read by the parser's shifts of
-   its access unit and stored into by its masks, and one that fills its
-   unit is an object of the unit's type, docs/shape.md chapter 5.
+   its access unit and stored into by its masks, its compound
+   assignment and its step through one temporary, and one that fills
+   its unit is an object of the unit's type, docs/shape.md chapter 5.
 
-   struct order holds two fields of one unit, for the order of a store:
-   its value is computed before the unit is loaded, so a store the
-   right operand makes into the other field, or into the same one,
-   stays where the field's own bits do not cover it. */
+   struct order holds two fields of one unit, for the order of a store
+   and of a compound assignment: the right operand is computed before
+   the unit is loaded, so a store it makes into the other field, or
+   into the same one, stays where the field's own bits do not cover
+   it, and a compound assignment operates on the field it stored. */
 
 /* the enumerated type of a bit-field, of unsigned int */
 enum two_bits { TB0, TB1, TB2, TB3 };
@@ -91,10 +93,29 @@ enum two_bits { TB0, TB1, TB2, TB3 };
     X(e2_top, enum two_bits, 2, enum two_bits : 30;)                    \
     X(e32_b0, enum two_bits, 32, )
 
-/* the three shapes of each field: the record's name and its members */
-#define SHAPES(Y, N, T, W, PAD)                                         \
-    Y(N##_alone, PAD T f : W;) Y(N##_before, PAD T f : W; char n;)     \
-    Y(N##_after, char c; PAD T f : W;)
+/* the three shapes of each field: the record's name and its members;
+   the field alone, and the two with a char beside it */
+#define ALONE(Y, N, T, W, PAD) Y(N##_alone, PAD T f : W;)
+#define BESIDE(Y, N, T, W, PAD)                                         \
+    Y(N##_before, PAD T f : W; char n;) Y(N##_after, char c; PAD T f : W;)
+#define SHAPES(Y, N, T, W, PAD) ALONE(Y, N, T, W, PAD) BESIDE(Y, N, T, W, PAD)
+
+/* the compound assignments of record N's field: a name, the operator,
+   its right operand, of the long v, and the condition v is taken on.
+   A shift's count is below 32, which every promoted field's type
+   holds; a divisor is neither 0 nor -1, on which x86-64's idiv faults
+   (G4) */
+#define COMPOUNDS(Z, N)                                                 \
+    Z(N, add, +=, v, 1) Z(N, sub, -=, v, 1) Z(N, mul, *=, v, 1)         \
+    Z(N, div, /=, v, v != 0 && v != -1)                                 \
+    Z(N, mod, %=, v, v != 0 && v != -1) Z(N, and, &=, v, 1)             \
+    Z(N, or, |=, v, 1) Z(N, xor, ^=, v, 1) Z(N, shl, <<=, v & 31, 1)    \
+    Z(N, shr, >>=, v & 31, 1)
+
+/* the steps of record N's field: a name and the step */
+#define STEPS(Z, N)                                                     \
+    Z(N, preinc, ++p->f) Z(N, predec, --p->f) Z(N, postinc, p->f++)     \
+    Z(N, postdec, p->f--)
 /* clang-format on */
 
 /* the records */
