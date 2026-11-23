@@ -1,0 +1,2 @@
+tests/error/constant-overflow-bit-field-width.c:6:17: warning: signed overflow in a constant expression: the value wraps, as at run time
+status 0

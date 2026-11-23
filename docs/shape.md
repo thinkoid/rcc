@@ -1819,10 +1819,11 @@ the warnings, and no warning changes the exit status. The warnings:
 - the attribute `always_inline` in the program's own text, dropped,
   since rcc inlines nothing (chapter 5);
 - a signed overflow in a constant expression the grammar requires,
-  in the program's own text: an array's size, a `case` label, an
-  enumerator, a static initializer or `_Static_assert`, whose value
-  6.6p4 bounds by its type; the wrapped value is taken, as G1 has the
-  same arithmetic at run time (`backend.md` 6.4);
+  in the program's own text: an array's size, a bit-field's width, a
+  `case` label, an enumerator, a static initializer or
+  `_Static_assert`, whose value 6.6p4 bounds by its type; the wrapped
+  value is taken, as G1 has the same arithmetic at run time
+  (`backend.md` 6.4);
 - `_Atomic`, the qualifier or the specifier, in the program's own
   text, dropped, since rcc makes no access atomic (chapter 3).
 

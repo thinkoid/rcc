@@ -7542,11 +7542,12 @@ refuse_member_after_flexible(const member_list_t &list)
 // p5, _Bool among them, or one rcc does not use yet.  The width is not
 // negative, does not exceed the type's, 1 for _Bool by p4's footnote
 // and its bits for any other, and is zero only where the field has no
-// name, p4; a type rcc does not use yet has no width to exceed.  name
-// is the field's, or null.  Attributes after the width are said of the
-// member, and change nothing that is laid out.  A bit-field after a
-// flexible array member is an error, as any member there is.  Returns
-// the width.
+// name, p4; a type rcc does not use yet has no width to exceed.  One
+// reached through a signed overflow draws the warning of 6.6p4,
+// warn_overflowed()'s.  name is the field's, or null.  Attributes
+// after the width are said of the member, and change nothing that is
+// laid out.  A bit-field after a flexible array member is an error, as
+// any member there is.  Returns the width.
 int
 bit_field(parser_t &p,
           member_list_t &list,
@@ -7565,6 +7566,8 @@ bit_field(parser_t &p,
         refuse_unfolded(
             start, width,
             "bit-field width is not an integer constant expression");
+
+    warn_overflowed(p, start, width);
 
     const std::string field =
         name ? "bit-field " + quoted(name->text) : "unnamed bit-field";
