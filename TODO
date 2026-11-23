@@ -697,11 +697,12 @@ pointers, ~w - l~, "subtraction of pointers to different types".
 A typedef written a second time through another mode, or another
 alignment, is "another type", which =clang= takes for the alignment.
 
-Fix: none taken; decide whether the not-yet covers the type itself
-in a redeclaration and a typedef written again with other
-arguments; the subtraction takes the pointers' refusal.
+Fix: each is a not-yet by the attribute's words, as the pointer's
+is: a redeclaration that sets such a type against the type behind
+it, the typedef written again through other arguments of its
+attribute, and the subtraction of pointers to the two.
 
-Check: each pair is refused in the decided words.
+Check: an error program of each of the three pins the not-yet.
 
 ** TODO A cast loses a parameter's marking
 
