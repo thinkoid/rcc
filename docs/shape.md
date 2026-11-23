@@ -1289,10 +1289,10 @@ declaration's, made before the parser knows that a body follows, and
 stops the file as on a declaration.
 
 A body the parser reads whole may still hold what c1 does not
-compile yet, a frame past the target's limit among them. When no
-expression and no alias names the function, before the definition
-or after it, the function is droppable, and c1 drops it at its
-refusal: it writes nothing for it, the string literals and the
+compile yet, or a frame past the target's limit, an error (chapter
+7). When no expression and no alias names the function, before the
+definition or after it, the function is droppable, and c1 drops it at
+either: it writes nothing for it, the string literals and the
 static objects of its body among them, so a file that never names it
 compiles. A function that is named is refused by c1 as any other is:
 a use of it would name a symbol c1 did not write, and the parser,
@@ -1739,6 +1739,16 @@ is said just past the last token, where clang says it: the lexer's
 end-of-file token stands there, on the last token's line, not on a
 line the file does not have.
 
+A frame past the target's limit is an error, the limit rcc's for that
+target (5.2.5.2), which `choices.md` gives. A single local over it is
+the parser's error at its name, `variable 'a' is too large for a
+local`. Locals that pass it together are c1's, which has no position:
+the tree carries none, so the error names the function, `rcc: error:
+the frame of function 'main' is too large`. Each message ends in the
+same words, `rcc's frame on` the target `holds at most` the limit.
+c1 drops a droppable function for its frame as for a construct it
+does not compile yet (chapter 5).
+
 ## 8. The driver
 
 `rcc [-w] [-S|-c] [-target name] [-o out] file.c`. `-S` stops at the
@@ -1782,7 +1792,7 @@ for a usage error; 3 for an internal error, a construct c1 does not
 handle yet; `clang`'s own status when it fails.
 
 A construct c1 does not handle yet is refused as `rcc: internal
-error: c1: not yet: a frame of 2 GiB or more, in function 'main'`.
+error: c1: not yet: an element of 2 GiB or more, in function 'f'`.
 The tree carries no positions (chapter 4), so the place it names is
 the function c1 was generating, quoted as the parser quotes a name.
 The message starts as every refusal of c1 does, `c1: not yet:`, which

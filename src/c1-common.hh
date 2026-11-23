@@ -39,9 +39,23 @@ struct refusal_t: std::logic_error
 
 [[noreturn]] void not_yet(std::string_view construct);
 
+// A frame past the target's frame_limit.  It is thrown as a refusal,
+// so that c1 drops a droppable function for it as for any refusal;
+// for any other function it is an error of the program, since the
+// limit is the target's, docs/shape.md chapter 7.
+struct frame_refusal_t: refusal_t
+{
+    frame_refusal_t();
+};
+
+[[noreturn]] void refuse_frame();
+
 // A refusal met while the function named function was generated,
-// thrown again with the function's name after the construct.
-[[noreturn]] void refused_in(std::string_view function, const refusal_t &);
+// thrown again with the function's name: a construct's after its
+// words, a frame's as the error for target.
+[[noreturn]] void refused_in(std::string_view function,
+                             const refusal_t &,
+                             const target_t &target);
 
 const int_t &integer(const type_t &);
 int operation_width(const type_t &);

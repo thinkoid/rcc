@@ -12,7 +12,7 @@
 # any machine.
 #
 # Each program tests/error/<name>.c draws one diagnostic: an error of
-# the lexer or the parser, exit status 1, a construct c1 does not
+# the lexer, the parser or c1, exit status 1, a construct c1 does not
 # handle yet, "c1: not yet: ...", exit status 3, or a warning of a
 # program rcc compiles, exit status 0.  ./rcc -target
 # <target> -S writes it, from the tree root, so the file in each

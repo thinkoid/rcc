@@ -1,2 +1,2 @@
-tests/error/local-too-large.c:5:14: error: variable 'a' is too large for a local
+tests/error/local-too-large.c:5:14: error: variable 'a' is too large for a local: rcc's frame on aarch64 holds at most 16 MiB less 16 bytes
 status 1

@@ -343,13 +343,13 @@ flagged(state_t &s, int width)
 // to 16, is still the 32-bit immediate of subq, and every slot's
 // displacement off rbp is a 32-bit one.  The parser refuses a single
 // local over the limit at its declaration; a sum of smaller ones is
-// refused here.
+// refused here, an error of the program.
 int
 allocate(state_t &s, long size, int align)
 {
     s.frame = (s.frame + size + align - 1) / align * align;
     if (s.frame > s.frame_limit)
-        not_yet("a frame of 2 GiB or more");
+        refuse_frame();
 
     return static_cast< int >(-s.frame);
 }
@@ -6168,7 +6168,7 @@ generate_x86_64(const unit_t &unit,
         }
         catch (const refusal_t &e) {
             if (!fd.droppable)
-                refused_in(fd.sym->name, e);
+                refused_in(fd.sym->name, e, target);
 
             s.strings.resize(strings);
             dropped.push_back(&fd);

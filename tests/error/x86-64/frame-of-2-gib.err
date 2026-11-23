@@ -1,2 +1,2 @@
-rcc: internal error: c1: not yet: a frame of 2 GiB or more, in function 'main'
-status 3
+rcc: error: the frame of function 'main' is too large: rcc's frame on x86-64 holds at most 2 GiB less 16 bytes
+status 1

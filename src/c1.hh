@@ -9,9 +9,11 @@
 // conditions as jumps, the target's convention at every call and
 // entry, System V on x86-64 and the AAPCS64 on aarch64.  The
 // instruction written is the instruction in the table; nothing between
-// the tree and the assembler reasons about the program.  A size past a
-// limit of the target, and a tree the parser cannot make, throws
-// logic_error, which the driver reports as an internal error.
+// the tree and the assembler reasons about the program.  A frame past
+// the target's limit throws unplaced_error_t, an error of the program;
+// any other size past a limit of the target, and a tree the parser
+// cannot make, throw logic_error, which the driver reports as an
+// internal error.
 
 #pragma once
 

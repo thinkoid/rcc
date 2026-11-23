@@ -283,7 +283,7 @@ frame_parts(long size)
 // rounded up to 16, is two immediates of sub, 5.2, and every slot is
 // in reach of an add into x16, 5.3.  The parser refuses a single local
 // over the limit at its declaration; a sum of smaller ones is refused
-// here.
+// here, an error of the program.
 int
 allocate(state_t &s, long size, int align)
 {
@@ -291,7 +291,7 @@ allocate(state_t &s, long size, int align)
 
     s.frame = displacement + size;
     if (s.frame > s.frame_limit)
-        not_yet("a frame of 16 MiB or more");
+        refuse_frame();
 
     return static_cast< int >(displacement);
 }
@@ -5538,7 +5538,7 @@ generate_aarch64(const unit_t &unit,
         }
         catch (const refusal_t &e) {
             if (!fd.droppable)
-                refused_in(fd.sym->name, e);
+                refused_in(fd.sym->name, e, target);
 
             s.strings.resize(strings);
             dropped.push_back(&fd);

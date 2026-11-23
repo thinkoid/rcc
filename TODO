@@ -643,28 +643,6 @@ Check: error programs for ~&~ and ~sizeof~ of a field through
 ~_Generic~, filling and not; the store, a compound assignment and a
 step through ~_Generic~ in the =fields= probe.
 
-** TODO A frame over the limit is an error for one local and a not-yet for two
-
-A local larger than the target's largest frame, 2 GiB less 16 on
-x86-64 and 16 MiB on aarch64, is the parser's "error: variable 'a'
-is too large for a local", status 1: ~char a[2200000000];~ on
-x86-64 and ~char a[20000000];~ on aarch64. Two locals that pass the
-limit together, ~char a[10000000]; char b[10000000];~ on aarch64,
-are the generator's "internal error: c1: not yet: a frame of 16 MiB
-or more, in function 'f'", status 3. =gcc= and =clang= compile
-each. The one local's refusal is an error and stays one: the limit
-is the implementation's (5.2.5.2). Neither message says which limit
-it is, and =shape.md= chapter 8 calls the frame's refusal a
-construct not handled yet.
-
-Fix: the frame's refusal is the same error as the local's, status 1,
-and each message names the target's limit. The two limits, each its
-machine's, are a row of =choices.md=, and =shape.md= chapter 8 takes
-another example of a construct not handled yet.
-
-Check: the programs above on each target, each an error with status
-1 that names the limit; =shape.md= agrees.
-
 ** TODO A call of a declared =alloca= by its name does not link
 
 With ~void *alloca(unsigned long);~ declared and no macro of the
@@ -774,6 +752,22 @@ array's. A constant size is the immediate, rounded up to 16.
 
 Check: =tests/error/alloca.c= a cost program pinned on both targets,
 and the =stack= probe with =alloca= in an argument and in a loop.
+
+** TODO A frame over the limit in an uncalled =static inline= function is an error for one local and nothing for two
+
+An uncalled =static inline= function whose locals pass the frame's
+limit together is dropped with its body, as one that holds any
+construct the generator refuses: ~static inline int f(void) { char
+a[10000000]; char b[10000000]; return a[0] + b[0]; }~ compiles on
+aarch64. One whose single local passes the limit is the parser's
+error at the local, which stops the file: the same function with
+~char a[20000000];~.
+
+Fix: none taken; decide: both dropped, the parser's refusal one that
+the catch of a =static inline= body takes, or both the error.
+
+Check: the two functions, never called, compile alike or are refused
+alike, on aarch64.
 
 * Lexer
 

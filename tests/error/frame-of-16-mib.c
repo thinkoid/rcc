@@ -1,5 +1,5 @@
 /* Two locals of 10 MB, each under the aarch64 frame limit and their
-   sum over it: a frame of 16 MiB or more is not yet there.  x86-64
+   sum over it: an error there, which names the function.  x86-64
    compiles it. */
 int
 main(void)

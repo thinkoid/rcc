@@ -1,0 +1,2 @@
+tests/error/local-of-16-mib.c:6:14: error: variable 'a' is too large for a local: rcc's frame on aarch64 holds at most 16 MiB less 16 bytes
+status 1

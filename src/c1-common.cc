@@ -8,6 +8,8 @@
 
 #include "c1-common.hh"
 
+#include "error.hh"
+
 #include <algorithm>
 #include <bit>
 #include <format>
@@ -32,12 +34,32 @@ not_yet(std::string_view construct)
     throw refusal_t(std::string(construct));
 }
 
-// The tree carries no positions, so the place a refusal names is the
-// function, quoted as the parser quotes a name: "c1: not yet: a frame
-// of 2 GiB or more, in function 'main'".
-[[noreturn]] void
-refused_in(std::string_view function, const refusal_t &e)
+frame_refusal_t::frame_refusal_t()
+    : refusal_t("a frame past the target's limit")
 {
+}
+
+[[noreturn]] void
+refuse_frame()
+{
+    throw frame_refusal_t();
+}
+
+// The tree carries no positions, so the place a refusal names is the
+// function, quoted as the parser quotes a name: "c1: not yet: an
+// element of 2 GiB or more, in function 'f'".  A frame's is the error
+// the parser gives a local too large for it, in the same words of the
+// limit.
+[[noreturn]] void
+refused_in(std::string_view function,
+           const refusal_t &e,
+           const target_t &target)
+{
+    if (dynamic_cast< const frame_refusal_t * >(&e))
+        throw unplaced_error_t { std::format(
+            "the frame of function '{}' is too large: {}", function,
+            frame_limit_words(target)) };
+
     not_yet(std::format("{}, in function '{}'", e.construct, function));
 }
 

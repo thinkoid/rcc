@@ -2,7 +2,7 @@
    own header defines, which nothing names and whose body c1 refuses,
    writes nothing, as one whose body the parser stops in: no symbol, no
    string literal and no static object of its own.  frame() takes two
-   locals of 10 MB, a frame of 16 MiB or more on aarch64, and stride()
+   locals of 10 MB, a frame past the limit on aarch64, and stride()
    steps through elements of 2 GiB, too large for an x86-64 immediate.
    The line markers say what clang -E says of an #include of the
    program's own header: the definitions are the text of one, header.h,

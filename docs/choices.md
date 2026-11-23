@@ -9,9 +9,9 @@ writes it. A pin of `tests/cost/`, `tests/corpus/` or `tests/error/`
 holds the output for both targets; a probe of `tests/probe/` checks
 rcc against `clang` on the target of the machine that runs it. Two
 choices are promises, G2 and G3 of `guarantees.md`, and their rows
-point there. A row fixed by none has its entry in `TODO`. One choice
+point there. A row fixed by none has its entry in `TODO`. Two choices
 the text leaves to the implementation and J.3 does not list, of
-6.2.7p3, has the last row.
+5.2.5.2 and of 6.2.7p3, have the last rows.
 
 ## What the table leaves out
 
@@ -36,7 +36,7 @@ the text leaves to the implementation and J.3 does not list, of
 
 | J.3 | Clause | x86-64 | aarch64 | Fixed by |
 |---|---|---|---|---|
-| J.3.2(1) | 3.13, 5.1.1.3 | `file:line:column: error: message` on standard error, the first error fatal, exit status 1; a warning in the same form, `warning` for `error` (`shape.md` chapters 7 and 8) | the same | every pin of `tests/error/`: `undeclared-name.c`, and `warning-before-error.c` for a warning |
+| J.3.2(1) | 3.13, 5.1.1.3 | `file:line:column: error: message` on standard error, the first error fatal, exit status 1; a warning in the same form, `warning` for `error`; c1's error, which has no position, `rcc: error: message` (`shape.md` chapters 7 and 8) | the same | every pin of `tests/error/`: `undeclared-name.c`, `warning-before-error.c` for a warning, and `frame-of-2-gib.c` for c1's error |
 | J.3.3(4) | 5.1.2.3.2 | any function type: a definition of `main` is compiled as written, `int main(int argc, char **argv, char **envp)` and `void main(void)` among them, and reaching its `}` returns 0 | the same | `tests/corpus/main-envp.c`, for `envp` and the `}`; `tests/corpus/main-void.c`, for `void main(void)` |
 | J.3.4(1) | 6.4.2 | none: an identifier is ASCII letters, digits and `_`; a character outside ASCII is an error, and so is a universal character name, which the preprocessor writes as its UTF-8 | the same | `tests/error/identifier-outside-ascii.c` |
 | J.3.4(2) | 5.2.5.2, 6.4.2 | all: the symbol is the whole name | the same | `tests/cost/long-names.c` |
@@ -72,4 +72,5 @@ the text leaves to the implementation and J.3 does not list, of
 | J.3.12(10) | 6.10.8 | `pack`: a record whose list opens while it sets a packing is not yet, and one after the packing is popped or reset is laid out (`shape.md` chapter 2); `weak` is not yet, refused at its name; `GCC visibility` is read, and a declaration of a symbol of external linkage under a visibility other than `default` is not yet, refused at its name; each other `#pragma` the preprocessor passes on is skipped | the same | `tests/error/pragma-pack.c`, `tests/error/pragma-pack-pop.c`, `tests/error/pragma-pack-name.c`, `tests/error/pragma-weak.c`, `tests/error/pragma-visibility.c` |
 | J.3.14(3) | 6.2.6.1 | J.3.14(6)'s sizes, little-endian, two's complement: `0x01020304` is the bytes `04 03 02 01` | the same | the `memory` probe |
 | J.3.14(6) | 6.5.4.4 | LP64: `short` 2, `int` 4, `long`, `long long` and a pointer 8, each aligned to its size; a record by J.3.10(6) | the same | the `layout` probe |
+| none | 5.2.5.2 | a frame of at most 2 GiB less 16 bytes: a local larger is an error at its name, and locals that pass it together are an error that names the function, each ending `rcc's frame on x86-64 holds at most 2 GiB less 16 bytes` (`shape.md` chapter 7) | 16 MiB less 16 bytes, refused the same way | `tests/error/local-too-large.c` and `tests/error/frame-of-2-gib.c` on x86-64, `tests/error/local-of-16-mib.c` and `tests/error/frame-of-16-mib.c` on aarch64 |
 | none | 6.2.7 | the composite of an enumerated type and its integer type is the integer type, whichever declaration comes first, as `clang` has it (`shape.md` chapter 3) | the same | `tests/corpus/compatible-types.c` |

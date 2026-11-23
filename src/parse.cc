@@ -9360,13 +9360,15 @@ local_string(parser_t &p, symbol_t &sym, decl_stmt_t &decl)
 }
 
 // A local larger than the target's largest frame, its frame_limit, is
-// refused at its name, since no frame holds it.
+// refused at its name, since no frame holds it; the error says the
+// limit, as c1's for a whole frame does (shape.md chapter 7).
 void
 require_frame(const parser_t &p, const token_t &name, const type_t &t)
 {
     if (size_of(t) > p.target.frame_limit)
         fail(name,
-             "variable " + quoted(name.text) + " is too large for a local");
+             "variable " + quoted(name.text) +
+                 " is too large for a local: " + frame_limit_words(p.target));
 }
 
 // The initializer of a variable length array: none but the empty one,

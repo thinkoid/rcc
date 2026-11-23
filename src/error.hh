@@ -1,7 +1,8 @@
 // -*- mode: c++; -*-
 
 // The diagnostics: where and what.  An error is thrown by the lexer or
-// the parser at the first error, caught and printed by the driver;
+// the parser at the first error, or by c1 with no position, caught and
+// printed by the driver;
 // there is no recovery and no second error.  A warning does not stop
 // the translation: the parser adds it to a list the driver owns, and
 // the driver prints the list after the parse, or before the error that
@@ -36,6 +37,14 @@ struct error_t
 struct warning_t
 {
     location_t where;
+    std::string what;
+};
+
+// An error of the program that c1 finds: c1's tree carries no
+// positions, so what names the function in place of one, and the
+// driver prints it after rcc's name.
+struct unplaced_error_t
+{
     std::string what;
 };
 

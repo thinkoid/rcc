@@ -639,7 +639,7 @@ followed by its `.cfi_def_cfa_offset`, with the part of the frame
 opened so far: a frame of 8208 bytes is `sub sp, sp, #8192;
 .cfi_def_cfa_offset 8192; sub sp, sp, #16; .cfi_def_cfa_offset 8208`.
 The epilogue's `add`s close it in the same order. A frame over 16 MiB
-less 16 is a not-yet, refused as `backend.md` chapter 5 has it: a
+less 16 is an error, refused as `backend.md` chapter 5 has it: a
 single local at its declaration by the parser, a sum of smaller ones
 by the generator.
 

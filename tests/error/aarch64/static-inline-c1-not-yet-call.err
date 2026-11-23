@@ -1,2 +1,2 @@
-rcc: internal error: c1: not yet: a frame of 16 MiB or more, in function 'frame'
-status 3
+rcc: error: the frame of function 'frame' is too large: rcc's frame on aarch64 holds at most 16 MiB less 16 bytes
+status 1

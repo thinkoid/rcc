@@ -658,8 +658,8 @@ A frame is at most 2147483632 bytes, 2 GiB less 16, since a slot is
 a 32-bit displacement off `rbp` and the frame, a multiple of 16, is
 the 32-bit immediate of `sub`. The parser refuses a single local over
 the limit at its declaration, with its position. A sum of smaller
-locals that passes the limit is refused by c1, which has no position
-to give.
+locals that passes the limit is the same error from c1, which has no
+position to give and names the function (`shape.md` chapter 7).
 
 ## 6. Expressions
 

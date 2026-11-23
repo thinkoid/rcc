@@ -451,6 +451,10 @@ drive(const options_t &opts)
         report(e);
         return 1;
     }
+    catch (const unplaced_error_t &e) {
+        std::cerr << "rcc: error: " << e.what << '\n';
+        return 1;
+    }
 
     if (opts.stage == stage_t::assembly) {
         write_assembly(opts.out, assembly.str());
