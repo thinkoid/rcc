@@ -503,6 +503,23 @@ Fix: none taken; the directives and the direct reference, with
 Check: a cost program with a hidden function and a hidden object,
 defined and only declared, pinned on both targets.
 
+** TODO =hot= and =artificial= mark, where an attribute of their kind is dropped
+
+~void f(void) __attribute__ ((hot));~ marks =f=, and a call of it is
+"not yet: attribute 'hot'", where the same declaration with =cold=
+compiles. =hot= says what =cold= says, where a function is laid out
+and how hard it is optimized, and =artificial= describes a
+function's debugging information: each is of the kind =shape.md=
+chapter 5 drops, and the list of names lacks both.
+=tests/error/statement-attribute.c= takes =hot= as its attribute
+that marks.
+
+Fix: both names join the dropped ones, and that program takes an
+attribute that marks.
+
+Check: a call of a =hot= function and of an =artificial= one
+compiles to the listing of its twin without the attribute.
+
 ** TODO =_Atomic= is not yet, where it is dropped with a warning
 
 ~_Atomic int x;~ is "not yet: type qualifier '_Atomic'" and
