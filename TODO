@@ -467,27 +467,6 @@ another machine when the program includes one; or take a sysroot.
 Check: the documents and the driver agree on what =-target= does to
 =#include <...>=.
 
-** TODO A constant expression out of its type's range wraps with no diagnostic
-
-6.6p4 is a constraint: "Each constant expression shall evaluate to a
-constant that is in the range of representable values for its type."
-Where the grammar requires a constant expression, an array's size, a
-=case= label, an enumerator, a static initializer and
-=_Static_assert=, the parser takes the wrapped value silently, as G1
-makes the same arithmetic wrap at run time: ~int a[(2147483647 + 1)
-/ 4 + 600000000];~ has 63129088 elements. =clang= warns in each. The
-comment on the evaluator in =src/parse.cc=, "the wrapped value is
-refused there", says what the documents no longer say.
-
-Fix: a warning in each of those places, and the wrapped value is
-taken as today, as G1 has the same arithmetic at run time.
-=shape.md= names the warning, and the comment says what the
-evaluator does.
-
-Check: ~case 2147483647 + 1:~ draws the warning and compiles to the
-listing of its wrapped value; a program pins the warning in each of
-the five places; the comment agrees.
-
 ** TODO An attribute rcc does not honour is refused as not yet
 
 A use of what an attribute marks is "error: not yet: attribute
@@ -768,6 +747,31 @@ the catch of a =static inline= body takes, or both the error.
 
 Check: the two functions, never called, compile alike or are refused
 alike, on aarch64.
+
+** TODO A bit-field's width that overflows draws no warning
+
+A bit-field's width is a constant expression the grammar requires
+(6.7.3.2p4), and one reached through a signed overflow is taken
+with no word: ~struct s { int f : (65536 * 65536) + 3; };~ declares a
+field of 3 bits. An array's size, a =case= label, an enumerator, a
+static initializer and a static assertion draw the warning of 6.6p4;
+=clang= warns here too.
+
+Fix: the same warning at the width.
+
+Check: an error program pins the warning.
+
+** TODO =findings.md= says the evaluator refuses a wrapped constant
+
+=docs/findings.md= says of a constant expression out of its type's
+range that "there the evaluator refuses the wrapped value", and
+again that it refuses one "only where 6.6p4 governs, the size of an
+array". The evaluator takes the wrapped value in every place, with a
+warning where a constant expression is required (=backend.md= 6.4).
+
+Fix: both passages say what the evaluator does.
+
+Check: the passages agree with =backend.md= 6.4.
 
 * Lexer
 

@@ -1,0 +1,2 @@
+tests/error/constant-overflow-array-size.c:5:7: warning: signed overflow in a constant expression: the value wraps, as at run time
+status 0

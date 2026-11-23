@@ -802,6 +802,42 @@ refuse_unfolded(const token_t &at, const expr_t &e, std::string words)
     fail(at, std::move(words));
 }
 
+// Whether a constant in e was reached through a signed overflow: e
+// itself, or one under the arithmetic and the casts of an address
+// constant.
+bool
+holds_overflow(const expr_t &e)
+{
+    if (is< literal_t >(e))
+        return as< literal_t >(e).overflowed;
+
+    if (is< unary_t >(e))
+        return holds_overflow(*as< unary_t >(e).arg);
+
+    if (is< binary_t >(e))
+        return holds_overflow(*as< binary_t >(e).lhs) ||
+               holds_overflow(*as< binary_t >(e).rhs);
+
+    if (is< cast_t >(e))
+        return holds_overflow(*as< cast_t >(e).arg);
+
+    return false;
+}
+
+// The warning where a constant expression is required and e, its
+// value, was reached through a signed overflow, which 6.6p4 makes a
+// constraint violation: the wrapped value is taken, as G1 has the same
+// arithmetic at run time (shape.md chapter 8).  A system header's text
+// draws none.
+void
+warn_overflowed(parser_t &p, const token_t &at, const expr_t &e)
+{
+    if (holds_overflow(e) && !at.where.system_header)
+        warn(p, at,
+             "signed overflow in a constant expression: the value wraps, "
+             "as at run time");
+}
+
 exact_t
 exact_value(const expr_t &e)
 {
@@ -848,6 +884,15 @@ constant_of(const type_t &t, exact_t v)
     return expr_t { t, literal_t { wrapped(v, as< int_t >(t)) } };
 }
 
+// The constant c, its mark of a signed overflow set as given.
+expr_t
+marked(expr_t c, bool overflowed)
+{
+    std::get< literal_t >(c.v).overflowed = overflowed;
+
+    return c;
+}
+
 // Whether an integer type holds a value: two's complement over its
 // width, a signed type's top bit its sign.
 bool
@@ -889,7 +934,8 @@ converted_constant(const expr_t &e, const type_t &t)
     if (is< pointer_t >(t))
         return expr_t { t, as< literal_t >(e) };
 
-    return constant_of(t, exact_value(e));
+    return marked(constant_of(t, exact_value(e)),
+                  as< literal_t >(e).overflowed);
 }
 
 // The place a conversion the language implies enters the tree, every
@@ -1628,8 +1674,10 @@ converted_to_bool(expr_t e)
 {
     const type_t b = bool_type();
 
-    if (is< literal_t >(e))
-        return expr_t { b, literal_t { as< literal_t >(e).value != 0 } };
+    if (is< literal_t >(e)) {
+        const literal_t &l = as< literal_t >(e);
+        return expr_t { b, literal_t { l.value != 0, l.overflowed } };
+    }
 
     if (is_bool(e.type)) {
         e.type = b;
@@ -1804,9 +1852,11 @@ common_pointer(expr_t &lhs, expr_t &rhs)
 // the instruction would compute, so folding changes no program: a
 // signed result the type cannot hold wraps (G1), a shift count is
 // masked (G3), and a division with no value is left to the instruction
-// (G4).  6.6p4, which makes an out-of-range constant expression a
-// constraint violation, applies where the grammar requires a constant
-// expression, the array size, and the wrapped value is refused there.
+// (G4).  6.6p4 makes an out-of-range constant expression a constraint
+// violation: a constant reached through a signed result its type does
+// not hold is marked overflowed, and where the grammar requires a
+// constant expression the parser warns of it and takes the wrapped
+// value, as G1 has the same arithmetic at run time.
 
 template< typename T >
 T
@@ -1869,6 +1919,12 @@ folded_arithmetic(binary_op_t op,
 // wraps, G3, where 6.5.8p4 leaves a signed result the type cannot hold
 // undefined.  A signed right shift is arithmetic, G3, the
 // implementation's choice for a negative value by 6.5.8p5.
+unsigned long long
+shift_count(const int_t &type, const expr_t &rhs)
+{
+    return bits_of(rhs) & unsigned(type.width - 1);
+}
+
 expr_t
 folded_shift(binary_op_t op,
              const type_t &t,
@@ -1876,7 +1932,7 @@ folded_shift(binary_op_t op,
              const expr_t &rhs)
 {
     const int_t &type = as< int_t >(t);
-    const auto count = bits_of(rhs) & unsigned(type.width - 1);
+    const auto count = shift_count(type, rhs);
 
     if (op == binary_op_t::shl)
         return constant_of(t, bits_of(lhs) << count);
@@ -1922,14 +1978,54 @@ truth_of(binary_op_t op, exact_t a, exact_t b)
     }
 }
 
-// The constant a binary node of two integer constants, of type t, folds
-// to, or nothing for a division with no value.  The comma is excluded
-// by 6.6p3 and never reaches here.
+// Whether an operation of the type t on two constants takes a signed
+// result t does not hold, 6.6p4: a sum, a difference or a product
+// past t's range.  A left shift, as clang judges one, only where a set
+// bit of a nonnegative operand passes the sign bit, so 2 << 31
+// overflows and 1 << 31 is the most negative int; a negative operand
+// shifted draws nothing.  A division with no value is not folded, and
+// every other operation gives a value its type holds.
+bool
+overflows(binary_op_t op, const type_t &t, const expr_t &lhs, const expr_t &rhs)
+{
+    const int_t &type = as< int_t >(t);
+    if (!type.is_signed)
+        return false;
+
+    const exact_t a = exact_value(lhs);
+    switch (op) {
+    case binary_op_t::add:
+    case binary_op_t::sub:
+    case binary_op_t::mul:
+        return !holds(t, arithmetic_result(op, a, exact_value(rhs)));
+    case binary_op_t::shl:
+        return a >= 0 && (a << shift_count(type, rhs)) >> type.width != 0;
+    default: return false;
+    }
+}
+
+// Whether an operand op evaluates was reached through a signed
+// overflow: the right one of && and || is not evaluated where the left
+// decides, 6.5.14p4, 6.5.15p4.
+bool
+operand_overflowed(binary_op_t op, const expr_t &lhs, const expr_t &rhs)
+{
+    const exact_t a = exact_value(lhs);
+    const bool decided = (op == binary_op_t::log_and && a == 0) ||
+                         (op == binary_op_t::log_or && a != 0);
+
+    return as< literal_t >(lhs).overflowed ||
+           (!decided && as< literal_t >(rhs).overflowed);
+}
+
+// The constant of a binary node of two integer constants, of type t,
+// marked where the operation overflows or an operand it evaluates was
+// so reached.
 std::optional< expr_t >
-folded_binary(binary_op_t op,
-              const type_t &t,
-              const expr_t &lhs,
-              const expr_t &rhs)
+folded_value(binary_op_t op,
+             const type_t &t,
+             const expr_t &lhs,
+             const expr_t &rhs)
 {
     switch (op) {
     case binary_op_t::add:
@@ -1947,18 +2043,48 @@ folded_binary(binary_op_t op,
     }
 }
 
+// The constant a binary node of two integer constants, of type t, folds
+// to, or nothing for a division with no value.  The comma is excluded
+// by 6.6p3 and never reaches here.
+std::optional< expr_t >
+folded_binary(binary_op_t op,
+              const type_t &t,
+              const expr_t &lhs,
+              const expr_t &rhs)
+{
+    std::optional< expr_t > folded = folded_value(op, t, lhs, rhs);
+    if (!folded)
+        return std::nullopt;
+
+    return marked(std::move(*folded), overflows(op, t, lhs, rhs) ||
+                                          operand_overflowed(op, lhs, rhs));
+}
+
 // Unary - and ~ on a promoted integer constant, 6.5.4.3p3, p4: the
 // negative modulo 2^N, as the instruction computes it (G1 for the most
 // negative value, 6.2.5p11 for an unsigned one); the complement of the
 // bits.  ! is 1 for a constant equal to 0 and 0 otherwise, an int, p5.
 expr_t
-folded_unary(unary_op_t op, const type_t &t, const expr_t &arg)
+unary_value(unary_op_t op, const type_t &t, const expr_t &arg)
 {
     switch (op) {
     case unary_op_t::neg: return constant_of(t, -exact_value(arg));
     case unary_op_t::bit_not: return constant_of(t, ~bits_of(arg));
     default: return constant_of(t, exact_value(arg) == 0);
     }
+}
+
+// The constant of a unary operator on an integer constant, marked
+// where the negative of a signed one is past its type, the most
+// negative value's, or the operand was reached through an overflow.
+expr_t
+folded_unary(unary_op_t op, const type_t &t, const expr_t &arg)
+{
+    const bool overflows = op == unary_op_t::neg && as< int_t >(t).is_signed &&
+                           !holds(t, -exact_value(arg));
+
+    return marked(unary_value(op, t, arg),
+                  overflows || as< literal_t >(arg).overflowed);
 }
 
 //
@@ -2606,15 +2732,21 @@ joined_arms(const token_t &op, expr_t &yes, expr_t &no)
 
 // The conditional of two arms, joined_arms() at its type.  On a
 // constant condition and two constant arms, the node is the arm the
-// condition selects, 6.5.16p5.  The condition comes as an rvalue.
+// condition selects, 6.5.16p5, marked overflowed where the condition
+// or that arm was so reached.  The condition comes as an rvalue.
 expr_t
 conditional(const token_t &op, expr_t cond, expr_t yes, expr_t no)
 {
     const type_t t = joined_arms(op, yes, no);
 
     if (is_integer_constant(cond) && is_integer_constant(yes) &&
-        is_integer_constant(no))
-        return exact_value(cond) != 0 ? std::move(yes) : std::move(no);
+        is_integer_constant(no)) {
+        expr_t arm = exact_value(cond) != 0 ? std::move(yes) : std::move(no);
+        const bool overflowed =
+            as< literal_t >(cond).overflowed || as< literal_t >(arm).overflowed;
+
+        return marked(std::move(arm), overflowed);
+    }
 
     return expr_t { t,
                     conditional_t { box(std::move(cond)), box(std::move(yes)),
@@ -2630,14 +2762,22 @@ conditional(const token_t &op, expr_t cond, expr_t yes, expr_t no)
 // and a null pointer convert to a null pointer, 6.3.2.3p3, p4, and no
 // conversion of one pointer to another writes a bit.  On a constant
 // condition and a constant second arm, the node is the arm the
-// condition selects, 6.5.16p5.  The condition comes as an rvalue.
+// condition selects, 6.5.16p5, marked overflowed where the condition
+// or that arm was so reached.  The condition comes as an rvalue.
 expr_t
 omitted_middle(const token_t &op, expr_t cond, expr_t no)
 {
     const type_t t = joined_arms(op, cond, no);
 
-    if (is_integer_constant(cond) && is_integer_constant(no))
-        return exact_value(cond) != 0 ? std::move(cond) : std::move(no);
+    if (is_integer_constant(cond) && is_integer_constant(no)) {
+        if (exact_value(cond) != 0)
+            return cond;
+
+        const bool overflowed =
+            as< literal_t >(cond).overflowed || as< literal_t >(no).overflowed;
+
+        return marked(std::move(no), overflowed);
+    }
 
     return expr_t { t, conditional_t { box(std::move(cond)), nullptr,
                                        box(std::move(no)) } };
@@ -4584,15 +4724,19 @@ scalar_value(parser_t &p, const token_t &at, const type_t &t)
 
     expr_t init = assignment_conversion(p, at, std::move(e), t);
 
-    if (is< literal_t >(init))
+    if (is< literal_t >(init)) {
+        warn_overflowed(p, start, init);
         return as< literal_t >(init);
+    }
 
     if (narrowed_address(init))
         fail(start, "initializer element is an address cast to an integer "
                     "narrower than a pointer");
 
-    if (std::optional< initializer_t > address = address_constant(init))
+    if (std::optional< initializer_t > address = address_constant(init)) {
+        warn_overflowed(p, start, init);
         return std::move(*address);
+    }
 
     refuse_unfolded(start, init,
                     "initializer element is not a compile-time constant");
@@ -6254,6 +6398,8 @@ static_assert_declaration(parser_t &p)
     if (!is_integer_constant(e))
         refuse_unfolded(
             start, e, "static assertion is not an integer constant expression");
+
+    warn_overflowed(p, start, e);
 
     const std::string message = assertion_message(p);
     expect(p, tok_t::rparen, "expected ')' in static assertion");
@@ -7923,6 +8069,8 @@ enumerator_value(parser_t &p, const token_t &name, const expr_t *previous)
                 start, e,
                 "enumerator value is not an integer constant expression");
 
+        warn_overflowed(p, start, e);
+
         if (holds(int_type(), exact_value(e)))
             return constant_of(int_type(), exact_value(e));
 
@@ -8459,13 +8607,18 @@ struct array_suffix_t
     std::optional< expr_t > variable_size = { };
 };
 
-// The size of an array suffix, read up to the ']' that closes it.
+// The size of an array suffix, read up to the ']' that closes it.  A
+// constant one is a constant expression, warned of where it overflowed.
 expr_t
 array_size(parser_t &p)
 {
     const token_t &start = peek(p);
 
-    return rvalue(start, assignment_expression(p));
+    expr_t size = rvalue(start, assignment_expression(p));
+    if (is_integer_constant(size))
+        warn_overflowed(p, start, size);
+
+    return size;
 }
 
 // The position of the ']' that closes the array suffix whose size
@@ -9668,6 +9821,8 @@ case_label(parser_t &p)
     if (!is_integer_constant(constant))
         refuse_unfolded(start, constant,
                         "case label is not an integer constant expression");
+
+    warn_overflowed(p, start, constant);
 
     if (peek(p).kind == tok_t::ellipsis)
         not_yet(peek(p), "case range");

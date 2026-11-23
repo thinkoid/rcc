@@ -1,0 +1,2 @@
+tests/error/constant-overflow-static-assertion.c:5:16: warning: signed overflow in a constant expression: the value wraps, as at run time
+status 0

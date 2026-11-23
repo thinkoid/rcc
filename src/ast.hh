@@ -148,9 +148,14 @@ enum class binary_op_t {
 };
 
 // An integer or character constant; its type is the expression's.
+// overflowed says that the parser's evaluator reached the constant
+// through a signed result its type does not hold, which wrapped: where
+// a constant expression is required, the parser warns of it
+// (backend.md 6.4).  c1 reads the value alone.
 struct literal_t
 {
     long long value;
+    bool overflowed = false;
 };
 
 struct name_t
