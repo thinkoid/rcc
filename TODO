@@ -789,11 +789,12 @@ the preprocessor it runs does not define the macro, so a program's
 ~#ifdef __STDC_NO_ATOMICS__~ takes the branch written for a compiler
 that has atomics.
 
-Fix: none taken; decide: the driver defines the macro for the
-preprocessor, which may change what a header declares, or
-=choices.md= says that it does not.
+Fix: the driver defines the macro as 1 for the preprocessor it
+runs, on both targets, and =choices.md= says so where it says that
+=_Atomic= is dropped.
 
-Check: a program that tests the macro, pinned.
+Check: a cost program that tests the macro compiles its
+~#ifdef __STDC_NO_ATOMICS__~ branch, pinned on both targets.
 
 * Lexer
 
