@@ -1,0 +1,2 @@
+tests/error/attribute-aligned-typedef-again.c:6:13: error: not yet: compatibility of a type of attribute 'aligned'
+status 1

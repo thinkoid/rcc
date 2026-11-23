@@ -1,2 +1,2 @@
-tests/error/attribute-mode-typedef-twice.c:5:13: error: redefinition of typedef 'word_t' with another type
+tests/error/attribute-mode-typedef-twice.c:5:13: error: unsupported: compatibility of a type of attribute 'mode'
 status 1

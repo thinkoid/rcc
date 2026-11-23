@@ -1,0 +1,2 @@
+tests/error/attribute-mode-pointer-subtraction.c:10:18: error: unsupported: compatibility of a pointer to a type of attribute 'mode'
+status 1

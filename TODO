@@ -612,23 +612,6 @@ read at run time.
 Check: the six programs of =tests/error= for these, each a cost
 program when built.
 
-** TODO A type rcc does not honour redeclared with the type behind it is an error
-
-~void f(word_t); void f(long);~, =word_t= a typedef through a
-marking attribute, is "conflicting types for 'f'", where a pointer
-to such a type in the same place is "not yet", and =clang= takes the
-pair where =word_t= is =long=. The same holds of two subtracted
-pointers, ~w - l~, "subtraction of pointers to different types".
-A typedef written a second time through another mode, or another
-alignment, is "another type", which =clang= takes for the alignment.
-
-Fix: each is refused by the attribute's words, as the pointer's
-is: a redeclaration that sets such a type against the type behind
-it, the typedef written again through other arguments of its
-attribute, and the subtraction of pointers to the two.
-
-Check: an error program of each of the three pins that refusal.
-
 ** TODO A cast loses a parameter's marking
 
 ~((int (*)(int)) p)(1)~, with =p= a pointer to a function type whose
@@ -801,6 +784,24 @@ the bridging sentence leaves. The not-yet type keeps its name.
 
 Check: ~grep -rn "not-yet kind" src docs~ is empty; no listing and
 no pin changes.
+
+** TODO A pointer to a type an attribute made, against a pointer to a type of another kind, is refused where it conflicts
+
+~void f(word_t *); void f(char **);~, =word_t= a typedef of =int=
+through =mode=, is "unsupported: compatibility of a pointer to a
+type of attribute 'mode'". Whatever =mode= makes of =int=, it is no
+pointer, so the two declarations conflict, as =clang= says. Without
+the pointers the pair is judged by the kind of the type the typedef
+was made from, and ~void f(word_t); void f(char *);~ is "conflicting
+types for 'f'".
+
+Fix: the rule for the pointee is the rule for the type itself: only
+a type of the kind the typedef was made from, or one made from the
+same type, may be compatible with it.
+
+Check: an error program pins "conflicting types for 'f'" for that
+pair; ~void f(word_t *); void f(long *);~ stays refused by the
+attribute's words.
 
 * Lexer
 

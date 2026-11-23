@@ -200,9 +200,15 @@ A pointer to a type made by a typedef through a marking attribute
 or an array size rcc cannot compute, met by a pointer to another type
 that may be compatible with it, is refused by the typedef's words,
 of its attribute's kind (chapter 5) or not yet for its size:
-converted to or from it, compared with it, joined with it in a
-conditional's arms or in its place in a redeclaration, behind any
-pointers, arrays and functions, as `void f(word_t *); void f(long
+converted to or from it, compared with it, subtracted from it, joined
+with it in a conditional's arms or in its place in a redeclaration,
+behind any pointers, arrays and functions, as `void f(word_t *); void
+f(long *);`. So is a type made by a typedef through a marking
+attribute, set in its place in a redeclaration against a type of the
+kind it was made from, `void f(word_t); void f(long);`, or against
+one made from the same type through other attributes or arguments,
+the typedef written again: `compatibility of a type of attribute
+'mode'`. One of another kind conflicts, `void f(word_t); void f(char
 *);`. rcc does not know what the attribute or the size makes of the
 type.
 It has no size and no alignment, but a real floating type has

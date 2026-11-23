@@ -1521,8 +1521,8 @@ made_pointee(const type_t &a, const type_t &b)
     return nullptr;
 }
 
-// The words of refuse_made_pointees() for a comparison, a conditional's
-// arms and a redeclaration, which convert nothing.
+// The words of refuse_made_pointees() for a comparison, a subtraction,
+// a conditional's arms and a redeclaration, which convert nothing.
 constexpr std::string_view compatibility_words =
     "compatibility of a pointer to a type of ";
 
@@ -1531,9 +1531,8 @@ constexpr std::string_view compatibility_words =
 // differ by a pointer to one and a pointer to another type that may be
 // compatible with it, made_pointee()'s, are refused by the construct's
 // words and the typedef's, of the typedef's kind: a conversion between
-// them, their comparison,
-// a conditional's arms and a redeclaration.  Any other mismatch is the
-// caller's error.
+// them, their comparison and their subtraction, a conditional's arms
+// and a redeclaration.  Any other mismatch is the caller's error.
 void
 refuse_made_pointees(const token_t &at,
                      const type_t &a,
@@ -1542,6 +1541,94 @@ refuse_made_pointees(const token_t &at,
 {
     if (const not_yet_t *made = made_pointee(a, b))
         refuse(at, { std::string(construct) + made->what.words,
+                     made->what.unsupported });
+}
+
+// The type a not-yet type of the identity was made from, identity_of()'s,
+// or null for one made from none.
+const type_t *
+made_from(const parser_t &p, int identity)
+{
+    for (const made_type_t &m : p.made)
+        if (m.identity == identity)
+            return &m.from;
+
+    return nullptr;
+}
+
+// Whether a type a typedef made through a marking attribute may be
+// another type, which rcc cannot tell: a type of the kind of the one
+// it was made from, an integer for an integer as mode makes one, or a
+// type made from the same one by other attributes or other arguments.
+// A type of another kind is not the made one: void f(word_t); void
+// f(char *); conflict whatever word_t is.
+bool
+may_stand_for(const parser_t &p, const not_yet_t &made, const type_t &other)
+{
+    const type_t *from = made_from(p, made.identity);
+    if (!from)
+        return false;
+
+    if (is< not_yet_t >(other)) {
+        const not_yet_t &twin = as< not_yet_t >(other);
+        const type_t *twin_from = made_from(p, twin.identity);
+
+        return twin.made && !twin.element && twin_from && *twin_from == *from;
+    }
+
+    return from->v.index() == other.v.index();
+}
+
+// The first type a typedef made through a marking attribute that one of
+// two types holds where the other holds a type it may stand for,
+// may_stand_for()'s; met walking the two types alike, through pointers,
+// arrays and functions, as tag_twin() walks them; or null.
+const not_yet_t *
+made_twin(const parser_t &p, const type_t &a, const type_t &b)
+{
+    for (const auto &[made, other] : { std::pair { &a, &b }, { &b, &a } })
+        if (!(a == b) && is< not_yet_t >(*made) &&
+            as< not_yet_t >(*made).made && !as< not_yet_t >(*made).element &&
+            may_stand_for(p, as< not_yet_t >(*made), *other))
+            return &as< not_yet_t >(*made);
+
+    if (is< pointer_t >(a) && is< pointer_t >(b))
+        return made_twin(p, pointee_of(a), pointee_of(b));
+
+    if (is< array_t >(a) && is< array_t >(b))
+        return made_twin(p, *as< array_t >(a).element,
+                         *as< array_t >(b).element);
+
+    if (!is< function_t >(a) || !is< function_t >(b))
+        return nullptr;
+
+    const auto &f = as< function_t >(a);
+    const auto &g = as< function_t >(b);
+    if (const not_yet_t *made = made_twin(p, *f.result, *g.result))
+        return made;
+
+    for (std::size_t i = 0; i < std::min(f.params.size(), g.params.size()); ++i)
+        if (const not_yet_t *made = made_twin(p, *f.params[i], *g.params[i]))
+            return made;
+
+    return nullptr;
+}
+
+// rcc does not know what a typedef through a marking attribute makes of
+// the type it names, so two declarations of one entity, or of one
+// typedef name, that set such a type against one it may stand for,
+// made_twin()'s, are refused by the typedef's words, of their kind:
+// void f(word_t); void f(long);, and a typedef written again through
+// other arguments of its attribute.  Any other mismatch is the caller's
+// error.
+void
+refuse_made_twins(const parser_t &p,
+                  const token_t &at,
+                  const type_t &a,
+                  const type_t &b)
+{
+    if (const not_yet_t *made = made_twin(p, a, b))
+        refuse(at, { "compatibility of a type of " + made->what.words,
                      made->what.unsupported });
 }
 
@@ -2444,6 +2531,7 @@ subtraction(const token_t &op, expr_t lhs, expr_t rhs)
 
     if (rp && !compatible(pointee_of(lhs.type), pointee_of(rhs.type))) {
         refuse_tag_twins(op, lhs.type, rhs.type);
+        refuse_made_pointees(op, lhs.type, rhs.type, compatibility_words);
         fail(op, "subtraction of pointers to different types");
     }
 
@@ -4025,7 +4113,8 @@ translation_unit(parser_t &p)
 // object or of the typedef's type, which are the same as the earlier
 // one's in either case, 6.7.4.1p11.
 symbol_t &
-redeclared(const token_t &name,
+redeclared(const parser_t &p,
+           const token_t &name,
            symbol_t &earlier,
            const type_t &t,
            qualifiers_t qualifiers,
@@ -4044,6 +4133,7 @@ redeclared(const token_t &name,
 
     refuse_tag_twins(name, earlier.type, t);
     refuse_made_pointees(name, earlier.type, t, compatibility_words);
+    refuse_made_twins(p, name, earlier.type, t);
 
     if (storage == storage_t::type_name)
         fail(name, "redefinition of typedef " + quoted(name.text) +
@@ -4067,7 +4157,7 @@ earlier_declaration(const parser_t &p,
     if (it == scope.end())
         return nullptr;
 
-    return &redeclared(name, *it->second, t, qualifiers, storage);
+    return &redeclared(p, name, *it->second, t, qualifiers, storage);
 }
 
 // A function or an object a block declared first with external linkage
@@ -9419,7 +9509,7 @@ linked_declaration(parser_t &p, const specifiers_t &spec, const declarator_t &d)
         fail(*d.name, "redefinition of " + quoted(d.name->text));
 
     if (entity) {
-        redeclared(*d.name, *entity, d.type, d.qualifiers, storage);
+        redeclared(p, *d.name, *entity, d.type, d.qualifiers, storage);
         require_linkage(*d.name, *entity, linkage);
         names.emplace(entity->name, entity);
     }
