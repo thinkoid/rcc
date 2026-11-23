@@ -508,7 +508,8 @@ as(const stmt_t &s)
 // droppable says that the function is a static inline one of the
 // program's own text whose body is whole and that no expression and no
 // alias names: c1 writes nothing for it when it refuses the body, as
-// the parser writes nothing for one it stops in.  statics_begin and
+// the parser writes nothing for one it stops in, but for a frame past
+// the target's limit, an error of the program.  statics_begin and
 // statics_end bound the static objects its body declares in the unit's
 // objects, which go with it, since nothing outside the body names them.
 // label_arrays is, for each label the source names in the scope of a

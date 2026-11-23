@@ -45,6 +45,12 @@ refuse_frame()
     throw frame_refusal_t();
 }
 
+bool
+dropped_for(const function_decl_t &fd, const refusal_t &e)
+{
+    return fd.droppable && !dynamic_cast< const frame_refusal_t * >(&e);
+}
+
 // The tree carries no positions, so the place a refusal names is the
 // function, quoted as the parser quotes a name: "c1: not yet: an
 // element of 2 GiB or more, in function 'f'".  A frame's is the error

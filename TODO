@@ -621,23 +621,6 @@ array's. A constant size is the immediate, rounded up to 16.
 Check: =tests/error/alloca.c= a cost program pinned on both targets,
 and the =stack= probe with =alloca= in an argument and in a loop.
 
-** TODO A frame over the limit in an uncalled =static inline= function is an error for one local and nothing for two
-
-An uncalled =static inline= function whose locals pass the frame's
-limit together is dropped with its body, as one that holds any
-construct the generator refuses: ~static inline int f(void) { char
-a[10000000]; char b[10000000]; return a[0] + b[0]; }~ compiles on
-aarch64. One whose single local passes the limit is the parser's
-error at the local, which stops the file: the same function with
-~char a[20000000];~.
-
-Fix: both are the error. A frame over the limit is an error of the
-program whether the function is called or not, so the frame's
-refusal is not one that the catch of a =static inline= body takes.
-
-Check: an error program of the function with two locals, never
-called, pins the frame's error on aarch64.
-
 ** TODO =_Atomic (_Atomic int)= is accepted, with no word that it is not judged
 
 6.7.3.5p3 forbids an atomic type specifier's type name that is "an

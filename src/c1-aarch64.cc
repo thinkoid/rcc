@@ -5513,8 +5513,9 @@ function(state_t &s, const function_decl_t &fd)
 // chapter 10.  The note section marks the stack not executable.  A
 // droppable function whose body c1 refuses writes nothing either, the
 // string literals it met and the static objects its body declares among
-// them, and the next function() starts its state over; any other
-// refusal is thrown again with the function's name.
+// them, and the next function() starts its state over, dropped_for()'s;
+// any other refusal, a frame's in any function among them, is thrown
+// again with the function's name.
 void
 generate_aarch64(const unit_t &unit,
                  const target_t &target,
@@ -5537,7 +5538,7 @@ generate_aarch64(const unit_t &unit,
             function(s, fd);
         }
         catch (const refusal_t &e) {
-            if (!fd.droppable)
+            if (!dropped_for(fd, e))
                 refused_in(fd.sym->name, e, target);
 
             s.strings.resize(strings);

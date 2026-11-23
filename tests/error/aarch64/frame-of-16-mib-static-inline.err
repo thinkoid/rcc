@@ -1,0 +1,2 @@
+rcc: error: the frame of function 'f' is too large: rcc's frame on aarch64 holds at most 16 MiB less 16 bytes
+status 1

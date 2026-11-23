@@ -1327,15 +1327,17 @@ declaration's, made before the parser knows that a body follows, and
 stops the file as on a declaration.
 
 A body the parser reads whole may still hold what c1 does not
-compile yet, or a frame past the target's limit, an error (chapter
-7). When no expression and no alias names the function, before the
-definition or after it, the function is droppable, and c1 drops it at
-either: it writes nothing for it, the string literals and the
-static objects of its body among them, so a file that never names it
-compiles. A function that is named is refused by c1 as any other is:
-a use of it would name a symbol c1 did not write, and the parser,
-which refuses a use, has finished by the time c1 runs. A name in the
-function's own body, or in a body the parser stopped in, counts.
+compile yet. When no expression and no alias names the function,
+before the definition or after it, the function is droppable, and c1
+drops it at such a refusal: it writes nothing for it, the string
+literals and the static objects of its body among them, so a file
+that never names it compiles. A function that is named is refused by
+c1 as any other is: a use of it would name a symbol c1 did not write,
+and the parser, which refuses a use, has finished by the time c1
+runs. A name in the function's own body, or in a body the parser
+stopped in, counts. A frame past the target's limit is an error of
+the program whether the function is named or not (chapter 7), and c1
+drops no function for it.
 
 `static` at file scope gives a function or an object internal
 linkage (6.2.2p3). The rules of linkage are the standard's: `extern`
@@ -1797,8 +1799,8 @@ local`. Locals that pass it together are c1's, which has no position:
 the tree carries none, so the error names the function, `rcc: error:
 the frame of function 'main' is too large`. Each message ends in the
 same words, `rcc's frame on` the target `holds at most` the limit.
-c1 drops a droppable function for its frame as for a construct it
-does not compile yet (chapter 5).
+The error is the same in a `static inline` function that nothing
+names, which c1 drops for no frame (chapter 5).
 
 ## 8. The driver
 
