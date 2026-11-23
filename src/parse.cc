@@ -1632,11 +1632,28 @@ refuse_made_twins(const parser_t &p,
                      made->what.unsupported });
 }
 
+// The words of the typedef through a marking attribute that one of a
+// function's result or parameter and the other function's is, where
+// the two differ, or null.  A call passes or returns such a type as
+// it does no other, so a function's result and parameters bear its
+// marks as the marking on a parameter does.
+const refusal_words_t *
+made_mark(const type_t &a, const type_t &b)
+{
+    for (const type_t *t : { &a, &b })
+        if (!(a == b) && is< not_yet_t >(*t) && as< not_yet_t >(*t).made &&
+            !as< not_yet_t >(*t).element)
+            return &as< not_yet_t >(*t).what;
+
+    return nullptr;
+}
+
 // The words of the marking attribute on a parameter of one of two
 // functions met walking two types alike, through pointers, arrays and
 // functions, as tag_twin() walks them, where the other's marks differ,
-// or null.  Equality does not read the mark, so the two types may be
-// equal.
+// or null; a result or a parameter of a type made through a marking
+// attribute is a mark too, made_mark()'s.  Equality does not read the
+// marking, so the two types may be equal.
 const refusal_words_t *
 marked_twin(const type_t &a, const type_t &b)
 {
@@ -1655,22 +1672,32 @@ marked_twin(const type_t &a, const type_t &b)
     if (f.marking != g.marking)
         return f.marking.words.empty() ? &g.marking : &f.marking;
 
+    if (const refusal_words_t *refusal = made_mark(*f.result, *g.result))
+        return refusal;
+
     if (const refusal_words_t *refusal = marked_twin(*f.result, *g.result))
         return refusal;
 
-    for (std::size_t i = 0; i < std::min(f.params.size(), g.params.size()); ++i)
+    for (std::size_t i = 0; i < std::min(f.params.size(), g.params.size());
+         ++i) {
+        if (const refusal_words_t *refusal =
+                made_mark(*f.params[i], *g.params[i]))
+            return refusal;
+
         if (const refusal_words_t *refusal =
                 marked_twin(*f.params[i], *g.params[i]))
             return refusal;
+    }
 
     return nullptr;
 }
 
 // A function type carries the words of a marking attribute on its
 // parameter, and a call through a pointer to it is refused by them.  A
-// pointer converted to a pointer to a function of other marks, or met
-// by one in a conditional's arms, would lose them, so the two are
-// refused by the attribute's words, marked_twin()'s.
+// pointer converted to a pointer to a function of other marks, as if
+// by assignment or by a cast, or met by one in a conditional's arms,
+// would lose them, so the two are refused by the attribute's words,
+// marked_twin()'s.
 void
 refuse_marked_twins(const token_t &at, const type_t &a, const type_t &b)
 {
@@ -2898,7 +2925,10 @@ omitted_middle(const token_t &op, expr_t cond, expr_t no)
 // operand alike, whatever rcc lays out of it; a cast to a not-yet type
 // is not yet.  A record's value discarded by a cast to void is
 // discarded()'s.  A cast to _Bool is converted_to_bool()'s, under a
-// cast of its own where that leaves an lvalue, a _Bool's.
+// cast of its own where that leaves an lvalue, a _Bool's.  A cast
+// between pointers to functions whose marks differ is refused by them,
+// refuse_marked_twins()'s; one to or from void * or an integer has no
+// two function types to judge.
 expr_t
 cast(const token_t &open, const type_t &t, expr_t arg)
 {
@@ -2917,6 +2947,8 @@ cast(const token_t &open, const type_t &t, expr_t arg)
         fail(open, "operand of a cast is not a scalar");
 
     arg = rvalue(open, std::move(arg));
+    if (is< pointer_t >(t) && is< pointer_t >(arg.type))
+        refuse_marked_twins(open, t, arg.type);
 
     if (is_bool(t))
         arg = converted_to_bool(std::move(arg));

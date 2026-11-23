@@ -800,15 +800,21 @@ parameter marks the function, whose calls pass the parameter, and its
 definition; the function type carries its words, so a call through a
 pointer to the type, or through a typedef of it, is refused as a call
 of the function is. Equality does not read them, so a conversion
-between pointers to function types whose marks differ, and the join
-of two such pointers as a conditional's arms, would lose them, and
-each is refused by them. On a struct or a union, or on a member, one that marks
-changes the layout, as `packed` and `aligned` do, and makes the
-record one rcc does not lay out yet (chapter 3); on an enum one that
-marks makes the enum a not-yet type of its words (below). `__asm__
-("name")` after the declarator of a function or of an object at file
-scope is the symbol's name in the assembly: glibc declares `scanf` as
-`__isoc99_scanf`, and the call names that.
+between pointers to function types whose marks differ, as if by
+assignment or by a cast, called or not, and the join of two such
+pointers as a conditional's arms, would lose them, and each is
+refused by them. A cast takes a result or a parameter of a type a
+typedef makes through a marking attribute for such a mark too:
+`(long (*)(void)) p` for a `word_t (*p)(void)` is refused by the
+attribute's words. A pointer converted through `void *` or an integer
+carries no type to judge and is not followed. On a struct or a union,
+or on a member, one that marks changes the layout, as `packed` and
+`aligned` do, and makes the record one rcc does not lay out yet
+(chapter 3); on an enum one that marks makes the enum a not-yet type
+of its words (below). `__asm__ ("name")` after the declarator of a
+function or of an object at file scope is the symbol's name in the
+assembly: glibc declares `scanf` as `__isoc99_scanf`, and the call
+names that.
 
 A program written for `gcc` and `clang` may have GNU C that ISO C
 makes a constraint violation. The parser takes each such construct

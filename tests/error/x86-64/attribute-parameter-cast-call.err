@@ -1,0 +1,2 @@
+tests/error/attribute-parameter-cast-call.c:9:17: error: unsupported: attribute 'mode'
+status 1

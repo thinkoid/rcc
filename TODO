@@ -573,26 +573,6 @@ read at run time.
 Check: the six programs of =tests/error= for these, each a cost
 program when built.
 
-** TODO A cast loses a parameter's marking
-
-~((int (*)(int)) p)(1)~, with =p= a pointer to a function type whose
-parameter a marking attribute marked, compiles and passes an =int=,
-where ~p (1)~ is refused by the attribute's name. The cast compiles
-with no call too, ~q = (int (*)(int)) p;~, and so does one of a
-pointer to a function type whose result is marked. A conversion as
-if by assignment between the two types is an error.
-
-Fix: a cast between two pointers to function types is refused by
-the attribute's words where a parameter or the result of one is
-marked and the other's is not, at the cast, called or not. A
-pointer that reaches the other type through ~void *~ or an integer
-is not followed: once converted it carries no type to judge, and
-=docs/shape.md= says so.
-
-Check: an error program pins the refusal of the cast that is called,
-of the cast that is stored, and of a marked result; the round trip
-through ~void *~ compiles, pinned.
-
 ** TODO A compound assignment of a =_Bool= reached through a pointer loads the pointer twice
 
 ~p->b |= x~ on a =_Bool= member is the tree of ~p->b = (_Bool)
@@ -693,6 +673,21 @@ same type, may be compatible with it.
 Check: an error program pins "conflicting types for 'f'" for that
 pair; ~void f(word_t *); void f(long *);~ stays refused by the
 attribute's words.
+
+** TODO A pointer to a function whose result an attribute made, assigned to one of the type behind it, is an error
+
+~q = p;~ for ~word_t (*p)(void)~ and ~long (*q)(void)~, =word_t= a
+typedef of =long= through =mode=, is "incompatible pointer types",
+where =clang= takes it, the two types being one. A pointer to
+=word_t= against a pointer to =long= is refused by the attribute's
+words, since rcc cannot tell; the walk that finds such a pair looks
+at a pointer's pointee alone, and not at a function's result or its
+parameters.
+
+Fix: the walk goes through a function's result and parameters too,
+and the conversion is refused by the attribute's words, of its kind.
+
+Check: an error program of that assignment pins the refusal.
 
 * Lexer
 
