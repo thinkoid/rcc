@@ -550,6 +550,25 @@ Check: =tests/cost/bit-field-write.c='s ~store~, ~five~ and
 targets; =tests/error/bit-field-store-side-effect.c= compiles; the
 =fields= probe, 0 differ.
 
+** TODO A store into a bit-field at its unit's top masks what the shift cleared
+
+~p->f = v~ on ~struct small { unsigned a : 3; int f : 5; }~, whose
+field reaches its unit's top, shifts the value into place and masks
+it, =shll $3, %ecx; andl $248, %ecx= on x86-64 and =lsl w1, w1, #3;
+and w1, w1, #0xf8= on aarch64. The shift has cleared the bits below
+the field, and the store of the unit's one byte drops the bits above
+it, so the =and= changes no bit that is stored; where the store's
+value is used, it is read from that byte again. G2 names the =and=
+of a field's mask as the instruction that keeps a stored value's low
+bits.
+
+Fix: none taken; the parser's tree for a field that reaches its
+unit's top is ~u = (v << s) | (u & ~M)~, and G2 says where the shift
+and the store's width do the mask's work.
+
+Check: =tests/cost/bit-field-write.c='s ~store~ pinned without the
+=and= on both targets; the =fields= probe, 0 differ.
+
 ** TODO A bit-field store's value dropped under a comma or a cast to =void= is still computed
 
 The value of ~p->f = v~ is the stored unit shifted as a read of the
@@ -589,16 +608,17 @@ Check: error programs for ~&~ and ~sizeof~ of a field through
 ~_Generic~, filling and not; the store through ~_Generic~ in the
 =fields= probe.
 
-** TODO A statement expression in a constant expression is not yet
+** TODO A statement expression in a constant expression is a not-yet, where it is an error
 
 ~case ({ 1; }):~ and ~static int k = ({ 1; });~ are "not yet:
 statement expression in a constant expression"; =clang= folds both.
-6.6 makes neither a constant expression.
+6.6 makes neither a constant expression, so each is an error and no
+construct rcc is to compile.
 
-Fix: none taken; decide: a block whose one item is its value folds,
-or the refusal is an error.
+Fix: the refusal is an error, its words without the "not yet";
+nothing is folded.
 
-Check: the two programs of =tests/error= have the pin decided.
+Check: the two programs of =tests/error= pin the error.
 
 ** TODO A frame over the limit is an error for one local and a not-yet for two
 
