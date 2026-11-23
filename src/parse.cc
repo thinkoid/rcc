@@ -349,7 +349,7 @@ fail(const token_t &at, std::string what)
 // not-yet type catches this kind alone; the driver catches it as any
 // error_t.  refusal is its words and kind, which the message writes
 // after "not yet: " or "unsupported: " (shape.md chapter 7).
-struct not_yet_error_t: error_t
+struct refusal_error_t: error_t
 {
     refusal_words_t refusal;
 };
@@ -362,7 +362,7 @@ refuse(const token_t &at, const refusal_words_t &refusal)
     const std::string kind =
         refusal.unsupported ? "unsupported: " : "not yet: ";
 
-    throw not_yet_error_t { { at.where, kind + refusal.words }, refusal };
+    throw refusal_error_t { { at.where, kind + refusal.words }, refusal };
 }
 
 // A construct of C outside the subset this parser takes, which rcc is
@@ -6747,8 +6747,8 @@ defined_parameters(parser_t &p, const declarator_t &d)
 // The errors of a definition's parameters: each is named, and no array
 // of unspecified size, [*], is part of the declaration of one, 6.9.2p6,
 // in the brackets it is adjusted from or in any other.  They are
-// checked before any refusal of the not-yet kind in the head, so that
-// an error stays the error it is.
+// checked before any refusal in the head, so that an error stays the
+// error it is.
 void
 require_definition_parameters(const declarator_t &d)
 {
@@ -6761,13 +6761,12 @@ require_definition_parameters(const declarator_t &d)
     }
 }
 
-// The refusals of the not-yet kind in a definition's head.  A function
-// a marking attribute marked, on a declaration, among the definition's
-// specifiers or on a parameter, is one rcc would have to define as the
-// attribute says.  The result and each parameter are objects the
-// definition makes, so none may be of a not-yet type, nor of a record,
-// which returns and passes by value in no rule rcc has yet but the
-// aarch64 va_list's.
+// The refusals in a definition's head.  A function a marking attribute
+// marked, on a declaration, among the definition's specifiers or on a
+// parameter, is one rcc would have to define as the attribute says.
+// The result and each parameter are objects the definition makes, so
+// none may be of a not-yet type, nor of a record, which returns and
+// passes by value in no rule rcc has yet but the aarch64 va_list's.
 void
 require_definable_head(const parser_t &p,
                        const symbol_t &sym,
@@ -6791,18 +6790,18 @@ require_definable_head(const parser_t &p,
     }
 }
 
-// The words of the first refusal of the not-yet kind in the head of a
-// static inline definition of the program's own text, or nothing when
-// the head has none: such a function is kept uncompiled, as for its
-// body, inline_body()'s.  The checks change nothing of the parse, so
-// nothing is undone.
+// The words of the first refusal in the head of a static inline
+// definition of the program's own text, or nothing when the head has
+// none: such a function is kept uncompiled, as for its body,
+// inline_body()'s.  The checks change nothing of the parse, so nothing
+// is undone.
 std::optional< refusal_words_t >
 inline_head(const parser_t &p, const symbol_t &sym, const declarator_t &d)
 {
     try {
         require_definable_head(p, sym, d);
     }
-    catch (const not_yet_error_t &e) {
+    catch (const refusal_error_t &e) {
         return e.refusal;
     }
 
@@ -6875,16 +6874,15 @@ function_body(parser_t &p, std::vector< stmt_t > entry)
 }
 
 // The body of a static inline definition of the program's own text, or
-// nothing when it stops at a refusal of the not-yet kind, whose words
-// go to missing.  A header defines such a function for each file that
-// includes it, and a file that never calls it does not pay for its
-// body, as for a system header's.  Only the refusal of the not-yet
-// kind is caught, so an error before it stays the error it is; the
-// parse resumes at the body's closing brace, and the text after the
-// refusal is not read.  What the body changed of the parse is undone:
-// the scopes and the statements it opened, the switches, loops and
-// temporaries, and the static objects it declared, which nothing
-// outside it names.
+// nothing when it stops at a refusal, whose words go to missing.  A
+// header defines such a function for each file that includes it, and a
+// file that never calls it does not pay for its body, as for a system
+// header's.  Only a refusal is caught, so an error before it stays the
+// error it is; the parse resumes at the body's closing brace, and the
+// text after the refusal is not read.  What the body changed of the
+// parse is undone: the scopes and the statements it opened, the
+// switches, loops and temporaries, and the static objects it declared,
+// which nothing outside it names.
 std::optional< block_t >
 inline_body(parser_t &p, refusal_words_t &missing, std::vector< stmt_t > entry)
 {
@@ -6898,7 +6896,7 @@ inline_body(parser_t &p, refusal_words_t &missing, std::vector< stmt_t > entry)
     try {
         return function_body(p, std::move(entry));
     }
-    catch (const not_yet_error_t &e) {
+    catch (const refusal_error_t &e) {
         missing = e.refusal;
         p.pos = start + 1;
         skip_to_closing_brace(p);
@@ -6956,19 +6954,19 @@ uncompiled_head(parser_t &p,
 // the list that makes the name a function, with its parameters and its
 // tags, is opened again and the body's items are parsed into it
 // directly.  The head is checked first, its errors and then its
-// refusals of the not-yet kind, require_definable_head()'s; the
-// parameters are defined_parameters()'s.  function and statics start
-// over, for the labels of the static objects the body declares, and
-// labels, gotos and case_labels, for the body's own labels, which no
-// other function sees; and variadic, named and va_area, for the body's
-// va_start.  The body's identities are dropped once it is whole.  A
-// static inline function whose head or body needs a construct rcc does
-// not compile yet is kept uncompiled, uncompiled_head()'s or
-// inline_body()'s: an expression that names it, before the definition
-// or after it, is refused by the words of what it needs, which the
-// symbol keeps.  One whose body is whole is droppable, for c1 to write
-// nothing for it if it refuses the body, with the static objects the
-// body declares, unless keep_named_functions() finds it named.
+// refusals, require_definable_head()'s; the parameters are
+// defined_parameters()'s.  function and statics start over, for the
+// labels of the static objects the body declares, and labels, gotos and
+// case_labels, for the body's own labels, which no other function sees;
+// and variadic, named and va_area, for the body's va_start.  The body's
+// identities are dropped once it is whole.  A static inline function
+// whose head or body holds a refusal is kept uncompiled,
+// uncompiled_head()'s or inline_body()'s: an expression that names it,
+// before the definition or after it, is refused by the refusal's
+// words, of its kind, which the symbol keeps.  One whose body is
+// whole is droppable, for c1 to write nothing for it if it refuses the
+// body, with the static objects the body declares, unless
+// keep_named_functions() finds it named.
 void
 function_definition(parser_t &p, const specifiers_t &spec, declarator_t &d)
 {
@@ -7947,12 +7945,12 @@ member_list(parser_t &p, record_t &r)
 
 // The members of the list after the '{' at the position.  The rule for
 // a system header holds here as for a typedef's array size: in a list
-// a system header writes, a refusal of the not-yet kind makes the
-// record a not-yet record of the refusal's words, and the parse skips
-// to the list's closing brace; the scopes are cut back to those open
-// at the brace, as a parameter list inside the list leaves one open.
-// An error stays the error it is, and a list of the program's own
-// source is refused where it stands.
+// a system header writes, a refusal makes the record a not-yet record
+// of the refusal's words, and the parse skips to the list's closing
+// brace; the scopes are cut back to those open at the brace, as a
+// parameter list inside the list leaves one open.  An error stays the
+// error it is, and a list of the program's own source is refused where
+// it stands.
 void
 members(parser_t &p, record_t &r)
 {
@@ -7968,7 +7966,7 @@ members(parser_t &p, record_t &r)
     try {
         member_list(p, r);
     }
-    catch (const not_yet_error_t &e) {
+    catch (const refusal_error_t &e) {
         mark_not_yet(r, e.refusal);
         p.pos = start;
         p.scopes.resize(depth);
@@ -8834,11 +8832,11 @@ closing_bracket(const parser_t &p)
 // glibc's bits/procfs.h sizes elf_gregset_t by the size of a struct,
 // which rcc does not know; by the rule for a system header the typedef
 // is accepted and names a not-yet type, and the use of its object is
-// refused.  Only the refusal of the not-yet kind is caught, only while
-// the size is read, and only when the ']' that closes the suffix is
-// found first, where the parse resumes.  An error of the program in
-// the size stays the error it is, and so does a size that reads whole
-// and is no constant, or no positive one, which array_count() refuses.
+// refused.  Only a refusal is caught, only while the size is read,
+// and only when the ']' that closes the suffix is found first, where
+// the parse resumes.  An error of the program in the size stays the
+// error it is, and so does a size that reads whole and is no constant,
+// or no positive one, which array_count() refuses.
 // A refusal inside a parameter list of a type name in the size leaves
 // that list's scope open, and the scopes are cut back to those open
 // before the size.
@@ -8854,7 +8852,7 @@ typedef_array_size(parser_t &p, refusal_words_t &missing)
     try {
         return array_size(p);
     }
-    catch (const not_yet_error_t &e) {
+    catch (const refusal_error_t &e) {
         missing = e.refusal;
         p.pos = *close;
         p.scopes.resize(depth);
@@ -12195,9 +12193,9 @@ expect_expression(parser_t &p, const token_t &keyword)
 // back at its end: the count of statement expressions around the
 // parse, one more inside it, and the loops and the switches its
 // statements open.  The destructor gives them back however the parse of
-// the block ends, so a refusal of the not-yet kind that a caller
-// catches, as typedef_array_size() does, leaves no loop, no switch and
-// no statement expression open behind it.
+// the block ends, so a refusal that a caller catches, as
+// typedef_array_size() does, leaves no loop, no switch and no
+// statement expression open behind it.
 class [[nodiscard]] statement_expression_depth_t
 {
 public:

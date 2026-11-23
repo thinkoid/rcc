@@ -981,12 +981,12 @@ at the `;` that ends the anonymous member. Otherwise the declaration
 declares the tag or the constants of its specifier alone. In a list
 a system header writes,
 the rule for a system header holds as for a typedef's array size: a
-refusal of the not-yet kind makes the record one rcc does not lay out,
-of the refusal's words, and the parse skips to the list's closing
-brace, so a struct with an `_Alignas` member parses there; an error
-stays the error it is, and the program's own list is refused where it
-stands. clang's `__int128_t` and `__uint128_t`, which glibc's
-`sys/user.h` writes in a member list, are the 128-bit integer types.
+refusal makes the record one rcc does not lay out, of the refusal's
+words, and the parse skips to the list's closing brace, so a struct
+with an `_Alignas` member parses there; an error stays the error it
+is, and the program's own list is refused where it stands. clang's
+`__int128_t` and `__uint128_t`, which glibc's `sys/user.h` writes in a
+member list, are the 128-bit integer types.
 
 `sizeof` and `_Alignof ( type-name )` of a record are its layout's
 (6.5.4.4p3, p4), and of an incomplete record errors (p1); `_Alignof`
@@ -1256,10 +1256,10 @@ by the size of a packed struct does: the typedef is accepted and a
 local of the type is refused with "not yet: attribute 'packed' on
 struct ...". The type keeps the array's element, so a parameter of
 it is adjusted to a pointer to the element (6.7.7.4p6), as one of any
-array type is. The parser catches a refusal of the not-yet kind
-alone, only while it reads the size of a typedef's array suffix, and
-only when it has found the `]` that closes the suffix first, matching
-the brackets and parentheses in the size; the parse goes on there. A
+array type is. The parser catches a refusal alone, only while it
+reads the size of a typedef's array suffix, and only when it has found
+the `]` that closes the suffix first, matching the brackets and
+parentheses in the size; the parse goes on there. A
 size that is wrong stays the error it is, and so does such a size
 outside a typedef: of a local, a parameter, a cast or a `sizeof`.
 Since the parse of the size stops at its first refusal, an error of
@@ -1289,7 +1289,7 @@ body is not yet. The line marker in force at the declaration's
 A `static inline` definition of the program's own, which a header
 of the program writes for every file that includes it, may hold what
 rcc does not compile yet, a floating constant among them. Its body
-then stops at the first refusal of the not-yet kind, and the
+then stops at the first refusal, and the
 function is kept uncompiled: c1 writes nothing for it, the static
 objects its body declares among them, so a file that never calls it
 compiles, and an expression that names it, before the definition as
@@ -1758,10 +1758,8 @@ is unsupported, `error: unsupported: attribute 'mode'`, and so is a
 refusal built on its words, `unsupported: compatibility of a pointer
 to a type of attribute 'mode'`: what an attribute rcc declines marks
 is the one such extension, and `packed` and `aligned`, which rcc may
-come to honour, are not yet (chapter 5). The parser takes the two
-kinds of refusal alike but for the word, so a refusal of the not-yet
-kind, in chapter 5, is either. A warning is the fourth kind (chapter
-8).
+come to honour, are not yet (chapter 5). A warning is the fourth
+kind (chapter 8).
 
 An initializer's error is said at one of two places. One of its
 conversion as by assignment is said at the `=`, as in `int *p = 1;`;

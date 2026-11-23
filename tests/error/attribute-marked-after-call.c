@@ -1,7 +1,7 @@
 /* A function declared weak after a call of it: GNU C lets the later
    declaration mark the call before it too, which rcc has taken as a
-   call of a strong symbol, so the attribute, written too late, is not
-   yet. */
+   call of a strong symbol, so the attribute, written too late, is
+   unsupported. */
 int hook(void);
 
 int
