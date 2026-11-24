@@ -1,0 +1,3 @@
+tests/error/atomic-specifier-qualified-store.c:5:1: warning: type specifier '_Atomic' dropped: rcc makes no access atomic
+tests/error/atomic-specifier-qualified-store.c:10:11: error: cannot assign to 'y', declared const
+status 1

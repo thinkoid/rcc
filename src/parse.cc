@@ -3945,7 +3945,7 @@ void header_function_definition(parser_t &,
 specifiers_t declaration_specifiers(parser_t &);
 type_t struct_or_union_specifier(parser_t &);
 type_t enum_specifier(parser_t &);
-type_t atomic_type_specifier(parser_t &);
+qualified_type_t atomic_type_specifier(parser_t &);
 declarator_t declarator(parser_t &,
                         const type_t &,
                         qualifiers_t,
@@ -3975,6 +3975,7 @@ type_t array_declarator(parser_t &,
                         std::optional< expr_t > &variable_size);
 bool parameter_type_list(parser_t &, std::vector< parameter_t > &);
 parameter_t parameter_declaration(parser_t &);
+qualified_type_t qualified_type_name(parser_t &);
 type_t type_name(parser_t &);
 std::vector< stmt_t > declaration(parser_t &);
 std::vector< stmt_t > init_declarator_list(parser_t &,
@@ -7494,15 +7495,19 @@ declaration_specifiers(parser_t &p)
             tagged = true;
             any = true;
             continue;
-        case tok_t::kw_atomic:
+        case tok_t::kw_atomic: {
             if (any || complex_specifier) {
                 bad = true;
                 break;
             }
 
-            whole = atomic_type_specifier(p);
+            const qualified_type_t named = atomic_type_specifier(p);
+            whole = named.type;
+            qualifiers = qualifiers | named.qualifiers;
+
             any = true;
             continue;
+        }
         case tok_t::kw_bool:
             bad = any || complex_specifier;
             whole = bool_type();
@@ -8469,19 +8474,19 @@ enum_specifier(parser_t &p)
 // _Atomic ( type-name ), the atomic type specifier, 6.7.3.5p1, which
 // _Atomic is when a parenthesis follows it, p4, as clang's stdatomic.h
 // declares atomic_int.  It is dropped as the qualifier is,
-// drop_atomic()'s, and the type is the type name's.  The type name is
-// no array type and no function type, p3, require_atomic_applicable()'s;
-// a qualified one cannot be
-// told, since a type name's qualifiers are dropped, and an atomic one
-// is its plain type.
-type_t
+// drop_atomic()'s, and the type is the type name's, with its
+// qualifiers, which the caller joins with those beside the specifier
+// as a typedef name's, 6.7.4.1p6.  The type name is no array type and
+// no function type, p3, require_atomic_applicable()'s; a qualified one,
+// which p3 forbids too, is taken, and an atomic one is its plain type.
+qualified_type_t
 atomic_type_specifier(parser_t &p)
 {
     const token_t &keyword = advance(p);
     advance(p);
 
-    const type_t t = type_name(p);
-    require_atomic_applicable(keyword, t);
+    const qualified_type_t t = qualified_type_name(p);
+    require_atomic_applicable(keyword, t.type);
 
     expect(p, tok_t::rparen, "expected ')' after type name");
     drop_atomic(p, keyword, "type specifier");

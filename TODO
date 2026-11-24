@@ -654,25 +654,5 @@ and the conversion is refused by the attribute's words, of its kind.
 
 Check: an error program of that assignment pins the refusal.
 
-** TODO =_Atomic (const int)= declares an object that is not =const=
-
-~_Atomic (const int) y;~ declares a plain =int=: ~y = 1;~ compiles,
-where the same store into a ~const int y;~ is an error. The
-specifier's type name is read without its qualifiers, so the
-=const= is dropped with no word, and the one warning is the
-=_Atomic='s. 6.7.3.5p3 forbids a qualified type name there, and
-=shape.md= chapter 3 says that rcc does not judge it.
-
-Fix: the type name's qualifiers are kept on the declared type, joined
-with those written beside the specifier as a typedef name's are
-(6.7.4.1p6): ~_Atomic (const int) y;~ declares a ~const int~, and
-~y = 1;~ is the error a store into a ~const~ object is. The
-qualified type name itself is still taken, and =shape.md= chapter 3
-says what it declares.
-
-Check: an error program of the declaration and the store pins the
-store's error, and =tests/error/atomic-specifier-qualified.c= keeps
-its warnings.
-
 * Lexer
 

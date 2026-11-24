@@ -238,9 +238,10 @@ the object is the plain load and store, and `_Atomic int *` and `int
 specifier's type name is judged for an array type and a function
 type alone, each an error (chapter 5): an atomic or a qualified type
 name, which 6.7.3.5p3 forbids too, is taken, so `_Atomic (_Atomic
-int)` and `_Atomic (const int)` are `int`, the `const` dropped with no
-word of its own, and each `_Atomic` written draws its warning. An
-array is qualified as its element, as C23 has
+int)` is `int` and `_Atomic (const int)` is `const int`, the type
+name's qualifiers joined with those beside the specifier as a typedef
+name's are (6.7.4.1p6), and each `_Atomic` written draws its warning.
+An array is qualified as its element, as C23 has
 it (6.7.4.1p10) and C17 does not (6.7.3p10), and rcc reads C23 here:
 `const int a[3]` is a `const` object of `int [3]`, whose decay points
 to `const int`, and `const int (*p)[3] = q;` adds a qualifier for an
