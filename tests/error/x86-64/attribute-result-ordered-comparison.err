@@ -1,0 +1,2 @@
+tests/error/attribute-result-ordered-comparison.c:12:18: error: ordered comparison of pointers to functions
+status 1

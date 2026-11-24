@@ -225,8 +225,10 @@ element, converted to or from each other, compared, subtracted or
 joined in a conditional's arms, are refused by the attribute's words,
 as the cast is (chapter 5), and so is a generic association of one
 against the other: `long (*q)(void) = p;` and `p == q` for a `word_t
-(*p)(void)`. rcc does not know what the attribute or the size makes
-of the type.
+(*p)(void)`. A subtraction or an ordered comparison of two pointers to
+functions is an error whatever their types, and is that error, not
+the refusal: `p - q` and `p < q`. rcc does not know what the
+attribute or the size makes of the type.
 It has no size and no alignment, but a real floating type has
 `clang`'s, the same on both targets, so that a record lays it out:
 `float` 4, `double` 8 and `long double` 16, each aligned to its size.

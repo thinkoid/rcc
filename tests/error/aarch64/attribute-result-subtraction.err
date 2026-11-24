@@ -1,0 +1,2 @@
+tests/error/attribute-result-subtraction.c:12:18: error: arithmetic on a pointer to a function
+status 1

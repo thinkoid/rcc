@@ -2583,6 +2583,11 @@ subtraction(const parser_t &p, const token_t &op, expr_t lhs, expr_t rhs)
     if (!lp)
         fail(op, "cannot subtract a pointer from an integer");
 
+    // a pointer to a function is no pointer to an object, whatever the
+    // other operand, so it is judged before the pointees' compatibility
+    if (is_function_pointer(lhs.type))
+        require_object_pointee(op, lhs.type);
+
     if (rp && !compatible(pointee_of(lhs.type), pointee_of(rhs.type))) {
         refuse_tag_twins(op, lhs.type, rhs.type);
         refuse_made_pointer_pair(p, op, lhs.type, rhs.type,
@@ -2634,14 +2639,14 @@ comparison(const parser_t &p, const token_t &op, expr_t lhs, expr_t rhs)
     }
     else if (!equality && !(lp && rp))
         fail(op, "comparison between pointer and integer");
+    else if (!equality && is_function_pointer(lhs.type))
+        fail(op, "ordered comparison of pointers to functions");
     else if (!equality &&
              !compatible(pointee_of(lhs.type), pointee_of(rhs.type))) {
         refuse_made_pointer_pair(p, op, lhs.type, rhs.type,
                                  compatibility_words);
         fail(op, "comparison of distinct pointer types");
     }
-    else if (!equality && is_function_pointer(lhs.type))
-        fail(op, "ordered comparison of pointers to functions");
 
     return make_binary(binary_operator(op.kind), int_type(), std::move(lhs),
                        std::move(rhs));
