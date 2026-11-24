@@ -663,12 +663,16 @@ specifier's type name is read without its qualifiers, so the
 =_Atomic='s. 6.7.3.5p3 forbids a qualified type name there, and
 =shape.md= chapter 3 says that rcc does not judge it.
 
-Fix: none taken; decide: the type name's qualifiers are kept on the
-declared type, or a qualified type name is the error the paragraph
-asks.
+Fix: the type name's qualifiers are kept on the declared type, joined
+with those written beside the specifier as a typedef name's are
+(6.7.4.1p6): ~_Atomic (const int) y;~ declares a ~const int~, and
+~y = 1;~ is the error a store into a ~const~ object is. The
+qualified type name itself is still taken, and =shape.md= chapter 3
+says what it declares.
 
 Check: an error program of the declaration and the store pins the
-error of one or the other.
+store's error, and =tests/error/atomic-specifier-qualified.c= keeps
+its warnings.
 
 * Lexer
 
