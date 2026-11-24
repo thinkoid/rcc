@@ -215,9 +215,12 @@ attribute, set in its place in a redeclaration against a type of the
 kind it was made from, `void f(word_t); void f(long);`, or against
 one made from the same type through other attributes or arguments,
 the typedef written again: `compatibility of a type of attribute
-'mode'`. One of another kind conflicts, `void f(word_t); void f(char
-*);`. rcc does not know what the attribute or the size makes of the
-type.
+'mode'`. Only a type of the kind it was made from, or one made from
+the same type, may be compatible with such a type, behind a pointer
+as alone, so one of another kind conflicts: `void f(word_t); void
+f(char *);` and `void f(word_t *); void f(char **);` are `conflicting
+types for 'f'`. rcc does not know what the attribute or the size makes
+of the type.
 It has no size and no alignment, but a real floating type has
 `clang`'s, the same on both targets, so that a record lays it out:
 `float` 4, `double` 8 and `long double` 16, each aligned to its size.

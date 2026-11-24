@@ -1467,15 +1467,18 @@ refuse_tag_twins(const token_t &at, const type_t &a, const type_t &b)
         not_yet(at, "compatibility of two types of " + record_words(*r));
 }
 
+bool may_stand_for(const parser_t &, const not_yet_t &, const type_t &);
+
 // Whether a type may be compatible with a not-yet type made from
-// another, which rcc cannot tell: any type may be for a typedef
-// through a marking attribute, and an array, or another such type, for
-// a typedef of an array of a size rcc cannot compute, 6.2.7p1.
+// another, which rcc cannot tell: for a typedef through a marking
+// attribute, a type it may stand for, may_stand_for()'s, as where no
+// pointer is between them; for a typedef of an array of a size rcc
+// cannot compute, an array, or another such type, 6.2.7p1.
 bool
-may_be_compatible(const not_yet_t &made, const type_t &t)
+may_be_compatible(const parser_t &p, const not_yet_t &made, const type_t &t)
 {
     if (!made.element)
-        return true;
+        return may_stand_for(p, made, t);
 
     return is< array_t >(t) || (is< not_yet_t >(t) && as< not_yet_t >(t).made);
 }
@@ -1487,7 +1490,7 @@ may_be_compatible(const not_yet_t &made, const type_t &t)
 // alike, through pointers, arrays and functions, as tag_twin() walks
 // them; or null.
 const not_yet_t *
-made_pointee(const type_t &a, const type_t &b)
+made_pointee(const parser_t &p, const type_t &a, const type_t &b)
 {
     if (is< pointer_t >(a) && is< pointer_t >(b)) {
         const type_t &x = pointee_of(a);
@@ -1496,14 +1499,14 @@ made_pointee(const type_t &a, const type_t &b)
         for (const auto &[made, other] : { std::pair { &x, &y }, { &y, &x } })
             if (!(x == y) && is< not_yet_t >(*made) &&
                 as< not_yet_t >(*made).made &&
-                may_be_compatible(as< not_yet_t >(*made), *other))
+                may_be_compatible(p, as< not_yet_t >(*made), *other))
                 return &as< not_yet_t >(*made);
 
-        return made_pointee(x, y);
+        return made_pointee(p, x, y);
     }
 
     if (is< array_t >(a) && is< array_t >(b))
-        return made_pointee(*as< array_t >(a).element,
+        return made_pointee(p, *as< array_t >(a).element,
                             *as< array_t >(b).element);
 
     if (!is< function_t >(a) || !is< function_t >(b))
@@ -1511,11 +1514,11 @@ made_pointee(const type_t &a, const type_t &b)
 
     const auto &f = as< function_t >(a);
     const auto &g = as< function_t >(b);
-    if (const not_yet_t *made = made_pointee(*f.result, *g.result))
+    if (const not_yet_t *made = made_pointee(p, *f.result, *g.result))
         return made;
 
     for (std::size_t i = 0; i < std::min(f.params.size(), g.params.size()); ++i)
-        if (const not_yet_t *made = made_pointee(*f.params[i], *g.params[i]))
+        if (const not_yet_t *made = made_pointee(p, *f.params[i], *g.params[i]))
             return made;
 
     return nullptr;
@@ -1534,12 +1537,13 @@ constexpr std::string_view compatibility_words =
 // them, their comparison and their subtraction, a conditional's arms
 // and a redeclaration.  Any other mismatch is the caller's error.
 void
-refuse_made_pointees(const token_t &at,
+refuse_made_pointees(const parser_t &p,
+                     const token_t &at,
                      const type_t &a,
                      const type_t &b,
                      std::string_view construct)
 {
-    if (const not_yet_t *made = made_pointee(a, b))
+    if (const not_yet_t *made = made_pointee(p, a, b))
         refuse(at, { std::string(construct) + made->what.words,
                      made->what.unsupported });
 }
@@ -1896,7 +1900,7 @@ assignment_conversion(parser_t &p, const token_t &at, expr_t e, const type_t &t)
         !void_and_object_pointer(t, e.type) &&
         !void_and_function_pointer(t, e.type) && !is_null_pointer_constant(e)) {
         refuse_tag_twins(at, t, e.type);
-        refuse_made_pointees(at, t, e.type,
+        refuse_made_pointees(p, at, t, e.type,
                              "conversion of a pointer to a type of ");
         fail(at, "incompatible pointer types");
     }
@@ -2542,7 +2546,7 @@ addition(const token_t &op, expr_t lhs, expr_t rhs)
 // pointees are complete, since an array of unknown size is compatible
 // with one of a size.
 expr_t
-subtraction(const token_t &op, expr_t lhs, expr_t rhs)
+subtraction(const parser_t &p, const token_t &op, expr_t lhs, expr_t rhs)
 {
     lhs = rvalue(op, std::move(lhs));
     rhs = rvalue(op, std::move(rhs));
@@ -2558,7 +2562,7 @@ subtraction(const token_t &op, expr_t lhs, expr_t rhs)
 
     if (rp && !compatible(pointee_of(lhs.type), pointee_of(rhs.type))) {
         refuse_tag_twins(op, lhs.type, rhs.type);
-        refuse_made_pointees(op, lhs.type, rhs.type, compatibility_words);
+        refuse_made_pointees(p, op, lhs.type, rhs.type, compatibility_words);
         fail(op, "subtraction of pointers to different types");
     }
 
@@ -2584,7 +2588,7 @@ subtraction(const token_t &op, expr_t lhs, expr_t rhs)
 // to one, 6.5.10p2.  A pointer and any other integer meet only through
 // a cast.
 expr_t
-comparison(const token_t &op, expr_t lhs, expr_t rhs)
+comparison(const parser_t &p, const token_t &op, expr_t lhs, expr_t rhs)
 {
     lhs = rvalue(op, std::move(lhs));
     rhs = rvalue(op, std::move(rhs));
@@ -2599,7 +2603,7 @@ comparison(const token_t &op, expr_t lhs, expr_t rhs)
     if (!lp && !rp)
         arithmetic_conversions(lhs, rhs);
     else if (equality && !common_pointer(lhs, rhs)) {
-        refuse_made_pointees(op, lhs.type, rhs.type, compatibility_words);
+        refuse_made_pointees(p, op, lhs.type, rhs.type, compatibility_words);
         fail(op, lp && rp ? "comparison of distinct pointer types" :
                             "comparison between pointer and integer");
     }
@@ -2607,7 +2611,7 @@ comparison(const token_t &op, expr_t lhs, expr_t rhs)
         fail(op, "comparison between pointer and integer");
     else if (!equality &&
              !compatible(pointee_of(lhs.type), pointee_of(rhs.type))) {
-        refuse_made_pointees(op, lhs.type, rhs.type, compatibility_words);
+        refuse_made_pointees(p, op, lhs.type, rhs.type, compatibility_words);
         fail(op, "comparison of distinct pointer types");
     }
     else if (!equality && is_function_pointer(lhs.type))
@@ -2821,7 +2825,7 @@ assignment(parser_t &p, const token_t &op, expr_t lhs, expr_t rhs)
 // of p3's pairs.  Two arms of one record are a record's value, not
 // yet; a record and any other arm meet in none of them either.
 type_t
-joined_arms(const token_t &op, expr_t &yes, expr_t &no)
+joined_arms(const parser_t &p, const token_t &op, expr_t &yes, expr_t &no)
 {
     const bool void_yes = is< void_t >(yes.type);
     const bool void_no = is< void_t >(no.type);
@@ -2853,7 +2857,7 @@ joined_arms(const token_t &op, expr_t &yes, expr_t &no)
     if (!is< pointer_t >(yes.type) && !is< pointer_t >(no.type))
         arithmetic_conversions(yes, no);
     else if (!common_pointer(yes, no)) {
-        refuse_made_pointees(op, yes.type, no.type, compatibility_words);
+        refuse_made_pointees(p, op, yes.type, no.type, compatibility_words);
         fail(op, pointers ?
                      "pointer type mismatch in conditional expression" :
                      "pointer/integer type mismatch in conditional expression");
@@ -2867,9 +2871,10 @@ joined_arms(const token_t &op, expr_t &yes, expr_t &no)
 // condition selects, 6.5.16p5, marked overflowed where the condition
 // or that arm was so reached.  The condition comes as an rvalue.
 expr_t
-conditional(const token_t &op, expr_t cond, expr_t yes, expr_t no)
+conditional(
+    const parser_t &p, const token_t &op, expr_t cond, expr_t yes, expr_t no)
 {
-    const type_t t = joined_arms(op, yes, no);
+    const type_t t = joined_arms(p, op, yes, no);
 
     if (is_integer_constant(cond) && is_integer_constant(yes) &&
         is_integer_constant(no)) {
@@ -2897,9 +2902,9 @@ conditional(const token_t &op, expr_t cond, expr_t yes, expr_t no)
 // condition selects, 6.5.16p5, marked overflowed where the condition
 // or that arm was so reached.  The condition comes as an rvalue.
 expr_t
-omitted_middle(const token_t &op, expr_t cond, expr_t no)
+omitted_middle(const parser_t &p, const token_t &op, expr_t cond, expr_t no)
 {
-    const type_t t = joined_arms(op, cond, no);
+    const type_t t = joined_arms(p, op, cond, no);
 
     if (is_integer_constant(cond) && is_integer_constant(no)) {
         if (exact_value(cond) != 0)
@@ -4167,7 +4172,7 @@ redeclared(const parser_t &p,
     }
 
     refuse_tag_twins(name, earlier.type, t);
-    refuse_made_pointees(name, earlier.type, t, compatibility_words);
+    refuse_made_pointees(p, name, earlier.type, t, compatibility_words);
     refuse_made_twins(p, name, earlier.type, t);
 
     if (storage == storage_t::type_name)
@@ -10853,14 +10858,15 @@ conditional_expression(parser_t &p)
     // GNU C's a ?: b, the condition its own middle operand
     if (peek(p).kind == tok_t::colon) {
         advance(p);
-        return omitted_middle(op, std::move(cond), conditional_expression(p));
+        return omitted_middle(p, op, std::move(cond),
+                              conditional_expression(p));
     }
 
     expr_t yes = expression(p);
     expect(p, tok_t::colon, "expected ':' in conditional expression");
     expr_t no = conditional_expression(p);
 
-    return conditional(op, std::move(cond), std::move(yes), std::move(no));
+    return conditional(p, op, std::move(cond), std::move(yes), std::move(no));
 }
 
 expr_t
@@ -10935,7 +10941,7 @@ equality_expression(parser_t &p)
 
     while (next_is(p, { tok_t::eq, tok_t::ne })) {
         const token_t &op = advance(p);
-        e = comparison(op, std::move(e), relational_expression(p));
+        e = comparison(p, op, std::move(e), relational_expression(p));
     }
 
     return e;
@@ -10948,7 +10954,7 @@ relational_expression(parser_t &p)
 
     while (next_is(p, { tok_t::lt, tok_t::gt, tok_t::le, tok_t::ge })) {
         const token_t &op = advance(p);
-        e = comparison(op, std::move(e), shift_expression(p));
+        e = comparison(p, op, std::move(e), shift_expression(p));
     }
 
     return e;
@@ -10980,7 +10986,7 @@ additive_expression(parser_t &p)
 
         e = op.kind == tok_t::plus ?
                 addition(op, std::move(e), std::move(rhs)) :
-                subtraction(op, std::move(e), std::move(rhs));
+                subtraction(p, op, std::move(e), std::move(rhs));
         warn_void_arithmetic(p, op, t);
     }
 
@@ -11699,7 +11705,7 @@ list_bytes(const parser_t &p, const list_operand_t &l, std::size_t k, long n)
         return e;
 
     if (n < 0)
-        return subtraction(operator_at(l.at, tok_t::minus), std::move(e),
+        return subtraction(p, operator_at(l.at, tok_t::minus), std::move(e),
                            int_constant(-n));
 
     return addition(operator_at(l.at, tok_t::plus), std::move(e),
@@ -11720,14 +11726,14 @@ next_argument(parser_t &p, const list_operand_t &l)
     const list_layout_t m = list_layout(p);
     const token_t &at = l.at;
 
-    expr_t test = comparison(operator_at(at, m.test),
+    expr_t test = comparison(p, operator_at(at, m.test),
                              list_member(p, l, m.offset), int_constant(m.end));
 
     expr_t step = assignment(p, operator_at(at, tok_t::add_assign),
                              list_member(p, l, m.offset), int_constant(8));
     expr_t slot =
         addition(operator_at(at, tok_t::plus), list_bytes(p, l, m.area, 0),
-                 subtraction(operator_at(at, tok_t::minus),
+                 subtraction(p, operator_at(at, tok_t::minus),
                              list_member(p, l, m.offset), int_constant(8)));
     expr_t in_area = comma(discarded(at, std::move(step)), std::move(slot));
 
@@ -11737,7 +11743,7 @@ next_argument(parser_t &p, const list_operand_t &l)
     expr_t on_stack =
         comma(discarded(at, std::move(past)), list_bytes(p, l, m.stack, -8));
 
-    return conditional(operator_at(at, tok_t::question),
+    return conditional(p, operator_at(at, tok_t::question),
                        rvalue(at, std::move(test)), std::move(in_area),
                        std::move(on_stack));
 }
@@ -12429,7 +12435,8 @@ require_association_type(const token_t &at, const type_t &t)
 // type a typedef made through a marking attribute or an array size rcc
 // cannot compute, is refused as in a comparison.
 bool
-selection_compatible(const token_t &at,
+selection_compatible(const parser_t &p,
+                     const token_t &at,
                      const qualified_type_t &a,
                      const qualified_type_t &b)
 {
@@ -12437,7 +12444,7 @@ selection_compatible(const token_t &at,
         return true;
 
     refuse_tag_twins(at, a.type, b.type);
-    refuse_made_pointees(at, make_pointer(a.type), make_pointer(b.type),
+    refuse_made_pointees(p, at, make_pointer(a.type), make_pointer(b.type),
                          compatibility_words);
 
     return false;
@@ -12494,7 +12501,7 @@ generic_association(parser_t &p, selection_t &s)
     require_association_type(start, t.type);
 
     for (const qualified_type_t &earlier : s.named)
-        if (selection_compatible(start, t, earlier))
+        if (selection_compatible(p, start, t, earlier))
             fail(start, "generic association compatible with an earlier one");
 
     s.named.push_back(t);
@@ -12503,7 +12510,7 @@ generic_association(parser_t &p, selection_t &s)
     const auto uses = std::ssize(p.internal_uses);
     expr_t e = assignment_expression(p);
 
-    if (!selection_compatible(start, t, s.controlling)) {
+    if (!selection_compatible(p, start, t, s.controlling)) {
         p.internal_uses.erase(p.internal_uses.begin() + uses,
                               p.internal_uses.end());
         return;

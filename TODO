@@ -593,24 +593,6 @@ array's. A constant size is the immediate, rounded up to 16.
 Check: =tests/error/alloca.c= a cost program pinned on both targets,
 and the =stack= probe with =alloca= in an argument and in a loop.
 
-** TODO A pointer to a type an attribute made, against a pointer to a type of another kind, is refused where it conflicts
-
-~void f(word_t *); void f(char **);~, =word_t= a typedef of =int=
-through =mode=, is "unsupported: compatibility of a pointer to a
-type of attribute 'mode'". Whatever =mode= makes of =int=, it is no
-pointer, so the two declarations conflict, as =clang= says. Without
-the pointers the pair is judged by the kind of the type the typedef
-was made from, and ~void f(word_t); void f(char *);~ is "conflicting
-types for 'f'".
-
-Fix: the rule for the pointee is the rule for the type itself: only
-a type of the kind the typedef was made from, or one made from the
-same type, may be compatible with it.
-
-Check: an error program pins "conflicting types for 'f'" for that
-pair; ~void f(word_t *); void f(long *);~ stays refused by the
-attribute's words.
-
 ** TODO A pointer to a function whose result an attribute made, assigned to one of the type behind it, is an error
 
 ~q = p;~ for ~word_t (*p)(void)~ and ~long (*q)(void)~, =word_t= a
