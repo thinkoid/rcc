@@ -420,6 +420,19 @@ Fix: one cost program of those shapes.
 
 Check: it is pinned on both targets.
 
+** TODO Eight comment lines of the sources pass the margin
+
+The sources are laid out by =clang-format= at 80 columns, which does
+not re-fill a comment's paragraph. A sentence added to a comment has
+left eight lines longer than that: five in =src/parse.cc=, one each
+in =src/c1-aarch64.cc=, =src/c1-x86-64.cc= and
+=src/c1-statements.hh=.
+
+Fix: each of those comments filled again, its words unchanged.
+
+Check: ~awk 'length > 80' src/*~ prints nothing, and every listing
+is byte-identical.
+
 * Parser
 
 ** TODO The other target is preprocessed with this machine's headers
