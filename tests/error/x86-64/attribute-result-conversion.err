@@ -1,0 +1,2 @@
+tests/error/attribute-result-conversion.c:13:15: error: unsupported: attribute 'mode'
+status 1

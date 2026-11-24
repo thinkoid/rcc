@@ -1636,6 +1636,29 @@ refuse_made_twins(const parser_t &p,
                      made->what.unsupported });
 }
 
+// Two pointers that a conversion as if by assignment, a comparison, a
+// subtraction, a conditional's arms or a generic selection judge, whose
+// types rcc cannot tell compatible or not: a pointee made from another
+// type against one that may be compatible with it is refused by the
+// construct's words, refuse_made_pointees()'s; past that, a type a
+// typedef made through a marking attribute set against one it may
+// stand for, made_twin()'s, a function's result, a parameter or an
+// array's element among them, is refused by the attribute's words, of
+// its kind, as a cast between them is: long (*)(void) and word_t
+// (*)(void).
+void
+refuse_made_pointer_pair(const parser_t &p,
+                         const token_t &at,
+                         const type_t &a,
+                         const type_t &b,
+                         std::string_view construct)
+{
+    refuse_made_pointees(p, at, a, b, construct);
+
+    if (const not_yet_t *made = made_twin(p, a, b))
+        refuse(at, made->what);
+}
+
 // The words of the typedef through a marking attribute that one of a
 // function's result or parameter and the other function's is, where
 // the two differ, or null.  A call passes or returns such a type as
@@ -1900,8 +1923,8 @@ assignment_conversion(parser_t &p, const token_t &at, expr_t e, const type_t &t)
         !void_and_object_pointer(t, e.type) &&
         !void_and_function_pointer(t, e.type) && !is_null_pointer_constant(e)) {
         refuse_tag_twins(at, t, e.type);
-        refuse_made_pointees(p, at, t, e.type,
-                             "conversion of a pointer to a type of ");
+        refuse_made_pointer_pair(p, at, t, e.type,
+                                 "conversion of a pointer to a type of ");
         fail(at, "incompatible pointer types");
     }
 
@@ -2562,7 +2585,8 @@ subtraction(const parser_t &p, const token_t &op, expr_t lhs, expr_t rhs)
 
     if (rp && !compatible(pointee_of(lhs.type), pointee_of(rhs.type))) {
         refuse_tag_twins(op, lhs.type, rhs.type);
-        refuse_made_pointees(p, op, lhs.type, rhs.type, compatibility_words);
+        refuse_made_pointer_pair(p, op, lhs.type, rhs.type,
+                                 compatibility_words);
         fail(op, "subtraction of pointers to different types");
     }
 
@@ -2603,7 +2627,8 @@ comparison(const parser_t &p, const token_t &op, expr_t lhs, expr_t rhs)
     if (!lp && !rp)
         arithmetic_conversions(lhs, rhs);
     else if (equality && !common_pointer(lhs, rhs)) {
-        refuse_made_pointees(p, op, lhs.type, rhs.type, compatibility_words);
+        refuse_made_pointer_pair(p, op, lhs.type, rhs.type,
+                                 compatibility_words);
         fail(op, lp && rp ? "comparison of distinct pointer types" :
                             "comparison between pointer and integer");
     }
@@ -2611,7 +2636,8 @@ comparison(const parser_t &p, const token_t &op, expr_t lhs, expr_t rhs)
         fail(op, "comparison between pointer and integer");
     else if (!equality &&
              !compatible(pointee_of(lhs.type), pointee_of(rhs.type))) {
-        refuse_made_pointees(p, op, lhs.type, rhs.type, compatibility_words);
+        refuse_made_pointer_pair(p, op, lhs.type, rhs.type,
+                                 compatibility_words);
         fail(op, "comparison of distinct pointer types");
     }
     else if (!equality && is_function_pointer(lhs.type))
@@ -2857,7 +2883,7 @@ joined_arms(const parser_t &p, const token_t &op, expr_t &yes, expr_t &no)
     if (!is< pointer_t >(yes.type) && !is< pointer_t >(no.type))
         arithmetic_conversions(yes, no);
     else if (!common_pointer(yes, no)) {
-        refuse_made_pointees(p, op, yes.type, no.type, compatibility_words);
+        refuse_made_pointer_pair(p, op, yes.type, no.type, compatibility_words);
         fail(op, pointers ?
                      "pointer type mismatch in conditional expression" :
                      "pointer/integer type mismatch in conditional expression");
@@ -12444,8 +12470,8 @@ selection_compatible(const parser_t &p,
         return true;
 
     refuse_tag_twins(at, a.type, b.type);
-    refuse_made_pointees(p, at, make_pointer(a.type), make_pointer(b.type),
-                         compatibility_words);
+    refuse_made_pointer_pair(p, at, make_pointer(a.type), make_pointer(b.type),
+                             compatibility_words);
 
     return false;
 }

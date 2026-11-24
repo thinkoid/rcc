@@ -219,7 +219,13 @@ the typedef written again: `compatibility of a type of attribute
 the same type, may be compatible with such a type, behind a pointer
 as alone, so one of another kind conflicts: `void f(word_t); void
 f(char *);` and `void f(word_t *); void f(char **);` are `conflicting
-types for 'f'`. rcc does not know what the attribute or the size makes
+types for 'f'`. Two pointers whose types set such a type against one
+it may stand for as a function's result or parameter or an array's
+element, converted to or from each other, compared, subtracted or
+joined in a conditional's arms, are refused by the attribute's words,
+as the cast is (chapter 5), and so is a generic association of one
+against the other: `long (*q)(void) = p;` and `p == q` for a `word_t
+(*p)(void)`. rcc does not know what the attribute or the size makes
 of the type.
 It has no size and no alignment, but a real floating type has
 `clang`'s, the same on both targets, so that a record lays it out:

@@ -593,20 +593,26 @@ array's. A constant size is the immediate, rounded up to 16.
 Check: =tests/error/alloca.c= a cost program pinned on both targets,
 and the =stack= probe with =alloca= in an argument and in a loop.
 
-** TODO A pointer to a function whose result an attribute made, assigned to one of the type behind it, is an error
+** TODO A subtraction or an ordered comparison of pointers to functions is refused where it is an error
 
-~q = p;~ for ~word_t (*p)(void)~ and ~long (*q)(void)~, =word_t= a
-typedef of =long= through =mode=, is "incompatible pointer types",
-where =clang= takes it, the two types being one. A pointer to
-=word_t= against a pointer to =long= is refused by the attribute's
-words, since rcc cannot tell; the walk that finds such a pair looks
-at a pointer's pointee alone, and not at a function's result or its
-parameters.
+~p - q~ and ~p < q~ for ~word_t (*p)(void)~ and ~long (*q)(void)~,
+=word_t= a typedef of =long= through =mode=, are "unsupported:
+attribute 'mode'". Neither needs the answer rcc cannot give: a
+subtraction takes pointers to complete object types (6.5.7p3) and a
+relational operator pointers to object types (6.5.9p2), so each is
+an error whatever the attribute makes of =long=, as it is for two
+pointers of one type, "arithmetic on a pointer to a function" and
+"ordered comparison of pointers to functions". A made pointee among
+a function's parameters has the same: ~f1 - f2~ for ~int
+(*f1)(word_t *)~ and ~int (*f2)(long *)~ is "unsupported:
+compatibility of a pointer to a type of attribute 'mode'".
 
-Fix: the walk goes through a function's result and parameters too,
-and the conversion is refused by the attribute's words, of its kind.
+Fix: =subtraction()= and the relational branch of =comparison()=
+judge a pointer to a function before they judge whether the two
+pointees are compatible.
 
-Check: an error program of that assignment pins the refusal.
+Check: error programs of ~p - q~ and ~p < q~ on that pair pin rcc's
+own errors.
 
 * Lexer
 

@@ -1,0 +1,2 @@
+tests/error/attribute-mode-array-conversion.c:11:22: error: unsupported: attribute 'mode'
+status 1

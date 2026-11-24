@@ -1,0 +1,2 @@
+tests/error/attribute-result-conditional.c:11:18: error: unsupported: attribute 'mode'
+status 1
