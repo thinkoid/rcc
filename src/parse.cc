@@ -2663,7 +2663,7 @@ comma(expr_t lhs, expr_t rhs)
     return make_binary(binary_op_t::comma, t, std::move(lhs), std::move(rhs));
 }
 
-std::optional< expr_t > pure_copy(const expr_t &);
+std::optional< expr_t > place_copy(const expr_t &);
 const symbol_t &temporary(parser_t &, std::string_view, const type_t &);
 
 // The operation of E1 op= E2 on its operands, as op's own production
@@ -2681,11 +2681,13 @@ compound_operation(const token_t &op, expr_t lhs, expr_t rhs)
 
 // The copy that reads a _Bool lvalue that a rewrite of op also stores
 // into: the lvalue is evaluated once, 6.5.17.3p4, so one with a side
-// effect, *p++ in *p++ |= x, has no second copy, and is not yet.
+// effect, *p++ in *p++ |= x, or one whose address reads a volatile
+// object, *p on a _Bool *volatile p, has no second copy, place_copy()'s,
+// and is not yet.
 expr_t
 bool_read(const token_t &op, const expr_t &lvalue)
 {
-    std::optional< expr_t > copy = pure_copy(lvalue);
+    std::optional< expr_t > copy = place_copy(lvalue);
     if (!copy)
         not_yet(op, quoted(op.text) +
                         " on a '_Bool' whose lvalue has a side effect");
@@ -5454,6 +5456,8 @@ read_operand(expr_t read)
 
 token_t operator_at(const token_t &, tok_t);
 std::optional< expr_t > pure_copy(const expr_t &);
+std::optional< expr_t > place_copy(const expr_t &);
+bool reads_volatile(const expr_t &);
 
 // The type of R bits that a store into the bit-field m computes in, 32
 // for a unit of 1, 2 or 4 bytes and 64 for one of 8 (shape.md chapter
@@ -5528,8 +5532,9 @@ merged_unit(expr_t bits, expr_t unit, const member_t &m, const type_t &t)
 // that it is computed before the unit is read, 6.5.1p3 (G13), with no
 // & M where the field reaches its unit's top, placed_bits()'s; a
 // constant's placed bits are one constant, and no shift is by 0.  The
-// place stands twice, the second a copy of its expression, so one with
-// a side effect is not yet.  The store is of the unit's type.
+// place stands twice, the second a copy of its expression,
+// place_copy()'s, so one with a side effect is not yet.  The store is
+// of the unit's type.
 expr_t
 field_store(
     parser_t &p, const token_t &op, expr_t place, const member_t &m, expr_t rhs)
@@ -5565,7 +5570,7 @@ field_store(
     else
         value = placed_bits(std::move(value), m);
 
-    std::optional< expr_t > copy = pure_copy(place);
+    std::optional< expr_t > copy = place_copy(place);
     if (!copy)
         not_yet(op, "store into bit-field " + quoted(m.name) +
                         " through a place with a side effect");
@@ -5608,15 +5613,17 @@ field_operation(const token_t &op,
 // (((F (t) op v) << s) & M) | (t & ~M)), t the temporary of the unit's
 // type, which the caller made, F (t) the field's read of it, v the
 // right operand.  The unit is loaded once and stored once.  A right
-// operand with a side effect, h () in f += h (), is held in a
-// temporary of its own first, so that it runs before the unit is
-// loaded, 6.5.1p3 (G13), and a store it makes into the unit stays; any
-// other is v as it is.  The result keeps the field's low bits, of
+// operand with a side effect, h () in f += h () or the read of a
+// volatile v in f += v, is held in a temporary of its own first, so
+// that it runs before the unit is loaded, 6.5.1p3 (G13), and a store it
+// makes into the unit stays; any other is v as it is.  The result
+// keeps the field's low bits, of
 // either signedness, 6.7.3.2p12 (G2), by the mask alone, or, where
 // the field reaches its unit's top, by the shift and the unit's store,
 // placed_bits()'s.  The place stands twice, the second a copy of its
-// expression, so one with a side effect is not yet.  The tree is the
-// comma whose right operand is the store, of the unit's type.
+// expression, place_copy()'s, so one with a side effect is not yet.
+// The tree is the comma whose right operand is the store, of the unit's
+// type.
 expr_t
 field_update(parser_t &p,
              const token_t &op,
@@ -5626,7 +5633,7 @@ field_update(parser_t &p,
              expr_t rhs,
              const symbol_t &t)
 {
-    std::optional< expr_t > copy = pure_copy(place);
+    std::optional< expr_t > copy = place_copy(place);
     if (!copy)
         not_yet(op, std::string(words) + " bit-field " + quoted(m.name) +
                         " through a place with a side effect");
@@ -5640,7 +5647,7 @@ field_update(parser_t &p,
     };
 
     expr_t first = set(t, std::move(*copy));
-    if (!pure_copy(rhs)) {
+    if (!pure_copy(rhs) || reads_volatile(rhs)) {
         const symbol_t &operand = temporary(p, "__field_operand", rhs.type);
         first = comma(discarded(op, set(operand, std::move(rhs))),
                       std::move(first));
@@ -11446,10 +11453,11 @@ pure_node(const expr_t &e)
     return std::nullopt;
 }
 
-// A copy of an expression that has no side effect, 5.1.2.4p2: no
-// assignment, no step and no call in it; nothing for any other.  A tree
-// that reads a list more than once reads it through such copies, so
-// that no effect repeats.
+// A copy of an expression with no assignment, no step and no call in
+// it; nothing for any other.  A read of a volatile object is a side
+// effect too, 5.1.2.4p2, which the copy does not judge: an operand
+// dropped for having no effect is asked reads_volatile() as well, and a
+// place read through a copy is copied by place_copy().
 std::optional< expr_t >
 pure_copy(const expr_t &e)
 {
@@ -11463,6 +11471,73 @@ pure_copy(const expr_t &e)
         return expr_t { e.type, as< string_t >(e) };
 
     return pure_node(e);
+}
+
+// Whether computing the address of a place, an lvalue, reads a volatile
+// object: *E's evaluates E, and a name's reads nothing.
+bool
+address_reads_volatile(const expr_t &place)
+{
+    if (is< unary_t >(place) && as< unary_t >(place).op == unary_op_t::deref)
+        return reads_volatile(*as< unary_t >(place).arg);
+
+    return false;
+}
+
+// Whether the evaluation of an expression pure_copy() copies reads a
+// volatile object, which is a volatile access and so a side effect,
+// 5.1.2.4p2: an lvalue of a volatile-qualified type, qualifiers_of()'s,
+// whose value is read, or one read in computing an operand.  The
+// operand of & and an array or a function that decays have no value
+// read, only their address computed.
+bool
+reads_volatile(const expr_t &e)
+{
+    if (qualifiers_of(e).volatile_)
+        return true;
+
+    if (is< unary_t >(e)) {
+        const unary_t &u = as< unary_t >(e);
+        if (u.op == unary_op_t::addr)
+            return address_reads_volatile(*u.arg);
+
+        return reads_volatile(*u.arg);
+    }
+
+    if (is< cast_t >(e)) {
+        const expr_t &arg = *as< cast_t >(e).arg;
+        if (is< array_t >(arg.type) || is< function_t >(arg.type))
+            return address_reads_volatile(arg);
+
+        return reads_volatile(arg);
+    }
+
+    if (is< binary_t >(e))
+        return reads_volatile(*as< binary_t >(e).lhs) ||
+               reads_volatile(*as< binary_t >(e).rhs);
+
+    if (is< conditional_t >(e)) {
+        const conditional_t &c = as< conditional_t >(e);
+        return reads_volatile(*c.cond) || (c.yes && reads_volatile(*c.yes)) ||
+               reads_volatile(*c.no);
+    }
+
+    return false;
+}
+
+// A copy of a place, an lvalue that a tree reads through a copy and
+// stores through itself, pure_copy()'s.  A volatile place is copied: the
+// copy's read is the one read the source writes, and the store the one
+// store.  A place whose address reads a volatile object has no copy,
+// since the copy would read that object again, and takes the way of
+// one with a side effect.
+std::optional< expr_t >
+place_copy(const expr_t &place)
+{
+    if (address_reads_volatile(place))
+        return std::nullopt;
+
+    return pure_copy(place);
 }
 
 // The address of the list record an operand of a builtin designates,
@@ -11537,8 +11612,9 @@ list_temporary(parser_t &p)
 
 // The list ahead, the first operand of the builtin of the macro named.
 // One without a side effect is read through copies of its expression,
-// pure_copy()'s, as often as the tree reads it.  One with a side effect
-// is evaluated once, where the builtin stands, G13: its address is
+// place_copy()'s, as often as the tree reads it.  One with a side effect,
+// or whose address reads a volatile object, is evaluated once, where the
+// builtin stands, G13: its address is
 // assigned to a temporary first, and the tree reads the list through
 // the temporary, the pointer itself on x86-64, the record it points to
 // on aarch64.
@@ -11549,8 +11625,8 @@ list_operand(parser_t &p, std::string_view macro)
     expr_t e = assignment_expression(p);
     std::string words = "first argument to " + quoted(macro);
 
-    if (pure_copy(e)) {
-        list_pointer(p, at, words, std::move(*pure_copy(e)));
+    if (place_copy(e)) {
+        list_pointer(p, at, words, std::move(*place_copy(e)));
         return { at, std::move(words), std::move(e) };
     }
 
@@ -11583,7 +11659,8 @@ after_list(const token_t &at, list_operand_t &l, expr_t e)
 expr_t
 list_member(const parser_t &p, const list_operand_t &l, std::size_t k)
 {
-    expr_t pointer = list_pointer(p, l.at, l.words, std::move(*pure_copy(l.e)));
+    expr_t pointer =
+        list_pointer(p, l.at, l.words, std::move(*place_copy(l.e)));
 
     return member_lvalue(p, operator_at(l.at, tok_t::arrow), std::move(pointer),
                          p.va_record->members[k]);
@@ -12198,8 +12275,9 @@ offsetof_expression(parser_t &p, const token_t &keyword)
 // lvalue.  It says only which value e is likely to have, so it writes
 // nothing of its own.  c, checked as converted alike, is evaluated for
 // its effect alone, after e, G13, and as clang has it at -O0 not at all
-// where it has none; where it has one, e's value is held in a
-// temporary across it: (t = e, c, t).
+// where it has none; where it has one, a read of a volatile object
+// among them, e's value is held in a temporary across it: (t = e, c,
+// t).
 expr_t
 expect_expression(parser_t &p, const token_t &keyword)
 {
@@ -12216,7 +12294,7 @@ expect_expression(parser_t &p, const token_t &keyword)
     // the cast makes no lvalue of e where it is already a long; c's
     // value is discarded, so its conversion is checked and not made
     e = cast(keyword, long_type(), std::move(e));
-    if (pure_copy(c))
+    if (pure_copy(c) && !reads_volatile(c))
         return e;
 
     if (is< cast_t >(c)) {

@@ -1,0 +1,2 @@
+tests/error/bool-compound-volatile-address.c:11:12: error: not yet: '|=' on a '_Bool' whose lvalue has a side effect
+status 1

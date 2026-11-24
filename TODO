@@ -422,34 +422,6 @@ Check: it is pinned on both targets.
 
 * Parser
 
-** TODO A read of a =volatile= object is taken as no side effect
-
-5.1.2.4p2: "An access to an object through the use of an lvalue of
-volatile-qualified type is a volatile access", and a volatile access
-is a side effect. The parser's test of an operand it may copy or
-drop, =pure_copy()=, looks for an assignment, a step and a call, and
-takes a read of a ~volatile~ object for none. So an operand dropped
-for having no effect is not read: ~__builtin_expect (e, v)~ with a
-~volatile int v~ writes the load of =e= alone, =movslq e(%rip),
-%rax= and =ldrsw x0, [x16, :lo12:e]=, where =clang= loads =v= after
-it. And a place the parser writes twice is read twice: ~*p |= x~ on
-a ~_Bool *volatile p~ is =movq p(%rip), %rax; movq p(%rip), %rcx=
-and two =ldr= of =p=, where the source reads =p= once.
-
-Fix: two tests where there is one. An operand the parser may drop
-is kept where it reads through a ~volatile~ lvalue. A place the
-parser reads through a copy is still copied where the place itself
-is ~volatile~, since the copy is the one read the source writes: a
-store into a field of a ~volatile~ record is one load and one store
-of its unit (G24). Where the expression that computes the place's
-address reads a ~volatile~ object, the place takes the way of one
-with a side effect, the temporary or the not-yet by name.
-
-Check: a cost program of ~__builtin_expect (e, v)~ pinned on both
-targets with one load of =v=; ~*p |= x~ on the ~volatile~ pointer
-with one load of =p=, or refused by name; and
-=tests/cost/bit-field-volatile.c= keeps its listings.
-
 ** TODO The other target is preprocessed with this machine's headers
 
 =rcc -target x86-64= on an aarch64 machine runs =clang -E

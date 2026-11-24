@@ -845,7 +845,17 @@ the declaration specifiers, after a `*`, in a type name, once or more
 (6.7.4.1p8), and c1 writes every access of every object, an unused
 one included, at the object's width: `*p;` is a load, and `*p + *p`
 is two. What an access to a volatile object is, which p8 leaves to
-the implementation, is thus each load and each store c1 writes. A
+the implementation, is thus each load and each store c1 writes. Such
+an access is a side effect (5.1.2.4p2), so the parser keeps an
+operand it would drop for having no effect where the operand reads a
+volatile object: `__builtin_expect (e, v)` of a `volatile int v`
+loads `v`. A place the parser reads through a copy and stores through
+itself is copied where the place itself is volatile, the copy's read
+being the one read the source writes, and takes the way of a place
+with a side effect where computing its address reads a volatile
+object: `*p |= x` on a `_Bool *volatile p` is not yet, and a
+`va_list` reached through a volatile pointer has its address in a
+temporary. A
 typedef through `volatile` names the type and says `volatile` of it,
 as its use does: glibc's `pthread_spinlock_t` is a `volatile int`. A
 `register volatile` variable is a

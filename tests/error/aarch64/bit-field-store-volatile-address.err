@@ -1,0 +1,2 @@
+tests/error/bit-field-store-volatile-address.c:17:14: error: not yet: store into bit-field 'f' through a place with a side effect
+status 1
