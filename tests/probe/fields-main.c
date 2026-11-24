@@ -6,7 +6,9 @@
    byte of the record; the compound assignments and the steps on the
    field alone, and beside a char the bytes written back.  Then the four order cases.
    Then the three cases through a place with a side effect, over the
-   table of values.  Prints each
+   table of values, and those of a store, a compound assignment and a
+   step in a comma, a statement expression's value and a for's third
+   clause.  Prints each
    difference and a summary; exits 0 when nothing differs, 1
    otherwise. */
 
@@ -143,6 +145,13 @@ int order_compound_same(void), ref_order_compound_same(void);
 long line_store(long), ref_line_store(long);
 long line_compound(long), ref_line_compound(long);
 long line_step(void), ref_line_step(void);
+long comma_store(long), ref_comma_store(long);
+long comma_compound(long), ref_comma_compound(long);
+long comma_step(void), ref_comma_step(void);
+long value_store(long), ref_value_store(long);
+long value_compound(long), ref_value_compound(long);
+long value_step(void), ref_value_step(void);
+long clause_store(long), ref_clause_store(long);
 
 /* the store S of record N on pattern k, by rcc and by clang, its bytes
    compared */
@@ -266,6 +275,22 @@ main(void)
         }
 
         report("line_step", 0, line_step(), ref_line_step());
+
+        for (int i = 0; i < VALUES; ++i) {
+                report("comma_store", i, comma_store(values[i]),
+                       ref_comma_store(values[i]));
+                report("comma_compound", i, comma_compound(values[i]),
+                       ref_comma_compound(values[i]));
+                report("value_store", i, value_store(values[i]),
+                       ref_value_store(values[i]));
+                report("value_compound", i, value_compound(values[i]),
+                       ref_value_compound(values[i]));
+                report("clause_store", i, clause_store(values[i]),
+                       ref_clause_store(values[i]));
+        }
+
+        report("comma_step", 0, comma_step(), ref_comma_step());
+        report("value_step", 0, value_step(), ref_value_step());
 
         printf("%ld checks, %ld differ\n", total, bad);
 

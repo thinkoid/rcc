@@ -1161,9 +1161,12 @@ store's value is used, it is the field's
 read of the unit's value the store leaves, so the right operand
 converted to the field and promoted, with no second load of the unit:
 `return p->f = v;` is the store, then `movsbl %al, %eax; sarl $3,
-%eax`. Where it is not, as a statement, the left operand of a comma or
+%eax`. Where it is not, as a statement, an operand a comma follows or
 a `for`'s third clause, the store stands alone; the parser knows it by
-the tokens, as above. A local's list stores into a field by the same
+the tokens, as above, judged on the operand's own. The last statement
+of a statement expression is its value, so a store there keeps its
+read: `({ p->f = v; })` is the field's value. A local's list stores
+into a field by the same
 tree (G20), and an object of static storage takes its constant in its
 data (chapter 4).
 

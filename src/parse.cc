@@ -193,6 +193,9 @@ struct field_access_t
 // and field_store the positions of the first token of the last store,
 // compound assignment or step of a bit-field that does not fill its
 // unit and of the token past it, which stored_effect() reads.
+// value_item is the position of the first token of the block item a
+// statement expression's own block parses, whose expression is the
+// statement expression's value when the item is the block's last.
 struct parser_t
 {
     const std::vector< token_t > &tokens;
@@ -233,6 +236,7 @@ struct parser_t
     std::vector< made_type_t > made = { };
     std::optional< field_access_t > field = { };
     std::optional< std::pair< std::size_t, std::size_t > > field_store = { };
+    std::optional< std::size_t > value_item = { };
 };
 
 // The declaration specifiers: the type, and the storage-class specifier
@@ -10391,8 +10395,22 @@ stored_effect(const parser_t &p, expr_t e, std::size_t first, std::size_t last)
     return read_operand(std::move(e));
 }
 
+// Whether the expression statement whose expression begins at first,
+// its ';' ahead, is the last item of a statement expression's own
+// block: the item value_item says, with the block's '}' after the ';'.
+// Its expression is the statement expression's value, which is read.
+bool
+is_statement_expression_value(const parser_t &p, std::size_t first)
+{
+    return p.value_item == first && peek(p).kind == tok_t::semicolon &&
+           peek(p, 1).kind == tok_t::rbrace;
+}
+
 // An expression whose value is discarded may be void; an empty one is
-// the null statement.  Attributes before an empty one's ';' stand on
+// the null statement.  Where nothing reads the value of a store into a
+// bit-field, the store stands alone, stored_effect()'s, but in the last
+// item of a statement expression, whose value is read.  Attributes
+// before an empty one's ';' stand on
 // the null statement, as GNU C's __attribute__ ((fallthrough)); does: one
 // dropped is dropped, so the statement writes nothing, and one that
 // marks is refused, by its name, as on anything else rcc would make.
@@ -10413,7 +10431,8 @@ expression_statement(parser_t &p)
     const token_t &start = peek(p);
     const std::size_t first = p.pos;
     expr_t e = expression(p);
-    e = stored_effect(p, std::move(e), first, p.pos);
+    if (!is_statement_expression_value(p, first))
+        e = stored_effect(p, std::move(e), first, p.pos);
 
     expect(p, tok_t::semicolon, "expected ';' after expression");
 
@@ -10727,18 +10746,26 @@ jump_statement(parser_t &p)
 //
 
 // The left operand is evaluated for its effect and may be void, 6.5.18p2.
+// Each operand a comma follows is such a left operand, so a store into
+// a bit-field there stands alone, stored_effect()'s, judged on the
+// operand's own tokens before it joins the comma.
 expr_t
 expression(parser_t &p)
 {
     std::size_t first = p.pos;
     expr_t e = assignment_expression(p);
+    if (peek(p).kind == tok_t::comma)
+        e = stored_effect(p, std::move(e), first, p.pos);
 
     while (peek(p).kind == tok_t::comma) {
-        e = stored_effect(p, std::move(e), first, p.pos);
         e = discarded(advance(p), std::move(e));
 
         first = p.pos;
-        e = comma(std::move(e), assignment_expression(p));
+        expr_t operand = assignment_expression(p);
+        if (peek(p).kind == tok_t::comma)
+            operand = stored_effect(p, std::move(operand), first, p.pos);
+
+        e = comma(std::move(e), std::move(operand));
     }
 
     return e;
@@ -12402,14 +12429,14 @@ expect_expression(parser_t &p, const token_t &keyword)
 // statements open.  The destructor gives them back however the parse of
 // the block ends, so a refusal that a caller catches, as
 // typedef_array_size() does, leaves no loop, no switch and no
-// statement expression open behind it.
+// statement expression open behind it.  value_item is given back too.
 class [[nodiscard]] statement_expression_depth_t
 {
 public:
 
     explicit statement_expression_depth_t(parser_t &p)
         : m_p(p), m_breaks(p.break_targets), m_continues(p.continue_targets),
-          m_switches(p.switches.size())
+          m_switches(p.switches.size()), m_value_item(p.value_item)
     {
         ++m_p.statement_expressions;
     }
@@ -12422,6 +12449,7 @@ public:
         m_p.switches.erase(m_p.switches.begin() +
                                static_cast< std::ptrdiff_t >(m_switches),
                            m_p.switches.end());
+        m_p.value_item = m_value_item;
     }
 
     statement_expression_depth_t(const statement_expression_depth_t &) = delete;
@@ -12434,6 +12462,7 @@ private:
     int m_breaks;
     int m_continues;
     std::size_t m_switches;
+    std::optional< std::size_t > m_value_item;
 };
 
 // GNU C's statement expression, a compound statement in parentheses,
@@ -12462,6 +12491,7 @@ statement_expression(parser_t &p, const token_t &open)
     bool valued = false;
     while (!next_is(p, { tok_t::rbrace, tok_t::eof })) {
         last = &peek(p);
+        p.value_item = p.pos;
         valued = block_item(p, body);
     }
 

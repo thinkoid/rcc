@@ -7,8 +7,9 @@
    and for its value, and beside a char, += for its value and a
    postfix step as a statement.  Then the order of a store and of a compound assignment
    whose right operand stores into the same unit, and a store, a
-   compound assignment and a step through a place with a side effect.
-   See fields.h. */
+   compound assignment and a step through a place with a side effect,
+   in the middle of a comma, as a statement expression's value and in
+   a for's third clause.  See fields.h. */
 
 #include "fields.h"
 
@@ -232,4 +233,88 @@ line_step(void)
         before = p++->f++;
 
         return line_state(p - line) * 64 + (before & 63);
+}
+
+/* a store, a compound assignment and a step as the middle operand of a
+   comma of three, each executed with the operands beside it; the same
+   three as the last statement of a statement expression, whose value
+   is the field's; and a store in a for's third clause between two
+   other operands */
+long
+comma_store(long v)
+{
+        long g = 0;
+
+        line_fill();
+        g = 1, line[1].f = v, g += 2;
+
+        return line_state(g);
+}
+
+long
+comma_compound(long v)
+{
+        long g = 0;
+
+        line_fill();
+        g = 1, line[1].f += v, g += 2;
+
+        return line_state(g);
+}
+
+long
+comma_step(void)
+{
+        long g = 0;
+
+        line_fill();
+        g = 1, line[1].f++, g += 2;
+
+        return line_state(g);
+}
+
+long
+value_store(long v)
+{
+        long got;
+
+        line_fill();
+        got = ({ line[1].f = v; });
+
+        return line_state(0) * 64 + (got & 63);
+}
+
+long
+value_compound(long v)
+{
+        long got;
+
+        line_fill();
+        got = ({ line[1].f += v; });
+
+        return line_state(0) * 64 + (got & 63);
+}
+
+long
+value_step(void)
+{
+        long got;
+
+        line_fill();
+        got = ({ line[1].f++; });
+
+        return line_state(0) * 64 + (got & 63);
+}
+
+long
+clause_store(long v)
+{
+        long g = 0;
+        int k;
+
+        line_fill();
+        for (k = 0; k < 3; g += 1, line[k].f = v + k, ++k)
+                g += 10;
+
+        return line_state(g * 4 + k);
 }
