@@ -4,8 +4,9 @@
    its value; per step, its value and the _Bool it stores.  Then a
    pointer converted, the values already 0 or 1, the arithmetic and the
    conditions on a _Bool, a _Bool copied, members and elements of it, a
-   global, calls of the library, and its type in a generic selection.
-   See bools.h. */
+   global, calls of the library, its type in a generic selection, and
+   its compound assignment and steps through a place with a side
+   effect.  See bools.h. */
 
 #include "bools.h"
 
@@ -193,4 +194,22 @@ selected(_Bool b)
 {
         return _Generic(b, _Bool: 1, unsigned char: 2, default: 0) +
                (int) sizeof b * 4;
+}
+
+/* a compound assignment, a prefix step and a postfix step for its
+   value, each through a place with a side effect, *p++: p is stepped
+   once each, and the _Bool beside stays */
+int
+through(int x)
+{
+        _Bool v[4] = { x, !x, x > 0, 1 };
+        _Bool *p = v;
+        int value;
+
+        *p++ |= x;
+        ++*p++;
+        value = (*p++)++;
+
+        return v[0] + 2 * v[1] + 4 * v[2] + 8 * v[3] + 16 * value +
+               32 * (int) (p - v);
 }

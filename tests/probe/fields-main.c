@@ -4,7 +4,9 @@
    compound assignments over a table of values, and compares what each
    returns and, after a store, a compound assignment or a step, every
    byte of the record; the compound assignments and the steps on the
-   field alone, and beside a char the bytes written back.  Then the four order cases.  Prints each
+   field alone, and beside a char the bytes written back.  Then the four order cases.
+   Then the three cases through a place with a side effect, over the
+   table of values.  Prints each
    difference and a summary; exits 0 when nothing differs, 1
    otherwise. */
 
@@ -138,6 +140,9 @@ int order_other(void), ref_order_other(void);
 int order_same(void), ref_order_same(void);
 int order_compound_other(void), ref_order_compound_other(void);
 int order_compound_same(void), ref_order_compound_same(void);
+long line_store(long), ref_line_store(long);
+long line_compound(long), ref_line_compound(long);
+long line_step(void), ref_line_step(void);
 
 /* the store S of record N on pattern k, by rcc and by clang, its bytes
    compared */
@@ -252,6 +257,15 @@ main(void)
                ref_order_compound_other());
         report("order_compound_same", 0, order_compound_same(),
                ref_order_compound_same());
+
+        for (int i = 0; i < VALUES; ++i) {
+                report("line_store", i, line_store(values[i]),
+                       ref_line_store(values[i]));
+                report("line_compound", i, line_compound(values[i]),
+                       ref_line_compound(values[i]));
+        }
+
+        report("line_step", 0, line_step(), ref_line_step());
 
         printf("%ld checks, %ld differ\n", total, bad);
 

@@ -86,6 +86,7 @@ BOTH(int, elements, (int))
 BOTH(int, global, (int))
 BOTH(int, calls, (int))
 BOTH(int, selected, (_Bool))
+BOTH(int, through, (int))
 
 #define CHECK_CONVERSION(T, N)                   \
         for (int k = 0; k < COUNT; ++k) {        \
@@ -142,6 +143,7 @@ check_integers(void)
                 CHECK(elements, x, 0, (x));
                 CHECK(global, x, 0, (x));
                 CHECK(calls, x, 0, (x));
+                CHECK(through, x, 0, (x));
 
                 for (int j = 0; j < COUNT; ++j) {
                         const int y = (int) values[j];

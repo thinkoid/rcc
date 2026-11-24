@@ -6,7 +6,9 @@
    field alone, each compound assignment and each step, as a statement
    and for its value, and beside a char, += for its value and a
    postfix step as a statement.  Then the order of a store and of a compound assignment
-   whose right operand stores into the same unit.  See fields.h. */
+   whose right operand stores into the same unit, and a store, a
+   compound assignment and a step through a place with a side effect.
+   See fields.h. */
 
 #include "fields.h"
 
@@ -161,4 +163,73 @@ order_compound_same(void)
         order.f = 0;
         order.f += order_same_field();
         return order.a * 100 + order.f;
+}
+
+/* a store, a compound assignment and a step through a place with a
+   side effect, on the field f of an element of an array of struct
+   order: the side effect happens once, the element's other field
+   stays, and so do the elements beside it */
+struct order line[3];
+
+/* the fields of line, after the count k, in one value */
+long
+line_state(long k)
+{
+        long s = k;
+
+        for (int i = 0; i < 3; ++i)
+                s = (s * 8 + line[i].a) * 32 + (line[i].f & 31);
+
+        return s;
+}
+
+void
+line_fill(void)
+{
+        for (int i = 0; i < 3; ++i) {
+                line[i].a = i + 2;
+                line[i].f = -3 * i - 1;
+        }
+}
+
+long
+line_store(long v)
+{
+        int i = 1;
+
+        line_fill();
+        line[i++].f = v;
+
+        return line_state(i);
+}
+
+int line_calls;
+
+struct order *
+line_middle(void)
+{
+        ++line_calls;
+        return &line[1];
+}
+
+long
+line_compound(long v)
+{
+        line_calls = 0;
+        line_fill();
+        line_middle()->f += v;
+
+        return line_state(line_calls);
+}
+
+long
+line_step(void)
+{
+        struct order *p = &line[1];
+        long before;
+
+        line_fill();
+        before = p++->f++;
+
+        return line_state(p - line) * 64 + (before & 63);
 }

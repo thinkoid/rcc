@@ -862,9 +862,15 @@ loads `v`. A place the parser reads through a copy and stores through
 itself is copied where the place itself is volatile, the copy's read
 being the one read the source writes, and takes the way of a place
 with a side effect where computing its address reads a volatile
-object: `*p |= x` on a `_Bool *volatile p` is not yet, and a
-`va_list` reached through a volatile pointer has its address in a
-temporary. A
+object. Such places are a bit-field's store, compound assignment and
+step, a `_Bool`'s compound assignment and steps, and a `va_list`
+operand. One without a side effect is read through a copy of its
+expression. One with a side effect, `a[i++].f = v` or `*p++ |= x`, or
+whose address reads a volatile object, `*p |= x` on a `_Bool
+*volatile p`, has its address evaluated once, first (G13), into a
+temporary that no declaration names, of a pointer to the place's type
+qualified as the place is, and the tree names the temporary's
+pointee: `(t = &a[i++].u, *t = ((v << s) & M) | (*t & ~M))`. A
 typedef through `volatile` names the type and says `volatile` of it,
 as its use does: glibc's `pthread_spinlock_t` is a `volatile int`. A
 `register volatile` variable is a
@@ -929,8 +935,8 @@ and `--b` are `b += 1` and `b -= 1` (6.5.4.1p2, p3), and `b++` and
 `b--` yield the value before the store (6.5.3.5p2), which a temporary
 holds, `(t = b, b = (_Bool) (t + 1), t)`. The left operand is
 evaluated once (6.5.17.3p4), so the parser reads it through a copy,
-which one without a side effect has; one with a side effect,
-`*p++ |= x`, is not yet.
+or, where it has a side effect, `*p++ |= x`, through a temporary of
+its address (above).
 
 An enumeration is the integer type compatible with it, and each of
 its constants is its number, so an object, a parameter, a result, a
@@ -1148,7 +1154,8 @@ the left of the `|`, so that it is computed before the unit is loaded
 below the field, and the unit's store drops those above it. The
 place stands twice, the second a copy of its expression, so its
 pointer is loaded twice, and a place with a side effect, `a[i++].f =
-v`, is not yet. Where the store's value is used, it is the field's
+v`, is reached through a temporary of its address (above). Where the
+store's value is used, it is the field's
 read of the unit's value the store leaves, so the right operand
 converted to the field and promoted, with no second load of the unit:
 `return p->f = v;` is the store, then `movsbl %al, %eax; sarl $3,
@@ -1174,7 +1181,8 @@ Where the value is used, a prefix step's and a compound assignment's
 is the field's read of the unit stored, as a store's is, and a postfix
 step's is F (t); where it is not, the update stands alone, found by
 the tokens as a store is. The place stands twice, as a store's does,
-and a place with a side effect, `a[i++].f += v`, is not yet.
+and a place with a side effect, `a[i++].f += v`, is reached through a
+temporary of its address, as a store's is.
 
 The macros of `stdarg.h` (7.16.1) are `clang`'s builtins in the
 dialect rcc preprocesses in, and the parser builds each of the tree's
@@ -2057,9 +2065,7 @@ function whose parameter list is
 attribute `packed` or `aligned`, a packing of
 `#pragma pack`, no member, or a member of a type rcc does not use yet
 but a real floating one (chapter 3), an initializer of a flexible
-array member, an access of a floating member, a store of a value
-into a bit-field that does not fill its unit, its compound assignment
-and its step, through a place with a side effect (chapter 5), C23's
+array member, an access of a floating member, C23's
 compatibility of two records of one tag, floating point and
 `__int128` (each
 type is declared; a pointer to one is an ordinary pointer, and a use

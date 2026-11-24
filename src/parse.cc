@@ -2696,6 +2696,20 @@ comma(expr_t lhs, expr_t rhs)
 std::optional< expr_t > place_copy(const expr_t &);
 const symbol_t &temporary(parser_t &, std::string_view, const type_t &);
 
+// A place a tree names twice, read through one name and stored through
+// the other: the place and a copy of it, and, where the place has no
+// copy, the assignment of its address to a temporary, which the tree
+// evaluates first, place_pair()'s.
+struct place_pair_t
+{
+    std::optional< expr_t > set;
+    expr_t place;
+    expr_t copy;
+};
+
+place_pair_t place_pair(parser_t &, const token_t &, expr_t);
+expr_t after_held(const token_t &, std::optional< expr_t > &, expr_t);
+
 // The operation of E1 op= E2 on its operands, as op's own production
 // builds it: a shift's, whose operands are promoted apart, 6.5.8p3, or
 // the usual arithmetic conversions' of any other.
@@ -2707,22 +2721,6 @@ compound_operation(const token_t &op, expr_t lhs, expr_t rhs)
         return shift(op, std::move(lhs), std::move(rhs));
 
     return arithmetic(op, std::move(lhs), std::move(rhs));
-}
-
-// The copy that reads a _Bool lvalue that a rewrite of op also stores
-// into: the lvalue is evaluated once, 6.5.17.3p4, so one with a side
-// effect, *p++ in *p++ |= x, or one whose address reads a volatile
-// object, *p on a _Bool *volatile p, has no second copy, place_copy()'s,
-// and is not yet.
-expr_t
-bool_read(const token_t &op, const expr_t &lvalue)
-{
-    std::optional< expr_t > copy = place_copy(lvalue);
-    if (!copy)
-        not_yet(op, quoted(op.text) +
-                        " on a '_Bool' whose lvalue has a side effect");
-
-    return std::move(*copy);
 }
 
 // The store of value into a _Bool lvalue, converted_to_bool()'s 0 or 1.
@@ -2738,13 +2736,18 @@ bool_store(expr_t lvalue, expr_t value)
 // E1 op= E2 on a _Bool E1, built as C defines it, E1 = (_Bool) (E1 op
 // (E2)), 6.5.17.3p4, so that the byte stored is 0 or 1 (G21): op is
 // its production's on E1 promoted, an identity of op among its rules,
-// as for any E1 op E2, and the conversion converted_to_bool()'s.
+// as for any E1 op E2, and the conversion converted_to_bool()'s.  E1 is
+// evaluated once, p4, so it is read through its copy, or, where it has
+// none, through the temporary its address is held in, place_pair()'s:
+// *p++ |= x is (t = p++, *t = (_Bool) (*t | x)).
 expr_t
-bool_compound(const token_t &op, expr_t lhs, expr_t rhs)
+bool_compound(parser_t &p, const token_t &op, expr_t lhs, expr_t rhs)
 {
-    expr_t value = compound_operation(op, bool_read(op, lhs), std::move(rhs));
+    place_pair_t pair = place_pair(p, op, std::move(lhs));
+    expr_t value = compound_operation(op, std::move(pair.copy), std::move(rhs));
 
-    return bool_store(std::move(lhs), std::move(value));
+    return after_held(op, pair.set,
+                      bool_store(std::move(pair.place), std::move(value)));
 }
 
 // The compound assignment a step on a _Bool is, ++E E += 1 and --E
@@ -2763,22 +2766,27 @@ step_assignment(const token_t &op)
 // E++ and E-- on a _Bool E: the value is E's before the store,
 // 6.5.3.5p2, held in a temporary, (t = E, E = (_Bool) (t +- 1), t), so
 // that E is read once, and stored as the prefix step would store it.
+// E is read through its copy, or, where it has none, through the
+// temporary its address is held in, assigned first, place_pair()'s.
 expr_t
 bool_postfix_step(parser_t &p, const token_t &op, expr_t arg)
 {
-    expr_t read = bool_read(op, arg);
+    const type_t type = arg.type;
+    place_pair_t pair = place_pair(p, op, std::move(arg));
 
-    const symbol_t &before = temporary(p, "__bool_before", arg.type);
+    const symbol_t &before = temporary(p, "__bool_before", type);
     const auto held = [&before] {
         return expr_t { before.type, name_t { &before } };
     };
-    expr_t hold { before.type, assign_t { std::nullopt, before.type,
-                                          box(held()), box(std::move(read)) } };
+    expr_t hold { before.type,
+                  assign_t { std::nullopt, before.type, box(held()),
+                             box(std::move(pair.copy)) } };
+    hold = after_held(op, pair.set, std::move(hold));
 
     expr_t one { int_type(), literal_t { 1 } };
-    expr_t store =
-        bool_store(std::move(arg), compound_operation(step_assignment(op),
-                                                      held(), std::move(one)));
+    expr_t store = bool_store(
+        std::move(pair.place),
+        compound_operation(step_assignment(op), held(), std::move(one)));
 
     return comma(
         discarded(op, comma(discarded(op, std::move(hold)), std::move(store))),
@@ -2813,7 +2821,7 @@ assignment(parser_t &p, const token_t &op, expr_t lhs, expr_t rhs)
     require_integer(op, rhs);
 
     if (is_bool(t))
-        return bool_compound(op, std::move(lhs), std::move(rhs));
+        return bool_compound(p, op, std::move(lhs), std::move(rhs));
 
     const binary_op_t compound = binary_operator(op.kind);
     const bool additive =
@@ -2999,13 +3007,13 @@ cast(const token_t &open, const type_t &t, expr_t arg)
 // a _Bool each is the compound assignment it is, p2, p3,
 // bool_compound()'s.
 expr_t
-prefix_step(const token_t &op, expr_t arg)
+prefix_step(parser_t &p, const token_t &op, expr_t arg)
 {
     require_steppable(op, arg);
 
     if (is_bool(arg.type)) {
         expr_t one { int_type(), literal_t { 1 } };
-        return bool_compound(step_assignment(op), std::move(arg),
+        return bool_compound(p, step_assignment(op), std::move(arg),
                              std::move(one));
     }
 
@@ -5487,7 +5495,6 @@ read_operand(expr_t read)
 
 token_t operator_at(const token_t &, tok_t);
 std::optional< expr_t > pure_copy(const expr_t &);
-std::optional< expr_t > place_copy(const expr_t &);
 bool reads_volatile(const expr_t &);
 
 // The type of R bits that a store into the bit-field m computes in, 32
@@ -5563,9 +5570,10 @@ merged_unit(expr_t bits, expr_t unit, const member_t &m, const type_t &t)
 // that it is computed before the unit is read, 6.5.1p3 (G13), with no
 // & M where the field reaches its unit's top, placed_bits()'s; a
 // constant's placed bits are one constant, and no shift is by 0.  The
-// place stands twice, the second a copy of its expression,
-// place_copy()'s, so one with a side effect is not yet.  The store is
-// of the unit's type.
+// place stands twice, the second a copy of its expression, or, where it
+// has none, both the pointee of the temporary its address is held in,
+// assigned first, place_pair()'s: f[i++].v = x is (t = &f[i++].u, *t =
+// ((x << s) & M) | (*t & ~M)).  The store is of the unit's type.
 expr_t
 field_store(
     parser_t &p, const token_t &op, expr_t place, const member_t &m, expr_t rhs)
@@ -5601,16 +5609,14 @@ field_store(
     else
         value = placed_bits(std::move(value), m);
 
-    std::optional< expr_t > copy = place_copy(place);
-    if (!copy)
-        not_yet(op, "store into bit-field " + quoted(m.name) +
-                        " through a place with a side effect");
-
     const type_t t = place.type;
-    expr_t unit = merged_unit(std::move(value), std::move(*copy), m, t);
+    place_pair_t pair = place_pair(p, op, std::move(place));
+    expr_t unit = merged_unit(std::move(value), std::move(pair.copy), m, t);
 
-    return expr_t { t, assign_t { std::nullopt, t, box(std::move(place)),
-                                  box(std::move(unit)) } };
+    return after_held(
+        op, pair.set,
+        expr_t { t, assign_t { std::nullopt, t, box(std::move(pair.place)),
+                               box(std::move(unit)) } });
 }
 
 // The value of a compound assignment op of rhs, or of a step, to the
@@ -5639,7 +5645,7 @@ field_operation(const token_t &op,
 }
 
 // A compound assignment op of rhs, or a step, to the bit-field m whose
-// access unit's lvalue is place, at the token op, words naming it, the
+// access unit's lvalue is place, at the token op, the
 // parser's tree of one temporary (shape.md chapter 5): (t = u, u =
 // (((F (t) op v) << s) & M) | (t & ~M)), t the temporary of the unit's
 // type, which the caller made, F (t) the field's read of it, v the
@@ -5652,22 +5658,19 @@ field_operation(const token_t &op,
 // either signedness, 6.7.3.2p12 (G2), by the mask alone, or, where
 // the field reaches its unit's top, by the shift and the unit's store,
 // placed_bits()'s.  The place stands twice, the second a copy of its
-// expression, place_copy()'s, so one with a side effect is not yet.
-// The tree is the comma whose right operand is the store, of the unit's
-// type.
+// expression, or, where it has none, both the pointee of the temporary
+// its address is held in, place_pair()'s, assigned before anything
+// else, G13.  The tree is the comma whose right operand is the store,
+// of the unit's type.
 expr_t
 field_update(parser_t &p,
              const token_t &op,
-             std::string_view words,
              expr_t place,
              const member_t &m,
              expr_t rhs,
              const symbol_t &t)
 {
-    std::optional< expr_t > copy = place_copy(place);
-    if (!copy)
-        not_yet(op, std::string(words) + " bit-field " + quoted(m.name) +
-                        " through a place with a side effect");
+    place_pair_t pair = place_pair(p, op, std::move(place));
 
     const auto held = [](const symbol_t &s) {
         return expr_t { s.type, name_t { &s } };
@@ -5677,7 +5680,7 @@ field_update(parser_t &p,
                                            box(std::move(value)) } };
     };
 
-    expr_t first = set(t, std::move(*copy));
+    expr_t first = set(t, std::move(pair.copy));
     if (!pure_copy(rhs) || reads_volatile(rhs)) {
         const symbol_t &operand = temporary(p, "__field_operand", rhs.type);
         first = comma(discarded(op, set(operand, std::move(rhs))),
@@ -5685,12 +5688,14 @@ field_update(parser_t &p,
         rhs = held(operand);
     }
 
+    first = after_held(op, pair.set, std::move(first));
+
     expr_t value = field_operation(op, t, m, std::move(rhs));
     expr_t bits = placed_bits(convert_to(std::move(value), wide_type(m)), m);
 
-    const type_t u = place.type;
+    const type_t u = pair.place.type;
     expr_t unit = merged_unit(std::move(bits), held(t), m, u);
-    expr_t store { u, assign_t { std::nullopt, u, box(std::move(place)),
+    expr_t store { u, assign_t { std::nullopt, u, box(std::move(pair.place)),
                                  box(std::move(unit)) } };
 
     return comma(discarded(op, std::move(first)), std::move(store));
@@ -5710,8 +5715,7 @@ field_compound(
     require_integer(op, rhs);
 
     const symbol_t &t = temporary(p, "__field_unit", place.type);
-    expr_t update = field_update(p, op, "compound assignment of",
-                                 std::move(place), m, std::move(rhs), t);
+    expr_t update = field_update(p, op, std::move(place), m, std::move(rhs), t);
 
     return field_read(std::move(update), m);
 }
@@ -5731,8 +5735,8 @@ field_step(parser_t &p,
 {
     const symbol_t &t = temporary(p, "__field_unit", place.type);
     expr_t one { int_type(), literal_t { 1 } };
-    expr_t update = field_update(p, step_assignment(op), "step of",
-                                 std::move(place), m, std::move(one), t);
+    expr_t update = field_update(p, step_assignment(op), std::move(place), m,
+                                 std::move(one), t);
     if (!postfix)
         return field_read(std::move(update), m);
 
@@ -6886,7 +6890,7 @@ inline_head(const parser_t &p, const symbol_t &sym, const declarator_t &d)
     return std::nullopt;
 }
 
-// The temporaries the body's builtins made, list_temporary()'s, each
+// The temporaries the body's builtins made, temporary()'s, each
 // declared at the head of the body without an initializer, so that
 // each has a slot for the activation, G12, as a local the body declared
 // there would; the body is parsed with them, and file scope without.
@@ -11074,7 +11078,7 @@ unary_expression(parser_t &p)
         if (const field_access_t *f = stored_field(p, first, p.pos))
             return stepped_field(p, op, std::move(arg), f->member, at, false);
 
-        expr_t e = prefix_step(op, std::move(arg));
+        expr_t e = prefix_step(p, op, std::move(arg));
         warn_void_arithmetic(p, op, e.type);
 
         return e;
@@ -11633,13 +11637,71 @@ temporary(parser_t &p, std::string_view name, const type_t &type)
     return t;
 }
 
-// The temporary of one builtin's list with a side effect, a pointer to
-// the list's record.
-const symbol_t &
-list_temporary(parser_t &p)
+// An address that a tree reaches its object through more than once,
+// where the expression that computes it may not be evaluated again: a
+// temporary of the address's type, named name, and the assignment of
+// the address to it, which the tree evaluates first, after_held()'s, so
+// that the expression is evaluated once, where it stands, G13.
+struct held_address_t
 {
-    return temporary(p, "__va_list_address",
-                     make_pointer(make_record(*p.va_record)));
+    expr_t set;
+    const symbol_t &temporary;
+};
+
+held_address_t
+held_address(parser_t &p,
+             const token_t &at,
+             std::string_view name,
+             expr_t address)
+{
+    const symbol_t &t = temporary(p, name, address.type);
+    expr_t set =
+        assignment(p, operator_at(at, tok_t::assign),
+                   expr_t { t.type, name_t { &t } }, std::move(address));
+
+    return { std::move(set), t };
+}
+
+// A tree e after the assignment that holds an address in its temporary,
+// held_address()'s, if there is one: (t = address, e).
+expr_t
+after_held(const token_t &at, std::optional< expr_t > &set, expr_t e)
+{
+    if (!set)
+        return e;
+
+    return comma(discarded(at, std::move(*set)), std::move(e));
+}
+
+// A place a tree names twice, place_pair_t's: one with a copy,
+// place_copy()'s, is itself and its copy.  One without, a place with a
+// side effect or whose address reads a volatile object, has its address
+// held in a temporary, held_address()'s, the pointer to the place's type
+// that the place's qualifiers qualify, and both names are its pointee:
+// the side effect happens once, and a volatile place is still read once
+// and stored once.  &*E is E.
+place_pair_t
+place_pair(parser_t &p, const token_t &op, expr_t place)
+{
+    if (std::optional< expr_t > copy = place_copy(place))
+        return { std::nullopt, std::move(place), std::move(*copy) };
+
+    const type_t t = place.type;
+    expr_t address =
+        is< unary_t >(place) && as< unary_t >(place).op == unary_op_t::deref ?
+            std::move(*std::get< unary_t >(place.v).arg) :
+            address_of(op, std::move(place));
+
+    held_address_t held =
+        held_address(p, op, "__place_address", std::move(address));
+    const symbol_t &pointer = held.temporary;
+    const auto pointee = [&pointer, &t] {
+        expr_t name { pointer.type, name_t { &pointer } };
+        return expr_t { t,
+                        unary_t { unary_op_t::deref, box(std::move(name)) } };
+    };
+
+    return { std::move(held.set), pointee(), pointee() };
 }
 
 // The list ahead, the first operand of the builtin of the macro named.
@@ -11662,28 +11724,14 @@ list_operand(parser_t &p, std::string_view macro)
         return { at, std::move(words), std::move(e) };
     }
 
-    expr_t address = list_pointer(p, at, words, std::move(e));
-    const symbol_t &t = list_temporary(p);
-    expr_t set =
-        assignment(p, operator_at(at, tok_t::assign),
-                   expr_t { t.type, name_t { &t } }, std::move(address));
+    held_address_t held = held_address(
+        p, at, "__va_list_address", list_pointer(p, at, words, std::move(e)));
 
-    expr_t list { t.type, name_t { &t } };
+    expr_t list { held.temporary.type, name_t { &held.temporary } };
     if (p.target.va_list == va_list_t::aapcs64)
         list = indirection(at, std::move(list));
 
-    return { at, std::move(words), std::move(list), std::move(set) };
-}
-
-// A builtin's tree e, after the assignment of its list's address to
-// the list's temporary, if the list has one: (temporary = &list, e).
-expr_t
-after_list(const token_t &at, list_operand_t &l, expr_t e)
-{
-    if (!l.set)
-        return e;
-
-    return comma(discarded(at, std::move(*l.set)), std::move(e));
+    return { at, std::move(words), std::move(list), std::move(held.set) };
 }
 
 // The member of index k of a list operand's record, an lvalue read
@@ -11804,7 +11852,7 @@ require_argument_type(const token_t &at, const type_t &t)
 // __builtin_va_arg ( list , type-name ), va_arg, 7.16.1.1: the value of
 // the next argument, read at the type from the slot next_argument()
 // finds, (T) *(T *) slot, the cast making it no lvalue; for a list with
-// a side effect, after_list()'s.
+// a side effect, after_held()'s.
 expr_t
 va_arg_expression(parser_t &p, const token_t &keyword)
 {
@@ -11817,7 +11865,7 @@ va_arg_expression(parser_t &p, const token_t &keyword)
     require_argument_type(at, t);
     expect(p, tok_t::rparen, "expected ')' after type name");
 
-    expr_t next = after_list(keyword, l, next_argument(p, l));
+    expr_t next = after_held(keyword, l.set, next_argument(p, l));
     expr_t slot = cast(keyword, make_pointer(t), std::move(next));
 
     return cast(keyword, t, indirection(keyword, std::move(slot)));
@@ -11901,7 +11949,7 @@ start_values(parser_t &p, const token_t &at)
 
 // __builtin_va_start ( list , parameter ), va_start, 7.16.1.4: in a
 // variadic definition, each member of the list set to start_values()'s,
-// in order, after_list()'s for a list with a side effect, the whole
+// in order, after_held()'s for a list with a side effect, the whole
 // discarded, p6.  Only the list is evaluated, p4:
 // the second operand, the last named parameter as the dialect rcc
 // preprocesses in writes it, is neither evaluated nor checked.
@@ -11927,7 +11975,7 @@ va_start_expression(parser_t &p, const token_t &keyword)
             discarded(keyword, std::move(e)),
             assignment(p, assign, list_member(p, l, k), std::move(values[k])));
 
-    return cast(keyword, make_void(), after_list(keyword, l, std::move(e)));
+    return cast(keyword, make_void(), after_held(keyword, l.set, std::move(e)));
 }
 
 // __builtin_va_end ( list ), va_end, 7.16.1.3: nothing on either target

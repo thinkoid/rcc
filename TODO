@@ -452,7 +452,7 @@ another machine when the program includes one; or take a sysroot.
 Check: the documents and the driver agree on what =-target= does to
 =#include <...>=.
 
-** TODO A store into a bit-field loads its pointer twice, and is not yet through a place with a side effect
+** TODO A store into a bit-field loads its pointer twice
 
 ~p->f = v~ on a field that does not fill its access unit is the
 parser's tree ~u = ((v << s) & M) | (u & ~M)~, whose place stands
@@ -465,23 +465,29 @@ x0, [x29, #16]; ldr w1, [x29, #24]; lsl w1, w1, #3; and w1, w1,
 #0xf8; ldr x2, [x29, #16]; ldrsb w2, [x2]; and w2, w2, #0xffffff07;
 orr w1, w1, w2; strb w1, [x0]=: the second =movq -8(%rbp)= and =ldr
 x2, [x29, #16]= are a load the source does not write. A place with a
-side effect has no copy, so ~f[i++].level = v~ is "not yet: store
-into bit-field 'level' through a place with a side effect"; a store
-of 0 or of all ones is one compound assignment, writes its place
-once and compiles. A compound assignment's and a step's tree writes
-its place twice as well, and the operator below does not cover them.
+side effect, ~f[i++].level = v~, or whose address reads a ~volatile~
+object has no copy: its address is held in a temporary, a store and
+two loads the source does not write. A store of 0 or of all ones is
+one compound assignment and writes its place once. A compound
+assignment's and a step's tree writes its place twice as well, and
+the operator below does not cover them. The Seventh Edition compiler
+writes the store in its code generator, the place computed once and
+held in a register: ~get()->f = v~ is =jsr pc,_get=, the value
+placed in =r1=, then =bic $370,(r0); bis r1,(r0)=.
 
 Fix: one insert operator in the generators, of the place, the
 field's bit, width and unit, and the value: it computes the place
 once, evaluates the right operand, then loads the unit, clears the
 field's bits, sets the value's and stores the unit; on aarch64 the
-machine's insert is =bfi=. The parser writes it for ~=~ in place of
-the copied tree.
+machine's insert is =bfi=, and the store after the two operands'
+loads is =ldrb; bfi; strb=. The parser writes it for ~=~ in place of
+the copied tree, for every place, so the temporary is left to a
+compound assignment and a step.
 
 Check: =tests/cost/bit-field-write.c='s ~store~, ~five~ and
 ~store_bool~ pinned with one load of the pointer each, on both
-targets; =tests/error/bit-field-store-side-effect.c= compiles; the
-=fields= probe, 0 differ.
+targets; =tests/cost/bit-field-store-side-effect.c= with no
+temporary; the =fields= probe, 0 differ.
 
 ** TODO A bit-field store's value dropped under a comma or a cast to =void= is still computed
 

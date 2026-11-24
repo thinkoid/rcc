@@ -1,2 +1,0 @@
-tests/error/bit-field-compound-side-effect.c:15:22: error: not yet: compound assignment of bit-field 'level' through a place with a side effect
-status 1
