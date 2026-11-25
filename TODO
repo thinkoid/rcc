@@ -251,6 +251,37 @@ Check: a cost program of ~while (1)~, ~if (0)~, ~if (1)~, a ~do~
 with ~while (0)~, ~1 ? a : b~ and ~1 && x~, pinned on both targets
 with no load and no test of the constant, and no function longer.
 
+** TODO aarch64: a division in a statement expression's block spills the values held beside it
+
+=moves_beside()=, which both generators share, takes a division, a
+remainder, a pointer difference and a shift by a variable count as
+moving a held value, by =pins_on_either()=, which asks x86-64's pins.
+On aarch64 =sdiv=, =msub= and the shifts pin no register, and the
+rule spills all the same: ~return a + ({ int t = b / c; t; });~ is
+=ldr w0, [x29, #16]; str x0, [x29, #32]= before the block and =ldr
+x1, [x29, #32]; add w0, w1, w0= after it, where the same function
+with ~b + c~ in the block keeps =a= in =w0= and ends =add w0, w0,
+w1=: two instructions more.
+
+Fix: =moves_beside()= takes the target's pins, none on aarch64.
+
+Check: a cost program of the block with ~/~, ~%~ and a shift by a
+variable count on aarch64, each the listing of its ~+~ twin with the
+operator's instruction for the =add=; no x86-64 listing changes.
+
+** TODO A comment says neither generator writes a stack allocation
+
+The comment over =moves_beside()= in =src/c1-common.cc= names "a
+stack allocation, a variable length array's storage, which moves the
+stack pointer, and which neither generator writes yet". Both
+generators write it, and a variable length array in a statement
+expression's block compiles on both targets.
+
+Fix: the comment says why the allocation is taken as moving a held
+value.
+
+Check: the comment agrees with what both generators write.
+
 * Guarantees
 
 The promises in =docs/guarantees.md=. The entry number is the
