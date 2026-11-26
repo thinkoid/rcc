@@ -23,6 +23,13 @@ expr_t make_local(int slot);
 // any other expression is a value already, and is returned as it is.
 expr_t rvalue(expr_t e);
 
+// Whether an expression is a place an assignment stores into, which
+// make_assign() takes, 6.5.17.1p2.
+bool is_assignable(const expr_t &e);
+expr_t make_assign(expr_t place, expr_t value);
+
+stmt_t make_expr_stmt(expr_t e);
+stmt_t make_null();
 stmt_t make_decl(int slot);
 stmt_t make_init(int slot, expr_t value);
 stmt_t make_return(expr_t value);

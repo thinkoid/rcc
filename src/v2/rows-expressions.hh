@@ -4,8 +4,9 @@
 // over the target's state, which name no register and write no text of
 // their own.  into(), a value written in a register the caller owns, is
 // the entry point with no primary (docs/typed-tree.md 3.4); value() is
-// derived from it, a register taken and into().  build.cc includes this
-// header beside the targets' rows.
+// derived from it, a register taken and into(), and so is effect()'s
+// primary, a value dropped.  build.cc includes this header beside the
+// targets' rows.
 
 #pragma once
 
@@ -49,6 +50,36 @@ initialize(S &s, slot_t where, const V &e)
     const value_t v = value(s, e);
     store(s, reg_of(s, v), where);
     release(s, v);
+}
+
+// An expression for its effect, 6.8.4p2, its value dropped: the value
+// in a register taken for it, which is released at once.
+template< typename S, typename T >
+void
+effect(S &s, const T &t)
+{
+    release(s, value(s, t));
+}
+
+// An assignment for its effect is the store of an initializer, so
+// x = 7; writes what int x = 7; writes, and each target's niche of
+// initialize() serves both.
+template< typename S, typename V >
+void
+effect(S &s, const assign_t< V > &a)
+{
+    initialize(s, a.where, a.value);
+}
+
+// An assignment as a value: the value into r, then stored from r, which
+// holds the place's value after the store, 6.5.17.1p3.  So a constant
+// goes through r here, on x86-64 too, and 0 is no store of wzr.
+template< typename S, typename V, typename R >
+void
+into(S &s, const assign_t< V > &a, R r)
+{
+    into(s, a.value, r);
+    store(s, r, a.where);
 }
 
 } // namespace rcc

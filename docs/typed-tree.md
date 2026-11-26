@@ -7,7 +7,7 @@ states the design: the idea, its principles, its idioms and its
 architecture. It leaves the details to the code.
 
 Of the design the tree has a thin line through every joint: functions
-whose locals are `int`, declared, initialized and returned, on both
+whose locals are `int`, declared, assigned and returned, on both
 targets. Each mechanism
 below was compiled and run in a small model first; chapter 5 says
 what the models showed and chapter 6 what nothing has shown. A
@@ -97,8 +97,11 @@ resolution in place of its `match()`. It needs no second language.
    kept by hand is a second copy of the rows, and the two drift.
 8. **A rule of C is overload resolution.** A builder constrained by a
    category exists only for what C permits: an assignment for a
-   place, and none for a `const` one. The unconstrained overload is
-   the diagnostic: "expression is not assignable".
+   place, and none for a `const` one. Where the builder does not
+   exist the parser says the diagnostic, "expression is not
+   assignable". rcc says it before it reads the right operand, so the
+   parser asks first, and the question is the builder's existence, a
+   concept: no list of the types that are places is kept.
 9. **No row reads the C type.** *Working.* The builder moves what a
    row needs into the node: a stride, a view, an operator's sign. The
    C type is the parser's, and it picks the next builder.
@@ -367,6 +370,9 @@ technique.
   stores a constant with no register held. The value's class is
   asked once, in its model: a constant, the constant 0, or anything
   else, erased.
+- An assignment whose value is dropped is that same store, so the
+  niches serve both. One whose value is used is the value in the
+  destination, then the store from it.
 
 ### 4.6 Contexts and state
 

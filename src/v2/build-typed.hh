@@ -4,9 +4,10 @@
 // node types that a builder of build.hh reaches through a model, where
 // a part's type is complete.  The overload chosen makes the node, so a
 // rule of C and a shape of the zoo are decided here: which node a
-// place's value is, in which class a value is kept.  A model finds a
-// typed builder as it finds a row, by overload where it is
-// instantiated, so build.cc includes this header beside the rows.
+// place's value is, what an assignment stores into, in which class a
+// value is kept.  A model finds a typed builder as it finds a row, by
+// overload where it is instantiated, so build.cc includes this header
+// beside the rows.
 
 #pragma once
 
@@ -39,6 +40,16 @@ stmt_t
 make_init(slot_t where, const V &value)
 {
     return stmt_t(init_t< V > { where, value });
+}
+
+// An assignment's builder exists for a place alone, a local's slot, and
+// so defines what is assignable (principle 8); its value is in its
+// class, as an initializer's.
+template< typename V >
+expr_t
+make_assign(const slot_t &where, const V &value)
+{
+    return expr_t(assign_t< V > { where, value });
 }
 
 } // namespace rcc

@@ -1,9 +1,10 @@
 // -*- mode: c++; -*-
 
 // 6.8: the statements, of which rcc-v2 takes the compound statement,
-// the return statement with an expression, and the block items of a
-// block, a declaration among them.  Every other statement is refused at
-// its first token by its name, as is a label among the block items.
+// the expression and null statements, the return statement with an
+// expression, and the block items of a block, a declaration among
+// them.  Every other statement is refused at its first token by its
+// name, as is a label among the block items.
 
 #include "parse-common.hh"
 
@@ -63,6 +64,22 @@ jump_statement(parser_t &p)
     }
 }
 
+// An expression statement, its expression evaluated for its effect and
+// its value dropped, 6.8.4p2, or the null statement, 6.8.4p3.  The
+// expression is converted as any operand whose value is read,
+// 6.3.2.1p2, so x; is the load of x, as in rcc.
+stmt_t
+expression_statement(parser_t &p)
+{
+    if (accept(p, tok_t::semicolon))
+        return make_null();
+
+    operand_t e = expression(p);
+    expect(p, tok_t::semicolon, "expected ';' after expression");
+
+    return make_expr_stmt(rvalue(std::move(e.node)));
+}
+
 // A compound statement, 6.8.3: a block, which opens a scope of its own
 // for its declarations, 6.2.1p4, closed at its end.  Its '{' is the
 // token that made it one.
@@ -100,7 +117,7 @@ statement(parser_t &p)
     case tok_t::kw_break:
     case tok_t::kw_continue:
     case tok_t::kw_goto: return jump_statement(p);
-    default: not_yet(t, "expression statement");
+    default: return expression_statement(p);
     }
 }
 

@@ -45,6 +45,29 @@ struct load_t
     slot_t where;
 };
 
+// x = e, 6.5.17.2: the value stored in the place, whose value after the
+// store is the expression's, 6.5.17.1p3.  The value's type is a
+// literal_t's or a zero_t's where a target has a niche for it, else
+// erased.
+template< typename V = expr_t >
+struct assign_t
+{
+    slot_t where;
+    V value;
+};
+
+// e;, 6.8.4p2: the expression evaluated for its effect, its value
+// dropped.
+struct expr_stmt_t
+{
+    expr_t e;
+};
+
+// ;, the null statement, 6.8.4p3, which writes nothing.
+struct null_t
+{
+};
+
 // return E;, 6.8.7.5: the value in the convention's result register,
 // then the jump to the function's one epilogue.
 struct return_t

@@ -35,6 +35,18 @@ into(arm64::state_t &s, const expr_t &e, arm64::reg_t r)
     e.self->into(s, r);
 }
 
+void
+effect(amd64::state_t &s, const expr_t &e)
+{
+    e.self->effect(s);
+}
+
+void
+effect(arm64::state_t &s, const expr_t &e)
+{
+    e.self->effect(s);
+}
+
 // A statement holds no value past its end, c1-statements.hh's check.
 void
 generate(amd64::state_t &s, const stmt_t &statement)
@@ -75,13 +87,39 @@ rvalue(expr_t e)
     return e.self->rvalue(e);
 }
 
+bool
+is_assignable(const expr_t &e)
+{
+    return e.self->is_assignable();
+}
+
+// Two hops, 3.3: through the value's model, which knows the value's
+// class, then through the place's, which knows the place's type.
+expr_t
+make_assign(expr_t place, expr_t value)
+{
+    return value.self->assigned_to(place, value);
+}
+
+stmt_t
+make_expr_stmt(expr_t e)
+{
+    return stmt_t(expr_stmt_t { std::move(e) });
+}
+
+stmt_t
+make_null()
+{
+    return stmt_t(null_t { });
+}
+
 stmt_t
 make_decl(int slot)
 {
     return stmt_t(decl_t { slot_t { slot } });
 }
 
-// One hop through the value's model, which knows the value's type
+// One hop through the value's model, which knows the value's class
 // (3.3).
 stmt_t
 make_init(int slot, expr_t value)

@@ -8,9 +8,12 @@
 
 #include "parse-common.hh"
 
+#include "build.hh"
+
 #include <initializer_list>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace rcc {
 
@@ -252,19 +255,36 @@ conditional_expression(parser_t &p)
 
 } // namespace
 
-// The assignment operators, 6.5.17: the simple one and the compound
-// ones.
+// The assignment operators, 6.5.17: the simple one, right-associative,
+// and the compound ones, not yet.  The left operand is a modifiable
+// lvalue, 6.5.17.1p2, which rcc asks at the operator before it reads
+// the right operand.  The right operand's value is converted to the
+// assignment's type, 6.5.17.2p2, the left operand's, 6.5.17.1p3: a
+// value of another type is not yet.
 operand_t
 assignment_expression(parser_t &p)
 {
-    operand_t e = conditional_expression(p);
+    operand_t lhs = conditional_expression(p);
     refuse_operator(p,
-                    { tok_t::assign, tok_t::mul_assign, tok_t::div_assign,
-                      tok_t::rem_assign, tok_t::add_assign, tok_t::sub_assign,
-                      tok_t::shl_assign, tok_t::shr_assign, tok_t::and_assign,
-                      tok_t::xor_assign, tok_t::or_assign });
+                    { tok_t::mul_assign, tok_t::div_assign, tok_t::rem_assign,
+                      tok_t::add_assign, tok_t::sub_assign, tok_t::shl_assign,
+                      tok_t::shr_assign, tok_t::and_assign, tok_t::xor_assign,
+                      tok_t::or_assign });
 
-    return e;
+    if (peek(p).kind != tok_t::assign)
+        return lhs;
+
+    const token_t &op = advance(p);
+    if (!is_assignable(lhs.node))
+        fail(op, "expression is not assignable");
+
+    const token_t &start = peek(p);
+    operand_t rhs = assignment_expression(p);
+    if (rhs.type != lhs.type)
+        not_yet(start, "conversion to the type of the left operand");
+
+    return { lhs.type,
+             make_assign(std::move(lhs.node), rvalue(std::move(rhs.node))) };
 }
 
 // The comma operator, 6.5.18.

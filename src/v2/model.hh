@@ -18,6 +18,7 @@
 #include "zoo.hh"
 
 #include <memory>
+#include <stdexcept>
 #include <utility>
 
 namespace rcc {
@@ -28,20 +29,39 @@ struct expr_t::interface_t
 
     virtual void into(amd64::state_t &, amd64::reg_t) const = 0;
     virtual void into(arm64::state_t &, arm64::reg_t) const = 0;
+    virtual void effect(amd64::state_t &) const = 0;
+    virtual void effect(arm64::state_t &) const = 0;
 
     // the builders: self is the handle that holds this node, which a
     // builder returns, or erases a part into, without a copy of the node
     virtual expr_t rvalue(const expr_t &self) const = 0;
     virtual stmt_t init(slot_t where, const expr_t &self) const = 0;
+
+    // an assignment, the second hop of 3.3: the value's model, which
+    // knows the value's class, calls the place's operation for that
+    // class, which knows the place's type and makes the node
+    virtual bool is_assignable() const = 0;
+    virtual expr_t assigned_to(const expr_t &place,
+                               const expr_t &self) const = 0;
+    virtual expr_t assign(const literal_t &value) const = 0;
+    virtual expr_t assign(const zero_t &value) const = 0;
+    virtual expr_t assign(const expr_t &value) const = 0;
 };
 
-// The row of a held node, by overload and by the state's namespace: a
-// member named into would hide it.
+// The rows of a held node, by overload and by the state's namespace: a
+// member named into or effect would hide them.
 template< typename S, typename T, typename R >
 void
 fwd_into(S &s, const T &t, R r)
 {
     into(s, t, r);
+}
+
+template< typename S, typename T >
+void
+fwd_effect(S &s, const T &t)
+{
+    effect(s, t);
 }
 
 // The lvalue conversion of a held node, as fwd_into() finds a row.
@@ -74,6 +94,32 @@ classed(const zero_t &value, const expr_t &)
     return value;
 }
 
+// Whether a node is a place an assignment stores into: whether the
+// builder of an assignment, make_assign(), is written for it (principle
+// 8).
+template< typename P >
+concept assignable = requires(const P &place, const expr_t &value) {
+    make_assign(place, value);
+};
+
+// The assignment to a held place, by its builder.
+template< assignable P, typename V >
+expr_t
+fwd_assign(const P &place, const V &value)
+{
+    return make_assign(place, value);
+}
+
+// The parser asks is_assignable() before it builds an assignment, and
+// says the error of one that is not, so no assignment to a node that is
+// no place is built.
+template< typename P, typename V >
+expr_t
+fwd_assign(const P &, const V &)
+{
+    throw std::logic_error("v2: an assignment to a node that is no place");
+}
+
 template< typename T >
 struct expr_t::model_t final: interface_t
 {
@@ -91,6 +137,16 @@ struct expr_t::model_t final: interface_t
         fwd_into(s, held, r);
     }
 
+    void effect(amd64::state_t &s) const override
+    {
+        fwd_effect(s, held);
+    }
+
+    void effect(arm64::state_t &s) const override
+    {
+        fwd_effect(s, held);
+    }
+
     expr_t rvalue(const expr_t &self) const override
     {
         return fwd_rvalue(held, self);
@@ -99,6 +155,31 @@ struct expr_t::model_t final: interface_t
     stmt_t init(slot_t where, const expr_t &self) const override
     {
         return make_init(where, classed(held, self));
+    }
+
+    bool is_assignable() const override
+    {
+        return assignable< T >;
+    }
+
+    expr_t assigned_to(const expr_t &place, const expr_t &self) const override
+    {
+        return place.self->assign(classed(held, self));
+    }
+
+    expr_t assign(const literal_t &value) const override
+    {
+        return fwd_assign(held, value);
+    }
+
+    expr_t assign(const zero_t &value) const override
+    {
+        return fwd_assign(held, value);
+    }
+
+    expr_t assign(const expr_t &value) const override
+    {
+        return fwd_assign(held, value);
     }
 
     T held;

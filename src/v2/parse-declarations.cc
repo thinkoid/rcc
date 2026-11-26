@@ -100,7 +100,9 @@ declarator_suffix(parser_t &p)
 // specifier, which __extension__ may stand before, or a static
 // assertion, a declaration of its own, 6.7.1p1.  rcc-v2 knows no
 // typedef name, nor the names of the types the compiler declares,
-// __builtin_va_list among them, so no identifier starts one.
+// __builtin_va_list among them, so no identifier starts one: such a
+// name is reserved, and an expression statement it starts refuses it,
+// identifier().
 bool
 is_declaration_start(const parser_t &p, std::size_t ahead)
 {
