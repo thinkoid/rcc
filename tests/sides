@@ -1,0 +1,399 @@
+#!/bin/sh
+########################################################################
+#
+# The two compilers side by side: every program of the tree's tests
+# compiled by rcc and by rcc-v2, the compiler of the typed tree
+# (docs/typed-tree.md), and the two runs compared.  rcc is the
+# reference: rcc-v2 is to write rcc's listing for a program rcc
+# compiles, and rcc's diagnostic for one rcc refuses.
+#
+# The programs are every file tests/.../<name>.c at any depth, in
+# sorted order, whatever corpus it belongs to: what the oracle, the
+# cost corpus, the error corpus, the probes and the measurements
+# compile.  The targets are those with pins in tests/corpus/<target>,
+# every one by default, or the one --target names.  A run is one
+# program on one target: it is compiled by
+#
+#     ./rcc    -target <target> -S -o <listing> <program>
+#     ./rcc-v2 -target <target> -S -o <listing> <program>
+#
+# from the tree root, so the file in each message is the program's
+# relative path for both.  Nothing is assembled or run, so the runs
+# are the same on any machine.
+#
+# A run is one of three rows:
+#
+#     same      the listing, or its absence, the standard output, the
+#               standard error and the exit status of rcc-v2 are
+#               rcc's
+#     not yet   not the same, and the standard error of rcc-v2 says
+#               "not yet: ": a construct rcc-v2 does not compile yet
+#     differ    anything else: rcc-v2 wrote a listing that is not
+#               rcc's, wrote one where rcc refused the program, or
+#               said another error than rcc's
+#
+# The count of the same is the measure of rcc-v2's progress.  A not
+# yet is no failure, since rcc-v2 is written in steps; a differ is
+# one.  The preprocessor is clang's for both compilers, so its
+# warnings are the same in both runs, and they are compared with the
+# rest of the standard error.
+#
+# The script prints a line for each run that differs, the target and
+# the program, then a summary of the four counts: the runs, the same,
+# the not yet and the differ.  It exits 0 when no run differs, 1
+# otherwise.  It runs from the tree root with ./rcc and ./rcc-v2
+# built, as make sides runs it.  Each compiler's listing, standard
+# output and standard error stay in build/sides/<target>, at the
+# program's own path, as <name>.rcc.s, <name>.rcc.out and
+# <name>.rcc.err and the same with rcc-v2, so that runs for two
+# targets do not overwrite each other.  The log of every command is
+# build/sides/log: each command's output follows a "### <command>:"
+# line and ends with a "### status <n>" line, and the diffs of a run
+# that differs follow its commands.
+#
+########################################################################
+#
+# USAGE:
+#
+#     tests/sides [ --target <name> ] [ --help ]
+#
+# OPTIONS:
+#
+#     --target <name>
+#         Runs the target <name> alone, x86-64 or aarch64.  Without it
+#         every target with pins is run.  A target without a pin
+#         directory in tests/corpus is an error, exit status 2.
+#
+#     --help
+#         Prints the usage and exits.
+#
+# EXAMPLES:
+#
+#     tests/sides
+#
+#     Compiles every program with both compilers for every target,
+#     prints a line for each run that differs and the summary, and
+#     keeps the log in build/sides/log.
+#
+#     tests/sides --target aarch64
+#
+#     The same for aarch64 alone, on any machine.
+#
+########################################################################
+
+##########
+# global constants
+
+# the name of the script, in diagnostics
+myname=${0##*/}
+
+# the directory the programs are under, at any depth, and the corpus
+# whose pin directories name the targets
+programs_root=tests
+pins_root=tests/corpus
+
+# what rcc-v2 says on standard error of a construct it does not
+# compile yet
+not_yet_message='not yet: '
+
+# the work directory, kept between runs and removed by make clean, and
+# the log of every command
+workdir=build/sides
+log=$workdir/log
+
+# byte order for the sorted programs, and diagnostics in one language
+LC_ALL=C
+export LC_ALL
+
+##########
+# global variables
+
+# the targets the run compiles for, space separated, from --target or
+# every one with pins
+targets=
+
+# the command line, for the log
+command_line="$0 $*"
+
+# the runs, and the runs of each row
+runs=0
+same=0
+waiting=0
+differ=0
+
+
+##########
+# usage(): prints the usage
+usage()
+{
+    echo "usage: $0 [ --target <name> ] [ --help ]"
+    echo
+    echo "    --target  run the target <name> alone, x86-64 or aarch64; every target by default"
+    echo "    --help    print this usage"
+}
+
+
+##########
+# pinned_targets(): prints the targets with pins, one per directory of
+# the corpus, in sorted order
+pinned_targets()
+{
+    for dir in "$pins_root"/*/; do
+        [ -d "$dir" ] || continue
+
+        dir=${dir%/}
+        echo "${dir##*/}"
+    done
+}
+
+
+##########
+# check_target(): reports 0 when the target has a pin directory under
+# the corpus, and says what is missing otherwise
+check_target()
+{
+    name=$1
+
+    case "$name" in
+        "" | . | .. | */*)  # not the name of a directory of the corpus
+            echo "$myname: '$name' is not a target" >&2
+            return 1
+            ;;
+    esac
+
+    if [ ! -d "$pins_root/$name" ]; then
+        echo "$myname: no pins for $name; no directory $pins_root/$name" >&2
+        return 1
+    fi
+
+    return 0
+}
+
+
+##########
+# check_tree(): reports 0 when the script runs from the tree root with
+# both compilers built, and says what is missing otherwise
+check_tree()
+{
+    if [ ! -d "$pins_root" ]; then
+        echo "$myname: no $pins_root here; run from the tree root" >&2
+        return 1
+    fi
+
+    for compiler in ./rcc ./rcc-v2; do
+        if [ ! -x "$compiler" ]; then
+            echo "$myname: no $compiler; run make first" >&2
+            return 1
+        fi
+    done
+
+    return 0
+}
+
+
+##########
+# logged(): runs a command with its standard output and standard error
+# appended to the log after a "### <command>:" line, and its status
+# after the output; reports the command's status as its own
+logged()
+{
+    echo "### $*:" >> "$log"
+
+    "$@" >> "$log" 2>&1
+    status=$?
+
+    echo "### status $status" >> "$log"
+    echo >> "$log"
+
+    return $status
+}
+
+
+##########
+# compile(): compiles one program for the target with one compiler,
+# -S, into <stem>.s, its standard output into <stem>.out and its
+# standard error into <stem>.err, and copies both outputs into the
+# log; prints the compiler's exit status
+compile()
+{
+    compiler=$1
+    target=$2
+    source=$3
+    stem=$4
+
+    # a listing left by an earlier run must not stand in for this one's
+    rm -f "$stem.s"
+
+    echo "### $compiler -target $target -S -o $stem.s $source:" >> "$log"
+
+    "$compiler" -target "$target" -S -o "$stem.s" "$source" \
+        > "$stem.out" 2> "$stem.err"
+    status=$?
+
+    cat "$stem.out" "$stem.err" >> "$log"
+    echo "### status $status" >> "$log"
+    echo >> "$log"
+
+    echo "$status"
+}
+
+
+##########
+# same_file(): reports 0 when two files are both absent or both
+# present with the same bytes, 1 otherwise
+same_file()
+{
+    if [ ! -e "$1" ] && [ ! -e "$2" ]; then
+        return 0
+    fi
+
+    [ -e "$1" ] && [ -e "$2" ] && cmp -s "$1" "$2"
+}
+
+
+##########
+# log_differences(): appends to the log a diff of each output of the
+# two runs that is not the same, the listing, the standard output and
+# the standard error; a listing one compiler did not write is diffed
+# against /dev/null
+log_differences()
+{
+    reference=$1
+    candidate=$2
+
+    for output in s out err; do
+        same_file "$reference.$output" "$candidate.$output" && continue
+
+        old=$reference.$output
+        new=$candidate.$output
+        [ -e "$old" ] || old=/dev/null
+        [ -e "$new" ] || new=/dev/null
+
+        logged diff -u "$old" "$new"
+    done
+}
+
+
+##########
+# side_by_side(): compiles one program for the target with both
+# compilers and compares the runs; prints the target and the program
+# when they differ; reports 0 when the runs are the same, 2 when they
+# are not yet, and 1 when they differ
+side_by_side()
+{
+    target=$1
+    source=$2
+
+    stem=$workdir/$target/${source%.c}
+
+    if ! mkdir -p "${stem%/*}"; then
+        echo "$myname: cannot write in ${stem%/*}" >&2
+        return 1
+    fi
+
+    reference_status=$(compile ./rcc "$target" "$source" "$stem.rcc")
+    candidate_status=$(compile ./rcc-v2 "$target" "$source" "$stem.rcc-v2")
+
+    if [ "$reference_status" -eq "$candidate_status" ] &&
+        same_file "$stem.rcc.s" "$stem.rcc-v2.s" &&
+        same_file "$stem.rcc.out" "$stem.rcc-v2.out" &&
+        same_file "$stem.rcc.err" "$stem.rcc-v2.err"; then
+        return 0
+    fi
+
+    if grep -q "$not_yet_message" "$stem.rcc-v2.err"; then
+        return 2
+    fi
+
+    log_differences "$stem.rcc" "$stem.rcc-v2"
+    printf '%-8s %s\n' "$target" "$source"
+
+    return 1
+}
+
+
+##########
+# main body of script
+
+# process command line options
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --target)  # run the target named next alone
+            if [ $# -lt 2 ]; then
+                usage >&2
+                exit 2
+            fi
+            targets=$2
+            shift
+            ;;
+
+        --help)  # print the usage and stop
+            usage
+            exit 0
+            ;;
+
+        *)  # anything else is a usage error
+            usage >&2
+            exit 2
+            ;;
+    esac
+    shift
+done
+
+# without the tree root and both compilers there is nothing to run
+check_tree || exit 2
+
+# a compiler killed by a signal leaves no core file: the log has its
+# status, and a core would land in the tree's root, or where
+# core_pattern says, on every run
+ulimit -c 0
+
+# every target with pins is the default; a target named must have them
+if [ -z "$targets" ]; then
+    targets=$(pinned_targets)
+else
+    check_target "$targets" || exit 2
+fi
+
+# the work directory is kept; the log starts over
+if ! mkdir -p "$workdir" || ! : > "$log"; then
+    echo "$myname: cannot write in $workdir" >&2
+    exit 2
+fi
+
+echo "### running $command_line" >> "$log"
+echo >> "$log"
+
+# one run per target and program in sorted order; a run that differs
+# does not stop the rest
+for target in $targets; do
+    for source in $(find "$programs_root" -name '*.c' | sort); do
+        runs=$((runs + 1))
+        side_by_side "$target" "$source"
+
+        case $? in
+            0)  # rcc-v2 did what rcc did
+                same=$((same + 1))
+                ;;
+
+            2)  # rcc-v2 does not compile the program yet
+                waiting=$((waiting + 1))
+                ;;
+
+            *)  # rcc-v2 did something else
+                differ=$((differ + 1))
+                ;;
+        esac
+    done
+done
+
+if [ "$runs" -eq 0 ]; then
+    echo "$myname: no programs in $programs_root" >&2
+    exit 1
+fi
+
+echo "$runs runs: $same the same, $waiting not yet, $differ differ;" \
+    "the log is $log"
+
+[ "$differ" -eq 0 ]
+exit $?

@@ -1,5 +1,5 @@
-# rcc: build, test, test-long, bench, slots, clean.  GNU make; the
-# dependency files, the pattern rules and the target-specific
+# rcc: build, test, test-long, bench, slots, sides, clean.  GNU make;
+# the dependency files, the pattern rules and the target-specific
 # variable are GNU.  The build is two compilers of one driver: rcc,
 # and rcc-v2, the pipeline of src/v2 in place of rcc's.
 
@@ -62,8 +62,13 @@ bench: rcc
 slots: rcc
 	tests/slots $(if $(CORE),--core $(CORE))
 
+# rcc-v2 against rcc, side by side, on every program of tests/ and
+# every target; make test is rcc's alone
+sides: rcc rcc-v2
+	tests/sides
+
 clean:
 	rm -rf build rcc rcc-v2
 
 -include $(OBJ:.o=.d) $(V2_OBJ:.o=.d)
-.PHONY: all test $(TARGETS:%=test-%) test-long bench slots clean
+.PHONY: all test $(TARGETS:%=test-%) test-long bench slots sides clean
