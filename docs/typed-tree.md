@@ -6,7 +6,8 @@ compiler `backend.md` describes, which stays the reference. This page
 states the design: the idea, its principles, its idioms and its
 architecture. It leaves the details to the code.
 
-Of the design only the driver's split is in the tree. Each mechanism
+Of the design the tree has the first line through every joint: a
+function that returns a constant, on both targets. Each mechanism
 below was compiled and run in a small model first; chapter 5 says
 what the models showed and chapter 6 what nothing has shown. A
 statement marked *working* is a position taken and run, not yet
@@ -159,9 +160,15 @@ public:
 - A member named as the free function it calls hides that function.
   The call goes through a forwarder, `fwd_` and the function's name,
   which keeps the lookup by argument.
-- *Working, not tested:* the rows are headers, and whoever builds a
-  node sees every row. Two translation units that see different
-  overloads break the one-definition rule with no diagnostic.
+- Every model is instantiated in one translation unit, `build.cc`,
+  which includes the node types and every row of both targets. Two
+  units that saw different overloads would break the one-definition
+  rule with no diagnostic; one unit cannot.
+- The parser sees a handle as an opaque value and the builders as
+  plain functions (`build.hh`). It cannot make a node any other way.
+- The handle has no member but its constructor. Its own row is the
+  overload that serves an erased child, so a row calls a child by the
+  free name whether the child's type is erased or concrete.
 
 ### 3.2 Rows
 
@@ -204,6 +211,11 @@ the ancestor's `regtab`, `efftab` and `cctab`.
 
 - The other direction is derived: an effect is a value dropped, a
   jump on a value is the value compared with 0.
+- *Working:* the value in a destination, `into`, is the entry point
+  with no primary: every type has a row that writes its value in the
+  register it is handed (principle 10). A value is then a register
+  taken and `into`. A `return` asks for its value in the result
+  register.
 - An entry point carries a child's best form to a parent that does
   not know the child's type. In `if (x & 8) break;` the statement is
   `if_t< expr_t, jump_t >`, and the `tbnz` is the condition's own
@@ -215,8 +227,8 @@ the ancestor's `regtab`, `efftab` and `cctab`.
 
 ```c++
 template< typename B >
-concept landing = requires(state_t &s, const B &b, reg_t r) {
-    into(s, b, r);    // B has a row that computes in its destination
+concept place = requires(state_t &s, const B &b) {
+    address(s, b);    // B has a row that writes its address
 };
 ```
 
@@ -225,7 +237,6 @@ concept landing = requires(state_t &s, const B &b, reg_t r) {
 | place | an address | a slot, a global, a dereference, a string literal |
 | addressable | an address that writes no instruction | a place that stands as an operand, `-8(%rbp)` |
 | truth | a native `branch` | comparisons, `!`, `&&`, `\|\|` |
-| landing | `into` | what computes in a destination it is handed |
 
 *Working:* the cut is a first one. C's own sorts (a place, a value, a
 function designator, void), how the machine names an operand, and its
@@ -253,6 +264,16 @@ lexer is rcc's. The parser is a recursive descent with one function
 for each production; it holds the C types and the scopes, and it
 calls builders. The builders make the typed tree. Each target's rows
 write its text. There is one parser and one zoo.
+
+- The parser is the whole grammar from the start. A production whose
+  construct rcc-v2 does not compile refuses it at its own token, as
+  "not yet" and the construct's name, so no error is said of a
+  construct the parser did not read.
+- rcc is the reference. For a program, rcc-v2 writes rcc's listing or
+  says rcc's error, or it says not yet. `make sides` compiles every
+  program under `tests/` with both compilers and fails on anything
+  else; the count of the runs that are the same is the measure of
+  the way done. `tests/side/` holds the programs written for a step.
 
 ### 4.2 Expressions: a where and a view
 
@@ -348,22 +369,46 @@ technique.
 
 *Working.* The types are open and the operations closed, and a target
 is a set of operations. So the targets are named in the handle's
-interface, and a row is found by overload on the target's state type.
+interface, each entry point of each target in a line of its own.
 
 ```c++
-template< typename S >
-struct rows_t { virtual reg_t value(S &) const = 0; };
-
-struct expr_t::interface_t : rows_t< x86_64_t >, rows_t< aarch64_t >
+struct expr_t::interface_t
 {
+    virtual void into(amd64::state_t &, amd64::reg_t) const = 0;
+    virtual void into(arm64::state_t &, arm64::reg_t) const = 0;
+
     // the builders, which name no target
 };
 ```
+
+- A target's rows are in a namespace of its own, `amd64` and `arm64`,
+  and are found by overload on the target's state type, through
+  argument-dependent lookup.
+- A row that both targets write alike is written once, as a template
+  over the state.
 
 - The zoo is the union of the shapes either target wants. A shape one
   target has no niche for falls to that target's primary: `a + b` in
   memory is x86-64's niche, `a + (b << 2)` is aarch64's.
 - A type with no row on one target does not build.
+
+### 4.8 The sources
+
+`src/v2` shares the driver, the lexer and the C types (`type.hh`)
+with rcc, and nothing else.
+
+| Files | What they are |
+| --- | --- |
+| `parse.hh`, `parse-*.cc` | the parser, one file for each clause of the grammar |
+| `build.hh` | the builders, declared: all the parser sees of the zoo |
+| `expr.hh`, `stmt.hh` | the handles |
+| `zoo.hh` | the node types under the handles |
+| `unit.hh` | the unit and its functions, under no handle |
+| `model.hh`, `build.cc` | the models, and the one unit that instantiates them |
+| `rows-statements.hh` | the rows both targets write alike |
+| `amd64.*`, `arm64.*` | a target: its registers, its state, its rows, its frame |
+| `assembly.*` | the text both targets write alike |
+| `generate.*`, `pipeline.cc` | the back end's entry, and the pipeline |
 
 ## 5. What the models showed
 
@@ -392,9 +437,7 @@ rows invented for the purpose.
 
 ## 6. Open
 
-- The categories' cut (3.5), and a row that is optional behind a
-  question: `into` exists only for a landing type, against
-  principle 10.
+- The categories' cut (3.5).
 - The builder on both operands at the size of C's operators.
 - The register state at a join. Whether an arm of `?:` leaves its
   value where the other arm's does is, in its hardest case, a fact of
@@ -414,7 +457,8 @@ rows invented for the purpose.
   statement's end.
 - The summary of a subtree: taken as rcc has it, not designed here.
 - Records by value, and floating point as a register class.
-- The way back to rcc's pinned listings. It is not sized.
+- The way back to rcc's pinned listings. `make sides` measures it; it
+  is not sized.
 
 ## 7. Lineage
 

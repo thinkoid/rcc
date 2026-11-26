@@ -10,9 +10,11 @@
 # The programs are every file tests/.../<name>.c at any depth, in
 # sorted order, whatever corpus it belongs to: what the oracle, the
 # cost corpus, the error corpus, the probes and the measurements
-# compile.  The targets are those with pins in tests/corpus/<target>,
-# every one by default, or the one --target names.  A run is one
-# program on one target: it is compiled by
+# compile, and tests/side/, the programs written for rcc-v2: what it
+# compiles and each error it says, every run of them the same.  The
+# targets are those with pins in tests/corpus/<target>, every one by
+# default, or the one --target names.  A run is one program on one
+# target: it is compiled by
 #
 #     ./rcc    -target <target> -S -o <listing> <program>
 #     ./rcc-v2 -target <target> -S -o <listing> <program>

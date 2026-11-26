@@ -643,5 +643,20 @@ array's. A constant size is the immediate, rounded up to 16.
 Check: =tests/error/alloca.c= a cost program pinned on both targets,
 and the =stack= probe with =alloca= in an argument and in a loop.
 
+** TODO No program reaches the parser's error for an integer suffix
+
+=integer_suffix()= in =src/parse.cc= ends in "invalid suffix ... on
+integer constant" for what is left after the =u= and the =l= parts
+and is no =wb=. The lexer refuses every malformed suffix before it,
+"invalid integer constant '1lul'", for ~1lul~, ~1lL~, ~1uu~, ~1x~
+and ~1lwb~ alike, so nothing is left there but a bit-precise suffix
+or nothing, and no program of =tests/error= pins the parser's words.
+
+Fix: the line leaves, and the comment says that the lexer has
+checked the form.
+
+Check: ~grep 'invalid suffix' src/~ finds nothing, and the error
+corpus passes as it is.
+
 * Lexer
 

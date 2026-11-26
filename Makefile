@@ -9,9 +9,11 @@ CXXFLAGS = -std=c++20 -Wall -Wextra -g -MMD -MP
 SRC = $(wildcard src/*.cc)
 OBJ = $(SRC:src/%.cc=build/%.o)
 
-# rcc-v2: the driver and the lexer, then every source of src/v2
+# rcc-v2: the driver, the lexer and the C types, then every source of
+# src/v2
 V2_SRC = $(wildcard src/v2/*.cc)
-V2_OBJ = build/main.o build/lex.o $(V2_SRC:src/v2/%.cc=build/v2/%.o)
+V2_OBJ = build/main.o build/lex.o build/type.o \
+         $(V2_SRC:src/v2/%.cc=build/v2/%.o)
 
 # the targets with pins: each directory under tests/corpus
 TARGETS = $(patsubst tests/corpus/%/,%,$(wildcard tests/corpus/*/))

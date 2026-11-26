@@ -1,0 +1,6 @@
+/* A function that returns an array, 6.7.7.4p1. */
+int
+f(void)[1]
+{
+        return 0;
+}
