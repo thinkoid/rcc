@@ -6,10 +6,13 @@
 // through the builders, build.hh; the interface and the model are
 // model.hh's, which build.cc alone includes, so a unit that includes
 // this header cannot make a node.  An expression has one entry point,
-// its value into a register the caller owns (3.4).
+// its value into a register the caller owns (3.4); a builder that must
+// know what the handle holds goes through the model (3.3), and is a
+// friend.
 
 #pragma once
 
+#include "stmt.hh"
 #include "targets.hh"
 
 #include <memory>
@@ -33,6 +36,9 @@ public:
 
     friend void into(amd64::state_t &, const expr_t &, amd64::reg_t);
     friend void into(arm64::state_t &, const expr_t &, arm64::reg_t);
+
+    friend expr_t rvalue(expr_t);
+    friend stmt_t make_init(int slot, expr_t value);
 };
 
 // An erased operand generates itself: the handle's own rows, the value

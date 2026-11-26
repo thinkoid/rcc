@@ -1,9 +1,9 @@
 // -*- mode: c++; -*-
 
-// 6.8: the statements, of which rcc-v2 takes the return statement with
-// an expression, and the block items of a function's body.  Every
-// other statement is refused at its first token by its name, as is a
-// label and a declaration among the block items.
+// 6.8: the statements, of which rcc-v2 takes the compound statement,
+// the return statement with an expression, and the block items of a
+// block, a declaration among them.  Every other statement is refused at
+// its first token by its name, as is a label among the block items.
 
 #include "parse-common.hh"
 
@@ -46,7 +46,7 @@ return_statement(parser_t &p)
 
     expect(p, tok_t::semicolon, "expected ';' after return statement");
 
-    return make_return(std::move(value.node));
+    return make_return(rvalue(std::move(value.node)));
 }
 
 // 6.8.7.1: a goto, a continue, a break or a return.
@@ -63,6 +63,22 @@ jump_statement(parser_t &p)
     }
 }
 
+// A compound statement, 6.8.3: a block, which opens a scope of its own
+// for its declarations, 6.2.1p4, closed at its end.  Its '{' is the
+// token that made it one.
+stmt_t
+compound_statement(parser_t &p)
+{
+    advance(p);
+
+    p.scopes.emplace_back();
+    std::vector< stmt_t > items = block_item_list(p);
+    p.scopes.pop_back();
+    expect(p, tok_t::rbrace, "expected '}' at end of block");
+
+    return make_block(std::move(items));
+}
+
 // 6.8.1p1: a statement, by its first token.  A block item that is no
 // label and no declaration is one, so a token that starts no other
 // statement starts an expression statement, the null statement among
@@ -73,7 +89,7 @@ statement(parser_t &p)
     const token_t &t = peek(p);
 
     switch (t.kind) {
-    case tok_t::lbrace: not_yet(t, "compound statement");
+    case tok_t::lbrace: return compound_statement(p);
     case tok_t::kw_if:
     case tok_t::kw_switch:
     case tok_t::kw_while:
@@ -88,18 +104,22 @@ statement(parser_t &p)
     }
 }
 
-// One block item, 6.8.3p1: a label, which is an item of its own, a
-// declaration or a statement.
-stmt_t
-block_item(parser_t &p)
+// One block item, 6.8.3p1, appended to items: a label, which is an
+// item of its own; a declaration, of the statements it makes; or a
+// statement.
+void
+block_item(parser_t &p, std::vector< stmt_t > &items)
 {
     if (is_label_start(p))
         not_yet(peek(p), "label");
 
-    if (is_declaration_start(p))
-        not_yet(peek(p), "declaration");
+    if (is_declaration_start(p)) {
+        for (stmt_t &decl : declaration(p))
+            items.push_back(std::move(decl));
+        return;
+    }
 
-    return statement(p);
+    items.push_back(statement(p));
 }
 
 } // namespace
@@ -110,7 +130,7 @@ block_item_list(parser_t &p)
 {
     std::vector< stmt_t > items;
     while (!next_is(p, { tok_t::rbrace, tok_t::eof }))
-        items.push_back(block_item(p));
+        block_item(p, items);
 
     return items;
 }

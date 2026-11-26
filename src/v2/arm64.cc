@@ -4,7 +4,7 @@
 // as rcc writes it.  docs/aarch64.md is the design, with
 // docs/backend.md where it says the model carries, and each function
 // names the row or the part of the frame it writes.  The frame is the
-// frame record alone, chapter 5.
+// frame record and the locals' slots above it, chapter 5.
 
 #include "arm64.hh"
 
@@ -12,6 +12,7 @@
 
 #include <format>
 #include <ostream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -20,12 +21,21 @@ namespace rcc::arm64 {
 
 namespace {
 
+// The fifteen expression registers, chapter 4, in the order a new
+// value takes them.
+constexpr reg_t expression_registers[] = { x0, x1,  x2,  x3,  x4,  x5,  x6, x7,
+                                           x9, x10, x11, x12, x13, x14, x15 };
+
 // The convention's result register, chapter 3.
 constexpr reg_t result_register = x0;
 
 // The frame record, the caller's x29 and x30, at the bottom of the
 // frame, chapter 5.1.
 constexpr long frame_record = 16;
+
+// The largest displacement off x29 a 4-byte access encodes, 2.3: 4095
+// times 4, the scaled form.
+constexpr long reach = 4095 * 4;
 
 // operands
 
@@ -37,11 +47,34 @@ reg(reg_t r, int width)
     return std::format("{}{}", width == 64 ? 'x' : 'w', static_cast< int >(r));
 }
 
+// The zero register at 32 bits, chapter 2.1.
+constexpr std::string_view zero = "wzr";
+
 // An immediate, as the assembler reads it.
 std::string
 imm(long long value)
 {
     return std::format("#{}", value);
+}
+
+// A slot as the address operand of an access, 5.3: [x29, #d], which
+// allocate() keeps in reach.
+std::string
+slot_operand(int displacement)
+{
+    return std::format("[x29, #{}]", displacement);
+}
+
+// The displacement the local's declaration recorded; a local read
+// before it is a tree the parser does not make.
+int
+slot_of(const state_t &s, slot_t where)
+{
+    const auto it = s.slots.find(where.id);
+    if (it == s.slots.end())
+        throw std::logic_error("v2: a name read before its declaration");
+
+    return it->second;
 }
 
 // writing
@@ -181,10 +214,68 @@ constant(state_t &s, reg_t r, long long value, int width)
 
 } // namespace
 
+// A register for a value: the lowest free one.  With every one held rcc
+// spills the oldest, 6.2, which rcc-v2 does not yet.
+reg_t
+take(state_t &s)
+{
+    for (const reg_t r : expression_registers)
+        if (!s.registers.owner.contains(r))
+            return r;
+
+    throw std::logic_error("v2: not yet: a spill");
+}
+
+// The next slot above the last, an int's 4 bytes, which keep every
+// slot at an int's alignment; its displacement off x29 is recorded
+// under the local's number.  G12: a slot is never shared and never
+// reused inside the activation.  A slot past reach is reached through
+// x16 in rcc, 5.3, which rcc-v2 does not yet; below it the frame is far
+// from the target's limit.
+void
+allocate(state_t &s, slot_t where)
+{
+    const long displacement = s.frame;
+    if (displacement > reach)
+        throw std::logic_error(
+            "v2: not yet: a slot beyond the reach of [x29, #d]");
+
+    s.frame = displacement + 4;
+    s.slots.emplace(where.id, static_cast< int >(displacement));
+}
+
 void
 into(state_t &s, const literal_t &l, reg_t r)
 {
     constant(s, r, l.value, 32);
+}
+
+void
+into(state_t &s, const zero_t &, reg_t r)
+{
+    constant(s, r, 0, 32);
+}
+
+// The load row of 2.2: ldr w0, [x29, #16].  G8: one ldr.
+void
+into(state_t &s, const load_t &l, reg_t r)
+{
+    insn(s, "ldr", { reg(r, 32), slot_operand(slot_of(s, l.where)) });
+}
+
+// The store row of 2.2: str w0, [x29, #16].
+void
+store(state_t &s, reg_t r, slot_t where)
+{
+    insn(s, "str", { reg(r, 32), slot_operand(slot_of(s, where)) });
+}
+
+// str takes no immediate, but the zero register is an operand like any
+// other: str wzr, [x29, #16].
+void
+initialize(state_t &s, slot_t where, const zero_t &)
+{
+    insn(s, "str", { zero, slot_operand(slot_of(s, where)) });
 }
 
 // The value goes to the convention's result register, which the return
@@ -270,14 +361,15 @@ epilogue(std::ostream &out, const state_t &s, long size)
 }
 
 // A definition: the body generated into the state's buffer, then
-// written inside the frame, which is the frame record alone.  The one
-// epilogue is reached with x0 as it is, G5's some value, but for main,
-// which returns 0 when it falls off its end, 5.1.2.3.4.  Every function
-// has external linkage, so its symbol is global, .globl, chapter 10.
+// written inside the frame, the frame record and the slots, whose size
+// is known after the body, rounded up to 16.  The one epilogue is
+// reached with x0 as it is, G5's some value, but for main, which
+// returns 0 when it falls off its end, 5.1.2.3.4.  Every function has
+// external linkage, so its symbol is global, .globl, chapter 10.
 void
 function(std::ostream &out, const function_definition_t &fd)
 {
-    state_t s { .function = fd.name };
+    state_t s { .function = fd.name, .frame = frame_record };
     s.ret = new_label(s);
 
     generate(s, fd.body);
@@ -291,11 +383,13 @@ function(std::ostream &out, const function_definition_t &fd)
                        "\t.cfi_startproc\n",
                        fd.name, fd.name, fd.name);
 
-    prologue(out, frame_record);
+    const long size = (s.frame + 15) / 16 * 16;
+
+    prologue(out, size);
 
     out << s.body.str();
 
-    epilogue(out, s, frame_record);
+    epilogue(out, s, size);
     out << std::format("\t.cfi_endproc\n"
                        "\t.size\t{}, .-{}\n",
                        fd.name, fd.name);

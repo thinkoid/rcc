@@ -18,20 +18,24 @@ namespace {
 
 // The body, a compound statement, 6.9.2p1, which is a statement: the
 // block of its items.  Its '{' is the token that made the declaration a
-// definition.
+// definition.  The body and the parameter list are one block, 6.8.3p2,
+// and with no parameter the body's scope is the function's.
 stmt_t
 function_body(parser_t &p)
 {
     advance(p);
 
+    p.scopes.emplace_back();
     std::vector< stmt_t > items = block_item_list(p);
+    p.scopes.pop_back();
     expect(p, tok_t::rbrace, "expected '}' at end of function body");
 
     return make_block(std::move(items));
 }
 
 // A definition of the name, whose body is parsed with the function's
-// result type.  A name is defined once, 6.9.1p5.  The function has
+// result type, its locals numbered from 0.  A name is defined once,
+// 6.9.1p5, and is in scope in its own body, 6.2.1p7.  The function has
 // external linkage, 6.2.2p5, so a #pragma GCC visibility other than
 // default would set its symbol's visibility, as clang has it: rcc
 // refuses the name there, and before it asks whether the name is
@@ -47,14 +51,16 @@ function_definition(parser_t &p, const type_t &result, const token_t &name)
         fail(name, "redefinition of " + quoted(name.text));
 
     p.result = result;
+    p.locals = 0;
 
     return { std::string(name.text), function_body(p) };
 }
 
 // A function definition, 6.9.1p1; the other external declarations are
-// not yet.  rcc reads __asm__, __extension__ and a static assertion
-// before the declaration specifiers, and refuses the first in these
-// words.  A declarator that no body follows declares the function.
+// not yet, an object among them.  rcc reads __asm__, __extension__ and
+// a static assertion before the declaration specifiers, and refuses the
+// first in these words.  A function's declarator that no body follows
+// declares the function.
 function_definition_t
 external_declaration(parser_t &p)
 {
@@ -69,11 +75,14 @@ external_declaration(parser_t &p)
         not_yet(t, quoted(t.text) + " declaration");
 
     const type_t result = declaration_specifiers(p);
-    const token_t &name = declarator(p);
-    if (peek(p).kind != tok_t::lbrace)
-        not_yet(name, "declaration of function " + quoted(name.text));
+    const declarator_t d = declarator(p);
+    if (!d.function)
+        not_yet(d.name, "object " + quoted(d.name.text));
 
-    return function_definition(p, result, name);
+    if (peek(p).kind != tok_t::lbrace)
+        not_yet(d.name, "declaration of function " + quoted(d.name.text));
+
+    return function_definition(p, result, d.name);
 }
 
 // The external declarations up to the end of the text, 6.9.1p1.  An

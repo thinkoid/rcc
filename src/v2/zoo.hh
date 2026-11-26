@@ -22,11 +22,52 @@ struct literal_t
     int value;
 };
 
+// The constant 0 of type int, which make_literal() makes of a literal
+// whose value is 0 (principle 2): a store of it names the zero register
+// where the target has one.
+struct zero_t
+{
+};
+
+// A local, a place, 4.2: the where of an int in the function's frame,
+// named by the local's number among the function's.  The displacement
+// is the state's, since a slot is taken where its declaration is
+// generated.
+struct slot_t
+{
+    int id;
+};
+
+// What a place holds, 6.3.2.1p2: the value read from it, which is no
+// place.
+struct load_t
+{
+    slot_t where;
+};
+
 // return E;, 6.8.7.5: the value in the convention's result register,
 // then the jump to the function's one epilogue.
 struct return_t
 {
     expr_t value;
+};
+
+// int x;, a declaration without an initializer: the local's slot taken,
+// and nothing stored, 6.2.4p6.
+struct decl_t
+{
+    slot_t where;
+};
+
+// int x = e;, a declaration with an initializer, 6.7.11p12: the slot
+// taken, then the value stored in it.  An initialization, not an
+// assignment (4.5); the value's type is a literal_t's or a zero_t's
+// where a target has a niche for it, else erased.
+template< typename V = expr_t >
+struct init_t
+{
+    slot_t where;
+    V value;
 };
 
 // A compound statement, 6.8.3: its items in order, erased, since their

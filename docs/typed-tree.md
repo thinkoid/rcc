@@ -6,8 +6,9 @@ compiler `backend.md` describes, which stays the reference. This page
 states the design: the idea, its principles, its idioms and its
 architecture. It leaves the details to the code.
 
-Of the design the tree has the first line through every joint: a
-function that returns a constant, on both targets. Each mechanism
+Of the design the tree has a thin line through every joint: functions
+whose locals are `int`, declared, initialized and returned, on both
+targets. Each mechanism
 below was compiled and run in a small model first; chapter 5 says
 what the models showed and chapter 6 what nothing has shown. A
 statement marked *working* is a position taken and run, not yet
@@ -298,6 +299,13 @@ A place is a *where* and a *view*: `place_t< W, V >`.
 - `load_t< W, V >` is what a place holds, and it is no place. An
   lvalue is a matter of type, so an identity is dropped where it is
   built.
+- The parser converts every operand whose value it reads, by a
+  builder through the model, `rvalue()`: a place becomes its load,
+  and anything else stays the node it is. So a place asked for its
+  value is a tree the parser does not make, and a place's `into`
+  stops the generation.
+- The tree has one where and one view so far, a local of type `int`:
+  `slot_t` and `load_t` take no parameter until a second arrives.
 
 ### 4.3 Constants
 
@@ -346,8 +354,19 @@ technique.
   register or a slot, by the target's count; the width. A use of the
   name is a copy of the leaf, and no row looks a name up.
 - The storage is the function's frame, or the unit's data.
-- What runs is a statement, where it is written: `init_t< V >`, an
-  initialization and not an assignment.
+- A local's leaf is its number among the function's locals,
+  `slot_t`, and not a displacement. rcc takes a slot where the
+  declaration is generated, and a spill's slot falls between two
+  locals', so the displacement is the state's: the declaration's row
+  takes it, and a use reads it by the number.
+- What runs is a statement, where it is written: `decl_t` takes the
+  slot, and `init_t< V >` takes it and stores, an initialization and
+  not an assignment.
+- An initializer's store is rcc's `initialize()`: its primary is the
+  value in a register, stored and released, and a target's niche
+  stores a constant with no register held. The value's class is
+  asked once, in its model: a constant, the constant 0, or anything
+  else, erased.
 
 ### 4.6 Contexts and state
 
@@ -401,11 +420,13 @@ with rcc, and nothing else.
 | --- | --- |
 | `parse.hh`, `parse-*.cc` | the parser, one file for each clause of the grammar |
 | `build.hh` | the builders, declared: all the parser sees of the zoo |
+| `build-typed.hh` | the overloads on the node types that a builder reaches through a model |
 | `expr.hh`, `stmt.hh` | the handles |
 | `zoo.hh` | the node types under the handles |
 | `unit.hh` | the unit and its functions, under no handle |
 | `model.hh`, `build.cc` | the models, and the one unit that instantiates them |
-| `rows-statements.hh` | the rows both targets write alike |
+| `rows-expressions.hh`, `rows-statements.hh` | the rows both targets write alike |
+| `register-stack.hh` | which register holds which value, as templates over a target's state |
 | `amd64.*`, `arm64.*` | a target: its registers, its state, its rows, its frame |
 | `assembly.*` | the text both targets write alike |
 | `generate.*`, `pipeline.cc` | the back end's entry, and the pipeline |

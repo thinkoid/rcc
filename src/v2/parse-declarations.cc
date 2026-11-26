@@ -1,15 +1,21 @@
 // -*- mode: c++; -*-
 
 // 6.7: the declarations, of which rcc-v2 takes the declaration
-// specifiers and the declarator of a function definition, int f(void),
-// and refuses the rest as not yet.  rcc reads more of either than
-// rcc-v2 does, so each is read as far as rcc would read it, and what
-// rcc would take is refused before an error rcc would not say.
+// specifier int, the declarators of a function of no parameters,
+// int f(void), and of an object, and the declaration in a block of int
+// objects, each with an initializer or without; it refuses the rest as
+// not yet.  rcc reads more of each than rcc-v2 does, so each is read as
+// far as rcc would read it, and what rcc would take is refused before
+// an error rcc would not say.
 
 #include "parse-common.hh"
 
+#include "build.hh"
+
 #include <cstddef>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace rcc {
 
@@ -59,17 +65,20 @@ is_specifier(const token_t &t)
     }
 }
 
-// The parameter list (void) after the name, a function of no
-// parameters, 6.7.7.4p9; any other list, and no list, are not yet.  A
-// function returns neither an array nor a function, 6.7.7.4p1, which
-// rcc says at the suffix after the list.
-void
-declarator_suffix(parser_t &p, const token_t &name)
+// The suffix after the name, and whether it makes the declarator a
+// function's: none, an object's; or the parameter list (void), a
+// function of no parameters, 6.7.7.4p9.  An array, and any other list,
+// are not yet.  A function returns neither an array nor a function,
+// 6.7.7.4p1, which rcc says at the suffix after the list.
+bool
+declarator_suffix(parser_t &p)
 {
-    if (peek(p).kind != tok_t::lparen)
-        not_yet(name, "object " + quoted(name.text));
+    if (peek(p).kind == tok_t::lbracket)
+        not_yet(peek(p), "array declarator");
 
-    advance(p);
+    if (!accept(p, tok_t::lparen))
+        return false;
+
     if (peek(p).kind != tok_t::kw_void || peek(p, 1).kind != tok_t::rparen)
         not_yet(peek(p), "parameter list");
 
@@ -81,6 +90,8 @@ declarator_suffix(parser_t &p, const token_t &name)
 
     if (peek(p).kind == tok_t::lparen)
         fail(peek(p), "function cannot return a function");
+
+    return true;
 }
 
 } // namespace
@@ -120,10 +131,11 @@ declaration_specifiers(parser_t &p)
     return int_type();
 }
 
-// The declarator of a function of no parameters, f(void): its name,
-// which a declarator must write in a declaration, 6.7.7.1p1, and its
-// suffix.  A pointer and a declarator in parentheses are not yet.
-const token_t &
+// A declarator of a function of no parameters, f(void), or of an
+// object: its name, which a declarator must write in a declaration,
+// 6.7.7.1p1, and its suffix.  A pointer and a declarator in parentheses
+// are not yet.
+declarator_t
 declarator(parser_t &p)
 {
     const token_t &t = peek(p);
@@ -134,9 +146,84 @@ declarator(parser_t &p)
         not_yet(t, "declarator in parentheses");
 
     const token_t &name = expect(p, tok_t::identifier, "expected identifier");
-    declarator_suffix(p, name);
 
-    return name;
+    return { name, declarator_suffix(p) };
+}
+
+namespace {
+
+// A declarator of an object and its initializer, appended to items: the
+// name declared, then, after '=', the initializer, whose scope holds
+// the name already, 6.2.1p7.  rcc reads GNU C's attributes and an
+// assembler name after the declarator, which are not yet, and so is a
+// brace initializer, in rcc's words.  The initializer's value is
+// converted to the object's type as if by assignment, 6.7.11p12: a
+// value of another type is not yet.
+void
+init_declarator(parser_t &p,
+                const type_t &type,
+                const token_t &name,
+                std::vector< stmt_t > &items)
+{
+    if (next_is(p, { tok_t::kw_attribute, tok_t::kw_asm }))
+        not_yet(peek(p), quoted(peek(p).text) + " after a declarator");
+
+    const int slot = declare(p, name, type);
+    if (!accept(p, tok_t::assign)) {
+        items.push_back(make_decl(slot));
+        return;
+    }
+
+    if (peek(p).kind == tok_t::lbrace)
+        not_yet(peek(p), "brace initializer");
+
+    const token_t &start = peek(p);
+    operand_t init = assignment_expression(p);
+    if (init.type != type)
+        not_yet(start, "conversion to the type of " + quoted(name.text));
+
+    items.push_back(make_init(slot, rvalue(std::move(init.node))));
+}
+
+// The declarators of a declaration in a block and its ';', 6.7.1p1: one
+// statement for each, in order.  A function declared in a block is not
+// yet.
+std::vector< stmt_t >
+init_declarator_list(parser_t &p, const type_t &type)
+{
+    std::vector< stmt_t > items;
+
+    do {
+        const declarator_t d = declarator(p);
+        if (d.function)
+            not_yet(d.name, "declaration of function " + quoted(d.name.text));
+
+        init_declarator(p, type, d.name, items);
+    } while (accept(p, tok_t::comma));
+
+    expect(p, tok_t::semicolon, "expected ';' at end of declaration");
+
+    return items;
+}
+
+} // namespace
+
+// A declaration in a block, 6.7.1p1.  rcc reads __extension__ and a
+// static assertion before the declaration specifiers, which are not
+// yet.
+std::vector< stmt_t >
+declaration(parser_t &p)
+{
+    const token_t &t = peek(p);
+    if (t.kind == tok_t::kw_extension)
+        not_yet(t, quoted(t.text) + " before a declaration");
+
+    if (t.kind == tok_t::kw_static_assert)
+        not_yet(t, quoted(t.text) + " declaration");
+
+    const type_t type = declaration_specifiers(p);
+
+    return init_declarator_list(p, type);
 }
 
 } // namespace rcc

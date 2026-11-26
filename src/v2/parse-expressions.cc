@@ -10,6 +10,7 @@
 
 #include <initializer_list>
 #include <string>
+#include <string_view>
 
 namespace rcc {
 
@@ -24,15 +25,51 @@ refuse_operator(const parser_t &p, std::initializer_list< tok_t > operators)
         not_yet(peek(p), quoted(peek(p).text) + " operator");
 }
 
-// The primary expressions, 6.5.2: an integer constant, and each of the
-// others refused by its name, a floating constant in rcc's words.
+// Whether a name is reserved for any use, 6.4.2.1p7: it begins with
+// two underscores, or with one and an uppercase letter.
+bool
+is_reserved(std::string_view name)
+{
+    if (name.starts_with("__"))
+        return true;
+
+    return name.size() > 1 && name[0] == '_' && name[1] >= 'A' &&
+           name[1] <= 'Z';
+}
+
+// An identifier, 6.5.2p3: a local's operand, a copy of what its
+// declaration made (docs/typed-tree.md 4.5).  A name the unit defines
+// as a function is a function designator, not yet; a name no scope
+// declares is rcc's error.  rcc knows reserved names that no
+// declaration in the unit makes, its builtins and the types the
+// compiler declares, and reads some of them before it looks the name
+// up, so a reserved name is not yet wherever it stands.
+operand_t
+identifier(parser_t &p)
+{
+    const token_t &t = advance(p);
+    if (is_reserved(t.text))
+        not_yet(t, "reserved identifier " + quoted(t.text));
+
+    if (const operand_t *local = lookup(p, t.text))
+        return *local;
+
+    if (p.defined.contains(t.text))
+        not_yet(t, "function designator " + quoted(t.text));
+
+    fail(t, quoted(t.text) + " undeclared");
+}
+
+// The primary expressions, 6.5.2: an identifier, an integer constant,
+// and each of the others refused by its name, a floating constant in
+// rcc's words.
 operand_t
 primary_expression(parser_t &p)
 {
     const token_t &t = peek(p);
 
     switch (t.kind) {
-    case tok_t::identifier: not_yet(t, "identifier " + quoted(t.text));
+    case tok_t::identifier: return identifier(p);
     case tok_t::integer: return integer_constant(p);
     case tok_t::floating: not_yet(t, "floating constant");
     case tok_t::character: not_yet(t, "character constant");
@@ -213,6 +250,8 @@ conditional_expression(parser_t &p)
     return e;
 }
 
+} // namespace
+
 // The assignment operators, 6.5.17: the simple one and the compound
 // ones.
 operand_t
@@ -227,8 +266,6 @@ assignment_expression(parser_t &p)
 
     return e;
 }
-
-} // namespace
 
 // The comma operator, 6.5.18.
 operand_t

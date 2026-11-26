@@ -3,15 +3,17 @@
 // x86-64's text, declared in amd64.hh: AT&T syntax for the system
 // assembler, as rcc writes it.  docs/backend.md is the design, and each
 // function names the row or the part of the frame it writes.  The
-// frame is rbp's and holds nothing else, chapter 5.
+// frame is rbp's and the locals' slots below it, chapter 5.
 
 #include "amd64.hh"
 
 #include "assembly.hh"
+#include "target.hh"
 
 #include <cstdint>
 #include <format>
 #include <ostream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 
@@ -19,8 +21,17 @@ namespace rcc::amd64 {
 
 namespace {
 
+// The nine expression registers, chapter 4, in the order a new value
+// takes them.
+constexpr reg_t expression_registers[] = { rax, rcx, rdx, rsi, rdi,
+                                           r8,  r9,  r10, r11 };
+
 // The convention's result register, 3.2.
 constexpr reg_t result_register = rax;
+
+// The red zone, 3.2: the 128 bytes below rsp, which a function that
+// calls nothing may use without moving rsp.
+constexpr long red_zone = 128;
 
 // operands
 
@@ -29,7 +40,11 @@ std::string
 reg(reg_t r, int width)
 {
     static constexpr std::string_view names[][4] = {
-        { "al", "ax", "eax", "rax" },
+        { "al", "ax", "eax", "rax" },      { "cl", "cx", "ecx", "rcx" },
+        { "dl", "dx", "edx", "rdx" },      { "sil", "si", "esi", "rsi" },
+        { "dil", "di", "edi", "rdi" },     { "r8b", "r8w", "r8d", "r8" },
+        { "r9b", "r9w", "r9d", "r9" },     { "r10b", "r10w", "r10d", "r10" },
+        { "r11b", "r11w", "r11d", "r11" },
     };
 
     const int column = width == 8 ? 0 : width == 16 ? 1 : width == 32 ? 2 : 3;
@@ -42,6 +57,25 @@ std::string
 imm(long long value)
 {
     return std::format("${}", value);
+}
+
+// A slot: a displacement off the frame pointer.
+std::string
+at(int displacement)
+{
+    return std::format("{}(%rbp)", displacement);
+}
+
+// The displacement the local's declaration recorded; a local read
+// before it is a tree the parser does not make.
+int
+slot_of(const state_t &s, slot_t where)
+{
+    const auto it = s.slots.find(where.id);
+    if (it == s.slots.end())
+        throw std::logic_error("v2: a name read before its declaration");
+
+    return it->second;
 }
 
 // writing
@@ -81,10 +115,78 @@ constant(state_t &s, reg_t r, long long value, int width)
 
 } // namespace
 
+// A register for a value: the lowest free one.  With every one held rcc
+// spills the oldest, backend.md 6.2, which rcc-v2 does not yet.
+reg_t
+take(state_t &s)
+{
+    for (const reg_t r : expression_registers)
+        if (!s.registers.owner.contains(r))
+            return r;
+
+    throw std::logic_error("v2: not yet: a spill");
+}
+
+// The next slot below the last, an int's 4 bytes, which keep every
+// slot at an int's alignment; its displacement off rbp is recorded
+// under the local's number.  G12: a slot is never shared and never
+// reused inside the activation.  A frame past the target's limit is
+// rcc's error, which no program rcc-v2 compiles comes near: it is
+// refused.
+void
+allocate(state_t &s, slot_t where)
+{
+    s.frame += 4;
+    if (s.frame > x86_64.frame_limit)
+        throw std::logic_error("v2: not yet: a frame past the target's limit");
+
+    s.slots.emplace(where.id, static_cast< int >(-s.frame));
+}
+
 void
 into(state_t &s, const literal_t &l, reg_t r)
 {
     constant(s, r, l.value, 32);
+}
+
+void
+into(state_t &s, const zero_t &, reg_t r)
+{
+    constant(s, r, 0, 32);
+}
+
+// The load row, 6.3.2.1p2: movl -4(%rbp), %eax.  G8: one mov.
+void
+into(state_t &s, const load_t &l, reg_t r)
+{
+    insn(s, "movl", { at(slot_of(s, l.where)), reg(r, 32) });
+}
+
+// The store row: movl %eax, -4(%rbp).
+void
+store(state_t &s, reg_t r, slot_t where)
+{
+    store(s, reg(r, 32), where);
+}
+
+// The store of an immediate: movl $7, -4(%rbp).
+void
+store(state_t &s, std::string_view immediate, slot_t where)
+{
+    insn(s, "movl", { immediate, at(slot_of(s, where)) });
+}
+
+// x86 immediates are 32 bits, so every int is one.
+std::string
+immediate_of(const literal_t &l)
+{
+    return imm(l.value);
+}
+
+std::string
+immediate_of(const zero_t &)
+{
+    return imm(0);
 }
 
 // The value goes to the convention's result register, which the return
@@ -105,21 +207,26 @@ namespace {
 
 // Chapter 5: rbp is the frame pointer in every function, pushed and
 // pointed at the frame, each with its place in the unwind table.  No
-// register is pushed below it and no slot is taken, so rsp does not
-// move again.
+// register is pushed below it.  The slots lie below rbp, and a
+// function that calls nothing keeps a frame of up to the red zone's
+// 128 bytes there without moving rsp; a larger one moves rsp below it
+// by its size.
 void
-prologue(std::ostream &out)
+prologue(std::ostream &out, long size)
 {
     out << "\tpushq\t%rbp\n"
            "\t.cfi_def_cfa_offset 16\n"
            "\t.cfi_offset %rbp, -16\n"
            "\tmovq\t%rsp, %rbp\n"
            "\t.cfi_def_cfa_register %rbp\n";
+
+    if (size > red_zone)
+        out << std::format("\tsubq\t${}, %rsp\n", size);
 }
 
-// The one epilogue, leave; the directive after it is the unwind
-// table's, since the canonical frame address is rsp + 8 from leave to
-// ret.
+// The one epilogue, leave, which puts rsp back at rbp, below the frame
+// or not; the directive after it is the unwind table's, since the
+// canonical frame address is rsp + 8 from leave to ret.
 void
 epilogue(std::ostream &out, const state_t &s)
 {
@@ -131,10 +238,12 @@ epilogue(std::ostream &out, const state_t &s)
 }
 
 // A definition: the body generated into the state's buffer, then
-// written inside the frame.  The one epilogue is reached with rax as it
-// is, G5's some value, but for main, which returns 0 when it falls off
-// its end, 5.1.2.3.4.  Every function has external linkage, so its
-// symbol is global, .globl, chapter 10.
+// written inside the frame, whose size is known after the body: the
+// slots rounded up to 16, so that a frame in the red zone stays in it.
+// The one epilogue is reached with rax as it is, G5's some value, but
+// for main, which returns 0 when it falls off its end, 5.1.2.3.4.
+// Every function has external linkage, so its symbol is global,
+// .globl, chapter 10.
 void
 function(std::ostream &out, const function_definition_t &fd)
 {
@@ -152,7 +261,9 @@ function(std::ostream &out, const function_definition_t &fd)
                        "\t.cfi_startproc\n",
                        fd.name, fd.name, fd.name);
 
-    prologue(out);
+    const long size = (s.frame + 15) / 16 * 16;
+
+    prologue(out, size);
 
     out << s.body.str();
 

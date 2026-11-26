@@ -1,9 +1,12 @@
 // -*- mode: c++; -*-
 
-// The diagnostics, the token primitives and the types the parser's
-// files share, declared in parse-common.hh, as rcc's parser has them.
+// The diagnostics, the token primitives, the types and the scopes the
+// parser's files share, declared in parse-common.hh, as rcc's parser
+// has them.
 
 #include "parse-common.hh"
+
+#include "build.hh"
 
 #include <algorithm>
 #include <initializer_list>
@@ -65,6 +68,17 @@ advance(parser_t &p)
     return t;
 }
 
+bool
+accept(parser_t &p, tok_t kind)
+{
+    if (peek(p).kind != kind)
+        return false;
+
+    advance(p);
+
+    return true;
+}
+
 const token_t &
 expect(parser_t &p, tok_t kind, std::string_view message)
 {
@@ -82,6 +96,37 @@ type_t
 int_type()
 {
     return make_int(32, true, int_kind_t::int_);
+}
+
+//
+// scopes
+//
+
+// The scopes from the innermost out, 6.2.1p4: an inner declaration
+// hides an outer one.
+const operand_t *
+lookup(const parser_t &p, std::string_view name)
+{
+    for (auto scope = p.scopes.rbegin(); scope != p.scopes.rend(); ++scope)
+        if (const auto it = scope->find(name); it != scope->end())
+            return &it->second;
+
+    return nullptr;
+}
+
+// One declaration of a name of no linkage in a scope, 6.7.1p4, which
+// rcc says at the second.  The local's leaf is its slot, numbered in
+// the order the function declares its locals.
+int
+declare(parser_t &p, const token_t &name, const type_t &type)
+{
+    if (p.scopes.back().contains(name.text))
+        fail(name, "redefinition of " + quoted(name.text));
+
+    const int slot = p.locals++;
+    p.scopes.back().emplace(name.text, operand_t { type, make_local(slot) });
+
+    return slot;
 }
 
 } // namespace rcc
