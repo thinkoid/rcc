@@ -1,6 +1,7 @@
 # rcc: build, test, test-long, bench, slots, clean.  GNU make; the
 # dependency files, the pattern rules and the target-specific
-# variable are GNU.
+# variable are GNU.  The build is two compilers of one driver: rcc,
+# and rcc-v2, the pipeline of src/v2 in place of rcc's.
 
 CXX      = clang++
 CXXFLAGS = -std=c++20 -Wall -Wextra -g -MMD -MP
@@ -8,16 +9,29 @@ CXXFLAGS = -std=c++20 -Wall -Wextra -g -MMD -MP
 SRC = $(wildcard src/*.cc)
 OBJ = $(SRC:src/%.cc=build/%.o)
 
+# rcc-v2: the driver and the lexer, then every source of src/v2
+V2_SRC = $(wildcard src/v2/*.cc)
+V2_OBJ = build/main.o build/lex.o $(V2_SRC:src/v2/%.cc=build/v2/%.o)
+
 # the targets with pins: each directory under tests/corpus
 TARGETS = $(patsubst tests/corpus/%/,%,$(wildcard tests/corpus/*/))
 
+all: rcc rcc-v2
+
 rcc: $(OBJ)
+	$(CXX) -o $@ $^
+
+rcc-v2: $(V2_OBJ)
 	$(CXX) -o $@ $^
 
 build/%.o: src/%.cc | build
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
-build:
+# a source of src/v2 includes what it shares with rcc by its name
+build/v2/%.o: src/v2/%.cc | build/v2
+	$(CXX) $(CXXFLAGS) -Isrc -c -o $@ $<
+
+build build/v2:
 	mkdir -p $@
 
 # the oracle's options: none for make test, which leaves the programs
@@ -49,7 +63,7 @@ slots: rcc
 	tests/slots $(if $(CORE),--core $(CORE))
 
 clean:
-	rm -rf build rcc
+	rm -rf build rcc rcc-v2
 
--include $(OBJ:.o=.d)
-.PHONY: test $(TARGETS:%=test-%) test-long bench slots clean
+-include $(OBJ:.o=.d) $(V2_OBJ:.o=.d)
+.PHONY: all test $(TARGETS:%=test-%) test-long bench slots clean
