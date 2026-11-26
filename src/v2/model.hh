@@ -36,6 +36,7 @@ struct expr_t::interface_t
     // builder returns, or erases a part into, without a copy of the node
     virtual expr_t rvalue(const expr_t &self) const = 0;
     virtual stmt_t init(slot_t where, const expr_t &self) const = 0;
+    virtual expr_t unary(unary_op_t op, const expr_t &self) const = 0;
 
     // an assignment, the second hop of 3.3: the value's model, which
     // knows the value's class, calls the place's operation for that
@@ -70,6 +71,20 @@ expr_t
 fwd_rvalue(const T &t, const expr_t &self)
 {
     return rvalue(t, self);
+}
+
+// A unary operator on a held node: the crossing from the operator, a
+// value in the parser, to the node's parameter (principle 6), the typed
+// builder of each operator.
+template< typename A >
+expr_t
+fwd_unary(unary_op_t op, const A &arg, const expr_t &self)
+{
+    switch (op) {
+    case unary_op_t::neg: return make_unary< unary_op_t::neg >(arg, self);
+    case unary_op_t::bit_not:
+        return make_unary< unary_op_t::bit_not >(arg, self);
+    }
 }
 
 // A value as a builder keeps it in the node it makes, by the classes of
@@ -155,6 +170,11 @@ struct expr_t::model_t final: interface_t
     stmt_t init(slot_t where, const expr_t &self) const override
     {
         return make_init(where, classed(held, self));
+    }
+
+    expr_t unary(unary_op_t op, const expr_t &self) const override
+    {
+        return fwd_unary(op, held, self);
     }
 
     bool is_assignable() const override

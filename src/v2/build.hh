@@ -28,6 +28,9 @@ expr_t rvalue(expr_t e);
 bool is_assignable(const expr_t &e);
 expr_t make_assign(expr_t place, expr_t value);
 
+// -e and ~e of an operand converted, 6.5.4.3.
+expr_t make_unary(unary_op_t op, expr_t arg);
+
 stmt_t make_expr_stmt(expr_t e);
 stmt_t make_null();
 stmt_t make_decl(int slot);

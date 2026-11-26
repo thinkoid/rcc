@@ -7,8 +7,8 @@ states the design: the idea, its principles, its idioms and its
 architecture. It leaves the details to the code.
 
 Of the design the tree has a thin line through every joint: functions
-whose locals are `int`, declared, assigned and returned, on both
-targets. Each mechanism
+whose locals are `int`, declared, assigned and returned, with the
+unary operators and parentheses, on both targets. Each mechanism
 below was compiled and run in a small model first; chapter 5 says
 what the models showed and chapter 6 what nothing has shown. A
 statement marked *working* is a position taken and run, not yet
@@ -314,11 +314,15 @@ A place is a *where* and a *view*: `place_t< W, V >`.
 
 Three things are kept apart: the value, the fold and a stage.
 
-- The value is asked: `constant()`, a free function forwarded through
-  the model, each node's from its operands'. A case label and an
-  array bound need it early. They do not need the fold.
-- The fold is an overload on both operands' types, beside the other
-  builders. It comes off with every niche under the oracle.
+- The value is asked: `value_of()`, a free function, each node's from
+  its operands'. A case label and an array bound need it early, and
+  will ask it through the model. They do not need the fold. So far it
+  is written for the two constant types, and a builder that folds
+  asks it.
+- The fold is an overload on the operands' types, beside the other
+  builders. It comes off with every niche under the oracle. rcc-v2
+  folds what rcc folds, with rcc's arithmetic, since its listing is
+  rcc's.
 - There is no stage. A node's type holds its operands' types, so an
   operand changed late changes what every node above should have
   been. A stage is a rebuild, never a patch.
@@ -428,6 +432,7 @@ with rcc, and nothing else.
 | `build.hh` | the builders, declared: all the parser sees of the zoo |
 | `build-typed.hh` | the overloads on the node types that a builder reaches through a model |
 | `expr.hh`, `stmt.hh` | the handles |
+| `operators.hh` | the operators, a closed domain that the parser and the zoo share |
 | `zoo.hh` | the node types under the handles |
 | `unit.hh` | the unit and its functions, under no handle |
 | `model.hh`, `build.cc` | the models, and the one unit that instantiates them |

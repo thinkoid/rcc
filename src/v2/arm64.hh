@@ -78,6 +78,9 @@ void into(state_t &, const zero_t &, reg_t r);
 // The load row, the int a slot holds into r.
 void into(state_t &, const load_t &, reg_t r);
 
+// - or ~ on r in place, at 32 bits.
+void operate(state_t &, unary_op_t op, reg_t r);
+
 // The store row, r into a slot at 32 bits.
 void store(state_t &, reg_t r, slot_t where);
 

@@ -63,9 +63,25 @@ identifier(parser_t &p)
     fail(t, quoted(t.text) + " undeclared");
 }
 
-// The primary expressions, 6.5.2: an identifier, an integer constant,
-// and each of the others refused by its name, a floating constant in
-// rcc's words.
+// A parenthesized expression, 6.5.2p6: the operand inside, its handle
+// as it is, so nothing marks it and (x) = 1; stores.  rcc reads '(' and
+// '{' as GNU C's statement expression, which is not yet.
+operand_t
+parenthesized_expression(parser_t &p)
+{
+    const token_t &open = advance(p);
+    if (peek(p).kind == tok_t::lbrace)
+        not_yet(open, "statement expression");
+
+    operand_t e = expression(p);
+    expect(p, tok_t::rparen, "expected ')'");
+
+    return e;
+}
+
+// The primary expressions, 6.5.2: an identifier, an integer constant, a
+// parenthesized expression, and each of the others refused by its name,
+// a floating constant in rcc's words.
 operand_t
 primary_expression(parser_t &p)
 {
@@ -77,10 +93,7 @@ primary_expression(parser_t &p)
     case tok_t::floating: not_yet(t, "floating constant");
     case tok_t::character: not_yet(t, "character constant");
     case tok_t::string: not_yet(t, "string literal");
-    case tok_t::lparen:
-        not_yet(t, peek(p, 1).kind == tok_t::lbrace ?
-                       "statement expression" :
-                       "parenthesized expression");
+    case tok_t::lparen: return parenthesized_expression(p);
     case tok_t::kw_generic: not_yet(t, "generic selection");
     default: fail(t, "expected expression");
     }
@@ -106,20 +119,60 @@ postfix_expression(parser_t &p)
     }
 }
 
-// The unary operators, 6.5.4, GNU C's __extension__ before a cast
-// expression, and its address of a label, &&next, which rcc refuses in
-// these words.
+// The operand of an arithmetic operator: its value, 6.3.2.1p2, of type
+// int, which the integer promotions leave as it is, 6.5.4.3p2.  An
+// operand of another type is not yet.
+expr_t
+arithmetic_operand(const token_t &op, operand_t e)
+{
+    if (e.type != int_type())
+        not_yet(op, quoted(op.text) + " on an operand whose type is not 'int'");
+
+    return rvalue(std::move(e.node));
+}
+
+// 6.5.5, the operand of a unary operator, below.
+operand_t cast_expression(parser_t &);
+
+// +e, 6.5.4.3p2: the operand's value, which is no lvalue, and no node
+// of its own.
+operand_t
+unary_plus(parser_t &p)
+{
+    const token_t &op = advance(p);
+    operand_t arg = cast_expression(p);
+
+    return { int_type(), arithmetic_operand(op, std::move(arg)) };
+}
+
+// -e and ~e, 6.5.4.3p3, p4.
+operand_t
+unary_arithmetic(parser_t &p)
+{
+    const token_t &op = advance(p);
+    const unary_op_t u =
+        op.kind == tok_t::minus ? unary_op_t::neg : unary_op_t::bit_not;
+
+    operand_t arg = cast_expression(p);
+
+    return { int_type(),
+             make_unary(u, arithmetic_operand(op, std::move(arg))) };
+}
+
+// The unary operators, 6.5.4, of which rcc-v2 takes + - ~, 6.5.4.3, on
+// a cast expression; GNU C's __extension__ before a cast expression,
+// and its address of a label, &&next, which rcc refuses in these words.
 operand_t
 unary_expression(parser_t &p)
 {
     const token_t &op = peek(p);
 
     switch (op.kind) {
+    case tok_t::plus: return unary_plus(p);
+    case tok_t::minus:
+    case tok_t::tilde: return unary_arithmetic(p);
     case tok_t::inc:
     case tok_t::dec:
-    case tok_t::plus:
-    case tok_t::minus:
-    case tok_t::tilde:
     case tok_t::bang:
     case tok_t::amp:
     case tok_t::star:

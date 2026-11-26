@@ -4,8 +4,8 @@
 // handles.  A node is an aggregate of its parts, each concrete where a
 // row's choice depends on it and erased where none does.  The builders
 // make them, build.cc; the rows that write them are each target's,
-// amd64.hh and arm64.hh, and rows-statements.hh's for those both
-// targets write alike.
+// amd64.hh and arm64.hh, and rows-expressions.hh's and
+// rows-statements.hh's for those both targets write alike.
 
 #pragma once
 
@@ -29,6 +29,25 @@ struct zero_t
 {
 };
 
+// The value of a constant, which a builder asks to fold an operator on
+// it (4.3).
+inline int
+value_of(const literal_t &c)
+{
+    return c.value;
+}
+
+inline int
+value_of(const zero_t &)
+{
+    return 0;
+}
+
+// A constant, a node whose value is known: a type value_of() is written
+// for (principle 7).
+template< typename C >
+concept constant = requires(const C &c) { value_of(c); };
+
 // A local, a place, 4.2: the where of an int in the function's frame,
 // named by the local's number among the function's.  The displacement
 // is the state's, since a slot is taken where its declaration is
@@ -43,6 +62,14 @@ struct slot_t
 struct load_t
 {
     slot_t where;
+};
+
+// -e and ~e, 6.5.4.3p3, p4, on an operand that is no constant, which
+// the builder folds instead; the operand is erased.
+template< unary_op_t op, typename A = expr_t >
+struct unary_t
+{
+    A arg;
 };
 
 // x = e, 6.5.17.2: the value stored in the place, whose value after the

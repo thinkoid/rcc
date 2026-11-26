@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include "operators.hh"
 #include "stmt.hh"
 #include "targets.hh"
 
@@ -43,6 +44,7 @@ public:
     friend expr_t rvalue(expr_t);
     friend bool is_assignable(const expr_t &);
     friend expr_t make_assign(expr_t place, expr_t value);
+    friend expr_t make_unary(unary_op_t op, expr_t arg);
     friend stmt_t make_init(int slot, expr_t value);
 };
 

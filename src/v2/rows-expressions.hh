@@ -40,6 +40,16 @@ into(S &, const slot_t &, R)
     throw std::logic_error("v2: a place read without its lvalue conversion");
 }
 
+// - and ~, 6.5.4.3p3, p4: the operand into r, then the operation on r in
+// place, negl %eax, neg w0, w0.
+template< typename S, unary_op_t op, typename A, typename R >
+void
+into(S &s, const unary_t< op, A > &u, R r)
+{
+    into(s, u.arg, r);
+    operate(s, op, r);
+}
+
 // The store row of an initializer, rcc's initialize(), chapter 6.6: the
 // value in a register, stored into the slot, released.  The targets'
 // niches store a constant with no register held.

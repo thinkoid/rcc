@@ -101,6 +101,14 @@ make_assign(expr_t place, expr_t value)
     return value.self->assigned_to(place, value);
 }
 
+// One hop through the operand's model, which knows whether the operand
+// is a constant (3.3).
+expr_t
+make_unary(unary_op_t op, expr_t arg)
+{
+    return arg.self->unary(op, arg);
+}
+
 stmt_t
 make_expr_stmt(expr_t e)
 {

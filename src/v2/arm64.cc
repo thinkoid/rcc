@@ -263,6 +263,15 @@ into(state_t &s, const load_t &l, reg_t r)
     insn(s, "ldr", { reg(r, 32), slot_operand(slot_of(s, l.where)) });
 }
 
+// neg and mvn with r as their destination and their operand: neg w0, w0,
+// mvn w0, w0.  G1: neg of INT_MIN is INT_MIN.
+void
+operate(state_t &s, unary_op_t op, reg_t r)
+{
+    const auto operand = reg(r, 32);
+    insn(s, op == unary_op_t::neg ? "neg" : "mvn", { operand, operand });
+}
+
 // The store row of 2.2: str w0, [x29, #16].
 void
 store(state_t &s, reg_t r, slot_t where)

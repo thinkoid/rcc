@@ -162,6 +162,14 @@ into(state_t &s, const load_t &l, reg_t r)
     insn(s, "movl", { at(slot_of(s, l.where)), reg(r, 32) });
 }
 
+// neg and not have one address, the operand's register: negl %eax,
+// notl %eax.  G1: neg of INT_MIN is INT_MIN.
+void
+operate(state_t &s, unary_op_t op, reg_t r)
+{
+    insn(s, op == unary_op_t::neg ? "negl" : "notl", { reg(r, 32) });
+}
+
 // The store row: movl %eax, -4(%rbp).
 void
 store(state_t &s, reg_t r, slot_t where)
