@@ -45,6 +45,7 @@ public:
     friend bool is_assignable(const expr_t &);
     friend expr_t make_assign(expr_t place, expr_t value);
     friend expr_t make_unary(unary_op_t op, expr_t arg);
+    friend expr_t make_binary(binary_op_t op, expr_t lhs, expr_t rhs);
     friend stmt_t make_init(int slot, expr_t value);
 };
 

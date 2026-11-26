@@ -47,6 +47,21 @@ struct expr_t::interface_t
     virtual expr_t assign(const literal_t &value) const = 0;
     virtual expr_t assign(const zero_t &value) const = 0;
     virtual expr_t assign(const expr_t &value) const = 0;
+
+    // a binary operator, by the same two hops: the right operand's
+    // model, which knows the right operand's class, calls the left's
+    // operation for that class, which knows the left's class and makes
+    // the node
+    virtual expr_t
+    right_of(binary_op_t op, const expr_t &lhs, const expr_t &self) const = 0;
+    virtual expr_t
+    binary(binary_op_t op, const literal_t &rhs, const expr_t &self) const = 0;
+    virtual expr_t
+    binary(binary_op_t op, const zero_t &rhs, const expr_t &self) const = 0;
+    virtual expr_t
+    binary(binary_op_t op, const load_t &rhs, const expr_t &self) const = 0;
+    virtual expr_t
+    binary(binary_op_t op, const expr_t &rhs, const expr_t &self) const = 0;
 };
 
 // The rows of a held node, by overload and by the state's namespace: a
@@ -107,6 +122,42 @@ inline const zero_t &
 classed(const zero_t &value, const expr_t &)
 {
     return value;
+}
+
+// The right operand of a binary operator as a builder keeps it:
+// classed()'s classes, and a load_t besides, which x86-64 reads as the
+// instruction's operand in memory.
+template< typename T >
+const auto &
+classed_right(const T &operand, const expr_t &self)
+{
+    return classed(operand, self);
+}
+
+inline const load_t &
+classed_right(const load_t &operand, const expr_t &)
+{
+    return operand;
+}
+
+// A binary operator on two operands in their classes: the crossing from
+// the operator, a value in the parser, to the node's parameter
+// (principle 6), made once for every class, the typed builder of each
+// operator.
+template< typename L, typename R >
+expr_t
+fwd_binary(binary_op_t op, const L &lhs, const R &rhs)
+{
+    switch (op) {
+    case binary_op_t::add: return make_binary< binary_op_t::add >(lhs, rhs);
+    case binary_op_t::sub: return make_binary< binary_op_t::sub >(lhs, rhs);
+    case binary_op_t::bit_and:
+        return make_binary< binary_op_t::bit_and >(lhs, rhs);
+    case binary_op_t::bit_or:
+        return make_binary< binary_op_t::bit_or >(lhs, rhs);
+    case binary_op_t::bit_xor:
+        return make_binary< binary_op_t::bit_xor >(lhs, rhs);
+    }
 }
 
 // Whether a node is a place an assignment stores into: whether the
@@ -200,6 +251,38 @@ struct expr_t::model_t final: interface_t
     expr_t assign(const expr_t &value) const override
     {
         return fwd_assign(held, value);
+    }
+
+    expr_t right_of(binary_op_t op,
+                    const expr_t &lhs,
+                    const expr_t &self) const override
+    {
+        return lhs.self->binary(op, classed_right(held, self), lhs);
+    }
+
+    expr_t binary(binary_op_t op,
+                  const literal_t &rhs,
+                  const expr_t &self) const override
+    {
+        return fwd_binary(op, classed(held, self), rhs);
+    }
+
+    expr_t
+    binary(binary_op_t op, const zero_t &rhs, const expr_t &self) const override
+    {
+        return fwd_binary(op, classed(held, self), rhs);
+    }
+
+    expr_t
+    binary(binary_op_t op, const load_t &rhs, const expr_t &self) const override
+    {
+        return fwd_binary(op, classed(held, self), rhs);
+    }
+
+    expr_t
+    binary(binary_op_t op, const expr_t &rhs, const expr_t &self) const override
+    {
+        return fwd_binary(op, classed(held, self), rhs);
     }
 
     T held;

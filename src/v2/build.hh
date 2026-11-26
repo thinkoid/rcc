@@ -31,6 +31,9 @@ expr_t make_assign(expr_t place, expr_t value);
 // -e and ~e of an operand converted, 6.5.4.3.
 expr_t make_unary(unary_op_t op, expr_t arg);
 
+// lhs op rhs of operands converted, 6.5.7, 6.5.11 to 6.5.13.
+expr_t make_binary(binary_op_t op, expr_t lhs, expr_t rhs);
+
 stmt_t make_expr_stmt(expr_t e);
 stmt_t make_null();
 stmt_t make_decl(int slot);

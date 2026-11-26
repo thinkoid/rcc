@@ -109,6 +109,14 @@ make_unary(unary_op_t op, expr_t arg)
     return arg.self->unary(op, arg);
 }
 
+// Two hops, 3.3: through the right operand's model, which knows its
+// class, then through the left's, which knows the left's class.
+expr_t
+make_binary(binary_op_t op, expr_t lhs, expr_t rhs)
+{
+    return rhs.self->right_of(op, lhs, rhs);
+}
+
 stmt_t
 make_expr_stmt(expr_t e)
 {

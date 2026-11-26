@@ -113,6 +113,22 @@ constant(state_t &s, reg_t r, long long value, int width)
         insn(s, "movabsq", { imm(value), reg(r, 64) });
 }
 
+// operators
+
+// The instruction of a binary operator at 32 bits, rcc's
+// arithmetic_mnemonic() sized l.
+std::string_view
+mnemonic(binary_op_t op)
+{
+    switch (op) {
+    case binary_op_t::add: return "addl";
+    case binary_op_t::sub: return "subl";
+    case binary_op_t::bit_and: return "andl";
+    case binary_op_t::bit_or: return "orl";
+    case binary_op_t::bit_xor: return "xorl";
+    }
+}
+
 } // namespace
 
 // A register for a value: the lowest free one.  With every one held rcc
@@ -170,6 +186,27 @@ operate(state_t &s, unary_op_t op, reg_t r)
     insn(s, op == unary_op_t::neg ? "negl" : "notl", { reg(r, 32) });
 }
 
+// op R, L, two addresses, the result in L, which is r: addl $5, %eax.
+void
+operate(state_t &s, binary_op_t op, reg_t r, std::string_view immediate)
+{
+    insn(s, mnemonic(op), { immediate, reg(r, 32) });
+}
+
+// addl -8(%rbp), %eax.
+void
+operate(state_t &s, binary_op_t op, reg_t r, slot_t source)
+{
+    operate(s, op, r, at(slot_of(s, source)));
+}
+
+// addl %ecx, %eax.
+void
+operate(state_t &s, binary_op_t op, reg_t r, reg_t source)
+{
+    operate(s, op, r, reg(source, 32));
+}
+
 // The store row: movl %eax, -4(%rbp).
 void
 store(state_t &s, reg_t r, slot_t where)
@@ -198,14 +235,19 @@ immediate_of(const zero_t &)
 }
 
 // The value goes to the convention's result register, which the return
-// names, 7.2.  Every return jumps to the one epilogue, the last
-// statement of the body included: the jump to the next instruction is
-// what the statement says, and removing it was the optional peephole
-// pass's work in the PDP-11 compiler, which rcc has no counterpart of.
+// names, 7.2, and holds while the value is generated there, so that no
+// operand of it is taken in it.  Every return jumps to the one
+// epilogue, the last statement of the body included: the jump to the
+// next instruction is what the statement says, and removing it was the
+// optional peephole pass's work in the PDP-11 compiler, which rcc has
+// no counterpart of.
 void
 generate(state_t &s, const return_t &r)
 {
+    const value_t v = hold(s, result_register);
     into(s, r.value, result_register);
+    release(s, v);
+
     jump(s, s.ret);
 }
 

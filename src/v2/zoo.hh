@@ -72,6 +72,17 @@ struct unary_t
     A arg;
 };
 
+// L op R, 6.5.7, 6.5.11 to 6.5.13, on operands that do not fold, each
+// in the class a target's niches read: the builder keeps the left a
+// constant or erased, the right a constant, a load or erased, and a
+// row that exchanges the operands makes the node of the other order.
+template< binary_op_t op, typename L = expr_t, typename R = expr_t >
+struct binary_t
+{
+    L lhs;
+    R rhs;
+};
+
 // x = e, 6.5.17.2: the value stored in the place, whose value after the
 // store is the expression's, 6.5.17.1p3.  The value's type is a
 // literal_t's or a zero_t's where a target has a niche for it, else

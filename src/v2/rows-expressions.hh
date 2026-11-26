@@ -50,6 +50,22 @@ into(S &s, const unary_t< op, A > &u, R r)
     operate(s, op, r);
 }
 
+// The primary of + - & | ^, 6.5.7, 6.5.11 to 6.5.13: the left operand
+// into r first, G13, then the right operand's value in a register of
+// its own, which value() takes while the caller holds r, the operation
+// into r from it, and the register released: addl %ecx, %eax, add w0,
+// w0, w1.
+template< typename S, binary_op_t op, typename L, typename R, typename Reg >
+void
+into(S &s, const binary_t< op, L, R > &b, Reg r)
+{
+    into(s, b.lhs, r);
+
+    const value_t v = value(s, b.rhs);
+    operate(s, op, r, reg_of(s, v));
+    release(s, v);
+}
+
 // The store row of an initializer, rcc's initialize(), chapter 6.6: the
 // value in a register, stored into the slot, released.  The targets'
 // niches store a constant with no register held.

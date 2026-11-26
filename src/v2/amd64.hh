@@ -63,6 +63,12 @@ void into(state_t &, const load_t &, reg_t r);
 // - or ~ on r in place, at 32 bits.
 void operate(state_t &, unary_op_t op, reg_t r);
 
+// The operation of op into r from an operand at 32 bits: a register,
+// the int in a slot, or an immediate as immediate_of() writes it.
+void operate(state_t &, binary_op_t op, reg_t r, reg_t source);
+void operate(state_t &, binary_op_t op, reg_t r, slot_t source);
+void operate(state_t &, binary_op_t op, reg_t r, std::string_view immediate);
+
 // The store rows, an operand into a slot at 32 bits: a register, or an
 // immediate as immediate_of() writes it.
 void store(state_t &, reg_t r, slot_t where);
@@ -84,6 +90,48 @@ void
 initialize(state_t &s, slot_t where, const V &e)
 {
     store(s, immediate_of(e), where);
+}
+
+// Whether a node with the constant L on the left of op is written with
+// its operands exchanged, rcc's constant_first() as ordered() asks it:
+// op commutes, and the constant is an immediate, as every int is.
+template< binary_op_t op, typename L >
+concept constant_first = commutes(op) && immediate< L >;
+
+// The niches of + - & | ^, chapter 6.1, over the primary of
+// rows-expressions.hh.  A constant on the left of an operator that
+// commutes is the row of the node with its operands exchanged, 5 + a
+// as a + 5: the right operand, which is no constant, into r, then the
+// constant as the immediate.
+template< binary_op_t op, typename L, typename R >
+    requires constant_first< op, L >
+void
+into(state_t &s, const binary_t< op, L, R > &b, reg_t r)
+{
+    into(s, binary_t< op, R, L > { b.rhs, b.lhs }, r);
+}
+
+// A load on the right is the instruction's operand in memory: addl
+// -8(%rbp), %eax.  Its type is the more special, so the node the mirror
+// takes, 5 + a, is excluded by name; 5 - a is this row, 5 into r.
+template< binary_op_t op, typename L >
+    requires(!constant_first< op, L >)
+void
+into(state_t &s, const binary_t< op, L, load_t > &b, reg_t r)
+{
+    into(s, b.lhs, r);
+    operate(s, op, r, b.rhs.where);
+}
+
+// An immediate on the right is the instruction's, negative ones as
+// written: addl $5, %eax, andl $-2, %eax.  Of the mirror's nodes it
+// would take only a constant on both sides, which the builder folds.
+template< binary_op_t op, typename L, immediate I >
+void
+into(state_t &s, const binary_t< op, L, I > &b, reg_t r)
+{
+    into(s, b.lhs, r);
+    operate(s, op, r, immediate_of(b.rhs));
 }
 
 // The value into the result register, then the jump to the epilogue.

@@ -1,12 +1,12 @@
 // -*- mode: c++; -*-
 
 // The register stack of docs/backend.md 6.7, in rcc's vocabulary: which
-// expression register holds which value, a value taken in a register
-// and released.  Its text is the same for both targets, so it is
-// templates over a target's state, which holds the record as
-// registers, and each target defines take(), the register a new value
-// is taken in.  There is no spill yet: a value stays in the register it
-// was taken in until it is released.
+// expression register holds which value, a value taken in a register,
+// or held in one a row names, and released.  Its text is the same for
+// both targets, so it is templates over a target's state, which holds
+// the record as registers, and each target defines take(), the
+// register a new value is taken in.  There is no spill yet: a value
+// stays in the register it was taken in until it is released.
 
 #pragma once
 
@@ -33,18 +33,27 @@ struct registers_t
     std::vector< R > values { };
 };
 
-// A new value in a register taken for it.
-template< typename S >
+// A new value in the register r, which is free: a value whose register
+// a row names, as a return names the result register, so that nothing
+// it generates there takes r.
+template< typename S, typename R >
 value_t
-fresh(S &s)
+hold(S &s, R r)
 {
-    const auto r = take(s);
     const int id = static_cast< int >(s.registers.values.size());
 
     s.registers.values.push_back(r);
     s.registers.owner.emplace(r, id);
 
     return { id };
+}
+
+// A new value in a register taken for it.
+template< typename S >
+value_t
+fresh(S &s)
+{
+    return hold(s, take(s));
 }
 
 // The register a value is in.

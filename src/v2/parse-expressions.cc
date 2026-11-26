@@ -1,10 +1,10 @@
 // -*- mode: c++; -*-
 
 // 6.5: the expressions, from the primary expression up to the comma,
-// one function for each level of the grammar.  A level whose operator
-// rcc-v2 does not compile refuses it at its token, as not yet, so an
-// operand stands alone at every level and an operator stops the parse
-// where it is met.
+// one function for each level of the grammar.  A level of operators
+// rcc-v2 compiles reads them in rcc's loop; a level whose operator it
+// does not compile refuses it at its token, as not yet, after the
+// level's first operand.
 
 #include "parse-common.hh"
 
@@ -120,8 +120,9 @@ postfix_expression(parser_t &p)
 }
 
 // The operand of an arithmetic operator: its value, 6.3.2.1p2, of type
-// int, which the integer promotions leave as it is, 6.5.4.3p2.  An
-// operand of another type is not yet.
+// int, which the integer promotions, 6.5.4.3p2, and the usual
+// arithmetic conversions, 6.5.7p5, leave as it is.  An operand of
+// another type is not yet.
 expr_t
 arithmetic_operand(const token_t &op, operand_t e)
 {
@@ -196,6 +197,18 @@ cast_expression(parser_t &p)
     return unary_expression(p);
 }
 
+// A binary operator of int, 6.5.7, 6.5.11 to 6.5.13, its token at: each
+// operand's value, as arithmetic_operand() takes it there, and the
+// result an int, the operands' common type.
+operand_t
+arithmetic(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
+{
+    expr_t l = arithmetic_operand(at, std::move(lhs));
+    expr_t r = arithmetic_operand(at, std::move(rhs));
+
+    return { int_type(), make_binary(op, std::move(l), std::move(r)) };
+}
+
 // The multiplicative operators, 6.5.6.
 operand_t
 multiplicative_expression(parser_t &p)
@@ -206,12 +219,21 @@ multiplicative_expression(parser_t &p)
     return e;
 }
 
-// The additive operators, 6.5.7.
+// The additive operators, 6.5.7, left-associative, as rcc's loop reads
+// them: a - b - c is (a - b) - c.
 operand_t
 additive_expression(parser_t &p)
 {
     operand_t e = multiplicative_expression(p);
-    refuse_operator(p, { tok_t::plus, tok_t::minus });
+
+    while (next_is(p, { tok_t::plus, tok_t::minus })) {
+        const token_t &op = advance(p);
+        const binary_op_t b =
+            op.kind == tok_t::plus ? binary_op_t::add : binary_op_t::sub;
+
+        operand_t rhs = multiplicative_expression(p);
+        e = arithmetic(b, op, std::move(e), std::move(rhs));
+    }
 
     return e;
 }
@@ -246,32 +268,50 @@ equality_expression(parser_t &p)
     return e;
 }
 
-// The bitwise AND operator, 6.5.11.
+// The bitwise AND operator, 6.5.11, left-associative.
 operand_t
 and_expression(parser_t &p)
 {
     operand_t e = equality_expression(p);
-    refuse_operator(p, { tok_t::amp });
+
+    while (peek(p).kind == tok_t::amp) {
+        const token_t &op = advance(p);
+
+        operand_t rhs = equality_expression(p);
+        e = arithmetic(binary_op_t::bit_and, op, std::move(e), std::move(rhs));
+    }
 
     return e;
 }
 
-// The bitwise exclusive OR operator, 6.5.12.
+// The bitwise exclusive OR operator, 6.5.12, left-associative.
 operand_t
 exclusive_or_expression(parser_t &p)
 {
     operand_t e = and_expression(p);
-    refuse_operator(p, { tok_t::caret });
+
+    while (peek(p).kind == tok_t::caret) {
+        const token_t &op = advance(p);
+
+        operand_t rhs = and_expression(p);
+        e = arithmetic(binary_op_t::bit_xor, op, std::move(e), std::move(rhs));
+    }
 
     return e;
 }
 
-// The bitwise inclusive OR operator, 6.5.13.
+// The bitwise inclusive OR operator, 6.5.13, left-associative.
 operand_t
 inclusive_or_expression(parser_t &p)
 {
     operand_t e = exclusive_or_expression(p);
-    refuse_operator(p, { tok_t::pipe });
+
+    while (peek(p).kind == tok_t::pipe) {
+        const token_t &op = advance(p);
+
+        operand_t rhs = exclusive_or_expression(p);
+        e = arithmetic(binary_op_t::bit_or, op, std::move(e), std::move(rhs));
+    }
 
     return e;
 }

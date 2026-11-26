@@ -11,6 +11,7 @@
 #include "assembly.hh"
 
 #include <format>
+#include <optional>
 #include <ostream>
 #include <stdexcept>
 #include <string>
@@ -103,6 +104,21 @@ normalized(long long value, int width)
 
     return static_cast< long long >(bits ^ sign) -
            static_cast< long long >(sign);
+}
+
+// Whether add and sub encode a constant of an operation of width bits,
+// 2.4: 0 to 4095, or that shifted left by 12, or the negative of
+// either, which the assembler encodes as the other operation: add w0,
+// w0, #-1 is sub w0, w0, #1.  The source's operator is written.
+bool
+arithmetic_immediate(long long value, int width)
+{
+    const auto v = normalized(value, width);
+    const auto magnitude = v < 0 ? 0ull - static_cast< unsigned long long >(v) :
+                                   static_cast< unsigned long long >(v);
+
+    return magnitude <= 0xfff ||
+           ((magnitude & 0xfff) == 0 && magnitude >> 12 <= 0xfff);
 }
 
 // The bits of a constant at width, as an unsigned number.
@@ -212,6 +228,37 @@ constant(state_t &s, reg_t r, long long value, int width)
     }
 }
 
+// operators
+
+// The instruction of a binary operator, rcc's arithmetic_mnemonic().
+std::string_view
+mnemonic(binary_op_t op)
+{
+    switch (op) {
+    case binary_op_t::add: return "add";
+    case binary_op_t::sub: return "sub";
+    case binary_op_t::bit_and: return "and";
+    case binary_op_t::bit_or: return "orr";
+    case binary_op_t::bit_xor: return "eor";
+    }
+}
+
+// The immediate of op that encodes value at 32 bits, 2.4, or none: add
+// and sub take 12 bits, or 12 bits shifted by 12, of either sign,
+// written signed; and, orr and eor a bitmask, written in hex.
+std::optional< std::string >
+immediate_of(binary_op_t op, int value)
+{
+    if (op == binary_op_t::add || op == binary_op_t::sub) {
+        if (arithmetic_immediate(value, 32))
+            return imm(value);
+    }
+    else if (bitmask_immediate(value, 32))
+        return bitmask_of(value, 32);
+
+    return std::nullopt;
+}
+
 } // namespace
 
 // A register for a value: the lowest free one.  With every one held rcc
@@ -272,6 +319,32 @@ operate(state_t &s, unary_op_t op, reg_t r)
     insn(s, op == unary_op_t::neg ? "neg" : "mvn", { operand, operand });
 }
 
+// op r, r, R, three addresses: add w0, w0, w1.
+void
+operate(state_t &s, binary_op_t op, reg_t r, reg_t source)
+{
+    const auto to = reg(r, 32);
+    insn(s, mnemonic(op), { to, to, reg(source, 32) });
+}
+
+// A literal is the immediate where the instruction encodes it, add w0,
+// w0, #5, and is otherwise the primary's right operand, its value in a
+// register of its own: mov w1, #4097, add w0, w0, w1.
+void
+operate(state_t &s, binary_op_t op, reg_t r, const literal_t &source)
+{
+    if (const auto immediate = immediate_of(op, source.value)) {
+        const auto to = reg(r, 32);
+        insn(s, mnemonic(op), { to, to, *immediate });
+        return;
+    }
+
+    const value_t v = fresh(s);
+    into(s, source, reg_of(s, v));
+    operate(s, op, r, reg_of(s, v));
+    release(s, v);
+}
+
 // The store row of 2.2: str w0, [x29, #16].
 void
 store(state_t &s, reg_t r, slot_t where)
@@ -288,14 +361,19 @@ initialize(state_t &s, slot_t where, const zero_t &)
 }
 
 // The value goes to the convention's result register, which the return
-// names, 7.2.  Every return jumps to the one epilogue, the last
-// statement of the body included: the jump to the next instruction is
-// what the statement says, and removing it was the optional peephole
-// pass's work in the PDP-11 compiler, which rcc has no counterpart of.
+// names, 7.2, and holds while the value is generated there, so that no
+// operand of it is taken in it.  Every return jumps to the one
+// epilogue, the last statement of the body included: the jump to the
+// next instruction is what the statement says, and removing it was the
+// optional peephole pass's work in the PDP-11 compiler, which rcc has
+// no counterpart of.
 void
 generate(state_t &s, const return_t &r)
 {
+    const value_t v = hold(s, result_register);
     into(s, r.value, result_register);
+    release(s, v);
+
     jump(s, s.ret);
 }
 

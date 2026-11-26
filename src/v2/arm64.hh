@@ -81,12 +81,51 @@ void into(state_t &, const load_t &, reg_t r);
 // - or ~ on r in place, at 32 bits.
 void operate(state_t &, unary_op_t op, reg_t r);
 
+// The operation of op into r from r and an operand at 32 bits: a
+// register, or a literal, the instruction's immediate where it encodes
+// one.
+void operate(state_t &, binary_op_t op, reg_t r, reg_t source);
+void operate(state_t &, binary_op_t op, reg_t r, const literal_t &source);
+
 // The store row, r into a slot at 32 bits.
 void store(state_t &, reg_t r, slot_t where);
 
 // The niche of initialize(), 6.6: 0 is the zero register's store, and
 // no register is held.
 void initialize(state_t &, slot_t where, const zero_t &);
+
+// Whether a node with the constant L on the left of op is written with
+// its operands exchanged, rcc's constant_first() as ordered() asks it:
+// op commutes, and L is a constant, whether the instruction encodes it
+// or not.
+template< binary_op_t op, typename L >
+concept constant_first = commutes(op) && constant< L >;
+
+// The niches of + - & | ^, chapter 6.1, over the primary of
+// rows-expressions.hh.  A constant on the left of an operator that
+// commutes is the row of the node with its operands exchanged, 5 + a
+// as a + 5: the right operand, which is no constant, into r, then the
+// constant as the right operand.
+template< binary_op_t op, typename L, typename R >
+    requires constant_first< op, L >
+void
+into(state_t &s, const binary_t< op, L, R > &b, reg_t r)
+{
+    into(s, binary_t< op, R, L > { b.rhs, b.lhs }, r);
+}
+
+// A literal on the right is the instruction's immediate where it
+// encodes it, add w0, w0, #5, and the primary's register otherwise.  0
+// takes the primary: a & 0 is mov w1, #0 and the and.  Of the mirror's
+// nodes it would take only a constant on both sides, which the builder
+// folds.
+template< binary_op_t op, typename L >
+void
+into(state_t &s, const binary_t< op, L, literal_t > &b, reg_t r)
+{
+    into(s, b.lhs, r);
+    operate(s, op, r, b.rhs);
+}
 
 // The value into the result register, then the jump to the epilogue.
 void generate(state_t &, const return_t &);

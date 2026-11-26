@@ -14,4 +14,21 @@ namespace rcc {
 // The unary operators of 6.5.4.3 that make a node: - and ~.
 enum class unary_op_t { neg, bit_not };
 
+// The binary operators of int, 6.5.7 and 6.5.11 to 6.5.13: + - & | ^.
+enum class binary_op_t { add, sub, bit_and, bit_or, bit_xor };
+
+// Whether the operands of op may change places, its value the same
+// either way, rcc's commutes(): + & | ^, and not -.
+constexpr bool
+commutes(binary_op_t op)
+{
+    switch (op) {
+    case binary_op_t::add:
+    case binary_op_t::bit_and:
+    case binary_op_t::bit_or:
+    case binary_op_t::bit_xor: return true;
+    case binary_op_t::sub: return false;
+    }
+}
+
 } // namespace rcc

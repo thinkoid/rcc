@@ -7,8 +7,9 @@ states the design: the idea, its principles, its idioms and its
 architecture. It leaves the details to the code.
 
 Of the design the tree has a thin line through every joint: functions
-whose locals are `int`, declared, assigned and returned, with the
-unary operators and parentheses, on both targets. Each mechanism
+whose locals are `int`, declared, assigned and returned, with
+parentheses, the unary operators and `+ - & | ^`, on both targets.
+Each mechanism
 below was compiled and run in a small model first; chapter 5 says
 what the models showed and chapter 6 what nothing has shown. A
 statement marked *working* is a position taken and run, not yet
@@ -26,14 +27,16 @@ The typed tree asks each question once, where the node is built, and
 keeps the answer as the node's type.
 
 ```c++
-template< typename L = expr_t, typename R = expr_t >
-struct add_t { L lhs; R rhs; };
+template< binary_op_t op, typename L = expr_t, typename R = expr_t >
+struct binary_t { L lhs; R rhs; };
 
-template< typename L, typename R >    // the primary: asks nothing
-reg_t value(state_t &, const add_t< L, R > &);
+// the primary: asks nothing
+template< binary_op_t op, typename L, typename R >
+void into(state_t &, const binary_t< op, L, R > &, reg_t);
 
-template< typename L >                // a niche: addl $5, %eax
-reg_t value(state_t &, const add_t< L, literal_t > &);
+// a niche: addl $5, %eax
+template< binary_op_t op, typename L >
+void into(state_t &, const binary_t< op, L, literal_t > &, reg_t);
 ```
 
 - The tree is not erased uniformly. `expr_t` is an erased handle. What
@@ -62,8 +65,11 @@ resolution in place of its `match()`. It needs no second language.
    about a type is an overload. A question about a constant's value is
    asked in the builder that makes the leaf, and its answer is a type:
    `zero_t`, or `bit_t` for a constant of one bit. Only a question
-   about the context or the state stays an `if`. Overloads and
-   specializations are how conditionals leave the generator.
+   about the context or the state stays an `if`, and one more: a
+   question of one target's encoding about a row's own leaf, whether
+   aarch64's `add` holds its constant, which no builder can ask,
+   since a builder names no target. Overloads and specializations are
+   how conditionals leave the generator.
 3. **A fact lives where its distance puts it.**
 
    | The fact | Its distance | Where it lives |
@@ -180,6 +186,10 @@ public:
   picks the most special row: that is the table's `match()`.
 - Two niches that overlap are ambiguous until a third says which wins.
   The priority is stated, or rcc does not build.
+- A row may be the row of another node. A constant on the left of an
+  operator that commutes is written by the row of the node with its
+  operands exchanged. The tree keeps the operands as they are
+  written, since the rule that exchanges them is each target's.
 - A type that a builder makes and a target never refines compiles,
   and writes its primary's listing. Only a pinned listing catches
   that.
@@ -220,6 +230,10 @@ the ancestor's `regtab`, `efftab` and `cctab`.
   register it is handed (principle 10). A value is then a register
   taken and `into`. A `return` asks for its value in the result
   register.
+- The caller owns that register and holds it in the register stack
+  while the value is generated. So an operator computes its left
+  operand there and operates in place, and no operand of it is taken
+  in the same register.
 - An entry point carries a child's best form to a parent that does
   not know the child's type. In `if (x & 8) break;` the statement is
   `if_t< expr_t, jump_t >`, and the `tbnz` is the condition's own
@@ -322,7 +336,9 @@ Three things are kept apart: the value, the fold and a stage.
 - The fold is an overload on the operands' types, beside the other
   builders. It comes off with every niche under the oracle. rcc-v2
   folds what rcc folds, with rcc's arithmetic, since its listing is
-  rcc's.
+  rcc's. It drops an operator that its constant makes the identity
+  where the node would be built, and rcc drops it in a pass after the
+  body; the two agree, since the operand kept is never a constant.
 - There is no stage. A node's type holds its operands' types, so an
   operand changed late changes what every node above should have
   been. A stage is a rebuild, never a patch.
@@ -470,7 +486,10 @@ rows invented for the purpose.
 ## 6. Open
 
 - The categories' cut (3.5).
-- The builder on both operands at the size of C's operators.
+- The builder on both operands at the size of all of C's operators.
+  Five are built, over three classes of left operand and four of
+  right, with one crossing from the operator's value to the node's
+  parameter.
 - The register state at a join. Whether an arm of `?:` leaves its
   value where the other arm's does is, in its hardest case, a fact of
   one moment of generation. No type, summary or context has it. Three
