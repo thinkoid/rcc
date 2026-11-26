@@ -1,17 +1,15 @@
 // -*- mode: c++; -*-
 
 // The driver: rcc's command line, and the processes it runs.  clang
-// preprocesses the input before the front end.  After it, c1 writes
-// the assembly, instruction for instruction, and clang assembles it
-// and links the object.  Nothing optimizes on the way: the code that
-// comes out is the code that was written.  The processes are spawned
-// by fork and exec, never through a shell, so no argument is
-// reinterpreted on the way.
+// preprocesses the input before the pipeline, pipeline.hh.  After it,
+// the pipeline writes the assembly, instruction for instruction, and
+// clang assembles it and links the object.  Nothing optimizes on the
+// way: the code that comes out is the code that was written.  The
+// processes are spawned by fork and exec, never through a shell, so no
+// argument is reinterpreted on the way.
 
-#include "c1.hh"
 #include "error.hh"
-#include "lex.hh"
-#include "parse.hh"
+#include "pipeline.hh"
 #include "target.hh"
 
 #include <fcntl.h>
@@ -429,13 +427,14 @@ assemble(const options_t &opts, std::string_view text)
     return run(clang_with(opts, { s.path(), "-o", opts.out }));
 }
 
-// The pipeline: preprocess, tokenize, parse, generate, then the
-// assembly file or clang.  Returns rcc's exit status, which no warning
-// changes; -w silences the warnings.  A diagnostic names its file by a
-// view into the preprocessed text, so it is reported in this frame,
-// while the text is alive.  The warnings are this frame's too, so the
-// error that ends a parse loses none: they are printed before it, as
-// they precede it in the source, and after a parse that succeeds.
+// Preprocess, compile, then the assembly file or clang.  Returns rcc's
+// exit status, which no warning changes; -w silences the warnings.  A
+// diagnostic names its file by a view into the preprocessed text, so it
+// is reported in this frame, while the text is alive.  The warnings are
+// this frame's too, so what ends the pipeline loses none: they are
+// printed before an error, as they precede it in the source, before an
+// internal error, which leaves through this frame, and after a source
+// that compiles.
 int
 drive(const options_t &opts)
 {
@@ -447,11 +446,8 @@ drive(const options_t &opts)
     std::vector< warning_t > warnings;
     std::ostringstream assembly;
     try {
-        const auto tokens = tokenize(pp.text, opts.file);
-        const auto unit = parse(tokens, *opts.target, warnings);
+        compile(pp.text, opts.file, *opts.target, warnings, assembly);
         report_warnings(opts, warnings);
-
-        generate(unit, *opts.target, opts.file, assembly);
     }
     catch (const error_t &e) {
         report_warnings(opts, warnings);
@@ -459,8 +455,13 @@ drive(const options_t &opts)
         return 1;
     }
     catch (const unplaced_error_t &e) {
+        report_warnings(opts, warnings);
         std::cerr << "rcc: error: " << e.what << '\n';
         return 1;
+    }
+    catch (const std::exception &) {
+        report_warnings(opts, warnings);
+        throw;
     }
 
     if (opts.stage == stage_t::assembly) {
