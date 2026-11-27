@@ -256,6 +256,7 @@ specifiers_t declaration_specifiers(parser_t &);
 type_t type_name(parser_t &);
 declarator_t declarator(parser_t &, const type_t &base);
 std::vector< stmt_t > declaration(parser_t &);
+stmt_t for_declaration(parser_t &);
 
 // 6.8, parse-statements.cc
 std::vector< stmt_t > block_item_list(parser_t &);

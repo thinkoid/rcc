@@ -243,22 +243,24 @@ do_statement(parser_t &p)
     return make_do(std::move(l.body), std::move(cond), l.loop);
 }
 
-// The for statement, 6.8.6.4: the init, an expression statement or the
-// null statement, whose ';' is that statement's; the condition where
-// the next token is no ';', and an omitted one otherwise, p2; the step,
-// an expression evaluated as a void expression, p1, where the next
-// token is no ')', and the null statement otherwise; then the body.  A
-// declaration as the init is not yet.
+// The for statement, 6.8.6.4: the init, a declaration, or an expression
+// statement or the null statement, whose ';' is that statement's; the
+// condition where the next token is no ';', and an omitted one
+// otherwise, p2; the step, an expression evaluated as a void
+// expression, p1, where the next token is no ')', and the null
+// statement otherwise; then the body.  The scope of a name the init
+// declares is the rest of the for, p1, so the for opens a scope of its
+// own before the init and closes it after the body, as rcc's
+// for_statement() does, and a braced body's nests in it.
 stmt_t
 for_statement(parser_t &p)
 {
     advance(p);
     expect(p, tok_t::lparen, "expected '(' after 'for'");
 
-    if (is_declaration_start(p))
-        not_yet(peek(p), "declaration in a 'for'");
-
-    stmt_t init = expression_statement(p);
+    p.scopes.emplace_back();
+    stmt_t init =
+        is_declaration_start(p) ? for_declaration(p) : expression_statement(p);
 
     std::optional< expr_t > cond;
     if (peek(p).kind != tok_t::semicolon)
@@ -273,6 +275,8 @@ for_statement(parser_t &p)
     expect(p, tok_t::rparen, "expected ')' after for clauses");
 
     loop_body_t l = loop_body(p);
+    p.scopes.pop_back();
+
     if (!cond)
         return make_for(std::move(init), std::move(step), std::move(l.body),
                         l.loop);

@@ -4,11 +4,11 @@
 // specifiers static, void and the type specifiers of the integer types
 // from char to unsigned long long, in any order and spelling,
 // the declarators of a function of int parameters and of an object,
-// the declaration in a block of objects of those types, each with an
-// initializer or without, and the type name of a cast; it refuses the
-// rest as not yet.  rcc reads more of each than rcc-v2 does, so each is
-// read as far as rcc would read it, and what rcc would take is refused
-// before an error rcc would not say.
+// the declaration in a block and in a for's first clause of objects of
+// those types, each with an initializer or without, and the type name
+// of a cast; it refuses the rest as not yet.  rcc reads more of each
+// than rcc-v2 does, so each is read as far as rcc would read it, and
+// what rcc would take is refused before an error rcc would not say.
 
 #include "parse-common.hh"
 
@@ -470,14 +470,19 @@ init_declarator(parser_t &p,
 
 // The declarators of a declaration in a block and its ';', 6.7.1p1: one
 // statement for each, in order.  A function declared in a block is not
-// yet.
+// yet; objects_only is a for's declaration, which declares no function,
+// for_declaration()'s, and rcc says so at its name.
 std::vector< stmt_t >
-init_declarator_list(parser_t &p, const type_t &type)
+init_declarator_list(parser_t &p, const type_t &type, bool objects_only)
 {
     std::vector< stmt_t > items;
 
     do {
         const declarator_t d = declarator(p, type);
+        if (objects_only && is< function_t >(d.type))
+            fail(d.name, "function " + quoted(d.name.text) +
+                             " declared in the declaration of a 'for'");
+
         if (is< function_t >(d.type))
             not_yet(d.name, "declaration of function " + quoted(d.name.text));
 
@@ -489,14 +494,11 @@ init_declarator_list(parser_t &p, const type_t &type)
     return items;
 }
 
-} // namespace
-
-// A declaration in a block, 6.7.1p1.  rcc reads __extension__ and a
-// static assertion before the declaration specifiers, which are not
-// yet; and so are a static object and an object of type void, each
-// refused at its specifier.
-std::vector< stmt_t >
-declaration(parser_t &p)
+// rcc reads __extension__ and a static assertion, a declaration of its
+// own, 6.7.1p1, before a declaration's specifiers, and both are not
+// yet.
+void
+refuse_declaration_start(const parser_t &p)
 {
     const token_t &t = peek(p);
     if (t.kind == tok_t::kw_extension)
@@ -504,6 +506,17 @@ declaration(parser_t &p)
 
     if (t.kind == tok_t::kw_static_assert)
         not_yet(t, quoted(t.text) + " declaration");
+}
+
+} // namespace
+
+// A declaration in a block, 6.7.1p1, after what refuse_declaration_start()
+// refuses: a static object and an object of type void are not yet, each
+// refused at its specifier.
+std::vector< stmt_t >
+declaration(parser_t &p)
+{
+    refuse_declaration_start(p);
 
     const specifiers_t spec = declaration_specifiers(p);
     if (spec.storage_class)
@@ -514,7 +527,36 @@ declaration(parser_t &p)
         not_yet(spec.specifier,
                 "declaration specifier " + quoted(spec.specifier.text));
 
-    return init_declarator_list(p, spec.type);
+    return init_declarator_list(p, spec.type, false);
+}
+
+// The declaration of a for's first clause, as the for's init, rcc's
+// for_declaration(): one declarator's statement is the init itself, and
+// several are a block of theirs, which opens no scope, since the for's
+// own holds their names, 6.8.6.4p1.  A storage class there is rcc's
+// error, by C17's rule that the declaration declare objects of storage
+// class auto or register only, its 6.8.5p3, which C23 drops; a function
+// is init_declarator_list()'s; an object of type void is not yet, as in
+// a block.
+stmt_t
+for_declaration(parser_t &p)
+{
+    refuse_declaration_start(p);
+
+    const specifiers_t spec = declaration_specifiers(p);
+    if (spec.storage_class)
+        fail(*spec.storage_class, quoted(spec.storage_class->text) +
+                                      " in the declaration of a 'for'");
+
+    if (is< void_t >(spec.type))
+        not_yet(spec.specifier,
+                "declaration specifier " + quoted(spec.specifier.text));
+
+    std::vector< stmt_t > items = init_declarator_list(p, spec.type, true);
+    if (items.size() == 1)
+        return std::move(items.front());
+
+    return make_block(std::move(items));
 }
 
 } // namespace rcc

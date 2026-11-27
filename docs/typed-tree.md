@@ -13,9 +13,9 @@ locals are of the integer types from `char` to `unsigned long long`,
 declared, assigned and returned, with parentheses, the casts, the
 unary operators `+ - ~ !`, `+ - * / % << >> & | ^`, the comparisons,
 `&&`, `||` and calls of functions of an `int` or a `void` result, to
-any depth, and the statements `if`, `else`, `while`, `do`, `for`,
-`break`, `continue` and `return` with a value or without, on both
-targets.
+any depth, and the statements `if`, `else`, `while`, `do`, `for`
+with a declaration or an expression first, `break`, `continue` and
+`return` with a value or without, on both targets.
 Each mechanism
 below was compiled and run in a small model first; chapter 5 says
 what the models showed and chapter 6 what nothing has shown. A
@@ -577,6 +577,10 @@ technique.
 - A function's name has no node. Its value, the function's address,
   waits for a where of the unit's data; a call is built from the
   name alone.
+- A `for` whose first clause is a declaration opens a scope before
+  it, which its body's braces nest in. The declaration's statements
+  are the `for`'s init, one or a block of several, so their slots
+  are taken before the loop's labels.
 
 ### 4.6 Contexts and state
 
