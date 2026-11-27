@@ -373,13 +373,13 @@ make_for(stmt_t init, stmt_t step, stmt_t body, const loop_t &loop)
 stmt_t
 make_break(int loop)
 {
-    return stmt_t(jump_t { loop, &loop_labels_t::break_ });
+    return stmt_t(break_t { loop });
 }
 
 stmt_t
 make_continue(int loop)
 {
-    return stmt_t(jump_t { loop, &loop_labels_t::continue_ });
+    return stmt_t(continue_t { loop });
 }
 
 stmt_t

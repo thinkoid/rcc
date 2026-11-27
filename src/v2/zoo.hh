@@ -285,8 +285,8 @@ struct block_t
 // while (e) s, 6.8.6.2: the condition at the head, as a jump past the
 // loop where it is 0, before each execution of the body, 6.8.6.2p1,
 // then the body and the jump back.  loop is the loop's number among
-// the function's, which names it to the jumps of its body, jump_t;
-// its row records its labels under it.
+// the function's, which names it to the jumps of its body, break_t and
+// continue_t; its row records its labels under it.
 struct while_t
 {
     expr_t cond;
@@ -331,23 +331,20 @@ struct for_t
     int loop;
 };
 
-// The two labels a loop takes for the jumps of its body, which its
-// row records in the state under the loop's number before the body is
-// generated: a break's, past the loop, and a continue's, the loop's
-// continuation.
-struct loop_labels_t
+// break;, 6.8.7.4p2: a jump past the innermost loop around it, which
+// the parser found, by the loop's number, to the label the loop's row
+// recorded for its breaks.
+struct break_t
 {
-    int break_;
-    int continue_;
+    int target;
 };
 
-// break; and continue;, 6.8.7.4p2, 6.8.7.3p2: a jump to one of the two
-// labels of the innermost loop around it, which the parser found, by
-// the loop's number; label says which of the two.
-struct jump_t
+// continue;, 6.8.7.3p2: a jump to the continuation of the innermost
+// loop around it, by the loop's number, to the label the loop's row
+// recorded for its continues.
+struct continue_t
 {
     int loop;
-    int loop_labels_t::*label;
 };
 
 // L: s, 6.8.2: the C label placed where it is written.  A label's name

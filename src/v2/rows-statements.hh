@@ -61,21 +61,30 @@ generate(S &s, const block_t &b)
 
 // The labels of a loop, docs/backend.md 7.2: each loop takes its own
 // at fixed moments, from the state's count, and records the two its
-// body's jumps name under its number, before the body is generated.
+// body's jumps name under its number, before the body is generated:
+// its breaks' and its continues'.
 template< typename S >
 void
 record(S &s, int loop, int break_, int continue_)
 {
-    s.loops.emplace(loop, loop_labels_t { break_, continue_ });
+    s.breaks.emplace(loop, break_);
+    s.continues.emplace(loop, continue_);
 }
 
-// The label a break or a continue names: its loop's, which the loop's
+// The label a break names, and a continue: its loop's, which the loop's
 // row recorded.
 template< typename S >
 int
-label_of(const S &s, const jump_t &j)
+label_of(const S &s, const break_t &b)
 {
-    return s.loops.at(j.loop).*j.label;
+    return s.breaks.at(b.target);
+}
+
+template< typename S >
+int
+label_of(const S &s, const continue_t &c)
+{
+    return s.continues.at(c.loop);
 }
 
 // The label a return without an expression names, rcc's target_of():

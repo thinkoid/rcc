@@ -52,9 +52,10 @@ bit(reg_t r)
 // (backend.md 7.2).  zero_flag is the width at which the last
 // instruction written set ZF from the value it computed, flagged()'s,
 // or 0, until the next instruction or label: a jump on that value at
-// that width then needs no cmp (7.1).  loops is the labels each loop
-// generated so far took for its body's jumps, by the loop's number, and
-// user_labels the label of each C label met so far, by its number.
+// that width then needs no cmp (7.1).  breaks and continues are the
+// labels each loop generated so far took for the breaks and for the
+// continues of its body, by the loop's number, and user_labels the
+// label of each C label the generation has met so far, by its number.
 // frame is the bytes the slots take below rbp, the locals' and the
 // spills' in the order they are taken, and slots each local's
 // displacement off rbp, by its number; calls says that the function
@@ -73,7 +74,8 @@ struct state_t
     int ret = 0;
     bool terminated = false;
     int zero_flag = 0;
-    std::unordered_map< int, loop_labels_t > loops { };
+    std::unordered_map< int, int > breaks { };
+    std::unordered_map< int, int > continues { };
     std::unordered_map< int, int > user_labels { };
 
     long frame = 0;

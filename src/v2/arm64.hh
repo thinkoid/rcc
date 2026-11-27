@@ -67,9 +67,10 @@ bit(reg_t r)
 // next: the last instruction written is an unconditional jump, which
 // jump() sets and place_label() clears, so an if whose then part ends
 // so writes no jump over its else part, and main writes no return of 0
-// (backend.md 7.2).  loops is the labels each loop generated so far
-// took for its body's jumps, by the loop's number, and user_labels the
-// label of each C label met so far, by its number.  frame is the bytes
+// (backend.md 7.2).  breaks and continues are the labels each loop
+// generated so far took for the breaks and for the continues of its
+// body, by the loop's number, and user_labels the label of each C label
+// the generation has met so far, by its number.  frame is the bytes
 // from x29 to the end of the last slot, the locals' and the spills' in
 // the order they are taken, the frame record's alone before the first,
 // and slots each local's displacement off x29, by its number.  reserved
@@ -84,7 +85,8 @@ struct state_t
     int labels = 0;
     int ret = 0;
     bool terminated = false;
-    std::unordered_map< int, loop_labels_t > loops { };
+    std::unordered_map< int, int > breaks { };
+    std::unordered_map< int, int > continues { };
     std::unordered_map< int, int > user_labels { };
 
     long frame = 0;

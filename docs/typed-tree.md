@@ -353,9 +353,9 @@ the jump are the ancestor's `regtab`, `efftab` and `cctab`.
   generator's check on itself.
 - An entry point carries a child's best form to a parent that does
   not know the child's type. In `if (a & 1) break;` the statement is
-  `if_t< jump_t >`, its condition erased, and x86-64's `testl $1,
+  `if_t< break_t >`, its condition erased, and x86-64's `testl $1,
   -4(%rbp)` is the condition's own row. No `if_t< and_t< ... >,
-  jump_t >` is needed.
+  break_t >` is needed.
 - So a niche on the parent and an entry point on the child are two
   spellings of one match. Both can hold.
 
@@ -678,18 +678,18 @@ technique.
 
 - **The parser's, while the tree is built.** The names, the C types,
   and the loops around the parse. A loop has a number, given as a
-  local's is, and the parser's function for a loop is the
-  accumulator: when it has read the body it knows whether a `break`
-  or a `continue` of the loop stands in it. `break` and `continue`
-  are one type, `jump_t`, which names its loop's number and which of
-  the loop's two labels. A loop's row takes its labels at rcc's
-  moments and records the two under its number before the body;
-  `jump_t`'s row reads them. A C label is a number the parser gives
-  its name at its first meeting, a `goto` or its definition, and the
-  state gives it a label at rcc's moment: the first of its
-  definition, a `goto` to it, or an `if` whose then part is that
-  `goto`. That every `goto` names a label the function defines is
-  checked at the function's end. Generation holds nothing of the
+  local's is, and the parser's function for a loop is the accumulator:
+  when it has read the body it knows whether a `break` or a `continue`
+  of the loop stands in it. `break` and `continue` are rcc's two
+  types, `break_t` and `continue_t`, each naming its loop's number. A
+  loop's row takes its labels at rcc's moments and records the two
+  under its number before the body, in the state's `breaks` and
+  `continues`, which the two types' rows read. A C label is a number
+  the parser gives its name at its first meeting, a `goto` or its
+  definition, and the state gives it a label at rcc's moment: the
+  first of its definition, a `goto` to it, or an `if` whose then part
+  is that `goto`. That every `goto` names a label the function defines
+  is checked at the function's end. Generation holds nothing of the
   statements around the one generated. This stands on each statement
   being generated once.
 - **An expression's, at generation.** A wanted register, a jump's
