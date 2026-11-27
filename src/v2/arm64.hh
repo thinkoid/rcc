@@ -55,11 +55,12 @@ bit(reg_t r)
 // around; the function's name makes its labels, which are counted per
 // function, and ret is the one epilogue's.  terminated says that no
 // path reaches what is written next: the last instruction written is
-// an unconditional jump, which jump() sets, so main writes no return of
-// 0 (backend.md 7.2).  frame is the bytes from x29 to the end of the
-// last slot, the locals' and the spills' in the order they are taken,
-// the frame record's alone before the first, and slots each local's
-// displacement off x29, by its number.
+// an unconditional jump, which jump() sets and place_label() clears,
+// so an if whose then part ends so writes no jump over its else part,
+// and main writes no return of 0 (backend.md 7.2).  frame is the bytes
+// from x29 to the end of the last slot, the locals' and the spills' in
+// the order they are taken, the frame record's alone before the first,
+// and slots each local's displacement off x29, by its number.
 struct state_t
 {
     std::ostringstream body { };
@@ -77,6 +78,25 @@ struct state_t
 // A register for a new value, register-stack.hh's, taken outside avoid;
 // it spills a held value when every one is held.
 reg_t take(state_t &, unsigned avoid = 0);
+
+// The function's label n, where a jump may reach it from elsewhere: a
+// path reaches what follows.
+void place_label(state_t &, int n);
+
+// A jump to the function's label n; no path reaches what follows it.
+void jump(state_t &, int n);
+
+// The branch to label on the flags a cmp set, where op holds, rcc's
+// jump_if(): b.lt, b.eq.
+void jump_if(state_t &, binary_op_t op, int label);
+
+// The jump on the held value v compared with 0, rcc's test_zero(): cbnz
+// w0 where sense, cbz w0 otherwise, one instruction and no flags; v
+// stays held.
+void test_zero(state_t &, value_t v, int label, bool sense);
+
+// A mov of the immediate value into r, at 32 bits: mov w0, #1.
+void move_immediate(state_t &, reg_t r, int value);
 
 // The next slot of the frame, of size bytes at align, a local's or a
 // spill's: its displacement off x29.
@@ -261,6 +281,32 @@ value(state_t &s, const binary_t< op, C, R > &b, unsigned wanted = 0)
 // e == 0.
 value_t
 value(state_t &, const unary_t< unary_op_t::log_not > &, unsigned wanted = 0);
+
+// A comparison as a jump, rcc's cbranch(), 7.1: the cmp of the value
+// row, then b.cc of the operator where sense and of its inverse
+// otherwise, b.lt or b.ge, and no value held.  e == 0 has no niche
+// here: a == 0 is cmp w0, #0 and b.ne, where if (a) is cbz.
+template< binary_op_t op, typename L, typename R >
+    requires comparison_operator< op >
+void
+branch(state_t &s, const binary_t< op, L, R > &b, int label, bool sense)
+{
+    const value_t l = value(s, b.lhs);
+    compare_with(s, l, b.rhs);
+    release(s, l);
+
+    jump_if(s, sense ? op : inverse(op), label);
+}
+
+// A constant on the left is the jump of the node mirrored, ordered():
+// if (5 < a) is cmp w0, #5 and b.le.
+template< binary_op_t op, constant C, typename R >
+    requires comparison_operator< op >
+void
+branch(state_t &s, const binary_t< op, C, R > &b, int label, bool sense)
+{
+    branch(s, binary_t< mirrored(op), R, C > { b.rhs, b.lhs }, label, sense);
+}
 
 // The value, moved to the result register where its row left it
 // elsewhere, then the jump to the epilogue.

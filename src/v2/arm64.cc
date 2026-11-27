@@ -92,14 +92,6 @@ mov(state_t &s, reg_t from, reg_t to)
     insn(s, "mov", { reg(to, 32), reg(from, 32) });
 }
 
-// A jump to the function's label n; no path reaches what follows it.
-void
-jump(state_t &s, int n)
-{
-    insn(s, "b", { label_name(s.function, n) });
-    s.terminated = true;
-}
-
 // constants
 
 // A constant of N bits as the assembler takes it: the value modulo
@@ -262,7 +254,9 @@ mnemonic(binary_op_t op)
     case binary_op_t::ge:
     case binary_op_t::eq:
     case binary_op_t::ne:
-        throw std::logic_error("v2: a comparison's instruction is compare()'s");
+    case binary_op_t::log_and:
+    case binary_op_t::log_or:
+        throw std::logic_error("v2: an operator of no arithmetic instruction");
     case binary_op_t::bit_and: return "and";
     case binary_op_t::bit_or: return "orr";
     case binary_op_t::bit_xor: return "eor";
@@ -274,7 +268,8 @@ mnemonic(binary_op_t op)
 // written signed, and so does cmp, the instruction of every comparison;
 // a shift its count masked to the width, which is what the instruction
 // does to a count in a register (G3), lsl w0, w0, #1 for a << 33; and,
-// orr and eor a bitmask, written in hex; mul, sdiv and msub take none.
+// orr and eor a bitmask, written in hex; mul, sdiv and msub take none,
+// and && and || have no instruction.
 std::optional< std::string >
 immediate_of(binary_op_t op, int value)
 {
@@ -292,7 +287,9 @@ immediate_of(binary_op_t op, int value)
         break;
     case binary_op_t::mul:
     case binary_op_t::div:
-    case binary_op_t::rem: break;
+    case binary_op_t::rem:
+    case binary_op_t::log_and:
+    case binary_op_t::log_or: break;
     case binary_op_t::shl:
     case binary_op_t::shr: return imm(value & 31);
     case binary_op_t::bit_and:
@@ -422,6 +419,45 @@ take(state_t &s, unsigned avoid)
     spill(s, *victim);
 
     return *victim;
+}
+
+// Labels are placed in source order, and nothing is reordered after
+// them, backend.md 7.2.
+void
+place_label(state_t &s, int n)
+{
+    s.body << label_name(s.function, n) << ":\n";
+    s.terminated = false;
+}
+
+void
+jump(state_t &s, int n)
+{
+    insn(s, "b", { label_name(s.function, n) });
+    s.terminated = true;
+}
+
+// b.cc of the condition, 7.1.
+void
+jump_if(state_t &s, binary_op_t op, int label)
+{
+    insn(s, std::format("b.{}", condition(op)),
+         { label_name(s.function, label) });
+}
+
+void
+test_zero(state_t &s, value_t v, int label, bool sense)
+{
+    insn(s, sense ? "cbnz" : "cbz",
+         { reg(reg_of(s, v), 32), label_name(s.function, label) });
+}
+
+// rcc's logical() writes the mov itself, never constant()'s choice of
+// mov forms, which writes the same text for 0 and 1.
+void
+move_immediate(state_t &s, reg_t r, int value)
+{
+    insn(s, "mov", { reg(r, 32), imm(value) });
 }
 
 value_t

@@ -32,6 +32,12 @@ struct expr_t::interface_t
     virtual value_t value(arm64::state_t &, unsigned wanted) const = 0;
     virtual void effect(amd64::state_t &) const = 0;
     virtual void effect(arm64::state_t &) const = 0;
+    virtual void branch(amd64::state_t &, int label, bool sense) const = 0;
+    virtual void branch(arm64::state_t &, int label, bool sense) const = 0;
+
+    // x86-64's jump on the value compared with 0, e == 0's on e
+    virtual void
+    value_branch(amd64::state_t &, int label, bool sense) const = 0;
 
     // the summary of the subtree, x86-64's (principle 3)
     virtual unsigned pinned_within(const amd64::state_t &) const = 0;
@@ -81,9 +87,9 @@ struct expr_t::interface_t
 };
 
 // The rows of a held node, by overload and by the state's namespace: a
-// member named value, effect or pinned_within would hide them.  A
-// value's row is handed the target's hint, the registers the consumer
-// names.
+// member named value, effect, branch, value_branch or pinned_within
+// would hide them.  A value's row is handed the target's hint, the
+// registers the consumer names.
 template< typename S, typename T >
 value_t
 fwd_value(S &s, const T &t, unsigned wanted)
@@ -96,6 +102,20 @@ void
 fwd_effect(S &s, const T &t)
 {
     effect(s, t);
+}
+
+template< typename S, typename T >
+void
+fwd_branch(S &s, const T &t, int label, bool sense)
+{
+    branch(s, t, label, sense);
+}
+
+template< typename S, typename T >
+void
+fwd_value_branch(S &s, const T &t, int label, bool sense)
+{
+    value_branch(s, t, label, sense);
 }
 
 template< typename S, typename T >
@@ -218,6 +238,10 @@ fwd_binary(binary_op_t op, const L &lhs, const R &rhs)
         return make_binary< binary_op_t::bit_or >(lhs, rhs);
     case binary_op_t::bit_xor:
         return make_binary< binary_op_t::bit_xor >(lhs, rhs);
+    case binary_op_t::log_and:
+        return make_binary< binary_op_t::log_and >(lhs, rhs);
+    case binary_op_t::log_or:
+        return make_binary< binary_op_t::log_or >(lhs, rhs);
     }
 }
 
@@ -272,6 +296,21 @@ struct expr_t::model_t final: interface_t
     void effect(arm64::state_t &s) const override
     {
         fwd_effect(s, held);
+    }
+
+    void branch(amd64::state_t &s, int label, bool sense) const override
+    {
+        fwd_branch(s, held, label, sense);
+    }
+
+    void branch(arm64::state_t &s, int label, bool sense) const override
+    {
+        fwd_branch(s, held, label, sense);
+    }
+
+    void value_branch(amd64::state_t &s, int label, bool sense) const override
+    {
+        fwd_value_branch(s, held, label, sense);
     }
 
     unsigned pinned_within(const amd64::state_t &s) const override

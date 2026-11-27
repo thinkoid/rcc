@@ -151,4 +151,23 @@ struct block_t
     std::vector< stmt_t > items;
 };
 
+// if (e) s, 6.8.5.1p1: the condition as a jump past the then part where
+// it is 0, 6.8.5.2p2.  The condition is erased, since its own row is
+// its best jump (3.4).
+struct if_t
+{
+    expr_t cond;
+    stmt_t then;
+};
+
+// if (e) s1 else s2, 6.8.5.1p1: the condition as a jump to the else
+// part where it is 0, the then part, and a jump past the else part
+// where a path leaves the then part at its end, 6.8.5.2p2.
+struct if_else_t
+{
+    expr_t cond;
+    stmt_t then;
+    stmt_t otherwise;
+};
+
 } // namespace rcc

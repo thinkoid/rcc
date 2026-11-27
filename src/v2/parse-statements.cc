@@ -1,10 +1,10 @@
 // -*- mode: c++; -*-
 
 // 6.8: the statements, of which rcc-v2 takes the compound statement,
-// the expression and null statements, the return statement with an
-// expression, and the block items of a block, a declaration among
-// them.  Every other statement is refused at its first token by its
-// name, as is a label among the block items.
+// the expression and null statements, the if statement, the return
+// statement with an expression, and the block items of a block, a
+// declaration among them.  Every other statement is refused at its
+// first token by its name, as is a label.
 
 #include "parse-common.hh"
 
@@ -80,6 +80,35 @@ expression_statement(parser_t &p)
     return make_expr_stmt(rvalue(std::move(e.node)));
 }
 
+// 6.8.1, a then part and an else part, below.
+stmt_t statement(parser_t &);
+
+// The if statement, 6.8.5.2, with an else part or without one; an else
+// goes with the nearest if, 6.8.5.2p3, since it is read right after the
+// then part.  The condition is converted as any operand whose value is
+// read, and nothing else converts it, its value compared with 0,
+// 6.8.5.2p2.  A switch is not yet.
+stmt_t
+selection_statement(parser_t &p)
+{
+    const token_t &t = advance(p);
+    if (t.kind == tok_t::kw_switch)
+        not_yet(t, quoted(t.text) + " statement");
+
+    expect(p, tok_t::lparen, "expected '(' after 'if'");
+    operand_t cond = expression(p);
+    expect(p, tok_t::rparen, "expected ')' after condition");
+
+    stmt_t then = statement(p);
+    if (!accept(p, tok_t::kw_else))
+        return make_if(rvalue(std::move(cond.node)), std::move(then));
+
+    stmt_t otherwise = statement(p);
+
+    return make_if_else(rvalue(std::move(cond.node)), std::move(then),
+                        std::move(otherwise));
+}
+
 // A compound statement, 6.8.3: a block, which opens a scope of its own
 // for its declarations, 6.2.1p4, closed at its end.  Its '{' is the
 // token that made it one.
@@ -96,10 +125,11 @@ compound_statement(parser_t &p)
     return make_block(std::move(items));
 }
 
-// 6.8.1p1: a statement, by its first token.  A block item that is no
-// label and no declaration is one, so a token that starts no other
-// statement starts an expression statement, the null statement among
-// them, 6.8.4.
+// 6.8.1p1: a statement, by its first token.  A declaration is a block
+// item and no statement, so it is no then part and no body, 6.8.3p1,
+// which rcc says at its first token; a label is not yet; and a token
+// that starts no other statement starts an expression statement, the
+// null statement among them, 6.8.4.
 stmt_t
 statement(parser_t &p)
 {
@@ -108,7 +138,7 @@ statement(parser_t &p)
     switch (t.kind) {
     case tok_t::lbrace: return compound_statement(p);
     case tok_t::kw_if:
-    case tok_t::kw_switch:
+    case tok_t::kw_switch: return selection_statement(p);
     case tok_t::kw_while:
     case tok_t::kw_do:
     case tok_t::kw_for:
@@ -117,8 +147,16 @@ statement(parser_t &p)
     case tok_t::kw_break:
     case tok_t::kw_continue:
     case tok_t::kw_goto: return jump_statement(p);
-    default: return expression_statement(p);
+    default: break;
     }
+
+    if (is_label_start(p))
+        not_yet(t, "label");
+
+    if (is_declaration_start(p))
+        fail(t, "expected statement, found a declaration");
+
+    return expression_statement(p);
 }
 
 // One block item, 6.8.3p1, appended to items: a label, which is an

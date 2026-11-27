@@ -47,6 +47,24 @@ effect(arm64::state_t &s, const expr_t &e)
     e.self->effect(s);
 }
 
+void
+branch(amd64::state_t &s, const expr_t &e, int label, bool sense)
+{
+    e.self->branch(s, label, sense);
+}
+
+void
+branch(arm64::state_t &s, const expr_t &e, int label, bool sense)
+{
+    e.self->branch(s, label, sense);
+}
+
+void
+value_branch(amd64::state_t &s, const expr_t &e, int label, bool sense)
+{
+    e.self->value_branch(s, label, sense);
+}
+
 unsigned
 pinned_within(const amd64::state_t &s, const expr_t &e)
 {
@@ -159,6 +177,19 @@ stmt_t
 make_block(std::vector< stmt_t > items)
 {
     return stmt_t(block_t { std::move(items) });
+}
+
+stmt_t
+make_if(expr_t cond, stmt_t then)
+{
+    return stmt_t(if_t { std::move(cond), std::move(then) });
+}
+
+stmt_t
+make_if_else(expr_t cond, stmt_t then, stmt_t otherwise)
+{
+    return stmt_t(
+        if_else_t { std::move(cond), std::move(then), std::move(otherwise) });
 }
 
 } // namespace rcc

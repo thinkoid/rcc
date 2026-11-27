@@ -41,4 +41,9 @@ stmt_t make_init(int slot, expr_t value);
 stmt_t make_return(expr_t value);
 stmt_t make_block(std::vector< stmt_t > items);
 
+// if (cond) then, and if (cond) then else otherwise, 6.8.5.2, of a
+// condition converted.
+stmt_t make_if(expr_t cond, stmt_t then);
+stmt_t make_if_else(expr_t cond, stmt_t then, stmt_t otherwise);
+
 } // namespace rcc

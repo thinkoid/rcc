@@ -400,22 +400,49 @@ inclusive_or_expression(parser_t &p)
     return e;
 }
 
-// The logical AND operator, 6.5.14.
+// && or ||, 6.5.14, 6.5.15, its token at: each operand's value, as
+// arithmetic_operand() takes it there, compared with 0 in its own type,
+// so nothing converts it, 6.5.14p2, 6.5.15p2; the result an int,
+// 6.5.14p3, 6.5.15p3.
+operand_t
+logical(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
+{
+    expr_t l = arithmetic_operand(at, std::move(lhs));
+    expr_t r = arithmetic_operand(at, std::move(rhs));
+
+    return { int_type(), make_binary(op, std::move(l), std::move(r)) };
+}
+
+// The logical AND operator, 6.5.14, left-associative, as rcc's loop
+// reads it: a && b && c is (a && b) && c.
 operand_t
 logical_and_expression(parser_t &p)
 {
     operand_t e = inclusive_or_expression(p);
-    refuse_operator(p, { tok_t::log_and });
+
+    while (peek(p).kind == tok_t::log_and) {
+        const token_t &op = advance(p);
+
+        operand_t rhs = inclusive_or_expression(p);
+        e = logical(binary_op_t::log_and, op, std::move(e), std::move(rhs));
+    }
 
     return e;
 }
 
-// The logical OR operator, 6.5.15.
+// The logical OR operator, 6.5.15, left-associative, as rcc's loop
+// reads it, and looser than &&: a || b && c is a || (b && c).
 operand_t
 logical_or_expression(parser_t &p)
 {
     operand_t e = logical_and_expression(p);
-    refuse_operator(p, { tok_t::log_or });
+
+    while (peek(p).kind == tok_t::log_or) {
+        const token_t &op = advance(p);
+
+        operand_t rhs = logical_and_expression(p);
+        e = logical(binary_op_t::log_or, op, std::move(e), std::move(rhs));
+    }
 
     return e;
 }

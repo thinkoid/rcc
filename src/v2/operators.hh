@@ -14,8 +14,8 @@ namespace rcc {
 // The unary operators of 6.5.4.3 that make a node: - ~ !.
 enum class unary_op_t { neg, bit_not, log_not };
 
-// The binary operators of int, 6.5.6 to 6.5.13: * / % + - << >> & | ^,
-// and the comparisons < > <= >= == !=.
+// The binary operators of int, 6.5.6 to 6.5.15: * / % + - << >> & | ^,
+// the comparisons < > <= >= == !=, and && and ||.
 enum class binary_op_t {
     add,
     sub,
@@ -32,7 +32,9 @@ enum class binary_op_t {
     ne,
     bit_and,
     bit_or,
-    bit_xor
+    bit_xor,
+    log_and,
+    log_or
 };
 
 // Whether the operands of op may change places, its value the same
@@ -56,7 +58,9 @@ commutes(binary_op_t op)
     case binary_op_t::le:
     case binary_op_t::ge:
     case binary_op_t::eq:
-    case binary_op_t::ne: return false;
+    case binary_op_t::ne:
+    case binary_op_t::log_and:
+    case binary_op_t::log_or: return false;
     }
 }
 
@@ -107,5 +111,34 @@ mirrored(binary_op_t op)
     default: return op;
     }
 }
+
+// The comparison that holds exactly when op does not, rcc's inverse():
+// a comparison's jump on its false sense.
+constexpr binary_op_t
+inverse(binary_op_t op)
+{
+    switch (op) {
+    case binary_op_t::lt: return binary_op_t::ge;
+    case binary_op_t::ge: return binary_op_t::lt;
+    case binary_op_t::gt: return binary_op_t::le;
+    case binary_op_t::le: return binary_op_t::gt;
+    case binary_op_t::eq: return binary_op_t::ne;
+    default: return binary_op_t::eq;
+    }
+}
+
+// Whether op is && or ||, whose right operand is evaluated only where
+// the left one leaves the value open, 6.5.14p4, 6.5.15p4: a jump inside
+// the expression.
+constexpr bool
+is_logical(binary_op_t op)
+{
+    return op == binary_op_t::log_and || op == binary_op_t::log_or;
+}
+
+// && and ||, a family whose rows both targets write alike, of jumps
+// (docs/typed-tree.md 3.2).
+template< binary_op_t op >
+concept logical_operator = is_logical(op);
 
 } // namespace rcc

@@ -81,6 +81,27 @@ slot_of(const state_t &s, slot_t where)
 
 // writing
 
+// One instruction, assembly.hh's: it is the last one now, so what the
+// one before it left in ZF no longer stands, and the record is
+// withdrawn.
+void
+insn(state_t &s,
+     std::string_view mnemonic,
+     std::initializer_list< std::string_view > operands)
+{
+    s.zero_flag = false;
+    rcc::insn(s, mnemonic, operands);
+}
+
+// The instruction just written set ZF from the value it computed, as
+// Intel's reference has add, sub, and, or, xor, neg and test do
+// (backend.md 7.1); it stands until the next instruction or label.
+void
+flagged(state_t &s)
+{
+    s.zero_flag = true;
+}
+
 // The copy of a register into another at a width, 32 or 64 bits, the
 // source first in AT&T order, rcc's mov(): movl %edx, %eax, movq %rax,
 // %rsi.
@@ -89,14 +110,6 @@ mov(state_t &s, reg_t from, reg_t to, int width)
 {
     insn(s, width == 64 ? "movq" : "movl",
          { reg(from, width), reg(to, width) });
-}
-
-// A jump to the function's label n; no path reaches what follows it.
-void
-jump(state_t &s, int n)
-{
-    insn(s, "jmp", { label_name(s.function, n) });
-    s.terminated = true;
 }
 
 // constants
@@ -146,7 +159,9 @@ mnemonic(binary_op_t op)
     case binary_op_t::ge:
     case binary_op_t::eq:
     case binary_op_t::ne:
-        throw std::logic_error("v2: a comparison's instruction is compare()'s");
+    case binary_op_t::log_and:
+    case binary_op_t::log_or:
+        throw std::logic_error("v2: an operator of no arithmetic instruction");
     case binary_op_t::bit_and: return "andl";
     case binary_op_t::bit_or: return "orl";
     case binary_op_t::bit_xor: return "xorl";
@@ -228,6 +243,31 @@ take(state_t &s, unsigned avoid)
     spill(s, *victim);
 
     return *victim;
+}
+
+// A label: a jump may reach it from elsewhere, with the flags its own
+// path left.
+void
+place_label(state_t &s, int n)
+{
+    s.body << label_name(s.function, n) << ":\n";
+    s.terminated = false;
+    s.zero_flag = false;
+}
+
+void
+jump(state_t &s, int n)
+{
+    insn(s, "jmp", { label_name(s.function, n) });
+    s.terminated = true;
+}
+
+// jcc of the condition, chapter 7.1.
+void
+jump_if(state_t &s, binary_op_t op, int label)
+{
+    insn(s, std::format("j{}", condition(op)),
+         { label_name(s.function, label) });
 }
 
 namespace {
@@ -495,19 +535,25 @@ value(state_t &s, const load_t &l, unsigned)
 }
 
 // neg and not have one address, the operand's register: negl %eax,
-// notl %eax.  G1: neg of INT_MIN is INT_MIN.
+// notl %eax.  G1: neg of INT_MIN is INT_MIN.  neg sets ZF from its
+// result, and not sets no flag (7.1).
 void
 operate(state_t &s, unary_op_t op, reg_t r)
 {
     insn(s, op == unary_op_t::neg ? "negl" : "notl", { reg(r, 32) });
+    if (op == unary_op_t::neg)
+        flagged(s);
 }
 
 // op R, L, two addresses, the result in L, which is r: addl $5, %eax,
-// addl -16(%rbp), %ecx.
+// addl -16(%rbp), %ecx.  add, sub, and, or and xor set ZF from L, and
+// imul and the shifts do not (7.1).
 void
 operate(state_t &s, binary_op_t op, reg_t r, std::string_view source)
 {
     insn(s, mnemonic(op), { source, reg(r, 32) });
+    if (flag_operator(op))
+        flagged(s);
 }
 
 // addl -8(%rbp), %eax.
@@ -661,6 +707,72 @@ value(state_t &s, const unary_t< unary_op_t::log_not > &u, unsigned wanted)
     compare(s, v, imm(0));
 
     return setcc(s, binary_op_t::eq, v, wanted);
+}
+
+void
+test_zero(state_t &s, value_t v, int label, bool sense)
+{
+    compare(s, v, imm(0));
+    jump_if(s, sense ? binary_op_t::ne : binary_op_t::eq, label);
+}
+
+void
+value_branch(state_t &s, const load_t &l, int label, bool sense)
+{
+    compare(s, l.where, imm(0));
+    jump_if(s, sense ? binary_op_t::ne : binary_op_t::eq, label);
+}
+
+// In every row of a flag condition rcc-v2 writes, the instruction that
+// sets ZF is the row's last, so the cmp is the record's guard alone.
+void
+flag_branch(state_t &s, value_t v, int label, bool sense)
+{
+    if (!s.zero_flag)
+        compare(s, v, imm(0));
+    release(s, v);
+
+    jump_if(s, sense ? binary_op_t::ne : binary_op_t::eq, label);
+}
+
+// test R, L in AT&T order: testl $1, %eax.
+void
+test(state_t &s, value_t l, std::string_view source)
+{
+    insn(s, "testl", { source, reg(reg_of(s, l), 32) });
+    flagged(s);
+}
+
+// testl -8(%rbp), %eax.
+void
+test(state_t &s, value_t l, slot_t source)
+{
+    test(s, l, at(slot_of(s, source)));
+}
+
+// testl %ecx, %eax: operands() asks for r's register first, then l's.
+void
+test(state_t &s, value_t l, value_t r)
+{
+    const auto [left, right] = operands(s, l, r);
+    insn(s, "testl", { reg(right, 32), reg(left, 32) });
+    flagged(s);
+
+    release(s, r);
+}
+
+// testl $1, -4(%rbp).
+void
+test(state_t &s, slot_t where, std::string_view immediate)
+{
+    insn(s, "testl", { immediate, at(slot_of(s, where)) });
+    flagged(s);
+}
+
+void
+move_immediate(state_t &s, reg_t r, int value)
+{
+    constant(s, r, value, 32);
 }
 
 // The store row: movl %eax, -4(%rbp).

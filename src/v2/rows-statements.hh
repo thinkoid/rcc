@@ -70,4 +70,49 @@ generate(S &s, const block_t &b)
         generate(s, item);
 }
 
+// rcc's if_stmt(), docs/backend.md 7.2: the label past the then part
+// taken on reaching the if, before any of the condition's, the
+// condition's jump to it where the condition is 0, the then part, then
+// the label.  An empty then part changes nothing.
+template< typename S >
+void
+generate(S &s, const if_t &i)
+{
+    const int no = new_label(s);
+    branch(s, i.cond, no, false);
+
+    generate(s, i.then);
+
+    place_label(s, no);
+}
+
+// The else part follows the label the condition jumps to where it is
+// 0.  A then part that ends in a jump, the state terminated after it,
+// takes no jump over the else part and no label past it: no path
+// leaves the then part at its end to take them.  The label past the
+// else part is taken after every label of the then part.
+template< typename S >
+void
+generate(S &s, const if_else_t &i)
+{
+    const int no = new_label(s);
+    branch(s, i.cond, no, false);
+
+    generate(s, i.then);
+
+    if (s.terminated) {
+        place_label(s, no);
+        generate(s, i.otherwise);
+        return;
+    }
+
+    const int end = new_label(s);
+    jump(s, end);
+
+    place_label(s, no);
+    generate(s, i.otherwise);
+
+    place_label(s, end);
+}
+
 } // namespace rcc

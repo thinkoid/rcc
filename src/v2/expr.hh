@@ -5,12 +5,14 @@
 // built.  The parser holds expressions as handles and makes them
 // through the builders, build.hh; the interface and the model are
 // model.hh's, which build.cc alone includes, so a unit that includes
-// this header cannot make a node.  An expression has two entry points
-// (3.4): its value, held in a register its row takes, and its effect,
-// the expression evaluated for what it does and its value dropped; and
-// it hands up one summary, x86-64's, the registers the instructions
-// within it pin.  A builder that must know what the handle holds goes
-// through the model (3.3), and is a friend.
+// this header cannot make a node.  An expression has three entry
+// points (3.4): its value, held in a register its row takes; its
+// effect, evaluated for what it does, its value dropped; and a jump on
+// it, branch, to a label where its value is nonzero or where it is 0,
+// by the sense.  x86-64 has a fourth, value_branch, the jump on the
+// value compared with 0, and it hands up one summary, the registers
+// the instructions within it pin.  A builder that must know what the
+// handle holds goes through the model (3.3), and is a friend.
 
 #pragma once
 
@@ -46,6 +48,9 @@ public:
     friend value_t value(arm64::state_t &, const expr_t &, unsigned wanted);
     friend void effect(amd64::state_t &, const expr_t &);
     friend void effect(arm64::state_t &, const expr_t &);
+    friend void branch(amd64::state_t &, const expr_t &, int, bool);
+    friend void branch(arm64::state_t &, const expr_t &, int, bool);
+    friend void value_branch(amd64::state_t &, const expr_t &, int, bool);
     friend unsigned pinned_within(const amd64::state_t &, const expr_t &);
 
     friend expr_t rvalue(expr_t);
@@ -66,6 +71,15 @@ value_t value(amd64::state_t &, const expr_t &, unsigned wanted = 0);
 value_t value(arm64::state_t &, const expr_t &, unsigned wanted = 0);
 void effect(amd64::state_t &, const expr_t &);
 void effect(arm64::state_t &, const expr_t &);
+
+// A jump on an erased operand, through the handle: to label where its
+// value is nonzero, sense, or where it is 0, !sense, and a fall through
+// otherwise, with no value held after it.  x86-64's value_branch is the
+// jump on the value compared with 0, the node's own test of zero, where
+// branch is the node's best jump.
+void branch(amd64::state_t &, const expr_t &, int label, bool sense);
+void branch(arm64::state_t &, const expr_t &, int label, bool sense);
+void value_branch(amd64::state_t &, const expr_t &, int label, bool sense);
 
 // The registers the instructions within an erased operand pin on
 // x86-64, its summary handed up (principle 3), forwarded to the node it

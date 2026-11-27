@@ -132,6 +132,19 @@ operands(S &s, value_t l, value_t r)
     return std::pair { left, right };
 }
 
+// rcc's before_paths(), docs/backend.md 6.7: before an expression's
+// paths part, at a jump inside it, rcc spills every value held in a
+// register, so that both paths leave the registers as they found them.
+// rcc-v2 does not yet, and refuses the paths where a register holds a
+// value; a value already spilled stays in its slot in rcc too.
+template< typename S >
+void
+before_paths(const S &s)
+{
+    if (!s.registers.owner.empty())
+        throw std::logic_error("v2: not yet: a value held across && or ||");
+}
+
 // Every value a statement holds is consumed by its end; nothing is held
 // from one statement to the next.  A value left held means a row took a
 // register and did not give it back, and the next statement's take

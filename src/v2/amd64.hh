@@ -13,6 +13,7 @@
 #include "unit.hh"
 #include "zoo.hh"
 
+#include <concepts>
 #include <optional>
 #include <ostream>
 #include <sstream>
@@ -40,15 +41,19 @@ bit(reg_t r)
 // around; the function's name makes its labels, which are counted per
 // function, and ret is the one epilogue's.  terminated says that no
 // path reaches what is written next: the last instruction written is
-// an unconditional jump, which jump() sets, so main writes no return of
-// 0 (backend.md 7.2).  frame is the bytes the slots take below rbp,
-// the locals' and the spills' in the order they are taken, and slots
-// each local's displacement off rbp, by its number.  reserved is the
-// registers take() leaves for last while a value meant for a pinned
-// register is generated, so it lands there (chapter 6.5).  ahead is the
-// registers a pinned instruction generated after the value now being
-// generated would move a held value out of, which the instruction on a
-// spilled value keeps its destination out of (right_written()).
+// an unconditional jump, which jump() sets and place_label() clears,
+// so an if whose then part ends so writes no jump over its else part,
+// and main writes no return of 0 (backend.md 7.2).  zero_flag says
+// that the last instruction written set ZF from the value it computed,
+// flagged()'s, until the next instruction or label: a jump on that
+// value then needs no cmp (7.1).  frame is the bytes the slots take
+// below rbp, the locals' and the spills' in the order they are taken,
+// and slots each local's displacement off rbp, by its number.  reserved
+// is the registers take() leaves for last while a value meant for a
+// pinned register is generated, so it lands there (chapter 6.5).  ahead
+// is the registers a pinned instruction generated after the value now
+// being generated would move a held value out of, which the instruction
+// on a spilled value keeps its destination out of (right_written()).
 struct state_t
 {
     std::ostringstream body { };
@@ -56,6 +61,7 @@ struct state_t
     int labels = 0;
     int ret = 0;
     bool terminated = false;
+    bool zero_flag = false;
 
     long frame = 0;
     std::unordered_map< int, int > slots { };
@@ -68,6 +74,25 @@ struct state_t
 // A register for a new value, register-stack.hh's, taken outside avoid;
 // it spills a held value when every one is held.
 reg_t take(state_t &, unsigned avoid = 0);
+
+// The function's label n, where a jump may reach it from elsewhere with
+// the flags its own path left: a path reaches what follows, and no
+// instruction's ZF stands.
+void place_label(state_t &, int n);
+
+// A jump to the function's label n; no path reaches what follows it.
+void jump(state_t &, int n);
+
+// The jump to label on the flags a cmp set, where op holds, rcc's
+// jump_if(): jl, and je and jne for == and !=, which read ZF alone.
+void jump_if(state_t &, binary_op_t op, int label);
+
+// The jump on the held value v compared with 0, rcc's test_zero():
+// cmpl $0, %eax, then jne where sense, je otherwise; v stays held.
+void test_zero(state_t &, value_t v, int label, bool sense);
+
+// A mov of the immediate value into r, at 32 bits: movl $1, %eax.
+void move_immediate(state_t &, reg_t r, int value);
 
 // The next slot of the frame, of size bytes at align, a local's or a
 // spill's: its displacement off rbp.
@@ -632,6 +657,182 @@ value(state_t &s, const binary_t< op, I, R > &b, unsigned wanted = 0)
 // load in place.
 value_t
 value(state_t &, const unary_t< unary_op_t::log_not > &, unsigned wanted = 0);
+
+// A comparison as a jump, rcc's comparison_branch(), 7.1: the cmp of
+// the value row, compare_with(), then jcc of the operator where sense
+// and of its inverse otherwise, jl or jge, and no value held.
+template< binary_op_t op, typename L, typename R >
+    requires comparison_operator< op >
+void
+branch(state_t &s, const binary_t< op, L, R > &b, int label, bool sense)
+{
+    const value_t l = rvalue_avoiding(s, b.lhs, pinned_by(b.rhs));
+    compare_with(s, l, b.rhs);
+    release(s, l);
+
+    jump_if(s, sense ? op : inverse(op), label);
+}
+
+// e == 0 and e != 0, rcc's zero_compared(): the jump of 7.1 reads ZF
+// alone, so e == 0 is e's own jump on its value compared with 0, the
+// sense flipped, and e != 0 that jump as it is, value_branch(), where
+// e's row may set ZF and write no cmp: (a + b) == 0 is addl and jne.
+// It wins over the cmp of a load in place, below, whose text it writes
+// for a == 0, cmpl $0, -4(%rbp).
+template< binary_op_t op, typename R >
+concept zero_compared = comparison_operator< op > &&
+                        (op == binary_op_t::eq || op == binary_op_t::ne) &&
+                        std::same_as< R, zero_t >;
+
+template< binary_op_t op, typename L, typename R >
+    requires zero_compared< op, R >
+void
+branch(state_t &s, const binary_t< op, L, R > &b, int label, bool sense)
+{
+    value_branch(s, b.lhs, label, sense != (op == binary_op_t::eq));
+}
+
+// A load against an immediate is the cmp of the object in place, as
+// for its value, cmpl $5, -4(%rbp), and no register is held.
+template< binary_op_t op, immediate I >
+    requires comparison_operator< op > && (!zero_compared< op, I >)
+void
+branch(state_t &s, const binary_t< op, load_t, I > &b, int label, bool sense)
+{
+    compare(s, b.lhs.where, immediate_of(b.rhs));
+    jump_if(s, sense ? op : inverse(op), label);
+}
+
+// A constant on the left is the jump of the node mirrored, ordered():
+// if (5 < a) is cmpl $5, -4(%rbp) and jle.
+template< binary_op_t op, immediate I, typename R >
+    requires comparison_operator< op >
+void
+branch(state_t &s, const binary_t< op, I, R > &b, int label, bool sense)
+{
+    branch(s, binary_t< mirrored(op), R, I > { b.rhs, b.lhs }, label, sense);
+}
+
+// A load's value compared with 0 is the cmp of the object in place,
+// rcc's condition_on(), cmpl $0, -4(%rbp), then jne or je: if (a) and
+// a == 0 alike.
+void value_branch(state_t &, const load_t &, int label, bool sense);
+
+// Whether the instruction of op sets ZF from the value it computes,
+// rcc's flag_operator(): add, sub, and, or and xor, by Intel's
+// reference (7.1); imul, the shifts and idivl do not.
+constexpr bool
+flag_operator(binary_op_t op)
+{
+    return op == binary_op_t::add || op == binary_op_t::sub ||
+           op == binary_op_t::bit_and || op == binary_op_t::bit_or ||
+           op == binary_op_t::bit_xor;
+}
+
+// rcc's flag_branch() on the held value v of a flag condition: je or jne
+// on the flags of the row's own instruction, with the cmp with 0 first
+// where the record says the last instruction set no ZF from v; v is
+// released.
+void flag_branch(state_t &, value_t v, int label, bool sense);
+
+// The niches of a flag condition, rcc's flag_condition(), 7.1, after the
+// Seventh Edition compiler's cctab: + - | ^ and unary -, whose row's
+// instruction sets ZF from the value, its value's row, then the jump on
+// those flags, flag_branch(): addl -8(%rbp), %eax and je, negl %eax and
+// jne.  & is test, below.
+template< binary_op_t op, typename L, typename R >
+    requires(flag_operator(op))
+void
+value_branch(state_t &s, const binary_t< op, L, R > &b, int label, bool sense)
+{
+    flag_branch(s, value(s, b), label, sense);
+}
+
+template< typename A >
+void
+value_branch(state_t &s,
+             const unary_t< unary_op_t::neg, A > &u,
+             int label,
+             bool sense)
+{
+    flag_branch(s, value(s, u), label, sense);
+}
+
+// test of a source and the held value l at 32 bits, rcc's test(), which
+// sets ZF from their & and writes no register: a held value r, testl
+// %ecx, %eax, the registers of operands(), a spilled value reloaded,
+// and r released; the int in a slot, testl -8(%rbp), %eax; or an
+// immediate, testl $1, %eax; and of an immediate and the int in a slot,
+// testl $1, -4(%rbp), the object tested in place.  l stays held.
+void test(state_t &, value_t l, value_t r);
+void test(state_t &, value_t l, slot_t source);
+void test(state_t &, value_t l, std::string_view immediate);
+void test(state_t &, slot_t where, std::string_view immediate);
+
+// The test of the held left value l and the right operand of &, by the
+// right operand's class, as compare_with() takes a comparison's.
+template< typename R >
+void
+test_with(state_t &s, value_t l, const R &rhs)
+{
+    test(s, l, value(s, rhs));
+}
+
+inline void
+test_with(state_t &s, value_t l, const load_t &rhs)
+{
+    test(s, l, rhs.where);
+}
+
+template< immediate I >
+void
+test_with(state_t &s, value_t l, const I &rhs)
+{
+    test(s, l, immediate_of(rhs));
+}
+
+// & as a jump, rcc's test(), 7.1, the PDP-11's bit of cctab's cc81: the
+// left operand's value, generated outside the registers the right
+// operand's top operator pins, then test R, L, which sets ZF and writes
+// no result, so nothing is held; then je or jne.
+template< typename L, typename R >
+void
+value_branch(state_t &s,
+             const binary_t< binary_op_t::bit_and, L, R > &b,
+             int label,
+             bool sense)
+{
+    const value_t l = rvalue_avoiding(s, b.lhs, pinned_by(b.rhs));
+    test_with(s, l, b.rhs);
+    release(s, l);
+
+    jump_if(s, sense ? binary_op_t::ne : binary_op_t::eq, label);
+}
+
+// A load and an immediate are tested in place, testl $1, -4(%rbp).
+template< immediate I >
+void
+value_branch(state_t &s,
+             const binary_t< binary_op_t::bit_and, load_t, I > &b,
+             int label,
+             bool sense)
+{
+    test(s, b.lhs.where, immediate_of(b.rhs));
+    jump_if(s, sense ? binary_op_t::ne : binary_op_t::eq, label);
+}
+
+// A constant on the left is the test of the node with its operands
+// exchanged, ordered(): 1 & a is testl $1, -4(%rbp).
+template< immediate I, typename R >
+void
+value_branch(state_t &s,
+             const binary_t< binary_op_t::bit_and, I, R > &b,
+             int label,
+             bool sense)
+{
+    value_branch(s, binary_t< binary_op_t::bit_and, R, I > { b.rhs, b.lhs },
+                 label, sense);
+}
 
 // The value, moved to the result register where its row left it
 // elsewhere, then the jump to the epilogue.

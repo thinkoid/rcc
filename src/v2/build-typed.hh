@@ -121,7 +121,8 @@ divides(int lhs, int rhs)
 // and the remainder has the dividend's sign.  << shifts the bits and
 // wraps, and >> of a negative value is arithmetic, G3, the
 // implementation's choice by 6.5.8p5.  A comparison is 1 where its
-// relation holds and 0 where it does not, 6.5.9p7, 6.5.10p4.
+// relation holds and 0 where it does not, 6.5.9p7, 6.5.10p4, and so are
+// && and || of the operands compared with 0, 6.5.14p3, 6.5.15p3.
 inline int
 folded(binary_op_t op, int lhs, int rhs)
 {
@@ -145,6 +146,8 @@ folded(binary_op_t op, int lhs, int rhs)
     case binary_op_t::bit_and: return lhs & rhs;
     case binary_op_t::bit_or: return lhs | rhs;
     case binary_op_t::bit_xor: return lhs ^ rhs;
+    case binary_op_t::log_and: return lhs != 0 && rhs != 0;
+    case binary_op_t::log_or: return lhs != 0 || rhs != 0;
     }
 }
 
@@ -152,7 +155,8 @@ folded(binary_op_t op, int lhs, int rhs)
 // rcc's is_identity_by() says: + - | ^ by 0, * / by 1, & by -1, every
 // bit of an int, << >> by a count that is 0 modulo 32, so x << 32 is x
 // and x << 33 is no identity; % by none, x % 1 being 0, and a
-// comparison by none, its value being 0 or 1.
+// comparison, && and || by none, their value being 0 or 1, so x && 1
+// is the node, its constant loaded and tested.
 inline bool
 is_identity_by(binary_op_t op, int c)
 {
@@ -169,7 +173,9 @@ is_identity_by(binary_op_t op, int c)
     case binary_op_t::le:
     case binary_op_t::ge:
     case binary_op_t::eq:
-    case binary_op_t::ne: return false;
+    case binary_op_t::ne:
+    case binary_op_t::log_and:
+    case binary_op_t::log_or: return false;
     case binary_op_t::shl:
     case binary_op_t::shr: return shift_count(c) == 0;
     case binary_op_t::bit_and: return c == -1;
