@@ -345,6 +345,15 @@ pinning(const binary_t< op, V, L, R > &, const expr_t &self)
         return self;
 }
 
+// A top_t is the class already, which a conversion's model hands its
+// builder, converted_operand().
+template< family_t P >
+const top_t< P > &
+pinning(const top_t< P > &operand, const expr_t &)
+{
+    return operand;
+}
+
 template< view_t V, view_t F, family_t P >
 top_t< P >
 pinning(const sext_t< V, F, top_t< P > > &, const expr_t &self)

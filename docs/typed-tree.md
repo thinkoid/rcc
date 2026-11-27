@@ -187,6 +187,12 @@ public:
   which includes the node types and every row of both targets. Two
   units that saw different overloads would break the one-definition
   rule with no diagnostic; one unit cannot.
+- A model hands each builder its operand in the class the builder
+  reads, as the binary builder's left operand is classed: a constant,
+  a load, a conversion a builder reads through, a `top_t`, or the
+  handle. So a builder's crossings are instantiated once for each
+  class and not for each node type, and a model costs its rows and
+  little more.
 - The parser sees a handle as an opaque value and the builders as
   plain functions (`build.hh`). It cannot make a node any other way.
 - The handle has no member but its constructor. Its own row is the
@@ -760,10 +766,11 @@ rows invented for the purpose.
 - What the zoo costs the compiler. Principle 5 counts code, and a
   primary costs none; but every node type a builder can make is
   instantiated in `build.cc` with its rows of both targets, about
-  2,500 binary node types now, and that one unit takes minutes and
-  12 GB to compile, at an instantiation depth near the compiler's
-  limit. Globals, pointers and the calls of every type each multiply
-  the classes again.
+  2,500 binary node types now. With every builder's crossings
+  instantiated for every model, that unit took over two minutes and
+  12 GB; with them instantiated once for each class of operand it
+  takes half of each. Globals, pointers and the calls of every type
+  each multiply the classes again.
 - The register state at a join. Whether an arm of `?:` leaves its
   value where the other arm's does is, in its hardest case, a fact of
   one moment of generation. No type, summary or context has it. Three

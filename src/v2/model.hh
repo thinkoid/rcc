@@ -185,11 +185,29 @@ fwd_rvalue(const T &t, const expr_t &self)
     return rvalue(t, self);
 }
 
-// A unary operator on a held node: the crossing from the operator and
-// the view, values in the parser, to the node's parameters (principle
-// 6), the typed builder of each.  The view of - and ~ is an
-// operation's, of the promoted operand, and that of ! the operand's
-// own, which may be narrow.
+// The operand of a unary operator in the class its builder reads,
+// make_unary(): a constant, which folds, or anything else erased, the
+// handle that holds it.  The crossings of fwd_unary() are instantiated
+// once for each class, and not for each node type.
+template< typename T >
+const expr_t &
+unary_operand(const T &, const expr_t &self)
+{
+    return self;
+}
+
+template< constant C >
+const C &
+unary_operand(const C &c, const expr_t &)
+{
+    return c;
+}
+
+// A unary operator on a held node in its class: the crossing from the
+// operator and the view, values in the parser, to the node's
+// parameters (principle 6), the typed builder of each.  The view of -
+// and ~ is an operation's, of the promoted operand, and that of ! the
+// operand's own, which may be narrow.
 template< typename A >
 expr_t
 fwd_unary(unary_op_t op, view_t view, const A &arg, const expr_t &self)
@@ -206,10 +224,62 @@ fwd_unary(unary_op_t op, view_t view, const A &arg, const expr_t &self)
     });
 }
 
-// The conversion of a held node from the view from, at the sign of its
-// type, to the view to at the sign to_sign: the three crossings, then
-// the typed builder, by overload on the node's type.  The sign of the
-// type converted to is read by a constant's conversion alone, as data.
+// The operand of a conversion in the class its builders read
+// (build-typed.hh): itself where they read its type, a constant, which
+// folds, a load, and a conversion over a load or that writes nothing,
+// which a conversion reads through; anything else as pinning() keeps
+// it, a top_t where its top operator pins registers on x86-64, and
+// erased otherwise.  The three crossings of fwd_conversion() are
+// instantiated once for each class, and not for each node type.
+template< typename T >
+decltype(auto)
+converted_operand(const T &e, const expr_t &self)
+{
+    return pinning(e, self);
+}
+
+template< constant C >
+const C &
+converted_operand(const C &c, const expr_t &)
+{
+    return c;
+}
+
+template< view_t V, sign_t S >
+const load_t< V, S > &
+converted_operand(const load_t< V, S > &l, const expr_t &)
+{
+    return l;
+}
+
+template< view_t V, typename A >
+const trunc_t< V, A > &
+converted_operand(const trunc_t< V, A > &t, const expr_t &)
+{
+    return t;
+}
+
+template< view_t V, view_t F >
+const sext_t< V, F, load_t< F, sign_t::signed_ > > &
+converted_operand(const sext_t< V, F, load_t< F, sign_t::signed_ > > &e,
+                  const expr_t &)
+{
+    return e;
+}
+
+template< view_t V, view_t F >
+const zext_t< V, F, load_t< F, sign_t::unsigned_ > > &
+converted_operand(const zext_t< V, F, load_t< F, sign_t::unsigned_ > > &e,
+                  const expr_t &)
+{
+    return e;
+}
+
+// The conversion of a held node in its class from the view from, at
+// the sign of its type, to the view to at the sign to_sign: the three
+// crossings, then the typed builder, by overload on the class.  The
+// sign of the type converted to is read by a constant's conversion
+// alone, as data.
 template< typename T >
 expr_t
 fwd_conversion(view_t to,
@@ -543,7 +613,7 @@ struct expr_t::model_t final: interface_t
 
     expr_t unary(unary_op_t op, view_t view, const expr_t &self) const override
     {
-        return fwd_unary(op, view, held, self);
+        return fwd_unary(op, view, unary_operand(held, self), self);
     }
 
     expr_t conversion(view_t to,
@@ -552,7 +622,8 @@ struct expr_t::model_t final: interface_t
                       sign_t from_sign,
                       const expr_t &self) const override
     {
-        return fwd_conversion(to, to_sign, from, from_sign, held, self);
+        return fwd_conversion(to, to_sign, from, from_sign,
+                              converted_operand(held, self), self);
     }
 
     bool is_assignable() const override
