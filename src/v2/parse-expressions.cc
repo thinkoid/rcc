@@ -12,7 +12,6 @@
 
 #include <initializer_list>
 #include <string>
-#include <string_view>
 #include <utility>
 
 namespace rcc {
@@ -26,18 +25,6 @@ refuse_operator(const parser_t &p, std::initializer_list< tok_t > operators)
 {
     if (next_is(p, operators))
         not_yet(peek(p), quoted(peek(p).text) + " operator");
-}
-
-// Whether a name is reserved for any use, 6.4.2.1p7: it begins with
-// two underscores, or with one and an uppercase letter.
-bool
-is_reserved(std::string_view name)
-{
-    if (name.starts_with("__"))
-        return true;
-
-    return name.size() > 1 && name[0] == '_' && name[1] >= 'A' &&
-           name[1] <= 'Z';
 }
 
 // An identifier, 6.5.2p3: a local's operand, a copy of what its

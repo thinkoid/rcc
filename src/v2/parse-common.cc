@@ -39,6 +39,20 @@ quoted(std::string_view name)
 }
 
 //
+// identifiers
+//
+
+bool
+is_reserved(std::string_view name)
+{
+    if (name.starts_with("__"))
+        return true;
+
+    return name.size() > 1 && name[0] == '_' && name[1] >= 'A' &&
+           name[1] <= 'Z';
+}
+
+//
 // token primitives
 //
 

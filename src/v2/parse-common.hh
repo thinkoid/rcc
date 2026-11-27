@@ -35,9 +35,10 @@ struct operand_t
     expr_t node;
 };
 
-// A block's scope, 6.2.1p4: each name it declares, a view into the
-// tokens, and what the parser holds of the name, its type and its leaf,
-// which a use copies (docs/typed-tree.md 4.5).
+// A block's scope, or a parameter list's, 6.2.1p4: each name it
+// declares, a view into the tokens, and what the parser holds of the
+// name, its type and its leaf, which a use copies (docs/typed-tree.md
+// 4.5).
 using scope_t = std::unordered_map< std::string_view, operand_t >;
 
 // What the parser holds of a function's name in the file's scope,
@@ -54,7 +55,8 @@ struct function_name_t
 // unit, filled as its functions are declared and defined; the names of
 // the functions the file declares, views into the tokens; the result
 // type of the function being defined, for its return statements; the
-// scopes of that function, innermost last; the count of the locals it
+// scopes open where the parse stands, innermost last, the function's
+// blocks' and a parameter list's; the count of the locals the function
 // has declared, which numbers the next one; and the loops whose bodies
 // are being read, innermost last, with the count of the function's
 // loops, which numbers the next one (docs/typed-tree.md 4.6).
@@ -83,6 +85,14 @@ struct parser_t
 [[noreturn]] void not_yet(const token_t &at, std::string_view construct);
 
 std::string quoted(std::string_view name);
+
+//
+// identifiers
+//
+
+// Whether a name is reserved for any use, 6.4.2.1p7: it begins with two
+// underscores, or with one and an uppercase letter.
+bool is_reserved(std::string_view name);
 
 //
 // token primitives
@@ -145,12 +155,27 @@ struct specifiers_t
     type_t type;
 };
 
-// What the parser holds of a declarator: its name, and the type it
-// declares, the specifiers' or a function returning it, 6.7.7.4p1.
+// A parameter as written: its first token; its name's token, or null
+// for a parameter its declaration does not name, 6.7.7.1p1; and its
+// type.
+struct parameter_t
+{
+    const token_t &start;
+    const token_t *name;
+    type_t type;
+};
+
+// What the parser holds of a declarator: its name; the type it
+// declares, the specifiers' or a function returning it, 6.7.7.4p4; and
+// for a function, its parameters as written and the scope of its
+// parameter list, 6.2.1p4, which holds their names and which a
+// definition's body opens again, 6.8.3p2.
 struct declarator_t
 {
     const token_t &name;
     type_t type;
+    std::vector< parameter_t > params = { };
+    scope_t scope = { };
 };
 
 bool is_declaration_start(const parser_t &, std::size_t ahead = 0);

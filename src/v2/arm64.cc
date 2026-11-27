@@ -10,7 +10,9 @@
 
 #include "assembly.hh"
 
+#include <cstddef>
 #include <format>
+#include <iterator>
 #include <optional>
 #include <ostream>
 #include <stdexcept>
@@ -26,6 +28,9 @@ namespace {
 // value takes them.
 constexpr reg_t expression_registers[] = { x0, x1,  x2,  x3,  x4,  x5,  x6, x7,
                                            x9, x10, x11, x12, x13, x14, x15 };
+
+// The convention's argument registers, in order, chapter 3.
+constexpr reg_t argument_registers[] = { x0, x1, x2, x3, x4, x5, x6, x7 };
 
 // The convention's result register, chapter 3.
 constexpr reg_t result_register = x0;
@@ -83,6 +88,21 @@ slot_of(const state_t &s, slot_t where)
 }
 
 // writing
+
+// A copy from memory to memory, which the machine has no instruction
+// for, carries its 4 bytes through x17, chapter 4: the load into w17,
+// then the store, rcc's copy_in() and copy_out().
+void
+copy_in(state_t &s, std::string_view from)
+{
+    insn(s, "ldr", { "w17", from });
+}
+
+void
+copy_out(state_t &s, std::string_view to)
+{
+    insn(s, "str", { "w17", to });
+}
 
 // The copy of a register into another at 32 bits, the destination
 // first, 2.2, rcc's mov(): mov w0, w19.
@@ -650,6 +670,57 @@ namespace {
 
 // the frame
 
+// The parameters' half of the prologue, rcc's parameters(), 5.2: each
+// takes the next slot, in parameter order, its displacement recorded
+// under the parameter's number, the first locals' (docs/typed-tree.md
+// 4.5); each of the first eight is stored there from its argument
+// register, str w0, [x29, #16], and one past the eighth is copied there
+// by stack_parameters(), once the frame's size says where the caller
+// left it.
+void
+parameters(state_t &s, std::size_t count)
+{
+    for (std::size_t i = 0; i < count; ++i) {
+        const int id = static_cast< int >(i);
+        s.slots.emplace(id, allocate(s, 4, 4));
+
+        if (i < std::size(argument_registers))
+            store(s, argument_registers[i], slot_t { id });
+    }
+}
+
+// The displacement off x29 of the parameter of index i past the eighth,
+// 5.2: the caller left it above the frame, at [x29, #T + 8(i - 8)], and
+// T, the frame's size, is known only once the body is done.  Past the
+// reach of the load, rcc holds the upper part in x16, 5.3, which rcc-v2
+// does not yet.
+int
+above_frame(std::size_t i, long size)
+{
+    const long past = static_cast< long >(i - std::size(argument_registers));
+    const long displacement = size + 8 * past;
+    if (displacement > reach(4))
+        throw std::logic_error(
+            "v2: not yet: a parameter beyond the reach of [x29, #d]");
+
+    return static_cast< int >(displacement);
+}
+
+// The parameters past the eighth, each copied to its slot, rcc's
+// stack_parameters() and stack_copy(), 5.2, in parameter order after
+// the stores of the first eight: ldr w17, [x29, #64] and str w17, [x29,
+// #48].
+void
+stack_parameters(state_t &s, std::size_t count, long size)
+{
+    for (std::size_t i = std::size(argument_registers); i < count; ++i) {
+        const int id = static_cast< int >(i);
+
+        copy_in(s, slot_operand(above_frame(i, size)));
+        copy_out(s, slot_operand(slot_of(s, slot_t { id })));
+    }
+}
+
 // A size by which sp moves, the frame's, as the immediates of sub and
 // add, 5.2: 12 bits, or 12 bits shifted by 12.  The upper part first; a
 // part that is zero is not written, so a size under 4096 bytes or a
@@ -725,9 +796,11 @@ binding(std::ostream &out, const function_decl_t &fd)
         out << std::format("\t.globl\t{}\n", fd.name);
 }
 
-// A definition: the body generated into the state's buffer, then
-// written inside the frame, the frame record and the slots, whose size
-// is known after the body, rounded up to 16.  The one epilogue is
+// A definition: the parameters' stores and the body generated into the
+// state's buffer, each taken out of it in turn, then written inside the
+// frame, the frame record and the slots, whose size is known after the
+// body, rounded up to 16, with the copies of the parameters past the
+// eighth, which read the size, between the two.  The one epilogue is
 // reached with x0 as it is, G5's some value, but for main, which
 // returns 0 when it falls off its end, 5.1.2.3.4, by its name, whatever
 // its result type.
@@ -737,10 +810,20 @@ function(std::ostream &out, const function_decl_t &fd)
     state_t s { .function = fd.name, .frame = frame_record };
     s.ret = new_label(s);
 
+    parameters(s, fd.parameters);
+    const std::string stores = s.body.str();
+    s.body.str({ });
+
     generate(s, *fd.body);
 
     if (!s.terminated && s.function == "main")
         constant(s, result_register, 0, 32);
+
+    const long size = (s.frame + 15) / 16 * 16;
+
+    const std::string body = s.body.str();
+    s.body.str({ });
+    stack_parameters(s, fd.parameters, size);
 
     binding(out, fd);
     out << std::format("\t.type\t{}, @function\n"
@@ -748,11 +831,9 @@ function(std::ostream &out, const function_decl_t &fd)
                        "\t.cfi_startproc\n",
                        fd.name, fd.name);
 
-    const long size = (s.frame + 15) / 16 * 16;
-
     prologue(out, size);
 
-    out << s.body.str();
+    out << stores << s.body.str() << body;
 
     epilogue(out, s, size);
     out << std::format("\t.cfi_endproc\n"

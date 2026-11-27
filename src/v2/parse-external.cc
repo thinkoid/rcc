@@ -107,7 +107,8 @@ declare_function(parser_t &p, const specifiers_t &spec, const declarator_t &d)
     }
 
     const std::size_t index = p.unit.functions.size();
-    p.unit.functions.push_back({ std::string(d.name.text), external });
+    p.unit.functions.push_back(
+        { std::string(d.name.text), external, d.params.size() });
     p.functions.emplace(d.name.text, function_name_t { d.type, index });
 
     return index;
@@ -115,14 +116,16 @@ declare_function(parser_t &p, const specifiers_t &spec, const declarator_t &d)
 
 // The body, a compound statement, 6.9.2p1, which is a statement: the
 // block of its items.  Its '{' is the token that made the declaration a
-// definition.  The body and the parameter list are one block, 6.8.3p2,
-// and with no parameter the body's scope is the function's.
+// definition.  The parameter type list and the body are one block,
+// 6.9.2p10, 6.8.3p2, so the scope of the list, with its parameters, is
+// opened again and the body's items are parsed into it directly: a
+// local cannot declare a parameter's name again there.
 stmt_t
-function_body(parser_t &p)
+function_body(parser_t &p, scope_t parameters)
 {
     advance(p);
 
-    p.scopes.emplace_back();
+    p.scopes.push_back(std::move(parameters));
     std::vector< stmt_t > items = block_item_list(p);
     p.scopes.pop_back();
     expect(p, tok_t::rbrace, "expected '}' at end of function body");
@@ -130,26 +133,37 @@ function_body(parser_t &p)
     return make_block(std::move(items));
 }
 
+// rcc requires each parameter of a definition to be named, said at the
+// first that is not, where C23 lets one go unnamed and inaccessible in
+// the body, 6.9.2p10 and its footnote 193: the error is rcc's.
+void
+require_definition_parameters(const declarator_t &d)
+{
+    for (const parameter_t &param : d.params)
+        if (!param.name)
+            fail(param.start, "parameter name omitted");
+}
+
 // A definition of the function, declared first, so that its name is in
 // scope in its own body, 6.2.1p7.  A function is defined once, 6.9.1p5.
 // The body is parsed with the function's result type, its locals
-// numbered from 0, and is the entry's.  A system header's definition is
-// compiled as any other, since rcc's rule for one is a static inline
-// function's.
+// numbered after the parameters, and is the entry's.  A system header's
+// definition is compiled as any other, since rcc's rule for one is a
+// static inline function's.
 void
-function_definition(parser_t &p,
-                    const specifiers_t &spec,
-                    const declarator_t &d)
+function_definition(parser_t &p, const specifiers_t &spec, declarator_t &d)
 {
     const std::size_t index = declare_function(p, spec, d);
     if (p.unit.functions[index].body)
         fail(d.name, "redefinition of " + quoted(d.name.text));
 
+    require_definition_parameters(d);
+
     p.result = *as< function_t >(d.type).result;
-    p.locals = 0;
+    p.locals = static_cast< int >(d.params.size());
     p.loop_count = 0;
 
-    p.unit.functions[index].body = function_body(p);
+    p.unit.functions[index].body = function_body(p, std::move(d.scope));
 }
 
 // One declarator of a declaration in the file's scope: a function's, or
@@ -193,7 +207,7 @@ external_declaration(parser_t &p)
         not_yet(t, quoted(t.text) + " declaration");
 
     const specifiers_t spec = declaration_specifiers(p);
-    const declarator_t d = declarator(p, spec.type);
+    declarator_t d = declarator(p, spec.type);
 
     if (is< function_t >(d.type) && peek(p).kind == tok_t::lbrace) {
         refuse_static_main(spec, d);

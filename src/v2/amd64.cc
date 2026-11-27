@@ -10,8 +10,10 @@
 #include "assembly.hh"
 #include "target.hh"
 
+#include <cstddef>
 #include <cstdint>
 #include <format>
+#include <iterator>
 #include <optional>
 #include <ostream>
 #include <stdexcept>
@@ -26,6 +28,9 @@ namespace {
 // takes them.
 constexpr reg_t expression_registers[] = { rax, rcx, rdx, rsi, rdi,
                                            r8,  r9,  r10, r11 };
+
+// The convention's argument registers, in order, 3.2.
+constexpr reg_t argument_registers[] = { rdi, rsi, rdx, rcx, r8, r9 };
 
 // The convention's result register, 3.2.
 constexpr reg_t result_register = rax;
@@ -876,6 +881,32 @@ epilogue(std::ostream &out, const state_t &s)
            "\tret\n";
 }
 
+// The parameters' half of the prologue, before the body, since the
+// body's slots come after theirs, rcc's parameters(): each of the first
+// six takes the next slot and is stored there from its argument
+// register, movl %edi, -4(%rbp); the seventh and later are where the
+// caller pushed them, 16(%rbp) and up, 8 bytes apart, and are read and
+// written there.  Each displacement is recorded under the parameter's
+// number, the first locals' (docs/typed-tree.md 4.5).
+void
+parameters(state_t &s, std::size_t count)
+{
+    const std::size_t registers = std::size(argument_registers);
+
+    for (std::size_t i = 0; i < count; ++i) {
+        const int id = static_cast< int >(i);
+        const int above = 16 + 8 * (id - static_cast< int >(registers));
+
+        if (i >= registers) {
+            s.slots.emplace(id, above);
+            continue;
+        }
+
+        s.slots.emplace(id, allocate(s, 4, 4));
+        store(s, argument_registers[i], slot_t { id });
+    }
+}
+
 // A function's symbol is global, .globl, where its linkage is external,
 // and local otherwise, chapter 10, rcc's binding().
 void
@@ -897,6 +928,7 @@ function(std::ostream &out, const function_decl_t &fd)
     state_t s { .function = fd.name };
     s.ret = new_label(s);
 
+    parameters(s, fd.parameters);
     generate(s, *fd.body);
 
     if (!s.terminated && s.function == "main")

@@ -11,6 +11,7 @@
 
 #include "stmt.hh"
 
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <vector>
@@ -20,14 +21,16 @@ namespace rcc {
 // A function the unit declares, 6.9.1, entered at its first
 // declaration, a later one and the definition finding the same entry:
 // its name; whether its linkage is external, 6.2.2p5, so its symbol is
-// global, which a static one's is not, p3; and its body, a compound
-// statement, which is a statement, 6.9.2, where the unit defines it.  A
-// function only declared writes nothing, since the assembler leaves its
-// symbol to the link.
+// global, which a static one's is not, p3; the count of its parameters,
+// which a definition's body reads as its first locals, numbered from 0;
+// and its body, a compound statement, which is a statement, 6.9.2,
+// where the unit defines it.  A function only declared writes nothing,
+// since the assembler leaves its symbol to the link.
 struct function_decl_t
 {
     std::string name;
     bool external;
+    std::size_t parameters;
     std::optional< stmt_t > body = std::nullopt;
 };
 
