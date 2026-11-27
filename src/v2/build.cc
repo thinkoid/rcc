@@ -18,6 +18,7 @@
 #include "rows-statements.hh"
 #include "zoo.hh"
 
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -179,17 +180,94 @@ make_block(std::vector< stmt_t > items)
     return stmt_t(block_t { std::move(items) });
 }
 
+// One hop through the then part's model, which knows whether it is one
+// jump (3.3), and a second through a block's one item.
 stmt_t
 make_if(expr_t cond, stmt_t then)
 {
-    return stmt_t(if_t { std::move(cond), std::move(then) });
+    return then.self->if_then(cond, std::nullopt, then);
 }
 
 stmt_t
 make_if_else(expr_t cond, stmt_t then, stmt_t otherwise)
 {
-    return stmt_t(
-        if_else_t { std::move(cond), std::move(then), std::move(otherwise) });
+    return then.self->if_then(cond, otherwise, then);
+}
+
+stmt_t
+if_on_item(const stmt_t &item,
+           const expr_t &cond,
+           const std::optional< stmt_t > &otherwise,
+           const stmt_t &block)
+{
+    return item.self->if_item(cond, otherwise, block);
+}
+
+namespace {
+
+template< bool broken, bool continued >
+using tested_for_t = for_t< expr_t, broken, continued >;
+
+template< bool broken, bool continued >
+using untested_for_t = for_t< omitted_t, broken, continued >;
+
+// The crossing from what the parser knows of a loop's body, data, to
+// the parameters of the loop's node, L, made once (principle 6):
+// whether a break and a continue of the loop stand in its body.
+template< template< bool, bool > typename L, typename... P >
+stmt_t
+loop_node(const loop_t &loop, P... parts)
+{
+    if (loop.broken && loop.continued)
+        return stmt_t(L< true, true > { std::move(parts)..., loop.id });
+
+    if (loop.broken)
+        return stmt_t(L< true, false > { std::move(parts)..., loop.id });
+
+    if (loop.continued)
+        return stmt_t(L< false, true > { std::move(parts)..., loop.id });
+
+    return stmt_t(L< false, false > { std::move(parts)..., loop.id });
+}
+
+} // namespace
+
+stmt_t
+make_while(expr_t cond, stmt_t body, const loop_t &loop)
+{
+    return stmt_t(while_t { std::move(cond), std::move(body), loop.id });
+}
+
+stmt_t
+make_do(stmt_t body, expr_t cond, const loop_t &loop)
+{
+    return loop_node< do_t >(loop, std::move(body), std::move(cond));
+}
+
+stmt_t
+make_for(stmt_t init, expr_t cond, stmt_t step, stmt_t body, const loop_t &loop)
+{
+    return loop_node< tested_for_t >(loop, std::move(init), std::move(cond),
+                                     std::move(step), std::move(body));
+}
+
+stmt_t
+make_for(stmt_t init, stmt_t step, stmt_t body, const loop_t &loop)
+{
+    return loop_node< untested_for_t >(loop, std::move(init), omitted_t { },
+                                       std::move(step), std::move(body));
+}
+
+stmt_t
+make_break(int loop)
+{
+    return stmt_t(jump_t { loop, &loop_labels_t::break_ });
+}
+
+stmt_t
+make_continue(int loop)
+{
+    return stmt_t(jump_t { loop, &loop_labels_t::continue_ });
 }
 
 } // namespace rcc

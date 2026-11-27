@@ -432,6 +432,16 @@ struct stmt_t::interface_t
 
     virtual void generate(amd64::state_t &) const = 0;
     virtual void generate(arm64::state_t &) const = 0;
+
+    // the builders of an if: whose then part is this statement, self,
+    // with an else part or without one; and whose then part is a block
+    // of which this statement is the one item, the second hop of 3.3
+    virtual stmt_t if_then(const expr_t &cond,
+                           const std::optional< stmt_t > &otherwise,
+                           const stmt_t &self) const = 0;
+    virtual stmt_t if_item(const expr_t &cond,
+                           const std::optional< stmt_t > &otherwise,
+                           const stmt_t &block) const = 0;
 };
 
 // The row of a held statement, as fwd_value() finds an expression's.
@@ -457,6 +467,20 @@ struct stmt_t::model_t final: interface_t
     void generate(arm64::state_t &s) const override
     {
         fwd_generate(s, held);
+    }
+
+    stmt_t if_then(const expr_t &cond,
+                   const std::optional< stmt_t > &otherwise,
+                   const stmt_t &self) const override
+    {
+        return make_if(cond, held, self, otherwise);
+    }
+
+    stmt_t if_item(const expr_t &cond,
+                   const std::optional< stmt_t > &otherwise,
+                   const stmt_t &block) const override
+    {
+        return make_if_of_item(cond, held, block, otherwise);
     }
 
     T held;

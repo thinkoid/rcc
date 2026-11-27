@@ -57,10 +57,12 @@ bit(reg_t r)
 // path reaches what is written next: the last instruction written is
 // an unconditional jump, which jump() sets and place_label() clears,
 // so an if whose then part ends so writes no jump over its else part,
-// and main writes no return of 0 (backend.md 7.2).  frame is the bytes
-// from x29 to the end of the last slot, the locals' and the spills' in
-// the order they are taken, the frame record's alone before the first,
-// and slots each local's displacement off x29, by its number.
+// and main writes no return of 0 (backend.md 7.2).  loops is the
+// labels each loop generated so far took for its body's jumps, by the
+// loop's number.  frame is the bytes from x29 to the end of the last
+// slot, the locals' and the spills' in the order they are taken, the
+// frame record's alone before the first, and slots each local's
+// displacement off x29, by its number.
 struct state_t
 {
     std::ostringstream body { };
@@ -68,6 +70,7 @@ struct state_t
     int labels = 0;
     int ret = 0;
     bool terminated = false;
+    std::unordered_map< int, loop_labels_t > loops { };
 
     long frame = 0;
     std::unordered_map< int, int > slots { };
@@ -97,6 +100,10 @@ void test_zero(state_t &, value_t v, int label, bool sense);
 
 // A mov of the immediate value into r, at 32 bits: mov w0, #1.
 void move_immediate(state_t &, reg_t r, int value);
+
+// The directive before a loop's head, rcc's align_loop_head(): none on
+// aarch64, whose loop_alignment is 0.
+void align_loop_head(state_t &);
 
 // The next slot of the frame, of size bytes at align, a local's or a
 // spill's: its displacement off x29.

@@ -11,6 +11,7 @@
 
 #pragma once
 
+#include "build.hh"
 #include "expr.hh"
 #include "lex.hh"
 #include "stmt.hh"
@@ -42,8 +43,11 @@ using scope_t = std::unordered_map< std::string_view, operand_t >;
 // The state of one parse: the tokens and the position in them; the
 // result type of the function being defined, for its return
 // statements; the names the unit has defined, views into the tokens;
-// the scopes of the function being defined, innermost last; and the
-// count of the locals it has declared, which numbers the next one.
+// the scopes of the function being defined, innermost last; the count
+// of the locals it has declared, which numbers the next one; and the
+// loops whose bodies are being read, innermost last, with the count of
+// the function's loops, which numbers the next one (docs/typed-tree.md
+// 4.6).
 struct parser_t
 {
     const std::vector< token_t > &tokens;
@@ -52,6 +56,8 @@ struct parser_t
     std::unordered_set< std::string_view > defined = { };
     std::vector< scope_t > scopes = { };
     int locals = 0;
+    std::vector< loop_t > loops = { };
+    int loop_count = 0;
 };
 
 //

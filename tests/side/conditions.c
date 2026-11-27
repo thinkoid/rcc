@@ -516,3 +516,36 @@ identity(void)
                 return 1;
         return 0;
 }
+
+int
+bitwise_and_sum(void)
+{
+        int a = 1;
+        int b = 2;
+        int c = 3;
+        if (a & (b + c))
+                return 1;
+        return 0;
+}
+
+int
+sum_bitwise_and_one(void)
+{
+        int a = 1;
+        int b = 2;
+        int c = 3;
+        if ((a + b) & 1)
+                return 1;
+        return 0;
+}
+
+int
+bitwise_and_quotient(void)
+{
+        int a = 1;
+        int b = 2;
+        int c = 3;
+        if (a & b / c)
+                return 1;
+        return 0;
+}

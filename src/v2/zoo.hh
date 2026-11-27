@@ -151,22 +151,96 @@ struct block_t
     std::vector< stmt_t > items;
 };
 
+// while (e) s, 6.8.6.2: the condition at the head, as a jump past the
+// loop where it is 0, before each execution of the body, 6.8.6.2p1,
+// then the body and the jump back.  loop is the loop's number among
+// the function's, which names it to the jumps of its body, jump_t;
+// its row records its labels under it.
+struct while_t
+{
+    expr_t cond;
+    stmt_t body;
+    int loop;
+};
+
+// do s while (e);, 6.8.6.3: the body, then the condition as a jump
+// back to it where it is nonzero, after each execution of the body,
+// 6.8.6.3p1.  broken and continued say whether a break and a continue
+// of the loop stand in its body, which the parser knows when it has
+// read the body: the label past the test is placed only where a break
+// names it, and the test's own where a continue does.
+template< bool broken, bool continued >
+struct do_t
+{
+    stmt_t body;
+    expr_t cond;
+    int loop;
+};
+
+// The condition a for omits, 6.8.6.4p2, replaced by a nonzero constant:
+// no test is written for it, so the label past the loop is named by a
+// break alone.
+struct omitted_t
+{
+};
+
+// for (init; cond; step) s, 6.8.6.4: the init, the condition at the
+// head as a jump past the loop where it is 0, the body, then the step
+// and the jump back.  C is expr_t, or omitted_t for a condition the
+// for omits; an omitted init or step is the null statement, which
+// writes nothing.  broken and continued are do_t's: the step's label is
+// placed only where a continue names it.
+template< typename C, bool broken, bool continued >
+struct for_t
+{
+    stmt_t init;
+    C cond;
+    stmt_t step;
+    stmt_t body;
+    int loop;
+};
+
+// The two labels a loop takes for the jumps of its body, which its
+// row records in the state under the loop's number before the body is
+// generated: a break's, past the loop, and a continue's, the loop's
+// continuation.
+struct loop_labels_t
+{
+    int break_;
+    int continue_;
+};
+
+// break; and continue;, 6.8.7.4p2, 6.8.7.3p2: a jump to one of the two
+// labels of the innermost loop around it, which the parser found, by
+// the loop's number; label says which of the two.
+struct jump_t
+{
+    int loop;
+    int loop_labels_t::*label;
+};
+
 // if (e) s, 6.8.5.1p1: the condition as a jump past the then part where
 // it is 0, 6.8.5.2p2.  The condition is erased, since its own row is
-// its best jump (3.4).
+// its best jump (3.4).  The then part is erased, or a jump_t where it
+// is one jump, bare or the one item of a block: the condition jumps to
+// the jump's label where it is nonzero, and nothing else is written.
+template< typename S = stmt_t >
 struct if_t
 {
     expr_t cond;
-    stmt_t then;
+    S then;
 };
 
 // if (e) s1 else s2, 6.8.5.1p1: the condition as a jump to the else
 // part where it is 0, the then part, and a jump past the else part
-// where a path leaves the then part at its end, 6.8.5.2p2.
+// where a path leaves the then part at its end, 6.8.5.2p2.  A then part
+// that is one jump is a jump_t, as for if_t, and the else part follows
+// the condition's jump.
+template< typename S = stmt_t >
 struct if_else_t
 {
     expr_t cond;
-    stmt_t then;
+    S then;
     stmt_t otherwise;
 };
 

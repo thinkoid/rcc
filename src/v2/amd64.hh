@@ -46,14 +46,16 @@ bit(reg_t r)
 // and main writes no return of 0 (backend.md 7.2).  zero_flag says
 // that the last instruction written set ZF from the value it computed,
 // flagged()'s, until the next instruction or label: a jump on that
-// value then needs no cmp (7.1).  frame is the bytes the slots take
-// below rbp, the locals' and the spills' in the order they are taken,
-// and slots each local's displacement off rbp, by its number.  reserved
-// is the registers take() leaves for last while a value meant for a
-// pinned register is generated, so it lands there (chapter 6.5).  ahead
-// is the registers a pinned instruction generated after the value now
-// being generated would move a held value out of, which the instruction
-// on a spilled value keeps its destination out of (right_written()).
+// value then needs no cmp (7.1).  loops is the labels each loop
+// generated so far took for its body's jumps, by the loop's number.
+// frame is the bytes the slots take below rbp, the locals' and the
+// spills' in the order they are taken, and slots each local's
+// displacement off rbp, by its number.  reserved is the registers
+// take() leaves for last while a value meant for a pinned register is
+// generated, so it lands there (chapter 6.5).  ahead is the registers
+// a pinned instruction generated after the value now being generated
+// would move a held value out of, which the instruction on a spilled
+// value keeps its destination out of (right_written()).
 struct state_t
 {
     std::ostringstream body { };
@@ -62,6 +64,7 @@ struct state_t
     int ret = 0;
     bool terminated = false;
     bool zero_flag = false;
+    std::unordered_map< int, loop_labels_t > loops { };
 
     long frame = 0;
     std::unordered_map< int, int > slots { };
@@ -93,6 +96,11 @@ void test_zero(state_t &, value_t v, int label, bool sense);
 
 // A mov of the immediate value into r, at 32 bits: movl $1, %eax.
 void move_immediate(state_t &, reg_t r, int value);
+
+// The directive before a loop's head, rcc's align_loop_head(): .p2align
+// 5, the head on a 32-byte boundary, a convention of the target; with
+// no fill byte named, the assembler fills the gap with nops.
+void align_loop_head(state_t &);
 
 // The next slot of the frame, of size bytes at align, a local's or a
 // spill's: its displacement off rbp.
@@ -651,10 +659,10 @@ value(state_t &s, const binary_t< op, I, R > &b, unsigned wanted = 0)
     return value(s, binary_t< mirrored(op), R, I > { b.rhs, b.lhs }, wanted);
 }
 
-// !e, 6.5.4.3p5, rcc's unary(): the operand's value, its test against 0,
-// cmpl $0, %eax, then the value of the flags as e == 0 has it, sete
-// and movzbl, setcc().  The operand is loaded, where e == 0 compares a
-// load in place.
+// !e, 6.5.4.3p5, rcc's unary(): the operand's value, its test against
+// 0, cmpl $0, %eax, then the value of the flags as e == 0 has it,
+// sete and movzbl, setcc().  The operand is loaded, where e == 0
+// compares a load in place.
 value_t
 value(state_t &, const unary_t< unary_op_t::log_not > &, unsigned wanted = 0);
 
@@ -729,17 +737,17 @@ flag_operator(binary_op_t op)
            op == binary_op_t::bit_xor;
 }
 
-// rcc's flag_branch() on the held value v of a flag condition: je or jne
-// on the flags of the row's own instruction, with the cmp with 0 first
-// where the record says the last instruction set no ZF from v; v is
-// released.
+// rcc's flag_branch() on the held value v of a flag condition: je or
+// jne on the flags of the row's own instruction, with the cmp with 0
+// first where the record says the last instruction set no ZF from v;
+// v is released.
 void flag_branch(state_t &, value_t v, int label, bool sense);
 
-// The niches of a flag condition, rcc's flag_condition(), 7.1, after the
-// Seventh Edition compiler's cctab: + - | ^ and unary -, whose row's
-// instruction sets ZF from the value, its value's row, then the jump on
-// those flags, flag_branch(): addl -8(%rbp), %eax and je, negl %eax and
-// jne.  & is test, below.
+// The niches of a flag condition, rcc's flag_condition(), 7.1, after
+// the Seventh Edition compiler's cctab: + - | ^ and unary -, whose
+// row's instruction sets ZF from the value, its value's row, then the
+// jump on those flags, flag_branch(): addl -8(%rbp), %eax and je,
+// negl %eax and jne.  & is test, below.
 template< binary_op_t op, typename L, typename R >
     requires(flag_operator(op))
 void

@@ -437,6 +437,11 @@ jump(state_t &s, int n)
     s.terminated = true;
 }
 
+void
+align_loop_head(state_t &)
+{
+}
+
 // b.cc of the condition, 7.1.
 void
 jump_if(state_t &s, binary_op_t op, int label)

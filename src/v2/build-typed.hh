@@ -6,9 +6,10 @@
 // rule of C and a shape of the zoo are decided here: which node a
 // place's value is, what an assignment stores into, in which class a
 // value is kept, what an operator on constants folds to, which operator
-// is the identity and leaves its operand.  A model finds a typed
-// builder as it finds a row, by overload where it is instantiated, so
-// build.cc includes this header beside the rows.
+// is the identity and leaves its operand, whether an if's then part is
+// one jump.  A model finds a typed builder as it finds a row, by
+// overload where it is instantiated, so build.cc includes this header
+// beside the rows.
 
 #pragma once
 
@@ -19,6 +20,7 @@
 
 #include <cstdint>
 #include <limits>
+#include <optional>
 
 namespace rcc {
 
@@ -249,6 +251,88 @@ make_binary(const L &lhs, const R &rhs)
     }
 
     return make_literal(folded(op, value_of(lhs), value_of(rhs)));
+}
+
+// An if of the then part then, a node's type S: with the else part
+// otherwise where there is one.
+template< typename S >
+stmt_t
+if_node(const expr_t &cond,
+        const S &then,
+        const std::optional< stmt_t > &otherwise)
+{
+    if (otherwise)
+        return stmt_t(if_else_t< S > { cond, then, *otherwise });
+
+    return stmt_t(if_t< S > { cond, then });
+}
+
+// An if whose then part is any statement but one jump: the node with
+// the then part erased, the handle that holds it.
+template< typename T >
+stmt_t
+make_if(const expr_t &cond,
+        const T &,
+        const stmt_t &then,
+        const std::optional< stmt_t > &otherwise)
+{
+    return if_node(cond, then, otherwise);
+}
+
+// A then part that is one jump is the jump_t the node holds,
+// docs/backend.md 7.2: the condition's jump to its label, as the first
+// pass of the Seventh Edition compiler writes it, c02.c.
+inline stmt_t
+make_if(const expr_t &cond,
+        const jump_t &then,
+        const stmt_t &,
+        const std::optional< stmt_t > &otherwise)
+{
+    return if_node(cond, then, otherwise);
+}
+
+// The second hop of an if's builder, build.cc's: through the model of
+// item, the one item of the block that is the then part.
+stmt_t if_on_item(const stmt_t &item,
+                  const expr_t &cond,
+                  const std::optional< stmt_t > &otherwise,
+                  const stmt_t &block);
+
+// A block of one item is one jump where its item is one, the braces
+// writing nothing: the answer is the item's, asked through its model,
+// if_on_item(), and a block of any other count is no jump.
+inline stmt_t
+make_if(const expr_t &cond,
+        const block_t &b,
+        const stmt_t &then,
+        const std::optional< stmt_t > &otherwise)
+{
+    if (b.items.size() != 1)
+        return if_node(cond, then, otherwise);
+
+    return if_on_item(b.items.front(), cond, otherwise, then);
+}
+
+// The one item of a block that is a then part, asked whether it is one
+// jump: a jump_t is, and any other statement is not, a block among
+// them, so { { break; } } is no jump and the then part is the block.
+template< typename T >
+stmt_t
+make_if_of_item(const expr_t &cond,
+                const T &,
+                const stmt_t &block,
+                const std::optional< stmt_t > &otherwise)
+{
+    return if_node(cond, block, otherwise);
+}
+
+inline stmt_t
+make_if_of_item(const expr_t &cond,
+                const jump_t &item,
+                const stmt_t &,
+                const std::optional< stmt_t > &otherwise)
+{
+    return if_node(cond, item, otherwise);
 }
 
 } // namespace rcc

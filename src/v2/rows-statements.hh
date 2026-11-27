@@ -70,13 +70,32 @@ generate(S &s, const block_t &b)
         generate(s, item);
 }
 
+// The labels of a loop, docs/backend.md 7.2: each loop takes its own
+// at fixed moments, from the state's count, and records the two its
+// body's jumps name under its number, before the body is generated.
+template< typename S >
+void
+record(S &s, int loop, int break_, int continue_)
+{
+    s.loops.emplace(loop, loop_labels_t { break_, continue_ });
+}
+
+// The label a break or a continue names: its loop's, which the loop's
+// row recorded.
+template< typename S >
+int
+label_of(const S &s, const jump_t &j)
+{
+    return s.loops.at(j.loop).*j.label;
+}
+
 // rcc's if_stmt(), docs/backend.md 7.2: the label past the then part
 // taken on reaching the if, before any of the condition's, the
 // condition's jump to it where the condition is 0, the then part, then
 // the label.  An empty then part changes nothing.
 template< typename S >
 void
-generate(S &s, const if_t &i)
+generate(S &s, const if_t<> &i)
 {
     const int no = new_label(s);
     branch(s, i.cond, no, false);
@@ -93,7 +112,7 @@ generate(S &s, const if_t &i)
 // else part is taken after every label of the then part.
 template< typename S >
 void
-generate(S &s, const if_else_t &i)
+generate(S &s, const if_else_t<> &i)
 {
     const int no = new_label(s);
     branch(s, i.cond, no, false);
@@ -113,6 +132,146 @@ generate(S &s, const if_else_t &i)
     generate(s, i.otherwise);
 
     place_label(s, end);
+}
+
+// An if whose then part is one jump, rcc's if_jump(): the condition's
+// jump to the jump's label where it is nonzero, and no label of the
+// if's own; the else part follows with no jump over it, as the first
+// pass of the Seventh Edition compiler writes it, c02.c.
+template< typename S >
+void
+generate(S &s, const if_t< jump_t > &i)
+{
+    branch(s, i.cond, label_of(s, i.then), true);
+}
+
+template< typename S >
+void
+generate(S &s, const if_else_t< jump_t > &i)
+{
+    branch(s, i.cond, label_of(s, i.then), true);
+    generate(s, i.otherwise);
+}
+
+// rcc's while_stmt(), G14: the condition at the head, where it is
+// written, tested once per iteration and once more, with no rotation;
+// the head's label and the one past the loop taken on reaching it, and
+// both placed.  A continue jumps to the head.  A body that ends in a
+// jump, the state terminated after it, takes no jump back: no path
+// leaves the body at its end to take it.
+template< typename S >
+void
+generate(S &s, const while_t &w)
+{
+    const int cond = new_label(s);
+    const int end = new_label(s);
+    record(s, w.loop, end, cond);
+
+    align_loop_head(s);
+    place_label(s, cond);
+    branch(s, w.cond, end, false);
+
+    generate(s, w.body);
+    if (!s.terminated)
+        jump(s, cond);
+
+    place_label(s, end);
+}
+
+// rcc's do_stmt(): the body first, then the condition, where it is
+// written, its jump back to the body's label, the loop's head, where it
+// is nonzero.  The three labels are taken on reaching the loop.  The
+// test is written where a path reaches it, out of the body's end or by
+// a continue, whose label is placed only where a continue names it;
+// the label past the test only where a break does.
+template< typename S, bool broken, bool continued >
+void
+generate(S &s, const do_t< broken, continued > &d)
+{
+    const int body = new_label(s);
+    const int cond = new_label(s);
+    const int end = new_label(s);
+    record(s, d.loop, end, cond);
+
+    align_loop_head(s);
+    place_label(s, body);
+    generate(s, d.body);
+
+    if constexpr (continued)
+        place_label(s, cond);
+    if (!s.terminated)
+        branch(s, d.cond, body, true);
+
+    if constexpr (broken)
+        place_label(s, end);
+}
+
+// The test at a for's head: the condition's jump past the loop where it
+// is 0; an omitted condition writes none.
+template< typename S >
+void
+test_of_for(S &s, const expr_t &cond, int end)
+{
+    branch(s, cond, end, false);
+}
+
+template< typename S >
+void
+test_of_for(S &, const omitted_t &, int)
+{
+}
+
+// Whether a for of the condition C tests it at its head,
+// test_of_for()'s jump, which names the label past the loop: a
+// written condition does, and an omitted one does not.
+template< typename C >
+constexpr bool tested = true;
+
+template<>
+constexpr bool tested< omitted_t > = false;
+
+// rcc's for_stmt(), G14, as for while: the init, then the three labels,
+// the head's, the step's and the one past the loop, then the test at
+// the head.  The step and the jump back are written where a path
+// reaches them, out of the body's end or by a continue, whose label,
+// the step's, is placed only where a continue names it; the label past
+// the loop where the test or a break names it.
+template< typename S, typename C, bool broken, bool continued >
+void
+generate(S &s, const for_t< C, broken, continued > &f)
+{
+    generate(s, f.init);
+
+    const int cond = new_label(s);
+    const int next = new_label(s);
+    const int end = new_label(s);
+    record(s, f.loop, end, next);
+
+    align_loop_head(s);
+    place_label(s, cond);
+    test_of_for(s, f.cond, end);
+
+    generate(s, f.body);
+
+    if constexpr (continued)
+        place_label(s, next);
+    if (!s.terminated) {
+        generate(s, f.step);
+        jump(s, cond);
+    }
+
+    if constexpr (tested< C > || broken)
+        place_label(s, end);
+}
+
+// break; and continue;, rcc's break_stmt() and continue_stmt(): the
+// jump to the loop's label.  A statement starts with no value held, so
+// the jump is the whole of it.
+template< typename S >
+void
+generate(S &s, const jump_t &j)
+{
+    jump(s, label_of(s, j));
 }
 
 } // namespace rcc

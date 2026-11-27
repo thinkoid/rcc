@@ -3,15 +3,20 @@
 // The handle of a statement, docs/typed-tree.md 4.4: an erased node of
 // the zoo, by the technique of expr.hh, with one entry point, the
 // statement generated.  Statements and expressions are two handles,
-// since no operation is whole across both (principle 10).
+// since no operation is whole across both (principle 10).  The builder
+// of an if goes through the model of its then part (3.3), and is a
+// friend.
 
 #pragma once
 
 #include "targets.hh"
 
 #include <memory>
+#include <optional>
 
 namespace rcc {
+
+class expr_t;
 
 class stmt_t
 {
@@ -30,6 +35,13 @@ public:
 
     friend void generate(amd64::state_t &, const stmt_t &);
     friend void generate(arm64::state_t &, const stmt_t &);
+
+    friend stmt_t make_if(expr_t cond, stmt_t then);
+    friend stmt_t make_if_else(expr_t cond, stmt_t then, stmt_t otherwise);
+    friend stmt_t if_on_item(const stmt_t &item,
+                             const expr_t &cond,
+                             const std::optional< stmt_t > &otherwise,
+                             const stmt_t &block);
 };
 
 // An erased statement generates itself: the handle's own rows.

@@ -52,6 +52,7 @@ function_definition(parser_t &p, const type_t &result, const token_t &name)
 
     p.result = result;
     p.locals = 0;
+    p.loop_count = 0;
 
     return { std::string(name.text), function_body(p) };
 }

@@ -262,6 +262,12 @@ jump(state_t &s, int n)
     s.terminated = true;
 }
 
+void
+align_loop_head(state_t &s)
+{
+    s.body << "\t.p2align 5\n";
+}
+
 // jcc of the condition, chapter 7.1.
 void
 jump_if(state_t &s, binary_op_t op, int label)

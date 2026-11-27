@@ -1,15 +1,17 @@
 // -*- mode: c++; -*-
 
 // 6.8: the statements, of which rcc-v2 takes the compound statement,
-// the expression and null statements, the if statement, the return
-// statement with an expression, and the block items of a block, a
-// declaration among them.  Every other statement is refused at its
-// first token by its name, as is a label.
+// the expression and null statements, the if statement, the while, do
+// and for statements, break and continue, the return statement with an
+// expression, and the block items of a block, a declaration among
+// them.  Every other statement is refused at its first token by its
+// name, as is a label.
 
 #include "parse-common.hh"
 
 #include "build.hh"
 
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -50,6 +52,38 @@ return_statement(parser_t &p)
     return make_return(rvalue(std::move(value.node)));
 }
 
+// A continue stands only in a loop's body, 6.8.7.3p1, and is a jump to
+// the innermost loop's continuation, p2: the loop is marked continued,
+// which picks the labels its row places.
+stmt_t
+continue_statement(parser_t &p)
+{
+    const token_t &keyword = advance(p);
+    if (p.loops.empty())
+        fail(keyword, "'continue' statement not in a loop");
+
+    p.loops.back().continued = true;
+    expect(p, tok_t::semicolon, "expected ';' after continue statement");
+
+    return make_continue(p.loops.back().id);
+}
+
+// A break stands only in a loop's body or a switch's, 6.8.7.4p1, and
+// jumps past the innermost, p2; a switch is not yet, so it is the
+// innermost loop's, marked broken.
+stmt_t
+break_statement(parser_t &p)
+{
+    const token_t &keyword = advance(p);
+    if (p.loops.empty())
+        fail(keyword, "'break' statement not in a loop or a switch");
+
+    p.loops.back().broken = true;
+    expect(p, tok_t::semicolon, "expected ';' after break statement");
+
+    return make_break(p.loops.back().id);
+}
+
 // 6.8.7.1: a goto, a continue, a break or a return.
 stmt_t
 jump_statement(parser_t &p)
@@ -57,9 +91,9 @@ jump_statement(parser_t &p)
     const token_t &t = peek(p);
 
     switch (t.kind) {
-    case tok_t::kw_goto:
-    case tok_t::kw_continue:
-    case tok_t::kw_break: not_yet(t, quoted(t.text) + " statement");
+    case tok_t::kw_goto: not_yet(t, quoted(t.text) + " statement");
+    case tok_t::kw_continue: return continue_statement(p);
+    case tok_t::kw_break: return break_statement(p);
     default: return return_statement(p);
     }
 }
@@ -109,6 +143,113 @@ selection_statement(parser_t &p)
                         std::move(otherwise));
 }
 
+// A loop's body and what the parser knows of the loop once it is read.
+struct loop_body_t
+{
+    stmt_t body;
+    loop_t loop;
+};
+
+// The body of a loop, where a break and a continue of the loop may
+// stand, 6.8.7.3p1, 6.8.7.4p1, but for those of a loop inside it: the
+// loop, numbered among the function's, is the innermost while its body
+// is read, and the parser's function for the loop is the accumulator
+// of what the body held of it (docs/typed-tree.md 4.4, 4.6).
+loop_body_t
+loop_body(parser_t &p)
+{
+    p.loops.push_back({ .id = p.loop_count++ });
+    stmt_t body = statement(p);
+
+    const loop_t loop = p.loops.back();
+    p.loops.pop_back();
+
+    return { std::move(body), loop };
+}
+
+// The while statement, 6.8.6.2, whose condition is converted as an
+// if's is, its value compared with 0, 6.8.6.1p3.
+stmt_t
+while_statement(parser_t &p)
+{
+    advance(p);
+    expect(p, tok_t::lparen, "expected '(' after 'while'");
+    operand_t cond = expression(p);
+    expect(p, tok_t::rparen, "expected ')' after condition");
+
+    loop_body_t l = loop_body(p);
+
+    return make_while(rvalue(std::move(cond.node)), std::move(l.body), l.loop);
+}
+
+// The do statement, 6.8.6.3: the body, then the condition, evaluated
+// after each execution of the body, p1, and the ';' that ends the
+// statement.
+stmt_t
+do_statement(parser_t &p)
+{
+    advance(p);
+
+    loop_body_t l = loop_body(p);
+
+    expect(p, tok_t::kw_while, "expected 'while' after the body of 'do'");
+    expect(p, tok_t::lparen, "expected '(' after 'while'");
+    operand_t cond = expression(p);
+    expect(p, tok_t::rparen, "expected ')' after condition");
+    expect(p, tok_t::semicolon, "expected ';' after do statement");
+
+    return make_do(std::move(l.body), rvalue(std::move(cond.node)), l.loop);
+}
+
+// The for statement, 6.8.6.4: the init, an expression statement or the
+// null statement, whose ';' is that statement's; the condition where
+// the next token is no ';', and an omitted one otherwise, p2; the step,
+// an expression evaluated as a void expression, p1, where the next
+// token is no ')', and the null statement otherwise; then the body.  A
+// declaration as the init is not yet.
+stmt_t
+for_statement(parser_t &p)
+{
+    advance(p);
+    expect(p, tok_t::lparen, "expected '(' after 'for'");
+
+    if (is_declaration_start(p))
+        not_yet(peek(p), "declaration in a 'for'");
+
+    stmt_t init = expression_statement(p);
+
+    std::optional< expr_t > cond;
+    if (peek(p).kind != tok_t::semicolon)
+        cond = rvalue(expression(p).node);
+
+    expect(p, tok_t::semicolon, "expected ';' after for condition");
+
+    stmt_t step = make_null();
+    if (peek(p).kind != tok_t::rparen)
+        step = make_expr_stmt(rvalue(expression(p).node));
+
+    expect(p, tok_t::rparen, "expected ')' after for clauses");
+
+    loop_body_t l = loop_body(p);
+    if (!cond)
+        return make_for(std::move(init), std::move(step), std::move(l.body),
+                        l.loop);
+
+    return make_for(std::move(init), std::move(*cond), std::move(step),
+                    std::move(l.body), l.loop);
+}
+
+// The iteration statements, 6.8.6, by their first token.
+stmt_t
+iteration_statement(parser_t &p)
+{
+    switch (peek(p).kind) {
+    case tok_t::kw_while: return while_statement(p);
+    case tok_t::kw_do: return do_statement(p);
+    default: return for_statement(p);
+    }
+}
+
 // A compound statement, 6.8.3: a block, which opens a scope of its own
 // for its declarations, 6.2.1p4, closed at its end.  Its '{' is the
 // token that made it one.
@@ -141,7 +282,7 @@ statement(parser_t &p)
     case tok_t::kw_switch: return selection_statement(p);
     case tok_t::kw_while:
     case tok_t::kw_do:
-    case tok_t::kw_for:
+    case tok_t::kw_for: return iteration_statement(p);
     case tok_t::kw_asm: not_yet(t, quoted(t.text) + " statement");
     case tok_t::kw_return:
     case tok_t::kw_break:
