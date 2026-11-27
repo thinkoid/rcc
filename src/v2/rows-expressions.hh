@@ -75,6 +75,45 @@ value(S &s, const zext_t< V, F, A > &e, unsigned wanted = 0)
     return extended(s, v, F, sign_t::unsigned_, V, wanted);
 }
 
+// A widening over a promotion of the object, which its builder makes
+// only where one extension is the two, rcc's widened_read(): the row of
+// the widening of the object itself, the one load of the object at its
+// own type, (long) (int) c on a signed char c being movsbq -1(%rbp),
+// %rax, (long) (int) c on an unsigned char movzbl -1(%rbp), %eax.  The
+// row of another node (docs/typed-tree.md 3.2), so each target's niche
+// of the extending load serves both.
+template< typename S, view_t V, view_t F, view_t G >
+value_t
+value(S &s,
+      const sext_t< V, F, sext_t< F, G, load_t< G, sign_t::signed_ > > > &e,
+      unsigned wanted = 0)
+{
+    return value(s, sext_t< V, G, load_t< G, sign_t::signed_ > > { e.arg.arg },
+                 wanted);
+}
+
+template< typename S, view_t V, view_t F, view_t G >
+value_t
+value(S &s,
+      const sext_t< V, F, zext_t< F, G, load_t< G, sign_t::unsigned_ > > > &e,
+      unsigned wanted = 0)
+{
+    return value(s,
+                 zext_t< V, G, load_t< G, sign_t::unsigned_ > > { e.arg.arg },
+                 wanted);
+}
+
+template< typename S, view_t V, view_t F, view_t G >
+value_t
+value(S &s,
+      const zext_t< V, F, zext_t< F, G, load_t< G, sign_t::unsigned_ > > > &e,
+      unsigned wanted = 0)
+{
+    return value(s,
+                 zext_t< V, G, load_t< G, sign_t::unsigned_ > > { e.arg.arg },
+                 wanted);
+}
+
 // A conversion that writes nothing is its operand's value, the low bits
 // of whose register are the value at V (G2).
 template< typename S, view_t V, typename A >

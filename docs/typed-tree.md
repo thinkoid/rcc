@@ -458,8 +458,17 @@ one where the tree has, `slot_t`, with its object's sign.
   widened to 64 bits is its extending load, `movslq -4(%rbp), %rax`.
   Any other widening of a load is its primary, since the load has
   extended the object already. The widening's builder finds the
-  object under a change of sign and under a promotion of its own, as
-  rcc's `widened_read()` does, and reads it once.
+  object under a change of sign, and reads it at the type converted
+  from.
+- A widening over a promotion of the object, where one extension is
+  the two, a signed object under a signed widening or any unsigned
+  one, keeps the promotion as its operand's type, `sext_t< i64, i32,
+  sext_t< i32, i8, load_t< i8, signed_ > > >`, and that type's row
+  is the one load of the object, as rcc's `widened_read()` reads it.
+  A widening over that one is over a value, and its primary extends
+  by the width rule: `(long) (int) (short) c` on a `signed char` is
+  `movsbl` and `movslq`. A builder that flattened the two widenings
+  into the type of one lost that difference.
 - The width a value is valid to is a summary of its subtree,
   `valid_of(e, sign)`: the width up to which its register's bits are
   the value extended by `sign`, the sign of the type its consumer
@@ -752,7 +761,7 @@ each became.
 | `integer(t).width`, `operation_width()` | the node's view, a parameter |
 | `integer(t).is_signed` | the operator, by its name; a widening, `sext_t` or `zext_t`; a place's narrow read |
 | the width of `extended()`, `valid` | a summary, `valid_of()`, read by a widening's primary and aarch64's test of zero |
-| `widened_read()`, `object_under()`, `under_kept_bits()` | the conversion's builder, by overload on the operand's type |
+| `widened_read()`, `object_under()`, `under_kept_bits()` | the conversion's builder, by overload on the operand's type, and the type of a widening over a promotion of the object, whose row is the one load |
 | `extending_load()` | a niche of `sext_t` over a load |
 | whether a callee returns `void`, its result's width | the call's node: `call_void_t`, or `call_t< V >` and its view |
 | a literal's mark of an overflow, `holds_overflow()` | the parser's operand's mark, set by each operator's production and read where a constant expression is required |

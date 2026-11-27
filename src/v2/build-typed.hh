@@ -441,22 +441,26 @@ make_widening(const trunc_t< F, load_t< F, O > > &t, const expr_t &)
     return widening_of< V, F, S >(load_t< F, S > { t.arg.where });
 }
 
-// An object under a promotion of its own is read once, at its own type,
-// where one extension is the two, rcc's widened_read(): a signed one
-// under a signed widening, (long) (int) c on a signed char c being the
-// one movsbq -1(%rbp), %rax; and any unsigned one, whose zero extension
-// the promotion keeps, (long) (int) c on an unsigned char the one
-// movzbl -1(%rbp), %eax.  A signed one under an unsigned widening is no
-// such case, its extension to 32 bits no extension to 64: (long)
-// (unsigned) c is the widening of the promotion, which writes nothing,
-// since the extending load is valid to 64 as an unsigned.
+// A widening over a promotion of the object, rcc's widened_read(),
+// keeps the promotion as its operand's type, so the one load that is
+// the two extensions is that type's row (rows-expressions.hh): a signed
+// object under a signed widening, (long) (int) c on a signed char c
+// being the one movsbq -1(%rbp), %rax; and any unsigned one, whose zero
+// extension the promotion keeps, (long) (int) c on an unsigned char the
+// one movzbl -1(%rbp), %eax.  A widening over that is over a value, no
+// promotion of the object, and extends it by the width rule, as rcc's
+// does: (long) (int) (short) c is movsbl -1(%rbp), %eax and movslq
+// %eax, %rax.  A signed object under an unsigned widening is no such
+// case, its extension to 32 bits no extension to 64: (long) (unsigned)
+// c is the widening of the promotion, which writes nothing, since the
+// extending load is valid to 64 as an unsigned.
 template< view_t V, view_t F, sign_t S, view_t G >
 expr_t
 make_widening(const sext_t< F, G, load_t< G, sign_t::signed_ > > &e,
               const expr_t &self)
 {
     if constexpr (S == sign_t::signed_)
-        return expr_t(sext_t< V, G, load_t< G, sign_t::signed_ > > { e.arg });
+        return widening_of< V, F, S >(e);
     else
         return widening_of< V, F, S >(pinning(e, self));
 }
@@ -466,7 +470,7 @@ expr_t
 make_widening(const zext_t< F, G, load_t< G, sign_t::unsigned_ > > &e,
               const expr_t &)
 {
-    return expr_t(zext_t< V, G, load_t< G, sign_t::unsigned_ > > { e.arg });
+    return widening_of< V, F, S >(e);
 }
 
 // A conversion that is no widening, a narrowing, a change of sign or a

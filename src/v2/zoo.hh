@@ -146,7 +146,9 @@ struct top_t
 // and a zero extension, zext, of an unsigned one, each where the
 // operand's register is not valid to V's width already (the width rule,
 // valid_of()).  A is erased, or the operand's load, whose niche is the
-// extending load of a signed one, or a top_t, pinning()'s.
+// extending load of a signed one, or the promotion of a load, over
+// which the widening is one load, rcc's widened_read(), or a top_t,
+// pinning()'s.
 template< view_t V, view_t F, typename A = expr_t >
 struct sext_t
 {
@@ -595,6 +597,39 @@ int
 valid_of(const zext_t< V, F, A > &, sign_t)
 {
     return width(V);
+}
+
+// A widening over a promotion of the object is the one load of the
+// object at its own type, rcc's widened_read(), and is valid as the
+// widening of the object itself is: (unsigned long) (int) c on a signed
+// char c to 64 bits, (int) (short) c to 32 at a signed consumer.
+template< view_t V, view_t F, view_t G >
+int
+valid_of(const sext_t< V, F, sext_t< F, G, load_t< G, sign_t::signed_ > > > &e,
+         sign_t sign)
+{
+    return valid_of(sext_t< V, G, load_t< G, sign_t::signed_ > > { e.arg.arg },
+                    sign);
+}
+
+template< view_t V, view_t F, view_t G >
+int
+valid_of(
+    const sext_t< V, F, zext_t< F, G, load_t< G, sign_t::unsigned_ > > > &e,
+    sign_t sign)
+{
+    return valid_of(
+        zext_t< V, G, load_t< G, sign_t::unsigned_ > > { e.arg.arg }, sign);
+}
+
+template< view_t V, view_t F, view_t G >
+int
+valid_of(
+    const zext_t< V, F, zext_t< F, G, load_t< G, sign_t::unsigned_ > > > &e,
+    sign_t sign)
+{
+    return valid_of(
+        zext_t< V, G, load_t< G, sign_t::unsigned_ > > { e.arg.arg }, sign);
 }
 
 template< view_t V, typename A >
