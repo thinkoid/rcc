@@ -66,19 +66,19 @@ wrapped(long long exact)
     return static_cast< int >(static_cast< std::uint32_t >(exact));
 }
 
-// - and ~ of a constant, 6.5.4.3p3, p4: the negative of INT_MIN wraps
-// to INT_MIN.
+// - ~ ! of a constant, 6.5.4.3p3 to p5: the negative of INT_MIN wraps
+// to INT_MIN, and !c is 1 where c is 0 and 0 otherwise.
 inline int
 folded(unary_op_t op, int value)
 {
     switch (op) {
     case unary_op_t::neg: return wrapped(-static_cast< long long >(value));
     case unary_op_t::bit_not: return ~value;
+    case unary_op_t::log_not: return value == 0;
     }
 }
 
-// - and ~ of anything but a constant: the node, its operand erased
-// (3.3).
+// - ~ ! of anything but a constant: the node, its operand erased (3.3).
 template< unary_op_t op, typename A >
 expr_t
 make_unary(const A &, const expr_t &arg)
@@ -86,8 +86,8 @@ make_unary(const A &, const expr_t &arg)
     return expr_t(unary_t< op > { arg });
 }
 
-// - and ~ of a constant fold where the node would be built, as rcc
-// folds them: a constant, which make_literal() classes.
+// - ~ ! of a constant fold where the node would be built, as rcc folds
+// them: a constant, which make_literal() classes.
 template< unary_op_t op, constant C >
 expr_t
 make_unary(const C &arg, const expr_t &)
@@ -120,7 +120,8 @@ divides(int lhs, int rhs)
 // that divides() says has a value: the quotient truncates toward zero
 // and the remainder has the dividend's sign.  << shifts the bits and
 // wraps, and >> of a negative value is arithmetic, G3, the
-// implementation's choice by 6.5.8p5.
+// implementation's choice by 6.5.8p5.  A comparison is 1 where its
+// relation holds and 0 where it does not, 6.5.9p7, 6.5.10p4.
 inline int
 folded(binary_op_t op, int lhs, int rhs)
 {
@@ -135,6 +136,12 @@ folded(binary_op_t op, int lhs, int rhs)
     case binary_op_t::rem: return lhs % rhs;
     case binary_op_t::shl: return wrapped(a << shift_count(rhs));
     case binary_op_t::shr: return lhs >> shift_count(rhs);
+    case binary_op_t::lt: return lhs < rhs;
+    case binary_op_t::gt: return lhs > rhs;
+    case binary_op_t::le: return lhs <= rhs;
+    case binary_op_t::ge: return lhs >= rhs;
+    case binary_op_t::eq: return lhs == rhs;
+    case binary_op_t::ne: return lhs != rhs;
     case binary_op_t::bit_and: return lhs & rhs;
     case binary_op_t::bit_or: return lhs | rhs;
     case binary_op_t::bit_xor: return lhs ^ rhs;
@@ -144,7 +151,8 @@ folded(binary_op_t op, int lhs, int rhs)
 // Whether the constant c on the right of op makes op the identity, as
 // rcc's is_identity_by() says: + - | ^ by 0, * / by 1, & by -1, every
 // bit of an int, << >> by a count that is 0 modulo 32, so x << 32 is x
-// and x << 33 is no identity; % by none, x % 1 being 0.
+// and x << 33 is no identity; % by none, x % 1 being 0, and a
+// comparison by none, its value being 0 or 1.
 inline bool
 is_identity_by(binary_op_t op, int c)
 {
@@ -155,7 +163,13 @@ is_identity_by(binary_op_t op, int c)
     case binary_op_t::bit_xor: return c == 0;
     case binary_op_t::mul:
     case binary_op_t::div: return c == 1;
-    case binary_op_t::rem: return false;
+    case binary_op_t::rem:
+    case binary_op_t::lt:
+    case binary_op_t::gt:
+    case binary_op_t::le:
+    case binary_op_t::ge:
+    case binary_op_t::eq:
+    case binary_op_t::ne: return false;
     case binary_op_t::shl:
     case binary_op_t::shr: return shift_count(c) == 0;
     case binary_op_t::bit_and: return c == -1;
@@ -178,7 +192,7 @@ node_of(const top_t< op > &operand)
     return operand.node;
 }
 
-// * / % + - << >> & | ^ of operands neither of which is a constant: the
+// A binary operator of operands neither of which is a constant: the
 // node, each operand in its class.
 template< binary_op_t op, typename L, typename R >
 expr_t

@@ -146,6 +146,18 @@ unary_plus(parser_t &p)
     return { int_type(), arithmetic_operand(op, std::move(arg)) };
 }
 
+// !e, 6.5.4.3p5: an int, its operand's value tested as it is, with no
+// promotion; ! of a constant is a constant.
+operand_t
+logical_not(parser_t &p)
+{
+    const token_t &op = advance(p);
+    operand_t arg = cast_expression(p);
+
+    return { int_type(), make_unary(unary_op_t::log_not,
+                                    arithmetic_operand(op, std::move(arg))) };
+}
+
 // -e and ~e, 6.5.4.3p3, p4.
 operand_t
 unary_arithmetic(parser_t &p)
@@ -160,8 +172,8 @@ unary_arithmetic(parser_t &p)
              make_unary(u, arithmetic_operand(op, std::move(arg))) };
 }
 
-// The unary operators, 6.5.4, of which rcc-v2 takes + - ~, 6.5.4.3, on
-// a cast expression; GNU C's __extension__ before a cast expression,
+// The unary operators, 6.5.4, of which rcc-v2 takes + - ~ !, 6.5.4.3,
+// on a cast expression; GNU C's __extension__ before a cast expression,
 // and its address of a label, &&next, which rcc refuses in these words.
 operand_t
 unary_expression(parser_t &p)
@@ -172,9 +184,9 @@ unary_expression(parser_t &p)
     case tok_t::plus: return unary_plus(p);
     case tok_t::minus:
     case tok_t::tilde: return unary_arithmetic(p);
+    case tok_t::bang: return logical_not(p);
     case tok_t::inc:
     case tok_t::dec:
-    case tok_t::bang:
     case tok_t::amp:
     case tok_t::star:
     case tok_t::kw_sizeof:
@@ -277,22 +289,65 @@ shift_expression(parser_t &p)
     return e;
 }
 
-// The relational operators, 6.5.9.
+// A relational or an equality operator, 6.5.9, 6.5.10, its token at:
+// each operand's value, as arithmetic_operand() takes it there, in the
+// operands' common type, 6.5.9p4, 6.5.10p5, which leaves two ints as
+// they are, and the result an int whatever the operands' type,
+// 6.5.9p7, 6.5.10p4.
+operand_t
+comparison(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
+{
+    expr_t l = arithmetic_operand(at, std::move(lhs));
+    expr_t r = arithmetic_operand(at, std::move(rhs));
+
+    return { int_type(), make_binary(op, std::move(l), std::move(r)) };
+}
+
+// The operator of a relational operator's token: < > <= >=.
+binary_op_t
+relational_operator(tok_t kind)
+{
+    switch (kind) {
+    case tok_t::lt: return binary_op_t::lt;
+    case tok_t::gt: return binary_op_t::gt;
+    case tok_t::le: return binary_op_t::le;
+    default: return binary_op_t::ge;
+    }
+}
+
+// The relational operators, 6.5.9, left-associative, as rcc's loop
+// reads them: a < b < c is (a < b) < c, 1 or 0 compared with c.
 operand_t
 relational_expression(parser_t &p)
 {
     operand_t e = shift_expression(p);
-    refuse_operator(p, { tok_t::lt, tok_t::gt, tok_t::le, tok_t::ge });
+
+    while (next_is(p, { tok_t::lt, tok_t::gt, tok_t::le, tok_t::ge })) {
+        const token_t &op = advance(p);
+        const binary_op_t b = relational_operator(op.kind);
+
+        operand_t rhs = shift_expression(p);
+        e = comparison(b, op, std::move(e), std::move(rhs));
+    }
 
     return e;
 }
 
-// The equality operators, 6.5.10.
+// The equality operators, 6.5.10, left-associative, as rcc's loop
+// reads them: a == b == c is (a == b) == c.
 operand_t
 equality_expression(parser_t &p)
 {
     operand_t e = relational_expression(p);
-    refuse_operator(p, { tok_t::eq, tok_t::ne });
+
+    while (next_is(p, { tok_t::eq, tok_t::ne })) {
+        const token_t &op = advance(p);
+        const binary_op_t b =
+            op.kind == tok_t::eq ? binary_op_t::eq : binary_op_t::ne;
+
+        operand_t rhs = relational_expression(p);
+        e = comparison(b, op, std::move(e), std::move(rhs));
+    }
 
     return e;
 }

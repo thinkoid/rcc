@@ -256,6 +256,13 @@ mnemonic(binary_op_t op)
     case binary_op_t::rem: return "sdiv";
     case binary_op_t::shl: return "lsl";
     case binary_op_t::shr: return "asr";
+    case binary_op_t::lt:
+    case binary_op_t::gt:
+    case binary_op_t::le:
+    case binary_op_t::ge:
+    case binary_op_t::eq:
+    case binary_op_t::ne:
+        throw std::logic_error("v2: a comparison's instruction is compare()'s");
     case binary_op_t::bit_and: return "and";
     case binary_op_t::bit_or: return "orr";
     case binary_op_t::bit_xor: return "eor";
@@ -264,16 +271,22 @@ mnemonic(binary_op_t op)
 
 // The immediate of op that encodes value at 32 bits, 2.4, or none: add
 // and sub take 12 bits, or 12 bits shifted by 12, of either sign,
-// written signed; a shift its count masked to the width, which is what
-// the instruction does to a count in a register (G3), lsl w0, w0, #1
-// for a << 33; and, orr and eor a bitmask, written in hex; mul, sdiv
-// and msub take none.
+// written signed, and so does cmp, the instruction of every comparison;
+// a shift its count masked to the width, which is what the instruction
+// does to a count in a register (G3), lsl w0, w0, #1 for a << 33; and,
+// orr and eor a bitmask, written in hex; mul, sdiv and msub take none.
 std::optional< std::string >
 immediate_of(binary_op_t op, int value)
 {
     switch (op) {
     case binary_op_t::add:
     case binary_op_t::sub:
+    case binary_op_t::lt:
+    case binary_op_t::gt:
+    case binary_op_t::le:
+    case binary_op_t::ge:
+    case binary_op_t::eq:
+    case binary_op_t::ne:
         if (arithmetic_immediate(value, 32))
             return imm(value);
         break;
@@ -332,6 +345,21 @@ final_destination(state_t &s, value_t v, unsigned wanted)
     s.registers.owner.emplace(*named, v.id);
 
     return *named;
+}
+
+// The condition of a comparison of op on int, the suffix of b.cc and
+// the operand of cset, rcc's condition() on signed operands.
+std::string_view
+condition(binary_op_t op)
+{
+    switch (op) {
+    case binary_op_t::lt: return "lt";
+    case binary_op_t::le: return "le";
+    case binary_op_t::gt: return "gt";
+    case binary_op_t::ge: return "ge";
+    case binary_op_t::eq: return "eq";
+    default: return "ne";
+    }
 }
 
 } // namespace
@@ -490,6 +518,52 @@ arithmetic(
     insn(s, mnemonic(op), { to, from, *immediate });
 
     return l;
+}
+
+// cmp L, R, the destination's order, cmp w0, w1: operands() asks for
+// r's register first, then l's.
+void
+compare(state_t &s, value_t l, value_t r)
+{
+    const auto [left, right] = operands(s, l, r);
+    insn(s, "cmp", { reg(left, 32), reg(right, 32) });
+
+    release(s, r);
+}
+
+// cmp's immediate is the class of add and sub, whichever the comparison
+// (2.4), immediate_of() for ==; a negative one is written as the source
+// has it, cmp w0, #-1, which the assembler encodes as cmn w0, #1.  A
+// constant it does not encode is held after l, which may spill l, and
+// compared as any held value.
+void
+compare(state_t &s, value_t l, const literal_t &r)
+{
+    const auto immediate = immediate_of(binary_op_t::eq, r.value);
+    if (!immediate) {
+        compare(s, l, value(s, r));
+        return;
+    }
+
+    insn(s, "cmp", { reg(reg_of(s, l), 32), *immediate });
+}
+
+value_t
+cset(state_t &s, binary_op_t op, value_t v, unsigned wanted)
+{
+    insn(s, "cset",
+         { reg(final_destination(s, v, wanted), 32), condition(op) });
+
+    return v;
+}
+
+value_t
+value(state_t &s, const unary_t< unary_op_t::log_not > &u, unsigned wanted)
+{
+    const value_t v = value(s, u.arg);
+    compare(s, v, literal_t { 0 });
+
+    return cset(s, binary_op_t::eq, v, wanted);
 }
 
 // The store row of 2.2: str w0, [x29, #16].

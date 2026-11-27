@@ -124,6 +124,8 @@ fwd_unary(unary_op_t op, const A &arg, const expr_t &self)
     case unary_op_t::neg: return make_unary< unary_op_t::neg >(arg, self);
     case unary_op_t::bit_not:
         return make_unary< unary_op_t::bit_not >(arg, self);
+    case unary_op_t::log_not:
+        return make_unary< unary_op_t::log_not >(arg, self);
     }
 }
 
@@ -204,6 +206,12 @@ fwd_binary(binary_op_t op, const L &lhs, const R &rhs)
     case binary_op_t::rem: return make_binary< binary_op_t::rem >(lhs, rhs);
     case binary_op_t::shl: return make_binary< binary_op_t::shl >(lhs, rhs);
     case binary_op_t::shr: return make_binary< binary_op_t::shr >(lhs, rhs);
+    case binary_op_t::lt: return make_binary< binary_op_t::lt >(lhs, rhs);
+    case binary_op_t::gt: return make_binary< binary_op_t::gt >(lhs, rhs);
+    case binary_op_t::le: return make_binary< binary_op_t::le >(lhs, rhs);
+    case binary_op_t::ge: return make_binary< binary_op_t::ge >(lhs, rhs);
+    case binary_op_t::eq: return make_binary< binary_op_t::eq >(lhs, rhs);
+    case binary_op_t::ne: return make_binary< binary_op_t::ne >(lhs, rhs);
     case binary_op_t::bit_and:
         return make_binary< binary_op_t::bit_and >(lhs, rhs);
     case binary_op_t::bit_or:

@@ -115,8 +115,9 @@ value_t arithmetic(
 // - and ~, 6.5.4.3p3, p4, rcc's unary(): the operand's value, generated
 // as for any consumer, then neg or mvn, whose destination is apart from
 // its source: neg w0, w0, and neg w0, w1 for a return whose operand is
-// in w1.
+// in w1.  ! is a row of its own, below.
 template< unary_op_t op, typename A >
+    requires(op != unary_op_t::log_not)
 value_t
 value(state_t &s, const unary_t< op, A > &u, unsigned wanted = 0)
 {
@@ -130,6 +131,17 @@ void store(state_t &, reg_t r, slot_t where);
 // no register is held.
 void initialize(state_t &, slot_t where, const zero_t &);
 
+// The operators of rcc's arithmetic(), * / % + - << >> & | ^, whose
+// row writes the operation into the left operand's register; a
+// comparison's cmp writes none, and its rows are below.
+template< binary_op_t op >
+concept arithmetic_operator =
+    op == binary_op_t::add || op == binary_op_t::sub ||
+    op == binary_op_t::mul || op == binary_op_t::div ||
+    op == binary_op_t::rem || op == binary_op_t::shl ||
+    op == binary_op_t::shr || op == binary_op_t::bit_and ||
+    op == binary_op_t::bit_or || op == binary_op_t::bit_xor;
+
 // The primary of * / % + - << >> & | ^, 6.5.6 to 6.5.8, 6.5.11 to
 // 6.5.13, rcc's binary(), chapter 6.1: the left operand's value first,
 // G13, held while the right operand's is taken in a register of its
@@ -140,6 +152,7 @@ void initialize(state_t &, slot_t where, const zero_t &);
 // which names its destination apart from its sources: add w0, w1, w0
 // after a right operand that took x0.
 template< binary_op_t op, typename L, typename R >
+    requires arithmetic_operator< op >
 value_t
 value(state_t &s, const binary_t< op, L, R > &b, unsigned wanted = 0)
 {
@@ -161,7 +174,7 @@ concept constant_first = commutes(op) && constant< L >;
 // exchanged, 5 + a as a + 5: the value of the right operand, which is
 // no constant, then the constant as the right operand.
 template< binary_op_t op, typename L, typename R >
-    requires constant_first< op, L >
+    requires arithmetic_operator< op > && constant_first< op, L >
 value_t
 value(state_t &s, const binary_t< op, L, R > &b, unsigned wanted = 0)
 {
@@ -175,6 +188,7 @@ value(state_t &s, const binary_t< op, L, R > &b, unsigned wanted = 0)
 // mirror's nodes it would take only a constant on both sides, which the
 // builder folds.
 template< binary_op_t op, typename L >
+    requires arithmetic_operator< op >
 value_t
 value(state_t &s, const binary_t< op, L, literal_t > &b, unsigned wanted = 0)
 {
@@ -182,6 +196,71 @@ value(state_t &s, const binary_t< op, L, literal_t > &b, unsigned wanted = 0)
 
     return arithmetic(s, op, l, b.rhs, wanted);
 }
+
+// cmp of the held value l and a right operand at 32 bits, rcc's
+// compare_with(): a held value r, cmp w0, w1, the registers of
+// operands(), a spilled value reloaded, and r released; or a literal,
+// the immediate where cmp encodes it, add's and sub's of 2.4 whatever
+// the comparison, cmp w0, #5 and cmp w0, #-1, and otherwise a held
+// value of its own, mov w1, #4097 and cmp w0, w1.  It sets the flags
+// and writes no register; l stays held.
+void compare(state_t &, value_t l, value_t r);
+void compare(state_t &, value_t l, const literal_t &r);
+
+// The value of a comparison of op from the flags its cmp set, rcc's
+// comparison(): cset of the condition, one instruction, into
+// final_destination(), the register the consumer names where it may be
+// written, cset w0, lt after cmp w1, w0, or v's own.
+value_t cset(state_t &, binary_op_t op, value_t v, unsigned wanted);
+
+// The cmp of l and the right operand of a comparison by its class: a
+// constant as compare() takes a literal, 0 the immediate #0, and any
+// other right operand its value, generated as for any consumer.
+template< typename R >
+void
+compare_with(state_t &s, value_t l, const R &rhs)
+{
+    compare(s, l, value(s, rhs));
+}
+
+template< constant C >
+void
+compare_with(state_t &s, value_t l, const C &rhs)
+{
+    compare(s, l, literal_t { value_of(rhs) });
+}
+
+// The primary of < > <= >= == !=, 6.5.9, 6.5.10, rcc's comparison() and
+// compare(), 6.3: the left operand's value first, G13, generated as for
+// any consumer, then the cmp with the right operand, compare_with(),
+// then cset, cmp w0, w1 and cset w0, lt.
+template< binary_op_t op, typename L, typename R >
+    requires comparison_operator< op >
+value_t
+value(state_t &s, const binary_t< op, L, R > &b, unsigned wanted = 0)
+{
+    const value_t l = value(s, b.lhs);
+    compare_with(s, l, b.rhs);
+
+    return cset(s, op, l, wanted);
+}
+
+// A constant on the left is the row of the node mirrored, rcc's
+// ordered(): 5 < a as a > 5, mirrored(), whether cmp encodes the
+// constant or not, so 5 < a is cmp w0, #5 after the load of a.
+template< binary_op_t op, constant C, typename R >
+    requires comparison_operator< op >
+value_t
+value(state_t &s, const binary_t< op, C, R > &b, unsigned wanted = 0)
+{
+    return value(s, binary_t< mirrored(op), R, C > { b.rhs, b.lhs }, wanted);
+}
+
+// !e, 6.5.4.3p5, rcc's unary(): the operand's value, generated as for
+// any consumer, its test against 0, cmp w0, #0, then cset of eq, as for
+// e == 0.
+value_t
+value(state_t &, const unary_t< unary_op_t::log_not > &, unsigned wanted = 0);
 
 // The value, moved to the result register where its row left it
 // elsewhere, then the jump to the epilogue.

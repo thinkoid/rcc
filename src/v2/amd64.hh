@@ -13,6 +13,7 @@
 #include "unit.hh"
 #include "zoo.hh"
 
+#include <optional>
 #include <ostream>
 #include <sstream>
 #include <string>
@@ -93,8 +94,10 @@ void operate(state_t &, unary_op_t op, reg_t r);
 
 // - and ~, 6.5.4.3p3, p4, rcc's unary(): the operand's value, handed the
 // consumer's register, then the operation on its register in place,
-// negl %eax, which leaves the node's value there.
+// negl %eax, which leaves the node's value there.  ! is a row of its
+// own, below.
 template< unary_op_t op, typename A >
+    requires(op != unary_op_t::log_not)
 value_t
 value(state_t &s, const unary_t< op, A > &u, unsigned wanted = 0)
 {
@@ -534,6 +537,101 @@ value(state_t &s, const binary_t< op, L, C > &b, unsigned wanted = 0)
 
     return l;
 }
+
+// cmp of a source and the held value l at 32 bits, rcc's
+// compare_with(): a held value r, cmpl %ecx, %eax, the registers of
+// operands(), a spilled value reloaded, and r released; the int in a
+// slot, cmpl -8(%rbp), %eax; or an immediate, cmpl $5, %eax.  It sets
+// the flags and writes no register; l stays held.
+void compare(state_t &, value_t l, value_t r);
+void compare(state_t &, value_t l, slot_t source);
+void compare(state_t &, value_t l, std::string_view immediate);
+
+// cmp of an immediate and the int in a slot, rcc's condition_on(): the
+// object compared in place, cmpl $5, -4(%rbp), and no register holds
+// it.
+void compare(state_t &, slot_t where, std::string_view immediate);
+
+// The value of a comparison of op from the flags its cmp set, rcc's
+// comparison() after compared(): setcc into the low byte of a register,
+// then movzbl to the int.  l is the value the cmp held, none where it
+// compared an object in place.
+value_t
+setcc(state_t &, binary_op_t op, std::optional< value_t > l, unsigned wanted);
+
+// The cmp of the held left value l and the right operand of a
+// comparison, rcc's compare_with(), by the right operand's class: its
+// value, generated as for any consumer, held and freed, cmpl %ecx,
+// %eax; a load, the instruction's operand in memory, cmpl -8(%rbp),
+// %eax, which takes no register; an immediate, cmpl $5, %eax.
+template< typename R >
+void
+compare_with(state_t &s, value_t l, const R &rhs)
+{
+    compare(s, l, value(s, rhs));
+}
+
+inline void
+compare_with(state_t &s, value_t l, const load_t &rhs)
+{
+    compare(s, l, rhs.where);
+}
+
+template< immediate I >
+void
+compare_with(state_t &s, value_t l, const I &rhs)
+{
+    compare(s, l, immediate_of(rhs));
+}
+
+// The primary of < > <= >= == !=, 6.5.9, 6.5.10, rcc's comparison(),
+// compared() and compare(), chapter 6.3: the left operand's value
+// first, G13, generated outside the registers the right operand's top
+// operator pins; then the cmp with the right operand, compare_with();
+// then the value of the flags, setcc(), in the left operand's register,
+// cmpl -8(%rbp), %eax, setl %al and movzbl %al, %eax.
+template< binary_op_t op, typename L, typename R >
+    requires comparison_operator< op >
+value_t
+value(state_t &s, const binary_t< op, L, R > &b, unsigned wanted = 0)
+{
+    const value_t l = rvalue_avoiding(s, b.lhs, pinned_by(b.rhs));
+    compare_with(s, l, b.rhs);
+
+    return setcc(s, op, l, wanted);
+}
+
+// A load compared with an immediate is the cmp of the object in place,
+// cmpl $5, -4(%rbp), compare(); the object is read by the cmp and by
+// nothing before it, G13, and no register holds it, so the setcc takes
+// one.
+template< binary_op_t op, immediate I >
+    requires comparison_operator< op >
+value_t
+value(state_t &s, const binary_t< op, load_t, I > &b, unsigned wanted = 0)
+{
+    compare(s, b.lhs.where, immediate_of(b.rhs));
+
+    return setcc(s, op, std::nullopt, wanted);
+}
+
+// A constant on the left is the row of the node mirrored, rcc's
+// ordered(): 5 < a as a > 5, mirrored(), the constant the immediate on
+// the right, so 5 < a is cmpl $5, -4(%rbp) and setg %al.
+template< binary_op_t op, immediate I, typename R >
+    requires comparison_operator< op >
+value_t
+value(state_t &s, const binary_t< op, I, R > &b, unsigned wanted = 0)
+{
+    return value(s, binary_t< mirrored(op), R, I > { b.rhs, b.lhs }, wanted);
+}
+
+// !e, 6.5.4.3p5, rcc's unary(): the operand's value, its test against 0,
+// cmpl $0, %eax, then the value of the flags as e == 0 has it, sete
+// and movzbl, setcc().  The operand is loaded, where e == 0 compares a
+// load in place.
+value_t
+value(state_t &, const unary_t< unary_op_t::log_not > &, unsigned wanted = 0);
 
 // The value, moved to the result register where its row left it
 // elsewhere, then the jump to the epilogue.

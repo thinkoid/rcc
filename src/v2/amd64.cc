@@ -140,9 +140,31 @@ mnemonic(binary_op_t op)
     case binary_op_t::rem: return "idivl";
     case binary_op_t::shl: return "shll";
     case binary_op_t::shr: return "sarl";
+    case binary_op_t::lt:
+    case binary_op_t::gt:
+    case binary_op_t::le:
+    case binary_op_t::ge:
+    case binary_op_t::eq:
+    case binary_op_t::ne:
+        throw std::logic_error("v2: a comparison's instruction is compare()'s");
     case binary_op_t::bit_and: return "andl";
     case binary_op_t::bit_or: return "orl";
     case binary_op_t::bit_xor: return "xorl";
+    }
+}
+
+// The condition code of a comparison of op on int, the suffix of setcc
+// and jcc, rcc's condition() on signed operands.
+std::string_view
+condition(binary_op_t op)
+{
+    switch (op) {
+    case binary_op_t::lt: return "l";
+    case binary_op_t::le: return "le";
+    case binary_op_t::gt: return "g";
+    case binary_op_t::ge: return "ge";
+    case binary_op_t::eq: return "e";
+    default: return "ne";
     }
 }
 
@@ -577,6 +599,68 @@ shift(state_t &s, binary_op_t op, value_t l, value_t r)
 
     insn(s, mnemonic(op), { "%cl", reg(reg_of(s, l), 32) });
     release(s, r);
+}
+
+// cmp R, L in AT&T order, the source first: cmpl $5, %eax.
+void
+compare(state_t &s, value_t l, std::string_view source)
+{
+    insn(s, "cmpl", { source, reg(reg_of(s, l), 32) });
+}
+
+// cmpl -8(%rbp), %eax.
+void
+compare(state_t &s, value_t l, slot_t source)
+{
+    compare(s, l, at(slot_of(s, source)));
+}
+
+// cmpl %ecx, %eax: operands() asks for r's register first, then l's.
+void
+compare(state_t &s, value_t l, value_t r)
+{
+    const auto [left, right] = operands(s, l, r);
+    insn(s, "cmpl", { reg(right, 32), reg(left, 32) });
+
+    release(s, r);
+}
+
+// cmpl $5, -4(%rbp).
+void
+compare(state_t &s, slot_t where, std::string_view immediate)
+{
+    insn(s, "cmpl", { immediate, at(slot_of(s, where)) });
+}
+
+// rcc's comparison(): the setcc writes l's register, where the cmp left
+// l, but where the consumer names a register, wanted, that is free now,
+// setl %al after cmpl %eax, %ecx, l released; and where the cmp held
+// nothing, the register wanted names or a fresh one.  setcc writes the
+// low byte alone, so movzbl extends it to the int the operator yields.
+value_t
+setcc(state_t &s, binary_op_t op, std::optional< value_t > l, unsigned wanted)
+{
+    const auto named = wanted_register(s, wanted);
+    if (!l || named) {
+        if (l)
+            release(s, *l);
+        l = named ? hold(s, *named) : fresh(s);
+    }
+
+    const reg_t r = reg_of(s, *l);
+    insn(s, std::format("set{}", condition(op)), { reg(r, 8) });
+    insn(s, "movzbl", { reg(r, 8), reg(r, 32) });
+
+    return *l;
+}
+
+value_t
+value(state_t &s, const unary_t< unary_op_t::log_not > &u, unsigned wanted)
+{
+    const value_t v = value(s, u.arg);
+    compare(s, v, imm(0));
+
+    return setcc(s, binary_op_t::eq, v, wanted);
 }
 
 // The store row: movl %eax, -4(%rbp).

@@ -11,11 +11,11 @@
 
 namespace rcc {
 
-// The unary operators of 6.5.4.3 that make a node: - and ~.
-enum class unary_op_t { neg, bit_not };
+// The unary operators of 6.5.4.3 that make a node: - ~ !.
+enum class unary_op_t { neg, bit_not, log_not };
 
-// The binary operators of int, 6.5.6 to 6.5.8 and 6.5.11 to 6.5.13:
-// * / % + - << >> & | ^.
+// The binary operators of int, 6.5.6 to 6.5.13: * / % + - << >> & | ^,
+// and the comparisons < > <= >= == !=.
 enum class binary_op_t {
     add,
     sub,
@@ -24,6 +24,12 @@ enum class binary_op_t {
     rem,
     shl,
     shr,
+    lt,
+    gt,
+    le,
+    ge,
+    eq,
+    ne,
     bit_and,
     bit_or,
     bit_xor
@@ -44,7 +50,13 @@ commutes(binary_op_t op)
     case binary_op_t::div:
     case binary_op_t::rem:
     case binary_op_t::shl:
-    case binary_op_t::shr: return false;
+    case binary_op_t::shr:
+    case binary_op_t::lt:
+    case binary_op_t::gt:
+    case binary_op_t::le:
+    case binary_op_t::ge:
+    case binary_op_t::eq:
+    case binary_op_t::ne: return false;
     }
 }
 
@@ -63,6 +75,37 @@ constexpr bool
 is_shift(binary_op_t op)
 {
     return op == binary_op_t::shl || op == binary_op_t::shr;
+}
+
+// Whether op is a comparison, rcc's is_comparison(): its value is 1
+// where the relation holds and 0 where it does not, 6.5.9p7, 6.5.10p4,
+// of the flags its cmp sets.
+constexpr bool
+is_comparison(binary_op_t op)
+{
+    return op == binary_op_t::lt || op == binary_op_t::gt ||
+           op == binary_op_t::le || op == binary_op_t::ge ||
+           op == binary_op_t::eq || op == binary_op_t::ne;
+}
+
+// The comparisons, a family of operators whose rows both targets write
+// apart from the arithmetic ones' (docs/typed-tree.md 3.2).
+template< binary_op_t op >
+concept comparison_operator = is_comparison(op);
+
+// The comparison that holds of b and a exactly when op holds of a and
+// b, rcc's mirrored(): 5 < x is x > 5, and == and != are themselves.
+// The Seventh Edition compiler's maprel[].
+constexpr binary_op_t
+mirrored(binary_op_t op)
+{
+    switch (op) {
+    case binary_op_t::lt: return binary_op_t::gt;
+    case binary_op_t::gt: return binary_op_t::lt;
+    case binary_op_t::le: return binary_op_t::ge;
+    case binary_op_t::ge: return binary_op_t::le;
+    default: return op;
+    }
 }
 
 } // namespace rcc

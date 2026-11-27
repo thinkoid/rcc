@@ -28,10 +28,10 @@ expr_t rvalue(expr_t e);
 bool is_assignable(const expr_t &e);
 expr_t make_assign(expr_t place, expr_t value);
 
-// -e and ~e of an operand converted, 6.5.4.3.
+// -e ~e !e of an operand converted, 6.5.4.3.
 expr_t make_unary(unary_op_t op, expr_t arg);
 
-// lhs op rhs of operands converted, 6.5.6 to 6.5.8, 6.5.11 to 6.5.13.
+// lhs op rhs of operands converted, 6.5.6 to 6.5.13.
 expr_t make_binary(binary_op_t op, expr_t lhs, expr_t rhs);
 
 stmt_t make_expr_stmt(expr_t e);
