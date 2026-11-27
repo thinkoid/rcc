@@ -34,49 +34,57 @@ rvalue(const T &, const expr_t &self)
 }
 
 // A local becomes the value its slot holds, 6.3.2.1p2, read at its
-// view.
-template< view_t V >
+// view by its object's sign.
+template< view_t V, sign_t S >
 expr_t
-rvalue(const place_t< V > &place, const expr_t &)
+rvalue(const place_t< V, S > &place, const expr_t &)
 {
-    return expr_t(load_t< V > { place.where });
+    return expr_t(load_t< V, S > { place.where });
 }
 
 // An assignment's builder exists for a place alone, a local, and so
 // defines what is assignable (principle 8); the place's view is the
 // store's.
-template< view_t V >
+template< view_t V, sign_t S >
 expr_t
-make_assign(const place_t< V > &place, const expr_t &value)
+make_assign(const place_t< V, S > &place, const expr_t &value)
 {
     return expr_t(assign_t< V > { place.where, value });
 }
 
 // The bits of an operation at the view V on constants, as rcc folds it,
 // read as the register holds them: the low bits of V, signed (G1, G2),
-// where 6.5p5 leaves a signed overflow undefined.  The arithmetic is on
-// the bits, modulo 2^64, so it wraps as the instruction does.
+// rcc's normalized(), where 6.5p5 leaves a signed overflow undefined.
+// The arithmetic is on the bits, modulo 2^64, so it wraps as the
+// instruction does.
 template< view_t V >
 long long
 wrapped(unsigned long long bits)
 {
     if constexpr (width(V) == 64)
         return static_cast< long long >(bits);
-    else
-        return static_cast< long long >(
-            static_cast< std::int32_t >(static_cast< std::uint32_t >(bits)));
+    else {
+        const auto low = bits & ((1ull << width(V)) - 1);
+        const auto sign = 1ull << (width(V) - 1);
+
+        return static_cast< long long >(low ^ sign) -
+               static_cast< long long >(sign);
+    }
 }
 
 // The bits of a value at the view V read unsigned, the operand of an
-// unsigned operation, 6.2.5p11.
+// unsigned operation, 6.2.5p11, and a narrow unsigned constant's
+// promotion.
 template< view_t V >
 unsigned long long
 unsigned_bits(long long value)
 {
+    const auto bits = static_cast< unsigned long long >(value);
+
     if constexpr (width(V) == 64)
-        return static_cast< unsigned long long >(value);
+        return bits;
     else
-        return static_cast< std::uint32_t >(value);
+        return bits & ((1ull << width(V)) - 1);
 }
 
 // - ~ ! of a constant at the view V, 6.5.4.3p3 to p5: the negative of
@@ -388,41 +396,56 @@ make_widening(const A &arg, const expr_t &self)
 // A load is read at the type converted from, the conversion over a load
 // (docs/typed-tree.md 4.2), whose niche is the extending load of a
 // signed one.
-template< view_t V, view_t F, sign_t S >
+template< view_t V, view_t F, sign_t S, sign_t O >
 expr_t
-make_widening(const load_t< F > &l, const expr_t &)
+make_widening(const load_t< F, O > &l, const expr_t &)
 {
-    return widening_of< V, F, S >(l);
+    return widening_of< V, F, S >(load_t< F, S > { l.where });
 }
 
 // A change of sign or a cast to its own type over a load keeps the
 // object's bits, so the widening reads the object at the type it
 // converts from, rcc's object_under() under under_kept_bits(): (long)
-// (int) u on an unsigned u is movslq -4(%rbp), %rax.
-template< view_t V, view_t F, sign_t S >
+// (int) u on an unsigned u is movslq -4(%rbp), %rax, and (int)
+// (unsigned char) c on a signed char c movzbl -1(%rbp), %eax.
+template< view_t V, view_t F, sign_t S, sign_t O >
 expr_t
-make_widening(const trunc_t< F, load_t< F > > &t, const expr_t &)
+make_widening(const trunc_t< F, load_t< F, O > > &t, const expr_t &)
 {
-    return widening_of< V, F, S >(t.arg);
+    return widening_of< V, F, S >(load_t< F, S > { t.arg.where });
 }
 
-// A constant widened is the constant of the new type, rcc's
-// converted_constant(): its value extended by the sign of the type it
-// converts from, so an unsigned -1 widened is 4294967295.
-template< view_t V, view_t F, sign_t S, constant C >
+// An object under a promotion of its own is read once, at its own type,
+// where one extension is the two, rcc's widened_read(): a signed one
+// under a signed widening, (long) (int) c on a signed char c being the
+// one movsbq -1(%rbp), %rax; and any unsigned one, whose zero extension
+// the promotion keeps, (long) (int) c on an unsigned char the one
+// movzbl -1(%rbp), %eax.  A signed one under an unsigned widening is no
+// such case, its extension to 32 bits no extension to 64: (long)
+// (unsigned) c is the widening of the promotion, which writes nothing,
+// since the extending load is valid to 64 as an unsigned.
+template< view_t V, view_t F, sign_t S, view_t G >
 expr_t
-make_widening(const C &c, const expr_t &)
+make_widening(const sext_t< F, G, load_t< G, sign_t::signed_ > > &e,
+              const expr_t &self)
 {
     if constexpr (S == sign_t::signed_)
-        return make_literal(value_of(c), V);
+        return expr_t(sext_t< V, G, load_t< G, sign_t::signed_ > > { e.arg });
     else
-        return make_literal(
-            static_cast< long long >(unsigned_bits< F >(value_of(c))), V);
+        return widening_of< V, F, S >(pinning(e, self));
 }
 
-// A conversion that is no widening, a narrowing or a cast to the
-// operand's own type: trunc_t, which writes nothing, over the operand
-// in the class pinning() keeps.
+template< view_t V, view_t F, sign_t S, view_t G >
+expr_t
+make_widening(const zext_t< F, G, load_t< G, sign_t::unsigned_ > > &e,
+              const expr_t &)
+{
+    return expr_t(zext_t< V, G, load_t< G, sign_t::unsigned_ > > { e.arg });
+}
+
+// A conversion that is no widening, a narrowing, a change of sign or a
+// cast to the operand's own type: trunc_t, which writes nothing, over
+// the operand in the class pinning() keeps.
 template< view_t V, typename A >
 expr_t
 make_narrowing(const A &arg, const expr_t &self)
@@ -434,11 +457,11 @@ make_narrowing(const A &arg, const expr_t &self)
 
 // Over a load, trunc_t keeps the load as its class, the object a parent
 // may name in place.
-template< view_t V, view_t F >
+template< view_t V, view_t F, sign_t S >
 expr_t
-make_narrowing(const load_t< F > &l, const expr_t &)
+make_narrowing(const load_t< F, S > &l, const expr_t &)
 {
-    return expr_t(trunc_t< V, load_t< F > > { l });
+    return expr_t(trunc_t< V, load_t< F, S > > { l });
 }
 
 // Two conversions that write nothing are one, rcc's under_kept_bits()
@@ -451,24 +474,42 @@ make_narrowing(const trunc_t< W, B > &t, const expr_t &)
     return expr_t(trunc_t< V, B > { t.arg });
 }
 
-// A constant narrowed is the constant of the new type, rcc's
-// converted_constant() and wrapped(): the low bits of V, read signed.
-template< view_t V, constant C >
-expr_t
-make_narrowing(const C &c, const expr_t &)
+// The value of a constant of view F and of a type of the sign S
+// converted to the view V of a type of the sign to_sign, rcc's
+// converted_constant() and wrapped(), 6.3.1.3: the exact value, its bits
+// at F extended by S, so that an unsigned -1 widened is 4294967295; then
+// its low bits at V, read as the register holds them: zero-extended for
+// a narrow unsigned type, as its promotion reads them, and signed
+// otherwise.  So (unsigned char) 300 is 44, (char) 200 is -56 where
+// plain char is signed and 200 where it is unsigned, and (unsigned
+// short) (signed char) 128 is 65408.
+template< view_t V, view_t F, sign_t S >
+long long
+converted(long long value, sign_t to_sign)
 {
-    return make_literal(
-        wrapped< V >(static_cast< unsigned long long >(value_of(c))), V);
+    const long long exact =
+        S == sign_t::signed_ ?
+            value :
+            static_cast< long long >(unsigned_bits< F >(value));
+
+    if (width(V) < 32 && to_sign == sign_t::unsigned_)
+        return static_cast< long long >(unsigned_bits< V >(exact));
+
+    return wrapped< V >(static_cast< unsigned long long >(exact));
 }
 
 // The conversion of an operand of view F and of a type of the sign S to
-// the view V, 6.3.1.3: a widening where V is the wider, and otherwise a
-// conversion that writes nothing.
+// the view V of a type of the sign to_sign, 6.3.1.3: a constant folds to
+// the constant of the new type, since a conversion hides its operand
+// from the parent's niches; anything else is a widening where V is the
+// wider, and otherwise a conversion that writes nothing.
 template< view_t V, view_t F, sign_t S, typename T >
 expr_t
-make_conversion(const T &e, const expr_t &self)
+make_conversion(sign_t to_sign, const T &e, const expr_t &self)
 {
-    if constexpr (width(V) > width(F))
+    if constexpr (constant< T >)
+        return make_literal(converted< V, F, S >(value_of(e), to_sign), V);
+    else if constexpr (width(V) > width(F))
         return make_widening< V, F, S >(e, self);
     else
         return make_narrowing< V >(e, self);

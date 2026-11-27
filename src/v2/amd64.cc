@@ -133,7 +133,8 @@ mov(state_t &s, reg_t from, reg_t to, int width)
 // The extending mov that brings a value of the view from, read at the
 // sign, to a width of 32 or 64 bits, and the width of its destination
 // register, rcc's extension(): a long's movq, an int's movl, and to 64
-// bits a signed one's movslq.  A 32-bit unsigned value widens to 64 by a
+// bits a signed one's movslq; a narrow one's by its sign and the two
+// widths, movsbl, movzwq.  A 32-bit unsigned value widens to 64 by a
 // movl, since a write to the 32-bit name clears the upper half.
 std::pair< std::string, int >
 extension(view_t from, sign_t sign, int to)
@@ -141,10 +142,32 @@ extension(view_t from, sign_t sign, int to)
     if (from == view_t::i64)
         return { "movq", 64 };
 
-    if (to == 32 || sign == sign_t::unsigned_)
+    if (from == view_t::i32 && (to == 32 || sign == sign_t::unsigned_))
         return { "movl", 32 };
 
-    return { "movslq", 64 };
+    if (from == view_t::i32)
+        return { "movslq", 64 };
+
+    const char stem = sign == sign_t::signed_ ? 's' : 'z';
+
+    return { std::format("mov{}{}{}", stem, suffix(width(from)), suffix(to)),
+             to };
+}
+
+// A constant of N bits as the assembler takes it, rcc's normalized():
+// the value modulo 2^N, written signed.  G2: the low bits are the value.
+long long
+normalized(long long value, int width)
+{
+    if (width >= 64)
+        return value;
+
+    const auto mask = (1ull << width) - 1;
+    const auto sign = 1ull << (width - 1);
+    const auto bits = static_cast< unsigned long long >(value) & mask;
+
+    return static_cast< long long >(bits ^ sign) -
+           static_cast< long long >(sign);
 }
 
 // constants
@@ -236,6 +259,12 @@ std::string
 imm(long long value)
 {
     return std::format("${}", value);
+}
+
+std::string
+immediate_at(long long value, view_t view)
+{
+    return imm(normalized(value, width(view)));
 }
 
 // The next slot below the last, of size bytes at align, a local's or a
@@ -586,17 +615,18 @@ value_t
 constant_value(state_t &s, long long value, view_t view)
 {
     const value_t v = fresh(s);
-    constant(s, reg_of(s, v), value, width(view));
+    constant(s, reg_of(s, v), value, promoted_width(view));
 
     return v;
 }
 
-// The load row, 6.3.2.1p2, rcc's load() at the object's width:
-// movl -4(%rbp), %eax, movq -8(%rbp), %rax.  G8: one mov.
+// The load row, 6.3.2.1p2, rcc's load() at max(32, width): movsbl
+// -1(%rbp), %eax, movl -4(%rbp), %eax, movq -8(%rbp), %rax.  G8: one
+// mov.
 value_t
-load(state_t &s, slot_t where, view_t view)
+load(state_t &s, slot_t where, view_t view, sign_t sign)
 {
-    const auto [mnemonic, to] = extension(view, sign_t::signed_, width(view));
+    const auto [mnemonic, to] = extension(view, sign, promoted_width(view));
 
     const value_t v = fresh(s);
     insn(s, mnemonic, { at(slot_of(s, where)), reg(reg_of(s, v), to) });
@@ -621,7 +651,7 @@ value_t
 extended(
     state_t &s, value_t v, view_t from, sign_t sign, view_t to, unsigned wanted)
 {
-    const auto [mnemonic, bits] = extension(from, sign, width(to));
+    const auto [mnemonic, bits] = extension(from, sign, promoted_width(to));
     const reg_t source = reg_of(s, v);
     const auto named = wanted_register(s, wanted);
 
@@ -966,7 +996,7 @@ return_stmt(state_t &s, const expr_t &e, view_t view)
     const value_t v = value(s, e, bit(result_register));
     const reg_t from = reg_of(s, v);
     if (from != result_register)
-        mov(s, from, result_register, width(view));
+        mov(s, from, result_register, promoted_width(view));
 
     release(s, v);
 

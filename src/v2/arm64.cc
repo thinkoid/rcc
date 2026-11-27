@@ -119,16 +119,63 @@ mov(state_t &s, reg_t from, reg_t to, int width)
     insn(s, "mov", { reg(to, width), reg(from, width) });
 }
 
-// The load of 2.2 that brings a value of the view to a register of 32
-// or 64 bits, rcc's load_of(): ldr at its own view, and to 64 bits an
-// int's ldrsw.
-std::string_view
-load_of(view_t view, int to)
+// The load of 2.2 that brings a value of the view, read at the sign, to
+// a register of 32 or 64 bits, and the width of its destination, rcc's
+// load_of().  A narrow load extends by its mnemonic; to 64 a signed one
+// is the x form of the same mnemonic, ldrsw for an int, and an unsigned
+// one is the w form, since a write to the w name clears the upper half.
+std::pair< std::string_view, int >
+load_of(view_t view, sign_t sign, int to)
 {
-    if (view == view_t::i64 || to == 32)
-        return "ldr";
+    if (view == view_t::i64)
+        return { "ldr", 64 };
 
-    return "ldrsw";
+    if (view == view_t::i32 && (to == 32 || sign == sign_t::unsigned_))
+        return { "ldr", 32 };
+
+    if (view == view_t::i32)
+        return { "ldrsw", 64 };
+
+    if (sign == sign_t::unsigned_)
+        return { view == view_t::i8 ? "ldrb" : "ldrh", 32 };
+
+    return { view == view_t::i8 ? "ldrsb" : "ldrsh", to };
+}
+
+// The store of 2.2 at the destination's width, rcc's store_of(); G2,
+// the low bytes of the register are the value.
+std::string_view
+store_of(view_t view)
+{
+    switch (view) {
+    case view_t::i8: return "strb";
+    case view_t::i16: return "strh";
+    default: return "str";
+    }
+}
+
+// The register-to-register extension that brings a value of the view
+// from, read at the sign, to a width of 32 or 64 bits, and the width it
+// leaves the value valid to, rcc's extension(), 6.3: sxtb, sxth or sxtw
+// at the new width for a signed value; uxtb, uxth, or mov wL, wL for an
+// unsigned int, on the w name, whose write clears the upper half and so
+// extends to 64 as well.
+std::pair< std::string_view, int >
+extension(view_t from, sign_t sign, int to)
+{
+    if (sign == sign_t::signed_) {
+        switch (from) {
+        case view_t::i8: return { "sxtb", to };
+        case view_t::i16: return { "sxth", to };
+        default: return { "sxtw", 64 };
+        }
+    }
+
+    switch (from) {
+    case view_t::i8: return { "uxtb", 64 };
+    case view_t::i16: return { "uxth", 64 };
+    default: return { "mov", 64 };
+    }
 }
 
 // constants
@@ -511,10 +558,32 @@ jump_if(state_t &s, binary_op_t op, int label)
 }
 
 void
-test_zero(state_t &s, value_t v, view_t view, int label, bool sense)
+test_zero(state_t &s,
+          value_t v,
+          view_t view,
+          int valid,
+          std::optional< int > label,
+          bool sense)
 {
+    const reg_t r = reg_of(s, v);
+
+    if (valid < 32) {
+        const long long low_bits = (1ll << width(view)) - 1;
+        insn(s, "tst", { reg(r, 32), bitmask_of(low_bits, 32) });
+
+        if (label)
+            insn(s, sense ? "b.ne" : "b.eq",
+                 { label_name(s.function, *label) });
+        return;
+    }
+
+    if (!label) {
+        insn(s, "cmp", { reg(r, width(view)), imm(0) });
+        return;
+    }
+
     insn(s, sense ? "cbnz" : "cbz",
-         { reg(reg_of(s, v), width(view)), label_name(s.function, label) });
+         { reg(r, width(view)), label_name(s.function, *label) });
 }
 
 // rcc's logical() writes the mov itself, never constant()'s choice of
@@ -525,53 +594,60 @@ move_immediate(state_t &s, reg_t r, int value)
     insn(s, "mov", { reg(r, 32), imm(value) });
 }
 
-// The constant row of 6.4, at 32 bits or 64.  G2: the low bits are the
-// value.
+// The constant row of 6.4, at 32 bits or 64, a narrow constant as its
+// promotion.  G2: the low bits are the value.
 value_t
 constant_value(state_t &s, long long value, view_t view)
 {
     const value_t v = fresh(s);
-    constant(s, reg_of(s, v), value, width(view));
+    constant(s, reg_of(s, v), value, promoted_width(view));
 
     return v;
 }
 
-// The load row of 2.2: ldr w0, [x29, #16], ldr x0, [x29, #16].  G8: one
-// ldr.
+// The load of an object in a slot at the view, by the sign, into a
+// register taken for it at a width of 32 or 64 bits, load_of()'s.  G8:
+// one ldr.
 value_t
-load(state_t &s, slot_t where, view_t view)
+load_to(state_t &s, slot_t where, view_t view, sign_t sign, int to)
 {
+    const auto [mnemonic, bits] = load_of(view, sign, to);
+
     const value_t v = fresh(s);
-    insn(s, load_of(view, width(view)),
-         { reg(reg_of(s, v), width(view)), slot_operand(slot_of(s, where)) });
+    insn(s, mnemonic,
+         { reg(reg_of(s, v), bits), slot_operand(slot_of(s, where)) });
 
     return v;
+}
+
+// The load row of 2.2: ldrsb w0, [x29, #16], ldr w0, [x29, #16], ldr x0,
+// [x29, #16].
+value_t
+load(state_t &s, slot_t where, view_t view, sign_t sign)
+{
+    return load_to(s, where, view, sign, promoted_width(view));
 }
 
 value_t
 extending_load(state_t &s, slot_t where, view_t from)
 {
-    const value_t v = fresh(s);
-    insn(s, load_of(from, 64),
-         { reg(reg_of(s, v), 64), slot_operand(slot_of(s, where)) });
-
-    return v;
+    return load_to(s, where, from, sign_t::signed_, 64);
 }
 
-// rcc's extension() and extended(): an int's sign extension, sxtw, of
-// the w name of its register into the x name of the destination; an
-// unsigned's mov of the w names, whose write clears the upper half.
+// rcc's extended(): the extension() of the value's register, named at
+// 32 bits, into final_destination(), named at the new width for a
+// signed value and at 32 for an unsigned one: sxtw x0, w0, sxtb w0, w0,
+// uxtb w0, w0, mov w0, w0.
 value_t
 extended(
     state_t &s, value_t v, view_t from, sign_t sign, view_t to, unsigned wanted)
 {
+    const auto [mnemonic, valid] = extension(from, sign, promoted_width(to));
     const reg_t source = reg_of(s, v);
     const reg_t r = final_destination(s, v, wanted);
+    const int bits = sign == sign_t::signed_ ? valid : 32;
 
-    if (sign == sign_t::signed_)
-        insn(s, "sxtw", { reg(r, width(to)), reg(source, width(from)) });
-    else
-        insn(s, "mov", { reg(r, 32), reg(source, 32) });
+    insn(s, mnemonic, { reg(r, bits), reg(source, 32) });
 
     return v;
 }
@@ -697,20 +773,22 @@ cset(state_t &s, binary_op_t op, value_t v, unsigned wanted)
     return v;
 }
 
-// The store row of 2.2, rcc's store_of(): str w0, [x29, #16], str x0,
-// [x29, #16].
+// The store row of 2.2, rcc's store_of(): strb w0, [x29, #16], str w0,
+// [x29, #16], str x0, [x29, #16].
 void
 store(state_t &s, reg_t r, slot_t where, view_t view)
 {
-    insn(s, "str", { reg(r, width(view)), slot_operand(slot_of(s, where)) });
+    insn(s, store_of(view),
+         { reg(r, width(view)), slot_operand(slot_of(s, where)) });
 }
 
 // str takes no immediate, but the zero register is an operand like any
-// other: str wzr, [x29, #16], str xzr, [x29, #16].
+// other: strb wzr, [x29, #16], str xzr, [x29, #16].
 void
 store_zero(state_t &s, slot_t where, view_t view)
 {
-    insn(s, "str", { zero(width(view)), slot_operand(slot_of(s, where)) });
+    insn(s, store_of(view),
+         { zero(width(view)), slot_operand(slot_of(s, where)) });
 }
 
 // The value goes to the convention's result register, 7.2, rcc's
@@ -730,7 +808,7 @@ return_stmt(state_t &s, const expr_t &e, view_t view)
     const value_t v = value(s, e, bit(result_register));
     const reg_t from = reg_of(s, v);
     if (from != result_register)
-        mov(s, from, result_register, width(view));
+        mov(s, from, result_register, promoted_width(view));
 
     release(s, v);
 

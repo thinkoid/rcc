@@ -2,7 +2,7 @@
 
 // 6.7: the declarations, of which rcc-v2 takes the declaration
 // specifiers static, void and the type specifiers of the integer types
-// of 32 and 64 bits, signed and unsigned, in any order and spelling,
+// from char to unsigned long long, in any order and spelling,
 // the declarators of a function of int parameters and of an object,
 // the declaration in a block of objects of those types, each with an
 // initializer or without, and the type name of a cast; it refuses the
@@ -162,27 +162,38 @@ is_counted(const token_t &t)
     }
 }
 
-// Whether a counted type specifier brings a type rcc-v2 does not
-// compile yet: char and short.
-bool
-is_outside(const token_t &t)
+// Plain char is signed or unsigned as the target has it, and a type of
+// its own, 6.2.5p20, rcc's char_type().
+type_t
+char_type(const parser_t &p)
 {
-    return t.kind == tok_t::kw_char || t.kind == tok_t::kw_short;
+    return make_int(8, p.target.char_is_signed, int_kind_t::char_);
 }
 
-// The type the counted specifiers name, rcc's specified(): void; else
-// signed unless unsigned was counted, and two longs long long, one long
-// long, and int otherwise, signed alone among them, 6.7.3.1p2.
+// The type the counted specifiers name, rcc's specified(): void; char
+// with neither signed nor unsigned plain char; else signed unless
+// unsigned was counted, and the width the first that applies, char 8,
+// short 16, two longs long long, one long long, and int otherwise,
+// signed alone among them, 6.7.3.1p2.
 type_t
-specified(const counts_t &n)
+specified(const parser_t &p, const counts_t &n)
 {
     if (n.void_)
         return make_void();
+
+    if (n.char_ && !n.signed_ && !n.unsigned_)
+        return char_type(p);
 
     const bool is_signed = n.unsigned_ == 0;
     const auto of = [&](int width, int_kind_t s, int_kind_t u) {
         return make_int(width, is_signed, is_signed ? s : u);
     };
+
+    if (n.char_)
+        return of(8, int_kind_t::signed_char, int_kind_t::unsigned_char);
+
+    if (n.short_)
+        return of(16, int_kind_t::short_, int_kind_t::unsigned_short);
 
     if (n.long_ == 2)
         return of(64, int_kind_t::long_long, int_kind_t::unsigned_long_long);
@@ -198,10 +209,7 @@ specified(const counts_t &n)
 // The declaration specifiers: the storage class static, 6.7.2p1, then
 // one of the sets of 6.7.3.1p2 in any order, read as rcc reads them, up
 // to the first token that is none, each type specifier refused where it
-// cannot join those before it, in rcc's words.  A set rcc-v2 does not
-// compile yet, of char or short, is not yet once the
-// specifiers are read whole, at the first specifier that brings it, so
-// that every error rcc says of them is said.  Any other specifier is
+// cannot join those before it, in rcc's words.  Any other specifier is
 // not yet where it stands, and so is a reserved identifier in place of
 // the first type specifier, which may name a type the compiler
 // declares; any other token there is rcc's error, another identifier's
@@ -215,7 +223,6 @@ declaration_specifiers(parser_t &p)
 
     counts_t counts;
     const token_t *first = nullptr;
-    const token_t *outside = nullptr;
 
     while (is_counted(peek(p))) {
         const token_t &t = advance(p);
@@ -225,9 +232,6 @@ declaration_specifiers(parser_t &p)
 
         if (!first)
             first = &t;
-
-        if (!outside && is_outside(t))
-            outside = &t;
     }
 
     const token_t &t = peek(p);
@@ -237,10 +241,7 @@ declaration_specifiers(parser_t &p)
     if (!first)
         fail(t, "expected a type specifier");
 
-    if (outside)
-        not_yet(*outside, "declaration specifier " + quoted(outside->text));
-
-    return { storage_class, *first, specified(counts) };
+    return { storage_class, *first, specified(p, counts) };
 }
 
 namespace {
@@ -323,9 +324,9 @@ declare_parameter(parser_t &p, const parameter_t &param, int index)
         fail(*param.name,
              "redefinition of parameter " + quoted(param.name->text));
 
-    scope.emplace(
-        param.name->text,
-        operand_t { param.type, make_local(index, view_of(param.type)) });
+    scope.emplace(param.name->text,
+                  operand_t { param.type, make_local(index, view_of(param.type),
+                                                     sign_of(param.type)) });
 }
 
 // (void), (), or parameters, read in the scope the caller opened for

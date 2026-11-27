@@ -151,15 +151,16 @@ value(state_t &s, const wide_t &c, unsigned = 0)
     return constant_value(s, c.value, view_t::i64);
 }
 
-// The load row: the object a slot holds at its view, in a register
-// taken for it, movl -4(%rbp), %eax or movq -8(%rbp), %rax.
-value_t load(state_t &, slot_t where, view_t view);
+// The load row: the object a slot holds at its view, extended to 32
+// bits by its sign where it is narrow, in a register taken for it,
+// movsbl -1(%rbp), %eax, movl -4(%rbp), %eax or movq -8(%rbp), %rax.
+value_t load(state_t &, slot_t where, view_t view, sign_t sign);
 
-template< view_t V >
+template< view_t V, sign_t S >
 value_t
-value(state_t &s, const load_t< V > &l, unsigned = 0)
+value(state_t &s, const load_t< V, S > &l, unsigned = 0)
 {
-    return load(s, l.where, V);
+    return load(s, l.where, V, S);
 }
 
 // - or ~ on r in place, at the view.
@@ -231,12 +232,16 @@ void store(state_t &, std::string_view immediate, slot_t where, view_t view);
 
 // A constant as the immediate operand of an instruction, 32 bits,
 // sign-extended in a 64-bit one: a literal_t and a zero_t, and no
-// wide_t, which no immediate holds.
+// wide_t, which no immediate holds.  The value is written at its view,
+// modulo 2^N and signed, so a narrow store of an unsigned char's 255 is
+// movb $-1, -1(%rbp).
+std::string immediate_at(long long value, view_t view);
+
 template< view_t V >
 std::string
 immediate_of(const literal_t< V > &c)
 {
-    return imm(c.value);
+    return immediate_at(c.value, V);
 }
 
 template< view_t V >
@@ -344,16 +349,16 @@ pinned_within(const state_t &, const C &)
     return 0;
 }
 
-template< view_t V >
+template< view_t V, sign_t S >
 constexpr unsigned
-pinned_within(const state_t &, const load_t< V > &)
+pinned_within(const state_t &, const load_t< V, S > &)
 {
     return 0;
 }
 
-template< view_t V >
+template< view_t V, sign_t S >
 constexpr unsigned
-pinned_within(const state_t &, const place_t< V > &)
+pinned_within(const state_t &, const place_t< V, S > &)
 {
     return 0;
 }
@@ -440,16 +445,16 @@ moved_within(const state_t &, const C &)
     return 0;
 }
 
-template< view_t V >
+template< view_t V, sign_t S >
 constexpr unsigned
-moved_within(const state_t &, const load_t< V > &)
+moved_within(const state_t &, const load_t< V, S > &)
 {
     return 0;
 }
 
-template< view_t V >
+template< view_t V, sign_t S >
 constexpr unsigned
-moved_within(const state_t &, const place_t< V > &)
+moved_within(const state_t &, const place_t< V, S > &)
 {
     return 0;
 }
@@ -634,11 +639,11 @@ value(state_t &s, const binary_t< op, V, L, R > &b, unsigned wanted = 0)
 // %eax and subl -4(%rbp), %eax.  The right operand pins nothing, so the
 // left operand is handed the consumer's register, as in every niche of
 // an operand in memory or an immediate.
-template< binary_op_t op, view_t V, typename L >
+template< binary_op_t op, view_t V, typename L, sign_t S >
     requires(arithmetic_operator< op > && !constant_first< op, L >)
 value_t
 value(state_t &s,
-      const binary_t< op, V, L, load_t< V > > &b,
+      const binary_t< op, V, L, load_t< V, S > > &b,
       unsigned wanted = 0)
 {
     const value_t l = value(s, b.lhs, wanted);
@@ -680,10 +685,10 @@ value(state_t &s,
 // is the source in memory, rcc's product(): imull $5, -4(%rbp), %eax,
 // no load, and the product in a register taken for it, the lowest free
 // whatever the consumer names.  5 * a is this row, through the mirror.
-template< view_t V, immediate I >
+template< view_t V, immediate I, sign_t S >
 value_t
 value(state_t &s,
-      const binary_t< binary_op_t::mul, V, load_t< V >, I > &b,
+      const binary_t< binary_op_t::mul, V, load_t< V, S >, I > &b,
       unsigned = 0)
 {
     const value_t v = fresh(s);
@@ -722,11 +727,11 @@ value(state_t &s, const binary_t< op, V, L, R > &b, unsigned wanted = 0)
 // A local of the operation's view as the divisor is idiv's operand in
 // memory, idivl -8(%rbp), and takes no register; it pins nothing, so
 // the dividend is handed the consumer's register.
-template< binary_op_t op, view_t V, typename L >
+template< binary_op_t op, view_t V, typename L, sign_t S >
     requires division_operator< op >
 value_t
 value(state_t &s,
-      const binary_t< op, V, L, load_t< V > > &b,
+      const binary_t< op, V, L, load_t< V, S > > &b,
       unsigned wanted = 0)
 {
     const unsigned outer = std::exchange(s.reserved, 0u);
@@ -830,9 +835,9 @@ compare_with(state_t &s, value_t l, const R &rhs)
     compare(s, l, value(s, rhs), V);
 }
 
-template< view_t V >
+template< view_t V, sign_t S >
 void
-compare_with(state_t &s, value_t l, const load_t< V > &rhs)
+compare_with(state_t &s, value_t l, const load_t< V, S > &rhs)
 {
     compare(s, l, rhs.where, V);
 }
@@ -866,11 +871,11 @@ value(state_t &s, const binary_t< op, V, L, R > &b, unsigned wanted = 0)
 // cmpl $5, -4(%rbp), compare(); the object is read by the cmp and by
 // nothing before it, G13, and no register holds it, so the setcc takes
 // one.
-template< binary_op_t op, view_t V, immediate I >
+template< binary_op_t op, view_t V, immediate I, sign_t S >
     requires comparison_operator< op >
 value_t
 value(state_t &s,
-      const binary_t< op, V, load_t< V >, I > &b,
+      const binary_t< op, V, load_t< V, S >, I > &b,
       unsigned wanted = 0)
 {
     compare(s, b.lhs.where, immediate_of(b.rhs), V);
@@ -941,11 +946,11 @@ branch(state_t &s, const binary_t< op, V, L, R > &b, int label, bool sense)
 
 // A load against an immediate is the cmp of the object in place, as
 // for its value, cmpl $5, -4(%rbp), and no register is held.
-template< binary_op_t op, view_t V, immediate I >
+template< binary_op_t op, view_t V, immediate I, sign_t S >
     requires comparison_operator< op > && (!zero_compared< op, V, I >)
 void
 branch(state_t &s,
-       const binary_t< op, V, load_t< V >, I > &b,
+       const binary_t< op, V, load_t< V, S >, I > &b,
        int label,
        bool sense)
 {
@@ -963,6 +968,19 @@ branch(state_t &s, const binary_t< op, V, I, R > &b, int label, bool sense)
     branch(s, binary_t< mirrored(op), V, R, I > { b.rhs, b.lhs }, label, sense);
 }
 
+// The jump on a value compared with 0, rcc's test_zero(), 7.1: the
+// value held, then the jump on its register at the value's view, cmpl
+// $0, %eax and je, and the value released.  A constant is no special
+// case: if (1) loads 1 and tests it.
+template< typename T >
+void
+value_branch(state_t &s, const T &t, int label, bool sense)
+{
+    const value_t v = value(s, t);
+    test_zero(s, v, view_of(t), label, sense);
+    release(s, v);
+}
+
 // A load's value compared with 0 is the cmp of the object in place at
 // its view, rcc's condition_on(), cmpl $0, -4(%rbp), cmpq $0, -8(%rbp),
 // then jne or je: if (a) and a == 0 alike.  A cast to its own type over
@@ -970,17 +988,17 @@ branch(state_t &s, const binary_t< op, V, I, R > &b, int label, bool sense)
 void
 in_place_branch(state_t &, slot_t where, view_t view, int label, bool sense);
 
-template< view_t V >
+template< view_t V, sign_t S >
 void
-value_branch(state_t &s, const load_t< V > &l, int label, bool sense)
+value_branch(state_t &s, const load_t< V, S > &l, int label, bool sense)
 {
     in_place_branch(s, l.where, V, label, sense);
 }
 
-template< view_t V >
+template< view_t V, sign_t S >
 void
 value_branch(state_t &s,
-             const trunc_t< V, load_t< V > > &t,
+             const trunc_t< V, load_t< V, S > > &t,
              int label,
              bool sense)
 {
@@ -1052,9 +1070,9 @@ test_with(state_t &s, value_t l, const R &rhs)
     test(s, l, value(s, rhs), V);
 }
 
-template< view_t V >
+template< view_t V, sign_t S >
 void
-test_with(state_t &s, value_t l, const load_t< V > &rhs)
+test_with(state_t &s, value_t l, const load_t< V, S > &rhs)
 {
     test(s, l, rhs.where, V);
 }
@@ -1086,10 +1104,10 @@ value_branch(state_t &s,
 
 // A load of the operation's view and an immediate are tested in place,
 // testl $1, -4(%rbp).
-template< view_t V, immediate I >
+template< view_t V, immediate I, sign_t S >
 void
 value_branch(state_t &s,
-             const binary_t< binary_op_t::bit_and, V, load_t< V >, I > &b,
+             const binary_t< binary_op_t::bit_and, V, load_t< V, S >, I > &b,
              int label,
              bool sense)
 {
@@ -1132,7 +1150,9 @@ value_t extending_load(state_t &, slot_t where, view_t from);
 // memory in the instruction that reads it.
 template< view_t F >
 value_t
-value(state_t &s, const sext_t< view_t::i64, F, load_t< F > > &e, unsigned = 0)
+value(state_t &s,
+      const sext_t< view_t::i64, F, load_t< F, sign_t::signed_ > > &e,
+      unsigned = 0)
 {
     return extending_load(s, e.arg.where, F);
 }

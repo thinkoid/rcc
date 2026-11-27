@@ -18,9 +18,10 @@
 namespace rcc {
 
 // A constant of the view, its value the bits its register holds, read
-// signed, 6.4.4.2; and a local of the view, its place.
+// signed, a narrow one's its promotion, 6.4.4.2; and a local of the view
+// and of a type of the sign, its place.
 expr_t make_literal(long long value, view_t view);
-expr_t make_local(int slot, view_t view);
+expr_t make_local(int slot, view_t view, sign_t sign);
 
 // The lvalue conversion, 6.3.2.1p2: a place becomes the value it holds;
 // any other expression is a value already, and is returned as it is.
@@ -32,9 +33,10 @@ bool is_assignable(const expr_t &e);
 expr_t make_assign(expr_t place, expr_t value);
 
 // The conversion of a value of the view from and the sign from_sign,
-// its own type's, to the view to, 6.3.1.3; the parser's conversion()
-// calls it, and nothing else does.
-expr_t make_conversion(view_t to, view_t from, sign_t from_sign, expr_t e);
+// its own type's, to the view to and the sign to_sign, 6.3.1.3; the
+// parser's conversion() calls it, and nothing else does.
+expr_t make_conversion(
+    view_t to, sign_t to_sign, view_t from, sign_t from_sign, expr_t e);
 
 // -e ~e !e of an operand converted, 6.5.4.3, at the view of the
 // operation, or for ! at the operand's own.

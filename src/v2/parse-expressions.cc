@@ -79,8 +79,8 @@ parenthesized_expression(parser_t &p)
 }
 
 // The primary expressions, 6.5.2: an identifier, an integer constant, a
-// parenthesized expression, and each of the others refused by its name,
-// a floating constant in rcc's words.
+// character constant, a parenthesized expression, and each of the
+// others refused by its name, a floating constant in rcc's words.
 operand_t
 primary_expression(parser_t &p)
 {
@@ -90,7 +90,7 @@ primary_expression(parser_t &p)
     case tok_t::identifier: return identifier(p);
     case tok_t::integer: return integer_constant(p);
     case tok_t::floating: not_yet(t, "floating constant");
-    case tok_t::character: not_yet(t, "character constant");
+    case tok_t::character: return character_constant(p);
     case tok_t::string: not_yet(t, "string literal");
     case tok_t::lparen: return parenthesized_expression(p);
     case tok_t::kw_generic: not_yet(t, "generic selection");
@@ -213,7 +213,7 @@ postfix_expression(parser_t &p)
 
 // The integer promotions, 6.3.1.1p2, rcc's promoted(): every type
 // narrower than int converts to int, which holds all of its values,
-// signed or not; int and long are their own.
+// signed or not; any other is its own.
 type_t
 promoted(const type_t &t)
 {

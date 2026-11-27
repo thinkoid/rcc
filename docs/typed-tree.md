@@ -7,13 +7,15 @@ states the design: the idea, its principles, its idioms and its
 architecture. It leaves the details to the code.
 
 Of the design the tree has a thin line through every joint: a unit of
-functions, declared and defined in any order, `static` or not, of
-result `int` or `void` and of `int` parameters, whose locals are
-`int`, declared, assigned and returned, with parentheses, the unary
-operators `- ~ !`, `+ - * / % << >> & | ^`, the comparisons, `&&`,
-`||` and calls, to any depth, and the statements `if`, `else`,
-`while`, `do`, `for`, `break`, `continue` and `return` with a value
-or without, on both targets.
+functions, declared and defined in any order, `static` or not, of a
+result of any integer type or `void` and of `int` parameters, whose
+locals are of the integer types from `char` to `unsigned long long`,
+declared, assigned and returned, with parentheses, the casts, the
+unary operators `+ - ~ !`, `+ - * / % << >> & | ^`, the comparisons,
+`&&`, `||` and calls of functions of an `int` or a `void` result, to
+any depth, and the statements `if`, `else`, `while`, `do`, `for`,
+`break`, `continue` and `return` with a value or without, on both
+targets.
 Each mechanism
 below was compiled and run in a small model first; chapter 5 says
 what the models showed and chapter 6 what nothing has shown. A
@@ -32,16 +34,17 @@ The typed tree asks each question once, where the node is built, and
 keeps the answer as the node's type.
 
 ```c++
-template< binary_op_t op, typename L = expr_t, typename R = expr_t >
+template< binary_op_t op, view_t V, typename L = expr_t,
+          typename R = expr_t >
 struct binary_t { L lhs; R rhs; };
 
 // the primary: asks nothing
-template< binary_op_t op, typename L, typename R >
-value_t value(state_t &, const binary_t< op, L, R > &);
+template< binary_op_t op, view_t V, typename L, typename R >
+value_t value(state_t &, const binary_t< op, V, L, R > &);
 
 // a niche: addl $5, %eax
-template< binary_op_t op, typename L >
-value_t value(state_t &, const binary_t< op, L, literal_t > &);
+template< binary_op_t op, view_t V, typename L >
+value_t value(state_t &, const binary_t< op, V, L, literal_t< V > > &);
 ```
 
 - The tree is not erased uniformly. `expr_t` is an erased handle. What
@@ -69,18 +72,20 @@ resolution in place of its `match()`. It needs no second language.
 2. **A question is asked once, and its answer is a type.** A question
    about a type is an overload. A question about a constant's value is
    asked in the builder that makes the leaf, and its answer is a type:
-   `zero_t`, or `bit_t` for a constant of one bit. Only a question
-   about the context or the state stays an `if`, and one more: a
-   question of one target's encoding about a row's own leaf, whether
-   aarch64's `add` holds its constant, which no builder can ask,
-   since a builder names no target. Overloads and specializations are
-   how conditionals leave the generator.
+   `zero_t`, `bit_t` for a constant of one bit, or `wide_t` for one of
+   64 bits past `int`'s range. Only a question about the context or
+   the state stays an `if`, and one more: a question of one target's
+   encoding about a row's own leaf, whether aarch64's `add` holds its
+   constant, which no builder can ask, since a builder names no
+   target. Overloads and specializations are how conditionals leave
+   the generator.
 3. **A fact lives where its distance puts it.**
 
    | The fact | Its distance | Where it lives |
    | --- | --- | --- |
    | "my right operand is a constant" | bounded: an edge or two | the type |
    | "this subtree names `r`" | unbounded, below | the summary, handed up |
+   | "this value's register is valid to 64 bits" | unbounded, below | the summary, handed up |
    | "the value is wanted in `%ebx`" | unbounded, above | the context, handed down |
    | "which register is free now" | a moment of generation | the state |
 
@@ -114,8 +119,9 @@ resolution in place of its `match()`. It needs no second language.
    parser asks first, and the question is the builder's existence, a
    concept: no list of the types that are places is kept.
 9. **No row reads the C type.** *Working.* The builder moves what a
-   row needs into the node: a stride, a view, an operator's sign. The
-   C type is the parser's, and it picks the next builder.
+   row needs into the node: a stride, a view, an operator's sign,
+   which is in the operator's name. The C type is the parser's, and
+   it picks the next builder.
 10. **An interface is whole.** Every type under a handle has a
     meaningful body for every operation of that handle. By this test
     statements and expressions are two handles, and two targets are
@@ -125,7 +131,9 @@ resolution in place of its `match()`. It needs no second language.
     in a builder or in the parser. A row that uses one on a child is
     asking an operand's kind again.
 12. **Names are found, not invented.** LLVM's conventions are the
-    first place to look: the views are `i8` to `i64`.
+    first place to look: the views are `i8` to `i64`, the operators
+    of a sign `sdiv` and `udiv`, `ashr` and `lshr`, `slt` and `ult`,
+    and the conversions `sext`, `zext` and `trunc`.
 
 ## 3. Idioms
 
@@ -226,12 +234,26 @@ call_t &, long)` and comes back as a member of a call.
   literal.
 - A class may keep one fact of an operand it erases. A right operand
   whose top operator pins a register on a target is kept as
-  `top_t< op >`: the node erased, its own niches intact, and its
-  operator the class's parameter, which the parent's row reads as a
-  constant. It is a class and no node: a builder that returns the
-  operand itself returns the node inside.
+  `top_t< F >`: the node erased, its own niches intact, and its
+  operator's family, a division or a shift by a count that is no
+  constant, the class's parameter, which the parent's row reads as a
+  constant. A conversion over such an operand keeps the class, as
+  rcc's `pinned_by()` reads through a cast. It is a class and no
+  node: a builder that returns the operand itself returns the node
+  inside.
+- A class crosses the interface as data. A view or a sign as a type
+  would make one operation of the interface for each, so the right
+  operand's class is handed to the left operand's model with its
+  parameters as values, a constant with its view and a load with its
+  sign, and made a type again there, at the operation's view. A right
+  operand of a type of its own, a shift's count and an operand of
+  `&&` or `||`, crosses erased, but for a constant, which folds.
 - A type exists only where a builder makes it. The zoo is as fine as
-  the builders are.
+  the builders are, and no finer: the parser converts both operands
+  of an operator to one type, so a left operand of another view than
+  the operation's is never built, and the crossing stops there
+  instead of naming the type, which would instantiate its rows. `&&`
+  and `||`, whose operands keep their types, take every class.
 
 ### 3.4 Entry points are roles
 
@@ -259,7 +281,10 @@ the jump are the ancestor's `regtab`, `efftab` and `cctab`.
   through the value's own entry point, whose row is found by overload
   on the value's type: a target's niche for a constant, which holds
   no register, or the primary, the value in a register, stored and
-  released. So the parent keeps the value erased.
+  released. So the parent keeps the value erased. The store's width
+  is the value's own view: the parser converts every value it stores
+  to its place's type, so the row on the value's type knows it, and
+  the place hands the row its where alone.
 - A call spills every held value at its start, in the order of the
   registers, so its arguments find every register free. Each
   argument is stored to a slot of its own before the next is
@@ -301,7 +326,10 @@ the jump are the ancestor's `regtab`, `efftab` and `cctab`.
   `cmp`, and `&` is `test`. `e == 0` and `e != 0` jump as `e`'s
   `value_branch`, whatever `e` is: a parent that needs one fact of
   an operand it erased asks the operand. aarch64 has no such line:
-  `a == 0` is `cmp` and `b.ne`, where `if (a)` is `cbz`.
+  `a == 0` is `cmp` and `b.ne`, where `if (a)` is `cbz`. The primary
+  of the value compared with 0 is each target's own: aarch64's tests
+  a value whose register is valid to less than 32 bits with `tst`,
+  `tst w0, #0xff` (4.2).
 - Before the paths of `&&` or `||` part, every value held in a
   register is spilled, in the order of the registers, and every
   value held is marked until the paths meet: a spill, a reload or a
@@ -350,6 +378,11 @@ its primary, and it is what makes a large zoo safe.
 - `is< >` of a complete type, asked outside the builder that made it,
   answers differently under the oracle. `is< >` of a family or of a
   leaf does not.
+- The width rule (4.2) is no niche: a widening's primary writes its
+  extension where its operand's summary says the register is not
+  valid to the new width, as rcc's `extended()` does, so the oracle
+  writes rcc's extensions. The extending load is a niche, and comes
+  off.
 
 ## 4. Architecture
 
@@ -373,46 +406,79 @@ write its text. There is one parser and one zoo.
 
 ### 4.2 Expressions: a where and a view
 
-A place is a *where* and a *view*: `place_t< W, V >`.
+A place is a *where* and a *view*: `place_t< V, S >` so far, over the
+one where the tree has, `slot_t`, with its object's sign.
 
-- The where is how the machine names the object: `slot_t`,
-  `regvar_t`, a global, `indirect_t< P >` through a pointer's value.
+- The where is how the machine names the object: a local's slot, and
+  later a register variable, a global, the object through a pointer's
+  value. The store's entry point is handed the where.
 - The view is how it is read, and it is the width alone: `i8`, `i16`,
-  `i32`, `i64`.
+  `i32`, `i64`. Every value node has a view, the width of its value,
+  and an operator's parameter is its operation's view, `i32` or
+  `i64`; a comparison's value is an `int`'s.
 - `&` takes the view off, `address_t< W >`. `*` puts one on, read
   from the pointer's C type. `*` over an address is the place again;
   its primary goes through the pointer's value.
 - A cast between pointer types writes no node. It is the same node
   under another C type.
 - No register has a sign; instructions have. So the sign is the
-  operator's, and a conversion's over a load. A load that extends
-  from memory is a niche: the conversion over a load. A cast that
-  changes only the sign writes nothing.
-- A cast that changes a value is a node around its operand. It hides
-  the operand from the parent's niches, so its builder folds a
-  literal.
-- `load_t< W, V >` is what a place holds, and it is no place. An
+  operator's: an operator of each sign where the instruction differs,
+  `sdiv` and `udiv`, `srem` and `urem`, `ashr` and `lshr`, `slt` and
+  `ult`, and a widening's, `sext_t` and `zext_t`. A place keeps its
+  object's sign too, which its narrow read extends by, since rcc
+  reads a `char` by `movsbl` or `movzbl` whatever consumes it. A
+  constant's sign is in its value.
+- `load_t< V, S >` is what a place holds, and it is no place. An
   lvalue is a matter of type, so an identity is dropped where it is
   built.
+- A conversion is a node around its operand: `sext_t` and `zext_t`
+  widen by the sign of the type converted from, and `trunc_t`
+  narrows, changes the sign alone, or casts to the type the operand
+  has, and writes nothing. LLVM's `trunc` only narrows and its
+  `bitcast` keeps the width; here one node serves the three, whose
+  rows are one. A conversion hides the operand from the parent's
+  niches, so its builder folds a constant, and a parent that names an
+  object in place looks through a `trunc_t` of its view over a load.
+- A conversion over a load is the load's niche: a signed object
+  widened to 64 bits is its extending load, `movslq -4(%rbp), %rax`.
+  Any other widening of a load is its primary, since the load has
+  extended the object already. The widening's builder finds the
+  object under a change of sign and under a promotion of its own, as
+  rcc's `widened_read()` does, and reads it once.
+- The width a value is valid to is a summary of its subtree,
+  `valid_of(e, sign)`: the width up to which its register's bits are
+  the value extended by `sign`, the sign of the type its consumer
+  converts it from. It is rcc's `written()`: an instruction that
+  writes 32 bits clears the upper half, which is the extension of an
+  unsigned value alone. A conversion leaves its value valid to its
+  own width, and a call's result is valid to its type's. The parser
+  builds every conversion from its operand's own C type, in one
+  function, so a node that is no conversion has the type its consumer
+  converts from, and no node needs its own sign for the rule. A
+  widening writes its extension where the summary is below its
+  width, and aarch64 tests a value valid to less than 32 bits with
+  `tst`.
 - The parser converts every operand whose value it reads, by a
   builder through the model, `rvalue()`: a place becomes its load,
   and anything else stays the node it is. So a place asked for its
   value is a tree the parser does not make, and a place's `value`
   row stops the generation.
-- The tree has one where and one view so far, a local of type `int`:
-  `slot_t` and `load_t` take no parameter until a second arrives.
 
 ### 4.3 Constants
 
 Three things are kept apart: the value, the fold and a stage.
 
 - The value is asked: `value_of()`, a free function, each node's from
-  its operands'. A case label and an array bound need it early, and
-  will ask it through the model. They do not need the fold. So far it
-  is written for the two constant types, and a builder that folds
-  asks it.
+  its operands'. It is the value the constant's register holds, read
+  as a signed number of 32 bits or more: a narrow constant's
+  promotion, an `unsigned` 4294967295 as -1. A case label and an
+  array bound need it early, and will ask it through the model. They
+  do not need the fold. So far it is written for the constant types,
+  and a builder that folds asks it.
 - The fold is an overload on the operands' types, beside the other
-  builders. It comes off with every niche under the oracle. rcc-v2
+  builders, at the node's view and by its operator's sign. A
+  constant's conversion is one function of the two views and the two
+  signs. It comes off with every niche under the oracle. rcc-v2
   folds what rcc folds, with rcc's arithmetic, since its listing is
   rcc's. It drops an operator that its constant makes the identity
   where the node would be built, and rcc drops it in a pass after the
@@ -467,30 +533,34 @@ technique.
   says of the name: its C type, its linkage, whether it was declared
   `register`.
 - Every question about a symbol is asked once, at its declaration: a
-  register or a slot, by the target's count; the width. A use of the
-  name is a copy of the leaf, and no row looks a name up.
+  register or a slot, by the target's count; the view and the sign.
+  A use of the name is a copy of the leaf, and no row looks a name
+  up.
 - The storage is the function's frame, or the unit's data.
-- A local's leaf is its number among the function's locals,
-  `slot_t`, and not a displacement. The frame has one allocator: a
-  local takes its 4 bytes where its declaration is generated, and a
-  spill its 8 at an alignment of 8, each past every slot taken
-  before it, and none is given back. A spill's slot falls between
-  two locals', so the displacement is the state's: the declaration's
-  row takes it, and a use reads it by the number.
-- What runs is a statement, where it is written: `decl_t` takes the
-  slot, and `init_t` takes it and stores, an initialization and not
-  an assignment. The store is the value's own entry point (3.4).
+- A local's leaf is its place, `place_t< V, S >` over the where
+  `slot_t`, its number among the function's locals, and not a
+  displacement. The frame has one allocator: a local takes its
+  view's bytes at its view's alignment where its declaration is
+  generated, and a spill its 8 at an alignment of 8, each past every
+  slot taken before it, and none is given back. A spill's slot falls
+  between two locals', so the displacement is the state's: the
+  declaration's row takes it, and a use reads it by the number.
+- What runs is a statement, where it is written: `decl_t< V >` takes
+  the slot, and `init_t< V >` takes it and stores, an initialization
+  and not an assignment. The store is the value's own entry point
+  (3.4), at the value's view, which is the local's.
 - An assignment whose value is dropped is that same store. One whose
   value is used is the value held, then the store from its register.
-- A parameter is a local of the body: its leaf is the `slot_t` of its
-  place in the list, the function's first locals. Where it lives is
-  each target's, decided in the function's row before the body and
-  recorded in the state under its number. On x86-64 the first six
-  take a slot and the store of their argument register, and the
-  seventh and later are where the caller pushed them, above `rbp`.
-  On aarch64 each takes a slot, and the ninth and later are copied
-  in once the frame's size is known. No row of the body asks whether
-  a place is a parameter.
+- A parameter is a local of the body: its leaf is a place,
+  `place_t< i32, signed_ >`, numbered by its position in the list,
+  the function's first locals. A parameter of another type waits for
+  the calls of every type. Where it lives is each target's, decided
+  in the function's row before the body and recorded in the state
+  under its number. On x86-64 the first six take a slot and the store
+  of their argument register, and the seventh and later are where the
+  caller pushed them, above `rbp`. On aarch64 each takes a slot, and
+  the ninth and later are copied in once the frame's size is known.
+  No row of the body asks whether a place is a parameter.
 - A call's argument is a hidden local of its call, numbered by the
   parser, whose slot is taken where the call is generated.
 - The file's scope holds each function's C type and its entry in the
@@ -526,10 +596,12 @@ technique.
   generated, and on x86-64 those an instruction generated later
   would move a held value out of; the labels, each loop's two by its
   number, and whether a path reaches what is written next; on x86-64
-  whether the last instruction set ZF from its value, and whether
-  the function calls, which moves `rsp` below any frame; the frame.
-  A value held across a call is state: the call's row spills every
-  held value at its start and asks the tree nothing.
+  the width at which the last instruction set ZF from its value, and
+  whether the function calls, which moves `rsp` below any frame; the
+  frame. A value held across a call is state: the call's row spills
+  every held value at its start and asks the tree nothing. The state
+  holds no width of a value: what a held value's register is valid
+  to is its node's summary (4.2).
 
 ### 4.7 Two targets
 
@@ -553,6 +625,10 @@ struct expr_t::interface_t
     value_branch(amd64::state_t &, int label, bool sense) const = 0;
     virtual unsigned pinned_within(const amd64::state_t &) const = 0;
     virtual unsigned moved_within(const amd64::state_t &) const = 0;
+
+    // the summaries both targets read
+    virtual int valid(sign_t) const = 0;
+    virtual view_t view() const = 0;
 
     // the builders, which name no target
 };
@@ -586,8 +662,8 @@ with rcc, and nothing else.
 | `build.hh` | the builders, declared: all the parser sees of the zoo |
 | `build-typed.hh` | the overloads on the node types that a builder reaches through a model |
 | `expr.hh`, `stmt.hh` | the handles |
-| `operators.hh` | the operators, a closed domain that the parser and the zoo share, and their families |
-| `zoo.hh` | the node types under the handles |
+| `operators.hh` | the closed domains that the parser and the zoo share, the operators and their families, the views and the signs, and the crossing of each from a value to a parameter |
+| `zoo.hh` | the node types under the handles, and the two summaries both targets read, a value's view and the width its register is valid to |
 | `unit.hh` | the unit and its functions, under no handle: each one's name, linkage, count of parameters, and body or none |
 | `model.hh`, `build.cc` | the models, and the one unit that instantiates them |
 | `rows-expressions.hh`, `rows-statements.hh` | the rows both targets write alike: the primaries of an effect and of a jump, `!`, `&&` and `\|\|`, and the statements |
@@ -604,16 +680,22 @@ each became.
 
 | rcc asks | The typed tree |
 | --- | --- |
-| `immediate()`, `memory_operand()` of an operand | the operand's class, and a niche on it: `binary_t< op, L, I >`, `binary_t< op, L, load_t >` |
-| `multiplicand()` | a niche on the left operand's class, `binary_t< mul, load_t, I >` |
+| `immediate()`, `memory_operand()` of an operand | the operand's class, and a niche on it: `binary_t< op, V, L, I >`, `binary_t< op, V, L, load_t< V, S > >` |
+| `multiplicand()` | a niche on the left operand's class, `binary_t< mul, V, load_t< V, S >, I >` |
 | `constant_first()`, `ordered()` | a niche on a constant on the left, which is the row of the node with its operands exchanged |
 | whether an operator is a comparison, a division, a shift | a concept on the operator, which constrains the rows of its family |
 | `pins()` | a constant of the operator |
-| `pinned_by()` | the right operand's class, `top_t< op >` |
+| `pinned_by()` | the right operand's class, `top_t< F >`, kept through a conversion |
 | `pinned_within()`, `moved_within()` | summaries, handed up through the handle, a line of x86-64 each; a call pins the result register in the first and moves nothing in the second |
 | `pinned()` in `rvalue()` | the row of a node whose instruction pins its result's register clears the reservation itself: the divisions', the call's |
 | `immediate()` in `initialize()` | the store's entry point, by overload on the value's type |
-| whether a callee returns `void` | the call's parameter, `call_t< R >` |
+| the width of a store in `initialize()` | the value's own view |
+| `integer(t).width`, `operation_width()` | the node's view, a parameter |
+| `integer(t).is_signed` | the operator, by its name; a widening, `sext_t` or `zext_t`; a place's narrow read |
+| the width of `extended()`, `valid` | a summary, `valid_of()`, read by a widening's primary and aarch64's test of zero |
+| `widened_read()`, `object_under()`, `under_kept_bits()` | the conversion's builder, by overload on the operand's type |
+| `extending_load()` | a niche of `sext_t` over a load |
+| whether a callee returns `void`, its result's width | the call's node: `call_void_t`, or `call_t< V >` and its view |
 | `flag_operator()`, `flag_condition()` | x86-64's `value_branch` rows of those node types |
 | `zero_compared()` | the operand's own entry point, `value_branch` |
 | `body_target()`, `target_of()`, an `if` of one jump | the category of the types that name their label, and the then part's type, `if_t< J >`, which the builder finds through the model |
@@ -655,16 +737,33 @@ rows invented for the purpose.
   write the listings of one stage.
 - Jumps resolved by the parser write the instructions of jumps
   resolved at generation.
+- The integer types: a parser of C types as data builds the nodes of
+  `+`, `-` and `/` at two views, with a sign only in the division's
+  name, crossing the operator and the view once and the right
+  operand's class as data, conversions over loads and over computed
+  values, and stores through the value's entry point at the value's
+  own view. Twenty-seven bodies of rcc's, among them every case of
+  the width rule through an assignment, a change of sign and a
+  promotion, are its bodies, byte for byte.
 
 ## 6. Open
 
 - The categories' cut (3.5).
 - The builder on both operands at the size of all of C's operators.
-  Ten are built, over four classes of operand on each side (a
-  constant, the constant 0, a load, anything else) and a fifth on the
-  right (an operand whose top operator pins), with one crossing from
-  the operator's value to the node's parameter. Each class kept on
-  the right is one more operation of the interface.
+  Twenty-five are built at two views, over the classes of the integer
+  types on each side (a constant, the constant 0, a constant past 32
+  bits, a load of each sign, anything else) and one more on the
+  right (an operand whose top operator pins), with one crossing each
+  from the operator's and the view's value to the node's parameters.
+  Each class kept on the right is one more operation of the
+  interface.
+- What the zoo costs the compiler. Principle 5 counts code, and a
+  primary costs none; but every node type a builder can make is
+  instantiated in `build.cc` with its rows of both targets, about
+  2,500 binary node types now, and that one unit takes minutes and
+  12 GB to compile, at an instantiation depth near the compiler's
+  limit. Globals, pointers and the calls of every type each multiply
+  the classes again.
 - The register state at a join. Whether an arm of `?:` leaves its
   value where the other arm's does is, in its hardest case, a fact of
   one moment of generation. No type, summary or context has it. Three
@@ -672,12 +771,12 @@ rows invented for the purpose.
   join always, which moves listings; the second arm generated aside
   and read before the first is finished.
 - `({ })`. It waits until the concepts around it are clear.
-- A conversion of a value, and a narrow load as a conversion over a
-  load. No model has them.
 - Two targets that want shapes of one subtree that do not nest. The
   address family is where to look.
 - Whether every question rcc's generators ask of a C type moves to a
-  builder (principle 9).
+  builder (principle 9). For the integer types every one does: the
+  view, the operator's sign, the width rule. Pointers, records and
+  floating point are not asked yet.
 - Of a jump's record, the variable length arrays a jump gives back.
   Whether a loop's label is jumped to is the parser's fact, a
   parameter of the loop's node; whether a path reaches a statement's

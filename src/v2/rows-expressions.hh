@@ -27,9 +27,9 @@ namespace rcc {
 // A place is read only through its load, the lvalue conversion the
 // parser asks of every operand whose value it uses, rvalue(): a place
 // asked for its value is a tree the parser does not make.
-template< typename S, view_t V >
+template< typename S, view_t V, sign_t O >
 value_t
-value(S &, const place_t< V > &, unsigned = 0)
+value(S &, const place_t< V, O > &, unsigned = 0)
 {
     throw std::logic_error("v2: a place read without its lvalue conversion");
 }
@@ -132,23 +132,10 @@ effect(S &s, const assign_t< V > &a)
     initialize(s, a.where, a.value);
 }
 
-// The jump on a value compared with 0, rcc's test_zero(), 7.1: the
-// value held, then each target's jump on its register at the value's
-// view, cmpl $0, %eax and je, or cbz w0, and the value released.  A
-// constant is no special case: if (1) loads 1 and tests it.
-template< typename S, typename T >
-void
-value_branch(S &s, const T &t, int label, bool sense)
-{
-    const value_t v = value(s, t);
-    test_zero(s, v, view_of(t), label, sense);
-    release(s, v);
-}
-
 // The primary of branch, rcc's cbranch() for a node that is no
 // comparison, no ! and no && or ||: a jump on a value is the value
-// compared with 0 (3.4), value_branch(), where x86-64 has niches of its
-// own.
+// compared with 0 (3.4), each target's value_branch(), where x86-64 has
+// niches of its own and aarch64 reads the width rule.
 template< typename S, typename T >
 void
 branch(S &s, const T &t, int label, bool sense)

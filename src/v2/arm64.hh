@@ -17,6 +17,7 @@
 #include "zoo.hh"
 
 #include <concepts>
+#include <optional>
 #include <ostream>
 #include <sstream>
 #include <string>
@@ -98,10 +99,20 @@ void place_label(state_t &, int n);
 // jump_if(): b.lt, b.eq.
 void jump_if(state_t &, binary_op_t op, int label);
 
-// The jump on the held value v compared with 0 at its view, rcc's
-// test_zero(): cbnz w0 where sense, cbz w0 or cbz x0 otherwise, one
-// instruction and no flags; v stays held.
-void test_zero(state_t &, value_t v, view_t view, int label, bool sense);
+// The test of the held value v against 0 at its view, valid to valid
+// bits, rcc's test_zero(): with a label, the jump to it where v is
+// nonzero, sense, or zero, cbnz w0 or cbz x0, one instruction and no
+// flags; without one, the flags for the caller's cset, cmp w0, #0, the
+// row of !.  A value valid to less than 32 bits, the value of a
+// narrowing, has stale bits above its width, and the machine compares
+// whole registers only: either way it is tst of the low bits alone,
+// tst w0, #0xff, then b.ne or b.eq to the label.  v stays held.
+void test_zero(state_t &,
+               value_t v,
+               view_t view,
+               int valid,
+               std::optional< int > label,
+               bool sense = false);
 
 // A mov of the immediate value into r, at 32 bits: mov w0, #1.
 void move_immediate(state_t &, reg_t r, int value);
@@ -149,15 +160,16 @@ value(state_t &s, const wide_t &c, unsigned = 0)
     return constant_value(s, c.value, view_t::i64);
 }
 
-// The load row: the object a slot holds at its view, in a register
-// taken for it, ldr w0, [x29, #16] or ldr x0, [x29, #16].
-value_t load(state_t &, slot_t where, view_t view);
+// The load row: the object a slot holds at its view, extended to 32
+// bits by its sign where it is narrow, in a register taken for it,
+// ldrsb w0, [x29, #16], ldr w0, [x29, #16] or ldr x0, [x29, #16].
+value_t load(state_t &, slot_t where, view_t view, sign_t sign);
 
-template< view_t V >
+template< view_t V, sign_t S >
 value_t
-value(state_t &s, const load_t< V > &l, unsigned = 0)
+value(state_t &s, const load_t< V, S > &l, unsigned = 0)
 {
-    return load(s, l.where, V);
+    return load(s, l.where, V, S);
 }
 
 // - or ~ of the held value v at the view, into the register the
@@ -341,8 +353,9 @@ value(state_t &s, const binary_t< op, V, C, R > &b, unsigned wanted = 0)
 }
 
 // !e, 6.5.4.3p5, rcc's unary(): the operand's value, generated as for
-// any consumer, its test against 0 at the operand's view, cmp w0, #0,
-// then cset of eq, as for e == 0.
+// any consumer, its test against 0 at the operand's view, test_zero()'s
+// without a label, cmp w0, #0, or tst w0, #0xff for a value valid to
+// less than 32 bits, then cset of eq, as for e == 0.
 template< view_t V, typename A >
 value_t
 value(state_t &s,
@@ -350,9 +363,23 @@ value(state_t &s,
       unsigned wanted = 0)
 {
     const value_t v = value(s, u.arg);
-    compare(s, v, 0, V);
+    test_zero(s, v, V, valid_of(u.arg, sign_t::signed_), std::nullopt);
 
     return cset(s, binary_op_t::eq, v, wanted);
+}
+
+// The jump on a value compared with 0, rcc's test_zero(), 7.1: the
+// value held, then the jump on its register at the value's view, cbz
+// w0, or tst and b.eq where the width rule says the value is valid to
+// less than 32 bits, the same at either sign, and the value released.
+// A constant is no special case: if (1) loads 1 and tests it.
+template< typename T >
+void
+value_branch(state_t &s, const T &t, int label, bool sense)
+{
+    const value_t v = value(s, t);
+    test_zero(s, v, view_of(t), valid_of(t, sign_t::signed_), label, sense);
+    release(s, v);
 }
 
 // A comparison as a jump, rcc's cbranch(), 7.1: the cmp of the value
@@ -401,7 +428,9 @@ value_t extending_load(state_t &, slot_t where, view_t from);
 // of the conversion over a load (docs/typed-tree.md 4.2), as on x86-64.
 template< view_t F >
 value_t
-value(state_t &s, const sext_t< view_t::i64, F, load_t< F > > &e, unsigned = 0)
+value(state_t &s,
+      const sext_t< view_t::i64, F, load_t< F, sign_t::signed_ > > &e,
+      unsigned = 0)
 {
     return extending_load(s, e.arg.where, F);
 }

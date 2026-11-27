@@ -22,9 +22,10 @@
 namespace rcc {
 
 // An integer constant of view V, 6.4.4.2, whose value a sign-extended
-// 32-bit immediate holds: every constant of 32 bits, and one of 64 in
-// int's range.  The value is what its register holds, read as a signed
-// number of V's width, so no constant needs its sign (4.3).
+// 32-bit immediate holds: every constant of 32 bits or less, and one of
+// 64 in int's range.  The value is what its register holds, read as a
+// signed number of 32 bits or V's, a narrow constant's promotion, so no
+// constant needs its sign (4.3).
 template< view_t V >
 struct literal_t
 {
@@ -83,17 +84,20 @@ struct slot_t
     int id;
 };
 
-// A local, a place, 4.2: the where of an object of view V in the
-// function's frame.  A parameter is one, of an int's view.
-template< view_t V >
+// A local, a place, 4.2: the where of an object of view V and of a type
+// of the sign S in the function's frame, its object's sign kept since
+// rcc reads a narrow object by an extending load of its own sign
+// whatever consumes it.  A parameter is one, of an int's view and sign.
+template< view_t V, sign_t S >
 struct place_t
 {
     slot_t where;
 };
 
 // What a place holds, 6.3.2.1p2: the object read at its view, which is
-// no place.
-template< view_t V >
+// no place, extended to 32 bits by S where V is narrow; a widening's
+// builder may read a where at another sign, the type it converts from.
+template< view_t V, sign_t S >
 struct load_t
 {
     slot_t where;
@@ -395,16 +399,16 @@ view_of(const wide_t &)
     return view_t::i64;
 }
 
-template< view_t V >
+template< view_t V, sign_t S >
 constexpr view_t
-view_of(const place_t< V > &)
+view_of(const place_t< V, S > &)
 {
     return V;
 }
 
-template< view_t V >
+template< view_t V, sign_t S >
 constexpr view_t
-view_of(const load_t< V > &)
+view_of(const load_t< V, S > &)
 {
     return V;
 }
@@ -501,18 +505,27 @@ written(int width, sign_t sign)
     return width == 32 && sign == sign_t::unsigned_ ? 64 : width;
 }
 
-template< view_t V >
-int
-valid_of(const load_t< V > &, sign_t sign)
+// The width of the register a value of the view is held in, which a
+// load writes and a constant's row: its view's, or 32 bits for a narrow
+// one, which the register holds promoted.
+constexpr int
+promoted_width(view_t view)
 {
-    return written(width(V), sign);
+    return width(view) < 32 ? 32 : width(view);
+}
+
+template< view_t V, sign_t S >
+int
+valid_of(const load_t< V, S > &, sign_t sign)
+{
+    return written(promoted_width(V), sign);
 }
 
 template< constant C >
 int
 valid_of(const C &c, sign_t sign)
 {
-    return written(width(view_of(c)), sign);
+    return written(promoted_width(view_of(c)), sign);
 }
 
 template< unary_op_t op, view_t V, typename A >
@@ -541,6 +554,20 @@ int
 valid_of(const sext_t< V, F, A > &, sign_t)
 {
     return width(V);
+}
+
+// The one case where a conversion's own width is not the rule, rcc's
+// (long) (unsigned) c in converted(): a signed narrow object read by its
+// extending load at 32 bits is a write at 32, so it is valid to 64
+// bits where the type its consumer reads it at is unsigned, u = c on an
+// unsigned u, and to 32 where it is signed.  The same extension in a
+// register, of a narrowed value, is valid to 32 alone.
+template< view_t F >
+int
+valid_of(const sext_t< view_t::i32, F, load_t< F, sign_t::signed_ > > &,
+         sign_t sign)
+{
+    return written(32, sign);
 }
 
 template< view_t V, view_t F, typename A >
@@ -573,9 +600,9 @@ valid_of(const call_t< V > &, sign_t)
 
 // A place is read only through its load, and a void call has no value:
 // either asked for its width is a tree the parser does not make.
-template< view_t V >
+template< view_t V, sign_t S >
 int
-valid_of(const place_t< V > &, sign_t)
+valid_of(const place_t< V, S > &, sign_t)
 {
     throw std::logic_error("v2: a place read without its lvalue conversion");
 }

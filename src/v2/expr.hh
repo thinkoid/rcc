@@ -68,8 +68,8 @@ public:
     friend expr_t rvalue(expr_t);
     friend bool is_assignable(const expr_t &);
     friend expr_t make_assign(expr_t place, expr_t value);
-    friend expr_t
-    make_conversion(view_t to, view_t from, sign_t from_sign, expr_t e);
+    friend expr_t make_conversion(
+        view_t to, sign_t to_sign, view_t from, sign_t from_sign, expr_t e);
     friend expr_t make_unary(unary_op_t op, view_t view, expr_t arg);
     friend expr_t
     make_binary(binary_op_t op, view_t view, expr_t lhs, expr_t rhs);

@@ -1,8 +1,8 @@
 // -*- mode: c++; -*-
 
-// 6.4.4.2: an integer constant's value and type, read from its
-// spelling as rcc's parser reads it, and the operand of a constant of
-// any of its types.
+// 6.4.4.2 and 6.4.4.5: an integer constant's value and type, read from
+// its spelling as rcc's parser reads it, and the operand of a constant
+// of any of its types; and a character constant of no prefix.
 
 #include "parse-common.hh"
 
@@ -165,6 +165,23 @@ integer_constant(parser_t &p)
                                static_cast< long long >(value);
 
     return { *type, make_literal(bits, view_of(*type)) };
+}
+
+// A character constant, 6.4.4.5, rcc's character_constant(): of no
+// prefix, an int holding the value a char object holding the character
+// has, converted to int, p11, so '\377' is -1 where plain char is signed
+// and 255 where it is unsigned, as the target has it.  A prefixed one,
+// of wchar_t, char8_t, char16_t or char32_t, p12 to p15, is not yet.
+operand_t
+character_constant(parser_t &p)
+{
+    const token_t &t = advance(p);
+    if (encoding_of(t) != encoding_t::none)
+        not_yet(t, "prefixed character constant");
+
+    const int value = character_value(t, p.target.char_is_signed);
+
+    return { int_type(), make_literal(value, view_t::i32) };
 }
 
 } // namespace rcc

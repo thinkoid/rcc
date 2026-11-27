@@ -121,7 +121,12 @@ int_type()
 view_t
 view_of(const type_t &t)
 {
-    return as< int_t >(t).width == 64 ? view_t::i64 : view_t::i32;
+    switch (as< int_t >(t).width) {
+    case 8: return view_t::i8;
+    case 16: return view_t::i16;
+    case 32: return view_t::i32;
+    default: return view_t::i64;
+    }
 }
 
 sign_t
@@ -174,8 +179,8 @@ discarded(operand_t e)
 expr_t
 conversion(const operand_t &e, const type_t &t)
 {
-    return make_conversion(view_of(t), view_of(e.type), sign_of(e.type),
-                           rvalue(*e.node));
+    return make_conversion(view_of(t), sign_of(t), view_of(e.type),
+                           sign_of(e.type), rvalue(*e.node));
 }
 
 expr_t
@@ -225,7 +230,8 @@ declare(parser_t &p, const token_t &name, const type_t &type)
 
     const int slot = p.locals++;
     p.scopes.back().emplace(
-        name.text, operand_t { type, make_local(slot, view_of(type)) });
+        name.text,
+        operand_t { type, make_local(slot, view_of(type), sign_of(type)) });
 
     return slot;
 }

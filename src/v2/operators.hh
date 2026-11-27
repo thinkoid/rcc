@@ -11,18 +11,22 @@
 
 #pragma once
 
+#include <stdexcept>
+
 namespace rcc {
 
-// How a value is read, the width alone, LLVM's names (4.2): an int's 32
-// bits, a long's 64.  No view has a sign; the operators that read one
-// say it in their names.
-enum class view_t { i32, i64 };
+// How a value is read, the width alone, LLVM's names (4.2): a char's 8
+// bits, a short's 16, an int's 32, a long's 64.  No view has a sign;
+// the operators that read one say it in their names.
+enum class view_t { i8, i16, i32, i64 };
 
 // The width of a view in bits.
 constexpr int
 width(view_t view)
 {
     switch (view) {
+    case view_t::i8: return 8;
+    case view_t::i16: return 16;
     case view_t::i32: return 32;
     case view_t::i64: return 64;
     }
@@ -227,9 +231,29 @@ decltype(auto)
 cross(view_t view, F &&f)
 {
     switch (view) {
+    case view_t::i8: return f.template operator()< view_t::i8 >();
+    case view_t::i16: return f.template operator()< view_t::i16 >();
     case view_t::i32: return f.template operator()< view_t::i32 >();
     case view_t::i64: return f.template operator()< view_t::i64 >();
     }
+}
+
+// The view of an operation, rcc's operation_width(): the parser
+// promotes every narrower operand before an operator sees it, so no
+// operator's node is made at i8 or i16, and asking one is a tree the
+// parser does not make.
+template< typename F >
+decltype(auto)
+cross_operation(view_t view, F &&f)
+{
+    switch (view) {
+    case view_t::i32: return f.template operator()< view_t::i32 >();
+    case view_t::i64: return f.template operator()< view_t::i64 >();
+    case view_t::i8:
+    case view_t::i16: break;
+    }
+
+    throw std::logic_error("v2: an operator on a narrow operand");
 }
 
 template< typename F >

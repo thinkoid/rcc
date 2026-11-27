@@ -252,9 +252,11 @@ translation_unit(parser_t &p)
 } // namespace
 
 translation_unit_t
-parse(const std::vector< token_t > &tokens, std::vector< warning_t > &warnings)
+parse(const std::vector< token_t > &tokens,
+      const target_t &target,
+      std::vector< warning_t > &warnings)
 {
-    parser_t p { tokens, warnings };
+    parser_t p { tokens, target, warnings };
     translation_unit(p);
 
     return std::move(p.unit);

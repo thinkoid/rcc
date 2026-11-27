@@ -134,10 +134,12 @@ make_literal(long long value, view_t view)
 }
 
 expr_t
-make_local(int slot, view_t view)
+make_local(int slot, view_t view, sign_t sign)
 {
     return cross(view, [&]< view_t V >() {
-        return expr_t(place_t< V > { slot_t { slot } });
+        return cross(sign, [&]< sign_t S >() {
+            return expr_t(place_t< V, S > { slot_t { slot } });
+        });
     });
 }
 
@@ -164,9 +166,10 @@ make_assign(expr_t place, expr_t value)
 // One hop through the operand's model, which knows the operand's type
 // and so whether it is a load or a constant (3.3).
 expr_t
-make_conversion(view_t to, view_t from, sign_t from_sign, expr_t e)
+make_conversion(
+    view_t to, sign_t to_sign, view_t from, sign_t from_sign, expr_t e)
 {
-    return e.self->conversion(to, from, from_sign, e);
+    return e.self->conversion(to, to_sign, from, from_sign, e);
 }
 
 // One hop through the operand's model, which knows whether the operand

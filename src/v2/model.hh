@@ -18,9 +18,11 @@
 #include "stmt.hh"
 #include "zoo.hh"
 
+#include <concepts>
 #include <cstdint>
 #include <memory>
 #include <stdexcept>
+#include <type_traits>
 #include <utility>
 
 namespace rcc {
@@ -38,11 +40,13 @@ struct constant_class_t
     view_t view;
 };
 
-// A load on the right as it crosses: its where, which the left
-// operand's model makes a load of the operation's view again.
+// A load on the right as it crosses: its where and the sign of the
+// object's type, which the left operand's model makes a load of the
+// operation's view again.
 struct load_class_t
 {
     slot_t where;
+    sign_t sign;
 };
 
 struct expr_t::interface_t
@@ -79,6 +83,7 @@ struct expr_t::interface_t
     // a conversion, by the operand's model, which knows the operand's
     // type and so whether it is a load (rcc's widened_read())
     virtual expr_t conversion(view_t to,
+                              sign_t to_sign,
                               view_t from,
                               sign_t from_sign,
                               const expr_t &self) const = 0;
@@ -182,29 +187,42 @@ fwd_rvalue(const T &t, const expr_t &self)
 
 // A unary operator on a held node: the crossing from the operator and
 // the view, values in the parser, to the node's parameters (principle
-// 6), the typed builder of each.
+// 6), the typed builder of each.  The view of - and ~ is an
+// operation's, of the promoted operand, and that of ! the operand's
+// own, which may be narrow.
 template< typename A >
 expr_t
 fwd_unary(unary_op_t op, view_t view, const A &arg, const expr_t &self)
 {
     return cross(op, [&]< unary_op_t o >() {
-        return cross(
-            view, [&]< view_t V >() { return make_unary< o, V >(arg, self); });
+        const auto make = [&]< view_t V >() {
+            return make_unary< o, V >(arg, self);
+        };
+
+        if constexpr (o == unary_op_t::log_not)
+            return cross(view, make);
+        else
+            return cross_operation(view, make);
     });
 }
 
 // The conversion of a held node from the view from, at the sign of its
-// type, to the view to: the three crossings, then the typed builder, by
-// overload on the node's type.
+// type, to the view to at the sign to_sign: the three crossings, then
+// the typed builder, by overload on the node's type.  The sign of the
+// type converted to is read by a constant's conversion alone, as data.
 template< typename T >
 expr_t
-fwd_conversion(
-    view_t to, view_t from, sign_t from_sign, const T &e, const expr_t &self)
+fwd_conversion(view_t to,
+               sign_t to_sign,
+               view_t from,
+               sign_t from_sign,
+               const T &e,
+               const expr_t &self)
 {
     return cross(to, [&]< view_t V >() {
         return cross(from, [&]< view_t F >() {
             return cross(from_sign, [&]< sign_t S >() {
-                return make_conversion< V, F, S >(e, self);
+                return make_conversion< V, F, S >(to_sign, e, self);
             });
         });
     });
@@ -249,16 +267,16 @@ classed_operand(const C &c, const expr_t &)
     return c;
 }
 
-template< view_t V >
-const load_t< V > &
-classed_operand(const load_t< V > &l, const expr_t &)
+template< view_t V, sign_t S >
+const load_t< V, S > &
+classed_operand(const load_t< V, S > &l, const expr_t &)
 {
     return l;
 }
 
-template< view_t V >
-const load_t< V > &
-classed_operand(const trunc_t< V, load_t< V > > &t, const expr_t &)
+template< view_t V, sign_t S >
+const load_t< V, S > &
+classed_operand(const trunc_t< V, load_t< V, S > > &t, const expr_t &)
 {
     return t.arg;
 }
@@ -283,18 +301,18 @@ crossing(const C &c, const expr_t &)
     return { value_of(c), view_of(c) };
 }
 
-template< view_t V >
+template< view_t V, sign_t S >
 load_class_t
-crossing(const load_t< V > &l, const expr_t &)
+crossing(const load_t< V, S > &l, const expr_t &)
 {
-    return { l.where };
+    return { l.where, S };
 }
 
-template< view_t V >
+template< view_t V, sign_t S >
 load_class_t
-crossing(const trunc_t< V, load_t< V > > &t, const expr_t &)
+crossing(const trunc_t< V, load_t< V, S > > &t, const expr_t &)
 {
-    return { t.arg.where };
+    return { t.arg.where, S };
 }
 
 // Whether a right operand of a class crosses erased all the same, a
@@ -335,7 +353,8 @@ template< binary_op_t op, view_t V, typename F >
 expr_t
 typed(const load_class_t &l, F &&f)
 {
-    return f(load_t< V > { l.where });
+    return cross(l.sign,
+                 [&]< sign_t S >() { return f(load_t< V, S > { l.where }); });
 }
 
 template< binary_op_t op, view_t V, typename R, typename F >
@@ -345,22 +364,78 @@ typed(const R &rhs, F &&f)
     return f(rhs);
 }
 
+// Whether the class C of a left operand is one of an operation op at
+// the view V: an erased one is, and a constant or a load of V, since
+// the parser converts every operand of an operation to its type, but
+// for && and ||, whose operands keep their own types, so that any is.
+template< binary_op_t op, view_t V, typename C >
+constexpr bool
+operand_at()
+{
+    if constexpr (is_logical(op) || std::same_as< C, expr_t >)
+        return true;
+    else
+        return view_of(C { }) == V;
+}
+
 // A binary operator on two operands in their classes: the crossing from
 // the operator and the view, values in the parser, to the node's
 // parameters (principle 6), and the right operand's class made a type
 // again at the view, made once for every pair of classes, the typed
-// builder of each.
+// builder of each.  A left operand of another view than the
+// operation's is a tree the parser does not make, and no node type is
+// instantiated of it.
 template< typename L, typename R >
 expr_t
 fwd_binary(binary_op_t op, view_t view, const L &lhs, const R &rhs)
 {
     return cross(op, [&]< binary_op_t o >() {
-        return cross(view, [&]< view_t V >() {
-            return typed< o, V >(rhs, [&](const auto &r) {
-                return make_binary< o, V >(lhs, r);
+        return cross_operation(view, [&]< view_t V >() {
+            return typed< o, V >(rhs, [&](const auto &r) -> expr_t {
+                if constexpr (operand_at< o, V, L >())
+                    return make_binary< o, V >(lhs, r);
+                else
+                    throw std::logic_error(
+                        "v2: an operand of another view under an operation");
             });
         });
     });
+}
+
+// The left operand of && or || in its class: classed_operand()'s, but a
+// change of sign or a cast to its own type over a load is its node, the
+// operand tested at its own type, since aarch64's test of zero reads
+// its width, the conversion's, and not the load's: (unsigned char) c &&
+// x on an unsigned char c is tst w0, #0xff where c && x is cbz.
+template< typename T >
+decltype(auto)
+logical_operand(const T &held, const expr_t &self)
+{
+    return classed_operand(held, self);
+}
+
+template< view_t V, sign_t S >
+const expr_t &
+logical_operand(const trunc_t< V, load_t< V, S > > &, const expr_t &self)
+{
+    return self;
+}
+
+// A binary operator on the held left operand and the right operand's
+// class: the left operand in its class, the question of the operator,
+// data here, asked once, as right_of() asks it.
+template< typename T, typename R >
+expr_t
+binary_of(binary_op_t op,
+          view_t view,
+          const T &held,
+          const expr_t &self,
+          const R &rhs)
+{
+    if (is_logical(op))
+        return fwd_binary(op, view, logical_operand(held, self), rhs);
+
+    return fwd_binary(op, view, classed_operand(held, self), rhs);
 }
 
 // Whether a node is a place an assignment stores into: whether the
@@ -472,11 +547,12 @@ struct expr_t::model_t final: interface_t
     }
 
     expr_t conversion(view_t to,
+                      sign_t to_sign,
                       view_t from,
                       sign_t from_sign,
                       const expr_t &self) const override
     {
-        return fwd_conversion(to, from, from_sign, held, self);
+        return fwd_conversion(to, to_sign, from, from_sign, held, self);
     }
 
     bool is_assignable() const override
@@ -506,7 +582,7 @@ struct expr_t::model_t final: interface_t
                   const constant_class_t &rhs,
                   const expr_t &self) const override
     {
-        return fwd_binary(op, view, classed_operand(held, self), rhs);
+        return binary_of(op, view, held, self, rhs);
     }
 
     expr_t binary(binary_op_t op,
@@ -514,7 +590,7 @@ struct expr_t::model_t final: interface_t
                   const load_class_t &rhs,
                   const expr_t &self) const override
     {
-        return fwd_binary(op, view, classed_operand(held, self), rhs);
+        return binary_of(op, view, held, self, rhs);
     }
 
     expr_t binary(binary_op_t op,
@@ -522,7 +598,7 @@ struct expr_t::model_t final: interface_t
                   const top_t< family_t::division > &rhs,
                   const expr_t &self) const override
     {
-        return fwd_binary(op, view, classed_operand(held, self), rhs);
+        return binary_of(op, view, held, self, rhs);
     }
 
     expr_t binary(binary_op_t op,
@@ -530,7 +606,7 @@ struct expr_t::model_t final: interface_t
                   const top_t< family_t::shift > &rhs,
                   const expr_t &self) const override
     {
-        return fwd_binary(op, view, classed_operand(held, self), rhs);
+        return binary_of(op, view, held, self, rhs);
     }
 
     expr_t binary(binary_op_t op,
@@ -538,7 +614,7 @@ struct expr_t::model_t final: interface_t
                   const expr_t &rhs,
                   const expr_t &self) const override
     {
-        return fwd_binary(op, view, classed_operand(held, self), rhs);
+        return binary_of(op, view, held, self, rhs);
     }
 
     T held;

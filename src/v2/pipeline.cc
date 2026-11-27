@@ -25,7 +25,7 @@ compile(std::string_view text,
         std::ostream &assembly)
 {
     const auto tokens = tokenize(text, file);
-    const auto unit = parse(tokens, warnings);
+    const auto unit = parse(tokens, target, warnings);
 
     generate(unit, target, file, assembly);
 }

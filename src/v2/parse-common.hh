@@ -15,6 +15,7 @@
 #include "expr.hh"
 #include "lex.hh"
 #include "stmt.hh"
+#include "target.hh"
 #include "type.hh"
 #include "unit.hh"
 
@@ -59,7 +60,8 @@ struct function_name_t
 };
 
 // The state of one parse: the tokens and the position in them; the
-// warnings, a list the driver owns; the unit, filled as its functions
+// target, whose plain char the parser makes; the warnings, a list the
+// driver owns; the unit, filled as its functions
 // are declared and defined; the names of the functions the file
 // declares, views into the tokens; each use of a static function, by
 // its index among the unit's functions, for the end of the unit to
@@ -73,6 +75,7 @@ struct function_name_t
 struct parser_t
 {
     const std::vector< token_t > &tokens;
+    const target_t &target;
     std::vector< warning_t > &warnings;
     std::size_t pos = 0;
     translation_unit_t unit = { };
@@ -167,13 +170,12 @@ expr_t discarded(operand_t e);
 
 // The conversion of the value of e, an operand of a value, to the type
 // t, 6.3.1.3, as a node, whatever the two types: its builder is handed
-// the view of t, and the view and the sign of e's own type, which it
-// reads off e.  Every
-// conversion the parser builds is this function's, and nothing else
-// calls make_conversion(): so a node that is no conversion has the type
-// its consumer converts it from, and the width rule, which a widening
-// reads by the sign of the type it converts from, is right by
-// construction (docs/typed-tree.md 4.2).
+// the view and the sign of t, and those of e's own type, which it reads
+// off e.  Every conversion the parser builds is this function's, and
+// nothing else calls make_conversion(): so a node that is no conversion
+// has the type its consumer converts it from, and the width rule, which
+// a widening reads by the sign of the type it converts from, is right
+// by construction (docs/typed-tree.md 4.2).
 expr_t conversion(const operand_t &e, const type_t &t);
 
 // The value of e in the type t, rcc's convert_to(), the place an
@@ -206,8 +208,9 @@ int declare(parser_t &p, const token_t &name, const type_t &type);
 // the productions one file calls in another
 //
 
-// 6.4.4.2, parse-constants.cc
+// 6.4.4.2, 6.4.4.5, parse-constants.cc
 operand_t integer_constant(parser_t &);
+operand_t character_constant(parser_t &);
 
 // 6.5, parse-expressions.cc
 operand_t assignment_expression(parser_t &);
