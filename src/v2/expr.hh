@@ -5,16 +5,18 @@
 // built.  The parser holds expressions as handles and makes them
 // through the builders, build.hh; the interface and the model are
 // model.hh's, which build.cc alone includes, so a unit that includes
-// this header cannot make a node.  An expression has three entry
-// points (3.4): its value, held in a register its row takes; its
-// effect, evaluated for what it does, its value dropped; and a jump
-// on it, branch, to a label where its value is nonzero or where it is
-// 0, by the sense.  x86-64 has a fourth, value_branch, the jump on
-// the value compared with 0, and it hands up two summaries, the
-// registers the instructions within it pin, and those that would move
-// a value held across it, nothing below && and ||.  A builder that
-// must know what the handle holds goes through the model (3.3), and
-// is a friend.
+// this header cannot make a node.  An expression has four entry points
+// (3.4): its value, held in a register its row takes; its effect,
+// evaluated for what it does, its value dropped; its store into a slot,
+// rcc's initialize(), which an initializer and an assignment for its
+// effect write, and which a target's niche writes for a constant with
+// no register held; and a jump on it, branch, to a label where its
+// value is nonzero or where it is 0, by the sense.  x86-64 has a fifth,
+// value_branch, the jump on the value compared with 0, and it hands up
+// two summaries, the registers the instructions within it pin, and
+// those that would move a value held across it, nothing below && and
+// ||.  A builder that must know what the handle holds goes through the
+// model (3.3), and is a friend.
 
 #pragma once
 
@@ -30,6 +32,9 @@ namespace rcc {
 // a unit that holds handles and generates none never sees its
 // definition.
 struct value_t;
+
+// A local, the zoo's: the store into one is a row of the handle.
+struct slot_t;
 
 class expr_t
 {
@@ -50,6 +55,8 @@ public:
     friend value_t value(arm64::state_t &, const expr_t &, unsigned wanted);
     friend void effect(amd64::state_t &, const expr_t &);
     friend void effect(arm64::state_t &, const expr_t &);
+    friend void initialize(amd64::state_t &, slot_t where, const expr_t &);
+    friend void initialize(arm64::state_t &, slot_t where, const expr_t &);
     friend void branch(amd64::state_t &, const expr_t &, int, bool);
     friend void branch(arm64::state_t &, const expr_t &, int, bool);
     friend void value_branch(amd64::state_t &, const expr_t &, int, bool);
@@ -61,7 +68,6 @@ public:
     friend expr_t make_assign(expr_t place, expr_t value);
     friend expr_t make_unary(unary_op_t op, expr_t arg);
     friend expr_t make_binary(binary_op_t op, expr_t lhs, expr_t rhs);
-    friend stmt_t make_init(int slot, expr_t value);
 };
 
 // An erased operand generates itself: the handle's own rows, the value
@@ -74,6 +80,12 @@ value_t value(amd64::state_t &, const expr_t &, unsigned wanted = 0);
 value_t value(arm64::state_t &, const expr_t &, unsigned wanted = 0);
 void effect(amd64::state_t &, const expr_t &);
 void effect(arm64::state_t &, const expr_t &);
+
+// An erased value stored into the slot where, by the row of the node it
+// holds: the target's niche for the node's type, or the primary, the
+// value in a register, stored and released.
+void initialize(amd64::state_t &, slot_t where, const expr_t &);
+void initialize(arm64::state_t &, slot_t where, const expr_t &);
 
 // A jump on an erased operand, through the handle: to label where its
 // value is nonzero, sense, or where it is 0, !sense, and a fall through

@@ -38,9 +38,9 @@ generate(S &s, const decl_t &d)
 
 // The slot is taken before the initializer is generated, whose scope
 // holds the name already, 6.2.1p7: int x = x; reads x's own slot.
-template< typename S, typename V >
+template< typename S >
 void
-generate(S &s, const init_t< V > &i)
+generate(S &s, const init_t &i)
 {
     allocate(s, i.where);
     initialize(s, i.where, i.value);

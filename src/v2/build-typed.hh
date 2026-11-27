@@ -40,23 +40,12 @@ rvalue(const slot_t &where, const expr_t &)
     return expr_t(load_t { where });
 }
 
-// The value in its class, classed()'s: init_t< literal_t >,
-// init_t< zero_t > or the primary, init_t< expr_t >.
-template< typename V >
-stmt_t
-make_init(slot_t where, const V &value)
-{
-    return stmt_t(init_t< V > { where, value });
-}
-
 // An assignment's builder exists for a place alone, a local's slot, and
-// so defines what is assignable (principle 8); its value is in its
-// class, as an initializer's.
-template< typename V >
-expr_t
-make_assign(const slot_t &where, const V &value)
+// so defines what is assignable (principle 8).
+inline expr_t
+make_assign(const slot_t &where, const expr_t &value)
 {
-    return expr_t(assign_t< V > { where, value });
+    return expr_t(assign_t { where, value });
 }
 
 // The value of an operation of int on constants, as rcc folds it: the

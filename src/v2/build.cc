@@ -66,6 +66,18 @@ value_branch(amd64::state_t &s, const expr_t &e, int label, bool sense)
     e.self->value_branch(s, label, sense);
 }
 
+void
+initialize(amd64::state_t &s, slot_t where, const expr_t &e)
+{
+    e.self->initialize(s, where);
+}
+
+void
+initialize(arm64::state_t &s, slot_t where, const expr_t &e)
+{
+    e.self->initialize(s, where);
+}
+
 unsigned
 pinned_within(const amd64::state_t &s, const expr_t &e)
 {
@@ -124,12 +136,12 @@ is_assignable(const expr_t &e)
     return e.self->is_assignable();
 }
 
-// Two hops, 3.3: through the value's model, which knows the value's
-// class, then through the place's, which knows the place's type.
+// One hop through the place's model, which knows the place's type
+// (3.3).
 expr_t
 make_assign(expr_t place, expr_t value)
 {
-    return value.self->assigned_to(place, value);
+    return place.self->assign(value);
 }
 
 // One hop through the operand's model, which knows whether the operand
@@ -166,12 +178,10 @@ make_decl(int slot)
     return stmt_t(decl_t { slot_t { slot } });
 }
 
-// One hop through the value's model, which knows the value's class
-// (3.3).
 stmt_t
 make_init(int slot, expr_t value)
 {
-    return value.self->init(slot_t { slot }, value);
+    return stmt_t(init_t { slot_t { slot }, std::move(value) });
 }
 
 stmt_t

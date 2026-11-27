@@ -32,6 +32,8 @@ struct expr_t::interface_t
     virtual value_t value(arm64::state_t &, unsigned wanted) const = 0;
     virtual void effect(amd64::state_t &) const = 0;
     virtual void effect(arm64::state_t &) const = 0;
+    virtual void initialize(amd64::state_t &, slot_t where) const = 0;
+    virtual void initialize(arm64::state_t &, slot_t where) const = 0;
     virtual void branch(amd64::state_t &, int label, bool sense) const = 0;
     virtual void branch(arm64::state_t &, int label, bool sense) const = 0;
 
@@ -46,17 +48,11 @@ struct expr_t::interface_t
     // the builders: self is the handle that holds this node, which a
     // builder returns, or erases a part into, without a copy of the node
     virtual expr_t rvalue(const expr_t &self) const = 0;
-    virtual stmt_t init(slot_t where, const expr_t &self) const = 0;
     virtual expr_t unary(unary_op_t op, const expr_t &self) const = 0;
 
-    // an assignment, the second hop of 3.3: the value's model, which
-    // knows the value's class, calls the place's operation for that
-    // class, which knows the place's type and makes the node
+    // an assignment: the place's model, which knows the place's type,
+    // makes the node
     virtual bool is_assignable() const = 0;
-    virtual expr_t assigned_to(const expr_t &place,
-                               const expr_t &self) const = 0;
-    virtual expr_t assign(const literal_t &value) const = 0;
-    virtual expr_t assign(const zero_t &value) const = 0;
     virtual expr_t assign(const expr_t &value) const = 0;
 
     // a binary operator, by the same two hops: the right operand's
@@ -87,10 +83,10 @@ struct expr_t::interface_t
     binary(binary_op_t op, const expr_t &rhs, const expr_t &self) const = 0;
 };
 
-// The rows of a held node, by overload and by the state's namespace:
-// a member named value, effect, branch, value_branch, pinned_within
-// or moved_within would hide them.  A value's row is handed the
-// target's hint, the registers the consumer names.
+// The rows of a held node, by overload and by the state's namespace: a
+// member named value, effect, initialize, branch, value_branch,
+// pinned_within or moved_within would hide them.  A value's row is
+// handed the target's hint, the registers the consumer names.
 template< typename S, typename T >
 value_t
 fwd_value(S &s, const T &t, unsigned wanted)
@@ -117,6 +113,13 @@ void
 fwd_value_branch(S &s, const T &t, int label, bool sense)
 {
     value_branch(s, t, label, sense);
+}
+
+template< typename S, typename T >
+void
+fwd_initialize(S &s, slot_t where, const T &t)
+{
+    initialize(s, where, t);
 }
 
 template< typename S, typename T >
@@ -157,9 +160,9 @@ fwd_unary(unary_op_t op, const A &arg, const expr_t &self)
     }
 }
 
-// A value as a builder keeps it in the node it makes, by the classes of
-// value a target has a niche for: a literal_t and a zero_t by their
-// types, anything else erased, the handle that holds it.
+// A constant as a builder keeps it in the node it makes, by the classes
+// a target has a niche for: a literal_t and a zero_t by their types,
+// anything else erased, the handle that holds it.
 template< typename T >
 const expr_t &
 classed(const T &, const expr_t &self)
@@ -321,6 +324,16 @@ struct expr_t::model_t final: interface_t
         fwd_value_branch(s, held, label, sense);
     }
 
+    void initialize(amd64::state_t &s, slot_t where) const override
+    {
+        fwd_initialize(s, where, held);
+    }
+
+    void initialize(arm64::state_t &s, slot_t where) const override
+    {
+        fwd_initialize(s, where, held);
+    }
+
     unsigned pinned_within(const amd64::state_t &s) const override
     {
         return fwd_pinned_within(s, held);
@@ -336,11 +349,6 @@ struct expr_t::model_t final: interface_t
         return fwd_rvalue(held, self);
     }
 
-    stmt_t init(slot_t where, const expr_t &self) const override
-    {
-        return make_init(where, classed(held, self));
-    }
-
     expr_t unary(unary_op_t op, const expr_t &self) const override
     {
         return fwd_unary(op, held, self);
@@ -349,21 +357,6 @@ struct expr_t::model_t final: interface_t
     bool is_assignable() const override
     {
         return assignable< T >;
-    }
-
-    expr_t assigned_to(const expr_t &place, const expr_t &self) const override
-    {
-        return place.self->assign(classed(held, self));
-    }
-
-    expr_t assign(const literal_t &value) const override
-    {
-        return fwd_assign(held, value);
-    }
-
-    expr_t assign(const zero_t &value) const override
-    {
-        return fwd_assign(held, value);
     }
 
     expr_t assign(const expr_t &value) const override

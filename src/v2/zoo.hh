@@ -97,14 +97,12 @@ struct top_t
 };
 
 // x = e, 6.5.17.2: the value stored in the place, whose value after the
-// store is the expression's, 6.5.17.1p3.  The value's type is a
-// literal_t's or a zero_t's where a target has a niche for it, else
-// erased.
-template< typename V = expr_t >
+// store is the expression's, 6.5.17.1p3.  The value is erased: its
+// store is a row of its handle, which finds a target's niche.
 struct assign_t
 {
     slot_t where;
-    V value;
+    expr_t value;
 };
 
 // e;, 6.8.4p2: the expression evaluated for its effect, its value
@@ -141,13 +139,11 @@ struct decl_t
 
 // int x = e;, a declaration with an initializer, 6.7.11p12: the slot
 // taken, then the value stored in it.  An initialization, not an
-// assignment (4.5); the value's type is a literal_t's or a zero_t's
-// where a target has a niche for it, else erased.
-template< typename V = expr_t >
+// assignment (4.5); the value is erased, as an assignment's is.
 struct init_t
 {
     slot_t where;
-    V value;
+    expr_t value;
 };
 
 // A compound statement, 6.8.3: its items in order, erased, since their

@@ -302,9 +302,8 @@ pinned_within(const state_t &s, const top_t< op > &t)
     return pinned_within(s, t.node);
 }
 
-template< typename V >
-unsigned
-pinned_within(const state_t &s, const assign_t< V > &a)
+inline unsigned
+pinned_within(const state_t &s, const assign_t &a)
 {
     return pinned_within(s, a.value);
 }
@@ -365,9 +364,8 @@ moved_within(const state_t &s, const top_t< op > &t)
     return moved_within(s, t.node);
 }
 
-template< typename V >
-unsigned
-moved_within(const state_t &s, const assign_t< V > &a)
+inline unsigned
+moved_within(const state_t &s, const assign_t &a)
 {
     return moved_within(s, a.value);
 }

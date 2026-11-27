@@ -43,7 +43,8 @@ value(S &s, const top_t< op > &t, unsigned wanted = 0)
 
 // The store row of an initializer, rcc's initialize(), chapter 6.6: the
 // value in a register, stored into the slot, released.  The targets'
-// niches store a constant with no register held.
+// niches store a constant with no register held, found by overload on
+// the value's type, which the handle's row, the entry point, knows.
 template< typename S, typename V >
 void
 initialize(S &s, slot_t where, const V &e)
@@ -65,9 +66,9 @@ effect(S &s, const T &t)
 // An assignment for its effect is the store of an initializer, so
 // x = 7; writes what int x = 7; writes, and each target's niche of
 // initialize() serves both.
-template< typename S, typename V >
+template< typename S >
 void
-effect(S &s, const assign_t< V > &a)
+effect(S &s, const assign_t &a)
 {
     initialize(s, a.where, a.value);
 }
@@ -166,9 +167,9 @@ value(S &s, const binary_t< op, L, R > &b, unsigned = 0)
 // register, which holds the place's value after the store, 6.5.17.1p3,
 // the node's value.  So a constant goes through a register here, on
 // x86-64 too, and 0 is no store of wzr.
-template< typename S, typename V >
+template< typename S >
 value_t
-value(S &s, const assign_t< V > &a, unsigned wanted = 0)
+value(S &s, const assign_t &a, unsigned wanted = 0)
 {
     const value_t v = value(s, a.value, wanted);
     store(s, reg_of(s, v), a.where);
