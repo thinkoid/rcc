@@ -22,6 +22,39 @@ assembles and links. The reasons are =docs/findings.md= and
 in =docs/design-calls.md=. The chapter holds c1's own defects on both
 targets; the second target's design is =docs/aarch64.md=.
 
+** TODO x86-64: a row of 2 GiB or more under a variable index is multiplied by an immediate no instruction holds
+
+~int f(int m[][600000000], int i) { return m[i][0]; }~ compiles
+with status 0 on x86-64 to =imulq $2400000000, %rcx, %rcx=, whose
+immediate does not fit the 32 bits the instruction takes: the
+assembler refuses the listing, "invalid operand for instruction".
+=unscaled_index()= and =index_first()= in =src/c1-x86-64.cc= write
+the size of the row as the immediate without asking whether it fits.
+=stride()= asks, and refuses such a size as not yet, "an element of
+2 GiB or more", which is what the same function with a constant row,
+~m[1][0]~, draws.  aarch64 compiles both.
+
+Fix: the two functions take the size from =stride()=, or refuse it
+as it does.
+
+Check: an error program of the function on x86-64, with =stride()='s
+words, and no listing of =tests= changes.
+
+** TODO A generator's not yet is reported as an internal error
+
+A construct the parser does not compile yet is an error at its
+token, ~file:line:col: error: not yet: ...~, status 1.  One a
+generator refuses, as the row of 2 GiB above, is ~rcc: internal
+error: c1: not yet: an element of 2 GiB or more, in function 'f'~,
+status 3: no position, and the words of a defect of the compiler
+for a program it knowingly does not compile.
+
+Fix: none taken; a generator's not yet is reported as the parser's
+is, at the function's position at least, with status 1.
+
+Check: the error programs of =tests/error= whose refusal is a
+generator's, each pinned without "internal error".
+
 ** TODO A returned ~?:~ whose arms store through a call's result moves each into the result register
 
 A returned conditional joins in the result register: on aarch64 at
