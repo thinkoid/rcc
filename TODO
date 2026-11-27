@@ -20,43 +20,33 @@ The second design of the tree and of the generators,
 other chapters are about. The chapter holds its own defects. What it
 does not compile yet is no defect, and =make sides= counts it.
 
-** TODO The unit that instantiates the models takes minutes and 12 GB to compile
+** TODO Each class of operand still multiplies what the instantiating unit costs
 
 =src/v2/build.cc= instantiates every node type a builder can make,
-with its rows of both targets. With the integer types that is about
-2,500 binary node types: the unit takes the compiler over two minutes
-and 12.3 GB at its peak, where it took 12 seconds before them, and
-=rcc-v2= with its debugging information is 571 MB where it was 49.
-Each further class of operand, a global's where or a pointer,
-multiplies the types again, and without the rule that a type no
-builder can make is not instantiated (=operand_at()=, =model.hh=) the
-compile passed 23 GB.
+with its rows of both targets: about 2,500 binary node types. It
+took the compiler 136 s and 12.3 GB. With the builders' crossings
+instantiated once for each class of operand, and the handle's
+=shared_ptr= one for every model, it takes about 40 s and 4 GB, and
+=rcc-v2= is 162 MB where it was 571. Each further class of operand,
+a global's where or a pointer, still multiplies the types, at about
+15 ms a type.
 
-The fix is not chosen. The candidates that change no node type: the
-functions of a model that do not depend on its type written once;
-the unit's own flags for its debugging information; several
-instantiating units by operator family, built in parallel, each
-including the one header of every row, so that no two see different
-overloads. Two more change the zoo, and =docs/typed-tree.md=
-principle 5 with it: a class of operand kept only where a row of
-either target reads it; the operator's family as the node's parameter
-and the operator as data.
+Measured and not taken, each changing no node type and no listing:
+line tables alone as the unit's debugging information (5 s and 0.7
+GB less, =rcc-v2= 97 MB; a debugger then shows no variable in a row
+that is a template); the models' members naming their free functions
+by a using-declaration, without the =fwd_= forwarders (a tenth of
+what is left); the derived entry points of a type with no niche
+written once (about a fifth, but the rows call those primaries on
+concrete operands, so the rows' text changes); several instantiating
+units by operator family (wall time alone). Counted and not built,
+two that change the zoo and =docs/typed-tree.md= principle 5 with
+it: a class of operand kept only where a row of either target reads
+it, 2,346 binary models to 460; the operator's family as the node's
+parameter, to 635; both, 75.
 
 The check: the time and the peak memory of =build.o=, before and
 after, and every listing of =make sides= and of a corpus unchanged.
-
-** TODO The models' instantiation nests close to the compiler's limit
-
-Classing the left operand inside the operator's crossing in
-=fwd_binary()=, =src/v2/model.hh=, passed clang's default
-=-ftemplate-depth= of 1024; the form that is there, a test in the
-innermost lambda, compiles. One more nested crossing may pass it
-again. The cause is not established. A lead: the crossings of
-=operators.hh= and their lambdas return a deduced type, and deducing
-it instantiates the callee where it is named, so a model's builders
-may instantiate the next model inside the first.
-
-The check: =build.cc= compiles with =-ftemplate-depth=256=.
 
 * The back end
 
