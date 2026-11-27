@@ -191,6 +191,29 @@ generators for the sites above.
 Check: those sites with no clearing move, =unsigned_int_called()=
 with its own, and no function longer.
 
+** TODO An unsigned narrow object converted to =unsigned= and widened is cleared again
+
+=converted()= caps the width a value is valid to at its target's,
+and restores it to 64 bits only for a signed object under a
+conversion to =unsigned= (=c1-x86-64.cc=, =c1-aarch64.cc=: "its
+32-bit write the zero extension of the unsigned"). An =unsigned
+char= or an =unsigned short= loaded by =movzbl= or =ldrb= has the
+same 32-bit write and is left valid to 32, so a consumer that widens
+it clears it again: ~long f(void) { unsigned u; unsigned char c;
+return u = c; }~ is =movzbl -5(%rbp), %eax; movl %eax, -4(%rbp); movl
+%eax, %eax= and =ldrb w0, [x29, #20]; str w0, [x29, #16]; mov w0,
+w0=, where the same function on a =signed char= writes no third
+instruction. A truth value converted to =unsigned= is the same, and
+so is the join of a =?:= of such arms. =backend.md= 6.3 says a
+widening extends only a value not valid to the new width. One
+instruction each, never a wrong value.
+
+Fix: the restore for a load of either sign, and for a truth value:
+each is a 32-bit write of the generator's.
+
+Check: the function above in two instructions on each target, its
+=signed char= twin unchanged, and no function longer.
+
 ** TODO A statement expression that saves nothing is still read as a call ahead
 
 The walks that look ahead of an operand, and the test of a register
