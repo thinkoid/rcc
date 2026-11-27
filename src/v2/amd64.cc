@@ -21,6 +21,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace rcc::amd64 {
@@ -587,12 +588,12 @@ pin_division(
 // rax, where left is another register (6.1); any other quotient goes
 // back into left, movl %eax, %ecx.
 value_t
-divided(state_t &s,
-        binary_op_t op,
-        value_t l,
-        reg_t left,
-        int width,
-        unsigned wanted)
+division_value(state_t &s,
+               binary_op_t op,
+               value_t l,
+               reg_t left,
+               int width,
+               unsigned wanted)
 {
     const bool stays = left != rax && wanted_register(s, wanted) == rax;
     if (is_remainder(op) || stays) {
@@ -840,7 +841,7 @@ multiply(state_t &s,
 }
 
 // rcc's divide() by a held divisor: the division, pin_division(), the
-// divisor consumed, then the value, divided().
+// divisor consumed, then the value, division_value().
 value_t
 divide(state_t &s,
        binary_op_t op,
@@ -852,7 +853,7 @@ divide(state_t &s,
     const reg_t left = pin_division(s, op, l, r, width(view));
     release(s, r);
 
-    return divided(s, op, l, left, width(view), wanted);
+    return division_value(s, op, l, left, width(view), wanted);
 }
 
 // rcc's divide() by an object in memory: the division, the address
@@ -868,7 +869,7 @@ divide(state_t &s,
     const reg_t left = pin_division(s, op, l, divisor, width(view));
     release(s, divisor);
 
-    return divided(s, op, l, left, width(view), wanted);
+    return division_value(s, op, l, left, width(view), wanted);
 }
 
 // rcc's shift() for a held count, chapter 6.5: the count's register,
@@ -901,6 +902,12 @@ compare(state_t &s, value_t l, std::string_view source, view_t view)
     const int bits = width(view);
 
     insn(s, sized("cmp", bits), { source, reg(reg_of(s, l), bits) });
+}
+
+void
+compare(state_t &s, value_t l, long long constant, view_t view)
+{
+    compare(s, l, immediate_at(constant, view), view);
 }
 
 // cmpl %ecx, %eax: operands() asks for r's register first, then l's.
@@ -1065,6 +1072,65 @@ call_pins(const state_t &s, const std::vector< argument_t > &args)
         pinned |= pinned_within(s, a.value);
 
     return pinned;
+}
+
+// switches
+
+void
+equal_jump(state_t &s, value_t v, long long value, int label)
+{
+    compare(s, v, value, view_t::i32);
+    jump_if(s, binary_op_t::eq, label);
+}
+
+// The sub row writes ZF, which the bounds check's cmp after it writes
+// again.
+value_t
+subtracted(state_t &s, value_t v, long long first)
+{
+    operate(s, binary_op_t::sub, reg_of(s, v), immediate_at(first, view_t::i32),
+            view_t::i32);
+
+    return v;
+}
+
+// The table's register is taken after the extension, so it is the
+// lowest free outside the index's: rcx after an index in eax, rax after
+// one in edx.
+void
+table_jump(state_t &s, value_t index, int valid, int table)
+{
+    if (valid < 64)
+        index =
+            extended(s, index, view_t::i32, sign_t::unsigned_, view_t::i64, 0);
+
+    const value_t base = fresh(s);
+    const std::string r = reg(reg_of(s, base), 64);
+    insn(s, "leaq",
+         { std::format("{}(%rip)", label_name(s.function, table)), r });
+    insn(s, "jmp", { std::format("*({},{},8)", r, reg(reg_of(s, index), 64)) });
+
+    release(s, base);
+    release(s, index);
+
+    s.terminated = true;
+}
+
+// The divisor is generated as a constant's value with rax and rdx left
+// for last, rvalue_avoiding(), and the division is pin_division()'s of
+// an unsigned dividend, which moves a value held in rdx to rax first:
+// movl %edx, %eax for a remainder switched on.
+std::pair< value_t, value_t >
+divided(state_t &s, value_t v, long long size)
+{
+    const value_t d = rvalue_avoiding(s, literal_t< view_t::i32 > { size },
+                                      bit(rax) | bit(rdx));
+    pin_division(s, binary_op_t::udiv, v, d, 32);
+
+    release(s, d);
+    release(s, v);
+
+    return { hold(s, rax), hold(s, rdx) };
 }
 
 // The value goes to the convention's result register, 7.2, rcc's

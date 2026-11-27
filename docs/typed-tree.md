@@ -7,24 +7,24 @@ states the design: the idea, its principles, its idioms and its
 architecture. It leaves the details to the code.
 
 Of the design the tree has a thin line through every joint: a unit of
-functions and of objects, declared and defined in any order,
-`static`, `extern` or neither, at file scope or a block's `static`
-and `extern`; the objects of the integer types from `char` to
-`unsigned long long`, initialized by an integer constant expression
-or not, read and assigned in every expression, defined before their
-use, after it or nowhere in the unit, their data written after the
-functions; the functions of a result of any
-integer type or `void` and of parameters of any integer type, whose
-locals are of the integer types, declared, assigned and returned,
-with parentheses, the casts, the unary operators `+ - ~ !`,
-`+ - * / % << >> & | ^`, the comparisons, `&&`, `||` and calls of
-functions of a result of any integer type or `void`, to any depth,
-and the statements `if`, `else`, `while`, `do`, `for` with a
+functions and of objects, declared and defined in any order, `static`,
+`extern` or neither, at file scope or a block's `static` and `extern`;
+the objects of the integer types from `char` to `unsigned long long`,
+initialized by an integer constant expression or not, read and
+assigned in every expression, defined before their use, after it or
+nowhere in the unit, their data written after the functions; the
+functions of a result of any integer type or `void` and of parameters
+of any integer type, whose locals are of the integer types, declared,
+assigned and returned, with parentheses, the casts, the unary
+operators `+ - ~ !`, `+ - * / % << >> & | ^`, the comparisons, `&&`,
+`||` and calls of functions of a result of any integer type or `void`,
+to any depth, and the statements `if`, `else`, `switch` on an `int`
+with its `case` and `default` labels, `while`, `do`, `for` with a
 declaration or an expression first, `break`, `continue`, `goto` and
 labels, and `return` with a value or without, on both targets. Each
-mechanism below was compiled and run in a small model first; chapter
-5 says what the models showed and chapter 6 what nothing has shown.
-A statement marked *working* is a position taken and run, not yet
+mechanism below was compiled and run in a small model first; chapter 5
+says what the models showed and chapter 6 what nothing has shown. A
+statement marked *working* is a position taken and run, not yet
 agreed.
 
 ## 1. The idea
@@ -256,6 +256,11 @@ call_t &, long)` and comes back as a member of a call.
   rcc's `pinned_by()` reads through a cast. It is a class and no
   node: a builder that returns the operand itself returns the node
   inside.
+- A builder may answer a question about constants and make the answer
+  a parameter. A `switch`'s builder sorts its cases and asks rcc's
+  `dispatch_of()` of them once, and `switch_t< form, defaulted,
+  broken >` is the answer: the form of the dispatch, whether a
+  default stands in the switch, whether a `break` of it does.
 - A class crosses the interface as data. A view or a sign as a type
   would make one operation of the interface for each, so the right
   operand's class is handed to the left operand's model with its
@@ -511,10 +516,12 @@ Three things are kept apart: the value, the fold and a stage.
 - The value is asked: `value_of()`, a free function, each node's from
   its operands'. It is the value the constant's register holds, read
   as a signed number of 32 bits or more: a narrow constant's
-  promotion, an `unsigned` 4294967295 as -1. A case label and an
-  array bound need it early, and will ask it through the model. They
-  do not need the fold. So far it is written for the constant types,
-  and a builder that folds asks it.
+  promotion, an `unsigned` 4294967295 as -1. A case label and an array
+  bound need it early, and do not need the fold: a case label asks it
+  through the handle, `constant_of()`, of its constant converted to
+  the promoted type of the controlling expression, and warns of the
+  parser's mark of an overflow; an array bound will. So far it is
+  written for the constant types, and a builder that folds asks it.
 - An initializer of an object at file scope asks the value through
   the handle, `constant_of()`: the builders' fold of a constant
   expression is a constant node, as rcc's evaluator's is a literal,
@@ -574,6 +581,15 @@ technique.
   jump. The row is the condition's jump to that label where the
   condition is nonzero; it asks the label before the condition's
   jump, since a `goto`'s label is taken where it is first met.
+- A `switch` is `switch_t< form, defaulted, broken >`. The form of
+  its dispatch is the builder's, from its sorted cases; whether it
+  has a default and whether a `break` of it stands in its body
+  decide whether its end is placed. Its cases are data, each a value
+  and a label's number. A `case` or `default` label is
+  `case_label_t`, a statement of the body, placed where it is
+  written. The dispatches are rcc's, written once over each target's
+  `equal_jump()`, `subtracted()`, `table_jump()` and `divided()`, and
+  the table's text is the same on both.
 - A C label is a statement, `label_t`, placed where it is written,
   as a block item of its own, so it may stand before a declaration
   or a closing brace; a `goto` is `goto_t`, one jump. Where a
@@ -677,19 +693,22 @@ technique.
 *Working.* There are two contexts, and the state.
 
 - **The parser's, while the tree is built.** The names, the C types,
-  and the loops around the parse. A loop has a number, given as a
-  local's is, and the parser's function for a loop is the accumulator:
-  when it has read the body it knows whether a `break` or a `continue`
-  of the loop stands in it. `break` and `continue` are rcc's two
-  types, `break_t` and `continue_t`, each naming its loop's number. A
-  loop's row takes its labels at rcc's moments and records the two
-  under its number before the body, in the state's `breaks` and
-  `continues`, which the two types' rows read. A C label is a number
-  the parser gives its name at its first meeting, a `goto` or its
-  definition, and the state gives it a label at rcc's moment: the
-  first of its definition, a `goto` to it, or an `if` whose then part
-  is that `goto`. That every `goto` names a label the function defines
-  is checked at the function's end. Generation holds nothing of the
+  and the loops and switches around the parse. A loop or a switch has
+  a number, given in one count as a local's is, so the innermost of
+  the open ones is the one of the larger number, and the parser's
+  function for a loop is the accumulator: when it has read the body it
+  knows whether a `break` or a `continue` of the loop stands in it.
+  `break` and `continue` are rcc's two types: `break_t` names the
+  innermost loop or switch, and `continue_t` the innermost loop, past
+  any switch between. A loop's row takes its labels at rcc's moments
+  and records the two under its number before the body, in the state's
+  `breaks` and `continues`, which the two types' rows read; a switch's
+  row records its end in `breaks`. A C label is a number the parser
+  gives its name at its first meeting, a `goto` or its definition, and
+  the state gives it a label at rcc's moment: the first of its
+  definition, a `goto` to it, or an `if` whose then part is that
+  `goto`. That every `goto` names a label the function defines is
+  checked at the function's end. Generation holds nothing of the
   statements around the one generated. This stands on each statement
   being generated once.
 - **An expression's, at generation.** A wanted register, a jump's
@@ -700,15 +719,16 @@ technique.
   or `||`; the registers left for last while an operand is generated
   or an assignment's place is formed, and on x86-64 those an
   instruction generated later would move a held value out of; the
-  labels, each loop's two by its number and each C label's once met,
-  and whether a path reaches what is written next; on x86-64 the width
-  at which the last instruction set ZF from its value, and whether the
-  function calls, which moves `rsp` below any frame; the frame. A
-  value held across a call is state: the call's row spills every held
-  value at its start and asks the tree nothing. The state holds no
-  width of a value: what a held value's register is valid to is its
-  node's summary (4.2). It holds the names of the objects the unit
-  defines, which a global's address reads.
+  labels, each loop's two and each switch's end by its number, each
+  `case` and `default` label's by its number, and each C label's once
+  met, and whether a path reaches what is written next; on x86-64 the
+  width at which the last instruction set ZF from its value, and
+  whether the function calls, which moves `rsp` below any frame; the
+  frame. A value held across a call is state: the call's row spills
+  every held value at its start and asks the tree nothing. The state
+  holds no width of a value: what a held value's register is valid to
+  is its node's summary (4.2). It holds the names of the objects the
+  unit defines, which a global's address reads.
 
 ### 4.7 Two targets
 
@@ -778,7 +798,7 @@ with rcc, and nothing else.
 | `rows-expressions.hh`, `rows-statements.hh` | the rows both targets write alike: the primaries of an effect and of a jump, `!`, `&&` and `\|\|`, and the statements |
 | `register-stack.hh` | which register or spill slot holds which value, and the values held across a branch, as templates over a target's state |
 | `amd64.*`, `arm64.*` | a target: its registers, its state, its address of an object in memory, its rows, its frame |
-| `assembly.*` | the text both targets write alike: an instruction, a label, the `.file` string, a symbol's binding, the unit's data and the names of the objects it defines |
+| `assembly.*` | the text both targets write alike: an instruction, a label, the `.file` string, a symbol's binding, a switch's table, the unit's data and the names of the objects it defines |
 | `generate.*`, `pipeline.cc` | the back end's entry, and the pipeline |
 
 ### 4.9 The questions rcc's rows ask
@@ -817,6 +837,12 @@ each became.
 | `user_label()` | the state's labels of the C labels met, taken by a `goto`'s `label_of()` and by the label's own row |
 | a `for` without a condition, a loop broken or continued | parameters of the loop's node |
 | the loops around a statement | the parser's; a loop's two labels are in the state, by its number |
+| `dispatch_of()`, `sorted_cases()` | the builder, and `switch_t`'s parameter |
+| `table_size()`, `case_offset()`, `case_range()` | computations of the builder and the rows on the cases |
+| `number_case_labels()` | the switch's row |
+| `innermost_breakable()`, `innermost_loop()` | the parser's |
+| `extended()` in `table_jump()` | x86-64's `table_jump()` reads `valid_of()` of the controlling expression, or a subtraction's 32-bit unsigned write |
+| `break_target()`, `continue_target()`, a record's `broken` | the parser's `jump_target_t`, the parameters of `switch_t` and of the loops, and the state's `breaks` and `continues` |
 | `arithmetic_immediate()`, `bitmask_immediate()` | an `if` in the row: one target's encoding of its own leaf (principle 2) |
 | `wanted_left()`, `held_out()`, `right_written()`, `written_in_right()` | rcc's functions, unchanged: they read the state and the summaries |
 
@@ -919,6 +945,9 @@ rows invented for the purpose.
 - x86-64's record of ZF. In every row the tree has, the instruction
   that sets ZF is the row's last, so the `cmp` the record guards is
   never written.
+- The other integer types under `switch`: an unsigned order of the
+  cases, a range and a hash at 64 bits, a case past a 32-bit
+  immediate.
 - Records by value, and floating point as a register class.
 - aarch64's forms through `x16`, for a slot, a parameter or an
   outgoing argument past the reach of its access. A global's `adrp

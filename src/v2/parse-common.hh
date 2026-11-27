@@ -99,6 +99,22 @@ struct label_name_t
     bool defined = false;
 };
 
+// What the parser holds of a switch whose body is being read, rcc's
+// open_switch_t: what it knows of the switch, its number among the
+// function's loops and switches and whether a break of it stands in its
+// body; its cases in the order they are written; the token of each
+// value's first case, by the value after the conversion, for the error
+// of a second, 6.8.5.3p3; and the number of its default label and the
+// label's token, or none.
+struct open_switch_t
+{
+    jump_target_t target;
+    std::vector< case_t > cases = { };
+    std::unordered_map< long long, const token_t * > values = { };
+    std::optional< int > default_ = std::nullopt;
+    const token_t *default_at = nullptr;
+};
+
 // The state of one parse: the tokens and the position in them; the
 // target, whose plain char the parser makes; the warnings, a list the
 // driver owns; the unit, filled as its functions and objects are
@@ -109,9 +125,12 @@ struct label_name_t
 // defined, for its return statements; the scopes open where the parse
 // stands, innermost last, the function's blocks' and a parameter
 // list's; the count of the locals the function has declared, which
-// numbers the next one; the loops whose bodies are being read,
-// innermost last, with the count of the function's loops, which numbers
-// the next one (docs/typed-tree.md 4.6); the function's C labels by
+// numbers the next one; the loops and the switches whose bodies are
+// being read, each innermost last, with the count of the function's
+// loops and switches, which numbers the next of either, so the
+// innermost of the two is the one of the larger number
+// (docs/typed-tree.md 4.6), and the count of the function's case and
+// default labels, which numbers the next; the function's C labels by
 // their names, their count numbering the next one, with the name of
 // each goto in the order they are written, for the function's end to
 // require their labels; the function's name, and the count of its
@@ -133,8 +152,10 @@ struct parser_t
     type_t result = { };
     std::vector< scope_t > scopes = { };
     int locals = 0;
-    std::vector< loop_t > loops = { };
+    std::vector< jump_target_t > loops = { };
+    std::vector< open_switch_t > switches = { };
     int loop_count = 0;
+    int case_labels = 0;
     std::unordered_map< std::string_view, label_name_t > labels = { };
     std::vector< const token_t * > gotos = { };
     std::string_view function = { };
@@ -194,6 +215,10 @@ const token_t &expect(parser_t &p, tok_t kind, std::string_view message);
 
 // int as the parser makes it: 32 bits, signed, of the kind int.
 type_t int_type();
+
+// The integer promotions, 6.3.1.1p2, rcc's promoted(): the type an
+// operand of the type t is promoted to.
+type_t promoted(const type_t &t);
 
 // The machine's view of an integer type, its width, and its sign, the
 // one place the parser maps a C type to the machine's
@@ -292,6 +317,7 @@ bool overflowed(unary_op_t op,
 void warn_overflowed(parser_t &, const token_t &at, const operand_t &e);
 
 // 6.5, parse-expressions.cc
+operand_t conditional_expression(parser_t &);
 operand_t assignment_expression(parser_t &);
 operand_t expression(parser_t &);
 

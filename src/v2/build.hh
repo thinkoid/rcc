@@ -5,7 +5,8 @@
 // handle; build.cc defines them, where the node types and the models
 // are seen, so a builder is where a part's type becomes the node's.  A
 // local is passed as its number among the function's, which the parser
-// counts from 0 in the order it declares them, and so is a loop.
+// counts from 0 in the order it declares them, and so is a loop or a
+// switch.
 
 #pragma once
 
@@ -92,10 +93,13 @@ stmt_t make_block(std::vector< stmt_t > items);
 stmt_t make_if(expr_t cond, stmt_t then);
 stmt_t make_if_else(expr_t cond, stmt_t then, stmt_t otherwise);
 
-// What the parser knows of a loop once it has read its body (4.4,
-// 4.6): its number, and whether a break and a continue of it stand in
-// the body, which picks the labels its row places.
-struct loop_t
+// What the parser knows of a loop or a switch once it has read its body
+// (4.4, 4.6), rcc's jump_target_t: its number, counted with the other's,
+// since a break leaves either, 6.8.7.4p2, and whether a break and a
+// continue of it stand in the body, which picks the labels its row
+// places.  A continue passes through a switch, 6.8.7.3p2, so none is a
+// switch's.
+struct jump_target_t
 {
     int id;
     bool broken = false;
@@ -107,14 +111,42 @@ struct loop_t
 // that omits its condition is the overload without one.  The init and
 // the step are statements, an expression statement or the null
 // statement where the clause is omitted.
-stmt_t make_while(expr_t cond, stmt_t body, const loop_t &loop);
-stmt_t make_do(stmt_t body, expr_t cond, const loop_t &loop);
-stmt_t make_for(
-    stmt_t init, expr_t cond, stmt_t step, stmt_t body, const loop_t &loop);
-stmt_t make_for(stmt_t init, stmt_t step, stmt_t body, const loop_t &loop);
+stmt_t make_while(expr_t cond, stmt_t body, const jump_target_t &loop);
+stmt_t make_do(stmt_t body, expr_t cond, const jump_target_t &loop);
+stmt_t make_for(stmt_t init,
+                expr_t cond,
+                stmt_t step,
+                stmt_t body,
+                const jump_target_t &loop);
+stmt_t
+make_for(stmt_t init, stmt_t step, stmt_t body, const jump_target_t &loop);
 
-// break; and continue; of the loop numbered loop, 6.8.7.4, 6.8.7.3.
-stmt_t make_break(int loop);
+// A case of a switch as the parser hands it over, rcc's case_t: its
+// constant's value, converted to the promoted type of the controlling
+// expression, 6.8.5.3p5, and its label's number among the function's
+// case and default labels, which the parser counts from 0 in the order
+// they are written.
+struct case_t
+{
+    long long value;
+    int label;
+};
+
+// switch (cond) body, 6.8.5.3, of a controlling expression promoted, its
+// cases in the order they are written, the number of its default label
+// or none, and what the parser knows of it once it has read the body;
+// and a case or a default label, placed where it is written, by its
+// number.
+stmt_t make_switch(expr_t cond,
+                   stmt_t body,
+                   std::vector< case_t > cases,
+                   std::optional< int > default_,
+                   const jump_target_t &target);
+stmt_t make_case_label(int label);
+
+// break; of the loop or the switch numbered target, and continue; of the
+// loop numbered loop, 6.8.7.4, 6.8.7.3.
+stmt_t make_break(int target);
 stmt_t make_continue(int loop);
 
 // L: and goto L; of the C label numbered label among the function's,

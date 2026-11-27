@@ -52,10 +52,12 @@ bit(reg_t r)
 // (backend.md 7.2).  zero_flag is the width at which the last
 // instruction written set ZF from the value it computed, flagged()'s,
 // or 0, until the next instruction or label: a jump on that value at
-// that width then needs no cmp (7.1).  breaks and continues are the
-// labels each loop generated so far took for the breaks and for the
-// continues of its body, by the loop's number, and user_labels the
-// label of each C label the generation has met so far, by its number.
+// that width then needs no cmp (7.1).  breaks is the label each loop
+// and switch generated so far took for the breaks of its body, by its
+// number, and continues each loop's for its continues; cases is the
+// label of each case and default label of those switches, by the
+// label's number, and user_labels the label of each C label that the
+// generation has met so far, by the number the parser gave its name.
 // frame is the bytes the slots take below rbp, the locals' and the
 // spills' in the order they are taken, and slots each local's
 // displacement off rbp, by its number; calls says that the function
@@ -76,6 +78,7 @@ struct state_t
     int zero_flag = 0;
     std::unordered_map< int, int > breaks { };
     std::unordered_map< int, int > continues { };
+    std::unordered_map< int, int > cases { };
     std::unordered_map< int, int > user_labels { };
 
     long frame = 0;
@@ -921,6 +924,11 @@ value(state_t &s, const binary_t< op, V, L, C > &b, unsigned wanted = 0)
 void compare(state_t &, value_t l, value_t r, view_t view);
 void compare(state_t &, value_t l, std::string_view source, view_t view);
 
+// cmp of a constant and the held value l at the view, the constant the
+// immediate written at the view, immediate_at(), cmpl $2, %eax; l stays
+// held.
+void compare(state_t &, value_t l, long long constant, view_t view);
+
 // cmp of an immediate and the object at an address at the view, rcc's
 // condition_on(): the object compared in place, cmpl $5, -4(%rbp), cmpl
 // $5, (%rax), and no register holds it; the address is consumed.
@@ -1307,6 +1315,37 @@ value(state_t &s, const call_t< V > &c, unsigned = 0)
 
     return v;
 }
+
+// The pieces of a switch's dispatch on an int, backend.md 7.3, which
+// the dispatches of rows-statements.hh are written over, as rcc's
+// direct_switch(), simple_switch() and hash_switch() are.
+
+// A case's test, rcc's equal_jump(): the cmp of the held value v and the
+// case's value, cmpl $5, %eax, then je to its label; v stays held.  The
+// Seventh Edition compiler tested a 0 where it compared another value;
+// this machine's test of zero is the same row, cmpl $0, %eax (7.1).
+void equal_jump(state_t &, value_t v, long long value, int label);
+
+// The first value of a direct switch subtracted from the held value v,
+// rcc's arithmetic() of the sub row by its immediate, subl $1, %eax, in
+// v's register; the value is v's.
+value_t subtracted(state_t &, value_t v, long long first);
+
+// The jump through a switch's table by a held index, rcc's table_jump():
+// the index extended to 64 bits as an unsigned value, movl %eax, %eax,
+// where valid, the width its register is valid to, says that no 32-bit
+// write of an unsigned value left it so, rcc's extended(); the table's
+// address PC-relative, leaq .Lf.8(%rip), %rcx, in the lowest free
+// register; and the jump through its entry, jmp *(%rcx,%rax,8), after
+// which no path reaches what is written next.  The index is consumed.
+void table_jump(state_t &, value_t index, int valid, int table);
+
+// The division of a hash switch, rcc's divided(): the unsigned division
+// row by the table's size, held in a register as the divisor of x / 7
+// is, outside rax and rdx, movl $3, %ecx, xorl %edx, %edx and divl %ecx;
+// both results kept, the quotient in rax and the remainder in rdx, as
+// the instruction leaves them.  v is consumed.
+std::pair< value_t, value_t > divided(state_t &, value_t v, long long size);
 
 // The value of a return, of the result's view, moved to the result
 // register where its row left it elsewhere, then the jump to the

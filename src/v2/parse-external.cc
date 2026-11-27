@@ -225,10 +225,11 @@ require_labels(const parser_t &p)
 // A definition of the function, declared first, so that its name is in
 // scope in its own body, 6.2.1p7.  A function is defined once, 6.9.1p5.
 // The body is parsed with the function's result type, its locals
-// numbered after the parameters, its loops and its C labels from 0, and
-// is the entry's once its gotos name labels it defines.  A system
-// header's definition is compiled as any other, since rcc's rule for
-// one is a static inline function's.
+// numbered after the parameters, its loops and switches, its case and
+// default labels and its C labels from 0, and is the entry's once its
+// gotos name labels it defines.  A system header's definition is
+// compiled as any other, since rcc's rule for one is a static inline
+// function's.
 void
 function_definition(parser_t &p, const specifiers_t &spec, declarator_t &d)
 {
@@ -241,6 +242,7 @@ function_definition(parser_t &p, const specifiers_t &spec, declarator_t &d)
     p.result = *as< function_t >(d.type).result;
     p.locals = static_cast< int >(d.params.size());
     p.loop_count = 0;
+    p.case_labels = 0;
     p.labels.clear();
     p.gotos.clear();
     p.function = d.name.text;

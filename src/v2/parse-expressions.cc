@@ -219,18 +219,6 @@ postfix_expression(parser_t &p)
     }
 }
 
-// The integer promotions, 6.3.1.1p2, rcc's promoted(): every type
-// narrower than int converts to int, which holds all of its values,
-// signed or not; any other is its own.
-type_t
-promoted(const type_t &t)
-{
-    if (as< int_t >(t).width < 32)
-        return int_type();
-
-    return t;
-}
-
 // The value of e in its promoted type, rcc's promote().
 expr_t
 promote(const operand_t &e)
@@ -811,6 +799,8 @@ logical_or_expression(parser_t &p)
     return e;
 }
 
+} // namespace
+
 // The conditional operator, 6.5.16.
 operand_t
 conditional_expression(parser_t &p)
@@ -820,8 +810,6 @@ conditional_expression(parser_t &p)
 
     return e;
 }
-
-} // namespace
 
 // The assignment operators, 6.5.17: the simple one, right-associative,
 // and the compound ones, not yet.  The left operand is a modifiable

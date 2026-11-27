@@ -11,6 +11,10 @@
 #include "stmt.hh"
 #include "zoo.hh"
 
+#include <algorithm>
+#include <optional>
+#include <vector>
+
 namespace rcc {
 
 // G12: a local's slot is taken where its declaration is met, one for
@@ -71,8 +75,8 @@ record(S &s, int loop, int break_, int continue_)
     s.continues.emplace(loop, continue_);
 }
 
-// The label a break names, and a continue: its loop's, which the loop's
-// row recorded.
+// The label a break names, its loop's or its switch's, and the label a
+// continue names, its loop's, which that statement's row recorded.
 template< typename S >
 int
 label_of(const S &s, const break_t &b)
@@ -310,6 +314,195 @@ generate(S &s, const for_t< C, broken, continued > &f)
 
     if constexpr (tested< C > || broken)
         place_label(s, end);
+}
+
+// The simple form, rcc's simple_switch(), backend.md 7.3: a case's test
+// for each case, each target's equal_jump(), in the order of the
+// values, then the jump to otherwise.
+template< typename S >
+void
+simple_switch(S &s,
+              value_t v,
+              const std::vector< case_t > &cases,
+              int otherwise)
+{
+    for (const case_t &c : cases)
+        equal_jump(s, v, c.value, s.cases.at(c.label));
+
+    release(s, v);
+    jump(s, otherwise);
+}
+
+// The direct form, rcc's direct_switch(), backend.md 7.3: the first
+// value subtracted where it is not 0, the result compared unsigned with
+// the range and the jump to otherwise above it, then the jump through a
+// table of range + 1 entries, each a case's label or otherwise.  The
+// dispatch is an operation of the unsigned type of an int's width, so
+// the subtraction, a 32-bit write of an unsigned value, leaves the index
+// valid to 64 bits, written(); without it the index is valid as the
+// controlling expression's value is, valid.
+template< typename S >
+void
+direct_switch(S &s,
+              value_t v,
+              int valid,
+              const std::vector< case_t > &cases,
+              int otherwise)
+{
+    const long long first = cases.front().value;
+    const unsigned long long range = case_range(cases);
+
+    if (first != 0) {
+        v = subtracted(s, v, first);
+        valid = written(32, sign_t::unsigned_);
+    }
+
+    compare(s, v, static_cast< long long >(range), view_t::i32);
+    jump_if(s, binary_op_t::ugt, otherwise);
+
+    std::vector< int > entries(range + 1, otherwise);
+    for (const case_t &c : cases)
+        entries[case_offset(c.value, first)] = s.cases.at(c.label);
+
+    const int table = new_label(s);
+    table_jump(s, v, valid, table);
+    jump_table(s, table, entries);
+}
+
+// The size of a hash switch's table, rcc's table_size(), backend.md 7.3:
+// the i from a quarter of the count of the cases to a half that makes i
+// times the most cases one remainder modulo i holds the least, the first
+// such i on a tie.  A value's remainder is of its bits read unsigned.
+// The hash form has ten cases or more, so i is 2 or more.
+inline unsigned long long
+table_size(const std::vector< case_t > &sorted)
+{
+    const unsigned long long count = sorted.size();
+
+    unsigned long long tabs = 0;
+    unsigned long long best = ~0ull;
+    for (unsigned long long i = count / 4; i <= count / 2; ++i) {
+        std::vector< unsigned long long > held(i);
+        for (const case_t &c : sorted)
+            ++held[unsigned_bits(c.value) % i];
+
+        const unsigned long long worst = std::ranges::max(held);
+        if (i * worst < best) {
+            tabs = i;
+            best = i * worst;
+        }
+    }
+
+    return tabs;
+}
+
+// The hash form, rcc's hash_switch(), backend.md 7.3: the value divided
+// unsigned by the size of the table, each target's divided(), the jump
+// through the table by the remainder to a bucket, and in each bucket a
+// case's test of the quotient against each of its cases' value divided
+// by the size, in the order of the values, then the jump to otherwise.
+// The quotient is held across the table's jump and the buckets; no
+// case's label is among them.  The remainder, a 32-bit write of an
+// unsigned value, is valid to 64 bits.
+template< typename S >
+void
+hash_switch(S &s, value_t v, const std::vector< case_t > &cases, int otherwise)
+{
+    const unsigned long long tabs = table_size(cases);
+    const auto [quotient, remainder] =
+        divided(s, v, static_cast< long long >(tabs));
+
+    const int table = new_label(s);
+    std::vector< int > buckets;
+    for (unsigned long long i = 0; i < tabs; ++i)
+        buckets.push_back(new_label(s));
+
+    table_jump(s, remainder, written(32, sign_t::unsigned_), table);
+    jump_table(s, table, buckets);
+
+    for (unsigned long long i = 0; i < tabs; ++i) {
+        place_label(s, buckets[i]);
+
+        for (const case_t &c : cases) {
+            const unsigned long long bits = unsigned_bits(c.value);
+            if (bits % tabs == i)
+                equal_jump(s, quotient, static_cast< long long >(bits / tabs),
+                           s.cases.at(c.label));
+        }
+
+        jump(s, otherwise);
+    }
+
+    release(s, quotient);
+}
+
+// The labels of a switch's case and default labels, rcc's
+// number_case_labels(): one more label of the function for each, taken
+// where the generation meets the switch, in the order of the parser's
+// numbers, which is the order they are written.
+template< typename S >
+void
+number_case_labels(S &s,
+                   const std::vector< case_t > &cases,
+                   const std::optional< int > &default_)
+{
+    std::vector< int > labels;
+    for (const case_t &c : cases)
+        labels.push_back(c.label);
+    if (default_)
+        labels.push_back(*default_);
+
+    std::ranges::sort(labels);
+    for (const int n : labels)
+        s.cases.emplace(n, new_label(s));
+}
+
+// rcc's switch_stmt(), backend.md 7.3: the labels of the case and
+// default labels, then the label past the body, all taken on reaching
+// the switch, before any of the controlling expression's; the value;
+// the dispatch of the form the builder chose; the label past the body
+// recorded under the switch's number for its breaks; then the body, in
+// which each label is placed where it is written, and the label past it,
+// which stands for the default where there is none, placed where no
+// default stands or a break names it.  Every dispatch ends in a jump
+// and holds no value, so no path reaches the body but by its labels.
+// The direct form's index reads what the controlling expression's value
+// is valid to, at the sign of int, its promoted type.
+template< typename S, dispatch_t form, bool defaulted, bool broken >
+void
+generate(S &s, const switch_t< form, defaulted, broken > &sw)
+{
+    number_case_labels(s, sw.cases, sw.default_);
+    const int end = new_label(s);
+    const int otherwise = sw.default_ ? s.cases.at(*sw.default_) : end;
+
+    const value_t v = value(s, sw.cond);
+    if constexpr (form == dispatch_t::direct)
+        direct_switch(s, v, valid_of(sw.cond, sign_t::signed_), sw.cases,
+                      otherwise);
+    else if constexpr (form == dispatch_t::simple)
+        simple_switch(s, v, sw.cases, otherwise);
+    else if constexpr (form == dispatch_t::hash)
+        hash_switch(s, v, sw.cases, otherwise);
+    else {
+        release(s, v);
+        jump(s, otherwise);
+    }
+
+    s.breaks.emplace(sw.id, end);
+    generate(s, sw.body);
+
+    if constexpr (!defaulted || broken)
+        place_label(s, end);
+}
+
+// A case or a default label, rcc's case_label_stmt(): placed where it is
+// written, under the label its switch's row took for its number.
+template< typename S >
+void
+generate(S &s, const case_label_t &c)
+{
+    place_label(s, s.cases.at(c.label));
 }
 
 // A statement of one jump, rcc's break_stmt(), continue_stmt(),

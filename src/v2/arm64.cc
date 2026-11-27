@@ -20,6 +20,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace rcc::arm64 {
@@ -906,6 +907,65 @@ store_zero(state_t &s, const address_t &at, view_t view)
 {
     const std::string to = operand(s, at);
     insn(s, store_of(view), { zero(width(view)), to });
+}
+
+// switches
+
+// A promoted value is valid to 32 bits at least, so its test of zero is
+// cbz w0 and never tst.
+void
+equal_jump(state_t &s, value_t v, long long value, int label)
+{
+    if (value == 0) {
+        test_zero(s, v, view_t::i32, 32, label);
+        return;
+    }
+
+    compare(s, v, value, view_t::i32);
+    jump_if(s, binary_op_t::eq, label);
+}
+
+value_t
+subtracted(state_t &s, value_t v, long long first)
+{
+    return arithmetic(s, binary_op_t::sub, v, first, view_t::i32, 0);
+}
+
+// The index's register is read before x16 holds anything, so a reload
+// of a spilled index stands before the adrp (chapter 4).
+void
+table_jump(state_t &s, value_t index, int, int table)
+{
+    const std::string name = label_name(s.function, table);
+    const reg_t r = reg_of(s, index);
+
+    insn(s, "adrp", { "x16", name });
+    insn(s, "add", { "x16", "x16", ":lo12:" + name });
+    insn(s, "ldr", { "x16", std::format("[x16, {}, uxtw #3]", reg(r, 32)) });
+    insn(s, "br", { "x16" });
+
+    release(s, index);
+
+    s.terminated = true;
+}
+
+// The size's register is the lowest free, outside v's; the quotient's is
+// taken outside both and held, the size's given back before the msub,
+// which is the last to read it.
+std::pair< value_t, value_t >
+divided(state_t &s, value_t v, long long size)
+{
+    const value_t d = constant_value(s, size, view_t::i32);
+    const auto [left, right] = operands(s, v, d);
+
+    const value_t quotient = hold(s, take(s, bit(left) | bit(right)));
+    const std::string q = reg(reg_of(s, quotient), 32);
+    insn(s, "udiv", { q, reg(left, 32), reg(right, 32) });
+
+    release(s, d);
+    insn(s, "msub", { reg(left, 32), q, reg(right, 32), reg(left, 32) });
+
+    return { quotient, v };
 }
 
 // The value goes to the convention's result register, 7.2, rcc's

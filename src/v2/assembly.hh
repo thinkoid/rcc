@@ -2,10 +2,10 @@
 
 // The text both targets write alike, to the letter, which names no
 // register: an instruction's line, a label and its count, the .file
-// directive's string, a symbol's binding, the unit's data and the names
-// of the objects it defines.  insn() and new_label() are templates over
-// a target's state, which holds the function's text and its count of
-// labels.
+// directive's string, a symbol's binding, a switch's table, the unit's
+// data and the names of the objects it defines.  insn(), new_label() and
+// jump_table() are templates over a target's state, which holds the
+// function's text and its count of labels.
 
 #pragma once
 
@@ -52,6 +52,24 @@ new_label(S &s)
 // A label of the function, docs/backend.md 7.2: .L, the function's name
 // and the number, .Lsum.1.
 std::string label_name(std::string_view function, int n);
+
+// The table of a switch's dispatch, rcc's jump_table(), backend.md 7.3,
+// as the Seventh Edition compiler wrote it: in .data, in the function's
+// text where the dispatch stands, aligned to 8, under a label of the
+// function, an address for each entry, which the loader relocates as it
+// does a global's address constant; then .text again.
+template< typename S >
+void
+jump_table(S &s, int table, const std::vector< int > &entries)
+{
+    s.body << "\t.data\n\t.p2align 3\n"
+           << label_name(s.function, table) << ":\n";
+
+    for (const int entry : entries)
+        s.body << "\t.quad\t" << label_name(s.function, entry) << '\n';
+
+    s.body << "\t.text\n";
+}
 
 // The file name as a .file directive's string: its base name in quotes,
 // a quote and a backslash in it escaped.

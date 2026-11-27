@@ -67,10 +67,12 @@ bit(reg_t r)
 // next: the last instruction written is an unconditional jump, which
 // jump() sets and place_label() clears, so an if whose then part ends
 // so writes no jump over its else part, and main writes no return of 0
-// (backend.md 7.2).  breaks and continues are the labels each loop
-// generated so far took for the breaks and for the continues of its
-// body, by the loop's number, and user_labels the label of each C label
-// the generation has met so far, by its number.  frame is the bytes
+// (backend.md 7.2).  breaks is the label each loop and switch
+// generated so far took for the breaks of its body, by its number, and
+// continues each loop's for its continues; cases is the label of each
+// case and default label of those switches, by the label's number, and
+// user_labels the label of each C label that the generation has met so
+// far, by the number the parser gave its name, and frame is the bytes
 // from x29 to the end of the last slot, the locals' and the spills' in
 // the order they are taken, the frame record's alone before the first,
 // and slots each local's displacement off x29, by its number.  reserved
@@ -87,6 +89,7 @@ struct state_t
     bool terminated = false;
     std::unordered_map< int, int > breaks { };
     std::unordered_map< int, int > continues { };
+    std::unordered_map< int, int > cases { };
     std::unordered_map< int, int > user_labels { };
 
     long frame = 0;
@@ -538,6 +541,39 @@ value(state_t &s, const call_t< V > &c, unsigned = 0)
 
     return hold(s, x0);
 }
+
+// The pieces of a switch's dispatch on an int, backend.md 7.3, which
+// the dispatches of rows-statements.hh are written over, as rcc's
+// direct_switch(), simple_switch() and hash_switch() are.
+
+// A case's test, rcc's equal_jump(): the comparison row of the held
+// value v and the case's value, cmp w0, #5, or mov w1, #4097 and cmp w0,
+// w1 where cmp does not encode it, then b.eq to its label; v stays held.
+// The Seventh Edition compiler tested a 0 where it compared another
+// value, tst for cmp; this machine's test of zero is cbz, one
+// instruction, 7.1.
+void equal_jump(state_t &, value_t v, long long value, int label);
+
+// The first value of a direct switch subtracted from the held value v,
+// rcc's arithmetic() of the sub row, sub w0, w0, #1, or mov w1, #4097
+// and sub w0, w0, w1 where sub does not encode it; the value is v's.
+value_t subtracted(state_t &, value_t v, long long first);
+
+// The jump through a switch's table by a held index, rcc's table_jump():
+// the table's page and offset into x16, adrp and add, as a literal's
+// address is formed; the entry loaded through it by the form that
+// scales the index and extends it unsigned from 32 bits, ldr x16, [x16,
+// w0, uxtw #3], so the width its register is valid to is not read; then
+// br x16, after which no path reaches what is written next.  The index
+// is consumed.
+void table_jump(state_t &, value_t index, int valid, int table);
+
+// The division of a hash switch, rcc's divided(): the table's size held
+// in a register, mov w1, #3, as the divisor of x / 7 is, since udiv
+// takes no immediate; the quotient by udiv into a register taken outside
+// both, udiv w2, w0, w1, and the remainder by msub into v's, msub w0,
+// w2, w1, w0.  The pair is the quotient and the remainder, v.
+std::pair< value_t, value_t > divided(state_t &, value_t v, long long size);
 
 // The value of a return, of the result's view, moved to the result
 // register where its row left it elsewhere, then the jump to the

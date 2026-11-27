@@ -1,11 +1,11 @@
 // -*- mode: c++; -*-
 
 // 6.8: the statements, of which rcc-v2 takes the compound statement,
-// the expression and null statements, the if statement, the while, do
-// and for statements, goto, break and continue, the return statement, a
-// named label, and the block items of a block, a declaration among
-// them.  Every other statement is refused at its first token by its
-// name, as are a case and a default label.
+// the expression and null statements, the if and switch statements, the
+// while, do and for statements, goto, break and continue, the return
+// statement, the three kinds of label, and the block items of a block,
+// a declaration among them.  An asm statement is refused at its first
+// token by its name.
 
 #include "parse-common.hh"
 
@@ -84,8 +84,8 @@ return_statement(parser_t &p)
 }
 
 // A continue stands only in a loop's body, 6.8.7.3p1, and is a jump to
-// the innermost loop's continuation, p2: the loop is marked continued,
-// which picks the labels its row places.
+// the innermost loop's continuation, p2, past any switch between: the
+// loop is marked continued, which picks the labels its row places.
 stmt_t
 continue_statement(parser_t &p)
 {
@@ -99,20 +99,37 @@ continue_statement(parser_t &p)
     return make_continue(p.loops.back().id);
 }
 
+// The innermost of the loops and the switches whose bodies are being
+// read, or null where there is none: the one of the larger number, since
+// the two are numbered in one count as they are opened, and the open
+// ones nest.
+jump_target_t *
+innermost_breakable(parser_t &p)
+{
+    jump_target_t *loop = p.loops.empty() ? nullptr : &p.loops.back();
+    jump_target_t *sw =
+        p.switches.empty() ? nullptr : &p.switches.back().target;
+    if (!loop || (sw && sw->id > loop->id))
+        return sw;
+
+    return loop;
+}
+
 // A break stands only in a loop's body or a switch's, 6.8.7.4p1, and
-// jumps past the innermost, p2; a switch is not yet, so it is the
-// innermost loop's, marked broken.
+// jumps past the innermost, p2, which is marked broken: that picks the
+// labels its row places.
 stmt_t
 break_statement(parser_t &p)
 {
     const token_t &keyword = advance(p);
-    if (p.loops.empty())
+    jump_target_t *target = innermost_breakable(p);
+    if (!target)
         fail(keyword, "'break' statement not in a loop or a switch");
 
-    p.loops.back().broken = true;
+    target->broken = true;
     expect(p, tok_t::semicolon, "expected ';' after break statement");
 
-    return make_break(p.loops.back().id);
+    return make_break(target->id);
 }
 
 // What the parser holds of the C label the token names, made at the
@@ -191,18 +208,54 @@ condition(parser_t &p)
     return rvalue(start, expression(p));
 }
 
-// The if statement, 6.8.5.2, with an else part or without one; an else
-// goes with the nearest if, 6.8.5.2p3, since it is read right after the
-// then part.  The condition is converted as any operand whose value is
-// read, and nothing else converts it, its value compared with 0,
-// 6.8.5.2p2.  A switch is not yet.
+// A switch, 6.8.5.3: the controlling expression, an integer, p1, read
+// as any operand whose value is read, at its first token, and promoted,
+// p5, where a promoted type other than int is not yet; then the body,
+// with the switch open and numbered in the count of the function's
+// loops and switches, in which a break leaves the switch, 6.8.7.4p2, a
+// continue goes on with the loop around it, and each case and default
+// label belongs to this switch unless a switch inside the body is
+// closer, 6.8.5.3p4.
+stmt_t
+switch_statement(parser_t &p)
+{
+    advance(p);
+    expect(p, tok_t::lparen, "expected '(' after 'switch'");
+
+    const token_t &start = peek(p);
+    operand_t e = expression(p);
+    e.node = rvalue(start, e);
+
+    const type_t t = promoted(e.type);
+    if (t != int_type())
+        not_yet(start, "'switch' on a controlling expression whose promoted "
+                       "type is not 'int'");
+    expr_t cond = convert_to(e, t);
+
+    expect(p, tok_t::rparen, "expected ')' after controlling expression");
+
+    p.switches.push_back({ .target = { .id = p.loop_count++ } });
+    stmt_t body = statement(p);
+
+    open_switch_t sw = std::move(p.switches.back());
+    p.switches.pop_back();
+
+    return make_switch(std::move(cond), std::move(body), std::move(sw.cases),
+                       sw.default_, sw.target);
+}
+
+// The if statement, 6.8.5.2, with an else part or without one, or a
+// switch; an else goes with the nearest if, 6.8.5.2p3, since it is read
+// right after the then part.  The condition is converted as any operand
+// whose value is read, and nothing else converts it, its value compared
+// with 0, 6.8.5.2p2.
 stmt_t
 selection_statement(parser_t &p)
 {
-    const token_t &t = advance(p);
-    if (t.kind == tok_t::kw_switch)
-        not_yet(t, quoted(t.text) + " statement");
+    if (peek(p).kind == tok_t::kw_switch)
+        return switch_statement(p);
 
+    advance(p);
     expect(p, tok_t::lparen, "expected '(' after 'if'");
     expr_t cond = condition(p);
     expect(p, tok_t::rparen, "expected ')' after condition");
@@ -220,7 +273,7 @@ selection_statement(parser_t &p)
 struct loop_body_t
 {
     stmt_t body;
-    loop_t loop;
+    jump_target_t loop;
 };
 
 // The body of a loop, where a break and a continue of the loop may
@@ -234,7 +287,7 @@ loop_body(parser_t &p)
     p.loops.push_back({ .id = p.loop_count++ });
     stmt_t body = statement(p);
 
-    const loop_t loop = p.loops.back();
+    const jump_target_t loop = p.loops.back();
     p.loops.pop_back();
 
     return { std::move(body), loop };
@@ -363,23 +416,88 @@ named_label(parser_t &p)
     return make_label(label.number);
 }
 
-// A label of any of the three kinds of 6.8.2p1, of which a case and a
-// default label are not yet, refused at the keyword.
+// case, an integer constant expression and a colon, 6.8.2p1.  It stands
+// only in a switch, p2, and belongs to the innermost, 6.8.5.3p4.  Its
+// constant is a conditional expression whose value is read, which the
+// builders fold to a constant node, constant_of(), or it is no constant
+// expression, an error at its first token, which warns there of a
+// signed overflow in it, warn_overflowed().  It is converted to int, the
+// promoted type of the controlling expression, p5, and no two cases of
+// one switch have one value after the conversion, p3, which rcc says at
+// the second's first token with the first's line.  GNU C's range, case
+// 1 ... 5:, is not yet, in rcc's words.
+stmt_t
+case_label(parser_t &p)
+{
+    const token_t &keyword = advance(p);
+    if (p.switches.empty())
+        fail(keyword, "'case' label not in a switch");
+
+    const token_t &start = peek(p);
+    const operand_t e = conditional_expression(p);
+    if (!constant_of(rvalue(start, e)))
+        fail(start, "case label is not an integer constant expression");
+
+    warn_overflowed(p, start, e);
+
+    if (peek(p).kind == tok_t::ellipsis)
+        not_yet(peek(p), "case range");
+
+    expect(p, tok_t::colon, "expected ':' after case label");
+
+    open_switch_t &sw = p.switches.back();
+    const long long value = *constant_of(convert_to(e, int_type()));
+
+    const auto [first, added] = sw.values.emplace(value, &start);
+    if (!added)
+        fail(start, "duplicate case value " + std::to_string(value) +
+                        ", first at line " +
+                        std::to_string(first->second->where.line));
+
+    sw.cases.push_back({ value, p.case_labels });
+
+    return make_case_label(p.case_labels++);
+}
+
+// default and a colon, 6.8.2p1: in a switch alone, p2, the innermost's,
+// 6.8.5.3p4, and one to a switch, p3, which rcc says at the second's
+// keyword with the first's line.
+stmt_t
+default_label(parser_t &p)
+{
+    const token_t &keyword = advance(p);
+    if (p.switches.empty())
+        fail(keyword, "'default' label not in a switch");
+
+    open_switch_t &sw = p.switches.back();
+    if (sw.default_)
+        fail(keyword, "second 'default' label in a switch, first at line " +
+                          std::to_string(sw.default_at->where.line));
+
+    expect(p, tok_t::colon, "expected ':' after 'default'");
+
+    sw.default_ = p.case_labels;
+    sw.default_at = &keyword;
+
+    return make_case_label(p.case_labels++);
+}
+
+// A label of any of the three kinds of 6.8.2p1.
 stmt_t
 label(parser_t &p)
 {
-    const token_t &t = peek(p);
-    if (t.kind != tok_t::identifier)
-        not_yet(t, quoted(t.text) + " label");
-
-    return named_label(p);
+    switch (peek(p).kind) {
+    case tok_t::kw_case: return case_label(p);
+    case tok_t::kw_default: return default_label(p);
+    default: return named_label(p);
+    }
 }
 
 // A label before a statement where a statement is wanted, 6.8.2p1: the
-// then part of an if, the body of a loop, a labeled statement's own.
-// It is a block of the two, rcc's labeled_statement(), which opens no
-// scope and is no one jump, so an if whose then part it is takes the
-// label past the then part.
+// then part of an if, the body of a loop or of a switch, a labeled
+// statement's own.  It is a block of the two, rcc's labeled_statement(),
+// which opens no scope and is no one jump, so an if whose then part it
+// is takes the label past the then part.
 stmt_t
 labeled_statement(parser_t &p)
 {

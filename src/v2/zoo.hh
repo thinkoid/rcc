@@ -8,13 +8,18 @@
 // amd64.hh and arm64.hh, and rows-expressions.hh's and
 // rows-statements.hh's for those both targets write alike.  The two
 // summaries both targets read, the view and the width rule, are here,
-// beside the nodes they are of.
+// beside the nodes they are of, and so is the arithmetic of a switch's
+// cases, which its builder and its rows read.  A switch holds its cases
+// as the parser hands them over, build.hh's case_t.
 
 #pragma once
 
+#include "build.hh"
 #include "expr.hh"
 #include "stmt.hh"
 
+#include <cstdint>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -331,17 +336,79 @@ struct for_t
     int loop;
 };
 
-// break;, 6.8.7.4p2: a jump past the innermost loop around it, which
-// the parser found, by the loop's number, to the label the loop's row
-// recorded for its breaks.
+// The forms of a switch's dispatch, rcc's dispatch_t, backend.md 7.3,
+// which the switch's builder chooses from the values of its cases by the
+// rule of the Seventh Edition compiler: none, for a switch of no case;
+// direct, a jump through a table indexed by the value; simple, a test of
+// each case in turn; hash, a jump through a table of buckets by the
+// value's remainder, then a test of each case of the bucket.
+enum class dispatch_t { none, direct, simple, hash };
+
+// switch (e) s, 6.8.5.3: the controlling expression's value, then the
+// dispatch of the form the builder chose, then the body, in which each
+// case and default label is placed where it is written, case_label_t,
+// and the label past the body, which a break of the switch jumps to and
+// which stands for the default where there is none.  defaulted says
+// whether the switch has a default label and broken whether a break of
+// it stands in its body, which the parser knows when it has read the
+// body: with a default and no break nothing names the label past the
+// body, which is not placed.  cases are sorted by value, the builder's
+// order, which the dispatch tests them in; default_ is the default
+// label's number; id is the switch's number among the function's loops
+// and switches, which names it to its body's breaks.
+template< dispatch_t form, bool defaulted, bool broken >
+struct switch_t
+{
+    expr_t cond;
+    stmt_t body;
+    std::vector< case_t > cases;
+    std::optional< int > default_;
+    int id;
+};
+
+// case K: and default:, 6.8.2p1: the label of a switch's case or default
+// placed where it is written, by its number among the function's case
+// and default labels, which its switch's row took a label for.
+struct case_label_t
+{
+    int label;
+};
+
+// The bits of an int's value read as an unsigned number, rcc's
+// unsigned_bits(): the (unsigned) of the rule's hash, backend.md 7.3.
+inline unsigned long long
+unsigned_bits(long long value)
+{
+    return static_cast< std::uint32_t >(value);
+}
+
+// A value less the first of a switch's sorted cases, as an unsigned
+// number, rcc's case_offset(): its entry in a direct table.
+inline unsigned long long
+case_offset(long long value, long long first)
+{
+    return unsigned_bits(value - first);
+}
+
+// The last value of a switch's sorted cases less the first, the range
+// of the rule of the Seventh Edition compiler, rcc's case_range().
+inline unsigned long long
+case_range(const std::vector< case_t > &sorted)
+{
+    return case_offset(sorted.back().value, sorted.front().value);
+}
+
+// break;, 6.8.7.4p2: a jump past the innermost loop or switch around
+// it, which the parser found, by that statement's number, to the label
+// its row recorded for its breaks.
 struct break_t
 {
     int target;
 };
 
 // continue;, 6.8.7.3p2: a jump to the continuation of the innermost
-// loop around it, by the loop's number, to the label the loop's row
-// recorded for its continues.
+// loop around it, past any switch between, by the loop's number, to the
+// label the loop's row recorded for its continues.
 struct continue_t
 {
     int loop;

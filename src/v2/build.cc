@@ -18,6 +18,7 @@
 #include "rows-statements.hh"
 #include "zoo.hh"
 
+#include <algorithm>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -328,7 +329,7 @@ using untested_for_t = for_t< omitted_t, broken, continued >;
 // whether a break and a continue of the loop stand in its body.
 template< template< bool, bool > typename L, typename... P >
 stmt_t
-loop_node(const loop_t &loop, P... parts)
+loop_node(const jump_target_t &loop, P... parts)
 {
     if (loop.broken && loop.continued)
         return stmt_t(L< true, true > { std::move(parts)..., loop.id });
@@ -345,35 +346,134 @@ loop_node(const loop_t &loop, P... parts)
 } // namespace
 
 stmt_t
-make_while(expr_t cond, stmt_t body, const loop_t &loop)
+make_while(expr_t cond, stmt_t body, const jump_target_t &loop)
 {
     return stmt_t(while_t { std::move(cond), std::move(body), loop.id });
 }
 
 stmt_t
-make_do(stmt_t body, expr_t cond, const loop_t &loop)
+make_do(stmt_t body, expr_t cond, const jump_target_t &loop)
 {
     return loop_node< do_t >(loop, std::move(body), std::move(cond));
 }
 
 stmt_t
-make_for(stmt_t init, expr_t cond, stmt_t step, stmt_t body, const loop_t &loop)
+make_for(stmt_t init,
+         expr_t cond,
+         stmt_t step,
+         stmt_t body,
+         const jump_target_t &loop)
 {
     return loop_node< tested_for_t >(loop, std::move(init), std::move(cond),
                                      std::move(step), std::move(body));
 }
 
 stmt_t
-make_for(stmt_t init, stmt_t step, stmt_t body, const loop_t &loop)
+make_for(stmt_t init, stmt_t step, stmt_t body, const jump_target_t &loop)
 {
     return loop_node< untested_for_t >(loop, std::move(init), omitted_t { },
                                        std::move(step), std::move(body));
 }
 
-stmt_t
-make_break(int loop)
+namespace {
+
+// The form of a switch's dispatch on its sorted cases, rcc's
+// dispatch_of(), backend.md 7.3, by the rule of the Seventh Edition
+// compiler: none without a case; direct where the range is above 0 and
+// at most three times the count of the cases; simple below ten cases;
+// hash otherwise.  A question about constants' values, whose answer is
+// the node's parameter (principle 2).
+dispatch_t
+dispatch_of(const std::vector< case_t > &sorted)
 {
-    return stmt_t(break_t { loop });
+    if (sorted.empty())
+        return dispatch_t::none;
+
+    const unsigned long long count = sorted.size();
+    const unsigned long long range = case_range(sorted);
+    if (range > 0 && range <= 3 * count)
+        return dispatch_t::direct;
+
+    if (count < 10)
+        return dispatch_t::simple;
+
+    return dispatch_t::hash;
+}
+
+// The crossing of the form, principle 6, as operators.hh's are.
+template< typename F >
+decltype(auto)
+cross(dispatch_t form, F &&f)
+{
+    switch (form) {
+    case dispatch_t::none: return f.template operator()< dispatch_t::none >();
+    case dispatch_t::direct:
+        return f.template operator()< dispatch_t::direct >();
+    case dispatch_t::simple:
+        return f.template operator()< dispatch_t::simple >();
+    case dispatch_t::hash: return f.template operator()< dispatch_t::hash >();
+    }
+}
+
+// The crossing from what the parser knows of a switch, data, to the
+// parameters of its node, made once (principle 6): the form of its
+// dispatch, whether it has a default label, and whether a break of it
+// stands in its body.
+template< dispatch_t form >
+stmt_t
+switch_node(expr_t cond,
+            stmt_t body,
+            std::vector< case_t > cases,
+            std::optional< int > default_,
+            const jump_target_t &target)
+{
+    const auto make = [&]< bool defaulted, bool broken >() {
+        return stmt_t(switch_t< form, defaulted, broken > {
+            std::move(cond), std::move(body), std::move(cases), default_,
+            target.id });
+    };
+
+    if (default_ && target.broken)
+        return make.template operator()< true, true >();
+
+    if (default_)
+        return make.template operator()< true, false >();
+
+    if (target.broken)
+        return make.template operator()< false, true >();
+
+    return make.template operator()< false, false >();
+}
+
+} // namespace
+
+// The cases sorted by value, signed, the order of int, rcc's
+// sorted_cases(), and the form asked of them once.
+stmt_t
+make_switch(expr_t cond,
+            stmt_t body,
+            std::vector< case_t > cases,
+            std::optional< int > default_,
+            const jump_target_t &target)
+{
+    std::ranges::sort(cases, { }, &case_t::value);
+
+    return cross(dispatch_of(cases), [&]< dispatch_t form >() {
+        return switch_node< form >(std::move(cond), std::move(body),
+                                   std::move(cases), default_, target);
+    });
+}
+
+stmt_t
+make_case_label(int label)
+{
+    return stmt_t(case_label_t { label });
+}
+
+stmt_t
+make_break(int target)
+{
+    return stmt_t(break_t { target });
 }
 
 stmt_t

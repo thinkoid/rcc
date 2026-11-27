@@ -118,6 +118,17 @@ int_type()
     return make_int(32, true, int_kind_t::int_);
 }
 
+// Every type narrower than int converts to int, which holds all of its
+// values, signed or not; any other is its own.
+type_t
+promoted(const type_t &t)
+{
+    if (as< int_t >(t).width < 32)
+        return int_type();
+
+    return t;
+}
+
 view_t
 view_of(const type_t &t)
 {
