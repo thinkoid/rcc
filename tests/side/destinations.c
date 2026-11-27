@@ -1,17 +1,22 @@
-/* The destinations of an operator's value: the operator writes its
-   value into the register its parent hands it, so each destination is
-   the row it already has.  A return computes it in the result
-   register; x = a + b; and int x = a + b; in the register a value
-   takes, then store it; a + b; computes it and drops it; return
-   x = a + b; stores it and leaves it in the result register; x = a =
-   a + b; stores the inner assignment first.  x = x + 5; is the load,
-   the add and the store, since no compound assignment is written.
+/* The destinations of an operator's value: the operator's row returns
+   its value in a register it takes, and each destination reads it
+   there.  A return finds it in the result register, the first one a
+   statement takes; x = a + b; and int x = a + b; store it from its
+   register; a + b; computes it and drops it; return x = a + b; stores
+   it and leaves it in the result register; x = a = a + b; stores the
+   inner assignment first.  x = x + 5; is the load, the add and the
+   store, since no compound assignment is written.
 
    returned(), assigned(), initialized(), discarded(), returned_store()
    and chained() are each destination of a + b; incremented() and
    accumulated() add a constant and a local to x itself; negated()
    assigns a negation; folded() initializes from a fold to 0, which
-   is a constant's store, and assigns another. */
+   is a constant's store, and assigns another.  The destinations of a
+   product are the same rows: product_assigned(),
+   product_initialized(), product_discarded() and
+   product_returned_store() each take a * b or a * 5, and scaled()
+   multiplies x by a constant, imull $5, -8(%rbp), %eax, then the
+   store. */
 int
 returned(void)
 {
@@ -99,5 +104,52 @@ folded(void)
 {
         int x = 1 - 1;
         x = 3 - 3;
+        return x;
+}
+
+int
+product_assigned(void)
+{
+        int a = 1;
+        int b = 2;
+        int x;
+        x = a * b;
+        return x;
+}
+
+int
+product_initialized(void)
+{
+        int a = 1;
+        int b = 2;
+        int x = a * 5;
+        return x;
+}
+
+int
+product_discarded(void)
+{
+        int a = 1;
+        int b = 2;
+        (a * b);
+        a * 5;
+        return 0;
+}
+
+int
+product_returned_store(void)
+{
+        int a = 1;
+        int b = 2;
+        int x;
+        return x = a * 5;
+}
+
+int
+scaled(void)
+{
+        int b = 2;
+        int x = 1;
+        x = x * 5;
         return x;
 }

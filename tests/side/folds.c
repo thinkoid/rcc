@@ -1,10 +1,10 @@
 /* Two constants fold where the node is built, as rcc folds them: the
    exact value wrapped to 32 bits, as the instruction wraps it, so
-   2147483647 + 1 is -2147483648 with no diagnostic.  A fold is
-   bottom-up and in the grammar's association: 1 + 2 + a is (1 + 2) + a,
-   folded to 3 + a, and a + 1 + 2 is (a + 1) + 2, two operations.  A
-   folded constant is the operand a target's niche takes: a & (1 - 1)
-   is a & 0, kept.
+   2147483647 + 1 is -2147483648 and 65536 * 65536 is 0 with no
+   diagnostic.  A fold is bottom-up and in the grammar's association:
+   1 + 2 + a is (1 + 2) + a, folded to 3 + a, and a + 1 + 2 is
+   (a + 1) + 2, two operations, as a * 2 * 3 is.  A folded constant is
+   the operand a target's niche takes: a & (1 - 1) is a & 0, kept.
 
    Each function returns one expression of constants, or of a local
    and constants, its name what it shows. */
@@ -90,4 +90,39 @@ to_zero(void)
 {
         int a = 7;
         return a & (1 - 1);
+}
+
+int
+product(void)
+{
+        int a = 7;
+        return 6 * 3;
+}
+
+int
+wraps_product(void)
+{
+        int a = 7;
+        return 65536 * 65536;
+}
+
+int
+negative_product(void)
+{
+        int a = 7;
+        return -7 * 3;
+}
+
+int
+product_of_sum(void)
+{
+        int a = 7;
+        return (2 + 3) * 4;
+}
+
+int
+product_kept(void)
+{
+        int a = 7;
+        return a * 2 * 3;
 }

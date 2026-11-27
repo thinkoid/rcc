@@ -101,7 +101,7 @@ void initialize(state_t &, slot_t where, const zero_t &);
 template< binary_op_t op, typename L >
 concept constant_first = commutes(op) && constant< L >;
 
-// The niches of + - & | ^, chapter 6.1, over the primary of
+// The niches of + - * & | ^, chapter 6.1, over the primary of
 // rows-expressions.hh.  A constant on the left of an operator that
 // commutes is the row of the node with its operands exchanged, 5 + a
 // as a + 5: the value of the right operand, which is no constant, then
@@ -115,8 +115,9 @@ value(state_t &s, const binary_t< op, L, R > &b)
 }
 
 // A literal on the right is the instruction's immediate where it
-// encodes it, add w0, w0, #5, and the primary's register otherwise.  0
-// takes the primary: a & 0 is mov w1, #0 and the and.  Of the mirror's
+// encodes it, add w0, w0, #5, and the primary's register otherwise:
+// mul encodes none, mov w1, #5 and mul w0, w0, w1.  0 takes the
+// primary: a & 0 is mov w1, #0 and the and.  Of the mirror's
 // nodes it would take only a constant on both sides, which the builder
 // folds.
 template< binary_op_t op, typename L >

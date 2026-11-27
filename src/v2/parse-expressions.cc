@@ -121,8 +121,8 @@ postfix_expression(parser_t &p)
 
 // The operand of an arithmetic operator: its value, 6.3.2.1p2, of type
 // int, which the integer promotions, 6.5.4.3p2, and the usual
-// arithmetic conversions, 6.5.7p5, leave as it is.  An operand of
-// another type is not yet.
+// arithmetic conversions, 6.5.6p4, 6.5.7p5, leave as it is.  An
+// operand of another type is not yet.
 expr_t
 arithmetic_operand(const token_t &op, operand_t e)
 {
@@ -197,9 +197,9 @@ cast_expression(parser_t &p)
     return unary_expression(p);
 }
 
-// A binary operator of int, 6.5.7, 6.5.11 to 6.5.13, its token at: each
-// operand's value, as arithmetic_operand() takes it there, and the
-// result an int, the operands' common type.
+// A binary operator of int, 6.5.6, 6.5.7, 6.5.11 to 6.5.13, its token
+// at: each operand's value, as arithmetic_operand() takes it there, and
+// the result an int, the operands' common type.
 operand_t
 arithmetic(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
 {
@@ -209,12 +209,21 @@ arithmetic(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
     return { int_type(), make_binary(op, std::move(l), std::move(r)) };
 }
 
-// The multiplicative operators, 6.5.6.
+// The multiplicative operators, 6.5.6, left-associative, as rcc's loop
+// reads them: *, and / and % not yet, at their token.
 operand_t
 multiplicative_expression(parser_t &p)
 {
     operand_t e = cast_expression(p);
-    refuse_operator(p, { tok_t::star, tok_t::slash, tok_t::percent });
+
+    while (peek(p).kind == tok_t::star) {
+        const token_t &op = advance(p);
+
+        operand_t rhs = cast_expression(p);
+        e = arithmetic(binary_op_t::mul, op, std::move(e), std::move(rhs));
+    }
+
+    refuse_operator(p, { tok_t::slash, tok_t::percent });
 
     return e;
 }

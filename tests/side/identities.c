@@ -1,12 +1,13 @@
 /* A constant that makes an operator the identity leaves the other
-   operand, which is still evaluated: x + 0, x - 0, x | 0, x ^ 0 and
-   x & -1 on the right, and on the left for the operators that commute,
-   0 + x, 0 | x, 0 ^ x and -1 & x.  rcc drops them after the body is
-   parsed and rcc-v2 where the node would be built; the listings are
-   the same, (a + 0) + 0 and -(a + 0) among them.  0 - x, x & 0,
-   x | -1, x ^ -1 and x - x are kept, and so is (a + 1) - 1, which no
-   fold reaches.  A dropped identity on the right of another operator
-   leaves a local there, the operand in memory on x86-64.
+   operand, which is still evaluated: x + 0, x - 0, x * 1, x | 0, x ^ 0
+   and x & -1 on the right, and on the left for the operators that
+   commute, 0 + x, 1 * x, 0 | x, 0 ^ x and -1 & x.  rcc drops them
+   after the body is parsed and rcc-v2 where the node would be built;
+   the listings are the same, (a + 0) + 0 and -(a + 0) among them.
+   0 - x, x & 0, x * 0, 0 * x, x * -1, x | -1, x ^ -1 and x - x are
+   kept, and so is (a + 1) - 1, which no fold reaches.  A dropped
+   identity on the right of another operator leaves a local there, the
+   operand in memory on x86-64.
 
    Each function returns a local under one operator and a constant, its
    name what it shows. */
@@ -162,4 +163,46 @@ right_operand(void)
 {
         int a = 7;
         return 7 - (a + 0);
+}
+
+int
+mul_one(void)
+{
+        int a = 7;
+        return a * 1;
+}
+
+int
+one_mul(void)
+{
+        int a = 7;
+        return 1 * a;
+}
+
+int
+mul_zero(void)
+{
+        int a = 7;
+        return a * 0;
+}
+
+int
+zero_mul(void)
+{
+        int a = 7;
+        return 0 * a;
+}
+
+int
+mul_minus_one(void)
+{
+        int a = 7;
+        return a * -1;
+}
+
+int
+folded_one(void)
+{
+        int a = 7;
+        return a * (2 - 1);
 }

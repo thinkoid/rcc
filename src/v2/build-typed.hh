@@ -94,8 +94,8 @@ make_unary(const C &arg, const expr_t &)
     return make_literal(folded(op, value_of(arg)));
 }
 
-// + - & | ^ of two constants, 6.5.7p6, p7, 6.5.11p4, 6.5.12p4,
-// 6.5.13p4.
+// * + - & | ^ of two constants, 6.5.6p5, 6.5.7p6, p7, 6.5.11p4,
+// 6.5.12p4, 6.5.13p4.
 inline int
 folded(binary_op_t op, int lhs, int rhs)
 {
@@ -105,6 +105,7 @@ folded(binary_op_t op, int lhs, int rhs)
     switch (op) {
     case binary_op_t::add: return wrapped(a + b);
     case binary_op_t::sub: return wrapped(a - b);
+    case binary_op_t::mul: return wrapped(a * b);
     case binary_op_t::bit_and: return lhs & rhs;
     case binary_op_t::bit_or: return lhs | rhs;
     case binary_op_t::bit_xor: return lhs ^ rhs;
@@ -112,8 +113,8 @@ folded(binary_op_t op, int lhs, int rhs)
 }
 
 // Whether the constant c on the right of op makes op the identity, as
-// rcc's is_identity_by() says: + - | ^ by 0, & by -1, every bit of an
-// int.
+// rcc's is_identity_by() says: + - | ^ by 0, * by 1, & by -1, every bit
+// of an int.
 inline bool
 is_identity_by(binary_op_t op, int c)
 {
@@ -122,12 +123,13 @@ is_identity_by(binary_op_t op, int c)
     case binary_op_t::sub:
     case binary_op_t::bit_or:
     case binary_op_t::bit_xor: return c == 0;
+    case binary_op_t::mul: return c == 1;
     case binary_op_t::bit_and: return c == -1;
     }
 }
 
-// + - & | ^ of operands neither of which is a constant: the node, each
-// operand in its class.
+// * + - & | ^ of operands neither of which is a constant: the node,
+// each operand in its class.
 template< binary_op_t op, typename L, typename R >
 expr_t
 make_binary(const L &lhs, const R &rhs)

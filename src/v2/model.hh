@@ -125,18 +125,19 @@ classed(const zero_t &value, const expr_t &)
     return value;
 }
 
-// The right operand of a binary operator as a builder keeps it:
-// classed()'s classes, and a load_t besides, which x86-64 reads as the
-// instruction's operand in memory.
+// An operand of a binary operator as a builder keeps it: classed()'s
+// classes, and a load_t besides, which x86-64 reads as the
+// instruction's operand in memory, addl -8(%rbp), %eax on the right and
+// imull $5, -4(%rbp), %eax on the left.
 template< typename T >
 const auto &
-classed_right(const T &operand, const expr_t &self)
+classed_operand(const T &operand, const expr_t &self)
 {
     return classed(operand, self);
 }
 
 inline const load_t &
-classed_right(const load_t &operand, const expr_t &)
+classed_operand(const load_t &operand, const expr_t &)
 {
     return operand;
 }
@@ -152,6 +153,7 @@ fwd_binary(binary_op_t op, const L &lhs, const R &rhs)
     switch (op) {
     case binary_op_t::add: return make_binary< binary_op_t::add >(lhs, rhs);
     case binary_op_t::sub: return make_binary< binary_op_t::sub >(lhs, rhs);
+    case binary_op_t::mul: return make_binary< binary_op_t::mul >(lhs, rhs);
     case binary_op_t::bit_and:
         return make_binary< binary_op_t::bit_and >(lhs, rhs);
     case binary_op_t::bit_or:
@@ -258,32 +260,32 @@ struct expr_t::model_t final: interface_t
                     const expr_t &lhs,
                     const expr_t &self) const override
     {
-        return lhs.self->binary(op, classed_right(held, self), lhs);
+        return lhs.self->binary(op, classed_operand(held, self), lhs);
     }
 
     expr_t binary(binary_op_t op,
                   const literal_t &rhs,
                   const expr_t &self) const override
     {
-        return fwd_binary(op, classed(held, self), rhs);
+        return fwd_binary(op, classed_operand(held, self), rhs);
     }
 
     expr_t
     binary(binary_op_t op, const zero_t &rhs, const expr_t &self) const override
     {
-        return fwd_binary(op, classed(held, self), rhs);
+        return fwd_binary(op, classed_operand(held, self), rhs);
     }
 
     expr_t
     binary(binary_op_t op, const load_t &rhs, const expr_t &self) const override
     {
-        return fwd_binary(op, classed(held, self), rhs);
+        return fwd_binary(op, classed_operand(held, self), rhs);
     }
 
     expr_t
     binary(binary_op_t op, const expr_t &rhs, const expr_t &self) const override
     {
-        return fwd_binary(op, classed(held, self), rhs);
+        return fwd_binary(op, classed_operand(held, self), rhs);
     }
 
     T held;

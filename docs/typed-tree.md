@@ -8,7 +8,7 @@ architecture. It leaves the details to the code.
 
 Of the design the tree has a thin line through every joint: functions
 whose locals are `int`, declared, assigned and returned, with
-parentheses, the unary operators and `+ - & | ^`, on both targets.
+parentheses, the unary operators and `+ - * & | ^`, on both targets.
 Each mechanism
 below was compiled and run in a small model first; chapter 5 says
 what the models showed and chapter 6 what nothing has shown. A
@@ -491,9 +491,9 @@ rows invented for the purpose.
 
 - The categories' cut (3.5).
 - The builder on both operands at the size of all of C's operators.
-  Five are built, over three classes of left operand and four of
-  right, with one crossing from the operator's value to the node's
-  parameter.
+  Six are built, over four classes of operand on each side (a
+  constant, the constant 0, a load, anything else), with one crossing
+  from the operator's value to the node's parameter.
 - The register state at a join. Whether an arm of `?:` leaves its
   value where the other arm's does is, in its hardest case, a fact of
   one moment of generation. No type, summary or context has it. Three

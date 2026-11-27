@@ -245,6 +245,7 @@ mnemonic(binary_op_t op)
     switch (op) {
     case binary_op_t::add: return "add";
     case binary_op_t::sub: return "sub";
+    case binary_op_t::mul: return "mul";
     case binary_op_t::bit_and: return "and";
     case binary_op_t::bit_or: return "orr";
     case binary_op_t::bit_xor: return "eor";
@@ -253,16 +254,25 @@ mnemonic(binary_op_t op)
 
 // The immediate of op that encodes value at 32 bits, 2.4, or none: add
 // and sub take 12 bits, or 12 bits shifted by 12, of either sign,
-// written signed; and, orr and eor a bitmask, written in hex.
+// written signed; and, orr and eor a bitmask, written in hex; mul takes
+// none.
 std::optional< std::string >
 immediate_of(binary_op_t op, int value)
 {
-    if (op == binary_op_t::add || op == binary_op_t::sub) {
+    switch (op) {
+    case binary_op_t::add:
+    case binary_op_t::sub:
         if (arithmetic_immediate(value, 32))
             return imm(value);
+        break;
+    case binary_op_t::mul: break;
+    case binary_op_t::bit_and:
+    case binary_op_t::bit_or:
+    case binary_op_t::bit_xor:
+        if (bitmask_immediate(value, 32))
+            return bitmask_of(value, 32);
+        break;
     }
-    else if (bitmask_immediate(value, 32))
-        return bitmask_of(value, 32);
 
     return std::nullopt;
 }

@@ -131,6 +131,7 @@ mnemonic(binary_op_t op)
     switch (op) {
     case binary_op_t::add: return "addl";
     case binary_op_t::sub: return "subl";
+    case binary_op_t::mul: return "imull";
     case binary_op_t::bit_and: return "andl";
     case binary_op_t::bit_or: return "orl";
     case binary_op_t::bit_xor: return "xorl";
@@ -222,6 +223,20 @@ void
 operate(state_t &s, binary_op_t op, reg_t r, reg_t source)
 {
     operate(s, op, r, reg(source, 32));
+}
+
+// imull $5, %eax, %eax.
+void
+multiply(state_t &s, reg_t r, reg_t source, std::string_view factor)
+{
+    insn(s, "imull", { factor, reg(source, 32), reg(r, 32) });
+}
+
+// imull $5, -4(%rbp), %eax.
+void
+multiply(state_t &s, reg_t r, slot_t source, std::string_view factor)
+{
+    insn(s, "imull", { factor, at(slot_of(s, source)), reg(r, 32) });
 }
 
 // The store row: movl %eax, -4(%rbp).

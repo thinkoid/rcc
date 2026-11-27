@@ -72,10 +72,10 @@ struct unary_t
     A arg;
 };
 
-// L op R, 6.5.7, 6.5.11 to 6.5.13, on operands that do not fold, each
-// in the class a target's niches read: the builder keeps the left a
-// constant or erased, the right a constant, a load or erased, and a
-// row that exchanges the operands makes the node of the other order.
+// L op R, 6.5.6, 6.5.7, 6.5.11 to 6.5.13, on operands that do not
+// fold, each in the class a target's niches read: the builder keeps
+// each a constant, a load or erased, and a row that exchanges the
+// operands makes the node of the other order.
 template< binary_op_t op, typename L = expr_t, typename R = expr_t >
 struct binary_t
 {

@@ -69,6 +69,12 @@ void operate(state_t &, binary_op_t op, reg_t r, reg_t source);
 void operate(state_t &, binary_op_t op, reg_t r, slot_t source);
 void operate(state_t &, binary_op_t op, reg_t r, std::string_view immediate);
 
+// The three-operand imul at 32 bits, rcc's object_product(): the
+// source, a register or the int in a slot, times the immediate factor
+// into r.
+void multiply(state_t &, reg_t r, reg_t source, std::string_view factor);
+void multiply(state_t &, reg_t r, slot_t source, std::string_view factor);
+
 // The store rows, an operand into a slot at 32 bits: a register, or an
 // immediate as immediate_of() writes it.
 void store(state_t &, reg_t r, slot_t where);
@@ -98,7 +104,7 @@ initialize(state_t &s, slot_t where, const V &e)
 template< binary_op_t op, typename L >
 concept constant_first = commutes(op) && immediate< L >;
 
-// The niches of + - & | ^, chapter 6.1, over the primary of
+// The niches of + - * & | ^, chapter 6.1, over the primary of
 // rows-expressions.hh.  A constant on the left of an operator that
 // commutes is the row of the node with its operands exchanged, 5 + a
 // as a + 5: the value of the right operand, which is no constant, then
@@ -137,6 +143,32 @@ value(state_t &s, const binary_t< op, L, I > &b)
     operate(s, op, reg_of(s, l), immediate_of(b.rhs));
 
     return l;
+}
+
+// imul by an immediate is the three-operand form, rcc's arithmetic():
+// the left operand's value, its register the source and the
+// destination, imull $5, %eax, %eax.
+template< typename L, immediate I >
+value_t
+value(state_t &s, const binary_t< binary_op_t::mul, L, I > &b)
+{
+    const value_t l = value(s, b.lhs);
+    multiply(s, reg_of(s, l), reg_of(s, l), immediate_of(b.rhs));
+
+    return l;
+}
+
+// A load on the left of imul by an immediate is the source in memory,
+// rcc's product(): imull $5, -4(%rbp), %eax, no load, and the product
+// in a register taken for it.  5 * a is this row, through the mirror.
+template< immediate I >
+value_t
+value(state_t &s, const binary_t< binary_op_t::mul, load_t, I > &b)
+{
+    const value_t v = fresh(s);
+    multiply(s, reg_of(s, v), b.lhs.where, immediate_of(b.rhs));
+
+    return v;
 }
 
 // The value, moved to the result register where its row left it
