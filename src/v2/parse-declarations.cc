@@ -3,8 +3,8 @@
 // 6.7: the declarations, of which rcc-v2 takes the declaration
 // specifiers static, extern, void and the type specifiers of the
 // integer types from char to unsigned long long, in any order and
-// spelling, the declarators of a function of int parameters and of an
-// object, the declaration in a block and in a for's first clause of
+// spelling, the declarators of a function of integer parameters and of
+// an object, the declaration in a block and in a for's first clause of
 // objects of those types, each with an initializer or without, the
 // type name of a cast, and the initializer of an object of static
 // storage; it refuses the rest as not yet.  rcc reads more of each than
@@ -305,8 +305,7 @@ parameter_declarator(parser_t &p)
 // attributes after it, which are not yet.  register is the one storage
 // class a parameter takes, p2, and static and extern are refused in
 // rcc's words; register itself is not yet, as a specifier.  A parameter
-// of type void is left for the list to take or refuse, and one of any
-// other type than int is not yet, at its first type specifier.
+// of type void is left for the list to take or refuse.
 parameter_t
 parameter_declaration(parser_t &p)
 {
@@ -316,9 +315,6 @@ parameter_declaration(parser_t &p)
     if (spec.storage_class)
         fail(*spec.storage_class,
              quoted(spec.storage_class->text) + " in a parameter declaration");
-
-    if (!is< void_t >(spec.type) && spec.type != int_type())
-        not_yet(spec.specifier, "parameter whose type is not 'int'");
 
     const token_t *name = parameter_declarator(p);
     if (peek(p).kind == tok_t::kw_attribute)

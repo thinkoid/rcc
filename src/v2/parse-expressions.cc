@@ -123,9 +123,10 @@ callee(const parser_t &p, const token_t &op, const operand_t &e)
 }
 
 // The argument ahead, the call's index-th, rcc's argument(): converted
-// to its parameter's type as if by assignment, 6.5.3.3p6, an int.  One
-// past the parameters is an error at its first token, p2, said once it
-// is read.
+// to its parameter's type as if by assignment, 6.5.3.3p6.  One past the
+// parameters is an error at its first token, p2, said once it is read.
+// An argument of a parameter of another type than int is not yet, at
+// its first token.
 expr_t
 argument(parser_t &p,
          const function_t &type,
@@ -138,7 +139,11 @@ argument(parser_t &p,
     if (index >= type.params.size())
         fail(start, "too many arguments to function " + quoted(function));
 
-    return assignment_conversion(start, std::move(arg), *type.params[index]);
+    const type_t &param = *type.params[index];
+    if (param != int_type())
+        not_yet(start, "argument of a parameter whose type is not 'int'");
+
+    return assignment_conversion(start, std::move(arg), param);
 }
 
 // The arguments of a call, argument()'s each, as many as the callee's

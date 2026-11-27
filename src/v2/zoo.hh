@@ -87,7 +87,8 @@ struct slot_t
 // A local, a place, 4.2: the where of an object of view V and of a type
 // of the sign S in the function's frame, its object's sign kept since
 // rcc reads a narrow object by an extending load of its own sign
-// whatever consumes it.  A parameter is one, of an int's view and sign.
+// whatever consumes it.  A parameter is one, of its type's view and
+// sign.
 template< view_t V, sign_t S >
 struct place_t
 {

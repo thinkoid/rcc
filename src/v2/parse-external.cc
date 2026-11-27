@@ -47,8 +47,13 @@ refuse_static_main(const specifiers_t &spec, const declarator_t &d)
 // again is a redefinition, and two declarations of one kind are of
 // compatible types, 6.7.1p5, or a conflict, each said at the later
 // name.  The earlier declaration keeps its type, the composite of two
-// compatible integer types, or function types of int parameters, being
-// either.
+// compatible types being either: two integer types are compatible only
+// where they are of one kind, rcc's related(), and so one type, and two
+// function types where their results and their parameters are.  Two
+// basic types of one representation are distinct types, 6.2.5p18: char,
+// signed char and unsigned char are three, p20, and long and long long
+// two, though the machine takes the two of one width and sign for one
+// type.
 template< typename N, typename O >
 N *
 earlier_declaration(std::unordered_map< std::string_view, N > &names,
@@ -126,8 +131,9 @@ require_linkage(const token_t &name, bool earlier, bool external)
 // Declares a function in the file's scope, or meets its earlier
 // declaration, and gives it the declaration's linkage.  Its entry among
 // the unit's functions is made at its first declaration, so the unit
-// writes its functions in the order they are first declared.  Returns
-// the index of the entry.
+// writes its functions in the order they are first declared, with the
+// view of each parameter, what its frame needs.  Returns the index of
+// the entry.
 std::size_t
 declare_function(parser_t &p, const specifiers_t &spec, const declarator_t &d)
 {
@@ -145,9 +151,13 @@ declare_function(parser_t &p, const specifiers_t &spec, const declarator_t &d)
         return earlier->index;
     }
 
+    std::vector< view_t > parameters;
+    for (const parameter_t &param : d.params)
+        parameters.push_back(view_of(param.type));
+
     const std::size_t index = p.unit.functions.size();
     p.unit.functions.push_back(
-        { std::string(d.name.text), external, d.params.size() });
+        { std::string(d.name.text), external, std::move(parameters) });
     p.functions.emplace(d.name.text, function_name_t { d.type, index });
 
     return index;

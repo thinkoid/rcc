@@ -11,11 +11,12 @@ functions and of objects at file scope, declared and defined in any
 order, `static`, `extern` or neither; the objects of the integer
 types from `char` to `unsigned long long`, initialized by an integer
 constant expression or not, their data written after the functions;
-the functions of a result of any integer type or `void` and of `int`
-parameters, whose locals are of the integer types, declared, assigned
-and returned, with parentheses, the casts, the unary operators
-`+ - ~ !`, `+ - * / % << >> & | ^`, the comparisons, `&&`, `||` and
-calls of functions of an `int` or a `void` result, to
+the functions of a result of any integer type or `void` and of
+parameters of any integer type, whose locals are of the integer
+types, declared, assigned and returned, with parentheses, the casts,
+the unary operators `+ - ~ !`, `+ - * / % << >> & | ^`, the
+comparisons, `&&`, `||` and calls of functions of an `int` or a
+`void` result and of `int` parameters, to
 any depth, and the statements `if`, `else`, `while`, `do`, `for`
 with a declaration or an expression first, `break`, `continue`,
 `goto` and labels, and `return` with a value or without, on both
@@ -591,22 +592,25 @@ technique.
 - An assignment whose value is dropped is that same store. One whose
   value is used is the value held, then the store from its register.
 - A parameter is a local of the body: its leaf is a place,
-  `place_t< i32, signed_ >`, numbered by its position in the list,
-  the function's first locals. A parameter of another type waits for
-  the calls of every type. Where it lives is each target's, decided
-  in the function's row before the body and recorded in the state
-  under its number. On x86-64 the first six take a slot and the store
-  of their argument register, and the seventh and later are where the
-  caller pushed them, above `rbp`. On aarch64 each takes a slot, and
-  the ninth and later are copied in once the frame's size is known.
-  No row of the body asks whether a place is a parameter.
+  `place_t< V, S >` of its type's view and sign, numbered by its
+  position in the list, the function's first locals. Its slot is its
+  view's bytes at as many bytes' alignment, by the locals' rule, and
+  its argument register is stored there at its view; the callee
+  extends nothing, since each read is the place's load. Where it
+  lives is each target's, decided in the function's row before the
+  body and recorded in the state under its number. On x86-64 the
+  first six take a slot and the store of their argument register,
+  and the seventh and later are where the caller pushed them, above
+  `rbp`. On aarch64 each takes a slot, and the ninth and later are
+  copied in at their view once the frame's size is known. No row of
+  the body asks whether a place is a parameter.
 - A call's argument is a hidden local of its call, numbered by the
   parser, whose slot is taken where the call is generated.
 - The file's scope holds each function's and each object's C type,
   in two maps, a name in one never in the other, and its entry in
   the unit. A function's entry is made at its first declaration, so
   the unit writes its functions in that order, and it holds what the
-  listing needs: the name, the linkage, the count of parameters, the
+  listing needs: the name, the linkage, each parameter's view, the
   body or none. An object's is made at its first declaration that
   defines it, and its linkage is its first declaration's.
 - A function's name has no node. Its value, the function's address,
@@ -715,7 +719,7 @@ with rcc, and nothing else.
 | `expr.hh`, `stmt.hh` | the handles |
 | `operators.hh` | the closed domains that the parser and the zoo share, the operators and their families, the views and the signs, and the crossing of each from a value to a parameter |
 | `zoo.hh` | the node types under the handles, and the two summaries both targets read, a value's view and the width its register is valid to |
-| `unit.hh` | the unit, its functions and its objects, under no handle: each function's name, linkage, count of parameters, and body or none; each object's name, linkage, view and sign, and value or none |
+| `unit.hh` | the unit, its functions and its objects, under no handle: each function's name, linkage, parameters' views, and body or none; each object's name, linkage, view and sign, and value or none |
 | `model.hh`, `build.cc` | the models, and the one unit that instantiates them |
 | `rows-expressions.hh`, `rows-statements.hh` | the rows both targets write alike: the primaries of an effect and of a jump, `!`, `&&` and `\|\|`, and the statements |
 | `register-stack.hh` | which register or spill slot holds which value, and the values held across a branch, as templates over a target's state |

@@ -1083,17 +1083,22 @@ epilogue(std::ostream &out, const state_t &s)
 
 // The parameters' half of the prologue, before the body, since the
 // body's slots come after theirs, rcc's parameters(): each of the first
-// six takes the next slot and is stored there from its argument
-// register, movl %edi, -4(%rbp); the seventh and later are where the
-// caller pushed them, 16(%rbp) and up, 8 bytes apart, and are read and
-// written there.  Each displacement is recorded under the parameter's
-// number, the first locals' (docs/typed-tree.md 4.5).
+// six takes the next slot, of its view's bytes at as many bytes'
+// alignment, as a local does, and is stored there from its argument
+// register by the mov of its view, movb %dil, -1(%rbp), movq %rsi,
+// -16(%rbp); the seventh and later are where the caller pushed them,
+// 16(%rbp) and up, 8 bytes apart whatever their views, and are read and
+// written there at their views.  The ABI leaves the bits of an argument
+// register above a char or a short undefined, so the store writes the
+// low bytes alone, and each read is the extending load of its place.
+// Each displacement is recorded under the parameter's number, the first
+// locals' (docs/typed-tree.md 4.5).
 void
-parameters(state_t &s, std::size_t count)
+parameters(state_t &s, const std::vector< view_t > &views)
 {
     const std::size_t registers = std::size(argument_registers);
 
-    for (std::size_t i = 0; i < count; ++i) {
+    for (std::size_t i = 0; i < views.size(); ++i) {
         const int id = static_cast< int >(i);
 
         if (i >= registers) {
@@ -1101,8 +1106,9 @@ parameters(state_t &s, std::size_t count)
             continue;
         }
 
-        s.slots.emplace(id, allocate(s, 4, 4));
-        store(s, argument_registers[i], slot_t { id }, view_t::i32);
+        const int bytes = width(views[i]) / 8;
+        s.slots.emplace(id, allocate(s, bytes, bytes));
+        store(s, argument_registers[i], slot_t { id }, views[i]);
     }
 }
 

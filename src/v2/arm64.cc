@@ -96,21 +96,6 @@ slot_of(const state_t &s, slot_t where)
 
 // writing
 
-// A copy from memory to memory, which the machine has no instruction
-// for, carries its 4 bytes through x17, chapter 4: the load into w17,
-// then the store, rcc's copy_in() and copy_out().
-void
-copy_in(state_t &s, std::string_view from)
-{
-    insn(s, "ldr", { "w17", from });
-}
-
-void
-copy_out(state_t &s, std::string_view to)
-{
-    insn(s, "str", { "w17", to });
-}
-
 // The copy of a register into another at a width, the destination
 // first, 2.2, rcc's mov(): mov w0, w19, mov x0, x1.
 void
@@ -152,6 +137,44 @@ store_of(view_t view)
     case view_t::i16: return "strh";
     default: return "str";
     }
+}
+
+// The plain load of the view, the store's mirror, rcc's
+// plain_load_of(): ldrb, ldrh or ldr, the load of the unsigned type.  A
+// copy stores the same width back, so what the load writes above the
+// bytes is never read.
+std::string_view
+plain_load_of(view_t view)
+{
+    switch (view) {
+    case view_t::i8: return "ldrb";
+    case view_t::i16: return "ldrh";
+    default: return "ldr";
+    }
+}
+
+// x17, which no value is held in, by its name at the view's width: w17,
+// or x17 for 64 bits.
+std::string_view
+x17_at(view_t view)
+{
+    return view == view_t::i64 ? "x17" : "w17";
+}
+
+// A copy from memory to memory, which the machine has no instruction
+// for, carries its bytes through x17, chapter 4: the plain load of the
+// view, then the store of the same view, rcc's copy_in() and
+// copy_out(): ldrb w17, [x29, #64] and strb w17, [x29, #48].
+void
+copy_in(state_t &s, std::string_view from, view_t view)
+{
+    insn(s, plain_load_of(view), { x17_at(view), from });
+}
+
+void
+copy_out(state_t &s, std::string_view to, view_t view)
+{
+    insn(s, store_of(view), { x17_at(view), to });
 }
 
 // The register-to-register extension that brings a value of the view
@@ -850,15 +873,15 @@ outgoing_size(std::size_t stacked)
     return size;
 }
 
-// The address of the outgoing area's k-th 8 bytes for a store of 4
-// bytes, rcc's outgoing_operand(), [sp, #8k]: the ninth argument at
+// The address of the outgoing area's k-th 8 bytes for a store of the
+// view, rcc's outgoing_operand(), [sp, #8k]: the ninth argument at
 // [sp], as clang -S writes it, the tenth at [sp, #8].  Past the store's
 // reach, 2.3, rcc forms the address in x16, which rcc-v2 does not yet.
 std::string
-outgoing_operand(std::size_t k)
+outgoing_operand(std::size_t k, view_t view)
 {
     const long displacement = 8 * static_cast< long >(k);
-    if (displacement > reach(4))
+    if (displacement > reach(width(view) / 8))
         throw std::logic_error(
             "v2: not yet: an argument beyond the reach of [sp, #d]");
 
@@ -929,8 +952,10 @@ transfer(state_t &s,
         insn(s, "sub", { "sp", "sp", imm(part) });
 
     for (std::size_t i = registers; i < args.size(); ++i) {
-        copy_in(s, slot_operand(slot_of(s, args[i].where)));
-        copy_out(s, outgoing_operand(i - registers));
+        const view_t view = view_of(args[i].value);
+
+        copy_in(s, slot_operand(slot_of(s, args[i].where)), view);
+        copy_out(s, outgoing_operand(i - registers, view), view);
     }
 
     for (std::size_t i = 0; i < std::min(registers, args.size()); ++i)
@@ -949,53 +974,60 @@ namespace {
 // the frame
 
 // The parameters' half of the prologue, rcc's parameters(), 5.2: each
-// takes the next slot, in parameter order, its displacement recorded
+// takes the next slot, in parameter order, of its view's bytes at as
+// many bytes' alignment, as a local does, its displacement recorded
 // under the parameter's number, the first locals' (docs/typed-tree.md
 // 4.5); each of the first eight is stored there from its argument
-// register, str w0, [x29, #16], and one past the eighth is copied there
-// by stack_parameters(), once the frame's size says where the caller
-// left it.
+// register by the store of its view, strb w0, [x29, #16], str x1, [x29,
+// #24], and one past the eighth is copied there by stack_parameters(),
+// once the frame's size says where the caller left it.  The convention
+// leaves the bits of an argument register above a char or a short
+// unspecified, so the store writes the low bytes alone, and each read is
+// the extending load of its place.
 void
-parameters(state_t &s, std::size_t count)
+parameters(state_t &s, const std::vector< view_t > &views)
 {
-    for (std::size_t i = 0; i < count; ++i) {
+    for (std::size_t i = 0; i < views.size(); ++i) {
         const int id = static_cast< int >(i);
-        s.slots.emplace(id, allocate(s, 4, 4));
+        const int bytes = width(views[i]) / 8;
+        s.slots.emplace(id, allocate(s, bytes, bytes));
 
         if (i < std::size(argument_registers))
-            store(s, argument_registers[i], slot_t { id }, view_t::i32);
+            store(s, argument_registers[i], slot_t { id }, views[i]);
     }
 }
 
 // The displacement off x29 of the parameter of index i past the eighth,
-// 5.2: the caller left it above the frame, at [x29, #T + 8(i - 8)], and
-// T, the frame's size, is known only once the body is done.  Past the
-// reach of the load, rcc holds the upper part in x16, 5.3, which rcc-v2
-// does not yet.
+// 5.2: the caller left it above the frame, at [x29, #T + 8(i - 8)], 8
+// bytes apart whatever the views, and T, the frame's size, is known
+// only once the body is done.  Past the reach of the load of the view,
+// rcc holds the upper part in x16, 5.3, which rcc-v2 does not yet.
 int
-above_frame(std::size_t i, long size)
+above_frame(std::size_t i, long size, view_t view)
 {
     const long past = static_cast< long >(i - std::size(argument_registers));
     const long displacement = size + 8 * past;
-    if (displacement > reach(4))
+    if (displacement > reach(width(view) / 8))
         throw std::logic_error(
             "v2: not yet: a parameter beyond the reach of [x29, #d]");
 
     return static_cast< int >(displacement);
 }
 
-// The parameters past the eighth, each copied to its slot, rcc's
-// stack_parameters() and stack_copy(), 5.2, in parameter order after
-// the stores of the first eight: ldr w17, [x29, #64] and str w17, [x29,
-// #48].
+// The parameters past the eighth, each copied to its slot at its view,
+// rcc's stack_parameters() and stack_copy(), 5.2, in parameter order
+// after the stores of the first eight: ldrb w17, [x29, #64] and strb
+// w17, [x29, #48].  The copy is the plain load, which reads a narrow
+// one at its width, since the convention leaves the bits above it
+// unspecified, and the store of its view.
 void
-stack_parameters(state_t &s, std::size_t count, long size)
+stack_parameters(state_t &s, const std::vector< view_t > &views, long size)
 {
-    for (std::size_t i = std::size(argument_registers); i < count; ++i) {
+    for (std::size_t i = std::size(argument_registers); i < views.size(); ++i) {
         const int id = static_cast< int >(i);
 
-        copy_in(s, slot_operand(above_frame(i, size)));
-        copy_out(s, slot_operand(slot_of(s, slot_t { id })));
+        copy_in(s, slot_operand(above_frame(i, size, views[i])), views[i]);
+        copy_out(s, slot_operand(slot_of(s, slot_t { id })), views[i]);
     }
 }
 
