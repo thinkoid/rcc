@@ -2,11 +2,11 @@
 
 // The rows of the expressions that both targets write alike: templates
 // over the target's state, which name no register and write no text of
-// their own.  into(), a value written in a register the caller owns, is
-// the entry point with no primary (docs/typed-tree.md 3.4); value() is
-// derived from it, a register taken and into(), and so is effect()'s
-// primary, a value dropped.  build.cc includes this header beside the
-// targets' rows.
+// their own.  value(), the node's value held in a register its row
+// takes, is the entry point with no primary (docs/typed-tree.md 3.4):
+// every node type has a row that returns its value, and effect()'s
+// primary is derived from it, a value dropped.  build.cc includes this
+// header beside the targets' rows.
 
 #pragma once
 
@@ -17,53 +17,45 @@
 
 namespace rcc {
 
-// A value is a register taken and into(), 3.4: the node's value written
-// in a register taken for it, which the caller releases.  An erased
-// node is served through the handle's into() row, as a concrete one is.
-template< typename S, typename T >
-value_t
-value(S &s, const T &t)
-{
-    const value_t v = fresh(s);
-    into(s, t, reg_of(s, v));
-
-    return v;
-}
-
 // A place is read only through its load, the lvalue conversion the
 // parser asks of every operand whose value it uses, rvalue(): a slot
 // asked for its value is a tree the parser does not make.
-template< typename S, typename R >
-void
-into(S &, const slot_t &, R)
+template< typename S >
+value_t
+value(S &, const slot_t &)
 {
     throw std::logic_error("v2: a place read without its lvalue conversion");
 }
 
-// - and ~, 6.5.4.3p3, p4: the operand into r, then the operation on r in
-// place, negl %eax, neg w0, w0.
-template< typename S, unary_op_t op, typename A, typename R >
-void
-into(S &s, const unary_t< op, A > &u, R r)
+// - and ~, 6.5.4.3p3, p4: the operand's value, then the operation on
+// its register in place, negl %eax, neg w0, w0, which leaves the node's
+// value there.
+template< typename S, unary_op_t op, typename A >
+value_t
+value(S &s, const unary_t< op, A > &u)
 {
-    into(s, u.arg, r);
-    operate(s, op, r);
+    const value_t v = value(s, u.arg);
+    operate(s, op, reg_of(s, v));
+
+    return v;
 }
 
-// The primary of + - & | ^, 6.5.7, 6.5.11 to 6.5.13: the left operand
-// into r first, G13, then the right operand's value in a register of
-// its own, which value() takes while the caller holds r, the operation
-// into r from it, and the register released: addl %ecx, %eax, add w0,
-// w0, w1.
-template< typename S, binary_op_t op, typename L, typename R, typename Reg >
-void
-into(S &s, const binary_t< op, L, R > &b, Reg r)
+// The primary of + - & | ^, 6.5.7, 6.5.11 to 6.5.13: the left operand's
+// value first, G13, held while the right operand's is taken in a
+// register of its own; then the operation into the left's register from
+// the right's, addl %ecx, %eax, add w0, w0, w1, and the right released.
+// The left's register holds the node's value.
+template< typename S, binary_op_t op, typename L, typename R >
+value_t
+value(S &s, const binary_t< op, L, R > &b)
 {
-    into(s, b.lhs, r);
+    const value_t l = value(s, b.lhs);
+    const value_t r = value(s, b.rhs);
 
-    const value_t v = value(s, b.rhs);
-    operate(s, op, r, reg_of(s, v));
-    release(s, v);
+    operate(s, op, reg_of(s, l), reg_of(s, r));
+    release(s, r);
+
+    return l;
 }
 
 // The store row of an initializer, rcc's initialize(), chapter 6.6: the
@@ -79,7 +71,7 @@ initialize(S &s, slot_t where, const V &e)
 }
 
 // An expression for its effect, 6.8.4p2, its value dropped: the value
-// in a register taken for it, which is released at once.
+// held, and released at once.
 template< typename S, typename T >
 void
 effect(S &s, const T &t)
@@ -97,15 +89,18 @@ effect(S &s, const assign_t< V > &a)
     initialize(s, a.where, a.value);
 }
 
-// An assignment as a value: the value into r, then stored from r, which
-// holds the place's value after the store, 6.5.17.1p3.  So a constant
-// goes through r here, on x86-64 too, and 0 is no store of wzr.
-template< typename S, typename V, typename R >
-void
-into(S &s, const assign_t< V > &a, R r)
+// An assignment as a value: the value held, then stored from its
+// register, which holds the place's value after the store, 6.5.17.1p3,
+// the node's value.  So a constant goes through a register here, on
+// x86-64 too, and 0 is no store of wzr.
+template< typename S, typename V >
+value_t
+value(S &s, const assign_t< V > &a)
 {
-    into(s, a.value, r);
-    store(s, r, a.where);
+    const value_t v = value(s, a.value);
+    store(s, reg_of(s, v), a.where);
+
+    return v;
 }
 
 } // namespace rcc

@@ -80,6 +80,14 @@ slot_of(const state_t &s, slot_t where)
 
 // writing
 
+// The copy of a register into another at 32 bits, the source first in
+// AT&T order, rcc's mov() sized l: movl %edx, %eax.
+void
+mov(state_t &s, reg_t from, reg_t to)
+{
+    insn(s, "movl", { reg(from, 32), reg(to, 32) });
+}
+
 // A jump to the function's label n; no path reaches what follows it.
 void
 jump(state_t &s, int n)
@@ -159,23 +167,32 @@ allocate(state_t &s, slot_t where)
     s.slots.emplace(where.id, static_cast< int >(-s.frame));
 }
 
-void
-into(state_t &s, const literal_t &l, reg_t r)
+value_t
+value(state_t &s, const literal_t &l)
 {
-    constant(s, r, l.value, 32);
+    const value_t v = fresh(s);
+    constant(s, reg_of(s, v), l.value, 32);
+
+    return v;
 }
 
-void
-into(state_t &s, const zero_t &, reg_t r)
+value_t
+value(state_t &s, const zero_t &)
 {
-    constant(s, r, 0, 32);
+    const value_t v = fresh(s);
+    constant(s, reg_of(s, v), 0, 32);
+
+    return v;
 }
 
 // The load row, 6.3.2.1p2: movl -4(%rbp), %eax.  G8: one mov.
-void
-into(state_t &s, const load_t &l, reg_t r)
+value_t
+value(state_t &s, const load_t &l)
 {
-    insn(s, "movl", { at(slot_of(s, l.where)), reg(r, 32) });
+    const value_t v = fresh(s);
+    insn(s, "movl", { at(slot_of(s, l.where)), reg(reg_of(s, v), 32) });
+
+    return v;
 }
 
 // neg and not have one address, the operand's register: negl %eax,
@@ -234,18 +251,22 @@ immediate_of(const zero_t &)
     return imm(0);
 }
 
-// The value goes to the convention's result register, which the return
-// names, 7.2, and holds while the value is generated there, so that no
-// operand of it is taken in it.  Every return jumps to the one
-// epilogue, the last statement of the body included: the jump to the
-// next instruction is what the statement says, and removing it was the
-// optional peephole pass's work in the PDP-11 compiler, which rcc has
-// no counterpart of.
+// The value goes to the convention's result register, 7.2, rcc's
+// return_stmt(): it is held where its row took it, and moved when that
+// is elsewhere.  A statement starts with no value held, so the first
+// register a row takes, the lowest, is the result register.  Every
+// return jumps to the one epilogue, the last statement of the body
+// included: the jump to the next instruction is what the statement
+// says, and removing it was the optional peephole pass's work in the
+// PDP-11 compiler, which rcc has no counterpart of.
 void
 generate(state_t &s, const return_t &r)
 {
-    const value_t v = hold(s, result_register);
-    into(s, r.value, result_register);
+    const value_t v = value(s, r.value);
+    const reg_t from = reg_of(s, v);
+    if (from != result_register)
+        mov(s, from, result_register);
+
     release(s, v);
 
     jump(s, s.ret);

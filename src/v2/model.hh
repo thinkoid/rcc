@@ -14,6 +14,7 @@
 #pragma once
 
 #include "expr.hh"
+#include "register-stack.hh"
 #include "stmt.hh"
 #include "zoo.hh"
 
@@ -27,8 +28,8 @@ struct expr_t::interface_t
 {
     virtual ~interface_t() = default;
 
-    virtual void into(amd64::state_t &, amd64::reg_t) const = 0;
-    virtual void into(arm64::state_t &, arm64::reg_t) const = 0;
+    virtual value_t value(amd64::state_t &) const = 0;
+    virtual value_t value(arm64::state_t &) const = 0;
     virtual void effect(amd64::state_t &) const = 0;
     virtual void effect(arm64::state_t &) const = 0;
 
@@ -65,12 +66,12 @@ struct expr_t::interface_t
 };
 
 // The rows of a held node, by overload and by the state's namespace: a
-// member named into or effect would hide them.
-template< typename S, typename T, typename R >
-void
-fwd_into(S &s, const T &t, R r)
+// member named value or effect would hide them.
+template< typename S, typename T >
+value_t
+fwd_value(S &s, const T &t)
 {
-    into(s, t, r);
+    return value(s, t);
 }
 
 template< typename S, typename T >
@@ -80,7 +81,7 @@ fwd_effect(S &s, const T &t)
     effect(s, t);
 }
 
-// The lvalue conversion of a held node, as fwd_into() finds a row.
+// The lvalue conversion of a held node, as fwd_value() finds a row.
 template< typename T >
 expr_t
 fwd_rvalue(const T &t, const expr_t &self)
@@ -193,14 +194,14 @@ struct expr_t::model_t final: interface_t
     {
     }
 
-    void into(amd64::state_t &s, amd64::reg_t r) const override
+    value_t value(amd64::state_t &s) const override
     {
-        fwd_into(s, held, r);
+        return fwd_value(s, held);
     }
 
-    void into(arm64::state_t &s, arm64::reg_t r) const override
+    value_t value(arm64::state_t &s) const override
     {
-        fwd_into(s, held, r);
+        return fwd_value(s, held);
     }
 
     void effect(amd64::state_t &s) const override
@@ -301,7 +302,7 @@ struct stmt_t::interface_t
     virtual void generate(arm64::state_t &) const = 0;
 };
 
-// The row of a held statement, as fwd_into() finds an expression's.
+// The row of a held statement, as fwd_value() finds an expression's.
 template< typename S, typename T >
 void
 fwd_generate(S &s, const T &t)

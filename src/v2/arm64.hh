@@ -71,12 +71,12 @@ reg_t take(state_t &);
 // The next slot of the frame, the local's.
 void allocate(state_t &, slot_t where);
 
-// The constant rows of an int, 32 bits into r.
-void into(state_t &, const literal_t &, reg_t r);
-void into(state_t &, const zero_t &, reg_t r);
+// The constant rows of an int: its 32 bits in a register taken for it.
+value_t value(state_t &, const literal_t &);
+value_t value(state_t &, const zero_t &);
 
-// The load row, the int a slot holds into r.
-void into(state_t &, const load_t &, reg_t r);
+// The load row: the int a slot holds, in a register taken for it.
+value_t value(state_t &, const load_t &);
 
 // - or ~ on r in place, at 32 bits.
 void operate(state_t &, unary_op_t op, reg_t r);
@@ -104,14 +104,14 @@ concept constant_first = commutes(op) && constant< L >;
 // The niches of + - & | ^, chapter 6.1, over the primary of
 // rows-expressions.hh.  A constant on the left of an operator that
 // commutes is the row of the node with its operands exchanged, 5 + a
-// as a + 5: the right operand, which is no constant, into r, then the
-// constant as the right operand.
+// as a + 5: the value of the right operand, which is no constant, then
+// the constant as the right operand.
 template< binary_op_t op, typename L, typename R >
     requires constant_first< op, L >
-void
-into(state_t &s, const binary_t< op, L, R > &b, reg_t r)
+value_t
+value(state_t &s, const binary_t< op, L, R > &b)
 {
-    into(s, binary_t< op, R, L > { b.rhs, b.lhs }, r);
+    return value(s, binary_t< op, R, L > { b.rhs, b.lhs });
 }
 
 // A literal on the right is the instruction's immediate where it
@@ -120,14 +120,17 @@ into(state_t &s, const binary_t< op, L, R > &b, reg_t r)
 // nodes it would take only a constant on both sides, which the builder
 // folds.
 template< binary_op_t op, typename L >
-void
-into(state_t &s, const binary_t< op, L, literal_t > &b, reg_t r)
+value_t
+value(state_t &s, const binary_t< op, L, literal_t > &b)
 {
-    into(s, b.lhs, r);
-    operate(s, op, r, b.rhs);
+    const value_t l = value(s, b.lhs);
+    operate(s, op, reg_of(s, l), b.rhs);
+
+    return l;
 }
 
-// The value into the result register, then the jump to the epilogue.
+// The value, moved to the result register where its row left it
+// elsewhere, then the jump to the epilogue.
 void generate(state_t &, const return_t &);
 
 // The unit's assembly; file is the source's name, for the .file

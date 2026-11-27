@@ -23,16 +23,16 @@
 
 namespace rcc {
 
-void
-into(amd64::state_t &s, const expr_t &e, amd64::reg_t r)
+value_t
+value(amd64::state_t &s, const expr_t &e)
 {
-    e.self->into(s, r);
+    return e.self->value(s);
 }
 
-void
-into(arm64::state_t &s, const expr_t &e, arm64::reg_t r)
+value_t
+value(arm64::state_t &s, const expr_t &e)
 {
-    e.self->into(s, r);
+    return e.self->value(s);
 }
 
 void

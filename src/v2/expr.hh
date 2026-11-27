@@ -6,8 +6,8 @@
 // through the builders, build.hh; the interface and the model are
 // model.hh's, which build.cc alone includes, so a unit that includes
 // this header cannot make a node.  An expression has two entry points
-// (3.4): its value into a register the caller owns, and its effect, the
-// expression evaluated for what it does and its value dropped.  A
+// (3.4): its value, held in a register its row takes, and its effect,
+// the expression evaluated for what it does and its value dropped.  A
 // builder that must know what the handle holds goes through the model
 // (3.3), and is a friend.
 
@@ -20,6 +20,11 @@
 #include <memory>
 
 namespace rcc {
+
+// A held value, register-stack.hh's: the handle's rows return one, and
+// a unit that holds handles and generates none never sees its
+// definition.
+struct value_t;
 
 class expr_t
 {
@@ -36,8 +41,8 @@ public:
     template< typename T >
     explicit expr_t(T);
 
-    friend void into(amd64::state_t &, const expr_t &, amd64::reg_t);
-    friend void into(arm64::state_t &, const expr_t &, arm64::reg_t);
+    friend value_t value(amd64::state_t &, const expr_t &);
+    friend value_t value(arm64::state_t &, const expr_t &);
     friend void effect(amd64::state_t &, const expr_t &);
     friend void effect(arm64::state_t &, const expr_t &);
 
@@ -50,11 +55,11 @@ public:
 };
 
 // An erased operand generates itself: the handle's own rows, the value
-// of the node it holds written into r, which the caller owns, or its
-// effect.  A row calls a child by these names whether the child's type
-// is erased or concrete.
-void into(amd64::state_t &, const expr_t &, amd64::reg_t r);
-void into(arm64::state_t &, const expr_t &, arm64::reg_t r);
+// of the node it holds, in the register its row took, or its effect.  A
+// row calls a child by these names whether the child's type is erased
+// or concrete.
+value_t value(amd64::state_t &, const expr_t &);
+value_t value(arm64::state_t &, const expr_t &);
 void effect(amd64::state_t &, const expr_t &);
 void effect(arm64::state_t &, const expr_t &);
 

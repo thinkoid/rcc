@@ -32,11 +32,11 @@ struct binary_t { L lhs; R rhs; };
 
 // the primary: asks nothing
 template< binary_op_t op, typename L, typename R >
-void into(state_t &, const binary_t< op, L, R > &, reg_t);
+value_t value(state_t &, const binary_t< op, L, R > &);
 
 // a niche: addl $5, %eax
 template< binary_op_t op, typename L >
-void into(state_t &, const binary_t< op, L, literal_t > &, reg_t);
+value_t value(state_t &, const binary_t< op, L, literal_t > &);
 ```
 
 - The tree is not erased uniformly. `expr_t` is an erased handle. What
@@ -81,8 +81,8 @@ resolution in place of its `match()`. It needs no second language.
 
 4. **The context carries only what a type cannot.** The form wanted
    is not context: value, effect, jump and address are the entry
-   point a parent calls. The context is a destination, and a jump's
-   target and sense.
+   point a parent calls. The context is the register a consumer
+   would like, which is a hint, and a jump's target and sense.
 5. **The zoo's size is no cost.** A primary that is a template covers
    every instantiation, so a fine type costs no code. A fine type is a
    niche kept open. The count of types is never an argument. Which
@@ -134,14 +134,14 @@ class expr_t
 {
     struct interface_t                    // the operations: closed
     {
-        virtual reg_t value(state_t &) const = 0;
+        virtual value_t value(state_t &) const = 0;
         virtual expr_t member(long offset) const = 0;
     };
 
     template< typename T >                // the types: open
     struct model_t final : interface_t
     {
-        reg_t value(state_t &s) const override
+        value_t value(state_t &s) const override
         {
             return fwd_value(s, held);    // to the row, by overload
         }
@@ -219,21 +219,25 @@ call_t &, long)` and comes back as a member of a call.
 ### 3.4 Entry points are roles
 
 A parent asks a child for a form by the entry point it calls: its
-value, its effect, a jump to a label on a sense, its address, its
-value in a destination. The choice is static. The first three are
-the ancestor's `regtab`, `efftab` and `cctab`.
+value, its effect, a jump to a label on a sense, its address. The
+choice is static. The first three are the ancestor's `regtab`,
+`efftab` and `cctab`.
 
 - The other direction is derived: an effect is a value dropped, a
   jump on a value is the value compared with 0.
-- *Working:* the value in a destination, `into`, is the entry point
-  with no primary: every type has a row that writes its value in the
-  register it is handed (principle 10). A value is then a register
-  taken and `into`. A `return` asks for its value in the result
-  register.
-- The caller owns that register and holds it in the register stack
-  while the value is generated. So an operator computes its left
-  operand there and operates in place, and no operand of it is taken
-  in the same register.
+- `value` is the entry point with no primary: every type has a row
+  that returns its value, held in a register the row takes
+  (principle 10). The consumer reads where the value is when it
+  writes its own instruction, and moves it if it must be elsewhere: a
+  `return` moves it to the result register.
+- The register discipline is rcc's, copied as its text is: which
+  register a value lands in, when a held value is moved or spilled,
+  what a pinned instruction needs free. The typed tree changes how a
+  question about an operand's kind is asked, and never where a value
+  lands.
+- A register the consumer would like is context, handed down as a
+  hint, which a row is free not to honour. It arrives with the first
+  row that reads it.
 - An entry point carries a child's best form to a parent that does
   not know the child's type. In `if (x & 8) break;` the statement is
   `if_t< expr_t, jump_t >`, and the `tbnz` is the condition's own
@@ -319,8 +323,8 @@ A place is a *where* and a *view*: `place_t< W, V >`.
 - The parser converts every operand whose value it reads, by a
   builder through the model, `rvalue()`: a place becomes its load,
   and anything else stays the node it is. So a place asked for its
-  value is a tree the parser does not make, and a place's `into`
-  stops the generation.
+  value is a tree the parser does not make, and a place's `value`
+  row stops the generation.
 - The tree has one where and one view so far, a local of type `int`:
   `slot_t` and `load_t` take no parameter until a second arrives.
 
@@ -391,8 +395,8 @@ technique.
   asked once, in its model: a constant, the constant 0, or anything
   else, erased.
 - An assignment whose value is dropped is that same store, so the
-  niches serve both. One whose value is used is the value in the
-  destination, then the store from it.
+  niches serve both. One whose value is used is the value held, then
+  the store from its register.
 
 ### 4.6 Contexts and state
 
@@ -403,9 +407,9 @@ technique.
   parser named: `break` and `continue` are one type, `jump_t`, and
   generation holds nothing of the statements around the one
   generated. This stands on each statement being generated once.
-- **An expression's, at generation.** A destination, a jump's target
-  and sense: parameters of an entry point, set by the parent for each
-  child.
+- **An expression's, at generation.** A wanted register, a jump's
+  target and sense: parameters of an entry point, set by the parent
+  for each child.
 - **The state.** What the registers hold at this moment, the labels,
   the frame. A value held across a call is state. The call's row
   saves what the state holds and asks the tree nothing.
@@ -419,8 +423,8 @@ interface, each entry point of each target in a line of its own.
 ```c++
 struct expr_t::interface_t
 {
-    virtual void into(amd64::state_t &, amd64::reg_t) const = 0;
-    virtual void into(arm64::state_t &, arm64::reg_t) const = 0;
+    virtual value_t value(amd64::state_t &) const = 0;
+    virtual value_t value(arm64::state_t &) const = 0;
 
     // the builders, which name no target
 };
