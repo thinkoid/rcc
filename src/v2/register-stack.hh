@@ -1,20 +1,25 @@
 // -*- mode: c++; -*-
 
-// The register stack of docs/backend.md 6.7, in rcc's vocabulary: which
-// expression register holds which value, a value taken in a register
-// and released, the spill and the reload.  Its text is the same for
-// both targets, so it is templates over a target's state, which holds
-// the record, and each target defines take(), the register a new value
-// is taken in, which spills when every one is held; allocate(), the
-// next slot of the frame; and the two instructions the stack writes,
-// store_spill(), the store of a register to a spill slot, and
-// reload_spill(), the reload from one, all 8 bytes.  A value is in a
-// register, the one it was taken in but where x86-64 moves it out of
-// the way of an instruction that pins a register, or in its spill slot
-// from its spill to its reload, and the record follows it.
+// The register stack of docs/backend.md 6.7, in rcc's vocabulary:
+// which expression register holds which value, a value taken in a
+// register and released, the spill and the reload.  Its text is the
+// same for both targets, so it is templates over a target's state,
+// which holds the record, and each target defines take(), the
+// register a new value is taken in, which spills when every one is
+// held; allocate(), the next slot of the frame; and the two
+// instructions the stack writes, store_spill(), the store of a
+// register to a spill slot, and reload_spill(), the reload from one,
+// all 8 bytes.  A value is in a register, the one it was taken in but
+// where x86-64 moves it out of the way of an instruction that pins a
+// register, or in its spill slot from its spill to its reload, and
+// the record follows it.  Before the paths of && or || part, every
+// value held in a register is spilled, and every value held is marked
+// until the paths meet, so that a move of one inside them stops the
+// generation.
 
 #pragma once
 
+#include <cstddef>
 #include <map>
 #include <optional>
 #include <stdexcept>
@@ -32,12 +37,16 @@ struct value_t
 };
 
 // Where a held value is: its register, or none for a value spilled,
-// whose slot's displacement is spill.
+// whose slot's displacement is spill; whether it is held still, live,
+// until it is consumed; and across, the count of the branches around
+// the row now generated that it is held across, incoming_t's.
 template< typename R >
 struct held_t
 {
     std::optional< R > reg;
     int spill = 0;
+    bool live = true;
+    int across = 0;
 };
 
 // The state's record: the value each held register holds, by the
@@ -50,6 +59,21 @@ struct registers_t
     std::vector< held_t< R > > values { };
 };
 
+// A value held across the paths of && or || is where both paths expect
+// it until they meet, backend.md 6.7: a spill, a reload or a move of
+// one inside them would leave the paths with two register maps, and
+// the listing would assemble and be wrong, so generation stops at it
+// instead, rcc's check_movable().  It is the generator's check on
+// itself, as check_none_held() is.
+template< typename S >
+void
+check_movable(const S &s, value_t v)
+{
+    if (s.registers.values[v.id].across > 0)
+        throw std::logic_error("v2: a value held across a branch was "
+                               "moved inside it");
+}
+
 // Stores the value in r to the next spill slot, all 8 bytes, and frees
 // the register, backend.md 6.2.  The slot is the frame's next, and it
 // is never given back, so a later declaration lands past it.
@@ -58,6 +82,8 @@ void
 spill(S &s, R r)
 {
     const int id = s.registers.owner.at(r);
+    check_movable(s, value_t { id });
+
     const int displacement = allocate(s, 8, 8);
 
     store_spill(s, r, displacement);
@@ -100,6 +126,8 @@ reg_of(S &s, value_t v, unsigned avoid = 0)
     if (const auto r = s.registers.values[v.id].reg)
         return *r;
 
+    check_movable(s, v);
+
     const auto r = take(s, avoid);
     reload_spill(s, r, s.registers.values[v.id].spill);
 
@@ -116,6 +144,8 @@ release(S &s, value_t v)
 {
     if (const auto r = s.registers.values[v.id].reg)
         s.registers.owner.erase(*r);
+
+    s.registers.values[v.id].live = false;
 }
 
 // The registers of a binary node's two values, either reloaded if it
@@ -132,17 +162,67 @@ operands(S &s, value_t l, value_t r)
     return std::pair { left, right };
 }
 
-// rcc's before_paths(), docs/backend.md 6.7: before an expression's
-// paths part, at a jump inside it, rcc spills every value held in a
-// register, so that both paths leave the registers as they found them.
-// rcc-v2 does not yet, and refuses the paths where a register holds a
-// value; a value already spilled stays in its slot in rcc too.
+// Spills every value held in a register, rcc's spill_all(), in the
+// order of the registers and not of the values' ages: the record's map
+// is ordered by the register's number, which is the order take() gives
+// them on both targets.
 template< typename S >
 void
-before_paths(const S &s)
+spill_all(S &s)
 {
-    if (!s.registers.owner.empty())
-        throw std::logic_error("v2: not yet: a value held across && or ||");
+    while (!s.registers.owner.empty())
+        spill(s, s.registers.owner.begin()->first);
+}
+
+// The values held where the paths of a branch part, each marked held
+// across the branch for as long as this lives, rcc's incoming_t: its
+// scope ends where the paths meet, and the destructor takes the mark
+// back, so no return and no exception leaves a value marked.  A branch
+// nested in a path marks the outer branch's values once more, and its
+// end takes back its own mark alone.
+template< typename S >
+class [[nodiscard]] incoming_t
+{
+public:
+
+    explicit incoming_t(S &s) : m_s(s)
+    {
+        for (std::size_t id = 0; id < s.registers.values.size(); ++id) {
+            if (!s.registers.values[id].live)
+                continue;
+
+            ++s.registers.values[id].across;
+            m_ids.push_back(static_cast< int >(id));
+        }
+    }
+
+    ~incoming_t()
+    {
+        for (const int id : m_ids)
+            --m_s.registers.values[id].across;
+    }
+
+    incoming_t(const incoming_t &) = delete;
+    incoming_t &operator=(const incoming_t &) = delete;
+
+private:
+
+    S &m_s;
+    std::vector< int > m_ids { };
+};
+
+// rcc's before_paths(), docs/backend.md 6.7: before the two paths of
+// && or || every value held in a register is spilled, so that each has
+// one location on both paths, and each value held is marked held
+// across them until they meet, where the caller's incoming_t ends.  A
+// value already spilled stays in its slot.
+template< typename S >
+incoming_t< S >
+before_paths(S &s)
+{
+    spill_all(s);
+
+    return incoming_t< S >(s);
 }
 
 // Every value a statement holds is consumed by its end; nothing is held

@@ -72,6 +72,12 @@ pinned_within(const amd64::state_t &s, const expr_t &e)
     return e.self->pinned_within(s);
 }
 
+unsigned
+moved_within(const amd64::state_t &s, const expr_t &e)
+{
+    return e.self->moved_within(s);
+}
+
 // A statement holds no value past its end, c1-statements.hh's check.
 void
 generate(amd64::state_t &s, const stmt_t &statement)

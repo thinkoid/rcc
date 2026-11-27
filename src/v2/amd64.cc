@@ -280,11 +280,13 @@ namespace {
 
 // Moves the value in from to the free register to, at a width: a real
 // mov, and the record follows it (chapter 6.5), so the value's handle
-// names to from here on.
+// names to from here on.  A value held across a branch is not moved,
+// check_movable().
 void
 move(state_t &s, reg_t from, reg_t to, int width)
 {
     const int id = s.registers.owner.at(from);
+    check_movable(s, value_t { id });
 
     mov(s, from, to, width);
 

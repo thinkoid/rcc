@@ -106,7 +106,9 @@ void align_loop_head(state_t &);
 // spill's: its displacement off rbp.
 int allocate(state_t &, long size, int align);
 
-// The reload of a spilled value into r from its slot, register-stack.hh's.
+// The store of r to a spill slot, and the reload of a spilled value
+// into r from its slot, register-stack.hh's.
+void store_spill(state_t &, reg_t r, int displacement);
 void reload_spill(state_t &, reg_t r, int displacement);
 
 // The constant rows of an int: its 32 bits in a register taken for it.
@@ -307,6 +309,69 @@ pinned_within(const state_t &s, const assign_t< V > &a)
     return pinned_within(s, a.value);
 }
 
+// The registers a pinned instruction within a node would move a value
+// held across the node out of, rcc's moved_within(), 6.5: pins() over
+// the tree, as pinned_within(), but nothing below && and ||, which
+// spill every held value before their paths, before_paths(), so that
+// no value is held in a register where their operands' instructions
+// pin one.  A summary of its own, each node's of its operands', which
+// an erased one hands up through its handle.
+template< constant C >
+constexpr unsigned
+moved_within(const state_t &, const C &)
+{
+    return 0;
+}
+
+constexpr unsigned
+moved_within(const state_t &, const load_t &)
+{
+    return 0;
+}
+
+constexpr unsigned
+moved_within(const state_t &, const slot_t &)
+{
+    return 0;
+}
+
+template< unary_op_t op, typename A >
+unsigned
+moved_within(const state_t &s, const unary_t< op, A > &u)
+{
+    return moved_within(s, u.arg);
+}
+
+template< binary_op_t op, typename L, typename R >
+unsigned
+moved_within(const state_t &s, const binary_t< op, L, R > &b)
+{
+    return pins(op, constant< R >) | moved_within(s, b.lhs) |
+           moved_within(s, b.rhs);
+}
+
+template< binary_op_t op, typename L, typename R >
+    requires logical_operator< op >
+constexpr unsigned
+moved_within(const state_t &, const binary_t< op, L, R > &)
+{
+    return 0;
+}
+
+template< binary_op_t op >
+unsigned
+moved_within(const state_t &s, const top_t< op > &t)
+{
+    return moved_within(s, t.node);
+}
+
+template< typename V >
+unsigned
+moved_within(const state_t &s, const assign_t< V > &a)
+{
+    return moved_within(s, a.value);
+}
+
 // The registers a node hands its left operand, of those its consumer
 // names, wanted, rcc's wanted_left(): wanted, outside own, the
 // registers the node's own instruction pins, where no instruction
@@ -346,20 +411,18 @@ rvalue_avoiding(state_t &s, const T &e, unsigned pinned, unsigned wanted = 0)
 
 // The left operand of a node whose right operand is rhs, generated
 // outside pinned and handed named, rvalue_avoiding()'s, with the
-// registers the instructions within rhs pin added to s.ahead, rcc's
-// binary() and moved_within(): the left operand's value is held while
-// rhs is generated, so a row within it that chooses its result's
-// register, right_written(), chooses none that a pinned instruction of
-// rhs would move the value out of.  rcc's moved_within() is
-// pinned_within() but for a call, a branch and a statement expression,
-// which the tree has none of.
+// registers a pinned instruction within rhs would move it out of added
+// to s.ahead, rcc's binary() and moved_within(): the left operand's
+// value is held while rhs is generated, so a row within it that
+// chooses its result's register, right_written(), chooses none of
+// them.
 template< typename L, typename R >
 value_t
 left_operand(
     state_t &s, const L &lhs, const R &rhs, unsigned pinned, unsigned named)
 {
     const unsigned ahead =
-        std::exchange(s.ahead, s.ahead | pinned_within(s, rhs));
+        std::exchange(s.ahead, s.ahead | moved_within(s, rhs));
     const value_t l = rvalue_avoiding(s, lhs, pinned, named);
     s.ahead = ahead;
 

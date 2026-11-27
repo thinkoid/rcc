@@ -39,8 +39,9 @@ struct expr_t::interface_t
     virtual void
     value_branch(amd64::state_t &, int label, bool sense) const = 0;
 
-    // the summary of the subtree, x86-64's (principle 3)
+    // the summaries of the subtree, x86-64's (principle 3)
     virtual unsigned pinned_within(const amd64::state_t &) const = 0;
+    virtual unsigned moved_within(const amd64::state_t &) const = 0;
 
     // the builders: self is the handle that holds this node, which a
     // builder returns, or erases a part into, without a copy of the node
@@ -86,10 +87,10 @@ struct expr_t::interface_t
     binary(binary_op_t op, const expr_t &rhs, const expr_t &self) const = 0;
 };
 
-// The rows of a held node, by overload and by the state's namespace: a
-// member named value, effect, branch, value_branch or pinned_within
-// would hide them.  A value's row is handed the target's hint, the
-// registers the consumer names.
+// The rows of a held node, by overload and by the state's namespace:
+// a member named value, effect, branch, value_branch, pinned_within
+// or moved_within would hide them.  A value's row is handed the
+// target's hint, the registers the consumer names.
 template< typename S, typename T >
 value_t
 fwd_value(S &s, const T &t, unsigned wanted)
@@ -123,6 +124,13 @@ unsigned
 fwd_pinned_within(const S &s, const T &t)
 {
     return pinned_within(s, t);
+}
+
+template< typename S, typename T >
+unsigned
+fwd_moved_within(const S &s, const T &t)
+{
+    return moved_within(s, t);
 }
 
 // The lvalue conversion of a held node, as fwd_value() finds a row.
@@ -316,6 +324,11 @@ struct expr_t::model_t final: interface_t
     unsigned pinned_within(const amd64::state_t &s) const override
     {
         return fwd_pinned_within(s, held);
+    }
+
+    unsigned moved_within(const amd64::state_t &s) const override
+    {
+        return fwd_moved_within(s, held);
     }
 
     expr_t rvalue(const expr_t &self) const override

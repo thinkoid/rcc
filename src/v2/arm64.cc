@@ -324,12 +324,13 @@ wanted_register(const state_t &s, value_t v, unsigned wanted)
     return std::nullopt;
 }
 
-// The register a row's last instruction writes, v's from here on, rcc's
-// final_destination(): the register the consumer names, wanted, where
-// the instruction may write it, and the register v held is free, since
-// the instruction has read it; otherwise v's own.  The register is
-// written after the row has read every operand, so no condition on them
-// is needed.
+// The register a row's last instruction writes, v's from here on,
+// rcc's final_destination(): the register the consumer names, wanted,
+// where the instruction may write it, and the register v held is
+// free, since the instruction has read it; otherwise v's own.  The
+// register is written after the row has read every operand, so no
+// condition on them is needed.  A value held across a branch is not
+// moved, check_movable(), as rcc's named_destination() has it.
 reg_t
 final_destination(state_t &s, value_t v, unsigned wanted)
 {
@@ -337,6 +338,7 @@ final_destination(state_t &s, value_t v, unsigned wanted)
     if (!named)
         return reg_of(s, v);
 
+    check_movable(s, v);
     s.registers.owner.erase(reg_of(s, v));
     s.registers.values[v.id].reg = *named;
     s.registers.owner.emplace(*named, v.id);

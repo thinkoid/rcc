@@ -130,19 +130,20 @@ branch(S &s, const binary_t< op, L, R > &b, int label, bool sense)
 }
 
 // && and || as a value, rcc's logical(), 6.5.14p3, 6.5.15p3: no value
-// is held in a register across the paths, before_paths(); then the
-// labels of the 0 path and of the join, taken before either operand;
-// the jump on the whole to the 0 path; and on both paths one register,
-// taken after the jumps, holding 1 or 0, movl $1, %eax and movl $0,
-// %eax, mov w0, #1 and mov w0, #0, never set from the flags.  The join
-// is the label past the 0 path.  The register is the lowest free,
-// whatever the consumer names, as in rcc.
+// is held in a register across the paths, before_paths(), which spills
+// every one and marks each held value until the join; then the labels
+// of the 0 path and of the join, taken before either operand; the jump
+// on the whole to the 0 path; and on both paths one register, taken
+// after the jumps, holding 1 or 0, movl $1, %eax and movl $0, %eax,
+// mov w0, #1 and mov w0, #0, never set from the flags.  The join is the
+// label past the 0 path.  The register is the lowest free outside the
+// reservations, whatever the consumer names, as in rcc.
 template< typename S, binary_op_t op, typename L, typename R >
     requires logical_operator< op >
 value_t
 value(S &s, const binary_t< op, L, R > &b, unsigned = 0)
 {
-    before_paths(s);
+    const auto incoming = before_paths(s);
 
     const int no = new_label(s);
     const int end = new_label(s);

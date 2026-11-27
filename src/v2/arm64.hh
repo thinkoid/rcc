@@ -109,7 +109,9 @@ void align_loop_head(state_t &);
 // spill's: its displacement off x29.
 int allocate(state_t &, long size, int align);
 
-// The reload of a spilled value into r from its slot, register-stack.hh's.
+// The store of r to a spill slot, and the reload of a spilled value
+// into r from its slot, register-stack.hh's.
+void store_spill(state_t &, reg_t r, int displacement);
 void reload_spill(state_t &, reg_t r, int displacement);
 
 // The constant rows of an int: its 32 bits in a register taken for it.

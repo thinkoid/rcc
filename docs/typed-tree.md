@@ -8,8 +8,9 @@ architecture. It leaves the details to the code.
 
 Of the design the tree has a thin line through every joint: functions
 whose locals are `int`, declared, assigned and returned, with
-parentheses, the unary operators and `+ - * / % << >> & | ^`, to any
-depth, on both targets.
+parentheses, the unary operators `- ~ !`, `+ - * / % << >> & | ^`, the
+comparisons, `&&` and `||`, to any depth, and the statements `if`,
+`else`, `while`, `do`, `for`, `break` and `continue`, on both targets.
 Each mechanism
 below was compiled and run in a small model first; chapter 5 says
 what the models showed and chapter 6 what nothing has shown. A
@@ -270,10 +271,32 @@ choice is static. The first three are the ancestor's `regtab`,
   is given. Every value row takes the parameter: a niche without it
   is no candidate when a parent hands a hint, and its primary is
   written in its place.
+- `branch` jumps to a label where the node's value is nonzero, its
+  sense true, or where it is 0, and holds no value after it: rcc's
+  `cbranch()`. Its primary is the derived direction, the value
+  compared with 0. A comparison's row is its `cmp` and the jump of
+  its operator, or of the inverse on the other sense. `!`'s is its
+  operand's jump on the other sense, and writes nothing. `&&`'s and
+  `||`'s are their operands' jumps, with a skip label taken before
+  the left operand where the left one jumps the other way.
+- On x86-64 the value compared with 0 is an entry point of its own,
+  `value_branch`, a line of that target. Its niches are a load
+  compared in place, `cmpl $0, -4(%rbp)`, and the operators whose own
+  instruction sets ZF: `+ - | ^` and unary `-` jump on it with no
+  `cmp`, and `&` is `test`. `e == 0` and `e != 0` jump as `e`'s
+  `value_branch`, whatever `e` is: a parent that needs one fact of
+  an operand it erased asks the operand. aarch64 has no such line:
+  `a == 0` is `cmp` and `b.ne`, where `if (a)` is `cbz`.
+- Before the paths of `&&` or `||` part, every value held in a
+  register is spilled, in the order of the registers, and every
+  value held is marked until the paths meet: a spill, a reload or a
+  move of one inside them stops the generation. This is the
+  generator's check on itself.
 - An entry point carries a child's best form to a parent that does
-  not know the child's type. In `if (x & 8) break;` the statement is
-  `if_t< expr_t, jump_t >`, and the `tbnz` is the condition's own
-  `branch` row. No `if_t< and_t< ... >, jump_t >` is needed.
+  not know the child's type. In `if (a & 1) break;` the statement is
+  `if_t< jump_t >`, its condition erased, and x86-64's `testl $1,
+  -4(%rbp)` is the condition's own row. No `if_t< and_t< ... >,
+  jump_t >` is needed.
 - So a niche on the parent and an entry point on the child are two
   spellings of one match. Both can hold.
 
@@ -290,11 +313,15 @@ concept place = requires(state_t &s, const B &b) {
 | --- | --- | --- |
 | place | an address | a slot, a global, a dereference, a string literal |
 | addressable | an address that writes no instruction | a place that stands as an operand, `-8(%rbp)` |
-| truth | a native `branch` | comparisons, `!`, `&&`, `\|\|` |
 
 *Working:* the cut is a first one. C's own sorts (a place, a value, a
 function designator, void), how the machine names an operand, and its
 register class are separate axes.
+
+No category of conditions is kept. A parent that jumps on a child
+calls the child's `branch`, and the one parent that needs a fact of
+an operand's jump, x86-64's `e == 0`, calls the operand's
+`value_branch`.
 
 ### 3.6 The oracle of primaries
 
@@ -390,16 +417,29 @@ technique.
   place with a role, and the role is the entry point the statement's
   row calls there. No expression production names a statement, but
   for `({ })`.
-- A production, its parser function and its type's parameter list are
-  one thing spelt three times: `IF '(' expr ')' stmt`,
-  `selection_statement()`, `if_t< C, S >`.
+- A production, its parser function and its node are one thing spelt
+  three times: `IF '(' expr ')' stmt`, `selection_statement()`,
+  `if_t< S >`. The condition is no parameter: it is erased, since
+  its own row is its best jump (3.4).
 - Statements are built as a tree, not written as they are parsed.
 - The parser's function is the accumulator: its locals hold the parts
   while it reads on. It ends in one call, through the model of the
   part whose type the row needs, the other part erased.
-- A constant condition needs no statement type. It is the constant's
-  own `branch` row under the primary loop: `while (1)` writes no
-  test, and `if (0)` jumps over a body that is still written.
+- A constant condition is no special case, as in rcc: `while (1)`
+  loads 1 and tests it, and `if (0)` jumps over a then part that is
+  still written. A `for` that omits its condition writes no test:
+  its condition is `omitted_t`, a parameter of the `for`.
+- A fact the parser knows once it has read a part, and which picks
+  the form of the row, is a type or a parameter: `if_t< S >` and
+  `if_else_t< S >`; whether a `break` and a `continue` of a loop
+  stand in its body, `do_t< broken, continued >` and `for_t< C,
+  broken, continued >`. An omitted first or third clause of a `for`
+  picks no form and is the null statement.
+- An `if` whose then part is one jump, bare or the one item of a
+  block, is `if_t< jump_t >`: its builder asks the then part's model,
+  and a block's asks its one item's, so a block in a block is not
+  one jump. Its row is the condition's jump to the jump's label where
+  the condition is nonzero.
 - A block holds erased statements: their count is not bounded.
 
 ### 4.5 Names and declarations
@@ -437,17 +477,26 @@ technique.
 *Working.* There are two contexts, and the state.
 
 - **The parser's, while the tree is built.** The names, the C types,
-  and the loops around the parse. A `break` is a jump to a label the
-  parser named: `break` and `continue` are one type, `jump_t`, and
-  generation holds nothing of the statements around the one
-  generated. This stands on each statement being generated once.
+  and the loops around the parse. A loop has a number, given as a
+  local's is, and the parser's function for a loop is the
+  accumulator: when it has read the body it knows whether a `break`
+  or a `continue` of the loop stands in it. `break` and `continue`
+  are one type, `jump_t`, which names its loop's number and which of
+  the loop's two labels. A loop's row takes its labels at rcc's
+  moments and records the two under its number before the body;
+  `jump_t`'s row reads them. Generation holds nothing of the
+  statements around the one generated. This stands on each statement
+  being generated once.
 - **An expression's, at generation.** A wanted register, a jump's
   target and sense: parameters of an entry point, set by the parent
   for each child.
-- **The state.** What the registers hold at this moment, and which
-  values are spilled and where; the registers left for last while an
-  operand is generated, and on x86-64 those an instruction generated
-  later would move a held value out of; the labels; the frame. A
+- **The state.** What the registers hold at this moment, which
+  values are spilled and where, and which are held across the paths
+  of `&&` or `||`; the registers left for last while an operand is
+  generated, and on x86-64 those an instruction generated later
+  would move a held value out of; the labels, each loop's two by its
+  number, and whether a path reaches what is written next; on x86-64
+  whether the last instruction set ZF from its value; the frame. A
   value held across a call is state. The call's row saves what the
   state holds and asks the tree nothing.
 
@@ -463,7 +512,13 @@ struct expr_t::interface_t
     virtual value_t value(amd64::state_t &, unsigned wanted) const = 0;
     virtual value_t value(arm64::state_t &, unsigned wanted) const = 0;
 
+    virtual void branch(amd64::state_t &, int label, bool sense) const = 0;
+    virtual void branch(arm64::state_t &, int label, bool sense) const = 0;
+
+    virtual void
+    value_branch(amd64::state_t &, int label, bool sense) const = 0;
     virtual unsigned pinned_within(const amd64::state_t &) const = 0;
+    virtual unsigned moved_within(const amd64::state_t &) const = 0;
 
     // the builders, which name no target
 };
@@ -474,9 +529,11 @@ struct expr_t::interface_t
   argument-dependent lookup.
 - A row that both targets write alike is written once, as a template
   over the state.
-- What one target alone asks of a node is a line of that target: the
-  registers the instructions within a subtree pin are x86-64's
-  summary, and aarch64, which pins none, has no such line.
+- What one target alone asks of a node is a line of that target:
+  x86-64's jump on the value compared with 0, and its two summaries,
+  the registers the instructions within a subtree pin and those a
+  pinned instruction would move a held value out of, which is none
+  below `&&` and `||`. aarch64, which pins none, has no such line.
 
 - The zoo is the union of the shapes either target wants. A shape one
   target has no niche for falls to that target's primary: `a + b` in
@@ -494,15 +551,46 @@ with rcc, and nothing else.
 | `build.hh` | the builders, declared: all the parser sees of the zoo |
 | `build-typed.hh` | the overloads on the node types that a builder reaches through a model |
 | `expr.hh`, `stmt.hh` | the handles |
-| `operators.hh` | the operators, a closed domain that the parser and the zoo share |
+| `operators.hh` | the operators, a closed domain that the parser and the zoo share, and their families |
 | `zoo.hh` | the node types under the handles |
 | `unit.hh` | the unit and its functions, under no handle |
 | `model.hh`, `build.cc` | the models, and the one unit that instantiates them |
-| `rows-expressions.hh`, `rows-statements.hh` | the rows both targets write alike |
-| `register-stack.hh` | which register or spill slot holds which value, as templates over a target's state |
+| `rows-expressions.hh`, `rows-statements.hh` | the rows both targets write alike: the primaries of an effect and of a jump, `!`, `&&` and `\|\|`, and the statements |
+| `register-stack.hh` | which register or spill slot holds which value, and the values held across a branch, as templates over a target's state |
 | `amd64.*`, `arm64.*` | a target: its registers, its state, its rows, its frame |
 | `assembly.*` | the text both targets write alike |
 | `generate.*`, `pipeline.cc` | the back end's entry, and the pipeline |
+
+### 4.9 The questions rcc's rows ask
+
+`designs.md` 3.2 lists the questions a row of rcc asks of its operand
+before it generates it. For those the tree has reached, this is what
+each became.
+
+| rcc asks | The typed tree |
+| --- | --- |
+| `immediate()`, `memory_operand()` of an operand | the operand's class, and a niche on it: `binary_t< op, L, I >`, `binary_t< op, L, load_t >` |
+| `multiplicand()` | a niche on the left operand's class, `binary_t< mul, load_t, I >` |
+| `constant_first()`, `ordered()` | a niche on a constant on the left, which is the row of the node with its operands exchanged |
+| whether an operator is a comparison, a division, a shift | a concept on the operator, which constrains the rows of its family |
+| `pins()` | a constant of the operator |
+| `pinned_by()` | the right operand's class, `top_t< op >` |
+| `pinned_within()`, `moved_within()` | summaries, handed up through the handle, a line of x86-64 each |
+| `flag_operator()`, `flag_condition()` | x86-64's `value_branch` rows of those node types |
+| `zero_compared()` | the operand's own entry point, `value_branch` |
+| `body_target()`, an `if` of one jump | the then part's type, `if_t< jump_t >`, which the builder finds through the model |
+| a `for` without a condition, a loop broken or continued | parameters of the loop's node |
+| the loops around a statement | the parser's; a loop's two labels are in the state, by its number |
+| `arithmetic_immediate()`, `bitmask_immediate()` | an `if` in the row: one target's encoding of its own leaf (principle 2) |
+| `wanted_left()`, `held_out()`, `right_written()`, `written_in_right()` | rcc's functions, unchanged: they read the state and the summaries |
+
+- The questions about an operand's form are answered by its type, and
+  a row cannot disagree with the type that chose it.
+- The questions about the registers are rcc's, copied. A type does
+  not say which register is free.
+- The questions of a register variable, `lands_in()` to
+  `joins_into()`, have no answer here yet: the tree has no register
+  variable.
 
 ## 5. What the models showed
 
@@ -551,12 +639,17 @@ rows invented for the purpose.
   address family is where to look.
 - Whether every question rcc's generators ask of a C type moves to a
   builder (principle 9).
-- Of a jump's record: whether a label was jumped to, and the variable
-  length arrays a jump gives back. Whether a path reaches a
-  statement's end.
-- The summary of a subtree: taken as rcc has it, not designed here.
-  The first, the registers pinned within, is computed again by each
-  node that asks, as rcc computes it.
+- Of a jump's record, the variable length arrays a jump gives back.
+  Whether a loop's label is jumped to is the parser's fact, a
+  parameter of the loop's node; whether a path reaches a statement's
+  end is the state's.
+- The summaries of a subtree: taken as rcc has them, not designed
+  here. The two, the registers pinned within and those that would
+  move a held value, are computed again by each node that asks, as
+  rcc computes them.
+- x86-64's record of ZF. In every row the tree has, the instruction
+  that sets ZF is the row's last, so the `cmp` the record guards is
+  never written.
 - Records by value, and floating point as a register class.
 - The way back to rcc's pinned listings. `make sides` measures it; it
   is not sized.
