@@ -16,8 +16,10 @@
 #include "build.hh"
 
 #include <cstddef>
+#include <format>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -216,6 +218,12 @@ specified(const parser_t &p, const counts_t &n)
 
 } // namespace
 
+bool
+declared(const specifiers_t &spec, tok_t storage_class)
+{
+    return spec.storage_class && spec.storage_class->kind == storage_class;
+}
+
 // The declaration specifiers: one of the sets of 6.7.3.1p2 in any
 // order, and the storage class static or extern anywhere among them,
 // 6.7.2p1, read as rcc reads them, up to the first token that is none.
@@ -341,9 +349,9 @@ declare_parameter(parser_t &p, const parameter_t &param, int index)
         fail(*param.name,
              "redefinition of parameter " + quoted(param.name->text));
 
-    scope.emplace(param.name->text,
-                  operand_t { param.type, make_local(index, view_of(param.type),
-                                                     sign_of(param.type)) });
+    const operand_t local { param.type, make_local(index, view_of(param.type),
+                                                   sign_of(param.type)) };
+    scope.emplace(param.name->text, symbol_t { local });
 }
 
 // (void), (), or parameters, read in the scope the caller opened for
@@ -450,22 +458,68 @@ type_name(parser_t &p)
 
 namespace {
 
+// The value of an object of static storage, 6.7.11p4, the expression
+// after its '=' at, converted to its type t as if by assignment, p12:
+// the constant the builders folded it to, rcc's scalar_value(), warned
+// of where a signed overflow reached it, warn_overflowed().  A void
+// expression is require_value()'s error at its first token, a function
+// designator assignment_conversion()'s at the '=', and any other
+// expression that folded to no constant is no constant expression, an
+// error at its first token.
+long long
+scalar_value(parser_t &p, const token_t &at, const type_t &t)
+{
+    const token_t &start = peek(p);
+    const operand_t e = assignment_expression(p);
+    require_value(start, e);
+
+    const std::optional< long long > value =
+        constant_of(assignment_conversion(at, e, t));
+    if (!value)
+        fail(start, "initializer element is not a compile-time constant");
+
+    warn_overflowed(p, start, e);
+
+    return *value;
+}
+
+} // namespace
+
+// A brace initializer is not yet.
+void
+initialize(parser_t &p, const type_t &t, std::size_t index)
+{
+    const token_t &op = advance(p);
+    if (peek(p).kind == tok_t::lbrace)
+        not_yet(peek(p), "brace initializer");
+
+    p.unit.objects[index].value = scalar_value(p, op, t);
+}
+
+namespace {
+
+// rcc reads GNU C's attributes and an assembler name after a
+// declarator, which are not yet.
+void
+refuse_declarator_tail(const parser_t &p)
+{
+    if (next_is(p, { tok_t::kw_attribute, tok_t::kw_asm }))
+        not_yet(peek(p), quoted(peek(p).text) + " after a declarator");
+}
+
 // A declarator of an object and its initializer, appended to items: the
 // name declared, then, after '=', the initializer, whose scope holds
-// the name already, 6.2.1p7.  rcc reads GNU C's attributes and an
-// assembler name after the declarator, which are not yet, and so is a
-// brace initializer, in rcc's words.  The initializer's value is
-// converted to the object's type as if by assignment, 6.7.11p12,
-// assignment_conversion()'s at the '=', but a void value, which rcc
-// refuses at the initializer's first token.
+// the name already, 6.2.1p7.  A brace initializer is not yet, in rcc's
+// words.  The initializer's value is converted to the object's type as
+// if by assignment, 6.7.11p12, assignment_conversion()'s at the '=',
+// but a void value, which rcc refuses at the initializer's first token.
 void
 init_declarator(parser_t &p,
                 const type_t &type,
                 const token_t &name,
                 std::vector< stmt_t > &items)
 {
-    if (next_is(p, { tok_t::kw_attribute, tok_t::kw_asm }))
-        not_yet(peek(p), quoted(peek(p).text) + " after a declarator");
+    refuse_declarator_tail(p);
 
     const int slot = declare(p, name, type);
     if (peek(p).kind != tok_t::assign) {
@@ -485,17 +539,169 @@ init_declarator(parser_t &p,
         slot, view_of(type), assignment_conversion(op, std::move(init), type)));
 }
 
-// The declarators of a declaration in a block and its ';', 6.7.1p1: one
-// statement for each, in order.  A function declared in a block is not
-// yet; objects_only is a for's declaration, which declares no function,
-// for_declaration()'s, and rcc says so at its name.
+// The label of a block's static object, rcc's static_label(),
+// backend.md chapter 10: the function's name and the object's, f.n,
+// and from the second of the name in the function on a number after
+// them, counting from 1, f.n.1, whatever the block.  No C identifier
+// holds a '.', so the label is no symbol's of the file and no other
+// static object's.
+std::string
+static_label(parser_t &p, std::string_view name)
+{
+    const int n = p.statics[name]++;
+
+    std::string label = std::format("{}.{}", p.function, name);
+    if (n > 0)
+        label += std::format(".{}", n);
+
+    return label;
+}
+
+// An object a block declares static, rcc's static_local(): of static
+// storage duration, 6.2.4p3, and no linkage, 6.2.2p6, so a name of the
+// block's, which may hide another and be hidden as a local's is, and is
+// declared once in its block, 6.7.1p4.  It is an object the unit
+// defines, as one at file scope is, its entry in the unit's objects
+// made where its declaration is parsed, of internal binding, under its
+// own label, and its leaf a global of the label, which every access
+// reaches as a defined object's: its initializer is constant, read as a
+// global's, and gives its value once, before the program starts, and
+// without one it is zero, 6.7.11p11.  Its declaration makes no
+// statement.  The name is in scope from the end of its declarator,
+// 6.2.1p7, so the initializer sees the object.
+void
+static_local(parser_t &p, const declarator_t &d)
+{
+    refuse_declarator_tail(p);
+
+    scope_t &scope = p.scopes.back();
+    if (scope.contains(d.name.text))
+        fail(d.name, "redefinition of " + quoted(d.name.text));
+
+    const std::string label = static_label(p, d.name.text);
+    const view_t view = view_of(d.type);
+    const sign_t sign = sign_of(d.type);
+
+    const operand_t object { d.type, make_global(label, view, sign) };
+    scope.emplace(d.name.text, symbol_t { object });
+
+    const std::size_t index = p.unit.objects.size();
+    p.unit.objects.push_back({ label, false, view, sign });
+
+    if (peek(p).kind == tok_t::assign)
+        initialize(p, d.type, index);
+}
+
+// The entity of linkage the unit has of an object's name, or null,
+// rcc's unit_entity(): the file's object of the name, or the one a
+// block declared extern first.
+object_name_t *
+unit_entity(parser_t &p, std::string_view name)
+{
+    if (const auto it = p.objects.find(name); it != p.objects.end())
+        return &it->second;
+
+    const auto it = p.block_entities.find(name);
+
+    return it == p.block_entities.end() ? nullptr : &it->second;
+}
+
+// The entity a declaration in a block of a name of linkage denotes,
+// rcc's linked_entity(): the scopes from the innermost out, the file's
+// the outermost, the first that declares the name deciding: one of
+// linkage, a block's extern or the file's, gives the entity's linkage,
+// 6.2.2p4; one of no linkage, a local, a parameter or a block's static,
+// stops the walk, and the linkage is external.  Every declaration of
+// linkage of the name denotes the unit's one entity, unit_entity()'s,
+// or none yet.  external is the linkage the declaration gives the name.
+object_name_t *
+linked_entity(parser_t &p, std::string_view name, bool &external)
+{
+    object_name_t *entity = unit_entity(p, name);
+    external = true;
+
+    for (auto scope = p.scopes.rbegin(); scope != p.scopes.rend(); ++scope) {
+        const auto it = scope->find(name);
+        if (it == scope->end())
+            continue;
+
+        if (!it->second.linked)
+            return entity;
+
+        break;
+    }
+
+    if (entity)
+        external = entity->external;
+
+    return entity;
+}
+
+// An object a block declares extern, rcc's linked_declaration(): the
+// name has block scope, 6.2.1p4, and denotes an entity of linkage, the
+// one linked_entity() finds, declared before the block at file scope or
+// in an enclosing block, after it at file scope, or in another block,
+// since every declaration of a name of external linkage denotes one
+// entity, 6.2.2p2.  Every declaration of the entity is of its kind, its
+// type, 6.2.7p2, and its linkage, 6.2.2p7: a function of the name is a
+// redefinition, as redeclared() has it.  A block declares the name
+// once, but for the same entity again, 6.7.1p4.  The declaration takes
+// no initializer, 6.7.11p6, and makes no object and no statement: the
+// block's scope maps the name to the entity's leaf, and a new entity,
+// of external linkage, is the unit's, which a later declaration at file
+// scope adopts.
+void
+linked_declaration(parser_t &p, const declarator_t &d)
+{
+    refuse_declarator_tail(p);
+
+    if (peek(p).kind == tok_t::assign)
+        fail(peek(p), quoted(d.name.text) +
+                          " declared with linkage in a block cannot have "
+                          "an initializer");
+
+    bool external;
+    object_name_t *entity = linked_entity(p, d.name.text, external);
+    refuse_visibility(d.name, external);
+
+    scope_t &scope = p.scopes.back();
+    const auto here = scope.find(d.name.text);
+    if ((here != scope.end() && !here->second.linked) ||
+        p.functions.contains(d.name.text))
+        fail(d.name, "redefinition of " + quoted(d.name.text));
+
+    if (entity) {
+        if (!compatible(entity->type, d.type))
+            fail(d.name, "conflicting types for " + quoted(d.name.text));
+
+        require_linkage(d.name, entity->external, external);
+    }
+    else {
+        expr_t leaf =
+            make_global(d.name.text, view_of(d.type), sign_of(d.type));
+        object_name_t name { d.type, std::move(leaf), true };
+        entity = &p.block_entities.emplace(d.name.text, std::move(name))
+                      .first->second;
+    }
+
+    const operand_t object { entity->type, entity->leaf };
+    scope.emplace(d.name.text, symbol_t { object, true });
+}
+
+// The declarators of a declaration in a block and its ';', 6.7.1p1: a
+// local's statement for each, in order; a static declaration's
+// declarators make none, their objects being no locals, nor an extern
+// one's, which declare objects the block does not make.  A function
+// declared in a block is not yet; objects_only is a for's declaration,
+// which declares no function, for_declaration()'s, and rcc says so at
+// its name.
 std::vector< stmt_t >
-init_declarator_list(parser_t &p, const type_t &type, bool objects_only)
+init_declarator_list(parser_t &p, const specifiers_t &spec, bool objects_only)
 {
     std::vector< stmt_t > items;
 
     do {
-        const declarator_t d = declarator(p, type);
+        const declarator_t d = declarator(p, spec.type);
         if (objects_only && is< function_t >(d.type))
             fail(d.name, "function " + quoted(d.name.text) +
                              " declared in the declaration of a 'for'");
@@ -503,7 +709,12 @@ init_declarator_list(parser_t &p, const type_t &type, bool objects_only)
         if (is< function_t >(d.type))
             not_yet(d.name, "declaration of function " + quoted(d.name.text));
 
-        init_declarator(p, type, d.name, items);
+        if (declared(spec, tok_t::kw_extern))
+            linked_declaration(p, d);
+        else if (declared(spec, tok_t::kw_static))
+            static_local(p, d);
+        else
+            init_declarator(p, spec.type, d.name, items);
     } while (accept(p, tok_t::comma));
 
     expect(p, tok_t::semicolon, "expected ';' at end of declaration");
@@ -528,23 +739,19 @@ refuse_declaration_start(const parser_t &p)
 } // namespace
 
 // A declaration in a block, 6.7.1p1, after what refuse_declaration_start()
-// refuses: a static object, an extern declaration and an object of type
-// void are not yet, each refused at its specifier.
+// refuses: of locals, of static objects or of extern ones; an object of
+// type void is not yet, refused at its specifier.
 std::vector< stmt_t >
 declaration(parser_t &p)
 {
     refuse_declaration_start(p);
 
     const specifiers_t spec = declaration_specifiers(p);
-    if (spec.storage_class)
-        not_yet(*spec.storage_class,
-                "declaration specifier " + quoted(spec.storage_class->text));
-
     if (is< void_t >(spec.type))
         not_yet(spec.specifier,
                 "declaration specifier " + quoted(spec.specifier.text));
 
-    return init_declarator_list(p, spec.type, false);
+    return init_declarator_list(p, spec, false);
 }
 
 // The declaration of a for's first clause, as the for's init, rcc's
@@ -569,36 +776,11 @@ for_declaration(parser_t &p)
         not_yet(spec.specifier,
                 "declaration specifier " + quoted(spec.specifier.text));
 
-    std::vector< stmt_t > items = init_declarator_list(p, spec.type, true);
+    std::vector< stmt_t > items = init_declarator_list(p, spec, true);
     if (items.size() == 1)
         return std::move(items.front());
 
     return make_block(std::move(items));
-}
-
-// The value of an object of static storage, 6.7.11p4, the expression
-// after its '=' at, converted to its type t as if by assignment, p12:
-// the constant the builders folded it to, rcc's scalar_value(), warned
-// of where a signed overflow reached it, warn_overflowed().  A void
-// expression is require_value()'s error at its first token, a function
-// designator assignment_conversion()'s at the '=', and any other
-// expression that folded to no constant is no constant expression, an
-// error at its first token.
-long long
-scalar_value(parser_t &p, const token_t &at, const type_t &t)
-{
-    const token_t &start = peek(p);
-    const operand_t e = assignment_expression(p);
-    require_value(start, e);
-
-    const std::optional< long long > value =
-        constant_of(assignment_conversion(at, e, t));
-    if (!value)
-        fail(start, "initializer element is not a compile-time constant");
-
-    warn_overflowed(p, start, e);
-
-    return *value;
 }
 
 } // namespace rcc

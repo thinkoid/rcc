@@ -18,14 +18,38 @@
 
 namespace rcc {
 
-namespace {
-
-// Whether the declaration's storage class is the keyword's.
-bool
-declared(const specifiers_t &spec, tok_t storage_class)
+// A declaration under a #pragma GCC visibility other than default gives
+// that visibility to the symbol it names where the symbol has external
+// linkage, as clang has it, a function and an object alike, and rcc
+// writes every symbol visible, so such a declaration is not yet, judged
+// at the declarator's name; one of a name of internal linkage is what
+// it is without the pragma.
+void
+refuse_visibility(const token_t &name, bool external)
 {
-    return spec.storage_class && spec.storage_class->kind == storage_class;
+    if (name.nondefault_visibility && external)
+        not_yet(name, "pragma 'GCC visibility'");
 }
+
+// A name of internal and of external linkage in one unit is undefined,
+// 6.2.2p7, and refused, rcc's require_linkage(): int n; static int n;
+// and static int n; int n;, whose second declaration gives the name the
+// other linkage than the earlier's, earlier.
+void
+require_linkage(const token_t &name, bool earlier, bool external)
+{
+    if (earlier == external)
+        return;
+
+    if (!external)
+        fail(name, "static declaration of " + quoted(name.text) +
+                       " follows non-static declaration");
+
+    fail(name, "non-static declaration of " + quoted(name.text) +
+                   " follows static declaration");
+}
+
+namespace {
 
 // The function called at program startup is named main, 5.1.2.3.2p1,
 // and is found by that name from outside the unit, which static, giving
@@ -97,35 +121,23 @@ linkage_of(const specifiers_t &spec,
     return true;
 }
 
-// A declaration under a #pragma GCC visibility other than default gives
-// that visibility to the symbol it names where the symbol has external
-// linkage, as clang has it, a function and an object alike, and rcc
-// writes every symbol visible, so such a declaration is not yet, judged
-// at the declarator's name; one of a name of internal linkage is what
-// it is without the pragma.
+// An object a block declared extern first, with external linkage, is
+// the entity a declaration of its name at file scope denotes, 6.2.2p2,
+// rcc's adopt_block_entity(): the name joins the file's objects as that
+// entity, where earlier_declaration() meets it, unless the file declares
+// the name already.  So int g = 1; after a block's extern int g; defines
+// the block's object, static int g; is the error of its two linkages,
+// and a function of the name a redefinition.
 void
-refuse_visibility(const token_t &name, bool external)
+adopt_block_entity(parser_t &p, std::string_view name)
 {
-    if (name.nondefault_visibility && external)
-        not_yet(name, "pragma 'GCC visibility'");
-}
-
-// A name of internal and of external linkage in one unit is undefined,
-// 6.2.2p7, and refused, rcc's require_linkage(): int n; static int n;
-// and static int n; int n;, whose second declaration gives the name the
-// other linkage than the earlier's, earlier.
-void
-require_linkage(const token_t &name, bool earlier, bool external)
-{
-    if (earlier == external)
+    const auto it = p.block_entities.find(name);
+    if (it == p.block_entities.end() || p.objects.contains(name) ||
+        p.functions.contains(name))
         return;
 
-    if (!external)
-        fail(name, "static declaration of " + quoted(name.text) +
-                       " follows non-static declaration");
-
-    fail(name, "non-static declaration of " + quoted(name.text) +
-                   " follows static declaration");
+    p.objects.emplace(it->first, std::move(it->second));
+    p.block_entities.erase(it);
 }
 
 // Declares a function in the file's scope, or meets its earlier
@@ -137,6 +149,8 @@ require_linkage(const token_t &name, bool earlier, bool external)
 std::size_t
 declare_function(parser_t &p, const specifiers_t &spec, const declarator_t &d)
 {
+    adopt_block_entity(p, d.name.text);
+
     const function_name_t *earlier =
         earlier_declaration(p.functions, p.objects, d.name, d.type);
     std::optional< bool > linked;
@@ -229,24 +243,13 @@ function_definition(parser_t &p, const specifiers_t &spec, declarator_t &d)
     p.loop_count = 0;
     p.labels.clear();
     p.gotos.clear();
+    p.function = d.name.text;
+    p.statics.clear();
 
     stmt_t body = function_body(p, std::move(d.scope));
     require_labels(p);
 
     p.unit.functions[index].body = std::move(body);
-}
-
-// The initializer after the '=' ahead of the object the unit's objects
-// hold at index, of the type t, rcc's initialize(): its value,
-// scalar_value()'s.  A brace initializer is not yet.
-void
-initialize(parser_t &p, const type_t &t, std::size_t index)
-{
-    const token_t &op = advance(p);
-    if (peek(p).kind == tok_t::lbrace)
-        not_yet(peek(p), "brace initializer");
-
-    p.unit.objects[index].value = scalar_value(p, op, t);
 }
 
 // An object at file scope, 6.9.3, rcc's declare_external_object().  A
@@ -275,6 +278,8 @@ declare_object(parser_t &p, const specifiers_t &spec, const declarator_t &d)
 {
     if (is< void_t >(d.type))
         not_yet(d.name, "object " + quoted(d.name.text) + " of type 'void'");
+
+    adopt_block_entity(p, d.name.text);
 
     object_name_t *object =
         earlier_declaration(p.objects, p.functions, d.name, d.type);

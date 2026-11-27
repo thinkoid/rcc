@@ -214,7 +214,7 @@ lookup(const parser_t &p, std::string_view name)
 {
     for (auto scope = p.scopes.rbegin(); scope != p.scopes.rend(); ++scope)
         if (const auto it = scope->find(name); it != scope->end())
-            return &it->second;
+            return &it->second.operand;
 
     return nullptr;
 }
@@ -229,9 +229,9 @@ declare(parser_t &p, const token_t &name, const type_t &type)
         fail(name, "redefinition of " + quoted(name.text));
 
     const int slot = p.locals++;
-    p.scopes.back().emplace(
-        name.text,
-        operand_t { type, make_local(slot, view_of(type), sign_of(type)) });
+    const operand_t local { type,
+                            make_local(slot, view_of(type), sign_of(type)) };
+    p.scopes.back().emplace(name.text, symbol_t { local });
 
     return slot;
 }

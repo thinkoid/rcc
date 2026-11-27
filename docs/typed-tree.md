@@ -7,12 +7,13 @@ states the design: the idea, its principles, its idioms and its
 architecture. It leaves the details to the code.
 
 Of the design the tree has a thin line through every joint: a unit of
-functions and of objects at file scope, declared and defined in any
-order, `static`, `extern` or neither; the objects of the integer
-types from `char` to `unsigned long long`, initialized by an integer
-constant expression or not, read and assigned in every expression,
-defined before their use, after it or nowhere in the unit, their
-data written after the functions; the functions of a result of any
+functions and of objects, declared and defined in any order,
+`static`, `extern` or neither, at file scope or a block's `static`
+and `extern`; the objects of the integer types from `char` to
+`unsigned long long`, initialized by an integer constant expression
+or not, read and assigned in every expression, defined before their
+use, after it or nowhere in the unit, their data written after the
+functions; the functions of a result of any
 integer type or `void` and of parameters of any integer type, whose
 locals are of the integer types, declared, assigned and returned,
 with parentheses, the casts, the unary operators `+ - ~ !`,
@@ -431,8 +432,9 @@ S >`.
 
 - The where is how the machine names the object: a local's slot,
   `slot_t`, its number among the function's locals; an object of
-  static storage, `global_t`, its name in the listing; and later a
-  register variable and the object through a pointer's value.
+  static storage, `global_t`, its name in the listing, the C name or
+  a block's static's label, `f.s`; and later a register variable and
+  the object through a pointer's value.
 - A where's address is each target's descriptor, rcc's `address_t`,
   formed where rcc forms it: a slot's displacement; a global's label
   where the unit defines it, a slot with another spelling; and where
@@ -652,6 +654,16 @@ technique.
   listing needs: the name, the linkage, each parameter's view, the
   body or none. An object's is made at its first declaration that
   defines it, and its linkage is its first declaration's.
+- A block's `static` object is the unit's too. Its entry is made
+  where its declaration is parsed, under its label: the function's
+  name and its own, `f.s`, and from the second of the name in the
+  function a number, `f.s.1`. Its leaf is a global's place under
+  that label, in the block's scope, so no row is new.
+- A block's `extern` names the unit's entity of its name: the file's
+  object, or one an earlier block declared, which a later
+  declaration at file scope adopts. A block's scope keeps whether
+  each name has linkage, which a later `extern` of the name reads,
+  6.2.2p4.
 - A function's name has no node. Its value, the function's address,
   waits for a where of the unit's data; a call is built from the
   name alone.
@@ -791,6 +803,7 @@ each became.
 | `defined_symbols()`, `s.defined` in `global_address()` | the state's `defined`, read by a global's address alone, in one `if` |
 | `address()`, `operand()`, `registers_of()`, `release()` of an `address_t` | the same, each target's, on the same descriptor |
 | `place_of()`, `address_avoiding()` of an assignment | each target's `place_of()`: the place taken first, in the assignment's one row |
+| `linked_entity()`, `unit_entity()`, `static_label()` | the parser's, ported whole; a scope keeps each name's linkage |
 | `integer(t).width`, `operation_width()` | the node's view, a parameter |
 | `integer(t).is_signed` | the operator, by its name; a widening, `sext_t` or `zext_t`; a place's narrow read |
 | the width of `extended()`, `valid` | a summary, `valid_of()`, read by a widening's primary and aarch64's test of zero |

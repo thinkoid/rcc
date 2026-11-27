@@ -47,11 +47,20 @@ struct operand_t
     bool overflowed = false;
 };
 
+// What a block's scope holds of a name it declares, 6.2.1p4: the
+// operand a use copies, its type and its leaf (docs/typed-tree.md 4.5);
+// and whether the name has linkage, 6.2.2: a block's extern has, and a
+// local, a parameter and a block's static object have none, p6, which
+// a block's extern of the name, linked_entity(), reads.
+struct symbol_t
+{
+    operand_t operand;
+    bool linked = false;
+};
+
 // A block's scope, or a parameter list's, 6.2.1p4: each name it
-// declares, a view into the tokens, and what the parser holds of the
-// name, its type and its leaf, which a use copies (docs/typed-tree.md
-// 4.5).
-using scope_t = std::unordered_map< std::string_view, operand_t >;
+// declares, a view into the tokens, and what the scope holds of it.
+using scope_t = std::unordered_map< std::string_view, symbol_t >;
 
 // What the parser holds of a function's name in the file's scope,
 // 6.2.1p4: its type, a function_t, which a later declaration of the
@@ -102,10 +111,14 @@ struct label_name_t
 // list's; the count of the locals the function has declared, which
 // numbers the next one; the loops whose bodies are being read,
 // innermost last, with the count of the function's loops, which numbers
-// the next one (docs/typed-tree.md 4.6); and the function's C labels by
+// the next one (docs/typed-tree.md 4.6); the function's C labels by
 // their names, their count numbering the next one, with the name of
 // each goto in the order they are written, for the function's end to
-// require their labels.
+// require their labels; the function's name, and the count of its
+// block's static objects of each name, which their labels read,
+// static_label(); and the objects a block declared extern first, of
+// external linkage, which no declaration at file scope has declared
+// yet, unit_entity()'s.
 struct parser_t
 {
     const std::vector< token_t > &tokens;
@@ -124,6 +137,9 @@ struct parser_t
     int loop_count = 0;
     std::unordered_map< std::string_view, label_name_t > labels = { };
     std::vector< const token_t * > gotos = { };
+    std::string_view function = { };
+    std::unordered_map< std::string_view, int > statics = { };
+    std::unordered_map< std::string_view, object_name_t > block_entities = { };
 };
 
 //
@@ -321,12 +337,26 @@ declarator_t declarator(parser_t &, const type_t &base);
 std::vector< stmt_t > declaration(parser_t &);
 stmt_t for_declaration(parser_t &);
 
-// The value of the initializer ahead of an object of static storage of
-// the integer type t, its '=' at, rcc's scalar_value(): an integer
-// constant expression, 6.7.11p4, folded.
-long long scalar_value(parser_t &, const token_t &at, const type_t &t);
+// Whether the declaration's storage class is the keyword's.
+bool declared(const specifiers_t &spec, tok_t storage_class);
+
+// The initializer after the '=' ahead of the object of static storage of
+// the integer type t that the unit's objects hold at index, rcc's
+// initialize(): an integer constant expression, 6.7.11p4, folded, which
+// is the entry's value.
+void initialize(parser_t &, const type_t &t, std::size_t index);
 
 // 6.8, parse-statements.cc
 std::vector< stmt_t > block_item_list(parser_t &);
+
+// 6.9, parse-external.cc
+
+// The visibility pragma on a name of external linkage, not yet, and
+// the two linkages of one name in a unit, an error, 6.2.2p7, rcc's
+// refuse_visibility() and require_linkage(): earlier is the linkage of
+// the name's earlier declaration, whether external, and external the
+// later's.
+void refuse_visibility(const token_t &name, bool external);
+void require_linkage(const token_t &name, bool earlier, bool external);
 
 } // namespace rcc

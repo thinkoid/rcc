@@ -1,4 +1,5 @@
-/* A static object in a block is not yet, at its storage class. */
+/* A block's static object initialized past its type's range: the
+   warning of a signed overflow, and the object in .data as f.s. */
 int
 f(void)
 {
