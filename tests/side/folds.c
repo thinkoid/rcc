@@ -1,7 +1,10 @@
 /* Two constants fold where the node is built, as rcc folds them: the
    exact value wrapped to 32 bits, as the instruction wraps it, so
    2147483647 + 1 is -2147483648 and 65536 * 65536 is 0 with no
-   diagnostic.  A fold is bottom-up and in the grammar's association:
+   diagnostic.  A shift's count is taken modulo 32, as the instruction
+   masks it, and >> of a negative value is arithmetic, so 1 << 33 is 2,
+   1 << -1 is -2147483648 and -1 >> 40 is -1; 2 << 31 is 0, which
+   draws nothing.  A fold is bottom-up and in the grammar's association:
    1 + 2 + a is (1 + 2) + a, folded to 3 + a, and a + 1 + 2 is
    (a + 1) + 2, two operations, as a * 2 * 3 is.  A folded constant is
    the operand a target's niche takes: a & (1 - 1) is a & 0, kept.
@@ -125,4 +128,60 @@ product_kept(void)
 {
         int a = 7;
         return a * 2 * 3;
+}
+
+int
+shl_sign(void)
+{
+        int a = 7;
+        return 1 << 31;
+}
+
+int
+shl_past_sign(void)
+{
+        int a = 7;
+        return 2 << 31;
+}
+
+int
+shl_32(void)
+{
+        int a = 7;
+        return 1 << 32;
+}
+
+int
+shl_33(void)
+{
+        int a = 7;
+        return 1 << 33;
+}
+
+int
+shl_minus_one(void)
+{
+        int a = 7;
+        return 1 << -1;
+}
+
+int
+shr_negative(void)
+{
+        int a = 7;
+        return -8 >> 1;
+}
+
+int
+shr_40(void)
+{
+        int a = 7;
+        return -1 >> 40;
+}
+
+int
+shl_of_sum(void)
+{
+        int a = 7;
+        return (1 + 2) << 4;
 }

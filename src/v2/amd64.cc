@@ -80,12 +80,14 @@ slot_of(const state_t &s, slot_t where)
 
 // writing
 
-// The copy of a register into another at 32 bits, the source first in
-// AT&T order, rcc's mov() sized l: movl %edx, %eax.
+// The copy of a register into another at a width, 32 or 64 bits, the
+// source first in AT&T order, rcc's mov(): movl %edx, %eax, movq %rax,
+// %rsi.
 void
-mov(state_t &s, reg_t from, reg_t to)
+mov(state_t &s, reg_t from, reg_t to, int width)
 {
-    insn(s, "movl", { reg(from, 32), reg(to, 32) });
+    insn(s, width == 64 ? "movq" : "movl",
+         { reg(from, width), reg(to, width) });
 }
 
 // A jump to the function's label n; no path reaches what follows it.
@@ -124,7 +126,8 @@ constant(state_t &s, reg_t r, long long value, int width)
 // operators
 
 // The instruction of a binary operator at 32 bits, rcc's
-// arithmetic_mnemonic() sized l.
+// arithmetic_mnemonic() and shift_mnemonic() sized l: sar for >>,
+// signed.
 std::string_view
 mnemonic(binary_op_t op)
 {
@@ -132,6 +135,8 @@ mnemonic(binary_op_t op)
     case binary_op_t::add: return "addl";
     case binary_op_t::sub: return "subl";
     case binary_op_t::mul: return "imull";
+    case binary_op_t::shl: return "shll";
+    case binary_op_t::shr: return "sarl";
     case binary_op_t::bit_and: return "andl";
     case binary_op_t::bit_or: return "orl";
     case binary_op_t::bit_xor: return "xorl";
@@ -140,17 +145,72 @@ mnemonic(binary_op_t op)
 
 } // namespace
 
-// A register for a value: the lowest free one.  With every one held rcc
-// spills the oldest, backend.md 6.2, which rcc-v2 does not yet.
+// A register for a value: the lowest free one outside avoid and
+// s.reserved, else the lowest free one outside avoid.  The reservation
+// is an avoidance, not a pin.  With none free outside avoid rcc spills
+// the oldest held value there, backend.md 6.2, which rcc-v2 does not
+// yet.
 reg_t
-take(state_t &s)
+take(state_t &s, unsigned avoid)
 {
-    for (const reg_t r : expression_registers)
-        if (!s.registers.owner.contains(r))
-            return r;
+    for (const unsigned out : { avoid | s.reserved, avoid })
+        for (const reg_t r : expression_registers)
+            if (!s.registers.owner.contains(r) && !(out & bit(r)))
+                return r;
 
     throw std::logic_error("v2: not yet: a spill");
 }
+
+namespace {
+
+// Moves the value in from to the free register to, at a width: a real
+// mov, and the record follows it (chapter 6.5), so the value's handle
+// names to from here on.
+void
+move(state_t &s, reg_t from, reg_t to, int width)
+{
+    const int id = s.registers.owner.at(from);
+
+    mov(s, from, to, width);
+
+    s.registers.values[id] = to;
+    s.registers.owner.erase(from);
+    s.registers.owner.emplace(to, id);
+}
+
+// Frees r for a pinned instruction: a value held there moves, all 64
+// bits, to a free register outside avoid.
+void
+vacate(state_t &s, reg_t r, unsigned avoid)
+{
+    if (s.registers.owner.contains(r))
+        move(s, r, take(s, avoid | bit(r)), 64);
+}
+
+// Puts a shift's count, held in right, into cl, rcc's count_into_cl():
+// a value held in rcx moves out first, to a register outside avoid,
+// and the count is moved there at its own width.
+void
+count_into_cl(state_t &s, reg_t right, unsigned avoid)
+{
+    if (right == rcx)
+        return;
+
+    vacate(s, rcx, avoid | bit(right));
+    move(s, right, rcx, 32);
+}
+
+// Whether the row of op on the held values l and r writes r's register,
+// rcc's right_written(): an operator that commutes, +, *, &, | or ^,
+// whose right operand is in the register the consumer names, wanted,
+// where l's register would be written and moved.
+bool
+right_written(const state_t &s, binary_op_t op, value_t r, unsigned wanted)
+{
+    return commutes(op) && (wanted & bit(reg_of(s, r)));
+}
+
+} // namespace
 
 // The next slot below the last, an int's 4 bytes, which keep every
 // slot at an int's alignment; its displacement off rbp is recorded
@@ -169,7 +229,7 @@ allocate(state_t &s, slot_t where)
 }
 
 value_t
-value(state_t &s, const literal_t &l)
+value(state_t &s, const literal_t &l, unsigned)
 {
     const value_t v = fresh(s);
     constant(s, reg_of(s, v), l.value, 32);
@@ -178,7 +238,7 @@ value(state_t &s, const literal_t &l)
 }
 
 value_t
-value(state_t &s, const zero_t &)
+value(state_t &s, const zero_t &, unsigned)
 {
     const value_t v = fresh(s);
     constant(s, reg_of(s, v), 0, 32);
@@ -188,7 +248,7 @@ value(state_t &s, const zero_t &)
 
 // The load row, 6.3.2.1p2: movl -4(%rbp), %eax.  G8: one mov.
 value_t
-value(state_t &s, const load_t &l)
+value(state_t &s, const load_t &l, unsigned)
 {
     const value_t v = fresh(s);
     insn(s, "movl", { at(slot_of(s, l.where)), reg(reg_of(s, v), 32) });
@@ -225,6 +285,26 @@ operate(state_t &s, binary_op_t op, reg_t r, reg_t source)
     operate(s, op, r, reg(source, 32));
 }
 
+// op R, L into L, R released, rcc's arithmetic() on two held values,
+// chapter 6.1; but an operator that commutes writes R's register where
+// it is the one the consumer names, right_written(), and L is released:
+// the count (0 << d) + (d = c) is addl %edx, %ecx, in the ecx its
+// consumer names.
+value_t
+arithmetic(state_t &s, binary_op_t op, value_t l, value_t r, unsigned wanted)
+{
+    if (right_written(s, op, r, wanted)) {
+        operate(s, op, reg_of(s, r), reg_of(s, l));
+        release(s, l);
+        return r;
+    }
+
+    operate(s, op, reg_of(s, l), reg_of(s, r));
+    release(s, r);
+
+    return l;
+}
+
 // imull $5, %eax, %eax.
 void
 multiply(state_t &s, reg_t r, reg_t source, std::string_view factor)
@@ -237,6 +317,24 @@ void
 multiply(state_t &s, reg_t r, slot_t source, std::string_view factor)
 {
     insn(s, "imull", { factor, at(slot_of(s, source)), reg(r, 32) });
+}
+
+// rcc's shift() for a held count, chapter 6.5: the count goes into cl,
+// count_into_cl(), and the value in rcx moves out of its way, the
+// shifted value too if it stands there, to a register outside its own
+// and the count's, all 64 bits; the shifted value's register is read
+// after the moves, since its handle follows it.  G3: the instruction
+// masks the count to 5 bits, and nothing else does.  The rows
+// generated the shifted value with rcx reserved and the count where cl
+// is likely, so the moves are for a value that is in the way all the
+// same.
+void
+shift(state_t &s, binary_op_t op, value_t l, value_t r)
+{
+    count_into_cl(s, reg_of(s, r), bit(reg_of(s, l)));
+
+    insn(s, mnemonic(op), { "%cl", reg(reg_of(s, l), 32) });
+    release(s, r);
 }
 
 // The store row: movl %eax, -4(%rbp).
@@ -266,21 +364,30 @@ immediate_of(const zero_t &)
     return imm(0);
 }
 
+// The count's low 8 bits as written, not masked to 5, rcc's
+// right_operand(): shll $33, %eax, and $255 for -1.
+std::string
+count_of(int count)
+{
+    return imm(count & 0xff);
+}
+
 // The value goes to the convention's result register, 7.2, rcc's
-// return_stmt(): it is held where its row took it, and moved when that
-// is elsewhere.  A statement starts with no value held, so the first
-// register a row takes, the lowest, is the result register.  Every
-// return jumps to the one epilogue, the last statement of the body
-// included: the jump to the next instruction is what the statement
+// return_stmt() and rvalue_in(): the value's row is handed the result
+// register as the one its consumer names, and the value is moved where
+// its row left it elsewhere.  A statement starts with no value held, so
+// the first register a row takes, the lowest, is the result register.
+// Every return jumps to the one epilogue, the last statement of the
+// body included: the jump to the next instruction is what the statement
 // says, and removing it was the optional peephole pass's work in the
 // PDP-11 compiler, which rcc has no counterpart of.
 void
 generate(state_t &s, const return_t &r)
 {
-    const value_t v = value(s, r.value);
+    const value_t v = value(s, r.value, bit(result_register));
     const reg_t from = reg_of(s, v);
     if (from != result_register)
-        mov(s, from, result_register);
+        mov(s, from, result_register, 32);
 
     release(s, v);
 

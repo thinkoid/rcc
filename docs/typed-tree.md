@@ -8,7 +8,8 @@ architecture. It leaves the details to the code.
 
 Of the design the tree has a thin line through every joint: functions
 whose locals are `int`, declared, assigned and returned, with
-parentheses, the unary operators and `+ - * & | ^`, on both targets.
+parentheses, the unary operators and `+ - * << >> & | ^`, on both
+targets.
 Each mechanism
 below was compiled and run in a small model first; chapter 5 says
 what the models showed and chapter 6 what nothing has shown. A
@@ -190,6 +191,11 @@ public:
   operator that commutes is written by the row of the node with its
   operands exchanged. The tree keeps the operands as they are
   written, since the rule that exchanges them is each target's.
+- Operators whose rows differ are families, each named by a concept
+  on the operator: on x86-64 the arithmetic operators take an
+  immediate and an operand in memory, and a shift takes neither. A
+  row is constrained by its family, so a niche of one family is no
+  candidate for a node of another.
 - A type that a builder makes and a target never refines compiles,
   and writes its primary's listing. Only a pinned listing catches
   that.
@@ -213,6 +219,12 @@ call_t &, long)` and comes back as a member of a call.
 - A builder returns the best node, of any family. `x + 0` is the
   value of `x`; `*&x` is the place of `x`; a sum of two literals is a
   literal.
+- A class may keep one fact of an operand it erases. A right operand
+  whose top operator pins a register on a target is kept as
+  `top_t< op >`: the node erased, its own niches intact, and its
+  operator the class's parameter, which the parent's row reads as a
+  constant. It is a class and no node: a builder that returns the
+  operand itself returns the node inside.
 - A type exists only where a builder makes it. The zoo is as fine as
   the builders are.
 
@@ -236,8 +248,14 @@ choice is static. The first three are the ancestor's `regtab`,
   question about an operand's kind is asked, and never where a value
   lands.
 - A register the consumer would like is context, handed down as a
-  hint, which a row is free not to honour. It arrives with the first
-  row that reads it.
+  hint, which a row is free not to honour. On x86-64 it is a
+  parameter of `value`, the registers the consumer names, none by
+  default: a `return` names the result register, and a shift names
+  `rcx` for its count. A row hands it to the operand whose register
+  will hold the node's value, and a row both targets write alike
+  hands on whatever it is given. Every value row of x86-64 takes the
+  parameter: a niche without it is no candidate when a parent hands a
+  hint, and its primary is written in its place.
 - An entry point carries a child's best form to a parent that does
   not know the child's type. In `if (x & 8) break;` the statement is
   `if_t< expr_t, jump_t >`, and the `tbnz` is the condition's own
@@ -410,7 +428,8 @@ technique.
 - **An expression's, at generation.** A wanted register, a jump's
   target and sense: parameters of an entry point, set by the parent
   for each child.
-- **The state.** What the registers hold at this moment, the labels,
+- **The state.** What the registers hold at this moment, the
+  registers left for last while an operand is generated, the labels,
   the frame. A value held across a call is state. The call's row
   saves what the state holds and asks the tree nothing.
 
@@ -423,8 +442,10 @@ interface, each entry point of each target in a line of its own.
 ```c++
 struct expr_t::interface_t
 {
-    virtual value_t value(amd64::state_t &) const = 0;
+    virtual value_t value(amd64::state_t &, unsigned wanted) const = 0;
     virtual value_t value(arm64::state_t &) const = 0;
+
+    virtual unsigned pinned_within(const amd64::state_t &) const = 0;
 
     // the builders, which name no target
 };
@@ -435,6 +456,9 @@ struct expr_t::interface_t
   argument-dependent lookup.
 - A row that both targets write alike is written once, as a template
   over the state.
+- What one target alone asks of a node is a line of that target: the
+  registers the instructions within a subtree pin are x86-64's
+  summary, and aarch64, which pins none, has no such line.
 
 - The zoo is the union of the shapes either target wants. A shape one
   target has no niche for falls to that target's primary: `a + b` in
@@ -491,9 +515,11 @@ rows invented for the purpose.
 
 - The categories' cut (3.5).
 - The builder on both operands at the size of all of C's operators.
-  Six are built, over four classes of operand on each side (a
-  constant, the constant 0, a load, anything else), with one crossing
-  from the operator's value to the node's parameter.
+  Eight are built, over four classes of operand on each side (a
+  constant, the constant 0, a load, anything else) and a fifth on the
+  right (an operand whose top operator pins), with one crossing from
+  the operator's value to the node's parameter. Each class kept on
+  the right is one more operation of the interface.
 - The register state at a join. Whether an arm of `?:` leaves its
   value where the other arm's does is, in its hardest case, a fact of
   one moment of generation. No type, summary or context has it. Three
@@ -511,6 +537,8 @@ rows invented for the purpose.
   length arrays a jump gives back. Whether a path reaches a
   statement's end.
 - The summary of a subtree: taken as rcc has it, not designed here.
+  The first, the registers pinned within, is computed again by each
+  node that asks, as rcc computes it.
 - Records by value, and floating point as a register class.
 - The way back to rcc's pinned listings. `make sides` measures it; it
   is not sized.

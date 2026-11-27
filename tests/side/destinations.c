@@ -16,7 +16,10 @@
    product_initialized(), product_discarded() and
    product_returned_store() each take a * b or a * 5, and scaled()
    multiplies x by a constant, imull $5, -8(%rbp), %eax, then the
-   store. */
+   store.  So are a shift's: shift_assigned(), shift_initialized(),
+   shift_discarded() and shift_returned_store() each take a << b or
+   a >> 5, and shifted() and shifted_by() shift x by a constant and by
+   a local, the count in ecx, then the store. */
 int
 returned(void)
 {
@@ -151,5 +154,61 @@ scaled(void)
         int b = 2;
         int x = 1;
         x = x * 5;
+        return x;
+}
+
+int
+shift_assigned(void)
+{
+        int a = 1;
+        int b = 2;
+        int x;
+        x = a << b;
+        return x;
+}
+
+int
+shift_initialized(void)
+{
+        int a = 1;
+        int b = 2;
+        int x = a >> 5;
+        return x;
+}
+
+int
+shift_discarded(void)
+{
+        int a = 1;
+        int b = 2;
+        a << b;
+        a >> 5;
+        return 0;
+}
+
+int
+shift_returned_store(void)
+{
+        int a = 1;
+        int b = 2;
+        int x;
+        return x = a << b;
+}
+
+int
+shifted(void)
+{
+        int b = 2;
+        int x = 1;
+        x = x << 5;
+        return x;
+}
+
+int
+shifted_by(void)
+{
+        int b = 2;
+        int x = 1;
+        x = x << b;
         return x;
 }

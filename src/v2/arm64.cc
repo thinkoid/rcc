@@ -238,7 +238,8 @@ constant(state_t &s, reg_t r, long long value, int width)
 
 // operators
 
-// The instruction of a binary operator, rcc's arithmetic_mnemonic().
+// The instruction of a binary operator, rcc's arithmetic_mnemonic() and
+// shift_mnemonic(): asr for >>, signed.
 std::string_view
 mnemonic(binary_op_t op)
 {
@@ -246,6 +247,8 @@ mnemonic(binary_op_t op)
     case binary_op_t::add: return "add";
     case binary_op_t::sub: return "sub";
     case binary_op_t::mul: return "mul";
+    case binary_op_t::shl: return "lsl";
+    case binary_op_t::shr: return "asr";
     case binary_op_t::bit_and: return "and";
     case binary_op_t::bit_or: return "orr";
     case binary_op_t::bit_xor: return "eor";
@@ -254,7 +257,9 @@ mnemonic(binary_op_t op)
 
 // The immediate of op that encodes value at 32 bits, 2.4, or none: add
 // and sub take 12 bits, or 12 bits shifted by 12, of either sign,
-// written signed; and, orr and eor a bitmask, written in hex; mul takes
+// written signed; a shift its count masked to the width, which is what
+// the instruction does to a count in a register (G3), lsl w0, w0, #1
+// for a << 33; and, orr and eor a bitmask, written in hex; mul takes
 // none.
 std::optional< std::string >
 immediate_of(binary_op_t op, int value)
@@ -266,6 +271,8 @@ immediate_of(binary_op_t op, int value)
             return imm(value);
         break;
     case binary_op_t::mul: break;
+    case binary_op_t::shl:
+    case binary_op_t::shr: return imm(value & 31);
     case binary_op_t::bit_and:
     case binary_op_t::bit_or:
     case binary_op_t::bit_xor:
@@ -347,7 +354,9 @@ operate(state_t &s, unary_op_t op, reg_t r)
     insn(s, op == unary_op_t::neg ? "neg" : "mvn", { operand, operand });
 }
 
-// op r, r, R, three addresses: add w0, w0, w1.
+// op r, r, R, three addresses: add w0, w0, w1.  A shift's count in a
+// register is named at the width of the value shifted, lsl w0, w0, w1,
+// and the instruction reads its low 5 bits (G3).
 void
 operate(state_t &s, binary_op_t op, reg_t r, reg_t source)
 {

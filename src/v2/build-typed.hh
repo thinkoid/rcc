@@ -94,8 +94,19 @@ make_unary(const C &arg, const expr_t &)
     return make_literal(folded(op, value_of(arg)));
 }
 
-// * + - & | ^ of two constants, 6.5.6p5, 6.5.7p6, p7, 6.5.11p4,
-// 6.5.12p4, 6.5.13p4.
+// The count of a shift of an int, as rcc's shift_count() takes it: the
+// count modulo 32, as the instruction masks it (G3), where 6.5.8p3
+// leaves a count that is negative or not less than 32 undefined.
+inline int
+shift_count(int count)
+{
+    return count & 31;
+}
+
+// * + - << >> & | ^ of two constants, 6.5.6p5, 6.5.7p6, p7, 6.5.8p4,
+// p5, 6.5.11p4, 6.5.12p4, 6.5.13p4.  << shifts the bits and wraps, and
+// >> of a negative value is arithmetic, G3, the implementation's
+// choice by 6.5.8p5.
 inline int
 folded(binary_op_t op, int lhs, int rhs)
 {
@@ -106,6 +117,8 @@ folded(binary_op_t op, int lhs, int rhs)
     case binary_op_t::add: return wrapped(a + b);
     case binary_op_t::sub: return wrapped(a - b);
     case binary_op_t::mul: return wrapped(a * b);
+    case binary_op_t::shl: return wrapped(a << shift_count(rhs));
+    case binary_op_t::shr: return lhs >> shift_count(rhs);
     case binary_op_t::bit_and: return lhs & rhs;
     case binary_op_t::bit_or: return lhs | rhs;
     case binary_op_t::bit_xor: return lhs ^ rhs;
@@ -114,7 +127,8 @@ folded(binary_op_t op, int lhs, int rhs)
 
 // Whether the constant c on the right of op makes op the identity, as
 // rcc's is_identity_by() says: + - | ^ by 0, * by 1, & by -1, every bit
-// of an int.
+// of an int, << >> by a count that is 0 modulo 32, so x << 32 is x and
+// x << 33 is no identity.
 inline bool
 is_identity_by(binary_op_t op, int c)
 {
@@ -124,12 +138,30 @@ is_identity_by(binary_op_t op, int c)
     case binary_op_t::bit_or:
     case binary_op_t::bit_xor: return c == 0;
     case binary_op_t::mul: return c == 1;
+    case binary_op_t::shl:
+    case binary_op_t::shr: return shift_count(c) == 0;
     case binary_op_t::bit_and: return c == -1;
     }
 }
 
-// * + - & | ^ of operands neither of which is a constant: the node,
-// each operand in its class.
+// The node an operand is, out of the class a builder kept it in: a
+// top_t holds its node, and any other class is a node of its own.
+template< typename T >
+expr_t
+node_of(const T &operand)
+{
+    return expr_t(operand);
+}
+
+template< binary_op_t op >
+expr_t
+node_of(const top_t< op > &operand)
+{
+    return operand.node;
+}
+
+// * + - << >> & | ^ of operands neither of which is a constant: the
+// node, each operand in its class.
 template< binary_op_t op, typename L, typename R >
 expr_t
 make_binary(const L &lhs, const R &rhs)
@@ -153,13 +185,13 @@ make_binary(const L &lhs, const R &rhs)
 
 // A constant on the left makes the operator the identity as one on the
 // right does, but for an operator that commutes alone: 0 + x is x, and
-// 0 - x is the node.
+// 0 - x and 0 << x are the node.
 template< binary_op_t op, constant L, typename R >
 expr_t
 make_binary(const L &lhs, const R &rhs)
 {
     if (commutes(op) && is_identity_by(op, value_of(lhs)))
-        return expr_t(rhs);
+        return node_of(rhs);
 
     return expr_t(binary_t< op, L, R > { lhs, rhs });
 }

@@ -72,15 +72,29 @@ struct unary_t
     A arg;
 };
 
-// L op R, 6.5.6, 6.5.7, 6.5.11 to 6.5.13, on operands that do not
+// L op R, 6.5.6 to 6.5.8, 6.5.11 to 6.5.13, on operands that do not
 // fold, each in the class a target's niches read: the builder keeps
-// each a constant, a load or erased, and a row that exchanges the
-// operands makes the node of the other order.
+// each a constant, a load or erased, the right one a top_t besides,
+// and a row that exchanges the operands makes the node of the other
+// order.
 template< binary_op_t op, typename L = expr_t, typename R = expr_t >
 struct binary_t
 {
     L lhs;
     R rhs;
+};
+
+// The right operand of a binary operator whose top operator is op, a
+// shift by a count that is no constant: the node erased, with its own
+// niches, and op kept as the class's parameter, since x86-64 generates
+// the left operand away from the register that instruction pins, a
+// fact of the right operand's type (pinned_by()).  It is a class of an
+// operand and no node: an operator that is the identity leaves the
+// node it holds, node_of().
+template< binary_op_t op >
+struct top_t
+{
+    expr_t node;
 };
 
 // x = e, 6.5.17.2: the value stored in the place, whose value after the

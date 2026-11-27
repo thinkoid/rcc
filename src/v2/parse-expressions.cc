@@ -120,7 +120,7 @@ postfix_expression(parser_t &p)
 }
 
 // The operand of an arithmetic operator: its value, 6.3.2.1p2, of type
-// int, which the integer promotions, 6.5.4.3p2, and the usual
+// int, which the integer promotions, 6.5.4.3p2, 6.5.8p3, and the usual
 // arithmetic conversions, 6.5.6p4, 6.5.7p5, leave as it is.  An
 // operand of another type is not yet.
 expr_t
@@ -197,9 +197,10 @@ cast_expression(parser_t &p)
     return unary_expression(p);
 }
 
-// A binary operator of int, 6.5.6, 6.5.7, 6.5.11 to 6.5.13, its token
-// at: each operand's value, as arithmetic_operand() takes it there, and
-// the result an int, the operands' common type.
+// A binary operator of int, 6.5.6 to 6.5.8, 6.5.11 to 6.5.13, its
+// token at: each operand's value, as arithmetic_operand() takes it
+// there, and the result an int, the operands' common type, and for a
+// shift the type of the promoted left operand, 6.5.8p3.
 operand_t
 arithmetic(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
 {
@@ -247,12 +248,21 @@ additive_expression(parser_t &p)
     return e;
 }
 
-// The bitwise shift operators, 6.5.8.
+// The bitwise shift operators, 6.5.8, left-associative, as rcc's loop
+// reads them: a << b << c is (a << b) << c.
 operand_t
 shift_expression(parser_t &p)
 {
     operand_t e = additive_expression(p);
-    refuse_operator(p, { tok_t::shl, tok_t::shr });
+
+    while (next_is(p, { tok_t::shl, tok_t::shr })) {
+        const token_t &op = advance(p);
+        const binary_op_t b =
+            op.kind == tok_t::shl ? binary_op_t::shl : binary_op_t::shr;
+
+        operand_t rhs = additive_expression(p);
+        e = arithmetic(b, op, std::move(e), std::move(rhs));
+    }
 
     return e;
 }

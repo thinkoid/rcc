@@ -7,9 +7,10 @@
 // model.hh's, which build.cc alone includes, so a unit that includes
 // this header cannot make a node.  An expression has two entry points
 // (3.4): its value, held in a register its row takes, and its effect,
-// the expression evaluated for what it does and its value dropped.  A
-// builder that must know what the handle holds goes through the model
-// (3.3), and is a friend.
+// the expression evaluated for what it does and its value dropped; and
+// it hands up one summary, x86-64's, the registers the instructions
+// within it pin.  A builder that must know what the handle holds goes
+// through the model (3.3), and is a friend.
 
 #pragma once
 
@@ -41,10 +42,11 @@ public:
     template< typename T >
     explicit expr_t(T);
 
-    friend value_t value(amd64::state_t &, const expr_t &);
+    friend value_t value(amd64::state_t &, const expr_t &, unsigned wanted);
     friend value_t value(arm64::state_t &, const expr_t &);
     friend void effect(amd64::state_t &, const expr_t &);
     friend void effect(arm64::state_t &, const expr_t &);
+    friend unsigned pinned_within(const amd64::state_t &, const expr_t &);
 
     friend expr_t rvalue(expr_t);
     friend bool is_assignable(const expr_t &);
@@ -57,10 +59,17 @@ public:
 // An erased operand generates itself: the handle's own rows, the value
 // of the node it holds, in the register its row took, or its effect.  A
 // row calls a child by these names whether the child's type is erased
-// or concrete.
-value_t value(amd64::state_t &, const expr_t &);
+// or concrete.  On x86-64 the value's row is handed wanted, the
+// registers its consumer names, a hint (docs/typed-tree.md 3.4), none
+// where the consumer names none.
+value_t value(amd64::state_t &, const expr_t &, unsigned wanted = 0);
 value_t value(arm64::state_t &, const expr_t &);
 void effect(amd64::state_t &, const expr_t &);
 void effect(arm64::state_t &, const expr_t &);
+
+// The registers the instructions within an erased operand pin on
+// x86-64, its summary handed up (principle 3), forwarded to the node it
+// holds.
+unsigned pinned_within(const amd64::state_t &, const expr_t &);
 
 } // namespace rcc

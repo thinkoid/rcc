@@ -5,8 +5,10 @@
 // and released.  Its text is the same for both targets, so it is
 // templates over a target's state, which holds the record as registers,
 // and each target defines take(), the register a new value is taken
-// in.  There is no spill yet: a value stays in the register it was
-// taken in until it is released.
+// in.  There is no spill yet: a value stays in a register until it is
+// released, the one it was taken in but where x86-64 moves it out of
+// the way of an instruction that pins a register, and the record
+// follows it.
 
 #pragma once
 
@@ -25,7 +27,7 @@ struct value_t
 
 // The state's record: the value each held register holds, by the
 // value's number, a register absent from it being free; and the
-// register each value was taken in, by the value's number.
+// register each value is in, by the value's number.
 template< typename R >
 struct registers_t
 {

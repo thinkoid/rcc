@@ -28,10 +28,13 @@ struct expr_t::interface_t
 {
     virtual ~interface_t() = default;
 
-    virtual value_t value(amd64::state_t &) const = 0;
+    virtual value_t value(amd64::state_t &, unsigned wanted) const = 0;
     virtual value_t value(arm64::state_t &) const = 0;
     virtual void effect(amd64::state_t &) const = 0;
     virtual void effect(arm64::state_t &) const = 0;
+
+    // the summary of the subtree, x86-64's (principle 3)
+    virtual unsigned pinned_within(const amd64::state_t &) const = 0;
 
     // the builders: self is the handle that holds this node, which a
     // builder returns, or erases a part into, without a copy of the node
@@ -61,17 +64,25 @@ struct expr_t::interface_t
     binary(binary_op_t op, const zero_t &rhs, const expr_t &self) const = 0;
     virtual expr_t
     binary(binary_op_t op, const load_t &rhs, const expr_t &self) const = 0;
+    virtual expr_t binary(binary_op_t op,
+                          const top_t< binary_op_t::shl > &rhs,
+                          const expr_t &self) const = 0;
+    virtual expr_t binary(binary_op_t op,
+                          const top_t< binary_op_t::shr > &rhs,
+                          const expr_t &self) const = 0;
     virtual expr_t
     binary(binary_op_t op, const expr_t &rhs, const expr_t &self) const = 0;
 };
 
 // The rows of a held node, by overload and by the state's namespace: a
-// member named value or effect would hide them.
-template< typename S, typename T >
+// member named value, effect or pinned_within would hide them.  A
+// value's row is handed the target's hint where the target has one, the
+// registers the consumer names on x86-64.
+template< typename S, typename T, typename... W >
 value_t
-fwd_value(S &s, const T &t)
+fwd_value(S &s, const T &t, W... wanted)
 {
-    return value(s, t);
+    return value(s, t, wanted...);
 }
 
 template< typename S, typename T >
@@ -79,6 +90,13 @@ void
 fwd_effect(S &s, const T &t)
 {
     effect(s, t);
+}
+
+template< typename S, typename T >
+unsigned
+fwd_pinned_within(const S &s, const T &t)
+{
+    return pinned_within(s, t);
 }
 
 // The lvalue conversion of a held node, as fwd_value() finds a row.
@@ -142,6 +160,28 @@ classed_operand(const load_t &operand, const expr_t &)
     return operand;
 }
 
+// The right operand of a binary operator as a builder keeps it:
+// classed_operand()'s classes, and a top_t besides for a node whose top
+// operator x86-64 generates the left operand away from: a shift by a
+// count that is no constant, the count's class read from the node's
+// type.
+template< typename T >
+decltype(auto)
+classed_right(const T &operand, const expr_t &self)
+{
+    return classed_operand(operand, self);
+}
+
+template< binary_op_t op, typename L, typename R >
+auto
+classed_right(const binary_t< op, L, R > &, const expr_t &self)
+{
+    if constexpr (is_shift(op) && !constant< R >)
+        return top_t< op > { self };
+    else
+        return self;
+}
+
 // A binary operator on two operands in their classes: the crossing from
 // the operator, a value in the parser, to the node's parameter
 // (principle 6), made once for every class, the typed builder of each
@@ -154,6 +194,8 @@ fwd_binary(binary_op_t op, const L &lhs, const R &rhs)
     case binary_op_t::add: return make_binary< binary_op_t::add >(lhs, rhs);
     case binary_op_t::sub: return make_binary< binary_op_t::sub >(lhs, rhs);
     case binary_op_t::mul: return make_binary< binary_op_t::mul >(lhs, rhs);
+    case binary_op_t::shl: return make_binary< binary_op_t::shl >(lhs, rhs);
+    case binary_op_t::shr: return make_binary< binary_op_t::shr >(lhs, rhs);
     case binary_op_t::bit_and:
         return make_binary< binary_op_t::bit_and >(lhs, rhs);
     case binary_op_t::bit_or:
@@ -196,9 +238,9 @@ struct expr_t::model_t final: interface_t
     {
     }
 
-    value_t value(amd64::state_t &s) const override
+    value_t value(amd64::state_t &s, unsigned wanted) const override
     {
-        return fwd_value(s, held);
+        return fwd_value(s, held, wanted);
     }
 
     value_t value(arm64::state_t &s) const override
@@ -214,6 +256,11 @@ struct expr_t::model_t final: interface_t
     void effect(arm64::state_t &s) const override
     {
         fwd_effect(s, held);
+    }
+
+    unsigned pinned_within(const amd64::state_t &s) const override
+    {
+        return fwd_pinned_within(s, held);
     }
 
     expr_t rvalue(const expr_t &self) const override
@@ -260,7 +307,7 @@ struct expr_t::model_t final: interface_t
                     const expr_t &lhs,
                     const expr_t &self) const override
     {
-        return lhs.self->binary(op, classed_operand(held, self), lhs);
+        return lhs.self->binary(op, classed_right(held, self), lhs);
     }
 
     expr_t binary(binary_op_t op,
@@ -278,6 +325,20 @@ struct expr_t::model_t final: interface_t
 
     expr_t
     binary(binary_op_t op, const load_t &rhs, const expr_t &self) const override
+    {
+        return fwd_binary(op, classed_operand(held, self), rhs);
+    }
+
+    expr_t binary(binary_op_t op,
+                  const top_t< binary_op_t::shl > &rhs,
+                  const expr_t &self) const override
+    {
+        return fwd_binary(op, classed_operand(held, self), rhs);
+    }
+
+    expr_t binary(binary_op_t op,
+                  const top_t< binary_op_t::shr > &rhs,
+                  const expr_t &self) const override
     {
         return fwd_binary(op, classed_operand(held, self), rhs);
     }

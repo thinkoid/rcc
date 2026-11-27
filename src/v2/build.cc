@@ -24,9 +24,9 @@
 namespace rcc {
 
 value_t
-value(amd64::state_t &s, const expr_t &e)
+value(amd64::state_t &s, const expr_t &e, unsigned wanted)
 {
-    return e.self->value(s);
+    return e.self->value(s, wanted);
 }
 
 value_t
@@ -45,6 +45,12 @@ void
 effect(arm64::state_t &s, const expr_t &e)
 {
     e.self->effect(s);
+}
+
+unsigned
+pinned_within(const amd64::state_t &s, const expr_t &e)
+{
+    return e.self->pinned_within(s);
 }
 
 // A statement holds no value past its end, c1-statements.hh's check.

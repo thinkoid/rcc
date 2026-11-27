@@ -94,6 +94,25 @@ void store(state_t &, reg_t r, slot_t where);
 // no register is held.
 void initialize(state_t &, slot_t where, const zero_t &);
 
+// The primary of + - * << >> & | ^, 6.5.6 to 6.5.8, 6.5.11 to 6.5.13,
+// chapter 6.1: the left operand's value first, G13, held while the
+// right operand's is taken in a register of its own; then the operation
+// into the left's register from the right's, add w0, w0, w1, lsl w0,
+// w0, w1, and the right released.  The left's register holds the node's
+// value.  No instruction pins a register, so nothing is steered.
+template< binary_op_t op, typename L, typename R >
+value_t
+value(state_t &s, const binary_t< op, L, R > &b)
+{
+    const value_t l = value(s, b.lhs);
+    const value_t r = value(s, b.rhs);
+
+    operate(s, op, reg_of(s, l), reg_of(s, r));
+    release(s, r);
+
+    return l;
+}
+
 // Whether a node with the constant L on the left of op is written with
 // its operands exchanged, rcc's constant_first() as ordered() asks it:
 // op commutes, and L is a constant, whether the instruction encodes it
@@ -101,11 +120,10 @@ void initialize(state_t &, slot_t where, const zero_t &);
 template< binary_op_t op, typename L >
 concept constant_first = commutes(op) && constant< L >;
 
-// The niches of + - * & | ^, chapter 6.1, over the primary of
-// rows-expressions.hh.  A constant on the left of an operator that
-// commutes is the row of the node with its operands exchanged, 5 + a
-// as a + 5: the value of the right operand, which is no constant, then
-// the constant as the right operand.
+// The niches of the primary, chapter 6.1.  A constant on the left of an
+// operator that commutes is the row of the node with its operands
+// exchanged, 5 + a as a + 5: the value of the right operand, which is
+// no constant, then the constant as the right operand.
 template< binary_op_t op, typename L, typename R >
     requires constant_first< op, L >
 value_t
@@ -115,11 +133,11 @@ value(state_t &s, const binary_t< op, L, R > &b)
 }
 
 // A literal on the right is the instruction's immediate where it
-// encodes it, add w0, w0, #5, and the primary's register otherwise:
-// mul encodes none, mov w1, #5 and mul w0, w0, w1.  0 takes the
-// primary: a & 0 is mov w1, #0 and the and.  Of the mirror's
-// nodes it would take only a constant on both sides, which the builder
-// folds.
+// encodes it, add w0, w0, #5, lsl w0, w0, #5, and the primary's
+// register otherwise: mul encodes none, mov w1, #5 and mul w0, w0, w1.
+// 0 takes the primary: a & 0 is mov w1, #0 and the and.  Of the
+// mirror's nodes it would take only a constant on both sides, which the
+// builder folds.
 template< binary_op_t op, typename L >
 value_t
 value(state_t &s, const binary_t< op, L, literal_t > &b)
