@@ -1,16 +1,20 @@
 // -*- mode: c++; -*-
 
 // The text both targets write alike, to the letter, which names no
-// register: an instruction's line, a label and its count, and the
-// .file directive's string.  insn() and new_label() are templates over
-// a target's state, which holds the function's text and its count of
-// labels.
+// register: an instruction's line, a label and its count, the .file
+// directive's string, a symbol's binding and the unit's data.  insn()
+// and new_label() are templates over a target's state, which holds the
+// function's text and its count of labels.
 
 #pragma once
 
+#include "unit.hh"
+
 #include <initializer_list>
+#include <ostream>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace rcc {
 
@@ -50,5 +54,14 @@ std::string label_name(std::string_view function, int n);
 // The file name as a .file directive's string: its base name in quotes,
 // a quote and a backslash in it escaped.
 std::string quoted_file(std::string_view file);
+
+// The binding of a symbol the unit defines, docs/backend.md chapter 10,
+// rcc's binding(): .globl where its linkage is external, and nothing
+// for one of internal linkage, which is local to the file's object.
+void binding(std::ostream &, std::string_view name, bool external);
+
+// The objects the unit defines, written after its last function, rcc's
+// data() (backend.md chapter 10): the same text on both targets.
+void data(std::ostream &, const std::vector< object_decl_t > &objects);
 
 } // namespace rcc

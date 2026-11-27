@@ -7,12 +7,15 @@ states the design: the idea, its principles, its idioms and its
 architecture. It leaves the details to the code.
 
 Of the design the tree has a thin line through every joint: a unit of
-functions, declared and defined in any order, `static` or not, of a
-result of any integer type or `void` and of `int` parameters, whose
-locals are of the integer types from `char` to `unsigned long long`,
-declared, assigned and returned, with parentheses, the casts, the
-unary operators `+ - ~ !`, `+ - * / % << >> & | ^`, the comparisons,
-`&&`, `||` and calls of functions of an `int` or a `void` result, to
+functions and of objects at file scope, declared and defined in any
+order, `static`, `extern` or neither; the objects of the integer
+types from `char` to `unsigned long long`, initialized by an integer
+constant expression or not, their data written after the functions;
+the functions of a result of any integer type or `void` and of `int`
+parameters, whose locals are of the integer types, declared, assigned
+and returned, with parentheses, the casts, the unary operators
+`+ - ~ !`, `+ - * / % << >> & | ^`, the comparisons, `&&`, `||` and
+calls of functions of an `int` or a `void` result, to
 any depth, and the statements `if`, `else`, `while`, `do`, `for`
 with a declaration or an expression first, `break`, `continue`,
 `goto` and labels, and `return` with a value or without, on both
@@ -487,6 +490,15 @@ Three things are kept apart: the value, the fold and a stage.
   array bound need it early, and will ask it through the model. They
   do not need the fold. So far it is written for the constant types,
   and a builder that folds asks it.
+- An initializer of an object at file scope asks the value through
+  the handle, `constant_of()`: the builders' fold of a constant
+  expression is a constant node, as rcc's evaluator's is a literal,
+  and any other node is no constant expression.
+- The mark of a signed overflow in a constant expression is a fact of
+  C, and the parser's: a flag on the parser's operand, set where an
+  operator's production calls its builder, handed on by a cast, the
+  unary plus and the parentheses, and read where a constant
+  expression is required, which warns.
 - The fold is an overload on the operands' types, beside the other
   builders, at the node's view and by its operator's sign. A
   constant's conversion is one function of the two views and the two
@@ -555,7 +567,15 @@ technique.
   register or a slot, by the target's count; the view and the sign.
   A use of the name is a copy of the leaf, and no row looks a name
   up.
-- The storage is the function's frame, or the unit's data.
+- The storage is the function's frame, or the unit's data. An object
+  at file scope is the unit's: its entry, made by its first
+  declaration that defines it, holds what the listing needs, its
+  name, its linkage, its view and sign, and its value or none. The
+  unit writes its objects after its functions, one `.data` block of
+  those with a value and one `.bss` block of the others, in the
+  order of their entries, by one writer both targets call. An object
+  only declared has no entry. An object named in an expression waits
+  for its where.
 - A local's leaf is its place, `place_t< V, S >` over the where
   `slot_t`, its number among the function's locals, and not a
   displacement. The frame has one allocator: a local takes its
@@ -582,11 +602,13 @@ technique.
   No row of the body asks whether a place is a parameter.
 - A call's argument is a hidden local of its call, numbered by the
   parser, whose slot is taken where the call is generated.
-- The file's scope holds each function's C type and its entry in the
-  unit. The entry is made at the first declaration, so the unit
-  writes its functions in that order, and it holds what the listing
-  needs: the name, the linkage, the count of parameters, the body or
-  none.
+- The file's scope holds each function's and each object's C type,
+  in two maps, a name in one never in the other, and its entry in
+  the unit. A function's entry is made at its first declaration, so
+  the unit writes its functions in that order, and it holds what the
+  listing needs: the name, the linkage, the count of parameters, the
+  body or none. An object's is made at its first declaration that
+  defines it, and its linkage is its first declaration's.
 - A function's name has no node. Its value, the function's address,
   waits for a where of the unit's data; a call is built from the
   name alone.
@@ -693,12 +715,12 @@ with rcc, and nothing else.
 | `expr.hh`, `stmt.hh` | the handles |
 | `operators.hh` | the closed domains that the parser and the zoo share, the operators and their families, the views and the signs, and the crossing of each from a value to a parameter |
 | `zoo.hh` | the node types under the handles, and the two summaries both targets read, a value's view and the width its register is valid to |
-| `unit.hh` | the unit and its functions, under no handle: each one's name, linkage, count of parameters, and body or none |
+| `unit.hh` | the unit, its functions and its objects, under no handle: each function's name, linkage, count of parameters, and body or none; each object's name, linkage, view and sign, and value or none |
 | `model.hh`, `build.cc` | the models, and the one unit that instantiates them |
 | `rows-expressions.hh`, `rows-statements.hh` | the rows both targets write alike: the primaries of an effect and of a jump, `!`, `&&` and `\|\|`, and the statements |
 | `register-stack.hh` | which register or spill slot holds which value, and the values held across a branch, as templates over a target's state |
 | `amd64.*`, `arm64.*` | a target: its registers, its state, its rows, its frame |
-| `assembly.*` | the text both targets write alike |
+| `assembly.*` | the text both targets write alike: an instruction, a label, the `.file` string, a symbol's binding and the unit's data |
 | `generate.*`, `pipeline.cc` | the back end's entry, and the pipeline |
 
 ### 4.9 The questions rcc's rows ask
@@ -725,6 +747,7 @@ each became.
 | `widened_read()`, `object_under()`, `under_kept_bits()` | the conversion's builder, by overload on the operand's type |
 | `extending_load()` | a niche of `sext_t` over a load |
 | whether a callee returns `void`, its result's width | the call's node: `call_void_t`, or `call_t< V >` and its view |
+| a literal's mark of an overflow, `holds_overflow()` | the parser's operand's mark, set by each operator's production and read where a constant expression is required |
 | `flag_operator()`, `flag_condition()` | x86-64's `value_branch` rows of those node types |
 | `zero_compared()` | the operand's own entry point, `value_branch` |
 | `body_target()`, `target_of()`, an `if` of one jump | the category of the types that name their label, and the then part's type, `if_t< J >`, which the builder finds through the model |

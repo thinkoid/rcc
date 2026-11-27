@@ -1106,15 +1106,6 @@ parameters(state_t &s, std::size_t count)
     }
 }
 
-// A function's symbol is global, .globl, where its linkage is external,
-// and local otherwise, chapter 10, rcc's binding().
-void
-binding(std::ostream &out, const function_decl_t &fd)
-{
-    if (fd.external)
-        out << std::format("\t.globl\t{}\n", fd.name);
-}
-
 // A definition: the body generated into the state's buffer, then
 // written inside the frame, whose size is known after the body: the
 // slots rounded up to 16, so that a frame in the red zone stays in it.
@@ -1133,7 +1124,7 @@ function(std::ostream &out, const function_decl_t &fd)
     if (!s.terminated && s.function == "main")
         constant(s, result_register, 0, 32);
 
-    binding(out, fd);
+    binding(out, fd.name, fd.external);
     out << std::format("\t.type\t{}, @function\n"
                        "{}:\n"
                        "\t.cfi_startproc\n",
@@ -1154,8 +1145,10 @@ function(std::ostream &out, const function_decl_t &fd)
 } // namespace
 
 // The functions the unit defines, in order; one it only declares writes
-// nothing, since the assembler leaves its symbol to the link.  The note
-// section marks the stack not executable.
+// nothing, since the assembler leaves its symbol to the link.  The data
+// of the objects it defines follows the last function, with nothing
+// between, chapter 10.  The note section marks the stack not
+// executable.
 void
 generate(const translation_unit_t &unit,
          std::string_view file,
@@ -1166,6 +1159,8 @@ generate(const translation_unit_t &unit,
     for (const function_decl_t &fd : unit.functions)
         if (fd.body)
             function(assembly, fd);
+
+    data(assembly, unit.objects);
 
     assembly << "\t.section\t.note.GNU-stack,\"\",@progbits\n";
 }

@@ -2,7 +2,9 @@
 
 // 6.4.4.2 and 6.4.4.5: an integer constant's value and type, read from
 // its spelling as rcc's parser reads it, and the operand of a constant
-// of any of its types; and a character constant of no prefix.
+// of any of its types; a character constant of no prefix; and 6.6p4, the
+// mark of a constant reached through a signed overflow, which every
+// operator's production sets and a constant expression warns of.
 
 #include "parse-common.hh"
 
@@ -182,6 +184,114 @@ character_constant(parser_t &p)
     const int value = character_value(t, p.target.char_is_signed);
 
     return { int_type(), make_literal(value, view_t::i32) };
+}
+
+namespace {
+
+// A constant's value exactly, past 64 bits, where a sum, a difference
+// or a product of two 64-bit values is judged: GNU C's __int128.
+using exact_t = __int128;
+
+// Whether an integer type holds a value: two's complement over its
+// width, a signed type's top bit its sign.
+bool
+holds(const type_t &t, exact_t v)
+{
+    const int_t &type = as< int_t >(t);
+    const int bits = type.width - (type.is_signed ? 1 : 0);
+    const exact_t least = type.is_signed ? -(exact_t(1) << bits) : 0;
+
+    return v >= least && v < (exact_t(1) << bits);
+}
+
+// Whether an operation of the type t on two constants a and b takes a
+// signed result t does not hold, 6.6p4, rcc's overflows(): a sum, a
+// difference or a product past t's range.  A left shift, as clang
+// judges one, only where a set bit of a nonnegative operand passes the
+// sign bit, so 2 << 31 overflows and 1 << 31 is the most negative int;
+// a negative operand shifted draws nothing.  Every other operation
+// gives a value its type holds.  A signed constant's value is the
+// tree's as it is: the register's bits, read signed at its width.
+bool
+overflows(binary_op_t op, const type_t &t, long long a, long long b)
+{
+    const int_t &type = as< int_t >(t);
+    if (!type.is_signed)
+        return false;
+
+    switch (op) {
+    case binary_op_t::add: return !holds(t, exact_t(a) + b);
+    case binary_op_t::sub: return !holds(t, exact_t(a) - b);
+    case binary_op_t::mul: return !holds(t, exact_t(a) * b);
+    case binary_op_t::shl: {
+        const auto count =
+            static_cast< unsigned long long >(b) & unsigned(type.width - 1);
+
+        return a >= 0 && (exact_t(a) << count) >> type.width != 0;
+    }
+    default: return false;
+    }
+}
+
+// Whether an operand op evaluates was reached through a signed
+// overflow, rcc's operand_overflowed(): the right one of && and || is
+// not evaluated where the left decides, 6.5.14p4, 6.5.15p4.  a is the
+// left operand's value.
+bool
+operand_overflowed(binary_op_t op,
+                   const operand_t &lhs,
+                   long long a,
+                   const operand_t &rhs)
+{
+    const bool decided = (op == binary_op_t::log_and && a == 0) ||
+                         (op == binary_op_t::log_or && a != 0);
+
+    return lhs.overflowed || (!decided && rhs.overflowed);
+}
+
+} // namespace
+
+bool
+overflowed(binary_op_t op,
+           const type_t &t,
+           const operand_t &lhs,
+           const expr_t &l,
+           const operand_t &rhs,
+           const expr_t &r)
+{
+    const std::optional< long long > a = constant_of(l);
+    const std::optional< long long > b = constant_of(r);
+    if (!a || !b)
+        return false;
+
+    return overflows(op, t, *a, *b) || operand_overflowed(op, lhs, *a, rhs);
+}
+
+// The negative of a signed constant overflows where it is the most
+// negative value of its type, which the type does not hold.
+bool
+overflowed(unary_op_t op,
+           const type_t &t,
+           const operand_t &arg,
+           const expr_t &a)
+{
+    const std::optional< long long > value = constant_of(a);
+    if (!value)
+        return false;
+
+    const bool overflows = op == unary_op_t::neg && as< int_t >(t).is_signed &&
+                           !holds(t, -exact_t(*value));
+
+    return overflows || arg.overflowed;
+}
+
+void
+warn_overflowed(parser_t &p, const token_t &at, const operand_t &e)
+{
+    if (e.overflowed && !at.where.system_header)
+        warn(p, at,
+             "signed overflow in a constant expression: the value wraps, "
+             "as at run time");
 }
 
 } // namespace rcc

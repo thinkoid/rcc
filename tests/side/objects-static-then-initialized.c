@@ -1,0 +1,11 @@
+/* An object static and then initialized: a declaration without a storage class after a static one
+   would give the name both linkages, 6.2.2p7; the error
+   is at the later declaration's name. */
+static int x;
+int x = 1;
+
+int
+f(void)
+{
+        return 0;
+}

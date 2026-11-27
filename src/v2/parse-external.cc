@@ -1,15 +1,18 @@
 // -*- mode: c++; -*-
 
 // 6.9: the external declarations, of which rcc-v2 takes the declaration
-// and the definition of a function, and parse(), declared in parse.hh,
-// last.
+// and the definition of a function and the declaration of objects of
+// the integer types, and parse(), declared in parse.hh, last.
 
 #include "parse.hh"
 
 #include "build.hh"
 #include "parse-common.hh"
 
+#include <optional>
 #include <string>
+#include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -17,27 +20,47 @@ namespace rcc {
 
 namespace {
 
+// Whether the declaration's storage class is the keyword's.
+bool
+declared(const specifiers_t &spec, tok_t storage_class)
+{
+    return spec.storage_class && spec.storage_class->kind == storage_class;
+}
+
 // The function called at program startup is named main, 5.1.2.3.2p1,
 // and is found by that name from outside the unit, which static, giving
 // it internal linkage, 6.2.2p3, would forbid: the link would find no
-// main.
+// main.  An object named main is not the function and is let be.
 void
 refuse_static_main(const specifiers_t &spec, const declarator_t &d)
 {
-    if (spec.storage_class && d.name.text == "main")
+    if (declared(spec, tok_t::kw_static) && d.name.text == "main" &&
+        is< function_t >(d.type))
         fail(*spec.storage_class,
              quoted(spec.storage_class->text) + " in a declaration of 'main'");
 }
 
-// The earlier declaration of the name in the file's scope, met again,
-// or null when there is none: the function of a compatible type,
-// 6.7.1p5, which keeps its type, the composite of two compatible
-// function types of int parameters being either.
-const function_name_t *
-earlier_declaration(const parser_t &p, const token_t &name, const type_t &t)
+// The earlier declaration of the name among names, the file's functions
+// or its objects, met again, or null when there is none, rcc's
+// earlier_declaration() and redeclared(): a function and an object are
+// two kinds of entity, so a name of others, the other kind, declared
+// again is a redefinition, and two declarations of one kind are of
+// compatible types, 6.7.1p5, or a conflict, each said at the later
+// name.  The earlier declaration keeps its type, the composite of two
+// compatible integer types, or function types of int parameters, being
+// either.
+template< typename N, typename O >
+N *
+earlier_declaration(std::unordered_map< std::string_view, N > &names,
+                    const std::unordered_map< std::string_view, O > &others,
+                    const token_t &name,
+                    const type_t &t)
 {
-    const auto it = p.functions.find(name.text);
-    if (it == p.functions.end())
+    if (others.contains(name.text))
+        fail(name, "redefinition of " + quoted(name.text));
+
+    const auto it = names.find(name.text);
+    if (it == names.end())
         return nullptr;
 
     if (!compatible(it->second.type, t))
@@ -46,27 +69,35 @@ earlier_declaration(const parser_t &p, const token_t &name, const type_t &t)
     return &it->second;
 }
 
-// Whether a function's linkage is external, 6.2.2: static gives it
-// internal linkage, p3; one declared without a storage class has the
-// linkage of the earlier declaration, or else external, p4, p5.  So
-// static int f(void); int f(void) { ... } defines a function of
-// internal linkage.
+// Whether the linkage a declaration at file scope gives its name is
+// external, 6.2.2, rcc's linkage_of(): static gives internal linkage,
+// p3; extern the linkage of the earlier declaration, p4, earlier, or
+// else external, and a function declared without a storage class is as
+// if declared extern, p5; an object declared without one has external
+// linkage, p5.  So static int f(void); int f(void) { ... } defines a
+// function of internal linkage, and static int n; extern int n;
+// declares one object of internal linkage.
 bool
-has_external_linkage(const parser_t &p,
-                     const specifiers_t &spec,
-                     const function_name_t *earlier)
+linkage_of(const specifiers_t &spec,
+           std::optional< bool > earlier,
+           bool function)
 {
-    if (spec.storage_class)
+    if (declared(spec, tok_t::kw_static))
         return false;
 
-    return !earlier || p.unit.functions[earlier->index].external;
+    const bool as_extern = function || declared(spec, tok_t::kw_extern);
+    if (earlier && as_extern)
+        return *earlier;
+
+    return true;
 }
 
 // A declaration under a #pragma GCC visibility other than default gives
 // that visibility to the symbol it names where the symbol has external
-// linkage, as clang has it, and rcc writes every symbol visible, so
-// such a declaration is not yet, judged at the declarator's name; a
-// static function is what it is without the pragma.
+// linkage, as clang has it, a function and an object alike, and rcc
+// writes every symbol visible, so such a declaration is not yet, judged
+// at the declarator's name; one of a name of internal linkage is what
+// it is without the pragma.
 void
 refuse_visibility(const token_t &name, bool external)
 {
@@ -75,18 +106,21 @@ refuse_visibility(const token_t &name, bool external)
 }
 
 // A name of internal and of external linkage in one unit is undefined,
-// 6.2.2p7, and refused where static follows a declaration without it;
-// the other order gives the later declaration the earlier one's
-// internal linkage, p4.
+// 6.2.2p7, and refused, rcc's require_linkage(): int n; static int n;
+// and static int n; int n;, whose second declaration gives the name the
+// other linkage than the earlier's, earlier.
 void
-require_linkage(const parser_t &p,
-                const token_t &name,
-                const function_name_t &earlier,
-                bool external)
+require_linkage(const token_t &name, bool earlier, bool external)
 {
-    if (p.unit.functions[earlier.index].external && !external)
+    if (earlier == external)
+        return;
+
+    if (!external)
         fail(name, "static declaration of " + quoted(name.text) +
                        " follows non-static declaration");
+
+    fail(name, "non-static declaration of " + quoted(name.text) +
+                   " follows static declaration");
 }
 
 // Declares a function in the file's scope, or meets its earlier
@@ -97,12 +131,17 @@ require_linkage(const parser_t &p,
 std::size_t
 declare_function(parser_t &p, const specifiers_t &spec, const declarator_t &d)
 {
-    const function_name_t *earlier = earlier_declaration(p, d.name, d.type);
-    const bool external = has_external_linkage(p, spec, earlier);
+    const function_name_t *earlier =
+        earlier_declaration(p.functions, p.objects, d.name, d.type);
+    std::optional< bool > linked;
+    if (earlier)
+        linked = p.unit.functions[earlier->index].external;
+
+    const bool external = linkage_of(spec, linked, true);
     refuse_visibility(d.name, external);
 
     if (earlier) {
-        require_linkage(p, d.name, *earlier, external);
+        require_linkage(d.name, *linked, external);
         return earlier->index;
     }
 
@@ -187,28 +226,101 @@ function_definition(parser_t &p, const specifiers_t &spec, declarator_t &d)
     p.unit.functions[index].body = std::move(body);
 }
 
-// One declarator of a declaration in the file's scope: a function's, or
-// an object's, not yet.  rcc reads GNU C's attributes and an assembler
-// name after a function's declarator before it declares the function,
-// and they are not yet.
+// The initializer after the '=' ahead of the object the unit's objects
+// hold at index, of the type t, rcc's initialize(): its value,
+// scalar_value()'s.  A brace initializer is not yet.
+void
+initialize(parser_t &p, const type_t &t, std::size_t index)
+{
+    const token_t &op = advance(p);
+    if (peek(p).kind == tok_t::lbrace)
+        not_yet(peek(p), "brace initializer");
+
+    p.unit.objects[index].value = scalar_value(p, op, t);
+}
+
+// An object at file scope, 6.9.3, rcc's declare_external_object().  A
+// declaration with an initializer defines it, p1, extern or not; one
+// without an initializer and without extern is a tentative definition,
+// p2; extern alone, neither of the two, declares an object defined
+// elsewhere, which the unit writes nothing for.  Every declaration of
+// the name in the unit is of one object, of one linkage, linkage_of()'s,
+// and of one type, 6.2.7p2: extern int n; int n; int n = 1; declare one
+// object of external linkage, static int n; extern int n; one of
+// internal linkage, which a tentative definition defines, and two
+// tentative definitions define one.  The object's entry among the
+// unit's objects is made by its first declaration that defines it, so
+// the unit writes its objects in that order.  An object only
+// tentatively defined is zero, 6.9.3p2.  A second initializer is a
+// second external definition, of which a program has one, 6.9.1p5, an
+// error.  The name is in scope from the end of its declarator, 6.2.1p7,
+// so an initializer sees the object.  An object of type void, which
+// rcc refuses where the unit defines it and lets be where it does not,
+// is not yet.
+void
+declare_object(parser_t &p, const specifiers_t &spec, const declarator_t &d)
+{
+    if (is< void_t >(d.type))
+        not_yet(d.name, "object " + quoted(d.name.text) + " of type 'void'");
+
+    object_name_t *object =
+        earlier_declaration(p.objects, p.functions, d.name, d.type);
+    std::optional< bool > linked;
+    if (object)
+        linked = object->external;
+
+    const bool external = linkage_of(spec, linked, false);
+    refuse_visibility(d.name, external);
+
+    if (!object)
+        object =
+            &p.objects.emplace(d.name.text, object_name_t { d.type, external })
+                 .first->second;
+
+    require_linkage(d.name, object->external, external);
+
+    const bool initialized = peek(p).kind == tok_t::assign;
+    if (!initialized && declared(spec, tok_t::kw_extern))
+        return;
+
+    std::optional< std::size_t > &index = object->index;
+    if (index && initialized && p.unit.objects[*index].value)
+        fail(d.name, "redefinition of " + quoted(d.name.text));
+
+    if (!index) {
+        index = p.unit.objects.size();
+        p.unit.objects.push_back({ std::string(d.name.text), external,
+                                   view_of(d.type), sign_of(d.type) });
+    }
+
+    if (initialized)
+        initialize(p, d.type, *index);
+}
+
+// One declarator of a declaration in the file's scope: a function's or
+// an object's.  rcc reads GNU C's attributes and an assembler name after
+// a declarator before it declares its name, and they are not yet.
 void
 external_declarator(parser_t &p,
                     const specifiers_t &spec,
                     const declarator_t &d)
 {
-    if (!is< function_t >(d.type))
-        not_yet(d.name, "object " + quoted(d.name.text));
-
     refuse_static_main(spec, d);
 
     if (next_is(p, { tok_t::kw_attribute, tok_t::kw_asm }))
         not_yet(peek(p), quoted(peek(p).text) + " after a declarator");
 
-    declare_function(p, spec, d);
+    if (is< function_t >(d.type))
+        declare_function(p, spec, d);
+    else
+        declare_object(p, spec, d);
 }
 
-// A function definition, or a declaration of functions, 6.9.1p1; an
-// object among them is not yet.  rcc reads __asm__, __extension__ and a
+// A function definition, or a declaration of functions and of objects,
+// 6.9.1p1.  extern on a function changes nothing: a function declared
+// without a storage class has the linkage extern gives it, 6.2.2p5, and
+// static gives it internal linkage, p3, on a declaration and on a
+// definition alike.  rcc reads __asm__, __extension__ and a
 // static assertion before the declaration specifiers, and refuses the
 // first in these words.  A function's declarator that a '{' follows is
 // a definition, and a definition is one declarator and its body; the

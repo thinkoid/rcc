@@ -12,6 +12,7 @@
 #include "expr.hh"
 #include "stmt.hh"
 
+#include <optional>
 #include <string_view>
 #include <vector>
 
@@ -26,6 +27,11 @@ expr_t make_local(int slot, view_t view, sign_t sign);
 // The lvalue conversion, 6.3.2.1p2: a place becomes the value it holds;
 // any other expression is a value already, and is returned as it is.
 expr_t rvalue(expr_t e);
+
+// The value of a node the builders made a constant (docs/typed-tree.md
+// 4.3), as the tree holds a constant, the question of an initializer of
+// an object of static storage, 6.7.11p4; none for any other node.
+std::optional< long long > constant_of(const expr_t &e);
 
 // Whether an expression is a place an assignment stores into, which
 // make_assign() takes, 6.5.17.1p2.

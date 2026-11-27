@@ -1,20 +1,22 @@
 // -*- mode: c++; -*-
 
 // 6.7: the declarations, of which rcc-v2 takes the declaration
-// specifiers static, void and the type specifiers of the integer types
-// from char to unsigned long long, in any order and spelling,
-// the declarators of a function of int parameters and of an object,
-// the declaration in a block and in a for's first clause of objects of
-// those types, each with an initializer or without, and the type name
-// of a cast; it refuses the rest as not yet.  rcc reads more of each
-// than rcc-v2 does, so each is read as far as rcc would read it, and
-// what rcc would take is refused before an error rcc would not say.
+// specifiers static, extern, void and the type specifiers of the
+// integer types from char to unsigned long long, in any order and
+// spelling, the declarators of a function of int parameters and of an
+// object, the declaration in a block and in a for's first clause of
+// objects of those types, each with an initializer or without, the
+// type name of a cast, and the initializer of an object of static
+// storage; it refuses the rest as not yet.  rcc reads more of each than
+// rcc-v2 does, so each is read as far as rcc would read it, and what
+// rcc would take is refused before an error rcc would not say.
 
 #include "parse-common.hh"
 
 #include "build.hh"
 
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -146,6 +148,14 @@ cannot_join(counts_t &n, const token_t &t)
     }
 }
 
+// Whether a token is a storage-class specifier rcc-v2 reads, 6.7.2p1:
+// static or extern.
+bool
+is_storage_class(const token_t &t)
+{
+    return t.kind == tok_t::kw_static || t.kind == tok_t::kw_extern;
+}
+
 // Whether a token is one of the type specifiers counts_t counts.
 bool
 is_counted(const token_t &t)
@@ -206,26 +216,37 @@ specified(const parser_t &p, const counts_t &n)
 
 } // namespace
 
-// The declaration specifiers: the storage class static, 6.7.2p1, then
-// one of the sets of 6.7.3.1p2 in any order, read as rcc reads them, up
-// to the first token that is none, each type specifier refused where it
-// cannot join those before it, in rcc's words.  Any other specifier is
-// not yet where it stands, and so is a reserved identifier in place of
-// the first type specifier, which may name a type the compiler
-// declares; any other token there is rcc's error, another identifier's
-// among them.
+// The declaration specifiers: one of the sets of 6.7.3.1p2 in any
+// order, and the storage class static or extern anywhere among them,
+// 6.7.2p1, read as rcc reads them, up to the first token that is none.
+// Each type specifier is refused where it cannot join those before it,
+// and a storage class where one came before it, 6.7.2p2, in rcc's
+// words.  Any other specifier is not yet where it stands, and so is a
+// reserved identifier in place of the first type specifier, which may
+// name a type the compiler declares; any other token there is rcc's
+// error, another identifier's among them.
 specifiers_t
 declaration_specifiers(parser_t &p)
 {
     const token_t *storage_class = nullptr;
-    if (peek(p).kind == tok_t::kw_static)
-        storage_class = &advance(p);
-
     counts_t counts;
     const token_t *first = nullptr;
 
-    while (is_counted(peek(p))) {
-        const token_t &t = advance(p);
+    for (;;) {
+        const token_t &t = peek(p);
+        if (is_storage_class(t)) {
+            if (storage_class)
+                fail(t, "cannot combine " + quoted(t.text) +
+                            " with the storage class before it");
+
+            storage_class = &advance(p);
+            continue;
+        }
+
+        if (!is_counted(t))
+            break;
+
+        advance(p);
         if (cannot_join(counts, t))
             fail(t, "cannot combine " + quoted(t.text) +
                         " with the type specifiers before it");
@@ -282,10 +303,10 @@ parameter_declarator(parser_t &p)
 
 // A parameter's specifiers and declarator, 6.7.7.1p1, and GNU C's
 // attributes after it, which are not yet.  register is the one storage
-// class a parameter takes, p2, and static is refused in rcc's words;
-// register itself is not yet, as a specifier.  A parameter of type void
-// is left for the list to take or refuse, and one of any other type
-// than int is not yet, at its first type specifier.
+// class a parameter takes, p2, and static and extern are refused in
+// rcc's words; register itself is not yet, as a specifier.  A parameter
+// of type void is left for the list to take or refuse, and one of any
+// other type than int is not yet, at its first type specifier.
 parameter_t
 parameter_declaration(parser_t &p)
 {
@@ -511,8 +532,8 @@ refuse_declaration_start(const parser_t &p)
 } // namespace
 
 // A declaration in a block, 6.7.1p1, after what refuse_declaration_start()
-// refuses: a static object and an object of type void are not yet, each
-// refused at its specifier.
+// refuses: a static object, an extern declaration and an object of type
+// void are not yet, each refused at its specifier.
 std::vector< stmt_t >
 declaration(parser_t &p)
 {
@@ -557,6 +578,31 @@ for_declaration(parser_t &p)
         return std::move(items.front());
 
     return make_block(std::move(items));
+}
+
+// The value of an object of static storage, 6.7.11p4, the expression
+// after its '=' at, converted to its type t as if by assignment, p12:
+// the constant the builders folded it to, rcc's scalar_value(), warned
+// of where a signed overflow reached it, warn_overflowed().  A void
+// expression is require_value()'s error at its first token, a function
+// designator assignment_conversion()'s at the '=', and any other
+// expression that folded to no constant is no constant expression, an
+// error at its first token.
+long long
+scalar_value(parser_t &p, const token_t &at, const type_t &t)
+{
+    const token_t &start = peek(p);
+    const operand_t e = assignment_expression(p);
+    require_value(start, e);
+
+    const std::optional< long long > value =
+        constant_of(assignment_conversion(at, e, t));
+    if (!value)
+        fail(start, "initializer element is not a compile-time constant");
+
+    warn_overflowed(p, start, e);
+
+    return *value;
 }
 
 } // namespace rcc

@@ -149,6 +149,12 @@ rvalue(expr_t e)
     return e.self->rvalue(e);
 }
 
+std::optional< long long >
+constant_of(const expr_t &e)
+{
+    return e.self->constant_of();
+}
+
 bool
 is_assignable(const expr_t &e)
 {

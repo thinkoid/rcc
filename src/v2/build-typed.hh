@@ -42,6 +42,23 @@ rvalue(const place_t< V, S > &place, const expr_t &)
     return expr_t(load_t< V, S > { place.where });
 }
 
+// The value of a node the builders made a constant, value_of()'s (4.3),
+// and none for any other node: the fold is the builders', so a constant
+// expression is a constant node, as rcc's evaluator leaves a literal.
+template< typename T >
+std::optional< long long >
+constant_of(const T &)
+{
+    return std::nullopt;
+}
+
+template< constant C >
+std::optional< long long >
+constant_of(const C &c)
+{
+    return value_of(c);
+}
+
 // An assignment's builder exists for a place alone, a local, and so
 // defines what is assignable (principle 8); the place's view is the
 // store's.

@@ -21,6 +21,7 @@
 #include <concepts>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
@@ -78,6 +79,7 @@ struct expr_t::interface_t
     // the builders: self is the handle that holds this node, which a
     // builder returns, or erases a part into, without a copy of the node
     virtual expr_t rvalue(const expr_t &self) const = 0;
+    virtual std::optional< long long > constant_of() const = 0;
     virtual expr_t unary(unary_op_t op, view_t, const expr_t &self) const = 0;
 
     // a conversion, by the operand's model, which knows the operand's
@@ -183,6 +185,15 @@ expr_t
 fwd_rvalue(const T &t, const expr_t &self)
 {
     return rvalue(t, self);
+}
+
+// The value of a held node where it is a constant, as fwd_rvalue()
+// finds the lvalue conversion.
+template< typename T >
+std::optional< long long >
+fwd_constant_of(const T &t)
+{
+    return constant_of(t);
 }
 
 // The operand of a unary operator in the class its builder reads,
@@ -609,6 +620,11 @@ struct expr_t::model_t final: interface_t
     expr_t rvalue(const expr_t &self) const override
     {
         return fwd_rvalue(held, self);
+    }
+
+    std::optional< long long > constant_of() const override
+    {
+        return fwd_constant_of(held);
     }
 
     expr_t unary(unary_op_t op, view_t view, const expr_t &self) const override

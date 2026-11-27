@@ -33,10 +33,11 @@ refuse_operator(const parser_t &p, std::initializer_list< tok_t > operators)
 }
 
 // An identifier, 6.5.2p3: a local's operand, a copy of what its
-// declaration made (docs/typed-tree.md 4.5), or a name the file
-// declares as a function, a function designator of the function's type
-// and no node; a name no scope declares is rcc's error.  Each use of a
-// static function is recorded, for the end of the unit to require its
+// declaration made (docs/typed-tree.md 4.5); a name the file declares
+// as an object, which is not yet; or a name the file declares as a
+// function, a function designator of the function's type and no node;
+// a name no scope declares is rcc's error.  Each use of a static
+// function is recorded, for the end of the unit to require its
 // definition.  rcc knows reserved names that no declaration in the unit
 // makes, its builtins and the types the compiler declares, and reads
 // some of them before it looks the name up, so a reserved name is not
@@ -50,6 +51,9 @@ identifier(parser_t &p)
 
     if (const operand_t *local = lookup(p, t.text))
         return { local->type, local->node, &t };
+
+    if (p.objects.contains(t.text))
+        not_yet(t, "object " + quoted(t.text) + " in an expression");
 
     const auto it = p.functions.find(t.text);
     if (it == p.functions.end())
@@ -335,7 +339,7 @@ operand_t cast_expression(parser_t &);
 // type, and no node of its own; but the value is no lvalue, so an
 // operand that is a place, whose promotion made no node, stands under
 // a conversion to its own type, which writes nothing: +x is (T) x, T
-// the promoted type of x.
+// the promoted type of x.  The operand's mark is the value's.
 operand_t
 unary_plus(parser_t &p)
 {
@@ -345,9 +349,11 @@ unary_plus(parser_t &p)
 
     const type_t t = promoted(arg.type);
     if (arg.type == t && is_assignable(*arg.node))
-        return { t, conversion(arg, t) };
+        return { .type = t,
+                 .node = conversion(arg, t),
+                 .overflowed = arg.overflowed };
 
-    return { t, promote(arg) };
+    return { .type = t, .node = promote(arg), .overflowed = arg.overflowed };
 }
 
 // !e, 6.5.4.3p5: an int, its operand's value tested as it is, at its
@@ -360,9 +366,12 @@ logical_not(parser_t &p)
     const token_t &op = advance(p);
     operand_t arg = cast_expression(p);
     expr_t value = rvalue(op, arg);
+    const bool marked = overflowed(unary_op_t::log_not, arg.type, arg, value);
 
-    return { int_type(), make_unary(unary_op_t::log_not, view_of(arg.type),
-                                    std::move(value)) };
+    return { .type = int_type(),
+             .node = make_unary(unary_op_t::log_not, view_of(arg.type),
+                                std::move(value)),
+             .overflowed = marked };
 }
 
 // -e and ~e, 6.5.4.3p3, p4: the operand promoted, and the result of the
@@ -378,8 +387,12 @@ unary_arithmetic(parser_t &p)
     require_arithmetic(op, arg);
 
     const type_t t = promoted(arg.type);
+    expr_t value = promote(arg);
+    const bool marked = overflowed(u, t, arg, value);
 
-    return { t, make_unary(u, view_of(t), promote(arg)) };
+    return { .type = t,
+             .node = make_unary(u, view_of(t), std::move(value)),
+             .overflowed = marked };
 }
 
 // The unary operators, 6.5.4, of which rcc-v2 takes + - ~ !, 6.5.4.3,
@@ -410,15 +423,17 @@ unary_expression(parser_t &p)
 
 // (T) e, 6.5.5, rcc's cast(): the operand's value converted to T, a
 // node even where e is of type T, since a cast yields no lvalue, p6
-// (its footnote); a constant folds to the constant of T.  A void
-// operand is an error at the '(', require_value()'s, and a function
-// designator is not yet.
+// (its footnote); a constant folds to the constant of T, which keeps
+// its mark.  A void operand is an error at the '(', require_value()'s,
+// and a function designator is not yet.
 operand_t
 cast(const token_t &open, const type_t &t, const operand_t &arg)
 {
     const operand_t value { arg.type, rvalue(open, arg) };
 
-    return { t, conversion(value, t) };
+    return { .type = t,
+             .node = conversion(value, t),
+             .overflowed = arg.overflowed };
 }
 
 // The cast operator, 6.5.5: a parenthesized type name starts a cast,
@@ -488,9 +503,12 @@ arithmetic(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
     const type_t t = common_type(lhs.type, rhs.type);
     expr_t l = convert_to(lhs, t);
     expr_t r = convert_to(rhs, t);
+    const bool marked = overflowed(op, t, lhs, l, rhs, r);
 
-    return { t, make_binary(by_sign(op, sign_of(t)), view_of(t), std::move(l),
-                            std::move(r)) };
+    return { .type = t,
+             .node = make_binary(by_sign(op, sign_of(t)), view_of(t),
+                                 std::move(l), std::move(r)),
+             .overflowed = marked };
 }
 
 // << and >>, 6.5.8, its token at, rcc's shift(): each operand promoted
@@ -507,9 +525,12 @@ shift(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
     const type_t t = promoted(lhs.type);
     expr_t l = promote(lhs);
     expr_t r = promote(rhs);
+    const bool marked = overflowed(op, t, lhs, l, rhs, r);
 
-    return { t, make_binary(by_sign(op, sign_of(t)), view_of(t), std::move(l),
-                            std::move(r)) };
+    return { .type = t,
+             .node = make_binary(by_sign(op, sign_of(t)), view_of(t),
+                                 std::move(l), std::move(r)),
+             .overflowed = marked };
 }
 
 // The operator of a multiplicative operator's token: * / %, a division
@@ -625,9 +646,12 @@ comparison(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
     const type_t t = common_type(lhs.type, rhs.type);
     expr_t l = convert_to(lhs, t);
     expr_t r = convert_to(rhs, t);
+    const bool marked = overflowed(op, t, lhs, l, rhs, r);
 
-    return { int_type(), make_binary(by_sign(op, sign_of(t)), view_of(t),
-                                     std::move(l), std::move(r)) };
+    return { .type = int_type(),
+             .node = make_binary(by_sign(op, sign_of(t)), view_of(t),
+                                 std::move(l), std::move(r)),
+             .overflowed = marked };
 }
 
 // The operator of a relational operator's token: < > <= >=, by its
@@ -740,11 +764,13 @@ logical(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
     require_value(at, lhs);
     require_value(at, rhs);
 
-    expr_t l = rvalue(at, std::move(lhs));
-    expr_t r = rvalue(at, std::move(rhs));
+    expr_t l = rvalue(at, lhs);
+    expr_t r = rvalue(at, rhs);
+    const bool marked = overflowed(op, int_type(), lhs, l, rhs, r);
 
-    return { int_type(),
-             make_binary(op, view_t::i32, std::move(l), std::move(r)) };
+    return { .type = int_type(),
+             .node = make_binary(op, view_t::i32, std::move(l), std::move(r)),
+             .overflowed = marked };
 }
 
 // The logical AND operator, 6.5.14, left-associative, as rcc's loop

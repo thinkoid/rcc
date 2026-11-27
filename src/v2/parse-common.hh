@@ -33,14 +33,18 @@ namespace rcc {
 // What the parser holds of an expression: its C type, which the
 // productions read; the node built for it, or none for a function
 // designator, whose value, the function's address, 6.3.2.1p4, rcc-v2
-// does not compile yet; and the identifier the expression is, through
+// does not compile yet; the identifier the expression is, through
 // parentheses, 6.5.2p6, or null, for the diagnostics that name it and
-// for the function a call names.
+// for the function a call names; and whether it is a constant reached
+// through a signed overflow, 6.6p4, the mark every operator's
+// production sets, overflowed(), and a constant expression reads,
+// warn_overflowed().
 struct operand_t
 {
     type_t type;
     std::optional< expr_t > node;
     const token_t *name = nullptr;
+    bool overflowed = false;
 };
 
 // A block's scope, or a parameter list's, 6.2.1p4: each name it
@@ -59,6 +63,19 @@ struct function_name_t
     std::size_t index;
 };
 
+// What the parser holds of an object's name in the file's scope,
+// 6.2.1p4: its type, an integer type, which a later declaration of the
+// name must be compatible with, 6.7.1p5; whether its linkage is
+// external, 6.2.2, set by its first declaration; and the index of its
+// entry among the unit's objects, made by its first declaration that
+// defines it, or none for an object only declared so far.
+struct object_name_t
+{
+    type_t type;
+    bool external;
+    std::optional< std::size_t > index = std::nullopt;
+};
+
 // What the parser holds of a C label's name in the function being
 // defined, 6.2.1p3: its number among the function's C labels, given at
 // the first meeting of the name, a goto or its definition, in the order
@@ -72,11 +89,11 @@ struct label_name_t
 
 // The state of one parse: the tokens and the position in them; the
 // target, whose plain char the parser makes; the warnings, a list the
-// driver owns; the unit, filled as its functions
-// are declared and defined; the names of the functions the file
-// declares, views into the tokens; each use of a static function, by
-// its index among the unit's functions, for the end of the unit to
-// require its definition; the result type of the function being
+// driver owns; the unit, filled as its functions and objects are
+// declared and defined; the names of the functions and of the objects
+// the file declares, views into the tokens; each use of a static
+// function, by its index among the unit's functions, for the end of the
+// unit to require its definition; the result type of the function being
 // defined, for its return statements; the scopes open where the parse
 // stands, innermost last, the function's blocks' and a parameter
 // list's; the count of the locals the function has declared, which
@@ -94,6 +111,7 @@ struct parser_t
     std::size_t pos = 0;
     translation_unit_t unit = { };
     std::unordered_map< std::string_view, function_name_t > functions = { };
+    std::unordered_map< std::string_view, object_name_t > objects = { };
     std::vector< std::pair< std::size_t, const token_t * > >
         internal_uses = { };
     type_t result = { };
@@ -228,6 +246,32 @@ int declare(parser_t &p, const token_t &name, const type_t &type);
 operand_t integer_constant(parser_t &);
 operand_t character_constant(parser_t &);
 
+// The mark of a signed overflow, 6.6p4, of an operator of the C type t,
+// the operation's, on its operands, lhs and rhs, l and r their nodes as
+// the operator reads them, rcc's folded_binary() and folded_unary():
+// where every operand is a constant, constant_of(), a result its type
+// does not hold, or an operand the operator evaluates so marked; none
+// where one is no constant, since the node is then no constant
+// expression.  Every production that calls an operator's builder sets
+// its operand's mark so; a cast, the unary plus and the parentheses
+// hand the operand's mark on.
+bool overflowed(binary_op_t op,
+                const type_t &t,
+                const operand_t &lhs,
+                const expr_t &l,
+                const operand_t &rhs,
+                const expr_t &r);
+bool overflowed(unary_op_t op,
+                const type_t &t,
+                const operand_t &arg,
+                const expr_t &a);
+
+// rcc's warn_overflowed(): an expression where a constant expression is
+// required, warned of at its first token, at, where its mark is set,
+// but in a system header; the wrapped value is taken, as G1 has the
+// same arithmetic at run time.
+void warn_overflowed(parser_t &, const token_t &at, const operand_t &e);
+
 // 6.5, parse-expressions.cc
 operand_t assignment_expression(parser_t &);
 operand_t expression(parser_t &);
@@ -235,8 +279,8 @@ operand_t expression(parser_t &);
 // 6.7, parse-declarations.cc
 
 // What the parser holds of the declaration specifiers: the storage
-// class, static or none; the first type specifier's token; and the
-// type.
+// class, static, extern or none; the first type specifier's token; and
+// the type.
 struct specifiers_t
 {
     const token_t *storage_class;
@@ -273,6 +317,11 @@ type_t type_name(parser_t &);
 declarator_t declarator(parser_t &, const type_t &base);
 std::vector< stmt_t > declaration(parser_t &);
 stmt_t for_declaration(parser_t &);
+
+// The value of the initializer ahead of an object of static storage of
+// the integer type t, its '=' at, rcc's scalar_value(): an integer
+// constant expression, 6.7.11p4, folded.
+long long scalar_value(parser_t &, const token_t &at, const type_t &t);
 
 // 6.8, parse-statements.cc
 std::vector< stmt_t > block_item_list(parser_t &);

@@ -25,6 +25,7 @@
 #include "targets.hh"
 
 #include <memory>
+#include <optional>
 
 namespace rcc {
 
@@ -66,6 +67,7 @@ public:
     friend view_t view_of(const expr_t &);
 
     friend expr_t rvalue(expr_t);
+    friend std::optional< long long > constant_of(const expr_t &);
     friend bool is_assignable(const expr_t &);
     friend expr_t make_assign(expr_t place, expr_t value);
     friend expr_t make_conversion(
