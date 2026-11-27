@@ -751,7 +751,9 @@ value(state_t &s,
 // around the shift reserves for its own operand, since the instruction
 // consumes the count in cl (chapter 6.5), so a count's load lands in
 // rcx; and rcx is the register the count's consumer names, as a return
-// names rax (6.1).
+// names rax (6.1).  The count's row takes the name where rcx is free, so
+// the extension of a call's narrow result is movsbl %al, %ecx, and the
+// shifted value, spilled by the call, is reloaded into rax.
 template< typename R >
 value_t
 shift_count(state_t &s, const R &count, unsigned avoid)
@@ -1171,7 +1173,9 @@ void transfer(state_t &,
 // result is in rax by the convention, so it is generated outside any
 // reservation around it, as a division is, and its arguments find no
 // register left for last; its value is held in rax, where the call
-// leaves it.
+// leaves it, valid to V's width and no further (valid_of()): the
+// convention leaves the bits above a narrow one unspecified, and the
+// widening's primary extends it where it is used wider.
 template< view_t V >
 value_t
 value(state_t &s, const call_t< V > &c, unsigned = 0)

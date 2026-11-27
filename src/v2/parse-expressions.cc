@@ -167,11 +167,11 @@ argument_expression_list(parser_t &p,
 }
 
 // A call, 6.5.3.3, its '(' op: the callee, the arguments and the ')'.
-// The value is of the function's result type, int or void; a call of a
-// function of another result type is not yet, at the '('.  Each
-// argument is stored in a hidden local of the call, rcc's argument slot
-// (backend.md chapter 8), numbered among the function's locals after
-// the numbers the calls within its arguments took.
+// The call is an expression of the function's result type, p5,
+// converted where it is used as any expression of that type, or void.
+// Each argument is stored in a hidden local of the call, rcc's argument
+// slot (backend.md chapter 8), numbered among the function's locals
+// after the numbers the calls within its arguments took.
 operand_t
 call(parser_t &p, const token_t &op, const operand_t &e)
 {
@@ -182,8 +182,6 @@ call(parser_t &p, const token_t &op, const operand_t &e)
     const std::string &name = p.unit.functions[f.index].name;
 
     const type_t &result = *type.result;
-    if (!is< void_t >(result) && result != int_type())
-        not_yet(op, "call of a function whose result type is not 'int'");
 
     std::vector< converted_argument_t > args =
         argument_expression_list(p, type, name);

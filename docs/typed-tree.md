@@ -15,12 +15,11 @@ the functions of a result of any integer type or `void` and of
 parameters of any integer type, whose locals are of the integer
 types, declared, assigned and returned, with parentheses, the casts,
 the unary operators `+ - ~ !`, `+ - * / % << >> & | ^`, the
-comparisons, `&&`, `||` and calls of functions of an `int` or a
-`void` result, to
-any depth, and the statements `if`, `else`, `while`, `do`, `for`
-with a declaration or an expression first, `break`, `continue`,
-`goto` and labels, and `return` with a value or without, on both
-targets.
+comparisons, `&&`, `||` and calls of functions of a result of any
+integer type or `void`, to any depth, and the statements `if`,
+`else`, `while`, `do`, `for` with a declaration or an expression
+first, `break`, `continue`, `goto` and labels, and `return` with a
+value or without, on both targets.
 Each mechanism
 below was compiled and run in a small model first; chapter 5 says
 what the models showed and chapter 6 what nothing has shown. A

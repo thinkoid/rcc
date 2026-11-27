@@ -445,7 +445,11 @@ void transfer(state_t &,
               const std::vector< argument_t > &args);
 
 // A call of a function whose result is of the view V, 6.5.3.3, rcc's
-// call(), chapter 8: its value is held in x0, where the call leaves it.
+// call(), chapter 8: its value is held in x0, where the call leaves it,
+// valid to V's width and no further (valid_of()): the convention leaves
+// the bits above a narrow one unspecified, and the widening's primary
+// extends it where it is used wider, and test_zero() tests it with tst
+// where it is narrow.
 template< view_t V >
 value_t
 value(state_t &s, const call_t< V > &c, unsigned = 0)
