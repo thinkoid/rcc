@@ -52,15 +52,26 @@ expr_t make_unary(unary_op_t op, view_t view, expr_t arg);
 // operation.
 expr_t make_binary(binary_op_t op, view_t view, expr_t lhs, expr_t rhs);
 
-// A call of the function named, 6.5.3.3, of its arguments converted,
-// each stored in a hidden local of the call, numbered from first: of a
-// function whose result is of the view result, and of a void function.
+// An argument of a call as the parser hands it over: its value,
+// converted to its parameter's type as if by assignment, 6.5.3.3p6, and
+// the sign of that type, which the load of a narrow one into its
+// register extends it by (docs/typed-tree.md principle 9).
+struct converted_argument_t
+{
+    expr_t value;
+    sign_t sign;
+};
+
+// A call of the function named, 6.5.3.3, of its arguments, each stored
+// in a hidden local of the call, numbered from first: of a function
+// whose result is of the view result, and of a void function.
 expr_t make_call(std::string_view name,
                  view_t result,
                  int first,
-                 std::vector< expr_t > args);
-expr_t
-make_call_void(std::string_view name, int first, std::vector< expr_t > args);
+                 std::vector< converted_argument_t > args);
+expr_t make_call_void(std::string_view name,
+                      int first,
+                      std::vector< converted_argument_t > args);
 
 stmt_t make_expr_stmt(expr_t e);
 stmt_t make_null();

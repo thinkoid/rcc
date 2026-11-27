@@ -123,11 +123,11 @@ callee(const parser_t &p, const token_t &op, const operand_t &e)
 }
 
 // The argument ahead, the call's index-th, rcc's argument(): converted
-// to its parameter's type as if by assignment, 6.5.3.3p6.  One past the
-// parameters is an error at its first token, p2, said once it is read.
-// An argument of a parameter of another type than int is not yet, at
-// its first token.
-expr_t
+// to its parameter's type as if by assignment, 6.5.3.3p6, with the sign
+// of that type, which the call's load of it into its register extends
+// a narrow one by.  One past the parameters is an error at its first
+// token, p2, said once it is read.
+converted_argument_t
 argument(parser_t &p,
          const function_t &type,
          std::size_t index,
@@ -140,20 +140,19 @@ argument(parser_t &p,
         fail(start, "too many arguments to function " + quoted(function));
 
     const type_t &param = *type.params[index];
-    if (param != int_type())
-        not_yet(start, "argument of a parameter whose type is not 'int'");
 
-    return assignment_conversion(start, std::move(arg), param);
+    return { assignment_conversion(start, std::move(arg), param),
+             sign_of(param) };
 }
 
 // The arguments of a call, argument()'s each, as many as the callee's
 // parameters, 6.5.3.3p2: fewer is an error at the token that ends them.
-std::vector< expr_t >
+std::vector< converted_argument_t >
 argument_expression_list(parser_t &p,
                          const function_t &type,
                          std::string_view function)
 {
-    std::vector< expr_t > args;
+    std::vector< converted_argument_t > args;
 
     if (peek(p).kind != tok_t::rparen) {
         do
@@ -186,7 +185,8 @@ call(parser_t &p, const token_t &op, const operand_t &e)
     if (!is< void_t >(result) && result != int_type())
         not_yet(op, "call of a function whose result type is not 'int'");
 
-    std::vector< expr_t > args = argument_expression_list(p, type, name);
+    std::vector< converted_argument_t > args =
+        argument_expression_list(p, type, name);
     expect(p, tok_t::rparen, "expected ')' after arguments");
 
     const int first = p.locals;

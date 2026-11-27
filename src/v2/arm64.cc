@@ -931,10 +931,14 @@ branch_target(std::string_view name)
 } // namespace
 
 // rcc's call() after the arguments' stores, chapter 8: the arguments
-// past the eighth are copied from their slots to the outgoing area,
-// opened below the frame for this call alone, ldr w17, [x29, #60] and
-// str w17, [sp], in order; the first eight are loaded into w0 to w7,
-// ldr w0, [x29, #28].  G16: bl f, the name alone, since the linker
+// past the eighth are copied from their slots to their own 8 bytes of
+// the outgoing area, opened below the frame for this call alone, at
+// their views by the plain load, ldrh w17, [x29, #60] and strh w17,
+// [sp], in order, so a signed one is not extended there: the rest of
+// the 8 bytes are padding to the convention; the first eight are loaded
+// into w0 to w7 by the load of their parameter's type, a narrow one
+// extended to 32 bits by its sign, ldrsb w0, [x29, #17], ldr x1, [x29,
+// #24].  G16: bl f, the name alone, since the linker
 // makes a PLT entry where one is needed, quoted where it is a
 // register's, branch_target().  No unwind directive is written around
 // the area, since the canonical frame address is computed from x29.
@@ -958,10 +962,15 @@ transfer(state_t &s,
         copy_out(s, outgoing_operand(i - registers, view), view);
     }
 
-    for (std::size_t i = 0; i < std::min(registers, args.size()); ++i)
-        insn(s, "ldr",
-             { reg(argument_registers[i], 32),
+    for (std::size_t i = 0; i < std::min(registers, args.size()); ++i) {
+        const view_t view = view_of(args[i].value);
+        const auto [mnemonic, to] =
+            load_of(view, args[i].sign, promoted_width(view));
+
+        insn(s, mnemonic,
+             { reg(argument_registers[i], to),
                slot_operand(slot_of(s, args[i].where)) });
+    }
 
     insn(s, "bl", { branch_target(name) });
 

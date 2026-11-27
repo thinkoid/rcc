@@ -1003,16 +1003,42 @@ return_stmt(state_t &s, const expr_t &e, view_t view)
     jump(s, s.ret);
 }
 
-// rcc's call() after the arguments' stores, chapter 8: a slot is 4
-// bytes, and a push writes 8, so the stacked arguments, past the sixth,
-// are pushed from their slots through rax, last first, movl -40(%rbp),
-// %eax and pushq %rax, over a pad that keeps rsp a multiple of 16 at
-// the call, subq $8, %rsp, for an odd count of them; the first six are
-// loaded into their registers, movl -16(%rbp), %edi.  G16: call f@PLT
-// for every function, the executable being position-independent, and
-// nothing before it, since no callee is variadic.  The pushes and the
-// pad are given back after it, addq $16, %rsp.  The function now calls,
-// so its frame moves rsp.
+namespace {
+
+// An argument past the sixth pushed from its slot, chapter 8: a 64-bit
+// slot as it is, pushq -40(%rbp); a narrower one is not pushed directly,
+// which would read the bytes above it, but extended to 32 bits by its
+// parameter's sign into eax, whose write clears the upper half of rax,
+// movsbl -29(%rbp), %eax, and pushq %rax.
+void
+push(state_t &s, const argument_t &a)
+{
+    const view_t view = view_of(a.value);
+    const std::string slot = at(slot_of(s, a.where));
+
+    if (view == view_t::i64) {
+        insn(s, "pushq", { slot });
+        return;
+    }
+
+    const auto [mnemonic, to] = extension(view, a.sign, 32);
+    insn(s, mnemonic, { slot, reg(rax, to) });
+    insn(s, "pushq", { "%rax" });
+}
+
+} // namespace
+
+// rcc's call() after the arguments' stores, chapter 8: a slot is the
+// parameter's size, and a push writes 8, so the stacked arguments, past
+// the sixth, are pushed from their slots, last first, push(), over a
+// pad that keeps rsp a multiple of 16 at the call, subq $8, %rsp, for
+// an odd count of them; the first six are loaded into their registers
+// by the load of their parameter's type, a narrow one extended to 32
+// bits by its sign, movsbl -2(%rbp), %edi, movq -16(%rbp), %rsi.  G16:
+// call f@PLT for every function, the executable being
+// position-independent, and nothing before it, since no callee is
+// variadic.  The pushes and the pad are given back after it, addq $16,
+// %rsp.  The function now calls, so its frame moves rsp.
 void
 transfer(state_t &s,
          std::string_view name,
@@ -1026,14 +1052,17 @@ transfer(state_t &s,
     if (pad)
         insn(s, "subq", { imm(8), "%rsp" });
 
-    for (std::size_t i = args.size(); i-- > registers;) {
-        insn(s, "movl", { at(slot_of(s, args[i].where)), "%eax" });
-        insn(s, "pushq", { "%rax" });
-    }
+    for (std::size_t i = args.size(); i-- > registers;)
+        push(s, args[i]);
 
-    for (std::size_t i = 0; i < std::min(registers, args.size()); ++i)
-        insn(s, "movl",
-             { at(slot_of(s, args[i].where)), reg(argument_registers[i], 32) });
+    for (std::size_t i = 0; i < std::min(registers, args.size()); ++i) {
+        const view_t view = view_of(args[i].value);
+        const auto [mnemonic, to] =
+            extension(view, args[i].sign, promoted_width(view));
+
+        insn(s, mnemonic,
+             { at(slot_of(s, args[i].where)), reg(argument_registers[i], to) });
+    }
 
     insn(s, "call", { std::format("{}@PLT", name) });
 

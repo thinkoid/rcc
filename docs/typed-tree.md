@@ -16,7 +16,7 @@ parameters of any integer type, whose locals are of the integer
 types, declared, assigned and returned, with parentheses, the casts,
 the unary operators `+ - ~ !`, `+ - * / % << >> & | ^`, the
 comparisons, `&&`, `||` and calls of functions of an `int` or a
-`void` result and of `int` parameters, to
+`void` result, to
 any depth, and the statements `if`, `else`, `while`, `do`, `for`
 with a declaration or an expression first, `break`, `continue`,
 `goto` and labels, and `return` with a value or without, on both
@@ -605,7 +605,12 @@ technique.
   copied in at their view once the frame's size is known. No row of
   the body asks whether a place is a parameter.
 - A call's argument is a hidden local of its call, numbered by the
-  parser, whose slot is taken where the call is generated.
+  parser, whose slot, of its parameter's view, is taken where the
+  call is generated. The node keeps the parameter's sign as data, by
+  which the load into the argument register extends a narrow one to
+  32 bits. Past the registers x86-64 pushes a 64-bit slot as it is
+  and a narrower one from `rax` after that extension, and aarch64
+  copies each at its view to its own 8 bytes of the outgoing area.
 - The file's scope holds each function's and each object's C type,
   in two maps, a name in one never in the other, and its entry in
   the unit. A function's entry is made at its first declaration, so

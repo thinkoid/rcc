@@ -185,15 +185,18 @@ struct assign_t
 };
 
 // An argument of a call, 6.5.3.3p4: its value, converted to its
-// parameter's type, and the hidden local of the call it is stored in,
-// rcc's argument slot (backend.md chapter 8), numbered by the parser
-// among the function's locals, whose slot is taken where the call is
-// generated, before the value is.  The value is erased, since the count
-// of arguments is not bounded, and its store is a row of its handle,
-// which finds a target's niche.
+// parameter's type, so of that type's view; the hidden local of the
+// call it is stored in, rcc's argument slot (backend.md chapter 8),
+// numbered by the parser among the function's locals, whose slot is
+// taken where the call is generated, before the value is, of the
+// value's view; and the sign of the parameter's type, which the load
+// of a narrow one from the slot into its register extends it by.  The
+// value is erased, since the count of arguments is not bounded, and its
+// store is a row of its handle, which finds a target's niche.
 struct argument_t
 {
     slot_t where;
+    sign_t sign;
     expr_t value;
 };
 

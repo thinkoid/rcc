@@ -199,11 +199,11 @@ namespace {
 // The arguments of a call, each in a hidden local of the call, numbered
 // from first.
 std::vector< argument_t >
-arguments_from(int first, std::vector< expr_t > args)
+arguments_from(int first, std::vector< converted_argument_t > args)
 {
     std::vector< argument_t > arguments;
-    for (expr_t &value : args)
-        arguments.push_back({ slot_t { first++ }, std::move(value) });
+    for (converted_argument_t &a : args)
+        arguments.push_back({ slot_t { first++ }, a.sign, std::move(a.value) });
 
     return arguments;
 }
@@ -216,7 +216,7 @@ expr_t
 make_call(std::string_view name,
           view_t result,
           int first,
-          std::vector< expr_t > args)
+          std::vector< converted_argument_t > args)
 {
     return cross(result, [&]< view_t V >() {
         return expr_t(call_t< V > { std::string(name),
@@ -225,7 +225,9 @@ make_call(std::string_view name,
 }
 
 expr_t
-make_call_void(std::string_view name, int first, std::vector< expr_t > args)
+make_call_void(std::string_view name,
+               int first,
+               std::vector< converted_argument_t > args)
 {
     return expr_t(call_void_t { std::string(name),
                                 arguments_from(first, std::move(args)) });
