@@ -269,6 +269,23 @@ Check: a cost program of the block with ~/~, ~%~ and a shift by a
 variable count on aarch64, each the listing of its ~+~ twin with the
 operator's instruction for the =add=; no x86-64 listing changes.
 
+** TODO x86-64: a quotient whose dividend was held outside =rax= is moved back before a store
+
+A dividend is generated outside =rax= and =rdx= where its divisor's
+top operator pins them, so ~b = b / (a / c)~ loads =b= into =ecx=.
+It moves to =eax= for the division, and the quotient, which no
+consumer names a register for, goes back to the dividend's register:
+=idivl %esi; movl %eax, %ecx; movl %ecx, -8(%rbp)=, where the store
+of =eax= is an instruction fewer.  ~b /= a / c~ writes the same
+three.  A quotient returned stays in =rax=, and ~b = b / a~, whose
+dividend is loaded into =eax=, writes no move.
+
+Fix: none taken; a quotient no consumer names a register for stays
+in =rax= where no value is held there, as one a =return= names does.
+
+Check: a cost program of the two statements, each ending =idivl
+%esi; movl %eax, -8(%rbp)=, and no function longer.
+
 ** TODO A comment says neither generator writes a stack allocation
 
 The comment over =moves_beside()= in =src/c1-common.cc= names "a
