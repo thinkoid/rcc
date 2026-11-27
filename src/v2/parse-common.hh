@@ -59,6 +59,17 @@ struct function_name_t
     std::size_t index;
 };
 
+// What the parser holds of a C label's name in the function being
+// defined, 6.2.1p3: its number among the function's C labels, given at
+// the first meeting of the name, a goto or its definition, in the order
+// they are met (docs/typed-tree.md 4.6), and whether a label of the
+// name is defined, which a name is once, 6.8.2p3.
+struct label_name_t
+{
+    int number;
+    bool defined = false;
+};
+
 // The state of one parse: the tokens and the position in them; the
 // target, whose plain char the parser makes; the warnings, a list the
 // driver owns; the unit, filled as its functions
@@ -69,9 +80,12 @@ struct function_name_t
 // defined, for its return statements; the scopes open where the parse
 // stands, innermost last, the function's blocks' and a parameter
 // list's; the count of the locals the function has declared, which
-// numbers the next one; and the loops whose bodies are being read,
+// numbers the next one; the loops whose bodies are being read,
 // innermost last, with the count of the function's loops, which numbers
-// the next one (docs/typed-tree.md 4.6).
+// the next one (docs/typed-tree.md 4.6); and the function's C labels by
+// their names, their count numbering the next one, with the name of
+// each goto in the order they are written, for the function's end to
+// require their labels.
 struct parser_t
 {
     const std::vector< token_t > &tokens;
@@ -87,6 +101,8 @@ struct parser_t
     int locals = 0;
     std::vector< loop_t > loops = { };
     int loop_count = 0;
+    std::unordered_map< std::string_view, label_name_t > labels = { };
+    std::vector< const token_t * > gotos = { };
 };
 
 //

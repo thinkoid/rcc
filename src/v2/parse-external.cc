@@ -144,12 +144,28 @@ require_definition_parameters(const declarator_t &d)
             fail(param.start, "parameter name omitted");
 }
 
+// Each goto of the function names a label the function defines,
+// 6.8.7.2p1, before the goto or after it, since a label's name has
+// function scope, 6.2.1p3: so the check waits for the function's end,
+// as rcc's require_labels() does, and the first goto in the order they
+// are written whose label is not defined is the error, said at its
+// name.
+void
+require_labels(const parser_t &p)
+{
+    for (const token_t *name : p.gotos)
+        if (!p.labels.at(name->text).defined)
+            fail(*name,
+                 "label " + quoted(name->text) + " used but not defined");
+}
+
 // A definition of the function, declared first, so that its name is in
 // scope in its own body, 6.2.1p7.  A function is defined once, 6.9.1p5.
 // The body is parsed with the function's result type, its locals
-// numbered after the parameters, and is the entry's.  A system header's
-// definition is compiled as any other, since rcc's rule for one is a
-// static inline function's.
+// numbered after the parameters, its loops and its C labels from 0, and
+// is the entry's once its gotos name labels it defines.  A system
+// header's definition is compiled as any other, since rcc's rule for
+// one is a static inline function's.
 void
 function_definition(parser_t &p, const specifiers_t &spec, declarator_t &d)
 {
@@ -162,8 +178,13 @@ function_definition(parser_t &p, const specifiers_t &spec, declarator_t &d)
     p.result = *as< function_t >(d.type).result;
     p.locals = static_cast< int >(d.params.size());
     p.loop_count = 0;
+    p.labels.clear();
+    p.gotos.clear();
 
-    p.unit.functions[index].body = function_body(p, std::move(d.scope));
+    stmt_t body = function_body(p, std::move(d.scope));
+    require_labels(p);
+
+    p.unit.functions[index].body = std::move(body);
 }
 
 // One declarator of a declaration in the file's scope: a function's, or

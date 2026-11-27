@@ -97,4 +97,10 @@ stmt_t make_for(stmt_t init, stmt_t step, stmt_t body, const loop_t &loop);
 stmt_t make_break(int loop);
 stmt_t make_continue(int loop);
 
+// L: and goto L; of the C label numbered label among the function's,
+// which the parser counts from 0 in the order it first meets their
+// names, 6.8.2, 6.8.7.2.
+stmt_t make_label(int label);
+stmt_t make_goto(int label);
+
 } // namespace rcc

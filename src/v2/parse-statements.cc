@@ -2,9 +2,10 @@
 
 // 6.8: the statements, of which rcc-v2 takes the compound statement,
 // the expression and null statements, the if statement, the while, do
-// and for statements, break and continue, the return statement, and the
-// block items of a block, a declaration among them.  Every other
-// statement is refused at its first token by its name, as is a label.
+// and for statements, goto, break and continue, the return statement, a
+// named label, and the block items of a block, a declaration among
+// them.  Every other statement is refused at its first token by its
+// name, as are a case and a default label.
 
 #include "parse-common.hh"
 
@@ -114,14 +115,44 @@ break_statement(parser_t &p)
     return make_break(p.loops.back().id);
 }
 
+// What the parser holds of the C label the token names, made at the
+// first meeting of the name in the function, a goto or its definition,
+// with the next number among the function's C labels.
+label_name_t &
+label_named(parser_t &p, const token_t &name)
+{
+    const int next = static_cast< int >(p.labels.size());
+
+    return p.labels.try_emplace(name.text, label_name_t { next }).first->second;
+}
+
+// A goto names a label of the function, defined before it or after it,
+// 6.8.7.2p1, so its name is kept for the function's end to check,
+// require_labels(), and the goto names the label by its number.  GNU
+// C's computed goto, goto *p, is not yet, in rcc's words.
+stmt_t
+goto_statement(parser_t &p)
+{
+    const token_t &keyword = advance(p);
+    if (peek(p).kind == tok_t::star)
+        not_yet(keyword, "computed " + quoted(keyword.text));
+
+    const token_t &name =
+        expect(p, tok_t::identifier, "expected label name after 'goto'");
+    p.gotos.push_back(&name);
+    const int label = label_named(p, name).number;
+
+    expect(p, tok_t::semicolon, "expected ';' after goto statement");
+
+    return make_goto(label);
+}
+
 // 6.8.7.1: a goto, a continue, a break or a return.
 stmt_t
 jump_statement(parser_t &p)
 {
-    const token_t &t = peek(p);
-
-    switch (t.kind) {
-    case tok_t::kw_goto: not_yet(t, quoted(t.text) + " statement");
+    switch (peek(p).kind) {
+    case tok_t::kw_goto: return goto_statement(p);
     case tok_t::kw_continue: return continue_statement(p);
     case tok_t::kw_break: return break_statement(p);
     default: return return_statement(p);
@@ -312,11 +343,58 @@ compound_statement(parser_t &p)
     return make_block(std::move(items));
 }
 
+// A named label, identifier :, 6.8.2p1, which defines its name among
+// the function's C labels, the name's number made at its first meeting;
+// a name is defined once in a function, p3, which rcc says at the
+// second definition's name, in any block, since a label's name has
+// function scope, 6.2.1p3.
+stmt_t
+named_label(parser_t &p)
+{
+    const token_t &name = advance(p);
+    advance(p);
+
+    label_name_t &label = label_named(p, name);
+    if (label.defined)
+        fail(name, "redefinition of label " + quoted(name.text));
+
+    label.defined = true;
+
+    return make_label(label.number);
+}
+
+// A label of any of the three kinds of 6.8.2p1, of which a case and a
+// default label are not yet, refused at the keyword.
+stmt_t
+label(parser_t &p)
+{
+    const token_t &t = peek(p);
+    if (t.kind != tok_t::identifier)
+        not_yet(t, quoted(t.text) + " label");
+
+    return named_label(p);
+}
+
+// A label before a statement where a statement is wanted, 6.8.2p1: the
+// then part of an if, the body of a loop, a labeled statement's own.
+// It is a block of the two, rcc's labeled_statement(), which opens no
+// scope and is no one jump, so an if whose then part it is takes the
+// label past the then part.
+stmt_t
+labeled_statement(parser_t &p)
+{
+    std::vector< stmt_t > items;
+    items.push_back(label(p));
+    items.push_back(statement(p));
+
+    return make_block(std::move(items));
+}
+
 // 6.8.1p1: a statement, by its first token.  A declaration is a block
 // item and no statement, so it is no then part and no body, 6.8.3p1,
-// which rcc says at its first token; a label is not yet; and a token
-// that starts no other statement starts an expression statement, the
-// null statement among them, 6.8.4.
+// which rcc says at its first token; a label starts a labeled
+// statement; and a token that starts no other statement starts an
+// expression statement, the null statement among them, 6.8.4.
 stmt_t
 statement(parser_t &p)
 {
@@ -338,7 +416,7 @@ statement(parser_t &p)
     }
 
     if (is_label_start(p))
-        not_yet(t, "label");
+        return labeled_statement(p);
 
     if (is_declaration_start(p))
         fail(t, "expected statement, found a declaration");
@@ -347,13 +425,16 @@ statement(parser_t &p)
 }
 
 // One block item, 6.8.3p1, appended to items: a label, which is an
-// item of its own; a declaration, of the statements it makes; or a
+// item of its own, so it may stand before a declaration and before the
+// closing brace; a declaration, of the statements it makes; or a
 // statement.
 void
 block_item(parser_t &p, std::vector< stmt_t > &items)
 {
-    if (is_label_start(p))
-        not_yet(peek(p), "label");
+    if (is_label_start(p)) {
+        items.push_back(label(p));
+        return;
+    }
 
     if (is_declaration_start(p)) {
         for (stmt_t &decl : declaration(p))

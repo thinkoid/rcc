@@ -14,8 +14,9 @@ declared, assigned and returned, with parentheses, the casts, the
 unary operators `+ - ~ !`, `+ - * / % << >> & | ^`, the comparisons,
 `&&`, `||` and calls of functions of an `int` or a `void` result, to
 any depth, and the statements `if`, `else`, `while`, `do`, `for`
-with a declaration or an expression first, `break`, `continue` and
-`return` with a value or without, on both targets.
+with a declaration or an expression first, `break`, `continue`,
+`goto` and labels, and `return` with a value or without, on both
+targets.
 Each mechanism
 below was compiled and run in a small model first; chapter 5 says
 what the models showed and chapter 6 what nothing has shown. A
@@ -372,6 +373,11 @@ calls the child's `branch`, and the one parent that needs a fact of
 an operand's jump, x86-64's `e == 0`, calls the operand's
 `value_branch`.
 
+A category's row may change the state: `label_of()` of a `goto` takes
+its label where the generation first meets it, so the category of
+the statements that are one jump asks the row of a state it may
+write.
+
 ### 3.6 The oracle of primaries
 
 An rcc whose builders make only primaries compiles every program to
@@ -525,10 +531,17 @@ technique.
 - An `if` whose then part is one jump, bare or the one item of a
   block, keeps the then part's type, `if_t< J >`. One jump is a
   category (principle 7): the types that have the row which names
-  their label, a `break`, a `continue` and a `return` without a
-  value. The builder asks the then part's model, and a block's asks
-  its one item's, so a block in a block is not one jump. The row is
-  the condition's jump to that label where the condition is nonzero.
+  their label, a `break`, a `continue`, a `goto` and a `return`
+  without a value. The builder asks the then part's model, and a
+  block's asks its one item's, so a block in a block is not one
+  jump. The row is the condition's jump to that label where the
+  condition is nonzero; it asks the label before the condition's
+  jump, since a `goto`'s label is taken where it is first met.
+- A C label is a statement, `label_t`, placed where it is written,
+  as a block item of its own, so it may stand before a declaration
+  or a closing brace; a `goto` is `goto_t`, one jump. Where a
+  statement is wanted, a label is a block of it and the next
+  statement, which opens no scope and is no one jump.
 - A block holds erased statements: their count is not bounded.
 
 ### 4.5 Names and declarations
@@ -594,7 +607,12 @@ technique.
   are one type, `jump_t`, which names its loop's number and which of
   the loop's two labels. A loop's row takes its labels at rcc's
   moments and records the two under its number before the body;
-  `jump_t`'s row reads them. Generation holds nothing of the
+  `jump_t`'s row reads them. A C label is a number the parser gives
+  its name at its first meeting, a `goto` or its definition, and the
+  state gives it a label at rcc's moment: the first of its
+  definition, a `goto` to it, or an `if` whose then part is that
+  `goto`. That every `goto` names a label the function defines is
+  checked at the function's end. Generation holds nothing of the
   statements around the one generated. This stands on each statement
   being generated once.
 - **An expression's, at generation.** A wanted register, a jump's
@@ -605,13 +623,14 @@ technique.
   of `&&` or `||`; the registers left for last while an operand is
   generated, and on x86-64 those an instruction generated later
   would move a held value out of; the labels, each loop's two by its
-  number, and whether a path reaches what is written next; on x86-64
-  the width at which the last instruction set ZF from its value, and
-  whether the function calls, which moves `rsp` below any frame; the
-  frame. A value held across a call is state: the call's row spills
-  every held value at its start and asks the tree nothing. The state
-  holds no width of a value: what a held value's register is valid
-  to is its node's summary (4.2).
+  number and each C label's once met, and whether a path reaches
+  what is written next; on x86-64 the width at which the last
+  instruction set ZF from its value, and whether the function calls,
+  which moves `rsp` below any frame; the frame. A value held across
+  a call is state: the call's row spills every held value at its
+  start and asks the tree nothing. The state holds no width of a
+  value: what a held value's register is valid to is its node's
+  summary (4.2).
 
 ### 4.7 Two targets
 
@@ -709,6 +728,7 @@ each became.
 | `flag_operator()`, `flag_condition()` | x86-64's `value_branch` rows of those node types |
 | `zero_compared()` | the operand's own entry point, `value_branch` |
 | `body_target()`, `target_of()`, an `if` of one jump | the category of the types that name their label, and the then part's type, `if_t< J >`, which the builder finds through the model |
+| `user_label()` | the state's labels of the C labels met, taken by a `goto`'s `label_of()` and by the label's own row |
 | a `for` without a condition, a loop broken or continued | parameters of the loop's node |
 | the loops around a statement | the parser's; a loop's two labels are in the state, by its number |
 | `arithmetic_immediate()`, `bitmask_immediate()` | an `if` in the row: one target's encoding of its own leaf (principle 2) |

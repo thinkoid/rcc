@@ -333,18 +333,34 @@ struct jump_t
     int loop_labels_t::*label;
 };
 
+// L: s, 6.8.2: the C label placed where it is written.  A label's name
+// has function scope, 6.2.1p3, so the parser gives it a number among
+// the function's C labels at its first meeting, a goto or its
+// definition, and the node names it by the number; s is a statement of
+// its own after it.
+struct label_t
+{
+    int label;
+};
+
+// goto L;, 6.8.7.2: the jump to the C label numbered label.
+struct goto_t
+{
+    int label;
+};
+
 // A statement that is one jump: a type that has the row which names the
 // label it jumps to, label_of(), on both targets, the category the row
-// defines (principle 7).  A break and a continue are, and so is a
-// return without an expression, whose label is the epilogue's.  An if
+// defines (principle 7).  A break, a continue and a goto are, and so is
+// a return without an expression, whose label is the epilogue's.  An if
 // whose then part is one jump is the condition's jump to that label
-// (4.4).
+// (4.4).  A goto's row takes its label where the generation first meets
+// it, so the category asks the row of a state it may write.
 template< typename T >
-concept one_jump =
-    requires(const amd64::state_t &a, const arm64::state_t &b, const T &t) {
-        label_of(a, t);
-        label_of(b, t);
-    };
+concept one_jump = requires(amd64::state_t &a, arm64::state_t &b, const T &t) {
+    label_of(a, t);
+    label_of(b, t);
+};
 
 // if (e) s, 6.8.5.1p1: the condition as a jump past the then part where
 // it is 0, 6.8.5.2p2.  The condition is erased, since its own row is

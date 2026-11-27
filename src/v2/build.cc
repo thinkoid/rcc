@@ -363,4 +363,16 @@ make_continue(int loop)
     return stmt_t(jump_t { loop, &loop_labels_t::continue_ });
 }
 
+stmt_t
+make_label(int label)
+{
+    return stmt_t(label_t { label });
+}
+
+stmt_t
+make_goto(int label)
+{
+    return stmt_t(goto_t { label });
+}
+
 } // namespace rcc

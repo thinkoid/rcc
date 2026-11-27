@@ -86,6 +86,41 @@ label_of(const S &s, const return_void_t &)
     return s.ret;
 }
 
+// The label of the C label numbered label, rcc's user_label(),
+// docs/backend.md 7.2: one more label of the function, taken where the
+// generation first meets the C label, at its definition, at a goto to
+// it, or at an if whose then part is that goto.  No listing shows the
+// C label's name.
+template< typename S >
+int
+user_label(S &s, int label)
+{
+    const auto [at, added] = s.user_labels.try_emplace(label, 0);
+    if (added)
+        at->second = new_label(s);
+
+    return at->second;
+}
+
+// The label a goto names, rcc's target_of(): its C label's, taken here
+// where the goto is the first to meet it.
+template< typename S >
+int
+label_of(S &s, const goto_t &g)
+{
+    return user_label(s, g.label);
+}
+
+// rcc's label_stmt(): a C label is placed where it is written, and is
+// not aligned even where a goto jumps back to it, so a loop made of a
+// goto is laid out as it is written.
+template< typename S >
+void
+generate(S &s, const label_t &l)
+{
+    place_label(s, user_label(s, l.label));
+}
+
 // rcc's if_stmt(), docs/backend.md 7.2: the label past the then part
 // taken on reaching the if, before any of the condition's, the
 // condition's jump to it where the condition is 0, the then part, then
@@ -134,19 +169,25 @@ generate(S &s, const if_else_t<> &i)
 // An if whose then part is one jump, rcc's if_jump(): the condition's
 // jump to the jump's label where it is nonzero, and no label of the
 // if's own; the else part follows with no jump over it, as the first
-// pass of the Seventh Edition compiler writes it, c02.c.
+// pass of the Seventh Edition compiler writes it, c02.c.  The jump's
+// label is asked before anything of the condition, since a goto's is
+// taken where it is first met, as rcc's body_target() asks it before
+// if_stmt() takes a label.
 template< typename S, one_jump J >
 void
 generate(S &s, const if_t< J > &i)
 {
-    branch(s, i.cond, label_of(s, i.then), true);
+    const int target = label_of(s, i.then);
+    branch(s, i.cond, target, true);
 }
 
 template< typename S, one_jump J >
 void
 generate(S &s, const if_else_t< J > &i)
 {
-    branch(s, i.cond, label_of(s, i.then), true);
+    const int target = label_of(s, i.then);
+    branch(s, i.cond, target, true);
+
     generate(s, i.otherwise);
 }
 
@@ -261,9 +302,10 @@ generate(S &s, const for_t< C, broken, continued > &f)
         place_label(s, end);
 }
 
-// A statement of one jump, rcc's break_stmt(), continue_stmt() and
-// return_stmt() with no value: the jump to its label.  A statement
-// starts with no value held, so the jump is the whole of it.
+// A statement of one jump, rcc's break_stmt(), continue_stmt(),
+// goto_stmt() and return_stmt() with no value: the jump to its label.
+// A statement starts with no value held, so the jump is the whole of
+// it.
 template< typename S, one_jump J >
 void
 generate(S &s, const J &j)

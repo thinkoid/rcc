@@ -51,7 +51,8 @@ bit(reg_t r)
 // computed, flagged()'s, or 0, until the next instruction or label: a
 // jump on that value at that width then needs no cmp (7.1).  loops is
 // the labels each loop generated so far took for its body's jumps, by
-// the loop's number.  frame is the bytes the slots take below rbp, the
+// the loop's number, and user_labels the label of each C label met so
+// far, by its number.  frame is the bytes the slots take below rbp, the
 // locals' and the spills' in the order they are taken, and slots each
 // local's displacement off rbp, by its number; calls says that the
 // function calls, which moves rsp below the slots (chapter 5).
@@ -70,6 +71,7 @@ struct state_t
     bool terminated = false;
     int zero_flag = 0;
     std::unordered_map< int, loop_labels_t > loops { };
+    std::unordered_map< int, int > user_labels { };
 
     long frame = 0;
     std::unordered_map< int, int > slots { };
