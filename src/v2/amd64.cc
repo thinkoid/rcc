@@ -12,6 +12,7 @@
 
 #include <cstdint>
 #include <format>
+#include <optional>
 #include <ostream>
 #include <stdexcept>
 #include <string>
@@ -127,7 +128,7 @@ constant(state_t &s, reg_t r, long long value, int width)
 
 // The instruction of a binary operator at 32 bits, rcc's
 // arithmetic_mnemonic() and shift_mnemonic() sized l: sar for >>,
-// signed.
+// signed, and idiv for / and % alike, which idiv() writes.
 std::string_view
 mnemonic(binary_op_t op)
 {
@@ -135,6 +136,8 @@ mnemonic(binary_op_t op)
     case binary_op_t::add: return "addl";
     case binary_op_t::sub: return "subl";
     case binary_op_t::mul: return "imull";
+    case binary_op_t::div:
+    case binary_op_t::rem: return "idivl";
     case binary_op_t::shl: return "shll";
     case binary_op_t::shr: return "sarl";
     case binary_op_t::bit_and: return "andl";
@@ -200,6 +203,23 @@ count_into_cl(state_t &s, reg_t right, unsigned avoid)
     move(s, right, rcx, 32);
 }
 
+// The register of wanted, the set of at most one expression register
+// that the consumer of a value names, rcc's wanted_register(): where a
+// row may write it now, held by no value and left for last by no
+// reservation.  None for an empty set, and for a register that is held
+// or reserved.
+std::optional< reg_t >
+wanted_register(const state_t &s, unsigned wanted)
+{
+    for (const reg_t r : expression_registers)
+        if (wanted & bit(r))
+            return !s.registers.owner.contains(r) && !(s.reserved & bit(r)) ?
+                       std::optional< reg_t >(r) :
+                       std::nullopt;
+
+    return std::nullopt;
+}
+
 // Whether the row of op on the held values l and r writes r's register,
 // rcc's right_written(): an operator that commutes, +, *, &, | or ^,
 // whose right operand is in the register the consumer names, wanted,
@@ -208,6 +228,111 @@ bool
 right_written(const state_t &s, binary_op_t op, value_t r, unsigned wanted)
 {
     return commutes(op) && (wanted & bit(reg_of(s, r)));
+}
+
+// G4: the instruction the machine has, idivl, rcc's idiv(), a fault on
+// x86 for a zero divisor or INT_MIN / -1.  rax and rdx hold nothing
+// but, it may be, the dividend in left: it goes to rax, rdx is
+// sign-filled, and the division of the divisor's operand leaves the
+// quotient in rax and the remainder in rdx.
+void
+idiv(state_t &s, binary_op_t op, reg_t left, std::string_view divisor)
+{
+    if (left != rax)
+        mov(s, left, rax, 32);
+
+    insn(s, "cltd", { });
+    insn(s, mnemonic(op), { divisor });
+}
+
+// The register a division's dividend is in once rax and rdx are
+// vacated, rcc's dividend(): the one it is held in.  A dividend held in
+// rdx, which the division overwrites, moves to rax for a quotient, by
+// the mov idiv() writes in any case, so that it is in rax and the
+// quotient stays where idivl leaves it.  A remainder's value is rdx
+// whatever the dividend's register, so its dividend stays.
+reg_t
+dividend(state_t &s, binary_op_t op, value_t l)
+{
+    const reg_t r = reg_of(s, l);
+    if (r != rdx || op != binary_op_t::div)
+        return r;
+
+    move(s, rdx, rax, 32);
+
+    return rax;
+}
+
+// The pinned pair of a division by a held divisor, rcc's
+// pin_division(), chapter 6.5: nothing looks at the divisor, which is
+// in a register even when it is a constant.  The divisor moves out of
+// rax or rdx first, all 64 bits, to a register outside both and the
+// dividend's, movq %rax, %rsi; then the values held there move out,
+// vacate().  Both values are still held after idiv(), the dividend in
+// the register returned.
+reg_t
+pin_division(state_t &s, binary_op_t op, value_t l, value_t r)
+{
+    const unsigned pinned = bit(rax) | bit(rdx);
+    const unsigned in = bit(reg_of(s, l));
+
+    reg_t right = reg_of(s, r);
+    if (right == rax || right == rdx) {
+        const reg_t to = take(s, pinned | in);
+        move(s, right, to, 64);
+        right = to;
+    }
+
+    for (const reg_t p : { rax, rdx })
+        if (!(in & bit(p)))
+            vacate(s, p, pinned | in | bit(right));
+
+    const reg_t left = dividend(s, op, l);
+    idiv(s, op, left, reg(right, 32));
+
+    return left;
+}
+
+// The pinned pair of a division by the int in a slot, chapter 6.5: the
+// slot is idivl's operand, idivl -8(%rbp), and the values held in rax
+// and rdx move out, vacate().  The dividend is still held, in the
+// register returned.
+reg_t
+pin_division(state_t &s, binary_op_t op, value_t l, slot_t divisor)
+{
+    const unsigned pinned = bit(rax) | bit(rdx);
+    const unsigned in = bit(reg_of(s, l));
+
+    for (const reg_t p : { rax, rdx })
+        if (!(in & bit(p)))
+            vacate(s, p, pinned | in);
+
+    const reg_t left = dividend(s, op, l);
+    idiv(s, op, left, at(slot_of(s, divisor)));
+
+    return left;
+}
+
+// The value of the division whose dividend l idivl took from left, the
+// end of rcc's divide(): a remainder is a new value in rdx and l is
+// freed (chapter 6.5), as the Seventh Edition compiler's row of a
+// remainder returns the odd register of its pair, where div leaves it;
+// so is a quotient whose consumer names rax, wanted, a new value in
+// rax, where left is another register (6.1); any other quotient goes
+// back into left, movl %eax, %ecx.
+value_t
+divided(state_t &s, binary_op_t op, value_t l, reg_t left, unsigned wanted)
+{
+    const bool stays = left != rax && wanted_register(s, wanted) == rax;
+    if (op == binary_op_t::rem || stays) {
+        release(s, l);
+        return hold(s, op == binary_op_t::rem ? rdx : rax);
+    }
+
+    if (left != rax)
+        mov(s, rax, left, 32);
+
+    return l;
 }
 
 } // namespace
@@ -317,6 +442,24 @@ void
 multiply(state_t &s, reg_t r, slot_t source, std::string_view factor)
 {
     insn(s, "imull", { factor, at(slot_of(s, source)), reg(r, 32) });
+}
+
+// rcc's divide() by a held divisor: the division, pin_division(), the
+// divisor consumed, then the value, divided().
+value_t
+divide(state_t &s, binary_op_t op, value_t l, value_t r, unsigned wanted)
+{
+    const reg_t left = pin_division(s, op, l, r);
+    release(s, r);
+
+    return divided(s, op, l, left, wanted);
+}
+
+// rcc's divide() by the int in a slot.
+value_t
+divide(state_t &s, binary_op_t op, value_t l, slot_t divisor, unsigned wanted)
+{
+    return divided(s, op, l, pin_division(s, op, l, divisor), wanted);
 }
 
 // rcc's shift() for a held count, chapter 6.5: the count goes into cl,

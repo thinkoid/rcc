@@ -65,6 +65,12 @@ struct expr_t::interface_t
     virtual expr_t
     binary(binary_op_t op, const load_t &rhs, const expr_t &self) const = 0;
     virtual expr_t binary(binary_op_t op,
+                          const top_t< binary_op_t::div > &rhs,
+                          const expr_t &self) const = 0;
+    virtual expr_t binary(binary_op_t op,
+                          const top_t< binary_op_t::rem > &rhs,
+                          const expr_t &self) const = 0;
+    virtual expr_t binary(binary_op_t op,
                           const top_t< binary_op_t::shl > &rhs,
                           const expr_t &self) const = 0;
     virtual expr_t binary(binary_op_t op,
@@ -162,9 +168,9 @@ classed_operand(const load_t &operand, const expr_t &)
 
 // The right operand of a binary operator as a builder keeps it:
 // classed_operand()'s classes, and a top_t besides for a node whose top
-// operator x86-64 generates the left operand away from: a shift by a
-// count that is no constant, the count's class read from the node's
-// type.
+// operator x86-64 generates the left operand away from: a division,
+// and a shift by a count that is no constant, the count's class read
+// from the node's type.
 template< typename T >
 decltype(auto)
 classed_right(const T &operand, const expr_t &self)
@@ -176,7 +182,7 @@ template< binary_op_t op, typename L, typename R >
 auto
 classed_right(const binary_t< op, L, R > &, const expr_t &self)
 {
-    if constexpr (is_shift(op) && !constant< R >)
+    if constexpr (is_division(op) || (!constant< R > && is_shift(op)))
         return top_t< op > { self };
     else
         return self;
@@ -194,6 +200,8 @@ fwd_binary(binary_op_t op, const L &lhs, const R &rhs)
     case binary_op_t::add: return make_binary< binary_op_t::add >(lhs, rhs);
     case binary_op_t::sub: return make_binary< binary_op_t::sub >(lhs, rhs);
     case binary_op_t::mul: return make_binary< binary_op_t::mul >(lhs, rhs);
+    case binary_op_t::div: return make_binary< binary_op_t::div >(lhs, rhs);
+    case binary_op_t::rem: return make_binary< binary_op_t::rem >(lhs, rhs);
     case binary_op_t::shl: return make_binary< binary_op_t::shl >(lhs, rhs);
     case binary_op_t::shr: return make_binary< binary_op_t::shr >(lhs, rhs);
     case binary_op_t::bit_and:
@@ -325,6 +333,20 @@ struct expr_t::model_t final: interface_t
 
     expr_t
     binary(binary_op_t op, const load_t &rhs, const expr_t &self) const override
+    {
+        return fwd_binary(op, classed_operand(held, self), rhs);
+    }
+
+    expr_t binary(binary_op_t op,
+                  const top_t< binary_op_t::div > &rhs,
+                  const expr_t &self) const override
+    {
+        return fwd_binary(op, classed_operand(held, self), rhs);
+    }
+
+    expr_t binary(binary_op_t op,
+                  const top_t< binary_op_t::rem > &rhs,
+                  const expr_t &self) const override
     {
         return fwd_binary(op, classed_operand(held, self), rhs);
     }

@@ -8,8 +8,8 @@ architecture. It leaves the details to the code.
 
 Of the design the tree has a thin line through every joint: functions
 whose locals are `int`, declared, assigned and returned, with
-parentheses, the unary operators and `+ - * << >> & | ^`, on both
-targets.
+parentheses, the unary operators and `+ - * / % << >> & | ^`, on
+both targets.
 Each mechanism
 below was compiled and run in a small model first; chapter 5 says
 what the models showed and chapter 6 what nothing has shown. A
@@ -193,7 +193,8 @@ public:
   written, since the rule that exchanges them is each target's.
 - Operators whose rows differ are families, each named by a concept
   on the operator: on x86-64 the arithmetic operators take an
-  immediate and an operand in memory, and a shift takes neither. A
+  immediate and an operand in memory, a division no immediate, and a
+  shift neither. A
   row is constrained by its family, so a niche of one family is no
   candidate for a node of another.
 - A type that a builder makes and a target never refines compiles,
@@ -241,7 +242,9 @@ choice is static. The first three are the ancestor's `regtab`,
   that returns its value, held in a register the row takes
   (principle 10). The consumer reads where the value is when it
   writes its own instruction, and moves it if it must be elsewhere: a
-  `return` moves it to the result register.
+  `return` moves it to the result register. The value a row returns
+  need not be an operand's: on x86-64 a remainder is a new value in
+  `rdx`, where the instruction leaves it.
 - The register discipline is rcc's, copied as its text is: which
   register a value lands in, when a held value is moved or spilled,
   what a pinned instruction needs free. The typed tree changes how a
@@ -515,7 +518,7 @@ rows invented for the purpose.
 
 - The categories' cut (3.5).
 - The builder on both operands at the size of all of C's operators.
-  Eight are built, over four classes of operand on each side (a
+  Ten are built, over four classes of operand on each side (a
   constant, the constant 0, a load, anything else) and a fifth on the
   right (an operand whose top operator pins), with one crossing from
   the operator's value to the node's parameter. Each class kept on

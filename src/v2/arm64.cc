@@ -239,7 +239,8 @@ constant(state_t &s, reg_t r, long long value, int width)
 // operators
 
 // The instruction of a binary operator, rcc's arithmetic_mnemonic() and
-// shift_mnemonic(): asr for >>, signed.
+// shift_mnemonic(): asr for >>, signed, and sdiv for /, and for % the
+// quotient's, before its msub.
 std::string_view
 mnemonic(binary_op_t op)
 {
@@ -247,6 +248,8 @@ mnemonic(binary_op_t op)
     case binary_op_t::add: return "add";
     case binary_op_t::sub: return "sub";
     case binary_op_t::mul: return "mul";
+    case binary_op_t::div:
+    case binary_op_t::rem: return "sdiv";
     case binary_op_t::shl: return "lsl";
     case binary_op_t::shr: return "asr";
     case binary_op_t::bit_and: return "and";
@@ -259,8 +262,8 @@ mnemonic(binary_op_t op)
 // and sub take 12 bits, or 12 bits shifted by 12, of either sign,
 // written signed; a shift its count masked to the width, which is what
 // the instruction does to a count in a register (G3), lsl w0, w0, #1
-// for a << 33; and, orr and eor a bitmask, written in hex; mul takes
-// none.
+// for a << 33; and, orr and eor a bitmask, written in hex; mul, sdiv
+// and msub take none.
 std::optional< std::string >
 immediate_of(binary_op_t op, int value)
 {
@@ -270,7 +273,9 @@ immediate_of(binary_op_t op, int value)
         if (arithmetic_immediate(value, 32))
             return imm(value);
         break;
-    case binary_op_t::mul: break;
+    case binary_op_t::mul:
+    case binary_op_t::div:
+    case binary_op_t::rem: break;
     case binary_op_t::shl:
     case binary_op_t::shr: return imm(value & 31);
     case binary_op_t::bit_and:
@@ -356,12 +361,24 @@ operate(state_t &s, unary_op_t op, reg_t r)
 
 // op r, r, R, three addresses: add w0, w0, w1.  A shift's count in a
 // register is named at the width of the value shifted, lsl w0, w0, w1,
-// and the instruction reads its low 5 bits (G3).
+// and the instruction reads its low 5 bits (G3).  G4: sdiv does not
+// trap, 2.6: x / 0 is 0 and INT_MIN / -1 is INT_MIN.  % has no
+// instruction, rcc's divide(): the quotient into a register taken
+// outside r and R, which both hold values, then msub, r - quotient *
+// R, sdiv w2, w0, w1 and msub w0, w2, w1, w0.
 void
 operate(state_t &s, binary_op_t op, reg_t r, reg_t source)
 {
     const auto to = reg(r, 32);
-    insn(s, mnemonic(op), { to, to, reg(source, 32) });
+    const auto from = reg(source, 32);
+    if (op != binary_op_t::rem) {
+        insn(s, mnemonic(op), { to, to, from });
+        return;
+    }
+
+    const auto quotient = reg(take(s), 32);
+    insn(s, mnemonic(op), { quotient, to, from });
+    insn(s, "msub", { to, quotient, from, to });
 }
 
 // A literal is the immediate where the instruction encodes it, add w0,

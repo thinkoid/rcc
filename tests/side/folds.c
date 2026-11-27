@@ -1,6 +1,10 @@
 /* Two constants fold where the node is built, as rcc folds them: the
    exact value wrapped to 32 bits, as the instruction wraps it, so
    2147483647 + 1 is -2147483648 and 65536 * 65536 is 0 with no
+   diagnostic.  A quotient truncates toward zero and a remainder has
+   the dividend's sign, -7 / 2 is -3 and -7 % 2 is -1, but a division
+   that has no value is not folded: 1 / 0, 1 % 0 and the most negative
+   int by -1 are their nodes, the instruction written, with no
    diagnostic.  A shift's count is taken modulo 32, as the instruction
    masks it, and >> of a negative value is arithmetic, so 1 << 33 is 2,
    1 << -1 is -2147483648 and -1 >> 40 is -1; 2 << 31 is 0, which
@@ -184,4 +188,81 @@ shl_of_sum(void)
 {
         int a = 7;
         return (1 + 2) << 4;
+}
+
+int
+quotient(void)
+{
+        int a = 7;
+        return 60 / 7;
+}
+
+int
+quotient_negative(void)
+{
+        int a = 7;
+        return -7 / 2;
+}
+
+int
+remainder_negative(void)
+{
+        int a = 7;
+        return -7 % 2;
+}
+
+int
+remainder_by_negative(void)
+{
+        int a = 7;
+        return 7 % -3;
+}
+
+int
+by_zero(void)
+{
+        int a = 7;
+        return 1 / 0;
+}
+
+int
+remainder_by_zero(void)
+{
+        int a = 7;
+        return 1 % 0;
+}
+
+int
+zero_by_zero(void)
+{
+        int a = 7;
+        return 0 / 0;
+}
+
+int
+min_by_minus_one(void)
+{
+        int a = 7;
+        return (-2147483647 - 1) / -1;
+}
+
+int
+min_remainder_by_minus_one(void)
+{
+        int a = 7;
+        return (-2147483647 - 1) % -1;
+}
+
+int
+min_by_one(void)
+{
+        int a = 7;
+        return (-2147483647 - 1) / 1;
+}
+
+int
+by_zero_kept(void)
+{
+        int a = 7;
+        return a + 1 / 0;
 }

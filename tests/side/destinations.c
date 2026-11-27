@@ -19,7 +19,13 @@
    store.  So are a shift's: shift_assigned(), shift_initialized(),
    shift_discarded() and shift_returned_store() each take a << b or
    a >> 5, and shifted() and shifted_by() shift x by a constant and by
-   a local, the count in ecx, then the store. */
+   a local, the count in ecx, then the store.  A quotient is in eax on
+   x86-64 and a remainder in edx, which a store reads and a return
+   moves to eax: quotient_assigned(), remainder_returned(),
+   remainder_assigned(), remainder_initialized(),
+   remainder_returned_store() and divisions_discarded() take a / b or
+   a % b, and divided() divides x by a constant, which is held in ecx,
+   then the store. */
 int
 returned(void)
 {
@@ -211,4 +217,88 @@ shifted_by(void)
         int x = 1;
         x = x << b;
         return x;
+}
+
+int
+quotient_assigned(void)
+{
+        int a = 60;
+        int b = 7;
+        int x;
+        x = a / b;
+        return x;
+}
+
+int
+remainder_returned(void)
+{
+        int a = 60;
+        int b = 7;
+        return a % b;
+}
+
+int
+remainder_assigned(void)
+{
+        int a = 60;
+        int b = 7;
+        int x;
+        x = a % b;
+        return x;
+}
+
+int
+remainder_initialized(void)
+{
+        int a = 60;
+        int b = 7;
+        int x = a % b;
+        return x;
+}
+
+int
+remainder_returned_store(void)
+{
+        int a = 60;
+        int b = 7;
+        int x;
+        return x = a % b;
+}
+
+int
+divisions_discarded(void)
+{
+        int a = 60;
+        int b = 7;
+        a / b;
+        a % b;
+        return 0;
+}
+
+int
+divided(void)
+{
+        int b = 2;
+        int x = 60;
+        x = x / 5;
+        return x;
+}
+
+int
+remainder_chained(void)
+{
+        int a = 60;
+        int b = 7;
+        int x;
+        x = a = a % b;
+        return x;
+}
+
+int
+quotient_returned_store(void)
+{
+        int a = 60;
+        int b = 7;
+        int x;
+        return x = b / (a / b);
 }

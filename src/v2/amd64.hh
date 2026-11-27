@@ -99,6 +99,15 @@ arithmetic(state_t &, binary_op_t op, value_t l, value_t r, unsigned wanted);
 void multiply(state_t &, reg_t r, reg_t source, std::string_view factor);
 void multiply(state_t &, reg_t r, slot_t source, std::string_view factor);
 
+// The division of op, / or %, of the held dividend l by the divisor, a
+// held value r, which is consumed, or the int in a slot, at 32 bits:
+// the quotient or the remainder, held where idivl leaves it or in l's
+// register.
+value_t
+divide(state_t &, binary_op_t op, value_t l, value_t r, unsigned wanted);
+value_t
+divide(state_t &, binary_op_t op, value_t l, slot_t divisor, unsigned wanted);
+
 // The store rows, an operand into a slot at 32 bits: a register, or an
 // immediate as immediate_of() writes it.
 void store(state_t &, reg_t r, slot_t where);
@@ -133,8 +142,9 @@ initialize(state_t &s, slot_t where, const V &e)
 
 // The operators of rcc's arithmetic_mnemonic(), + - * & | ^, whose
 // instruction is op R, L, R a register, an immediate or an operand in
-// memory.  The shifts are rows of their own, which take no operand in
-// memory and an immediate of their own, below.
+// memory.  The divisions and the shifts are rows of their own, below:
+// idivl takes no immediate, and a shift no operand in memory and an
+// immediate of its own.
 template< binary_op_t op >
 concept arithmetic_operator =
     op == binary_op_t::add || op == binary_op_t::sub ||
@@ -142,15 +152,21 @@ concept arithmetic_operator =
     op == binary_op_t::bit_or || op == binary_op_t::bit_xor;
 
 template< binary_op_t op >
+concept division_operator = is_division(op);
+
+template< binary_op_t op >
 concept shift_operator = is_shift(op);
 
 // The registers the instruction of op pins, chapter 6.5, rcc's pins():
-// rcx for << and >> by a count that is no constant, which is the
-// immediate; constant_right says whether the right operand is a
-// constant.
+// rax and rdx for / and %, rcx for << and >> by a count that is no
+// constant, which is the immediate; constant_right says whether the
+// right operand is a constant.
 constexpr unsigned
 pins(binary_op_t op, bool constant_right)
 {
+    if (is_division(op))
+        return bit(rax) | bit(rdx);
+
     return is_shift(op) && !constant_right ? bit(rcx) : 0;
 }
 
@@ -159,8 +175,8 @@ pins(binary_op_t op, bool constant_right)
 // the right operand's top operator pins, a fact of its class, top_t.
 // The value then does not stand where that instruction wants its
 // operands.  Any other class pins nothing, an erased one too, since the
-// builder keeps a node that pins as a top_t; a shift deeper in the
-// right operand changes nothing.
+// builder keeps a node that pins as a top_t; a division or a shift
+// deeper in the right operand changes nothing.
 template< typename R >
 constexpr unsigned
 pinned_by(const R &)
@@ -180,7 +196,8 @@ pinned_by(const top_t< op > &)
 // each node makes of its operands' and an erased one hands up through
 // its handle (principle 3).  A value held while the node is generated
 // may have to move out of one of them, as out of rcx for a shift's
-// count deeper in a right operand.  A leaf pins nothing.
+// count, or out of rax and rdx for a division, deeper in a right
+// operand.  A leaf pins nothing.
 template< constant C >
 constexpr unsigned
 pinned_within(const state_t &, const C &)
@@ -357,6 +374,50 @@ value(state_t &s,
 {
     const value_t v = fresh(s);
     multiply(s, reg_of(s, v), b.lhs.where, immediate_of(b.rhs));
+
+    return v;
+}
+
+// / and % by a divisor that is no local, 6.5.6, rcc's binary() and
+// divide(), chapter 6.5: idivl takes its dividend in rax, and writes
+// the quotient there and the remainder in rdx.  A division keeps its
+// own pin, rcc's rvalue(): it is generated outside any reservation
+// around it, since the pin, not the outer wish, decides where its
+// result is written.  The dividend first, G13, outside what the
+// divisor's top operator pins and handed the consumer's register,
+// wanted_left(); then the divisor, held outside rax and rdx, a constant
+// too, since idivl takes no immediate, movl $5, %ecx; then divide().
+template< binary_op_t op, typename L, typename R >
+    requires division_operator< op >
+value_t
+value(state_t &s, const binary_t< op, L, R > &b, unsigned wanted = 0)
+{
+    const unsigned outer = std::exchange(s.reserved, 0u);
+
+    const value_t l = rvalue_avoiding(s, b.lhs, pinned_by(b.rhs),
+                                      wanted_left(s, wanted, 0, b.rhs));
+    const value_t r = rvalue_avoiding(s, b.rhs, pins(op, constant< R >));
+    const value_t v = divide(s, op, l, r, wanted);
+
+    s.reserved = outer;
+
+    return v;
+}
+
+// A local as the divisor is idivl's operand in memory, idivl -8(%rbp),
+// and takes no register; it pins nothing, so the dividend is handed the
+// consumer's register.
+template< binary_op_t op, typename L >
+    requires division_operator< op >
+value_t
+value(state_t &s, const binary_t< op, L, load_t > &b, unsigned wanted = 0)
+{
+    const unsigned outer = std::exchange(s.reserved, 0u);
+
+    const value_t l = value(s, b.lhs, wanted);
+    const value_t v = divide(s, op, l, b.rhs.where, wanted);
+
+    s.reserved = outer;
 
     return v;
 }

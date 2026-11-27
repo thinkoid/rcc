@@ -18,6 +18,7 @@
 #include "zoo.hh"
 
 #include <cstdint>
+#include <limits>
 
 namespace rcc {
 
@@ -103,10 +104,23 @@ shift_count(int count)
     return count & 31;
 }
 
-// * + - << >> & | ^ of two constants, 6.5.6p5, 6.5.7p6, p7, 6.5.8p4,
-// p5, 6.5.11p4, 6.5.12p4, 6.5.13p4.  << shifts the bits and wraps, and
-// >> of a negative value is arithmetic, G3, the implementation's
-// choice by 6.5.8p5.
+// Whether the division of lhs by rhs has a value, rcc's divides(): not
+// by zero, 6.5.6p6, and not with a quotient int cannot hold, p7, which
+// is the one case of the most negative int divided by -1; the remainder
+// of that division has no value either.  The instruction traps on both
+// at run time (G4).
+inline bool
+divides(int lhs, int rhs)
+{
+    return rhs != 0 && !(lhs == std::numeric_limits< int >::min() && rhs == -1);
+}
+
+// * / % + - << >> & | ^ of two constants, 6.5.6p5 to p7, 6.5.7p6, p7,
+// 6.5.8p4, p5, 6.5.11p4, 6.5.12p4, 6.5.13p4.  / and % on a division
+// that divides() says has a value: the quotient truncates toward zero
+// and the remainder has the dividend's sign.  << shifts the bits and
+// wraps, and >> of a negative value is arithmetic, G3, the
+// implementation's choice by 6.5.8p5.
 inline int
 folded(binary_op_t op, int lhs, int rhs)
 {
@@ -117,6 +131,8 @@ folded(binary_op_t op, int lhs, int rhs)
     case binary_op_t::add: return wrapped(a + b);
     case binary_op_t::sub: return wrapped(a - b);
     case binary_op_t::mul: return wrapped(a * b);
+    case binary_op_t::div: return lhs / rhs;
+    case binary_op_t::rem: return lhs % rhs;
     case binary_op_t::shl: return wrapped(a << shift_count(rhs));
     case binary_op_t::shr: return lhs >> shift_count(rhs);
     case binary_op_t::bit_and: return lhs & rhs;
@@ -126,9 +142,9 @@ folded(binary_op_t op, int lhs, int rhs)
 }
 
 // Whether the constant c on the right of op makes op the identity, as
-// rcc's is_identity_by() says: + - | ^ by 0, * by 1, & by -1, every bit
-// of an int, << >> by a count that is 0 modulo 32, so x << 32 is x and
-// x << 33 is no identity.
+// rcc's is_identity_by() says: + - | ^ by 0, * / by 1, & by -1, every
+// bit of an int, << >> by a count that is 0 modulo 32, so x << 32 is x
+// and x << 33 is no identity; % by none, x % 1 being 0.
 inline bool
 is_identity_by(binary_op_t op, int c)
 {
@@ -137,7 +153,9 @@ is_identity_by(binary_op_t op, int c)
     case binary_op_t::sub:
     case binary_op_t::bit_or:
     case binary_op_t::bit_xor: return c == 0;
-    case binary_op_t::mul: return c == 1;
+    case binary_op_t::mul:
+    case binary_op_t::div: return c == 1;
+    case binary_op_t::rem: return false;
     case binary_op_t::shl:
     case binary_op_t::shr: return shift_count(c) == 0;
     case binary_op_t::bit_and: return c == -1;
@@ -160,7 +178,7 @@ node_of(const top_t< op > &operand)
     return operand.node;
 }
 
-// * + - << >> & | ^ of operands neither of which is a constant: the
+// * / % + - << >> & | ^ of operands neither of which is a constant: the
 // node, each operand in its class.
 template< binary_op_t op, typename L, typename R >
 expr_t
@@ -185,7 +203,7 @@ make_binary(const L &lhs, const R &rhs)
 
 // A constant on the left makes the operator the identity as one on the
 // right does, but for an operator that commutes alone: 0 + x is x, and
-// 0 - x and 0 << x are the node.
+// 0 - x, 0 << x and 1 / x are the node.
 template< binary_op_t op, constant L, typename R >
 expr_t
 make_binary(const L &lhs, const R &rhs)
@@ -197,11 +215,19 @@ make_binary(const L &lhs, const R &rhs)
 }
 
 // Two constants fold where the node would be built, as rcc folds them:
-// a constant, whatever the operator.
+// a constant, whatever the operator, but for a division that has no
+// value, divides(), which is the node with its two constants, its
+// instruction written: 1 / 0 is movl $1, %eax, movl $0, %ecx, cltd and
+// idivl %ecx.
 template< binary_op_t op, constant L, constant R >
 expr_t
 make_binary(const L &lhs, const R &rhs)
 {
+    if constexpr (is_division(op)) {
+        if (!divides(value_of(lhs), value_of(rhs)))
+            return expr_t(binary_t< op, L, R > { lhs, rhs });
+    }
+
     return make_literal(folded(op, value_of(lhs), value_of(rhs)));
 }
 

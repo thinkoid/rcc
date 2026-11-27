@@ -85,12 +85,12 @@ struct binary_t
 };
 
 // The right operand of a binary operator whose top operator is op, a
-// shift by a count that is no constant: the node erased, with its own
-// niches, and op kept as the class's parameter, since x86-64 generates
-// the left operand away from the register that instruction pins, a
-// fact of the right operand's type (pinned_by()).  It is a class of an
-// operand and no node: an operator that is the identity leaves the
-// node it holds, node_of().
+// division or a shift by a count that is no constant: the node erased,
+// with its own niches, and op kept as the class's parameter, since
+// x86-64 generates the left operand away from the registers that
+// instruction pins, a fact of the right operand's type (pinned_by()).
+// It is a class of an operand and no node: an operator that is the
+// identity leaves the node it holds, node_of().
 template< binary_op_t op >
 struct top_t
 {

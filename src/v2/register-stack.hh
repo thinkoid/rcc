@@ -35,19 +35,28 @@ struct registers_t
     std::vector< R > values { };
 };
 
-// A new value in a register taken for it, which the row that took it
-// writes and returns held (docs/typed-tree.md 3.4).
-template< typename S >
+// A new value in the free register r, where the instruction a row has
+// written left it: on x86-64 a remainder in rdx, and a quotient that
+// stays in rax, where idivl writes them.
+template< typename S, typename R >
 value_t
-fresh(S &s)
+hold(S &s, R r)
 {
-    const auto r = take(s);
     const int id = static_cast< int >(s.registers.values.size());
 
     s.registers.values.push_back(r);
     s.registers.owner.emplace(r, id);
 
     return { id };
+}
+
+// A new value in a register taken for it, which the row that took it
+// writes and returns held (docs/typed-tree.md 3.4).
+template< typename S >
+value_t
+fresh(S &s)
+{
+    return hold(s, take(s));
 }
 
 // The register a value is in.

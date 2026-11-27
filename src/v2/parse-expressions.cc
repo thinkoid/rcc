@@ -210,21 +210,31 @@ arithmetic(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
     return { int_type(), make_binary(op, std::move(l), std::move(r)) };
 }
 
+// The operator of a multiplicative operator's token: * / %.
+binary_op_t
+multiplicative_operator(tok_t kind)
+{
+    switch (kind) {
+    case tok_t::star: return binary_op_t::mul;
+    case tok_t::slash: return binary_op_t::div;
+    default: return binary_op_t::rem;
+    }
+}
+
 // The multiplicative operators, 6.5.6, left-associative, as rcc's loop
-// reads them: *, and / and % not yet, at their token.
+// reads them: a / b * c is (a / b) * c.
 operand_t
 multiplicative_expression(parser_t &p)
 {
     operand_t e = cast_expression(p);
 
-    while (peek(p).kind == tok_t::star) {
+    while (next_is(p, { tok_t::star, tok_t::slash, tok_t::percent })) {
         const token_t &op = advance(p);
+        const binary_op_t b = multiplicative_operator(op.kind);
 
         operand_t rhs = cast_expression(p);
-        e = arithmetic(binary_op_t::mul, op, std::move(e), std::move(rhs));
+        e = arithmetic(b, op, std::move(e), std::move(rhs));
     }
-
-    refuse_operator(p, { tok_t::slash, tok_t::percent });
 
     return e;
 }
