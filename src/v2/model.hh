@@ -691,9 +691,15 @@ struct expr_t::model_t final: interface_t
     T held;
 };
 
+// The handle owns its model through a pointer to the interface, whose
+// destructor is virtual, so one shared_ptr serves every model: a
+// make_shared of each model's type would instantiate a shared_ptr, a
+// weak_ptr and an allocator of that type, for each node type of the zoo.
 template< typename T >
-expr_t::expr_t(T t) : self(std::make_shared< const model_t< T > >(std::move(t)))
+expr_t::expr_t(T t)
 {
+    const interface_t *model = new model_t< T >(std::move(t));
+    self.reset(model);
 }
 
 struct stmt_t::interface_t
@@ -756,9 +762,12 @@ struct stmt_t::model_t final: interface_t
     T held;
 };
 
+// As an expression's handle owns its model.
 template< typename T >
-stmt_t::stmt_t(T t) : self(std::make_shared< const model_t< T > >(std::move(t)))
+stmt_t::stmt_t(T t)
 {
+    const interface_t *model = new model_t< T >(std::move(t));
+    self.reset(model);
 }
 
 } // namespace rcc

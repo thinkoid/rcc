@@ -767,10 +767,14 @@ rows invented for the purpose.
   primary costs none; but every node type a builder can make is
   instantiated in `build.cc` with its rows of both targets, about
   2,500 binary node types now. With every builder's crossings
-  instantiated for every model, that unit took over two minutes and
-  12 GB; with them instantiated once for each class of operand it
-  takes half of each. Globals, pointers and the calls of every type
-  each multiply the classes again.
+  instantiated for every model, and a `shared_ptr` of each model's
+  own type, that unit took over two minutes and 12 GB; with the
+  crossings instantiated once for each class of operand, and one
+  `shared_ptr` for every model, it takes 40 seconds and 4 GB. What
+  remains is a model's own functions, and the instantiation nests as
+  deep as the longest chain of node types each first met inside the
+  one before it, about a hundred. Globals, pointers and the calls of
+  every type each multiply the classes again.
 - The register state at a join. Whether an arm of `?:` leaves its
   value where the other arm's does is, in its hardest case, a fact of
   one moment of generation. No type, summary or context has it. Three
