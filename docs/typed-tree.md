@@ -6,11 +6,14 @@ compiler `backend.md` describes, which stays the reference. This page
 states the design: the idea, its principles, its idioms and its
 architecture. It leaves the details to the code.
 
-Of the design the tree has a thin line through every joint: functions
-whose locals are `int`, declared, assigned and returned, with
-parentheses, the unary operators `- ~ !`, `+ - * / % << >> & | ^`, the
-comparisons, `&&` and `||`, to any depth, and the statements `if`,
-`else`, `while`, `do`, `for`, `break` and `continue`, on both targets.
+Of the design the tree has a thin line through every joint: a unit of
+functions, declared and defined in any order, `static` or not, of
+result `int` or `void` and of `int` parameters, whose locals are
+`int`, declared, assigned and returned, with parentheses, the unary
+operators `- ~ !`, `+ - * / % << >> & | ^`, the comparisons, `&&`,
+`||` and calls, to any depth, and the statements `if`, `else`,
+`while`, `do`, `for`, `break`, `continue` and `return` with a value
+or without, on both targets.
 Each mechanism
 below was compiled and run in a small model first; chapter 5 says
 what the models showed and chapter 6 what nothing has shown. A
@@ -233,9 +236,9 @@ call_t &, long)` and comes back as a member of a call.
 ### 3.4 Entry points are roles
 
 A parent asks a child for a form by the entry point it calls: its
-value, its effect, a jump to a label on a sense, its address. The
-choice is static. The first three are the ancestor's `regtab`,
-`efftab` and `cctab`.
+value, its effect, its store into a slot, a jump to a label on a
+sense, its address. The choice is static. The value, the effect and
+the jump are the ancestor's `regtab`, `efftab` and `cctab`.
 
 - The other direction is derived: an effect is a value dropped, a
   jump on a value is the value compared with 0.
@@ -251,6 +254,18 @@ choice is static. The first three are the ancestor's `regtab`,
   what a pinned instruction needs free. The typed tree changes how a
   question about an operand's kind is asked, and never where a value
   lands.
+- The store into a slot is rcc's `initialize()`. An initializer, an
+  assignment for its effect and a call's argument store their value
+  through the value's own entry point, whose row is found by overload
+  on the value's type: a target's niche for a constant, which holds
+  no register, or the primary, the value in a register, stored and
+  released. So the parent keeps the value erased.
+- A call spills every held value at its start, in the order of the
+  registers, so its arguments find every register free. Each
+  argument is stored to a slot of its own before the next is
+  generated, and loaded into its register just before the call. A
+  call keeps its own pin as a division does: on x86-64 its row
+  generates it outside the reservation around it.
 - A value is in a register or in a spill slot. When every register
   is held, the oldest held value is stored to a new slot of the
   frame, all 8 bytes, and it is reloaded where a row asks for its
@@ -436,10 +451,12 @@ technique.
   broken, continued >`. An omitted first or third clause of a `for`
   picks no form and is the null statement.
 - An `if` whose then part is one jump, bare or the one item of a
-  block, is `if_t< jump_t >`: its builder asks the then part's model,
-  and a block's asks its one item's, so a block in a block is not
-  one jump. Its row is the condition's jump to the jump's label where
-  the condition is nonzero.
+  block, keeps the then part's type, `if_t< J >`. One jump is a
+  category (principle 7): the types that have the row which names
+  their label, a `break`, a `continue` and a `return` without a
+  value. The builder asks the then part's model, and a block's asks
+  its one item's, so a block in a block is not one jump. The row is
+  the condition's jump to that label where the condition is nonzero.
 - A block holds erased statements: their count is not bounded.
 
 ### 4.5 Names and declarations
@@ -461,16 +478,29 @@ technique.
   two locals', so the displacement is the state's: the declaration's
   row takes it, and a use reads it by the number.
 - What runs is a statement, where it is written: `decl_t` takes the
-  slot, and `init_t< V >` takes it and stores, an initialization and
-  not an assignment.
-- An initializer's store is rcc's `initialize()`: its primary is the
-  value in a register, stored and released, and a target's niche
-  stores a constant with no register held. The value's class is
-  asked once, in its model: a constant, the constant 0, or anything
-  else, erased.
-- An assignment whose value is dropped is that same store, so the
-  niches serve both. One whose value is used is the value held, then
-  the store from its register.
+  slot, and `init_t` takes it and stores, an initialization and not
+  an assignment. The store is the value's own entry point (3.4).
+- An assignment whose value is dropped is that same store. One whose
+  value is used is the value held, then the store from its register.
+- A parameter is a local of the body: its leaf is the `slot_t` of its
+  place in the list, the function's first locals. Where it lives is
+  each target's, decided in the function's row before the body and
+  recorded in the state under its number. On x86-64 the first six
+  take a slot and the store of their argument register, and the
+  seventh and later are where the caller pushed them, above `rbp`.
+  On aarch64 each takes a slot, and the ninth and later are copied
+  in once the frame's size is known. No row of the body asks whether
+  a place is a parameter.
+- A call's argument is a hidden local of its call, numbered by the
+  parser, whose slot is taken where the call is generated.
+- The file's scope holds each function's C type and its entry in the
+  unit. The entry is made at the first declaration, so the unit
+  writes its functions in that order, and it holds what the listing
+  needs: the name, the linkage, the count of parameters, the body or
+  none.
+- A function's name has no node. Its value, the function's address,
+  waits for a where of the unit's data; a call is built from the
+  name alone.
 
 ### 4.6 Contexts and state
 
@@ -496,9 +526,10 @@ technique.
   generated, and on x86-64 those an instruction generated later
   would move a held value out of; the labels, each loop's two by its
   number, and whether a path reaches what is written next; on x86-64
-  whether the last instruction set ZF from its value; the frame. A
-  value held across a call is state. The call's row saves what the
-  state holds and asks the tree nothing.
+  whether the last instruction set ZF from its value, and whether
+  the function calls, which moves `rsp` below any frame; the frame.
+  A value held across a call is state: the call's row spills every
+  held value at its start and asks the tree nothing.
 
 ### 4.7 Two targets
 
@@ -511,6 +542,9 @@ struct expr_t::interface_t
 {
     virtual value_t value(amd64::state_t &, unsigned wanted) const = 0;
     virtual value_t value(arm64::state_t &, unsigned wanted) const = 0;
+
+    virtual void initialize(amd64::state_t &, slot_t where) const = 0;
+    virtual void initialize(arm64::state_t &, slot_t where) const = 0;
 
     virtual void branch(amd64::state_t &, int label, bool sense) const = 0;
     virtual void branch(arm64::state_t &, int label, bool sense) const = 0;
@@ -533,7 +567,8 @@ struct expr_t::interface_t
   x86-64's jump on the value compared with 0, and its two summaries,
   the registers the instructions within a subtree pin and those a
   pinned instruction would move a held value out of, which is none
-  below `&&` and `||`. aarch64, which pins none, has no such line.
+  below `&&` and `||` and none within a call. aarch64, which pins
+  none, has no such line.
 
 - The zoo is the union of the shapes either target wants. A shape one
   target has no niche for falls to that target's primary: `a + b` in
@@ -553,7 +588,7 @@ with rcc, and nothing else.
 | `expr.hh`, `stmt.hh` | the handles |
 | `operators.hh` | the operators, a closed domain that the parser and the zoo share, and their families |
 | `zoo.hh` | the node types under the handles |
-| `unit.hh` | the unit and its functions, under no handle |
+| `unit.hh` | the unit and its functions, under no handle: each one's name, linkage, count of parameters, and body or none |
 | `model.hh`, `build.cc` | the models, and the one unit that instantiates them |
 | `rows-expressions.hh`, `rows-statements.hh` | the rows both targets write alike: the primaries of an effect and of a jump, `!`, `&&` and `\|\|`, and the statements |
 | `register-stack.hh` | which register or spill slot holds which value, and the values held across a branch, as templates over a target's state |
@@ -575,10 +610,13 @@ each became.
 | whether an operator is a comparison, a division, a shift | a concept on the operator, which constrains the rows of its family |
 | `pins()` | a constant of the operator |
 | `pinned_by()` | the right operand's class, `top_t< op >` |
-| `pinned_within()`, `moved_within()` | summaries, handed up through the handle, a line of x86-64 each |
+| `pinned_within()`, `moved_within()` | summaries, handed up through the handle, a line of x86-64 each; a call pins the result register in the first and moves nothing in the second |
+| `pinned()` in `rvalue()` | the row of a node whose instruction pins its result's register clears the reservation itself: the divisions', the call's |
+| `immediate()` in `initialize()` | the store's entry point, by overload on the value's type |
+| whether a callee returns `void` | the call's parameter, `call_t< R >` |
 | `flag_operator()`, `flag_condition()` | x86-64's `value_branch` rows of those node types |
 | `zero_compared()` | the operand's own entry point, `value_branch` |
-| `body_target()`, an `if` of one jump | the then part's type, `if_t< jump_t >`, which the builder finds through the model |
+| `body_target()`, `target_of()`, an `if` of one jump | the category of the types that name their label, and the then part's type, `if_t< J >`, which the builder finds through the model |
 | a `for` without a condition, a loop broken or continued | parameters of the loop's node |
 | the loops around a statement | the parser's; a loop's two labels are in the state, by its number |
 | `arithmetic_immediate()`, `bitmask_immediate()` | an `if` in the row: one target's encoding of its own leaf (principle 2) |
@@ -590,7 +628,8 @@ each became.
   not say which register is free.
 - The questions of a register variable, `lands_in()` to
   `joins_into()`, have no answer here yet: the tree has no register
-  variable.
+  variable. Neither have those of a call through a pointer, a
+  variadic callee and a register parameter.
 
 ## 5. What the models showed
 
@@ -651,6 +690,8 @@ rows invented for the purpose.
   that sets ZF is the row's last, so the `cmp` the record guards is
   never written.
 - Records by value, and floating point as a register class.
+- aarch64's forms through `x16`, for a slot, a parameter or an
+  outgoing argument past the reach of its access.
 - The way back to rcc's pinned listings. `make sides` measures it; it
   is not sized.
 
