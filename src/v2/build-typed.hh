@@ -279,12 +279,13 @@ make_if(const expr_t &cond,
     return if_node(cond, then, otherwise);
 }
 
-// A then part that is one jump is the jump_t the node holds,
+// A then part that is one jump, one_jump's, is the node's own type,
 // docs/backend.md 7.2: the condition's jump to its label, as the first
 // pass of the Seventh Edition compiler writes it, c02.c.
-inline stmt_t
+template< one_jump J >
+stmt_t
 make_if(const expr_t &cond,
-        const jump_t &then,
+        const J &then,
         const stmt_t &,
         const std::optional< stmt_t > &otherwise)
 {
@@ -314,8 +315,9 @@ make_if(const expr_t &cond,
 }
 
 // The one item of a block that is a then part, asked whether it is one
-// jump: a jump_t is, and any other statement is not, a block among
-// them, so { { break; } } is no jump and the then part is the block.
+// jump: a type of one_jump is, and any other statement is not, a block
+// among them, so { { break; } } is no jump and the then part is the
+// block.
 template< typename T >
 stmt_t
 make_if_of_item(const expr_t &cond,
@@ -326,9 +328,10 @@ make_if_of_item(const expr_t &cond,
     return if_node(cond, block, otherwise);
 }
 
-inline stmt_t
+template< one_jump J >
+stmt_t
 make_if_of_item(const expr_t &cond,
-                const jump_t &item,
+                const J &item,
                 const stmt_t &,
                 const std::optional< stmt_t > &otherwise)
 {

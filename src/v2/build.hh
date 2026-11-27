@@ -39,6 +39,7 @@ stmt_t make_null();
 stmt_t make_decl(int slot);
 stmt_t make_init(int slot, expr_t value);
 stmt_t make_return(expr_t value);
+stmt_t make_return_void();
 stmt_t make_block(std::vector< stmt_t > items);
 
 // if (cond) then, and if (cond) then else otherwise, 6.8.5.2, of a

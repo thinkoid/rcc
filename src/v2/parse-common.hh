@@ -16,13 +16,13 @@
 #include "lex.hh"
 #include "stmt.hh"
 #include "type.hh"
+#include "unit.hh"
 
 #include <cstddef>
 #include <initializer_list>
 #include <string>
 #include <string_view>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 namespace rcc {
@@ -40,20 +40,31 @@ struct operand_t
 // which a use copies (docs/typed-tree.md 4.5).
 using scope_t = std::unordered_map< std::string_view, operand_t >;
 
+// What the parser holds of a function's name in the file's scope,
+// 6.2.1p4: its type, a function_t, which a later declaration of the
+// name must be compatible with, 6.7.1p5, and the index of its entry
+// among the unit's functions, which holds its linkage and its body.
+struct function_name_t
+{
+    type_t type;
+    std::size_t index;
+};
+
 // The state of one parse: the tokens and the position in them; the
-// result type of the function being defined, for its return
-// statements; the names the unit has defined, views into the tokens;
-// the scopes of the function being defined, innermost last; the count
-// of the locals it has declared, which numbers the next one; and the
-// loops whose bodies are being read, innermost last, with the count of
-// the function's loops, which numbers the next one (docs/typed-tree.md
-// 4.6).
+// unit, filled as its functions are declared and defined; the names of
+// the functions the file declares, views into the tokens; the result
+// type of the function being defined, for its return statements; the
+// scopes of that function, innermost last; the count of the locals it
+// has declared, which numbers the next one; and the loops whose bodies
+// are being read, innermost last, with the count of the function's
+// loops, which numbers the next one (docs/typed-tree.md 4.6).
 struct parser_t
 {
     const std::vector< token_t > &tokens;
     std::size_t pos = 0;
+    translation_unit_t unit = { };
+    std::unordered_map< std::string_view, function_name_t > functions = { };
     type_t result = { };
-    std::unordered_set< std::string_view > defined = { };
     std::vector< scope_t > scopes = { };
     int locals = 0;
     std::vector< loop_t > loops = { };
@@ -125,17 +136,26 @@ operand_t expression(parser_t &);
 
 // 6.7, parse-declarations.cc
 
-// What the parser holds of a declarator: its name, and whether it
-// declares a function of no parameters, f(void), or an object.
+// What the parser holds of the declaration specifiers: the storage
+// class, static or none; the type specifier's token; and the type.
+struct specifiers_t
+{
+    const token_t *storage_class;
+    const token_t &specifier;
+    type_t type;
+};
+
+// What the parser holds of a declarator: its name, and the type it
+// declares, the specifiers' or a function returning it, 6.7.7.4p1.
 struct declarator_t
 {
     const token_t &name;
-    bool function;
+    type_t type;
 };
 
 bool is_declaration_start(const parser_t &, std::size_t ahead = 0);
-type_t declaration_specifiers(parser_t &);
-declarator_t declarator(parser_t &);
+specifiers_t declaration_specifiers(parser_t &);
+declarator_t declarator(parser_t &, const type_t &base);
 std::vector< stmt_t > declaration(parser_t &);
 
 // 6.8, parse-statements.cc

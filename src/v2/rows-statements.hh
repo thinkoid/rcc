@@ -89,6 +89,15 @@ label_of(const S &s, const jump_t &j)
     return s.loops.at(j.loop).*j.label;
 }
 
+// The label a return without an expression names, rcc's target_of():
+// the one epilogue's, the state's ret.
+template< typename S >
+int
+label_of(const S &s, const return_void_t &)
+{
+    return s.ret;
+}
+
 // rcc's if_stmt(), docs/backend.md 7.2: the label past the then part
 // taken on reaching the if, before any of the condition's, the
 // condition's jump to it where the condition is 0, the then part, then
@@ -138,16 +147,16 @@ generate(S &s, const if_else_t<> &i)
 // jump to the jump's label where it is nonzero, and no label of the
 // if's own; the else part follows with no jump over it, as the first
 // pass of the Seventh Edition compiler writes it, c02.c.
-template< typename S >
+template< typename S, one_jump J >
 void
-generate(S &s, const if_t< jump_t > &i)
+generate(S &s, const if_t< J > &i)
 {
     branch(s, i.cond, label_of(s, i.then), true);
 }
 
-template< typename S >
+template< typename S, one_jump J >
 void
-generate(S &s, const if_else_t< jump_t > &i)
+generate(S &s, const if_else_t< J > &i)
 {
     branch(s, i.cond, label_of(s, i.then), true);
     generate(s, i.otherwise);
@@ -264,12 +273,12 @@ generate(S &s, const for_t< C, broken, continued > &f)
         place_label(s, end);
 }
 
-// break; and continue;, rcc's break_stmt() and continue_stmt(): the
-// jump to the loop's label.  A statement starts with no value held, so
-// the jump is the whole of it.
-template< typename S >
+// A statement of one jump, rcc's break_stmt(), continue_stmt() and
+// return_stmt() with no value: the jump to its label.  A statement
+// starts with no value held, so the jump is the whole of it.
+template< typename S, one_jump J >
 void
-generate(S &s, const jump_t &j)
+generate(S &s, const J &j)
 {
     jump(s, label_of(s, j));
 }

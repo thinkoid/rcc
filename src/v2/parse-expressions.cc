@@ -41,7 +41,7 @@ is_reserved(std::string_view name)
 }
 
 // An identifier, 6.5.2p3: a local's operand, a copy of what its
-// declaration made (docs/typed-tree.md 4.5).  A name the unit defines
+// declaration made (docs/typed-tree.md 4.5).  A name the file declares
 // as a function is a function designator, not yet; a name no scope
 // declares is rcc's error.  rcc knows reserved names that no
 // declaration in the unit makes, its builtins and the types the
@@ -57,7 +57,7 @@ identifier(parser_t &p)
     if (const operand_t *local = lookup(p, t.text))
         return *local;
 
-    if (p.defined.contains(t.text))
+    if (p.functions.contains(t.text))
         not_yet(t, "function designator " + quoted(t.text));
 
     fail(t, quoted(t.text) + " undeclared");

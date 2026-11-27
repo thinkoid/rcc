@@ -74,6 +74,9 @@ struct state_t
     unsigned ahead = 0;
 };
 
+// A jump to the function's label n; no path reaches what follows it.
+void jump(state_t &, int n);
+
 // A register for a new value, register-stack.hh's, taken outside avoid;
 // it spills a held value when every one is held.
 reg_t take(state_t &, unsigned avoid = 0);
@@ -82,9 +85,6 @@ reg_t take(state_t &, unsigned avoid = 0);
 // the flags its own path left: a path reaches what follows, and no
 // instruction's ZF stands.
 void place_label(state_t &, int n);
-
-// A jump to the function's label n; no path reaches what follows it.
-void jump(state_t &, int n);
 
 // The jump to label on the flags a cmp set, where op holds, rcc's
 // jump_if(): jl, and je and jne for == and !=, which read ZF alone.

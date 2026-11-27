@@ -1,7 +1,8 @@
 // -*- mode: c++; -*-
 
-// 6.9: the external definitions, of which rcc-v2 takes the function
-// definition, and parse(), declared in parse.hh, last.
+// 6.9: the external declarations, of which rcc-v2 takes the declaration
+// and the definition of a function, and parse(), declared in parse.hh,
+// last.
 
 #include "parse.hh"
 
@@ -15,6 +16,102 @@
 namespace rcc {
 
 namespace {
+
+// The function called at program startup is named main, 5.1.2.3.2p1,
+// and is found by that name from outside the unit, which static, giving
+// it internal linkage, 6.2.2p3, would forbid: the link would find no
+// main.
+void
+refuse_static_main(const specifiers_t &spec, const declarator_t &d)
+{
+    if (spec.storage_class && d.name.text == "main")
+        fail(*spec.storage_class,
+             quoted(spec.storage_class->text) + " in a declaration of 'main'");
+}
+
+// The earlier declaration of the name in the file's scope, met again,
+// or null when there is none: the function of a compatible type,
+// 6.7.1p5, which keeps its type, the composite of two compatible
+// function types of int parameters being either.
+const function_name_t *
+earlier_declaration(const parser_t &p, const token_t &name, const type_t &t)
+{
+    const auto it = p.functions.find(name.text);
+    if (it == p.functions.end())
+        return nullptr;
+
+    if (!compatible(it->second.type, t))
+        fail(name, "conflicting types for " + quoted(name.text));
+
+    return &it->second;
+}
+
+// Whether a function's linkage is external, 6.2.2: static gives it
+// internal linkage, p3; one declared without a storage class has the
+// linkage of the earlier declaration, or else external, p4, p5.  So
+// static int f(void); int f(void) { ... } defines a function of
+// internal linkage.
+bool
+has_external_linkage(const parser_t &p,
+                     const specifiers_t &spec,
+                     const function_name_t *earlier)
+{
+    if (spec.storage_class)
+        return false;
+
+    return !earlier || p.unit.functions[earlier->index].external;
+}
+
+// A declaration under a #pragma GCC visibility other than default gives
+// that visibility to the symbol it names where the symbol has external
+// linkage, as clang has it, and rcc writes every symbol visible, so
+// such a declaration is not yet, judged at the declarator's name; a
+// static function is what it is without the pragma.
+void
+refuse_visibility(const token_t &name, bool external)
+{
+    if (name.nondefault_visibility && external)
+        not_yet(name, "pragma 'GCC visibility'");
+}
+
+// A name of internal and of external linkage in one unit is undefined,
+// 6.2.2p7, and refused where static follows a declaration without it;
+// the other order gives the later declaration the earlier one's
+// internal linkage, p4.
+void
+require_linkage(const parser_t &p,
+                const token_t &name,
+                const function_name_t &earlier,
+                bool external)
+{
+    if (p.unit.functions[earlier.index].external && !external)
+        fail(name, "static declaration of " + quoted(name.text) +
+                       " follows non-static declaration");
+}
+
+// Declares a function in the file's scope, or meets its earlier
+// declaration, and gives it the declaration's linkage.  Its entry among
+// the unit's functions is made at its first declaration, so the unit
+// writes its functions in the order they are first declared.  Returns
+// the index of the entry.
+std::size_t
+declare_function(parser_t &p, const specifiers_t &spec, const declarator_t &d)
+{
+    const function_name_t *earlier = earlier_declaration(p, d.name, d.type);
+    const bool external = has_external_linkage(p, spec, earlier);
+    refuse_visibility(d.name, external);
+
+    if (earlier) {
+        require_linkage(p, d.name, *earlier, external);
+        return earlier->index;
+    }
+
+    const std::size_t index = p.unit.functions.size();
+    p.unit.functions.push_back({ std::string(d.name.text), external });
+    p.functions.emplace(d.name.text, function_name_t { d.type, index });
+
+    return index;
+}
 
 // The body, a compound statement, 6.9.2p1, which is a statement: the
 // block of its items.  Its '{' is the token that made the declaration a
@@ -33,36 +130,56 @@ function_body(parser_t &p)
     return make_block(std::move(items));
 }
 
-// A definition of the name, whose body is parsed with the function's
-// result type, its locals numbered from 0.  A name is defined once,
-// 6.9.1p5, and is in scope in its own body, 6.2.1p7.  The function has
-// external linkage, 6.2.2p5, so a #pragma GCC visibility other than
-// default would set its symbol's visibility, as clang has it: rcc
-// refuses the name there, and before it asks whether the name is
-// defined.  A system header's definition is compiled as any other,
-// since rcc's rule for one is a static inline function's.
-function_definition_t
-function_definition(parser_t &p, const type_t &result, const token_t &name)
+// A definition of the function, declared first, so that its name is in
+// scope in its own body, 6.2.1p7.  A function is defined once, 6.9.1p5.
+// The body is parsed with the function's result type, its locals
+// numbered from 0, and is the entry's.  A system header's definition is
+// compiled as any other, since rcc's rule for one is a static inline
+// function's.
+void
+function_definition(parser_t &p,
+                    const specifiers_t &spec,
+                    const declarator_t &d)
 {
-    if (name.nondefault_visibility)
-        not_yet(name, "pragma 'GCC visibility'");
+    const std::size_t index = declare_function(p, spec, d);
+    if (p.unit.functions[index].body)
+        fail(d.name, "redefinition of " + quoted(d.name.text));
 
-    if (!p.defined.insert(name.text).second)
-        fail(name, "redefinition of " + quoted(name.text));
-
-    p.result = result;
+    p.result = *as< function_t >(d.type).result;
     p.locals = 0;
     p.loop_count = 0;
 
-    return { std::string(name.text), function_body(p) };
+    p.unit.functions[index].body = function_body(p);
 }
 
-// A function definition, 6.9.1p1; the other external declarations are
-// not yet, an object among them.  rcc reads __asm__, __extension__ and
-// a static assertion before the declaration specifiers, and refuses the
-// first in these words.  A function's declarator that no body follows
-// declares the function.
-function_definition_t
+// One declarator of a declaration in the file's scope: a function's, or
+// an object's, not yet.  rcc reads GNU C's attributes and an assembler
+// name after a function's declarator before it declares the function,
+// and they are not yet.
+void
+external_declarator(parser_t &p,
+                    const specifiers_t &spec,
+                    const declarator_t &d)
+{
+    if (!is< function_t >(d.type))
+        not_yet(d.name, "object " + quoted(d.name.text));
+
+    refuse_static_main(spec, d);
+
+    if (next_is(p, { tok_t::kw_attribute, tok_t::kw_asm }))
+        not_yet(peek(p), quoted(peek(p).text) + " after a declarator");
+
+    declare_function(p, spec, d);
+}
+
+// A function definition, or a declaration of functions, 6.9.1p1; an
+// object among them is not yet.  rcc reads __asm__, __extension__ and a
+// static assertion before the declaration specifiers, and refuses the
+// first in these words.  A function's declarator that a '{' follows is
+// a definition, and a definition is one declarator and its body; the
+// declarators of a declaration are separated by commas and end at its
+// ';'.
+void
 external_declaration(parser_t &p)
 {
     const token_t &t = peek(p);
@@ -75,28 +192,31 @@ external_declaration(parser_t &p)
     if (t.kind == tok_t::kw_static_assert)
         not_yet(t, quoted(t.text) + " declaration");
 
-    const type_t result = declaration_specifiers(p);
-    const declarator_t d = declarator(p);
-    if (!d.function)
-        not_yet(d.name, "object " + quoted(d.name.text));
+    const specifiers_t spec = declaration_specifiers(p);
+    const declarator_t d = declarator(p, spec.type);
 
-    if (peek(p).kind != tok_t::lbrace)
-        not_yet(d.name, "declaration of function " + quoted(d.name.text));
+    if (is< function_t >(d.type) && peek(p).kind == tok_t::lbrace) {
+        refuse_static_main(spec, d);
+        function_definition(p, spec, d);
+        return;
+    }
 
-    return function_definition(p, result, d.name);
+    external_declarator(p, spec, d);
+
+    while (accept(p, tok_t::comma))
+        external_declarator(p, spec, declarator(p, spec.type));
+
+    expect(p, tok_t::semicolon, "expected ';' after top level declarator");
 }
 
 // The external declarations up to the end of the text, 6.9.1p1.  An
 // empty text, which the grammar does not have, is a unit of no
 // function, as rcc takes it.
-translation_unit_t
+void
 translation_unit(parser_t &p)
 {
-    translation_unit_t unit;
     while (peek(p).kind != tok_t::eof)
-        unit.functions.push_back(external_declaration(p));
-
-    return unit;
+        external_declaration(p);
 }
 
 } // namespace
@@ -105,8 +225,9 @@ translation_unit_t
 parse(const std::vector< token_t > &tokens)
 {
     parser_t p { tokens };
+    translation_unit(p);
 
-    return translation_unit(p);
+    return std::move(p.unit);
 }
 
 } // namespace rcc

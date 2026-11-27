@@ -181,6 +181,12 @@ make_return(expr_t value)
 }
 
 stmt_t
+make_return_void()
+{
+    return stmt_t(return_void_t { });
+}
+
+stmt_t
 make_block(std::vector< stmt_t > items)
 {
     return stmt_t(block_t { std::move(items) });

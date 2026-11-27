@@ -78,6 +78,9 @@ struct state_t
     registers_t< reg_t > registers { };
 };
 
+// A jump to the function's label n; no path reaches what follows it.
+void jump(state_t &, int n);
+
 // A register for a new value, register-stack.hh's, taken outside avoid;
 // it spills a held value when every one is held.
 reg_t take(state_t &, unsigned avoid = 0);
@@ -85,9 +88,6 @@ reg_t take(state_t &, unsigned avoid = 0);
 // The function's label n, where a jump may reach it from elsewhere: a
 // path reaches what follows.
 void place_label(state_t &, int n);
-
-// A jump to the function's label n; no path reaches what follows it.
-void jump(state_t &, int n);
 
 // The branch to label on the flags a cmp set, where op holds, rcc's
 // jump_if(): b.lt, b.eq.

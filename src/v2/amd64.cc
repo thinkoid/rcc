@@ -876,29 +876,37 @@ epilogue(std::ostream &out, const state_t &s)
            "\tret\n";
 }
 
+// A function's symbol is global, .globl, where its linkage is external,
+// and local otherwise, chapter 10, rcc's binding().
+void
+binding(std::ostream &out, const function_decl_t &fd)
+{
+    if (fd.external)
+        out << std::format("\t.globl\t{}\n", fd.name);
+}
+
 // A definition: the body generated into the state's buffer, then
 // written inside the frame, whose size is known after the body: the
 // slots rounded up to 16, so that a frame in the red zone stays in it.
 // The one epilogue is reached with rax as it is, G5's some value, but
-// for main, which returns 0 when it falls off its end, 5.1.2.3.4.
-// Every function has external linkage, so its symbol is global,
-// .globl, chapter 10.
+// for main, which returns 0 when it falls off its end, 5.1.2.3.4, by
+// its name, whatever its result type.
 void
-function(std::ostream &out, const function_definition_t &fd)
+function(std::ostream &out, const function_decl_t &fd)
 {
     state_t s { .function = fd.name };
     s.ret = new_label(s);
 
-    generate(s, fd.body);
+    generate(s, *fd.body);
 
     if (!s.terminated && s.function == "main")
         constant(s, result_register, 0, 32);
 
-    out << std::format("\t.globl\t{}\n"
-                       "\t.type\t{}, @function\n"
+    binding(out, fd);
+    out << std::format("\t.type\t{}, @function\n"
                        "{}:\n"
                        "\t.cfi_startproc\n",
-                       fd.name, fd.name, fd.name);
+                       fd.name, fd.name);
 
     const long size = (s.frame + 15) / 16 * 16;
 
@@ -914,8 +922,9 @@ function(std::ostream &out, const function_definition_t &fd)
 
 } // namespace
 
-// The functions the unit defines, in order.  The note section marks the
-// stack not executable.
+// The functions the unit defines, in order; one it only declares writes
+// nothing, since the assembler leaves its symbol to the link.  The note
+// section marks the stack not executable.
 void
 generate(const translation_unit_t &unit,
          std::string_view file,
@@ -923,8 +932,9 @@ generate(const translation_unit_t &unit,
 {
     assembly << std::format("\t.file\t{}\n\t.text\n", quoted_file(file));
 
-    for (const function_definition_t &fd : unit.functions)
-        function(assembly, fd);
+    for (const function_decl_t &fd : unit.functions)
+        if (fd.body)
+            function(assembly, fd);
 
     assembly << "\t.section\t.note.GNU-stack,\"\",@progbits\n";
 }

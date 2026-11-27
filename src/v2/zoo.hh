@@ -126,6 +126,12 @@ struct return_t
     expr_t value;
 };
 
+// return;, 6.8.7.5, which stands in a function whose result type is
+// void alone, p1: the jump to the one epilogue.  LLVM's ret void.
+struct return_void_t
+{
+};
+
 // int x;, a declaration without an initializer: the local's slot taken,
 // and nothing stored, 6.2.4p6.
 struct decl_t
@@ -219,11 +225,25 @@ struct jump_t
     int loop_labels_t::*label;
 };
 
+// A statement that is one jump: a type that has the row which names the
+// label it jumps to, label_of(), on both targets, the category the row
+// defines (principle 7).  A break and a continue are, and so is a
+// return without an expression, whose label is the epilogue's.  An if
+// whose then part is one jump is the condition's jump to that label
+// (4.4).
+template< typename T >
+concept one_jump =
+    requires(const amd64::state_t &a, const arm64::state_t &b, const T &t) {
+        label_of(a, t);
+        label_of(b, t);
+    };
+
 // if (e) s, 6.8.5.1p1: the condition as a jump past the then part where
 // it is 0, 6.8.5.2p2.  The condition is erased, since its own row is
-// its best jump (3.4).  The then part is erased, or a jump_t where it
-// is one jump, bare or the one item of a block: the condition jumps to
-// the jump's label where it is nonzero, and nothing else is written.
+// its best jump (3.4).  The then part is erased, or its own type where
+// it is one jump, one_jump's, bare or the one item of a block: the
+// condition jumps to the jump's label where it is nonzero, and nothing
+// else is written.
 template< typename S = stmt_t >
 struct if_t
 {
@@ -234,8 +254,8 @@ struct if_t
 // if (e) s1 else s2, 6.8.5.1p1: the condition as a jump to the else
 // part where it is 0, the then part, and a jump past the else part
 // where a path leaves the then part at its end, 6.8.5.2p2.  A then part
-// that is one jump is a jump_t, as for if_t, and the else part follows
-// the condition's jump.
+// that is one jump is of its own type, as for if_t, and the else part
+// follows the condition's jump.
 template< typename S = stmt_t >
 struct if_else_t
 {

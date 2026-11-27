@@ -1,12 +1,12 @@
 // -*- mode: c++; -*-
 
 // 6.7: the declarations, of which rcc-v2 takes the declaration
-// specifier int, the declarators of a function of no parameters,
-// int f(void), and of an object, and the declaration in a block of int
-// objects, each with an initializer or without; it refuses the rest as
-// not yet.  rcc reads more of each than rcc-v2 does, so each is read as
-// far as rcc would read it, and what rcc would take is refused before
-// an error rcc would not say.
+// specifiers static, int and void, the declarators of a function of no
+// parameters, int f(void), and of an object, and the declaration in a
+// block of int objects, each with an initializer or without; it refuses
+// the rest as not yet.  rcc reads more of each than rcc-v2 does, so
+// each is read as far as rcc would read it, and what rcc would take is
+// refused before an error rcc would not say.
 
 #include "parse-common.hh"
 
@@ -65,25 +65,26 @@ is_specifier(const token_t &t)
     }
 }
 
-// The suffix after the name, and whether it makes the declarator a
-// function's: none, an object's; or the parameter list (void), a
-// function of no parameters, 6.7.7.4p9.  An array, and any other list,
-// are not yet.  A function returns neither an array nor a function,
-// 6.7.7.4p1, which rcc says at the suffix after the list.
-bool
-declarator_suffix(parser_t &p)
+// The suffix after the name, and the type it makes of base: none, an
+// object's, base itself; or the parameter list (void), or (), which C23
+// reads as (void), 6.7.7.4p13, a function of no parameters returning
+// base, p9.  An array, and any other list, are not yet.  A function
+// returns neither an array nor a function, 6.7.7.4p1, which rcc says at
+// the suffix after the list.
+type_t
+declarator_suffix(parser_t &p, const type_t &base)
 {
     if (peek(p).kind == tok_t::lbracket)
         not_yet(peek(p), "array declarator");
 
     if (!accept(p, tok_t::lparen))
-        return false;
+        return base;
 
-    if (peek(p).kind != tok_t::kw_void || peek(p, 1).kind != tok_t::rparen)
+    if (peek(p).kind == tok_t::kw_void && peek(p, 1).kind == tok_t::rparen)
+        advance(p);
+
+    if (!accept(p, tok_t::rparen))
         not_yet(peek(p), "parameter list");
-
-    advance(p);
-    advance(p);
 
     if (peek(p).kind == tok_t::lbracket)
         fail(peek(p), "function cannot return an array");
@@ -91,7 +92,7 @@ declarator_suffix(parser_t &p)
     if (peek(p).kind == tok_t::lparen)
         fail(peek(p), "function cannot return a function");
 
-    return true;
+    return make_function(base, { }, false);
 }
 
 } // namespace
@@ -113,32 +114,41 @@ is_declaration_start(const parser_t &p, std::size_t ahead)
     return t.kind == tok_t::kw_static_assert || is_specifier(t);
 }
 
-// The declaration specifiers, int alone of the sets of 6.7.3.1p2.  rcc
-// reads every specifier up to the first token that is none, so another
-// one, before int or after it, is not yet, and so is an identifier in
-// the place of int, which may name a type to rcc; any other token there
-// is rcc's error.
-type_t
+// The declaration specifiers: the storage class static, 6.7.2p1, then
+// one of the sets int and void of 6.7.3.1p2.  rcc reads every specifier
+// up to the first token that is none, so another one, before the type
+// specifier or after it, is not yet, and so is an identifier in its
+// place, which may name a type to rcc; any other token there is rcc's
+// error.
+specifiers_t
 declaration_specifiers(parser_t &p)
 {
+    const token_t *storage_class = nullptr;
+    if (peek(p).kind == tok_t::kw_static)
+        storage_class = &advance(p);
+
     const token_t &t = peek(p);
-    if (t.kind != tok_t::kw_int &&
+    if (!next_is(p, { tok_t::kw_int, tok_t::kw_void }) &&
         (is_specifier(t) || t.kind == tok_t::identifier))
         not_yet(t, "declaration specifier " + quoted(t.text));
 
-    expect(p, tok_t::kw_int, "expected a type specifier");
+    if (!next_is(p, { tok_t::kw_int, tok_t::kw_void }))
+        fail(t, "expected a type specifier");
+
+    advance(p);
     if (is_specifier(peek(p)))
         not_yet(peek(p), "declaration specifier " + quoted(peek(p).text));
 
-    return int_type();
+    return { storage_class, t,
+             t.kind == tok_t::kw_void ? make_void() : int_type() };
 }
 
 // A declarator of a function of no parameters, f(void), or of an
-// object: its name, which a declarator must write in a declaration,
-// 6.7.7.1p1, and its suffix.  A pointer and a declarator in parentheses
-// are not yet.
+// object, of the type base: its name, which a declarator must write in
+// a declaration, 6.7.7.1p1, and its suffix.  A pointer and a declarator
+// in parentheses are not yet.
 declarator_t
-declarator(parser_t &p)
+declarator(parser_t &p, const type_t &base)
 {
     const token_t &t = peek(p);
     if (t.kind == tok_t::star)
@@ -149,7 +159,7 @@ declarator(parser_t &p)
 
     const token_t &name = expect(p, tok_t::identifier, "expected identifier");
 
-    return { name, declarator_suffix(p) };
+    return { name, declarator_suffix(p, base) };
 }
 
 namespace {
@@ -196,8 +206,8 @@ init_declarator_list(parser_t &p, const type_t &type)
     std::vector< stmt_t > items;
 
     do {
-        const declarator_t d = declarator(p);
-        if (d.function)
+        const declarator_t d = declarator(p, type);
+        if (is< function_t >(d.type))
             not_yet(d.name, "declaration of function " + quoted(d.name.text));
 
         init_declarator(p, type, d.name, items);
@@ -212,7 +222,8 @@ init_declarator_list(parser_t &p, const type_t &type)
 
 // A declaration in a block, 6.7.1p1.  rcc reads __extension__ and a
 // static assertion before the declaration specifiers, which are not
-// yet.
+// yet; and so are a static object and an object of type void, each
+// refused at its specifier.
 std::vector< stmt_t >
 declaration(parser_t &p)
 {
@@ -223,9 +234,16 @@ declaration(parser_t &p)
     if (t.kind == tok_t::kw_static_assert)
         not_yet(t, quoted(t.text) + " declaration");
 
-    const type_t type = declaration_specifiers(p);
+    const specifiers_t spec = declaration_specifiers(p);
+    if (spec.storage_class)
+        not_yet(*spec.storage_class,
+                "declaration specifier " + quoted(spec.storage_class->text));
 
-    return init_declarator_list(p, type);
+    if (is< void_t >(spec.type))
+        not_yet(spec.specifier,
+                "declaration specifier " + quoted(spec.specifier.text));
+
+    return init_declarator_list(p, spec.type);
 }
 
 } // namespace rcc

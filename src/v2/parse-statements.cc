@@ -2,10 +2,9 @@
 
 // 6.8: the statements, of which rcc-v2 takes the compound statement,
 // the expression and null statements, the if statement, the while, do
-// and for statements, break and continue, the return statement with an
-// expression, and the block items of a block, a declaration among
-// them.  Every other statement is refused at its first token by its
-// name, as is a label.
+// and for statements, break and continue, the return statement, and the
+// block items of a block, a declaration among them.  Every other
+// statement is refused at its first token by its name, as is a label.
 
 #include "parse-common.hh"
 
@@ -31,25 +30,36 @@ is_label_start(const parser_t &p)
     return peek(p).kind == tok_t::identifier && peek(p, 1).kind == tok_t::colon;
 }
 
-// A return without an expression stands only in a function whose
-// result type is void, and a function rcc-v2 defines returns int,
-// 6.8.7.5p1.  A value of another type than the result type is
-// converted as if by assignment, p3, which is not yet.
+// A void function takes no value and a non-void one requires one,
+// 6.8.7.5p1, each said at the return; the value is read first.  A value
+// of another type than the result type is converted as if by
+// assignment, p3, which is not yet.
 stmt_t
 return_statement(parser_t &p)
 {
     const token_t &keyword = advance(p);
-    if (peek(p).kind == tok_t::semicolon)
+
+    if (peek(p).kind != tok_t::semicolon) {
+        const token_t &start = peek(p);
+
+        operand_t value = expression(p);
+        if (is< void_t >(p.result))
+            fail(keyword, "void function should not return a value");
+
+        if (value.type != p.result)
+            not_yet(start, "conversion to the result type");
+
+        expect(p, tok_t::semicolon, "expected ';' after return statement");
+
+        return make_return(rvalue(std::move(value.node)));
+    }
+
+    if (!is< void_t >(p.result))
         fail(keyword, "non-void function should return a value");
 
-    const token_t &start = peek(p);
-    operand_t value = expression(p);
-    if (value.type != p.result)
-        not_yet(start, "conversion to the result type");
+    advance(p);
 
-    expect(p, tok_t::semicolon, "expected ';' after return statement");
-
-    return make_return(rvalue(std::move(value.node)));
+    return make_return_void();
 }
 
 // A continue stands only in a loop's body, 6.8.7.3p1, and is a jump to
