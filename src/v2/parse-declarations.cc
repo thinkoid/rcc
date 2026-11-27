@@ -292,8 +292,9 @@ namespace {
 // the name already, 6.2.1p7.  rcc reads GNU C's attributes and an
 // assembler name after the declarator, which are not yet, and so is a
 // brace initializer, in rcc's words.  The initializer's value is
-// converted to the object's type as if by assignment, 6.7.11p12: a
-// value of another type is not yet.
+// converted to the object's type as if by assignment, 6.7.11p12,
+// assignment_conversion()'s at the '=', but a void value, which rcc
+// refuses at the initializer's first token.
 void
 init_declarator(parser_t &p,
                 const type_t &type,
@@ -304,20 +305,22 @@ init_declarator(parser_t &p,
         not_yet(peek(p), quoted(peek(p).text) + " after a declarator");
 
     const int slot = declare(p, name, type);
-    if (!accept(p, tok_t::assign)) {
+    if (peek(p).kind != tok_t::assign) {
         items.push_back(make_decl(slot));
         return;
     }
 
+    const token_t &op = advance(p);
     if (peek(p).kind == tok_t::lbrace)
         not_yet(peek(p), "brace initializer");
 
     const token_t &start = peek(p);
     operand_t init = assignment_expression(p);
-    if (init.type != type)
-        not_yet(start, "conversion to the type of " + quoted(name.text));
+    require_value(start, init);
 
-    items.push_back(make_init(slot, rvalue(std::move(init.node))));
+    items.push_back(make_init(
+        slot, assignment_conversion(op, std::move(init), type,
+                                    "the type of " + quoted(name.text))));
 }
 
 // The declarators of a declaration in a block and its ';', 6.7.1p1: one

@@ -7,7 +7,7 @@
 // error is reported as rcc reports it; the parser builds the typed
 // tree, and each target writes its text from it.  A construct rcc-v2
 // does not compile yet is the parser's error, "not yet: ", at its
-// token.  No warning is made, so the list is left as it is.
+// token.  The parser adds each warning to the list.
 
 #include "pipeline.hh"
 
@@ -21,11 +21,11 @@ void
 compile(std::string_view text,
         std::string_view file,
         const target_t &target,
-        std::vector< warning_t > &,
+        std::vector< warning_t > &warnings,
         std::ostream &assembly)
 {
     const auto tokens = tokenize(text, file);
-    const auto unit = parse(tokens);
+    const auto unit = parse(tokens, warnings);
 
     generate(unit, target, file, assembly);
 }

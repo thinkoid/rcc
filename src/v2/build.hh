@@ -12,6 +12,7 @@
 #include "expr.hh"
 #include "stmt.hh"
 
+#include <string_view>
 #include <vector>
 
 namespace rcc {
@@ -33,6 +34,15 @@ expr_t make_unary(unary_op_t op, expr_t arg);
 
 // lhs op rhs of operands converted, 6.5.6 to 6.5.13.
 expr_t make_binary(binary_op_t op, expr_t lhs, expr_t rhs);
+
+// A call of the function named, 6.5.3.3, whose result type is void
+// where returns_void says so and int otherwise, of its arguments
+// converted, each stored in a hidden local of the call, numbered from
+// first.
+expr_t make_call(std::string_view name,
+                 bool returns_void,
+                 int first,
+                 std::vector< expr_t > args);
 
 stmt_t make_expr_stmt(expr_t e);
 stmt_t make_null();

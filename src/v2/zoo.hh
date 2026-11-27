@@ -12,6 +12,7 @@
 #include "expr.hh"
 #include "stmt.hh"
 
+#include <string>
 #include <vector>
 
 namespace rcc {
@@ -103,6 +104,29 @@ struct assign_t
 {
     slot_t where;
     expr_t value;
+};
+
+// An argument of a call, 6.5.3.3p4: its value, converted to its
+// parameter's type, and the hidden local of the call it is stored in,
+// rcc's argument slot (backend.md chapter 8), numbered by the parser
+// among the function's locals, whose slot is taken where the call is
+// generated, before the value is.  The value is erased, since the count
+// of arguments is not bounded, and its store is a row of its handle,
+// which finds a target's niche.
+struct argument_t
+{
+    slot_t where;
+    expr_t value;
+};
+
+// f(a, b), 6.5.3.3: a call of the function named, its result type R,
+// int or void: a call of a void function has no value, 6.3.2.2p1, and
+// only an effect.
+template< typename R >
+struct call_t
+{
+    std::string name;
+    std::vector< argument_t > args;
 };
 
 // e;, 6.8.4p2: the expression evaluated for its effect, its value

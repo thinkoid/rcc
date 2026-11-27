@@ -13,11 +13,13 @@
 #include "unit.hh"
 #include "zoo.hh"
 
+#include <concepts>
 #include <ostream>
 #include <sstream>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <vector>
 
 namespace rcc::arm64 {
 
@@ -315,6 +317,27 @@ void
 branch(state_t &s, const binary_t< op, C, R > &b, int label, bool sense)
 {
     branch(s, binary_t< mirrored(op), R, C > { b.rhs, b.lhs }, label, sense);
+}
+
+// The arguments of a call moved from their slots to where the
+// convention passes them, and the call of the function named, rcc's
+// call() after the arguments' stores, chapter 8.
+void transfer(state_t &,
+              std::string_view name,
+              const std::vector< argument_t > &args);
+
+// A call of an int function, 6.5.3.3, rcc's call(), chapter 8: its
+// value is held in x0, where the call leaves it.  The row is a template
+// on the result type, int alone, since a void call's value is the row
+// both targets share, which stops the generation.
+template< typename R >
+    requires std::same_as< R, int >
+value_t
+value(state_t &s, const call_t< R > &c, unsigned = 0)
+{
+    call(s, c);
+
+    return hold(s, x0);
 }
 
 // The value, moved to the result register where its row left it

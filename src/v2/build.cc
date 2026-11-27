@@ -19,6 +19,8 @@
 #include "zoo.hh"
 
 #include <optional>
+#include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -158,6 +160,26 @@ expr_t
 make_binary(binary_op_t op, expr_t lhs, expr_t rhs)
 {
     return rhs.self->right_of(op, lhs, rhs);
+}
+
+// The crossing from the result type, data in the parser, to the node's
+// parameter (principle 6), made once here: call_t< void > or call_t<
+// int >.
+expr_t
+make_call(std::string_view name,
+          bool returns_void,
+          int first,
+          std::vector< expr_t > args)
+{
+    std::vector< argument_t > arguments;
+    for (expr_t &value : args)
+        arguments.push_back({ slot_t { first++ }, std::move(value) });
+
+    if (returns_void)
+        return expr_t(
+            call_t< void > { std::string(name), std::move(arguments) });
+
+    return expr_t(call_t< int > { std::string(name), std::move(arguments) });
 }
 
 stmt_t

@@ -30,10 +30,28 @@ is_label_start(const parser_t &p)
     return peek(p).kind == tok_t::identifier && peek(p, 1).kind == tok_t::colon;
 }
 
+// return E; of a void E in a void function breaks 6.8.7.5p1, and GNU C
+// takes it: rcc takes it with a warning, at the return, as the block of
+// E for its effect and the return, a block of no scope, rcc's
+// void_return().
+stmt_t
+void_return(parser_t &p, const token_t &keyword, operand_t value)
+{
+    warn(p, keyword,
+         "void function returns a void expression, as GNU C allows");
+    expect(p, tok_t::semicolon, "expected ';' after return statement");
+
+    std::vector< stmt_t > items;
+    items.push_back(make_expr_stmt(discarded(std::move(value))));
+    items.push_back(make_return_void());
+
+    return make_block(std::move(items));
+}
+
 // A void function takes no value and a non-void one requires one,
-// 6.8.7.5p1, each said at the return; the value is read first.  A value
-// of another type than the result type is converted as if by
-// assignment, p3, which is not yet.
+// 6.8.7.5p1, each said at the return; the value is read first, and is
+// converted to the result type as if by assignment, p3, at its first
+// token.
 stmt_t
 return_statement(parser_t &p)
 {
@@ -43,15 +61,17 @@ return_statement(parser_t &p)
         const token_t &start = peek(p);
 
         operand_t value = expression(p);
+        if (is< void_t >(p.result) && is< void_t >(value.type))
+            return void_return(p, keyword, std::move(value));
+
         if (is< void_t >(p.result))
             fail(keyword, "void function should not return a value");
 
-        if (value.type != p.result)
-            not_yet(start, "conversion to the result type");
-
+        expr_t converted = assignment_conversion(start, std::move(value),
+                                                 p.result, "the result type");
         expect(p, tok_t::semicolon, "expected ';' after return statement");
 
-        return make_return(rvalue(std::move(value.node)));
+        return make_return(std::move(converted));
     }
 
     if (!is< void_t >(p.result))
@@ -110,8 +130,10 @@ jump_statement(parser_t &p)
 
 // An expression statement, its expression evaluated for its effect and
 // its value dropped, 6.8.4p2, or the null statement, 6.8.4p3.  The
-// expression is converted as any operand whose value is read,
-// 6.3.2.1p2, so x; is the load of x, as in rcc.
+// expression may be void, a void call's, and is converted as any
+// operand whose value is read, 6.3.2.1p2, so x; is the load of x, as in
+// rcc; a function designator decays to its function's address there,
+// 6.3.2.1p4, which is not yet.
 stmt_t
 expression_statement(parser_t &p)
 {
@@ -121,11 +143,22 @@ expression_statement(parser_t &p)
     operand_t e = expression(p);
     expect(p, tok_t::semicolon, "expected ';' after expression");
 
-    return make_expr_stmt(rvalue(std::move(e.node)));
+    return make_expr_stmt(discarded(std::move(e)));
 }
 
 // 6.8.1, a then part and an else part, below.
 stmt_t statement(parser_t &);
+
+// The controlling expression of an if or of a loop, 6.8.5.2p2,
+// 6.8.6.1p3: its value read, rvalue()'s at its first token, and
+// compared with 0, so nothing else converts it.
+expr_t
+condition(parser_t &p)
+{
+    const token_t &start = peek(p);
+
+    return rvalue(start, expression(p));
+}
 
 // The if statement, 6.8.5.2, with an else part or without one; an else
 // goes with the nearest if, 6.8.5.2p3, since it is read right after the
@@ -140,17 +173,16 @@ selection_statement(parser_t &p)
         not_yet(t, quoted(t.text) + " statement");
 
     expect(p, tok_t::lparen, "expected '(' after 'if'");
-    operand_t cond = expression(p);
+    expr_t cond = condition(p);
     expect(p, tok_t::rparen, "expected ')' after condition");
 
     stmt_t then = statement(p);
     if (!accept(p, tok_t::kw_else))
-        return make_if(rvalue(std::move(cond.node)), std::move(then));
+        return make_if(std::move(cond), std::move(then));
 
     stmt_t otherwise = statement(p);
 
-    return make_if_else(rvalue(std::move(cond.node)), std::move(then),
-                        std::move(otherwise));
+    return make_if_else(std::move(cond), std::move(then), std::move(otherwise));
 }
 
 // A loop's body and what the parser knows of the loop once it is read.
@@ -184,12 +216,12 @@ while_statement(parser_t &p)
 {
     advance(p);
     expect(p, tok_t::lparen, "expected '(' after 'while'");
-    operand_t cond = expression(p);
+    expr_t cond = condition(p);
     expect(p, tok_t::rparen, "expected ')' after condition");
 
     loop_body_t l = loop_body(p);
 
-    return make_while(rvalue(std::move(cond.node)), std::move(l.body), l.loop);
+    return make_while(std::move(cond), std::move(l.body), l.loop);
 }
 
 // The do statement, 6.8.6.3: the body, then the condition, evaluated
@@ -204,11 +236,11 @@ do_statement(parser_t &p)
 
     expect(p, tok_t::kw_while, "expected 'while' after the body of 'do'");
     expect(p, tok_t::lparen, "expected '(' after 'while'");
-    operand_t cond = expression(p);
+    expr_t cond = condition(p);
     expect(p, tok_t::rparen, "expected ')' after condition");
     expect(p, tok_t::semicolon, "expected ';' after do statement");
 
-    return make_do(std::move(l.body), rvalue(std::move(cond.node)), l.loop);
+    return make_do(std::move(l.body), std::move(cond), l.loop);
 }
 
 // The for statement, 6.8.6.4: the init, an expression statement or the
@@ -230,13 +262,13 @@ for_statement(parser_t &p)
 
     std::optional< expr_t > cond;
     if (peek(p).kind != tok_t::semicolon)
-        cond = rvalue(expression(p).node);
+        cond = condition(p);
 
     expect(p, tok_t::semicolon, "expected ';' after for condition");
 
     stmt_t step = make_null();
     if (peek(p).kind != tok_t::rparen)
-        step = make_expr_stmt(rvalue(expression(p).node));
+        step = make_expr_stmt(discarded(expression(p)));
 
     expect(p, tok_t::rparen, "expected ')' after for clauses");
 

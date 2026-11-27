@@ -54,6 +54,18 @@ initialize(S &s, slot_t where, const V &e)
     release(s, v);
 }
 
+// A local's slot, an int's 4 bytes at an int's alignment, from the
+// frame's allocator, which a spill's slot comes from too, so the two
+// interleave in the order they are taken; its displacement is recorded
+// under the local's number, where a use reads it (docs/typed-tree.md
+// 4.5).
+template< typename S >
+void
+allocate(S &s, slot_t where)
+{
+    s.slots.emplace(where.id, allocate(s, 4, 4));
+}
+
 // An expression for its effect, 6.8.4p2, its value dropped: the value
 // held, and released at once.
 template< typename S, typename T >
@@ -175,6 +187,48 @@ value(S &s, const assign_t &a, unsigned wanted = 0)
     store(s, reg_of(s, v), a.where);
 
     return v;
+}
+
+// A call, rcc's call(), backend.md chapter 8, as both targets write it
+// up to the transfer: every held value spilled first, in the order of
+// the registers, since the call destroys every expression register, so
+// the arguments find every register free; then each argument, in order
+// and complete before the next, G13, stored to its hidden local, whose
+// slot is taken before its value is generated; then the target's
+// transfer(), the arguments moved to where the convention passes them
+// and the call made.  Nothing is held when the arguments are stored, so
+// rcc's second spill, before the transfer, spills nothing.
+template< typename S, typename R >
+void
+call(S &s, const call_t< R > &c)
+{
+    spill_all(s);
+
+    for (const argument_t &a : c.args) {
+        allocate(s, a.where);
+        initialize(s, a.where, a.value);
+    }
+
+    transfer(s, c.name, c.args);
+}
+
+// A call of a void function has no value, 6.3.2.2p1, and the parser
+// asks none of it, require_value(): a void call asked for its value is
+// a tree the parser does not make.
+template< typename S >
+value_t
+value(S &, const call_t< void > &, unsigned = 0)
+{
+    throw std::logic_error("v2: the value of a void call");
+}
+
+// A call of a void function for its effect is the call, and leaves
+// nothing held.
+template< typename S >
+void
+effect(S &s, const call_t< void > &c)
+{
+    call(s, c);
 }
 
 } // namespace rcc

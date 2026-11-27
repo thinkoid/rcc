@@ -21,6 +21,7 @@
 #include <string_view>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace rcc::amd64 {
 
@@ -40,22 +41,23 @@ bit(reg_t r)
 // builds fresh.  The body is a buffer, which the frame is written
 // around; the function's name makes its labels, which are counted per
 // function, and ret is the one epilogue's.  terminated says that no
-// path reaches what is written next: the last instruction written is
-// an unconditional jump, which jump() sets and place_label() clears,
-// so an if whose then part ends so writes no jump over its else part,
-// and main writes no return of 0 (backend.md 7.2).  zero_flag says
-// that the last instruction written set ZF from the value it computed,
+// path reaches what is written next: the last instruction written is an
+// unconditional jump, which jump() sets and place_label() clears, so an
+// if whose then part ends so writes no jump over its else part, and
+// main writes no return of 0 (backend.md 7.2).  zero_flag says that the
+// last instruction written set ZF from the value it computed,
 // flagged()'s, until the next instruction or label: a jump on that
 // value then needs no cmp (7.1).  loops is the labels each loop
 // generated so far took for its body's jumps, by the loop's number.
 // frame is the bytes the slots take below rbp, the locals' and the
 // spills' in the order they are taken, and slots each local's
-// displacement off rbp, by its number.  reserved is the registers
-// take() leaves for last while a value meant for a pinned register is
-// generated, so it lands there (chapter 6.5).  ahead is the registers
-// a pinned instruction generated after the value now being generated
-// would move a held value out of, which the instruction on a spilled
-// value keeps its destination out of (right_written()).
+// displacement off rbp, by its number; calls says that the function
+// calls, which moves rsp below the slots (chapter 5).  reserved is the
+// registers take() leaves for last while a value meant for a pinned
+// register is generated, so it lands there (chapter 6.5).  ahead is the
+// registers a pinned instruction generated after the value now being
+// generated would move a held value out of, which the instruction on a
+// spilled value keeps its destination out of (right_written()).
 struct state_t
 {
     std::ostringstream body { };
@@ -68,6 +70,7 @@ struct state_t
 
     long frame = 0;
     std::unordered_map< int, int > slots { };
+    bool calls = false;
 
     registers_t< reg_t > registers { };
     unsigned reserved = 0;
@@ -308,13 +311,27 @@ pinned_within(const state_t &s, const assign_t &a)
     return pinned_within(s, a.value);
 }
 
+// A call pins rax, where the convention puts its result (chapter 8),
+// and whatever its arguments pin.
+template< typename R >
+unsigned
+pinned_within(const state_t &s, const call_t< R > &c)
+{
+    unsigned pinned = bit(rax);
+    for (const argument_t &a : c.args)
+        pinned |= pinned_within(s, a.value);
+
+    return pinned;
+}
+
 // The registers a pinned instruction within a node would move a value
 // held across the node out of, rcc's moved_within(), 6.5: pins() over
-// the tree, as pinned_within(), but nothing below && and ||, which
-// spill every held value before their paths, before_paths(), so that
-// no value is held in a register where their operands' instructions
-// pin one.  A summary of its own, each node's of its operands', which
-// an erased one hands up through its handle.
+// the tree, as pinned_within(), but nothing below && and || and nothing
+// within a call, which spill every held value first, the first before
+// their paths, before_paths(), and a call at its start, so that no
+// value is held in a register where an instruction within them pins
+// one.  A summary of its own, each node's of its operands', which an
+// erased one hands up through its handle.
 template< constant C >
 constexpr unsigned
 moved_within(const state_t &, const C &)
@@ -370,6 +387,13 @@ moved_within(const state_t &s, const assign_t &a)
     return moved_within(s, a.value);
 }
 
+template< typename R >
+constexpr unsigned
+moved_within(const state_t &, const call_t< R > &)
+{
+    return 0;
+}
+
 // The registers a node hands its left operand, of those its consumer
 // names, wanted, rcc's wanted_left(): wanted, outside own, the
 // registers the node's own instruction pins, where no instruction
@@ -411,9 +435,11 @@ rvalue_avoiding(state_t &s, const T &e, unsigned pinned, unsigned wanted = 0)
 // outside pinned and handed named, rvalue_avoiding()'s, with the
 // registers a pinned instruction within rhs would move it out of added
 // to s.ahead, rcc's binary() and moved_within(): the left operand's
-// value is held while rhs is generated, so a row within it that
-// chooses its result's register, right_written(), chooses none of
-// them.
+// value is held while rhs is generated, so a row within it that chooses
+// its result's register, right_written(), chooses none of them.  A call
+// within rhs spills the value first, so it adds none, (a + g(b)) * (b +
+// g(c)) reading a in its slot where (a + g(b)) * (b + c / a) reloads
+// it.
 template< typename L, typename R >
 value_t
 left_operand(
@@ -901,6 +927,35 @@ value_branch(state_t &s,
 {
     value_branch(s, binary_t< binary_op_t::bit_and, R, I > { b.rhs, b.lhs },
                  label, sense);
+}
+
+// The arguments of a call moved from their slots to where the
+// convention passes them, and the call of the function named, rcc's
+// call() after the arguments' stores, chapter 8.
+void transfer(state_t &,
+              std::string_view name,
+              const std::vector< argument_t > &args);
+
+// A call of an int function, 6.5.3.3, rcc's call() and rvalue(),
+// chapter 8: the call keeps its own pin, since its result is in rax by
+// the convention, so it is generated outside any reservation around it,
+// as a division is, and its arguments find no register left for last;
+// its value is held in rax, where the call leaves it.  The row is a
+// template on the result type, int alone, since a void call's value is
+// the row both targets share, which stops the generation.
+template< typename R >
+    requires std::same_as< R, int >
+value_t
+value(state_t &s, const call_t< R > &c, unsigned = 0)
+{
+    const unsigned outer = std::exchange(s.reserved, 0u);
+
+    call(s, c);
+    const value_t v = hold(s, rax);
+
+    s.reserved = outer;
+
+    return v;
 }
 
 // The value, moved to the result register where its row left it

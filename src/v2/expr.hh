@@ -15,8 +15,8 @@
 // value_branch, the jump on the value compared with 0, and it hands up
 // two summaries, the registers the instructions within it pin, and
 // those that would move a value held across it, nothing below && and
-// ||.  A builder that must know what the handle holds goes through the
-// model (3.3), and is a friend.
+// || and nothing within a call.  A builder that must know what the
+// handle holds goes through the model (3.3), and is a friend.
 
 #pragma once
 
@@ -98,8 +98,8 @@ void value_branch(amd64::state_t &, const expr_t &, int label, bool sense);
 
 // The registers the instructions within an erased operand pin on
 // x86-64, and those a pinned instruction within it would move a held
-// value out of, its summaries handed up (principle 3), forwarded to the
-// node it holds.
+// value out of, none below && and || and none within a call, its
+// summaries handed up (principle 3), forwarded to the node it holds.
 unsigned pinned_within(const amd64::state_t &, const expr_t &);
 unsigned moved_within(const amd64::state_t &, const expr_t &);
 

@@ -10,6 +10,7 @@
 #include "assembly.hh"
 #include "target.hh"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <format>
@@ -19,6 +20,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace rcc::amd64 {
 
@@ -845,18 +847,60 @@ generate(state_t &s, const return_t &r)
     jump(s, s.ret);
 }
 
+// rcc's call() after the arguments' stores, chapter 8: a slot is 4
+// bytes, and a push writes 8, so the stacked arguments, past the sixth,
+// are pushed from their slots through rax, last first, movl -40(%rbp),
+// %eax and pushq %rax, over a pad that keeps rsp a multiple of 16 at
+// the call, subq $8, %rsp, for an odd count of them; the first six are
+// loaded into their registers, movl -16(%rbp), %edi.  G16: call f@PLT
+// for every function, the executable being position-independent, and
+// nothing before it, since no callee is variadic.  The pushes and the
+// pad are given back after it, addq $16, %rsp.  The function now calls,
+// so its frame moves rsp.
+void
+transfer(state_t &s,
+         std::string_view name,
+         const std::vector< argument_t > &args)
+{
+    const std::size_t registers = std::size(argument_registers);
+    const std::size_t stacked =
+        args.size() > registers ? args.size() - registers : 0;
+    const bool pad = stacked % 2 != 0;
+
+    if (pad)
+        insn(s, "subq", { imm(8), "%rsp" });
+
+    for (std::size_t i = args.size(); i-- > registers;) {
+        insn(s, "movl", { at(slot_of(s, args[i].where)), "%eax" });
+        insn(s, "pushq", { "%rax" });
+    }
+
+    for (std::size_t i = 0; i < std::min(registers, args.size()); ++i)
+        insn(s, "movl",
+             { at(slot_of(s, args[i].where)), reg(argument_registers[i], 32) });
+
+    insn(s, "call", { std::format("{}@PLT", name) });
+
+    const long popped = 8 * static_cast< long >(stacked) + (pad ? 8 : 0);
+    if (popped > 0)
+        insn(s, "addq", { imm(popped), "%rsp" });
+
+    s.calls = true;
+}
+
 namespace {
 
 // the frame
 
 // Chapter 5: rbp is the frame pointer in every function, pushed and
 // pointed at the frame, each with its place in the unwind table.  No
-// register is pushed below it.  The slots lie below rbp, and a
-// function that calls nothing keeps a frame of up to the red zone's
-// 128 bytes there without moving rsp; a larger one moves rsp below it
-// by its size.
+// register is pushed below it.  The slots lie below rbp, and a function
+// that calls nothing keeps a frame of up to the red zone's 128 bytes
+// there without moving rsp; a larger one, or any frame of a function
+// that calls, moves rsp below it by its size, which keeps rsp a
+// multiple of 16 at every call.
 void
-prologue(std::ostream &out, long size)
+prologue(std::ostream &out, long size, bool calls)
 {
     out << "\tpushq\t%rbp\n"
            "\t.cfi_def_cfa_offset 16\n"
@@ -864,7 +908,7 @@ prologue(std::ostream &out, long size)
            "\tmovq\t%rsp, %rbp\n"
            "\t.cfi_def_cfa_register %rbp\n";
 
-    if (size > red_zone)
+    if (size > 0 && (calls || size > red_zone))
         out << std::format("\tsubq\t${}, %rsp\n", size);
 }
 
@@ -895,10 +939,9 @@ parameters(state_t &s, std::size_t count)
 
     for (std::size_t i = 0; i < count; ++i) {
         const int id = static_cast< int >(i);
-        const int above = 16 + 8 * (id - static_cast< int >(registers));
 
         if (i >= registers) {
-            s.slots.emplace(id, above);
+            s.slots.emplace(id, 16 + 8 * static_cast< int >(i - registers));
             continue;
         }
 
@@ -942,7 +985,7 @@ function(std::ostream &out, const function_decl_t &fd)
 
     const long size = (s.frame + 15) / 16 * 16;
 
-    prologue(out, size);
+    prologue(out, size, s.calls);
 
     out << s.body.str();
 

@@ -223,6 +223,20 @@ external_declaration(parser_t &p)
     expect(p, tok_t::semicolon, "expected ';' after top level declarator");
 }
 
+// A static function used in an expression is defined in the unit,
+// 6.9.1p3: one that is not is an error at the end of the unit, said at
+// its first use.
+void
+require_internal_definitions(const parser_t &p)
+{
+    for (const auto &[index, at] : p.internal_uses) {
+        const function_decl_t &f = p.unit.functions[index];
+        if (!f.body)
+            fail(*at, "static function " + quoted(f.name) +
+                          " is used but never defined");
+    }
+}
+
 // The external declarations up to the end of the text, 6.9.1p1.  An
 // empty text, which the grammar does not have, is a unit of no
 // function, as rcc takes it.
@@ -231,14 +245,16 @@ translation_unit(parser_t &p)
 {
     while (peek(p).kind != tok_t::eof)
         external_declaration(p);
+
+    require_internal_definitions(p);
 }
 
 } // namespace
 
 translation_unit_t
-parse(const std::vector< token_t > &tokens)
+parse(const std::vector< token_t > &tokens, std::vector< warning_t > &warnings)
 {
-    parser_t p { tokens };
+    parser_t p { tokens, warnings };
     translation_unit(p);
 
     return std::move(p.unit);

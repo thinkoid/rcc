@@ -10,6 +10,7 @@
 
 #include "assembly.hh"
 
+#include <algorithm>
 #include <cstddef>
 #include <format>
 #include <iterator>
@@ -18,6 +19,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 namespace rcc::arm64 {
@@ -668,6 +670,135 @@ generate(state_t &s, const return_t &r)
 
 namespace {
 
+// A size by which sp moves, the frame's or a call's outgoing area's, as
+// the immediates of sub and add, 5.2: 12 bits, or 12 bits shifted by
+// 12.  The upper part first; a part that is zero is not written, so a
+// size under 4096 bytes or a multiple of 4096 is one instruction.
+std::vector< long >
+frame_parts(long size)
+{
+    std::vector< long > parts;
+    for (const long part : { size & ~0xfffL, size & 0xfffL })
+        if (part != 0)
+            parts.push_back(part);
+
+    return parts;
+}
+
+// the call
+
+// The outgoing area of a call with arguments past the eighth, rcc's
+// outgoing_size(), chapter 8: 8 bytes for each, rounded up to 16, since
+// sp is a multiple of 16 at the call (chapter 3).  It is opened and
+// closed in the parts of frame_parts(), as the frame is, which reach 16
+// MiB less 16; an area of 16 MiB or more is rcc's not yet.
+long
+outgoing_size(std::size_t stacked)
+{
+    const long size = (8 * static_cast< long >(stacked) + 15) / 16 * 16;
+    if (size >= 1L << 24)
+        throw std::logic_error(
+            "v2: not yet: an outgoing area of 16 MiB or more");
+
+    return size;
+}
+
+// The address of the outgoing area's k-th 8 bytes for a store of 4
+// bytes, rcc's outgoing_operand(), [sp, #8k]: the ninth argument at
+// [sp], as clang -S writes it, the tenth at [sp, #8].  Past the store's
+// reach, 2.3, rcc forms the address in x16, which rcc-v2 does not yet.
+std::string
+outgoing_operand(std::size_t k)
+{
+    const long displacement = 8 * static_cast< long >(k);
+    if (displacement > reach(4))
+        throw std::logic_error(
+            "v2: not yet: an argument beyond the reach of [sp, #d]");
+
+    return displacement == 0 ? "[sp]" : std::format("[sp, #{}]", displacement);
+}
+
+// The names the assembler reads as a register's where a branch's
+// operand may be a symbol's, chapter 8, in lower case: x0 to x31 and w0
+// to w31, the b, h, s, d, q and v names of the vector registers 0 to
+// 31, sp, wsp, xzr, wzr, lr and fp, and the special registers it names
+// beside them.  It reads them so in any case.
+const std::unordered_set< std::string > &
+register_names()
+{
+    static const auto names = [] {
+        std::unordered_set< std::string > set {
+            "sp",   "wsp",  "xzr", "wzr", "lr",   "fp",   "nzcv", "fpcr",
+            "fpsr", "fpmr", "ffr", "vg",  "vgx2", "vgx4", "zt0",
+        };
+        for (const char letter : std::string_view("xwbhsdqv"))
+            for (int n = 0; n < 32; ++n)
+                set.insert(std::format("{}{}", letter, n));
+
+        return set;
+    }();
+
+    return names;
+}
+
+// A callee's name as the operand of bl, rcc's branch_target(), chapter
+// 8: in quotes where the assembler would read it as a register's, bl
+// "x1", which it takes for the symbol, and as it is elsewhere.
+std::string
+branch_target(std::string_view name)
+{
+    std::string lower { name };
+    for (char &c : lower)
+        if (c >= 'A' && c <= 'Z')
+            c = static_cast< char >(c - 'A' + 'a');
+
+    if (register_names().contains(lower))
+        return std::format("\"{}\"", name);
+
+    return std::string { name };
+}
+
+} // namespace
+
+// rcc's call() after the arguments' stores, chapter 8: the arguments
+// past the eighth are copied from their slots to the outgoing area,
+// opened below the frame for this call alone, ldr w17, [x29, #60] and
+// str w17, [sp], in order; the first eight are loaded into w0 to w7,
+// ldr w0, [x29, #28].  G16: bl f, the name alone, since the linker
+// makes a PLT entry where one is needed, quoted where it is a
+// register's, branch_target().  No unwind directive is written around
+// the area, since the canonical frame address is computed from x29.
+void
+transfer(state_t &s,
+         std::string_view name,
+         const std::vector< argument_t > &args)
+{
+    const std::size_t registers = std::size(argument_registers);
+    const std::size_t stacked =
+        args.size() > registers ? args.size() - registers : 0;
+    const long area = stacked > 0 ? outgoing_size(stacked) : 0;
+
+    for (const long part : frame_parts(area))
+        insn(s, "sub", { "sp", "sp", imm(part) });
+
+    for (std::size_t i = registers; i < args.size(); ++i) {
+        copy_in(s, slot_operand(slot_of(s, args[i].where)));
+        copy_out(s, outgoing_operand(i - registers));
+    }
+
+    for (std::size_t i = 0; i < std::min(registers, args.size()); ++i)
+        insn(s, "ldr",
+             { reg(argument_registers[i], 32),
+               slot_operand(slot_of(s, args[i].where)) });
+
+    insn(s, "bl", { branch_target(name) });
+
+    for (const long part : frame_parts(area))
+        insn(s, "add", { "sp", "sp", imm(part) });
+}
+
+namespace {
+
 // the frame
 
 // The parameters' half of the prologue, rcc's parameters(), 5.2: each
@@ -719,21 +850,6 @@ stack_parameters(state_t &s, std::size_t count, long size)
         copy_in(s, slot_operand(above_frame(i, size)));
         copy_out(s, slot_operand(slot_of(s, slot_t { id })));
     }
-}
-
-// A size by which sp moves, the frame's, as the immediates of sub and
-// add, 5.2: 12 bits, or 12 bits shifted by 12.  The upper part first; a
-// part that is zero is not written, so a size under 4096 bytes or a
-// multiple of 4096 is one instruction.
-std::vector< long >
-frame_parts(long size)
-{
-    std::vector< long > parts;
-    for (const long part : { size & ~0xfffL, size & 0xfffL })
-        if (part != 0)
-            parts.push_back(part);
-
-    return parts;
 }
 
 // Chapter 5.2: the frame opened by sub, the frame record stored at its

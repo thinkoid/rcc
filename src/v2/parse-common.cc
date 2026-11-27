@@ -32,6 +32,12 @@ not_yet(const token_t &at, std::string_view construct)
     fail(at, "not yet: " + std::string(construct));
 }
 
+void
+warn(parser_t &p, const token_t &at, std::string what)
+{
+    p.warnings.push_back({ at.where, std::move(what) });
+}
+
 std::string
 quoted(std::string_view name)
 {
@@ -110,6 +116,64 @@ type_t
 int_type()
 {
     return make_int(32, true, int_kind_t::int_);
+}
+
+//
+// values
+//
+
+void
+require_value(const token_t &at, const operand_t &e)
+{
+    if (is< void_t >(e.type))
+        fail(at, "void expression used as a value");
+}
+
+namespace {
+
+// The not yet of a function designator is said at its name, wherever
+// its value is read.
+void
+refuse_designator(const operand_t &e)
+{
+    if (!e.node)
+        not_yet(*e.name, "function designator " + quoted(e.name->text));
+}
+
+} // namespace
+
+expr_t
+rvalue(const token_t &at, operand_t e)
+{
+    require_value(at, e);
+    refuse_designator(e);
+
+    return rvalue(std::move(*e.node));
+}
+
+expr_t
+discarded(operand_t e)
+{
+    refuse_designator(e);
+
+    return rvalue(std::move(*e.node));
+}
+
+expr_t
+assignment_conversion(const token_t &at,
+                      operand_t e,
+                      const type_t &t,
+                      std::string_view words)
+{
+    require_value(at, e);
+
+    if (is< function_t >(e.type))
+        fail(at, "incompatible pointer to integer conversion");
+
+    if (e.type != t)
+        not_yet(at, "conversion to " + std::string(words));
+
+    return rvalue(std::move(*e.node));
 }
 
 //

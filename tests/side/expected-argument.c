@@ -1,0 +1,8 @@
+/* A comma that no argument follows: the error is at the ')'. */
+int g(int a, int b);
+
+int
+f(void)
+{
+        return g(1, );
+}

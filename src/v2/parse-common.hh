@@ -20,19 +20,26 @@
 
 #include <cstddef>
 #include <initializer_list>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace rcc {
 
 // What the parser holds of an expression: its C type, which the
-// productions read, and the node built for it.
+// productions read; the node built for it, or none for a function
+// designator, whose value, the function's address, 6.3.2.1p4, rcc-v2
+// does not compile yet; and the identifier the expression is, through
+// parentheses, 6.5.2p6, or null, for the diagnostics that name it and
+// for the function a call names.
 struct operand_t
 {
     type_t type;
-    expr_t node;
+    std::optional< expr_t > node;
+    const token_t *name = nullptr;
 };
 
 // A block's scope, or a parameter list's, 6.2.1p4: each name it
@@ -52,20 +59,26 @@ struct function_name_t
 };
 
 // The state of one parse: the tokens and the position in them; the
-// unit, filled as its functions are declared and defined; the names of
-// the functions the file declares, views into the tokens; the result
-// type of the function being defined, for its return statements; the
-// scopes open where the parse stands, innermost last, the function's
-// blocks' and a parameter list's; the count of the locals the function
-// has declared, which numbers the next one; and the loops whose bodies
-// are being read, innermost last, with the count of the function's
-// loops, which numbers the next one (docs/typed-tree.md 4.6).
+// warnings, a list the driver owns; the unit, filled as its functions
+// are declared and defined; the names of the functions the file
+// declares, views into the tokens; each use of a static function, by
+// its index among the unit's functions, for the end of the unit to
+// require its definition; the result type of the function being
+// defined, for its return statements; the scopes open where the parse
+// stands, innermost last, the function's blocks' and a parameter
+// list's; the count of the locals the function has declared, which
+// numbers the next one; and the loops whose bodies are being read,
+// innermost last, with the count of the function's loops, which numbers
+// the next one (docs/typed-tree.md 4.6).
 struct parser_t
 {
     const std::vector< token_t > &tokens;
+    std::vector< warning_t > &warnings;
     std::size_t pos = 0;
     translation_unit_t unit = { };
     std::unordered_map< std::string_view, function_name_t > functions = { };
+    std::vector< std::pair< std::size_t, const token_t * > >
+        internal_uses = { };
     type_t result = { };
     std::vector< scope_t > scopes = { };
     int locals = 0;
@@ -83,6 +96,11 @@ struct parser_t
 // A construct of C that rcc-v2 does not compile yet, refused at the
 // token by its name, as an error is.
 [[noreturn]] void not_yet(const token_t &at, std::string_view construct);
+
+// A warning at the token, which does not stop the translation: it joins
+// the driver's list, which the driver prints after the parse, or before
+// the error that ends it.
+void warn(parser_t &p, const token_t &at, std::string what);
 
 std::string quoted(std::string_view name);
 
@@ -120,6 +138,36 @@ const token_t &expect(parser_t &p, tok_t kind, std::string_view message);
 
 // int as the parser makes it: 32 bits, signed, of the kind int.
 type_t int_type();
+
+//
+// values
+//
+
+// A void expression has no value, 6.3.2.2p1, and its use as one is an
+// error at the token, rcc's require_value().
+void require_value(const token_t &at, const operand_t &e);
+
+// An operand whose value is read, rcc's rvalue(): a void one is none,
+// require_value()'s, an error at the token; a function designator's
+// value is its function's address, 6.3.2.1p4, which is not yet; any
+// other is its node, the lvalue converted, 6.3.2.1p2.
+expr_t rvalue(const token_t &at, operand_t e);
+
+// An operand evaluated for its effect alone, 6.8.4p2, rcc's
+// discarded(): it may be void, and a function designator, which would
+// decay to its function's address, is not yet.
+expr_t discarded(operand_t e);
+
+// A value converted to the type t as if by assignment, 6.5.17.2p2,
+// rcc's assignment_conversion(): a void value is none,
+// require_value()'s; a function designator decays to a pointer,
+// 6.3.2.1p4, which converts to no integer, 6.5.17.2p1, an error at the
+// token; and a value of another type than t is not yet, its conversion
+// to what words names.  Returns the value's node.
+expr_t assignment_conversion(const token_t &at,
+                             operand_t e,
+                             const type_t &t,
+                             std::string_view words);
 
 //
 // scopes
