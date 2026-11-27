@@ -525,15 +525,18 @@ reload_spill(state_t &s, reg_t r, int displacement)
     insn(s, "ldr", { reg(r, 64), slot_operand(displacement) });
 }
 
-// A register for a value: the lowest free one outside avoid, or, when
-// every one is held, the register of the oldest held value outside
-// avoid, the lowest number, which is spilled first.
+// A register for a value, rcc's take(): the lowest free one outside
+// avoid and s.reserved, else the lowest free one outside avoid, or,
+// when every one is held, the register of the oldest held value outside
+// avoid, the lowest number, which is spilled first.  The reservation is
+// an order of preference, not a pin.
 reg_t
 take(state_t &s, unsigned avoid)
 {
-    for (const reg_t r : expression_registers)
-        if (!s.registers.owner.contains(r) && !(avoid & bit(r)))
-            return r;
+    for (const unsigned out : { avoid | s.reserved, avoid })
+        for (const reg_t r : expression_registers)
+            if (!s.registers.owner.contains(r) && !(out & bit(r)))
+                return r;
 
     std::optional< reg_t > victim;
     for (const reg_t r : expression_registers) {
@@ -628,33 +631,124 @@ constant_value(state_t &s, long long value, view_t view)
     return v;
 }
 
-// The load of an object in a slot at the view, by the sign, into a
-// register taken for it at a width of 32 or 64 bits, load_of()'s.  G8:
-// one ldr.
-value_t
-load_to(state_t &s, slot_t where, view_t view, sign_t sign, int to)
+address_t
+address(state_t &s, slot_t where)
 {
-    const auto [mnemonic, bits] = load_of(view, sign, to);
+    return { .displacement = slot_of(s, where) };
+}
 
+namespace {
+
+// The address of an object the unit only declares, from the GOT, rcc's
+// symbol_address() for one it does not define, chapter 10: it may be in
+// a shared library, which a PC-relative reference does not reach from a
+// position-independent executable, so its address is the one the
+// dynamic linker wrote, loaded into a register taken for it, adrp x0,
+// :got:g and ldr x0, [x0, :got_lo12:g].
+value_t
+symbol_address(state_t &s, const global_t &g)
+{
     const value_t v = fresh(s);
-    insn(s, mnemonic,
-         { reg(reg_of(s, v), bits), slot_operand(slot_of(s, where)) });
+    const auto r = reg(reg_of(s, v), 64);
+
+    insn(s, "adrp", { r, std::format(":got:{}", g.name) });
+    insn(s, "ldr", { r, std::format("[{}, :got_lo12:{}]", r, g.name) });
 
     return v;
 }
 
+} // namespace
+
+// Each access the source writes loads the address once: g = g + 1 is
+// two pairs from the GOT, or two adrp x16 where the unit defines g.
+address_t
+address(state_t &s, const global_t &where)
+{
+    if (s.defined.contains(where.name))
+        return { .label = where.name };
+
+    return { .base = symbol_address(s, where) };
+}
+
+unsigned
+registers_of(const state_t &s, const address_t &a)
+{
+    if (!a.base)
+        return 0;
+
+    const auto r = s.registers.values[a.base->id].reg;
+
+    return r ? bit(*r) : 0;
+}
+
+std::string
+operand(state_t &s, const address_t &a, unsigned avoid)
+{
+    if (!a.label.empty()) {
+        insn(s, "adrp", { "x16", a.label });
+        return std::format("[x16, :lo12:{}]", a.label);
+    }
+
+    if (!a.base)
+        return slot_operand(a.displacement);
+
+    return std::format("[{}]", reg(reg_of(s, *a.base, avoid), 64));
+}
+
+void
+release(state_t &s, const address_t &a)
+{
+    if (a.base)
+        release(s, *a.base);
+}
+
+namespace {
+
+// The load of the object at an address at the view, by the sign, into
+// a register taken for it at a width of 32 or 64 bits, load_of()'s,
+// rcc's load(): through a base, the operand formed and the base given
+// back first, so the value may take the base's register, ldr w0, [x0];
+// otherwise the register taken first, since the take may spill, and the
+// operand formed after it, so a global's adrp x16 stands right before
+// its access.  G8: one ldr.
+value_t
+load_to(state_t &s, const address_t &a, view_t view, sign_t sign, int to)
+{
+    const auto [mnemonic, bits] = load_of(view, sign, to);
+
+    if (a.base) {
+        const std::string from = operand(s, a);
+        release(s, a);
+
+        const value_t v = fresh(s);
+        insn(s, mnemonic, { reg(reg_of(s, v), bits), from });
+
+        return v;
+    }
+
+    const value_t v = fresh(s);
+    const reg_t r = reg_of(s, v);
+
+    const std::string from = operand(s, a);
+    insn(s, mnemonic, { reg(r, bits), from });
+
+    return v;
+}
+
+} // namespace
+
 // The load row of 2.2: ldrsb w0, [x29, #16], ldr w0, [x29, #16], ldr x0,
 // [x29, #16].
 value_t
-load(state_t &s, slot_t where, view_t view, sign_t sign)
+load(state_t &s, const address_t &a, view_t view, sign_t sign)
 {
-    return load_to(s, where, view, sign, promoted_width(view));
+    return load_to(s, a, view, sign, promoted_width(view));
 }
 
 value_t
-extending_load(state_t &s, slot_t where, view_t from)
+extending_load(state_t &s, const address_t &a, view_t from)
 {
-    return load_to(s, where, from, sign_t::signed_, 64);
+    return load_to(s, a, from, sign_t::signed_, 64);
 }
 
 // rcc's extended(): the extension() of the value's register, named at
@@ -799,19 +893,19 @@ cset(state_t &s, binary_op_t op, value_t v, unsigned wanted)
 // The store row of 2.2, rcc's store_of(): strb w0, [x29, #16], str w0,
 // [x29, #16], str x0, [x29, #16].
 void
-store(state_t &s, reg_t r, slot_t where, view_t view)
+store(state_t &s, reg_t r, std::string_view to, view_t view)
 {
-    insn(s, store_of(view),
-         { reg(r, width(view)), slot_operand(slot_of(s, where)) });
+    insn(s, store_of(view), { reg(r, width(view)), to });
 }
 
 // str takes no immediate, but the zero register is an operand like any
-// other: strb wzr, [x29, #16], str xzr, [x29, #16].
+// other, rcc's initialize(): strb wzr, [x29, #16], str xzr, [x29, #16],
+// the operand formed in a statement of its own before the str.
 void
-store_zero(state_t &s, slot_t where, view_t view)
+store_zero(state_t &s, const address_t &at, view_t view)
 {
-    insn(s, store_of(view),
-         { zero(width(view)), slot_operand(slot_of(s, where)) });
+    const std::string to = operand(s, at);
+    insn(s, store_of(view), { zero(width(view)), to });
 }
 
 // The value goes to the convention's result register, 7.2, rcc's
@@ -1002,7 +1096,8 @@ parameters(state_t &s, const std::vector< view_t > &views)
         s.slots.emplace(id, allocate(s, bytes, bytes));
 
         if (i < std::size(argument_registers))
-            store(s, argument_registers[i], slot_t { id }, views[i]);
+            store(s, argument_registers[i],
+                  slot_operand(slot_of(s, slot_t { id })), views[i]);
     }
 }
 
@@ -1100,9 +1195,13 @@ epilogue(std::ostream &out, const state_t &s, long size)
 // returns 0 when it falls off its end, 5.1.2.3.4, by its name, whatever
 // its result type.
 void
-function(std::ostream &out, const function_decl_t &fd)
+function(std::ostream &out,
+         const function_decl_t &fd,
+         const std::unordered_set< std::string > &defined)
 {
-    state_t s { .function = fd.name, .frame = frame_record };
+    state_t s { .defined = defined,
+                .function = fd.name,
+                .frame = frame_record };
     s.ret = new_label(s);
 
     parameters(s, fd.parameters);
@@ -1140,9 +1239,11 @@ function(std::ostream &out, const function_decl_t &fd)
 
 // The functions the unit defines, in order, chapter 10; one it only
 // declares writes nothing, since the assembler leaves its symbol to the
-// link.  The data of the objects it defines follows the last function,
-// with nothing between.  The note section marks the stack not
-// executable.
+// link.  The names of the objects the unit defines are taken before the
+// first function, the unit being parsed whole, so an object defined
+// after its use is reached by its label.  The data of the objects it
+// defines follows the last function, with nothing between.  The note
+// section marks the stack not executable.
 void
 generate(const translation_unit_t &unit,
          std::string_view file,
@@ -1150,9 +1251,10 @@ generate(const translation_unit_t &unit,
 {
     assembly << std::format("\t.file\t{}\n\t.text\n", quoted_file(file));
 
+    const auto defined = defined_symbols(unit);
     for (const function_decl_t &fd : unit.functions)
         if (fd.body)
-            function(assembly, fd);
+            function(assembly, fd, defined);
 
     data(assembly, unit.objects);
 

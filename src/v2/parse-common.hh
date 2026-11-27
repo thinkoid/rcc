@@ -65,13 +65,16 @@ struct function_name_t
 
 // What the parser holds of an object's name in the file's scope,
 // 6.2.1p4: its type, an integer type, which a later declaration of the
-// name must be compatible with, 6.7.1p5; whether its linkage is
-// external, 6.2.2, set by its first declaration; and the index of its
-// entry among the unit's objects, made by its first declaration that
-// defines it, or none for an object only declared so far.
+// name must be compatible with, 6.7.1p5; its leaf, a place over the
+// where global_t built at its first declaration, which a use copies
+// (docs/typed-tree.md 4.5); whether its linkage is external, 6.2.2, set
+// by its first declaration; and the index of its entry among the unit's
+// objects, made by its first declaration that defines it, or none for an
+// object only declared so far.
 struct object_name_t
 {
     type_t type;
+    expr_t leaf;
     bool external;
     std::optional< std::size_t > index = std::nullopt;
 };

@@ -10,20 +10,20 @@ Of the design the tree has a thin line through every joint: a unit of
 functions and of objects at file scope, declared and defined in any
 order, `static`, `extern` or neither; the objects of the integer
 types from `char` to `unsigned long long`, initialized by an integer
-constant expression or not, their data written after the functions;
-the functions of a result of any integer type or `void` and of
-parameters of any integer type, whose locals are of the integer
-types, declared, assigned and returned, with parentheses, the casts,
-the unary operators `+ - ~ !`, `+ - * / % << >> & | ^`, the
-comparisons, `&&`, `||` and calls of functions of a result of any
-integer type or `void`, to any depth, and the statements `if`,
-`else`, `while`, `do`, `for` with a declaration or an expression
-first, `break`, `continue`, `goto` and labels, and `return` with a
-value or without, on both targets.
-Each mechanism
-below was compiled and run in a small model first; chapter 5 says
-what the models showed and chapter 6 what nothing has shown. A
-statement marked *working* is a position taken and run, not yet
+constant expression or not, read and assigned in every expression,
+defined before their use, after it or nowhere in the unit, their
+data written after the functions; the functions of a result of any
+integer type or `void` and of parameters of any integer type, whose
+locals are of the integer types, declared, assigned and returned,
+with parentheses, the casts, the unary operators `+ - ~ !`,
+`+ - * / % << >> & | ^`, the comparisons, `&&`, `||` and calls of
+functions of a result of any integer type or `void`, to any depth,
+and the statements `if`, `else`, `while`, `do`, `for` with a
+declaration or an expression first, `break`, `continue`, `goto` and
+labels, and `return` with a value or without, on both targets. Each
+mechanism below was compiled and run in a small model first; chapter
+5 says what the models showed and chapter 6 what nothing has shown.
+A statement marked *working* is a position taken and run, not yet
 agreed.
 
 ## 1. The idea
@@ -81,8 +81,11 @@ resolution in place of its `match()`. It needs no second language.
    the state stays an `if`, and one more: a question of one target's
    encoding about a row's own leaf, whether aarch64's `add` holds its
    constant, which no builder can ask, since a builder names no
-   target. Overloads and specializations are how conditionals leave
-   the generator.
+   target. What the unit defines is context once a row runs, since
+   the unit is parsed whole before anything is generated: whether an
+   object is defined is asked by its where's address, in one `if`,
+   and the rows above take the address whatever its form. Overloads
+   and specializations are how conditionals leave the generator.
 3. **A fact lives where its distance puts it.**
 
    | The fact | Its distance | Where it lives |
@@ -91,6 +94,7 @@ resolution in place of its `match()`. It needs no second language.
    | "this subtree names `r`" | unbounded, below | the summary, handed up |
    | "this value's register is valid to 64 bits" | unbounded, below | the summary, handed up |
    | "the value is wanted in `%ebx`" | unbounded, above | the context, handed down |
+   | "the unit defines `g`" | unbounded, later in the text | the context of generation, asked by the where's address |
    | "which register is free now" | a moment of generation | the state |
 
 4. **The context carries only what a type cannot.** The form wanted
@@ -268,7 +272,7 @@ call_t &, long)` and comes back as a member of a call.
 ### 3.4 Entry points are roles
 
 A parent asks a child for a form by the entry point it calls: its
-value, its effect, its store into a slot, a jump to a label on a
+value, its effect, its store at an address, a jump to a label on a
 sense, its address. The choice is static. The value, the effect and
 the jump are the ancestor's `regtab`, `efftab` and `cctab`.
 
@@ -286,15 +290,16 @@ the jump are the ancestor's `regtab`, `efftab` and `cctab`.
   what a pinned instruction needs free. The typed tree changes how a
   question about an operand's kind is asked, and never where a value
   lands.
-- The store into a slot is rcc's `initialize()`. An initializer, an
-  assignment for its effect and a call's argument store their value
-  through the value's own entry point, whose row is found by overload
-  on the value's type: a target's niche for a constant, which holds
-  no register, or the primary, the value in a register, stored and
-  released. So the parent keeps the value erased. The store's width
-  is the value's own view: the parser converts every value it stores
-  to its place's type, so the row on the value's type knows it, and
-  the place hands the row its where alone.
+- The store at an address is rcc's `initialize()`. An initializer,
+  an assignment for its effect and a call's argument store their
+  value through the value's own entry point, handed the address the
+  parent formed, whose row is found by overload on the value's type:
+  a target's niche for a constant, which holds no register, or the
+  primary, the value in a register, stored and released. So the
+  parent keeps the value erased. The store's width is the value's
+  own view: the parser converts every value it stores to its place's
+  type, so the row on the value's type knows it, and the parent
+  hands the row the address alone.
 - A call spills every held value at its start, in the order of the
   registers, so its arguments find every register free. Each
   argument is stored to a slot of its own before the next is
@@ -421,12 +426,21 @@ write its text. There is one parser and one zoo.
 
 ### 4.2 Expressions: a where and a view
 
-A place is a *where* and a *view*: `place_t< V, S >` so far, over the
-one where the tree has, `slot_t`, with its object's sign.
+A place is a *where*, a *view* and its object's sign: `place_t< W, V,
+S >`.
 
-- The where is how the machine names the object: a local's slot, and
-  later a register variable, a global, the object through a pointer's
-  value. The store's entry point is handed the where.
+- The where is how the machine names the object: a local's slot,
+  `slot_t`, its number among the function's locals; an object of
+  static storage, `global_t`, its name in the listing; and later a
+  register variable and the object through a pointer's value.
+- A where's address is each target's descriptor, rcc's `address_t`,
+  formed where rcc forms it: a slot's displacement; a global's label
+  where the unit defines it, a slot with another spelling; and where
+  the unit only declares it the address the GOT holds, loaded into a
+  register, a held value that the access consumes. A row spells the
+  address as an operand in a statement of its own, once the access's
+  registers are in hand, since aarch64 writes the `adrp x16` of a
+  label there, right before the access.
 - The view is how it is read, and it is the width alone: `i8`, `i16`,
   `i32`, `i64`. Every value node has a view, the width of its value,
   and an operator's parameter is its operation's view, `i32` or
@@ -443,7 +457,7 @@ one where the tree has, `slot_t`, with its object's sign.
   object's sign too, which its narrow read extends by, since rcc
   reads a `char` by `movsbl` or `movzbl` whatever consumes it. A
   constant's sign is in its value.
-- `load_t< V, S >` is what a place holds, and it is no place. An
+- `load_t< W, V, S >` is what a place holds, and it is no place. An
   lvalue is a matter of type, so an identity is dropped where it is
   built.
 - A conversion is a node around its operand: `sext_t` and `zext_t`
@@ -463,7 +477,7 @@ one where the tree has, `slot_t`, with its object's sign.
 - A widening over a promotion of the object, where one extension is
   the two, a signed object under a signed widening or any unsigned
   one, keeps the promotion as its operand's type, `sext_t< i64, i32,
-  sext_t< i32, i8, load_t< i8, signed_ > > >`, and that type's row
+  sext_t< i32, i8, load_t< W, i8, signed_ > > >`, and that type's row
   is the one load of the object, as rcc's `widened_read()` reads it.
   A widening over that one is over a value, and its primary extends
   by the width rule: `(long) (int) (short) c` on a `signed char` is
@@ -583,10 +597,13 @@ technique.
   unit writes its objects after its functions, one `.data` block of
   those with a value and one `.bss` block of the others, in the
   order of their entries, by one writer both targets call. An object
-  only declared has no entry. An object named in an expression waits
-  for its where.
-- A local's leaf is its place, `place_t< V, S >` over the where
-  `slot_t`, its number among the function's locals, and not a
+  only declared has no entry. An object's leaf is a place over the
+  where `global_t`, built at its first declaration whether a later
+  one defines it or none does: which address its accesses take is
+  the unit's, read at generation, so a use before the definition
+  writes the label.
+- A local's leaf is its place, `place_t< slot_t, V, S >`, over the
+  where that is its number among the function's locals, and not a
   displacement. The frame has one allocator: a local takes its
   view's bytes at its view's alignment where its declaration is
   generated, and a spill its 8 at an alignment of 8, each past every
@@ -599,8 +616,17 @@ technique.
   (3.4), at the value's view, which is the local's.
 - An assignment whose value is dropped is that same store. One whose
   value is used is the value held, then the store from its register.
+- An assignment takes its place first and holds it across the value,
+  as rcc's `assign()` does, and hands it to the value's store. Each
+  target's `place_of()` says what the place is formed outside: on
+  x86-64 the registers a pinned instruction within the value would
+  move it out of, and the consumer's register; on aarch64 the
+  consumer's. A slot's address and a label take no register, so a
+  local's order is the store after the value. An object reached
+  through the GOT holds its address in a register, spilled across a
+  call or a branch as any held value.
 - A parameter is a local of the body: its leaf is a place,
-  `place_t< V, S >` of its type's view and sign, numbered by its
+  `place_t< slot_t, V, S >` of its type's view and sign, numbered by its
   position in the list, the function's first locals. Its slot is its
   view's bytes at as many bytes' alignment, by the locals' rule, and
   its argument register is stored there at its view; the callee
@@ -657,19 +683,20 @@ technique.
 - **An expression's, at generation.** A wanted register, a jump's
   target and sense: parameters of an entry point, set by the parent
   for each child.
-- **The state.** What the registers hold at this moment, which
-  values are spilled and where, and which are held across the paths
-  of `&&` or `||`; the registers left for last while an operand is
-  generated, and on x86-64 those an instruction generated later
-  would move a held value out of; the labels, each loop's two by its
-  number and each C label's once met, and whether a path reaches
-  what is written next; on x86-64 the width at which the last
-  instruction set ZF from its value, and whether the function calls,
-  which moves `rsp` below any frame; the frame. A value held across
-  a call is state: the call's row spills every held value at its
-  start and asks the tree nothing. The state holds no width of a
-  value: what a held value's register is valid to is its node's
-  summary (4.2).
+- **The state.** What the registers hold at this moment, which values
+  are spilled and where, and which are held across the paths of `&&`
+  or `||`; the registers left for last while an operand is generated
+  or an assignment's place is formed, and on x86-64 those an
+  instruction generated later would move a held value out of; the
+  labels, each loop's two by its number and each C label's once met,
+  and whether a path reaches what is written next; on x86-64 the width
+  at which the last instruction set ZF from its value, and whether the
+  function calls, which moves `rsp` below any frame; the frame. A
+  value held across a call is state: the call's row spills every held
+  value at its start and asks the tree nothing. The state holds no
+  width of a value: what a held value's register is valid to is its
+  node's summary (4.2). It holds the names of the objects the unit
+  defines, which a global's address reads.
 
 ### 4.7 Two targets
 
@@ -683,8 +710,10 @@ struct expr_t::interface_t
     virtual value_t value(amd64::state_t &, unsigned wanted) const = 0;
     virtual value_t value(arm64::state_t &, unsigned wanted) const = 0;
 
-    virtual void initialize(amd64::state_t &, slot_t where) const = 0;
-    virtual void initialize(arm64::state_t &, slot_t where) const = 0;
+    virtual void initialize(amd64::state_t &,
+                            const amd64::address_t &) const = 0;
+    virtual void initialize(arm64::state_t &,
+                            const arm64::address_t &) const = 0;
 
     virtual void branch(amd64::state_t &, int label, bool sense) const = 0;
     virtual void branch(arm64::state_t &, int label, bool sense) const = 0;
@@ -736,8 +765,8 @@ with rcc, and nothing else.
 | `model.hh`, `build.cc` | the models, and the one unit that instantiates them |
 | `rows-expressions.hh`, `rows-statements.hh` | the rows both targets write alike: the primaries of an effect and of a jump, `!`, `&&` and `\|\|`, and the statements |
 | `register-stack.hh` | which register or spill slot holds which value, and the values held across a branch, as templates over a target's state |
-| `amd64.*`, `arm64.*` | a target: its registers, its state, its rows, its frame |
-| `assembly.*` | the text both targets write alike: an instruction, a label, the `.file` string, a symbol's binding and the unit's data |
+| `amd64.*`, `arm64.*` | a target: its registers, its state, its address of an object in memory, its rows, its frame |
+| `assembly.*` | the text both targets write alike: an instruction, a label, the `.file` string, a symbol's binding, the unit's data and the names of the objects it defines |
 | `generate.*`, `pipeline.cc` | the back end's entry, and the pipeline |
 
 ### 4.9 The questions rcc's rows ask
@@ -748,8 +777,8 @@ each became.
 
 | rcc asks | The typed tree |
 | --- | --- |
-| `immediate()`, `memory_operand()` of an operand | the operand's class, and a niche on it: `binary_t< op, V, L, I >`, `binary_t< op, V, L, load_t< V, S > >` |
-| `multiplicand()` | a niche on the left operand's class, `binary_t< mul, V, load_t< V, S >, I >` |
+| `immediate()`, `memory_operand()` of an operand | the operand's class, and a niche on it: `binary_t< op, V, L, I >`, `binary_t< op, V, L, load_t< W, V, S > >`, the load of either where |
+| `multiplicand()` | a niche on the left operand's class, `binary_t< mul, V, load_t< W, V, S >, I >` |
 | `constant_first()`, `ordered()` | a niche on a constant on the left, which is the row of the node with its operands exchanged |
 | whether an operator is a comparison, a division, a shift | a concept on the operator, which constrains the rows of its family |
 | `pins()` | a constant of the operator |
@@ -758,6 +787,10 @@ each became.
 | `pinned()` in `rvalue()` | the row of a node whose instruction pins its result's register clears the reservation itself: the divisions', the call's |
 | `immediate()` in `initialize()` | the store's entry point, by overload on the value's type |
 | the width of a store in `initialize()` | the value's own view |
+| `global_of()` of an lvalue | the place's where, a parameter: `slot_t` or `global_t` |
+| `defined_symbols()`, `s.defined` in `global_address()` | the state's `defined`, read by a global's address alone, in one `if` |
+| `address()`, `operand()`, `registers_of()`, `release()` of an `address_t` | the same, each target's, on the same descriptor |
+| `place_of()`, `address_avoiding()` of an assignment | each target's `place_of()`: the place taken first, in the assignment's one row |
 | `integer(t).width`, `operation_width()` | the node's view, a parameter |
 | `integer(t).is_signed` | the operator, by its name; a widening, `sext_t` or `zext_t`; a place's narrow read |
 | the width of `extended()`, `valid` | a summary, `valid_of()`, read by a widening's primary and aarch64's test of zero |
@@ -815,6 +848,13 @@ rows invented for the purpose.
   own view. Twenty-seven bodies of rcc's, among them every case of
   the width rule through an assignment, a change of sign and a
   promotion, are its bodies, byte for byte.
+- Objects at file scope: one row of the load, of `+` with an operand
+  in memory and of the store, written once, serves a slot and an
+  object of static storage on two targets. The object's address is
+  its label or the GOT's load by what the unit defines, asked at
+  generation, so one tree writes either listing and a use before a
+  later definition writes the label. Forty-four bodies of rcc's are
+  its bodies, byte for byte.
 
 ## 6. Open
 
@@ -837,8 +877,11 @@ rows invented for the purpose.
   `shared_ptr` for every model, it takes 40 seconds and 4 GB. What
   remains is a model's own functions, and the instantiation nests as
   deep as the longest chain of node types each first met inside the
-  one before it, about a hundred. Globals, pointers and the calls of
-  every type each multiply the classes again.
+  one before it, about a hundred. Each where multiplies the classes
+  again: the load of a global is a class on both sides of every
+  operator, as the slot's is, so the second where took the binary
+  node types to about 4,500 and the unit to 73 seconds and 7.6 GB.
+  Pointers bring a third.
 - The register state at a join. Whether an arm of `?:` leaves its
   value where the other arm's does is, in its hardest case, a fact of
   one moment of generation. No type, summary or context has it. Three
@@ -865,7 +908,8 @@ rows invented for the purpose.
   never written.
 - Records by value, and floating point as a register class.
 - aarch64's forms through `x16`, for a slot, a parameter or an
-  outgoing argument past the reach of its access.
+  outgoing argument past the reach of its access. A global's `adrp
+  x16` is written at its access, beside them.
 - The way back to rcc's pinned listings. `make sides` measures it; it
   is not sized.
 

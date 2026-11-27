@@ -27,9 +27,9 @@ namespace rcc {
 // A place is read only through its load, the lvalue conversion the
 // parser asks of every operand whose value it uses, rvalue(): a place
 // asked for its value is a tree the parser does not make.
-template< typename S, view_t V, sign_t O >
+template< typename S, typename W, view_t V, sign_t O >
 value_t
-value(S &, const place_t< V, O > &, unsigned = 0)
+value(S &, const place_t< W, V, O > &, unsigned = 0)
 {
     throw std::logic_error("v2: a place read without its lvalue conversion");
 }
@@ -82,36 +82,39 @@ value(S &s, const zext_t< V, F, A > &e, unsigned wanted = 0)
 // %rax, (long) (int) c on an unsigned char movzbl -1(%rbp), %eax.  The
 // row of another node (docs/typed-tree.md 3.2), so each target's niche
 // of the extending load serves both.
-template< typename S, view_t V, view_t F, view_t G >
+template< typename S, view_t V, view_t F, view_t G, typename W >
 value_t
 value(S &s,
-      const sext_t< V, F, sext_t< F, G, load_t< G, sign_t::signed_ > > > &e,
-      unsigned wanted = 0)
-{
-    return value(s, sext_t< V, G, load_t< G, sign_t::signed_ > > { e.arg.arg },
-                 wanted);
-}
-
-template< typename S, view_t V, view_t F, view_t G >
-value_t
-value(S &s,
-      const sext_t< V, F, zext_t< F, G, load_t< G, sign_t::unsigned_ > > > &e,
+      const sext_t< V, F, sext_t< F, G, load_t< W, G, sign_t::signed_ > > > &e,
       unsigned wanted = 0)
 {
     return value(s,
-                 zext_t< V, G, load_t< G, sign_t::unsigned_ > > { e.arg.arg },
+                 sext_t< V, G, load_t< W, G, sign_t::signed_ > > { e.arg.arg },
                  wanted);
 }
 
-template< typename S, view_t V, view_t F, view_t G >
+template< typename S, view_t V, view_t F, view_t G, typename W >
 value_t
-value(S &s,
-      const zext_t< V, F, zext_t< F, G, load_t< G, sign_t::unsigned_ > > > &e,
-      unsigned wanted = 0)
+value(
+    S &s,
+    const sext_t< V, F, zext_t< F, G, load_t< W, G, sign_t::unsigned_ > > > &e,
+    unsigned wanted = 0)
 {
-    return value(s,
-                 zext_t< V, G, load_t< G, sign_t::unsigned_ > > { e.arg.arg },
-                 wanted);
+    return value(
+        s, zext_t< V, G, load_t< W, G, sign_t::unsigned_ > > { e.arg.arg },
+        wanted);
+}
+
+template< typename S, view_t V, view_t F, view_t G, typename W >
+value_t
+value(
+    S &s,
+    const zext_t< V, F, zext_t< F, G, load_t< W, G, sign_t::unsigned_ > > > &e,
+    unsigned wanted = 0)
+{
+    return value(
+        s, zext_t< V, G, load_t< W, G, sign_t::unsigned_ > > { e.arg.arg },
+        wanted);
 }
 
 // A conversion that writes nothing is its operand's value, the low bits
@@ -123,18 +126,33 @@ value(S &s, const trunc_t< V, A > &t, unsigned wanted = 0)
     return value(s, t.arg, wanted);
 }
 
-// The store row of an initializer, rcc's initialize(), chapter 6.6: the
-// value in a register, stored into the slot at the value's view, which
-// is the place's, since the parser converted the value to the place's
-// type (docs/typed-tree.md 3.4), and released.  The targets' niches
-// store a constant with no register held, found by overload on the
-// value's type, which the handle's row, the entry point, knows.
-template< typename S, typename T >
+// The store of a held value at an address, both targets' rcc store():
+// the value's register, reloaded outside the address's registers where
+// it was spilled, then the address's operand formed outside it, which
+// on aarch64 writes the adrp of a global's page right before its
+// access, and the store at the view.  The address stays held, for the
+// caller to give back.
+template< typename S, typename A >
 void
-initialize(S &s, slot_t where, const T &e)
+store(S &s, value_t v, const A &at, view_t view)
+{
+    const auto r = reg_of(s, v, registers_of(s, at));
+    store(s, r, operand(s, at, bit(r)), view);
+}
+
+// The store row of an initializer, rcc's initialize(), chapter 6.6: the
+// value in a register, stored at the address its caller formed, at the
+// value's view, which is the place's, since the parser converted the
+// value to the place's type (docs/typed-tree.md 3.4), and released.
+// The targets' niches store a constant with no register held, found by
+// overload on the value's type, which the handle's row, the entry
+// point, knows.
+template< typename S, typename A, typename T >
+void
+initialize(S &s, const A &at, const T &e)
 {
     const value_t v = value(s, e);
-    store(s, reg_of(s, v), where, view_of(e));
+    store(s, v, at, view_of(e));
     release(s, v);
 }
 
@@ -161,14 +179,19 @@ effect(S &s, const T &t)
     release(s, value(s, t));
 }
 
-// An assignment for its effect is the store of an initializer, so
-// x = 7; writes what int x = 7; writes, and each target's niche of
-// initialize() serves both.
-template< typename S, view_t V >
+// An assignment for its effect, rcc's assign() and
+// constant_assignment(): the place first, G13, formed outside what each
+// target's place_of() leaves for last, then the value's store at it, its
+// own entry point, so x = 7; writes what int x = 7; writes and each
+// target's niche of initialize() serves both, then the place given
+// back.
+template< typename S, typename W, view_t V >
 void
-effect(S &s, const assign_t< V > &a)
+effect(S &s, const assign_t< W, V > &a)
 {
-    initialize(s, a.where, a.value);
+    const auto at = place_of(s, a.where, a.value, 0);
+    initialize(s, at, a.value);
+    release(s, at);
 }
 
 // The primary of branch, rcc's cbranch() for a node that is no
@@ -251,17 +274,21 @@ value(S &s, const binary_t< op, V, L, R > &b, unsigned = 0)
     return v;
 }
 
-// An assignment as a value: the value held, then stored from its
-// register at the place's view, V, since the value is erased; the
-// register holds the place's value after the store, 6.5.17.1p3, the
-// node's value.  So a constant goes through a register here, on x86-64
-// too, and 0 is no store of wzr.
-template< typename S, view_t V >
+// An assignment as a value, rcc's assign(): the place first, G13, its
+// reservation each target's place_of(), the consumer's register among
+// it, then the value held, handed that register, then stored from its
+// register at the place's view, V, since the value is erased, and the
+// place given back; the register holds the place's value after the
+// store, 6.5.17.1p3, the node's value.  So a constant goes through a
+// register here, on x86-64 too, and 0 is no store of wzr.
+template< typename S, typename W, view_t V >
 value_t
-value(S &s, const assign_t< V > &a, unsigned wanted = 0)
+value(S &s, const assign_t< W, V > &a, unsigned wanted = 0)
 {
+    const auto at = place_of(s, a.where, a.value, wanted);
     const value_t v = value(s, a.value, wanted);
-    store(s, reg_of(s, v), a.where, V);
+    store(s, v, at, V);
+    release(s, at);
 
     return v;
 }
@@ -284,7 +311,7 @@ call(S &s, std::string_view name, const std::vector< argument_t > &args)
 
     for (const argument_t &a : args) {
         allocate(s, a.where, view_of(a.value));
-        initialize(s, a.where, a.value);
+        initialize(s, address(s, a.where), a.value);
     }
 
     transfer(s, name, args);

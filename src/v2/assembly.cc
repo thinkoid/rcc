@@ -9,6 +9,7 @@
 #include <ostream>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 namespace rcc {
@@ -138,6 +139,16 @@ data(std::ostream &out, const std::vector< object_decl_t > &objects)
 {
     object_block(out, objects, true);
     object_block(out, objects, false);
+}
+
+std::unordered_set< std::string >
+defined_symbols(const translation_unit_t &unit)
+{
+    std::unordered_set< std::string > defined;
+    for (const object_decl_t &od : unit.objects)
+        defined.insert(od.name);
+
+    return defined;
 }
 
 } // namespace rcc

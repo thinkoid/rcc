@@ -41,12 +41,13 @@ struct constant_class_t
     view_t view;
 };
 
-// A load on the right as it crosses: its where and the sign of the
-// object's type, which the left operand's model makes a load of the
-// operation's view again.
+// A load on the right as it crosses: its where, a local's slot or a
+// global, and the sign of the object's type, which the left operand's
+// model makes a load of the operation's view again.
+template< typename W >
 struct load_class_t
 {
-    slot_t where;
+    W where;
     sign_t sign;
 };
 
@@ -58,8 +59,10 @@ struct expr_t::interface_t
     virtual value_t value(arm64::state_t &, unsigned wanted) const = 0;
     virtual void effect(amd64::state_t &) const = 0;
     virtual void effect(arm64::state_t &) const = 0;
-    virtual void initialize(amd64::state_t &, slot_t where) const = 0;
-    virtual void initialize(arm64::state_t &, slot_t where) const = 0;
+    virtual void initialize(amd64::state_t &,
+                            const amd64::address_t &) const = 0;
+    virtual void initialize(arm64::state_t &,
+                            const arm64::address_t &) const = 0;
     virtual void branch(amd64::state_t &, int label, bool sense) const = 0;
     virtual void branch(arm64::state_t &, int label, bool sense) const = 0;
 
@@ -110,7 +113,11 @@ struct expr_t::interface_t
                           const expr_t &self) const = 0;
     virtual expr_t binary(binary_op_t op,
                           view_t,
-                          const load_class_t &rhs,
+                          const load_class_t< slot_t > &rhs,
+                          const expr_t &self) const = 0;
+    virtual expr_t binary(binary_op_t op,
+                          view_t,
+                          const load_class_t< global_t > &rhs,
                           const expr_t &self) const = 0;
     virtual expr_t binary(binary_op_t op,
                           view_t,
@@ -158,11 +165,11 @@ fwd_value_branch(S &s, const T &t, int label, bool sense)
     value_branch(s, t, label, sense);
 }
 
-template< typename S, typename T >
+template< typename S, typename A, typename T >
 void
-fwd_initialize(S &s, slot_t where, const T &t)
+fwd_initialize(S &s, const A &at, const T &t)
 {
-    initialize(s, where, t);
+    initialize(s, at, t);
 }
 
 template< typename S, typename T >
@@ -256,9 +263,9 @@ converted_operand(const C &c, const expr_t &)
     return c;
 }
 
-template< view_t V, sign_t S >
-const load_t< V, S > &
-converted_operand(const load_t< V, S > &l, const expr_t &)
+template< typename W, view_t V, sign_t S >
+const load_t< W, V, S > &
+converted_operand(const load_t< W, V, S > &l, const expr_t &)
 {
     return l;
 }
@@ -270,17 +277,17 @@ converted_operand(const trunc_t< V, A > &t, const expr_t &)
     return t;
 }
 
-template< view_t V, view_t F >
-const sext_t< V, F, load_t< F, sign_t::signed_ > > &
-converted_operand(const sext_t< V, F, load_t< F, sign_t::signed_ > > &e,
+template< view_t V, view_t F, typename W >
+const sext_t< V, F, load_t< W, F, sign_t::signed_ > > &
+converted_operand(const sext_t< V, F, load_t< W, F, sign_t::signed_ > > &e,
                   const expr_t &)
 {
     return e;
 }
 
-template< view_t V, view_t F >
-const zext_t< V, F, load_t< F, sign_t::unsigned_ > > &
-converted_operand(const zext_t< V, F, load_t< F, sign_t::unsigned_ > > &e,
+template< view_t V, view_t F, typename W >
+const zext_t< V, F, load_t< W, F, sign_t::unsigned_ > > &
+converted_operand(const zext_t< V, F, load_t< W, F, sign_t::unsigned_ > > &e,
                   const expr_t &)
 {
     return e;
@@ -348,16 +355,16 @@ classed_operand(const C &c, const expr_t &)
     return c;
 }
 
-template< view_t V, sign_t S >
-const load_t< V, S > &
-classed_operand(const load_t< V, S > &l, const expr_t &)
+template< typename W, view_t V, sign_t S >
+const load_t< W, V, S > &
+classed_operand(const load_t< W, V, S > &l, const expr_t &)
 {
     return l;
 }
 
-template< view_t V, sign_t S >
-const load_t< V, S > &
-classed_operand(const trunc_t< V, load_t< V, S > > &t, const expr_t &)
+template< view_t V, typename W, sign_t S >
+const load_t< W, V, S > &
+classed_operand(const trunc_t< V, load_t< W, V, S > > &t, const expr_t &)
 {
     return t.arg;
 }
@@ -382,16 +389,16 @@ crossing(const C &c, const expr_t &)
     return { value_of(c), view_of(c) };
 }
 
-template< view_t V, sign_t S >
-load_class_t
-crossing(const load_t< V, S > &l, const expr_t &)
+template< typename W, view_t V, sign_t S >
+load_class_t< W >
+crossing(const load_t< W, V, S > &l, const expr_t &)
 {
     return { l.where, S };
 }
 
-template< view_t V, sign_t S >
-load_class_t
-crossing(const trunc_t< V, load_t< V, S > > &t, const expr_t &)
+template< view_t V, typename W, sign_t S >
+load_class_t< W >
+crossing(const trunc_t< V, load_t< W, V, S > > &t, const expr_t &)
 {
     return { t.arg.where, S };
 }
@@ -401,8 +408,9 @@ crossing(const trunc_t< V, load_t< V, S > > &t, const expr_t &)
 // and an operand of && or || keep their own types, so their load is no
 // operand of the operation's view.  A constant crosses as one, so that
 // two constants fold.
+template< typename W >
 constexpr bool
-crosses_erased(binary_op_t op, const load_class_t &)
+crosses_erased(binary_op_t op, const load_class_t< W > &)
 {
     return is_shift(op) || is_logical(op);
 }
@@ -430,12 +438,12 @@ typed(const constant_class_t &c, F &&f)
         return classed_constant< V >(c.value, f);
 }
 
-template< binary_op_t op, view_t V, typename F >
+template< binary_op_t op, view_t V, typename W, typename F >
 expr_t
-typed(const load_class_t &l, F &&f)
+typed(const load_class_t< W > &l, F &&f)
 {
-    return cross(l.sign,
-                 [&]< sign_t S >() { return f(load_t< V, S > { l.where }); });
+    return cross(
+        l.sign, [&]< sign_t S >() { return f(load_t< W, V, S > { l.where }); });
 }
 
 template< binary_op_t op, view_t V, typename R, typename F >
@@ -495,9 +503,9 @@ logical_operand(const T &held, const expr_t &self)
     return classed_operand(held, self);
 }
 
-template< view_t V, sign_t S >
+template< view_t V, typename W, sign_t S >
 const expr_t &
-logical_operand(const trunc_t< V, load_t< V, S > > &, const expr_t &self)
+logical_operand(const trunc_t< V, load_t< W, V, S > > &, const expr_t &self)
 {
     return self;
 }
@@ -587,14 +595,16 @@ struct expr_t::model_t final: interface_t
         fwd_value_branch(s, held, label, sense);
     }
 
-    void initialize(amd64::state_t &s, slot_t where) const override
+    void initialize(amd64::state_t &s,
+                    const amd64::address_t &at) const override
     {
-        fwd_initialize(s, where, held);
+        fwd_initialize(s, at, held);
     }
 
-    void initialize(arm64::state_t &s, slot_t where) const override
+    void initialize(arm64::state_t &s,
+                    const arm64::address_t &at) const override
     {
-        fwd_initialize(s, where, held);
+        fwd_initialize(s, at, held);
     }
 
     unsigned pinned_within(const amd64::state_t &s) const override
@@ -674,7 +684,15 @@ struct expr_t::model_t final: interface_t
 
     expr_t binary(binary_op_t op,
                   view_t view,
-                  const load_class_t &rhs,
+                  const load_class_t< slot_t > &rhs,
+                  const expr_t &self) const override
+    {
+        return binary_of(op, view, held, self, rhs);
+    }
+
+    expr_t binary(binary_op_t op,
+                  view_t view,
+                  const load_class_t< global_t > &rhs,
                   const expr_t &self) const override
     {
         return binary_of(op, view, held, self, rhs);

@@ -69,15 +69,15 @@ value_branch(amd64::state_t &s, const expr_t &e, int label, bool sense)
 }
 
 void
-initialize(amd64::state_t &s, slot_t where, const expr_t &e)
+initialize(amd64::state_t &s, const amd64::address_t &at, const expr_t &e)
 {
-    e.self->initialize(s, where);
+    e.self->initialize(s, at);
 }
 
 void
-initialize(arm64::state_t &s, slot_t where, const expr_t &e)
+initialize(arm64::state_t &s, const arm64::address_t &at, const expr_t &e)
 {
-    e.self->initialize(s, where);
+    e.self->initialize(s, at);
 }
 
 unsigned
@@ -138,7 +138,18 @@ make_local(int slot, view_t view, sign_t sign)
 {
     return cross(view, [&]< view_t V >() {
         return cross(sign, [&]< sign_t S >() {
-            return expr_t(place_t< V, S > { slot_t { slot } });
+            return expr_t(place_t< slot_t, V, S > { slot_t { slot } });
+        });
+    });
+}
+
+expr_t
+make_global(std::string_view name, view_t view, sign_t sign)
+{
+    return cross(view, [&]< view_t V >() {
+        return cross(sign, [&]< sign_t S >() {
+            return expr_t(
+                place_t< global_t, V, S > { global_t { std::string(name) } });
         });
     });
 }

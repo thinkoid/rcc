@@ -264,7 +264,10 @@ initialize(parser_t &p, const type_t &t, std::size_t index)
 // tentatively defined is zero, 6.9.3p2.  A second initializer is a
 // second external definition, of which a program has one, 6.9.1p5, an
 // error.  The name is in scope from the end of its declarator, 6.2.1p7,
-// so an initializer sees the object.  An object of type void, which
+// so an initializer sees the object.  The name's leaf, a place of the
+// object's view and sign over its global_t, is built by its first
+// declaration, whether a later one defines the object or none does,
+// since the unit's answer is generation's.  An object of type void, which
 // rcc refuses where the unit defines it and lets be where it does not,
 // is not yet.
 void
@@ -282,10 +285,12 @@ declare_object(parser_t &p, const specifiers_t &spec, const declarator_t &d)
     const bool external = linkage_of(spec, linked, false);
     refuse_visibility(d.name, external);
 
-    if (!object)
-        object =
-            &p.objects.emplace(d.name.text, object_name_t { d.type, external })
-                 .first->second;
+    if (!object) {
+        expr_t leaf =
+            make_global(d.name.text, view_of(d.type), sign_of(d.type));
+        object_name_t name { d.type, std::move(leaf), external };
+        object = &p.objects.emplace(d.name.text, std::move(name)).first->second;
+    }
 
     require_linkage(d.name, object->external, external);
 

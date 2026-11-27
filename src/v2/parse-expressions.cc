@@ -33,15 +33,16 @@ refuse_operator(const parser_t &p, std::initializer_list< tok_t > operators)
 }
 
 // An identifier, 6.5.2p3: a local's operand, a copy of what its
-// declaration made (docs/typed-tree.md 4.5); a name the file declares
-// as an object, which is not yet; or a name the file declares as a
-// function, a function designator of the function's type and no node;
-// a name no scope declares is rcc's error.  Each use of a static
-// function is recorded, for the end of the unit to require its
-// definition.  rcc knows reserved names that no declaration in the unit
-// makes, its builtins and the types the compiler declares, and reads
-// some of them before it looks the name up, so a reserved name is not
-// yet wherever it stands.
+// declaration made (docs/typed-tree.md 4.5); an object the file
+// declares, a copy of the leaf its first declaration made, whether the
+// unit defines the object or not, which generation asks; or a name the
+// file declares as a function, a function designator of the function's
+// type and no node; a name no scope declares is rcc's error.  Each use
+// of a static function is recorded, for the end of the unit to require
+// its definition.  rcc knows reserved names that no declaration in the
+// unit makes, its builtins and the types the compiler declares, and
+// reads some of them before it looks the name up, so a reserved name is
+// not yet wherever it stands.
 operand_t
 identifier(parser_t &p)
 {
@@ -52,8 +53,8 @@ identifier(parser_t &p)
     if (const operand_t *local = lookup(p, t.text))
         return { local->type, local->node, &t };
 
-    if (p.objects.contains(t.text))
-        not_yet(t, "object " + quoted(t.text) + " in an expression");
+    if (const auto object = p.objects.find(t.text); object != p.objects.end())
+        return { object->second.type, object->second.leaf, &t };
 
     const auto it = p.functions.find(t.text);
     if (it == p.functions.end())

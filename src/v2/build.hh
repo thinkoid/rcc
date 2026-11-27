@@ -19,10 +19,13 @@
 namespace rcc {
 
 // A constant of the view, its value the bits its register holds, read
-// signed, a narrow one's its promotion, 6.4.4.2; and a local of the view
-// and of a type of the sign, its place.
+// signed, a narrow one's its promotion, 6.4.4.2; a local of the view and
+// of a type of the sign, its place; and an object of static storage of
+// the view and of a type of the sign, by its assembler's name, its
+// place, whether the unit defines it or only declares it.
 expr_t make_literal(long long value, view_t view);
 expr_t make_local(int slot, view_t view, sign_t sign);
+expr_t make_global(std::string_view name, view_t view, sign_t sign);
 
 // The lvalue conversion, 6.3.2.1p2: a place becomes the value it holds;
 // any other expression is a value already, and is returned as it is.

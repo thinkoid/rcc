@@ -25,13 +25,14 @@ generate(S &s, const decl_t< V > &d)
 }
 
 // The slot is taken before the initializer is generated, whose scope
-// holds the name already, 6.2.1p7: int x = x; reads x's own slot.
+// holds the name already, 6.2.1p7: int x = x; reads x's own slot.  The
+// value is stored at the slot's address, which writes nothing.
 template< typename S, view_t V >
 void
 generate(S &s, const init_t< V > &i)
 {
     allocate(s, i.where, V);
-    initialize(s, i.where, i.value);
+    initialize(s, address(s, i.where), i.value);
 }
 
 // An expression statement is its expression for its effect, 6.8.4p2.

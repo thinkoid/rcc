@@ -23,13 +23,16 @@ does not compile yet is no defect, and =make sides= counts it.
 ** TODO Each class of operand still multiplies what the instantiating unit costs
 
 =src/v2/build.cc= instantiates every node type a builder can make,
-with its rows of both targets: about 2,500 binary node types. It
+with its rows of both targets. At about 2,500 binary node types it
 took the compiler 136 s and 12.3 GB. With the builders' crossings
 instantiated once for each class of operand, and the handle's
-=shared_ptr= one for every model, it takes about 40 s and 4 GB, and
-=rcc-v2= is 162 MB where it was 571. Each further class of operand,
-a global's where or a pointer, still multiplies the types, at about
-15 ms a type.
+=shared_ptr= one for every model, it took about 40 s and 4 GB, and
+=rcc-v2= was 162 MB where it was 571. Each further class of operand
+still multiplies the types, at about 15 ms a type. The second where,
+an object of static storage, did: its load is a class on both sides
+of every operator, as the slot's is, so the expression models went
+from 2,492 to 4,604, the binary node types from 2,496 to 4,532, and
+the unit to 73 s and 7.6 GB. A pointer's where is the third.
 
 Measured and not taken, each changing no node type and no listing:
 line tables alone as the unit's debugging information (5 s and 0.7
@@ -43,7 +46,7 @@ units by operator family (wall time alone). Counted and not built,
 two that change the zoo and =docs/typed-tree.md= principle 5 with
 it: a class of operand kept only where a row of either target reads
 it, 2,346 binary models to 460; the operator's family as the node's
-parameter, to 635; both, 75.
+parameter, to 635; both, 75. The three were counted at one where.
 
 The check: the time and the peak memory of =build.o=, before and
 after, and every listing of =make sides= and of a corpus unchanged.

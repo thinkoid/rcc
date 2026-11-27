@@ -77,31 +77,41 @@ concept constant = requires(const C &c) { value_of(c); };
 
 // The where of a local, 4.2: its number among the function's locals.
 // The displacement is the state's, since a slot is taken where its
-// declaration is generated; the store into a slot is handed the where
-// alone (3.4).
+// declaration is generated; a use reads it by the number.
 struct slot_t
 {
     int id;
 };
 
-// A local, a place, 4.2: the where of an object of view V and of a type
-// of the sign S in the function's frame, its object's sign kept since
-// rcc reads a narrow object by an extending load of its own sign
-// whatever consumes it.  A parameter is one, of its type's view and
-// sign.
-template< view_t V, sign_t S >
+// The where of an object of static storage, 4.2: its bytes in the
+// unit's data, named by the assembler's name.  Whether the unit defines
+// it is the unit's, asked by the where's address at generation, each
+// target's address(): a slot with another spelling where it does, its
+// label, and the address the GOT holds where it only declares it
+// (backend.md chapter 10).
+struct global_t
+{
+    std::string name;
+};
+
+// A place, 4.2: the where W of an object of view V and of a type of the
+// sign S, a local's slot in the function's frame or a global, its
+// object's sign kept since rcc reads a narrow object by an extending
+// load of its own sign whatever consumes it.  A parameter is a local, of
+// its type's view and sign.
+template< typename W, view_t V, sign_t S >
 struct place_t
 {
-    slot_t where;
+    W where;
 };
 
 // What a place holds, 6.3.2.1p2: the object read at its view, which is
 // no place, extended to 32 bits by S where V is narrow; a widening's
 // builder may read a where at another sign, the type it converts from.
-template< view_t V, sign_t S >
+template< typename W, view_t V, sign_t S >
 struct load_t
 {
-    slot_t where;
+    W where;
 };
 
 // -e ~e !e, 6.5.4.3p3 to p5, on an operand that is no constant, which
@@ -175,14 +185,15 @@ struct trunc_t
     A arg;
 };
 
-// x = e, 6.5.17.2: the value stored in the place of view V, whose value
-// after the store is the expression's, 6.5.17.1p3.  The value is
-// erased, converted to the place's type by the parser, so its view is
-// V: its store is a row of its handle, which finds a target's niche.
-template< view_t V >
+// x = e, 6.5.17.2: the value stored in the place of view V at the where
+// W, whose value after the store is the expression's, 6.5.17.1p3.  The
+// value is erased, converted to the place's type by the parser, so its
+// view is V: its store is a row of its handle, which finds a target's
+// niche.
+template< typename W, view_t V >
 struct assign_t
 {
-    slot_t where;
+    W where;
     expr_t value;
 };
 
@@ -421,16 +432,16 @@ view_of(const wide_t &)
     return view_t::i64;
 }
 
-template< view_t V, sign_t S >
+template< typename W, view_t V, sign_t S >
 constexpr view_t
-view_of(const place_t< V, S > &)
+view_of(const place_t< W, V, S > &)
 {
     return V;
 }
 
-template< view_t V, sign_t S >
+template< typename W, view_t V, sign_t S >
 constexpr view_t
-view_of(const load_t< V, S > &)
+view_of(const load_t< W, V, S > &)
 {
     return V;
 }
@@ -477,9 +488,9 @@ view_of(const trunc_t< V, A > &)
     return V;
 }
 
-template< view_t V >
+template< typename W, view_t V >
 constexpr view_t
-view_of(const assign_t< V > &)
+view_of(const assign_t< W, V > &)
 {
     return V;
 }
@@ -536,9 +547,9 @@ promoted_width(view_t view)
     return width(view) < 32 ? 32 : width(view);
 }
 
-template< view_t V, sign_t S >
+template< typename W, view_t V, sign_t S >
 int
-valid_of(const load_t< V, S > &, sign_t sign)
+valid_of(const load_t< W, V, S > &, sign_t sign)
 {
     return written(promoted_width(V), sign);
 }
@@ -584,9 +595,9 @@ valid_of(const sext_t< V, F, A > &, sign_t)
 // bits where the type its consumer reads it at is unsigned, u = c on an
 // unsigned u, and to 32 where it is signed.  The same extension in a
 // register, of a narrowed value, is valid to 32 alone.
-template< view_t F >
+template< view_t F, typename W >
 int
-valid_of(const sext_t< view_t::i32, F, load_t< F, sign_t::signed_ > > &,
+valid_of(const sext_t< view_t::i32, F, load_t< W, F, sign_t::signed_ > > &,
          sign_t sign)
 {
     return written(32, sign);
@@ -603,33 +614,34 @@ valid_of(const zext_t< V, F, A > &, sign_t)
 // object at its own type, rcc's widened_read(), and is valid as the
 // widening of the object itself is: (unsigned long) (int) c on a signed
 // char c to 64 bits, (int) (short) c to 32 at a signed consumer.
-template< view_t V, view_t F, view_t G >
-int
-valid_of(const sext_t< V, F, sext_t< F, G, load_t< G, sign_t::signed_ > > > &e,
-         sign_t sign)
-{
-    return valid_of(sext_t< V, G, load_t< G, sign_t::signed_ > > { e.arg.arg },
-                    sign);
-}
-
-template< view_t V, view_t F, view_t G >
+template< view_t V, view_t F, view_t G, typename W >
 int
 valid_of(
-    const sext_t< V, F, zext_t< F, G, load_t< G, sign_t::unsigned_ > > > &e,
+    const sext_t< V, F, sext_t< F, G, load_t< W, G, sign_t::signed_ > > > &e,
     sign_t sign)
 {
     return valid_of(
-        zext_t< V, G, load_t< G, sign_t::unsigned_ > > { e.arg.arg }, sign);
+        sext_t< V, G, load_t< W, G, sign_t::signed_ > > { e.arg.arg }, sign);
 }
 
-template< view_t V, view_t F, view_t G >
+template< view_t V, view_t F, view_t G, typename W >
 int
 valid_of(
-    const zext_t< V, F, zext_t< F, G, load_t< G, sign_t::unsigned_ > > > &e,
+    const sext_t< V, F, zext_t< F, G, load_t< W, G, sign_t::unsigned_ > > > &e,
     sign_t sign)
 {
     return valid_of(
-        zext_t< V, G, load_t< G, sign_t::unsigned_ > > { e.arg.arg }, sign);
+        zext_t< V, G, load_t< W, G, sign_t::unsigned_ > > { e.arg.arg }, sign);
+}
+
+template< view_t V, view_t F, view_t G, typename W >
+int
+valid_of(
+    const zext_t< V, F, zext_t< F, G, load_t< W, G, sign_t::unsigned_ > > > &e,
+    sign_t sign)
+{
+    return valid_of(
+        zext_t< V, G, load_t< W, G, sign_t::unsigned_ > > { e.arg.arg }, sign);
 }
 
 template< view_t V, typename A >
@@ -639,9 +651,9 @@ valid_of(const trunc_t< V, A > &, sign_t)
     return width(V);
 }
 
-template< view_t V >
+template< typename W, view_t V >
 int
-valid_of(const assign_t< V > &a, sign_t sign)
+valid_of(const assign_t< W, V > &a, sign_t sign)
 {
     return valid_of(a.value, sign);
 }
@@ -655,9 +667,9 @@ valid_of(const call_t< V > &, sign_t)
 
 // A place is read only through its load, and a void call has no value:
 // either asked for its width is a tree the parser does not make.
-template< view_t V, sign_t S >
+template< typename W, view_t V, sign_t S >
 int
-valid_of(const place_t< V, S > &, sign_t)
+valid_of(const place_t< W, V, S > &, sign_t)
 {
     throw std::logic_error("v2: a place read without its lvalue conversion");
 }

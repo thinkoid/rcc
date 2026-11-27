@@ -23,6 +23,8 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace rcc::arm64 {
@@ -57,21 +59,26 @@ bit(reg_t r)
 }
 
 // The state of one function's generation, which the function's row
-// builds fresh.  The body is a buffer, which the frame is written
-// around; the function's name makes its labels, which are counted per
-// function, and ret is the one epilogue's.  terminated says that no
-// path reaches what is written next: the last instruction written is
-// an unconditional jump, which jump() sets and place_label() clears,
-// so an if whose then part ends so writes no jump over its else part,
-// and main writes no return of 0 (backend.md 7.2).  loops is the
-// labels each loop generated so far took for its body's jumps, by the
-// loop's number, and user_labels the label of each C label met so far,
-// by its number.  frame is the bytes from x29 to the end of the last
-// slot, the locals' and the spills' in the order they are taken, the
-// frame record's alone before the first, and slots each local's
-// displacement off x29, by its number.
+// builds fresh.  defined is the names of the objects the unit defines,
+// defined_symbols()'s, which a global's address reads.  The body is a
+// buffer, which the frame is written around; the function's name makes
+// its labels, which are counted per function, and ret is the one
+// epilogue's.  terminated says that no path reaches what is written
+// next: the last instruction written is an unconditional jump, which
+// jump() sets and place_label() clears, so an if whose then part ends
+// so writes no jump over its else part, and main writes no return of 0
+// (backend.md 7.2).  loops is the labels each loop generated so far
+// took for its body's jumps, by the loop's number, and user_labels the
+// label of each C label met so far, by its number.  frame is the bytes
+// from x29 to the end of the last slot, the locals' and the spills' in
+// the order they are taken, the frame record's alone before the first,
+// and slots each local's displacement off x29, by its number.  reserved
+// is the registers take() leaves for last while an assignment's place
+// is formed, the one its consumer names, so that the value takes it
+// (6.1).
 struct state_t
 {
+    const std::unordered_set< std::string > &defined;
     std::ostringstream body { };
     std::string function;
     int labels = 0;
@@ -84,13 +91,15 @@ struct state_t
     std::unordered_map< int, int > slots { };
 
     registers_t< reg_t > registers { };
+    unsigned reserved = 0;
 };
 
 // A jump to the function's label n; no path reaches what follows it.
 void jump(state_t &, int n);
 
-// A register for a new value, register-stack.hh's, taken outside avoid;
-// it spills a held value when every one is held.
+// A register for a new value, register-stack.hh's, taken outside avoid
+// and, where it can, outside s.reserved; it spills a held value when
+// every one is held.
 reg_t take(state_t &, unsigned avoid = 0);
 
 // The function's label n, where a jump may reach it from elsewhere: a
@@ -162,16 +171,84 @@ value(state_t &s, const wide_t &c, unsigned = 0)
     return constant_value(s, c.value, view_t::i64);
 }
 
-// The load row: the object a slot holds at its view, extended to 32
-// bits by its sign where it is narrow, in a register taken for it,
-// ldrsb w0, [x29, #16], ldr w0, [x29, #16] or ldr x0, [x29, #16].
-value_t load(state_t &, slot_t where, view_t view, sign_t sign);
-
-template< view_t V, sign_t S >
-value_t
-value(state_t &s, const load_t< V, S > &l, unsigned = 0)
+// An object in memory as an access names it, rcc's address_t (6.3,
+// chapter 10): a slot's displacement off x29, a global's label, which
+// its access reaches through x16, or a base held in a register, the
+// address the GOT held.  The base is a held value, spilled and reloaded
+// as any; the access consumes it.
+struct address_t
 {
-    return load(s, l.where, V, S);
+    std::optional< value_t > base = std::nullopt;
+    int displacement = 0;
+    std::string label = { };
+};
+
+// A slot's address, rcc's slot_address(): its displacement, and no
+// instruction.
+address_t address(state_t &, slot_t where);
+
+// A global's, rcc's global_address(): its label where the unit defines
+// it; otherwise the GOT's entry loaded into a register, adrp x0, :got:g
+// and ldr x0, [x0, :got_lo12:g], rcc's symbol_address(), the base of
+// the access, [x0].  The unit's answer is asked here, and no row asks
+// it.
+address_t address(state_t &, const global_t &where);
+
+// The address of where formed with the registers in reserved left for
+// last, rcc's address_avoiding(): a GOT's load takes its register
+// outside them where it can.
+template< typename W >
+address_t
+address_avoiding(state_t &s, const W &where, unsigned reserved)
+{
+    const unsigned outer = std::exchange(s.reserved, s.reserved | reserved);
+    const address_t a = address(s, where);
+    s.reserved = outer;
+
+    return a;
+}
+
+// The place of an assignment, held across its value, rcc's assign():
+// the address of where, formed outside the consumer's register, wanted,
+// so that the value takes it: return g = 7 on an object only declared
+// takes x1 for the GOT's base, outside the result's x0.  A slot's
+// address and a label take no register, so a local's and a defined
+// object's place is no reservation.
+template< typename W >
+address_t
+place_of(state_t &s, const W &where, const expr_t &, unsigned wanted)
+{
+    return address_avoiding(s, where, wanted);
+}
+
+// The registers an address's values are in, rcc's registers_of(), for
+// a take or a reload to stay clear of: the base's, none where it is
+// spilled or there is none.
+unsigned registers_of(const state_t &, const address_t &);
+
+// The address as an access's operand, rcc's operand(): [x29, #16], [x0],
+// a spilled base reloaded first outside avoid; or a global's label,
+// adrp x16, g written here, at the access, and [x16, :lo12:g] returned,
+// so every caller forms the operand in a statement of its own, after
+// every register of the access is in hand and right before the access:
+// no spill or reload stands between the adrp and its access.
+std::string operand(state_t &, const address_t &, unsigned avoid = 0);
+
+// The address is consumed: its base's register is free, rcc's release().
+void release(state_t &, const address_t &);
+
+// The load row, rcc's load(): the object at an address at its view,
+// extended to 32 bits by its sign where it is narrow, in a register
+// taken for it, ldrsb w0, [x29, #16], ldr w0, [x29, #16] or ldr x0,
+// [x29, #16], ldr w0, [x16, :lo12:g] after adrp x16, g, or ldr w0, [x0]
+// after the GOT's pair.
+value_t load(state_t &, const address_t &, view_t view, sign_t sign);
+
+template< typename W, view_t V, sign_t S >
+value_t
+value(state_t &s, const load_t< W, V, S > &l, unsigned = 0)
+{
+    return load(s, address(s, l.where), V, S);
 }
 
 // - or ~ of the held value v at the view, into the register the
@@ -209,20 +286,20 @@ value(state_t &s, const unary_t< op, V, A > &u, unsigned wanted = 0)
     return negated(s, op, value(s, u.arg), V, wanted);
 }
 
-// The store row, r into a slot at the view: str w0 or str x0.
-void store(state_t &, reg_t r, slot_t where, view_t view);
+// The store row, r into an object in memory, to, its operand's text, at
+// the view: str w0 or str x0.
+void store(state_t &, reg_t r, std::string_view to, view_t view);
 
-// The store of the zero register into a slot at the view, str wzr or
-// str xzr.
-void store_zero(state_t &, slot_t where, view_t view);
+// The niche of initialize(), 6.6: 0 is the zero register's store at the
+// address its caller formed, str wzr, [x29, #16], adrp x16, g and str
+// wzr, [x16, :lo12:g], and no register is held.
+void store_zero(state_t &, const address_t &at, view_t view);
 
-// The niche of initialize(), 6.6: 0 is the zero register's store, and
-// no register is held.
 template< view_t V >
 void
-initialize(state_t &s, slot_t where, const zero_t< V > &)
+initialize(state_t &s, const address_t &at, const zero_t< V > &)
 {
-    store_zero(s, where, V);
+    store_zero(s, at, V);
 }
 
 // The operators of rcc's arithmetic(), * / % + - << >> & | ^, whose
@@ -421,20 +498,21 @@ value_t extended(
     state_t &, value_t v, view_t from, sign_t sign, view_t to, unsigned wanted);
 
 // The extending load, rcc's extending_load(), 6.3: the object of the
-// view from in its slot, loaded extended by its sign to 64 bits, ldrsw
-// x0, [x29, #16].  It reads the bytes the load at its own view reads,
-// at the object's width (G10), and leaves the value valid to 64.
-value_t extending_load(state_t &, slot_t where, view_t from);
+// view from at an address, loaded extended by its sign to 64 bits,
+// ldrsw x0, [x29, #16], as load() takes the address.  It reads the
+// bytes the load at its own view reads, at the object's width (G10),
+// and leaves the value valid to 64.
+value_t extending_load(state_t &, const address_t &, view_t from);
 
 // A signed object widened to 64 bits is its extending load, the niche
 // of the conversion over a load (docs/typed-tree.md 4.2), as on x86-64.
-template< view_t F >
+template< view_t F, typename W >
 value_t
 value(state_t &s,
-      const sext_t< view_t::i64, F, load_t< F, sign_t::signed_ > > &e,
+      const sext_t< view_t::i64, F, load_t< W, F, sign_t::signed_ > > &e,
       unsigned = 0)
 {
-    return extending_load(s, e.arg.where, F);
+    return extending_load(s, address(s, e.arg.where), F);
 }
 
 // The arguments of a call moved from their slots to where the

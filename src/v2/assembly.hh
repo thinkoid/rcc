@@ -2,9 +2,10 @@
 
 // The text both targets write alike, to the letter, which names no
 // register: an instruction's line, a label and its count, the .file
-// directive's string, a symbol's binding and the unit's data.  insn()
-// and new_label() are templates over a target's state, which holds the
-// function's text and its count of labels.
+// directive's string, a symbol's binding, the unit's data and the names
+// of the objects it defines.  insn() and new_label() are templates over
+// a target's state, which holds the function's text and its count of
+// labels.
 
 #pragma once
 
@@ -14,6 +15,7 @@
 #include <ostream>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 namespace rcc {
@@ -63,5 +65,11 @@ void binding(std::ostream &, std::string_view name, bool external);
 // The objects the unit defines, written after its last function, rcc's
 // data() (backend.md chapter 10): the same text on both targets.
 void data(std::ostream &, const std::vector< object_decl_t > &objects);
+
+// The names of the objects the unit defines, rcc's defined_symbols() of
+// objects alone, which a target takes before its first function: an
+// access of one is its label, and of any other the address the GOT
+// holds.
+std::unordered_set< std::string > defined_symbols(const translation_unit_t &);
 
 } // namespace rcc

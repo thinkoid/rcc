@@ -33,13 +33,13 @@ rvalue(const T &, const expr_t &self)
     return self;
 }
 
-// A local becomes the value its slot holds, 6.3.2.1p2, read at its
-// view by its object's sign.
-template< view_t V, sign_t S >
+// A place becomes the value its object holds, 6.3.2.1p2, read at its
+// view by its object's sign, a local's slot and a global alike.
+template< typename W, view_t V, sign_t S >
 expr_t
-rvalue(const place_t< V, S > &place, const expr_t &)
+rvalue(const place_t< W, V, S > &place, const expr_t &)
 {
-    return expr_t(load_t< V, S > { place.where });
+    return expr_t(load_t< W, V, S > { place.where });
 }
 
 // The value of a node the builders made a constant, value_of()'s (4.3),
@@ -59,14 +59,14 @@ constant_of(const C &c)
     return value_of(c);
 }
 
-// An assignment's builder exists for a place alone, a local, and so
-// defines what is assignable (principle 8); the place's view is the
-// store's.
-template< view_t V, sign_t S >
+// An assignment's builder exists for a place alone, a local or a
+// global, and so defines what is assignable (principle 8); the place's
+// view is the store's.
+template< typename W, view_t V, sign_t S >
 expr_t
-make_assign(const place_t< V, S > &place, const expr_t &value)
+make_assign(const place_t< W, V, S > &place, const expr_t &value)
 {
-    return expr_t(assign_t< V > { place.where, value });
+    return expr_t(assign_t< W, V > { place.where, value });
 }
 
 // The bits of an operation at the view V on constants, as rcc folds it,
@@ -422,11 +422,11 @@ make_widening(const A &arg, const expr_t &self)
 // A load is read at the type converted from, the conversion over a load
 // (docs/typed-tree.md 4.2), whose niche is the extending load of a
 // signed one.
-template< view_t V, view_t F, sign_t S, sign_t O >
+template< view_t V, view_t F, sign_t S, typename W, sign_t O >
 expr_t
-make_widening(const load_t< F, O > &l, const expr_t &)
+make_widening(const load_t< W, F, O > &l, const expr_t &)
 {
-    return widening_of< V, F, S >(load_t< F, S > { l.where });
+    return widening_of< V, F, S >(load_t< W, F, S > { l.where });
 }
 
 // A change of sign or a cast to its own type over a load keeps the
@@ -434,11 +434,11 @@ make_widening(const load_t< F, O > &l, const expr_t &)
 // converts from, rcc's object_under() under under_kept_bits(): (long)
 // (int) u on an unsigned u is movslq -4(%rbp), %rax, and (int)
 // (unsigned char) c on a signed char c movzbl -1(%rbp), %eax.
-template< view_t V, view_t F, sign_t S, sign_t O >
+template< view_t V, view_t F, sign_t S, typename W, sign_t O >
 expr_t
-make_widening(const trunc_t< F, load_t< F, O > > &t, const expr_t &)
+make_widening(const trunc_t< F, load_t< W, F, O > > &t, const expr_t &)
 {
-    return widening_of< V, F, S >(load_t< F, S > { t.arg.where });
+    return widening_of< V, F, S >(load_t< W, F, S > { t.arg.where });
 }
 
 // A widening over a promotion of the object, rcc's widened_read(),
@@ -454,9 +454,9 @@ make_widening(const trunc_t< F, load_t< F, O > > &t, const expr_t &)
 // case, its extension to 32 bits no extension to 64: (long) (unsigned)
 // c is the widening of the promotion, which writes nothing, since the
 // extending load is valid to 64 as an unsigned.
-template< view_t V, view_t F, sign_t S, view_t G >
+template< view_t V, view_t F, sign_t S, view_t G, typename W >
 expr_t
-make_widening(const sext_t< F, G, load_t< G, sign_t::signed_ > > &e,
+make_widening(const sext_t< F, G, load_t< W, G, sign_t::signed_ > > &e,
               const expr_t &self)
 {
     if constexpr (S == sign_t::signed_)
@@ -465,9 +465,9 @@ make_widening(const sext_t< F, G, load_t< G, sign_t::signed_ > > &e,
         return widening_of< V, F, S >(pinning(e, self));
 }
 
-template< view_t V, view_t F, sign_t S, view_t G >
+template< view_t V, view_t F, sign_t S, view_t G, typename W >
 expr_t
-make_widening(const zext_t< F, G, load_t< G, sign_t::unsigned_ > > &e,
+make_widening(const zext_t< F, G, load_t< W, G, sign_t::unsigned_ > > &e,
               const expr_t &)
 {
     return widening_of< V, F, S >(e);
@@ -487,11 +487,11 @@ make_narrowing(const A &arg, const expr_t &self)
 
 // Over a load, trunc_t keeps the load as its class, the object a parent
 // may name in place.
-template< view_t V, view_t F, sign_t S >
+template< view_t V, typename W, view_t F, sign_t S >
 expr_t
-make_narrowing(const load_t< F, S > &l, const expr_t &)
+make_narrowing(const load_t< W, F, S > &l, const expr_t &)
 {
-    return expr_t(trunc_t< V, load_t< F, S > > { l });
+    return expr_t(trunc_t< V, load_t< W, F, S > > { l });
 }
 
 // Two conversions that write nothing are one, rcc's under_kept_bits()

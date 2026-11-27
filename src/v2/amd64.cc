@@ -20,6 +20,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 namespace rcc::amd64 {
@@ -553,23 +554,27 @@ pin_division(state_t &s, binary_op_t op, value_t l, value_t r, int width)
     return left;
 }
 
-// The pinned pair of a division by the object in a slot, chapter 6.5:
-// the slot is idiv's operand, idivl -8(%rbp), and the values held in
-// rax and rdx move out, vacate(); a dividend spilled is reloaded into
-// rax after them.  The dividend is still held, in the register
-// returned.
+// The pinned pair of a division by an object in memory, rcc's
+// pin_division(), chapter 6.5: the object is idiv's operand, idivl
+// -8(%rbp), idivl (%rcx).  The register of its address is a held value
+// as any other: the values held in rax and rdx move out, vacate(),
+// outside it, and the operand is formed after the moves, from where
+// they left it; a dividend spilled is reloaded into rax after them.
+// The dividend is still held, in the register returned, and the
+// address is the caller's to give back.
 reg_t
-pin_division(state_t &s, binary_op_t op, value_t l, slot_t divisor, int width)
+pin_division(
+    state_t &s, binary_op_t op, value_t l, const address_t &divisor, int width)
 {
     const unsigned pinned = bit(rax) | bit(rdx);
     const unsigned in = held_in(s, l);
 
     for (const reg_t p : { rax, rdx })
         if (!(in & bit(p)))
-            vacate(s, p, pinned | in);
+            vacate(s, p, pinned | in | registers_of(s, divisor));
 
     const reg_t left = dividend(s, op, l, width);
-    idiv(s, op, left, at(slot_of(s, divisor)), width);
+    idiv(s, op, left, operand(s, divisor, pinned | bit(left)), width);
 
     return left;
 }
@@ -620,29 +625,110 @@ constant_value(state_t &s, long long value, view_t view)
     return v;
 }
 
-// The load row, 6.3.2.1p2, rcc's load() at max(32, width): movsbl
-// -1(%rbp), %eax, movl -4(%rbp), %eax, movq -8(%rbp), %rax.  G8: one
-// mov.
-value_t
-load(state_t &s, slot_t where, view_t view, sign_t sign)
+address_t
+address(state_t &s, slot_t where)
 {
-    const auto [mnemonic, to] = extension(view, sign, promoted_width(view));
+    return { .displacement = slot_of(s, where) };
+}
 
+namespace {
+
+// The address of an object the unit only declares, from the GOT, rcc's
+// symbol_address() for one it does not define, chapter 10: it may be in
+// a shared library, which a PC-relative reference does not reach from a
+// position-independent executable, so its address is the one the
+// dynamic linker wrote, loaded into a register taken for it, movq
+// g@GOTPCREL(%rip), %rax.
+value_t
+symbol_address(state_t &s, const global_t &g)
+{
     const value_t v = fresh(s);
-    insn(s, mnemonic, { at(slot_of(s, where)), reg(reg_of(s, v), to) });
+    insn(s, "movq",
+         { std::format("{}@GOTPCREL(%rip)", g.name), reg(reg_of(s, v), 64) });
 
     return v;
 }
 
-value_t
-extending_load(state_t &s, slot_t where, view_t from)
+} // namespace
+
+// Each access the source writes loads the address once: g = g + 1 is
+// two loads from the GOT.
+address_t
+address(state_t &s, const global_t &where)
 {
-    const auto [mnemonic, to] = extension(from, sign_t::signed_, 64);
+    if (s.defined.contains(where.name))
+        return { .label = where.name };
+
+    return { .base = symbol_address(s, where) };
+}
+
+unsigned
+registers_of(const state_t &s, const address_t &a)
+{
+    return a.base ? held_in(s, *a.base) : 0;
+}
+
+std::string
+operand(state_t &s, const address_t &a, unsigned avoid)
+{
+    if (!a.label.empty())
+        return std::format("{}(%rip)", a.label);
+
+    if (!a.base)
+        return at(a.displacement);
+
+    return std::format("({})", reg(reg_of(s, *a.base, avoid), 64));
+}
+
+void
+release(state_t &s, const address_t &a)
+{
+    if (a.base)
+        release(s, *a.base);
+}
+
+std::pair< reg_t, std::string >
+operands(state_t &s, value_t l, const address_t &at)
+{
+    const reg_t left = reg_of(s, l, registers_of(s, at));
+
+    return { left, operand(s, at, bit(left)) };
+}
+
+namespace {
+
+// The load of the object at an address at the view, by the sign, into
+// a register of 32 or 64 bits, extension()'s, rcc's load(): the operand
+// formed and the address consumed first, so the value takes the lowest
+// free register, a GOT's base's among them.  G8: one mov.
+value_t
+load_to(state_t &s, const address_t &a, view_t view, sign_t sign, int width)
+{
+    const auto [mnemonic, to] = extension(view, sign, width);
+
+    const std::string from = operand(s, a);
+    release(s, a);
 
     const value_t v = fresh(s);
-    insn(s, mnemonic, { at(slot_of(s, where)), reg(reg_of(s, v), to) });
+    insn(s, mnemonic, { from, reg(reg_of(s, v), to) });
 
     return v;
+}
+
+} // namespace
+
+// The load row, 6.3.2.1p2, rcc's load() at max(32, width): movsbl
+// -1(%rbp), %eax, movl -4(%rbp), %eax, movq -8(%rbp), %rax.
+value_t
+load(state_t &s, const address_t &a, view_t view, sign_t sign)
+{
+    return load_to(s, a, view, sign, promoted_width(view));
+}
+
+value_t
+extending_load(state_t &s, const address_t &a, view_t from)
+{
+    return load_to(s, a, from, sign_t::signed_, 64);
 }
 
 // rcc's extended(): the extension in v's own register, but in the one
@@ -696,13 +782,6 @@ operate(
         flagged(s, bits);
 }
 
-// addl -8(%rbp), %eax.
-void
-operate(state_t &s, binary_op_t op, reg_t r, slot_t source, view_t view)
-{
-    operate(s, op, r, at(slot_of(s, source)), view);
-}
-
 // addl %ecx, %eax.
 void
 operate(state_t &s, binary_op_t op, reg_t r, reg_t source, view_t view)
@@ -744,20 +823,20 @@ void
 multiply(
     state_t &s, reg_t r, reg_t source, std::string_view factor, view_t view)
 {
-    const int bits = width(view);
-
-    insn(s, sized("imul", bits), { factor, reg(source, bits), reg(r, bits) });
+    multiply(s, r, reg(source, width(view)), factor, view);
 }
 
 // imull $5, -4(%rbp), %eax.
 void
-multiply(
-    state_t &s, reg_t r, slot_t source, std::string_view factor, view_t view)
+multiply(state_t &s,
+         reg_t r,
+         std::string_view source,
+         std::string_view factor,
+         view_t view)
 {
     const int bits = width(view);
 
-    insn(s, sized("imul", bits),
-         { factor, at(slot_of(s, source)), reg(r, bits) });
+    insn(s, sized("imul", bits), { factor, source, reg(r, bits) });
 }
 
 // rcc's divide() by a held divisor: the division, pin_division(), the
@@ -776,16 +855,18 @@ divide(state_t &s,
     return divided(s, op, l, left, width(view), wanted);
 }
 
-// rcc's divide() by the object in a slot.
+// rcc's divide() by an object in memory: the division, the address
+// given back, then the value.
 value_t
 divide(state_t &s,
        binary_op_t op,
        value_t l,
-       slot_t divisor,
+       const address_t &divisor,
        view_t view,
        unsigned wanted)
 {
     const reg_t left = pin_division(s, op, l, divisor, width(view));
+    release(s, divisor);
 
     return divided(s, op, l, left, width(view), wanted);
 }
@@ -822,13 +903,6 @@ compare(state_t &s, value_t l, std::string_view source, view_t view)
     insn(s, sized("cmp", bits), { source, reg(reg_of(s, l), bits) });
 }
 
-// cmpl -8(%rbp), %eax.
-void
-compare(state_t &s, value_t l, slot_t source, view_t view)
-{
-    compare(s, l, at(slot_of(s, source)), view);
-}
-
 // cmpl %ecx, %eax: operands() asks for r's register first, then l's.
 void
 compare(state_t &s, value_t l, value_t r, view_t view)
@@ -841,11 +915,34 @@ compare(state_t &s, value_t l, value_t r, view_t view)
     release(s, r);
 }
 
+namespace {
+
+// cmp or test of an immediate and the object at an address, at the
+// object's width, rcc's condition_on(), and no register holds the
+// object: the instruction reads it after its address, where its load
+// would, and the constant has no evaluation, so nothing comes between
+// (G13).  The address is consumed.
+void
+condition_on(state_t &s,
+             std::string_view stem,
+             const address_t &at,
+             std::string_view source,
+             view_t view)
+{
+    insn(s, sized(stem, width(view)), { source, operand(s, at) });
+    release(s, at);
+}
+
+} // namespace
+
 // cmpl $5, -4(%rbp).
 void
-compare(state_t &s, slot_t where, std::string_view immediate, view_t view)
+compare(state_t &s,
+        const address_t &at,
+        std::string_view immediate,
+        view_t view)
 {
-    insn(s, sized("cmp", width(view)), { immediate, at(slot_of(s, where)) });
+    condition_on(s, "cmp", at, immediate, view);
 }
 
 // rcc's comparison(): the setcc writes l's register, where the cmp left
@@ -878,9 +975,10 @@ test_zero(state_t &s, value_t v, view_t view, int label, bool sense)
 }
 
 void
-in_place_branch(state_t &s, slot_t where, view_t view, int label, bool sense)
+in_place_branch(
+    state_t &s, const address_t &at, view_t view, int label, bool sense)
 {
-    compare(s, where, imm(0), view);
+    compare(s, at, imm(0), view);
     jump_if(s, sense ? binary_op_t::ne : binary_op_t::eq, label);
 }
 
@@ -907,13 +1005,6 @@ test(state_t &s, value_t l, std::string_view source, view_t view)
     flagged(s, bits);
 }
 
-// testl -8(%rbp), %eax.
-void
-test(state_t &s, value_t l, slot_t source, view_t view)
-{
-    test(s, l, at(slot_of(s, source)), view);
-}
-
 // testl %ecx, %eax: operands() asks for r's register first, then l's.
 void
 test(state_t &s, value_t l, value_t r, view_t view)
@@ -929,12 +1020,10 @@ test(state_t &s, value_t l, value_t r, view_t view)
 
 // testl $1, -4(%rbp).
 void
-test(state_t &s, slot_t where, std::string_view immediate, view_t view)
+test(state_t &s, const address_t &at, std::string_view immediate, view_t view)
 {
-    const int bits = width(view);
-
-    insn(s, sized("test", bits), { immediate, at(slot_of(s, where)) });
-    flagged(s, bits);
+    condition_on(s, "test", at, immediate, view);
+    flagged(s, width(view));
 }
 
 void
@@ -947,17 +1036,17 @@ move_immediate(state_t &s, reg_t r, int value)
 // -4(%rbp), movq %rax, -8(%rbp); G2, the low bytes of the register are
 // the value.
 void
-store(state_t &s, reg_t r, slot_t where, view_t view)
+store(state_t &s, reg_t r, std::string_view to, view_t view)
 {
-    store(s, reg(r, width(view)), where, view);
+    store(s, reg(r, width(view)), to, view);
 }
 
 // The store of an immediate, rcc's initialize(): movl $7, -4(%rbp),
-// movq $0, -8(%rbp).
+// movq $0, g(%rip).
 void
-store(state_t &s, std::string_view immediate, slot_t where, view_t view)
+store(state_t &s, std::string_view immediate, std::string_view to, view_t view)
 {
-    insn(s, sized("mov", width(view)), { immediate, at(slot_of(s, where)) });
+    insn(s, sized("mov", width(view)), { immediate, to });
 }
 
 // The count's low 8 bits as written, not masked to the width, rcc's
@@ -1137,7 +1226,8 @@ parameters(state_t &s, const std::vector< view_t > &views)
 
         const int bytes = width(views[i]) / 8;
         s.slots.emplace(id, allocate(s, bytes, bytes));
-        store(s, argument_registers[i], slot_t { id }, views[i]);
+        store(s, argument_registers[i], at(slot_of(s, slot_t { id })),
+              views[i]);
     }
 }
 
@@ -1148,9 +1238,11 @@ parameters(state_t &s, const std::vector< view_t > &views)
 // for main, which returns 0 when it falls off its end, 5.1.2.3.4, by
 // its name, whatever its result type.
 void
-function(std::ostream &out, const function_decl_t &fd)
+function(std::ostream &out,
+         const function_decl_t &fd,
+         const std::unordered_set< std::string > &defined)
 {
-    state_t s { .function = fd.name };
+    state_t s { .defined = defined, .function = fd.name };
     s.ret = new_label(s);
 
     parameters(s, fd.parameters);
@@ -1180,10 +1272,12 @@ function(std::ostream &out, const function_decl_t &fd)
 } // namespace
 
 // The functions the unit defines, in order; one it only declares writes
-// nothing, since the assembler leaves its symbol to the link.  The data
-// of the objects it defines follows the last function, with nothing
-// between, chapter 10.  The note section marks the stack not
-// executable.
+// nothing, since the assembler leaves its symbol to the link.  The
+// names of the objects the unit defines are taken before the first
+// function, the unit being parsed whole, so an object defined after its
+// use is reached by its label.  The data of the objects it defines
+// follows the last function, with nothing between, chapter 10.  The
+// note section marks the stack not executable.
 void
 generate(const translation_unit_t &unit,
          std::string_view file,
@@ -1191,9 +1285,10 @@ generate(const translation_unit_t &unit,
 {
     assembly << std::format("\t.file\t{}\n\t.text\n", quoted_file(file));
 
+    const auto defined = defined_symbols(unit);
     for (const function_decl_t &fd : unit.functions)
         if (fd.body)
-            function(assembly, fd);
+            function(assembly, fd, defined);
 
     data(assembly, unit.objects);
 
