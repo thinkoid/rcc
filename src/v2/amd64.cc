@@ -60,11 +60,23 @@ reg(reg_t r, int width)
     return std::format("%{}", names[r][column]);
 }
 
-// An immediate, as the assembler reads it.
-std::string
-imm(long long value)
+// The suffix of a mnemonic for a width in bits.
+char
+suffix(int width)
 {
-    return std::format("${}", value);
+    switch (width) {
+    case 8: return 'b';
+    case 16: return 'w';
+    case 32: return 'l';
+    default: return 'q';
+    }
+}
+
+// A mnemonic with the suffix of its width, rcc's sized(): addl, addq.
+std::string
+sized(std::string_view stem, int width)
+{
+    return std::format("{}{}", stem, suffix(width));
 }
 
 // A slot: a displacement off the frame pointer.
@@ -96,17 +108,17 @@ insn(state_t &s,
      std::string_view mnemonic,
      std::initializer_list< std::string_view > operands)
 {
-    s.zero_flag = false;
+    s.zero_flag = 0;
     rcc::insn(s, mnemonic, operands);
 }
 
-// The instruction just written set ZF from the value it computed, as
-// Intel's reference has add, sub, and, or, xor, neg and test do
-// (backend.md 7.1); it stands until the next instruction or label.
+// The instruction just written set ZF from the result it computed at
+// width, as Intel's reference has add, sub, and, or, xor, neg and test
+// do (backend.md 7.1); it stands until the next instruction or label.
 void
-flagged(state_t &s)
+flagged(state_t &s, int width)
 {
-    s.zero_flag = true;
+    s.zero_flag = width;
 }
 
 // The copy of a register into another at a width, 32 or 64 bits, the
@@ -115,8 +127,22 @@ flagged(state_t &s)
 void
 mov(state_t &s, reg_t from, reg_t to, int width)
 {
-    insn(s, width == 64 ? "movq" : "movl",
-         { reg(from, width), reg(to, width) });
+    insn(s, sized("mov", width), { reg(from, width), reg(to, width) });
+}
+
+// The extending mov that brings a value of the view from to a width of
+// 32 or 64 bits, and the width of its destination register, rcc's
+// extension(): a long's movq, an int's movl, and to 64 bits its movslq.
+std::pair< std::string, int >
+extension(view_t from, int to)
+{
+    if (from == view_t::i64)
+        return { "movq", 64 };
+
+    if (to == 32)
+        return { "movl", 32 };
+
+    return { "movslq", 64 };
 }
 
 // constants
@@ -146,51 +172,57 @@ constant(state_t &s, reg_t r, long long value, int width)
 
 // operators
 
-// The instruction of a binary operator at 32 bits, rcc's
-// arithmetic_mnemonic() and shift_mnemonic() sized l: sar for >>,
-// signed, and idiv for / and % alike, which idiv() writes.
+// The instruction of a binary operator, rcc's arithmetic_mnemonic() and
+// shift_mnemonic() before sized(): sar for >>, signed, and idiv for /
+// and % alike, which idiv() writes.
 std::string_view
 mnemonic(binary_op_t op)
 {
     switch (op) {
-    case binary_op_t::add: return "addl";
-    case binary_op_t::sub: return "subl";
-    case binary_op_t::mul: return "imull";
-    case binary_op_t::div:
-    case binary_op_t::rem: return "idivl";
-    case binary_op_t::shl: return "shll";
-    case binary_op_t::shr: return "sarl";
-    case binary_op_t::lt:
-    case binary_op_t::gt:
-    case binary_op_t::le:
-    case binary_op_t::ge:
+    case binary_op_t::add: return "add";
+    case binary_op_t::sub: return "sub";
+    case binary_op_t::mul: return "imul";
+    case binary_op_t::sdiv:
+    case binary_op_t::srem: return "idiv";
+    case binary_op_t::shl: return "shl";
+    case binary_op_t::ashr: return "sar";
+    case binary_op_t::slt:
+    case binary_op_t::sle:
+    case binary_op_t::sgt:
+    case binary_op_t::sge:
     case binary_op_t::eq:
     case binary_op_t::ne:
     case binary_op_t::log_and:
     case binary_op_t::log_or:
         throw std::logic_error("v2: an operator of no arithmetic instruction");
-    case binary_op_t::bit_and: return "andl";
-    case binary_op_t::bit_or: return "orl";
-    case binary_op_t::bit_xor: return "xorl";
+    case binary_op_t::bit_and: return "and";
+    case binary_op_t::bit_or: return "or";
+    case binary_op_t::bit_xor: return "xor";
     }
 }
 
-// The condition code of a comparison of op on int, the suffix of setcc
-// and jcc, rcc's condition() on signed operands.
+// The condition code of a comparison of op, the suffix of setcc and
+// jcc, rcc's condition(): l le g ge for the signed ones.
 std::string_view
 condition(binary_op_t op)
 {
     switch (op) {
-    case binary_op_t::lt: return "l";
-    case binary_op_t::le: return "le";
-    case binary_op_t::gt: return "g";
-    case binary_op_t::ge: return "ge";
+    case binary_op_t::slt: return "l";
+    case binary_op_t::sle: return "le";
+    case binary_op_t::sgt: return "g";
+    case binary_op_t::sge: return "ge";
     case binary_op_t::eq: return "e";
     default: return "ne";
     }
 }
 
 } // namespace
+
+std::string
+imm(long long value)
+{
+    return std::format("${}", value);
+}
 
 // The next slot below the last, of size bytes at align, a local's or a
 // spill's; its displacement off rbp.  G12: a slot is never shared and
@@ -259,7 +291,7 @@ place_label(state_t &s, int n)
 {
     s.body << label_name(s.function, n) << ":\n";
     s.terminated = false;
-    s.zero_flag = false;
+    s.zero_flag = 0;
 }
 
 void
@@ -313,15 +345,16 @@ vacate(state_t &s, reg_t r, unsigned avoid)
 
 // Puts a shift's count, held in right, into cl, rcc's count_into_cl():
 // a value held in rcx moves out first, to a register outside avoid,
-// and the count is moved there at its own width.
+// and the count is moved there at its own view, movl %edx, %ecx for an
+// int, movq %rdx, %rcx for a long.
 void
-count_into_cl(state_t &s, reg_t right, unsigned avoid)
+count_into_cl(state_t &s, reg_t right, unsigned avoid, view_t count)
 {
     if (right == rcx)
         return;
 
     vacate(s, rcx, avoid | bit(right));
-    move(s, right, rcx, 32);
+    move(s, right, rcx, width(count));
 }
 
 // The register of wanted, the set of at most one expression register
@@ -351,18 +384,18 @@ held_in(const state_t &s, value_t v)
     return r ? bit(*r) : 0;
 }
 
-// The operand by which an instruction reads the held value v at 32
-// bits, rcc's source_of(): its register, or for a spilled value its
-// slot, read in place at the instruction's width, -16(%rbp), 4 bytes at
-// the slot's low end, and not reloaded (6.2).
+// The operand by which an instruction reads the held value v at the
+// view, rcc's source_of(): its register, or for a spilled value its
+// slot, read in place at the instruction's width, -16(%rbp), the bytes
+// at the slot's low end, and not reloaded (6.2).
 std::string
-source_of(state_t &s, value_t v)
+source_of(state_t &s, value_t v, view_t view)
 {
     const auto &h = s.registers.values[v.id];
     if (!h.reg)
         return at(h.spill);
 
-    return reg(reg_of(s, v), 32);
+    return reg(reg_of(s, v), width(view));
 }
 
 // Whether the row of op on the held values l and r writes r's register,
@@ -406,19 +439,21 @@ written_in_right(
     return right_written(s, op, r, wanted, copied);
 }
 
-// G4: the instruction the machine has, idivl, rcc's idiv(), a fault on
-// x86 for a zero divisor or INT_MIN / -1.  rax and rdx hold nothing
-// but, it may be, the dividend in left: it goes to rax, rdx is
-// sign-filled, and the division of the divisor's operand leaves the
-// quotient in rax and the remainder in rdx.
+// G4: the instruction the machine has, idiv, rcc's idiv(), a fault on
+// x86 for a zero divisor or the most negative value divided by -1.  rax
+// and rdx hold nothing but, it may be, the dividend in left: it goes to
+// rax, rdx is sign-filled, cltd at 32 bits and cqto at 64, and the
+// division of the divisor's operand leaves the quotient in rax and the
+// remainder in rdx.
 void
-idiv(state_t &s, binary_op_t op, reg_t left, std::string_view divisor)
+idiv(
+    state_t &s, binary_op_t op, reg_t left, std::string_view divisor, int width)
 {
     if (left != rax)
-        mov(s, left, rax, 32);
+        mov(s, left, rax, width);
 
-    insn(s, "cltd", { });
-    insn(s, mnemonic(op), { divisor });
+    insn(s, width == 32 ? "cltd" : "cqto", { });
+    insn(s, sized(mnemonic(op), width), { divisor });
 }
 
 // The register a division's dividend is in once rax and rdx are
@@ -430,13 +465,13 @@ idiv(state_t &s, binary_op_t op, reg_t left, std::string_view divisor)
 // idivl leaves it.  A remainder's value is rdx whatever the dividend's
 // register, so its dividend stays.
 reg_t
-dividend(state_t &s, binary_op_t op, value_t l)
+dividend(state_t &s, binary_op_t op, value_t l, int width)
 {
     const reg_t r = reg_of(s, l, ~bit(rax));
-    if (r != rdx || op != binary_op_t::div)
+    if (r != rdx || op != binary_op_t::sdiv)
         return r;
 
-    move(s, rdx, rax, 32);
+    move(s, rdx, rax, width);
 
     return rax;
 }
@@ -449,7 +484,7 @@ dividend(state_t &s, binary_op_t op, value_t l)
 // vacate(), and a dividend spilled is reloaded into rax.  Both values
 // are still held after idiv(), the dividend in the register returned.
 reg_t
-pin_division(state_t &s, binary_op_t op, value_t l, value_t r)
+pin_division(state_t &s, binary_op_t op, value_t l, value_t r, int width)
 {
     const unsigned pinned = bit(rax) | bit(rdx);
     const unsigned in = held_in(s, l);
@@ -465,18 +500,19 @@ pin_division(state_t &s, binary_op_t op, value_t l, value_t r)
         if (!(in & bit(p)))
             vacate(s, p, pinned | in | bit(right));
 
-    const reg_t left = dividend(s, op, l);
-    idiv(s, op, left, reg(right, 32));
+    const reg_t left = dividend(s, op, l, width);
+    idiv(s, op, left, reg(right, width), width);
 
     return left;
 }
 
-// The pinned pair of a division by the int in a slot, chapter 6.5: the
-// slot is idivl's operand, idivl -8(%rbp), and the values held in rax
-// and rdx move out, vacate(); a dividend spilled is reloaded into rax
-// after them.  The dividend is still held, in the register returned.
+// The pinned pair of a division by the object in a slot, chapter 6.5:
+// the slot is idiv's operand, idivl -8(%rbp), and the values held in
+// rax and rdx move out, vacate(); a dividend spilled is reloaded into
+// rax after them.  The dividend is still held, in the register
+// returned.
 reg_t
-pin_division(state_t &s, binary_op_t op, value_t l, slot_t divisor)
+pin_division(state_t &s, binary_op_t op, value_t l, slot_t divisor, int width)
 {
     const unsigned pinned = bit(rax) | bit(rdx);
     const unsigned in = held_in(s, l);
@@ -485,8 +521,8 @@ pin_division(state_t &s, binary_op_t op, value_t l, slot_t divisor)
         if (!(in & bit(p)))
             vacate(s, p, pinned | in);
 
-    const reg_t left = dividend(s, op, l);
-    idiv(s, op, left, at(slot_of(s, divisor)));
+    const reg_t left = dividend(s, op, l, width);
+    idiv(s, op, left, at(slot_of(s, divisor)), width);
 
     return left;
 }
@@ -499,16 +535,21 @@ pin_division(state_t &s, binary_op_t op, value_t l, slot_t divisor)
 // rax, where left is another register (6.1); any other quotient goes
 // back into left, movl %eax, %ecx.
 value_t
-divided(state_t &s, binary_op_t op, value_t l, reg_t left, unsigned wanted)
+divided(state_t &s,
+        binary_op_t op,
+        value_t l,
+        reg_t left,
+        int width,
+        unsigned wanted)
 {
     const bool stays = left != rax && wanted_register(s, wanted) == rax;
-    if (op == binary_op_t::rem || stays) {
+    if (op == binary_op_t::srem || stays) {
         release(s, l);
-        return hold(s, op == binary_op_t::rem ? rdx : rax);
+        return hold(s, op == binary_op_t::srem ? rdx : rax);
     }
 
     if (left != rax)
-        mov(s, rax, left, 32);
+        mov(s, rax, left, width);
 
     return l;
 }
@@ -521,68 +562,103 @@ held_out(const state_t &s, value_t l, unsigned named)
     return held_in(s, l) & named ? named : 0;
 }
 
+// The constant row, 6.3: at 32 bits, or 64 for a long.  G2: the low
+// bits are the value.
 value_t
-value(state_t &s, const literal_t &l, unsigned)
+constant_value(state_t &s, long long value, view_t view)
 {
     const value_t v = fresh(s);
-    constant(s, reg_of(s, v), l.value, 32);
+    constant(s, reg_of(s, v), value, width(view));
+
+    return v;
+}
+
+// The load row, 6.3.2.1p2, rcc's load() at the object's width:
+// movl -4(%rbp), %eax, movq -8(%rbp), %rax.  G8: one mov.
+value_t
+load(state_t &s, slot_t where, view_t view)
+{
+    const auto [mnemonic, to] = extension(view, width(view));
+
+    const value_t v = fresh(s);
+    insn(s, mnemonic, { at(slot_of(s, where)), reg(reg_of(s, v), to) });
 
     return v;
 }
 
 value_t
-value(state_t &s, const zero_t &, unsigned)
+extending_load(state_t &s, slot_t where, view_t from)
 {
+    const auto [mnemonic, to] = extension(from, 64);
+
     const value_t v = fresh(s);
-    constant(s, reg_of(s, v), 0, 32);
+    insn(s, mnemonic, { at(slot_of(s, where)), reg(reg_of(s, v), to) });
 
     return v;
 }
 
-// The load row, 6.3.2.1p2: movl -4(%rbp), %eax.  G8: one mov.
+// rcc's extended(): the extension in v's own register, but in the one
+// the consumer names where a row may write it now.
 value_t
-value(state_t &s, const load_t &l, unsigned)
+extended(state_t &s, value_t v, view_t from, view_t to, unsigned wanted)
 {
-    const value_t v = fresh(s);
-    insn(s, "movl", { at(slot_of(s, l.where)), reg(reg_of(s, v), 32) });
+    const auto [mnemonic, bits] = extension(from, width(to));
+    const reg_t source = reg_of(s, v);
+    const auto named = wanted_register(s, wanted);
 
-    return v;
+    if (!named) {
+        insn(s, mnemonic, { reg(source, width(from)), reg(source, bits) });
+        return v;
+    }
+
+    release(s, v);
+
+    const value_t e = hold(s, *named);
+    insn(s, mnemonic, { reg(source, width(from)), reg(*named, bits) });
+
+    return e;
 }
 
 // neg and not have one address, the operand's register: negl %eax,
-// notl %eax.  G1: neg of INT_MIN is INT_MIN.  neg sets ZF from its
-// result, and not sets no flag (7.1).
+// notq %rax.  G1: neg of the most negative value is itself.  neg sets
+// ZF from its result, and not sets no flag (7.1).
 void
-operate(state_t &s, unary_op_t op, reg_t r)
+operate(state_t &s, unary_op_t op, reg_t r, view_t view)
 {
-    insn(s, op == unary_op_t::neg ? "negl" : "notl", { reg(r, 32) });
+    const int bits = width(view);
+
+    insn(s, sized(op == unary_op_t::neg ? "neg" : "not", bits),
+         { reg(r, bits) });
     if (op == unary_op_t::neg)
-        flagged(s);
+        flagged(s, bits);
 }
 
 // op R, L, two addresses, the result in L, which is r: addl $5, %eax,
-// addl -16(%rbp), %ecx.  add, sub, and, or and xor set ZF from L, and
+// addq -16(%rbp), %rcx.  add, sub, and, or and xor set ZF from L, and
 // imul and the shifts do not (7.1).
 void
-operate(state_t &s, binary_op_t op, reg_t r, std::string_view source)
+operate(
+    state_t &s, binary_op_t op, reg_t r, std::string_view source, view_t view)
 {
-    insn(s, mnemonic(op), { source, reg(r, 32) });
+    const int bits = width(view);
+
+    insn(s, sized(mnemonic(op), bits), { source, reg(r, bits) });
     if (flag_operator(op))
-        flagged(s);
+        flagged(s, bits);
 }
 
 // addl -8(%rbp), %eax.
 void
-operate(state_t &s, binary_op_t op, reg_t r, slot_t source)
+operate(state_t &s, binary_op_t op, reg_t r, slot_t source, view_t view)
 {
-    operate(s, op, r, at(slot_of(s, source)));
+    operate(s, op, r, at(slot_of(s, source)), view);
 }
 
 // addl %ecx, %eax.
 void
-operate(state_t &s, binary_op_t op, reg_t r, reg_t source)
+operate(state_t &s, binary_op_t op, reg_t r, reg_t source, view_t view)
 {
-    operate(s, op, r, reg(source, 32));
+    operate(s, op, r, reg(source, width(view)), view);
 }
 
 // op R, L into L, R released, rcc's arithmetic() on two held values,
@@ -593,17 +669,22 @@ operate(state_t &s, binary_op_t op, reg_t r, reg_t source)
 // ecx its consumer names, and a spilled L with no register named is
 // addl -16(%rbp), %ecx.
 value_t
-arithmetic(state_t &s, binary_op_t op, value_t l, value_t r, unsigned wanted)
+arithmetic(state_t &s,
+           binary_op_t op,
+           value_t l,
+           value_t r,
+           view_t view,
+           unsigned wanted)
 {
     if (written_in_right(s, op, l, r, wanted)) {
         const reg_t right = reg_of(s, r);
-        operate(s, op, right, source_of(s, l));
+        operate(s, op, right, source_of(s, l, view), view);
         release(s, l);
         return r;
     }
 
     const auto [left, right] = operands(s, l, r);
-    operate(s, op, left, right);
+    operate(s, op, left, right, view);
     release(s, r);
 
     return l;
@@ -611,34 +692,53 @@ arithmetic(state_t &s, binary_op_t op, value_t l, value_t r, unsigned wanted)
 
 // imull $5, %eax, %eax.
 void
-multiply(state_t &s, reg_t r, reg_t source, std::string_view factor)
+multiply(
+    state_t &s, reg_t r, reg_t source, std::string_view factor, view_t view)
 {
-    insn(s, "imull", { factor, reg(source, 32), reg(r, 32) });
+    const int bits = width(view);
+
+    insn(s, sized("imul", bits), { factor, reg(source, bits), reg(r, bits) });
 }
 
 // imull $5, -4(%rbp), %eax.
 void
-multiply(state_t &s, reg_t r, slot_t source, std::string_view factor)
+multiply(
+    state_t &s, reg_t r, slot_t source, std::string_view factor, view_t view)
 {
-    insn(s, "imull", { factor, at(slot_of(s, source)), reg(r, 32) });
+    const int bits = width(view);
+
+    insn(s, sized("imul", bits),
+         { factor, at(slot_of(s, source)), reg(r, bits) });
 }
 
 // rcc's divide() by a held divisor: the division, pin_division(), the
 // divisor consumed, then the value, divided().
 value_t
-divide(state_t &s, binary_op_t op, value_t l, value_t r, unsigned wanted)
+divide(state_t &s,
+       binary_op_t op,
+       value_t l,
+       value_t r,
+       view_t view,
+       unsigned wanted)
 {
-    const reg_t left = pin_division(s, op, l, r);
+    const reg_t left = pin_division(s, op, l, r, width(view));
     release(s, r);
 
-    return divided(s, op, l, left, wanted);
+    return divided(s, op, l, left, width(view), wanted);
 }
 
-// rcc's divide() by the int in a slot.
+// rcc's divide() by the object in a slot.
 value_t
-divide(state_t &s, binary_op_t op, value_t l, slot_t divisor, unsigned wanted)
+divide(state_t &s,
+       binary_op_t op,
+       value_t l,
+       slot_t divisor,
+       view_t view,
+       unsigned wanted)
 {
-    return divided(s, op, l, pin_division(s, op, l, divisor), wanted);
+    const reg_t left = pin_division(s, op, l, divisor, width(view));
+
+    return divided(s, op, l, left, width(view), wanted);
 }
 
 // rcc's shift() for a held count, chapter 6.5: the count's register,
@@ -652,45 +752,51 @@ divide(state_t &s, binary_op_t op, value_t l, slot_t divisor, unsigned wanted)
 // count where cl is likely, so the moves are for a value that is in the
 // way all the same.
 void
-shift(state_t &s, binary_op_t op, value_t l, value_t r)
+shift(
+    state_t &s, binary_op_t op, value_t l, value_t r, view_t view, view_t count)
 {
     const reg_t right = reg_of(s, r, held_in(s, l));
     const reg_t left = reg_of(s, l, bit(right) | bit(rcx));
-    count_into_cl(s, right, bit(left));
+    count_into_cl(s, right, bit(left), count);
 
-    insn(s, mnemonic(op), { "%cl", reg(reg_of(s, l), 32) });
+    const int bits = width(view);
+    insn(s, sized(mnemonic(op), bits), { "%cl", reg(reg_of(s, l), bits) });
     release(s, r);
 }
 
 // cmp R, L in AT&T order, the source first: cmpl $5, %eax.
 void
-compare(state_t &s, value_t l, std::string_view source)
+compare(state_t &s, value_t l, std::string_view source, view_t view)
 {
-    insn(s, "cmpl", { source, reg(reg_of(s, l), 32) });
+    const int bits = width(view);
+
+    insn(s, sized("cmp", bits), { source, reg(reg_of(s, l), bits) });
 }
 
 // cmpl -8(%rbp), %eax.
 void
-compare(state_t &s, value_t l, slot_t source)
+compare(state_t &s, value_t l, slot_t source, view_t view)
 {
-    compare(s, l, at(slot_of(s, source)));
+    compare(s, l, at(slot_of(s, source)), view);
 }
 
 // cmpl %ecx, %eax: operands() asks for r's register first, then l's.
 void
-compare(state_t &s, value_t l, value_t r)
+compare(state_t &s, value_t l, value_t r, view_t view)
 {
+    const int bits = width(view);
+
     const auto [left, right] = operands(s, l, r);
-    insn(s, "cmpl", { reg(right, 32), reg(left, 32) });
+    insn(s, sized("cmp", bits), { reg(right, bits), reg(left, bits) });
 
     release(s, r);
 }
 
 // cmpl $5, -4(%rbp).
 void
-compare(state_t &s, slot_t where, std::string_view immediate)
+compare(state_t &s, slot_t where, std::string_view immediate, view_t view)
 {
-    insn(s, "cmpl", { immediate, at(slot_of(s, where)) });
+    insn(s, sized("cmp", width(view)), { immediate, at(slot_of(s, where)) });
 }
 
 // rcc's comparison(): the setcc writes l's register, where the cmp left
@@ -715,36 +821,28 @@ setcc(state_t &s, binary_op_t op, std::optional< value_t > l, unsigned wanted)
     return *l;
 }
 
-value_t
-value(state_t &s, const unary_t< unary_op_t::log_not > &u, unsigned wanted)
-{
-    const value_t v = value(s, u.arg);
-    compare(s, v, imm(0));
-
-    return setcc(s, binary_op_t::eq, v, wanted);
-}
-
 void
-test_zero(state_t &s, value_t v, int label, bool sense)
+test_zero(state_t &s, value_t v, view_t view, int label, bool sense)
 {
-    compare(s, v, imm(0));
+    compare(s, v, imm(0), view);
     jump_if(s, sense ? binary_op_t::ne : binary_op_t::eq, label);
 }
 
 void
-value_branch(state_t &s, const load_t &l, int label, bool sense)
+in_place_branch(state_t &s, slot_t where, view_t view, int label, bool sense)
 {
-    compare(s, l.where, imm(0));
+    compare(s, where, imm(0), view);
     jump_if(s, sense ? binary_op_t::ne : binary_op_t::eq, label);
 }
 
 // In every row of a flag condition rcc-v2 writes, the instruction that
-// sets ZF is the row's last, so the cmp is the record's guard alone.
+// sets ZF is the row's last, at the condition's width, so the cmp is
+// the record's guard alone.
 void
-flag_branch(state_t &s, value_t v, int label, bool sense)
+flag_branch(state_t &s, value_t v, view_t view, int label, bool sense)
 {
-    if (!s.zero_flag)
-        compare(s, v, imm(0));
+    if (s.zero_flag != width(view))
+        compare(s, v, imm(0), view);
     release(s, v);
 
     jump_if(s, sense ? binary_op_t::ne : binary_op_t::eq, label);
@@ -752,36 +850,42 @@ flag_branch(state_t &s, value_t v, int label, bool sense)
 
 // test R, L in AT&T order: testl $1, %eax.
 void
-test(state_t &s, value_t l, std::string_view source)
+test(state_t &s, value_t l, std::string_view source, view_t view)
 {
-    insn(s, "testl", { source, reg(reg_of(s, l), 32) });
-    flagged(s);
+    const int bits = width(view);
+
+    insn(s, sized("test", bits), { source, reg(reg_of(s, l), bits) });
+    flagged(s, bits);
 }
 
 // testl -8(%rbp), %eax.
 void
-test(state_t &s, value_t l, slot_t source)
+test(state_t &s, value_t l, slot_t source, view_t view)
 {
-    test(s, l, at(slot_of(s, source)));
+    test(s, l, at(slot_of(s, source)), view);
 }
 
 // testl %ecx, %eax: operands() asks for r's register first, then l's.
 void
-test(state_t &s, value_t l, value_t r)
+test(state_t &s, value_t l, value_t r, view_t view)
 {
+    const int bits = width(view);
+
     const auto [left, right] = operands(s, l, r);
-    insn(s, "testl", { reg(right, 32), reg(left, 32) });
-    flagged(s);
+    insn(s, sized("test", bits), { reg(right, bits), reg(left, bits) });
+    flagged(s, bits);
 
     release(s, r);
 }
 
 // testl $1, -4(%rbp).
 void
-test(state_t &s, slot_t where, std::string_view immediate)
+test(state_t &s, slot_t where, std::string_view immediate, view_t view)
 {
-    insn(s, "testl", { immediate, at(slot_of(s, where)) });
-    flagged(s);
+    const int bits = width(view);
+
+    insn(s, sized("test", bits), { immediate, at(slot_of(s, where)) });
+    flagged(s, bits);
 }
 
 void
@@ -790,39 +894,39 @@ move_immediate(state_t &s, reg_t r, int value)
     constant(s, r, value, 32);
 }
 
-// The store row: movl %eax, -4(%rbp).
+// The store row, rcc's store(): the mov of the view's width, movl %eax,
+// -4(%rbp), movq %rax, -8(%rbp); G2, the low bytes of the register are
+// the value.
 void
-store(state_t &s, reg_t r, slot_t where)
+store(state_t &s, reg_t r, slot_t where, view_t view)
 {
-    store(s, reg(r, 32), where);
+    store(s, reg(r, width(view)), where, view);
 }
 
-// The store of an immediate: movl $7, -4(%rbp).
+// The store of an immediate, rcc's initialize(): movl $7, -4(%rbp),
+// movq $0, -8(%rbp).
 void
-store(state_t &s, std::string_view immediate, slot_t where)
+store(state_t &s, std::string_view immediate, slot_t where, view_t view)
 {
-    insn(s, "movl", { immediate, at(slot_of(s, where)) });
+    insn(s, sized("mov", width(view)), { immediate, at(slot_of(s, where)) });
 }
 
-// x86 immediates are 32 bits, so every int is one.
-std::string
-immediate_of(const literal_t &l)
-{
-    return imm(l.value);
-}
-
-std::string
-immediate_of(const zero_t &)
-{
-    return imm(0);
-}
-
-// The count's low 8 bits as written, not masked to 5, rcc's
+// The count's low 8 bits as written, not masked to the width, rcc's
 // right_operand(): shll $33, %eax, and $255 for -1.
 std::string
-count_of(int count)
+count_of(long long count)
 {
     return imm(count & 0xff);
+}
+
+unsigned
+call_pins(const state_t &s, const std::vector< argument_t > &args)
+{
+    unsigned pinned = bit(rax);
+    for (const argument_t &a : args)
+        pinned |= pinned_within(s, a.value);
+
+    return pinned;
 }
 
 // The value goes to the convention's result register, 7.2, rcc's
@@ -834,13 +938,16 @@ count_of(int count)
 // body included: the jump to the next instruction is what the statement
 // says, and removing it was the optional peephole pass's work in the
 // PDP-11 compiler, which rcc has no counterpart of.
+// The move is at the result's width, movl %edx, %eax for an int
+// remainder and movq %rdx, %rax for a long one, rcc's return_stmt() at
+// max(32, width).
 void
-generate(state_t &s, const return_t &r)
+return_stmt(state_t &s, const expr_t &e, view_t view)
 {
-    const value_t v = value(s, r.value, bit(result_register));
+    const value_t v = value(s, e, bit(result_register));
     const reg_t from = reg_of(s, v);
     if (from != result_register)
-        mov(s, from, result_register, 32);
+        mov(s, from, result_register, width(view));
 
     release(s, v);
 
@@ -946,7 +1053,7 @@ parameters(state_t &s, std::size_t count)
         }
 
         s.slots.emplace(id, allocate(s, 4, 4));
-        store(s, argument_registers[i], slot_t { id });
+        store(s, argument_registers[i], slot_t { id }, view_t::i32);
     }
 }
 

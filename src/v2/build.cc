@@ -92,6 +92,18 @@ moved_within(const amd64::state_t &s, const expr_t &e)
     return e.self->moved_within(s);
 }
 
+int
+valid_of(const expr_t &e)
+{
+    return e.self->valid();
+}
+
+view_t
+view_of(const expr_t &e)
+{
+    return e.self->view();
+}
+
 // A statement holds no value past its end, c1-statements.hh's check.
 void
 generate(amd64::state_t &s, const stmt_t &statement)
@@ -109,21 +121,24 @@ generate(arm64::state_t &s, const stmt_t &statement)
 
 // the builders
 
-// The question of the constant's value is asked here, once: 0 is a
-// zero_t (principle 2).
+// The crossing from the view, data in the parser, to the node's
+// parameter (principle 6), and the question of the constant's value,
+// classed_constant()'s.
 expr_t
-make_literal(int value)
+make_literal(long long value, view_t view)
 {
-    if (value == 0)
-        return expr_t(zero_t { });
-
-    return expr_t(literal_t { value });
+    return cross(view, [&]< view_t V >() {
+        return classed_constant< V >(value,
+                                     [](const auto &c) { return expr_t(c); });
+    });
 }
 
 expr_t
-make_local(int slot)
+make_local(int slot, view_t view)
 {
-    return expr_t(slot_t { slot });
+    return cross(view, [&]< view_t V >() {
+        return expr_t(place_t< V > { slot_t { slot } });
+    });
 }
 
 expr_t
@@ -146,40 +161,65 @@ make_assign(expr_t place, expr_t value)
     return place.self->assign(value);
 }
 
+// One hop through the operand's model, which knows the operand's type
+// and so whether it is a load or a constant (3.3).
+expr_t
+make_conversion(view_t to, view_t from, expr_t e)
+{
+    return e.self->conversion(to, from, e);
+}
+
 // One hop through the operand's model, which knows whether the operand
 // is a constant (3.3).
 expr_t
-make_unary(unary_op_t op, expr_t arg)
+make_unary(unary_op_t op, view_t view, expr_t arg)
 {
-    return arg.self->unary(op, arg);
+    return arg.self->unary(op, view, arg);
 }
 
 // Two hops, 3.3: through the right operand's model, which knows its
 // class, then through the left's, which knows the left's class.
 expr_t
-make_binary(binary_op_t op, expr_t lhs, expr_t rhs)
+make_binary(binary_op_t op, view_t view, expr_t lhs, expr_t rhs)
 {
-    return rhs.self->right_of(op, lhs, rhs);
+    return rhs.self->right_of(op, view, lhs, rhs);
 }
 
-// The crossing from the result type, data in the parser, to the node's
-// parameter (principle 6), made once here: call_t< void > or call_t<
-// int >.
-expr_t
-make_call(std::string_view name,
-          bool returns_void,
-          int first,
-          std::vector< expr_t > args)
+namespace {
+
+// The arguments of a call, each in a hidden local of the call, numbered
+// from first.
+std::vector< argument_t >
+arguments_from(int first, std::vector< expr_t > args)
 {
     std::vector< argument_t > arguments;
     for (expr_t &value : args)
         arguments.push_back({ slot_t { first++ }, std::move(value) });
 
-    if (returns_void)
-        return expr_t(
-            call_t< void > { std::string(name), std::move(arguments) });
+    return arguments;
+}
 
-    return expr_t(call_t< int > { std::string(name), std::move(arguments) });
+} // namespace
+
+// The crossing from the result's view, data in the parser, to the
+// node's parameter (principle 6), made once here.
+expr_t
+make_call(std::string_view name,
+          view_t result,
+          int first,
+          std::vector< expr_t > args)
+{
+    return cross(result, [&]< view_t V >() {
+        return expr_t(call_t< V > { std::string(name),
+                                    arguments_from(first, std::move(args)) });
+    });
+}
+
+expr_t
+make_call_void(std::string_view name, int first, std::vector< expr_t > args)
+{
+    return expr_t(call_void_t { std::string(name),
+                                arguments_from(first, std::move(args)) });
 }
 
 stmt_t
@@ -195,21 +235,27 @@ make_null()
 }
 
 stmt_t
-make_decl(int slot)
+make_decl(int slot, view_t view)
 {
-    return stmt_t(decl_t { slot_t { slot } });
+    return cross(view, [&]< view_t V >() {
+        return stmt_t(decl_t< V > { slot_t { slot } });
+    });
 }
 
 stmt_t
-make_init(int slot, expr_t value)
+make_init(int slot, view_t view, expr_t value)
 {
-    return stmt_t(init_t { slot_t { slot }, std::move(value) });
+    return cross(view, [&]< view_t V >() {
+        return stmt_t(init_t< V > { slot_t { slot }, std::move(value) });
+    });
 }
 
 stmt_t
-make_return(expr_t value)
+make_return(expr_t value, view_t view)
 {
-    return stmt_t(return_t { std::move(value) });
+    return cross(view, [&]< view_t V >() {
+        return stmt_t(return_t< V > { std::move(value) });
+    });
 }
 
 stmt_t

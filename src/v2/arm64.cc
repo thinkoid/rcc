@@ -59,8 +59,13 @@ reg(reg_t r, int width)
     return std::format("{}{}", width == 64 ? 'x' : 'w', static_cast< int >(r));
 }
 
-// The zero register at 32 bits, chapter 2.1.
-constexpr std::string_view zero = "wzr";
+// The zero register by its name at a width in bits, chapter 2.1: wzr,
+// xzr.
+std::string_view
+zero(int width)
+{
+    return width == 64 ? "xzr" : "wzr";
+}
 
 // An immediate, as the assembler reads it.
 std::string
@@ -106,12 +111,24 @@ copy_out(state_t &s, std::string_view to)
     insn(s, "str", { "w17", to });
 }
 
-// The copy of a register into another at 32 bits, the destination
-// first, 2.2, rcc's mov(): mov w0, w19.
+// The copy of a register into another at a width, the destination
+// first, 2.2, rcc's mov(): mov w0, w19, mov x0, x1.
 void
-mov(state_t &s, reg_t from, reg_t to)
+mov(state_t &s, reg_t from, reg_t to, int width)
 {
-    insn(s, "mov", { reg(to, 32), reg(from, 32) });
+    insn(s, "mov", { reg(to, width), reg(from, width) });
+}
+
+// The load of 2.2 that brings a value of the view to a register of 32
+// or 64 bits, rcc's load_of(): ldr at its own view, and to 64 bits an
+// int's ldrsw.
+std::string_view
+load_of(view_t view, int to)
+{
+    if (view == view_t::i64 || to == 32)
+        return "ldr";
+
+    return "ldrsw";
 }
 
 // constants
@@ -266,14 +283,14 @@ mnemonic(binary_op_t op)
     case binary_op_t::add: return "add";
     case binary_op_t::sub: return "sub";
     case binary_op_t::mul: return "mul";
-    case binary_op_t::div:
-    case binary_op_t::rem: return "sdiv";
+    case binary_op_t::sdiv:
+    case binary_op_t::srem: return "sdiv";
     case binary_op_t::shl: return "lsl";
-    case binary_op_t::shr: return "asr";
-    case binary_op_t::lt:
-    case binary_op_t::gt:
-    case binary_op_t::le:
-    case binary_op_t::ge:
+    case binary_op_t::ashr: return "asr";
+    case binary_op_t::slt:
+    case binary_op_t::sle:
+    case binary_op_t::sgt:
+    case binary_op_t::sge:
     case binary_op_t::eq:
     case binary_op_t::ne:
     case binary_op_t::log_and:
@@ -285,40 +302,40 @@ mnemonic(binary_op_t op)
     }
 }
 
-// The immediate of op that encodes value at 32 bits, 2.4, or none: add
-// and sub take 12 bits, or 12 bits shifted by 12, of either sign,
+// The immediate of op that encodes value at width bits, 2.4, or none:
+// add and sub take 12 bits, or 12 bits shifted by 12, of either sign,
 // written signed, and so does cmp, the instruction of every comparison;
 // a shift its count masked to the width, which is what the instruction
 // does to a count in a register (G3), lsl w0, w0, #1 for a << 33; and,
 // orr and eor a bitmask, written in hex; mul, sdiv and msub take none,
 // and && and || have no instruction.
 std::optional< std::string >
-immediate_of(binary_op_t op, int value)
+immediate_of(binary_op_t op, long long value, int width)
 {
     switch (op) {
     case binary_op_t::add:
     case binary_op_t::sub:
-    case binary_op_t::lt:
-    case binary_op_t::gt:
-    case binary_op_t::le:
-    case binary_op_t::ge:
+    case binary_op_t::slt:
+    case binary_op_t::sle:
+    case binary_op_t::sgt:
+    case binary_op_t::sge:
     case binary_op_t::eq:
     case binary_op_t::ne:
-        if (arithmetic_immediate(value, 32))
+        if (arithmetic_immediate(value, width))
             return imm(value);
         break;
     case binary_op_t::mul:
-    case binary_op_t::div:
-    case binary_op_t::rem:
+    case binary_op_t::sdiv:
+    case binary_op_t::srem:
     case binary_op_t::log_and:
     case binary_op_t::log_or: break;
     case binary_op_t::shl:
-    case binary_op_t::shr: return imm(value & 31);
+    case binary_op_t::ashr: return imm(value & (width - 1));
     case binary_op_t::bit_and:
     case binary_op_t::bit_or:
     case binary_op_t::bit_xor:
-        if (bitmask_immediate(value, 32))
-            return bitmask_of(value, 32);
+        if (bitmask_immediate(value, width))
+            return bitmask_of(value, width);
         break;
     }
 
@@ -368,16 +385,16 @@ final_destination(state_t &s, value_t v, unsigned wanted)
     return *named;
 }
 
-// The condition of a comparison of op on int, the suffix of b.cc and
-// the operand of cset, rcc's condition() on signed operands.
+// The condition of a comparison of op, the suffix of b.cc and the
+// operand of cset, rcc's condition(): lt le gt ge for the signed ones.
 std::string_view
 condition(binary_op_t op)
 {
     switch (op) {
-    case binary_op_t::lt: return "lt";
-    case binary_op_t::le: return "le";
-    case binary_op_t::gt: return "gt";
-    case binary_op_t::ge: return "ge";
+    case binary_op_t::slt: return "lt";
+    case binary_op_t::sle: return "le";
+    case binary_op_t::sgt: return "gt";
+    case binary_op_t::sge: return "ge";
     case binary_op_t::eq: return "eq";
     default: return "ne";
     }
@@ -475,10 +492,10 @@ jump_if(state_t &s, binary_op_t op, int label)
 }
 
 void
-test_zero(state_t &s, value_t v, int label, bool sense)
+test_zero(state_t &s, value_t v, view_t view, int label, bool sense)
 {
     insn(s, sense ? "cbnz" : "cbz",
-         { reg(reg_of(s, v), 32), label_name(s.function, label) });
+         { reg(reg_of(s, v), width(view)), label_name(s.function, label) });
 }
 
 // rcc's logical() writes the mov itself, never constant()'s choice of
@@ -489,42 +506,60 @@ move_immediate(state_t &s, reg_t r, int value)
     insn(s, "mov", { reg(r, 32), imm(value) });
 }
 
+// The constant row of 6.4, at 32 bits or 64.  G2: the low bits are the
+// value.
 value_t
-value(state_t &s, const literal_t &l, unsigned)
+constant_value(state_t &s, long long value, view_t view)
 {
     const value_t v = fresh(s);
-    constant(s, reg_of(s, v), l.value, 32);
+    constant(s, reg_of(s, v), value, width(view));
+
+    return v;
+}
+
+// The load row of 2.2: ldr w0, [x29, #16], ldr x0, [x29, #16].  G8: one
+// ldr.
+value_t
+load(state_t &s, slot_t where, view_t view)
+{
+    const value_t v = fresh(s);
+    insn(s, load_of(view, width(view)),
+         { reg(reg_of(s, v), width(view)), slot_operand(slot_of(s, where)) });
 
     return v;
 }
 
 value_t
-value(state_t &s, const zero_t &, unsigned)
+extending_load(state_t &s, slot_t where, view_t from)
 {
     const value_t v = fresh(s);
-    constant(s, reg_of(s, v), 0, 32);
+    insn(s, load_of(from, 64),
+         { reg(reg_of(s, v), 64), slot_operand(slot_of(s, where)) });
 
     return v;
 }
 
-// The load row of 2.2: ldr w0, [x29, #16].  G8: one ldr.
+// rcc's extended(): an int's sign extension, sxtw, of the w name of its
+// register into the x name of the destination.
 value_t
-value(state_t &s, const load_t &l, unsigned)
+extended(state_t &s, value_t v, view_t from, view_t to, unsigned wanted)
 {
-    const value_t v = fresh(s);
-    insn(s, "ldr",
-         { reg(reg_of(s, v), 32), slot_operand(slot_of(s, l.where)) });
+    const reg_t source = reg_of(s, v);
+    const reg_t r = final_destination(s, v, wanted);
+
+    insn(s, "sxtw", { reg(r, width(to)), reg(source, width(from)) });
 
     return v;
 }
 
-// neg and mvn, rcc's unary(): neg w0, w0, mvn w0, w0, and neg w0, w1
-// into the register the consumer names.  G1: neg of INT_MIN is INT_MIN.
+// neg and mvn, rcc's unary(): neg w0, w0, mvn x0, x0, and neg w0, w1
+// into the register the consumer names.  G1: neg of the most negative
+// value is itself.
 value_t
-negated(state_t &s, unary_op_t op, value_t v, unsigned wanted)
+negated(state_t &s, unary_op_t op, value_t v, view_t view, unsigned wanted)
 {
-    const auto from = reg(reg_of(s, v), 32);
-    const auto to = reg(final_destination(s, v, wanted), 32);
+    const auto from = reg(reg_of(s, v), width(view));
+    const auto to = reg(final_destination(s, v, wanted), width(view));
     insn(s, op == unary_op_t::neg ? "neg" : "mvn", { to, from });
 
     return v;
@@ -540,46 +575,60 @@ negated(state_t &s, unary_op_t op, value_t v, unsigned wanted)
 // which both hold values, and not held, then R released and msub, L -
 // N * R, sdiv w2, w0, w1 and msub w0, w2, w1, w0.
 value_t
-arithmetic(state_t &s, binary_op_t op, value_t l, value_t r, unsigned wanted)
+arithmetic(state_t &s,
+           binary_op_t op,
+           value_t l,
+           value_t r,
+           view_t view,
+           unsigned wanted)
 {
-    const auto [left, right] = operands(s, l, r);
-    const auto from = reg(left, 32);
-    const auto by = reg(right, 32);
+    const int bits = width(view);
 
-    if (op != binary_op_t::rem) {
+    const auto [left, right] = operands(s, l, r);
+    const auto from = reg(left, bits);
+    const auto by = reg(right, bits);
+
+    if (op != binary_op_t::srem) {
         release(s, r);
 
-        const auto to = reg(final_destination(s, l, wanted), 32);
+        const auto to = reg(final_destination(s, l, wanted), bits);
         insn(s, mnemonic(op), { to, from, by });
 
         return l;
     }
 
-    const auto quotient = reg(take(s, bit(left) | bit(right)), 32);
+    const auto quotient = reg(take(s, bit(left) | bit(right)), bits);
     insn(s, mnemonic(op), { quotient, from, by });
 
     release(s, r);
 
-    const auto to = reg(final_destination(s, l, wanted), 32);
+    const auto to = reg(final_destination(s, l, wanted), bits);
     insn(s, "msub", { to, quotient, by, from });
 
     return l;
 }
 
-// A literal is the immediate where the instruction encodes it, add w0,
+// A constant is the immediate where the instruction encodes it, add w0,
 // w0, #5, and is otherwise the right operand of the row on two held
 // values, its value in a register of its own: mov w1, #4097, add w0,
 // w0, w1.
 value_t
-arithmetic(
-    state_t &s, binary_op_t op, value_t l, const literal_t &r, unsigned wanted)
+arithmetic(state_t &s,
+           binary_op_t op,
+           value_t l,
+           long long constant,
+           view_t view,
+           unsigned wanted)
 {
-    const auto immediate = immediate_of(op, r.value);
-    if (!immediate)
-        return arithmetic(s, op, l, value(s, r), wanted);
+    const int bits = width(view);
 
-    const auto from = reg(reg_of(s, l), 32);
-    const auto to = reg(final_destination(s, l, wanted), 32);
+    const auto immediate = immediate_of(op, constant, bits);
+    if (!immediate)
+        return arithmetic(s, op, l, constant_value(s, constant, view), view,
+                          wanted);
+
+    const auto from = reg(reg_of(s, l), bits);
+    const auto to = reg(final_destination(s, l, wanted), bits);
     insn(s, mnemonic(op), { to, from, *immediate });
 
     return l;
@@ -588,10 +637,12 @@ arithmetic(
 // cmp L, R, the destination's order, cmp w0, w1: operands() asks for
 // r's register first, then l's.
 void
-compare(state_t &s, value_t l, value_t r)
+compare(state_t &s, value_t l, value_t r, view_t view)
 {
+    const int bits = width(view);
+
     const auto [left, right] = operands(s, l, r);
-    insn(s, "cmp", { reg(left, 32), reg(right, 32) });
+    insn(s, "cmp", { reg(left, bits), reg(right, bits) });
 
     release(s, r);
 }
@@ -602,15 +653,15 @@ compare(state_t &s, value_t l, value_t r)
 // constant it does not encode is held after l, which may spill l, and
 // compared as any held value.
 void
-compare(state_t &s, value_t l, const literal_t &r)
+compare(state_t &s, value_t l, long long constant, view_t view)
 {
-    const auto immediate = immediate_of(binary_op_t::eq, r.value);
+    const auto immediate = immediate_of(binary_op_t::eq, constant, width(view));
     if (!immediate) {
-        compare(s, l, value(s, r));
+        compare(s, l, constant_value(s, constant, view), view);
         return;
     }
 
-    insn(s, "cmp", { reg(reg_of(s, l), 32), *immediate });
+    insn(s, "cmp", { reg(reg_of(s, l), width(view)), *immediate });
 }
 
 value_t
@@ -622,28 +673,20 @@ cset(state_t &s, binary_op_t op, value_t v, unsigned wanted)
     return v;
 }
 
-value_t
-value(state_t &s, const unary_t< unary_op_t::log_not > &u, unsigned wanted)
-{
-    const value_t v = value(s, u.arg);
-    compare(s, v, literal_t { 0 });
-
-    return cset(s, binary_op_t::eq, v, wanted);
-}
-
-// The store row of 2.2: str w0, [x29, #16].
+// The store row of 2.2, rcc's store_of(): str w0, [x29, #16], str x0,
+// [x29, #16].
 void
-store(state_t &s, reg_t r, slot_t where)
+store(state_t &s, reg_t r, slot_t where, view_t view)
 {
-    insn(s, "str", { reg(r, 32), slot_operand(slot_of(s, where)) });
+    insn(s, "str", { reg(r, width(view)), slot_operand(slot_of(s, where)) });
 }
 
 // str takes no immediate, but the zero register is an operand like any
-// other: str wzr, [x29, #16].
+// other: str wzr, [x29, #16], str xzr, [x29, #16].
 void
-initialize(state_t &s, slot_t where, const zero_t &)
+store_zero(state_t &s, slot_t where, view_t view)
 {
-    insn(s, "str", { zero, slot_operand(slot_of(s, where)) });
+    insn(s, "str", { zero(width(view)), slot_operand(slot_of(s, where)) });
 }
 
 // The value goes to the convention's result register, 7.2, rcc's
@@ -654,14 +697,16 @@ initialize(state_t &s, slot_t where, const zero_t &)
 // Every return jumps to the one epilogue, the last statement of the
 // body included: the jump to the next instruction is what the statement
 // says, and removing it was the optional peephole pass's work in the
-// PDP-11 compiler, which rcc has no counterpart of.
+// PDP-11 compiler, which rcc has no counterpart of.  The move is at the
+// result's width, mov w0, w1 for an int and mov x0, x1 for a long,
+// rcc's return_stmt() at max(32, width).
 void
-generate(state_t &s, const return_t &r)
+return_stmt(state_t &s, const expr_t &e, view_t view)
 {
-    const value_t v = value(s, r.value, bit(result_register));
+    const value_t v = value(s, e, bit(result_register));
     const reg_t from = reg_of(s, v);
     if (from != result_register)
-        mov(s, from, result_register);
+        mov(s, from, result_register, width(view));
 
     release(s, v);
 
@@ -816,7 +861,7 @@ parameters(state_t &s, std::size_t count)
         s.slots.emplace(id, allocate(s, 4, 4));
 
         if (i < std::size(argument_registers))
-            store(s, argument_registers[i], slot_t { id });
+            store(s, argument_registers[i], slot_t { id }, view_t::i32);
     }
 }
 

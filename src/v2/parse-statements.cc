@@ -67,11 +67,11 @@ return_statement(parser_t &p)
         if (is< void_t >(p.result))
             fail(keyword, "void function should not return a value");
 
-        expr_t converted = assignment_conversion(start, std::move(value),
-                                                 p.result, "the result type");
+        expr_t converted =
+            assignment_conversion(start, std::move(value), p.result);
         expect(p, tok_t::semicolon, "expected ';' after return statement");
 
-        return make_return(std::move(converted));
+        return make_return(std::move(converted), view_of(p.result));
     }
 
     if (!is< void_t >(p.result))

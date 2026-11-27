@@ -17,8 +17,10 @@
 
 namespace rcc {
 
-expr_t make_literal(int value);
-expr_t make_local(int slot);
+// A constant of the view, its value the bits its register holds, read
+// signed, 6.4.4.2; and a local of the view, its place.
+expr_t make_literal(long long value, view_t view);
+expr_t make_local(int slot, view_t view);
 
 // The lvalue conversion, 6.3.2.1p2: a place becomes the value it holds;
 // any other expression is a value already, and is returned as it is.
@@ -29,26 +31,37 @@ expr_t rvalue(expr_t e);
 bool is_assignable(const expr_t &e);
 expr_t make_assign(expr_t place, expr_t value);
 
-// -e ~e !e of an operand converted, 6.5.4.3.
-expr_t make_unary(unary_op_t op, expr_t arg);
+// The conversion of a value of the view from, its own type's, to the
+// view to, 6.3.1.3; the parser's conversion() calls it, and nothing
+// else does.
+expr_t make_conversion(view_t to, view_t from, expr_t e);
 
-// lhs op rhs of operands converted, 6.5.6 to 6.5.13.
-expr_t make_binary(binary_op_t op, expr_t lhs, expr_t rhs);
+// -e ~e !e of an operand converted, 6.5.4.3, at the view of the
+// operation, or for ! at the operand's own.
+expr_t make_unary(unary_op_t op, view_t view, expr_t arg);
 
-// A call of the function named, 6.5.3.3, whose result type is void
-// where returns_void says so and int otherwise, of its arguments
-// converted, each stored in a hidden local of the call, numbered from
-// first.
+// lhs op rhs of operands converted, 6.5.6 to 6.5.15, at the view of the
+// operation.
+expr_t make_binary(binary_op_t op, view_t view, expr_t lhs, expr_t rhs);
+
+// A call of the function named, 6.5.3.3, of its arguments converted,
+// each stored in a hidden local of the call, numbered from first: of a
+// function whose result is of the view result, and of a void function.
 expr_t make_call(std::string_view name,
-                 bool returns_void,
+                 view_t result,
                  int first,
                  std::vector< expr_t > args);
+expr_t
+make_call_void(std::string_view name, int first, std::vector< expr_t > args);
 
 stmt_t make_expr_stmt(expr_t e);
 stmt_t make_null();
-stmt_t make_decl(int slot);
-stmt_t make_init(int slot, expr_t value);
-stmt_t make_return(expr_t value);
+
+// A declaration of a local of the view, with an initializer or without,
+// and a return of a value of the result's view.
+stmt_t make_decl(int slot, view_t view);
+stmt_t make_init(int slot, view_t view, expr_t value);
+stmt_t make_return(expr_t value, view_t view);
 stmt_t make_return_void();
 stmt_t make_block(std::vector< stmt_t > items);
 

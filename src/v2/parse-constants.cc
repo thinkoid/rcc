@@ -1,8 +1,8 @@
 // -*- mode: c++; -*-
 
 // 6.4.4.2: an integer constant's value and type, read from its
-// spelling as rcc's parser reads it, and the operand of a constant of
-// type int.
+// spelling as rcc's parser reads it, and the operand of a constant of a
+// signed type, int or long.
 
 #include "parse-common.hh"
 
@@ -117,7 +117,8 @@ integer_constant_type(std::uint64_t value, bool decimal, suffix_t suffix)
 
 // The value from the spelling, 6.4.4.2p4, p5.  The lexer has checked
 // the form; a value past 64 bits has no type (6.4.4.2p7).  A constant
-// of another type than int is not yet: literal_t holds an int.
+// of an unsigned type is not yet.  The node's value is the bits its
+// register holds, which a signed type's value is.
 operand_t
 integer_constant(parser_t &p)
 {
@@ -159,10 +160,11 @@ integer_constant(parser_t &p)
     if (too_large || !type)
         fail(t, "integer constant is too large for its type");
 
-    if (*type != int_type())
-        not_yet(t, "integer constant whose type is not 'int'");
+    if (!as< int_t >(*type).is_signed)
+        not_yet(t, "integer constant whose type is unsigned");
 
-    return { *type, make_literal(static_cast< int >(value)) };
+    return { *type,
+             make_literal(static_cast< long long >(value), view_of(*type)) };
 }
 
 } // namespace rcc

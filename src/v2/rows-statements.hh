@@ -17,20 +17,20 @@ namespace rcc {
 // the whole activation, never shared and never given back at its
 // block's end, so siblings do not share one.  Without an initializer
 // nothing is stored, and the slot holds what it holds, G5.
-template< typename S >
+template< typename S, view_t V >
 void
-generate(S &s, const decl_t &d)
+generate(S &s, const decl_t< V > &d)
 {
-    allocate(s, d.where);
+    allocate(s, d.where, V);
 }
 
 // The slot is taken before the initializer is generated, whose scope
 // holds the name already, 6.2.1p7: int x = x; reads x's own slot.
-template< typename S >
+template< typename S, view_t V >
 void
-generate(S &s, const init_t &i)
+generate(S &s, const init_t< V > &i)
 {
-    allocate(s, i.where);
+    allocate(s, i.where, V);
     initialize(s, i.where, i.value);
 }
 

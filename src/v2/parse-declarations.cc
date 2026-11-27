@@ -1,12 +1,13 @@
 // -*- mode: c++; -*-
 
 // 6.7: the declarations, of which rcc-v2 takes the declaration
-// specifiers static, int and void, the declarators of a function of int
-// parameters and of an object, and the declaration in a block of int
-// objects, each with an initializer or without; it refuses the rest as
-// not yet.  rcc reads more of each than rcc-v2 does, so each is read as
-// far as rcc would read it, and what rcc would take is refused before
-// an error rcc would not say.
+// specifiers static, void and the type specifiers of int and long, in
+// any order and spelling, the declarators of a function of int
+// parameters and of an object, the declaration in a block of int and
+// long objects, each with an initializer or without, and the type name
+// of a cast; it refuses the rest as not yet.  rcc reads more of each
+// than rcc-v2 does, so each is read as far as rcc would read it, and
+// what rcc would take is refused before an error rcc would not say.
 
 #include "parse-common.hh"
 
@@ -93,12 +94,113 @@ is_declaration_start(const parser_t &p, std::size_t ahead)
     return t.kind == tok_t::kw_static_assert || is_specifier(t);
 }
 
+namespace {
+
+// The type specifiers of 6.7.3.1p2 that rcc counts, as rcc's
+// declaration_specifiers() counts them, void beside them: each a count
+// of its keyword, so that the order of the keywords does not matter.
+struct counts_t
+{
+    int void_ = 0;
+    int char_ = 0;
+    int short_ = 0;
+    int int_ = 0;
+    int long_ = 0;
+    int signed_ = 0;
+    int unsigned_ = 0;
+};
+
+// Whether the type specifier at t cannot join those counted before it,
+// rcc's: void joins none, nor any one void; char joins no char, short,
+// int or long; short no char, short or long; int no char or int; long no
+// char or short, nor two longs; signed and unsigned neither of the two.
+// Counts it if it is one.
+bool
+cannot_join(counts_t &n, const token_t &t)
+{
+    const bool bad = n.void_ > 0;
+
+    switch (t.kind) {
+    case tok_t::kw_void:
+        ++n.void_;
+        return bad || n.char_ || n.short_ || n.int_ || n.long_ || n.signed_ ||
+               n.unsigned_;
+    case tok_t::kw_char:
+        ++n.char_;
+        return bad || n.char_ > 1 || n.short_ || n.int_ || n.long_;
+    case tok_t::kw_short:
+        ++n.short_;
+        return bad || n.char_ || n.short_ > 1 || n.long_;
+    case tok_t::kw_int: ++n.int_; return bad || n.char_ || n.int_ > 1;
+    case tok_t::kw_long:
+        ++n.long_;
+        return bad || n.char_ || n.short_ || n.long_ > 2;
+    case tok_t::kw_signed:
+    case tok_t::kw_unsigned: {
+        const bool either = n.signed_ || n.unsigned_;
+        ++(t.kind == tok_t::kw_signed ? n.signed_ : n.unsigned_);
+        return bad || either;
+    }
+    default: return false;
+    }
+}
+
+// Whether a token is one of the type specifiers counts_t counts.
+bool
+is_counted(const token_t &t)
+{
+    switch (t.kind) {
+    case tok_t::kw_void:
+    case tok_t::kw_char:
+    case tok_t::kw_short:
+    case tok_t::kw_int:
+    case tok_t::kw_long:
+    case tok_t::kw_signed:
+    case tok_t::kw_unsigned: return true;
+    default: return false;
+    }
+}
+
+// Whether a counted type specifier brings a type rcc-v2 does not
+// compile yet: char, short and unsigned.
+bool
+is_outside(const token_t &t)
+{
+    return t.kind == tok_t::kw_char || t.kind == tok_t::kw_short ||
+           t.kind == tok_t::kw_unsigned;
+}
+
+// The type the counted specifiers name, rcc's specified(): void; two
+// longs long long, one long long, and int otherwise, signed alone
+// among them, 6.7.3.1p2.
+type_t
+specified(const counts_t &n)
+{
+    if (n.void_)
+        return make_void();
+
+    if (n.long_ == 2)
+        return make_int(64, true, int_kind_t::long_long);
+
+    if (n.long_)
+        return make_int(64, true, int_kind_t::long_);
+
+    return int_type();
+}
+
+} // namespace
+
 // The declaration specifiers: the storage class static, 6.7.2p1, then
-// one of the sets int and void of 6.7.3.1p2.  rcc reads every specifier
-// up to the first token that is none, so another one, before the type
-// specifier or after it, is not yet, and so is a reserved identifier in
-// its place, which may name a type the compiler declares; any other
-// token there is rcc's error, another identifier's among them.
+// one of the sets of 6.7.3.1p2 in any order, read as rcc reads them, up
+// to the first token that is none, each type specifier refused where it
+// cannot join those before it, in rcc's words.  A set rcc-v2 does not
+// compile yet, of char, short or unsigned, is not yet once the
+// specifiers are read whole, at the first specifier that brings it, so
+// that every error rcc says of them is said.  Any other specifier is
+// not yet where it stands, and so is a reserved identifier in place of
+// the first type specifier, which may name a type the compiler
+// declares; any other token there is rcc's error, another identifier's
+// among them.
 specifiers_t
 declaration_specifiers(parser_t &p)
 {
@@ -106,20 +208,34 @@ declaration_specifiers(parser_t &p)
     if (peek(p).kind == tok_t::kw_static)
         storage_class = &advance(p);
 
+    counts_t counts;
+    const token_t *first = nullptr;
+    const token_t *outside = nullptr;
+
+    while (is_counted(peek(p))) {
+        const token_t &t = advance(p);
+        if (cannot_join(counts, t))
+            fail(t, "cannot combine " + quoted(t.text) +
+                        " with the type specifiers before it");
+
+        if (!first)
+            first = &t;
+
+        if (!outside && is_outside(t))
+            outside = &t;
+    }
+
     const token_t &t = peek(p);
-    if (!next_is(p, { tok_t::kw_int, tok_t::kw_void }) &&
-        (is_specifier(t) || names_a_type(t)))
+    if (is_specifier(t) || (!first && names_a_type(t)))
         not_yet(t, "declaration specifier " + quoted(t.text));
 
-    if (!next_is(p, { tok_t::kw_int, tok_t::kw_void }))
+    if (!first)
         fail(t, "expected a type specifier");
 
-    advance(p);
-    if (is_specifier(peek(p)))
-        not_yet(peek(p), "declaration specifier " + quoted(peek(p).text));
+    if (outside)
+        not_yet(*outside, "declaration specifier " + quoted(outside->text));
 
-    return { storage_class, t,
-             t.kind == tok_t::kw_void ? make_void() : int_type() };
+    return { storage_class, *first, specified(counts) };
 }
 
 namespace {
@@ -162,7 +278,8 @@ parameter_declarator(parser_t &p)
 // attributes after it, which are not yet.  register is the one storage
 // class a parameter takes, p2, and static is refused in rcc's words;
 // register itself is not yet, as a specifier.  A parameter of type void
-// is left for the list to take or refuse.
+// is left for the list to take or refuse, and one of any other type
+// than int is not yet, at its first type specifier.
 parameter_t
 parameter_declaration(parser_t &p)
 {
@@ -172,6 +289,9 @@ parameter_declaration(parser_t &p)
     if (spec.storage_class)
         fail(*spec.storage_class,
              quoted(spec.storage_class->text) + " in a parameter declaration");
+
+    if (!is< void_t >(spec.type) && spec.type != int_type())
+        not_yet(spec.specifier, "parameter whose type is not 'int'");
 
     const token_t *name = parameter_declarator(p);
     if (peek(p).kind == tok_t::kw_attribute)
@@ -198,8 +318,9 @@ declare_parameter(parser_t &p, const parameter_t &param, int index)
         fail(*param.name,
              "redefinition of parameter " + quoted(param.name->text));
 
-    scope.emplace(param.name->text,
-                  operand_t { param.type, make_local(index) });
+    scope.emplace(
+        param.name->text,
+        operand_t { param.type, make_local(index, view_of(param.type)) });
 }
 
 // (void), (), or parameters, read in the scope the caller opened for
@@ -285,6 +406,25 @@ declarator(parser_t &p, const type_t &base)
     return d;
 }
 
+// A type name, 6.7.8p1: the specifiers, of which no storage class, in
+// rcc's words, then an abstract declarator, a declarator without its
+// name, of which none is taken yet: a pointer, a declarator in
+// parentheses or an array is not yet, refused at its first token.
+type_t
+type_name(parser_t &p)
+{
+    const specifiers_t spec = declaration_specifiers(p);
+    if (spec.storage_class)
+        fail(*spec.storage_class,
+             quoted(spec.storage_class->text) + " in a type name");
+
+    refuse_declarator_start(p);
+    if (peek(p).kind == tok_t::lbracket)
+        not_yet(peek(p), "array declarator");
+
+    return spec.type;
+}
+
 namespace {
 
 // A declarator of an object and its initializer, appended to items: the
@@ -306,7 +446,7 @@ init_declarator(parser_t &p,
 
     const int slot = declare(p, name, type);
     if (peek(p).kind != tok_t::assign) {
-        items.push_back(make_decl(slot));
+        items.push_back(make_decl(slot, view_of(type)));
         return;
     }
 
@@ -319,8 +459,7 @@ init_declarator(parser_t &p,
     require_value(start, init);
 
     items.push_back(make_init(
-        slot, assignment_conversion(op, std::move(init), type,
-                                    "the type of " + quoted(name.text))));
+        slot, view_of(type), assignment_conversion(op, std::move(init), type)));
 }
 
 // The declarators of a declaration in a block and its ';', 6.7.1p1: one

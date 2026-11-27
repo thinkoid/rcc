@@ -13,6 +13,7 @@
 #include <cstddef>
 #include <initializer_list>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -118,8 +119,9 @@ callee(const parser_t &p, const token_t &op, const operand_t &e)
 }
 
 // The argument ahead, the call's index-th, rcc's argument(): converted
-// to its parameter's type as if by assignment, 6.5.3.3p6.  One past the
-// parameters is an error at its first token, p2, said once it is read.
+// to its parameter's type as if by assignment, 6.5.3.3p6, an int.  One
+// past the parameters is an error at its first token, p2, said once it
+// is read.
 expr_t
 argument(parser_t &p,
          const function_t &type,
@@ -132,8 +134,7 @@ argument(parser_t &p,
     if (index >= type.params.size())
         fail(start, "too many arguments to function " + quoted(function));
 
-    return assignment_conversion(start, std::move(arg), *type.params[index],
-                                 "the type of the parameter");
+    return assignment_conversion(start, std::move(arg), *type.params[index]);
 }
 
 // The arguments of a call, argument()'s each, as many as the callee's
@@ -158,7 +159,8 @@ argument_expression_list(parser_t &p,
 }
 
 // A call, 6.5.3.3, its '(' op: the callee, the arguments and the ')'.
-// The value is of the function's result type, int or void.  Each
+// The value is of the function's result type, int or void; a call of a
+// function of another result type is not yet, at the '('.  Each
 // argument is stored in a hidden local of the call, rcc's argument slot
 // (backend.md chapter 8), numbered among the function's locals after
 // the numbers the calls within its arguments took.
@@ -171,16 +173,20 @@ call(parser_t &p, const token_t &op, const operand_t &e)
     const function_t &type = as< function_t >(f.type);
     const std::string &name = p.unit.functions[f.index].name;
 
+    const type_t &result = *type.result;
+    if (!is< void_t >(result) && result != int_type())
+        not_yet(op, "call of a function whose result type is not 'int'");
+
     std::vector< expr_t > args = argument_expression_list(p, type, name);
     expect(p, tok_t::rparen, "expected ')' after arguments");
 
     const int first = p.locals;
     p.locals += static_cast< int >(args.size());
 
-    const type_t &result = *type.result;
+    if (is< void_t >(result))
+        return { result, make_call_void(name, first, std::move(args)) };
 
-    return { result,
-             make_call(name, is< void_t >(result), first, std::move(args)) };
+    return { result, make_call(name, view_of(result), first, std::move(args)) };
 }
 
 // The postfix operators, 6.5.3, left to right: a call, and a subscript,
@@ -205,64 +211,104 @@ postfix_expression(parser_t &p)
     }
 }
 
-// The operand of an arithmetic operator: its value, 6.3.2.1p2, of type
-// int, which the integer promotions, 6.5.4.3p2, 6.5.8p3, and the usual
-// arithmetic conversions, 6.5.6p4, 6.5.7p5, leave as it is.  An
-// operand of another type is not yet.
-expr_t
-arithmetic_operand(const token_t &op, operand_t e)
+// The integer promotions, 6.3.1.1p2, rcc's promoted(): every type
+// narrower than int converts to int, which holds all of its values,
+// signed or not; int and long are their own.
+type_t
+promoted(const type_t &t)
 {
-    if (e.type != int_type())
-        not_yet(op, quoted(op.text) + " on an operand whose type is not 'int'");
+    if (as< int_t >(t).width < 32)
+        return int_type();
 
-    return rvalue(std::move(*e.node));
+    return t;
+}
+
+// The value of e in its promoted type, rcc's promote().
+expr_t
+promote(const operand_t &e)
+{
+    return convert_to(e, promoted(e.type));
+}
+
+// The rank of an integer type, 6.3.1.1p1, by its kind, rcc's rank():
+// int, then long, then long long, each of its own rank though long and
+// long long are of one width on LP64.
+int
+rank(const int_t &t)
+{
+    switch (t.kind) {
+    case int_kind_t::int_: return 3;
+    case int_kind_t::long_: return 4;
+    case int_kind_t::long_long: return 5;
+    default: throw std::logic_error("v2: rank of an integer type of no kind");
+    }
+}
+
+// The common type of the usual arithmetic conversions, 6.3.1.8p1, on
+// the promoted operands, rcc's common_type(): of two types of one sign,
+// that of the higher rank, so int and long meet at long, and long and
+// long long at long long.
+type_t
+common_type(const type_t &a, const type_t &b)
+{
+    const type_t x = promoted(a);
+    const type_t y = promoted(b);
+
+    return rank(as< int_t >(x)) >= rank(as< int_t >(y)) ? x : y;
 }
 
 // The operand of a unary arithmetic operator, the value it reads, rcc's
 // rvalue() and require_integer(): not void, require_value()'s, and not
 // a function designator, whose value is a pointer, 6.3.2.1p4, which no
 // operator of 6.5.4.3 takes, p1; each an error at the operator.
-expr_t
-unary_operand(const token_t &op, operand_t e)
+void
+require_arithmetic(const token_t &op, const operand_t &e)
 {
     require_value(op, e);
 
     if (is< function_t >(e.type))
         fail(op, "operand of " + quoted(op.text) + " is a pointer");
-
-    return arithmetic_operand(op, std::move(e));
 }
 
 // 6.5.5, the operand of a unary operator, below.
 operand_t cast_expression(parser_t &);
 
-// +e, 6.5.4.3p2: the operand's value, which is no lvalue, and no node
-// of its own.
+// +e, 6.5.4.3p2, rcc's unary_plus(): the operand's value in its promoted
+// type, and no node of its own; but the value is no lvalue, so an
+// operand that is a place, whose promotion made no node, stands under
+// a conversion to its own type, which writes nothing: +x is (T) x, T
+// the promoted type of x.
 operand_t
 unary_plus(parser_t &p)
 {
     const token_t &op = advance(p);
     operand_t arg = cast_expression(p);
+    require_arithmetic(op, arg);
 
-    return { int_type(), unary_operand(op, std::move(arg)) };
+    const type_t t = promoted(arg.type);
+    if (arg.type == t && is_assignable(*arg.node))
+        return { t, conversion(arg, t) };
+
+    return { t, promote(arg) };
 }
 
-// !e, 6.5.4.3p5: an int, its operand's value tested as it is, with no
-// promotion; ! of a constant is a constant.  A void operand is an error
-// at the !, require_value()'s, and a function designator, a scalar,
-// which ! takes, p1, is not yet, as any operand that is no int.
+// !e, 6.5.4.3p5: an int, its operand's value tested as it is, at its
+// own type, with no promotion; ! of a constant is a constant.  A void
+// operand is an error at the !, require_value()'s, and a function
+// designator, a scalar, which ! takes, p1, is not yet.
 operand_t
 logical_not(parser_t &p)
 {
     const token_t &op = advance(p);
     operand_t arg = cast_expression(p);
-    require_value(op, arg);
+    expr_t value = rvalue(op, arg);
 
-    return { int_type(), make_unary(unary_op_t::log_not,
-                                    arithmetic_operand(op, std::move(arg))) };
+    return { int_type(), make_unary(unary_op_t::log_not, view_of(arg.type),
+                                    std::move(value)) };
 }
 
-// -e and ~e, 6.5.4.3p3, p4.
+// -e and ~e, 6.5.4.3p3, p4: the operand promoted, and the result of the
+// promoted type.
 operand_t
 unary_arithmetic(parser_t &p)
 {
@@ -271,8 +317,11 @@ unary_arithmetic(parser_t &p)
         op.kind == tok_t::minus ? unary_op_t::neg : unary_op_t::bit_not;
 
     operand_t arg = cast_expression(p);
+    require_arithmetic(op, arg);
 
-    return { int_type(), make_unary(u, unary_operand(op, std::move(arg))) };
+    const type_t t = promoted(arg.type);
+
+    return { t, make_unary(u, view_of(t), promote(arg)) };
 }
 
 // The unary operators, 6.5.4, of which rcc-v2 takes + - ~ !, 6.5.4.3,
@@ -301,15 +350,37 @@ unary_expression(parser_t &p)
     }
 }
 
-// The cast operator, 6.5.5: a parenthesized type name starts a cast;
-// anything else in parentheses is a primary expression.
+// (T) e, 6.5.5, rcc's cast(): the operand's value converted to T, a
+// node even where e is of type T, since a cast yields no lvalue, p6
+// (its footnote); a constant folds to the constant of T.  A void
+// operand is an error at the '(', require_value()'s, and a function
+// designator is not yet.
+operand_t
+cast(const token_t &open, const type_t &t, const operand_t &arg)
+{
+    const operand_t value { arg.type, rvalue(open, arg) };
+
+    return { t, conversion(value, t) };
+}
+
+// The cast operator, 6.5.5: a parenthesized type name starts a cast,
+// its operand a cast expression; anything else in parentheses is a
+// primary expression.  A cast to void, which discards its operand's
+// value, p2, is not yet, at the '('.
 operand_t
 cast_expression(parser_t &p)
 {
-    if (peek(p).kind == tok_t::lparen && is_declaration_start(p, 1))
-        not_yet(peek(p), "cast");
+    if (peek(p).kind != tok_t::lparen || !is_declaration_start(p, 1))
+        return unary_expression(p);
 
-    return unary_expression(p);
+    const token_t &open = advance(p);
+    const type_t t = type_name(p);
+    expect(p, tok_t::rparen, "expected ')' after type name");
+
+    if (is< void_t >(t))
+        not_yet(open, "cast to 'void'");
+
+    return cast(open, t, cast_expression(p));
 }
 
 // The operands of a binary operator of int that are function
@@ -342,13 +413,13 @@ refuse_function_operands(binary_op_t op,
     fail(at, "operand of " + quoted(at.text) + " is a pointer");
 }
 
-// A binary operator of int, 6.5.6 to 6.5.8, 6.5.11 to 6.5.13, its
-// token at: each operand's value, as arithmetic_operand() takes it
-// there, and the result an int, the operands' common type, and for a
-// shift the type of the promoted left operand, 6.5.8p3.  rcc reads both
-// values before it judges their types, so a void one is the error
-// first, require_value()'s, and a function designator the next,
-// refuse_function_operands()'s.
+// A binary operator of integers, 6.5.6, 6.5.7, 6.5.11 to 6.5.13, its
+// token at, rcc's arithmetic(): the usual arithmetic conversions, each
+// operand converted to the common type, and the result of that type,
+// the operation at its view, 6.5.6p4, 6.5.7p5, 6.5.11p3, 6.5.12p3,
+// 6.5.13p3.  rcc reads both values before it judges their types, so a
+// void one is the error first, require_value()'s, and a function
+// designator the next, refuse_function_operands()'s.
 operand_t
 arithmetic(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
 {
@@ -356,20 +427,40 @@ arithmetic(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
     require_value(at, rhs);
     refuse_function_operands(op, at, lhs, rhs);
 
-    expr_t l = arithmetic_operand(at, std::move(lhs));
-    expr_t r = arithmetic_operand(at, std::move(rhs));
+    const type_t t = common_type(lhs.type, rhs.type);
+    expr_t l = convert_to(lhs, t);
+    expr_t r = convert_to(rhs, t);
 
-    return { int_type(), make_binary(op, std::move(l), std::move(r)) };
+    return { t, make_binary(op, view_of(t), std::move(l), std::move(r)) };
 }
 
-// The operator of a multiplicative operator's token: * / %.
+// << and >>, 6.5.8, its token at, rcc's shift(): each operand promoted
+// on its own, so the count keeps its promoted type, p3, and the result
+// of the promoted left operand's type, the operation at its view.  The
+// errors are arithmetic()'s, in its order.
+operand_t
+shift(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
+{
+    require_value(at, lhs);
+    require_value(at, rhs);
+    refuse_function_operands(op, at, lhs, rhs);
+
+    const type_t t = promoted(lhs.type);
+    expr_t l = promote(lhs);
+    expr_t r = promote(rhs);
+
+    return { t, make_binary(op, view_of(t), std::move(l), std::move(r)) };
+}
+
+// The operator of a multiplicative operator's token: * / %, the
+// division of a signed type's.
 binary_op_t
 multiplicative_operator(tok_t kind)
 {
     switch (kind) {
     case tok_t::star: return binary_op_t::mul;
-    case tok_t::slash: return binary_op_t::div;
-    default: return binary_op_t::rem;
+    case tok_t::slash: return binary_op_t::sdiv;
+    default: return binary_op_t::srem;
     }
 }
 
@@ -420,10 +511,10 @@ shift_expression(parser_t &p)
     while (next_is(p, { tok_t::shl, tok_t::shr })) {
         const token_t &op = advance(p);
         const binary_op_t b =
-            op.kind == tok_t::shl ? binary_op_t::shl : binary_op_t::shr;
+            op.kind == tok_t::shl ? binary_op_t::shl : binary_op_t::ashr;
 
         operand_t rhs = additive_expression(p);
-        e = arithmetic(b, op, std::move(e), std::move(rhs));
+        e = shift(b, op, std::move(e), std::move(rhs));
     }
 
     return e;
@@ -456,13 +547,13 @@ refuse_function_comparison(binary_op_t op,
     fail(at, "comparison between pointer and integer");
 }
 
-// A relational or an equality operator, 6.5.9, 6.5.10, its token at:
-// each operand's value, as arithmetic_operand() takes it there, in the
-// operands' common type, 6.5.9p4, 6.5.10p5, which leaves two ints as
-// they are, and the result an int whatever the operands' type, 6.5.9p7,
-// 6.5.10p4.  rcc reads both values before it judges their types, so a
-// void one is the error first, require_value()'s, and a function
-// designator the next, refuse_function_comparison()'s.
+// A relational or an equality operator, 6.5.9, 6.5.10, its token at,
+// rcc's comparison(): each operand converted to the operands' common
+// type, 6.5.9p4, 6.5.10p5, the cmp at its view, and the result an int
+// whatever the operands' type, 6.5.9p7, 6.5.10p4.  rcc reads both
+// values before it judges their types, so a void one is the error
+// first, require_value()'s, and a function designator the next,
+// refuse_function_comparison()'s.
 operand_t
 comparison(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
 {
@@ -470,21 +561,24 @@ comparison(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
     require_value(at, rhs);
     refuse_function_comparison(op, at, lhs, rhs);
 
-    expr_t l = arithmetic_operand(at, std::move(lhs));
-    expr_t r = arithmetic_operand(at, std::move(rhs));
+    const type_t t = common_type(lhs.type, rhs.type);
+    expr_t l = convert_to(lhs, t);
+    expr_t r = convert_to(rhs, t);
 
-    return { int_type(), make_binary(op, std::move(l), std::move(r)) };
+    return { int_type(),
+             make_binary(op, view_of(t), std::move(l), std::move(r)) };
 }
 
-// The operator of a relational operator's token: < > <= >=.
+// The operator of a relational operator's token: < > <= >=, the
+// comparison of a signed type's.
 binary_op_t
 relational_operator(tok_t kind)
 {
     switch (kind) {
-    case tok_t::lt: return binary_op_t::lt;
-    case tok_t::gt: return binary_op_t::gt;
-    case tok_t::le: return binary_op_t::le;
-    default: return binary_op_t::ge;
+    case tok_t::lt: return binary_op_t::slt;
+    case tok_t::gt: return binary_op_t::sgt;
+    case tok_t::le: return binary_op_t::sle;
+    default: return binary_op_t::sge;
     }
 }
 
@@ -573,23 +667,23 @@ inclusive_or_expression(parser_t &p)
     return e;
 }
 
-// && or ||, 6.5.14, 6.5.15, its token at: each operand's value, as
-// arithmetic_operand() takes it there, compared with 0 in its own type,
-// so nothing converts it, 6.5.14p2, 6.5.15p2; the result an int,
-// 6.5.14p3, 6.5.15p3.  rcc reads both values before it judges their
-// types: a void one is an error at the operator, and a function
-// designator, a scalar, which rcc compiles, is not yet, as any operand
-// that is no int.
+// && or ||, 6.5.14, 6.5.15, its token at: each operand's value,
+// compared with 0 in its own type, so nothing converts it, 6.5.14p2,
+// 6.5.15p2; the result an int, the operator at an int's view, 6.5.14p3,
+// 6.5.15p3.  rcc reads both values before it judges their types: a
+// void one is an error at the operator, and a function designator, a
+// scalar, which rcc compiles, is not yet.
 operand_t
 logical(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
 {
     require_value(at, lhs);
     require_value(at, rhs);
 
-    expr_t l = arithmetic_operand(at, std::move(lhs));
-    expr_t r = arithmetic_operand(at, std::move(rhs));
+    expr_t l = rvalue(at, std::move(lhs));
+    expr_t r = rvalue(at, std::move(rhs));
 
-    return { int_type(), make_binary(op, std::move(l), std::move(r)) };
+    return { int_type(),
+             make_binary(op, view_t::i32, std::move(l), std::move(r)) };
 }
 
 // The logical AND operator, 6.5.14, left-associative, as rcc's loop
@@ -663,8 +757,7 @@ assignment_expression(parser_t &p)
         fail(op, "expression is not assignable");
 
     operand_t rhs = assignment_expression(p);
-    expr_t value = assignment_conversion(op, std::move(rhs), lhs.type,
-                                         "the type of the left operand");
+    expr_t value = assignment_conversion(op, std::move(rhs), lhs.type);
 
     return { lhs.type, make_assign(std::move(*lhs.node), std::move(value)) };
 }

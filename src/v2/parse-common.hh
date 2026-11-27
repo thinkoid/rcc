@@ -139,6 +139,12 @@ const token_t &expect(parser_t &p, tok_t kind, std::string_view message);
 // int as the parser makes it: 32 bits, signed, of the kind int.
 type_t int_type();
 
+// The machine's view of an integer type, its width, the one place the
+// parser maps a C type to the machine's (docs/typed-tree.md principle
+// 9): every builder it calls is handed the view of the C type it
+// means.
+view_t view_of(const type_t &t);
+
 //
 // values
 //
@@ -158,16 +164,29 @@ expr_t rvalue(const token_t &at, operand_t e);
 // decay to its function's address, is not yet.
 expr_t discarded(operand_t e);
 
+// The conversion of the value of e, an operand of a value, to the type
+// t, 6.3.1.3, as a node, whatever the two types: its builder is handed
+// the views of t and of e's own type, which it reads off e.  Every
+// conversion the parser builds is this function's, and nothing else
+// calls make_conversion(): so a node that is no conversion has the type
+// its consumer converts it from, and the width rule, which a widening
+// reads by the sign of the type it converts from, is right by
+// construction (docs/typed-tree.md 4.2).
+expr_t conversion(const operand_t &e, const type_t &t);
+
+// The value of e in the type t, rcc's convert_to(), the place an
+// implicit conversion enters the tree: no node where e's type is t in
+// the machine's view, the C type changed in place, as long to long
+// long; conversion()'s otherwise, which folds a constant.
+expr_t convert_to(const operand_t &e, const type_t &t);
+
 // A value converted to the type t as if by assignment, 6.5.17.2p2,
 // rcc's assignment_conversion(): a void value is none,
 // require_value()'s; a function designator decays to a pointer,
 // 6.3.2.1p4, which converts to no integer, 6.5.17.2p1, an error at the
-// token; and a value of another type than t is not yet, its conversion
-// to what words names.  Returns the value's node.
-expr_t assignment_conversion(const token_t &at,
-                             operand_t e,
-                             const type_t &t,
-                             std::string_view words);
+// token; any other value is converted to t, convert_to()'s.  Returns
+// the value's node.
+expr_t assignment_conversion(const token_t &at, operand_t e, const type_t &t);
 
 //
 // scopes
@@ -195,7 +214,8 @@ operand_t expression(parser_t &);
 // 6.7, parse-declarations.cc
 
 // What the parser holds of the declaration specifiers: the storage
-// class, static or none; the type specifier's token; and the type.
+// class, static or none; the first type specifier's token; and the
+// type.
 struct specifiers_t
 {
     const token_t *storage_class;
@@ -228,6 +248,7 @@ struct declarator_t
 
 bool is_declaration_start(const parser_t &, std::size_t ahead = 0);
 specifiers_t declaration_specifiers(parser_t &);
+type_t type_name(parser_t &);
 declarator_t declarator(parser_t &, const type_t &base);
 std::vector< stmt_t > declaration(parser_t &);
 

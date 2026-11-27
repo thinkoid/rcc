@@ -3,8 +3,10 @@
 // x86-64, docs/backend.md: the registers, the state of a function's
 // generation, the rows of the zoo's types this target writes itself,
 // and the unit's entry.  The rows are declared here for build.cc, whose
-// models call them, and defined in amd64.cc, which reaches the tree
-// only through a handle's row.
+// models call them, and those of a template defined here too; the rest
+// are defined in amd64.cc, which reaches the tree only through a
+// handle's row.  Every width a row writes is its node's view, handed to
+// the text as data.
 
 #pragma once
 
@@ -44,20 +46,21 @@ bit(reg_t r)
 // path reaches what is written next: the last instruction written is an
 // unconditional jump, which jump() sets and place_label() clears, so an
 // if whose then part ends so writes no jump over its else part, and
-// main writes no return of 0 (backend.md 7.2).  zero_flag says that the
-// last instruction written set ZF from the value it computed,
-// flagged()'s, until the next instruction or label: a jump on that
-// value then needs no cmp (7.1).  loops is the labels each loop
-// generated so far took for its body's jumps, by the loop's number.
-// frame is the bytes the slots take below rbp, the locals' and the
-// spills' in the order they are taken, and slots each local's
-// displacement off rbp, by its number; calls says that the function
-// calls, which moves rsp below the slots (chapter 5).  reserved is the
-// registers take() leaves for last while a value meant for a pinned
-// register is generated, so it lands there (chapter 6.5).  ahead is the
-// registers a pinned instruction generated after the value now being
-// generated would move a held value out of, which the instruction on a
-// spilled value keeps its destination out of (right_written()).
+// main writes no return of 0 (backend.md 7.2).  zero_flag is the width
+// at which the last instruction written set ZF from the value it
+// computed, flagged()'s, or 0, until the next instruction or label: a
+// jump on that value at that width then needs no cmp (7.1).  loops is
+// the labels each loop generated so far took for its body's jumps, by
+// the loop's number.  frame is the bytes the slots take below rbp, the
+// locals' and the spills' in the order they are taken, and slots each
+// local's displacement off rbp, by its number; calls says that the
+// function calls, which moves rsp below the slots (chapter 5).
+// reserved is the registers take() leaves for last while a value meant
+// for a pinned register is generated, so it lands there (chapter 6.5).
+// ahead is the registers a pinned instruction generated after the value
+// now being generated would move a held value out of, which the
+// instruction on a spilled value keeps its destination out of
+// (right_written()).
 struct state_t
 {
     std::ostringstream body { };
@@ -65,7 +68,7 @@ struct state_t
     int labels = 0;
     int ret = 0;
     bool terminated = false;
-    bool zero_flag = false;
+    int zero_flag = 0;
     std::unordered_map< int, loop_labels_t > loops { };
 
     long frame = 0;
@@ -93,9 +96,10 @@ void place_label(state_t &, int n);
 // jump_if(): jl, and je and jne for == and !=, which read ZF alone.
 void jump_if(state_t &, binary_op_t op, int label);
 
-// The jump on the held value v compared with 0, rcc's test_zero():
-// cmpl $0, %eax, then jne where sense, je otherwise; v stays held.
-void test_zero(state_t &, value_t v, int label, bool sense);
+// The jump on the held value v compared with 0 at its view, rcc's
+// test_zero(): cmpl $0, %eax or cmpq $0, %rax, then jne where sense, je
+// otherwise; v stays held.
+void test_zero(state_t &, value_t v, view_t view, int label, bool sense);
 
 // A mov of the immediate value into r, at 32 bits: movl $1, %eax.
 void move_immediate(state_t &, reg_t r, int value);
@@ -114,102 +118,162 @@ int allocate(state_t &, long size, int align);
 void store_spill(state_t &, reg_t r, int displacement);
 void reload_spill(state_t &, reg_t r, int displacement);
 
-// The constant rows of an int: its 32 bits in a register taken for it.
-// Every value row of x86-64 is handed wanted, the registers the
-// consumer of the value names, a set of at most one, rax for a
-// return's (6.1): a hint, which a row is free not to honour
-// (docs/typed-tree.md 3.4), none where the consumer names none.  A
-// leaf takes the lowest free register whatever the consumer names, as
-// rcc's literal() and load() do.
-value_t value(state_t &, const literal_t &, unsigned wanted = 0);
-value_t value(state_t &, const zero_t &, unsigned wanted = 0);
+// An immediate, as the assembler reads it: $5.
+std::string imm(long long value);
 
-// The load row: the int a slot holds, in a register taken for it.
-value_t value(state_t &, const load_t &, unsigned wanted = 0);
+// The constant row, a constant of the view in a register taken for it,
+// movl $5, %eax, movq $5, %rax, or movabsq for a 64-bit one no 32-bit
+// immediate holds.  Every value row of x86-64 is handed wanted, the
+// registers the consumer of the value names, a set of at most one, rax
+// for a return's (6.1): a hint, which a row is free not to honour
+// (docs/typed-tree.md 3.4), none where the consumer names none.  A leaf
+// takes the lowest free register whatever the consumer names, as rcc's
+// literal() and load() do.
+value_t constant_value(state_t &, long long value, view_t view);
 
-// - or ~ on r in place, at 32 bits.
-void operate(state_t &, unary_op_t op, reg_t r);
+template< view_t V >
+value_t
+value(state_t &s, const literal_t< V > &c, unsigned = 0)
+{
+    return constant_value(s, c.value, V);
+}
+
+template< view_t V >
+value_t
+value(state_t &s, const zero_t< V > &, unsigned = 0)
+{
+    return constant_value(s, 0, V);
+}
+
+inline value_t
+value(state_t &s, const wide_t &c, unsigned = 0)
+{
+    return constant_value(s, c.value, view_t::i64);
+}
+
+// The load row: the object a slot holds at its view, in a register
+// taken for it, movl -4(%rbp), %eax or movq -8(%rbp), %rax.
+value_t load(state_t &, slot_t where, view_t view);
+
+template< view_t V >
+value_t
+value(state_t &s, const load_t< V > &l, unsigned = 0)
+{
+    return load(s, l.where, V);
+}
+
+// - or ~ on r in place, at the view.
+void operate(state_t &, unary_op_t op, reg_t r, view_t view);
 
 // - and ~, 6.5.4.3p3, p4, rcc's unary(): the operand's value, handed the
 // consumer's register, then the operation on its register in place,
 // negl %eax, which leaves the node's value there.  ! is a row of its
 // own, below.
-template< unary_op_t op, typename A >
+template< unary_op_t op, view_t V, typename A >
     requires(op != unary_op_t::log_not)
 value_t
-value(state_t &s, const unary_t< op, A > &u, unsigned wanted = 0)
+value(state_t &s, const unary_t< op, V, A > &u, unsigned wanted = 0)
 {
     const value_t v = value(s, u.arg, wanted);
-    operate(s, op, reg_of(s, v));
+    operate(s, op, reg_of(s, v), V);
 
     return v;
 }
 
-// The operation of op into r from an operand at 32 bits: a register,
-// the int in a slot, or an operand as its text, an immediate as
+// The operation of op into r from an operand at the view: a register,
+// the object in a slot, or an operand as its text, an immediate as
 // immediate_of() writes it or a spilled value's slot.
-void operate(state_t &, binary_op_t op, reg_t r, reg_t source);
-void operate(state_t &, binary_op_t op, reg_t r, slot_t source);
-void operate(state_t &, binary_op_t op, reg_t r, std::string_view source);
+void operate(state_t &, binary_op_t op, reg_t r, reg_t source, view_t view);
+void operate(state_t &, binary_op_t op, reg_t r, slot_t source, view_t view);
+void operate(
+    state_t &, binary_op_t op, reg_t r, std::string_view source, view_t view);
 
-// The operation of op on the held values l and r, rcc's arithmetic():
-// its value is in l's register, or in r's where op commutes and that is
-// the one wanted names, or where l is spilled and is read in its slot;
-// the other value is consumed.
-value_t
-arithmetic(state_t &, binary_op_t op, value_t l, value_t r, unsigned wanted);
+// The operation of op on the held values l and r at the view, rcc's
+// arithmetic(): its value is in l's register, or in r's where op
+// commutes and that is the one wanted names, or where l is spilled and
+// is read in its slot; the other value is consumed.
+value_t arithmetic(state_t &,
+                   binary_op_t op,
+                   value_t l,
+                   value_t r,
+                   view_t view,
+                   unsigned wanted);
 
-// The three-operand imul at 32 bits, rcc's object_product(): the
-// source, a register or the int in a slot, times the immediate factor
-// into r.
-void multiply(state_t &, reg_t r, reg_t source, std::string_view factor);
-void multiply(state_t &, reg_t r, slot_t source, std::string_view factor);
+// The three-operand imul at the view, rcc's object_product(): the
+// source, a register or the object in a slot, times the immediate
+// factor into r.
+void multiply(
+    state_t &, reg_t r, reg_t source, std::string_view factor, view_t view);
+void multiply(
+    state_t &, reg_t r, slot_t source, std::string_view factor, view_t view);
 
 // The division of op, / or %, of the held dividend l by the divisor, a
-// held value r, which is consumed, or the int in a slot, at 32 bits:
-// the quotient or the remainder, held where idivl leaves it or in l's
-// register.
-value_t
-divide(state_t &, binary_op_t op, value_t l, value_t r, unsigned wanted);
-value_t
-divide(state_t &, binary_op_t op, value_t l, slot_t divisor, unsigned wanted);
+// held value r, which is consumed, or the object in a slot, at the
+// view: the quotient or the remainder, held where idiv leaves it or in
+// l's register.
+value_t divide(state_t &,
+               binary_op_t op,
+               value_t l,
+               value_t r,
+               view_t view,
+               unsigned wanted);
+value_t divide(state_t &,
+               binary_op_t op,
+               value_t l,
+               slot_t divisor,
+               view_t view,
+               unsigned wanted);
 
-// The store rows, an operand into a slot at 32 bits: a register, or an
+// The store rows, an operand into a slot at the view: a register, or an
 // immediate as immediate_of() writes it.
-void store(state_t &, reg_t r, slot_t where);
-void store(state_t &, std::string_view immediate, slot_t where);
+void store(state_t &, reg_t r, slot_t where, view_t view);
+void store(state_t &, std::string_view immediate, slot_t where, view_t view);
 
-// A constant as the immediate operand of an instruction, 32 bits.
-std::string immediate_of(const literal_t &);
-std::string immediate_of(const zero_t &);
+// A constant as the immediate operand of an instruction, 32 bits,
+// sign-extended in a 64-bit one: a literal_t and a zero_t, and no
+// wide_t, which no immediate holds.
+template< view_t V >
+std::string
+immediate_of(const literal_t< V > &c)
+{
+    return imm(c.value);
+}
+
+template< view_t V >
+std::string
+immediate_of(const zero_t< V > &)
+{
+    return imm(0);
+}
 
 // A shift's constant count as its instruction's immediate: the low 8
 // bits of the count, which is what the instruction encodes.
-std::string count_of(int count);
+std::string count_of(long long count);
 
 // The instruction of a shift of the value l by the count held in r, at
-// 32 bits, shll %cl, %eax, with what is in the way moved first; r is
-// consumed.
-void shift(state_t &, binary_op_t op, value_t l, value_t r);
+// the view, shll %cl, %eax, with what is in the way moved first, the
+// count into rcx at its own view, count; r is consumed.
+void shift(
+    state_t &, binary_op_t op, value_t l, value_t r, view_t view, view_t count);
 
 // A value an instruction takes as its immediate: a type immediate_of()
 // is written for (principle 7).
-template< typename V >
-concept immediate = requires(const V &e) { immediate_of(e); };
+template< typename C >
+concept immediate = requires(const C &c) { immediate_of(c); };
 
 // The niche of initialize(), chapter 6.6: an immediate is stored by
-// one mov into the slot, and no register is held.
-template< immediate V >
+// one mov into the slot at its view, and no register is held.
+template< immediate C >
 void
-initialize(state_t &s, slot_t where, const V &e)
+initialize(state_t &s, slot_t where, const C &c)
 {
-    store(s, immediate_of(e), where);
+    store(s, immediate_of(c), where, view_of(c));
 }
 
 // The operators of rcc's arithmetic_mnemonic(), + - * & | ^, whose
 // instruction is op R, L, R a register, an immediate or an operand in
 // memory.  The divisions and the shifts are rows of their own, below:
-// idivl takes no immediate, and a shift no operand in memory and an
+// idiv takes no immediate, and a shift no operand in memory and an
 // immediate of its own.
 template< binary_op_t op >
 concept arithmetic_operator =
@@ -223,26 +287,34 @@ concept division_operator = is_division(op);
 template< binary_op_t op >
 concept shift_operator = is_shift(op);
 
-// The registers the instruction of op pins, chapter 6.5, rcc's pins():
-// rax and rdx for / and %, rcx for << and >> by a count that is no
-// constant, which is the immediate; constant_right says whether the
-// right operand is a constant.
+// The registers the instruction of a family pins, chapter 6.5, rcc's
+// pins(): rax and rdx for / and %, rcx for << and >> by a count that is
+// no constant, which is the immediate.
+constexpr unsigned
+pins(family_t family)
+{
+    return family == family_t::division ? bit(rax) | bit(rdx) : bit(rcx);
+}
+
+// The registers the instruction of op pins, its family's; constant_right
+// says whether the right operand is a constant, which a shift takes as
+// its immediate.
 constexpr unsigned
 pins(binary_op_t op, bool constant_right)
 {
     if (is_division(op))
-        return bit(rax) | bit(rdx);
+        return pins(family_t::division);
 
-    return is_shift(op) && !constant_right ? bit(rcx) : 0;
+    return is_shift(op) && !constant_right ? pins(family_t::shift) : 0;
 }
 
 // The registers a node holds out of the choice for its left operand's
 // value while it generates its right operand, rcc's pinned_by(): those
-// the right operand's top operator pins, a fact of its class, top_t.
-// The value then does not stand where that instruction wants its
-// operands.  Any other class pins nothing, an erased one too, since the
-// builder keeps a node that pins as a top_t; a division or a shift
-// deeper in the right operand changes nothing.
+// the right operand's top operator pins, a fact of its class, top_t,
+// which keeps its family.  The value then does not stand where that
+// instruction wants its operands.  Any other class pins nothing, an
+// erased one too, since the builder keeps a node that pins as a top_t;
+// a division or a shift deeper in the right operand changes nothing.
 template< typename R >
 constexpr unsigned
 pinned_by(const R &)
@@ -250,11 +322,11 @@ pinned_by(const R &)
     return 0;
 }
 
-template< binary_op_t op >
+template< family_t F >
 constexpr unsigned
-pinned_by(const top_t< op > &)
+pinned_by(const top_t< F > &)
 {
-    return pins(op, false);
+    return pins(F);
 }
 
 // The registers the instruction of a node or of any operand within it
@@ -263,7 +335,8 @@ pinned_by(const top_t< op > &)
 // its handle (principle 3).  A value held while the node is generated
 // may have to move out of one of them, as out of rcx for a shift's
 // count, or out of rax and rdx for a division, deeper in a right
-// operand.  A leaf pins nothing.
+// operand.  A leaf pins nothing, and a conversion what its operand
+// pins.
 template< constant C >
 constexpr unsigned
 pinned_within(const state_t &, const C &)
@@ -271,57 +344,78 @@ pinned_within(const state_t &, const C &)
     return 0;
 }
 
+template< view_t V >
 constexpr unsigned
-pinned_within(const state_t &, const load_t &)
+pinned_within(const state_t &, const load_t< V > &)
 {
     return 0;
 }
 
+template< view_t V >
 constexpr unsigned
-pinned_within(const state_t &, const slot_t &)
+pinned_within(const state_t &, const place_t< V > &)
 {
     return 0;
 }
 
-template< unary_op_t op, typename A >
+template< unary_op_t op, view_t V, typename A >
 unsigned
-pinned_within(const state_t &s, const unary_t< op, A > &u)
+pinned_within(const state_t &s, const unary_t< op, V, A > &u)
 {
     return pinned_within(s, u.arg);
 }
 
-template< binary_op_t op, typename L, typename R >
+template< binary_op_t op, view_t V, typename L, typename R >
 unsigned
-pinned_within(const state_t &s, const binary_t< op, L, R > &b)
+pinned_within(const state_t &s, const binary_t< op, V, L, R > &b)
 {
     return pins(op, constant< R >) | pinned_within(s, b.lhs) |
            pinned_within(s, b.rhs);
 }
 
-template< binary_op_t op >
+template< family_t F >
 unsigned
-pinned_within(const state_t &s, const top_t< op > &t)
+pinned_within(const state_t &s, const top_t< F > &t)
 {
     return pinned_within(s, t.node);
 }
 
-inline unsigned
-pinned_within(const state_t &s, const assign_t &a)
+template< view_t V, view_t F, typename A >
+unsigned
+pinned_within(const state_t &s, const sext_t< V, F, A > &e)
+{
+    return pinned_within(s, e.arg);
+}
+
+template< view_t V, typename A >
+unsigned
+pinned_within(const state_t &s, const trunc_t< V, A > &t)
+{
+    return pinned_within(s, t.arg);
+}
+
+template< view_t V >
+unsigned
+pinned_within(const state_t &s, const assign_t< V > &a)
 {
     return pinned_within(s, a.value);
 }
 
 // A call pins rax, where the convention puts its result (chapter 8),
-// and whatever its arguments pin.
-template< typename R >
-unsigned
-pinned_within(const state_t &s, const call_t< R > &c)
-{
-    unsigned pinned = bit(rax);
-    for (const argument_t &a : c.args)
-        pinned |= pinned_within(s, a.value);
+// and whatever its arguments pin, call_pins()'s.
+unsigned call_pins(const state_t &, const std::vector< argument_t > &args);
 
-    return pinned;
+template< view_t V >
+unsigned
+pinned_within(const state_t &s, const call_t< V > &c)
+{
+    return call_pins(s, c.args);
+}
+
+inline unsigned
+pinned_within(const state_t &s, const call_void_t &c)
+{
+    return call_pins(s, c.args);
 }
 
 // The registers a pinned instruction within a node would move a value
@@ -339,57 +433,80 @@ moved_within(const state_t &, const C &)
     return 0;
 }
 
+template< view_t V >
 constexpr unsigned
-moved_within(const state_t &, const load_t &)
+moved_within(const state_t &, const load_t< V > &)
 {
     return 0;
 }
 
+template< view_t V >
 constexpr unsigned
-moved_within(const state_t &, const slot_t &)
+moved_within(const state_t &, const place_t< V > &)
 {
     return 0;
 }
 
-template< unary_op_t op, typename A >
+template< unary_op_t op, view_t V, typename A >
 unsigned
-moved_within(const state_t &s, const unary_t< op, A > &u)
+moved_within(const state_t &s, const unary_t< op, V, A > &u)
 {
     return moved_within(s, u.arg);
 }
 
-template< binary_op_t op, typename L, typename R >
+template< binary_op_t op, view_t V, typename L, typename R >
 unsigned
-moved_within(const state_t &s, const binary_t< op, L, R > &b)
+moved_within(const state_t &s, const binary_t< op, V, L, R > &b)
 {
     return pins(op, constant< R >) | moved_within(s, b.lhs) |
            moved_within(s, b.rhs);
 }
 
-template< binary_op_t op, typename L, typename R >
+template< binary_op_t op, view_t V, typename L, typename R >
     requires logical_operator< op >
 constexpr unsigned
-moved_within(const state_t &, const binary_t< op, L, R > &)
+moved_within(const state_t &, const binary_t< op, V, L, R > &)
 {
     return 0;
 }
 
-template< binary_op_t op >
+template< family_t F >
 unsigned
-moved_within(const state_t &s, const top_t< op > &t)
+moved_within(const state_t &s, const top_t< F > &t)
 {
     return moved_within(s, t.node);
 }
 
-inline unsigned
-moved_within(const state_t &s, const assign_t &a)
+template< view_t V, view_t F, typename A >
+unsigned
+moved_within(const state_t &s, const sext_t< V, F, A > &e)
+{
+    return moved_within(s, e.arg);
+}
+
+template< view_t V, typename A >
+unsigned
+moved_within(const state_t &s, const trunc_t< V, A > &t)
+{
+    return moved_within(s, t.arg);
+}
+
+template< view_t V >
+unsigned
+moved_within(const state_t &s, const assign_t< V > &a)
 {
     return moved_within(s, a.value);
 }
 
-template< typename R >
+template< view_t V >
 constexpr unsigned
-moved_within(const state_t &, const call_t< R > &)
+moved_within(const state_t &, const call_t< V > &)
+{
+    return 0;
+}
+
+constexpr unsigned
+moved_within(const state_t &, const call_void_t &)
 {
     return 0;
 }
@@ -463,23 +580,24 @@ left_operand(
 // or into the right operand's register where it is the one the
 // consumer names: the count (0 << d) + (d = c) is addl %edx, %ecx, its
 // left operand a shift, held outside ecx, and its right one loaded into
-// the ecx a count's consumer names.
-template< binary_op_t op, typename L, typename R >
+// the ecx a count's consumer names.  A wide_t is no immediate, so it is
+// this row, movabsq into a register where the source has it.
+template< binary_op_t op, view_t V, typename L, typename R >
     requires arithmetic_operator< op >
 value_t
-value(state_t &s, const binary_t< op, L, R > &b, unsigned wanted = 0)
+value(state_t &s, const binary_t< op, V, L, R > &b, unsigned wanted = 0)
 {
     const unsigned named = wanted_left(s, wanted, 0, b.rhs);
 
     const value_t l = left_operand(s, b.lhs, b.rhs, pinned_by(b.rhs), named);
     const value_t r = rvalue_avoiding(s, b.rhs, held_out(s, l, named));
 
-    return arithmetic(s, op, l, r, wanted);
+    return arithmetic(s, op, l, r, V, wanted);
 }
 
 // Whether a node with the constant L on the left of op is written with
 // its operands exchanged, rcc's constant_first() as ordered() asks it:
-// op commutes, and the constant is an immediate, as every int is.
+// op commutes, and the constant is an immediate, which a wide_t is not.
 template< binary_op_t op, typename L >
 concept constant_first = commutes(op) && immediate< L >;
 
@@ -487,41 +605,44 @@ concept constant_first = commutes(op) && immediate< L >;
 // operator that commutes is the row of the node with its operands
 // exchanged, 5 + a as a + 5: the value of the right operand, which is
 // no constant, then the constant as the immediate.
-template< binary_op_t op, typename L, typename R >
+template< binary_op_t op, view_t V, typename L, typename R >
     requires arithmetic_operator< op > && constant_first< op, L >
 value_t
-value(state_t &s, const binary_t< op, L, R > &b, unsigned wanted = 0)
+value(state_t &s, const binary_t< op, V, L, R > &b, unsigned wanted = 0)
 {
-    return value(s, binary_t< op, R, L > { b.rhs, b.lhs }, wanted);
+    return value(s, binary_t< op, V, R, L > { b.rhs, b.lhs }, wanted);
 }
 
-// A load on the right is the instruction's operand in memory, addl
-// -8(%rbp), %eax, and takes no register.  Its type is the more special,
-// so the node the mirror takes, 5 + a, is excluded by name; 5 - a is
-// this row, movl $5, %eax and subl -4(%rbp), %eax.  The right operand
-// pins nothing, so the left operand is handed the consumer's register,
-// as in every niche of an operand in memory or an immediate.
-template< binary_op_t op, typename L >
+// A load of the operation's view on the right is the instruction's
+// operand in memory, addl -8(%rbp), %eax, addq -16(%rbp), %rax, and
+// takes no register.  Its type is the more special, so the node the
+// mirror takes, 5 + a, is excluded by name; 5 - a is this row, movl $5,
+// %eax and subl -4(%rbp), %eax.  The right operand pins nothing, so the
+// left operand is handed the consumer's register, as in every niche of
+// an operand in memory or an immediate.
+template< binary_op_t op, view_t V, typename L >
     requires(arithmetic_operator< op > && !constant_first< op, L >)
 value_t
-value(state_t &s, const binary_t< op, L, load_t > &b, unsigned wanted = 0)
+value(state_t &s,
+      const binary_t< op, V, L, load_t< V > > &b,
+      unsigned wanted = 0)
 {
     const value_t l = value(s, b.lhs, wanted);
-    operate(s, op, reg_of(s, l), b.rhs.where);
+    operate(s, op, reg_of(s, l), b.rhs.where, V);
 
     return l;
 }
 
 // An immediate on the right is the instruction's, negative ones as
-// written: addl $5, %eax, andl $-2, %eax.  Of the mirror's nodes it
+// written: addl $5, %eax, andq $-2, %rax.  Of the mirror's nodes it
 // would take only a constant on both sides, which the builder folds.
-template< binary_op_t op, typename L, immediate I >
+template< binary_op_t op, view_t V, typename L, immediate I >
     requires arithmetic_operator< op >
 value_t
-value(state_t &s, const binary_t< op, L, I > &b, unsigned wanted = 0)
+value(state_t &s, const binary_t< op, V, L, I > &b, unsigned wanted = 0)
 {
     const value_t l = value(s, b.lhs, wanted);
-    operate(s, op, reg_of(s, l), immediate_of(b.rhs));
+    operate(s, op, reg_of(s, l), immediate_of(b.rhs), V);
 
     return l;
 }
@@ -529,48 +650,47 @@ value(state_t &s, const binary_t< op, L, I > &b, unsigned wanted = 0)
 // imul by an immediate is the three-operand form, rcc's arithmetic():
 // the left operand's value, its register the source and the
 // destination, imull $5, %eax, %eax.
-template< typename L, immediate I >
+template< view_t V, typename L, immediate I >
 value_t
 value(state_t &s,
-      const binary_t< binary_op_t::mul, L, I > &b,
+      const binary_t< binary_op_t::mul, V, L, I > &b,
       unsigned wanted = 0)
 {
     const value_t l = value(s, b.lhs, wanted);
-    multiply(s, reg_of(s, l), reg_of(s, l), immediate_of(b.rhs));
+    multiply(s, reg_of(s, l), reg_of(s, l), immediate_of(b.rhs), V);
 
     return l;
 }
 
-// A load on the left of imul by an immediate is the source in memory,
-// rcc's product(): imull $5, -4(%rbp), %eax, no load, and the product
-// in a register taken for it, the lowest free whatever the consumer
-// names.  5 * a is this row, through the mirror.
-template< immediate I >
+// A load of the operation's view on the left of imul by an immediate
+// is the source in memory, rcc's product(): imull $5, -4(%rbp), %eax,
+// no load, and the product in a register taken for it, the lowest free
+// whatever the consumer names.  5 * a is this row, through the mirror.
+template< view_t V, immediate I >
 value_t
 value(state_t &s,
-      const binary_t< binary_op_t::mul, load_t, I > &b,
+      const binary_t< binary_op_t::mul, V, load_t< V >, I > &b,
       unsigned = 0)
 {
     const value_t v = fresh(s);
-    multiply(s, reg_of(s, v), b.lhs.where, immediate_of(b.rhs));
+    multiply(s, reg_of(s, v), b.lhs.where, immediate_of(b.rhs), V);
 
     return v;
 }
 
 // / and % by a divisor that is no local, 6.5.6, rcc's binary() and
-// divide(), chapter 6.5: idivl takes its dividend in rax, and writes
-// the quotient there and the remainder in rdx.  A division keeps its
-// own pin, rcc's rvalue(): it is generated outside any reservation
-// around it, since the pin, not the outer wish, decides where its
-// result is written.  The dividend first, G13, outside what the
-// divisor's top operator pins and handed the consumer's register,
-// wanted_left(); then the divisor, held outside rax and rdx and
-// held_out(), a constant too, since idivl takes no immediate, movl $5,
-// %ecx; then divide().
-template< binary_op_t op, typename L, typename R >
+// divide(), chapter 6.5: idiv takes its dividend in rax, and writes the
+// quotient there and the remainder in rdx.  A division keeps its own
+// pin, rcc's rvalue(): it is generated outside any reservation around
+// it, since the pin, not the outer wish, decides where its result is
+// written.  The dividend first, G13, outside what the divisor's top
+// operator pins and handed the consumer's register, wanted_left();
+// then the divisor, held outside rax and rdx and held_out(), a constant
+// too, since idiv takes no immediate, movl $5, %ecx; then divide().
+template< binary_op_t op, view_t V, typename L, typename R >
     requires division_operator< op >
 value_t
-value(state_t &s, const binary_t< op, L, R > &b, unsigned wanted = 0)
+value(state_t &s, const binary_t< op, V, L, R > &b, unsigned wanted = 0)
 {
     const unsigned outer = std::exchange(s.reserved, 0u);
     const unsigned named = wanted_left(s, wanted, 0, b.rhs);
@@ -578,25 +698,27 @@ value(state_t &s, const binary_t< op, L, R > &b, unsigned wanted = 0)
     const value_t l = left_operand(s, b.lhs, b.rhs, pinned_by(b.rhs), named);
     const value_t r = rvalue_avoiding(
         s, b.rhs, held_out(s, l, named) | pins(op, constant< R >));
-    const value_t v = divide(s, op, l, r, wanted);
+    const value_t v = divide(s, op, l, r, V, wanted);
 
     s.reserved = outer;
 
     return v;
 }
 
-// A local as the divisor is idivl's operand in memory, idivl -8(%rbp),
-// and takes no register; it pins nothing, so the dividend is handed the
-// consumer's register.
-template< binary_op_t op, typename L >
+// A local of the operation's view as the divisor is idiv's operand in
+// memory, idivl -8(%rbp), and takes no register; it pins nothing, so
+// the dividend is handed the consumer's register.
+template< binary_op_t op, view_t V, typename L >
     requires division_operator< op >
 value_t
-value(state_t &s, const binary_t< op, L, load_t > &b, unsigned wanted = 0)
+value(state_t &s,
+      const binary_t< op, V, L, load_t< V > > &b,
+      unsigned wanted = 0)
 {
     const unsigned outer = std::exchange(s.reserved, 0u);
 
     const value_t l = value(s, b.lhs, wanted);
-    const value_t v = divide(s, op, l, b.rhs.where, wanted);
+    const value_t v = divide(s, op, l, b.rhs.where, V, wanted);
 
     s.reserved = outer;
 
@@ -626,12 +748,13 @@ shift_count(state_t &s, const R &count, unsigned avoid)
 // top operator pins, and handed the consumer's register but rcx,
 // wanted_left(); then the count, shift_count(), held, since the
 // instruction takes no operand in memory, outside held_out(); then
-// shift(), shll %cl, %eax, sarl for >>, which the machine masks to 5
-// bits (G3).  The shifted value's register holds the node's value.
-template< binary_op_t op, typename L, typename R >
+// shift(), shll %cl, %eax, sarq for >> of a long, which the machine
+// masks to the width (G3).  The count is of its own type, which its view
+// says.  The shifted value's register holds the node's value.
+template< binary_op_t op, view_t V, typename L, typename R >
     requires shift_operator< op >
 value_t
-value(state_t &s, const binary_t< op, L, R > &b, unsigned wanted = 0)
+value(state_t &s, const binary_t< op, V, L, R > &b, unsigned wanted = 0)
 {
     const unsigned own = pins(op, constant< R >);
     const unsigned named = wanted_left(s, wanted, own, b.rhs);
@@ -640,37 +763,38 @@ value(state_t &s, const binary_t< op, L, R > &b, unsigned wanted = 0)
         left_operand(s, b.lhs, b.rhs, own | pinned_by(b.rhs), named);
     const value_t r = shift_count(s, b.rhs, held_out(s, l, named));
 
-    shift(s, op, l, r);
+    shift(s, op, l, r, V, view_of(b.rhs));
 
     return l;
 }
 
 // A constant count is the instruction's immediate, count_of(), and pins
-// nothing: shll $33, %eax, and shll $255, %eax for a << -1.
-template< binary_op_t op, typename L, constant C >
+// nothing: shll $33, %eax, shlq $137, %rax, and shll $255, %eax for a
+// << -1.
+template< binary_op_t op, view_t V, typename L, constant C >
     requires shift_operator< op >
 value_t
-value(state_t &s, const binary_t< op, L, C > &b, unsigned wanted = 0)
+value(state_t &s, const binary_t< op, V, L, C > &b, unsigned wanted = 0)
 {
     const value_t l = value(s, b.lhs, wanted);
-    operate(s, op, reg_of(s, l), count_of(value_of(b.rhs)));
+    operate(s, op, reg_of(s, l), count_of(value_of(b.rhs)), V);
 
     return l;
 }
 
-// cmp of a source and the held value l at 32 bits, rcc's
+// cmp of a source and the held value l at the view, rcc's
 // compare_with(): a held value r, cmpl %ecx, %eax, the registers of
-// operands(), a spilled value reloaded, and r released; the int in a
-// slot, cmpl -8(%rbp), %eax; or an immediate, cmpl $5, %eax.  It sets
+// operands(), a spilled value reloaded, and r released; the object in a
+// slot, cmpq -16(%rbp), %rax; or an immediate, cmpl $5, %eax.  It sets
 // the flags and writes no register; l stays held.
-void compare(state_t &, value_t l, value_t r);
-void compare(state_t &, value_t l, slot_t source);
-void compare(state_t &, value_t l, std::string_view immediate);
+void compare(state_t &, value_t l, value_t r, view_t view);
+void compare(state_t &, value_t l, slot_t source, view_t view);
+void compare(state_t &, value_t l, std::string_view immediate, view_t view);
 
-// cmp of an immediate and the int in a slot, rcc's condition_on(): the
-// object compared in place, cmpl $5, -4(%rbp), and no register holds
-// it.
-void compare(state_t &, slot_t where, std::string_view immediate);
+// cmp of an immediate and the object in a slot at the view, rcc's
+// condition_on(): the object compared in place, cmpl $5, -4(%rbp), and
+// no register holds it.
+void compare(state_t &, slot_t where, std::string_view immediate, view_t view);
 
 // The value of a comparison of op from the flags its cmp set, rcc's
 // comparison() after compared(): setcc into the low byte of a register,
@@ -680,43 +804,46 @@ value_t
 setcc(state_t &, binary_op_t op, std::optional< value_t > l, unsigned wanted);
 
 // The cmp of the held left value l and the right operand of a
-// comparison, rcc's compare_with(), by the right operand's class: its
-// value, generated as for any consumer, held and freed, cmpl %ecx,
-// %eax; a load, the instruction's operand in memory, cmpl -8(%rbp),
-// %eax, which takes no register; an immediate, cmpl $5, %eax.
-template< typename R >
+// comparison at the view V, rcc's compare_with(), by the right
+// operand's class: its value, generated as for any consumer, held and
+// freed, cmpl %ecx, %eax, a wide_t's by movabsq; a load, the
+// instruction's operand in memory, cmpl -8(%rbp), %eax, which takes no
+// register; an immediate, cmpl $5, %eax.
+template< view_t V, typename R >
 void
 compare_with(state_t &s, value_t l, const R &rhs)
 {
-    compare(s, l, value(s, rhs));
+    compare(s, l, value(s, rhs), V);
 }
 
-inline void
-compare_with(state_t &s, value_t l, const load_t &rhs)
+template< view_t V >
+void
+compare_with(state_t &s, value_t l, const load_t< V > &rhs)
 {
-    compare(s, l, rhs.where);
+    compare(s, l, rhs.where, V);
 }
 
-template< immediate I >
+template< view_t V, immediate I >
 void
 compare_with(state_t &s, value_t l, const I &rhs)
 {
-    compare(s, l, immediate_of(rhs));
+    compare(s, l, immediate_of(rhs), V);
 }
 
 // The primary of < > <= >= == !=, 6.5.9, 6.5.10, rcc's comparison(),
 // compared() and compare(), chapter 6.3: the left operand's value
 // first, G13, generated outside the registers the right operand's top
-// operator pins; then the cmp with the right operand, compare_with();
-// then the value of the flags, setcc(), in the left operand's register,
-// cmpl -8(%rbp), %eax, setl %al and movzbl %al, %eax.
-template< binary_op_t op, typename L, typename R >
+// operator pins; then the cmp with the right operand at the operation's
+// view, compare_with(); then the value of the flags, setcc(), in the
+// left operand's register, cmpl -8(%rbp), %eax, setl %al and movzbl
+// %al, %eax.
+template< binary_op_t op, view_t V, typename L, typename R >
     requires comparison_operator< op >
 value_t
-value(state_t &s, const binary_t< op, L, R > &b, unsigned wanted = 0)
+value(state_t &s, const binary_t< op, V, L, R > &b, unsigned wanted = 0)
 {
     const value_t l = rvalue_avoiding(s, b.lhs, pinned_by(b.rhs));
-    compare_with(s, l, b.rhs);
+    compare_with< V >(s, l, b.rhs);
 
     return setcc(s, op, l, wanted);
 }
@@ -725,12 +852,14 @@ value(state_t &s, const binary_t< op, L, R > &b, unsigned wanted = 0)
 // cmpl $5, -4(%rbp), compare(); the object is read by the cmp and by
 // nothing before it, G13, and no register holds it, so the setcc takes
 // one.
-template< binary_op_t op, immediate I >
+template< binary_op_t op, view_t V, immediate I >
     requires comparison_operator< op >
 value_t
-value(state_t &s, const binary_t< op, load_t, I > &b, unsigned wanted = 0)
+value(state_t &s,
+      const binary_t< op, V, load_t< V >, I > &b,
+      unsigned wanted = 0)
 {
-    compare(s, b.lhs.where, immediate_of(b.rhs));
+    compare(s, b.lhs.where, immediate_of(b.rhs), V);
 
     return setcc(s, op, std::nullopt, wanted);
 }
@@ -738,31 +867,40 @@ value(state_t &s, const binary_t< op, load_t, I > &b, unsigned wanted = 0)
 // A constant on the left is the row of the node mirrored, rcc's
 // ordered(): 5 < a as a > 5, mirrored(), the constant the immediate on
 // the right, so 5 < a is cmpl $5, -4(%rbp) and setg %al.
-template< binary_op_t op, immediate I, typename R >
+template< binary_op_t op, view_t V, immediate I, typename R >
     requires comparison_operator< op >
 value_t
-value(state_t &s, const binary_t< op, I, R > &b, unsigned wanted = 0)
+value(state_t &s, const binary_t< op, V, I, R > &b, unsigned wanted = 0)
 {
-    return value(s, binary_t< mirrored(op), R, I > { b.rhs, b.lhs }, wanted);
+    return value(s, binary_t< mirrored(op), V, R, I > { b.rhs, b.lhs }, wanted);
 }
 
 // !e, 6.5.4.3p5, rcc's unary(): the operand's value, its test against
-// 0, cmpl $0, %eax, then the value of the flags as e == 0 has it,
-// sete and movzbl, setcc().  The operand is loaded, where e == 0
-// compares a load in place.
+// 0 at the operand's view, cmpl $0, %eax, then the value of the flags
+// as e == 0 has it, sete and movzbl, setcc().  The operand is loaded,
+// where e == 0 compares a load in place.
+template< view_t V, typename A >
 value_t
-value(state_t &, const unary_t< unary_op_t::log_not > &, unsigned wanted = 0);
+value(state_t &s,
+      const unary_t< unary_op_t::log_not, V, A > &u,
+      unsigned wanted = 0)
+{
+    const value_t v = value(s, u.arg);
+    compare(s, v, imm(0), V);
+
+    return setcc(s, binary_op_t::eq, v, wanted);
+}
 
 // A comparison as a jump, rcc's comparison_branch(), 7.1: the cmp of
 // the value row, compare_with(), then jcc of the operator where sense
 // and of its inverse otherwise, jl or jge, and no value held.
-template< binary_op_t op, typename L, typename R >
+template< binary_op_t op, view_t V, typename L, typename R >
     requires comparison_operator< op >
 void
-branch(state_t &s, const binary_t< op, L, R > &b, int label, bool sense)
+branch(state_t &s, const binary_t< op, V, L, R > &b, int label, bool sense)
 {
     const value_t l = rvalue_avoiding(s, b.lhs, pinned_by(b.rhs));
-    compare_with(s, l, b.rhs);
+    compare_with< V >(s, l, b.rhs);
     release(s, l);
 
     jump_if(s, sense ? op : inverse(op), label);
@@ -774,48 +912,70 @@ branch(state_t &s, const binary_t< op, L, R > &b, int label, bool sense)
 // e's row may set ZF and write no cmp: (a + b) == 0 is addl and jne.
 // It wins over the cmp of a load in place, below, whose text it writes
 // for a == 0, cmpl $0, -4(%rbp).
-template< binary_op_t op, typename R >
+template< binary_op_t op, view_t V, typename R >
 concept zero_compared = comparison_operator< op > &&
                         (op == binary_op_t::eq || op == binary_op_t::ne) &&
-                        std::same_as< R, zero_t >;
+                        std::same_as< R, zero_t< V > >;
 
-template< binary_op_t op, typename L, typename R >
-    requires zero_compared< op, R >
+template< binary_op_t op, view_t V, typename L, typename R >
+    requires zero_compared< op, V, R >
 void
-branch(state_t &s, const binary_t< op, L, R > &b, int label, bool sense)
+branch(state_t &s, const binary_t< op, V, L, R > &b, int label, bool sense)
 {
     value_branch(s, b.lhs, label, sense != (op == binary_op_t::eq));
 }
 
 // A load against an immediate is the cmp of the object in place, as
 // for its value, cmpl $5, -4(%rbp), and no register is held.
-template< binary_op_t op, immediate I >
-    requires comparison_operator< op > && (!zero_compared< op, I >)
+template< binary_op_t op, view_t V, immediate I >
+    requires comparison_operator< op > && (!zero_compared< op, V, I >)
 void
-branch(state_t &s, const binary_t< op, load_t, I > &b, int label, bool sense)
+branch(state_t &s,
+       const binary_t< op, V, load_t< V >, I > &b,
+       int label,
+       bool sense)
 {
-    compare(s, b.lhs.where, immediate_of(b.rhs));
+    compare(s, b.lhs.where, immediate_of(b.rhs), V);
     jump_if(s, sense ? op : inverse(op), label);
 }
 
 // A constant on the left is the jump of the node mirrored, ordered():
 // if (5 < a) is cmpl $5, -4(%rbp) and jle.
-template< binary_op_t op, immediate I, typename R >
+template< binary_op_t op, view_t V, immediate I, typename R >
     requires comparison_operator< op >
 void
-branch(state_t &s, const binary_t< op, I, R > &b, int label, bool sense)
+branch(state_t &s, const binary_t< op, V, I, R > &b, int label, bool sense)
 {
-    branch(s, binary_t< mirrored(op), R, I > { b.rhs, b.lhs }, label, sense);
+    branch(s, binary_t< mirrored(op), V, R, I > { b.rhs, b.lhs }, label, sense);
 }
 
-// A load's value compared with 0 is the cmp of the object in place,
-// rcc's condition_on(), cmpl $0, -4(%rbp), then jne or je: if (a) and
-// a == 0 alike.
-void value_branch(state_t &, const load_t &, int label, bool sense);
+// A load's value compared with 0 is the cmp of the object in place at
+// its view, rcc's condition_on(), cmpl $0, -4(%rbp), cmpq $0, -8(%rbp),
+// then jne or je: if (a) and a == 0 alike.  A cast to its own type over
+// a load is the object read as it is, so if ((int) i) is the same cmp.
+void
+in_place_branch(state_t &, slot_t where, view_t view, int label, bool sense);
+
+template< view_t V >
+void
+value_branch(state_t &s, const load_t< V > &l, int label, bool sense)
+{
+    in_place_branch(s, l.where, V, label, sense);
+}
+
+template< view_t V >
+void
+value_branch(state_t &s,
+             const trunc_t< V, load_t< V > > &t,
+             int label,
+             bool sense)
+{
+    in_place_branch(s, t.arg.where, V, label, sense);
+}
 
 // Whether the instruction of op sets ZF from the value it computes,
 // rcc's flag_operator(): add, sub, and, or and xor, by Intel's
-// reference (7.1); imul, the shifts and idivl do not.
+// reference (7.1); imul, the shifts and idiv do not.
 constexpr bool
 flag_operator(binary_op_t op)
 {
@@ -824,109 +984,142 @@ flag_operator(binary_op_t op)
            op == binary_op_t::bit_xor;
 }
 
-// rcc's flag_branch() on the held value v of a flag condition: je or
-// jne on the flags of the row's own instruction, with the cmp with 0
-// first where the record says the last instruction set no ZF from v;
-// v is released.
-void flag_branch(state_t &, value_t v, int label, bool sense);
+// rcc's flag_branch() on the held value v of a flag condition of the
+// view: je or jne on the flags of the row's own instruction, with the
+// cmp with 0 first where the record says the last instruction set no
+// ZF from v at that width; v is released.
+void flag_branch(state_t &, value_t v, view_t view, int label, bool sense);
 
 // The niches of a flag condition, rcc's flag_condition(), 7.1, after
 // the Seventh Edition compiler's cctab: + - | ^ and unary -, whose
 // row's instruction sets ZF from the value, its value's row, then the
 // jump on those flags, flag_branch(): addl -8(%rbp), %eax and je,
 // negl %eax and jne.  & is test, below.
-template< binary_op_t op, typename L, typename R >
+template< binary_op_t op, view_t V, typename L, typename R >
     requires(flag_operator(op))
 void
-value_branch(state_t &s, const binary_t< op, L, R > &b, int label, bool sense)
-{
-    flag_branch(s, value(s, b), label, sense);
-}
-
-template< typename A >
-void
 value_branch(state_t &s,
-             const unary_t< unary_op_t::neg, A > &u,
+             const binary_t< op, V, L, R > &b,
              int label,
              bool sense)
 {
-    flag_branch(s, value(s, u), label, sense);
+    flag_branch(s, value(s, b), V, label, sense);
 }
 
-// test of a source and the held value l at 32 bits, rcc's test(), which
-// sets ZF from their & and writes no register: a held value r, testl
-// %ecx, %eax, the registers of operands(), a spilled value reloaded,
-// and r released; the int in a slot, testl -8(%rbp), %eax; or an
-// immediate, testl $1, %eax; and of an immediate and the int in a slot,
-// testl $1, -4(%rbp), the object tested in place.  l stays held.
-void test(state_t &, value_t l, value_t r);
-void test(state_t &, value_t l, slot_t source);
-void test(state_t &, value_t l, std::string_view immediate);
-void test(state_t &, slot_t where, std::string_view immediate);
+template< view_t V, typename A >
+void
+value_branch(state_t &s,
+             const unary_t< unary_op_t::neg, V, A > &u,
+             int label,
+             bool sense)
+{
+    flag_branch(s, value(s, u), V, label, sense);
+}
 
-// The test of the held left value l and the right operand of &, by the
-// right operand's class, as compare_with() takes a comparison's.
-template< typename R >
+// test of a source and the held value l at the view, rcc's test(),
+// which sets ZF from their & and writes no register: a held value r,
+// testl %ecx, %eax, the registers of operands(), a spilled value
+// reloaded, and r released; the object in a slot, testl -8(%rbp), %eax;
+// or an immediate, testl $1, %eax; and of an immediate and the object in
+// a slot, testl $1, -4(%rbp), the object tested in place.  l stays
+// held.
+void test(state_t &, value_t l, value_t r, view_t view);
+void test(state_t &, value_t l, slot_t source, view_t view);
+void test(state_t &, value_t l, std::string_view immediate, view_t view);
+void test(state_t &, slot_t where, std::string_view immediate, view_t view);
+
+// The test of the held left value l and the right operand of & at the
+// view V, by the right operand's class, as compare_with() takes a
+// comparison's.
+template< view_t V, typename R >
 void
 test_with(state_t &s, value_t l, const R &rhs)
 {
-    test(s, l, value(s, rhs));
+    test(s, l, value(s, rhs), V);
 }
 
-inline void
-test_with(state_t &s, value_t l, const load_t &rhs)
+template< view_t V >
+void
+test_with(state_t &s, value_t l, const load_t< V > &rhs)
 {
-    test(s, l, rhs.where);
+    test(s, l, rhs.where, V);
 }
 
-template< immediate I >
+template< view_t V, immediate I >
 void
 test_with(state_t &s, value_t l, const I &rhs)
 {
-    test(s, l, immediate_of(rhs));
+    test(s, l, immediate_of(rhs), V);
 }
 
 // & as a jump, rcc's test(), 7.1, the PDP-11's bit of cctab's cc81: the
 // left operand's value, generated outside the registers the right
 // operand's top operator pins, then test R, L, which sets ZF and writes
 // no result, so nothing is held; then je or jne.
-template< typename L, typename R >
+template< view_t V, typename L, typename R >
 void
 value_branch(state_t &s,
-             const binary_t< binary_op_t::bit_and, L, R > &b,
+             const binary_t< binary_op_t::bit_and, V, L, R > &b,
              int label,
              bool sense)
 {
     const value_t l = rvalue_avoiding(s, b.lhs, pinned_by(b.rhs));
-    test_with(s, l, b.rhs);
+    test_with< V >(s, l, b.rhs);
     release(s, l);
 
     jump_if(s, sense ? binary_op_t::ne : binary_op_t::eq, label);
 }
 
-// A load and an immediate are tested in place, testl $1, -4(%rbp).
-template< immediate I >
+// A load of the operation's view and an immediate are tested in place,
+// testl $1, -4(%rbp).
+template< view_t V, immediate I >
 void
 value_branch(state_t &s,
-             const binary_t< binary_op_t::bit_and, load_t, I > &b,
+             const binary_t< binary_op_t::bit_and, V, load_t< V >, I > &b,
              int label,
              bool sense)
 {
-    test(s, b.lhs.where, immediate_of(b.rhs));
+    test(s, b.lhs.where, immediate_of(b.rhs), V);
     jump_if(s, sense ? binary_op_t::ne : binary_op_t::eq, label);
 }
 
 // A constant on the left is the test of the node with its operands
 // exchanged, ordered(): 1 & a is testl $1, -4(%rbp).
-template< immediate I, typename R >
+template< view_t V, immediate I, typename R >
 void
 value_branch(state_t &s,
-             const binary_t< binary_op_t::bit_and, I, R > &b,
+             const binary_t< binary_op_t::bit_and, V, I, R > &b,
              int label,
              bool sense)
 {
-    value_branch(s, binary_t< binary_op_t::bit_and, R, I > { b.rhs, b.lhs },
+    value_branch(s, binary_t< binary_op_t::bit_and, V, R, I > { b.rhs, b.lhs },
                  label, sense);
+}
+
+// The extension of the held value v of the view from to the view to by
+// its sign, rcc's extended() past its test of the width rule, which the
+// widening's row asks: movslq %eax, %rax on v's own register, or into
+// the register the consumer names, wanted, where it is free and v is
+// elsewhere, movslq %edx, %rax for an int remainder returned as a long
+// (6.1).
+value_t extended(state_t &, value_t v, view_t from, view_t to, unsigned wanted);
+
+// The extending load, rcc's extending_load(), backend.md 6.3: the object
+// of the view from in its slot, loaded extended by its sign to 64 bits,
+// movslq -4(%rbp), %rax.  It reads the bytes the load at its own view
+// reads, at the object's width (G10), and leaves the value valid to 64.
+value_t extending_load(state_t &, slot_t where, view_t from);
+
+// A signed object widened to 64 bits is its extending load, the niche
+// of the conversion over a load (docs/typed-tree.md 4.2).  The rule is
+// the Seventh Edition compiler's: match(), in c10.c, tries a row again
+// with the conversion dropped, and its tables convert an operand in
+// memory in the instruction that reads it.
+template< view_t F >
+value_t
+value(state_t &s, const sext_t< view_t::i64, F, load_t< F > > &e, unsigned = 0)
+{
+    return extending_load(s, e.arg.where, F);
 }
 
 // The arguments of a call moved from their slots to where the
@@ -936,21 +1129,19 @@ void transfer(state_t &,
               std::string_view name,
               const std::vector< argument_t > &args);
 
-// A call of an int function, 6.5.3.3, rcc's call() and rvalue(),
-// chapter 8: the call keeps its own pin, since its result is in rax by
-// the convention, so it is generated outside any reservation around it,
-// as a division is, and its arguments find no register left for last;
-// its value is held in rax, where the call leaves it.  The row is a
-// template on the result type, int alone, since a void call's value is
-// the row both targets share, which stops the generation.
-template< typename R >
-    requires std::same_as< R, int >
+// A call of a function whose result is of the view V, 6.5.3.3, rcc's
+// call() and rvalue(), chapter 8: the call keeps its own pin, since its
+// result is in rax by the convention, so it is generated outside any
+// reservation around it, as a division is, and its arguments find no
+// register left for last; its value is held in rax, where the call
+// leaves it.
+template< view_t V >
 value_t
-value(state_t &s, const call_t< R > &c, unsigned = 0)
+value(state_t &s, const call_t< V > &c, unsigned = 0)
 {
     const unsigned outer = std::exchange(s.reserved, 0u);
 
-    call(s, c);
+    call(s, c.name, c.args);
     const value_t v = hold(s, rax);
 
     s.reserved = outer;
@@ -958,9 +1149,17 @@ value(state_t &s, const call_t< R > &c, unsigned = 0)
     return v;
 }
 
-// The value, moved to the result register where its row left it
-// elsewhere, then the jump to the epilogue.
-void generate(state_t &, const return_t &);
+// The value of a return, of the result's view, moved to the result
+// register where its row left it elsewhere, then the jump to the
+// epilogue, rcc's return_stmt().
+void return_stmt(state_t &, const expr_t &e, view_t view);
+
+template< view_t V >
+void
+generate(state_t &s, const return_t< V > &r)
+{
+    return_stmt(s, r.value, V);
+}
 
 // The unit's assembly; file is the source's name, for the .file
 // directive.

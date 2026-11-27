@@ -118,6 +118,12 @@ int_type()
     return make_int(32, true, int_kind_t::int_);
 }
 
+view_t
+view_of(const type_t &t)
+{
+    return as< int_t >(t).width == 64 ? view_t::i64 : view_t::i32;
+}
+
 //
 // values
 //
@@ -160,20 +166,29 @@ discarded(operand_t e)
 }
 
 expr_t
-assignment_conversion(const token_t &at,
-                      operand_t e,
-                      const type_t &t,
-                      std::string_view words)
+conversion(const operand_t &e, const type_t &t)
+{
+    return make_conversion(view_of(t), view_of(e.type), rvalue(*e.node));
+}
+
+expr_t
+convert_to(const operand_t &e, const type_t &t)
+{
+    if (e.type == t)
+        return rvalue(*e.node);
+
+    return conversion(e, t);
+}
+
+expr_t
+assignment_conversion(const token_t &at, operand_t e, const type_t &t)
 {
     require_value(at, e);
 
     if (is< function_t >(e.type))
         fail(at, "incompatible pointer to integer conversion");
 
-    if (e.type != t)
-        not_yet(at, "conversion to " + std::string(words));
-
-    return rvalue(std::move(*e.node));
+    return convert_to(e, t);
 }
 
 //
@@ -202,7 +217,8 @@ declare(parser_t &p, const token_t &name, const type_t &type)
         fail(name, "redefinition of " + quoted(name.text));
 
     const int slot = p.locals++;
-    p.scopes.back().emplace(name.text, operand_t { type, make_local(slot) });
+    p.scopes.back().emplace(
+        name.text, operand_t { type, make_local(slot, view_of(type)) });
 
     return slot;
 }

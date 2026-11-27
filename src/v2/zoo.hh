@@ -2,46 +2,71 @@
 
 // The zoo, docs/typed-tree.md chapter 1: the node types under the
 // handles.  A node is an aggregate of its parts, each concrete where a
-// row's choice depends on it and erased where none does.  The builders
+// row's choice depends on it and erased where none does, and every
+// value node has a view, the width of its value (4.2).  The builders
 // make them, build.cc; the rows that write them are each target's,
 // amd64.hh and arm64.hh, and rows-expressions.hh's and
-// rows-statements.hh's for those both targets write alike.
+// rows-statements.hh's for those both targets write alike.  The two
+// summaries both targets read, the view and the width rule, are here,
+// beside the nodes they are of.
 
 #pragma once
 
 #include "expr.hh"
 #include "stmt.hh"
 
+#include <stdexcept>
 #include <string>
 #include <vector>
 
 namespace rcc {
 
-// An integer constant of type int, 6.4.4.2: its row writes 32 bits.
+// An integer constant of view V, 6.4.4.2, whose value a sign-extended
+// 32-bit immediate holds: every constant of 32 bits, and one of 64 in
+// int's range.  The value is what its register holds, read as a signed
+// number of V's width, so no constant needs its sign (4.3).
+template< view_t V >
 struct literal_t
 {
-    int value;
+    long long value;
 };
 
-// The constant 0 of type int, which make_literal() makes of a literal
+// The constant 0 of view V, which make_literal() makes of a literal
 // whose value is 0 (principle 2): a store of it names the zero register
 // where the target has one.
+template< view_t V >
 struct zero_t
 {
 };
 
+// A constant of 64 bits past int's range, which make_literal() makes of
+// such a value (principle 2): no 32-bit immediate holds it, so x86-64
+// writes it by movabsq into a register, where the source has it.
+struct wide_t
+{
+    long long value;
+};
+
 // The value of a constant, which a builder asks to fold an operator on
-// it (4.3).
-inline int
-value_of(const literal_t &c)
+// it (4.3): the bits its register holds, read signed.
+template< view_t V >
+long long
+value_of(const literal_t< V > &c)
 {
     return c.value;
 }
 
-inline int
-value_of(const zero_t &)
+template< view_t V >
+long long
+value_of(const zero_t< V > &)
 {
     return 0;
+}
+
+inline long long
+value_of(const wide_t &c)
+{
+    return c.value;
 }
 
 // A constant, a node whose value is known: a type value_of() is written
@@ -49,57 +74,97 @@ value_of(const zero_t &)
 template< typename C >
 concept constant = requires(const C &c) { value_of(c); };
 
-// A local, a place, 4.2: the where of an int in the function's frame,
-// named by the local's number among the function's.  The displacement
-// is the state's, since a slot is taken where its declaration is
-// generated.
+// The where of a local, 4.2: its number among the function's locals.
+// The displacement is the state's, since a slot is taken where its
+// declaration is generated; the store into a slot is handed the where
+// alone (3.4).
 struct slot_t
 {
     int id;
 };
 
-// What a place holds, 6.3.2.1p2: the value read from it, which is no
-// place.
+// A local, a place, 4.2: the where of an object of view V in the
+// function's frame.  A parameter is one, of an int's view.
+template< view_t V >
+struct place_t
+{
+    slot_t where;
+};
+
+// What a place holds, 6.3.2.1p2: the object read at its view, which is
+// no place.
+template< view_t V >
 struct load_t
 {
     slot_t where;
 };
 
 // -e ~e !e, 6.5.4.3p3 to p5, on an operand that is no constant, which
-// the builder folds instead; the operand is erased.
-template< unary_op_t op, typename A = expr_t >
+// the builder folds instead; the operand is erased.  V is the view of
+// the operation for - and ~, the promoted operand's, and for ! the view
+// of the operand, which a target compares with 0 at.
+template< unary_op_t op, view_t V, typename A = expr_t >
 struct unary_t
 {
     A arg;
 };
 
-// L op R, 6.5.6 to 6.5.13, on operands that do not fold, each in the
+// L op R, 6.5.6 to 6.5.15, on operands that do not fold, each in the
 // class a target's niches read: the builder keeps each a constant, a
 // load or erased, the right one a top_t besides, and a row that
-// exchanges the operands makes the node of the other order.
-template< binary_op_t op, typename L = expr_t, typename R = expr_t >
+// exchanges the operands makes the node of the other order.  V is the
+// view of the operation: the operands' common type's, the promoted left
+// operand's for a shift, whose count keeps its own, and an int's for &&
+// and ||, whose operands keep theirs.
+template< binary_op_t op, view_t V, typename L = expr_t, typename R = expr_t >
 struct binary_t
 {
     L lhs;
     R rhs;
 };
 
-// The right operand of a binary operator whose top operator is op, a
-// division or a shift by a count that is no constant: the node erased,
-// with its own niches, and op kept as the class's parameter, since
-// x86-64 generates the left operand away from the registers that
-// instruction pins, a fact of the right operand's type (pinned_by()).
-// It is a class of an operand and no node: an operator that is the
-// identity leaves the node it holds, node_of().
-template< binary_op_t op >
+// The right operand of a binary operator whose top operator is of the
+// family F, a division or a shift by a count that is no constant: the
+// node erased, with its own niches, and the family kept as the class's
+// parameter, since x86-64 generates the left operand away from the
+// registers that instruction pins, a fact of the right operand's type
+// (pinned_by()).  It is a class of an operand and no node: an operator
+// that is the identity leaves the node it holds, node_of().
+template< family_t F >
 struct top_t
 {
     expr_t node;
 };
 
-// x = e, 6.5.17.2: the value stored in the place, whose value after the
-// store is the expression's, 6.5.17.1p3.  The value is erased: its
-// store is a row of its handle, which finds a target's niche.
+// The conversion of a value of view F to the wider view V by the sign
+// of its type, 6.3.1.3: a sign extension, LLVM's sext, where the
+// operand's register is not valid to V's width already (the width rule,
+// valid_of()).  A is erased, or the operand's load, whose niche is the
+// extending load.
+template< view_t V, view_t F, typename A = expr_t >
+struct sext_t
+{
+    A arg;
+};
+
+// The conversion of a value to the view V that is no widening, 6.3.1.3:
+// a narrowing, or a cast to the type the operand has.  It writes
+// nothing, since the low bits of the register are the value (G2), and
+// leaves the value valid to V's width.  LLVM's trunc only narrows, and
+// its bitcast keeps the width; one node serves both, since their rows
+// are one.  A is erased, or the operand's load, so that a parent may
+// name the object in place.
+template< view_t V, typename A = expr_t >
+struct trunc_t
+{
+    A arg;
+};
+
+// x = e, 6.5.17.2: the value stored in the place of view V, whose value
+// after the store is the expression's, 6.5.17.1p3.  The value is
+// erased, converted to the place's type by the parser, so its view is
+// V: its store is a row of its handle, which finds a target's niche.
+template< view_t V >
 struct assign_t
 {
     slot_t where;
@@ -119,11 +184,18 @@ struct argument_t
     expr_t value;
 };
 
-// f(a, b), 6.5.3.3: a call of the function named, its result type R,
-// int or void: a call of a void function has no value, 6.3.2.2p1, and
-// only an effect.
-template< typename R >
+// f(a, b), 6.5.3.3: a call of the function named, whose result is of
+// view V, LLVM's call i32 @f().
+template< view_t V >
 struct call_t
+{
+    std::string name;
+    std::vector< argument_t > args;
+};
+
+// A call of a void function, which has no value, 6.3.2.2p1, and only
+// an effect: LLVM's call void @f().
+struct call_void_t
 {
     std::string name;
     std::vector< argument_t > args;
@@ -141,8 +213,10 @@ struct null_t
 {
 };
 
-// return E;, 6.8.7.5: the value in the convention's result register,
-// then the jump to the function's one epilogue.
+// return E;, 6.8.7.5: the value, of the result's view V, in the
+// convention's result register, then the jump to the function's one
+// epilogue.  LLVM's ret i32.
+template< view_t V >
 struct return_t
 {
     expr_t value;
@@ -154,16 +228,18 @@ struct return_void_t
 {
 };
 
-// int x;, a declaration without an initializer: the local's slot taken,
-// and nothing stored, 6.2.4p6.
+// T x;, a declaration without an initializer of a local of view V: the
+// local's slot taken, and nothing stored, 6.2.4p6.
+template< view_t V >
 struct decl_t
 {
     slot_t where;
 };
 
-// int x = e;, a declaration with an initializer, 6.7.11p12: the slot
+// T x = e;, a declaration with an initializer, 6.7.11p12: the slot
 // taken, then the value stored in it.  An initialization, not an
 // assignment (4.5); the value is erased, as an assignment's is.
+template< view_t V >
 struct init_t
 {
     slot_t where;
@@ -283,5 +359,197 @@ struct if_else_t
     S then;
     stmt_t otherwise;
 };
+
+// The view of a value node, the width of its value (4.2): a leaf's and
+// a conversion's V, an operator's V but an int's for a comparison, ! and
+// && and ||, an assignment's place's, a call's result's.  A summary both
+// targets read where a row's own type does not say the width: the store
+// of a value, at the value's view, the place's (3.4); a call, for an
+// argument's slot; x86-64's shift, for the count's move into rcx; and
+// the test of a value with 0.
+template< view_t V >
+constexpr view_t
+view_of(const literal_t< V > &)
+{
+    return V;
+}
+
+template< view_t V >
+constexpr view_t
+view_of(const zero_t< V > &)
+{
+    return V;
+}
+
+constexpr view_t
+view_of(const wide_t &)
+{
+    return view_t::i64;
+}
+
+template< view_t V >
+constexpr view_t
+view_of(const place_t< V > &)
+{
+    return V;
+}
+
+template< view_t V >
+constexpr view_t
+view_of(const load_t< V > &)
+{
+    return V;
+}
+
+template< unary_op_t op, view_t V, typename A >
+constexpr view_t
+view_of(const unary_t< op, V, A > &)
+{
+    return op == unary_op_t::log_not ? view_t::i32 : V;
+}
+
+template< binary_op_t op, view_t V, typename L, typename R >
+constexpr view_t
+view_of(const binary_t< op, V, L, R > &)
+{
+    return is_comparison(op) || is_logical(op) ? view_t::i32 : V;
+}
+
+template< family_t F >
+view_t
+view_of(const top_t< F > &t)
+{
+    return view_of(t.node);
+}
+
+template< view_t V, view_t F, typename A >
+constexpr view_t
+view_of(const sext_t< V, F, A > &)
+{
+    return V;
+}
+
+template< view_t V, typename A >
+constexpr view_t
+view_of(const trunc_t< V, A > &)
+{
+    return V;
+}
+
+template< view_t V >
+constexpr view_t
+view_of(const assign_t< V > &)
+{
+    return V;
+}
+
+template< view_t V >
+constexpr view_t
+view_of(const call_t< V > &)
+{
+    return V;
+}
+
+// A void call has no value, and the parser asks none of it: a void
+// call asked for its view is a tree the parser does not make.
+inline view_t
+view_of(const call_void_t &)
+{
+    throw std::logic_error("v2: the view of a void call");
+}
+
+// The width rule, rcc's held_t::valid (c1-common.hh): the width up to
+// which the bits of a node's register are its value extended by sign, a
+// summary of the subtree (principle 3) that the state does not record.
+// Its readers are the widening's rows, which write the extension where
+// the summary is below the new width, as rcc's extended() does.  rcc
+// sets it at each write by the sign of the value's own type, written();
+// here a node has no sign, and the rule rests on one invariant: the
+// parser builds every conversion from its operand's own C type, in one
+// function, conversion(), so a node that is no conversion has the type
+// its consumer converts from.  An instruction that writes a register
+// at a width leaves it valid to that width, a load and a constant
+// theirs, an operation its own; a truth value, 0 or 1, is valid to 64
+// bits; a conversion caps the width at its own, rcc's converted(); an
+// assignment's value is its right operand's, and a call's result is
+// valid to its view's width, the convention leaving the bits above to
+// the caller.
+template< view_t V >
+int
+valid_of(const load_t< V > &)
+{
+    return width(V);
+}
+
+template< constant C >
+int
+valid_of(const C &c)
+{
+    return width(view_of(c));
+}
+
+template< unary_op_t op, view_t V, typename A >
+int
+valid_of(const unary_t< op, V, A > &)
+{
+    return op == unary_op_t::log_not ? 64 : width(V);
+}
+
+template< binary_op_t op, view_t V, typename L, typename R >
+int
+valid_of(const binary_t< op, V, L, R > &)
+{
+    return is_comparison(op) || is_logical(op) ? 64 : width(V);
+}
+
+template< family_t F >
+int
+valid_of(const top_t< F > &t)
+{
+    return valid_of(t.node);
+}
+
+template< view_t V, view_t F, typename A >
+int
+valid_of(const sext_t< V, F, A > &)
+{
+    return width(V);
+}
+
+template< view_t V, typename A >
+int
+valid_of(const trunc_t< V, A > &)
+{
+    return width(V);
+}
+
+template< view_t V >
+int
+valid_of(const assign_t< V > &a)
+{
+    return valid_of(a.value);
+}
+
+template< view_t V >
+int
+valid_of(const call_t< V > &)
+{
+    return width(V);
+}
+
+// A place is read only through its load, and a void call has no value:
+// either asked for its width is a tree the parser does not make.
+template< view_t V >
+int
+valid_of(const place_t< V > &)
+{
+    throw std::logic_error("v2: a place read without its lvalue conversion");
+}
+
+inline int
+valid_of(const call_void_t &)
+{
+    throw std::logic_error("v2: the value of a void call");
+}
 
 } // namespace rcc

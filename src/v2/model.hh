@@ -18,11 +18,32 @@
 #include "stmt.hh"
 #include "zoo.hh"
 
+#include <cstdint>
 #include <memory>
 #include <stdexcept>
 #include <utility>
 
 namespace rcc {
+
+// A constant on the right of a binary operator as it crosses the
+// interface, the class as data (docs/typed-tree.md 3.3): its value and
+// its view, which the left operand's model makes a constant again,
+// typed(): of the operation's view, since the parser converted it to
+// the type of the operation, but for an operand of && or ||, which
+// keeps its own.  A shift's constant count is made one of the
+// operation's view too, since its rows read its low bits alone.
+struct constant_class_t
+{
+    long long value;
+    view_t view;
+};
+
+// A load on the right as it crosses: its where, which the left
+// operand's model makes a load of the operation's view again.
+struct load_class_t
+{
+    slot_t where;
+};
 
 struct expr_t::interface_t
 {
@@ -45,10 +66,20 @@ struct expr_t::interface_t
     virtual unsigned pinned_within(const amd64::state_t &) const = 0;
     virtual unsigned moved_within(const amd64::state_t &) const = 0;
 
+    // the summaries both targets read (principle 3): the width rule and
+    // the view
+    virtual int valid() const = 0;
+    virtual view_t view() const = 0;
+
     // the builders: self is the handle that holds this node, which a
     // builder returns, or erases a part into, without a copy of the node
     virtual expr_t rvalue(const expr_t &self) const = 0;
-    virtual expr_t unary(unary_op_t op, const expr_t &self) const = 0;
+    virtual expr_t unary(unary_op_t op, view_t, const expr_t &self) const = 0;
+
+    // a conversion, by the operand's model, which knows the operand's
+    // type and so whether it is a load (rcc's widened_read())
+    virtual expr_t
+    conversion(view_t to, view_t from, const expr_t &self) const = 0;
 
     // an assignment: the place's model, which knows the place's type,
     // makes the node
@@ -58,29 +89,32 @@ struct expr_t::interface_t
     // a binary operator, by the same two hops: the right operand's
     // model, which knows the right operand's class, calls the left's
     // operation for that class, which knows the left's class and makes
-    // the node
-    virtual expr_t
-    right_of(binary_op_t op, const expr_t &lhs, const expr_t &self) const = 0;
-    virtual expr_t
-    binary(binary_op_t op, const literal_t &rhs, const expr_t &self) const = 0;
-    virtual expr_t
-    binary(binary_op_t op, const zero_t &rhs, const expr_t &self) const = 0;
-    virtual expr_t
-    binary(binary_op_t op, const load_t &rhs, const expr_t &self) const = 0;
+    // the node; the view is the operation's, at which the left's model
+    // makes the class a type again
+    virtual expr_t right_of(binary_op_t op,
+                            view_t,
+                            const expr_t &lhs,
+                            const expr_t &self) const = 0;
     virtual expr_t binary(binary_op_t op,
-                          const top_t< binary_op_t::div > &rhs,
+                          view_t,
+                          const constant_class_t &rhs,
                           const expr_t &self) const = 0;
     virtual expr_t binary(binary_op_t op,
-                          const top_t< binary_op_t::rem > &rhs,
+                          view_t,
+                          const load_class_t &rhs,
                           const expr_t &self) const = 0;
     virtual expr_t binary(binary_op_t op,
-                          const top_t< binary_op_t::shl > &rhs,
+                          view_t,
+                          const top_t< family_t::division > &rhs,
                           const expr_t &self) const = 0;
     virtual expr_t binary(binary_op_t op,
-                          const top_t< binary_op_t::shr > &rhs,
+                          view_t,
+                          const top_t< family_t::shift > &rhs,
                           const expr_t &self) const = 0;
-    virtual expr_t
-    binary(binary_op_t op, const expr_t &rhs, const expr_t &self) const = 0;
+    virtual expr_t binary(binary_op_t op,
+                          view_t,
+                          const expr_t &rhs,
+                          const expr_t &self) const = 0;
 };
 
 // The rows of a held node, by overload and by the state's namespace: a
@@ -144,116 +178,183 @@ fwd_rvalue(const T &t, const expr_t &self)
     return rvalue(t, self);
 }
 
-// A unary operator on a held node: the crossing from the operator, a
-// value in the parser, to the node's parameter (principle 6), the typed
-// builder of each operator.
+// A unary operator on a held node: the crossing from the operator and
+// the view, values in the parser, to the node's parameters (principle
+// 6), the typed builder of each.
 template< typename A >
 expr_t
-fwd_unary(unary_op_t op, const A &arg, const expr_t &self)
+fwd_unary(unary_op_t op, view_t view, const A &arg, const expr_t &self)
 {
-    switch (op) {
-    case unary_op_t::neg: return make_unary< unary_op_t::neg >(arg, self);
-    case unary_op_t::bit_not:
-        return make_unary< unary_op_t::bit_not >(arg, self);
-    case unary_op_t::log_not:
-        return make_unary< unary_op_t::log_not >(arg, self);
-    }
+    return cross(op, [&]< unary_op_t o >() {
+        return cross(
+            view, [&]< view_t V >() { return make_unary< o, V >(arg, self); });
+    });
 }
 
-// A constant as a builder keeps it in the node it makes, by the classes
-// a target has a niche for: a literal_t and a zero_t by their types,
-// anything else erased, the handle that holds it.
+// The conversion of a held node from the view from to the view to: the
+// two crossings, then the typed builder, by overload on the node's type.
+template< typename T >
+expr_t
+fwd_conversion(view_t to, view_t from, const T &e, const expr_t &self)
+{
+    return cross(to, [&]< view_t V >() {
+        return cross(from, [&]< view_t F >() {
+            return make_conversion< V, F >(e, self);
+        });
+    });
+}
+
+// A constant of view V by its value, f handed the node: the one
+// question asked of a constant's value (principle 2), whose answer is
+// its type.  0 is a zero_t, a 64-bit value past int's range a wide_t,
+// and any other a literal_t.
+template< view_t V, typename F >
+decltype(auto)
+classed_constant(long long value, F &&f)
+{
+    if (value == 0)
+        return f(zero_t< V > { });
+
+    if constexpr (V == view_t::i64) {
+        if (value < INT32_MIN || value > INT32_MAX)
+            return f(wide_t { value });
+    }
+
+    return f(literal_t< V > { value });
+}
+
+// An operand of a binary operator as a builder keeps it on the left, in
+// the classes a target has a niche for: a constant and a load of any
+// view, since the operands of && and || keep their own types, and a
+// trunc_t of a load's own view, which keeps the object's bits, as its
+// load, rcc's memory_operand() under under_kept_bits(); anything else
+// erased, the handle that holds it.
 template< typename T >
 const expr_t &
-classed(const T &, const expr_t &self)
+classed_operand(const T &, const expr_t &self)
 {
     return self;
 }
 
-inline const literal_t &
-classed(const literal_t &value, const expr_t &)
+template< constant C >
+const C &
+classed_operand(const C &c, const expr_t &)
 {
-    return value;
+    return c;
 }
 
-inline const zero_t &
-classed(const zero_t &value, const expr_t &)
+template< view_t V >
+const load_t< V > &
+classed_operand(const load_t< V > &l, const expr_t &)
 {
-    return value;
+    return l;
 }
 
-// An operand of a binary operator as a builder keeps it: classed()'s
-// classes, and a load_t besides, which x86-64 reads as the
-// instruction's operand in memory, addl -8(%rbp), %eax on the right and
-// imull $5, -4(%rbp), %eax on the left.
-template< typename T >
-const auto &
-classed_operand(const T &operand, const expr_t &self)
+template< view_t V >
+const load_t< V > &
+classed_operand(const trunc_t< V, load_t< V > > &t, const expr_t &)
 {
-    return classed(operand, self);
+    return t.arg;
 }
 
-inline const load_t &
-classed_operand(const load_t &operand, const expr_t &)
-{
-    return operand;
-}
-
-// The right operand of a binary operator as a builder keeps it:
-// classed_operand()'s classes, and a top_t besides for a node whose top
-// operator x86-64 generates the left operand away from: a division,
-// and a shift by a count that is no constant, the count's class read
-// from the node's type.
+// The right operand of a binary operator as it crosses the interface,
+// its class as data: a constant's value and a load's where, a load
+// under a trunc_t of its own view among them; a top_t for a node whose
+// top operator, read through its conversions, x86-64 generates the left
+// operand away from, a division and a shift by a count that is no
+// constant, pinning()'s; anything else erased.
 template< typename T >
 decltype(auto)
-classed_right(const T &operand, const expr_t &self)
+crossing(const T &e, const expr_t &self)
 {
-    return classed_operand(operand, self);
+    return pinning(e, self);
 }
 
-template< binary_op_t op, typename L, typename R >
-auto
-classed_right(const binary_t< op, L, R > &, const expr_t &self)
+template< constant C >
+constant_class_t
+crossing(const C &c, const expr_t &)
 {
-    if constexpr (is_division(op) || (!constant< R > && is_shift(op)))
-        return top_t< op > { self };
+    return { value_of(c), view_of(c) };
+}
+
+template< view_t V >
+load_class_t
+crossing(const load_t< V > &l, const expr_t &)
+{
+    return { l.where };
+}
+
+template< view_t V >
+load_class_t
+crossing(const trunc_t< V, load_t< V > > &t, const expr_t &)
+{
+    return { t.arg.where };
+}
+
+// Whether a right operand of a class crosses erased all the same, a
+// question of the operator, data here, asked once (3.3): a shift's count
+// and an operand of && or || keep their own types, so their load is no
+// operand of the operation's view.  A constant crosses as one, so that
+// two constants fold.
+constexpr bool
+crosses_erased(binary_op_t op, const load_class_t &)
+{
+    return is_shift(op) || is_logical(op);
+}
+
+template< typename C >
+constexpr bool
+crosses_erased(binary_op_t, const C &)
+{
+    return false;
+}
+
+// The right operand's class made a type again for op at the
+// operation's view V, and handed to f: a constant by its value, at V,
+// or at its own view for && and ||; a load at V; a top_t and an erased
+// operand as they are.
+template< binary_op_t op, view_t V, typename F >
+expr_t
+typed(const constant_class_t &c, F &&f)
+{
+    if constexpr (is_logical(op))
+        return cross(c.view, [&]< view_t W >() {
+            return classed_constant< W >(c.value, f);
+        });
     else
-        return self;
+        return classed_constant< V >(c.value, f);
+}
+
+template< binary_op_t op, view_t V, typename F >
+expr_t
+typed(const load_class_t &l, F &&f)
+{
+    return f(load_t< V > { l.where });
+}
+
+template< binary_op_t op, view_t V, typename R, typename F >
+expr_t
+typed(const R &rhs, F &&f)
+{
+    return f(rhs);
 }
 
 // A binary operator on two operands in their classes: the crossing from
-// the operator, a value in the parser, to the node's parameter
-// (principle 6), made once for every class, the typed builder of each
-// operator.
+// the operator and the view, values in the parser, to the node's
+// parameters (principle 6), and the right operand's class made a type
+// again at the view, made once for every pair of classes, the typed
+// builder of each.
 template< typename L, typename R >
 expr_t
-fwd_binary(binary_op_t op, const L &lhs, const R &rhs)
+fwd_binary(binary_op_t op, view_t view, const L &lhs, const R &rhs)
 {
-    switch (op) {
-    case binary_op_t::add: return make_binary< binary_op_t::add >(lhs, rhs);
-    case binary_op_t::sub: return make_binary< binary_op_t::sub >(lhs, rhs);
-    case binary_op_t::mul: return make_binary< binary_op_t::mul >(lhs, rhs);
-    case binary_op_t::div: return make_binary< binary_op_t::div >(lhs, rhs);
-    case binary_op_t::rem: return make_binary< binary_op_t::rem >(lhs, rhs);
-    case binary_op_t::shl: return make_binary< binary_op_t::shl >(lhs, rhs);
-    case binary_op_t::shr: return make_binary< binary_op_t::shr >(lhs, rhs);
-    case binary_op_t::lt: return make_binary< binary_op_t::lt >(lhs, rhs);
-    case binary_op_t::gt: return make_binary< binary_op_t::gt >(lhs, rhs);
-    case binary_op_t::le: return make_binary< binary_op_t::le >(lhs, rhs);
-    case binary_op_t::ge: return make_binary< binary_op_t::ge >(lhs, rhs);
-    case binary_op_t::eq: return make_binary< binary_op_t::eq >(lhs, rhs);
-    case binary_op_t::ne: return make_binary< binary_op_t::ne >(lhs, rhs);
-    case binary_op_t::bit_and:
-        return make_binary< binary_op_t::bit_and >(lhs, rhs);
-    case binary_op_t::bit_or:
-        return make_binary< binary_op_t::bit_or >(lhs, rhs);
-    case binary_op_t::bit_xor:
-        return make_binary< binary_op_t::bit_xor >(lhs, rhs);
-    case binary_op_t::log_and:
-        return make_binary< binary_op_t::log_and >(lhs, rhs);
-    case binary_op_t::log_or:
-        return make_binary< binary_op_t::log_or >(lhs, rhs);
-    }
+    return cross(op, [&]< binary_op_t o >() {
+        return cross(view, [&]< view_t V >() {
+            return typed< o, V >(rhs, [&](const auto &r) {
+                return make_binary< o, V >(lhs, r);
+            });
+        });
+    });
 }
 
 // Whether a node is a place an assignment stores into: whether the
@@ -344,14 +445,29 @@ struct expr_t::model_t final: interface_t
         return fwd_moved_within(s, held);
     }
 
+    int valid() const override
+    {
+        return valid_of(held);
+    }
+
+    view_t view() const override
+    {
+        return view_of(held);
+    }
+
     expr_t rvalue(const expr_t &self) const override
     {
         return fwd_rvalue(held, self);
     }
 
-    expr_t unary(unary_op_t op, const expr_t &self) const override
+    expr_t unary(unary_op_t op, view_t view, const expr_t &self) const override
     {
-        return fwd_unary(op, held, self);
+        return fwd_unary(op, view, held, self);
+    }
+
+    expr_t conversion(view_t to, view_t from, const expr_t &self) const override
+    {
+        return fwd_conversion(to, from, held, self);
     }
 
     bool is_assignable() const override
@@ -365,63 +481,55 @@ struct expr_t::model_t final: interface_t
     }
 
     expr_t right_of(binary_op_t op,
+                    view_t view,
                     const expr_t &lhs,
                     const expr_t &self) const override
     {
-        return lhs.self->binary(op, classed_right(held, self), lhs);
+        const auto &rhs = crossing(held, self);
+        if (crosses_erased(op, rhs))
+            return lhs.self->binary(op, view, self, lhs);
+
+        return lhs.self->binary(op, view, rhs, lhs);
     }
 
     expr_t binary(binary_op_t op,
-                  const literal_t &rhs,
+                  view_t view,
+                  const constant_class_t &rhs,
                   const expr_t &self) const override
     {
-        return fwd_binary(op, classed_operand(held, self), rhs);
-    }
-
-    expr_t
-    binary(binary_op_t op, const zero_t &rhs, const expr_t &self) const override
-    {
-        return fwd_binary(op, classed_operand(held, self), rhs);
-    }
-
-    expr_t
-    binary(binary_op_t op, const load_t &rhs, const expr_t &self) const override
-    {
-        return fwd_binary(op, classed_operand(held, self), rhs);
+        return fwd_binary(op, view, classed_operand(held, self), rhs);
     }
 
     expr_t binary(binary_op_t op,
-                  const top_t< binary_op_t::div > &rhs,
+                  view_t view,
+                  const load_class_t &rhs,
                   const expr_t &self) const override
     {
-        return fwd_binary(op, classed_operand(held, self), rhs);
+        return fwd_binary(op, view, classed_operand(held, self), rhs);
     }
 
     expr_t binary(binary_op_t op,
-                  const top_t< binary_op_t::rem > &rhs,
+                  view_t view,
+                  const top_t< family_t::division > &rhs,
                   const expr_t &self) const override
     {
-        return fwd_binary(op, classed_operand(held, self), rhs);
+        return fwd_binary(op, view, classed_operand(held, self), rhs);
     }
 
     expr_t binary(binary_op_t op,
-                  const top_t< binary_op_t::shl > &rhs,
+                  view_t view,
+                  const top_t< family_t::shift > &rhs,
                   const expr_t &self) const override
     {
-        return fwd_binary(op, classed_operand(held, self), rhs);
+        return fwd_binary(op, view, classed_operand(held, self), rhs);
     }
 
     expr_t binary(binary_op_t op,
-                  const top_t< binary_op_t::shr > &rhs,
+                  view_t view,
+                  const expr_t &rhs,
                   const expr_t &self) const override
     {
-        return fwd_binary(op, classed_operand(held, self), rhs);
-    }
-
-    expr_t
-    binary(binary_op_t op, const expr_t &rhs, const expr_t &self) const override
-    {
-        return fwd_binary(op, classed_operand(held, self), rhs);
+        return fwd_binary(op, view, classed_operand(held, self), rhs);
     }
 
     T held;
