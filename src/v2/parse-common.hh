@@ -139,11 +139,12 @@ const token_t &expect(parser_t &p, tok_t kind, std::string_view message);
 // int as the parser makes it: 32 bits, signed, of the kind int.
 type_t int_type();
 
-// The machine's view of an integer type, its width, the one place the
-// parser maps a C type to the machine's (docs/typed-tree.md principle
-// 9): every builder it calls is handed the view of the C type it
-// means.
+// The machine's view of an integer type, its width, and its sign, the
+// one place the parser maps a C type to the machine's
+// (docs/typed-tree.md principle 9): every builder it calls is handed
+// the view of the C type it means, and a widening the sign.
 view_t view_of(const type_t &t);
+sign_t sign_of(const type_t &t);
 
 //
 // values
@@ -166,7 +167,8 @@ expr_t discarded(operand_t e);
 
 // The conversion of the value of e, an operand of a value, to the type
 // t, 6.3.1.3, as a node, whatever the two types: its builder is handed
-// the views of t and of e's own type, which it reads off e.  Every
+// the view of t, and the view and the sign of e's own type, which it
+// reads off e.  Every
 // conversion the parser builds is this function's, and nothing else
 // calls make_conversion(): so a node that is no conversion has the type
 // its consumer converts it from, and the width rule, which a widening

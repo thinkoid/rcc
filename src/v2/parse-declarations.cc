@@ -1,13 +1,14 @@
 // -*- mode: c++; -*-
 
 // 6.7: the declarations, of which rcc-v2 takes the declaration
-// specifiers static, void and the type specifiers of int and long, in
-// any order and spelling, the declarators of a function of int
-// parameters and of an object, the declaration in a block of int and
-// long objects, each with an initializer or without, and the type name
-// of a cast; it refuses the rest as not yet.  rcc reads more of each
-// than rcc-v2 does, so each is read as far as rcc would read it, and
-// what rcc would take is refused before an error rcc would not say.
+// specifiers static, void and the type specifiers of the integer types
+// of 32 and 64 bits, signed and unsigned, in any order and spelling,
+// the declarators of a function of int parameters and of an object,
+// the declaration in a block of objects of those types, each with an
+// initializer or without, and the type name of a cast; it refuses the
+// rest as not yet.  rcc reads more of each than rcc-v2 does, so each is
+// read as far as rcc would read it, and what rcc would take is refused
+// before an error rcc would not say.
 
 #include "parse-common.hh"
 
@@ -162,30 +163,34 @@ is_counted(const token_t &t)
 }
 
 // Whether a counted type specifier brings a type rcc-v2 does not
-// compile yet: char, short and unsigned.
+// compile yet: char and short.
 bool
 is_outside(const token_t &t)
 {
-    return t.kind == tok_t::kw_char || t.kind == tok_t::kw_short ||
-           t.kind == tok_t::kw_unsigned;
+    return t.kind == tok_t::kw_char || t.kind == tok_t::kw_short;
 }
 
-// The type the counted specifiers name, rcc's specified(): void; two
-// longs long long, one long long, and int otherwise, signed alone
-// among them, 6.7.3.1p2.
+// The type the counted specifiers name, rcc's specified(): void; else
+// signed unless unsigned was counted, and two longs long long, one long
+// long, and int otherwise, signed alone among them, 6.7.3.1p2.
 type_t
 specified(const counts_t &n)
 {
     if (n.void_)
         return make_void();
 
+    const bool is_signed = n.unsigned_ == 0;
+    const auto of = [&](int width, int_kind_t s, int_kind_t u) {
+        return make_int(width, is_signed, is_signed ? s : u);
+    };
+
     if (n.long_ == 2)
-        return make_int(64, true, int_kind_t::long_long);
+        return of(64, int_kind_t::long_long, int_kind_t::unsigned_long_long);
 
     if (n.long_)
-        return make_int(64, true, int_kind_t::long_);
+        return of(64, int_kind_t::long_, int_kind_t::unsigned_long);
 
-    return int_type();
+    return of(32, int_kind_t::int_, int_kind_t::unsigned_);
 }
 
 } // namespace
@@ -194,7 +199,7 @@ specified(const counts_t &n)
 // one of the sets of 6.7.3.1p2 in any order, read as rcc reads them, up
 // to the first token that is none, each type specifier refused where it
 // cannot join those before it, in rcc's words.  A set rcc-v2 does not
-// compile yet, of char, short or unsigned, is not yet once the
+// compile yet, of char or short, is not yet once the
 // specifiers are read whole, at the first specifier that brings it, so
 // that every error rcc says of them is said.  Any other specifier is
 // not yet where it stands, and so is a reserved identifier in place of

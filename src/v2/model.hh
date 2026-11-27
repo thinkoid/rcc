@@ -66,9 +66,9 @@ struct expr_t::interface_t
     virtual unsigned pinned_within(const amd64::state_t &) const = 0;
     virtual unsigned moved_within(const amd64::state_t &) const = 0;
 
-    // the summaries both targets read (principle 3): the width rule and
-    // the view
-    virtual int valid() const = 0;
+    // the summaries both targets read (principle 3): the width rule, at
+    // a sign, and the view
+    virtual int valid(sign_t) const = 0;
     virtual view_t view() const = 0;
 
     // the builders: self is the handle that holds this node, which a
@@ -78,8 +78,10 @@ struct expr_t::interface_t
 
     // a conversion, by the operand's model, which knows the operand's
     // type and so whether it is a load (rcc's widened_read())
-    virtual expr_t
-    conversion(view_t to, view_t from, const expr_t &self) const = 0;
+    virtual expr_t conversion(view_t to,
+                              view_t from,
+                              sign_t from_sign,
+                              const expr_t &self) const = 0;
 
     // an assignment: the place's model, which knows the place's type,
     // makes the node
@@ -191,15 +193,19 @@ fwd_unary(unary_op_t op, view_t view, const A &arg, const expr_t &self)
     });
 }
 
-// The conversion of a held node from the view from to the view to: the
-// two crossings, then the typed builder, by overload on the node's type.
+// The conversion of a held node from the view from, at the sign of its
+// type, to the view to: the three crossings, then the typed builder, by
+// overload on the node's type.
 template< typename T >
 expr_t
-fwd_conversion(view_t to, view_t from, const T &e, const expr_t &self)
+fwd_conversion(
+    view_t to, view_t from, sign_t from_sign, const T &e, const expr_t &self)
 {
     return cross(to, [&]< view_t V >() {
         return cross(from, [&]< view_t F >() {
-            return make_conversion< V, F >(e, self);
+            return cross(from_sign, [&]< sign_t S >() {
+                return make_conversion< V, F, S >(e, self);
+            });
         });
     });
 }
@@ -445,9 +451,9 @@ struct expr_t::model_t final: interface_t
         return fwd_moved_within(s, held);
     }
 
-    int valid() const override
+    int valid(sign_t sign) const override
     {
-        return valid_of(held);
+        return valid_of(held, sign);
     }
 
     view_t view() const override
@@ -465,9 +471,12 @@ struct expr_t::model_t final: interface_t
         return fwd_unary(op, view, held, self);
     }
 
-    expr_t conversion(view_t to, view_t from, const expr_t &self) const override
+    expr_t conversion(view_t to,
+                      view_t from,
+                      sign_t from_sign,
+                      const expr_t &self) const override
     {
-        return fwd_conversion(to, from, held, self);
+        return fwd_conversion(to, from, from_sign, held, self);
     }
 
     bool is_assignable() const override

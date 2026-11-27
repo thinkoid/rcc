@@ -62,13 +62,14 @@ public:
     friend void value_branch(amd64::state_t &, const expr_t &, int, bool);
     friend unsigned pinned_within(const amd64::state_t &, const expr_t &);
     friend unsigned moved_within(const amd64::state_t &, const expr_t &);
-    friend int valid_of(const expr_t &);
+    friend int valid_of(const expr_t &, sign_t sign);
     friend view_t view_of(const expr_t &);
 
     friend expr_t rvalue(expr_t);
     friend bool is_assignable(const expr_t &);
     friend expr_t make_assign(expr_t place, expr_t value);
-    friend expr_t make_conversion(view_t to, view_t from, expr_t e);
+    friend expr_t
+    make_conversion(view_t to, view_t from, sign_t from_sign, expr_t e);
     friend expr_t make_unary(unary_op_t op, view_t view, expr_t arg);
     friend expr_t
     make_binary(binary_op_t op, view_t view, expr_t lhs, expr_t rhs);
@@ -108,9 +109,9 @@ unsigned pinned_within(const amd64::state_t &, const expr_t &);
 unsigned moved_within(const amd64::state_t &, const expr_t &);
 
 // The view of an erased value and the width its register is valid to,
-// the width rule, summaries both targets read (zoo.hh), forwarded to
-// the node it holds.
-int valid_of(const expr_t &);
+// the width rule, read at a sign, summaries both targets read
+// (zoo.hh), forwarded to the node it holds.
+int valid_of(const expr_t &, sign_t sign);
 view_t view_of(const expr_t &);
 
 } // namespace rcc

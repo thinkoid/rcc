@@ -137,23 +137,31 @@ struct top_t
 };
 
 // The conversion of a value of view F to the wider view V by the sign
-// of its type, 6.3.1.3: a sign extension, LLVM's sext, where the
+// of its type, 6.3.1.3: a sign extension, LLVM's sext, of a signed one,
+// and a zero extension, zext, of an unsigned one, each where the
 // operand's register is not valid to V's width already (the width rule,
 // valid_of()).  A is erased, or the operand's load, whose niche is the
-// extending load.
+// extending load of a signed one, or a top_t, pinning()'s.
 template< view_t V, view_t F, typename A = expr_t >
 struct sext_t
 {
     A arg;
 };
 
+template< view_t V, view_t F, typename A = expr_t >
+struct zext_t
+{
+    A arg;
+};
+
 // The conversion of a value to the view V that is no widening, 6.3.1.3:
-// a narrowing, or a cast to the type the operand has.  It writes
-// nothing, since the low bits of the register are the value (G2), and
-// leaves the value valid to V's width.  LLVM's trunc only narrows, and
-// its bitcast keeps the width; one node serves both, since their rows
-// are one.  A is erased, or the operand's load, so that a parent may
-// name the object in place.
+// a narrowing, a change of the sign alone, or a cast to the type the
+// operand has.  It writes nothing, since the low bits of the register
+// are the value (G2), and leaves the value valid to V's width.  LLVM's
+// trunc only narrows, and its bitcast keeps the width; one node serves
+// the three, since their rows are one.  A is erased, or the operand's
+// load, so that a parent may name the object in place, or a top_t,
+// pinning()'s.
 template< view_t V, typename A = expr_t >
 struct trunc_t
 {
@@ -429,6 +437,13 @@ view_of(const sext_t< V, F, A > &)
     return V;
 }
 
+template< view_t V, view_t F, typename A >
+constexpr view_t
+view_of(const zext_t< V, F, A > &)
+{
+    return V;
+}
+
 template< view_t V, typename A >
 constexpr view_t
 view_of(const trunc_t< V, A > &)
@@ -459,80 +474,99 @@ view_of(const call_void_t &)
 }
 
 // The width rule, rcc's held_t::valid (c1-common.hh): the width up to
-// which the bits of a node's register are its value extended by sign, a
-// summary of the subtree (principle 3) that the state does not record.
-// Its readers are the widening's rows, which write the extension where
-// the summary is below the new width, as rcc's extended() does.  rcc
-// sets it at each write by the sign of the value's own type, written();
-// here a node has no sign, and the rule rests on one invariant: the
-// parser builds every conversion from its operand's own C type, in one
+// which the bits of a node's register are its value extended by sign,
+// read at the sign of the type its consumer converts it from; a summary
+// of the subtree (principle 3) that the state does not record.  Its
+// readers are the widening's rows, which write the extension where the
+// summary is below the new width, as rcc's extended() does.  rcc sets
+// it at each write by the sign of the value's own type, written(); here
+// a node has no sign, and the rule rests on one invariant: the parser
+// builds every conversion from its operand's own C type, in one
 // function, conversion(), so a node that is no conversion has the type
-// its consumer converts from.  An instruction that writes a register
-// at a width leaves it valid to that width, a load and a constant
-// theirs, an operation its own; a truth value, 0 or 1, is valid to 64
-// bits; a conversion caps the width at its own, rcc's converted(); an
+// its consumer converts from, and its sign is the one the consumer
+// hands.  An instruction that writes a register at a width leaves it
+// written() at that width, a load and a constant at theirs, an
+// operation at its own; a truth value, 0 or 1, is valid to 64 bits; a
+// conversion caps the width at its own, rcc's converted(); an
 // assignment's value is its right operand's, and a call's result is
 // valid to its view's width, the convention leaving the bits above to
 // the caller.
+
+// rcc's written(): a write at 32 bits clears the upper half of the
+// register, which is the extension of an unsigned value and not of a
+// signed one.
+constexpr int
+written(int width, sign_t sign)
+{
+    return width == 32 && sign == sign_t::unsigned_ ? 64 : width;
+}
+
 template< view_t V >
 int
-valid_of(const load_t< V > &)
+valid_of(const load_t< V > &, sign_t sign)
 {
-    return width(V);
+    return written(width(V), sign);
 }
 
 template< constant C >
 int
-valid_of(const C &c)
+valid_of(const C &c, sign_t sign)
 {
-    return width(view_of(c));
+    return written(width(view_of(c)), sign);
 }
 
 template< unary_op_t op, view_t V, typename A >
 int
-valid_of(const unary_t< op, V, A > &)
+valid_of(const unary_t< op, V, A > &, sign_t sign)
 {
-    return op == unary_op_t::log_not ? 64 : width(V);
+    return op == unary_op_t::log_not ? 64 : written(width(V), sign);
 }
 
 template< binary_op_t op, view_t V, typename L, typename R >
 int
-valid_of(const binary_t< op, V, L, R > &)
+valid_of(const binary_t< op, V, L, R > &, sign_t sign)
 {
-    return is_comparison(op) || is_logical(op) ? 64 : width(V);
+    return is_comparison(op) || is_logical(op) ? 64 : written(width(V), sign);
 }
 
 template< family_t F >
 int
-valid_of(const top_t< F > &t)
+valid_of(const top_t< F > &t, sign_t sign)
 {
-    return valid_of(t.node);
+    return valid_of(t.node, sign);
 }
 
 template< view_t V, view_t F, typename A >
 int
-valid_of(const sext_t< V, F, A > &)
+valid_of(const sext_t< V, F, A > &, sign_t)
+{
+    return width(V);
+}
+
+template< view_t V, view_t F, typename A >
+int
+valid_of(const zext_t< V, F, A > &, sign_t)
 {
     return width(V);
 }
 
 template< view_t V, typename A >
 int
-valid_of(const trunc_t< V, A > &)
+valid_of(const trunc_t< V, A > &, sign_t)
 {
     return width(V);
 }
 
 template< view_t V >
 int
-valid_of(const assign_t< V > &a)
+valid_of(const assign_t< V > &a, sign_t sign)
 {
-    return valid_of(a.value);
+    return valid_of(a.value, sign);
 }
 
 template< view_t V >
 int
-valid_of(const call_t< V > &)
+valid_of(const call_t< V > &, sign_t)
 {
     return width(V);
 }
@@ -541,13 +575,13 @@ valid_of(const call_t< V > &)
 // either asked for its width is a tree the parser does not make.
 template< view_t V >
 int
-valid_of(const place_t< V > &)
+valid_of(const place_t< V > &, sign_t)
 {
     throw std::logic_error("v2: a place read without its lvalue conversion");
 }
 
 inline int
-valid_of(const call_void_t &)
+valid_of(const call_void_t &, sign_t)
 {
     throw std::logic_error("v2: the value of a void call");
 }

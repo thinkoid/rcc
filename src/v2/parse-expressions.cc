@@ -231,30 +231,88 @@ promote(const operand_t &e)
 }
 
 // The rank of an integer type, 6.3.1.1p1, by its kind, rcc's rank():
-// int, then long, then long long, each of its own rank though long and
-// long long are of one width on LP64.
+// int, then long, then long long, each with its unsigned version, and
+// each of its own rank though long and long long are of one width on
+// LP64.
 int
 rank(const int_t &t)
 {
     switch (t.kind) {
-    case int_kind_t::int_: return 3;
-    case int_kind_t::long_: return 4;
-    case int_kind_t::long_long: return 5;
+    case int_kind_t::int_:
+    case int_kind_t::unsigned_: return 3;
+    case int_kind_t::long_:
+    case int_kind_t::unsigned_long: return 4;
+    case int_kind_t::long_long:
+    case int_kind_t::unsigned_long_long: return 5;
     default: throw std::logic_error("v2: rank of an integer type of no kind");
     }
 }
 
+// The unsigned type of a signed type's rank, the last conversion of
+// 6.3.1.8p1's list, rcc's unsigned_kind().
+int_kind_t
+unsigned_kind(int_kind_t kind)
+{
+    switch (kind) {
+    case int_kind_t::int_: return int_kind_t::unsigned_;
+    case int_kind_t::long_: return int_kind_t::unsigned_long;
+    case int_kind_t::long_long: return int_kind_t::unsigned_long_long;
+    default: return kind;
+    }
+}
+
 // The common type of the usual arithmetic conversions, 6.3.1.8p1, on
-// the promoted operands, rcc's common_type(): of two types of one sign,
-// that of the higher rank, so int and long meet at long, and long and
-// long long at long long.
+// the promoted operands, by their ranks, rcc's common_type(): of one
+// sign, the higher rank; of two, the unsigned one where its rank is at
+// least the signed one's, else the signed one where it is wider, else
+// the unsigned type of the signed one's rank.  On LP64 int and unsigned
+// meet at unsigned, long and unsigned at long, and unsigned long and
+// long long, of one width and two ranks, at unsigned long long.
 type_t
 common_type(const type_t &a, const type_t &b)
 {
     const type_t x = promoted(a);
     const type_t y = promoted(b);
+    const int_t &i = as< int_t >(x);
+    const int_t &j = as< int_t >(y);
 
-    return rank(as< int_t >(x)) >= rank(as< int_t >(y)) ? x : y;
+    if (i.is_signed == j.is_signed)
+        return rank(i) >= rank(j) ? x : y;
+
+    const type_t &u = i.is_signed ? y : x;
+    const type_t &s = i.is_signed ? x : y;
+
+    if (rank(as< int_t >(u)) >= rank(as< int_t >(s)))
+        return u;
+
+    // a signed type wider than the unsigned one holds all its values
+    if (as< int_t >(s).width > as< int_t >(u).width)
+        return s;
+
+    return make_int(as< int_t >(s).width, false,
+                    unsigned_kind(as< int_t >(s).kind));
+}
+
+// The operator of an operation of a type of the sign, LLVM's names: an
+// operator read by its signed name, sdiv for /, is the unsigned one,
+// udiv, where the type is unsigned, 6.5.6p6, 6.5.8p5, 6.5.9p6, and an
+// operator of no sign is itself.
+binary_op_t
+by_sign(binary_op_t op, sign_t sign)
+{
+    if (sign == sign_t::signed_)
+        return op;
+
+    switch (op) {
+    case binary_op_t::sdiv: return binary_op_t::udiv;
+    case binary_op_t::srem: return binary_op_t::urem;
+    case binary_op_t::ashr: return binary_op_t::lshr;
+    case binary_op_t::slt: return binary_op_t::ult;
+    case binary_op_t::sle: return binary_op_t::ule;
+    case binary_op_t::sgt: return binary_op_t::ugt;
+    case binary_op_t::sge: return binary_op_t::uge;
+    default: return op;
+    }
 }
 
 // The operand of a unary arithmetic operator, the value it reads, rcc's
@@ -416,10 +474,10 @@ refuse_function_operands(binary_op_t op,
 // A binary operator of integers, 6.5.6, 6.5.7, 6.5.11 to 6.5.13, its
 // token at, rcc's arithmetic(): the usual arithmetic conversions, each
 // operand converted to the common type, and the result of that type,
-// the operation at its view, 6.5.6p4, 6.5.7p5, 6.5.11p3, 6.5.12p3,
-// 6.5.13p3.  rcc reads both values before it judges their types, so a
-// void one is the error first, require_value()'s, and a function
-// designator the next, refuse_function_operands()'s.
+// the operation at its view and by its sign, 6.5.6p4, 6.5.7p5,
+// 6.5.11p3, 6.5.12p3, 6.5.13p3.  rcc reads both values before it judges
+// their types, so a void one is the error first, require_value()'s, and
+// a function designator the next, refuse_function_operands()'s.
 operand_t
 arithmetic(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
 {
@@ -431,13 +489,14 @@ arithmetic(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
     expr_t l = convert_to(lhs, t);
     expr_t r = convert_to(rhs, t);
 
-    return { t, make_binary(op, view_of(t), std::move(l), std::move(r)) };
+    return { t, make_binary(by_sign(op, sign_of(t)), view_of(t), std::move(l),
+                            std::move(r)) };
 }
 
 // << and >>, 6.5.8, its token at, rcc's shift(): each operand promoted
 // on its own, so the count keeps its promoted type, p3, and the result
-// of the promoted left operand's type, the operation at its view.  The
-// errors are arithmetic()'s, in its order.
+// of the promoted left operand's type, the operation at its view and by
+// its sign.  The errors are arithmetic()'s, in its order.
 operand_t
 shift(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
 {
@@ -449,11 +508,12 @@ shift(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
     expr_t l = promote(lhs);
     expr_t r = promote(rhs);
 
-    return { t, make_binary(op, view_of(t), std::move(l), std::move(r)) };
+    return { t, make_binary(by_sign(op, sign_of(t)), view_of(t), std::move(l),
+                            std::move(r)) };
 }
 
-// The operator of a multiplicative operator's token: * / %, the
-// division of a signed type's.
+// The operator of a multiplicative operator's token: * / %, a division
+// by its signed name, by_sign()'s.
 binary_op_t
 multiplicative_operator(tok_t kind)
 {
@@ -549,7 +609,8 @@ refuse_function_comparison(binary_op_t op,
 
 // A relational or an equality operator, 6.5.9, 6.5.10, its token at,
 // rcc's comparison(): each operand converted to the operands' common
-// type, 6.5.9p4, 6.5.10p5, the cmp at its view, and the result an int
+// type, 6.5.9p4, 6.5.10p5, the cmp at its view and by its sign, so -1 <
+// 0u is an unsigned comparison, and the result an int
 // whatever the operands' type, 6.5.9p7, 6.5.10p4.  rcc reads both
 // values before it judges their types, so a void one is the error
 // first, require_value()'s, and a function designator the next,
@@ -565,12 +626,12 @@ comparison(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
     expr_t l = convert_to(lhs, t);
     expr_t r = convert_to(rhs, t);
 
-    return { int_type(),
-             make_binary(op, view_of(t), std::move(l), std::move(r)) };
+    return { int_type(), make_binary(by_sign(op, sign_of(t)), view_of(t),
+                                     std::move(l), std::move(r)) };
 }
 
-// The operator of a relational operator's token: < > <= >=, the
-// comparison of a signed type's.
+// The operator of a relational operator's token: < > <= >=, by its
+// signed name, by_sign()'s.
 binary_op_t
 relational_operator(tok_t kind)
 {

@@ -274,8 +274,8 @@ constant(state_t &s, reg_t r, long long value, int width)
 // operators
 
 // The instruction of a binary operator, rcc's arithmetic_mnemonic() and
-// shift_mnemonic(): asr for >>, signed, and sdiv for /, and for % the
-// quotient's, before its msub.
+// shift_mnemonic(): asr and lsr for >>, sdiv and udiv for /, and for %
+// the quotient's, before its msub.
 std::string_view
 mnemonic(binary_op_t op)
 {
@@ -285,12 +285,19 @@ mnemonic(binary_op_t op)
     case binary_op_t::mul: return "mul";
     case binary_op_t::sdiv:
     case binary_op_t::srem: return "sdiv";
+    case binary_op_t::udiv:
+    case binary_op_t::urem: return "udiv";
     case binary_op_t::shl: return "lsl";
     case binary_op_t::ashr: return "asr";
+    case binary_op_t::lshr: return "lsr";
     case binary_op_t::slt:
     case binary_op_t::sle:
     case binary_op_t::sgt:
     case binary_op_t::sge:
+    case binary_op_t::ult:
+    case binary_op_t::ule:
+    case binary_op_t::ugt:
+    case binary_op_t::uge:
     case binary_op_t::eq:
     case binary_op_t::ne:
     case binary_op_t::log_and:
@@ -319,6 +326,10 @@ immediate_of(binary_op_t op, long long value, int width)
     case binary_op_t::sle:
     case binary_op_t::sgt:
     case binary_op_t::sge:
+    case binary_op_t::ult:
+    case binary_op_t::ule:
+    case binary_op_t::ugt:
+    case binary_op_t::uge:
     case binary_op_t::eq:
     case binary_op_t::ne:
         if (arithmetic_immediate(value, width))
@@ -326,11 +337,14 @@ immediate_of(binary_op_t op, long long value, int width)
         break;
     case binary_op_t::mul:
     case binary_op_t::sdiv:
+    case binary_op_t::udiv:
     case binary_op_t::srem:
+    case binary_op_t::urem:
     case binary_op_t::log_and:
     case binary_op_t::log_or: break;
     case binary_op_t::shl:
-    case binary_op_t::ashr: return imm(value & (width - 1));
+    case binary_op_t::ashr:
+    case binary_op_t::lshr: return imm(value & (width - 1));
     case binary_op_t::bit_and:
     case binary_op_t::bit_or:
     case binary_op_t::bit_xor:
@@ -386,7 +400,8 @@ final_destination(state_t &s, value_t v, unsigned wanted)
 }
 
 // The condition of a comparison of op, the suffix of b.cc and the
-// operand of cset, rcc's condition(): lt le gt ge for the signed ones.
+// operand of cset, rcc's condition(): lt le gt ge for the signed ones,
+// lo ls hi hs for the unsigned ones.
 std::string_view
 condition(binary_op_t op)
 {
@@ -395,6 +410,10 @@ condition(binary_op_t op)
     case binary_op_t::sle: return "le";
     case binary_op_t::sgt: return "gt";
     case binary_op_t::sge: return "ge";
+    case binary_op_t::ult: return "lo";
+    case binary_op_t::ule: return "ls";
+    case binary_op_t::ugt: return "hi";
+    case binary_op_t::uge: return "hs";
     case binary_op_t::eq: return "eq";
     default: return "ne";
     }
@@ -539,15 +558,20 @@ extending_load(state_t &s, slot_t where, view_t from)
     return v;
 }
 
-// rcc's extended(): an int's sign extension, sxtw, of the w name of its
-// register into the x name of the destination.
+// rcc's extension() and extended(): an int's sign extension, sxtw, of
+// the w name of its register into the x name of the destination; an
+// unsigned's mov of the w names, whose write clears the upper half.
 value_t
-extended(state_t &s, value_t v, view_t from, view_t to, unsigned wanted)
+extended(
+    state_t &s, value_t v, view_t from, sign_t sign, view_t to, unsigned wanted)
 {
     const reg_t source = reg_of(s, v);
     const reg_t r = final_destination(s, v, wanted);
 
-    insn(s, "sxtw", { reg(r, width(to)), reg(source, width(from)) });
+    if (sign == sign_t::signed_)
+        insn(s, "sxtw", { reg(r, width(to)), reg(source, width(from)) });
+    else
+        insn(s, "mov", { reg(r, 32), reg(source, 32) });
 
     return v;
 }
@@ -588,7 +612,7 @@ arithmetic(state_t &s,
     const auto from = reg(left, bits);
     const auto by = reg(right, bits);
 
-    if (op != binary_op_t::srem) {
+    if (!is_remainder(op)) {
         release(s, r);
 
         const auto to = reg(final_destination(s, l, wanted), bits);

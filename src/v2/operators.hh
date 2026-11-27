@@ -28,27 +28,40 @@ width(view_t view)
     }
 }
 
+// The sign of a C integer type, rcc's int_t::is_signed, which the
+// parser hands a builder where a node is made by it: a widening, sext
+// or zext, by the sign of the type converted from (docs/typed-tree.md
+// 4.2).
+enum class sign_t { signed_, unsigned_ };
+
 // The unary operators of 6.5.4.3 that make a node: - ~ !.
 enum class unary_op_t { neg, bit_not, log_not };
 
 // The binary operators, 6.5.6 to 6.5.15: * / % + - << >> & | ^, the
 // comparisons < > <= >= == !=, and && and ||.  An operator whose
 // instruction differs by the sign of its operands has the sign in its
-// name, LLVM's: sdiv for /, srem for %, ashr for >>, slt sle sgt sge for
-// < <= > >=, the signed ones, which the parser picks by the type of the
-// operation.
+// name, LLVM's: sdiv and udiv for /, srem and urem for %, ashr and lshr
+// for >>, slt sle sgt sge and ult ule ugt uge for < <= > >=, which the
+// parser picks by the type of the operation.
 enum class binary_op_t {
     add,
     sub,
     mul,
     sdiv,
+    udiv,
     srem,
+    urem,
     shl,
     ashr,
+    lshr,
     slt,
     sle,
     sgt,
     sge,
+    ult,
+    ule,
+    ugt,
+    uge,
     eq,
     ne,
     bit_and,
@@ -71,13 +84,20 @@ commutes(binary_op_t op)
     case binary_op_t::bit_xor: return true;
     case binary_op_t::sub:
     case binary_op_t::sdiv:
+    case binary_op_t::udiv:
     case binary_op_t::srem:
+    case binary_op_t::urem:
     case binary_op_t::shl:
     case binary_op_t::ashr:
+    case binary_op_t::lshr:
     case binary_op_t::slt:
     case binary_op_t::sle:
     case binary_op_t::sgt:
     case binary_op_t::sge:
+    case binary_op_t::ult:
+    case binary_op_t::ule:
+    case binary_op_t::ugt:
+    case binary_op_t::uge:
     case binary_op_t::eq:
     case binary_op_t::ne:
     case binary_op_t::log_and:
@@ -91,7 +111,17 @@ commutes(binary_op_t op)
 constexpr bool
 is_division(binary_op_t op)
 {
-    return op == binary_op_t::sdiv || op == binary_op_t::srem;
+    return op == binary_op_t::sdiv || op == binary_op_t::udiv ||
+           op == binary_op_t::srem || op == binary_op_t::urem;
+}
+
+// Whether op is %, a division whose value is the remainder: x86-64's
+// idiv and div leave it in rdx, and aarch64 computes it from the
+// quotient by msub.
+constexpr bool
+is_remainder(binary_op_t op)
+{
+    return op == binary_op_t::srem || op == binary_op_t::urem;
 }
 
 // Whether op is a shift, << or >>, rcc's is_shift(): its right operand
@@ -100,7 +130,8 @@ is_division(binary_op_t op)
 constexpr bool
 is_shift(binary_op_t op)
 {
-    return op == binary_op_t::shl || op == binary_op_t::ashr;
+    return op == binary_op_t::shl || op == binary_op_t::ashr ||
+           op == binary_op_t::lshr;
 }
 
 // Whether op is a comparison, rcc's is_comparison(): its value is 1
@@ -109,9 +140,19 @@ is_shift(binary_op_t op)
 constexpr bool
 is_comparison(binary_op_t op)
 {
-    return op == binary_op_t::slt || op == binary_op_t::sle ||
-           op == binary_op_t::sgt || op == binary_op_t::sge ||
-           op == binary_op_t::eq || op == binary_op_t::ne;
+    switch (op) {
+    case binary_op_t::slt:
+    case binary_op_t::sle:
+    case binary_op_t::sgt:
+    case binary_op_t::sge:
+    case binary_op_t::ult:
+    case binary_op_t::ule:
+    case binary_op_t::ugt:
+    case binary_op_t::uge:
+    case binary_op_t::eq:
+    case binary_op_t::ne: return true;
+    default: return false;
+    }
 }
 
 // The comparisons, a family of operators whose rows both targets write
@@ -130,6 +171,10 @@ mirrored(binary_op_t op)
     case binary_op_t::sgt: return binary_op_t::slt;
     case binary_op_t::sle: return binary_op_t::sge;
     case binary_op_t::sge: return binary_op_t::sle;
+    case binary_op_t::ult: return binary_op_t::ugt;
+    case binary_op_t::ugt: return binary_op_t::ult;
+    case binary_op_t::ule: return binary_op_t::uge;
+    case binary_op_t::uge: return binary_op_t::ule;
     default: return op;
     }
 }
@@ -144,6 +189,10 @@ inverse(binary_op_t op)
     case binary_op_t::sge: return binary_op_t::slt;
     case binary_op_t::sgt: return binary_op_t::sle;
     case binary_op_t::sle: return binary_op_t::sgt;
+    case binary_op_t::ult: return binary_op_t::uge;
+    case binary_op_t::uge: return binary_op_t::ult;
+    case binary_op_t::ugt: return binary_op_t::ule;
+    case binary_op_t::ule: return binary_op_t::ugt;
     case binary_op_t::eq: return binary_op_t::ne;
     default: return binary_op_t::eq;
     }
@@ -185,6 +234,16 @@ cross(view_t view, F &&f)
 
 template< typename F >
 decltype(auto)
+cross(sign_t sign, F &&f)
+{
+    switch (sign) {
+    case sign_t::signed_: return f.template operator()< sign_t::signed_ >();
+    case sign_t::unsigned_: return f.template operator()< sign_t::unsigned_ >();
+    }
+}
+
+template< typename F >
+decltype(auto)
 cross(unary_op_t op, F &&f)
 {
     switch (op) {
@@ -207,13 +266,20 @@ cross(binary_op_t op, F &&f)
     case sub: return f.template operator()< sub >();
     case mul: return f.template operator()< mul >();
     case sdiv: return f.template operator()< sdiv >();
+    case udiv: return f.template operator()< udiv >();
     case srem: return f.template operator()< srem >();
+    case urem: return f.template operator()< urem >();
     case shl: return f.template operator()< shl >();
     case ashr: return f.template operator()< ashr >();
+    case lshr: return f.template operator()< lshr >();
     case slt: return f.template operator()< slt >();
     case sle: return f.template operator()< sle >();
     case sgt: return f.template operator()< sgt >();
     case sge: return f.template operator()< sge >();
+    case ult: return f.template operator()< ult >();
+    case ule: return f.template operator()< ule >();
+    case ugt: return f.template operator()< ugt >();
+    case uge: return f.template operator()< uge >();
     case eq: return f.template operator()< eq >();
     case ne: return f.template operator()< ne >();
     case bit_and: return f.template operator()< bit_and >();

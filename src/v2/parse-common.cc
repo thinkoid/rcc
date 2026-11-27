@@ -124,6 +124,12 @@ view_of(const type_t &t)
     return as< int_t >(t).width == 64 ? view_t::i64 : view_t::i32;
 }
 
+sign_t
+sign_of(const type_t &t)
+{
+    return as< int_t >(t).is_signed ? sign_t::signed_ : sign_t::unsigned_;
+}
+
 //
 // values
 //
@@ -168,7 +174,8 @@ discarded(operand_t e)
 expr_t
 conversion(const operand_t &e, const type_t &t)
 {
-    return make_conversion(view_of(t), view_of(e.type), rvalue(*e.node));
+    return make_conversion(view_of(t), view_of(e.type), sign_of(e.type),
+                           rvalue(*e.node));
 }
 
 expr_t

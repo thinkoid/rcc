@@ -93,9 +93,9 @@ moved_within(const amd64::state_t &s, const expr_t &e)
 }
 
 int
-valid_of(const expr_t &e)
+valid_of(const expr_t &e, sign_t sign)
 {
-    return e.self->valid();
+    return e.self->valid(sign);
 }
 
 view_t
@@ -164,9 +164,9 @@ make_assign(expr_t place, expr_t value)
 // One hop through the operand's model, which knows the operand's type
 // and so whether it is a load or a constant (3.3).
 expr_t
-make_conversion(view_t to, view_t from, expr_t e)
+make_conversion(view_t to, view_t from, sign_t from_sign, expr_t e)
 {
-    return e.self->conversion(to, from, e);
+    return e.self->conversion(to, from, from_sign, e);
 }
 
 // One hop through the operand's model, which knows whether the operand

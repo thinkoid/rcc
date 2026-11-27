@@ -130,16 +130,18 @@ mov(state_t &s, reg_t from, reg_t to, int width)
     insn(s, sized("mov", width), { reg(from, width), reg(to, width) });
 }
 
-// The extending mov that brings a value of the view from to a width of
-// 32 or 64 bits, and the width of its destination register, rcc's
-// extension(): a long's movq, an int's movl, and to 64 bits its movslq.
+// The extending mov that brings a value of the view from, read at the
+// sign, to a width of 32 or 64 bits, and the width of its destination
+// register, rcc's extension(): a long's movq, an int's movl, and to 64
+// bits a signed one's movslq.  A 32-bit unsigned value widens to 64 by a
+// movl, since a write to the 32-bit name clears the upper half.
 std::pair< std::string, int >
-extension(view_t from, int to)
+extension(view_t from, sign_t sign, int to)
 {
     if (from == view_t::i64)
         return { "movq", 64 };
 
-    if (to == 32)
+    if (to == 32 || sign == sign_t::unsigned_)
         return { "movl", 32 };
 
     return { "movslq", 64 };
@@ -184,12 +186,19 @@ mnemonic(binary_op_t op)
     case binary_op_t::mul: return "imul";
     case binary_op_t::sdiv:
     case binary_op_t::srem: return "idiv";
+    case binary_op_t::udiv:
+    case binary_op_t::urem: return "div";
     case binary_op_t::shl: return "shl";
     case binary_op_t::ashr: return "sar";
+    case binary_op_t::lshr: return "shr";
     case binary_op_t::slt:
     case binary_op_t::sle:
     case binary_op_t::sgt:
     case binary_op_t::sge:
+    case binary_op_t::ult:
+    case binary_op_t::ule:
+    case binary_op_t::ugt:
+    case binary_op_t::uge:
     case binary_op_t::eq:
     case binary_op_t::ne:
     case binary_op_t::log_and:
@@ -202,7 +211,8 @@ mnemonic(binary_op_t op)
 }
 
 // The condition code of a comparison of op, the suffix of setcc and
-// jcc, rcc's condition(): l le g ge for the signed ones.
+// jcc, rcc's condition(): l le g ge for the signed ones, b be a ae for
+// the unsigned ones.
 std::string_view
 condition(binary_op_t op)
 {
@@ -211,6 +221,10 @@ condition(binary_op_t op)
     case binary_op_t::sle: return "le";
     case binary_op_t::sgt: return "g";
     case binary_op_t::sge: return "ge";
+    case binary_op_t::ult: return "b";
+    case binary_op_t::ule: return "be";
+    case binary_op_t::ugt: return "a";
+    case binary_op_t::uge: return "ae";
     case binary_op_t::eq: return "e";
     default: return "ne";
     }
@@ -439,12 +453,13 @@ written_in_right(
     return right_written(s, op, r, wanted, copied);
 }
 
-// G4: the instruction the machine has, idiv, rcc's idiv(), a fault on
-// x86 for a zero divisor or the most negative value divided by -1.  rax
-// and rdx hold nothing but, it may be, the dividend in left: it goes to
-// rax, rdx is sign-filled, cltd at 32 bits and cqto at 64, and the
-// division of the divisor's operand leaves the quotient in rax and the
-// remainder in rdx.
+// G4: the instruction the machine has, idiv or div, rcc's idiv(), a
+// fault on x86 for a zero divisor or the most negative value divided by
+// -1.  rax and rdx hold nothing but, it may be, the dividend in left: it
+// goes to rax, rdx is cleared for an unsigned division, at either width,
+// or sign-filled, cltd at 32 bits and cqto at 64, and the division of
+// the divisor's operand leaves the quotient in rax and the remainder in
+// rdx.
 void
 idiv(
     state_t &s, binary_op_t op, reg_t left, std::string_view divisor, int width)
@@ -452,7 +467,10 @@ idiv(
     if (left != rax)
         mov(s, left, rax, width);
 
-    insn(s, width == 32 ? "cltd" : "cqto", { });
+    if (op == binary_op_t::udiv || op == binary_op_t::urem)
+        insn(s, "xorl", { "%edx", "%edx" });
+    else
+        insn(s, width == 32 ? "cltd" : "cqto", { });
     insn(s, sized(mnemonic(op), width), { divisor });
 }
 
@@ -468,7 +486,7 @@ reg_t
 dividend(state_t &s, binary_op_t op, value_t l, int width)
 {
     const reg_t r = reg_of(s, l, ~bit(rax));
-    if (r != rdx || op != binary_op_t::sdiv)
+    if (r != rdx || is_remainder(op))
         return r;
 
     move(s, rdx, rax, width);
@@ -543,9 +561,9 @@ divided(state_t &s,
         unsigned wanted)
 {
     const bool stays = left != rax && wanted_register(s, wanted) == rax;
-    if (op == binary_op_t::srem || stays) {
+    if (is_remainder(op) || stays) {
         release(s, l);
-        return hold(s, op == binary_op_t::srem ? rdx : rax);
+        return hold(s, is_remainder(op) ? rdx : rax);
     }
 
     if (left != rax)
@@ -578,7 +596,7 @@ constant_value(state_t &s, long long value, view_t view)
 value_t
 load(state_t &s, slot_t where, view_t view)
 {
-    const auto [mnemonic, to] = extension(view, width(view));
+    const auto [mnemonic, to] = extension(view, sign_t::signed_, width(view));
 
     const value_t v = fresh(s);
     insn(s, mnemonic, { at(slot_of(s, where)), reg(reg_of(s, v), to) });
@@ -589,7 +607,7 @@ load(state_t &s, slot_t where, view_t view)
 value_t
 extending_load(state_t &s, slot_t where, view_t from)
 {
-    const auto [mnemonic, to] = extension(from, 64);
+    const auto [mnemonic, to] = extension(from, sign_t::signed_, 64);
 
     const value_t v = fresh(s);
     insn(s, mnemonic, { at(slot_of(s, where)), reg(reg_of(s, v), to) });
@@ -600,9 +618,10 @@ extending_load(state_t &s, slot_t where, view_t from)
 // rcc's extended(): the extension in v's own register, but in the one
 // the consumer names where a row may write it now.
 value_t
-extended(state_t &s, value_t v, view_t from, view_t to, unsigned wanted)
+extended(
+    state_t &s, value_t v, view_t from, sign_t sign, view_t to, unsigned wanted)
 {
-    const auto [mnemonic, bits] = extension(from, width(to));
+    const auto [mnemonic, bits] = extension(from, sign, width(to));
     const reg_t source = reg_of(s, v);
     const auto named = wanted_register(s, wanted);
 

@@ -67,6 +67,18 @@ wrapped(unsigned long long bits)
             static_cast< std::int32_t >(static_cast< std::uint32_t >(bits)));
 }
 
+// The bits of a value at the view V read unsigned, the operand of an
+// unsigned operation, 6.2.5p11.
+template< view_t V >
+unsigned long long
+unsigned_bits(long long value)
+{
+    if constexpr (width(V) == 64)
+        return static_cast< unsigned long long >(value);
+    else
+        return static_cast< std::uint32_t >(value);
+}
+
 // - ~ ! of a constant at the view V, 6.5.4.3p3 to p5: the negative of
 // the most negative value wraps to itself, and !c is 1 where c is 0 and
 // 0 otherwise.
@@ -126,47 +138,59 @@ shift_count(long long count)
     return count & (width(V) - 1);
 }
 
-// Whether the division of lhs by rhs at the view V has a value, rcc's
-// divides(): not by zero, 6.5.6p6, and not with a quotient the type
-// cannot hold, p7, which is the one case of the most negative value
-// divided by -1; the remainder of that division has no value either.
-// The instruction traps on both at run time (G4).
-template< view_t V >
+// Whether the division op of lhs by rhs at the view V has a value,
+// rcc's divides(): not by zero, 6.5.6p6, and for a signed one not with a
+// quotient the type cannot hold, p7, which is the one case of the most
+// negative value divided by -1; the remainder of that division has no
+// value either.  The instruction traps on both at run time (G4).
+template< binary_op_t op, view_t V >
 bool
 divides(long long lhs, long long rhs)
 {
+    const bool is_signed = op == binary_op_t::sdiv || op == binary_op_t::srem;
     const long long most_negative = wrapped< V >(1ull << (width(V) - 1));
 
-    return rhs != 0 && !(lhs == most_negative && rhs == -1);
+    return rhs != 0 && !(is_signed && lhs == most_negative && rhs == -1);
 }
 
 // * / % + - << >> & | ^ of two constants at the view V, 6.5.6p5 to p7,
 // 6.5.7p6, p7, 6.5.8p4, p5, 6.5.11p4, 6.5.12p4, 6.5.13p4.  / and % on a
-// division that divides() says has a value: the quotient truncates
-// toward zero and the remainder has the dividend's sign.  << shifts the
-// bits and wraps, and >> of a negative value is arithmetic, G3, the
-// implementation's choice by 6.5.8p5.  A comparison is 1 where its
-// relation holds and 0 where it does not, 6.5.9p7, 6.5.10p4, and so are
-// && and || of the operands compared with 0, 6.5.14p3, 6.5.15p3.
+// division that divides() says has a value, by the operator's sign: a
+// signed operator on the values, an unsigned one on the bits, modulo
+// 2^N, 6.2.5p11.  The quotient truncates toward zero and the remainder
+// has the dividend's sign.  << shifts the bits and wraps, and >> of a
+// negative value is arithmetic, G3, the implementation's choice by
+// 6.5.8p5, where an unsigned one is logical.  A comparison is 1 where
+// its relation holds and 0 where it does not, 6.5.9p7, 6.5.10p4, and so
+// are && and || of the operands compared with 0, 6.5.14p3, 6.5.15p3.
 template< binary_op_t op, view_t V >
 long long
 folded(long long lhs, long long rhs)
 {
     const auto a = static_cast< unsigned long long >(lhs);
     const auto b = static_cast< unsigned long long >(rhs);
+    const auto ua = unsigned_bits< V >(lhs);
+    const auto ub = unsigned_bits< V >(rhs);
 
     switch (op) {
     case binary_op_t::add: return wrapped< V >(a + b);
     case binary_op_t::sub: return wrapped< V >(a - b);
     case binary_op_t::mul: return wrapped< V >(a * b);
     case binary_op_t::sdiv: return lhs / rhs;
+    case binary_op_t::udiv: return wrapped< V >(ua / ub);
     case binary_op_t::srem: return lhs % rhs;
+    case binary_op_t::urem: return wrapped< V >(ua % ub);
     case binary_op_t::shl: return wrapped< V >(a << shift_count< V >(rhs));
     case binary_op_t::ashr: return lhs >> shift_count< V >(rhs);
+    case binary_op_t::lshr: return wrapped< V >(ua >> shift_count< V >(rhs));
     case binary_op_t::slt: return lhs < rhs;
     case binary_op_t::sle: return lhs <= rhs;
     case binary_op_t::sgt: return lhs > rhs;
     case binary_op_t::sge: return lhs >= rhs;
+    case binary_op_t::ult: return ua < ub;
+    case binary_op_t::ule: return ua <= ub;
+    case binary_op_t::ugt: return ua > ub;
+    case binary_op_t::uge: return ua >= ub;
     case binary_op_t::eq: return lhs == rhs;
     case binary_op_t::ne: return lhs != rhs;
     case binary_op_t::bit_and: return lhs & rhs;
@@ -193,18 +217,25 @@ is_identity_by(long long c)
     case binary_op_t::bit_or:
     case binary_op_t::bit_xor: return c == 0;
     case binary_op_t::mul:
-    case binary_op_t::sdiv: return c == 1;
+    case binary_op_t::sdiv:
+    case binary_op_t::udiv: return c == 1;
     case binary_op_t::srem:
+    case binary_op_t::urem:
     case binary_op_t::slt:
     case binary_op_t::sle:
     case binary_op_t::sgt:
     case binary_op_t::sge:
+    case binary_op_t::ult:
+    case binary_op_t::ule:
+    case binary_op_t::ugt:
+    case binary_op_t::uge:
     case binary_op_t::eq:
     case binary_op_t::ne:
     case binary_op_t::log_and:
     case binary_op_t::log_or: return false;
     case binary_op_t::shl:
-    case binary_op_t::ashr: return shift_count< V >(c) == 0;
+    case binary_op_t::ashr:
+    case binary_op_t::lshr: return shift_count< V >(c) == 0;
     case binary_op_t::bit_and: return c == -1;
     }
 }
@@ -272,7 +303,7 @@ expr_t
 make_binary(const L &lhs, const R &rhs)
 {
     if constexpr (is_division(op)) {
-        if (!divides< V >(value_of(lhs), value_of(rhs)))
+        if (!divides< op, V >(value_of(lhs), value_of(rhs)))
             return expr_t(binary_t< op, V, L, R > { lhs, rhs });
     }
 
@@ -313,6 +344,13 @@ pinning(const sext_t< V, F, top_t< P > > &, const expr_t &self)
     return { self };
 }
 
+template< view_t V, view_t F, family_t P >
+top_t< P >
+pinning(const zext_t< V, F, top_t< P > > &, const expr_t &self)
+{
+    return { self };
+}
+
 template< view_t V, family_t P >
 top_t< P >
 pinning(const trunc_t< V, top_t< P > > &, const expr_t &self)
@@ -320,47 +358,66 @@ pinning(const trunc_t< V, top_t< P > > &, const expr_t &self)
     return { self };
 }
 
-// The widening of an operand of view F to V by the sign of its type,
+// The node of a widening of the operand A of view F to V by the sign S
+// of the type converted from, LLVM's names: sext_t of a signed one,
+// zext_t of an unsigned one.
+template< view_t V, view_t F, sign_t S, typename A >
+expr_t
+widening_of(const A &operand)
+{
+    if constexpr (S == sign_t::signed_)
+        return expr_t(sext_t< V, F, A > { operand });
+    else
+        return expr_t(zext_t< V, F, A > { operand });
+}
+
+// The widening of an operand of view F to V by the sign S of its type,
 // rcc's converted() for a widening, the object in memory found where
-// rcc's widened_read() finds it.  Any operand: sext_t over it in the
-// class pinning() keeps, whose row extends where the width rule says.
-template< view_t V, view_t F, typename A >
+// rcc's widened_read() finds it.  Any operand: its node over the
+// operand in the class pinning() keeps, whose row extends where the
+// width rule says.
+template< view_t V, view_t F, sign_t S, typename A >
 expr_t
 make_widening(const A &arg, const expr_t &self)
 {
     const auto operand = pinning(arg, self);
 
-    return expr_t(
-        sext_t< V, F, std::decay_t< decltype(operand) > > { operand });
+    return widening_of< V, F, S >(operand);
 }
 
 // A load is read at the type converted from, the conversion over a load
-// (docs/typed-tree.md 4.2), whose niche is the extending load.
-template< view_t V, view_t F >
+// (docs/typed-tree.md 4.2), whose niche is the extending load of a
+// signed one.
+template< view_t V, view_t F, sign_t S >
 expr_t
 make_widening(const load_t< F > &l, const expr_t &)
 {
-    return expr_t(sext_t< V, F, load_t< F > > { l });
+    return widening_of< V, F, S >(l);
 }
 
-// A cast to its own type over a load keeps the object's bits, so the
-// widening reads the object at that type, rcc's object_under() under
-// under_kept_bits(): (long) (int) i is movslq -4(%rbp), %rax.
-template< view_t V, view_t F >
+// A change of sign or a cast to its own type over a load keeps the
+// object's bits, so the widening reads the object at the type it
+// converts from, rcc's object_under() under under_kept_bits(): (long)
+// (int) u on an unsigned u is movslq -4(%rbp), %rax.
+template< view_t V, view_t F, sign_t S >
 expr_t
 make_widening(const trunc_t< F, load_t< F > > &t, const expr_t &)
 {
-    return expr_t(sext_t< V, F, load_t< F > > { t.arg });
+    return widening_of< V, F, S >(t.arg);
 }
 
 // A constant widened is the constant of the new type, rcc's
-// converted_constant(): its value, which a signed type's widening
-// keeps.
-template< view_t V, view_t F, constant C >
+// converted_constant(): its value extended by the sign of the type it
+// converts from, so an unsigned -1 widened is 4294967295.
+template< view_t V, view_t F, sign_t S, constant C >
 expr_t
 make_widening(const C &c, const expr_t &)
 {
-    return make_literal(value_of(c), V);
+    if constexpr (S == sign_t::signed_)
+        return make_literal(value_of(c), V);
+    else
+        return make_literal(
+            static_cast< long long >(unsigned_bits< F >(value_of(c))), V);
 }
 
 // A conversion that is no widening, a narrowing or a cast to the
@@ -404,15 +461,15 @@ make_narrowing(const C &c, const expr_t &)
         wrapped< V >(static_cast< unsigned long long >(value_of(c))), V);
 }
 
-// The conversion of an operand of view F to the view V, 6.3.1.3: a
-// widening where V is the wider, and otherwise a conversion that writes
-// nothing.
-template< view_t V, view_t F, typename T >
+// The conversion of an operand of view F and of a type of the sign S to
+// the view V, 6.3.1.3: a widening where V is the wider, and otherwise a
+// conversion that writes nothing.
+template< view_t V, view_t F, sign_t S, typename T >
 expr_t
 make_conversion(const T &e, const expr_t &self)
 {
     if constexpr (width(V) > width(F))
-        return make_widening< V, F >(e, self);
+        return make_widening< V, F, S >(e, self);
     else
         return make_narrowing< V >(e, self);
 }

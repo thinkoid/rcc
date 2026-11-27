@@ -218,9 +218,11 @@ template< binary_op_t op >
 concept arithmetic_operator =
     op == binary_op_t::add || op == binary_op_t::sub ||
     op == binary_op_t::mul || op == binary_op_t::sdiv ||
-    op == binary_op_t::srem || op == binary_op_t::shl ||
-    op == binary_op_t::ashr || op == binary_op_t::bit_and ||
-    op == binary_op_t::bit_or || op == binary_op_t::bit_xor;
+    op == binary_op_t::udiv || op == binary_op_t::srem ||
+    op == binary_op_t::urem || op == binary_op_t::shl ||
+    op == binary_op_t::ashr || op == binary_op_t::lshr ||
+    op == binary_op_t::bit_and || op == binary_op_t::bit_or ||
+    op == binary_op_t::bit_xor;
 
 // The primary of * / % + - << >> & | ^, 6.5.6 to 6.5.8, 6.5.11 to
 // 6.5.13, rcc's binary(), chapter 6.1: the left operand's value first,
@@ -380,11 +382,14 @@ branch(state_t &s, const binary_t< op, V, C, R > &b, int label, bool sense)
 }
 
 // The extension of the held value v of the view from to the view to by
-// its sign, rcc's extended() past its test of the width rule, which the
-// widening's row asks: sxtw x0, w0, written into final_destination(),
-// the register the consumer names where it may be written, sxtw x0, w1
-// for a return's (6.1), or v's own.
-value_t extended(state_t &, value_t v, view_t from, view_t to, unsigned wanted);
+// the sign of its type, rcc's extended() past its test of the width
+// rule, which the widening's row asks: sxtw x0, w0, or mov w0, w0 for an
+// unsigned one, whose write of the w name clears the upper half,
+// written into final_destination(), the register the consumer names
+// where it may be written, sxtw x0, w1 for a return's (6.1), or v's
+// own.
+value_t extended(
+    state_t &, value_t v, view_t from, sign_t sign, view_t to, unsigned wanted);
 
 // The extending load, rcc's extending_load(), 6.3: the object of the
 // view from in its slot, loaded extended by its sign to 64 bits, ldrsw

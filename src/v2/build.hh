@@ -31,10 +31,10 @@ expr_t rvalue(expr_t e);
 bool is_assignable(const expr_t &e);
 expr_t make_assign(expr_t place, expr_t value);
 
-// The conversion of a value of the view from, its own type's, to the
-// view to, 6.3.1.3; the parser's conversion() calls it, and nothing
-// else does.
-expr_t make_conversion(view_t to, view_t from, expr_t e);
+// The conversion of a value of the view from and the sign from_sign,
+// its own type's, to the view to, 6.3.1.3; the parser's conversion()
+// calls it, and nothing else does.
+expr_t make_conversion(view_t to, view_t from, sign_t from_sign, expr_t e);
 
 // -e ~e !e of an operand converted, 6.5.4.3, at the view of the
 // operation, or for ! at the operand's own.

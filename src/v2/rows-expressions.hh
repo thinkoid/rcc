@@ -44,22 +44,35 @@ value(S &s, const top_t< F > &t, unsigned wanted = 0)
 }
 
 // A widening, rcc's converted() for one: the operand's value, handed
-// the consumer's register, then its extension by sign where the width
-// rule says that the register is not valid to V's width yet, each
-// target's extended(), which writes it into the register the consumer
-// names where it can.  (long) (a + b) on two ints is movslq %eax, %rax,
-// and (long) (a < b) writes no extension, a truth value being valid to
-// 64 bits.  The row asks its operand's summary, as x86-64's rows ask
-// pinned_within(); a niche of each target reads a load extended.
+// the consumer's register, then its extension by the sign the operand's
+// type has, the node's, where the width rule read at that sign says
+// that the register is not valid to V's width yet; each target's
+// extended() writes it into the register the consumer names where it
+// can.  (long) (a + b) on two ints is movslq %eax, %rax, the same on two
+// unsigneds writes nothing, their 32-bit write valid to 64 bits, and
+// so does (long) (a < b), a truth value; (unsigned long) (unsigned) i is
+// movl %eax, %eax.  The row asks its operand's summary, as x86-64's rows
+// ask pinned_within(); a niche of each target reads a load extended.
 template< typename S, view_t V, view_t F, typename A >
 value_t
 value(S &s, const sext_t< V, F, A > &e, unsigned wanted = 0)
 {
     const value_t v = value(s, e.arg, wanted);
-    if (valid_of(e.arg) >= width(V))
+    if (valid_of(e.arg, sign_t::signed_) >= width(V))
         return v;
 
-    return extended(s, v, F, V, wanted);
+    return extended(s, v, F, sign_t::signed_, V, wanted);
+}
+
+template< typename S, view_t V, view_t F, typename A >
+value_t
+value(S &s, const zext_t< V, F, A > &e, unsigned wanted = 0)
+{
+    const value_t v = value(s, e.arg, wanted);
+    if (valid_of(e.arg, sign_t::unsigned_) >= width(V))
+        return v;
+
+    return extended(s, v, F, sign_t::unsigned_, V, wanted);
 }
 
 // A conversion that writes nothing is its operand's value, the low bits

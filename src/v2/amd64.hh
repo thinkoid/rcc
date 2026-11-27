@@ -387,6 +387,13 @@ pinned_within(const state_t &s, const sext_t< V, F, A > &e)
     return pinned_within(s, e.arg);
 }
 
+template< view_t V, view_t F, typename A >
+unsigned
+pinned_within(const state_t &s, const zext_t< V, F, A > &e)
+{
+    return pinned_within(s, e.arg);
+}
+
 template< view_t V, typename A >
 unsigned
 pinned_within(const state_t &s, const trunc_t< V, A > &t)
@@ -480,6 +487,13 @@ moved_within(const state_t &s, const top_t< F > &t)
 template< view_t V, view_t F, typename A >
 unsigned
 moved_within(const state_t &s, const sext_t< V, F, A > &e)
+{
+    return moved_within(s, e.arg);
+}
+
+template< view_t V, view_t F, typename A >
+unsigned
+moved_within(const state_t &s, const zext_t< V, F, A > &e)
 {
     return moved_within(s, e.arg);
 }
@@ -1097,12 +1111,13 @@ value_branch(state_t &s,
 }
 
 // The extension of the held value v of the view from to the view to by
-// its sign, rcc's extended() past its test of the width rule, which the
-// widening's row asks: movslq %eax, %rax on v's own register, or into
-// the register the consumer names, wanted, where it is free and v is
-// elsewhere, movslq %edx, %rax for an int remainder returned as a long
-// (6.1).
-value_t extended(state_t &, value_t v, view_t from, view_t to, unsigned wanted);
+// the sign of its type, rcc's extended() past its test of the width
+// rule, which the widening's row asks: movslq %eax, %rax or movl %eax,
+// %eax on v's own register, or into the register the consumer names,
+// wanted, where it is free and v is elsewhere, movslq %edx, %rax for an
+// int remainder returned as a long (6.1).
+value_t extended(
+    state_t &, value_t v, view_t from, sign_t sign, view_t to, unsigned wanted);
 
 // The extending load, rcc's extending_load(), backend.md 6.3: the object
 // of the view from in its slot, loaded extended by its sign to 64 bits,

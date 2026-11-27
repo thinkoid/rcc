@@ -1,8 +1,8 @@
 // -*- mode: c++; -*-
 
 // 6.4.4.2: an integer constant's value and type, read from its
-// spelling as rcc's parser reads it, and the operand of a constant of a
-// signed type, int or long.
+// spelling as rcc's parser reads it, and the operand of a constant of
+// any of its types.
 
 #include "parse-common.hh"
 
@@ -116,9 +116,9 @@ integer_constant_type(std::uint64_t value, bool decimal, suffix_t suffix)
 } // namespace
 
 // The value from the spelling, 6.4.4.2p4, p5.  The lexer has checked
-// the form; a value past 64 bits has no type (6.4.4.2p7).  A constant
-// of an unsigned type is not yet.  The node's value is the bits its
-// register holds, which a signed type's value is.
+// the form; a value past 64 bits has no type (6.4.4.2p7).  The node's
+// value is the bits its register holds, read signed at its type's
+// width: the unsigned 4294967295 is -1.
 operand_t
 integer_constant(parser_t &p)
 {
@@ -160,11 +160,11 @@ integer_constant(parser_t &p)
     if (too_large || !type)
         fail(t, "integer constant is too large for its type");
 
-    if (!as< int_t >(*type).is_signed)
-        not_yet(t, "integer constant whose type is unsigned");
+    const long long bits = as< int_t >(*type).width == 32 ?
+                               static_cast< std::int32_t >(value) :
+                               static_cast< long long >(value);
 
-    return { *type,
-             make_literal(static_cast< long long >(value), view_of(*type)) };
+    return { *type, make_literal(bits, view_of(*type)) };
 }
 
 } // namespace rcc
