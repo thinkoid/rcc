@@ -282,6 +282,35 @@ value.
 
 Check: the comment agrees with what both generators write.
 
+** TODO =backend.md= chapter 8 says a call's result is moved
+
+Step 4 of the call in =docs/backend.md= chapter 8 says the result
+"is moved into the lowest free expression register". The generator
+holds the result where the call leaves it, in =rax=, and writes no
+move: ~return g(a);~ is the call and the jump to the epilogue, and
+~g(a) + 1~ is =addl $1, %eax=. The register is the same one, since
+every held value was spilled before the call and =rax= is then the
+lowest free.
+
+Fix: the step says the result is held in =rax=, where the call
+leaves it.
+
+Check: the sentence agrees with the listing of ~return g(a);~.
+
+** TODO =backend.md= chapter 8 leaves a calling function with no slot out of the prologue's rule
+
+The prologue of =docs/backend.md= chapter 8 writes "=sub= its frame
+unless it is a leaf in the red zone", and chapter 5 says the same of
+a function that makes no call. A function that calls and has no
+slot writes no =sub= either: ~int f(void) { return g(); }~ is the
+push of =rbp=, the move and the call. The frame's size is 0 there,
+and =rsp= is a multiple of 16 after the push.
+
+Fix: both passages say the =sub= is written for a frame that is not
+empty, when the function calls or the frame passes the red zone.
+
+Check: the two passages agree with the listing of that function.
+
 * Guarantees
 
 The promises in =docs/guarantees.md=. The entry number is the

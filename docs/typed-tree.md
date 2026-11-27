@@ -8,8 +8,8 @@ architecture. It leaves the details to the code.
 
 Of the design the tree has a thin line through every joint: functions
 whose locals are `int`, declared, assigned and returned, with
-parentheses, the unary operators and `+ - * / % << >> & | ^`, on
-both targets.
+parentheses, the unary operators and `+ - * / % << >> & | ^`, to any
+depth, on both targets.
 Each mechanism
 below was compiled and run in a small model first; chapter 5 says
 what the models showed and chapter 6 what nothing has shown. A
@@ -250,15 +250,26 @@ choice is static. The first three are the ancestor's `regtab`,
   what a pinned instruction needs free. The typed tree changes how a
   question about an operand's kind is asked, and never where a value
   lands.
+- A value is in a register or in a spill slot. When every register
+  is held, the oldest held value is stored to a new slot of the
+  frame, all 8 bytes, and it is reloaded where a row asks for its
+  register. So the order in which a row asks for its operands'
+  registers is part of the listing, and it is rcc's: the right
+  operand's, then the left's. On x86-64 a spilled left operand of an
+  operator that commutes is read in its slot where no register is
+  named for it, `addl -16(%rbp), %ecx`.
 - A register the consumer would like is context, handed down as a
-  hint, which a row is free not to honour. On x86-64 it is a
-  parameter of `value`, the registers the consumer names, none by
-  default: a `return` names the result register, and a shift names
-  `rcx` for its count. A row hands it to the operand whose register
-  will hold the node's value, and a row both targets write alike
-  hands on whatever it is given. Every value row of x86-64 takes the
-  parameter: a niche without it is no candidate when a parent hands a
-  hint, and its primary is written in its place.
+  hint, which a row is free not to honour. It is a parameter of
+  `value`, the registers the consumer names, none by default: a
+  `return` names the result register, and on x86-64 a shift names
+  `rcx` for its count. On x86-64, where an instruction writes one of
+  its operands, a row hands the hint to the operand whose register
+  will hold the node's value. On aarch64 it goes to the row's last
+  instruction, which names its destination apart from its sources:
+  `add w0, w1, w0`. A row both targets write alike hands on what it
+  is given. Every value row takes the parameter: a niche without it
+  is no candidate when a parent hands a hint, and its primary is
+  written in its place.
 - An entry point carries a child's best form to a parent that does
   not know the child's type. In `if (x & 8) break;` the statement is
   `if_t< expr_t, jump_t >`, and the `tbnz` is the condition's own
@@ -403,10 +414,12 @@ technique.
   name is a copy of the leaf, and no row looks a name up.
 - The storage is the function's frame, or the unit's data.
 - A local's leaf is its number among the function's locals,
-  `slot_t`, and not a displacement. rcc takes a slot where the
-  declaration is generated, and a spill's slot falls between two
-  locals', so the displacement is the state's: the declaration's row
-  takes it, and a use reads it by the number.
+  `slot_t`, and not a displacement. The frame has one allocator: a
+  local takes its 4 bytes where its declaration is generated, and a
+  spill its 8 at an alignment of 8, each past every slot taken
+  before it, and none is given back. A spill's slot falls between
+  two locals', so the displacement is the state's: the declaration's
+  row takes it, and a use reads it by the number.
 - What runs is a statement, where it is written: `decl_t` takes the
   slot, and `init_t< V >` takes it and stores, an initialization and
   not an assignment.
@@ -431,10 +444,12 @@ technique.
 - **An expression's, at generation.** A wanted register, a jump's
   target and sense: parameters of an entry point, set by the parent
   for each child.
-- **The state.** What the registers hold at this moment, the
-  registers left for last while an operand is generated, the labels,
-  the frame. A value held across a call is state. The call's row
-  saves what the state holds and asks the tree nothing.
+- **The state.** What the registers hold at this moment, and which
+  values are spilled and where; the registers left for last while an
+  operand is generated, and on x86-64 those an instruction generated
+  later would move a held value out of; the labels; the frame. A
+  value held across a call is state. The call's row saves what the
+  state holds and asks the tree nothing.
 
 ### 4.7 Two targets
 
@@ -446,7 +461,7 @@ interface, each entry point of each target in a line of its own.
 struct expr_t::interface_t
 {
     virtual value_t value(amd64::state_t &, unsigned wanted) const = 0;
-    virtual value_t value(arm64::state_t &) const = 0;
+    virtual value_t value(arm64::state_t &, unsigned wanted) const = 0;
 
     virtual unsigned pinned_within(const amd64::state_t &) const = 0;
 
@@ -484,7 +499,7 @@ with rcc, and nothing else.
 | `unit.hh` | the unit and its functions, under no handle |
 | `model.hh`, `build.cc` | the models, and the one unit that instantiates them |
 | `rows-expressions.hh`, `rows-statements.hh` | the rows both targets write alike |
-| `register-stack.hh` | which register holds which value, as templates over a target's state |
+| `register-stack.hh` | which register or spill slot holds which value, as templates over a target's state |
 | `amd64.*`, `arm64.*` | a target: its registers, its state, its rows, its frame |
 | `assembly.*` | the text both targets write alike |
 | `generate.*`, `pipeline.cc` | the back end's entry, and the pipeline |

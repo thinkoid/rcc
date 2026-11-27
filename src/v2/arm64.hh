@@ -42,6 +42,14 @@ enum reg_t : int {
     x15
 };
 
+// A register as a set of one, rcc's bit(): the sets are the registers
+// a value is taken outside of, and those the consumer of a value names.
+constexpr unsigned
+bit(reg_t r)
+{
+    return 1u << r;
+}
+
 // The state of one function's generation, which the function's row
 // builds fresh.  The body is a buffer, which the frame is written
 // around; the function's name makes its labels, which are counted per
@@ -49,8 +57,9 @@ enum reg_t : int {
 // path reaches what is written next: the last instruction written is
 // an unconditional jump, which jump() sets, so main writes no return of
 // 0 (backend.md 7.2).  frame is the bytes from x29 to the end of the
-// last slot, the frame record's alone before the first, and slots each
-// local's displacement off x29, by its number.
+// last slot, the locals' and the spills' in the order they are taken,
+// the frame record's alone before the first, and slots each local's
+// displacement off x29, by its number.
 struct state_t
 {
     std::ostringstream body { };
@@ -65,27 +74,54 @@ struct state_t
     registers_t< reg_t > registers { };
 };
 
-// A register for a new value, register-stack.hh's.
-reg_t take(state_t &);
+// A register for a new value, register-stack.hh's, taken outside avoid;
+// it spills a held value when every one is held.
+reg_t take(state_t &, unsigned avoid = 0);
 
-// The next slot of the frame, the local's.
-void allocate(state_t &, slot_t where);
+// The next slot of the frame, of size bytes at align, a local's or a
+// spill's: its displacement off x29.
+int allocate(state_t &, long size, int align);
+
+// The reload of a spilled value into r from its slot, register-stack.hh's.
+void reload_spill(state_t &, reg_t r, int displacement);
 
 // The constant rows of an int: its 32 bits in a register taken for it.
-value_t value(state_t &, const literal_t &);
-value_t value(state_t &, const zero_t &);
+// Every value row of aarch64 is handed wanted, the registers the
+// consumer of the value names, a set of at most one, x0 for a return's
+// (6.1): a hint, which a row is free not to honour (docs/typed-tree.md
+// 3.4), none where the consumer names none.  A leaf takes the lowest
+// free register whatever the consumer names, as rcc's literal() and
+// load() do.
+value_t value(state_t &, const literal_t &, unsigned wanted = 0);
+value_t value(state_t &, const zero_t &, unsigned wanted = 0);
 
 // The load row: the int a slot holds, in a register taken for it.
-value_t value(state_t &, const load_t &);
+value_t value(state_t &, const load_t &, unsigned wanted = 0);
 
-// - or ~ on r in place, at 32 bits.
-void operate(state_t &, unary_op_t op, reg_t r);
+// - or ~ of the held value v at 32 bits, into the register the consumer
+// names where it may be written, or into v's own.
+value_t negated(state_t &, unary_op_t op, value_t v, unsigned wanted);
 
-// The operation of op into r from r and an operand at 32 bits: a
-// register, or a literal, the instruction's immediate where it encodes
-// one.
-void operate(state_t &, binary_op_t op, reg_t r, reg_t source);
-void operate(state_t &, binary_op_t op, reg_t r, const literal_t &source);
+// The operation of op on the held value l and the right operand at 32
+// bits, rcc's arithmetic(): a held value r, which is consumed, or a
+// literal, the instruction's immediate where it encodes one.  Its value
+// is l, in the register the consumer names where the instruction may
+// write it, or in l's own.
+value_t
+arithmetic(state_t &, binary_op_t op, value_t l, value_t r, unsigned wanted);
+value_t arithmetic(
+    state_t &, binary_op_t op, value_t l, const literal_t &r, unsigned wanted);
+
+// - and ~, 6.5.4.3p3, p4, rcc's unary(): the operand's value, generated
+// as for any consumer, then neg or mvn, whose destination is apart from
+// its source: neg w0, w0, and neg w0, w1 for a return whose operand is
+// in w1.
+template< unary_op_t op, typename A >
+value_t
+value(state_t &s, const unary_t< op, A > &u, unsigned wanted = 0)
+{
+    return negated(s, op, value(s, u.arg), wanted);
+}
 
 // The store row, r into a slot at 32 bits.
 void store(state_t &, reg_t r, slot_t where);
@@ -94,23 +130,23 @@ void store(state_t &, reg_t r, slot_t where);
 // no register is held.
 void initialize(state_t &, slot_t where, const zero_t &);
 
-// The primary of + - * << >> & | ^, 6.5.6 to 6.5.8, 6.5.11 to 6.5.13,
-// chapter 6.1: the left operand's value first, G13, held while the
-// right operand's is taken in a register of its own; then the operation
-// into the left's register from the right's, add w0, w0, w1, lsl w0,
-// w0, w1, and the right released.  The left's register holds the node's
-// value.  No instruction pins a register, so nothing is steered.
+// The primary of * / % + - << >> & | ^, 6.5.6 to 6.5.8, 6.5.11 to
+// 6.5.13, rcc's binary(), chapter 6.1: the left operand's value first,
+// G13, held while the right operand's is taken in a register of its
+// own; then arithmetic(), the operation from the two registers, add w0,
+// w0, w1, lsl w0, w0, w1, and the right released.  No instruction pins
+// a register, so the operands are generated as for any consumer, and
+// the register the node's consumer names goes to the last instruction,
+// which names its destination apart from its sources: add w0, w1, w0
+// after a right operand that took x0.
 template< binary_op_t op, typename L, typename R >
 value_t
-value(state_t &s, const binary_t< op, L, R > &b)
+value(state_t &s, const binary_t< op, L, R > &b, unsigned wanted = 0)
 {
     const value_t l = value(s, b.lhs);
     const value_t r = value(s, b.rhs);
 
-    operate(s, op, reg_of(s, l), reg_of(s, r));
-    release(s, r);
-
-    return l;
+    return arithmetic(s, op, l, r, wanted);
 }
 
 // Whether a node with the constant L on the left of op is written with
@@ -127,9 +163,9 @@ concept constant_first = commutes(op) && constant< L >;
 template< binary_op_t op, typename L, typename R >
     requires constant_first< op, L >
 value_t
-value(state_t &s, const binary_t< op, L, R > &b)
+value(state_t &s, const binary_t< op, L, R > &b, unsigned wanted = 0)
 {
-    return value(s, binary_t< op, R, L > { b.rhs, b.lhs });
+    return value(s, binary_t< op, R, L > { b.rhs, b.lhs }, wanted);
 }
 
 // A literal on the right is the instruction's immediate where it
@@ -140,12 +176,11 @@ value(state_t &s, const binary_t< op, L, R > &b)
 // builder folds.
 template< binary_op_t op, typename L >
 value_t
-value(state_t &s, const binary_t< op, L, literal_t > &b)
+value(state_t &s, const binary_t< op, L, literal_t > &b, unsigned wanted = 0)
 {
     const value_t l = value(s, b.lhs);
-    operate(s, op, reg_of(s, l), b.rhs);
 
-    return l;
+    return arithmetic(s, op, l, b.rhs, wanted);
 }
 
 // The value, moved to the result register where its row left it

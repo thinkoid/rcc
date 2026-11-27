@@ -43,7 +43,7 @@ public:
     explicit expr_t(T);
 
     friend value_t value(amd64::state_t &, const expr_t &, unsigned wanted);
-    friend value_t value(arm64::state_t &, const expr_t &);
+    friend value_t value(arm64::state_t &, const expr_t &, unsigned wanted);
     friend void effect(amd64::state_t &, const expr_t &);
     friend void effect(arm64::state_t &, const expr_t &);
     friend unsigned pinned_within(const amd64::state_t &, const expr_t &);
@@ -59,11 +59,11 @@ public:
 // An erased operand generates itself: the handle's own rows, the value
 // of the node it holds, in the register its row took, or its effect.  A
 // row calls a child by these names whether the child's type is erased
-// or concrete.  On x86-64 the value's row is handed wanted, the
-// registers its consumer names, a hint (docs/typed-tree.md 3.4), none
-// where the consumer names none.
+// or concrete.  The value's row is handed wanted, the registers its
+// consumer names, a hint (docs/typed-tree.md 3.4), none where the
+// consumer names none.
 value_t value(amd64::state_t &, const expr_t &, unsigned wanted = 0);
-value_t value(arm64::state_t &, const expr_t &);
+value_t value(arm64::state_t &, const expr_t &, unsigned wanted = 0);
 void effect(amd64::state_t &, const expr_t &);
 void effect(arm64::state_t &, const expr_t &);
 

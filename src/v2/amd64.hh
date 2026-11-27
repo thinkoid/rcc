@@ -40,10 +40,14 @@ bit(reg_t r)
 // function, and ret is the one epilogue's.  terminated says that no
 // path reaches what is written next: the last instruction written is
 // an unconditional jump, which jump() sets, so main writes no return of
-// 0 (backend.md 7.2).  frame is the bytes the slots take below rbp, and
-// slots each local's displacement off rbp, by its number.  reserved is
-// the registers take() leaves for last while a value meant for a pinned
-// register is generated, so it lands there (chapter 6.5).
+// 0 (backend.md 7.2).  frame is the bytes the slots take below rbp,
+// the locals' and the spills' in the order they are taken, and slots
+// each local's displacement off rbp, by its number.  reserved is the
+// registers take() leaves for last while a value meant for a pinned
+// register is generated, so it lands there (chapter 6.5).  ahead is the
+// registers a pinned instruction generated after the value now being
+// generated would move a held value out of, which the instruction on a
+// spilled value keeps its destination out of (right_written()).
 struct state_t
 {
     std::ostringstream body { };
@@ -57,13 +61,19 @@ struct state_t
 
     registers_t< reg_t > registers { };
     unsigned reserved = 0;
+    unsigned ahead = 0;
 };
 
-// A register for a new value, register-stack.hh's, taken outside avoid.
+// A register for a new value, register-stack.hh's, taken outside avoid;
+// it spills a held value when every one is held.
 reg_t take(state_t &, unsigned avoid = 0);
 
-// The next slot of the frame, the local's.
-void allocate(state_t &, slot_t where);
+// The next slot of the frame, of size bytes at align, a local's or a
+// spill's: its displacement off rbp.
+int allocate(state_t &, long size, int align);
+
+// The reload of a spilled value into r from its slot, register-stack.hh's.
+void reload_spill(state_t &, reg_t r, int displacement);
 
 // The constant rows of an int: its 32 bits in a register taken for it.
 // Every value row of x86-64 is handed wanted, the registers the
@@ -81,15 +91,30 @@ value_t value(state_t &, const load_t &, unsigned wanted = 0);
 // - or ~ on r in place, at 32 bits.
 void operate(state_t &, unary_op_t op, reg_t r);
 
+// - and ~, 6.5.4.3p3, p4, rcc's unary(): the operand's value, handed the
+// consumer's register, then the operation on its register in place,
+// negl %eax, which leaves the node's value there.
+template< unary_op_t op, typename A >
+value_t
+value(state_t &s, const unary_t< op, A > &u, unsigned wanted = 0)
+{
+    const value_t v = value(s, u.arg, wanted);
+    operate(s, op, reg_of(s, v));
+
+    return v;
+}
+
 // The operation of op into r from an operand at 32 bits: a register,
-// the int in a slot, or an immediate as immediate_of() writes it.
+// the int in a slot, or an operand as its text, an immediate as
+// immediate_of() writes it or a spilled value's slot.
 void operate(state_t &, binary_op_t op, reg_t r, reg_t source);
 void operate(state_t &, binary_op_t op, reg_t r, slot_t source);
-void operate(state_t &, binary_op_t op, reg_t r, std::string_view immediate);
+void operate(state_t &, binary_op_t op, reg_t r, std::string_view source);
 
 // The operation of op on the held values l and r, rcc's arithmetic():
 // its value is in l's register, or in r's where op commutes and that is
-// the one wanted names; the other value is consumed.
+// the one wanted names, or where l is spilled and is read in its slot;
+// the other value is consumed.
 value_t
 arithmetic(state_t &, binary_op_t op, value_t l, value_t r, unsigned wanted);
 
@@ -260,6 +285,14 @@ wanted_left(const state_t &s, unsigned wanted, unsigned own, const R &rhs)
     return pinned_within(s, rhs) ? 0 : wanted & ~own;
 }
 
+// The registers a node generates its right operand with left for last,
+// rcc's held_out(): named, those its left operand l was handed, where l
+// holds one of them, so that a right operand that spills l leaves it
+// free for l's reload; none where l holds another register, where the
+// result stays.  l is the value its row has just returned, in a
+// register, so rcc's case of a spilled l does not arise.
+unsigned held_out(const state_t &, value_t l, unsigned named);
+
 // The value of e generated while the registers in pinned are left for
 // last, so that it does not land where an instruction generated after
 // it wants its operands, rcc's rvalue_avoiding() (chapter 6.5).  The
@@ -275,25 +308,48 @@ rvalue_avoiding(state_t &s, const T &e, unsigned pinned, unsigned wanted = 0)
     return v;
 }
 
+// The left operand of a node whose right operand is rhs, generated
+// outside pinned and handed named, rvalue_avoiding()'s, with the
+// registers the instructions within rhs pin added to s.ahead, rcc's
+// binary() and moved_within(): the left operand's value is held while
+// rhs is generated, so a row within it that chooses its result's
+// register, right_written(), chooses none that a pinned instruction of
+// rhs would move the value out of.  rcc's moved_within() is
+// pinned_within() but for a call, a branch and a statement expression,
+// which the tree has none of.
+template< typename L, typename R >
+value_t
+left_operand(
+    state_t &s, const L &lhs, const R &rhs, unsigned pinned, unsigned named)
+{
+    const unsigned ahead =
+        std::exchange(s.ahead, s.ahead | pinned_within(s, rhs));
+    const value_t l = rvalue_avoiding(s, lhs, pinned, named);
+    s.ahead = ahead;
+
+    return l;
+}
+
 // The primary of + - * & | ^, 6.5.6, 6.5.7, 6.5.11 to 6.5.13, rcc's
 // binary() and arithmetic(), chapter 6.1: the left operand's value
 // first, G13, generated outside the registers the right operand's top
 // operator pins, so that a + (b << a) loads a into eax and not into the
 // ecx the count goes to, and handed the consumer's register,
 // wanted_left(); held while the right operand's is taken in a register
-// of its own; then arithmetic(), addl %edx, %eax, or into the right
-// operand's register where it is the one the consumer names: the
-// count (0 << d) + (d = c) is addl %edx, %ecx, its left operand a
-// shift, held outside ecx, and its right one loaded into the ecx a
-// count's consumer names.
+// of its own, outside held_out(); then arithmetic(), addl %edx, %eax,
+// or into the right operand's register where it is the one the
+// consumer names: the count (0 << d) + (d = c) is addl %edx, %ecx, its
+// left operand a shift, held outside ecx, and its right one loaded into
+// the ecx a count's consumer names.
 template< binary_op_t op, typename L, typename R >
     requires arithmetic_operator< op >
 value_t
 value(state_t &s, const binary_t< op, L, R > &b, unsigned wanted = 0)
 {
-    const value_t l = rvalue_avoiding(s, b.lhs, pinned_by(b.rhs),
-                                      wanted_left(s, wanted, 0, b.rhs));
-    const value_t r = value(s, b.rhs);
+    const unsigned named = wanted_left(s, wanted, 0, b.rhs);
+
+    const value_t l = left_operand(s, b.lhs, b.rhs, pinned_by(b.rhs), named);
+    const value_t r = rvalue_avoiding(s, b.rhs, held_out(s, l, named));
 
     return arithmetic(s, op, l, r, wanted);
 }
@@ -385,18 +441,20 @@ value(state_t &s,
 // around it, since the pin, not the outer wish, decides where its
 // result is written.  The dividend first, G13, outside what the
 // divisor's top operator pins and handed the consumer's register,
-// wanted_left(); then the divisor, held outside rax and rdx, a constant
-// too, since idivl takes no immediate, movl $5, %ecx; then divide().
+// wanted_left(); then the divisor, held outside rax and rdx and
+// held_out(), a constant too, since idivl takes no immediate, movl $5,
+// %ecx; then divide().
 template< binary_op_t op, typename L, typename R >
     requires division_operator< op >
 value_t
 value(state_t &s, const binary_t< op, L, R > &b, unsigned wanted = 0)
 {
     const unsigned outer = std::exchange(s.reserved, 0u);
+    const unsigned named = wanted_left(s, wanted, 0, b.rhs);
 
-    const value_t l = rvalue_avoiding(s, b.lhs, pinned_by(b.rhs),
-                                      wanted_left(s, wanted, 0, b.rhs));
-    const value_t r = rvalue_avoiding(s, b.rhs, pins(op, constant< R >));
+    const value_t l = left_operand(s, b.lhs, b.rhs, pinned_by(b.rhs), named);
+    const value_t r = rvalue_avoiding(
+        s, b.rhs, held_out(s, l, named) | pins(op, constant< R >));
     const value_t v = divide(s, op, l, r, wanted);
 
     s.reserved = outer;
@@ -423,17 +481,17 @@ value(state_t &s, const binary_t< op, L, load_t > &b, unsigned wanted = 0)
 }
 
 // A shift's count that is no constant, rcc's shift_count(): generated
-// with rax reserved and with rcx taken out of what a node around the
-// shift reserves for its own operand, since the instruction consumes
-// the count in cl (chapter 6.5), so a count's load lands in rcx; and
-// rcx is the register the count's consumer names, as a return names
-// rax (6.1).
+// with rax and avoid reserved and with rcx taken out of what a node
+// around the shift reserves for its own operand, since the instruction
+// consumes the count in cl (chapter 6.5), so a count's load lands in
+// rcx; and rcx is the register the count's consumer names, as a return
+// names rax (6.1).
 template< typename R >
 value_t
-shift_count(state_t &s, const R &count)
+shift_count(state_t &s, const R &count, unsigned avoid)
 {
     const unsigned outer = std::exchange(s.reserved, s.reserved & ~bit(rcx));
-    const value_t v = rvalue_avoiding(s, count, bit(rax), bit(rcx));
+    const value_t v = rvalue_avoiding(s, count, avoid | bit(rax), bit(rcx));
     s.reserved = outer;
 
     return v;
@@ -444,19 +502,20 @@ shift_count(state_t &s, const R &count)
 // rcx left for last, where the count goes, and outside what the count's
 // top operator pins, and handed the consumer's register but rcx,
 // wanted_left(); then the count, shift_count(), held, since the
-// instruction takes no operand in memory; then shift(), shll %cl, %eax,
-// sarl for >>, which the machine masks to 5 bits (G3).  The shifted
-// value's register holds the node's value.
+// instruction takes no operand in memory, outside held_out(); then
+// shift(), shll %cl, %eax, sarl for >>, which the machine masks to 5
+// bits (G3).  The shifted value's register holds the node's value.
 template< binary_op_t op, typename L, typename R >
     requires shift_operator< op >
 value_t
 value(state_t &s, const binary_t< op, L, R > &b, unsigned wanted = 0)
 {
     const unsigned own = pins(op, constant< R >);
+    const unsigned named = wanted_left(s, wanted, own, b.rhs);
 
-    const value_t l = rvalue_avoiding(s, b.lhs, own | pinned_by(b.rhs),
-                                      wanted_left(s, wanted, own, b.rhs));
-    const value_t r = shift_count(s, b.rhs);
+    const value_t l =
+        left_operand(s, b.lhs, b.rhs, own | pinned_by(b.rhs), named);
+    const value_t r = shift_count(s, b.rhs, held_out(s, l, named));
 
     shift(s, op, l, r);
 

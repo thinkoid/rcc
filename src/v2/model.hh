@@ -29,7 +29,7 @@ struct expr_t::interface_t
     virtual ~interface_t() = default;
 
     virtual value_t value(amd64::state_t &, unsigned wanted) const = 0;
-    virtual value_t value(arm64::state_t &) const = 0;
+    virtual value_t value(arm64::state_t &, unsigned wanted) const = 0;
     virtual void effect(amd64::state_t &) const = 0;
     virtual void effect(arm64::state_t &) const = 0;
 
@@ -82,13 +82,13 @@ struct expr_t::interface_t
 
 // The rows of a held node, by overload and by the state's namespace: a
 // member named value, effect or pinned_within would hide them.  A
-// value's row is handed the target's hint where the target has one, the
-// registers the consumer names on x86-64.
-template< typename S, typename T, typename... W >
+// value's row is handed the target's hint, the registers the consumer
+// names.
+template< typename S, typename T >
 value_t
-fwd_value(S &s, const T &t, W... wanted)
+fwd_value(S &s, const T &t, unsigned wanted)
 {
-    return value(s, t, wanted...);
+    return value(s, t, wanted);
 }
 
 template< typename S, typename T >
@@ -251,9 +251,9 @@ struct expr_t::model_t final: interface_t
         return fwd_value(s, held, wanted);
     }
 
-    value_t value(arm64::state_t &s) const override
+    value_t value(arm64::state_t &s, unsigned wanted) const override
     {
-        return fwd_value(s, held);
+        return fwd_value(s, held, wanted);
     }
 
     void effect(amd64::state_t &s) const override

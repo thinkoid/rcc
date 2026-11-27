@@ -34,9 +34,13 @@ constexpr reg_t result_register = x0;
 // frame, chapter 5.1.
 constexpr long frame_record = 16;
 
-// The largest displacement off x29 a 4-byte access encodes, 2.3: 4095
-// times 4, the scaled form.
-constexpr long reach = 4095 * 4;
+// The largest displacement off x29 an access of size bytes encodes,
+// 2.3: 4095 times the size, the scaled form.
+constexpr long
+reach(long size)
+{
+    return 4095 * size;
+}
 
 // operands
 
@@ -59,7 +63,7 @@ imm(long long value)
 }
 
 // A slot as the address operand of an access, 5.3: [x29, #d], which
-// allocate() keeps in reach.
+// allocate() keeps in reach of an access of the slot's size.
 std::string
 slot_operand(int displacement)
 {
@@ -289,40 +293,111 @@ immediate_of(binary_op_t op, int value)
     return std::nullopt;
 }
 
-} // namespace
-
-// A register for a value: the lowest free one.  With every one held rcc
-// spills the oldest, 6.2, which rcc-v2 does not yet.
-reg_t
-take(state_t &s)
+// The register of wanted, the set of at most one expression register
+// that the consumer of v's value names, x0 for a return's (6.1), where
+// the instruction about to write v may write it, rcc's
+// wanted_register(): free, or v's own, since the instruction reads
+// every source before it writes, add w0, w1, w0.  None for an empty
+// set, and for a register that holds another live value, which the
+// instruction does not read.
+std::optional< reg_t >
+wanted_register(const state_t &s, value_t v, unsigned wanted)
 {
     for (const reg_t r : expression_registers)
-        if (!s.registers.owner.contains(r))
-            return r;
+        if (wanted & bit(r)) {
+            const auto it = s.registers.owner.find(r);
+            return it == s.registers.owner.end() || it->second == v.id ?
+                       std::optional< reg_t >(r) :
+                       std::nullopt;
+        }
 
-    throw std::logic_error("v2: not yet: a spill");
+    return std::nullopt;
 }
 
-// The next slot above the last, an int's 4 bytes, which keep every
-// slot at an int's alignment; its displacement off x29 is recorded
-// under the local's number.  G12: a slot is never shared and never
-// reused inside the activation.  A slot past reach is reached through
-// x16 in rcc, 5.3, which rcc-v2 does not yet; below it the frame is far
-// from the target's limit.
-void
-allocate(state_t &s, slot_t where)
+// The register a row's last instruction writes, v's from here on, rcc's
+// final_destination(): the register the consumer names, wanted, where
+// the instruction may write it, and the register v held is free, since
+// the instruction has read it; otherwise v's own.  The register is
+// written after the row has read every operand, so no condition on them
+// is needed.
+reg_t
+final_destination(state_t &s, value_t v, unsigned wanted)
 {
-    const long displacement = s.frame;
-    if (displacement > reach)
+    const auto named = wanted_register(s, v, wanted);
+    if (!named)
+        return reg_of(s, v);
+
+    s.registers.owner.erase(reg_of(s, v));
+    s.registers.values[v.id].reg = *named;
+    s.registers.owner.emplace(*named, v.id);
+
+    return *named;
+}
+
+} // namespace
+
+// The next slot above the last, of size bytes at align, a local's or a
+// spill's; its displacement off x29.  G12: a slot is never shared and
+// never reused inside the activation.  A slot past the reach of an
+// access of its size is reached through x16 in rcc, 5.3, which rcc-v2
+// does not yet; below it the frame is far from the target's limit.
+int
+allocate(state_t &s, long size, int align)
+{
+    const long displacement = (s.frame + align - 1) / align * align;
+    if (displacement > reach(size))
         throw std::logic_error(
             "v2: not yet: a slot beyond the reach of [x29, #d]");
 
-    s.frame = displacement + 4;
-    s.slots.emplace(where.id, static_cast< int >(displacement));
+    s.frame = displacement + size;
+
+    return static_cast< int >(displacement);
+}
+
+// The two instructions the register stack writes, called by name from
+// register-stack.hh.  The store of a register to a spill slot, all 8
+// bytes, 6.2: str x0, [x29, #24].
+void
+store_spill(state_t &s, reg_t r, int displacement)
+{
+    insn(s, "str", { reg(r, 64), slot_operand(displacement) });
+}
+
+// The reload of a register from a spill slot, all 8 bytes, 6.2.
+void
+reload_spill(state_t &s, reg_t r, int displacement)
+{
+    insn(s, "ldr", { reg(r, 64), slot_operand(displacement) });
+}
+
+// A register for a value: the lowest free one outside avoid, or, when
+// every one is held, the register of the oldest held value outside
+// avoid, the lowest number, which is spilled first.
+reg_t
+take(state_t &s, unsigned avoid)
+{
+    for (const reg_t r : expression_registers)
+        if (!s.registers.owner.contains(r) && !(avoid & bit(r)))
+            return r;
+
+    std::optional< reg_t > victim;
+    for (const reg_t r : expression_registers) {
+        if (avoid & bit(r))
+            continue;
+
+        if (!victim || s.registers.owner.at(r) < s.registers.owner.at(*victim))
+            victim = r;
+    }
+
+    if (!victim)
+        throw std::logic_error("v2: no register to spill");
+    spill(s, *victim);
+
+    return *victim;
 }
 
 value_t
-value(state_t &s, const literal_t &l)
+value(state_t &s, const literal_t &l, unsigned)
 {
     const value_t v = fresh(s);
     constant(s, reg_of(s, v), l.value, 32);
@@ -331,7 +406,7 @@ value(state_t &s, const literal_t &l)
 }
 
 value_t
-value(state_t &s, const zero_t &)
+value(state_t &s, const zero_t &, unsigned)
 {
     const value_t v = fresh(s);
     constant(s, reg_of(s, v), 0, 32);
@@ -341,7 +416,7 @@ value(state_t &s, const zero_t &)
 
 // The load row of 2.2: ldr w0, [x29, #16].  G8: one ldr.
 value_t
-value(state_t &s, const load_t &l)
+value(state_t &s, const load_t &l, unsigned)
 {
     const value_t v = fresh(s);
     insn(s, "ldr",
@@ -350,52 +425,71 @@ value(state_t &s, const load_t &l)
     return v;
 }
 
-// neg and mvn with r as their destination and their operand: neg w0, w0,
-// mvn w0, w0.  G1: neg of INT_MIN is INT_MIN.
-void
-operate(state_t &s, unary_op_t op, reg_t r)
+// neg and mvn, rcc's unary(): neg w0, w0, mvn w0, w0, and neg w0, w1
+// into the register the consumer names.  G1: neg of INT_MIN is INT_MIN.
+value_t
+negated(state_t &s, unary_op_t op, value_t v, unsigned wanted)
 {
-    const auto operand = reg(r, 32);
-    insn(s, op == unary_op_t::neg ? "neg" : "mvn", { operand, operand });
+    const auto from = reg(reg_of(s, v), 32);
+    const auto to = reg(final_destination(s, v, wanted), 32);
+    insn(s, op == unary_op_t::neg ? "neg" : "mvn", { to, from });
+
+    return v;
 }
 
-// op r, r, R, three addresses: add w0, w0, w1.  A shift's count in a
-// register is named at the width of the value shifted, lsl w0, w0, w1,
-// and the instruction reads its low 5 bits (G3).  G4: sdiv does not
-// trap, 2.6: x / 0 is 0 and INT_MIN / -1 is INT_MIN.  % has no
-// instruction, rcc's divide(): the quotient into a register taken
-// outside r and R, which both hold values, then msub, r - quotient *
-// R, sdiv w2, w0, w1 and msub w0, w2, w1, w0.
-void
-operate(state_t &s, binary_op_t op, reg_t r, reg_t source)
+// op L, L, R, three addresses, rcc's arithmetic() and divide(): the two
+// registers of operands(), a spilled value reloaded, R released, then
+// the instruction into final_destination(), add w0, w0, w1.  A shift's
+// count in a register is named at the width of the value shifted, lsl
+// w0, w0, w1, and the instruction reads its low 5 bits (G3).  G4: sdiv
+// does not trap, 2.6: x / 0 is 0 and INT_MIN / -1 is INT_MIN.  % has no
+// instruction: the quotient into a register N taken outside L and R,
+// which both hold values, and not held, then R released and msub, L -
+// N * R, sdiv w2, w0, w1 and msub w0, w2, w1, w0.
+value_t
+arithmetic(state_t &s, binary_op_t op, value_t l, value_t r, unsigned wanted)
 {
-    const auto to = reg(r, 32);
-    const auto from = reg(source, 32);
+    const auto [left, right] = operands(s, l, r);
+    const auto from = reg(left, 32);
+    const auto by = reg(right, 32);
+
     if (op != binary_op_t::rem) {
-        insn(s, mnemonic(op), { to, to, from });
-        return;
+        release(s, r);
+
+        const auto to = reg(final_destination(s, l, wanted), 32);
+        insn(s, mnemonic(op), { to, from, by });
+
+        return l;
     }
 
-    const auto quotient = reg(take(s), 32);
-    insn(s, mnemonic(op), { quotient, to, from });
-    insn(s, "msub", { to, quotient, from, to });
+    const auto quotient = reg(take(s, bit(left) | bit(right)), 32);
+    insn(s, mnemonic(op), { quotient, from, by });
+
+    release(s, r);
+
+    const auto to = reg(final_destination(s, l, wanted), 32);
+    insn(s, "msub", { to, quotient, by, from });
+
+    return l;
 }
 
 // A literal is the immediate where the instruction encodes it, add w0,
-// w0, #5, and is otherwise the primary's right operand, its value in a
-// register of its own: mov w1, #4097, add w0, w0, w1.
-void
-operate(state_t &s, binary_op_t op, reg_t r, const literal_t &source)
+// w0, #5, and is otherwise the right operand of the row on two held
+// values, its value in a register of its own: mov w1, #4097, add w0,
+// w0, w1.
+value_t
+arithmetic(
+    state_t &s, binary_op_t op, value_t l, const literal_t &r, unsigned wanted)
 {
-    if (const auto immediate = immediate_of(op, source.value)) {
-        const auto to = reg(r, 32);
-        insn(s, mnemonic(op), { to, to, *immediate });
-        return;
-    }
+    const auto immediate = immediate_of(op, r.value);
+    if (!immediate)
+        return arithmetic(s, op, l, value(s, r), wanted);
 
-    const value_t v = value(s, source);
-    operate(s, op, r, reg_of(s, v));
-    release(s, v);
+    const auto from = reg(reg_of(s, l), 32);
+    const auto to = reg(final_destination(s, l, wanted), 32);
+    insn(s, mnemonic(op), { to, from, *immediate });
+
+    return l;
 }
 
 // The store row of 2.2: str w0, [x29, #16].
@@ -414,17 +508,18 @@ initialize(state_t &s, slot_t where, const zero_t &)
 }
 
 // The value goes to the convention's result register, 7.2, rcc's
-// return_stmt(): it is held where its row took it, and moved when that
-// is elsewhere.  A statement starts with no value held, so the first
-// register a row takes, the lowest, is the result register.  Every
-// return jumps to the one epilogue, the last statement of the body
-// included: the jump to the next instruction is what the statement
+// return_stmt() and rvalue_in(): the value's row is handed the result
+// register as the one its consumer names, and the value is moved where
+// its row left it elsewhere.  A statement starts with no value held, so
+// the first register a row takes, the lowest, is the result register.
+// Every return jumps to the one epilogue, the last statement of the
+// body included: the jump to the next instruction is what the statement
 // says, and removing it was the optional peephole pass's work in the
 // PDP-11 compiler, which rcc has no counterpart of.
 void
 generate(state_t &s, const return_t &r)
 {
-    const value_t v = value(s, r.value);
+    const value_t v = value(s, r.value, bit(result_register));
     const reg_t from = reg_of(s, v);
     if (from != result_register)
         mov(s, from, result_register);

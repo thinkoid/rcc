@@ -30,9 +30,9 @@ value(amd64::state_t &s, const expr_t &e, unsigned wanted)
 }
 
 value_t
-value(arm64::state_t &s, const expr_t &e)
+value(arm64::state_t &s, const expr_t &e, unsigned wanted)
 {
-    return e.self->value(s);
+    return e.self->value(s, wanted);
 }
 
 void

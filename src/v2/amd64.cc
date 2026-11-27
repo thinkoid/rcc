@@ -148,11 +148,42 @@ mnemonic(binary_op_t op)
 
 } // namespace
 
+// The next slot below the last, of size bytes at align, a local's or a
+// spill's; its displacement off rbp.  G12: a slot is never shared and
+// never reused inside the activation.  A frame past the target's limit
+// is rcc's error, which no program rcc-v2 compiles comes near: it is
+// refused.
+int
+allocate(state_t &s, long size, int align)
+{
+    s.frame = (s.frame + size + align - 1) / align * align;
+    if (s.frame > x86_64.frame_limit)
+        throw std::logic_error("v2: not yet: a frame past the target's limit");
+
+    return static_cast< int >(-s.frame);
+}
+
+// The two instructions the register stack writes, called by name from
+// register-stack.hh.  The store of a register to a spill slot, all 8
+// bytes, backend.md 6.2: movq %rax, -16(%rbp).
+void
+store_spill(state_t &s, reg_t r, int displacement)
+{
+    insn(s, "movq", { reg(r, 64), at(displacement) });
+}
+
+// The reload of a register from a spill slot, all 8 bytes, 6.2.
+void
+reload_spill(state_t &s, reg_t r, int displacement)
+{
+    insn(s, "movq", { at(displacement), reg(r, 64) });
+}
+
 // A register for a value: the lowest free one outside avoid and
-// s.reserved, else the lowest free one outside avoid.  The reservation
-// is an avoidance, not a pin.  With none free outside avoid rcc spills
-// the oldest held value there, backend.md 6.2, which rcc-v2 does not
-// yet.
+// s.reserved, else the lowest free one outside avoid, or, when every
+// one is held, the register of the oldest held value outside avoid,
+// the lowest number, which is spilled first.  The reservation is an
+// avoidance, not a pin.
 reg_t
 take(state_t &s, unsigned avoid)
 {
@@ -161,7 +192,20 @@ take(state_t &s, unsigned avoid)
             if (!s.registers.owner.contains(r) && !(out & bit(r)))
                 return r;
 
-    throw std::logic_error("v2: not yet: a spill");
+    std::optional< reg_t > victim;
+    for (const reg_t r : expression_registers) {
+        if (avoid & bit(r))
+            continue;
+
+        if (!victim || s.registers.owner.at(r) < s.registers.owner.at(*victim))
+            victim = r;
+    }
+
+    if (!victim)
+        throw std::logic_error("v2: no register to spill");
+    spill(s, *victim);
+
+    return *victim;
 }
 
 namespace {
@@ -176,7 +220,7 @@ move(state_t &s, reg_t from, reg_t to, int width)
 
     mov(s, from, to, width);
 
-    s.registers.values[id] = to;
+    s.registers.values[id].reg = to;
     s.registers.owner.erase(from);
     s.registers.owner.emplace(to, id);
 }
@@ -220,14 +264,69 @@ wanted_register(const state_t &s, unsigned wanted)
     return std::nullopt;
 }
 
+// The register a held value is in, as a set for take() to avoid; none
+// for a value spilled.
+unsigned
+held_in(const state_t &s, value_t v)
+{
+    const auto r = s.registers.values[v.id].reg;
+
+    return r ? bit(*r) : 0;
+}
+
+// The operand by which an instruction reads the held value v at 32
+// bits, rcc's source_of(): its register, or for a spilled value its
+// slot, read in place at the instruction's width, -16(%rbp), 4 bytes at
+// the slot's low end, and not reloaded (6.2).
+std::string
+source_of(state_t &s, value_t v)
+{
+    const auto &h = s.registers.values[v.id];
+    if (!h.reg)
+        return at(h.spill);
+
+    return reg(reg_of(s, v), 32);
+}
+
 // Whether the row of op on the held values l and r writes r's register,
 // rcc's right_written(): an operator that commutes, +, *, &, | or ^,
-// whose right operand is in the register the consumer names, wanted,
-// where l's register would be written and moved.
+// whose right operand is in a register when the instruction is written,
+// so that the instruction names that register its destination and L
+// its source.  The register is the one the consumer names, wanted,
+// where L's register would be written and moved; or L is a spilled
+// value, which the row would reload, copied, where no free register is
+// named for the reload and R's register is left for last by no
+// reservation and by no pinned instruction ahead.  A spilled L is then
+// read in its slot, the instruction's source, addl -16(%rbp), %ecx
+// (6.2).
 bool
-right_written(const state_t &s, binary_op_t op, value_t r, unsigned wanted)
+right_written(
+    const state_t &s, binary_op_t op, value_t r, unsigned wanted, bool copied)
 {
-    return commutes(op) && (wanted & bit(reg_of(s, r)));
+    if (!commutes(op))
+        return false;
+
+    const auto reg = s.registers.values[r.id].reg;
+    if (!reg)
+        return false;
+
+    const unsigned own = bit(*reg);
+    if (wanted & own)
+        return true;
+
+    return copied && !wanted_register(s, wanted) &&
+           !((s.reserved | s.ahead) & own);
+}
+
+// right_written() of the held values l and r, l copied where it is
+// spilled, rcc's written_in_right().
+bool
+written_in_right(
+    const state_t &s, binary_op_t op, value_t l, value_t r, unsigned wanted)
+{
+    const bool copied = !s.registers.values[l.id].reg;
+
+    return right_written(s, op, r, wanted, copied);
 }
 
 // G4: the instruction the machine has, idivl, rcc's idiv(), a fault on
@@ -246,15 +345,17 @@ idiv(state_t &s, binary_op_t op, reg_t left, std::string_view divisor)
 }
 
 // The register a division's dividend is in once rax and rdx are
-// vacated, rcc's dividend(): the one it is held in.  A dividend held in
-// rdx, which the division overwrites, moves to rax for a quotient, by
-// the mov idiv() writes in any case, so that it is in rax and the
-// quotient stays where idivl leaves it.  A remainder's value is rdx
-// whatever the dividend's register, so its dividend stays.
+// vacated, rcc's dividend(): the one it is held in, or rax for a
+// dividend spilled, which is reloaded there and not into another
+// register to be moved again.  A dividend held in rdx, which the
+// division overwrites, moves to rax for a quotient, by the mov idiv()
+// writes in any case, so that it is in rax and the quotient stays where
+// idivl leaves it.  A remainder's value is rdx whatever the dividend's
+// register, so its dividend stays.
 reg_t
 dividend(state_t &s, binary_op_t op, value_t l)
 {
-    const reg_t r = reg_of(s, l);
+    const reg_t r = reg_of(s, l, ~bit(rax));
     if (r != rdx || op != binary_op_t::div)
         return r;
 
@@ -268,15 +369,15 @@ dividend(state_t &s, binary_op_t op, value_t l)
 // in a register even when it is a constant.  The divisor moves out of
 // rax or rdx first, all 64 bits, to a register outside both and the
 // dividend's, movq %rax, %rsi; then the values held there move out,
-// vacate().  Both values are still held after idiv(), the dividend in
-// the register returned.
+// vacate(), and a dividend spilled is reloaded into rax.  Both values
+// are still held after idiv(), the dividend in the register returned.
 reg_t
 pin_division(state_t &s, binary_op_t op, value_t l, value_t r)
 {
     const unsigned pinned = bit(rax) | bit(rdx);
-    const unsigned in = bit(reg_of(s, l));
+    const unsigned in = held_in(s, l);
 
-    reg_t right = reg_of(s, r);
+    reg_t right = reg_of(s, r, in);
     if (right == rax || right == rdx) {
         const reg_t to = take(s, pinned | in);
         move(s, right, to, 64);
@@ -295,13 +396,13 @@ pin_division(state_t &s, binary_op_t op, value_t l, value_t r)
 
 // The pinned pair of a division by the int in a slot, chapter 6.5: the
 // slot is idivl's operand, idivl -8(%rbp), and the values held in rax
-// and rdx move out, vacate().  The dividend is still held, in the
-// register returned.
+// and rdx move out, vacate(); a dividend spilled is reloaded into rax
+// after them.  The dividend is still held, in the register returned.
 reg_t
 pin_division(state_t &s, binary_op_t op, value_t l, slot_t divisor)
 {
     const unsigned pinned = bit(rax) | bit(rdx);
-    const unsigned in = bit(reg_of(s, l));
+    const unsigned in = held_in(s, l);
 
     for (const reg_t p : { rax, rdx })
         if (!(in & bit(p)))
@@ -337,20 +438,10 @@ divided(state_t &s, binary_op_t op, value_t l, reg_t left, unsigned wanted)
 
 } // namespace
 
-// The next slot below the last, an int's 4 bytes, which keep every
-// slot at an int's alignment; its displacement off rbp is recorded
-// under the local's number.  G12: a slot is never shared and never
-// reused inside the activation.  A frame past the target's limit is
-// rcc's error, which no program rcc-v2 compiles comes near: it is
-// refused.
-void
-allocate(state_t &s, slot_t where)
+unsigned
+held_out(const state_t &s, value_t l, unsigned named)
 {
-    s.frame += 4;
-    if (s.frame > x86_64.frame_limit)
-        throw std::logic_error("v2: not yet: a frame past the target's limit");
-
-    s.slots.emplace(where.id, static_cast< int >(-s.frame));
+    return held_in(s, l) & named ? named : 0;
 }
 
 value_t
@@ -389,11 +480,12 @@ operate(state_t &s, unary_op_t op, reg_t r)
     insn(s, op == unary_op_t::neg ? "negl" : "notl", { reg(r, 32) });
 }
 
-// op R, L, two addresses, the result in L, which is r: addl $5, %eax.
+// op R, L, two addresses, the result in L, which is r: addl $5, %eax,
+// addl -16(%rbp), %ecx.
 void
-operate(state_t &s, binary_op_t op, reg_t r, std::string_view immediate)
+operate(state_t &s, binary_op_t op, reg_t r, std::string_view source)
 {
-    insn(s, mnemonic(op), { immediate, reg(r, 32) });
+    insn(s, mnemonic(op), { source, reg(r, 32) });
 }
 
 // addl -8(%rbp), %eax.
@@ -411,20 +503,24 @@ operate(state_t &s, binary_op_t op, reg_t r, reg_t source)
 }
 
 // op R, L into L, R released, rcc's arithmetic() on two held values,
-// chapter 6.1; but an operator that commutes writes R's register where
-// it is the one the consumer names, right_written(), and L is released:
-// the count (0 << d) + (d = c) is addl %edx, %ecx, in the ecx its
-// consumer names.
+// chapter 6.1, the registers of operands(), a spilled value reloaded;
+// but an operator that commutes writes R's register where
+// written_in_right() says, from L's register or its spill slot, and L
+// is released: the count (0 << d) + (d = c) is addl %edx, %ecx, in the
+// ecx its consumer names, and a spilled L with no register named is
+// addl -16(%rbp), %ecx.
 value_t
 arithmetic(state_t &s, binary_op_t op, value_t l, value_t r, unsigned wanted)
 {
-    if (right_written(s, op, r, wanted)) {
-        operate(s, op, reg_of(s, r), reg_of(s, l));
+    if (written_in_right(s, op, l, r, wanted)) {
+        const reg_t right = reg_of(s, r);
+        operate(s, op, right, source_of(s, l));
         release(s, l);
         return r;
     }
 
-    operate(s, op, reg_of(s, l), reg_of(s, r));
+    const auto [left, right] = operands(s, l, r);
+    operate(s, op, left, right);
     release(s, r);
 
     return l;
@@ -462,19 +558,22 @@ divide(state_t &s, binary_op_t op, value_t l, slot_t divisor, unsigned wanted)
     return divided(s, op, l, pin_division(s, op, l, divisor), wanted);
 }
 
-// rcc's shift() for a held count, chapter 6.5: the count goes into cl,
-// count_into_cl(), and the value in rcx moves out of its way, the
-// shifted value too if it stands there, to a register outside its own
-// and the count's, all 64 bits; the shifted value's register is read
-// after the moves, since its handle follows it.  G3: the instruction
-// masks the count to 5 bits, and nothing else does.  The rows
-// generated the shifted value with rcx reserved and the count where cl
-// is likely, so the moves are for a value that is in the way all the
-// same.
+// rcc's shift() for a held count, chapter 6.5: the count's register,
+// then the shifted value's, a spilled one reloaded outside it and rcx;
+// the count goes into cl, count_into_cl(), and the value in rcx moves
+// out of its way, the shifted value too if it stands there, to a
+// register outside its own and the count's, all 64 bits; the shifted
+// value's register is read after the moves, since its handle follows
+// it.  G3: the instruction masks the count to 5 bits, and nothing else
+// does.  The rows generated the shifted value with rcx reserved and the
+// count where cl is likely, so the moves are for a value that is in the
+// way all the same.
 void
 shift(state_t &s, binary_op_t op, value_t l, value_t r)
 {
-    count_into_cl(s, reg_of(s, r), bit(reg_of(s, l)));
+    const reg_t right = reg_of(s, r, held_in(s, l));
+    const reg_t left = reg_of(s, l, bit(right) | bit(rcx));
+    count_into_cl(s, right, bit(left));
 
     insn(s, mnemonic(op), { "%cl", reg(reg_of(s, l), 32) });
     release(s, r);

@@ -13,6 +13,18 @@
 
 namespace rcc {
 
+// A local's slot, an int's 4 bytes at an int's alignment, from the
+// frame's allocator, which a spill's slot comes from too, so the two
+// interleave in the order they are taken; its displacement is recorded
+// under the local's number, where a use reads it (docs/typed-tree.md
+// 4.5).
+template< typename S >
+void
+allocate(S &s, slot_t where)
+{
+    s.slots.emplace(where.id, allocate(s, 4, 4));
+}
+
 // G12: a local's slot is taken where its declaration is met, one for
 // the whole activation, never shared and never given back at its
 // block's end, so siblings do not share one.  Without an initializer
