@@ -37,6 +37,11 @@ expr_t rvalue(expr_t e);
 // an object of static storage, 6.7.11p4; none for any other node.
 std::optional< long long > constant_of(const expr_t &e);
 
+// Whether an expression is a place whose address & takes, 6.5.4.2p1,
+// which make_address_of() takes; and the address, 6.5.4.2p3.
+bool is_place(const expr_t &e);
+expr_t make_address_of(expr_t place);
+
 // Whether an expression is a place an assignment stores into, which
 // make_assign() takes, 6.5.17.1p2.
 bool is_assignable(const expr_t &e);

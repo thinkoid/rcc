@@ -256,6 +256,20 @@ value(state_t &s, const load_t< W, V, S > &l, unsigned = 0)
     return load(s, address(s, l.where), V, S);
 }
 
+// The address of a slot as a value, valid to 64, rcc's address_of():
+// x29 plus its displacement, add x0, x29, #16, in a register taken for
+// it.
+value_t address_of(state_t &, const address_t &);
+
+// &x, 6.5.4.2p3, rcc's address_value() of a name: the add of its
+// where's address.
+template< typename W >
+value_t
+value(state_t &s, const address_of_t< W > &a, unsigned = 0)
+{
+    return address_of(s, address(s, a.where));
+}
+
 // - or ~ of the held value v at the view, into the register the
 // consumer names where it may be written, or into v's own.
 value_t
@@ -638,13 +652,21 @@ value(state_t &s, const call_t< V > &c, unsigned = 0)
 // names, rcc's takes_name(), a summary of aarch64 that its ?: asks of
 // both arms before it hands them the name: every row of the tree does,
 // but a ?:'s, which hands its own arms the name only where they take it,
-// and the nodes that are their operands' value, a conversion, a comma
-// and an assignment, whose operand's answer is theirs.
+// an address, whose row takes a register of its own, and the nodes that
+// are their operands' value, a conversion, a comma and an assignment,
+// whose operand's answer is theirs.
 template< typename T >
 constexpr bool
 takes_name(const state_t &, const T &)
 {
     return true;
+}
+
+template< typename W >
+constexpr bool
+takes_name(const state_t &, const address_of_t< W > &)
+{
+    return false;
 }
 
 template< view_t V, bool jumps >

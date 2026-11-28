@@ -119,19 +119,24 @@ int_type()
 }
 
 // Every type narrower than int converts to int, which holds all of its
-// values, signed or not; any other is its own.
+// values, signed or not; any other is its own, a pointer's among them.
 type_t
 promoted(const type_t &t)
 {
-    if (as< int_t >(t).width < 32)
+    if (is< int_t >(t) && as< int_t >(t).width < 32)
         return int_type();
 
     return t;
 }
 
+// A pointer is a 64-bit unsigned value to every row, as rcc's
+// integer() views one (c1-common.cc), so its comparisons are unsigned.
 view_t
 view_of(const type_t &t)
 {
+    if (is< pointer_t >(t))
+        return view_t::i64;
+
     switch (as< int_t >(t).width) {
     case 8: return view_t::i8;
     case 16: return view_t::i16;
@@ -143,7 +148,16 @@ view_of(const type_t &t)
 sign_t
 sign_of(const type_t &t)
 {
+    if (is< pointer_t >(t))
+        return sign_t::unsigned_;
+
     return as< int_t >(t).is_signed ? sign_t::signed_ : sign_t::unsigned_;
+}
+
+const type_t &
+pointee_of(const type_t &t)
+{
+    return *as< pointer_t >(t).pointee;
 }
 
 //
@@ -203,13 +217,43 @@ convert_to(const operand_t &e, const type_t &t)
     return conversion(e, t);
 }
 
+bool
+points(const operand_t &e)
+{
+    return is< pointer_t >(e.type) || is< function_t >(e.type);
+}
+
+const type_t &
+pointee(const operand_t &e)
+{
+    return is< function_t >(e.type) ? e.type : pointee_of(e.type);
+}
+
+bool
+is_null_pointer_constant(const operand_t &e)
+{
+    return is< int_t >(e.type) && e.node && constant_of(*e.node) == 0;
+}
+
+// rcc's order: an integer to a pointer, then a pointer to an integer,
+// then two pointers whose pointees are not compatible, 6.5.17.2p1; a
+// function designator is a pointer to its function there, 6.3.2.1p4.
 expr_t
 assignment_conversion(const token_t &at, operand_t e, const type_t &t)
 {
     require_value(at, e);
 
-    if (is< function_t >(e.type))
+    const bool to_pointer = is< pointer_t >(t);
+    const bool from_pointer = points(e);
+
+    if (to_pointer && !from_pointer && !is_null_pointer_constant(e))
+        fail(at, "incompatible integer to pointer conversion");
+
+    if (!to_pointer && from_pointer)
         fail(at, "incompatible pointer to integer conversion");
+
+    if (to_pointer && from_pointer && !compatible(pointee_of(t), pointee(e)))
+        fail(at, "incompatible pointer types");
 
     return convert_to(e, t);
 }

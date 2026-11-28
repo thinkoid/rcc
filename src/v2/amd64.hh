@@ -232,6 +232,20 @@ value(state_t &s, const load_t< W, V, S > &l, unsigned = 0)
     return load(s, address(s, l.where), V, S);
 }
 
+// The address as a value, valid to 64, rcc's address_of(): the leaq of
+// its operand into a register taken once the address is consumed,
+// leaq -4(%rbp), %rax.
+value_t address_of(state_t &, const address_t &);
+
+// &x, 6.5.4.2p3, rcc's address_value() of a name: the leaq of its
+// where's address.
+template< typename W >
+value_t
+value(state_t &s, const address_of_t< W > &a, unsigned = 0)
+{
+    return address_of(s, address(s, a.where));
+}
+
 // - or ~ on r in place, at the view.
 void operate(state_t &, unary_op_t op, reg_t r, view_t view);
 
@@ -444,6 +458,13 @@ pinned_within(const state_t &, const place_t< W, V, S > &)
     return 0;
 }
 
+template< typename W >
+constexpr unsigned
+pinned_within(const state_t &, const address_of_t< W > &)
+{
+    return 0;
+}
+
 template< unary_op_t op, view_t V, typename A >
 unsigned
 pinned_within(const state_t &s, const unary_t< op, V, A > &u)
@@ -588,6 +609,13 @@ moved_within(const state_t &, const load_t< W, V, S > &)
 template< typename W, view_t V, sign_t S >
 constexpr unsigned
 moved_within(const state_t &, const place_t< W, V, S > &)
+{
+    return 0;
+}
+
+template< typename W >
+constexpr unsigned
+moved_within(const state_t &, const address_of_t< W > &)
 {
     return 0;
 }

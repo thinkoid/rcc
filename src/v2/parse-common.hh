@@ -229,6 +229,9 @@ type_t promoted(const type_t &t);
 view_t view_of(const type_t &t);
 sign_t sign_of(const type_t &t);
 
+// The type a pointer type points to, 6.2.5p27.
+const type_t &pointee_of(const type_t &t);
+
 //
 // values
 //
@@ -267,12 +270,26 @@ expr_t conversion(const operand_t &e, const type_t &t);
 // long; conversion()'s otherwise, which folds a constant.
 expr_t convert_to(const operand_t &e, const type_t &t);
 
+// Whether the value of e is a pointer: e is of a pointer type, or a
+// function designator, which converts to a pointer to its function,
+// 6.3.2.1p4; and what it points to, the pointee or the function.
+bool points(const operand_t &e);
+const type_t &pointee(const operand_t &e);
+
+// Whether e is a null pointer constant, 6.3.2.3p3, rcc's
+// is_null_pointer_constant(): an integer constant expression of value
+// 0, which the builders fold to a constant, its value asked through the
+// model (docs/typed-tree.md 4.3).  A constant of a pointer type,
+// (int *) 0, is a null pointer, and no null pointer constant.
+bool is_null_pointer_constant(const operand_t &e);
+
 // A value converted to the type t as if by assignment, 6.5.17.2p2,
 // rcc's assignment_conversion(): a void value is none,
-// require_value()'s; a function designator decays to a pointer,
-// 6.3.2.1p4, which converts to no integer, 6.5.17.2p1, an error at the
-// token; any other value is converted to t, convert_to()'s.  Returns
-// the value's node.
+// require_value()'s; an integer converts to a pointer only as a null
+// pointer constant, a pointer to no integer, and a pointer to a pointer
+// to a compatible type alone, 6.5.17.2p1, a function designator being a
+// pointer to its function, each an error at the token; any other value
+// is converted to t, convert_to()'s.  Returns the value's node.
 expr_t assignment_conversion(const token_t &at, operand_t e, const type_t &t);
 
 //
@@ -370,6 +387,10 @@ stmt_t for_declaration(parser_t &);
 
 // Whether the declaration's storage class is the keyword's.
 bool declared(const specifiers_t &spec, tok_t storage_class);
+
+// An object of static storage of a pointer type, whose data and address
+// rcc-v2 does not write yet, refused at its name.
+void refuse_static_pointer(const token_t &name, const type_t &t);
 
 // The initializer after the '=' ahead of the object of static storage of
 // the integer type t that the unit's objects hold at index, rcc's

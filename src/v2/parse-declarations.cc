@@ -224,6 +224,13 @@ declared(const specifiers_t &spec, tok_t storage_class)
     return spec.storage_class && spec.storage_class->kind == storage_class;
 }
 
+void
+refuse_static_pointer(const token_t &name, const type_t &t)
+{
+    if (is< pointer_t >(t))
+        not_yet(name, "pointer " + quoted(name.text) + " of static storage");
+}
+
 // The declaration specifiers: one of the sets of 6.7.3.1p2 in any
 // order, and the storage class static or extern anywhere among them,
 // 6.7.2p1, read as rcc reads them, up to the first token that is none.
@@ -275,17 +282,50 @@ declaration_specifiers(parser_t &p)
 
 namespace {
 
+// A declarator in parentheses is not yet, refused at its '('.
+void
+refuse_parenthesized(const parser_t &p)
+{
+    if (peek(p).kind == tok_t::lparen)
+        not_yet(peek(p), "declarator in parentheses");
+}
+
 // A pointer and a declarator in parentheses are not yet, refused at the
 // token that would start them.
 void
 refuse_declarator_start(const parser_t &p)
 {
-    const token_t &t = peek(p);
-    if (t.kind == tok_t::star)
-        not_yet(t, "pointer declarator");
+    if (peek(p).kind == tok_t::star)
+        not_yet(peek(p), "pointer declarator");
 
-    if (t.kind == tok_t::lparen)
-        not_yet(t, "declarator in parentheses");
+    refuse_parenthesized(p);
+}
+
+// The pointers before a declarator's name, 6.7.7.2, rcc's pointer():
+// each '*' a pointer to the type so far, so int **pp is a pointer to a
+// pointer to int.  The pointees rcc-v2 takes are int and the pointers:
+// a pointer to void or to another integer type is not yet at its '*',
+// and so is a qualifier after one, which qualifies the pointer, p1.
+type_t
+pointer(parser_t &p, type_t t)
+{
+    while (peek(p).kind == tok_t::star) {
+        const token_t &star = advance(p);
+        if (is< void_t >(t))
+            not_yet(star, "pointer to 'void'");
+
+        if (!is< pointer_t >(t) && t != int_type())
+            not_yet(star, "pointer to an integer type other than 'int'");
+
+        t = make_pointer(std::move(t));
+
+        const token_t &q = peek(p);
+        if (next_is(p, { tok_t::kw_const, tok_t::kw_volatile,
+                         tok_t::kw_restrict, tok_t::kw_atomic }))
+            not_yet(q, "type qualifier " + quoted(q.text) + " of a pointer");
+    }
+
+    return t;
 }
 
 // The declarator of a parameter, whose name is optional, 6.7.7.1p1, and
@@ -413,6 +453,9 @@ declarator_suffix(parser_t &p, declarator_t &d, const type_t &base)
     if (peek(p).kind == tok_t::lparen)
         fail(peek(p), "function cannot return a function");
 
+    if (is< pointer_t >(base))
+        not_yet(d.name, "function returning a pointer");
+
     std::vector< type_t > types;
     for (const parameter_t &param : d.params)
         types.push_back(param.type);
@@ -423,23 +466,24 @@ declarator_suffix(parser_t &p, declarator_t &d, const type_t &base)
 } // namespace
 
 // A declarator of a function or of an object, of the type base: its
-// name, which a declarator must write in a declaration, 6.7.7.1p1, and
-// its suffix.
+// pointers, then its name, which a declarator must write in a
+// declaration, 6.7.7.1p1, and its suffix, which makes the type of the
+// pointers' type, so int *f(void) is a function returning a pointer.
 declarator_t
 declarator(parser_t &p, const type_t &base)
 {
-    refuse_declarator_start(p);
+    const type_t t = pointer(p, base);
+    refuse_parenthesized(p);
 
-    declarator_t d { expect(p, tok_t::identifier, "expected identifier"),
-                     base };
-    declarator_suffix(p, d, base);
+    declarator_t d { expect(p, tok_t::identifier, "expected identifier"), t };
+    declarator_suffix(p, d, t);
 
     return d;
 }
 
 // A type name, 6.7.8p1: the specifiers, of which no storage class, in
 // rcc's words, then an abstract declarator, a declarator without its
-// name, of which none is taken yet: a pointer, a declarator in
+// name, of which rcc-v2 takes the pointers, (int *): a declarator in
 // parentheses or an array is not yet, refused at its first token.
 type_t
 type_name(parser_t &p)
@@ -449,11 +493,12 @@ type_name(parser_t &p)
         fail(*spec.storage_class,
              quoted(spec.storage_class->text) + " in a type name");
 
-    refuse_declarator_start(p);
+    const type_t t = pointer(p, spec.type);
+    refuse_parenthesized(p);
     if (peek(p).kind == tok_t::lbracket)
         not_yet(peek(p), "array declarator");
 
-    return spec.type;
+    return t;
 }
 
 namespace {
@@ -573,6 +618,7 @@ void
 static_local(parser_t &p, const declarator_t &d)
 {
     refuse_declarator_tail(p);
+    refuse_static_pointer(d.name, d.type);
 
     scope_t &scope = p.scopes.back();
     if (scope.contains(d.name.text))
@@ -654,6 +700,7 @@ void
 linked_declaration(parser_t &p, const declarator_t &d)
 {
     refuse_declarator_tail(p);
+    refuse_static_pointer(d.name, d.type);
 
     if (peek(p).kind == tok_t::assign)
         fail(peek(p), quoted(d.name.text) +
@@ -714,7 +761,7 @@ init_declarator_list(parser_t &p, const specifiers_t &spec, bool objects_only)
         else if (declared(spec, tok_t::kw_static))
             static_local(p, d);
         else
-            init_declarator(p, spec.type, d.name, items);
+            init_declarator(p, d.type, d.name, items);
     } while (accept(p, tok_t::comma));
 
     expect(p, tok_t::semicolon, "expected ';' at end of declaration");

@@ -281,6 +281,8 @@ declare_object(parser_t &p, const specifiers_t &spec, const declarator_t &d)
     if (is< void_t >(d.type))
         not_yet(d.name, "object " + quoted(d.name.text) + " of type 'void'");
 
+    refuse_static_pointer(d.name, d.type);
+
     adopt_block_entity(p, d.name.text);
 
     object_name_t *object =

@@ -120,6 +120,15 @@ struct load_t
     W where;
 };
 
+// &E, 6.5.4.2p3: the address of the place at the where W, a pointer,
+// which is no place, its view taken off (4.2).  A pointer is a 64-bit
+// unsigned value to every row, rcc's integer() of one (c1-common.cc).
+template< typename W >
+struct address_of_t
+{
+    W where;
+};
+
 // -e ~e !e, 6.5.4.3p3 to p5, on an operand that is no constant, which
 // the builder folds instead; the operand is erased.  V is the view of
 // the operation for - and ~, the promoted operand's, and for ! the view
@@ -614,6 +623,13 @@ view_of(const load_t< W, V, S > &)
     return V;
 }
 
+template< typename W >
+constexpr view_t
+view_of(const address_of_t< W > &)
+{
+    return view_t::i64;
+}
+
 template< unary_op_t op, view_t V, typename A >
 constexpr view_t
 view_of(const unary_t< op, V, A > &)
@@ -762,6 +778,14 @@ int
 valid_of(const C &c, sign_t sign)
 {
     return written(promoted_width(view_of(c)), sign);
+}
+
+// An address is written at 64 bits, leaq or add of the x name.
+template< typename W >
+constexpr int
+valid_of(const address_of_t< W > &, sign_t)
+{
+    return 64;
 }
 
 template< unary_op_t op, view_t V, typename A >

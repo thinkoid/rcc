@@ -38,8 +38,11 @@ since x86-64's arithmetic, divisions and shifts read through a comma:
 the steps, the compound assignments and =?:= on them. The compound
 assignments of every integer type, the operation's view a parameter,
 took their node types from 338 to 650, and the peak to 14.4 GB; =?:=
-of every type and its widening, to 15.2. A pointer's where is the
-third.
+of every type and its widening, to 15.2. A dereference's where is the
+third: measured with it, pointer arithmetic and the subscript, the
+binary node types are 9,456, and the unit takes 507 s and 28.8 GB on
+the x86-64 machine, more than the aarch64 one holds. So the
+dereference waits for this entry.
 
 Measured and not taken, each changing no node type and no listing:
 line tables alone as the unit's debugging information (5 s and 0.7

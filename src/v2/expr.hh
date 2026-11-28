@@ -81,6 +81,8 @@ public:
 
     friend expr_t rvalue(expr_t);
     friend std::optional< long long > constant_of(const expr_t &);
+    friend bool is_place(const expr_t &);
+    friend expr_t make_address_of(expr_t place);
     friend bool is_assignable(const expr_t &);
     friend expr_t make_assign(expr_t place, expr_t value);
     friend expr_t make_step(step_op_t op, expr_t place);

@@ -112,6 +112,10 @@ struct expr_t::interface_t
                               sign_t from_sign,
                               const expr_t &self) const = 0;
 
+    // &: the place's model, which knows the place's type, makes the node
+    virtual bool is_place() const = 0;
+    virtual expr_t address_of() const = 0;
+
     // an assignment: the place's model, which knows the place's type,
     // makes the node
     virtual bool is_assignable() const = 0;
@@ -790,6 +794,29 @@ comma_operand(const comma_t< R > &c, const expr_t &)
     return c;
 }
 
+// Whether a node is a place, whose address & takes: whether its
+// builder, make_address_of(), is written for it (principle 8).
+template< typename P >
+concept place = requires(const P &p) { make_address_of(p); };
+
+// The address of a held place, by its builder.
+template< place P >
+expr_t
+fwd_address_of(const P &p)
+{
+    return make_address_of(p);
+}
+
+// The parser asks is_place() before it builds an address, and says the
+// error of one that is not, so no address of a node that is no place is
+// built.
+template< typename P >
+expr_t
+fwd_address_of(const P &)
+{
+    throw std::logic_error("v2: the address of a node that is no place");
+}
+
 // Whether a node is a place an assignment stores into: whether the
 // builder of an assignment, make_assign(), is written for it (principle
 // 8).
@@ -1004,6 +1031,16 @@ struct expr_t::model_t final: interface_t
     {
         return fwd_conversion(to, to_sign, from, from_sign,
                               converted_operand(held, self), self);
+    }
+
+    bool is_place() const override
+    {
+        return place< T >;
+    }
+
+    expr_t address_of() const override
+    {
+        return fwd_address_of(held);
     }
 
     bool is_assignable() const override

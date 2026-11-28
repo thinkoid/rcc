@@ -705,6 +705,32 @@ release(state_t &s, const address_t &a)
 
 namespace {
 
+// A slot's address, x29 plus its displacement, into the register r,
+// 5.3, rcc's frame_address(): add r, x29, #d, where the add's 12 bits
+// encode d.  rcc writes two adds past them, which rcc-v2 does not yet.
+void
+frame_address(state_t &s, reg_t r, int displacement)
+{
+    if (displacement > 0xfff)
+        throw std::logic_error(
+            "v2: not yet: a slot's address beyond 4095 bytes of x29");
+
+    insn(s, "add", { reg(r, 64), "x29", imm(displacement) });
+}
+
+} // namespace
+
+value_t
+address_of(state_t &s, const address_t &a)
+{
+    const value_t v = fresh(s);
+    frame_address(s, reg_of(s, v), a.displacement);
+
+    return v;
+}
+
+namespace {
+
 // The load of the object at an address at the view, by the sign, into
 // a register taken for it at a width of 32 or 64 bits, load_of()'s,
 // rcc's load(): through a base, the operand formed and the base given

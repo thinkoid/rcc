@@ -210,6 +210,20 @@ constant_of(const expr_t &e)
 }
 
 bool
+is_place(const expr_t &e)
+{
+    return e.self->is_place();
+}
+
+// One hop through the place's model, which knows the place's type
+// (3.3).
+expr_t
+make_address_of(expr_t place)
+{
+    return place.self->address_of();
+}
+
+bool
 is_assignable(const expr_t &e)
 {
     return e.self->is_assignable();

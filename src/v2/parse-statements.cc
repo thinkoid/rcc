@@ -209,11 +209,12 @@ condition(parser_t &p)
     return rvalue(start, expression(p));
 }
 
-// A switch, 6.8.5.3: the controlling expression, an integer, p1, read
-// as any operand whose value is read, at its first token, and promoted,
-// p5, the switch of its promoted type; then the body, with the switch
-// open and numbered in the count of the function's loops and switches,
-// in which a break leaves the switch, 6.8.7.4p2, a continue goes on with
+// A switch, 6.8.5.3: the controlling expression, an integer, p1, a
+// pointer an error at its first token in rcc's words, read as any
+// operand whose value is read, at its first token, and promoted, p5,
+// the switch of its promoted type; then the body, with the switch open
+// and numbered in the count of the function's loops and switches, in
+// which a break leaves the switch, 6.8.7.4p2, a continue goes on with
 // the loop around it, and each case and default label belongs to this
 // switch unless a switch inside the body is closer, 6.8.5.3p4.
 stmt_t
@@ -225,6 +226,8 @@ switch_statement(parser_t &p)
     const token_t &start = peek(p);
     operand_t e = expression(p);
     e.node = rvalue(start, e);
+    if (is< pointer_t >(e.type))
+        fail(start, "controlling expression of 'switch' is not an integer");
 
     const type_t t = promoted(e.type);
     expr_t cond = convert_to(e, t);

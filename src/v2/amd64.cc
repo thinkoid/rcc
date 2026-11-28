@@ -688,6 +688,18 @@ release(state_t &s, const address_t &a)
         release(s, *a.base);
 }
 
+value_t
+address_of(state_t &s, const address_t &a)
+{
+    const std::string from = operand(s, a);
+    release(s, a);
+
+    const value_t v = fresh(s);
+    insn(s, "leaq", { from, reg(reg_of(s, v), 64) });
+
+    return v;
+}
+
 std::pair< reg_t, std::string >
 operands(state_t &s, value_t l, const address_t &at)
 {

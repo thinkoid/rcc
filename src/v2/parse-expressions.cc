@@ -10,6 +10,7 @@
 
 #include <cstddef>
 #include <initializer_list>
+#include <iterator>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -96,8 +97,8 @@ primary_expression(parser_t &p)
 // function's name, in parentheses or not, the direct call, which names
 // its function.  The name of anything else is refused by name.  Any
 // other expression is read for its value, a void one refused, and is no
-// function and no pointer to one, rcc-v2 having no pointer.  Returns
-// the function's name in the file's scope.
+// function and no pointer to one, rcc-v2 having no pointer to a
+// function.  Returns the function's name in the file's scope.
 const function_name_t &
 callee(const parser_t &p, const token_t &op, const operand_t &e)
 {
@@ -192,12 +193,16 @@ call(parser_t &p, const token_t &op, const operand_t &e)
 // operand's type, the step's node, with no promotion and no conversion:
 // the operation in int of a narrow object is the rows', as rcc's c1
 // steps it.  A step is no constant expression, 6.6p3, and carries no
-// mark of an overflow.
+// mark of an overflow.  A pointer's step, by its pointee's size, is not
+// yet.
 operand_t
 stepped(const token_t &op, step_op_t s, operand_t arg)
 {
     if (!arg.node || !is_assignable(*arg.node))
         fail(op, "expression is not assignable");
+
+    if (is< pointer_t >(arg.type))
+        not_yet(op, quoted(op.text) + " with a pointer operand");
 
     return { arg.type, make_step(s, std::move(*arg.node)) };
 }
@@ -323,15 +328,15 @@ by_sign(binary_op_t op, sign_t sign)
 }
 
 // The operand of a unary arithmetic operator, the value it reads, rcc's
-// rvalue() and require_integer(): not void, require_value()'s, and not
-// a function designator, whose value is a pointer, 6.3.2.1p4, which no
-// operator of 6.5.4.3 takes, p1; each an error at the operator.
+// rvalue() and require_integer(): not void, require_value()'s, and no
+// pointer, a function designator's value among them, 6.3.2.1p4, which
+// no operator of 6.5.4.3 takes, p1; each an error at the operator.
 void
 require_arithmetic(const token_t &op, const operand_t &e)
 {
     require_value(op, e);
 
-    if (is< function_t >(e.type))
+    if (points(e))
         fail(op, "operand of " + quoted(op.text) + " is a pointer");
 }
 
@@ -373,16 +378,30 @@ unary_plus(parser_t &p)
     return { .type = t, .node = promote(arg), .overflowed = arg.overflowed };
 }
 
+// A pointer constant, (int *) 0, the value v of type t, an operand of
+// an operator whose builder folds constants: rcc folds an operator on
+// integer constants alone, is_integer_constant(), and writes the
+// operator on a pointer constant, which rcc-v2 does not yet, refused at
+// the operator.
+void
+refuse_pointer_constant(const token_t &at, const type_t &t, const expr_t &v)
+{
+    if (is< pointer_t >(t) && constant_of(v))
+        not_yet(at, quoted(at.text) + " on a pointer constant");
+}
+
 // !e, 6.5.4.3p5: an int, its operand's value tested as it is, at its
-// own type, with no promotion; ! of a constant is a constant.  A void
-// operand is an error at the !, require_value()'s, and a function
-// designator, a scalar, which ! takes, p1, is not yet.
+// own type, with no promotion, a pointer at 64 bits; ! of a constant is
+// a constant, refuse_pointer_constant()'s aside.  A void operand is an
+// error at the !, require_value()'s, and a function designator, a
+// scalar, which ! takes, p1, is not yet.
 operand_t
 logical_not(parser_t &p)
 {
     const token_t &op = advance(p);
     operand_t arg = cast_expression(p);
     expr_t value = rvalue(op, arg);
+    refuse_pointer_constant(op, arg.type, value);
     const bool marked = overflowed(unary_op_t::log_not, arg.type, arg, value);
 
     return { .type = int_type(),
@@ -412,10 +431,76 @@ unary_arithmetic(parser_t &p)
              .overflowed = marked };
 }
 
+// &E, 6.5.4.2, rcc's address_of(): its operand a cast expression, which
+// does not decay; the result a pointer to the operand's type, p3, the
+// node make_address_of() makes of a place, p1, whose builder exists for
+// a place alone (principle 8).  An operand of no place is rcc's error at
+// the &, but for a function designator, whose address is its decay,
+// p3, and an object of static storage, a place of no & yet, each not
+// yet.
+operand_t
+address_of(parser_t &p)
+{
+    const token_t &op = advance(p);
+    const operand_t arg = cast_expression(p);
+    if (!arg.node)
+        not_yet(*arg.name, "function designator " + quoted(arg.name->text));
+
+    if (!is_place(*arg.node) && is_assignable(*arg.node))
+        not_yet(op, "address of an object of static storage");
+
+    if (!is_place(*arg.node))
+        fail(op, "cannot take the address of an rvalue");
+
+    return { make_pointer(arg.type), make_address_of(*arg.node) };
+}
+
+// The size of the type t, 6.5.4.4p2, rcc's sizeof_(): a constant of
+// type unsigned long, size_t on LP64, p5, which no overflow marks.  void
+// and a function have none, p1, an error at the sizeof, op.
+operand_t
+sizeof_(const token_t &op, const type_t &t)
+{
+    if (is< void_t >(t))
+        fail(op, "invalid application of 'sizeof' to a void type");
+
+    if (is< function_t >(t))
+        fail(op, "invalid application of 'sizeof' to a function type");
+
+    return { make_int(64, false, int_kind_t::unsigned_long),
+             make_literal(size_of(t), view_t::i64) };
+}
+
+// sizeof E or sizeof (T), 6.5.4.4, rcc's sizeof_expression(): the
+// operand expression is typed and dropped, never evaluated, p2, and
+// does not decay, so its nodes are built and generate nothing.  A name
+// of internal linkage it uses needs no definition, 6.9.1p3, since the
+// size is an integer constant, and its uses are dropped.
+operand_t
+sizeof_expression(parser_t &p)
+{
+    const token_t &op = advance(p);
+    const auto uses = std::ssize(p.internal_uses);
+
+    type_t t = make_void();
+    if (peek(p).kind == tok_t::lparen && is_declaration_start(p, 1)) {
+        advance(p);
+        t = type_name(p);
+        expect(p, tok_t::rparen, "expected ')' after type name");
+    }
+    else
+        t = unary_expression(p).type;
+
+    p.internal_uses.erase(p.internal_uses.begin() + uses,
+                          p.internal_uses.end());
+
+    return sizeof_(op, t);
+}
+
 // The unary operators, 6.5.4, of which rcc-v2 takes the prefix steps,
-// 6.5.4.1, and + - ~ !, 6.5.4.3, on a cast expression; GNU C's
-// __extension__ before a cast expression, and its address of a label,
-// &&next, which rcc refuses in these words.
+// 6.5.4.1, &, 6.5.4.2, + - ~ !, 6.5.4.3, on a cast expression, and
+// sizeof, 6.5.4.4; GNU C's __extension__ before a cast expression, and
+// its address of a label, &&next, which rcc refuses in these words.
 operand_t
 unary_expression(parser_t &p)
 {
@@ -428,9 +513,9 @@ unary_expression(parser_t &p)
     case tok_t::bang: return logical_not(p);
     case tok_t::inc:
     case tok_t::dec: return prefix_step(p);
-    case tok_t::amp:
+    case tok_t::amp: return address_of(p);
+    case tok_t::kw_sizeof: return sizeof_expression(p);
     case tok_t::star:
-    case tok_t::kw_sizeof:
     case tok_t::kw_alignof: not_yet(op, quoted(op.text) + " operator");
     case tok_t::kw_extension:
         not_yet(op, quoted(op.text) + " in an expression");
@@ -442,12 +527,24 @@ unary_expression(parser_t &p)
 // (T) e, 6.5.5, rcc's cast(): the operand's value converted to T, a
 // node even where e is of type T, since a cast yields no lvalue, p6
 // (its footnote); a constant folds to the constant of T, which keeps
-// its mark.  A void operand is an error at the '(', require_value()'s,
-// and a function designator is not yet.
+// its mark.  A pointer and an integer convert both ways, a pointer
+// being an unsigned long to the conversion, and a pointer to another
+// pointer keeps the address, 6.3.2.3p7, and writes nothing: its node is
+// the operand's value, which every row of rcc reads through such a
+// cast.  A pointer constant converted to an integer is a cast in rcc,
+// no constant, which rcc-v2 does not make yet.  A void operand is an
+// error at the '(', require_value()'s, and a function designator is not
+// yet.
 operand_t
 cast(const token_t &open, const type_t &t, const operand_t &arg)
 {
     const operand_t value { arg.type, rvalue(open, arg) };
+
+    if (is< pointer_t >(t) && is< pointer_t >(arg.type))
+        return { .type = t, .node = value.node, .overflowed = arg.overflowed };
+
+    if (is< pointer_t >(arg.type) && constant_of(*value.node))
+        not_yet(open, "cast of a pointer constant to an integer");
 
     return { .type = t,
              .node = conversion(value, t),
@@ -474,34 +571,15 @@ cast_expression(parser_t &p)
     return cast(open, t, cast_expression(p));
 }
 
-// The operands of a binary operator of int that are function
-// designators, whose values are pointers to their functions, 6.3.2.1p4,
-// each an error at the operator, rcc's: + and - take a pointer to an
-// object type alone, 6.5.7p2, p3, and no pointer to a function, two
-// pointers are no sum, and a pointer is subtracted from no integer, in
-// rcc's words; the other operators take no pointer, 6.5.6p2, 6.5.8p2,
-// 6.5.11p2, 6.5.12p2, 6.5.13p2.
+// The operands of an operator of integers that are pointers, a function
+// designator's value among them, 6.3.2.1p4, rcc's require_integer(): *
+// / % << >> & | ^ take none, 6.5.6p2, 6.5.8p2, 6.5.11p2, 6.5.12p2,
+// 6.5.13p2, an error at the operator.
 void
-refuse_function_operands(binary_op_t op,
-                         const token_t &at,
-                         const operand_t &lhs,
-                         const operand_t &rhs)
+require_integers(const token_t &at, const operand_t &lhs, const operand_t &rhs)
 {
-    const bool left = is< function_t >(lhs.type);
-    const bool right = is< function_t >(rhs.type);
-    if (!left && !right)
-        return;
-
-    if (op == binary_op_t::add && left && right)
-        fail(at, "cannot add two pointers");
-
-    if (op == binary_op_t::sub && !left)
-        fail(at, "cannot subtract a pointer from an integer");
-
-    if (op == binary_op_t::add || op == binary_op_t::sub)
-        fail(at, "arithmetic on a pointer to a function");
-
-    fail(at, "operand of " + quoted(at.text) + " is a pointer");
+    if (points(lhs) || points(rhs))
+        fail(at, "operand of " + quoted(at.text) + " is a pointer");
 }
 
 // A binary operator of integers, 6.5.6, 6.5.7, 6.5.11 to 6.5.13, its
@@ -510,13 +588,13 @@ refuse_function_operands(binary_op_t op,
 // the operation at its view and by its sign, 6.5.6p4, 6.5.7p5,
 // 6.5.11p3, 6.5.12p3, 6.5.13p3.  rcc reads both values before it judges
 // their types, so a void one is the error first, require_value()'s, and
-// a function designator the next, refuse_function_operands()'s.
+// a pointer the next, require_integers()'s.
 operand_t
 arithmetic(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
 {
     require_value(at, lhs);
     require_value(at, rhs);
-    refuse_function_operands(op, at, lhs, rhs);
+    require_integers(at, lhs, rhs);
 
     const type_t t = common_type(lhs.type, rhs.type);
     expr_t l = convert_to(lhs, t);
@@ -538,7 +616,7 @@ shift(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
 {
     require_value(at, lhs);
     require_value(at, rhs);
-    refuse_function_operands(op, at, lhs, rhs);
+    require_integers(at, lhs, rhs);
 
     const type_t t = promoted(lhs.type);
     expr_t l = promote(lhs);
@@ -581,6 +659,61 @@ multiplicative_expression(parser_t &p)
     return e;
 }
 
+// Pointer arithmetic needs a pointer to a complete object type, 6.5.7p2,
+// p3, rcc's require_object_pointee(): no function, an error at the
+// operator.
+void
+require_object_pointee(const token_t &at, const operand_t &pointer)
+{
+    if (is< function_t >(pointee(pointer)))
+        fail(at, "arithmetic on a pointer to a function");
+}
+
+// +, 6.5.7, its token at, rcc's addition(): two integers are
+// arithmetic()'s; with a pointer, a function designator's value among
+// them, a pointer and an integer in either order, p2, two pointers an
+// error at the operator, and the pointer's pointee an object type,
+// require_object_pointee()'s.  The arithmetic is not yet.  rcc reads
+// both values before it judges their types.
+operand_t
+addition(const token_t &at, operand_t lhs, operand_t rhs)
+{
+    require_value(at, lhs);
+    require_value(at, rhs);
+    if (!points(lhs) && !points(rhs))
+        return arithmetic(binary_op_t::add, at, std::move(lhs), std::move(rhs));
+
+    if (points(lhs) && points(rhs))
+        fail(at, "cannot add two pointers");
+
+    require_object_pointee(at, points(lhs) ? lhs : rhs);
+    not_yet(at, "arithmetic on a pointer");
+}
+
+// -, 6.5.7, its token at, rcc's subtraction(): two integers are
+// arithmetic()'s; with a pointer, a pointer less an integer, p3, or two
+// pointers to compatible object types, each pointee an object type,
+// require_object_pointee()'s, in rcc's order, a pointer to a function
+// judged before the pointees; anything else an error at the operator.
+// The arithmetic is not yet.
+operand_t
+subtraction(const token_t &at, operand_t lhs, operand_t rhs)
+{
+    require_value(at, lhs);
+    require_value(at, rhs);
+    if (!points(lhs) && !points(rhs))
+        return arithmetic(binary_op_t::sub, at, std::move(lhs), std::move(rhs));
+
+    if (!points(lhs))
+        fail(at, "cannot subtract a pointer from an integer");
+
+    require_object_pointee(at, lhs);
+    if (points(rhs) && !compatible(pointee(lhs), pointee(rhs)))
+        fail(at, "subtraction of pointers to different types");
+
+    not_yet(at, "arithmetic on a pointer");
+}
+
 // The additive operators, 6.5.7, left-associative, as rcc's loop reads
 // them: a - b - c is (a - b) - c.
 operand_t
@@ -590,11 +723,11 @@ additive_expression(parser_t &p)
 
     while (next_is(p, { tok_t::plus, tok_t::minus })) {
         const token_t &op = advance(p);
-        const binary_op_t b =
-            op.kind == tok_t::plus ? binary_op_t::add : binary_op_t::sub;
 
         operand_t rhs = multiplicative_expression(p);
-        e = arithmetic(b, op, std::move(e), std::move(rhs));
+        e = op.kind == tok_t::plus ?
+                addition(op, std::move(e), std::move(rhs)) :
+                subtraction(op, std::move(e), std::move(rhs));
     }
 
     return e;
@@ -619,51 +752,73 @@ shift_expression(parser_t &p)
     return e;
 }
 
-// The operands of a comparison that are function designators, whose
-// values are pointers to their functions, 6.3.2.1p4, rcc's: a
-// relational operator takes no pointer to a function, 6.5.9p2, and
-// compares a pointer with no integer, each an error at the operator in
-// rcc's words; an equality operator compares two of them, and one with
-// a null pointer constant, 6.5.10p2, which rcc compiles, so it is not
-// yet.
-void
-refuse_function_comparison(binary_op_t op,
-                           const token_t &at,
-                           const operand_t &lhs,
-                           const operand_t &rhs)
+// The type a comparison with a pointer brings its operands to, a
+// function designator's value among them, 6.3.2.1p4, rcc's
+// comparison() and common_pointer(): an equality operator compares two
+// pointers to compatible types, and a pointer and a null pointer
+// constant, which converts to the pointer's type, 6.5.10p2, p5; a
+// relational operator two pointers to compatible object types, no
+// function, 6.5.9p2; anything else is an error at the operator, in
+// rcc's words, in its order.  Pointers compare as addresses (G7).  A
+// function designator compared for equality, which rcc compiles, is not
+// yet.  The pointees are int and the pointers, so compatible ones are
+// one type, the composite, 6.2.7p3.
+type_t
+common_pointer(binary_op_t op,
+               const token_t &at,
+               const operand_t &lhs,
+               const operand_t &rhs)
 {
-    const bool left = is< function_t >(lhs.type);
-    const bool right = is< function_t >(rhs.type);
-    if (!left && !right)
-        return;
+    const bool lp = points(lhs);
+    const bool rp = points(rhs);
 
-    if (op == binary_op_t::eq || op == binary_op_t::ne)
-        not_yet(at, "comparison of a function designator");
+    if (op == binary_op_t::eq || op == binary_op_t::ne) {
+        if (is< function_t >(lhs.type) || is< function_t >(rhs.type))
+            not_yet(at, "comparison of a function designator");
 
-    if (left && right)
+        if (lp && rp && !compatible(pointee(lhs), pointee(rhs)))
+            fail(at, "comparison of distinct pointer types");
+
+        if (!(lp && rp) && !is_null_pointer_constant(lp ? rhs : lhs))
+            fail(at, "comparison between pointer and integer");
+
+        return lp ? lhs.type : rhs.type;
+    }
+
+    if (!(lp && rp))
+        fail(at, "comparison between pointer and integer");
+
+    if (is< function_t >(lhs.type))
         fail(at, "ordered comparison of pointers to functions");
 
-    fail(at, "comparison between pointer and integer");
+    if (!compatible(pointee(lhs), pointee(rhs)))
+        fail(at, "comparison of distinct pointer types");
+
+    return lhs.type;
 }
 
 // A relational or an equality operator, 6.5.9, 6.5.10, its token at,
 // rcc's comparison(): each operand converted to the operands' common
-// type, 6.5.9p4, 6.5.10p5, the cmp at its view and by its sign, so -1 <
-// 0u is an unsigned comparison, and the result an int
-// whatever the operands' type, 6.5.9p7, 6.5.10p4.  rcc reads both
-// values before it judges their types, so a void one is the error
-// first, require_value()'s, and a function designator the next,
-// refuse_function_comparison()'s.
+// type, 6.5.9p4, 6.5.10p5, or with a pointer to common_pointer()'s, the
+// cmp at its view and by its sign, so -1 < 0u is an unsigned comparison
+// and so is one of pointers, and the result an int whatever the
+// operands' type, 6.5.9p7, 6.5.10p4.  Two pointer constants are
+// refuse_pointer_constant()'s.  rcc reads both values before it judges
+// their types, so a void one is the error first, require_value()'s.
 operand_t
 comparison(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
 {
     require_value(at, lhs);
     require_value(at, rhs);
-    refuse_function_comparison(op, at, lhs, rhs);
 
-    const type_t t = common_type(lhs.type, rhs.type);
+    const type_t t = points(lhs) || points(rhs) ?
+                         common_pointer(op, at, lhs, rhs) :
+                         common_type(lhs.type, rhs.type);
     expr_t l = convert_to(lhs, t);
     expr_t r = convert_to(rhs, t);
+    if (constant_of(r))
+        refuse_pointer_constant(at, t, l);
+
     const bool marked = overflowed(op, t, lhs, l, rhs, r);
 
     return { .type = int_type(),
@@ -773,9 +928,11 @@ inclusive_or_expression(parser_t &p)
 // && or ||, 6.5.14, 6.5.15, its token at: each operand's value,
 // compared with 0 in its own type, so nothing converts it, 6.5.14p2,
 // 6.5.15p2; the result an int, the operator at an int's view, 6.5.14p3,
-// 6.5.15p3.  rcc reads both values before it judges their types: a
-// void one is an error at the operator, and a function designator, a
-// scalar, which rcc compiles, is not yet.
+// 6.5.15p3, a pointer compared with null at 64 bits; a pointer
+// constant beside a constant is refuse_pointer_constant()'s.  rcc reads
+// both values before it judges their types: a void one is an error at
+// the operator, and a function designator, a scalar, which rcc
+// compiles, is not yet.
 operand_t
 logical(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
 {
@@ -784,6 +941,12 @@ logical(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
 
     expr_t l = rvalue(at, lhs);
     expr_t r = rvalue(at, rhs);
+    if (constant_of(r))
+        refuse_pointer_constant(at, lhs.type, l);
+
+    if (constant_of(l))
+        refuse_pointer_constant(at, rhs.type, r);
+
     const bool marked = overflowed(op, int_type(), lhs, l, rhs, r);
 
     return { .type = int_type(),
@@ -835,7 +998,7 @@ logical_or_expression(parser_t &p)
 // make an int, and a constant arm is the constant of that type.  A
 // constant condition and two constant arms fold to the arm the
 // condition picks, p5, make_conditional()'s, marked overflowed where the
-// condition or that arm was so reached.
+// condition or that arm was so reached.  A pointer arm, p3, is not yet.
 operand_t
 joined(const token_t &at,
        const operand_t &condition,
@@ -854,6 +1017,9 @@ joined(const token_t &at,
 
     const operand_t y { yes.type, rvalue(at, yes) };
     const operand_t n { no.type, rvalue(at, no) };
+    if (points(y) || points(n))
+        not_yet(at, "'?:' with a pointer arm");
+
     const type_t t = common_type(y.type, n.type);
     expr_t first = convert_to(y, t);
     expr_t second = convert_to(n, t);
@@ -875,9 +1041,9 @@ joined(const token_t &at,
 // The conditional operator, 6.5.16, right-associative, as rcc reads it:
 // the condition a logical OR expression, read for its value at the '?'
 // before the arms, so that its error comes first, its value compared
-// with 0, p2; the second operand an expression, a comma among them, and
-// the third a conditional expression.  GNU C's a ?: b is not yet, at
-// the ':'.
+// with 0, p2, a pointer constant refuse_pointer_constant()'s; the
+// second operand an expression, a comma among them, and the third a
+// conditional expression.  GNU C's a ?: b is not yet, at the ':'.
 operand_t
 conditional_expression(parser_t &p)
 {
@@ -890,6 +1056,7 @@ conditional_expression(parser_t &p)
     const operand_t condition { .type = e.type,
                                 .node = rvalue(at, std::move(e)),
                                 .overflowed = marked };
+    refuse_pointer_constant(at, condition.type, *condition.node);
     if (peek(p).kind == tok_t::colon)
         not_yet(peek(p), "'?:' with no middle operand");
 
@@ -957,7 +1124,8 @@ compound_assignment(const token_t &op,
 // operand, and a function designator is none.  The right operand's
 // value is converted to the simple assignment's type, 6.5.17.2p2, the
 // left operand's, 6.5.17.1p3, assignment_conversion()'s at the
-// operator.
+// operator.  A compound assignment of a pointer or by one is not yet, at
+// its operator.
 operand_t
 assignment_expression(parser_t &p)
 {
@@ -972,6 +1140,9 @@ assignment_expression(parser_t &p)
         fail(op, "expression is not assignable");
 
     operand_t rhs = assignment_expression(p);
+    if (compound && (points(lhs) || points(rhs)))
+        not_yet(op, quoted(op.text) + " with a pointer operand");
+
     if (compound)
         return compound_assignment(op, *compound, std::move(lhs),
                                    std::move(rhs));

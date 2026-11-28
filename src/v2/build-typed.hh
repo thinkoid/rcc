@@ -69,6 +69,16 @@ make_assign(const place_t< W, V, S > &place, const expr_t &value)
     return expr_t(assign_t< W, V > { place.where, value });
 }
 
+// &'s builder exists for a place whose address the rows write as a
+// value, a local's, and so defines what is a place (principle 8): the
+// address of its where, 6.5.4.2p3.  A global's place has none yet.
+template< view_t V, sign_t S >
+expr_t
+make_address_of(const place_t< slot_t, V, S > &place)
+{
+    return expr_t(address_of_t< slot_t > { place.where });
+}
+
 // A compound assignment's builder exists for a place alone, as an
 // assignment's does (principle 8), and keeps the place's where, view
 // and sign, the operation's view O, and the value in its class, a

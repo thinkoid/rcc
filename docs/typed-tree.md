@@ -14,19 +14,21 @@ initialized by an integer constant expression or not, read and
 assigned in every expression, defined before their use, after it or
 nowhere in the unit, their data written after the functions; the
 functions of a result of any integer type or `void` and of parameters
-of any integer type, whose locals are of the integer types, declared,
-assigned and returned, with parentheses, the casts, the unary
-operators `+ - ~ !`, `+ - * / % << >> & | ^`, the comparisons, `&&`,
-`||`, `?:` of arms of every integer type, the comma, the compound
-assignments and `++` and `--` of every integer type, and calls of
-functions of a result of any integer type or `void`, to any depth, and
-the statements `if`, `else`, `switch` on every integer type with its
-`case` and `default` labels, `while`, `do`, `for` with a declaration
-or an expression first, `break`, `continue`, `goto` and labels, and
-`return` with a value or without, on both targets. Each mechanism
-below was compiled and run in a small model first; chapter 5 says what
-the models showed and chapter 6 what nothing has shown. A statement
-marked *working* is a position taken and run, not yet agreed.
+of any integer type, whose locals are of the integer types and
+pointers to `int` and to such pointers, declared, assigned and
+returned, with parentheses, the casts, the unary operators `+ - ~ !`,
+`&` of a local and `sizeof`, `+ - * / % << >> & | ^`, the comparisons,
+of pointers among them, `&&`, `||`, `?:` of arms of every integer
+type, the comma, the compound assignments and `++` and `--` of every
+integer type, and calls of functions of a result of any integer type
+or `void`, to any depth, and the statements `if`, `else`, `switch` on
+every integer type with its `case` and `default` labels, `while`,
+`do`, `for` with a declaration or an expression first, `break`,
+`continue`, `goto` and labels, and `return` with a value or without,
+on both targets. Each mechanism below was compiled and run in a small
+model first; chapter 5 says what the models showed and chapter 6 what
+nothing has shown. A statement marked *working* is a position taken
+and run, not yet agreed.
 
 ## 1. The idea
 
@@ -586,6 +588,18 @@ S >`.
   consumer writes the extension of the stored bits, `movb %al,
   -1(%rbp)` and `movsbl %al, %eax`; a postfix step's value is the old
   one, valid as its load left it.
+- A pointer is a 64-bit unsigned value to every row, as rcc's
+  `integer()` views one: its view is `i64`, its comparisons are
+  unsigned, and a conversion between a pointer and an integer is the
+  integers'. A cast from one pointer type to another writes nothing
+  and makes no node: the operand's node is its value, which every row
+  of rcc reads through such a cast. `&x` is `address_of_t< W >`, the
+  address of a place's where, its view taken off, `leaq -4(%rbp),
+  %rax` and `add x0, x29, #28`. Its builder, `make_address_of()`,
+  exists for a local's place alone, and so says what `&` takes
+  (principle 8), as an assignment's builder says what is assignable.
+  `sizeof` is a constant the parser makes: its operand is typed and
+  dropped, with the uses of names of internal linkage it made.
 
 ### 4.3 Constants
 
@@ -604,6 +618,11 @@ Three things are kept apart: the value, the fold and a stage.
   the handle, `constant_of()`: the builders' fold of a constant
   expression is a constant node, as rcc's evaluator's is a literal,
   and any other node is no constant expression.
+- A null pointer constant is asked the same way: an integer operand
+  whose `constant_of()` is 0. A constant of a pointer type, `(int *)
+  0`, is a null pointer and no null pointer constant, and rcc folds an
+  operator on integer constants alone: it writes `!`, a comparison and
+  a condition on a pointer constant, which rcc-v2 does not yet.
 - The mark of a signed overflow in a constant expression is a fact of
   C, and the parser's: a flag on the parser's operand, set where an
   operator's production calls its builder, handed on by a cast, the
@@ -941,6 +960,11 @@ each became.
 | `case_value()` | the parser's |
 | `number_case_labels()` | the switch's row |
 | `innermost_breakable()`, `innermost_loop()` | the parser's |
+| `integer()` of a pointer | the parser's `view_of()` and `sign_of()`: `i64`, unsigned |
+| `address_value()` of a name, `address_of()` | the row of `address_of_t< W >` over each target's `address_of()` of its where's address |
+| `frame_address()` | aarch64's, with an `if` on the 12 bits of its `add` |
+| `is_null_pointer_constant()` | the parser's, over `constant_of()` |
+| `common_pointer()`, `require_object_pointee()`, `sizeof_()` | the parser's |
 | `extended()` in `table_jump()` | x86-64's `table_jump()` reads `valid_of()` of the controlling expression at its promoted type's sign, or a subtraction's unsigned write |
 | `break_target()`, `continue_target()`, a record's `broken` | the parser's `jump_target_t`, the parameters of `switch_t` and of the loops, and the state's `breaks` and `continues` |
 | `arithmetic_immediate()`, `bitmask_immediate()` | an `if` in the row: one target's encoding of its own leaf (principle 2) |
@@ -1025,15 +1049,25 @@ rows invented for the purpose.
   steps, the compound assignments and `?:` it takes 131 and 13.9; the
   compound assignments of every type, 650 node types where there were
   338, bring the peak to 14.4 GB, and `?:` of every type with its
-  widening to 15.2. Pointers bring a third where.
+  widening to 15.2. A dereference's where is the third. Measured with
+  it, pointer arithmetic and the subscript: 9,456 binary node types
+  and 28.8 GB, more than one of the two machines that build the tree
+  holds, so of the pointers the tree has their values alone.
 - GNU's `a ?: b`, which is not yet.
+- The rest of the pointers: the dereference, pointer arithmetic and
+  the subscript; a pointer of static storage, the address of an object
+  of static storage and of a function; an operator on a pointer
+  constant; a pointer arm of a `?:`, and `++`, `--` and the compound
+  assignments of a pointer; `void *`, qualified pointers and pointers
+  to the other types.
 - `({ })`. It waits until the concepts around it are clear.
 - Two targets that want shapes of one subtree that do not nest. The
   address family is where to look.
 - Whether every question rcc's generators ask of a C type moves to a
   builder (principle 9). For the integer types every one does: the
-  view, the operator's sign, the width rule. Pointers, records and
-  floating point are not asked yet.
+  view, the operator's sign, the width rule, and a pointer as a value
+  asks the same three. A pointer's pointee, records and floating point
+  are not asked yet.
 - Of a jump's record, the variable length arrays a jump gives back.
   Whether a loop's label is jumped to is the parser's fact, a
   parameter of the loop's node; whether a path reaches a statement's
