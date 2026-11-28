@@ -69,6 +69,7 @@ public:
     friend std::optional< long long > constant_of(const expr_t &);
     friend bool is_assignable(const expr_t &);
     friend expr_t make_assign(expr_t place, expr_t value);
+    friend expr_t make_step(step_op_t op, expr_t place);
     friend expr_t make_conversion(
         view_t to, sign_t to_sign, view_t from, sign_t from_sign, expr_t e);
     friend expr_t make_unary(unary_op_t op, view_t view, expr_t arg);

@@ -291,6 +291,45 @@ value(state_t &s, const unary_t< op, V, A > &u, unsigned wanted = 0)
     return negated(s, op, value(s, u.arg), V, wanted);
 }
 
+// The load of the object at an address held for a store through it
+// after the load, rcc's fetch(): the value in a register taken outside
+// the address's, then the address's operand outside it, ldr w0, [x29,
+// #16], ldr w0, [x1].  The address stays held.
+value_t fetch(state_t &, const address_t &at, view_t view, sign_t sign);
+
+// The value of a step of the object at an address, of the view and of
+// a type of the sign, rcc's step(), 6.4, which gives the address back:
+// the object fetched into a fresh register, then the add or sub of 1
+// into that register for a prefix step, add w0, w0, #1, or into a fresh
+// one outside the address's for a postfix step, add w1, w0, #1, whose
+// old value stays where the load left it, 6.1; the store of the new
+// value; the value the prefix's register or the postfix's old one.  No
+// destination is the consumer's: rcc's step() names none.
+value_t
+step(state_t &, step_op_t op, const address_t &at, view_t view, sign_t sign);
+
+// The place first, its address formed outside the registers the
+// consumer names, rcc's address_avoiding().
+template< step_op_t op, typename W, view_t V, sign_t S >
+value_t
+value(state_t &s, const step_t< op, W, V, S > &t, unsigned wanted = 0)
+{
+    return step(s, op, address_avoiding(s, t.where, wanted), V, S);
+}
+
+// A step for its effect, rcc's modify(): the prefix form's value
+// dropped, since nothing reads the old one, ldr w0, add w0, w0, #1 and
+// str w0 for a++.
+template< step_op_t op, typename W, view_t V, sign_t S >
+void
+effect(state_t &s, const step_t< op, W, V, S > &t)
+{
+    constexpr step_op_t prefix =
+        is_increment(op) ? step_op_t::pre_inc : step_op_t::pre_dec;
+
+    release(s, step(s, prefix, address(s, t.where), V, S));
+}
+
 // The store row, r into an object in memory, to, its operand's text, at
 // the view: str w0 or str x0.
 void store(state_t &, reg_t r, std::string_view to, view_t view);

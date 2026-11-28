@@ -66,6 +66,10 @@ struct converted_argument_t
     sign_t sign;
 };
 
+// ++E --E E++ E-- of the place E, 6.5.4.1, 6.5.3.5, which the parser
+// asks is_assignable() of first, as of an assignment's.
+expr_t make_step(step_op_t op, expr_t place);
+
 // lhs, rhs, 6.5.18, of a left operand evaluated for its effect and a
 // right operand converted as an operand whose value may be read, the
 // comma's own.

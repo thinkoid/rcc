@@ -98,6 +98,9 @@ struct expr_t::interface_t
     virtual bool is_assignable() const = 0;
     virtual expr_t assign(const expr_t &value) const = 0;
 
+    // a step: the place's model, as for an assignment, makes the node
+    virtual expr_t step(step_op_t op) const = 0;
+
     // a binary operator, by the same two hops: the right operand's
     // model, which knows the right operand's class, calls the left's
     // operation for that class, which knows the left's class and makes
@@ -715,6 +718,24 @@ fwd_assign(const P &, const V &)
     throw std::logic_error("v2: an assignment to a node that is no place");
 }
 
+// A step of a held place, by its builder: the crossing from the step's
+// operator, data in the parser, to the node's parameter (principle 6).
+// The parser asks is_assignable() first, as for an assignment, so no
+// step of a node that is no place is built.
+template< assignable P >
+expr_t
+fwd_step(step_op_t op, const P &place)
+{
+    return cross(op, [&]< step_op_t o >() { return make_step< o >(place); });
+}
+
+template< typename P >
+expr_t
+fwd_step(step_op_t, const P &)
+{
+    throw std::logic_error("v2: a step of a node that is no place");
+}
+
 template< typename T >
 struct expr_t::model_t final: interface_t
 {
@@ -822,6 +843,11 @@ struct expr_t::model_t final: interface_t
     expr_t assign(const expr_t &value) const override
     {
         return fwd_assign(held, value);
+    }
+
+    expr_t step(step_op_t op) const override
+    {
+        return fwd_step(op, held);
     }
 
     expr_t right_of(binary_op_t op,

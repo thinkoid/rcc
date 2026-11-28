@@ -505,6 +505,14 @@ pinned_within(const state_t &s, const call_void_t &c)
     return call_pins(s, c.args);
 }
 
+// A step pins nothing, rcc's pins() of a unary_t.
+template< step_op_t op, typename W, view_t V, sign_t S >
+constexpr unsigned
+pinned_within(const state_t &, const step_t< op, W, V, S > &)
+{
+    return 0;
+}
+
 // A comma pins nothing of its own, rcc's pins() of one, and what its
 // two operands pin.
 template< typename R >
@@ -614,6 +622,13 @@ moved_within(const state_t &, const call_void_t &)
     return 0;
 }
 
+template< step_op_t op, typename W, view_t V, sign_t S >
+constexpr unsigned
+moved_within(const state_t &, const step_t< op, W, V, S > &)
+{
+    return 0;
+}
+
 template< typename R >
 unsigned
 moved_within(const state_t &s, const comma_t< R > &c)
@@ -696,6 +711,71 @@ left_operand(
     s.ahead = ahead;
 
     return l;
+}
+
+// The operation of op on the object at an address at the view, op R,
+// obj, rcc's arithmetic_on() and modify() of a step, chapter 6.6: the
+// source an immediate or a register's name, addl $1, -4(%rbp), addl
+// %eax, g(%rip), addl $1, (%rcx), the address's operand formed outside
+// avoid; add, sub, and, or and xor set ZF from the object's new value
+// (7.1).  The address stays held, for the caller to give back.
+void operate_on(state_t &,
+                binary_op_t op,
+                std::string_view source,
+                const address_t &at,
+                view_t view,
+                unsigned avoid = 0);
+
+// The load of the object at an address held for a store through it
+// after the load, rcc's fetch(): the address's operand, then the value
+// in a register taken outside avoid and the address's own, movl
+// -4(%rbp), %eax, movl (%rcx), %eax.  The address stays held.
+value_t fetch(state_t &,
+              const address_t &at,
+              view_t view,
+              sign_t sign,
+              unsigned avoid = 0);
+
+// The value of a step of the object at an address, of the view and of
+// a type of the sign, rcc's step(), chapter 6.4, which gives the
+// address back: prefix, the object fetched into a fresh register, the
+// add or sub of 1 on it and its store, the value that register;
+// postfix, the object fetched outside the registers the consumer
+// names, wanted, its old value copied into a fresh register outside
+// that one and the address's, then the add and the store, the value
+// the copy: movl -4(%rbp), %ecx, movl %ecx, %eax, addl $1, %ecx and
+// movl %ecx, -4(%rbp) for return a++.  Nothing reads the flags of the
+// add before the store, and rcc records none.
+value_t step(state_t &,
+             step_op_t op,
+             const address_t &at,
+             view_t view,
+             sign_t sign,
+             unsigned wanted);
+
+// The place first, its address formed outside the registers the
+// consumer names, so that the value takes them, rcc's: a step pins
+// nothing, so nothing within it moves them.
+template< step_op_t op, typename W, view_t V, sign_t S >
+value_t
+value(state_t &s, const step_t< op, W, V, S > &t, unsigned wanted = 0)
+{
+    const address_t at = address_avoiding(s, t.where, wanted);
+
+    return step(s, op, at, V, S, wanted);
+}
+
+// A step for its effect, rcc's modify(): addl $1 or subl $1 on the object
+// in memory, never incl, and no old value copied, since nothing reads
+// it; addl $1, g(%rip) and, through the GOT, addl $1, (%rax).
+template< step_op_t op, typename W, view_t V, sign_t S >
+void
+effect(state_t &s, const step_t< op, W, V, S > &t)
+{
+    const address_t at = address(s, t.where);
+    operate_on(s, is_increment(op) ? binary_op_t::add : binary_op_t::sub,
+               imm(1), at, V);
+    release(s, at);
 }
 
 // The primary of + - * & | ^, 6.5.6, 6.5.7, 6.5.11 to 6.5.13, rcc's
@@ -1351,6 +1431,24 @@ value_branch(state_t &s,
              bool sense)
 {
     flag_branch(s, value(s, u), V, label, sense);
+}
+
+// The jump on the flags a memory form just written set, rcc's modified()
+// and flag_branch(): je or jne, and no cmp, since the form's instruction
+// set ZF from the object's new value; one that set none stops the
+// generation, rcc's guard.
+void modified_branch(state_t &, view_t view, int label, bool sense);
+
+// A prefix step as a jump, rcc's flag_condition() of one: its effect,
+// the memory form, then the jump on its flags, addl $1, -4(%rbp) and
+// je.  A postfix step's is the primary, its old value compared with 0.
+template< step_op_t op, typename W, view_t V, sign_t S >
+    requires(!is_postfix(op))
+void
+value_branch(state_t &s, const step_t< op, W, V, S > &t, int label, bool sense)
+{
+    effect(s, t);
+    modified_branch(s, V, label, sense);
 }
 
 // test of a source and the held value l at the view, rcc's test(),

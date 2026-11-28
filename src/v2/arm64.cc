@@ -852,6 +852,45 @@ arithmetic(state_t &s,
     return l;
 }
 
+// The add or sub of 1, at the promoted width, the store at the
+// object's: G1, the machine wraps.
+value_t
+fetch(state_t &s, const address_t &at, view_t view, sign_t sign)
+{
+    const auto [mnemonic, bits] = load_of(view, sign, promoted_width(view));
+
+    const value_t v = hold(s, take(s, registers_of(s, at)));
+    const reg_t r = reg_of(s, v);
+
+    const std::string from = operand(s, at, bit(r));
+    insn(s, mnemonic, { reg(r, bits), from });
+
+    return v;
+}
+
+value_t
+step(state_t &s, step_op_t op, const address_t &at, view_t view, sign_t sign)
+{
+    const int bits = promoted_width(view);
+
+    const value_t l = fetch(s, at, view, sign);
+    const reg_t r = reg_of(s, l);
+    const value_t v =
+        is_postfix(op) ? hold(s, take(s, bit(r) | registers_of(s, at))) : l;
+
+    insn(s, is_increment(op) ? "add" : "sub",
+         { reg(reg_of(s, v), bits), reg(r, bits), imm(1) });
+
+    const reg_t from = reg_of(s, v, registers_of(s, at));
+    store(s, from, operand(s, at, bit(from)), view);
+    release(s, at);
+
+    if (is_postfix(op))
+        release(s, v);
+
+    return l;
+}
+
 // cmp L, R, the destination's order, cmp w0, w1: operands() asks for
 // r's register first, then l's.
 void

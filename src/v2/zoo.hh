@@ -248,6 +248,18 @@ struct comma_t
     R rhs;
 };
 
+// ++E --E E++ E--, 6.5.4.1, 6.5.3.5: the object of view V and of a
+// type of the sign S stepped by 1 and stored, the value the new one,
+// prefix, or the old one, postfix, p2.  The place is its where alone, a
+// local's slot or a global, as an assignment's; it is no E += 1, as in
+// rcc, so x86-64's postfix form copies the old value, and nothing folds
+// it, 6.6p3.
+template< step_op_t op, typename W, view_t V, sign_t S >
+struct step_t
+{
+    W where;
+};
+
 // e;, 6.8.4p2: the expression evaluated for its effect, its value
 // dropped.
 struct expr_stmt_t
@@ -587,6 +599,13 @@ view_of(const call_void_t &)
     throw std::logic_error("v2: the view of a void call");
 }
 
+template< step_op_t op, typename W, view_t V, sign_t S >
+constexpr view_t
+view_of(const step_t< op, W, V, S > &)
+{
+    return V;
+}
+
 // A comma's value is its right operand's, and so is its view.
 template< typename R >
 view_t
@@ -748,6 +767,16 @@ int
 valid_of(const call_t< V > &, sign_t)
 {
     return width(V);
+}
+
+// A step's value is in the register an operation of the object's view
+// wrote, the prefix's the store's source and the postfix's the load's,
+// rcc's stored_valid() of an int, which the step leaves as written.
+template< step_op_t op, typename W, view_t V, sign_t S >
+int
+valid_of(const step_t< op, W, V, S > &, sign_t sign)
+{
+    return written(width(V), sign);
 }
 
 // A comma's value is its right operand's, in the register that

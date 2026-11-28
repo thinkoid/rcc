@@ -41,6 +41,24 @@ enum class sign_t { signed_, unsigned_ };
 // The unary operators of 6.5.4.3 that make a node: - ~ !.
 enum class unary_op_t { neg, bit_not, log_not };
 
+// ++ and --, prefix and postfix, 6.5.4.1, 6.5.3.5, rcc's names.
+enum class step_op_t { pre_inc, pre_dec, post_inc, post_dec };
+
+// Whether a step adds 1, ++, and not subtracts it, --.
+constexpr bool
+is_increment(step_op_t op)
+{
+    return op == step_op_t::pre_inc || op == step_op_t::post_inc;
+}
+
+// Whether a step's value is the old one, the postfix forms, 6.5.3.5p2,
+// and not the new one, 6.5.4.1p2.
+constexpr bool
+is_postfix(step_op_t op)
+{
+    return op == step_op_t::post_inc || op == step_op_t::post_dec;
+}
+
 // The binary operators, 6.5.6 to 6.5.15: * / % + - << >> & | ^, the
 // comparisons < > <= >= == !=, and && and ||.  An operator whose
 // instruction differs by the sign of its operands has the sign in its
@@ -276,6 +294,20 @@ cross(unary_op_t op, F &&f)
         return f.template operator()< unary_op_t::bit_not >();
     case unary_op_t::log_not:
         return f.template operator()< unary_op_t::log_not >();
+    }
+}
+
+template< typename F >
+decltype(auto)
+cross(step_op_t op, F &&f)
+{
+    using enum step_op_t;
+
+    switch (op) {
+    case pre_inc: return f.template operator()< pre_inc >();
+    case pre_dec: return f.template operator()< pre_dec >();
+    case post_inc: return f.template operator()< post_inc >();
+    case post_dec: return f.template operator()< post_dec >();
     }
 }
 

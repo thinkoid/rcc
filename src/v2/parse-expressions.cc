@@ -197,8 +197,26 @@ call(parser_t &p, const token_t &op, const operand_t &e)
     return { result, make_call(name, view_of(result), first, std::move(args)) };
 }
 
-// The postfix operators, 6.5.3, left to right: a call, and a subscript,
-// a member access and a step, which are not yet.
+// ++E --E E++ E--, 6.5.4.1, 6.5.3.5, rcc's prefix_step() and
+// postfix_step(): the operand a modifiable lvalue, p1 of each, rcc's
+// require_steppable(), said at the operator, op; the result of the
+// operand's type, the step's node.  An operand of another type than int
+// is not yet, at the operator.  A step is no constant expression, 6.6p3,
+// and carries no mark of an overflow.
+operand_t
+stepped(const token_t &op, step_op_t s, operand_t arg)
+{
+    if (!arg.node || !is_assignable(*arg.node))
+        fail(op, "expression is not assignable");
+
+    if (arg.type != int_type())
+        not_yet(op, quoted(op.text) + " on an operand whose type is not 'int'");
+
+    return { arg.type, make_step(s, std::move(*arg.node)) };
+}
+
+// The postfix operators, 6.5.3, left to right: a call and a step, and a
+// subscript and a member access, which are not yet.
 operand_t
 postfix_expression(parser_t &p)
 {
@@ -211,9 +229,15 @@ postfix_expression(parser_t &p)
         case tok_t::lparen: e = call(p, op, e); break;
         case tok_t::lbracket: not_yet(op, "array subscript");
         case tok_t::dot:
-        case tok_t::arrow:
+        case tok_t::arrow: not_yet(op, quoted(op.text) + " operator");
         case tok_t::inc:
-        case tok_t::dec: not_yet(op, quoted(op.text) + " operator");
+        case tok_t::dec: {
+            const step_op_t s = op.kind == tok_t::inc ? step_op_t::post_inc :
+                                                        step_op_t::post_dec;
+            advance(p);
+            e = stepped(op, s, std::move(e));
+            break;
+        }
         default: return e;
         }
     }
@@ -324,8 +348,22 @@ require_arithmetic(const token_t &op, const operand_t &e)
         fail(op, "operand of " + quoted(op.text) + " is a pointer");
 }
 
-// 6.5.5, the operand of a unary operator, below.
+// 6.5.5, the operand of a unary operator, below, and 6.5.4, the
+// operand of a prefix step.
 operand_t cast_expression(parser_t &);
+operand_t unary_expression(parser_t &);
+
+// ++E and --E, 6.5.4.1, their operand a unary expression, so ++a++ is
+// ++(a++), as rcc reads it.
+operand_t
+prefix_step(parser_t &p)
+{
+    const token_t &op = advance(p);
+    const step_op_t s =
+        op.kind == tok_t::inc ? step_op_t::pre_inc : step_op_t::pre_dec;
+
+    return stepped(op, s, unary_expression(p));
+}
 
 // +e, 6.5.4.3p2, rcc's unary_plus(): the operand's value in its promoted
 // type, and no node of its own; but the value is no lvalue, so an
@@ -387,9 +425,10 @@ unary_arithmetic(parser_t &p)
              .overflowed = marked };
 }
 
-// The unary operators, 6.5.4, of which rcc-v2 takes + - ~ !, 6.5.4.3,
-// on a cast expression; GNU C's __extension__ before a cast expression,
-// and its address of a label, &&next, which rcc refuses in these words.
+// The unary operators, 6.5.4, of which rcc-v2 takes the prefix steps,
+// 6.5.4.1, and + - ~ !, 6.5.4.3, on a cast expression; GNU C's
+// __extension__ before a cast expression, and its address of a label,
+// &&next, which rcc refuses in these words.
 operand_t
 unary_expression(parser_t &p)
 {
@@ -401,7 +440,7 @@ unary_expression(parser_t &p)
     case tok_t::tilde: return unary_arithmetic(p);
     case tok_t::bang: return logical_not(p);
     case tok_t::inc:
-    case tok_t::dec:
+    case tok_t::dec: return prefix_step(p);
     case tok_t::amp:
     case tok_t::star:
     case tok_t::kw_sizeof:

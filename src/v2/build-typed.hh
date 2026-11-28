@@ -69,6 +69,15 @@ make_assign(const place_t< W, V, S > &place, const expr_t &value)
     return expr_t(assign_t< W, V > { place.where, value });
 }
 
+// A step's builder exists for a place alone, as an assignment's does
+// (principle 8), and keeps the place's where, view and sign.
+template< step_op_t op, typename W, view_t V, sign_t S >
+expr_t
+make_step(const place_t< W, V, S > &place)
+{
+    return expr_t(step_t< op, W, V, S > { place.where });
+}
+
 // The bits of an operation at the view V on constants, as rcc folds it,
 // read as the register holds them: the low bits of V, signed (G1, G2),
 // rcc's normalized(), where 6.5p5 leaves a signed overflow undefined.

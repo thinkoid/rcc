@@ -819,6 +819,84 @@ arithmetic(state_t &s,
     return l;
 }
 
+// op R, obj: addl $1, -4(%rbp).
+void
+operate_on(state_t &s,
+           binary_op_t op,
+           std::string_view source,
+           const address_t &at,
+           view_t view,
+           unsigned avoid)
+{
+    const int bits = width(view);
+
+    const std::string to = operand(s, at, avoid);
+    insn(s, sized(mnemonic(op), bits), { source, to });
+    if (flag_operator(op))
+        flagged(s, bits);
+}
+
+value_t
+fetch(state_t &s, const address_t &at, view_t view, sign_t sign, unsigned avoid)
+{
+    const auto [mnemonic, to] = extension(view, sign, promoted_width(view));
+
+    const std::string from = operand(s, at);
+    const value_t v = hold(s, take(s, avoid | registers_of(s, at)));
+    insn(s, mnemonic, { from, reg(reg_of(s, v), to) });
+
+    return v;
+}
+
+namespace {
+
+// The store of the held value v through the address at, held, rcc's
+// store(): v's register, reloaded outside the address's, then the
+// address's operand outside v's.
+void
+stored(state_t &s, value_t v, const address_t &at, view_t view)
+{
+    const reg_t r = reg_of(s, v, registers_of(s, at));
+    store(s, r, operand(s, at, bit(r)), view);
+}
+
+} // namespace
+
+// The add or sub of 1, at the promoted width, the store at the
+// object's: G1, the machine wraps.
+value_t
+step(state_t &s,
+     step_op_t op,
+     const address_t &at,
+     view_t view,
+     sign_t sign,
+     unsigned wanted)
+{
+    const int bits = promoted_width(view);
+    const auto by = sized(is_increment(op) ? "add" : "sub", bits);
+
+    if (!is_postfix(op)) {
+        const value_t l = fetch(s, at, view, sign);
+        insn(s, by, { imm(1), reg(reg_of(s, l), bits) });
+        stored(s, l, at, view);
+        release(s, at);
+
+        return l;
+    }
+
+    const value_t l = fetch(s, at, view, sign, wanted);
+    const reg_t r = reg_of(s, l);
+    const value_t old = hold(s, take(s, bit(r) | registers_of(s, at)));
+    mov(s, r, reg_of(s, old), bits);
+
+    insn(s, by, { imm(1), reg(r, bits) });
+    stored(s, l, at, view);
+    release(s, at);
+    release(s, l);
+
+    return old;
+}
+
 // imull $5, %eax, %eax.
 void
 multiply(
@@ -998,6 +1076,15 @@ flag_branch(state_t &s, value_t v, view_t view, int label, bool sense)
     if (s.zero_flag != width(view))
         compare(s, v, imm(0), view);
     release(s, v);
+
+    jump_if(s, sense ? binary_op_t::ne : binary_op_t::eq, label);
+}
+
+void
+modified_branch(state_t &s, view_t view, int label, bool sense)
+{
+    if (s.zero_flag != width(view))
+        throw std::logic_error("v2: a memory form as a condition set no flag");
 
     jump_if(s, sense ? binary_op_t::ne : binary_op_t::eq, label);
 }

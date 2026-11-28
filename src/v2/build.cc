@@ -181,6 +181,14 @@ make_assign(expr_t place, expr_t value)
     return place.self->assign(value);
 }
 
+// One hop through the place's model, which knows the place's type
+// (3.3).
+expr_t
+make_step(step_op_t op, expr_t place)
+{
+    return place.self->step(op);
+}
+
 // One hop through the operand's model, which knows the operand's type
 // and so whether it is a load or a constant (3.3).
 expr_t
