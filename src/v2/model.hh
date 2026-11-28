@@ -111,12 +111,14 @@ struct load_class_t
 using right_class_t = std::variant< constant_class_t,
                                     load_class_t< slot_t >,
                                     load_class_t< global_t >,
+                                    load_class_t< indirect_t >,
                                     top_t< family_t::division >,
                                     top_t< family_t::shift >,
                                     expr_t,
                                     comma_t< constant_class_t >,
                                     comma_t< load_class_t< slot_t > >,
                                     comma_t< load_class_t< global_t > >,
+                                    comma_t< load_class_t< indirect_t > >,
                                     comma_t<> >;
 
 struct expr_t::interface_t
@@ -152,6 +154,9 @@ struct expr_t::interface_t
     virtual value_t value_in(arm64::state_t &, unsigned wanted) const = 0;
     virtual bool takes_name(const arm64::state_t &) const = 0;
 
+    // aarch64's summary of whether a call is within, rcc's calls_within()
+    virtual bool calls_within(const arm64::state_t &) const = 0;
+
     // what the builder of ?: asks of an erased operand: whether it is a
     // truth value, and the operand under its conversions that keep
     // whether a value is 0, which a conditional's jump tests
@@ -180,9 +185,12 @@ struct expr_t::interface_t
                               sign_t from_sign,
                               const expr_t &self) const = 0;
 
-    // &: the place's model, which knows the place's type, makes the node
+    // & and *: the place's model, which knows the place's type, makes
+    // its address, and the pointer's model the place it points to, at
+    // the pointee's view and sign
     virtual bool is_place() const = 0;
     virtual expr_t address_of() const = 0;
+    virtual expr_t indirection(view_t, sign_t, const expr_t &self) const = 0;
 
     // an assignment: the place's model, which knows the place's type,
     // makes the node
@@ -281,6 +289,13 @@ bool
 fwd_takes_name(const S &s, const T &t)
 {
     return takes_name(s, t);
+}
+
+template< typename S, typename T >
+bool
+fwd_calls_within(const S &s, const T &t)
+{
+    return calls_within(s, t);
 }
 
 template< typename T >
@@ -699,6 +714,15 @@ typed(const R &rhs, F &&f)
     return f(rhs);
 }
 
+// The view of a class of a left operand, a constant's or a load's, its
+// type's parameter: a load through a pointer holds a handle, which no
+// default value stands for.
+template< typename C >
+constexpr view_t class_view = view_of(C { });
+
+template< typename W, view_t V, sign_t S >
+constexpr view_t class_view< load_t< W, V, S > > = V;
+
 // Whether the class C of a left operand is one of an operation op at
 // the view V: an erased one is, and a constant or a load of V, since
 // the parser converts every operand of an operation to its type, but
@@ -710,7 +734,7 @@ operand_at()
     if constexpr (is_logical(op) || std::same_as< C, expr_t >)
         return true;
     else
-        return view_of(C { }) == V;
+        return class_view< C > == V;
 }
 
 // Whether the class R of a right operand is one of op: any is, but a
@@ -846,6 +870,38 @@ fwd_address_of(const P &p)
     return make_address_of(p);
 }
 
+// The pointer of * in the class its builder reads, make_indirection():
+// an address, whose place * gives again, or anything else erased, the
+// handle that holds it.  The crossings of fwd_indirection() are
+// instantiated once for each class, and not for each node type.
+template< typename T >
+const expr_t &
+pointed_operand(const T &, const expr_t &self)
+{
+    return self;
+}
+
+template< typename W >
+const address_of_t< W > &
+pointed_operand(const address_of_t< W > &address, const expr_t &)
+{
+    return address;
+}
+
+// The place a pointer in its class points to: the crossing from the
+// pointee's view and sign, values in the parser, to the place's
+// parameters (principle 6), the typed builder of each.
+template< typename P >
+expr_t
+fwd_indirection(view_t view, sign_t sign, const P &pointer)
+{
+    return cross(view, [&]< view_t V >() {
+        return cross(sign, [&]< sign_t S >() {
+            return make_indirection< V, S >(pointer);
+        });
+    });
+}
+
 // Whether a node is a place an assignment stores into: whether the
 // builder of an assignment, make_assign(), is written for it (principle
 // 8).
@@ -869,6 +925,15 @@ expr_t
 fwd_step(step_op_t op, const P &place)
 {
     return cross(op, [&]< step_op_t o >() { return make_step< o >(place); });
+}
+
+// A place through a pointer has no step and no compound assignment yet:
+// the parser refuses either at its operator, so neither is built.
+template< view_t V, sign_t S >
+expr_t
+fwd_step(step_op_t, const place_t< indirect_t, V, S > &)
+{
+    throw std::logic_error("v2: a step through a pointer");
 }
 
 // A compound assignment to a held place, by its builder, as a step's:
@@ -899,6 +964,16 @@ fwd_compound(binary_op_t op, view_t view, const P &place, const expr_t &value)
                     "v2: a compound assignment of no operator or view");
         });
     });
+}
+
+template< view_t V, sign_t S >
+expr_t
+fwd_compound(binary_op_t,
+             view_t,
+             const place_t< indirect_t, V, S > &,
+             const expr_t &)
+{
+    throw std::logic_error("v2: a compound assignment through a pointer");
 }
 
 // The lines whose answer, for a node type with no niche of its own on
@@ -1043,6 +1118,12 @@ struct expr_t::defaults_t: interface_t
         return fwd_unary(op, view, self, self);
     }
 
+    expr_t
+    indirection(view_t view, sign_t sign, const expr_t &self) const override
+    {
+        return fwd_indirection(view, sign, self);
+    }
+
     expr_t conversion(view_t to,
                       sign_t to_sign,
                       view_t from,
@@ -1086,6 +1167,7 @@ template< typename T >
 concept erased_operand = requires(const T &t, const expr_t &self) {
     { unary_operand(t, self) } -> handle_class;
     { converted_operand(t, self) } -> handle_class;
+    { pointed_operand(t, self) } -> handle_class;
     { comma_operand(t, self) } -> handle_class;
     { crossing(t, self) } -> handle_class;
     { classed_operand(t, self) } -> handle_class;
@@ -1161,6 +1243,11 @@ struct expr_t::model_t: defaults_t
             return fwd_takes_name(s, held);
         else
             return defaults_t::takes_name(s);
+    }
+
+    bool calls_within(const arm64::state_t &s) const override
+    {
+        return fwd_calls_within(s, held);
     }
 
     bool truth_value() const override
@@ -1310,6 +1397,12 @@ struct expr_t::niched_model_t final: model_t< T >
             return fwd_address_of(held);
         else
             return defaults_t::address_of();
+    }
+
+    expr_t
+    indirection(view_t view, sign_t sign, const expr_t &self) const override
+    {
+        return fwd_indirection(view, sign, pointed_operand(held, self));
     }
 
     bool is_assignable() const override

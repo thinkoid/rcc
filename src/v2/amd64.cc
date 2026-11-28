@@ -663,6 +663,26 @@ address(state_t &s, const global_t &where)
     return { .base = symbol_address(s, where) };
 }
 
+// The pointer's value is generated where the object's load would be,
+// outside what the caller reserves around address().
+address_t
+address(state_t &s, const indirect_t &where)
+{
+    return { .base = value(s, where.pointer) };
+}
+
+unsigned
+pinned_within(const state_t &s, const indirect_t &where)
+{
+    return pinned_within(s, where.pointer);
+}
+
+unsigned
+moved_within(const state_t &s, const indirect_t &where)
+{
+    return moved_within(s, where.pointer);
+}
+
 unsigned
 registers_of(const state_t &s, const address_t &a)
 {
@@ -691,6 +711,9 @@ release(state_t &s, const address_t &a)
 value_t
 address_of(state_t &s, const address_t &a)
 {
+    if (a.base && a.displacement == 0)
+        return *a.base;
+
     const std::string from = operand(s, a);
     release(s, a);
 

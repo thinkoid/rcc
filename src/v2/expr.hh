@@ -81,11 +81,13 @@ public:
     friend expr_t widened_arm(const expr_t &);
     friend value_t value_in(arm64::state_t &, const expr_t &, unsigned wanted);
     friend bool takes_name(const arm64::state_t &, const expr_t &);
+    friend bool calls_within(const arm64::state_t &, const expr_t &);
 
     friend expr_t rvalue(expr_t);
     friend std::optional< long long > constant_of(const expr_t &);
     friend bool is_place(const expr_t &);
     friend expr_t make_address_of(expr_t place);
+    friend expr_t make_indirection(expr_t pointer, view_t view, sign_t sign);
     friend bool is_assignable(const expr_t &);
     friend expr_t make_assign(expr_t place, expr_t value);
     friend expr_t make_step(step_op_t op, expr_t place);
@@ -163,5 +165,9 @@ expr_t widened_arm(const expr_t &);
 // consumer's register, rcc's takes_name() (arm64.hh).
 value_t value_in(arm64::state_t &, const expr_t &, unsigned wanted);
 bool takes_name(const arm64::state_t &, const expr_t &);
+
+// Whether a call is within an erased operand, aarch64's summary, rcc's
+// calls_within() (arm64.hh).
+bool calls_within(const arm64::state_t &, const expr_t &);
 
 } // namespace rcc

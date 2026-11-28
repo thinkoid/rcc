@@ -19,9 +19,10 @@ any integer type, a pointer or `void` and of parameters of any integer
 type or pointers, whose locals are of the integer types and pointers
 to `int` and to such pointers, declared, assigned and returned, with
 parentheses, the casts, the unary operators `+ - ~ !`, `&` of a local
-and `sizeof`, `+ - * / % << >> & | ^`, the comparisons, of pointers
-among them, `&&`, `||`, `?:` of arms of every integer type, the comma,
-the compound assignments and `++` and `--` of every integer type, and
+and of the object a pointer points to, `*` read and written, and
+`sizeof`, `+ - * / % << >> & | ^`, the comparisons, of pointers among
+them, `&&`, `||`, `?:` of arms of every integer type, the comma, the
+compound assignments and `++` and `--` of every integer type, and
 calls of functions of a result of any integer type, a pointer or
 `void`, to any depth, and the statements `if`, `else`, `switch` on
 every integer type with its `case` and `default` labels, `while`,
@@ -523,14 +524,17 @@ S >`.
 
 - The where is how the machine names the object: a local's slot,
   `slot_t`, its number among the function's locals; an object of
-  static storage, `global_t`, its name in the listing, the C name or
-  a block's static's label, `f.s`; and later a register variable and
-  the object through a pointer's value.
+  static storage, `global_t`, its name in the listing, the C name or a
+  block's static's label, `f.s`; the object through a pointer's value,
+  `indirect_t`, which holds the pointer erased, since no row of a
+  place reads the pointer's type; and later a register variable.
 - A where's address is each target's descriptor, rcc's `address_t`,
   formed where rcc forms it: a slot's displacement; a global's label
   where the unit defines it, a slot with another spelling; and where
   the unit only declares it the address the GOT holds, loaded into a
-  register, a held value that the access consumes. A row spells the
+  register, a held value that the access consumes; and through a
+  pointer the pointer's value, the base of the access, `(%rax)` and
+  `[x0]`, generated where the object's load would be. A row spells the
   address as an operand in a statement of its own, once the access's
   registers are in hand, since aarch64 writes the `adrp x16` of a
   label there, right before the access.
@@ -628,10 +632,18 @@ S >`.
   of rcc reads through such a cast. `&x` is `address_of_t< W >`, the
   address of a place's where, its view taken off, `leaq -4(%rbp),
   %rax` and `add x0, x29, #28`. Its builder, `make_address_of()`,
-  exists for a local's place alone, and so says what `&` takes
-  (principle 8), as an assignment's builder says what is assignable.
-  `sizeof` is a constant the parser makes: its operand is typed and
-  dropped, with the uses of names of internal linkage it made.
+  exists for a local's place and for one through a pointer, and so
+  says what `&` takes (principle 8), as an assignment's builder says
+  what is assignable. `&*p` is the address of the place through `p`,
+  whose row is `p`'s value and writes nothing, and `*&x` is the place
+  of `x` again, the builder's. A where's summaries are its pointer's:
+  what a pinned instruction within it moves, x86-64's, and whether a
+  call is within it, aarch64's `calls_within()`, by which an
+  assignment whose place holds a call's result does not take the
+  consumer's register for its value. A step and a compound assignment
+  through a pointer are not yet. `sizeof` is a constant the parser
+  makes: its operand is typed and dropped, with the uses of names of
+  internal linkage it made.
 
 ### 4.3 Constants
 
@@ -1013,6 +1025,8 @@ each became.
 | `integer()` of a pointer | the parser's `view_of()` and `sign_of()`: `i64`, unsigned |
 | `address_value()` of a name, `address_of()` | the row of `address_of_t< W >` over each target's `address_of()` of its where's address |
 | `frame_address()` | aarch64's, with an `if` on the 12 bits of its `add` |
+| `pointed()` of a dereference's operand | each target's `address()` of the where `indirect_t`: the pointer's value, the base |
+| `calls_within()` | aarch64's summary of that name, each node's of its parts, an erased one's through its handle |
 | `is_null_pointer_constant()` | the parser's, over `constant_of()` |
 | `common_pointer()`, `require_object_pointee()`, `sizeof_()` | the parser's |
 | `extended()` in `table_jump()` | x86-64's `table_jump()` reads `valid_of()` of the controlling expression at its promoted type's sign, or a subtraction's unsigned write |
@@ -1118,12 +1132,12 @@ rows invented for the purpose.
   function declared through a typedef name; an enum's fixed underlying
   type, as in rcc, and its attributes; a pointer to an enum within its
   own list, which rcc takes.
-- The rest of the pointers: the dereference, pointer arithmetic and
-  the subscript; a pointer of static storage, the address of an object
-  of static storage and of a function; an operator on a pointer
-  constant; a pointer arm of a `?:`, and `++`, `--` and the compound
-  assignments of a pointer; `void *`, qualified pointers and pointers
-  to the other types.
+- The rest of the pointers: pointer arithmetic and the subscript; a
+  step and a compound assignment through a pointer; a pointer of
+  static storage, the address of an object of static storage and of a
+  function; an operator on a pointer constant; a pointer arm of a
+  `?:`, and `++`, `--` and the compound assignments of a pointer;
+  `void *`, qualified pointers and pointers to the other types.
 - `({ })`. It waits until the concepts around it are clear.
 - Two targets that want shapes of one subtree that do not nest. The
   address family is where to look.

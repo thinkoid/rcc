@@ -194,6 +194,16 @@ call(parser_t &p, const token_t &op, const operand_t &e)
     return { result, make_call(name, view_of(result), first, std::move(args)) };
 }
 
+// A step or a compound assignment of a place through a pointer, at its
+// operator op, is not yet: the rows of either are written for a slot and
+// a global alone (docs/typed-tree.md 4.2).
+void
+refuse_indirect(const token_t &op, const operand_t &place)
+{
+    if (place.indirect)
+        not_yet(op, quoted(op.text) + " of a place through a pointer");
+}
+
 // ++E --E E++ E--, 6.5.4.1, 6.5.3.5, rcc's prefix_step() and
 // postfix_step(): the operand a modifiable lvalue, p1 of each, rcc's
 // require_steppable(), said at the operator, op; the result of the
@@ -234,6 +244,7 @@ postfix_expression(parser_t &p)
             const step_op_t s = op.kind == tok_t::inc ? step_op_t::post_inc :
                                                         step_op_t::post_dec;
             advance(p);
+            refuse_indirect(op, e);
             e = stepped(op, s, std::move(e));
             break;
         }
@@ -361,7 +372,10 @@ prefix_step(parser_t &p)
     const step_op_t s =
         op.kind == tok_t::inc ? step_op_t::pre_inc : step_op_t::pre_dec;
 
-    return stepped(op, s, unary_expression(p));
+    operand_t arg = unary_expression(p);
+    refuse_indirect(op, arg);
+
+    return stepped(op, s, std::move(arg));
 }
 
 // +e, 6.5.4.3p2, rcc's unary_plus(): the operand's value in its promoted
@@ -462,6 +476,29 @@ address_of(parser_t &p)
     return { make_pointer(arg.type), make_address_of(*arg.node) };
 }
 
+// *E, 6.5.4.2, rcc's indirection(): its operand a cast expression, read
+// for its value, which is a pointer, p2, an error at the * otherwise;
+// the result the lvalue it points to, of the pointee type, p4, the place
+// make_indirection() makes at the pointee's view and sign, which over
+// an address is the place again, so *&x is x.  A function designator,
+// whose value is its function's address, is not yet.
+operand_t
+indirection(parser_t &p)
+{
+    const token_t &op = advance(p);
+    const operand_t arg = cast_expression(p);
+    expr_t pointer = rvalue(op, arg);
+    if (!is< pointer_t >(arg.type))
+        fail(op, "indirection requires a pointer operand");
+
+    const type_t &t = pointee_of(arg.type);
+
+    return { .type = t,
+             .node =
+                 make_indirection(std::move(pointer), view_of(t), sign_of(t)),
+             .indirect = true };
+}
+
 // The size of the type t, 6.5.4.4p2, rcc's sizeof_(): a constant of
 // type unsigned long, size_t on LP64, p5, which no overflow marks.  void
 // and a function have none, p1, an error at the sizeof, op, and an enum
@@ -508,9 +545,9 @@ sizeof_expression(parser_t &p)
 }
 
 // The unary operators, 6.5.4, of which rcc-v2 takes the prefix steps,
-// 6.5.4.1, &, 6.5.4.2, + - ~ !, 6.5.4.3, on a cast expression, and
-// sizeof, 6.5.4.4; GNU C's __extension__ before a cast expression, and
-// its address of a label, &&next, which rcc refuses in these words.
+// 6.5.4.1, & and *, 6.5.4.2, + - ~ !, 6.5.4.3, on a cast expression,
+// and sizeof, 6.5.4.4; GNU C's __extension__ before a cast expression,
+// and its address of a label, &&next, which rcc refuses in these words.
 operand_t
 unary_expression(parser_t &p)
 {
@@ -524,8 +561,8 @@ unary_expression(parser_t &p)
     case tok_t::inc:
     case tok_t::dec: return prefix_step(p);
     case tok_t::amp: return address_of(p);
+    case tok_t::star: return indirection(p);
     case tok_t::kw_sizeof: return sizeof_expression(p);
-    case tok_t::star:
     case tok_t::kw_alignof: not_yet(op, quoted(op.text) + " operator");
     case tok_t::kw_extension:
         not_yet(op, quoted(op.text) + " in an expression");
@@ -1160,6 +1197,9 @@ assignment_expression(parser_t &p)
     operand_t rhs = assignment_expression(p);
     if (compound && (points(lhs) || points(rhs)))
         not_yet(op, quoted(op.text) + " with a pointer operand");
+
+    if (compound)
+        refuse_indirect(op, lhs);
 
     if (compound)
         return compound_assignment(op, *compound, std::move(lhs),

@@ -42,6 +42,10 @@ std::optional< long long > constant_of(const expr_t &e);
 bool is_place(const expr_t &e);
 expr_t make_address_of(expr_t place);
 
+// *E of a pointer's value, 6.5.4.2p4: the place it points to, of the
+// pointee's view and of a type of the sign.
+expr_t make_indirection(expr_t pointer, view_t view, sign_t sign);
+
 // Whether an expression is a place an assignment stores into, which
 // make_assign() takes, 6.5.17.1p2.
 bool is_assignable(const expr_t &e);

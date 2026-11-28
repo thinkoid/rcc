@@ -199,6 +199,10 @@ address_t address(state_t &, slot_t where);
 // it.
 address_t address(state_t &, const global_t &where);
 
+// The address of the object through a pointer, rcc's pointed(): the
+// pointer's value, the base of the access, [x0], a held value.
+address_t address(state_t &, const indirect_t &where);
+
 // The address of where formed with the registers in reserved left for
 // last, rcc's address_avoiding(): a GOT's load takes its register
 // outside them where it can.
@@ -268,6 +272,14 @@ value_t
 value(state_t &s, const address_of_t< W > &a, unsigned = 0)
 {
     return address_of(s, address(s, a.where));
+}
+
+// &*E is E's value, 6.5.4.2p3, rcc's address_value() of a dereference,
+// handed the consumer's register.
+inline value_t
+value(state_t &s, const address_of_t< indirect_t > &a, unsigned wanted = 0)
+{
+    return value(s, a.where.pointer, wanted);
 }
 
 // - or ~ of the held value v at the view, into the register the
@@ -648,13 +660,172 @@ value(state_t &s, const call_t< V > &c, unsigned = 0)
     return hold(s, x0);
 }
 
+// Whether a call is within a node, whose result the convention puts in
+// x0 (chapter 8), rcc's calls_within(), a summary of aarch64, each
+// node's of its parts, which an erased one hands up through its handle
+// (principle 3): a call's true, a leaf's false, a where's its
+// pointer's.
+template< constant C >
+constexpr bool
+calls_within(const state_t &, const C &)
+{
+    return false;
+}
+
+constexpr bool
+calls_within(const state_t &, slot_t)
+{
+    return false;
+}
+
+inline bool
+calls_within(const state_t &, const global_t &)
+{
+    return false;
+}
+
+inline bool
+calls_within(const state_t &s, const indirect_t &w)
+{
+    return calls_within(s, w.pointer);
+}
+
+template< typename W, view_t V, sign_t S >
+bool
+calls_within(const state_t &s, const place_t< W, V, S > &p)
+{
+    return calls_within(s, p.where);
+}
+
+template< typename W, view_t V, sign_t S >
+bool
+calls_within(const state_t &s, const load_t< W, V, S > &l)
+{
+    return calls_within(s, l.where);
+}
+
+template< typename W >
+bool
+calls_within(const state_t &s, const address_of_t< W > &a)
+{
+    return calls_within(s, a.where);
+}
+
+template< unary_op_t op, view_t V, typename A >
+bool
+calls_within(const state_t &s, const unary_t< op, V, A > &u)
+{
+    return calls_within(s, u.arg);
+}
+
+template< binary_op_t op, view_t V, typename L, typename R >
+bool
+calls_within(const state_t &s, const binary_t< op, V, L, R > &b)
+{
+    return calls_within(s, b.lhs) || calls_within(s, b.rhs);
+}
+
+template< family_t F >
+bool
+calls_within(const state_t &s, const top_t< F > &t)
+{
+    return calls_within(s, t.node);
+}
+
+template< view_t V, view_t F, typename A >
+bool
+calls_within(const state_t &s, const sext_t< V, F, A > &e)
+{
+    return calls_within(s, e.arg);
+}
+
+template< view_t V, view_t F, typename A >
+bool
+calls_within(const state_t &s, const zext_t< V, F, A > &e)
+{
+    return calls_within(s, e.arg);
+}
+
+template< view_t V, typename A >
+bool
+calls_within(const state_t &s, const trunc_t< V, A > &t)
+{
+    return calls_within(s, t.arg);
+}
+
+template< typename W, view_t V >
+bool
+calls_within(const state_t &s, const assign_t< W, V > &a)
+{
+    return calls_within(s, a.where) || calls_within(s, a.value);
+}
+
+template< view_t V >
+constexpr bool
+calls_within(const state_t &, const call_t< V > &)
+{
+    return true;
+}
+
+constexpr bool
+calls_within(const state_t &, const call_void_t &)
+{
+    return true;
+}
+
+template< binary_op_t op, typename W, view_t V, view_t O, typename R >
+bool
+calls_within(const state_t &s, const compound_t< op, W, V, O, R > &c)
+{
+    return calls_within(s, c.where) || calls_within(s, c.value);
+}
+
+template< step_op_t op, typename W, view_t V, sign_t S >
+bool
+calls_within(const state_t &s, const step_t< op, W, V, S > &t)
+{
+    return calls_within(s, t.where);
+}
+
+template< view_t V, bool jumps >
+bool
+calls_within(const state_t &s, const conditional_t< V, jumps > &c)
+{
+    return calls_within(s, c.cond) || calls_within(s, c.yes) ||
+           calls_within(s, c.no);
+}
+
+inline bool
+calls_within(const state_t &s, const conditional_void_t &c)
+{
+    return calls_within(s, c.cond) || calls_within(s, c.yes) ||
+           calls_within(s, c.no);
+}
+
+// A conditional under a widening calls what the conditional calls: an
+// arm's widening calls nothing of its own.
+template< view_t F, bool jumps >
+bool
+calls_within(const state_t &s, const widened_arms_t< F, jumps > &w)
+{
+    return calls_within(s, w.conditional);
+}
+
+template< typename R >
+bool
+calls_within(const state_t &s, const comma_t< R > &c)
+{
+    return calls_within(s, c.lhs) || calls_within(s, c.rhs);
+}
+
 // Whether a node's rows are certain to write the register a consumer
 // names, rcc's takes_name(), a summary of aarch64 that its ?: asks of
 // both arms before it hands them the name: every row of the tree does,
 // but a ?:'s, which hands its own arms the name only where they take it,
-// an address, whose row takes a register of its own, and the nodes that
-// are their operands' value, a conversion, a comma and an assignment,
-// whose operand's answer is theirs.
+// an address, whose row takes a register of its own, the nodes that are
+// their operands' value, a conversion and a comma, whose operand's
+// answer is theirs, and an assignment, whose place holding a call's
+// result holds x0 at the store.
 namespace primary {
 
 template< typename T >
@@ -723,7 +894,7 @@ template< typename W, view_t V >
 bool
 takes_name(const state_t &s, const assign_t< W, V > &a)
 {
-    return takes_name(s, a.value);
+    return !calls_within(s, a.where) && takes_name(s, a.value);
 }
 
 template< view_t V, bool jumps >

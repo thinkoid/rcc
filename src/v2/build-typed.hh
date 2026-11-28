@@ -56,13 +56,41 @@ make_assign(const place_t< W, V, S > &place, const expr_t &value)
 }
 
 // &'s builder exists for a place whose address the rows write as a
-// value, a local's, and so defines what is a place (principle 8): the
-// address of its where, 6.5.4.2p3.  A global's place has none yet.
+// value, a local's and one through a pointer, and so defines what is a
+// place (principle 8): the address of its where, 6.5.4.2p3, so &*p is
+// a node of its own, whose rows write the pointer's value, as rcc's
+// address_value() does.  A global's place has none yet.
 template< view_t V, sign_t S >
 expr_t
 make_address_of(const place_t< slot_t, V, S > &place)
 {
     return expr_t(address_of_t< slot_t > { place.where });
+}
+
+template< view_t V, sign_t S >
+expr_t
+make_address_of(const place_t< indirect_t, V, S > &place)
+{
+    return expr_t(address_of_t< indirect_t > { place.where });
+}
+
+// *E of a pointer of any class, 6.5.4.2p4: the place through it, of the
+// pointee's view V and of a type of its sign S, which the parser reads
+// off the pointer's C type.
+template< view_t V, sign_t S >
+expr_t
+make_indirection(const expr_t &pointer)
+{
+    return expr_t(place_t< indirect_t, V, S > { { pointer } });
+}
+
+// * over an address is the place again, 6.5.4.2p3: *&x is the place of
+// x, as rcc's folded() reads it, and *&*p the place through p.
+template< view_t V, sign_t S, typename W >
+expr_t
+make_indirection(const address_of_t< W > &address)
+{
+    return expr_t(place_t< W, V, S > { address.where });
 }
 
 // A compound assignment's builder exists for a place alone, as an

@@ -100,11 +100,19 @@ struct global_t
     std::string name;
 };
 
+// The where of the object a pointer's value designates, 6.5.4.2p4, 4.2:
+// the pointer, erased, since its address is the pointer's value, and no
+// row of a place reads the pointer's type.
+struct indirect_t
+{
+    expr_t pointer;
+};
+
 // A place, 4.2: the where W of an object of view V and of a type of the
-// sign S, a local's slot in the function's frame or a global, its
-// object's sign kept since rcc reads a narrow object by an extending
-// load of its own sign whatever consumes it.  A parameter is a local, of
-// its type's view and sign.
+// sign S, a local's slot in the function's frame, a global, or the
+// object through a pointer, its object's sign kept since rcc reads a
+// narrow object by an extending load of its own sign whatever consumes
+// it.  A parameter is a local, of its type's view and sign.
 template< typename W, view_t V, sign_t S >
 struct place_t
 {

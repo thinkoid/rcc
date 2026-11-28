@@ -38,13 +38,16 @@ namespace rcc {
 // for the function a call names; and whether it is a constant reached
 // through a signed overflow, 6.6p4, the mark every operator's
 // production sets, overflowed(), and a constant expression reads,
-// warn_overflowed().
+// warn_overflowed(); and whether it is the result of *, through
+// parentheses, a place through a pointer, whose step and compound
+// assignment are not yet.
 struct operand_t
 {
     type_t type;
     std::optional< expr_t > node;
     const token_t *name = nullptr;
     bool overflowed = false;
+    bool indirect = false;
 };
 
 // What a scope holds of a name it declares, 6.2.1p4: the operand a use

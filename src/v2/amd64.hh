@@ -154,6 +154,10 @@ address_t address(state_t &, slot_t where);
 // is asked here, and no row asks it.
 address_t address(state_t &, const global_t &where);
 
+// The address of the object through a pointer, rcc's pointed(): the
+// pointer's value, the base of the access, (%rax), a held value.
+address_t address(state_t &, const indirect_t &where);
+
 // The address of where formed with the registers in reserved left for
 // last, rcc's address_avoiding(): a GOT's load takes its register
 // outside them, so that it does not land where an instruction
@@ -232,13 +236,14 @@ value(state_t &s, const load_t< W, V, S > &l, unsigned = 0)
     return load(s, address(s, l.where), V, S);
 }
 
-// The address as a value, valid to 64, rcc's address_of(): the leaq of
-// its operand into a register taken once the address is consumed,
-// leaq -4(%rbp), %rax.
+// The address as a value, valid to 64, rcc's address_of(): a base alone
+// is its own value, so &*p is p's and no instruction, 6.5.4.2p3;
+// anything else the leaq of its operand into a register taken once the
+// address is consumed, leaq -4(%rbp), %rax.
 value_t address_of(state_t &, const address_t &);
 
-// &x, 6.5.4.2p3, rcc's address_value() of a name: the leaq of its
-// where's address.
+// &x and &*E, 6.5.4.2p3, rcc's address_value(): the address of its
+// where as a value.
 template< typename W >
 value_t
 value(state_t &s, const address_of_t< W > &a, unsigned = 0)
@@ -444,25 +449,43 @@ pinned_within(const state_t &, const C &)
     return 0;
 }
 
-template< typename W, view_t V, sign_t S >
+// A where pins what its address's instructions pin: a slot and a label
+// nothing, a GOT's load nothing, and the object through a pointer what
+// the pointer pins, as rcc's walk goes into a dereference's operand; so
+// does a node of a place, its load, its address and an assignment to it.
 constexpr unsigned
-pinned_within(const state_t &, const load_t< W, V, S > &)
+pinned_within(const state_t &, slot_t)
 {
     return 0;
 }
 
-template< typename W, view_t V, sign_t S >
-constexpr unsigned
-pinned_within(const state_t &, const place_t< W, V, S > &)
+inline unsigned
+pinned_within(const state_t &, const global_t &)
 {
     return 0;
+}
+
+unsigned pinned_within(const state_t &, const indirect_t &);
+
+template< typename W, view_t V, sign_t S >
+unsigned
+pinned_within(const state_t &s, const load_t< W, V, S > &l)
+{
+    return pinned_within(s, l.where);
+}
+
+template< typename W, view_t V, sign_t S >
+unsigned
+pinned_within(const state_t &s, const place_t< W, V, S > &p)
+{
+    return pinned_within(s, p.where);
 }
 
 template< typename W >
-constexpr unsigned
-pinned_within(const state_t &, const address_of_t< W > &)
+unsigned
+pinned_within(const state_t &s, const address_of_t< W > &a)
 {
-    return 0;
+    return pinned_within(s, a.where);
 }
 
 template< unary_op_t op, view_t V, typename A >
@@ -512,7 +535,7 @@ template< typename W, view_t V >
 unsigned
 pinned_within(const state_t &s, const assign_t< W, V > &a)
 {
-    return pinned_within(s, a.value);
+    return pinned_within(s, a.where) | pinned_within(s, a.value);
 }
 
 // A call pins rax, where the convention puts its result (chapter 8),
@@ -599,25 +622,40 @@ moved_within(const state_t &, const C &)
     return 0;
 }
 
-template< typename W, view_t V, sign_t S >
+// A where moves what its pointer moves, as pinned_within()'s.
 constexpr unsigned
-moved_within(const state_t &, const load_t< W, V, S > &)
+moved_within(const state_t &, slot_t)
 {
     return 0;
 }
 
-template< typename W, view_t V, sign_t S >
-constexpr unsigned
-moved_within(const state_t &, const place_t< W, V, S > &)
+inline unsigned
+moved_within(const state_t &, const global_t &)
 {
     return 0;
+}
+
+unsigned moved_within(const state_t &, const indirect_t &);
+
+template< typename W, view_t V, sign_t S >
+unsigned
+moved_within(const state_t &s, const load_t< W, V, S > &l)
+{
+    return moved_within(s, l.where);
+}
+
+template< typename W, view_t V, sign_t S >
+unsigned
+moved_within(const state_t &s, const place_t< W, V, S > &p)
+{
+    return moved_within(s, p.where);
 }
 
 template< typename W >
-constexpr unsigned
-moved_within(const state_t &, const address_of_t< W > &)
+unsigned
+moved_within(const state_t &s, const address_of_t< W > &a)
 {
-    return 0;
+    return moved_within(s, a.where);
 }
 
 template< unary_op_t op, view_t V, typename A >
@@ -675,7 +713,7 @@ template< typename W, view_t V >
 unsigned
 moved_within(const state_t &s, const assign_t< W, V > &a)
 {
-    return moved_within(s, a.value);
+    return moved_within(s, a.where) | moved_within(s, a.value);
 }
 
 template< view_t V >

@@ -118,6 +118,12 @@ takes_name(const arm64::state_t &s, const expr_t &e)
 }
 
 bool
+calls_within(const arm64::state_t &s, const expr_t &e)
+{
+    return e.self->calls_within(s);
+}
+
+bool
 truth_value(const expr_t &e)
 {
     return e.self->truth_value();
@@ -221,6 +227,14 @@ expr_t
 make_address_of(expr_t place)
 {
     return place.self->address_of();
+}
+
+// One hop through the pointer's model, which knows whether the pointer
+// is an address (3.3).
+expr_t
+make_indirection(expr_t pointer, view_t view, sign_t sign)
+{
+    return pointer.self->indirection(view, sign, pointer);
 }
 
 bool
