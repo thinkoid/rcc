@@ -25,6 +25,7 @@
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
+#include <variant>
 
 namespace rcc {
 
@@ -50,6 +51,24 @@ struct load_class_t
     W where;
     sign_t sign;
 };
+
+// The right operand's class as it crosses the interface to the left
+// operand's model, one alternative for each class: a constant, a load
+// of each where, a top_t of each family, the operand erased, and a
+// comma of each of those its right operand crosses as.  The left
+// operand's model takes every class by one operation, binary(), so a
+// model has one line of the binary operators and not one for each
+// class of the right operand.
+using right_class_t = std::variant< constant_class_t,
+                                    load_class_t< slot_t >,
+                                    load_class_t< global_t >,
+                                    top_t< family_t::division >,
+                                    top_t< family_t::shift >,
+                                    expr_t,
+                                    comma_t< constant_class_t >,
+                                    comma_t< load_class_t< slot_t > >,
+                                    comma_t< load_class_t< global_t > >,
+                                    comma_t<> >;
 
 struct expr_t::interface_t
 {
@@ -129,55 +148,18 @@ struct expr_t::interface_t
 
     // a binary operator, by the same two hops: the right operand's
     // model, which knows the right operand's class, calls the left's
-    // operation for that class, which knows the left's class and makes
+    // operation with that class, which knows the left's class and makes
     // the node; the view is the operation's, at which the left's model
-    // makes the class a type again
+    // makes the class a type again; a comma on the right crosses as a
+    // class of its own, its left operand erased and its right one's
+    // class as a right operand of its own crosses
     virtual expr_t right_of(binary_op_t op,
                             view_t,
                             const expr_t &lhs,
                             const expr_t &self) const = 0;
     virtual expr_t binary(binary_op_t op,
                           view_t,
-                          const constant_class_t &rhs,
-                          const expr_t &self) const = 0;
-    virtual expr_t binary(binary_op_t op,
-                          view_t,
-                          const load_class_t< slot_t > &rhs,
-                          const expr_t &self) const = 0;
-    virtual expr_t binary(binary_op_t op,
-                          view_t,
-                          const load_class_t< global_t > &rhs,
-                          const expr_t &self) const = 0;
-    virtual expr_t binary(binary_op_t op,
-                          view_t,
-                          const top_t< family_t::division > &rhs,
-                          const expr_t &self) const = 0;
-    virtual expr_t binary(binary_op_t op,
-                          view_t,
-                          const top_t< family_t::shift > &rhs,
-                          const expr_t &self) const = 0;
-    virtual expr_t binary(binary_op_t op,
-                          view_t,
-                          const expr_t &rhs,
-                          const expr_t &self) const = 0;
-
-    // a comma on the right, its class as data: its left operand erased
-    // and its right one's class, as a right operand of its own crosses
-    virtual expr_t binary(binary_op_t op,
-                          view_t,
-                          const comma_t< constant_class_t > &rhs,
-                          const expr_t &self) const = 0;
-    virtual expr_t binary(binary_op_t op,
-                          view_t,
-                          const comma_t< load_class_t< slot_t > > &rhs,
-                          const expr_t &self) const = 0;
-    virtual expr_t binary(binary_op_t op,
-                          view_t,
-                          const comma_t< load_class_t< global_t > > &rhs,
-                          const expr_t &self) const = 0;
-    virtual expr_t binary(binary_op_t op,
-                          view_t,
-                          const comma_t<> &rhs,
+                          const right_class_t &rhs,
                           const expr_t &self) const = 0;
 
     // a comma: the right operand's model, which knows the right
@@ -737,21 +719,28 @@ logical_operand(const trunc_t< V, load_t< W, V, S > > &, const expr_t &self)
     return self;
 }
 
-// A binary operator on the held left operand and the right operand's
-// class: the left operand in its class, the question of the operator,
-// data here, asked once, as right_of() asks it.
-template< typename T, typename R >
+// A binary operator on the left operand in its two classes, as an
+// operand of && or || and of any other operator, and the right
+// operand's class, the alternative right_class_t holds: the question of
+// the operator, data here, asked once, as right_of() asks it.  It takes
+// the classes and not the node, so it is instantiated once for each
+// pair of the left operand's classes, and not for each node type.
+template< typename C, typename G >
 expr_t
 binary_of(binary_op_t op,
           view_t view,
-          const T &held,
-          const expr_t &self,
-          const R &rhs)
+          const C &classed,
+          const G &logical,
+          const right_class_t &rhs)
 {
-    if (is_logical(op))
-        return fwd_binary(op, view, logical_operand(held, self), rhs);
+    return std::visit(
+        [&](const auto &r) {
+            if (is_logical(op))
+                return fwd_binary(op, view, logical, r);
 
-    return fwd_binary(op, view, classed_operand(held, self), rhs);
+            return fwd_binary(op, view, classed, r);
+        },
+        rhs);
 }
 
 // The right operand of a comma in the class its builder keeps it in,
@@ -1084,82 +1073,11 @@ struct expr_t::model_t final: interface_t
 
     expr_t binary(binary_op_t op,
                   view_t view,
-                  const constant_class_t &rhs,
+                  const right_class_t &rhs,
                   const expr_t &self) const override
     {
-        return binary_of(op, view, held, self, rhs);
-    }
-
-    expr_t binary(binary_op_t op,
-                  view_t view,
-                  const load_class_t< slot_t > &rhs,
-                  const expr_t &self) const override
-    {
-        return binary_of(op, view, held, self, rhs);
-    }
-
-    expr_t binary(binary_op_t op,
-                  view_t view,
-                  const load_class_t< global_t > &rhs,
-                  const expr_t &self) const override
-    {
-        return binary_of(op, view, held, self, rhs);
-    }
-
-    expr_t binary(binary_op_t op,
-                  view_t view,
-                  const top_t< family_t::division > &rhs,
-                  const expr_t &self) const override
-    {
-        return binary_of(op, view, held, self, rhs);
-    }
-
-    expr_t binary(binary_op_t op,
-                  view_t view,
-                  const top_t< family_t::shift > &rhs,
-                  const expr_t &self) const override
-    {
-        return binary_of(op, view, held, self, rhs);
-    }
-
-    expr_t binary(binary_op_t op,
-                  view_t view,
-                  const expr_t &rhs,
-                  const expr_t &self) const override
-    {
-        return binary_of(op, view, held, self, rhs);
-    }
-
-    expr_t binary(binary_op_t op,
-                  view_t view,
-                  const comma_t< constant_class_t > &rhs,
-                  const expr_t &self) const override
-    {
-        return binary_of(op, view, held, self, rhs);
-    }
-
-    expr_t binary(binary_op_t op,
-                  view_t view,
-                  const comma_t< load_class_t< slot_t > > &rhs,
-                  const expr_t &self) const override
-    {
-        return binary_of(op, view, held, self, rhs);
-    }
-
-    expr_t binary(binary_op_t op,
-                  view_t view,
-                  const comma_t< load_class_t< global_t > > &rhs,
-                  const expr_t &self) const override
-    {
-        return binary_of(op, view, held, self, rhs);
-    }
-
-    expr_t binary(binary_op_t op,
-                  view_t view,
-                  const comma_t<> &rhs,
-                  const expr_t &self) const override
-    {
-        return binary_of(op, view, held, self, rhs);
+        return binary_of(op, view, classed_operand(held, self),
+                         logical_operand(held, self), rhs);
     }
 
     expr_t comma(const expr_t &lhs, const expr_t &self) const override

@@ -245,8 +245,11 @@ call_t &, long)` and comes back as a member of a call.
   This rule is what makes the zoo finite.
 - One operand's type comes for nothing. The second is had by a second
   hop: the builder holds the right operand's type from its model and
-  calls through the left's, one operation of the interface for each
-  class of the operand already known.
+  calls through the left's by one operation of the interface,
+  `binary()`, which takes the class of the operand already known as
+  an alternative of a variant, `right_class_t`. The left's model
+  visits it, with its own operand in its class, so the crossing is
+  instantiated once for each pair of classes.
 - A builder returns the best node, of any family. `x + 0` is the
   value of `x`; `*&x` is the place of `x`; a sum of two literals is a
   literal.
@@ -1028,8 +1031,8 @@ rows invented for the purpose.
   bits, a load of each sign, anything else) and one more on the
   right (an operand whose top operator pins), with one crossing each
   from the operator's and the view's value to the node's parameters.
-  Each class kept on the right is one more operation of the
-  interface.
+  Each class kept on the right is one more alternative of
+  `right_class_t`.
 - What the zoo costs the compiler. Principle 5 counts code, and a
   primary costs none; but every node type a builder can make is
   instantiated in `build.cc` with its rows of both targets, about
