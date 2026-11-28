@@ -64,6 +64,10 @@ public:
     friend unsigned moved_within(const amd64::state_t &, const expr_t &);
     friend int valid_of(const expr_t &, sign_t sign);
     friend view_t view_of(const expr_t &);
+    friend bool truth_value(const expr_t &);
+    friend expr_t under_widening(const expr_t &);
+    friend value_t value_in(arm64::state_t &, const expr_t &, unsigned wanted);
+    friend bool takes_name(const arm64::state_t &, const expr_t &);
 
     friend expr_t rvalue(expr_t);
     friend std::optional< long long > constant_of(const expr_t &);
@@ -117,5 +121,18 @@ unsigned moved_within(const amd64::state_t &, const expr_t &);
 // (zoo.hh), forwarded to the node it holds.
 int valid_of(const expr_t &, sign_t sign);
 view_t view_of(const expr_t &);
+
+// Whether an erased value is a truth value, a summary the builder of ?:
+// asks of its arms (zoo.hh), and the node under the conversions that
+// keep whether a value is 0, which a conditional's jump tests
+// (build-typed.hh).
+bool truth_value(const expr_t &);
+expr_t under_widening(const expr_t &);
+
+// aarch64's value for a consumer at a return's top, rcc's rvalue_in(),
+// and the summary its ?: asks of an arm before it hands an arm the
+// consumer's register, rcc's takes_name() (arm64.hh).
+value_t value_in(arm64::state_t &, const expr_t &, unsigned wanted);
+bool takes_name(const arm64::state_t &, const expr_t &);
 
 } // namespace rcc

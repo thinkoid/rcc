@@ -1334,6 +1334,71 @@ return_stmt(state_t &s, const expr_t &e, view_t view)
 
 namespace {
 
+// An arm of ?: generated for the join register j, rcc's arm(): handed j
+// as the register its consumer names, so that its last instruction
+// writes j where it can, and, where no instruction within it pins a
+// register, with the registers below j left for last, so that j is its
+// lowest free register and a row that writes a fresh one writes j,
+// movl -12(%rbp), %edx beside a first arm's remainder.  A pin within
+// the arm decides its registers, as in any operand (6.5).
+value_t
+arm(state_t &s, const expr_t &e, reg_t j)
+{
+    unsigned below = 0;
+    for (const reg_t r : expression_registers) {
+        if (r == j)
+            break;
+        below |= bit(r);
+    }
+
+    const unsigned avoid = pinned_within(s, e) ? 0 : below;
+
+    return rvalue_avoiding(s, e, avoid, bit(j));
+}
+
+} // namespace
+
+// The join's mov at the conditional's width, max(32, width), rcc's.
+value_t
+conditional(state_t &s,
+            const expr_t &cond,
+            const expr_t &yes,
+            const expr_t &no,
+            view_t view,
+            unsigned wanted)
+{
+    const auto incoming = before_paths(s);
+
+    const int other = new_label(s);
+    const int end = new_label(s);
+
+    branch(s, cond, other, false);
+
+    const int bits = promoted_width(view);
+    const auto named = wanted_register(s, wanted);
+    const value_t first = named ? arm(s, yes, *named) : value(s, yes);
+    reg_t join = reg_of(s, first);
+    if (named && join != *named) {
+        mov(s, join, *named, bits);
+        join = *named;
+    }
+    release(s, first);
+    jump(s, end);
+
+    place_label(s, other);
+    const value_t second = arm(s, no, join);
+    const reg_t from = reg_of(s, second);
+    if (from != join)
+        mov(s, from, join, bits);
+    release(s, second);
+
+    place_label(s, end);
+
+    return hold(s, join);
+}
+
+namespace {
+
 // An argument past the sixth pushed from its slot, chapter 8: a 64-bit
 // slot as it is, pushq -40(%rbp); a narrower one is not pushed directly,
 // which would read the bytes above it, but extended to 32 bits by its

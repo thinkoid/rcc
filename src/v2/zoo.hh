@@ -18,6 +18,7 @@
 #include "expr.hh"
 #include "stmt.hh"
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <stdexcept>
@@ -247,6 +248,30 @@ struct comma_t
     expr_t lhs;
     R rhs;
 };
+// c ? y : n, 6.5.16: the first operand compared with 0, and the second
+// or the third evaluated, never both, p5; the value the evaluated one's,
+// of the arms' common type, p6, whose view is V, and no lvalue, its
+// footnote.  jumps says whether an arm is a truth value, truth_value()'s,
+// which makes the jump on the whole rcc's jump code on the arms,
+// conditional_branch(); the builder asks it of the arms.  The parts are
+// erased: each is reached through its own entry points.
+template< view_t V, bool jumps >
+struct conditional_t
+{
+    expr_t cond;
+    expr_t yes;
+    expr_t no;
+};
+
+// c ? v() : w(), two void arms, 6.5.16p3, p6: an effect, and no value,
+// which the parser asks of no void expression, require_value().
+struct conditional_void_t
+{
+    expr_t cond;
+    expr_t yes;
+    expr_t no;
+};
+
 
 // E1 op= E2, 6.5.17.3: E1 evaluated once, and the operation one
 // evaluation, p4, after E2's, so the object is read after the right
@@ -628,6 +653,19 @@ view_of(const step_t< op, W, V, S > &)
     return V;
 }
 
+template< view_t V, bool jumps >
+constexpr view_t
+view_of(const conditional_t< V, jumps > &)
+{
+    return V;
+}
+
+inline view_t
+view_of(const conditional_void_t &)
+{
+    throw std::logic_error("v2: the view of a void conditional");
+}
+
 // A comma's value is its right operand's, and so is its view.
 template< typename R >
 view_t
@@ -819,6 +857,78 @@ valid_of(const comma_t< R > &c, sign_t sign)
 {
     return valid_of(c.rhs, sign);
 }
+// A conditional's value is held where the join holds it, valid to the
+// least of what its arms leave, as rcc's join holds it, an arm of int
+// moved there being valid to 32 bits, no less than any arm of int.
+template< view_t V, bool jumps >
+int
+valid_of(const conditional_t< V, jumps > &c, sign_t sign)
+{
+    return std::min(valid_of(c.yes, sign), valid_of(c.no, sign));
+}
+
+inline int
+valid_of(const conditional_void_t &, sign_t)
+{
+    throw std::logic_error("v2: the value of a void conditional");
+}
+
+// Whether a node is a truth value, rcc's truth_value(): its value 0 or 1
+// set from a compare or a jump, a comparison, !, && or ||, seen through
+// the conversions that keep whether a value is 0, rcc's
+// under_widening(), an integer converted to one as wide or wider.  A
+// summary the builder of ?: asks of each arm through its handle
+// (principle 3), and no category, since the conversion erases its
+// operand.
+template< typename T >
+bool
+truth_value(const T &)
+{
+    return false;
+}
+
+template< binary_op_t op, view_t V, typename L, typename R >
+bool
+truth_value(const binary_t< op, V, L, R > &)
+{
+    return is_comparison(op) || is_logical(op);
+}
+
+template< view_t V, typename A >
+bool
+truth_value(const unary_t< unary_op_t::log_not, V, A > &)
+{
+    return true;
+}
+
+template< family_t F >
+bool
+truth_value(const top_t< F > &t)
+{
+    return truth_value(t.node);
+}
+
+template< view_t V, view_t F, typename A >
+bool
+truth_value(const sext_t< V, F, A > &e)
+{
+    return truth_value(e.arg);
+}
+
+template< view_t V, view_t F, typename A >
+bool
+truth_value(const zext_t< V, F, A > &e)
+{
+    return truth_value(e.arg);
+}
+
+template< view_t V, typename A >
+bool
+truth_value(const trunc_t< V, A > &t)
+{
+    return width(V) >= width(view_of(t.arg)) && truth_value(t.arg);
+}
+
 
 // A place is read only through its load, and a void call has no value:
 // either asked for its width is a tree the parser does not make.

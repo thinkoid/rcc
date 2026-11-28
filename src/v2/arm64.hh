@@ -625,6 +625,107 @@ value(state_t &s, const call_t< V > &c, unsigned = 0)
     return hold(s, x0);
 }
 
+// Whether a node's rows are certain to write the register a consumer
+// names, rcc's takes_name(), a summary of aarch64 that its ?: asks of
+// both arms before it hands them the name: every row of the tree does,
+// but a ?:'s, which hands its own arms the name only where they take it,
+// and the nodes that are their operands' value, a conversion, a comma
+// and an assignment, whose operand's answer is theirs.
+template< typename T >
+constexpr bool
+takes_name(const state_t &, const T &)
+{
+    return true;
+}
+
+template< view_t V, bool jumps >
+constexpr bool
+takes_name(const state_t &, const conditional_t< V, jumps > &)
+{
+    return false;
+}
+
+template< family_t F >
+bool
+takes_name(const state_t &s, const top_t< F > &t)
+{
+    return takes_name(s, t.node);
+}
+
+template< view_t V, view_t F, typename A >
+bool
+takes_name(const state_t &s, const sext_t< V, F, A > &e)
+{
+    return takes_name(s, e.arg);
+}
+
+template< view_t V, view_t F, typename A >
+bool
+takes_name(const state_t &s, const zext_t< V, F, A > &e)
+{
+    return takes_name(s, e.arg);
+}
+
+template< view_t V, typename A >
+bool
+takes_name(const state_t &s, const trunc_t< V, A > &t)
+{
+    return takes_name(s, t.arg);
+}
+
+template< typename R >
+bool
+takes_name(const state_t &s, const comma_t< R > &c)
+{
+    return takes_name(s, c.rhs);
+}
+
+template< typename W, view_t V >
+bool
+takes_name(const state_t &s, const assign_t< W, V > &a)
+{
+    return takes_name(s, a.value);
+}
+
+// The value of c ? y : n of the view, rcc's conditional(), aarch64.md
+// 6.1: as x86-64's, but that each arm is handed the register the
+// consumer names, wanted, where it is free, and never the join, so a
+// second arm that lands elsewhere moves into the join, mov w1, w0.
+value_t conditional(state_t &,
+                    const expr_t &cond,
+                    const expr_t &yes,
+                    const expr_t &no,
+                    view_t view,
+                    unsigned wanted);
+
+// A conditional's value, rcc's rvalue(): the consumer's register handed
+// on where both arms take it, takes_name(), and none otherwise.
+template< view_t V, bool jumps >
+value_t
+value(state_t &s, const conditional_t< V, jumps > &c, unsigned wanted = 0)
+{
+    const bool arms = takes_name(s, c.yes) && takes_name(s, c.no);
+
+    return conditional(s, c.cond, c.yes, c.no, V, arms ? wanted : 0);
+}
+
+// The value at a return's top, rcc's rvalue_in(): any node's value
+// handed the result register, and a conditional's joined in it whatever
+// its arms take.
+template< typename T >
+value_t
+value_in(state_t &s, const T &t, unsigned wanted)
+{
+    return value(s, t, wanted);
+}
+
+template< view_t V, bool jumps >
+value_t
+value_in(state_t &s, const conditional_t< V, jumps > &c, unsigned wanted)
+{
+    return conditional(s, c.cond, c.yes, c.no, V, wanted);
+}
+
 // The pieces of a switch's dispatch on an int, backend.md 7.3, which
 // the dispatches of rows-statements.hh are written over, as rcc's
 // direct_switch(), simple_switch() and hash_switch() are.

@@ -336,6 +336,83 @@ effect(S &s, const call_void_t &c)
     call(s, c.name, c.args);
 }
 
+// A conditional for its effect, rcc's conditional_effect(), 6.6: no value
+// held across the paths, before_paths(); the labels of the second arm
+// and of the join, taken before the condition; the condition's jump to
+// the second arm where it is 0; each arm for its effect, so that a ?
+// (b = 1) : (c = 2); stores each constant in one movl; the jump past
+// the second arm.  Two void arms are the same.
+template< typename S >
+void
+conditional_effect(S &s,
+                   const expr_t &cond,
+                   const expr_t &yes,
+                   const expr_t &no)
+{
+    const auto incoming = before_paths(s);
+
+    const int other = new_label(s);
+    const int end = new_label(s);
+
+    branch(s, cond, other, false);
+    effect(s, yes);
+    jump(s, end);
+
+    place_label(s, other);
+    effect(s, no);
+
+    place_label(s, end);
+}
+
+template< typename S, view_t V, bool jumps >
+void
+effect(S &s, const conditional_t< V, jumps > &c)
+{
+    conditional_effect(s, c.cond, c.yes, c.no);
+}
+
+template< typename S >
+void
+effect(S &s, const conditional_void_t &c)
+{
+    conditional_effect(s, c.cond, c.yes, c.no);
+}
+
+// A void conditional has no value, as a void call has none.
+template< typename S >
+value_t
+value(S &, const conditional_void_t &, unsigned = 0)
+{
+    throw std::logic_error("v2: the value of a void conditional");
+}
+
+// A conditional as a jump where an arm is a truth value, rcc's
+// conditional_branch(): jump code, as && and || are, and no join, the
+// held values spilled first, before_paths(); the condition's jump to the
+// second arm where it is 0, each arm a jump of the same label and sense,
+// the first followed by the jump past the second.  The condition and
+// the arms are tested without the conversions that keep whether they
+// are 0, under_widening()'s.  Of no truth-value arm, the primary, the
+// join's value compared with 0.
+template< typename S, view_t V >
+void
+branch(S &s, const conditional_t< V, true > &c, int label, bool sense)
+{
+    const auto incoming = before_paths(s);
+
+    const int other = new_label(s);
+    const int end = new_label(s);
+
+    branch(s, under_widening(c.cond), other, false);
+    branch(s, under_widening(c.yes), label, sense);
+    jump(s, end);
+
+    place_label(s, other);
+    branch(s, under_widening(c.no), label, sense);
+
+    place_label(s, end);
+}
+
 // A comma, rcc's binary(), cbranch() and effect() of one, 6.5.18p2: the
 // left operand for its effect, then the right operand by the entry
 // point the comma was called by, its value handed the consumer's

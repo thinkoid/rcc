@@ -34,8 +34,9 @@ every operator, as the slot's is, so the expression models went from
 2,492 to 4,604, the binary node types from 2,496 to 4,532, and the
 unit to 73 s and 7.6 GB. The comma's right operand is a class too,
 since x86-64's arithmetic, divisions and shifts read through a comma:
-6,122 binary node types, 112 s and 11.7 GB. A pointer's where is the
-third.
+6,122 binary node types, 112 s and 11.7 GB, and 131 s and 13.9 GB with
+the steps, the compound assignments and =?:= on them. A pointer's
+where is the third.
 
 Measured and not taken, each changing no node type and no listing:
 line tables alone as the unit's debugging information (5 s and 0.7

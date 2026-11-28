@@ -105,6 +105,30 @@ view_of(const expr_t &e)
     return e.self->view();
 }
 
+value_t
+value_in(arm64::state_t &s, const expr_t &e, unsigned wanted)
+{
+    return e.self->value_in(s, wanted);
+}
+
+bool
+takes_name(const arm64::state_t &s, const expr_t &e)
+{
+    return e.self->takes_name(s);
+}
+
+bool
+truth_value(const expr_t &e)
+{
+    return e.self->truth_value();
+}
+
+expr_t
+under_widening(const expr_t &e)
+{
+    return e.self->under_widening(e);
+}
+
 // A statement holds no value past its end, c1-statements.hh's check.
 void
 generate(amd64::state_t &s, const stmt_t &statement)
@@ -220,6 +244,33 @@ expr_t
 make_binary(binary_op_t op, view_t view, expr_t lhs, expr_t rhs)
 {
     return rhs.self->right_of(op, view, lhs, rhs);
+}
+
+// The fold of three constants, the arm the condition picks, as rcc
+// folds it, and otherwise the node, of the jump form the arms' summary
+// truth_value() says, asked of each through its handle once (3.3), and
+// crossed into the node's parameter with the view (principle 6).
+expr_t
+make_conditional(expr_t cond, expr_t yes, expr_t no, view_t view)
+{
+    const auto c = constant_of(cond);
+    if (c && constant_of(yes) && constant_of(no))
+        return *c != 0 ? yes : no;
+
+    const bool jumps = truth_value(yes) || truth_value(no);
+
+    return cross(view, [&]< view_t V >() {
+        if (jumps)
+            return expr_t(conditional_t< V, true > { cond, yes, no });
+
+        return expr_t(conditional_t< V, false > { cond, yes, no });
+    });
+}
+
+expr_t
+make_conditional_void(expr_t cond, expr_t yes, expr_t no)
+{
+    return expr_t(conditional_void_t { cond, yes, no });
 }
 
 // One hop through the right operand's model, which knows its class

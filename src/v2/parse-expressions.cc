@@ -1,10 +1,8 @@
 // -*- mode: c++; -*-
 
 // 6.5: the expressions, from the primary expression up to the comma,
-// one function for each level of the grammar.  A level of operators
-// rcc-v2 compiles reads them in rcc's loop; a level whose operator it
-// does not compile refuses it at its token, as not yet, after the
-// level's first operand.
+// one function for each level of the grammar, each level's operators
+// read in rcc's loop.
 
 #include "parse-common.hh"
 
@@ -22,15 +20,6 @@
 namespace rcc {
 
 namespace {
-
-// The operator of a level, refused at its token after the level's
-// first operand.
-void
-refuse_operator(const parser_t &p, std::initializer_list< tok_t > operators)
-{
-    if (next_is(p, operators))
-        not_yet(peek(p), quoted(peek(p).text) + " operator");
-}
 
 // An identifier, 6.5.2p3: a local's operand, a copy of what its
 // declaration made (docs/typed-tree.md 4.5); an object the file
@@ -369,7 +358,8 @@ prefix_step(parser_t &p)
 // type, and no node of its own; but the value is no lvalue, so an
 // operand that is a place, whose promotion made no node, stands under
 // a conversion to its own type, which writes nothing: +x is (T) x, T
-// the promoted type of x.  The operand's mark is the value's.
+// the promoted type of x.  The operand's mark and its '?' are the
+// value's.
 operand_t
 unary_plus(parser_t &p)
 {
@@ -383,7 +373,10 @@ unary_plus(parser_t &p)
                  .node = conversion(arg, t),
                  .overflowed = arg.overflowed };
 
-    return { .type = t, .node = promote(arg), .overflowed = arg.overflowed };
+    return { .type = t,
+             .node = promote(arg),
+             .overflowed = arg.overflowed,
+             .question = arg.question };
 }
 
 // !e, 6.5.4.3p5: an int, its operand's value tested as it is, at its
@@ -460,7 +453,9 @@ unary_expression(parser_t &p)
 operand_t
 cast(const token_t &open, const type_t &t, const operand_t &arg)
 {
-    const operand_t value { arg.type, rvalue(open, arg) };
+    const operand_t value { .type = arg.type,
+                            .node = rvalue(open, arg),
+                            .question = arg.question };
 
     return { .type = t,
              .node = conversion(value, t),
@@ -517,6 +512,27 @@ refuse_function_operands(binary_op_t op,
     fail(at, "operand of " + quoted(at.text) + " is a pointer");
 }
 
+// The '?' of the result of an operator on the operands lhs and rhs, l
+// and r their nodes, for conversion(): an operator with a constant
+// operand may be its identity, which leaves the other operand's node,
+// a conditional among them, so the other's '?' is the result's.  Where
+// the operator is no identity, the result is no conditional, and its
+// widening is not yet all the same, where in doubt.
+const token_t *
+question_of(const operand_t &lhs,
+            const expr_t &l,
+            const operand_t &rhs,
+            const expr_t &r)
+{
+    if (constant_of(r))
+        return lhs.question;
+
+    if (constant_of(l))
+        return rhs.question;
+
+    return nullptr;
+}
+
 // A binary operator of integers, 6.5.6, 6.5.7, 6.5.11 to 6.5.13, its
 // token at, rcc's arithmetic(): the usual arithmetic conversions, each
 // operand converted to the common type, and the result of that type,
@@ -535,11 +551,13 @@ arithmetic(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
     expr_t l = convert_to(lhs, t);
     expr_t r = convert_to(rhs, t);
     const bool marked = overflowed(op, t, lhs, l, rhs, r);
+    const token_t *question = question_of(lhs, l, rhs, r);
 
     return { .type = t,
              .node = make_binary(by_sign(op, sign_of(t)), view_of(t),
                                  std::move(l), std::move(r)),
-             .overflowed = marked };
+             .overflowed = marked,
+             .question = question };
 }
 
 // << and >>, 6.5.8, its token at, rcc's shift(): each operand promoted
@@ -557,11 +575,13 @@ shift(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
     expr_t l = promote(lhs);
     expr_t r = promote(rhs);
     const bool marked = overflowed(op, t, lhs, l, rhs, r);
+    const token_t *question = question_of(lhs, l, rhs, r);
 
     return { .type = t,
              .node = make_binary(by_sign(op, sign_of(t)), view_of(t),
                                  std::move(l), std::move(r)),
-             .overflowed = marked };
+             .overflowed = marked,
+             .question = question };
 }
 
 // The operator of a multiplicative operator's token: * / %, a division
@@ -838,16 +858,76 @@ logical_or_expression(parser_t &p)
     return e;
 }
 
+// The arms of a conditional, its '?' at, and the conditional, rcc's
+// joined_arms() and conditional(): two void arms make a void
+// conditional, 6.5.16p3, p6; one void arm and one of a value meet in
+// none of p3's pairs, an error at the '?'; any other two are read for
+// their values, each rvalue()'s at the '?', and an arm of another type
+// than int is not yet there.  A constant condition and two constant
+// arms fold to the arm the condition picks, p5, make_conditional()'s,
+// marked overflowed where the condition or that arm was so reached; a
+// conditional that does not fold keeps its '?' for conversion().
+operand_t
+joined(const token_t &at,
+       const operand_t &condition,
+       operand_t yes,
+       operand_t no)
+{
+    expr_t cond = *condition.node;
+
+    if (is< void_t >(yes.type) && is< void_t >(no.type))
+        return { yes.type,
+                 make_conditional_void(std::move(cond), discarded(yes),
+                                       discarded(no)) };
+
+    if (is< void_t >(yes.type) || is< void_t >(no.type))
+        fail(at, "void and non-void operands in conditional expression");
+
+    expr_t y = rvalue(at, yes);
+    expr_t n = rvalue(at, no);
+    if (yes.type != int_type() || no.type != int_type())
+        not_yet(at, "'?:' with an arm whose type is not 'int'");
+
+    const auto c = constant_of(cond);
+    const bool folded = c && constant_of(y) && constant_of(n);
+    const bool marked =
+        folded && (condition.overflowed || (*c != 0 ? yes : no).overflowed);
+
+    return { .type = int_type(),
+             .node = make_conditional(std::move(cond), std::move(y),
+                                      std::move(n), view_t::i32),
+             .overflowed = marked,
+             .question = folded ? nullptr : &at };
+}
+
 } // namespace
 
-// The conditional operator, 6.5.16.
+// The conditional operator, 6.5.16, right-associative, as rcc reads it:
+// the condition a logical OR expression, read for its value at the '?'
+// before the arms, so that its error comes first, its value compared
+// with 0, p2; the second operand an expression, a comma among them, and
+// the third a conditional expression.  GNU C's a ?: b is not yet, at
+// the ':'.
 operand_t
 conditional_expression(parser_t &p)
 {
     operand_t e = logical_or_expression(p);
-    refuse_operator(p, { tok_t::question });
+    if (peek(p).kind != tok_t::question)
+        return e;
 
-    return e;
+    const token_t &at = advance(p);
+    const bool marked = e.overflowed;
+    const operand_t condition { .type = e.type,
+                                .node = rvalue(at, std::move(e)),
+                                .overflowed = marked };
+    if (peek(p).kind == tok_t::colon)
+        not_yet(peek(p), "'?:' with no middle operand");
+
+    operand_t yes = expression(p);
+    expect(p, tok_t::colon, "expected ':' in conditional expression");
+    operand_t no = conditional_expression(p);
+
+    return joined(at, condition, std::move(yes), std::move(no));
 }
 
 namespace {

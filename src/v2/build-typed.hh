@@ -426,6 +426,42 @@ pinning(const trunc_t< V, top_t< P > > &, const expr_t &self)
     return { self };
 }
 
+// The node under the conversions that keep whether a value is 0, rcc's
+// under_widening(): an integer converted to one as wide or wider, which
+// keeps 0 and takes no other value to 0, 6.3.1.3p1, p2, so that a
+// conditional's arm and its condition are tested as they are as a jump
+// on the whole, (int) c on a char as c.  Any other node is itself.
+template< typename T >
+expr_t
+under_widening(const T &, const expr_t &self)
+{
+    return self;
+}
+
+template< view_t V, view_t F, typename A >
+expr_t
+under_widening(const sext_t< V, F, A > &e, const expr_t &)
+{
+    return under_widening(node_of(e.arg));
+}
+
+template< view_t V, view_t F, typename A >
+expr_t
+under_widening(const zext_t< V, F, A > &e, const expr_t &)
+{
+    return under_widening(node_of(e.arg));
+}
+
+template< view_t V, typename A >
+expr_t
+under_widening(const trunc_t< V, A > &t, const expr_t &self)
+{
+    if (width(V) < width(view_of(t.arg)))
+        return self;
+
+    return under_widening(node_of(t.arg));
+}
+
 // The node of a widening of the operand A of view F to V by the sign S
 // of the type converted from, LLVM's names: sext_t of a signed one,
 // zext_t of an unsigned one.

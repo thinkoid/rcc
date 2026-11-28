@@ -528,6 +528,23 @@ pinned_within(const state_t &, const step_t< op, W, V, S > &)
     return 0;
 }
 
+// A conditional pins what its three parts pin, and moves nothing held,
+// since its paths spill every held value first.
+template< view_t V, bool jumps >
+unsigned
+pinned_within(const state_t &s, const conditional_t< V, jumps > &c)
+{
+    return pinned_within(s, c.cond) | pinned_within(s, c.yes) |
+           pinned_within(s, c.no);
+}
+
+inline unsigned
+pinned_within(const state_t &s, const conditional_void_t &c)
+{
+    return pinned_within(s, c.cond) | pinned_within(s, c.yes) |
+           pinned_within(s, c.no);
+}
+
 // A comma pins nothing of its own, rcc's pins() of one, and what its
 // two operands pin.
 template< typename R >
@@ -647,6 +664,19 @@ moved_within(const state_t &s, const compound_t< op, W, V, R > &c)
 template< step_op_t op, typename W, view_t V, sign_t S >
 constexpr unsigned
 moved_within(const state_t &, const step_t< op, W, V, S > &)
+{
+    return 0;
+}
+
+template< view_t V, bool jumps >
+constexpr unsigned
+moved_within(const state_t &, const conditional_t< V, jumps > &)
+{
+    return 0;
+}
+
+constexpr unsigned
+moved_within(const state_t &, const conditional_void_t &)
 {
     return 0;
 }
@@ -1846,6 +1876,30 @@ value(state_t &s, const call_t< V > &c, unsigned = 0)
     s.reserved = outer;
 
     return v;
+}
+
+// The value of c ? y : n of the view, rcc's conditional(), backend.md
+// 6.1: no value held across the paths, before_paths(); the two labels
+// taken before the condition, then its jump to the second arm where it
+// is 0; the first arm handed the register the consumer names, wanted,
+// through arm(), where it is free, and as any value otherwise; the join
+// the register the consumer names, or the one the first arm's row left
+// its value in, read once that arm is written, a mov repairing a first
+// arm that did not take the name; the jump past the second arm; the
+// second arm handed the join through arm(), and moved there where its
+// row left it elsewhere; the value held in the join.
+value_t conditional(state_t &,
+                    const expr_t &cond,
+                    const expr_t &yes,
+                    const expr_t &no,
+                    view_t view,
+                    unsigned wanted);
+
+template< view_t V, bool jumps >
+value_t
+value(state_t &s, const conditional_t< V, jumps > &c, unsigned wanted = 0)
+{
+    return conditional(s, c.cond, c.yes, c.no, V, wanted);
 }
 
 // The pieces of a switch's dispatch on an int, backend.md 7.3, which

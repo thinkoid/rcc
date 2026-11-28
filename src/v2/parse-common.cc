@@ -190,6 +190,9 @@ discarded(operand_t e)
 expr_t
 conversion(const operand_t &e, const type_t &t)
 {
+    if (e.question && width(view_of(t)) > width(view_of(e.type)))
+        not_yet(*e.question, "widening of a '?:'");
+
     return make_conversion(view_of(t), sign_of(t), view_of(e.type),
                            sign_of(e.type), rvalue(*e.node));
 }

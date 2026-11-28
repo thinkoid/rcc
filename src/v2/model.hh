@@ -79,6 +79,17 @@ struct expr_t::interface_t
     virtual int valid(sign_t) const = 0;
     virtual view_t view() const = 0;
 
+    // aarch64's value at a return's top, rcc's rvalue_in(), and the
+    // summary its ?: asks of an arm, rcc's takes_name()
+    virtual value_t value_in(arm64::state_t &, unsigned wanted) const = 0;
+    virtual bool takes_name(const arm64::state_t &) const = 0;
+
+    // what the builder of ?: asks of an erased operand: whether it is a
+    // truth value, and the operand under its conversions that keep
+    // whether a value is 0, which a conditional's jump tests
+    virtual bool truth_value() const = 0;
+    virtual expr_t under_widening(const expr_t &self) const = 0;
+
     // the builders: self is the handle that holds this node, which a
     // builder returns, or erases a part into, without a copy of the node
     virtual expr_t rvalue(const expr_t &self) const = 0;
@@ -212,6 +223,34 @@ unsigned
 fwd_moved_within(const S &s, const T &t)
 {
     return moved_within(s, t);
+}
+
+template< typename S, typename T >
+value_t
+fwd_value_in(S &s, const T &t, unsigned wanted)
+{
+    return value_in(s, t, wanted);
+}
+
+template< typename S, typename T >
+bool
+fwd_takes_name(const S &s, const T &t)
+{
+    return takes_name(s, t);
+}
+
+template< typename T >
+bool
+fwd_truth_value(const T &t)
+{
+    return truth_value(t);
+}
+
+template< typename T >
+expr_t
+fwd_under_widening(const T &t, const expr_t &self)
+{
+    return under_widening(t, self);
 }
 
 // The lvalue conversion of a held node, as fwd_value() finds a row.
@@ -843,6 +882,26 @@ struct expr_t::model_t final: interface_t
     view_t view() const override
     {
         return view_of(held);
+    }
+
+    value_t value_in(arm64::state_t &s, unsigned wanted) const override
+    {
+        return fwd_value_in(s, held, wanted);
+    }
+
+    bool takes_name(const arm64::state_t &s) const override
+    {
+        return fwd_takes_name(s, held);
+    }
+
+    bool truth_value() const override
+    {
+        return fwd_truth_value(held);
+    }
+
+    expr_t under_widening(const expr_t &self) const override
+    {
+        return fwd_under_widening(held, self);
     }
 
     expr_t rvalue(const expr_t &self) const override

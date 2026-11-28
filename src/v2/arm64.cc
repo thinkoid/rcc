@@ -1002,6 +1002,65 @@ store_zero(state_t &s, const address_t &at, view_t view)
     insn(s, store_of(view), { zero(width(view)), to });
 }
 
+namespace {
+
+// The register of wanted that no value holds, rcc's wanted_register()
+// of no value, which a conditional hands its arms: none for an empty set
+// and for a held register.
+std::optional< reg_t >
+free_register(const state_t &s, unsigned wanted)
+{
+    for (const reg_t r : expression_registers)
+        if (wanted & bit(r))
+            return s.registers.owner.contains(r) ? std::nullopt :
+                                                   std::optional< reg_t >(r);
+
+    return std::nullopt;
+}
+
+} // namespace
+
+// The join's mov at the conditional's width, max(32, width), rcc's.
+value_t
+conditional(state_t &s,
+            const expr_t &cond,
+            const expr_t &yes,
+            const expr_t &no,
+            view_t view,
+            unsigned wanted)
+{
+    const auto incoming = before_paths(s);
+
+    const int other = new_label(s);
+    const int end = new_label(s);
+
+    branch(s, cond, other, false);
+
+    const int bits = promoted_width(view);
+    const auto named = free_register(s, wanted);
+    const unsigned arm = named ? bit(*named) : 0;
+
+    const value_t first = value(s, yes, arm);
+    reg_t join = reg_of(s, first);
+    if (named && join != *named) {
+        mov(s, join, *named, bits);
+        join = *named;
+    }
+    release(s, first);
+    jump(s, end);
+
+    place_label(s, other);
+    const value_t second = value(s, no, arm);
+    const reg_t from = reg_of(s, second);
+    if (from != join)
+        mov(s, from, join, bits);
+    release(s, second);
+
+    place_label(s, end);
+
+    return hold(s, join);
+}
+
 // switches
 
 // A promoted value is valid to 32 bits at least, so its test of zero is
@@ -1075,7 +1134,7 @@ divided(state_t &s, value_t v, long long size)
 void
 return_stmt(state_t &s, const expr_t &e, view_t view)
 {
-    const value_t v = value(s, e, bit(result_register));
+    const value_t v = value_in(s, e, bit(result_register));
     const reg_t from = reg_of(s, v);
     if (from != result_register)
         mov(s, from, result_register, promoted_width(view));
