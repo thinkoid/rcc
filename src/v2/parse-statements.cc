@@ -435,9 +435,10 @@ case_value(long long value, const type_t &t)
 // case, an integer constant expression and a colon, 6.8.2p1.  It stands
 // only in a switch, p2, and belongs to the innermost, 6.8.5.3p4.  Its
 // constant is a conditional expression whose value is read, which the
-// builders fold to a constant node, constant_of(), or it is no constant
-// expression, an error at its first token, which warns there of a
-// signed overflow in it, warn_overflowed().  It is converted to the
+// builders fold to a constant node, constant_of(), of an integer type,
+// 6.6p8, which a pointer constant's is not, or it is no integer
+// constant expression, an error at its first token, which warns there
+// of a signed overflow in it, warn_overflowed().  It is converted to the
 // promoted type of the controlling expression, p5, silently, case
 // 0x100000001: on an int being the case 1, and no two cases of one
 // switch have one value after the conversion, p3, which rcc says at the
@@ -453,7 +454,7 @@ case_label(parser_t &p)
 
     const token_t &start = peek(p);
     const operand_t e = conditional_expression(p);
-    if (!constant_of(rvalue(start, e)))
+    if (!constant_of(rvalue(start, e)) || !is< int_t >(e.type))
         fail(start, "case label is not an integer constant expression");
 
     warn_overflowed(p, start, e);
