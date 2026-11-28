@@ -69,6 +69,16 @@ make_assign(const place_t< W, V, S > &place, const expr_t &value)
     return expr_t(assign_t< W, V > { place.where, value });
 }
 
+// A compound assignment's builder exists for a place alone, as an
+// assignment's does (principle 8), and keeps the place's where and
+// view, and the value in its class, a constant or erased.
+template< binary_op_t op, typename W, view_t V, sign_t S, typename R >
+expr_t
+make_compound(const place_t< W, V, S > &place, const R &value)
+{
+    return expr_t(compound_t< op, W, V, R > { place.where, value });
+}
+
 // A step's builder exists for a place alone, as an assignment's does
 // (principle 8), and keeps the place's where, view and sign.
 template< step_op_t op, typename W, view_t V, sign_t S >
@@ -362,6 +372,21 @@ pinning(const T &, const expr_t &self)
 template< binary_op_t op, view_t V, typename L, typename R >
 auto
 pinning(const binary_t< op, V, L, R > &, const expr_t &self)
+{
+    if constexpr (is_division(op))
+        return top_t< family_t::division > { self };
+    else if constexpr (is_shift(op) && !constant< R >)
+        return top_t< family_t::shift > { self };
+    else
+        return self;
+}
+
+// A compound assignment pins what its operator's instruction pins, as
+// rcc's pinned_by() reads an assign_t: /= and %= rax and rdx, <<= and
+// >>= by a count that is no constant rcx.
+template< binary_op_t op, typename W, view_t V, typename R >
+auto
+pinning(const compound_t< op, W, V, R > &, const expr_t &self)
 {
     if constexpr (is_division(op))
         return top_t< family_t::division > { self };

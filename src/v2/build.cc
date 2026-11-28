@@ -182,6 +182,14 @@ make_assign(expr_t place, expr_t value)
 }
 
 // One hop through the place's model, which knows the place's type
+// (3.3), and asks the value's class through its handle.
+expr_t
+make_compound(binary_op_t op, expr_t place, expr_t value)
+{
+    return place.self->compound(op, value);
+}
+
+// One hop through the place's model, which knows the place's type
 // (3.3).
 expr_t
 make_step(step_op_t op, expr_t place)

@@ -17,15 +17,16 @@ functions of a result of any integer type or `void` and of parameters
 of any integer type, whose locals are of the integer types, declared,
 assigned and returned, with parentheses, the casts, the unary
 operators `+ - ~ !`, `+ - * / % << >> & | ^`, the comparisons, `&&`,
-`||`, the comma, `++` and `--` of an `int` and calls of functions of a
-result of any integer type or `void`, to any depth, and the statements
-`if`, `else`, `switch` on an `int` with its `case` and `default`
-labels, `while`, `do`, `for` with a declaration or an expression
-first, `break`, `continue`, `goto` and labels, and `return` with a
-value or without, on both targets. Each mechanism below was compiled
-and run in a small model first; chapter 5 says what the models showed
-and chapter 6 what nothing has shown. A statement marked *working* is
-a position taken and run, not yet agreed.
+`||`, the comma, the compound assignments and `++` and `--` of an
+`int`, and calls of functions of a result of any integer type or
+`void`, to any depth, and the statements `if`, `else`, `switch` on an
+`int` with its `case` and `default` labels, `while`, `do`, `for` with
+a declaration or an expression first, `break`, `continue`, `goto` and
+labels, and `return` with a value or without, on both targets. Each
+mechanism below was compiled and run in a small model first; chapter 5
+says what the models showed and chapter 6 what nothing has shown. A
+statement marked *working* is a position taken and run, not yet
+agreed.
 
 ## 1. The idea
 
@@ -359,8 +360,9 @@ the jump are the ancestor's `regtab`, `efftab` and `cctab`.
   of the value compared with 0 is each target's own: aarch64's tests
   a value whose register is valid to less than 32 bits with `tst`,
   `tst w0, #0xff` (4.2).
-- On x86-64 the effect of a step is the memory form, `addl $1,
-  -4(%rbp)`, and its jump is on that instruction's flags.
+- On x86-64 the effect of `+= -= &= |= ^= <<= >>=` and of a step is
+  the memory form, `addl $5, -4(%rbp)`, and its jump is on that
+  instruction's flags.
 - Before the paths of `&&` or `||` part, every value held in a
   register is spilled, in the order of the registers, and every
   value held is marked until the paths meet: a spill, a reload or a
@@ -519,11 +521,18 @@ S >`.
   value is a tree the parser does not make, and a place's `value`
   row stops the generation.
 - A node that reads, changes and writes its place holds the place's
-  where: `step_t< op, W, V, S >` for `++` and `--`. Its rows follow
-  rcc's order: the address formed first; the object fetched by a load
-  that keeps the address; the operation; the result stored through the
-  same address; the address given back. On aarch64 the fetch takes a
-  register outside the address's, since a GOT's base is a held value.
+  where: `step_t< op, W, V, S >` for `++` and `--`, and `compound_t<
+  op, W, V, R >` for `x op= e`, its value a constant or erased. Its
+  rows follow rcc's order: the address formed first and held across
+  the value; the object fetched by a load that keeps the address; the
+  operation; the result stored through the same address; the address
+  given back. On aarch64 the fetch takes a register outside the
+  address's, since a GOT's base is a held value. The address is formed
+  outside the registers the value moves or its consumer names, as an
+  assignment's is, and outside those the operation's own instruction
+  pins, which no summary of the value holds, rcc's `pinned_by()` of an
+  assignment: `g /= b` on an object only declared loads the GOT's
+  address outside `rax` and `rdx`.
 
 ### 4.3 Constants
 
@@ -849,7 +858,8 @@ each became.
 | whether a callee returns `void`, its result's width | the call's node: `call_void_t`, or `call_t< V >` and its view |
 | a literal's mark of an overflow, `holds_overflow()` | the parser's operand's mark, set by each operator's production and read where a constant expression is required |
 | `flag_operator()`, `flag_condition()` | x86-64's `value_branch` rows of those node types |
-| `modify()`, `flag_condition()` of a step | x86-64's effect rows and `value_branch` niches |
+| `modify()`, `flag_condition()` of a compound assignment or a step | x86-64's effect rows and `value_branch` niches |
+| `pinned_by()` of an `assign_t` | `top_t` of a compound `/=`, `%=`, and `<<=`, `>>=` by a count that is no constant |
 | `zero_compared()` | the operand's own entry point, `value_branch` |
 | `body_target()`, `target_of()`, an `if` of one jump | the category of the types that name their label, and the then part's type, `if_t< J >`, which the builder finds through the model |
 | `user_label()` | the state's labels of the C labels met, taken by a `goto`'s `label_of()` and by the label's own row |

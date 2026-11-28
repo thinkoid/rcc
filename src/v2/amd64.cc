@@ -848,11 +848,6 @@ fetch(state_t &s, const address_t &at, view_t view, sign_t sign, unsigned avoid)
     return v;
 }
 
-namespace {
-
-// The store of the held value v through the address at, held, rcc's
-// store(): v's register, reloaded outside the address's, then the
-// address's operand outside v's.
 void
 stored(state_t &s, value_t v, const address_t &at, view_t view)
 {
@@ -860,7 +855,99 @@ stored(state_t &s, value_t v, const address_t &at, view_t view)
     store(s, r, operand(s, at, bit(r)), view);
 }
 
-} // namespace
+// addl %eax, -4(%rbp).
+void
+operate_on(
+    state_t &s, binary_op_t op, value_t r, const address_t &at, view_t view)
+{
+    const reg_t right = reg_of(s, r, registers_of(s, at));
+    operate_on(s, op, reg(right, width(view)), at, view, bit(right));
+    release(s, r);
+}
+
+void
+shift_on(state_t &s,
+         binary_op_t op,
+         value_t r,
+         view_t count,
+         const address_t &at,
+         view_t view)
+{
+    const unsigned held = registers_of(s, at);
+    count_into_cl(s, reg_of(s, r, held), held, count);
+    operate_on(s, op, "%cl", at, view, bit(rcx));
+    release(s, r);
+}
+
+value_t
+immediate_compound(state_t &s,
+                   binary_op_t op,
+                   const address_t &at,
+                   std::string_view source,
+                   view_t view)
+{
+    const value_t l = fetch(s, at, view, sign_t::signed_);
+    operate(s, op, reg_of(s, l), source, view);
+    stored(s, l, at, view);
+    release(s, at);
+
+    return l;
+}
+
+value_t
+compound(state_t &s,
+         binary_op_t op,
+         value_t r,
+         const address_t &at,
+         view_t view,
+         view_t count,
+         unsigned wanted)
+{
+    const int bits = width(view);
+
+    if (right_written(s, op, r, wanted, true)) {
+        const reg_t right = reg_of(s, r);
+        const std::string source = operand(s, at, bit(right));
+        insn(s, sized(mnemonic(op), bits), { source, reg(right, bits) });
+        if (op != binary_op_t::mul)
+            flagged(s, bits);
+
+        stored(s, r, at, view);
+        release(s, at);
+        return r;
+    }
+
+    const value_t l = fetch(s, at, view, sign_t::signed_);
+
+    value_t v = l;
+    if (is_shift(op))
+        shift(s, op, l, r, view, count);
+    else if (is_division(op))
+        v = divide(s, op, l, r, view, wanted);
+    else
+        v = arithmetic(s, op, l, r, view, wanted);
+
+    stored(s, v, at, view);
+    release(s, at);
+
+    return v;
+}
+
+value_t
+object_product(state_t &s,
+               const address_t &at,
+               std::string_view factor,
+               view_t view,
+               unsigned wanted)
+{
+    const std::string source = operand(s, at);
+    const auto named = wanted_register(s, wanted);
+    const value_t v =
+        named ? hold(s, *named) : hold(s, take(s, registers_of(s, at)));
+    multiply(s, reg_of(s, v), source, factor, view);
+
+    return v;
+}
 
 // The add or sub of 1, at the promoted width, the store at the
 // object's: G1, the machine wraps.

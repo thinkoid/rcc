@@ -220,6 +220,15 @@ inverse(binary_op_t op)
     }
 }
 
+// Whether op is the operator of a compound assignment, 6.5.17.3p1: * /
+// % + - << >> & ^ |, every one but a comparison and && and ||.
+constexpr bool
+is_compound(binary_op_t op)
+{
+    return !is_comparison(op) && op != binary_op_t::log_and &&
+           op != binary_op_t::log_or;
+}
+
 // Whether op is && or ||, whose right operand is evaluated only where
 // the left one leaves the value open, 6.5.14p4, 6.5.15p4: a jump inside
 // the expression.

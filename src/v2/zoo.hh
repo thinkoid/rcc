@@ -248,6 +248,21 @@ struct comma_t
     R rhs;
 };
 
+// E1 op= E2, 6.5.17.3: E1 evaluated once, and the operation one
+// evaluation, p4, after E2's, so the object is read after the right
+// operand, as rcc reads it.  The place is its where, a local's slot or
+// a global, and its object's view, V, which is the operation's for an
+// int; the value, converted to the operation's type by the parser, is
+// kept a constant or erased, since x86-64's memory forms and aarch64's
+// rows take an immediate.  It is no E1 = E1 op E2: nothing folds it,
+// 6.6p3, and no identity drops it, so a += 0 adds 0, as in rcc.
+template< binary_op_t op, typename W, view_t V, typename R = expr_t >
+struct compound_t
+{
+    W where;
+    R value;
+};
+
 // ++E --E E++ E--, 6.5.4.1, 6.5.3.5: the object of view V and of a
 // type of the sign S stepped by 1 and stored, the value the new one,
 // prefix, or the old one, postfix, p2.  The place is its where alone, a
@@ -599,6 +614,13 @@ view_of(const call_void_t &)
     throw std::logic_error("v2: the view of a void call");
 }
 
+template< binary_op_t op, typename W, view_t V, typename R >
+constexpr view_t
+view_of(const compound_t< op, W, V, R > &)
+{
+    return V;
+}
+
 template< step_op_t op, typename W, view_t V, sign_t S >
 constexpr view_t
 view_of(const step_t< op, W, V, S > &)
@@ -767,6 +789,16 @@ int
 valid_of(const call_t< V > &, sign_t)
 {
     return width(V);
+}
+
+// A compound assignment's value is in the register an operation of the
+// object's view wrote, the store's source, rcc's stored_valid() of an
+// int, which the operation leaves as written.
+template< binary_op_t op, typename W, view_t V, typename R >
+int
+valid_of(const compound_t< op, W, V, R > &, sign_t sign)
+{
+    return written(width(V), sign);
 }
 
 // A step's value is in the register an operation of the object's view

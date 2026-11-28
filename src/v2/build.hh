@@ -66,6 +66,12 @@ struct converted_argument_t
     sign_t sign;
 };
 
+// E1 op= E2, 6.5.17.3, of the place E1, which the parser asks
+// is_assignable() of first, and the value E2 converted to the
+// operation's type, a shift's count promoted on its own; op is the
+// operation's by its sign.
+expr_t make_compound(binary_op_t op, expr_t place, expr_t value);
+
 // ++E --E E++ E-- of the place E, 6.5.4.1, 6.5.3.5, which the parser
 // asks is_assignable() of first, as of an assignment's.
 expr_t make_step(step_op_t op, expr_t place);

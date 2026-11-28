@@ -852,6 +852,61 @@ arithmetic(state_t &s,
     return l;
 }
 
+namespace {
+
+// The store of the held value v through the address at, held, rcc's
+// store(): v's register, reloaded outside the address's, then the
+// address's operand outside v's.
+void
+stored(state_t &s, value_t v, const address_t &at, view_t view)
+{
+    const reg_t r = reg_of(s, v, registers_of(s, at));
+    store(s, r, operand(s, at, bit(r)), view);
+}
+
+} // namespace
+
+value_t
+compound(state_t &s,
+         binary_op_t op,
+         const address_t &at,
+         view_t view,
+         long long constant,
+         unsigned wanted)
+{
+    const int bits = width(view);
+
+    const auto immediate = immediate_of(op, constant, bits);
+    if (!immediate)
+        return compound(s, op, at, view, constant_value(s, constant, view),
+                        wanted);
+
+    const value_t l = fetch(s, at, view, sign_t::signed_);
+    const auto from = reg(reg_of(s, l), bits);
+    const auto to = reg(final_destination(s, l, wanted), bits);
+    insn(s, mnemonic(op), { to, from, *immediate });
+    stored(s, l, at, view);
+    release(s, at);
+
+    return l;
+}
+
+value_t
+compound(state_t &s,
+         binary_op_t op,
+         const address_t &at,
+         view_t view,
+         value_t r,
+         unsigned wanted)
+{
+    const value_t l = fetch(s, at, view, sign_t::signed_);
+    const value_t v = arithmetic(s, op, l, r, view, wanted);
+    stored(s, v, at, view);
+    release(s, at);
+
+    return v;
+}
+
 // The add or sub of 1, at the promoted width, the store at the
 // object's: G1, the machine wraps.
 value_t
@@ -881,8 +936,7 @@ step(state_t &s, step_op_t op, const address_t &at, view_t view, sign_t sign)
     insn(s, is_increment(op) ? "add" : "sub",
          { reg(reg_of(s, v), bits), reg(r, bits), imm(1) });
 
-    const reg_t from = reg_of(s, v, registers_of(s, at));
-    store(s, from, operand(s, at, bit(from)), view);
+    stored(s, v, at, view);
     release(s, at);
 
     if (is_postfix(op))

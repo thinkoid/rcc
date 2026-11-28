@@ -850,24 +850,72 @@ conditional_expression(parser_t &p)
     return e;
 }
 
-// The assignment operators, 6.5.17: the simple one, right-associative,
-// and the compound ones, not yet.  The left operand is a modifiable
-// lvalue, 6.5.17.1p2, which rcc asks at the operator before it reads
-// the right operand, and a function designator is none.  The right
-// operand's value is converted to the assignment's type, 6.5.17.2p2,
-// the left operand's, 6.5.17.1p3, assignment_conversion()'s at the
+namespace {
+
+// The operator of a compound assignment's token, 6.5.17.3p1, a division
+// and >> by their signed names, by_sign()'s, or none for a token that is
+// no compound assignment's.
+std::optional< binary_op_t >
+compound_operator(tok_t kind)
+{
+    switch (kind) {
+    case tok_t::mul_assign: return binary_op_t::mul;
+    case tok_t::div_assign: return binary_op_t::sdiv;
+    case tok_t::rem_assign: return binary_op_t::srem;
+    case tok_t::add_assign: return binary_op_t::add;
+    case tok_t::sub_assign: return binary_op_t::sub;
+    case tok_t::shl_assign: return binary_op_t::shl;
+    case tok_t::shr_assign: return binary_op_t::ashr;
+    case tok_t::and_assign: return binary_op_t::bit_and;
+    case tok_t::xor_assign: return binary_op_t::bit_xor;
+    case tok_t::or_assign: return binary_op_t::bit_or;
+    default: return std::nullopt;
+    }
+}
+
+// E1 op= E2, 6.5.17.3, rcc's assignment(), its operator at op: the right
+// operand's value read, a void one an error at the operator; the
+// operation's type the common type of the two, 6.5.17.3p3, the usual
+// arithmetic conversions, the right operand converted to it, or for <<=
+// and >>= the left operand's promoted type, the count promoted on its
+// own, 6.5.8p3; the result of the left operand's type, the operator by
+// the operation's sign.  A left operand or an operation of another type
+// than int is not yet, at the operator.  A compound assignment is no
+// constant expression, 6.6p3, and carries no mark of an overflow.
+operand_t
+compound_assignment(const token_t &op,
+                    binary_op_t b,
+                    operand_t lhs,
+                    operand_t rhs)
+{
+    const operand_t value { rhs.type, rvalue(op, std::move(rhs)) };
+    const type_t t =
+        is_shift(b) ? promoted(value.type) : common_type(lhs.type, value.type);
+    if (lhs.type != int_type() || t != int_type())
+        not_yet(op, quoted(op.text) + " on an operand whose type is not 'int'");
+
+    expr_t r = is_shift(b) ? promote(value) : convert_to(value, t);
+
+    return { lhs.type, make_compound(by_sign(b, sign_of(t)),
+                                     std::move(*lhs.node), std::move(r)) };
+}
+
+} // namespace
+
+// The assignment operators, 6.5.17, right-associative: the simple one
+// and the compound ones.  The left operand is a modifiable lvalue,
+// 6.5.17.1p2, which rcc asks at the operator before it reads the right
+// operand, and a function designator is none.  The right operand's
+// value is converted to the simple assignment's type, 6.5.17.2p2, the
+// left operand's, 6.5.17.1p3, assignment_conversion()'s at the
 // operator.
 operand_t
 assignment_expression(parser_t &p)
 {
     operand_t lhs = conditional_expression(p);
-    refuse_operator(p,
-                    { tok_t::mul_assign, tok_t::div_assign, tok_t::rem_assign,
-                      tok_t::add_assign, tok_t::sub_assign, tok_t::shl_assign,
-                      tok_t::shr_assign, tok_t::and_assign, tok_t::xor_assign,
-                      tok_t::or_assign });
 
-    if (peek(p).kind != tok_t::assign)
+    const auto compound = compound_operator(peek(p).kind);
+    if (peek(p).kind != tok_t::assign && !compound)
         return lhs;
 
     const token_t &op = advance(p);
@@ -875,6 +923,10 @@ assignment_expression(parser_t &p)
         fail(op, "expression is not assignable");
 
     operand_t rhs = assignment_expression(p);
+    if (compound)
+        return compound_assignment(op, *compound, std::move(lhs),
+                                   std::move(rhs));
+
     expr_t value = assignment_conversion(op, std::move(rhs), lhs.type);
 
     return { lhs.type, make_assign(std::move(*lhs.node), std::move(value)) };

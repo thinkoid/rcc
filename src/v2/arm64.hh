@@ -297,6 +297,50 @@ value(state_t &s, const unary_t< op, V, A > &u, unsigned wanted = 0)
 // #16], ldr w0, [x1].  The address stays held.
 value_t fetch(state_t &, const address_t &at, view_t view, sign_t sign);
 
+// The value of op= on the object at an address held across it, at the
+// view, rcc's assign(), 6.4, which gives the address back, its right
+// operand a constant or the held value r: a constant the instruction
+// of op encodes is its immediate, and anything else a value held before
+// the object's load, a constant too, mov w0, #5; then the object
+// fetched into a fresh register, the operation into the register the
+// consumer names where it may be written, and the store of the value:
+// ldr w0, [x29, #16], add w0, w0, #5 and str w0.
+value_t compound(state_t &,
+                 binary_op_t op,
+                 const address_t &at,
+                 view_t view,
+                 long long constant,
+                 unsigned wanted);
+value_t compound(state_t &,
+                 binary_op_t op,
+                 const address_t &at,
+                 view_t view,
+                 value_t r,
+                 unsigned wanted);
+
+// A compound assignment, its value or its effect, the value dropped:
+// the place first, its address formed outside the register the consumer
+// names, then the right operand, rcc's right_operand(), the operation
+// one evaluation after it.
+template< binary_op_t op, typename W, view_t V, typename R >
+value_t
+value(state_t &s, const compound_t< op, W, V, R > &c, unsigned wanted = 0)
+{
+    const address_t at = address_avoiding(s, c.where, wanted);
+    const value_t r = value(s, c.value);
+
+    return compound(s, op, at, V, r, wanted);
+}
+
+template< binary_op_t op, typename W, view_t V, constant C >
+value_t
+value(state_t &s, const compound_t< op, W, V, C > &c, unsigned wanted = 0)
+{
+    const address_t at = address_avoiding(s, c.where, wanted);
+
+    return compound(s, op, at, V, value_of(c.value), wanted);
+}
+
 // The value of a step of the object at an address, of the view and of
 // a type of the sign, rcc's step(), 6.4, which gives the address back:
 // the object fetched into a fresh register, then the add or sub of 1
