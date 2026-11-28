@@ -839,13 +839,20 @@ valid_of(const compound_t< op, W, V, R > &, sign_t sign)
     return written(width(V), sign);
 }
 
-// A step's value is in the register an operation of the object's view
-// wrote, the prefix's the store's source and the postfix's the load's,
-// rcc's stored_valid() of an int, which the step leaves as written.
+// A prefix step's value is the store's source, which an operation at
+// the object's promoted width wrote, rcc's stored_valid(): valid as
+// that write leaves it where the width is the object's, and cut to the
+// object's width where it is wider, so that a widening consumer writes
+// the extension of the stored bits, movb %al, -1(%rbp) and movsbl %al,
+// %eax for ++c.  A postfix step's value is the old one, valid as its
+// load left it, 32 bits for a signed char and 64 for an unsigned one.
 template< step_op_t op, typename W, view_t V, sign_t S >
 int
 valid_of(const step_t< op, W, V, S > &, sign_t sign)
 {
+    if (is_postfix(op))
+        return written(promoted_width(V), sign);
+
     return written(width(V), sign);
 }
 

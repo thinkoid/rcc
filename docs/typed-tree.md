@@ -17,16 +17,16 @@ functions of a result of any integer type or `void` and of parameters
 of any integer type, whose locals are of the integer types, declared,
 assigned and returned, with parentheses, the casts, the unary
 operators `+ - ~ !`, `+ - * / % << >> & | ^`, the comparisons, `&&`,
-`||`, `?:` of `int` arms, the comma, the compound assignments and `++`
-and `--` of an `int`, and calls of functions of a result of any
-integer type or `void`, to any depth, and the statements `if`, `else`,
-`switch` on an `int` with its `case` and `default` labels, `while`,
-`do`, `for` with a declaration or an expression first, `break`,
-`continue`, `goto` and labels, and `return` with a value or without,
-on both targets. Each mechanism below was compiled and run in a small
-model first; chapter 5 says what the models showed and chapter 6 what
-nothing has shown. A statement marked *working* is a position taken
-and run, not yet agreed.
+`||`, `?:` of `int` arms, the comma, the compound assignments of an
+`int`, `++` and `--` of every integer type, and calls of functions of
+a result of any integer type or `void`, to any depth, and the
+statements `if`, `else`, `switch` on an `int` with its `case` and
+`default` labels, `while`, `do`, `for` with a declaration or an
+expression first, `break`, `continue`, `goto` and labels, and `return`
+with a value or without, on both targets. Each mechanism below was
+compiled and run in a small model first; chapter 5 says what the
+models showed and chapter 6 what nothing has shown. A statement marked
+*working* is a position taken and run, not yet agreed.
 
 ## 1. The idea
 
@@ -545,7 +545,11 @@ S >`.
   assignment's is, and outside those the operation's own instruction
   pins, which no summary of the value holds, rcc's `pinned_by()` of an
   assignment: `g /= b` on an object only declared loads the GOT's
-  address outside `rax` and `rdx`.
+  address outside `rax` and `rdx`. The value of a prefix step is cut
+  to its object's width, rcc's `stored_valid()`, so a widening
+  consumer writes the extension of the stored bits, `movb %al,
+  -1(%rbp)` and `movsbl %al, %eax`; a postfix step's value is the old
+  one, valid as its load left it.
 
 ### 4.3 Constants
 
@@ -868,6 +872,7 @@ each became.
 | the width of `extended()`, `valid` | a summary, `valid_of()`, read by a widening's primary and aarch64's test of zero |
 | `widened_read()`, `object_under()`, `under_kept_bits()` | the conversion's builder, by overload on the operand's type, and the type of a widening over a promotion of the object, whose row is the one load |
 | `extending_load()` | a niche of `sext_t` over a load |
+| `stored_valid()` | `valid_of()` of a prefix `step_t` |
 | whether a callee returns `void`, its result's width | the call's node: `call_void_t`, or `call_t< V >` and its view |
 | a literal's mark of an overflow, `holds_overflow()` | the parser's operand's mark, set by each operator's production and read where a constant expression is required |
 | `flag_operator()`, `flag_condition()` | x86-64's `value_branch` rows of those node types |
@@ -973,9 +978,9 @@ rows invented for the purpose.
   any operator with a constant operand, which may be an identity: so
   `(a ? b : c) + 5` widened is refused where rcc compiles it. GNU's
   `a ?: b` is not yet.
-- The other integer types under the compound assignments, the steps
-  and `?:`: the operation's view apart from the object's, a narrow
-  step's value cut to its object's width, the arms' conversions.
+- The other integer types under the compound assignments and `?:`:
+  the operation's view apart from the object's, the arms'
+  conversions.
 - `({ })`. It waits until the concepts around it are clear.
 - Two targets that want shapes of one subtree that do not nest. The
   address family is where to look.

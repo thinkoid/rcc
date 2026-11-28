@@ -189,17 +189,15 @@ call(parser_t &p, const token_t &op, const operand_t &e)
 // ++E --E E++ E--, 6.5.4.1, 6.5.3.5, rcc's prefix_step() and
 // postfix_step(): the operand a modifiable lvalue, p1 of each, rcc's
 // require_steppable(), said at the operator, op; the result of the
-// operand's type, the step's node.  An operand of another type than int
-// is not yet, at the operator.  A step is no constant expression, 6.6p3,
-// and carries no mark of an overflow.
+// operand's type, the step's node, with no promotion and no conversion:
+// the operation in int of a narrow object is the rows', as rcc's c1
+// steps it.  A step is no constant expression, 6.6p3, and carries no
+// mark of an overflow.
 operand_t
 stepped(const token_t &op, step_op_t s, operand_t arg)
 {
     if (!arg.node || !is_assignable(*arg.node))
         fail(op, "expression is not assignable");
-
-    if (arg.type != int_type())
-        not_yet(op, quoted(op.text) + " on an operand whose type is not 'int'");
 
     return { arg.type, make_step(s, std::move(*arg.node)) };
 }
