@@ -982,9 +982,21 @@ value_t difference(state_t &,
 
 template< typename R >
 value_t
-value(state_t &s, const difference_t< R > &d, unsigned wanted = 0)
+value(state_t &s, const difference_t< R, true > &d, unsigned wanted = 0)
 {
     return difference(s, d.lhs, node_of(d.rhs), d.stride, wanted);
+}
+
+// At a stride of 1 the sub alone, into the register the consumer names,
+// as rcc's difference() of that size writes it.
+template< typename R >
+value_t
+value(state_t &s, const difference_t< R, false > &d, unsigned wanted = 0)
+{
+    const value_t l = value(s, d.lhs);
+    const value_t r = value(s, d.rhs);
+
+    return arithmetic(s, binary_op_t::sub, l, r, view_t::i64, wanted);
 }
 
 // The extension of the held value v of the view from to the view to by
@@ -1202,9 +1214,9 @@ calls_within(const state_t &s, const gep_t< op, N, index_first > &g)
     return calls_within(s, g.pointer) || calls_within(s, g.index);
 }
 
-template< typename R >
+template< typename R, bool divided >
 bool
-calls_within(const state_t &s, const difference_t< R > &d)
+calls_within(const state_t &s, const difference_t< R, divided > &d)
 {
     return calls_within(s, d.lhs) || calls_within(s, d.rhs);
 }
@@ -1255,9 +1267,9 @@ takes_name(const state_t &, const gep_t< op, N, index_first > &)
     return false;
 }
 
-template< typename R >
+template< typename R, bool divided >
 constexpr bool
-takes_name(const state_t &, const difference_t< R > &)
+takes_name(const state_t &, const difference_t< R, divided > &)
 {
     return false;
 }

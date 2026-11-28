@@ -1456,12 +1456,12 @@ struct row_access_t
 // Whether a row's index is the access's register offset, rcc's
 // offset_index(), 6.3: a row with one, with no constant at all and
 // nothing evaluated between the address and the access, of an index the
-// access's form scales as it is, at the access's own size.
+// access's form scales as it is, at a size of 1 or the access's own.
 bool
 offset_index(const row_access_t &row, int size, bool nothing_between)
 {
     return row.index && !row.slot && row.total == 0 && nothing_between &&
-           row.stride == size;
+           (row.stride == 1 || row.stride == size);
 }
 
 // The access of size bytes at column into a row by a variable index, or
@@ -1854,9 +1854,9 @@ sum_address(state_t &s,
             return row_address(s, *row);
 
     // under a cast, the index form only where it saves the add, and only
-    // at a stride of the access's size
+    // at a stride the form scales by, 1 or the access's size
     if (under && (!nothing_between || (d && arithmetic_immediate(*d, 64)) ||
-                  sum.stride != size))
+                  (sum.stride != 1 && sum.stride != size)))
         return { .base = value(s, pointer) };
 
     // p[5000] = g(): the constant index held back past the right operand

@@ -727,11 +727,30 @@ release(state_t &s, const address_t &a)
         release(s, *a.index);
 }
 
+namespace {
+
+// The addq of a sum's index into its base, rcc's summed_base(), both
+// reloaded where spilled: the value is the base, the index released.
+value_t
+summed_base(state_t &s, value_t base, value_t index)
+{
+    const auto [left, right] = operands(s, base, index);
+    operate(s, binary_op_t::add, left, right, view_t::i64);
+    release(s, index);
+
+    return base;
+}
+
+} // namespace
+
 value_t
 address_of(state_t &s, const address_t &a)
 {
     if (a.base && !a.index && a.displacement == 0)
         return *a.base;
+
+    if (a.sum && a.base && a.displacement == 0)
+        return summed_base(s, *a.base, *a.index);
 
     const std::string from = operand(s, a);
     release(s, a);
@@ -740,6 +759,31 @@ address_of(state_t &s, const address_t &a)
     insn(s, "leaq", { from, reg(reg_of(s, v), 64) });
 
     return v;
+}
+
+// The base read in its slot, in_slot, where it is spilled and the addq
+// writes the index's register; else both reloaded first, as rcc's
+// unscaled_index() reloads them.
+value_t
+summed_value(state_t &s, const address_t &a, unsigned wanted)
+{
+    const value_t base = *a.base;
+    const value_t index = *a.index;
+    const bool in_slot =
+        a.displacement == 0 && !held_in(s, base) &&
+        written_in_right(s, binary_op_t::add, base, index, wanted);
+    if (!in_slot)
+        operands(s, base, index);
+
+    if (a.displacement != 0 ||
+        !written_in_right(s, binary_op_t::add, base, index, wanted))
+        return address_of(s, a);
+
+    operate(s, binary_op_t::add, reg_of(s, index),
+            source_of(s, base, view_t::i64), view_t::i64);
+    release(s, base);
+
+    return index;
 }
 
 std::optional< address_t >
@@ -800,11 +844,11 @@ displaced_address(state_t &s, address_t a, long long d)
 }
 
 address_t
-index_base(state_t &s, const expr_t &pointer, unsigned pinned)
+erased_index_base(state_t &s, const expr_t &self, unsigned pinned)
 {
     const unsigned outer = std::exchange(s.reserved, s.reserved | pinned);
 
-    address_t a = pointed(s, pointer);
+    address_t a = pointed(s, self);
     if (!a.base || a.index)
         a = { .base = address_of(s, a) };
 
@@ -825,6 +869,7 @@ summed_place(state_t &s, address_t place, const expr_t &value)
         return place;
 
     const int displacement = std::exchange(place.displacement, 0);
+    place.sum = place.scale == 1;
 
     return { .base = address_of(s, place), .displacement = displacement };
 }
@@ -1170,6 +1215,13 @@ multiplied(state_t &s, const address_t &at, long stride, unsigned avoid)
 value_t
 displaced(state_t &s, binary_op_t op, value_t l, const addend_t &n)
 {
+    if (n.place) {
+        const auto [left, source] = operands(s, l, *n.place);
+        operate(s, op, left, source, view_t::i64);
+        release(s, *n.place);
+        return l;
+    }
+
     if (!n.value) {
         operate(s, op, reg_of(s, l), n.immediate, view_t::i64);
         return l;

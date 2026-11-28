@@ -57,8 +57,10 @@ with no niche, 159 s and 8.7 GB, =build.o= 579 MB where it was
 arithmetic, the subscript and the difference, then makes it 10,269
 models, 9,456 binary node types and 805,000 functions: 308 s and
 15.1 GB, where the same zoo before the three changes took 545 s and
-30.8 GB. Each further class still multiplies the models, at about
-80 functions a model, the crossings counted.
+30.8 GB. The rows of a stride of 1, with two interface lines, make
+it 10,288 models, 814,000 functions and 15.2 GB. Each further class
+still multiplies the models, at about 80 functions a model, the
+crossings counted.
 
 Measured and not taken, each changing no node type and no listing:
 line tables alone as the unit's debugging information (5 s and 0.7

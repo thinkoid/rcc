@@ -85,6 +85,23 @@ make_indirection(const expr_t &pointer)
     return expr_t(place_t< indirect_t, V, S > { { pointer, width(V) / 8 } });
 }
 
+// * over a sum at a stride of 1 by an object of 64 bits in memory: the
+// place through the sum with its index erased, since the access's form
+// loads the index, rcc's pointed() of a dereference, where the sum's own
+// address elsewhere is its value, rcc's memory_indexed() (amd64.hh).
+template< view_t V, sign_t S, typename W, sign_t I >
+expr_t
+make_indirection(
+    const gep_t< binary_op_t::add, load_t< W, view_t::i64, I >, false > &sum)
+{
+    const gep_t< binary_op_t::add, expr_t, false > indexed { sum.pointer,
+                                                             node_of(sum.index),
+                                                             sum.stride };
+
+    return expr_t(
+        place_t< indirect_t, V, S > { { expr_t(indexed), width(V) / 8 } });
+}
+
 // * over a local's address is the local's place again, 6.5.4.2p3: *&x
 // is the place of x, as rcc's folded() reads it.  *&*p stays the place
 // through &*p, as in rcc's tree, whose access reads a row's sum under
@@ -103,8 +120,9 @@ make_indirection(const address_of_t< slot_t > &address)
 // being p, as rcc's drop_identities() does where the node would be
 // built (B1.2); a top_t of a pointer written first, which x86-64 holds
 // its pointer outside; and a load of 64 bits on the right of -, which
-// x86-64's imulq takes in memory.  The index is of 64 bits, the parser
-// having widened it, rcc's widened_index().
+// x86-64's imulq takes in memory, and of + at a stride of 1, which its
+// addq takes there.  The index is of 64 bits, the parser having widened
+// it, rcc's widened_index().
 template< binary_op_t op, bool index_first, typename N >
 expr_t
 make_gep(const expr_t &pointer, const N &, long stride, const expr_t &index)
@@ -145,12 +163,25 @@ make_gep(const expr_t &pointer,
          long stride,
          const expr_t &index)
 {
-    if constexpr (op == binary_op_t::sub && V == view_t::i64)
-        return expr_t(
-            gep_t< op, load_t< W, V, S >, false > { pointer, l, stride });
-    else
-        return expr_t(
-            gep_t< op, expr_t, index_first > { pointer, index, stride });
+    if constexpr (!index_first && V == view_t::i64)
+        if (op == binary_op_t::sub || stride == 1)
+            return expr_t(
+                gep_t< op, load_t< W, V, S >, false > { pointer, l, stride });
+
+    return expr_t(gep_t< op, expr_t, index_first > { pointer, index, stride });
+}
+
+// The difference of the stride, q in its class R: divided by the stride
+// but for a stride of 1, the crossing from the stride, data, to the
+// node's parameter, which picks the form of its rows.
+template< typename R >
+expr_t
+difference_of(const expr_t &lhs, const R &q, long stride)
+{
+    if (stride == 1)
+        return expr_t(difference_t< R, false > { lhs, q, stride });
+
+    return expr_t(difference_t< R, true > { lhs, q, stride });
 }
 
 // p - q, 6.5.7p10, of two pointers of the stride, q in its class: a load
@@ -159,7 +190,7 @@ template< typename R >
 expr_t
 make_difference(const expr_t &lhs, const R &, long stride, const expr_t &rhs)
 {
-    return expr_t(difference_t< expr_t > { lhs, rhs, stride });
+    return difference_of(lhs, rhs, stride);
 }
 
 template< typename W, view_t V, sign_t S >
@@ -170,9 +201,9 @@ make_difference(const expr_t &lhs,
                 const expr_t &rhs)
 {
     if constexpr (V == view_t::i64)
-        return expr_t(difference_t< load_t< W, V, S > > { lhs, q, stride });
+        return difference_of(lhs, q, stride);
     else
-        return expr_t(difference_t< expr_t > { lhs, rhs, stride });
+        return difference_of(lhs, rhs, stride);
 }
 
 // A cast between pointer types, 6.3.2.3p7, writes nothing, and every
@@ -505,11 +536,11 @@ pinning(const compound_t< op, W, V, O, R > &, const expr_t &self)
         return self;
 }
 
-// A difference of pointers pins rax and rdx, since it divides by the
-// stride, rcc's pins() of a p - q.
+// A difference of pointers divided by the stride pins rax and rdx, as a
+// division does, rcc's pins() of a p - q; at a stride of 1 it pins none.
 template< typename R >
 top_t< family_t::division >
-pinning(const difference_t< R > &, const expr_t &self)
+pinning(const difference_t< R, true > &, const expr_t &self)
 {
     return { self };
 }

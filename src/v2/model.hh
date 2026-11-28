@@ -81,6 +81,16 @@ concept on_amd64_pointed =
     };
 
 template< typename T >
+concept on_memory_operand =
+    requires(rcc::amd64::state_t &s, const T &t) { memory_operand(s, t, 0u); };
+
+template< typename T >
+concept on_index_base =
+    requires(rcc::amd64::state_t &s, const T &t, const rcc::expr_t &self) {
+        index_base(s, t, 0u, self);
+    };
+
+template< typename T >
 concept on_arm64_pointed =
     requires(rcc::arm64::state_t &s,
              const T &t,
@@ -182,9 +192,16 @@ struct expr_t::interface_t
     virtual unsigned moved_within(const amd64::state_t &) const = 0;
     virtual bool spills_within(const amd64::state_t &) const = 0;
 
-    // the address a pointer's value designates, x86-64's descriptor
+    // the address a pointer's value designates, x86-64's descriptor, and
+    // the same as the base an index joins; and the address of an object
+    // of 64 bits in memory that the value is, for an instruction to take
+    // in place
     virtual amd64::address_t pointed(amd64::state_t &,
                                      const expr_t &self) const = 0;
+    virtual amd64::address_t
+    index_base(amd64::state_t &, unsigned pinned, const expr_t &self) const = 0;
+    virtual std::optional< amd64::address_t >
+    memory_operand(amd64::state_t &, unsigned avoid) const = 0;
 
     // the summaries both targets read (principle 3): the width rule, at
     // a sign, and the view
@@ -361,6 +378,20 @@ amd64::address_t
 fwd_pointed(S &s, const T &t, const expr_t &self)
 {
     return pointed(s, t, self);
+}
+
+template< typename S, typename T >
+std::optional< amd64::address_t >
+fwd_memory_operand(S &s, const T &t, unsigned avoid)
+{
+    return memory_operand(s, t, avoid);
+}
+
+template< typename S, typename T >
+amd64::address_t
+fwd_index_base(S &s, const T &t, unsigned pinned, const expr_t &self)
+{
+    return index_base(s, t, pinned, self);
 }
 
 template< typename S, typename T >
@@ -1016,6 +1047,15 @@ pointed_operand(const address_of_t< slot_t > &address, const expr_t &)
     return address;
 }
 
+template< typename W, sign_t S >
+const gep_t< binary_op_t::add, load_t< W, view_t::i64, S >, false > &
+pointed_operand(
+    const gep_t< binary_op_t::add, load_t< W, view_t::i64, S >, false > &sum,
+    const expr_t &)
+{
+    return sum;
+}
+
 // The place a pointer in its class points to: the crossing from the
 // pointee's view and sign, values in the parser, to the place's
 // parameters (principle 6), the typed builder of each.
@@ -1254,6 +1294,19 @@ struct expr_t::defaults_t: interface_t
                              const expr_t &self) const override
     {
         return amd64::erased_pointed(s, self);
+    }
+
+    amd64::address_t index_base(amd64::state_t &s,
+                                unsigned pinned,
+                                const expr_t &self) const override
+    {
+        return amd64::erased_index_base(s, self, pinned);
+    }
+
+    std::optional< amd64::address_t > memory_operand(amd64::state_t &,
+                                                     unsigned) const override
+    {
+        return std::nullopt;
     }
 
     arm64::address_t pointed(arm64::state_t &s,
@@ -1563,6 +1616,7 @@ concept niched = niche::on_effect< T, amd64::state_t > ||
                  niche::on_value_in< T > || niche::on_under_widening< T > ||
                  niche::on_rvalue< T > || niche::on_constant_of< T > ||
                  niche::on_amd64_pointed< T > || niche::on_arm64_pointed< T > ||
+                 niche::on_index_base< T > || niche::on_memory_operand< T > ||
                  niche::on_named_offset< T > || niche::on_lvalue_offset< T > ||
                  niche::on_index_of< T > || niche::on_denoted< T > ||
                  niche::on_constant_sum< T > || niche::on_bitcast< T > ||
@@ -1691,6 +1745,25 @@ struct expr_t::niched_model_t final: model_t< T >
             return fwd_pointed(s, held, self);
         else
             return defaults_t::pointed(s, self);
+    }
+
+    amd64::address_t index_base(amd64::state_t &s,
+                                unsigned pinned,
+                                const expr_t &self) const override
+    {
+        if constexpr (niche::on_index_base< T >)
+            return fwd_index_base(s, held, pinned, self);
+        else
+            return defaults_t::index_base(s, pinned, self);
+    }
+
+    std::optional< amd64::address_t >
+    memory_operand(amd64::state_t &s, unsigned avoid) const override
+    {
+        if constexpr (niche::on_memory_operand< T >)
+            return fwd_memory_operand(s, held, avoid);
+        else
+            return defaults_t::memory_operand(s, avoid);
     }
 
     arm64::address_t pointed(arm64::state_t &s,

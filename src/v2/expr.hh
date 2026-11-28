@@ -79,6 +79,10 @@ public:
     friend unsigned moved_within(const amd64::state_t &, const expr_t &);
     friend bool spills_within(const amd64::state_t &, const expr_t &);
     friend amd64::address_t pointed(amd64::state_t &, const expr_t &);
+    friend amd64::address_t
+    index_base(amd64::state_t &, const expr_t &, unsigned pinned);
+    friend std::optional< amd64::address_t >
+    memory_operand(amd64::state_t &, const expr_t &, unsigned avoid);
     friend int valid_of(const expr_t &, sign_t sign);
     friend view_t view_of(const expr_t &);
     friend bool truth_value(const expr_t &);
@@ -164,6 +168,17 @@ bool spills_within(const amd64::state_t &, const expr_t &);
 // x86-64, rcc's pointed(): that target's descriptor, found by overload
 // on the pointer's type (amd64.hh).
 amd64::address_t pointed(amd64::state_t &, const expr_t &);
+
+// The address of an erased pointer as the base an index joins on x86-64,
+// generated with the registers in pinned left for last, rcc's
+// index_base() (amd64.hh).
+amd64::address_t index_base(amd64::state_t &, const expr_t &, unsigned pinned);
+
+// The address of the object of 64 bits in memory an erased value is,
+// for an instruction to take in place, formed outside avoid, or none:
+// rcc's memory_operand() on x86-64 (amd64.hh).
+std::optional< amd64::address_t >
+memory_operand(amd64::state_t &, const expr_t &, unsigned avoid);
 
 // The view of an erased value and the width its register is valid to,
 // the width rule, read at a sign, summaries both targets read

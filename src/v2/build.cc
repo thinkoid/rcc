@@ -105,6 +105,18 @@ pointed(amd64::state_t &s, const expr_t &e)
     return e.self->pointed(s, e);
 }
 
+amd64::address_t
+index_base(amd64::state_t &s, const expr_t &e, unsigned pinned)
+{
+    return e.self->index_base(s, pinned, e);
+}
+
+std::optional< amd64::address_t >
+memory_operand(amd64::state_t &s, const expr_t &e, unsigned avoid)
+{
+    return e.self->memory_operand(s, avoid);
+}
+
 int
 valid_of(const expr_t &e, sign_t sign)
 {

@@ -42,13 +42,14 @@ namespace rcc {
 // parentheses, a place through a pointer, whose step and compound
 // assignment are not yet; and the token of a cast of an object to a
 // type of its width, narrower than an int or an unsigned, through
-// parentheses and the casts that widen it, or null, for the not yet of
-// its index, widened_index()'s; and the type of an array, or none: an
-// expression of an array's type is converted to a pointer to its first
-// element, 6.3.2.1p3, which is its C type here, read by every
-// production, and the node is the array's decay, since no row reads an
-// array whole, but for & and sizeof, which read the array's type, and
-// so take it through parentheses.
+// parentheses and the casts that widen it, or null, and whether it is
+// one change of the object's sign alone, for the not yet of its index,
+// widened_index()'s; and the type of an array, or none: an expression
+// of an array's type is converted to a pointer to its first element,
+// 6.3.2.1p3, which is its C type here, read by every production, and
+// the node is the array's decay, since no row reads an array whole, but
+// for & and sizeof, which read the array's type, and so take it through
+// parentheses.
 struct operand_t
 {
     type_t type;
@@ -57,6 +58,7 @@ struct operand_t
     bool overflowed = false;
     bool indirect = false;
     const token_t *kept_bits = nullptr;
+    bool sign_changed = false;
     std::optional< type_t > array = std::nullopt;
 };
 

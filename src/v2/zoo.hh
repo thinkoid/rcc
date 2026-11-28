@@ -145,12 +145,13 @@ struct address_of_t
 // the index in the order written, index_first saying the integer is
 // written first, which keeps G13's order; the index widened to 64 bits
 // by the parser, rcc's widened_index(), and kept in the class the rows
-// read, a constant, a top_t, a load of 64 bits for -, or erased; the
-// stride, the pointee's size in bytes, data the builder moves in from
-// the C type (principle 9).  LLVM has no gep of a subtraction and puts
-// the base first; rcc's rows differ for - and for n + p, so op and the
-// order are the node's.  The pointer is erased: no row at the strides
-// of int and of pointers reads its class.
+// read, a constant, a top_t, a load of 64 bits for - and at a stride of
+// 1 for +, or erased; the stride, the pointee's size in bytes, data the
+// builder moves in from the C type (principle 9).  LLVM has no gep of a
+// subtraction and puts the base first; rcc's rows differ for - and for
+// n + p, so op and the order are the node's.  The pointer is erased:
+// the one row that reads its class, x86-64's n + p at a stride of 1,
+// asks it through the handle, memory_operand().
 template< binary_op_t op, typename N, bool index_first >
 struct gep_t
 {
@@ -160,9 +161,10 @@ struct gep_t
 };
 
 // p - q, 6.5.7p10: the difference of the addresses divided by the
-// stride, a long.  R is q's class: a load of 64 bits, which x86-64's
-// subq takes in memory, or erased.
-template< typename R >
+// stride, a long, but at a stride of 1, divided false, where it is the
+// difference alone, as rcc's difference() writes it.  R is q's class: a
+// load of 64 bits, which x86-64's subq takes in memory, or erased.
+template< typename R, bool divided >
 struct difference_t
 {
     expr_t lhs;
@@ -701,9 +703,9 @@ view_of(const gep_t< op, N, index_first > &)
     return view_t::i64;
 }
 
-template< typename R >
+template< typename R, bool divided >
 constexpr view_t
-view_of(const difference_t< R > &)
+view_of(const difference_t< R, divided > &)
 {
     return view_t::i64;
 }
@@ -881,9 +883,9 @@ valid_of(const gep_t< op, N, index_first > &, sign_t)
     return 64;
 }
 
-template< typename R >
+template< typename R, bool divided >
 constexpr int
-valid_of(const difference_t< R > &, sign_t)
+valid_of(const difference_t< R, divided > &, sign_t)
 {
     return 64;
 }

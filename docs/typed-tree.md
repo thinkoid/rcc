@@ -233,7 +233,8 @@ public:
   through each target's `erased_pointed()`, which asks the pointer
   through its handle; `*`, pointer arithmetic and the difference are
   hops on the classes their builders read, and the handle's class is
-  `defaults_t`'s.
+  `defaults_t`'s. x86-64's `index_base()` and `memory_operand()` are
+  two more such lines.
 - Every model is instantiated in one translation unit, `build.cc`,
   which includes the node types and every row of both targets. Two
   units that saw different overloads would break the one-definition
@@ -663,6 +664,19 @@ S >`.
   order written. `p - q` is `difference_t< R >`, which divides by the
   stride. `p[i]` is `*(p + i)`, as the parser reads it, and the
   builder leaves `p + 0` the node of `p`.
+- The strides are the pointee's size, 1, 2, 4 and 8. At a stride of 1
+  x86-64's rows are rcc's of that size: the sum is the `addq` of the
+  index and not the `leaq`; an object of 64 bits in memory, the index
+  or the pointer of `n + p`, is the `addq`'s own operand, which the
+  row asks of the erased pointer through the handle,
+  `memory_operand()`; and a sum by such an object is its value
+  wherever it is another address's pointer, rcc's `memory_indexed()`,
+  while the place through it takes the index into the form,
+  `(%rax,%rcx,1)`. A difference at a stride of 1 is `difference_t< R,
+  false >`, the subtraction alone, since rcc divides by no 1. The
+  pointer as the base another index joins is an entry point of its own
+  on x86-64, `index_base()`, whose niche on a sum by a variable, or by
+  a constant past 32 bits, is the sum's value.
 - The address a pointer's value designates is an entry point, each
   target's `pointed()`, rcc's (3.4). Its niches are on the pointer's
   own type: a sum by a constant, folded into a slot's displacement,
@@ -1084,6 +1098,9 @@ each became.
 | `pointed()`, `constant_indexed()`, `indexed()`, `index_base()`, `cast_sum()` | each target's `pointed()`, an entry point with niches on `gep_t` and `bitcast_t` |
 | `folded()`, `summed()`, aarch64's `based()`, `denoted()` | the summaries `named_offset()`, `lvalue_offset()`, `constant_sum()`, `denoted()`, asked through the handle |
 | `spills_within()` | x86-64's summary of that name |
+| `memory_operand()` of a pointer, `index_base()` | x86-64's entry points of those names, asked through the handle |
+| `memory_indexed()`, `unscaled()`, `unscaled_value()`, `summed_base()` | the rows of `gep_t` at a stride of 1 and the address's `sum` |
+| x86-64's `held_across` | the state's, set by `place_of()` |
 | `held_across` | aarch64's `between_t`, a parameter of a where's `address()` |
 | `index_of()` | aarch64's entry point of an index, over `held_valid()` |
 | `pointer_arithmetic()`, `difference()`, `stride()` | the rows of `gep_t` and `difference_t`, the stride their data |
@@ -1187,14 +1204,16 @@ rows invented for the purpose.
   models, at a model's own lines and the crossings of its classes; the
   dereference's where, the third, with pointer arithmetic, makes them
   10,269, and the unit 805,000 functions and 15.1 GB, where the same
-  zoo before the three took 30.8.
+  zoo before the three took 30.8. The rows of the stride 1 add two
+  lines and nineteen models: 814,000 functions and 15.2 GB.
 - GNU's `a ?: b`, which is not yet.
 - Of the declarations: a typedef name of an array or of a record; a
   function declared through a typedef name; an enum's fixed underlying
   type, as in rcc, and its attributes; a pointer to an enum within its
   own list, which rcc takes.
 - The rest of the pointers: a step and a compound assignment through a
-  pointer; an index of an object under a cast to its own width; on
+  pointer; an index of an object under a cast to its own type or under
+  a chain of casts, and under an operator beside a constant; on
   aarch64 the address of a slot past 4095 bytes of the frame; a
   pointer of static storage, the address of an object of static
   storage and of a function; an operator on a pointer constant; a

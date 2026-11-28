@@ -697,10 +697,13 @@ cast(const token_t &open, const type_t &t, const operand_t &arg)
     if (is< pointer_t >(arg.type) && constant_of(*value.node))
         not_yet(open, "cast of a pointer constant to an integer");
 
+    const token_t *kept = keeps_bits(open, arg, t);
+
     return { .type = t,
              .node = conversion(value, t),
              .overflowed = arg.overflowed,
-             .kept_bits = keeps_bits(open, arg, t) };
+             .kept_bits = kept,
+             .sign_changed = kept == &open && sign_of(t) != sign_of(arg.type) };
 }
 
 // The cast operator, 6.5.5: a parenthesized type name starts a cast,
@@ -813,10 +816,9 @@ multiplicative_expression(parser_t &p)
 
 // Pointer arithmetic needs a pointer to a complete object type, 6.5.7p2,
 // p3, rcc's require_object_pointee(): no function, an error at the
-// operator.  Its stride is the pointee's size, which rcc-v2 takes for
-// int and the pointers alone, 4 and 8, scales of x86-64's form: the
-// arithmetic on a pointer to any other type, &c + 1 on a char c, and on
-// a pointer to an array, whose stride is a row's, is not yet.
+// operator.  Its stride is the pointee's size, 1, 2, 4 or 8; the
+// arithmetic on a pointer to an array, whose stride is a row's, is not
+// yet.
 long
 require_object_pointee(const token_t &at, const operand_t &pointer)
 {
@@ -827,10 +829,6 @@ require_object_pointee(const token_t &at, const operand_t &pointer)
     if (is< array_t >(t))
         not_yet(at, "arithmetic on a pointer to an array");
 
-    if (!is< pointer_t >(t) && t != int_type())
-        not_yet(at, "arithmetic on a pointer to a type other than 'int' or "
-                    "a pointer");
-
     return size_of(t);
 }
 
@@ -838,11 +836,13 @@ require_object_pointee(const token_t &at, const operand_t &pointer)
 // promoted and then widened to 64 bits in its own signedness, in one
 // conversion, as an operand of the usual arithmetic conversions goes; an
 // unsigned index never reads as negative (G6).  An index of an object
-// under a cast to its width, keeps_bits()'s, is not yet, at the cast.
+// under a cast to its width, keeps_bits()'s, is not yet, at the cast,
+// but for one change of its sign alone, whose widening the builder keeps
+// over the change, which aarch64's index form reads as rcc's does.
 expr_t
 widened_index(const operand_t &e)
 {
-    if (e.kept_bits)
+    if (e.kept_bits && !e.sign_changed)
         not_yet(*e.kept_bits, "an index of an object under a cast to its "
                               "width");
 
