@@ -20,30 +20,6 @@ The second design of the tree and of the generators,
 other chapters are about. The chapter holds its own defects. What it
 does not compile yet is no defect, and =make sides= counts it.
 
-** TODO A widening over a comma whose right operand is an identity's operand under a change of sign writes no extension
-
-#+begin_src c
-int g(void) { int b; unsigned long p; return p != (b, 0u + b); }
-#+end_src
-
-rcc extends the comma's value to 64 bits, =movl %ecx, %ecx= and =mov
-w1, w1=, and rcc-v2 writes neither, on both targets. =0u + b= is
-its operand, =b= converted to =unsigned=, a conversion that writes
-nothing over the load; the comma keeps that operand in its class,
-and the widening over the comma takes the value for valid to 64
-bits, where rcc's =converted()= caps it at 32. The value is the same
-where the load cleared the upper half and the listing is not. A
-random run found it, in one program of 30,000.
-
-The fix: find which of the comma's class, its =valid_of()= and the
-widening's builder loses the cap, with the program above; the width
-rule of a comma is its right operand's, so a comma must not change
-what the widening of that operand alone writes.
-
-The check: the program above the same on both targets, and the same
-comparison with =0u + b= alone on its right, which is the same
-today, still so; three seeds of the random run, 0 differ.
-
 ** TODO Each class of operand still multiplies what the instantiating unit costs
 
 =src/v2/build.cc= instantiates every node type a builder can make,

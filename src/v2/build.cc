@@ -238,11 +238,46 @@ make_unary(unary_op_t op, view_t view, expr_t arg)
     return arg.self->unary(op, view, arg);
 }
 
-// Two hops, 3.3: through the right operand's model, which knows its
-// class, then through the left's, which knows the left's class.
+namespace {
+
+// Whether the constant c on the right of op at the view makes op the
+// identity, is_identity_by()'s, crossed from the operator and the view
+// (principle 6).
+bool
+is_identity(binary_op_t op, view_t view, long long c)
+{
+    return cross(op, [&]< binary_op_t o >() {
+        return cross_operation(
+            view, [&]< view_t V >() { return is_identity_by< o, V >(c); });
+    });
+}
+
+} // namespace
+
+// A constant that makes the operator the identity, x + 0, leaves the
+// other operand's handle, the node the parser converted, its conversions
+// with it; rcc drops such a node in a pass after the body is parsed,
+// drop_identities(), and rcc-v2 where it would be built.  A constant on
+// the left does so of an operator that commutes alone: 0 + x is x, and
+// 0 - x, 0 << x and 1 / x are the node.  It is asked here, of the
+// constants' values through the handles (4.3), and not of the classes a
+// hop hands the typed builder, which read a change of sign over a load
+// as the load: 0u + b on an int b is b converted to unsigned, which a
+// comma's widening extends, rcc's cap of converted() (4.2).  Two
+// constants fold, the typed builder's.  Otherwise two hops, 3.3:
+// through the right operand's model, which knows its class, then
+// through the left's, which knows the left's class.
 expr_t
 make_binary(binary_op_t op, view_t view, expr_t lhs, expr_t rhs)
 {
+    const auto l = constant_of(lhs);
+    const auto r = constant_of(rhs);
+    if (!l && r && is_identity(op, view, *r))
+        return lhs;
+
+    if (l && !r && commutes(op) && is_identity(op, view, *l))
+        return rhs;
+
     return rhs.self->right_of(op, view, lhs, rhs);
 }
 

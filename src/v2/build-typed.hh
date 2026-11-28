@@ -301,40 +301,13 @@ node_of(const top_t< F > &operand)
     return operand.node;
 }
 
-// A binary operator of operands neither of which is a constant: the
-// node, each operand in its class.
+// A binary operator of operands that do not both fold: the node, each
+// operand in its class.  An operator that a constant makes the identity
+// is no node: its builder leaves the other operand (build.cc).
 template< binary_op_t op, view_t V, typename L, typename R >
 expr_t
 make_binary(const L &lhs, const R &rhs)
 {
-    return expr_t(binary_t< op, V, L, R > { lhs, rhs });
-}
-
-// A constant on the right that makes the operator the identity, x + 0,
-// leaves the other operand, the node it is, its conversions with it;
-// rcc drops such a node in a pass after the body is parsed,
-// drop_identities(), and rcc-v2 where it would be built.  Any other
-// constant is the node's.
-template< binary_op_t op, view_t V, typename L, constant R >
-expr_t
-make_binary(const L &lhs, const R &rhs)
-{
-    if (is_identity_by< op, V >(value_of(rhs)))
-        return expr_t(lhs);
-
-    return expr_t(binary_t< op, V, L, R > { lhs, rhs });
-}
-
-// A constant on the left makes the operator the identity as one on the
-// right does, but for an operator that commutes alone: 0 + x is x, and
-// 0 - x, 0 << x and 1 / x are the node.
-template< binary_op_t op, view_t V, constant L, typename R >
-expr_t
-make_binary(const L &lhs, const R &rhs)
-{
-    if (commutes(op) && is_identity_by< op, V >(value_of(lhs)))
-        return node_of(rhs);
-
     return expr_t(binary_t< op, V, L, R > { lhs, rhs });
 }
 

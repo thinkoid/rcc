@@ -591,11 +591,16 @@ Three things are kept apart: the value, the fold and a stage.
 - The fold is an overload on the operands' types, beside the other
   builders, at the node's view and by its operator's sign. A
   constant's conversion is one function of the two views and the two
-  signs. It comes off with every niche under the oracle. rcc-v2
-  folds what rcc folds, with rcc's arithmetic, since its listing is
-  rcc's. It drops an operator that its constant makes the identity
-  where the node would be built, and rcc drops it in a pass after the
-  body; the two agree, since the operand kept is never a constant.
+  signs. It comes off with every niche under the oracle. rcc-v2 folds
+  what rcc folds, with rcc's arithmetic, since its listing is rcc's.
+  It drops an operator that its constant makes the identity where the
+  node would be built, and rcc drops it in a pass after the body; the
+  two agree, since the operand kept is never a constant. The identity
+  is asked by `make_binary()` on the handles, of the constants'
+  values, and leaves the other operand's handle, the node the parser
+  converted: `0u + b` on an `int` is `b` converted to `unsigned`, so a
+  widening above it extends, `movl %ecx, %ecx`. A class the typed
+  builder is handed has read that conversion over a load as the load.
 - There is no stage. A node's type holds its operands' types, so an
   operand changed late changes what every node above should have
   been. A stage is a rebuild, never a patch.
