@@ -860,7 +860,10 @@ widened_index(const operand_t &e)
 // error at the operator, and the pointer's pointee an object type,
 // require_object_pointee()'s; the result of the pointer's type, the
 // sum in the order written, make_gep()'s, of the index widened.  rcc
-// reads both values before it judges their types.
+// reads both values before it judges their types.  A sum on a pointer
+// constant, (int *) 4096 + i, whose operands rcc's x86-64 rows take in
+// another order than a pointer's value and its index, is
+// refuse_pointer_constant()'s.
 operand_t
 addition(const token_t &at, operand_t lhs, operand_t rhs)
 {
@@ -876,8 +879,11 @@ addition(const token_t &at, operand_t lhs, operand_t rhs)
     const operand_t &pointer = left ? lhs : rhs;
     const long stride = require_object_pointee(at, pointer);
 
+    expr_t base = rvalue(at, pointer);
+    refuse_pointer_constant(at, pointer.type, base);
+
     return { pointer.type,
-             make_gep(binary_op_t::add, rvalue(at, pointer),
+             make_gep(binary_op_t::add, std::move(base),
                       widened_index(left ? rhs : lhs), stride, !left) };
 }
 
