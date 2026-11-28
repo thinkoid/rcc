@@ -241,6 +241,12 @@ make_local(int slot, view_t view, sign_t sign)
 }
 
 expr_t
+make_local_array(int slot)
+{
+    return expr_t(address_of_t< slot_t > { slot_t { slot } });
+}
+
+expr_t
 make_global(std::string_view name, view_t view, sign_t sign)
 {
     return cross(view, [&]< view_t V >() {
@@ -283,6 +289,15 @@ expr_t
 make_indirection(expr_t pointer, view_t view, sign_t sign)
 {
     return pointer.self->indirection(view, sign, pointer);
+}
+
+// & of the place the pointer points to, the two hops: no access reads
+// that place, so its view, an i64's, stands for none of the array's.
+expr_t
+make_indirection_to_array(expr_t pointer)
+{
+    return make_address_of(
+        make_indirection(std::move(pointer), view_t::i64, sign_t::unsigned_));
 }
 
 // One hop through the index's model, which knows its class (3.3): the
@@ -499,6 +514,12 @@ make_init(int slot, view_t view, expr_t value)
     return cross(view, [&]< view_t V >() {
         return stmt_t(init_t< V > { slot_t { slot }, std::move(value) });
     });
+}
+
+stmt_t
+make_array_decl(int slot, long size, int align)
+{
+    return stmt_t(array_decl_t { slot_t { slot }, size, align });
 }
 
 stmt_t

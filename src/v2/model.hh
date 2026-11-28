@@ -1000,9 +1000,9 @@ fwd_address_of(const P &p)
 }
 
 // The pointer of * in the class its builder reads, make_indirection():
-// an address, whose place * gives again, or anything else erased, the
-// handle that holds it.  The crossings of fwd_indirection() are
-// instantiated once for each class, and not for each node type.
+// a local's address, whose place * gives again, or anything else
+// erased, the handle that holds it.  The crossings of fwd_indirection()
+// are instantiated once for each class, and not for each node type.
 template< typename T >
 const expr_t &
 pointed_operand(const T &, const expr_t &self)
@@ -1010,9 +1010,8 @@ pointed_operand(const T &, const expr_t &self)
     return self;
 }
 
-template< typename W >
-const address_of_t< W > &
-pointed_operand(const address_of_t< W > &address, const expr_t &)
+inline const address_of_t< slot_t > &
+pointed_operand(const address_of_t< slot_t > &address, const expr_t &)
 {
     return address;
 }

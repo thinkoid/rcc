@@ -289,6 +289,7 @@ declare_object(parser_t &p, const specifiers_t &spec, const declarator_t &d)
         not_yet(d.name, "object " + quoted(d.name.text) + " of type 'void'");
 
     refuse_static_pointer(d.name, d.type);
+    refuse_static_array(d.name, d.type);
 
     adopt_block_entity(p, d.name.text);
 

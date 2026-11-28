@@ -9,6 +9,7 @@
 #include "arm64.hh"
 
 #include "assembly.hh"
+#include "target.hh"
 
 #include <algorithm>
 #include <bit>
@@ -497,7 +498,8 @@ condition(binary_op_t op)
 // spill's; its displacement off x29.  G12: a slot is never shared and
 // never reused inside the activation.  A slot past the reach of an
 // access of its size is reached through x16 in rcc, 5.3, which rcc-v2
-// does not yet; below it the frame is far from the target's limit.
+// does not yet; and a frame past the target's limit, which an array
+// reaches, is rcc's error, which it does not say yet.
 int
 allocate(state_t &s, long size, int align)
 {
@@ -507,6 +509,8 @@ allocate(state_t &s, long size, int align)
             "v2: not yet: a slot beyond the reach of [x29, #d]");
 
     s.frame = displacement + size;
+    if (s.frame > aarch64.frame_limit)
+        throw std::logic_error("v2: not yet: a frame past the target's limit");
 
     return static_cast< int >(displacement);
 }

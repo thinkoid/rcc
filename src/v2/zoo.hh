@@ -422,6 +422,18 @@ struct decl_t
     slot_t where;
 };
 
+// T a[N];, the declaration of a local array: its slot, size bytes at
+// the alignment of its element, align, taken where the declaration is
+// generated, and nothing stored, 6.7.11p11.  Its leaf is the slot's
+// address, the array's decay, 6.3.2.1p3, so no node reads the array
+// whole.
+struct array_decl_t
+{
+    slot_t where;
+    long size;
+    int align;
+};
+
 // T x = e;, a declaration with an initializer, 6.7.11p12: the slot
 // taken, then the value stored in it.  An initialization, not an
 // assignment (4.5); the value is erased, as an assignment's is.

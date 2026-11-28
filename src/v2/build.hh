@@ -28,6 +28,11 @@ expr_t make_literal(long long value, view_t view);
 expr_t make_local(int slot, view_t view, sign_t sign);
 expr_t make_global(std::string_view name, view_t view, sign_t sign);
 
+// A local array, 6.7.7.3: its leaf, the address of its slot, its
+// decay, 6.3.2.1p3, which is no place; & of the array and of its first
+// element are the same node.
+expr_t make_local_array(int slot);
+
 // The lvalue conversion, 6.3.2.1p2: a place becomes the value it holds;
 // any other expression is a value already, and is returned as it is.
 expr_t rvalue(expr_t e);
@@ -45,6 +50,11 @@ expr_t make_address_of(expr_t place);
 // *E of a pointer's value, 6.5.4.2p4: the place it points to, of the
 // pointee's view and of a type of the sign.
 expr_t make_indirection(expr_t pointer, view_t view, sign_t sign);
+
+// *E of a pointer to an array, 6.5.4.2p4: the array it points to, whose
+// node is its decay, the address of the place the pointer points to,
+// &*E, so *&a is the array a again.
+expr_t make_indirection_to_array(expr_t pointer);
 
 // p + n, n + p and p - n, 6.5.7p9, of a pointer and an index widened to
 // 64 bits, the stride the pointee's size in bytes, index_first saying
@@ -130,6 +140,10 @@ stmt_t make_init(int slot, view_t view, expr_t value);
 stmt_t make_return(expr_t value, view_t view);
 stmt_t make_return_void();
 stmt_t make_block(std::vector< stmt_t > items);
+
+// A declaration of a local array of size bytes at the alignment align,
+// its element's.
+stmt_t make_array_decl(int slot, long size, int align);
 
 // if (cond) then, and if (cond) then else otherwise, 6.8.5.2, of a
 // condition converted.

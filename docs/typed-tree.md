@@ -16,23 +16,24 @@ by an integer constant expression or not, read and assigned in every
 expression, defined before their use, after it or nowhere in the unit,
 their data written after the functions; the functions of a result of
 any integer type, a pointer or `void` and of parameters of any integer
-type or pointers, whose locals are of the integer types and pointers
-to `int` and to such pointers, declared, assigned and returned, with
-parentheses, the casts, the unary operators `+ - ~ !`, `&` of a local
-and of the object a pointer points to, `*` read and written, and
-`sizeof`, `+ - * / % << >> & | ^`, the comparisons, of pointers among
-them, pointer arithmetic, the subscript and the difference of two
-pointers, `&&`, `||`, `?:` of arms of every integer type, the comma,
-the compound assignments and `++` and `--` of every integer type, and
-calls of functions of a result of any integer type, a pointer or
-`void`, to any depth, and the statements `if`, `else`, `switch` on
-every integer type with its `case` and `default` labels, `while`,
-`do`, `for` with a declaration or an expression first, `break`,
-`continue`, `goto` and labels, and `return` with a value or without,
-on both targets. Each mechanism below was compiled and run in a small
-model first; chapter 5 says what the models showed and chapter 6 what
-nothing has shown. A statement marked *working* is a position taken
-and run, not yet agreed.
+type or pointers, whose locals are of the integer types, pointers to
+`int` and to such pointers, and arrays of `int` and of pointers,
+declared, assigned and returned, with parentheses, the casts, the
+unary operators `+ - ~ !`, `&` of a local and of the object a pointer
+points to, `*` read and written, and `sizeof`, `+ - * / % << >> & |
+^`, the comparisons, of pointers among them, pointer arithmetic, the
+subscript and the difference of two pointers, an array's decay as a
+value and an argument, its subscript and its `&`, `&&`, `||`, `?:` of
+arms of every integer type, the comma, the compound assignments and
+`++` and `--` of every integer type, and calls of functions of a
+result of any integer type, a pointer or `void`, to any depth, and the
+statements `if`, `else`, `switch` on every integer type with its
+`case` and `default` labels, `while`, `do`, `for` with a declaration
+or an expression first, `break`, `continue`, `goto` and labels, and
+`return` with a value or without, on both targets. Each mechanism
+below was compiled and run in a small model first; chapter 5 says what
+the models showed and chapter 6 what nothing has shown. A statement
+marked *working* is a position taken and run, not yet agreed.
 
 ## 1. The idea
 
@@ -549,9 +550,12 @@ S >`.
   `i32`, `i64`. Every value node has a view, the width of its value,
   and an operator's parameter is its operation's view, `i32` or
   `i64`; a comparison's value is an `int`'s.
-- `&` takes the view off, `address_t< W >`. `*` puts one on, read
-  from the pointer's C type. `*` over an address is the place again;
-  its primary goes through the pointer's value.
+- `&` takes the view off, `address_t< W >`. `*` puts one on, read from
+  the pointer's C type. `*` over a local's address is the place again,
+  `*&x` is `x`, the builder's; `*&*p` stays the place through `&*p`,
+  as in rcc's tree, whose access reads a sum under it otherwise than
+  the sum's own: `*&a[i]` on a local array is aarch64's `add x0, x29,
+  w0, sxtw #2` and `[x0, #16]` where `a[i]` is `[x0, w1, sxtw #2]`.
 - A cast between pointer types writes no instruction. It is the
   operand's own node under another C type, but over a sum, where it is
   `bitcast_t`: both targets read a sum's address through one such cast
@@ -643,14 +647,15 @@ S >`.
   through a pointer, and so says what `&` takes (principle 8), as an
   assignment's builder says what is assignable. `&*p` is the address
   of the place through `p`, whose row is `p`'s value and writes
-  nothing, and `*&x` is the place of `x` again, the builder's. A
-  where's summaries are its pointer's: what a pinned instruction
-  within it moves, x86-64's, and whether a call is within it,
-  aarch64's `calls_within()`, by which an assignment whose place holds
-  a call's result does not take the consumer's register for its value.
-  A step and a compound assignment through a pointer are not yet.
-  `sizeof` is a constant the parser makes: its operand is typed and
-  dropped, with the uses of names of internal linkage it made.
+  nothing, and `*&x` is the place of `x` again, the builder's, which
+  cancels over a local's address alone. A where's summaries are its
+  pointer's: what a pinned instruction within it moves, x86-64's, and
+  whether a call is within it, aarch64's `calls_within()`, by which an
+  assignment whose place holds a call's result does not take the
+  consumer's register for its value. A step and a compound assignment
+  through a pointer are not yet. `sizeof` is a constant the parser
+  makes: its operand is typed and dropped, with the uses of names of
+  internal linkage it made.
 - Pointer arithmetic is `gep_t< op, N, index_first >`: the pointer
   erased, the index in its class, the stride data, and whether the
   index was written first, since each operand is generated in the
@@ -679,6 +684,16 @@ S >`.
   conditional's `widened_arms_t` included, generates the operand at
   its own view and reads its width as `held_valid()` gives it (3.4),
   so a join's `mov` decides `sxtw`.
+- A local array's leaf is its slot's address, `address_of_t< slot_t
+  >`, the array's decay, since no row reads an array whole. The
+  parser's operand holds the array's type beside the decay's, read by
+  `&` and `sizeof` alone, so `&a` is the same node under the type of a
+  pointer to the array, and `*` of a pointer to an array is the array
+  again, `&*p`. `a[i]` is the sum over that address: x86-64's slot and
+  index, `-20(%rbp,%rax,4)`, and aarch64's `add x0, x29, #20` and
+  `[x0, w1, sxtw #2]`. Its declaration is `array_decl_t`, its slot its
+  size at its element's alignment. An array parameter is a pointer to
+  its element.
 
 ### 4.3 Constants
 
@@ -1060,6 +1075,9 @@ each became.
 | `integer()` of a pointer | the parser's `view_of()` and `sign_of()`: `i64`, unsigned |
 | `address_value()` of a name, `address_of()` | the row of `address_of_t< W >` over each target's `address_of()` of its where's address |
 | `frame_address()` | aarch64's, with an `if` on the 12 bits of its `add` |
+| `decayed()` | the parser's operand of an array: its type the decay's, its node the address |
+| `array_declarator()`, `array_count()`, `array_size()` | the parser's, ported |
+| `allocate()` by a size and an alignment | the row of `array_decl_t` |
 | `pointed()` of a dereference's operand | each target's `address()` of the where `indirect_t`: the pointer's value, the base |
 | `calls_within()` | aarch64's summary of that name, each node's of its parts, an erased one's through its handle |
 | `pointed()`, `constant_indexed()`, `indexed()`, `index_base()`, `cast_sum()` | each target's `pointed()`, an entry point with niches on `gep_t` and `bitcast_t` |
@@ -1181,7 +1199,10 @@ rows invented for the purpose.
   storage and of a function; an operator on a pointer constant; a
   pointer arm of a `?:`, and `++`, `--` and the compound assignments
   of a pointer; `void *`, qualified pointers and pointers to the other
-  types.
+  types; arrays of arrays, of the other types and of static storage,
+  variable length arrays, an array's initializer, and a frame past a
+  target's limit, which an array reaches and rcc refuses in its own
+  words.
 - `({ })`. It waits until the concepts around it are clear.
 - Two targets that want shapes of one subtree that do not nest. The
   address family is where to look.

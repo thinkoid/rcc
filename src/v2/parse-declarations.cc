@@ -4,14 +4,14 @@
 // specifiers static, extern, typedef, void and the type specifiers of
 // the integer types from char to unsigned long long, in any order and
 // spelling, a typedef name and an enum specifier, the pointers to int
-// and to pointers, the declarators of a function and of an object, the
-// declaration in a block and in a for's first clause of objects of
-// those types, each with an initializer or without, the type
-// definitions, the type name of a cast and of sizeof, and the
-// initializer of an object of static storage; it refuses the rest as
-// not yet.  rcc reads more of each than rcc-v2 does, so each is read as
-// far as rcc would read it, and what rcc would take is refused before
-// an error rcc would not say.
+// and to pointers and the arrays of either, the declarators of a
+// function and of an object, the declaration in a block and in a for's
+// first clause of objects of those types, each with an initializer or
+// without, a local array's without one, the type definitions, the type
+// name of a cast and of sizeof, and the initializer of an object of
+// static storage; it refuses the rest as not yet.  rcc reads more of
+// each than rcc-v2 does, so each is read as far as rcc would read it,
+// and what rcc would take is refused before an error rcc would not say.
 
 #include "parse-common.hh"
 
@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <format>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -518,6 +519,13 @@ refuse_static_pointer(const token_t &name, const type_t &t)
         not_yet(name, "pointer " + quoted(name.text) + " of static storage");
 }
 
+void
+refuse_static_array(const token_t &name, const type_t &t)
+{
+    if (is< array_t >(t))
+        not_yet(name, "array " + quoted(name.text) + " of static storage");
+}
+
 // The declaration specifiers: one of the sets of 6.7.3.1p2 in any
 // order, and the storage class static, extern or typedef anywhere among
 // them, 6.7.2p1, read as rcc reads them, up to the first token that is
@@ -603,11 +611,12 @@ refuse_parenthesized(const parser_t &p)
 
 // The pointers before a declarator's name, 6.7.7.2, rcc's pointer():
 // each '*' a pointer to the type so far, so int **pp is a pointer to a
-// pointer to int.  The pointees rcc-v2 takes are int and the pointers:
-// a pointer to void, to a function, which a typedef name may name, to
-// an enum in its own list, which rcc takes, or to another integer type
-// is not yet at its '*', and so is a qualifier after one, which
-// qualifies the pointer, p1.
+// pointer to int.  The pointees rcc-v2 takes are int, the pointers and
+// the arrays of either, which a typedef name names: a pointer to void,
+// to a function, which a typedef name may name, to an enum in its own
+// list, which rcc takes, or to another integer type is not yet at its
+// '*', and so is a qualifier after one, which qualifies the pointer,
+// p1.
 type_t
 pointer(parser_t &p, type_t t)
 {
@@ -621,7 +630,7 @@ pointer(parser_t &p, type_t t)
 
         refuse_not_yet_type(star, t);
 
-        if (!is< pointer_t >(t) && t != int_type())
+        if (!is< pointer_t >(t) && !is< array_t >(t) && t != int_type())
             not_yet(star, "pointer to an integer type other than 'int'");
 
         t = make_pointer(std::move(t));
@@ -635,25 +644,216 @@ pointer(parser_t &p, type_t t)
     return t;
 }
 
-// The declarator of a parameter past its pointers, whose name is
-// optional, 6.7.7.1p1, and returned, or null: an array, adjusted to a
-// pointer, p6, and a function, adjusted to a pointer to it, p7, are not
-// yet.
-const token_t *
-parameter_declarator(parser_t &p)
+// The count of an array from its size, rcc's array_count(): an
+// expression of integer type, 6.7.7.3p1, a constant one by now, of a
+// value greater than zero, each an error at the size's first token, at.
+// An unsigned size past LONG_MAX is LONG_MAX, which no element's size
+// lets through as an array's.
+long
+array_count(const token_t &at, const operand_t &size)
+{
+    if (!is< int_t >(size.type))
+        fail(at, "size of array has non-integer type");
+
+    const exact_t value = exact_value(size.type, *constant_of(*size.node));
+    if (value <= 0)
+        fail(at, "array size must be greater than zero");
+
+    return static_cast< long >(
+        std::min< exact_t >(value, std::numeric_limits< long >::max()));
+}
+
+// The size of an array suffix, rcc's array_size(): an assignment
+// expression, 6.7.7.1p1, read for its value, and warned of where a
+// constant expression overflowed, warn_overflowed()'s.
+operand_t
+array_size(parser_t &p)
+{
+    const token_t &start = peek(p);
+
+    operand_t size = assignment_expression(p);
+    size.node = rvalue(start, size);
+    if (constant_of(*size.node))
+        warn_overflowed(p, start, size);
+
+    return size;
+}
+
+// static and the type qualifiers stand only in the outermost array
+// type derivation of a parameter, 6.7.7.3p1, rcc's
+// refuse_array_qualifier(), and are refused in any other brackets.
+void
+refuse_array_qualifier(const token_t &t)
+{
+    switch (t.kind) {
+    case tok_t::kw_static:
+    case tok_t::kw_const:
+    case tok_t::kw_volatile:
+    case tok_t::kw_restrict:
+    case tok_t::kw_atomic:
+        fail(t, quoted(t.text) +
+                    " outside a parameter's outermost array type derivation");
+    default: break;
+    }
+}
+
+// What a parameter's brackets hold before a size, 6.7.7.3p3, which rcc
+// takes and rcc-v2 does not yet: static and the type qualifiers in the
+// outermost, the one the parameter is adjusted from, and '*', a
+// variable length array of unspecified size, p4, in any; outside a
+// parameter the first two are refuse_array_qualifier()'s errors, and
+// '*' rcc's error.
+void
+refuse_bracket_contents(const parser_t &p, bool parameter, bool outermost)
+{
+    const token_t &t = peek(p);
+    const bool star =
+        t.kind == tok_t::star && peek(p, 1).kind == tok_t::rbracket;
+
+    if (parameter && star)
+        not_yet(t, "'*' as an array size");
+
+    if (star)
+        fail(t, "'*' as an array size outside a parameter declaration");
+
+    if (!(parameter && outermost))
+        refuse_array_qualifier(t);
+    else if (next_is(p, { tok_t::kw_static, tok_t::kw_const, tok_t::kw_volatile,
+                          tok_t::kw_restrict, tok_t::kw_atomic }))
+        not_yet(t, quoted(t.text) + " in an array parameter's brackets");
+}
+
+// An array suffix as written: its '['; its count, -1 where its size is
+// left out; and whether its size is no constant, a variable length
+// array's.
+struct array_suffix_t
+{
+    const token_t &open;
+    long count;
+    bool variable = false;
+};
+
+// The elements rcc-v2 takes are those of a pointer: int and the
+// pointers, 6.7.7.3p1.  An array of arrays, whose rows no form of an
+// index reaches yet, and of any other type are not yet, refused at the
+// '[' of the derivation that made the element, or where a typedef name
+// made it, at the '[' that derives from it.
+void
+refuse_element(const token_t &at, const type_t &t)
+{
+    refuse_not_yet_type(at, t);
+
+    if (is< array_t >(t))
+        not_yet(at, "array of arrays");
+
+    if (!is< pointer_t >(t) && t != int_type())
+        not_yet(at, "array of an integer type other than 'int'");
+}
+
+// One or more [N], N an integer constant expression, or [] for an array
+// of unknown size, 6.7.7.3p1, p4, rcc's array_declarator(), deriving
+// from the element type t: the suffixes read first, then the type built
+// from the right, so int m[2][3] is an array of two arrays of three,
+// p3, an element of a complete object type, p1, each an error at its
+// '[', and of a count whose size in bytes a long holds.  A size that is
+// no integer constant expression makes a variable length array, p4,
+// which rcc compiles and rcc-v2 does not yet: its first token is
+// returned in variable, for the declaration to refuse in its words, and
+// the array is of unknown size; an array of such arrays is rcc's not
+// yet, at its '['.  parameter says that the suffixes are a parameter's,
+// whose first is the array the parameter is adjusted from, 6.7.7.4p6:
+// its size may be left out, and a size that is no constant, treated as
+// '*' at prototype scope, 6.7.7.3p5, and evaluated on entry to a
+// definition, is not yet; a variable length array past it is behind the
+// parameter's pointer, rcc's not yet.
+type_t
+array_declarator(parser_t &p,
+                 const type_t &t,
+                 bool parameter,
+                 const token_t *&variable)
+{
+    std::vector< array_suffix_t > suffixes;
+
+    while (peek(p).kind == tok_t::lbracket) {
+        array_suffix_t suffix { advance(p), -1 };
+        const bool outermost = suffixes.empty();
+        refuse_bracket_contents(p, parameter, outermost);
+
+        if (peek(p).kind != tok_t::rbracket) {
+            const token_t &start = peek(p);
+            const operand_t size = array_size(p);
+            const bool constant = constant_of(*size.node).has_value();
+
+            if (is< int_t >(size.type) && !constant && parameter)
+                not_yet(start, outermost ?
+                                   "an array parameter's size that is no "
+                                   "constant" :
+                                   "pointer to variable length array");
+
+            suffix.variable = is< int_t >(size.type) && !constant;
+            if (suffix.variable && !variable)
+                variable = &start;
+
+            if (!suffix.variable)
+                suffix.count = array_count(start, size);
+        }
+
+        expect(p, tok_t::rbracket, "expected ']'");
+        suffixes.push_back(suffix);
+    }
+
+    type_t element = t;
+    const array_suffix_t *inner = nullptr;
+
+    for (auto it = suffixes.rbegin(); it != suffixes.rend(); ++it) {
+        if (is< function_t >(element))
+            fail(it->open, "array element type cannot be a function");
+
+        if (inner && inner->variable)
+            not_yet(it->open, "array of variable length arrays");
+
+        if (is< void_t >(element) ||
+            (is< array_t >(element) && as< array_t >(element).count < 0))
+            fail(it->open, "array has incomplete element type");
+
+        refuse_element(inner ? inner->open : it->open, element);
+
+        if (it->count > std::numeric_limits< long >::max() / size_of(element))
+            fail(it->open, "array is too large");
+
+        element = make_array(std::move(element), it->count);
+        inner = &*it;
+    }
+
+    return element;
+}
+
+// The declarator of a parameter past its pointers, of the type t so
+// far, whose name is optional, 6.7.7.1p1: the name, or null, and the
+// parameter's type, an array adjusted to a pointer to its element,
+// 6.7.7.4p6, whatever made the array, its suffix or a typedef name.  A
+// function, adjusted to a pointer to it, p7, is not yet.
+std::pair< const token_t *, type_t >
+parameter_declarator(parser_t &p, type_t t)
 {
     refuse_parenthesized(p);
 
     const token_t *name =
         peek(p).kind == tok_t::identifier ? &advance(p) : nullptr;
 
-    if (peek(p).kind == tok_t::lbracket)
-        not_yet(peek(p), "array declarator");
-
-    if (peek(p).kind == tok_t::lparen)
+    const token_t *variable = nullptr;
+    if (peek(p).kind == tok_t::lbracket) {
+        t = array_declarator(p, t, true, variable);
+        if (peek(p).kind == tok_t::lparen)
+            fail(peek(p), "array element type cannot be a function");
+    }
+    else if (peek(p).kind == tok_t::lparen)
         not_yet(peek(p), "parameter of function type");
 
-    return name;
+    if (is< array_t >(t))
+        t = make_pointer(*as< array_t >(t).element);
+
+    return { name, std::move(t) };
 }
 
 // A parameter's specifiers and declarator, its pointers first,
@@ -674,15 +874,14 @@ parameter_declaration(parser_t &p)
         fail(*spec.storage_class,
              quoted(spec.storage_class->text) + " in a parameter declaration");
 
-    type_t t = pointer(p, spec.type);
-    const token_t *name = parameter_declarator(p);
+    const auto [name, t] = parameter_declarator(p, pointer(p, spec.type));
     if (peek(p).kind == tok_t::kw_attribute)
         not_yet(peek(p), quoted(peek(p).text) + " after a declarator");
 
     if (is< function_t >(t))
         not_yet(start, "parameter of function type");
 
-    return { start, name, std::move(t) };
+    return { start, name, t };
 }
 
 // A parameter's name, declared in the scope of its list, which the
@@ -746,18 +945,25 @@ parameter_type_list(parser_t &p, std::vector< parameter_t > &params)
 }
 
 // The suffix after a declarator's name, which makes d's type of base:
-// none, an object's, base itself; or a parameter list, a function
-// returning base of its parameters' types, 6.7.7.4p4, whose list opens
-// a scope at its '(' and closes it at its ')', the function prototype
-// scope of 6.2.1p4, which d keeps for a definition.  An array is not
-// yet.  A function returns neither an array nor a function, 6.7.7.4p1,
-// which rcc says at the suffix after the list, and at the list's '('
-// where base is the function a typedef name names.
+// none, an object's, base itself; an array's, array_declarator()'s,
+// whose element is no function, 6.7.7.3p1, an error at a list after
+// it; or a parameter list, a function returning base of its
+// parameters' types, 6.7.7.4p4, whose list opens a scope at its '(' and
+// closes it at its ')', the function prototype scope of 6.2.1p4, which
+// d keeps for a definition.  A function returns neither an array nor a
+// function, 6.7.7.4p1, which rcc says at the suffix after the list,
+// and at the list's '(' where base is the array or the function a
+// typedef name names.
 void
 declarator_suffix(parser_t &p, declarator_t &d, const type_t &base)
 {
-    if (peek(p).kind == tok_t::lbracket)
-        not_yet(peek(p), "array declarator");
+    if (peek(p).kind == tok_t::lbracket) {
+        d.type = array_declarator(p, base, false, d.variable_size);
+        if (peek(p).kind == tok_t::lparen)
+            fail(peek(p), "array element type cannot be a function");
+
+        return;
+    }
 
     const token_t &open = peek(p);
     if (!accept(p, tok_t::lparen))
@@ -773,6 +979,9 @@ declarator_suffix(parser_t &p, declarator_t &d, const type_t &base)
 
     if (peek(p).kind == tok_t::lparen)
         fail(peek(p), "function cannot return a function");
+
+    if (is< array_t >(base))
+        fail(open, "function cannot return an array");
 
     if (is< function_t >(base))
         fail(open, "function cannot return a function");
@@ -804,20 +1013,31 @@ declarator(parser_t &p, const type_t &base)
 
 // A type name, 6.7.8p1: the specifiers, of which no storage class, in
 // rcc's words, then an abstract declarator, a declarator without its
-// name, of which rcc-v2 takes the pointers, (int *): a declarator in
-// parentheses or an array is not yet, refused at its first token.
+// name, of which rcc-v2 takes the pointers and the arrays, (int *[5]),
+// whose element is no function: a declarator in parentheses is not yet,
+// refused at its first token, and so is a variable length array, in
+// rcc's words at the type name's first token.
 type_t
 type_name(parser_t &p)
 {
+    const token_t &start = peek(p);
     const specifiers_t spec = declaration_specifiers(p);
     if (spec.storage_class)
         fail(*spec.storage_class,
              quoted(spec.storage_class->text) + " in a type name");
 
-    const type_t t = pointer(p, spec.type);
+    type_t t = pointer(p, spec.type);
     refuse_parenthesized(p);
-    if (peek(p).kind == tok_t::lbracket)
-        not_yet(peek(p), "array declarator");
+    if (peek(p).kind != tok_t::lbracket)
+        return t;
+
+    const token_t *variable = nullptr;
+    t = array_declarator(p, t, false, variable);
+    if (peek(p).kind == tok_t::lparen)
+        fail(peek(p), "array element type cannot be a function");
+
+    if (variable)
+        not_yet(start, "variable length array in a type name");
 
     return t;
 }
@@ -873,21 +1093,60 @@ refuse_declarator_tail(const parser_t &p)
         not_yet(peek(p), quoted(peek(p).text) + " after a declarator");
 }
 
+// A local array's declarator and its initializer, appended to items,
+// rcc's init_declarator() of an array: a variable length array is not
+// yet at its size; a brace initializer is not yet, in rcc's words, and
+// so is a string, as a primary expression; any other initializer is no
+// list and no string, 6.7.11p17, an error at its first token once the
+// name is declared, and without one the array's type is complete,
+// 6.7.1p8, so its size is written, an error at its name otherwise.  Its
+// declaration takes the slot and stores nothing.
+void
+local_array(parser_t &p, const declarator_t &d, std::vector< stmt_t > &items)
+{
+    if (d.variable_size)
+        not_yet(*d.variable_size, "variable length array");
+
+    const bool initialized = peek(p).kind == tok_t::assign;
+    if (initialized && peek(p, 1).kind == tok_t::lbrace)
+        not_yet(peek(p, 1), "brace initializer");
+
+    if (!initialized && as< array_t >(d.type).count < 0)
+        fail(d.name, "array size missing in " + quoted(d.name.text));
+
+    const int slot = declare(p, d.name, d.type);
+    if (initialized) {
+        advance(p);
+
+        const token_t &start = peek(p);
+        assignment_expression(p);
+        fail(start, "array initializer must be an initializer list");
+    }
+
+    items.push_back(make_array_decl(slot, size_of(d.type), align_of(d.type)));
+}
+
 // A declarator of an object and its initializer, appended to items: the
 // name declared, then, after '=', the initializer, whose scope holds
 // the name already, 6.2.1p7.  A brace initializer is not yet, in rcc's
 // words.  The initializer's value is converted to the object's type as
 // if by assignment, 6.7.11p12, assignment_conversion()'s at the '=',
 // but a void value, which rcc refuses at the initializer's first token.
+// An array is local_array()'s.
 void
 init_declarator(parser_t &p,
-                const type_t &type,
-                const token_t &name,
+                const declarator_t &d,
                 std::vector< stmt_t > &items)
 {
     refuse_declarator_tail(p);
 
-    const int slot = declare(p, name, type);
+    if (is< array_t >(d.type)) {
+        local_array(p, d, items);
+        return;
+    }
+
+    const type_t &type = d.type;
+    const int slot = declare(p, d.name, type);
     if (peek(p).kind != tok_t::assign) {
         items.push_back(make_decl(slot, view_of(type)));
         return;
@@ -940,6 +1199,7 @@ static_local(parser_t &p, const declarator_t &d)
 {
     refuse_declarator_tail(p);
     refuse_static_pointer(d.name, d.type);
+    refuse_static_array(d.name, d.type);
 
     scope_t &scope = p.scopes.back();
     if (scope.names.contains(d.name.text))
@@ -1022,6 +1282,7 @@ linked_declaration(parser_t &p, const declarator_t &d)
 {
     refuse_declarator_tail(p);
     refuse_static_pointer(d.name, d.type);
+    refuse_static_array(d.name, d.type);
 
     if (peek(p).kind == tok_t::assign)
         fail(peek(p), quoted(d.name.text) +
@@ -1083,7 +1344,9 @@ refuse_typedef_function(const specifiers_t &spec, const declarator_t &d)
 // and takes no initializer, which gives an object's value, 6.7.11p9,
 // nor a function body, since a function definition's storage class is
 // extern or static, 6.9.2p4, each an error at its first token.  GNU C's
-// attributes and an assembler name after the declarator are not yet.
+// attributes and an assembler name after the declarator are not yet,
+// and so is a typedef of a variable length array, whose size the
+// typedef fixes, 6.7.9p8, rcc's own not yet at the name.
 void
 type_definition(parser_t &p, const specifiers_t &spec, const declarator_t &d)
 {
@@ -1096,6 +1359,10 @@ type_definition(parser_t &p, const specifiers_t &spec, const declarator_t &d)
     if (lists_parameters(spec, d) && peek(p).kind == tok_t::lbrace)
         fail(peek(p),
              "typedef " + quoted(d.name.text) + " cannot have a function body");
+
+    if (d.variable_size)
+        not_yet(d.name,
+                "typedef of variable length array " + quoted(d.name.text));
 
     auto &names = p.scopes.back().names;
     const auto earlier = names.find(d.name.text);
@@ -1150,7 +1417,7 @@ init_declarator_list(parser_t &p, const specifiers_t &spec, bool objects_only)
         else if (declared(spec, tok_t::kw_static))
             static_local(p, d);
         else
-            init_declarator(p, d.type, d.name, items);
+            init_declarator(p, d, items);
     } while (accept(p, tok_t::comma));
 
     expect(p, tok_t::semicolon, "expected ';' at end of declaration");

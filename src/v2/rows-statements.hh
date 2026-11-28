@@ -28,6 +28,15 @@ generate(S &s, const decl_t< V > &d)
     allocate(s, d.where, V);
 }
 
+// An array's slot, rcc's allocate() by the array's size and its
+// element's alignment: nothing aligns an array past its element.
+template< typename S >
+void
+generate(S &s, const array_decl_t &d)
+{
+    s.slots.emplace(d.where.id, allocate(s, d.size, d.align));
+}
+
 // The slot is taken before the initializer is generated, whose scope
 // holds the name already, 6.2.1p7: int x = x; reads x's own slot.  The
 // value is stored at the slot's address, which writes nothing.

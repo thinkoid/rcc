@@ -160,6 +160,14 @@ pointee_of(const type_t &t)
     return *as< pointer_t >(t).pointee;
 }
 
+operand_t
+array_operand(const type_t &t, expr_t decay)
+{
+    return { .type = make_pointer(*as< array_t >(t).element),
+             .node = std::move(decay),
+             .array = t };
+}
+
 void
 refuse_not_yet_type(const token_t &at, const type_t &t)
 {
@@ -283,7 +291,8 @@ lookup(const parser_t &p, std::string_view name)
 
 // One declaration of a name of no linkage in a scope, 6.7.1p4, which
 // rcc says at the second.  The local's leaf is its slot, numbered in
-// the order the function declares its locals.
+// the order the function declares its locals, and an array's the
+// slot's address, its decay.
 int
 declare(parser_t &p, const token_t &name, const type_t &type)
 {
@@ -291,8 +300,10 @@ declare(parser_t &p, const token_t &name, const type_t &type)
         fail(name, "redefinition of " + quoted(name.text));
 
     const int slot = p.locals++;
-    const operand_t local { type,
-                            make_local(slot, view_of(type), sign_of(type)) };
+    const operand_t local =
+        is< array_t >(type) ?
+            array_operand(type, make_local_array(slot)) :
+            operand_t { type, make_local(slot, view_of(type), sign_of(type)) };
     p.scopes.back().names.emplace(name.text, symbol_t { local });
 
     return slot;

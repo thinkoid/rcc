@@ -23,18 +23,18 @@ namespace rcc {
 namespace {
 
 // An identifier, 6.5.2p3: a local's operand, a copy of what its
-// declaration made (docs/typed-tree.md 4.5), or an enumeration
-// constant's, the literal of its value, 6.4.4.4p3; an object the file
-// declares, a copy of the leaf its first declaration made, whether the
-// unit defines the object or not, which generation asks; or a name the
-// file declares as a function, a function designator of the function's
-// type and no node; a typedef name, which names a type, p2, and a name
-// no scope declares are rcc's errors.  Each use of a static function is
-// recorded, for the end of the unit to require its definition.  rcc
-// knows reserved names that no declaration in the unit makes, its
-// builtins and the types the compiler declares, and reads some of them
-// before it looks the name up, so a reserved name is not yet wherever
-// it stands.
+// declaration made (docs/typed-tree.md 4.5), an array's among them, or
+// an enumeration constant's, the literal of its value, 6.4.4.4p3; an
+// object the file declares, a copy of the leaf its first declaration
+// made, whether the unit defines the object or not, which generation
+// asks; or a name the file declares as a function, a function
+// designator of the function's type and no node; a typedef name, which
+// names a type, p2, and a name no scope declares are rcc's errors.
+// Each use of a static function is recorded, for the end of the unit to
+// require its definition.  rcc knows reserved names that no declaration
+// in the unit makes, its builtins and the types the compiler declares,
+// and reads some of them before it looks the name up, so a reserved
+// name is not yet wherever it stands.
 operand_t
 identifier(parser_t &p)
 {
@@ -47,7 +47,10 @@ identifier(parser_t &p)
             fail(t, "unexpected type name " + quoted(t.text) +
                         ": expected expression");
 
-        return { sym->operand.type, sym->operand.node, &t };
+        return { .type = sym->operand.type,
+                 .node = sym->operand.node,
+                 .name = &t,
+                 .array = sym->operand.array };
     }
 
     if (const auto object = p.objects.find(t.text); object != p.objects.end())
@@ -228,8 +231,9 @@ stepped(const token_t &op, step_op_t s, operand_t arg)
 // value, which is a pointer, 6.5.4.2p2, an error at op otherwise; the
 // result the lvalue it points to, of the pointee type, p4, the place
 // make_indirection() makes at the pointee's view and sign, which over an
-// address is the place again, so *&x is x.  A function designator,
-// whose value is its function's address, is not yet.
+// address is the place again, so *&x is x; of a pointer to an array,
+// the array, make_indirection_to_array()'s, no place.  A function
+// designator, whose value is its function's address, is not yet.
 operand_t
 indirect(const token_t &op, const operand_t &arg)
 {
@@ -238,6 +242,8 @@ indirect(const token_t &op, const operand_t &arg)
         fail(op, "indirection requires a pointer operand");
 
     const type_t &t = pointee_of(arg.type);
+    if (is< array_t >(t))
+        return array_operand(t, make_indirection_to_array(std::move(pointer)));
 
     return { .type = t,
              .node =
@@ -252,8 +258,9 @@ operand_t addition(const token_t &, operand_t, operand_t);
 // operand is a pointer to a complete object type and the other an
 // integer, p1, which the subscript checks itself, so that its errors
 // name the subscript and not the addition: two pointers make a
-// subscript that is no integer, and a pointer to a function is refused
-// in the subscript's words.
+// subscript that is no integer, and a pointer to a function and one to
+// an array of unknown size, incomplete, 6.2.5p27, are refused in the
+// subscript's words, rcc's require_subscripted_pointee().
 operand_t
 subscript(const token_t &op, operand_t e, operand_t index)
 {
@@ -266,8 +273,12 @@ subscript(const token_t &op, operand_t e, operand_t index)
     if (points(e) && points(index))
         fail(op, "array subscript is not an integer");
 
-    if (is< function_t >(pointee(points(e) ? e : index)))
+    const type_t &t = pointee(points(e) ? e : index);
+    if (is< function_t >(t))
         fail(op, "subscript of a pointer to a function");
+
+    if (is< array_t >(t) && as< array_t >(t).count < 0)
+        fail(op, "subscript of a pointer to an array of unknown size");
 
     return indirect(op, addition(op, std::move(e), std::move(index)));
 }
@@ -463,7 +474,8 @@ keeps_bits(const token_t &op, const operand_t &e, const type_t &t)
 // type, and no node of its own; but the value is no lvalue, so an
 // operand that is a place, whose promotion made no node, stands under
 // a conversion to its own type, which writes nothing: +x is (T) x, T
-// the promoted type of x.  The operand's mark is the value's.
+// the promoted type of x.  The operand's mark is the value's, and so is
+// its cast that keeps the bits of an object, through any number of +.
 operand_t
 unary_plus(parser_t &p)
 {
@@ -478,7 +490,10 @@ unary_plus(parser_t &p)
                  .overflowed = arg.overflowed,
                  .kept_bits = keeps_bits(op, arg, t) };
 
-    return { .type = t, .node = promote(arg), .overflowed = arg.overflowed };
+    return { .type = t,
+             .node = promote(arg),
+             .overflowed = arg.overflowed,
+             .kept_bits = keeps_bits(op, arg, t) };
 }
 
 // A pointer constant, (int *) 0, the value v of type t, an operand of
@@ -537,7 +552,8 @@ unary_arithmetic(parser_t &p)
 // &E, 6.5.4.2, rcc's address_of(): its operand a cast expression, which
 // does not decay; the result a pointer to the operand's type, p3, the
 // node make_address_of() makes of a place, p1, whose builder exists for
-// a place alone (principle 8).  An operand of no place is rcc's error at
+// a place alone (principle 8), or of an array, the node of its decay,
+// whose address is the array's.  An operand of no place is rcc's error at
 // the &, but for a function designator, whose address is its decay,
 // p3, and an object of static storage, a place of no & yet, each not
 // yet.
@@ -548,6 +564,9 @@ address_of(parser_t &p)
     const operand_t arg = cast_expression(p);
     if (!arg.node)
         not_yet(*arg.name, "function designator " + quoted(arg.name->text));
+
+    if (arg.array)
+        return { make_pointer(*arg.array), *arg.node };
 
     if (!is_place(*arg.node) && is_assignable(*arg.node))
         not_yet(op, "address of an object of static storage");
@@ -568,9 +587,10 @@ indirection(parser_t &p)
 }
 
 // The size of the type t, 6.5.4.4p2, rcc's sizeof_(): a constant of
-// type unsigned long, size_t on LP64, p5, which no overflow marks.  void
-// and a function have none, p1, an error at the sizeof, op, and an enum
-// in its own list, incomplete, is refuse_not_yet_type()'s there.
+// type unsigned long, size_t on LP64, p5, which no overflow marks.  void,
+// a function and an array of unknown size have none, p1, an error at the
+// sizeof, op, and an enum in its own list, incomplete, is
+// refuse_not_yet_type()'s there.
 operand_t
 sizeof_(const token_t &op, const type_t &t)
 {
@@ -580,6 +600,9 @@ sizeof_(const token_t &op, const type_t &t)
     if (is< function_t >(t))
         fail(op, "invalid application of 'sizeof' to a function type");
 
+    if (is< array_t >(t) && as< array_t >(t).count < 0)
+        fail(op, "invalid application of 'sizeof' to an array of unknown size");
+
     refuse_not_yet_type(op, t);
 
     return { make_int(64, false, int_kind_t::unsigned_long),
@@ -588,9 +611,10 @@ sizeof_(const token_t &op, const type_t &t)
 
 // sizeof E or sizeof (T), 6.5.4.4, rcc's sizeof_expression(): the
 // operand expression is typed and dropped, never evaluated, p2, and
-// does not decay, so its nodes are built and generate nothing.  A name
-// of internal linkage it uses needs no definition, 6.9.1p3, since the
-// size is an integer constant, and its uses are dropped.
+// does not decay, an array's own type read, so its nodes are built and
+// generate nothing.  A name of internal linkage it uses needs no
+// definition, 6.9.1p3, since the size is an integer constant, and its
+// uses are dropped.
 operand_t
 sizeof_expression(parser_t &p)
 {
@@ -603,8 +627,10 @@ sizeof_expression(parser_t &p)
         t = type_name(p);
         expect(p, tok_t::rparen, "expected ')' after type name");
     }
-    else
-        t = unary_expression(p).type;
+    else {
+        const operand_t e = unary_expression(p);
+        t = e.array ? *e.array : e.type;
+    }
 
     p.internal_uses.erase(p.internal_uses.begin() + uses,
                           p.internal_uses.end());
@@ -650,13 +676,13 @@ unary_expression(parser_t &p)
 // constant converted to an integer is a cast in rcc, no constant, which
 // rcc-v2 does not make yet.  A void operand is an error at the '(',
 // require_value()'s, and a function designator is not yet.  A function
-// type, which a typedef name may name, is no scalar type, p2, rcc's
-// error at the '(' once the operand is read, and an enum in its own
-// list is refuse_not_yet_type()'s there.
+// type and an array type, which a typedef name may name, are no scalar
+// types, p2, rcc's error at the '(' once the operand is read, and an
+// enum in its own list is refuse_not_yet_type()'s there.
 operand_t
 cast(const token_t &open, const type_t &t, const operand_t &arg)
 {
-    if (is< function_t >(t))
+    if (is< function_t >(t) || is< array_t >(t))
         fail(open, "cast to a type that is not a scalar");
 
     refuse_not_yet_type(open, t);
@@ -789,14 +815,17 @@ multiplicative_expression(parser_t &p)
 // p3, rcc's require_object_pointee(): no function, an error at the
 // operator.  Its stride is the pointee's size, which rcc-v2 takes for
 // int and the pointers alone, 4 and 8, scales of x86-64's form: the
-// arithmetic on a pointer to any other type, &c + 1 on a char c, is not
-// yet.
+// arithmetic on a pointer to any other type, &c + 1 on a char c, and on
+// a pointer to an array, whose stride is a row's, is not yet.
 long
 require_object_pointee(const token_t &at, const operand_t &pointer)
 {
     const type_t &t = pointee(pointer);
     if (is< function_t >(t))
         fail(at, "arithmetic on a pointer to a function");
+
+    if (is< array_t >(t))
+        not_yet(at, "arithmetic on a pointer to an array");
 
     if (!is< pointer_t >(t) && t != int_type())
         not_yet(at, "arithmetic on a pointer to a type other than 'int' or "

@@ -43,7 +43,12 @@ namespace rcc {
 // assignment are not yet; and the token of a cast of an object to a
 // type of its width, narrower than an int or an unsigned, through
 // parentheses and the casts that widen it, or null, for the not yet of
-// its index, widened_index()'s.
+// its index, widened_index()'s; and the type of an array, or none: an
+// expression of an array's type is converted to a pointer to its first
+// element, 6.3.2.1p3, which is its C type here, read by every
+// production, and the node is the array's decay, since no row reads an
+// array whole, but for & and sizeof, which read the array's type, and
+// so take it through parentheses.
 struct operand_t
 {
     type_t type;
@@ -52,6 +57,7 @@ struct operand_t
     bool overflowed = false;
     bool indirect = false;
     const token_t *kept_bits = nullptr;
+    std::optional< type_t > array = std::nullopt;
 };
 
 // What a scope holds of a name it declares, 6.2.1p4: the operand a use
@@ -255,6 +261,11 @@ sign_t sign_of(const type_t &t);
 // The type a pointer type points to, 6.2.5p27.
 const type_t &pointee_of(const type_t &t);
 
+// The operand of an array, 6.3.2.1p3, of the type t and of the node of
+// its decay: of the type of the decay, a pointer to the first element,
+// and of the array's own type, which & and sizeof read.
+operand_t array_operand(const type_t &t, expr_t decay);
+
 // A type rcc declares and does not use yet, an enum in its own list,
 // refused at the token of its use by its words, rcc's
 // require_honoured().
@@ -328,8 +339,8 @@ expr_t assignment_conversion(const token_t &at, operand_t e, const type_t &t);
 // null when none does.
 const symbol_t *lookup(const parser_t &p, std::string_view name);
 
-// Declares the name in the innermost scope as a local of the type, and
-// returns the local's number.
+// Declares the name in the innermost scope as a local of the type, an
+// array among them, and returns the local's number.
 int declare(parser_t &p, const token_t &name, const type_t &type);
 
 //
@@ -417,16 +428,19 @@ struct parameter_t
 };
 
 // What the parser holds of a declarator: its name; the type it
-// declares, the specifiers' or a function returning it, 6.7.7.4p4; and
-// for a function, its parameters as written and the scope of its
-// parameter list, 6.2.1p4, which holds their names and which a
-// definition's body opens again, 6.8.3p2.
+// declares, the specifiers', an array of it or a function returning it,
+// 6.7.7.3p3, 6.7.7.4p4; for a function, its parameters as written and
+// the scope of its parameter list, 6.2.1p4, which holds their names and
+// which a definition's body opens again, 6.8.3p2; and the first token of
+// a variable length array's size, or null, which its declaration
+// refuses in its words.
 struct declarator_t
 {
     const token_t &name;
     type_t type;
     std::vector< parameter_t > params = { };
     scope_t scope = { };
+    const token_t *variable_size = nullptr;
 };
 
 bool is_declaration_start(const parser_t &, std::size_t ahead = 0);
@@ -457,9 +471,10 @@ void refuse_typedef_function(const specifiers_t &spec, const declarator_t &d);
 void
 type_definition(parser_t &p, const specifiers_t &spec, const declarator_t &d);
 
-// An object of static storage of a pointer type, whose data and address
-// rcc-v2 does not write yet, refused at its name.
+// An object of static storage of a pointer type or of an array type,
+// whose data and address rcc-v2 does not write yet, refused at its name.
 void refuse_static_pointer(const token_t &name, const type_t &t);
+void refuse_static_array(const token_t &name, const type_t &t);
 
 // The initializer after the '=' ahead of the object of static storage of
 // the integer type t that the unit's objects hold at index, rcc's

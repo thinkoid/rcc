@@ -85,13 +85,16 @@ make_indirection(const expr_t &pointer)
     return expr_t(place_t< indirect_t, V, S > { { pointer, width(V) / 8 } });
 }
 
-// * over an address is the place again, 6.5.4.2p3: *&x is the place of
-// x, as rcc's folded() reads it, and *&*p the place through p.
-template< view_t V, sign_t S, typename W >
+// * over a local's address is the local's place again, 6.5.4.2p3: *&x
+// is the place of x, as rcc's folded() reads it.  *&*p stays the place
+// through &*p, as in rcc's tree, whose access reads a row's sum under
+// it: *&a[i] on a local array a is aarch64's add x0, x29, w0, sxtw #2
+// and [x0, #16] where a[i] is [x0, w1, sxtw #2].
+template< view_t V, sign_t S >
 expr_t
-make_indirection(const address_of_t< W > &address)
+make_indirection(const address_of_t< slot_t > &address)
 {
-    return expr_t(place_t< W, V, S > { address.where });
+    return expr_t(place_t< slot_t, V, S > { address.where });
 }
 
 // p + n, n + p and p - n, 6.5.7p9, of a pointer and an index in the
