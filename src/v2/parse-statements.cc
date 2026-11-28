@@ -11,6 +11,7 @@
 
 #include "build.hh"
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
@@ -210,12 +211,11 @@ condition(parser_t &p)
 
 // A switch, 6.8.5.3: the controlling expression, an integer, p1, read
 // as any operand whose value is read, at its first token, and promoted,
-// p5, where a promoted type other than int is not yet; then the body,
-// with the switch open and numbered in the count of the function's
-// loops and switches, in which a break leaves the switch, 6.8.7.4p2, a
-// continue goes on with the loop around it, and each case and default
-// label belongs to this switch unless a switch inside the body is
-// closer, 6.8.5.3p4.
+// p5, the switch of its promoted type; then the body, with the switch
+// open and numbered in the count of the function's loops and switches,
+// in which a break leaves the switch, 6.8.7.4p2, a continue goes on with
+// the loop around it, and each case and default label belongs to this
+// switch unless a switch inside the body is closer, 6.8.5.3p4.
 stmt_t
 switch_statement(parser_t &p)
 {
@@ -227,21 +227,18 @@ switch_statement(parser_t &p)
     e.node = rvalue(start, e);
 
     const type_t t = promoted(e.type);
-    if (t != int_type())
-        not_yet(start, "'switch' on a controlling expression whose promoted "
-                       "type is not 'int'");
     expr_t cond = convert_to(e, t);
 
     expect(p, tok_t::rparen, "expected ')' after controlling expression");
 
-    p.switches.push_back({ .target = { .id = p.loop_count++ } });
+    p.switches.push_back({ .target = { .id = p.loop_count++ }, .type = t });
     stmt_t body = statement(p);
 
     open_switch_t sw = std::move(p.switches.back());
     p.switches.pop_back();
 
-    return make_switch(std::move(cond), std::move(body), std::move(sw.cases),
-                       sw.default_, sw.target);
+    return make_switch(std::move(cond), view_of(t), sign_of(t), std::move(body),
+                       std::move(sw.cases), sw.default_, sw.target);
 }
 
 // The if statement, 6.8.5.2, with an else part or without one, or a
@@ -416,16 +413,34 @@ named_label(parser_t &p)
     return make_label(label.number);
 }
 
+// A case's value in the words of a diagnostic, rcc's case_value(): the
+// value of the controlling expression's promoted type t, an unsigned
+// type's read from its bits at its width, since the tree holds the
+// value its register holds, read signed, an unsigned 4294967295 as -1.
+std::string
+case_value(long long value, const type_t &t)
+{
+    if (sign_of(t) == sign_t::signed_)
+        return std::to_string(value);
+
+    if (view_of(t) == view_t::i64)
+        return std::to_string(static_cast< unsigned long long >(value));
+
+    return std::to_string(static_cast< std::uint32_t >(value));
+}
+
 // case, an integer constant expression and a colon, 6.8.2p1.  It stands
 // only in a switch, p2, and belongs to the innermost, 6.8.5.3p4.  Its
 // constant is a conditional expression whose value is read, which the
 // builders fold to a constant node, constant_of(), or it is no constant
 // expression, an error at its first token, which warns there of a
-// signed overflow in it, warn_overflowed().  It is converted to int, the
-// promoted type of the controlling expression, p5, and no two cases of
-// one switch have one value after the conversion, p3, which rcc says at
-// the second's first token with the first's line.  GNU C's range, case
-// 1 ... 5:, is not yet, in rcc's words.
+// signed overflow in it, warn_overflowed().  It is converted to the
+// promoted type of the controlling expression, p5, silently, case
+// 0x100000001: on an int being the case 1, and no two cases of one
+// switch have one value after the conversion, p3, which rcc says at the
+// second's first token with the first's line and the value of that
+// type, case_value()'s.  GNU C's range, case 1 ... 5:, is not yet, in
+// rcc's words.
 stmt_t
 case_label(parser_t &p)
 {
@@ -446,11 +461,11 @@ case_label(parser_t &p)
     expect(p, tok_t::colon, "expected ':' after case label");
 
     open_switch_t &sw = p.switches.back();
-    const long long value = *constant_of(convert_to(e, int_type()));
+    const long long value = *constant_of(convert_to(e, sw.type));
 
     const auto [first, added] = sw.values.emplace(value, &start);
     if (!added)
-        fail(start, "duplicate case value " + std::to_string(value) +
+        fail(start, "duplicate case value " + case_value(value, sw.type) +
                         ", first at line " +
                         std::to_string(first->second->where.line));
 

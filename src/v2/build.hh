@@ -152,12 +152,14 @@ struct case_t
     int label;
 };
 
-// switch (cond) body, 6.8.5.3, of a controlling expression promoted, its
-// cases in the order they are written, the number of its default label
-// or none, and what the parser knows of it once it has read the body;
-// and a case or a default label, placed where it is written, by its
-// number.
+// switch (cond) body, 6.8.5.3, of a controlling expression promoted, of
+// the view and the sign of its promoted type, its cases in the order
+// they are written, the number of its default label or none, and what
+// the parser knows of it once it has read the body; and a case or a
+// default label, placed where it is written, by its number.
 stmt_t make_switch(expr_t cond,
+                   view_t view,
+                   sign_t sign,
                    stmt_t body,
                    std::vector< case_t > cases,
                    std::optional< int > default_,

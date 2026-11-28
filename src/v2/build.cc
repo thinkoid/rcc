@@ -454,18 +454,19 @@ namespace {
 
 // The form of a switch's dispatch on its sorted cases, rcc's
 // dispatch_of(), backend.md 7.3, by the rule of the Seventh Edition
-// compiler: none without a case; direct where the range is above 0 and
-// at most three times the count of the cases; simple below ten cases;
-// hash otherwise.  A question about constants' values, whose answer is
-// the node's parameter (principle 2).
+// compiler: none without a case; direct where the range at the view of
+// the promoted type is above 0 and at most three times the count of the
+// cases; simple below ten cases; hash otherwise.  A question about
+// constants' values, whose answer is the node's parameter (principle
+// 2).
 dispatch_t
-dispatch_of(const std::vector< case_t > &sorted)
+dispatch_of(const std::vector< case_t > &sorted, view_t view)
 {
     if (sorted.empty())
         return dispatch_t::none;
 
     const unsigned long long count = sorted.size();
-    const unsigned long long range = case_range(sorted);
+    const unsigned long long range = case_range(sorted, view);
     if (range > 0 && range <= 3 * count)
         return dispatch_t::direct;
 
@@ -492,19 +493,20 @@ cross(dispatch_t form, F &&f)
 
 // The crossing from what the parser knows of a switch, data, to the
 // parameters of its node, made once (principle 6): the form of its
-// dispatch, whether it has a default label, and whether a break of it
-// stands in its body.
-template< dispatch_t form >
+// dispatch, the view of its promoted type, whether it has a default
+// label, and whether a break of it stands in its body.
+template< dispatch_t form, view_t V >
 stmt_t
 switch_node(expr_t cond,
+            sign_t sign,
             stmt_t body,
             std::vector< case_t > cases,
             std::optional< int > default_,
             const jump_target_t &target)
 {
     const auto make = [&]< bool defaulted, bool broken >() {
-        return stmt_t(switch_t< form, defaulted, broken > {
-            std::move(cond), std::move(body), std::move(cases), default_,
+        return stmt_t(switch_t< form, V, defaulted, broken > {
+            std::move(cond), sign, std::move(body), std::move(cases), default_,
             target.id });
     };
 
@@ -522,20 +524,32 @@ switch_node(expr_t cond,
 
 } // namespace
 
-// The cases sorted by value, signed, the order of int, rcc's
-// sorted_cases(), and the form asked of them once.
+// The cases sorted by value in the order of the promoted type, rcc's
+// sorted_cases(): signed, or the bits read unsigned at its view, so -1
+// is the first case of an int and the last of an unsigned; and the form
+// asked of them once.
 stmt_t
 make_switch(expr_t cond,
+            view_t view,
+            sign_t sign,
             stmt_t body,
             std::vector< case_t > cases,
             std::optional< int > default_,
             const jump_target_t &target)
 {
-    std::ranges::sort(cases, { }, &case_t::value);
+    if (sign == sign_t::signed_)
+        std::ranges::sort(cases, { }, &case_t::value);
+    else
+        std::ranges::sort(cases, { }, [view](const case_t &c) {
+            return unsigned_bits(c.value, view);
+        });
 
-    return cross(dispatch_of(cases), [&]< dispatch_t form >() {
-        return switch_node< form >(std::move(cond), std::move(body),
-                                   std::move(cases), default_, target);
+    return cross(dispatch_of(cases, view), [&]< dispatch_t form >() {
+        return cross_operation(view, [&]< view_t V >() {
+            return switch_node< form, V >(std::move(cond), sign,
+                                          std::move(body), std::move(cases),
+                                          default_, target);
+        });
     });
 }
 

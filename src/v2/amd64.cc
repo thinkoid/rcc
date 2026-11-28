@@ -1266,33 +1266,42 @@ call_pins(const state_t &s, const std::vector< argument_t > &args)
 
 // switches
 
+// A value no immediate holds is the constant row's, in the lowest free
+// register, as rcc's right operand of a cmp takes it.
 void
-equal_jump(state_t &s, value_t v, long long value, int label)
+equal_jump(state_t &s, value_t v, long long value, view_t view, int label)
 {
-    compare(s, v, value, view_t::i32);
+    if (fits_imm32(normalized(value, width(view))))
+        compare(s, v, value, view);
+    else
+        compare(s, v, constant_value(s, value, view), view);
+
     jump_if(s, binary_op_t::eq, label);
 }
 
 // The sub row writes ZF, which the bounds check's cmp after it writes
 // again.
 value_t
-subtracted(state_t &s, value_t v, long long first)
+subtracted(state_t &s, value_t v, long long first, view_t view)
 {
-    operate(s, binary_op_t::sub, reg_of(s, v), immediate_at(first, view_t::i32),
-            view_t::i32);
+    if (fits_imm32(normalized(first, width(view)))) {
+        operate(s, binary_op_t::sub, reg_of(s, v), immediate_at(first, view),
+                view);
+        return v;
+    }
 
-    return v;
+    return arithmetic(s, binary_op_t::sub, v, constant_value(s, first, view),
+                      view, 0);
 }
 
 // The table's register is taken after the extension, so it is the
 // lowest free outside the index's: rcx after an index in eax, rax after
 // one in edx.
 void
-table_jump(state_t &s, value_t index, int valid, int table)
+table_jump(state_t &s, value_t index, int valid, view_t view, int table)
 {
     if (valid < 64)
-        index =
-            extended(s, index, view_t::i32, sign_t::unsigned_, view_t::i64, 0);
+        index = extended(s, index, view, sign_t::unsigned_, view_t::i64, 0);
 
     const value_t base = fresh(s);
     const std::string r = reg(reg_of(s, base), 64);
@@ -1306,16 +1315,17 @@ table_jump(state_t &s, value_t index, int valid, int table)
     s.terminated = true;
 }
 
-// The divisor is generated as a constant's value with rax and rdx left
-// for last, rvalue_avoiding(), and the division is pin_division()'s of
-// an unsigned dividend, which moves a value held in rdx to rax first:
-// movl %edx, %eax for a remainder switched on.
+// The divisor is generated as a constant's value of the view with rax and
+// rdx left for last, rvalue_avoiding(), and the division is
+// pin_division()'s of an unsigned dividend, which moves a value held in
+// rdx to rax first: movl %edx, %eax for a remainder switched on.
 std::pair< value_t, value_t >
-divided(state_t &s, value_t v, long long size)
+divided(state_t &s, value_t v, long long size, view_t view)
 {
-    const value_t d = rvalue_avoiding(s, literal_t< view_t::i32 > { size },
-                                      bit(rax) | bit(rdx));
-    pin_division(s, binary_op_t::udiv, v, d, 32);
+    const value_t d = cross_operation(view, [&]< view_t V >() {
+        return rvalue_avoiding(s, literal_t< V > { size }, bit(rax) | bit(rdx));
+    });
+    pin_division(s, binary_op_t::udiv, v, d, width(view));
 
     release(s, d);
     release(s, v);

@@ -318,16 +318,17 @@ generate(S &s, const for_t< C, broken, continued > &f)
 
 // The simple form, rcc's simple_switch(), backend.md 7.3: a case's test
 // for each case, each target's equal_jump(), in the order of the
-// values, then the jump to otherwise.
+// values, then the jump to otherwise, at the view of the promoted type.
 template< typename S >
 void
 simple_switch(S &s,
               value_t v,
               const std::vector< case_t > &cases,
+              view_t view,
               int otherwise)
 {
     for (const case_t &c : cases)
-        equal_jump(s, v, c.value, s.cases.at(c.label));
+        equal_jump(s, v, c.value, view, s.cases.at(c.label));
 
     release(s, v);
     jump(s, otherwise);
@@ -337,45 +338,47 @@ simple_switch(S &s,
 // value subtracted where it is not 0, the result compared unsigned with
 // the range and the jump to otherwise above it, then the jump through a
 // table of range + 1 entries, each a case's label or otherwise.  The
-// dispatch is an operation of the unsigned type of an int's width, so
-// the subtraction, a 32-bit write of an unsigned value, leaves the index
-// valid to 64 bits, written(); without it the index is valid as the
-// controlling expression's value is, valid.
+// dispatch is an operation of the unsigned type of the promoted type's
+// view, so the subtraction, a write of an unsigned value at that view,
+// leaves the index valid to 64 bits, written(); without it the index is
+// valid as the controlling expression's value is, valid.
 template< typename S >
 void
 direct_switch(S &s,
               value_t v,
               int valid,
               const std::vector< case_t > &cases,
+              view_t view,
               int otherwise)
 {
     const long long first = cases.front().value;
-    const unsigned long long range = case_range(cases);
+    const unsigned long long range = case_range(cases, view);
 
     if (first != 0) {
-        v = subtracted(s, v, first);
-        valid = written(32, sign_t::unsigned_);
+        v = subtracted(s, v, first, view);
+        valid = written(width(view), sign_t::unsigned_);
     }
 
-    compare(s, v, static_cast< long long >(range), view_t::i32);
+    compare(s, v, static_cast< long long >(range), view);
     jump_if(s, binary_op_t::ugt, otherwise);
 
     std::vector< int > entries(range + 1, otherwise);
     for (const case_t &c : cases)
-        entries[case_offset(c.value, first)] = s.cases.at(c.label);
+        entries[case_offset(c.value, first, view)] = s.cases.at(c.label);
 
     const int table = new_label(s);
-    table_jump(s, v, valid, table);
+    table_jump(s, v, valid, view, table);
     jump_table(s, table, entries);
 }
 
 // The size of a hash switch's table, rcc's table_size(), backend.md 7.3:
 // the i from a quarter of the count of the cases to a half that makes i
 // times the most cases one remainder modulo i holds the least, the first
-// such i on a tie.  A value's remainder is of its bits read unsigned.
-// The hash form has ten cases or more, so i is 2 or more.
+// such i on a tie.  A value's remainder is of its bits read unsigned at
+// the view, so a negative case leaves another remainder at 32 bits than
+// at 64.  The hash form has ten cases or more, so i is 2 or more.
 inline unsigned long long
-table_size(const std::vector< case_t > &sorted)
+table_size(const std::vector< case_t > &sorted, view_t view)
 {
     const unsigned long long count = sorted.size();
 
@@ -384,7 +387,7 @@ table_size(const std::vector< case_t > &sorted)
     for (unsigned long long i = count / 4; i <= count / 2; ++i) {
         std::vector< unsigned long long > held(i);
         for (const case_t &c : sorted)
-            ++held[unsigned_bits(c.value) % i];
+            ++held[unsigned_bits(c.value, view) % i];
 
         const unsigned long long worst = std::ranges::max(held);
         if (i * worst < best) {
@@ -400,34 +403,40 @@ table_size(const std::vector< case_t > &sorted)
 // unsigned by the size of the table, each target's divided(), the jump
 // through the table by the remainder to a bucket, and in each bucket a
 // case's test of the quotient against each of its cases' value divided
-// by the size, in the order of the values, then the jump to otherwise.
-// The quotient is held across the table's jump and the buckets; no
-// case's label is among them.  The remainder, a 32-bit write of an
-// unsigned value, is valid to 64 bits.
+// by the size, in the order of the values, then the jump to otherwise,
+// each at the view of the promoted type.  The quotient is held across
+// the table's jump and the buckets; no case's label is among them.  The
+// remainder, a write of an unsigned value at the view, is valid to 64
+// bits.
 template< typename S >
 void
-hash_switch(S &s, value_t v, const std::vector< case_t > &cases, int otherwise)
+hash_switch(S &s,
+            value_t v,
+            const std::vector< case_t > &cases,
+            view_t view,
+            int otherwise)
 {
-    const unsigned long long tabs = table_size(cases);
+    const unsigned long long tabs = table_size(cases, view);
     const auto [quotient, remainder] =
-        divided(s, v, static_cast< long long >(tabs));
+        divided(s, v, static_cast< long long >(tabs), view);
 
     const int table = new_label(s);
     std::vector< int > buckets;
     for (unsigned long long i = 0; i < tabs; ++i)
         buckets.push_back(new_label(s));
 
-    table_jump(s, remainder, written(32, sign_t::unsigned_), table);
+    table_jump(s, remainder, written(width(view), sign_t::unsigned_), view,
+               table);
     jump_table(s, table, buckets);
 
     for (unsigned long long i = 0; i < tabs; ++i) {
         place_label(s, buckets[i]);
 
         for (const case_t &c : cases) {
-            const unsigned long long bits = unsigned_bits(c.value);
+            const unsigned long long bits = unsigned_bits(c.value, view);
             if (bits % tabs == i)
                 equal_jump(s, quotient, static_cast< long long >(bits / tabs),
-                           s.cases.at(c.label));
+                           view, s.cases.at(c.label));
         }
 
         jump(s, otherwise);
@@ -466,11 +475,12 @@ number_case_labels(S &s,
 // which stands for the default where there is none, placed where no
 // default stands or a break names it.  Every dispatch ends in a jump
 // and holds no value, so no path reaches the body but by its labels.
-// The direct form's index reads what the controlling expression's value
-// is valid to, at the sign of int, its promoted type.
-template< typename S, dispatch_t form, bool defaulted, bool broken >
+// The dispatch is at the view of the promoted type, V, and the direct
+// form's index reads what the controlling expression's value is valid
+// to at that type's sign.
+template< typename S, dispatch_t form, view_t V, bool defaulted, bool broken >
 void
-generate(S &s, const switch_t< form, defaulted, broken > &sw)
+generate(S &s, const switch_t< form, V, defaulted, broken > &sw)
 {
     number_case_labels(s, sw.cases, sw.default_);
     const int end = new_label(s);
@@ -478,12 +488,11 @@ generate(S &s, const switch_t< form, defaulted, broken > &sw)
 
     const value_t v = value(s, sw.cond);
     if constexpr (form == dispatch_t::direct)
-        direct_switch(s, v, valid_of(sw.cond, sign_t::signed_), sw.cases,
-                      otherwise);
+        direct_switch(s, v, valid_of(sw.cond, sw.sign), sw.cases, V, otherwise);
     else if constexpr (form == dispatch_t::simple)
-        simple_switch(s, v, sw.cases, otherwise);
+        simple_switch(s, v, sw.cases, V, otherwise);
     else if constexpr (form == dispatch_t::hash)
-        hash_switch(s, v, sw.cases, otherwise);
+        hash_switch(s, v, sw.cases, V, otherwise);
     else {
         release(s, v);
         jump(s, otherwise);

@@ -421,18 +421,23 @@ enum class dispatch_t { none, direct, simple, hash };
 // dispatch of the form the builder chose, then the body, in which each
 // case and default label is placed where it is written, case_label_t,
 // and the label past the body, which a break of the switch jumps to and
-// which stands for the default where there is none.  defaulted says
-// whether the switch has a default label and broken whether a break of
-// it stands in its body, which the parser knows when it has read the
-// body: with a default and no break nothing names the label past the
-// body, which is not placed.  cases are sorted by value, the builder's
+// which stands for the default where there is none.  V is the view of
+// the controlling expression's promoted type, p5, every instruction of
+// the dispatch's; sign is that type's sign, data, which x86-64's
+// extension of a direct table's index reads the width rule at, and no
+// row is picked by.  defaulted says whether the switch has a default
+// label and broken whether a break of it stands in its body, which the
+// parser knows when it has read the body: with a default and no break
+// nothing names the label past the body, which is not placed.  cases
+// are sorted by value in the order of the promoted type, the builder's
 // order, which the dispatch tests them in; default_ is the default
 // label's number; id is the switch's number among the function's loops
 // and switches, which names it to its body's breaks.
-template< dispatch_t form, bool defaulted, bool broken >
+template< dispatch_t form, view_t V, bool defaulted, bool broken >
 struct switch_t
 {
     expr_t cond;
+    sign_t sign;
     stmt_t body;
     std::vector< case_t > cases;
     std::optional< int > default_;
@@ -447,28 +452,36 @@ struct case_label_t
     int label;
 };
 
-// The bits of an int's value read as an unsigned number, rcc's
+// The bits of a value of the view read as an unsigned number, rcc's
 // unsigned_bits(): the (unsigned) of the rule's hash, backend.md 7.3.
 inline unsigned long long
-unsigned_bits(long long value)
+unsigned_bits(long long value, view_t view)
 {
-    return static_cast< std::uint32_t >(value);
+    const auto bits = static_cast< unsigned long long >(value);
+    if (view == view_t::i64)
+        return bits;
+
+    return static_cast< std::uint32_t >(bits);
 }
 
 // A value less the first of a switch's sorted cases, as an unsigned
-// number, rcc's case_offset(): its entry in a direct table.
+// number of the view, rcc's case_offset(): its entry in a direct table.
 inline unsigned long long
-case_offset(long long value, long long first)
+case_offset(long long value, long long first, view_t view)
 {
-    return unsigned_bits(value - first);
+    const auto difference = static_cast< unsigned long long >(value) -
+                            static_cast< unsigned long long >(first);
+
+    return unsigned_bits(static_cast< long long >(difference), view);
 }
 
-// The last value of a switch's sorted cases less the first, the range
-// of the rule of the Seventh Edition compiler, rcc's case_range().
+// The last value of a switch's sorted cases less the first, modulo 2^N
+// at the view, the range of the rule of the Seventh Edition compiler,
+// rcc's case_range().
 inline unsigned long long
-case_range(const std::vector< case_t > &sorted)
+case_range(const std::vector< case_t > &sorted, view_t view)
 {
-    return case_offset(sorted.back().value, sorted.front().value);
+    return case_offset(sorted.back().value, sorted.front().value, view);
 }
 
 // break;, 6.8.7.4p2: a jump past the innermost loop or switch around

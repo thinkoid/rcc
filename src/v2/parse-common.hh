@@ -105,13 +105,15 @@ struct label_name_t
 // What the parser holds of a switch whose body is being read, rcc's
 // open_switch_t: what it knows of the switch, its number among the
 // function's loops and switches and whether a break of it stands in its
-// body; its cases in the order they are written; the token of each
-// value's first case, by the value after the conversion, for the error
-// of a second, 6.8.5.3p3; and the number of its default label and the
-// label's token, or none.
+// body; the promoted type of its controlling expression, which each
+// case's constant is converted to, 6.8.5.3p5; its cases in the order
+// they are written; the token of each value's first case, by the value
+// after the conversion, for the error of a second, 6.8.5.3p3; and the
+// number of its default label and the label's token, or none.
 struct open_switch_t
 {
     jump_target_t target;
+    type_t type;
     std::vector< case_t > cases = { };
     std::unordered_map< long long, const token_t * > values = { };
     std::optional< int > default_ = std::nullopt;

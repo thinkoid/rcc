@@ -20,13 +20,13 @@ operators `+ - ~ !`, `+ - * / % << >> & | ^`, the comparisons, `&&`,
 `||`, `?:` of `int` arms, the comma, the compound assignments and `++`
 and `--` of every integer type, and calls of functions of a result of
 any integer type or `void`, to any depth, and the statements `if`,
-`else`, `switch` on an `int` with its `case` and `default` labels,
-`while`, `do`, `for` with a declaration or an expression first,
-`break`, `continue`, `goto` and labels, and `return` with a value or
-without, on both targets. Each mechanism below was compiled and run in
-a small model first; chapter 5 says what the models showed and chapter
-6 what nothing has shown. A statement marked *working* is a position
-taken and run, not yet agreed.
+`else`, `switch` on every integer type with its `case` and `default`
+labels, `while`, `do`, `for` with a declaration or an expression
+first, `break`, `continue`, `goto` and labels, and `return` with a
+value or without, on both targets. Each mechanism below was compiled
+and run in a small model first; chapter 5 says what the models showed
+and chapter 6 what nothing has shown. A statement marked *working* is
+a position taken and run, not yet agreed.
 
 ## 1. The idea
 
@@ -266,10 +266,14 @@ call_t &, long)` and comes back as a member of a call.
   comparison, `&&` and `||` take a comma erased, and aarch64 writes
   its value.
 - A builder may answer a question about constants and make the answer
-  a parameter. A `switch`'s builder sorts its cases and asks rcc's
-  `dispatch_of()` of them once, and `switch_t< form, defaulted,
-  broken >` is the answer: the form of the dispatch, whether a
-  default stands in the switch, whether a `break` of it does.
+  a parameter. A `switch`'s builder sorts its cases in the order of
+  the controlling expression's promoted type, signed or by the bits
+  read unsigned at its width, and asks rcc's `dispatch_of()` of them
+  once at that width; `switch_t< form, V, defaulted, broken >` is the
+  answer: the form of the dispatch, the promoted type's view, whether
+  a default stands in the switch, whether a `break` of it does. The
+  type's sign is data of the node, which x86-64's extension of a
+  direct table's index reads.
 - A builder may ask an erased part a summary and make the answer a
   parameter: the builder of `?:` asks each arm `truth_value()`,
   whether it is a comparison, a `!`, `&&` or `||` under any widening,
@@ -629,15 +633,17 @@ technique.
   jump. The row is the condition's jump to that label where the
   condition is nonzero; it asks the label before the condition's
   jump, since a `goto`'s label is taken where it is first met.
-- A `switch` is `switch_t< form, defaulted, broken >`. The form of
-  its dispatch is the builder's, from its sorted cases; whether it
-  has a default and whether a `break` of it stands in its body
-  decide whether its end is placed. Its cases are data, each a value
-  and a label's number. A `case` or `default` label is
-  `case_label_t`, a statement of the body, placed where it is
-  written. The dispatches are rcc's, written once over each target's
-  `equal_jump()`, `subtracted()`, `table_jump()` and `divided()`, and
-  the table's text is the same on both.
+- A `switch` is `switch_t< form, V, defaulted, broken >`, V the view
+  of its promoted type, at which every instruction of the dispatch is
+  written. The form of its dispatch is the builder's, from its sorted
+  cases; whether it has a default and whether a `break` of it stands
+  in its body decide whether its end is placed. Its cases are data,
+  each a value converted to the promoted type and a label's number. A
+  `case` or `default` label is `case_label_t`, a statement of the
+  body, placed where it is written. The dispatches are rcc's, written
+  once over each target's `equal_jump()`, `subtracted()`,
+  `table_jump()` and `divided()` at V, and the table's text is the
+  same on both.
 - A C label is a statement, `label_t`, placed where it is written,
   as a block item of its own, so it may stand before a declaration
   or a closing brace; a `goto` is `goto_t`, one jump. Where a
@@ -895,11 +901,12 @@ each became.
 | `user_label()` | the state's labels of the C labels met, taken by a `goto`'s `label_of()` and by the label's own row |
 | a `for` without a condition, a loop broken or continued | parameters of the loop's node |
 | the loops around a statement | the parser's; a loop's two labels are in the state, by its number |
-| `dispatch_of()`, `sorted_cases()` | the builder, and `switch_t`'s parameter |
-| `table_size()`, `case_offset()`, `case_range()` | computations of the builder and the rows on the cases |
+| `dispatch_of()`, `sorted_cases()` | the builder, by the promoted type's sign and view, and `switch_t`'s parameters |
+| `table_size()`, `case_offset()`, `case_range()` | computations of the builder and the rows on the cases, at the promoted view |
+| `case_value()` | the parser's |
 | `number_case_labels()` | the switch's row |
 | `innermost_breakable()`, `innermost_loop()` | the parser's |
-| `extended()` in `table_jump()` | x86-64's `table_jump()` reads `valid_of()` of the controlling expression, or a subtraction's 32-bit unsigned write |
+| `extended()` in `table_jump()` | x86-64's `table_jump()` reads `valid_of()` of the controlling expression at its promoted type's sign, or a subtraction's unsigned write |
 | `break_target()`, `continue_target()`, a record's `broken` | the parser's `jump_target_t`, the parameters of `switch_t` and of the loops, and the state's `breaks` and `continues` |
 | `arithmetic_immediate()`, `bitmask_immediate()` | an `if` in the row: one target's encoding of its own leaf (principle 2) |
 | `wanted_left()`, `held_out()`, `right_written()`, `written_in_right()` | rcc's functions, unchanged: they read the state and the summaries |
@@ -1007,9 +1014,6 @@ rows invented for the purpose.
 - x86-64's record of ZF. In every row the tree has, the instruction
   that sets ZF is the row's last, so the `cmp` the record guards is
   never written.
-- The other integer types under `switch`: an unsigned order of the
-  cases, a range and a hash at 64 bits, a case past a 32-bit
-  immediate.
 - Records by value, and floating point as a register class.
 - aarch64's forms through `x16`, for a slot, a parameter or an
   outgoing argument past the reach of its access. A global's `adrp

@@ -1,6 +1,6 @@
-/* A switch on an unsigned, whose cases are sorted unsigned: not yet. */
+/* A switch on a long, whose dispatch is at 64 bits. */
 int
-f(unsigned x)
+f(long x)
 {
 
         switch (x) {

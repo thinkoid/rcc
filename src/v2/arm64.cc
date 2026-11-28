@@ -1067,37 +1067,40 @@ conditional(state_t &s,
 
 // switches
 
-// A promoted value is valid to 32 bits at least, so its test of zero is
-// cbz w0 and never tst.
+// A promoted value is valid to its view's width, 32 bits at least, so
+// its test of zero is cbz w0 or cbz x0 and never tst.
 void
-equal_jump(state_t &s, value_t v, long long value, int label)
+equal_jump(state_t &s, value_t v, long long value, view_t view, int label)
 {
     if (value == 0) {
-        test_zero(s, v, view_t::i32, 32, label);
+        test_zero(s, v, view, width(view), label);
         return;
     }
 
-    compare(s, v, value, view_t::i32);
+    compare(s, v, value, view);
     jump_if(s, binary_op_t::eq, label);
 }
 
 value_t
-subtracted(state_t &s, value_t v, long long first)
+subtracted(state_t &s, value_t v, long long first, view_t view)
 {
-    return arithmetic(s, binary_op_t::sub, v, first, view_t::i32, 0);
+    return arithmetic(s, binary_op_t::sub, v, first, view, 0);
 }
 
 // The index's register is read before x16 holds anything, so a reload
 // of a spilled index stands before the adrp (chapter 4).
 void
-table_jump(state_t &s, value_t index, int, int table)
+table_jump(state_t &s, value_t index, int, view_t view, int table)
 {
     const std::string name = label_name(s.function, table);
     const reg_t r = reg_of(s, index);
+    const std::string entry = view == view_t::i64 ?
+                                  std::format("[x16, {}, lsl #3]", reg(r, 64)) :
+                                  std::format("[x16, {}, uxtw #3]", reg(r, 32));
 
     insn(s, "adrp", { "x16", name });
     insn(s, "add", { "x16", "x16", ":lo12:" + name });
-    insn(s, "ldr", { "x16", std::format("[x16, {}, uxtw #3]", reg(r, 32)) });
+    insn(s, "ldr", { "x16", entry });
     insn(s, "br", { "x16" });
 
     release(s, index);
@@ -1109,17 +1112,19 @@ table_jump(state_t &s, value_t index, int, int table)
 // taken outside both and held, the size's given back before the msub,
 // which is the last to read it.
 std::pair< value_t, value_t >
-divided(state_t &s, value_t v, long long size)
+divided(state_t &s, value_t v, long long size, view_t view)
 {
-    const value_t d = constant_value(s, size, view_t::i32);
+    const int bits = width(view);
+
+    const value_t d = constant_value(s, size, view);
     const auto [left, right] = operands(s, v, d);
 
     const value_t quotient = hold(s, take(s, bit(left) | bit(right)));
-    const std::string q = reg(reg_of(s, quotient), 32);
-    insn(s, "udiv", { q, reg(left, 32), reg(right, 32) });
+    const std::string q = reg(reg_of(s, quotient), bits);
+    insn(s, "udiv", { q, reg(left, bits), reg(right, bits) });
 
     release(s, d);
-    insn(s, "msub", { reg(left, 32), q, reg(right, 32), reg(left, 32) });
+    insn(s, "msub", { reg(left, bits), q, reg(right, bits), reg(left, bits) });
 
     return { quotient, v };
 }

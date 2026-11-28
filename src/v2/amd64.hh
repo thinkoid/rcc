@@ -1942,36 +1942,45 @@ value(state_t &s, const conditional_t< V, jumps > &c, unsigned wanted = 0)
     return conditional(s, c.cond, c.yes, c.no, V, wanted);
 }
 
-// The pieces of a switch's dispatch on an int, backend.md 7.3, which
-// the dispatches of rows-statements.hh are written over, as rcc's
-// direct_switch(), simple_switch() and hash_switch() are.
+// The pieces of a switch's dispatch, backend.md 7.3, which the
+// dispatches of rows-statements.hh are written over, as rcc's
+// direct_switch(), simple_switch() and hash_switch() are, each at the
+// view of the controlling expression's promoted type.
 
 // A case's test, rcc's equal_jump(): the cmp of the held value v and the
-// case's value, cmpl $5, %eax, then je to its label; v stays held.  The
-// Seventh Edition compiler tested a 0 where it compared another value;
-// this machine's test of zero is the same row, cmpl $0, %eax (7.1).
-void equal_jump(state_t &, value_t v, long long value, int label);
+// case's value at the view, cmpl $5, %eax, cmpq $5, %rax, a value no
+// 32-bit immediate holds in a register of its own, movabsq
+// $4886718345, %rcx and cmpq %rcx, %rax; then je to its label; v stays
+// held.  The Seventh Edition compiler tested a 0 where it compared
+// another value; this machine's test of zero is the same row, cmpl $0,
+// %eax (7.1).
+void equal_jump(state_t &, value_t v, long long value, view_t view, int label);
 
-// The first value of a direct switch subtracted from the held value v,
-// rcc's arithmetic() of the sub row by its immediate, subl $1, %eax, in
-// v's register; the value is v's.
-value_t subtracted(state_t &, value_t v, long long first);
+// The first value of a direct switch subtracted from the held value v
+// at the view, rcc's arithmetic() of the sub row, by its immediate,
+// subl $1, %eax, in v's register, or by a value no 32-bit immediate
+// holds in a register of its own, movabsq $4294967296, %rcx and subq
+// %rcx, %rax; the value is v's.
+value_t subtracted(state_t &, value_t v, long long first, view_t view);
 
-// The jump through a switch's table by a held index, rcc's table_jump():
-// the index extended to 64 bits as an unsigned value, movl %eax, %eax,
-// where valid, the width its register is valid to, says that no 32-bit
-// write of an unsigned value left it so, rcc's extended(); the table's
-// address PC-relative, leaq .Lf.8(%rip), %rcx, in the lowest free
-// register; and the jump through its entry, jmp *(%rcx,%rax,8), after
-// which no path reaches what is written next.  The index is consumed.
-void table_jump(state_t &, value_t index, int valid, int table);
+// The jump through a switch's table by a held index of the view, rcc's
+// table_jump(): the index extended to 64 bits as an unsigned value,
+// movl %eax, %eax, where valid, the width its register is valid to,
+// says that no write of an unsigned value at 32 bits left it so, rcc's
+// extended(); the table's address PC-relative, leaq .Lf.8(%rip), %rcx,
+// in the lowest free register; and the jump through its entry, jmp
+// *(%rcx,%rax,8), after which no path reaches what is written next.
+// The index is consumed.
+void table_jump(state_t &, value_t index, int valid, view_t view, int table);
 
 // The division of a hash switch, rcc's divided(): the unsigned division
-// row by the table's size, held in a register as the divisor of x / 7
-// is, outside rax and rdx, movl $3, %ecx, xorl %edx, %edx and divl %ecx;
-// both results kept, the quotient in rax and the remainder in rdx, as
-// the instruction leaves them.  v is consumed.
-std::pair< value_t, value_t > divided(state_t &, value_t v, long long size);
+// row at the view by the table's size, held in a register as the
+// divisor of x / 7 is, outside rax and rdx, movl $3, %ecx, xorl %edx,
+// %edx and divl %ecx, or movq $3, %rcx and divq %rcx; both results
+// kept, the quotient in rax and the remainder in rdx, as the
+// instruction leaves them.  v is consumed.
+std::pair< value_t, value_t >
+divided(state_t &, value_t v, long long size, view_t view);
 
 // The value of a return, of the result's view, moved to the result
 // register where its row left it elsewhere, then the jump to the
