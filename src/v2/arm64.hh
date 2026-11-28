@@ -655,12 +655,20 @@ value(state_t &s, const call_t< V > &c, unsigned = 0)
 // an address, whose row takes a register of its own, and the nodes that
 // are their operands' value, a conversion, a comma and an assignment,
 // whose operand's answer is theirs.
+namespace primary {
+
 template< typename T >
 constexpr bool
 takes_name(const state_t &, const T &)
 {
     return true;
 }
+
+} // namespace primary
+
+// The primary of this target's line whose default a model writes once,
+// as zoo.hh's are (model.hh).
+using namespace primary;
 
 template< typename W >
 constexpr bool
@@ -759,15 +767,8 @@ value(state_t &s, const conditional_t< V, jumps > &c, unsigned wanted = 0)
 }
 
 // The value at a return's top, rcc's rvalue_in(): any node's value
-// handed the result register, and a conditional's joined in it whatever
-// its arms take.
-template< typename T >
-value_t
-value_in(state_t &s, const T &t, unsigned wanted)
-{
-    return value(s, t, wanted);
-}
-
+// handed the result register, defaults_t's (model.hh), and a
+// conditional's joined in it whatever its arms take.
 template< view_t V, bool jumps >
 value_t
 value_in(state_t &s, const conditional_t< V, jumps > &c, unsigned wanted)

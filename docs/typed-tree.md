@@ -195,6 +195,21 @@ public:
 - A member named as the free function it calls hides that function.
   The call goes through a forwarder, `fwd_` and the function's name,
   which keeps the lookup by argument.
+- A line's default is written once. Where a line's answer does not
+  read the node's type for most node types (an effect is the value
+  dropped; the lvalue conversion of a node that is no place is the
+  node), a primary would be one function for each of them. The
+  answer is a member of `defaults_t` instead, a base of the models
+  that is no template, written over the node's handle and its own
+  lines. A model asks, line by line, whether its node has a row of
+  its own, and answers by the row or by the default.
+- Whether a node has a row of its own on a line is a concept of the
+  namespace `niche`, which is outside `rcc` and finds a row by its
+  arguments alone: a category derived from the rows (principle 7).
+  A primary that a row still asks of a concrete operand lives in a
+  namespace `primary`, which the namespace of its niches uses. A row
+  finds it by name; the concept, which no using directive reaches,
+  finds the niches alone. A primary no row asks is not written.
 - Every model is instantiated in one translation unit, `build.cc`,
   which includes the node types and every row of both targets. Two
   units that saw different overloads would break the one-definition

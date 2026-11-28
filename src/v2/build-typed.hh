@@ -24,17 +24,10 @@
 
 namespace rcc {
 
-// A node that is no place is a value already, and the lvalue conversion
-// leaves it the node it is: its own handle.
-template< typename T >
-expr_t
-rvalue(const T &, const expr_t &self)
-{
-    return self;
-}
-
 // A place becomes the value its object holds, 6.3.2.1p2, read at its
-// view by its object's sign, a local's slot and a global alike.
+// view by its object's sign, a local's slot and a global alike.  A node
+// that is no place is a value already, and the lvalue conversion leaves
+// it the node it is, its own handle, defaults_t's (model.hh).
 template< typename W, view_t V, sign_t S >
 expr_t
 rvalue(const place_t< W, V, S > &place, const expr_t &)
@@ -45,13 +38,6 @@ rvalue(const place_t< W, V, S > &place, const expr_t &)
 // The value of a node the builders made a constant, value_of()'s (4.3),
 // and none for any other node: the fold is the builders', so a constant
 // expression is a constant node, as rcc's evaluator leaves a literal.
-template< typename T >
-std::optional< long long >
-constant_of(const T &)
-{
-    return std::nullopt;
-}
-
 template< constant C >
 std::optional< long long >
 constant_of(const C &c)
@@ -422,14 +408,8 @@ pinning(const trunc_t< V, top_t< P > > &, const expr_t &self)
 // under_widening(): an integer converted to one as wide or wider, which
 // keeps 0 and takes no other value to 0, 6.3.1.3p1, p2, so that a
 // conditional's arm and its condition are tested as they are as a jump
-// on the whole, (int) c on a char as c.  Any other node is itself.
-template< typename T >
-expr_t
-under_widening(const T &, const expr_t &self)
-{
-    return self;
-}
-
+// on the whole, (int) c on a char as c.  Any other node is itself,
+// defaults_t's (model.hh).
 template< view_t V, view_t F, typename A >
 expr_t
 under_widening(const sext_t< V, F, A > &e, const expr_t &)

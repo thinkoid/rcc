@@ -229,22 +229,6 @@ store(S &s, value_t v, const A &at, view_t view)
     store(s, r, operand(s, at, bit(r)), view);
 }
 
-// The store row of an initializer, rcc's initialize(), chapter 6.6: the
-// value in a register, stored at the address its caller formed, at the
-// value's view, which is the place's, since the parser converted the
-// value to the place's type (docs/typed-tree.md 3.4), and released.
-// The targets' niches store a constant with no register held, found by
-// overload on the value's type, which the handle's row, the entry
-// point, knows.
-template< typename S, typename A, typename T >
-void
-initialize(S &s, const A &at, const T &e)
-{
-    const value_t v = value(s, e);
-    store(s, v, at, view_of(e));
-    release(s, v);
-}
-
 // A local's slot, of its view's bytes at as many bytes' alignment, from
 // the frame's allocator, which a spill's slot comes from too, so the
 // two interleave in the order they are taken; its displacement is
@@ -261,12 +245,16 @@ allocate(S &s, slot_t where, view_t view)
 
 // An expression for its effect, 6.8.4p2, its value dropped: the value
 // held, and released at once.
+namespace primary {
+
 template< typename S, typename T >
 void
 effect(S &s, const T &t)
 {
     release(s, value(s, t));
 }
+
+} // namespace primary
 
 // An assignment for its effect, rcc's assign() and
 // constant_assignment(): the place first, G13, formed outside what each
@@ -287,12 +275,16 @@ effect(S &s, const assign_t< W, V > &a)
 // comparison, no ! and no && or ||: a jump on a value is the value
 // compared with 0 (3.4), each target's value_branch(), where x86-64 has
 // niches of its own and aarch64 reads the width rule.
+namespace primary {
+
 template< typename S, typename T >
 void
 branch(S &s, const T &t, int label, bool sense)
 {
     value_branch(s, t, label, sense);
 }
+
+} // namespace primary
 
 // !e as a jump writes nothing of its own: the jump on e, the sense
 // flipped.

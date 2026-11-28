@@ -1027,12 +1027,28 @@ valid_of(const conditional_void_t &, sign_t)
 // summary the builder of ?: asks of each arm through its handle
 // (principle 3), and no category, since the conversion erases its
 // operand.
+namespace primary {
+
 template< typename T >
 bool
 truth_value(const T &)
 {
     return false;
 }
+
+} // namespace primary
+
+// A primary of a line whose default a model writes once (model.hh),
+// where a row still asks it of an operand of its own type, lives in a
+// namespace of its own, which the namespace of its niches uses: a row
+// finds a primary as it finds a niche, by its name, but lookup by
+// argument, which ignores a using directive, finds the niches alone.
+// So whether a node type has a niche of its own on such a line is a
+// concept asked by argument alone, from outside rcc (model.hh's
+// niche::), and a category derived from the rows (principle 7): a model
+// whose node has none answers by the line's default, one function, and
+// not by the primary instantiated for its type.
+using namespace primary;
 
 template< binary_op_t op, view_t V, typename L, typename R >
 bool
@@ -1085,15 +1101,9 @@ truth_value(const trunc_t< V, A > &t)
 // load; and a truth value, !, a comparison, && or ||, valid to 64 bits
 // as it is.  A remainder is a summary of its own, which x86-64 widens
 // free into a register the consumer names other than rdx, and anything
-// else needs an extension of its own.  No conversion is looked through
-// but those of an object, as rcc's lands_in() looks through none.
-template< typename T >
-constexpr arm_widening_t
-arm_widening(const T &)
-{
-    return arm_widening_t::extension;
-}
-
+// else needs an extension of its own, defaults_t's (model.hh).  No
+// conversion is looked through but those of an object, as rcc's
+// lands_in() looks through none.
 template< constant C >
 constexpr arm_widening_t
 arm_widening(const C &)

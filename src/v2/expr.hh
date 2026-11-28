@@ -44,6 +44,7 @@ enum class arm_widening_t { free, remainder, extension };
 class expr_t
 {
     struct interface_t;
+    struct defaults_t;
     template< typename T >
     struct model_t;
 

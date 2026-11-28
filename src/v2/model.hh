@@ -13,8 +13,11 @@
 
 #pragma once
 
+#include "amd64.hh"
+#include "arm64.hh"
 #include "expr.hh"
 #include "register-stack.hh"
+#include "rows-expressions.hh"
 #include "stmt.hh"
 #include "zoo.hh"
 
@@ -26,6 +29,51 @@
 #include <type_traits>
 #include <utility>
 #include <variant>
+
+// Whether a node type has a niche of its own on a line that defaults_t
+// answers: the line's row found by argument alone, from outside rcc,
+// where no using-directive is seen, so that a primary a row still asks
+// of an operand of its own type, which lives in a namespace primary of
+// its own (zoo.hh), is not found.  A model whose node has none answers
+// the line by its default, written once.
+namespace niche {
+
+template< typename T, typename S >
+concept on_effect = requires(S &s, const T &t) { effect(s, t); };
+
+template< typename T, typename S, typename A >
+concept on_initialize =
+    requires(S &s, const A &at, const T &t) { initialize(s, at, t); };
+
+template< typename T, typename S >
+concept on_branch = requires(S &s, const T &t) { branch(s, t, 0, true); };
+
+template< typename T >
+concept on_value_in =
+    requires(rcc::arm64::state_t &s, const T &t) { value_in(s, t, 0u); };
+
+template< typename T >
+concept on_takes_name =
+    requires(const rcc::arm64::state_t &s, const T &t) { takes_name(s, t); };
+
+template< typename T >
+concept on_truth_value = requires(const T &t) { truth_value(t); };
+
+template< typename T >
+concept on_under_widening =
+    requires(const T &t, const rcc::expr_t &self) { under_widening(t, self); };
+
+template< typename T >
+concept on_arm_widening = requires(const T &t) { arm_widening(t); };
+
+template< typename T >
+concept on_rvalue =
+    requires(const T &t, const rcc::expr_t &self) { rvalue(t, self); };
+
+template< typename T >
+concept on_constant_of = requires(const T &t) { constant_of(t); };
+
+} // namespace niche
 
 namespace rcc {
 
@@ -796,16 +844,6 @@ fwd_address_of(const P &p)
     return make_address_of(p);
 }
 
-// The parser asks is_place() before it builds an address, and says the
-// error of one that is not, so no address of a node that is no place is
-// built.
-template< typename P >
-expr_t
-fwd_address_of(const P &)
-{
-    throw std::logic_error("v2: the address of a node that is no place");
-}
-
 // Whether a node is a place an assignment stores into: whether the
 // builder of an assignment, make_assign(), is written for it (principle
 // 8).
@@ -822,32 +860,13 @@ fwd_assign(const P &place, const V &value)
     return make_assign(place, value);
 }
 
-// The parser asks is_assignable() before it builds an assignment, and
-// says the error of one that is not, so no assignment to a node that is
-// no place is built.
-template< typename P, typename V >
-expr_t
-fwd_assign(const P &, const V &)
-{
-    throw std::logic_error("v2: an assignment to a node that is no place");
-}
-
 // A step of a held place, by its builder: the crossing from the step's
 // operator, data in the parser, to the node's parameter (principle 6).
-// The parser asks is_assignable() first, as for an assignment, so no
-// step of a node that is no place is built.
 template< assignable P >
 expr_t
 fwd_step(step_op_t op, const P &place)
 {
     return cross(op, [&]< step_op_t o >() { return make_step< o >(place); });
-}
-
-template< typename P >
-expr_t
-fwd_step(step_op_t, const P &)
-{
-    throw std::logic_error("v2: a step of a node that is no place");
 }
 
 // A compound assignment to a held place, by its builder, as a step's:
@@ -880,16 +899,131 @@ fwd_compound(binary_op_t op, view_t view, const P &place, const expr_t &value)
     });
 }
 
-template< typename P >
-expr_t
-fwd_compound(binary_op_t, view_t, const P &, const expr_t &)
+// The lines whose answer, for a node type with no niche of its own on
+// them, does not read the node's type, each default written once, here,
+// over the node's handle self and the node's own lines, value(),
+// view(), valid(), where its primary would be instantiated for every
+// node type (docs/typed-tree.md 3.1): an effect, a store and aarch64's
+// jump derived from the value, x86-64's jump from value_branch(); the
+// value for a consumer at a return's top; the node itself for a
+// conversion that keeps it and for the lvalue conversion; and the
+// summaries' answers of a node that is none of theirs.  Each body is the
+// primary's, so a model that takes it writes what the primary writes.
+// The parser asks is_place() before it builds an address and
+// is_assignable() before an assignment, a step or a compound
+// assignment, and says the error of one that is not, so none of those
+// four is built of a node that is no place.
+struct expr_t::defaults_t: interface_t
 {
-    throw std::logic_error("v2: a compound assignment to a node that is no "
-                           "place");
-}
+    // an expression for its effect, 6.8.4p2, its value dropped
+    void effect(amd64::state_t &s) const override
+    {
+        release(s, value(s, 0));
+    }
 
+    void effect(arm64::state_t &s) const override
+    {
+        release(s, value(s, 0));
+    }
+
+    // the store row of an initializer, rcc's initialize(), chapter 6.6:
+    // the value in a register, stored at the address its caller formed,
+    // at the value's view, which is the place's, since the parser
+    // converted the value to the place's type, and released; the
+    // targets' niches store a constant with no register held
+    void initialize(amd64::state_t &s,
+                    const amd64::address_t &at) const override
+    {
+        const value_t v = value(s, 0);
+        store(s, v, at, view());
+        release(s, v);
+    }
+
+    void initialize(arm64::state_t &s,
+                    const arm64::address_t &at) const override
+    {
+        const value_t v = value(s, 0);
+        store(s, v, at, view());
+        release(s, v);
+    }
+
+    // a jump on a value is the value compared with 0 (3.4): x86-64's
+    // value_branch(), and aarch64's test of the register at the value's
+    // view and the width it is valid to
+    void branch(amd64::state_t &s, int label, bool sense) const override
+    {
+        value_branch(s, label, sense);
+    }
+
+    void branch(arm64::state_t &s, int label, bool sense) const override
+    {
+        const value_t v = value(s, 0);
+        arm64::test_zero(s, v, view(), valid(sign_t::signed_), label, sense);
+        release(s, v);
+    }
+
+    value_t value_in(arm64::state_t &s, unsigned wanted) const override
+    {
+        return value(s, wanted);
+    }
+
+    bool takes_name(const arm64::state_t &) const override
+    {
+        return true;
+    }
+
+    bool truth_value() const override
+    {
+        return false;
+    }
+
+    expr_t under_widening(const expr_t &self) const override
+    {
+        return self;
+    }
+
+    arm_widening_t arm_widening() const override
+    {
+        return arm_widening_t::extension;
+    }
+
+    expr_t rvalue(const expr_t &self) const override
+    {
+        return self;
+    }
+
+    std::optional< long long > constant_of() const override
+    {
+        return std::nullopt;
+    }
+
+    expr_t address_of() const override
+    {
+        throw std::logic_error("v2: the address of a node that is no place");
+    }
+
+    expr_t assign(const expr_t &) const override
+    {
+        throw std::logic_error("v2: an assignment to a node that is no place");
+    }
+
+    expr_t step(step_op_t) const override
+    {
+        throw std::logic_error("v2: a step of a node that is no place");
+    }
+
+    expr_t compound(binary_op_t, view_t, const expr_t &) const override
+    {
+        throw std::logic_error("v2: a compound assignment to a node that is no "
+                               "place");
+    }
+};
+
+// A model answers a line of defaults_t by its node's niche where the
+// node has one, niche::'s concept or the category the builder reads,
+// and by the default otherwise.
 template< typename T >
-struct expr_t::model_t final: interface_t
+struct expr_t::model_t final: defaults_t
 {
     explicit model_t(T t) : held(std::move(t))
     {
@@ -907,22 +1041,34 @@ struct expr_t::model_t final: interface_t
 
     void effect(amd64::state_t &s) const override
     {
-        fwd_effect(s, held);
+        if constexpr (niche::on_effect< T, amd64::state_t >)
+            fwd_effect(s, held);
+        else
+            defaults_t::effect(s);
     }
 
     void effect(arm64::state_t &s) const override
     {
-        fwd_effect(s, held);
+        if constexpr (niche::on_effect< T, arm64::state_t >)
+            fwd_effect(s, held);
+        else
+            defaults_t::effect(s);
     }
 
     void branch(amd64::state_t &s, int label, bool sense) const override
     {
-        fwd_branch(s, held, label, sense);
+        if constexpr (niche::on_branch< T, amd64::state_t >)
+            fwd_branch(s, held, label, sense);
+        else
+            defaults_t::branch(s, label, sense);
     }
 
     void branch(arm64::state_t &s, int label, bool sense) const override
     {
-        fwd_branch(s, held, label, sense);
+        if constexpr (niche::on_branch< T, arm64::state_t >)
+            fwd_branch(s, held, label, sense);
+        else
+            defaults_t::branch(s, label, sense);
     }
 
     void value_branch(amd64::state_t &s, int label, bool sense) const override
@@ -933,13 +1079,21 @@ struct expr_t::model_t final: interface_t
     void initialize(amd64::state_t &s,
                     const amd64::address_t &at) const override
     {
-        fwd_initialize(s, at, held);
+        if constexpr (niche::on_initialize< T, amd64::state_t,
+                                            amd64::address_t >)
+            fwd_initialize(s, at, held);
+        else
+            defaults_t::initialize(s, at);
     }
 
     void initialize(arm64::state_t &s,
                     const arm64::address_t &at) const override
     {
-        fwd_initialize(s, at, held);
+        if constexpr (niche::on_initialize< T, arm64::state_t,
+                                            arm64::address_t >)
+            fwd_initialize(s, at, held);
+        else
+            defaults_t::initialize(s, at);
     }
 
     unsigned pinned_within(const amd64::state_t &s) const override
@@ -964,22 +1118,34 @@ struct expr_t::model_t final: interface_t
 
     value_t value_in(arm64::state_t &s, unsigned wanted) const override
     {
-        return fwd_value_in(s, held, wanted);
+        if constexpr (niche::on_value_in< T >)
+            return fwd_value_in(s, held, wanted);
+        else
+            return defaults_t::value_in(s, wanted);
     }
 
     bool takes_name(const arm64::state_t &s) const override
     {
-        return fwd_takes_name(s, held);
+        if constexpr (niche::on_takes_name< T >)
+            return fwd_takes_name(s, held);
+        else
+            return defaults_t::takes_name(s);
     }
 
     bool truth_value() const override
     {
-        return fwd_truth_value(held);
+        if constexpr (niche::on_truth_value< T >)
+            return fwd_truth_value(held);
+        else
+            return defaults_t::truth_value();
     }
 
     expr_t under_widening(const expr_t &self) const override
     {
-        return fwd_under_widening(held, self);
+        if constexpr (niche::on_under_widening< T >)
+            return fwd_under_widening(held, self);
+        else
+            return defaults_t::under_widening(self);
     }
 
     bool is_join() const override
@@ -989,7 +1155,10 @@ struct expr_t::model_t final: interface_t
 
     arm_widening_t arm_widening() const override
     {
-        return fwd_arm_widening(held);
+        if constexpr (niche::on_arm_widening< T >)
+            return fwd_arm_widening(held);
+        else
+            return defaults_t::arm_widening();
     }
 
     expr_t widened_arm(const expr_t &self) const override
@@ -999,12 +1168,18 @@ struct expr_t::model_t final: interface_t
 
     expr_t rvalue(const expr_t &self) const override
     {
-        return fwd_rvalue(held, self);
+        if constexpr (niche::on_rvalue< T >)
+            return fwd_rvalue(held, self);
+        else
+            return defaults_t::rvalue(self);
     }
 
     std::optional< long long > constant_of() const override
     {
-        return fwd_constant_of(held);
+        if constexpr (niche::on_constant_of< T >)
+            return fwd_constant_of(held);
+        else
+            return defaults_t::constant_of();
     }
 
     expr_t unary(unary_op_t op, view_t view, const expr_t &self) const override
@@ -1029,7 +1204,10 @@ struct expr_t::model_t final: interface_t
 
     expr_t address_of() const override
     {
-        return fwd_address_of(held);
+        if constexpr (place< T >)
+            return fwd_address_of(held);
+        else
+            return defaults_t::address_of();
     }
 
     bool is_assignable() const override
@@ -1039,18 +1217,27 @@ struct expr_t::model_t final: interface_t
 
     expr_t assign(const expr_t &value) const override
     {
-        return fwd_assign(held, value);
+        if constexpr (assignable< T >)
+            return fwd_assign(held, value);
+        else
+            return defaults_t::assign(value);
     }
 
     expr_t step(step_op_t op) const override
     {
-        return fwd_step(op, held);
+        if constexpr (assignable< T >)
+            return fwd_step(op, held);
+        else
+            return defaults_t::step(op);
     }
 
     expr_t
     compound(binary_op_t op, view_t view, const expr_t &value) const override
     {
-        return fwd_compound(op, view, held, value);
+        if constexpr (assignable< T >)
+            return fwd_compound(op, view, held, value);
+        else
+            return defaults_t::compound(op, view, value);
     }
 
     expr_t right_of(binary_op_t op,
