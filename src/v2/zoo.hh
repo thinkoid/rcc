@@ -829,6 +829,74 @@ valid_of(
         zext_t< V, G, load_t< W, G, sign_t::unsigned_ > > { e.arg.arg }, sign);
 }
 
+// A widening over a change of sign of a load is the one load of the
+// object at the type converted from, and is valid as that load is; so is
+// a widening over its promotion, as over the promotion of the load.
+template< view_t V, view_t F, typename W >
+int
+valid_of(
+    const sext_t< V, F, trunc_t< F, load_t< W, F, sign_t::unsigned_ > > > &e,
+    sign_t sign)
+{
+    return valid_of(
+        sext_t< V, F, load_t< W, F, sign_t::signed_ > > { { e.arg.arg.where } },
+        sign);
+}
+
+template< view_t V, view_t F, typename W >
+int
+valid_of(const zext_t< V, F, trunc_t< F, load_t< W, F, sign_t::signed_ > > > &e,
+         sign_t sign)
+{
+    return valid_of(
+        zext_t< V, F, load_t< W, F, sign_t::unsigned_ > > {
+            { e.arg.arg.where } },
+        sign);
+}
+
+template< view_t V, view_t F, view_t G, typename W >
+int
+valid_of(
+    const sext_t<
+        V,
+        F,
+        sext_t< F, G, trunc_t< G, load_t< W, G, sign_t::unsigned_ > > > > &e,
+    sign_t sign)
+{
+    return valid_of(
+        sext_t< V, G, trunc_t< G, load_t< W, G, sign_t::unsigned_ > > > {
+            e.arg.arg },
+        sign);
+}
+
+template< view_t V, view_t F, view_t G, typename W >
+int
+valid_of(const sext_t<
+             V,
+             F,
+             zext_t< F, G, trunc_t< G, load_t< W, G, sign_t::signed_ > > > > &e,
+         sign_t sign)
+{
+    return valid_of(
+        zext_t< V, G, trunc_t< G, load_t< W, G, sign_t::signed_ > > > {
+            e.arg.arg },
+        sign);
+}
+
+template< view_t V, view_t F, view_t G, typename W >
+int
+valid_of(const zext_t<
+             V,
+             F,
+             zext_t< F, G, trunc_t< G, load_t< W, G, sign_t::signed_ > > > > &e,
+         sign_t sign)
+{
+    return valid_of(
+        zext_t< V, G, trunc_t< G, load_t< W, G, sign_t::signed_ > > > {
+            e.arg.arg },
+        sign);
+}
+
 template< view_t V, typename A >
 int
 valid_of(const trunc_t< V, A > &, sign_t)

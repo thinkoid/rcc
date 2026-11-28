@@ -504,12 +504,21 @@ make_widening(const load_t< W, F, O > &l, const expr_t &)
 // object's bits, so the widening reads the object at the type it
 // converts from, rcc's object_under() under under_kept_bits(): (long)
 // (int) u on an unsigned u is movslq -4(%rbp), %rax, and (int)
-// (unsigned char) c on a signed char c movzbl -1(%rbp), %eax.
+// (unsigned char) c on a signed char c movzbl -1(%rbp), %eax.  A cast
+// to its own type is the load, read at its own sign.  A change of sign
+// keeps the change as the widening's operand's type, whose rows are the
+// one load's at the type converted from (rows-expressions.hh), since
+// rcc reads through both conversions to the object at its own type
+// where a ?: jumps on it, under_widening(): (int) (unsigned short) s on
+// a short s is ldrsh w0 there and ldrh w0 as a value.
 template< view_t V, view_t F, sign_t S, typename W, sign_t O >
 expr_t
 make_widening(const trunc_t< F, load_t< W, F, O > > &t, const expr_t &)
 {
-    return widening_of< V, F, S >(load_t< W, F, S > { t.arg.where });
+    if constexpr (O == S)
+        return widening_of< V, F, S >(t.arg);
+    else
+        return widening_of< V, F, S >(t);
 }
 
 // A widening over a promotion of the object, rcc's widened_read(),
@@ -540,6 +549,30 @@ template< view_t V, view_t F, sign_t S, view_t G, typename W >
 expr_t
 make_widening(const zext_t< F, G, load_t< W, G, sign_t::unsigned_ > > &e,
               const expr_t &)
+{
+    return widening_of< V, F, S >(e);
+}
+
+// The same promotions of an object under a change of sign, the one load
+// at the type converted from: (long) (int) (signed char) c on an
+// unsigned char c is movsbq -1(%rbp), %rax.
+template< view_t V, view_t F, sign_t S, view_t G, typename W >
+expr_t
+make_widening(
+    const sext_t< F, G, trunc_t< G, load_t< W, G, sign_t::unsigned_ > > > &e,
+    const expr_t &self)
+{
+    if constexpr (S == sign_t::signed_)
+        return widening_of< V, F, S >(e);
+    else
+        return widening_of< V, F, S >(pinning(e, self));
+}
+
+template< view_t V, view_t F, sign_t S, view_t G, typename W >
+expr_t
+make_widening(
+    const zext_t< F, G, trunc_t< G, load_t< W, G, sign_t::signed_ > > > &e,
+    const expr_t &)
 {
     return widening_of< V, F, S >(e);
 }

@@ -361,6 +361,24 @@ converted_operand(const zext_t< V, F, load_t< W, F, sign_t::unsigned_ > > &e,
     return e;
 }
 
+template< view_t V, view_t F, typename W >
+const sext_t< V, F, trunc_t< F, load_t< W, F, sign_t::unsigned_ > > > &
+converted_operand(
+    const sext_t< V, F, trunc_t< F, load_t< W, F, sign_t::unsigned_ > > > &e,
+    const expr_t &)
+{
+    return e;
+}
+
+template< view_t V, view_t F, typename W >
+const zext_t< V, F, trunc_t< F, load_t< W, F, sign_t::signed_ > > > &
+converted_operand(
+    const zext_t< V, F, trunc_t< F, load_t< W, F, sign_t::signed_ > > > &e,
+    const expr_t &)
+{
+    return e;
+}
+
 // The conversion of a held node in its class from the view from, at
 // the sign of its type, to the view to at the sign to_sign: the three
 // crossings, then the typed builder, by overload on the class.  The

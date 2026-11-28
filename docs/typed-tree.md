@@ -509,9 +509,14 @@ S >`.
 - A conversion over a load is the load's niche: a signed object
   widened to 64 bits is its extending load, `movslq -4(%rbp), %rax`.
   Any other widening of a load is its primary, since the load has
-  extended the object already. The widening's builder finds the
-  object under a change of sign, and reads it at the type converted
-  from.
+  extended the object already. A widening over a change of sign of a
+  load keeps the change as its operand's type, `zext_t< i32, i16,
+  trunc_t< i16, load_t< W, i16, signed_ > > >` for `(int) (unsigned
+  short) s` on a `short`. Its rows are the object's one read at the
+  type converted from, and the jump on the arms of a `?:`, which reads
+  an object under a widening at the object's own type, rcc's
+  `under_widening()`, finds the object's sign there: `ldrsh`, where a
+  load fused with the change of sign would say `ldrh`.
 - A widening over a promotion of the object, where one extension is
   the two, a signed object under a signed widening or any unsigned
   one, keeps the promotion as its operand's type, `sext_t< i64, i32,

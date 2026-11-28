@@ -117,6 +117,82 @@ value(
         wanted);
 }
 
+// A widening over a change of sign of a load, which its builder keeps
+// as its operand's type, is the one load of the object at the type
+// converted from, the row of that node, so each target's niche of the
+// extending load serves it; and a widening over its promotion is the
+// widening over the change of sign itself, as over the promotion of a
+// load.
+template< typename S, view_t V, view_t F, typename W >
+value_t
+value(S &s,
+      const sext_t< V, F, trunc_t< F, load_t< W, F, sign_t::unsigned_ > > > &e,
+      unsigned wanted = 0)
+{
+    return value(
+        s,
+        sext_t< V, F, load_t< W, F, sign_t::signed_ > > { { e.arg.arg.where } },
+        wanted);
+}
+
+template< typename S, view_t V, view_t F, typename W >
+value_t
+value(S &s,
+      const zext_t< V, F, trunc_t< F, load_t< W, F, sign_t::signed_ > > > &e,
+      unsigned wanted = 0)
+{
+    return value(s,
+                 zext_t< V, F, load_t< W, F, sign_t::unsigned_ > > {
+                     { e.arg.arg.where } },
+                 wanted);
+}
+
+template< typename S, view_t V, view_t F, view_t G, typename W >
+value_t
+value(S &s,
+      const sext_t<
+          V,
+          F,
+          sext_t< F, G, trunc_t< G, load_t< W, G, sign_t::unsigned_ > > > > &e,
+      unsigned wanted = 0)
+{
+    return value(
+        s,
+        sext_t< V, G, trunc_t< G, load_t< W, G, sign_t::unsigned_ > > > {
+            e.arg.arg },
+        wanted);
+}
+
+template< typename S, view_t V, view_t F, view_t G, typename W >
+value_t
+value(S &s,
+      const sext_t<
+          V,
+          F,
+          zext_t< F, G, trunc_t< G, load_t< W, G, sign_t::signed_ > > > > &e,
+      unsigned wanted = 0)
+{
+    return value(s,
+                 zext_t< V, G, trunc_t< G, load_t< W, G, sign_t::signed_ > > > {
+                     e.arg.arg },
+                 wanted);
+}
+
+template< typename S, view_t V, view_t F, view_t G, typename W >
+value_t
+value(S &s,
+      const zext_t<
+          V,
+          F,
+          zext_t< F, G, trunc_t< G, load_t< W, G, sign_t::signed_ > > > > &e,
+      unsigned wanted = 0)
+{
+    return value(s,
+                 zext_t< V, G, trunc_t< G, load_t< W, G, sign_t::signed_ > > > {
+                     e.arg.arg },
+                 wanted);
+}
+
 // A conversion that writes nothing is its operand's value, the low bits
 // of whose register are the value at V (G2).
 template< typename S, view_t V, typename A >
