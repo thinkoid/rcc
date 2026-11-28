@@ -9,10 +9,11 @@ architecture. It leaves the details to the code.
 Of the design the tree has a thin line through every joint: a unit of
 functions and of objects, declared and defined in any order, `static`,
 `extern` or neither, at file scope or a block's `static` and `extern`;
-the objects of the integer types from `char` to `unsigned long long`,
-initialized by an integer constant expression or not, read and
-assigned in every expression, defined before their use, after it or
-nowhere in the unit, their data written after the functions; the
+typedef names, declared at file scope or in a block and read wherever
+a type is; the objects of the integer types from `char` to `unsigned
+long long`, initialized by an integer constant expression or not, read
+and assigned in every expression, defined before their use, after it
+or nowhere in the unit, their data written after the functions; the
 functions of a result of any integer type, a pointer or `void` and of
 parameters of any integer type or pointers, whose locals are of the
 integer types and pointers to `int` and to such pointers, declared,
@@ -804,6 +805,13 @@ technique.
   listing needs: the name, the linkage, each parameter's view, the
   body or none. An object's is made at its first declaration that
   defines it, and its linkage is its first declaration's.
+- A typedef name is a scope's name that holds the type it names and no
+  leaf. It is read wherever a type is, the whole type specifier where
+  it comes first, and the tree keeps no trace of it: a declaration
+  through one is the declaration with its type written out. The file's
+  scope is the outermost of the parser's scopes and holds the file's
+  typedef names; its functions and its objects stay in their two maps,
+  and a name is in one of the three alone.
 - A block's `static` object is the unit's too. Its entry is made
   where its declaration is parsed, under its label: the function's
   name and its own, `f.s`, and from the second of the name in the

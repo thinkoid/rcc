@@ -27,12 +27,13 @@ namespace {
 // declares, a copy of the leaf its first declaration made, whether the
 // unit defines the object or not, which generation asks; or a name the
 // file declares as a function, a function designator of the function's
-// type and no node; a name no scope declares is rcc's error.  Each use
-// of a static function is recorded, for the end of the unit to require
-// its definition.  rcc knows reserved names that no declaration in the
-// unit makes, its builtins and the types the compiler declares, and
-// reads some of them before it looks the name up, so a reserved name is
-// not yet wherever it stands.
+// type and no node; a typedef name, which names a type, p2, and a name
+// no scope declares are rcc's errors.  Each use of a static function is
+// recorded, for the end of the unit to require its definition.  rcc
+// knows reserved names that no declaration in the unit makes, its
+// builtins and the types the compiler declares, and reads some of them
+// before it looks the name up, so a reserved name is not yet wherever
+// it stands.
 operand_t
 identifier(parser_t &p)
 {
@@ -40,8 +41,13 @@ identifier(parser_t &p)
     if (is_reserved(t.text))
         not_yet(t, "reserved identifier " + quoted(t.text));
 
-    if (const operand_t *local = lookup(p, t.text))
-        return { local->type, local->node, &t };
+    if (const symbol_t *sym = lookup(p, t.text)) {
+        if (sym->type_name)
+            fail(t, "unexpected type name " + quoted(t.text) +
+                        ": expected expression");
+
+        return { sym->operand.type, sym->operand.node, &t };
+    }
 
     if (const auto object = p.objects.find(t.text); object != p.objects.end())
         return { object->second.type, object->second.leaf, &t };
@@ -534,10 +540,14 @@ unary_expression(parser_t &p)
 // cast.  A pointer constant converted to an integer is a cast in rcc,
 // no constant, which rcc-v2 does not make yet.  A void operand is an
 // error at the '(', require_value()'s, and a function designator is not
-// yet.
+// yet.  A function type, which a typedef name may name, is no scalar
+// type, p2, rcc's error at the '(' once the operand is read.
 operand_t
 cast(const token_t &open, const type_t &t, const operand_t &arg)
 {
+    if (is< function_t >(t))
+        fail(open, "cast to a type that is not a scalar");
+
     const operand_t value { arg.type, rvalue(open, arg) };
 
     if (is< pointer_t >(t) && is< pointer_t >(arg.type))

@@ -47,19 +47,24 @@ struct operand_t
     bool overflowed = false;
 };
 
-// What a block's scope holds of a name it declares, 6.2.1p4: the
-// operand a use copies, its type and its leaf (docs/typed-tree.md 4.5);
-// and whether the name has linkage, 6.2.2: a block's extern has, and a
-// local, a parameter and a block's static object have none, p6, which
-// a block's extern of the name, linked_entity(), reads.
+// What a scope holds of a name it declares, 6.2.1p4: the operand a use
+// copies, its type and its leaf (docs/typed-tree.md 4.5); whether the
+// name has linkage, 6.2.2: a block's extern has, and a local, a
+// parameter and a block's static object have none, p6, which a block's
+// extern of the name, linked_entity(), reads; and whether the name is a
+// typedef name, 6.7.9p3, whose operand holds the type it names and no
+// node, since a typedef declares no object.
 struct symbol_t
 {
     operand_t operand;
     bool linked = false;
+    bool type_name = false;
 };
 
-// A block's scope, or a parameter list's, 6.2.1p4: each name it
-// declares, a view into the tokens, and what the scope holds of it.
+// A scope, 6.2.1p4: the file's, a block's or a parameter list's, each
+// name it declares, a view into the tokens, and what the scope holds of
+// it.  The file's holds its typedef names alone, its functions' and its
+// objects' names being parser_t's.
 using scope_t = std::unordered_map< std::string_view, symbol_t >;
 
 // What the parser holds of a function's name in the file's scope,
@@ -125,12 +130,12 @@ struct open_switch_t
 // function, by its index among the unit's functions, for the end of the
 // unit to require its definition; the result type of the function being
 // defined, for its return statements; the scopes open where the parse
-// stands, innermost last, the function's blocks' and a parameter
-// list's; the count of the locals the function has declared, which
-// numbers the next one; the loops and the switches whose bodies are
-// being read, each innermost last, with the count of the function's
-// loops and switches, which numbers the next of either, so the
-// innermost of the two is the one of the larger number
+// stands, innermost last, the file's first, then the function's blocks'
+// and a parameter list's; the count of the locals the function has
+// declared, which numbers the next one; the loops and the switches
+// whose bodies are being read, each innermost last, with the count of
+// the function's loops and switches, which numbers the next of either,
+// so the innermost of the two is the one of the larger number
 // (docs/typed-tree.md 4.6), and the count of the function's case and
 // default labels, which numbers the next; the function's C labels by
 // their names, their count numbering the next one, with the name of
@@ -298,7 +303,7 @@ expr_t assignment_conversion(const token_t &at, operand_t e, const type_t &t);
 
 // What the innermost scope that declares the name holds of it, or
 // null when none does.
-const operand_t *lookup(const parser_t &p, std::string_view name);
+const symbol_t *lookup(const parser_t &p, std::string_view name);
 
 // Declares the name in the innermost scope as a local of the type, and
 // returns the local's number.
@@ -346,8 +351,8 @@ operand_t expression(parser_t &);
 // 6.7, parse-declarations.cc
 
 // What the parser holds of the declaration specifiers: the storage
-// class, static, extern or none; the first type specifier's token; and
-// the type.
+// class, static, extern, typedef or none; the first type specifier's
+// token, a typedef name's among them; and the type.
 struct specifiers_t
 {
     const token_t *storage_class;
@@ -387,6 +392,24 @@ stmt_t for_declaration(parser_t &);
 
 // Whether the declaration's storage class is the keyword's.
 bool declared(const specifiers_t &spec, tok_t storage_class);
+
+// Whether the declarator writes a parameter list, rcc's d.params: it
+// declares a function of a type the specifiers do not name, since a
+// list after the function type a typedef name names is an error,
+// declarator_suffix()'s.
+bool lists_parameters(const specifiers_t &spec, const declarator_t &d);
+
+// A function declared through a typedef name of function type, typedef
+// int F(int); F g;, a declarator of no parameter list, is not yet, in
+// rcc's words at its name: the unit's entry of a function takes its
+// parameters from the list.
+void refuse_typedef_function(const specifiers_t &spec, const declarator_t &d);
+
+// The typedef name the declarator of a declaration of the storage class
+// typedef declares, 6.7.9, in the current scope, and what may follow the
+// declarator.
+void
+type_definition(parser_t &p, const specifiers_t &spec, const declarator_t &d);
 
 // An object of static storage of a pointer type, whose data and address
 // rcc-v2 does not write yet, refused at its name.

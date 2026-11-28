@@ -1,8 +1,9 @@
 // -*- mode: c++; -*-
 
 // 6.9: the external declarations, of which rcc-v2 takes the declaration
-// and the definition of a function and the declaration of objects of
-// the integer types, and parse(), declared in parse.hh, last.
+// and the definition of a function, the declaration of objects of the
+// integer types and the type definitions, and parse(), declared in
+// parse.hh, last.
 
 #include "parse.hh"
 
@@ -66,11 +67,12 @@ refuse_static_main(const specifiers_t &spec, const declarator_t &d)
 
 // The earlier declaration of the name among names, the file's functions
 // or its objects, met again, or null when there is none, rcc's
-// earlier_declaration() and redeclared(): a function and an object are
-// two kinds of entity, so a name of others, the other kind, declared
-// again is a redefinition, and two declarations of one kind are of
-// compatible types, 6.7.1p5, or a conflict, each said at the later
-// name.  The earlier declaration keeps its type, the composite of two
+// earlier_declaration() and redeclared(): a function, an object and a
+// typedef name are three kinds of ordinary identifier, so a name of
+// others, the other kind of entity, or of the file's scope, a typedef
+// name, declared again is a redefinition, and two declarations of one
+// kind are of compatible types, 6.7.1p5, or a conflict, each said at the
+// later name.  The earlier declaration keeps its type, the composite of two
 // compatible types being either: two integer types are compatible only
 // where they are of one kind, rcc's related(), and so one type, and two
 // function types where their results and their parameters are.  Two
@@ -82,10 +84,11 @@ template< typename N, typename O >
 N *
 earlier_declaration(std::unordered_map< std::string_view, N > &names,
                     const std::unordered_map< std::string_view, O > &others,
+                    const scope_t &file,
                     const token_t &name,
                     const type_t &t)
 {
-    if (others.contains(name.text))
+    if (others.contains(name.text) || file.contains(name.text))
         fail(name, "redefinition of " + quoted(name.text));
 
     const auto it = names.find(name.text);
@@ -151,8 +154,8 @@ declare_function(parser_t &p, const specifiers_t &spec, const declarator_t &d)
 {
     adopt_block_entity(p, d.name.text);
 
-    const function_name_t *earlier =
-        earlier_declaration(p.functions, p.objects, d.name, d.type);
+    const function_name_t *earlier = earlier_declaration(
+        p.functions, p.objects, p.scopes.front(), d.name, d.type);
     std::optional< bool > linked;
     if (earlier)
         linked = p.unit.functions[earlier->index].external;
@@ -285,8 +288,8 @@ declare_object(parser_t &p, const specifiers_t &spec, const declarator_t &d)
 
     adopt_block_entity(p, d.name.text);
 
-    object_name_t *object =
-        earlier_declaration(p.objects, p.functions, d.name, d.type);
+    object_name_t *object = earlier_declaration(
+        p.objects, p.functions, p.scopes.front(), d.name, d.type);
     std::optional< bool > linked;
     if (object)
         linked = object->external;
@@ -321,14 +324,22 @@ declare_object(parser_t &p, const specifiers_t &spec, const declarator_t &d)
         initialize(p, d.type, *index);
 }
 
-// One declarator of a declaration in the file's scope: a function's or
-// an object's.  rcc reads GNU C's attributes and an assembler name after
-// a declarator before it declares its name, and they are not yet.
+// One declarator of a declaration in the file's scope: a typedef
+// name's, a function's or an object's.  A function declared through a
+// typedef name is refused first, as rcc refuses it.  rcc reads GNU C's
+// attributes and an assembler name after a declarator before it declares
+// its name, and they are not yet.
 void
 external_declarator(parser_t &p,
                     const specifiers_t &spec,
                     const declarator_t &d)
 {
+    if (declared(spec, tok_t::kw_typedef)) {
+        type_definition(p, spec, d);
+        return;
+    }
+
+    refuse_typedef_function(spec, d);
     refuse_static_main(spec, d);
 
     if (next_is(p, { tok_t::kw_attribute, tok_t::kw_asm }))
@@ -340,14 +351,15 @@ external_declarator(parser_t &p,
         declare_object(p, spec, d);
 }
 
-// A function definition, or a declaration of functions and of objects,
-// 6.9.1p1.  extern on a function changes nothing: a function declared
-// without a storage class has the linkage extern gives it, 6.2.2p5, and
-// static gives it internal linkage, p3, on a declaration and on a
-// definition alike.  rcc reads __asm__, __extension__ and a
-// static assertion before the declaration specifiers, and refuses the
-// first in these words.  A function's declarator that a '{' follows is
-// a definition, and a definition is one declarator and its body; the
+// A function definition, or a declaration of functions, of objects and
+// of typedef names, 6.9.1p1.  extern on a function changes nothing: a
+// function declared without a storage class has the linkage extern
+// gives it, 6.2.2p5, and static gives it internal linkage, p3, on a
+// declaration and on a definition alike.  rcc reads __asm__,
+// __extension__ and a static assertion before the declaration
+// specifiers, and refuses the first in these words.  A declarator that
+// writes a parameter list and that a '{' follows is a definition, but
+// for a typedef's, and a definition is one declarator and its body; the
 // declarators of a declaration are separated by commas and end at its
 // ';'.
 void
@@ -366,7 +378,8 @@ external_declaration(parser_t &p)
     const specifiers_t spec = declaration_specifiers(p);
     declarator_t d = declarator(p, spec.type);
 
-    if (is< function_t >(d.type) && peek(p).kind == tok_t::lbrace) {
+    if (lists_parameters(spec, d) && !declared(spec, tok_t::kw_typedef) &&
+        peek(p).kind == tok_t::lbrace) {
         refuse_static_main(spec, d);
         function_definition(p, spec, d);
         return;
@@ -414,6 +427,7 @@ parse(const std::vector< token_t > &tokens,
       std::vector< warning_t > &warnings)
 {
     parser_t p { tokens, target, warnings };
+    p.scopes.emplace_back();
     translation_unit(p);
 
     return std::move(p.unit);

@@ -264,12 +264,12 @@ assignment_conversion(const token_t &at, operand_t e, const type_t &t)
 
 // The scopes from the innermost out, 6.2.1p4: an inner declaration
 // hides an outer one.
-const operand_t *
+const symbol_t *
 lookup(const parser_t &p, std::string_view name)
 {
     for (auto scope = p.scopes.rbegin(); scope != p.scopes.rend(); ++scope)
         if (const auto it = scope->find(name); it != scope->end())
-            return &it->second.operand;
+            return &it->second;
 
     return nullptr;
 }

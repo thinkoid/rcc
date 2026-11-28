@@ -1,16 +1,16 @@
 // -*- mode: c++; -*-
 
 // 6.7: the declarations, of which rcc-v2 takes the declaration
-// specifiers static, extern, void and the type specifiers of the
-// integer types from char to unsigned long long, in any order and
-// spelling, the pointers to int and to pointers, the declarators of a
-// function and of an object, the declaration in a block and in a for's
-// first clause of objects of those types, each with an initializer or
-// without, the type name of a cast and of sizeof, and the initializer
-// of an object of static storage; it refuses the rest as not yet.  rcc
-// reads more of each than rcc-v2 does, so each is read as far as rcc
-// would read it, and what rcc would take is refused before an error rcc
-// would not say.
+// specifiers static, extern, typedef, void and the type specifiers of
+// the integer types from char to unsigned long long, in any order and
+// spelling, and a typedef name, the pointers to int and to pointers,
+// the declarators of a function and of an object, the declaration in a
+// block and in a for's first clause of objects of those types, each
+// with an initializer or without, the type definitions, the type name
+// of a cast and of sizeof, and the initializer of an object of static
+// storage; it refuses the rest as not yet.  rcc reads more of each than
+// rcc-v2 does, so each is read as far as rcc would read it, and what
+// rcc would take is refused before an error rcc would not say.
 
 #include "parse-common.hh"
 
@@ -72,28 +72,48 @@ is_specifier(const token_t &t)
     }
 }
 
-// Whether an identifier at the token may name a type to rcc: a name
-// reserved for the implementation, 6.4.2.1p7, as __builtin_va_list is.
-// rcc-v2 declares no typedef name, so no other identifier names one.
+// Whether an identifier at the token may name a type the compiler
+// declares, as rcc's builtin types are named: a name reserved for the
+// implementation, 6.4.2.1p7, as __builtin_va_list is.
 bool
-names_a_type(const token_t &t)
+may_name_builtin_type(const token_t &t)
 {
     return t.kind == tok_t::identifier && is_reserved(t.text);
+}
+
+// The type an identifier names where it stands, or null, rcc's
+// named_type(): a typedef name's, 6.7.9p3, where the innermost
+// declaration of the name in scope is a typedef, so an object of an
+// inner scope hides a typedef name, and a typedef name an object.
+const type_t *
+named_type(const parser_t &p, const token_t &t)
+{
+    if (t.kind != tok_t::identifier)
+        return nullptr;
+
+    const symbol_t *sym = lookup(p, t.text);
+
+    return sym && sym->type_name ? &sym->operand.type : nullptr;
 }
 
 } // namespace
 
 // Whether a declaration starts at the token ahead: a declaration
 // specifier, which __extension__ may stand before, or a static
-// assertion, a declaration of its own, 6.7.1p1.  rcc-v2 knows no
-// typedef name, nor the names of the types the compiler declares,
-// __builtin_va_list among them, so no identifier starts one: such a
-// name is reserved, and an expression statement it starts refuses it,
-// identifier().
+// assertion, a declaration of its own, 6.7.1p1.  An identifier starts
+// one where it is a typedef name in scope, but before a colon, where it
+// is a label, since labels have a name space of their own, 6.2.3p1.
+// rcc-v2 does not know the names of the types the compiler declares,
+// __builtin_va_list among them, so no other identifier starts one: such
+// a name is reserved, and an expression statement it starts refuses
+// it, identifier().
 bool
 is_declaration_start(const parser_t &p, std::size_t ahead)
 {
     const token_t &t = peek(p, ahead);
+    if (t.kind == tok_t::identifier)
+        return named_type(p, t) && peek(p, ahead + 1).kind != tok_t::colon;
+
     if (t.kind == tok_t::kw_extension)
         return is_declaration_start(p, ahead + 1);
 
@@ -152,11 +172,13 @@ cannot_join(counts_t &n, const token_t &t)
 }
 
 // Whether a token is a storage-class specifier rcc-v2 reads, 6.7.2p1:
-// static or extern.
+// static, extern, or typedef, which p1 lists with them and which
+// declares typedef names, 6.7.9p3.
 bool
 is_storage_class(const token_t &t)
 {
-    return t.kind == tok_t::kw_static || t.kind == tok_t::kw_extern;
+    return t.kind == tok_t::kw_static || t.kind == tok_t::kw_extern ||
+           t.kind == tok_t::kw_typedef;
 }
 
 // Whether a token is one of the type specifiers counts_t counts.
@@ -233,20 +255,24 @@ refuse_static_pointer(const token_t &name, const type_t &t)
 }
 
 // The declaration specifiers: one of the sets of 6.7.3.1p2 in any
-// order, and the storage class static or extern anywhere among them,
-// 6.7.2p1, read as rcc reads them, up to the first token that is none.
-// Each type specifier is refused where it cannot join those before it,
-// and a storage class where one came before it, 6.7.2p2, in rcc's
-// words.  Any other specifier is not yet where it stands, and so is a
-// reserved identifier in place of the first type specifier, which may
-// name a type the compiler declares; any other token there is rcc's
-// error, another identifier's among them.
+// order, and the storage class static, extern or typedef anywhere among
+// them, 6.7.2p1, read as rcc reads them, up to the first token that is
+// none.  A typedef name in scope is the whole type specifier, 6.7.3.1p2,
+// where it is the first: after another, an identifier is the
+// declarator's name, so unsigned T declares a T.  Each type specifier is
+// refused where it cannot join those before it, and a storage class
+// where one came before it, 6.7.2p2, in rcc's words.  Any other
+// specifier is not yet where it stands, and so is a reserved identifier
+// in place of the first type specifier, which may name a type the
+// compiler declares; any other token there is rcc's error, another
+// identifier's among them.
 specifiers_t
 declaration_specifiers(parser_t &p)
 {
     const token_t *storage_class = nullptr;
     counts_t counts;
     const token_t *first = nullptr;
+    const type_t *named = nullptr;
 
     for (;;) {
         const token_t &t = peek(p);
@@ -259,11 +285,17 @@ declaration_specifiers(parser_t &p)
             continue;
         }
 
+        if (!first && named_type(p, t)) {
+            named = named_type(p, t);
+            first = &advance(p);
+            continue;
+        }
+
         if (!is_counted(t))
             break;
 
         advance(p);
-        if (cannot_join(counts, t))
+        if (cannot_join(counts, t) || named)
             fail(t, "cannot combine " + quoted(t.text) +
                         " with the type specifiers before it");
 
@@ -272,13 +304,13 @@ declaration_specifiers(parser_t &p)
     }
 
     const token_t &t = peek(p);
-    if (is_specifier(t) || (!first && names_a_type(t)))
+    if (is_specifier(t) || (!first && may_name_builtin_type(t)))
         not_yet(t, "declaration specifier " + quoted(t.text));
 
     if (!first)
         fail(t, "expected a type specifier");
 
-    return { storage_class, *first, specified(p, counts) };
+    return { storage_class, *first, named ? *named : specified(p, counts) };
 }
 
 namespace {
@@ -294,8 +326,9 @@ refuse_parenthesized(const parser_t &p)
 // The pointers before a declarator's name, 6.7.7.2, rcc's pointer():
 // each '*' a pointer to the type so far, so int **pp is a pointer to a
 // pointer to int.  The pointees rcc-v2 takes are int and the pointers:
-// a pointer to void or to another integer type is not yet at its '*',
-// and so is a qualifier after one, which qualifies the pointer, p1.
+// a pointer to void, to a function, which a typedef name may name, or to
+// another integer type is not yet at its '*', and so is a qualifier
+// after one, which qualifies the pointer, p1.
 type_t
 pointer(parser_t &p, type_t t)
 {
@@ -303,6 +336,9 @@ pointer(parser_t &p, type_t t)
         const token_t &star = advance(p);
         if (is< void_t >(t))
             not_yet(star, "pointer to 'void'");
+
+        if (is< function_t >(t))
+            not_yet(star, "pointer to a function");
 
         if (!is< pointer_t >(t) && t != int_type())
             not_yet(star, "pointer to an integer type other than 'int'");
@@ -341,10 +377,12 @@ parameter_declarator(parser_t &p)
 
 // A parameter's specifiers and declarator, its pointers first,
 // 6.7.7.1p1, and GNU C's attributes after it, which are not yet.
-// register is the one storage class a parameter takes, p2, and static
-// and extern are refused in rcc's words; register itself is not yet, as
-// a specifier.  A parameter of type void is left for the list to take
-// or refuse.
+// register is the one storage class a parameter takes, p2, and static,
+// extern and typedef are refused in rcc's words; register itself is not
+// yet, as a specifier.  A parameter of type void is left for the list to
+// take or refuse; one of a function type a typedef name names, adjusted
+// to a pointer to the function, 6.7.7.4p7, is not yet, as one whose
+// declarator writes the type is.
 parameter_t
 parameter_declaration(parser_t &p)
 {
@@ -359,6 +397,9 @@ parameter_declaration(parser_t &p)
     const token_t *name = parameter_declarator(p);
     if (peek(p).kind == tok_t::kw_attribute)
         not_yet(peek(p), quoted(peek(p).text) + " after a declarator");
+
+    if (is< function_t >(t))
+        not_yet(start, "parameter of function type");
 
     return { start, name, std::move(t) };
 }
@@ -424,13 +465,15 @@ parameter_type_list(parser_t &p, std::vector< parameter_t > &params)
 // a scope at its '(' and closes it at its ')', the function prototype
 // scope of 6.2.1p4, which d keeps for a definition.  An array is not
 // yet.  A function returns neither an array nor a function, 6.7.7.4p1,
-// which rcc says at the suffix after the list.
+// which rcc says at the suffix after the list, and at the list's '('
+// where base is the function a typedef name names.
 void
 declarator_suffix(parser_t &p, declarator_t &d, const type_t &base)
 {
     if (peek(p).kind == tok_t::lbracket)
         not_yet(peek(p), "array declarator");
 
+    const token_t &open = peek(p);
     if (!accept(p, tok_t::lparen))
         return;
 
@@ -444,6 +487,9 @@ declarator_suffix(parser_t &p, declarator_t &d, const type_t &base)
 
     if (peek(p).kind == tok_t::lparen)
         fail(peek(p), "function cannot return a function");
+
+    if (is< function_t >(base))
+        fail(open, "function cannot return a function");
 
     std::vector< type_t > types;
     for (const parameter_t &param : d.params)
@@ -724,13 +770,79 @@ linked_declaration(parser_t &p, const declarator_t &d)
     scope.emplace(d.name.text, symbol_t { object, true });
 }
 
+} // namespace
+
+bool
+lists_parameters(const specifiers_t &spec, const declarator_t &d)
+{
+    return is< function_t >(d.type) && !is< function_t >(spec.type);
+}
+
+void
+refuse_typedef_function(const specifiers_t &spec, const declarator_t &d)
+{
+    if (is< function_t >(d.type) && !lists_parameters(spec, d))
+        not_yet(d.name, "function " + quoted(d.name.text) +
+                            " declared through a typedef");
+}
+
+// rcc's type_definition(): the name is declared in the current scope,
+// the file's or a block's, as an ordinary identifier, 6.7.9p3, so a name
+// that scope declares as anything else, or the file's scope as an
+// object or a function, is a redefinition, and a typedef name declared
+// again there denotes the same type, 6.7.1p4, rcc's same_type(), else
+// rcc's error, each said at the later name.  The name is in scope from
+// the end of its declarator, 6.2.1p7.  It has no object, so the
+// declaration makes no statement, and takes no initializer, which gives
+// an object's value, 6.7.11p9, nor a function body, since a function
+// definition's storage class is extern or static, 6.9.2p4, each an
+// error at its first token.  GNU C's attributes and an assembler name
+// after the declarator are not yet.
+void
+type_definition(parser_t &p, const specifiers_t &spec, const declarator_t &d)
+{
+    refuse_declarator_tail(p);
+
+    if (peek(p).kind == tok_t::assign)
+        fail(peek(p),
+             "typedef " + quoted(d.name.text) + " cannot have an initializer");
+
+    if (lists_parameters(spec, d) && peek(p).kind == tok_t::lbrace)
+        fail(peek(p),
+             "typedef " + quoted(d.name.text) + " cannot have a function body");
+
+    scope_t &scope = p.scopes.back();
+    if (&scope == &p.scopes.front() &&
+        (p.objects.contains(d.name.text) || p.functions.contains(d.name.text)))
+        fail(d.name, "redefinition of " + quoted(d.name.text));
+
+    const auto earlier = scope.find(d.name.text);
+    if (earlier == scope.end()) {
+        scope.emplace(
+            d.name.text,
+            symbol_t { .operand = { .type = d.type, .node = std::nullopt },
+                       .type_name = true });
+        return;
+    }
+
+    if (!earlier->second.type_name)
+        fail(d.name, "redefinition of " + quoted(d.name.text));
+
+    if (!same_type(earlier->second.operand.type, d.type))
+        fail(d.name, "redefinition of typedef " + quoted(d.name.text) +
+                         " with another type");
+}
+
+namespace {
+
 // The declarators of a declaration in a block and its ';', 6.7.1p1: a
-// local's statement for each, in order; a static declaration's
-// declarators make none, their objects being no locals, nor an extern
-// one's, which declare objects the block does not make.  A function
-// declared in a block is not yet; objects_only is a for's declaration,
-// which declares no function, for_declaration()'s, and rcc says so at
-// its name.
+// local's statement for each, in order; a typedef's declarators make
+// none, their names no objects, nor a static declaration's, their
+// objects being no locals, nor an extern one's, which declare objects
+// the block does not make.  A function declared in a block is not yet,
+// one declared through a typedef name in rcc's words, and objects_only
+// is a for's declaration, which declares no function,
+// for_declaration()'s, and rcc says so at its name.
 std::vector< stmt_t >
 init_declarator_list(parser_t &p, const specifiers_t &spec, bool objects_only)
 {
@@ -738,10 +850,16 @@ init_declarator_list(parser_t &p, const specifiers_t &spec, bool objects_only)
 
     do {
         const declarator_t d = declarator(p, spec.type);
+        if (declared(spec, tok_t::kw_typedef)) {
+            type_definition(p, spec, d);
+            continue;
+        }
+
         if (objects_only && is< function_t >(d.type))
             fail(d.name, "function " + quoted(d.name.text) +
                              " declared in the declaration of a 'for'");
 
+        refuse_typedef_function(spec, d);
         if (is< function_t >(d.type))
             not_yet(d.name, "declaration of function " + quoted(d.name.text));
 
@@ -775,15 +893,16 @@ refuse_declaration_start(const parser_t &p)
 } // namespace
 
 // A declaration in a block, 6.7.1p1, after what refuse_declaration_start()
-// refuses: of locals, of static objects or of extern ones; an object of
-// type void is not yet, refused at its specifier.
+// refuses: of locals, of static objects, of extern ones or of typedef
+// names; an object of type void is not yet, refused at its specifier,
+// and a typedef name of type void is taken.
 std::vector< stmt_t >
 declaration(parser_t &p)
 {
     refuse_declaration_start(p);
 
     const specifiers_t spec = declaration_specifiers(p);
-    if (is< void_t >(spec.type))
+    if (is< void_t >(spec.type) && !declared(spec, tok_t::kw_typedef))
         not_yet(spec.specifier,
                 "declaration specifier " + quoted(spec.specifier.text));
 
