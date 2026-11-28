@@ -837,13 +837,18 @@ operate_on(state_t &s,
 }
 
 value_t
-fetch(state_t &s, const address_t &at, view_t view, sign_t sign, unsigned avoid)
+fetch(state_t &s,
+      const address_t &at,
+      view_t view,
+      sign_t sign,
+      int to,
+      unsigned avoid)
 {
-    const auto [mnemonic, to] = extension(view, sign, promoted_width(view));
+    const auto [mnemonic, bits] = extension(view, sign, to);
 
     const std::string from = operand(s, at);
     const value_t v = hold(s, take(s, avoid | registers_of(s, at)));
-    insn(s, mnemonic, { from, reg(reg_of(s, v), to) });
+    insn(s, mnemonic, { from, reg(reg_of(s, v), bits) });
 
     return v;
 }
@@ -879,15 +884,24 @@ shift_on(state_t &s,
     release(s, r);
 }
 
+// imul by an immediate is its three-operand form on the register, as
+// rcc's arithmetic() writes it.
 value_t
 immediate_compound(state_t &s,
                    binary_op_t op,
                    const address_t &at,
                    std::string_view source,
-                   view_t view)
+                   view_t view,
+                   sign_t sign,
+                   view_t operation)
 {
-    const value_t l = fetch(s, at, view, sign_t::signed_);
-    operate(s, op, reg_of(s, l), source, view);
+    const value_t l = fetch(s, at, view, sign, width(operation));
+    const reg_t r = reg_of(s, l);
+    if (op == binary_op_t::mul)
+        multiply(s, r, r, source, operation);
+    else
+        operate(s, op, r, source, operation);
+
     stored(s, l, at, view);
     release(s, at);
 
@@ -900,12 +914,14 @@ compound(state_t &s,
          value_t r,
          const address_t &at,
          view_t view,
+         sign_t sign,
+         view_t operation,
          view_t count,
          unsigned wanted)
 {
     const int bits = width(view);
 
-    if (right_written(s, op, r, wanted, true)) {
+    if (operation == view && right_written(s, op, r, wanted, true)) {
         const reg_t right = reg_of(s, r);
         const std::string source = operand(s, at, bit(right));
         insn(s, sized(mnemonic(op), bits), { source, reg(right, bits) });
@@ -917,15 +933,15 @@ compound(state_t &s,
         return r;
     }
 
-    const value_t l = fetch(s, at, view, sign_t::signed_);
+    const value_t l = fetch(s, at, view, sign, width(operation));
 
     value_t v = l;
     if (is_shift(op))
-        shift(s, op, l, r, view, count);
+        shift(s, op, l, r, operation, count);
     else if (is_division(op))
-        v = divide(s, op, l, r, view, wanted);
+        v = divide(s, op, l, r, operation, wanted);
     else
-        v = arithmetic(s, op, l, r, view, wanted);
+        v = arithmetic(s, op, l, r, operation, wanted);
 
     stored(s, v, at, view);
     release(s, at);
@@ -963,7 +979,7 @@ step(state_t &s,
     const auto by = sized(is_increment(op) ? "add" : "sub", bits);
 
     if (!is_postfix(op)) {
-        const value_t l = fetch(s, at, view, sign);
+        const value_t l = fetch(s, at, view, sign, bits);
         insn(s, by, { imm(1), reg(reg_of(s, l), bits) });
         stored(s, l, at, view);
         release(s, at);
@@ -971,7 +987,7 @@ step(state_t &s,
         return l;
     }
 
-    const value_t l = fetch(s, at, view, sign, wanted);
+    const value_t l = fetch(s, at, view, sign, bits, wanted);
     const reg_t r = reg_of(s, l);
     const value_t old = hold(s, take(s, bit(r) | registers_of(s, at)));
     mov(s, r, reg_of(s, old), bits);

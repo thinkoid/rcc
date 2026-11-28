@@ -208,9 +208,9 @@ make_assign(expr_t place, expr_t value)
 // One hop through the place's model, which knows the place's type
 // (3.3), and asks the value's class through its handle.
 expr_t
-make_compound(binary_op_t op, expr_t place, expr_t value)
+make_compound(binary_op_t op, view_t view, expr_t place, expr_t value)
 {
-    return place.self->compound(op, value);
+    return place.self->compound(op, view, value);
 }
 
 // One hop through the place's model, which knows the place's type

@@ -956,25 +956,28 @@ compound_operator(tok_t kind)
 // operation's type the common type of the two, 6.5.17.3p3, the usual
 // arithmetic conversions, the right operand converted to it, or for <<=
 // and >>= the left operand's promoted type, the count promoted on its
-// own, 6.5.8p3; the result of the left operand's type, the operator by
-// the operation's sign.  A left operand or an operation of another type
-// than int is not yet, at the operator.  A compound assignment is no
-// constant expression, 6.6p3, and carries no mark of an overflow.
+// own, 6.5.8p3, the right operand's '?' kept for conversion(); the
+// result of the left operand's type, the operator by the operation's
+// sign, at its view.  The read of the left operand into the operation's
+// type and the result back to its own are no conversion of the tree, as
+// in rcc: the node's rows extend the read and store the low bits.  A
+// compound assignment is no constant expression, 6.6p3, and carries no
+// mark of an overflow.
 operand_t
 compound_assignment(const token_t &op,
                     binary_op_t b,
                     operand_t lhs,
                     operand_t rhs)
 {
-    const operand_t value { rhs.type, rvalue(op, std::move(rhs)) };
+    const token_t *question = rhs.question;
+    const operand_t value { .type = rhs.type,
+                            .node = rvalue(op, std::move(rhs)),
+                            .question = question };
     const type_t t =
-        is_shift(b) ? promoted(value.type) : common_type(lhs.type, value.type);
-    if (lhs.type != int_type() || t != int_type())
-        not_yet(op, quoted(op.text) + " on an operand whose type is not 'int'");
-
+        is_shift(b) ? promoted(lhs.type) : common_type(lhs.type, value.type);
     expr_t r = is_shift(b) ? promote(value) : convert_to(value, t);
 
-    return { lhs.type, make_compound(by_sign(b, sign_of(t)),
+    return { lhs.type, make_compound(by_sign(b, sign_of(t)), view_of(t),
                                      std::move(*lhs.node), std::move(r)) };
 }
 

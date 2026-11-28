@@ -276,15 +276,23 @@ struct conditional_void_t
 // E1 op= E2, 6.5.17.3: E1 evaluated once, and the operation one
 // evaluation, p4, after E2's, so the object is read after the right
 // operand, as rcc reads it.  The place is its where, a local's slot or
-// a global, and its object's view, V, which is the operation's for an
-// int; the value, converted to the operation's type by the parser, is
-// kept a constant or erased, since x86-64's memory forms and aarch64's
-// rows take an immediate.  It is no E1 = E1 op E2: nothing folds it,
-// 6.6p3, and no identity drops it, so a += 0 adds 0, as in rcc.
-template< binary_op_t op, typename W, view_t V, typename R = expr_t >
+// a global, its object's view, V, and the sign of its object's type, by
+// which its read is extended to the operation's view, O, the view of
+// the common type of E1 and E2, p3, or of E1's promoted type for <<=
+// and >>=, the result stored at V, G2.  O is a parameter, since x86-64
+// takes the object as an instruction's operand where O is V; the sign
+// is data, read by the read's extension and by x86-64's sar or shr on
+// the object in memory, and no row is picked by it.  The value,
+// converted to O by the parser, a shift's count promoted on its own, is
+// kept a constant of O or erased, since x86-64's memory forms and
+// aarch64's rows take an immediate.  It is no E1 = E1 op E2: nothing
+// folds it, 6.6p3, and no identity drops it, so a += 0 adds 0, as in
+// rcc.
+template< binary_op_t op, typename W, view_t V, view_t O, typename R = expr_t >
 struct compound_t
 {
     W where;
+    sign_t sign;
     R value;
 };
 
@@ -639,9 +647,9 @@ view_of(const call_void_t &)
     throw std::logic_error("v2: the view of a void call");
 }
 
-template< binary_op_t op, typename W, view_t V, typename R >
+template< binary_op_t op, typename W, view_t V, view_t O, typename R >
 constexpr view_t
-view_of(const compound_t< op, W, V, R > &)
+view_of(const compound_t< op, W, V, O, R > &)
 {
     return V;
 }
@@ -829,14 +837,19 @@ valid_of(const call_t< V > &, sign_t)
     return width(V);
 }
 
-// A compound assignment's value is in the register an operation of the
-// object's view wrote, the store's source, rcc's stored_valid() of an
-// int, which the operation leaves as written.
-template< binary_op_t op, typename W, view_t V, typename R >
+// A compound assignment's value is the store's source, which the
+// operation wrote at O, rcc's stored_valid(): valid as that write
+// leaves it where O is the object's view, and cut to the object's width
+// where O is wider, so that a widening consumer writes the extension of
+// the stored bits, movb %al, -1(%rbp) and movsbq %al, %rax for c += l.
+template< binary_op_t op, typename W, view_t V, view_t O, typename R >
 int
-valid_of(const compound_t< op, W, V, R > &, sign_t sign)
+valid_of(const compound_t< op, W, V, O, R > &, sign_t sign)
 {
-    return written(width(V), sign);
+    if (O == V)
+        return written(width(V), sign);
+
+    return width(V);
 }
 
 // A prefix step's value is the store's source, which an operation at

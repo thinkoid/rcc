@@ -871,17 +871,19 @@ compound(state_t &s,
          binary_op_t op,
          const address_t &at,
          view_t view,
+         sign_t sign,
+         view_t operation,
          long long constant,
          unsigned wanted)
 {
-    const int bits = width(view);
+    const int bits = width(operation);
 
     const auto immediate = immediate_of(op, constant, bits);
     if (!immediate)
-        return compound(s, op, at, view, constant_value(s, constant, view),
-                        wanted);
+        return compound(s, op, at, view, sign, operation,
+                        constant_value(s, constant, operation), wanted);
 
-    const value_t l = fetch(s, at, view, sign_t::signed_);
+    const value_t l = fetch(s, at, view, sign, bits);
     const auto from = reg(reg_of(s, l), bits);
     const auto to = reg(final_destination(s, l, wanted), bits);
     insn(s, mnemonic(op), { to, from, *immediate });
@@ -896,23 +898,23 @@ compound(state_t &s,
          binary_op_t op,
          const address_t &at,
          view_t view,
+         sign_t sign,
+         view_t operation,
          value_t r,
          unsigned wanted)
 {
-    const value_t l = fetch(s, at, view, sign_t::signed_);
-    const value_t v = arithmetic(s, op, l, r, view, wanted);
+    const value_t l = fetch(s, at, view, sign, width(operation));
+    const value_t v = arithmetic(s, op, l, r, operation, wanted);
     stored(s, v, at, view);
     release(s, at);
 
     return v;
 }
 
-// The add or sub of 1, at the promoted width, the store at the
-// object's: G1, the machine wraps.
 value_t
-fetch(state_t &s, const address_t &at, view_t view, sign_t sign)
+fetch(state_t &s, const address_t &at, view_t view, sign_t sign, int to)
 {
-    const auto [mnemonic, bits] = load_of(view, sign, promoted_width(view));
+    const auto [mnemonic, bits] = load_of(view, sign, to);
 
     const value_t v = hold(s, take(s, registers_of(s, at)));
     const reg_t r = reg_of(s, v);
@@ -923,12 +925,14 @@ fetch(state_t &s, const address_t &at, view_t view, sign_t sign)
     return v;
 }
 
+// The add or sub of 1, at the promoted width, the store at the
+// object's: G1, the machine wraps.
 value_t
 step(state_t &s, step_op_t op, const address_t &at, view_t view, sign_t sign)
 {
     const int bits = promoted_width(view);
 
-    const value_t l = fetch(s, at, view, sign);
+    const value_t l = fetch(s, at, view, sign, bits);
     const reg_t r = reg_of(s, l);
     const value_t v =
         is_postfix(op) ? hold(s, take(s, bit(r) | registers_of(s, at))) : l;

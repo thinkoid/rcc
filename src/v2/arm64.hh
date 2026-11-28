@@ -293,28 +293,37 @@ value(state_t &s, const unary_t< op, V, A > &u, unsigned wanted = 0)
 
 // The load of the object at an address held for a store through it
 // after the load, rcc's fetch(): the value in a register taken outside
-// the address's, then the address's operand outside it, ldr w0, [x29,
-// #16], ldr w0, [x1].  The address stays held.
-value_t fetch(state_t &, const address_t &at, view_t view, sign_t sign);
+// the address's, then the address's operand outside it, the object of
+// the view extended by the sign to a register of to bits, load_of()'s,
+// ldr w0, [x29, #16], ldr w0, [x1], and ldrsw x0, [x29, #16] for an int
+// under an operation of 64 bits.  The address stays held.
+value_t fetch(state_t &, const address_t &at, view_t view, sign_t sign, int to);
 
-// The value of op= on the object at an address held across it, at the
-// view, rcc's assign(), 6.4, which gives the address back, its right
-// operand a constant or the held value r: a constant the instruction
-// of op encodes is its immediate, and anything else a value held before
-// the object's load, a constant too, mov w0, #5; then the object
-// fetched into a fresh register, the operation into the register the
-// consumer names where it may be written, and the store of the value:
-// ldr w0, [x29, #16], add w0, w0, #5 and str w0.
+// The value of op= on the object at an address held across it, of the
+// view and of a type of the sign, at the view of the operation, rcc's
+// assign(), 6.4, which gives the address back, its right operand a
+// constant or the held value r: a constant the instruction of op
+// encodes at the operation's view is its immediate, and anything else a
+// value held before the object's load, a constant too, mov w0, #5; then
+// the object fetched into a fresh register, extended to the operation's
+// view, the operation into the register the consumer names where it may
+// be written, and the store of the value at the object's view: ldr w0,
+// [x29, #16], add w0, w0, #5 and str w0; ldrb w1, [x29, #16], add x1,
+// x1, x0 and strb w1 for c += l.
 value_t compound(state_t &,
                  binary_op_t op,
                  const address_t &at,
                  view_t view,
+                 sign_t sign,
+                 view_t operation,
                  long long constant,
                  unsigned wanted);
 value_t compound(state_t &,
                  binary_op_t op,
                  const address_t &at,
                  view_t view,
+                 sign_t sign,
+                 view_t operation,
                  value_t r,
                  unsigned wanted);
 
@@ -322,23 +331,23 @@ value_t compound(state_t &,
 // the place first, its address formed outside the register the consumer
 // names, then the right operand, rcc's right_operand(), the operation
 // one evaluation after it.
-template< binary_op_t op, typename W, view_t V, typename R >
+template< binary_op_t op, typename W, view_t V, view_t O, typename R >
 value_t
-value(state_t &s, const compound_t< op, W, V, R > &c, unsigned wanted = 0)
+value(state_t &s, const compound_t< op, W, V, O, R > &c, unsigned wanted = 0)
 {
     const address_t at = address_avoiding(s, c.where, wanted);
     const value_t r = value(s, c.value);
 
-    return compound(s, op, at, V, r, wanted);
+    return compound(s, op, at, V, c.sign, O, r, wanted);
 }
 
-template< binary_op_t op, typename W, view_t V, constant C >
+template< binary_op_t op, typename W, view_t V, view_t O, constant C >
 value_t
-value(state_t &s, const compound_t< op, W, V, C > &c, unsigned wanted = 0)
+value(state_t &s, const compound_t< op, W, V, O, C > &c, unsigned wanted = 0)
 {
     const address_t at = address_avoiding(s, c.where, wanted);
 
-    return compound(s, op, at, V, value_of(c.value), wanted);
+    return compound(s, op, at, V, c.sign, O, value_of(c.value), wanted);
 }
 
 // The value of a step of the object at an address, of the view and of

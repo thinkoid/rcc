@@ -513,9 +513,9 @@ pinned_within(const state_t &s, const call_void_t &c)
 
 // A compound assignment pins what its operator's instruction pins, rcc's
 // pins() of an assign_t, and what its value pins.
-template< binary_op_t op, typename W, view_t V, typename R >
+template< binary_op_t op, typename W, view_t V, view_t O, typename R >
 unsigned
-pinned_within(const state_t &s, const compound_t< op, W, V, R > &c)
+pinned_within(const state_t &s, const compound_t< op, W, V, O, R > &c)
 {
     return pins(op, constant< R >) | pinned_within(s, c.value);
 }
@@ -654,9 +654,9 @@ moved_within(const state_t &, const call_void_t &)
     return 0;
 }
 
-template< binary_op_t op, typename W, view_t V, typename R >
+template< binary_op_t op, typename W, view_t V, view_t O, typename R >
 unsigned
-moved_within(const state_t &s, const compound_t< op, W, V, R > &c)
+moved_within(const state_t &s, const compound_t< op, W, V, O, R > &c)
 {
     return pins(op, constant< R >) | moved_within(s, c.value);
 }
@@ -797,13 +797,16 @@ void shift_on(state_t &,
               view_t view);
 
 // The load of the object at an address held for a store through it
-// after the load, rcc's fetch(): the address's operand, then the value
-// in a register taken outside avoid and the address's own, movl
-// -4(%rbp), %eax, movl (%rcx), %eax.  The address stays held.
+// after the load, rcc's fetch(): the address's operand, then the object
+// of the view, extended by the sign to a register of to bits,
+// extension()'s, taken outside avoid and the address's own, movl
+// -4(%rbp), %eax, movl (%rcx), %eax, and movsbq -1(%rbp), %rax for a
+// char under an operation of 64 bits.  The address stays held.
 value_t fetch(state_t &,
               const address_t &at,
               view_t view,
               sign_t sign,
+              int to,
               unsigned avoid = 0);
 
 // The value of a step of the object at an address, of the view and of
@@ -828,29 +831,38 @@ value_t step(state_t &,
 // address's operand outside v's.
 void stored(state_t &, value_t v, const address_t &at, view_t view);
 
-// op= by an immediate source, rcc's assign() row on an immediate: the
-// object fetched, the operation on its register, addl $5, %eax, and the
-// store, the address given back, the value that register.
+// op= by an immediate source on the object of the view and of a type
+// of the sign, at the view of the operation, rcc's assign() row on an
+// immediate: the object fetched, extended to the operation's view, the
+// operation on its register, addl $5, %eax, the three-operand imull $5,
+// %eax, %eax, and the store at the object's view, the address given
+// back, the value that register.
 value_t immediate_compound(state_t &,
                            binary_op_t op,
                            const address_t &at,
                            std::string_view source,
-                           view_t view);
+                           view_t view,
+                           sign_t sign,
+                           view_t operation);
 
 // The value of op= of the held right operand r on the object at an
-// address held across it, at the view, rcc's assign() past its right
-// operand, chapter 6.6, which gives the address back: where op commutes
-// and right_written() says, the object the instruction's source on r's
-// register, addl -4(%rbp), %ecx, flagged but for *, and the store from
-// it; otherwise the object fetched into a fresh register, the operation
-// of op's family on it, the count of the view count in cl for a shift,
-// and the store, the value that register, or for a remainder rdx,
-// where idiv leaves it.
+// address held across it, of the view and of a type of the sign, at the
+// view of the operation, rcc's assign() past its right operand, chapter
+// 6.6, which gives the address back: where op commutes, the operation
+// is at the object's view and right_written() says, the object the
+// instruction's source on r's register, addl -4(%rbp), %ecx, flagged
+// but for *, and the store from it; otherwise the object fetched into a
+// fresh register, extended to the operation's view, the operation of
+// op's family on it, the count of the view count in cl for a shift, and
+// the store at the object's view, the value that register, or for a
+// remainder rdx, where idiv leaves it.
 value_t compound(state_t &,
                  binary_op_t op,
                  value_t r,
                  const address_t &at,
                  view_t view,
+                 sign_t sign,
+                 view_t operation,
                  view_t count,
                  unsigned wanted);
 
@@ -885,75 +897,78 @@ compound_place(state_t &s, const W &where, const R &value, unsigned wanted)
 // outside rax and rdx too, a constant also, since idiv takes no
 // immediate, and its reservation is cleared around the whole, as the
 // division's other rows clear theirs, rcc's pinned(); a shift's count
-// is shift_count()'s.
-template< binary_op_t op, typename W, view_t V, typename R >
+// is shift_count()'s.  A wide_t is no immediate, so it is held, movabsq
+// into rcx.
+template< binary_op_t op, typename W, view_t V, view_t O, typename R >
     requires arithmetic_operator< op >
 value_t
-value(state_t &s, const compound_t< op, W, V, R > &c, unsigned wanted = 0)
+value(state_t &s, const compound_t< op, W, V, O, R > &c, unsigned wanted = 0)
 {
     const address_t at = compound_place< op >(s, c.where, c.value, wanted);
     const value_t r = rvalue_avoiding(s, c.value, bit(rax));
 
-    return compound(s, op, r, at, V, V, wanted);
+    return compound(s, op, r, at, V, c.sign, O, O, wanted);
 }
 
-template< binary_op_t op, typename W, view_t V, typename R >
+template< binary_op_t op, typename W, view_t V, view_t O, typename R >
     requires division_operator< op >
 value_t
-value(state_t &s, const compound_t< op, W, V, R > &c, unsigned wanted = 0)
+value(state_t &s, const compound_t< op, W, V, O, R > &c, unsigned wanted = 0)
 {
     const unsigned outer = std::exchange(s.reserved, 0u);
 
     const address_t at = compound_place< op >(s, c.where, c.value, wanted);
     const value_t r =
         rvalue_avoiding(s, c.value, bit(rax) | pins(op, constant< R >));
-    const value_t v = compound(s, op, r, at, V, V, wanted);
+    const value_t v = compound(s, op, r, at, V, c.sign, O, O, wanted);
 
     s.reserved = outer;
 
     return v;
 }
 
-template< binary_op_t op, typename W, view_t V, typename R >
+template< binary_op_t op, typename W, view_t V, view_t O, typename R >
     requires shift_operator< op >
 value_t
-value(state_t &s, const compound_t< op, W, V, R > &c, unsigned wanted = 0)
+value(state_t &s, const compound_t< op, W, V, O, R > &c, unsigned wanted = 0)
 {
     const address_t at = compound_place< op >(s, c.where, c.value, wanted);
     const value_t r = shift_count(s, c.value, bit(rax));
 
-    return compound(s, op, r, at, V, view_of(c.value), wanted);
+    return compound(s, op, r, at, V, c.sign, O, view_of(c.value), wanted);
 }
 
-// An immediate the operation takes, + - & | ^ by it and a shift by a
+// An immediate the operation takes, + - * & | ^ by it and a shift by a
 // constant count, rcc's: the place, then the object fetched, the
-// operation on its register, addl $5, %eax, shll $33, %eax, and the
-// store.
-template< binary_op_t op, typename W, view_t V, immediate I >
-    requires memory_operator< op >
+// operation on its register, addl $5, %eax, imull $5, %eax, %eax, shll
+// $33, %eax, and the store.
+template< binary_op_t op, typename W, view_t V, view_t O, immediate I >
+    requires arithmetic_operator< op >
 value_t
-value(state_t &s, const compound_t< op, W, V, I > &c, unsigned wanted = 0)
+value(state_t &s, const compound_t< op, W, V, O, I > &c, unsigned wanted = 0)
 {
     const address_t at = compound_place< op >(s, c.where, c.value, wanted);
 
-    return immediate_compound(s, op, at, immediate_of(c.value), V);
+    return immediate_compound(s, op, at, immediate_of(c.value), V, c.sign, O);
 }
 
-template< binary_op_t op, typename W, view_t V, constant C >
+template< binary_op_t op, typename W, view_t V, view_t O, constant C >
     requires shift_operator< op >
 value_t
-value(state_t &s, const compound_t< op, W, V, C > &c, unsigned wanted = 0)
+value(state_t &s, const compound_t< op, W, V, O, C > &c, unsigned wanted = 0)
 {
     const address_t at = compound_place< op >(s, c.where, c.value, wanted);
 
-    return immediate_compound(s, op, at, count_of(value_of(c.value)), V);
+    return immediate_compound(s, op, at, count_of(value_of(c.value)), V, c.sign,
+                              O);
 }
 
-// *= by an immediate, object_product()'s, and the store.
+// *= by an immediate where the operation is at the object's view,
+// object_product()'s, the object imul's source, and the store.
 template< typename W, view_t V, immediate I >
 value_t
 value(state_t &s,
-      const compound_t< binary_op_t::mul, W, V, I > &c,
+      const compound_t< binary_op_t::mul, W, V, V, I > &c,
       unsigned wanted = 0)
 {
     const address_t at =
@@ -965,50 +980,75 @@ value(state_t &s,
     return v;
 }
 
+// A constant the memory form on an object of the view V takes as its
+// immediate, written at V, rcc's immediate() at the object's width: any
+// below 64 bits, whose bits modulo 2^N a 32-bit immediate holds, c +=
+// 300 being addb $44, -1(%rbp); at 64 bits one in int's range, which a
+// wide_t is not.
+template< typename C, view_t V >
+concept memory_immediate = constant< C > && (width(V) < 64 || immediate< C >);
+
+// The shift of the memory form, by the sign of the object's type, rcc's
+// shift_mnemonic() on the object: >> is sar on a signed object and shr
+// on an unsigned one whatever the operation's sign, which is its
+// promoted type's, so unsigned char >>= is shrb, where its value is
+// sarl's.
+constexpr binary_op_t
+shift_on_object(binary_op_t op, sign_t sign)
+{
+    if (op == binary_op_t::shl)
+        return op;
+
+    return sign == sign_t::signed_ ? binary_op_t::ashr : binary_op_t::lshr;
+}
+
 // A compound assignment for its effect, rcc's modify(), arithmetic_on()
 // and shift_on(), chapter 6.6: the place first, then + - & | ^, << and
-// >> on the object in memory at its view, the immediate as written,
-// addl $5, -4(%rbp), addl $0 for a += 0, shll $33 for a <<= 33, or the
-// value held, addl %eax, -4(%rbp), the count in cl, shll %cl,
-// -4(%rbp).  * / % have no such form, imul no memory destination and
-// idiv none at all, and are their value dropped.
-template< binary_op_t op, typename W, view_t V, typename R >
+// >> on the object in memory at its view, the immediate as written at
+// that view, addl $5, -4(%rbp), addl $0 for a += 0, addb $44 for c +=
+// 300, shll $33 for a <<= 33, or the value held, its low bits the
+// instruction's source, addb %al, -1(%rbp) for c += l, the count in cl,
+// shll %cl, -4(%rbp).  * / % have no such form, imul no memory
+// destination and idiv none at all, and are their value dropped.
+template< binary_op_t op, typename W, view_t V, view_t O, typename R >
     requires memory_operator< op >
 void
-effect(state_t &s, const compound_t< op, W, V, R > &c)
+effect(state_t &s, const compound_t< op, W, V, O, R > &c)
 {
     const address_t at = compound_place< op >(s, c.where, c.value, 0);
     operate_on(s, op, value(s, c.value), at, V);
     release(s, at);
 }
 
-template< binary_op_t op, typename W, view_t V, immediate I >
-    requires memory_operator< op >
+template< binary_op_t op, typename W, view_t V, view_t O, typename C >
+    requires memory_operator< op > && memory_immediate< C, V >
 void
-effect(state_t &s, const compound_t< op, W, V, I > &c)
+effect(state_t &s, const compound_t< op, W, V, O, C > &c)
 {
     const address_t at = compound_place< op >(s, c.where, c.value, 0);
-    operate_on(s, op, immediate_of(c.value), at, V);
+    operate_on(s, op, immediate_at(value_of(c.value), V), at, V);
     release(s, at);
 }
 
-template< binary_op_t op, typename W, view_t V, typename R >
+template< binary_op_t op, typename W, view_t V, view_t O, typename R >
     requires shift_operator< op >
 void
-effect(state_t &s, const compound_t< op, W, V, R > &c)
+effect(state_t &s, const compound_t< op, W, V, O, R > &c)
 {
     const address_t at = compound_place< op >(s, c.where, c.value, 0);
-    shift_on(s, op, shift_count(s, c.value, 0), view_of(c.value), at, V);
+    shift_on(s, shift_on_object(op, c.sign), shift_count(s, c.value, 0),
+             view_of(c.value), at, V);
     release(s, at);
 }
 
-template< binary_op_t op, typename W, view_t V, constant C >
+template< binary_op_t op, typename W, view_t V, view_t O, constant C >
     requires shift_operator< op >
 void
-effect(state_t &s, const compound_t< op, W, V, C > &c)
+effect(state_t &s, const compound_t< op, W, V, O, C > &c)
 {
     const address_t at = compound_place< op >(s, c.where, c.value, 0);
-    operate_on(s, op, count_of(value_of(c.value)), at, V);
+    operate_on(s, shift_on_object(op, c.sign), count_of(value_of(c.value)), at,
+               V);
     release(s, at);
 }
 
@@ -1702,11 +1742,11 @@ void modified_branch(state_t &, view_t view, int label, bool sense);
 // effect, the memory form, then the jump on its flags, subl %eax,
 // -4(%rbp) and jne for (a -= b) == 0.  The others take the primary,
 // their value compared with 0.
-template< binary_op_t op, typename W, view_t V, typename R >
+template< binary_op_t op, typename W, view_t V, view_t O, typename R >
     requires(flag_operator(op))
 void
 value_branch(state_t &s,
-             const compound_t< op, W, V, R > &c,
+             const compound_t< op, W, V, O, R > &c,
              int label,
              bool sense)
 {

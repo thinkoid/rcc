@@ -110,9 +110,10 @@ struct expr_t::interface_t
     virtual expr_t assign(const expr_t &value) const = 0;
 
     // a step and a compound assignment: the place's model, as for an
-    // assignment, makes the node
+    // assignment, makes the node; the view is the operation's
     virtual expr_t step(step_op_t op) const = 0;
-    virtual expr_t compound(binary_op_t op, const expr_t &value) const = 0;
+    virtual expr_t
+    compound(binary_op_t op, view_t, const expr_t &value) const = 0;
 
     // a binary operator, by the same two hops: the right operand's
     // model, which knows the right operand's class, calls the left's
@@ -778,33 +779,38 @@ fwd_step(step_op_t, const P &)
 }
 
 // A compound assignment to a held place, by its builder, as a step's:
-// the crossing from the operator to the node's parameter, of the
-// operators of a compound assignment alone, is_compound()'s, and the
-// value in the class the builder keeps it in, asked through its handle,
-// constant_of(): a constant of the place's view, the type the parser
-// converted it to, or erased.
+// the crossings from the operator and the operation's view to the
+// node's parameters, of the operators of a compound assignment alone,
+// is_compound()'s, and of a view no narrower than the place's, which
+// the operation's type is; and the value in the class the builder keeps
+// it in, asked through its handle, constant_of(): a constant of the
+// operation's view, the type the parser converted it to, a shift's
+// count among them, whose rows read its low bits alone, or erased.
 template< assignable P >
 expr_t
-fwd_compound(binary_op_t op, const P &place, const expr_t &value)
+fwd_compound(binary_op_t op, view_t view, const P &place, const expr_t &value)
 {
     return cross(op, [&]< binary_op_t o >() -> expr_t {
-        if constexpr (is_compound(o)) {
-            const auto k = constant_of(value);
-            if (!k)
-                return make_compound< o >(place, value);
+        return cross_operation(view, [&]< view_t O >() -> expr_t {
+            if constexpr (is_compound(o) && width(O) >= width(view_of(P { }))) {
+                const auto k = constant_of(value);
+                if (!k)
+                    return make_compound< o, O >(place, value);
 
-            return classed_constant< view_of(P { }) >(*k, [&](const auto &c) {
-                return make_compound< o >(place, c);
-            });
-        }
-        else
-            throw std::logic_error("v2: a compound assignment of no operator");
+                return classed_constant< O >(*k, [&](const auto &c) {
+                    return make_compound< o, O >(place, c);
+                });
+            }
+            else
+                throw std::logic_error(
+                    "v2: a compound assignment of no operator or view");
+        });
     });
 }
 
 template< typename P >
 expr_t
-fwd_compound(binary_op_t, const P &, const expr_t &)
+fwd_compound(binary_op_t, view_t, const P &, const expr_t &)
 {
     throw std::logic_error("v2: a compound assignment to a node that is no "
                            "place");
@@ -944,9 +950,10 @@ struct expr_t::model_t final: interface_t
         return fwd_step(op, held);
     }
 
-    expr_t compound(binary_op_t op, const expr_t &value) const override
+    expr_t
+    compound(binary_op_t op, view_t view, const expr_t &value) const override
     {
-        return fwd_compound(op, held, value);
+        return fwd_compound(op, view, held, value);
     }
 
     expr_t right_of(binary_op_t op,

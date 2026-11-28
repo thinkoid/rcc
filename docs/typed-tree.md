@@ -17,16 +17,16 @@ functions of a result of any integer type or `void` and of parameters
 of any integer type, whose locals are of the integer types, declared,
 assigned and returned, with parentheses, the casts, the unary
 operators `+ - ~ !`, `+ - * / % << >> & | ^`, the comparisons, `&&`,
-`||`, `?:` of `int` arms, the comma, the compound assignments of an
-`int`, `++` and `--` of every integer type, and calls of functions of
-a result of any integer type or `void`, to any depth, and the
-statements `if`, `else`, `switch` on an `int` with its `case` and
-`default` labels, `while`, `do`, `for` with a declaration or an
-expression first, `break`, `continue`, `goto` and labels, and `return`
-with a value or without, on both targets. Each mechanism below was
-compiled and run in a small model first; chapter 5 says what the
-models showed and chapter 6 what nothing has shown. A statement marked
-*working* is a position taken and run, not yet agreed.
+`||`, `?:` of `int` arms, the comma, the compound assignments and `++`
+and `--` of every integer type, and calls of functions of a result of
+any integer type or `void`, to any depth, and the statements `if`,
+`else`, `switch` on an `int` with its `case` and `default` labels,
+`while`, `do`, `for` with a declaration or an expression first,
+`break`, `continue`, `goto` and labels, and `return` with a value or
+without, on both targets. Each mechanism below was compiled and run in
+a small model first; chapter 5 says what the models showed and chapter
+6 what nothing has shown. A statement marked *working* is a position
+taken and run, not yet agreed.
 
 ## 1. The idea
 
@@ -366,8 +366,10 @@ the jump are the ancestor's `regtab`, `efftab` and `cctab`.
   a value whose register is valid to less than 32 bits with `tst`,
   `tst w0, #0xff` (4.2).
 - On x86-64 the effect of `+= -= &= |= ^= <<= >>=` and of a step is
-  the memory form, `addl $5, -4(%rbp)`, and its jump is on that
-  instruction's flags.
+  the memory form, `addl $5, -4(%rbp)`, at the object's width whatever
+  the operation's: `addb %al, -1(%rbp)` for `c += l`, its immediate
+  the constant at that width, `addb $44` for `c += 300`, and `sar` or
+  `shr` by the object's sign. Its jump is on that instruction's flags.
 - Before the paths of `&&` or `||` part, every value held in a
   register is spilled, in the order of the registers, and every
   value held is marked until the paths meet: a spill, a reload or a
@@ -535,9 +537,12 @@ S >`.
   row stops the generation.
 - A node that reads, changes and writes its place holds the place's
   where: `step_t< op, W, V, S >` for `++` and `--`, and `compound_t<
-  op, W, V, R >` for `x op= e`, its value a constant or erased. Its
-  rows follow rcc's order: the address formed first and held across
-  the value; the object fetched by a load that keeps the address; the
+  op, W, V, O, R >` for `x op= e`: V the object's view and O the
+  operation's, the common type's, or for `<<=` and `>>=` the object's
+  promoted type's; its value a constant of O or erased; the object's
+  sign data, by which the object's read is extended to O. Its rows
+  follow rcc's order: the address formed first and held across the
+  value; the object fetched by a load that keeps the address; the
   operation; the result stored through the same address; the address
   given back. On aarch64 the fetch takes a register outside the
   address's, since a GOT's base is a held value. The address is formed
@@ -545,8 +550,9 @@ S >`.
   assignment's is, and outside those the operation's own instruction
   pins, which no summary of the value holds, rcc's `pinned_by()` of an
   assignment: `g /= b` on an object only declared loads the GOT's
-  address outside `rax` and `rdx`. The value of a prefix step is cut
-  to its object's width, rcc's `stored_valid()`, so a widening
+  address outside `rax` and `rdx`. The value of a compound assignment
+  whose operation is wider than its object, and of a prefix step, is
+  cut to the object's width, rcc's `stored_valid()`, so a widening
   consumer writes the extension of the stored bits, `movb %al,
   -1(%rbp)` and `movsbl %al, %eax`; a postfix step's value is the old
   one, valid as its load left it.
@@ -872,7 +878,10 @@ each became.
 | the width of `extended()`, `valid` | a summary, `valid_of()`, read by a widening's primary and aarch64's test of zero |
 | `widened_read()`, `object_under()`, `under_kept_bits()` | the conversion's builder, by overload on the operand's type, and the type of a widening over a promotion of the object, whose row is the one load |
 | `extending_load()` | a niche of `sext_t` over a load |
-| `stored_valid()` | `valid_of()` of a prefix `step_t` |
+| `stored_valid()` | `valid_of()` of `compound_t` and of a prefix `step_t` |
+| `operation_width()` of an assignment's common type | `compound_t`'s O |
+| `extension()` in `fetch()` | each target's `fetch()` at O, by the object's sign |
+| `shift_mnemonic()` of a memory form | x86-64's `shift_on_object()` |
 | whether a callee returns `void`, its result's width | the call's node: `call_void_t`, or `call_t< V >` and its view |
 | a literal's mark of an overflow, `holds_overflow()` | the parser's operand's mark, set by each operator's production and read where a constant expression is required |
 | `flag_operator()`, `flag_condition()` | x86-64's `value_branch` rows of those node types |
@@ -971,16 +980,15 @@ rows invented for the purpose.
   4,500 and the unit to 73 seconds and 7.6 GB. The comma's classes on
   the right of x86-64's arithmetic, divisions and shifts took them to
   about 6,100 and the unit to 112 seconds and 11.7 GB, and with the
-  steps, the compound assignments and `?:` it takes 131 and 13.9.
-  Pointers bring a third where.
+  steps, the compound assignments and `?:` it takes 131 and 13.9; the
+  compound assignments of every type, 650 node types where there were
+  338, bring the peak to 14.4 GB. Pointers bring a third where.
 - A widening of a `?:`'s value, rcc's `widens_arms()`. It is not yet,
   and is refused by the `?` the parser's operand carries, through
   any operator with a constant operand, which may be an identity: so
   `(a ? b : c) + 5` widened is refused where rcc compiles it. GNU's
   `a ?: b` is not yet.
-- The other integer types under the compound assignments and `?:`:
-  the operation's view apart from the object's, the arms'
-  conversions.
+- The other integer types under `?:`: the arms' conversions.
 - `({ })`. It waits until the concepts around it are clear.
 - Two targets that want shapes of one subtree that do not nest. The
   address family is where to look.
