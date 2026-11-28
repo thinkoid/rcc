@@ -109,6 +109,82 @@ as it does.
 Check: an error program of the function on x86-64, with =stride()='s
 words, and no listing of =tests= changes.
 
+** TODO x86-64: a read through a pointer to an array of unknown size is an internal error
+
+~int f(int (*p)[]) { return (*p)[1]; }~, and ~**p~ and ~(*p)[i]~
+in its place, print ~rcc: internal error: size_of: a type without a
+size~ and exit with status 3 on x86-64. aarch64 compiles each, =ldr
+x0, [x29, #16]= and =ldr w0, [x0, #4]= for the first. The parser
+takes the program, as C does: ~*p~ is an lvalue of an incomplete
+array type, which decays. =pointed()= in =src/c1-x86-64.cc= computes
+the pointee's size before the forms that use it, and an array of
+unknown size has none.
+
+Fix: =pointed()= asks the size after the forms that do not use it,
+or returns the pointer's value as the base for a pointee of no size,
+as aarch64's does.
+
+Check: side programs of the three reads compile on x86-64, =movq
+-8(%rbp), %rax= and =movl 4(%rax), %eax= for the first, and no
+listing of =tests= changes.
+
+** TODO x86-64: a store into a member of an element of a global array of records is an internal error when its value spills
+
+~struct s { long x; int m; }; struct s y[4]; int g(void); void
+f(int i) { y[i].m = g(); }~ prints ~rcc: internal error: c1: a label
+with an index has no operand~ and exits with status 3 on x86-64; so
+do ~+=~ with a call, a right operand of ~&&~ or ~?:~, and a static
+array in a block. aarch64 compiles each. The neighbours compile on
+x86-64: a member at offset 0, a right operand that does not spill,
+an array that is only declared, ~y[i][1] = g()~ on an array of
+arrays. =place_of()= in =src/c1-x86-64.cc= defers the label;
+=constant_indexed()= then meets the element's address with its label
+and its index, takes the member's offset to =address_of()=, and
+=operand()= refuses a label with an index.
+
+Fix: the constant joins the displacement of an address that has a
+label and an index, as it does for ~y[i][1]~; =formed()= writes the
+=leaq= later and keeps the displacement.
+
+Check: side programs of the store and of each form named compile on
+x86-64, and no listing of =tests= changes.
+
+** TODO x86-64: the copy of a record of 2 GiB or more writes a displacement no instruction holds
+
+~struct s { char a[0x80000000]; long m; }; void f(struct s *p,
+struct s *q) { *p = *q; }~ compiles with status 0 on x86-64 to
+=movq 2147483656(%rcx,%rsi,1), %rdx=, whose displacement does not
+fit 32 bits: the assembler refuses the listing. aarch64's copy is
+right. =copy_loop()= in =src/c1-x86-64.cc= gives each unit the
+record's size as its displacement off the base, with the index
+running from minus the size to 0.
+
+Fix: each place's end address is formed before the loop, so that
+the units' displacement is 0; or the copy is refused as an element
+of 2 GiB or more is.
+
+Check: the listing assembles, or an error program pins the refusal;
+no other listing of =tests= changes.
+
+** TODO x86-64: a string literal under a variable index is written two or three times
+
+~int f(int i) { return "abc"[i]; }~ writes the literal twice on
+x86-64, =.Ls0= and =.Ls1=, and reads =.Ls1=; ~"abc" + i~ writes it
+three times and names =.Ls2=. aarch64 writes one. Every later
+literal of the unit is numbered past the copies, which are bytes of
+=.data= no instruction reads. =folded()= in =src/c1-x86-64.cc= calls
+=string_label()=, which appends the literal to the unit's strings,
+before it knows whether its caller keeps the address, and
+=indexed()= and =unscaled_pointer()= call it and discard the address
+for a variable index.
+
+Fix: =folded()= takes the label only where the address is used, or
+one string node has one label.
+
+Check: listings of the two programs with one literal each on
+x86-64, numbered as on aarch64; the other listings of =tests= keep
+their text but for the literals' numbers.
+
 ** TODO A generator's not yet is reported as an internal error
 
 A construct the parser does not compile yet is an error at its
@@ -636,6 +712,23 @@ Check: ~awk 'length > 80' src/*~ prints nothing, and every listing
 is byte-identical.
 
 * Parser
+
+** TODO An array count above =LONG_MAX= is clamped, not refused
+
+~char a[0x8000000000000000];~ and ~char a[0xffffffffffffffff];~
+compile as arrays of 9223372036854775807 bytes: =.size a,
+9223372036854775807=, and ~sizeof a~ is that number, a type other
+than the one declared. =array_count()= in =src/parse.cc= returns the
+lesser of the count and =LONG_MAX=, and the declarator's "array is
+too large" asks only that the count times the element's size not
+pass =LONG_MAX=.
+
+Fix: a count above =LONG_MAX= is refused as "array is too large", at
+the =[=.
+
+Check: error programs of the two declarations with that text, and
+the program of a count times a size past =LONG_MAX= keeps its
+refusal.
 
 ** TODO The other target is preprocessed with this machine's headers
 
