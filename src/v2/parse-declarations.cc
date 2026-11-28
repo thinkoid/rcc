@@ -3,13 +3,14 @@
 // 6.7: the declarations, of which rcc-v2 takes the declaration
 // specifiers static, extern, void and the type specifiers of the
 // integer types from char to unsigned long long, in any order and
-// spelling, the declarators of a function of integer parameters and of
-// an object, the declaration in a block and in a for's first clause of
-// objects of those types, each with an initializer or without, the
-// type name of a cast, and the initializer of an object of static
-// storage; it refuses the rest as not yet.  rcc reads more of each than
-// rcc-v2 does, so each is read as far as rcc would read it, and what
-// rcc would take is refused before an error rcc would not say.
+// spelling, the pointers to int and to pointers, the declarators of a
+// function and of an object, the declaration in a block and in a for's
+// first clause of objects of those types, each with an initializer or
+// without, the type name of a cast and of sizeof, and the initializer
+// of an object of static storage; it refuses the rest as not yet.  rcc
+// reads more of each than rcc-v2 does, so each is read as far as rcc
+// would read it, and what rcc would take is refused before an error rcc
+// would not say.
 
 #include "parse-common.hh"
 
@@ -290,17 +291,6 @@ refuse_parenthesized(const parser_t &p)
         not_yet(peek(p), "declarator in parentheses");
 }
 
-// A pointer and a declarator in parentheses are not yet, refused at the
-// token that would start them.
-void
-refuse_declarator_start(const parser_t &p)
-{
-    if (peek(p).kind == tok_t::star)
-        not_yet(peek(p), "pointer declarator");
-
-    refuse_parenthesized(p);
-}
-
 // The pointers before a declarator's name, 6.7.7.2, rcc's pointer():
 // each '*' a pointer to the type so far, so int **pp is a pointer to a
 // pointer to int.  The pointees rcc-v2 takes are int and the pointers:
@@ -328,14 +318,14 @@ pointer(parser_t &p, type_t t)
     return t;
 }
 
-// The declarator of a parameter, whose name is optional, 6.7.7.1p1, and
-// returned, or null: an array, adjusted to a pointer, p6, and a
-// function, adjusted to a pointer to it, p7, are not yet, as a pointer
-// is.
+// The declarator of a parameter past its pointers, whose name is
+// optional, 6.7.7.1p1, and returned, or null: an array, adjusted to a
+// pointer, p6, and a function, adjusted to a pointer to it, p7, are not
+// yet.
 const token_t *
 parameter_declarator(parser_t &p)
 {
-    refuse_declarator_start(p);
+    refuse_parenthesized(p);
 
     const token_t *name =
         peek(p).kind == tok_t::identifier ? &advance(p) : nullptr;
@@ -349,11 +339,12 @@ parameter_declarator(parser_t &p)
     return name;
 }
 
-// A parameter's specifiers and declarator, 6.7.7.1p1, and GNU C's
-// attributes after it, which are not yet.  register is the one storage
-// class a parameter takes, p2, and static and extern are refused in
-// rcc's words; register itself is not yet, as a specifier.  A parameter
-// of type void is left for the list to take or refuse.
+// A parameter's specifiers and declarator, its pointers first,
+// 6.7.7.1p1, and GNU C's attributes after it, which are not yet.
+// register is the one storage class a parameter takes, p2, and static
+// and extern are refused in rcc's words; register itself is not yet, as
+// a specifier.  A parameter of type void is left for the list to take
+// or refuse.
 parameter_t
 parameter_declaration(parser_t &p)
 {
@@ -364,11 +355,12 @@ parameter_declaration(parser_t &p)
         fail(*spec.storage_class,
              quoted(spec.storage_class->text) + " in a parameter declaration");
 
+    type_t t = pointer(p, spec.type);
     const token_t *name = parameter_declarator(p);
     if (peek(p).kind == tok_t::kw_attribute)
         not_yet(peek(p), quoted(peek(p).text) + " after a declarator");
 
-    return { start, name, spec.type };
+    return { start, name, std::move(t) };
 }
 
 // A parameter's name, declared in the scope of its list, which the
@@ -452,9 +444,6 @@ declarator_suffix(parser_t &p, declarator_t &d, const type_t &base)
 
     if (peek(p).kind == tok_t::lparen)
         fail(peek(p), "function cannot return a function");
-
-    if (is< pointer_t >(base))
-        not_yet(d.name, "function returning a pointer");
 
     std::vector< type_t > types;
     for (const parameter_t &param : d.params)

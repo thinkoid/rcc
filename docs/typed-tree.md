@@ -13,22 +13,22 @@ the objects of the integer types from `char` to `unsigned long long`,
 initialized by an integer constant expression or not, read and
 assigned in every expression, defined before their use, after it or
 nowhere in the unit, their data written after the functions; the
-functions of a result of any integer type or `void` and of parameters
-of any integer type, whose locals are of the integer types and
-pointers to `int` and to such pointers, declared, assigned and
-returned, with parentheses, the casts, the unary operators `+ - ~ !`,
-`&` of a local and `sizeof`, `+ - * / % << >> & | ^`, the comparisons,
-of pointers among them, `&&`, `||`, `?:` of arms of every integer
-type, the comma, the compound assignments and `++` and `--` of every
-integer type, and calls of functions of a result of any integer type
-or `void`, to any depth, and the statements `if`, `else`, `switch` on
-every integer type with its `case` and `default` labels, `while`,
-`do`, `for` with a declaration or an expression first, `break`,
-`continue`, `goto` and labels, and `return` with a value or without,
-on both targets. Each mechanism below was compiled and run in a small
-model first; chapter 5 says what the models showed and chapter 6 what
-nothing has shown. A statement marked *working* is a position taken
-and run, not yet agreed.
+functions of a result of any integer type, a pointer or `void` and of
+parameters of any integer type or pointers, whose locals are of the
+integer types and pointers to `int` and to such pointers, declared,
+assigned and returned, with parentheses, the casts, the unary
+operators `+ - ~ !`, `&` of a local and `sizeof`, `+ - * / % << >> & |
+^`, the comparisons, of pointers among them, `&&`, `||`, `?:` of arms
+of every integer type, the comma, the compound assignments and `++`
+and `--` of every integer type, and calls of functions of a result of
+any integer type, a pointer or `void`, to any depth, and the
+statements `if`, `else`, `switch` on every integer type with its
+`case` and `default` labels, `while`, `do`, `for` with a declaration
+or an expression first, `break`, `continue`, `goto` and labels, and
+`return` with a value or without, on both targets. Each mechanism
+below was compiled and run in a small model first; chapter 5 says what
+the models showed and chapter 6 what nothing has shown. A statement
+marked *working* is a position taken and run, not yet agreed.
 
 ## 1. The idea
 
