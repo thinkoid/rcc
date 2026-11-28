@@ -216,14 +216,6 @@ is_counted(const token_t &t)
     }
 }
 
-// Plain char is signed or unsigned as the target has it, and a type of
-// its own, 6.2.5p20, rcc's char_type().
-type_t
-char_type(const parser_t &p)
-{
-    return make_int(8, p.target.char_is_signed, int_kind_t::char_);
-}
-
 // The type the counted specifiers name, rcc's specified(): void; char
 // with neither signed nor unsigned plain char; else signed unless
 // unsigned was counted, and the width the first that applies, char 8,

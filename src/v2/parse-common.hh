@@ -22,6 +22,7 @@
 #include <cstddef>
 #include <deque>
 #include <initializer_list>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -30,6 +31,8 @@
 #include <vector>
 
 namespace rcc {
+
+struct record_pointer_t;
 
 // What the parser holds of an expression: its C type, which the
 // productions read; the node built for it, or none for a function
@@ -47,12 +50,19 @@ namespace rcc {
 // narrower than an int or an unsigned, through parentheses and the
 // casts that widen it, or null, and whether it is one change of the
 // object's sign alone, for the not yet of its index,
-// widened_index()'s; and the type of an array, or none: an expression
-// of an array's type is converted to a pointer to its first element,
+// widened_index()'s; the type of an array, or none: an expression of
+// an array's type is converted to a pointer to its first element,
 // 6.3.2.1p3, which is its C type here, read by every production, and
 // the node is the array's decay, since no row reads an array whole, but
 // for & and sizeof, which read the array's type, and so take it through
-// parentheses.
+// parentheses; and the facts of rcc's tree that a member access reads,
+// rcc's record_address() and record_pointer() (docs/typed-tree.md 4.2):
+// for the result of *, through parentheses, the operand it was read
+// through, of which &*X is X, 6.5.4.2p3; for a cast between pointer
+// types, the operand under every such cast, rcc's uncast(); and for a
+// sum of a pointer to an 8-bit integer and a constant, the pointer under
+// its casts and the constant, rcc's is_byte_sum(); each null for any
+// other operand.
 struct operand_t
 {
     type_t type;
@@ -63,6 +73,17 @@ struct operand_t
     const token_t *kept_bits = nullptr;
     bool sign_changed = false;
     std::optional< type_t > array = std::nullopt;
+    std::shared_ptr< const operand_t > pointer = nullptr;
+    std::shared_ptr< const operand_t > uncast = nullptr;
+    std::shared_ptr< const record_pointer_t > byte_sum = nullptr;
+};
+
+// The pointer through which a member access reaches its record and the
+// constant in bytes added to it, rcc's record_pointer_t.
+struct record_pointer_t
+{
+    operand_t pointer;
+    long offset;
 };
 
 // What a scope holds of a name it declares, 6.2.1p4: the operand a use
@@ -271,6 +292,10 @@ const token_t &expect(parser_t &p, tok_t kind, std::string_view message);
 // int as the parser makes it: 32 bits, signed, of the kind int.
 type_t int_type();
 
+// Plain char is signed or unsigned as the target has it, and a type of
+// its own, 6.2.5p20, rcc's char_type().
+type_t char_type(const parser_t &p);
+
 // The integer promotions, 6.3.1.1p2, rcc's promoted(): the type an
 // operand of the type t is promoted to.
 type_t promoted(const type_t &t);
@@ -431,6 +456,11 @@ void warn_overflowed(parser_t &, const token_t &at, const operand_t &e);
 
 // 6.5, parse-expressions.cc
 operand_t conditional_expression(parser_t &);
+
+// *E of the operand arg at the token op, rcc's indirection(): the place
+// arg points to, of its pointee type, 6.5.4.2p4, its operand the fact
+// pointer.
+operand_t indirect(const token_t &op, const operand_t &arg);
 operand_t assignment_expression(parser_t &);
 operand_t expression(parser_t &);
 
@@ -597,6 +627,34 @@ void require_record_conversion(const token_t &at,
 // An object of a record type, which rcc-v2 does not declare yet, refused
 // at its name.
 void refuse_record_object(const token_t &name, const type_t &t);
+
+// The operand e as the pointer value, its node read: the facts a member
+// access reads of a pointer kept, uncast and byte_sum.
+operand_t pointer_operand(const operand_t &e, expr_t value);
+
+// The member of a record by its name, 6.5.3.4p1, p2, at its offset in
+// the record, rcc's named_member(): a member the record declares, or one
+// of an anonymous member's at any depth, 6.7.3.2p15; a name the record
+// has no member of is an error at the name.
+member_t named_member(const record_t &r, const token_t &name);
+
+// The record a member access at op reads a member of, 6.5.3.4p1, p2,
+// rcc's accessed_record(): the record of the type t for E.m, and the one
+// t points to for P->m, each an error at op where there is none.  It is
+// complete, since its members are known from its list's '}' on, and laid
+// out, or the access is refused by the words of what rcc does not lay
+// out, require_honoured()'s.
+const record_t &accessed_record(const token_t &op, const type_t &t);
+
+// The lvalue of the member m of the record E is, for E.m, or of the one
+// P points to, for P->m, P read for its value, op saying which,
+// 6.5.3.4p3, p4, rcc's member_lvalue(): *(T *) ((char *) P + offset),
+// lvalue_at()'s, of the member's type, the offset the member's in its
+// record plus the one P carries, record_pointer()'s.
+operand_t member_lvalue(const parser_t &p,
+                        const token_t &op,
+                        const operand_t &e,
+                        const member_t &m);
 
 // 6.8, parse-statements.cc
 std::vector< stmt_t > block_item_list(parser_t &);

@@ -239,13 +239,15 @@ stepped(const token_t &op, step_op_t s, operand_t arg)
     return { arg.type, make_step(s, std::move(*arg.node)) };
 }
 
-// *E of the operand arg, at op, rcc's indirection(): arg read for its
-// value, which is a pointer, 6.5.4.2p2, an error at op otherwise; the
-// result the lvalue it points to, of the pointee type, p4, the place
-// make_indirection() makes at the pointee's view and sign, which over an
-// address is the place again, so *&x is x; of a pointer to an array,
-// the array, make_indirection_to_array()'s, no place.  A record pointee
-// makes the record's place through the pointer,
+} // namespace
+
+// rcc's indirection(): arg read for its value, which is a pointer,
+// 6.5.4.2p2, an error at op otherwise; the result the lvalue it points
+// to, of the pointee type, p4, the place make_indirection() makes at
+// the pointee's view and sign, which over an address is the place
+// again, so *&x is x, and of which &*X is X, the fact pointer; of a
+// pointer to an array, the array, make_indirection_to_array()'s, no
+// place.  A record pointee makes the record's place through the pointer,
 // make_record_indirection()'s, whose value nothing reads and whose
 // address & takes; an incomplete one has none, so its place, which only
 // & and sizeof could take, is not yet, rcc's, and one rcc does not lay
@@ -254,13 +256,14 @@ stepped(const token_t &op, step_op_t s, operand_t arg)
 operand_t
 indirect(const token_t &op, const operand_t &arg)
 {
-    expr_t pointer = rvalue(op, arg);
+    const auto through = std::make_shared< const operand_t >(
+        pointer_operand(arg, rvalue(op, arg)));
     if (!is< pointer_t >(arg.type))
         fail(op, "indirection requires a pointer operand");
 
     const type_t &t = pointee_of(arg.type);
     if (is< array_t >(t))
-        return array_operand(t, make_indirection_to_array(std::move(pointer)));
+        return array_operand(t, make_indirection_to_array(*through->node));
 
     if (const record_t *r = record_in(t)) {
         if (!r->complete)
@@ -269,14 +272,18 @@ indirect(const token_t &op, const operand_t &arg)
 
         require_honoured(op, t);
 
-        return { t, make_record_indirection(std::move(pointer)) };
+        return { .type = t,
+                 .node = make_record_indirection(*through->node),
+                 .pointer = through };
     }
 
     return { .type = t,
-             .node =
-                 make_indirection(std::move(pointer), view_of(t), sign_of(t)),
-             .indirect = true };
+             .node = make_indirection(*through->node, view_of(t), sign_of(t)),
+             .indirect = true,
+             .pointer = through };
 }
+
+namespace {
 
 operand_t addition(const token_t &, operand_t, operand_t);
 
@@ -315,8 +322,34 @@ subscript(const token_t &op, operand_t e, operand_t index)
     return indirect(op, addition(op, std::move(e), std::move(index)));
 }
 
-// The postfix operators, 6.5.3, left to right: a subscript, a call and
-// a step, and a member access, which is not yet.
+// E.m and P->m, 6.5.3.4, its operator op, rcc's member_access(): the
+// member's name, then the lvalue of the member, p3, p4,
+// member_lvalue()'s, of the record E is or P points to,
+// accessed_record()'s, P read for its value, a record in its place an
+// error at the operator.  A member of a record type is an lvalue whose
+// value is refused and whose members are reached.  A bit-field, reached
+// through its access unit, is not yet, at its name.
+operand_t
+member_access(parser_t &p, const token_t &op, operand_t e)
+{
+    const token_t &name = expect(p, tok_t::identifier, "expected member name");
+
+    if (op.kind == tok_t::arrow) {
+        if (record_in(e.type))
+            fail(op, "member reference type is not a pointer");
+
+        e = pointer_operand(e, rvalue(op, e));
+    }
+
+    const member_t m = named_member(accessed_record(op, e.type), name);
+    if (is_bit_field(m))
+        not_yet(name, "bit-field " + quoted(m.name));
+
+    return member_lvalue(p, op, e, m);
+}
+
+// The postfix operators, 6.5.3, left to right: a subscript, a call, a
+// member access and a step.
 operand_t
 postfix_expression(parser_t &p)
 {
@@ -337,7 +370,10 @@ postfix_expression(parser_t &p)
             break;
         }
         case tok_t::dot:
-        case tok_t::arrow: not_yet(op, quoted(op.text) + " operator");
+        case tok_t::arrow:
+            advance(p);
+            e = member_access(p, op, std::move(e));
+            break;
         case tok_t::inc:
         case tok_t::dec: {
             const step_op_t s = op.kind == tok_t::inc ? step_op_t::post_inc :
@@ -586,7 +622,8 @@ unary_arithmetic(parser_t &p)
 // does not decay; the result a pointer to the operand's type, p3, the
 // node make_address_of() makes of a place, p1, whose builder exists for
 // a place alone (principle 8), or of an array, the node of its decay,
-// whose address is the array's.  An operand of no place is rcc's error at
+// whose address is the array's; and &*X is X, so it keeps the facts a
+// member access reads of X.  An operand of no place is rcc's error at
 // the &, but for a function designator, whose address is its decay,
 // p3, and an object of static storage, a place of no & yet, each not
 // yet.
@@ -607,7 +644,13 @@ address_of(parser_t &p)
     if (!is_place(*arg.node))
         fail(op, "cannot take the address of an rvalue");
 
-    return { make_pointer(arg.type), make_address_of(*arg.node) };
+    operand_t address { make_pointer(arg.type), make_address_of(*arg.node) };
+    if (arg.pointer) {
+        address.uncast = arg.pointer->uncast;
+        address.byte_sum = arg.pointer->byte_sum;
+    }
+
+    return address;
 }
 
 // *E, 6.5.4.2, its operand a cast expression, indirect()'s at the *.
@@ -711,14 +754,15 @@ unary_expression(parser_t &p)
 // being an unsigned long to the conversion, and a pointer to another
 // pointer keeps the address, 6.3.2.3p7, and writes nothing,
 // make_bitcast()'s, which is the operand's own node but over a sum,
-// whose address both targets read through one such cast.  A pointer
-// constant converted to an integer is a cast in rcc, no constant, which
-// rcc-v2 does not make yet.  A void operand is an error at the '(',
-// require_value()'s, and a function designator is not yet.  A record, a
-// function type and an array type, which a typedef name may name, are
-// no scalar types, p2, and neither is a record operand's, rcc's errors
-// at the '(' once the operand is read, and an enum in its own list is
-// refuse_not_yet_type()'s there.
+// whose address both targets read through one such cast; the operand
+// under every such cast is the fact uncast, which a member access reads
+// through.  A pointer constant converted to an integer is a cast in
+// rcc, no constant, which rcc-v2 does not make yet.  A void operand is
+// an error at the '(', require_value()'s, and a function designator is
+// not yet.  A record, a function type and an array type, which a
+// typedef name may name, are no scalar types, p2, and neither is a
+// record operand's, rcc's errors at the '(' once the operand is read,
+// and an enum in its own list is refuse_not_yet_type()'s there.
 operand_t
 cast(const token_t &open, const type_t &t, const operand_t &arg)
 {
@@ -735,7 +779,11 @@ cast(const token_t &open, const type_t &t, const operand_t &arg)
     if (is< pointer_t >(t) && is< pointer_t >(arg.type))
         return { .type = t,
                  .node = make_bitcast(*value.node),
-                 .overflowed = arg.overflowed };
+                 .overflowed = arg.overflowed,
+                 .uncast = arg.uncast ?
+                               arg.uncast :
+                               std::make_shared< const operand_t >(
+                                   pointer_operand(arg, *value.node)) };
 
     if (is< pointer_t >(arg.type) && constant_of(*value.node))
         not_yet(open, "cast of a pointer constant to an integer");

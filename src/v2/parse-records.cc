@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -761,6 +762,141 @@ struct_or_union_specifier(parser_t &p)
     r.complete = true;
 
     return make_record(r);
+}
+
+//
+// the member access
+//
+
+operand_t
+pointer_operand(const operand_t &e, expr_t value)
+{
+    return { .type = e.type,
+             .node = std::move(value),
+             .uncast = e.uncast,
+             .byte_sum = e.byte_sum };
+}
+
+member_t
+named_member(const record_t &r, const token_t &name)
+{
+    if (auto m = member_named(r, name.text))
+        return std::move(*m);
+
+    fail(name,
+         "no member named " + quoted(name.text) + " in " + record_words(r));
+}
+
+const record_t &
+accessed_record(const token_t &op, const type_t &t)
+{
+    const bool arrow = op.kind == tok_t::arrow;
+    if (arrow && !is< pointer_t >(t))
+        fail(op, "member reference type is not a pointer");
+
+    const type_t &r = arrow ? pointee_of(t) : t;
+    if (!record_in(r))
+        fail(op, arrow ? "member reference type is not a pointer to a "
+                         "struct or a union" :
+                         "member reference base type is not a struct or a "
+                         "union");
+
+    const record_t &record = *record_in(r);
+    if (!record.complete)
+        fail(op, "member access into incomplete type " + record_words(record));
+
+    require_honoured(op, r);
+
+    return record;
+}
+
+namespace {
+
+// The address of the record of E.m, (&E)->m, 6.5.3.4p4's footnote, rcc's
+// record_address(): E is *X, and &*X is X, 6.5.4.2p3, the operand's fact
+// pointer; any other record is a value, no lvalue, whose member is not
+// yet, said at the '.'.
+const operand_t &
+record_address(const token_t &op, const operand_t &e)
+{
+    if (!e.pointer)
+        not_yet(op, "member of a value of " + record_words(*record_in(e.type)));
+
+    return *e.pointer;
+}
+
+// The pointer of P->m, or of E.m, record_address()'s, and the constant
+// in bytes added to it, rcc's record_pointer(): a cast between pointer
+// types changes no address and is read through, and so is a sum of a
+// pointer to bytes and a constant, whose constant is taken out, so that
+// the members of a member, the tree a member access makes, are one
+// offset from the outermost pointer.  Each is a fact of the operand,
+// uncast and byte_sum.
+record_pointer_t
+record_pointer(const operand_t &pointer)
+{
+    const operand_t &e = pointer.uncast ? *pointer.uncast : pointer;
+    if (e.byte_sum)
+        return *e.byte_sum;
+
+    return { e, 0 };
+}
+
+// The lvalue of type t at offset bytes from what pointer points to,
+// *(T *) ((char *) pointer + offset), rcc's lvalue_at(), of the
+// builders' own nodes, as the Seventh Edition compiler's first pass
+// wrote a->b as *(a + offset): the cast to char * where the pointer is
+// no pointer to char in the machine's view, the sum by the offset, at the
+// stride 1, the cast to T *, each a node only where the builders make
+// one, then *, indirect()'s at op.  At offset 0 it is *(T *) pointer,
+// with no sum.  Each operand made keeps the facts rcc reads off its
+// tree: the sum its byte_sum, the pointer under its casts and the
+// offset, and the cast its uncast.
+operand_t
+lvalue_at(const parser_t &p,
+          const token_t &op,
+          const operand_t &pointer,
+          long offset,
+          const type_t &t)
+{
+    operand_t at = pointer;
+
+    if (offset != 0) {
+        const type_t bytes = make_pointer(char_type(p));
+        const operand_t &under = pointer.uncast ? *pointer.uncast : pointer;
+        expr_t base =
+            pointer.type == bytes ? *pointer.node : make_bitcast(*pointer.node);
+        at = { .type = bytes,
+               .node = make_gep(binary_op_t::add, std::move(base),
+                                make_literal(offset, view_t::i64), 1, false),
+               .byte_sum = std::make_shared< const record_pointer_t >(
+                   record_pointer_t { under, offset }) };
+    }
+
+    const type_t to = make_pointer(t);
+    if (at.type != to) {
+        auto under =
+            at.uncast ? at.uncast : std::make_shared< const operand_t >(at);
+        at = { .type = to,
+               .node = make_bitcast(*at.node),
+               .uncast = std::move(under) };
+    }
+
+    return indirect(op, at);
+}
+
+} // namespace
+
+operand_t
+member_lvalue(const parser_t &p,
+              const token_t &op,
+              const operand_t &e,
+              const member_t &m)
+{
+    const record_pointer_t at =
+        record_pointer(op.kind == tok_t::dot ? record_address(op, e) : e);
+
+    return lvalue_at(p, op, at.pointer, at.offset + m.offset, m.type);
 }
 
 } // namespace rcc

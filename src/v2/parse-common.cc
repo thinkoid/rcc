@@ -118,6 +118,12 @@ int_type()
     return make_int(32, true, int_kind_t::int_);
 }
 
+type_t
+char_type(const parser_t &p)
+{
+    return make_int(8, p.target.char_is_signed, int_kind_t::char_);
+}
+
 // Every type narrower than int converts to int, which holds all of its
 // values, signed or not; any other is its own, a pointer's among them.
 type_t

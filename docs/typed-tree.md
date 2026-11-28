@@ -13,14 +13,16 @@ typedef names and enumerations with their tags and constants, declared
 at file scope or in a block and read wherever a type is; structs and
 unions, their tags in every scope and their layout, and pointers to
 them, compared, assigned, passed, returned, and stepped by a constant
-at any size and by a variable at 2, 4 and 8 bytes; the objects of the
-integer types from `char` to `unsigned long long`, initialized by an
-integer constant expression or not, read and assigned in every
-expression, defined before their use, after it or nowhere in the unit,
-their data written after the functions; the functions of a result of
-any integer type, a pointer or `void` and of parameters of any integer
-type or pointers, whose locals are of the integer types, pointers to
-the integer types and to such pointers, and arrays of `int` and of
+at any size and by a variable at 2, 4 and 8 bytes, their members read,
+written and addressed through a pointer, by `->` and by `.`, unions
+and anonymous members among them; the objects of the integer types
+from `char` to `unsigned long long`, initialized by an integer
+constant expression or not, read and assigned in every expression,
+defined before their use, after it or nowhere in the unit, their data
+written after the functions; the functions of a result of any integer
+type, a pointer or `void` and of parameters of any integer type or
+pointers, whose locals are of the integer types, pointers to the
+integer types and to such pointers, and arrays of `int` and of
 pointers, declared, assigned and returned, with parentheses, the
 casts, the unary operators `+ - ~ !`, `&` of a local and of the object
 a pointer points to, `*` read and written, and `sizeof`, `+ - * / % <<
@@ -722,6 +724,17 @@ S >`.
   variable one is the form's scale at 2, 4 and 8 bytes, and at any
   other size not yet, as the difference of pointers to a record of one
   byte is.
+- A member access is no node. The parser builds rcc's `*(T *) ((char
+  *) P + off)`, its `lvalue_at()`, from the tree's own builders, a
+  cast, a sum by a constant at the stride 1 and `*`, so the access is
+  a load or a store through a pointer and its forms are `pointed()`'s:
+  `8(%rax)` and `[x0, #8]`, and `4(%rax,%rcx,8)` for `p[i].m` on a
+  record of 8 bytes. P and the offset are rcc's `record_pointer()`,
+  read off three facts the parser's operands keep: of `*X` the operand
+  X, of a cast between pointer types the operand under it, of the byte
+  sum its pointer and its constant. So the members of a member are one
+  offset from the outermost pointer, and `&*X` keeps the facts of X. A
+  bit-field's access is not yet.
 
 ### 4.3 Constants
 
@@ -1118,6 +1131,8 @@ each became.
 | `allocate()` by a size and an alignment | the row of `array_decl_t` |
 | `lay_out()`, `bit_field_place()`, `access_unit()`, `tagged_type()` | the parser's, ported (`parse-records.cc`) |
 | `address()` of an lvalue of a record | the where of `record_place_t< indirect_t >` |
+| `record_pointer()`, `uncast()`, `is_byte_sum()` | the parser's, over its operands' facts `pointer`, `uncast` and `byte_sum` |
+| `lvalue_at()`, `member_lvalue()` | the parser's, of the builders' nodes |
 | `pointed()` of a dereference's operand | each target's `address()` of the where `indirect_t`: the pointer's value, the base |
 | `calls_within()` | aarch64's summary of that name, each node's of its parts, an erased one's through its handle |
 | `pointed()`, `constant_indexed()`, `indexed()`, `index_base()`, `cast_sum()` | each target's `pointed()`, an entry point with niches on `gep_t` and `bitcast_t` |
