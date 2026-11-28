@@ -210,6 +210,18 @@ public:
   namespace `primary`, which the namespace of its niches uses. A row
   finds it by name; the concept, which no using directive reaches,
   finds the niches alone. A primary no row asks is not written.
+- A model writes only the lines its node has a row on, and there are
+  two. `model_t` answers the lines every node type answers by its own
+  rows: its values, the summaries of its subtree, its jumps.
+  `niched_model_t` adds the lines of `defaults_t` and the builders'
+  hops in the node's classes, for a node type that has a niche on one
+  of those lines, is a place, or crosses to a builder in a class of
+  its own. Any other node type takes them from `defaults_t`, the
+  hops on the handle's class. The concept `niched` says which model
+  a node type has, and names those lines: the one list kept by hand.
+  A line added to `niched_model_t` is added to it, or a node type
+  whose only niche is on that line takes the default, and only a
+  listing shows it.
 - Every model is instantiated in one translation unit, `build.cc`,
   which includes the node types and every row of both targets. Two
   units that saw different overloads would break the one-definition
@@ -1070,7 +1082,17 @@ rows invented for the purpose.
   widening to 15.2. A dereference's where is the third. Measured with
   it, pointer arithmetic and the subscript: 9,456 binary node types
   and 28.8 GB, more than one of the two machines that build the tree
-  holds, so of the pointers the tree has their values alone.
+  holds. The peak follows the count of functions the unit defines,
+  about 16 GB a million, and a binary model defined 111, some ten of
+  them its rows. So a line's default is written once, a model writes
+  only the lines its node has a row on, and the binary operators
+  cross as one line (3.1, 3.3): with the node types as they were,
+  6,122 binary ones, the unit defines 460,000 functions where it
+  defined 872,000, 37 for a binary node type with no niche, and its
+  peak is 8.7 GB where it was 15.4. Each class of operand still
+  multiplies the models, at a model's own lines and the crossings of
+  its classes; with the dereference's where the same three bring 28.9
+  GB to 13.5.
 - GNU's `a ?: b`, which is not yet.
 - The rest of the pointers: the dereference, pointer arithmetic and
   the subscript; a pointer of static storage, the address of an object

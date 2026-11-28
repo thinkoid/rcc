@@ -47,6 +47,8 @@ class expr_t
     struct defaults_t;
     template< typename T >
     struct model_t;
+    template< typename T >
+    struct niched_model_t;
 
     std::shared_ptr< const interface_t > self;
 

@@ -41,8 +41,22 @@ took their node types from 338 to 650, and the peak to 14.4 GB; =?:=
 of every type and its widening, to 15.2. A dereference's where is the
 third: measured with it, pointer arithmetic and the subscript, the
 binary node types are 9,456, and the unit takes 507 s and 28.8 GB on
-the x86-64 machine, more than the aarch64 one holds. So the
-dereference waits for this entry.
+the x86-64 machine, more than the aarch64 one holds.
+
+The peak follows the count of functions the unit defines, about 16
+GB a million: 872,000 with pointers as values, 6,816 models, 271 s
+and 15.4 GB on the x86-64 machine. A binary model defined 111, some
+ten of them its rows. Three changes, none of a node type or a
+listing: the binary operators cross the interface as one line, the
+right operand's class a variant's alternative; a line whose default
+does not read the node's type is written once, in a base of the
+models that is no template; a model writes only the lines its node
+has a row on. That is 460,000 functions, 37 for a binary node type
+with no niche, 159 s and 8.7 GB, =build.o= 579 MB where it was
+1,057. Measured with the dereference's where on the earlier base,
+the same three take 28.9 GB to 13.5. Each further class still
+multiplies the models: one that adds as many as the third where did
+is estimated at 5 GB more.
 
 Measured and not taken, each changing no node type and no listing:
 line tables alone as the unit's debugging information (5 s and 0.7
@@ -52,11 +66,18 @@ by a using-declaration, without the =fwd_= forwarders (a tenth of
 what is left); the derived entry points of a type with no niche
 written once (about a fifth, but the rows call those primaries on
 concrete operands, so the rows' text changes); several instantiating
-units by operator family (wall time alone). Counted and not built,
-two that change the zoo and =docs/typed-tree.md= principle 5 with
-it: a class of operand kept only where a row of either target reads
-it, 2,346 binary models to 460; the operator's family as the node's
-parameter, to 635; both, 75. The three were counted at one where.
+units by operator family (wall time alone), and by target (the
+peak, 2 to 3 GB less of 13.5; a unit then sees the other target's
+members declared and not defined, which is ill-formed without an
+explicit instantiation of each); a second model for the divisions
+and the shifts, niched only by their class as a right operand
+(estimated at 1.2 GB of 13.5). Counted and not built, two that
+change the zoo and =docs/typed-tree.md= principle 5 with it: a class
+of operand kept only where a row of either target reads it, 2,346
+binary models to 460; the operator's family as the node's parameter,
+to 635; both, 75. The three were counted at one where. At three,
+with the dereference's, 9,066 binary models: to 865, to 2,375, and
+to 148.
 
 The check: the time and the peak memory of =build.o=, before and
 after, and every listing of =make sides= and of a corpus unchanged.
