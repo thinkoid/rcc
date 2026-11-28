@@ -174,13 +174,6 @@ normalized(long long value, int width)
 
 // constants
 
-// Whether a value is a 32-bit immediate, which a 64-bit instruction
-// sign-extends.
-bool
-fits_imm32(long long value)
-{
-    return value >= INT32_MIN && value <= INT32_MAX;
-}
 
 // The constant row, 6.3: value into r at width, movl $c, L at 32 bits
 // and movq $c, L at 64.  movq's immediate is 32 bits, sign-extended, so
@@ -256,6 +249,12 @@ condition(binary_op_t op)
 }
 
 } // namespace
+
+bool
+fits_imm32(long long value)
+{
+    return value >= INT32_MIN && value <= INT32_MAX;
+}
 
 std::string
 imm(long long value)
@@ -663,12 +662,12 @@ address(state_t &s, const global_t &where)
     return { .base = symbol_address(s, where) };
 }
 
-// The pointer's value is generated where the object's load would be,
+// The pointer's address is formed where the object's load would be,
 // outside what the caller reserves around address().
 address_t
 address(state_t &s, const indirect_t &where)
 {
-    return { .base = value(s, where.pointer) };
+    return pointed(s, where.pointer);
 }
 
 unsigned
@@ -686,19 +685,36 @@ moved_within(const state_t &s, const indirect_t &where)
 unsigned
 registers_of(const state_t &s, const address_t &a)
 {
-    return a.base ? held_in(s, *a.base) : 0;
+    return (a.base ? held_in(s, *a.base) : 0) |
+           (a.index ? held_in(s, *a.index) : 0);
 }
 
+// rbp is the base of a slot's address with an index, and a displacement
+// of 0 is left out.
 std::string
 operand(state_t &s, const address_t &a, unsigned avoid)
 {
     if (!a.label.empty())
         return std::format("{}(%rip)", a.label);
 
-    if (!a.base)
+    if (!a.base && !a.index)
         return at(a.displacement);
 
-    return std::format("({})", reg(reg_of(s, *a.base, avoid), 64));
+    avoid |= registers_of(s, a);
+
+    std::string index;
+    if (a.index) {
+        const reg_t r = reg_of(s, *a.index, avoid);
+        avoid |= bit(r);
+        index = std::format(",{},{}", reg(r, 64), a.scale);
+    }
+
+    const std::string base =
+        a.base ? reg(reg_of(s, *a.base, avoid), 64) : "%rbp";
+    const std::string displacement =
+        a.displacement != 0 ? std::to_string(a.displacement) : "";
+
+    return std::format("{}({}{})", displacement, base, index);
 }
 
 void
@@ -706,12 +722,15 @@ release(state_t &s, const address_t &a)
 {
     if (a.base)
         release(s, *a.base);
+
+    if (a.index)
+        release(s, *a.index);
 }
 
 value_t
 address_of(state_t &s, const address_t &a)
 {
-    if (a.base && a.displacement == 0)
+    if (a.base && !a.index && a.displacement == 0)
         return *a.base;
 
     const std::string from = operand(s, a);
@@ -721,6 +740,93 @@ address_of(state_t &s, const address_t &a)
     insn(s, "leaq", { from, reg(reg_of(s, v), 64) });
 
     return v;
+}
+
+std::optional< address_t >
+folded(state_t &s, const std::optional< named_offset_t > &named)
+{
+    if (!named)
+        return std::nullopt;
+
+    const long long displacement =
+        wrapped_add(address(s, named->slot).displacement, named->offset);
+    if (!fits_imm32(displacement))
+        return std::nullopt;
+
+    return address_t { .displacement = static_cast< int >(displacement) };
+}
+
+std::optional< address_t >
+summed(state_t &s, const std::optional< lvalue_offset_t > &at, bool named)
+{
+    if (!at || !fits_imm32(at->offset) || named)
+        return std::nullopt;
+
+    address_t a = pointed(s, at->pointer);
+
+    const long long displacement = wrapped_add(a.displacement, at->offset);
+    if (!fits_imm32(displacement))
+        return address_t { .base = address_of(s, a),
+                           .displacement = static_cast< int >(at->offset) };
+
+    a.displacement = static_cast< int >(displacement);
+
+    return a;
+}
+
+address_t
+erased_pointed(state_t &s, const expr_t &self)
+{
+    const auto named = named_offset(self);
+    if (const auto a = folded(s, named))
+        return *a;
+
+    if (const auto a = summed(s, lvalue_offset(self), named.has_value()))
+        return *a;
+
+    return { .base = value(s, self) };
+}
+
+address_t
+displaced_address(state_t &s, address_t a, long long d)
+{
+    const long long sum = wrapped_add(a.displacement, d);
+    if (a.label.empty() && fits_imm32(sum)) {
+        a.displacement = static_cast< int >(sum);
+        return a;
+    }
+
+    return { .base = address_of(s, a), .displacement = static_cast< int >(d) };
+}
+
+address_t
+index_base(state_t &s, const expr_t &pointer, unsigned pinned)
+{
+    const unsigned outer = std::exchange(s.reserved, s.reserved | pinned);
+
+    address_t a = pointed(s, pointer);
+    if (!a.base || a.index)
+        a = { .base = address_of(s, a) };
+
+    s.reserved = outer;
+
+    return a;
+}
+
+// Not where nothing is spilled, a division's or a shift's registers
+// chosen outside the address, nor where either value is spilled
+// already, across a call within the index, whose slot holds it.
+address_t
+summed_place(state_t &s, address_t place, const expr_t &value)
+{
+    const bool apart = place.base && place.index && held_in(s, *place.base) &&
+                       held_in(s, *place.index);
+    if (!apart || !spills_within(s, value))
+        return place;
+
+    const int displacement = std::exchange(place.displacement, 0);
+
+    return { .base = address_of(s, place), .displacement = displacement };
 }
 
 std::pair< reg_t, std::string >
@@ -1033,6 +1139,50 @@ step(state_t &s,
     release(s, l);
 
     return old;
+}
+
+addend_t
+constant_displacement(state_t &s, long long bytes, unsigned avoid)
+{
+    if (fits_imm32(bytes))
+        return { .immediate = imm(bytes) };
+
+    const value_t r = hold(s, take(s, avoid));
+    constant(s, reg_of(s, r), bytes, 64);
+
+    return { .value = r };
+}
+
+value_t
+multiplied(state_t &s, const address_t &at, long stride, unsigned avoid)
+{
+    const std::string from = operand(s, at);
+    release(s, at);
+
+    const value_t v = hold(s, take(s, avoid));
+    multiply(s, reg_of(s, v), from, imm(stride), view_t::i64);
+
+    return v;
+}
+
+// The index's product written into its own register, the three-operand
+// imul, before the add or the sub reads it; the instruction on l's.
+value_t
+displaced(state_t &s, binary_op_t op, value_t l, const addend_t &n)
+{
+    if (!n.value) {
+        operate(s, op, reg_of(s, l), n.immediate, view_t::i64);
+        return l;
+    }
+
+    const auto [left, right] = operands(s, l, *n.value);
+    if (n.scale != 1)
+        multiply(s, right, right, imm(n.scale), view_t::i64);
+
+    operate(s, op, left, right, view_t::i64);
+    release(s, *n.value);
+
+    return l;
 }
 
 // imull $5, %eax, %eax.

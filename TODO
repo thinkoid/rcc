@@ -53,10 +53,12 @@ does not read the node's type is written once, in a base of the
 models that is no template; a model writes only the lines its node
 has a row on. That is 460,000 functions, 37 for a binary node type
 with no niche, 159 s and 8.7 GB, =build.o= 579 MB where it was
-1,057. Measured with the dereference's where on the earlier base,
-the same three take 28.9 GB to 13.5. Each further class still
-multiplies the models: one that adds as many as the third where did
-is estimated at 5 GB more.
+1,057. The third where, a place through a pointer, with pointer
+arithmetic, the subscript and the difference, then makes it 10,269
+models, 9,456 binary node types and 805,000 functions: 308 s and
+15.1 GB, where the same zoo before the three changes took 545 s and
+30.8 GB. Each further class still multiplies the models, at about
+80 functions a model, the crossings counted.
 
 Measured and not taken, each changing no node type and no listing:
 line tables alone as the unit's debugging information (5 s and 0.7

@@ -134,11 +134,16 @@ std::string imm(long long value);
 // An object in memory as an instruction names it, rcc's address_t
 // (backend.md 6.3, chapter 10): a slot's displacement off rbp, a
 // global's label off rip, or a base held in a register, the address
-// the GOT held.  The base is a held value, spilled and reloaded as any;
-// the access consumes it.
+// the GOT held or a pointer's value, with a displacement; and an index
+// held in a register at a scale, beside a base or beside rbp with a
+// slot's displacement, -20(%rbp,%rax,4), a form aarch64 lacks.  The base
+// and the index are held values, spilled and reloaded as any; the
+// access consumes them.
 struct address_t
 {
     std::optional< value_t > base = std::nullopt;
+    std::optional< value_t > index = std::nullopt;
+    long scale = 1;
     int displacement = 0;
     std::string label = { };
 };
@@ -174,15 +179,17 @@ address_avoiding(state_t &s, const W &where, unsigned reserved)
 }
 
 // The registers an address's values are in, rcc's registers_of(), for
-// a take or a reload to stay clear of: the base's, none where it is
-// spilled or there is none.
+// a take or a reload to stay clear of: the base's and the index's, none
+// where either is spilled or there is none.
 unsigned registers_of(const state_t &, const address_t &);
 
 // The address as an instruction's operand, rcc's operand(): g(%rip),
-// -4(%rbp), or (%rax), a spilled base reloaded first outside avoid.
+// -4(%rbp), (%rax), 12(%rax), (%rax,%rcx,4) or -20(%rbp,%rcx,4), a
+// spilled index, then a spilled base, reloaded first outside avoid and
+// the other's register.
 std::string operand(state_t &, const address_t &, unsigned avoid = 0);
 
-// The address is consumed: its base's register is free, rcc's release().
+// The address is consumed: its registers are free, rcc's release().
 void release(state_t &, const address_t &);
 
 // The register of the held value l and the operand of the address at,
@@ -607,6 +614,31 @@ pinned_within(const state_t &s, const comma_t< R > &c)
     return pinned_within(s, c.lhs) | pinned_within(s, c.rhs);
 }
 
+// A sum of a pointer pins nothing of its own, and what its operands pin;
+// a difference rax and rdx, since it divides by the stride, rcc's pins()
+// of a p - q; a cast what its operand pins.
+template< binary_op_t op, typename N, bool index_first >
+unsigned
+pinned_within(const state_t &s, const gep_t< op, N, index_first > &g)
+{
+    return pinned_within(s, g.pointer) | pinned_within(s, g.index);
+}
+
+template< typename R >
+unsigned
+pinned_within(const state_t &s, const difference_t< R > &d)
+{
+    return pins(family_t::division) | pinned_within(s, d.lhs) |
+           pinned_within(s, d.rhs);
+}
+
+template< typename P >
+unsigned
+pinned_within(const state_t &s, const bitcast_t< P > &c)
+{
+    return pinned_within(s, c.pointer);
+}
+
 // The registers a pinned instruction within a node would move a value
 // held across the node out of, rcc's moved_within(), 6.5: pins() over
 // the tree, as pinned_within(), but nothing below && and || and nothing
@@ -770,6 +802,205 @@ moved_within(const state_t &s, const comma_t< R > &c)
     return moved_within(s, c.lhs) | moved_within(s, c.rhs);
 }
 
+template< binary_op_t op, typename N, bool index_first >
+unsigned
+moved_within(const state_t &s, const gep_t< op, N, index_first > &g)
+{
+    return moved_within(s, g.pointer) | moved_within(s, g.index);
+}
+
+template< typename R >
+unsigned
+moved_within(const state_t &s, const difference_t< R > &d)
+{
+    return pins(family_t::division) | moved_within(s, d.lhs) |
+           moved_within(s, d.rhs);
+}
+
+template< typename P >
+unsigned
+moved_within(const state_t &s, const bitcast_t< P > &c)
+{
+    return moved_within(s, c.pointer);
+}
+
+// Whether generating a node spills every value held across it, rcc's
+// spills_within(), 6.7: a call within it, or a branch of &&, || or ?:,
+// each spilling every held value first; a summary of x86-64's, each
+// node's of its operands', which an erased one hands up through its
+// handle, a where's its pointer's.
+template< constant C >
+constexpr bool
+spills_within(const state_t &, const C &)
+{
+    return false;
+}
+
+constexpr bool
+spills_within(const state_t &, slot_t)
+{
+    return false;
+}
+
+inline bool
+spills_within(const state_t &, const global_t &)
+{
+    return false;
+}
+
+inline bool
+spills_within(const state_t &s, const indirect_t &w)
+{
+    return spills_within(s, w.pointer);
+}
+
+template< typename W, view_t V, sign_t S >
+bool
+spills_within(const state_t &s, const place_t< W, V, S > &p)
+{
+    return spills_within(s, p.where);
+}
+
+template< typename W, view_t V, sign_t S >
+bool
+spills_within(const state_t &s, const load_t< W, V, S > &l)
+{
+    return spills_within(s, l.where);
+}
+
+template< typename W >
+bool
+spills_within(const state_t &s, const address_of_t< W > &a)
+{
+    return spills_within(s, a.where);
+}
+
+template< unary_op_t op, view_t V, typename A >
+bool
+spills_within(const state_t &s, const unary_t< op, V, A > &u)
+{
+    return spills_within(s, u.arg);
+}
+
+template< binary_op_t op, view_t V, typename L, typename R >
+bool
+spills_within(const state_t &s, const binary_t< op, V, L, R > &b)
+{
+    return is_logical(op) || spills_within(s, b.lhs) || spills_within(s, b.rhs);
+}
+
+template< family_t F >
+bool
+spills_within(const state_t &s, const top_t< F > &t)
+{
+    return spills_within(s, t.node);
+}
+
+template< view_t V, view_t F, typename A >
+bool
+spills_within(const state_t &s, const sext_t< V, F, A > &e)
+{
+    return spills_within(s, e.arg);
+}
+
+template< view_t V, view_t F, typename A >
+bool
+spills_within(const state_t &s, const zext_t< V, F, A > &e)
+{
+    return spills_within(s, e.arg);
+}
+
+template< view_t V, typename A >
+bool
+spills_within(const state_t &s, const trunc_t< V, A > &t)
+{
+    return spills_within(s, t.arg);
+}
+
+template< typename W, view_t V >
+bool
+spills_within(const state_t &s, const assign_t< W, V > &a)
+{
+    return spills_within(s, a.where) || spills_within(s, a.value);
+}
+
+template< view_t V >
+constexpr bool
+spills_within(const state_t &, const call_t< V > &)
+{
+    return true;
+}
+
+constexpr bool
+spills_within(const state_t &, const call_void_t &)
+{
+    return true;
+}
+
+template< binary_op_t op, typename W, view_t V, view_t O, typename R >
+bool
+spills_within(const state_t &s, const compound_t< op, W, V, O, R > &c)
+{
+    return spills_within(s, c.where) || spills_within(s, c.value);
+}
+
+template< step_op_t op, typename W, view_t V, sign_t S >
+bool
+spills_within(const state_t &s, const step_t< op, W, V, S > &t)
+{
+    return spills_within(s, t.where);
+}
+
+template< view_t V, bool jumps >
+constexpr bool
+spills_within(const state_t &, const conditional_t< V, jumps > &)
+{
+    return true;
+}
+
+constexpr bool
+spills_within(const state_t &, const conditional_void_t &)
+{
+    return true;
+}
+
+// A conditional under a widening spills as the conditional does: an
+// arm's widening spills nothing of its own.
+template< view_t F, bool jumps >
+bool
+spills_within(const state_t &s, const widened_arms_t< F, jumps > &w)
+{
+    return spills_within(s, w.conditional);
+}
+
+template< typename R >
+bool
+spills_within(const state_t &s, const comma_t< R > &c)
+{
+    return spills_within(s, c.lhs) || spills_within(s, c.rhs);
+}
+
+template< binary_op_t op, typename N, bool index_first >
+bool
+spills_within(const state_t &s, const gep_t< op, N, index_first > &g)
+{
+    return spills_within(s, g.pointer) || spills_within(s, g.index);
+}
+
+template< typename R >
+bool
+spills_within(const state_t &s, const difference_t< R > &d)
+{
+    return spills_within(s, d.lhs) || spills_within(s, d.rhs);
+}
+
+template< typename P >
+bool
+spills_within(const state_t &s, const bitcast_t< P > &c)
+{
+    return spills_within(s, c.pointer);
+}
+
 // The registers a node hands its left operand, of those its consumer
 // names, wanted, rcc's wanted_left(): wanted, outside own, the
 // registers the node's own instruction pins, where no instruction
@@ -788,18 +1019,30 @@ wanted_left(const state_t &s, unsigned wanted, unsigned own, const R &rhs)
 // the address of where, formed outside the registers a pinned
 // instruction within the value would move it out of, moved_within(),
 // and outside the consumer's register where no instruction within the
-// value pins one, wanted_left(), so that the value takes it.  rcc adds
-// pinned_by() of the value, which moved_within() holds: return g = a /
-// b on an object only declared takes rcx for the GOT's base, outside
-// rax and rdx, and return g = 7 rcx, outside the result's rax.  A
-// slot's address and a label take no register, so a local's and a
-// defined object's place is no reservation.
+// place or the value pins one, wanted_left(), so that the value takes
+// it.  rcc adds pinned_by() of the value, which moved_within() holds:
+// return g = a / b on an object only declared takes rcx for the GOT's
+// base, outside rax and rdx, and return g = 7 rcx, outside the result's
+// rax.  A slot's address and a label take no register, so a local's and
+// a defined object's place is no reservation.  Where the value spills
+// every held value, spills_within()'s, a place of a base and an index
+// both in registers is summed into one register first, its leaq, the
+// displacement kept apart for the access: p[i] = g() is leaq
+// (%rax,%rcx,4), %rax before the call, one spill and one reload.
+address_t summed_place(state_t &, address_t place, const expr_t &value);
+
 template< typename W >
 address_t
 place_of(state_t &s, const W &where, const expr_t &value, unsigned wanted)
 {
-    return address_avoiding(
-        s, where, moved_within(s, value) | wanted_left(s, wanted, 0, value));
+    const unsigned named = pinned_within(s, where) ? 0 : wanted;
+    const unsigned outer =
+        std::exchange(s.reserved, s.reserved | moved_within(s, value) |
+                                      wanted_left(s, named, 0, value));
+    const address_t place = summed_place(s, address(s, where), value);
+    s.reserved = outer;
+
+    return place;
 }
 
 // The registers a node generates its right operand with left for last,
@@ -1210,9 +1453,10 @@ value(state_t &s, const binary_t< op, V, L, R > &b, unsigned wanted = 0)
 // left's register and the address's operand, operands(), and the
 // address given back.  Its type is the more special, so the node the
 // mirror takes, 5 + a, is excluded by name; 5 - a is this row, movl $5,
-// %eax and subl -4(%rbp), %eax.  The right operand pins nothing, so the
-// left operand is handed the consumer's register, as in every niche of
-// an operand in memory or an immediate.
+// %eax and subl -4(%rbp), %eax.  The left operand is handed the
+// consumer's register where no instruction within the address pins one,
+// wanted_left(), as for any right operand, left_operand(): x ^ p[a / b]
+// leaves the consumer's register to the index.
 template< binary_op_t op, view_t V, typename L, typename W, sign_t S >
     requires(arithmetic_operator< op > && !constant_first< op, L >)
 value_t
@@ -1220,9 +1464,11 @@ value(state_t &s,
       const binary_t< op, V, L, load_t< W, V, S > > &b,
       unsigned wanted = 0)
 {
-    const value_t l = value(s, b.lhs, wanted);
+    const unsigned named = wanted_left(s, wanted, 0, b.rhs);
+
+    const value_t l = left_operand(s, b.lhs, b.rhs, 0, named);
     const address_t at =
-        address_avoiding(s, b.rhs.where, held_out(s, l, wanted));
+        address_avoiding(s, b.rhs.where, held_out(s, l, named));
     const auto [left, source] = operands(s, l, at);
     operate(s, op, left, source, V);
     release(s, at);
@@ -1311,9 +1557,10 @@ value(state_t &s, const binary_t< op, V, L, R > &b, unsigned wanted = 0)
 // An object of the operation's view as the divisor is idiv's operand
 // in memory, idivl -8(%rbp), idivl g(%rip), and takes no register but a
 // GOT's base, rcc's binary_operand(): the dividend's value, handed the
-// consumer's register, since the divisor pins nothing; then the
-// divisor's address, formed outside rax and rdx and held_out(), so that
-// a base lands where the division moves nothing; then divide().
+// consumer's register where no instruction within the divisor's address
+// pins one, wanted_left(); then the divisor's address, formed outside
+// rax and rdx and held_out(), so that a base lands where the division
+// moves nothing; then divide().
 template< binary_op_t op, view_t V, typename L, typename W, sign_t S >
     requires division_operator< op >
 value_t
@@ -1323,9 +1570,10 @@ value(state_t &s,
 {
     const unsigned outer = std::exchange(s.reserved, 0u);
 
-    const value_t l = value(s, b.lhs, wanted);
+    const unsigned named = wanted_left(s, wanted, 0, b.rhs);
+    const value_t l = left_operand(s, b.lhs, b.rhs, 0, named);
     const address_t at = address_avoiding(
-        s, b.rhs.where, held_out(s, l, wanted) | pins(op, false));
+        s, b.rhs.where, held_out(s, l, named) | pins(op, false));
     const value_t v = divide(s, op, l, at, V, wanted);
 
     s.reserved = outer;
@@ -1939,6 +2187,391 @@ value_branch(state_t &s,
 {
     value_branch(s, binary_t< binary_op_t::bit_and, V, R, I > { b.rhs, b.lhs },
                  label, sense);
+}
+
+// Pointers, docs/typed-tree.md 4.2: the address a pointer's value
+// designates, each row's form of the access, rcc's pointed(), and the
+// rows of pointer arithmetic, rcc's pointer_arithmetic() and
+// difference(), backend.md 6.3.
+
+// Whether a displacement is a 32-bit one, which an addressing form and
+// an immediate hold, sign-extended.
+bool fits_imm32(long long value);
+
+// rcc's folded(): a pointer that is a local's address plus a constant,
+// named_offset()'s, is the local's slot with the offset folded into its
+// displacement, -4(%rbp) for *(&x + 1) past a local at -8, and no
+// instruction forms the local's address; none for any other pointer,
+// and for a displacement past 32 bits.
+std::optional< address_t > folded(state_t &,
+                                  const std::optional< named_offset_t > &);
+
+// rcc's summed(): a pointer that is the address of the place through a
+// pointer E plus a constant, lvalue_offset()'s, and no local's address,
+// named, is E's own address, pointed()'s, with the constant summed into
+// its displacement, 20(%rax) for (&p[1])[4], and nothing else is
+// evaluated; a sum past 32 bits forms E's address by its leaq, and the
+// constant is the displacement off it.  None for any other pointer.
+std::optional< address_t >
+summed(state_t &, const std::optional< lvalue_offset_t > &, bool named);
+
+// The address a plus d bytes, rcc's constant_indexed() past its test:
+// the sum in the displacement where 32 bits hold it, else a's leaq, the
+// base the bytes are the displacement off.
+address_t displaced_address(state_t &, address_t a, long long d);
+
+// The address of the pointer of a subscript or of a sum by a variable
+// index, as the address the index joins, rcc's index_base(), generated
+// with the registers in pinned left for last: an address of a base and
+// a displacement and no index is held whole, so that p[1][i] on int
+// (*p)[3] is 12(%rax,%rcx,4); any other address is formed by its leaq,
+// and any other pointer is its value, the base alone.  Its forms are the
+// pointer's own address, pointed()'s, which takes rcc's cases in rcc's
+// order: summed(), constant_indexed(), cast_sum(), the value.
+address_t index_base(state_t &, const expr_t &pointer, unsigned pinned);
+
+// rcc's indexed(): a variable index into a local's address plus a
+// constant is the form with rbp the base, the slot the displacement and
+// the index scaled by the stride, -20(%rbp,%rax,4) for (&x)[i], and no
+// instruction forms the local's address; the index is the one operand
+// generated.  None for any other pointer.
+template< typename N >
+std::optional< address_t >
+indexed(state_t &s, const expr_t &pointer, const N &index, long stride)
+{
+    const auto slot = folded(s, named_offset(pointer));
+    if (!slot)
+        return std::nullopt;
+
+    return address_t { .index = value(s, index),
+                       .scale = stride,
+                       .displacement = slot->displacement };
+}
+
+// The address a pointer's value designates, rcc's pointed(), 6.5.4.2p4,
+// its entry point (docs/typed-tree.md 3.4), whose niches are on the
+// pointer's own type and whose chain below is a summary: the primary,
+// erased_pointed(), rcc's tail, a local's address plus a constant
+// folded(), any other address plus a constant summed(), and any other
+// pointer computed into a register, the base, (%rax).  self is the
+// pointer's handle.  Each case asks the pointer through its handle,
+// which answers as its node's own overload does, so the primary is one
+// function, and not one for each node type: a model whose node has no
+// niche of pointed() takes it, defaults_t's (model.hh).
+address_t erased_pointed(state_t &, const expr_t &self);
+
+// rcc's constant_indexed(): p + c, c + p and p - c, the pointer's own
+// address with c times the stride in its displacement, 12(%rax) for
+// p[3], -12(%rax) for *(p - 3), where 32 bits hold the bytes; only the
+// pointer is evaluated.  None for bytes past 32 bits.
+template< binary_op_t op, constant C, bool index_first >
+std::optional< address_t >
+constant_indexed(state_t &s, const gep_t< op, C, index_first > &g)
+{
+    const long long d = scaled< op >(value_of(g.index), g.stride);
+    if (!fits_imm32(d))
+        return std::nullopt;
+
+    return displaced_address(s, pointed(s, g.pointer), d);
+}
+
+// A sum by a constant: folded(), summed(), constant_indexed(); a product
+// past 32 bits is an index like a variable one, p[1000000000] being
+// (%rax,%rcx,4) after movq $1000000000, %rcx, the operand written first
+// generated first; of - the sum's value, the base.
+template< binary_op_t op, constant C, bool index_first >
+address_t
+pointed(state_t &s, const gep_t< op, C, index_first > &g, const expr_t &)
+{
+    const auto named = named_offset(g);
+    if (const auto a = folded(s, named))
+        return *a;
+
+    if (const auto a = summed(s, lvalue_offset(g), named.has_value()))
+        return *a;
+
+    if (const auto a = constant_indexed(s, g))
+        return *a;
+
+    if constexpr (op == binary_op_t::sub)
+        return { .base = value(s, g) };
+    else if constexpr (index_first) {
+        const value_t index = value(s, g.index);
+
+        address_t a = index_base(s, g.pointer, 0);
+        a.index = index;
+        a.scale = g.stride;
+
+        return a;
+    }
+    else {
+        address_t a = index_base(s, g.pointer, 0);
+        a.index = value(s, g.index);
+        a.scale = g.stride;
+
+        return a;
+    }
+}
+
+// p[i], *(p + i): the machine's addressing form at the strides of int
+// and of pointers, which are scales, the pointer the base and the index
+// the index, (%rax,%rcx,4), each generated in the order written (G13),
+// a local's address with rbp the base, indexed(); the pointer written
+// first is held outside the registers the index's top operator pins,
+// p[a / b]'s p outside rax and rdx (chapter 6.5).
+template< typename N >
+    requires(!constant< N >)
+address_t
+pointed(state_t &s,
+        const gep_t< binary_op_t::add, N, false > &g,
+        const expr_t &)
+{
+    if (const auto a = indexed(s, g.pointer, g.index, g.stride))
+        return *a;
+
+    address_t a = index_base(s, g.pointer, pinned_by(g.index));
+    a.index = value(s, g.index);
+    a.scale = g.stride;
+
+    return a;
+}
+
+// i[p], *(i + p): the index generated first, then the pointer's address.
+template< typename N >
+    requires(!constant< N >)
+address_t
+pointed(state_t &s, const gep_t< binary_op_t::add, N, true > &g, const expr_t &)
+{
+    if (const auto a = indexed(s, g.pointer, g.index, g.stride))
+        return *a;
+
+    const value_t index = value(s, g.index);
+
+    address_t a = index_base(s, g.pointer, 0);
+    a.index = index;
+    a.scale = g.stride;
+
+    return a;
+}
+
+// *(p - i): no form subtracts an index, so the difference's value is the
+// base, (%rax).
+template< typename N >
+    requires(!constant< N >)
+address_t
+pointed(state_t &s,
+        const gep_t< binary_op_t::sub, N, false > &g,
+        const expr_t &)
+{
+    return { .base = value(s, g) };
+}
+
+// A cast between pointer types directly over a sum is the sum's own
+// address, rcc's cast_sum(): its stride scales the index, whatever the
+// access's view.
+template< binary_op_t op, typename N, bool index_first >
+address_t
+pointed(state_t &s,
+        const bitcast_t< gep_t< op, N, index_first > > &c,
+        const expr_t &self)
+{
+    return pointed(s, c.pointer, self);
+}
+
+// A cast's value is its operand's, the low bits of whose register are the
+// address.
+template< typename P >
+value_t
+value(state_t &s, const bitcast_t< P > &c, unsigned wanted = 0)
+{
+    return value(s, c.pointer, wanted);
+}
+
+// The n of p + n and p - n as their instruction takes it, rcc's right_t
+// and displacement(): an immediate, the bytes a constant moves the
+// pointer by where 32 bits hold them, or a value held, at the scale its
+// instruction multiplies it by, 1 for a product already formed.
+struct addend_t
+{
+    std::string immediate = { };
+    std::optional< value_t > value = std::nullopt;
+    long scale = 1;
+};
+
+// rcc's displacement() of a constant: its bytes the immediate, else the
+// product held in a register taken outside avoid, movabsq $4000000000,
+// %rcx.
+addend_t constant_displacement(state_t &, long long bytes, unsigned avoid);
+
+// rcc's displacement() of a variable n of p - n: n times the stride in a
+// register, the three-operand imul of a long in memory, imulq $4,
+// -16(%rbp), %rcx, where its load and the imulq on its register were,
+// so the object is read once, where its load would read it (6.1, G13);
+// any other n held, for offset() to scale.
+template< typename W, sign_t S >
+addend_t
+displacement(state_t &s,
+             const load_t< W, view_t::i64, S > &n,
+             long stride,
+             unsigned avoid)
+{
+    return { .value = multiplied(s, address_avoiding(s, n.where, avoid), stride,
+                                 avoid) };
+}
+
+template< typename N >
+addend_t
+displacement(state_t &s, const N &n, long stride, unsigned avoid)
+{
+    return { .value = rvalue_avoiding(s, n, avoid), .scale = stride };
+}
+
+// rcc's multiplied(): the imulq of the object at an address by the
+// stride into a register taken outside avoid, the address consumed.
+value_t multiplied(state_t &, const address_t &at, long stride, unsigned avoid);
+
+// The row of p + n and p - n on the held pointer l and the generated n,
+// rcc's displaced() and offset(): addq $12, L for an immediate; for a
+// held n at a scale, its product in its own register, imulq $4, %rcx,
+// %rcx, then addq or subq of it, R released; the value l.
+value_t displaced(state_t &, binary_op_t op, value_t l, const addend_t &n);
+
+// The leaq of the sum of a base and an index at the stride, rcc's
+// joined_sum(): the operand written first generated outside pinned and
+// handed the register the consumer names, named, the other outside it
+// where held_out() says; the pointer the address the index joins,
+// index_base()'s, so that p[1] + i is leaq 4(%rax,%rcx,4), %rax.
+template< typename N >
+value_t
+joined_sum(state_t &s,
+           const expr_t &pointer,
+           const N &index,
+           long stride,
+           bool index_first,
+           unsigned pinned,
+           unsigned named)
+{
+    if (!index_first) {
+        address_t a = index_base(s, pointer, pinned);
+        a.index = rvalue_avoiding(s, index, held_out(s, *a.base, named));
+        a.scale = stride;
+
+        return address_of(s, a);
+    }
+
+    const value_t n = rvalue_avoiding(s, index, pinned, named);
+
+    address_t a = index_base(s, pointer, held_out(s, n, named));
+    a.index = n;
+    a.scale = stride;
+
+    return address_of(s, a);
+}
+
+// p + n, n + p and p - n, 6.5.7p9, rcc's pointer_arithmetic(): a local's
+// address plus a constant is the leaq of folded()'s one operand, leaq
+// -8(%rbp), %rax for &x + 1; any other address plus a constant the
+// leaq of summed()'s; a local's address plus a variable index the leaq
+// of indexed()'s.  A sum of an index at the stride, a scale, is
+// joined_sum()'s leaq, (%rax,%rcx,4), and so is c + p by a constant
+// whose bytes 32 bits do not hold, which keeps the order written; c + p
+// by any other constant is p + c, rcc's ordered_sum(), the constant
+// having no evaluation.  Otherwise the pointer first, outside the
+// registers n's top operator pins and handed the consumer's register,
+// wanted_left(), then n as the instruction takes it, then displaced():
+// addq $12, %rax, subq $12, %rax, and imulq $4, %rcx, %rcx; subq %rcx,
+// %rax for p - i.
+template< binary_op_t op, typename N, bool index_first >
+value_t
+value(state_t &s, const gep_t< op, N, index_first > &g, unsigned wanted = 0)
+{
+    const auto named = named_offset(g);
+    if constexpr (constant< N >) {
+        if (const auto a = folded(s, named))
+            return address_of(s, *a);
+
+        if (const auto a = summed(s, lvalue_offset(g), named.has_value()))
+            return address_of(s, *a);
+    }
+    else if constexpr (op == binary_op_t::add) {
+        if (const auto a = indexed(s, g.pointer, g.index, g.stride))
+            return address_of(s, *a);
+    }
+
+    constexpr bool constant_index = constant< N >;
+    long long bytes = 0;
+    if constexpr (constant_index)
+        bytes = scaled< binary_op_t::add >(value_of(g.index), g.stride);
+
+    const bool pointer_first =
+        !index_first || (constant_index && fits_imm32(bytes));
+    const unsigned pinned = pointer_first ? pinned_by(g.index) : 0;
+    const unsigned left = pointer_first ? wanted_left(s, wanted, 0, g.index) :
+                                          wanted_left(s, wanted, 0, g.pointer);
+
+    if (op == binary_op_t::add && !(pointer_first && constant_index))
+        return joined_sum(s, g.pointer, g.index, g.stride, !pointer_first,
+                          pinned, left);
+
+    const value_t l = rvalue_avoiding(s, g.pointer, pinned, left);
+    const unsigned avoid = held_out(s, l, left);
+    if constexpr (constant_index)
+        return displaced(s, op, l, constant_displacement(s, bytes, avoid));
+    else
+        return displaced(s, op, l, displacement(s, g.index, g.stride, avoid));
+}
+
+// The subq of p - q on the held p, l, rcc's subtract_pointer(): q an
+// object in memory of 64 bits the instruction's own operand, subq
+// -16(%rbp), %rax, its address formed outside pinned; any other q held,
+// outside pinned, and released.
+template< typename W, sign_t S >
+void
+subtract_pointer(state_t &s,
+                 value_t l,
+                 const load_t< W, view_t::i64, S > &q,
+                 unsigned pinned)
+{
+    const address_t at = address_avoiding(s, q.where, pinned);
+    const auto [left, source] = operands(s, l, at);
+    operate(s, binary_op_t::sub, left, source, view_t::i64);
+    release(s, at);
+}
+
+template< typename R >
+void
+subtract_pointer(state_t &s, value_t l, const R &q, unsigned pinned)
+{
+    const value_t r = rvalue_avoiding(s, q, pinned);
+    arithmetic(s, binary_op_t::sub, l, r, view_t::i64, 0);
+}
+
+// p - q, 6.5.7p10, rcc's difference(): the subq of the addresses, q an
+// object in memory the instruction's operand, subq -16(%rbp), %rax, then
+// the division by the stride, a long, idivq by the stride held, movq
+// $4, %rcx, not a shift, since the two pointers are any two addresses
+// (G6).  q and the stride are taken with rax and rdx left for last, as a
+// divisor is, so the difference is in rax where rax is free, and the
+// quotient stays there.  A difference keeps its own pin, as a division
+// does: it is generated outside any reservation around it.
+template< typename R >
+value_t
+value(state_t &s, const difference_t< R > &d, unsigned wanted = 0)
+{
+    const unsigned outer = std::exchange(s.reserved, 0u);
+    const unsigned pinned = pins(family_t::division);
+
+    const value_t l = rvalue_avoiding(s, d.lhs, pinned_by(d.rhs));
+    subtract_pointer(s, l, d.rhs, pinned);
+
+    const value_t stride =
+        rvalue_avoiding(s, literal_t< view_t::i64 > { d.stride }, pinned);
+    const value_t v =
+        divide(s, binary_op_t::sdiv, l, stride, view_t::i64, wanted);
+
+    s.reserved = outer;
+
+    return v;
 }
 
 // The extension of the held value v of the view from to the view to by

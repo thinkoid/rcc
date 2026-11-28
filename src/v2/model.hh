@@ -74,6 +74,43 @@ concept on_rvalue =
 template< typename T >
 concept on_constant_of = requires(const T &t) { constant_of(t); };
 
+template< typename T >
+concept on_amd64_pointed =
+    requires(rcc::amd64::state_t &s, const T &t, const rcc::expr_t &self) {
+        pointed(s, t, self);
+    };
+
+template< typename T >
+concept on_arm64_pointed =
+    requires(rcc::arm64::state_t &s,
+             const T &t,
+             rcc::arm64::between_t between,
+             const rcc::expr_t &self) { pointed(s, t, between, 0, self); };
+
+template< typename T >
+concept on_named_offset = requires(const T &t) { named_offset(t); };
+
+template< typename T >
+concept on_lvalue_offset =
+    requires(const T &t, const rcc::expr_t &self) { lvalue_offset(t, self); };
+
+template< typename T >
+concept on_index_of =
+    requires(rcc::arm64::state_t &s, const T &t) { index_of(s, t); };
+
+template< typename T >
+concept on_denoted =
+    requires(const T &t, const rcc::expr_t &self, rcc::arm64::denoted_t d) {
+        denoted(t, self, d);
+    };
+
+template< typename T >
+concept on_constant_sum = requires(const T &t) { constant_sum(t); };
+
+template< typename T >
+concept on_bitcast =
+    requires(const T &t, const rcc::expr_t &self) { make_bitcast(t, self); };
+
 } // namespace niche
 
 namespace rcc {
@@ -143,6 +180,11 @@ struct expr_t::interface_t
     // the summaries of the subtree, x86-64's (principle 3)
     virtual unsigned pinned_within(const amd64::state_t &) const = 0;
     virtual unsigned moved_within(const amd64::state_t &) const = 0;
+    virtual bool spills_within(const amd64::state_t &) const = 0;
+
+    // the address a pointer's value designates, x86-64's descriptor
+    virtual amd64::address_t pointed(amd64::state_t &,
+                                     const expr_t &self) const = 0;
 
     // the summaries both targets read (principle 3): the width rule, at
     // a sign, and the view
@@ -156,6 +198,24 @@ struct expr_t::interface_t
 
     // aarch64's summary of whether a call is within, rcc's calls_within()
     virtual bool calls_within(const arm64::state_t &) const = 0;
+
+    // the summaries of a pointer both targets read: a local's address plus
+    // a constant, and the address of a place through a pointer plus one
+    virtual std::optional< named_offset_t > named_offset() const = 0;
+    virtual std::optional< lvalue_offset_t >
+    lvalue_offset(const expr_t &self) const = 0;
+
+    // aarch64's: the address a pointer's value designates, an integer as
+    // the form reads it, the walk down a pointer's chain and the sum by
+    // a constant
+    virtual arm64::address_t pointed(arm64::state_t &,
+                                     arm64::between_t,
+                                     int size,
+                                     const expr_t &self) const = 0;
+    virtual arm64::index_t index_of(arm64::state_t &) const = 0;
+    virtual arm64::denoted_t denoted(const expr_t &self,
+                                     arm64::denoted_t) const = 0;
+    virtual std::optional< based_t > constant_sum() const = 0;
 
     // what the builder of ?: asks of an erased operand: whether it is a
     // truth value, and the operand under its conversions that keep
@@ -191,6 +251,18 @@ struct expr_t::interface_t
     virtual bool is_place() const = 0;
     virtual expr_t address_of() const = 0;
     virtual expr_t indirection(view_t, sign_t, const expr_t &self) const = 0;
+
+    // pointer arithmetic: the index's model, which knows the index's
+    // class, makes the sum; the right pointer's, the difference; and the
+    // operand's, a cast between pointer types
+    virtual expr_t gep(binary_op_t op,
+                       const expr_t &pointer,
+                       long stride,
+                       bool index_first,
+                       const expr_t &self) const = 0;
+    virtual expr_t
+    difference(const expr_t &lhs, long stride, const expr_t &self) const = 0;
+    virtual expr_t bitcast(const expr_t &self) const = 0;
 
     // an assignment: the place's model, which knows the place's type,
     // makes the node
@@ -278,6 +350,20 @@ fwd_moved_within(const S &s, const T &t)
 }
 
 template< typename S, typename T >
+bool
+fwd_spills_within(const S &s, const T &t)
+{
+    return spills_within(s, t);
+}
+
+template< typename S, typename T >
+amd64::address_t
+fwd_pointed(S &s, const T &t, const expr_t &self)
+{
+    return pointed(s, t, self);
+}
+
+template< typename S, typename T >
 value_t
 fwd_value_in(S &s, const T &t, unsigned wanted)
 {
@@ -296,6 +382,49 @@ bool
 fwd_calls_within(const S &s, const T &t)
 {
     return calls_within(s, t);
+}
+
+template< typename S, typename T >
+arm64::address_t
+fwd_pointed(
+    S &s, const T &t, arm64::between_t between, int size, const expr_t &self)
+{
+    return pointed(s, t, between, size, self);
+}
+
+template< typename S, typename T >
+arm64::index_t
+fwd_index_of(S &s, const T &t)
+{
+    return index_of(s, t);
+}
+
+template< typename T >
+arm64::denoted_t
+fwd_denoted(const T &t, const expr_t &self, arm64::denoted_t d)
+{
+    return denoted(t, self, std::move(d));
+}
+
+template< typename T >
+std::optional< based_t >
+fwd_constant_sum(const T &t)
+{
+    return constant_sum(t);
+}
+
+template< typename T >
+std::optional< named_offset_t >
+fwd_named_offset(const T &t)
+{
+    return named_offset(t);
+}
+
+template< typename T >
+std::optional< lvalue_offset_t >
+fwd_lvalue_offset(const T &t, const expr_t &self)
+{
+    return lvalue_offset(t, self);
 }
 
 template< typename T >
@@ -902,6 +1031,79 @@ fwd_indirection(view_t view, sign_t sign, const P &pointer)
     });
 }
 
+// The index of pointer arithmetic in the class its builder reads,
+// make_gep(): a constant, a load, a load under a trunc_t of its own
+// view among them, rcc's memory_operand() under under_kept_bits(), and
+// a top_t where its top operator, read through its conversions, pins
+// registers on x86-64, pinning()'s; anything else erased.  The
+// crossings of fwd_gep() are instantiated once for each class, and not
+// for each node type.
+template< typename T >
+decltype(auto)
+gep_operand(const T &e, const expr_t &self)
+{
+    return pinning(e, self);
+}
+
+template< constant C >
+const C &
+gep_operand(const C &c, const expr_t &)
+{
+    return c;
+}
+
+template< typename W, view_t V, sign_t S >
+const load_t< W, V, S > &
+gep_operand(const load_t< W, V, S > &l, const expr_t &)
+{
+    return l;
+}
+
+template< view_t V, typename W, sign_t S >
+const load_t< W, V, S > &
+gep_operand(const trunc_t< V, load_t< W, V, S > > &t, const expr_t &)
+{
+    return t.arg;
+}
+
+// A sum on an index in its class: the crossing from the operator and the
+// order, values in the parser, to the node's parameters (principle 6),
+// - never having its integer first.
+template< typename N >
+expr_t
+fwd_gep(binary_op_t op,
+        const expr_t &pointer,
+        const N &index,
+        long stride,
+        bool index_first,
+        const expr_t &self)
+{
+    if (op == binary_op_t::sub)
+        return make_gep< binary_op_t::sub, false >(pointer, index, stride,
+                                                   self);
+
+    if (index_first)
+        return make_gep< binary_op_t::add, true >(pointer, index, stride, self);
+
+    return make_gep< binary_op_t::add, false >(pointer, index, stride, self);
+}
+
+// The right pointer of a difference in the class its builder reads,
+// make_difference(): a load, or anything else erased.
+template< typename T >
+const expr_t &
+difference_operand(const T &, const expr_t &self)
+{
+    return self;
+}
+
+template< typename W, view_t V, sign_t S >
+const load_t< W, V, S > &
+difference_operand(const load_t< W, V, S > &l, const expr_t &)
+{
+    return l;
+}
+
 // Whether a node is a place an assignment stores into: whether the
 // builder of an assignment, make_assign(), is written for it (principle
 // 8).
@@ -981,16 +1183,17 @@ fwd_compound(binary_op_t,
 // over the node's handle self and the node's own lines, value(),
 // view(), valid(), where its primary would be instantiated for every
 // node type (docs/typed-tree.md 3.1): an effect, a store and aarch64's
-// jump derived from the value, x86-64's jump from value_branch(); the
-// value for a consumer at a return's top; the node itself for a
-// conversion that keeps it and for the lvalue conversion; the
-// summaries' answers of a node that is none of theirs; and each
-// builder's hop on the handle's class.  Each body is the primary's, so a
-// model that takes it writes what the primary writes.  The parser asks
-// is_place() before it builds an address and is_assignable() before an
-// assignment, a step or a compound assignment, and says the error of
-// one that is not, so none of those four is built of a node that is no
-// place.
+// jump derived from the value, x86-64's jump from value_branch(); a
+// pointer's address formed from its value; the value for an index and
+// for a consumer at a return's top; the node itself for a conversion
+// that keeps it, for a cast between pointer types and for the lvalue
+// conversion; the summaries' answers of a node that is none of theirs;
+// and each builder's hop on the handle's class.  Each body is the
+// primary's, so a model that takes it writes what the primary writes.
+// The parser asks is_place() before it builds an address and
+// is_assignable() before an assignment, a step or a compound
+// assignment, and says the error of one that is not, so none of those
+// four is built of a node that is no place.
 struct expr_t::defaults_t: interface_t
 {
     // an expression for its effect, 6.8.4p2, its value dropped
@@ -1043,6 +1246,56 @@ struct expr_t::defaults_t: interface_t
     value_t value_in(arm64::state_t &s, unsigned wanted) const override
     {
         return value(s, wanted);
+    }
+
+    // a pointer's address formed from its value, each target's
+    // erased_pointed(), and its summaries none, the node itself the
+    // walk's base and the value the index
+    amd64::address_t pointed(amd64::state_t &s,
+                             const expr_t &self) const override
+    {
+        return amd64::erased_pointed(s, self);
+    }
+
+    arm64::address_t pointed(arm64::state_t &s,
+                             arm64::between_t between,
+                             int size,
+                             const expr_t &self) const override
+    {
+        return arm64::erased_pointed(s, self, between, size);
+    }
+
+    std::optional< named_offset_t > named_offset() const override
+    {
+        return std::nullopt;
+    }
+
+    std::optional< lvalue_offset_t >
+    lvalue_offset(const expr_t &) const override
+    {
+        return std::nullopt;
+    }
+
+    std::optional< based_t > constant_sum() const override
+    {
+        return std::nullopt;
+    }
+
+    arm64::denoted_t denoted(const expr_t &self,
+                             arm64::denoted_t d) const override
+    {
+        d.base = self;
+        return d;
+    }
+
+    arm64::index_t index_of(arm64::state_t &s) const override
+    {
+        return { value(s, 0) };
+    }
+
+    expr_t bitcast(const expr_t &self) const override
+    {
+        return self;
     }
 
     bool takes_name(const arm64::state_t &) const override
@@ -1124,6 +1377,22 @@ struct expr_t::defaults_t: interface_t
         return fwd_indirection(view, sign, self);
     }
 
+    expr_t gep(binary_op_t op,
+               const expr_t &pointer,
+               long stride,
+               bool index_first,
+               const expr_t &self) const override
+    {
+        return fwd_gep(op, pointer, self, stride, index_first, self);
+    }
+
+    expr_t difference(const expr_t &lhs,
+                      long stride,
+                      const expr_t &self) const override
+    {
+        return make_difference(lhs, self, stride, self);
+    }
+
     expr_t conversion(view_t to,
                       sign_t to_sign,
                       view_t from,
@@ -1168,6 +1437,8 @@ concept erased_operand = requires(const T &t, const expr_t &self) {
     { unary_operand(t, self) } -> handle_class;
     { converted_operand(t, self) } -> handle_class;
     { pointed_operand(t, self) } -> handle_class;
+    { gep_operand(t, self) } -> handle_class;
+    { difference_operand(t, self) } -> handle_class;
     { comma_operand(t, self) } -> handle_class;
     { crossing(t, self) } -> handle_class;
     { classed_operand(t, self) } -> handle_class;
@@ -1225,6 +1496,11 @@ struct expr_t::model_t: defaults_t
     unsigned moved_within(const amd64::state_t &s) const override
     {
         return fwd_moved_within(s, held);
+    }
+
+    bool spills_within(const amd64::state_t &s) const override
+    {
+        return fwd_spills_within(s, held);
     }
 
     int valid(sign_t sign) const override
@@ -1287,6 +1563,10 @@ concept niched = niche::on_effect< T, amd64::state_t > ||
                  niche::on_initialize< T, arm64::state_t, arm64::address_t > ||
                  niche::on_value_in< T > || niche::on_under_widening< T > ||
                  niche::on_rvalue< T > || niche::on_constant_of< T > ||
+                 niche::on_amd64_pointed< T > || niche::on_arm64_pointed< T > ||
+                 niche::on_named_offset< T > || niche::on_lvalue_offset< T > ||
+                 niche::on_index_of< T > || niche::on_denoted< T > ||
+                 niche::on_constant_sum< T > || niche::on_bitcast< T > ||
                  place< T > || assignable< T > || !erased_operand< T >;
 
 // The model of a niched node type: the lines of defaults_t by its niche
@@ -1403,6 +1683,94 @@ struct expr_t::niched_model_t final: model_t< T >
     indirection(view_t view, sign_t sign, const expr_t &self) const override
     {
         return fwd_indirection(view, sign, pointed_operand(held, self));
+    }
+
+    amd64::address_t pointed(amd64::state_t &s,
+                             const expr_t &self) const override
+    {
+        if constexpr (niche::on_amd64_pointed< T >)
+            return fwd_pointed(s, held, self);
+        else
+            return defaults_t::pointed(s, self);
+    }
+
+    arm64::address_t pointed(arm64::state_t &s,
+                             arm64::between_t between,
+                             int size,
+                             const expr_t &self) const override
+    {
+        if constexpr (niche::on_arm64_pointed< T >)
+            return fwd_pointed(s, held, between, size, self);
+        else
+            return defaults_t::pointed(s, between, size, self);
+    }
+
+    std::optional< named_offset_t > named_offset() const override
+    {
+        if constexpr (niche::on_named_offset< T >)
+            return fwd_named_offset(held);
+        else
+            return defaults_t::named_offset();
+    }
+
+    std::optional< lvalue_offset_t >
+    lvalue_offset(const expr_t &self) const override
+    {
+        if constexpr (niche::on_lvalue_offset< T >)
+            return fwd_lvalue_offset(held, self);
+        else
+            return defaults_t::lvalue_offset(self);
+    }
+
+    std::optional< based_t > constant_sum() const override
+    {
+        if constexpr (niche::on_constant_sum< T >)
+            return fwd_constant_sum(held);
+        else
+            return defaults_t::constant_sum();
+    }
+
+    arm64::denoted_t denoted(const expr_t &self,
+                             arm64::denoted_t d) const override
+    {
+        if constexpr (niche::on_denoted< T >)
+            return fwd_denoted(held, self, std::move(d));
+        else
+            return defaults_t::denoted(self, std::move(d));
+    }
+
+    arm64::index_t index_of(arm64::state_t &s) const override
+    {
+        if constexpr (niche::on_index_of< T >)
+            return fwd_index_of(s, held);
+        else
+            return defaults_t::index_of(s);
+    }
+
+    expr_t gep(binary_op_t op,
+               const expr_t &pointer,
+               long stride,
+               bool index_first,
+               const expr_t &self) const override
+    {
+        return fwd_gep(op, pointer, gep_operand(held, self), stride,
+                       index_first, self);
+    }
+
+    expr_t difference(const expr_t &lhs,
+                      long stride,
+                      const expr_t &self) const override
+    {
+        return make_difference(lhs, difference_operand(held, self), stride,
+                               self);
+    }
+
+    expr_t bitcast(const expr_t &self) const override
+    {
+        if constexpr (niche::on_bitcast< T >)
+            return make_bitcast(held, self);
+        else
+            return defaults_t::bitcast(self);
     }
 
     bool is_assignable() const override

@@ -19,6 +19,7 @@
 #include "stmt.hh"
 
 #include <algorithm>
+#include <concepts>
 #include <cstdint>
 #include <optional>
 #include <stdexcept>
@@ -101,11 +102,14 @@ struct global_t
 };
 
 // The where of the object a pointer's value designates, 6.5.4.2p4, 4.2:
-// the pointer, erased, since its address is the pointer's value, and no
-// row of a place reads the pointer's type.
+// the pointer, erased, since its address is the pointer's own entry
+// point, and no row of a place reads the pointer's type; and the bytes
+// of the object, its view's, data aarch64's forms read, whose
+// displacement is in reach as a multiple of the access's size.
 struct indirect_t
 {
     expr_t pointer;
+    int size;
 };
 
 // A place, 4.2: the where W of an object of view V and of a type of the
@@ -135,6 +139,46 @@ template< typename W >
 struct address_of_t
 {
     W where;
+};
+
+// p + n, n + p and p - n, 6.5.7p9, LLVM's getelementptr: the pointer and
+// the index in the order written, index_first saying the integer is
+// written first, which keeps G13's order; the index widened to 64 bits
+// by the parser, rcc's widened_index(), and kept in the class the rows
+// read, a constant, a top_t, a load of 64 bits for -, or erased; the
+// stride, the pointee's size in bytes, data the builder moves in from
+// the C type (principle 9).  LLVM has no gep of a subtraction and puts
+// the base first; rcc's rows differ for - and for n + p, so op and the
+// order are the node's.  The pointer is erased: no row at the strides
+// of int and of pointers reads its class.
+template< binary_op_t op, typename N, bool index_first >
+struct gep_t
+{
+    expr_t pointer;
+    N index;
+    long stride;
+};
+
+// p - q, 6.5.7p10: the difference of the addresses divided by the
+// stride, a long.  R is q's class: a load of 64 bits, which x86-64's
+// subq takes in memory, or erased.
+template< typename R >
+struct difference_t
+{
+    expr_t lhs;
+    R rhs;
+    long stride;
+};
+
+// A cast between pointer types directly over a sum, 6.3.2.3p7, which
+// keeps the address and writes nothing, LLVM's bitcast: both targets
+// read one cast directly over a sum and no deeper, rcc's cast_sum() and
+// under, so P is the sum's type, a gep_t, or erased, a cast over such a
+// cast, which hides the sum.  A cast over anything else is no node.
+template< typename P >
+struct bitcast_t
+{
+    P pointer;
 };
 
 // -e ~e !e, 6.5.4.3p3 to p5, on an operand that is no constant, which
@@ -638,6 +682,27 @@ view_of(const address_of_t< W > &)
     return view_t::i64;
 }
 
+template< binary_op_t op, typename N, bool index_first >
+constexpr view_t
+view_of(const gep_t< op, N, index_first > &)
+{
+    return view_t::i64;
+}
+
+template< typename R >
+constexpr view_t
+view_of(const difference_t< R > &)
+{
+    return view_t::i64;
+}
+
+template< typename P >
+constexpr view_t
+view_of(const bitcast_t< P > &)
+{
+    return view_t::i64;
+}
+
 template< unary_op_t op, view_t V, typename A >
 constexpr view_t
 view_of(const unary_t< op, V, A > &)
@@ -788,10 +853,32 @@ valid_of(const C &c, sign_t sign)
     return written(promoted_width(view_of(c)), sign);
 }
 
-// An address is written at 64 bits, leaq or add of the x name.
+// An address is written at 64 bits, leaq or add of the x name, and so
+// is a pointer's sum, a difference's quotient and a cast's operand.
 template< typename W >
 constexpr int
 valid_of(const address_of_t< W > &, sign_t)
+{
+    return 64;
+}
+
+template< binary_op_t op, typename N, bool index_first >
+constexpr int
+valid_of(const gep_t< op, N, index_first > &, sign_t)
+{
+    return 64;
+}
+
+template< typename R >
+constexpr int
+valid_of(const difference_t< R > &, sign_t)
+{
+    return 64;
+}
+
+template< typename P >
+constexpr int
+valid_of(const bitcast_t< P > &, sign_t)
 {
     return 64;
 }
@@ -1028,6 +1115,178 @@ valid_of(const conditional_void_t &, sign_t)
     throw std::logic_error("v2: the value of a void conditional");
 }
 
+// The bytes a constant index moves a pointer of the stride by, G6:
+// rcc's scaled(), the product modulo 2^64, negated for -.
+template< binary_op_t op >
+long long
+scaled(long long index, long stride)
+{
+    const auto bytes = static_cast< unsigned long long >(index) *
+                       static_cast< unsigned long long >(stride);
+
+    return static_cast< long long >(op == binary_op_t::sub ? 0ull - bytes :
+                                                             bytes);
+}
+
+// Two byte offsets added modulo 2^64, rcc's wrapped_add(): G6, the
+// address arithmetic wraps.
+inline long long
+wrapped_add(long long a, long long b)
+{
+    return static_cast< long long >(static_cast< unsigned long long >(a) +
+                                    static_cast< unsigned long long >(b));
+}
+
+// A pointer that is a local's address plus a constant, rcc's
+// named_offset() (c1-common.cc), Ritchie's &x+c: the local's slot and
+// the offset in bytes, which each target folds into the operand's
+// displacement, so no instruction forms the local's address first.  A
+// summary of the pointer's subtree, each node's overload one case of
+// rcc's walk (principle 3): the address of a local, the address of the
+// place through such a pointer, a sum by a constant, each constant
+// scaled by its own stride, and a cast between pointer types; none for
+// any other pointer.
+struct named_offset_t
+{
+    slot_t slot;
+    long long offset;
+};
+
+namespace primary {
+
+template< typename T >
+std::optional< named_offset_t >
+named_offset(const T &)
+{
+    return std::nullopt;
+}
+
+} // namespace primary
+
+// A primary of a line whose default a model writes once (model.hh),
+// where a row still asks it of an operand of its own type, lives in a
+// namespace of its own, which the namespace of its niches uses: a row
+// finds a primary as it finds a niche, by its name, but lookup by
+// argument, which ignores a using directive, finds the niches alone.
+// So whether a node type has a niche of its own on such a line is a
+// concept asked by argument alone, from outside rcc (model.hh's
+// niche::), and a category derived from the rows (principle 7): a model
+// whose node has none answers by the line's default, one function, and
+// not by the primary instantiated for its type.
+using namespace primary;
+
+inline std::optional< named_offset_t >
+named_offset(const address_of_t< slot_t > &a)
+{
+    return named_offset_t { a.where, 0 };
+}
+
+inline std::optional< named_offset_t >
+named_offset(const address_of_t< indirect_t > &a)
+{
+    return named_offset(a.where.pointer);
+}
+
+template< binary_op_t op, constant C, bool index_first >
+std::optional< named_offset_t >
+named_offset(const gep_t< op, C, index_first > &g)
+{
+    auto named = named_offset(g.pointer);
+    if (named)
+        named->offset = wrapped_add(named->offset,
+                                    scaled< op >(value_of(g.index), g.stride));
+
+    return named;
+}
+
+template< typename P >
+std::optional< named_offset_t >
+named_offset(const bitcast_t< P > &c)
+{
+    return named_offset(c.pointer);
+}
+
+// A pointer that is the address of the object through a pointer plus a
+// constant, rcc's lvalue_offset() (c1-common.cc) of such a root: the
+// address &*E, which is E's value, the pointer E, and the offset in
+// bytes; a summary as named_offset() is, its cases rcc's, the root a
+// local's address none, since named_offset() takes it.  self is the
+// handle of the node asked.
+struct lvalue_offset_t
+{
+    expr_t address;
+    expr_t pointer;
+    long long offset;
+};
+
+inline std::optional< lvalue_offset_t >
+lvalue_offset(const address_of_t< indirect_t > &a, const expr_t &self)
+{
+    return lvalue_offset_t { self, a.where.pointer, 0 };
+}
+
+// A sum and a cast are no root, so their summary needs no handle of
+// their own: a value row asks it too.
+template< typename T >
+std::optional< lvalue_offset_t >
+lvalue_offset(const T &)
+{
+    return std::nullopt;
+}
+
+template< binary_op_t op, constant C, bool index_first >
+std::optional< lvalue_offset_t >
+lvalue_offset(const gep_t< op, C, index_first > &g)
+{
+    auto at = lvalue_offset(g.pointer);
+    if (at)
+        at->offset =
+            wrapped_add(at->offset, scaled< op >(value_of(g.index), g.stride));
+
+    return at;
+}
+
+template< binary_op_t op, constant C, bool index_first >
+std::optional< lvalue_offset_t >
+lvalue_offset(const gep_t< op, C, index_first > &g, const expr_t &)
+{
+    return lvalue_offset(g);
+}
+
+template< typename P >
+std::optional< lvalue_offset_t >
+lvalue_offset(const bitcast_t< P > &c)
+{
+    return lvalue_offset(c.pointer);
+}
+
+template< typename P >
+std::optional< lvalue_offset_t >
+lvalue_offset(const bitcast_t< P > &c, const expr_t &)
+{
+    return lvalue_offset(c);
+}
+
+// A sum of an address and a constant read off the tree before anything
+// is generated, rcc's based_t: the pointer whose value is the base, and
+// the displacement in bytes.  A sum by a constant is one, as rcc's
+// based() reads one under a dereference's address, constant_sum(): its
+// pointer and its bytes; none for any other pointer, a summary of the
+// pointer's own type.
+struct based_t
+{
+    expr_t pointer;
+    long long displacement;
+};
+
+template< constant C, bool index_first >
+std::optional< based_t >
+constant_sum(const gep_t< binary_op_t::add, C, index_first > &g)
+{
+    return based_t { g.pointer,
+                     scaled< binary_op_t::add >(value_of(g.index), g.stride) };
+}
+
 // Whether a node is a truth value, rcc's truth_value(): its value 0 or 1
 // set from a compare or a jump, a comparison, !, && or ||, seen through
 // the conversions that keep whether a value is 0, rcc's
@@ -1045,18 +1304,6 @@ truth_value(const T &)
 }
 
 } // namespace primary
-
-// A primary of a line whose default a model writes once (model.hh),
-// where a row still asks it of an operand of its own type, lives in a
-// namespace of its own, which the namespace of its niches uses: a row
-// finds a primary as it finds a niche, by its name, but lookup by
-// argument, which ignores a using directive, finds the niches alone.
-// So whether a node type has a niche of its own on such a line is a
-// concept asked by argument alone, from outside rcc (model.hh's
-// niche::), and a category derived from the rows (principle 7): a model
-// whose node has none answers by the line's default, one function, and
-// not by the primary instantiated for its type.
-using namespace primary;
 
 template< binary_op_t op, view_t V, typename L, typename R >
 bool

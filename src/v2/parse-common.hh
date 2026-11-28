@@ -38,9 +38,12 @@ namespace rcc {
 // for the function a call names; and whether it is a constant reached
 // through a signed overflow, 6.6p4, the mark every operator's
 // production sets, overflowed(), and a constant expression reads,
-// warn_overflowed(); and whether it is the result of *, through
+// warn_overflowed(); whether it is the result of *, through
 // parentheses, a place through a pointer, whose step and compound
-// assignment are not yet.
+// assignment are not yet; and the token of a cast of an object to a
+// type of its width, narrower than an int or an unsigned, through
+// parentheses and the casts that widen it, or null, for the not yet of
+// its index, widened_index()'s.
 struct operand_t
 {
     type_t type;
@@ -48,6 +51,7 @@ struct operand_t
     const token_t *name = nullptr;
     bool overflowed = false;
     bool indirect = false;
+    const token_t *kept_bits = nullptr;
 };
 
 // What a scope holds of a name it declares, 6.2.1p4: the operand a use

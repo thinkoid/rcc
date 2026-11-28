@@ -224,8 +224,56 @@ stepped(const token_t &op, step_op_t s, operand_t arg)
     return { arg.type, make_step(s, std::move(*arg.node)) };
 }
 
-// The postfix operators, 6.5.3, left to right: a call and a step, and a
-// subscript and a member access, which are not yet.
+// *E of the operand arg, at op, rcc's indirection(): arg read for its
+// value, which is a pointer, 6.5.4.2p2, an error at op otherwise; the
+// result the lvalue it points to, of the pointee type, p4, the place
+// make_indirection() makes at the pointee's view and sign, which over an
+// address is the place again, so *&x is x.  A function designator,
+// whose value is its function's address, is not yet.
+operand_t
+indirect(const token_t &op, const operand_t &arg)
+{
+    expr_t pointer = rvalue(op, arg);
+    if (!is< pointer_t >(arg.type))
+        fail(op, "indirection requires a pointer operand");
+
+    const type_t &t = pointee_of(arg.type);
+
+    return { .type = t,
+             .node =
+                 make_indirection(std::move(pointer), view_of(t), sign_of(t)),
+             .indirect = true };
+}
+
+operand_t addition(const token_t &, operand_t, operand_t);
+
+// E1[E2], 6.5.3.2, its '[' op, rcc's subscript(): *((E1)+(E2)), p2, built
+// as exactly that tree, so the pointer may be either operand.  One
+// operand is a pointer to a complete object type and the other an
+// integer, p1, which the subscript checks itself, so that its errors
+// name the subscript and not the addition: two pointers make a
+// subscript that is no integer, and a pointer to a function is refused
+// in the subscript's words.
+operand_t
+subscript(const token_t &op, operand_t e, operand_t index)
+{
+    require_value(op, e);
+    require_value(op, index);
+
+    if (!points(e) && !points(index))
+        fail(op, "subscripted value is not an array or a pointer");
+
+    if (points(e) && points(index))
+        fail(op, "array subscript is not an integer");
+
+    if (is< function_t >(pointee(points(e) ? e : index)))
+        fail(op, "subscript of a pointer to a function");
+
+    return indirect(op, addition(op, std::move(e), std::move(index)));
+}
+
+// The postfix operators, 6.5.3, left to right: a subscript, a call and
+// a step, and a member access, which is not yet.
 operand_t
 postfix_expression(parser_t &p)
 {
@@ -236,7 +284,15 @@ postfix_expression(parser_t &p)
 
         switch (op.kind) {
         case tok_t::lparen: e = call(p, op, e); break;
-        case tok_t::lbracket: not_yet(op, "array subscript");
+        case tok_t::lbracket: {
+            advance(p);
+
+            operand_t index = expression(p);
+            expect(p, tok_t::rbracket, "expected ']' after subscript");
+
+            e = subscript(op, std::move(e), std::move(index));
+            break;
+        }
         case tok_t::dot:
         case tok_t::arrow: not_yet(op, quoted(op.text) + " operator");
         case tok_t::inc:
@@ -378,6 +434,31 @@ prefix_step(parser_t &p)
     return stepped(op, s, std::move(arg));
 }
 
+// The token of a conversion at op of the operand e to the integer type
+// t, for the not yet of an index, widened_index()'s: a conversion of an
+// object to a type of its width, narrower than an int or an unsigned,
+// whose widening the builder reads as the object at t, rcc's
+// widened_read(), where aarch64's index form reads the conversion
+// itself, rcc's index_of(), and extends it again; and a conversion of
+// such a conversion that narrows nothing.  Null for any other
+// conversion.
+const token_t *
+keeps_bits(const token_t &op, const operand_t &e, const type_t &t)
+{
+    if (!is< int_t >(t) || !is< int_t >(e.type))
+        return nullptr;
+
+    const int bits = width(view_of(t));
+    if (e.kept_bits && bits >= width(view_of(e.type)))
+        return e.kept_bits;
+
+    const bool kept =
+        e.node && is_assignable(*e.node) && bits == width(view_of(e.type)) &&
+        (bits < 32 || (bits == 32 && sign_of(t) == sign_t::unsigned_));
+
+    return kept ? &op : nullptr;
+}
+
 // +e, 6.5.4.3p2, rcc's unary_plus(): the operand's value in its promoted
 // type, and no node of its own; but the value is no lvalue, so an
 // operand that is a place, whose promotion made no node, stands under
@@ -394,7 +475,8 @@ unary_plus(parser_t &p)
     if (arg.type == t && is_assignable(*arg.node))
         return { .type = t,
                  .node = conversion(arg, t),
-                 .overflowed = arg.overflowed };
+                 .overflowed = arg.overflowed,
+                 .kept_bits = keeps_bits(op, arg, t) };
 
     return { .type = t, .node = promote(arg), .overflowed = arg.overflowed };
 }
@@ -476,27 +558,13 @@ address_of(parser_t &p)
     return { make_pointer(arg.type), make_address_of(*arg.node) };
 }
 
-// *E, 6.5.4.2, rcc's indirection(): its operand a cast expression, read
-// for its value, which is a pointer, p2, an error at the * otherwise;
-// the result the lvalue it points to, of the pointee type, p4, the place
-// make_indirection() makes at the pointee's view and sign, which over
-// an address is the place again, so *&x is x.  A function designator,
-// whose value is its function's address, is not yet.
+// *E, 6.5.4.2, its operand a cast expression, indirect()'s at the *.
 operand_t
 indirection(parser_t &p)
 {
     const token_t &op = advance(p);
-    const operand_t arg = cast_expression(p);
-    expr_t pointer = rvalue(op, arg);
-    if (!is< pointer_t >(arg.type))
-        fail(op, "indirection requires a pointer operand");
 
-    const type_t &t = pointee_of(arg.type);
-
-    return { .type = t,
-             .node =
-                 make_indirection(std::move(pointer), view_of(t), sign_of(t)),
-             .indirect = true };
+    return indirect(op, cast_expression(p));
 }
 
 // The size of the type t, 6.5.4.4p2, rcc's sizeof_(): a constant of
@@ -576,14 +644,15 @@ unary_expression(parser_t &p)
 // (its footnote); a constant folds to the constant of T, which keeps
 // its mark.  A pointer and an integer convert both ways, a pointer
 // being an unsigned long to the conversion, and a pointer to another
-// pointer keeps the address, 6.3.2.3p7, and writes nothing: its node is
-// the operand's value, which every row of rcc reads through such a
-// cast.  A pointer constant converted to an integer is a cast in rcc,
-// no constant, which rcc-v2 does not make yet.  A void operand is an
-// error at the '(', require_value()'s, and a function designator is not
-// yet.  A function type, which a typedef name may name, is no scalar
-// type, p2, rcc's error at the '(' once the operand is read, and an enum
-// in its own list is refuse_not_yet_type()'s there.
+// pointer keeps the address, 6.3.2.3p7, and writes nothing,
+// make_bitcast()'s, which is the operand's own node but over a sum,
+// whose address both targets read through one such cast.  A pointer
+// constant converted to an integer is a cast in rcc, no constant, which
+// rcc-v2 does not make yet.  A void operand is an error at the '(',
+// require_value()'s, and a function designator is not yet.  A function
+// type, which a typedef name may name, is no scalar type, p2, rcc's
+// error at the '(' once the operand is read, and an enum in its own
+// list is refuse_not_yet_type()'s there.
 operand_t
 cast(const token_t &open, const type_t &t, const operand_t &arg)
 {
@@ -595,14 +664,17 @@ cast(const token_t &open, const type_t &t, const operand_t &arg)
     const operand_t value { arg.type, rvalue(open, arg) };
 
     if (is< pointer_t >(t) && is< pointer_t >(arg.type))
-        return { .type = t, .node = value.node, .overflowed = arg.overflowed };
+        return { .type = t,
+                 .node = make_bitcast(*value.node),
+                 .overflowed = arg.overflowed };
 
     if (is< pointer_t >(arg.type) && constant_of(*value.node))
         not_yet(open, "cast of a pointer constant to an integer");
 
     return { .type = t,
              .node = conversion(value, t),
-             .overflowed = arg.overflowed };
+             .overflowed = arg.overflowed,
+             .kept_bits = keeps_bits(open, arg, t) };
 }
 
 // The cast operator, 6.5.5: a parenthesized type name starts a cast,
@@ -715,20 +787,51 @@ multiplicative_expression(parser_t &p)
 
 // Pointer arithmetic needs a pointer to a complete object type, 6.5.7p2,
 // p3, rcc's require_object_pointee(): no function, an error at the
-// operator.
-void
+// operator.  Its stride is the pointee's size, which rcc-v2 takes for
+// int and the pointers alone, 4 and 8, scales of x86-64's form: the
+// arithmetic on a pointer to any other type, &c + 1 on a char c, is not
+// yet.
+long
 require_object_pointee(const token_t &at, const operand_t &pointer)
 {
-    if (is< function_t >(pointee(pointer)))
+    const type_t &t = pointee(pointer);
+    if (is< function_t >(t))
         fail(at, "arithmetic on a pointer to a function");
+
+    if (!is< pointer_t >(t) && t != int_type())
+        not_yet(at, "arithmetic on a pointer to a type other than 'int' or "
+                    "a pointer");
+
+    return size_of(t);
+}
+
+// An integer operand of pointer arithmetic, rcc's widened_index():
+// promoted and then widened to 64 bits in its own signedness, in one
+// conversion, as an operand of the usual arithmetic conversions goes; an
+// unsigned index never reads as negative (G6).  An index of an object
+// under a cast to its width, keeps_bits()'s, is not yet, at the cast.
+expr_t
+widened_index(const operand_t &e)
+{
+    if (e.kept_bits)
+        not_yet(*e.kept_bits, "an index of an object under a cast to its "
+                              "width");
+
+    const bool is_signed = as< int_t >(promoted(e.type)).is_signed;
+    const type_t t =
+        make_int(64, is_signed,
+                 is_signed ? int_kind_t::long_ : int_kind_t::unsigned_long);
+
+    return convert_to(e, t);
 }
 
 // +, 6.5.7, its token at, rcc's addition(): two integers are
 // arithmetic()'s; with a pointer, a function designator's value among
 // them, a pointer and an integer in either order, p2, two pointers an
 // error at the operator, and the pointer's pointee an object type,
-// require_object_pointee()'s.  The arithmetic is not yet.  rcc reads
-// both values before it judges their types.
+// require_object_pointee()'s; the result of the pointer's type, the
+// sum in the order written, make_gep()'s, of the index widened.  rcc
+// reads both values before it judges their types.
 operand_t
 addition(const token_t &at, operand_t lhs, operand_t rhs)
 {
@@ -740,16 +843,22 @@ addition(const token_t &at, operand_t lhs, operand_t rhs)
     if (points(lhs) && points(rhs))
         fail(at, "cannot add two pointers");
 
-    require_object_pointee(at, points(lhs) ? lhs : rhs);
-    not_yet(at, "arithmetic on a pointer");
+    const bool left = points(lhs);
+    const operand_t &pointer = left ? lhs : rhs;
+    const long stride = require_object_pointee(at, pointer);
+
+    return { pointer.type,
+             make_gep(binary_op_t::add, rvalue(at, pointer),
+                      widened_index(left ? rhs : lhs), stride, !left) };
 }
 
 // -, 6.5.7, its token at, rcc's subtraction(): two integers are
-// arithmetic()'s; with a pointer, a pointer less an integer, p3, or two
-// pointers to compatible object types, each pointee an object type,
-// require_object_pointee()'s, in rcc's order, a pointer to a function
-// judged before the pointees; anything else an error at the operator.
-// The arithmetic is not yet.
+// arithmetic()'s; with a pointer, a pointer less an integer, p3, of the
+// pointer's type, make_gep()'s, or two pointers to compatible object
+// types, each pointee an object type, require_object_pointee()'s, in
+// rcc's order, a pointer to a function judged before the pointees, a
+// long, ptrdiff_t on LP64, make_difference()'s, p10; anything else an
+// error at the operator.
 operand_t
 subtraction(const token_t &at, operand_t lhs, operand_t rhs)
 {
@@ -761,11 +870,19 @@ subtraction(const token_t &at, operand_t lhs, operand_t rhs)
     if (!points(lhs))
         fail(at, "cannot subtract a pointer from an integer");
 
-    require_object_pointee(at, lhs);
+    if (is< function_t >(pointee(lhs)))
+        require_object_pointee(at, lhs);
+
     if (points(rhs) && !compatible(pointee(lhs), pointee(rhs)))
         fail(at, "subtraction of pointers to different types");
 
-    not_yet(at, "arithmetic on a pointer");
+    const long stride = require_object_pointee(at, lhs);
+    if (points(rhs))
+        return { make_int(64, true, int_kind_t::long_),
+                 make_difference(rvalue(at, lhs), rvalue(at, rhs), stride) };
+
+    return { lhs.type, make_gep(binary_op_t::sub, rvalue(at, lhs),
+                                widened_index(rhs), stride, false) };
 }
 
 // The additive operators, 6.5.7, left-associative, as rcc's loop reads

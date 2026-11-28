@@ -11,6 +11,7 @@
 #include "assembly.hh"
 
 #include <algorithm>
+#include <bit>
 #include <cstddef>
 #include <format>
 #include <iterator>
@@ -638,6 +639,12 @@ address(state_t &s, slot_t where)
     return { .displacement = slot_of(s, where) };
 }
 
+address_t
+address(state_t &s, slot_t where, between_t)
+{
+    return address(s, where);
+}
+
 namespace {
 
 // The address of an object the unit only declares, from the GOT, rcc's
@@ -671,28 +678,68 @@ address(state_t &s, const global_t &where)
     return { .base = symbol_address(s, where) };
 }
 
-// The pointer's value is generated where the object's load would be,
-// outside what the caller reserves around address().
 address_t
-address(state_t &s, const indirect_t &where)
+address(state_t &s, const global_t &where, between_t)
 {
-    return { .base = value(s, where.pointer) };
+    return address(s, where);
 }
 
-unsigned
-registers_of(const state_t &s, const address_t &a)
+// The pointer's address is formed where the object's load would be,
+// outside what the caller reserves around address().
+address_t
+address(state_t &s, const indirect_t &where, between_t between)
 {
-    if (!a.base)
-        return 0;
+    return pointed(s, where.pointer, between, where.size);
+}
 
-    const auto r = s.registers.values[a.base->id].reg;
+namespace {
+
+// The register a held value is in, as a set for take() to avoid; none
+// for a value spilled.
+unsigned
+held_in(const state_t &s, value_t v)
+{
+    const auto r = s.registers.values[v.id].reg;
 
     return r ? bit(*r) : 0;
 }
 
+// The index as the last operand of an access, or of add and sub, which
+// take the same forms, rcc's index_operand(), 2.3: x2, lsl #2, or w2,
+// sxtw #2, and the forms without the shift, x2 and w2, sxtw.
+std::string
+index_operand(reg_t r, extend_t extend, int shift)
+{
+    if (extend == extend_t::lsl && shift == 0)
+        return reg(r, 64);
+
+    if (extend == extend_t::lsl)
+        return std::format("{}, lsl #{}", reg(r, 64), shift);
+
+    const auto name = extend == extend_t::sxtw ? "sxtw" : "uxtw";
+    if (shift == 0)
+        return std::format("{}, {}", reg(r, 32), name);
+
+    return std::format("{}, {} #{}", reg(r, 32), name, shift);
+}
+
+} // namespace
+
+unsigned
+registers_of(const state_t &s, const address_t &a)
+{
+    return (a.base ? held_in(s, *a.base) : 0) |
+           (a.index ? held_in(s, *a.index) : 0);
+}
+
+// A displacement is written and an index is not where both are set, as
+// rcc writes them; no maker sets both.
 std::string
 operand(state_t &s, const address_t &a, unsigned avoid)
 {
+    if (a.constant)
+        throw std::logic_error("v2: a constant index not held");
+
     if (!a.label.empty()) {
         insn(s, "adrp", { "x16", a.label });
         return std::format("[x16, :lo12:{}]", a.label);
@@ -701,7 +748,20 @@ operand(state_t &s, const address_t &a, unsigned avoid)
     if (!a.base)
         return slot_operand(a.displacement);
 
-    return std::format("[{}]", reg(reg_of(s, *a.base, avoid), 64));
+    avoid |= registers_of(s, a);
+
+    std::string index;
+    if (a.index) {
+        const reg_t r = reg_of(s, *a.index, avoid);
+        avoid |= bit(r);
+        index = ", " + index_operand(r, a.extend, a.shift);
+    }
+
+    const std::string base = reg(reg_of(s, *a.base, avoid), 64);
+    if (a.displacement != 0)
+        return std::format("[{}, #{}]", base, a.displacement);
+
+    return std::format("[{}{}]", base, index);
 }
 
 void
@@ -709,6 +769,23 @@ release(state_t &s, const address_t &a)
 {
     if (a.base)
         release(s, *a.base);
+
+    if (a.index)
+        release(s, *a.index);
+}
+
+address_t
+held_index(state_t &s, address_t a, unsigned avoid)
+{
+    if (!a.constant)
+        return a;
+
+    const value_t held = hold(s, take(s, avoid | registers_of(s, a)));
+    constant(s, reg_of(s, held), *a.constant, 64);
+    a.index = held;
+    a.constant.reset();
+
+    return a;
 }
 
 namespace {
@@ -1036,8 +1113,23 @@ store(state_t &s, reg_t r, std::string_view to, view_t view)
 void
 store_zero(state_t &s, const address_t &at, view_t view)
 {
-    const std::string to = operand(s, at);
+    const address_t held = held_index(s, at, 0);
+    const std::string to = operand(s, held);
     insn(s, store_of(view), { zero(width(view)), to });
+    if (at.constant)
+        release(s, *held.index);
+}
+
+// The value's register first, then the constant index held outside it,
+// rcc's initialize() and store().
+void
+store(state_t &s, value_t v, const address_t &at, view_t view)
+{
+    const reg_t r = reg_of(s, v, registers_of(s, at));
+    const address_t held = held_index(s, at, bit(r));
+    store(s, r, operand(s, held, bit(r)), view);
+    if (at.constant)
+        release(s, *held.index);
 }
 
 namespace {
@@ -1180,6 +1272,657 @@ divided(state_t &s, value_t v, long long size, view_t view)
     insn(s, "msub", { reg(left, bits), q, reg(right, bits), reg(left, bits) });
 
     return { quotient, v };
+}
+
+// pointers
+
+bool
+in_reach(long long displacement, int size)
+{
+    const bool scaled = displacement >= 0 && displacement % size == 0 &&
+                        displacement / size <= 4095;
+
+    return scaled || (displacement >= -256 && displacement <= 255);
+}
+
+namespace {
+
+// The instructions constant() writes for value at width, rcc's
+// constant_length(): one where a mov encodes it, and otherwise one for
+// each chunk that differs from the start, the lesser of those over zeros
+// and those over ones.
+int
+constant_length(long long value, int width)
+{
+    const auto u = bits_of(value, width);
+
+    int zeros = 0;
+    int ones = 0;
+    for (int i = 0; i < width / 16; ++i) {
+        zeros += ((u >> 16 * i) & 0xffff) != 0;
+        ones += ((u >> 16 * i) & 0xffff) != 0xffff;
+    }
+
+    if (zeros <= 1 || ones <= 1 || bitmask_immediate(value, width))
+        return 1;
+
+    return std::min(zeros, ones);
+}
+
+// Whether a slot's displacement is one 5.3 reaches, through x16 past
+// the access's own reach, rcc's in_frame_reach().
+bool
+in_frame_reach(long long displacement)
+{
+    return displacement >= 0 && displacement < (1LL << 24);
+}
+
+// The n of p + n, n + p and p - n as the row takes it, rcc's right_t: an
+// immediate, or a value held, read by the form's extend and shifted by
+// the stride's log.
+struct addend_t
+{
+    std::string immediate = { };
+    std::optional< value_t > value = std::nullopt;
+    extend_t extend = extend_t::lsl;
+    int shift = 0;
+};
+
+// The log of a stride, the shift of the form that scales by it.
+int
+shift_of(long stride)
+{
+    return std::countr_zero(static_cast< unsigned long >(stride));
+}
+
+// The product c * s of a constant n and the stride, rcc's product(): the
+// immediate where add and sub encode it, add x0, x0, #-4 written with
+// the source's operator; otherwise held in a register by the constant
+// row of 6.4, taken outside avoid.
+addend_t
+product(state_t &s, long long d, unsigned avoid = 0)
+{
+    if (arithmetic_immediate(d, 64))
+        return { .immediate = imm(d) };
+
+    const value_t v = hold(s, take(s, avoid));
+    constant(s, reg_of(s, v), d, 64);
+
+    return { .value = v };
+}
+
+// The n of p + n, n + p and p - n generated as the row takes it, rcc's
+// displacement(): a constant as its product with the stride; any other
+// n the index of index_of(), shifted by the add, add x0, x0, w1, sxtw #2.
+addend_t
+displacement(state_t &s,
+             const expr_t &n,
+             std::optional< long long > constant,
+             long stride)
+{
+    if (constant)
+        return product(s, scaled< binary_op_t::add >(*constant, stride));
+
+    const index_t index = index_of(s, n);
+
+    return { .value = index.value,
+             .extend = index.extend,
+             .shift = shift_of(stride) };
+}
+
+// The row of p + n and p - n, rcc's offset(), 6.3, G6: the address plus
+// or minus n, modulo 2^64, on the held pointer and the generated n, the
+// result in L: add L, L, #c*s for an immediate; add L, L, R, lsl #2 or
+// add L, L, wR, sxtw #2 with n its last operand; n written first, n + p,
+// is L, a plain register keeping the source's order, add L, L, R, and
+// the shifted or extended one, which the instruction takes last only,
+// add L, R, wL, sxtw #2.  The register the consumer names, wanted, is
+// the destination where it may be written (6.1).
+value_t
+offset(state_t &s,
+       binary_op_t op,
+       value_t pointer,
+       const addend_t &n,
+       bool pointer_first,
+       unsigned wanted = 0)
+{
+    const auto mnemonic = op == binary_op_t::add ? "add" : "sub";
+
+    if (!n.value) {
+        const auto from = reg(reg_of(s, pointer), 64);
+        const auto to = reg(final_destination(s, pointer, wanted), 64);
+        insn(s, mnemonic, { to, from, n.immediate });
+        return pointer;
+    }
+
+    const auto [first, second] = pointer_first ?
+                                     operands(s, pointer, *n.value) :
+                                     operands(s, *n.value, pointer);
+    const reg_t p = pointer_first ? first : second;
+    const reg_t i = pointer_first ? second : first;
+
+    const auto index = index_operand(i, n.extend, n.shift);
+    const bool plain = n.extend == extend_t::lsl && n.shift == 0;
+
+    const value_t result = pointer_first ? pointer : *n.value;
+    release(s, pointer_first ? *n.value : pointer);
+
+    const auto to = reg(final_destination(s, result, wanted), 64);
+
+    if (pointer_first || !plain)
+        insn(s, mnemonic, { to, reg(p, 64), index });
+    else
+        insn(s, mnemonic, { to, reg(i, 64), reg(p, 64) });
+
+    return result;
+}
+
+// p + n on a slot's address as a base, x29 the sum's source, rcc's
+// frame_sum(): add xR, x29, R in the index's register by the form's
+// extend and shift, add x0, x29, w0, sxtw #2; the value is the sum.
+value_t
+frame_sum(state_t &s, const addend_t &n)
+{
+    const reg_t i = reg_of(s, *n.value);
+    insn(s, "add", { reg(i, 64), "x29", index_operand(i, n.extend, n.shift) });
+
+    return *n.value;
+}
+
+// An access through a row by a variable index, or by a constant only,
+// rcc's row_access_t, read off the tree before anything is generated:
+// denoted()'s index, if any, its order and stride, and its base; the
+// base's address as a slot's, folded()'s, or as based()'s pointer and
+// displacement, the constants with the walk's bytes, the total with
+// the access's column, and whether the index is the access's register
+// offset.  A row on a label, layers(), is no case of this language.
+struct row_access_t
+{
+    expr_t pointer;
+    std::optional< expr_t > index;
+    bool pointer_first;
+    long stride;
+    std::optional< address_t > slot = std::nullopt;
+    std::optional< based_t > plan = std::nullopt;
+    long long carried = 0;
+    long long total = 0;
+    bool register_offset = false;
+};
+
+// Whether a row's index is the access's register offset, rcc's
+// offset_index(), 6.3: a row with one, with no constant at all and
+// nothing evaluated between the address and the access, of an index the
+// access's form scales as it is, at the access's own size.
+bool
+offset_index(const row_access_t &row, int size, bool nothing_between)
+{
+    return row.index && !row.slot && row.total == 0 && nothing_between &&
+           row.stride == size;
+}
+
+// The access of size bytes at column into a row by a variable index, or
+// by a constant only, where it takes the row's constants or its index
+// into its own form, rcc's row_access(), 6.3; none where it takes
+// neither, and none on a local's address with no index, whose operand is
+// folded()'s.
+std::optional< row_access_t >
+row_access(state_t &s,
+           const expr_t &row,
+           long long column,
+           int size,
+           bool nothing_between)
+{
+    const denoted_t at = denoted(row, { });
+
+    row_access_t a { .pointer = *at.base,
+                     .index = at.index,
+                     .pointer_first = !at.index_first,
+                     .stride = at.index_stride };
+
+    const auto named = named_offset(a.pointer);
+    if (!a.index && (at.bytes == 0 || named))
+        return std::nullopt;
+
+    a.slot = named ? folded(s, named) : std::nullopt;
+    if (named && !a.slot)
+        return std::nullopt;
+
+    a.plan = named ? std::nullopt : based(a.pointer);
+    a.carried = wrapped_add(at.bytes, a.slot ? a.slot->displacement :
+                                      a.plan ? a.plan->displacement :
+                                               0);
+    a.total = wrapped_add(a.carried, column);
+    if (a.carried != 0 && !in_reach(a.total, size))
+        return std::nullopt;
+
+    a.register_offset = offset_index(a, size, nothing_between);
+    if (!a.slot && a.carried == 0 && !a.register_offset)
+        return std::nullopt;
+
+    return a;
+}
+
+// The base of a row's sum, generated, rcc's row_base(): nothing for a
+// slot, x29 being the base, or the value of based()'s pointer or of the
+// pointer itself.
+std::optional< value_t >
+row_base(state_t &s, const row_access_t &row)
+{
+    if (row.slot)
+        return std::nullopt;
+
+    return value(s, row.plan ? row.plan->pointer : row.pointer);
+}
+
+// The operand of an access through a row, rcc's row_address(), 6.3: the
+// pointer's base and the index in the order written (G13), then the
+// index the register offset, or its sum with the base, with x29 for a
+// slot, frame_sum()'s, and the constants the access's displacement past
+// the sum.  A row with no index is the base and the total.
+address_t
+row_address(state_t &s, const row_access_t &row)
+{
+    if (!row.index)
+        return { .base = row_base(s, row),
+                 .displacement = static_cast< int >(row.total) };
+
+    std::optional< value_t > base;
+    if (row.pointer_first)
+        base = row_base(s, row);
+
+    const addend_t index =
+        displacement(s, *row.index, std::nullopt, row.stride);
+
+    if (!row.pointer_first)
+        base = row_base(s, row);
+
+    if (row.register_offset)
+        return { .base = base,
+                 .index = index.value,
+                 .extend = index.extend,
+                 .shift = index.shift };
+
+    if (row.slot)
+        return { .base = frame_sum(s, index),
+                 .displacement = static_cast< int >(row.total) };
+
+    return { .base =
+                 offset(s, binary_op_t::add, *base, index, row.pointer_first),
+             .displacement = static_cast< int >(row.total) };
+}
+
+// An access's offset in bytes that no displacement holds, rcc's
+// held_offset(), 6.3: held in a register by the constant row of 6.4
+// after the base and read as the access's register offset, unscaled.
+address_t
+held_offset(state_t &s, value_t base, long long bytes)
+{
+    const value_t held = hold(s, take(s, held_in(s, base)));
+    constant(s, reg_of(s, held), bytes, 64);
+
+    return { .base = base, .index = held };
+}
+
+// Whether an access of size bytes holds its constants' total, rcc's
+// holds_total(), 6.3: denoted()'s walk under the pointer, with no index
+// and on a base that is no local's address, and the access's own d,
+// whose total no displacement reaches; held once where that is fewer
+// instructions than the parts take at the least.
+bool
+holds_total(const denoted_t &at, long long d, int size, bool whole)
+{
+    if (at.index || at.constants == 0 || named_offset(*at.base))
+        return false;
+
+    const long long total = wrapped_add(at.bytes, d);
+    if (in_reach(total, size))
+        return false;
+
+    const int under = at.constants == 1 ? at.written : at.bytes != 0;
+    const int own = in_reach(d, size) ? 0 : 1;
+    const int least =
+        whole ? std::min(under + own, product_length(total)) : under + own;
+
+    return constant_length(total, 64) < least;
+}
+
+// The address of a base and an index read before a store's right
+// operand, rcc's index_across(), 6.3: the two registers the form reads,
+// but where that operand holds a call, between, and the convention
+// would spill both across it, their sum, one register held.
+address_t
+index_across(state_t &s,
+             value_t base,
+             index_t index,
+             int shift,
+             bool pointer_first,
+             between_t between)
+{
+    if (between != between_t::call || !held_in(s, base) ||
+        !held_in(s, index.value))
+        return { .base = base,
+                 .index = index.value,
+                 .extend = index.extend,
+                 .shift = shift };
+
+    const addend_t n { .value = index.value,
+                       .extend = index.extend,
+                       .shift = shift };
+
+    return { .base = offset(s, binary_op_t::add, base, n, pointer_first) };
+}
+
+// The index form of an access through a sum, rcc's indexed_address():
+// the base and the index generated in the order written (G13), then
+// held across between, index_across()'s.
+address_t
+indexed_address(state_t &s, const sum_t &sum, between_t between)
+{
+    const int shift = shift_of(sum.stride);
+
+    if (!sum.index_first) {
+        const value_t base = value(s, sum.pointer);
+        const index_t index = index_of(s, sum.index);
+        return index_across(s, base, index, shift, true, between);
+    }
+
+    const index_t index = index_of(s, sum.index);
+    const value_t base = value(s, sum.pointer);
+
+    return index_across(s, base, index, shift, false, between);
+}
+
+// The value of a row on a local by a variable index, rcc's named_row():
+// denoted()'s base a local's address, the constants the slot's own add,
+// and then the index added in the order written (G13).
+std::optional< value_t >
+named_row(state_t &s, const expr_t &e, unsigned wanted)
+{
+    const denoted_t at = denoted(e, { });
+    if (!at.index || at.constants == 0)
+        return std::nullopt;
+
+    auto named = named_offset(*at.base);
+    if (!named)
+        return std::nullopt;
+
+    named->offset = wrapped_add(named->offset, at.bytes);
+    const auto a = folded(s, named);
+    if (!a)
+        return std::nullopt;
+
+    std::optional< value_t > base;
+    if (!at.index_first)
+        base = address_of(s, *a);
+
+    const addend_t n =
+        displacement(s, *at.index, std::nullopt, at.index_stride);
+
+    if (at.index_first)
+        base = address_of(s, *a);
+
+    return offset(s, binary_op_t::add, *base, n, !at.index_first, wanted);
+}
+
+// The value of a pointer whose sums by a constant are more than one,
+// rcc's joined(): denoted()'s base, a variable index on the way added to
+// it in the order written, and the constants as one add of their sum,
+// add x0, x0, #12 for p + 1 + 2, where that is fewer instructions than
+// the rows write for the parts; none for one constant, whose add is the
+// rows' own, and for a local's address.
+std::optional< value_t >
+joined(state_t &s, const expr_t &e, unsigned wanted)
+{
+    const denoted_t at = denoted(e, { });
+    if (at.constants < 2 || named_offset(*at.base))
+        return std::nullopt;
+
+    if ((at.bytes == 0 ? 0 : product_length(at.bytes)) >= at.written)
+        return std::nullopt;
+
+    if (!at.index) {
+        if (at.bytes == 0)
+            return value(s, *at.base, wanted);
+
+        const value_t base = value(s, *at.base);
+        return offset(s, binary_op_t::add, base, product(s, at.bytes), true,
+                      wanted);
+    }
+
+    std::optional< value_t > base;
+    if (!at.index_first)
+        base = value(s, *at.base);
+
+    const addend_t n =
+        displacement(s, *at.index, std::nullopt, at.index_stride);
+
+    if (at.index_first)
+        base = value(s, *at.base);
+
+    const bool last = at.bytes == 0;
+    const value_t sum = offset(s, binary_op_t::add, *base, n, !at.index_first,
+                               last ? wanted : 0);
+    if (last)
+        return sum;
+
+    return offset(s, binary_op_t::add, sum, product(s, at.bytes), true, wanted);
+}
+
+} // namespace
+
+int
+product_length(long long d)
+{
+    if (arithmetic_immediate(d, 64))
+        return 1;
+
+    return constant_length(d, 64) + 1;
+}
+
+std::optional< based_t >
+based(const expr_t &pointer)
+{
+    const auto at = lvalue_offset(pointer);
+    if (!at || named_offset(pointer))
+        return std::nullopt;
+
+    return based(at->address, at->pointer, at->offset);
+}
+
+std::optional< based_t >
+based(const expr_t &address, const expr_t &q, long long offset)
+{
+    if (const auto inner = based(q))
+        return based_t { inner->pointer,
+                         wrapped_add(inner->displacement, offset) };
+
+    if (const auto sum = constant_sum(q))
+        return based_t { sum->pointer, wrapped_add(sum->displacement, offset) };
+
+    return based_t { address, offset };
+}
+
+std::optional< address_t >
+folded(state_t &s, const std::optional< named_offset_t > &named)
+{
+    if (!named)
+        return std::nullopt;
+
+    const long long displacement =
+        wrapped_add(slot_of(s, named->slot), named->offset);
+    if (!in_frame_reach(displacement))
+        return std::nullopt;
+
+    return address_t { .displacement = static_cast< int >(displacement) };
+}
+
+// named_access(): the displacement or its low 12 bits in reach.
+std::optional< address_t >
+folded_access(state_t &s,
+              const std::optional< named_offset_t > &named,
+              int size)
+{
+    const auto a = folded(s, named);
+    if (!a || (!in_reach(a->displacement, size) &&
+               !in_reach(a->displacement & 0xfff, size)))
+        return std::nullopt;
+
+    if (!in_reach(a->displacement, size))
+        throw std::logic_error(
+            "v2: not yet: a slot beyond the reach of [x29, #d]");
+
+    return a;
+}
+
+std::optional< address_t >
+summed(state_t &s,
+       const std::optional< based_t > &plan,
+       int size,
+       bool nothing_between)
+{
+    if (!plan)
+        return std::nullopt;
+
+    if (const auto row = row_access(s, plan->pointer, plan->displacement, size,
+                                    nothing_between))
+        return row_address(s, *row);
+
+    const bool reached = in_reach(plan->displacement, size);
+    if (!reached && nothing_between &&
+        !arithmetic_immediate(plan->displacement, 64))
+        return held_offset(s, value(s, plan->pointer), plan->displacement);
+
+    if (!reached)
+        return std::nullopt;
+
+    return address_t { .base = value(s, plan->pointer),
+                       .displacement = static_cast< int >(plan->displacement) };
+}
+
+address_t
+erased_pointed(state_t &s, const expr_t &self, between_t between, int size)
+{
+    if (const auto a = folded_access(s, named_offset(self), size))
+        return *a;
+
+    if (const auto a =
+            summed(s, based(self), size, between == between_t::nothing))
+        return *a;
+
+    return { .base = value(s, self) };
+}
+
+address_t
+sum_address(state_t &s,
+            const sum_t &sum,
+            bool under,
+            const expr_t &pointer,
+            between_t between,
+            int size)
+{
+    const bool nothing_between = between == between_t::nothing;
+
+    std::optional< long long > d;
+    if (sum.constant)
+        d = scaled< binary_op_t::add >(*sum.constant, sum.stride);
+
+    // p[3], (p + 1)[2]: the constants one displacement, [x0, #12]
+    if (d)
+        if (const auto row =
+                row_access(s, sum.pointer, *d, size, nothing_between))
+            return row_address(s, *row);
+
+    if (d && nothing_between)
+        if (const denoted_t at = denoted(sum.pointer, { });
+            holds_total(at, *d, size, under))
+            return held_offset(s, value(s, *at.base),
+                               wrapped_add(at.bytes, *d));
+
+    if (d && in_reach(*d, size))
+        return { .base = value(s, sum.pointer),
+                 .displacement = static_cast< int >(*d) };
+
+    // p[i] = g(): the row of a place held across a call, its base and its
+    // index summed, the constants under the pointer the access's
+    // displacement
+    if (!d && between == between_t::call)
+        if (const auto row = row_access(s, sum.self, 0, size, false))
+            return row_address(s, *row);
+
+    // under a cast, the index form only where it saves the add, and only
+    // at a stride of the access's size
+    if (under && (!nothing_between || (d && arithmetic_immediate(*d, 64)) ||
+                  sum.stride != size))
+        return { .base = value(s, pointer) };
+
+    // p[5000] = g(): the constant index held back past the right operand
+    if (d && !nothing_between)
+        return { .base = value(s, sum.pointer),
+                 .shift = shift_of(sum.stride),
+                 .constant = *sum.constant };
+
+    return indexed_address(s, sum, between);
+}
+
+index_t
+widened_index(state_t &s, value_t v, int valid, view_t from, sign_t sign)
+{
+    if (valid < 32) {
+        v = extended(s, v, from, sign, view_t::i32, 0);
+        valid = written(32, sign);
+    }
+
+    if (valid >= 64)
+        return { v };
+
+    return { v, sign == sign_t::signed_ ? extend_t::sxtw : extend_t::uxtw };
+}
+
+value_t
+pointer_arithmetic(state_t &s,
+                   binary_op_t op,
+                   const sum_t &sum,
+                   const std::optional< named_offset_t > &named,
+                   unsigned wanted)
+{
+    if (const auto a = folded(s, named))
+        return address_of(s, *a);
+
+    if (const auto v = named_row(s, sum.self, wanted))
+        return *v;
+
+    if (const auto v = joined(s, sum.self, wanted))
+        return *v;
+
+    if (!sum.index_first) {
+        const value_t l = value(s, sum.pointer);
+        return offset(s, op, l,
+                      displacement(s, sum.index, sum.constant, sum.stride),
+                      true, wanted);
+    }
+
+    const addend_t n = displacement(s, sum.index, sum.constant, sum.stride);
+    const value_t p = value(s, sum.pointer);
+
+    return offset(s, op, p, n, false, wanted);
+}
+
+// The sub into the left value's register, then the stride held in a
+// register taken after it, and the division.
+value_t
+difference(state_t &s,
+           const expr_t &lhs,
+           const expr_t &rhs,
+           long stride,
+           unsigned wanted)
+{
+    const value_t l = value(s, lhs);
+    const value_t r = value(s, rhs);
+    const value_t d = arithmetic(s, binary_op_t::sub, l, r, view_t::i64, 0);
+
+    const value_t size = constant_value(s, stride, view_t::i64);
+
+    return arithmetic(s, binary_op_t::sdiv, d, size, view_t::i64, wanted);
 }
 
 // The value goes to the convention's result register, 7.2, rcc's

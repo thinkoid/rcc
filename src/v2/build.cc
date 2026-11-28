@@ -93,6 +93,18 @@ moved_within(const amd64::state_t &s, const expr_t &e)
     return e.self->moved_within(s);
 }
 
+bool
+spills_within(const amd64::state_t &s, const expr_t &e)
+{
+    return e.self->spills_within(s);
+}
+
+amd64::address_t
+pointed(amd64::state_t &s, const expr_t &e)
+{
+    return e.self->pointed(s, e);
+}
+
 int
 valid_of(const expr_t &e, sign_t sign)
 {
@@ -121,6 +133,42 @@ bool
 calls_within(const arm64::state_t &s, const expr_t &e)
 {
     return e.self->calls_within(s);
+}
+
+std::optional< named_offset_t >
+named_offset(const expr_t &e)
+{
+    return e.self->named_offset();
+}
+
+std::optional< lvalue_offset_t >
+lvalue_offset(const expr_t &e)
+{
+    return e.self->lvalue_offset(e);
+}
+
+arm64::address_t
+pointed(arm64::state_t &s, const expr_t &e, arm64::between_t between, int size)
+{
+    return e.self->pointed(s, between, size, e);
+}
+
+arm64::index_t
+index_of(arm64::state_t &s, const expr_t &e)
+{
+    return e.self->index_of(s);
+}
+
+arm64::denoted_t
+denoted(const expr_t &e, arm64::denoted_t d)
+{
+    return e.self->denoted(e, std::move(d));
+}
+
+std::optional< based_t >
+constant_sum(const expr_t &e)
+{
+    return e.self->constant_sum();
 }
 
 bool
@@ -235,6 +283,29 @@ expr_t
 make_indirection(expr_t pointer, view_t view, sign_t sign)
 {
     return pointer.self->indirection(view, sign, pointer);
+}
+
+// One hop through the index's model, which knows its class (3.3): the
+// pointer's class no row reads.
+expr_t
+make_gep(
+    binary_op_t op, expr_t pointer, expr_t index, long stride, bool index_first)
+{
+    return index.self->gep(op, pointer, stride, index_first, index);
+}
+
+// One hop through the right pointer's model, which knows its class.
+expr_t
+make_difference(expr_t lhs, expr_t rhs, long stride)
+{
+    return rhs.self->difference(lhs, stride, rhs);
+}
+
+// One hop through the operand's model, which knows whether it is a sum.
+expr_t
+make_bitcast(expr_t pointer)
+{
+    return pointer.self->bitcast(pointer);
 }
 
 bool

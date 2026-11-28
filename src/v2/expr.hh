@@ -41,6 +41,11 @@ struct value_t;
 // place of the join's mov; an extension of its own otherwise (zoo.hh).
 enum class arm_widening_t { free, remainder, extension };
 
+// What the summaries of a pointer's subtree hand up, zoo.hh's.
+struct named_offset_t;
+struct lvalue_offset_t;
+struct based_t;
+
 class expr_t
 {
     struct interface_t;
@@ -72,6 +77,8 @@ public:
     friend void value_branch(amd64::state_t &, const expr_t &, int, bool);
     friend unsigned pinned_within(const amd64::state_t &, const expr_t &);
     friend unsigned moved_within(const amd64::state_t &, const expr_t &);
+    friend bool spills_within(const amd64::state_t &, const expr_t &);
+    friend amd64::address_t pointed(amd64::state_t &, const expr_t &);
     friend int valid_of(const expr_t &, sign_t sign);
     friend view_t view_of(const expr_t &);
     friend bool truth_value(const expr_t &);
@@ -82,12 +89,26 @@ public:
     friend value_t value_in(arm64::state_t &, const expr_t &, unsigned wanted);
     friend bool takes_name(const arm64::state_t &, const expr_t &);
     friend bool calls_within(const arm64::state_t &, const expr_t &);
+    friend std::optional< named_offset_t > named_offset(const expr_t &);
+    friend std::optional< lvalue_offset_t > lvalue_offset(const expr_t &);
+    friend arm64::address_t
+    pointed(arm64::state_t &, const expr_t &, arm64::between_t, int size);
+    friend arm64::index_t index_of(arm64::state_t &, const expr_t &);
+    friend arm64::denoted_t denoted(const expr_t &, arm64::denoted_t);
+    friend std::optional< based_t > constant_sum(const expr_t &);
 
     friend expr_t rvalue(expr_t);
     friend std::optional< long long > constant_of(const expr_t &);
     friend bool is_place(const expr_t &);
     friend expr_t make_address_of(expr_t place);
     friend expr_t make_indirection(expr_t pointer, view_t view, sign_t sign);
+    friend expr_t make_gep(binary_op_t op,
+                           expr_t pointer,
+                           expr_t index,
+                           long stride,
+                           bool index_first);
+    friend expr_t make_difference(expr_t lhs, expr_t rhs, long stride);
+    friend expr_t make_bitcast(expr_t pointer);
     friend bool is_assignable(const expr_t &);
     friend expr_t make_assign(expr_t place, expr_t value);
     friend expr_t make_step(step_op_t op, expr_t place);
@@ -134,6 +155,16 @@ void value_branch(amd64::state_t &, const expr_t &, int label, bool sense);
 unsigned pinned_within(const amd64::state_t &, const expr_t &);
 unsigned moved_within(const amd64::state_t &, const expr_t &);
 
+// Whether generating an erased operand spills every held value on
+// x86-64, a call or a branch within it, its third summary, rcc's
+// spills_within() (amd64.hh).
+bool spills_within(const amd64::state_t &, const expr_t &);
+
+// The address an erased pointer's value designates, its entry point on
+// x86-64, rcc's pointed(): that target's descriptor, found by overload
+// on the pointer's type (amd64.hh).
+amd64::address_t pointed(amd64::state_t &, const expr_t &);
+
 // The view of an erased value and the width its register is valid to,
 // the width rule, read at a sign, summaries both targets read
 // (zoo.hh), forwarded to the node it holds.
@@ -169,5 +200,23 @@ bool takes_name(const arm64::state_t &, const expr_t &);
 // Whether a call is within an erased operand, aarch64's summary, rcc's
 // calls_within() (arm64.hh).
 bool calls_within(const arm64::state_t &, const expr_t &);
+
+// Whether an erased pointer is a local's address plus a constant, or the
+// address of a place through a pointer plus one, the summaries both
+// targets read (zoo.hh).
+std::optional< named_offset_t > named_offset(const expr_t &);
+std::optional< lvalue_offset_t > lvalue_offset(const expr_t &);
+
+// aarch64's entry points of an erased pointer and an erased integer, and
+// its summaries of a pointer's chain (arm64.hh): the address its value
+// designates for an access of size bytes, with what comes between the
+// two, rcc's pointed(); an integer as the form reads it, rcc's
+// index_of(); the walk down the chain, rcc's denoted(), handed the walk
+// so far; and the sum by a constant rcc's based() reads.
+arm64::address_t
+pointed(arm64::state_t &, const expr_t &, arm64::between_t, int size);
+arm64::index_t index_of(arm64::state_t &, const expr_t &);
+arm64::denoted_t denoted(const expr_t &, arm64::denoted_t);
+std::optional< based_t > constant_sum(const expr_t &);
 
 } // namespace rcc

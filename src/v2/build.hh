@@ -46,6 +46,18 @@ expr_t make_address_of(expr_t place);
 // pointee's view and of a type of the sign.
 expr_t make_indirection(expr_t pointer, view_t view, sign_t sign);
 
+// p + n, n + p and p - n, 6.5.7p9, of a pointer and an index widened to
+// 64 bits, the stride the pointee's size in bytes, index_first saying
+// the integer is written first; p - q of two pointers to one type,
+// 6.5.7p10, a long; and a cast between pointer types, 6.3.2.3p7.
+expr_t make_gep(binary_op_t op,
+                expr_t pointer,
+                expr_t index,
+                long stride,
+                bool index_first);
+expr_t make_difference(expr_t lhs, expr_t rhs, long stride);
+expr_t make_bitcast(expr_t pointer);
+
 // Whether an expression is a place an assignment stores into, which
 // make_assign() takes, 6.5.17.1p2.
 bool is_assignable(const expr_t &e);

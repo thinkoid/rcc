@@ -20,6 +20,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <stdexcept>
 #include <type_traits>
 
 namespace rcc {
@@ -81,7 +82,7 @@ template< view_t V, sign_t S >
 expr_t
 make_indirection(const expr_t &pointer)
 {
-    return expr_t(place_t< indirect_t, V, S > { { pointer } });
+    return expr_t(place_t< indirect_t, V, S > { { pointer, width(V) / 8 } });
 }
 
 // * over an address is the place again, 6.5.4.2p3: *&x is the place of
@@ -91,6 +92,105 @@ expr_t
 make_indirection(const address_of_t< W > &address)
 {
     return expr_t(place_t< W, V, S > { address.where });
+}
+
+// p + n, n + p and p - n, 6.5.7p9, of a pointer and an index in the
+// class its rows read, of the stride, the pointee's size: the node,
+// its index erased, but for a constant, which drops the identity, p + 0
+// being p, as rcc's drop_identities() does where the node would be
+// built (B1.2); a top_t of a pointer written first, which x86-64 holds
+// its pointer outside; and a load of 64 bits on the right of -, which
+// x86-64's imulq takes in memory.  The index is of 64 bits, the parser
+// having widened it, rcc's widened_index().
+template< binary_op_t op, bool index_first, typename N >
+expr_t
+make_gep(const expr_t &pointer, const N &, long stride, const expr_t &index)
+{
+    return expr_t(gep_t< op, expr_t, index_first > { pointer, index, stride });
+}
+
+template< binary_op_t op, bool index_first, constant C >
+expr_t
+make_gep(const expr_t &pointer, const C &c, long stride, const expr_t &)
+{
+    if (value_of(c) == 0)
+        return pointer;
+
+    if constexpr (view_of(C { }) == view_t::i64)
+        return expr_t(gep_t< op, C, index_first > { pointer, c, stride });
+    else
+        throw std::logic_error("v2: an index of no 64-bit view");
+}
+
+template< binary_op_t op, bool index_first, family_t F >
+expr_t
+make_gep(const expr_t &pointer,
+         const top_t< F > &n,
+         long stride,
+         const expr_t &index)
+{
+    if constexpr (index_first)
+        return expr_t(gep_t< op, expr_t, true > { pointer, index, stride });
+    else
+        return expr_t(gep_t< op, top_t< F >, false > { pointer, n, stride });
+}
+
+template< binary_op_t op, bool index_first, typename W, view_t V, sign_t S >
+expr_t
+make_gep(const expr_t &pointer,
+         const load_t< W, V, S > &l,
+         long stride,
+         const expr_t &index)
+{
+    if constexpr (op == binary_op_t::sub && V == view_t::i64)
+        return expr_t(
+            gep_t< op, load_t< W, V, S >, false > { pointer, l, stride });
+    else
+        return expr_t(
+            gep_t< op, expr_t, index_first > { pointer, index, stride });
+}
+
+// p - q, 6.5.7p10, of two pointers of the stride, q in its class: a load
+// of 64 bits, which x86-64's subq takes in memory, or erased.
+template< typename R >
+expr_t
+make_difference(const expr_t &lhs, const R &, long stride, const expr_t &rhs)
+{
+    return expr_t(difference_t< expr_t > { lhs, rhs, stride });
+}
+
+template< typename W, view_t V, sign_t S >
+expr_t
+make_difference(const expr_t &lhs,
+                const load_t< W, V, S > &q,
+                long stride,
+                const expr_t &rhs)
+{
+    if constexpr (V == view_t::i64)
+        return expr_t(difference_t< load_t< W, V, S > > { lhs, q, stride });
+    else
+        return expr_t(difference_t< expr_t > { lhs, rhs, stride });
+}
+
+// A cast between pointer types, 6.3.2.3p7, writes nothing, and every
+// row reads its operand through it but for one directly over a sum,
+// which both targets read as the sum's own address, rcc's cast_sum()
+// and under: so over a sum it is the node bitcast_t, over that node a
+// bitcast_t that hides the sum, and over anything else its operand, the
+// same node under another C type, defaults_t's (model.hh).
+template< binary_op_t op, typename N, bool index_first >
+expr_t
+make_bitcast(const gep_t< op, N, index_first > &sum, const expr_t &)
+{
+    return expr_t(bitcast_t< gep_t< op, N, index_first > > { sum });
+}
+
+template< binary_op_t op, typename N, bool index_first >
+expr_t
+make_bitcast(const bitcast_t< gep_t< op, N, index_first > > &,
+             const expr_t &pointer)
+{
+    return expr_t(bitcast_t< expr_t > { pointer });
 }
 
 // A compound assignment's builder exists for a place alone, as an
@@ -400,6 +500,15 @@ pinning(const compound_t< op, W, V, O, R > &, const expr_t &self)
         return top_t< family_t::shift > { self };
     else
         return self;
+}
+
+// A difference of pointers pins rax and rdx, since it divides by the
+// stride, rcc's pins() of a p - q.
+template< typename R >
+top_t< family_t::division >
+pinning(const difference_t< R > &, const expr_t &self)
+{
+    return { self };
 }
 
 // A top_t is the class already, which a conversion's model hands its
