@@ -279,6 +279,20 @@ call_t &, long)` and comes back as a member of a call.
   whether it is a comparison, a `!`, `&&` or `||` under any widening,
   and `conditional_t< V, jumps >` takes the answer, so a `?:` of such
   arms used as a condition jumps on the arms.
+- A widening of a signed `?:` is a type of its own, `sext_t< i64, i32,
+  widened_arms_t< i32, jumps > >`, which holds the conditional and its
+  arms already widened, since no builder runs at generation. Its row
+  asks each target's `widens_arms()`, rcc's: whether an arm's own row
+  writes it widened at no cost, the summary `arm_widening()`, which a
+  constant, an object and a truth value do, and on x86-64 a remainder
+  beside a register the consumer names other than `rdx`. Where one
+  does, the conversion is each arm's, on its own path, and nothing
+  follows the join, `movslq -8(%rbp), %rax` and `movq $7, %rax`;
+  otherwise the join is widened after its label. An arm that is itself
+  a `?:` is widened after its own join and handed no further, since
+  rcc converts an arm with `converted()` and not `cast()`. An unsigned
+  `?:` is never handed: its widening is the primary, which extends
+  where the join's record is short.
 - A class crosses the interface as data. A view or a sign as a type
   would make one operation of the interface for each, so the right
   operand's class is handed to the left operand's model with its
@@ -916,6 +930,7 @@ each became.
 | `under_widening()` | a question to the handle of the same name, which the jump on the arms asks |
 | `arithmetic_conversions()` of a `?:`'s arms | the parser's `joined()`, one `convert_to()` an arm |
 | the join's `min(valid, other_valid)` | the join's record in the state, read by `held_valid()` |
+| `widens_arms()`, `widens_free()` | each target's `widens_arms()` over the summary `arm_widening()`, asked by the row of the widening over `widened_arms_t` |
 | `takes_name()`, `rvalue_in()` | aarch64's summary and its entry point `value_in` |
 | `body_target()`, `target_of()`, an `if` of one jump | the category of the types that name their label, and the then part's type, `if_t< J >`, which the builder finds through the model |
 | `user_label()` | the state's labels of the C labels met, taken by a `goto`'s `label_of()` and by the label's own row |
@@ -1009,12 +1024,9 @@ rows invented for the purpose.
   about 6,100 and the unit to 112 seconds and 11.7 GB, and with the
   steps, the compound assignments and `?:` it takes 131 and 13.9; the
   compound assignments of every type, 650 node types where there were
-  338, bring the peak to 14.4 GB. Pointers bring a third where.
-- A widening of a signed `?:`'s value, rcc's `widens_arms()`. It is
-  not yet, and is refused by the `?` the parser's operand carries,
-  through any operator with a constant operand, which may be an
-  identity: so `(a ? b : c) + 5` widened is refused where rcc compiles
-  it. GNU's `a ?: b` is not yet.
+  338, bring the peak to 14.4 GB, and `?:` of every type with its
+  widening to 15.2. Pointers bring a third where.
+- GNU's `a ?: b`, which is not yet.
 - `({ })`. It waits until the concepts around it are clear.
 - Two targets that want shapes of one subtree that do not nest. The
   address family is where to look.

@@ -545,6 +545,15 @@ pinned_within(const state_t &s, const conditional_void_t &c)
            pinned_within(s, c.no);
 }
 
+// A conditional under a widening pins what the conditional pins: an
+// arm's widening pins nothing of its own.
+template< view_t V, bool jumps >
+unsigned
+pinned_within(const state_t &s, const widened_arms_t< V, jumps > &w)
+{
+    return pinned_within(s, w.conditional);
+}
+
 // A comma pins nothing of its own, rcc's pins() of one, and what its
 // two operands pin.
 template< typename R >
@@ -677,6 +686,13 @@ moved_within(const state_t &, const conditional_t< V, jumps > &)
 
 constexpr unsigned
 moved_within(const state_t &, const conditional_void_t &)
+{
+    return 0;
+}
+
+template< view_t V, bool jumps >
+constexpr unsigned
+moved_within(const state_t &, const widened_arms_t< V, jumps > &)
 {
     return 0;
 }
@@ -1935,6 +1951,17 @@ value_t conditional(state_t &,
                     view_t view,
                     sign_t sign,
                     unsigned wanted);
+
+// Whether a signed widening of the conditional of the arms yes and no
+// is handed to them, rcc's widens_arms() past what the node's type
+// says: where an arm widens free, its arm_widening(), or is a remainder
+// and the consumer names a register other than rdx, wanted_register(),
+// which the remainder is extended into from rdx where the join's mov
+// would be, movslq %edx, %rax for a return.
+bool widens_arms(const state_t &,
+                 const expr_t &yes,
+                 const expr_t &no,
+                 unsigned wanted);
 
 template< view_t V, bool jumps >
 value_t

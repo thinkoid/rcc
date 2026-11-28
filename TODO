@@ -37,8 +37,9 @@ since x86-64's arithmetic, divisions and shifts read through a comma:
 6,122 binary node types, 112 s and 11.7 GB, and 131 s and 13.9 GB with
 the steps, the compound assignments and =?:= on them. The compound
 assignments of every integer type, the operation's view a parameter,
-took their node types from 338 to 650, and the peak to 14.4 GB. A
-pointer's where is the third.
+took their node types from 338 to 650, and the peak to 14.4 GB; =?:=
+of every type and its widening, to 15.2. A pointer's where is the
+third.
 
 Measured and not taken, each changing no node type and no listing:
 line tables alone as the unit's debugging information (5 s and 0.7

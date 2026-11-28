@@ -34,6 +34,13 @@ namespace rcc {
 // definition.
 struct value_t;
 
+// What an arm of ?: costs a widening of the conditional handed to it,
+// rcc's widens_free(): nothing, free, where the arm's own row writes the
+// value widened; on x86-64 nothing for a remainder either, beside a
+// register the consumer names other than rdx, where it is extended in
+// place of the join's mov; an extension of its own otherwise (zoo.hh).
+enum class arm_widening_t { free, remainder, extension };
+
 class expr_t
 {
     struct interface_t;
@@ -67,6 +74,8 @@ public:
     friend bool truth_value(const expr_t &);
     friend expr_t under_widening(const expr_t &);
     friend bool is_join(const expr_t &);
+    friend arm_widening_t arm_widening(const expr_t &);
+    friend expr_t widened_arm(const expr_t &);
     friend value_t value_in(arm64::state_t &, const expr_t &, unsigned wanted);
     friend bool takes_name(const arm64::state_t &, const expr_t &);
 
@@ -134,6 +143,15 @@ expr_t under_widening(const expr_t &);
 // Whether an erased value is the join of ?: as the join holds it, the
 // summary that a reader of its width asks (zoo.hh, register-stack.hh).
 bool is_join(const expr_t &);
+
+// What an erased arm of ?: costs a widening of the conditional handed
+// to it, a summary its widening's row asks of each arm (zoo.hh).
+arm_widening_t arm_widening(const expr_t &);
+
+// An erased arm of a signed ?: of int widened to 64 bits, as rcc's
+// conditional() converts an arm when its cast hands it the conversion,
+// by the builder of the widening's operand (build-typed.hh).
+expr_t widened_arm(const expr_t &);
 
 // aarch64's value for a consumer at a return's top, rcc's rvalue_in(),
 // and the summary its ?: asks of an arm before it hands an arm the

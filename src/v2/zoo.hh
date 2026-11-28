@@ -275,6 +275,21 @@ struct conditional_void_t
     expr_t no;
 };
 
+// A signed conditional as the operand of a widening of its value,
+// sext_t< V, F, widened_arms_t< F, jumps > >, rcc's cast() of one: the
+// conditional of view F, and each of its arms converted to the wider
+// view V, as the cast converts it where widens_arms() hands it the
+// conversion, built beside the conditional, since no builder runs at
+// generation.  Which of the two the widening writes is its row's
+// (rows-expressions.hh).
+template< view_t F, bool jumps >
+struct widened_arms_t
+{
+    conditional_t< F, jumps > conditional;
+    expr_t yes;
+    expr_t no;
+};
+
 
 // E1 op= E2, 6.5.17.3: E1 evaluated once, and the operation one
 // evaluation, p4, after E2's, so the object is read after the right
@@ -1037,6 +1052,93 @@ truth_value(const trunc_t< V, A > &t)
     return width(V) >= width(view_of(t.arg)) && truth_value(t.arg);
 }
 
+// What an arm of ?: costs a widening of the conditional handed to it,
+// rcc's widens_free(), each arm's summary (principle 3): nothing where
+// its own row writes the value widened, a constant, at the wider view;
+// an object in memory, read once at its own type, a load, a load under
+// a conversion that keeps its bits, or under a promotion of either one
+// extension of which is the two, rcc's widened_read(), its extending
+// load; and a truth value, !, a comparison, && or ||, valid to 64 bits
+// as it is.  A remainder is a summary of its own, which x86-64 widens
+// free into a register the consumer names other than rdx, and anything
+// else needs an extension of its own.  No conversion is looked through
+// but those of an object, as rcc's lands_in() looks through none.
+template< typename T >
+constexpr arm_widening_t
+arm_widening(const T &)
+{
+    return arm_widening_t::extension;
+}
+
+template< constant C >
+constexpr arm_widening_t
+arm_widening(const C &)
+{
+    return arm_widening_t::free;
+}
+
+template< typename W, view_t V, sign_t S >
+constexpr arm_widening_t
+arm_widening(const load_t< W, V, S > &)
+{
+    return arm_widening_t::free;
+}
+
+template< view_t V, typename W, sign_t S >
+constexpr arm_widening_t
+arm_widening(const trunc_t< V, load_t< W, V, S > > &)
+{
+    return arm_widening_t::free;
+}
+
+template< view_t F, view_t G, typename W >
+constexpr arm_widening_t
+arm_widening(const sext_t< F, G, load_t< W, G, sign_t::signed_ > > &)
+{
+    return arm_widening_t::free;
+}
+
+template< view_t F, view_t G, typename W >
+constexpr arm_widening_t
+arm_widening(const zext_t< F, G, load_t< W, G, sign_t::unsigned_ > > &)
+{
+    return arm_widening_t::free;
+}
+
+template< view_t F, view_t G, typename W >
+constexpr arm_widening_t
+arm_widening(
+    const sext_t< F, G, trunc_t< G, load_t< W, G, sign_t::unsigned_ > > > &)
+{
+    return arm_widening_t::free;
+}
+
+template< view_t F, view_t G, typename W >
+constexpr arm_widening_t
+arm_widening(
+    const zext_t< F, G, trunc_t< G, load_t< W, G, sign_t::signed_ > > > &)
+{
+    return arm_widening_t::free;
+}
+
+template< view_t V, typename A >
+constexpr arm_widening_t
+arm_widening(const unary_t< unary_op_t::log_not, V, A > &)
+{
+    return arm_widening_t::free;
+}
+
+template< binary_op_t op, view_t V, typename L, typename R >
+constexpr arm_widening_t
+arm_widening(const binary_t< op, V, L, R > &)
+{
+    if (is_comparison(op) || is_logical(op))
+        return arm_widening_t::free;
+
+    return op == binary_op_t::srem || op == binary_op_t::urem ?
+               arm_widening_t::remainder :
+               arm_widening_t::extension;
+}
 
 // Whether a node's value is the join of ?: as the join holds it, so that
 // the conditional's record of the join's width is the node's: the

@@ -301,6 +301,14 @@ node_of(const top_t< F > &operand)
     return operand.node;
 }
 
+// A signed conditional under its widening is the conditional.
+template< view_t F, bool jumps >
+expr_t
+node_of(const widened_arms_t< F, jumps > &operand)
+{
+    return expr_t(operand.conditional);
+}
+
 // A binary operator of operands that do not both fold: the node, each
 // operand in its class.  An operator that a constant makes the identity
 // is no node: its builder leaves the other operand (build.cc).
@@ -550,6 +558,26 @@ make_widening(
     return widening_of< V, F, S >(e);
 }
 
+// A signed widening of a conditional keeps the conditional as its
+// operand's type, rcc's cast() of one, with its arms widened beside it,
+// each through its handle, widened_arm(), since an int conditional is
+// widened to 64 bits: whether rcc hands the widening to the arms,
+// widens_arms(), is the row's, which reads what the arms are and on
+// x86-64 the register the consumer names (rows-expressions.hh).  An
+// unsigned one is never handed to the arms, since a 32-bit write of an
+// unsigned value is valid to 64 bits already, and is the widening of
+// any value, which extends the join where the width it records is short.
+template< view_t V, view_t F, sign_t S, bool jumps >
+    requires(S == sign_t::signed_)
+expr_t
+make_widening(const conditional_t< F, jumps > &c, const expr_t &)
+{
+    static_assert(V == view_t::i64 && F == view_t::i32);
+
+    return expr_t(sext_t< V, F, widened_arms_t< F, jumps > > {
+        { c, widened_arm(c.yes), widened_arm(c.no) } });
+}
+
 // A conversion that is no widening, a narrowing, a change of sign or a
 // cast to the operand's own type: trunc_t, which writes nothing, over
 // the operand in the class pinning() keeps.
@@ -620,6 +648,28 @@ make_conversion(sign_t to_sign, const T &e, const expr_t &self)
         return make_widening< V, F, S >(e, self);
     else
         return make_narrowing< V >(e, self);
+}
+
+// An arm of a signed conditional of int widened to 64 bits, in the
+// class a conversion reads, as rcc's conditional() converts it when its
+// cast hands it the conversion, converted()'s and no cast's: the
+// conversion of any arm, but that a conditional, whose widening no cast
+// wrote, is widened after its join and is never handed to its own arms,
+// return a ? (b ? c : d) : 5 as a long being movslq %eax, %rax after the
+// inner join.
+template< typename A >
+expr_t
+widened_arm(const A &arg, const expr_t &self)
+{
+    return make_conversion< view_t::i64, view_t::i32, sign_t::signed_ >(
+        sign_t::signed_, arg, self);
+}
+
+template< bool jumps >
+expr_t
+widened_arm(const conditional_t< view_t::i32, jumps > &, const expr_t &self)
+{
+    return widening_of< view_t::i64, view_t::i32, sign_t::signed_ >(self);
 }
 
 // A comma of the left operand lhs and the right operand in its class:

@@ -696,6 +696,23 @@ takes_name(const state_t &s, const assign_t< W, V > &a)
     return takes_name(s, a.value);
 }
 
+template< view_t V, bool jumps >
+constexpr bool
+takes_name(const state_t &, const widened_arms_t< V, jumps > &)
+{
+    return false;
+}
+
+// Whether a signed widening of the conditional of the arms yes and no
+// is handed to them, rcc's widens_arms() past what the node's type
+// says: where an arm widens free, its arm_widening().  A remainder is
+// no such arm here, since msub writes the register it is handed, and
+// neither the state nor the register the consumer names is read.
+bool widens_arms(const state_t &,
+                 const expr_t &yes,
+                 const expr_t &no,
+                 unsigned wanted);
+
 // The value of c ? y : n of the view, rcc's conditional(), aarch64.md
 // 6.1: as x86-64's, but that each arm is handed the register the
 // consumer names, wanted, where it is free, and never the join, so a

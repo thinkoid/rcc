@@ -1384,6 +1384,32 @@ arm(state_t &s, const expr_t &e, reg_t j)
 
 } // namespace
 
+namespace {
+
+// rcc's widens_free() on x86-64, named the register the consumer names.
+bool
+widens_free(const expr_t &arm, std::optional< reg_t > named)
+{
+    const arm_widening_t cost = arm_widening(arm);
+    if (cost == arm_widening_t::free)
+        return true;
+
+    return cost == arm_widening_t::remainder && named && *named != rdx;
+}
+
+} // namespace
+
+bool
+widens_arms(const state_t &s,
+            const expr_t &yes,
+            const expr_t &no,
+            unsigned wanted)
+{
+    const auto named = wanted_register(s, wanted);
+
+    return widens_free(yes, named) || widens_free(no, named);
+}
+
 // The join's mov at the conditional's width, max(32, width), rcc's, and
 // the join's width recorded at the sign, rcc's hold() of it: the lesser
 // of the arms', an arm a mov brought there valid as the mov writes it,

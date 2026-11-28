@@ -38,16 +38,13 @@ namespace rcc {
 // for the function a call names; and whether it is a constant reached
 // through a signed overflow, 6.6p4, the mark every operator's
 // production sets, overflowed(), and a constant expression reads,
-// warn_overflowed(); and the '?' of the conditional the expression is,
-// through parentheses, or null, for the not yet of a widening of a
-// signed one, conversion()'s.
+// warn_overflowed().
 struct operand_t
 {
     type_t type;
     std::optional< expr_t > node;
     const token_t *name = nullptr;
     bool overflowed = false;
-    const token_t *question = nullptr;
 };
 
 // What a block's scope holds of a name it declares, 6.2.1p4: the
@@ -258,11 +255,10 @@ expr_t discarded(operand_t e);
 // nothing else calls make_conversion(): so a node that is no conversion
 // has the type its consumer converts it from, and the width rule, which
 // a widening reads by the sign of the type it converts from, is right
-// by construction (docs/typed-tree.md 4.2).  A widening of a signed
-// conditional is not yet, at its '?': rcc hands it into the arms where
-// they widen free, widens_arms(), a choice partly of the state.  An
-// unsigned one it never hands: its widening extends the join where the
-// width the join records is short (register-stack.hh).
+// by construction (docs/typed-tree.md 4.2).  A widening of a
+// conditional is asked of the node, by its builder: whether rcc hands
+// it to the arms is its row's, and otherwise it extends the join where
+// the width the join records is short (register-stack.hh).
 expr_t conversion(const operand_t &e, const type_t &t);
 
 // The value of e in the type t, rcc's convert_to(), the place an

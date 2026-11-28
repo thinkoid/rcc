@@ -1024,6 +1024,13 @@ free_register(const state_t &s, unsigned wanted)
 
 } // namespace
 
+bool
+widens_arms(const state_t &, const expr_t &yes, const expr_t &no, unsigned)
+{
+    return arm_widening(yes) == arm_widening_t::free ||
+           arm_widening(no) == arm_widening_t::free;
+}
+
 // The join's mov at the conditional's width, max(32, width), rcc's, and
 // the join's width recorded at the sign, rcc's hold() of it: the lesser
 // of the arms', an arm a mov brought there valid as the mov writes it,

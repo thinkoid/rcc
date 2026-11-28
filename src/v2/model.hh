@@ -93,6 +93,11 @@ struct expr_t::interface_t
     // whether the value is a join of ?:, whose width the state records
     virtual bool is_join() const = 0;
 
+    // what a widening of a conditional asks of an erased arm: what the
+    // arm costs the widening handed to it, and the arm widened
+    virtual arm_widening_t arm_widening() const = 0;
+    virtual expr_t widened_arm(const expr_t &self) const = 0;
+
     // the builders: self is the handle that holds this node, which a
     // builder returns, or erases a part into, without a copy of the node
     virtual expr_t rvalue(const expr_t &self) const = 0;
@@ -264,6 +269,21 @@ fwd_is_join(const T &t)
     return is_join(t);
 }
 
+template< typename T >
+arm_widening_t
+fwd_arm_widening(const T &t)
+{
+    return arm_widening(t);
+}
+
+// An arm widened by the builder of its class, as a conversion is.
+template< typename T >
+expr_t
+fwd_widened_arm(const T &t, const expr_t &self)
+{
+    return widened_arm(converted_operand(t, self), self);
+}
+
 // The lvalue conversion of a held node, as fwd_value() finds a row.
 template< typename T >
 expr_t
@@ -322,11 +342,12 @@ fwd_unary(unary_op_t op, view_t view, const A &arg, const expr_t &self)
 
 // The operand of a conversion in the class its builders read
 // (build-typed.hh): itself where they read its type, a constant, which
-// folds, a load, and a conversion over a load or that writes nothing,
-// which a conversion reads through; anything else as pinning() keeps
-// it, a top_t where its top operator pins registers on x86-64, and
-// erased otherwise.  The three crossings of fwd_conversion() are
-// instantiated once for each class, and not for each node type.
+// folds, a load, a conversion over a load or that writes nothing, which
+// a conversion reads through, and a conditional, whose signed widening
+// is a type of its own; anything else as pinning() keeps it, a top_t
+// where its top operator pins registers on x86-64, and erased otherwise.
+// The three crossings of fwd_conversion() are instantiated once for
+// each class, and not for each node type.
 template< typename T >
 decltype(auto)
 converted_operand(const T &e, const expr_t &self)
@@ -387,6 +408,13 @@ converted_operand(
     const expr_t &)
 {
     return e;
+}
+
+template< view_t V, bool jumps >
+const conditional_t< V, jumps > &
+converted_operand(const conditional_t< V, jumps > &c, const expr_t &)
+{
+    return c;
 }
 
 // The conversion of a held node in its class from the view from, at
@@ -941,6 +969,16 @@ struct expr_t::model_t final: interface_t
     bool is_join() const override
     {
         return fwd_is_join(held);
+    }
+
+    arm_widening_t arm_widening() const override
+    {
+        return fwd_arm_widening(held);
+    }
+
+    expr_t widened_arm(const expr_t &self) const override
+    {
+        return fwd_widened_arm(held, self);
     }
 
     expr_t rvalue(const expr_t &self) const override

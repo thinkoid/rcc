@@ -135,6 +135,18 @@ is_join(const expr_t &e)
     return e.self->is_join();
 }
 
+arm_widening_t
+arm_widening(const expr_t &e)
+{
+    return e.self->arm_widening();
+}
+
+expr_t
+widened_arm(const expr_t &e)
+{
+    return e.self->widened_arm(e);
+}
+
 // A statement holds no value past its end, c1-statements.hh's check.
 void
 generate(amd64::state_t &s, const stmt_t &statement)

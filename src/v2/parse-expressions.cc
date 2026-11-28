@@ -356,8 +356,7 @@ prefix_step(parser_t &p)
 // type, and no node of its own; but the value is no lvalue, so an
 // operand that is a place, whose promotion made no node, stands under
 // a conversion to its own type, which writes nothing: +x is (T) x, T
-// the promoted type of x.  The operand's mark and its '?' are the
-// value's.
+// the promoted type of x.  The operand's mark is the value's.
 operand_t
 unary_plus(parser_t &p)
 {
@@ -371,10 +370,7 @@ unary_plus(parser_t &p)
                  .node = conversion(arg, t),
                  .overflowed = arg.overflowed };
 
-    return { .type = t,
-             .node = promote(arg),
-             .overflowed = arg.overflowed,
-             .question = arg.question };
+    return { .type = t, .node = promote(arg), .overflowed = arg.overflowed };
 }
 
 // !e, 6.5.4.3p5: an int, its operand's value tested as it is, at its
@@ -451,9 +447,7 @@ unary_expression(parser_t &p)
 operand_t
 cast(const token_t &open, const type_t &t, const operand_t &arg)
 {
-    const operand_t value { .type = arg.type,
-                            .node = rvalue(open, arg),
-                            .question = arg.question };
+    const operand_t value { arg.type, rvalue(open, arg) };
 
     return { .type = t,
              .node = conversion(value, t),
@@ -510,27 +504,6 @@ refuse_function_operands(binary_op_t op,
     fail(at, "operand of " + quoted(at.text) + " is a pointer");
 }
 
-// The '?' of the result of an operator on the operands lhs and rhs, l
-// and r their nodes, for conversion(): an operator with a constant
-// operand may be its identity, which leaves the other operand's node,
-// a conditional among them, so the other's '?' is the result's.  Where
-// the operator is no identity, the result is no conditional, and its
-// widening is not yet all the same, where in doubt.
-const token_t *
-question_of(const operand_t &lhs,
-            const expr_t &l,
-            const operand_t &rhs,
-            const expr_t &r)
-{
-    if (constant_of(r))
-        return lhs.question;
-
-    if (constant_of(l))
-        return rhs.question;
-
-    return nullptr;
-}
-
 // A binary operator of integers, 6.5.6, 6.5.7, 6.5.11 to 6.5.13, its
 // token at, rcc's arithmetic(): the usual arithmetic conversions, each
 // operand converted to the common type, and the result of that type,
@@ -549,13 +522,11 @@ arithmetic(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
     expr_t l = convert_to(lhs, t);
     expr_t r = convert_to(rhs, t);
     const bool marked = overflowed(op, t, lhs, l, rhs, r);
-    const token_t *question = question_of(lhs, l, rhs, r);
 
     return { .type = t,
              .node = make_binary(by_sign(op, sign_of(t)), view_of(t),
                                  std::move(l), std::move(r)),
-             .overflowed = marked,
-             .question = question };
+             .overflowed = marked };
 }
 
 // << and >>, 6.5.8, its token at, rcc's shift(): each operand promoted
@@ -573,13 +544,11 @@ shift(binary_op_t op, const token_t &at, operand_t lhs, operand_t rhs)
     expr_t l = promote(lhs);
     expr_t r = promote(rhs);
     const bool marked = overflowed(op, t, lhs, l, rhs, r);
-    const token_t *question = question_of(lhs, l, rhs, r);
 
     return { .type = t,
              .node = make_binary(by_sign(op, sign_of(t)), view_of(t),
                                  std::move(l), std::move(r)),
-             .overflowed = marked,
-             .question = question };
+             .overflowed = marked };
 }
 
 // The operator of a multiplicative operator's token: * / %, a division
@@ -866,8 +835,7 @@ logical_or_expression(parser_t &p)
 // make an int, and a constant arm is the constant of that type.  A
 // constant condition and two constant arms fold to the arm the
 // condition picks, p5, make_conditional()'s, marked overflowed where the
-// condition or that arm was so reached; a conditional that does not
-// fold keeps its '?' for conversion(), and an arm keeps its own.
+// condition or that arm was so reached.
 operand_t
 joined(const token_t &at,
        const operand_t &condition,
@@ -884,12 +852,8 @@ joined(const token_t &at,
     if (is< void_t >(yes.type) || is< void_t >(no.type))
         fail(at, "void and non-void operands in conditional expression");
 
-    const operand_t y { .type = yes.type,
-                        .node = rvalue(at, yes),
-                        .question = yes.question };
-    const operand_t n { .type = no.type,
-                        .node = rvalue(at, no),
-                        .question = no.question };
+    const operand_t y { yes.type, rvalue(at, yes) };
+    const operand_t n { no.type, rvalue(at, no) };
     const type_t t = common_type(y.type, n.type);
     expr_t first = convert_to(y, t);
     expr_t second = convert_to(n, t);
@@ -903,8 +867,7 @@ joined(const token_t &at,
              .node =
                  make_conditional(std::move(cond), std::move(first),
                                   std::move(second), view_of(t), sign_of(t)),
-             .overflowed = marked,
-             .question = folded ? nullptr : &at };
+             .overflowed = marked };
 }
 
 } // namespace
@@ -960,28 +923,24 @@ compound_operator(tok_t kind)
     }
 }
 
-// E1 op= E2, 6.5.17.3, rcc's assignment(), its operator at op: the right
-// operand's value read, a void one an error at the operator; the
+// E1 op= E2, 6.5.17.3, rcc's assignment(), its operator at op: the
+// right operand's value read, a void one an error at the operator; the
 // operation's type the common type of the two, 6.5.17.3p3, the usual
 // arithmetic conversions, the right operand converted to it, or for <<=
 // and >>= the left operand's promoted type, the count promoted on its
-// own, 6.5.8p3, the right operand's '?' kept for conversion(); the
-// result of the left operand's type, the operator by the operation's
-// sign, at its view.  The read of the left operand into the operation's
-// type and the result back to its own are no conversion of the tree, as
-// in rcc: the node's rows extend the read and store the low bits.  A
-// compound assignment is no constant expression, 6.6p3, and carries no
-// mark of an overflow.
+// own, 6.5.8p3; the result of the left operand's type, the operator by
+// the operation's sign, at its view.  The read of the left operand into
+// the operation's type and the result back to its own are no conversion
+// of the tree, as in rcc: the node's rows extend the read and store the
+// low bits.  A compound assignment is no constant expression, 6.6p3,
+// and carries no mark of an overflow.
 operand_t
 compound_assignment(const token_t &op,
                     binary_op_t b,
                     operand_t lhs,
                     operand_t rhs)
 {
-    const token_t *question = rhs.question;
-    const operand_t value { .type = rhs.type,
-                            .node = rvalue(op, std::move(rhs)),
-                            .question = question };
+    const operand_t value { rhs.type, rvalue(op, std::move(rhs)) };
     const type_t t =
         is_shift(b) ? promoted(lhs.type) : common_type(lhs.type, value.type);
     expr_t r = is_shift(b) ? promote(value) : convert_to(value, t);

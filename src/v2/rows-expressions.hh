@@ -54,15 +54,29 @@ value(S &s, const top_t< F > &t, unsigned wanted = 0)
 // movl %eax, %eax.  The row asks its operand's summary, as x86-64's rows
 // ask pinned_within(), or what the join of ?: recorded, held_valid(); a
 // niche of each target reads a load extended.
+template< typename S, typename A >
+value_t
+widened(S &s,
+        value_t v,
+        const A &arg,
+        view_t from,
+        sign_t sign,
+        view_t to,
+        unsigned wanted)
+{
+    if (held_valid(s, v, arg, sign) >= width(to))
+        return v;
+
+    return extended(s, v, from, sign, to, wanted);
+}
+
 template< typename S, view_t V, view_t F, typename A >
 value_t
 value(S &s, const sext_t< V, F, A > &e, unsigned wanted = 0)
 {
     const value_t v = value(s, e.arg, wanted);
-    if (held_valid(s, v, e.arg, sign_t::signed_) >= width(V))
-        return v;
 
-    return extended(s, v, F, sign_t::signed_, V, wanted);
+    return widened(s, v, e.arg, F, sign_t::signed_, V, wanted);
 }
 
 template< typename S, view_t V, view_t F, typename A >
@@ -70,10 +84,8 @@ value_t
 value(S &s, const zext_t< V, F, A > &e, unsigned wanted = 0)
 {
     const value_t v = value(s, e.arg, wanted);
-    if (held_valid(s, v, e.arg, sign_t::unsigned_) >= width(V))
-        return v;
 
-    return extended(s, v, F, sign_t::unsigned_, V, wanted);
+    return widened(s, v, e.arg, F, sign_t::unsigned_, V, wanted);
 }
 
 // A widening over a promotion of the object, which its builder makes
@@ -488,6 +500,30 @@ branch(S &s, const conditional_t< V, true > &c, int label, bool sense)
     branch(s, under_widening(c.no), label, sense);
 
     place_label(s, end);
+}
+
+// A signed conditional widened, rcc's cast() of one: where each
+// target's widens_arms() says, the conversion handed to each arm on its
+// own path, the conditional of the arms the builder widened, joined at
+// the wider view as for any consumer, so that nothing follows the join,
+// movslq -8(%rbp), %rax and movq $7, %rax; otherwise the conditional's
+// value, then the widening of its join, movslq %eax, %rax after it.
+// widens_arms() is asked before the conditional spills anything, as
+// rcc asks it.
+template< typename S, view_t V, view_t F, bool jumps >
+value_t
+value(S &s,
+      const sext_t< V, F, widened_arms_t< F, jumps > > &e,
+      unsigned wanted = 0)
+{
+    const auto &c = e.arg.conditional;
+    if (widens_arms(s, c.yes, c.no, wanted))
+        return conditional(s, c.cond, e.arg.yes, e.arg.no, V, sign_t::signed_,
+                           wanted);
+
+    const value_t v = value(s, c, wanted);
+
+    return widened(s, v, c, F, sign_t::signed_, V, wanted);
 }
 
 // A comma, rcc's binary(), cbranch() and effect() of one, 6.5.18p2: the
